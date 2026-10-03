@@ -1,0 +1,1 @@
+`otsu_threshold` and `OtsuThreshold` once again support `torch.export` on the default path and compile without graph breaks. Their floating-point thresholds now preserve pixels assigned to the foreground histogram class, including pixels on a bin edge and edges rounded to a half-precision input dtype. Constant planes retain their exact value as the threshold.

@@ -1,0 +1,1 @@
+The default `otsu_threshold` and `OtsuThreshold` paths now select the first split after an occupied histogram bin when an empty-bin gap separates the classes. Previously, reduction rounding could select a later equivalent split on MPS than on CPU; affected returned thresholds now use the lowest equivalent split, while the class partition is preserved.

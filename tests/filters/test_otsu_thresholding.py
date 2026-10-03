@@ -20,7 +20,17 @@ import torch
 
 from kornia.filters.otsu_thresholding import OtsuThreshold, otsu_threshold
 
-from testing.base import BaseTester, assert_close
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, assert_close, dynamo_is_available
+
+
+class _FunctionalOtsuThreshold(torch.nn.Module):
+    def __init__(self, return_mask, nbins=2):
+        super().__init__()
+        self.return_mask = return_mask
+        self.nbins = nbins
+
+    def forward(self, image):
+        return otsu_threshold(image, nbins=self.nbins, return_mask=self.return_mask)
 
 
 class TestOtsuThreshold(BaseTester):
@@ -226,6 +236,174 @@ class TestOtsuThreshold(BaseTester):
         mask, threshold = otsu_threshold(image, slow_and_differentiable=slow_and_differentiable, return_mask=True)
         assert torch.equal(threshold, image.flatten()[:1])
         assert not mask.any()
+
+    @pytest.mark.parametrize("offset", [-1.0, -126 / 256, 0.0], ids=["negative", "zero", "positive"])
+    def test_float_pixel_on_selected_edge_is_foreground_5422(self, offset, device, dtype):
+        levels = torch.cat([torch.arange(257), torch.full((300,), 60), torch.full((300,), 190)])
+        image = (levels / 256 + offset).to(device=device, dtype=dtype).view(1, -1)
+        mask, threshold = otsu_threshold(image, return_mask=True)
+        edge = torch.tensor([126 / 256 + offset], dtype=dtype)
+        expected = torch.nextafter(edge, torch.full_like(edge, -torch.inf)).to(device)
+        if device.type == "mps" and dtype in (torch.float32, torch.bfloat16) and offset == -126 / 256:
+            # Metal comparisons flush subnormals to zero; the closest usable negative threshold is normal.
+            expected = image.new_tensor([-torch.finfo(dtype).tiny])
+        # histc places the pixel at the upper edge in the next bin. Strict comparison must keep it too,
+        # including when that foreground pixel is zero or negative.
+        self.assert_close(threshold, expected, rtol=0, atol=0)
+        assert mask.sum().item() == 431
+        assert mask[0, 126]
+        assert not mask[0, 125]
+        self.assert_close(mask, image > threshold)
+
+    def test_float_and_integer_edges_keep_same_pixels_5422(self, device):
+        levels = torch.cat([torch.arange(257), torch.full((300,), 60), torch.full((300,), 190)])
+        image = levels.to(device=device, dtype=torch.int16).view(1, -1)
+        integer_mask, integer_threshold = otsu_threshold(image, return_mask=True)
+        float_mask, _ = otsu_threshold(image.float() / 256, return_mask=True)
+        assert integer_threshold.item() == 125
+        assert integer_mask.sum().item() == 431
+        self.assert_close(float_mask, integer_mask)
+
+    def test_rounded_bfloat16_edge_keeps_foreground_pixel_5422(self, device):
+        # The float32 histogram edge is 0.505859375, which rounds up to the existing pixel 0.5078125.
+        image = torch.tensor([[0.01171875, 0.01171875, 0.5078125, 1.0, 1.0]], device=device, dtype=torch.bfloat16)
+        mask, threshold = otsu_threshold(image, nbins=2, return_mask=True)
+        self.assert_close(threshold, image.new_tensor([0.50390625]), rtol=0, atol=0)
+        assert mask.tolist() == [[False, False, True, True, True]]
+
+    def test_downward_rounded_edge_keeps_background_pixel_excluded_5422(self, device):
+        # The float32 edge 0.501953125 rounds down to 0.5. That pixel belongs to the background bin,
+        # so an unconditional nextafter would incorrectly promote it to the foreground.
+        image = torch.tensor([[0.00390625, 0.00390625, 0.5, 1.0, 1.0]], device=device, dtype=torch.bfloat16)
+        mask, threshold = otsu_threshold(image, nbins=2, return_mask=True)
+        self.assert_close(threshold, image.new_tensor([0.5]), rtol=0, atol=0)
+        assert mask.tolist() == [[False, False, False, True, True]]
+
+    @pytest.mark.parametrize("middle", [0.5, 0.6], ids=["on_edge", "above_edge"])
+    def test_slow_path_edge_correction_keeps_foreground_pixel_5422(self, middle, device, dtype):
+        # Three zeros give the first KDE split a unique maximum when middle=0.5. Its next sample is 0.5,
+        # which must not remove that foreground pixel. Without a collision, preserve the sample exactly.
+        image = torch.tensor([[0.0, 0.0, 0.0, middle, 1.0, 1.0]], device=device, dtype=dtype)
+        mask, threshold = otsu_threshold(image, nbins=3, slow_and_differentiable=True, return_mask=True)
+        expected = torch.tensor([0.5], dtype=dtype)
+        if middle == 0.5:
+            expected = torch.nextafter(expected, torch.full_like(expected, -torch.inf))
+        self.assert_close(threshold, expected.to(device), rtol=0, atol=0)
+        assert mask.tolist() == [[False, False, False, True, True, True]]
+
+    def test_edge_correction_is_independent_for_each_plane_5422(self, device, dtype):
+        image = torch.tensor(
+            [[[0.0, 0.25, 0.5, 1.0]], [[0.0, 0.25, 0.75, 1.0]], [[0.5, 0.5, 0.5, 0.5]]],
+            device=device,
+            dtype=dtype,
+        )
+        mask, threshold = otsu_threshold(image, nbins=2, return_mask=True)
+        edge = torch.tensor(0.5, dtype=dtype)
+        corrected = torch.nextafter(edge, torch.full_like(edge, -torch.inf))
+        expected = torch.stack([corrected, edge, edge]).to(device)
+        # Only the first plane has a pixel equal to its edge. The unmatched edge and constant plane stay exact.
+        self.assert_close(threshold, expected, rtol=0, atol=0)
+        assert mask.tolist() == [[[False, False, True, True]], [[False, False, True, True]], [[False] * 4]]
+
+    @pytest.mark.parametrize("distribution", ["bimodal", "squared"])
+    def test_empty_gap_uses_first_occupied_split_5421(self, distribution, device):
+        # Generate exactly the same float32 pixels on every backend. Empty bins after the winning occupied bin
+        # leave both classes unchanged, but parallel cumsum roundoff used to give one of them a higher score on MPS.
+        if distribution == "bimodal":
+            noise = torch.rand(1000, generator=torch.Generator().manual_seed(0), dtype=torch.float64)
+            image = torch.cat([0.3 + 0.1 * noise[:500], 0.6 + 0.1 * noise[500:]]).float().view(20, 50)
+            expected_threshold, foreground = 0.4000208377838135, 500
+        else:
+            image = torch.linspace(0, 1, 60).square().view(6, 10)
+            expected_threshold, foreground = 101 / 256, 22
+        # Independent torch.histc Otsu references, excluding empty candidate bins, select bins 63 and 100.
+        image = image.to(device)
+        mask, threshold = otsu_threshold(image, return_mask=True)
+        self.assert_close(threshold, image.new_tensor([expected_threshold]), rtol=0, atol=1e-7)
+        assert mask.sum().item() == foreground
+
+    @pytest.mark.parametrize("nbins", [2, 17, 256])
+    def test_tensor_histogram_matches_histc_at_bin_boundaries_5425(self, nbins, device, dtype):
+        stats_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        planes = []
+        for low, high in [(-0.7, 1.1), (32.0, 34.5), (0.0, 1.0 + 2**-30)]:
+            edges = torch.linspace(low, high, nbins + 1, dtype=stats_dtype).to(dtype)
+            interior = edges[1:-1]
+            planes.append(
+                torch.cat(
+                    [
+                        edges,
+                        torch.nextafter(interior, torch.full_like(interior, -torch.inf)),
+                        torch.nextafter(interior, torch.full_like(interior, torch.inf)),
+                    ]
+                )
+            )
+        planes.append(torch.full_like(planes[0], -0.375))
+        image = torch.stack(planes).to(device)
+        histograms, edges, _ = OtsuThreshold._OtsuThreshold__histogram(image, nbins)
+        for i, plane in enumerate(image.to(stats_dtype)):
+            low, high = plane.min().item(), plane.max().item()
+            if low == high:
+                expected = torch.zeros_like(histograms[i])
+                expected[0] = 1
+            else:
+                # torch.histc independently pins the bin-assignment arithmetic, including adjacent floating values.
+                expected = torch.histc(plane, bins=nbins, min=low, max=high)
+                expected = expected / expected.sum()
+            self.assert_close(histograms[i], expected, rtol=0, atol=0)
+            expected_edges = torch.linspace(low, high, nbins + 1, device=device, dtype=stats_dtype)
+            self.assert_close(edges[i], expected_edges)
+
+    def test_integer_histogram_matches_histc_with_offsets_5425(self, device):
+        image = torch.stack([torch.arange(-128, 129), torch.arange(1000, 1257)]).to(device=device, dtype=torch.int16)
+        histograms, _, _ = OtsuThreshold._OtsuThreshold__histogram(image, 17)
+        for i, plane in enumerate(image.float()):
+            expected = torch.histc(plane, bins=17, min=plane.min().item(), max=plane.max().item())
+            self.assert_close(histograms[i], expected / expected.sum(), rtol=0, atol=0)
+
+    @staticmethod
+    def _capture_images(device, dtype):
+        image = torch.tensor([[[[0.0, 0.25, 0.5, 1.0]], [[0.5, 0.5, 0.5, 0.5]]]], device=device, dtype=dtype)
+        different = torch.tensor([[[[2.0, 2.0, 2.0, 2.0]], [[-1.0, -0.5, 0.0, 1.0]]]], device=device, dtype=dtype)
+        return image, different
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("api", ["module", "function", "mask"])
+    def test_export_reuses_graph_with_new_ranges_5425(self, api, device, dtype):
+        image, different = self._capture_images(device, dtype)
+        op = OtsuThreshold() if api == "module" else _FunctionalOtsuThreshold(return_mask=api == "mask")
+        extra_args = (2,) if api == "module" else ()
+        exported = torch.export.export(op, (image, *extra_args), strict=True).module()
+        # Swap which plane is constant and change both ranges; capture must not specialize on the observed values.
+        for sample in (image, different):
+            expected = op(sample, *extra_args)
+            actual = exported(sample, *extra_args)
+            self.assert_close(actual[0], expected[0], rtol=0, atol=0)
+            self.assert_close(actual[1], expected[1], rtol=0, atol=0)
+
+    @pytest.mark.parametrize("return_mask", [False, True])
+    def test_dynamo_fullgraph_reuses_new_ranges_5425(self, device, dtype, torch_optimizer, return_mask):
+        image, different = self._capture_images(device, dtype)
+        op = _FunctionalOtsuThreshold(return_mask=return_mask)
+        compiled = torch_optimizer(op, fullgraph=True)
+        for sample in (image, different):
+            expected = op(sample)
+            actual = compiled(sample)
+            self.assert_close(actual[0], expected[0], rtol=0, atol=0)
+            self.assert_close(actual[1], expected[1], rtol=0, atol=0)
+
+    def test_dynamo_bin_edge_pixels_match_eager_5425(self, device, dtype, torch_optimizer):
+        generator = torch.Generator().manual_seed(0)
+        low = torch.rand(20, 1, generator=generator, dtype=dtype) * 8 - 4
+        high = low + torch.rand(20, 1, generator=generator, dtype=dtype) * 5 + 0.01
+        image = (torch.linspace(0, 1, 257, dtype=dtype)[None, :] * (high - low) + low).reshape(20, 1, 257)
+        image = image.to(device)
+        op = _FunctionalOtsuThreshold(return_mask=True, nbins=256)
+        expected = op(image)
+        actual = torch_optimizer(op, fullgraph=True)(image)
+        # Fusing the edge interpolation can move the threshold by one ULP, but must not change bin membership.
+        self.assert_close(actual[0], expected[0], rtol=0, atol=0)
+        self.assert_close(actual[1], expected[1])
 
 
 def test_mask(device, dtype):
