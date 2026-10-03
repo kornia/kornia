@@ -517,6 +517,7 @@ class Yuv420ToRgb(nn.Module):
 
     """
 
+    # The shape of ``inputy``; ``inputuv`` is the subsampled chroma plane.
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
 
     def forward(self, inputy: torch.Tensor, inputuv: torch.Tensor) -> torch.Tensor:  # skipcq: PYL-R0201
@@ -563,6 +564,7 @@ class Yuv422ToRgb(nn.Module):
 
     """
 
+    # The shape of ``inputy``; ``inputuv`` is the subsampled chroma plane.
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
 
     def forward(self, inputy: torch.Tensor, inputuv: torch.Tensor) -> torch.Tensor:  # skipcq: PYL-R0201
