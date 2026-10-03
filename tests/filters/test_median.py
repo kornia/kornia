@@ -201,8 +201,9 @@ class TestMedianBlur(BaseTester):
         inp[..., 3, 4] = invalid
         # Pin the window-local contract independently of convolution: CPU bf16
         # convolution on the EPYC CI runner can spread NaNs outside the window.
-        # Finite windows contain only ones and zero padding, so their median is
-        # one exactly when a majority of the window lies inside the image.
+        # With constant padding a finite window holds ones and zeros, so its median is
+        # one exactly when a majority of the window lies inside the image; the other
+        # modes pad a ones image with ones.
         radius = kernel_size // 2
         expected = torch.ones_like(inp)
         if border_type == "constant":

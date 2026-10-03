@@ -110,17 +110,6 @@ class TestBlurConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         assert _lit_extent(make((1, 5))(transposed)[0, 0]) == ([3], [0, 1, 2, 3, 4])
 
-    # Row 6c-19, the median half: a rank filter cannot be read off an impulse, so the detector is a
-    # one-row bar.  A (1, kW) window slides along that row and keeps it; a (kH, 1) window spans five
-    # rows of which four are zero, so the median is zero and the bar is erased.  Checked under
-    # relabelling on the transposed bar.
-    # Snippet used to generate expected:
-    #   bar = torch.zeros(1, 1, 7, 9); bar[0, 0, 3, :] = 1.0
-    #   for ks in ((1, 5), (5, 1)):
-    #       torch.manual_seed(0); print(ks, K.RandomMedianBlur(ks, p=1.0)(bar)[0, 0].sum(-1).tolist())
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> `(1, 5)` keeps row sums
-    # [0, 0, 0, 9, 0, 0, 0] and `(5, 1)` gives [0, 0, 0, 0, 0, 0, 0]; with the bar on row 2 the
-    # surviving sum moves to index 2, and on the transposed 9x7 bar the roles of the two kernels swap.
     def test_convention_median_blur_border_median_uses_reflect_padding(self, device, dtype):
         # A constant-ones image: reflect padding reflects the boundary ones into the padding window,
         # so corner, edge, and center windows all hold only ones and their medians evaluate to 1.
@@ -432,8 +421,8 @@ class TestBlurConventions(BaseTester):
     # Issue #4559: RandomBoxBlur, RandomGaussianBlur and RandomSharpness raise a kornia `ValueError` naming
     # the class, the kernel and the input shape.  The two blurs reflect-pad, so an axis must be longer than the
     # kernel radius (`k // 2`, one pixel for the 3x3 default); RandomSharpness convolves without padding, so
-    # it needs the full 3x3.  RandomMedianBlur and, at its default constant border, RandomMotionBlur accept
-    # the same degenerate image.
+    # it needs the full 3x3.  RandomMedianBlur reflect-pads as well and raises the same error, while
+    # RandomMotionBlur, at its default constant border, accepts the degenerate image.
     # Snippet used to generate expected:
     #   for shape in ((2, 3, 1, 8), (2, 3, 2, 2), (2, 3, 3, 3)):
     #       x = torch.rand(*shape)
@@ -482,12 +471,14 @@ class TestBlurConventions(BaseTester):
             _sync(K.RandomSharpness(1.0, p=1.0)(small).device)
         torch.manual_seed(_FORWARD_SEED)
         assert K.RandomSharpness(1.0, p=1.0)(square).shape == square.shape
-        # RandomMedianBlur now uses reflect padding by default and rejects the one-row image,
-        # while RandomMotionBlur continues to accept it.
+        # RandomMedianBlur reflect-pads, so it refuses the one-row image with the same named error, before the
+        # filter runs; RandomMotionBlur, at its default constant border, still accepts it.
+        torch.manual_seed(_FORWARD_SEED)
+        with pytest.raises(ValueError, match="RandomMedianBlur cannot filter an image this small"):
+            _sync(K.RandomMedianBlur(p=1.0)(thin).device)
         if reflect_ok:
             torch.manual_seed(_FORWARD_SEED)
-            with pytest.raises(RuntimeError, match="Padding size should be less"):
-                _sync(K.RandomMedianBlur(p=1.0)(thin).device)
+            assert K.RandomMedianBlur(p=1.0)(small).shape == small.shape
         torch.manual_seed(_FORWARD_SEED)
         assert K.RandomMotionBlur(3, (45.0, 45.0), (0.0, 0.0), p=1.0)(thin).shape == thin.shape
 
