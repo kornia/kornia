@@ -100,6 +100,44 @@ class TestCheckShape:
         assert op_jit is not None
         assert op_jit(torch.rand(2, 3, 2, 3), ["2", "3", "H", "W"]) is True
 
+    @pytest.mark.parametrize("size", [(), (7,), (0, 3), (2, 3, 4, 5)])
+    def test_lone_wildcard_5187(self, device, dtype, size):
+        x = torch.zeros(size, device=device, dtype=dtype)
+        assert KORNIA_CHECK_SHAPE(x, ["*"]) is True
+        assert KORNIA_CHECK_SHAPE(x, ["*"], raises=False) is True
+
+    def test_empty_pattern_5187(self, device, dtype):
+        assert KORNIA_CHECK_SHAPE(torch.zeros((), device=device, dtype=dtype), []) is True
+        x = torch.zeros(2, 3, device=device, dtype=dtype)
+        assert KORNIA_CHECK_SHAPE(x, [], raises=False) is False
+        with pytest.raises(ShapeError, match="expected 0 dimensions, got 2") as exc:
+            KORNIA_CHECK_SHAPE(x, [], msg="scalar required")
+        assert exc.value.actual_shape == [2, 3]
+        assert exc.value.expected_shape == []
+        assert "scalar required" in str(exc.value)
+
+    @pytest.mark.parametrize(
+        "pattern,dimension",
+        [(["*", "4", "5"], 3), (["*", "5", "6"], 2), (["2", "4", "*"], 1), (["B", "C", "4", "5"], 3)],
+    )
+    def test_mismatch_tensor_dimension_5187(self, device, dtype, pattern, dimension):
+        x = torch.zeros(2, 3, 4, 6, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=f"at dimension {dimension}:") as exc:
+            KORNIA_CHECK_SHAPE(x, pattern)
+        assert exc.value.actual_shape == [2, 3, 4, 6]
+        assert exc.value.expected_shape == pattern
+        assert KORNIA_CHECK_SHAPE(x, pattern, raises=False) is False
+
+    def test_jit_edge_patterns_5187(self, device, dtype):
+        op = torch.jit.script(KORNIA_CHECK_SHAPE)
+        scalar = torch.zeros((), device=device, dtype=dtype)
+        matrix = torch.zeros(2, 3, device=device, dtype=dtype)
+        assert op(scalar, []) is True
+        assert op(matrix, [], raises=False) is False
+        assert op(matrix, ["*"]) is True
+        assert op(matrix, ["*", "3"]) is True
+        assert op(matrix, ["*", "4"], raises=False) is False
+
 
 class TestCheckSameShape:
     def test_valid(self):
