@@ -16,12 +16,18 @@
 #
 
 
+import pickle
+
 import pytest
 import torch
 
 from kornia.core._compat import torch_version_lt
 from kornia.models.efficient_vit import EfficientViT, EfficientViTConfig
 from kornia.models.efficient_vit import backbone as vit
+
+
+class _NotAWeight:
+    """An arbitrary class, which ``torch.load(..., weights_only=True)`` refuses to unpickle."""
 
 
 class TestEfficientViT:
@@ -66,6 +72,34 @@ class TestEfficientViT:
         for key, val in state_dict.items():
             if key.startswith("backbone."):
                 assert torch.equal(model.backbone.state_dict()[key[len("backbone.") :]], val)
+
+    def test_load_local_checkpoint_expands_user(self, tmp_path, monkeypatch):
+        # a ``~`` path must not reach the URL loader, which resolves a name already in the hub cache to that file
+        state_dict = self._fake_checkpoint()
+        torch.save(state_dict, tmp_path / "b1-r224.pt")
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        monkeypatch.setattr(
+            "kornia.models.efficient_vit.model.load_state_dict_from_url",
+            lambda *args, **kwargs: pytest.fail("local checkpoints must not be downloaded"),
+        )
+
+        model = EfficientViT.from_config(EfficientViTConfig(checkpoint="~/b1-r224.pt"))
+
+        key = "input_stem.op_list.0.conv.weight"
+        assert torch.equal(model.backbone.state_dict()[key], state_dict[f"backbone.{key}"])
+
+    def test_load_local_checkpoint_is_weights_only(self, tmp_path, monkeypatch):
+        # a local file is unpickled with weights_only=True, as the URL path and ModelBase.load_checkpoint do
+        checkpoint = tmp_path / "b1-local.pt"
+        torch.save({"payload": _NotAWeight()}, checkpoint)
+        monkeypatch.setattr(
+            "kornia.models.efficient_vit.model.load_state_dict_from_url",
+            lambda *args, **kwargs: pytest.fail("local checkpoints must not be downloaded"),
+        )
+
+        with pytest.raises(pickle.UnpicklingError):
+            EfficientViT.from_config(EfficientViTConfig(checkpoint=str(checkpoint)))
 
     def test_load_failure_preserves_cause(self, monkeypatch):
         cause = RuntimeError("download failed")

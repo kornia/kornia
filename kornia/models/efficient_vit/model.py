@@ -79,10 +79,12 @@ class EfficientViT(ModelBase[EfficientViTConfig]):
             EfficientViT: the EfficientViT model.
 
         """
-        # load the model from the checkpoint
+        # load the model from the checkpoint; expand ``~`` first, or a ``~`` path reaches the URL loader, which
+        # resolves a file name already in the hub cache to that cached file instead of the local one
+        checkpoint = os.path.expanduser(config.checkpoint)
         try:
-            if os.path.isfile(config.checkpoint):
-                with open(config.checkpoint, "rb") as f:
+            if os.path.isfile(checkpoint):
+                with open(checkpoint, "rb") as f:
                     model_file = torch.load(f, map_location="cpu", weights_only=True)
             else:
                 model_file = load_state_dict_from_url(config.checkpoint, map_location="cpu")
@@ -90,7 +92,7 @@ class EfficientViT(ModelBase[EfficientViTConfig]):
         except RuntimeError as exc:
             raise RuntimeError(f"Unable to load the model from {config.checkpoint}.") from exc
 
-        file_name = os.path.basename(config.checkpoint)
+        file_name = os.path.basename(checkpoint)
         model_type = file_name.split("-")[0]
 
         if model_type not in ["b0", "b1", "b2", "b3", "l0", "l1", "l2", "l3"]:
