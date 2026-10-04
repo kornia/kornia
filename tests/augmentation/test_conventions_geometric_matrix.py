@@ -27,6 +27,50 @@ from testing.base import BaseTester
 
 
 class TestConventionGeometricMatrices(BaseTester):
+    @pytest.mark.parametrize("input_width,output_width", [(7, 14), (7, 21), (10, 5), (12, 9)])
+    def test_nearest_resize_matrix_tracks_legacy_pixel_blocks_5293(self, input_width, output_width):
+        image = torch.arange(input_width, dtype=torch.float64).view(1, 1, 1, input_width).expand(1, 1, 3, -1)
+        augmentation = K.Resize((3, output_width), resample="nearest")
+
+        output = augmentation(image)[0, 0, 1]
+        matrix = augmentation.transform_matrix[0]
+        for source_x in output.unique():
+            columns = (output == source_x).nonzero().flatten().to(torch.float64)
+            block_center = (columns[0] + columns[-1]) / 2
+            mapped_x = matrix[0, 0] * source_x + matrix[0, 2]
+            assert (mapped_x - block_center).abs() <= 0.5
+
+    @pytest.mark.parametrize(
+        "augmentation", [K.LongestMaxSize(21, resample="nearest"), K.SmallestMaxSize(9, resample="nearest")]
+    )
+    def test_nearest_max_size_matrix_tracks_legacy_pixel_blocks_5293(self, augmentation):
+        image = torch.arange(7, dtype=torch.float64).view(1, 1, 1, 7).expand(1, 1, 3, -1)
+
+        output = augmentation(image)[0, 0, 1]
+        matrix = augmentation.transform_matrix[0]
+        for source_x in output.unique():
+            columns = (output == source_x).nonzero().flatten().to(torch.float64)
+            block_center = (columns[0] + columns[-1]) / 2
+            mapped_x = matrix[0, 0] * source_x + matrix[0, 2]
+            assert (mapped_x - block_center).abs() <= 0.5
+
+    @pytest.mark.parametrize("align_corners", [False, True])
+    def test_nearest_slice_resized_crop_matrix_tracks_legacy_pixel_blocks_5293(self, align_corners):
+        image = torch.arange(11, dtype=torch.float64).view(1, 1, 1, 11).expand(1, 1, 5, -1)
+        augmentation = K.RandomResizedCrop(
+            (6, 21), resample="nearest", align_corners=align_corners, cropping_mode="slice"
+        )
+        params = augmentation.forward_parameters(image.shape)
+        params["src"] = image.new_tensor([[[2, 1], [8, 1], [8, 3], [2, 3]]])
+
+        output = augmentation(image, params=params)[0, 0, 2]
+        matrix = augmentation.transform_matrix[0]
+        for source_x in output.unique():
+            columns = (output == source_x).nonzero().flatten().to(torch.float64)
+            block_center = (columns[0] + columns[-1]) / 2
+            mapped_x = matrix[0, 0] * source_x + matrix[0, 2]
+            assert (mapped_x - block_center).abs() <= 0.5
+
     def test_convention_flips_use_inclusive_pixel_coordinates(self, device, dtype):
         x = torch.zeros(1, 1, 5, 7, device=device, dtype=dtype)
         x[..., 1, 2] = 1

@@ -78,7 +78,9 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         follows its ``transform_matrix``, and at ``align_corners=False`` the two modes give different images: slice
         mode resizes the crop on the half-pixel grid, ``x' = (x - x0 + 0.5) * W_out / W_crop - 0.5`` for a crop
         starting at column ``x0`` (likewise for ``y``), while resample mode maps the crop's corner pixel centres
-        onto the output's. Only resample mode supports :meth:`inverse`, which resamples onto the original canvas
+        onto the output's. For nearest sampling in slice mode, the matrix uses a least-squares fit to the pixel blocks
+        produced by legacy nearest indexing; its residual depends on the resize ratio because the discrete mapping is
+        not affine (`#5293 <https://github.com/kornia/kornia/issues/5293>`_). Only resample mode supports :meth:`inverse`, which resamples onto the original canvas
         and cannot recover discarded information.
 
     Note:
@@ -152,6 +154,27 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
             )
         if flags["cropping_mode"] in ("resample", "slice"):
             transform: torch.Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
+            if flags["cropping_mode"] == "slice" and flags["resample"] == Resample.NEAREST:
+                # Slice mode resizes a cropped tensor with legacy nearest interpolation. Fit
+                # its copied pixel-block centres instead of mapping the crop corners.
+                src = params["src"].to(input)
+                crop_size = torch.stack([src[:, 1, 0] - src[:, 0, 0] + 1, src[:, 3, 1] - src[:, 0, 1] + 1], dim=-1).to(
+                    torch.long
+                )
+                output_size = input.new_tensor([flags["size"][1], flags["size"][0]], dtype=torch.long)
+                output_size = output_size.expand(input.shape[0], -1)
+                x_scale, x_offset = _legacy_nearest_affine(
+                    crop_size[:, 0], output_size[:, 0], src[:, 0, 0], input.shape[-1]
+                )
+                y_scale, y_offset = _legacy_nearest_affine(
+                    crop_size[:, 1], output_size[:, 1], src[:, 0, 1], input.shape[-2]
+                )
+                transform = torch.eye(3, device=input.device, dtype=input.dtype).expand(input.shape[0], -1, -1).clone()
+                transform[:, 0, 0] = x_scale
+                transform[:, 1, 1] = y_scale
+                transform[:, 0, 2] = x_offset
+                transform[:, 1, 2] = y_offset
+                return transform.expand(input.shape[0], -1, -1)
             return transform.expand(input.shape[0], -1, -1)
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
