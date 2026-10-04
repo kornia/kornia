@@ -301,8 +301,12 @@ class TestSe2(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_matrix_exp_of_hat_is_exp(self, device, dtype, batch_size):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         v = self._make_rand_data(device, dtype, (batch_size, 3))
-        expm = torch.linalg.matrix_exp(Se2.hat(v).double()).to(dtype)
+        # The reference runs in float64 on the CPU: MPS has no float64 and CPU matrix_exp has no
+        # half-precision kernel.
+        expm = torch.linalg.matrix_exp(Se2.hat(v).cpu().double()).to(device=device, dtype=dtype)
         self.assert_close(expm, Se2.exp(v).matrix())
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
