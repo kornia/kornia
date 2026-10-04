@@ -16,12 +16,15 @@
 #
 
 # TEST OFFICIAL SUPPORT
-from collections import namedtuple
 from dataclasses import dataclass, field
+from typing import NamedTuple
 
 from kornia.core.utils import dataclass_to_dict
 
-Point = namedtuple("Point", "x y")
+
+class Point(NamedTuple):
+    x: int
+    y: int
 
 
 @dataclass
