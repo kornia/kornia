@@ -26,7 +26,6 @@ import torch
 import torch.nn.functional as F
 from torch.linalg import inv_ex
 
-from kornia.core._compat import torch_version_ge
 from kornia.core._small_linalg import (
     _adjugate_2x2,
     _adjugate_3x3,
@@ -436,10 +435,7 @@ def is_autocast_enabled(both: bool = True) -> bool:
 
     """
     if both:
-        return any(
-            torch.is_autocast_enabled(device_type)
-            for device_type in ("cpu", "cuda", "mps", "xpu")
-        )
+        return any(torch.is_autocast_enabled(device_type) for device_type in ("cpu", "cuda", "mps", "xpu"))
 
     return torch.is_autocast_enabled()
 
