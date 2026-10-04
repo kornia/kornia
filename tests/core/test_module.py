@@ -483,6 +483,22 @@ class TestImageModuleConversions(BaseTester):
         out = _Identity().to_tensor(image)
         self.assert_close(out, torch.from_numpy(image).permute(2, 0, 1), rtol=0.0, atol=0.0)
 
+    @pytest.mark.parametrize("container", [ImageModule, ImageSequential, AugmentationImageSequential])
+    @pytest.mark.parametrize("state", ["parameter", "buffer"])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.float64])
+    def test_to_tensor_uses_module_device_and_dtype_5207(self, container, state, dtype):
+        module = container()
+        reference = torch.empty((), device="meta", dtype=dtype)
+        if state == "parameter":
+            module.register_parameter("reference", torch.nn.Parameter(reference))
+        else:
+            module.register_buffer("reference", reference)
+
+        image = np.full((2, 4, 3), 0.5, dtype=np.float32)
+        out = module.to_tensor(image)
+        assert out.device == torch.device("meta")
+        assert out.dtype == dtype
+
     def test_to_tensor_maps_bool_numpy_to_zero_one_5207(self):
         mask = np.array([[True, False, True], [False, True, False]])
         out = _Identity().to_tensor(mask)

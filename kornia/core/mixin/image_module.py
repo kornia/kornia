@@ -86,9 +86,13 @@ class ImageModuleMixIn:
     or :math:`(B, H, W, C)`, a PIL image or an image path becomes a :math:`(C, H, W)` or :math:`(B, C, H, W)` tensor.
     An integer image is scaled by the maximum of its dtype (``uint8`` by 255, ``uint16`` by 65535; a signed image keeps
     its negative values), a ``bool`` image becomes 0 and 1, and a floating image keeps its values. Tensors pass through
-    unchanged. ``output_type="numpy"`` returns channels-last arrays with the values of the output tensor, so a floating
-    output fed back in converts to the same tensor. ``output_type="pil"``, :meth:`show` and :meth:`save` clamp a
-    floating image to ``[0, 1]`` and round it to 8 bits on the CPU, and pass a ``uint8`` image through with its values.
+    unchanged. For an :class:`torch.nn.Module` with state, converted inputs use the device of its first parameter (or
+    first buffer when it has no parameters) and the dtype of its first floating parameter or buffer, falling back to
+    the default floating dtype when none exists. A module without state and a standalone mixin keep the CPU and
+    default floating dtype. ``output_type="numpy"`` returns
+    channels-last arrays with the values of the output tensor, so a floating output fed back in converts to the same
+    tensor. ``output_type="pil"``, :meth:`show` and :meth:`save` clamp a floating image to ``[0, 1]`` and round it to
+    8 bits on the CPU, and pass a ``uint8`` image through with its values.
     """
 
     _output_image: Any
@@ -218,8 +222,9 @@ class ImageModuleMixIn:
         ``PA``) is converted to RGB, or RGBA when it has transparency, first. An integer image is divided by the maximum
         of its dtype (``uint8`` by 255, ``uint16`` by 65535, a PIL mode ``I`` image by the ``int32`` maximum); a signed
         image maps to ``[iinfo.min / iinfo.max, 1]``, so its negative values stay negative. A ``bool`` image becomes 0
-        and 1, and a floating image keeps its values; integer and ``bool`` images become the default floating dtype. A
-        tensor is returned unchanged.
+        and 1, and a floating image keeps its values; integer and ``bool`` images become the default floating dtype.
+        When this mixin belongs to a stateful :class:`torch.nn.Module`, the converted image is moved to the module's
+        device and first floating parameter or buffer dtype. A tensor is returned unchanged.
 
         Args:
             x: The input to convert.
@@ -231,16 +236,35 @@ class ImageModuleMixIn:
         if isinstance(x, str):
             from kornia.io import ImageLoadType, load_image  # pylint: disable=C0415
 
-            return _image_to_float(load_image(x, ImageLoadType.UNCHANGED))
-        if isinstance(x, torch.Tensor):
+            image = _image_to_float(load_image(x, ImageLoadType.UNCHANGED))
+        elif isinstance(x, torch.Tensor):
             return x
-        if isinstance(x, np.ndarray):  # type: ignore
-            return _array_to_float_image(x)
-        if isinstance(x, Image.Image):  # type: ignore
+        elif isinstance(x, np.ndarray):  # type: ignore
+            image = _array_to_float_image(x)
+        elif isinstance(x, Image.Image):  # type: ignore
             if x.mode in ("P", "PA"):  # palette indices are not intensities
                 x = x.convert("RGBA" if x.mode == "PA" or "transparency" in x.info else "RGB")
-            return _array_to_float_image(np.array(x))  # type: ignore
-        raise TypeError("Input type not supported")
+            image = _array_to_float_image(np.array(x))  # type: ignore
+        else:
+            raise TypeError("Input type not supported")
+        return self._to_module_device_dtype(image)
+
+    def _to_module_device_dtype(self, image: torch.Tensor) -> torch.Tensor:
+        if not isinstance(self, torch.nn.Module):
+            return image
+        first_parameter = next(self.parameters(), None)
+        first_buffer = next(self.buffers(), None) if first_parameter is None else None
+        reference = first_parameter if first_parameter is not None else first_buffer
+        if reference is None:
+            return image
+        floating_dtype = next(
+            (parameter.dtype for parameter in self.parameters() if parameter.is_floating_point()), None
+        )
+        if floating_dtype is None:
+            floating_dtype = next((buffer.dtype for buffer in self.buffers() if buffer.is_floating_point()), None)
+        if floating_dtype is None:
+            floating_dtype = torch.get_default_dtype()
+        return image.to(device=reference.device, dtype=floating_dtype)
 
     def to_numpy(self, x: Any) -> "np.array":  # type: ignore
         """Convert input to numpy array.
