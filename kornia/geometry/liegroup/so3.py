@@ -86,10 +86,13 @@ class So3(nn.Module):
           ``q.to_axis_angle()``: it reads only the direction of ``q``, within the range limits stated on
           :class:`~kornia.geometry.quaternion.Quaternion`, and returns the principal vector, of norm at most
           :math:`\pi`, the same for ``q`` and ``-q`` below a half turn.
-        - For a unit quaternion, ``a * b`` composes like ``a.matrix() @ b.matrix()``, so ``b`` acts first; ``s * p``
-          rotates points ``p`` of shape :math:`(B, 3)`, a tensor or a ``Vector3``, as :math:`R p`; and ``adjoint()``
-          is :math:`R` itself.
+        - ``a * b`` composes like ``a.matrix() @ b.matrix()``, so ``b`` acts first; ``s * p`` rotates points ``p`` of
+          shape :math:`(B, 3)`, a tensor or a ``Vector3``, as :math:`R p`; and ``adjoint()`` is :math:`R` itself.
           :ref:`Rotations and rigid motions <rotation-conventions>` compares these with scipy, Sophus and Eigen.
+        - A non-unit quaternion stands for the rotation of its direction :math:`q / |q|`, as for
+          :meth:`~kornia.geometry.quaternion.Quaternion.matrix`: ``matrix()`` and ``s * p`` normalise it where they
+          use it, so ``matrix()`` is always a rotation and ``s * p`` keeps the norm of ``p``. ``q`` returns the
+          quaternion as stored, which keeps an ``nn.Parameter`` registered and following optimiser steps.
         - For a small :math:`\delta`,
           :math:`\exp(\omega + \delta) \approx \exp(\omega) \exp(J_r \delta) = \exp(J_l \delta) \exp(\omega)`,
           with :math:`J_r` = ``right_jacobian(omega)`` and :math:`J_l` = ``left_jacobian(omega)`` =
@@ -97,11 +100,9 @@ class So3(nn.Module):
         - ``from_matrix`` does not check its input by default: a reflection (det :math:`-1`) is accepted without
           error and returns an ``So3`` whose ``matrix()`` is not the input. ``check_rotation=True`` raises
           ``ValueError`` instead.
-        - Known defects: the quaternion is stored as given, so with a non-unit ``q`` the ``matrix()`` is not a
-          rotation and ``s * p`` scales ``p`` by :math:`|q|^2`
-          (`#4942 <https://github.com/kornia/kornia/issues/4942>`_); ``exp``, ``identity``, ``random``,
-          ``from_matrix`` and every operation store the quaternion as a plain tensor, which has no ``state_dict()``
-          entry and which ``.to()`` leaves unchanged; only a quaternion built on an ``nn.Parameter`` is saved and moved
+        - Known defect: ``exp``, ``identity``, ``random``, ``from_matrix`` and every operation store the quaternion
+          as a plain tensor, which has no ``state_dict()`` entry and which ``.to()`` leaves unchanged; only a
+          quaternion built on an ``nn.Parameter`` is saved and moved
           (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
 
     Example:
@@ -154,7 +155,9 @@ class So3(nn.Module):
             KORNIA_CHECK_SHAPE(_right_data, ["*", "3"])
             w = torch.zeros(*right.shape[:-1], 1, device=right.device, dtype=right.dtype)
             quat = Quaternion(torch.cat((w, _right_data), -1))
-            out = (self.q * quat * self.q.conj()).vec
+            # q p q* scales p by |q|^2, so rotate by the unit direction of q
+            q = self.q.normalize()
+            out = (q * quat * q.conj()).vec
             return Vector3(out) if isinstance(right, Vector3) else out
         raise TypeError(f"Not So3 or torch.Tensor type. Got: {type(right)}")
 
@@ -291,8 +294,11 @@ class So3(nn.Module):
                     [0., 0., 1.]])
 
         """
-        w = self.q.w[..., None]
-        x, y, z = self.q.x[..., None], self.q.y[..., None], self.q.z[..., None]
+        # The formula below holds for a unit quaternion only. Normalising here rather than in the constructor keeps
+        # the stored quaternion, possibly an nn.Parameter, as the module state.
+        q = self.q.normalize()
+        w = q.w[..., None]
+        x, y, z = q.x[..., None], q.y[..., None], q.z[..., None]
         q0 = 1 - 2 * y**2 - 2 * z**2
         q1 = 2 * x * y - 2 * z * w
         q2 = 2 * x * z + 2 * y * w

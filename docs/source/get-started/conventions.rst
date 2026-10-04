@@ -129,8 +129,8 @@ Rotations and rigid motions
 :class:`~kornia.geometry.liegroup.Se3`, :class:`~kornia.geometry.liegroup.So2` and
 :class:`~kornia.geometry.liegroup.Se2` compose the same way and act on a point as ``R p + t``, with ``R`` the
 ``matrix()`` of the rotation part. ``So2`` and ``Se2`` do so for any complex number, and a non-unit one also scales by
-its modulus; ``So3`` and ``Se3`` need a unit quaternion
-(`#4942 <https://github.com/kornia/kornia/issues/4942>`_). The tangent vectors of ``Se3`` and ``Se2`` put the
+its modulus; ``So3`` and ``Se3`` rotate by the direction :math:`q / |q|` of a non-unit quaternion, without scaling,
+like ``Quaternion.matrix()``. The tangent vectors of ``Se3`` and ``Se2`` put the
 rotation part, in radians, last: ``[υ, ω]`` and ``[vx, vy, θ]``. ``log`` is principal: its rotation angle is at most
 :math:`\pi` in magnitude. The Jacobians of ``So3`` satisfy
 :math:`\exp(\omega + \delta) \approx \exp(\omega) \exp(J_r \delta) = \exp(J_l \delta) \exp(\omega)`. A transform
