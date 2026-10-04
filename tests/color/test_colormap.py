@@ -94,6 +94,25 @@ class TestApplyColorMap(BaseTester):
 
         self.assert_close(actual, cm.colors.reshape(1, 3, 1, 256), rtol=0.0, atol=0.0)
 
+    def test_uint8_dark_values_use_byte_range(self, device, dtype):
+        cm = ColorMap(base=[[i / 255.0] * 3 for i in range(256)], num_colors=256, device=device, dtype=dtype)
+        image = torch.tensor([[[[0, 1]]]], device=device, dtype=torch.uint8)
+
+        actual = apply_colormap(image, cm)
+
+        self.assert_close(actual[0, :, 0, 1], cm.colors[:, 1], rtol=0.0, atol=0.0)
+
+    def test_float_channels_choose_ranges_independently(self, device, dtype):
+        cm = ColorMap(base="autumn", num_colors=256, device=device, dtype=dtype)
+        image = torch.tensor([[[[0.5]], [[0.0]]]], device=device, dtype=dtype)
+        image_with_bright_channel = image.clone()
+        image_with_bright_channel[:, 1] = 200.0
+
+        actual = apply_colormap(image_with_bright_channel, cm)
+        expected = apply_colormap(image, cm)
+
+        self.assert_close(actual[:, :3], expected[:, :3])
+
     def test_exception(self, device, dtype):
         cm = ColorMap(base="autumn", device=device, dtype=dtype)
         with pytest.raises(Exception):
