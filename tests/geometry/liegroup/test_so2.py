@@ -16,7 +16,6 @@
 #
 
 import math
-import warnings
 
 import pytest
 import torch
@@ -25,7 +24,7 @@ from kornia.geometry.conversions import angle_to_rotation_matrix
 from kornia.geometry.liegroup import Se2, So2
 from kornia.geometry.vector import Vector2
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 
 class TestSo2(BaseTester):
@@ -388,18 +387,200 @@ class TestSo2(BaseTester):
         torch.optim.SGD(s.parameters(), lr=0.1).step()
         assert not torch.equal(torch.view_as_real(param.detach()), before)
 
-    def test_wart_so2_real_dtype_cast_drops_the_imaginary_part_4923(self, device, dtype):
+    @pytest.mark.parametrize("method", ["to", "bfloat16"])
+    def test_bfloat16_conversion_is_rejected(self, device, method):
+        # PyTorch has no complex bfloat16 counterpart. Reject the conversion without discarding the imaginary part.
+        rotation = So2.exp(torch.tensor([0.3], device=device, dtype=torch.float32))
+        before = rotation.z.detach().clone()
+        with pytest.raises(RuntimeError, match=r"(?i)bfloat16"):
+            rotation.to(torch.bfloat16) if method == "to" else rotation.bfloat16()
+        self.assert_close(rotation.z, before)
+
+
+class _So2PointTransform(torch.nn.Module):
+    def __init__(self, rotation: So2) -> None:
+        super().__init__()
+        self.rotation = rotation
+
+    def forward(self, point: torch.Tensor) -> torch.Tensor:
+        return (self.rotation.matrix() @ point[..., None]).squeeze(-1)
+
+
+class TestSo2DtypeMigration(BaseTester):
+    @pytest.fixture(autouse=True)
+    def _require_complex_dtype(self, dtype):
         if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
-        theta = torch.tensor([0.3, -1.2], device=device, dtype=dtype)
-        g = So2.exp(theta)
-        assert g.z.is_complex()
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")  # torch warns, once per process, that the cast discards the imaginary part
-            cast = g.to(torch.float32)
-        # https://github.com/kornia/kornia/issues/4923: nn.Module.to(float32) casts the complex state z to a real
-        # tensor, which keeps cos(theta) and drops sin(theta), so the rotation is lost and matrix() raises.
-        assert not cast.z.is_complex()
-        self.assert_close(cast.z, theta.cos().float())
-        with pytest.raises(RuntimeError):
-            cast.matrix()
+            pytest.skip("PyTorch has no complex bfloat16 dtype; rejection is tested separately")
+
+    def _source_dtype(self, device, dtype):
+        # Exercise a precision change in both directions, without constructing float64 on MPS.
+        return torch.float64 if dtype == torch.float32 and device.type != "mps" else torch.float32
+
+    def _cast(self, module, dtype, method):
+        if method == "to":
+            return module.to(dtype=dtype)
+        name = {torch.float16: "half", torch.float32: "float", torch.float64: "double"}[dtype]
+        return getattr(module, name)()
+
+    @pytest.mark.parametrize("method", ["to", "convenience"])
+    @pytest.mark.parametrize("as_parameter", [False, True])
+    @pytest.mark.parametrize("shape", [(), (2,), (2, 1)])
+    def test_real_dtype_conversion_4923(self, device, dtype, method, as_parameter, shape):
+        source_dtype = self._source_dtype(device, dtype)
+        theta = torch.tensor([0.3, -1.2] if shape else 0.3, device=device, dtype=source_dtype)
+        theta = theta.reshape(shape).requires_grad_(not as_parameter)
+        data = torch.complex(theta.cos(), theta.sin())
+        rotation = So2(torch.nn.Parameter(data) if as_parameter else data)
+        before = rotation.z.detach().clone()
+
+        assert self._cast(rotation, dtype, method) is rotation
+        assert rotation.z.is_complex() and rotation.z.real.dtype == dtype
+        assert rotation.state_dict()["_z"].shape == shape
+        self.assert_close(rotation.z.real, before.real.to(dtype))
+        self.assert_close(rotation.z.imag, before.imag.to(dtype))
+        c, s = before.real.to(dtype), before.imag.to(dtype)
+        expected = torch.stack((c, -s, s, c), -1).reshape(*c.shape, 2, 2)
+        self.assert_close(rotation.matrix(), expected)
+        if as_parameter:
+            assert dict(rotation.named_parameters())["_z"] is rotation._z
+            assert not dict(rotation.named_buffers())
+        else:
+            assert dict(rotation.named_buffers())["_z"] is rotation._z
+            assert not dict(rotation.named_parameters())
+
+    @pytest.mark.parametrize("method", ["to", "convenience"])
+    def test_parent_conversion_preserves_recursion(self, device, dtype, method):
+        source_dtype = self._source_dtype(device, dtype)
+        rotation = So2.exp(torch.tensor([0.3], device=device, dtype=source_dtype, requires_grad=True))
+        rotation.extra = torch.nn.Module()
+        rotation.extra.register_buffer("value", torch.ones(1, device=device, dtype=source_dtype))
+        rotation.extra.weight = torch.nn.Parameter(torch.ones(1, device=device, dtype=source_dtype))
+        rotation.extra.weight.sum().backward()
+        parent = torch.nn.ModuleDict({"rotation": rotation})
+
+        assert self._cast(parent, dtype, method) is parent
+        assert rotation.z.is_complex() and rotation.z.real.dtype == dtype
+        assert rotation.extra.value.dtype == dtype
+        assert rotation.extra.weight.dtype == dtype and rotation.extra.weight.grad.dtype == dtype
+        assert dict(parent.named_parameters())["rotation.extra.weight"] is rotation.extra.weight
+        assert dict(parent.named_buffers())["rotation._z"] is rotation._z
+
+    def test_parameter_gradient_and_optimizer(self, device, dtype):
+        theta = torch.tensor([0.3, -1.2], device=device, dtype=self._source_dtype(device, dtype))
+        parameter = torch.nn.Parameter(torch.complex(theta.cos(), theta.sin()))
+        rotation = So2(parameter)
+        assert rotation._z is parameter
+        before = parameter.detach().clone()
+        (rotation.z.real.sum() + 2 * rotation.z.imag.sum()).backward()
+        rotation.to(dtype=dtype)
+
+        assert isinstance(rotation._z, torch.nn.Parameter)
+        assert dict(rotation.named_parameters())["_z"] is rotation._z
+        assert rotation._z.grad.is_complex() and rotation._z.grad.real.dtype == dtype
+        self.assert_close(rotation._z.grad.real, torch.ones(2, device=device, dtype=dtype))
+        self.assert_close(rotation._z.grad.imag, torch.full((2,), 2.0, device=device, dtype=dtype))
+        torch.optim.SGD(rotation.parameters(), lr=0.125).step()
+        self.assert_close(rotation.z.real, before.real.to(dtype) - 0.125)
+        self.assert_close(rotation.z.imag, before.imag.to(dtype) - 0.25)
+
+    @pytest.mark.parametrize("method", ["to", "convenience"])
+    def test_angle_gradient_matches_real_reference(self, device, dtype, method):
+        angle = torch.tensor([0.3, -1.2], device=device, dtype=self._source_dtype(device, dtype), requires_grad=True)
+        reference_angle = angle.detach().clone().requires_grad_()
+        rotation = So2.exp(angle)
+        self._cast(rotation, dtype, method)
+        point = torch.tensor([[1.0, 2.0], [-3.0, 1.0]], device=device, dtype=dtype)
+        weights = torch.tensor([[2.0, -1.0], [1.0, 3.0]], device=device, dtype=dtype)
+        c, s = reference_angle.cos().to(dtype), reference_angle.sin().to(dtype)
+        x, y = point.unbind(-1)
+        expected = torch.stack((c * x - s * y, s * x + c * y), -1)
+        actual = rotation * point
+        self.assert_close(actual, expected)
+        actual_grad = torch.autograd.grad((actual * weights).sum(), angle)[0]
+        expected_grad = torch.autograd.grad((expected * weights).sum(), reference_angle)[0]
+        self.assert_close(actual_grad, expected_grad)
+
+    def test_conjugate_view_preserves_gradient(self, device, dtype):
+        theta = torch.tensor([0.3], device=device, dtype=self._source_dtype(device, dtype))
+        data = torch.complex(theta.cos(), theta.sin()).requires_grad_()
+        rotation = So2(data.conj())
+        assert rotation.z.is_conj()
+        rotation.to(dtype=dtype)
+        self.assert_close(rotation.z.real, data.real.to(dtype))
+        self.assert_close(rotation.z.imag, -data.imag.to(dtype))
+        (rotation * torch.tensor([[1.0, 2.0]], device=device, dtype=dtype)).sum().backward()
+        self.assert_close(data.grad.real, torch.full_like(data.real, 3.0))
+        self.assert_close(data.grad.imag, torch.ones_like(data.imag))
+
+    @pytest.mark.parametrize("conjugate", [False, True])
+    def test_noop_conversion_preserves_buffer(self, device, dtype, conjugate):
+        theta = torch.tensor([0.3], device=device, dtype=dtype, requires_grad=True)
+        data = torch.complex(theta.cos(), theta.sin())
+        if conjugate:
+            data = data.conj()
+        rotation = So2(data)
+        assert rotation.to(device=device)._z is data
+        assert rotation.to(dtype=dtype)._z is data
+        assert rotation.to(dtype=data.dtype)._z is data
+        assert self._cast(rotation, dtype, "convenience")._z is data
+
+    def test_explicit_complex_dtype(self, device, dtype):
+        rotation = So2.exp(torch.tensor([0.3], device=device, dtype=self._source_dtype(device, dtype)))
+        before = rotation.z.detach().clone()
+        complex_dtype = torch.complex(torch.empty((), dtype=dtype), torch.empty((), dtype=dtype)).dtype
+        rotation.to(dtype=complex_dtype)
+        assert rotation.z.dtype == complex_dtype
+        self.assert_close(rotation.z.real, before.real.to(dtype))
+        self.assert_close(rotation.z.imag, before.imag.to(dtype))
+
+    def test_checkpoint_compatibility(self, device, dtype):
+        theta = torch.tensor([0.3, -1.2], device=device, dtype=self._source_dtype(device, dtype))
+        legacy_state = {"_z": torch.complex(theta.cos(), theta.sin())}
+        target = So2.exp((-theta).requires_grad_()).to(dtype=dtype)
+        assert target._z.data_ptr() != legacy_state["_z"].data_ptr()
+        result = target.load_state_dict(legacy_state)
+        assert not result.missing_keys and not result.unexpected_keys
+        assert list(target.state_dict()) == ["_z"]
+        assert target.state_dict()["_z"].shape == legacy_state["_z"].shape
+        assert target.z.is_complex() and target.z.real.dtype == dtype
+        self.assert_close(target.z.real, legacy_state["_z"].real.to(dtype))
+        self.assert_close(target.z.imag, legacy_state["_z"].imag.to(dtype))
+        restored = So2.identity(2, device, dtype)
+        restored.load_state_dict(target.state_dict())
+        self.assert_close(restored.matrix(), target.matrix())
+        point = torch.tensor([[1.0, 2.0], [-3.0, 1.0]], device=device, dtype=dtype)
+        c, s = theta.cos().to(dtype), theta.sin().to(dtype)
+        x, y = point.unbind(-1)
+        self.assert_close(restored * point, torch.stack((c * x - s * y, s * x + c * y), -1))
+
+    @pytest.mark.parametrize("as_parameter", [False, True])
+    @pytest.mark.parametrize("change_dtype", [False, True])
+    def test_parent_device_migration(self, device, dtype, as_parameter, change_dtype):
+        source_dtype = self._source_dtype(device, dtype) if change_dtype else dtype
+        angle = torch.tensor([0.3, -1.2], dtype=source_dtype, requires_grad=not as_parameter)
+        data = torch.complex(angle.cos(), angle.sin())
+        rotation = So2(torch.nn.Parameter(data) if as_parameter else data)
+        parent = torch.nn.ModuleDict({"rotation": rotation})
+        assert rotation.z.device.type == "cpu"
+        if change_dtype:
+            parent.to(device=device, dtype=dtype)
+        else:
+            parent.to(device=device)
+        assert rotation.z.device == device
+        assert rotation.z.is_complex() and rotation.z.real.dtype == dtype
+        assert parent.state_dict()["rotation._z"].device == device
+        assert isinstance(rotation._z, torch.nn.Parameter) == as_parameter
+        c, s = angle.cos().to(device=device, dtype=dtype), angle.sin().to(device=device, dtype=dtype)
+        point = torch.tensor([[1.0, 2.0], [-3.0, 1.0]], device=device, dtype=dtype)
+        x, y = point.unbind(-1)
+        self.assert_close(rotation * point, torch.stack((c * x - s * y, s * x + c * y), -1))
+        restored = So2.identity(2, device, dtype)
+        restored.load_state_dict(rotation.state_dict())
+        self.assert_close(restored.matrix(), rotation.matrix())
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        rotation = So2.exp(torch.tensor([0.3, -1.2], device=device, dtype=self._source_dtype(device, dtype)))
+        model = _So2PointTransform(rotation).to(dtype=dtype)
+        point = torch.tensor([[1.0, 2.0], [-3.0, 1.0]], device=device, dtype=dtype)
+        self.assert_close(torch_optimizer(model, fullgraph=True)(point), model(point))

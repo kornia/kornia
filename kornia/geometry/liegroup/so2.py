@@ -19,6 +19,7 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so2.py
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Optional, Union, overload
 
 import torch
@@ -49,8 +50,11 @@ class So2(nn.Module):
           ``log`` returns the angle in :math:`[-\pi, \pi]`, and ``adjoint()`` is the 2x2 identity.
         - ``hat`` returns the so(2) generator :math:`[[0, -\theta], [\theta, 0]]` and ``vee`` reads its ``[1, 0]``
           entry, so ``matrix_exp(hat(theta))`` equals ``exp(theta).matrix()``.
-        - Known defects: ``.to()`` a real dtype keeps the real part of ``z``, drops its imaginary part and makes
-          ``matrix()`` raise (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
+        - Module dtype conversions act on the real and imaginary components together: ``.float()`` and
+          ``.to(torch.float32)`` use complex64 state, while ``.double()`` and ``.to(torch.float64)`` use complex128.
+          Device-only conversions preserve the complex precision, and explicit complex dtypes are also accepted.
+          The complex checkpoint key ``_z`` and its shape are unchanged. ``.half()`` uses PyTorch's experimental
+          complex32 dtype; bfloat16 conversion raises because PyTorch has no corresponding complex dtype.
 
     Example:
         >>> real = torch.tensor([0.6])
@@ -90,6 +94,22 @@ class So2(nn.Module):
         # property reads it as (B,): kept as a column, it broadcast against the (B,) coordinates of __mul__ as an
         # outer product (#4932).
         register_module_state(self, "_z", z)
+
+    def _apply(self, fn: Callable[[torch.Tensor], torch.Tensor], recurse: bool = True) -> So2:
+        def convert(tensor: torch.Tensor) -> torch.Tensor:
+            if not tensor.is_complex():
+                return fn(tensor)
+            # Apply real dtype conversions to both components, without losing the imaginary part.
+            components = torch.view_as_real(tensor.resolve_conj())
+            converted = fn(components)
+            if converted.is_complex():
+                return fn(tensor)  # An explicit complex target already has the correct native semantics.
+            if converted is components:
+                return tensor
+            return torch.view_as_complex(converted)
+
+        # Let Module manage parameters, existing gradients, buffers and child-module recursion.
+        return super()._apply(convert, recurse=recurse)
 
     def __repr__(self) -> str:
         return f"{self.z}"

@@ -68,8 +68,8 @@ class Se2(nn.Module):
           passed to the constructor is unwrapped. ``g * p`` returns a ``Vector2`` only when ``p`` is one.
         - ``hat`` returns the se(2) generator :math:`[[0, -\theta, v_x], [\theta, 0, v_y], [0, 0, 0]]` and ``vee``
           reads it back, so ``matrix_exp(hat(v))`` equals ``exp(v).matrix()``.
-        - Known defects: ``.to()`` a real dtype breaks the ``So2`` rotation
-          (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
+        - Module conversions to a real dtype change both the translation precision and the real/imaginary
+          component precision of the :class:`~kornia.geometry.liegroup.So2` rotation, preserving its complex state.
 
     Example:
         >>> so2 = So2.identity(1)
