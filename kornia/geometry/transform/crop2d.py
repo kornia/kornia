@@ -543,8 +543,13 @@ def crop_by_indices(
         size = (int(h[0].item()), int(w[0].item())) if B > 0 else (0, 0)
     out = torch.empty(B, C, *size, device=input_tensor.device, dtype=input_tensor.dtype)
     # Find out the cropped shapes that need to be resized.
+    # Unbind only when batch-slice gradients would allocate a full input buffer for every crop.
+    rows = input_tensor.unbind(0) if B > 1 and input_tensor.requires_grad and torch.is_grad_enabled() else None
     for i in range(B):
-        _out = input_tensor[i : i + 1, :, y1l[i] : y2l[i], x1l[i] : x2l[i]]
+        if rows is None:
+            _out = input_tensor[i : i + 1, :, y1l[i] : y2l[i], x1l[i] : x2l[i]]
+        else:
+            _out = rows[i][None, :, y1l[i] : y2l[i], x1l[i] : x2l[i]]
         if _out.shape[-2:] != size:
             if shape_compensation == "resize":
                 out[i] = resize(

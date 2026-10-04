@@ -17,6 +17,7 @@
 
 import pytest
 import torch
+from torch.utils._python_dispatch import TorchDispatchMode
 
 import kornia
 
@@ -548,6 +549,64 @@ class TestCropByTransform(BaseTester):
 
 
 class TestCropByIndices(BaseTester):
+    @pytest.mark.parametrize("batch", [1, 2, 5])
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    @pytest.mark.parametrize("grad_enabled", [False, True])
+    def test_backward_avoids_full_batch_slices_5004(self, batch, requires_grad, grad_enabled, device, dtype):
+        img = torch.rand(batch, 2, 8, 9, device=device, dtype=dtype, requires_grad=requires_grad)
+        src_box = torch.tensor(
+            [[[i, i], [i + 2, i], [i + 2, i + 2], [i, i + 2]] for i in range(batch)],
+            device=device,
+            dtype=torch.int64,
+        )
+        full_batch_slices = []
+        unbinds = []
+
+        class SliceShapes(TorchDispatchMode):
+            def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+                if func == torch.ops.aten.slice_backward.default and args[2] == 0 and tuple(args[1]) == img.shape:
+                    full_batch_slices.append(args[1])
+                if func == torch.ops.aten.unbind.int:
+                    unbinds.append(func)
+                return func(*args, **(kwargs or {}))
+
+        # Each batch slice previously allocated a full input-sized gradient buffer (#5004).
+        with torch.set_grad_enabled(grad_enabled), SliceShapes():
+            out = kornia.geometry.transform.crop_by_indices(img, src_box, size=(3, 3))
+            if out.requires_grad:
+                out.sum().backward()
+        assert not full_batch_slices
+        assert len(unbinds) == int(batch > 1 and requires_grad and grad_enabled)
+
+    @pytest.mark.parametrize("batch", [1, 4])
+    @pytest.mark.parametrize("layout", ["contiguous", "channels_last", "transposed", "expanded"])
+    @pytest.mark.parametrize("size", [None, (3, 3), [3, 3]])
+    def test_per_row_values_and_gradients_5004(self, batch, layout, size, device, dtype):
+        img = torch.rand(batch, 2, 8, 9, device=device, dtype=dtype)
+        if layout == "channels_last":
+            img = img.to(memory_format=torch.channels_last)
+        elif layout == "transposed":
+            img = img.transpose(-2, -1)
+        elif layout == "expanded":
+            img = img[:1].expand(batch, -1, -1, -1)
+        img.requires_grad_()
+        src_box = torch.tensor(
+            [[[i, i], [i + 2, i], [i + 2, i + 2], [i, i + 2]] for i in range(batch)],
+            device=device,
+            dtype=torch.int64,
+        )
+        out = kornia.geometry.transform.crop_by_indices(img, src_box, size=size)
+        expected = torch.stack([img[i, :, i : i + 3, i : i + 3] for i in range(batch)])
+        weights = torch.arange(1, batch + 1, device=device, dtype=dtype).view(batch, 1, 1, 1).expand_as(out)
+        gradient = torch.autograd.grad(out, img, weights)[0]
+        expected_gradient = torch.zeros_like(img)
+        for i in range(batch):
+            expected_gradient[i, :, i : i + 3, i : i + 3] = i + 1
+
+        self.assert_close(out, expected, rtol=0, atol=0)
+        self.assert_close(gradient, expected_gradient, rtol=0, atol=0)
+        assert out.untyped_storage().data_ptr() != img.untyped_storage().data_ptr()
+
     def test_crop_by_indices_no_resizing(self, device, dtype):
         inp = torch.tensor([[[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7, 8, 9]]]], device=device, dtype=dtype)  # 1x3x3
 
