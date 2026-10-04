@@ -24,6 +24,7 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.base import _input_metadata_only
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.augmentation.utils._nearest import _legacy_nearest_affine
 from kornia.constants import Resample
 from kornia.core.utils import is_compiling
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
@@ -80,8 +81,8 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         starting at column ``x0`` (likewise for ``y``), while resample mode maps the crop's corner pixel centres
         onto the output's. For nearest sampling in slice mode, the matrix uses a least-squares fit to the pixel blocks
         produced by legacy nearest indexing; its residual depends on the resize ratio because the discrete mapping is
-        not affine (`#5293 <https://github.com/kornia/kornia/issues/5293>`_). Only resample mode supports :meth:`inverse`, which resamples onto the original canvas
-        and cannot recover discarded information.
+        not affine (`#5293 <https://github.com/kornia/kornia/issues/5293>`_). Only resample mode supports
+        :meth:`inverse`, which resamples onto the original canvas and cannot recover discarded information.
 
     Note:
         Compiled slice-mode interpolation matches eager execution to floating-point tolerance,

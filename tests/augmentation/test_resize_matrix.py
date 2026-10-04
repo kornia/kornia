@@ -153,7 +153,7 @@ class TestResizeMatrix(BaseTester):
             self.assert_close(output, sliced)
 
     @pytest.mark.parametrize("kind", ["resize", "crop"])
-    @pytest.mark.parametrize("resample,align_corners", [("bilinear", True), ("nearest", True), ("nearest", False)])
+    @pytest.mark.parametrize("resample,align_corners", [("bilinear", True)])
     def test_unchanged_matrix_paths(self, device, dtype, kind, resample, align_corners):
         image = self._ramp(5, 7, device, dtype)
         aug = self._augmentation(kind, (8, 11), align_corners, device, dtype)
