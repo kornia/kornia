@@ -840,11 +840,12 @@ class TestDilate(BaseTester):
         )
         assert torch.equal(dilate(half_image, half_cross, max_val=65504.0), dilate(half_image, half_cross))
 
-    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution"])
+    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution", "auto"])
     def test_convention_non_finite_inputs_agree_across_engines_4734(self, device, dtype, engine):
         # A NaN or an infinity inside the window reaches the output; one in a cell the kernel excludes does
         # not. `convolution` multiplies every window cell by a one-hot weight, so it has to keep `inf * 0` and
-        # `nan * 0` out of the excluded cells without dropping the values of the included ones.
+        # `nan * 0` out of the excluded cells without dropping the values of the included ones. On MPS with PyTorch
+        # <2.7, this also covers #4997: `auto` selects `shift`, whose pairwise maximum/minimum otherwise ignore NaN.
         nan, inf = float("nan"), float("inf")
         tensor = torch.tensor([[[[0.25, nan, 0.75, inf, 0.5, -inf, 0.75]]]], device=device, dtype=dtype)
         side_kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
