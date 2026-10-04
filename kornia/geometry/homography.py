@@ -591,7 +591,10 @@ def _homography_from_dlt_system(
     elif solver == "lu":
         if not minimal_lu:
             B = torch.ones(A.shape[0], A.shape[1], device=device, dtype=dtype)
-            sol, _, _ = safe_solve_with_mask(B, A)
+            sol, _, valid = safe_solve_with_mask(B, A)
+            # A singular normal matrix (degenerate points) has no solution: report it as NaN rather
+            # than the identity system's solution that ``safe_solve_with_mask`` leaves in its place.
+            sol = torch.where(valid[:, None, None], sol, torch.full_like(sol, float("nan")))
         else:
             # A four-point sample gives eight equations for nine unknowns, so the normal matrix
             # is singular and LU-factoring it is what produced all-NaN homographies. Work from

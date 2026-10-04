@@ -514,6 +514,13 @@ class TestFindHomographyDLT(BaseTester):
         assert H.shape == (1, 3, 3)
         assert H.isnan().all().item()
 
+    def test_degenerate_points_lu_give_nan(self, device, dtype):
+        # Coincident points make the normal equations singular: no homography, so NaN rather than the
+        # identity system's solution that safe_solve_with_mask leaves for an invalid system (kornia#5194).
+        points = torch.zeros(1, 6, 2, device=device, dtype=dtype)
+        H = find_homography_dlt(points, points, solver="lu")
+        assert H.isnan().all().item()
+
     @pytest.mark.timeout(120, method="thread")
     def test_nonfinite_sample_leaves_batch_intact(self, device, dtype):
         points1 = torch.rand(3, 4, 2, device=device, dtype=dtype)

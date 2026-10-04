@@ -452,6 +452,15 @@ class TestFundamentlFromEssential(BaseTester):
         F_mat = epi.fundamental_from_essential(E_mat, K1, K2)
         assert F_mat.shape == (1, 2, 3, 3)
 
+    def test_singular_camera_gives_nan(self, device, dtype):
+        # kornia#5194: safe_inverse_with_mask returns the identity for a singular matrix, which must not
+        # turn a singular camera into a finite fundamental matrix.
+        E_mat = torch.rand(2, 3, 3, device=device, dtype=dtype)
+        K = torch.stack([torch.eye(3), torch.zeros(3, 3)]).to(device, dtype)
+        F_mat = epi.fundamental_from_essential(E_mat, K, K)
+        self.assert_close(F_mat[0], E_mat[0])
+        assert F_mat[1].isnan().all()
+
     def test_from_to_essential(self, device, dtype):
         scene = generate_two_view_random_scene(device, dtype)
 
