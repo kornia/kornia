@@ -425,3 +425,63 @@ class TestInRange(BaseTester):
         op = InRange(lower=lower, upper=upper, return_mask=True)
         op_optimized = torch_optimizer(op, fullgraph=True)
         self.assert_close(op(data), op_optimized(data))
+
+
+class TestConventionsInRange(BaseTester):
+    def test_convention_in_range_bounds_inclusive_and_all_channels_must_pass(self, device, dtype):
+        # built in the test dtype so that a value equal to a bound is equal after rounding
+        row = [0.2, 0.5, 0.8, 0.9]
+        img = torch.tensor([[row, row]] * 3, device=device, dtype=dtype)[None]  # (1, 3, 2, 4), H != W
+        img[0, 2, 1, 1] = 0.95  # above channel 2's upper bound 0.9 at one pixel only
+        img[0, 0, 1, 0] = float("nan")  # at a pixel that is otherwise in range
+        img[0, 1, 0, 3] = float("inf")  # at a pixel that fails anyway (0.9 > 0.8)
+        lower, upper = (0.2, 0.2, 0.2), (0.8, 0.8, 0.9)
+        mask = in_range(img, lower, upper, return_mask=True)
+        # both bounds inclusive (0.2 and 0.8 pass), a pixel passes only if every channel does, NaN fails;
+        # the mask is (B, 1, H, W) in the input dtype with 1 (not 255) for a pass
+        expected = torch.tensor([[[[1.0, 1.0, 1.0, 0.0], [0.0, 0.0, 1.0, 0.0]]]], device=device, dtype=dtype)
+        assert mask.dtype == dtype
+        self.assert_close(mask, expected)
+        # return_mask=False is input * mask: a failing pixel's channels become 0, a NaN stays NaN and an inf becomes NaN
+        out = in_range(img, lower, upper)
+        assert out[0, 0, 1, 0].isnan()
+        self.assert_close(out[0, 1:, 1, 0], torch.zeros(2, device=device, dtype=dtype))
+        assert out[0, 1, 0, 3].isnan()
+        self.assert_close(out[0, [0, 2], 0, 3], torch.zeros(2, device=device, dtype=dtype))
+        self.assert_close(out.nan_to_num(), (img * expected).nan_to_num())
+        # relabel: transposing the image transposes the mask
+        self.assert_close(in_range(img.transpose(-1, -2), lower, upper, return_mask=True), expected.transpose(-1, -2))
+        # lower > upper is not rejected; it selects nothing
+        assert in_range(img, upper, lower, return_mask=True).sum().item() == 0
+
+    def test_wart_in_range_fractional_bound_truncates_on_integer_input_5423(self, device, dtype):
+        """#5423: a fractional bound is cast to the integer input's dtype, so lower=100.7 admits 100."""
+        # a floating image keeps lower <= input <= upper: the value 100 lies below the lower bound 100.7
+        values = torch.tensor([100, 101, 200, 201], device=device, dtype=torch.uint8).view(1, 1, 1, 4)
+        as_float = in_range(values.to(dtype), (100.7,), (200.2,), return_mask=True)
+        assert as_float.flatten().tolist() == [0, 1, 1, 0]
+        # uint8 with tuple bounds: the lower bound truncates to 100 and admits the value 100
+        as_uint8 = in_range(values, (100.7,), (200.2,), return_mask=True)
+        assert as_uint8.dtype == torch.uint8
+        assert as_uint8.flatten().tolist() == [1, 1, 1, 0]
+        # int16 with Tensor bounds: the upper bound -3.5 truncates toward zero to -3 and admits the value -3, which
+        # flooring it to -4 would reject
+        negative = torch.tensor([-4, -3, -2], device=device, dtype=torch.int16).view(1, 1, 1, 3)
+        lower, upper = torch.tensor([-10.0], device=device), torch.tensor([-3.5], device=device)
+        assert in_range(negative, lower, upper, return_mask=True).flatten().tolist() == [1, 1, 0]
+
+    def test_convention_in_range_checks_each_tensor_bound_shape_5176(self, device, dtype):
+        """Each Tensor bound is checked on its own, and a 1-D bound is read per channel, never per column."""
+        generator = torch.Generator().manual_seed(0)
+        img = torch.rand(2, 3, 4, 5, generator=generator).to(device=device, dtype=dtype)  # C = 3, W = 5
+        per_sample = torch.zeros(2, 3, 1, 1, device=device, dtype=dtype)
+        per_column = torch.tensor([1.0, 1.0, 1.0, 1.0, 0.0], device=device, dtype=dtype)
+        # a (W,) bound is rejected whichever bound it is, even beside a valid (B, C, 1, 1) one
+        with pytest.raises(ValueError):
+            in_range(img, per_sample, per_column, return_mask=True)
+        with pytest.raises(ValueError):
+            in_range(img, per_column - 1, per_sample + 1, return_mask=True)
+        # a (C,) bound applies to its channel: channel 2's upper bound 0.5 decides the mask
+        per_channel = torch.tensor([1.0, 1.0, 0.5], device=device, dtype=dtype)
+        mask = in_range(img, per_sample, per_channel, return_mask=True)
+        self.assert_close(mask, (img[:, 2:] <= 0.5).to(dtype))

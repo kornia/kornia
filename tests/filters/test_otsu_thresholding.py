@@ -282,3 +282,134 @@ def test_otsu_threshold_basic(shape, device, dtype):
     img = torch.rand(shape, device=device, dtype=dtype)
     thresh_result, _thresh_value = otsu_threshold(img)
     assert thresh_result.shape == img.shape
+
+
+def _uint8_bimodal(device):
+    # every value 0..255 once, plus 300 pixels at 60 and 300 at 190
+    values = torch.cat([torch.arange(256), torch.full((300,), 60), torch.full((300,), 190)])
+    return values.to(device=device, dtype=torch.uint8).view(1, 1, 8, 107)
+
+
+class TestConventionsOtsuThreshold(BaseTester):
+    def test_convention_otsu_threshold_per_plane_in_input_units_foreground_strictly_above(self, device, dtype):
+        # two well-separated clusters per plane, in input units (not [0, 1]); B = 2, C = 3, H != W
+        values = torch.tensor([20.0, 30.0, 40.0, 160.0, 170.0, 180.0])
+        plane = torch.stack([values.roll(i) for i in range(4)]).view(1, 1, 4, 6)
+        img = torch.cat([plane, plane.flip(-1) + 5, plane * 0.5], 1)
+        img = torch.cat([img, img + 7]).to(device=device, dtype=dtype).requires_grad_(True)
+        out, thresholds = otsu_threshold(img)
+        # one threshold per (b, c) plane, returned flat, in the input dtype
+        assert thresholds.shape == (6,)
+        assert thresholds.dtype == out.dtype == dtype
+        ordered = img.detach().view(6, -1).sort(dim=1).values  # 12 low and 12 high pixels per plane
+        low_max, high_min = ordered[:, 11], ordered[:, 12]
+        # between the clusters (a threshold equal to the low cluster's top still drops it), at the lowest tied split
+        assert (thresholds >= low_max).all()
+        assert (thresholds < low_max + (high_min - low_max) / 4).all()
+        # the first output is x * (x > threshold), and its gradient is that mask
+        mask = img.detach() > thresholds.view(2, 3, 1, 1)
+        self.assert_close(out, img.detach() * mask)
+        (grad,) = torch.autograd.grad(out.sum(), img)
+        self.assert_close(grad, mask.to(dtype))
+        # relabel: transposing the image leaves the thresholds and transposes the output
+        out_t, thresholds_t = otsu_threshold(img.detach().transpose(-1, -2))
+        self.assert_close(thresholds_t, thresholds)
+        self.assert_close(out_t, out.detach().transpose(-1, -2))
+        # strictly above: on 0..255 the pixel equal to the threshold is dropped, the next value is kept
+        u8 = _uint8_bimodal(device)
+        out8, t8 = otsu_threshold(u8)
+        assert t8.dtype == torch.uint8
+        level = int(t8.item())
+        assert out8.flatten()[level].item() == 0
+        assert out8.flatten()[level + 1].item() == level + 1
+
+    @pytest.mark.parametrize("int_dtype", [torch.int8, torch.int16, torch.int32, torch.int64])
+    def test_convention_otsu_integer_threshold_is_the_largest_integer_below_the_edge(self, device, int_dtype):
+        # the threshold takes the input's dtype as the largest integer below the bin edge, so x > threshold keeps
+        # every pixel on or above the edge: the edges -59.69 and 40.31 give -60 (not -59, toward zero) and 40
+        img = torch.tensor([[-90, -80, -70], [-60, -50, -40], [-30, -20, -10]], device=device, dtype=int_dtype)
+        for data, expected in ((img, -60), (img + 100, 40)):
+            _, threshold = otsu_threshold(data)
+            assert threshold.dtype == int_dtype
+            assert threshold.item() == expected
+            _, edge = otsu_threshold(data.cpu().float())
+            assert expected < edge.item() < expected + 1
+        # an edge on an integer: two bins split 0..10 at 5, and the pixel of value 5, in the upper bin, is kept
+        out, threshold = otsu_threshold(torch.tensor([[0, 0, 5, 10, 10, 10]], device=device, dtype=int_dtype), nbins=2)
+        assert threshold.item() == 4
+        assert out.flatten().tolist() == [0, 0, 5, 10, 10, 10]
+
+    def test_convention_otsu_threshold_is_the_upper_edge_of_the_split_bin_5172(self, device, dtype):
+        """The threshold is the upper edge of the histogram bin where the split falls, in input units."""
+        # nbins=2 splits [0, 1] at its single inner edge 0.5, so the three pixels above it are kept
+        x = torch.tensor([[0.0, 0.1, 0.2, 0.55, 0.9, 1.0]], device=device, dtype=dtype)
+        out, threshold = otsu_threshold(x, nbins=2)
+        assert threshold.item() == 0.5
+        self.assert_close(out, x * (x > 0.5))
+        assert out.count_nonzero().item() == 3
+        # uint8: skimage.filters.threshold_otsu and cv2.THRESH_OTSU give 125 on this image
+        _, t8 = otsu_threshold(_uint8_bimodal(device))
+        assert t8.item() == 125
+
+    def test_convention_otsu_threshold_is_independent_of_batch_mates_5172(self, device, dtype):
+        """Each image and channel is histogrammed on its own [min, max], whatever else is in the call."""
+        a = (torch.linspace(0, 1, 60) ** 2).view(1, 1, 6, 10).to(device=device, dtype=dtype)
+        b = torch.linspace(0.6, 4.3, 60).view(1, 1, 6, 10).to(device=device, dtype=dtype)
+        alone = torch.cat([otsu_threshold(a)[1], otsu_threshold(b)[1]])
+        _, batched = otsu_threshold(torch.cat([a, b]))
+        _, channels = otsu_threshold(torch.cat([a, b], 1))
+        assert batched.tolist() == alone.tolist()
+        assert channels.tolist() == alone.tolist()
+
+    def test_convention_otsu_constant_plane_threshold_is_its_value_5172(self, device, dtype):
+        """A constant plane has no split: its threshold is its own value, so none of its pixels is foreground."""
+        for value in (0.4, -0.4):
+            img = torch.full((1, 1, 4, 5), value, device=device, dtype=dtype)
+            out, threshold = otsu_threshold(img)
+            assert threshold.item() == img[0, 0, 0, 0].item()
+            assert out.count_nonzero().item() == 0
+
+    def test_convention_otsu_return_mask_is_x_above_threshold_5173(self, device, dtype):
+        """return_mask=True returns the boolean x > threshold of each plane, so foreground values <= 0 count."""
+        x = torch.tensor([[[[-1.0, -1.0, 0.0, 0.0]]], [[[-2.0, -2.0, -1.0, -1.0]]]], device=device, dtype=dtype)
+        mask, threshold = otsu_threshold(x, return_mask=True)
+        assert mask.dtype == torch.bool
+        assert mask.shape == x.shape
+        # plane 1's foreground -1 lies below plane 0's threshold: each plane is compared with its own
+        assert mask.flatten().tolist() == [False, False, True, True] * 2
+        assert torch.equal(mask, x > threshold.view(2, 1, 1, 1))
+
+    def test_wart_otsu_equivalent_splits_pick_a_later_edge_on_mps_5421(self, device, dtype):
+        """#5421: of the equal splits across empty bins MPS can pick a later edge than the CPU, with the same mask."""
+        if device.type != "mps":
+            pytest.skip("#5421 compares the threshold computed on MPS with the one computed on the CPU")
+        # x^3 sampled at 40 and 48 points leaves empty bins between its levels, and every split across them gives the
+        # same classes. The CPU's between-class variance is flat there and takes the lowest; MPS's cumulative sums are
+        # not, and on at least one of the two images it takes a later edge
+        images = [torch.linspace(0, 1, 40).pow(3).view(1, 1, 4, 10), torch.linspace(0, 1, 48).pow(3).view(1, 1, 6, 8)]
+        later = []
+        for img in images:
+            img = img.to(dtype)
+            mask_cpu, threshold_cpu = otsu_threshold(img, return_mask=True)
+            mask_mps, threshold_mps = otsu_threshold(img.to(device), return_mask=True)
+            assert torch.equal(mask_mps.cpu(), mask_cpu)
+            later.append(threshold_mps.item() > threshold_cpu.item())
+        assert any(later)
+
+    def test_wart_otsu_slow_path_threshold_has_no_gradient_and_kde_skips_pixels_5174(self, device, dtype):
+        """#5174: the slow path gives no threshold gradient, and its 1e-3 KDE skips pixels between its sample points."""
+        generator = torch.Generator().manual_seed(0)
+        noise = torch.rand(1000, generator=generator)
+        x = torch.cat([0.3 + 0.1 * noise[:500], 0.6 + 0.1 * noise[500:]]).view(1, 1, 20, 50)
+        x = x.to(device=device, dtype=dtype).requires_grad_(True)
+        _, threshold = otsu_threshold(x, slow_and_differentiable=True)
+        assert not threshold.requires_grad
+        # the KDE is evaluated at linspace(0, 1, 16) with bandwidth 1e-3: a mass at 0.3 or at 0.7 lies between those
+        # points, so the slow path gives both images the same threshold while the fast path separates them
+        fast, slow = [], []
+        for mid in (0.3, 0.7):
+            img = torch.tensor([0.0] * 10 + [mid] * 80 + [1.0] * 10, device=device, dtype=dtype).view(1, 1, 1, -1)
+            fast.append(otsu_threshold(img, nbins=16)[1])
+            slow.append(otsu_threshold(img, nbins=16, slow_and_differentiable=True)[1])
+        assert fast[0] != fast[1]
+        assert slow[0] == slow[1]
