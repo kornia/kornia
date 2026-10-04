@@ -558,15 +558,92 @@ class TestCropByIndices(BaseTester):
         self.assert_close(kornia.geometry.transform.crop_by_indices(inp, indices), expected)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
-        # Define script
         op = kornia.geometry.transform.crop_by_indices
         op_script = torch_optimizer(op)
-        # Define input
         img = torch.ones(1, 2, 5, 4, device=device, dtype=dtype)
+        src_box = torch.tensor([[[0, 0], [1, 0], [1, 1], [0, 1]]], device=device, dtype=torch.int64)
 
-        actual = op_script(img, torch.tensor([[[0, 0], [1, 0], [1, 1], [0, 1]]]))
-        expected = op(img, torch.tensor([[[0, 0], [1, 0], [1, 1], [0, 1]]]))
+        actual = op_script(img, src_box)
+        expected = op(img, src_box)
+
         self.assert_close(actual, expected, rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.parametrize(
+        "size, interpolation, align_corners, src_box",
+        [
+            (
+                (8, 8),
+                "bilinear",
+                None,
+                [[[1, 1], [4, 1], [4, 4], [1, 4]]],
+            ),
+            (
+                (2, 2),
+                "bilinear",
+                True,
+                [[[0, 0], [7, 0], [7, 7], [0, 7]]],
+            ),
+            (
+                (8, 8),
+                "nearest",
+                None,
+                [[[0, 0], [3, 0], [3, 3], [0, 3]]],
+            ),
+            (
+                (8, 8),
+                "bicubic",
+                None,
+                [[[0, 0], [3, 0], [3, 3], [0, 3]]],
+            ),
+        ],
+    )
+    def test_dynamo_resized(self, size, interpolation, align_corners, src_box, device, dtype, torch_optimizer):
+        op = kornia.geometry.transform.crop_by_indices
+        img = torch.randn(1, 3, 8, 8, device=device, dtype=dtype)
+        src_box = torch.tensor(src_box, device=device, dtype=torch.int64)
+
+        expected = op(
+            img,
+            src_box,
+            size=size,
+            interpolation=interpolation,
+            align_corners=align_corners,
+        )
+        actual = torch_optimizer(op, fullgraph=True)(
+            img,
+            src_box,
+            size=size,
+            interpolation=interpolation,
+            align_corners=align_corners,
+        )
+
+        self.assert_close(actual, expected, rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.parametrize(
+        ("batch", "interpolation"),
+        [(1, "area"), (1, "nearest-exact"), (0, "bilinear")],
+    )
+    def test_dynamo_resized_keeps_eager_path(self, batch, interpolation, device, dtype, torch_optimizer):
+        # The compiled gather implements bilinear, bicubic and nearest only, and needs a box to gather from:
+        # other modes and an empty batch must keep the eager path instead of being resampled as bicubic.
+        op = kornia.geometry.transform.crop_by_indices
+        img = torch.arange(64, device=device, dtype=dtype).reshape(1, 1, 8, 8).repeat(batch, 1, 1, 1)
+        src_box = torch.tensor([[[1, 1], [4, 1], [4, 4], [1, 4]]] * batch, device=device, dtype=torch.int64)
+        src_box = src_box.reshape(batch, 4, 2)
+
+        expected = op(img, src_box, size=(6, 6), interpolation=interpolation)
+        actual = torch_optimizer(op)(img, src_box, size=(6, 6), interpolation=interpolation)
+
+        assert actual.shape == (batch, 1, 6, 6)
+        self.assert_close(actual, expected)
+
+    def test_dynamo_resized_nearest_rejects_align_corners(self, device, dtype, torch_optimizer):
+        # ``interpolate`` rejects ``align_corners`` for nearest; the compiled crop must not accept it silently.
+        img = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
+        src_box = torch.tensor([[[1, 1], [4, 1], [4, 4], [1, 4]]], device=device, dtype=torch.int64)
+        op = torch_optimizer(kornia.geometry.transform.crop_by_indices)
+        with pytest.raises((ValueError, RuntimeError), match="align_corners option can only be set"):
+            op(img, src_box, size=(6, 6), interpolation="nearest", align_corners=True)
 
     @pytest.mark.parametrize("size", [(2, 3), None])
     def test_crop_by_indices_empty_batch(self, size, device, dtype):

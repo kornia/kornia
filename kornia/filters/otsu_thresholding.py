@@ -50,25 +50,31 @@ class OtsuThreshold(torch.nn.Module):
         if xs.dtype in [torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64]:
             xs = xs.to(torch.float32)
 
-        min_val = xs.min()
-        max_val = xs.max()
-
+        min_values = xs.amin(dim=1)
+        max_values = xs.amax(dim=1)
         histograms = []
-        bin_edges = torch.linspace(min_val.item(), max_val.item(), bins, device=xs.device)
+        bin_edges = []
+        # histc divides [min, max] into `bins` intervals. The KDE path instead samples `bins` locations.
+        edge_count = bins if diff else bins + 1
+        edge_dtype = torch.float64 if xs.dtype == torch.float64 else torch.float32
 
         for i in range(xs.shape[0]):
-            if diff:
-                hist = diff_histogram(xs[i].view(1, -1), bin_edges, torch.tensor(0.001)).squeeze()
+            min_val = min_values[i].item()
+            max_val = max_values[i].item()
+            edges = torch.linspace(min_val, max_val, edge_count, device=xs.device, dtype=edge_dtype)
+            if min_val == max_val:
+                # No split exists; avoid histc's automatic range expansion for large constant values.
+                hist = torch.zeros(bins, device=xs.device, dtype=edge_dtype)
+                hist[0] = 1
+            elif diff:
+                hist = diff_histogram(xs[i].view(1, -1), edges, torch.tensor(0.001, device=xs.device)).squeeze()
             else:
-                # Use torch.histc for non-differentiable histogram
-                # Note: torch.histogram is in PyTorch 1.10+, and should replace histc in future versions when
-                #       no longer supporting older pytorch versions.
-                hist = _torch_histc_cast(xs[i], bins=bins, min=min_val.item(), max=max_val.item())
+                hist = _torch_histc_cast(xs[i], bins=bins, min=min_val, max=max_val)
 
-            # Normalize and append the histogram
             histograms.append(hist / hist.sum())
+            bin_edges.append(edges)
 
-        return torch.stack(histograms), bin_edges
+        return torch.stack(histograms), torch.stack(bin_edges)
 
     def transform_input(
         self, x: torch.Tensor, original_shape: Optional[torch.Size] = None
@@ -101,7 +107,9 @@ class OtsuThreshold(torch.nn.Module):
     def forward(
         self, x: torch.Tensor, nbins: int = 256, slow_and_differentiable: bool = False
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Apply Otsu thresholding to the input x.
+        """Apply Otsu thresholding independently to each image/channel plane of x.
+
+        A constant plane uses its constant value as the threshold, so all its pixels are background.
 
         Args:
             x (torch.Tensor): Image or batch of images to threshold.
@@ -114,7 +122,6 @@ class OtsuThreshold(torch.nn.Module):
         """
         # Flatten input and store original shape
         x_flattened, orig_shape = self.transform_input(x)
-        nchannel = x_flattened.shape[0]
 
         # Check tensor type compatibility
         KORNIA_CHECK(
@@ -135,9 +142,6 @@ class OtsuThreshold(torch.nn.Module):
 
         # Compute histogram and bin edges
         histograms, bin_edges = self.__histogram(x_flattened, bins=nbins, diff=slow_and_differentiable)
-
-        # Initialize thresholds
-        best_thresholds = torch.zeros(nchannel, device=x.device, dtype=x.dtype)
 
         # Vectorized computation of optimal thresholds
         bin_values = torch.arange(nbins, device=histograms.device, dtype=torch.float32)
@@ -165,9 +169,18 @@ class OtsuThreshold(torch.nn.Module):
         # Find the maximum inter-class variance and corresponding threshold
         t_max = torch.argmax(inter_class_var, dim=1)  # Shape: (nchannel,)
         max_var = inter_class_var.gather(1, t_max[:, None]).squeeze(1)  # Shape: (nchannel,)
-        best_thresholds = torch.where(
-            max_var > 0, bin_edges[t_max + 1], torch.tensor(0.0, device=histograms.device)
-        ).to(x.dtype)
+        upper_edges = bin_edges.gather(1, (t_max + 1)[:, None]).squeeze(1)
+        if not x.is_floating_point():
+            # An integer pixel on or above the upper edge is counted in the foreground, so the integer threshold is
+            # the largest integer below that edge. Truncating toward zero would round a negative edge up, and keep
+            # an integer edge, and drop the level just above the split from the foreground.
+            upper_edges = upper_edges.ceil() - 1
+        best_thresholds = torch.where(max_var > 0, upper_edges, bin_edges[:, 0]).to(x.dtype)
+
+        # Preserve a constant plane's exact input value, including integers outside floating-point precision.
+        plane_min = x_flattened.amin(dim=1).detach()
+        plane_max = x_flattened.amax(dim=1).detach()
+        best_thresholds = torch.where(plane_min == plane_max, plane_min, best_thresholds)
 
         # Apply thresholding: keep values strictly greater than the threshold
         thresholded = (x_flattened > best_thresholds[:, None]).to(x.dtype) * x_flattened
@@ -183,6 +196,10 @@ def otsu_threshold(
     return_mask: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Apply automatic image thresholding using Otsu algorithm to the input tensor.
+
+    Each image/channel plane uses its own histogram range. On the default path, the threshold is the upper edge
+    of the selected histogram bin. For an integer input it is the largest integer below that value, so
+    ``x > threshold`` keeps every pixel on or above it. A constant plane uses its constant value as the threshold.
 
     Args:
         x (Tensor): Input tensor (image or batch of images).

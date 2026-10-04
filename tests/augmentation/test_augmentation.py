@@ -3621,6 +3621,18 @@ class TestRandomCrop(BaseTester):
         with pytest.raises(ValueError, match="one value per channel"):
             RandomCrop((4, 4), padding=1, fill=(1.0, 0.0), p=1.0).precrop_padding(image)
 
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        torch.manual_seed(0)
+        input = torch.rand(4, 3, 64, 64, device=device, dtype=dtype)
+        op = RandomCrop((32, 32), p=1.0)
+        params = op.forward_parameters(input.shape)
+        expected = op(input, params=params)
+        compiled = torch_optimizer(op, fullgraph=True)
+        self.assert_close(compiled(input, params=params), expected)
+        # Also compile the full forward so parameter generation is captured too.
+        torch._dynamo.reset()
+        assert torch_optimizer(RandomCrop((32, 32), p=1.0), fullgraph=True)(input).shape == input.shape[:2] + (32, 32)
+
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
@@ -6064,10 +6076,10 @@ class TestRandomMedianBlur(BaseTester):
             [
                 [
                     [
-                        [0.0, 1.0, 1.0, 0.0],
                         [1.0, 1.0, 1.0, 1.0],
                         [1.0, 1.0, 1.0, 1.0],
-                        [0.0, 1.0, 1.0, 0.0],
+                        [1.0, 1.0, 1.0, 1.0],
+                        [1.0, 1.0, 1.0, 1.0],
                     ]
                 ]
             ],

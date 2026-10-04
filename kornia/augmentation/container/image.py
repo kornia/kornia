@@ -352,13 +352,15 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             elif isinstance(module, ImageSequentialBase):
                 # If not augmentationSequential
                 if isinstance(module, K.AugmentationSequential) and not recompute:
-                    mat = torch.as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
+                    _mat = module.transform_matrix
+                    if _mat is not None:
+                        _mat = torch.as_tensor(_mat, device=input.device, dtype=input.dtype)
                 else:
                     maybe_param_data = cast(Optional[List[ParamItem]], param.data)
                     _mat = module.get_transformation_matrix(
                         input, maybe_param_data, recompute=recompute, extra_args=extra_args
                     )
-                    mat = module.identity_matrix(input) if _mat is None else _mat
+                mat = module.identity_matrix(input) if _mat is None else _mat
                 res_mat = mat if res_mat is None else mat @ res_mat
         return res_mat
 
@@ -404,13 +406,10 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
 
         """
         for arg in self.children():
-            if isinstance(arg, ImageSequential) and not arg.is_intensity_only(strict):
-                return False
             if isinstance(arg, ImageSequential):
-                pass
-            elif isinstance(arg, K.IntensityAugmentationBase2D):
-                pass
-            elif strict:
+                if not arg.is_intensity_only(strict):
+                    return False
+            elif strict and not isinstance(arg, K.IntensityAugmentationBase2D):
                 # disallow non-registered ops if in strict mode
                 # TODO: add an ops register module
                 return False
@@ -442,9 +441,8 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             self._check_output_type(output_type)
             # run the forward pass in tensor mode, cache that tensor for ``.show()`` / ``.save()``, and convert the
             # output to ``output_type`` only afterwards, so the helpers never receive a NumPy array or PIL images
-            decorated_forward = self.convert_input_output(input_names_to_handle=input_names_to_handle)(super().__call__)
-            tensor_output = decorated_forward(*inputs, **kwargs)
-            self._store_output_image(tensor_output, "pt")
+            tensor_output = self._call_converted(super().__call__, inputs, kwargs, input_names_to_handle, "pt")
+            self._store_output_image(self._convert_output(tensor_output, "pt"), "pt")
             _output_image = self._convert_output(tensor_output, output_type)
         else:
             _output_image = super().__call__(*inputs, **kwargs)

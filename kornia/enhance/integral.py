@@ -26,6 +26,11 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 def integral_tensor(input: torch.Tensor, dim: Optional[Tuple[int, ...]] = None) -> torch.Tensor:
     """Calculate integral of the input torch.Tensor.
 
+    Convention:
+        Applies an inclusive cumulative sum along each axis in dim; dim=None means
+        only the last axis. :func:`integral_image` fixes the axes to (-2, -1),
+        and the two module classes are wrappers for these functions.
+
     The algorithm computes the integral image by summing over the specified dimensions.
 
     In case dim is specified, the contained dimensions must be unique
@@ -74,6 +79,10 @@ def integral_tensor(input: torch.Tensor, dim: Optional[Tuple[int, ...]] = None) 
 def integral_image(image: torch.Tensor) -> torch.Tensor:
     r"""Calculate integral of the input image torch.Tensor.
 
+    Convention:
+        This is :func:`integral_tensor` with axes (-2, -1); the output has the input shape,
+        without an extra zero border.
+
     This particular version sums over the last two dimensions.
 
     Args:
@@ -100,6 +109,9 @@ def integral_image(image: torch.Tensor) -> torch.Tensor:
 
 class IntegralTensor(nn.Module):
     r"""Calculates integral of the input torch.Tensor.
+
+    Convention:
+        See :func:`integral_tensor` for axis order and validation behavior.
 
     Args:
         image: the input torch.Tensor with shape :math:`(B,C,H,W)`.
@@ -143,6 +155,9 @@ class IntegralTensor(nn.Module):
 
 class IntegralImage(nn.Module):
     """Calculates integral of the input image torch.Tensor.
+
+    Convention:
+        See :func:`integral_image`; this wrapper always accumulates the final two axes.
 
     This particular version sums over the last two dimensions.
 

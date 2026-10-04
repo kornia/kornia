@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import math
 import warnings
 
 import pytest
@@ -357,6 +358,63 @@ class Test3DAugmentationConventions(BaseTester):
         expected = torch.zeros_like(volume)
         expected[(0, 0, *line)] = 1 / 3
         self.assert_close(output, expected, atol=1e-4, rtol=0)
+
+    @staticmethod
+    def _rodrigues(degrees: tuple[float, float, float]) -> torch.Tensor:
+        """Rodrigues' rotation matrix for an axis-angle vector given in degrees.
+
+        Written out rather than taken from kornia, so the pin below compares the implementation
+        against the formula its docstrings now describe and not against itself.
+        """
+        vector = torch.tensor(degrees, dtype=torch.float64)
+        axis = vector / vector.norm()
+        angle = math.radians(float(vector.norm()))
+        skew = torch.tensor(
+            [[0.0, -axis[2], axis[1]], [axis[2], 0.0, -axis[0]], [-axis[1], axis[0], 0.0]], dtype=torch.float64
+        )
+        return torch.eye(3, dtype=torch.float64) + math.sin(angle) * skew + (1 - math.cos(angle)) * (skew @ skew)
+
+    @pytest.mark.device_agnostic
+    def test_convention_degrees_are_one_axis_angle_vector_not_euler_5286(self):
+        # test_convention_degrees_and_motion_angle_follow_xyz_order and
+        # test_convention_motion_blur3d_kernel_uses_the_yaw_pitch_roll_order each move ONE angle, which cannot
+        # tell the axis-angle reading apart from per-axis Euler rotations: a single non-zero component behaves
+        # the same under both. Two non-zero components do not, so this moves two.
+        augmentation = K.RandomRotation3D(((90.0, 90.0), (90.0, 90.0), (0.0, 0.0)), p=1.0)
+        augmentation(torch.zeros(1, 1, 3, 3, 3))
+        rotation = augmentation.transform_matrix[0, :3, :3].to(dtype=torch.float64)
+
+        # (90, 90, 0) is one axis-angle vector, so it turns through 90 * sqrt(2) = 127.28 degrees
+        # about (1, 1, 0) / sqrt(2). Neither Euler order gives that matrix: a quarter turn about
+        # x and then about y, or the reverse, differs from it by 0.80 in its largest entry.
+        expected = self._rodrigues((90.0, 90.0, 0.0))
+        self.assert_close(rotation, expected, atol=1e-6, rtol=0)
+        quarter_x = torch.tensor([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]], dtype=torch.float64)
+        quarter_y = torch.tensor([[0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]], dtype=torch.float64)
+        for name, euler in (("x-then-y", quarter_y @ quarter_x), ("y-then-x", quarter_x @ quarter_y)):
+            assert not torch.allclose(rotation, euler, atol=1e-3), name
+
+    @pytest.mark.device_agnostic
+    def test_convention_rotate3d_matches_random_rotation3d_on_a_mixed_axis_5286(self):
+        # The same (90, 90, 0) triple through the geometry entry point the augmentation docstrings
+        # point at: both are the single Rodrigues rotation, and both differ from either Euler
+        # composition, so the two docstrings describe one convention rather than two.
+        rotate3d = kornia.geometry.transform.rotate3d
+        z, y, x = torch.meshgrid(*(torch.arange(9.0) - 4.0,) * 3, indexing="ij")
+        volume = torch.exp(-((x + 3.0) ** 2 + y**2 + z**2) / 0.5)[None, None]
+
+        def peak(result: torch.Tensor) -> tuple[int, int, int]:
+            index = int(result[0, 0].flatten().argmax())
+            return (index % 9 - 4, index // 9 % 9 - 4, index // 81 - 4)  # (x, y, z)
+
+        def rotate(yaw: float, pitch: float, roll: float, source: torch.Tensor | None = None) -> torch.Tensor:
+            return rotate3d(volume if source is None else source, *[torch.tensor([v]) for v in (yaw, pitch, roll)])
+
+        assert peak(rotate(90.0, 90.0, 0.0)) == (-1, -2, 2)
+        assert peak(K.RandomRotation3D(((90.0, 90.0), (90.0, 90.0), (0.0, 0.0)), p=1.0)(volume)) == (-1, -2, 2)
+        # Euler, x then y and y then x, puts the blob on the z axis or the y axis instead.
+        assert peak(rotate(0.0, 90.0, 0.0, rotate(90.0, 0.0, 0.0))) == (0, 0, 3)
+        assert peak(rotate(90.0, 0.0, 0.0, rotate(0.0, 90.0, 0.0))) == (0, -3, 0)
 
     @pytest.mark.device_agnostic
     def test_convention_3d_augmentations_have_no_direct_inverse(self):

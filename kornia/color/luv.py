@@ -39,6 +39,10 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     The image data is assumed to be in the range of :math:`[0, 1]`. Luv
     color is computed using the D65 illuminant and Observer 2.
 
+    Convention:
+        Input is nonlinear sRGB in RGB order at axis -3. Output is CIE L*u*v* with D65 / 2°
+        reference white.
+
     Args:
         image: RGB Image to be converted to Luv with shape :math:`(*, 3, H, W)`.
         eps: for numerically stability when dividing. For float16 input a positive ``eps`` below
@@ -96,6 +100,10 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     r"""Convert a Luv image to RGB.
 
+    Convention:
+        Input channels are CIE L*, u*, v* at axis -3 with D65 / 2° reference white. The result
+        is nonlinear sRGB.
+
     Args:
         image: Luv image to be converted to RGB with shape :math:`(*, 3, H, W)`.
         eps: for numerically stability when dividing. For float16 input a positive ``eps`` below
@@ -150,6 +158,8 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 class RgbToLuv(nn.Module):
     r"""Convert an image from RGB to Luv.
 
+    See the Convention block on :func:`rgb_to_luv`.
+
     The image data is assumed to be in the range of :math:`[0, 1]`. Luv
     color is computed using the D65 illuminant and Observer 2.
 
@@ -193,6 +203,8 @@ class RgbToLuv(nn.Module):
 
 class LuvToRgb(nn.Module):
     r"""Convert an image from Luv to RGB.
+
+    See the Convention block on :func:`luv_to_rgb`.
 
     Returns:
         RGB version of the image.
