@@ -137,7 +137,7 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if not isinstance(transform, torch.Tensor):
-            raise TypeError(f"Expected the transform to be a torch.Tensor. Gotcha {type(transform)}")
+            raise TypeError(f"Expected the transform to be a torch.Tensor. Got {type(transform)}")
 
         return warp_perspective3d(
             input,

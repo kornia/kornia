@@ -240,7 +240,7 @@ class RandomMosaic(MixAugmentationBaseV2):
         flags = self.flags if flags is None else flags
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
             if not isinstance(transform, torch.Tensor):
-                raise TypeError(f"Expected the transform to be a torch.Tensor. Gotcha {type(transform)}")
+                raise TypeError(f"Expected the transform to be a torch.Tensor. Got {type(transform)}")
 
             # Fit the arg to F.F.pad
             if flags["padding_mode"] == "constant":

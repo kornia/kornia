@@ -207,7 +207,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         if isinstance(self.random_apply, tuple):
             num_samples = int(torch.randint(*self.random_apply, (1,)).item())
         else:
-            raise TypeError(f"random apply should be a tuple. Gotcha {type(self.random_apply)}")
+            raise TypeError(f"random apply should be a tuple. Got {type(self.random_apply)}")
 
         multinomial_weights = self.random_apply_weights.clone()
         # Mix augmentation can only be applied once per forward
