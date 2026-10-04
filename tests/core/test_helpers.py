@@ -18,7 +18,7 @@
 import pytest
 import torch
 
-from kornia.core.exceptions import DeviceError, TypeCheckError
+from kornia.core.exceptions import BaseError, DeviceError, TypeCheckError
 from kornia.core.utils import (
     _adjugate_closed_form,
     _extract_device_dtype,
@@ -28,6 +28,7 @@ from kornia.core.utils import (
     _torch_linalg_svdvals,
     _torch_solve_cast,
     _torch_svd_cast,
+    batched_forward,
     is_exporting,
     is_mps_tensor_safe,
     register_module_state,
@@ -415,6 +416,15 @@ class TestSvdCast:
 
 
 class TestSolveCast:
+    def test_rejects_non_tensor_A(self):
+        # A was unchecked while its sibling safe_inverse_with_mask checks A (#5201).
+        with pytest.raises(TypeCheckError, match=r"A must be torch.Tensor"):
+            _torch_solve_cast([[1.0]], torch.ones(2, 2))
+
+    def test_rejects_non_tensor_B(self):
+        with pytest.raises(TypeCheckError, match=r"B must be torch.Tensor"):
+            _torch_solve_cast(torch.eye(2), [[1.0]])
+
     def test_smoke(self, device, dtype):
         torch.manual_seed(0)
         # Exercise a reproducible, well-conditioned system instead of letting a random draw
@@ -431,6 +441,10 @@ class TestSolveCast:
 
 
 class TestSolveWithMask:
+    def test_rejects_non_tensor_A(self):
+        with pytest.raises(TypeCheckError, match=r"A must be torch.Tensor"):
+            safe_solve_with_mask(torch.ones(2, 3), [[1.0]])
+
     def test_smoke(self, device, dtype):
         torch.manual_seed(0)  # issue kornia#2027
         A = torch.randn(2, 3, 1, 4, 4, device=device, dtype=dtype)
@@ -452,6 +466,28 @@ class TestSolveWithMask:
 
         _X, _, mask = safe_solve_with_mask(B, A)
         assert torch.equal(mask, torch.zeros_like(mask))
+
+
+class TestBatchedForwardBatchSize:
+    def test_rejects_zero_batch_size(self):
+        # batch_size=0 divided by zero inside the micro-batch loop (#5201).
+        model = torch.nn.Linear(2, 3)
+        data = torch.rand(5, 2)
+        with pytest.raises(BaseError, match="batch_size must be positive, got 0"):
+            batched_forward(model, data, torch.device("cpu"), batch_size=0)
+
+    def test_rejects_negative_batch_size(self):
+        model = torch.nn.Linear(2, 3)
+        data = torch.rand(5, 2)
+        with pytest.raises(BaseError, match="batch_size must be positive, got -1"):
+            batched_forward(model, data, torch.device("cpu"), batch_size=-1)
+
+    def test_valid_batch_sizes_keep_the_output(self):
+        model = torch.nn.Linear(2, 3)
+        data = torch.rand(5, 2)
+        expected = model(data)
+        for bs in (2, 5, 128):
+            assert_close(batched_forward(model, data, torch.device("cpu"), batch_size=bs), expected)
 
 
 class TestInverseWithMask:
