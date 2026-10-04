@@ -25,6 +25,7 @@ from torch import nn
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.constants import DataKey
+from kornia.core.utils import is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -64,7 +65,18 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
     def get_transform_matrix(cls, module: nn.Module, param: ParamItem, input: Any) -> torch.Tensor:
         """Get the matrix recorded by these params, not by the module's most recent image call."""
         params = cls.get_instance_module_param(param)
-        if getattr(module, "_transform_matrix_params", None) is params:
+        matrix_params = getattr(module, "_transform_matrix_params", None)
+        if (
+            not is_exporting()
+            and isinstance(matrix_params, dict)
+            and matrix_params.keys() == params.keys()
+            and all(
+                torch.equal(matrix_params[key], value)
+                if isinstance(value, torch.Tensor) and isinstance(matrix_params[key], torch.Tensor)
+                else matrix_params[key] == value
+                for key, value in params.items()
+            )
+        ):
             transform = getattr(module, "transform_matrix", None)
             if transform is not None:
                 return transform
@@ -80,7 +92,12 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
         reference = input if isinstance(input, torch.Tensor) else None
         device = reference.device if reference is not None else forward_input_shape.device
         dtype = reference.dtype if reference is not None and torch.is_floating_point(reference) else torch.float32
-        matrix_input = torch.empty((), device=device, dtype=dtype).expand(tuple(forward_input_shape.tolist()))
+        input_shape = tuple(forward_input_shape.tolist())
+        padding_size = params.get("padding_size")
+        if not is_exporting() and isinstance(padding_size, torch.Tensor) and len(input_shape) >= 2:
+            left, right, top, bottom = padding_size[0].tolist()
+            input_shape = (*input_shape[:-2], input_shape[-2] - top - bottom, input_shape[-1] - left - right)
+        matrix_input = torch.empty((), device=device, dtype=dtype).expand(input_shape)
         return module.generate_transformation_matrix(matrix_input, params, module.flags)
 
     @classmethod

@@ -300,13 +300,13 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
                 matrix_input = _InputMetadata(tuple(in_tensor.shape), in_tensor.dtype, in_tensor.device)
             self._commit_state(transform_matrix=None, lazy_matrix_args=(matrix_input, params, flags))
             if not is_exporting():
-                self._transform_matrix_params = params
+                self._transform_matrix_params = {key: value for key, value in params.items() if key != "data_keys"}
             return self.transform_inputs(in_tensor, params, flags, None)
 
         trans_matrix = self.generate_transformation_matrix(in_tensor, params, flags)
         output = self.transform_inputs(in_tensor, params, flags, trans_matrix)
         self._commit_state(transform_matrix=trans_matrix, lazy_matrix_args=None)
         if not is_exporting():
-            self._transform_matrix_params = params
+            self._transform_matrix_params = {key: value for key, value in params.items() if key != "data_keys"}
 
         return output
