@@ -28,6 +28,7 @@ from kornia.core.utils import (
     _torch_linalg_svdvals,
     _torch_solve_cast,
     _torch_svd_cast,
+    is_autocast_enabled,
     is_exporting,
     is_mps_tensor_safe,
     register_module_state,
@@ -469,3 +470,26 @@ class TestInverseWithMask:
         A = torch.ones(10, 3, 3, device=device, dtype=dtype)
         _X, mask = safe_inverse_with_mask(A)
         assert torch.equal(mask, torch.zeros_like(mask))
+
+
+def test_is_autocast_enabled_cpu():
+    assert not is_autocast_enabled()
+
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        assert torch.is_autocast_enabled("cpu")
+        assert is_autocast_enabled()
+
+    assert not is_autocast_enabled()
+
+
+def test_is_autocast_enabled_mps():
+    if not torch.backends.mps.is_available():
+        pytest.skip("MPS is not available")
+
+    assert not is_autocast_enabled()
+
+    with torch.autocast("mps", dtype=torch.float16):
+        assert torch.is_autocast_enabled("mps")
+        assert is_autocast_enabled()
+
+    assert not is_autocast_enabled()

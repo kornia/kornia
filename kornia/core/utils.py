@@ -430,17 +430,16 @@ def is_autocast_enabled(both: bool = True) -> bool:
         both: if True will consider autocast region for both types of devices
 
     Returns:
-        Return a Bool,
-        will always return False for a torch without support, otherwise will be: if both is True
-        `torch.is_autocast_enabled() or torch.is_autocast_enabled('cpu')`. If both is False will return just
-        `torch.is_autocast_enabled()`.
+        Return a Bool. If ``both`` is True, return whether autocast is enabled
+        for any supported device type (CPU, CUDA, MPS, or XPU). If ``both`` is
+        False, return whether the default autocast region is enabled.
 
     """
-    # Since kornia requires torch>=2.5.1, autocast is always available
     if both:
-        if torch_version_ge(2, 4):
-            return torch.is_autocast_enabled() or torch.is_autocast_enabled("cpu")
-        return torch.is_autocast_enabled() or torch.is_autocast_cpu_enabled()
+        return any(
+            torch.is_autocast_enabled(device_type)
+            for device_type in ("cpu", "cuda", "mps", "xpu")
+        )
 
     return torch.is_autocast_enabled()
 
