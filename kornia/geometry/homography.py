@@ -297,8 +297,11 @@ def line_segment_transfer_error_one_way(
     # fix its error reads as zero, and the callers that need infinity guard on the segment length themselves.
     scale = ln2[..., :, :2].norm(dim=-1, keepdim=True)
     ln2 = ln2 / torch.where(scale > 0, scale, torch.ones_like(scale))
-    ps1_in2 = convert_points_to_homogeneous(transform_points(H, ps1))
-    pe1_in2 = convert_points_to_homogeneous(transform_points(H, pe1))
+    # Keep the point batch rank aligned with H. Passing (B, N, 1, 2) points to
+    # transform_points flattens them to (B*N, 1, 2) and repeats every H N times;
+    # the large repeat_interleave batch produces incorrect results on MPS.
+    ps1_in2 = convert_points_to_homogeneous(transform_points(H, ps1.squeeze(-2))).unsqueeze(-2)
+    pe1_in2 = convert_points_to_homogeneous(transform_points(H, pe1.squeeze(-2))).unsqueeze(-2)
     er_st1 = (ln2 @ ps1_in2.transpose(-2, -1)).view(B, N).abs()
     er_end1 = (ln2 @ pe1_in2.transpose(-2, -1)).view(B, N).abs()
     error = 0.5 * (er_st1 + er_end1)
