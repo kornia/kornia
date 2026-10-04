@@ -1728,7 +1728,7 @@ class TestQuaternionExpToLog(BaseTester):
             torch.tensor((1.0 - eps, 0.1, 0.0, 0.0), device=device, dtype=dtype)
         )
         work_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
-        work = near_boundary.to(work_dtype)
+        work = kornia.geometry.conversions.normalize_quaternion(near_boundary.to(work_dtype))
         unguarded = (
             work[1:4]
             * work[0:1].clamp(min=-1.0, max=1.0).acos()
