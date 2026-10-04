@@ -36,6 +36,36 @@ from testing.base import BaseTester, assert_close
 
 
 class TestAugmentationSequential:
+    def test_annotation_replay_uses_matrices_from_params(self, device, dtype):
+        torch.manual_seed(0)
+        image = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)
+        mask = torch.zeros_like(image)
+        mask[..., 4:8, 2:6] = 1
+        boxes = torch.tensor([[[2.0, 4.0, 6.0, 8.0]]], device=device, dtype=dtype)
+        keypoints = torch.tensor([[[3.0, 5.0]]], device=device, dtype=dtype)
+        data_keys = ["input", "mask", "bbox_xyxy", "keypoints"]
+        aug = K.AugmentationSequential(K.RandomAffine(45.0, translate=(0.2, 0.2), p=1.0), data_keys=data_keys)
+
+        first = aug(image, mask, boxes, keypoints)
+        params = aug._params
+        expected_inverse = aug.inverse(*first, params=params)
+
+        aug(
+            torch.rand(2, 1, 16, 16, device=device, dtype=dtype),
+            mask.expand(2, -1, -1, -1),
+            boxes.expand(2, -1, -1),
+            keypoints.expand(2, -1, -1),
+        )
+
+        replayed = aug(mask, boxes, keypoints, params=params, data_keys=data_keys[1:])
+        assert_close(replayed[0], first[1])
+        assert_close(replayed[1], first[2])
+        assert_close(replayed[2], first[3])
+
+        actual_inverse = aug.inverse(*first, params=params)
+        for actual, expected in zip(actual_inverse, expected_inverse):
+            assert_close(actual, expected)
+
     @pytest.mark.parametrize("as_dict", [False, True])
     def test_numpy_annotations_are_not_scaled_like_images(self, as_dict):
         image = np.zeros((8, 9, 3), dtype=np.uint8)
