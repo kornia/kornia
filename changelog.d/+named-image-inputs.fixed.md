@@ -1,0 +1,1 @@
+Named input conversion now binds positional arguments to `forward` parameters in image modules and sequential containers, rather than to the internal PyTorch call wrapper. Selective conversion also handles bound decorated methods and variadic arguments.

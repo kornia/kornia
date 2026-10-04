@@ -16,6 +16,7 @@
 #
 
 import datetime
+import inspect
 import math
 import os
 import sys
@@ -103,7 +104,8 @@ class ImageModuleMixIn:
         """Convert input and output types for a function.
 
         Args:
-            input_names_to_handle: List of input names to convert.
+            input_names_to_handle: List of parameter names to convert. Module calls use the ``forward``
+                signature; a variadic parameter name selects all its values.
                 If None, convert every tensor, NumPy array and PIL image argument, and load a string as an image
                 path only if it is the first positional argument.
             output_type: Desired output type ('pt', 'numpy', or 'pil').
@@ -135,6 +137,8 @@ class ImageModuleMixIn:
         kwargs: dict[str, Any],
         input_names_to_handle: Optional[List[Any]],
         output_type: Literal["pt", "numpy", "pil"],
+        *,
+        signature_source: Optional[Callable[..., Any]] = None,
     ) -> Union[Any, List[Any]]:
         if input_names_to_handle is None:
             args = tuple(
@@ -146,13 +150,23 @@ class ImageModuleMixIn:
                 for k, v in kwargs.items()
             }
         else:
-            args = list(args)
-            for i, (arg, name) in enumerate(zip(args, func.__code__.co_varnames)):  # ty: ignore[unresolved-attribute]
-                if name in input_names_to_handle:
-                    args[i] = self.to_tensor(arg)  # type:ignore
-            for name, value in kwargs.items():
-                if name in input_names_to_handle:
-                    kwargs[name] = self.to_tensor(value)
+            signature = inspect.signature(func if signature_source is None else signature_source)
+            bound = signature.bind(*args, **kwargs)
+            for name, value in bound.arguments.items():
+                kind = signature.parameters[name].kind
+                if kind == inspect.Parameter.VAR_KEYWORD:
+                    bound.arguments[name] = {
+                        key: self.to_tensor(item)
+                        if name in input_names_to_handle or key in input_names_to_handle
+                        else item
+                        for key, item in value.items()
+                    }
+                elif name in input_names_to_handle:
+                    if kind == inspect.Parameter.VAR_POSITIONAL:
+                        bound.arguments[name] = tuple(self.to_tensor(item) for item in value)
+                    else:
+                        bound.arguments[name] = self.to_tensor(value)
+            args, kwargs = bound.args, bound.kwargs
 
         return func(*args, **kwargs)
 
