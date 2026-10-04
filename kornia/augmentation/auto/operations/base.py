@@ -45,9 +45,9 @@ class OperationBase(nn.Module):
           ``p`` and ``p_batch`` as a hard ``0`` or ``1``. ``magnitude``, where the operation has one, is clamped to
           the wrapped generator's range and receives a gradient where the wrapped augmentation is differentiable
           in it; ``forward_parameters`` substitutes it into the wrapped augmentation's draw.
-        - ``forward`` linearly blends the wrapped output with the input using ``batch_prob``. Unless the wrapped
-          ``p`` and ``p_batch`` are both ``1``, the wrapped augmentation first keeps rows whose gate is at most
-          ``0.5`` unchanged, so the same supplied fractional gates replay differently depending on ``p``
+        - ``forward`` linearly blends the wrapped output with the input using ``batch_prob``. The wrapped
+          augmentation receives an all-true gate so that the same supplied fractional ``batch_prob`` always
+          produces the same soft blend regardless of the wrapped augmentation's ``p`` or ``p_batch``
           (`#4809 <https://github.com/kornia/kornia/issues/4809>`_).
         - a symmetric magnitude applies the magnitude mapping first and then a random sign per row, so a mapping
           that quantizes to zero stays zero (``Posterize`` maps ``0.5`` to ``0`` bits with ``magnitude_range=(0, 8)``).
@@ -164,7 +164,7 @@ class OperationBase(nn.Module):
         return params
 
     def forward(self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None) -> torch.Tensor:
-        """Apply the operation with probabilistic gating.
+        """Apply the operation with soft probabilistic blending.
 
         Args:
             input: Input tensor.
@@ -173,8 +173,7 @@ class OperationBase(nn.Module):
 
         Returns:
             Tensor blended with the wrapped augmentation's output according to
-            ``batch_prob``. The wrapped augmentation's own gate runs before this
-            blend, as described in the class's Convention block.
+            ``batch_prob``.
         """
         if params is None:
             params = self.forward_parameters(input.shape)
@@ -183,7 +182,10 @@ class OperationBase(nn.Module):
             device=input.device, dtype=input.dtype
         )
 
-        return batch_prob * self.op(input, params=params) + (1 - batch_prob) * input
+        wrapped_params = params.copy()
+        wrapped_params["batch_prob"] = torch.ones_like(params["batch_prob"])
+
+        return batch_prob * self.op(input, params=wrapped_params) + (1 - batch_prob) * input
 
     @property
     def transform_matrix(self) -> Optional[torch.Tensor]:

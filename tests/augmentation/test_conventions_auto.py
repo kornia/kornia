@@ -277,18 +277,18 @@ class TestAutoAugmentConventions(BaseTester):
         operation._probability.data.fill_(-1.0)
         self.assert_close(operation.probability, torch.full_like(operation.probability, 1e-7), rtol=0, atol=0)
 
-    @pytest.mark.parametrize(
-        "probability,expected",
-        [(1.0, [0.375, 0.5, 0.375, 0.25]), (0.5, [0.25, 0.25, 0.375, 0.25])],
-    )
-    def test_wart_operation_soft_blend_depends_on_the_wrapped_p_4809(self, probability, expected, device, dtype):
-        # #4809: the wrapped p=1 path transforms every row; at p<1 it first keeps gates <=0.5 unchanged, so the
-        # outer blend cannot mix those rows. One of the two cases flips when the blend stops depending on p.
+    @pytest.mark.parametrize("probability", [1.0, 0.99])
+    def test_convention_operation_soft_blend_ignores_the_wrapped_p_4809(self, probability, device, dtype):
+        # #4809: the soft blend must not depend on the wrapped augmentation's p. The wrapped operation receives an
+        # all-true gate, while OperationBase applies the supplied fractional batch_prob.
         invert = ops.Invert(initial_probability=probability)
         image = torch.tensor([0.25, 0.25, 0.75, 0.75], device=device, dtype=dtype).view(4, 1, 1, 1)
         params = invert.op.forward_parameters(image.shape)
         params["batch_prob"] = torch.tensor([0.25, 0.5, 0.75, 1.0])
-        self.assert_close(invert(image, params=params).flatten(), image.new_tensor(expected))
+        self.assert_close(
+            invert(image, params=params).flatten(),
+            image.new_tensor([0.375, 0.5, 0.375, 0.25]),
+        )
 
     @pytest.mark.device_agnostic
     def test_convention_policy_sequential_samples_through_the_operation_wrapper_4441(self):
