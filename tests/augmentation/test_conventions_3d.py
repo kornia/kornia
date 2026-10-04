@@ -29,6 +29,7 @@ from testing.base import (
     BaseTester,
     supports_bilinear_3d_grid_sample,
     supports_nearest_3d_grid_sample,
+    supports_replicate_padding_3d,
     supports_unit_size_3d_affine_grid,
 )
 
@@ -472,6 +473,50 @@ class Test3DAugmentationConventions(BaseTester):
         assert rounded_up._params["ksize_factor"].tolist() == [5] * 6
         with pytest.raises(ValueError, match="smaller than or equal to"):
             K.RandomMotionBlur3D((7, 3), 35.0, 0.5)
+
+    # The three rows of #4999: "reflect" and "circular" refuse a volume they cannot pad with a ValueError naming the
+    # class and the axis, as RandomMotionBlur does for an image (#4784), and "constant" runs on it.
+    @pytest.mark.parametrize(
+        ("shape", "border", "kernel_size", "too_short"),
+        [
+            ((1, 1, 1, 8, 8), "reflect", 3, "depth"),
+            ((1, 1, 1, 1, 1), "circular", 5, "depth"),
+            ((1, 1, 1, 8, 8), "constant", 3, None),
+        ],
+    )
+    def test_convention_motion_blur3d_names_the_size_it_needs_4999(
+        self, device, dtype, shape, border, kernel_size, too_short
+    ):
+        volume = torch.rand(*shape, device=device, dtype=dtype)
+        message = f"RandomMotionBlur3D cannot filter a volume this small.*along {too_short}"
+        # A ranged kernel_size is checked against the size drawn for the call.
+        for size in (kernel_size, (kernel_size, kernel_size)):
+            augmentation = K.RandomMotionBlur3D(size, 35.0, 0.5, border_type=border, p=1.0)
+            if too_short is None:
+                assert augmentation(volume).shape == volume.shape
+            else:
+                with pytest.raises(ValueError, match=message):
+                    augmentation(volume)
+        # "replicate" invents its padding as "constant" does, so it runs on every row too.
+        if supports_replicate_padding_3d(device, dtype):
+            replicate = K.RandomMotionBlur3D(kernel_size, 35.0, 0.5, border_type="replicate", p=1.0)
+            assert replicate(volume).shape == volume.shape
+
+    # Each spatial axis needs ``k // 2 + 1`` voxels under "reflect" and ``k // 2`` under "circular": a volume at
+    # exactly that size runs, and one voxel fewer along depth, height or width raises, naming that axis.
+    @pytest.mark.parametrize("axis", ["depth", "height", "width"])
+    @pytest.mark.parametrize(("border", "bound"), [("reflect", 3), ("circular", 2)])
+    def test_convention_motion_blur3d_runs_at_the_size_bound_4999(self, device, dtype, border, bound, axis):
+        def volume(side: int) -> torch.Tensor:
+            shape = [1, 1, 6, 6, 6]
+            shape[2 + ("depth", "height", "width").index(axis)] = side
+            return torch.rand(*shape, device=device, dtype=dtype)
+
+        augmentation = K.RandomMotionBlur3D(5, 35.0, 0.5, border_type=border, p=1.0)
+        at_bound = volume(bound)
+        assert augmentation(at_bound).shape == at_bound.shape
+        with pytest.raises(ValueError, match=rf"needs at least {bound} voxel\(s\) along {axis}"):
+            augmentation(volume(bound - 1))
 
     @pytest.mark.device_agnostic
     def test_convention_only_transplantation3d_exposes_p_batch(self):
