@@ -20,7 +20,6 @@ from collections.abc import Sequence
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
-from torch.distributions import Distribution
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -29,13 +28,6 @@ from kornia.enhance import adjust_brightness, adjust_contrast, adjust_hue, adjus
 
 def _contiguous_output(output: torch.Tensor) -> torch.Tensor:
     return output.contiguous()
-
-
-def _identity(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
-    # torch.cond rejects an output that aliases an input, so a neutral factor returns a copy. Every
-    # branch returns a contiguous tensor: their forward and backward metadata must agree under Inductor,
-    # which rejects preserve_format branches for channels-last and transposed inputs.
-    return input.contiguous().clone()
 
 
 def _adjust_brightness(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
@@ -66,11 +58,11 @@ def _apply_order_cond(
     input: torch.Tensor,
     factors: Tuple[torch.Tensor, ...],
 ) -> torch.Tensor:
-    # torch.cond runs only the selected branch, so a neutral step is skipped without a data-dependent Python
-    # branch and the loop stays fullgraph-compilable. It traces both branches, so it needs an RGB input.
+    # Select without a data-dependent Python branch. RGB is guaranteed on this path, so both sides remain valid.
     for idx in order:
         factor = factors[idx]
-        input = torch.cond((factor != neutral[idx]).any(), branches[idx], _identity, (input, factor))
+        output = branches[idx](input, factor)
+        input = torch.where((factor != neutral[idx]).any(), output, input)
     return input
 
 
@@ -91,14 +83,7 @@ def _dispatch_color_steps(
     """
     factors = tuple(params[key] for key in _FACTOR_KEYS)
     if fixed_order is not None and cond_fn is not None and input.shape[-3] == 3:
-        # An eager torch.cond enters Dynamo, whose one-time setup calls
-        # ``Distribution.set_default_validate_args(False)`` process-wide; restore the caller's setting.
-        validate_args = Distribution._validate_args
-        try:
-            return cond_fn(fixed_order, input, factors)
-        finally:
-            if Distribution._validate_args != validate_args:
-                Distribution.set_default_validate_args(validate_args)
+        return cond_fn(fixed_order, input, factors)
 
     order = fixed_order if fixed_order is not None else params["order"].tolist()
     output = input
@@ -231,8 +216,7 @@ class ColorJiggle(IntensityAugmentationBase2D):
             if len(order) != len(set(order)):
                 raise ValueError(f"`order` must not repeat an index; each adjustment applies at most once. Got {order}")
         self._fixed_order: Optional[Tuple[int, ...]] = order
-        # torch.cond raises where Dynamo is unavailable (torch 2.5.1 on Python 3.13), so a fixed order keeps
-        # the Python dispatch there. Checked here because Dynamo cannot trace the check inside forward.
+        # Keep a fallback where Dynamo is unavailable (torch 2.5.1 on Python 3.13).
         self._cond_fn = _apply_cond if order is not None and torch._dynamo.is_dynamo_supported() else None
 
     def apply_transform(
@@ -242,8 +226,6 @@ class ColorJiggle(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        # A fixed order runs the same torch.cond dispatcher in eager and compiled mode. Every torch.cond
-        # branch is traced, including branches that are not selected at runtime, so the dispatcher is
-        # restricted to RGB inputs: tracing the hue/saturation branches would otherwise reject the neutral
-        # one- and four-channel configurations accepted by the Python dispatch.
+        # A fixed RGB order uses the branch-free dispatcher, which is fullgraph-compatible. The dispatcher is
+        # restricted to RGB inputs because the hue/saturation operations require three channels even when skipped.
         return _dispatch_color_steps(input, params, self._fixed_order, self._cond_fn, _NEUTRAL, _STEPS)

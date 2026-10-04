@@ -1341,7 +1341,7 @@ class TestColorJiggle(BaseTester):
         expected = op(image, params=params)
         params["order"] = torch.tensor([3, 2, 1, 0], device=device, dtype=torch.long)
         self.assert_close(op(image, params=params), expected)
-        # The fixed order dispatches through torch.cond, the sampled order through Python branches.
+        # Both fixed and sampled orders apply the same per-step transforms.
         params["order"] = torch.tensor([0, 1, 2, 3], device=device, dtype=torch.long)
         sampled = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0)
         assert torch.equal(sampled(image, params=params), expected)
@@ -1352,9 +1352,7 @@ class TestColorJiggle(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_fixed_order_keeps_distribution_validation(self):
-        # The eager torch.cond dispatch enters Dynamo, whose one-time setup turns off
-        # torch.distributions argument validation process-wide. A fresh interpreter is needed because that
-        # setup runs once per process, so an earlier Dynamo entry in this one would hide the leak.
+        # A fresh interpreter makes this guard independent of any earlier Dynamo entry in the test process.
         script = (
             "import torch\n"
             "from torch.distributions import Distribution\n"
@@ -1383,6 +1381,18 @@ class TestColorJiggle(BaseTester):
         monkeypatch.setattr(torch._dynamo, "is_dynamo_supported", lambda: False)
         fallback = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
         assert torch.equal(fallback(image, params=params), expected)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("augmentation", [ColorJiggle, ColorJitter])
+    def test_fixed_order_eager_does_not_call_cond(self, augmentation, monkeypatch):
+        def fail(*args, **kwargs):
+            raise AssertionError("eager fixed-order dispatch must not call torch.cond")
+
+        monkeypatch.setattr(torch, "cond", fail)
+        image = torch.rand(2, 3, 8, 8, requires_grad=True)
+        output = augmentation(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))(image)
+        output.sum().backward()
+        assert image.grad is not None
 
     def test_dynamo_fixed_order(self, device, dtype):
         image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype, requires_grad=True)
@@ -1839,9 +1849,7 @@ class TestColorJitter(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_fixed_order_keeps_distribution_validation(self):
-        # The eager torch.cond dispatch enters Dynamo, whose one-time setup turns off
-        # torch.distributions argument validation process-wide. A fresh interpreter is needed because that
-        # setup runs once per process, so an earlier Dynamo entry in this one would hide the leak.
+        # A fresh interpreter makes this guard independent of any earlier Dynamo entry in the test process.
         script = (
             "import torch\n"
             "from torch.distributions import Distribution\n"
@@ -1897,8 +1905,8 @@ class TestColorJitter(BaseTester):
         ],
     )
     def test_fixed_order_guards_match_sampled_order(self, device, dtype, step, factors):
-        # A fixed order on an RGB input dispatches through torch.cond, a sampled order through Python guards
-        # (#4813). Both must skip the same factors, and run a step on the whole batch when any factor in it is
+        # A fixed order on an RGB input uses tensor selection, a sampled order uses Python guards. Both must skip
+        # the same factors, and run a step on the whole batch when any factor in it is
         # not neutral: a skipped step returns the out-of-range pixels as they are, a step that runs clamps them,
         # and a hue step that runs zeroes the pixel whose largest channel is 0.
         pixels = torch.tensor([[-0.5, -0.5], [0.25, -0.2], [1.75, 0.0]], device=device, dtype=dtype)
@@ -2341,8 +2349,8 @@ class TestColorJitter(BaseTester):
         ids=["brightness", "contrast", "saturation", "hue"],
     )
     def test_compile_uses_helpers(self, device, dtype, jitter_kwargs, order, fixed):
-        # .compile() must replace what apply_transform executes (#4038): the torch.cond dispatcher for a fixed
-        # order on an RGB input, the four step helpers for a sampled order.
+        # .compile() must replace what apply_transform executes (#4038): the fixed-order dispatcher for RGB,
+        # or the four step helpers for a sampled order.
         compiled_graphs = []
 
         def backend(graph_module, _example_inputs):

@@ -1340,7 +1340,7 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
 
     # Issue #4807: unpickling passes each uncompiled callable to ``torch.compile`` again, with the arguments of
     # the last ``compile()`` call; a second ``compile()`` keeps the first, uncompiled callables for pickling, and a
-    # fixed ColorJitter order also compiles (and so must restore) the torch.cond dispatcher.
+    # fixed ColorJitter order also compiles (and so must restore) the fixed-order dispatcher.
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     @pytest.mark.parametrize(
         "name", ["RandomGaussianIllumination", "RandomGaussianBlur", "ColorJitter", "ColorJitterFixedOrder"]
