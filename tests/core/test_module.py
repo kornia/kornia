@@ -766,3 +766,41 @@ class TestNamedInputConversion(BaseTester):
         expected = torch.from_numpy(array).permute(2, 0, 1).float().div(255).flip(-1)
         output = module(array, input_names_to_handle=["args"])
         self.assert_close(output[0], expected)
+
+    @pytest.mark.parametrize("keyword", [False, True])
+    def test_hooks_see_the_callers_argument_split_5206(self, keyword):
+        class Select(ImageModule):
+            def forward(self, image, other=None, **options):
+                return image
+
+        array = np.full((4, 6, 3), 255, dtype=np.uint8)
+        module = Select()
+        seen = []
+        module.register_forward_pre_hook(
+            lambda _, args, kwargs: seen.append((len(args), sorted(kwargs), type(kwargs.get("image")))),
+            with_kwargs=True,
+        )
+        if keyword:
+            module(image=array, other=1, extra=array, input_names_to_handle=["image", "extra"])
+            assert seen == [(0, ["extra", "image", "other"], torch.Tensor)]
+        else:
+            module(array, other=1, extra=array, input_names_to_handle=["image", "extra"])
+            assert seen == [(1, ["extra", "other"], type(None))]
+
+    def test_arguments_that_do_not_bind_raise_the_calls_own_error_5206(self):
+        class Select(ImageModule):
+            def forward(self, image):
+                return image
+
+        array = np.full((4, 6, 3), 255, dtype=np.uint8)
+        with pytest.raises(TypeError, match="forward"):
+            Select()(array, array, input_names_to_handle=["image"])
+
+    def test_keyword_named_like_a_positional_only_parameter_5206(self):
+        @ImageModuleMixIn().convert_input_output(["image"])
+        def select(image, /, **options):
+            return image, options["image"]
+
+        image, option = select(np.full((4, 6, 3), 255, dtype=np.uint8), image=np.zeros((4, 6, 3), dtype=np.uint8))
+        self.assert_close(image, torch.ones(3, 4, 6))
+        self.assert_close(option, torch.zeros(3, 4, 6))

@@ -151,7 +151,11 @@ class ImageModuleMixIn:
             }
         else:
             signature = inspect.signature(func if signature_source is None else signature_source)
-            bound = signature.bind(*args, **kwargs)
+            try:
+                bound = signature.bind(*args, **kwargs)
+            except TypeError:
+                # the arguments do not fit the signature: let the call raise its own error, which names the function
+                return func(*args, **kwargs)
             for name, value in bound.arguments.items():
                 kind = signature.parameters[name].kind
                 if kind == inspect.Parameter.VAR_KEYWORD:
@@ -166,7 +170,19 @@ class ImageModuleMixIn:
                         bound.arguments[name] = tuple(self.to_tensor(item) for item in value)
                     else:
                         bound.arguments[name] = self.to_tensor(value)
-            args, kwargs = bound.args, bound.kwargs
+            # pass the converted values the way the caller did, positional or keyword, so hooks registered with
+            # ``with_kwargs=True`` see the same split as without ``input_names_to_handle``
+            var_keyword = next(
+                (p.name for p in signature.parameters.values() if p.kind == inspect.Parameter.VAR_KEYWORD), None
+            )
+            named = (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+            converted_kwargs: dict[str, Any] = {}
+            for key in kwargs:
+                if key in signature.parameters and signature.parameters[key].kind in named:
+                    converted_kwargs[key] = bound.arguments[key]
+                else:
+                    converted_kwargs[key] = bound.arguments[var_keyword][key]
+            args, kwargs = bound.args[: len(args)], converted_kwargs
 
         return func(*args, **kwargs)
 
