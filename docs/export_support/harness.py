@@ -406,7 +406,8 @@ def prepare_resume(cases: list[dict[str, Any]], out_json: str) -> dict[str, dict
     done: dict[str, dict[str, Any]] = {}
     if os.path.exists(out_json):
         try:
-            done = {r["name"]: r for r in json.load(open(out_json))}
+            with open(out_json) as fh:
+                done = {r["name"]: r for r in json.load(fh)}
         except Exception:
             done = {}
     inv = load_inventory(out_json)
@@ -416,7 +417,8 @@ def prepare_resume(cases: list[dict[str, Any]], out_json: str) -> dict[str, dict
         print(f"{out_json}: records are from {was}, starting over", flush=True)
         done = {}
     os.makedirs(os.path.dirname(os.path.abspath(out_json)), exist_ok=True)
-    json.dump({"names": [c["name"] for c in cases], **stamp}, open(inventory_path(out_json), "w"), indent=1)
+    with open(inventory_path(out_json), "w") as fh:
+        json.dump({"names": [c["name"] for c in cases], **stamp}, fh, indent=1)
     return done
 
 
@@ -434,15 +436,17 @@ def run_cases(cases: list[dict[str, Any]], out_json: str, only: list[str] | None
             results.append(done[c["name"]])
             continue
         # mark as crashed first so a hard crash (segfault) is visible after restart
-        json.dump(
-            results + [{"name": c["name"], "group": c["group"], "status": "crashed", "note": c["note"]}],
-            open(out_json, "w"),
-            indent=1,
-            default=str,
-        )
+        with open(out_json, "w") as fh:
+            json.dump(
+                results + [{"name": c["name"], "group": c["group"], "status": "crashed", "note": c["note"]}],
+                fh,
+                indent=1,
+                default=str,
+            )
         rec = run_case(c)
         results.append(rec)
-        json.dump(results, open(out_json, "w"), indent=1, default=str)
+        with open(out_json, "w") as fh:
+            json.dump(results, fh, indent=1, default=str)
         extra = rec.get("error", "")
         if rec["status"] == "ok" and rec.get("dropped_inputs"):
             extra = f"inputs folded away: {rec['dropped_inputs']}"
@@ -456,12 +460,13 @@ def run_cases(cases: list[dict[str, Any]], out_json: str, only: list[str] | None
         for r in results:
             merged[r["name"]] = r
         order = [c["name"] for c in cases]
-        json.dump(
-            [merged[n] for n in order if n in merged] + [r for n, r in merged.items() if n not in order],
-            open(out_json, "w"),
-            indent=1,
-            default=str,
-        )
+        with open(out_json, "w") as fh:
+            json.dump(
+                [merged[n] for n in order if n in merged] + [r for n, r in merged.items() if n not in order],
+                fh,
+                indent=1,
+                default=str,
+            )
     from collections import Counter
 
     print("SUMMARY", dict(Counter(r["status"] for r in results)), flush=True)

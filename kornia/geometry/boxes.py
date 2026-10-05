@@ -288,7 +288,7 @@ class Boxes:
         if not (3 <= boxes.ndim <= 4 and boxes.shape[-2:] == (4, 2)):
             raise ValueError(f"Boxes shape must be (N, 4, 2) or (B, N, 4, 2). Got {boxes.shape}.")
 
-        self._is_batched = False if boxes.ndim == 3 else True
+        self._is_batched = boxes.ndim != 3
 
         self._data = boxes
         self._mode = mode
@@ -1218,7 +1218,7 @@ class Boxes3D:
         if not (3 <= boxes.ndim <= 4 and boxes.shape[-2:] == (8, 3)):
             raise ValueError(f"3D bbox shape must be (N, 8, 3) or (B, N, 8, 3). Got {boxes.shape}.")
 
-        self._is_batched = False if boxes.ndim == 3 else True
+        self._is_batched = boxes.ndim != 3
 
         self._data = boxes
         self._mode = mode

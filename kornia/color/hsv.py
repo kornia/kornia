@@ -41,7 +41,7 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
 
     Returns:
         HSV version of the image with shape of :math:`(*, 3, H, W)`.
-        The H channel values are in the range 0..2pi. S and V are in the range 0..1.
+        The H channel values are in the range [0, 2pi). S and V are in the range 0..1.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/color_conversions.html>`__.
@@ -81,6 +81,9 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     h = h / deltac
     h = (h / 6.0) % 1.0
     h = 2.0 * math.pi * h  # we return 0/2pi output
+    # A tiny negative hue rounds up to the period itself, in the modulo (float32) or only in the scaling
+    # (float16: 2π * (1 - 2**-11) rounds to 6.28125); fold it to 0, as adjust_hue_raw does.
+    h = h.masked_fill(h >= 2.0 * math.pi, 0.0)
 
     return torch.stack((h, s, v), dim=-3)
 

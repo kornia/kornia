@@ -17,7 +17,7 @@
 
 import math
 import warnings
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import torch
 
@@ -297,8 +297,10 @@ def line_segment_transfer_error_one_way(
     # fix its error reads as zero, and the callers that need infinity guard on the segment length themselves.
     scale = ln2[..., :, :2].norm(dim=-1, keepdim=True)
     ln2 = ln2 / torch.where(scale > 0, scale, torch.ones_like(scale))
-    ps1_in2 = convert_points_to_homogeneous(transform_points(H, ps1))
-    pe1_in2 = convert_points_to_homogeneous(transform_points(H, pe1))
+    # Pass (B, N, 2) points so transform_points applies each H once; (B, N, 1, 2) points are flattened to
+    # (B*N, 1, 2) and every H is repeated N times.
+    ps1_in2 = convert_points_to_homogeneous(transform_points(H, ps1.squeeze(-2))).unsqueeze(-2)
+    pe1_in2 = convert_points_to_homogeneous(transform_points(H, pe1.squeeze(-2))).unsqueeze(-2)
     er_st1 = (ln2 @ ps1_in2.transpose(-2, -1)).view(B, N).abs()
     er_end1 = (ln2 @ pe1_in2.transpose(-2, -1)).view(B, N).abs()
     error = 0.5 * (er_st1 + er_end1)
@@ -421,7 +423,7 @@ def _refine_homography_lm(
     x2: torch.Tensor,
     mask: Optional[torch.Tensor],
     loss: str,
-    scale2: float,
+    scale2: Union[float, torch.Tensor],
     iters: int,
 ) -> torch.Tensor:
     """Levenberg-Marquardt on the one-way transfer error, batched over homographies ``(K, 3, 3)``.
@@ -439,7 +441,6 @@ def _refine_homography_lm(
     eye8 = torch.eye(8, dtype=dtype, device=device)
     eye9 = torch.eye(9, dtype=dtype, device=device)
     last = eye9[8]
-    target = torch.cat([x2[:, 0], x2[:, 1]])
     h = H.flatten(1)
     h = h * h.square().sum(1, keepdim=True).rsqrt()
     damping = torch.full((K, 1, 1), 1e-3, dtype=dtype, device=device)
@@ -451,9 +452,15 @@ def _refine_homography_lm(
         tangent = (eye9 - 2 * v[:, :, None] * v[:, None, :])[:, :, :8]  # (K, 9, 8)
         stacked = torch.cat([h[:, :, None], tangent], 2).mT.reshape(K, 27, 3)  # rows of H, then of each direction
         P = (stacked @ x1.T).reshape(K, 9, 3, -1)  # (K, 9, 3, N): P = H x1, then its directional derivatives
-        iz = 1.0 / P[:, 0, 2]
+        if mask is None:
+            iz = 1.0 / P[:, 0, 2]
+        else:
+            # A zero mask excludes the correspondence. Guarding its projective divisor keeps the residual and
+            # Jacobian of a finite row finite, so the zero weight below removes it exactly; masking the whole
+            # derivative stack as well costs the compiled CUDA program about 10% of a homography call.
+            iz = 1.0 / torch.where(mask != 0, P[:, 0, 2], torch.ones_like(P[:, 0, 2]))
         uv = P[:, 0, :2] * iz[:, None]  # (K, 2, N)
-        r = uv.flatten(1) - target  # (K, 2N): u residuals, then v residuals
+        r = (uv - x2.T).flatten(1)  # (K, 2N): u residuals, then v residuals
         J = ((P[:, 1:, :2] - uv[:, None] * P[:, 1:, 2:3]) * iz[:, None, None]).flatten(2)  # (K, 8, 2N)
         r2 = r[:, : x1.shape[0]].square() + r[:, x1.shape[0] :].square()
         w, rho = _robust_loss(r2, loss, scale2)
@@ -469,9 +476,15 @@ def _refine_homography_lm(
         h_new = h_new * h_new.square().sum(1, keepdim=True).rsqrt()
         if cpu and iteration + 1 == iters:
             projection = h_new.reshape(K, 3, 3) @ x1.T
-            residual = projection[:, :2] / projection[:, 2:3] - x2.T
-            r2 = residual.square().sum(1)
-            rho = torch.log1p(r2 / scale2) if loss == "cauchy" else torch.fmin(r2, torch.full_like(r2[:1, :1], scale2))
+            divisor = projection[:, 2]
+            if mask is not None:
+                divisor = torch.where(mask != 0, divisor, torch.ones_like(divisor))
+            r2 = (projection[:, :2] / divisor[:, None] - x2.T).square().sum(1)
+            rho = (
+                torch.log1p(r2 / scale2)
+                if loss == "cauchy"
+                else torch.fmin(r2, torch.as_tensor(scale2, dtype=r2.dtype, device=r2.device))
+            )
             cost_new = (rho if mask is None else rho * mask).sum(1)
             accepted = cost_new < cost
             return torch.where(accepted[:, None], h_new, h).reshape(K, 3, 3)

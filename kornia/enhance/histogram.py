@@ -241,10 +241,6 @@ def image_histogram2d(
         centers lie at min + (i + 0.5) * bandwidth; values outside the supplied range contribute
         according to the selected kernel rather than being clipped into an endpoint bin.
 
-    .. warning::
-        Rank-2 input with a single bin or explicit center returns 0-d histogram and PDF tensors
-        instead of length-one vectors (`#5363 <https://github.com/kornia/kornia/issues/5363>`_).
-
     The calculation uses triangular kernel density estimation.
 
     Args:
@@ -271,7 +267,7 @@ def image_histogram2d(
           :math:`(B, C, bins)`.
         Computed probability densities of shape :math:`(bins)`, :math:`(C, bins)`,
           :math:`(B, C, bins)`, if return_pdf is ``True``. torch.Tensor of torch.zeros with shape
-          of the histogram otherwise. For rank-2 input with one bin, both returned tensors are 0-d.
+          of the histogram otherwise.
 
     """
     if image is not None and not isinstance(image, torch.Tensor):
@@ -335,15 +331,15 @@ def image_histogram2d(
         normalization = torch.sum(hist, dim=-1, keepdim=True) + eps
         pdf = hist / normalization
         if image.dim() == 2:
-            hist = hist.squeeze()
-            pdf = pdf.squeeze()
+            hist = hist[0, 0]
+            pdf = pdf[0, 0]
         elif image.dim() == 3:
             hist = hist.squeeze(0)
             pdf = pdf.squeeze(0)
         return hist, pdf
 
     if image.dim() == 2:
-        hist = hist.squeeze()
+        hist = hist[0, 0]
     elif image.dim() == 3:
         hist = hist.squeeze(0)
 

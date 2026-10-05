@@ -219,14 +219,14 @@ add(
     g,
     KE.AddWeighted(torch.full((1, 3, 32, 40), 0.6), torch.full((1, 3, 32, 40), 0.4), torch.full((1, 3, 32, 40), 0.1)),
     [IMG, IMG2],
-    note="tensor alpha/beta/gamma must equal src shape (kornia check); constructed -> constants",
+    note="tensor alpha/beta/gamma must broadcast to src shape (kornia check); constructed -> constants",
 )
 add(
     "enhance.add_weighted[live_weights]",
     g,
     KE.add_weighted,
     [IMG, torch.full((1, 3, 32, 40), 0.6), IMG2, torch.full((1, 3, 32, 40), 0.4), torch.full((1, 3, 32, 40), 0.1)],
-    note="alpha/beta/gamma live tensors (must be full src shape)",
+    note="alpha/beta/gamma live tensors (full src shape here; broadcastable shapes also work)",
 )
 add("enhance.AdjustBrightness", g, KE.AdjustBrightness(0.2), [IMG])
 add("enhance.AdjustBrightnessAccumulative", g, KE.AdjustBrightnessAccumulative(0.2), [IMG])
@@ -509,10 +509,6 @@ add(
     lambda x, s: KF.gaussian_blur2d(x, (5, 5), s, separable=False),
     [IMG, torch.tensor([[1.5, 2.0]])],
 )
-add("filters.gaussian_blur2d_t", g, None, [], skip="deprecated alias of gaussian_blur2d")
-add("filters.get_gaussian_kernel1d_t", g, None, [], skip="deprecated alias of get_gaussian_kernel1d")
-add("filters.get_gaussian_kernel2d_t", g, None, [], skip="deprecated alias of get_gaussian_kernel2d")
-add("filters.get_gaussian_kernel3d_t", g, None, [], skip="deprecated alias of get_gaussian_kernel3d")
 add(
     "filters.gaussian",
     g,

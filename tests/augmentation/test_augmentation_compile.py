@@ -60,6 +60,18 @@ class TestAugmentationCompile(BaseTester):
         aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0))
         self.assert_close(torch_optimizer(aug, fullgraph=True)(input), input.flip(-1))
 
+    def test_dynamo_sequential_mask_does_not_import_pil(self, device, dtype, torch_optimizer, monkeypatch):
+        # Converting a PIL mask must not load PIL through the lazy loader for a tensor mask, for the same reason.
+        from kornia.core.external import PILImage as lazy_pil
+
+        monkeypatch.setattr(lazy_pil, "module", None)
+        input = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        mask = torch.rand(2, 1, 8, 8, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+        out_input, out_mask = torch_optimizer(aug, fullgraph=True)(input, mask)
+        self.assert_close(out_input, input.flip(-1))
+        self.assert_close(out_mask, mask.flip(-1))
+
     def test_dynamo_sequential_bbox(self, device, dtype, torch_optimizer):
         # The 'bbox' key imports through Boxes.from_tensor('vertices_plus'), whose finiteness check is
         # asynchronous, so the box path compiles with fullgraph=True (#4177).
@@ -292,6 +304,17 @@ class TestAugmentationCompile(BaseTester):
 
         input = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         self.assert_close(InheritedFlip()(input), input + 1)
+
+    @pytest.mark.parametrize("nested_first", [False, True])
+    def test_compile_nested_container_matrix(self, device, dtype, torch_optimizer, nested_first):
+        # A nested container records its matrix inside the compiled outer forward (#4476).
+        nested = K.AugmentationSequential(K.RandomVerticalFlip(p=1.0))
+        horizontal = K.RandomHorizontalFlip(p=1.0)
+        aug = K.AugmentationSequential(*([nested, horizontal] if nested_first else [horizontal, nested]))
+        input = torch.rand(1, 1, 4, 6, device=device, dtype=dtype)
+        self.assert_close(torch_optimizer(aug, fullgraph=True)(input), input.flip((-2, -1)))
+        expected = torch.tensor([[[-1.0, 0.0, 5.0], [0.0, -1.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        self.assert_close(aug.transform_matrix, expected)
 
 
 class TestRandomCropCompile(BaseTester):
