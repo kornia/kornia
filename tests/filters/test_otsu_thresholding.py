@@ -603,6 +603,36 @@ class TestOtsuThresholdDifferentiable(BaseTester):
         assert not mask.any()
         self.assert_close(grad, torch.full_like(x, 1 / x.numel()))
 
+    def test_low_contrast_offset_plane_keeps_its_gradient_and_split_5426(self, device, dtype):
+        # Levels one ulp apart around 1.5: scaling by the largest magnitude before subtracting the minimum rounds their
+        # differences, which changed the gradient and promoted level 2 at 256 bins. Translating the plane must not.
+        levels = torch.tensor([[0, 1, 2, 6, 8, 10]], device=device, dtype=dtype)
+        x = (1.5 + levels * torch.finfo(dtype).eps).requires_grad_(True)
+        (grad,) = torch.autograd.grad(otsu_threshold(x, 8, slow_and_differentiable=True)[1].sum(), x)
+        reference = x.detach().cpu().double().requires_grad_(True)
+        (expected,) = torch.autograd.grad(_documented_soft_threshold(reference, 8), reference)
+        self.assert_close(grad, expected.to(device=device, dtype=dtype), rtol=1e-3, atol=1e-3)
+        mask, _ = otsu_threshold(x.detach(), 256, slow_and_differentiable=True, return_mask=True)
+        expected_mask, _ = otsu_threshold(levels, 256, slow_and_differentiable=True, return_mask=True)
+        assert mask.tolist() == expected_mask.tolist() == [[False, False, False, True, True, True]]
+
+    def test_narrow_two_level_plane_keeps_background_when_edge_rounds_down_5426(self, device, dtype):
+        # The first upper edge lies less than half an ulp above the minimum and rounds down onto it. That threshold
+        # already separates the levels, so it must not be lowered below the background pixel.
+        x = 1.5 + torch.tensor([[0, 10, 10]], device=device, dtype=dtype) * torch.finfo(dtype).eps
+        mask, threshold = otsu_threshold(x, 256, slow_and_differentiable=True, return_mask=True)
+        assert mask.tolist() == [[False, True, True]]
+        self.assert_close(threshold, x[:, 0], rtol=0, atol=0)
+
+    def test_subnormal_range_keeps_background_when_edge_rounds_down_5426(self, device, dtype):
+        if device.type == "mps" and dtype != torch.float16:
+            pytest.skip("MPS flushes float32 and bfloat16 subnormals to zero")
+        # The selected edge is 86 / 256 * 3u = 1.0078125u, which rounds down onto the background pixel u.
+        u = torch.nextafter(torch.zeros((), dtype=dtype), torch.ones((), dtype=dtype)).item()
+        x = torch.tensor([[0, 1, 3]], device=device, dtype=dtype) * u
+        mask, _ = otsu_threshold(x, 256, slow_and_differentiable=True, return_mask=True)
+        assert mask.tolist() == [[False, False, True]]
+
     def test_threshold_gradient_sums_to_one_per_plane_5174(self, device, dtype):
         # Moving every pixel of a plane by c moves its threshold by c and no other plane's, so the gradient of each
         # plane's threshold sums to 1 over that plane and is 0 on the others. A constant plane's threshold is its value,
@@ -753,7 +783,11 @@ class TestOtsuThresholdDifferentiable(BaseTester):
             x = x.clone().requires_grad_(True)
             (expected_grad,) = torch.autograd.grad(otsu_threshold(x, 64, True)[1].sum(), x)
             (actual_grad,) = torch.autograd.grad(op(x)[1].sum(), x)
-            self.assert_close(actual_grad, expected_grad)
+            # The plane's minimum pixel collects the backward of the minimum, which cancels terms of order 1 down to
+            # about 1e-3. In float32, eager and compiled each land within about 6e-6 of the float64 surrogate there,
+            # rounding in opposite directions on MPS, so allow both errors.
+            tolerance = {"rtol": 1e-4, "atol": 2e-5} if dtype == torch.float32 else {}
+            self.assert_close(actual_grad, expected_grad, **tolerance)
 
             # Compiler rewrites must preserve the scale cancellation at both ends of the finite dtype range.
             limits = torch.finfo(dtype)

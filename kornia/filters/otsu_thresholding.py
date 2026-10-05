@@ -256,11 +256,17 @@ class OtsuThreshold(torch.nn.Module):
             xs = x_flattened.to(torch.float64 if x.dtype == torch.float64 else torch.float32)
             min_val = xs.amin(dim=1).detach()
             max_val = xs.amax(dim=1).detach()
-            # Evaluate the surrogate in bounded units, with an identity gradient to xs. For a detached positive
-            # scale s, the original-unit surrogate is s * f(xs / s), whose derivative is exactly f'(xs / s).
-            # Cancelling s here avoids both overflowing ranges and underflowing intermediate backward signals.
-            scale = xs.detach().abs().amax(dim=1, keepdim=True).clamp_min(torch.finfo(xs.dtype).tiny)
-            bounded = xs.detach() / scale + (xs - xs.detach())
+            # Evaluate the surrogate in bounded units, with an identity gradient to xs. For a detached offset o and
+            # positive scale s, the original-unit surrogate is o + s * f((xs - o) / s), whose derivative is exactly
+            # f'((xs - o) / s). Cancelling s here avoids both overflowing ranges and underflowing intermediate backward
+            # signals. Subtracting the minimum before scaling keeps the relative differences of a narrow range far
+            # from zero; a range that overflows is scaled by the largest magnitude instead.
+            span = (max_val - min_val)[:, None]
+            finite_span = span.isfinite()
+            offset = torch.where(finite_span, min_val[:, None], torch.zeros_like(span))
+            largest = xs.detach().abs().amax(dim=1, keepdim=True).clamp_min(torch.finfo(xs.dtype).tiny)
+            scale = torch.where(finite_span, torch.where(span > 0, span, torch.ones_like(span)), largest)
+            bounded = (xs.detach() - offset) / scale + (xs - xs.detach())
             bounded_min = bounded.amin(dim=1)
             bounded_span = bounded.amax(dim=1) - bounded_min
             # The minimum maps to 0, the maximum to nbins, bin k is [k, k + 1). A constant plane maps to 0.
@@ -273,8 +279,9 @@ class OtsuThreshold(torch.nn.Module):
             # the lowest of equivalent splits wins on every device.
             nonempty = histograms[:, :-1] > self._NONEMPTY_BIN_MASS / xs.shape[1]
             inter_class_var = torch.where(nonempty, inter_class_var, torch.full_like(inter_class_var, -1.0))
-            lower_edges = min_val.detach()
-            indices = None
+            lower_edges = min_val
+            # Each pixel's bin in the coordinates the estimate is built on; the guard below reads the split from it.
+            indices = coords.detach().to(torch.int64).clamp(0, nbins - 1)
         else:
             # Compute histogram and bin edges
             histograms, bin_edges, indices = self.__histogram(x_flattened, bins=nbins)
@@ -288,7 +295,7 @@ class OtsuThreshold(torch.nn.Module):
         # Find the maximum inter-class variance and corresponding threshold
         t_max = torch.argmax(inter_class_var, dim=1)  # Shape: (nchannel,)
         max_var = inter_class_var.gather(1, t_max[:, None]).squeeze(1)  # Shape: (nchannel,)
-        if indices is None:
+        if slow_and_differentiable:
             upper_edges = self._upper_edge(min_val, max_val, t_max + 1, nbins)
         else:
             upper_edges = bin_edges.gather(1, (t_max + 1)[:, None]).squeeze(1)
@@ -299,20 +306,13 @@ class OtsuThreshold(torch.nn.Module):
             upper_edges = upper_edges.ceil() - 1
         best_thresholds = torch.where(max_var > 0, upper_edges, lower_edges).to(x.dtype)
         if x.is_floating_point():
-            if indices is None:
-                # The kernel density estimate has no hard membership; lower only a collision with a pixel on or
-                # above the upper edge, which a hard histogram would count in the foreground.
-                boundary = best_thresholds
-            else:
-                # Use actual histogram membership to guard the strict comparison. Interpolated edges can round
-                # onto a pixel, including when a compiler changes fused multiply-add, or when casting to half.
-                # Keep the edge whenever it already separates the classes, otherwise fit it between their pixels.
-                foreground = indices > t_max[:, None]
-                boundary = torch.where(foreground, x_flattened, float("inf")).amin(dim=1).detach()
-                background_max = torch.where(foreground, -float("inf"), x_flattened).amax(dim=1).detach()
-                best_thresholds = torch.where(
-                    max_var > 0, torch.maximum(best_thresholds, background_max), best_thresholds
-                )
+            # Use actual histogram membership to guard the strict comparison. Interpolated edges can round onto a
+            # pixel, including when a compiler changes fused multiply-add, or when casting to half. Keep the edge
+            # whenever it already separates the classes, otherwise fit it between their pixels.
+            foreground = indices > t_max[:, None]
+            boundary = torch.where(foreground, x_flattened, float("inf")).amin(dim=1).detach()
+            background_max = torch.where(foreground, -float("inf"), x_flattened).amax(dim=1).detach()
+            best_thresholds = torch.where(max_var > 0, torch.maximum(best_thresholds, background_max), best_thresholds)
             if x.dtype in (torch.float16, torch.bfloat16):
                 # MPS on older supported torch versions has no half/bfloat16 nextafter kernel. Both formats have
                 # monotonically ordered magnitude bits; advance negative values and decrement positive values.
@@ -331,23 +331,12 @@ class OtsuThreshold(torch.nn.Module):
                 # MPS flushes these dtypes' subnormals in comparisons. Use the smallest normal negative value so
                 # the strict comparison can still include a foreground pixel whose value is zero.
                 previous = torch.where(boundary == 0, -torch.finfo(x.dtype).tiny, previous)
-            if indices is None:
-                on_threshold = (x_flattened == best_thresholds[:, None]).any(dim=1)
-                # logical_and, not `&`: MPS Inductor cannot propagate the dtype of a bitwise and with an any().
-                at_or_above_edge = (best_thresholds.to(upper_edges.dtype) >= upper_edges) & (max_var > 0)
-                lower_threshold = torch.logical_and(on_threshold, at_or_above_edge)
-                # Select in the edge dtype: older CPU Inductor versions cannot mix the bitcast half predecessor with
-                # their float upcast of the threshold in one conditional.
-                best_thresholds = torch.where(
-                    lower_threshold, previous.to(upper_edges.dtype), best_thresholds.to(upper_edges.dtype)
-                ).to(x.dtype)
-            else:
-                # Clamp against the predecessor itself: compilers may defer the half cast until after the
-                # comparison, so comparing with the foreground value can miss an edge that will round up to it.
-                bounded_thresholds = torch.minimum(
-                    best_thresholds.to(bin_edges.dtype), previous.to(bin_edges.dtype)
-                ).to(x.dtype)
-                best_thresholds = torch.where(max_var > 0, bounded_thresholds, best_thresholds)
+            # Clamp against the predecessor itself: compilers may defer the half cast until after the
+            # comparison, so comparing with the foreground value can miss an edge that will round up to it.
+            bounded_thresholds = torch.minimum(
+                best_thresholds.to(upper_edges.dtype), previous.to(upper_edges.dtype)
+            ).to(x.dtype)
+            best_thresholds = torch.where(max_var > 0, bounded_thresholds, best_thresholds)
 
         # Preserve a constant plane's exact input value, including integers outside floating-point precision.
         plane_min = x_flattened.amin(dim=1).detach()
@@ -377,9 +366,9 @@ def otsu_threshold(
 
     Each image/channel plane uses its own histogram range. The threshold is the upper edge of the selected histogram
     bin. For an integer input it is the largest integer below that value, so ``x > threshold`` keeps every pixel on
-    or above it. For floating input on the default path, rounding is corrected when necessary to keep the threshold
-    at or above the largest background pixel and below the smallest foreground pixel, so ``x > threshold`` matches
-    the histogram split. On MPS, a zero foreground boundary in float32 or bfloat16 uses the smallest normal negative
+    or above it. For floating input, rounding is corrected when necessary to keep the threshold at or above the
+    largest background pixel and below the smallest foreground pixel, so ``x > threshold`` matches the histogram
+    split. On MPS, a zero foreground boundary in float32 or bfloat16 uses the smallest normal negative
     value because comparisons flush subnormal values to zero. Empty bins do not introduce candidate splits. A
     constant plane uses its constant value as the threshold. Both paths support ``torch.export`` and full-graph
     ``torch.compile``.
@@ -416,9 +405,9 @@ def otsu_threshold(
         staying in the first or the last bin, so every pixel contributes its full mass. The threshold is the upper edge
         of the bin selected by the best split of that histogram, as on the default path, and is usually within one bin
         of the default threshold. A bin counts as non-empty only above 1 % of one pixel's mass, so of the splits that
-        give the same partition the lowest is taken on every device. A floating threshold that rounds onto a pixel
-        on or above the upper edge is lowered to the next representable value below it, so that pixel stays in the
-        foreground.
+        give the same partition the lowest is taken on every device. Each pixel's class is the side of the selected
+        edge its bin lies on, and a floating threshold is corrected to separate the two classes as on the default
+        path.
 
         The threshold uses a hard split, and its first-order gradient is a straight-through surrogate: the
         gradient of a soft-argmax over the between-class variance curve :math:`\sigma_B^2(k)` of a wider estimate,
@@ -426,8 +415,9 @@ def otsu_threshold(
         concentrating on pixels near a bin edge. Split :math:`k` is weighted by
         :math:`\operatorname{softmax}_k\left(\sigma_B^2(k) / (0.01 \max_j \sigma_B^2(j))\right)`. The curve's means
         are measured in bins and the temperature is relative to the curve, so the weights do not depend on the
-        intensity scale or offset of ``x``. The surrogate is evaluated in bounded units with the scale factors
-        cancelled from its first-order gradient, so finite extreme ranges stay safe. Higher-order derivatives through
+        intensity scale or offset of ``x``. The surrogate is evaluated on the plane shifted by its minimum and
+        divided by its range, or by its largest magnitude when the range overflows, with these factors cancelled
+        from its first-order gradient, so narrow and finite extreme ranges stay safe. Higher-order derivatives through
         this straight-through normalization do not represent derivatives of the original-unit soft threshold.
         Finite differences of the hard threshold do not match the surrogate gradient. The wider estimate is computed
         only when ``x`` requires a gradient. With the default ``slow_and_differentiable=False``
