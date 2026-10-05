@@ -434,12 +434,15 @@ class TestSe3(BaseTester):
         assert s.t.grad_fn is not None
         assert "_translation" in s.state_dict()
         restored = Se3(So3.identity(2, device, dtype), torch.zeros(2, 3, device=device, dtype=dtype))
-        assert list(restored.state_dict()) == list(s.state_dict()) == ["_translation"]
+        assert list(restored.state_dict()) == list(s.state_dict()) == ["_translation", "_rotation._q._data"]
         restored.load_state_dict(s.state_dict())
         self.assert_close(restored.t, s.t.detach())
+        self.assert_close(restored.quaternion.data, s.quaternion.data.detach())
+        self.assert_close(restored.matrix(), s.matrix().detach())
         other = torch.float16 if dtype == torch.float32 else torch.float32  # float64 is unavailable on MPS
         moved = s.to(other)
         assert moved.t.dtype == other and moved.t.grad_fn is not None
+        assert moved.quaternion.data.dtype == other and moved.quaternion.data.grad_fn is not None
         moved.t.sum().backward()
         assert v.grad is not None
 
@@ -557,20 +560,47 @@ class TestSe3(BaseTester):
         assert isinstance(identity * Vector3(p), Vector3)
         self.assert_close((identity * Vector3(p)).data, p)
 
-    def test_wart_se3_load_state_dict_restores_translation_not_rotation_4923(self, device, dtype):
+    def test_se3_state_dict_restores_translation_and_rotation_4923(self, device, dtype):
         src = Se3.exp(torch.tensor([[1.0, -2.0, 3.0, 0.4, 0.2, -0.3]], device=device, dtype=dtype))
         dst = Se3(Quaternion.identity(1, device, dtype), torch.zeros(1, 3, device=device, dtype=dtype))
         eye = torch.eye(3, device=device, dtype=dtype)[None]
         assert (src.r.matrix() - eye).abs().max() > 0.1  # the source rotation is not the identity
-        # https://github.com/kornia/kornia/issues/4923: the quaternion is not registered, so the state dict holds
-        # only the translation; loading reports every key matched, restores the translation and keeps the old
-        # rotation.
-        assert list(src.state_dict()) == ["_translation"]
-        assert list(Se3.identity(1, device, dtype).state_dict()) == ["_translation"]  # the identity saves t alone too
+        # #4923: loading must restore the entire pose, including a plain tensor rotation.
+        assert list(src.state_dict()) == ["_translation", "_rotation._q._data"]
+        assert list(Se3.identity(1, device, dtype).state_dict()) == list(src.state_dict())
         result = dst.load_state_dict(src.state_dict())
         assert not result.missing_keys and not result.unexpected_keys
         self.assert_close(dst.t, src.t.detach())
-        self.assert_close(dst.r.matrix(), eye)
+        self.assert_close(dst.quaternion.data, src.quaternion.data)
+        self.assert_close(dst.r.matrix(), src.r.matrix())
+        self.assert_close(dst.matrix(), src.matrix())
+        point = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype)
+        self.assert_close(dst * point, src * point)
+        assert list(dict(dst.named_parameters())) == ["_translation"]
+        assert list(dict(dst.named_buffers())) == ["_rotation._q._data"]
+
+    def test_parent_casts_rotation_and_translation_4923(self, device, dtype):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        pose = Se3(Quaternion.identity(1, device, dtype), torch.ones(1, 3, device=device, dtype=dtype))
+        parent = torch.nn.ModuleDict({"pose": pose})
+        for method, expected_dtype in (("double", torch.float64), ("float", torch.float32)):
+            assert getattr(parent, method)() is parent
+            assert pose.quaternion.data.dtype == expected_dtype
+            assert pose.t.dtype == expected_dtype
+            point = torch.zeros(1, 3, device=device, dtype=expected_dtype)
+            self.assert_close(pose * point, torch.ones_like(point))
+
+    def test_old_checkpoint_missing_rotation_4923(self, device, dtype):
+        pose = Se3.identity(1, device, dtype)
+        old_state = {"_translation": torch.ones(1, 3, device=device, dtype=dtype)}
+        with pytest.raises(RuntimeError, match=r'Missing key.*"_rotation\._q\._data"'):
+            pose.load_state_dict(old_state, strict=True)
+        result = pose.load_state_dict(old_state, strict=False)
+        assert result.missing_keys == ["_rotation._q._data"]
+        assert result.unexpected_keys == []
+        self.assert_close(pose.t, old_state["_translation"])
+        self.assert_close(pose.quaternion.data, torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype))
 
     def test_random_translation_is_uniform_in_the_unit_interval(self, device, dtype):
         # random draws its translation with torch.rand, which the Vector3 it used to build drew as well (#4931).

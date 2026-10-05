@@ -52,9 +52,9 @@ class Se3(nn.Module):
           row.
         - ``t`` is always a tensor registered as module state, whichever constructor built the pose; a ``Vector3``
           passed to the constructor is unwrapped. ``g * p`` returns a ``Vector3`` only when ``p`` is one.
-        - Known defect: ``state_dict`` and ``.to()`` skip the rotation unless its quaternion is an ``nn.Parameter``, so
-          ``load_state_dict`` can restore one pose's translation next to another pose's rotation
-          (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
+        - ``state_dict()``, ``load_state_dict()`` and module device/dtype conversions include both the rotation
+          and translation. Rotation state follows :class:`~kornia.geometry.quaternion.Quaternion`'s
+          buffer/parameter convention.
 
     Example:
         >>> q = Quaternion.identity()

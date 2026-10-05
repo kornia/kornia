@@ -100,10 +100,9 @@ class So3(nn.Module):
         - ``from_matrix`` does not check its input by default: a reflection (det :math:`-1`) is accepted without
           error and returns an ``So3`` whose ``matrix()`` is not the input. ``check_rotation=True`` raises
           ``ValueError`` instead.
-        - Known defect: ``exp``, ``identity``, ``random``, ``from_matrix`` and every operation store the quaternion
-          as a plain tensor, which has no ``state_dict()`` entry and which ``.to()`` leaves unchanged; only a
-          quaternion built on an ``nn.Parameter`` is saved and moved
-          (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
+        - The quaternion is registered as module state following
+          :class:`~kornia.geometry.quaternion.Quaternion`'s buffer/parameter convention, including rotations
+          produced by ``exp``, ``identity``, ``random``, ``from_matrix`` and group operations.
 
     Example:
         >>> q = Quaternion.identity()

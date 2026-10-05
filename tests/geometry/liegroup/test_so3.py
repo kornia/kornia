@@ -696,22 +696,38 @@ class TestSo3Conventions(BaseTester):
         assert bool(torch.isfinite(s.log()).all())
         assert bool(((s.matrix() - flip).abs() > 0.5).any())
 
-    def test_wart_rotation_state_not_registered_4923(self, device, dtype):
-        # #4923 https://github.com/kornia/kornia/issues/4923: a Quaternion built from a plain tensor keeps it as an
-        # unregistered attribute, so a module holding it (directly or through So3) saves no key for the rotation,
-        # and load_state_dict reports success while keeping the old rotation. This test turns red when the
-        # rotation is registered.
-        saved = torch.tensor([[0.8, 0.2, -0.4, 0.4]], device=device, dtype=dtype)
-        stale = torch.tensor([[0.0, 0.6, 0.0, 0.8]], device=device, dtype=dtype)
-        source, target = _RotationHolder(saved, as_parameter=False), _RotationHolder(stale, as_parameter=False)
-        assert list(source.state_dict()) == []
-        result = target.load_state_dict(source.state_dict())
-        assert not result.missing_keys and not result.unexpected_keys
-        self.assert_close(target.quat.data, stale)
-        self.assert_close(target.rot.q.data, stale)
-        # control: a rotation stored as an nn.Parameter is saved and restored
-        source, target = _RotationHolder(saved, as_parameter=True), _RotationHolder(stale, as_parameter=True)
+    @pytest.mark.parametrize("as_parameter", [False, True])
+    def test_rotation_state_round_trip_4923(self, device, dtype, as_parameter):
+        # #4923: plain tensor rotations must be restored just like explicit Parameters.
+        saved = torch.tensor([[0.0, 0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        stale = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
+        source, target = _RotationHolder(saved, as_parameter), _RotationHolder(stale, as_parameter)
         assert list(source.state_dict()) == ["quat._data", "rot._q._data"]
         target.load_state_dict(source.state_dict())
         self.assert_close(target.quat.data, saved)
         self.assert_close(target.rot.q.data, saved)
+        self.assert_close(target.rot.matrix(), source.rot.matrix())
+        point = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype)
+        self.assert_close(target.rot * point, torch.tensor([[-1.0, -2.0, 3.0]], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("as_parameter", [False, True])
+    def test_parent_casts_rotation_state_4923(self, device, dtype, as_parameter):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        data = torch.tensor([[0.5, 0.5, 0.5, 0.5]], device=device, dtype=dtype)
+        parent = _RotationHolder(data, as_parameter)
+        for method, expected_dtype in (("double", torch.float64), ("float", torch.float32)):
+            assert getattr(parent, method)() is parent
+            assert parent.quat.data.dtype == expected_dtype
+            assert parent.rot.q.data.dtype == expected_dtype
+            self.assert_close(parent.quat.data, data.to(expected_dtype))
+            self.assert_close(parent.rot.q.data, data.to(expected_dtype))
+
+    def test_old_checkpoint_missing_rotation_4923(self, device, dtype):
+        rotation = So3.identity(1, device, dtype)
+        with pytest.raises(RuntimeError, match=r'Missing key.*"_q\._data"'):
+            rotation.load_state_dict({}, strict=True)
+        result = rotation.load_state_dict({}, strict=False)
+        assert result.missing_keys == ["_q._data"]
+        assert result.unexpected_keys == []
+        self.assert_close(rotation.q.data, torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype))

@@ -706,8 +706,8 @@ normalised camera coordinates, and :func:`~kornia.geometry.homography.find_homog
    * - pose from ``E``
      - ``decompose_essential_matrix`` returns ``R1``, ``R2`` and a unit ``t``; which candidate is the true pose is
        not fixed.
-       ``motion_from_essential_choose_solution`` selects it by cheirality from pixel coordinates, and returns
-       candidate 0 when no point passes (`#4879 <https://github.com/kornia/kornia/issues/4879>`_)
+       ``motion_from_essential_choose_solution`` selects it by cheirality from pixel coordinates and also returns
+       the number of points that passed; ``0`` means none did
      - ``decomposeEssentialMat`` returns the same candidate set, whose labels are not fixed either and differ from
        kornia's, so a candidate index does not port; ``recoverPose`` selects the same pose and also returns the
        inlier count

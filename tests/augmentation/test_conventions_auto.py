@@ -20,6 +20,7 @@ from __future__ import annotations
 import pytest
 import torch
 
+import kornia.augmentation as K
 from kornia.augmentation.auto.autoaugment import AutoAugment
 from kornia.augmentation.auto.operations import PolicySequential, ops
 from kornia.augmentation.auto.rand_augment import RandAugment
@@ -72,13 +73,19 @@ class TestAutoAugmentConventions(BaseTester):
     def test_convention_autoaugment_magnitude_bins_select_adjacent_intervals(self):
         degrees = AutoAugment(policy=[[("rotate", 1.0, 9)]]).forward_parameters(torch.Size([64, 1, 8, 6]))
         degrees = degrees[0].data[0].data["degrees"]
-        assert (degrees >= 24.0).all() and (degrees <= 30.0).all()
-        assert degrees.min() < 25.0 and degrees.max() > 29.0  # bounds alone pass for a collapsed interval
+        assert (degrees >= 24.0).all()
+        assert (degrees <= 30.0).all()
+        # bounds alone pass for a collapsed interval
+        assert degrees.min() < 25.0
+        assert degrees.max() > 29.0
         torch.manual_seed(17)
         degrees = AutoAugment(policy=[[("rotate", 1.0, 5)]]).forward_parameters(torch.Size([64, 1, 8, 6]))
         degrees = degrees[0].data[0].data["degrees"]
-        assert (degrees >= 0.0).all() and (degrees <= 6.0).all()  # bin 5 of linspace(-30, 30, 11) is [0, 6]
-        assert degrees.min() < 1.0 and degrees.max() > 5.0
+        # bin 5 of linspace(-30, 30, 11) is [0, 6]
+        assert (degrees >= 0.0).all()
+        assert (degrees <= 6.0).all()
+        assert degrees.min() < 1.0
+        assert degrees.max() > 5.0
         for magnitude in (-1, 10):
             with pytest.raises(ValueError, match=r"in \[0, 9\]"):
                 AutoAugment(policy=[[("rotate", 1.0, magnitude)]])
@@ -110,8 +117,10 @@ class TestAutoAugmentConventions(BaseTester):
         aug = TrivialAugment(policy=[[("rotate", -30.0, 30.0)]])
         degrees = aug.forward_parameters(torch.Size([64, 1, 8, 6]))[0].data[0].data["degrees"]
         assert (degrees.abs() <= 30.0).all()
-        assert (degrees < 0).any() and (degrees > 0).any()
-        assert degrees.abs().min() < 5.0 and degrees.abs().max() > 25.0
+        assert (degrees < 0).any()
+        assert (degrees > 0).any()
+        assert degrees.abs().min() < 5.0
+        assert degrees.abs().max() > 25.0
 
     @pytest.mark.device_agnostic
     def test_convention_randaugment_maps_m_and_validates_the_policy_cardinality(self):
@@ -121,7 +130,8 @@ class TestAutoAugmentConventions(BaseTester):
         params = aug.forward_parameters(torch.Size([64, 1, 8, 6]))
         degrees = next(param for param in params if "degrees" in param.data[0].data).data[0].data["degrees"]
         self.assert_close(degrees.abs(), torch.full_like(degrees, 15.0))
-        assert (degrees < 0).any() and (degrees > 0).any()
+        assert (degrees < 0).any()
+        assert (degrees > 0).any()
         for m in (0, 30):
             with pytest.raises(ValueError, match=r"Expect `m` in \(0, 30\)"):
                 RandAugment(n=1, m=m, policy=policy)
@@ -277,18 +287,52 @@ class TestAutoAugmentConventions(BaseTester):
         operation._probability.data.fill_(-1.0)
         self.assert_close(operation.probability, torch.full_like(operation.probability, 1e-7), rtol=0, atol=0)
 
-    @pytest.mark.parametrize(
-        "probability,expected",
-        [(1.0, [0.375, 0.5, 0.375, 0.25]), (0.5, [0.25, 0.25, 0.375, 0.25])],
-    )
-    def test_wart_operation_soft_blend_depends_on_the_wrapped_p_4809(self, probability, expected, device, dtype):
-        # #4809: the wrapped p=1 path transforms every row; at p<1 it first keeps gates <=0.5 unchanged, so the
-        # outer blend cannot mix those rows. One of the two cases flips when the blend stops depending on p.
+    @pytest.mark.parametrize("probability", [1.0, 0.99])
+    def test_convention_operation_soft_blend_ignores_the_wrapped_p_4809(self, probability, device, dtype):
+        # #4809: the soft blend must not depend on the wrapped augmentation's p. The wrapped operation transforms
+        # every row with a nonzero gate, while OperationBase applies the supplied fractional batch_prob.
         invert = ops.Invert(initial_probability=probability)
         image = torch.tensor([0.25, 0.25, 0.75, 0.75], device=device, dtype=dtype).view(4, 1, 1, 1)
         params = invert.op.forward_parameters(image.shape)
         params["batch_prob"] = torch.tensor([0.25, 0.5, 0.75, 1.0])
-        self.assert_close(invert(image, params=params).flatten(), image.new_tensor(expected))
+        self.assert_close(
+            invert(image, params=params).flatten(),
+            image.new_tensor([0.375, 0.5, 0.375, 0.25]),
+        )
+
+    def test_convention_operation_leaves_zero_gate_rows_untransformed_4809(self, device, dtype):
+        # #4809: only the rows the blend gives a weight reach a wrapped augmentation with p < 1, so a row with gate 0
+        # keeps an identity matrix, as on the image. Passing an all-true gate instead would record the shear for
+        # rows 1 and 3 while their pixels stay unchanged.
+        operation = ops.ShearX(initial_magnitude=0.3, initial_probability=0.5)
+        image = torch.rand(4, 1, 6, 6, device=device, dtype=dtype)
+        params = operation.forward_parameters(image.shape)
+        params["batch_prob"] = torch.tensor([1.0, 0.0, 0.3, 0.0])
+        out = operation(image, params=params)
+        self.assert_close(out[1::2], image[1::2], rtol=0, atol=0)
+        eye = torch.eye(3, device=device, dtype=operation.transform_matrix.dtype).expand(2, 3, 3)
+        self.assert_close(operation.transform_matrix[1::2], eye, rtol=0, atol=0)
+        assert not torch.equal(operation.transform_matrix[2], eye[0])
+
+    def test_convention_policy_keypoints_follow_the_gated_image_4809(self, device, dtype):
+        # #4809: inside AugmentationSequential the keypoint handler reads the wrapped op's matrix; a row whose image
+        # a gate of 0 left unchanged must keep its keypoints too.
+        policy = PolicySequential(
+            ops.ShearX(initial_magnitude=0.3, initial_probability=0.5),
+            ops.TranslateX(initial_magnitude=0.3, initial_probability=0.5),
+        )
+        aug = K.AugmentationSequential(policy, data_keys=["input", "keypoints"])
+        image = torch.linspace(0, 1, 4 * 3 * 8 * 8, device=device, dtype=dtype).view(4, 3, 8, 8)
+        keypoints = torch.tensor([[[2.0, 3.0], [5.0, 6.0]]], device=device, dtype=dtype).expand(4, -1, -1)
+        untouched_rows = 0
+        with torch.random.fork_rng(devices=[device] if device.type == "cuda" else []):
+            for seed in range(8):
+                torch.manual_seed(seed)
+                out_image, out_keypoints = aug(image, keypoints)
+                untouched = [i for i in range(4) if torch.equal(out_image[i], image[i])]
+                untouched_rows += len(untouched)
+                self.assert_close(out_keypoints[untouched], keypoints[untouched])
+        assert untouched_rows > 0, "the seeds must leave some row ungated"
 
     @pytest.mark.device_agnostic
     def test_convention_policy_sequential_samples_through_the_operation_wrapper_4441(self):
@@ -383,7 +427,8 @@ class TestAutoAugmentConventions(BaseTester):
         assert operation._magnitude.grad is not None
         # The parameter is kept in the state dict, and no sampler is stored on the wrapper or the wrapped op.
         assert "_probability" in operation.state_dict()
-        assert not hasattr(operation.op, "_p_gen") and not hasattr(operation.op, "_p_batch_gen")
+        assert not hasattr(operation.op, "_p_gen")
+        assert not hasattr(operation.op, "_p_batch_gen")
         # So a policy deep-copies after a forward and after train() / eval(), and the copy replays the original.
         image = torch.rand(2, 3, 8, 8)
         for policy in (AutoAugment(), TrivialAugment(), RandAugment(n=2, m=15)):
@@ -398,7 +443,8 @@ class TestAutoAugmentConventions(BaseTester):
         assert {(module[0].op.p, module[0].op.p_batch) for _, module in aug.named_children()} == {(1.0, 1.0)}
         # "Each candidate": every entry of the default policy as well, not only the two above.
         defaults = [(module[0].op.p, module[0].op.p_batch) for _, module in TrivialAugment().named_children()]
-        assert len(defaults) == 12 and set(defaults) == {(1.0, 1.0)}
+        assert len(defaults) == 12
+        assert set(defaults) == {(1.0, 1.0)}
         gates = set()
         for _ in range(16):
             gates.update(aug.forward_parameters(torch.Size([8, 3, 8, 6]))[0].data[0].data["batch_prob"].tolist())
@@ -423,8 +469,10 @@ class TestAutoAugmentConventions(BaseTester):
             .data[0]
             .data["shear_x"]
         )
-        assert bool((trivial.abs() <= 0.3 * 180).all()) and trivial.abs().max() > 30.0
-        assert (trivial < 0).any() and (trivial > 0).any()
+        assert bool((trivial.abs() <= 0.3 * 180).all())
+        assert trivial.abs().max() > 30.0
+        assert (trivial < 0).any()
+        assert (trivial > 0).any()
         # AutoAugment's shear bins are fractions too, so the mapping is applied once: bin b of either shear op spans
         # the adjacent points b and b + 1 of linspace(-0.3, 0.3, 11), times 180, and 256 rows reach both ends.
         edges = [-0.3 + 0.06 * point for point in range(11)]
@@ -437,8 +485,10 @@ class TestAutoAugmentConventions(BaseTester):
                     .data[0]
                     .data[name]
                 )
-                assert bool((auto >= low - 1e-3).all()) and bool((auto <= high + 1e-3).all()), (name, magnitude_bin)
-                assert auto.min() < low + 1.0 and auto.max() > high - 1.0, (name, magnitude_bin)
+                assert bool((auto >= low - 1e-3).all()), (name, magnitude_bin)
+                assert bool((auto <= high + 1e-3).all()), (name, magnitude_bin)
+                assert auto.min() < low + 1.0, (name, magnitude_bin)
+                assert auto.max() > high - 1.0, (name, magnitude_bin)
         # The same policy entry through RandAugment.
         mapped = (
             RandAugment(n=1, m=29, policy=[[("shear_x", -0.3, 0.3)]])
@@ -523,4 +573,5 @@ class TestAutoAugmentConventions(BaseTester):
             drawn = aug.forward_parameters(torch.Size([8, 1, height, width]))[0].data[0].data[operation._factor_name]
             self.assert_close(drawn.abs().float(), torch.full((8,), float(expected)))
             checked.append(name)
-        assert len(checked) == 12 and {"shear_x", "shear_y", "posterize", "translate_x", "translate_y"} <= set(checked)
+        assert len(checked) == 12
+        assert {"shear_x", "shear_y", "posterize", "translate_x", "translate_y"} <= set(checked)

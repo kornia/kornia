@@ -212,8 +212,7 @@ class TestColorConventions(BaseTester):
         leaf = torch.full((1, 1, 1, 1), 0.5, device=device, dtype=torch.float32, requires_grad=True)
         kornia.color.apply_colormap(leaf, colormap)
 
-    @pytest.mark.xfail(strict=True, reason="https://github.com/kornia/kornia/issues/5306")
-    def test_wart_apply_colormap_5306_is_batch_independent(self, device, dtype):
+    def test_convention_apply_colormap_5306_is_batch_independent(self, device, dtype):
         colormap = kornia.color.ColorMap(
             base=[[0.0, 0.0, 0.0], [0.25, 0.25, 0.25], [0.75, 0.75, 0.75], [1.0, 1.0, 1.0]],
             num_colors=4,
