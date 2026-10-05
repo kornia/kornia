@@ -188,6 +188,11 @@ Intrinsics layout
   without ``intrinsics[3, 3] = 1`` still projects, but ``unproject`` fails on a singular matrix
   (`#4771 <https://github.com/kornia/kornia/issues/4771>`_). Its class docstring documents the layout and the
   zero-padded case.
+  :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.intrinsics_inverse`,
+  :class:`~kornia.geometry.depth.DepthWarper` and :func:`~kornia.geometry.depth.depth_warp`
+  use only the top-left ``3x3`` block, ignoring the stored fourth row and column.
+  ``intrinsics_inverse`` returns the homogeneous ``4x4`` embedding of that block's inverse;
+  zero-padded intrinsics therefore work for these operations.
 - **Depth means two different things.** It is the camera-frame ``z`` by default, and the Euclidean ray length
   when :func:`kornia.geometry.camera.perspective.unproject_points` is called with ``normalize=True`` (the
   ``normalize_points`` flags of :func:`kornia.geometry.depth.depth_to_3d` and
