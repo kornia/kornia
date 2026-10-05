@@ -1,0 +1,1 @@
+- Fixed `RandomMosaic` with `cropping_mode="slice"` offsetting bounding boxes from the image content by a sub-pixel amount: the crop start was sampled as a float, the image crop sliced at the truncated integer while boxes were translated by the float value. The start corner is now floored once in the generator, so the image and the boxes share the same integer coordinates.
