@@ -4987,7 +4987,8 @@ class TestCamtoworldRtToPoseRt(BaseTester):
         out_R, out_t = fn(permutation, translation, check_rotation=True)
         expected_R, expected_t = fn(permutation, translation)
         assert out_R.dtype == torch.int64
-        assert torch.equal(out_R, expected_R) and torch.equal(out_t, expected_t)
+        assert torch.equal(out_R, expected_R)
+        assert torch.equal(out_t, expected_t)
         rotation = 2 * torch.eye(3, device=device, dtype=torch.int64)[None]
         with pytest.raises(ValueError, match="not a rotation matrix"):
             fn(rotation, translation, check_rotation=True)

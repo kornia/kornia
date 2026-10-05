@@ -212,7 +212,8 @@ class TestNamedPoseConventions(BaseTester):
         m1, m2 = g1.matrix(), g2.matrix()
         assert (m1 @ m2 - m2 @ m1).abs().max() > 0.5
         eye = torch.eye(3, device=device, dtype=dtype)
-        assert (m1[:3, :3] - eye).abs().max() > 0.1 and (m2[:3, :3] - eye).abs().max() > 0.1
+        assert (m1[:3, :3] - eye).abs().max() > 0.1
+        assert (m2[:3, :3] - eye).abs().max() > 0.1
         return g1, g2
 
     def test_convention_named_pose_composition_order(self, device, dtype):

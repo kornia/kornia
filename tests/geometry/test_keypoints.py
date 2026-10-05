@@ -457,7 +457,8 @@ class TestConventionsKeypoints(BaseTester):
         assert (brightest % width, brightest // width) == landed
         assert landed != (col, row)
         value = self._value_at(out_image, out_keypoints[0, 0])
-        assert value is not None and value > 0.5
+        assert value is not None
+        assert value > 0.5
 
         # Relabel control: the same pixel read as (row, col) = (2, 8) leaves the image or lands on a dark pixel
         # ((0, 0) after rotate90, row 8 of a 7-row image after the translation).

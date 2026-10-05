@@ -556,7 +556,8 @@ class TestLinalgConventions(BaseTester):
         # transform is a pure translation
         assert (t01 @ t02 - t02 @ t01).abs().max() > 0.5
         eye = torch.eye(3, device=device, dtype=dtype)
-        assert (t01[:3, :3] - eye).abs().max() > 0.1 and (t02[:3, :3] - eye).abs().max() > 0.1
+        assert (t01[:3, :3] - eye).abs().max() > 0.1
+        assert (t02[:3, :3] - eye).abs().max() > 0.1
         return t01, t02
 
     def test_convention_relative_transformation_is_inverse_first_times_second(self, device, dtype):
