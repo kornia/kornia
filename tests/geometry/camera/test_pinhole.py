@@ -901,6 +901,19 @@ class TestPinholeCamera(BaseTester):
         assert camera.project(torch.zeros(0, 3, device=device, dtype=dtype)).shape == (0, 2)
         assert camera.project(torch.zeros(0, 1, 3, device=device, dtype=dtype)).shape == (0, 1, 2)
 
+    def test_project_rejects_unbatched_points_on_a_camera_batch_4969(self, device, dtype):
+        # kornia#4969: (B, 3) points on a batch-B camera have no batch axis, so they get transform_points'
+        # batch-size ValueError, as (N, 3) with N != B does; before the fix N == B failed inside bmm.
+        trans = torch.eye(4, device=device, dtype=dtype).expand(2, 4, 4)
+        ones = torch.ones(2, device=device, dtype=dtype)
+        camera = kornia.geometry.camera.PinholeCamera(trans, trans, ones, ones)
+        points = torch.zeros(2, 1, 3, device=device, dtype=dtype)
+        points[..., 2] = 1.0
+
+        assert camera.project(points).shape == (2, 1, 2)
+        with pytest.raises(ValueError, match="Input batch size must be the same"):
+            camera.project(points[:, 0])
+
     @pytest.mark.parametrize("batch_sizes", [(1, 2, 1, 1), (0, 1, 0, 0)])
     def test_constructor_rejects_mismatched_batch_sizes_4281(self, batch_sizes, device, dtype):
         with pytest.raises(ValueError, match="Arguments shapes must match"):
