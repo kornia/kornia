@@ -101,6 +101,8 @@ def laplacian(
         str(border_type).lower() in {"constant", "reflect", "replicate", "circular"},
         f"Invalid border, {border_type}. Expected one of {{'constant', 'reflect', 'replicate', 'circular'}}",
     )
+    # the check is case-insensitive, so pad with the lower-case spelling as well
+    border_type = str(border_type).lower()
 
     ky, kx = _check_laplacian_size(kernel_size)
 

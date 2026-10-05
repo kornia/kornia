@@ -454,14 +454,15 @@ def KORNIA_CHECK_SAME_DEVICE(x: torch.Tensor, y: torch.Tensor, raises: bool = Tr
 
 
 def KORNIA_CHECK_SAME_DEVICES(tensors: list[torch.Tensor], msg: Optional[str] = None, raises: bool = True) -> bool:
-    """Check whether a list provided tensors live in the same device.
+    """Check whether a non-empty list of tensors live on the same device.
 
     Args:
-        tensors: a list of tensors.
+        tensors: a non-empty list of tensors.
         msg: message to show in the exception.
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
+        TypeCheckError: if tensors is not a non-empty list of tensors and raises is True.
         DeviceError: if all the tensors are not in the same device and raises is True.
 
     Note:
@@ -481,7 +482,24 @@ def KORNIA_CHECK_SAME_DEVICES(tensors: list[torch.Tensor], msg: Optional[str] = 
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
-    KORNIA_CHECK(isinstance(tensors, list) and len(tensors) >= 1, "Expected a list with at least one element", raises)
+    if not (isinstance(tensors, list) and len(tensors) > 0 and all(isinstance(x, torch.Tensor) for x in tensors)):
+        if raises:
+            prefix = "Expected a non-empty list of tensors, got"
+            suffix = "" if msg is None else f"\n  {msg}"
+            if not isinstance(tensors, list):
+                raise TypeCheckError(
+                    f"{prefix} {type(tensors).__name__}.{suffix}", actual_type=type(tensors), expected_type=list
+                )
+            if len(tensors) == 0:
+                raise TypeCheckError(f"{prefix} an empty list.{suffix}")
+            for x in tensors:
+                if not isinstance(x, torch.Tensor):
+                    raise TypeCheckError(
+                        f"{prefix} a list containing {type(x).__name__}.{suffix}",
+                        actual_type=type(x),
+                        expected_type=torch.Tensor,
+                    )
+        return False
     if not all(tensors[0].device == x.device for x in tensors):
         if raises:
             devices = [x.device for x in tensors]

@@ -109,6 +109,15 @@ class TestTransformPoints(BaseTester):
         assert out.dtype == dtype
         assert out.shape == kgl.transform_points(single_trans, points).shape
 
+    @pytest.mark.parametrize("points_shape", [(2**16, 1, 2), (1, 2**16, 1, 2)])
+    def test_flattened_batch_of_2_pow_16(self, points_shape, device, dtype):
+        # The points are flattened to (2**16, 1, 2) and made homogeneous; on MPS (torch 2.5.1 and 2.14) a constant
+        # F.pad with a non-zero value returns garbage once dim -3 reaches 2**16 (#5443).
+        points = (torch.arange(2**17, device=device) % 7).reshape(points_shape).to(dtype)
+        trans = torch.tensor([[2.0, 0.0, 1.0], [0.0, 3.0, 2.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)[None]
+        expected = torch.stack([2 * points[..., 0] + 1, 3 * points[..., 1] + 2], dim=-1)
+        self.assert_close(kgl.transform_points(trans, points), expected, atol=0.0, rtol=0.0)
+
     def test_gradcheck(self, device):
         # generate input data
         batch_size, num_points, num_dims = 2, 3, 2

@@ -82,6 +82,68 @@ _MS_SSIM_TOL = {torch.float16: 1e-2, torch.bfloat16: 5e-2}
 
 
 class TestMS_SSIMLoss(BaseTester):
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_high_pixel_values_use_float32_moments(self, device, dtype):
+        # The float64 reference is computed on the CPU, so the device leg needs no float64 support.
+        generator = torch.Generator().manual_seed(0)
+        img1 = (180 + torch.rand(1, 3, 64, 64, generator=generator) * 75).round()
+        img2 = (img1 + torch.randn(1, 3, 64, 64, generator=generator) * 20).clamp(0, 255).round()
+
+        reference = kornia.losses.MS_SSIMLoss(data_range=255.0).double()(img1.double(), img2.double())
+        criterion = kornia.losses.MS_SSIMLoss(data_range=255.0).to(device, dtype)
+        loss = criterion(img1.to(device, dtype), img2.to(device, dtype))
+
+        assert loss.dtype == dtype
+        assert torch.isfinite(loss)
+        # Allows one rounding to ``dtype``: half an ulp of 12.4 is below ``eps / 2`` relative. Masks used as rounded
+        # to ``dtype`` (in bfloat16 the first sums to 0.9976) gave 12.25 in bfloat16 and 12.383 in float16.
+        self.assert_close(loss.float().cpu(), reference.float(), atol=0.0, rtol=torch.finfo(dtype).eps / 2)
+
+    def test_int16_images_are_not_rounded_through_float16(self, device):
+        # Values 1 mod 4 in [2048, 4096) round down by one in float16 (ties to even), so a float16 detour doubles the
+        # loss between ``img1`` and ``img1 + 1`` (0.0098 instead of 0.0049).
+        generator = torch.Generator().manual_seed(0)
+        img1 = (2049 + 4 * torch.randint(0, 500, (1, 3, 64, 64), generator=generator)).to(torch.int16)
+        img2 = img1 + 1
+
+        criterion = kornia.losses.MS_SSIMLoss(data_range=32767.0).to(device, torch.float16)
+        reference = kornia.losses.MS_SSIMLoss(data_range=32767.0).double()
+        loss = criterion(img1.to(device), img2.to(device))
+
+        assert loss.dtype == torch.float16
+        expected = reference(img1.double(), img2.double()).float()
+        self.assert_close(loss.float().cpu(), expected, atol=0.0, rtol=1e-2)
+
+    def test_mixed_dtypes_follow_the_promotion_rule(self, device):
+        generator = torch.Generator().manual_seed(0)
+        img1 = torch.randint(0, 256, (1, 3, 32, 32), generator=generator, dtype=torch.uint8).to(device)
+        img2 = torch.rand(1, 3, 32, 32, generator=generator).mul(255).to(device)
+
+        # An integer image counts as the mask dtype, float32, as in ``ssim``.
+        criterion = kornia.losses.MS_SSIMLoss(data_range=255.0).to(device)
+        loss = criterion(img1, img2.half())
+        assert loss.dtype == torch.float32
+        self.assert_close(loss, criterion(img1.float(), img2.half().float()), atol=0.0, rtol=0.0)
+        assert criterion(img2.half(), img1).dtype == torch.float32
+
+        # A float32 image in a float64 module is filtered in float64 and returned in float32.
+        if device.type != "mps":
+            loss = criterion.double()(img1.float(), img2)
+            assert loss.dtype == torch.float32
+            self.assert_close(loss, criterion(img1.double(), img2.double()).float(), atol=0.0, rtol=0.0)
+
+    def test_autocast_keeps_msssim_convolutions_in_float32(self):
+        generator = torch.Generator().manual_seed(0)
+        img1 = (180 + torch.rand(1, 3, 64, 64, generator=generator) * 75).round()
+        img2 = (img1 + torch.randn(1, 3, 64, 64, generator=generator) * 20).clamp(0, 255).round()
+        criterion = kornia.losses.MS_SSIMLoss(data_range=255.0)
+
+        expected = criterion(img1, img2)
+        with torch.autocast(device_type="cpu", dtype=torch.bfloat16):
+            actual = criterion(img1, img2)
+
+        self.assert_close(actual, expected)
+
     def test_msssim_equal_none(self, device, dtype):
         # input data
         img1 = torch.rand(1, 3, 10, 16, device=device, dtype=dtype)

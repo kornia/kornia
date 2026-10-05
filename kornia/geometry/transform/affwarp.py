@@ -338,15 +338,24 @@ def rotate3d(
     Convention:
         - ``center`` is ``(x, y, z)`` in pixels, origin at the top-left of the first depth
           slice (``z = 0``); defaults to the tensor center
+        - ``yaw``, ``pitch`` and ``roll`` are **one axis-angle vector** ``(rx, ry, rz)`` in degrees,
+          not three composed per-axis Euler rotations: the three are concatenated and handed to
+          :func:`~kornia.geometry.transform.get_projective_transform`, which applies Rodrigues'
+          formula. The rotation axis is ``(rx, ry, rz) / ||(rx, ry, rz)||`` and the angle is
+          ``||(rx, ry, rz)||`` degrees, so ``(90, 90, 0)`` turns through ``90 * sqrt(2)`` degrees
+          about ``(1, 1, 0) / sqrt(2)`` while ``(30, 0, 0)`` is a 30-degree turn about ``x``. A
+          single non-zero component therefore *is* the per-axis rotation it names, which is why
+          one angle reads the same under either reading; two or more do not, and neither Euler
+          order reproduces the axis-angle result.
         - align_corners: ``False`` by default (the 2D :func:`rotate` defaults to ``True``)
 
     Args:
         tensor: The image tensor to be warped in shapes of :math:`(B, C, D, H, W)`.
-        yaw: The yaw angle through which to rotate. The tensor
+        yaw: The ``rx`` component of the axis-angle vector. The tensor
           must have a shape of (B), where B is batch size.
-        pitch: The pitch angle through which to rotate. The tensor
+        pitch: The ``ry`` component of the axis-angle vector. The tensor
           must have a shape of (B), where B is batch size.
-        roll: The roll angle through which to rotate. The tensor
+        roll: The ``rz`` component of the axis-angle vector. The tensor
           must have a shape of (B), where B is batch size.
         center: The center through which to rotate. The tensor
           must have a shape of (B, 3), where B is batch size and last

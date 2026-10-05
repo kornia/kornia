@@ -235,9 +235,8 @@ class TestEnhanceConventions(BaseTester):
         expected = torch.tensor([[[[[0.0, 1.0]], [[0.0, 1.0]]]]], device=device, dtype=dtype)
         self.assert_close(kornia.enhance.normalize_min_max(data), expected, low_tolerance=True)
 
-    @pytest.mark.xfail(strict=True, reason="#5220: equalize differs from float32 reference for float16 input")
     @pytest.mark.device_agnostic
-    def test_wart_equalize_float16_matches_float32_reference_5220(self):
+    def test_convention_equalize_float16_matches_float32_reference_5220(self):
         image = torch.zeros(1, 1, 300, 300, dtype=torch.float16)
         image[..., :, 150:] = 1.0
         self.assert_close(kornia.enhance.equalize(image), kornia.enhance.equalize(image.float()).half())
