@@ -181,16 +181,28 @@ class TestSo2(BaseTester):
         self.assert_close(So2.exp(theta).log(), theta.flatten())
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
-    def test_wart_so2_hat_and_vee_layout_4929(self, device, dtype, batch_size):
-        # https://github.com/kornia/kornia/issues/4929: hat is symmetric rather than the so(2) generator and vee
-        # reads its upper-right entry. Keep both layouts together because vee(hat(theta)) conceals the defect.
+    def test_convention_so2_hat_and_vee_are_the_generator_4929(self, device, dtype, batch_size):
+        # https://github.com/kornia/kornia/issues/4929: hat used to be the symmetric [[0, t], [t, 0]] and vee read
+        # its [0, 1] entry. Pin both layouts separately, because vee(hat(theta)) round-trips either way.
         theta = self._make_rand_data(device, dtype, (batch_size,))
         m = So2.hat(theta)
         o = torch.ones((2, 1), device=device, dtype=dtype)
-        self.assert_close((m @ o).reshape(-1, 2, 1), theta.reshape(-1, 1, 1).repeat(1, 2, 1))
+        expected = torch.stack((-theta, theta), -1).reshape(-1, 2, 1)
+        self.assert_close((m @ o).reshape(-1, 2, 1), expected)
+        self.assert_close(m.transpose(-1, -2), -m)
         omega = self._make_rand_data(device, dtype, (batch_size, 2, 2))
-        self.assert_close(So2.vee(omega), omega[..., 0, 1])
+        self.assert_close(So2.vee(omega), omega[..., 1, 0])
         self.assert_close(So2.vee(m), theta)
+
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
+    def test_matrix_exp_of_hat_is_exp(self, device, dtype, batch_size):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        theta = self._make_rand_data(device, dtype, (batch_size,))
+        # The reference runs in float64 on the CPU: MPS has no float64 and CPU matrix_exp has no
+        # half-precision kernel.
+        expm = torch.linalg.matrix_exp(So2.hat(theta).cpu().double()).to(device=device, dtype=dtype)
+        self.assert_close(expm, So2.exp(theta).matrix())
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_matrix(self, device, dtype, batch_size):
