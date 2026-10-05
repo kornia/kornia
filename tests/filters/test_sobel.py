@@ -25,7 +25,7 @@ from kornia.core._compat import torch_version
 from kornia.filters import Sobel, SpatialGradient, SpatialGradient3d, sobel, spatial_gradient, spatial_gradient3d
 from kornia.filters.kernels import get_spatial_gradient_kernel2d, normalize_kernel2d
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_replicate_padding, supports_replicate_padding_3d
 
 sobel_module = importlib.import_module("kornia.filters.sobel")
 
@@ -168,6 +168,8 @@ class TestSpatialGradient(BaseTester):
     @pytest.mark.parametrize("normalized", [True, False])
     def test_convention_upper_case_sobel_takes_the_fixed_kernel_path_5156(self, normalized, monkeypatch, device, dtype):
         """mode='Sobel' at order=1 uses the fixed kernel of 'sobel' and does not call the kernel builder (#5156)."""
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip("spatial_gradient pads with mode='replicate', which this device lacks for this dtype")
 
         def should_not_run(*args, **kwargs):
             raise AssertionError("order=1 Sobel on a floating input must use the fixed kernel")
@@ -500,6 +502,8 @@ class TestSpatialGradient3d(BaseTester):
 
     def test_convention_upper_case_diff_takes_the_slicing_path_5156(self, monkeypatch, device, dtype):
         """mode='Diff' at order=1 takes the slicing path of 'diff' and does not call the kernel builder (#5156)."""
+        if not supports_replicate_padding_3d(device, dtype):
+            pytest.skip("spatial_gradient3d pads with mode='replicate', which this device lacks for this dtype")
 
         def should_not_run(*args, **kwargs):
             raise AssertionError("order=1 diff must use the slicing path")

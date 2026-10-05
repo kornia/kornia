@@ -32,7 +32,7 @@ from kornia.filters import (
     max_blur_pool2d,
 )
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_reflect_padding
 
 
 def _zero_padded_reference(x: torch.Tensor, k: int, s: int) -> torch.Tensor:
@@ -310,6 +310,9 @@ class TestEdgeAwareBlurPool(BaseTester):
             edge_aware_blur_pool2d(data, 3, edge_threshold=edge_threshold)
         with pytest.raises(BaseError, match=f"edge_threshold must be greater than 1. Got {edge_threshold}"):
             EdgeAwareBlurPool2D(3, edge_threshold=edge_threshold)(data)
+        # Only the accepted threshold reaches the reflect padding; the rejections above run everywhere.
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         assert edge_aware_blur_pool2d(data, 3, edge_threshold=1.0001).shape == data.shape
 
     @pytest.mark.parametrize("batch_size", [1, 2])
