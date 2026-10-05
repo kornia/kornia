@@ -70,12 +70,7 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
             not is_exporting()
             and isinstance(matrix_params, dict)
             and matrix_params.keys() == params.keys()
-            and all(
-                torch.equal(matrix_params[key], value)
-                if isinstance(value, torch.Tensor) and isinstance(matrix_params[key], torch.Tensor)
-                else matrix_params[key] == value
-                for key, value in params.items()
-            )
+            and all(matrix_params[key] is value for key, value in params.items())
         ):
             transform = getattr(module, "transform_matrix", None)
             if transform is not None:
