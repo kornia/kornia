@@ -279,6 +279,14 @@ class TestOtsuThreshold(BaseTester):
         self.assert_close(threshold, image.new_tensor([0.5]), rtol=0, atol=0)
         assert mask.tolist() == [[False, False, False, True, True]]
 
+    def test_background_pixel_above_interpolated_edge_stays_background_5422(self, device):
+        # histc and the bin index put -1.1049999 in the lower of two bins over [-9.03, 6.82], but the interpolated
+        # float32 edge -1.1050000 lies one ulp below it. Comparing against the edge alone made it foreground.
+        image = torch.tensor([[-9.03, -9.03, -1.1049998998641968, 6.82, 6.82]], device=device, dtype=torch.float32)
+        mask, threshold = otsu_threshold(image, nbins=2, return_mask=True)
+        assert mask.tolist() == [[False, False, False, True, True]]
+        self.assert_close(threshold, image[:, 2], rtol=0, atol=0)
+
     @pytest.mark.parametrize("middle", [0.5, 0.6], ids=["on_edge", "above_edge"])
     def test_slow_path_edge_correction_keeps_foreground_pixel_5422(self, middle, device, dtype):
         # Three zeros give the first KDE split a unique maximum when middle=0.5. Its next sample is 0.5,
@@ -290,6 +298,14 @@ class TestOtsuThreshold(BaseTester):
             expected = torch.nextafter(expected, torch.full_like(expected, -torch.inf))
         self.assert_close(threshold, expected.to(device), rtol=0, atol=0)
         assert mask.tolist() == [[False, False, False, True, True, True]]
+
+    def test_slow_path_downward_rounded_sample_keeps_background_pixel_excluded_5422(self, device):
+        # The middle KDE sample 0.501953125 rounds down to the pixel 0.5 in bfloat16. That pixel lies below the
+        # sample, so lowering the threshold to keep it, as for an upward-rounded sample, would promote it.
+        image = torch.tensor([[0.00390625] * 3 + [0.5, 1.0, 1.0]], device=device, dtype=torch.bfloat16)
+        mask, threshold = otsu_threshold(image, nbins=3, slow_and_differentiable=True, return_mask=True)
+        self.assert_close(threshold, image.new_tensor([0.5]), rtol=0, atol=0)
+        assert mask.tolist() == [[False, False, False, False, True, True]]
 
     def test_edge_correction_is_independent_for_each_plane_5422(self, device, dtype):
         image = torch.tensor(

@@ -58,7 +58,9 @@ class OtsuThreshold(torch.nn.Module):
             indices = ((values - min_values) * bins / safe_widths).to(torch.int64).clamp(0, bins - 1)
             histograms = values.new_zeros((values.shape[0], bins)).scatter_add(1, indices, torch.ones_like(values))
 
-            # Match linspace's symmetric interpolation, including its exact end points and fused multiply-add.
+            # Match linspace's symmetric interpolation and exact end points. Whether the multiply-add is fused is up
+            # to the backend: on the arm64 CPU build addcmul and linspace both fuse it, MPS addcmul does not, so edges
+            # can differ in the last bit across devices. The membership guard below keeps the mask independent of it.
             positions = torch.arange(bins + 1, device=xs.device, dtype=edge_dtype)
             steps = widths / bins
             bin_edges = torch.where(
