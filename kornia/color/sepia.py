@@ -24,16 +24,13 @@ def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
     r"""Apply the sepia filter to an RGB tensor.
 
     Convention:
-        Applies the fixed sepia matrix to RGB channels at axis -3. rescale divides each output
-        channel of each image by its own spatial maximum; disable it to keep the raw matrix response.
-
-    .. warning::
-        With the default rescale=True the output is almost grey: per-channel rescaling removes the
-        sepia tint (`#5322 <https://github.com/kornia/kornia/issues/5322>`_).
+        Applies the fixed sepia matrix to RGB channels at axis -3. rescale divides all output
+        channels of each image by one shared maximum over channels and pixels, preserving the tint.
+        Disable it to keep the raw matrix response.
 
     Args:
         input: the input tensor with shape :math:`(*, C, H, W)`.
-        rescale: if True, divide each output channel by its own maximum.
+        rescale: if True, divide all output channels by one maximum per image.
         eps: small constant added to the denominator for numerical stability.
 
     Returns:
@@ -62,8 +59,8 @@ def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
     sepia_out = torch.stack([r_out, g_out, b_out], dim=-3)
 
     if rescale:
-        max_values = sepia_out.amax(dim=-1).amax(dim=-1)
-        sepia_out = sepia_out / (max_values[..., None, None] + eps)
+        max_values = sepia_out.amax(dim=(-3, -2, -1), keepdim=True)
+        sepia_out = sepia_out / (max_values + eps)
 
     return sepia_out
 
@@ -74,7 +71,7 @@ class Sepia(nn.Module):
     See the Convention block on :func:`sepia_from_rgb`.
 
     Args:
-        rescale: if True, divide each output channel by its own maximum.
+        rescale: if True, divide all output channels by one maximum per image.
         eps: small constant added to the denominator for numerical stability.
 
     Returns:
@@ -94,7 +91,7 @@ class Sepia(nn.Module):
         """Initialize Sepia.
 
         Args:
-            rescale: if True, divide each output channel by its own maximum.
+            rescale: if True, divide all output channels by one maximum per image.
             eps: small constant added to the denominator for numerical stability.
         """
         self.rescale = rescale

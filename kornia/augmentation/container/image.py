@@ -352,13 +352,15 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             elif isinstance(module, ImageSequentialBase):
                 # If not augmentationSequential
                 if isinstance(module, K.AugmentationSequential) and not recompute:
-                    mat = torch.as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
+                    _mat = module.transform_matrix
+                    if _mat is not None:
+                        _mat = torch.as_tensor(_mat, device=input.device, dtype=input.dtype)
                 else:
                     maybe_param_data = cast(Optional[List[ParamItem]], param.data)
                     _mat = module.get_transformation_matrix(
                         input, maybe_param_data, recompute=recompute, extra_args=extra_args
                     )
-                    mat = module.identity_matrix(input) if _mat is None else _mat
+                mat = module.identity_matrix(input) if _mat is None else _mat
                 res_mat = mat if res_mat is None else mat @ res_mat
         return res_mat
 
@@ -404,13 +406,10 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
 
         """
         for arg in self.children():
-            if isinstance(arg, ImageSequential) and not arg.is_intensity_only(strict):
-                return False
             if isinstance(arg, ImageSequential):
-                pass
-            elif isinstance(arg, K.IntensityAugmentationBase2D):
-                pass
-            elif strict:
+                if not arg.is_intensity_only(strict):
+                    return False
+            elif strict and not isinstance(arg, K.IntensityAugmentationBase2D):
                 # disallow non-registered ops if in strict mode
                 # TODO: add an ops register module
                 return False

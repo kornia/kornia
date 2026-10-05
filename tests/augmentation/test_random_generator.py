@@ -1790,7 +1790,8 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
             counts = torch.bincount(start.long().cpu(), minlength=n_legal)
             assert counts.numel() == n_legal, counts  # no start past side - cut
             expected = len(start) / n_legal
-            assert counts.min() > 0.8 * expected and counts.max() < 1.2 * expected, counts
+            assert counts.min() > 0.8 * expected, counts
+            assert counts.max() < 1.2 * expected, counts
 
     def test_start_stays_inside_when_the_draw_rounds_to_one_4730(self, device, dtype, monkeypatch):
         # A float16/bfloat16 parameter dtype rounds a float32 draw above 1 - 2**-12 (float16) or 1 - 2**-9
