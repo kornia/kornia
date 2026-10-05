@@ -119,7 +119,8 @@ class MotionBlur3D(nn.Module):
 
     Args:
         kernel_size: motion kernel width and height. It should be odd and positive.
-        angle: Rotation components in degrees. A scalar sets all three components to the same value;
+        angle: Components of one Rodrigues axis-angle vector ``(rx, ry, rz)`` in degrees, not Euler angles; see
+            :func:`~kornia.filters.get_motion_kernel3d`. A scalar sets all three components to the same value;
             a three-element sequence sets each component, and a tensor must have shape :math:`(B, 3)`.
         direction: forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
@@ -267,8 +268,8 @@ def motion_blur3d(
     Args:
         input: the input torch.Tensor with shape :math:`(B, C, D, H, W)`.
         kernel_size: motion kernel width, height and depth. It should be odd and positive.
-        angle: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
-            If torch.Tensor, it must be :math:`(B, 3)`.
+        angle: ``(yaw, pitch, roll)``, one Rodrigues axis-angle vector ``(rx, ry, rz)`` in degrees, not Euler
+            angles; see :func:`~kornia.filters.get_motion_kernel3d`. If torch.Tensor, it must be :math:`(B, 3)`.
         direction: forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a

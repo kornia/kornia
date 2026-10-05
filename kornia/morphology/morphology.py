@@ -15,15 +15,28 @@
 # limitations under the License.
 #
 
-from typing import List, Optional
+from typing import Final, List, Optional
 
 import torch
 import torch.nn.functional as F
 
+from kornia.core._compat import torch_version_lt
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import ValueCheckError
 
 __all__ = ["bottom_hat", "closing", "dilation", "erosion", "gradient", "opening", "reconstruction", "top_hat"]
+
+_MPS_MAXIMUM_IGNORES_NAN: Final[bool] = torch_version_lt(2, 7, 0)
+
+
+def _maximum_ignores_nan(device: torch.device, mps_ignores_nan: bool = _MPS_MAXIMUM_IGNORES_NAN) -> bool:
+    """Whether ``torch.maximum``/``torch.minimum`` return the non-NaN operand of a pair on ``device``.
+
+    MPS does so before PyTorch 2.7 (pytorch/pytorch#143976, fixed by pytorch/pytorch#144086), so the ``shift``
+    engine tracks NaN itself there. The version flag is a default argument because TorchScript cannot read a
+    module-level ``bool``.
+    """
+    return device.type == "mps" and mps_ignores_nan
 
 
 def _validate_morphology_inputs(
@@ -118,12 +131,15 @@ def _shift_reduce(
     # than masking (CPU float32, 3 x 3 and 7 x 7). While a backward graph is being recorded, or for a
     # a call without a reduction value, the masked form is kept.
     recording = torch.is_grad_enabled() and (padded.requires_grad or offsets.requires_grad)
+    # Where the pairwise reduction drops NaN (see ``_maximum_ignores_nan``), a running ``isnan`` mask restores it.
+    propagate_nan = _maximum_ignores_nan(padded.device)
     if reduction_value is None or recording:
         # Keep each offset two-dimensional so PyTorch applies tensor-tensor dtype promotion. Indexing
         # down to a scalar would instead apply wrapped-scalar rules and silently keep ``padded.dtype``.
         output = padded[..., 0:height, 0:width] + offsets[0:1, 0:1]
         if reduction_value is not None:
             output = torch.where(kernel[0, 0] != 0, output, torch.full_like(output, reduction_value))
+        nan_mask = torch.isnan(output) if propagate_nan else None
         # ``unfold`` reduces the kernel-height dimension first and then kernel width; keep that traversal so
         # tied values are met in the same order. Which of two tied operands a backend's ``max``/``min``
         # returns is its own choice (CPU keeps the first, MPS the second), so the sign of a zero result is
@@ -135,10 +151,14 @@ def _shift_reduce(
                 shifted = padded[..., i : i + height, j : j + width] + offsets[i : i + 1, j : j + 1]
                 if reduction_value is not None:
                     shifted.masked_fill_(kernel[i, j] == 0, reduction_value)
+                if nan_mask is not None:
+                    nan_mask = nan_mask | torch.isnan(shifted)
                 if inplace:
                     torch.maximum(output, shifted, out=output) if dilate else torch.minimum(output, shifted, out=output)
                 else:
                     output = torch.maximum(output, shifted) if dilate else torch.minimum(output, shifted)
+        if nan_mask is not None:
+            output = output.masked_fill(nan_mask, float("nan"))
         return output
 
     # Out-of-place on purpose: ``vmap`` and forward-mode AD batch or dualise ``padded``, which an in-place
@@ -153,16 +173,21 @@ def _shift_reduce(
     offsets = torch.where(included, offsets, torch.zeros_like(offsets))
 
     output = _shift_cell(planes, plane, offsets, 0, 0, height, width, flat)
+    nan_mask = torch.isnan(output) if propagate_nan else None
     # Same traversal order as the masked loop above and as ``unfold``.
     for j in range(kw):
         for i in range(kh):
             if i == 0 and j == 0:
                 continue
             shifted = _shift_cell(planes, plane, offsets, i, j, height, width, flat)
+            if nan_mask is not None:
+                nan_mask = nan_mask | torch.isnan(shifted)
             if inplace:
                 torch.maximum(output, shifted, out=output) if dilate else torch.minimum(output, shifted, out=output)
             else:
                 output = torch.maximum(output, shifted) if dilate else torch.minimum(output, shifted)
+    if nan_mask is not None:
+        output = output.masked_fill(nan_mask, float("nan"))
     return output
 
 
