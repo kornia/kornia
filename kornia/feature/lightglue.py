@@ -762,7 +762,8 @@ class LightGlue(nn.Module):
         KORNIA_CHECK(desc0.shape[-1] == self.conf.input_dim, "Descriptor dimension does not match input dim in config")
         KORNIA_CHECK(desc1.shape[-1] == self.conf.input_dim, "Descriptor dimension does not match input dim in config")
 
-        if torch.is_autocast_enabled():
+        device_type = desc0.device.type
+        if device_type != "cpu" and torch.is_autocast_enabled(device_type):
             desc0 = desc0.half()
             desc1 = desc1.half()
 
