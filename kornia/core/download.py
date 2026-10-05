@@ -348,10 +348,7 @@ def _url_list(url: object) -> list[str]:
         # fetched, so a local path here would load whichever cached file shares
         # its name. A one-letter scheme is a Windows drive letter, not a URL.
         if len(urlparse(u).scheme) <= 1:
-            raise ValueError(
-                f"url must be a URL with a scheme, got {u!r}; to load a local file use torch.load, "
-                "or pass a file:// URL such as Path(path).as_uri()."
-            )
+            raise ValueError(f"url must be a URL with a scheme, got {u!r}; to load a local file use torch.load.")
         checked.append(u)
     return checked
 
