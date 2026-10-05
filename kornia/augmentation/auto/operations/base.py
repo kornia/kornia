@@ -46,9 +46,9 @@ class OperationBase(nn.Module):
           the wrapped generator's range and receives a gradient where the wrapped augmentation is differentiable
           in it; ``forward_parameters`` substitutes it into the wrapped augmentation's draw.
         - ``forward`` linearly blends the wrapped output with the input using ``batch_prob``. The wrapped
-          augmentation receives an all-true gate so that the same supplied fractional ``batch_prob`` always
-          produces the same soft blend regardless of the wrapped augmentation's ``p`` or ``p_batch``
-          (`#4809 <https://github.com/kornia/kornia/issues/4809>`_).
+          augmentation transforms every row whose gate is above ``0``, so the same supplied fractional
+          ``batch_prob`` produces the same soft blend whatever the wrapped ``p`` or ``p_batch``. Below ``p = 1`` the
+          wrapped augmentation skips a row with gate ``0``, so that row's matrix stays the identity.
         - a symmetric magnitude applies the magnitude mapping first and then a random sign per row, so a mapping
           that quantizes to zero stays zero (``Posterize`` maps ``0.5`` to ``0`` bits with ``magnitude_range=(0, 8)``).
         - the concrete classes in ``kornia.augmentation.auto.operations.ops`` wrap public 2D augmentations and
@@ -182,8 +182,11 @@ class OperationBase(nn.Module):
             device=input.device, dtype=input.dtype
         )
 
+        # The wrapped augmentation transforms every row the blend gives a weight, so a fractional gate is not
+        # gated again by its ``p``. A row of weight 0 stays untouched, so its matrix, annotations and cost do not
+        # change for the hard 0/1 gates that sampling draws.
         wrapped_params = params.copy()
-        wrapped_params["batch_prob"] = torch.ones_like(params["batch_prob"])
+        wrapped_params["batch_prob"] = (params["batch_prob"] > 0).to(params["batch_prob"].dtype)
 
         return batch_prob * self.op(input, params=wrapped_params) + (1 - batch_prob) * input
 

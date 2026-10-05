@@ -20,6 +20,7 @@ from __future__ import annotations
 import pytest
 import torch
 
+import kornia.augmentation as K
 from kornia.augmentation.auto.autoaugment import AutoAugment
 from kornia.augmentation.auto.operations import PolicySequential, ops
 from kornia.augmentation.auto.rand_augment import RandAugment
@@ -279,8 +280,8 @@ class TestAutoAugmentConventions(BaseTester):
 
     @pytest.mark.parametrize("probability", [1.0, 0.99])
     def test_convention_operation_soft_blend_ignores_the_wrapped_p_4809(self, probability, device, dtype):
-        # #4809: the soft blend must not depend on the wrapped augmentation's p. The wrapped operation receives an
-        # all-true gate, while OperationBase applies the supplied fractional batch_prob.
+        # #4809: the soft blend must not depend on the wrapped augmentation's p. The wrapped operation transforms
+        # every row with a nonzero gate, while OperationBase applies the supplied fractional batch_prob.
         invert = ops.Invert(initial_probability=probability)
         image = torch.tensor([0.25, 0.25, 0.75, 0.75], device=device, dtype=dtype).view(4, 1, 1, 1)
         params = invert.op.forward_parameters(image.shape)
@@ -289,6 +290,40 @@ class TestAutoAugmentConventions(BaseTester):
             invert(image, params=params).flatten(),
             image.new_tensor([0.375, 0.5, 0.375, 0.25]),
         )
+
+    def test_convention_operation_leaves_zero_gate_rows_untransformed_4809(self, device, dtype):
+        # #4809: only the rows the blend gives a weight reach a wrapped augmentation with p < 1, so a row with gate 0
+        # keeps an identity matrix, as on the image. Passing an all-true gate instead would record the shear for
+        # rows 1 and 3 while their pixels stay unchanged.
+        operation = ops.ShearX(initial_magnitude=0.3, initial_probability=0.5)
+        image = torch.rand(4, 1, 6, 6, device=device, dtype=dtype)
+        params = operation.forward_parameters(image.shape)
+        params["batch_prob"] = torch.tensor([1.0, 0.0, 0.3, 0.0])
+        out = operation(image, params=params)
+        self.assert_close(out[1::2], image[1::2], rtol=0, atol=0)
+        eye = torch.eye(3, device=device, dtype=operation.transform_matrix.dtype).expand(2, 3, 3)
+        self.assert_close(operation.transform_matrix[1::2], eye, rtol=0, atol=0)
+        assert not torch.equal(operation.transform_matrix[2], eye[0])
+
+    def test_convention_policy_keypoints_follow_the_gated_image_4809(self, device, dtype):
+        # #4809: inside AugmentationSequential the keypoint handler reads the wrapped op's matrix; a row whose image
+        # a gate of 0 left unchanged must keep its keypoints too.
+        policy = PolicySequential(
+            ops.ShearX(initial_magnitude=0.3, initial_probability=0.5),
+            ops.TranslateX(initial_magnitude=0.3, initial_probability=0.5),
+        )
+        aug = K.AugmentationSequential(policy, data_keys=["input", "keypoints"])
+        image = torch.linspace(0, 1, 4 * 3 * 8 * 8, device=device, dtype=dtype).view(4, 3, 8, 8)
+        keypoints = torch.tensor([[[2.0, 3.0], [5.0, 6.0]]], device=device, dtype=dtype).expand(4, -1, -1)
+        untouched_rows = 0
+        with torch.random.fork_rng(devices=[device] if device.type == "cuda" else []):
+            for seed in range(8):
+                torch.manual_seed(seed)
+                out_image, out_keypoints = aug(image, keypoints)
+                untouched = [i for i in range(4) if torch.equal(out_image[i], image[i])]
+                untouched_rows += len(untouched)
+                self.assert_close(out_keypoints[untouched], keypoints[untouched])
+        assert untouched_rows > 0, "the seeds must leave some row ungated"
 
     @pytest.mark.device_agnostic
     def test_convention_policy_sequential_samples_through_the_operation_wrapper_4441(self):
