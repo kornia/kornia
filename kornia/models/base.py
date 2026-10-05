@@ -110,7 +110,7 @@ class ModelBaseMixin:
                 _write_png_batch(os.path.join(directory, f"{self.name}_{timestamp}_{i}"), out)
         else:
             _write_png_batch(os.path.join(directory, f"{self.name}_{timestamp}"), output)
-        logger.info(f"Outputs are saved in {directory}")
+        logger.info("Outputs are saved in %s", directory)
 
     def _save_outputs(
         self, output: Union[torch.Tensor, List[torch.Tensor]], directory: Optional[str] = None, suffix: str = ""
@@ -134,7 +134,7 @@ class ModelBaseMixin:
                 _write_png_batch(os.path.join(directory, f"{self.name}{suffix}_{timestamp}_{i}"), out)
         else:
             _write_png_batch(os.path.join(directory, f"{self.name}{suffix}_{timestamp}"), output)
-        logger.info(f"Outputs are saved in {directory}")
+        logger.info("Outputs are saved in %s", directory)
 
 
 class ModelBase(ABC, nn.Module, ModelBaseMixin, Generic[ModelConfig]):

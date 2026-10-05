@@ -72,7 +72,7 @@ class TestIntegrationFocalLoss:
             sample = self.generate_sample(target).to(device)
             output = m(sample)
             loss = criterion(output, target.to(device))
-            logger.debug(f"Loss: {loss.item()}")
+            logger.debug("Loss: %s", loss.item())
 
             optimizer.zero_grad()
             loss.backward()
@@ -80,7 +80,7 @@ class TestIntegrationFocalLoss:
 
         sample = self.generate_sample(target).to(device)
         output_argmax = torch.argmax(m(sample), dim=1)
-        logger.debug(f"Output argmax: \n{output_argmax}")
+        logger.debug("Output argmax: \n%s", output_argmax)
 
         # TODO(edgar): replace by IoU or find a more stable solution
         #              for this test. The issue is that depending on

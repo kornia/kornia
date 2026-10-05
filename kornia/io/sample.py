@@ -104,11 +104,13 @@ def get_sample_images(
             name = os.path.basename(path)
             fname = os.path.join(cache_dir, name)
             if not os.path.exists(fname) and download:
-                logging.info(f"Downloading `{path}` to `{fname}`.")
+                logging.info("Downloading `%s` to `%s`.", path, fname)
                 download_image(path, fname)
             elif not os.path.exists(fname) and not download:
                 logging.error(
-                    f"Image `{path}` not found at `{fname}`. You may want to set `download=True` to download it."
+                    "Image `%s` not found at `%s`. You may want to set `download=True` to download it.",
+                    path,
+                    fname,
                 )
         else:
             fname = path

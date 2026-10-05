@@ -206,7 +206,7 @@ if __name__ == "__main__":
     # For HuggingFace model caching
     os.environ["HF_HOME"] = args.target_directory
 
-    logger.info(f"Downloading models to: {torch.hub.get_dir()}/checkpoints/")
+    logger.info("Downloading models to: %s/checkpoints/", torch.hub.get_dir())
 
     # A failure is recorded rather than raised, so one run reports every dead
     # source instead of the first one and then stopping -- with two sources and
@@ -217,7 +217,7 @@ if __name__ == "__main__":
     # letting every matrix cell fetch it live.
     failed: list[str] = []
     for file_name, url in MODELS.items():
-        logger.info(f"Downloading `{file_name}` from `{url if isinstance(url, str) else url[0]}`...")
+        logger.info("Downloading `%s` from `%s`...", file_name, url if isinstance(url, str) else url[0])
         try:
             # Don't pass model_dir - use the default from torch.hub.set_dir()
             # This ensures files go to {hub_dir}/checkpoints/ matching test behavior.
@@ -227,11 +227,11 @@ if __name__ == "__main__":
             else:
                 load_state_dict_from_url(url, map_location=torch.device("cpu"), file_name=file_name)
         except Exception as e:  # noqa: BLE001 - report every failure, not just the first
-            logger.error(f"Failed to download `{file_name}`: {type(e).__name__}: {e}")
+            logger.error("Failed to download `%s`: %s: %s", file_name, type(e).__name__, e)
             failed.append(file_name)
 
     if failed:
-        logger.error(f"{len(failed)} of {len(MODELS)} checkpoints could not be downloaded: {failed}")
+        logger.error("%d of %d checkpoints could not be downloaded: %s", len(failed), len(MODELS), failed)
         raise SystemExit(1)
 
     logger.info("All models downloaded successfully!")

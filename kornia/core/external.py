@@ -172,7 +172,7 @@ class LazyLoader:
         if self.module is not None:
             return
         if not self.dev_dependency and getattr(builtins, "__sphinx_build__", False):
-            logger.info(f"Sphinx detected, skipping loading of '{self.module_name}'")
+            logger.info("Sphinx detected, skipping loading of '%s'", self.module_name)
             return
         try:
             self.module = importlib.import_module(self.module_name)

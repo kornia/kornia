@@ -121,7 +121,7 @@ class CachedDownloader:
         """
         file_path = os.path.expanduser(file_path)
         if os.path.exists(file_path):
-            _logger.info(f"Loading `{url}` from `{file_path}`.")
+            _logger.info("Loading `%s` from `%s`.", url, file_path)
             return
 
         if not download_if_not_exists:
@@ -131,7 +131,7 @@ class CachedDownloader:
 
         if url.startswith(("http:", "https:")):
             try:
-                _logger.info(f"Downloading `{url}` to `{file_path}`.")
+                _logger.info("Downloading `%s` to `%s`.", url, file_path)
                 _core_download._download_url_to_file(url, file_path, progress=False)
             except urllib.error.HTTPError as exc:
                 raise ValueError(f"Error in resolving `{url}`.") from exc
