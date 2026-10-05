@@ -250,7 +250,7 @@ class AugmentationSequentialOps:
         outputs = []
         for inp, dcate in zip(arg, _data_keys):
             op = self._get_op(dcate)
-            extra_arg = extra_args[dcate] if dcate in extra_args else {}
+            extra_arg = extra_args.get(dcate, {})
             if dcate.name == "MASK" and isinstance(inp, list):
                 # Mirror ``transform``: a list of masks is inverted element by element.
                 outputs.append(MaskSequentialOps.inverse_list(inp, module, param=param, extra_args=extra_arg))

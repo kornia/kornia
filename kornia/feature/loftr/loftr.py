@@ -121,7 +121,7 @@ class LoFTR(nn.Module):
         self.fine_matching = FineMatching()
         self.pretrained = pretrained
         if pretrained is not None:
-            if pretrained not in urls.keys():
+            if pretrained not in urls:
                 raise ValueError(f"pretrained should be None or one of {urls.keys()}")
 
             pretrained_dict = load_state_dict_from_url(urls[pretrained], map_location=torch.device("cpu"))
