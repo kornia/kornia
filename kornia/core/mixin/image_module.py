@@ -347,7 +347,7 @@ class ImageModuleMixIn:
     ) -> Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]:
         if isinstance(output_image, torch.Tensor):
             return output_image.detach()
-        if isinstance(output_image, list | tuple):
+        if isinstance(output_image, (list, tuple)):
             return type(output_image)([self._detach_tensor(out) for out in output_image])  # type: ignore
         raise RuntimeError(f"Unexpected object {output_image} with a type of `{type(output_image)}`")
 
