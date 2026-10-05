@@ -3603,6 +3603,33 @@ class TestRandomRotation(BaseTester):
 
 
 class TestRandomCrop(BaseTester):
+    @pytest.mark.parametrize("exporting", [False, True])
+    @pytest.mark.parametrize(
+        ("input_size", "size", "expected_scale"),
+        [
+            ((329, 1209), (416, 416), (1.0, 416 / 329)),
+            ((1209, 329), (416, 416), (416 / 329, 1.0)),
+            ((329, 329), (416, 416), (416 / 329, 416 / 329)),
+            ((500, 500), (416, 416), (1.0, 1.0)),
+        ],
+    )
+    def test_slice_crop_transform_scales_each_oversized_axis_independently(
+        self, input_size, size, expected_scale, exporting, device, dtype, monkeypatch
+    ):
+        from kornia.augmentation._2d.geometric import crop as crop_module
+
+        image = torch.zeros(1, 1, *input_size, device=device, dtype=dtype)
+        aug = RandomCrop(size, cropping_mode="slice", p=1.0)
+        params = aug.forward_parameters(image.shape)
+        monkeypatch.setattr(crop_module, "is_exporting", lambda: exporting)
+
+        transform = aug.compute_transformation(image, params, aug.flags)
+
+        self.assert_close(
+            transform[0, :2, :2],
+            torch.diag(torch.tensor(expected_scale, device=device, dtype=dtype)),
+        )
+
     def test_fill_accepts_one_value_per_channel(self, device, dtype):
         image = torch.zeros(1, 3, 2, 2, device=device, dtype=dtype)
         fill = (0.25, 0.5, 0.75)

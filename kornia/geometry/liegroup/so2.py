@@ -47,11 +47,10 @@ class So2(nn.Module):
           displayed on y-down image axes. For a unit rotation, ``matrix()`` is the transpose of
           :func:`~kornia.geometry.conversions.angle_to_rotation_matrix`, which takes degrees.
           ``log`` returns the angle in :math:`[-\pi, \pi]`, and ``adjoint()`` is the 2x2 identity.
-        - Known defects: ``hat`` returns the symmetric :math:`[[0, \theta], [\theta, 0]]` instead of the generator
-          :math:`[[0, -\theta], [\theta, 0]]`, and ``vee`` reads its ``[0, 1]`` entry
-          (`#4929 <https://github.com/kornia/kornia/issues/4929>`_); ``.to()`` a real dtype keeps the real part of
-          ``z``, drops its imaginary part and makes ``matrix()`` raise
-          (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
+        - ``hat`` returns the so(2) generator :math:`[[0, -\theta], [\theta, 0]]` and ``vee`` reads its ``[1, 0]``
+          entry, so ``matrix_exp(hat(theta))`` equals ``exp(theta).matrix()``.
+        - Known defects: ``.to()`` a real dtype keeps the real part of ``z``, drops its imaginary part and makes
+          ``matrix()`` raise (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
 
     Example:
         >>> real = torch.tensor([0.6])
@@ -182,11 +181,10 @@ class So2(nn.Module):
 
     @staticmethod
     def hat(theta: torch.Tensor) -> torch.Tensor:
-        """Convert an angle to the matrix that :meth:`vee` inverts.
+        r"""Convert an angle to the so(2) generator :math:`[[0, -\theta], [\theta, 0]]`, which :meth:`vee` inverts.
 
         The output has shape :math:`(2, 2)` or :math:`(B, 2, 2)`; a :math:`(B, 1)` angle is squeezed to :math:`(B,)`.
-
-        The matrix is not the so(2) generator (`#4929 <https://github.com/kornia/kornia/issues/4929>`_).
+        Its matrix exponential is the rotation :meth:`exp` returns.
 
         Args:
             theta: angle in radians of shape :math:`(B,)` or :math:`()`; :math:`(B, 1)` is squeezed to :math:`(B,)`.
@@ -194,8 +192,8 @@ class So2(nn.Module):
         Example:
             >>> theta = torch.tensor(3.1415/2)
             >>> So2.hat(theta)
-            tensor([[0.0000, 1.5707],
-                    [1.5707, 0.0000]])
+            tensor([[ 0.0000, -1.5707],
+                    [ 1.5707,  0.0000]])
 
         """
         # check_so2_theta_shape
@@ -207,9 +205,9 @@ class So2(nn.Module):
         if is_column:
             theta = theta.squeeze(-1)  # (B, 1) would give (B, 1, 2, 2), which vee() rejects (#4932)
         z = torch.zeros_like(theta)
-        row0 = torch.stack((z, theta), -1)
+        row0 = torch.stack((z, -theta), -1)
         row1 = torch.stack((theta, z), -1)
-        return torch.stack((row0, row1), -1)
+        return torch.stack((row0, row1), -2)
 
     @staticmethod
     def vee(omega: torch.Tensor) -> torch.Tensor:
@@ -217,8 +215,7 @@ class So2(nn.Module):
 
         Returns a scalar or a :math:`(B,)` vector, respectively.
 
-        It reads the ``[0, 1]`` entry, which is :math:`-\theta` for the so(2) generator
-        (`#4929 <https://github.com/kornia/kornia/issues/4929>`_).
+        It reads the ``[1, 0]`` entry, :math:`\theta` in the so(2) generator :math:`[[0, -\theta], [\theta, 0]]`.
 
         Args:
             omega: 2x2-matrix built by :meth:`hat`.
@@ -235,7 +232,7 @@ class So2(nn.Module):
         is_single = KORNIA_CHECK_SHAPE(omega, ["2", "2"], raises=False)
         if not (is_batch or is_single):
             raise ValueError(f"Invalid input size, we expect [B, 2, 2] or [2, 2]. Got: {omega.shape}")
-        return omega[..., 0, 1]
+        return omega[..., 1, 0]
 
     def matrix(self) -> torch.Tensor:
         """Return a matrix of shape ``z.shape + (2, 2)`` for each stored complex number.

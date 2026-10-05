@@ -266,6 +266,70 @@ class TestInRange(BaseTester):
         self.assert_close(by_tuple, expected)
         self.assert_close(by_tensor, expected)
 
+    @pytest.mark.parametrize("tensor_bounds", [False, True])
+    @pytest.mark.parametrize("return_mask", [False, True])
+    @pytest.mark.parametrize(
+        "image_dtype, values, lower, upper, expected",
+        [
+            (torch.uint8, [99, 100, 101, 200, 201], 100.7, 200.5, [0, 0, 1, 1, 0]),
+            (torch.int16, [-5, -4, -3, -2], -10.0, -3.5, [1, 1, 0, 0]),
+            (torch.int16, [-5, -4, -3, -2], -3.5, -2.5, [0, 0, 1, 0]),
+            (torch.uint8, [100, 101], 100.2, 100.8, [0, 0]),
+            (torch.uint8, [0, 100, 255], -1, 256, [1, 1, 1]),
+            (torch.uint8, [0, 100, 255], -10.0, -0.5, [0, 0, 0]),
+            (torch.uint8, [0, 100, 255], 255.5, 300.0, [0, 0, 0]),
+            (torch.int16, [-32768, 0, 32767], -40000.0, 40000.0, [1, 1, 1]),
+            (torch.int16, [-32768, 0, 32767], float("-inf"), float("inf"), [1, 1, 1]),
+            (torch.int16, [-1, 0, 1], float("nan"), 1.0, [0, 0, 0]),
+            (torch.int16, [-1, 0, 1], -1.0, float("nan"), [0, 0, 0]),
+            (torch.int64, [2**60, 2**60 + 1, 2**60 + 2], 2**60 + 1, 2**60 + 1, [0, 1, 0]),
+            (torch.int64, [-(2**63), 0, 2**63 - 1], float("-inf"), float(2**63), [1, 1, 1]),
+            (torch.int64, [-(2**63), 0, 2**63 - 1], float(2**63), float("inf"), [0, 0, 0]),
+        ],
+    )
+    def test_integer_bounds(self, image_dtype, values, lower, upper, expected, tensor_bounds, return_mask, device):
+        # Expected masks follow the inclusive inequalities using the original bounds, before any dtype conversion.
+        img = torch.tensor(values, device=device, dtype=image_dtype).reshape(1, 1, 1, -1)
+        lower, upper = (lower,), (upper,)
+        if tensor_bounds:
+            lower, upper = torch.tensor(lower), torch.tensor(upper)
+        expected = torch.tensor(expected, device=device, dtype=image_dtype).reshape_as(img)
+        if not return_mask:
+            expected = img * expected
+        actual = in_range(img, lower, upper, return_mask=return_mask)
+        assert actual.dtype == img.dtype
+        assert actual.device == img.device
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        self.assert_close(InRange(lower, upper, return_mask=return_mask)(img), expected, rtol=0, atol=0)
+
+    def test_integer_input_is_not_rounded_to_bound_dtype(self, device):
+        img = torch.tensor([2**24, 2**24 + 1], device=device, dtype=torch.int32).reshape(1, 1, 1, 2)
+        bound = torch.tensor([2**24], dtype=torch.float32)
+        expected = torch.tensor([[[[1, 0]]]], device=device, dtype=img.dtype)
+        self.assert_close(in_range(img, bound, bound, return_mask=True), expected, rtol=0, atol=0)
+
+    def test_integer_tuple_bound_preserves_python_precision(self, device):
+        img = torch.tensor([100, 101], device=device, dtype=torch.uint8).reshape(1, 1, 1, 2)
+        expected = torch.tensor([[[[0, 1]]]], device=device, dtype=img.dtype)
+        self.assert_close(in_range(img, (100.0000001,), (101.0,), return_mask=True), expected)
+
+    def test_integer_tensor_bounds_broadcast_per_batch_and_channel(self, device):
+        img = torch.tensor([100, 101, -4, -3, 200, 201, -2, -1], device=device, dtype=torch.int16).reshape(2, 2, 1, 2)
+        lower = torch.tensor([[100.7, -5.0], [199.5, -2.5]], device=device).reshape(2, 2, 1, 1)
+        upper = torch.tensor([[200.5, -3.5], [200.5, -0.5]], device=device).reshape(2, 2, 1, 1)
+        expected = torch.tensor([0, 0, 1, 0], device=device, dtype=img.dtype).reshape(2, 1, 1, 2)
+        self.assert_close(in_range(img, lower, upper, return_mask=True), expected)
+
+    @pytest.mark.parametrize("tensor_bounds", [False, True])
+    def test_dynamo_integer_bounds(self, device, tensor_bounds, torch_optimizer):
+        img = torch.tensor([0, 100, 101, 200, 255], device=device, dtype=torch.uint8).reshape(1, 1, 1, 5)
+        lower, upper = (100.7,), (256.0,)
+        if tensor_bounds:
+            lower, upper = torch.tensor(lower, device=device), torch.tensor(upper, device=device)
+        op = InRange(lower, upper, return_mask=True)
+        expected = torch.tensor([[[[0, 0, 1, 1, 1]]]], device=device, dtype=img.dtype)
+        self.assert_close(torch_optimizer(op, fullgraph=True)(img), expected)
+
     def test_multi_channel_mask_requires_every_channel(self, device, dtype):
         # The conjunction runs over the C channels: one channel out of range clears the pixel.
         img = torch.tensor([0.5, 0.5, 0.5, 0.5, 0.5, 0.95], device=device, dtype=dtype).reshape(1, 3, 1, 2)

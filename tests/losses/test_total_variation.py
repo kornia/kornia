@@ -48,6 +48,27 @@ class TestTotalVariation(BaseTester):
         actual = kornia.losses.total_variation(pred.to(device, dtype=torch.int32), reduction="mean")
         self.assert_close(actual, expected.to(device))
 
+    @pytest.mark.parametrize("input_dtype", [torch.uint8, torch.int8, torch.int16, torch.int32])
+    @pytest.mark.parametrize("shape", [(2, 3), (2, 3, 2, 3)])
+    @pytest.mark.parametrize("reduction", ["sum", "mean"])
+    def test_tv_integer_extrema(self, device, input_dtype, shape, reduction):
+        limits = torch.iinfo(input_dtype)
+        pred = torch.tensor(
+            [[limits.max, limits.min, 0], [limits.max, limits.min, 0]], device=device, dtype=input_dtype
+        ).expand(shape)
+        # Four horizontal edges: two span the full range, two have magnitude abs(min).
+        expected_sum = 2 * (limits.max - limits.min + abs(limits.min))
+        expected = torch.tensor(expected_sum, device=device, dtype=torch.int64)
+        if reduction == "mean":
+            expected = expected.float() / 4
+        expected = expected.expand(shape[:-2])
+
+        self.assert_close(kornia.losses.total_variation(pred, reduction), expected)
+        self.assert_close(kornia.losses.total_variation(pred.flip(-1), reduction), expected)
+        self.assert_close(kornia.losses.total_variation(pred.transpose(-2, -1), reduction), expected)
+        if reduction == "sum":
+            self.assert_close(kornia.losses.TotalVariation()(pred), expected)
+
     # Total variation for 3D tensors
     @pytest.mark.parametrize(
         "pred, expected",
@@ -176,6 +197,16 @@ class TestTotalVariation(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(image), op_optimized(image))
+
+    @pytest.mark.parametrize("input_dtype", [torch.uint8, torch.int8, torch.int16, torch.int32])
+    @pytest.mark.parametrize("reduction", ["sum", "mean"])
+    def test_dynamo_integer(self, device, input_dtype, reduction, torch_optimizer):
+        limits = torch.iinfo(input_dtype)
+        image = torch.tensor([[limits.max, limits.min], [limits.max, limits.min]], device=device, dtype=input_dtype)
+        op = kornia.losses.total_variation
+        op_optimized = torch_optimizer(op)
+
+        self.assert_close(op(image, reduction), op_optimized(image, reduction))
 
     def test_module(self, device, dtype):
         image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
