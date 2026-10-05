@@ -1170,7 +1170,7 @@ class TestConventionEssential(BaseTester):
         # With every point masked out no candidate passes the depth test.
         # The caller must be able to detect this instead of silently receiving candidate 0.
         mask = torch.zeros(1, 12, dtype=torch.bool, device=device)
-        R_out, t_out, _, valid_none = epi.motion_from_essential_choose_solution(E, K1, K2, x1, x2, mask=mask)
+        _, _, _, valid_none = epi.motion_from_essential_choose_solution(E, K1, K2, x1, x2, mask=mask)
         assert torch.equal(valid_none, torch.tensor([0], device=device))
 
         # Control: one unmasked point is enough to select the true pose and reports one valid point.
