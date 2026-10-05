@@ -110,22 +110,20 @@ class TestBlurConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         assert _lit_extent(make((1, 5))(transposed)[0, 0]) == ([3], [0, 1, 2, 3, 4])
 
-    def test_convention_median_blur_border_median_is_over_zero_padding(self, device, dtype):
-        # A constant-ones image: the 3x3 window at a corner holds 5 zeros and 4 ones, so the corner comes
-        # back 0 while an edge pixel (3 zeros, 6 ones) stays 1.  Replicate padding would return 1 at both.
-        # Snippet used to generate expected:
-        #   torch.manual_seed(0); y = K.RandomMedianBlur((3, 3), p=1.0)(torch.ones(1, 1, 4, 4)); print(y[0, 0, 0, :2])
-        #   torch.manual_seed(0); print(K.RandomMedianBlur((5, 5), p=1.0)(torch.ones(1, 1, 6, 6))[0, 0, 0])
+    def test_convention_median_blur_border_median_uses_reflect_padding(self, device, dtype):
+        # A constant-ones image: reflect padding reflects the boundary ones into the padding window,
+        # so corner, edge, and center windows all hold only ones and their medians evaluate to 1.
         ones = torch.ones(1, 1, 4, 4, device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         out = K.RandomMedianBlur((3, 3), p=1.0)(ones)
-        assert float(out[0, 0, 0, 0]) == 0.0 and float(out[0, 0, 0, 1]) == 1.0
+        assert float(out[0, 0, 0, 0]) == 1.0
+        assert float(out[0, 0, 0, 1]) == 1.0
         assert float(out[0, 0, 1, 1]) == 1.0
-        # 5x5 on a 6x6 image: the top row's window holds 3 image rows, so 15 ones at columns 2 and 3
-        # (median 1) but 12 at columns 1 and 4 and 9 at the corners (median 0).
+        # 5x5 on a 6x6 image: reflect padding preserves the constant value across the border,
+        # so the top row consists entirely of ones.
         torch.manual_seed(_FORWARD_SEED)
         wide = K.RandomMedianBlur((5, 5), p=1.0)(torch.ones(1, 1, 6, 6, device=device, dtype=dtype))
-        self.assert_close(wide[0, 0, 0], ones.new_tensor([0.0, 0.0, 1.0, 1.0, 0.0, 0.0]))
+        self.assert_close(wide[0, 0, 0], ones.new_tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0]))
 
     def test_convention_box_blur_even_kernel_is_accepted_and_off_centre(self, device, dtype):
         # Snippet used to generate expected:
@@ -145,7 +143,8 @@ class TestBlurConventions(BaseTester):
             torch.manual_seed(_FORWARD_SEED)
             out = K.RandomBoxBlur(kernel_size, p=1.0)(impulse)
             lit = out[0, 0].nonzero()
-            assert lit[:, 0].unique().tolist() == rows and lit[:, 1].unique().tolist() == cols
+            assert lit[:, 0].unique().tolist() == rows
+            assert lit[:, 1].unique().tolist() == cols
             self.assert_close(out.sum(), impulse.sum())
 
     # A rank filter cannot be read off an impulse, so the detector is a one-row bar.  A (1, kW) window slides
@@ -225,11 +224,13 @@ class TestBlurConventions(BaseTester):
         sigma = aug._params["sigma"]
         assert sigma.shape == (4,)
         assert len(set(sigma.flatten().tolist())) == 4
-        assert float(sigma.min()) >= 0.5 and float(sigma.max()) <= 1.5
+        assert float(sigma.min()) >= 0.5
+        assert float(sigma.max()) <= 1.5
         # Reach, not only containment: a draw shrunk to `[0.5, 0.6]` satisfies the bounds above.
         torch.manual_seed(_FORWARD_SEED)
         many = aug.forward_parameters((256, 3, 7, 9))["sigma"]
-        assert float(many.min()) < 0.6 and float(many.max()) > 1.4
+        assert float(many.min()) < 0.6
+        assert float(many.max()) > 1.4
         assert aug.flags["separable"] is True
         assert aug.flags["border_type"] == BorderType.REFLECT
         assert aug.flags["kernel_size"] == (3, 3)
@@ -384,10 +385,12 @@ class TestBlurConventions(BaseTester):
         for resample in ("nearest", "bilinear"):
             torch.manual_seed(_FORWARD_SEED)
             out = K.RandomMotionBlur(5, (80.0, 80.0), (1.0, 1.0), border_type="reflect", resample=resample, p=1.0)(edge)
-            assert float(out.min()) >= -1e-3 and float(out.max()) <= 1.0 + 1e-3, resample
+            assert float(out.min()) >= -1e-3, resample
+            assert float(out.max()) <= 1.0 + 1e-3, resample
         torch.manual_seed(_FORWARD_SEED)
         out = K.RandomMotionBlur(5, (80.0, 80.0), (1.0, 1.0), border_type="reflect", resample="bicubic", p=1.0)(edge)
-        assert float(out.min()) < -0.02 and float(out.max()) > 1.02
+        assert float(out.min()) < -0.02
+        assert float(out.max()) > 1.02
 
     # The four filters do not clamp: a 1.1 impulse is attenuated below one, and the output is linear in the
     # input (for the median blur, a negative plateau stays negative), so no wrapper clamp is hiding in there.
@@ -424,8 +427,8 @@ class TestBlurConventions(BaseTester):
     # Issue #4559: RandomBoxBlur, RandomGaussianBlur and RandomSharpness raise a kornia `ValueError` naming
     # the class, the kernel and the input shape.  The two blurs reflect-pad, so an axis must be longer than the
     # kernel radius (`k // 2`, one pixel for the 3x3 default); RandomSharpness convolves without padding, so
-    # it needs the full 3x3.  RandomMedianBlur and, at its default constant border, RandomMotionBlur accept
-    # the same degenerate image.
+    # it needs the full 3x3.  RandomMedianBlur reflect-pads as well and raises the same error, while
+    # RandomMotionBlur, at its default constant border, accepts the degenerate image.
     # Snippet used to generate expected:
     #   for shape in ((2, 3, 1, 8), (2, 3, 2, 2), (2, 3, 3, 3)):
     #       x = torch.rand(*shape)
@@ -474,11 +477,16 @@ class TestBlurConventions(BaseTester):
             _sync(K.RandomSharpness(1.0, p=1.0)(small).device)
         torch.manual_seed(_FORWARD_SEED)
         assert K.RandomSharpness(1.0, p=1.0)(square).shape == square.shape
-        # The two rank/kernel-rotation filters accept the same one-row image, so the failure is not
-        # a package-wide "kernel larger than image" rule.
-        for make in (lambda: K.RandomMedianBlur(p=1.0), lambda: K.RandomMotionBlur(3, (45.0, 45.0), (0.0, 0.0), p=1.0)):
+        # RandomMedianBlur reflect-pads, so it refuses the one-row image with the same named error, before the
+        # filter runs; RandomMotionBlur, at its default constant border, still accepts it.
+        torch.manual_seed(_FORWARD_SEED)
+        with pytest.raises(ValueError, match="RandomMedianBlur cannot filter an image this small"):
+            _sync(K.RandomMedianBlur(p=1.0)(thin).device)
+        if reflect_ok:
             torch.manual_seed(_FORWARD_SEED)
-            assert make()(thin).shape == thin.shape
+            assert K.RandomMedianBlur(p=1.0)(small).shape == small.shape
+        torch.manual_seed(_FORWARD_SEED)
+        assert K.RandomMotionBlur(3, (45.0, 45.0), (0.0, 0.0), p=1.0)(thin).shape == thin.shape
 
     # ``border_type="circular"`` needs each axis at least the kernel radius (``k // 2``): the two padding
     # blurs raise kornia's named error below it, while ``"constant"`` and ``"replicate"`` run there.
@@ -590,7 +598,8 @@ class TestBlurConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         positive_out = factories[name]()(positive)
         low, high = positive_out.aminmax()
-        assert float(low) < 1.0 and float(high) <= 1.0 + 1e-3, "a positive image is pulled below its minimum"
+        assert float(low) < 1.0, "a positive image is pulled below its minimum"
+        assert float(high) <= 1.0 + 1e-3, "a positive image is pulled below its minimum"
         negative = torch.full((1, 1, 7, 7), -1.0, device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         negative_out = factories[name]()(negative)
@@ -804,15 +813,19 @@ class TestNoiseAndWeatherConventions(BaseTester):
 
         tall_rows, tall_cols = extents(torch.zeros(1, 1, 12, 30, device=device, dtype=dtype))
         if drop_height > drop_width:
-            assert tall_rows >= 5 and tall_cols <= 2
+            assert tall_rows >= 5
+            assert tall_cols <= 2
         else:
-            assert tall_cols >= 5 and tall_rows <= 2
+            assert tall_cols >= 5
+            assert tall_rows <= 2
         # On a 30x12 image the arguments still mean rows and columns.
         wide_rows, wide_cols = extents(torch.zeros(1, 1, 30, 12, device=device, dtype=dtype))
         if drop_height > drop_width:
-            assert wide_rows >= 5 and wide_cols <= 2
+            assert wide_rows >= 5
+            assert wide_cols <= 2
         else:
-            assert wide_cols >= 5 and wide_rows <= 2
+            assert wide_cols >= 5
+            assert wide_rows <= 2
 
     # A drop is the literal 200/255, not a function of the image.
     def test_convention_random_rain_drop_value_is_two_hundred_over_255(self, device, dtype):
@@ -966,7 +979,8 @@ class TestNoiseAndWeatherConventions(BaseTester):
             lit = (aug(image)[0, 0] != 0).nonzero()
             rows |= set(lit[:, 0].tolist())
             cols |= set(lit[:, 1].tolist())
-        assert sorted(rows) == list(range(6)) and sorted(cols) == list(range(10))
+        assert sorted(rows) == list(range(6))
+        assert sorted(cols) == list(range(10))
 
     # A single drop paints a bounding box of exactly ``(h, max(|w|, 1))`` inside the image for every legal start
     # (#4604); a drop wrapped across opposite edges by a negative index would still satisfy the union pin.
@@ -989,8 +1003,10 @@ class TestNoiseAndWeatherConventions(BaseTester):
                         rows, cols = lit[:, 0].tolist(), lit[:, 1].tolist()
                         case = (height, width, drop_height, drop_width, seed)
                         assert (max(rows) - min(rows) + 1, max(cols) - min(cols) + 1) == expected, case
-                        assert min(rows) >= 0 and max(rows) < height, case
-                        assert min(cols) >= 0 and max(cols) < width, case
+                        assert min(rows) >= 0, case
+                        assert max(rows) < height, case
+                        assert min(cols) >= 0, case
+                        assert max(cols) < width, case
 
     # Every legal start row is equally likely, not merely reachable (#4604); single-pixel drops on a wide
     # image, so each painted cell is one start.
@@ -1066,10 +1082,12 @@ class TestNoiseAndWeatherConventions(BaseTester):
             drawn = aug._params[key].flatten()
             assert drawn.shape == (4,)
             assert len(set(drawn.tolist())) == 4
-            assert float(drawn.min()) >= low and float(drawn.max()) <= high
+            assert float(drawn.min()) >= low
+            assert float(drawn.max()) <= high
             # Reach, not only containment.
             width = high - low
-            assert float(many[key].min()) < low + 0.1 * width and float(many[key].max()) > high - 0.1 * width
+            assert float(many[key].min()) < low + 0.1 * width
+            assert float(many[key].max()) > high - 0.1 * width
         torch.manual_seed(_FORWARD_SEED)
         shared = K.RandomSnow(snow_coefficient=(0.2, 0.8), brightness=(1.5, 3.0), p=1.0, same_on_batch=True)
         shared(image)
@@ -1195,7 +1213,8 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
                 assert float(gradient.float().min()) >= 0.0
             else:
                 assert float(gradient.float().max()) <= 0.0
-            assert float(clamped.min()) >= low - 1e-3 and float(clamped.max()) <= high + 1e-3
+            assert float(clamped.min()) >= low - 1e-3
+            assert float(clamped.max()) <= high + 1e-3
             raw = constant + gradient.to(device=device, dtype=dtype)
             self.assert_close(clamped, raw.clamp(0.0, 1.0))
             assert not torch.equal(clamped, raw), "the clamp did not engage, so this leg proves nothing"
@@ -1208,7 +1227,8 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         per_sample = _illumination(name)
         per_sample(batch)
         directions = [float(per_sample._params["gradient"][b].float().max()) for b in range(batch_size)]
-        assert any(value > 0.0 for value in directions) and any(value <= 0.0 for value in directions)
+        assert any(value > 0.0 for value in directions)
+        assert any(value <= 0.0 for value in directions)
         torch.manual_seed(_FORWARD_SEED)
         shared = _illumination(name, same_on_batch=True)
         shared(batch)

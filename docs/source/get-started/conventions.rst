@@ -414,8 +414,9 @@ Augmentations
 - Boxes use the inclusive ``xyxy_plus`` convention of
   :class:`kornia.geometry.boxes.Boxes` (see *Bounding boxes* above). Flips use
   integer pixel centres: ``x' = W - 1 - x``.
-- The outer ``.transform_matrix`` of a nested container can be missing or
-  stale, even with only rigid children
+- Nested ``AugmentationSequential`` children contribute matrices from the
+  current call. A plain ``ImageSequential`` child is still omitted from an
+  outer ``AugmentationSequential`` matrix
   (`#4476 <https://github.com/kornia/kornia/issues/4476>`_).
 - Dictionary keys match a data-key name exactly or before an ``_``/``-``
   suffix, the longest match winning. Unrecognized keys are returned unchanged
