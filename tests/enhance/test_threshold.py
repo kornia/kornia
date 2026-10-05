@@ -93,6 +93,10 @@ class TestThreshold:
             (torch.uint8, [100, 101], 100.7, ThresholdType.THRESH_BINARY, [0, 9]),
             (torch.int16, [-1, 0, 1], float("nan"), ThresholdType.THRESH_TOZERO, [0, 0, 0]),
             (torch.int64, [2**60, 2**60 + 1, 2**60 + 2], 2**60 + 1, ThresholdType.THRESH_BINARY, [0, 0, 9]),
+            # A threshold at the dtype's minimum is in range: every element but the minimum passes.
+            (torch.uint8, [0, 1, 255], 0, ThresholdType.THRESH_BINARY, [0, 9, 9]),
+            # Rounded down below the range, a signed threshold truncates to the dtype's minimum, not to 0.
+            (torch.int8, [-128, 0, 127], -128.5, ThresholdType.THRESH_TRUNC, [-128, -128, -128]),
         ],
     )
     @pytest.mark.parametrize("tensor_thresh", [False, True])
