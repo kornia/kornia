@@ -335,7 +335,7 @@ def _documented_soft_threshold(x, nbins, bandwidth=0.5, temperature=0.01):
 
 
 class TestOtsuThresholdDifferentiable(BaseTester):
-    # No gradcheck on the threshold: its value is the hard split, piecewise constant in x, while its gradient is that of
+    # No gradcheck on the threshold: its value comes from a hard split, while its gradient is that of
     # a soft-argmax over a smoother between-class variance curve (straight-through), so finite differences of the
     # threshold do not match it by design. These tests check that the gradient exists, is finite, is consistent with
     # translating a plane, reaches every pixel and points the right way.
@@ -359,6 +359,54 @@ class TestOtsuThresholdDifferentiable(BaseTester):
         # the default path's threshold has no gradient
         _, threshold = otsu_threshold(x)
         assert not threshold.requires_grad
+
+    @pytest.mark.parametrize("scale_kind", ["large", "small", "subnormal"])
+    @pytest.mark.parametrize("signed", [False, True])
+    def test_finite_extreme_ranges_5426(self, scale_kind, signed, device, dtype):
+        if scale_kind == "subnormal" and device.type == "mps" and dtype != torch.float16:
+            pytest.skip("MPS flushes float32 and bfloat16 subnormals to zero")
+        limits = torch.finfo(dtype)
+        scale = {"large": limits.max, "small": limits.tiny * 64, "subnormal": limits.tiny / 64}[scale_kind]
+        levels = torch.tensor([[0.0, 0.1, 0.2, 0.6, 0.8, 1.0]], device=device, dtype=dtype)
+        if signed:
+            levels = 2 * levels - 1
+        x = (levels * scale).requires_grad_(True)
+        out, threshold = otsu_threshold(x, slow_and_differentiable=True)
+        (grad,) = torch.autograd.grad(threshold.sum(), x, retain_graph=True)
+        assert threshold.isfinite().all()
+        assert grad.isfinite().all()
+        self.assert_close(grad.float().sum(), grad.new_tensor(1.0).float(), rtol=0, atol=1e-2)
+        assert torch.equal(threshold.detach(), otsu_threshold(x.detach(), slow_and_differentiable=True)[1])
+        (image_grad,) = torch.autograd.grad(out.sum(), x)
+        self.assert_close(image_grad, (x.detach() > threshold.detach()).to(dtype))
+
+        # Compare against the independent documented formula on the same quantized pixels in ordinary units.
+        # The derivative of s * f(x / s) is f'(x / s), so a finite scale must leave this gradient unchanged.
+        work_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        normalized = (x.detach().to(work_dtype) / scale).requires_grad_(True)
+        (expected_grad,) = torch.autograd.grad(_documented_soft_threshold(normalized, 256), normalized)
+        self.assert_close(grad, expected_grad.to(dtype))
+        expected = otsu_threshold(normalized.detach(), slow_and_differentiable=True)[1]
+        self.assert_close(
+            threshold.detach().to(work_dtype) / scale,
+            expected,
+            rtol=max(8 * limits.eps, 1e-11),
+            # Subnormal thresholds round in units of the smallest subnormal, rather than relative to their value.
+            atol=limits.tiny * limits.eps / scale,
+        )
+
+    @pytest.mark.parametrize("scale_kind", ["large", "subnormal"])
+    def test_extreme_constant_plane_gradient_5426(self, scale_kind, device, dtype):
+        if scale_kind == "subnormal" and device.type == "mps" and dtype != torch.float16:
+            pytest.skip("MPS flushes float32 and bfloat16 subnormals to zero")
+        limits = torch.finfo(dtype)
+        value = limits.max if scale_kind == "large" else limits.tiny / 64
+        x = torch.full((2, 3), value, device=device, dtype=dtype, requires_grad=True)
+        mask, threshold = otsu_threshold(x, slow_and_differentiable=True, return_mask=True)
+        (grad,) = torch.autograd.grad(threshold.sum(), x)
+        assert torch.equal(threshold.detach(), x.detach().flatten()[:1])
+        assert not mask.any()
+        self.assert_close(grad, torch.full_like(x, 1 / x.numel()))
 
     def test_threshold_gradient_sums_to_one_per_plane_5174(self, device, dtype):
         # Moving every pixel of a plane by c moves its threshold by c and no other plane's, so the gradient of each
@@ -512,4 +560,17 @@ class TestOtsuThresholdDifferentiable(BaseTester):
             x = x.clone().requires_grad_(True)
             (expected_grad,) = torch.autograd.grad(otsu_threshold(x, 64, True)[1].sum(), x)
             (actual_grad,) = torch.autograd.grad(op(x)[1].sum(), x)
+            self.assert_close(actual_grad, expected_grad)
+
+            # Compiler rewrites must preserve the scale cancellation at both ends of the finite dtype range.
+            limits = torch.finfo(dtype)
+            levels = torch.tensor([[-1.0, -0.8, -0.6, 0.2, 0.6, 1.0]], device=device, dtype=dtype)
+            x = torch.stack([levels * limits.max, levels * (limits.tiny * 64)]).requires_grad_(True)
+            expected = otsu_threshold(x, 64, True)[1]
+            actual = op(x)[1]
+            assert actual.isfinite().all()
+            self.assert_close(actual, expected)
+            (expected_grad,) = torch.autograd.grad(expected.sum(), x)
+            (actual_grad,) = torch.autograd.grad(actual.sum(), x)
+            assert actual_grad.isfinite().all()
             self.assert_close(actual_grad, expected_grad)

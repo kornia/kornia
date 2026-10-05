@@ -146,17 +146,28 @@ class OtsuThreshold(torch.nn.Module):
     def _upper_edge(min_val: torch.Tensor, max_val: torch.Tensor, index: torch.Tensor, bins: int) -> torch.Tensor:
         """Compute edge ``index`` of ``bins`` equal bins from ``min_val`` to ``max_val``, without leaving the graph.
 
-        This is the scalar formula of ``torch.linspace(min_val, max_val, bins + 1)[index]``, which the default path
-        reads its edges from: from the minimum for the lower half of the edges, from the maximum for the upper half.
-        The vectorized linspace kernels can differ from it in the last bit.
+        On ordinary ranges this uses the scalar formula of ``torch.linspace(min_val, max_val, bins + 1)[index]``,
+        which the default path reads its edges from: from the minimum for the lower half of the edges, from the
+        maximum for the upper half. Extreme ranges are reconstructed in bounded units. The vectorized linspace
+        kernels can differ from the scalar formula in the last bit.
         """
-        step = (max_val - min_val) / bins
+        span = max_val - min_val
+        step = span / bins
         k = index.to(step.dtype)
-        return torch.where(index < (bins + 1) // 2, min_val + step * k, max_val - step * (bins - k))
+        edge = torch.where(index < (bins + 1) // 2, min_val + step * k, max_val - step * (bins - k))
+        # Preserve the scalar linspace arithmetic on ordinary ranges. Opposite-sign finite extrema can overflow
+        # their difference, while subnormal ranges lose their step on division by bins; reconstruct those edges
+        # in bounded units instead. This helper receives detached extrema, so its unused arm has no backward path.
+        scale = torch.maximum(min_val.abs(), max_val.abs()).clamp_min(torch.finfo(min_val.dtype).tiny)
+        lo, hi = min_val / scale, max_val / scale
+        bounded_step = (hi - lo) / bins
+        bounded_edge = torch.where(index < (bins + 1) // 2, lo + bounded_step * k, hi - bounded_step * (bins - k))
+        ordinary = span.isfinite() & (span >= torch.finfo(span.dtype).tiny * bins)
+        return torch.where(ordinary, edge, bounded_edge * scale)
 
     @staticmethod
     def _soft_threshold(coords: torch.Tensor, min_val: torch.Tensor, span: torch.Tensor, bins: int) -> torch.Tensor:
-        """Compute the soft-argmax threshold behind the gradient of ``slow_and_differentiable=True``.
+        """Compute the bounded-unit soft-argmax behind the first-order gradient of ``slow_and_differentiable=True``.
 
         The between-class variance curve of a kernel density estimate of ``_SURROGATE_BANDWIDTH`` bins weights the
         upper edge of split ``k`` by ``softmax(var_k / (T * max(var)))`` with ``T = _SOFT_ARGMAX_TEMPERATURE``. The
@@ -173,7 +184,7 @@ class OtsuThreshold(torch.nn.Module):
         weights = torch.softmax(logits, dim=1)
         # the split after bin k has its upper edge at k + 1 bins from the minimum
         upper_edges = torch.arange(1, bins, device=weights.device, dtype=weights.dtype)
-        return min_val + (weights * upper_edges).sum(dim=1) * span / bins
+        return min_val + ((weights * upper_edges).sum(dim=1) / bins) * span
 
     def transform_input(
         self, x: torch.Tensor, original_shape: Optional[torch.Size] = None
@@ -244,13 +255,18 @@ class OtsuThreshold(torch.nn.Module):
             # Histogram arithmetic in float32, or float64 for a float64 input, as on the default path. No .item():
             # the minimum, maximum and bin coordinates of each plane stay tensors.
             xs = x_flattened.to(torch.float64 if x.dtype == torch.float64 else torch.float32)
-            min_val = xs.amin(dim=1)
-            max_val = xs.amax(dim=1)
-            span = max_val - min_val
-            # Bin coordinates with histc's arithmetic: the minimum maps to 0, the maximum to nbins, bin k is
-            # [k, k + 1). A constant plane maps to 0; its threshold does not come from the histogram.
-            safe_span = torch.where(span > 0, span, torch.ones_like(span))
-            coords = (xs - min_val[:, None]) * nbins / safe_span[:, None]
+            min_val = xs.amin(dim=1).detach()
+            max_val = xs.amax(dim=1).detach()
+            # Evaluate the surrogate in bounded units, with an identity gradient to xs. For a detached positive
+            # scale s, the original-unit surrogate is s * f(xs / s), whose derivative is exactly f'(xs / s).
+            # Cancelling s here avoids both overflowing ranges and underflowing intermediate backward signals.
+            scale = xs.detach().abs().amax(dim=1, keepdim=True).clamp_min(torch.finfo(xs.dtype).tiny)
+            bounded = xs.detach() / scale + (xs - xs.detach())
+            bounded_min = bounded.amin(dim=1)
+            bounded_span = bounded.amax(dim=1) - bounded_min
+            # The minimum maps to 0, the maximum to nbins, bin k is [k, k + 1). A constant plane maps to 0.
+            safe_span = torch.where(bounded_span > 0, bounded_span, torch.ones_like(bounded_span))
+            coords = ((bounded - bounded_min[:, None]) / safe_span[:, None]) * nbins
             histograms = self._kde_histogram(coords.detach(), nbins, self._KDE_BANDWIDTH)
             inter_class_var, _ = self._between_class_variance(histograms)
             # The kernel tails give every bin some mass, so a split after an empty bin, which repeats the partition of
@@ -287,7 +303,7 @@ class OtsuThreshold(torch.nn.Module):
         if slow_and_differentiable and x.is_floating_point() and torch.is_grad_enabled() and x.requires_grad:
             # Straight-through: the value stays the hard split above, the gradient is that of the soft-argmax
             # threshold of the wider estimate. On a constant plane that threshold is the plane's minimum.
-            soft_thresholds = self._soft_threshold(coords, min_val, span, nbins)
+            soft_thresholds = self._soft_threshold(coords, bounded_min, bounded_span, nbins)
             best_thresholds = best_thresholds + (soft_thresholds - soft_thresholds.detach()).to(x.dtype)
 
         # Apply thresholding: keep values strictly greater than the threshold
@@ -343,14 +359,17 @@ def otsu_threshold(
         of the default threshold. A bin counts as non-empty only above 1 % of one pixel's mass, so of the splits that
         give the same partition the lowest is taken on every device.
 
-        The threshold's value is piecewise constant in ``x``, and its gradient is a straight-through surrogate: the
+        The threshold uses a hard split, and its first-order gradient is a straight-through surrogate: the
         gradient of a soft-argmax over the between-class variance curve :math:`\sigma_B^2(k)` of a wider estimate,
         with a standard deviation of 0.5 bin, so that a pixel's gradient varies smoothly with its value instead of
         concentrating on pixels near a bin edge. Split :math:`k` is weighted by
         :math:`\operatorname{softmax}_k\left(\sigma_B^2(k) / (0.01 \max_j \sigma_B^2(j))\right)`. The curve's means
         are measured in bins and the temperature is relative to the curve, so the weights do not depend on the
-        intensity scale or offset of ``x``. Finite differences of the threshold do not match this gradient. The wider
-        estimate is computed only when ``x`` requires a gradient. With the default ``slow_and_differentiable=False``
+        intensity scale or offset of ``x``. The surrogate is evaluated in bounded units with the scale factors
+        cancelled from its first-order gradient, so finite extreme ranges stay safe. Higher-order derivatives through
+        this straight-through normalization do not represent derivatives of the original-unit soft threshold.
+        Finite differences of the hard threshold do not match the surrogate gradient. The wider estimate is computed
+        only when ``x`` requires a gradient. With the default ``slow_and_differentiable=False``
         the threshold has no gradient. On both paths the thresholded image is ``x * (x > threshold)``, whose gradient
         with respect to ``x`` is that mask.
 
