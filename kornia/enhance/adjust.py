@@ -31,7 +31,7 @@ from kornia.core.check import (
     KORNIA_CHECK_IS_COLOR_OR_GRAY,
     KORNIA_CHECK_IS_TENSOR,
 )
-from kornia.core.utils import _torch_histc_cast, is_compiling
+from kornia.core.utils import _normalize_to_float32_or_float64, is_compiling
 from kornia.image.utils import perform_keep_shape_image, perform_keep_shape_video
 
 
@@ -1049,27 +1049,14 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     return torch.clamp(result + (input - result) * factor, 0.0, 1.0)
 
 
-def _build_lut(histo: torch.Tensor, step: torch.Tensor) -> torch.Tensor:
-    # Compute the cumulative sum, shifting by step // 2
-    # and then normalization by step.
-    step_trunc = torch.div(step, 2, rounding_mode="trunc")
-    lut = torch.div(torch.cumsum(histo, 0) + step_trunc, step, rounding_mode="trunc")
-    # Shift lut, prepending with 0.
-    lut = torch.cat([torch.zeros(1, device=lut.device, dtype=lut.dtype), lut[:-1]])
-    # Clip the counts to be in range.  This is done
-    # in the C code for image.point.
-    return torch.clamp(lut, 0, 255)
-
-
 def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     r"""Vectorized histogram equalization over the leading ``(B, C)`` planes.
 
-    Equivalent to stacking ``_scale_channel`` over every ``(B, C)`` plane, but computes all
-    per-plane histograms/LUTs in a single batched pass instead of a Python loop of ``B * C``
-    serial ``torch.histc`` calls. The per-plane histogram is built with ``scatter_add`` instead
-    of ``torch.histc``; the two agree except for a handful of values landing exactly on a bin
-    edge (``~1%`` of pixels shift by one 256-bin, i.e. ``~1/255`` in the output), which is within
-    the equalization test tolerance.
+    Computes all per-plane histograms/LUTs in a single batched pass instead of a Python loop of
+    ``B * C`` serial ``torch.histc`` calls. The per-plane histogram is built with ``scatter_add``
+    instead of ``torch.histc``; the two agree except for a handful of values landing exactly on a
+    bin edge (``~1%`` of pixels shift by one 256-bin, i.e. ``~1/255`` in the output), which is
+    within the equalization test tolerance.
 
     Args:
         input: image tensor shaped ``(B, C, *spatial)`` with values in ``[0, 1]``.
@@ -1094,8 +1081,12 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
 
     # Per-plane 256-bin histogram matching ``torch.histc(x, 256, 0, 255)`` bin placement.
     bins = torch.clamp((scaled * (256.0 / 255.0)).floor().long(), 0, 255)
-    histo = torch.zeros(n, 256, device=input.device, dtype=scaled.dtype)
-    histo.scatter_add_(1, bins, torch.ones_like(scaled))
+    # Count in float32 (float64 stays float64): a count grows with the plane size, which half precision
+    # cannot hold. float16 rounds counts above 2048 and their total overflows to inf past 65504, and
+    # bfloat16 rounds counts above 256.
+    count_dtype = _normalize_to_float32_or_float64(scaled.dtype)
+    histo = torch.zeros(n, 256, device=input.device, dtype=count_dtype)
+    histo.scatter_add_(1, bins, torch.ones_like(scaled, dtype=count_dtype))
 
     # step = (sum(nonzero) - last_nonzero) // 255, per plane.
     total = histo.sum(1)
@@ -1110,54 +1101,12 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     step_trunc = torch.div(step, 2, rounding_mode="trunc").unsqueeze(1)
     lut = torch.div(histo.cumsum(1) + step_trunc, step_col.clamp(min=1), rounding_mode="trunc")
     lut = torch.cat([torch.zeros(n, 1, device=input.device, dtype=lut.dtype), lut[:, :-1]], 1)
-    lut = torch.clamp(lut, 0, 255)
+    # The LUT holds integers in [0, 255], which every floating dtype represents exactly.
+    lut = torch.clamp(lut, 0, 255).to(scaled.dtype)
 
     result = lut.gather(1, scaled.long())
     result = torch.where(step_col == 0, scaled, result)
     return (result / 255.0).reshape(shape)
-
-
-# Code taken from: https://github.com/pytorch/vision/pull/796
-def _scale_channel(im: torch.Tensor) -> torch.Tensor:
-    r"""Scale the data in the channel to implement equalize.
-
-    Args:
-        im: image torch.Tensor with shapes like :math:`(H, W)` or :math:`(D, H, W)`.
-
-    Returns:
-        image torch.Tensor with the batch in the zero position.
-
-    """
-    min_ = im.min()
-    max_ = im.max()
-
-    if min_.item() < 0.0 and not torch.isclose(min_, torch.as_tensor(0.0, dtype=min_.dtype)):
-        raise ValueError(f"Values in the input torch.Tensor must greater or equal to 0.0. Found {min_.item()}.")
-
-    if max_.item() > 1.0 and not torch.isclose(max_, torch.as_tensor(1.0, dtype=max_.dtype)):
-        raise ValueError(f"Values in the input torch.Tensor must lower or equal to 1.0. Found {max_.item()}.")
-
-    ndims = len(im.shape)
-    if ndims not in (2, 3):
-        raise TypeError(f"Input torch.Tensor must have 2 or 3 dimensions. Found {ndims}.")
-
-    im = im * 255.0
-    # Compute the histogram of the image channel.
-    histo = _torch_histc_cast(im, bins=256, min=0, max=255)
-    # For the purposes of computing the step, filter out the nonzeros.
-    nonzero_histo = torch.reshape(histo[histo != 0], [-1])
-    step = torch.div(torch.sum(nonzero_histo) - nonzero_histo[-1], 255, rounding_mode="trunc")
-
-    # If step is zero, return the original image.  Otherwise, build
-    # lut from the full histogram and step and then index from it.
-    if step == 0:
-        result = im
-    else:
-        # can't index using 2d index. Have to flatten and then reshape
-        result = torch.gather(_build_lut(histo, step), 0, im.flatten().long())
-        result = result.reshape_as(im)
-
-    return result / 255.0
 
 
 @perform_keep_shape_image
@@ -1167,10 +1116,6 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
     Convention:
         Equalizes each channel of each image independently over [0, 1].
         :func:`equalize3d` applies the corresponding operation to volumes.
-
-    .. warning::
-        Float16 images larger than about 256x256 return NaN because the histogram counts overflow
-        (`#5220 <https://github.com/kornia/kornia/issues/5220>`_).
 
     .. image:: _static/img/equalize.png
 

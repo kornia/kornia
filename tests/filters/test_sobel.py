@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import importlib
+
 import pytest
 import torch
 import torch.nn.functional as F
@@ -24,6 +26,8 @@ from kornia.filters import Sobel, SpatialGradient, SpatialGradient3d, sobel, spa
 from kornia.filters.kernels import get_spatial_gradient_kernel2d, normalize_kernel2d
 
 from testing.base import BaseTester
+
+sobel_module = importlib.import_module("kornia.filters.sobel")
 
 
 class TestSpatialGradient(BaseTester):
@@ -160,6 +164,18 @@ class TestSpatialGradient(BaseTester):
         assert torch.equal(torch.isnan(actual), torch.isnan(expected))
         assert torch.equal(torch.isinf(actual), torch.isinf(expected))
         self.assert_close(torch.nan_to_num(actual), torch.nan_to_num(expected))
+
+    @pytest.mark.parametrize("normalized", [True, False])
+    def test_convention_upper_case_sobel_takes_the_fixed_kernel_path_5156(self, normalized, monkeypatch, device, dtype):
+        """mode='Sobel' at order=1 uses the fixed kernel of 'sobel' and does not call the kernel builder (#5156)."""
+
+        def should_not_run(*args, **kwargs):
+            raise AssertionError("order=1 Sobel on a floating input must use the fixed kernel")
+
+        monkeypatch.setattr(sobel_module, "get_spatial_gradient_kernel2d", should_not_run)
+        img = torch.rand(1, 2, 5, 7, device=device, dtype=dtype)
+        expected = spatial_gradient(img, "sobel", 1, normalized)
+        assert torch.equal(spatial_gradient(img, "Sobel", 1, normalized), expected)
 
     def test_edges_sep(self, device, dtype):
         inp = torch.tensor(
@@ -481,6 +497,17 @@ class TestSpatialGradient3d(BaseTester):
 
         actual = spatial_gradient3d(inp, "diff", order=2)[:, 0, :, 1:-1, 1:-1, 1:-1]
         self.assert_close(actual, expected[..., None, None, None].expand_as(actual))
+
+    def test_convention_upper_case_diff_takes_the_slicing_path_5156(self, monkeypatch, device, dtype):
+        """mode='Diff' at order=1 takes the slicing path of 'diff' and does not call the kernel builder (#5156)."""
+
+        def should_not_run(*args, **kwargs):
+            raise AssertionError("order=1 diff must use the slicing path")
+
+        monkeypatch.setattr(sobel_module, "get_spatial_gradient_kernel3d", should_not_run)
+        img = torch.rand(1, 2, 3, 5, 7, device=device, dtype=dtype)
+        expected = spatial_gradient3d(img, "diff", 1)
+        assert torch.equal(spatial_gradient3d(img, "Diff", 1), expected)
 
     def test_gradcheck(self, device):
         img = torch.rand(1, 1, 1, 3, 4, device=device, dtype=torch.float64)

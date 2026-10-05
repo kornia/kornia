@@ -176,7 +176,8 @@ class EdgeAwareBlurPool2D(nn.Module):
 
     Args:
         kernel_size: The size of the Gaussian blur kernel.
-        edge_threshold: The threshold for detecting edges. Default: 1.25.
+        edge_threshold: The intensity ratio between pixels 4 apart above which a pixel counts as an edge and keeps
+            its value. It must be greater than 1. Default: 1.25.
         edge_dilation_kernel_size: The kernel size for dilating the edge map. It must be an odd positive integer.
             Default: 3.
     """
@@ -361,7 +362,8 @@ def edge_aware_blur_pool2d(
     Args:
         input: the input image to blur with shape :math:`(B, C, H, W)`.
         kernel_size: the kernel size for max pooling.
-        edge_threshold: positive threshold for the edge decision rule; edge/non-edge.
+        edge_threshold: intensity ratio between pixels 4 apart above which a pixel counts as an edge and keeps its
+            value. It must be greater than 1.
         edge_dilation_kernel_size: the kernel size for dilating the edges. It must be an odd positive integer.
         epsilon: for numerical stability.
 
@@ -372,7 +374,7 @@ def edge_aware_blur_pool2d(
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     edge_dilation_kernel_size = operator.index(edge_dilation_kernel_size)
     _check_kernel_size(edge_dilation_kernel_size)
-    KORNIA_CHECK(edge_threshold > 0.0, f"edge threshold should be positive, but got '{edge_threshold}'")
+    KORNIA_CHECK(edge_threshold > 1.0, f"edge_threshold must be greater than 1. Got {edge_threshold}")
 
     # Keep the edge comparison's fixed 2-pixel halo separate from the blur halo. The
     # blur_pool2d convolution zero-pads by its kernel radius, so reflect-padding by at

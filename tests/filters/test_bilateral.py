@@ -81,6 +81,30 @@ class TestBilateralBlur(BaseTester):
             with pytest.raises(BaseError, match="Kernel size must be an odd integer bigger than 0"):
                 call()
 
+    @pytest.mark.parametrize(
+        "sigma_color",
+        [0.0, 0, -0.1, [0.0, 0.0], [0.1, 0.0], [-0.1, 0.1]],
+        ids=["float_zero", "int_zero", "negative_float", "zero_tensor", "one_zero_row", "negative_row"],
+    )
+    def test_convention_sigma_color_must_be_positive_5169(self, sigma_color, device, dtype):
+        # The colour kernel divides by sigma_color squared, so a zero entry divides by zero and the sign of a negative
+        # one is lost: every entry must be positive. The check names the argument, runs before any padding and covers
+        # the joint filter and the modules.
+        from kornia.core.exceptions import BaseError
+
+        image = torch.rand(2, 3, 8, 9, device=device, dtype=dtype)
+        if isinstance(sigma_color, list):
+            sigma_color = torch.tensor(sigma_color, device=device, dtype=dtype)
+        calls = (
+            lambda: bilateral_blur(image, 3, sigma_color, (1.0, 1.0)),
+            lambda: joint_bilateral_blur(image, image, 3, sigma_color, (1.0, 1.0)),
+            lambda: BilateralBlur(3, sigma_color, (1.0, 1.0))(image),
+            lambda: JointBilateralBlur(3, sigma_color, (1.0, 1.0))(image, image),
+        )
+        for call in calls:
+            with pytest.raises(BaseError, match="sigma_color must be positive"):
+                call()
+
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
         inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
@@ -126,6 +150,13 @@ class TestBilateralBlur(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(data), op_optimized(data))
+
+    def test_dynamo_tensor_sigma_color_fullgraph_5169(self, device, dtype, torch_optimizer):
+        """The data-dependent sigma_color check is skipped under compile, so a tensor sigma_color stays one graph."""
+        data = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        op = BilateralBlur(3, torch.tensor([0.3, 0.7], device=device, dtype=dtype), (1.0, 1.0))
+        op_optimized = torch_optimizer(op, fullgraph=True)
+        self.assert_close(op_optimized(data), op(data))
 
     def test_opencv_grayscale(self, device, dtype):
         img = [[95, 130, 108, 228], [98, 142, 187, 166], [114, 166, 190, 141], [150, 83, 174, 216]]
