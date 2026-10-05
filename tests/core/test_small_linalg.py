@@ -247,9 +247,9 @@ def _signed(n, device, dtype):
 
 
 def _permanent_of_abs(x):
-    """The permanent of ``|x|`` summed over the permutations, in float64."""
+    """The permanent of ``|x|`` summed over the permutations, in float64 on the CPU (MPS has no float64)."""
     n = x.shape[-1]
-    x = x.abs().to(torch.float64)
+    x = x.abs().cpu().to(torch.float64)
     terms = [x[..., range(n), perm].prod(-1) for perm in itertools.permutations(range(n))]
     return torch.stack(terms, -1).sum(-1)
 
@@ -279,7 +279,7 @@ class TestDetPermKernels(BaseTester):
         eps = torch.finfo(dtype).eps
         det_ref = torch.linalg.det(x.to(ref_dtype)).to(dtype)
         assert ((det - det_ref).abs() <= 8 * n * eps * perm).all()
-        self.assert_close(perm.to(torch.float64), _permanent_of_abs(x), rtol=8 * n * eps, atol=0.0)
+        self.assert_close(perm.cpu().to(torch.float64), _permanent_of_abs(x), rtol=8 * n * eps, atol=0.0)
         assert (perm >= det.abs()).all()
         assert (perm > det.abs()).any()
         if n == 4:
