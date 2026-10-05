@@ -22,7 +22,6 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.base import _input_metadata_only
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
-from kornia.augmentation.utils._nearest import _legacy_nearest_affine
 from kornia.constants import Resample
 from kornia.core.utils import is_exporting
 from kornia.geometry.transform import crop_by_transform_mat, get_perspective_transform, resize
@@ -53,9 +52,8 @@ class Resize(GeometricAugmentationBase2D):
         This class uses :func:`kornia.geometry.transform.resize`; ``align_corners`` is forwarded for bilinear and
         bicubic sampling, and ``transform_matrix`` follows the grid they sample: at ``align_corners=False`` it is
         the half-pixel map ``x' = (x + 0.5) * W_out / W_in - 0.5`` (likewise for ``y``), and at ``True`` it maps
-        the corner pixel centres onto each other. For nearest sampling, the matrix is a least-squares fit to the
-        centres of pixel blocks produced by legacy nearest indexing; the residual depends on the resize ratio because
-        the discrete mapping is not affine (`#5293 <https://github.com/kornia/kornia/issues/5293>`_).
+        the corner pixel centres onto each other. Nearest sampling uses the half-pixel grid and PyTorch's
+        ``nearest-exact`` interpolation.
         :meth:`inverse` resamples to the prior canvas and cannot recover
         values discarded by a resize.
 
@@ -89,24 +87,9 @@ class Resize(GeometricAugmentationBase2D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        if flags["resample"] == Resample.NEAREST:
-            # Legacy nearest is piecewise constant; fit an affine to the centres of its copied pixel blocks.
-            source_size = input.new_tensor([input.shape[-1], input.shape[-2]], dtype=torch.long)
-            source_size = source_size.expand(input.shape[0], -1)
-            output_size = params["output_size"].flip(-1).to(device=input.device)
-            x_scale, x_offset = _legacy_nearest_affine(
-                source_size[:, 0], output_size[:, 0], input.new_zeros(input.shape[0]), input.shape[-1]
-            )
-            y_scale, y_offset = _legacy_nearest_affine(
-                source_size[:, 1], output_size[:, 1], input.new_zeros(input.shape[0]), input.shape[-2]
-            )
-            transform = torch.eye(3, device=input.device, dtype=input.dtype).expand(input.shape[0], -1, -1).clone()
-            transform[:, 0, 0] = x_scale
-            transform[:, 1, 1] = y_scale
-            transform[:, 0, 2] = x_offset
-            transform[:, 1, 2] = y_offset
-            return transform
-        if not flags["align_corners"] and flags["resample"] in (Resample.BILINEAR, Resample.BICUBIC):
+        if flags["resample"] == Resample.NEAREST or (
+            not flags["align_corners"] and flags["resample"] in (Resample.BILINEAR, Resample.BICUBIC)
+        ):
             return _half_pixel_resize_transform(params["src"].to(input), params["dst"].to(input)).expand(
                 input.shape[0], -1, -1
             )
@@ -145,7 +128,7 @@ class Resize(GeometricAugmentationBase2D):
         return resize(
             input,
             out_size,
-            interpolation=flags["resample"].name.lower(),
+            interpolation="nearest-exact" if flags["resample"] == Resample.NEAREST else flags["resample"].name.lower(),
             align_corners=(
                 flags["align_corners"] if flags["resample"] in [Resample.BILINEAR, Resample.BICUBIC] else None
             ),

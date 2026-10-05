@@ -42,14 +42,17 @@ def _resize_coordinates(
 ) -> torch.Tensor:
     length = end - start
     positions = torch.arange(output_size, device=start.device, dtype=start.dtype)
-    if mode == "nearest":
+    if mode in ("nearest", "nearest-exact"):
         # ATen computes the scale on the host (usually float32; see the CPU-double path). CUDA/Inductor
         # tensor float32 division can change pixels at integer boundaries (e.g. 26 -> 22).
         # Build scales in CPU float64 before casting, like host scalar arithmetic. Tensor
         # arange keeps input_size symbolic under dynamic=True; a Python range specializes it.
         # No float64 GPU/MPS ops or device-to-host copies of sampled coordinates are needed.
         scales = (torch.arange(input_size + 1, device="cpu", dtype=torch.float64) / output_size).to(start)
-        return (positions * scales[length.long()]).float().floor()
+        scale = scales[length.long()]
+        if mode == "nearest-exact":
+            return ((positions + 0.5) * scale).float().floor()
+        return (positions * scale).float().floor()
     if align_corners:
         coordinates = positions * ((length - 1) / (output_size - 1) if output_size > 1 else length * 0.0)
     else:
@@ -81,7 +84,7 @@ def _compiled_slice_resize(
     """
     batch, channels, height, width = input.shape
     # Nearest normally uses float32 index arithmetic; handle ATen's CPU-double exception below.
-    coordinate_dtype = torch.float64 if input.dtype == torch.float64 and mode != "nearest" else torch.float32
+    coordinate_dtype = torch.float64 if input.dtype == torch.float64 and mode == "nearest-exact" else torch.float32
     src = src.to(device=input.device, dtype=torch.long)
     # Match Python slicing for negative and out-of-bounds replay coordinates.
     x0, x1 = src[:, 0, 0:1], src[:, 1, 0:1] + 1
@@ -130,7 +133,7 @@ def _compiled_slice_resize(
         indices = (y_index.unsqueeze(-1) * width + x_index.unsqueeze(-2)).reshape(batch, 1, -1)
         return flat.gather(2, indices.expand(-1, channels, -1)).reshape(batch, channels, *size)
 
-    if mode == "nearest":
+    if mode in ("nearest", "nearest-exact"):
         return gather(x, y).to(input.dtype)
 
     def preserve_slice(result: torch.Tensor, slice_values: torch.Tensor) -> torch.Tensor:
