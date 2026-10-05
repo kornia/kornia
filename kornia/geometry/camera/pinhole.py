@@ -441,7 +441,7 @@ class PinholeCamera:
         which intrinsics are usable: a 3x3 ``K`` zero-padded to 4x4 round-trips exactly like its
         homogeneous embedding, instead of projecting while ``unproject`` raises on the singular
         4x4 product. For a homogeneous embedding the result matches ``intrinsics @ extrinsics``
-        bit for bit.
+        bit for bit on CPU, and to the dtype's rounding on MPS.
         """
         K = self._intrinsics[..., :3, :3]
         E = self._extrinsics
