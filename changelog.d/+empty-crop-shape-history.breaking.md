@@ -1,0 +1,1 @@
+For an empty batch, `RandomCrop` parameters now record the original, unpadded dimensions in `forward_input_shape`; previously this metadata recorded the padded canvas. Nonempty batch metadata is unchanged. Previously saved empty crop parameters lack the original padding history and should be regenerated before inverse replay.
