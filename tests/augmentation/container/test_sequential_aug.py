@@ -115,9 +115,12 @@ class TestConventionImageSequential(BaseTester):
         output = aug(image, output_type=output_type)
 
         if output_type == "numpy":
-            assert output.shape == (2, 6, 8, 3) and not isinstance(output, torch.Tensor)  # channels-last (#5207)
+            # channels-last (#5207)
+            assert output.shape == (2, 6, 8, 3)
+            assert not isinstance(output, torch.Tensor)
         else:
-            assert len(output) == 2 and all(isinstance(out, PILImage.Image) for out in output)
+            assert len(output) == 2
+            assert all(isinstance(out, PILImage.Image) for out in output)
         cached = aug._output_image
         assert isinstance(cached, torch.Tensor)
         assert not cached.requires_grad
@@ -154,7 +157,8 @@ class TestConventionImageSequential(BaseTester):
         seq(image)
         current = seq.get_transformation_matrix(image, old_params)
         recomputed = seq.get_transformation_matrix(image, old_params, recompute=True)
-        assert current is not None and recomputed is not None
+        assert current is not None
+        assert recomputed is not None
         assert not torch.equal(current, recomputed)
 
     def test_convention_if_unsupported_ops_raise_raises_not_implemented(self, device, dtype):
