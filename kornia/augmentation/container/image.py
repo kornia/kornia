@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-import contextlib
 from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple, Union, cast
 
 import torch
@@ -333,9 +332,12 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         for (_, module), param in zip(named_modules, params if params is not None else []):
             if isinstance(module, K.GeometricAugmentationBase2D) and isinstance(param.data, dict):
                 ori_shape = input.shape
-                # Ignore error for 5-dim video
-                with contextlib.suppress(ValueError):
+                # Ignore error for 5-dim video. Keep try/except: Dynamo on torch 2.5.1 cannot trace
+                # contextlib.suppress, so it would break the graph under torch.compile.
+                try:  # noqa: SIM105
                     input = module.transform_tensor(input)
+                except ValueError:
+                    pass
                 # Standardize shape
                 if recompute:
                     flags = override_parameters(module.flags, extra_args, in_place=False)
