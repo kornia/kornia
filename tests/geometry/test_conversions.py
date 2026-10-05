@@ -1717,10 +1717,17 @@ class TestQuaternionExpToLog(BaseTester):
         fn(non_unit).sum().backward()
         assert bool(torch.isfinite(non_unit.grad).all()), non_unit.grad
 
-        # the guard changes no forward value. At the boundary the identity's log is all zeros;
-        # off it the other branch of the torch.where runs and must equal the unguarded expression
-        # exactly -- that is the branch proving the guard is inert away from w = +-1, which an
-        # on-boundary input cannot exercise.
+        # the zero quaternion: atan2's derivative is 0/0 at (0, 0) -- nan on torch 2.5.1, 0 on
+        # 2.14 -- so this cell, too, discriminates on the 2.5.1 leg (kornia#3953 switched to atan2).
+        origin = torch.zeros(4, device=device, dtype=dtype, requires_grad=True)
+        origin_log = fn(origin)
+        origin_log.sum().backward()
+        self.assert_close(origin_log.detach(), torch.zeros(3, device=device, dtype=dtype))
+        assert bool(torch.isfinite(origin.grad).all()), origin.grad
+
+        # atan2(||v||, w) changes no forward value on unit input: the identity's log is all zeros,
+        # and off the boundary it equals the acos(w) expression the function used before
+        # kornia#3953.
         expected_identity = torch.tensor((0.0, 0.0, 0.0), device=device, dtype=dtype)
         self.assert_close(fn(identity.detach()), expected_identity)
 
@@ -1845,9 +1852,9 @@ class TestQuaternionExpToLog(BaseTester):
             msg=_issue_msg("kornia#3953: quaternion_exp_to_log did not normalise its input"),
         )
 
-    def test_wart_exp_to_log_ignores_the_quaternion_norm_3953(self, device, dtype):
-        # Wart pin for kornia#3953: non-unit-input outputs are now normalised.
-        # Two cells that discriminate the fix:
+    def test_convention_exp_to_log_of_rescaled_quaternions_3953(self, device, dtype):
+        # Convention pin for kornia#3953: a non-unit input gives the log of its normalisation.
+        # Two cells:
         #   (1) q = (0.5, 0.5, 0, 0) returns acos(1/sqrt(2)) = 0.7853981633974484;
         #   (2) q = (2, 0, 0, 0) returns the origin under normalisation (the normalised input
         #       is the identity, whose log is the origin).
@@ -5576,9 +5583,9 @@ class TestEulerFromQuaternion(BaseTester):
             msg=_issue_msg("kornia#3953: euler_from_quaternion did not normalise its input"),
         )
 
-    def test_wart_euler_from_quaternion_ignores_the_norm_3953(self, device, dtype):
-        # Wart pin for kornia#3953: assert the triple for a scaled-up quaternion now matches
-        # the unit quaternion.
+    def test_convention_euler_from_quaternion_of_a_rescaled_quaternion_3953(self, device, dtype):
+        # Convention pin for kornia#3953: the triple for 2q is the triple of the unit q; before the
+        # fix it was [1.6560585860248003, 1.5707963267948966, 2.1048169977173687].
         quaternion = quaternion_from_euler(
             torch.tensor(0.3, device=device, dtype=dtype),
             torch.tensor(0.7, device=device, dtype=dtype),

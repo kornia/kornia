@@ -1080,7 +1080,8 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
           :func:`~kornia.geometry.conversions.quaternion_log_to_exp` takes
         - for a **unit** ``q`` on the ``w >= 0`` half of the double cover the
           result is ``quaternion_to_axis_angle(q) / 2``. On the ``w < 0`` half the two
-          part company: this function applies ``acos(w)`` as given, while
+          part company: this function keeps the sign of ``w``, with the angle
+          ``atan2(||v||, w)`` in ``[0, pi]``, while
           :func:`~kornia.geometry.conversions.quaternion_to_axis_angle`
           collapses the double cover. For the ``q`` whose log is ``v``,
           ``quaternion_exp_to_log(-q)`` is ``-(pi - ||v||) * v / ||v||``
@@ -1126,7 +1127,13 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
     norm_v: torch.Tensor = torch.norm(quaternion_vector, p=2, dim=-1, keepdim=True)
     norm_q: torch.Tensor = norm_v.clamp(min=eps)
 
-    theta = torch.atan2(norm_v, quaternion_scalar)
+    # atan2(||v||, w) is scale-invariant, needs no clamp, and has a bounded derivative at w = +-1.
+    # Its derivative is 0/0 at the zero quaternion, where torch 2.5.1 returns nan and 2.14 returns 0:
+    # differentiate there at w = 1 instead. The value atan2(0, 1) = 0 multiplies a zero vector part,
+    # so the returned log is the same origin either way.
+    at_origin = (norm_v == 0) & (quaternion_scalar == 0)
+    safe_scalar = torch.where(at_origin, torch.ones_like(quaternion_scalar), quaternion_scalar)
+    theta = torch.atan2(norm_v, safe_scalar)
 
     quaternion_log: torch.Tensor = (quaternion_vector * theta / norm_q).to(orig_dtype)
 
@@ -1254,6 +1261,9 @@ def euler_from_quaternion(
           ``2.2e-16``, while ``(0.2, 2.5, 0.3)`` comes back as
           ``(-2.9416, 0.6416, -2.8416)`` — a different triple for the same
           rotation, to ``1.1e-16``
+        - the input is normalised with
+          :func:`~kornia.geometry.conversions.normalize_quaternion` first, so a
+          rescaled quaternion returns the same triple
 
     .. warning::
         At ``pitch = ±pi/2`` the returned triple usually does not represent the
@@ -1276,9 +1286,6 @@ def euler_from_quaternion(
         random draws round trip to within a few parts in ``1e8``, though
         ``roll`` and ``yaw`` are still not returned individually. Tracked in
         `#3950 <https://github.com/kornia/kornia/issues/3950>`_.
-        - the input is normalised internally with
-          :func:`~kornia.geometry.conversions.normalize_quaternion`, so rescaling
-          the quaternion produces the same Euler angles
 
     .. note::
         ``pitch``'s gradient is finite at gimbal lock, including exactly at ``pitch = +-pi/2``.
@@ -1312,8 +1319,7 @@ def euler_from_quaternion(
     # d(asin)/dx = 1/sqrt(1-x^2) is unbounded at x = +-1 (gimbal lock), returning inf there on
     # every supported torch version; the clamp above bounds the value only, and passes the
     # gradient through on torch < 2.14 (2.14 zeroes it at the boundary, masking the defect).
-    # Guard the gradient the same way quaternion_exp_to_log guards its own acos boundary
-    # (delivered in kornia#4228) -- differentiate asin on a substituted safe argument, but take the
+    # Guard the gradient (kornia#4228) -- differentiate asin on a substituted safe argument, but take the
     # value from a detached copy at the real (possibly +-1) argument, so the returned pitch is
     # unchanged and only the gradient is finite.
     at_boundary = sinp.abs() >= 1.0
