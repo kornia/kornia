@@ -229,10 +229,12 @@ select = [
   "SIM103",  # needless-bool
   "SIM114",  # if-with-same-arms
   "SIM115",  # open-file-with-context-handler
+  "SIM118",  # in-dict-keys
   "SIM201",  # negate-equal-op
   "SIM210",  # if-expr-with-true-false
   "SIM211",  # if-expr-with-false-true
   "SIM222",  # expr-or-true
+  "SIM401",  # if-else-block-instead-of-dict-get
   "SIM910",  # dict-get-with-none-default
   "SLOT",  # flake8-slots
   "T10",  # flake8-debugger
