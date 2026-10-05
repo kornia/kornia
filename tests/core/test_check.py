@@ -142,6 +142,12 @@ class TestCheckType:
     def test_invalid_raises_false(self):
         assert KORNIA_CHECK_TYPE("world", int, raises=False) is False
 
+    @pytest.mark.parametrize("typ", [int | str, (int | str, bytes)])
+    def test_invalid_union(self, typ):
+        assert KORNIA_CHECK_TYPE(1.0, typ, raises=False) is False
+        with pytest.raises(TypeCheckError, match=r"expected int \| str"):
+            KORNIA_CHECK_TYPE(1.0, typ)
+
 
 class TestCheckIsTensor:
     def test_valid(self):
@@ -167,6 +173,18 @@ class TestCheckIsListOfTensor:
 
     def test_invalid_raises_false(self):
         assert KORNIA_CHECK_IS_LIST_OF_TENSOR([torch.rand(1), [2, 3], torch.rand(1)], raises=False) is False
+
+    @pytest.mark.parametrize(
+        "x, detail",
+        [
+            ([torch.zeros(1), 1], "got list; element 1 is int"),
+            ([torch.zeros(1), torch.zeros(1), [2, 3]], "got list; element 2 is list"),
+            ((torch.zeros(1),), "got tuple"),
+        ],
+    )
+    def test_invalid_message_names_the_offending_value(self, x, detail):
+        with pytest.raises(TypeCheckError, match=f"expected list\\[Tensor\\], {detail}\\."):
+            KORNIA_CHECK_IS_LIST_OF_TENSOR(x)
 
 
 class TestCheckSameDevice:
@@ -244,6 +262,15 @@ class TestCheckIsColor:
     def test_invalid_raises_false(self):
         assert KORNIA_CHECK_IS_COLOR(torch.rand(1, 4, 4), raises=False) is False
 
+    def test_invalid_message_reports_the_shape(self):
+        with pytest.raises(ImageError, match=r"Not a color tensor\. Got shape \[2, 4, 5\]\."):
+            KORNIA_CHECK_IS_COLOR(torch.zeros(2, 4, 5))
+
+    def test_jit_raises_image_error(self):
+        op_jit = torch.jit.script(KORNIA_CHECK_IS_COLOR)
+        with pytest.raises(torch.jit.Error, match=r"ImageError: Not a color tensor\. Got shape \[2, 4, 5\]\."):
+            op_jit(torch.zeros(2, 4, 5))
+
 
 class TestCheckIsGray:
     def test_valid(self):
@@ -264,6 +291,15 @@ class TestCheckIsGray:
     def test_invalid_raises_false(self):
         assert KORNIA_CHECK_IS_GRAY(torch.rand(1, 3, 4, 4, 4), raises=False) is False
 
+    def test_invalid_message_reports_the_shape(self):
+        with pytest.raises(ImageError, match=r"Not a gray tensor\. Got shape \[2, 4, 5\]\."):
+            KORNIA_CHECK_IS_GRAY(torch.zeros(2, 4, 5))
+
+    def test_jit_raises_image_error(self):
+        op_jit = torch.jit.script(KORNIA_CHECK_IS_GRAY)
+        with pytest.raises(torch.jit.Error, match=r"ImageError: Not a gray tensor\. Got shape \[2, 4, 5\]\."):
+            op_jit(torch.zeros(2, 4, 5))
+
 
 class TestCheckIsColorOrGray:
     def test_valid(self):
@@ -283,6 +319,15 @@ class TestCheckIsColorOrGray:
     def test_invalid_raises_false(self):
         assert KORNIA_CHECK_IS_COLOR_OR_GRAY(torch.rand(1, 4, 4, 4), raises=False) is False
 
+    def test_invalid_message_reports_the_shape(self):
+        with pytest.raises(ImageError, match=r"Not a color or gray tensor\. Got shape \[2, 4, 5\]\."):
+            KORNIA_CHECK_IS_COLOR_OR_GRAY(torch.zeros(2, 4, 5))
+
+    def test_jit_raises_image_error(self):
+        op_jit = torch.jit.script(KORNIA_CHECK_IS_COLOR_OR_GRAY)
+        with pytest.raises(torch.jit.Error, match=r"ImageError: Not a color or gray tensor\. Got shape \[2, 4, 5\]\."):
+            op_jit(torch.zeros(2, 4, 5))
+
 
 class TestCheckDmDesc:
     def test_valid(self):
@@ -300,6 +345,19 @@ class TestCheckDmDesc:
 
     def test_invalid_raises_false(self):
         assert KORNIA_CHECK_DM_DESC(torch.rand(4), torch.rand(8), torch.rand(4, 7), raises=False) is False
+
+    @pytest.mark.parametrize(
+        "desc1, desc2, dm",
+        [
+            (torch.zeros(4, 128), torch.zeros(8, 128), torch.zeros(4)),
+            (torch.zeros(()), torch.zeros(8, 128), torch.zeros(4, 8)),
+            (torch.zeros(4, 128), torch.zeros(()), torch.zeros(4, 8)),
+        ],
+    )
+    def test_invalid_rank(self, desc1, desc2, dm):
+        assert KORNIA_CHECK_DM_DESC(desc1, desc2, dm, raises=False) is False
+        with pytest.raises(ShapeError):
+            KORNIA_CHECK_DM_DESC(desc1, desc2, dm)
 
 
 class TestCheckLaf:
