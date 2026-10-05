@@ -91,7 +91,8 @@ class Test3DAugmentationConventions(BaseTester):
         volume = torch.arange(120, device=device, dtype=dtype).reshape(1, 1, 4, 5, 6)
         center = K.CenterCrop3D((2, 3, 4), p=1.0)
         crop = K.RandomCrop3D((2, 3, 4), p=1.0, same_on_batch=True)
-        assert center.flags["align_corners"] and crop.flags["align_corners"]
+        assert center.flags["align_corners"]
+        assert crop.flags["align_corners"]
         assert center.flags["resample"].name == crop.flags["resample"].name == "BILINEAR"
         assert center(volume).shape == crop(volume).shape == (1, 1, 2, 3, 4)
         self.assert_close(center(volume), volume[..., 1:3, 1:4, 1:5])
@@ -148,7 +149,8 @@ class Test3DAugmentationConventions(BaseTester):
         affine = K.RandomAffine3D((0.0, 0.0, 0.0), p=1.0)
         rotation = K.RandomRotation3D((0.0, 0.0, 0.0), p=1.0)
         perspective = K.RandomPerspective3D(0.0, p=1.0)
-        assert not affine.flags["align_corners"] and not rotation.flags["align_corners"]
+        assert not affine.flags["align_corners"]
+        assert not rotation.flags["align_corners"]
         assert not perspective.flags["align_corners"]
         assert (
             affine.flags["resample"].name
@@ -188,7 +190,8 @@ class Test3DAugmentationConventions(BaseTester):
         output = augmentation(volume)
 
         assert output.shape == volume.shape
-        assert output.device == volume.device and output.dtype == dtype
+        assert output.device == volume.device
+        assert output.dtype == dtype
         assert torch.isfinite(output).all()
         matrix = augmentation.transform_matrix
         assert torch.isfinite(matrix).all()
@@ -522,7 +525,8 @@ class Test3DAugmentationConventions(BaseTester):
             augmentation = K.RandomMotionBlur3D((3, 7), 35.0, 0.5, p=1.0)
             assert augmentation(volume).shape == volume.shape
             drawn = augmentation._params["ksize_factor"]
-            assert drawn.shape == (6,) and drawn.unique().numel() == 1
+            assert drawn.shape == (6,)
+            assert drawn.unique().numel() == 1
             sizes.update(drawn.tolist())
         assert sizes == {3, 5, 7}
         rounded_up = K.RandomMotionBlur3D((4, 4), 35.0, 0.5, p=1.0)
@@ -622,8 +626,10 @@ class Test3DAugmentationConventions(BaseTester):
         aug(torch.rand(64, 1, 5, 6, 7))
         scale = aug._params["scale"]
         assert scale.shape == (64, 3)
-        assert bool((scale[:, 0] == scale[:, 1]).all()) and bool((scale[:, 1] == scale[:, 2]).all())
-        assert 0.5 <= float(scale.min()) and float(scale.max()) <= 2.0
+        assert bool((scale[:, 0] == scale[:, 1]).all())
+        assert bool((scale[:, 1] == scale[:, 2]).all())
+        assert 0.5 <= float(scale.min())
+        assert float(scale.max()) <= 2.0
         assert len(scale[:, 0].unique()) > 1
         self.assert_close(aug.transform_matrix[:, :3, :3].diagonal(dim1=-2, dim2=-1), scale)
         shared = K.RandomAffine3D(0.0, scale=(0.5, 2.0), same_on_batch=True, p=1.0)
@@ -632,7 +638,8 @@ class Test3DAugmentationConventions(BaseTester):
         per_axis = K.RandomAffine3D(0.0, scale=((0.5, 2.0), (0.5, 2.0), (0.5, 2.0)), p=1.0)
         axes = per_axis.forward_parameters(torch.Size([64, 1, 5, 6, 7]))["scale"]
         assert axes.shape == (64, 3)
-        assert not bool((axes[:, 0] == axes[:, 1]).any()) and not bool((axes[:, 1] == axes[:, 2]).any())
+        assert not bool((axes[:, 0] == axes[:, 1]).any())
+        assert not bool((axes[:, 1] == axes[:, 2]).any())
         # The two-value form is range-checked under its own name.
         with pytest.raises(ValueError, match="scale out of bounds"):
             K.RandomAffine3D(0.0, scale=(-0.5, 2.0), p=1.0)
@@ -642,7 +649,8 @@ class Test3DAugmentationConventions(BaseTester):
         pairs = ((1, 2), (3, 4), (5, 6), (7, 8), (9, 10), (11, 12))
         params = K.RandomAffine3D(0.0, shears=pairs, p=1.0).forward_parameters(torch.Size([64, 1, 4, 5, 6]))
         for key, (low, high) in zip(("sxy", "sxz", "syx", "syz", "szx", "szy"), pairs):
-            assert low <= float(params[key].min()) and float(params[key].max()) <= high
+            assert low <= float(params[key].min())
+            assert float(params[key].max()) <= high
 
     @pytest.mark.device_agnostic
     def test_convention_random_crop3d_padding_modes_are_those_of_f_pad(self):
@@ -660,7 +668,8 @@ class Test3DAugmentationConventions(BaseTester):
         assert set(perspective) == {"start_points", "end_points"}
         assert perspective["start_points"].shape == perspective["end_points"].shape == (3, 8, 3)
         blur = rg.MotionBlurGenerator3D(3, 35.0, 0.5)(shape)
-        assert blur["angle_factor"].shape == (3, 3) and blur["ksize_factor"].shape == (3,)
+        assert blur["angle_factor"].shape == (3, 3)
+        assert blur["ksize_factor"].shape == (3,)
         # "odd and at least 3": a kernel of one voxel is rejected.
         with pytest.raises(AssertionError, match="must be odd and greater than 3"):
             K.RandomMotionBlur3D(1, 35.0, 0.5, p=1.0)(torch.rand(1, 1, 5, 5, 5))
