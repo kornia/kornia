@@ -210,6 +210,7 @@ select = [
   "ICN",  # flake8-import-conventions
   "INT",  # flake8-gettext
   "NPY",  # NumPy-specific rules
+  "PGH004",  # blanket-noqa
   "PIE",  # flake8-pie
   "PL",  # Pylint
   "PT001",  # flake8-pytest-style: fixture parentheses
