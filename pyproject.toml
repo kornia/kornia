@@ -228,6 +228,7 @@ select = [
   "RUF",  # Ruff-specific rules
   "S",  # flake8-bandit
   "SIM103",  # needless-bool
+  "SIM105",  # suppressible-exception
   "SIM114",  # if-with-same-arms
   "SIM115",  # open-file-with-context-handler
   "SIM117",  # multiple-with-statements
