@@ -296,7 +296,9 @@ def convert_points_to_homogeneous(points: torch.Tensor) -> torch.Tensor:
     if len(points.shape) < 2:
         raise ValueError(f"Input must be at least a 2D tensor. Got {points.shape}")
 
-    return F.pad(points, [0, 1], "constant", 1.0)
+    # Concatenate rather than ``F.pad(points, [0, 1], value=1.0)``: on MPS (seen on torch 2.5.1 and 2.14) a constant
+    # pad with a non-zero value returns garbage once the third-from-last dimension reaches 2**16.
+    return torch.cat([points, torch.ones_like(points[..., :1])], dim=-1)
 
 
 def _convert_affinematrix_to_homography_impl(A: torch.Tensor) -> torch.Tensor:
