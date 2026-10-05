@@ -88,9 +88,9 @@ class RandomCrop(GeometricAugmentationBase2D):
         applies to both.
 
         With ``pad_if_needed=False``, an oversized request does not raise: slice mode resizes the available slice,
-        and resample mode uses a mis-scaled warp that rescales both matrix axes and can blend in zero padding
-        (`#4414 <https://github.com/kornia/kornia/issues/4414>`_). The scale is computed against the padded canvas,
-        so a crop that fits after explicit padding gets no scale correction.
+        while resample mode uses a warp that can blend in zero padding
+        (`#4414 <https://github.com/kornia/kornia/issues/4414>`_). Slice-mode matrix axes are scaled independently
+        only when the requested crop exceeds the padded canvas along that axis.
 
         Slice mode uses :func:`~kornia.geometry.transform.crop_by_indices` with its own defaults and ignores this
         class's ``resample`` and ``align_corners``. Resample mode uses the configured interpolation and
@@ -227,9 +227,13 @@ class RandomCrop(GeometricAugmentationBase2D):
                 h += padding[2] + padding[3]
                 w += padding[0] + padding[1]
                 h_out, w_out = flags["size"]
-                if w_out > w:
+                if flags["cropping_mode"] == "slice":
+                    if w_out > w:
+                        transform[:, 0, 0] *= w_out / w
+                    if h_out > h:
+                        transform[:, 1, 1] *= h_out / h
+                elif h_out > h or w_out > w:
                     transform[:, 0, 0] *= w_out / w
-                if h_out > h:
                     transform[:, 1, 1] *= h_out / h
                 return transform
 
@@ -237,13 +241,14 @@ class RandomCrop(GeometricAugmentationBase2D):
             padded_h = input.shape[-2] + padding_size[:, 2] + padding_size[:, 3]
             padded_w = input.shape[-1] + padding_size[:, 0] + padding_size[:, 1]
             h_out, w_out = flags["size"]
+            needs_scale = (h_out > padded_h) | (w_out > padded_w)
             scale_w = torch.where(
-                w_out > padded_w,
+                (w_out > padded_w) if flags["cropping_mode"] == "slice" else needs_scale,
                 torch.full_like(padded_w, w_out, dtype=transform.dtype) / padded_w.to(dtype=transform.dtype),
                 torch.ones_like(padded_w, dtype=transform.dtype),
             )
             scale_h = torch.where(
-                h_out > padded_h,
+                (h_out > padded_h) if flags["cropping_mode"] == "slice" else needs_scale,
                 torch.full_like(padded_h, h_out, dtype=transform.dtype) / padded_h.to(dtype=transform.dtype),
                 torch.ones_like(padded_h, dtype=transform.dtype),
             )
