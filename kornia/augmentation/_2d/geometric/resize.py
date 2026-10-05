@@ -148,8 +148,18 @@ class Resize(GeometricAugmentationBase2D):
         if not isinstance(transform, torch.Tensor):
             raise TypeError(f"Expected the `transform` be a torch.Tensor. Got {type(transform)}.")
 
+        if flags["resample"] == Resample.NEAREST:
+            # ``grid_sample`` only supports legacy ``nearest``. The forward path uses
+            # ``nearest-exact``, so invert a resize with the same interpolation rule.
+            return resize(input, size, interpolation="nearest-exact")
+
         return crop_by_transform_mat(
-            input, transform[:, :2, :], size, flags["resample"].name.lower(), "zeros", flags["align_corners"]
+            input,
+            transform[:, :2, :],
+            size,
+            flags["resample"].name.lower(),
+            "zeros",
+            flags["align_corners"],
         )
 
 

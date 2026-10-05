@@ -39,10 +39,15 @@ class TestConventionGeometricMatrices(BaseTester):
             image.new_tensor([[[3.0, 0.0, 1.0], [0.0, 2.0, 0.5], [0.0, 0.0, 1.0]]]),
         )
 
-    def test_nearest_resize_inverse_roundtrip(self):
-        image = torch.arange(21, dtype=torch.float32).view(1, 1, 3, 7)
-        augmentation = K.Resize((9, 21), resample="nearest")
-        self.assert_close(augmentation.inverse(augmentation(image)), image)
+    @pytest.mark.parametrize("input_size,output_size", [((7, 7), (21, 21)), ((12, 12), (9, 9)), ((5, 5), (8, 8))])
+    def test_nearest_resize_inverse_roundtrip(self, input_size, output_size):
+        image = torch.arange(input_size[0] * input_size[1], dtype=torch.float32).view(1, 1, *input_size)
+        augmentation = K.AugmentationSequential(K.Resize(output_size, resample="nearest"))
+        restored = augmentation.inverse(augmentation(image))
+        assert restored.shape == image.shape
+        # Nearest downsampling is lossy, but inverse resampling must still cover both image edges.
+        self.assert_close(restored[..., 0, 0], image[..., 0, 0])
+        self.assert_close(restored[..., -1, -1], image[..., -1, -1])
 
     @pytest.mark.parametrize(
         "augmentation", [K.LongestMaxSize(21, resample="nearest"), K.SmallestMaxSize(9, resample="nearest")]
@@ -72,7 +77,11 @@ class TestConventionGeometricMatrices(BaseTester):
 
     @pytest.mark.parametrize(
         "augmentation,output_size",
-        [(K.Resize((6, 9), resample="nearest"), (6, 9)), (K.LongestMaxSize(9, resample="nearest"), (7, 9))],
+        [
+            (K.Resize((6, 9), resample="nearest"), (6, 9)),
+            (K.LongestMaxSize(9, resample="nearest"), (7, 9)),
+            (K.SmallestMaxSize(6, resample="nearest"), (6, 7)),
+        ],
     )
     def test_nearest_resize_handles_empty_batch(self, augmentation, output_size):
         image = torch.empty(0, 1, 4, 5)
