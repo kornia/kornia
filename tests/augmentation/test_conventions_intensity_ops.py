@@ -110,22 +110,19 @@ class TestBlurConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         assert _lit_extent(make((1, 5))(transposed)[0, 0]) == ([3], [0, 1, 2, 3, 4])
 
-    def test_convention_median_blur_border_median_is_over_zero_padding(self, device, dtype):
-        # A constant-ones image: the 3x3 window at a corner holds 5 zeros and 4 ones, so the corner comes
-        # back 0 while an edge pixel (3 zeros, 6 ones) stays 1.  Replicate padding would return 1 at both.
-        # Snippet used to generate expected:
-        #   torch.manual_seed(0); y = K.RandomMedianBlur((3, 3), p=1.0)(torch.ones(1, 1, 4, 4)); print(y[0, 0, 0, :2])
-        #   torch.manual_seed(0); print(K.RandomMedianBlur((5, 5), p=1.0)(torch.ones(1, 1, 6, 6))[0, 0, 0])
+    def test_convention_median_blur_border_median_uses_reflect_padding(self, device, dtype):
+        # A constant-ones image: reflect padding reflects the boundary ones into the padding window,
+        # so corner, edge, and center windows all hold only ones and their medians evaluate to 1.
         ones = torch.ones(1, 1, 4, 4, device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         out = K.RandomMedianBlur((3, 3), p=1.0)(ones)
-        assert float(out[0, 0, 0, 0]) == 0.0 and float(out[0, 0, 0, 1]) == 1.0
+        assert float(out[0, 0, 0, 0]) == 1.0 and float(out[0, 0, 0, 1]) == 1.0
         assert float(out[0, 0, 1, 1]) == 1.0
-        # 5x5 on a 6x6 image: the top row's window holds 3 image rows, so 15 ones at columns 2 and 3
-        # (median 1) but 12 at columns 1 and 4 and 9 at the corners (median 0).
+        # 5x5 on a 6x6 image: reflect padding preserves the constant value across the border,
+        # so the top row consists entirely of ones.
         torch.manual_seed(_FORWARD_SEED)
         wide = K.RandomMedianBlur((5, 5), p=1.0)(torch.ones(1, 1, 6, 6, device=device, dtype=dtype))
-        self.assert_close(wide[0, 0, 0], ones.new_tensor([0.0, 0.0, 1.0, 1.0, 0.0, 0.0]))
+        self.assert_close(wide[0, 0, 0], ones.new_tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0]))
 
     def test_convention_box_blur_even_kernel_is_accepted_and_off_centre(self, device, dtype):
         # Snippet used to generate expected:
@@ -424,8 +421,8 @@ class TestBlurConventions(BaseTester):
     # Issue #4559: RandomBoxBlur, RandomGaussianBlur and RandomSharpness raise a kornia `ValueError` naming
     # the class, the kernel and the input shape.  The two blurs reflect-pad, so an axis must be longer than the
     # kernel radius (`k // 2`, one pixel for the 3x3 default); RandomSharpness convolves without padding, so
-    # it needs the full 3x3.  RandomMedianBlur and, at its default constant border, RandomMotionBlur accept
-    # the same degenerate image.
+    # it needs the full 3x3.  RandomMedianBlur reflect-pads as well and raises the same error, while
+    # RandomMotionBlur, at its default constant border, accepts the degenerate image.
     # Snippet used to generate expected:
     #   for shape in ((2, 3, 1, 8), (2, 3, 2, 2), (2, 3, 3, 3)):
     #       x = torch.rand(*shape)
@@ -474,11 +471,16 @@ class TestBlurConventions(BaseTester):
             _sync(K.RandomSharpness(1.0, p=1.0)(small).device)
         torch.manual_seed(_FORWARD_SEED)
         assert K.RandomSharpness(1.0, p=1.0)(square).shape == square.shape
-        # The two rank/kernel-rotation filters accept the same one-row image, so the failure is not
-        # a package-wide "kernel larger than image" rule.
-        for make in (lambda: K.RandomMedianBlur(p=1.0), lambda: K.RandomMotionBlur(3, (45.0, 45.0), (0.0, 0.0), p=1.0)):
+        # RandomMedianBlur reflect-pads, so it refuses the one-row image with the same named error, before the
+        # filter runs; RandomMotionBlur, at its default constant border, still accepts it.
+        torch.manual_seed(_FORWARD_SEED)
+        with pytest.raises(ValueError, match="RandomMedianBlur cannot filter an image this small"):
+            _sync(K.RandomMedianBlur(p=1.0)(thin).device)
+        if reflect_ok:
             torch.manual_seed(_FORWARD_SEED)
-            assert make()(thin).shape == thin.shape
+            assert K.RandomMedianBlur(p=1.0)(small).shape == small.shape
+        torch.manual_seed(_FORWARD_SEED)
+        assert K.RandomMotionBlur(3, (45.0, 45.0), (0.0, 0.0), p=1.0)(thin).shape == thin.shape
 
     # ``border_type="circular"`` needs each axis at least the kernel radius (``k // 2``): the two padding
     # blurs raise kornia's named error below it, while ``"constant"`` and ``"replicate"`` run there.

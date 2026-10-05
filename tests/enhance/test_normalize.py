@@ -45,7 +45,7 @@ class TestNormalize(BaseTester):
     def test_smoke(self, device, dtype):
         mean = [0.5]
         std = [0.1]
-        repr = "Normalize(mean=tensor([[0.5000]]), std=tensor([[0.1000]]))"
+        repr = "Normalize(mean=[0.5], std=[0.1])"
         assert str(kornia.enhance.Normalize(mean, std)) == repr
 
     def test_normalize(self, device, dtype):
@@ -226,21 +226,14 @@ class TestNormalize(BaseTester):
 
 
 class TestNormalizeConstantsAreBuffers(BaseTester):
-    """`mean`/`std`/`factor` must move with the module.
-
-    They were plain tensor attributes, so `.to(device)` left them behind. Eager
-    tolerates the mix -- a broadcastable CPU tensor combines with a CUDA/MPS one
-    -- which is why it went unnoticed, but `torch.export` traces with fake
-    tensors and refuses it, so exporting from an accelerator failed.
-    """
+    """Tensor arguments move with the module; Python constants follow the input."""
 
     @staticmethod
     def _modules():
         return {
             "Normalize": kornia.enhance.Normalize(torch.zeros(3), torch.ones(3)),
             "Denormalize": kornia.enhance.Denormalize(torch.zeros(3), torch.ones(3)),
-            "Denormalize-float": kornia.enhance.Denormalize(0.0, 255.0),
-            "Rescale": kornia.enhance.Rescale(2.0),
+            "Rescale": kornia.enhance.Rescale(torch.tensor(2.0)),
         }
 
     def test_constants_are_registered_buffers(self, device, dtype):
@@ -252,7 +245,6 @@ class TestNormalizeConstantsAreBuffers(BaseTester):
         [
             ("Normalize", ("mean", "std")),
             ("Denormalize", ("mean", "std")),
-            ("Denormalize-float", ("mean", "std")),
             ("Rescale", ("factor",)),
         ],
     )
@@ -279,10 +271,48 @@ class TestNormalizeConstantsAreBuffers(BaseTester):
             assert module.state_dict() == {}, f"{name} state_dict is not empty"
 
     def test_denormalize_coerces_scalars(self, device, dtype):
-        """A float cannot be a buffer, and Normalize already coerced its own."""
+        """Scalar arguments stay as Python values and are materialized per input."""
         module = kornia.enhance.Denormalize(0.0, 255.0)
-        assert isinstance(module.mean, torch.Tensor)
-        assert isinstance(module.std, torch.Tensor)
+        assert module.mean == 0.0
+        assert module.std == 255.0
+        assert not list(module.buffers())
+
+    def test_python_constants_preserve_float64_precision(self):
+        x = torch.full((1, 3, 1, 1), 0.3, dtype=torch.float64)
+        normalize = kornia.enhance.Normalize(0.1, 0.3).double()
+        denormalize = kornia.enhance.Denormalize(0.1, 0.3).double()
+        rescale = kornia.enhance.Rescale(0.1).double()
+
+        assert torch.equal(normalize(x), (x - 0.1) / 0.3)
+        assert torch.equal(denormalize(x), x * 0.3 + 0.1)
+        assert torch.equal(rescale(x), x * 0.1)
+
+    def test_normalize_sequence_constants_preserve_float64_precision(self):
+        x = torch.full((1, 2, 1, 1), 0.3, dtype=torch.float64)
+        module = kornia.enhance.Normalize((0.1, 0.2), (0.3, 0.4))
+        mean = torch.tensor([[0.1, 0.2]], dtype=torch.float64)
+        std = torch.tensor([[0.3, 0.4]], dtype=torch.float64)
+
+        assert torch.equal(module(x), (x - mean.reshape(1, 2, 1, 1)) / std.reshape(1, 2, 1, 1))
+
+    def test_denormalize_sequence_is_checked_against_the_channels(self):
+        """A (C,) list must not broadcast a 1-channel input to C channels."""
+        module = kornia.enhance.Denormalize([0.1, 0.2, 0.3], [1.0, 1.0, 1.0])
+        with pytest.raises(ValueError):
+            module(torch.ones(2, 1, 4, 4))
+
+    def test_denormalize_nested_sequence_gives_per_sample_statistics(self):
+        x = torch.ones(2, 3, 1, 1)
+        out = kornia.enhance.Denormalize([[0.0] * 3, [1.0] * 3], [[1.0] * 3, [2.0] * 3])(x)
+        expected = torch.tensor([1.0, 3.0]).view(2, 1, 1, 1).expand(2, 3, 1, 1)
+        assert torch.equal(out, expected)
+
+    def test_python_constants_take_the_onnx_branch(self, monkeypatch):
+        """The ONNX branch indexes ``mean.shape[0]``, so a 0-d constant would raise IndexError."""
+        monkeypatch.setattr(torch.onnx, "is_in_onnx_export", lambda: True)
+        x = torch.full((1, 3, 2, 2), 0.5)
+        self.assert_close(kornia.enhance.Normalize(0.1, 0.4)(x), torch.full_like(x, 1.0))
+        self.assert_close(kornia.enhance.Denormalize(0.1, 0.4)(x), torch.full_like(x, 0.3))
 
     def test_forward_is_unchanged(self, device, dtype):
         x = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
@@ -321,9 +351,7 @@ class TestDenormalize(BaseTester):
     def test_smoke(self, device, dtype):
         mean = [0.5]
         std = [0.1]
-        # Tensors, matching TestNormalize above: Denormalize now coerces its
-        # arguments so they can be registered as buffers and move with `.to()`.
-        repr = "Denormalize(mean=tensor([0.5000]), std=tensor([0.1000]))"
+        repr = "Denormalize(mean=[0.5], std=[0.1])"
         assert str(kornia.enhance.Denormalize(mean, std)) == repr
 
     def test_denormalize(self, device, dtype):

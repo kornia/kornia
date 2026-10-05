@@ -85,10 +85,7 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
     if torch.any(width_diff > 1e-4):
         return False
 
-    if torch.any(height_diff > 1e-4):
-        return False
-
-    return True
+    return not torch.any(height_diff > 1e-4)
 
 
 def validate_bbox3d(boxes: torch.Tensor) -> bool:
@@ -671,7 +668,7 @@ def transform_bbox(
     transformed_boxes: torch.Tensor = transform_points(trans_mat, boxes.view(boxes.shape[0], -1, 2))
     transformed_boxes = transformed_boxes.view_as(boxes)
 
-    if (restore_coordinates is None or restore_coordinates) and not (boxes.shape[-2:] == torch.Size([4, 2])):
+    if (restore_coordinates is None or restore_coordinates) and boxes.shape[-2:] != torch.Size([4, 2]):
         restored_boxes = transformed_boxes.clone()
         # In case the boxes are flipped, we ensure it is ordered like left-top -> right-bot points
         restored_boxes[..., 0] = torch.min(transformed_boxes[..., [0, 2]], dim=-1)[0]
