@@ -108,9 +108,7 @@ def _foreign_names(module_name: str) -> set:
                 found.add(name)
         else:
             owner = getattr(obj, "__module__", None)
-            if owner == "typing":
-                found.add(name)
-            elif (
+            if owner == "typing" or (
                 isinstance(owner, str)
                 and owner.startswith("kornia.")
                 and owner != module_name
