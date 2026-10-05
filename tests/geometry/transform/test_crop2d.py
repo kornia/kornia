@@ -605,7 +605,42 @@ class TestCropByIndices(BaseTester):
 
         self.assert_close(out, expected, rtol=0, atol=0)
         self.assert_close(gradient, expected_gradient, rtol=0, atol=0)
+        # A batch is gathered into a new contiguous tensor; one image can take the uniform-box shortcut.
+        assert batch == 1 or out.is_contiguous()
         assert out.untyped_storage().data_ptr() != img.untyped_storage().data_ptr()
+
+    @pytest.mark.parametrize("batch", [2, 5])
+    @pytest.mark.parametrize("size, shape_compensation", [((3, 3), "resize"), ((4, 5), "resize"), ((4, 5), "pad")])
+    def test_backward_avoids_full_output_copies_5004(self, batch, size, shape_compensation, device, dtype):
+        img = torch.rand(batch, 2, 8, 9, device=device, dtype=dtype, requires_grad=True)
+        src_box = torch.tensor(
+            [[[i, i], [i + 2, i], [i + 2, i + 2], [i, i + 2]] for i in range(batch)],
+            device=device,
+            dtype=torch.int64,
+        )
+        crop = kornia.geometry.transform.crop_by_indices
+        out = crop(img, src_box, size=size, shape_compensation=shape_compensation)
+        weights = torch.arange(1, out.numel() + 1, device=device, dtype=dtype).reshape(out.shape)
+        full_output_copies = []
+
+        class OutputCopies(TorchDispatchMode):
+            def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+                result = func(*args, **(kwargs or {}))
+                if func == torch.ops.aten.copy_.default and tuple(result.shape) == tuple(out.shape):
+                    full_output_copies.append(func)
+                return result
+
+        # Writing each row into a preallocated output made backward copy the whole output gradient once per row.
+        with OutputCopies():
+            (gradient,) = torch.autograd.grad(out, img, weights)
+        assert not full_output_copies
+        # A single image takes the batch-slicing path, so each row is checked against it.
+        for i in range(batch):
+            row = img[i : i + 1].detach().requires_grad_()
+            row_out = crop(row, src_box[i : i + 1], size=size, shape_compensation=shape_compensation)
+            (row_gradient,) = torch.autograd.grad(row_out, row, weights[i : i + 1])
+            self.assert_close(out[i : i + 1], row_out, rtol=0, atol=0)
+            self.assert_close(gradient[i : i + 1], row_gradient, rtol=0, atol=0)
 
     def test_crop_by_indices_no_resizing(self, device, dtype):
         inp = torch.tensor([[[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7, 8, 9]]]], device=device, dtype=dtype)  # 1x3x3
