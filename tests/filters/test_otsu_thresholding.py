@@ -419,6 +419,18 @@ class TestOtsuThreshold(BaseTester):
         (grad,) = torch.autograd.grad(out.sum(), image)
         self.assert_close(grad, mask.to(dtype))
 
+    @pytest.mark.parametrize("sign", [1.0, -1.0])
+    @pytest.mark.parametrize("nbins", [2, 256])
+    def test_one_sided_extreme_range_5471(self, sign, nbins, device, dtype):
+        # One extreme is zero: the bounded unit must be the larger magnitude, not the minimum's or the maximum's alone.
+        unit = sign * torch.tensor([[0.0, 0.125, 0.25, 0.75, 1.0]], device=device, dtype=dtype)
+        image = unit * torch.finfo(dtype).max
+        mask, threshold = otsu_threshold(image, nbins=nbins, return_mask=True)
+        expected_mask, expected_threshold = otsu_threshold(unit, nbins=nbins, return_mask=True)
+        assert threshold.isfinite().all()
+        assert mask.tolist() == expected_mask.tolist()
+        self.assert_close(threshold / torch.finfo(dtype).max, expected_threshold)
+
     def test_integer_histogram_matches_histc_with_offsets_5425(self, device):
         image = torch.stack([torch.arange(-128, 129), torch.arange(1000, 1257)]).to(device=device, dtype=torch.int16)
         histograms, _, _ = OtsuThreshold._OtsuThreshold__histogram(image, 17)
