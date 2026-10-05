@@ -378,10 +378,29 @@ def _torch_solve_cast(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
     return out.to(A.dtype)
 
 
+def _rows_finite(x: torch.Tensor) -> torch.Tensor:
+    """Whether every entry of each trailing matrix of ``x`` is finite, as a mask over its batch."""
+    return x.isfinite().all(-1).all(-1)
+
+
 def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Solves the system of equations.
 
     Avoids crashing because of singular matrix input and outputs the mask of valid solution.
+
+    A system is valid when the LU factorization of ``A`` has no zero pivot and the solution is finite in
+    the dtype of ``B``. An invalid system is solved with the identity in place of ``A``, so its row of
+    ``X`` holds ``B`` and its row of the returned LU factor is the identity's. The differentiated solve
+    therefore never sees a singular matrix, and the gradient with respect to the valid systems (and to
+    any parameter they share with an invalid one) stays finite.
+
+    Args:
+        B: right-hand side of shape :math:`(*, N, K)` or :math:`(*, N)`.
+        A: square matrices of shape :math:`(*, N, N)`.
+
+    Returns:
+        The solution :math:`(*, N, K)`, the LU factor of the solved matrices :math:`(*, N, N)` and the
+        validity mask :math:`(*)`.
     """
     # Based on https://github.com/pytorch/pytorch/issues/31546#issuecomment-694135622
     KORNIA_CHECK_IS_TENSOR(B, "B must be torch.Tensor")
@@ -390,16 +409,26 @@ def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
 
-    # Since kornia requires torch>=2.5.1, we can always use torch.linalg.lu_factor_ex and torch.linalg.lu_solve
-    A_LU, pivots, info = torch.linalg.lu_factor_ex(A.to(dtype))
-
-    valid_mask: torch.Tensor = info == 0
     n_dim_B = len(B.shape)
     n_dim_A = len(A.shape)
     if n_dim_A - n_dim_B == 1:
         B = B.unsqueeze(-1)
 
-    X = torch.linalg.lu_solve(A_LU, pivots, B.to(dtype))
+    A_cast = A.to(dtype)
+    B_cast = B.to(dtype)
+
+    # Decide validity on a detached pass, then solve a system whose invalid matrices are replaced by the
+    # identity. Masking the output instead is not enough: the backward of ``lu_factor`` / ``lu_solve`` at
+    # a singular matrix is non-finite, and ``0 * nan`` leaks it into every shared parameter.
+    # Since kornia requires torch>=2.5.1, we can always use torch.linalg.lu_factor_ex and torch.linalg.lu_solve
+    LU_detached, pivots_detached, info = torch.linalg.lu_factor_ex(A_cast.detach())
+    X_detached = torch.linalg.lu_solve(LU_detached, pivots_detached, B_cast.detach())
+    valid_mask: torch.Tensor = (info == 0) & _rows_finite(X_detached.to(B.dtype))
+
+    eye = torch.eye(A_cast.shape[-1], device=A_cast.device, dtype=dtype)
+    A_safe = torch.where(valid_mask[..., None, None], A_cast, eye)
+    A_LU, pivots, _ = torch.linalg.lu_factor_ex(A_safe)
+    X = torch.linalg.lu_solve(A_LU, pivots, B_cast)
 
     return X.to(B.dtype), A_LU.to(A.dtype), valid_mask
 
@@ -408,22 +437,42 @@ def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
     r"""Perform inverse.
 
     Avoids crashing because of non-invertable matrix input and outputs the mask of valid solution.
+
+    A matrix is valid when it is invertible (no zero pivot in eager mode, a non-zero determinant under
+    graph capture) and its inverse is finite in the dtype of ``A``. An invalid matrix is inverted as the
+    identity, so its row of the output is the identity. The differentiated inverse therefore never sees a
+    singular matrix, and the gradient with respect to the valid matrices (and to any parameter they
+    share with an invalid one) stays finite.
+
+    Args:
+        A: square matrices of shape :math:`(*, N, N)`.
+
+    Returns:
+        The inverse :math:`(*, N, N)` and the validity mask :math:`(*)`.
     """
     KORNIA_CHECK_IS_TENSOR(A, "A must be torch.Tensor")
 
     dtype_original = A.dtype
     dtype = _normalize_to_float32_or_float64(dtype_original)
+    A_cast = A.to(dtype)
+    eye = torch.eye(A_cast.shape[-1], device=A_cast.device, dtype=dtype)
 
+    # Decide validity on a detached pass, then invert a batch whose invalid matrices are replaced by the
+    # identity. Masking the output instead is not enough: the backward of ``inv`` reuses its non-finite
+    # output, and ``0 * nan`` leaks it into every shared parameter.
     if _is_tracing_or_exporting() and _has_closed_form_inverse(A):
         # ``linalg_inv_ex`` has no ONNX lowering; the adjugate form is basic arithmetic, and a
         # zero determinant is exactly the singularity ``inv_ex`` flags through ``info``.
-        adj, det = _adjugate_closed_form(A.to(dtype))
-        mask = det != 0
-        safe_det = torch.where(mask, det, torch.ones_like(det))
-        return (adj / safe_det[..., None, None]).to(dtype_original), mask
+        adj_detached, det_detached = _adjugate_closed_form(A_cast.detach())
+        mask = det_detached != 0
+        safe_det = torch.where(mask, det_detached, torch.ones_like(det_detached))
+        mask = mask & _rows_finite((adj_detached / safe_det[..., None, None]).to(dtype_original))
+        adj, det = _adjugate_closed_form(torch.where(mask[..., None, None], A_cast, eye))
+        return (adj / det[..., None, None]).to(dtype_original), mask
 
-    inverse, info = inv_ex(A.to(dtype))
-    mask = info == 0
+    inverse_detached, info = inv_ex(A_cast.detach())
+    mask = (info == 0) & _rows_finite(inverse_detached.to(dtype_original))
+    inverse, _ = inv_ex(torch.where(mask[..., None, None], A_cast, eye))
     return inverse.to(dtype_original), mask
 
 

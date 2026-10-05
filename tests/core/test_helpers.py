@@ -468,6 +468,47 @@ class TestSolveWithMask:
         _X, _, mask = safe_solve_with_mask(B, A)
         assert torch.equal(mask, torch.zeros_like(mask))
 
+    @pytest.mark.parametrize("masking", ["mul", "where"])
+    def test_singular_matrix_keeps_shared_gradient_finite(self, masking, device, dtype):
+        # kornia#5194: one singular matrix in the batch made the gradient of a parameter shared by all
+        # of them NaN, however the caller masked the output.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the reference gradient needs full precision")
+        M = torch.stack([torch.eye(3), torch.zeros(3, 3), 2 * torch.eye(3)]).to(device, dtype)
+        B = torch.ones(3, 3, device=device, dtype=dtype)
+
+        def grad(M: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+            W = torch.eye(3, device=device, dtype=dtype) + 0.1 * torch.arange(9.0, device=device, dtype=dtype).view(
+                3, 3
+            )
+            W.requires_grad_()
+            X, _, mask = safe_solve_with_mask(B, W @ M)
+            m = mask[:, None, None]
+            loss = (X * m).sum() if masking == "mul" else torch.where(m, X, torch.zeros_like(X)).sum()
+            loss.backward()
+            return W.grad
+
+        _, _, mask = safe_solve_with_mask(B, M)
+        assert mask.tolist() == [True, False, True]
+        # The singular system contributes nothing, so the gradient is the one of the valid systems alone.
+        assert_close(grad(M, B), grad(M[[0, 2]], B[[0, 2]]))
+
+    def test_singular_matrix_solves_identity(self, device, dtype):
+        A = torch.stack([2 * torch.eye(3), torch.ones(3, 3)]).to(device, dtype)
+        B = torch.arange(6.0, device=device, dtype=dtype).view(2, 3)
+        X, _, mask = safe_solve_with_mask(B, A)
+        assert mask.tolist() == [True, False]
+        assert_close(X[0, :, 0], B[0] / 2)
+        assert torch.equal(X[1, :, 0], B[1])
+
+    def test_overflowing_solution_is_invalid(self, device):
+        # The solution of (1e-5 * I) x = 1 is 1e5, which float16 cannot hold although the float32 solve can.
+        A = torch.eye(2, device=device, dtype=torch.float16)[None] * 1e-5
+        B = torch.ones(1, 2, 1, device=device, dtype=torch.float16)
+        X, _, mask = safe_solve_with_mask(B, A)
+        assert mask.tolist() == [False]
+        assert torch.equal(X, B)
+
 
 class TestBatchedForwardBatchSize:
     def test_rejects_zero_batch_size(self):
@@ -507,6 +548,46 @@ class TestInverseWithMask:
         A = torch.ones(10, 3, 3, device=device, dtype=dtype)
         _X, mask = safe_inverse_with_mask(A)
         assert torch.equal(mask, torch.zeros_like(mask))
+
+    @pytest.mark.parametrize("masking", ["mul", "where"])
+    def test_singular_matrix_keeps_shared_gradient_finite(self, masking, device, dtype):
+        # kornia#5194: one singular matrix in the batch made the gradient of a parameter shared by all
+        # of them NaN, however the caller masked the output.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the reference gradient needs full precision")
+        M = torch.stack([torch.eye(3), torch.zeros(3, 3), 2 * torch.eye(3)]).to(device, dtype)
+
+        def grad(M: torch.Tensor) -> torch.Tensor:
+            W = torch.eye(3, device=device, dtype=dtype) + 0.1 * torch.arange(9.0, device=device, dtype=dtype).view(
+                3, 3
+            )
+            W.requires_grad_()
+            inverse, mask = safe_inverse_with_mask(W @ M)
+            m = mask[:, None, None]
+            loss = (inverse * m).sum() if masking == "mul" else torch.where(m, inverse, torch.zeros_like(inverse)).sum()
+            loss.backward()
+            return W.grad
+
+        _, mask = safe_inverse_with_mask(M)
+        assert mask.tolist() == [True, False, True]
+        # The singular matrix contributes nothing, so the gradient is the one of the valid matrices alone.
+        assert_close(grad(M), grad(M[[0, 2]]))
+
+    def test_singular_matrix_is_identity_in_eager_and_trace(self, device, dtype):
+        A = torch.stack([2 * torch.eye(3), torch.zeros(3, 3)]).to(device, dtype)
+        expected = torch.stack([0.5 * torch.eye(3), torch.eye(3)]).to(device, dtype)
+        for fn in (safe_inverse_with_mask, torch.jit.trace(safe_inverse_with_mask, (A,), check_trace=False)):
+            inverse, mask = fn(A)
+            assert mask.tolist() == [True, False]
+            assert_close(inverse, expected)
+
+    def test_overflowing_inverse_is_invalid(self, device):
+        # The inverse of 1e-5 * I is 1e5 * I, which float16 cannot hold, in eager mode and under capture.
+        A = torch.eye(2, device=device, dtype=torch.float16) * 1e-5
+        for fn in (safe_inverse_with_mask, torch.jit.trace(safe_inverse_with_mask, (A,), check_trace=False)):
+            inverse, mask = fn(A)
+            assert not mask.item()
+            assert torch.equal(inverse, torch.eye(2, device=device, dtype=torch.float16))
 
 
 def test_is_autocast_enabled_cpu():
