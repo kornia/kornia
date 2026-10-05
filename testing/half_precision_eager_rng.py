@@ -207,7 +207,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
             ),
             *_audited(
                 "tests/losses/test_total_variation.py",
-                127,
+                148,
                 "torch.rand",
                 3,
                 ("tests/losses/test_total_variation.py::TestTotalVariation::test_tv_shapes",),

@@ -116,7 +116,7 @@ def get_motion_kernel2d(
     kernel = F.pad(k[:, None], [0, 0, kernel_size // 2, kernel_size // 2, 0, 0])
 
     expected_shape = torch.Size([direction.size(0), *kernel_tuple])
-    KORNIA_CHECK(kernel.shape == expected_shape, f"Kernel shape should be {expected_shape}. Gotcha {kernel.shape}")
+    KORNIA_CHECK(kernel.shape == expected_shape, f"Kernel shape should be {expected_shape}. Got {kernel.shape}")
     kernel = kernel[:, None, ...]
 
     # rotate (counterclockwise) kernel by given angle
@@ -228,7 +228,7 @@ def get_motion_kernel3d(
     )
 
     expected_shape = torch.Size([direction.size(0), *kernel_tuple])
-    KORNIA_CHECK(kernel.shape == expected_shape, f"Kernel shape should be {expected_shape}. Gotcha {kernel.shape}")
+    KORNIA_CHECK(kernel.shape == expected_shape, f"Kernel shape should be {expected_shape}. Got {kernel.shape}")
     kernel = kernel[:, None, ...]
 
     # rotate (counterclockwise) kernel by given angle

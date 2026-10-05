@@ -33,10 +33,16 @@ _VALID_BORDER = {"constant", "reflect", "replicate", "circular"}
 def _scalar_params_as_tensors(
     input: torch.Tensor, angle: float | tuple[float, float, float] | torch.Tensor, direction: float | torch.Tensor
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    # Python-number parameters build the kernel in the input's floating dtype, but never below float32: a float64
+    # A Python-number parameter next to a tensor one is built like that tensor, on its device and in its dtype, so
+    # the kernel is built from one device and one dtype, as it is from two tensors.
+    if isinstance(angle, torch.Tensor) and not isinstance(direction, torch.Tensor):
+        direction = torch.as_tensor(direction, device=angle.device, dtype=angle.dtype)
+    elif isinstance(direction, torch.Tensor) and not isinstance(angle, torch.Tensor):
+        angle = torch.as_tensor(angle, device=direction.device, dtype=direction.dtype)
+    # Two Python-number parameters build the kernel in the input's floating dtype, but never below float32: a float64
     # input keeps float64 precision, while a half-precision kernel would quantise the rotation and move the
-    # nearest-neighbour samples. The kernel is built on the CPU, as before: MPS builds a different one at some
-    # angles (#5181). Tensor parameters keep their own device and dtype.
+    # nearest-neighbour samples. That kernel is built on the CPU: MPS builds a different one at some angles (#5181).
+    # Tensor parameters keep their own device and dtype.
     dtype = torch.promote_types(input.dtype, torch.float32) if input.is_floating_point() else torch.get_default_dtype()
     if not isinstance(angle, torch.Tensor):
         angle = torch.as_tensor(angle, dtype=dtype)

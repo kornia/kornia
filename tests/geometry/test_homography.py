@@ -531,6 +531,30 @@ class TestFindHomographyDLT(BaseTester):
         assert H.shape == (1, 3, 3)
         assert H.isnan().all().item()
 
+    def test_degenerate_points_lu_give_nan(self, device, dtype):
+        # Coincident points make the normal equations singular: no homography, so NaN rather than the
+        # identity system's solution that safe_solve_with_mask leaves for an invalid system (kornia#5194).
+        points = torch.zeros(1, 6, 2, device=device, dtype=dtype)
+        H = find_homography_dlt(points, points, solver="lu")
+        assert H.isnan().all().item()
+
+    @pytest.mark.parametrize("solver", ["svd", "lu"])
+    def test_singular_normalization_gives_nan(self, device, dtype, solver):
+        # A spread whose squared radius overflows gives points2 a zero Hartley scale and a singular
+        # normalization: NaN rather than a homography built from the identity that safe_inverse_with_mask
+        # substitutes for its inverse (kornia#5194).
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the half-precision norm accumulates in float32 and does not overflow")
+        points1 = torch.tensor(
+            [[[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [0.5, 0.2], [0.3, 0.7]]], device=device, dtype=dtype
+        )
+        points2 = points1 * (torch.finfo(dtype).max / 4)
+        assert find_homography_dlt(points1, points2, solver=solver).isnan().all().item()
+        weights = torch.ones(1, 6, device=device, dtype=dtype)
+        assert find_homography_dlt_iterated(points1, points2, weights, n_iter=1).isnan().all().item()
+        # the segment endpoints share the normalization
+        assert find_homography_lines_dlt(points1.view(1, 3, 2, 2), points2.view(1, 3, 2, 2)).isnan().all().item()
+
     @pytest.mark.timeout(120, method="thread")
     def test_nonfinite_sample_leaves_batch_intact(self, device, dtype):
         points1 = torch.rand(3, 4, 2, device=device, dtype=dtype)

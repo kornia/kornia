@@ -59,7 +59,7 @@ def _get(cls: Type[_T], value: TKEnum[_T]) -> _T:
         return value
 
     raise TypeError(
-        f"The `.get` method from `{cls}` expects a value with type `str`, `int` or `{cls}`. Gotcha {type(value)}"
+        f"The `.get` method from `{cls}` expects a value with type `str`, `int` or `{cls}`. Got {type(value)}"
     )
 
 

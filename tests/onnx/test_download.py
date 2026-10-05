@@ -135,9 +135,8 @@ class TestCachedDownloader:
             Path(filename).write_bytes(b"partial")
             raise KeyboardInterrupt
 
-        with mock.patch("urllib.request.urlretrieve", side_effect=interrupted):
-            with pytest.raises(KeyboardInterrupt):
-                CachedDownloader.download("http://127.0.0.1:9/model.pth", str(path))
+        with mock.patch("urllib.request.urlretrieve", side_effect=interrupted), pytest.raises(KeyboardInterrupt):
+            CachedDownloader.download("http://127.0.0.1:9/model.pth", str(path))
 
         assert list(path.parent.iterdir()) == []
 

@@ -247,6 +247,37 @@ class TestMixConventions(BaseTester):
         top_left = aug._params["src"][0, 0]
         self.assert_close(top_left, torch.tensor([4.0, 3.0], device=top_left.device, dtype=top_left.dtype))
 
+    def test_convention_mosaic_slice_box_follows_image_crop_5464(self, device, dtype):
+        # The image crop is sliced at the integer start while boxes were translated by the float
+        # start, so a fractional ``start_ratio_range`` offset boxes from the image content.
+        torch.manual_seed(0)
+        ys, xs = torch.meshgrid(
+            torch.arange(64, device=device, dtype=dtype),
+            torch.arange(64, device=device, dtype=dtype),
+            indexing="ij",
+        )
+        # Each pixel stores its source (x, y), which shows where the crop actually landed.
+        image = torch.stack([xs, ys]).unsqueeze(0)
+        boxes = torch.tensor([[[30.0, 30.0, 40.0, 40.0]]], device=device, dtype=dtype)
+
+        aug = K.RandomMosaic(p=1.0, output_size=(20, 20), data_keys=["input", "bbox_xyxy"])
+        output, output_boxes = aug(image, boxes)
+
+        crop_start_x = output[0, 0, 0, 0]
+        crop_start_y = output[0, 1, 0, 0]
+        # The reported params and the image crop agree on the start corner. The generator samples in
+        # float32 regardless of the input dtype, so only the value is compared.
+        assert aug._params["src"][0, 0, 0].item() == crop_start_x.item()
+        assert aug._params["src"][0, 0, 1].item() == crop_start_y.item()
+        # The tile-0 box is translated by the same start the image crop used.
+        expected = torch.stack(
+            [
+                torch.stack([30.0 - crop_start_x, 30.0 - crop_start_y]),
+                torch.stack([40.0 - crop_start_x, 40.0 - crop_start_y]),
+            ]
+        ).reshape(4)
+        self.assert_close(output_boxes[0, 0], expected.to(device=device, dtype=dtype))
+
     def test_convention_mosaic_grid_first_axis_is_width(self, device, dtype):
         image = torch.arange(6, device=device, dtype=dtype).view(6, 1, 1, 1).expand(6, 1, 6, 4)
         aug = K.RandomMosaic(mosaic_grid=(2, 3), start_ratio_range=(0.5, 0.5), p=1.0)
@@ -842,13 +873,15 @@ class TestMixConventions(BaseTester):
         aug = K.RandomMosaic(start_ratio_range=(0.3, 0.7), p=1.0)
         aug(image)
         top_left = aug._params["src"][:, 0]
-        ratios = torch.stack([top_left[:, 0] / 10, top_left[:, 1] / 6], dim=-1)
-        assert bool(((ratios >= 0.3 - 1e-5) & (ratios <= 0.7 + 1e-5)).all())
+        # The start corner is the floored integer position of the ratio draw, so the bound is the
+        # integer envelope of the ratio range: floor(low * size) .. floor(high * size).
+        assert bool(((top_left[:, 0] >= (0.3 * 10) - 1) & (top_left[:, 0] <= 0.7 * 10)).all())
+        assert bool(((top_left[:, 1] >= (0.3 * 6) - 1) & (top_left[:, 1] <= 0.7 * 6)).all())
         # Both entries are bounds on one draw, so both axes vary across the batch.
-        assert ratios[:, 0].unique().numel() > 1
-        assert ratios[:, 1].unique().numel() > 1
+        assert top_left[:, 0].unique().numel() > 1
+        assert top_left[:, 1].unique().numel() > 1
         # "Draws a pair": the two ratios are separate draws, not one value used twice.
-        assert not torch.allclose(ratios[:, 0], ratios[:, 1])
+        assert not torch.allclose(top_left[:, 0] / 10, top_left[:, 1] / 6)
 
     @pytest.mark.device_agnostic
     def test_convention_patchmix_patch_stays_inside_the_image(self):

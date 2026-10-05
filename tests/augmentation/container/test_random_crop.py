@@ -31,6 +31,19 @@ from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_availa
 
 
 class TestRandomCropAnnotations(BaseTester):
+    def test_slice_crop_boxes_match_pixels_when_only_height_is_oversized(self, device, dtype):
+        height, width, size = 329, 1209, 416
+        x = torch.arange(width, device=device, dtype=dtype).view(1, 1, 1, width).expand(1, 1, height, width)
+        boxes = torch.tensor([[[600.0, 100.0, 700.0, 200.0]]], device=device, dtype=dtype)
+        seq = K.AugmentationSequential(
+            K.RandomCrop((size, size), p=1.0, cropping_mode="slice"), data_keys=["input", "bbox_xyxy"]
+        )
+
+        out, out_boxes = seq(x, boxes)
+        x_offset = out[0, 0, 0, 0]
+
+        self.assert_close(out_boxes[0, 0, [0, 2]], boxes[0, 0, [0, 2]] - x_offset)
+
     @staticmethod
     def inputs(batch_size, device, dtype):
         # Each pixel identifies its position and image, independently of the crop's matrix.

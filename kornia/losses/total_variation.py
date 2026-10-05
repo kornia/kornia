@@ -45,6 +45,7 @@ def total_variation(img: torch.Tensor, reduction: str = "sum") -> torch.Tensor:
        See a working example `here <https://www.kornia.org/tutorials/nbs/total_variation_denoising.html>`__.
        Total Variation is formulated with summation, however this is not resolution invariant.
        Thus, `reduction='mean'` was added as an optional reduction method.
+       Narrow integer inputs are promoted before computing differences to avoid overflow.
 
     Reference:
         [1] https://en.wikipedia.org/wiki/Total_variation
@@ -56,6 +57,14 @@ def total_variation(img: torch.Tensor, reduction: str = "sum") -> torch.Tensor:
 
     KORNIA_CHECK_SHAPE(img, ["*", "H", "W"])
     KORNIA_CHECK(reduction in ("mean", "sum"), f"Expected reduction to be one of 'mean'/'sum', but got '{reduction}'.")
+
+    # Adjacent differences and their absolute values can exceed the input integer range.
+    if img.dtype in (torch.uint8, torch.int8):
+        img = img.to(torch.int16)
+    elif img.dtype == torch.int16:
+        img = img.to(torch.int32)
+    elif img.dtype == torch.int32:
+        img = img.to(torch.int64)
 
     pixel_dif1 = img[..., 1:, :] - img[..., :-1, :]
     pixel_dif2 = img[..., :, 1:] - img[..., :, :-1]
