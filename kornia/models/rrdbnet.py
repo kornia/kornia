@@ -59,12 +59,7 @@ def _default_init_weights(
     modules = [module_list] if isinstance(module_list, nn.Module) else list(module_list)
     for module in modules:
         for m in module.modules():
-            if isinstance(m, nn.Conv2d):
-                init.kaiming_normal_(m.weight)
-                m.weight.data *= scale
-                if m.bias is not None:
-                    m.bias.data.fill_(bias_fill)
-            elif isinstance(m, nn.Linear):
+            if isinstance(m, (nn.Conv2d, nn.Linear)):
                 init.kaiming_normal_(m.weight)
                 m.weight.data *= scale
                 if m.bias is not None:

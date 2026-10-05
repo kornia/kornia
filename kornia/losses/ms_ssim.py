@@ -70,6 +70,14 @@ class MS_SSIMLoss(nn.Module):
         - Input2: :math:`(N, C, H, W)`.
         - Output: :math:`(N, H, W)` or scalar if reduction is set to ``'mean'`` or ``'sum'``.
 
+    Note:
+        Integer and bool images count as the dtype of the Gaussian masks: float32, unless the module was moved to
+        another floating dtype. The images are filtered in the promoted dtype of the two images and the masks, with
+        float16 and bfloat16 raised to float32 and autocast disabled on CPU, CUDA and MPS. The loss is returned in the
+        promoted dtype of the two images, so two integer images give a loss in the mask dtype. Pixel values are not
+        rescaled: pass ``data_range=255.0`` for 8-bit images, which gives the loss of the images divided by 255 at the
+        default ``data_range=1.0``.
+
     Examples:
         >>> input1 = torch.rand(1, 3, 5, 5)
         >>> input2 = torch.rand(1, 3, 5, 5)
@@ -183,11 +191,51 @@ class MS_SSIMLoss(nn.Module):
         if not len(img1.shape) == len(img2.shape):
             raise ValueError(f"Input shapes should be same. Got {type(img1)} and {type(img2)}.")
 
+        mask_dtype = self._g_masks.dtype
+        if img1.is_complex() or img2.is_complex():
+            output_dtype = torch.promote_types(img1.dtype, img2.dtype)
+            compute_dtype = output_dtype
+            g_masks = self._g_masks
+        else:
+            # The masks carry fractional weights, so integer and bool images count as the mask dtype.
+            dtype1 = img1.dtype if img1.is_floating_point() else mask_dtype
+            dtype2 = img2.dtype if img2.is_floating_point() else mask_dtype
+            output_dtype = torch.promote_types(dtype1, dtype2)
+            # Half-precision moments overflow (local means above about 181 in float16) and cancel, so they are
+            # computed in float32.
+            compute_dtype = torch.promote_types(output_dtype, mask_dtype)
+            if compute_dtype in (torch.float16, torch.bfloat16):
+                compute_dtype = torch.float32
+            g_masks = self._g_masks.to(compute_dtype)
+            if mask_dtype in (torch.float16, torch.bfloat16):
+                # Rounded to half precision, the masks no longer sum to one (in bfloat16 only to within 2.4e-3),
+                # which shifts every variance by about (1 - sum) * mu^2: renormalise the float32 copy.
+                g_masks = g_masks / g_masks.sum(dim=(-2, -1), keepdim=True)
+
+        img1 = img1.to(compute_dtype)
+        img2 = img2.to(compute_dtype)
+
         CH: int = img1.shape[-3]
-        S: int = self.num_scales
         # A grouped convolution gives each input channel a contiguous block of output channels, so the masks are
         # repeated channel-major: output ``c * S + s`` is channel ``c`` filtered at scale ``s``.
-        g_masks: torch.Tensor = torch.jit.annotate(torch.Tensor, self._g_masks).repeat(CH, 1, 1, 1)
+        g_masks = torch.jit.annotate(torch.Tensor, g_masks).repeat(CH, 1, 1, 1)
+
+        if img1.device.type == "cpu":
+            with torch.autocast(device_type="cpu", enabled=False):
+                loss = self._compute_loss(img1, img2, g_masks)
+        elif img1.device.type == "cuda":
+            with torch.autocast(device_type="cuda", enabled=False):
+                loss = self._compute_loss(img1, img2, g_masks)
+        elif img1.device.type == "mps":
+            with torch.autocast(device_type="mps", enabled=False):
+                loss = self._compute_loss(img1, img2, g_masks)
+        else:
+            loss = self._compute_loss(img1, img2, g_masks)
+        return loss.to(output_dtype)
+
+    def _compute_loss(self, img1: torch.Tensor, img2: torch.Tensor, g_masks: torch.Tensor) -> torch.Tensor:
+        CH: int = img1.shape[-3]
+        S: int = self.num_scales
 
         mux = F.conv2d(img1, g_masks, groups=CH, padding=self.pad)
         muy = F.conv2d(img2, g_masks, groups=CH, padding=self.pad)

@@ -20,6 +20,7 @@ import torch
 
 import kornia
 from kornia.core._compat import torch_version_lt
+from kornia.core.exceptions import ShapeError
 
 from testing.base import BaseTester
 
@@ -34,6 +35,20 @@ class TestImageHistogram2d(BaseTester):
         assert hist.shape == (32,)
         assert pdf.shape == (32,)
 
+    @pytest.mark.parametrize("return_pdf", [False, True])
+    def test_rank2_single_bin_preserves_bin_axis(self, device, dtype, return_pdf):
+        sample = torch.tensor([[0.25, 0.75]], device=device, dtype=dtype)
+        hist, pdf = TestImageHistogram2d.fcn(sample, 0.0, 1.0, 1, return_pdf=return_pdf)
+
+        assert hist.shape == (1,)
+        assert pdf.shape == (1,)
+
+        hist_explicit, pdf_explicit = TestImageHistogram2d.fcn(
+            sample, 0.0, 1.0, centers=torch.tensor([0.5], device=device, dtype=dtype), return_pdf=return_pdf
+        )
+        assert hist_explicit.shape == (1,)
+        assert pdf_explicit.shape == (1,)
+
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_shape_channels(self, device, dtype, kernel):
         sample = torch.ones(3, 16, 16, device=device, dtype=dtype)
@@ -47,6 +62,13 @@ class TestImageHistogram2d(BaseTester):
         hist, pdf = TestImageHistogram2d.fcn(sample, 0.0, 1.0, 32, kernel=kernel)
         assert hist.shape == (4, 3, 32)
         assert pdf.shape == (4, 3, 32)
+
+    @pytest.mark.parametrize("shape", [(), (4,), (1, 1, 1, 2, 3)])
+    def test_rejects_unsupported_rank(self, device, dtype, shape):
+        # Rank 0 and 1 used to return spurious (1, 1, n_bins) batch and channel axes; rank 5 failed inside permute.
+        image = torch.zeros(shape, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=r"Input image must have shape \(H, W\), \(C, H, W\) or \(B, C, H, W\)"):
+            TestImageHistogram2d.fcn(image, n_bins=2)
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_gradcheck(self, device, kernel):
@@ -187,6 +209,71 @@ class TestImageHistogram2d(BaseTester):
         assert hist.dtype == torch.float64
         assert pdf.dtype == torch.float64
 
+    @pytest.mark.parametrize("bandwidth", [0.0, -2.0, float("nan"), float("inf"), float("-inf")])
+    def test_rejects_invalid_bandwidth(self, bandwidth):
+        image = torch.ones(4, 4)
+        with pytest.raises(ValueError, match="Bandwidth must be finite and greater than zero"):
+            TestImageHistogram2d.fcn(image, bandwidth=bandwidth)
+
+    @pytest.mark.parametrize(
+        "bounds", [(0.0, 0.0), (1.0, 0.0), (float("nan"), 1.0), (float("-inf"), 0.0), (0.0, float("inf"))]
+    )
+    @pytest.mark.parametrize("empty_centers", [False, True])
+    def test_rejects_invalid_automatically_generated_range(self, bounds, empty_centers):
+        centers = torch.empty(0) if empty_centers else None
+        with pytest.raises(ValueError, match="automatically generated histogram range"):
+            TestImageHistogram2d.fcn(torch.ones(4, 4), min=bounds[0], max=bounds[1], centers=centers)
+
+    def test_automatic_centers_need_a_range_with_explicit_bandwidth(self):
+        # Automatic centers are spread over [min, max], so an explicit bandwidth does not waive the range check.
+        with pytest.raises(ValueError, match="automatically generated histogram range"):
+            TestImageHistogram2d.fcn(torch.ones(4, 4), min=0.0, max=0.0, bandwidth=0.5)
+
+    def test_negative_one_bandwidth_with_explicit_centers_needs_a_range(self):
+        # The automatic bandwidth is (max - min) / n_bins, so the sentinel needs the range even with explicit centers.
+        centers = torch.tensor([0.25, 0.75])
+        with pytest.raises(ValueError, match="automatically generated histogram range"):
+            TestImageHistogram2d.fcn(torch.ones(4, 4), min=0.0, max=0.0, bandwidth=-1.0, centers=centers)
+
+    def test_rejects_zero_bins_for_automatic_values(self):
+        with pytest.raises(ValueError, match="n_bins must be greater than zero"):
+            TestImageHistogram2d.fcn(torch.ones(4, 4), 0.0, 1.0, 0)
+
+    @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
+    def test_negative_one_bandwidth_selects_automatic_value(self, kernel):
+        image = torch.rand(8, 8)
+        hist_auto, pdf_auto = TestImageHistogram2d.fcn(image, 0.0, 1.0, 4, kernel=kernel, return_pdf=True)
+        hist_sentinel, pdf_sentinel = TestImageHistogram2d.fcn(
+            image, 0.0, 1.0, 4, bandwidth=-1.0, kernel=kernel, return_pdf=True
+        )
+        torch.testing.assert_close(hist_sentinel, hist_auto)
+        torch.testing.assert_close(pdf_sentinel, pdf_auto)
+
+    def test_explicit_centers_and_bandwidth_do_not_require_an_automatic_range(self):
+        centers = torch.tensor([0.25, 0.75])
+        hist, pdf = TestImageHistogram2d.fcn(
+            torch.ones(4, 4), min=0.0, max=0.0, bandwidth=0.5, centers=centers, return_pdf=True
+        )
+        assert torch.isfinite(hist).all()
+        assert torch.isfinite(pdf).all()
+
+    def test_empty_centers_select_automatic_centers(self):
+        image = torch.rand(4, 4)
+        hist_none, pdf_none = TestImageHistogram2d.fcn(image, 0.0, 1.0, 4, return_pdf=True)
+        hist_empty, pdf_empty = TestImageHistogram2d.fcn(image, 0.0, 1.0, 4, centers=torch.empty(0), return_pdf=True)
+        torch.testing.assert_close(hist_empty, hist_none)
+        torch.testing.assert_close(pdf_empty, pdf_none)
+
+    def test_dynamo_fullgraph_traces_changing_range_and_bandwidth(self):
+        # A changed float argument recompiles with a symbolic float, and the range and bandwidth checks must stay
+        # traceable for it (math.isfinite on a symbolic float breaks the graph on torch 2.14).
+        torch._dynamo.reset()
+        compiled = torch.compile(TestImageHistogram2d.fcn, fullgraph=True, backend="eager")
+        image = torch.linspace(0.0, 1.0, 6).reshape(2, 3)
+        for max_value, bandwidth in [(1.0, None), (2.0, None), (1.0, 0.5), (1.0, 0.25)]:
+            expected = TestImageHistogram2d.fcn(image, 0.0, max_value, 2, bandwidth)[0]
+            self.assert_close(compiled(image, 0.0, max_value, 2, bandwidth)[0], expected)
+
 
 class TestHistogram2d(BaseTester):
     fcn = kornia.enhance.histogram2d
@@ -279,3 +366,25 @@ class TestHistogram(BaseTester):
         pdf = TestHistogram.fcn(input1, input2, bandwidth)
         ans = 0.1 * torch.ones(1, 10, device=device, dtype=dtype)
         self.assert_close(ans, pdf)
+
+    @pytest.mark.parametrize("bandwidth", [0.0, -1.0, float("nan"), float("inf"), float("-inf")])
+    def test_rejects_invalid_bandwidth(self, bandwidth):
+        value = torch.tensor(bandwidth)
+        bins = torch.tensor([0.0, 1.0])
+        samples = torch.tensor([[0.0, 1.0]])
+        # CPU tensors: the asynchronous value assert raises synchronously there.
+        with pytest.raises(RuntimeError, match="Bandwidth must be finite and greater than zero"):
+            kornia.enhance.histogram(samples, bins, value)
+        with pytest.raises(RuntimeError, match="Bandwidth must be finite and greater than zero"):
+            kornia.enhance.histogram2d(samples, samples, bins, value)
+
+    def test_dynamo_fullgraph_rejects_invalid_bandwidth(self):
+        # The compiled graph carries the same bandwidth check as eager instead of skipping it.
+        torch._dynamo.reset()
+        compiled = torch.compile(kornia.enhance.histogram, fullgraph=True, backend="eager")
+        bins = torch.tensor([0.0, 1.0])
+        samples = torch.tensor([[0.0, 1.0]])
+        bandwidth = torch.tensor(0.5)
+        self.assert_close(compiled(samples, bins, bandwidth), kornia.enhance.histogram(samples, bins, bandwidth))
+        with pytest.raises(RuntimeError, match="Bandwidth must be finite and greater than zero"):
+            compiled(samples, bins, torch.tensor(0.0))

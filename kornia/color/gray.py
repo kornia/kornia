@@ -33,6 +33,9 @@ def grayscale_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     The image data is assumed to be in the range of (0, 1).
 
+    Convention:
+        The singleton channel at axis -3 is repeated into R, G and B. Leading dimensions are preserved.
+
     Args:
         image: grayscale image torch.Tensor to be converted to RGB with shape :math:`(*,1,H,W)`.
 
@@ -51,8 +54,7 @@ def grayscale_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     shape = list(image.shape)
     shape[-3] = 3
-    # Use expand to create a view that repeats along channel dimension, no memory overhead.
-    return image.expand(*shape)
+    return image.expand(*shape).clone()
 
 
 def rgb_to_grayscale(image: torch.Tensor, rgb_weights: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -61,6 +63,14 @@ def rgb_to_grayscale(image: torch.Tensor, rgb_weights: Optional[torch.Tensor] = 
     .. image:: _static/img/rgb_to_grayscale.png
 
     The image data is assumed to be in the range of (0, 1).
+
+    Convention:
+        RGB is channel-first at axis -3 and the result has one channel. Default weights are
+        ITU-R BT.601 luma weights (0.299, 0.587, 0.114) in RGB order.
+
+    .. warning::
+        On integer input, explicit float ``rgb_weights`` truncate to zero and integer weights wrap
+        (`#5109 <https://github.com/kornia/kornia/issues/5109>`_).
 
     Args:
         image: RGB image to be converted to grayscale with shape :math:`(*,3,H,W)`.
@@ -118,6 +128,9 @@ def bgr_to_grayscale(image: torch.Tensor) -> torch.Tensor:
 
     The image data is assumed to be in the range of (0, 1). First flips to RGB, then converts.
 
+    Convention:
+        BGR is channel-first at axis -3. This uses the RGB luma weights after reversing channel order.
+
     Args:
         image: BGR image to be converted to grayscale with shape :math:`(*,3,H,W)`.
 
@@ -140,6 +153,8 @@ def bgr_to_grayscale(image: torch.Tensor) -> torch.Tensor:
 
 class GrayscaleToRgb(nn.Module):
     r"""nn.Module to convert a grayscale image to RGB version of image.
+
+    See the Convention block on :func:`grayscale_to_rgb`.
 
     The image data is assumed to be in the range of (0, 1).
 
@@ -176,6 +191,8 @@ class GrayscaleToRgb(nn.Module):
 
 class RgbToGrayscale(nn.Module):
     r"""nn.Module to convert a RGB image to grayscale version of image.
+
+    See the Convention block on :func:`rgb_to_grayscale`.
 
     The image data is assumed to be in the range of (0, 1).
 
@@ -219,6 +236,8 @@ class RgbToGrayscale(nn.Module):
 
 class BgrToGrayscale(nn.Module):
     r"""nn.Module to convert a BGR image to grayscale version of image.
+
+    See the Convention block on :func:`bgr_to_grayscale`.
 
     The image data is assumed to be in the range of (0, 1). First flips to RGB, then converts.
 

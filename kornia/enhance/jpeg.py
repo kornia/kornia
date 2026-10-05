@@ -496,6 +496,12 @@ def jpeg_codec_differentiable(
 ) -> torch.Tensor:
     r"""Differentiable JPEG encoding-decoding module.
 
+    Convention:
+        Input is RGB in [0, 1] with shape ``(*, 3, H, W)``; the leading axes flatten to N images.
+        jpeg_quality is a one-dimensional (1,) shared quality or (N,) per-image quality; a 0-D
+        scalar is rejected. The codec pads on the bottom and right internally and crops back to
+        the input shape. See :class:`JPEGCodecDifferentiable` for the reusable-table wrapper.
+
     Based on :cite:`reich2024` :cite:`shin2017`, we perform differentiable JPEG encoding-decoding as follows:
 
     .. image:: _static/img/jpeg_codec_differentiable.png
@@ -682,6 +688,10 @@ def _build_dct8_basis_scale(
 class JPEGCodecDifferentiable(nn.Module):
     r"""Differentiable JPEG encoding-decoding module.
 
+    Convention:
+        See :func:`jpeg_codec_differentiable`: its (1,) or (N,) JPEG quality policy
+        also applies to forward.
+
     Based on :cite:`reich2024` :cite:`shin2017`, we perform differentiable JPEG encoding-decoding as follows:
 
     .. math::
@@ -783,10 +793,7 @@ class JPEGCodecDifferentiable(nn.Module):
 
         Args:
             image_rgb: Input RGB tensor with shape :math:`(*, 3, H, W)`.
-            jpeg_quality: JPEG quality factor tensor. It can be scalar or
-                batched, and must be broadcast-compatible with the leading
-                dimensions of ``image_rgb`` as required by
-                :func:`jpeg_codec_differentiable`.
+            jpeg_quality: JPEG quality factor with shape (1,) or (N,), N being the number of images.
 
         Returns:
             Reconstructed RGB tensor after differentiable JPEG processing, with

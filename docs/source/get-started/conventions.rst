@@ -309,21 +309,70 @@ Bounding boxes
   ``"bbox_xywh"``. Keypoints are ``"keypoints"``, ``(B, N, 2)`` in
   ``(x, y)``.
 
+.. _color-conventions:
+
 Color
 -----
 
-- ``rgb_to_hsv`` returns hue in **radians** ``[0, 2π)`` — not degrees, not
-  ``[0, 1]``:
+Color-space conversions use channel axis ``-3`` in ``(*, C, H, W)``. The color space determines
+channel units; converted data is not generally a unit-range RGB image.
 
-.. code-block:: python
+.. list-table:: Color channel units
+   :header-rows: 1
+   :widths: 22 42 36
 
-    import torch
-    import kornia
+   * - Space
+     - Channels
+     - Input encoding
+   * - HSV and HLS
+     - Hue in radians; saturation and value or lightness in unit range
+     - Nonlinear RGB in unit range
+   * - XYZ
+     - X, Y, Z
+     - Linear RGB; :func:`kornia.color.rgb_to_xyz` does not remove the sRGB transfer function
+   * - Lab and Luv
+     - L*, a*, b* or L*, u*, v*, with L* on the 0–100 scale
+     - Nonlinear sRGB, linearized internally; D65 / 2° reference white
+   * - YCbCr
+     - Y, Cb, Cr; chroma is offset by 0.5
+     - RGB in unit range
+   * - YUV
+     - Y, U, V; chroma is signed
+     - RGB in unit range
 
-    green = torch.zeros(1, 3, 1, 1)
-    green[0, 1] = 1.0
-    hue = kornia.color.rgb_to_hsv(green)[0, 0].item()
-    assert abs(hue - 2.0943951) < 1e-4  # 120 degrees = 2*pi/3 radians
+Use :func:`kornia.color.rgb_to_linear_rgb` and :func:`kornia.color.linear_rgb_to_rgb` to change
+transfer encoding. :func:`kornia.color.lab_to_rgb` clips its final RGB output unless ``clip=False``;
+:func:`kornia.color.luv_to_rgb` does not clip its output. :func:`kornia.color.ycbcr_to_rgb`
+clips its final RGB output to the unit range.
+
+See the individual :doc:`color conversion pages </color.conversions>` for RAW mosaic layouts,
+chroma subsampling, and known defects.
+
+.. _enhancement-conventions:
+
+Enhancement
+-----------
+
+- :func:`kornia.enhance.adjust_brightness` adds its factor, while
+  :func:`kornia.enhance.adjust_brightness_accumulative` multiplies by it.
+  :func:`kornia.enhance.adjust_contrast` multiplies pixel values; the mean-subtraction variant
+  adjusts contrast around an image mean. torchvision and PIL brightness, contrast and saturation
+  correspond to the ``_accumulative``, ``_with_mean_subtraction`` and ``_with_gray_subtraction``
+  variants.
+- :func:`kornia.enhance.adjust_hue` and :func:`kornia.enhance.adjust_hue_raw` take radians
+  (torchvision's ``hue_factor`` is ``factor / (2 * pi)``); the raw hue and saturation helpers
+  operate on HSV data.
+- :func:`kornia.enhance.normalize` and :func:`kornia.enhance.denormalize` use channel axis 1
+  in ``(B, C, ...)``. :func:`kornia.enhance.normalize_min_max` takes ``(*, C, H, W)`` and rescales
+  each ``H x W`` plane independently. Outside rank 4, ``denormalize`` checks ``(C,)`` statistics
+  against the wrong axis; pass ``(1, C)``
+  (`#5318 <https://github.com/kornia/kornia/issues/5318>`_).
+- :func:`kornia.enhance.integral_image` sums inclusively over the last two axes. The returned
+  image has the input shape, without an extra zero border.
+- :class:`kornia.enhance.ZCAWhitening` uses ``dim`` as the sample axis and flattens all other
+  axes into features. ``unbiased=True`` selects the ``N - 1`` covariance denominator.
+
+See the :doc:`enhancement API </enhance>` for clipping, histogram ranges, and known defects.
 
 Augmentations
 -------------
@@ -365,8 +414,9 @@ Augmentations
 - Boxes use the inclusive ``xyxy_plus`` convention of
   :class:`kornia.geometry.boxes.Boxes` (see *Bounding boxes* above). Flips use
   integer pixel centres: ``x' = W - 1 - x``.
-- The outer ``.transform_matrix`` of a nested container can be missing or
-  stale, even with only rigid children
+- Nested ``AugmentationSequential`` children contribute matrices from the
+  current call. A plain ``ImageSequential`` child is still omitted from an
+  outer ``AugmentationSequential`` matrix
   (`#4476 <https://github.com/kornia/kornia/issues/4476>`_).
 - Dictionary keys match a data-key name exactly or before an ``_``/``-``
   suffix, the longest match winning. Unrecognized keys are returned unchanged
