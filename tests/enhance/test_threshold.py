@@ -75,3 +75,33 @@ class TestThreshold:
         x = torch.rand(1, 1, 5, 5, device=device, dtype=dtype)
         with pytest.raises(NotImplementedError):
             threshold(x, thresh=0.0, maxval=1.0, type=ThresholdType.THRESH_OTSU)
+
+    @pytest.mark.parametrize(
+        "image_dtype, values, thresh, ttype, expected",
+        [
+            # A threshold below the range passes every element instead of wrapping to 255 or raising.
+            (torch.uint8, [0, 100, 255], -1, ThresholdType.THRESH_BINARY, [9, 9, 9]),
+            (torch.uint8, [0, 100, 255], -0.5, ThresholdType.THRESH_BINARY, [9, 9, 9]),
+            (torch.uint8, [0, 100, 255], -1, ThresholdType.THRESH_TRUNC, [0, 0, 0]),
+            # A threshold above the range passes no element instead of raising.
+            (torch.uint8, [0, 100, 255], 300, ThresholdType.THRESH_BINARY_INV, [9, 9, 9]),
+            (torch.uint8, [0, 100, 255], 255.5, ThresholdType.THRESH_TOZERO, [0, 0, 0]),
+            # A negative fraction is rounded down, not truncated toward zero.
+            (torch.int16, [-2, -1, 0, 1], -0.5, ThresholdType.THRESH_BINARY, [0, 0, 9, 9]),
+            (torch.int16, [-2, -1, 0, 1], -1.5, ThresholdType.THRESH_TRUNC, [-2, -2, -2, -2]),
+            (torch.int16, [-2, -1, 0, 1], -1.5, ThresholdType.THRESH_TOZERO_INV, [-2, 0, 0, 0]),
+            (torch.uint8, [100, 101], 100.7, ThresholdType.THRESH_BINARY, [0, 9]),
+            (torch.int16, [-1, 0, 1], float("nan"), ThresholdType.THRESH_TOZERO, [0, 0, 0]),
+            (torch.int64, [2**60, 2**60 + 1, 2**60 + 2], 2**60 + 1, ThresholdType.THRESH_BINARY, [0, 0, 9]),
+        ],
+    )
+    @pytest.mark.parametrize("tensor_thresh", [False, True])
+    def test_integer_input_compares_against_the_threshold_as_given(
+        self, image_dtype, values, thresh, ttype, expected, tensor_thresh, device
+    ):
+        x = torch.tensor(values, device=device, dtype=image_dtype)
+        if tensor_thresh:
+            thresh = torch.tensor(thresh, device=device)
+        out = threshold(x, thresh=thresh, maxval=9, type=ttype)
+        assert out.dtype == image_dtype
+        assert out.tolist() == expected
