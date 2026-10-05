@@ -223,6 +223,21 @@ def supports_nearest_2d_grid_sample(device: torch.device, dtype: torch.dtype) ->
     return _supports_kernel_probe(_nearest_2d_grid_sample_op, device.type, dtype)
 
 
+def _arange_op(device_type: str, dtype: torch.dtype) -> None:
+    _probe_zeros(device_type, dtype, 1)
+    torch.arange(2, device=device_type, dtype=dtype)
+
+
+def supports_arange(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device has a ``torch.arange`` kernel for ``dtype``.
+
+    :func:`kornia.filters.get_motion_kernel2d` builds its taps with ``arange`` in the dtype of ``direction``;
+    torch 2.5.1 has no bfloat16 ``arange`` on MPS. Probed at runtime and cached per (device type, dtype), so it
+    auto-enables once PyTorch fills the kernel in.
+    """
+    return _supports_kernel_probe(_arange_op, device.type, dtype)
+
+
 def _bicubic_2d_grid_sample_op(device_type: str, dtype: torch.dtype) -> None:
     inp = _probe_zeros(device_type, dtype, 1, 1, 2, 2)
     grid = _probe_zeros(device_type, dtype, 1, 1, 1, 2)

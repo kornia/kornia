@@ -36,6 +36,7 @@ from kornia.filters import (
 
 from testing.base import (
     BaseTester,
+    supports_arange,
     supports_bilinear_3d_grid_sample,
     supports_nearest_2d_grid_sample,
     supports_nearest_3d_grid_sample,
@@ -237,6 +238,8 @@ class TestMotionBlur(BaseTester):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         if not supports_nearest_2d_grid_sample(device, tensor_dtype):
             pytest.skip(f"the kernel is rotated with grid_sample, which this device lacks for {tensor_dtype}")
+        if not supports_arange(device, tensor_dtype):
+            pytest.skip(f"the kernel taps are built with arange, which this device lacks for {tensor_dtype}")
         torch.manual_seed(0)
         image = torch.rand(1, 2, 9, 11, device=device, dtype=dtype)
         angle = torch.tensor([30.0], device=device, dtype=tensor_dtype)
