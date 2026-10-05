@@ -100,7 +100,8 @@ def gaussian_blur2d(
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
         kernel_size: the size of the kernel. Can be an integer or tuple of two integers (height, width).
         sigma: the standard deviation of the kernel. Can be a tuple of two floats or a torch.Tensor
-            with shape :math:`(B, 2)`. Values must be positive.
+            with shape :math:`(1, 2)`, shared by the batch, or :math:`(B, 2)`, one row per sample.
+            Values must be positive.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``, case-insensitive. Default: ``'reflect'``.
@@ -112,6 +113,7 @@ def gaussian_blur2d(
     Raises:
         RuntimeError: if input is not a 4D torch.Tensor.
         RuntimeError: if sigma values are not positive.
+        BaseError: if the ``sigma`` batch is neither 1 nor the input batch.
         RuntimeError: if kernel_size is not a positive odd integer.
 
     .. note::
@@ -152,6 +154,13 @@ def gaussian_blur2d(
         sigma = sigma.to(device=input.device, dtype=input.dtype)
 
     KORNIA_CHECK_SHAPE(sigma, ["B", "2"])
+    # Format the sizes only on failure: an f-string evaluated on every call makes Dynamo specialize the batch size.
+    if sigma.shape[0] not in (1, input.shape[0]):
+        KORNIA_CHECK(
+            False,
+            "sigma must have a batch of 1 or the input batch. "
+            f"Got a sigma batch of {sigma.shape[0]} for an input batch of {input.shape[0]}",
+        )
     # `bool()` on a tensor is untraceable by dynamo; skip the data-dependent check under compile.
     if not is_compiling():
         # Only interpolate `sigma` into the message when the check actually fails: a plain
