@@ -24,6 +24,7 @@ import pytest
 import torch
 from PIL import Image as PILImage
 
+from kornia.augmentation import AugmentationSequential, RandomHorizontalFlip
 from kornia.augmentation import ImageSequential as AugmentationImageSequential
 from kornia.core.module import ImageModule, ImageModuleMixIn, ImageSequential
 from kornia.io import write_image
@@ -685,3 +686,121 @@ class TestTupleOutputCache(BaseTester):
                 working = expected.cpu().to(torch.promote_types(dtype, torch.float32))
                 rendered = (working.clamp(0.0, 1.0) * 255).round().to(torch.uint8).permute(1, 2, 0).numpy()
                 np.testing.assert_array_equal(np.asarray(output), rendered)
+
+
+class TestNamedInputConversion(BaseTester):
+    @pytest.mark.parametrize("keyword", [False, True])
+    def test_module_forward_names_5206(self, keyword):
+        class Select(ImageModule):
+            def forward(self, image, other, *, scale=1.0):
+                assert isinstance(image, torch.Tensor)
+                assert other is untouched
+                return image * scale
+
+        array = np.full((4, 6, 3), 255, dtype=np.uint8)
+        untouched = array.copy()
+        module = Select()
+        calls = []
+        module.register_forward_hook(lambda *args: calls.append(True))
+        kwargs = {"other": untouched, "scale": 0.5, "input_names_to_handle": ["image"]}
+        output = module(image=array, **kwargs) if keyword else module(array, **kwargs)
+        self.assert_close(output, torch.full((3, 4, 6), 0.5))
+        assert calls == [True]
+
+    @pytest.mark.parametrize("kind", ["core", "augmentation"])
+    def test_sequential_forward_name_5206(self, kind):
+        factory = ImageSequential if kind == "core" else AugmentationImageSequential
+        module = factory(torch.nn.Identity())
+        array = np.full((4, 6, 3), 255, dtype=np.uint8)
+        output = module(array, input_names_to_handle=["input"])
+        assert isinstance(output, torch.Tensor)
+        assert output.shape[-3:] == (3, 4, 6)
+        self.assert_close(output, torch.ones_like(output))
+
+    def test_bound_decorator_5206(self):
+        class Methods:
+            def select(self, image, other):
+                assert other is untouched
+                return image
+
+        array = np.full((4, 6, 3), 255, dtype=np.uint8)
+        untouched = array.copy()
+        decorated = ImageModuleMixIn().convert_input_output(["image"])(Methods().select)
+        output = decorated(array, untouched)
+        assert isinstance(output, torch.Tensor)
+        self.assert_close(output, torch.ones(3, 4, 6))
+
+    def test_variadic_decorator_5206(self):
+        module = ImageModuleMixIn()
+
+        @module.convert_input_output(["images", "options"])
+        def select(*images, **options):
+            assert all(isinstance(x, torch.Tensor) for x in images)
+            assert isinstance(options["image"], torch.Tensor)
+            return images[0]
+
+        array = np.full((4, 6, 3), 255, dtype=np.uint8)
+        self.assert_close(select(array, array, image=array), torch.ones(3, 4, 6))
+
+    def test_keyword_name_in_variadic_options_5206(self):
+        @ImageModuleMixIn().convert_input_output(["image"])
+        def select(**options):
+            assert options["other"] is untouched
+            return options["image"]
+
+        array = np.full((4, 6, 3), 255, dtype=np.uint8)
+        untouched = array.copy()
+        self.assert_close(select(image=array, other=untouched), torch.ones(3, 4, 6))
+
+    def test_positional_only_and_keyword_only_5206(self):
+        @ImageModuleMixIn().convert_input_output(["image", "mask"])
+        def select(image, /, *, mask):
+            return image + mask
+
+        array = np.full((4, 6, 3), 255, dtype=np.uint8)
+        self.assert_close(select(array, mask=array), torch.full((3, 4, 6), 2.0))
+
+    def test_augmentation_variadic_forward_5206(self):
+        module = AugmentationSequential(RandomHorizontalFlip(p=1.0), data_keys=["input"])
+        array = np.arange(4 * 6 * 3, dtype=np.uint8).reshape(4, 6, 3)
+        expected = torch.from_numpy(array).permute(2, 0, 1).float().div(255).flip(-1)
+        output = module(array, input_names_to_handle=["args"])
+        self.assert_close(output[0], expected)
+
+    @pytest.mark.parametrize("keyword", [False, True])
+    def test_hooks_see_the_callers_argument_split_5206(self, keyword):
+        class Select(ImageModule):
+            def forward(self, image, other=None, **options):
+                return image
+
+        array = np.full((4, 6, 3), 255, dtype=np.uint8)
+        module = Select()
+        seen = []
+        module.register_forward_pre_hook(
+            lambda _, args, kwargs: seen.append((len(args), sorted(kwargs), type(kwargs.get("image")))),
+            with_kwargs=True,
+        )
+        if keyword:
+            module(image=array, other=1, extra=array, input_names_to_handle=["image", "extra"])
+            assert seen == [(0, ["extra", "image", "other"], torch.Tensor)]
+        else:
+            module(array, other=1, extra=array, input_names_to_handle=["image", "extra"])
+            assert seen == [(1, ["extra", "other"], type(None))]
+
+    def test_arguments_that_do_not_bind_raise_the_calls_own_error_5206(self):
+        class Select(ImageModule):
+            def forward(self, image):
+                return image
+
+        array = np.full((4, 6, 3), 255, dtype=np.uint8)
+        with pytest.raises(TypeError, match="forward"):
+            Select()(array, array, input_names_to_handle=["image"])
+
+    def test_keyword_named_like_a_positional_only_parameter_5206(self):
+        @ImageModuleMixIn().convert_input_output(["image"])
+        def select(image, /, **options):
+            return image, options["image"]
+
+        image, option = select(np.full((4, 6, 3), 255, dtype=np.uint8), image=np.zeros((4, 6, 3), dtype=np.uint8))
+        self.assert_close(image, torch.ones(3, 4, 6))
+        self.assert_close(option, torch.zeros(3, 4, 6))
