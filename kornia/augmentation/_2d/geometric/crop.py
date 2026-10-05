@@ -88,9 +88,10 @@ class RandomCrop(GeometricAugmentationBase2D):
         applies to both.
 
         With ``pad_if_needed=False``, an oversized request does not raise: slice mode resizes the available slice,
-        while resample mode uses a warp that can blend in zero padding
-        (`#4414 <https://github.com/kornia/kornia/issues/4414>`_). Slice-mode matrix axes are scaled independently
-        only when the requested crop exceeds the padded canvas along that axis.
+        and resample mode uses a mis-scaled warp that rescales both matrix axes and can blend in zero padding
+        (`#4414 <https://github.com/kornia/kornia/issues/4414>`_). Slice mode scales only the matrix axes along
+        which the request exceeds the canvas, as its resize does. The scale is computed against the padded canvas,
+        so a crop that fits after explicit padding gets no scale correction.
 
         Slice mode uses :func:`~kornia.geometry.transform.crop_by_indices` with its own defaults and ignores this
         class's ``resample`` and ``align_corners``. Resample mode uses the configured interpolation and

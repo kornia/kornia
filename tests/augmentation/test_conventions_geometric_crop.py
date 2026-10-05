@@ -267,7 +267,8 @@ class TestGeometricCropConventions(BaseTester):
 
     @pytest.mark.parametrize("mode", ["slice", "resample"])
     @pytest.mark.parametrize("size", [(10, 10), (10, 4), (4, 10)])
-    def test_random_crop_slice_oversized_rescales_each_matrix_axis_5463(self, device, dtype, mode, size):
+    def test_wart_random_crop_oversized_rescales_matrix_axes_4414(self, device, dtype, mode, size):
+        """Resample mode rescales both matrix axes (#4414); slice mode only the oversized one, as its resize (#5463)."""
         image = torch.arange(48, device=device, dtype=dtype).reshape(1, 1, 6, 8) / 48
         crop = K.RandomCrop(size, cropping_mode=mode, p=1.0)
         params = crop.forward_parameters(image.shape)
