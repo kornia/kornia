@@ -268,7 +268,7 @@ _T = TypeVar("_T", bound=type)
 
 
 def KORNIA_CHECK_TYPE(x: Any, typ: _T | tuple[_T, ...], msg: Optional[str] = None, raises: bool = True) -> bool:
-    """Check the type of an aribratry variable.
+    """Check the type of an arbitrary variable.
 
     Args:
         x: any input variable.
@@ -303,7 +303,12 @@ def KORNIA_CHECK_TYPE(x: Any, typ: _T | tuple[_T, ...], msg: Optional[str] = Non
                     error_msg += f"\n  {msg}"
                 raise TypeCheckError(error_msg)
             # In Python mode, we can safely use type introspection
-            expected_type_str = typ.__name__ if not isinstance(typ, tuple) else " | ".join(t.__name__ for t in typ)
+            # A PEP 604 union (``int | str``) has no ``__name__``; its repr is already readable.
+            expected_type_str = (
+                " | ".join(getattr(t, "__name__", repr(t)) for t in typ)
+                if isinstance(typ, tuple)
+                else getattr(typ, "__name__", repr(typ))
+            )
             type_name = str(type(x))
             error_msg = f"Type mismatch: expected {expected_type_str}, got {type_name}."
             if msg is not None:
@@ -401,7 +406,11 @@ def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Optional[Sequence[Any]], raises: bool = Tr
     are_tensors = isinstance(x, list) and all(isinstance(d, torch.Tensor) for d in x)
     if not are_tensors:
         if raises:
-            error_msg = f"Type mismatch: expected list[Tensor], got {type(x).__name__}."
+            got = type(x).__name__
+            if isinstance(x, list):
+                index = next(i for i, d in enumerate(x) if not isinstance(d, torch.Tensor))
+                got += f"; element {index} is {type(x[index]).__name__}"
+            error_msg = f"Type mismatch: expected list[Tensor], got {got}."
             raise TypeCheckError(
                 error_msg,
                 actual_type=type(x),
@@ -590,7 +599,7 @@ def KORNIA_CHECK_IS_COLOR(x: torch.Tensor, msg: Optional[str] = None, raises: bo
 
     if len(x.shape) < 3 or x.shape[-3] != 3:
         if raises:
-            error_msg = f"Not a color tensor. Got: {type(x)}."
+            error_msg = f"Not a color tensor. Got shape {list(x.shape)}."
             if msg is not None:
                 error_msg += f"\n{msg}"
             raise ImageError(error_msg)
@@ -627,7 +636,7 @@ def KORNIA_CHECK_IS_GRAY(x: torch.Tensor, msg: Optional[str] = None, raises: boo
 
     if len(x.shape) < 2 or (len(x.shape) >= 3 and x.shape[-3] != 1):
         if raises:
-            error_msg = f"Not a gray tensor. Got: {type(x)}."
+            error_msg = f"Not a gray tensor. Got shape {list(x.shape)}."
             if msg is not None:
                 error_msg += f"\n{msg}"
             raise ImageError(error_msg)
@@ -664,7 +673,7 @@ def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: torch.Tensor, msg: Optional[str] = None, ra
 
     if len(x.shape) < 3 or x.shape[-3] not in [1, 3]:
         if raises:
-            error_msg = f"Not a color or gray tensor. Got: {type(x)}."
+            error_msg = f"Not a color or gray tensor. Got shape {list(x.shape)}."
             if msg is not None:
                 error_msg += f"\n{msg}"
             raise ImageError(error_msg)
@@ -767,6 +776,15 @@ def KORNIA_CHECK_DM_DESC(desc1: torch.Tensor, desc2: torch.Tensor, dm: torch.Ten
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
+    if dm.dim() < 2 or desc1.dim() < 1 or desc2.dim() < 1:
+        if raises:
+            raise ShapeError(
+                "Distance matrix shape mismatch.\n"
+                "  Expected a distance matrix with at least 2 dimensions and descriptors with at least 1.\n"
+                f"  dm shape: {list(dm.shape)}, desc1 shape: {list(desc1.shape)}, desc2 shape: {list(desc2.shape)}",
+                actual_shape=list(dm.shape),
+            )
+        return False
     if not ((dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))):
         if raises:
             expected_shape = (desc1.size(0), desc2.size(0))

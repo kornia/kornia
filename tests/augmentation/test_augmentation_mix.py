@@ -733,7 +733,8 @@ class TestRandomMosaic(BaseTester):
             params["batch_prob"] = params["batch_prob"].new_tensor(gate)
         _, out = aug(image, boxes, params=params)
 
-        assert isinstance(out, list) and len(out) == 4
+        assert isinstance(out, list)
+        assert len(out) == 4
         for b, selected in enumerate(gate):
             if not selected:
                 self.assert_close(out[b], boxes[b])

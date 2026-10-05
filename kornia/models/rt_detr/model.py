@@ -275,7 +275,7 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
             new_state_dict = {}
 
             # Apply the regex-based mapping function to each key
-            for old_name in state_dict.keys():
+            for old_name in state_dict:
                 new_name = map_name(old_name)
                 new_state_dict[new_name] = state_dict[old_name]
 

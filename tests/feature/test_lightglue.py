@@ -464,3 +464,23 @@ class TestLightGlue(BaseTester):
         with torch.no_grad():
             out = lg(data)
         assert "matches0" in out
+
+
+@pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS is not available")
+@pytest.mark.parametrize(
+    ("model_device", "autocast_device", "autocast_dtype"),
+    [("cpu", "mps", torch.float16), ("mps", "cpu", torch.bfloat16)],
+    # Ids must not start with "mps": conftest skips every "[mps" node whose name mentions autocast.
+    ids=["model_cpu-autocast_mps", "model_mps-autocast_cpu"],
+)
+def test_autocast_of_another_device_type_leaves_descriptors_alone(model_device, autocast_device, autocast_dtype):
+    """An autocast region of another device type must not cast the descriptors to half (#5198).
+
+    The no-argument ``torch.is_autocast_enabled()`` reports MPS autocast on torch 2.14, so the half cast hit CPU
+    descriptors and the CPU float32 projection raised a dtype mismatch.
+    """
+    lg = _make_lightglue(model_device, torch.float32)
+    data = _make_data(model_device, torch.float32)
+    with torch.no_grad(), torch.autocast(autocast_device, dtype=autocast_dtype):
+        out = lg(data)
+    assert out["log_assignment"].dtype == torch.float32
