@@ -388,13 +388,44 @@ class TestSo2(BaseTester):
         assert not torch.equal(torch.view_as_real(param.detach()), before)
 
     @pytest.mark.parametrize("method", ["to", "bfloat16"])
-    def test_bfloat16_conversion_is_rejected(self, device, method):
-        # PyTorch has no complex bfloat16 counterpart. Reject the conversion without discarding the imaginary part.
-        rotation = So2.exp(torch.tensor([0.3], device=device, dtype=torch.float32))
+    @pytest.mark.parametrize("as_parameter", [False, True])
+    @pytest.mark.parametrize("cdtype", [torch.cfloat, torch.cdouble])
+    def test_bfloat16_conversion_keeps_the_rotation_4923(self, device, method, as_parameter, cdtype):
+        # No complex bfloat16 exists: keep both rotation components at their original precision while moving them.
+        source_dtype = torch.float32 if cdtype == torch.cfloat else torch.float64
+        angle = torch.tensor([0.3], dtype=source_dtype, requires_grad=not as_parameter)
+        data = torch.complex(angle.cos(), angle.sin())
+        rotation = So2(torch.nn.Parameter(data) if as_parameter else data)
         before = rotation.z.detach().clone()
-        with pytest.raises(RuntimeError, match=r"(?i)bfloat16"):
-            rotation.to(torch.bfloat16) if method == "to" else rotation.bfloat16()
-        self.assert_close(rotation.z, before)
+        if as_parameter:
+            (rotation.z.real.sum() + 2 * rotation.z.imag.sum()).backward()
+        parent = torch.nn.ModuleDict({"rotation": rotation, "linear": torch.nn.Linear(2, 2)})
+        if method == "to":
+            parent.to(device=device, dtype=torch.bfloat16)
+        else:
+            parent.to(device=device).bfloat16()
+
+        assert parent["linear"].weight.dtype == torch.bfloat16
+        assert parent["linear"].weight.device == device
+        assert rotation.z.dtype == before.dtype
+        assert rotation.z.device == device
+        assert isinstance(rotation._z, torch.nn.Parameter) == as_parameter
+        state = dict(rotation.named_parameters()) if as_parameter else dict(rotation.named_buffers())
+        assert state["_z"] is rotation._z
+        self.assert_close(rotation.z, before.to(device))
+        c, s = before.real.to(device), before.imag.to(device)
+        expected_matrix = torch.stack((c, -s, s, c), -1).reshape(1, 2, 2)
+        self.assert_close(rotation.matrix(), expected_matrix)
+        point = torch.tensor([[1.0, 2.0]], device=device, dtype=torch.bfloat16)
+        self.assert_close(rotation * point, torch.stack((c - 2 * s, s + 2 * c), -1))
+        if as_parameter:
+            assert rotation._z.grad.dtype == before.dtype
+            assert rotation._z.grad.device == device
+            self.assert_close(rotation._z.grad.real, torch.ones_like(c))
+            self.assert_close(rotation._z.grad.imag, torch.full_like(s, 2.0))
+        else:
+            (rotation * point).sum().backward()
+            self.assert_close(angle.grad, -3 * angle.detach().sin() - angle.detach().cos())
 
 
 class _So2PointTransform(torch.nn.Module):
@@ -410,7 +441,7 @@ class TestSo2DtypeMigration(BaseTester):
     @pytest.fixture(autouse=True)
     def _require_complex_dtype(self, dtype):
         if dtype == torch.bfloat16:
-            pytest.skip("PyTorch has no complex bfloat16 dtype; rejection is tested separately")
+            pytest.skip("PyTorch has no complex bfloat16 dtype; module bfloat16 conversion is tested separately")
 
     def _source_dtype(self, device, dtype):
         # Exercise a precision change in both directions, without constructing float64 on MPS.

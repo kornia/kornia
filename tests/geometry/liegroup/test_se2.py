@@ -442,6 +442,41 @@ class TestSe2(BaseTester):
             assert converted.r.z.is_complex()
             assert converted.r.z.real.dtype == converted.t.dtype
 
+    @pytest.mark.parametrize("method", ["to", "bfloat16"])
+    def test_parent_bfloat16_conversion_preserves_pose_4923(self, device, method):
+        # Reviewer reproduction: casting a network containing a pose must keep the rotation usable.
+        class M(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.linear = torch.nn.Linear(2, 2)
+                self.pose = Se2.exp(torch.tensor([[1.0, 2.0, 0.3]], dtype=torch.float32))
+
+        model = M()
+        before_rotation = model.pose.so2.z.detach().clone()
+        before_matrix = model.pose.matrix().detach().clone()
+        if method == "to":
+            model.to(device=device, dtype=torch.bfloat16)
+        else:
+            model.to(device=device).bfloat16()
+
+        assert model.linear.weight.dtype == torch.bfloat16
+        assert model.linear.weight.device == device
+        assert model.pose.t.dtype == torch.bfloat16
+        assert model.pose.t.device == device
+        assert model.pose.so2.z.dtype == before_rotation.dtype
+        assert model.pose.so2.z.device == device
+        self.assert_close(model.pose.so2.z, before_rotation.to(device))
+        expected_matrix = before_matrix.to(device)
+        expected_matrix[:, :2, 2] = expected_matrix[:, :2, 2].to(torch.bfloat16).float()
+        matrix = model.pose.matrix()
+        self.assert_close(matrix, expected_matrix)
+        point = torch.tensor([[1.0, 2.0]], device=device, dtype=torch.bfloat16)
+        expected_point = (expected_matrix[:, :2, :2] @ point.float()[..., None]).squeeze(-1)
+        expected_point = expected_point + expected_matrix[:, :2, 2]
+        self.assert_close(model.pose * point, expected_point)
+        self.assert_close(model.pose.inverse().matrix() @ matrix, torch.eye(3, device=device)[None])
+        self.assert_close((model.pose * model.pose).matrix(), matrix @ matrix)
+
     @pytest.mark.parametrize("method", ["to", "convenience"])
     def test_parent_dtype_conversion_preserves_rotation_4923(self, device, dtype, method):
         if dtype == torch.bfloat16:

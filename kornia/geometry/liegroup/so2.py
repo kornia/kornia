@@ -43,7 +43,7 @@ class So2(nn.Module):
           ``z`` or angle is accepted and read as :math:`(B,)`. For unit :math:`z = \cos\theta + i \sin\theta`,
           ``matrix()`` is :math:`[[\cos\theta, -\sin\theta], [\sin\theta, \cos\theta]]`. Non-unit ``z = a + i b``
           is accepted and produces :math:`[[a, -b], [b, a]]`, which rotates and scales by :math:`|z|`. The complex
-          storage rules out bfloat16.
+          storage has no bfloat16 counterpart in PyTorch.
         - A positive angle rotates the x axis toward the y axis: counter-clockwise in a y-up frame, clockwise as
           displayed on y-down image axes. For a unit rotation, ``matrix()`` is the transpose of
           :func:`~kornia.geometry.conversions.angle_to_rotation_matrix`, which takes degrees.
@@ -54,7 +54,8 @@ class So2(nn.Module):
           ``.to(torch.float32)`` use complex64 state, while ``.double()`` and ``.to(torch.float64)`` use complex128.
           Device-only conversions preserve the complex precision, and explicit complex dtypes are also accepted.
           The complex checkpoint key ``_z`` and its shape are unchanged. ``.half()`` uses PyTorch's experimental
-          complex32 dtype; bfloat16 conversion raises because PyTorch has no corresponding complex dtype.
+          complex32 dtype. Since PyTorch has no complex bfloat16 dtype, ``.bfloat16()`` and ``.to(torch.bfloat16)``
+          keep the rotation's existing complex precision while following any requested device move.
 
     Example:
         >>> real = torch.tensor([0.6])
@@ -106,6 +107,9 @@ class So2(nn.Module):
                 return fn(tensor)  # An explicit complex target already has the correct native semantics.
             if converted is components:
                 return tensor
+            if converted.dtype == torch.bfloat16:
+                # No complex bfloat16 exists: move the rotation, keeping its complex precision.
+                return tensor.to(device=converted.device)
             return torch.view_as_complex(converted)
 
         # Let Module manage parameters, existing gradients, buffers and child-module recursion.
