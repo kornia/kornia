@@ -249,13 +249,21 @@ class ImageModuleMixIn:
             raise TypeError("Input type not supported")
         return self._to_module_device_dtype(image)
 
-    def _to_module_device_dtype(self, image: torch.Tensor) -> torch.Tensor:
+    def _module_state_reference(self) -> Optional[torch.Tensor]:
+        """Return the module's first parameter, else its first buffer, or None for a stateless module or a mixin."""
         if not isinstance(self, torch.nn.Module):
-            return image
+            return None
         first_parameter = next(self.parameters(), None)
-        first_buffer = next(self.buffers(), None) if first_parameter is None else None
-        reference = first_parameter if first_parameter is not None else first_buffer
-        if reference is None:
+        return first_parameter if first_parameter is not None else next(self.buffers(), None)
+
+    def _to_module_device(self, data: torch.Tensor) -> torch.Tensor:
+        """Move a tensor converted from a non-tensor input to the module's device, keeping its dtype."""
+        reference = self._module_state_reference()
+        return data if reference is None else data.to(reference.device)
+
+    def _to_module_device_dtype(self, image: torch.Tensor) -> torch.Tensor:
+        reference = self._module_state_reference()
+        if reference is None or not isinstance(self, torch.nn.Module):
             return image
         floating_dtype = next(
             (parameter.dtype for parameter in self.parameters() if parameter.is_floating_point()), None

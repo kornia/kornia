@@ -1574,6 +1574,33 @@ class TestConventionAugmentationSequential(BaseTester):
         expected[..., 2:5, 6:8] = 3
         assert torch.equal(out_mask, expected)
 
+    def test_numpy_annotations_follow_the_image_to_the_module_device_5207(self):
+        # A stateful container converts a NumPy image onto its device; NumPy masks, keypoints and boxes go to the
+        # same device and keep their dtype, so a mask keeps its labels. The meta device stands in for an accelerator.
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+        aug.register_buffer("reference", torch.empty((), device="meta", dtype=torch.float64))
+        mask = aug._convert_non_image(np.zeros((8, 9, 1), dtype=np.int64), DataKey.MASK)
+        keypoints = aug._convert_non_image(np.zeros((1, 2, 2), dtype=np.float32), DataKey.KEYPOINTS)
+        boxes = aug._convert_non_image(np.zeros((1, 1, 4), dtype=np.float32), DataKey.BBOX_XYXY)
+        image = aug.to_tensor(np.zeros((8, 9, 3), dtype=np.uint8))
+        assert [x.device.type for x in (image, mask, keypoints, boxes)] == ["meta"] * 4
+        assert [x.dtype for x in (image, mask, keypoints, boxes)] == [torch.float64, torch.int64] + [torch.float32] * 2
+
+    def test_numpy_image_and_mask_run_on_the_module_device_5207(self, device):
+        # RandomBrightness holds buffers, so the container's NumPy image moves to its device; the mask must follow
+        # it, or the flip mixes devices.
+        image = np.zeros((8, 9, 3), dtype=np.uint8)
+        mask = np.zeros((8, 9), dtype=np.int64)
+        mask[2:5, 1:3] = 3
+        aug = K.AugmentationSequential(
+            K.RandomBrightness((1.0, 1.0), p=1.0), K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"]
+        ).to(device)
+        out_image, out_mask = aug(image, mask)
+        expected = torch.zeros(1, 1, 8, 9, dtype=torch.int64)
+        expected[..., 2:5, 6:8] = 3
+        assert out_image.device == out_mask.device == torch.device(device)
+        assert torch.equal(out_mask.cpu(), expected)
+
     def test_argument_without_a_data_key_raises(self):
         # ``__call__`` converts NumPy arguments by data key; an argument with no key must still reach ``forward``,
         # which rejects the count, instead of being dropped.
