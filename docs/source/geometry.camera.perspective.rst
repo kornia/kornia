@@ -7,4 +7,5 @@ Perspective Camera
 .. currentmodule:: kornia.geometry.camera.perspective
 
 .. autofunction:: project_points
+.. autofunction:: projection_valid_mask
 .. autofunction:: unproject_points
