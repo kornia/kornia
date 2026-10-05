@@ -275,13 +275,14 @@ class TestEdgeAwareBlurPool(BaseTester):
         # The threshold is an intensity ratio compared through log2: below 1 every pixel is an edge and the blur never
         # runs, and at 1 any difference between pixels 4 apart is an edge. The function and the module reject both,
         # and the bound is strict.
-        if not supports_reflect_padding(device, dtype):
-            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         data = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
         with pytest.raises(BaseError, match=f"edge_threshold must be greater than 1. Got {edge_threshold}"):
             edge_aware_blur_pool2d(data, 3, edge_threshold=edge_threshold)
         with pytest.raises(BaseError, match=f"edge_threshold must be greater than 1. Got {edge_threshold}"):
             EdgeAwareBlurPool2D(3, edge_threshold=edge_threshold)(data)
+        # Only the accepted threshold reaches the reflect padding; the rejections above run everywhere.
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         assert edge_aware_blur_pool2d(data, 3, edge_threshold=1.0001).shape == data.shape
 
     @pytest.mark.parametrize("batch_size", [1, 2])
