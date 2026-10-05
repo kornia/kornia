@@ -149,6 +149,21 @@ class TestLineSegmentOneWayError(BaseTester):
         error.sum().backward()
         assert torch.isfinite(ls2.grad).all()
 
+    @pytest.mark.parametrize("batch_size, num_segments", [(256, 256), (1, 2**16)])
+    def test_2_pow_16_segments(self, batch_size, num_segments, device, dtype):
+        # RANSAC scores a (B, N) batch of segments; with B * N or N reaching 2**16, MPS (torch 2.5.1 and 2.14) made
+        # the endpoints homogeneous through a constant F.pad that returns garbage there and picked a wrong model
+        # (#5443). Image-1 segment (0, a)-(1, a) maps by the x-shift to (1, a)-(2, a), d px from the image-2 line
+        # y = a + d.
+        idx = torch.arange(batch_size * num_segments, device=device).reshape(batch_size, num_segments)
+        a, d = (idx % 7).to(dtype), (idx % 3).to(dtype)
+        zero, one = torch.zeros_like(a), torch.ones_like(a)
+        ls1 = torch.stack([torch.stack([zero, a], -1), torch.stack([one, a], -1)], dim=2)
+        ls2 = torch.stack([torch.stack([zero, a + d], -1), torch.stack([2 * one, a + d], -1)], dim=2)
+        H = torch.tensor([[1.0, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        H = H.expand(batch_size, 3, 3)
+        self.assert_close(line_segment_transfer_error_one_way(ls1, ls2, H), d, atol=0.0, rtol=0.0)
+
 
 class TestSymmetricTransferError(BaseTester):
     def test_smoke(self, device, dtype):

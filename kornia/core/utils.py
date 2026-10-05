@@ -26,7 +26,6 @@ import torch
 import torch.nn.functional as F
 from torch.linalg import inv_ex
 
-from kornia.core._compat import torch_version_ge
 from kornia.core._small_linalg import (
     _adjugate_2x2,
     _adjugate_3x3,
@@ -476,20 +475,17 @@ def is_autocast_enabled(both: bool = True) -> bool:
     """Check if torch autocast is enabled.
 
     Args:
-        both: if True will consider autocast region for both types of devices
+        both: if True, consider the autocast regions of the CPU, CUDA, MPS and XPU device types.
 
     Returns:
-        Return a Bool,
-        will always return False for a torch without support, otherwise will be: if both is True
-        `torch.is_autocast_enabled() or torch.is_autocast_enabled('cpu')`. If both is False will return just
-        `torch.is_autocast_enabled()`.
+        If ``both`` is True, whether autocast is enabled for any of the CPU, CUDA, MPS or XPU device types, on every
+        supported torch version. If ``both`` is False, ``torch.is_autocast_enabled()`` without a device type, whose
+        device type depends on the torch version: it never reports CPU autocast, and on torch 2.5.1 it does not
+        report MPS autocast either.
 
     """
-    # Since kornia requires torch>=2.5.1, autocast is always available
     if both:
-        if torch_version_ge(2, 4):
-            return torch.is_autocast_enabled() or torch.is_autocast_enabled("cpu")
-        return torch.is_autocast_enabled() or torch.is_autocast_cpu_enabled()
+        return any(torch.is_autocast_enabled(device_type) for device_type in ("cpu", "cuda", "mps", "xpu"))
 
     return torch.is_autocast_enabled()
 
