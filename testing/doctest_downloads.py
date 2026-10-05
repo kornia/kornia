@@ -42,11 +42,10 @@ DOWNLOAD_ENV_VAR = "KORNIA_DOCTEST_DOWNLOAD"
 # ``(module, attribute)`` pairs resolved lazily at patch time.
 _DOWNLOAD_PRIMITIVES: tuple[tuple[str, str], ...] = (
     # kornia.core.download runs its own transfer (torch's has no timeout), so every
-    # load_state_dict_from_url / download_file_from_url cache miss reaches the network here.
+    # load_state_dict_from_url / download_file_from_url cache miss reaches the network here,
+    # and so do download_onnx_from_url and kornia.onnx's CachedDownloader, which call it.
     ("kornia.core.download", "_download_url_to_file"),
     ("torch.hub", "download_url_to_file"),
-    # kornia.onnx.download.CachedDownloader.download reaches the network here.
-    ("urllib.request", "urlretrieve"),
 )
 
 
