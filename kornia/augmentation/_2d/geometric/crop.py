@@ -227,8 +227,9 @@ class RandomCrop(GeometricAugmentationBase2D):
                 h += padding[2] + padding[3]
                 w += padding[0] + padding[1]
                 h_out, w_out = flags["size"]
-                if h_out > h or w_out > w:
+                if w_out > w:
                     transform[:, 0, 0] *= w_out / w
+                if h_out > h:
                     transform[:, 1, 1] *= h_out / h
                 return transform
 
@@ -236,14 +237,13 @@ class RandomCrop(GeometricAugmentationBase2D):
             padded_h = input.shape[-2] + padding_size[:, 2] + padding_size[:, 3]
             padded_w = input.shape[-1] + padding_size[:, 0] + padding_size[:, 1]
             h_out, w_out = flags["size"]
-            needs_scale = (h_out > padded_h) | (w_out > padded_w)
             scale_w = torch.where(
-                needs_scale,
+                w_out > padded_w,
                 torch.full_like(padded_w, w_out, dtype=transform.dtype) / padded_w.to(dtype=transform.dtype),
                 torch.ones_like(padded_w, dtype=transform.dtype),
             )
             scale_h = torch.where(
-                needs_scale,
+                h_out > padded_h,
                 torch.full_like(padded_h, h_out, dtype=transform.dtype) / padded_h.to(dtype=transform.dtype),
                 torch.ones_like(padded_h, dtype=transform.dtype),
             )
