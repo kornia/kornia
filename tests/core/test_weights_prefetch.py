@@ -36,10 +36,10 @@ Scope: this guards the checkpoints that go through
 enumerated in :data:`WEIGHT_REGISTRIES`). Two other download paths live in
 ``kornia/`` and are invisible to the prefetch list -- ``download_file_from_url``
 as the vision-language builders (``kornia/models/{kimi_vl,siglip2}/builder.py``)
-call it, to fetch a ``model.safetensors``, and ``CachedDownloader`` into
+call it, to fetch a ``model.safetensors``, and as ``kornia/feature/lightglue_onnx/utils/download.py``
+calls it, to fetch the LightGlue ONNX models -- and ``CachedDownloader`` into
 ``.kornia_hub/`` (``kornia/models/small_sr.py``, ``kornia/contrib/super_resolution.py``,
-``kornia/onnx/utils.py``, ``kornia/models/_hf_models/hf_onnx_community.py``,
-``kornia/feature/lightglue_onnx/utils/download.py``). Nothing in the PR matrix
+``kornia/onnx/utils.py``, ``kornia/models/_hf_models/hf_onnx_community.py``). Nothing in the PR matrix
 downloads through either today; a test that did would fetch live from every
 matrix cell with this file still green.
 
@@ -196,6 +196,7 @@ _DOWNLOAD_CALL_ALLOWLIST = {
     # entry for it would be exactly the dead exemption
     # ``test_no_allowlisted_module_has_stopped_downloading`` exists to catch.
     "kornia/core/download.py": "defines the functions",
+    "kornia/feature/lightglue_onnx/utils/download.py": "fetches the URL it is handed; OnnxLightGlue's tests refuse it",
     "kornia/feature/lightglue.py": "builds its URLs in __init__; captured by _lightglue_sources",
     "kornia/models/base.py": "loads whatever checkpoint the config it is handed carries",
     "kornia/models/kimi_vl/builder.py": "one safetensors checkpoint, hundreds of MB, integration tests only",
