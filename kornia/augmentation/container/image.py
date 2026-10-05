@@ -226,16 +226,19 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             )
 
         mix_added = False
-        if with_mix and len(mix_indices) != 0:
-            # Make the selection fair.
-            if (torch.rand(1) < ((len(mix_indices) + len(indices)) / len(self))).item():
-                mix_idx = torch.multinomial((~multinomial_weights.bool()).float(), 1)
-                if len(indices) == 0:
-                    indices = mix_idx
-                else:
-                    indices[-1] = mix_idx
-                indices = indices[torch.randperm(len(indices))]
-                mix_added = True
+        # Make the selection fair.
+        if (
+            with_mix
+            and len(mix_indices) != 0
+            and (torch.rand(1) < ((len(mix_indices) + len(indices)) / len(self))).item()
+        ):
+            mix_idx = torch.multinomial((~multinomial_weights.bool()).float(), 1)
+            if len(indices) == 0:
+                indices = mix_idx
+            else:
+                indices[-1] = mix_idx
+            indices = indices[torch.randperm(len(indices))]
+            mix_added = True
 
         return self.get_children_by_indices(indices), mix_added
 

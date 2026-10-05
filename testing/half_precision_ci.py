@@ -321,9 +321,12 @@ class FailureRecorder:
             blockers = eager_rng_calls_for_node(report.nodeid)
             if blockers:
                 self.eager_blockers[report.nodeid] = blockers
-        if report.when == "teardown" and report.outcome != "passed":
-            if report.nodeid in self.entries or report.nodeid in self.previous_entries:
-                self.abort_reasons.append(f"unrepresentable teardown failure for {report.nodeid}")
+        if (
+            report.when == "teardown"
+            and report.outcome != "passed"
+            and (report.nodeid in self.entries or report.nodeid in self.previous_entries)
+        ):
+            self.abort_reasons.append(f"unrepresentable teardown failure for {report.nodeid}")
 
     def _check_completeness(self, session: pytest.Session) -> None:
         if session.config.option.collectonly:

@@ -2773,7 +2773,7 @@ def _check_Rt_same_batch(R: torch.Tensor, t: torch.Tensor, fn_name: str) -> None
     # sizes, so a mismatched (R, t) pair raises here with both shapes in the message. Like the
     # KORNIA_CHECK helpers it follows disable_checks(): read the flag at call time, not a copy
     # bound at import.
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not are_checks_enabled():
             return
 
