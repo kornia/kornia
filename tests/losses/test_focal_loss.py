@@ -95,23 +95,25 @@ class TestBinaryFocalLossWithLogits(BaseTester):
         ).shape
         assert actual_shape == expected_shape
 
-    def test_dynamo(self, device, dtype, torch_optimizer):
+    @pytest.mark.parametrize("gamma", [0.5, 2.0])
+    def test_dynamo(self, device, dtype, torch_optimizer, gamma):
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
         op = kornia.losses.binary_focal_loss_with_logits
         op_optimized = torch_optimizer(op)
 
-        args = (0.25, 2.0)
+        args = (0.25, gamma)
         actual = op_optimized(logits, labels, *args)
         expected = op(logits, labels, *args)
         self.assert_close(actual, expected)
 
-    def test_gradcheck(self, device, dtype):
+    @pytest.mark.parametrize("gamma", [0.5, 2.0])
+    def test_gradcheck(self, device, dtype, gamma):
         logits = torch.rand(2, 3, 2, device=device, dtype=torch.float64)
         labels = torch.rand(2, 3, 2, device=device, dtype=torch.float64)
 
-        args = (0.25, 2.0)
+        args = (0.25, gamma)
         op = kornia.losses.binary_focal_loss_with_logits
         self.gradcheck(op, (logits, labels, *args))
 
@@ -142,6 +144,29 @@ class TestBinaryFocalLossWithLogits(BaseTester):
         actual = kornia.losses.binary_focal_loss_with_logits(logits, labels, *args)
         expected = torch.tensor([[0.0, 0.0]], dtype=dtype, device=device)
         self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("gamma", [0.25, 0.5, 0.75, 2.0])
+    @pytest.mark.parametrize("alpha", [None, 0.25])
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    def test_numeric_stability_backward(self, device, dtype, gamma, alpha, reduction):
+        logits = torch.tensor([[1000.0, -1000.0], [1000.0, -1000.0]], device=device, dtype=dtype, requires_grad=True)
+        labels = torch.tensor([[1.0, 0.0], [0.0, 1.0]], device=device, dtype=dtype)
+        # The focal objective tends to zero for correct predictions and |logit| for incorrect predictions.
+        expected = torch.tensor([[0.0, 0.0], [1000.0, 1000.0]], device=device, dtype=dtype)
+        expected_grad = torch.tensor([[0.0, 0.0], [1.0, -1.0]], device=device, dtype=dtype)
+        if alpha is not None:
+            factors = torch.tensor([[alpha, 1.0 - alpha], [1.0 - alpha, alpha]], device=device, dtype=dtype)
+            expected = expected * factors
+            expected_grad = expected_grad * factors
+        if reduction == "mean":
+            expected = expected.mean()
+            expected_grad = expected_grad / logits.numel()
+        elif reduction == "sum":
+            expected = expected.sum()
+
+        actual = kornia.losses.binary_focal_loss_with_logits(logits, labels, alpha, gamma, reduction)
+        self.assert_close(actual, expected)
+        self.assert_close(torch.autograd.grad(actual.sum(), logits)[0], expected_grad)
 
 
 class TestFocalLoss(BaseTester):
