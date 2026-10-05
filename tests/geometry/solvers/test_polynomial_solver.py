@@ -1438,9 +1438,13 @@ class TestConventionPolynomialSolvers(BaseTester):
         # Replacing x by 2**exponent * u in (u-1)(u-2)(u-3)(u-4) scales coefficient k by 2**(k*exponent).
         # All four roots stay real and separated; unit-floored Ferrari thresholds lost two at small scales.
         scale = 2.0**exponent
-        coefficients = torch.tensor([[1.0, -10.0, 35.0, -50.0, 24.0]], device=device, dtype=dtype)
-        powers = torch.arange(5, device=device, dtype=dtype)
-        coefficients = coefficients * scale**powers
+        # Form the final values before transfer: at exponent -32, float32 scale**4 is subnormal,
+        # while 24 * scale**4 is normal. Metal may flush that intermediate power to zero.
+        coefficients = torch.tensor(
+            [[value * scale**power for power, value in enumerate((1.0, -10.0, 35.0, -50.0, 24.0))]],
+            device=device,
+            dtype=dtype,
+        )
         roots = solver.solve_quartic(coefficients).sort(dim=-1).values / scale
         expected = torch.tensor([[1.0, 2.0, 3.0, 4.0]], device=device, dtype=dtype)
         self.assert_close(roots, expected, rtol=1e-4, atol=1e-5)
@@ -1451,9 +1455,13 @@ class TestConventionPolynomialSolvers(BaseTester):
             pytest.skip("The scaled coefficients are not representable accurately in half precision.")
         # (u^2 + 2u + 5)(u^2 + 2u + 5.01) has two negative quadratic discriminants, at every scale.
         scale = 2.0**exponent
-        coefficients = torch.tensor([[1.0, 4.0, 14.01, 20.02, 25.05]], device=device, dtype=dtype)
-        powers = torch.arange(5, device=device, dtype=dtype)
-        roots = solver.solve_quartic(coefficients * scale**powers)
+        # Avoid the subnormal scale**4 intermediate while preserving the intended normal coefficients.
+        coefficients = torch.tensor(
+            [[value * scale**power for power, value in enumerate((1.0, 4.0, 14.01, 20.02, 25.05))]],
+            device=device,
+            dtype=dtype,
+        )
+        roots = solver.solve_quartic(coefficients)
         self.assert_close(roots, torch.zeros_like(roots), rtol=0, atol=0)
 
     def test_small_scale_quartic_gradcheck_4833(self, device):
