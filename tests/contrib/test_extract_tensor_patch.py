@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import warnings
+
 import pytest
 import torch
 
@@ -150,3 +152,12 @@ class TestExtractTensorPatches(BaseTester):
         )
         # 5 patches vertical, 6 2/3 = 7 horizontal = 35 patches
         assert patches.shape == (1, 35, 1, *window_size)
+
+    @pytest.mark.parametrize("img_shape, fits", [((4, 4), True), ((5, 4), False), ((4, 5), False)])
+    def test_warns_when_the_window_does_not_fit(self, device, dtype, img_shape, fits):
+        # With window 2 and stride 2, a remainder along either axis alone leaves pixels uncovered.
+        img = torch.zeros(1, 1, *img_shape, device=device, dtype=dtype)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            kornia.contrib.extract_tensor_patches(img, window_size=2, stride=2)
+        assert any("will not fit" in str(w.message) for w in caught) is not fits

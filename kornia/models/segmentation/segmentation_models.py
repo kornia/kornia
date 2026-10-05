@@ -132,8 +132,8 @@ class SegmentationModelsBuilder:
 
         # Rescale the [0, 1] input to [0, 255] if the network expects it. Multiply by 255, which every
         # dtype stores exactly, rather than divide by the reciprocal: bfloat16 rounds 1/255 to 0.0039368,
-        # a ~254.0 multiplier that maps 0.5 to 127.0 instead of 127.5. `Rescale` holds the factor as a
-        # 0-d tensor and exports to ONNX from any device.
+        # a ~254.0 multiplier that maps 0.5 to 127.0 instead of 127.5. `Rescale` keeps a float factor as a
+        # Python number, so it exports to ONNX from any device.
         input_range = preproc_params["input_range"]
         if input_range[1] == 255:
             proc_sequence.append(kornia.enhance.Rescale(255.0))
