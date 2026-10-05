@@ -61,6 +61,7 @@ provided every copy of the commit hash agrees, which
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import importlib.util
 import re
@@ -364,10 +365,8 @@ def _lightglue_sources(monkeypatch) -> dict[str, tuple[str, list[str]]]:
     monkeypatch.setattr(lightglue_mod, "load_state_dict_from_url", _capture)
     for feature in LIGHTGLUE_FEATURES:
         pending.append(feature)
-        try:
+        with contextlib.suppress(_Captured):
             LightGlue(feature)
-        except _Captured:
-            pass
     return captured
 
 

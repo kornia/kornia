@@ -140,9 +140,11 @@ class TestCachedDownloader:
         path = tmp_path / "cache" / "model.onnx"
         cut = http.client.IncompleteRead(b"")
 
-        with mock.patch("kornia.core.download._download_url_to_file", side_effect=cut):
-            with pytest.raises(http.client.IncompleteRead) as exc_info:
-                CachedDownloader.download("http://127.0.0.1:9/model.onnx", str(path))
+        with (
+            mock.patch("kornia.core.download._download_url_to_file", side_effect=cut),
+            pytest.raises(http.client.IncompleteRead) as exc_info,
+        ):
+            CachedDownloader.download("http://127.0.0.1:9/model.onnx", str(path))
 
         assert exc_info.value is cut
 
@@ -225,9 +227,11 @@ class TestCachedDownloader:
         # temporary file already exists when the request is opened, so interrupting there must remove it.
         path = tmp_path / "cache" / "model.pth"
 
-        with mock.patch("kornia.core.download.urlopen", side_effect=KeyboardInterrupt):
-            with pytest.raises(KeyboardInterrupt):
-                CachedDownloader.download("http://127.0.0.1:9/model.pth", str(path))
+        with (
+            mock.patch("kornia.core.download.urlopen", side_effect=KeyboardInterrupt),
+            pytest.raises(KeyboardInterrupt),
+        ):
+            CachedDownloader.download("http://127.0.0.1:9/model.pth", str(path))
 
         assert list(path.parent.iterdir()) == []
 

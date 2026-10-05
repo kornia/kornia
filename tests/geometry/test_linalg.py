@@ -59,6 +59,15 @@ class TestTransformPoints(BaseTester):
         with pytest.raises(ValueError, match=r"differ by one unit\. Got torch\.Size\(.*\) and torch\.Size\(\[5, 2\]\)"):
             kgl.transform_points(transform, points)
 
+    @pytest.mark.parametrize("num_points", [2, 3])
+    def test_unbatched_points_with_transform_batch_raise(self, num_points, device, dtype):
+        # (N, D) points have no batch axis, so N == B must hit the batch check like N != B does
+        # instead of reaching bmm with an empty transform batch (kornia#4969).
+        transform = torch.eye(4, device=device, dtype=dtype).expand(2, -1, -1)
+        points = torch.zeros(num_points, 3, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Input batch size must be the same"):
+            kgl.transform_points(transform, points)
+
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     @pytest.mark.parametrize("num_points", [2, 3, 5])
     @pytest.mark.parametrize("num_dims", [2, 3])

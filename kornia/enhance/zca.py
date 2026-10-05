@@ -218,7 +218,7 @@ class ZCAWhitening(nn.Module):
             raise RuntimeError("Did not compute inverse ZCA. Please set compute_inv to True")
 
         if self.transform_inv is None:
-            raise TypeError("The transform inverse should be a torch.Tensor. Gotcha None.")
+            raise TypeError("The transform inverse should be a torch.Tensor. Got None.")
 
         mean_inv: torch.Tensor = -self.mean_vector.mm(self.transform_matrix)
 
