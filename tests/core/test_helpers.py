@@ -487,7 +487,8 @@ class TestBatchedForwardBatchSize:
         model = torch.nn.Linear(2, 3)
         data = torch.rand(5, 2)
         expected = model(data)
-        for bs in (2, 5, 128):
+        # 1 is the smallest valid size; 5 == len(data) takes the single-call path
+        for bs in (1, 2, 5, 128):
             assert_close(batched_forward(model, data, torch.device("cpu"), batch_size=bs), expected)
 
 
