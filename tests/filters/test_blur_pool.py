@@ -81,20 +81,27 @@ class TestMaxBlurPool(BaseTester):
         data = torch.rand(1, 2, height, width, device=device, dtype=dtype)
         expected = max_blur_pool2d(data, kernel_size, stride=2, max_pool_size=max_pool_size)
 
-        with pytest.warns(DeprecationWarning, match="ceil_mode"):
+        with pytest.warns(DeprecationWarning, match="ceil_mode") as record:
             actual = max_blur_pool2d(data, kernel_size, stride=2, max_pool_size=max_pool_size, ceil_mode=ceil_mode)
         self.assert_close(actual, expected)
+        # The warning points at the caller's line, not at kornia.
+        assert [w.filename for w in record if "ceil_mode" in str(w.message)] == [__file__]
 
-        with pytest.warns(DeprecationWarning, match="ceil_mode"):
+        with pytest.warns(DeprecationWarning, match="ceil_mode") as record:
             module = MaxBlurPool2D(kernel_size, stride=2, max_pool_size=max_pool_size, ceil_mode=ceil_mode)
         self.assert_close(module(data), expected)
+        assert [w.filename for w in record if "ceil_mode" in str(w.message)] == [__file__]
+        assert module.ceil_mode is ceil_mode
 
     def test_no_warning_without_ceil_mode(self, device, dtype):
         data = torch.rand(1, 2, 8, 8, device=device, dtype=dtype)
         with warnings.catch_warnings():
             warnings.simplefilter("error", DeprecationWarning)
-            MaxBlurPool2D(3)(data)
+            module = MaxBlurPool2D(3)
+            module(data)
             max_blur_pool2d(data, 3)
+        # Code that reads the attribute still gets a bool.
+        assert module.ceil_mode is False
 
     def test_exception(self):
         data = torch.rand(1, 1, 3, 3)
