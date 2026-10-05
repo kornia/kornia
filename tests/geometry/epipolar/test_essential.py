@@ -817,7 +817,7 @@ class TestMotionFromEssentialChooseSolution(BaseTester):
         K2 = torch.rand(1, 3, 3, device=device, dtype=dtype)
         x1 = torch.rand(1, 1, 2, device=device, dtype=dtype)
         x2 = torch.rand(1, 1, 2, device=device, dtype=dtype)
-        R, t, X = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1, x2)
+        R, t, X, _ = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1, x2)
         assert R.shape == (1, 3, 3)
         assert t.shape == (1, 3, 1)
         assert X.shape == (1, 1, 3)
@@ -830,7 +830,7 @@ class TestMotionFromEssentialChooseSolution(BaseTester):
         K2 = torch.rand(1, 3, 3, device=device, dtype=dtype)  # check for broadcasting
         x1 = torch.rand(B, N, 2, device=device, dtype=dtype)
         x2 = torch.rand(B, 1, 2, device=device, dtype=dtype)  # check for broadcasting
-        R, t, X = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1, x2)
+        R, t, X, _ = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1, x2)
         assert R.shape == (B, 3, 3)
         assert t.shape == (B, 3, 1)
         assert X.shape == (B, N, 3)
@@ -842,11 +842,11 @@ class TestMotionFromEssentialChooseSolution(BaseTester):
         x1 = torch.rand(2, 10, 2, device=device, dtype=dtype)
         x2 = torch.rand(2, 10, 2, device=device, dtype=dtype)
 
-        R, t, X = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1[:, 1:-1, :], x2[:, 1:-1, :])
+        R, t, X, _ = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1[:, 1:-1, :], x2[:, 1:-1, :])
 
         mask = torch.zeros(2, 10, dtype=torch.bool, device=device)
         mask[:, 1:-1] = True
-        Rm, tm, Xm = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1, x2, mask=mask)
+        Rm, tm, Xm, _ = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1, x2, mask=mask)
 
         self.assert_close(R, Rm)
         self.assert_close(t, tm)
@@ -861,14 +861,14 @@ class TestMotionFromEssentialChooseSolution(BaseTester):
         x1 = torch.rand(N, 2, device=device, dtype=dtype)
         x2 = torch.rand(N, 2, device=device, dtype=dtype)
 
-        R, t, X = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1[1:-1, :], x2[1:-1, :])
+        R, t, X, _ = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1[1:-1, :], x2[1:-1, :])
         assert R.shape == (3, 3)
         assert t.shape == (3, 1)
         assert X.shape == (N - 2, 3)
 
         mask = torch.zeros(N, dtype=torch.bool, device=device)
         mask[1:-1] = True
-        Rm, tm, Xm = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1, x2, mask=mask)
+        Rm, tm, Xm, _ = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1, x2, mask=mask)
 
         self.assert_close(R, Rm)
         self.assert_close(t, tm)
@@ -882,7 +882,7 @@ class TestMotionFromEssentialChooseSolution(BaseTester):
         R, t = epi.relative_camera_motion(scene["R1"], scene["t1"], scene["R2"], scene["t2"])
         t = torch.nn.functional.normalize(t, dim=1)
 
-        R_hat, t_hat, _ = epi.motion_from_essential_choose_solution(
+        R_hat, t_hat, _, _ = epi.motion_from_essential_choose_solution(
             E_mat, scene["K1"], scene["K2"], scene["x1"], scene["x2"]
         )
 
@@ -1083,17 +1083,17 @@ class TestConventionEssential(BaseTester):
         # Pixel coordinates in, K1 and K2 applied inside: the pose of camera 2 relative to camera 1 with a unit t,
         # and the points triangulated in the first camera's frame at that scale, all at positive depth.
         for E_in in (E, -E):
-            R_out, t_out, X_out = epi.motion_from_essential_choose_solution(E_in, K1, K2, x1, x2)
+            R_out, t_out, X_out, _ = epi.motion_from_essential_choose_solution(E_in, K1, K2, x1, x2)
             self.assert_close(R_out, R, rtol=1e-4, atol=1e-4)
             self.assert_close(t_out, t / t_norm, rtol=1e-4, atol=1e-4)
             self.assert_close(X_out, X / t_norm, rtol=1e-4, atol=1e-3)
             assert (X_out[..., 2] > 0).all()
         # Swapping the images (E^T, K2, K1, x2, x1) returns the inverse motion.
-        R_sw, t_sw, _ = epi.motion_from_essential_choose_solution(E.transpose(-2, -1), K2, K1, x2, x1)
+        R_sw, t_sw, _, _ = epi.motion_from_essential_choose_solution(E.transpose(-2, -1), K2, K1, x2, x1)
         self.assert_close(R_sw, R.transpose(-2, -1), rtol=1e-4, atol=1e-4)
         self.assert_close(t_sw, -R.transpose(-2, -1) @ t / t_norm, rtol=1e-4, atol=1e-4)
         # Control: with K1 and K2 swapped the triangulated points are wrong.
-        _, _, X_swapped_k = epi.motion_from_essential_choose_solution(E, K2, K1, x1, x2)
+        _, _, X_swapped_k, _ = epi.motion_from_essential_choose_solution(E, K2, K1, x1, x2)
         assert (X_swapped_k - X / t_norm).abs().max() > 1.0
 
     def test_convention_relative_camera_motion_world_to_camera(self, device, dtype):
@@ -1151,7 +1151,7 @@ class TestConventionEssential(BaseTester):
         Rsb, tsb = epi.motion_from_essential(E.expand(2, 1, 3, 3))
         assert Rsb.shape == (2, 1, 4, 3, 3) and tsb.shape == (2, 1, 4, 3, 1)
 
-    def test_wart_choose_solution_all_masked_returns_candidate0_4879(self, device, dtype):
+    def test_convention_choose_solution_reports_valid_count_4879(self, device, dtype):
         two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _NO_HALF_LU.format("motion_from_essential_choose_solution"))
         K1, K2, x1, x2 = two_view["K1"], two_view["K2"], two_view["x1"], two_view["x2"]
@@ -1161,15 +1161,24 @@ class TestConventionEssential(BaseTester):
         t_unit = t / t.norm(dim=-2, keepdim=True)
         # On this E candidate 0 is not the true pose, so returning it is visibly wrong.
         assert (Rs[:, 0] - R).abs().max() > 0.1 or (ts[:, 0] - t_unit).abs().max() > 0.1
-        # #4879: with every point masked out no candidate passes the depth test, and candidate 0 comes back unflagged.
+        # #4879: expose how many correspondences passed the positive-depth test.
+        R_all, t_all, _, valid_all = epi.motion_from_essential_choose_solution(E, K1, K2, x1, x2)
+        self.assert_close(R_all, R, rtol=1e-4, atol=1e-4)
+        self.assert_close(t_all, t_unit, rtol=1e-4, atol=1e-4)
+        assert torch.equal(valid_all, torch.tensor([12], device=device))
+
+        # With every point masked out no candidate passes the depth test.
+        # The caller must be able to detect this instead of silently receiving candidate 0.
         mask = torch.zeros(1, 12, dtype=torch.bool, device=device)
-        R_out, t_out, _ = epi.motion_from_essential_choose_solution(E, K1, K2, x1, x2, mask=mask)
-        assert torch.equal(R_out, Rs[:, 0]) and torch.equal(t_out, ts[:, 0])
-        # Control: one unmasked point is enough to select the true pose.
+        R_out, t_out, _, valid_none = epi.motion_from_essential_choose_solution(E, K1, K2, x1, x2, mask=mask)
+        assert torch.equal(valid_none, torch.tensor([0], device=device))
+
+        # Control: one unmasked point is enough to select the true pose and reports one valid point.
         mask[0, 5] = True
-        R_one, t_one, _ = epi.motion_from_essential_choose_solution(E, K1, K2, x1, x2, mask=mask)
+        R_one, t_one, _, valid_one = epi.motion_from_essential_choose_solution(E, K1, K2, x1, x2, mask=mask)
         self.assert_close(R_one, R, rtol=1e-4, atol=1e-4)
         self.assert_close(t_one, t_unit, rtol=1e-4, atol=1e-4)
+        assert torch.equal(valid_one, torch.tensor([1], device=device))
 
     def test_decompose_no_svd_batch_matches_single_4880(self, device, dtype):
         two_view = two_view_scene(device, dtype)
@@ -1204,10 +1213,10 @@ class TestConventionEssential(BaseTester):
 
         # E and -E have their true pose at different candidate indices; each alone is recovered.
         for E_in in (E, -E):
-            R_out, t_out, _ = epi.motion_from_essential_choose_solution(E_in, K1, K2, x1, x2)
+            R_out, t_out, _, _ = epi.motion_from_essential_choose_solution(E_in, K1, K2, x1, x2)
             assert is_truth(R_out[0], t_out[0])
         # #2198: each batch element must select its own candidate, independently of the others.
-        R_b, t_b, X_b = epi.motion_from_essential_choose_solution(
+        R_b, t_b, X_b, _ = epi.motion_from_essential_choose_solution(
             torch.cat([E, -E]), K1.expand(2, 3, 3), K2.expand(2, 3, 3), x1.expand(2, 12, 2), x2.expand(2, 12, 2)
         )
         assert is_truth(R_b[0], t_b[0])

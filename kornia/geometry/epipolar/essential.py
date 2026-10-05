@@ -695,7 +695,7 @@ def motion_from_essential_choose_solution(
     x1: torch.Tensor,
     x2: torch.Tensor,
     mask: Optional[torch.Tensor] = None,
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Recover the relative camera rotation and the translation from an estimated essential matrix.
 
     The method checks the corresponding points in two images and also returns the triangulated
@@ -722,8 +722,10 @@ def motion_from_essential_choose_solution(
           semantics. Mask is of shape :math:`(B, N)`.
 
     Returns:
-        The rotation and translation plus the 3d triangulated points.
-        The tuple is as following :math:`[(B, 3, 3), (B, 3, 1), (B, N, 3)]`, without ``B`` for unbatched inputs.
+        The rotation, translation, 3d triangulated points, and the number of points
+        with positive depth in both cameras for the selected candidate.
+        The tuple is as following :math:`[(B, 3, 3), (B, 3, 1), (B, N, 3), (B,)]`,
+        without ``B`` for unbatched inputs.
 
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
@@ -783,20 +785,21 @@ def motion_from_essential_choose_solution(
     if mask is not None:
         depth_mask &= mask.unsqueeze(1)
 
-    mask_indices = torch.max(depth_mask.sum(-1), dim=-1, keepdim=True)[1]
+    valid_count, mask_indices = torch.max(depth_mask.sum(-1), dim=-1)
 
     # get pose and points 3d and return
     batch_idx = torch.arange(mask_indices.shape[0], device=mask_indices.device)
-    R_out = Rs[batch_idx, mask_indices[:, 0]]
-    t_out = ts[batch_idx, mask_indices[:, 0]]
-    points3d_out = X[batch_idx, mask_indices[:, 0]]
+    R_out = Rs[batch_idx, mask_indices]
+    t_out = ts[batch_idx, mask_indices]
+    points3d_out = X[batch_idx, mask_indices]
 
     if unbatched:
         R_out = R_out[0]
         t_out = t_out[0]
         points3d_out = points3d_out[0]
+        valid_count = valid_count[0]
 
-    return R_out, t_out, points3d_out
+    return R_out, t_out, points3d_out, valid_count
 
 
 def relative_camera_motion(
