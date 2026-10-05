@@ -72,6 +72,18 @@ class TestAugmentationCompile(BaseTester):
         self.assert_close(out_input, input.flip(-1))
         self.assert_close(out_mask, mask.flip(-1))
 
+    def test_dynamo_sequential_bbox(self, device, dtype, torch_optimizer):
+        # The 'bbox' key imports through Boxes.from_tensor('vertices_plus'), whose finiteness check is
+        # asynchronous, so the box path compiles with fullgraph=True (#4177).
+        input = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        bbox = torch.tensor([[[1.0, 1.0], [4.0, 1.0], [4.0, 5.0], [1.0, 5.0]]], device=device, dtype=dtype)
+        bbox = bbox.expand(2, 1, 4, 2).contiguous()
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "bbox"])
+        expected = aug(input, bbox)
+        actual = torch_optimizer(aug, fullgraph=True)(input, bbox)
+        self.assert_close(actual[0], expected[0])
+        self.assert_close(actual[1], expected[1])
+
     def test_compile_distinct_classes(self, device, dtype, torch_optimizer):
         # More classes than Dynamo's default per-code-object cache limit (#4658).
         augmentations = [
