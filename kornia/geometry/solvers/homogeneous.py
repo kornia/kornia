@@ -185,7 +185,13 @@ def _null_space_lu(A: torch.Tensor) -> torch.Tensor:
     """
     batch, m, n = A.shape
     lu, pivots, _ = torch.linalg.lu_factor_ex(A.mT)
-    lower = torch.linalg.solve_triangular(lu[:, :m, :m], lu[:, m:, :m], upper=False, left=False, unitriangular=True)
+    square = lu[:, :m, :m]
+    if torch.compiler.is_compiling() and A.device.type == "cuda":
+        # The CUDA meta kernel tests column-major contiguity of this strided LU view. With an unbacked
+        # batch inside while_loop that needs a data-dependent guard. Make that layout check always true,
+        # including empty batches; a row-major copy still needs a guard for the empty case.
+        square = square.mT.contiguous().mT
+    lower = torch.linalg.solve_triangular(square, lu[:, m:, :m], upper=False, left=False, unitriangular=True)
     eye = torch.eye(n - m, dtype=A.dtype, device=A.device).expand(batch, -1, -1)
     permutation, _, _ = torch.lu_unpack(lu, pivots, unpack_data=False)
     return permutation @ torch.cat([-lower.mT, eye], 1)

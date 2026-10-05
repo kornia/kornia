@@ -27,6 +27,7 @@ from typing import Callable, List, Optional, Tuple, Union
 import torch
 from torch import nn
 
+from kornia.core._compat import torch_version_lt
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry._degensac import (
     _h_degenerate_sample,
@@ -74,6 +75,10 @@ _LM_CANDIDATES = 8
 # Model types that DEGENSAC supports: seven-point fundamental matrices (Chum, Werner and Matas, CVPR 2005).
 _DEGENSAC_MODELS = ("fundamental", "fundamental_7pt")
 
+# At most this many residuals are materialized by one compiled CPU scoring batch.  Small/default inputs retain their
+# tuned batch sizes; large explicit batches are split without changing the minimal-sample budget.
+_COMPILED_CPU_SCORE_RESIDUALS = 1 << 22
+
 
 @lru_cache(maxsize=32)
 def _prosac_growth(sample_size: int, pop_size: int, budget: int) -> Tuple[int, ...]:
@@ -101,6 +106,24 @@ def _resolve_degensac(degensac: Optional[bool], model_type: str, local_optimizat
     return False if degensac is None else degensac
 
 
+def _normalize_correspondences_core(
+    kp1: torch.Tensor, kp2: torch.Tensor, shared_scale: bool
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """:func:`_normalize_correspondences` with the two scales as a ``(2,)`` tensor, without a host synchronization."""
+    finite = torch.isfinite(kp1).all(1) & torch.isfinite(kp2).all(1)
+    stacked = torch.stack([kp1, kp2])
+    placeholders = torch.where(finite[None, :, None], stacked, torch.zeros_like(stacked))
+    points, transforms = normalize_points(placeholders, weights=finite.to(kp1.dtype).expand(2, -1))
+    if shared_scale:
+        scale = transforms[:, 0, 0]
+        ratio = (2.0 / (1.0 / scale).sum()) / scale
+        points = points * ratio[:, None, None]
+        transforms = torch.cat([transforms[:, :2] * ratio[:, None, None], transforms[:, 2:]], 1)
+    points = torch.where(finite[None, :, None], points, torch.full_like(points, float("nan")))
+    points = convert_points_to_homogeneous(points)
+    return points[0], points[1], transforms[0], transforms[1], 1.0 / transforms[:, 0, 0]
+
+
 def _normalize_correspondences(
     kp1: torch.Tensor, kp2: torch.Tensor, shared_scale: bool
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, float, float]:
@@ -116,19 +139,21 @@ def _normalize_correspondences(
         Homogeneous normalized points ``(N, 3)`` of each image, the ``(3, 3)`` transforms that map pixels to them, and
         the two scales in pixels per normalized unit.
     """
-    finite = torch.isfinite(kp1).all(1) & torch.isfinite(kp2).all(1)
-    stacked = torch.stack([kp1, kp2])
-    placeholders = torch.where(finite[None, :, None], stacked, torch.zeros_like(stacked))
-    points, transforms = normalize_points(placeholders, weights=finite.to(kp1.dtype).expand(2, -1))
-    if shared_scale:
-        scale = transforms[:, 0, 0]
-        ratio = (2.0 / (1.0 / scale).sum()) / scale
-        points = points * ratio[:, None, None]
-        transforms = torch.cat([transforms[:, :2] * ratio[:, None, None], transforms[:, 2:]], 1)
-    points = torch.where(finite[None, :, None], points, torch.full_like(points, float("nan")))
-    points = convert_points_to_homogeneous(points)
-    s1, s2 = (1.0 / transforms[:, 0, 0]).tolist()
-    return points[0], points[1], transforms[0], transforms[1], s1, s2
+    x1, x2, t1, t2, scales = _normalize_correspondences_core(kp1, kp2, shared_scale)
+    s1, s2 = scales.tolist()
+    return x1, x2, t1, t2, s1, s2
+
+
+def _check_compile_config(local_optimization: str, prosac_sampling: bool, degensac: bool) -> None:
+    """Reject the configurations that ``RANSAC(compile=True)`` does not cover."""
+    if torch_version_lt(2, 14, 0):
+        raise ValueError("compile=True needs torch 2.14 or later")
+    if local_optimization != "lm":
+        raise ValueError('compile=True supports local_optimization="lm" only')
+    if prosac_sampling:
+        raise ValueError("compile=True does not support prosac_sampling")
+    if degensac:
+        raise ValueError("compile=True does not support degensac")
 
 
 class RANSAC(nn.Module):
@@ -184,6 +209,13 @@ class RANSAC(nn.Module):
         - A seeded call uses a private generator and leaves torch's global RNG state unchanged; ``seed=None``
           draws the minimal samples from the global generator. DEGENSAC's recovery draws always come from a private
           host generator, which an unseeded call seeds from the sample that triggers the recovery.
+        - ``compile=True`` runs the whole ``local_optimization="lm"`` estimation as one ``torch.compile`` graph
+          (torch 2.14 or later, CPU and CUDA). The graph is traced once per configuration and does not
+          depend on the number of correspondences, the threshold, the confidence or the budget; it is also saved next
+          to inductor's cache (``TORCHINDUCTOR_CACHE_DIR``), so a later process loads it instead of compiling. It
+          runs the same algorithm with its own random stream: a seeded call is reproducible and leaves every global
+          generator unchanged, while an unseeded call consumes one global random seed. Its result is not the eager
+          one. PROSAC sampling and DEGENSAC are not supported.
 
     Args:
         model_type: "homography", "fundamental", "fundamental_7pt", "fundamental_8pt", "essential", or
@@ -214,6 +246,7 @@ class RANSAC(nn.Module):
             fundamental and essential matrices and ``"dlt"`` for line segments.
         refine_iters: Levenberg-Marquardt iterations of the final refinement with ``local_optimization="lm"``;
             zero disables it.
+        compile: run ``local_optimization="lm"`` as one compiled graph, as described above.
         degensac: run DEGENSAC's dominant-plane recovery, as described above. Defaults to False; None also leaves
             it off. True enables it for ``"fundamental"`` and ``"fundamental_7pt"`` with ``local_optimization="lm"``,
             the only supported combinations; True with any other raises ``ValueError``.
@@ -236,6 +269,7 @@ class RANSAC(nn.Module):
         local_optimization: Optional[str] = None,
         refine_iters: int = 3,
         degensac: Optional[bool] = False,
+        compile: bool = False,
     ) -> None:
         """Initialize the RANSAC estimator.
 
@@ -263,6 +297,7 @@ class RANSAC(nn.Module):
                 final robust refinement) or ``"dlt"`` (refits of each new best model); None picks ``"lm"`` where it
                 is supported, for homographies, fundamental and essential matrices.
             refine_iters: Levenberg-Marquardt iterations of the final refinement on the inliers with ``"lm"``.
+            compile: run ``local_optimization="lm"`` as one compiled graph (torch 2.14 or later).
             degensac: opt-in DEGENSAC dominant-plane recovery for seven-point fundamental matrices.
                 Defaults to False; None also leaves it off. True requires seven-point matrices with
                 local_optimization="lm".
@@ -318,6 +353,9 @@ class RANSAC(nn.Module):
         self.lo_sample_size = lo_sample_size
         self.local_optimization = local_optimization
         self.refine_iters = refine_iters
+        if compile:
+            _check_compile_config(local_optimization, prosac_sampling, degensac)
+        self.compiled = compile
         self.degensac = degensac
         # The PROSAC growth schedule as a device tensor, reused across the batches of a call.
         self._prosac_ends: Optional[Tuple[Tuple[int, int, int, torch.device], torch.Tensor]] = None
@@ -475,7 +513,10 @@ class RANSAC(nn.Module):
         batch would score more than ``2**22`` (CPU) or ``2**25`` (accelerators) residuals, counting the three models
         of a seven-point sample and the ten candidate slots of a five-point one. On accelerators scoring holds two or
         three times that many entries at its peak, about 0.5 GiB in float32; on CPU it scores tiles of about a million
-        residuals, independently of the batch. An integer ``batch_size`` is kept for every batch.
+        residuals, independently of the batch. An integer ``batch_size`` is kept for every batch, except that
+        compiled CPU RANSAC splits a batch whose candidate-by-correspondence score matrix would exceed the CPU
+        memory bound. This preserves the sample budget, though the extra batch boundaries can change when
+        confidence-based stopping is evaluated.
         """
         if isinstance(self.batch_size, int):
             return self.batch_size
@@ -867,6 +908,9 @@ class RANSAC(nn.Module):
         self.validate_inputs(kp1, kp2, weights)
         if self.local_optimization == "lm":
             with torch.no_grad():
+                if self.compiled:
+                    with torch.inference_mode(False), torch.no_grad():
+                        return self._forward_compiled(kp1, kp2)
                 return self._forward_lm(kp1, kp2)
         best_score_total = -float("inf")
         num_tc: int = len(kp1)
@@ -934,6 +978,63 @@ class RANSAC(nn.Module):
                 best_model_total = torch.zeros_like(best_model_total)
                 inliers_best_total = torch.zeros_like(inliers_best_total)
         return best_model_total, inliers_best_total
+
+    def _forward_compiled(self, kp1: torch.Tensor, kp2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """:meth:`_forward_lm` as the compiled program of :mod:`kornia.geometry._ransac_program`."""
+        from kornia.geometry._ransac_program import MAX_BATCH, load_program
+
+        if kp1.device.type not in ("cpu", "cuda"):
+            raise ValueError(f"compile=True runs on CPU and CUDA, not {kp1.device.type}")
+        # Artifacts guard tensor dispatch keys, gradients and strides. Normalize these without copying ordinary
+        # contiguous inputs; inference tensors need a clone under the disabled inference context in forward.
+        kp1, kp2 = (
+            kp.clone(memory_format=torch.contiguous_format) if kp.is_inference() else kp.detach().contiguous()
+            for kp in (kp1, kp2)
+        )
+        num_tc = len(kp1)
+        first, largest = self._lm_batch_range(num_tc, kp1.device)
+        if largest > MAX_BATCH:
+            raise ValueError(f"compile=True supports batches of at most {MAX_BATCH} samples")
+        if kp1.device.type == "cpu":
+            # The five-point solver can yield ten candidates and the seven-point solver three.  Cap batches by the
+            # resulting score matrix, not just sampled sets, so an explicit large batch cannot allocate O(B * N)
+            # unbounded memory.  The while-loop still draws exactly ``sample_budget`` sets.
+            slots = 10 if self.model_type == "essential" else 3 if self.minimal_sample_size == 7 else 1
+            cap = max(1, _COMPILED_CPU_SCORE_RESIDUALS // (slots * max(num_tc, 1)))
+            first, largest = min(first, cap), min(largest, cap)
+        host = torch.device("cpu")
+        scalars = [torch.tensor([value], dtype=torch.float64, device=host) for value in (self.inl_th, self.confidence)]
+        scalars += [
+            torch.tensor(value, dtype=torch.int64, device=host) for value in (self.sample_budget, first, largest)
+        ]
+        if self.seed is None:
+            # One ordinary global draw chooses this invocation's private stream; the program hashes it with each
+            # sample's index and never reads a generator, so it cannot race a seeded call's RNG isolation.
+            random_seed = torch.randint(0, torch.iinfo(torch.int64).max, (), dtype=torch.int64, device=kp1.device)
+            random_seed = random_seed.to(host)
+        else:
+            # Match Generator.manual_seed's domain while carrying it through the graph as a signed int64 tensor.
+            if isinstance(self.seed, bool) or not isinstance(self.seed, int):
+                raise TypeError("seed must be an integer")
+            if self.seed < -(1 << 63) or self.seed > (1 << 64) - 1:
+                raise ValueError("seed must be within [-2**63, 2**64 - 1]")
+            signed_seed = ((self.seed + (1 << 63)) % (1 << 64)) - (1 << 63)
+            random_seed = torch.tensor(signed_seed, dtype=torch.int64, device=host)
+        scalars.append(random_seed)
+        inputs = (kp1, kp2, *scalars)
+        key = (
+            self.model_type,
+            self.score_type,
+            self.max_lo_iters,
+            self.refine_iters,
+            kp1.dtype,
+            str(kp1.device),
+            torch.get_num_threads(),
+            torch.get_default_dtype(),
+            str(torch.get_default_device()),
+        )
+        program = load_program(key, inputs)
+        return program(*inputs)
 
     def _lm_minimal_models(
         self, x1: torch.Tensor, x2: torch.Tensor, track_origins: bool = False

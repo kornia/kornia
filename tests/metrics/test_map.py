@@ -24,12 +24,13 @@ from testing.base import BaseTester
 
 
 class TestMeanAveragePrecision(BaseTester):
-    def test_smoke(self, device, dtype):
-        boxes = torch.tensor([[100, 50, 150, 100.0]], device=device, dtype=dtype)
+    @pytest.mark.parametrize("coordinates", [[[100, 50, 150, 100.0]], [[0, 0, 512, 512]]])
+    def test_smoke(self, coordinates, device, dtype):
+        boxes = torch.tensor(coordinates, device=device, dtype=dtype)
         labels = torch.tensor([1], device=device, dtype=torch.long)
         scores = torch.tensor([0.7], device=device, dtype=dtype)
 
-        gt_boxes = torch.tensor([[100, 50, 150, 100.0]], device=device, dtype=dtype)
+        gt_boxes = torch.tensor(coordinates, device=device, dtype=dtype)
         gt_labels = torch.tensor([1], device=device, dtype=torch.long)
 
         mean_ap = kornia.metrics.mean_average_precision([boxes], [labels], [scores], [gt_boxes], [gt_labels], 2)

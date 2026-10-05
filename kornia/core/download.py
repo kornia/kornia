@@ -666,7 +666,8 @@ def _download_url_to_file(
     for _ in range(tempfile.TMP_MAX):
         partial = f"{dst}.{uuid.uuid4().hex}.partial"
         try:
-            f = open(partial, "xb")
+            # Opened outside ``with`` so a taken name can be retried; ``with f:`` below closes it.
+            f = open(partial, "xb")  # noqa: SIM115
         except FileExistsError:
             continue
         break

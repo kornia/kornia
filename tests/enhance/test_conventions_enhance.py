@@ -87,8 +87,7 @@ class TestEnhanceConventions(BaseTester):
 
     @pytest.mark.parametrize("explicit_center", [False, True])
     @pytest.mark.parametrize("return_pdf", [False, True])
-    @pytest.mark.xfail(strict=True, reason="#5363: rank-2 image histogram squeezes away a single bin axis")
-    def test_wart_image_histogram_rank2_single_bin_preserves_bin_axis_5363(
+    def test_convention_image_histogram_rank2_single_bin_preserves_bin_axis_5363(
         self, device, dtype, explicit_center, return_pdf
     ):
         image = torch.tensor([[0.25, 0.75]], device=device, dtype=dtype)
@@ -224,16 +223,11 @@ class TestEnhanceConventions(BaseTester):
         with pytest.raises(ShapeError):
             kornia.enhance.image_histogram2d(torch.ones(1, 1, 1, 2, 3, device=device, dtype=dtype), n_bins=2)
 
-    @pytest.mark.xfail(strict=True, reason="#5327: rank-5 input receives the shifts along the wrong axis")
-    def test_wart_shift_rgb_rank5_is_rejected_or_per_batch_5327(self, device, dtype):
+    def test_convention_shift_rgb_rank5_is_rejected_5327(self, device, dtype):
         image = torch.zeros(2, 2, 3, 1, 1, device=device, dtype=dtype)
         shifts = torch.tensor([0.1, 0.2], device=device, dtype=dtype), torch.zeros(2, device=device, dtype=dtype)
-        try:
-            out = kornia.enhance.shift_rgb(image, shifts[0], shifts[1], shifts[1])
-        except (ValueError, BaseError):
-            return
-        expected = torch.tensor([0.1, 0.1, 0.2, 0.2], device=device, dtype=dtype)
-        self.assert_close(out[:, :, 0].flatten(), expected)
+        with pytest.raises(ShapeError):
+            kornia.enhance.shift_rgb(image, shifts[0], shifts[1], shifts[1])
 
     def test_convention_normalize_min_max_rescales_each_spatial_plane(self, device, dtype):
         # (B, C, D, H, W): every depth slice is its own (H, W) plane, so each one spans [0, 1].
@@ -241,9 +235,8 @@ class TestEnhanceConventions(BaseTester):
         expected = torch.tensor([[[[[0.0, 1.0]], [[0.0, 1.0]]]]], device=device, dtype=dtype)
         self.assert_close(kornia.enhance.normalize_min_max(data), expected, low_tolerance=True)
 
-    @pytest.mark.xfail(strict=True, reason="#5220: equalize differs from float32 reference for float16 input")
     @pytest.mark.device_agnostic
-    def test_wart_equalize_float16_matches_float32_reference_5220(self):
+    def test_convention_equalize_float16_matches_float32_reference_5220(self):
         image = torch.zeros(1, 1, 300, 300, dtype=torch.float16)
         image[..., :, 150:] = 1.0
         self.assert_close(kornia.enhance.equalize(image), kornia.enhance.equalize(image.float()).half())
