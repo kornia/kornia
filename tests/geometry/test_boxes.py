@@ -734,7 +734,7 @@ class TestBoxes2D(BaseTester):
             for computed_area, expected_area in zip(flattened_computed_areas_w_batch, expected_values)
         )
 
-    def test_compute_area_supports_non_contiguous_batched_boxes(self):
+    def test_compute_area_supports_non_contiguous_batched_boxes(self, device, dtype):
         boxes_n_b = torch.tensor(
             [
                 [
@@ -749,7 +749,9 @@ class TestBoxes2D(BaseTester):
                     [[0.0, 0.0], [3.0, 0.0], [3.0, 4.0], [0.0, 4.0]],
                     [[2.0, 2.0], [5.0, 2.0], [5.0, 6.0], [2.0, 6.0]],
                 ],
-            ]
+            ],
+            device=device,
+            dtype=dtype,
         )
         boxes_b_n = boxes_n_b.transpose(0, 1)
         assert boxes_b_n.shape == (2, 3, 4, 2)
@@ -757,7 +759,14 @@ class TestBoxes2D(BaseTester):
 
         area = Boxes(boxes_b_n).compute_area()
 
-        assert torch.equal(area, torch.tensor([[12.0, 6.0, 12.0], [4.0, 30.0, 12.0]]))
+        expected = torch.tensor([[12.0, 6.0, 12.0], [4.0, 30.0, 12.0]], device=device, dtype=dtype)
+        assert torch.equal(area, expected)
+
+        # transform_boxes (and translate, which calls it) flattened the same layout with .view too.
+        shift = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device=device, dtype=dtype)
+        translated = Boxes(boxes_b_n).translate(shift).data
+        expected_translated = boxes_b_n.contiguous() + shift[:, None, None, :]
+        assert torch.equal(translated, expected_translated)
 
     def test_wart_compute_area_is_shoelace_of_inclusive_vertices_4010(self, device, dtype):
         # kornia#4010: compute_area applies shoelace to the stored inclusive vertices, so a valid exclusive
