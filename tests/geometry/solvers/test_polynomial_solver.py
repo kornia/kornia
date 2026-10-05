@@ -1425,11 +1425,49 @@ class TestConventionPolynomialSolvers(BaseTester):
             pytest.skip("this row's 2e-11 and -4.2e-08 coefficients underflow float16 and keep 3 digits in bfloat16")
         # #4833: x^4 - 0.009x^3 + 3e-05x^2 - 4.2e-08x + 2e-11 = (x - 0.001)(x - 0.002)(x^2 - 0.006x + 1e-05) has
         # the real roots 1e-3 and 2e-3. This literal lost them in the resolvent cubic, whose R = 2e-18 sat under
-        # the 1e-16 floor removed with #4914, not to the quartic's own unit floors, which #4833 still describes.
+        # the 1e-16 floor removed with #4914; the additional scale families below pin the quartic's own thresholds.
         coeffs = torch.tensor([[1.0, -0.009, 3e-05, -4.2e-08, 2e-11]], device=device, dtype=dtype)
         out = solver.solve_quartic(coeffs)
         for root in (1e-3, 2e-3):
             assert (out - root).abs().min() <= 1e-5 * root, out
+
+    @pytest.mark.parametrize("exponent", [-4, -8, -16, -24, -32])
+    def test_small_scale_quartic_preserves_four_real_roots_4833(self, exponent, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("The scaled coefficients are not representable accurately in half precision.")
+        # Replacing x by 2**exponent * u in (u-1)(u-2)(u-3)(u-4) scales coefficient k by 2**(k*exponent).
+        # All four roots stay real and separated; unit-floored Ferrari thresholds lost two at small scales.
+        scale = 2.0**exponent
+        coefficients = torch.tensor([[1.0, -10.0, 35.0, -50.0, 24.0]], device=device, dtype=dtype)
+        powers = torch.arange(5, device=device, dtype=dtype)
+        coefficients = coefficients * scale**powers
+        roots = solver.solve_quartic(coefficients).sort(dim=-1).values / scale
+        expected = torch.tensor([[1.0, 2.0, 3.0, 4.0]], device=device, dtype=dtype)
+        self.assert_close(roots, expected, rtol=1e-4, atol=1e-5)
+
+    @pytest.mark.parametrize("exponent", [-4, -8, -16, -32])
+    def test_small_scale_quartic_does_not_create_real_roots_4833(self, exponent, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("The scaled coefficients are not representable accurately in half precision.")
+        # (u^2 + 2u + 5)(u^2 + 2u + 5.01) has two negative quadratic discriminants, at every scale.
+        scale = 2.0**exponent
+        coefficients = torch.tensor([[1.0, 4.0, 14.01, 20.02, 25.05]], device=device, dtype=dtype)
+        powers = torch.arange(5, device=device, dtype=dtype)
+        roots = solver.solve_quartic(coefficients * scale**powers)
+        self.assert_close(roots, torch.zeros_like(roots), rtol=0, atol=0)
+
+    def test_small_scale_quartic_gradcheck_4833(self, device):
+        # Perturb the unit-scale coefficients, then change variables. Perturbing tiny physical coefficients
+        # by gradcheck's absolute epsilon would change the root family instead of checking its local Jacobian.
+        coefficients = torch.tensor([[1.0, -10.0, 35.0, -50.0, 24.0]], device=device, dtype=torch.float64)
+        powers = torch.arange(5, device=device, dtype=torch.float64)
+        scale = 2.0**-16
+        coefficient_scale = scale**powers
+
+        def scaled_solver(value):
+            return solver.solve_quartic(value * coefficient_scale) / scale
+
+        self.gradcheck(scaled_solver, (coefficients.requires_grad_(),))
 
     def test_convention_solve_quartic_scale_invariant_large_roots_4954(self, device, dtype):
         if dtype != torch.float32:
