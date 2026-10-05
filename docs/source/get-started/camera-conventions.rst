@@ -180,12 +180,11 @@ Intrinsics layout
   :func:`kornia.geometry.camera.perspective.project_points` alike. With a skewed ``K``, apply ``inv(K)`` to homogeneous
   pixel coordinates, or ``K`` to normalized ones, directly.
 - :class:`kornia.geometry.camera.pinhole.PinholeCamera` instead stores a ``4x4`` ``intrinsics`` whose canonical
-  form is the homogeneous embedding ``[[fx, 0, cx, 0], [0, fy, cy, 0], [0, 0, 1, 0], [0, 0, 0, 1]]``. The whole
-  matrix participates: :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.project` multiplies the full
-  ``intrinsics @ extrinsics`` and :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.unproject` inverts that
-  ``4x4`` product, so a non-zero ``intrinsics[0, 3]`` shifts every projected ``u`` by ``intrinsics[0, 3] / z``
-  and ``intrinsics[3, 3]`` rescales every unprojected point. The layout is not validated: a ``3x3`` ``K`` zero-padded
-  without ``intrinsics[3, 3] = 1`` still projects, but ``unproject`` fails on a singular matrix
+  form is the homogeneous embedding ``[[fx, 0, cx, 0], [0, fy, cy, 0], [0, 0, 1, 0], [0, 0, 0, 1]]``.
+  :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.project` and
+  :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.unproject` build their projection from the top-left
+  ``3x3`` block only, so a non-zero ``intrinsics[0, 3]`` never enters a projection, and a ``3x3`` ``K``
+  zero-padded without ``intrinsics[3, 3] = 1`` round-trips exactly like its homogeneous embedding
   (`#4771 <https://github.com/kornia/kornia/issues/4771>`_). Its class docstring documents the layout and the
   zero-padded case.
 - **Depth means two different things.** It is the camera-frame ``z`` by default, and the Euclidean ray length

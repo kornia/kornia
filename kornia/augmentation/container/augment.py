@@ -467,7 +467,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 outputs = self.transform_op.inverse(  # type: ignore
                     *outputs, module=module, param=param, extra_args=self.extra_args
                 )
-                if not isinstance(outputs, list | tuple):
+                if not isinstance(outputs, (list, tuple)):
                     # Make sure we are unpacking a list whilst post-proc
                     outputs = [outputs]
 
@@ -563,7 +563,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
             elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
                 _out_k = self._postproc_keypoint(in_arg, cast(Keypoints, out_arg), dcate)
-                if is_autocast_enabled() and isinstance(in_arg, torch.Tensor | Keypoints):
+                if is_autocast_enabled() and isinstance(in_arg, (torch.Tensor, Keypoints)):
                     if isinstance(_out_k, list):
                         _out_k = [i.type(in_arg.dtype) for i in _out_k]
                     else:
@@ -572,7 +572,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
             elif DataKey.get(dcate) in _BOXES_OPTIONS:
                 _out_b = self._postproc_boxes(in_arg, cast(Boxes, out_arg), dcate)
-                if is_autocast_enabled() and isinstance(in_arg, torch.Tensor | Boxes):
+                if is_autocast_enabled() and isinstance(in_arg, (torch.Tensor, Boxes)):
                     if isinstance(_out_b, list):
                         _out_b = [i.type(in_arg.dtype) for i in _out_b]
                     else:
@@ -655,7 +655,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             for param in params:
                 module = self.get_submodule(param.name)
                 outputs = self.transform_op.transform(*outputs, module=module, param=param, extra_args=self.extra_args)
-                if not isinstance(outputs, list | tuple):
+                if not isinstance(outputs, (list, tuple)):
                     # Make sure we are unpacking a list whilst post-proc
                     outputs = [outputs]
                 self._update_transform_matrix_by_module(module)
@@ -693,7 +693,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         Arguments convert by data key, and only an image takes the image conversion. A mask given as a NumPy array,
         a PIL image or an image file path keeps its dtype and label values, palette indices included. Every mask
-        must match the image's height and width, with a batch size of 1 or the image's.
+        must match the image's height and width, with a batch size of 1 or the image's. Arguments converted from NumPy
+        go to the container's device when it has parameters or buffers, as the image does.
 
         Args:
             inputs: Inputs to operate on.
@@ -731,7 +732,12 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             # run the forward pass in tensor mode and convert the output to ``output_type`` only after the image
             # has been cached, so ``.show()`` / ``.save()`` never receive a NumPy array or PIL images
             tensor_output = self._call_converted(
-                super(ImageSequential, self).__call__, converted_inputs, kwargs, input_names_to_handle, "pt"
+                super(ImageSequential, self).__call__,
+                converted_inputs,
+                kwargs,
+                input_names_to_handle,
+                "pt",
+                signature_source=self.forward,
             )
 
             in_data_keys: Optional[List[DataKey]]
@@ -765,10 +771,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             if _is_numpy_array(arg):
                 if not arg.dtype.isnative:  # torch.from_numpy rejects big-endian data, such as PIL's "I;16B" mode
                     arg = arg.astype(arg.dtype.newbyteorder("="))
-                return image_to_tensor(arg)
+                return self._to_module_device(image_to_tensor(arg))
             return arg
         if _is_numpy_array(arg):
-            return torch.as_tensor(arg)
+            return self._to_module_device(torch.as_tensor(arg))
         return arg
 
     def _select_output_image(
@@ -780,7 +786,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         idx = data_keys.index(DataKey.INPUT)
         if isinstance(output, dict):
             return output[original_keys[idx]]
-        if len(data_keys) > 1 and isinstance(output, list | tuple):
+        if len(data_keys) > 1 and isinstance(output, (list, tuple)):
             return output[idx]
         return output
 

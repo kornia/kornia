@@ -154,7 +154,7 @@ def filter2d(
     )
     KORNIA_CHECK(
         str(behaviour).lower() in _VALID_BEHAVIOUR,
-        f"Invalid padding mode, {behaviour}. Expected one of {_VALID_BEHAVIOUR}",
+        f"Invalid behaviour mode, {behaviour}. Expected one of {_VALID_BEHAVIOUR}",
     )
     # the checks are case-insensitive, so dispatch on the lower-case spelling as well
     border_type, padding, behaviour = str(border_type).lower(), str(padding).lower(), str(behaviour).lower()
@@ -336,12 +336,12 @@ def filter3d(
 
     KORNIA_CHECK(
         str(border_type).lower() in _VALID_BORDERS,
-        f"Invalid border, gotcha {border_type}. Expected one of {_VALID_BORDERS}",
+        f"Invalid border, got {border_type}. Expected one of {_VALID_BORDERS}",
     )
 
     KORNIA_CHECK(
         str(behaviour).lower() in _VALID_BEHAVIOUR,
-        f"Invalid behaviour mode, gotcha {behaviour}. Expected one of {_VALID_BEHAVIOUR}",
+        f"Invalid behaviour mode, got {behaviour}. Expected one of {_VALID_BEHAVIOUR}",
     )
     # the checks are case-insensitive, so dispatch on the lower-case spelling as well
     border_type, behaviour = str(border_type).lower(), str(behaviour).lower()

@@ -88,7 +88,7 @@ class EfficientViT(ModelBase[EfficientViTConfig]):
                     model_file = torch.load(f, map_location="cpu", weights_only=True)
             else:
                 model_file = load_state_dict_from_url(config.checkpoint, map_location="cpu")
-            model_file = model_file["state_dict"] if "state_dict" in model_file else model_file
+            model_file = model_file.get("state_dict", model_file)
         except RuntimeError as exc:
             raise RuntimeError(f"Unable to load the model from {config.checkpoint}.") from exc
 

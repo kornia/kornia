@@ -144,12 +144,14 @@ class TestONNXLoader:
         from unittest import mock
 
         url = "https://huggingface.co/api/models/kornia/ONNX_models/tree/main/operators"
-        with mock.patch(
-            "kornia.onnx.utils.urlopen",
-            side_effect=urllib.error.HTTPError(url, 404, "Not Found", {}, None),
+        with (
+            mock.patch(
+                "kornia.onnx.utils.urlopen",
+                side_effect=urllib.error.HTTPError(url, 404, "Not Found", {}, None),
+            ),
+            pytest.raises(ValueError, match="Failed to fetch repository contents"),
         ):
-            with pytest.raises(ValueError, match="Failed to fetch repository contents"):
-                ONNXLoader._fetch_repo_contents("operators")
+            ONNXLoader._fetch_repo_contents("operators")
 
     def test_list_operators(self, capsys):
         import os
