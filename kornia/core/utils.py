@@ -365,6 +365,8 @@ def _torch_solve_cast(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
     - kornia.geometry.transform.thin_plate_spline
     - kornia.geometry.epipolar.essential
     """
+    KORNIA_CHECK_IS_TENSOR(A, "A must be torch.Tensor")
+    KORNIA_CHECK_IS_TENSOR(B, "B must be torch.Tensor")
     if is_mps_tensor_safe(A):
         dtype = torch.float32
     else:
@@ -383,6 +385,7 @@ def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor
     """
     # Based on https://github.com/pytorch/pytorch/issues/31546#issuecomment-694135622
     KORNIA_CHECK_IS_TENSOR(B, "B must be torch.Tensor")
+    KORNIA_CHECK_IS_TENSOR(A, "A must be torch.Tensor")
     dtype: torch.dtype = B.dtype
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
@@ -566,6 +569,7 @@ def batched_forward(
         True
 
     """
+    KORNIA_CHECK(batch_size > 0, f"batch_size must be positive, got {batch_size}")
     model_dev = model.to(device)
     B: int = len(data)
     bs: int = batch_size
