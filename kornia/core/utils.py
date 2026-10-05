@@ -426,12 +426,13 @@ def is_autocast_enabled(both: bool = True) -> bool:
     """Check if torch autocast is enabled.
 
     Args:
-        both: if True will consider autocast region for both types of devices
+        both: if True, consider the autocast regions of the CPU, CUDA, MPS and XPU device types.
 
     Returns:
-        Return a Bool. If ``both`` is True, return whether autocast is enabled
-        for any supported device type (CPU, CUDA, MPS, or XPU). If ``both`` is
-        False, return whether the default autocast region is enabled.
+        If ``both`` is True, whether autocast is enabled for any of the CPU, CUDA, MPS or XPU device types, on every
+        supported torch version. If ``both`` is False, ``torch.is_autocast_enabled()`` without a device type, whose
+        device type depends on the torch version: it never reports CPU autocast, and on torch 2.5.1 it does not
+        report MPS autocast either.
 
     """
     if both:

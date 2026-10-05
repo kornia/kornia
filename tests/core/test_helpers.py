@@ -493,3 +493,15 @@ def test_is_autocast_enabled_mps():
         assert is_autocast_enabled()
 
     assert not is_autocast_enabled()
+
+
+def test_is_autocast_enabled_xpu():
+    # XPU autocast can be entered without an XPU device, and ``torch.is_autocast_enabled()`` without a device type
+    # never reports it, so this case pins the per-device-type query on every CI leg (#5198).
+    assert not is_autocast_enabled()
+
+    with torch.autocast("xpu", dtype=torch.bfloat16):
+        assert torch.is_autocast_enabled("xpu")
+        assert is_autocast_enabled()
+
+    assert not is_autocast_enabled()
