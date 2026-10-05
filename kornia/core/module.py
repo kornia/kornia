@@ -79,7 +79,8 @@ class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
 
         Args:
             inputs: Inputs to operate on.
-            input_names_to_handle: List of input names to convert.
+            input_names_to_handle: List of parameter names to convert. Module calls use the ``forward``
+                signature; a variadic parameter name selects all its values.
                 If None, convert every tensor, NumPy array and PIL image argument, and load a string as an image
                 path only if it is the first positional argument.
             output_type: Desired output type ('pt', 'numpy', or 'pil').
@@ -91,7 +92,9 @@ class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
         """
         # Convert inputs and outputs around the forward call
         if not self._disable_features:
-            tensor_output = self._call_converted(super().__call__, inputs, kwargs, input_names_to_handle, "pt")
+            tensor_output = self._call_converted(
+                super().__call__, inputs, kwargs, input_names_to_handle, "pt", signature_source=self.forward
+            )
             self._store_output_image(self._convert_output(tensor_output, "pt"), "pt")
             _output_image = self._convert_output(tensor_output, output_type)
 
@@ -154,7 +157,8 @@ class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
 
         Args:
             inputs: Inputs to operate on.
-            input_names_to_handle: List of input names to convert.
+            input_names_to_handle: List of parameter names to convert. Module calls use the ``forward``
+                signature; a variadic parameter name selects all its values.
                 If None, convert every tensor, NumPy array and PIL image argument, and load a string as an image
                 path only if it is the first positional argument.
             output_type: Desired output type ('pt', 'numpy', or 'pil').
@@ -166,7 +170,9 @@ class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
         """
         # Convert inputs and outputs around the forward call
         if not self._disable_features:
-            tensor_output = self._call_converted(super().__call__, inputs, kwargs, input_names_to_handle, "pt")
+            tensor_output = self._call_converted(
+                super().__call__, inputs, kwargs, input_names_to_handle, "pt", signature_source=self.forward
+            )
             self._store_output_image(self._convert_output(tensor_output, "pt"), "pt")
             _output_image = self._convert_output(tensor_output, output_type)
 

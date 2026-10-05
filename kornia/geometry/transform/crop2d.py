@@ -541,13 +541,20 @@ def crop_by_indices(
                 "Please pass `size` explicitly when box dimensions vary across the batch."
             )
         size = (int(h[0].item()), int(w[0].item())) if B > 0 else (0, 0)
-    out = torch.empty(B, C, *size, device=input_tensor.device, dtype=input_tensor.dtype)
-    # Find out the cropped shapes that need to be resized.
+    # Unbind only when batch-slice gradients would allocate a full input buffer for every crop. On that
+    # path the rows are also joined with one ``cat``: writing them into ``out`` row by row would make the
+    # backward clone the gradient of the whole output once per row.
+    rows = input_tensor.unbind(0) if B > 1 and input_tensor.requires_grad and torch.is_grad_enabled() else None
+    out = torch.empty(B, C, *size, device=input_tensor.device, dtype=input_tensor.dtype) if rows is None else None
+    crops: list[torch.Tensor] = []
     for i in range(B):
-        _out = input_tensor[i : i + 1, :, y1l[i] : y2l[i], x1l[i] : x2l[i]]
+        if rows is None:
+            _out = input_tensor[i : i + 1, :, y1l[i] : y2l[i], x1l[i] : x2l[i]]
+        else:
+            _out = rows[i][None, :, y1l[i] : y2l[i], x1l[i] : x2l[i]]
         if _out.shape[-2:] != size:
             if shape_compensation == "resize":
-                out[i] = resize(
+                _out = resize(
                     _out,
                     size,
                     interpolation=interpolation,
@@ -556,9 +563,13 @@ def crop_by_indices(
                     antialias=antialias,
                 )
             else:
-                out[i] = F.pad(_out, [0, size[1] - _out.shape[-1], 0, size[0] - _out.shape[-2]])
+                _out = F.pad(_out, [0, size[1] - _out.shape[-1], 0, size[0] - _out.shape[-2]])
+        if out is None:
+            crops.append(_out)
         else:
             out[i] = _out
+    if out is None:
+        return torch.cat(crops).contiguous()
     return out
 
 
