@@ -509,10 +509,6 @@ add(
     lambda x, s: KF.gaussian_blur2d(x, (5, 5), s, separable=False),
     [IMG, torch.tensor([[1.5, 2.0]])],
 )
-add("filters.gaussian_blur2d_t", g, None, [], skip="deprecated alias of gaussian_blur2d")
-add("filters.get_gaussian_kernel1d_t", g, None, [], skip="deprecated alias of get_gaussian_kernel1d")
-add("filters.get_gaussian_kernel2d_t", g, None, [], skip="deprecated alias of get_gaussian_kernel2d")
-add("filters.get_gaussian_kernel3d_t", g, None, [], skip="deprecated alias of get_gaussian_kernel3d")
 add(
     "filters.gaussian",
     g,

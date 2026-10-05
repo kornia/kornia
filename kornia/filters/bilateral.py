@@ -24,6 +24,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.utils import is_compiling
 
 from .kernels import _check_kernel_size, _unpack_2d_ks, get_gaussian_kernel2d
 from .median import _compute_zero_padding
@@ -52,7 +53,12 @@ def _bilateral_blur(
 
     if isinstance(sigma_color, torch.Tensor):
         KORNIA_CHECK_SHAPE(sigma_color, ["B"])
+        # `bool()` on a tensor is untraceable by dynamo; skip the data-dependent check under compile.
+        if not is_compiling() and not bool((sigma_color > 0).all()):
+            KORNIA_CHECK(False, f"sigma_color must be positive. Got {sigma_color}")
         sigma_color = sigma_color.to(device=input.device, dtype=input.dtype).view(-1, 1, 1, 1, 1, 1)
+    elif not sigma_color > 0:
+        KORNIA_CHECK(False, f"sigma_color must be positive. Got {sigma_color}")
 
     ky, kx = _unpack_2d_ks(kernel_size)
     _check_kernel_size((ky, kx))
@@ -105,7 +111,7 @@ def bilateral_blur(
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
         kernel_size: the size of the kernel. Each entry must be a positive odd integer.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
-          Smaller values preserve more edges.
+          Smaller values preserve more edges. It must be positive.
         sigma_space: the standard deviation for spatial Gaussian kernel.
           This is similar to ``sigma`` in :func:`gaussian_blur2d()`.
         border_type: the padding mode to be applied before convolving.
@@ -121,6 +127,7 @@ def bilateral_blur(
 
     Raises:
         BaseError: if an entry of ``kernel_size`` is even or not positive.
+        BaseError: if ``sigma_color`` is not positive.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -154,7 +161,7 @@ def joint_bilateral_blur(
         guidance: the guidance torch.Tensor with shape :math:`(B,C,H,W)`.
         kernel_size: the size of the kernel. Each entry must be a positive odd integer.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
-          Smaller values preserve more edges.
+          Smaller values preserve more edges. It must be positive.
         sigma_space: the standard deviation for spatial Gaussian kernel.
           This is similar to ``sigma`` in :func:`gaussian_blur2d()`.
         border_type: the padding mode to be applied before convolving.
@@ -169,6 +176,7 @@ def joint_bilateral_blur(
 
     Raises:
         BaseError: if an entry of ``kernel_size`` is even or not positive.
+        BaseError: if ``sigma_color`` is not positive.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -220,7 +228,7 @@ class BilateralBlur(_BilateralBlur):
     Arguments:
         kernel_size: the size of the kernel. Each entry must be a positive odd integer.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
-          Smaller values preserve more edges.
+          Smaller values preserve more edges. It must be positive.
         sigma_space: the standard deviation for spatial Gaussian kernel.
           This is similar to ``sigma`` in :func:`gaussian_blur2d()`.
         border_type: the padding mode to be applied before convolving.
@@ -240,6 +248,7 @@ class BilateralBlur(_BilateralBlur):
 
     Raises:
         BaseError: if an entry of ``kernel_size`` is even or not positive; raised from the constructor.
+        BaseError: if ``sigma_color`` is not positive; raised from ``forward``.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -287,7 +296,7 @@ class JointBilateralBlur(_BilateralBlur):
     Arguments:
         kernel_size: the size of the kernel. Each entry must be a positive odd integer.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
-          Smaller values preserve more edges.
+          Smaller values preserve more edges. It must be positive.
         sigma_space: the standard deviation for spatial Gaussian kernel.
           This is similar to ``sigma`` in :func:`gaussian_blur2d()`.
         border_type: the padding mode to be applied before convolving.
@@ -306,6 +315,7 @@ class JointBilateralBlur(_BilateralBlur):
 
     Raises:
         BaseError: if an entry of ``kernel_size`` is even or not positive; raised from the constructor.
+        BaseError: if ``sigma_color`` is not positive; raised from ``forward``.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
