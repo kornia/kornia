@@ -6,18 +6,13 @@ kornia.geometry.quaternion
 
 .. currentmodule:: kornia.geometry.quaternion
 
-Checkpoint compatibility
-------------------------
+Module state
+------------
 
-Plain tensor quaternion data is saved as a persistent buffer under ``_data``.
-The corresponding rotation keys are ``_q._data`` for ``So3`` and
-``_rotation._q._data`` for ``Se3``, prefixed by the enclosing module's attribute names when nested.
-Explicit ``nn.Parameter`` inputs remain parameters at construction and keep their existing checkpoint keys.
-
-Older checkpoints omitted rotations constructed from plain tensors. Loading those checkpoints with
-``strict=True`` now raises a missing-key error. ``strict=False`` reports the missing rotation keys and
-leaves the target's initialized rotation unchanged; it cannot recover a rotation that was never saved.
-Supply the intended rotation separately before using such a checkpoint.
+Quaternion data given as a plain tensor is a persistent buffer under ``_data``; an ``nn.Parameter`` stays a
+parameter under the same key. ``So3`` saves its rotation as ``_q._data`` and ``Se3`` as ``_rotation._q._data``,
+prefixed by the enclosing module's attribute names when nested. ``load_state_dict(strict=True)`` raises on a state
+dict that lacks these keys; with ``strict=False`` they are reported as missing and the target keeps its own rotation.
 
 .. autoclass:: Quaternion
    :members:

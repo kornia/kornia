@@ -70,10 +70,10 @@ class Quaternion(nn.Module):
           positive factor changes their result by roundoff only, as long as its squared components stay within the
           range of the dtype and its norm stays above ``1e-12``.
         - At construction, plain tensor data is registered as a persistent buffer; an explicit ``nn.Parameter``
-          remains a parameter.
-          Both are saved and restored by ``state_dict()`` and ``load_state_dict()`` and follow an enclosing
-          module's device and dtype conversions. Construction preserves the input tensor and its autograd history.
-          ``Quaternion.to()`` returns a new quaternion; enclosing module conversions update the existing module's state.
+          remains a parameter. Both are saved and restored by ``state_dict()`` and ``load_state_dict()`` and follow
+          an enclosing module's device and dtype conversions. Construction preserves the input tensor and its
+          autograd history. ``Quaternion.to()`` returns a new quaternion; enclosing module conversions update the
+          existing module's state.
         - Known defects: ``to_euler()`` returns a triple that does not reproduce the rotation for a non-unit ``q``
           (`#3953 <https://github.com/kornia/kornia/issues/3953>`_) and for most rotations at a pitch of
           :math:`\pm\pi/2` (`#3950 <https://github.com/kornia/kornia/issues/3950>`_); below a norm of ``1e-12``,
