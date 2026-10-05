@@ -57,7 +57,7 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
         if isinstance(param, ParamItem) and isinstance(param.data, dict):
             _params = param.data
         else:
-            raise TypeError(f"Expected param (ParamItem.data) be a dictionary. Gotcha {param}.")
+            raise TypeError(f"Expected param (ParamItem.data) be a dictionary. Got {param}.")
         return _params
 
     @classmethod
@@ -76,7 +76,7 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
         if isinstance(param, ParamItem) and isinstance(param.data, list):
             _params = param.data
         else:
-            raise TypeError(f"Expected param (ParamItem.data) be a list. Gotcha {param}.")
+            raise TypeError(f"Expected param (ParamItem.data) be a list. Got {param}.")
         return _params
 
     @classmethod
