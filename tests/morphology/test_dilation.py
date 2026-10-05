@@ -860,6 +860,63 @@ class TestDilate(BaseTester):
             expected_tensor = torch.tensor(expected, device=device, dtype=actual.dtype)
             torch.testing.assert_close(actual, expected_tensor, rtol=0.0, atol=0.0, equal_nan=True)
 
+    @pytest.mark.parametrize("op", [dilation, erosion, opening, closing, gradient, top_hat, bottom_hat])
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_convention_shift_tracks_nan_when_maximum_ignores_it_4997(
+        self, device, dtype, op, requires_grad, monkeypatch
+    ):
+        # MPS before PyTorch 2.7 returns the non-NaN operand of `torch.maximum`/`torch.minimum`, and the only MPS CI
+        # leg runs a newer PyTorch. Patching in a pairwise reduction with that behaviour runs the NaN tracking of the
+        # `shift` engine wherever this suite runs (`torch.fmax`/`torch.fmin` would do, but lack MPS bfloat16 kernels
+        # on old PyTorch). Row 0 holds a NaN and an `inf` that meets the `-inf` structuring element entry
+        # (`inf + -inf` is NaN); row 1 is finite.
+        nan, inf = float("nan"), float("inf")
+        tensor = torch.tensor(
+            [[[[0.25, nan, 0.75, inf, 0.5, -inf, 0.75]]], [[[0.5, 0.25, 0.75, 0.0, 1.0, 0.5, 0.25]]]],
+            device=device,
+            dtype=dtype,
+        )
+        ones = torch.ones(1, 3, device=device, dtype=dtype)
+        cases = [
+            (ones, None),
+            (torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype), None),
+            (ones, torch.tensor([[0.0, -inf, 0.5]], device=device, dtype=dtype)),
+        ]
+        expected = [op(tensor, kernel, structuring_element=se, engine="shift") for kernel, se in cases]
+
+        def ignoring_nan(reduce):
+            def pairwise(a, b, out=None):
+                result = torch.where(torch.isnan(a), b, torch.where(torch.isnan(b), a, reduce(a, b)))
+                return result if out is None else out.copy_(result)
+
+            return pairwise
+
+        def run_with_nan_ignoring_maximum(track_nan):
+            with monkeypatch.context() as patch:
+                patch.setattr(morphology_module, "_maximum_ignores_nan", lambda _: track_nan)
+                patch.setattr(torch, "maximum", ignoring_nan(torch.maximum))
+                patch.setattr(torch, "minimum", ignoring_nan(torch.minimum))
+                image = tensor.clone().requires_grad_(requires_grad)
+                return [op(image, kernel, structuring_element=se, engine="shift").detach() for kernel, se in cases]
+
+        for actual, reference in zip(run_with_nan_ignoring_maximum(True), expected):
+            torch.testing.assert_close(actual, reference, rtol=0.0, atol=0.0, equal_nan=True)
+            # The finite row is untouched by the NaN of the other row.
+            assert not torch.isnan(actual[1]).any()
+        # Control: without the tracking, the patched reduction does drop NaN, so the assertion above is not vacuous.
+        dropped = run_with_nan_ignoring_maximum(False)
+        assert sum(int(out.isnan().sum()) for out in dropped) < sum(int(out.isnan().sum()) for out in expected)
+
+    def test_nan_tracking_gate_matches_the_backend_4997(self, device, dtype):
+        # The `shift` engine tracks NaN exactly where the backend's pairwise maximum/minimum drop it.
+        nan_first = torch.tensor([float("nan"), 1.0], device=device, dtype=dtype)
+        nan_second = nan_first.flip(0)
+        propagates = (
+            torch.isnan(torch.maximum(nan_first, nan_second)).all()
+            and torch.isnan(torch.minimum(nan_first, nan_second)).all()
+        )
+        assert morphology_module._maximum_ignores_nan(nan_first.device) == (not bool(propagates))
+
     @pytest.mark.parametrize("image_dtype", [torch.bool, torch.uint8, torch.int32, torch.int64])
     def test_convention_non_float_images_are_rejected_4735(self, device, image_dtype):
         kernel = torch.ones(1, 3, device=device)

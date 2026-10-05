@@ -29,6 +29,16 @@ __all__ = ["bottom_hat", "closing", "dilation", "erosion", "gradient", "opening"
 _MPS_MAXIMUM_IGNORES_NAN: Final[bool] = torch_version_lt(2, 7, 0)
 
 
+def _maximum_ignores_nan(device: torch.device, mps_ignores_nan: bool = _MPS_MAXIMUM_IGNORES_NAN) -> bool:
+    """Whether ``torch.maximum``/``torch.minimum`` return the non-NaN operand of a pair on ``device``.
+
+    MPS does so before PyTorch 2.7 (pytorch/pytorch#143976, fixed by pytorch/pytorch#144086), so the ``shift``
+    engine tracks NaN itself there. The version flag is a default argument because TorchScript cannot read a
+    module-level ``bool``.
+    """
+    return device.type == "mps" and mps_ignores_nan
+
+
 def _validate_morphology_inputs(
     tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Optional[torch.Tensor], border_type: str
 ) -> None:
@@ -91,7 +101,6 @@ def _shift_reduce(
     dilate: bool,
     inplace: bool,
     reduction_value: Optional[float],
-    torch_ignores_nan: bool = _MPS_MAXIMUM_IGNORES_NAN,
 ) -> torch.Tensor:
     """Running max (``dilate``) or min over the ``k_h * k_w`` shifted views of ``padded`` plus their offsets.
 
@@ -122,7 +131,8 @@ def _shift_reduce(
     # than masking (CPU float32, 3 x 3 and 7 x 7). While a backward graph is being recorded, or for a
     # a call without a reduction value, the masked form is kept.
     recording = torch.is_grad_enabled() and (padded.requires_grad or offsets.requires_grad)
-    propagate_nan = padded.device.type == "mps" and torch_ignores_nan
+    # Where the pairwise reduction drops NaN (see ``_maximum_ignores_nan``), a running ``isnan`` mask restores it.
+    propagate_nan = _maximum_ignores_nan(padded.device)
     if reduction_value is None or recording:
         # Keep each offset two-dimensional so PyTorch applies tensor-tensor dtype promotion. Indexing
         # down to a scalar would instead apply wrapped-scalar rules and silently keep ``padded.dtype``.
