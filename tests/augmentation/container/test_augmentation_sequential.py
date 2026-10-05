@@ -1800,3 +1800,54 @@ class TestAugmentationSequentialReplay:
             actual_inverse = aug.inverse(*first, params=params)
             for actual, expected in zip(actual_inverse, expected_inverse):
                 assert_close(actual, expected)
+
+    def test_annotations_reuse_the_matrix_of_the_image_call(self, device, dtype, monkeypatch):
+        # Within one call the image records its matrix next to the params dict it was given, and the mask, box and
+        # keypoint handlers reuse it instead of recomputing one matrix each. The inverse recomputes the image's matrix
+        # once, as an image-only inverse does, and its annotation handlers reuse the recorded one.
+        calls = []
+        generate = K.RandomAffine.generate_transformation_matrix
+
+        def counted(self, *args, **kwargs):
+            calls.append(None)
+            return generate(self, *args, **kwargs)
+
+        monkeypatch.setattr(K.RandomAffine, "generate_transformation_matrix", counted)
+        image = torch.zeros(2, 1, 16, 16, device=device, dtype=dtype)
+        boxes = torch.tensor([[[2.0, 4.0, 6.0, 8.0]]], device=device, dtype=dtype).expand(2, -1, -1)
+        keypoints = torch.tensor([[[3.0, 5.0]]], device=device, dtype=dtype).expand(2, -1, -1)
+        aug = K.AugmentationSequential(
+            K.RandomAffine(45.0, p=1.0), data_keys=["input", "mask", "bbox_xyxy", "keypoints"]
+        )
+        out = aug(image, image, boxes, keypoints)
+        assert len(calls) == 1
+        aug.inverse(*out)
+        assert len(calls) == 2
+
+    def test_annotation_replay_after_a_direct_leaf_call(self, device, dtype):
+        # A child called on its own between the container call and the replay records another draw; the replay
+        # must still use the params it is given.
+        with torch.random.fork_rng(devices=[device] if device.type == "cuda" else []):
+            torch.manual_seed(0)
+            image = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)
+            keypoints = torch.tensor([[[3.0, 5.0]]], device=device, dtype=dtype)
+            aug = K.AugmentationSequential(K.RandomAffine(45.0, p=1.0), data_keys=["input", "keypoints"])
+            out_image, out_keypoints = aug(image, keypoints)
+            params = aug._params
+            aug[0](torch.rand(3, 1, 16, 16, device=device, dtype=dtype))
+            _, back = aug.inverse(out_image, out_keypoints, params=params)
+            assert_close(back, keypoints)
+
+    def test_annotation_replay_of_an_oversized_padded_crop(self, device, dtype):
+        # A crop larger than the padded canvas is scaled against that canvas. The replayed matrix must use the
+        # unpadded input shape (``forward_input_shape`` minus ``padding_size``), or the keypoints shift.
+        with torch.random.fork_rng(devices=[device] if device.type == "cuda" else []):
+            torch.manual_seed(0)
+            image = torch.rand(2, 1, 16, 16, device=device, dtype=dtype)
+            keypoints = torch.tensor([[[3.0, 5.0], [9.0, 12.0]]], device=device, dtype=dtype).expand(2, -1, -1)
+            aug = K.AugmentationSequential(K.RandomCrop((20, 22), padding=1, p=1.0), data_keys=["input", "keypoints"])
+            _, expected = aug(image, keypoints)
+            params = aug._params
+            aug(torch.rand(3, 1, 15, 17, device=device, dtype=dtype), keypoints[:1].expand(3, -1, -1))
+            replayed = aug(keypoints, params=params, data_keys=["keypoints"])
+            assert_close(replayed, expected)

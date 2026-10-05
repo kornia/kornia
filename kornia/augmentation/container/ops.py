@@ -65,13 +65,9 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
     def get_transform_matrix(cls, module: nn.Module, param: ParamItem, input: Any) -> torch.Tensor:
         """Get the matrix recorded by these params, not by the module's most recent image call."""
         params = cls.get_instance_module_param(param)
-        matrix_params = getattr(module, "_transform_matrix_params", None)
-        if (
-            not is_exporting()
-            and isinstance(matrix_params, dict)
-            and matrix_params.keys() == params.keys()
-            and all(matrix_params[key] is value for key, value in params.items())
-        ):
+        # The image call records the params dict it was given next to the matrix it computed from it. The same dict
+        # object is the same draw, so the recorded matrix is reused; other params are replayed from their values.
+        if not is_exporting() and getattr(module, "_transform_matrix_params", None) is params:
             transform = getattr(module, "transform_matrix", None)
             if transform is not None:
                 return transform
