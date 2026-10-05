@@ -47,7 +47,7 @@ dev = [
   "setuptools",  # torch.compile / triton on py3.11 + torch 2.5.1, which does not declare it there
 ]
 docs = [
-  "pydata-sphinx-theme>=0.21,<0.22",  # _static/css/pydata.css and js/custom.js target theme internals
+  "pydata-sphinx-theme>=0.21,<0.23",  # _static/css/pydata.css and js/custom.js target theme internals
   "matplotlib",
   # kornia.core.mixin.onnx annotates public members with ``onnx.ModelProto``; without onnx the
   # lazy loader raises ImportError while autodoc resolves them and the build dies. onnxruntime is
@@ -226,8 +226,15 @@ select = [
   "RSE",  # flake8-raise
   "RUF",  # Ruff-specific rules
   "S",  # flake8-bandit
+  "SIM103",  # needless-bool
+  "SIM114",  # if-with-same-arms
   "SIM115",  # open-file-with-context-handler
+  "SIM118",  # in-dict-keys
+  "SIM201",  # negate-equal-op
+  "SIM210",  # if-expr-with-true-false
+  "SIM211",  # if-expr-with-false-true
   "SIM222",  # expr-or-true
+  "SIM401",  # if-else-block-instead-of-dict-get
   "SIM910",  # dict-get-with-none-default
   "SLOT",  # flake8-slots
   "T10",  # flake8-debugger
@@ -244,7 +251,7 @@ select = [
   # "DJ",   # flake8-django
   # "EM",   # flake8-errmsg
   # "ERA",  # eradicate
-  # "EXE",  # flake8-executable
+  "EXE",  # flake8-executable
   # "FA",   # flake8-future-annotations
   # "FBT",  # flake8-boolean-trap
   # "FIX",  # flake8-fixme

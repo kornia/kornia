@@ -603,7 +603,7 @@ class LocalFeatureMatcher(nn.Module):
         """
         num_image_pairs: int = data["image0"].shape[0]
 
-        if ("lafs0" not in data.keys()) or ("descriptors0" not in data.keys()):
+        if ("lafs0" not in data) or ("descriptors0" not in data):
             # One can supply pre-extracted local features
             mask0 = data.get("mask0")
             if mask0 is not None and mask0.dim() == 3:
@@ -613,7 +613,7 @@ class LocalFeatureMatcher(nn.Module):
         else:
             lafs0, descs0 = data["lafs0"], data["descriptors0"]
 
-        if ("lafs1" not in data.keys()) or ("descriptors1" not in data.keys()):
+        if ("lafs1" not in data) or ("descriptors1" not in data):
             mask1 = data.get("mask1")
             if mask1 is not None and mask1.dim() == 3:
                 mask1 = mask1.unsqueeze(1)

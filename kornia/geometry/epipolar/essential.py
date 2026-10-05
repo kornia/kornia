@@ -17,7 +17,7 @@
 
 """Module containing functionalities for the Essential matrix."""
 
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Tuple, Union
 
 import torch
 
@@ -352,11 +352,18 @@ def _nister_candidates(basis: torch.Tensor, out_dtype: torch.dtype) -> Tuple[tor
     # the identity instead, so that nothing below overflows or raises in the forward pass or gives a NaN gradient
     # in the backward, and all ten of their slots are NaN.
     A10, b10 = coeffs[..., :10], coeffs[..., 10:]
-    lu, pivots, info = torch.linalg.lu_factor_ex(A10)
+    eye10 = torch.eye(10, device=device, dtype=dtype)
+    lu, pivots, info = torch.linalg.lu_factor_ex(A10.detach() if A10.requires_grad else A10)
     singular = info > 0
-    if bool(singular.any()):
-        eye10 = torch.eye(10, device=device, dtype=dtype).expand(B, 10, 10)
+    if A10.requires_grad:
+        # The backward of a singular factorization is 0 * inf even in the rows whose result is replaced (x86 LAPACK):
+        # differentiate the factorization of the substituted matrix instead.
         lu, pivots, _ = torch.linalg.lu_factor_ex(torch.where(singular[:, None, None], eye10, A10))
+    else:
+        # The factorization of the identity is the identity without row exchanges: substituting it costs no second
+        # factorization, and no host synchronization, which would split a compiled graph.
+        lu = torch.where(singular[:, None, None], eye10, lu)
+        pivots = torch.where(singular[:, None], torch.arange(1, 11, device=device, dtype=pivots.dtype), pivots)
     eliminated = torch.linalg.lu_solve(lu, pivots, b10)  # (B, 10, 10)
 
     # ---- hidden-variable matrix (B, 3, 13) and its determinant, a polynomial of degree ten in z ----
@@ -878,7 +885,7 @@ def _refine_essential_lm(
     x2: torch.Tensor,
     mask: Optional[torch.Tensor],
     loss: str,
-    scale2: float,
+    scale2: Union[float, torch.Tensor],
     iters: int,
 ) -> torch.Tensor:
     """Levenberg-Marquardt on the Sampson distance, batched over essential matrices ``(K, 3, 3)``.

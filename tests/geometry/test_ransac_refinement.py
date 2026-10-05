@@ -107,6 +107,36 @@ class TestRANSACRefinementCPU(BaseTester):
         self.assert_close(actual, expected, atol=tolerance, rtol=tolerance)
 
     @pytest.mark.parametrize("model", ["homography", "fundamental", "essential"])
+    @pytest.mark.parametrize("loss", ["truncated", "cauchy"])
+    def test_numeric_zero_mask_excludes_singular_correspondence(self, device, dtype, model, loss):
+        # A zero numeric mask is how the compiled RANSAC program drops its padding rows.  It cannot use the CPU
+        # boolean-mask compaction, so the residual and Jacobian must be made finite before masking.  The appended
+        # correspondence lies at a projective horizon for H and at both epipoles for F/E.
+        refine, matrix, x1, x2 = self.scene(device, dtype, model)
+        if model == "homography":
+            matrix = matrix.new_tensor([[[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 1.0, 0.0]]])
+            singular_x1 = x1.new_tensor([[1.0, 0.0, 1.0]])
+            singular_x2 = x2.new_tensor([[0.0, 0.0]])
+        else:
+            matrix = matrix.new_tensor([[[0.0, -0.8, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 0.0]]])
+            if model == "essential":
+                matrix = matrix / matrix.norm(dim=(-2, -1), keepdim=True)
+            singular_x1 = x1.new_tensor([[0.0, 0.0, 1.0]])
+            singular_x2 = x2.new_tensor([[0.0, 0.0, 1.0]])
+        weights = x1.new_ones(1, len(x1) + 1)
+        weights[0, -1] = 0.0
+        with torch.no_grad():
+            # 0.1 keeps the retained residuals away from the truncated-loss acceptance boundary, where
+            # adding an otherwise zero row can change float32 reduction order.
+            initial = refine(matrix, x1, x2, None, loss, 0.1, 0)
+            expected = refine(matrix, x1, x2, None, loss, 0.1, 5)
+            actual = refine(matrix, torch.cat([x1, singular_x1]), torch.cat([x2, singular_x2]), weights, loss, 0.1, 5)
+        assert torch.isfinite(actual).all()
+        assert (expected - initial).norm() > 1e-3
+        tolerance = 5e-4 if dtype == torch.float32 else 2e-6
+        self.assert_close(actual, expected, atol=tolerance, rtol=tolerance)
+
+    @pytest.mark.parametrize("model", ["homography", "fundamental", "essential"])
     def test_empty_mask(self, device, dtype, model):
         refine, matrix, x1, x2 = self.scene(device, dtype, model)
         mask = torch.zeros(1, len(x1), device=device, dtype=torch.bool)
