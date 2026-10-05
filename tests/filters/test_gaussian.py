@@ -496,6 +496,23 @@ class TestGaussianBlur2d(BaseTester):
 
         self.assert_close(op(data), op_optimized(data))
 
+    @pytest.mark.parametrize("per_sample", [False, True], ids=["shared_sigma", "per_sample_sigma"])
+    def test_dynamo_sigma_batch_check_is_dynamic_5169(self, per_sample, device, dtype, torch_optimizer):
+        """The sigma batch check does not specialize the batch: one dynamic graph serves every batch (#5169)."""
+        from torch._dynamo.testing import CompileCounter
+
+        def op(x, sigma):
+            return gaussian_blur2d(x, (3, 3), sigma, "constant")
+
+        counter = CompileCounter()
+        compiled = torch_optimizer(op, backend=counter, fullgraph=True, dynamic=True)
+        # no batch equals another axis, including sigma's 2 columns, so duck sizing cannot tie the batch to it
+        for batch in (4, 5, 6):
+            image = torch.rand(batch, 3, 7, 9, device=device, dtype=dtype)
+            sigma = torch.rand(batch if per_sample else 1, 2, device=device, dtype=dtype) + 0.5
+            self.assert_close(compiled(image, sigma), op(image, sigma))
+        assert counter.frame_count == 1
+
     @pytest.mark.device_agnostic
     def test_onnx_export_legacy(self, dtype):
         """Test that GaussianBlur2d can be exported through the legacy ONNX exporter."""
@@ -622,21 +639,23 @@ class TestGaussianBlur2d(BaseTester):
         output = gaussian_blur2d(sample, (3, 3), (1.5, 1.5))
         assert output.shape == sample.shape
 
-    def test_batched_sigma_mismatched_batch_size(self, device, dtype):
-        """A sigma batch that is neither 1 nor the input batch raises through the kernel batch check (#5154).
+    @pytest.mark.parametrize("separable", [True, False])
+    def test_batched_sigma_mismatched_batch_size(self, separable, device, dtype):
+        """A sigma batch that is neither 1 nor the input batch raises at the entry with a message naming sigma (#5169).
 
-        A check of the sigma shape at the entry of gaussian_blur2d is #5169.
+        The check runs before any kernel is built, so both the separable and the dense path raise the same error.
         """
         sample = torch.rand(4, 3, 8, 8, device=device, dtype=dtype)
-        # 2 rows divide the 4 samples and 3 do not: both raise the kornia error, not a torch reshape error
+        # 2 rows divide the 4 samples and 3 do not: both raise the sigma check, not the kernel batch check (#5154) or
+        # a torch reshape error
         for rows in (2, 3):
             sigma = torch.full((rows, 2), 1.5, device=device, dtype=dtype)
-            with pytest.raises(BaseError, match=f"kernel batch of {rows} for an input batch of 4"):
-                gaussian_blur2d(sample, (3, 3), sigma)
+            with pytest.raises(BaseError, match=f"sigma batch of {rows} for an input batch of 4"):
+                gaussian_blur2d(sample, (3, 3), sigma, separable=separable)
         # one row for the whole batch and one row per sample run
         for rows in (1, 4):
             sigma = torch.full((rows, 2), 1.5, device=device, dtype=dtype)
-            assert gaussian_blur2d(sample, (3, 3), sigma).shape == sample.shape
+            assert gaussian_blur2d(sample, (3, 3), sigma, separable=separable).shape == sample.shape
 
     def test_all_border_types(self, device, dtype):
         """Test that all supported border types work."""

@@ -2744,6 +2744,15 @@ class TestConvertPointsToHomogeneous(BaseTester):
 
         self.assert_close(actual, expected)
 
+    def test_third_from_last_dim_of_2_pow_16(self, device, dtype):
+        # On MPS (torch 2.5.1 and 2.14) a constant F.pad with a non-zero value returns garbage once dim -3 reaches
+        # 2**16: RANSAC scored (B, N, 1, 2) segment endpoints with B * N >= 2**16 through it (#5443).
+        points = (torch.arange(2**17, device=device) % 7).reshape(2**16, 1, 2).to(dtype)
+        out = kornia.geometry.conversions.convert_points_to_homogeneous(points)
+        assert out.shape == (2**16, 1, 3)
+        assert torch.equal(out[..., :2], points)
+        assert bool((out[..., 2] == 1).all())
+
 
 class TestConvertAtoH(BaseTester):
     def test_convert_points(self, device, dtype):

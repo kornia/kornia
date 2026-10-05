@@ -146,6 +146,13 @@ def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str 
     boxes_1_xyxy = _convert_boxes_to_xyxy(boxes_1, box_format)
     boxes_2_xyxy = _convert_boxes_to_xyxy(boxes_2, box_format)
 
+    output_dtype = torch.promote_types(boxes_1_xyxy.dtype, boxes_2_xyxy.dtype)
+    # Ordinary image-sized areas overflow float16; compute the ratio before rounding back.
+    if boxes_1_xyxy.dtype in (torch.float16, torch.bfloat16):
+        boxes_1_xyxy = boxes_1_xyxy.float()
+    if boxes_2_xyxy.dtype in (torch.float16, torch.bfloat16):
+        boxes_2_xyxy = boxes_2_xyxy.float()
+
     # Validate boxes are in proper xyxy format. The checks read the data, which graph capture cannot do;
     # skip them under export.
     if not is_exporting():
@@ -173,4 +180,5 @@ def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str 
     # Find the union
     union = areas_set_1.unsqueeze(1) + areas_set_2.unsqueeze(0) - intersection  # (n1, n2)
 
-    return intersection / union  # (n1, n2)
+    iou = intersection / union  # (n1, n2)
+    return iou.to(output_dtype) if output_dtype in (torch.float16, torch.bfloat16) else iou
