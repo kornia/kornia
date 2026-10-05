@@ -612,7 +612,7 @@ class Boxes:
         Returns:
             Area for each box, shaped :math:`(N,)` or :math:`(B, N)`.
         """
-        coords = self._data.view((-1, 4, 2)) if self._data.ndim == 4 else self._data
+        coords = self._data.flatten(0, 1) if self._data.ndim == 4 else self._data
         # calculate centroid of the box
         centroid = coords.mean(dim=1, keepdim=True)
         # calculate the angle from centroid to each corner
