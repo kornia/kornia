@@ -158,6 +158,17 @@ class TestBilateralBlur(BaseTester):
             single = {k: (v[row : row + 1] if isinstance(v, torch.Tensor) else v) for k, v in kwargs.items()}
             self.assert_close(actual[i : i + 1], bilateral_blur(image[i : i + 1], 3, **single))
 
+    @pytest.mark.parametrize("shape", [(), (2,), (1, 1)], ids=["0d", "1d", "one_column"])
+    def test_sigma_space_shape_is_checked_before_its_batch_5430(self, shape, device, dtype):
+        # The (B, 2) shape check runs before the batch check: a 0-d sigma_space has no batch to read, and a 1-D pair
+        # on a batch-1 input would otherwise be reported as a sigma_space batch of 2.
+        from kornia.core.exceptions import ShapeError
+
+        image = torch.ones(1, 1, 8, 9, device=device, dtype=dtype)
+        sigma_space = torch.full(shape, 1.5, device=device, dtype=dtype)
+        with pytest.raises(ShapeError):
+            bilateral_blur(image, 3, 0.5, sigma_space)
+
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
         inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
