@@ -81,7 +81,7 @@ class Keypoints:
         if not (2 <= keypoints.ndim <= 3 and keypoints.shape[-1:] == (2,)):
             raise ValueError(f"Keypoints shape must be (N, 2) or (B, N, 2). Got {keypoints.shape}.")
 
-        self._is_batched = False if keypoints.ndim == 2 else True
+        self._is_batched = keypoints.ndim != 2
 
         self._data = keypoints
 
@@ -375,7 +375,7 @@ class Keypoints3D:
         if not (2 <= keypoints.ndim <= 3 and keypoints.shape[-1:] == (3,)):
             raise ValueError(f"Keypoints shape must be (N, 3) or (B, N, 3). Got {keypoints.shape}.")
 
-        self._is_batched = False if keypoints.ndim == 2 else True
+        self._is_batched = keypoints.ndim != 2
 
         self._data = keypoints
 

@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import math
 import warnings
 
 import pytest
@@ -90,7 +91,8 @@ class Test3DAugmentationConventions(BaseTester):
         volume = torch.arange(120, device=device, dtype=dtype).reshape(1, 1, 4, 5, 6)
         center = K.CenterCrop3D((2, 3, 4), p=1.0)
         crop = K.RandomCrop3D((2, 3, 4), p=1.0, same_on_batch=True)
-        assert center.flags["align_corners"] and crop.flags["align_corners"]
+        assert center.flags["align_corners"]
+        assert crop.flags["align_corners"]
         assert center.flags["resample"].name == crop.flags["resample"].name == "BILINEAR"
         assert center(volume).shape == crop(volume).shape == (1, 1, 2, 3, 4)
         self.assert_close(center(volume), volume[..., 1:3, 1:4, 1:5])
@@ -147,7 +149,8 @@ class Test3DAugmentationConventions(BaseTester):
         affine = K.RandomAffine3D((0.0, 0.0, 0.0), p=1.0)
         rotation = K.RandomRotation3D((0.0, 0.0, 0.0), p=1.0)
         perspective = K.RandomPerspective3D(0.0, p=1.0)
-        assert not affine.flags["align_corners"] and not rotation.flags["align_corners"]
+        assert not affine.flags["align_corners"]
+        assert not rotation.flags["align_corners"]
         assert not perspective.flags["align_corners"]
         assert (
             affine.flags["resample"].name
@@ -187,7 +190,8 @@ class Test3DAugmentationConventions(BaseTester):
         output = augmentation(volume)
 
         assert output.shape == volume.shape
-        assert output.device == volume.device and output.dtype == dtype
+        assert output.device == volume.device
+        assert output.dtype == dtype
         assert torch.isfinite(output).all()
         matrix = augmentation.transform_matrix
         assert torch.isfinite(matrix).all()
@@ -357,6 +361,63 @@ class Test3DAugmentationConventions(BaseTester):
         expected[(0, 0, *line)] = 1 / 3
         self.assert_close(output, expected, atol=1e-4, rtol=0)
 
+    @staticmethod
+    def _rodrigues(degrees: tuple[float, float, float]) -> torch.Tensor:
+        """Rodrigues' rotation matrix for an axis-angle vector given in degrees.
+
+        Written out rather than taken from kornia, so the pin below compares the implementation
+        against the formula its docstrings now describe and not against itself.
+        """
+        vector = torch.tensor(degrees, dtype=torch.float64)
+        axis = vector / vector.norm()
+        angle = math.radians(float(vector.norm()))
+        skew = torch.tensor(
+            [[0.0, -axis[2], axis[1]], [axis[2], 0.0, -axis[0]], [-axis[1], axis[0], 0.0]], dtype=torch.float64
+        )
+        return torch.eye(3, dtype=torch.float64) + math.sin(angle) * skew + (1 - math.cos(angle)) * (skew @ skew)
+
+    @pytest.mark.device_agnostic
+    def test_convention_degrees_are_one_axis_angle_vector_not_euler_5286(self):
+        # test_convention_degrees_and_motion_angle_follow_xyz_order and
+        # test_convention_motion_blur3d_kernel_uses_the_yaw_pitch_roll_order each move ONE angle, which cannot
+        # tell the axis-angle reading apart from per-axis Euler rotations: a single non-zero component behaves
+        # the same under both. Two non-zero components do not, so this moves two.
+        augmentation = K.RandomRotation3D(((90.0, 90.0), (90.0, 90.0), (0.0, 0.0)), p=1.0)
+        augmentation(torch.zeros(1, 1, 3, 3, 3))
+        rotation = augmentation.transform_matrix[0, :3, :3].to(dtype=torch.float64)
+
+        # (90, 90, 0) is one axis-angle vector, so it turns through 90 * sqrt(2) = 127.28 degrees
+        # about (1, 1, 0) / sqrt(2). Neither Euler order gives that matrix: a quarter turn about
+        # x and then about y, or the reverse, differs from it by 0.80 in its largest entry.
+        expected = self._rodrigues((90.0, 90.0, 0.0))
+        self.assert_close(rotation, expected, atol=1e-6, rtol=0)
+        quarter_x = torch.tensor([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]], dtype=torch.float64)
+        quarter_y = torch.tensor([[0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]], dtype=torch.float64)
+        for name, euler in (("x-then-y", quarter_y @ quarter_x), ("y-then-x", quarter_x @ quarter_y)):
+            assert not torch.allclose(rotation, euler, atol=1e-3), name
+
+    @pytest.mark.device_agnostic
+    def test_convention_rotate3d_matches_random_rotation3d_on_a_mixed_axis_5286(self):
+        # The same (90, 90, 0) triple through the geometry entry point the augmentation docstrings
+        # point at: both are the single Rodrigues rotation, and both differ from either Euler
+        # composition, so the two docstrings describe one convention rather than two.
+        rotate3d = kornia.geometry.transform.rotate3d
+        z, y, x = torch.meshgrid(*(torch.arange(9.0) - 4.0,) * 3, indexing="ij")
+        volume = torch.exp(-((x + 3.0) ** 2 + y**2 + z**2) / 0.5)[None, None]
+
+        def peak(result: torch.Tensor) -> tuple[int, int, int]:
+            index = int(result[0, 0].flatten().argmax())
+            return (index % 9 - 4, index // 9 % 9 - 4, index // 81 - 4)  # (x, y, z)
+
+        def rotate(yaw: float, pitch: float, roll: float, source: torch.Tensor | None = None) -> torch.Tensor:
+            return rotate3d(volume if source is None else source, *[torch.tensor([v]) for v in (yaw, pitch, roll)])
+
+        assert peak(rotate(90.0, 90.0, 0.0)) == (-1, -2, 2)
+        assert peak(K.RandomRotation3D(((90.0, 90.0), (90.0, 90.0), (0.0, 0.0)), p=1.0)(volume)) == (-1, -2, 2)
+        # Euler, x then y and y then x, puts the blob on the z axis or the y axis instead.
+        assert peak(rotate(0.0, 90.0, 0.0, rotate(90.0, 0.0, 0.0))) == (0, 0, 3)
+        assert peak(rotate(90.0, 0.0, 0.0, rotate(0.0, 90.0, 0.0))) == (0, -3, 0)
+
     @pytest.mark.device_agnostic
     def test_convention_3d_augmentations_have_no_direct_inverse(self):
         augmentations = (
@@ -464,7 +525,8 @@ class Test3DAugmentationConventions(BaseTester):
             augmentation = K.RandomMotionBlur3D((3, 7), 35.0, 0.5, p=1.0)
             assert augmentation(volume).shape == volume.shape
             drawn = augmentation._params["ksize_factor"]
-            assert drawn.shape == (6,) and drawn.unique().numel() == 1
+            assert drawn.shape == (6,)
+            assert drawn.unique().numel() == 1
             sizes.update(drawn.tolist())
         assert sizes == {3, 5, 7}
         rounded_up = K.RandomMotionBlur3D((4, 4), 35.0, 0.5, p=1.0)
@@ -564,8 +626,10 @@ class Test3DAugmentationConventions(BaseTester):
         aug(torch.rand(64, 1, 5, 6, 7))
         scale = aug._params["scale"]
         assert scale.shape == (64, 3)
-        assert bool((scale[:, 0] == scale[:, 1]).all()) and bool((scale[:, 1] == scale[:, 2]).all())
-        assert 0.5 <= float(scale.min()) and float(scale.max()) <= 2.0
+        assert bool((scale[:, 0] == scale[:, 1]).all())
+        assert bool((scale[:, 1] == scale[:, 2]).all())
+        assert 0.5 <= float(scale.min())
+        assert float(scale.max()) <= 2.0
         assert len(scale[:, 0].unique()) > 1
         self.assert_close(aug.transform_matrix[:, :3, :3].diagonal(dim1=-2, dim2=-1), scale)
         shared = K.RandomAffine3D(0.0, scale=(0.5, 2.0), same_on_batch=True, p=1.0)
@@ -574,7 +638,8 @@ class Test3DAugmentationConventions(BaseTester):
         per_axis = K.RandomAffine3D(0.0, scale=((0.5, 2.0), (0.5, 2.0), (0.5, 2.0)), p=1.0)
         axes = per_axis.forward_parameters(torch.Size([64, 1, 5, 6, 7]))["scale"]
         assert axes.shape == (64, 3)
-        assert not bool((axes[:, 0] == axes[:, 1]).any()) and not bool((axes[:, 1] == axes[:, 2]).any())
+        assert not bool((axes[:, 0] == axes[:, 1]).any())
+        assert not bool((axes[:, 1] == axes[:, 2]).any())
         # The two-value form is range-checked under its own name.
         with pytest.raises(ValueError, match="scale out of bounds"):
             K.RandomAffine3D(0.0, scale=(-0.5, 2.0), p=1.0)
@@ -584,7 +649,8 @@ class Test3DAugmentationConventions(BaseTester):
         pairs = ((1, 2), (3, 4), (5, 6), (7, 8), (9, 10), (11, 12))
         params = K.RandomAffine3D(0.0, shears=pairs, p=1.0).forward_parameters(torch.Size([64, 1, 4, 5, 6]))
         for key, (low, high) in zip(("sxy", "sxz", "syx", "syz", "szx", "szy"), pairs):
-            assert low <= float(params[key].min()) and float(params[key].max()) <= high
+            assert low <= float(params[key].min())
+            assert float(params[key].max()) <= high
 
     @pytest.mark.device_agnostic
     def test_convention_random_crop3d_padding_modes_are_those_of_f_pad(self):
@@ -602,7 +668,8 @@ class Test3DAugmentationConventions(BaseTester):
         assert set(perspective) == {"start_points", "end_points"}
         assert perspective["start_points"].shape == perspective["end_points"].shape == (3, 8, 3)
         blur = rg.MotionBlurGenerator3D(3, 35.0, 0.5)(shape)
-        assert blur["angle_factor"].shape == (3, 3) and blur["ksize_factor"].shape == (3,)
+        assert blur["angle_factor"].shape == (3, 3)
+        assert blur["ksize_factor"].shape == (3,)
         # "odd and at least 3": a kernel of one voxel is rejected.
         with pytest.raises(AssertionError, match="must be odd and greater than 3"):
             K.RandomMotionBlur3D(1, 35.0, 0.5, p=1.0)(torch.rand(1, 1, 5, 5, 5))

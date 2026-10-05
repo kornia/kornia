@@ -1991,6 +1991,13 @@ def _grid(*sizes: int, centre: tuple[int, ...], device, dtype) -> tuple[torch.Te
     return tuple(g.to(device=device, dtype=dtype) for g in torch.meshgrid(*axes, indexing="ij"))
 
 
+def _erf_kernel_reference(size: int, sigma: float) -> torch.Tensor:
+    """The Gaussian integrated over each of ``size`` unit pixels centred on ``(size - 1) / 2``, in float64."""
+    offsets = torch.arange(size, dtype=torch.float64) - (size - 1) / 2
+    weights = torch.special.ndtr((offsets + 0.5) / sigma) - torch.special.ndtr((offsets - 0.5) / sigma)
+    return (weights / weights.sum())[None]
+
+
 def _correlate_at(kernel: torch.Tensor, field: torch.Tensor, centre: tuple[int, ...]) -> torch.Tensor:
     """Correlate a stack of kernels ``(N, *k)`` with ``field`` at one point, as filter2d / filter3d do."""
     window = tuple(slice(c - k // 2, c + k // 2 + 1) for c, k in zip(centre, kernel.shape[1:]))
@@ -2257,18 +2264,42 @@ class TestConventionsKernels(BaseTester):
         expected[3, 1, 2] = 1 / 2
         self.assert_close(kernel((90.0, 90.0, 0.0)), expected)
 
-    def test_wart_gaussian_discrete_kernel1d_tap_count_is_not_kernel_size_5158(self, device, dtype):
-        """get_gaussian_discrete_kernel1d gives 3 taps for kernel_size=1 and k + 1 for an even force_even k (#5158)."""
-        assert get_gaussian_discrete_kernel1d(1, 1.0, device=device, dtype=dtype).shape == (1, 3)
-        even = get_gaussian_discrete_kernel1d(4, 1.0, force_even=True, device=device, dtype=dtype)
-        assert even.shape == (1, 5)
+    def test_convention_gaussian_discrete_kernel1d_has_kernel_size_taps_5158(self, device, dtype):
+        """get_gaussian_discrete_kernel1d gives kernel_size taps, [1.0] for size 1, and rejects an even size (#5158)."""
+        self.assert_close(
+            get_gaussian_discrete_kernel1d(1, 1.0, device=device, dtype=dtype),
+            torch.ones(1, 1, device=device, dtype=dtype),
+        )
+        sigma = torch.tensor([[0.0], [1.5], [20.0]], device=device, dtype=dtype)
+        self.assert_close(get_gaussian_discrete_kernel1d(1, sigma), torch.ones(3, 1, device=device, dtype=dtype))
+        for size in (3, 5, 7):
+            assert get_gaussian_discrete_kernel1d(size, 1.0, device=device, dtype=dtype).shape == (1, size)
+        # force_even changes nothing for an odd size and does not admit an even one: the discrete Gaussian is
+        # defined at integer offsets from the centre tap, so there is no even window
+        odd = get_gaussian_discrete_kernel1d(5, 1.0, device=device, dtype=dtype)
+        assert torch.equal(get_gaussian_discrete_kernel1d(5, 1.0, force_even=True, device=device, dtype=dtype), odd)
+        for size in (2, 4, 6):
+            with pytest.raises(BaseError, match=f"needs an odd window. Got {size}"):
+                get_gaussian_discrete_kernel1d(size, 1.0, force_even=True, device=device, dtype=dtype)
 
-    def test_wart_gaussian_erf_kernel1d_even_kernel_peaks_at_k_half_5158(self, device, dtype):
-        """get_gaussian_erf_kernel1d(force_even=True) samples about k // 2, so an even kernel is off-centre (#5158)."""
-        kernel = get_gaussian_erf_kernel1d(4, 1.0, force_even=True, device=device, dtype=dtype)[0]
-        # the sampled get_gaussian_kernel1d with the same arguments is symmetric about (k - 1) / 2 = 1.5
-        assert int(kernel.float().argmax()) == 2
-        assert kernel[2] > kernel[1]
+    def test_convention_gaussian_erf_kernel1d_even_kernel_is_symmetric_5158(self, device, dtype):
+        """get_gaussian_erf_kernel1d(force_even=True) centres an even kernel on the middle of the window (#5158)."""
+        for size in (2, 4, 6):
+            kernel = get_gaussian_erf_kernel1d(size, 1.0, force_even=True, device=device, dtype=dtype)
+            assert kernel.shape == (1, size)
+            self.assert_close(kernel, kernel.flip(-1))
+            # the two middle taps weigh the same and the most, as in the sampled kernel of the same size
+            self.assert_close(kernel[0, size // 2 - 1], kernel[0, size // 2])
+            assert int(kernel[0].float().argmax()) in (size // 2 - 1, size // 2)
+        # the pixel-integrated Gaussian about (size - 1) / 2
+        for size, sigma in ((4, 0.7), (6, 1.0), (8, 2.5)):
+            kernel = get_gaussian_erf_kernel1d(size, sigma, force_even=True, device=device, dtype=dtype)
+            self.assert_close(kernel, _erf_kernel_reference(size, sigma).to(device=device, dtype=dtype))
+        # an odd size is centred on its middle tap as before
+        self.assert_close(
+            get_gaussian_erf_kernel1d(5, 1.5, device=device, dtype=dtype),
+            _erf_kernel_reference(5, 1.5).to(device=device, dtype=dtype),
+        )
 
     @pytest.mark.parametrize(
         "sigma, expected",

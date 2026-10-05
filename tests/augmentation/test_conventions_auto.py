@@ -72,13 +72,19 @@ class TestAutoAugmentConventions(BaseTester):
     def test_convention_autoaugment_magnitude_bins_select_adjacent_intervals(self):
         degrees = AutoAugment(policy=[[("rotate", 1.0, 9)]]).forward_parameters(torch.Size([64, 1, 8, 6]))
         degrees = degrees[0].data[0].data["degrees"]
-        assert (degrees >= 24.0).all() and (degrees <= 30.0).all()
-        assert degrees.min() < 25.0 and degrees.max() > 29.0  # bounds alone pass for a collapsed interval
+        assert (degrees >= 24.0).all()
+        assert (degrees <= 30.0).all()
+        # bounds alone pass for a collapsed interval
+        assert degrees.min() < 25.0
+        assert degrees.max() > 29.0
         torch.manual_seed(17)
         degrees = AutoAugment(policy=[[("rotate", 1.0, 5)]]).forward_parameters(torch.Size([64, 1, 8, 6]))
         degrees = degrees[0].data[0].data["degrees"]
-        assert (degrees >= 0.0).all() and (degrees <= 6.0).all()  # bin 5 of linspace(-30, 30, 11) is [0, 6]
-        assert degrees.min() < 1.0 and degrees.max() > 5.0
+        # bin 5 of linspace(-30, 30, 11) is [0, 6]
+        assert (degrees >= 0.0).all()
+        assert (degrees <= 6.0).all()
+        assert degrees.min() < 1.0
+        assert degrees.max() > 5.0
         for magnitude in (-1, 10):
             with pytest.raises(ValueError, match=r"in \[0, 9\]"):
                 AutoAugment(policy=[[("rotate", 1.0, magnitude)]])
@@ -110,8 +116,10 @@ class TestAutoAugmentConventions(BaseTester):
         aug = TrivialAugment(policy=[[("rotate", -30.0, 30.0)]])
         degrees = aug.forward_parameters(torch.Size([64, 1, 8, 6]))[0].data[0].data["degrees"]
         assert (degrees.abs() <= 30.0).all()
-        assert (degrees < 0).any() and (degrees > 0).any()
-        assert degrees.abs().min() < 5.0 and degrees.abs().max() > 25.0
+        assert (degrees < 0).any()
+        assert (degrees > 0).any()
+        assert degrees.abs().min() < 5.0
+        assert degrees.abs().max() > 25.0
 
     @pytest.mark.device_agnostic
     def test_convention_randaugment_maps_m_and_validates_the_policy_cardinality(self):
@@ -121,7 +129,8 @@ class TestAutoAugmentConventions(BaseTester):
         params = aug.forward_parameters(torch.Size([64, 1, 8, 6]))
         degrees = next(param for param in params if "degrees" in param.data[0].data).data[0].data["degrees"]
         self.assert_close(degrees.abs(), torch.full_like(degrees, 15.0))
-        assert (degrees < 0).any() and (degrees > 0).any()
+        assert (degrees < 0).any()
+        assert (degrees > 0).any()
         for m in (0, 30):
             with pytest.raises(ValueError, match=r"Expect `m` in \(0, 30\)"):
                 RandAugment(n=1, m=m, policy=policy)
@@ -383,7 +392,8 @@ class TestAutoAugmentConventions(BaseTester):
         assert operation._magnitude.grad is not None
         # The parameter is kept in the state dict, and no sampler is stored on the wrapper or the wrapped op.
         assert "_probability" in operation.state_dict()
-        assert not hasattr(operation.op, "_p_gen") and not hasattr(operation.op, "_p_batch_gen")
+        assert not hasattr(operation.op, "_p_gen")
+        assert not hasattr(operation.op, "_p_batch_gen")
         # So a policy deep-copies after a forward and after train() / eval(), and the copy replays the original.
         image = torch.rand(2, 3, 8, 8)
         for policy in (AutoAugment(), TrivialAugment(), RandAugment(n=2, m=15)):
@@ -398,7 +408,8 @@ class TestAutoAugmentConventions(BaseTester):
         assert {(module[0].op.p, module[0].op.p_batch) for _, module in aug.named_children()} == {(1.0, 1.0)}
         # "Each candidate": every entry of the default policy as well, not only the two above.
         defaults = [(module[0].op.p, module[0].op.p_batch) for _, module in TrivialAugment().named_children()]
-        assert len(defaults) == 12 and set(defaults) == {(1.0, 1.0)}
+        assert len(defaults) == 12
+        assert set(defaults) == {(1.0, 1.0)}
         gates = set()
         for _ in range(16):
             gates.update(aug.forward_parameters(torch.Size([8, 3, 8, 6]))[0].data[0].data["batch_prob"].tolist())
@@ -423,8 +434,10 @@ class TestAutoAugmentConventions(BaseTester):
             .data[0]
             .data["shear_x"]
         )
-        assert bool((trivial.abs() <= 0.3 * 180).all()) and trivial.abs().max() > 30.0
-        assert (trivial < 0).any() and (trivial > 0).any()
+        assert bool((trivial.abs() <= 0.3 * 180).all())
+        assert trivial.abs().max() > 30.0
+        assert (trivial < 0).any()
+        assert (trivial > 0).any()
         # AutoAugment's shear bins are fractions too, so the mapping is applied once: bin b of either shear op spans
         # the adjacent points b and b + 1 of linspace(-0.3, 0.3, 11), times 180, and 256 rows reach both ends.
         edges = [-0.3 + 0.06 * point for point in range(11)]
@@ -437,8 +450,10 @@ class TestAutoAugmentConventions(BaseTester):
                     .data[0]
                     .data[name]
                 )
-                assert bool((auto >= low - 1e-3).all()) and bool((auto <= high + 1e-3).all()), (name, magnitude_bin)
-                assert auto.min() < low + 1.0 and auto.max() > high - 1.0, (name, magnitude_bin)
+                assert bool((auto >= low - 1e-3).all()), (name, magnitude_bin)
+                assert bool((auto <= high + 1e-3).all()), (name, magnitude_bin)
+                assert auto.min() < low + 1.0, (name, magnitude_bin)
+                assert auto.max() > high - 1.0, (name, magnitude_bin)
         # The same policy entry through RandAugment.
         mapped = (
             RandAugment(n=1, m=29, policy=[[("shear_x", -0.3, 0.3)]])
@@ -523,4 +538,5 @@ class TestAutoAugmentConventions(BaseTester):
             drawn = aug.forward_parameters(torch.Size([8, 1, height, width]))[0].data[0].data[operation._factor_name]
             self.assert_close(drawn.abs().float(), torch.full((8,), float(expected)))
             checked.append(name)
-        assert len(checked) == 12 and {"shear_x", "shear_y", "posterize", "translate_x", "translate_y"} <= set(checked)
+        assert len(checked) == 12
+        assert {"shear_x", "shear_y", "posterize", "translate_x", "translate_y"} <= set(checked)

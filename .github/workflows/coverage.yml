@@ -65,7 +65,7 @@ jobs:
           extra-install: sd
 
   dynamo:
-    # Run all dynamo (torch.compile) related tests
+    # Run all dynamo and compile (torch.compile) tests, including the slow-marked cold compiles
     runs-on: ${{ inputs.os }}
     timeout-minutes: 90
     strategy:
@@ -94,7 +94,7 @@ jobs:
           python-version: ${{ inputs.python-version }}
           pytorch-dtype: ${{ matrix.pytorch-dtype }}
           pytorch-device: ${{ inputs.pytorch-device }}
-          pytest-extra: '--runslow -k "test_dynamo"'
+          pytest-extra: '--runslow -k "test_dynamo or compile"'
           coverage-artifact: coverage-dynamo-${{ matrix.pytorch-dtype }}
 
   overall:

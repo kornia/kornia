@@ -2121,7 +2121,9 @@ _NO_COMPILED_PROGRAM_REASON = "RANSAC(compile=True) needs torch 2.14 or later"
 class TestRANSACCompiled(BaseTester):
     """``compile=True``: the whole of ``local_optimization="lm"`` as one compiled graph.
 
-    Every test that compiles has ``compile`` in its name, which keeps it to the dynamo CI job.
+    Every test that compiles has ``compile`` in its name, which keeps it to the dynamo CI jobs. The tests that
+    compile whole programs from a cold cache are also marked ``slow``, so they run in the scheduled dynamo job
+    rather than on every pull request.
     """
 
     def test_graph_mode_rejects_unsupported_configurations(self):
@@ -2141,6 +2143,7 @@ class TestRANSACCompiled(BaseTester):
         with pytest.raises(ValueError, match="batches of at most"):
             RANSAC("homography", batch_size=1 << 21, compile=True)(torch.rand(8, 2), torch.rand(8, 2))
 
+    @pytest.mark.slow
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
     @pytest.mark.parametrize("model_type", _COMPILED_MODELS)
     def test_compile_recovers_the_eager_estimate(self, device, dtype, model_type):
@@ -2162,6 +2165,7 @@ class TestRANSACCompiled(BaseTester):
         assert (mask.cpu() & ~inliers).sum() <= 2
         assert (mask.cpu() & inliers).sum() >= 0.9 * inliers.sum()
 
+    @pytest.mark.slow
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
     @pytest.mark.parametrize("artifact", ["0", "1"])
     @pytest.mark.parametrize("model_type", _COMPILED_MODELS)
@@ -2206,6 +2210,7 @@ class TestRANSACCompiled(BaseTester):
         for index, cuda_state in enumerate(cuda_states):
             assert torch.equal(torch.cuda.get_rng_state(index), cuda_state)
 
+    @pytest.mark.slow
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
     def test_compile_seeded_calls_are_thread_safe(self):
         """Concurrent seeded estimators use private streams and do not perturb another thread's generator."""
@@ -2401,6 +2406,7 @@ class TestRANSACCompiled(BaseTester):
         assert captured[0][4].item() == budget
         assert captured[0][5].item() == captured[0][6].item() == expected
 
+    @pytest.mark.slow
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
     def test_compile_cpu_score_cap_runs_explicit_confidence_one_budget(self):
         # This crosses 2**22 residuals at an explicit batch of 256, so CPU compilation splits it into scoring-safe
@@ -2458,6 +2464,7 @@ class TestRANSACCompiled(BaseTester):
         with pytest.raises(RuntimeError, match="kernel failed"):
             _artifact_or_traced(artifact, traced)(torch.rand(8, 2))
 
+    @pytest.mark.slow
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
     @pytest.mark.parametrize("artifact", ["0", "1"])
     def test_compile_reuses_program_across_inference_contexts(self, monkeypatch, artifact, device):
@@ -2531,6 +2538,7 @@ class TestRANSACCompiled(BaseTester):
         expected[[50, 60, 70]] = False
         assert (mask & expected).sum() >= 0.95 * expected.sum() and (mask & ~expected).sum() == 0
 
+    @pytest.mark.slow
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
     def test_compile_artifact_serves_a_new_process(self, tmp_path):
         script = (
