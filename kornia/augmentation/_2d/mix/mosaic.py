@@ -82,8 +82,8 @@ class RandomMosaic(MixAugmentationBaseV2):
         - ``output_size`` and the default output shape are ordered ``(height, width)``. With ``output_size=None``
           the output preserves the input's ``(H, W)`` even when they differ, in both ``cropping_mode="slice"`` and
           ``cropping_mode="resample"``. ``start_ratio_range`` draws a pair used as ``(x / W, y / H)`` for the crop's
-          top-left corner. These are the repaired axis conventions from
-          `#4438 <https://github.com/kornia/kornia/issues/4438>`_.
+          top-left corner, which is floored to a whole pixel that both cropping modes and the boxes share. These are
+          the repaired axis conventions from `#4438 <https://github.com/kornia/kornia/issues/4438>`_.
         - ``p`` is per sample and this class fixes ``same_on_batch=False``. It composes ``mosaic_grid[0]`` tiles
           along width and ``mosaic_grid[1]`` tiles along height, then crops each result. It supports
           ``"bbox"``, ``"bbox_xyxy"``, and ``"bbox_xywh"`` in addition to image inputs; it does not support

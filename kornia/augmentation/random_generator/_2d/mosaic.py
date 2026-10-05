@@ -101,8 +101,8 @@ class MosaicGenerator(RandomGeneratorBase):
             (batch_size, 2), self.start_ratio_range_sampler, same_on_batch=False
         ).to(device=_device, dtype=_dtype)
         # Slice-mode crops cast the start to long (``crop_by_indices``), so a fractional start would
-        # translate boxes by a sub-pixel amount the image crop never applies (issue #5464). Floor the
-        # start here so the image and the boxes share the same integer coordinates.
+        # translate boxes by a sub-pixel amount the image crop never applies. Floor the start here so
+        # the image and the boxes share the same integer coordinates.
         start_corner_x = torch.floor(start_corner_factor[:, 0] * batch_shape[-1])
         start_corner_y = torch.floor(start_corner_factor[:, 1] * batch_shape[-2])
         crop_src = bbox_generator(
