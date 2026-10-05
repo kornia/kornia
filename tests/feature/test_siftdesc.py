@@ -246,7 +246,8 @@ class TestSIFTConstantPatchIsFinite(BaseTester):
         from kornia.core.utils import _l2_normalize
 
         nan, inf = float("nan"), float("inf")
-        x = torch.tensor([[nan, 1.0], [inf, 0.0], [0.0, 0.0], [3.0, 4.0]], device=device)
+        # [-3, 0]: a non-zero vector whose largest entry is 0, so the zero test must run on magnitudes
+        x = torch.tensor([[nan, 1.0], [inf, 0.0], [0.0, 0.0], [3.0, 4.0], [-3.0, 0.0]], device=device)
         out = _l2_normalize(x, dim=1)
         # a vector holding a NaN is not a zero vector: it keeps `F.normalize`'s NaN instead of becoming zeros
         assert bool(torch.isnan(out[0]).all()), out[0]
