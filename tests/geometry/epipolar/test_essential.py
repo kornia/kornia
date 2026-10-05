@@ -861,18 +861,21 @@ class TestMotionFromEssentialChooseSolution(BaseTester):
         x1 = torch.rand(N, 2, device=device, dtype=dtype)
         x2 = torch.rand(N, 2, device=device, dtype=dtype)
 
-        R, t, X, _ = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1[1:-1, :], x2[1:-1, :])
+        R, t, X, n = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1[1:-1, :], x2[1:-1, :])
         assert R.shape == (3, 3)
         assert t.shape == (3, 1)
         assert X.shape == (N - 2, 3)
+        assert n.shape == ()
 
         mask = torch.zeros(N, dtype=torch.bool, device=device)
         mask[1:-1] = True
-        Rm, tm, Xm, _ = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1, x2, mask=mask)
+        Rm, tm, Xm, nm = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1, x2, mask=mask)
 
         self.assert_close(R, Rm)
         self.assert_close(t, tm)
         self.assert_close(X, Xm[1:-1, :])
+        # the count covers the unmasked points only
+        assert torch.equal(n, nm)
 
     def test_two_view(self, device, dtype):
         scene = generate_two_view_random_scene(device, dtype)
