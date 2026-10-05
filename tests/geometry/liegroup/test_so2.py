@@ -261,7 +261,8 @@ class TestSo2(BaseTester):
         ]
         assert min(counts) > 150, counts
         # the draws reach both ends of the range: P(none of 1000 within 0.05 of -pi, or of pi) = 3e-4 each
-        assert theta.min() < -torch.pi + 0.05 and theta.max() > torch.pi - 0.05, (theta.min(), theta.max())
+        assert theta.min() < -torch.pi + 0.05, (theta.min(), theta.max())
+        assert theta.max() > torch.pi - 0.05, (theta.min(), theta.max())
         self.assert_close(So2.random(device=device, dtype=dtype).z.abs(), torch.tensor(1.0, device=device, dtype=dtype))
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
@@ -365,11 +366,13 @@ class TestSo2(BaseTester):
         self.assert_close(moved, paired)
         # (1, 1) becomes (1,), while (1,) and () are unchanged
         assert So2.exp(theta[:1, None]).z.shape == (1,)
-        assert So2.exp(theta[:1]).z.shape == (1,) and So2.exp(theta[0]).z.shape == ()
+        assert So2.exp(theta[:1]).z.shape == (1,)
+        assert So2.exp(theta[0]).z.shape == ()
         # the (B,) reading is a view, so the gradient reaches the (B, 1) angle
         column = column.clone().requires_grad_()
         (So2.exp(column) * p).sum().backward()
-        assert column.grad.shape == (3, 1) and torch.isfinite(column.grad).all()
+        assert column.grad.shape == (3, 1)
+        assert torch.isfinite(column.grad).all()
 
     def test_so2_column_parameter_stays_the_module_parameter_4932(self, device, dtype):
         # Reading a (B, 1) z as (B,) must not take a caller's nn.Parameter away from the module: it stays its own

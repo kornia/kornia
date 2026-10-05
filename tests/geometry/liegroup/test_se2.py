@@ -366,7 +366,8 @@ class TestSe2(BaseTester):
         z = Se2.random(1000, device=device, dtype=dtype).so2.z
         self.assert_close(z.abs(), torch.ones(1000, device=device, dtype=dtype))
         theta = z.imag.atan2(z.real)
-        assert theta.min() < -math.pi / 2 and theta.max() > math.pi / 2, (theta.min(), theta.max())
+        assert theta.min() < -math.pi / 2, (theta.min(), theta.max())
+        assert theta.max() > math.pi / 2, (theta.min(), theta.max())
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_trans(self, device, dtype, batch_size):
@@ -415,7 +416,8 @@ class TestSe2(BaseTester):
         # still be registered so ``state_dict`` and ``.to()`` / ``.double()`` reach it.
         v = torch.rand(2, 3, device=device, dtype=dtype, requires_grad=True)
         s = Se2.exp(v)
-        assert s.t.grad_fn is not None and s.so2.z.grad_fn is not None
+        assert s.t.grad_fn is not None
+        assert s.so2.z.grad_fn is not None
         assert set(s.state_dict()) == {"_translation", "_rotation._z"}
         restored = Se2(So2.identity(2, device, dtype), torch.zeros(2, 2, device=device, dtype=dtype))
         restored.load_state_dict(s.state_dict())
@@ -561,7 +563,8 @@ class TestSe2(BaseTester):
         if dtype != torch.float16:  # So2.inverse divides a ComplexHalf z, which the CPU does not implement
             poses.append(identity.inverse())
         for pose in poses:
-            assert isinstance(pose.t, torch.Tensor) and pose.t.shape == (1, 2)
+            assert isinstance(pose.t, torch.Tensor)
+            assert pose.t.shape == (1, 2)
             assert "_translation" in pose.state_dict()
         self.assert_close(identity.t[..., 0], torch.zeros(1, device=device, dtype=dtype))
         for g in (from_exp, identity, from_exp * identity):
@@ -577,5 +580,6 @@ class TestSe2(BaseTester):
         torch.manual_seed(0)
         t = Se2.random(1000, device=device, dtype=dtype).t
         assert t.shape == (1000, 2)
-        assert t.min() >= 0 and t.max() <= 1, (t.min(), t.max())
+        assert t.min() >= 0, (t.min(), t.max())
+        assert t.max() <= 1, (t.min(), t.max())
         assert 0.45 < t.mean() < 0.55, t.mean()

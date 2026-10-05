@@ -677,7 +677,8 @@ class TestSo3Conventions(BaseTester):
         source, target = _RotationHolder(saved, as_parameter=False), _RotationHolder(stale, as_parameter=False)
         assert list(source.state_dict()) == []
         result = target.load_state_dict(source.state_dict())
-        assert not result.missing_keys and not result.unexpected_keys
+        assert not result.missing_keys
+        assert not result.unexpected_keys
         self.assert_close(target.quat.data, stale)
         self.assert_close(target.rot.q.data, stale)
         # control: a rotation stored as an nn.Parameter is saved and restored

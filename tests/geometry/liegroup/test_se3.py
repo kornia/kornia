@@ -439,7 +439,8 @@ class TestSe3(BaseTester):
         self.assert_close(restored.t, s.t.detach())
         other = torch.float16 if dtype == torch.float32 else torch.float32  # float64 is unavailable on MPS
         moved = s.to(other)
-        assert moved.t.dtype == other and moved.t.grad_fn is not None
+        assert moved.t.dtype == other
+        assert moved.t.grad_fn is not None
         moved.t.sum().backward()
         assert v.grad is not None
 
@@ -543,7 +544,8 @@ class TestSe3(BaseTester):
             identity.inverse(),
         )
         for pose in poses:
-            assert isinstance(pose.t, torch.Tensor) and pose.t.shape == (1, 3)
+            assert isinstance(pose.t, torch.Tensor)
+            assert pose.t.shape == (1, 3)
             assert "_translation" in pose.state_dict()
         self.assert_close(identity.t[..., 0], torch.zeros(1, device=device, dtype=dtype))
         self.assert_close(Se3.from_qxyz(qxyz).t, qxyz[..., 4:])
@@ -569,7 +571,8 @@ class TestSe3(BaseTester):
         assert list(src.state_dict()) == ["_translation"]
         assert list(Se3.identity(1, device, dtype).state_dict()) == ["_translation"]  # the identity saves t alone too
         result = dst.load_state_dict(src.state_dict())
-        assert not result.missing_keys and not result.unexpected_keys
+        assert not result.missing_keys
+        assert not result.unexpected_keys
         self.assert_close(dst.t, src.t.detach())
         self.assert_close(dst.r.matrix(), eye)
 
@@ -578,5 +581,6 @@ class TestSe3(BaseTester):
         torch.manual_seed(0)
         t = Se3.random(1000, device=device, dtype=dtype).t
         assert t.shape == (1000, 3)
-        assert t.min() >= 0 and t.max() <= 1, (t.min(), t.max())
+        assert t.min() >= 0, (t.min(), t.max())
+        assert t.max() <= 1, (t.min(), t.max())
         assert 0.45 < t.mean() < 0.55, t.mean()
