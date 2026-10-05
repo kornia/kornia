@@ -1,0 +1,221 @@
+diff --git a/kornia/geometry/ransac.py b/kornia/geometry/ransac.py
+index 8b7b8d8a9..9a6be04a3 100644
+--- a/kornia/geometry/ransac.py
++++ b/kornia/geometry/ransac.py
+@@ -196,12 +196,16 @@ class RANSAC(nn.Module):
+           correspondences related by one homography. Such a model fits the dominant plane and whatever happens to
+           agree with it off the plane, so the homography is refined, and fundamental matrices are drawn from it and
+           pairs of correspondences off the plane (plane and parallax). The best of them, refined, joins the
+-          eight-model pool and, when it outscores the incumbent, sets the stopping bound. Thresholds and iteration
++          eight-model pool and, when it outscores the incumbent, sets the stopping bound. Ordinary truncated-loss
++          F refinement skips recovered models, which have already received it, and raw candidates whose minimal
++          samples are H-degenerate. Raw candidates remain eligible for selection if recovery fails; the final
++          Cauchy refinement still runs on the selected model. Thresholds and iteration
+           counts follow Chum's implementation in pydegensac; the draws come from a private host generator. A plane
+           already searched in the call is not searched again: a sample whose homography's inliers lie 95% or more
+           inside it is skipped before refinement, and a refined plane whose inliers match it (Jaccard index 0.95 or
+           more) before the search. The default, ``degensac=False``, keeps the plain seven-point loop.
+-          Explicit recovery reproduces that result exactly when no record-setting sample is degenerate.
++          Explicit recovery reproduces that result exactly when neither record-setting nor pooled samples are
++          degenerate.
+           Chum's tolerance, three times the squared threshold for five of the seven correspondences, also flags
+           samples in many scenes without a dominant plane; there the recovered models only join the competition.
+         - ``prosac_sampling=True`` expects correspondences sorted best-first and stops with PROSAC's
+@@ -1247,12 +1251,15 @@ class RANSAC(nn.Module):
+     @staticmethod
+     def _lm_pool(
+         candidates: torch.Tensor, candidate_scores: torch.Tensor, models: torch.Tensor, scores: torch.Tensor
+-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+-        """The pool's ``_LM_CANDIDATES`` best models and scores after adding ``models``, placed first for ties."""
++    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
++        """The pool's best models, scores and indices into ``models`` followed by ``candidates``.
++
++        The indices let DEGENSAC keep each model's minimal sample alongside it; new models are first for ties.
++        """
+         candidate_scores, order = torch.cat([scores, candidate_scores]).topk(
+             min(_LM_CANDIDATES, len(scores) + len(candidate_scores))
+         )
+-        return torch.cat([models, candidates])[order], candidate_scores
++        return torch.cat([models, candidates])[order], candidate_scores, order
+
+     def _lm_stopping_bound(
+         self, masks: Optional[torch.Tensor], row: Union[int, torch.Tensor], support: int, num_tc: int
+@@ -1267,6 +1274,28 @@ class RANSAC(nn.Module):
+             self.sample_budget, self.max_samples_by_conf(support, num_tc, self.minimal_sample_size, self.confidence)
+         )
+
++    @staticmethod
++    def _degensac_lo_mask(
++        candidates: torch.Tensor,
++        samples: torch.Tensor,
++        x1: torch.Tensor,
++        x2: torch.Tensor,
++        threshold: float,
++    ) -> torch.Tensor:
++        """Host pool entries eligible for ordinary F LO: non-planar minimal samples, excluding recovered models.
++
++        Recovered entries use -1 sample indices and have already received truncated-loss refinement. Planar raw
++        candidates remain in the scoring pool, even when their specialized recovery failed.
++        """
++        ordinary_lo = torch.zeros(len(candidates), dtype=torch.bool, device=candidates.device)
++        raw = (samples[:, 0] >= 0).nonzero().flatten()
++        raw_samples = samples[raw]
++        homographies = _h_degenerate_samples(candidates[raw], x1[raw_samples], x2[raw_samples], 3 * threshold)
++        ordinary_lo[raw] = torch.tensor(
++            [homography is None for homography in homographies], dtype=torch.bool, device=candidates.device
++        )
++        return ordinary_lo
++
+     def _degensac_batch(
+         self,
+         models: torch.Tensor,
+@@ -1374,6 +1403,9 @@ class RANSAC(nn.Module):
+         # DEGENSAC tests the models that set a new raw record (Chum's maxSs), which recovered models never raise;
+         # best_score is the incumbent's, over raw and recovered models (maxS).
+         degensac = self.degensac and m == 7
++        # A recovered model has already received truncated-loss LO in _degensac_recover. Its sample is -1;
++        # raw models retain their sample so planar ones can bypass ordinary F LO, as in pydegensac.
++        candidate_samples = torch.empty((0, m), dtype=torch.long, device=host)
+         best_minimal_score = -1.0
+         seen_planes: List[torch.Tensor] = []
+         max_samples, drawn, iteration = budget, 0, 0
+@@ -1394,7 +1426,9 @@ class RANSAC(nn.Module):
+             top_scores, top = scores_all.topk(min(_LM_CANDIDATES, len(models)))
+             top_counts = counts_all[top]
+             # The run's best minimal models so far, refined after sampling.
+-            candidates, candidate_scores = self._lm_pool(candidates, candidate_scores, models[top], top_scores)
++            candidates, candidate_scores, order = self._lm_pool(candidates, candidate_scores, models[top], top_scores)
++            if origin is not None:
++                candidate_samples = torch.cat([indices[origin[top]].cpu(), candidate_samples])[order.cpu()]
+             scores, counts = torch.stack([top_scores, top_counts.to(top_scores.dtype)]).tolist()
+             best = max(range(len(scores)), key=scores.__getitem__)
+             if scores[best] > best_score:
+@@ -1419,21 +1453,29 @@ class RANSAC(nn.Module):
+             )
+             best_minimal_score = scores[best]
+             for recovered_models, recovered_scores, recovered_counts, recovered_masks in recoveries:
+-                candidates, candidate_scores = self._lm_pool(
++                candidates, candidate_scores, order = self._lm_pool(
+                     candidates, candidate_scores, recovered_models, recovered_scores
+                 )
++                recovered_samples = torch.full((len(recovered_models), m), -1, dtype=torch.long, device=host)
++                candidate_samples = torch.cat([recovered_samples, candidate_samples])[order.cpu()]
+                 winner = int(recovered_scores.argmax())
+                 if float(recovered_scores[winner]) > best_score:
+                     best_score = float(recovered_scores[winner])
+                     max_samples = self._lm_stopping_bound(
+                         recovered_masks, winner, int(recovered_counts[winner]), num_tc
+                     )
+-        x1_host, x2_host = x1_host[finite], x2_host[finite]
+-        candidates = candidates.to(host).double()[candidate_scores.to(host) >= 0]
++        supported = candidate_scores.to(host) >= 0
++        candidates = candidates.to(host).double()[supported]
+         if len(candidates) == 0:
+             return failure
+-        if self.max_lo_iters > 0:
+-            refits = self._lm_refine(candidates, x1_host, x2_host, None, "truncated", threshold, self.max_lo_iters)
++        ordinary_lo = torch.ones(len(candidates), dtype=torch.bool, device=host)
++        if degensac and self.max_lo_iters > 0:
++            ordinary_lo = self._degensac_lo_mask(candidates, candidate_samples[supported], x1_host, x2_host, threshold)
++        x1_host, x2_host = x1_host[finite], x2_host[finite]
++        if self.max_lo_iters > 0 and bool(ordinary_lo.any()):
++            refits = self._lm_refine(
++                candidates[ordinary_lo], x1_host, x2_host, None, "truncated", threshold, self.max_lo_iters
++            )
+             # Refits first: a tie goes to the refit, which is fitted to more than a minimal sample.
+             candidates = torch.cat([refits, candidates])
+         errors = self._lm_errors(candidates, x1_host, x2_host)
+diff --git a/tests/geometry/test_ransac.py b/tests/geometry/test_ransac.py
+index 543094377..7d3620df4 100644
+--- a/tests/geometry/test_ransac.py
++++ b/tests/geometry/test_ransac.py
+@@ -2951,12 +2951,14 @@ class TestRANSACDegensac(BaseTester):
+         assert plain_failures >= 3
+
+     @pytest.mark.parametrize("score_type", ["msac", "ransac"])
+-    def test_both_score_types(self, device, dtype, score_type):
++    @pytest.mark.parametrize("max_lo_iters", [0, 5])
++    def test_both_score_types(self, device, dtype, score_type, max_lo_iters):
+         _skip_half(dtype)
+         kp1, kp2, _, clean1, clean2 = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
+-        F, _ = RANSAC("fundamental", inl_th=1.0, confidence=0.999, seed=0, score_type=score_type, degensac=True)(
+-            kp1, kp2
+-        )
++        F, _ = RANSAC(
++            "fundamental", inl_th=1.0, confidence=0.999, seed=0, score_type=score_type,
++            max_lo_iters=max_lo_iters, degensac=True,
++        )(kp1, kp2)
+         assert _explains_off_plane(F.cpu(), clean1.cpu(), clean2.cpu())
+
+     def test_never_degenerate_is_bitwise_plain(self, device, dtype, monkeypatch):
+@@ -2969,6 +2971,70 @@ class TestRANSACDegensac(BaseTester):
+         F_plain, mask_plain = RANSAC("fundamental", inl_th=1.0, seed=0, degensac=False)(kp1, kp2)
+         assert torch.equal(F, F_plain) and torch.equal(mask, mask_plain)
+
++    @pytest.mark.parametrize("plane_fraction", [0.0, 0.95])
++    def test_planar_and_recovered_candidates_bypass_ordinary_lo(self, device, dtype, monkeypatch, plane_fraction):
++        _skip_half(dtype)
++        planar, recovered, ordinary, final = [], [], [], []
++        inside_recovery = False
++        original_check = ransac_module._h_degenerate_samples
++        original_recover, original_refine = RANSAC._degensac_recover, RANSAC._lm_refine
++
++        def check(models, *args):
++            homographies = original_check(models, *args)
++            planar.extend(model.clone() for model, H in zip(models, homographies) if H is not None)
++            return homographies
++
++        def recover(self, *args):
++            nonlocal inside_recovery
++            inside_recovery = True
++            try:
++                result = original_recover(self, *args)
++            finally:
++                inside_recovery = False
++            if result is not None:
++                recovered.extend(result[0].cpu().double().clone())
++            return result
++
++        def refine(self, models, x1, x2, mask, loss, scale2, iters):
++            if loss == "truncated" and not inside_recovery:
++                ordinary.extend(models.clone())
++            if loss == "cauchy":
++                final.append(len(models))
++            return original_refine(self, models, x1, x2, mask, loss, scale2, iters)
++
++        monkeypatch.setattr(ransac_module, "_h_degenerate_samples", check)
++        monkeypatch.setattr(RANSAC, "_degensac_recover", recover)
++        monkeypatch.setattr(RANSAC, "_lm_refine", refine)
++        kp1, kp2, _, clean1, clean2 = create_dominant_plane_scene(
++            1000, 0.6, plane_fraction, 0, device=device, dtype=dtype
++        )
++        F, _ = RANSAC("fundamental", inl_th=1.0, seed=0, degensac=True)(kp1, kp2)
++        if plane_fraction > 0:
++            assert planar and recovered
++        else:
++            assert ordinary  # non-degenerate candidates must still receive ordinary LO
++        assert all(not torch.equal(model, skipped) for model in ordinary for skipped in planar + recovered)
++        assert final == [1]
++        assert _explains_off_plane(F.cpu(), clean1.cpu(), clean2.cpu())
++
++    def test_mixed_pool_lo_eligibility(self, monkeypatch):
++        # The middle model is already recovered; the other two keep their own, distinct minimal samples.
++        models = torch.eye(3, dtype=torch.float64).repeat(3, 1, 1)
++        models[:, 0, 0] = torch.tensor([1.0, 2.0, 3.0])
++        samples = torch.stack([torch.arange(7), torch.full((7,), -1), torch.arange(7, 14)])
++        x1 = torch.arange(42, dtype=torch.float64).reshape(14, 3)
++        x2 = x1 + 1
++
++        def check(raw_models, raw_x1, raw_x2, threshold):
++            assert torch.equal(raw_models, models[[0, 2]])
++            assert torch.equal(raw_x1, x1[samples[[0, 2]]])
++            assert torch.equal(raw_x2, x2[samples[[0, 2]]])
++            return [None, torch.eye(3, dtype=torch.float64)]
++
++        monkeypatch.setattr(ransac_module, "_h_degenerate_samples", check)
++        eligible = RANSAC._degensac_lo_mask(models, samples, x1, x2, 1.0)
++        assert eligible.tolist() == [True, False, False]
++
+     def test_scene_without_plane_keeps_its_accuracy(self, device, dtype, monkeypatch):
+         # Without a dominant plane, record setters are still often H-degenerate at Chum's 3 t: five of seven
+         # correspondences fit one homography within 0.6-2.1 t in 5 of these 6 seeds. The recoveries then join the

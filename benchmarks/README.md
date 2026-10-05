@@ -88,6 +88,12 @@ default (`--sort-matches` sorts scores/ratios); HEB uses the same seeded selecti
 SNN<0.8 filter, and stable ratio ordering as `heb.py`. Optional `h5py` reads HEB;
 OpenCV provides pose recovery for F/E. Neither PoseLib nor an IMC package is needed.
 
+[`geometry/degensac_lo.py`](geometry/degensac_lo.py) compares fundamental RANSAC with and without
+DEGENSAC on fixed synthetic scenes and optional calibrated Reichstag, LoFTR, or PhotoTourism matches.
+Run the same harness from both revisions to compare refinement policies. The
+[LO routing experiment](geometry/degensac_lo_results/README.md) records the rejected planar-candidate
+skip policy and the narrower removal of repeated refinement on recovered models.
+
 ## Methodology contract
 
 Every benchmark here must follow the same rules (utilities in [`common.py`](common.py)):
