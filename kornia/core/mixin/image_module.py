@@ -207,9 +207,7 @@ class ImageModuleMixIn:
         # A PIL image exists only once PIL is imported: look the module up instead of importing it through the lazy
         # loader, which would raise on an install without the "image" extra for every non-image argument.
         pil_image = sys.modules.get("PIL.Image")
-        if pil_image is not None and isinstance(arg, pil_image.Image):
-            return True
-        return False
+        return pil_image is not None and isinstance(arg, pil_image.Image)
 
     def to_tensor(self, x: Any) -> torch.Tensor:
         """Convert input to tensor.

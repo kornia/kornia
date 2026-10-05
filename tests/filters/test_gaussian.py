@@ -25,6 +25,7 @@ import pytest
 import torch
 
 from kornia.core._compat import torch_version_ge, torch_version_lt
+from kornia.core.exceptions import BaseError
 from kornia.filters import (
     GaussianBlur2d,
     gaussian,
@@ -35,6 +36,7 @@ from kornia.filters import (
     get_gaussian_kernel2d,
     get_gaussian_kernel3d,
 )
+from kornia.filters.kernels import gaussian_discrete, gaussian_discrete_erf
 
 from testing.base import BaseTester, assert_close
 
@@ -231,6 +233,69 @@ def test_get_gaussian_discrete_kernel1d_tensor(window_size, sigma, device, dtype
 
     assert actual.shape == (bs, window_size)
     assert_close(actual.sum(), expected.sum())
+
+
+@pytest.mark.parametrize(
+    "builder",
+    [
+        gaussian,
+        gaussian_discrete_erf,
+        gaussian_discrete,
+        get_gaussian_kernel1d,
+        get_gaussian_erf_kernel1d,
+        get_gaussian_discrete_kernel1d,
+    ],
+)
+class TestGaussianIntegerSigma(BaseTester):
+    @pytest.mark.parametrize("sigma", [1, 2])
+    def test_explicit_dtype(self, builder, sigma, device, dtype):
+        actual = builder(5, sigma, device=device, dtype=dtype)
+        expected = builder(5, float(sigma), device=device, dtype=dtype)
+
+        assert actual.shape == (1, 5)
+        assert actual.device == device
+        assert actual.dtype == dtype
+        self.assert_close(actual, expected)
+        self.assert_close(actual.sum(-1), torch.ones(1, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("sigma", [1, 2])
+    @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
+    def test_default_dtype(self, builder, sigma, default_dtype, device):
+        if device.type == "mps" and default_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        previous_dtype = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(default_dtype)
+            actual = builder(5, sigma, device=device)
+            expected = builder(5, float(sigma), device=device)
+        finally:
+            torch.set_default_dtype(previous_dtype)
+
+        # An int64 intermediate can silently truncate the discrete kernel to all zeros (#5157).
+        assert actual.shape == (1, 5)
+        assert actual.device == device
+        assert actual.dtype == default_dtype
+        self.assert_close(actual, expected)
+        self.assert_close(actual.sum(-1), torch.ones(1, device=device, dtype=default_dtype))
+
+    def test_tensor_sigma_gradcheck(self, builder, device):
+        sigma = torch.tensor([[1.5], [7.0]], device=device, dtype=torch.float64)
+        self.gradcheck(builder, (7, sigma))
+
+
+class TestGaussianIntegerMean(BaseTester):
+    def test_int_mean_matches_float_mean(self, device, dtype):
+        # gaussian() annotates mean as a float, like sigma: an int mean is the same Gaussian (#5157)
+        actual = gaussian(5, 1.5, mean=1, device=device, dtype=dtype)
+        expected = gaussian(5, 1.5, mean=1.0, device=device, dtype=dtype)
+        self.assert_close(actual, expected)
+
+    def test_int_sigma_keeps_a_fractional_mean(self, device):
+        # with dtype=None an int sigma must not build an integer tensor, which would truncate mean=1.5 to 1
+        actual = gaussian(4, 1, mean=1.5, device=device)
+        expected = gaussian(4, 1.0, mean=1.5, device=device)
+        assert actual.dtype == torch.get_default_dtype()
+        self.assert_close(actual, expected)
 
 
 class TestGaussianDiscreteStability(BaseTester):
@@ -431,6 +496,23 @@ class TestGaussianBlur2d(BaseTester):
 
         self.assert_close(op(data), op_optimized(data))
 
+    @pytest.mark.parametrize("per_sample", [False, True], ids=["shared_sigma", "per_sample_sigma"])
+    def test_dynamo_sigma_batch_check_is_dynamic_5169(self, per_sample, device, dtype, torch_optimizer):
+        """The sigma batch check does not specialize the batch: one dynamic graph serves every batch (#5169)."""
+        from torch._dynamo.testing import CompileCounter
+
+        def op(x, sigma):
+            return gaussian_blur2d(x, (3, 3), sigma, "constant")
+
+        counter = CompileCounter()
+        compiled = torch_optimizer(op, backend=counter, fullgraph=True, dynamic=True)
+        # no batch equals another axis, including sigma's 2 columns, so duck sizing cannot tie the batch to it
+        for batch in (4, 5, 6):
+            image = torch.rand(batch, 3, 7, 9, device=device, dtype=dtype)
+            sigma = torch.rand(batch if per_sample else 1, 2, device=device, dtype=dtype) + 0.5
+            self.assert_close(compiled(image, sigma), op(image, sigma))
+        assert counter.frame_count == 1
+
     @pytest.mark.device_agnostic
     def test_onnx_export_legacy(self, dtype):
         """Test that GaussianBlur2d can be exported through the legacy ONNX exporter."""
@@ -557,15 +639,23 @@ class TestGaussianBlur2d(BaseTester):
         output = gaussian_blur2d(sample, (3, 3), (1.5, 1.5))
         assert output.shape == sample.shape
 
-    def test_batched_sigma_mismatched_batch_size(self, device, dtype):
-        """Test that batched sigma uses first batch element when shapes don't match."""
-        # Note: The function broadcasts sigma, so mismatched batch size is allowed
-        # but only the first sigma in the batch is used for all input samples
+    @pytest.mark.parametrize("separable", [True, False])
+    def test_batched_sigma_mismatched_batch_size(self, separable, device, dtype):
+        """A sigma batch that is neither 1 nor the input batch raises at the entry with a message naming sigma (#5169).
+
+        The check runs before any kernel is built, so both the separable and the dense path raise the same error.
+        """
         sample = torch.rand(4, 3, 8, 8, device=device, dtype=dtype)
-        sigma = torch.tensor([[1.5, 1.5], [2.0, 2.0]], device=device, dtype=dtype)
-        # Should not raise - will use broadcasting behavior
-        output = gaussian_blur2d(sample, (3, 3), sigma)
-        assert output.shape == sample.shape
+        # 2 rows divide the 4 samples and 3 do not: both raise the sigma check, not the kernel batch check (#5154) or
+        # a torch reshape error
+        for rows in (2, 3):
+            sigma = torch.full((rows, 2), 1.5, device=device, dtype=dtype)
+            with pytest.raises(BaseError, match=f"sigma batch of {rows} for an input batch of 4"):
+                gaussian_blur2d(sample, (3, 3), sigma, separable=separable)
+        # one row for the whole batch and one row per sample run
+        for rows in (1, 4):
+            sigma = torch.full((rows, 2), 1.5, device=device, dtype=dtype)
+            assert gaussian_blur2d(sample, (3, 3), sigma, separable=separable).shape == sample.shape
 
     def test_all_border_types(self, device, dtype):
         """Test that all supported border types work."""

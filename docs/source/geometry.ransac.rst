@@ -173,6 +173,58 @@ non-minimal solver's sample size (eight for fundamental/essential matrices).
 On PhotoTourism fundamental matrices the subset refits match or beat full-inlier
 refitting at a lower cost on both CPU and CUDA.
 
+Compiled estimation
+-------------------
+
+``compile=True`` (torch 2.14 or later) runs the whole ``local_optimization="lm"``
+estimation as one ``torch.compile`` graph on CPU and CUDA. The sampling loop is a
+``torch.while_loop`` that carries the pool of the best minimal models, the
+early-stopping bound is computed inside the graph, and the batch sizes and the
+number of models that survive the degeneracy tests are dynamic. The graph does
+not depend on the number of correspondences, the threshold, the confidence or
+the sample budget: it is traced once per model type, score type, iteration
+counts, dtype and device. The first call compiles it, in 30 s for homographies
+to 60 s for essential matrices on an Apple M1, and saves the compiled function
+next to inductor's cache (``TORCHINDUCTOR_CACHE_DIR``); later processes load it
+in about a second. ``KORNIA_RANSAC_AOT=0`` disables that file, and each process
+then compiles again, in 17 to 35 s once inductor's kernels are cached.
+Ordinary calls and calls under ``torch.inference_mode()`` share the same artifact.
+Compiled arithmetic also runs with autocast disabled, using the input's working
+precision and float64 host refinement. The artifact cache distinguishes CPU
+thread counts, default dtypes and default devices; changing these settings may require another
+first-call compilation. On CPU, large explicit sampling batches are split so
+scoring holds at most ``2**22`` residuals per batch (or one hypothesis when
+``N`` alone exceeds that limit). This keeps the total sample budget and can
+check confidence stopping earlier than the requested batch size would.
+The sampling keys are a counter-based hash of the call's seed and each
+sample's index, computed inside the graph, and Floyd's algorithm turns them
+into subsets on every device, where compilation fuses its steps into one
+kernel. A sample's keys therefore depend neither on batch boundaries nor on the
+device, calls with different seeds do not share samples, and seeded calls
+never touch a global generator, including during concurrent calls. An unseeded
+call draws one seed from the input device's global generator and then hashes it
+as a seeded call does.
+On CUDA the loop counters and stopping bound stay on the host, with a transfer
+of the leading score and inlier count after each batch; compilation therefore
+does not remove every host-device synchronization.
+
+For the initial implementation at revision ``ad91a621``, on that CPU
+(4 threads, synthetic scenes of 500 to 5000 correspondences with
+20% or 50% inliers, averaged over seeds), compiled calls were 1.2 to 1.7 times
+faster for homographies, 1.6 to 2.4 times for fundamental matrices and 1.1 to
+1.6 times for essential matrices, whose five-point solver gained nothing: its
+time goes to LAPACK factorizations and the eigenvalues of the companion matrix.
+The compiled call runs the same algorithm with its own random stream, so a
+seeded call is reproducible but differs from the eager one. On synthetic
+scenes of 500 and 2000 correspondences with 20% to 50% inliers its mean inlier
+recall was within 0.015 of eager's for homographies and essential matrices and
+within 0.03 for fundamental matrices, where eager runs with other seeds differ
+from each other as much (60 seeds per case at 20% and 30% inliers). PROSAC
+sampling, ``degensac=True`` and ``local_optimization="dlt"`` are not supported.
+The current sampler draws a different seeded stream;
+use ``benchmarks/geometry/ransac_compile_synthetic.py`` to measure current
+latency and recovery, including ``--confidence 1`` for equal sample budgets.
+
 Dominant planes
 ---------------
 

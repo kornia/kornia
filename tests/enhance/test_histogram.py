@@ -35,6 +35,20 @@ class TestImageHistogram2d(BaseTester):
         assert hist.shape == (32,)
         assert pdf.shape == (32,)
 
+    @pytest.mark.parametrize("return_pdf", [False, True])
+    def test_rank2_single_bin_preserves_bin_axis(self, device, dtype, return_pdf):
+        sample = torch.tensor([[0.25, 0.75]], device=device, dtype=dtype)
+        hist, pdf = TestImageHistogram2d.fcn(sample, 0.0, 1.0, 1, return_pdf=return_pdf)
+
+        assert hist.shape == (1,)
+        assert pdf.shape == (1,)
+
+        hist_explicit, pdf_explicit = TestImageHistogram2d.fcn(
+            sample, 0.0, 1.0, centers=torch.tensor([0.5], device=device, dtype=dtype), return_pdf=return_pdf
+        )
+        assert hist_explicit.shape == (1,)
+        assert pdf_explicit.shape == (1,)
+
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_shape_channels(self, device, dtype, kernel):
         sample = torch.ones(3, 16, 16, device=device, dtype=dtype)
