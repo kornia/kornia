@@ -675,6 +675,16 @@ class TestSo3Conventions(BaseTester):
         for _ in range(2):
             holder.rot.matrix().sum().backward()
 
+    def test_convention_so3_non_unit_quaternion_gradient_has_no_radial_part_4942(self, device, dtype):
+        # matrix() and So3 * p depend on q / |q| only, so their gradient with respect to q is orthogonal to q.
+        data = torch.tensor([[2.0, 0.2, -0.6, 0.4]], device=device, dtype=dtype, requires_grad=True)
+        p = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype)
+        atol = 3e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-5
+        for output in (So3(Quaternion(data)).matrix(), So3(Quaternion(data)) * p):
+            (grad,) = torch.autograd.grad(output.sum(), data)
+            cosine = (grad * data.detach()).sum(-1) / (grad.norm(dim=-1) * data.detach().norm(dim=-1))
+            self.assert_close(cosine, torch.zeros_like(cosine), rtol=0.0, atol=atol)
+
     def test_convention_so3_from_matrix_is_unchecked_by_default(self, device, dtype):
         # kornia#4773: with the default check_rotation=False, from_matrix returns an apparently valid result for an
         # improper matrix (det = -1), whose matrix() is not the input. This turns red if the default rejects the
