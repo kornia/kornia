@@ -1371,16 +1371,17 @@ class TestColorJiggle(BaseTester):
         )
         assert result.returncode == 0, result.stderr
 
-    def test_fixed_order_falls_back_without_cond(self, device, dtype, monkeypatch):
-        # torch.cond raises "requires dynamo support" where Dynamo is unavailable (torch 2.5.1 on Python
-        # 3.13), so a fixed order must fall back to the Python dispatch there.
+    def test_fixed_order_dispatch_on_every_platform(self, device, dtype, monkeypatch):
+        # The torch.where dispatcher needs no Dynamo, so a fixed order runs it where Dynamo is unavailable
+        # (torch 2.5.1 on Python 3.13) too: one code path on every platform.
         image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
         op = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
         params = op.forward_parameters(image.shape)
         expected = op(image, params=params)
         monkeypatch.setattr(torch._dynamo, "is_dynamo_supported", lambda: False)
-        fallback = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
-        assert torch.equal(fallback(image, params=params), expected)
+        without_dynamo = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
+        assert without_dynamo._cond_fn is not None
+        assert torch.equal(without_dynamo(image, params=params), expected)
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("augmentation", [ColorJiggle, ColorJitter])
@@ -1769,7 +1770,7 @@ class TestColorJiggle(BaseTester):
         image = torch.rand(2, 3, 5, 5, device=device, dtype=torch.float64)
         hue = kornia.color.rgb_to_hsv(image)[:, 0]
         # A float64 range gives float64 factors. The random order and a fixed `order` apply the hue step
-        # through separate functions (the per-step loop and the `torch.cond` branch table).
+        # through separate functions (the per-step loop and the fixed-order branch table).
         aug = ColorJiggle(hue=torch.tensor((0.5, 0.5), dtype=torch.float64), p=1.0, order=order)
         shifted = kornia.color.rgb_to_hsv(aug(image))[:, 0]
         error = torch.remainder(shifted - hue, 2 * torch.pi) - torch.pi
@@ -1868,16 +1869,17 @@ class TestColorJitter(BaseTester):
         )
         assert result.returncode == 0, result.stderr
 
-    def test_fixed_order_falls_back_without_cond(self, device, dtype, monkeypatch):
-        # torch.cond raises "requires dynamo support" where Dynamo is unavailable (torch 2.5.1 on Python
-        # 3.13), so a fixed order must fall back to the Python dispatch there.
+    def test_fixed_order_dispatch_on_every_platform(self, device, dtype, monkeypatch):
+        # The torch.where dispatcher needs no Dynamo, so a fixed order runs it where Dynamo is unavailable
+        # (torch 2.5.1 on Python 3.13) too: one code path on every platform.
         image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
         op = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
         params = op.forward_parameters(image.shape)
         expected = op(image, params=params)
         monkeypatch.setattr(torch._dynamo, "is_dynamo_supported", lambda: False)
-        fallback = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
-        assert torch.equal(fallback(image, params=params), expected)
+        without_dynamo = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
+        assert without_dynamo._cond_fn is not None
+        assert torch.equal(without_dynamo(image, params=params), expected)
 
     @pytest.mark.parametrize(
         ("step", "factors"),

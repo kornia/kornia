@@ -58,7 +58,9 @@ def _apply_order_cond(
     input: torch.Tensor,
     factors: Tuple[torch.Tensor, ...],
 ) -> torch.Tensor:
-    # Select without a data-dependent Python branch. RGB is guaranteed on this path, so both sides remain valid.
+    # Every step runs, and torch.where keeps its output only when a factor in the batch is not neutral. There is
+    # no data-dependent Python branch, so eager and compiled mode run this same code path, and fullgraph
+    # compilation holds. A step runs even when it is skipped, so this path needs an RGB input.
     for idx in order:
         factor = factors[idx]
         output = branches[idx](input, factor)
@@ -77,9 +79,10 @@ def _dispatch_color_steps(
     """Apply the four colour steps in order, skipping a step whose factors all equal its ``neutral`` value.
 
     Shared by :class:`ColorJiggle` and :class:`ColorJitter`. A fixed order on an RGB input goes through ``cond_fn``
-    (a :func:`_apply_order_cond` over the same ``neutral`` values) in eager and compiled mode alike; every other
-    call uses Python ``.any()`` guards, which accept any channel count for the skipped steps. ``cond_fn`` is
-    ``None`` for a random order and where Dynamo, which ``torch.cond`` requires, is unavailable.
+    (a :func:`_apply_order_cond` over the same ``neutral`` values) in eager and compiled mode alike. It computes
+    all four steps and selects each result with :func:`torch.where`. Every other call uses Python ``.any()``
+    guards, which run only the steps that apply and accept any channel count for the skipped ones. ``cond_fn`` is
+    ``None`` for a random order.
     """
     factors = tuple(params[key] for key in _FACTOR_KEYS)
     if fixed_order is not None and cond_fn is not None and input.shape[-3] == 3:
@@ -90,8 +93,8 @@ def _dispatch_color_steps(
     for idx in order:
         if (factors[idx] != neutral[idx]).any():
             output = steps[idx](output, factors[idx])
-    # With every step skipped, return a copy, as the torch.cond path and ``p=0`` do, so that writing into the
-    # output never changes the caller's input.
+    # With every step skipped, return a copy, as the fixed-order dispatcher and ``p=0`` do, so that writing into
+    # the output never changes the caller's input.
     return output.clone() if output is input else output
 
 
@@ -216,8 +219,7 @@ class ColorJiggle(IntensityAugmentationBase2D):
             if len(order) != len(set(order)):
                 raise ValueError(f"`order` must not repeat an index; each adjustment applies at most once. Got {order}")
         self._fixed_order: Optional[Tuple[int, ...]] = order
-        # Keep a fallback where Dynamo is unavailable (torch 2.5.1 on Python 3.13).
-        self._cond_fn = _apply_cond if order is not None and torch._dynamo.is_dynamo_supported() else None
+        self._cond_fn = _apply_cond if order is not None else None
 
     def apply_transform(
         self,
@@ -226,6 +228,7 @@ class ColorJiggle(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        # A fixed RGB order uses the branch-free dispatcher, which is fullgraph-compatible. The dispatcher is
-        # restricted to RGB inputs because the hue/saturation operations require three channels even when skipped.
+        # A fixed order on an RGB input runs the branch-free dispatcher in eager and compiled mode alike. It is
+        # restricted to RGB inputs because it runs the hue and saturation steps, which require three channels,
+        # even when they are skipped.
         return _dispatch_color_steps(input, params, self._fixed_order, self._cond_fn, _NEUTRAL, _STEPS)

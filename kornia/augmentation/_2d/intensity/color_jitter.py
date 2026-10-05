@@ -166,8 +166,7 @@ class ColorJitter(_PicklableCompileMixin, IntensityAugmentationBase2D):
             if len(order) != len(set(order)):
                 raise ValueError(f"`order` must not repeat an index; each adjustment applies at most once. Got {order}")
         self._fixed_order: Optional[Tuple[int, ...]] = order
-        # Keep a fallback where Dynamo is unavailable (torch 2.5.1 on Python 3.13).
-        self._cond_fn = _apply_cond if order is not None and torch._dynamo.is_dynamo_supported() else None
+        self._cond_fn = _apply_cond if order is not None else None
 
         # native functions
         self._brightness_fn = adjust_brightness_accumulative
