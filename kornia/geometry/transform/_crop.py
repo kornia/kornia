@@ -84,7 +84,7 @@ def _compiled_slice_resize(
     """
     batch, channels, height, width = input.shape
     # Nearest normally uses float32 index arithmetic; handle ATen's CPU-double exception below.
-    coordinate_dtype = torch.float64 if input.dtype == torch.float64 and mode == "nearest-exact" else torch.float32
+    coordinate_dtype = torch.float64 if input.dtype == torch.float64 and mode != "nearest" else torch.float32
     src = src.to(device=input.device, dtype=torch.long)
     # Match Python slicing for negative and out-of-bounds replay coordinates.
     x0, x1 = src[:, 0, 0:1], src[:, 1, 0:1] + 1

@@ -691,7 +691,15 @@ def resize(
 
             input = gaussian_blur2d(input, ks, sigmas)
 
-        output = torch.nn.functional.interpolate(input, size=size, mode=interpolation, align_corners=align_corners)
+        if interpolation == "nearest-exact" and torch.onnx.is_in_onnx_export():
+            # The TorchScript ONNX exporter has no symbolic for ``nearest-exact``; gather the
+            # half-pixel indices ``floor((i + 0.5) * in / out)`` that ``interpolate`` samples.
+            for dim, (in_size, out_size) in zip((-2, -1), ((h, size[0]), (w, size[1]))):
+                index = ((torch.arange(out_size, device=input.device) + 0.5) * (in_size / out_size)).floor()
+                input = input.index_select(dim, index.long().clamp(max=in_size - 1))
+            output = input
+        else:
+            output = torch.nn.functional.interpolate(input, size=size, mode=interpolation, align_corners=align_corners)
 
     if len(original_shape) == 2:
         output = output[0, 0]

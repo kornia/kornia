@@ -765,3 +765,22 @@ class TestCropSizeValidation:
         inp = torch.rand(1, 1, 4, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError, match="tuple/list of length 2"):
             kornia.geometry.transform.center_crop(inp, (2, 2, 2))
+
+
+class TestSliceResizeFullgraphPathEager(BaseTester):
+    """The fullgraph slice-resize path, run eagerly against ``crop_by_indices`` in float64."""
+
+    @pytest.mark.parametrize(
+        "mode,align_corners", [("bilinear", False), ("bilinear", True), ("bicubic", False), ("nearest-exact", None)]
+    )
+    def test_float64_coordinates_match_crop_by_indices(self, mode, align_corners):
+        # Every mode but legacy nearest samples float64 coordinates for float64 images; float32 ones are ~1e-6 off.
+        from kornia.geometry.transform._crop import _compiled_slice_resize
+
+        image = torch.linspace(0, 40, 2 * 3 * 23 * 31, dtype=torch.float64).sin().reshape(2, 3, 23, 31)
+        src = torch.tensor([[[2, 1], [20, 1], [20, 17], [2, 17]], [[0, 3], [28, 3], [28, 20], [0, 20]]])
+        expected = kornia.geometry.transform.crop_by_indices(
+            image, src, (13, 29), interpolation=mode, align_corners=align_corners
+        )
+        actual = _compiled_slice_resize(image, src, (13, 29), mode, align_corners)
+        self.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
