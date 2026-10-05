@@ -487,6 +487,14 @@ class TestSolveWithMask:
         assert_close(X[0, :, 0], B[0] / 2)
         assert torch.equal(X[1, :, 0], B[1])
 
+    def test_overflowing_solution_is_invalid(self, device):
+        # The solution of (1e-5 * I) x = 1 is 1e5, which float16 cannot hold although the float32 solve can.
+        A = torch.eye(2, device=device, dtype=torch.float16)[None] * 1e-5
+        B = torch.ones(1, 2, 1, device=device, dtype=torch.float16)
+        X, _, mask = safe_solve_with_mask(B, A)
+        assert mask.tolist() == [False]
+        assert torch.equal(X, B)
+
 
 class TestInverseWithMask:
     def test_smoke(self, device, dtype):
@@ -537,11 +545,12 @@ class TestInverseWithMask:
             assert_close(inverse, expected)
 
     def test_overflowing_inverse_is_invalid(self, device):
-        # The inverse of 1e-5 * I is 1e5 * I, which float16 cannot hold.
+        # The inverse of 1e-5 * I is 1e5 * I, which float16 cannot hold, in eager mode and under capture.
         A = torch.eye(2, device=device, dtype=torch.float16) * 1e-5
-        inverse, mask = safe_inverse_with_mask(A)
-        assert not mask.item()
-        assert torch.equal(inverse, torch.eye(2, device=device, dtype=torch.float16))
+        for fn in (safe_inverse_with_mask, torch.jit.trace(safe_inverse_with_mask, (A,), check_trace=False)):
+            inverse, mask = fn(A)
+            assert not mask.item()
+            assert torch.equal(inverse, torch.eye(2, device=device, dtype=torch.float16))
 
 
 def test_is_autocast_enabled_cpu():

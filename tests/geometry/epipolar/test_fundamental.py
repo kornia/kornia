@@ -460,6 +460,11 @@ class TestFundamentlFromEssential(BaseTester):
         F_mat = epi.fundamental_from_essential(E_mat, K, K)
         self.assert_close(F_mat[0], E_mat[0])
         assert F_mat[1].isnan().all()
+        # a singular K2 alone is enough
+        eye = torch.eye(3, device=device, dtype=dtype).expand(2, 3, 3)
+        F_mat = epi.fundamental_from_essential(E_mat, eye, K)
+        self.assert_close(F_mat[0], E_mat[0])
+        assert F_mat[1].isnan().all()
 
     def test_from_to_essential(self, device, dtype):
         scene = generate_two_view_random_scene(device, dtype)
