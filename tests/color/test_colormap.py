@@ -113,6 +113,13 @@ class TestApplyColorMap(BaseTester):
 
         self.assert_close(actual[:, :3], expected[:, :3])
 
+    def test_float_samples_choose_ranges_independently(self, device, dtype):
+        cm = ColorMap(base="autumn", num_colors=256, device=device, dtype=dtype)
+        image = torch.tensor([[[[0.5]]]], device=device, dtype=dtype)
+        paired = torch.cat([image, torch.full_like(image, 200.0)])
+
+        self.assert_close(apply_colormap(paired, cm)[:1], apply_colormap(image, cm))
+
     def test_exception(self, device, dtype):
         cm = ColorMap(base="autumn", device=device, dtype=dtype)
         with pytest.raises(Exception):
