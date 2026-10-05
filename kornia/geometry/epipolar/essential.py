@@ -706,8 +706,10 @@ def motion_from_essential_choose_solution(
         - ``K1`` and ``K2`` are applied inside, so ``x1`` and ``x2`` are pixel coordinates.
         - Returns the candidate with the most points at positive depth in both cameras, with
           :math:`\|t\| = 1`, and the points triangulated in the first camera's frame at that scale.
-        - Known defects: with no valid point it returns candidate 0 without a signal
-          (`#4879 <https://github.com/kornia/kornia/issues/4879>`_).
+        - The fourth output is the number of points at positive depth in both cameras for the returned
+          candidate, as ``cv2.recoverPose`` returns. A count of ``0`` means no point passed, and the returned
+          pose is then candidate 0 of
+          :py:meth:`~kornia.geometry.epipolar.motion_from_essential`, not a recovered motion.
 
     Args:
         E_mat: The essential matrix in the form of :math:`(B, 3, 3)`, or :math:`(3, 3)` with every other input
