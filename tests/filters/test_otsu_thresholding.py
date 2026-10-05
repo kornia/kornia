@@ -374,6 +374,63 @@ class TestOtsuThreshold(BaseTester):
             expected_edges = torch.linspace(low, high, nbins + 1, device=device, dtype=stats_dtype)
             self.assert_close(edges[i], expected_edges)
 
+    @pytest.mark.parametrize("nbins", [2, 256])
+    @pytest.mark.parametrize("scale", [1.0, 1e35, 6e35, 7e35, 1e36, 1.6e38, 3.4e38])
+    def test_large_finite_range_split_5471(self, scale, nbins, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("issue fixtures require float32 or float64; dtype extrema are covered separately")
+        values = (
+            [-3.4e38, -1e38, 0.0, 2e38, 3.4e38]
+            if scale == 3.4e38
+            else [-scale, -0.3125 * scale, 0.0, 0.625 * scale, scale]
+        )
+        image = torch.tensor([values], device=device, dtype=dtype)
+        mask, threshold = otsu_threshold(image, nbins=nbins, return_mask=True)
+        assert threshold.isfinite().all()
+        # At 256 bins the optimal split is after the zero pixel's bin (128), whose upper edge is scale / 128.
+        # With two bins, zero belongs to the foreground, so the membership guard puts the threshold below zero.
+        assert mask.tolist() == [[False, False, nbins == 2, True, True]]
+        if nbins == 256:
+            self.assert_close(threshold / scale, image.new_tensor([1 / 128]), rtol=2e-5, atol=0)
+        else:
+            assert image[0, 1] <= threshold.item() < 0
+        self.assert_close(mask, image > threshold)
+
+    @pytest.mark.parametrize("nbins", [2, 17, 256])
+    def test_mixed_ordinary_and_extreme_planes_5471(self, nbins, device, dtype):
+        ordinary = torch.tensor([[-1.0, -0.75, -0.5, 0.5, 0.75, 1.0]], device=device, dtype=dtype)
+        extreme = ordinary * torch.finfo(dtype).max
+        constant = torch.full_like(ordinary, torch.finfo(dtype).max)
+        image = torch.stack([ordinary, extreme, constant]).requires_grad_(True)
+        mask, threshold = otsu_threshold(image, nbins=nbins, return_mask=True)
+        assert threshold.dtype == dtype
+        assert threshold.device == image.device
+        assert threshold.isfinite().all()
+        assert not threshold.requires_grad
+        assert mask.tolist() == [[[False, False, False, True, True, True]]] * 2 + [[[False] * 6]]
+        expected_mask, expected_threshold = otsu_threshold(ordinary, nbins=nbins, return_mask=True)
+        self.assert_close(mask[0], expected_mask)
+        self.assert_close(threshold[:1], expected_threshold, rtol=0, atol=0)
+        # Bin floor(nbins / 4) holds the largest background pixel (-scale / 2).
+        edge = -1 + 2 * (nbins // 4 + 1) / nbins
+        self.assert_close(threshold[1:2] / torch.finfo(dtype).max, image.new_tensor([edge]))
+        self.assert_close(threshold[2:3], constant.flatten()[:1], rtol=0, atol=0)
+        out, _ = otsu_threshold(image, nbins=nbins)
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        self.assert_close(grad, mask.to(dtype))
+
+    @pytest.mark.parametrize("sign", [1.0, -1.0])
+    @pytest.mark.parametrize("nbins", [2, 256])
+    def test_one_sided_extreme_range_5471(self, sign, nbins, device, dtype):
+        # One extreme is zero: the bounded unit must be the larger magnitude, not the minimum's or the maximum's alone.
+        unit = sign * torch.tensor([[0.0, 0.125, 0.25, 0.75, 1.0]], device=device, dtype=dtype)
+        image = unit * torch.finfo(dtype).max
+        mask, threshold = otsu_threshold(image, nbins=nbins, return_mask=True)
+        expected_mask, expected_threshold = otsu_threshold(unit, nbins=nbins, return_mask=True)
+        assert threshold.isfinite().all()
+        assert mask.tolist() == expected_mask.tolist()
+        self.assert_close(threshold / torch.finfo(dtype).max, expected_threshold)
+
     def test_integer_histogram_matches_histc_with_offsets_5425(self, device):
         image = torch.stack([torch.arange(-128, 129), torch.arange(1000, 1257)]).to(device=device, dtype=torch.int16)
         histograms, _, _ = OtsuThreshold._OtsuThreshold__histogram(image, 17)
