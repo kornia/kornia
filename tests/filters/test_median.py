@@ -25,7 +25,7 @@ from kornia.core.exceptions import BaseError
 from kornia.filters import MedianBlur, median_blur
 from kornia.filters.kernels import get_binary_kernel2d
 
-from testing.base import BaseTester, supports_reflect_padding
+from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
 
 median_module = importlib.import_module("kornia.filters.median")
 
@@ -258,6 +258,36 @@ class TestMedianBlur(BaseTester):
         actual = median_blur(inp, kernel_size, border_type)
         self.assert_close(actual.isnan(), expected.isnan())
         self.assert_close(actual.nan_to_num(), expected.nan_to_num())
+
+    @pytest.mark.parametrize("conv_nonfinite", ["drops", "spreads"])
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    @pytest.mark.parametrize("kernel_size", [3, 7, (5, 7)])
+    @pytest.mark.parametrize("invalid", [float("nan"), float("inf")])
+    def test_nonfinite_window_does_not_depend_on_convolution(
+        self, monkeypatch, invalid, kernel_size, requires_grad, conv_nonfinite, device, dtype
+    ):
+        # CPU bf16 convolution on the x86 CI runners can drop a NaN from the one-hot features (7x7 windows) or
+        # spread it outside the window. Emulate both: only the windows that hold the non-finite pixel are NaN.
+        conv2d = torch.nn.functional.conv2d
+
+        def nonfinite_conv2d(x, *args, **kwargs):
+            if conv_nonfinite == "drops":
+                return conv2d(torch.where(torch.isfinite(x), x, torch.zeros_like(x)), *args, **kwargs)
+            out = conv2d(x, *args, **kwargs)
+            return torch.where(torch.isfinite(x).all(), out, torch.full_like(out, float("nan")))
+
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip(f"this torch build has no replicate padding kernel for {dtype} on {device.type}")
+        monkeypatch.setattr(torch.nn.functional, "conv2d", nonfinite_conv2d)
+        image = torch.full((1, 1, 9, 11), 0.5, device=device, dtype=dtype)
+        image[0, 0, 4, 5] = invalid
+        image.requires_grad_(requires_grad)
+        ky, kx = (kernel_size, kernel_size) if isinstance(kernel_size, int) else kernel_size
+        expected = torch.zeros(1, 1, 9, 11, dtype=torch.bool, device=device)
+        expected[..., 4 - ky // 2 : 5 + ky // 2, 5 - kx // 2 : 6 + kx // 2] = True
+        actual = median_blur(image, kernel_size, "replicate").detach()
+        assert torch.equal(actual.isnan(), expected)
+        assert torch.equal(actual[~expected], torch.full_like(actual[~expected], 0.5))
 
     @pytest.mark.parametrize("kernel_size", [3, 5])
     @pytest.mark.parametrize("shape", [(1, 2, 7, 9), (1, 4, 512, 512)])
