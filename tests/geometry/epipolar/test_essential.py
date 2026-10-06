@@ -508,9 +508,9 @@ class TestEssentialFromFundamental(BaseTester):
         assert E_mat.shape == (B, 3, 3)
 
     def test_from_to_fundamental(self, device, dtype):
-        # The unseeded torch.rand intrinsics this test used to draw are close to singular every few hundred draws,
-        # which is what made the round trip F -> K2^T F K1 -> K2^-T E K1^-1 miss its tolerance (#685). With a seeded
-        # F and well-conditioned intrinsics the round trip is exact up to the dtype's precision.
+        # Seeded F and fixed, well-conditioned intrinsics: the round trip F -> K2^T F K1 -> K2^-T E K1^-1 goes
+        # through the inverses of K1 and K2, so near-singular random intrinsics would miss the tolerance. K1 != K2
+        # and neither is symmetric, so swapping the cameras or dropping a transpose fails in every dtype.
         generator = torch.Generator().manual_seed(0)
         F_mat = torch.rand(1, 3, 3, generator=generator, dtype=torch.float64).to(device, dtype)
         K1 = torch.tensor([[[1.2, 0.0, 0.1], [0.0, 1.1, -0.2], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
