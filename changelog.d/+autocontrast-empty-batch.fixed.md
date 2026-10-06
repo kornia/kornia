@@ -1,0 +1,1 @@
+`normalize_min_max` and its `RandomAutoContrast`, `RandomGaussianIllumination`, and `RandomLinearCornerIllumination` callers now preserve empty batches. Min-max normalization also preserves empty leading dimensions in higher-rank inputs, while empty channel or spatial dimensions remain invalid.

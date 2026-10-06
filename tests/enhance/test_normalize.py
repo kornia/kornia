@@ -575,6 +575,56 @@ class TestNormalizeIntegerInput(BaseTester):
 
 
 class TestNormalizeMinMax(BaseTester):
+    @pytest.mark.parametrize("shape", [(2, 3, 6, 8), (0, 3, 6, 8), (2, 0, 3, 6, 8)])
+    def test_dynamo(self, shape, device, dtype, torch_optimizer):
+        data = torch.rand(shape, device=device, dtype=dtype)
+        op = kornia.enhance.normalize_min_max
+        self.assert_close(torch_optimizer(op)(data), op(data))
+
+    @pytest.mark.parametrize("shape", [(0, 3, 6, 8), (2, 0, 3, 6, 8), (0, 2, 3, 6, 8), (2, 1, 0, 3, 6, 8)])
+    def test_empty_leading_dimensions(self, shape, device, dtype):
+        data = torch.empty(shape, device=device, dtype=dtype, requires_grad=True)
+        actual = kornia.enhance.normalize_min_max(input=data, min_val=-2.0, max_val=3.0)
+        assert actual.shape == data.shape
+        assert actual.dtype == data.dtype
+        assert actual.device == data.device
+        assert actual.numel() == 0
+        actual.sum().backward()
+        assert data.grad is not None
+        assert data.grad.shape == data.shape
+
+    @pytest.mark.parametrize("shape", [(0, 8), (3, 0, 8), (0, 6, 8), (2, 0, 6, 8), (0, 3, 0, 8), (0, 3, 6, 0)])
+    def test_empty_image_planes_rejected(self, shape, device, dtype):
+        with pytest.raises(ValueError):
+            kornia.enhance.normalize_min_max(torch.empty(shape, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("shape", [(), (3,), (0,)])
+    def test_invalid_rank(self, shape, device, dtype):
+        with pytest.raises(ValueError):
+            kornia.enhance.normalize_min_max(torch.empty(shape, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("kwargs", [{"min_val": 0}, {"max_val": 1}])
+    def test_empty_batch_validates_range_types(self, kwargs, device, dtype):
+        with pytest.raises(TypeError):
+            kornia.enhance.normalize_min_max(torch.empty(0, 3, 6, 8, device=device, dtype=dtype), **kwargs)
+
+    @pytest.mark.parametrize("shape", [(2, 3), (2, 2, 3), (2, 2, 2, 3), (2, 2, 2, 2, 3)])
+    def test_tied_extrema_gradients(self, shape, device, dtype):
+        # Indexed extrema must retain the first-tie gradient behavior of the BCHW implementation.
+        data = torch.tensor([0.0, 0.0, 1.0, 2.0, 2.0, 1.0], device=device, dtype=dtype)
+        data = data.repeat(torch.Size(shape).numel() // 6).reshape(shape).requires_grad_()
+        reference = data.detach().clone().requires_grad_()
+        planes = reference.reshape(-1, 6)
+        low = planes.min(-1, keepdim=True)[0]
+        high = planes.max(-1, keepdim=True)[0]
+        expected = (3.0 * (planes - low) / (high - low + 1e-6) - 1.0).reshape(shape)
+        actual = kornia.enhance.normalize_min_max(data, min_val=-1.0, max_val=2.0)
+        self.assert_close(actual, expected)
+        weights = torch.arange(data.numel(), device=device, dtype=dtype).reshape(shape)
+        (actual * weights).sum().backward()
+        (expected * weights).sum().backward()
+        self.assert_close(data.grad, reference.grad)
+
     @pytest.mark.parametrize("shape", [(4, 5), (3, 4, 5), (2, 3, 4, 5), (2, 2, 3, 4, 5)])
     def test_noncontiguous(self, shape, device, dtype):
         data = torch.rand(shape, device=device, dtype=dtype).transpose(-1, -2)
@@ -628,9 +678,9 @@ class TestNormalizeMinMax(BaseTester):
         actual = kornia.enhance.normalize_min_max(x, min_val=-1.0, max_val=1.0)
         self.assert_close(actual, expected, low_tolerance=True)
 
-    @pytest.mark.skip(reason="args and kwargs in decorator")
-    def test_jit(self, device, dtype):
-        x = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
+    @pytest.mark.parametrize("shape", [(1, 1, 1, 1), (0, 3, 6, 8), (2, 0, 3, 6, 8)])
+    def test_jit(self, shape, device, dtype):
+        x = torch.ones(shape, device=device, dtype=dtype)
         op = kornia.enhance.normalize_min_max
         op_jit = torch.jit.script(op)
         self.assert_close(op(x), op_jit(x))
@@ -688,9 +738,7 @@ class TestNormalizeMinMax(BaseTester):
         assert out.shape == input_shape
 
     def test_keyword_argument(self, device, dtype):
-        # Regression test for #3745: the perform_keep_shape_image wrapper binds the
-        # first argument as `input`, so passing the image by keyword must use `input=`
-        # and match the documented signature.
+        # Regression test for #3745: the image keyword must match the documented `input` signature.
         x = torch.rand(1, 2, 4, 5, device=device, dtype=dtype)
         out_kwarg = kornia.enhance.normalize_min_max(input=x, min_val=-1.0, max_val=1.0)
         out_positional = kornia.enhance.normalize_min_max(x, min_val=-1.0, max_val=1.0)
