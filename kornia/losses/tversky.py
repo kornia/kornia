@@ -94,6 +94,9 @@ def tversky_loss(
     if not pred.device == target.device:
         raise ValueError(f"pred and target must be in the same device. Got: {pred.device} and {target.device}")
 
+    if not (pred.shape[0] == target.shape[0] and pred.shape[2:] == target.shape[1:]):
+        raise ValueError(f"pred and target shapes must be the same. Got: {pred.shape} and {target.shape}")
+
     # compute softmax over the classes axis
     pred_soft = F.softmax(pred, dim=1)
     target, target_mask = mask_ignore_pixels(target, ignore_index)

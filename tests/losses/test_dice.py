@@ -94,6 +94,15 @@ class TestDiceLoss(BaseTester):
             kornia.losses.DiceLoss()(torch.rand(1, 1, 1, 1), torch.rand(1, 1, 1, 1, device="meta"))
         assert "pred and target must be in the same device. Got:" in str(errinf)
 
+        # The target batch has to match the prediction batch, as for focal_loss (#5544).
+        with pytest.raises(ValueError) as errinf:
+            kornia.losses.DiceLoss()(torch.rand(2, 3, 4, 6), torch.randint(0, 3, (1, 4, 6)))
+        assert "pred and target shapes must be the same. Got: " in str(errinf)
+
+        with pytest.raises(ValueError) as errinf:
+            kornia.losses.DiceLoss()(torch.rand(1, 3, 4, 6), torch.randint(0, 3, (2, 4, 6)))
+        assert "pred and target shapes must be the same. Got: " in str(errinf)
+
     def test_averaging_micro(self, device, dtype):
         num_classes = 2
         eps = 1e-8
@@ -104,7 +113,7 @@ class TestDiceLoss(BaseTester):
         logits[:, 1, 0:3] = 1.0
         logits[:, 1, 3:4] = 10.0
 
-        labels = torch.zeros(2, 4, 1, device=device, dtype=torch.int64)
+        labels = torch.zeros(1, 4, 1, device=device, dtype=torch.int64)
 
         exp_1_0 = torch.exp(torch.tensor([1.0], device=device, dtype=dtype))
         exp_10_0 = torch.exp(torch.tensor([10.0], device=device, dtype=dtype))
@@ -194,7 +203,7 @@ class TestDiceLoss(BaseTester):
         logits[:, 1, :, 0:3] = 1.0
         logits[:, 1, :, 3:4] = 10.0
 
-        labels = torch.zeros(2, 1, 4, device=device, dtype=torch.int64)
+        labels = torch.zeros(1, 1, 4, device=device, dtype=torch.int64)
 
         exp_1_0 = torch.exp(torch.tensor([1.0], device=device, dtype=dtype))
         exp_10_0 = torch.exp(torch.tensor([10.0], device=device, dtype=dtype))
