@@ -562,6 +562,9 @@ def dataclass_to_dict(obj: Any) -> Any:
     """Recursively convert dataclass instances to dictionaries."""
     if is_dataclass(obj) and not isinstance(obj, type):
         return {key: dataclass_to_dict(value) for key, value in asdict(obj).items()}
+    if isinstance(obj, tuple) and hasattr(obj, "_fields"):
+        # a namedtuple's constructor takes one argument per field, so expand positionally
+        return type(obj)(*(dataclass_to_dict(item) for item in obj))
     if isinstance(obj, (list, tuple)):
         return type(obj)(dataclass_to_dict(item) for item in obj)
     if isinstance(obj, dict):
