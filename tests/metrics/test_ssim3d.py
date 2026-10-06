@@ -148,6 +148,28 @@ class TestSSIM3d(BaseTester):
 
         assert actual.shape == expected
 
+    @pytest.mark.parametrize("padding", ["VALID", "Valid"])
+    def test_padding_case_insensitive(self, device, dtype, padding):
+        # Case variants select their branch as the filters do since #5156 (#5537).
+        img1 = torch.rand(1, 1, 9, 11, 13, device=device, dtype=dtype)
+        img2 = torch.rand(1, 1, 9, 11, 13, device=device, dtype=dtype)
+        expected = kornia.metrics.ssim3d(img1, img2, 5, padding="valid")
+        actual = kornia.metrics.ssim3d(img1, img2, 5, padding=padding)
+        assert actual.shape == (1, 1, 5, 7, 9)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        self.assert_close(kornia.metrics.SSIM3D(5, padding=padding)(img1, img2), expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("padding", ["full", "bogus"])
+    def test_exception_invalid_padding(self, device, dtype, padding):
+        # Any other value raises instead of silently returning the 'same' map (#5537).
+        from kornia.core.exceptions import BaseError
+
+        img = torch.rand(1, 1, 3, 3, 3, device=device, dtype=dtype)
+        with pytest.raises(BaseError, match="Invalid padding mode"):
+            kornia.metrics.ssim3d(img, img, 3, padding=padding)
+        with pytest.raises(BaseError, match="Invalid padding mode"):
+            kornia.metrics.SSIM3D(3, padding=padding)(img, img)
+
     def test_exception(self, device, dtype):
         img = torch.rand(1, 1, 3, 3, 3, device=device, dtype=dtype)
 
