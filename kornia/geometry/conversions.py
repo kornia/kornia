@@ -237,6 +237,8 @@ def convert_points_from_homogeneous(points: torch.Tensor, eps: float = 1e-8) -> 
         - ``eps`` only picks the branch, it never enters the division, so the
           result carries no bias from it. It is compared against ``w`` in the
           working dtype
+        - a ``nan`` ``w`` takes the dividing branch, so it gives ``nan`` rather
+          than an unchanged, finite-looking numerator
 
     Args:
         points: the points to be transformed of shape :math:`(*, N, D)`.
@@ -264,7 +266,9 @@ def convert_points_from_homogeneous(points: torch.Tensor, eps: float = 1e-8) -> 
     # set the results of division by zeror/near-zero to 1.0
     # follow the convention of opencv:
     # https://github.com/opencv/opencv/pull/14411/files
-    mask: torch.Tensor = torch.abs(z_vec) > eps
+    # `~(abs <= eps)` rather than `abs > eps`: every comparison with nan is False, so only the negated form
+    # sends a nan `w` into the divide, where it stays nan.
+    mask: torch.Tensor = ~(torch.abs(z_vec) <= eps)
     safe_z_vec = torch.where(mask, z_vec, torch.ones_like(z_vec))
     scale = torch.where(mask, 1.0 / safe_z_vec, torch.ones_like(z_vec))
 

@@ -23,6 +23,7 @@ from typing import Any, Union
 
 import torch
 
+from kornia.geometry.camera.distortion_kannala_brandt import _project_points_kannala_brandt
 from kornia.geometry.vector import Vector2, Vector3
 from kornia.image import ImageSize
 from kornia.sensors.camera.distortion_model import AffineTransform, BrownConradyTransform, KannalaBrandtK3Transform
@@ -130,9 +131,11 @@ class CameraModelBase:
         ``(B, N, 3)`` points and ``B > 1`` they silently pair with the wrong points when ``B == N``,
         :meth:`project` broadcasts to a ``(B, B, 2)`` result when ``N == 1``, and other ``N`` raise, whereas the
         geometry functions apply them per camera:
-        `#4274 <https://github.com/kornia/kornia/issues/4274>`_. :meth:`project` divides by ``z`` with no guard,
-        so ``z = 0`` gives infinities where :func:`~kornia.geometry.camera.perspective.project_points` returns
-        finite pixels: `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+        `#4274 <https://github.com/kornia/kornia/issues/4274>`_. Through
+        :class:`~kornia.sensors.camera.projection_model.Z1Projection`, :meth:`project` skips the divide where
+        ``abs(z) <= 1e-8``, as :func:`~kornia.geometry.camera.perspective.project_points` does; that finite
+        placeholder is not flagged as invalid: `#4555 <https://github.com/kornia/kornia/issues/4555>`_.
+        :class:`KannalaBrandtK3` instead takes the incidence angle from the ray, so it needs no such rule.
 
     Example:
         >>> params = torch.Tensor([328., 328., 320., 240.])
@@ -414,6 +417,25 @@ class KannalaBrandtK3(CameraModelBase):
         if params.shape[-1] != 8 or len(params.shape) > 2:
             raise ValueError("params must be of shape B, 8 for KANNALA_BRANDT_K3 Camera")
         super().__init__(KannalaBrandtK3Transform(), Z1Projection(), image_size, params)
+
+    def project(self, points: Vector3) -> Vector2:
+        r"""Project 3D points to 2D pixels with the Kannala-Brandt model.
+
+        Convention:
+            - the incidence angle is :math:`\theta = \operatorname{atan2}(\lVert (x, y) \rVert, z)`, taken from
+              the camera-frame ray rather than from its :math:`z = 1` projection. A point on the camera plane
+              (``z = 0``) is therefore exactly :math:`\theta = \pi / 2`, and a ray beyond 90 degrees keeps its
+              angle and its side of the image. A ray at or beyond 90 degrees has no point at a positive
+              ``depth``, so :meth:`unproject` does not invert it.
+
+        Args:
+            points: Vector3 representing 3D points in the camera frame.
+
+        Returns:
+            Vector2 representing the projected 2D points.
+
+        """
+        return Vector2(_project_points_kannala_brandt(points.data[..., :2], points.z, self.params))
 
 
 class Orthographic(CameraModelBase):

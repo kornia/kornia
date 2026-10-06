@@ -19,6 +19,8 @@ import pytest
 import torch
 
 from kornia.geometry.camera import project_points, unproject_points
+from kornia.geometry.camera.distortion_kannala_brandt import distort_points_kannala_brandt
+from kornia.geometry.camera.projection_z1 import project_points_z1
 from kornia.geometry.vector import Vector2, Vector3
 from kornia.image import ImageSize
 from kornia.sensors.camera import CameraModel, CameraModelBase, CameraModelType
@@ -170,23 +172,15 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(projected, project_points(points, _k3(device, dtype)))
 
     @pytest.mark.parametrize("z", [0.0, 1e-9, -1e-9, 1e-8, -1e-8])
-    def test_wart_projection_differs_from_geometry_at_small_depth_4267(self, device, dtype, z):
-        # Wart pin for #4267: geometry skips the divide at abs(z) <= 1e-8, sensors divides unconditionally, so
-        # the two disagree at and below that threshold (float16 underflows these depths to zero, giving inf).
-        # Delete or update when #4267 is repaired.
+    def test_convention_projection_matches_geometry_at_small_depth_4267(self, device, dtype, z):
+        # #4267: both type systems skip the divide where abs(z) <= 1e-8 and apply K after it, so the sensors
+        # pinhole agrees with project_points there: (fx * 1 + cx, fy * 2 + cy) = (104, 103).
         cam = _pinhole(device, dtype)
         points = torch.tensor([[1.0, 2.0, z]], device=device, dtype=dtype)
         projected = cam.project(Vector3(points)).data
-        geometry = project_points(points, _k3(device, dtype))
-        expected_geometry = torch.tensor([[104.0, 103.0]], device=device, dtype=dtype)
-        self.assert_close(geometry, expected_geometry, atol=0.0, rtol=0.0)
-        assert not torch.equal(projected, geometry)
-        if points[0, 2] == 0:
-            assert torch.isinf(projected).all()
-        else:
-            assert torch.isfinite(projected).all()
-            assert (projected.abs() > 1e9).all()
-            assert (projected.sign() == points[0, 2].sign()).all()
+        expected = torch.tensor([[104.0, 103.0]], device=device, dtype=dtype)
+        self.assert_close(projected, expected, atol=0.0, rtol=0.0)
+        self.assert_close(project_points(points, _k3(device, dtype)), expected, atol=0.0, rtol=0.0)
 
     def test_convention_unproject_takes_the_camera_frame_z_as_depth(self, device, dtype):
         # depth is the camera-frame z (the result's third component), as in unproject_points without
@@ -569,3 +563,75 @@ class TestNonPinholeCameraProjectUnproject(BaseTester):
         assert unprojected.data.shape == points.shape
 
         self.assert_close(unprojected.data, points)
+
+
+# The #4267 Kannala-Brandt fixture: fx = fy = 300, c = (320, 240), k = (0.1, 0.01, 0, 0), ray direction (0.6, 0.8).
+# Expected pixels are the analytic model on theta = atan2(||(x, y)||, z), generated in float64 with
+#   d = theta * (1 + 0.1 * theta**2 + 0.01 * theta**4); u, v = 300 * d * (0.6, 0.8) + (320, 240)
+_KB_PARAMS = (300.0, 300.0, 320.0, 240.0, 0.1, 0.01, 0.0, 0.0)
+
+
+class TestKannalaBrandtK3Projection(BaseTester):
+    def _camera(self, device, dtype):
+        return CameraModel(
+            ImageSize(480, 640), CameraModelType.KANNALA_BRANDT_K3, torch.tensor(_KB_PARAMS, device=device, dtype=dtype)
+        )
+
+    @pytest.mark.parametrize("z", [0.0, 1e-9, 1e-8, 2e-8])
+    def test_convention_camera_plane_ray_is_at_ninety_degrees_4267(self, device, dtype, z):
+        # #4267: the angle comes from the ray, not from its z = 1 projection, so a ray on (or within 1e-8 of)
+        # the camera plane is at theta = pi / 2; it is not sent through the skipped divide to the 45-degree pixel
+        # (470.63, 440.84), and z = 0 is no longer nan.
+        projected = self._camera(device, dtype).project(
+            Vector3(torch.tensor([0.6, 0.8, z], device=device, dtype=dtype))
+        )
+        self.assert_close(projected.data, torch.tensor([689.721069, 732.961425], device=device, dtype=dtype))
+
+    def test_convention_ray_beyond_ninety_degrees_keeps_its_side_4267(self, device, dtype):
+        # Crossing the camera plane is continuous: z = -1e-3 lands next to z = 1e-3 instead of being mirrored
+        # through the z = 1 plane to the opposite side of the image.
+        rays = torch.tensor([[0.6, 0.8, 1e-3], [0.6, 0.8, -1e-3], [0.6, 0.8, -1.0]], device=device, dtype=dtype)
+        projected = self._camera(device, dtype).project(Vector3(rays))
+        expected = torch.tensor(
+            [[689.353191, 732.470921], [690.089255, 733.452341], [1110.284752, 1293.713003]],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(projected.data, expected)
+
+    def test_front_rays_match_the_z1_plane_path(self, device, dtype):
+        # In front of the camera the angle from the ray equals atan of the z = 1 radius, so the result is the
+        # one the z = 1 plane path gave, on-axis rays included.
+        rays = torch.tensor(
+            [[0.6, 0.8, 1.0], [-0.3, 0.2, 2.0], [1e-6, 0.0, 1.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype
+        )
+        params = torch.tensor(_KB_PARAMS, device=device, dtype=dtype)
+        through_z1 = distort_points_kannala_brandt(project_points_z1(rays), params)
+        self.assert_close(self._camera(device, dtype).project(Vector3(rays)).data, through_z1)
+
+    def test_nan_depth_gives_nan_4267(self, device, dtype):
+        rays = torch.tensor([[0.6, 0.8, float("nan")], [0.0, 0.0, float("nan")]], device=device, dtype=dtype)
+        assert torch.isnan(self._camera(device, dtype).project(Vector3(rays)).data).all()
+
+    def test_raw_tensor_is_rejected(self, device, dtype):
+        with pytest.raises(AttributeError):
+            self._camera(device, dtype).project(torch.tensor([0.6, 0.8, 1.0], device=device, dtype=dtype))
+
+    def test_gradcheck_4267(self, device):
+        # Safe arguments keep both arms of the on-axis torch.where finite, so no inf or nan reaches the
+        # gradient, at z = 0, behind the camera and on the axis.
+        params = torch.tensor(_KB_PARAMS, device=device, dtype=torch.float64)
+        rays = torch.tensor(
+            [[0.6, 0.8, 0.0], [0.6, 0.8, 1.0], [0.6, 0.8, -1.0], [1e-6, 0.0, 1.0], [0.0, 0.0, 1.0]],
+            device=device,
+            dtype=torch.float64,
+        )
+
+        def project(points):
+            return (
+                CameraModel(ImageSize(480, 640), CameraModelType.KANNALA_BRANDT_K3, params)
+                .project(Vector3(points))
+                .data
+            )
+
+        self.gradcheck(project, (rays,))

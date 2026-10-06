@@ -1177,16 +1177,20 @@ class TestDepthWarperConventions(BaseTester):
         self.assert_close(swapped, torch.tensor([0.0, 0.0, 1.0, 2.0, 3.0], device=device, dtype=dtype))
         assert (by_class - swapped).abs().max().item() > 0.5
 
-    def test_wart_warp_frame_depth_and_depth_warper_split_at_zero_transformed_depth_4267(self, device, dtype):
-        # kornia#4267: the two warps guard z = 0 differently. With K = I, unit depth and a (+1, 0, -1) move, every
-        # pixel lands at z = 0. warp_frame_depth skips the divide (abs(z) <= 1e-8) and returns the image shifted by
-        # one column; DepthWarper divides by z + 1e-12, sending the pixel to a coordinate of order 1e12. At z = 0.5
-        # the two agree. The pin never samples through the 1e12 grid: torch 2.5.1's aarch64 CPU grid_sample
-        # segfaults on such coordinates (pytorch/pytorch#24823). Delete when #4267 settles one z = 0 policy.
+    @pytest.mark.parametrize("principal_point", [(0.0, 0.0), (1.0, 0.5)])
+    def test_convention_warp_frame_depth_and_depth_warper_agree_at_zero_transformed_depth_4267(
+        self, device, dtype, principal_point
+    ):
+        # #4267: with unit depth and a (+1, 0, -1) move every pixel lands at z = 0. Both warps skip the divide there
+        # and apply K after it, so they agree, with a nonzero principal point too, and return the image shifted by
+        # one column. The DepthWarper grid stays finite: its former x / (z + 1e-12) sent it to ~1e12, which
+        # segfaults torch 2.5.1's aarch64 CPU grid_sample (pytorch/pytorch#24823). At z = 0.5 they agree as well.
+        cx, cy = principal_point
         image = torch.arange(1.0, 7.0, device=device, dtype=dtype).view(1, 1, 2, 3)
         depth = torch.ones(1, 1, 2, 3, device=device, dtype=dtype)
-        camera_matrix = torch.eye(3, device=device, dtype=dtype)[None]
+        camera_matrix = torch.tensor([[[1.0, 0.0, cx], [0.0, 1.0, cy], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         intrinsics = _eye4(device, dtype)
+        intrinsics[:, :3, :3] = camera_matrix
         height = torch.tensor([2], device=device)
         width = torch.tensor([3], device=device)
 
@@ -1198,11 +1202,15 @@ class TestDepthWarperConventions(BaseTester):
         to_zero_depth = _eye4(device, dtype)
         to_zero_depth[0, 0, 3] = 1.0
         to_zero_depth[0, 2, 3] = -1.0
-        by_function = warp_frame_depth(image, depth, to_zero_depth, camera_matrix)
-        self.assert_close(by_function, torch.tensor([[[[2.0, 3.0, 0.0], [5.0, 6.0, 0.0]]]], device=device, dtype=dtype))
+        expected = torch.tensor([[[[2.0, 3.0, 0.0], [5.0, 6.0, 0.0]]]], device=device, dtype=dtype)
+        self.assert_close(warp_frame_depth(image, depth, to_zero_depth, camera_matrix), expected)
         singular = warper_for(to_zero_depth)
-        # compared in float32: a float16 1e9 is itself inf, and inf > inf is False
-        assert (singular.warp_grid(depth)[..., 0].abs().to(torch.float32) > 1.0e9).all()
+        assert torch.isfinite(singular.warp_grid(depth)).all()
+        self.assert_close(singular(depth, image), expected)
+        # the functional form builds the same warper, so it follows the same rule
+        pinhole_dst = PinholeCamera(intrinsics.clone(), to_zero_depth.clone(), height, width)
+        pinhole_src = PinholeCamera(intrinsics.clone(), _eye4(device, dtype), height, width)
+        self.assert_close(kornia.geometry.depth.depth_warp(pinhole_dst, pinhole_src, depth, image, 2, 3), expected)
         if dtype in (torch.float32, torch.float64):
             half_way = to_zero_depth.clone()
             half_way[0, 2, 3] = -0.5

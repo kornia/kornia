@@ -16,6 +16,8 @@
 #
 
 import math
+import re
+import warnings
 
 import pytest
 import torch
@@ -199,18 +201,63 @@ class TestCam2Pixel(BaseTester):
 
         self.gradcheck(kornia.geometry.camera.cam2pixel, (cam_coords_src, proj_mat, eps), atol=atol, rtol=rtol)
 
-    def test_wart_cam2pixel_epsilon_makes_the_singular_divide_finite_4267(self, device, dtype):
-        # Wart pin for #4267: cam2pixel divides by z + 1e-12, so (1, 2, 0) gives a finite 1e14-scale pixel (inf in
-        # float16) and the epsilon biases every result below z ~ 1e-10. Delete when #4267 is repaired.
-        cam_coords = torch.tensor([[[[1.0, 2.0, 0.0], [1.0, 2.0, 1.0e-12]]]], device=device, dtype=dtype)
+    def test_convention_cam2pixel_skips_the_divide_with_no_epsilon_in_it_4267(self, device, dtype):
+        # #4267: cam2pixel divides by the projected z and skips the divide where abs(z) <= 1e-8, with no epsilon in
+        # the denominator. dst_proj_src already contains K, so the skipped result is the undivided K X: (100, 200)
+        # here, without the principal point that project_points adds after its skipped divide.
+        cam_coords = torch.tensor(
+            [[[[1.0, 2.0, 0.0], [1.0, 2.0, 1.0e-12], [1.0, 2.0, 4.0]]]], device=device, dtype=dtype
+        )
         uv = kornia.geometry.camera.cam2pixel(cam_coords, _k44(device, dtype))
-        if dtype == torch.float16:
-            assert bool(torch.isposinf(uv).all())
-        else:
-            assert bool(torch.isfinite(uv).all())
-            # At z = eps the additive denominator halves the result; a guarded divide would not.
-            expected = torch.tensor([[[[1.0e14, 2.0e14], [5.0e13, 1.0e14]]]], device=device, dtype=dtype)
-            self.assert_close(uv, expected)
+        expected = torch.tensor([[[[100.0, 200.0], [100.0, 200.0], [29.0, 53.0]]]], device=device, dtype=dtype)
+        self.assert_close(uv, expected)
+        nan_depth = torch.tensor([[[[1.0, 2.0, float("nan")]]]], device=device, dtype=dtype)
+        assert torch.isnan(kornia.geometry.camera.cam2pixel(nan_depth, _k44(device, dtype))).all()
+
+    def test_convention_cam2pixel_divides_without_bias_above_the_threshold_4267(self, device, dtype):
+        # Just above the threshold the divide is exact: z = 1e-7 gives 1e9 + 4, where the former x / (z + 1e-12)
+        # gave about 0.99999e9.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("the 1e-5 relative bias this pins is below half-precision resolution")
+        cam_coords = torch.tensor([[[[1.0, 2.0, 1.0e-7]]]], device=device, dtype=dtype)
+        uv = kornia.geometry.camera.cam2pixel(cam_coords, _k44(device, dtype))
+        expected = torch.tensor([[[[100.0 / 1e-7 + 4.0, 200.0 / 1e-7 + 3.0]]]], device=device, dtype=dtype)
+        # an explicit rtol: the default float32 tolerance (1e-4) would accept the 1e-5 bias this pins
+        self.assert_close(uv, expected, rtol=1e-6, atol=0.0)
+
+    def test_non_default_eps_warns_and_is_ignored(self, device, dtype):
+        # #4267: eps used to be added to the depth; the threshold is now the 1e-8 of project_points, and eps is
+        # deprecated: a non-default value warns and changes nothing.
+        cam_coords = torch.tensor([[[[1.0, 2.0, 0.0], [1.0, 2.0, 4.0]]]], device=device, dtype=dtype)
+        expected = kornia.geometry.camera.cam2pixel(cam_coords, _k44(device, dtype))
+        message = (
+            "`eps` is deprecated since kornia 0.9.1 and ignored by `cam2pixel`: the divide is skipped where "
+            "abs(z) <= 1e-8, as in `project_points`. It will be removed in a future release."
+        )
+        with pytest.warns(DeprecationWarning, match=re.escape(message)):
+            actual = kornia.geometry.camera.cam2pixel(cam_coords, _k44(device, dtype), eps=1e-6)
+        self.assert_close(actual, expected, atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("eps", [None, 1e-12])
+    def test_default_eps_does_not_warn(self, eps, device, dtype):
+        cam_coords = torch.tensor([[[[1.0, 2.0, 0.0], [1.0, 2.0, 4.0]]]], device=device, dtype=dtype)
+        kwargs = {} if eps is None else {"eps": eps}
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            kornia.geometry.camera.cam2pixel(cam_coords, _k44(device, dtype), **kwargs)
+        assert not [w for w in caught if "cam2pixel" in str(w.message)]
+
+    def test_non_default_eps_does_not_warn_when_traced(self, device, dtype):
+        cam_coords = torch.tensor([[[[1.0, 2.0, 0.0], [1.0, 2.0, 4.0]]]], device=device, dtype=dtype)
+        projection = _k44(device, dtype)
+        # check_trace=False: the trace check reruns the function eagerly, where the warning is expected
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            traced = torch.jit.trace(
+                lambda c: kornia.geometry.camera.cam2pixel(c, projection, eps=1e-6), (cam_coords,), check_trace=False
+            )
+        assert not [w for w in caught if "cam2pixel" in str(w.message)]
+        self.assert_close(traced(cam_coords), kornia.geometry.camera.cam2pixel(cam_coords, projection))
 
     @pytest.mark.parametrize("shape", [(), (4, 4), (3, 3), (1, 3, 3), (1, 3, 4), (1, 5, 4), (1, 1, 4, 4)])
     def test_invalid_projection_shape_4266(self, shape, device, dtype):
@@ -1118,29 +1165,99 @@ class TestPinholeCamera(BaseTester):
                 torch.zeros(batch_sizes[3], device=device, dtype=dtype),
             )
 
-    def test_wart_project_and_project_points_disagree_at_z_zero_4267(self, device, dtype):
-        # Wart pin for #4267: PinholeCamera.project and project_points agree away from z = 0 but apply K on
-        # opposite sides of the masked |z| <= 1e-8 divide, so at z = 0 they return [100, 200] and [104, 203].
-        # The divergence is the defect, not either value. Delete when #4267 is repaired.
+    @pytest.mark.parametrize("z", [0.0, 5e-9, -5e-9, 1e-8, 4.0, -4.0])
+    def test_convention_project_and_project_points_agree_at_small_depth_4267(self, device, dtype, z):
+        # #4267: PinholeCamera.project and project_points apply K on the same side of the masked divide (after
+        # it), so they agree at every depth, z = 0 included: (104, 203) there. The world point sits 4 units ahead
+        # of the camera-frame point, so the mask is applied in the camera frame, after the extrinsics.
         cam = kornia.geometry.camera.PinholeCamera(
             _k44(device, dtype),
-            _e44(device, dtype),
+            _e44(device, dtype, tz=-4.0),
             torch.tensor([6], device=device),
             torch.tensor([8], device=device),
         )
         K3 = _k44(device, dtype)[:, :3, :3].contiguous()
-        singular = torch.tensor([[1.0, 2.0, 0.0]], device=device, dtype=dtype)
-        self.assert_close(
-            cam.project(singular), torch.tensor([[100.0, 200.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0
+        world = torch.tensor([[1.0, 2.0, z + 4.0]], device=device, dtype=dtype)
+        camera_frame = torch.tensor([[1.0, 2.0, z]], device=device, dtype=dtype)
+        expected = kornia.geometry.camera.project_points(camera_frame, K3)
+        self.assert_close(cam.project(world), expected)
+        if abs(z) <= 1e-8:
+            self.assert_close(expected, torch.tensor([[104.0, 203.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+
+    def test_convention_project_nan_depth_stays_nan_4267(self, device, dtype):
+        cam = kornia.geometry.camera.PinholeCamera(
+            _k44(device, dtype), _e44(device, dtype), torch.tensor([6], device=device), torch.tensor([8], device=device)
         )
-        self.assert_close(
-            kornia.geometry.camera.project_points(singular, K3),
-            torch.tensor([[104.0, 203.0]], device=device, dtype=dtype),
-            atol=0.0,
-            rtol=0.0,
+        assert torch.isnan(cam.project(torch.tensor([[1.0, 2.0, float("nan")]], device=device, dtype=dtype))).all()
+
+    @pytest.mark.parametrize("entry", [None, (0, 1, 5.0), (0, 3, 7.0), (2, 2, 2.0)])
+    def test_project_keeps_the_full_intrinsics_at_regular_depth_4267(self, device, dtype, entry):
+        # The masked divide must not narrow project to fx, fy, cx, cy: skew and K[2, 2] still take part, exactly as
+        # in the projective map (P X)[:2] / (P X)[2], P being the intrinsics' top-left 3x3 block, embedded in 4x4,
+        # times the extrinsics. The stored fourth row and column take no part (#5415), so a K[0, 3] entry changes
+        # nothing.
+        intrinsics = _k44(device, dtype)
+        if entry is not None:
+            row, col, value = entry
+            intrinsics[0, row, col] = value
+        extrinsics = _e44(device, dtype, tx=0.1, ty=-0.2, tz=0.3)
+        cam = kornia.geometry.camera.PinholeCamera(
+            intrinsics, extrinsics, torch.tensor([6], device=device), torch.tensor([8], device=device)
         )
-        regular = torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype)
-        self.assert_close(cam.project(regular), kornia.geometry.camera.project_points(regular, K3))
+        point = torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype)
+        block = torch.eye(4, device=device, dtype=dtype)[None].clone()
+        block[..., :3, :3] = intrinsics[..., :3, :3]
+        projective = (block @ extrinsics)[0] @ torch.tensor([1.0, 2.0, 4.0, 1.0], device=device, dtype=dtype)
+        self.assert_close(cam.project(point), (projective[:2] / projective[2])[None])
+
+    def test_project_matches_a_per_camera_loop_for_rank_4_points_4267(self, device, dtype):
+        # Batched cameras pair with their own points along the camera axis for (B, H, W, 3) input, a z = 0 row
+        # included.
+        intrinsics = torch.cat([_k44(device, dtype), _k44(device, dtype, fx=80.0, fy=60.0, cx=5.0, cy=2.0)])
+        intrinsics[1, 0, 1] = 3.0
+        extrinsics = torch.cat([_e44(device, dtype, 0.1, -0.2, 0.3), _e44(device, dtype, -0.3, 0.1, -1.0)])
+        height, width = torch.tensor([6, 6], device=device), torch.tensor([8, 8], device=device)
+        cam = kornia.geometry.camera.PinholeCamera(intrinsics, extrinsics, height, width)
+        points = torch.linspace(0.5, 3.0, 2 * 3 * 5 * 3, device=device, dtype=dtype).reshape(2, 3, 5, 3)
+        points[1, 0, 0] = torch.tensor([0.4, -0.7, 1.0], device=device, dtype=dtype)  # camera-frame z = 0
+        out = cam.project(points)
+        assert out.shape == (2, 3, 5, 2)
+        for b in range(2):
+            single = kornia.geometry.camera.PinholeCamera(
+                intrinsics[b : b + 1], extrinsics[b : b + 1], height[b : b + 1], width[b : b + 1]
+            )
+            self.assert_close(out[b : b + 1], single.project(points[b : b + 1]))
+
+    def test_project_keeps_the_point_dtype_4267(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is not supported on MPS")
+        cam = kornia.geometry.camera.PinholeCamera(
+            _k44(device, torch.float64),
+            _e44(device, torch.float64),
+            torch.tensor([6], device=device),
+            torch.tensor([8], device=device),
+        )
+        out = cam.project(torch.tensor([[1.0, 2.0, 4.0], [1.0, 2.0, 0.0]], device=device, dtype=torch.float32))
+        assert out.dtype == torch.float32
+
+    def test_gradcheck_project_on_both_branches_4267(self, device):
+        # Finite, version-independent gradients on both sides of the masked divide (a safe-argument torch.where);
+        # finite differences of 1e-10 keep each camera-frame z inside its branch.
+        intrinsics = _k44(device, torch.float64)
+        intrinsics[0, 0, 1] = 5.0
+        intrinsics[0, 0, 3] = 7.0
+        cam = kornia.geometry.camera.PinholeCamera(
+            intrinsics,
+            _e44(device, torch.float64, tz=-4.0),
+            torch.tensor([6], device=device),
+            torch.tensor([8], device=device),
+        )
+        points = torch.tensor(
+            [[1.0, 2.0, 4.0], [1.0, 2.0, 4.0 + 5e-9], [1.0, 2.0, 4.0 - 5e-9], [1.0, 2.0, 4.0 + 3e-8], [1.0, 2.0, 4.5]],
+            device=device,
+            dtype=torch.float64,
+        )
+        self.gradcheck(cam.project, (points,), eps=1e-10)
 
     def test_convention_project_and_unproject_read_the_3x3_block_4771(self, device, dtype):
         # Convention pin for #4771: project and unproject both build the projection from the intrinsics'

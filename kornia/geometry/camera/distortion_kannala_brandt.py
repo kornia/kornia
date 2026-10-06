@@ -49,18 +49,69 @@ def _distort_points_kannala_brandt_impl(
     # The reciprocal's backward squares its value, which can overflow float16.
     radius_inverse = (1.0 / radius.float()).to(radius.dtype) if radius.dtype == torch.float16 else 1.0 / radius
     theta = radius.atan2(torch.ones_like(radius)) * nonlinear_mask
-    theta2 = theta**2
-    theta4 = theta2**2
-    theta6 = theta2 * theta4
-    theta8 = theta4**2
-
-    r_distorted = theta * (1.0 + k0 * theta2 + k1 * theta4 + k2 * theta6 + k3 * theta8)
+    r_distorted = _kannala_brandt_radius(theta, k0, k1, k2, k3)
 
     scaling = r_distorted * radius_inverse
 
     u = fx * scaling * x + cx
     v = fy * scaling * y + cy
 
+    return torch.stack([u, v], dim=-1)
+
+
+def _kannala_brandt_radius(
+    theta: torch.Tensor, k0: torch.Tensor, k1: torch.Tensor, k2: torch.Tensor, k3: torch.Tensor
+) -> torch.Tensor:
+    theta2 = theta**2
+    theta4 = theta2**2
+    theta6 = theta2 * theta4
+    theta8 = theta4**2
+    return theta * (1.0 + k0 * theta2 + k1 * theta4 + k2 * theta6 + k3 * theta8)
+
+
+def _project_points_kannala_brandt(xy: torch.Tensor, z: torch.Tensor, params: torch.Tensor) -> torch.Tensor:
+    r"""Project camera-frame points to pixels with the Kannala-Brandt model, taking the angle from the ray.
+
+    The incidence angle is :math:`\theta = \operatorname{atan2}(\lVert (x, y) \rVert, z)`, so a point on the
+    camera plane (``z = 0``) is exactly :math:`\theta = \pi / 2` and a ray beyond 90 degrees keeps its angle and
+    its side of the image. Going through the ``z = 1`` plane first would skip the divide near ``z = 0`` and
+    mirror rays with ``z < 0``. Near the optical axis in front of the camera, where the polynomial's limit is
+    the pinhole projection, the affine projection of ``(x, y) / z`` is used, as in
+    :func:`distort_points_kannala_brandt`. A ``nan`` coordinate gives ``nan``.
+
+    Args:
+        xy: the camera-frame ``(x, y)`` with shape (..., 2).
+        z: the camera-frame ``z`` with shape (...).
+        params: ``[fx, fy, cx, cy, k0, k1, k2, k3]`` with shape (..., 8).
+
+    Returns:
+        pixel coordinates with shape (..., 2).
+
+    """
+    KORNIA_CHECK_SHAPE(xy, ["*", "2"])
+    KORNIA_CHECK_SHAPE(params, ["*", "8"])
+
+    x = xy[..., 0]
+    y = xy[..., 1]
+
+    fx, fy = params[..., 0], params[..., 1]
+    cx, cy = params[..., 2], params[..., 3]
+
+    radius_sq = x**2 + y**2
+    # the same on-axis threshold as `distort_points_kannala_brandt` on the z = 1 plane (radius^2 / z^2 <= 1e-8)
+    on_axis = (radius_sq <= 1e-8 * z**2) & (z > 0)
+
+    # safe arguments keep both arms of the `torch.where` finite, so neither leaks inf or nan into the gradient
+    ones = torch.ones_like(radius_sq)
+    safe_z = torch.where(on_axis, z, ones)
+    safe_radius = torch.where(on_axis | (radius_sq == 0), ones, radius_sq).sqrt()
+
+    theta = safe_radius.atan2(z)
+    scaling = _kannala_brandt_radius(theta, params[..., 4], params[..., 5], params[..., 6], params[..., 7])
+    scaling = scaling / safe_radius
+
+    u = torch.where(on_axis, fx * x / safe_z + cx, fx * scaling * x + cx)
+    v = torch.where(on_axis, fy * y / safe_z + cy, fy * scaling * y + cy)
     return torch.stack([u, v], dim=-1)
 
 

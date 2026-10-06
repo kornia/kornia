@@ -35,23 +35,16 @@ def project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:
         \begin{bmatrix} u \\ v \\ w \end{bmatrix} =
         \begin{bmatrix} x \\ y \\ z \end{bmatrix} / z
 
-    .. note::
-
-        This function has a precondition that the points are in front of the camera, i.e. z > 0.
-        If this is not the case, the points will be projected to the canonical plane, but the resulting
-        points will be behind the camera and causing numerical issues for z == 0.
-
     Convention:
         - the input is a **camera-frame** point and the output its position on the canonical ``z = 1`` plane,
           a normalized coordinate rather than a pixel; applying ``K`` with
           :func:`~kornia.geometry.conversions.denormalize_points_with_intrinsics` gives the pixel.
-        - the ``z > 0`` precondition above is not validated.
-
-    .. warning::
-        The divide is plain at every ``z``: at ``z = 0`` a component is infinite, or ``nan`` for a zero
-        numerator. :func:`~kornia.geometry.camera.perspective.project_points` instead skips its divide at
-        ``abs(z) <= 1e-8`` and returns finite pixels there, so the two disagree below that threshold:
-        `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+        - where ``abs(z) <= 1e-8`` the divide is skipped and ``(x, y)`` is returned unchanged, the rule of
+          :func:`~kornia.geometry.camera.perspective.project_points` without ``K``. Elsewhere the divide is
+          exact, and a ``nan`` ``z`` gives ``nan``.
+        - the skipped-divide result is a finite placeholder, not a valid projection, and a point behind the
+          camera (``z < 0``) is projected with the same arithmetic; neither is flagged:
+          `#4555 <https://github.com/kornia/kornia/issues/4555>`_.
 
     Args:
         points_in_camera: torch.Tensor representing the points to project with shape (..., 3).
@@ -66,7 +59,10 @@ def project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:
 
     """
     KORNIA_CHECK_SHAPE(points_in_camera, ["*", "3"])
-    return points_in_camera[..., :2] / points_in_camera[..., 2:3]
+    z = points_in_camera[..., 2:3]
+    # `~(abs <= eps)` rather than `abs > eps` so that a nan depth takes the divide and stays nan.
+    divide = ~(torch.abs(z) <= 1e-8)
+    return points_in_camera[..., :2] / torch.where(divide, z, torch.ones_like(z))
 
 
 def unproject_points_z1(
@@ -128,16 +124,12 @@ def dx_project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:
             0 & \frac{1}{z} & -\frac{y}{z^2}
         \end{bmatrix}
 
-    .. note::
-        This function has a precondition that the points are in front of the camera, i.e. z > 0.
-        If this is not the case, the points will be projected to the canonical plane, but the resulting
-        points will be behind the camera and causing numerical issues for z == 0.
-
     Convention:
         - the result is the full Jacobian of :func:`~kornia.geometry.camera.project_points_z1` with shape
           ``(..., 2, 3)``, laid out row-major in the output index: the ``u`` row then the ``v`` row, each
           holding the derivatives with respect to ``x``, ``y`` and ``z``.
-        - the same ``z > 0`` precondition applies, and it is not validated either.
+        - where ``abs(z) <= 1e-8`` that function returns ``(x, y)`` unchanged, so the Jacobian there is
+          ``[[1, 0, 0], [0, 1, 0]]``; a ``nan`` ``z`` gives ``nan`` entries.
 
     Args:
         points_in_camera: torch.Tensor representing the points to project with shape (..., 3).
@@ -159,13 +151,15 @@ def dx_project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:
     y = points_in_camera[..., 1]
     z = points_in_camera[..., 2]
 
-    z_inv = 1.0 / z
+    # The same masked divide as `project_points_z1`: where it is skipped, the projection is (x, y).
+    divide = ~(torch.abs(z) <= 1e-8)
+    z_inv = 1.0 / torch.where(divide, z, torch.ones_like(z))
     z_sq = z_inv * z_inv
     zeros = torch.zeros_like(z_inv)
     return torch.stack(
         [
-            torch.stack([z_inv, zeros, -x * z_sq], dim=-1),
-            torch.stack([zeros, z_inv, -y * z_sq], dim=-1),
+            torch.stack([z_inv, zeros, torch.where(divide, -x * z_sq, zeros)], dim=-1),
+            torch.stack([zeros, z_inv, torch.where(divide, -y * z_sq, zeros)], dim=-1),
         ],
         dim=-2,
     )

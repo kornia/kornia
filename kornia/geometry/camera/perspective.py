@@ -35,11 +35,14 @@ def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch
         - ``point_3d`` is a **camera-frame** point and ``camera_matrix`` the :math:`(*, 3, 3)` ``K``; the
           function takes no extrinsics, so it does not move between frames.
         - the input must be at least rank 2: an unbatched :math:`(3,)` point raises :class:`ValueError`.
+        - where ``abs(z) <= 1e-8`` the divide is skipped and ``K`` is applied to the undivided ``(x, y)``,
+          giving ``fx x + cx``; elsewhere the divide is exact, and a ``nan`` ``z`` gives ``nan``.
+          :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.project`,
+          :func:`~kornia.geometry.camera.projection_z1.project_points_z1`, :class:`~kornia.geometry.depth.DepthWarper`
+          and the perspective models of :mod:`kornia.sensors.camera` follow the same rule.
 
     .. warning::
-        At ``abs(z) <= 1e-8`` the divide is skipped and ``K`` is applied to the undivided point, giving the
-        finite placeholder ``fx x + cx``; the other projection entry points do not follow this rule yet:
-        `#4267 <https://github.com/kornia/kornia/issues/4267>`_. Neither that placeholder nor a point behind the
+        The skipped-divide result is a finite placeholder, not a valid pixel. Neither it nor a point behind the
         camera is flagged as invalid: `#4555 <https://github.com/kornia/kornia/issues/4555>`_.
 
     Args:
