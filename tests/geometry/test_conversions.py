@@ -1717,16 +1717,25 @@ class TestQuaternionExpToLog(BaseTester):
         fn(non_unit).sum().backward()
         assert bool(torch.isfinite(non_unit.grad).all()), non_unit.grad
 
-        # the guard changes no forward value. At the boundary the identity's log is all zeros;
-        # off it the other branch of the torch.where runs and must equal the unguarded expression
-        # exactly -- that is the branch proving the guard is inert away from w = +-1, which an
-        # on-boundary input cannot exercise.
+        # the zero quaternion: atan2's derivative is 0/0 at (0, 0) -- nan on torch 2.5.1, 0 on
+        # 2.14 -- so this cell, too, discriminates on the 2.5.1 leg (kornia#3953 switched to atan2).
+        origin = torch.zeros(4, device=device, dtype=dtype, requires_grad=True)
+        origin_log = fn(origin)
+        origin_log.sum().backward()
+        self.assert_close(origin_log.detach(), torch.zeros(3, device=device, dtype=dtype))
+        assert bool(torch.isfinite(origin.grad).all()), origin.grad
+
+        # atan2(||v||, w) changes no forward value on unit input: the identity's log is all zeros,
+        # and off the boundary it equals the acos(w) expression the function used before
+        # kornia#3953.
         expected_identity = torch.tensor((0.0, 0.0, 0.0), device=device, dtype=dtype)
         self.assert_close(fn(identity.detach()), expected_identity)
 
-        near_boundary = torch.tensor((1.0 - eps, 0.1, 0.0, 0.0), device=device, dtype=dtype)
+        near_boundary = kornia.geometry.conversions.normalize_quaternion(
+            torch.tensor((1.0 - eps, 0.1, 0.0, 0.0), device=device, dtype=dtype)
+        )
         work_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
-        work = near_boundary.to(work_dtype)
+        work = kornia.geometry.conversions.normalize_quaternion(near_boundary.to(work_dtype))
         unguarded = (
             work[1:4]
             * work[0:1].clamp(min=-1.0, max=1.0).acos()
@@ -1828,23 +1837,11 @@ class TestQuaternionExpToLog(BaseTester):
 
         self.assert_close(out, torch.zeros(3, device=device, dtype=torch.float64), atol=1e-7, rtol=0.0)
 
-    @pytest.mark.xfail(
-        raises=AssertionError,
-        reason="quaternion_exp_to_log does not normalise its input, so a non-unit quaternion gives "
-        "a silently wrong log — kornia#3953",
-        strict=True,
-    )
     def test_convention_exp_to_log_normalizes_its_input_3953(self, device, dtype):
         # Intended behavior: the log of a quaternion depends only on the rotation it represents, so
         # a rescaled quaternion gives the same answer -- which is what its scale-safe siblings do
         # (quaternion_to_rotation_matrix normalises internally, quaternion_to_axis_angle is
-        # homogeneous by construction; both are pinned above). quaternion_exp_to_log does neither:
-        # it feeds the raw scalar part straight into acos, so q = (0.5, 0.5, 0, 0) -- the 90-degree
-        # rotation about x, scaled by 1/sqrt(2) -- returns 1.0471975511965976 instead of
-        # acos(1/sqrt(2)) = 0.7853981633974484, i.e. 33% too large, with no error and no warning.
-        # Marked xfail(strict=True) so fixing #3953 makes this XPASS and forces the mark out.
-        # Companion wart: test_wart_exp_to_log_ignores_the_quaternion_norm_3953; the
-        # euler_from_quaternion half of the same issue is pinned in TestEulerFromQuaternion.
+        # homogeneous by construction; both are pinned above).
         quaternion = torch.tensor([0.5, 0.5, 0.0, 0.0], device=device, dtype=dtype)
 
         out = kornia.geometry.conversions.quaternion_exp_to_log(quaternion, eps=1e-8)
@@ -1855,23 +1852,13 @@ class TestQuaternionExpToLog(BaseTester):
             msg=_issue_msg("kornia#3953: quaternion_exp_to_log did not normalise its input"),
         )
 
-    def test_wart_exp_to_log_ignores_the_quaternion_norm_3953(self, device, dtype):
-        # Wart pin for kornia#3953, companion to the strict xfail above: assert the CURRENT
-        # non-unit-input outputs. Two cells that discriminate the two plausible fix shapes:
-        #   (1) q = (0.5, 0.5, 0, 0) returns 1.0471975511965976 -- flips under a "normalise the
-        #       input" fix and under a "raise on non-unit input" fix alike;
-        #   (2) q = (2, 0, 0, 0) returns the origin because the scalar part is clamped into
-        #       [-1, 1] before the acos -- this does NOT flip under a normalising fix (the
-        #       normalised input is the identity, whose log is the origin), so it is the cell that
-        #       tells a normalising fix apart from a validating one.
-        # If either fails, #3953 was (partly) fixed -- flip/remove the strict xfail above. NOT a
-        # contract that non-unit input must keep these values. eps is passed explicitly so the
-        # literals do not silently track a later change of the default.
-        # Snippet used to generate expected (torch + stdlib, executed on cpu float64):
-        #   quaternion_exp_to_log(torch.tensor([0.5, 0.5, 0., 0.], dtype=torch.float64), eps=1e-8)
-        #     -> [1.0471975511965976, 0.0, 0.0]; math.acos(1 / math.sqrt(2)) -> 0.7853981633974484
-        #   quaternion_exp_to_log(torch.tensor([2., 0., 0., 0.], dtype=torch.float64), eps=1e-8)
-        #     -> [0.0, 0.0, 0.0]
+    def test_convention_exp_to_log_of_rescaled_quaternions_3953(self, device, dtype):
+        # Convention pin for kornia#3953: a non-unit input gives the log of its normalisation.
+        # Two cells:
+        #   (1) q = (0.5, 0.5, 0, 0) returns acos(1/sqrt(2)) = 0.7853981633974484;
+        #   (2) q = (2, 0, 0, 0) returns the origin under normalisation (the normalised input
+        #       is the identity, whose log is the origin).
+        # eps is passed explicitly so the literals do not silently track a later change of the default.
         exp_to_log = kornia.geometry.conversions.quaternion_exp_to_log
 
         scaled_down = exp_to_log(torch.tensor([0.5, 0.5, 0.0, 0.0], device=device, dtype=dtype), eps=1e-8)
@@ -1879,13 +1866,13 @@ class TestQuaternionExpToLog(BaseTester):
 
         assert_close(
             scaled_down,
-            torch.tensor([1.0471975511965976, 0.0, 0.0], device=device, dtype=dtype),
-            msg=_issue_msg("kornia#3953: quaternion_exp_to_log no longer takes the raw scalar part at face value"),
+            torch.tensor([0.7853981633974484, 0.0, 0.0], device=device, dtype=dtype),
+            msg=_issue_msg("kornia#3953: quaternion_exp_to_log normalises its input"),
         )
         assert_close(
             scaled_up,
             torch.zeros(3, device=device, dtype=dtype),
-            msg=_issue_msg("kornia#3953: the scalar-part clamp no longer sends an over-scaled quaternion to zero"),
+            msg=_issue_msg("kornia#3953: quaternion_exp_to_log of over-scaled identity is the origin"),
         )
 
     def test_convention_exp_to_log_of_the_identity_is_the_origin_in_float16_3966(self, device):
@@ -5341,10 +5328,11 @@ class TestEulerFromQuaternion(BaseTester):
         # gimbal lock (pitch = +-pi/2); the guard mirrors quaternion_exp_to_log's own acos
         # boundary fix. As there, asin's boundary derivative is inf on every supported torch
         # version and it is clamp's backward that differs, so the torch 2.5.1 leg is the one that
-        # fails on base. w=1, x=0, y=0.5, z=0 gives sinp = 2*(w*y - z*x) = 1.0 exactly.
-        w = torch.tensor(1.0, device=device, dtype=dtype, requires_grad=True)
+        # fails on base. w=y=1/sqrt(2), x=z=0 gives sinp = 2*(w*y - z*x) = 1.0 exactly.
+        val = torch.tensor(0.5**0.5, device=device, dtype=dtype)
+        w = val.clone().detach().requires_grad_(True)
         x = torch.tensor(0.0, device=device, dtype=dtype, requires_grad=True)
-        y = torch.tensor(0.5, device=device, dtype=dtype, requires_grad=True)
+        y = val.clone().detach().requires_grad_(True)
         z = torch.tensor(0.0, device=device, dtype=dtype, requires_grad=True)
 
         _, pitch, _ = euler_from_quaternion(w, x, y, z)
@@ -5586,24 +5574,11 @@ class TestEulerFromQuaternion(BaseTester):
             f"rotation to {error} -- the gimbal-lock defect looks fixed"
         )
 
-    @pytest.mark.xfail(
-        raises=AssertionError,
-        reason="euler_from_quaternion does not normalise its input, so a non-unit quaternion gives "
-        "a silently wrong triple — kornia#3953",
-        strict=True,
-    )
     def test_convention_euler_from_quaternion_normalizes_its_input_3953(self, device, dtype):
         # Intended behavior: the euler angles of a quaternion depend only on the rotation it
         # represents, so rescaling the quaternion must not change them -- which is what the
         # scale-safe siblings do (quaternion_to_rotation_matrix normalises internally and returns a
         # bit-identical matrix for 2q; quaternion_to_axis_angle is homogeneous by construction).
-        # euler_from_quaternion does not normalise and does not check: feeding 2q returns
-        # [1.6560585860248003, 1.5707963267948966, 2.1048169977173687] instead of the (0.3, 0.7,
-        # 1.1) the unit quaternion gives -- and note the middle component, which is exactly pi/2:
-        # the unnormalised argument saturates the asin, so a merely-scaled input is reported as
-        # gimbal-locked. Marked xfail(strict=True) so fixing #3953 makes this XPASS and forces the
-        # mark out. Companion wart: test_wart_euler_from_quaternion_ignores_the_norm_3953; the
-        # quaternion_exp_to_log half of the same issue is pinned in TestQuaternionExpToLog.
         roll = torch.tensor(0.3, device=device, dtype=dtype)
         pitch = torch.tensor(0.7, device=device, dtype=dtype)
         yaw = torch.tensor(1.1, device=device, dtype=dtype)
@@ -5617,25 +5592,9 @@ class TestEulerFromQuaternion(BaseTester):
             msg=_issue_msg("kornia#3953: euler_from_quaternion did not normalise its input"),
         )
 
-    def test_wart_euler_from_quaternion_ignores_the_norm_3953(self, device, dtype):
-        # Wart pin for kornia#3953, companion to the strict xfail above: assert the CURRENT triple
-        # for a scaled-up quaternion. This is a separate cell from the quaternion_exp_to_log cells
-        # in TestQuaternionExpToLog because the two functions are independent code paths and a fix
-        # to one leaves the other broken, which would leave the other strict xfail silently XFAIL.
-        # If it fails, the euler half of #3953 was fixed -- flip/remove the strict xfail above.
-        # NOT a contract that a scaled quaternion must keep producing this triple.
-        # Snippet used to generate expected (torch only, executed on cpu float64):
-        #   t = lambda x: torch.tensor(x, dtype=torch.float64)
-        #   q = quaternion_from_euler(t(0.3), t(0.7), t(1.1))
-        #     -> [0.8186292656554958, -0.057539988180335386, 0.3624200943552256, 0.44179967222724353]
-        #   [x.item() for x in euler_from_quaternion(*q)]
-        #     -> [0.2999999999999999, 0.6999999999999998, 1.0999999999999999]     (the unit input)
-        #   [x.item() for x in euler_from_quaternion(*[2 * c for c in q])]
-        #     -> [1.6560585860248003, 1.5707963267948966, 2.1048169977173687]
-        #   (float32: [1.656058430671692, 1.5707963705062866, 2.1048169136047363];
-        #    float16:  [1.6572265625, 1.5703125, 2.10546875];
-        #    bfloat16: [1.6484375, 1.5703125, 2.109375] -- all within the dtype's default tolerance
-        #    of the float64 literals below)
+    def test_convention_euler_from_quaternion_of_a_rescaled_quaternion_3953(self, device, dtype):
+        # Convention pin for kornia#3953: the triple for 2q is the triple of the unit q; before the
+        # fix it was [1.6560585860248003, 1.5707963267948966, 2.1048169977173687].
         quaternion = quaternion_from_euler(
             torch.tensor(0.3, device=device, dtype=dtype),
             torch.tensor(0.7, device=device, dtype=dtype),
@@ -5646,8 +5605,8 @@ class TestEulerFromQuaternion(BaseTester):
 
         assert_close(
             out,
-            torch.tensor([1.6560585860248003, 1.5707963267948966, 2.1048169977173687], device=device, dtype=dtype),
-            msg=_issue_msg("kornia#3953: euler_from_quaternion no longer ignores the quaternion norm"),
+            torch.tensor([0.3, 0.7, 1.1], device=device, dtype=dtype),
+            msg=_issue_msg("kornia#3953: euler_from_quaternion normalises its input"),
         )
 
 
