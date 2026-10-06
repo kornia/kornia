@@ -323,6 +323,8 @@ class ImageModuleMixIn:
         """
         if isinstance(x, torch.Tensor):
             x = x.detach().cpu()
+            if x.dtype == torch.bfloat16:
+                x = x.float()
             if x.dim() == 3:
                 x = x.permute(1, 2, 0)
             elif x.dim() == 4:
@@ -393,6 +395,15 @@ class ImageModuleMixIn:
             return
         self._output_image = self._detach_tensor(output_image) if output_type == "pt" else output_image
 
+    def _get_output_image(self) -> torch.Tensor:
+        output_image = getattr(self, "_output_image", None)
+        if output_image is None:
+            raise ValueError("No pre-computed images found. Needs to execute first.")
+        if not isinstance(output_image, torch.Tensor) or output_image.ndim not in (3, 4):
+            shape = tuple(output_image.shape) if isinstance(output_image, torch.Tensor) else type(output_image).__name__
+            raise ValueError(f"Expected a 3D or 4D image tensor, got {shape}.")
+        return output_image
+
     def show(self, n_row: Optional[int] = None, backend: str = "pil", display: bool = True) -> Optional[Any]:
         """Return PIL images.
 
@@ -402,11 +413,7 @@ class ImageModuleMixIn:
             display: Whether or not to show the image.
 
         """
-        if self._output_image is None:
-            raise ValueError("No pre-computed images found. Needs to execute first.")
-        output_image = self._output_image
-        if isinstance(output_image, torch.Tensor):
-            output_image = output_image.detach().cpu()
+        output_image = self._get_output_image().detach().cpu()
 
         if len(output_image.shape) == 3:
             out_image = output_image
@@ -417,13 +424,13 @@ class ImageModuleMixIn:
                 n_row = math.ceil(output_image.shape[0] ** 0.5)
             out_image = make_grid(output_image, n_row, padding=2)
         else:
-            raise ValueError
+            raise ValueError("Expected a 3D or 4D image tensor.")
 
         if backend == "pil" and display:
-            Image.fromarray(_to_uint8_image(out_image).permute(1, 2, 0).squeeze().numpy()).show()  # type: ignore
+            self.to_pil(out_image).show()
             return None
         if backend == "pil":
-            return Image.fromarray(_to_uint8_image(out_image).permute(1, 2, 0).squeeze().numpy())  # type: ignore
+            return self.to_pil(out_image)
         raise ValueError(f"Unsupported backend `{backend}`.")
 
     def save(self, name: Optional[str] = None, n_row: Optional[int] = None) -> None:
@@ -434,21 +441,18 @@ class ImageModuleMixIn:
             n_row: Number of images displayed in each row of the grid.
 
         """
-        from kornia.image.utils import make_grid  # pylint: disable=C0415
-        from kornia.io import write_image  # pylint: disable=C0415
-
-        if self._output_image is None:
-            raise ValueError("No pre-computed images found. Needs to execute first.")
-        output_image = self._output_image
-        if isinstance(output_image, torch.Tensor):
-            output_image = output_image.detach().cpu()
+        output_image = self._get_output_image().detach().cpu()
 
         if name is None:
             name = f"Kornia-{datetime.datetime.now(tz=datetime.UTC).strftime('%Y%m%d%H%M%S')!s}.jpg"
         if len(output_image.shape) == 3:
             out_image = output_image
-        if len(output_image.shape) == 4:
+        else:
+            from kornia.image.utils import make_grid  # pylint: disable=C0415
+
             if n_row is None:
                 n_row = math.ceil(output_image.shape[0] ** 0.5)
             out_image = make_grid(output_image, n_row, padding=2)
+        from kornia.io import write_image  # pylint: disable=C0415
+
         write_image(name, _to_uint8_image(out_image))
