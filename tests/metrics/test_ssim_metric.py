@@ -69,6 +69,18 @@ class TestSsim(BaseTester):
         expected = torch.full_like(actual, (2 * 128 * 64 + c1) / (128**2 + 64**2 + c1))
         self.assert_close(actual, expected)
 
+    def test_mixed_float32_float64_pair_is_computed_in_float64(self, device, dtype):
+        # A float32/float64 pair is filtered in float64, the result dtype, with a float64 window, whichever argument
+        # is the float32 one, so it equals the all-float64 result to roundoff (#5574).
+        if dtype != torch.float64:
+            pytest.skip("the pair needs a float64 argument")
+        generator = torch.Generator().manual_seed(0)
+        img1 = (0.9 + 0.1 * torch.rand(1, 1, 16, 16, generator=generator, dtype=torch.float64)).float().to(device)
+        img2 = (0.9 + 0.1 * torch.rand(1, 1, 16, 16, generator=generator, dtype=torch.float64)).to(device)
+        expected = ssim(img1.double(), img2, 5)
+        self.assert_close(ssim(img1, img2, 5), expected, rtol=1e-12, atol=1e-12)
+        self.assert_close(ssim(img2, img1, 5), expected, rtol=1e-12, atol=1e-12)
+
     def test_pixel_range_gradients(self, device, dtype):
         if device.type == "mps":
             pytest.skip("Float64 reference is unsupported on MPS")

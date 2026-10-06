@@ -71,6 +71,7 @@ def ssim(
     Note:
         Integer images are converted to float32 before computing the local moments.
         Half-precision inputs are evaluated in float32 for numerical stability.
+        A float32/float64 pair is filtered in float64, with the Gaussian window built in that dtype.
         Filtering runs with autocast disabled; the result uses the promoted input dtype.
 
     Examples:
@@ -109,9 +110,12 @@ def ssim(
         img1 = img1.float()
     if img2.dtype in (torch.float16, torch.bfloat16):
         img2 = img2.float()
+    # Mixed inputs are filtered in their common dtype, which is also the dtype of the window.
+    compute_dtype = torch.promote_types(img1.dtype, img2.dtype)
+    img1, img2 = img1.to(compute_dtype), img2.to(compute_dtype)
 
     # prepare kernel
-    kernel: torch.Tensor = get_gaussian_kernel1d(window_size, 1.5, device=img1.device, dtype=img1.dtype)
+    kernel: torch.Tensor = get_gaussian_kernel1d(window_size, 1.5, device=img1.device, dtype=compute_dtype)
 
     # compute coefficients
     C1: float = (0.01 * max_val) ** 2
