@@ -720,9 +720,6 @@ class TestAffine2d(BaseTester):
             kornia.geometry.transform.Affine(angle, translation)
 
     def test_affine_rotate(self, device, dtype):
-        # TODO: Remove when #666 is implemented
-        if device.type == "cuda":
-            pytest.skip("Currently breaks in CUDA.See https://github.com/kornia/kornia/issues/666")
         torch.manual_seed(0)
         angle = torch.rand(1, device=device, dtype=dtype) * 90.0
         input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
@@ -733,9 +730,6 @@ class TestAffine2d(BaseTester):
         self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     def test_affine_translate(self, device, dtype):
-        # TODO: Remove when #666 is implemented
-        if device.type == "cuda":
-            pytest.skip("Currently breaks in CUDA.See https://github.com/kornia/kornia/issues/666")
         torch.manual_seed(0)
         translation = torch.rand(1, 2, device=device, dtype=dtype) * 2.0
         input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
@@ -746,9 +740,6 @@ class TestAffine2d(BaseTester):
         self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     def test_affine_scale(self, device, dtype):
-        # TODO: Remove when #666 is implemented
-        if device.type == "cuda":
-            pytest.skip("Currently breaks in CUDA.See https://github.com/kornia/kornia/issues/666")
         torch.manual_seed(0)
         _scale_factor = torch.rand(1, device=device, dtype=dtype) * 2.0
         scale_factor = torch.stack([_scale_factor, _scale_factor], dim=1)
@@ -774,9 +765,8 @@ class TestAffine2d(BaseTester):
         self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     def test_affine_rotate_translate(self, device, dtype):
-        # TODO: Remove when #666 is implemented
-        if device.type == "cuda":
-            pytest.skip("Currently breaks in CUDA.See https://github.com/kornia/kornia/issues/666")
+        if device.type == "cuda" and dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("CUDA half-precision rotation exceeds 1e-4. See https://github.com/kornia/kornia/issues/5523")
         batch_size = 2
 
         input = torch.tensor(
