@@ -221,6 +221,9 @@ class StableDiffusionDissolving(ImageModule):
           - .. figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.5.png
           - SD XL example image pending — see `#4601 <https://github.com/kornia/kornia/issues/4601>`_.
 
+    Convention:
+        See the Convention block on :class:`~kornia.augmentation.RandomDissolving`.
+
     Args:
         version: the version of the stable diffusion model. Options: "1.4", "1.5", "xl".
         **kwargs: additional arguments for `.from_pretrained`.
