@@ -179,8 +179,7 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_
 
     # Convolve finite values only and mark the windows that held a NaN or an infinity afterwards, so the result
     # does not depend on how the backend's convolution treats 0 * NaN and 0 * Inf. A 1x1 window has no zero
-    # weight and returns its pixel, infinity included. An empty input has nothing to mark (and MPS max-pooling
-    # mis-shapes an empty batch).
+    # weight and returns its pixel, infinity included. An empty input has nothing to mark.
     invalid: torch.Tensor | None = None
     if input.is_floating_point() and ky * kx > 1 and input.numel() > 0:
         invalid = _non_finite_windows(input, (ky, kx), border_type)
