@@ -13,10 +13,6 @@ on:
         required: false
         type: string
         default: ubuntu-latest
-      ref:
-        required: false
-        type: string
-        default: ${{ github.sha }}
       cache-path:
         required: false
         type: string
@@ -43,8 +39,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.ref }}
 
       - name: Restore cache
         if: inputs.cache-path != ''
@@ -76,8 +70,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.ref }}
 
       - name: Restore cache
         if: inputs.cache-path != ''
@@ -109,8 +101,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.ref }}
 
       - name: Restore cache
         if: inputs.cache-path != ''
@@ -137,9 +127,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
-        with:
-          repository: kornia/kornia
-          ref: ${{ inputs.ref }}
 
       - name: Download coverage reports
         uses: actions/download-artifact@v8
