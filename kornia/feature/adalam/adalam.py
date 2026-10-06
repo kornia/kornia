@@ -91,7 +91,7 @@ def match_adalam(
     else:
         config_ = get_adalam_default_config()
         for key, val in config.items():
-            if key not in config_.keys():
+            if key not in config_:
                 print(
                     f"WARNING: custom configuration contains a key which is not recognized ({key}). "
                     f"Known configurations are {list(config_.keys())}."

@@ -85,7 +85,7 @@ def get_planckian_coeffs(mode: str) -> torch.Tensor:
             ]
         )
     else:
-        raise RuntimeError(f"Unexpected mode. Gotcha {mode}")
+        raise RuntimeError(f"Unexpected mode. Got {mode}")
 
     return torch.stack((coefs[:, 0] / coefs[:, 1], coefs[:, 2] / coefs[:, 1]), 1)
 

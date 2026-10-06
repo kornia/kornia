@@ -54,7 +54,8 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     Args:
         points1: A set of calibrated points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=5`.
-        weights: Not used, kept for compatibility.
+        weights: Not used, kept for compatibility, including for :math:`N > 5`. Positive weights leave the null
+          space of an exact five-point sample unchanged; for larger sets they can affect the least-squares fit.
 
     Returns:
         the computed essential matrix with shape :math:`(B, 10, 3, 3)`.
@@ -702,7 +703,7 @@ def motion_from_essential_choose_solution(
     x1: torch.Tensor,
     x2: torch.Tensor,
     mask: Optional[torch.Tensor] = None,
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Recover the relative camera rotation and the translation from an estimated essential matrix.
 
     The method checks the corresponding points in two images and also returns the triangulated
@@ -713,8 +714,10 @@ def motion_from_essential_choose_solution(
         - ``K1`` and ``K2`` are applied inside, so ``x1`` and ``x2`` are pixel coordinates.
         - Returns the candidate with the most points at positive depth in both cameras, with
           :math:`\|t\| = 1`, and the points triangulated in the first camera's frame at that scale.
-        - Known defects: with no valid point it returns candidate 0 without a signal
-          (`#4879 <https://github.com/kornia/kornia/issues/4879>`_).
+        - The fourth output is the number of points at positive depth in both cameras for the returned
+          candidate, as ``cv2.recoverPose`` returns. A count of ``0`` means no point passed, and the returned
+          pose is then candidate 0 of
+          :py:meth:`~kornia.geometry.epipolar.motion_from_essential`, not a recovered motion.
 
     Args:
         E_mat: The essential matrix in the form of :math:`(B, 3, 3)`, or :math:`(3, 3)` with every other input
@@ -729,8 +732,10 @@ def motion_from_essential_choose_solution(
           semantics. Mask is of shape :math:`(B, N)`.
 
     Returns:
-        The rotation and translation plus the 3d triangulated points.
-        The tuple is as following :math:`[(B, 3, 3), (B, 3, 1), (B, N, 3)]`, without ``B`` for unbatched inputs.
+        The rotation, translation, 3d triangulated points, and the number of points
+        with positive depth in both cameras for the selected candidate.
+        The tuple is as following :math:`[(B, 3, 3), (B, 3, 1), (B, N, 3), (B,)]`,
+        without ``B`` for unbatched inputs.
 
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
@@ -790,20 +795,21 @@ def motion_from_essential_choose_solution(
     if mask is not None:
         depth_mask &= mask.unsqueeze(1)
 
-    mask_indices = torch.max(depth_mask.sum(-1), dim=-1, keepdim=True)[1]
+    valid_count, mask_indices = torch.max(depth_mask.sum(-1), dim=-1)
 
     # get pose and points 3d and return
     batch_idx = torch.arange(mask_indices.shape[0], device=mask_indices.device)
-    R_out = Rs[batch_idx, mask_indices[:, 0]]
-    t_out = ts[batch_idx, mask_indices[:, 0]]
-    points3d_out = X[batch_idx, mask_indices[:, 0]]
+    R_out = Rs[batch_idx, mask_indices]
+    t_out = ts[batch_idx, mask_indices]
+    points3d_out = X[batch_idx, mask_indices]
 
     if unbatched:
         R_out = R_out[0]
         t_out = t_out[0]
         points3d_out = points3d_out[0]
+        valid_count = valid_count[0]
 
-    return R_out, t_out, points3d_out
+    return R_out, t_out, points3d_out, valid_count
 
 
 def relative_camera_motion(
@@ -863,12 +869,13 @@ def find_essential(
           copied back, which on an Apple M1 was also faster than a float32 solve on the device. A sample whose five
           design rows are rank deficient, such as one with a repeated correspondence, has no unique solution: ten
           ``NaN`` slots and a zero gradient.
-        - Known defects: ``weights`` is ignored (`#4876 <https://github.com/kornia/kornia/issues/4876>`_).
 
     Args:
          points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
          points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=5`.
-         weights: Accepted with a shape of :math:`(B, N)` and ignored (see Known defects).
+         weights: Accepted with a shape of :math:`(B, N)` and ignored for compatibility, including for :math:`N > 5`.
+           Positive weights leave the null space of an exact five-point sample unchanged; for larger sets they can
+           affect the least-squares fit.
 
     Returns:
          the computed essential matrices with shape :math:`(B, 10, 3, 3)`.

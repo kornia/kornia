@@ -227,7 +227,7 @@ class TensorWrapper:
         for a in args:
             if isinstance(a, cls):
                 args_of_this_cls.append(a)
-            elif isinstance(a, collections.abc.Sequence) and not isinstance(a, str | bytes):
+            elif isinstance(a, collections.abc.Sequence) and not isinstance(a, (str, bytes)):
                 args_of_this_cls.extend(el for el in a if isinstance(el, cls))
 
         # Track function usage

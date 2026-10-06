@@ -283,19 +283,31 @@ class TestSe2(BaseTester):
         self.assert_close(g.log(), v, rtol=8 * eps, atol=8 * eps)
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
-    def test_wart_se2_hat_and_vee_layout_4929(self, device, dtype, batch_size):
-        # https://github.com/kornia/kornia/issues/4929: hat places translation in the bottom row and has a symmetric
-        # rotation block; vee reads that same non-generator layout, so vee(hat(v)) conceals the defect.
+    def test_convention_se2_hat_and_vee_are_the_generator_4929(self, device, dtype, batch_size):
+        # https://github.com/kornia/kornia/issues/4929: hat used to put the translation in the bottom row and the
+        # angle in a symmetric block, and vee read that layout. Pin both separately, since vee(hat(v)) round-trips
+        # either way.
         v = self._make_rand_data(device, dtype, (batch_size, 2))
         theta = self._make_rand_data(device, dtype, (batch_size, 1))
         s_hat = Se2.hat(torch.cat((v, theta), -1))
-        self.assert_close(v, s_hat[..., 2, 0:2])
-        self.assert_close(s_hat[..., 0:2, 0:2].squeeze(), So2.hat(theta).squeeze())
+        self.assert_close(s_hat[..., :2, 2], v)
+        self.assert_close(s_hat[..., :2, :2].squeeze(), So2.hat(theta.squeeze(-1)).squeeze())
+        self.assert_close(s_hat[..., 2, :], torch.zeros_like(s_hat[..., 2, :]))
         omega = self._make_rand_data(device, dtype, input_shape=(batch_size, 3, 3))
         recovered = Se2.vee(omega)
-        self.assert_close(torch.stack((recovered[..., 0], recovered[..., 1]), -1), omega[..., 2, :2])
-        self.assert_close(recovered[..., -1], omega[..., 0, 1])
+        self.assert_close(recovered[..., :2], omega[..., :2, 2])
+        self.assert_close(recovered[..., -1], omega[..., 1, 0])
         self.assert_close(Se2.vee(s_hat), torch.cat((v, theta), -1))
+
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
+    def test_matrix_exp_of_hat_is_exp(self, device, dtype, batch_size):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        v = self._make_rand_data(device, dtype, (batch_size, 3))
+        # The reference runs in float64 on the CPU: MPS has no float64 and CPU matrix_exp has no
+        # half-precision kernel.
+        expm = torch.linalg.matrix_exp(Se2.hat(v).cpu().double()).to(device=device, dtype=dtype)
+        self.assert_close(expm, Se2.exp(v).matrix())
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_identity(self, device, dtype, batch_size):
@@ -354,7 +366,8 @@ class TestSe2(BaseTester):
         z = Se2.random(1000, device=device, dtype=dtype).so2.z
         self.assert_close(z.abs(), torch.ones(1000, device=device, dtype=dtype))
         theta = z.imag.atan2(z.real)
-        assert theta.min() < -math.pi / 2 and theta.max() > math.pi / 2, (theta.min(), theta.max())
+        assert theta.min() < -math.pi / 2, (theta.min(), theta.max())
+        assert theta.max() > math.pi / 2, (theta.min(), theta.max())
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_trans(self, device, dtype, batch_size):
@@ -403,7 +416,8 @@ class TestSe2(BaseTester):
         # still be registered so ``state_dict`` and ``.to()`` / ``.double()`` reach it.
         v = torch.rand(2, 3, device=device, dtype=dtype, requires_grad=True)
         s = Se2.exp(v)
-        assert s.t.grad_fn is not None and s.so2.z.grad_fn is not None
+        assert s.t.grad_fn is not None
+        assert s.so2.z.grad_fn is not None
         assert set(s.state_dict()) == {"_translation", "_rotation._z"}
         restored = Se2(So2.identity(2, device, dtype), torch.zeros(2, 2, device=device, dtype=dtype))
         restored.load_state_dict(s.state_dict())
@@ -412,6 +426,7 @@ class TestSe2(BaseTester):
         # (float64 is unavailable on MPS, so convert towards float16 from float32)
         converted = s.half() if dtype == torch.float32 else s.float()
         assert converted.t.dtype == (torch.float16 if dtype == torch.float32 else torch.float32)
+        assert converted.so2.z.real.dtype == converted.t.dtype
         assert converted.t.grad_fn is not None
         converted.t.sum().backward()
         assert v.grad is not None
@@ -421,12 +436,117 @@ class TestSe2(BaseTester):
             pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         # https://github.com/kornia/kornia/issues/4931: identity and random register their translation like the other
         # constructors, so it is in state_dict() and ``.half()`` / ``.float()`` convert it (float64 is unavailable on
-        # MPS, so convert towards float16 from float32). The complex So2 state is left alone by these casts.
+        # MPS, so convert towards float16 from float32). The complex So2 components follow the same precision.
         for pose in (Se2.identity(1, device, dtype), Se2.random(1, device, dtype)):
             assert "_translation" in pose.state_dict()
             converted = pose.half() if dtype == torch.float32 else pose.float()
             assert converted.t.dtype == (torch.float16 if dtype == torch.float32 else torch.float32)
             assert converted.r.z.is_complex()
+            assert converted.r.z.real.dtype == converted.t.dtype
+
+    @pytest.mark.parametrize("method", ["to", "bfloat16"])
+    def test_parent_bfloat16_conversion_preserves_pose_4923(self, device, method):
+        # Reviewer reproduction: casting a network containing a pose must keep the rotation usable.
+        class M(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.linear = torch.nn.Linear(2, 2)
+                self.pose = Se2.exp(torch.tensor([[1.0, 2.0, 0.3]], dtype=torch.float32))
+
+        model = M()
+        before_rotation = model.pose.so2.z.detach().clone()
+        before_matrix = model.pose.matrix().detach().clone()
+        if method == "to":
+            model.to(device=device, dtype=torch.bfloat16)
+        else:
+            model.to(device=device).bfloat16()
+
+        assert model.linear.weight.dtype == torch.bfloat16
+        assert model.linear.weight.device == device
+        assert model.pose.t.dtype == torch.bfloat16
+        assert model.pose.t.device == device
+        assert model.pose.so2.z.dtype == before_rotation.dtype
+        assert model.pose.so2.z.device == device
+        self.assert_close(model.pose.so2.z, before_rotation.to(device))
+        expected_matrix = before_matrix.to(device)
+        expected_matrix[:, :2, 2] = expected_matrix[:, :2, 2].to(torch.bfloat16).float()
+        matrix = model.pose.matrix()
+        self.assert_close(matrix, expected_matrix)
+        point = torch.tensor([[1.0, 2.0]], device=device, dtype=torch.bfloat16)
+        expected_point = (expected_matrix[:, :2, :2] @ point.float()[..., None]).squeeze(-1)
+        expected_point = expected_point + expected_matrix[:, :2, 2]
+        self.assert_close(model.pose * point, expected_point)
+        self.assert_close(model.pose.inverse().matrix() @ matrix, torch.eye(3, device=device)[None])
+        self.assert_close((model.pose * model.pose).matrix(), matrix @ matrix)
+
+    @pytest.mark.parametrize("method", ["to", "convenience"])
+    def test_parent_dtype_conversion_preserves_rotation_4923(self, device, dtype, method):
+        if dtype == torch.bfloat16:
+            pytest.skip("PyTorch has no complex bfloat16 dtype")
+        source_dtype = torch.float64 if dtype == torch.float32 and device.type != "mps" else torch.float32
+        angle = torch.tensor([0.3, -1.2], dtype=source_dtype, requires_grad=True)
+        translation = torch.tensor([[3.0, 4.0], [-2.0, 1.0]], dtype=source_dtype, requires_grad=True)
+        reference_angle = angle.detach().clone().requires_grad_()
+        reference_translation = translation.detach().clone().requires_grad_()
+        pose = Se2(So2.exp(angle), translation)
+        parent = torch.nn.ModuleDict({"pose": pose})
+        assert pose.so2.z.device.type == pose.t.device.type == "cpu"
+        if method == "to":
+            parent.to(device=device, dtype=dtype)
+        else:
+            before_dtype = pose.so2.z.dtype
+            parent.to(device=device)
+            assert pose.so2.z.dtype == before_dtype and pose.t.dtype == source_dtype
+            name = {torch.float16: "half", torch.float32: "float", torch.float64: "double"}[dtype]
+            getattr(parent, name)()
+
+        assert pose.so2.z.device == pose.t.device == device
+        assert pose.so2.z.is_complex() and pose.so2.z.real.dtype == pose.t.dtype == dtype
+        assert set(parent.state_dict()) == {"pose._rotation._z", "pose._translation"}
+        assert set(dict(parent.named_buffers())) == {"pose._rotation._z", "pose._translation"}
+        assert not dict(parent.named_parameters())
+        c = reference_angle.cos().to(device=device, dtype=dtype)
+        s = reference_angle.sin().to(device=device, dtype=dtype)
+        t = reference_translation.to(device=device, dtype=dtype)
+        expected_matrix = torch.zeros(2, 3, 3, device=device, dtype=dtype)
+        expected_matrix[:, 0, 0], expected_matrix[:, 0, 1] = c, -s
+        expected_matrix[:, 1, 0], expected_matrix[:, 1, 1] = s, c
+        expected_matrix[:, :2, 2], expected_matrix[:, 2, 2] = t, 1
+        self.assert_close(pose.matrix(), expected_matrix)
+        point = torch.tensor([[1.0, 2.0], [-3.0, 1.0]], device=device, dtype=dtype)
+        x, y = point.unbind(-1)
+        expected = torch.stack((c * x - s * y, s * x + c * y), -1) + t
+        actual = pose * point
+        self.assert_close(actual, expected)
+        actual_grads = torch.autograd.grad(actual.sum(), (angle, translation))
+        expected_grads = torch.autograd.grad(expected.sum(), (reference_angle, reference_translation))
+        self.assert_close(actual_grads[0], expected_grads[0])
+        self.assert_close(actual_grads[1], expected_grads[1])
+
+    def test_dtype_conversion_keeps_checkpoint_layout_4923(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("PyTorch has no complex bfloat16 dtype")
+        source_dtype = torch.float64 if dtype == torch.float32 and device.type != "mps" else torch.float32
+        legacy_state = {
+            "_rotation._z": torch.complex(
+                torch.zeros(1, device=device, dtype=source_dtype), torch.ones(1, device=device, dtype=source_dtype)
+            ),
+            "_translation": torch.tensor([[3.0, 4.0]], device=device, dtype=source_dtype),
+        }
+        target = Se2.identity(1, device, source_dtype).to(dtype=dtype)
+        result = target.load_state_dict(legacy_state)
+        assert not result.missing_keys and not result.unexpected_keys
+        assert set(target.state_dict()) == set(legacy_state)
+        assert target.so2.z.is_complex() and target.so2.z.real.dtype == target.t.dtype == dtype
+        expected_matrix = torch.tensor(
+            [[[0.0, -1.0, 3.0], [1.0, 0.0, 4.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
+        )
+        self.assert_close(target.matrix(), expected_matrix)
+        restored = Se2.identity(1, device, dtype)
+        restored.load_state_dict(target.state_dict())
+        self.assert_close(restored.matrix(), expected_matrix)
+        point = torch.tensor([[1.0, 2.0]], device=device, dtype=dtype)
+        self.assert_close(restored * point, torch.tensor([[1.0, 5.0]], device=device, dtype=dtype))
 
     def test_convention_se2_tangent_is_vx_vy_theta_with_V(self, device, dtype):
         if dtype == torch.bfloat16:
@@ -549,7 +669,8 @@ class TestSe2(BaseTester):
         if dtype != torch.float16:  # So2.inverse divides a ComplexHalf z, which the CPU does not implement
             poses.append(identity.inverse())
         for pose in poses:
-            assert isinstance(pose.t, torch.Tensor) and pose.t.shape == (1, 2)
+            assert isinstance(pose.t, torch.Tensor)
+            assert pose.t.shape == (1, 2)
             assert "_translation" in pose.state_dict()
         self.assert_close(identity.t[..., 0], torch.zeros(1, device=device, dtype=dtype))
         for g in (from_exp, identity, from_exp * identity):
@@ -565,5 +686,6 @@ class TestSe2(BaseTester):
         torch.manual_seed(0)
         t = Se2.random(1000, device=device, dtype=dtype).t
         assert t.shape == (1000, 2)
-        assert t.min() >= 0 and t.max() <= 1, (t.min(), t.max())
+        assert t.min() >= 0, (t.min(), t.max())
+        assert t.max() <= 1, (t.min(), t.max())
         assert 0.45 < t.mean() < 0.55, t.mean()

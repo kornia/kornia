@@ -324,7 +324,7 @@ def _url_list(url: object) -> list[str]:
 
     Raises:
         TypeError: if *url* is not a string or an iterable of strings.
-        ValueError: if there is no URL, or one of them is empty.
+        ValueError: if there is no URL, or one of them is empty or has no scheme.
     """
     expected = "url must be a URL string or a list of them"
     if isinstance(url, (str, bytes, os.PathLike)):
@@ -344,6 +344,11 @@ def _url_list(url: object) -> list[str]:
             raise TypeError(f"{expected}, got {type(u).__name__}.")
         if not u:
             raise ValueError(f"url must not be empty, got {url!r}.")
+        # The cache is looked up by the URL's base name before anything is
+        # fetched, so a local path here would load whichever cached file shares
+        # its name. A one-letter scheme is a Windows drive letter, not a URL.
+        if len(urlparse(u).scheme) <= 1:
+            raise ValueError(f"url must be a URL with a scheme, got {u!r}; to load a local file use torch.load.")
         checked.append(u)
     return checked
 
@@ -1035,9 +1040,7 @@ def load_state_dict_from_url(url: str | list[str], *, timeout: float | None = No
     leaves torch with nothing to report. Nothing process-global is touched:
     redirecting :data:`sys.stdout` around the call would divert unrelated
     threads' output for the whole transfer, and concurrent calls restoring out
-    of order would leave stdout permanently pointing at stderr. This mirrors
-    :func:`kornia.feature.lightglue_onnx.utils.download.download_onnx_from_url`,
-    which already reimplements torch's caching for the same reason.
+    of order would leave stdout permanently pointing at stderr.
 
     When multiple URLs are given and ``file_name`` is not already in *kwargs*,
     the basename of the **first** URL is used as the local cache filename for
@@ -1108,7 +1111,8 @@ def load_state_dict_from_url(url: str | list[str], *, timeout: float | None = No
     Raises:
         TypeError: if ``url`` is not a URL string or a list of them, ``timeout``
             is not a number, or a keyword is not one the torch function takes.
-        ValueError: if ``url`` is empty; if ``timeout`` is not greater than 0 and
+        ValueError: if ``url`` is empty or has no scheme (a local path is not a
+            URL); if ``timeout`` is not greater than 0 and
             at most ``threading.TIMEOUT_MAX``, or it is omitted and
             ``KORNIA_DOWNLOAD_TIMEOUT`` holds such a value or no number (the message
             names which); if ``file_name`` is not a bare file name, or it is omitted
@@ -1323,7 +1327,8 @@ def download_file_from_url(
             is not a number.
         ValueError: if ``file_name`` is not a single path component, or it is
             omitted and the first URL's path does not end in a file name; if
-            ``url`` is empty; or if ``timeout`` is not greater than 0 and at most
+            ``url`` is empty or has no scheme (a local path is not a URL); or if
+            ``timeout`` is not greater than 0 and at most
             ``threading.TIMEOUT_MAX``, or it is omitted and
             ``KORNIA_DOWNLOAD_TIMEOUT`` holds such a value or no number (the message
             names which).

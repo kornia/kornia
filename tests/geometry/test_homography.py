@@ -379,7 +379,8 @@ class TestSampsonHomographyDistance(BaseTester):
         H = torch.eye(3, device=device, dtype=dtype)[None]
         for squared in (True, False):
             distances = sampson_homography_distance(pts, pts + 0.1, H, squared=squared)
-            assert bool(torch.isnan(distances[0, 1])) and bool(torch.isfinite(distances[0, [0, 2]]).all())
+            assert bool(torch.isnan(distances[0, 1]))
+            assert bool(torch.isfinite(distances[0, [0, 2]]).all())
         nan_homography = torch.full((1, 3, 3), float("nan"), device=device, dtype=dtype)
         assert bool(torch.isnan(sampson_homography_distance(pts[:, :1], pts[:, :1], nan_homography)).all())
 
@@ -421,7 +422,8 @@ class TestSampsonHomographyDistance(BaseTester):
         pts1 = torch.tensor([[[0, 0]]], device=device)
         pts2 = torch.tensor([[[1, 0]]], device=device)
         distance = sampson_homography_distance(pts1, pts2, torch.eye(3, dtype=torch.long, device=device)[None])
-        assert distance.dtype == torch.float32 and distance.tolist() == [[0.5]]
+        assert distance.dtype == torch.float32
+        assert distance.tolist() == [[0.5]]
 
     def test_singular_jacobian_is_inf(self, device, dtype):
         # The zero matrix makes both residual rows and the Jacobian vanish: no finite correction exists.
@@ -528,6 +530,30 @@ class TestFindHomographyDLT(BaseTester):
         H = find_homography_dlt(points1, points2, weights, "lu")
         assert H.shape == (1, 3, 3)
         assert H.isnan().all().item()
+
+    def test_degenerate_points_lu_give_nan(self, device, dtype):
+        # Coincident points make the normal equations singular: no homography, so NaN rather than the
+        # identity system's solution that safe_solve_with_mask leaves for an invalid system (kornia#5194).
+        points = torch.zeros(1, 6, 2, device=device, dtype=dtype)
+        H = find_homography_dlt(points, points, solver="lu")
+        assert H.isnan().all().item()
+
+    @pytest.mark.parametrize("solver", ["svd", "lu"])
+    def test_singular_normalization_gives_nan(self, device, dtype, solver):
+        # A spread whose squared radius overflows gives points2 a zero Hartley scale and a singular
+        # normalization: NaN rather than a homography built from the identity that safe_inverse_with_mask
+        # substitutes for its inverse (kornia#5194).
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the half-precision norm accumulates in float32 and does not overflow")
+        points1 = torch.tensor(
+            [[[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [0.5, 0.2], [0.3, 0.7]]], device=device, dtype=dtype
+        )
+        points2 = points1 * (torch.finfo(dtype).max / 4)
+        assert find_homography_dlt(points1, points2, solver=solver).isnan().all().item()
+        weights = torch.ones(1, 6, device=device, dtype=dtype)
+        assert find_homography_dlt_iterated(points1, points2, weights, n_iter=1).isnan().all().item()
+        # the segment endpoints share the normalization
+        assert find_homography_lines_dlt(points1.view(1, 3, 2, 2), points2.view(1, 3, 2, 2)).isnan().all().item()
 
     @pytest.mark.timeout(120, method="thread")
     def test_nonfinite_sample_leaves_batch_intact(self, device, dtype):
@@ -1198,7 +1224,8 @@ class TestConventionHomography(BaseTester):
         self.assert_close(default, there_and_back)
         unsquared = symmetric_transfer_error(p1, p2_off, H, squared=False)
         self.assert_close(unsquared[0, 5], default[0, 5].sqrt())
-        assert default[0, 5] > 50.0 and default[0, others].max() < 1e-6
+        assert default[0, 5] > 50.0
+        assert default[0, others].max() < 1e-6
         assert symmetric_transfer_error(p2_off, p1, H).min() > 1e3
 
     def test_convention_sample_is_valid_for_homography_rejects_reflection(self, device, dtype):
@@ -1225,7 +1252,8 @@ class TestConventionHomography(BaseTester):
         mask = sample_is_valid_for_homography(
             torch.tensor([view1] * 3, device=device, dtype=dtype), torch.tensor([view2] * 3, device=device, dtype=dtype)
         )
-        assert mask.dtype == torch.bool and mask.shape == (3,)
+        assert mask.dtype == torch.bool
+        assert mask.shape == (3,)
 
     @pytest.mark.parametrize("model", ["points", "lines"])
     def test_convention_find_homography_dlt_iterated_n_iter_counts_solves(self, model, device, dtype, monkeypatch):
@@ -1402,7 +1430,8 @@ class TestConventionHomography(BaseTester):
         ):
             for squared in (True, False):
                 out = fn(p1, p2, H, squared=squared)
-                assert bool(out[0, 0].isposinf()) and out[0, 1] == 0, out
+                assert bool(out[0, 0].isposinf()), out
+                assert out[0, 1] == 0, out
                 (grad,) = torch.autograd.grad(out.sum(), p1)
                 assert torch.isfinite(grad).all(), grad
 

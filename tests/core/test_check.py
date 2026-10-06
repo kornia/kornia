@@ -100,6 +100,44 @@ class TestCheckShape:
         assert op_jit is not None
         assert op_jit(torch.rand(2, 3, 2, 3), ["2", "3", "H", "W"]) is True
 
+    @pytest.mark.parametrize("size", [(), (7,), (0, 3), (2, 3, 4, 5)])
+    def test_lone_wildcard_5187(self, device, dtype, size):
+        x = torch.zeros(size, device=device, dtype=dtype)
+        assert KORNIA_CHECK_SHAPE(x, ["*"]) is True
+        assert KORNIA_CHECK_SHAPE(x, ["*"], raises=False) is True
+
+    def test_empty_pattern_5187(self, device, dtype):
+        assert KORNIA_CHECK_SHAPE(torch.zeros((), device=device, dtype=dtype), []) is True
+        x = torch.zeros(2, 3, device=device, dtype=dtype)
+        assert KORNIA_CHECK_SHAPE(x, [], raises=False) is False
+        with pytest.raises(ShapeError, match="expected 0 dimensions, got 2") as exc:
+            KORNIA_CHECK_SHAPE(x, [], msg="scalar required")
+        assert exc.value.actual_shape == [2, 3]
+        assert exc.value.expected_shape == []
+        assert "scalar required" in str(exc.value)
+
+    @pytest.mark.parametrize(
+        "pattern,dimension",
+        [(["*", "4", "5"], 3), (["*", "5", "6"], 2), (["2", "4", "*"], 1), (["B", "C", "4", "5"], 3)],
+    )
+    def test_mismatch_tensor_dimension_5187(self, device, dtype, pattern, dimension):
+        x = torch.zeros(2, 3, 4, 6, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=f"at dimension {dimension}:") as exc:
+            KORNIA_CHECK_SHAPE(x, pattern)
+        assert exc.value.actual_shape == [2, 3, 4, 6]
+        assert exc.value.expected_shape == pattern
+        assert KORNIA_CHECK_SHAPE(x, pattern, raises=False) is False
+
+    def test_jit_edge_patterns_5187(self, device, dtype):
+        op = torch.jit.script(KORNIA_CHECK_SHAPE)
+        scalar = torch.zeros((), device=device, dtype=dtype)
+        matrix = torch.zeros(2, 3, device=device, dtype=dtype)
+        assert op(scalar, []) is True
+        assert op(matrix, [], raises=False) is False
+        assert op(matrix, ["*"]) is True
+        assert op(matrix, ["*", "3"]) is True
+        assert op(matrix, ["*", "4"], raises=False) is False
+
 
 class TestCheckSameShape:
     def test_valid(self):
@@ -142,6 +180,12 @@ class TestCheckType:
     def test_invalid_raises_false(self):
         assert KORNIA_CHECK_TYPE("world", int, raises=False) is False
 
+    @pytest.mark.parametrize("typ", [int | str, (int | str, bytes)])
+    def test_invalid_union(self, typ):
+        assert KORNIA_CHECK_TYPE(1.0, typ, raises=False) is False
+        with pytest.raises(TypeCheckError, match=r"expected int \| str"):
+            KORNIA_CHECK_TYPE(1.0, typ)
+
 
 class TestCheckIsTensor:
     def test_valid(self):
@@ -167,6 +211,18 @@ class TestCheckIsListOfTensor:
 
     def test_invalid_raises_false(self):
         assert KORNIA_CHECK_IS_LIST_OF_TENSOR([torch.rand(1), [2, 3], torch.rand(1)], raises=False) is False
+
+    @pytest.mark.parametrize(
+        "x, detail",
+        [
+            ([torch.zeros(1), 1], "got list; element 1 is int"),
+            ([torch.zeros(1), torch.zeros(1), [2, 3]], "got list; element 2 is list"),
+            ((torch.zeros(1),), "got tuple"),
+        ],
+    )
+    def test_invalid_message_names_the_offending_value(self, x, detail):
+        with pytest.raises(TypeCheckError, match=f"expected list\\[Tensor\\], {detail}\\."):
+            KORNIA_CHECK_IS_LIST_OF_TENSOR(x)
 
 
 class TestCheckSameDevice:
@@ -244,6 +300,15 @@ class TestCheckIsColor:
     def test_invalid_raises_false(self):
         assert KORNIA_CHECK_IS_COLOR(torch.rand(1, 4, 4), raises=False) is False
 
+    def test_invalid_message_reports_the_shape(self):
+        with pytest.raises(ImageError, match=r"Not a color tensor\. Got shape \[2, 4, 5\]\."):
+            KORNIA_CHECK_IS_COLOR(torch.zeros(2, 4, 5))
+
+    def test_jit_raises_image_error(self):
+        op_jit = torch.jit.script(KORNIA_CHECK_IS_COLOR)
+        with pytest.raises(torch.jit.Error, match=r"ImageError: Not a color tensor\. Got shape \[2, 4, 5\]\."):
+            op_jit(torch.zeros(2, 4, 5))
+
 
 class TestCheckIsGray:
     def test_valid(self):
@@ -264,6 +329,15 @@ class TestCheckIsGray:
     def test_invalid_raises_false(self):
         assert KORNIA_CHECK_IS_GRAY(torch.rand(1, 3, 4, 4, 4), raises=False) is False
 
+    def test_invalid_message_reports_the_shape(self):
+        with pytest.raises(ImageError, match=r"Not a gray tensor\. Got shape \[2, 4, 5\]\."):
+            KORNIA_CHECK_IS_GRAY(torch.zeros(2, 4, 5))
+
+    def test_jit_raises_image_error(self):
+        op_jit = torch.jit.script(KORNIA_CHECK_IS_GRAY)
+        with pytest.raises(torch.jit.Error, match=r"ImageError: Not a gray tensor\. Got shape \[2, 4, 5\]\."):
+            op_jit(torch.zeros(2, 4, 5))
+
 
 class TestCheckIsColorOrGray:
     def test_valid(self):
@@ -283,6 +357,15 @@ class TestCheckIsColorOrGray:
     def test_invalid_raises_false(self):
         assert KORNIA_CHECK_IS_COLOR_OR_GRAY(torch.rand(1, 4, 4, 4), raises=False) is False
 
+    def test_invalid_message_reports_the_shape(self):
+        with pytest.raises(ImageError, match=r"Not a color or gray tensor\. Got shape \[2, 4, 5\]\."):
+            KORNIA_CHECK_IS_COLOR_OR_GRAY(torch.zeros(2, 4, 5))
+
+    def test_jit_raises_image_error(self):
+        op_jit = torch.jit.script(KORNIA_CHECK_IS_COLOR_OR_GRAY)
+        with pytest.raises(torch.jit.Error, match=r"ImageError: Not a color or gray tensor\. Got shape \[2, 4, 5\]\."):
+            op_jit(torch.zeros(2, 4, 5))
+
 
 class TestCheckDmDesc:
     def test_valid(self):
@@ -300,6 +383,19 @@ class TestCheckDmDesc:
 
     def test_invalid_raises_false(self):
         assert KORNIA_CHECK_DM_DESC(torch.rand(4), torch.rand(8), torch.rand(4, 7), raises=False) is False
+
+    @pytest.mark.parametrize(
+        "desc1, desc2, dm",
+        [
+            (torch.zeros(4, 128), torch.zeros(8, 128), torch.zeros(4)),
+            (torch.zeros(()), torch.zeros(8, 128), torch.zeros(4, 8)),
+            (torch.zeros(4, 128), torch.zeros(()), torch.zeros(4, 8)),
+        ],
+    )
+    def test_invalid_rank(self, desc1, desc2, dm):
+        assert KORNIA_CHECK_DM_DESC(desc1, desc2, dm, raises=False) is False
+        with pytest.raises(ShapeError):
+            KORNIA_CHECK_DM_DESC(desc1, desc2, dm)
 
 
 class TestCheckLaf:

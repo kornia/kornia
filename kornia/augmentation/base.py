@@ -34,6 +34,24 @@ from kornia.core.utils import is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
+
+def _mixed_gate_shape_error(
+    input_shape: Tuple[int, ...], output_shape: Tuple[int, ...], inverse: bool = False
+) -> ValueError:
+    """Build the error for a per-row gate on an augmentation that changes the sample shape.
+
+    A batch can only hold one sample shape, so the rows the gate skips cannot keep their own shape next to the
+    rows it applies to. ``inverse`` names the inverse call, which maps the output shape back to the input shape.
+    See `#4497 <https://github.com/kornia/kornia/issues/4497>`_.
+    """
+    subject = "the inverse of this augmentation" if inverse else "this augmentation"
+    return ValueError(
+        f"`batch_prob` mixes applied and skipped rows, but {subject} changes the sample shape from "
+        f"{tuple(input_shape)} to {tuple(output_shape)}, so the skipped rows cannot keep their shape. "
+        "Pass a `batch_prob` that is all ones or all zeros."
+    )
+
+
 TensorWithTransformMat = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 
 # Sentinel for ``_commit_state`` fields: distinguishes "not provided" from an explicit ``None``.
@@ -271,7 +289,7 @@ class _BasicAugmentationBase(nn.Module):
         **kwargs: Any,
     ) -> Tuple[Dict[str, torch.Tensor], Dict[str, Any]]:
         # NOTE: determine how to save self._params
-        save_kwargs = kwargs["save_kwargs"] if "save_kwargs" in kwargs else False
+        save_kwargs = kwargs.get("save_kwargs", False)
 
         params = self._params if params is None else params
         flags = self.flags if flags is None else flags
@@ -380,12 +398,16 @@ class _AugmentationBase(_BasicAugmentationBase):
         When the two branches share a shape this is a ``torch.where`` blend (onnx- and
         fullgraph-friendly). Shape-changing augmentations (e.g. crop/resize) whose branches
         differ in spatial size fall back to a Python branch on ``to_apply.any()``, which is
-        not onnx-exportable.
+        not onnx-exportable. Such a fallback cannot select rows, so a ``to_apply`` that mixes applied and skipped
+        rows raises ``ValueError`` instead of transforming the skipped rows too.
         """
         if transformed.shape == not_transformed.shape and transformed.shape[0] == to_apply.shape[0]:
             to_apply_expanded = to_apply.view(-1, *([1] * (len(transformed.shape) - 1))).to(transformed.device)
             return torch.where(to_apply_expanded, transformed, not_transformed)
-        return transformed if bool(to_apply.any()) else not_transformed
+        apply_any = bool(to_apply.any())
+        if apply_any and not bool(to_apply.all()) and transformed.shape[1:] != not_transformed.shape[1:]:
+            raise _mixed_gate_shape_error(not_transformed.shape[1:], transformed.shape[1:])
+        return transformed if apply_any else not_transformed
 
     def transform_inputs(
         self,
