@@ -33,8 +33,9 @@ def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
 
     Uses ``torch.cdist`` on non-MPS devices outside export. Falls back to a manual
     squared-distance implementation for MPS tensors and export. Half-precision
-    inputs are promoted to float32 because ``torch.cdist`` does not support them
-    on all devices. Distances are returned in the input dtype.
+    inputs are computed in float32: in half precision the squared norms round away
+    the squared distance between nearby descriptors, and ``torch.cdist`` has no
+    float16 kernel on CPU. Distances are returned in the input dtype.
     """
     half = (torch.float16, torch.bfloat16)
     output_dtype = d1.dtype

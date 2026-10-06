@@ -778,6 +778,27 @@ class TestCDist(BaseTester):
         self.assert_close(desc2.grad, torch.tensor([[1.0, 0.0]], device=device, dtype=desc_dtype))
 
     @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16])
+    def test_half_precision_export_branch_ignores_autocast(self, device, desc_dtype, monkeypatch):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("autocast coverage requires CPU or CUDA")
+        # Export traces the manual branch; autocast must not lower its float32 matmul back to half.
+        monkeypatch.setattr("kornia.feature.matching.is_exporting", lambda: True)
+        desc1 = torch.full((1, 128), 0.0625, device=device, dtype=desc_dtype)
+        desc2 = desc1.repeat(2, 1)
+        desc2[0, 0] += 0.03125
+        desc2[1, 0] += 0.0078125
+        with torch.autocast(device_type=device.type):
+            actual = _cdist(desc1, desc2)
+        self.assert_close(actual, torch.tensor([[0.03125, 0.0078125]], device=device, dtype=desc_dtype))
+        assert actual.dtype == desc_dtype
+
+    @pytest.mark.parametrize(("dtype1", "dtype2"), [(torch.float16, torch.float32), (torch.float16, torch.bfloat16)])
+    def test_mixed_dtypes_raise(self, device, dtype1, dtype2):
+        # Only same-dtype half inputs are promoted; a mixed pair is not silently computed in float32.
+        with pytest.raises(RuntimeError):
+            _cdist(torch.ones(2, 4, device=device, dtype=dtype1), torch.ones(3, 4, device=device, dtype=dtype2))
+
+    @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16])
     def test_half_precision_zero_distance_gradient(self, device, desc_dtype):
         if not supports_matmul(device, desc_dtype):
             pytest.skip(f"no matmul kernel for {desc_dtype} on {device.type}")
