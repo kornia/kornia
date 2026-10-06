@@ -627,7 +627,7 @@ class TestAugmentationSequential:
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
         keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
         mask = bbox_to_mask(
-            torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
+            torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 500, 1000
         )[:, None]
         aug = K.AugmentationSequential(
             K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)),
@@ -710,7 +710,7 @@ class TestAugmentationSequential:
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
         keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
         mask = bbox_to_mask(
-            torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
+            torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 500, 1000
         )[:, None]
         aug = K.AugmentationSequential(
             K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)),
@@ -755,7 +755,7 @@ class TestAugmentationSequential:
         ]
         keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
         mask = bbox_to_mask(
-            torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
+            torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 500, 1000
         )[:, None]
         aug = K.AugmentationSequential(
             K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)),
@@ -1575,6 +1575,33 @@ class TestConventionAugmentationSequential(BaseTester):
         expected[..., 2:5, 6:8] = 3
         assert torch.equal(out_mask, expected)
 
+    def test_numpy_annotations_follow_the_image_to_the_module_device_5207(self):
+        # A stateful container converts a NumPy image onto its device; NumPy masks, keypoints and boxes go to the
+        # same device and keep their dtype, so a mask keeps its labels. The meta device stands in for an accelerator.
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+        aug.register_buffer("reference", torch.empty((), device="meta", dtype=torch.float64))
+        mask = aug._convert_non_image(np.zeros((8, 9, 1), dtype=np.int64), DataKey.MASK)
+        keypoints = aug._convert_non_image(np.zeros((1, 2, 2), dtype=np.float32), DataKey.KEYPOINTS)
+        boxes = aug._convert_non_image(np.zeros((1, 1, 4), dtype=np.float32), DataKey.BBOX_XYXY)
+        image = aug.to_tensor(np.zeros((8, 9, 3), dtype=np.uint8))
+        assert [x.device.type for x in (image, mask, keypoints, boxes)] == ["meta"] * 4
+        assert [x.dtype for x in (image, mask, keypoints, boxes)] == [torch.float64, torch.int64] + [torch.float32] * 2
+
+    def test_numpy_image_and_mask_run_on_the_module_device_5207(self, device):
+        # RandomBrightness holds buffers, so the container's NumPy image moves to its device; the mask must follow
+        # it, or the flip mixes devices.
+        image = np.zeros((8, 9, 3), dtype=np.uint8)
+        mask = np.zeros((8, 9), dtype=np.int64)
+        mask[2:5, 1:3] = 3
+        aug = K.AugmentationSequential(
+            K.RandomBrightness((1.0, 1.0), p=1.0), K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"]
+        ).to(device)
+        out_image, out_mask = aug(image, mask)
+        expected = torch.zeros(1, 1, 8, 9, dtype=torch.int64)
+        expected[..., 2:5, 6:8] = 3
+        assert out_image.device == out_mask.device == torch.device(device)
+        assert torch.equal(out_mask.cpu(), expected)
+
     def test_argument_without_a_data_key_raises(self):
         # ``__call__`` converts NumPy arguments by data key; an argument with no key must still reach ``forward``,
         # which rejects the count, instead of being dropped.
@@ -1821,3 +1848,87 @@ class TestConventionAugmentationSequential(BaseTester):
         for helper in (lambda: aug.show(display=False), lambda: aug.save(name=str(tmp_path / "none.jpg"))):
             with pytest.raises(ValueError, match="No pre-computed images found"):
                 helper()
+
+
+class TestAugmentationSequentialReplay:
+    def test_annotation_replay_uses_matrices_from_params(self, device, dtype):
+        with torch.random.fork_rng(devices=[device] if device.type == "cuda" else []):
+            torch.manual_seed(0)
+            image = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)
+            mask = torch.zeros_like(image)
+            mask[..., 4:8, 2:6] = 1
+            boxes = torch.tensor([[[2.0, 4.0, 6.0, 8.0]]], device=device, dtype=dtype)
+            keypoints = torch.tensor([[[3.0, 5.0]]], device=device, dtype=dtype)
+            data_keys = ["input", "mask", "bbox_xyxy", "keypoints"]
+            aug = K.AugmentationSequential(K.RandomAffine(45.0, translate=(0.2, 0.2), p=1.0), data_keys=data_keys)
+
+            first = aug(image, mask, boxes, keypoints)
+            params = aug._params
+            expected_inverse = aug.inverse(*first, params=params)
+
+            aug(
+                torch.rand(2, 1, 16, 16, device=device, dtype=dtype),
+                mask.expand(2, -1, -1, -1),
+                boxes.expand(2, -1, -1),
+                keypoints.expand(2, -1, -1),
+            )
+
+            replayed = aug(mask, boxes, keypoints, params=params, data_keys=data_keys[1:])
+            assert_close(replayed[0], first[1])
+            assert_close(replayed[1], first[2])
+            assert_close(replayed[2], first[3])
+
+            actual_inverse = aug.inverse(*first, params=params)
+            for actual, expected in zip(actual_inverse, expected_inverse):
+                assert_close(actual, expected)
+
+    def test_annotations_reuse_the_matrix_of_the_image_call(self, device, dtype, monkeypatch):
+        # Within one call the image records its matrix next to the params dict it was given, and the mask, box and
+        # keypoint handlers reuse it instead of recomputing one matrix each. The inverse recomputes the image's matrix
+        # once, as an image-only inverse does, and its annotation handlers reuse the recorded one.
+        calls = []
+        generate = K.RandomAffine.generate_transformation_matrix
+
+        def counted(self, *args, **kwargs):
+            calls.append(None)
+            return generate(self, *args, **kwargs)
+
+        monkeypatch.setattr(K.RandomAffine, "generate_transformation_matrix", counted)
+        image = torch.zeros(2, 1, 16, 16, device=device, dtype=dtype)
+        boxes = torch.tensor([[[2.0, 4.0, 6.0, 8.0]]], device=device, dtype=dtype).expand(2, -1, -1)
+        keypoints = torch.tensor([[[3.0, 5.0]]], device=device, dtype=dtype).expand(2, -1, -1)
+        aug = K.AugmentationSequential(
+            K.RandomAffine(45.0, p=1.0), data_keys=["input", "mask", "bbox_xyxy", "keypoints"]
+        )
+        out = aug(image, image, boxes, keypoints)
+        assert len(calls) == 1
+        aug.inverse(*out)
+        assert len(calls) == 2
+
+    def test_annotation_replay_after_a_direct_leaf_call(self, device, dtype):
+        # A child called on its own between the container call and the replay records another draw; the replay
+        # must still use the params it is given.
+        with torch.random.fork_rng(devices=[device] if device.type == "cuda" else []):
+            torch.manual_seed(0)
+            image = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)
+            keypoints = torch.tensor([[[3.0, 5.0]]], device=device, dtype=dtype)
+            aug = K.AugmentationSequential(K.RandomAffine(45.0, p=1.0), data_keys=["input", "keypoints"])
+            out_image, out_keypoints = aug(image, keypoints)
+            params = aug._params
+            aug[0](torch.rand(3, 1, 16, 16, device=device, dtype=dtype))
+            _, back = aug.inverse(out_image, out_keypoints, params=params)
+            assert_close(back, keypoints)
+
+    def test_annotation_replay_of_an_oversized_padded_crop(self, device, dtype):
+        # A crop larger than the padded canvas is scaled against that canvas. The replayed matrix must use the
+        # unpadded input shape (``forward_input_shape`` minus ``padding_size``), or the keypoints shift.
+        with torch.random.fork_rng(devices=[device] if device.type == "cuda" else []):
+            torch.manual_seed(0)
+            image = torch.rand(2, 1, 16, 16, device=device, dtype=dtype)
+            keypoints = torch.tensor([[[3.0, 5.0], [9.0, 12.0]]], device=device, dtype=dtype).expand(2, -1, -1)
+            aug = K.AugmentationSequential(K.RandomCrop((20, 22), padding=1, p=1.0), data_keys=["input", "keypoints"])
+            _, expected = aug(image, keypoints)
+            params = aug._params
+            aug(torch.rand(3, 1, 15, 17, device=device, dtype=dtype), keypoints[:1].expand(3, -1, -1))
+            replayed = aug(keypoints, params=params, data_keys=["keypoints"])
+            assert_close(replayed, expected)

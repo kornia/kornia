@@ -65,7 +65,7 @@ def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
     boxes_per_batch, n_points_per_box, coordinates_dimension = boxes.shape[-3:]
     if boxes_per_batch == 0:
         return boxes
-    points = boxes.view(-1, n_points_per_box * boxes_per_batch, coordinates_dimension)
+    points = boxes.reshape(-1, n_points_per_box * boxes_per_batch, coordinates_dimension)
     M = M if M.ndim == 3 else M.unsqueeze(0)
 
     if points.shape[0] != M.shape[0]:
@@ -641,7 +641,7 @@ class Boxes:
         Returns:
             Area for each box, shaped :math:`(N,)` or :math:`(B, N)`.
         """
-        coords = self._data.view((-1, 4, 2)) if self._data.ndim == 4 else self._data
+        coords = self._data.flatten(0, 1) if self._data.ndim == 4 else self._data
         # calculate centroid of the box
         centroid = coords.mean(dim=1, keepdim=True)
         # calculate the angle from centroid to each corner

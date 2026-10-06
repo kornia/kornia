@@ -210,6 +210,7 @@ select = [
   "ICN",  # flake8-import-conventions
   "INT",  # flake8-gettext
   "NPY",  # NumPy-specific rules
+  "PGH004",  # blanket-noqa
   "PIE",  # flake8-pie
   "PL",  # Pylint
   "PT001",  # flake8-pytest-style: fixture parentheses
@@ -226,9 +227,12 @@ select = [
   "RSE",  # flake8-raise
   "RUF",  # Ruff-specific rules
   "S",  # flake8-bandit
+  "SIM102",  # collapsible-if
   "SIM103",  # needless-bool
+  "SIM105",  # suppressible-exception
   "SIM114",  # if-with-same-arms
   "SIM115",  # open-file-with-context-handler
+  "SIM117",  # multiple-with-statements
   "SIM118",  # in-dict-keys
   "SIM201",  # negate-equal-op
   "SIM210",  # if-expr-with-true-false

@@ -87,9 +87,13 @@ class ImageModuleMixIn:
     or :math:`(B, H, W, C)`, a PIL image or an image path becomes a :math:`(C, H, W)` or :math:`(B, C, H, W)` tensor.
     An integer image is scaled by the maximum of its dtype (``uint8`` by 255, ``uint16`` by 65535; a signed image keeps
     its negative values), a ``bool`` image becomes 0 and 1, and a floating image keeps its values. Tensors pass through
-    unchanged. ``output_type="numpy"`` returns channels-last arrays with the values of the output tensor, so a floating
-    output fed back in converts to the same tensor. ``output_type="pil"``, :meth:`show` and :meth:`save` clamp a
-    floating image to ``[0, 1]`` and round it to 8 bits on the CPU, and pass a ``uint8`` image through with its values.
+    unchanged. For an :class:`torch.nn.Module` with state, converted inputs use the device of its first parameter (or
+    first buffer when it has no parameters) and the dtype of its first floating parameter or buffer, falling back to
+    the default floating dtype when none exists. A module without state and a standalone mixin keep the CPU and
+    default floating dtype. ``output_type="numpy"`` returns
+    channels-last arrays with the values of the output tensor, so a floating output fed back in converts to the same
+    tensor. ``output_type="pil"``, :meth:`show` and :meth:`save` clamp a floating image to ``[0, 1]`` and round it to
+    8 bits on the CPU, and pass a ``uint8`` image through with its values.
     """
 
     _output_image: Any
@@ -248,8 +252,9 @@ class ImageModuleMixIn:
         ``PA``) is converted to RGB, or RGBA when it has transparency, first. An integer image is divided by the maximum
         of its dtype (``uint8`` by 255, ``uint16`` by 65535, a PIL mode ``I`` image by the ``int32`` maximum); a signed
         image maps to ``[iinfo.min / iinfo.max, 1]``, so its negative values stay negative. A ``bool`` image becomes 0
-        and 1, and a floating image keeps its values; integer and ``bool`` images become the default floating dtype. A
-        tensor is returned unchanged.
+        and 1, and a floating image keeps its values; integer and ``bool`` images become the default floating dtype.
+        When this mixin belongs to a stateful :class:`torch.nn.Module`, the converted image is moved to the module's
+        device and first floating parameter or buffer dtype. A tensor is returned unchanged.
 
         Args:
             x: The input to convert.
@@ -261,16 +266,43 @@ class ImageModuleMixIn:
         if isinstance(x, str):
             from kornia.io import ImageLoadType, load_image  # pylint: disable=C0415
 
-            return _image_to_float(load_image(x, ImageLoadType.UNCHANGED))
-        if isinstance(x, torch.Tensor):
+            image = _image_to_float(load_image(x, ImageLoadType.UNCHANGED))
+        elif isinstance(x, torch.Tensor):
             return x
-        if isinstance(x, np.ndarray):  # type: ignore
-            return _array_to_float_image(x)
-        if isinstance(x, Image.Image):  # type: ignore
+        elif isinstance(x, np.ndarray):  # type: ignore
+            image = _array_to_float_image(x)
+        elif isinstance(x, Image.Image):  # type: ignore
             if x.mode in ("P", "PA"):  # palette indices are not intensities
                 x = x.convert("RGBA" if x.mode == "PA" or "transparency" in x.info else "RGB")
-            return _array_to_float_image(np.array(x))  # type: ignore
-        raise TypeError("Input type not supported")
+            image = _array_to_float_image(np.array(x))  # type: ignore
+        else:
+            raise TypeError("Input type not supported")
+        return self._to_module_device_dtype(image)
+
+    def _module_state_reference(self) -> Optional[torch.Tensor]:
+        """Return the module's first parameter, else its first buffer, or None for a stateless module or a mixin."""
+        if not isinstance(self, torch.nn.Module):
+            return None
+        first_parameter = next(self.parameters(), None)
+        return first_parameter if first_parameter is not None else next(self.buffers(), None)
+
+    def _to_module_device(self, data: torch.Tensor) -> torch.Tensor:
+        """Move a tensor converted from a non-tensor input to the module's device, keeping its dtype."""
+        reference = self._module_state_reference()
+        return data if reference is None else data.to(reference.device)
+
+    def _to_module_device_dtype(self, image: torch.Tensor) -> torch.Tensor:
+        reference = self._module_state_reference()
+        if reference is None or not isinstance(self, torch.nn.Module):
+            return image
+        floating_dtype = next(
+            (parameter.dtype for parameter in self.parameters() if parameter.is_floating_point()), None
+        )
+        if floating_dtype is None:
+            floating_dtype = next((buffer.dtype for buffer in self.buffers() if buffer.is_floating_point()), None)
+        if floating_dtype is None:
+            floating_dtype = torch.get_default_dtype()
+        return image.to(device=reference.device, dtype=floating_dtype)
 
     def to_numpy(self, x: Any) -> "np.array":  # type: ignore
         """Convert input to numpy array.
@@ -280,7 +312,8 @@ class ImageModuleMixIn:
         converts back to the same tensor. A tensor of any other rank keeps its shape. Every 3-D or 4-D tensor is taken
         to be an image, so a non-image element of a tuple output, such as a :math:`(B, N, 4)` box tensor, is moved to
         channels-last too; modules with several outputs are tracked in
-        `#5210 <https://github.com/kornia/kornia/issues/5210>`_.
+        `#5210 <https://github.com/kornia/kornia/issues/5210>`_. A ``bfloat16`` tensor becomes a ``float32`` array,
+        since NumPy has no ``bfloat16``.
 
         Args:
             x: The input to convert.
@@ -291,6 +324,8 @@ class ImageModuleMixIn:
         """
         if isinstance(x, torch.Tensor):
             x = x.detach().cpu()
+            if x.dtype == torch.bfloat16:
+                x = x.float()
             if x.dim() == 3:
                 x = x.permute(1, 2, 0)
             elif x.dim() == 4:
@@ -347,7 +382,7 @@ class ImageModuleMixIn:
     ) -> Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]:
         if isinstance(output_image, torch.Tensor):
             return output_image.detach()
-        if isinstance(output_image, list | tuple):
+        if isinstance(output_image, (list, tuple)):
             return type(output_image)([self._detach_tensor(out) for out in output_image])  # type: ignore
         raise RuntimeError(f"Unexpected object {output_image} with a type of `{type(output_image)}`")
 
@@ -361,6 +396,15 @@ class ImageModuleMixIn:
             return
         self._output_image = self._detach_tensor(output_image) if output_type == "pt" else output_image
 
+    def _get_output_image(self) -> torch.Tensor:
+        output_image = getattr(self, "_output_image", None)
+        if output_image is None:
+            raise ValueError("No pre-computed images found. Needs to execute first.")
+        if not isinstance(output_image, torch.Tensor) or output_image.ndim not in (3, 4):
+            shape = tuple(output_image.shape) if isinstance(output_image, torch.Tensor) else type(output_image).__name__
+            raise ValueError(f"Expected a 3D or 4D image tensor, got {shape}.")
+        return output_image
+
     def show(self, n_row: Optional[int] = None, backend: str = "pil", display: bool = True) -> Optional[Any]:
         """Return PIL images.
 
@@ -370,28 +414,22 @@ class ImageModuleMixIn:
             display: Whether or not to show the image.
 
         """
-        if self._output_image is None:
-            raise ValueError("No pre-computed images found. Needs to execute first.")
-        output_image = self._output_image
-        if isinstance(output_image, torch.Tensor):
-            output_image = output_image.detach().cpu()
+        output_image = self._get_output_image().detach().cpu()
 
         if len(output_image.shape) == 3:
             out_image = output_image
-        elif len(output_image.shape) == 4:
+        else:
             from kornia.image.utils import make_grid  # pylint: disable=C0415
 
             if n_row is None:
                 n_row = math.ceil(output_image.shape[0] ** 0.5)
             out_image = make_grid(output_image, n_row, padding=2)
-        else:
-            raise ValueError
 
         if backend == "pil" and display:
-            Image.fromarray(_to_uint8_image(out_image).permute(1, 2, 0).squeeze().numpy()).show()  # type: ignore
+            self.to_pil(out_image).show()
             return None
         if backend == "pil":
-            return Image.fromarray(_to_uint8_image(out_image).permute(1, 2, 0).squeeze().numpy())  # type: ignore
+            return self.to_pil(out_image)
         raise ValueError(f"Unsupported backend `{backend}`.")
 
     def save(self, name: Optional[str] = None, n_row: Optional[int] = None) -> None:
@@ -402,21 +440,18 @@ class ImageModuleMixIn:
             n_row: Number of images displayed in each row of the grid.
 
         """
-        from kornia.image.utils import make_grid  # pylint: disable=C0415
-        from kornia.io import write_image  # pylint: disable=C0415
-
-        if self._output_image is None:
-            raise ValueError("No pre-computed images found. Needs to execute first.")
-        output_image = self._output_image
-        if isinstance(output_image, torch.Tensor):
-            output_image = output_image.detach().cpu()
+        output_image = self._get_output_image().detach().cpu()
 
         if name is None:
             name = f"Kornia-{datetime.datetime.now(tz=datetime.UTC).strftime('%Y%m%d%H%M%S')!s}.jpg"
         if len(output_image.shape) == 3:
             out_image = output_image
-        if len(output_image.shape) == 4:
+        else:
+            from kornia.image.utils import make_grid  # pylint: disable=C0415
+
             if n_row is None:
                 n_row = math.ceil(output_image.shape[0] ** 0.5)
             out_image = make_grid(output_image, n_row, padding=2)
+        from kornia.io import write_image  # pylint: disable=C0415
+
         write_image(name, _to_uint8_image(out_image))

@@ -30,6 +30,18 @@ from .kernels import _check_kernel_size, _unpack_2d_ks, get_gaussian_kernel2d
 from .median import _compute_zero_padding
 
 
+def _check_sigma_batch(name: str, sigma: torch.Tensor, input: torch.Tensor) -> None:
+    """Check that a tensor sigma has a batch of 1, shared by the input, or the input batch."""
+    # Format the sizes only on failure: an f-string evaluated on every call makes Dynamo specialize the batch size,
+    # so a dynamic-shape torch.compile would recompile for each new batch.
+    if sigma.shape[0] not in (1, input.shape[0]):
+        KORNIA_CHECK(
+            False,
+            f"{name} must have a batch of 1 or the input batch. "
+            f"Got a {name} batch of {sigma.shape[0]} for an input batch of {input.shape[0]}",
+        )
+
+
 def _bilateral_blur(
     input: torch.Tensor,
     guidance: Optional[torch.Tensor],
@@ -53,12 +65,17 @@ def _bilateral_blur(
 
     if isinstance(sigma_color, torch.Tensor):
         KORNIA_CHECK_SHAPE(sigma_color, ["B"])
+        _check_sigma_batch("sigma_color", sigma_color, input)
         # `bool()` on a tensor is untraceable by dynamo; skip the data-dependent check under compile.
         if not is_compiling() and not bool((sigma_color > 0).all()):
             KORNIA_CHECK(False, f"sigma_color must be positive. Got {sigma_color}")
         sigma_color = sigma_color.to(device=input.device, dtype=input.dtype).view(-1, 1, 1, 1, 1, 1)
     elif not sigma_color > 0:
         KORNIA_CHECK(False, f"sigma_color must be positive. Got {sigma_color}")
+
+    if isinstance(sigma_space, torch.Tensor):
+        KORNIA_CHECK_SHAPE(sigma_space, ["B", "2"])
+        _check_sigma_batch("sigma_space", sigma_space, input)
 
     ky, kx = _unpack_2d_ks(kernel_size)
     _check_kernel_size((ky, kx))
@@ -107,20 +124,37 @@ def bilateral_blur(
     for each pixel in a neighborhood is determined not only by its distance
     to the center pixel, but also the difference in intensity or color.
 
+    Convention:
+        - A neighbour weighs :math:`g \, \exp(-d^2 / (2 \sigma_{color}^2))`. :math:`g` is the Gaussian of
+          :func:`~kornia.filters.gaussian_blur2d` with ``sigma = sigma_space``, :math:`(\sigma_y, \sigma_x)`, over
+          the whole ``kernel_size`` rectangle, and :math:`d` is the neighbour's colour distance from the centre
+          pixel: the sum of the absolute channel differences for ``'l1'``, their Euclidean norm for ``'l2'``.
+          :ref:`Filtering <filtering-conventions>` compares this with OpenCV.
+        - ``sigma_color`` is in the units of the input values: an image scaled by ``s > 0``, filtered with
+          ``sigma_color * s``, gives the result scaled by ``s``.
+        - The border modes are :func:`~kornia.filters.filter2d`'s, but only in lower case; see its Convention block.
+        - Known defects:
+
+          - an integer input is differenced in its own dtype, so uint8 differences wrap and the filter blends
+            across edges it should keep (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+          - a tensor ``sigma_space`` keeps its own dtype, unlike ``sigma_color``, so a wider one promotes the output:
+            a float32 image with a float64 ``sigma_space`` comes back float64
+            (`#5521 <https://github.com/kornia/kornia/issues/5521>`_).
+
     Arguments:
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
         kernel_size: the size of the kernel. Each entry must be a positive odd integer.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
-          Smaller values preserve more edges. It must be positive.
+          Smaller values preserve more edges. It must be positive. A float is shared by the batch; a
+          torch.Tensor has shape :math:`(1,)`, shared by the batch, or :math:`(B,)`, one value per sample.
         sigma_space: the standard deviation for spatial Gaussian kernel.
-          This is similar to ``sigma`` in :func:`gaussian_blur2d()`.
+          This is similar to ``sigma`` in :func:`gaussian_blur2d()`. A tuple of two floats is shared by the batch;
+          a torch.Tensor has shape :math:`(1, 2)`, shared by the batch, or :math:`(B, 2)`, one row per sample.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         color_distance_type: the type of distance to calculate intensity/color
-          difference. Only ``'l1'`` or ``'l2'`` is allowed. Use ``'l1'`` to
-          match OpenCV implementation. Use ``'l2'`` to match Matlab implementation.
-          Default: ``'l1'``.
+          difference. Only ``'l1'`` or ``'l2'`` is allowed. Default: ``'l1'``.
 
     Returns:
         the blurred torch.Tensor with shape :math:`(B, C, H, W)`.
@@ -128,6 +162,7 @@ def bilateral_blur(
     Raises:
         BaseError: if an entry of ``kernel_size`` is even or not positive.
         BaseError: if ``sigma_color`` is not positive.
+        BaseError: if the batch of a tensor ``sigma_color`` or ``sigma_space`` is neither 1 nor the input batch.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -156,20 +191,30 @@ def joint_bilateral_blur(
     is that the color Gaussian kernel is computed based on another image called
     a guidance image. See :func:`bilateral_blur()` for more information.
 
+    Convention:
+        - See the Convention block on :func:`~kornia.filters.bilateral_blur`; the colour distances are taken in
+          ``guidance``, and ``input`` is what gets averaged.
+        - ``input`` comes first and ``guidance`` second, the opposite of :func:`~kornia.filters.guided_blur`.
+        - ``guidance`` may have its own channel count; its batch size and :math:`(H, W)` must equal ``input``'s.
+        - Known defects: those of :func:`~kornia.filters.bilateral_blur`, for an integer ``guidance``
+          (`#5155 <https://github.com/kornia/kornia/issues/5155>`_) and for a tensor ``sigma_space`` of a wider dtype,
+          which ``guidance`` of a wider dtype shares (`#5521 <https://github.com/kornia/kornia/issues/5521>`_).
+
     Arguments:
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
-        guidance: the guidance torch.Tensor with shape :math:`(B,C,H,W)`.
+        guidance: the guidance torch.Tensor with shape :math:`(B,C_g,H,W)`.
         kernel_size: the size of the kernel. Each entry must be a positive odd integer.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
-          Smaller values preserve more edges. It must be positive.
+          Smaller values preserve more edges. It must be positive. A float is shared by the batch; a
+          torch.Tensor has shape :math:`(1,)`, shared by the batch, or :math:`(B,)`, one value per sample.
         sigma_space: the standard deviation for spatial Gaussian kernel.
-          This is similar to ``sigma`` in :func:`gaussian_blur2d()`.
+          This is similar to ``sigma`` in :func:`gaussian_blur2d()`. A tuple of two floats is shared by the batch;
+          a torch.Tensor has shape :math:`(1, 2)`, shared by the batch, or :math:`(B, 2)`, one row per sample.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         color_distance_type: the type of distance to calculate intensity/color
-          difference. Only ``'l1'`` or ``'l2'`` is allowed. Use ``'l1'`` to
-          match OpenCV implementation.
+          difference. Only ``'l1'`` or ``'l2'`` is allowed. Default: ``'l1'``.
 
     Returns:
         the blurred torch.Tensor with shape :math:`(B, C, H, W)`.
@@ -177,6 +222,7 @@ def joint_bilateral_blur(
     Raises:
         BaseError: if an entry of ``kernel_size`` is even or not positive.
         BaseError: if ``sigma_color`` is not positive.
+        BaseError: if the batch of a tensor ``sigma_color`` or ``sigma_space`` is neither 1 nor the input batch.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -225,19 +271,22 @@ class BilateralBlur(_BilateralBlur):
     for each pixel in a neighborhood is determined not only by its distance
     to the center pixel, but also the difference in intensity or color.
 
+    Convention:
+        See the Convention block on :func:`~kornia.filters.bilateral_blur`.
+
     Arguments:
         kernel_size: the size of the kernel. Each entry must be a positive odd integer.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
-          Smaller values preserve more edges. It must be positive.
+          Smaller values preserve more edges. It must be positive. A float is shared by the batch; a
+          torch.Tensor has shape :math:`(1,)`, shared by the batch, or :math:`(B,)`, one value per sample.
         sigma_space: the standard deviation for spatial Gaussian kernel.
-          This is similar to ``sigma`` in :func:`gaussian_blur2d()`.
+          This is similar to ``sigma`` in :func:`gaussian_blur2d()`. A tuple of two floats is shared by the batch;
+          a torch.Tensor has shape :math:`(1, 2)`, shared by the batch, or :math:`(B, 2)`, one row per sample.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         color_distance_type: the type of distance to calculate intensity/color
-          difference. Only ``'l1'`` or ``'l2'`` is allowed. Use ``'l1'`` to
-          match OpenCV implementation. Use ``'l2'`` to match Matlab implementation.
-          Default: ``'l1'``.
+          difference. Only ``'l1'`` or ``'l2'`` is allowed. Default: ``'l1'``.
 
     Returns:
         the blurred input torch.Tensor.
@@ -249,6 +298,8 @@ class BilateralBlur(_BilateralBlur):
     Raises:
         BaseError: if an entry of ``kernel_size`` is even or not positive; raised from the constructor.
         BaseError: if ``sigma_color`` is not positive; raised from ``forward``.
+        BaseError: if the batch of a tensor ``sigma_color`` or ``sigma_space`` is neither 1 nor the input batch;
+          raised from ``forward``.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -276,10 +327,11 @@ class BilateralBlur(_BilateralBlur):
 
         Returns:
             Tensor with shape :math:`(B, C, H, W)` containing the
-            edge-preserving smoothed image. The output keeps the same layout,
-            dtype, and device as ``input`` while reducing small local
-            variations according to the configured kernel size and sigma
-            values.
+            edge-preserving smoothed image. The output keeps the layout and
+            device of ``input``, and the dtype of a floating ``input`` unless a
+            tensor ``sigma_space`` of a wider dtype promotes it, while reducing
+            small local variations according to the configured kernel size and
+            sigma values.
         """
         return bilateral_blur(
             input, self.kernel_size, self.sigma_color, self.sigma_space, self.border_type, self.color_distance_type
@@ -293,29 +345,35 @@ class JointBilateralBlur(_BilateralBlur):
     is that the color Gaussian kernel is computed based on another image called
     a guidance image. See :class:`BilateralBlur` for more information.
 
+    Convention:
+        See the Convention block on :func:`~kornia.filters.joint_bilateral_blur`.
+
     Arguments:
         kernel_size: the size of the kernel. Each entry must be a positive odd integer.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
-          Smaller values preserve more edges. It must be positive.
+          Smaller values preserve more edges. It must be positive. A float is shared by the batch; a
+          torch.Tensor has shape :math:`(1,)`, shared by the batch, or :math:`(B,)`, one value per sample.
         sigma_space: the standard deviation for spatial Gaussian kernel.
-          This is similar to ``sigma`` in :func:`gaussian_blur2d()`.
+          This is similar to ``sigma`` in :func:`gaussian_blur2d()`. A tuple of two floats is shared by the batch;
+          a torch.Tensor has shape :math:`(1, 2)`, shared by the batch, or :math:`(B, 2)`, one row per sample.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         color_distance_type: the type of distance to calculate intensity/color
-          difference. Only ``'l1'`` or ``'l2'`` is allowed. Use ``'l1'`` to
-          match OpenCV implementation.
+          difference. Only ``'l1'`` or ``'l2'`` is allowed. Default: ``'l1'``.
 
     Returns:
         the blurred input torch.Tensor.
 
     Shape:
-        - Input: :math:`(B, C, H, W)`, :math:`(B, C, H, W)`
+        - Input: :math:`(B, C, H, W)`, :math:`(B, C_g, H, W)`
         - Output: :math:`(B, C, H, W)`
 
     Raises:
         BaseError: if an entry of ``kernel_size`` is even or not positive; raised from the constructor.
         BaseError: if ``sigma_color`` is not positive; raised from ``forward``.
+        BaseError: if the batch of a tensor ``sigma_color`` or ``sigma_space`` is neither 1 nor the input batch;
+          raised from ``forward``.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -342,7 +400,7 @@ class JointBilateralBlur(_BilateralBlur):
                 :math:`B` is the batch size, :math:`C` is the number of input
                 channels, :math:`H` is the height, and :math:`W` is the width.
             guidance: Tensor used to compute range weights. Its batch and
-                spatial dimensions must be compatible with ``input``; its
+                spatial dimensions must equal those of ``input``; its
                 channel count may differ when the guidance signal uses a
                 different representation.
 

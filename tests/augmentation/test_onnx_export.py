@@ -356,3 +356,14 @@ def test_onnx_export_numerically_matches_eager(name: str, factory: Callable[[], 
     assert eager.shape == onnx_out.shape, f"{name}: shape mismatch {eager.shape} vs {onnx_out.shape}"
     max_diff = float(np.abs(eager - onnx_out).max())
     assert max_diff < 1e-3, f"{name}: max abs diff {max_diff:.4f} exceeds 1e-3"
+
+
+@pytest.mark.parametrize("size", [(9, 21), (5, 7)])
+@pytest.mark.device_agnostic
+def test_onnx_nearest_resize_exports_through_the_legacy_tracer(size: Tuple[int, int]) -> None:
+    """Nearest ``Resize`` samples ``nearest-exact``, which the legacy tracer cannot lower; export gathers instead."""
+    image = torch.arange(3 * 7 * 12, dtype=torch.float32).reshape(1, 3, 7, 12)
+    aug = K.Resize(size, resample="nearest").eval()
+    eager = aug(image).numpy()
+    onnx_out = _run_onnx(aug, image)
+    assert np.array_equal(onnx_out, eager)
