@@ -392,10 +392,12 @@ def dilation(
         # ``conv2d`` multiplies every window cell by the one-hot weight, and ``inf * 0`` or ``nan * 0`` would
         # spread to the whole window. Convolve zeros in their place, then route a code for each non-finite
         # value (1: +inf, 2: -inf, 3: nan) through the same one-hot weight, which reproduces it exactly.
+        # The non-finite codes are matched by scalar comparison because ``torch.isposinf``/``torch.isneginf``
+        # have no MPS kernel on torch 2.5.1 (#5470).
         special = torch.zeros_like(output)
         if output.is_floating_point():
-            special = special.masked_fill(torch.isposinf(output), 1.0)
-            special = special.masked_fill(torch.isneginf(output), 2.0)
+            special = special.masked_fill(output == float("inf"), 1.0)
+            special = special.masked_fill(output == -float("inf"), 2.0)
             special = special.masked_fill(torch.isnan(output), 3.0)
             output = output.masked_fill(special != 0, 0.0)
             special = F.conv2d(special.view(B * C, 1, h_pad, w_pad), reshape_kernel, padding=0)
@@ -574,10 +576,12 @@ def erosion(
         # ``conv2d`` multiplies every window cell by the one-hot weight, and ``inf * 0`` or ``nan * 0`` would
         # spread to the whole window. Convolve zeros in their place, then route a code for each non-finite
         # value (1: +inf, 2: -inf, 3: nan) through the same one-hot weight, which reproduces it exactly.
+        # The non-finite codes are matched by scalar comparison because ``torch.isposinf``/``torch.isneginf``
+        # have no MPS kernel on torch 2.5.1 (#5470).
         special = torch.zeros_like(output)
         if output.is_floating_point():
-            special = special.masked_fill(torch.isposinf(output), 1.0)
-            special = special.masked_fill(torch.isneginf(output), 2.0)
+            special = special.masked_fill(output == float("inf"), 1.0)
+            special = special.masked_fill(output == -float("inf"), 2.0)
             special = special.masked_fill(torch.isnan(output), 3.0)
             output = output.masked_fill(special != 0, 0.0)
             special = F.conv2d(special.view(B * C, 1, Hpad, Wpad), reshape_kernel, padding=0)

@@ -860,6 +860,32 @@ class TestDilate(BaseTester):
             expected_tensor = torch.tensor(expected, device=device, dtype=actual.dtype)
             torch.testing.assert_close(actual, expected_tensor, rtol=0.0, atol=0.0, equal_nan=True)
 
+    def test_convention_convolution_engine_runs_where_isposinf_is_unimplemented_5470(self, device, dtype, monkeypatch):
+        # torch 2.5.1 has no MPS kernel for `torch.isposinf`/`torch.isneginf`, so every
+        # engine="convolution" call raised `NotImplementedError` there, finite input included. The
+        # non-finite codes are now matched by scalar comparison. Simulate such a backend wherever
+        # this suite runs and check the result stays exact, non-finite pixels included.
+        def unimplemented(_tensor):
+            raise NotImplementedError("aten::isposinf.out is not implemented for this device")
+
+        nan, inf = float("nan"), float("inf")
+        tensor = torch.tensor([[[[0.25, nan, 0.75, inf, 0.5, -inf, 0.75]]]], device=device, dtype=dtype)
+        side_kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
+        cases = [
+            (dilation, torch.ones(1, 3, device=device, dtype=dtype), [nan, nan, nan, inf, inf, 0.75, 0.75]),
+            (erosion, torch.ones(1, 3, device=device, dtype=dtype), [nan, nan, nan, 0.5, -inf, -inf, -inf]),
+            (dilation, side_kernel, [nan, 0.75, inf, 0.5, -inf, 0.75, -inf]),
+            (erosion, side_kernel, [inf, 0.25, nan, 0.75, inf, 0.5, -inf]),
+        ]
+
+        with monkeypatch.context() as patch:
+            patch.setattr(torch, "isposinf", unimplemented)
+            patch.setattr(torch, "isneginf", unimplemented)
+            for op, kernel, expected in cases:
+                actual = op(tensor, kernel, engine="convolution").flatten()
+                expected_tensor = torch.tensor(expected, device=device, dtype=actual.dtype)
+                torch.testing.assert_close(actual, expected_tensor, rtol=0.0, atol=0.0, equal_nan=True)
+
     @pytest.mark.parametrize("op", [dilation, erosion, opening, closing, gradient, top_hat, bottom_hat])
     @pytest.mark.parametrize("requires_grad", [False, True])
     def test_convention_shift_tracks_nan_when_maximum_ignores_it_4997(

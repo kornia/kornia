@@ -1040,9 +1040,7 @@ def load_state_dict_from_url(url: str | list[str], *, timeout: float | None = No
     leaves torch with nothing to report. Nothing process-global is touched:
     redirecting :data:`sys.stdout` around the call would divert unrelated
     threads' output for the whole transfer, and concurrent calls restoring out
-    of order would leave stdout permanently pointing at stderr. This mirrors
-    :func:`kornia.feature.lightglue_onnx.utils.download.download_onnx_from_url`,
-    which already reimplements torch's caching for the same reason.
+    of order would leave stdout permanently pointing at stderr.
 
     When multiple URLs are given and ``file_name`` is not already in *kwargs*,
     the basename of the **first** URL is used as the local cache filename for

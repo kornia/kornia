@@ -111,6 +111,10 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     h += (r - g + 4) * cond[..., 2, :, :]
     # h = 2.0 * math.pi * (60.0 * h) / 360.0
     h *= math.pi / 3.0  # hue [0, 2*pi]
+    if image.requires_grad:
+        h = h.masked_fill(h >= 2.0 * math.pi, 0.0)
+    else:
+        h.masked_fill_(h >= 2.0 * math.pi, 0.0)
 
     if image.requires_grad:
         return torch.stack([h, l_, s], -3)

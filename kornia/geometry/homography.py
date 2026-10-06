@@ -528,8 +528,18 @@ def find_homography_dlt(
     device, dtype = _extract_device_dtype([points1, points2])
     A, transform1, transform2 = _homography_dlt_system(points1, points2, weights)
     return _homography_from_dlt_system(
-        A, weights, transform1, safe_inverse_with_mask(transform2)[0], solver, device, dtype
+        A, weights, transform1, _inverse_normalization(transform2), solver, device, dtype
     )
+
+
+def _inverse_normalization(transform: torch.Tensor) -> torch.Tensor:
+    """Invert a Hartley normalization, NaN where it is singular.
+
+    A point set whose mean radius overflows gets a zero scale and a singular normalization. Its homography
+    is undefined, so it is NaN rather than built from the identity ``safe_inverse_with_mask`` substitutes.
+    """
+    inverse, valid = safe_inverse_with_mask(transform)
+    return torch.where(valid[..., None, None], inverse, torch.full_like(inverse, float("nan")))
 
 
 def _homography_dlt_system(
@@ -593,7 +603,10 @@ def _homography_from_dlt_system(
     elif solver == "lu":
         if not minimal_lu:
             B = torch.ones(A.shape[0], A.shape[1], device=device, dtype=dtype)
-            sol, _, _ = safe_solve_with_mask(B, A)
+            sol, _, valid = safe_solve_with_mask(B, A)
+            # A singular normal matrix (degenerate points) has no solution: report it as NaN rather
+            # than the identity system's solution that ``safe_solve_with_mask`` leaves in its place.
+            sol = torch.where(valid[:, None, None], sol, torch.full_like(sol, float("nan")))
         else:
             # A four-point sample gives eight equations for nine unknowns, so the normal matrix
             # is singular and LU-factoring it is what produced all-NaN homographies. Work from
@@ -668,13 +681,13 @@ def find_homography_dlt_iterated(
     device, dtype = _extract_device_dtype([points1, points2])
     # Weighted Hartley normalization changes with each set of IRLS weights.
     A, transform1, transform2 = _homography_dlt_system(points1, points2, weights)
-    transform2_inv = safe_inverse_with_mask(transform2)[0]
+    transform2_inv = _inverse_normalization(transform2)
     H: torch.Tensor = _homography_from_dlt_system(A, weights, transform1, transform2_inv, "lu", device, dtype)
     for _ in range(n_iter - 1):
         squared_errors: torch.Tensor = symmetric_transfer_error(points1, points2, H, True)
         weights_new: torch.Tensor = torch.exp(-squared_errors / (2.0 * (soft_inl_th**2)))
         A, transform1, transform2 = _homography_dlt_system(points1, points2, weights_new)
-        transform2_inv = safe_inverse_with_mask(transform2)[0]
+        transform2_inv = _inverse_normalization(transform2)
         H = _homography_from_dlt_system(A, weights_new, transform1, transform2_inv, "lu", device, dtype)
     return H
 
@@ -807,7 +820,7 @@ def find_homography_lines_dlt(
         return torch.empty((points1_norm.size(0), 3, 3), device=device, dtype=dtype)
 
     H = V[..., -1].view(-1, 3, 3)
-    H = safe_inverse_with_mask(transform2)[0] @ (H @ transform1)
+    H = _inverse_normalization(transform2) @ (H @ transform1)
     return normalize_transformation(H, eps)
 
 

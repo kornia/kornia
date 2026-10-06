@@ -16,6 +16,7 @@
 #
 
 import math
+import warnings
 
 import numpy as np
 import pytest
@@ -31,7 +32,7 @@ from kornia.filters import (
     max_blur_pool2d,
 )
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_reflect_padding
 
 
 def _zero_padded_reference(x: torch.Tensor, k: int, s: int) -> torch.Tensor:
@@ -57,20 +58,50 @@ def _zero_padded_reference(x: torch.Tensor, k: int, s: int) -> torch.Tensor:
 
 class TestMaxBlurPool(BaseTester):
     @pytest.mark.parametrize("kernel_size", [3, (5, 5)])
-    @pytest.mark.parametrize("ceil_mode", [True, False])
-    def test_smoke(self, kernel_size, ceil_mode, device, dtype):
+    def test_smoke(self, kernel_size, device, dtype):
         data = torch.rand(1, 1, 10, 10, device=device, dtype=dtype)
-        actual = MaxBlurPool2D(kernel_size, ceil_mode=ceil_mode)(data)
+        actual = MaxBlurPool2D(kernel_size)(data)
 
         assert actual.shape == (1, 1, 5, 5)
 
-    @pytest.mark.parametrize("ceil_mode", [True, False])
     @pytest.mark.parametrize("kernel_size", [3, (5, 5)])
     @pytest.mark.parametrize("batch_size", [1, 2])
-    def test_cardinality(self, batch_size, kernel_size, ceil_mode, device, dtype):
+    def test_cardinality(self, batch_size, kernel_size, device, dtype):
         data = torch.zeros(batch_size, 4, 4, 8, device=device, dtype=dtype)
-        blur = MaxBlurPool2D(kernel_size, ceil_mode=ceil_mode)
+        blur = MaxBlurPool2D(kernel_size)
         assert blur(data).shape == (batch_size, 4, 2, 4)
+
+    @pytest.mark.parametrize("ceil_mode", [True, False])
+    @pytest.mark.parametrize(("height", "width"), [(7, 10), (8, 11), (5, 5)])
+    @pytest.mark.parametrize(("kernel_size", "max_pool_size"), [(3, 2), (3, 3), (4, 3)])
+    def test_ceil_mode_is_deprecated_and_changes_nothing(
+        self, ceil_mode, height, width, kernel_size, max_pool_size, device, dtype
+    ):
+        """At the stride-1 max pool floor and ceil agree, so the flag never did anything (#5165)."""
+        data = torch.rand(1, 2, height, width, device=device, dtype=dtype)
+        expected = max_blur_pool2d(data, kernel_size, stride=2, max_pool_size=max_pool_size)
+
+        with pytest.warns(DeprecationWarning, match="ceil_mode") as record:
+            actual = max_blur_pool2d(data, kernel_size, stride=2, max_pool_size=max_pool_size, ceil_mode=ceil_mode)
+        self.assert_close(actual, expected)
+        # The warning points at the caller's line, not at kornia.
+        assert [w.filename for w in record if "ceil_mode" in str(w.message)] == [__file__]
+
+        with pytest.warns(DeprecationWarning, match="ceil_mode") as record:
+            module = MaxBlurPool2D(kernel_size, stride=2, max_pool_size=max_pool_size, ceil_mode=ceil_mode)
+        self.assert_close(module(data), expected)
+        assert [w.filename for w in record if "ceil_mode" in str(w.message)] == [__file__]
+        assert module.ceil_mode is ceil_mode
+
+    def test_no_warning_without_ceil_mode(self, device, dtype):
+        data = torch.rand(1, 2, 8, 8, device=device, dtype=dtype)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            module = MaxBlurPool2D(3)
+            module(data)
+            max_blur_pool2d(data, 3)
+        # Code that reads the attribute still gets a bool.
+        assert module.ceil_mode is False
 
     def test_exception(self):
         data = torch.rand(1, 1, 3, 3)
@@ -105,10 +136,9 @@ class TestMaxBlurPool(BaseTester):
 
     @pytest.mark.parametrize("kernel_size", [3, 4, (5, 5)])
     @pytest.mark.parametrize("batch_size", [1, 2])
-    @pytest.mark.parametrize("ceil_mode", [True, False])
-    def test_dynamo(self, batch_size, kernel_size, ceil_mode, device, dtype, torch_optimizer):
+    def test_dynamo(self, batch_size, kernel_size, device, dtype, torch_optimizer):
         data = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
-        op = MaxBlurPool2D(kernel_size, ceil_mode=ceil_mode)
+        op = MaxBlurPool2D(kernel_size)
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(data), op_optimized(data))
@@ -280,6 +310,9 @@ class TestEdgeAwareBlurPool(BaseTester):
             edge_aware_blur_pool2d(data, 3, edge_threshold=edge_threshold)
         with pytest.raises(BaseError, match=f"edge_threshold must be greater than 1. Got {edge_threshold}"):
             EdgeAwareBlurPool2D(3, edge_threshold=edge_threshold)(data)
+        # Only the accepted threshold reaches the reflect padding; the rejections above run everywhere.
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         assert edge_aware_blur_pool2d(data, 3, edge_threshold=1.0001).shape == data.shape
 
     @pytest.mark.parametrize("batch_size", [1, 2])

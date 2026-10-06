@@ -239,3 +239,64 @@ class TestMeanIoUBBox(BaseTester):
         iou_explicit = kornia.metrics.mean_iou_bbox(boxes_1, boxes_2, box_format="xyxy")
 
         self.assert_close(iou_default, iou_explicit)
+
+    @pytest.mark.parametrize("box_format", ["xyxy", "xywh", "cxcywh"])
+    @pytest.mark.parametrize(
+        "int_dtype,side",
+        [
+            # The area side**2 is outside the dtype's range in every case: 400 > 255 and 127, 40000 > 32767, and
+            # 512**2 is a multiple of 2**16, which wrapped the area, the intersection and the union to 0 (NaN IoU).
+            (torch.uint8, 20),
+            (torch.int8, 20),
+            (torch.int16, 200),
+            (torch.int16, 512),
+            (torch.int32, 200),
+            (torch.int64, 200),
+        ],
+    )
+    def test_integer_boxes_do_not_overflow(self, int_dtype, side, box_format, device):
+        half = side // 2
+        coordinates = {
+            "xyxy": [[0, 0, side, side], [half, 0, side + half, side]],
+            "xywh": [[0, 0, side, side], [half, 0, side, side]],
+            "cxcywh": [[half, half, side, side], [side, half, side, side]],
+        }[box_format]
+        boxes = torch.tensor(coordinates, device=device, dtype=int_dtype)
+        original = boxes.clone()
+        actual = kornia.metrics.mean_iou_bbox(boxes, boxes, box_format)
+        # The same boxes held as int64 never wrap, so they are the reference for every narrower integer dtype.
+        reference = kornia.metrics.mean_iou_bbox(boxes.to(torch.int64), boxes.to(torch.int64), box_format)
+        expected = torch.tensor([[1.0, 1.0 / 3.0], [1.0 / 3.0, 1.0]], device=device)
+        self.assert_close(actual, reference, atol=0.0, rtol=0.0)
+        self.assert_close(actual, expected, atol=0.0, rtol=0.0)
+        self.assert_close(boxes, original, atol=0.0, rtol=0.0)
+        assert actual.dtype == torch.float32
+        assert actual.device == device
+
+    def test_uint8_xywh_corner_does_not_wrap_during_conversion(self, device):
+        # x + w is 300 and 300, past the uint8 maximum. The overflow is in the xywh -> xyxy conversion itself, so the
+        # integer boxes have to be promoted before it. The true IoU is 500 / 1000.
+        boxes_1 = torch.tensor([[200, 0, 100, 10]], device=device, dtype=torch.uint8)
+        boxes_2 = torch.tensor([[250, 0, 50, 10]], device=device, dtype=torch.uint8)
+        actual = kornia.metrics.mean_iou_bbox(boxes_1, boxes_2, "xywh")
+        self.assert_close(actual, torch.tensor([[0.5]], device=device), atol=0.0, rtol=0.0)
+
+    def test_integer_boxes_are_validated_without_wraparound(self, device):
+        # 5 - 10 wraps to 251 in uint8, so an inverted box used to pass the validation and return a plausible IoU.
+        inverted = torch.tensor([[10, 10, 5, 5]], device=device, dtype=torch.uint8)
+        valid = torch.tensor([[0, 0, 4, 4]], device=device, dtype=torch.uint8)
+        with pytest.raises(AssertionError, match="Boxes_1 contains invalid boxes"):
+            kornia.metrics.mean_iou_bbox(inverted, valid)
+        with pytest.raises(AssertionError, match="Boxes_2 contains invalid boxes"):
+            kornia.metrics.mean_iou_bbox(valid, inverted)
+        # 100 - (-100) wraps to -56 in int8, so a valid wide box used to be rejected as invalid.
+        wide = torch.tensor([[-100, 0, 100, 10]], device=device, dtype=torch.int8)
+        self.assert_close(kornia.metrics.mean_iou_bbox(wide, wide), torch.tensor([[1.0]], device=device))
+
+    def test_bool_boxes(self, device):
+        # Subtracting bool tensors raises in torch, so bool boxes used to fail. They are 0/1 coordinates.
+        boxes_1 = torch.tensor([[False, False, True, True]], device=device)
+        boxes_2 = torch.tensor([[False, False, True, True]], device=device)
+        actual = kornia.metrics.mean_iou_bbox(boxes_1, boxes_2)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, torch.tensor([[1.0]], device=device))
