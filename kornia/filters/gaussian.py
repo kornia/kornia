@@ -96,6 +96,15 @@ def gaussian_blur2d(
     The operator smooths the given torch.Tensor with a gaussian kernel by convolving
     it to each channel. It supports batched operation.
 
+    Convention:
+        - ``kernel_size`` is ``(kH, kW)`` and ``sigma`` is :math:`(\sigma_y, \sigma_x)`: both give the rows (y)
+          first, so ``sigma[0]`` blurs along ``H`` and ``sigma[1]`` along ``W``.
+          :ref:`Filtering <filtering-conventions>` maps both pairs onto OpenCV and scipy.
+        - The border modes are :func:`~kornia.filters.filter2d`'s; see its Convention block.
+        - Known defect: an integer input casts ``sigma`` and the kernel to its dtype, so on the CPU a uint8 image
+          comes back as zeros, and a ``sigma`` below 1 truncates to 0 and is rejected as not positive
+          (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+
     Arguments:
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
         kernel_size: the size of the kernel. Can be an integer or tuple of two integers (height, width).
@@ -111,10 +120,11 @@ def gaussian_blur2d(
         the blurred torch.Tensor with shape :math:`(B, C, H, W)`.
 
     Raises:
-        RuntimeError: if input is not a 4D torch.Tensor.
-        RuntimeError: if sigma values are not positive.
-        BaseError: if the ``sigma`` batch is neither 1 nor the input batch.
-        RuntimeError: if kernel_size is not a positive odd integer.
+        ~kornia.core.exceptions.TypeCheckError: if input is not a torch.Tensor.
+        ~kornia.core.exceptions.ShapeError: if input is not 4D.
+        ~kornia.core.exceptions.BaseError: if sigma values are not positive.
+        ~kornia.core.exceptions.BaseError: if the ``sigma`` batch is neither 1 nor the input batch.
+        ~kornia.core.exceptions.BaseError: if kernel_size is not a positive odd integer.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/gaussian_blur.html>`__.
@@ -196,6 +206,9 @@ class GaussianBlur2d(nn.Module):
 
     The operator smooths the given torch.Tensor with a gaussian kernel by convolving
     it to each channel. It supports batched operation.
+
+    Convention:
+        See the Convention block on :func:`~kornia.filters.gaussian_blur2d`.
 
     Arguments:
         kernel_size: the size of the kernel.
