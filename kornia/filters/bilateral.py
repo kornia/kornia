@@ -139,7 +139,8 @@ def bilateral_blur(
         - ``sigma_color`` is in the units of the input values: an image scaled by ``s > 0``, filtered with
           ``sigma_color * s``, gives the result scaled by ``s``.
         - The border modes are :func:`~kornia.filters.filter2d`'s, but only in lower case; see its Convention block.
-        - A floating input keeps its dtype: a tensor ``sigma_color`` or ``sigma_space`` is cast to it.
+        - A floating input keeps its dtype: a tensor ``sigma_color`` or ``sigma_space`` is cast to it and moved to
+          its device.
         - Known defects:
 
           - an integer input is differenced in its own dtype, so uint8 differences wrap and the filter blends
