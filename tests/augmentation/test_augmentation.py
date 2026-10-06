@@ -3640,6 +3640,34 @@ class TestRandomCrop(BaseTester):
             torch.diag(torch.tensor(expected_scale, device=device, dtype=dtype)),
         )
 
+    @pytest.mark.parametrize("exporting", [False, True])
+    @pytest.mark.parametrize(
+        ("input_size", "size", "expected_scale"),
+        [
+            ((329, 1209), (416, 416), (1.0, 416 / 329)),
+            ((1209, 329), (416, 416), (416 / 329, 1.0)),
+            ((5, 6), (10, 9), (1.5, 2.0)),
+            ((500, 500), (416, 416), (1.0, 1.0)),
+        ],
+    )
+    def test_slice_crop_transform_stretches_on_the_half_pixel_grid(
+        self, input_size, size, expected_scale, exporting, device, dtype, monkeypatch
+    ):
+        """A stretched axis maps x to (x + 0.5) * scale - 0.5, as the slice resize does; a cropped one to x - x0."""
+        from kornia.augmentation._2d.geometric import crop as crop_module
+
+        image = torch.zeros(1, 1, *input_size, device=device, dtype=dtype)
+        aug = RandomCrop(size, cropping_mode="slice", p=1.0)
+        params = aug.forward_parameters(image.shape)
+        monkeypatch.setattr(crop_module, "is_exporting", lambda: exporting)
+
+        transform = aug.compute_transformation(image, params, aug.flags)
+
+        scale = torch.tensor(expected_scale, device=device, dtype=dtype)
+        expected = torch.diag_embed(torch.cat((scale, scale.new_ones(1))))
+        expected[:2, 2] = (scale - 1) / 2 - params["src"][0, 0].to(scale)
+        self.assert_close(transform[0], expected)
+
     def test_fill_accepts_one_value_per_channel(self, device, dtype):
         image = torch.zeros(1, 3, 2, 2, device=device, dtype=dtype)
         fill = (0.25, 0.5, 0.75)

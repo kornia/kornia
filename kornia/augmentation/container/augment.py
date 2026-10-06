@@ -491,7 +491,12 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             raise AssertionError(
                 f"The number of inputs must align with the number of data_keys. Got {len(args)} and {len(data_keys)}."
             )
-        image = next((arg for arg, key in zip(args, data_keys) if key in _IMG_OPTIONS), None)
+        # A plain loop, not next(generator, None): Dynamo on torch 2.5/2.6 cannot trace next() with a default.
+        image = None
+        for arg, key in zip(args, data_keys):
+            if key in _IMG_OPTIONS:
+                image = arg
+                break
         if not isinstance(image, torch.Tensor) or image.ndim not in (3, 4):
             return
         image_batch = image.shape[0] if image.ndim == 4 else 1
