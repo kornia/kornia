@@ -47,8 +47,7 @@ def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, n
           scales onto OpenCV, scipy and scikit-image.
         - The border is always replicated, so for ``order=1`` with ``normalized=True``, a linear ramp's derivative
           is half its slope on the first and last pixel along that axis. There is no ``border_type``, unlike
-          :func:`~kornia.filters.filter2d` and
-          :func:`~kornia.filters.laplacian`, whose default is ``'reflect'``.
+          :func:`~kornia.filters.filter2d` and :func:`~kornia.filters.laplacian`, whose default is ``'reflect'``.
 
     Args:
         input: input image torch.Tensor with shape :math:`(B, C, H, W)`.
