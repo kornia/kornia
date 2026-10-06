@@ -207,7 +207,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         if isinstance(self.random_apply, tuple):
             num_samples = int(torch.randint(*self.random_apply, (1,)).item())
         else:
-            raise TypeError(f"random apply should be a tuple. Gotcha {type(self.random_apply)}")
+            raise TypeError(f"random apply should be a tuple. Got {type(self.random_apply)}")
 
         multinomial_weights = self.random_apply_weights.clone()
         # Mix augmentation can only be applied once per forward
@@ -332,10 +332,11 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         for (_, module), param in zip(named_modules, params if params is not None else []):
             if isinstance(module, K.GeometricAugmentationBase2D) and isinstance(param.data, dict):
                 ori_shape = input.shape
-                try:
+                # Ignore error for 5-dim video. Keep try/except: Dynamo on torch 2.5.1 cannot trace
+                # contextlib.suppress, so it would break the graph under torch.compile.
+                try:  # noqa: SIM105
                     input = module.transform_tensor(input)
                 except ValueError:
-                    # Ignore error for 5-dim video
                     pass
                 # Standardize shape
                 if recompute:

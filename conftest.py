@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import contextlib
 import os
 import random
 import subprocess
@@ -242,10 +243,8 @@ def _validate_complete_known_failure_run(config, option: str) -> None:
     for arg in config.args:
         target = Path(arg.split("::", maxsplit=1)[0])
         if target.is_absolute():
-            try:
+            with contextlib.suppress(ValueError):
                 target = target.relative_to(config.rootpath)
-            except ValueError:
-                pass
         normalized_args.add(target.as_posix().removeprefix("./").rstrip("/"))
     if normalized_args != {"tests"}:
         raise pytest.UsageError(f"{option} requires exactly the full tests/ target")

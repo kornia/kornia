@@ -693,7 +693,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         Arguments convert by data key, and only an image takes the image conversion. A mask given as a NumPy array,
         a PIL image or an image file path keeps its dtype and label values, palette indices included. Every mask
-        must match the image's height and width, with a batch size of 1 or the image's.
+        must match the image's height and width, with a batch size of 1 or the image's. Arguments converted from NumPy
+        go to the container's device when it has parameters or buffers, as the image does.
 
         Args:
             inputs: Inputs to operate on.
@@ -770,10 +771,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             if _is_numpy_array(arg):
                 if not arg.dtype.isnative:  # torch.from_numpy rejects big-endian data, such as PIL's "I;16B" mode
                     arg = arg.astype(arg.dtype.newbyteorder("="))
-                return image_to_tensor(arg)
+                return self._to_module_device(image_to_tensor(arg))
             return arg
         if _is_numpy_array(arg):
-            return torch.as_tensor(arg)
+            return self._to_module_device(torch.as_tensor(arg))
         return arg
 
     def _select_output_image(

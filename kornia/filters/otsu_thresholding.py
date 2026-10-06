@@ -63,6 +63,17 @@ class OtsuThreshold(torch.nn.Module):
         min_values = values.amin(dim=1, keepdim=True)
         max_values = values.amax(dim=1, keepdim=True)
         widths = max_values - min_values
+        # Preserve histc's operation order on safe planes, including its rounding at bin boundaries. If the
+        # range or its product with bins overflows, use bounded units as in `_upper_edge` before subtracting:
+        # finite extrema then lie in [-1, 1], so no infinite bin coordinate reaches the integer conversion.
+        scale = torch.where(
+            (widths * bins).isfinite(),
+            torch.ones_like(widths),
+            torch.maximum(min_values.abs(), max_values.abs()).clamp_min(torch.finfo(edge_dtype).tiny),
+        )
+        values = values / scale
+        min_values, max_values = min_values / scale, max_values / scale
+        widths = max_values - min_values
         safe_widths = torch.where(widths > 0, widths, torch.ones_like(widths))
         indices = ((values - min_values) * bins / safe_widths).to(torch.int64).clamp(0, bins - 1)
         histograms = values.new_zeros((values.shape[0], bins)).scatter_add(1, indices, torch.ones_like(values))
@@ -76,7 +87,7 @@ class OtsuThreshold(torch.nn.Module):
             torch.addcmul(min_values, positions, steps),
             torch.addcmul(max_values, positions - bins, steps),
         )
-        return histograms / histograms.sum(dim=1, keepdim=True), bin_edges, indices
+        return histograms / histograms.sum(dim=1, keepdim=True), bin_edges * scale, indices
 
     @staticmethod
     def _kde_histogram(coords: torch.Tensor, bins: int, bandwidth: float) -> torch.Tensor:
