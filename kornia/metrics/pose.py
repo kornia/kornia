@@ -38,6 +38,16 @@ from kornia.core.check import (
 )
 
 
+def _angle_deg(sin_theta: Tensor, cos_theta: Tensor) -> Tensor:
+    """Angle in degrees from a non-negative sine and a cosine, the same in eager, compiled and ONNX graphs."""
+    # -atan2(-sin, cos) is atan2(sin, cos). At sin = +0 and cos < 0 the ONNX export's atan2 returns -pi instead of
+    # pi; with -0 it returns -pi in both, which the negation turns into pi.
+    theta = torch.rad2deg(-torch.atan2(-sin_theta, cos_theta))
+    # The ONNX export's atan2 also maps NaN to 0, so a NaN input (a zero vector) would read as a perfect match.
+    nan = sin_theta + cos_theta
+    return torch.where(torch.isnan(nan), nan, theta)
+
+
 def angle_error_mat(R1: Tensor, R2: Tensor) -> Tensor:
     r"""Geodesic angle (in degrees) between two rotation matrices.
 
@@ -76,7 +86,7 @@ def angle_error_mat(R1: Tensor, R2: Tensor) -> Tensor:
     # (R - R^T) / 2 = sin(theta) [n]_x, so its three independent entries have norm sin(theta).
     skew = relative - relative.transpose(-2, -1)
     sin_theta = 0.5 * torch.stack((skew[..., 2, 1], skew[..., 0, 2], skew[..., 1, 0]), dim=-1).norm(dim=-1)
-    return torch.rad2deg(torch.atan2(sin_theta, cos_theta))
+    return _angle_deg(sin_theta, cos_theta)
 
 
 def angle_error_vec(v1: Tensor, v2: Tensor) -> Tensor:
@@ -115,12 +125,13 @@ def angle_error_vec(v1: Tensor, v2: Tensor) -> Tensor:
     KORNIA_CHECK_SHAPE(v2, ["*", "3"])
     KORNIA_CHECK_SAME_SHAPE(v1, v2)
 
-    # Normalizing each vector on its own keeps the product of two large norms from overflowing.
-    v1 = v1 / v1.norm(dim=-1, keepdim=True)
-    v2 = v2 / v2.norm(dim=-1, keepdim=True)
+    # atan2 does not depend on the length of either vector, so scaling each one by its largest entry is enough.
+    # Unlike a norm, that cannot overflow or underflow, and a zero vector still gives 0 / 0 = NaN.
+    v1 = v1 / v1.abs().amax(dim=-1, keepdim=True)
+    v2 = v2 / v2.abs().amax(dim=-1, keepdim=True)
     sin_theta = torch.linalg.cross(v1, v2, dim=-1).norm(dim=-1)
     cos_theta = (v1 * v2).sum(-1)
-    return torch.rad2deg(torch.atan2(sin_theta, cos_theta))
+    return _angle_deg(sin_theta, cos_theta)
 
 
 def translation_ate(t: Tensor, t_gt: Tensor) -> Tensor:

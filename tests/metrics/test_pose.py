@@ -81,7 +81,8 @@ class TestAngleErrorMat(BaseTester):
         small = {torch.float32: 0.01, torch.float64: 1e-6}[dtype]
         atol = {torch.float32: 1e-4, torch.float64: 1e-9}[dtype]
         angles = torch.tensor([small, 180.0 - small], dtype=torch.float64)
-        axis = torch.tensor([[0.6, 0.0, 0.8]], dtype=torch.float64)  # unit length
+        # Unit length with all three components nonzero, so each entry of the skew part carries part of sin(theta).
+        axis = torch.tensor([[0.48, 0.6, 0.64]], dtype=torch.float64)
         R1 = kornia.geometry.axis_angle_to_rotation_matrix(torch.tensor([[0.3, -0.5, 0.8]], dtype=torch.float64))
         R2 = R1 @ kornia.geometry.axis_angle_to_rotation_matrix(torch.deg2rad(angles)[:, None] * axis)
         R1 = R1.expand(2, 3, 3).to(device=device, dtype=dtype)
@@ -120,6 +121,17 @@ class TestAngleErrorVec(BaseTester):
         zero = torch.zeros(3, device=device, dtype=dtype)
         unit = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
         assert torch.isnan(kornia.metrics.angle_error_vec(zero, unit))
+        assert torch.isnan(kornia.metrics.angle_error_vec(unit, zero))
+
+    def test_huge_and_tiny_vectors(self, device, dtype):
+        # The squared norm of these overflows (huge) or underflows (tiny) in the dtype; the angle is still 45 degrees.
+        finfo = torch.finfo(dtype)
+        # Negative entries, so the scale has to come from the magnitude of the largest entry.
+        a = torch.tensor([-1.0, 0.0, 0.0], device=device, dtype=dtype)
+        b = torch.tensor([-1.0, -1.0, 0.0], device=device, dtype=dtype)
+        expected = torch.tensor(45.0, device=device, dtype=dtype)
+        for scale in (4.0 * finfo.max**0.5, 0.25 * finfo.tiny**0.5):
+            self.assert_close(kornia.metrics.angle_error_vec(scale * a, scale * b), expected)
 
     def test_mismatched_batch_raises(self, device, dtype):
         # A batch of 1 against a batch of 5 used to broadcast instead of raising.
