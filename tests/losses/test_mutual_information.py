@@ -146,6 +146,56 @@ class TestMutualInformationLoss(BaseTester):
 
         self.assert_close(_normalize_signal(signal, num_bins=64), torch.zeros_like(signal))
 
+    def test_normalizes_onto_bin_centres(self, device, dtype):
+        signal = torch.tensor([2.0, 2.5, 3.0], device=device, dtype=dtype)
+        expected = torch.tensor([0.0, 31.5, 63.0], device=device, dtype=dtype)
+
+        self.assert_close(_normalize_signal(signal, num_bins=64), expected)
+
+    def test_joint_histogram_counts_every_sample(self, device, dtype):
+        # The kernel weights of a sample sum to one over the bin centres, so the histogram counts every sample,
+        # including the ones at a signal's maximum, only when the maximum is normalised onto the last centre.
+        pred = torch.rand(2, 3, 20, device=device, dtype=dtype)
+        target = torch.rand(2, 3, 20, device=device, dtype=dtype)
+        module = MILossFromRef(target)
+        joint_histogram = module._compute_joint_histogram(pred, module.eps)
+
+        self.assert_close(
+            joint_histogram.sum((-2, -1)), torch.full((2, 3), 20.0, device=device, dtype=dtype), low_tolerance=True
+        )
+
+    def test_binary_mask_mutual_information_is_its_entropy(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the entropies need full precision to match the hard histogram")
+        generator = torch.Generator().manual_seed(0)
+        mask = (torch.rand(12, 20, generator=generator) > 0.5).to(device=device, dtype=torch.float64)
+        p = mask.mean()
+        entropy = -(p * p.log() + (1 - p) * (1 - p).log())
+        mask = mask.to(dtype)
+
+        self.assert_close(-mutual_information_loss_2d(mask, mask), entropy.to(dtype))
+        self.assert_close(-mutual_information_loss_2d(1 - mask, mask), entropy.to(dtype))
+        self.assert_close(
+            -normalized_mutual_information_loss_2d(mask, mask), torch.tensor(2.0, device=device, dtype=dtype)
+        )
+
+    def test_integer_levels_match_hard_histogram(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the entropies need full precision to match the hard histogram")
+        levels = 4
+        pred = torch.tensor([[0, 1, 2, 3], [3, 2, 1, 0], [0, 0, 3, 3]], device=device)
+        target = torch.tensor([[0, 1, 1, 3], [3, 3, 1, 0], [0, 2, 3, 3]], device=device)
+        joint = torch.bincount(pred.flatten() * levels + target.flatten(), minlength=levels**2)
+        joint = joint.view(levels, levels).double() / pred.numel()
+        independent = joint.sum(-1, keepdim=True) * joint.sum(-2, keepdim=True)
+        expected = torch.xlogy(joint, joint / independent).sum()
+
+        mutual_information = -mutual_information_loss_2d(pred.to(dtype), target.to(dtype), num_bins=levels)
+        inverted = -mutual_information_loss_2d((levels - 1 - pred).to(dtype), target.to(dtype), num_bins=levels)
+
+        self.assert_close(mutual_information, expected.to(dtype))
+        self.assert_close(inverted, mutual_information)
+
     @pytest.mark.parametrize("kernel", [MIKernel.xu, MIKernel.rectangular, MIKernel.truncated_gaussian])
     @pytest.mark.parametrize("dims", [(5,), (3, 1), (2, 8), (2, 1, 8), (2, 1, 2, 8), (2, 1, 2, 1, 8)])
     def test_batch_consistency(self, device, dtype, kernel, dims):
