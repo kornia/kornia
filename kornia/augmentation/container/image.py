@@ -44,6 +44,8 @@ class ImageModuleForSequentialMixIn(ImageModuleMixIn):
     @disable_features.setter
     def disable_features(self, value: bool = True) -> None:
         self._disable_features = value
+        if value:
+            self._output_image = None
 
     def disable_item_features(self, *args: nn.Module) -> None:
         for arg in args:
@@ -94,6 +96,10 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
     .. note::
         Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.
         Those transformations in ``kornia.geometry`` will not be taken into account.
+
+    Note:
+        The output cache retains a detached reference to the last tensor output and is omitted when pickled.
+        Setting ``disable_features = True`` clears it.
 
     Examples:
         >>> _ = torch.manual_seed(77)
@@ -163,6 +169,12 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             )
         self.random_apply_weights = torch.as_tensor(random_apply_weights or torch.ones((len(self),)))
         self.if_unsupported_ops = if_unsupported_ops
+        self._output_image = None
+
+    def __getstate__(self) -> dict[str, Any]:
+        state = super().__getstate__()
+        state.pop("_output_image", None)
+        return state
 
     def _read_random_apply(
         self, random_apply: Union[int, bool, Tuple[int, int]], max_length: int
@@ -226,16 +238,19 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             )
 
         mix_added = False
-        if with_mix and len(mix_indices) != 0:
-            # Make the selection fair.
-            if (torch.rand(1) < ((len(mix_indices) + len(indices)) / len(self))).item():
-                mix_idx = torch.multinomial((~multinomial_weights.bool()).float(), 1)
-                if len(indices) == 0:
-                    indices = mix_idx
-                else:
-                    indices[-1] = mix_idx
-                indices = indices[torch.randperm(len(indices))]
-                mix_added = True
+        # Make the selection fair.
+        if (
+            with_mix
+            and len(mix_indices) != 0
+            and (torch.rand(1) < ((len(mix_indices) + len(indices)) / len(self))).item()
+        ):
+            mix_idx = torch.multinomial((~multinomial_weights.bool()).float(), 1)
+            if len(indices) == 0:
+                indices = mix_idx
+            else:
+                indices[-1] = mix_idx
+            indices = indices[torch.randperm(len(indices))]
+            mix_added = True
 
         return self.get_children_by_indices(indices), mix_added
 

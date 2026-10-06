@@ -114,9 +114,13 @@ class ParametrizedLine(nn.Module):
 
         """
         direction = p1 - p0
-        if not torch.jit.is_scripting() and are_checks_enabled() and not is_compiling():
-            if not bool((direction.abs().amax(dim=-1) > 0).all()):
-                raise ValueCheckError("ParametrizedLine.through requires two distinct points; p0 and p1 coincide.")
+        if (
+            not torch.jit.is_scripting()
+            and are_checks_enabled()
+            and not is_compiling()
+            and not bool((direction.abs().amax(dim=-1) > 0).all())
+        ):
+            raise ValueCheckError("ParametrizedLine.through requires two distinct points; p0 and p1 coincide.")
         return ParametrizedLine(p0, _normalize_last_dim(direction, 1e-12))
 
     def point_at(self, t: Union[float, torch.Tensor, Scalar]) -> torch.Tensor:
