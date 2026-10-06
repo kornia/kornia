@@ -230,6 +230,18 @@ class TestSSIM3d(BaseTester):
         tolerance = {"rtol": 1e-12, "atol": 1e-12} if dtype == torch.float64 else {}
         self.assert_close(actual, expected, **tolerance)
 
+    def test_mixed_float32_float64_pair_is_computed_in_float64(self, device, dtype):
+        # A float32/float64 pair is filtered in float64, the result dtype, with a float64 window, whichever argument
+        # is the float32 one, so it equals the all-float64 result to roundoff (#5534).
+        if dtype != torch.float64:
+            pytest.skip("the pair needs a float64 argument")
+        generator = torch.Generator().manual_seed(0)
+        img1 = torch.rand(1, 2, 6, 7, 9, generator=generator).to(device)
+        img2 = torch.rand(1, 2, 6, 7, 9, generator=generator, dtype=torch.float64).to(device)
+        expected = kornia.metrics.ssim3d(img1.double(), img2, 5)
+        self.assert_close(kornia.metrics.ssim3d(img1, img2, 5), expected, rtol=1e-12, atol=1e-12)
+        self.assert_close(kornia.metrics.ssim3d(img2, img1, 5), expected, rtol=1e-12, atol=1e-12)
+
     @pytest.mark.parametrize(
         "shape,padding,window_size,max_value",
         [
