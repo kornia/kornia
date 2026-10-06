@@ -170,9 +170,11 @@ class TestConventionGeometricMatrices(BaseTester):
         extent = basic_offset.new_tensor([1.75, 1.25])
 
         assert (basic_offset[:, 0] >= 0).all()
-        assert (basic_offset[:, 1, 0] <= 0).all() and (basic_offset[:, 1, 1] >= 0).all()
+        assert (basic_offset[:, 1, 0] <= 0).all()
+        assert (basic_offset[:, 1, 1] >= 0).all()
         assert (basic_offset[:, 2] <= 0).all()
-        assert (basic_offset[:, 3, 0] >= 0).all() and (basic_offset[:, 3, 1] <= 0).all()
+        assert (basic_offset[:, 3, 0] >= 0).all()
+        assert (basic_offset[:, 3, 1] <= 0).all()
         assert (basic_offset.abs() <= extent).all()
         assert (basic_offset.abs().amax(dim=(0, 1)) > 0.9 * extent).all()
         assert (area_offset.abs() <= extent).all()

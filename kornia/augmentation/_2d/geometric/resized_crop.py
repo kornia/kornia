@@ -201,7 +201,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
                 f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
             )
         if not isinstance(size, tuple):
-            raise TypeError(f"Expected the size be a tuple. Gotcha {type(size)}")
+            raise TypeError(f"Expected the size be a tuple. Got {type(size)}")
 
         if not isinstance(transform, torch.Tensor):
             raise TypeError(f"Expected the `transform` be a torch.Tensor. Got {type(transform)}.")
