@@ -377,23 +377,40 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
             return _fit_line_weighted_tls_2d(points, weights)
         return _fit_line_tls_2d(points)
 
+    # The scatter matrix is quadratic in the coordinates. Form it from centred, unit-scale
+    # offsets in a compute dtype before SVD; casting an already-overflowed half matrix cannot recover it.
     if weights is not None:
         KORNIA_CHECK_IS_TENSOR(weights, "weights must be a tensor")
         KORNIA_CHECK_SHAPE(weights, ["B", "N"])
         KORNIA_CHECK(points.shape[0] == weights.shape[0])
+    compute_dtype = points.dtype if weights is None else torch.promote_types(points.dtype, weights.dtype)
+    if compute_dtype in (torch.float16, torch.bfloat16):
+        compute_dtype = torch.float32
+    work_points = points.to(compute_dtype)
+
+    if weights is not None:
+        work_weights = weights.to(compute_dtype)
+        weight_scale = work_weights.abs().amax(dim=-1, keepdim=True)
+        work_weights = work_weights / torch.where(weight_scale > 0, weight_scale, torch.ones_like(weight_scale))
         # Weighted total least squares: centre on the weighted centroid, as the D = 2 branch does. A row whose
         # weights sum to 0 keeps the unweighted mean instead of 0 / 0, whose NaN would make the SVD raise.
-        w_sum = weights.sum(-1)[..., None, None]
+        w_sum = work_weights.sum(-1)[..., None, None]
         has_weight = w_sum != 0
         w_sum = torch.where(has_weight, w_sum, torch.ones_like(w_sum))
         mean = torch.where(
-            has_weight, (weights[..., None] * points).sum(-2, keepdim=True) / w_sum, points.mean(-2, True)
+            has_weight,
+            (work_weights[..., None] * work_points).sum(-2, keepdim=True) / w_sum,
+            work_points.mean(-2, True),
         )
-        A = points - mean
-        A = A.transpose(-2, -1) @ torch.diag_embed(weights) @ A
     else:
-        mean = points.mean(-2, True)
-        A = points - mean
+        mean = work_points.mean(-2, True)
+
+    A = work_points - mean
+    scale = A.abs().amax(dim=(-2, -1), keepdim=True)
+    A = A / torch.where(scale > 0, scale, torch.ones_like(scale))
+    if weights is not None:
+        A = A.transpose(-2, -1) @ torch.diag_embed(work_weights) @ A
+    else:
         A = A.transpose(-2, -1) @ A
 
     # NOTE: not optimal for 2d points, but for now works for other dimensions
@@ -401,7 +418,7 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
     V = V.transpose(-2, -1)
 
     # the first left eigenvector is the direction on the fitted line
-    direction = V[..., 0, :]  # BxD
-    origin = mean[..., 0, :]  # BxD
+    direction = V[..., 0, :].to(points.dtype)  # BxD
+    origin = mean[..., 0, :].to(points.dtype)  # BxD
 
     return ParametrizedLine(origin, direction)

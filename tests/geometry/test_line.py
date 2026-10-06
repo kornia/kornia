@@ -626,6 +626,29 @@ class TestFitLine(BaseTester):
             self.assert_close(scaled.direction, line.direction.expand(2, 2))
             self.assert_close(scaled.origin / scales[..., 0], line.origin.expand(2, 2))
 
+    @pytest.mark.parametrize("weighted", [False, True])
+    @pytest.mark.parametrize(
+        "dtype,scales", [(torch.float16, (256.0, 1.0 / 256.0)), (torch.float32, (2.0**64, 2.0**-64))]
+    )
+    def test_fit_line_3d_scale_invariance(self, device, weighted, dtype, scales):
+        points = torch.tensor(
+            [[[10.0, -5.0, 2.0], [11.0, -3.0, 5.0], [12.0, -0.5, 8.0], [13.0, 1.0, 11.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        weights = torch.tensor([[1.0, 2.0, 1.0, 3.0]], device=device, dtype=points.dtype) if weighted else None
+        expected = fit_line(points.float(), None if weights is None else weights.float())
+
+        for scale in scales:
+            actual = fit_line(points * scale, weights)
+            self.assert_close(actual.direction.abs().float(), expected.direction.abs(), atol=1e-3, rtol=1e-3)
+            self.assert_close(actual.origin.float() / scale, expected.origin, atol=1e-3, rtol=1e-3)
+
+        if weighted and dtype == torch.float32:
+            actual = fit_line(points, weights * 2.0**64)
+            self.assert_close(actual.direction.abs(), expected.direction.abs())
+            self.assert_close(actual.origin, expected.origin)
+
     def test_fit_line_2d_degenerate_row_with_checks_disabled(self, device, dtype):
         # With checks disabled, as under torch.compile, identical 2-D points are not rejected: their scatter is 0,
         # and they get the direction (1, 0) rather than NaN, without touching the other rows.
