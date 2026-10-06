@@ -66,6 +66,47 @@ class TestAngleErrorMat(BaseTester):
         R2 = torch.tensor(ROT_Z_90, device=device, dtype=torch.float64)
         self.gradcheck(kornia.metrics.angle_error_mat, (R1, R2), requires_grad=(True, False))
 
+    def test_small_and_large_angles_are_resolved_5500(self, device, dtype):
+        # acos((tr - 1) / 2) quantized every angle below ~0.03 degrees to exactly 0 and 179.99
+        # degrees to 180 in float32: the cosine has no digits left next to 1. The sin read from
+        # the skew part keeps them.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("half precision cannot encode the rotation entries the sub-degree angle lives in")
+        axis = torch.tensor([[0.3, -0.5, 0.8]], device=device, dtype=torch.float64)
+        axis = axis / axis.norm(dim=-1, keepdim=True)
+        z = torch.tensor([[0.0, 0.0, 1.0]], device=device, dtype=torch.float64)
+        R1 = kornia.geometry.axis_angle_to_rotation_matrix(axis)
+        for deg, expected in [(0.01, 0.01), (0.1, 0.1), (179.99, 179.99)]:
+            R2 = R1 @ kornia.geometry.axis_angle_to_rotation_matrix(math.radians(deg) * z)
+            out = kornia.metrics.angle_error_mat(R1.to(dtype), R2.to(dtype))
+            expected_t = torch.tensor([expected], device=device, dtype=dtype)
+            self.assert_close(out, expected_t, rtol=1e-3, atol=1e-4)
+
+    def test_sub_degree_error_is_not_quantized_5500(self, device, dtype):
+        # Over random rotation pairs the previous formula returned exactly 0 for almost every
+        # pair below 0.03 degrees apart; the value must now track the input angle.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("half precision cannot encode the rotation entries the sub-degree angle lives in")
+        generator = torch.Generator(device="cpu").manual_seed(5500)
+        axis = torch.nn.functional.normalize(torch.randn(64, 3, generator=generator), dim=-1)
+        z = torch.tensor([[0.0, 0.0, 1.0]], device=axis.device, dtype=axis.dtype)
+        R1 = kornia.geometry.axis_angle_to_rotation_matrix(axis)
+        theta = torch.full((64, 1), torch.deg2rad(torch.tensor(0.01)), dtype=axis.dtype)
+        R2 = R1 @ kornia.geometry.axis_angle_to_rotation_matrix(theta * z)
+        out = kornia.metrics.angle_error_mat(R1.to(dtype), R2.to(dtype))
+        assert bool((out > 0.005).all())
+
+    def test_gradient_at_kinks_is_finite_5500(self, device, dtype):
+        # clamp(-1, 1).acos() had an inf/nan backward at exactly 0 and 180 degrees on part of
+        # the supported torch range; atan2 gives the subgradient 0 everywhere.
+        for opposite in (False, True):
+            R1 = torch.eye(3, device=device, dtype=dtype).requires_grad_(True)
+            R2 = torch.eye(3, device=device, dtype=dtype)
+            if opposite:
+                R2 = R2 @ torch.diag(torch.tensor([-1.0, -1.0, 1.0], device=device, dtype=dtype)).requires_grad_(False)
+            kornia.metrics.angle_error_mat(R1, R2).backward()
+            assert bool(torch.isfinite(R1.grad).all())
+
     def test_mismatched_batch_raises(self, device, dtype):
         # A batch of 1 against a batch of 4 used to broadcast instead of raising.
         R1 = torch.eye(3, device=device, dtype=dtype).expand(1, 3, 3)
@@ -107,6 +148,29 @@ class TestAngleErrorVec(BaseTester):
         v1 = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=torch.float64)
         v2 = torch.tensor([0.0, 1.0, 0.0], device=device, dtype=torch.float64)
         self.gradcheck(kornia.metrics.angle_error_vec, (v1, v2), requires_grad=(True, False))
+
+    def test_small_and_large_angles_are_resolved_5500(self, device, dtype):
+        # acos of the cosine quantized sub-0.03-degree angles to exactly 0 and 179.99 degrees
+        # to 180 in float32; the cross-product sin keeps them.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("half precision cannot encode the vector entries the sub-degree angle lives in")
+        x = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=torch.float64)
+        v1 = torch.tensor([[0.0, 0.6, 0.8]], device=device, dtype=torch.float64)
+        for deg, expected in [(0.01, 0.01), (0.1, 0.1), (179.99, 179.99)]:
+            rot = kornia.geometry.axis_angle_to_rotation_matrix(math.radians(deg) * x)
+            v2 = (rot @ v1[..., None])[..., 0]
+            out = kornia.metrics.angle_error_vec(v1.to(dtype), v2.to(dtype))
+            expected_t = torch.tensor([expected], device=device, dtype=dtype)
+            self.assert_close(out, expected_t, rtol=1e-3, atol=1e-4)
+
+    def test_gradient_at_kinks_is_finite_5500(self, device, dtype):
+        # clamp(-1, 1).acos() had an inf/nan backward at exactly 0 and 180 degrees on part of
+        # the supported torch range; atan2 gives the subgradient 0 everywhere.
+        for opposite in (False, True):
+            v1 = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype).requires_grad_(True)
+            v2 = torch.tensor([-1.0, 0.0, 0.0] if opposite else [1.0, 0.0, 0.0], device=device, dtype=dtype)
+            kornia.metrics.angle_error_vec(v1, v2).backward()
+            assert bool(torch.isfinite(v1.grad).all())
 
 
 class TestTranslationAte(BaseTester):

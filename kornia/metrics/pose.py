@@ -41,8 +41,12 @@ from kornia.core.check import (
 def angle_error_mat(R1: Tensor, R2: Tensor) -> Tensor:
     r"""Geodesic angle (in degrees) between two rotation matrices.
 
-    The relative rotation :math:`R_1^\top R_2` has trace :math:`1 + 2\cos\theta`, so the geodesic
-    angle is :math:`\theta = \arccos\!\big((\mathrm{tr}(R_1^\top R_2) - 1) / 2\big)`.
+    The relative rotation :math:`R_1^\top R_2` has trace :math:`1 + 2\cos\theta`, and its skew
+    part carries :math:`\sin\theta`: :math:`(R_1^\top R_2 - R_2^\top R_1)/2 = \sin\theta [n]_x`.
+    The angle is computed as :math:`\operatorname{atan2}(\sin\theta, \cos\theta)`, which resolves
+    angles down to the float32 rounding of the matrix entries near :math:`0^\circ` and
+    :math:`180^\circ` — ``acos`` of the cosine alone quantizes every angle below ~0.03 degrees
+    to exactly zero and 179.99 degrees to 180.
 
     Args:
         R1: a rotation matrix of shape :math:`(*, 3, 3)`.
@@ -52,10 +56,9 @@ def angle_error_mat(R1: Tensor, R2: Tensor) -> Tensor:
         the per-matrix angle in degrees, with shape :math:`(*,)`.
 
     .. note::
-        The gradient is infinite/NaN exactly at :math:`0^\circ` and :math:`180^\circ` (identical or
-        opposite rotations), because :math:`\frac{d}{dx}\arccos(x) \to \infty` at :math:`x = \pm 1`.
-        This is inherent to every geodesic/angular metric; it only bites if you backpropagate through
-        a perfect or exactly-opposite match.
+        The gradient at :math:`0^\circ` and :math:`180^\circ` (identical or opposite rotations)
+        is the subgradient ``0`` on every supported torch version: ``atan2`` is smooth there
+        while the value is finite.
 
     Example:
         >>> angle_error_mat(torch.eye(3), torch.eye(3))
@@ -70,13 +73,21 @@ def angle_error_mat(R1: Tensor, R2: Tensor) -> Tensor:
     relative = R1.transpose(-2, -1) @ R2
     trace = relative.diagonal(dim1=-2, dim2=-1).sum(-1)
     cos_theta = ((trace - 1.0) / 2.0).clamp(-1.0, 1.0)
-    return torch.rad2deg(cos_theta.acos())
+    # (R - R^T) / 2 = sin(theta) [n]_x and ||[n]_x||_F^2 = 2, so the squared Frobenius norm of
+    # the skew part is 2 sin^2(theta): no cancellation near theta = 0 or pi.
+    skew = (relative - relative.transpose(-2, -1)) / 2.0
+    sin_theta = ((skew * skew).sum(dim=(-2, -1)) / 2.0).clamp(min=0.0).sqrt()
+    return torch.rad2deg(torch.atan2(sin_theta, cos_theta))
 
 
 def angle_error_vec(v1: Tensor, v2: Tensor) -> Tensor:
     r"""Angle (in degrees) between two vectors.
 
-    The angle is :math:`\theta = \arccos\!\big((v_1 \cdot v_2) / (\lVert v_1 \rVert \lVert v_2 \rVert)\big)`.
+    The angle is :math:`\theta = \operatorname{atan2}(\lVert v_1 \times v_2\rVert, v_1 \cdot v_2)`
+    with the vectors' norms folded in: :math:`\sin\theta = \lVert v_1 \times v_2\rVert /
+    (\lVert v_1 \rVert \lVert v_2 \rVert)`. ``atan2`` resolves angles down to the float32
+    rounding of the inputs near :math:`0^\circ` and :math:`180^\circ` — ``acos`` of the cosine
+    alone quantizes every angle below ~0.03 degrees to exactly zero.
 
     Args:
         v1: a vector of shape :math:`(*, 3)`.
@@ -86,10 +97,9 @@ def angle_error_vec(v1: Tensor, v2: Tensor) -> Tensor:
         the per-vector angle in degrees, with shape :math:`(*,)`.
 
     .. note::
-        The gradient is infinite/NaN exactly at :math:`0^\circ` and :math:`180^\circ` (identical or
-        opposite vectors), because :math:`\frac{d}{dx}\arccos(x) \to \infty` at :math:`x = \pm 1`.
-        This is inherent to every geodesic/angular metric; it only bites if you backpropagate through
-        a perfect or exactly-opposite match.
+        The gradient at :math:`0^\circ` and :math:`180^\circ` (identical or opposite vectors)
+        is the subgradient ``0`` on every supported torch version: ``atan2`` is smooth there
+        while the value is finite.
 
     .. note::
         A zero-length vector gives ``NaN`` rather than raising, since the angle is undefined there.
@@ -109,7 +119,10 @@ def angle_error_vec(v1: Tensor, v2: Tensor) -> Tensor:
     dot = (v1 * v2).sum(-1)
     norms = v1.norm(dim=-1) * v2.norm(dim=-1)
     cos_theta = (dot / norms).clamp(-1.0, 1.0)
-    return torch.rad2deg(cos_theta.acos())
+    # |v1 x v2| = sin(theta) |v1| |v2|: the cross product keeps full precision near 0 and 180
+    # degrees, where the dot product has no digits left for the angle.
+    sin_theta = (torch.cross(v1, v2, dim=-1).norm(dim=-1) / norms).clamp(-1.0, 1.0)
+    return torch.rad2deg(torch.atan2(sin_theta, cos_theta))
 
 
 def translation_ate(t: Tensor, t_gt: Tensor) -> Tensor:
