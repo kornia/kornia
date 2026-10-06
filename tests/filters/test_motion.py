@@ -309,10 +309,8 @@ class TestMotionBlur(BaseTester):
         # the shared default is "reflect"
         self.assert_close(from_function, motion_blur(image, *params, border_type="reflect"))
 
-    @pytest.mark.skip(reason="After the op be optimized the results are not the same")
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, device, dtype, torch_optimizer):
-        # TODO: FIX op
         data = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
         op = MotionBlur(3, 36.0, 0.5)
         op_optimized = torch_optimizer(op)
@@ -533,10 +531,8 @@ class TestMotionBlur3D(BaseTester):
         self.assert_close(actual, expected, rtol=0, atol=0)
         self.assert_close(MotionBlur3D(3, *params)(volume), expected, rtol=0, atol=0)
 
-    @pytest.mark.skip(reason="After the op be optimized the results are not the same")
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, device, dtype, torch_optimizer):
-        # TODO: Fix the operation to works after dynamo optimize
         data = torch.ones(batch_size, 3, 1, 10, 10, device=device, dtype=dtype)
         op = MotionBlur3D(3, (0.0, 360.0, 150.0), 0.5)
         op_optimized = torch_optimizer(op)
