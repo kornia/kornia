@@ -280,15 +280,16 @@ class TestHyperplane(BaseTester):
         pl1 = Hyperplane.from_vector(n1, p1)
 
         # Each distance is a dot product of values in [0, 1) minus another, so its half-precision error reaches a few
-        # ulps of 1 (1.95e-2 in bfloat16, 3.4e-3 in float16 over 5000 seeds), above the default tolerances; the
-        # square-root tolerances hold for every seed, and a wrong distance is off by order 1 (#5583).
+        # ulps of 1 (1.95e-2 in bfloat16, 3.4e-3 in float16 over 5000 seeds), above the default tolerances. There the
+        # square-root tolerances hold for every seed; float32 and float64 keep the default ones (#5583).
+        half = dtype in (torch.float16, torch.bfloat16)
         expected = torch.ones(shape or (), device=device, dtype=dtype)
-        self.assert_close(pl1.signed_distance(p1 + n1 * s0[..., None]), s0, low_tolerance=True)
+        self.assert_close(pl1.signed_distance(p1 + n1 * s0[..., None]), s0, low_tolerance=half)
         assert (pl0.abs_distance(p0) < expected).all()
         projected_distance = pl1.signed_distance(pl1.projection(p0)).data
         assert projected_distance.shape == (shape or ())
-        self.assert_close(projected_distance, torch.zeros_like(projected_distance), low_tolerance=True)
-        self.assert_close(pl1.abs_distance(p1 + pl1.normal * s1[..., None]), s1, low_tolerance=True)
+        self.assert_close(projected_distance, torch.zeros_like(projected_distance), low_tolerance=half)
+        self.assert_close(pl1.abs_distance(p1 + pl1.normal * s1[..., None]), s1, low_tolerance=half)
 
     def test_projection(self, device, dtype):
         v0 = Vector3.from_coords(0.0, 0.0, 0.0, device=device, dtype=dtype)
