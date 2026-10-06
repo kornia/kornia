@@ -203,9 +203,9 @@ class TestSSIM3d(BaseTester):
             [
                 [
                     [
-                        [[0.0093, 0.0080, 0.0075], [0.0075, 0.0068, 0.0063], [0.0067, 0.0060, 0.0056]],
-                        [[0.0077, 0.0070, 0.0065], [0.0077, 0.0069, 0.0064], [0.0075, 0.0066, 0.0062]],
-                        [[0.0075, 0.0069, 0.0064], [0.0078, 0.0070, 0.0065], [0.0077, 0.0067, 0.0064]],
+                        [[0.0070, 0.0065, 0.0066], [0.0073, 0.0068, 0.0065], [0.0074, 0.0073, 0.0070]],
+                        [[0.0076, 0.0076, 0.0071], [0.0074, 0.0069, 0.0066], [0.0076, 0.0072, 0.0068]],
+                        [[0.0072, 0.0068, 0.0067], [0.0075, 0.0069, 0.0066], [0.0085, 0.0085, 0.0075]],
                     ]
                 ]
             ],
@@ -214,6 +214,21 @@ class TestSSIM3d(BaseTester):
         )
 
         self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
+
+    def test_same_padding_matches_ssim_on_identical_slices(self, device, dtype):
+        """'same' padding reflects the volume at its faces as ssim does, so a stack of identical slices reproduces
+        the 2-D map on every slice; in float64 the window is float64 too, so they agree to roundoff (#5534)."""
+        generator = torch.Generator().manual_seed(0)
+        img1 = torch.rand(1, 2, 9, 11, generator=generator).to(device=device, dtype=dtype)
+        img2 = torch.rand(1, 2, 9, 11, generator=generator).to(device=device, dtype=dtype)
+        vol1 = img1[:, :, None].repeat(1, 1, 7, 1, 1)
+        vol2 = img2[:, :, None].repeat(1, 1, 7, 1, 1)
+
+        expected = kornia.metrics.ssim(img1, img2, 5)[:, :, None].repeat(1, 1, 7, 1, 1)
+        actual = kornia.metrics.ssim3d(vol1, vol2, 5, padding="same")
+
+        tolerance = {"rtol": 1e-12, "atol": 1e-12} if dtype == torch.float64 else {}
+        self.assert_close(actual, expected, **tolerance)
 
     @pytest.mark.parametrize(
         "shape,padding,window_size,max_value",
