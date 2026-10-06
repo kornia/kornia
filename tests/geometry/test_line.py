@@ -259,6 +259,65 @@ class TestParametrizedLine(BaseTester):
         self.assert_close(lmbda, torch.tensor(0.0, device=device, dtype=dtype))
         self.assert_close(point, p0)
 
+    @pytest.mark.parametrize("parallel_dot", [0.0, 5e-7, -5e-7])
+    @pytest.mark.parametrize("parallel_offset", [-1.0, 0.0])
+    def test_intersect_plane_parallel_gradients(self, device, dtype, parallel_dot, parallel_offset):
+        # The parallel fallback is locally (lambda, point) = (0, origin), so its Jacobian is zero except for
+        # d point / d origin = I. An unselected division by zero used to poison all four input gradients.
+        origin = torch.tensor([[0.0, 4.0, 0.0], [2.0, 3.0, 4.0]], device=device, dtype=dtype, requires_grad=True)
+        direction = torch.tensor(
+            [[1.0, 0.0, parallel_dot], [0.0, 0.0, -2.0]], device=device, dtype=dtype, requires_grad=True
+        )
+        normal = torch.tensor([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype, requires_grad=True)
+        offset = torch.tensor([parallel_offset, -2.0], device=device, dtype=dtype, requires_grad=True)
+        plane = Hyperplane(Vector3(normal), Scalar(offset))
+
+        lmbda, point = ParametrizedLine(origin, direction).intersect(plane)
+
+        self.assert_close(lmbda, torch.tensor([0.0, 1.0], device=device, dtype=dtype))
+        self.assert_close(point, torch.tensor([[0.0, 4.0, 0.0], [2.0, 3.0, 2.0]], device=device, dtype=dtype))
+        (lmbda.sum() + point.sum()).backward()
+        expected = (
+            [[1.0, 1.0, 1.0], [1.0, 1.0, 0.5]],
+            [[0.0, 0.0, 0.0], [1.0, 1.0, 0.5]],
+            [[0.0, 0.0, 0.0], [-1.0, -1.5, -1.0]],
+            [0.0, -0.5],
+        )
+        for tensor, gradient in zip((origin, direction, normal, offset), expected):
+            self.assert_close(tensor.grad, torch.tensor(gradient, device=device, dtype=dtype))
+
+    def test_intersect_plane_parallel_gradcheck(self, device):
+        origin = torch.tensor([[0.0, 4.0, 0.0], [2.0, 3.0, 4.0]], device=device, dtype=torch.float64)
+        direction = torch.tensor([[1.0, 0.0, 0.0], [0.0, 0.0, -2.0]], device=device, dtype=torch.float64)
+        normal = torch.tensor([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]], device=device, dtype=torch.float64)
+        offset = torch.tensor([-1.0, -2.0], device=device, dtype=torch.float64)
+
+        def intersect(origin, direction, normal, offset):
+            plane = Hyperplane(Vector3(normal), Scalar(offset))
+            # Keep numerical perturbations inside the parallel branch, away from its threshold.
+            return ParametrizedLine(origin, direction).intersect(plane, eps=1e-3)
+
+        self.gradcheck(intersect, (origin, direction, normal, offset))
+
+    def test_dynamo_intersect_plane_parallel_gradients(self, device, dtype, torch_optimizer):
+        origin = torch.tensor([[0.0, 4.0, 0.0], [2.0, 3.0, 4.0]], device=device, dtype=dtype, requires_grad=True)
+        direction = torch.tensor([[1.0, 0.0, 0.0], [0.0, 0.0, -2.0]], device=device, dtype=dtype, requires_grad=True)
+        normal = torch.tensor([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype, requires_grad=True)
+        offset = torch.tensor([-1.0, -2.0], device=device, dtype=dtype, requires_grad=True)
+        inputs = (origin, direction, normal, offset)
+
+        def intersect(origin, direction, normal, offset):
+            return ParametrizedLine(origin, direction).intersect(Hyperplane(Vector3(normal), Scalar(offset)))
+
+        expected_lambda, expected_point = intersect(*inputs)
+        expected_gradients = torch.autograd.grad(expected_lambda.sum() + expected_point.sum(), inputs)
+        actual_lambda, actual_point = torch_optimizer(intersect)(*inputs)
+        actual_gradients = torch.autograd.grad(actual_lambda.sum() + actual_point.sum(), inputs)
+        self.assert_close(actual_lambda, expected_lambda)
+        self.assert_close(actual_point, expected_point)
+        for actual, expected in zip(actual_gradients, expected_gradients):
+            self.assert_close(actual, expected)
+
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
         pass
