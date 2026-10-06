@@ -423,11 +423,26 @@ def _is_singular(A: torch.Tensor) -> torch.Tensor:
     has ``det 1`` and ``perm 1``. A matrix with a non-finite entry is not flagged; its inverse is not finite
     and the callers reject it on that account.
 
+    Both sides are linear in every row and every column, so the rule is read on the matrix with each row,
+    then each column, divided by its largest magnitude. That leaves the ratio unchanged and keeps the
+    products of ``n`` entries from overflowing or underflowing: unscaled, ``1e10 * I`` of order 4 in float32
+    reads ``inf <= inf`` and ``1e-13 * I`` reads ``0 <= 0``, and both would count as singular.
+
     Raises:
         NotImplementedError: for shapes other than ``(..., n, n)`` with ``n`` in 2, 3, 4.
     """
+    if torch.jit.is_scripting():
+        # ``torch.finfo`` does not script; the callers hand this float32 or float64 only.
+        double = A.dtype == torch.float64
+        eps = 2.220446049250313e-16 if double else 1.1920928955078125e-07
+        tiny = 2.2250738585072014e-308 if double else 1.1754943508222875e-38
+    else:
+        eps = torch.finfo(A.dtype).eps
+        tiny = torch.finfo(A.dtype).tiny
+    A = A / A.abs().amax(-1, keepdim=True).clamp_min(tiny)
+    A = A / A.abs().amax(-2, keepdim=True).clamp_min(tiny)
     det, perm = _det_perm_closed_form(A)
-    return det.abs() <= (8 * A.shape[-1] * torch.finfo(A.dtype).eps) * perm
+    return det.abs() <= (8 * A.shape[-1] * eps) * perm
 
 
 def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -436,7 +451,8 @@ def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor
     Avoids crashing because of singular matrix input and outputs the mask of valid solution.
 
     A system is valid when ``A`` is not singular and the solution is finite in the dtype of ``B``. A 2x2,
-    3x3 or 4x4 ``A`` is singular by the rule of :func:`_is_singular`, which is the same on every torch
+    3x3 or 4x4 ``A`` is singular when ``|det A| <= 8 * n * eps * perm |A|``, the closed-form determinant
+    against the permanent of the absolute values (:func:`_is_singular`), which is the same on every torch
     version, or when its LU factorization has a zero pivot; a larger ``A`` by the zero pivot alone. An
     invalid system is solved with the identity in place of ``A``, so its row of
     ``X`` holds ``B`` and its row of the returned LU factor is the identity's. The differentiated solve
@@ -491,7 +507,8 @@ def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
     Avoids crashing because of non-invertable matrix input and outputs the mask of valid solution.
 
     A matrix is valid when it is not singular and its inverse is finite in the dtype of ``A``. A 2x2, 3x3
-    or 4x4 matrix is singular by the rule of :func:`_is_singular`, which is the same in eager mode and
+    or 4x4 matrix is singular when ``|det A| <= 8 * n * eps * perm |A|``, the closed-form determinant
+    against the permanent of the absolute values (:func:`_is_singular`), which is the same in eager mode and
     under graph capture and on every torch version, or, in eager mode, when ``inv_ex`` reports a zero
     pivot; a larger matrix by the zero pivot alone. An invalid matrix is inverted as the
     identity, so its row of the output is the identity. The differentiated inverse therefore never sees a

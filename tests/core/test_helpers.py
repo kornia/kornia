@@ -679,6 +679,53 @@ class TestInverseWithMask:
         assert mask.item()
         assert torch.equal(inverse, torch.diag(torch.tensor([1.0, 1.0 / small], device=device, dtype=dtype)))
 
+    def test_scripts_with_the_eager_verdict_5476(self, device, dtype):
+        # The rule has to compile under TorchScript, as the functions did before it.
+        A = _issue_5476_batch(device, dtype)
+        B = torch.ones(5, 3, device=device, dtype=dtype)
+        inverse, mask = torch.jit.script(safe_inverse_with_mask)(A)
+        X, _, valid = torch.jit.script(safe_solve_with_mask)(B, A)
+        assert mask.tolist() == valid.tolist() == [True, False, False, False, True]
+        assert_close(inverse, safe_inverse_with_mask(A)[0])
+        assert_close(X, safe_solve_with_mask(B, A)[0])
+        if dtype in (torch.float32, torch.float64):
+            # the scripted threshold reads the eps and the floor of the dtype, as the eager one does
+            eps = torch.finfo(dtype).eps
+            edges = torch.tensor([[[1.0, 1.0], [1.0, 1.0 + k * eps]] for k in (24, 64)], device=device, dtype=dtype)
+            zero_row = torch.tensor([[1.0, 2.0], [0.0, 0.0]], device=device, dtype=dtype)
+            edges = torch.cat([edges, zero_row[None]])
+            assert torch.jit.script(_is_singular)(edges).tolist() == _is_singular(edges).tolist() == [True, False, True]
+
+    def test_regular_matrix_is_regular_at_a_scale_whose_products_overflow(self, device, dtype):
+        # The terms of a 4x4 determinant are products of four entries, which overflow (or underflow) the dtype
+        # long before the inverse does: unscaled, the rule would read ``inf <= inf`` (or ``0 <= 0``) and call a
+        # well-conditioned matrix singular. Scaling two rows or two columns alone underflows the products too.
+        # Powers of two keep the scaling exact. Half input is decided in float32, where these scales are harmless.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("half input is decided in float32")
+        big = 2.0**40 if dtype == torch.float32 else 2.0**300
+        small = 2.0**-80 if dtype == torch.float32 else 2.0**-600
+        A = torch.tensor(
+            [[4.0, 1.0, 2.0, 1.0], [1.0, 5.0, 1.0, 2.0], [2.0, 1.0, 6.0, 1.0], [1.0, 2.0, 1.0, 7.0]],
+            device=device,
+            dtype=dtype,
+        )
+        D = torch.diag(torch.tensor([1.0, 1.0, small, small], device=device, dtype=dtype))
+        A = torch.stack([A * big, A / big, A @ D, D @ A])
+        assert not _is_singular(A).any()
+        assert safe_inverse_with_mask(A)[1].all()
+        assert safe_solve_with_mask(torch.ones(4, 4, device=device, dtype=dtype), A)[2].all()
+
+    def test_rule_calls_a_zero_row_or_column_singular(self, device, dtype):
+        # The rule divides each row and column by its largest magnitude; a zero row or column has to stay
+        # zero (determinant and permanent 0, so singular) rather than turn into 0 / 0.
+        A = torch.tensor([[4.0, 1.0, 2.0], [1.0, 5.0, 1.0], [2.0, 1.0, 6.0]], device=device, dtype=dtype)
+        zero_row, zero_col = A.clone(), A.clone()
+        zero_row[1] = 0.0
+        zero_col[:, 2] = 0.0
+        assert _is_singular(torch.stack([zero_row, zero_col, torch.zeros_like(A)])).all()
+        assert not _is_singular(A).item()
+
     @pytest.mark.parametrize("n", [2, 3, 4])
     def test_rule_reads_the_determinant_against_the_permanent(self, device, dtype, n):
         A = torch.tensor(_DEPENDENT_ROWS[n], device=device, dtype=dtype)
@@ -686,12 +733,13 @@ class TestInverseWithMask:
         assert torch.equal(det, torch.zeros_like(det)) and perm.item() > 0
         assert _is_singular(A).item()
         # [[1, 1], [1, 1 + d]] has determinant d, exact for a power of two d, against a permanent of 2 + d:
-        # the threshold ``8 * n * eps * perm`` sits at about 32 eps, so 64 eps is regular and 16 eps singular
+        # the threshold ``8 * n * eps * perm`` sits at about 32 eps, so 64 eps is regular and 24 eps singular
+        # (a threshold without the order ``n``, about 16 eps, would call 24 eps regular)
         eps = torch.finfo(dtype).eps
         edge = torch.tensor([[1.0, 1.0], [1.0, 1.0 + 64 * eps]], device=device, dtype=dtype)
         assert torch.equal(_det_perm_closed_form(edge)[0], torch.tensor(64 * eps, device=device, dtype=dtype))
         assert not _is_singular(edge).item()
-        edge[1, 1] = 1.0 + 16 * eps
+        edge[1, 1] = 1.0 + 24 * eps
         assert _is_singular(edge).item()
 
     def test_rule_rejects_other_shapes(self, device, dtype):
