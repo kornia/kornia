@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import pickle
+
 import pytest
 import torch
 
@@ -22,6 +24,7 @@ from kornia.filters.dexined import DexiNed as FilterDexiNed
 from kornia.models.dexined import DexiNed
 
 from testing.base import BaseTester
+from testing.pickle_payload import CreatesMarkerOnLoad, load_without_running_payload
 
 
 class TestDexiNed(BaseTester):
@@ -106,5 +109,18 @@ class TestDexiNedLoadFromFile:
 
         with pytest.raises(ValueError, match="scheme"):
             model.load_from_file(str(tmp_path / "missing" / "dexined.pth"))
+
+        assert loaded == []
+
+    def test_a_pickled_callable_in_a_local_file_is_refused_and_never_run(self, cls, tmp_path, monkeypatch):
+        # The local branch loads with ``weights_only=True``, as the hub branch does.
+        marker = tmp_path / "marker"
+        path = tmp_path / "dexined.pth"
+        torch.save({"w": torch.ones(3), "extra": CreatesMarkerOnLoad(marker)}, path)
+        model = cls(pretrained=False)
+        loaded = self._record_load_state_dict(model, monkeypatch)
+
+        with pytest.raises(pickle.UnpicklingError):
+            load_without_running_payload(marker, lambda: model.load_from_file(str(path)))
 
         assert loaded == []
