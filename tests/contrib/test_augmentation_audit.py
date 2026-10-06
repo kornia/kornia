@@ -143,7 +143,8 @@ class TestAugmentationAudit(BaseTester):
 
     def test_shape_changing_mixed_application_is_unsupported(self, device, dtype):
         image = torch.zeros(2, 1, 8, 10, device=device, dtype=dtype)
-        image[:, 0, 2, 4] = 1
+        # nearest-exact samples input pixel (3, 5) at output location (1, 2).
+        image[:, 0, 3, 5] = 1
         points = image.new_tensor([[[4, 2]], [[4, 2]]])
         resize = K.Resize((4, 5), resample="nearest", p=0.5)
         params = resize.forward_parameters(image.shape)
