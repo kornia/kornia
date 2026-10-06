@@ -153,3 +153,28 @@ class TestDivergenceLoss(BaseTester):
         expected = (p[p > 0] * (p[p > 0].log() - q[p > 0].log())).sum()
         self.assert_close(kornia.losses.kl_div_loss_2d(q, p), expected)
         assert kornia.losses.kl_div_loss_2d(p, q).item() == math.inf
+
+    @pytest.mark.parametrize("loss", [kornia.losses.kl_div_loss_2d, kornia.losses.js_div_loss_2d])
+    def test_zero_cell_in_target_alone_has_finite_gradients(self, device, dtype, loss):
+        # A zero cell in target alone already contributed 0 to the value, but the gradient with respect to target was
+        # NaN there (#5554).
+        p = torch.tensor([0.0, 0.25, 0.75, 0.0, 0.0, 0.0], device=device, dtype=dtype).view(1, 1, 2, 3)
+        q = torch.tensor([0.1, 0.2, 0.3, 0.1, 0.2, 0.1], device=device, dtype=dtype).view(1, 1, 2, 3)
+        pred, target = q.clone().requires_grad_(), p.clone().requires_grad_()
+        loss(pred, target).backward()
+        assert torch.isfinite(pred.grad).all() and torch.isfinite(target.grad).all()
+
+    @pytest.mark.parametrize("loss", [kornia.losses.kl_div_loss_2d, kornia.losses.js_div_loss_2d])
+    def test_invalid_cells_stay_nan(self, device, dtype, loss):
+        # 0 * log 0 = 0 covers only target == 0 with pred >= 0 (#5554): a NaN or a negative entry in either input keeps
+        # the NaN of its (b, n) slice, and the other slices of the batch are unaffected.
+        p = torch.tensor([0.0, 0.25, 0.75, 0.0, 0.0, 0.0], device=device, dtype=dtype).view(1, 1, 2, 3)
+        q = torch.tensor([0.1, 0.2, 0.3, 0.1, 0.2, 0.1], device=device, dtype=dtype).view(1, 1, 2, 3)
+        pred, target = q.repeat(5, 1, 1, 1), p.repeat(5, 1, 1, 1)
+        target[1, 0, 0, 0] = float("nan")
+        target[2, 0, 0, 0] = -0.25
+        pred[3, 0, 1, 0] = float("nan")  # target is 0 in this cell
+        pred[4, 0, 1, 0] = -0.1  # target is 0 in this cell
+        actual = loss(pred, target, reduction="none")
+        self.assert_close(actual[0], loss(q, p, reduction="none")[0])
+        assert torch.isnan(actual[1:]).all()

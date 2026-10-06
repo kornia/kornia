@@ -24,14 +24,15 @@ import torch.nn.functional as F
 
 
 def _kl_div_2d(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
-    # D_KL(P || Q) with the convention 0 * log 0 = 0. Cells with p == 0 contribute nothing to the value or the
-    # gradient: both arguments are replaced by 1 there, so a q == 0 in such a cell cannot turn the term into NaN.
+    # D_KL(P || Q) with the convention 0 * log 0 = 0. Cells with p == 0 and q >= 0 contribute nothing to the value or
+    # the gradient: both arguments are replaced by 1 there, so a q == 0 in such a cell cannot turn the term into NaN.
+    # Every other cell keeps the value of F.kl_div, so a NaN or a negative entry in either input still gives NaN.
     batch, chans, height, width = p.shape
     p = p.reshape(batch * chans, height * width)
     q = q.reshape(batch * chans, height * width)
-    positive = p > 0
-    p = torch.where(positive, p, torch.ones_like(p))
-    q = torch.where(positive, q, torch.ones_like(q))
+    empty = (p == 0) & (q >= 0)
+    p = torch.where(empty, torch.ones_like(p), p)
+    q = torch.where(empty, torch.ones_like(q), q)
     unsummed_kl = F.kl_div(q.log(), p, reduction="none")
 
     return unsummed_kl.sum(-1).view(batch, chans)
