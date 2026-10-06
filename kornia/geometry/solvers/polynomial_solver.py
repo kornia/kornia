@@ -489,8 +489,9 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
 
     Convention:
         - Coefficient layout and zero padding as :func:`solve_quadratic`; the roots are unordered.
-        - Known defects: the solver is not scale-invariant, so a quartic whose roots are all small can lose real
-          roots and return values that are not roots (`#4833 <https://github.com/kornia/kornia/issues/4833>`_).
+        - Small-root quartics are evaluated after an exact power-of-two variable rescaling. Within the normal
+          exponent range of the compute dtype, the Ferrari thresholds then apply at unit coefficient scale.
+          Rows whose monic coefficient scale is at least 1 are unchanged.
         - A row is solved as the cubic of its last four coefficients when its leading coefficient is 0, or when both
           hold: ``|a|`` is smaller than ``1e-6`` (``1e-12`` in float64) times ``min(1, max_i |coeffs_i|)``, and the
           scale-invariant root bound ``max(|b/a|, |c/a|^(1/2), |d/a|^(1/3), |e/a|^(1/4))`` exceeds ``1 / tol``
@@ -511,6 +512,11 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     .. note::
        For ``float16`` and ``bfloat16`` quartics, Ferrari intermediates are evaluated in ``float32``
        and the returned roots are cast back to the input dtype.
+
+    .. note::
+       Variable rescaling is bounded to normal reciprocal powers of two in the compute dtype. It does not
+       recover input coefficients that have underflowed, and extreme subnormal coefficient scales may remain
+       below unit scale.
 
     .. note::
        For a repeated (or near-repeated) real root, the resolvent-cubic solve internally
@@ -571,6 +577,25 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     B = c_q * inv_a
     C = d_q * inv_a
     D = e_q * inv_a
+
+    # Solve for u = x / s when the monic root bound is below 1. Otherwise the unit floors in Ferrari's
+    # radicand, residual and derivative thresholds become absolute as x shrinks: real roots are dropped and
+    # complex roots turn into accepted non-roots. Within the helper's normal-exponent range, an exact power of
+    # two brings the coefficient scale into [1, 2) without rounding; extreme subnormal scales may stay below 1.
+    # Keep s = 1 for ordinary rows and x^4, and scale each coefficient
+    # one factor at a time to avoid underflow in s**4. The discrete scale is constant for autograd.
+    bound = torch.maximum(
+        torch.maximum(A.abs(), B.abs().sqrt()), torch.maximum(C.abs().pow(1.0 / 3.0), D.abs().sqrt().sqrt())
+    ).detach()
+    positive_bound = bound > 0
+    exponent = torch.floor(torch.log2(torch.where(positive_bound, bound, torch.ones_like(bound)))).clamp(max=0)
+    exponent = torch.where(positive_bound, exponent, torch.zeros_like(exponent))
+    variable_scale = _exact_power_of_two(exponent)
+    inverse_scale = _exact_power_of_two(-exponent)
+    A = A * inverse_scale
+    B = B * inverse_scale * inverse_scale
+    C = C * inverse_scale * inverse_scale * inverse_scale
+    D = D * inverse_scale * inverse_scale * inverse_scale * inverse_scale
 
     # Resolvent cubic coefficients
     rc_a = torch.ones_like(A)
@@ -817,6 +842,7 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     accepted = root_candidates != 0
     is_repeat = (coincide & outranked_by & accepted.unsqueeze(-1) & accepted.unsqueeze(-2)).any(dim=-1)
     root_candidates = torch.where(is_repeat & is_simple, torch.zeros_like(root_candidates), root_candidates)
+    root_candidates = root_candidates * variable_scale.unsqueeze(-1)
     roots1, roots2 = root_candidates[:, :2], root_candidates[:, 2:]
 
     solutions[mask_quartic, 0:2] = roots1.to(dtype=solutions.dtype)
