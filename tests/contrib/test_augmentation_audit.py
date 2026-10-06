@@ -141,20 +141,16 @@ class TestAugmentationAudit(BaseTester):
         assert torch.equal(actual[0], expected[0])
         assert torch.equal(actual[1], expected[1])
 
-    def test_shape_changing_mixed_application_is_unsupported(self, device, dtype):
+    def test_shape_changing_mixed_application_raises(self, device, dtype):
         image = torch.zeros(2, 1, 8, 10, device=device, dtype=dtype)
-        image[:, 0, 2, 4] = 1
         points = image.new_tensor([[[4, 2]], [[4, 2]]])
         resize = K.Resize((4, 5), resample="nearest", p=0.5)
         params = resize.forward_parameters(image.shape)
         params["batch_prob"] = image.new_tensor([0, 1])
         aug = K.AugmentationSequential(resize, data_keys=["input", "keypoints"])
-        outputs, report = audit(aug, image, points, params=[ParamItem("Resize_0", params)])
-        assert outputs[0][0, 0, 1, 2].item() == 1
-        self.assert_close(outputs[1][0], points[0])
-        assert report.geometry_status == "unsupported"
-        assert report.matrix is None and report.inverse_matrix is None
-        assert "mixed-application shape-changing" in report.summary()
+        # The audit matches the ordinary forward call, which rejects a mixed gate here (#4497).
+        with pytest.raises(ValueError, match="mixes applied and skipped rows"):
+            audit(aug, image, points, params=[ParamItem("Resize_0", params)])
 
     @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
     def test_crop_padding_and_content_loss(self, device, dtype, cropping_mode):
@@ -544,7 +540,6 @@ class TestAugmentationAudit(BaseTester):
             (0.0, None),
             (1.0, None),
             (0.5, [0.0, 0.0]),
-            (0.5, [0.0, 1.0]),
             (0.5, [1.0, 1.0]),
             (1.0, [0.0, 1.0]),
         ],
@@ -592,47 +587,80 @@ class TestAugmentationAudit(BaseTester):
         label_shift = torch.where(selected[:, None], public_shift, 0)
         self.assert_close(outputs[1], points + label_shift[:, None])
         self.assert_close(outputs[2].data, boxes.data + label_shift[:, None, None])
-        all_transformed = static or (size != image.shape[-2:] and bool(selected.any()))
-        transformed = torch.ones_like(selected) if all_transformed else selected
+        transformed = torch.ones_like(selected) if static else selected
         padded = torch.nn.functional.pad(image, pad)
         expected_images = []
         image_shift = image.new_zeros((2, 2))
         for row in range(2):
             if transformed[row]:
-                # Slice ignores the cached matrix; resample uses its per-row identity/crop selection.
-                use_crop = cropping_mode == "slice" or static or bool(selected[row])
-                left, top = (x, y) if use_crop else (0, 0)
-                expected_images.append(padded[row, :, top : top + size[0], left : left + size[1]])
-                image_shift[row] = image.new_tensor([pad[0] - left, pad[2] - top])
+                expected_images.append(padded[row, :, y : y + size[0], x : x + size[1]])
+                image_shift[row] = image.new_tensor([pad[0] - x, pad[2] - y])
             else:
                 expected_images.append(image[row])
         self.assert_close(outputs[0], torch.stack(expected_images))
         for row in range(2):
             destination = points[row, 0] + image_shift[row]
             assert outputs[0][row, 0, int(destination[1]), int(destination[0])].item() == 1
-        ambiguous_slice = cropping_mode == "slice" and all_transformed and not static and not bool(selected.all())
-        if ambiguous_slice:
-            assert report.geometry_status == "unsupported"
-            assert report.matrix is None and "slice" in report.summary()
-        else:
-            assert report.geometry_status == "available"
-            diagnostic_dtype = torch.float64 if dtype == torch.float64 else torch.float32
-            self.assert_close(report.matrix[:, :2, 2], image_shift.to(diagnostic_dtype))
-            # Measure against the observed pixel mapping. Manually mixed rows can still
-            # return untransformed labels beside a transformed image.
-            restored_points = outputs[1][:, 0].to(diagnostic_dtype) - image_shift.to(diagnostic_dtype)
-            error = torch.linalg.vector_norm(restored_points - points[:, 0].to(diagnostic_dtype), dim=-1)
-            self.assert_close(report.spatial[0].roundtrip_max, error)
-            restored_boxes = outputs[2].data.to(diagnostic_dtype) - image_shift[:, None, None, :].to(diagnostic_dtype)
-            box_error = (
-                torch.linalg.vector_norm(restored_boxes - boxes.data.to(diagnostic_dtype), dim=-1).amax(-1).amax(-1)
-            )
-            self.assert_close(report.spatial[1].roundtrip_max, box_error)
-            if bool((error > report.roundtrip_tolerance).any()):
-                assert "round-trip error exceeds" in report.summary()
-            if batch_prob is None or bool(selected.all()) or not bool(selected.any()):
-                # Whole-batch application or skip keeps labels aligned with the image (#4473).
-                self.assert_close(error, torch.zeros_like(error))
+        assert report.geometry_status == "available"
+        diagnostic_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        self.assert_close(report.matrix[:, :2, 2], image_shift.to(diagnostic_dtype))
+        # Measure against the observed pixel mapping. With static p=1, an overridden
+        # batch_prob can still return untransformed labels beside a transformed image.
+        restored_points = outputs[1][:, 0].to(diagnostic_dtype) - image_shift.to(diagnostic_dtype)
+        error = torch.linalg.vector_norm(restored_points - points[:, 0].to(diagnostic_dtype), dim=-1)
+        self.assert_close(report.spatial[0].roundtrip_max, error)
+        restored_boxes = outputs[2].data.to(diagnostic_dtype) - image_shift[:, None, None, :].to(diagnostic_dtype)
+        box_error = torch.linalg.vector_norm(restored_boxes - boxes.data.to(diagnostic_dtype), dim=-1).amax(-1).amax(-1)
+        self.assert_close(report.spatial[1].roundtrip_max, box_error)
+        if bool((error > report.roundtrip_tolerance).any()):
+            assert "round-trip error exceeds" in report.summary()
+        if batch_prob is None or bool(selected.all()) or not bool(selected.any()):
+            # Whole-batch application or skip keeps labels aligned with the image (#4473).
+            self.assert_close(error, torch.zeros_like(error))
+
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    @pytest.mark.parametrize(
+        "size, padding, pad_if_needed",
+        [
+            ((4, 8), None, False),
+            ((4, 8), (1, 2), False),
+            ((4, 8), (1, 2, 3, 0), False),
+            ((6, 10), (1, 2, 3, 0), False),
+            ((8, 12), None, True),
+        ],
+    )
+    def test_crop_mixed_gate(self, device, dtype, cropping_mode, size, padding, pad_if_needed):
+        image = torch.zeros(2, 1, 6, 10, device=device, dtype=dtype)
+        image[:, 0, 1, 3] = 1
+        points = image.new_tensor([[[3, 1]], [[3, 1]]])
+        module = K.RandomCrop(
+            size, padding=padding, pad_if_needed=pad_if_needed, p=0.5, cropping_mode=cropping_mode, resample="nearest"
+        )
+        params = module.forward_parameters(image.shape)
+        params["batch_prob"] = image.new_tensor([0, 1])
+        pad = params["padding_size"][0].tolist()
+        x = min(1, image.shape[-1] + pad[0] + pad[1] - size[1])
+        y = min(1, image.shape[-2] + pad[2] + pad[3] - size[0])
+        params["src"] = (
+            image.new_tensor([[[x, y], [x + size[1] - 1, y], [x + size[1] - 1, y + size[0] - 1], [x, y + size[0] - 1]]])
+            .expand(2, -1, -1)
+            .clone()
+        )
+        aug = K.AugmentationSequential(module, data_keys=["input", "keypoints"])
+        item = [ParamItem("RandomCrop_0", params)]
+        if size != image.shape[-2:]:
+            # Skipped rows cannot keep their shape in a cropped batch (#4497).
+            with pytest.raises(ValueError, match="mixes applied and skipped rows"):
+                audit(aug, image, points, params=item)
+            return
+        outputs, report = audit(aug, image, points, params=item)
+        padded = torch.nn.functional.pad(image, pad)
+        self.assert_close(outputs[0][0], image[0])
+        self.assert_close(outputs[0][1], padded[1, :, y : y + size[0], x : x + size[1]])
+        assert report.geometry_status == "available"
+        shift = report.matrix.new_tensor([[0, 0], [pad[0] - x, pad[2] - y]])
+        self.assert_close(report.matrix[:, :2, 2], shift)
+        self.assert_close(report.spatial[0].roundtrip_max, torch.zeros_like(report.spatial[0].roundtrip_max))
 
     @pytest.mark.parametrize("configured, effective", [("resample", "slice"), ("slice", "resample")])
     def test_crop_effective_mode_override(self, device, dtype, configured, effective):
@@ -640,7 +668,8 @@ class TestAugmentationAudit(BaseTester):
         image[:, 0, 1, 3] = 1
         module = K.RandomCrop((4, 8), padding=(1, 2), p=0.5, cropping_mode=configured, resample="nearest")
         params = module.forward_parameters(image.shape)
-        params["batch_prob"] = image.new_tensor([0, 1])
+        # A whole-batch gate: a mixed gate on this crop raises (#4497).
+        params["batch_prob"] = image.new_tensor([1, 1])
         params["src"] = image.new_tensor([[[1, 1], [8, 1], [8, 4], [1, 4]]]).expand(2, -1, -1).clone()
         aug = K.AugmentationSequential(
             module, data_keys=["input", "keypoints"], extra_args={DataKey.INPUT: {"cropping_mode": effective}}
@@ -650,11 +679,6 @@ class TestAugmentationAudit(BaseTester):
         )
         assert report.steps[0].flags["cropping_mode"] == effective
         assert module.flags["cropping_mode"] == configured
-        assert outputs[0][1, 0, 2, 3].item() == 1
-        if effective == "slice":
-            assert outputs[0][0, 0, 2, 3].item() == 1
-            assert report.geometry_status == "unsupported" and report.matrix is None
-        else:
-            assert outputs[0][0, 0, 3, 4].item() == 1
-            assert report.geometry_status == "available"
-            self.assert_close(report.matrix[:, :2, 2], report.matrix.new_tensor([[1, 2], [0, 1]]))
+        assert outputs[0][0, 0, 2, 3].item() == 1 and outputs[0][1, 0, 2, 3].item() == 1
+        assert report.geometry_status == "available"
+        self.assert_close(report.matrix[:, :2, 2], report.matrix.new_tensor([[0, 1], [0, 1]]))

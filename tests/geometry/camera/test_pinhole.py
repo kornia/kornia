@@ -717,7 +717,7 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(cloned.tx, torch.tensor([9.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
     def test_convention_intrinsics_inverse_inverts_intrinsics(self, device, dtype):
-        # intrinsics_inverse() is the inverse of the full 4x4 intrinsics (the pair DepthWarper feeds pixel2cam),
+        # For homogeneous intrinsics, intrinsics_inverse() also inverts the full 4x4 matrix,
         # checked on an asymmetric fx = 100, fy = 50, cx = 4, cy = 3.
         cam = kornia.geometry.camera.PinholeCamera(
             _k44(device, dtype, fy=50.0),
@@ -727,6 +727,51 @@ class TestPinholeCamera(BaseTester):
         )
         product = cam.intrinsics_inverse() @ cam.intrinsics
         self.assert_close(product, torch.eye(4, device=device, dtype=dtype)[None])
+
+    @pytest.mark.parametrize("padding", ["zero", "homogeneous", "arbitrary"])
+    def test_intrinsics_inverse_reads_3x3_block_5480(self, device, dtype, padding):
+        k3 = torch.tensor(
+            [[[2.0, 0.5, 2.0], [0.0, 4.0, 1.5], [0.0, 0.0, 1.0]], [[4.0, -0.5, 1.0], [0.0, 2.0, 0.5], [0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        intrinsics = torch.zeros(2, 4, 4, device=device, dtype=dtype)
+        intrinsics[:, :3, :3] = k3
+        if padding == "homogeneous":
+            intrinsics[:, 3, 3] = 1.0
+        elif padding == "arbitrary":
+            intrinsics[:, :3, 3] = 5.0
+            intrinsics[:, 3, :] = 2.0
+        cam = kornia.geometry.camera.PinholeCamera(
+            intrinsics,
+            _e44(device, dtype).repeat(2, 1, 1),
+            torch.tensor([4, 4], device=device),
+            torch.tensor([5, 5], device=device),
+        )
+        actual = cam.intrinsics_inverse()
+        expected = torch.eye(4, device=device, dtype=dtype)[None].repeat(2, 1, 1)
+        # linalg.inv requires full precision on CPU; retain native float64 for the double control.
+        inverse_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        expected[:, :3, :3] = torch.linalg.inv(k3.to(inverse_dtype)).to(dtype)
+        assert actual.shape == (2, 4, 4)
+        assert actual.dtype == dtype
+        assert actual.device == intrinsics.device
+        self.assert_close(actual, expected, atol=0.0, rtol=8 * torch.finfo(dtype).eps)
+        self.assert_close(actual[:, 3, :], expected[:, 3, :], atol=0.0, rtol=0.0)
+        self.assert_close(actual[:, :3, 3], expected[:, :3, 3], atol=0.0, rtol=0.0)
+        self.assert_close(cam.intrinsics, intrinsics, atol=0.0, rtol=0.0)
+
+    def test_intrinsics_inverse_block_gradcheck(self, device):
+        intrinsics = _k44(device, torch.float64, fx=2.0, fy=4.0)
+        intrinsics[:, 3, 3] = 0.0
+        intrinsics.requires_grad_()
+
+        def inverse(k):
+            return kornia.geometry.camera.PinholeCamera(
+                k, _e44(device, k.dtype), torch.tensor([6], device=device), torch.tensor([8], device=device)
+            ).intrinsics_inverse()
+
+        self.gradcheck(inverse, (intrinsics,))
 
     def test_wart_scale_rescales_the_principal_point_by_the_half_pixel_rule_4263(self, device, dtype):
         # Wart pin for #4263: scale(s) gives cx' = s * cx (2.0 for cx = 4, s = 0.5), the half-pixel rule, while
