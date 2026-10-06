@@ -98,9 +98,17 @@ def in_range(
         \text{out}(I) = \bigwedge_{c=0}^{C-1}
         \left( \text{lower}_c(I) \leq \text{input}_c(I) \leq \text{upper}_c(I) \right)
 
-    where `C` is the number of channels. Both comparisons are inclusive. For integer inputs, fractional lower
-    bounds are rounded up and fractional upper bounds down. Bounds outside the input dtype's range do not
-    wrap or overflow; a range containing no representable input value produces an empty mask.
+    where `C` is the number of channels. Both comparisons are inclusive.
+
+    Convention:
+        - A NaN channel fails its pixel. The mask has the input's dtype, 1 for a pass. For floating input, bounds
+          are cast to the input dtype before comparison, so only an interval still reversed after that conversion
+          selects nothing.
+        - ``return_mask=False`` returns ``input * mask``: the channels of a failing pixel become 0, except a NaN or
+          infinite one, which becomes NaN.
+        - For integer inputs, fractional lower bounds round up and fractional upper bounds round down. Bounds outside
+          the input dtype's range do not wrap or overflow; a range containing no representable input value produces
+          an empty mask.
 
     Args:
         input: The input torch.Tensor to be filtered in the shape of :math:`(*, *, H, W)`.
@@ -209,8 +217,10 @@ def in_range(
 class InRange(nn.Module):
     r"""Create a module for applying lower and upper bounds to input tensors.
 
+    Convention:
+        See the Convention block on :func:`~kornia.filters.in_range`.
+
     Args:
-        input: The input torch.Tensor to be filtered.
         lower: The lower bounds of the filter (inclusive).
         upper: The upper bounds of the filter (inclusive).
         return_mask: If is true, the filtered mask is returned, otherwise the filtered input image.
@@ -261,8 +271,9 @@ class InRange(nn.Module):
                 the height, and :math:`W` is the width.
 
         Returns:
-            If ``self.return_mask`` is ``True``, a mask indicating which
-            entries lie within the inclusive range. Otherwise, a tensor with
-            values outside the range removed according to :func:`in_range`.
+            If ``self.return_mask`` is ``True``, a :math:`(B, 1, H, W)` mask of
+            the pixels whose every channel lies within the inclusive range.
+            Otherwise, a tensor with values outside the range removed according
+            to :func:`in_range`.
         """
         return in_range(input, self.lower, self.upper, self.return_mask)

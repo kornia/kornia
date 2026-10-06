@@ -291,7 +291,8 @@ class TestParametrizedLine(BaseTester):
         self.assert_close(restored.direction, line.direction.detach())
         other = torch.float16 if dtype == torch.float32 else torch.float32  # float64 is unavailable on MPS
         moved = line.to(other)
-        assert moved.origin.dtype == other and moved.direction.dtype == other
+        assert moved.origin.dtype == other
+        assert moved.direction.dtype == other
         assert moved.direction.grad_fn is not None
         moved.direction.sum().backward()
         assert p1.grad is not None
@@ -301,11 +302,13 @@ class TestParametrizedLine(BaseTester):
         origin = torch.tensor([0.5, 1.0], device=device, dtype=dtype, requires_grad=True)
         direction = torch.tensor([0.6, 0.8], device=device, dtype=dtype, requires_grad=True)
         line = ParametrizedLine(origin, direction)
-        assert line.origin is origin and line.direction is direction
+        assert line.origin is origin
+        assert line.direction is direction
         assert [name for name, _ in line.named_buffers()] == ["_origin", "_direction"]
         assert list(line.state_dict()) == ["_origin", "_direction"]
         line.point_at(2.0).sum().backward()
-        assert origin.grad is not None and direction.grad is not None
+        assert origin.grad is not None
+        assert direction.grad is not None
         self.assert_close(origin.grad, torch.ones_like(origin))
         self.assert_close(direction.grad, torch.full_like(direction, 2.0))
         # a tensor that does not require grad still becomes an optimizable parameter

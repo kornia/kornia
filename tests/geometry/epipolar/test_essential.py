@@ -176,7 +176,8 @@ class TestFindEssential(BaseTester):
         points1 = torch.stack([scene["x1"], degenerate1]).to(device, dtype)
         points2 = torch.stack([scene["x2"], degenerate2]).to(device, dtype)
         candidates = epi.find_essential(points1, points2)
-        assert candidates.shape == (2, 10, 3, 3) and candidates.device == points1.device
+        assert candidates.shape == (2, 10, 3, 3)
+        assert candidates.device == points1.device
         assert self._true_e_error(candidates[0], scene["E"]) < 1e-3
         alone = epi.find_essential(points1[:1], points2[:1])[0]
         assert torch.equal(torch.isfinite(candidates[0]), torch.isfinite(alone))
@@ -214,13 +215,15 @@ class TestFindEssential(BaseTester):
         on_cpu = epi.find_essential(x1, x2)
         points1 = x1.to(device).requires_grad_()
         on_mps = epi.find_essential(points1, x2.to(device))
-        assert on_mps.device == points1.device and on_mps.dtype == torch.float32
+        assert on_mps.device == points1.device
+        assert on_mps.dtype == torch.float32
         assert torch.equal(torch.isfinite(on_mps).cpu(), torch.isfinite(on_cpu))
         self.assert_close(on_mps.cpu().nan_to_num(7.0), on_cpu.nan_to_num(7.0), atol=1e-6, rtol=0)
         assert self._true_e_error(on_mps[0].detach(), scene["E"]) < 1e-4
         on_mps.nan_to_num().sum().backward()
         assert points1.grad.device == points1.device
-        assert torch.isfinite(points1.grad).all() and bool((points1.grad != 0).any())
+        assert torch.isfinite(points1.grad).all()
+        assert bool((points1.grad != 0).any())
 
     def test_repeated_calls_are_bitwise_equal(self, device, dtype):
         # No atomic accumulation: CUDA's scatter_add_ summed the determinant polynomial in a varying order.
@@ -1046,7 +1049,8 @@ class TestConventionEssential(BaseTester):
         for E_in in (E, -E, 3.0 * E):
             Rs, ts = epi.motion_from_essential(E_in)
             R1, R2, t_dec = epi.decompose_essential_matrix(E_in)
-            assert Rs.shape == (1, 4, 3, 3) and ts.shape == (1, 4, 3, 1)
+            assert Rs.shape == (1, 4, 3, 3)
+            assert ts.shape == (1, 4, 3, 1)
             # Order [(R1, t), (R1, -t), (R2, t), (R2, -t)] of decompose_essential_matrix, with a unit t.
             self.assert_close(Rs[:, 0], R1)
             self.assert_close(Rs[:, 1], R1)
@@ -1112,7 +1116,8 @@ class TestConventionEssential(BaseTester):
         R_sw, t_sw = epi.relative_camera_motion(R @ Ra, R @ ta + t, Ra, ta)
         self.assert_close(R_sw, R.transpose(-2, -1), low_tolerance=True)
         self.assert_close(t_sw, -R.transpose(-2, -1) @ t, low_tolerance=True)
-        assert (R_sw - R).abs().max() > 0.1 and (t_sw - t).abs().max() > 0.5
+        assert (R_sw - R).abs().max() > 0.1
+        assert (t_sw - t).abs().max() > 0.5
 
     def test_wart_find_essential_ignores_weights_4876(self, device, dtype):
         two_view = two_view_scene(device, dtype)
@@ -1144,15 +1149,19 @@ class TestConventionEssential(BaseTester):
         # (1, 3, 3) next to t of shape (3, 1). All outputs now keep the leading dims of the input.
         E = _gt_essential(two_view)
         R1, R2, t = epi.decompose_essential_matrix(E[0])
-        assert R1.shape == (3, 3) and R2.shape == (3, 3) and t.shape == (3, 1)
+        assert R1.shape == (3, 3)
+        assert R2.shape == (3, 3)
+        assert t.shape == (3, 1)
         Rs, ts = epi.motion_from_essential(E[0])
-        assert Rs.shape == (4, 3, 3) and ts.shape == (4, 3, 1)
+        assert Rs.shape == (4, 3, 3)
+        assert ts.shape == (4, 3, 1)
         R1b, R2b, tb = epi.decompose_essential_matrix(E)
         self.assert_close(R1, R1b[0])
         self.assert_close(R2, R2b[0])
         self.assert_close(t, tb[0])
         Rsb, tsb = epi.motion_from_essential(E.expand(2, 1, 3, 3))
-        assert Rsb.shape == (2, 1, 4, 3, 3) and tsb.shape == (2, 1, 4, 3, 1)
+        assert Rsb.shape == (2, 1, 4, 3, 3)
+        assert tsb.shape == (2, 1, 4, 3, 1)
 
     def test_convention_choose_solution_reports_valid_count_4879(self, device, dtype):
         two_view = two_view_scene(device, dtype)
@@ -1195,10 +1204,12 @@ class TestConventionEssential(BaseTester):
             return (Rm @ Rm.transpose(-2, -1) - eye).norm(dim=(-2, -1))
 
         R1, R2, t = epi.decompose_essential_matrix_no_svd(E)
-        assert orthogonality_error(R1).max() < 0.25 and orthogonality_error(R2).max() < 0.25
+        assert orthogonality_error(R1).max() < 0.25
+        assert orthogonality_error(R2).max() < 0.25
         for B in (2, 3):
             R1b, R2b, tb = epi.decompose_essential_matrix_no_svd(E.repeat(B, 1, 1))
-            assert orthogonality_error(R1b).max() < 0.25 and orthogonality_error(R2b).max() < 0.25
+            assert orthogonality_error(R1b).max() < 0.25
+            assert orthogonality_error(R2b).max() < 0.25
             self.assert_close(R1b, R1.expand_as(R1b))
             self.assert_close(R2b, R2.expand_as(R2b))
             self.assert_close(tb, t.expand_as(tb))
