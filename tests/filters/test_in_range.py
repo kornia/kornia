@@ -518,6 +518,26 @@ class TestConventionsInRange(BaseTester):
         # lower > upper is not rejected; it selects nothing
         assert in_range(img, upper, lower, return_mask=True).sum().item() == 0
 
+    def test_convention_in_range_casts_floating_bounds_before_checking_order(self, device, dtype):
+        """A floating interval is reversed only if it remains so after conversion to the input dtype."""
+        if dtype == torch.float64:
+            pytest.skip("A Python float cannot express a value strictly between adjacent float64 values at one.")
+
+        # The wider lower bound is above upper, but the gap is less than half an input ULP, so both become 1.
+        lower, upper = 1.0 + torch.finfo(dtype).eps / 4, 1.0
+        image = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
+        expected = torch.ones_like(image)
+        self.assert_close(in_range(image, (lower,), (upper,), return_mask=True), expected)
+        self.assert_close(
+            in_range(
+                image,
+                torch.tensor([lower], dtype=torch.float64),
+                torch.tensor([upper], dtype=torch.float64),
+                return_mask=True,
+            ),
+            expected,
+        )
+
     def test_convention_in_range_rounds_fractional_bounds_on_integer_input_5423(self, device, dtype):
         """#5423: fractional lower bounds round up and fractional upper bounds round down for integer inputs."""
         # a floating image keeps lower <= input <= upper: the value 100 lies below the lower bound 100.7

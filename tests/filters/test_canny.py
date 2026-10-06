@@ -638,6 +638,37 @@ class TestConventionsCanny(BaseTester):
         _, edges_bgr = canny(rgb.flip(1))
         assert not torch.equal(edges_bgr, edges)
 
+    def test_convention_canny_opencv_correspondence_requires_grayscale(self, device, dtype):
+        self._require_padding(device, dtype)
+        # OpenCV 5.0.0 gives this ridge for both grayscale and channel-2-only color uint8 images:
+        # u8 = np.zeros((9, 14), np.uint8); u8[:, 7] = 153; u8[:, 8:] = 255
+        # cv2.Canny(u8, 200, 300, L2gradient=True)
+        # cv2.Canny(np.stack([np.zeros_like(u8), np.zeros_like(u8), u8], -1), 200, 300, L2gradient=True)
+        # The raw gradient neighborhood is [612, 1020, 408], so the ridge has no NMS tie.
+        gray = self._ramped_step(1.0, device, dtype)
+        expected = torch.zeros_like(gray)
+        expected[..., 7] = 1.0
+        _, edges = canny(gray, 200 / 255, 300 / 255, kernel_size=1, eps=0.0)
+        self.assert_close(edges, expected)
+        # Kornia converts RGB to grayscale: channel 2's blue coefficient reduces the ridge below the low threshold.
+        rgb = torch.cat([torch.zeros_like(gray), torch.zeros_like(gray), gray], dim=1)
+        _, edges_rgb = canny(rgb, 200 / 255, 300 / 255, kernel_size=1, eps=0.0)
+        self.assert_close(edges_rgb, torch.zeros_like(gray))
+
+    def test_convention_canny_eps_can_promote_a_near_threshold_ridge(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("the near-threshold gap must be representable in the test dtype")
+        self._require_padding(device, dtype)
+        # The untied raw ridge magnitude is 0.5; the high threshold is slightly above it, not equal to it.
+        # Default eps raises the magnitude to about 0.500001, producing a strong edge instead of an isolated weak one.
+        img = self._ramped_step(0.125, device, dtype)
+        _, raw_edges = canny(img, 0.4, 0.5000005, kernel_size=1, eps=0.0)
+        self.assert_close(raw_edges, torch.zeros_like(img))
+        _, regularized_edges = canny(img, 0.4, 0.5000005, kernel_size=1)
+        expected = torch.zeros_like(img)
+        expected[..., 7] = 1.0
+        self.assert_close(regularized_edges, expected)
+
     def test_convention_canny_hysteresis_is_8_connected(self, device, dtype):
         self._require_padding(device, dtype)
         # hysteresis keeps a weak pixel connected to a strong one through any of its 8 neighbours, iterated to

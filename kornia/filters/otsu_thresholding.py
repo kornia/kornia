@@ -390,6 +390,10 @@ def otsu_threshold(
           necessary to keep the threshold at or above the largest background pixel and below the smallest foreground
           pixel, so ``x > threshold`` matches the histogram split. On MPS, a zero foreground boundary in float32 or
           bfloat16 uses the smallest normal negative value because comparisons flush subnormal values to zero.
+        - Histogram and bin-edge arithmetic uses float64 only for float64 input, and float32 for every other input
+          dtype, including integers and half precision. Large or narrowly spaced integer values can therefore lose
+          distinctions and select a different split; pass float64 input when its values are representable there and
+          that precision is required.
         - Empty bins do not introduce candidate splits, so the lowest split across a run of empty bins wins on
           every device. A constant plane uses its constant value as the threshold.
         - The foreground is ``x > threshold``, strictly. The first output is ``x * (x > threshold)``, not a

@@ -76,9 +76,11 @@ def canny(
         - The image is blurred with ``gaussian_blur2d(input, kernel_size, sigma)``: ``kernel_size`` is ``(kh, kw)``
           and ``sigma`` is ``(sigma_y, sigma_x)``, rows first in both; ``kernel_size=1`` skips the blur.
           The magnitude is :math:`\sqrt{g_x^2 + g_y^2 + \epsilon}` of the **unnormalised** Sobel gradient
-          ``spatial_gradient(blurred, normalized=False)``: a slope of ``s`` gives ``8 s``, eight times what
-          :func:`~kornia.filters.sobel` returns by default. On an image in :math:`[0, 1]` it is not bounded by 1: a
-          unit step reaches 4 without the blur and about 2.59 with the default one. In float16 the squared gradient
+          ``spatial_gradient(blurred, normalized=False)``: an axis-aligned ramp of signed slope ``s`` gives
+          :math:`\sqrt{(8 s)^2 + \epsilon}` at an interior pixel, about ``8 * abs(s)``. This is about eight times
+          what :func:`~kornia.filters.sobel` returns by default, up to the ``eps`` inside the square root. On an
+          image in :math:`[0, 1]` it is not bounded by 1: a unit step reaches 4 without the blur and about 2.59 with
+          the default one. In float16 the squared gradient
           overflows past 65504, which a step of 64 already reaches without the blur, so keep a float16 image in
           :math:`[0, 1]` rather than scaling it and the thresholds up.
         - The thresholds compare against that magnitude and are strict: a pixel is weak above ``low_threshold`` and

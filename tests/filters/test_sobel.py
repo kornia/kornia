@@ -699,6 +699,16 @@ class TestConventionsSpatialGradient(BaseTester):
             self.assert_close(gx[[0, 4, 8]], torch.tensor([1.5, 3.0, 1.5], device=device, dtype=dtype))
             gy = spatial_gradient(y_ramp, mode)[0, 0, 1, :, 4]
             self.assert_close(gy[[0, 3, 5]], torch.tensor([1.0, 2.0, 1.0], device=device, dtype=dtype))
+        # The order-2 response has a different replicated-border convention: a linear ramp is zero only in its
+        # interior. This keeps the order-1 half-slope convention from being overgeneralized.
+        self.assert_close(
+            spatial_gradient(x_ramp, "diff", order=2)[0, 0, 0, 2],
+            torch.tensor([3.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -3.0], device=device, dtype=dtype),
+        )
+        self.assert_close(
+            spatial_gradient(x_ramp, "sobel", order=2)[0, 0, 0, 2],
+            torch.tensor([1.5, 0.75, 0.0, 0.0, 0.0, 0.0, 0.0, -0.75, -1.5], device=device, dtype=dtype),
+        )
         x_ramp3d = (3 * torch.arange(7, device=device, dtype=dtype) + 1).expand(1, 1, 5, 6, 7)
         g3 = spatial_gradient3d(x_ramp3d)[0, 0, 0, 2, 3]
         self.assert_close(g3[[0, 3, 6]], torch.tensor([1.5, 3.0, 1.5], device=device, dtype=dtype))
@@ -744,8 +754,13 @@ class TestConventionsSpatialGradient(BaseTester):
         plane = (3 * xs + 2 * ys + 1)[None, None]
         interior = (..., slice(1, -1), slice(1, -1))
         self.assert_close(sobel(plane)[interior], torch.full((1, 1, 4, 7), 13.0**0.5, device=device, dtype=dtype))
+        self.assert_close(sobel(-plane)[interior], torch.full((1, 1, 4, 7), 13.0**0.5, device=device, dtype=dtype))
         self.assert_close(
             sobel(plane, normalized=False)[interior],
+            torch.full((1, 1, 4, 7), 8 * 13.0**0.5, device=device, dtype=dtype),
+        )
+        self.assert_close(
+            sobel(-plane, normalized=False)[interior],
             torch.full((1, 1, 4, 7), 8 * 13.0**0.5, device=device, dtype=dtype),
         )
         # eps sits inside the root: a flat image returns sqrt(eps), not 0

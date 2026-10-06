@@ -101,8 +101,9 @@ def in_range(
     where `C` is the number of channels. Both comparisons are inclusive.
 
     Convention:
-        - A NaN channel fails its pixel. The mask has the input's dtype, 1 for a pass. ``lower > upper`` is not
-          rejected and selects nothing.
+        - A NaN channel fails its pixel. The mask has the input's dtype, 1 for a pass. For floating input, bounds
+          are cast to the input dtype before comparison, so only an interval still reversed after that conversion
+          selects nothing.
         - ``return_mask=False`` returns ``input * mask``: the channels of a failing pixel become 0, except a NaN or
           infinite one, which becomes NaN.
         - For integer inputs, fractional lower bounds round up and fractional upper bounds round down. Bounds outside

@@ -41,12 +41,13 @@ def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, n
     Convention:
         - The derivatives are the kernels of :func:`~kornia.filters.get_spatial_gradient_kernel2d`, stacked on a
           new axis 2 in that function's order and with its sign; see its Convention block.
-        - ``normalized=True`` is the default, so the output is in derivative units: a slope of ``s`` along ``x``
-          gives ``s`` in channel 0. ``normalized=False`` returns the raw stencil responses of that block, 8 per
-          unit slope for Sobel. :ref:`Filtering <filtering-conventions>` maps both scales onto OpenCV, scipy and
-          scikit-image.
-        - The border is always replicated, so the derivative of a linear ramp is half its slope on the first and
-          last pixel along it. There is no ``border_type``, unlike :func:`~kornia.filters.filter2d` and
+        - For ``order=1`` with the default ``normalized=True``, an axis-aligned linear ramp with slope ``s`` has
+          response ``s`` in the corresponding channel away from the replicated border. With
+          ``normalized=False``, the Sobel response is ``8 s``. :ref:`Filtering <filtering-conventions>` maps both
+          scales onto OpenCV, scipy and scikit-image.
+        - The border is always replicated, so for ``order=1`` with ``normalized=True``, a linear ramp's derivative
+          is half its slope on the first and last pixel along that axis. There is no ``border_type``, unlike
+          :func:`~kornia.filters.filter2d` and
           :func:`~kornia.filters.laplacian`, whose default is ``'reflect'``.
 
     Args:
@@ -54,8 +55,8 @@ def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, n
         mode: derivatives modality, can be: `sobel` or `diff`, case-insensitive.
         order: the order of the derivatives.
         normalized: if ``True``, scale the kernels so that every output channel estimates the derivative
-          itself, exact on linear surfaces for ``order=1`` and on quadratic surfaces for ``order=2``. If
-          ``False``, return the raw kernel responses.
+          itself away from the replicated border: exact on linear surfaces for ``order=1`` and on quadratic
+          surfaces for ``order=2``. If ``False``, return the raw kernel responses.
 
     Return:
         the derivatives of the input feature map, with shape :math:`(B, C, 2, H, W)` holding
@@ -189,9 +190,9 @@ def sobel(input: torch.Tensor, normalized: bool = True, eps: float = 1e-6) -> to
     Convention:
         - The output is :math:`\sqrt{g_x^2 + g_y^2 + \epsilon}` per channel, where :math:`(g_x, g_y)` is
           ``spatial_gradient(input, 'sobel', normalized=normalized)``; see the Convention block on
-          :func:`~kornia.filters.spatial_gradient`. With the default ``normalized=True`` a plane of slope ``s``
-          gives :math:`\sqrt{s^2 + \epsilon}`, about ``s``; ``normalized=False`` gives about ``8 s``, the scale
-          :func:`~kornia.filters.canny` thresholds.
+          :func:`~kornia.filters.spatial_gradient`. Away from the replicated border, an axis-aligned ramp of slope
+          ``s`` gives :math:`\sqrt{s^2 + \epsilon}`, about :math:`|s|`, with the default ``normalized=True``;
+          ``normalized=False`` gives about :math:`8 |s|`, the scale :func:`~kornia.filters.canny` thresholds.
         - ``eps`` sits inside the square root, so a flat region returns :math:`\sqrt{\epsilon}`, ``1e-3`` by
           default, not 0.
 
