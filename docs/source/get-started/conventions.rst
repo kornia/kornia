@@ -669,6 +669,37 @@ The kernel builders against their references:
   where ``scipy.ndimage.laplace`` and ``cv2.Laplacian(ksize=1)`` return :math:`\nabla^2`, ``cv2.Laplacian(ksize=3)``
   :math:`4 \nabla^2` and ``skimage.filters.laplace`` :math:`-\nabla^2`.
 
+The derivative filters apply those kernels at different scales, and :func:`~kornia.filters.canny` thresholds the raw
+one:
+
+- :func:`~kornia.filters.spatial_gradient` and :func:`~kornia.filters.sobel` use normalized first-order gradients
+  by default: an interior axis-aligned unit slope gives 1 in the corresponding ``spatial_gradient`` channel, and
+  ``sobel`` returns :math:`\sqrt{1 + \epsilon}`. ``normalized=False`` returns the raw Sobel response above.
+  :func:`~kornia.filters.spatial_gradient` always replicates the border, so
+  ``cv2.Sobel(x, cv2.CV_64F, 1, 0, borderType=cv2.BORDER_REPLICATE)`` and
+  ``scipy.ndimage.sobel(x, axis=-1, mode='nearest')`` equal channel 0 of ``spatial_gradient(x, normalized=False)``;
+  OpenCV's default ``BORDER_REFLECT_101`` differs on the outermost rows and columns.
+  ``skimage.filters.sobel(x, mode='nearest')`` equals ``sqrt(2) * sobel(x, eps=0)``.
+- For floating inputs, :func:`~kornia.filters.laplacian` is normalized by default too, but by the stencil's absolute
+  sum, 16 for size 3: ``laplacian(x, 3)`` estimates :math:`3 \nabla^2 / 16`, and ``normalized=False`` the
+  :math:`3 \nabla^2` above. See its Convention block for the integer-input defect.
+- :func:`~kornia.filters.canny` compares its thresholds with the **unnormalized** Sobel magnitude of the blurred
+  image, about eight times what :func:`~kornia.filters.sobel` returns by default, up to the ``eps`` inside the square
+  root. For a **single-channel grayscale** uint8 image ``img``, ``cv2.Canny(img, t1, t2, L2gradient=True)`` corresponds
+  to ``canny(x, t1 / 255, t2 / 255, kernel_size=1, eps=0)`` for edge-map comparison, with ``x`` the float32 or float64
+  tensor ``img / 255``: the thresholds scale with the image and ``kernel_size=1`` skips the Gaussian blur that
+  OpenCV does not apply. OpenCV's default L1 magnitude :math:`|g_x| + |g_y|` has no kornia counterpart.
+  :func:`~kornia.filters.canny` resolves ties along the gradient as OpenCV does, but floating-point rounding of
+  ``img / 255``, the gradient and threshold comparisons can still change a near-tie or near-threshold decision.
+  With the default ``eps=1e-6``, the square root raises the magnitude above its ``eps=0`` value, when retained by
+  the dtype's precision: it can promote a pixel even when the threshold is slightly above the raw magnitude,
+  without an exact tie. Color images need separate preprocessing: Kornia converts RGB to grayscale, while
+  OpenCV's color Canny selects the channel with the strongest gradient, so this correspondence does not apply
+  directly to a 3-channel image.
+- ``skimage.feature.canny`` thresholds the same unnormalized magnitude of a floating-point image and has the same
+  defaults, 0.1 and 0.2, so thresholds carry over; its Gaussian blur and its interpolating suppression differ from
+  :func:`~kornia.filters.canny`'s, so the edge maps do not match.
+
 The blurs give sizes and standard deviations rows first, as torch orders ``(H, W)``: ``kernel_size`` is
 ``(kh, kw)`` and ``sigma`` is :math:`(\sigma_y, \sigma_x)` in :func:`~kornia.filters.gaussian_blur2d`,
 :func:`~kornia.filters.box_blur`, :func:`~kornia.filters.median_blur` and the filters built on them. OpenCV passes
