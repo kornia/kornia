@@ -507,14 +507,17 @@ class TestEssentialFromFundamental(BaseTester):
         E_mat = epi.essential_from_fundamental(F_mat, K1, K2)
         assert E_mat.shape == (B, 3, 3)
 
-    @pytest.mark.xfail(reason="TODO: fix #685")
     def test_from_to_fundamental(self, device, dtype):
-        F_mat = torch.rand(1, 3, 3, device=device, dtype=dtype)
-        K1 = torch.rand(1, 3, 3, device=device, dtype=dtype)
-        K2 = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        # The unseeded torch.rand intrinsics this test used to draw are close to singular every few hundred draws,
+        # which is what made the round trip F -> K2^T F K1 -> K2^-T E K1^-1 miss its tolerance (#685). With a seeded
+        # F and well-conditioned intrinsics the round trip is exact up to the dtype's precision.
+        generator = torch.Generator().manual_seed(0)
+        F_mat = torch.rand(1, 3, 3, generator=generator, dtype=torch.float64).to(device, dtype)
+        K1 = torch.tensor([[[1.2, 0.0, 0.1], [0.0, 1.1, -0.2], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        K2 = torch.tensor([[[0.9, 0.0, -0.15], [0.0, 1.3, 0.05], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         E_mat = epi.essential_from_fundamental(F_mat, K1, K2)
         F_hat = epi.fundamental_from_essential(E_mat, K1, K2)
-        self.assert_close(F_mat, F_hat, atol=1e-4, rtol=1e-4)
+        self.assert_close(F_mat, F_hat)
 
     def test_shape_large(self, device, dtype):
         F_mat = torch.rand(1, 2, 3, 3, device=device, dtype=dtype)
@@ -623,7 +626,6 @@ class TestEssentalFromRt(BaseTester):
         E_mat = epi.essential_from_Rt(R1, t1, R2, t2)
         assert E_mat.shape == (B, 3, 3)
 
-    @pytest.mark.xfail(reason="TODO: fix #685")
     def test_from_fundamental_Rt(self, device, dtype):
         scene = generate_two_view_random_scene(device, dtype)
 
@@ -633,8 +635,11 @@ class TestEssentalFromRt(BaseTester):
 
         E_from_Rt_norm = epi.normalize_transformation(E_from_Rt)
         E_from_F_norm = epi.normalize_transformation(E_from_F)
-        # TODO: occasionally failed with error > 0.04
-        self.assert_close(E_from_Rt_norm, E_from_F_norm, rtol=1e-3, atol=1e-3)
+        # The scene is seeded, so this is deterministic. The pixel-unit scene F has entries down to 1e-5 that the
+        # half dtypes keep with few mantissa bits, and K2^T F K1 with K ~ 30..80 amplifies that: the normalised E
+        # differ by 1.4e-2 in float16 and 3.1e-2 in bfloat16, against 3.5 for a transposed F or swapped cameras.
+        tol = {torch.float16: 1e-2, torch.bfloat16: 5e-2}.get(dtype, 1e-3)
+        self.assert_close(E_from_Rt_norm, E_from_F_norm, rtol=tol, atol=tol)
 
     def test_gradcheck(self, device):
         R1 = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
