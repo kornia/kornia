@@ -19,6 +19,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
 
@@ -93,8 +94,43 @@ class TestMeanAveragePrecision(BaseTester):
         gt_boxes = torch.tensor([[100, 50, 150, 100.0]], device=device, dtype=dtype)
         gt_labels = torch.tensor([1], device=device, dtype=torch.long)
 
-        with pytest.raises(AssertionError):
+        with pytest.raises(BaseError, match="same length"):
             _ = kornia.metrics.mean_average_precision(boxes[0], [labels], [scores], [gt_boxes], [gt_labels], 2)
+
+    def test_exception_list_lengths(self, device, dtype):
+        # A list-length mismatch names the five lengths; a per-image size mismatch names the sizes (#5551).
+        boxes = torch.tensor([[0.0, 0.0, 10.0, 20.0], [30.0, 5.0, 45.0, 12.0]], device=device, dtype=dtype)
+        labels = torch.tensor([1, 2], device=device, dtype=torch.long)
+        scores = torch.tensor([0.9, 0.8], device=device, dtype=dtype)
+
+        with pytest.raises(BaseError, match=r"same length.*pred_boxes 2.*gt_boxes 1"):
+            kornia.metrics.mean_average_precision([boxes] * 2, [labels] * 2, [scores] * 2, [boxes], [labels], 3)
+        with pytest.raises(BaseError, match=r"same length.*pred_scores 1"):
+            kornia.metrics.mean_average_precision([boxes] * 2, [labels] * 2, [scores], [boxes] * 2, [labels] * 2, 3)
+        with pytest.raises(BaseError, match=r"one row per object.*2 boxes and 1 labels"):
+            kornia.metrics.mean_average_precision([boxes], [labels], [scores], [boxes], [labels[:1]], 3)
+        with pytest.raises(BaseError, match=r"one row per detection.*2 boxes, 2 labels and 1 scores"):
+            kornia.metrics.mean_average_precision([boxes], [labels], [scores[:1]], [boxes], [labels], 3)
+
+    @pytest.mark.parametrize("box_dtype", [torch.int64, torch.int32, torch.uint8])
+    def test_integer_boxes_match_the_float_result(self, device, box_dtype):
+        # Integer boxes give the AP of their float copies in float32, as mean_iou_bbox computes them (#5551). The
+        # ranked detections are TP, FP, TP: recall 0.5, 0.5, 1 at precision 1, 0.5, 2/3, so AP = (6 + 5 * 2 / 3) / 11.
+        gt_boxes = torch.tensor([[0, 0, 10, 20], [30, 5, 45, 12]], device=device, dtype=box_dtype)
+        gt_labels = torch.tensor([1, 1], device=device, dtype=torch.long)
+        boxes = torch.tensor([[0, 0, 10, 20], [100, 100, 120, 130], [30, 5, 45, 12]], device=device, dtype=box_dtype)
+        labels = torch.tensor([1, 1, 1], device=device, dtype=torch.long)
+        scores = torch.tensor([0.9, 0.8, 0.7], device=device)
+
+        mean_ap, ap = kornia.metrics.mean_average_precision([boxes], [labels], [scores], [gt_boxes], [gt_labels], 2)
+        expected, expected_ap = kornia.metrics.mean_average_precision(
+            [boxes.float()], [labels], [scores], [gt_boxes.float()], [gt_labels], 2
+        )
+
+        assert mean_ap.dtype == torch.float32
+        self.assert_close(mean_ap, torch.tensor((6 + 5 * 2 / 3) / 11, device=device))
+        self.assert_close(mean_ap, expected, rtol=0, atol=0)
+        assert ap == expected_ap
 
     def test_recall_on_an_exact_tenth_reaches_its_threshold_5083(self, device, dtype):
         # 10 objects, ranked detections TP, FP, then 9 TP: recall passes through every tenth, precision drops at the FP.
