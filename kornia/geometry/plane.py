@@ -126,7 +126,7 @@ class Hyperplane(nn.Module):
             :class:`~kornia.geometry.vector.Scalar` containing signed distance
             values for each input point.
         """
-        KORNIA_CHECK(isinstance(p, Vector3 | torch.Tensor))
+        KORNIA_CHECK(isinstance(p, (Vector3, torch.Tensor)))
         return self.normal.dot(p) + self.offset
 
     # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L154

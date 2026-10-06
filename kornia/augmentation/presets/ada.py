@@ -239,7 +239,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         merged: _inputs_type
         if isinstance(original, dict) and isinstance(augmented, dict):
             merged = {}
-            for key in original.keys():
+            for key in original:
                 merged_tensor = original[key].clone()
                 merged_tensor[p_tensor] = augmented[key]
                 merged[key] = merged_tensor

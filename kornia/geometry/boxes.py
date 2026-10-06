@@ -65,7 +65,7 @@ def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
     boxes_per_batch, n_points_per_box, coordinates_dimension = boxes.shape[-3:]
     if boxes_per_batch == 0:
         return boxes
-    points = boxes.view(-1, n_points_per_box * boxes_per_batch, coordinates_dimension)
+    points = boxes.reshape(-1, n_points_per_box * boxes_per_batch, coordinates_dimension)
     M = M if M.ndim == 3 else M.unsqueeze(0)
 
     if points.shape[0] != M.shape[0]:
@@ -95,6 +95,25 @@ def _boxes_to_polygons(
     return polygons
 
 
+def _validate_box_coordinates(boxes: torch.Tensor) -> None:
+    """Validate that box coordinates are finite."""
+    if not torch.isfinite(boxes).all():
+        raise ValueError("Some boxes have non-finite coordinates.")
+
+
+def _assert_finite_vertices(boxes: torch.Tensor) -> None:
+    """Reject a non-finite vertex coordinate without reading the data on the host.
+
+    ``AugmentationSequential`` imports ``'bbox'`` data through ``'vertices_plus'`` inside a ``fullgraph=True``
+    compile, where a Python ``if`` on the data would break the graph. ``torch._assert_async`` raises
+    ``RuntimeError`` instead. As in :mod:`kornia.enhance`, the check is skipped on MPS, where materializing the
+    condition would drain the queued stream on every call.
+    """
+    if boxes.device.type == "mps":
+        return
+    torch._assert_async(torch.isfinite(boxes).all(), "Some boxes have non-finite coordinates.")
+
+
 def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_boxes: bool = True) -> torch.Tensor:
     """Convert from boxes to quadrilaterals."""
     mode = mode.lower()
@@ -113,6 +132,14 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
     boxes = boxes if boxes.is_floating_point() else boxes.to(torch.get_default_dtype())
     boxes = boxes if batched else boxes.unsqueeze(0)
 
+    # Value validation reads the data, which graph capture cannot do; skip it under export. The vertex modes check
+    # finiteness asynchronously so that they stay fullgraph-compilable.
+    if validate_boxes and not is_exporting() and boxes.numel() > 0:
+        if mode.startswith("vertices"):
+            _assert_finite_vertices(boxes)
+        else:
+            _validate_box_coordinates(boxes)
+
     if mode.startswith("vertices"):
         if mode == "vertices":
             quadrilaterals = boxes.clone()
@@ -126,6 +153,7 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
             quadrilaterals = boxes.clone()
         else:
             raise ValueError(f"Unknown mode {mode}")
+
     elif mode.startswith("xy"):
         if mode == "xyxy":
             height, width = boxes[..., 3] - boxes[..., 1], boxes[..., 2] - boxes[..., 0]
@@ -138,8 +166,6 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
 
         # Value validation reads the data, which graph capture cannot do; skip it under export.
         if validate_boxes and not is_exporting():
-            if not torch.isfinite(boxes).all():
-                raise ValueError("Some boxes have non-finite coordinates.")
             if (width <= 0).any():
                 raise ValueError("Some boxes have negative widths or 0.")
             if (height <= 0).any():
@@ -209,8 +235,10 @@ class Boxes:
         - :func:`~kornia.geometry.bbox.infer_bbox_shape` and :func:`~kornia.geometry.bbox.bbox_to_mask` read
           their input as inclusive: pass them the ``'vertices_plus'`` export, unbatched.
           :func:`~kornia.geometry.bbox.nms` takes exclusive ``xyxy``.
-        - With ``validate_boxes=True``, the ``'xy*'`` modes reject a non-finite coordinate and non-positive
-          extents.
+        - With ``validate_boxes=True``, every mode rejects a non-finite coordinate. The ``'xy*'`` modes raise
+          ``ValueError`` and also reject non-positive extents. The vertex modes raise ``RuntimeError`` through
+          ``torch._assert_async`` (on CPU and CUDA, skipped on MPS), so they stay ``fullgraph``-compilable, and take
+          no extent or shape check, so the arbitrary quadrilaterals of :meth:`transform_boxes` import unchanged.
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False`` (a list is
           checked by its first element's dtype); :meth:`from_tensor` casts integer input to the default dtype.
         - :meth:`merge` and :meth:`index_put` are non-mutating by default.
@@ -226,9 +254,10 @@ class Boxes:
         `#4008 <https://github.com/kornia/kornia/issues/4008>`_. :meth:`to_mask` and
         :func:`~kornia.geometry.bbox.bbox_to_mask` take opposite size orders:
         `#4014 <https://github.com/kornia/kornia/issues/4014>`_. The integer-input split is
-        `#4012 <https://github.com/kornia/kornia/issues/4012>`_. Vertex modes are not validated and
-        ``'vertices'`` can deform the input: `#4177 <https://github.com/kornia/kornia/issues/4177>`_. ``trim``,
-        ``translate(method='fast')`` and tuple-bound ``clamp`` are unimplemented:
+        `#4012 <https://github.com/kornia/kornia/issues/4012>`_. ``'vertices'`` subtracts the inclusive offset at
+        fixed vertex slots, so it deforms a quadrilateral that is not an axis-aligned rectangle in clockwise order:
+        `#3934 <https://github.com/kornia/kornia/issues/3934>`_. ``trim``, ``translate(method='fast')`` and
+        tuple-bound ``clamp`` are unimplemented:
         `#4017 <https://github.com/kornia/kornia/issues/4017>`_.
 
     """
@@ -612,7 +641,7 @@ class Boxes:
         Returns:
             Area for each box, shaped :math:`(N,)` or :math:`(B, N)`.
         """
-        coords = self._data.view((-1, 4, 2)) if self._data.ndim == 4 else self._data
+        coords = self._data.flatten(0, 1) if self._data.ndim == 4 else self._data
         # calculate centroid of the box
         centroid = coords.mean(dim=1, keepdim=True)
         # calculate the angle from centroid to each corner
@@ -650,9 +679,9 @@ class Boxes:
                 * 'vertices_plus': the inclusive stored vertex form. With shape :math:`(N, 4, 2)`,
                   :math:`(B, N, 4, 2)`.
 
-            validate_boxes: For the ``'xy*'`` modes, reject a non-finite coordinate and non-positive extents in
-                each mode's convention. The vertex modes are not validated; see the warning on
-                :class:`~kornia.geometry.boxes.Boxes`.
+            validate_boxes: Reject a non-finite coordinate in every mode: ``ValueError`` for the ``'xy*'`` modes,
+                which also reject non-positive extents in each mode's convention, and ``RuntimeError`` from
+                ``torch._assert_async`` for the vertex modes (skipped on MPS), which take no extent or shape check.
 
         Returns:
             :class:`Boxes` containing the converted inclusive vertex representation.
@@ -1030,8 +1059,9 @@ class VideoBoxes(Boxes):
 
     Convention:
         - :meth:`from_tensor` stores :math:`(B, T, N, 4, 2)` input unchanged as :math:`(B \cdot T, N, 4, 2)`
-          ``'vertices_plus'`` data, with no mode, conversion or validation; integer input is cast to the default
-          dtype, and another shape or a list raises ``ValueError``.
+          ``'vertices_plus'`` data, with no mode or conversion; integer input is cast to the default dtype, and
+          another shape or a list raises ``ValueError``. ``validate_boxes=True`` rejects a non-finite coordinate as
+          :meth:`Boxes.from_tensor` does for ``'vertices_plus'``.
         - :meth:`to_tensor` accepts every :class:`Boxes` mode and restores the temporal axis
           (``to_tensor('xyxy')`` is :math:`(B, T, N, 4)`).
         - A transformation matrix is :math:`(B \cdot T, 3, 3)`; a :math:`(3, 3)` matrix raises ``ValueError``
@@ -1042,8 +1072,7 @@ class VideoBoxes(Boxes):
 
     .. warning::
         Indexing returns a wrapper without :attr:`temporal_channel_size`, so its :meth:`to_tensor` raises
-        ``AttributeError``: `#4249 <https://github.com/kornia/kornia/issues/4249>`_. ``validate_boxes`` is inert:
-        `#4177 <https://github.com/kornia/kornia/issues/4177>`_.
+        ``AttributeError``: `#4249 <https://github.com/kornia/kornia/issues/4249>`_.
 
     Attributes:
         temporal_channel_size: Number of frames :math:`T` stored with the boxes.
@@ -1063,9 +1092,10 @@ class VideoBoxes(Boxes):
                 ``vertices_plus`` order (top-left, top-right, bottom-right,
                 bottom-left), stored unchanged; integer input is cast to
                 ``torch.get_default_dtype()``. Lists of tensors are not supported yet.
-            validate_boxes: Forwarded to ``_boxes_to_quadrilaterals``. The
-                ``vertices_plus`` path used here builds corners directly and
-                performs no size check, so this flag currently has no effect.
+            validate_boxes: Reject a non-finite coordinate with ``RuntimeError``
+                (``torch._assert_async``, skipped on MPS). There is no extent or shape
+                check, as for ``'vertices_plus'`` in
+                :meth:`~kornia.geometry.boxes.Boxes.from_tensor`.
 
         Returns:
             :class:`VideoBoxes` with :attr:`temporal_channel_size` set to

@@ -20,7 +20,7 @@ import inspect
 import pytest
 import torch
 
-from kornia.core.exceptions import BaseError, DeviceError, TypeCheckError
+from kornia.core.exceptions import BaseError
 from kornia.filters import (
     MotionBlur,
     MotionBlur3D,
@@ -36,8 +36,10 @@ from kornia.filters import (
 
 from testing.base import (
     BaseTester,
+    supports_arange,
     supports_bilinear_2d_grid_sample,
     supports_bilinear_3d_grid_sample,
+    supports_nearest_2d_grid_sample,
     supports_nearest_3d_grid_sample,
     supports_reflect_padding,
     supports_replicate_padding_3d,
@@ -223,6 +225,38 @@ class TestMotionBlur(BaseTester):
         expected = filter2d(img, kernel, "reflect")
         self.assert_close(motion_blur(img, 7, angle, 0.3, "reflect"), expected, rtol=0, atol=0)
         self.assert_close(MotionBlur(7, angle, 0.3, "reflect")(img), expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("tensor_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+    @pytest.mark.parametrize("tensor_parameter", ["angle", "angle_0d", "direction"])
+    def test_tensor_parameter_with_a_python_number_is_built_like_the_tensor(
+        self, tensor_parameter, tensor_dtype, device, dtype
+    ):
+        # A tensor angle or direction with a Python number for the other builds the number on the tensor's device and
+        # in its dtype, whatever the input's dtype, so the blur is the one of the two tensors.
+        if device.type == "mps" and torch.float64 in (dtype, tensor_dtype):
+            pytest.skip("MPS has no float64")
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+        if not supports_nearest_2d_grid_sample(device, tensor_dtype):
+            pytest.skip(f"the kernel is rotated with grid_sample, which this device lacks for {tensor_dtype}")
+        if not supports_arange(device, tensor_dtype):
+            pytest.skip(f"the kernel taps are built with arange, which this device lacks for {tensor_dtype}")
+        torch.manual_seed(0)
+        image = torch.rand(1, 2, 9, 11, device=device, dtype=dtype)
+        angle = torch.tensor([30.0], device=device, dtype=tensor_dtype)
+        direction = torch.tensor([0.5], device=device, dtype=tensor_dtype)
+        expected = motion_blur(image, 5, angle, direction)
+        if tensor_parameter == "angle":
+            params = (angle, 0.5)
+        elif tensor_parameter == "angle_0d":
+            params = (angle[0], 0.5)
+        else:
+            params = (30.0, direction)
+        actual = motion_blur(image, 5, *params)
+        assert actual.dtype == dtype
+        assert actual.device == image.device
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        self.assert_close(MotionBlur(5, *params)(image), expected, rtol=0, atol=0)
 
     # A blur of a constant image is that constant. ``(1, 1, 3, 9)`` and ``(1, 1, 9, 3)`` are shorter than the
     # 5-tap kernel along one axis.
@@ -474,6 +508,31 @@ class TestMotionBlur3D(BaseTester):
         self.assert_close(motion_blur3d(volume, 5, angle, 0.3, "replicate"), expected, rtol=0, atol=0)
         self.assert_close(MotionBlur3D(5, angle, 0.3, "replicate")(volume), expected, rtol=0, atol=0)
 
+    @pytest.mark.parametrize("tensor_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+    @pytest.mark.parametrize("tensor_parameter", ["angle", "direction"])
+    def test_tensor_parameter_with_a_python_number_is_built_like_the_tensor(
+        self, tensor_parameter, tensor_dtype, device, dtype
+    ):
+        # A tensor angle or direction with a Python number, or a tuple, for the other builds that one on the tensor's
+        # device and in its dtype, whatever the input's dtype, so the blur is the one of the two tensors.
+        if device.type == "mps" and torch.float64 in (dtype, tensor_dtype):
+            pytest.skip("MPS has no float64")
+        if not supports_replicate_padding_3d(device, dtype):
+            pytest.skip("replication_pad3d is unavailable for this device/dtype")
+        if not supports_nearest_3d_grid_sample(device, tensor_dtype):
+            pytest.skip(f"the kernel is rotated with grid_sample, which this device lacks for {tensor_dtype}")
+        torch.manual_seed(0)
+        volume = torch.rand(1, 2, 6, 7, 8, device=device, dtype=dtype)
+        angle = torch.tensor([[10.0, 20.0, 30.0]], device=device, dtype=tensor_dtype)
+        direction = torch.tensor([0.5], device=device, dtype=tensor_dtype)
+        expected = motion_blur3d(volume, 3, angle, direction)
+        params = (angle, 0.5) if tensor_parameter == "angle" else ((10.0, 20.0, 30.0), direction)
+        actual = motion_blur3d(volume, 3, *params)
+        assert actual.dtype == dtype
+        assert actual.device == volume.device
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        self.assert_close(MotionBlur3D(3, *params)(volume), expected, rtol=0, atol=0)
+
     @pytest.mark.skip(reason="After the op be optimized the results are not the same")
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, device, dtype, torch_optimizer):
@@ -625,10 +684,8 @@ class TestConventionsMotionBlur(BaseTester):
         out = motion_blur(image, 5, angle, direction)
         self.assert_close(out[:1], motion_blur(image[:1], 5, 0.0, 0.5))
         self.assert_close(out[1:], motion_blur(image[1:], 5, 90.0, -0.5))
-        # a CPU angle in the input's dtype, promoted to at least float32, keeps #5429 out of the way
-        cpu_angle = angle.cpu().to(torch.promote_types(dtype, torch.float32))
         with pytest.raises(BaseError, match="same length"):
-            motion_blur(image, 5, cpu_angle, 0.5)
+            motion_blur(image, 5, angle, 0.5)
 
     @pytest.mark.parametrize("volumetric", [False, True], ids=["MotionBlur", "MotionBlur3D"])
     def test_convention_motion_blur_modules_honour_mode_5164(self, volumetric, device, dtype):
@@ -688,54 +745,3 @@ class TestConventionsMotionBlur(BaseTester):
             motion_blur(torch.rand(1, 1, 9, 12, device=device, dtype=dtype), (5, 5), 30.0, 0.5)
         with pytest.raises(BaseError, match="kernel_size"):
             motion_blur3d(torch.rand(1, 1, 5, 9, 12, device=device, dtype=dtype), (3, 3, 3), (30.0, 0.0, 0.0), 0.5)
-
-    def test_wart_motion_blur_float32_tensor_parameter_with_a_python_number_raises_on_float64_5429(self, device):
-        """A float32 tensor angle or direction with a Python number for the other raises on a float64 input (#5429)."""
-        # The Python number becomes a float64 tensor that no longer matches the float32 one. Both stay on the CPU, so
-        # the error is the dtype one, never the device one of the next pin. A fix on either side alone fails this pin;
-        # a fix that brings both to one floating dtype returns a float64 blur.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
-        image = torch.rand(1, 1, 9, 11, device=device, dtype=torch.float64)
-        volume = torch.rand(1, 1, 7, 9, 11, device=device, dtype=torch.float64)
-        # tensor angle, Python-number direction
-        with pytest.raises(TypeCheckError):
-            motion_blur(image, 5, torch.tensor([30.0]), 0.5)
-        with pytest.raises(TypeCheckError):
-            motion_blur(image, 5, torch.tensor(30.0), 0.5)
-        with pytest.raises(TypeCheckError):
-            motion_blur3d(volume, 5, torch.tensor([[30.0, 0.0, 0.0]]), 0.5)
-        # Python-number angle, tensor direction
-        with pytest.raises(TypeCheckError):
-            motion_blur(image, 5, 30.0, torch.tensor([0.5]))
-        with pytest.raises(TypeCheckError):
-            motion_blur3d(volume, 5, (30.0, 0.0, 0.0), torch.tensor([0.5]))
-        # control: float64 tensors run
-        assert motion_blur(image, 5, torch.tensor([30.0], dtype=torch.float64), 0.5).dtype == torch.float64
-        assert motion_blur(image, 5, 30.0, torch.tensor([0.5], dtype=torch.float64)).dtype == torch.float64
-
-    def test_wart_motion_blur_device_tensor_parameter_with_a_python_number_raises_5429(self, device, dtype):
-        """A tensor angle or direction on a non-CPU device with a Python number for the other raises (#5429)."""
-        # The Python number is built on the CPU, so it never matches a tensor on the input's device, even in the dtype
-        # it is built in (the input's, promoted to at least float32). A fix on either side alone fails this pin; a
-        # fix that builds the number on the tensor's device and in its dtype returns a blur.
-        if device.type == "cpu":
-            pytest.skip("#5429's device mismatch needs a non-CPU device; the CPU dtype case is the float64 pin")
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS has no float64")
-        image = torch.rand(1, 1, 9, 11, device=device).to(dtype)
-        volume = torch.rand(1, 1, 7, 9, 11, device=device).to(dtype)
-        tensor_dtype = torch.promote_types(dtype, torch.float32)
-        # tensor angle, Python-number direction
-        with pytest.raises(DeviceError):
-            motion_blur(image, 5, torch.tensor([30.0], device=device, dtype=tensor_dtype), 0.5)
-        with pytest.raises(DeviceError):
-            motion_blur3d(volume, 5, torch.tensor([[30.0, 0.0, 0.0]], device=device, dtype=tensor_dtype), 0.5)
-        # Python-number angle, tensor direction
-        with pytest.raises(DeviceError):
-            motion_blur(image, 5, 30.0, torch.tensor([0.5], device=device, dtype=tensor_dtype))
-        with pytest.raises(DeviceError):
-            motion_blur3d(volume, 5, (30.0, 0.0, 0.0), torch.tensor([0.5], device=device, dtype=tensor_dtype))
-        # control: the same tensors on the CPU run
-        assert motion_blur(image, 5, torch.tensor([30.0], dtype=tensor_dtype), 0.5).device == image.device
-        assert motion_blur(image, 5, 30.0, torch.tensor([0.5], dtype=tensor_dtype)).device == image.device

@@ -49,16 +49,28 @@ class TestEnhanceConventions(BaseTester):
     @pytest.mark.parametrize(
         "shape",
         [
-            pytest.param((2, 4), marks=pytest.mark.xfail(strict=True, reason="#5318: C vector indexes missing axis")),
-            pytest.param((2, 4, 3, 2, 2), marks=pytest.mark.xfail(strict=True, reason="#5318: C vector checks depth")),
+            (2, 4),
+            (2, 4, 3, 2, 2),
         ],
     )
-    def test_wart_denormalize_is_inverse_for_channel_vector_5318(self, shape, device, dtype):
+    def test_convention_denormalize_is_inverse_for_channel_vector_5318(self, shape, device, dtype):
         data = torch.arange(torch.tensor(shape).prod(), device=device, dtype=dtype).reshape(shape) / 32.0
         mean = torch.tensor([0.1, 0.2, 0.3, 0.4], device=device, dtype=dtype)
         std = torch.tensor([0.5, 0.6, 0.7, 0.8], device=device, dtype=dtype)
         normalized = kornia.enhance.normalize(data, mean, std)
         self.assert_close(kornia.enhance.denormalize(normalized, mean, std), data)
+        self.assert_close(kornia.enhance.Denormalize(mean, std)(normalized), data)
+
+    @pytest.mark.parametrize("wrong", ["mean", "std"])
+    def test_convention_denormalize_rejects_channel_vector_of_other_length_5318(self, wrong, device, dtype):
+        # Depth 4 matches the vector, the single channel does not: dimension -3 accepted this and
+        # broadcast the channel axis to four.
+        data = torch.zeros(2, 1, 4, 2, 2, device=device, dtype=dtype)
+        one = torch.ones(1, device=device, dtype=dtype)
+        four = torch.ones(4, device=device, dtype=dtype)
+        mean, std = (four, one) if wrong == "mean" else (one, four)
+        with pytest.raises(ValueError):
+            kornia.enhance.denormalize(data, mean, std)
 
     def test_convention_denormalize_rank5_batch_channel_statistics_workaround(self, device, dtype):
         data = torch.arange(2 * 4 * 3 * 2 * 2, device=device, dtype=dtype).reshape(2, 4, 3, 2, 2) / 32.0
@@ -235,9 +247,8 @@ class TestEnhanceConventions(BaseTester):
         expected = torch.tensor([[[[[0.0, 1.0]], [[0.0, 1.0]]]]], device=device, dtype=dtype)
         self.assert_close(kornia.enhance.normalize_min_max(data), expected, low_tolerance=True)
 
-    @pytest.mark.xfail(strict=True, reason="#5220: equalize differs from float32 reference for float16 input")
     @pytest.mark.device_agnostic
-    def test_wart_equalize_float16_matches_float32_reference_5220(self):
+    def test_convention_equalize_float16_matches_float32_reference_5220(self):
         image = torch.zeros(1, 1, 300, 300, dtype=torch.float16)
         image[..., :, 150:] = 1.0
         self.assert_close(kornia.enhance.equalize(image), kornia.enhance.equalize(image.float()).half())

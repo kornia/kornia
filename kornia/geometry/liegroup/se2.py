@@ -66,9 +66,11 @@ class Se2(nn.Module):
           interprets the block as ``z = m00 + i m10``.
         - ``t`` is always a tensor registered as module state, whichever constructor built the pose; a ``Vector2``
           passed to the constructor is unwrapped. ``g * p`` returns a ``Vector2`` only when ``p`` is one.
-        - Known defects: ``hat`` and ``vee`` put the translation in the bottom row and the angle in a symmetric block
-          (`#4929 <https://github.com/kornia/kornia/issues/4929>`_), and ``.to()`` a real dtype breaks the ``So2``
-          rotation (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
+        - ``hat`` returns the se(2) generator :math:`[[0, -\theta, v_x], [\theta, 0, v_y], [0, 0, 0]]` and ``vee``
+          reads it back, so ``matrix_exp(hat(v))`` equals ``exp(v).matrix()``.
+        - Module conversions follow :class:`~kornia.geometry.liegroup.So2`'s dtype policy for the rotation and
+          PyTorch's native policy for the translation. A bfloat16 cast changes the translation precision while
+          keeping the rotation's existing complex precision; both follow any requested device move.
 
     Example:
         >>> so2 = So2.identity(1)
@@ -250,9 +252,10 @@ class Se2(nn.Module):
 
     @staticmethod
     def hat(v: torch.Tensor) -> torch.Tensor:
-        """Convert a tangent vector to the matrix that :meth:`vee` inverts. Returns ``v.shape[:-1] + (3, 3)``.
+        r"""Convert a tangent vector to the se(2) generator. Returns ``v.shape[:-1] + (3, 3)``.
 
-        The matrix is not the se(2) generator (`#4929 <https://github.com/kornia/kornia/issues/4929>`_).
+        For :math:`v = (v_x, v_y, \theta)` the matrix is :math:`[[0, -\theta, v_x], [\theta, 0, v_y], [0, 0, 0]]`.
+        :meth:`vee` inverts it, and its matrix exponential is the pose :meth:`exp` returns.
 
         Args:
             v: vector of shape :math:`(B, 3)` or :math:`(3,)`.
@@ -260,9 +263,9 @@ class Se2(nn.Module):
         Example:
             >>> v = torch.tensor([1.0, 2.0, 0.5])
             >>> Se2.hat(v)
-            tensor([[0.0000, 0.5000, 0.0000],
-                    [0.5000, 0.0000, 0.0000],
-                    [1.0000, 2.0000, 0.0000]])
+            tensor([[ 0.0000, -0.5000,  1.0000],
+                    [ 0.5000,  0.0000,  2.0000],
+                    [ 0.0000,  0.0000,  0.0000]])
 
         """
         # check_v_shape
@@ -270,16 +273,16 @@ class Se2(nn.Module):
         is_single = KORNIA_CHECK_SHAPE(v, ["3"], raises=False)
         if not (is_batch or is_single):
             raise ValueError(f"Invalid input shape, we expect [B, 3], [3] Got: {v.shape}")
-        upsilon = torch.stack((v[..., 0], v[..., 1]), -1)
+        upsilon = v[..., :2]
         theta = v[..., 2]
-        col0 = torch.cat((So2.hat(theta), upsilon.unsqueeze(-2)), -2)
-        return F.pad(col0, (0, 1))
+        top = torch.cat((So2.hat(theta), upsilon.unsqueeze(-1)), -1)
+        return F.pad(top, (0, 0, 0, 1))  # zero bottom row
 
     @staticmethod
     def vee(omega: torch.Tensor) -> torch.Tensor:
         """Read the tangent vector back from a :meth:`hat` matrix.
 
-        It reads kornia's layout, not the se(2) generator (`#4929 <https://github.com/kornia/kornia/issues/4929>`_).
+        It reads the translation from the last column and the angle from the ``[1, 0]`` entry.
 
         Args:
             omega: 3x3-matrix built by :meth:`hat`, of shape :math:`(B, 3, 3)` or :math:`(3, 3)`.
@@ -299,7 +302,7 @@ class Se2(nn.Module):
         is_single = KORNIA_CHECK_SHAPE(omega, ["3", "3"], raises=False)
         if not (is_batch or is_single):
             raise ValueError(f"Invalid input size, we expect [B, 3, 3] or [3, 3]. Got: {omega.shape}")
-        upsilon = omega[..., 2, :2]
+        upsilon = omega[..., :2, 2]
         theta = So2.vee(omega[..., :2, :2])
         return torch.cat((upsilon, theta[..., None]), -1)
 

@@ -139,7 +139,7 @@ class Resize(GeometricAugmentationBase2D):
         size: Optional[Tuple[int, int]] = None,
     ) -> torch.Tensor:
         if not isinstance(size, tuple):
-            raise TypeError(f"Expected the size be a tuple. Gotcha {type(size)}")
+            raise TypeError(f"Expected the size be a tuple. Got {type(size)}")
 
         if not isinstance(transform, torch.Tensor):
             raise TypeError(f"Expected the `transform` be a torch.Tensor. Got {type(transform)}.")

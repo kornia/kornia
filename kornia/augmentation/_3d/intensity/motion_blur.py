@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.intensity.base import IntensityAugmentationBase3D
+from kornia.augmentation.utils import _check_filter_min_size
 from kornia.constants import BorderType, Resample
 from kornia.filters import motion_blur3d
 
@@ -75,6 +76,11 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
           likely, bounds included, so ``(3, 5)`` draws ``3`` and ``5`` and ``(3, 20)`` draws ``3, 5, ..., 19``.
           A range holding no odd size is rounded **up** out of the requested range instead, so ``(4, 4)`` draws
           ``5``; a reversed pair such as ``(20, 3)`` raises a ``ValueError`` at construction.
+        - a volume smaller than the kernel is accepted, down to ``1 x 1 x 1``, at the default
+          ``border_type="constant"`` and at ``"replicate"``. ``"reflect"`` needs each of depth, height and width
+          longer than the kernel radius, and ``"circular"`` at least that long; below that both raise a
+          ``ValueError`` naming the class, the drawn kernel, the axis and the input shape, as
+          :class:`~kornia.augmentation.RandomMotionBlur` does for an image.
         - this class fixes ``p_batch=1``; its ``p`` remains the per-sample gate.
 
     Examples:
@@ -150,11 +156,13 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
             kernel_size = int(params["ksize_factor"].unique().item())
         angle = params["angle_factor"]
         direction = params["direction_factor"]
+        border_type = self.flags["border_type"].name.lower()
+        _check_filter_min_size("RandomMotionBlur3D", input, kernel_size, border_type=border_type, spatial_dims=3)
         return motion_blur3d(
             input,
             kernel_size,
             angle,
             direction,
-            self.flags["border_type"].name.lower(),
+            border_type,
             self.flags["resample"].name.lower(),
         )
