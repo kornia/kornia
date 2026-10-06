@@ -790,11 +790,13 @@ class TestMatchSMNNBatched(BaseTester):
         ratios.sum().backward()
         assert torch.isfinite(a.grad).all() and torch.isfinite(b.grad).all()
 
-    def test_dynamo(self, device, dtype, torch_optimizer):
+    @pytest.mark.parametrize("masked", [False, True])
+    def test_dynamo(self, device, dtype, torch_optimizer, masked):
         a = torch.rand(2, 3, 4, device=device, dtype=dtype)
         b = torch.rand(2, 4, 4, device=device, dtype=dtype)
-        expected = matching.match_smnn_batched(a, b)
-        actual = torch_optimizer(matching.match_smnn_batched)(a, b)
+        kwargs = {"mask1": torch.tensor([[True, True, False], [True, True, True]], device=device)} if masked else {}
+        expected = matching.match_smnn_batched(a, b, **kwargs)
+        actual = torch_optimizer(matching.match_smnn_batched)(a, b, **kwargs)
         self.assert_close(actual[0], expected[0])
         self.assert_close(actual[1], expected[1])
 
@@ -850,6 +852,56 @@ class TestMatchSMNNBatched(BaseTester):
             original = torch.stack((valid_a[ix[:, 0]], valid_b[ix[:, 1]]), dim=1)
             self.assert_close(indices[indices[:, 0] == i, 1:], original)
             self.assert_close(ratios[indices[:, 0] == i], r)
+
+    @pytest.mark.parametrize("mask_first, mask_second", [(True, False), (False, True), (True, True)])
+    def test_masks_large_offset_padded_descriptors(self, device, mask_first, mask_second):
+        a = torch.full((1, 30, 2), -1e4, device=device)
+        b = torch.full((1, 31, 2), -2e4, device=device)
+        a[0, [1, 8, 29]] = torch.tensor([[10000.0, 10000.0], [10001.0, 10000.0], [10000.0, 10002.0]], device=device)
+        b[0, [3, 15, 30]] = a[0, [1, 8, 29]]
+        mask1 = torch.zeros(1, 30, dtype=torch.bool, device=device) if mask_first else None
+        mask2 = torch.zeros(1, 31, dtype=torch.bool, device=device) if mask_second else None
+        if mask1 is not None:
+            mask1[0, [1, 8, 29]] = True
+        if mask2 is not None:
+            mask2[0, [3, 15, 30]] = True
+        ratios, indices = matching.match_smnn_batched(a, b, mask1=mask1, mask2=mask2)
+        expected = torch.tensor([[0, 1, 3], [0, 8, 15], [0, 29, 30]], device=device)
+        self.assert_close(indices, expected)
+        self.assert_close(ratios, torch.zeros(3, 1, device=device))
+
+    @pytest.mark.parametrize("mask_first, mask_second", [(True, False), (False, True), (True, True)])
+    def test_nonfinite_padding_matches_compact_gradients(self, device, dtype, mask_first, mask_second):
+        a_padding = [float("nan"), float("inf")] if mask_first else [4.0, 0.0]
+        b_padding = [float("-inf"), float("nan")] if mask_second else [4.0, 0.0]
+        a = torch.tensor(
+            [[[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], a_padding]], device=device, dtype=dtype, requires_grad=True
+        )
+        b = torch.tensor(
+            [[[0.1, 0.0], [1.2, 0.0], [3.0, 0.0], b_padding]], device=device, dtype=dtype, requires_grad=True
+        )
+        mask1 = torch.tensor([[True, True, True, False]], device=device) if mask_first else None
+        mask2 = torch.tensor([[True, True, True, False]], device=device) if mask_second else None
+        ratios, indices = matching.match_smnn_batched(a, b, 1.0, mask1=mask1, mask2=mask2)
+        ratios.sum().backward()
+
+        valid_a = mask1[0].nonzero().flatten() if mask1 is not None else torch.arange(4, device=device)
+        valid_b = mask2[0].nonzero().flatten() if mask2 is not None else torch.arange(4, device=device)
+        compact_a = a.detach()[:, valid_a].clone().requires_grad_()
+        compact_b = b.detach()[:, valid_b].clone().requires_grad_()
+        reference_ratios, reference_indices = matching.match_smnn_batched(compact_a, compact_b, 1.0)
+        reference_ratios.sum().backward()
+
+        self.assert_close(ratios, reference_ratios)
+        self.assert_close(indices, reference_indices)
+        self.assert_close(a.grad[:, valid_a], compact_a.grad)
+        self.assert_close(b.grad[:, valid_b], compact_b.grad)
+        assert torch.isfinite(a.grad).all() and torch.isfinite(b.grad).all()
+        assert a.grad[:, valid_a].abs().sum() > 0 and b.grad[:, valid_b].abs().sum() > 0
+        if mask_first:
+            self.assert_close(a.grad[:, 3], torch.zeros_like(a.grad[:, 3]))
+        if mask_second:
+            self.assert_close(b.grad[:, 3], torch.zeros_like(b.grad[:, 3]))
 
     def test_provided_distance_matrix_and_ties(self, device, dtype):
         a = torch.zeros(2, 3, 4, device=device, dtype=dtype)

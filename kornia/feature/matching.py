@@ -292,6 +292,10 @@ def match_smnn_batched(
         descriptor counts and limit batch size when matching large collections.
         Half-precision descriptors use float32 distance computation before ratios
         are converted back to the input dtype.
+        Masked inputs use ``torch.cdist``'s direct Euclidean path to avoid the
+        cancellation possible in its matrix-multiplication implementation. This
+        can be slower for large masked descriptor sets; unmasked inputs retain
+        the default small-input direct path and large-input matrix implementation.
         As in :func:`match_smnn`, a zero second-neighbor distance produces an
         undefined ratio and that ambiguous match is rejected. Ties follow
         :func:`torch.topk` and do not have a guaranteed cross-device ordering.
@@ -323,13 +327,20 @@ def match_smnn_batched(
 
     valid1 = torch.ones((batch, n), dtype=torch.bool, device=desc1.device) if mask1 is None else mask1
     valid2 = torch.ones((batch, m), dtype=torch.bool, device=desc1.device) if mask2 is None else mask2
-    # Preserve cdist's direct small-input path: a norm-sum minus dot-product
-    # expansion loses nearby distances when descriptors have a large offset.
+    masked = mask1 is not None or mask2 is not None
     if dm is None:
-        work1 = desc1.float() if desc1.dtype in (torch.float16, torch.bfloat16) else desc1
-        work2 = desc2.float() if desc2.dtype in (torch.float16, torch.bfloat16) else desc2
+        # Exclude padded values from the calculation itself. Masking the resulting
+        # distances is too late for NaN/Inf padding, which can poison gradients.
+        work1 = desc1.masked_fill(~valid1.unsqueeze(-1), 0.0) if mask1 is not None else desc1
+        work2 = desc2.masked_fill(~valid2.unsqueeze(-1), 0.0) if mask2 is not None else desc2
+        work1 = work1.float() if work1.dtype in (torch.float16, torch.bfloat16) else work1
+        work2 = work2.float() if work2.dtype in (torch.float16, torch.bfloat16) else work2
         if not is_exporting() and not is_mps_tensor_safe(desc1):
-            distances = torch.cdist(work1, work2)
+            distances = torch.cdist(
+                work1,
+                work2,
+                compute_mode="donot_use_mm_for_euclid_dist" if masked else "use_mm_for_euclid_dist_if_necessary",
+            )
         else:
             # MPS/ONNX lack cdist. Accumulate direct differences in descriptor
             # chunks to bound temporary memory without looping over pairs.
