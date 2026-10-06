@@ -54,8 +54,8 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     Args:
         points1: A set of calibrated points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=5`.
-        weights: Not used, kept for compatibility: the five-point algorithm is a minimal solver and cannot use
-          weights.
+        weights: Not used, kept for compatibility, including for :math:`N > 5`. Positive weights leave the null
+          space of an exact five-point sample unchanged; for larger sets they can affect the least-squares fit.
 
     Returns:
         the computed essential matrix with shape :math:`(B, 10, 3, 3)`.
@@ -873,8 +873,9 @@ def find_essential(
     Args:
          points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
          points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=5`.
-         weights: Accepted with a shape of :math:`(B, N)` and ignored: the five-point algorithm is a minimal
-           solver and cannot use weights.
+         weights: Accepted with a shape of :math:`(B, N)` and ignored for compatibility, including for :math:`N > 5`.
+           Positive weights leave the null space of an exact five-point sample unchanged; for larger sets they can
+           affect the least-squares fit.
 
     Returns:
          the computed essential matrices with shape :math:`(B, 10, 3, 3)`.

@@ -1117,7 +1117,7 @@ class TestConventionEssential(BaseTester):
     def test_convention_find_essential_ignores_weights_4876(self, device, dtype):
         two_view = two_view_scene(device, dtype)
         _skip_find_essential(device, dtype)
-        # #4876: the five-point algorithm is a minimal solver and cannot use weights, so they are accepted and ignored:
+        # #4876: weights are intentionally ignored for compatibility, including for this non-minimal sample:
         # an outlier with weight 0, all-zero weights and all-one weights give the same output (NaN slots compared as 0).
         n1, n2 = _normalized(two_view["K1"], two_view["x1"]), _normalized(two_view["K2"], two_view["x2"])
         p1 = torch.cat([n1, torch.tensor([[[0.4, -0.3]]], device=device, dtype=dtype)], 1)
