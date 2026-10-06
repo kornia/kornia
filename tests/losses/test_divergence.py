@@ -21,6 +21,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import BaseError, ShapeError
 
 from testing.base import BaseTester
 
@@ -98,6 +99,36 @@ class TestDivergenceLoss(BaseTester):
         actual = kornia.losses.js_div_loss_2d(pred, target)
         expected = torch.tensor(expected).to(device, dtype)
         self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("loss", [kornia.losses.kl_div_loss_2d, kornia.losses.js_div_loss_2d])
+    def test_reduction_sum(self, device, dtype, loss):
+        pred = torch.full((2, 3, 2, 4), 0.125, device=device, dtype=dtype)
+        target = torch.zeros((2, 3, 2, 4), device=device, dtype=dtype)
+        target[..., 0, 0] = 1.0
+        unreduced = loss(pred, target, reduction="none")
+        assert unreduced.shape == (2, 3)
+        self.assert_close(loss(pred, target, reduction="sum"), unreduced.sum())
+        self.assert_close(loss(pred, target, reduction="mean"), unreduced.mean())
+
+    @pytest.mark.parametrize("loss", [kornia.losses.kl_div_loss_2d, kornia.losses.js_div_loss_2d])
+    @pytest.mark.parametrize("reduction", ["batchmean", "MEAN", "avg", None])
+    def test_exception_invalid_reduction(self, device, dtype, loss, reduction):
+        # An unknown reduction raises as in the sibling losses instead of returning the sum (#5535).
+        pred = torch.full((1, 1, 2, 4), 0.125, device=device, dtype=dtype)
+        with pytest.raises(NotImplementedError, match="Invalid reduction mode"):
+            loss(pred, pred, reduction=reduction)
+
+    @pytest.mark.parametrize("loss", [kornia.losses.kl_div_loss_2d, kornia.losses.js_div_loss_2d])
+    def test_exception_shape(self, device, dtype, loss):
+        # pred and target must be 4-D (B, N, H, W) of the same shape; a transposed pred was reinterpreted in the
+        # layout of target (#5535).
+        target = torch.full((2, 3, 4, 6), 1 / 24, device=device, dtype=dtype)
+        with pytest.raises(BaseError, match="pred and target shapes must be the same"):
+            loss(target.transpose(-2, -1).contiguous(), target)
+        with pytest.raises(BaseError, match="pred and target shapes must be the same"):
+            loss(target[:, :2], target)
+        with pytest.raises(ShapeError):
+            loss(target[0], target[0])
 
     def test_gradcheck_kl(self, device, dtype):
         dtype = torch.float64
