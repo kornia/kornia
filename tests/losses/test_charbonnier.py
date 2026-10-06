@@ -119,3 +119,51 @@ class TestCharbonnierLoss(BaseTester):
             expected = (torch.ones_like(img1, device=device, dtype=dtype) * 0.41421356237).sum()
 
         self.assert_close(actual, expected)
+
+
+class TestConventionsRobustLosses(BaseTester):
+    @pytest.mark.parametrize(
+        "loss_fn, module, expected",
+        [
+            pytest.param(
+                kornia.losses.charbonnier_loss,
+                kornia.losses.CharbonnierLoss,
+                [0.0, 0.1180339887498949, 1.2360679774997898],
+                id="charbonnier-alpha_1",
+            ),
+            pytest.param(
+                kornia.losses.cauchy_loss,
+                kornia.losses.CauchyLoss,
+                [0.0, 0.11778303565638346, 1.0986122886681098],
+                id="cauchy-alpha_0",
+            ),
+            pytest.param(
+                kornia.losses.geman_mcclure_loss,
+                kornia.losses.GemanMcclureLoss,
+                [0.0, 0.11764705882352944, 1.0],
+                id="geman_mcclure-alpha_-2",
+            ),
+            pytest.param(
+                kornia.losses.welsch_loss,
+                kornia.losses.WelschLoss,
+                [0.0, 0.1175030974154046, 0.8646647167633873],
+                id="welsch-alpha_-inf",
+            ),
+        ],
+    )
+    def test_convention_robust_loss_is_barron_loss_at_unit_scale(self, loss_fn, module, expected, device, dtype):
+        # Each loss is Barron's general loss rho(img1 - img2, alpha, c) at the fixed scale c = 1: Charbonnier alpha = 1,
+        # Cauchy alpha = 0, Geman-McClure alpha = -2, Welsch alpha = -inf. It is even in the residual, so symmetric in
+        # (img1, img2), and the default reduction 'none' keeps the input shape.
+        # Snippet used to generate expected (robust_loss_pytorch 0.0.2, git jonbarron/robust_loss_pytorch@0c25c59):
+        #   general.lossfun(torch.tensor([0.0, 0.5, 2.0], dtype=torch.float64), torch.tensor(alpha), torch.tensor(1.0))
+        img2 = torch.tensor([[0.25, -1.0, 1.5], [0.75, 0.125, -0.5]], device=device, dtype=dtype)
+        residual = torch.tensor([[0.0, 0.5, -2.0], [-0.5, 2.0, 0.0]], device=device, dtype=dtype)
+        img1 = img2 + residual
+        values = torch.tensor(expected, device=device, dtype=dtype)
+        expected_map = torch.stack([values, values[[1, 2, 0]]])
+        out = loss_fn(img1, img2)
+        assert out.shape == (2, 3)
+        self.assert_close(out, expected_map)
+        self.assert_close(loss_fn(img2, img1), expected_map)
+        self.assert_close(module()(img1, img2), expected_map)

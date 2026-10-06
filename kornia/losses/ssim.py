@@ -40,7 +40,15 @@ def ssim_loss(
 
       \text{loss}(x, y) = \frac{1 - \text{SSIM}(x, y)}{2}
 
-    See :meth:`~kornia.losses.ssim` for details about SSIM.
+    Convention:
+        - See the Convention block of :func:`~kornia.metrics.ssim` for the window, the border and ``max_val``.
+        - The per-pixel loss is the structural dissimilarity clamped to :math:`[0, 1]`,
+          ``clamp((1 - SSIM) / 2, 0, 1)``; :ref:`Losses and metrics <losses-metrics-conventions>` relates it to the
+          ``1 - SSIM`` loss. The clamp acts only where roundoff pushes the map outside :math:`[-1, 1]`, as for images
+          with a large constant offset.
+        - The default ``reduction='mean'`` averages every element; ``'none'`` keeps the shape of the SSIM map.
+        - Known defect: ``padding`` is not validated, as in :func:`~kornia.metrics.ssim`
+          (`#5537 <https://github.com/kornia/kornia/issues/5537>`_).
 
     Args:
         img1: the first input image with shape :math:`(B, C, H, W)`.
@@ -91,7 +99,8 @@ class SSIMLoss(nn.Module):
 
       \text{loss}(x, y) = \frac{1 - \text{SSIM}(x, y)}{2}
 
-    See :meth:`~kornia.losses.ssim_loss` for details about SSIM.
+    Convention:
+        See the Convention block of :func:`~kornia.losses.ssim_loss`.
 
     Args:
         window_size: the size of the gaussian kernel to smooth the images.

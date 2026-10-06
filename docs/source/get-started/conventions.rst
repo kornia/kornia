@@ -730,6 +730,125 @@ The edge-preserving filters, the sharpening and the blur pools against their ref
   samples differently: it zero-pads and keeps every second pixel from index 0, :math:`\lceil H / 2 \rceil` rows,
   where ``pyrdown`` reflects the border and interpolates between pixels, :math:`\lfloor H / 2 \rfloor` rows.
 
+.. _losses-metrics-conventions:
+
+Losses and metrics
+------------------
+
+:doc:`kornia.losses </losses>` and :doc:`kornia.metrics </metrics>` take the prediction first and the target second,
+as torch's losses do. The order does not change the value of the symmetric functions, among them SSIM, MS-SSIM, PSNR,
+the robust losses and the Jensen-Shannon divergence, but it does for others: :func:`~kornia.losses.kl_div_loss_2d` takes
+``pred`` first and returns :math:`\mathrm{KL}(\text{target} \,\|\, \text{pred})`, and
+:func:`~kornia.losses.inverse_depth_smoothness_loss` takes the inverse depth it penalises first and the image that
+weights it second.
+
+What the families take:
+
+- :func:`~kornia.metrics.ssim`, :func:`~kornia.metrics.ssim3d`, :func:`~kornia.metrics.psnr`, the SSIM losses and
+  :class:`~kornia.losses.MS_SSIMLoss` compare images with values in ``[0, L]``, where ``L`` is the data range:
+  ``max_val`` everywhere except in :class:`~kornia.losses.MS_SSIMLoss`, which calls it ``data_range`` as scikit-image,
+  pytorch-msssim and torchmetrics do. ``L`` sets the SSIM constants :math:`C_1 = (0.01 L)^2` and
+  :math:`C_2 = (0.03 L)^2` and the PSNR peak :math:`\text{MAX}_I`. Pixel values are never rescaled, so images in
+  ``[0, 255]`` need ``max_val=255.0`` or ``data_range=255.0``. The default is ``1.0`` (``psnr``, ``psnr_loss`` and
+  ``PSNRLoss`` have none), where pytorch-msssim defaults to 255.
+- The robust losses take two tensors of the same, arbitrary shape; the residual is in the units of the data.
+- :func:`~kornia.losses.total_variation` takes one image ``(*, H, W)``.
+- :func:`~kornia.losses.kl_div_loss_2d` and :func:`~kornia.losses.js_div_loss_2d` take probabilities: every
+  ``(b, n)`` slice of a ``(B, N, H, W)`` input is a distribution over ``H x W``.
+- The losses on the segmentation page take raw logits (see `Dense-prediction losses`_) and
+  :class:`~kornia.losses.HausdorffERLoss` takes probabilities; the mutual-information losses take intensities of any
+  range, which they normalise per sample.
+
+Where a function takes ``reduction``, the names are torch's: ``'none'``, ``'mean'`` and ``'sum'``. What is averaged or
+added and the default differ between families, so each Convention block states both; the table lists the defaults. A
+string outside a function's vocabulary raises, ``BaseError`` from the robust losses and
+:func:`~kornia.losses.total_variation` and ``NotImplementedError`` from the others, except in the divergences, which
+silently return the ``'sum'`` (`#5535 <https://github.com/kornia/kornia/issues/5535>`_).
+
+.. list-table::
+   :header-rows: 1
+
+   * - functions
+     - default ``reduction``
+     - default output
+   * - :func:`~kornia.losses.charbonnier_loss`, :func:`~kornia.losses.cauchy_loss`,
+       :func:`~kornia.losses.geman_mcclure_loss`, :func:`~kornia.losses.welsch_loss`,
+       :func:`~kornia.losses.focal_loss`, :func:`~kornia.losses.binary_focal_loss_with_logits`
+     - ``'none'``
+     - one value per element, in the shape of the prediction
+   * - :func:`~kornia.losses.ssim_loss`, :func:`~kornia.losses.ssim3d_loss`, :class:`~kornia.losses.MS_SSIMLoss`,
+       :func:`~kornia.losses.kl_div_loss_2d`, :func:`~kornia.losses.js_div_loss_2d`,
+       :class:`~kornia.losses.HausdorffERLoss`, :class:`~kornia.losses.HausdorffERLoss3D`,
+       :func:`~kornia.metrics.aepe`, :func:`~kornia.metrics.mean_absolute_disparity_error` and the other disparity
+       metrics
+     - ``'mean'``
+     - a scalar
+   * - :func:`~kornia.losses.total_variation`
+     - ``'sum'``, with ``'mean'`` the only alternative
+     - one value per leading index, ``(*,)``: ``(B, C)`` for an image batch
+   * - :func:`~kornia.losses.dice_loss`, :func:`~kornia.losses.tversky_loss`, :func:`~kornia.losses.lovasz_hinge_loss`,
+       :func:`~kornia.losses.lovasz_softmax_loss`, :func:`~kornia.metrics.psnr`, :func:`~kornia.losses.psnr_loss`,
+       :func:`~kornia.losses.inverse_depth_smoothness_loss`
+     - no ``reduction``
+     - a scalar
+   * - ``mutual_information_loss`` and the other mutual-information losses
+     - no ``reduction``
+     - one value per sample
+   * - :func:`~kornia.metrics.ssim`, :func:`~kornia.metrics.ssim3d` and the other metrics
+     - no ``reduction``
+     - stated by each function
+
+The modules take the ``reduction`` of their functions, except :class:`~kornia.losses.TotalVariation`, which has none
+and always sums.
+
+Porting from other libraries:
+
+- ``ssim(x, y, 11, max_val=L, padding='valid').mean()`` for one image equals scikit-image's
+  ``structural_similarity(x, y, gaussian_weights=True, sigma=1.5, use_sample_covariance=False, data_range=L,
+  channel_axis=-1)`` on the ``(H, W, C)`` arrays, and over a batch it matches pytorch-msssim's
+  ``ssim(x, y, data_range=L)``. scikit-image's defaults, a 7 x 7 uniform window with the sample covariance, give
+  another value. torchmetrics' ``structural_similarity_index_measure(x, y, data_range=L)`` equals the mean of the
+  ``'same'`` map instead.
+- :func:`~kornia.losses.ssim_loss` is the structural dissimilarity ``(1 - SSIM) / 2``, clamped to ``[0, 1]``. The
+  ``1 - SSIM`` loss is twice that: ``1 - ssim(x, y, w).mean()`` equals ``2 * ssim_loss(x, y, w)`` wherever the clamp
+  does not act. :func:`~kornia.losses.ssim3d_loss` returns ``1 - SSIM`` instead, a known defect
+  (`#5533 <https://github.com/kornia/kornia/issues/5533>`_).
+- :class:`~kornia.losses.MS_SSIMLoss` filters with one Gaussian per entry of ``sigmas`` at full resolution, the
+  approximation of Zhao et al.; pytorch-msssim's ``ms_ssim`` and torchmetrics'
+  ``multiscale_structural_similarity_index_measure`` downsample through a dyadic pyramid, so ``1 - ms_ssim(x, y)`` is
+  not ``MS_SSIMLoss(alpha=1.0, compensation=1.0)(x, y)``.
+- :func:`~kornia.metrics.psnr` of a batch pools one MSE over all its images: it equals scikit-image's
+  ``peak_signal_noise_ratio(x, y, data_range=L)`` on the whole batch array and torchmetrics'
+  ``peak_signal_noise_ratio(x, y, data_range=L)`` at its default ``dim=None``. The mean of per-image PSNRs is
+  scikit-image's value averaged over the images, or torchmetrics' with ``dim=(1, 2, 3)``.
+- ``general.lossfun(x - y, alpha, scale)`` of Barron's ``robust_loss_pytorch`` equals the kornia robust loss of
+  ``x / scale`` and ``y / scale`` with the same ``alpha``: 1 for :func:`~kornia.losses.charbonnier_loss`, 0 for
+  :func:`~kornia.losses.cauchy_loss`, -2 for :func:`~kornia.losses.geman_mcclure_loss` and ``-inf`` for
+  :func:`~kornia.losses.welsch_loss`.
+- torchmetrics' ``total_variation(img, reduction='none')`` equals ``total_variation(img).sum(-1)`` for a
+  ``(B, C, H, W)`` batch. Its ``'mean'`` averages those per-image sums over the batch, where the ``'mean'`` of
+  :func:`~kornia.losses.total_variation` averages each difference term over its own count.
+- ``kl_div_loss_2d(pred, target)`` equals ``F.kl_div(pred.log(), target, reduction='batchmean')`` on the
+  ``(B * N, H * W)`` reshape, ``scipy.stats.entropy(target, pred)`` on every slice and torchmetrics'
+  ``kl_divergence(target, pred)`` on the reshape; torch's ``reduction='mean'`` divides by every element instead.
+  :func:`~kornia.losses.js_div_loss_2d` is ``scipy.spatial.distance.jensenshannon(pred, target) ** 2`` with scipy's
+  default natural logarithm.
+- :func:`~kornia.losses.inverse_depth_smoothness_loss` does not normalise the inverse depth, where Monodepth2 divides
+  the disparity by its mean before its smoothness term: pass ``idepth / idepth.mean((2, 3), keepdim=True)`` to port it.
+
+Dense-prediction losses
+^^^^^^^^^^^^^^^^^^^^^^^
+
+The losses on the :doc:`segmentation page </losses.segmentation>` take raw logits, not probabilities;
+:func:`~kornia.losses.focal_loss` documents the multi-class input, with the classes on axis 1 and an integer label map
+as the target.
+
+Task metrics
+^^^^^^^^^^^^
+
+:func:`~kornia.metrics.confusion_matrix` puts the target class on the rows and the predicted class on the columns, and
+:func:`~kornia.metrics.mean_iou` reads its per-class IoU from that matrix.
+
 .. _two-view-conventions:
 
 Two-view geometry

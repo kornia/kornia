@@ -66,6 +66,20 @@ def ssim3d(
       - :math:`L` is the dynamic range of the pixel-values (typically this is
         :math:`2^{\#\text{bits per pixel}}-1`).
 
+    Convention:
+        - See the Convention block of :func:`~kornia.metrics.ssim` for the window and ``max_val``; ``ssim3d`` applies
+          them to :math:`(D, H, W)` with an isotropic Gaussian window, and ``'valid'`` crops every axis. Its ``'same'``
+          border differs (below).
+        - Known defects:
+
+          - the ``'same'`` border is replicated where :func:`~kornia.metrics.ssim` reflects it, so a volume of identical
+            slices does not reproduce the 2-D map along its border
+            (`#5534 <https://github.com/kornia/kornia/issues/5534>`_).
+          - the window is built in float32 whatever the input dtype, so a float64 map carries the float32 rounding of
+            the window (`#5534 <https://github.com/kornia/kornia/issues/5534>`_).
+          - ``padding`` is not validated, as in :func:`~kornia.metrics.ssim`
+            (`#5537 <https://github.com/kornia/kornia/issues/5537>`_).
+
     Args:
         img1: the first input image with shape :math:`(B, C, D, H, W)`.
         img2: the second input image with shape :math:`(B, C, D, H, W)`.
@@ -76,7 +90,8 @@ def ssim3d(
          area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
     Returns:
-       The ssim index map with shape :math:`(B, C, D, H, W)`.
+       The ssim index map with shape :math:`(B, C, D, H, W)`, or :math:`(B, C, D - 2p, H - 2p, W - 2p)` with
+       ``p = window_size // 2`` under ``padding='valid'``.
 
     Note:
         Integer images are converted to float32 before computing the local moments.
@@ -178,6 +193,9 @@ class SSIM3D(nn.Module):
       - :math:`L` is the dynamic range of the pixel-values (typically this is
         :math:`2^{\#\text{bits per pixel}}-1`).
 
+    Convention:
+        See the Convention block of :func:`~kornia.metrics.ssim3d`.
+
     Args:
         window_size: the size of the gaussian kernel to smooth the images.
         max_val: the dynamic range of the images.
@@ -188,7 +206,8 @@ class SSIM3D(nn.Module):
     Shape:
         - Input: :math:`(B, C, D, H, W)`.
         - Target :math:`(B, C, D, H, W)`.
-        - Output: :math:`(B, C, D, H, W)`.
+        - Output: :math:`(B, C, D, H, W)`, or :math:`(B, C, D - 2p, H - 2p, W - 2p)` with ``p = window_size // 2``
+          under ``padding='valid'``.
 
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 5, 5)
@@ -213,7 +232,7 @@ class SSIM3D(nn.Module):
             img2: Second volume tensor with the same shape as ``img1``.
 
         Returns:
-            Tensor with shape :math:`(B, C, D, H, W)` containing local
+            Tensor with shape :math:`(B, C, D, H, W)`, cropped under ``padding='valid'``, containing local
             structural similarity values across depth, height, and width.
         """
         return ssim3d(img1, img2, self.window_size, self.max_val, self.eps, self.padding)

@@ -34,13 +34,23 @@ def ssim3d_loss(
 ) -> torch.Tensor:
     r"""Compute a loss based on the SSIM measurement.
 
-    The loss, or the Structural dissimilarity (DSSIM) is described as:
+    The loss is one minus the SSIM index of each voxel:
 
     .. math::
 
-      \text{loss}(x, y) = \frac{1 - \text{SSIM}(x, y)}{2}
+      \text{loss}(x, y) = 1 - \text{SSIM}(x, y)
 
-    See :meth:`~kornia.losses.ssim` for details about SSIM.
+    Convention:
+        - See the Convention block of :func:`~kornia.metrics.ssim3d` for the window, the border and ``max_val``.
+        - The default ``reduction='mean'`` averages every element; ``'none'`` keeps the shape of the SSIM map.
+        - Known defects:
+
+          - the loss is ``1 - SSIM``, not the ``(1 - SSIM) / 2`` of :func:`~kornia.losses.ssim_loss`, and it is not
+            clamped, so for the same SSIM map it is twice that loss and exceeds 1 for anti-correlated volumes
+            (`#5533 <https://github.com/kornia/kornia/issues/5533>`_).
+          - those of :func:`~kornia.metrics.ssim3d`: its replicated border and float32 window
+            (`#5534 <https://github.com/kornia/kornia/issues/5534>`_) and its unvalidated ``padding``
+            (`#5537 <https://github.com/kornia/kornia/issues/5537>`_).
 
     Args:
         img1: the first input image with shape :math:`(B, C, D, H, W)`.
@@ -85,13 +95,16 @@ def ssim3d_loss(
 class SSIM3DLoss(nn.Module):
     r"""Create a criterion that computes a loss based on the SSIM measurement.
 
-    The loss, or the Structural dissimilarity (DSSIM) is described as:
+    The loss is one minus the SSIM index of each voxel:
 
     .. math::
 
-      \text{loss}(x, y) = \frac{1 - \text{SSIM}(x, y)}{2}
+      \text{loss}(x, y) = 1 - \text{SSIM}(x, y)
 
-    See :meth:`~kornia.losses.ssim_loss` for details about SSIM.
+    Convention:
+        - See the Convention block of :func:`~kornia.losses.ssim3d_loss`.
+        - Known defect: the loss is ``1 - SSIM``, not the ``(1 - SSIM) / 2`` of :class:`~kornia.losses.SSIMLoss`,
+          and it is not clamped (`#5533 <https://github.com/kornia/kornia/issues/5533>`_).
 
     Args:
         window_size: the size of the gaussian kernel to smooth the images.

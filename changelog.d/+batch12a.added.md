@@ -1,0 +1,1 @@
+Convention blocks for the image-quality and regression losses and metrics (`ssim`, `ssim3d`, `psnr`, the SSIM / MS-SSIM / PSNR losses, the Charbonnier / Cauchy / Geman–McClure / Welsch losses, total variation, inverse-depth smoothness and the KL / JS divergences), with `test_convention_*` / `test_wart_*` pins and a new "Losses and metrics" section on the conventions page.

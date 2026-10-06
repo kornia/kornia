@@ -49,6 +49,17 @@ def _reduce_loss(losses: torch.Tensor, reduction: str) -> torch.Tensor:
 def js_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> torch.Tensor:
     r"""Calculate the Jensen-Shannon divergence loss between heatmaps.
 
+    Convention:
+        - The divergence is :math:`\frac{1}{2} \mathrm{KL}(P \,\|\, M) + \frac{1}{2} \mathrm{KL}(Q \,\|\, M)`
+          with :math:`M = (P + Q) / 2`, in nats: symmetric in ``pred`` and ``target``, and at most :math:`\ln 2`. The
+          inputs and the reductions are those of :func:`~kornia.losses.kl_div_loss_2d`; see its Convention block.
+        - Known defects:
+
+          - any other ``reduction``, torch's ``'batchmean'`` and ``None`` included, silently returns the ``'sum'``
+            (`#5535 <https://github.com/kornia/kornia/issues/5535>`_).
+          - a cell that is zero in both inputs gives NaN instead of 0, so ``js_div_loss_2d(p, p)`` is NaN for any
+            ``p`` with a zero cell (`#5554 <https://github.com/kornia/kornia/issues/5554>`_).
+
     Args:
         pred: the input torch.Tensor with shape :math:`(B, N, H, W)`.
         target: the target torch.Tensor with shape :math:`(B, N, H, W)`.
@@ -70,6 +81,25 @@ def js_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "m
 
 def kl_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> torch.Tensor:
     r"""Calculate the Kullback-Leibler divergence loss between heatmaps.
+
+    Convention:
+        - ``kl_div_loss_2d(pred, target)`` is :math:`\mathrm{KL}(\text{target} \,\|\, \text{pred})`, the sum of
+          ``target * (log(target) - log(pred))`` over :math:`H \times W` for every :math:`(b, n)`: the order of torch's
+          ``F.kl_div(pred.log(), target)``. :ref:`Losses and metrics <losses-metrics-conventions>` maps it onto torch,
+          scipy and torchmetrics.
+        - The inputs are probabilities, each :math:`(b, n)` slice a distribution over :math:`H \times W`. The log is
+          taken inside, so log-probabilities give NaN, and nothing is normalised. A zero in ``pred`` where ``target``
+          is positive gives ``inf``.
+        - ``reduction='none'`` returns :math:`(B, N)`; the default ``'mean'`` averages over the :math:`B N`
+          distributions and ``'sum'`` adds them.
+        - Known defects:
+
+          - any other ``reduction``, torch's ``'batchmean'`` and ``None`` included, silently returns the ``'sum'``
+            (`#5535 <https://github.com/kornia/kornia/issues/5535>`_).
+          - the shapes are not validated: a ``pred`` with :math:`H` and :math:`W` swapped is read in the layout of
+            ``target`` (`#5535 <https://github.com/kornia/kornia/issues/5535>`_).
+          - a cell that is zero in both ``pred`` and ``target`` gives NaN instead of 0, so ``kl_div_loss_2d(p, p)`` is
+            NaN for any ``p`` with a zero cell (`#5554 <https://github.com/kornia/kornia/issues/5554>`_).
 
     Args:
         pred: the input torch.Tensor with shape :math:`(B, N, H, W)`.

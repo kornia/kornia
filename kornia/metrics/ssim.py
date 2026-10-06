@@ -56,6 +56,25 @@ def ssim(
       - :math:`L` is the dynamic range of the pixel-values (typically this is
         :math:`2^{\#\text{bits per pixel}}-1`).
 
+    Convention:
+        - The window is a sampled Gaussian with :math:`\sigma = 1.5` whatever ``window_size``, which sets only the
+          number of taps and must be odd.
+        - ``padding='same'`` pads with ``'reflect'``, the torch mode that :ref:`Filtering <filtering-conventions>` maps
+          onto OpenCV and scipy, and keeps :math:`(H, W)`; ``'valid'`` drops ``window_size // 2`` pixels on every side
+          and equals the ``'same'`` map cropped. Sizes are not checked: ``'same'`` needs ``H`` and ``W`` larger than
+          ``window_size // 2``.
+        - ``max_val`` is the data range :math:`L`, a Python ``float``: :math:`c_1 = (0.01 L)^2` and
+          :math:`c_2 = (0.03 L)^2`. Pixel values are not rescaled, so images in ``[0, 255]`` need ``max_val=255.0``.
+          ``eps`` is added to the denominator: two identical flat images of value :math:`\mu` score
+          :math:`1 - \text{eps} / ((2\mu^2 + c_1)\, c_2 + \text{eps})`, which is below the float32 roundoff except for
+          images near 0 at a small ``max_val``.
+        - The map is not reduced: one value per pixel, channel and sample, symmetric in ``img1`` and ``img2``, in
+          :math:`[-1, 1]` in exact arithmetic and negative for anti-correlated content.
+          :ref:`Losses and metrics <losses-metrics-conventions>` maps its mean onto scikit-image, pytorch-msssim and
+          torchmetrics.
+        - Known defect: ``padding`` is not validated, so any string other than ``'valid'``, ``'VALID'`` included,
+          returns the ``'same'`` map (`#5537 <https://github.com/kornia/kornia/issues/5537>`_).
+
     Args:
         img1: the first input image with shape :math:`(B, C, H, W)`.
         img2: the second input image with shape :math:`(B, C, H, W)`.
@@ -66,7 +85,8 @@ def ssim(
          area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
     Returns:
-       The ssim index map with shape :math:`(B, C, H, W)`.
+       The ssim index map with shape :math:`(B, C, H, W)`, or :math:`(B, C, H - 2p, W - 2p)` with
+       ``p = window_size // 2`` under ``padding='valid'``.
 
     Note:
         Integer images are converted to float32 before computing the local moments.
@@ -177,6 +197,9 @@ class SSIM(nn.Module):
       - :math:`L` is the dynamic range of the pixel-values (typically this is
         :math:`2^{\#\text{bits per pixel}}-1`).
 
+    Convention:
+        See the Convention block of :func:`~kornia.metrics.ssim`.
+
     Args:
         window_size: the size of the gaussian kernel to smooth the images.
         max_val: the dynamic range of the images.
@@ -187,7 +210,8 @@ class SSIM(nn.Module):
     Shape:
         - Input: :math:`(B, C, H, W)`.
         - Target :math:`(B, C, H, W)`.
-        - Output: :math:`(B, C, H, W)`.
+        - Output: :math:`(B, C, H, W)`, or :math:`(B, C, H - 2p, W - 2p)` with ``p = window_size // 2`` under
+          ``padding='valid'``.
 
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 5)
@@ -212,7 +236,7 @@ class SSIM(nn.Module):
             img2: Second image tensor with the same shape as ``img1``.
 
         Returns:
-            Tensor with shape :math:`(B, C, H, W)` containing local structural
+            Tensor with shape :math:`(B, C, H, W)`, cropped under ``padding='valid'``, containing local structural
             similarity values for each channel and spatial location.
         """
         return ssim(img1, img2, self.window_size, self.max_val, self.eps, self.padding)
