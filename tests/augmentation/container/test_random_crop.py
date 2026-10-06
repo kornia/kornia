@@ -246,7 +246,11 @@ class TestRandomCropAnnotations(BaseTester):
         )
         mixed = self.fixed_params(seq, inputs[0].shape, [0.0, 1.0])
         output = seq(*inputs, params=deepcopy(mixed))
+        forward_output = [value.clone() for value in output]
         restored = seq.inverse(*output, params=deepcopy(mixed))
+        # The inverse writes the applied rows into a copy, not into the forward output it was given.
+        for actual, before in zip(output, forward_output):
+            self.assert_close(actual, before, rtol=0, atol=0)
         whole = self.fixed_params(seq, inputs[0].shape, [1.0, 1.0])
         reference = seq.inverse(*seq(*inputs, params=deepcopy(whole)), params=deepcopy(whole))
         for actual, skipped, applied in zip(restored, inputs, reference):
