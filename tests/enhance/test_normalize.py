@@ -600,7 +600,7 @@ class TestNormalizeMinMax(BaseTester):
 
     @pytest.mark.parametrize("shape", [(), (3,), (0,)])
     def test_invalid_rank(self, shape, device, dtype):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="at least two dimensions"):
             kornia.enhance.normalize_min_max(torch.empty(shape, device=device, dtype=dtype))
 
     @pytest.mark.parametrize("kwargs", [{"min_val": 0}, {"max_val": 1}])

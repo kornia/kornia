@@ -432,7 +432,7 @@ def normalize_min_max(
         raise TypeError(f"data should be a torch.Tensor. Got: {type(input)}.")
 
     if input.ndim < 2:
-        raise ValueError(f"Input size must be a two, three or four dimensional tensor. Got {input.shape}")
+        raise ValueError(f"Input tensor must have at least two dimensions. Got {input.shape}")
 
     if 0 in input.shape[-3:]:
         raise ValueError("Invalid input tensor, channel and spatial dimensions must be nonzero.")
