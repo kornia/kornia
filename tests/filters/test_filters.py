@@ -2379,32 +2379,35 @@ class TestConventionsKernels(BaseTester):
             # the first-order taps are +-0.5
             assert bool((get_spatial_gradient_kernel3d("diff", 1, device=device, dtype=torch.int32) == 0).all())
 
-    def test_wart_motion_kernel2d_nearest_ties_change_with_a_full_turn_5181(self):
-        """At a sampling-tie angle roundoff picks the tap: 30 and -330 degrees build other kernels (#5181)."""
+    @pytest.mark.parametrize("kernel_size", [5, 7])
+    def test_convention_motion_kernel2d_nearest_ties_ignore_a_full_turn_5181(self, kernel_size):
+        """At a sampling-tie angle the tap is picked from the angle modulo 360: 30 and -330 degrees agree (#5181)."""
         # a float angle builds the kernel on the CPU in float32, whatever the test device
-        difference = get_motion_kernel2d(5, 30.0, 1.0) - get_motion_kernel2d(5, -330.0, 1.0)
-        assert float(difference.abs().max()) > 0.1
-
-    def test_wart_motion_kernel2d_on_mps_differs_from_cpu_for_some_angles_5181(self, device, dtype):
-        """A tensor angle builds get_motion_kernel2d on its own device, and MPS gives other kernels (#5181)."""
-        if device.type != "mps":
-            pytest.skip("#5181 compares the kernel built on MPS with the one built on the CPU")
-        _kernel_guard("get_motion_kernel2d", torch.device("cpu"), dtype)
-        # every whole degree, including 120 and 210
-        angles = torch.arange(0.0, 360.0, 1.0, dtype=dtype)
+        self.assert_close(get_motion_kernel2d(5, 30.0, 1.0), get_motion_kernel2d(5, -330.0, 1.0), rtol=0, atol=0)
+        # every whole degree, which includes the ties at 60, 120, 210, 240 and 300 degrees
+        angles = torch.arange(0.0, 360.0, 1.0)
         directions = torch.full_like(angles, 0.3)
-        on_cpu = get_motion_kernel2d(7, angles, directions)
-        on_mps = get_motion_kernel2d(7, angles.to(device), directions.to(device)).cpu()
-        # a sampling tie rounded the other way moves a tap weight (about 0.18), far beyond half-precision roundoff
-        differing = (on_mps.float() - on_cpu.float()).abs().flatten(1).amax(1) > 0.05
-        if not bool(differing.any()):
-            pytest.skip("this MPS backend rounds the sampling ties like the CPU (#5181)")
-        # a Python-float angle builds the kernel on the CPU in float32, equal to the CPU tensor-angle kernel
-        on_cpu_f32 = get_motion_kernel2d(7, angles.float(), directions.float())
-        for index in differing.nonzero().flatten().tolist():
-            from_float = get_motion_kernel2d(7, float(angles[index]), float(directions[index]))
-            assert from_float.device.type == "cpu"
-            self.assert_close(from_float[0], on_cpu_f32[index])
+        for turns in (-2, -1, 1):
+            self.assert_close(
+                get_motion_kernel2d(kernel_size, angles + 360.0 * turns, directions),
+                get_motion_kernel2d(kernel_size, angles, directions),
+                rtol=0,
+                atol=0,
+            )
+
+    def test_convention_motion_kernel2d_same_taps_for_every_device_and_dtype_5181(self, device, dtype):
+        """A tensor angle on any device and in any dtype picks the taps of the float64 CPU kernel (#5181)."""
+        _kernel_guard("get_motion_kernel2d", device, dtype)
+        # every whole degree, which includes the ties at 120, 150, 210 and 300 degrees; the reference takes the
+        # angles as this dtype holds them (bfloat16 rounds the degrees above 256)
+        angles = torch.arange(0.0, 360.0, 1.0, device=device, dtype=dtype)
+        directions = torch.full_like(angles, 0.3)
+        reference = get_motion_kernel2d(7, angles.cpu().double(), directions.cpu().double())
+        kernel = get_motion_kernel2d(7, angles, directions)
+        assert kernel.device == device
+        assert kernel.dtype == dtype
+        # a tie broken the other way moves a tap weight by about 0.18, far beyond half-precision roundoff
+        self.assert_close(kernel.cpu().double(), reference, rtol=0, atol=1e-2)
 
     @pytest.mark.parametrize("ndim", [1, 2])
     def test_convention_box_kernel_is_a_contiguous_tensor_5160(self, ndim, device, dtype):

@@ -1,0 +1,1 @@
+`get_motion_kernel2d` with `mode="nearest"` now picks the same taps at sampling-tie angles (such as 30 or 120 degrees) for every dtype, device and full turn added to the angle, so `motion_blur` with a tensor angle on MPS matches the CPU.

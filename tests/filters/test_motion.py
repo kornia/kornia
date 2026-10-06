@@ -215,7 +215,7 @@ class TestMotionBlur(BaseTester):
     @pytest.mark.parametrize("angle", [60.0, 120.0, 150.0])
     def test_python_float_parameters_match_cpu_tensor_kernel(self, angle, device, dtype):
         # Python-number parameters build the kernel on the CPU in the input dtype, never below float32: a half
-        # kernel moves the nearest samples at these angles, and an MPS kernel differs at 120 degrees (#5181).
+        # kernel moves the nearest samples at these angles.
         kernel_dtype = torch.promote_types(dtype, torch.float32)
         img = torch.rand(1, 2, 9, 9, device=device, dtype=dtype)
         kernel = get_motion_kernel2d(

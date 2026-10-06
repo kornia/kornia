@@ -47,9 +47,9 @@ def get_motion_kernel2d(
         - A floating tensor ``angle`` of shape :math:`(B,)` gives :math:`(B, k, k)` in its dtype. A tensor
           ``direction`` must match it in length, dtype and device; a float ``direction`` is not broadcast, so it
           raises for ``B > 1``.
-        - Known defect: with ``'nearest'``, at angles where the rotated line falls on sampling ties, such as 30 or
-          60 degrees, roundoff breaks the ties, so the kernel can change with the dtype, the device or a full turn
-          added to the angle; on MPS a tensor angle and the same float angle can blur differently
+        - With ``'nearest'``, the tap each pixel copies is picked in float64 on the CPU from the angle reduced
+          modulo 360, so at angles where the rotated line falls between two taps, such as 30 or 60 degrees, the
+          kernel is the same for every dtype, device and full turn added to the angle
           (`#5181 <https://github.com/kornia/kornia/issues/5181>`_).
 
     Args:
@@ -120,9 +120,32 @@ def get_motion_kernel2d(
     kernel = kernel[:, None, ...]
 
     # rotate (counterclockwise) kernel by given angle
-    kernel = rotate(kernel, angle, mode=mode, align_corners=True)
-    kernel = kernel[:, 0]
+    if mode == "nearest":
+        kernel = _rotate_nearest(kernel[:, 0], angle)
+    else:
+        kernel = rotate(kernel, angle, mode=mode, align_corners=True)
+        kernel = kernel[:, 0]
     return kernel / kernel.sum(dim=(1, 2), keepdim=True)
+
+
+def _rotate_nearest(kernel: torch.Tensor, angle: torch.Tensor) -> torch.Tensor:
+    """Rotate square kernels :math:`(B, k, k)` counter-clockwise by ``angle`` degrees with nearest sampling.
+
+    The rotated line can fall exactly between two taps, and roundoff then decides which one is copied. Picking the
+    source tap of every pixel once, in float64 on the CPU with the angle reduced modulo 360, makes that choice the
+    same for every dtype, device and full turn (#5181). The weights are then gathered in the kernel's own dtype and
+    device, so gradients still reach them.
+    """
+    batch_size, kernel_size = kernel.shape[0], kernel.shape[-1]
+    # every pixel holds its own flat index plus one, so the zero padding of the rotation marks "outside the kernel"
+    taps = torch.arange(1, kernel_size * kernel_size + 1, dtype=torch.float64)
+    taps = taps.view(1, 1, kernel_size, kernel_size).repeat(batch_size, 1, 1, 1)
+    # move first, then cast: on MPS a single .to(device="cpu", dtype=torch.float64) returns zeros (torch 2.14)
+    turned = angle.detach().cpu().to(torch.float64) % 360.0
+    source = rotate(taps, turned, mode="nearest", align_corners=True)
+    source = source.round().long().flatten(1).to(kernel.device)
+    weights = F.pad(kernel.flatten(1), [1, 0])
+    return weights.gather(1, source).view(batch_size, kernel_size, kernel_size)
 
 
 def get_motion_kernel3d(
