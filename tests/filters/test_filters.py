@@ -2435,6 +2435,23 @@ class TestConventionsKernels(BaseTester):
         get_motion_kernel2d(5, angle, torch.tensor([0.3, -0.3], device=device, dtype=dtype)).sum().backward()
         self.assert_close(angle.grad, torch.zeros_like(angle))
 
+    @pytest.mark.parametrize("kernel_size", [3, 5, 7])
+    def test_convention_motion_kernel2d_nearest_next_to_a_tie_is_rotate_5181(self, kernel_size, device, dtype):
+        """1e-4 degrees from a tie, the taps are rotate()'s: only an exact tie is snapped (#5181)."""
+        from kornia.geometry.transform import rotate
+
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("an angle 1e-4 degrees from a tie is not representable in half precision")
+        ties = torch.tensor([30.0, 60.0, 120.0, 150.0, 210.0, 240.0, 300.0, 330.0], dtype=torch.float64)
+        angle = torch.cat([ties - 1e-4, ties + 1e-4]).to(device=device, dtype=dtype)
+        # 1e-4 degrees moves a source more than 1e-6 px off the half: rotate() in float64 resolves it, and so must
+        # the snap, which only merges sources closer than 2**-21 (4.8e-7) px to a tie
+        line = torch.zeros(angle.shape[0], 1, kernel_size, kernel_size, dtype=torch.float64)
+        line[:, 0, kernel_size // 2] = torch.linspace(0.65, 0.35, kernel_size, dtype=torch.float64)
+        expected = rotate(line, angle.cpu().double(), mode="nearest", align_corners=True)[:, 0]
+        kernel = get_motion_kernel2d(kernel_size, angle, torch.full_like(angle, 0.3))
+        self.assert_close(kernel.cpu().double(), expected / expected.sum((1, 2), keepdim=True), rtol=0, atol=1e-5)
+
     def test_convention_motion_kernel2d_same_taps_for_every_device_and_dtype_5181(self, device, dtype):
         """A tensor angle on any device and in any dtype picks the taps of the float64 CPU kernel (#5181)."""
         _kernel_guard("get_motion_kernel2d", device, dtype)
