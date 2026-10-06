@@ -16,6 +16,8 @@
 #
 
 
+from fractions import Fraction
+
 import pytest
 import torch
 import torch.nn.functional as F
@@ -2394,6 +2396,44 @@ class TestConventionsKernels(BaseTester):
                 rtol=0,
                 atol=0,
             )
+
+    @pytest.mark.parametrize("kernel_size", [3, 5, 7])
+    def test_convention_motion_kernel2d_tie_goes_half_to_even_5181(self, kernel_size, device, dtype):
+        """A source between two taps is an exact tie, broken half to even as grid_sample does (#5181)."""
+        _kernel_guard("get_motion_kernel2d", device, dtype)
+        # cos and sin of the multiples of 30 degrees as a + b * sqrt(3), with exact fractions
+        half, root = Fraction(1, 2), (Fraction(0), Fraction(1, 2))
+        cos_sin = {
+            30: (root, (half, 0)),
+            60: ((half, 0), root),
+            120: ((-half, 0), root),
+            150: ((0, -root[1]), (half, 0)),
+        }
+        cos_sin.update({a + 180: ((-c[0], -c[1]), (-s[0], -s[1])) for a, (c, s) in list(cos_sin.items())})
+        center, line = kernel_size // 2, [0.85 - 0.7 * col / (kernel_size - 1) for col in range(kernel_size)]
+
+        def nearest(a, b):
+            # the absolute source coordinate center + a + b * sqrt(3): exact ties only when b == 0
+            return round(center + a) if b == 0 else round(center + float(a) + float(b) * 3**0.5)
+
+        for angle, ((ca, cb), (sa, sb)) in sorted(cos_sin.items()):
+            expected = torch.zeros(kernel_size, kernel_size, dtype=torch.float64)
+            for y in range(kernel_size):
+                for x in range(kernel_size):
+                    u, v = x - center, y - center
+                    col = nearest(ca * u - sa * v, cb * u - sb * v)
+                    row = nearest(sa * u + ca * v, sb * u + cb * v)
+                    if row == center and 0 <= col < kernel_size:
+                        expected[y, x] = line[col]
+            kernel = get_motion_kernel2d(kernel_size, torch.tensor([float(angle)], device=device, dtype=dtype), 0.7)
+            self.assert_close(kernel[0].cpu().double(), expected / expected.sum(), rtol=0, atol=1e-2)
+
+    def test_motion_kernel2d_nearest_angle_gradient_is_zero(self, device, dtype):
+        """Nearest sampling keeps the angle in the graph with a zero gradient, as grid_sample gives."""
+        _kernel_guard("get_motion_kernel2d", device, dtype)
+        angle = torch.tensor([30.0, 37.0], device=device, dtype=dtype, requires_grad=True)
+        get_motion_kernel2d(5, angle, torch.tensor([0.3, -0.3], device=device, dtype=dtype)).sum().backward()
+        self.assert_close(angle.grad, torch.zeros_like(angle))
 
     def test_convention_motion_kernel2d_same_taps_for_every_device_and_dtype_5181(self, device, dtype):
         """A tensor angle on any device and in any dtype picks the taps of the float64 CPU kernel (#5181)."""
