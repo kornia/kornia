@@ -29,6 +29,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import torch
+from torch.distributions import Distribution
 
 import kornia
 from kornia.core.download import load_state_dict_from_url
@@ -132,6 +133,23 @@ def restore_torch_rng():
 def dtype(dtype_name) -> torch.dtype:
     """Return dtype for testing."""
     return TEST_DTYPES[dtype_name]
+
+
+@pytest.fixture(autouse=True)
+def keep_distribution_validation():
+    """Leave ``torch.distributions`` argument validation as each test found it.
+
+    The first Dynamo entry in a process, ``torch.compile`` included, runs a one-time setup that calls
+    ``Distribution.set_default_validate_args(False)`` process-wide. Without this fixture every test after
+    that entry runs with validation off, so a test pinned on a validation error passes or fails depending
+    on whether a compile test ran before it in the session.
+    """
+    validate_args = Distribution._validate_args
+    try:
+        yield
+    finally:
+        if Distribution._validate_args != validate_args:
+            Distribution.set_default_validate_args(validate_args)
 
 
 @pytest.fixture
