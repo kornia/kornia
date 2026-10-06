@@ -138,7 +138,9 @@ class TestDivergenceLoss(BaseTester):
         p = torch.tensor([0.0, 0.25, 0.75, 0.0, 0.0, 0.0], device=device, dtype=dtype).view(1, 1, 2, 3)
         pred, target = p.clone().requires_grad_(), p.clone().requires_grad_()
         actual = loss(pred, target)
-        self.assert_close(actual, torch.zeros_like(actual), rtol=0, atol=0)
+        # xlogy(p, p) and p * log(p) can differ by an ulp on some CPUs, so the value is zero up to the default
+        # tolerance.
+        self.assert_close(actual, torch.zeros_like(actual))
         actual.backward()
         assert torch.isfinite(pred.grad).all() and torch.isfinite(target.grad).all()
         assert torch.equal(pred.grad[p == 0], torch.zeros_like(pred.grad[p == 0]))
