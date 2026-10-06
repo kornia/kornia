@@ -104,8 +104,7 @@ class TestScaleSpaceDetector(BaseTester):
                         module = constructor(**constructor_kwargs)
         finally:
             if use_set_default_device:
-                # set_default_device(cpu) would leave a DeviceContext mode on for the rest of the session.
-                torch.set_default_device(None if original.type == "cpu" else original)
+                torch.set_default_device(original)
 
         pyramids = [child for child in module.modules() if isinstance(child, ScalePyramid)]
         assert len(pyramids) == 1
