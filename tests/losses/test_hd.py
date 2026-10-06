@@ -63,19 +63,19 @@ class TestHausdorffLoss(BaseTester):
         assert "Invalid target value" in str(errinf)
 
     def test_numeric(self, device, dtype):
-        if dtype == torch.float64:
-            pytest.xfail("Sometimes failing on float64")
         num_classes = 3
         shape = (50, 50)
         hd = kornia.losses.HausdorffERLoss
-        logits = torch.rand(2, num_classes, *shape, dtype=dtype, device=device)
-        labels = (torch.rand(2, 1, *shape, dtype=dtype, device=device) * (num_classes - 1)).long()
+        generator = torch.Generator().manual_seed(0)
+        logits = torch.rand(2, num_classes, *shape, generator=generator).to(device, dtype)
+        labels = (torch.rand(2, 1, *shape, generator=generator) * (num_classes - 1)).long().to(device)
         loss = hd(k=10)
 
-        expected = torch.tensor(0.025, device=device, dtype=dtype)
+        # The value at this seed. Unseeded draws spread from 0.0205 to 0.0316 around the old constant 0.025 (#5577).
+        expected = torch.tensor(0.0265066, device=device, dtype=dtype)
 
         actual = loss(logits, labels)
-        self.assert_close(actual, expected, rtol=0.005, atol=0.005)
+        self.assert_close(actual, expected)
 
     def test_numeric_3d(self, device, dtype):
         num_classes = 3
