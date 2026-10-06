@@ -30,6 +30,18 @@ class TestPsnr(BaseTester):
         actual = kornia.metrics.psnr(sample, 1.2 * sample, 2.0)
         self.assert_close(actual, expected)
 
+    @pytest.mark.parametrize("image_dtype", [torch.uint8, torch.int64, torch.bool])
+    def test_integer_images_match_the_float32_result(self, device, image_dtype):
+        # Integer images are computed in float32, as ssim computes them (#5536).
+        generator = torch.Generator().manual_seed(0)
+        image = (torch.rand(2, 3, 9, 13, generator=generator) * 255).to(image_dtype).to(device)
+        target = (torch.rand(2, 3, 9, 13, generator=generator) * 255).to(image_dtype).to(device)
+        max_val = 1.0 if image_dtype == torch.bool else 255.0
+        expected = kornia.metrics.psnr(image.float(), target.float(), max_val)
+        actual = kornia.metrics.psnr(image, target, max_val)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
     def test_exception_shape_mismatch(self, device, dtype):
         a = torch.ones(4, device=device, dtype=dtype)
         b = torch.ones(8, device=device, dtype=dtype)
