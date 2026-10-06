@@ -103,6 +103,11 @@ class TestDiceLoss(BaseTester):
             kornia.losses.DiceLoss()(torch.rand(1, 3, 4, 6), torch.randint(0, 3, (2, 4, 6)))
         assert "pred and target shapes must be the same. Got: " in str(errinf)
 
+        # A target with a channel axis, (B, 1, H, W), is not (B, H, W) either.
+        with pytest.raises(ValueError) as errinf:
+            kornia.losses.DiceLoss()(torch.rand(1, 3, 4, 6), torch.randint(0, 3, (1, 1, 4, 6)))
+        assert "pred and target shapes must be the same. Got: " in str(errinf)
+
     def test_averaging_micro(self, device, dtype):
         num_classes = 2
         eps = 1e-8

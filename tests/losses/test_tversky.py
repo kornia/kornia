@@ -116,6 +116,11 @@ class TestTverskyLoss(BaseTester):
             criterion(torch.rand(1, 3, 4, 6), torch.randint(0, 3, (2, 4, 6)))
         assert "pred and target shapes must be the same. Got:" in str(errinfo)
 
+        # A target with a channel axis, (B, 1, H, W), is not (B, H, W) either.
+        with pytest.raises(ValueError) as errinfo:
+            criterion(torch.rand(1, 3, 4, 6), torch.randint(0, 3, (1, 1, 4, 6)))
+        assert "pred and target shapes must be the same. Got:" in str(errinfo)
+
     @pytest.mark.parametrize("ignore_index", [-100, None])
     def test_all_zeros(self, device, dtype, ignore_index):
         num_classes = 3
