@@ -224,6 +224,7 @@ call	builtins.AssertionError	tests/geometry/liegroup/test_se3.py::TestSe3::test_
 call	builtins.AssertionError	tests/geometry/liegroup/test_se3.py::TestSe3::test_mul_point[cpu-bfloat16-None]
 call	builtins.AssertionError	tests/geometry/liegroup/test_se3.py::TestSe3::test_mul_vector[cpu-bfloat16-2]
 call	builtins.AssertionError	tests/geometry/liegroup/test_se3.py::TestSe3::test_mul_vector[cpu-bfloat16-5]
+call	builtins.AssertionError	tests/geometry/liegroup/test_se3.py::TestSe3::test_mul_vector[cpu-bfloat16-None]
 call	builtins.RuntimeError	tests/geometry/liegroup/test_so2.py::TestSo2::test_adjoint[cpu-bfloat16-1]
 call	builtins.RuntimeError	tests/geometry/liegroup/test_so2.py::TestSo2::test_adjoint[cpu-bfloat16-2]
 call	builtins.RuntimeError	tests/geometry/liegroup/test_so2.py::TestSo2::test_adjoint[cpu-bfloat16-5]
