@@ -168,13 +168,14 @@ class TestMutualInformationLoss(BaseTester):
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("the entropies need full precision to match the hard histogram")
         generator = torch.Generator().manual_seed(0)
-        mask = (torch.rand(12, 20, generator=generator) > 0.5).to(device=device, dtype=torch.float64)
+        # the float64 oracle is computed on the CPU: MPS has no float64
+        mask = (torch.rand(12, 20, generator=generator) > 0.5).double()
         p = mask.mean()
         entropy = -(p * p.log() + (1 - p) * (1 - p).log())
-        mask = mask.to(dtype)
+        mask, entropy = mask.to(device, dtype), entropy.to(device, dtype)
 
-        self.assert_close(-mutual_information_loss_2d(mask, mask), entropy.to(dtype))
-        self.assert_close(-mutual_information_loss_2d(1 - mask, mask), entropy.to(dtype))
+        self.assert_close(-mutual_information_loss_2d(mask, mask), entropy)
+        self.assert_close(-mutual_information_loss_2d(1 - mask, mask), entropy)
         self.assert_close(
             -normalized_mutual_information_loss_2d(mask, mask), torch.tensor(2.0, device=device, dtype=dtype)
         )
@@ -183,17 +184,19 @@ class TestMutualInformationLoss(BaseTester):
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("the entropies need full precision to match the hard histogram")
         levels = 4
-        pred = torch.tensor([[0, 1, 2, 3], [3, 2, 1, 0], [0, 0, 3, 3]], device=device)
-        target = torch.tensor([[0, 1, 1, 3], [3, 3, 1, 0], [0, 2, 3, 3]], device=device)
+        # the float64 oracle is computed on the CPU: MPS has no float64
+        pred = torch.tensor([[0, 1, 2, 3], [3, 2, 1, 0], [0, 0, 3, 3]])
+        target = torch.tensor([[0, 1, 1, 3], [3, 3, 1, 0], [0, 2, 3, 3]])
         joint = torch.bincount(pred.flatten() * levels + target.flatten(), minlength=levels**2)
         joint = joint.view(levels, levels).double() / pred.numel()
         independent = joint.sum(-1, keepdim=True) * joint.sum(-2, keepdim=True)
-        expected = torch.xlogy(joint, joint / independent).sum()
+        expected = torch.xlogy(joint, joint / independent).sum().to(device, dtype)
+        pred, target = pred.to(device, dtype), target.to(device, dtype)
 
-        mutual_information = -mutual_information_loss_2d(pred.to(dtype), target.to(dtype), num_bins=levels)
-        inverted = -mutual_information_loss_2d((levels - 1 - pred).to(dtype), target.to(dtype), num_bins=levels)
+        mutual_information = -mutual_information_loss_2d(pred, target, num_bins=levels)
+        inverted = -mutual_information_loss_2d(levels - 1 - pred, target, num_bins=levels)
 
-        self.assert_close(mutual_information, expected.to(dtype))
+        self.assert_close(mutual_information, expected)
         self.assert_close(inverted, mutual_information)
 
     @pytest.mark.parametrize("kernel", [MIKernel.xu, MIKernel.rectangular, MIKernel.truncated_gaussian])
