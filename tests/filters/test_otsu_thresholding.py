@@ -766,8 +766,8 @@ class TestOtsuThresholdDifferentiable(BaseTester):
         # bin: 0 <= slow - fast <= one bin, plus the rounding of both thresholds to the dtype (the two paths also
         # compute the same edge with different float arithmetic, which differs in the last bits). Not a property of
         # every image: two near-tied splits far apart can swap under any change of histogram estimator. The default
-        # path runs on the CPU, where it takes the lowest of splits that give the same partition; on MPS its
-        # cumulative sums can make a later one win (0.4766 instead of 0.4000 on the bimodal image, #5421).
+        # path takes the lowest of the splits that give the same partition on every device (#5421); it runs on the
+        # CPU here as the reference.
         generator = torch.Generator().manual_seed(0)
         noise = torch.rand(1000, generator=generator, dtype=torch.float64)
         ramp_a = torch.linspace(0, 1, 60, dtype=torch.float64).square().view(1, 1, 6, 10)
