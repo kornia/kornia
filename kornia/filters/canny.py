@@ -73,9 +73,8 @@ def canny(
     Convention:
         - A 3-channel input is converted with :func:`~kornia.color.rgb_to_grayscale`, which reads channel 0 as
           red. For a floating input both outputs are :math:`(B, 1, H, W)` in the input's dtype.
-        - The image is blurred with ``gaussian_blur2d(input, kernel_size, sigma)``: ``kernel_size`` is ``(kh, kw)``
-          and ``sigma`` is ``(sigma_y, sigma_x)``, rows first in both; ``kernel_size=1`` skips the blur.
-          The magnitude is :math:`\sqrt{g_x^2 + g_y^2 + \epsilon}` of the **unnormalised** Sobel gradient
+        - The image is blurred with ``gaussian_blur2d(input, kernel_size, sigma)``, whose Convention block gives the
+          order of both pairs; ``kernel_size=1`` skips the blur. The magnitude is :math:`\sqrt{g_x^2 + g_y^2 + \epsilon}` of the **unnormalised** Sobel gradient
           ``spatial_gradient(blurred, normalized=False)``: an axis-aligned ramp of signed slope ``s`` gives
           :math:`\sqrt{(8 s)^2 + \epsilon}` at an interior pixel, about ``8 * abs(s)``. This is about eight times
           what :func:`~kornia.filters.sobel` returns by default, up to the ``eps`` inside the square root. On an

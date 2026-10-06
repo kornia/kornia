@@ -364,9 +364,7 @@ Enhancement
   operate on HSV data.
 - :func:`kornia.enhance.normalize` and :func:`kornia.enhance.denormalize` use channel axis 1
   in ``(B, C, ...)``. :func:`kornia.enhance.normalize_min_max` takes ``(*, C, H, W)`` and rescales
-  each ``H x W`` plane independently. Outside rank 4, ``denormalize`` checks ``(C,)`` statistics
-  against the wrong axis; pass ``(1, C)``
-  (`#5318 <https://github.com/kornia/kornia/issues/5318>`_).
+  each ``H x W`` plane independently.
 - :func:`kornia.enhance.integral_image` sums inclusively over the last two axes. The returned
   image has the input shape, without an extra zero border.
 - :class:`kornia.enhance.ZCAWhitening` uses ``dim`` as the sample axis and flattens all other
@@ -588,7 +586,7 @@ is a ``[row, col]`` index and ``border_type`` takes torch's pad names. Below, ``
      - ``circular``
      - ``wrap``
      - ``wrap``
-     - rejected (``BORDER_WRAP``)
+     - no equivalent: ``BORDER_WRAP`` raises, except on uint8, where the result is not a wrap
 
 The equivalences cover empty ``geodesic`` windows too: scipy, scikit-image and kornia all return ``-inf`` from
 such a window in a dilation and ``+inf`` in an erosion, whatever the data range.
@@ -701,6 +699,36 @@ one:
 - ``skimage.feature.canny`` thresholds the same unnormalized magnitude of a floating-point image and has the same
   defaults, 0.1 and 0.2, so thresholds carry over; its Gaussian blur and its interpolating suppression differ from
   :func:`~kornia.filters.canny`'s, so the edge maps do not match.
+
+The blurs give sizes and standard deviations rows first, as torch orders ``(H, W)``: ``kernel_size`` is
+``(kh, kw)`` and ``sigma`` is :math:`(\sigma_y, \sigma_x)` in :func:`~kornia.filters.gaussian_blur2d`,
+:func:`~kornia.filters.box_blur`, :func:`~kornia.filters.median_blur` and the filters built on them. OpenCV passes
+both pairs x first, so swap them when porting; scipy uses kornia's order. For odd ``kh`` and ``kw``, with the border
+mapped by the table above (OpenCV accepts ``BORDER_WRAP`` in these calls only for some dtypes and sizes):
+
+- ``gaussian_blur2d(x, (kh, kw), (sy, sx))`` equals ``cv2.GaussianBlur(x, (kw, kh), sigmaX=sx, sigmaY=sy)`` and
+  ``scipy.ndimage.gaussian_filter(x, sigma=(sy, sx), radius=(kh // 2, kw // 2))``.
+- ``box_blur(x, (kh, kw))`` equals ``cv2.blur(x, (kw, kh))`` and ``scipy.ndimage.uniform_filter(x, size=(kh, kw))``.
+
+The edge-preserving filters, the sharpening and the blur pools against their references:
+
+- :func:`~kornia.filters.bilateral_blur` with ``'l1'`` uses the colour distance of ``cv2.bilateralFilter``, but
+  weighs the whole ``kernel_size`` rectangle where OpenCV weighs only the disc of radius ``d // 2``, so the two differ
+  even for ``kernel_size=(d, d)``.
+- ``guided_blur(guide, src, 2 * r + 1, eps)`` equals ``cv2.ximgproc.guidedFilter(guide, src, r, eps)`` away from the
+  border: ``eps`` is the same quantity, but OpenCV pads with ``BORDER_REFLECT``, which has no kornia mode.
+  :func:`~kornia.filters.joint_bilateral_blur` takes its guide second, where
+  ``cv2.ximgproc.jointBilateralFilter(joint, src, ...)`` takes it first.
+- ``unsharp_mask(x, (k, k), (r, r))`` with ``k = 2 * int(4 * r + 0.5) + 1``, the window scikit-image truncates its
+  Gaussian to, equals ``skimage.filters.unsharp_mask(x, radius=r, amount=1, preserve_range=True)`` away from the
+  border. scikit-image pads with scipy's ``reflect``, which has no kornia mode, and with its default
+  ``preserve_range=False`` it clips the result, which :func:`~kornia.filters.unsharp_mask` never does.
+- ``blur_pool2d(x, k, s)`` equals the antialiased-cnns ``BlurPool(channels, pad_type='zero', filt_size=k, stride=s)``,
+  which defines ``filt_size`` up to 7. The reference's default ``pad_type='reflect'`` keeps a constant map constant
+  where :func:`~kornia.filters.blur_pool2d` zero-pads and darkens its border.
+- ``blur_pool2d(x, 5, 2)`` blurs with the 5 x 5 binomial kernel of :func:`~kornia.geometry.transform.pyrdown` but
+  samples differently: it zero-pads and keeps every second pixel from index 0, :math:`\lceil H / 2 \rceil` rows,
+  where ``pyrdown`` reflects the border and interpolates between pixels, :math:`\lfloor H / 2 \rfloor` rows.
 
 .. _two-view-conventions:
 
