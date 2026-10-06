@@ -19,6 +19,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core._compat import torch_version_lt
 from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
@@ -198,3 +199,23 @@ class TestConfusionMatrix(BaseTester):
         target = torch.tensor([[True, False, False, True]], device=device)
         expected = torch.tensor([[[1, 1], [0, 2]]], device=device, dtype=torch.float32)
         self.assert_close(kornia.metrics.confusion_matrix(pred, target, num_classes=2), expected)
+
+    def test_zero_pixel_samples_give_zero_matrices(self, device, dtype):
+        # The range check reads the label minimum, which a sample without pixels does not have: it is skipped there.
+        for shape in ((2, 0), (2, 3, 0)):
+            labels = torch.zeros(shape, device=device, dtype=torch.long)
+            expected = torch.zeros(2, 3, 3, device=device, dtype=torch.float32)
+            self.assert_close(kornia.metrics.confusion_matrix(labels, labels, num_classes=3), expected, rtol=0, atol=0)
+
+    @pytest.mark.skipif(torch_version_lt(2, 14, 0), reason="torch.export cannot capture the bincount before torch 2.14")
+    def test_export_counts_like_eager(self, device, dtype):
+        # The range check reads the data, which torch.export cannot capture, so it is skipped under export.
+        class _ConfusionMatrix(torch.nn.Module):
+            def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+                return kornia.metrics.confusion_matrix(pred, target, num_classes=3)
+
+        pred = torch.tensor([[0, 1, 2, 2], [1, 1, 0, 2]], device=device)
+        target = torch.tensor([[0, 2, 2, 1], [1, 0, 0, 2]], device=device)
+        exported = torch.export.export(_ConfusionMatrix(), (pred, target), strict=True).module()
+        for p, t in ((pred, target), (target, pred.flip(-1))):
+            self.assert_close(exported(p, t), kornia.metrics.confusion_matrix(p, t, num_classes=3), rtol=0, atol=0)
