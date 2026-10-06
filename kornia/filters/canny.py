@@ -73,15 +73,15 @@ def canny(
     Convention:
         - A 3-channel input is converted with :func:`~kornia.color.rgb_to_grayscale`, which reads channel 0 as
           red. For a floating input both outputs are :math:`(B, 1, H, W)` in the input's dtype.
-        - The image is blurred with ``gaussian_blur2d(input, kernel_size, sigma)``, whose Convention block gives the
-          order of both pairs; ``kernel_size=1`` skips the blur. The magnitude is :math:`\sqrt{g_x^2 + g_y^2 + \epsilon}` of the **unnormalised** Sobel gradient
+        - The image is blurred with ``gaussian_blur2d(input, kernel_size, sigma)``; the Convention block on
+          :func:`~kornia.filters.gaussian_blur2d` gives the order of both pairs, and ``kernel_size=1`` skips the
+          blur. The magnitude is :math:`\sqrt{g_x^2 + g_y^2 + \epsilon}` of the **unnormalised** Sobel gradient
           ``spatial_gradient(blurred, normalized=False)``: an axis-aligned ramp of signed slope ``s`` gives
           :math:`\sqrt{(8 s)^2 + \epsilon}` at an interior pixel, about ``8 * abs(s)``. This is about eight times
           what :func:`~kornia.filters.sobel` returns by default, up to the ``eps`` inside the square root. On an
           image in :math:`[0, 1]` it is not bounded by 1: a unit step reaches 4 without the blur and about 2.59 with
-          the default one. In float16 the squared gradient
-          overflows past 65504, which a step of 64 already reaches without the blur, so keep a float16 image in
-          :math:`[0, 1]` rather than scaling it and the thresholds up.
+          the default one. In float16 the squared gradient overflows past 65504, which a step of 64 already reaches
+          without the blur, so keep a float16 image in :math:`[0, 1]` rather than scaling it and the thresholds up.
         - The thresholds compare against that magnitude and are strict: a pixel is weak above ``low_threshold`` and
           strong above ``high_threshold``. :ref:`Filtering <filtering-conventions>` maps them onto OpenCV and
           scikit-image.
