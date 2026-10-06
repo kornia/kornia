@@ -2381,7 +2381,9 @@ class TestRANSACCompiled(BaseTester):
             torch.set_default_device("meta")
             RANSAC("homography", compile=True, seed=0)(points, points)
         finally:
-            torch.set_default_device(original)
+            # With no override, ``original`` reads ``cpu``, and ``set_default_device("cpu")`` would leave a
+            # DeviceContext mode on for the rest of the session instead of clearing the override (#5508).
+            torch.set_default_device(None if original.type == "cpu" else original)
         assert captured[0][0][-1] == "meta"
         assert all(control.device.type == "cpu" for control in captured[0][1][2:])
 
