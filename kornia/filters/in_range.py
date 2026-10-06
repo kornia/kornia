@@ -98,9 +98,7 @@ def in_range(
         \text{out}(I) = \bigwedge_{c=0}^{C-1}
         \left( \text{lower}_c(I) \leq \text{input}_c(I) \leq \text{upper}_c(I) \right)
 
-    where `C` is the number of channels. Both comparisons are inclusive. For integer inputs, fractional lower
-    bounds are rounded up and fractional upper bounds down. Bounds outside the input dtype's range do not
-    wrap or overflow; a range containing no representable input value produces an empty mask.
+    where `C` is the number of channels. Both comparisons are inclusive.
 
     Convention:
         - A NaN channel fails its pixel. The mask has the input's dtype, 1 for a pass. ``lower > upper`` is not
@@ -108,7 +106,8 @@ def in_range(
         - ``return_mask=False`` returns ``input * mask``: the channels of a failing pixel become 0, except a NaN or
           infinite one, which becomes NaN.
         - For integer inputs, fractional lower bounds round up and fractional upper bounds round down. Bounds outside
-          the input dtype's range do not wrap or overflow.
+          the input dtype's range do not wrap or overflow; a range containing no representable input value produces
+          an empty mask.
 
     Args:
         input: The input torch.Tensor to be filtered in the shape of :math:`(*, *, H, W)`.

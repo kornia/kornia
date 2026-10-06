@@ -87,6 +87,12 @@ def laplacian(
           ``'replicate'`` or ``'circular'``, case-insensitive.
         normalized: if True, L1 norm of the kernel is set to 1.
 
+    Note:
+        Ordinary eager CPU execution uses convolution for extreme input ranges.
+        Captured graphs and function transforms retain their selected arithmetic, so with ``normalized=False`` an
+        input near its dtype's maximum can overflow to NaN under ``torch.compile`` or ``torch.vmap`` where eager CPU
+        execution returns a finite response.
+
     Return:
         the Laplacian response with shape :math:`(B, C, H, W)`.
 
