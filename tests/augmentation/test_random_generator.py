@@ -1715,9 +1715,10 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("p", [0, 0.5, 1.0])
     @pytest.mark.parametrize("width,height", [(200, 200)])
     @pytest.mark.parametrize("num_mix", [1, 3])
-    # 1e-4 is the small beta: it is a normal number in every supported dtype, where the 1e-15 used before
-    # rounded to 0 in float16 and made the Beta distribution reject its concentration.
-    @pytest.mark.parametrize("beta", [None, torch.tensor(1e-4), torch.tensor(1.0)])
+    # 1e-2 is the small beta: a normal number in every supported dtype that draws lambda next to 0 or 1. The
+    # 1e-15 used before rounded to 0 in float16, where the Beta distribution rejected its concentration, and in
+    # float32 torch's sampler returned 0.5 for every draw.
+    @pytest.mark.parametrize("beta", [None, torch.tensor(1e-2), torch.tensor(1.0)])
     @pytest.mark.parametrize("cut_size", [None, torch.tensor([0.0, 1.0]), torch.tensor([0.3, 0.6])])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_valid_param_combinations(
