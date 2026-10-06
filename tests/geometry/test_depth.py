@@ -686,6 +686,69 @@ class TestWarpFrameDepth(BaseTester):
 class TestDepthWarperConventions(BaseTester):
     """Convention and wart pins for :class:`~kornia.geometry.depth.DepthWarper` and ``depth_warp``."""
 
+    @pytest.mark.parametrize("padding", ["zero", "homogeneous", "arbitrary"])
+    @pytest.mark.parametrize("camera", ["src", "dst", "both"])
+    def test_intrinsics_3x3_block_5480(self, device, dtype, padding, camera):
+        image, depth, transform, _, k4, height, width = self._random_warp_inputs(device, dtype, 2, 5480, True)
+        # Include skew and distinct source/destination calibrations to exercise the full 3x3 block.
+        k4[:, 0, 1] = 0.25
+        dst_k4 = k4.clone()
+        dst_k4[:, 0, 0] *= 1.25
+        identity = _eye4(device, dtype).repeat(2, 1, 1)
+        src = PinholeCamera(k4, identity, height, width)
+        dst = PinholeCamera(dst_k4, transform, height, width)
+        control = DepthWarper(dst, 4, 5).compute_projection_matrix(src)
+
+        def padded(k):
+            out = k.clone()
+            if padding == "zero":
+                out[:, 3, 3] = 0.0
+            elif padding == "arbitrary":
+                out[:, :3, 3] = 5.0
+                out[:, 3, :] = 2.0
+            return out
+
+        src_test = PinholeCamera(padded(k4) if camera in ("src", "both") else k4, identity, height, width)
+        dst_test = PinholeCamera(padded(dst_k4) if camera in ("dst", "both") else dst_k4, transform, height, width)
+        warper = DepthWarper(dst_test, 4, 5).compute_projection_matrix(src_test)
+        self.assert_close(warper._dst_proj_src, control._dst_proj_src, atol=0.0, rtol=0.0)
+        self.assert_close(warper.warp_grid(depth), control.warp_grid(depth), atol=0.0, rtol=0.0)
+        actual = warper(depth, image)
+        assert actual.shape == image.shape
+        assert actual.dtype == dtype
+        assert actual.device == image.device
+        assert torch.isfinite(actual).all()
+        self.assert_close(actual, control(depth, image), atol=0.0, rtol=0.0)
+        self.assert_close(warper.compute_subpixel_step(), control.compute_subpixel_step(), atol=0.0, rtol=0.0)
+        self.assert_close(
+            kornia.geometry.depth.depth_warp(dst_test, src_test, depth, image, 4, 5), actual, atol=0.0, rtol=0.0
+        )
+
+    def test_intrinsics_block_gradcheck(self, device):
+        k = _k44_warp(device, torch.float64)
+        k[:, 3, 3] = 0.0
+        src_k, dst_k = k.clone().requires_grad_(), k.clone().requires_grad_()
+        height, width = torch.tensor([4], device=device), torch.tensor([5], device=device)
+        depth = torch.full((1, 1, 4, 5), 2.0, device=device, dtype=torch.float64)
+
+        def grid(src_intrinsics, dst_intrinsics):
+            src = PinholeCamera(src_intrinsics, _eye4(device, torch.float64), height, width)
+            dst = PinholeCamera(dst_intrinsics, _tx_plus_one(device, torch.float64), height, width)
+            return DepthWarper(dst, 4, 5).compute_projection_matrix(src).warp_grid(depth)
+
+        self.gradcheck(grid, (src_k, dst_k))
+
+    def test_zero_padded_intrinsics_identity_5480(self, device, dtype):
+        intrinsics = _k44_warp(device, dtype)
+        intrinsics[:, 3, 3] = 0.0
+        cam = PinholeCamera(
+            intrinsics, _eye4(device, dtype), torch.tensor([4], device=device), torch.tensor([5], device=device)
+        )
+        image = torch.arange(20.0, device=device, dtype=dtype).reshape(1, 1, 4, 5) / 20
+        depth = torch.ones(1, 1, 4, 5, device=device, dtype=dtype)
+        actual = DepthWarper(cam, 4, 5).compute_projection_matrix(cam)(depth, image)
+        self.assert_close(actual, image, atol=max(1e-11, 8 * torch.finfo(dtype).eps), rtol=0.0)
+
     @staticmethod
     def _warper(device, dtype, dst_extrinsics, src_extrinsics):
         """Build a DepthWarper for a 4x5 image and run compute_projection_matrix on the source camera."""

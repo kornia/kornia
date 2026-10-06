@@ -513,6 +513,10 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
        For ``float16`` and ``bfloat16`` quartics, Ferrari intermediates are evaluated in ``float32``
        and the returned roots are cast back to the input dtype.
 
+       Float32 rows whose resolvent discriminant is obscured by rounding are recomputed in float64,
+       including root polishing, and cast back. On MPS, which has no float64, these rows are computed
+       on the CPU and copied back; autograd follows both copies.
+
     .. note::
        Variable rescaling is bounded to normal reciprocal powers of two in the compute dtype. It does not
        recover input coefficients that have underflowed, and extreme subnormal coefficient scales may remain
@@ -847,6 +851,42 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
 
     solutions[mask_quartic, 0:2] = roots1.to(dtype=solutions.dtype)
     solutions[mask_quartic, 2:4] = roots2.to(dtype=solutions.dtype)
+
+    if coeffs.dtype == torch.float32:
+        # The resolvent's Cardano discriminant is (J^2 - 4 I^3) / 2916. Near a repeated root,
+        # rounding its coefficients and then Q/R can change its sign (#4906), before root selection
+        # or the R^2 test. Estimate that uncertainty from the magnitudes of the expanded terms:
+        # eight epsilons cover the products and sums; propagate their errors through 4 I^3 - J^2.
+        # This only selects precision, never accepts a root or changes a real/complex tolerance.
+        vA, vB, vC, vD = (v.detach() for v in (A, B, C, D))
+        invariant_i = vB.square() - 3.0 * vA * vC + 12.0 * vD
+        invariant_j = (
+            72.0 * vB * vD + 9.0 * vA * vB * vC - 27.0 * vC.square() - 27.0 * vA.square() * vD - 2.0 * vB.pow(3)
+        )
+        roundoff = 8.0 * torch.finfo(coeffs.dtype).eps
+        error_i = roundoff * (vB.square() + 3.0 * (vA * vC).abs() + 12.0 * vD.abs())
+        error_j = roundoff * (
+            72.0 * (vB * vD).abs()
+            + 9.0 * (vA * vB * vC).abs()
+            + 27.0 * vC.square()
+            + 27.0 * (vA.square() * vD).abs()
+            + 2.0 * vB.abs().pow(3)
+        )
+        discriminant = 4.0 * invariant_i.pow(3) - invariant_j.square()
+        uncertainty = 12.0 * (invariant_i.abs() + error_i).square() * error_i
+        uncertainty = uncertainty + (2.0 * invariant_j.abs() + error_j) * error_j
+        retry = (discriminant.abs() <= uncertainty) & (uncertainty > 0) & torch.isfinite(uncertainty)
+        retry_rows = torch.zeros_like(mask_quartic)
+        retry_rows[mask_quartic] = retry
+        # Start from the original coefficients: promoting a rounded resolvent is too late. Keep
+        # polishing in float64 too, since float32 Horner cancellation can move an accurate root away.
+        precise_coeffs = coeffs[retry_rows]
+        if coeffs.device.type == "mps":
+            precise_coeffs = precise_coeffs.cpu()
+        # Cast before the device copy: its backward must not combine an MPS-to-CPU copy with
+        # a float64 cast (pytorch/pytorch#197715). Both dtype conversions then run on CPU for MPS.
+        precise_roots = solve_quartic(precise_coeffs.double()).to(dtype=coeffs.dtype)
+        solutions[retry_rows] = precise_roots.to(device=coeffs.device)
 
     return solutions
 

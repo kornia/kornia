@@ -67,7 +67,8 @@ def test_empty_destination_forward_runs_on_every_backend(op_name, dsize, batch, 
 
     assert out.shape == (batch, 3, *dsize)
     assert out.numel() == 0
-    assert out.device.type == device.type and out.dtype == dtype
+    assert out.device.type == device.type
+    assert out.dtype == dtype
 
 
 @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective", "remap"])
@@ -122,7 +123,8 @@ def test_empty_destination_samples_a_constant_1x1_stand_in(device, dtype, monkey
     out = kornia.geometry.transform.warp_affine(src, transform, (0, 2_000_000))
 
     assert out.shape == (1, 3, 0, 2_000_000)
-    assert sampled_grids and all(shape == (1, 1, 1, 2) for shape in sampled_grids)
+    assert sampled_grids
+    assert all(shape == (1, 1, 1, 2) for shape in sampled_grids)
 
 
 @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
@@ -150,8 +152,10 @@ def test_empty_destination_is_autograd_connected(op_name, dsize, align_corners, 
     assert out.shape == (1, 3, *dsize)
     assert out.numel() == 0
     out.sum().backward()
-    assert src.grad is not None and torch.count_nonzero(src.grad) == 0
-    assert transform.grad is not None and torch.count_nonzero(transform.grad) == 0
+    assert src.grad is not None
+    assert torch.count_nonzero(src.grad) == 0
+    assert transform.grad is not None
+    assert torch.count_nonzero(transform.grad) == 0
 
 
 @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
@@ -167,7 +171,8 @@ def test_empty_source_policy(op_name, device, dtype):
     empty = op(src, transform, (0, 4))
     assert empty.shape == (1, 3, 0, 4)
     empty.sum().backward()
-    assert src.grad is not None and transform.grad is not None
+    assert src.grad is not None
+    assert transform.grad is not None
 
     with pytest.raises(ValueError, match="must be positive"):
         op(src, transform, (3, 4))
