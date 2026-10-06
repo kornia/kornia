@@ -17,8 +17,28 @@
 
 import torch
 
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
+from kornia.core.utils import is_exporting
+
 # Inspired by:
 # https://github.com/pytorch/tnt/blob/master/torchnet/meter/confusionmeter.py#L68-L73
+
+
+def _check_labels(name: str, labels: torch.Tensor) -> None:
+    KORNIA_CHECK_IS_TENSOR(labels, f"Input {name} must be a tensor of integer labels")
+    # bool masks count as 0/1 labels, as they did before the check.
+    KORNIA_CHECK(
+        not (labels.dtype.is_floating_point or labels.dtype.is_complex),
+        f"Input {name} must have an integer dtype. Got {labels.dtype}",
+    )
+
+
+def _check_label_range(name: str, labels: torch.Tensor, num_classes: int) -> None:
+    low, high = int(labels.min()), int(labels.max())
+    KORNIA_CHECK(
+        0 <= low and high < num_classes,
+        f"Input {name} must contain values in [0, {num_classes}). Got values in [{low}, {high}]",
+    )
 
 
 def confusion_matrix(
@@ -50,18 +70,15 @@ def confusion_matrix(
                  [0., 0., 0.]]])
 
     """
-    if not torch.is_tensor(pred) and pred.dtype is not torch.int64:
-        raise TypeError(f"Input pred type is not a torch.Tensor with torch.int64 dtype. Got {type(pred)}")
-
-    if not torch.is_tensor(target) and target.dtype is not torch.int64:
-        raise TypeError(f"Input target type is not a torch.Tensor with torch.int64 dtype. Got {type(target)}")
+    _check_labels("pred", pred)
+    _check_labels("target", target)
     if not pred.shape == target.shape:
         raise ValueError(f"Inputs pred and target must have the same shape. Got: {pred.shape} and {target.shape}")
     if not pred.device == target.device:
         raise ValueError(f"Inputs must be in the same device. Got: {pred.device} - {target.device}")
 
     if not isinstance(num_classes, int) or num_classes < 2:
-        raise ValueError(f"The number of classes must be an integer bigger than two. Got: {num_classes}")
+        raise ValueError(f"The number of classes must be an integer of at least two. Got: {num_classes}")
 
     batch_size: int = pred.shape[0]
     # An empty batch used to fail on view(0, -1) because a zero-numel tensor
@@ -69,9 +86,15 @@ def confusion_matrix(
     if batch_size == 0:
         return torch.zeros(0, num_classes, num_classes, device=pred.device, dtype=torch.float32)
 
+    # The range check reads the data, which graph capture cannot do; skip it under export.
+    if not is_exporting() and pred.numel() > 0:
+        _check_label_range("pred", pred, num_classes)
+        _check_label_range("target", target, num_classes)
+
     # hack for bitcounting 2 arrays together
     # NOTE: torch.bincount does not implement batched version
-    pre_bincount: torch.Tensor = pred + target * num_classes
+    # The cell index is formed in int64: in the labels' own dtype it wraps, for uint8 from num_classes = 17.
+    pre_bincount: torch.Tensor = pred.long() + target.long() * num_classes
     pre_bincount_vec: torch.Tensor = pre_bincount.view(batch_size, -1)
 
     confusion_list = []

@@ -19,6 +19,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
 
@@ -157,5 +158,43 @@ class TestConfusionMatrix(BaseTester):
 
     def test_exception_num_classes_too_small(self, device, dtype):
         pred = torch.zeros(1, 4, dtype=torch.long, device=device)
-        with pytest.raises(ValueError, match="bigger than two"):
+        with pytest.raises(ValueError, match="at least two"):
             kornia.metrics.confusion_matrix(pred, pred, num_classes=1)
+
+    def test_exception_not_integer_labels(self, device, dtype):
+        # The two type checks were dead (#5549): a list reached `.dtype` and a float tensor reached `bincount`.
+        labels = torch.tensor([[0, 1, 0]], device=device, dtype=torch.long)
+        with pytest.raises(TypeError, match="pred must be a tensor"):
+            kornia.metrics.confusion_matrix([[0, 1, 0]], labels, num_classes=3)
+        with pytest.raises(BaseError, match="target must have an integer dtype"):
+            kornia.metrics.confusion_matrix(labels, labels.to(dtype), num_classes=3)
+
+    def test_exception_out_of_range(self, device, dtype):
+        # An out-of-range prediction landed in another cell and an out-of-range target in a raw torch error (#5549).
+        for pred, target, name, span in (
+            ([0, 3, 2], [0, 1, 2], "pred", r"\[0, 3\]"),
+            ([-1, 1, 2], [0, 1, 2], "pred", r"\[-1, 2\]"),
+            ([0, 1, 2], [0, 3, 2], "target", r"\[0, 3\]"),
+            ([0, 1, 2], [0, 255, 2], "target", r"\[0, 255\]"),
+        ):
+            message = rf"Input {name} must contain values in \[0, 3\)\. Got values in {span}"
+            with pytest.raises(BaseError, match=message):
+                kornia.metrics.confusion_matrix(
+                    torch.tensor([pred], device=device), torch.tensor([target], device=device), num_classes=3
+                )
+
+    @pytest.mark.parametrize("label_dtype, num_classes", [(torch.uint8, 21), (torch.int16, 182), (torch.int32, 21)])
+    def test_small_integer_dtypes_match_int64(self, label_dtype, num_classes, device, dtype):
+        # The cell index was formed in the label dtype and wrapped, for uint8 from num_classes = 17 (#5549).
+        labels = torch.tensor([[[num_classes - 1, 0, 5], [5, num_classes - 1, 0]]], device=device, dtype=label_dtype)
+        actual = kornia.metrics.confusion_matrix(labels, labels, num_classes)
+        expected = kornia.metrics.confusion_matrix(labels.long(), labels.long(), num_classes)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        assert actual[0].nonzero().tolist() == [[0, 0], [5, 5], [num_classes - 1, num_classes - 1]]
+
+    def test_bool_masks_count_as_binary_labels(self, device, dtype):
+        pred = torch.tensor([[True, False, True, True]], device=device)
+        target = torch.tensor([[True, False, False, True]], device=device)
+        expected = torch.tensor([[[1, 1], [0, 2]]], device=device, dtype=torch.float32)
+        self.assert_close(kornia.metrics.confusion_matrix(pred, target, num_classes=2), expected)
