@@ -92,6 +92,19 @@ class TestDiceLoss(BaseTester):
 
         self.assert_close(loss, torch.zeros_like(loss))
 
+    def test_gradient_of_an_absent_class_is_finite(self, device, dtype):
+        # Class 2 is absent from the target and its probabilities underflow, so its cardinality is eps alone and its
+        # intersection gradient is far past the float16 range. Times the exact zero target, that must not give NaN.
+        labels = torch.zeros(1, 16, 16, device=device, dtype=torch.int64)
+        labels[0, :, 8:] = 1
+        logits = torch.full((1, 3, 16, 16), -10.0, device=device, dtype=dtype).scatter(1, labels[:, None], 10.0)
+        logits.requires_grad_(True)
+
+        loss = kornia.losses.dice_loss(logits, labels, average="macro")
+        (grad,) = torch.autograd.grad(loss, logits)
+
+        assert grad.isfinite().all()
+
     def test_exception(self):
         with pytest.raises(ValueError) as errinf:
             kornia.losses.DiceLoss()(torch.rand(1, 1, 1), torch.rand(1, 1, 1))
