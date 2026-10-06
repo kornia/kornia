@@ -224,15 +224,19 @@ class TestGeometricCropConventions(BaseTester):
         params[0].data["dst"] = image.new_tensor([[[0, 0], [3, 0], [3, 5], [0, 5]]])
         output, out_points, out_boxes = seq(image, points, boxes, params=params)
         # #5463: in slice mode only height exceeds the padded canvas; resample keeps its warp scaling.
+        # #5481: the slice stretch is on the half-pixel grid, y' = (y + 0.5) * 6 / 5 - 0.5.
         scale_w = 1.0 if mode == "slice" else 4 / 5
-        point_x = 3.0 if mode == "slice" else 2.4
+        point = (3.0, 3.7) if mode == "slice" else (2.4, 3.6)
         box_x = (2.0, 3.0) if mode == "slice" else (1.6, 2.4)
+        box_y = (2.5, 3.7) if mode == "slice" else (2.4, 3.6)
         self.assert_close(seq.transform_matrix[..., 0, 0], image.new_tensor([scale_w]))
         self.assert_close(seq.transform_matrix[..., 1, 1], image.new_tensor([6 / 5]))
-        self.assert_close(out_points, image.new_tensor([[[point_x, 3.6]]]))
+        self.assert_close(out_points, image.new_tensor([[point]]))
         self.assert_close(
             out_boxes,
-            image.new_tensor([[[[box_x[0], 2.4], [box_x[1], 2.4], [box_x[1], 3.6], [box_x[0], 3.6]]]]),
+            image.new_tensor(
+                [[[[box_x[0], box_y[0]], [box_x[1], box_y[0]], [box_x[1], box_y[1]], [box_x[0], box_y[1]]]]]
+            ),
         )
         expected_rows = {
             "slice": [
@@ -268,7 +272,8 @@ class TestGeometricCropConventions(BaseTester):
     @pytest.mark.parametrize("mode", ["slice", "resample"])
     @pytest.mark.parametrize("size", [(10, 10), (10, 4), (4, 10)])
     def test_wart_random_crop_oversized_rescales_matrix_axes_4414(self, device, dtype, mode, size):
-        """Resample mode rescales both matrix axes (#4414); slice mode only the oversized one, as its resize (#5463)."""
+        """Resample mode rescales both matrix axes (#4414); slice mode only the oversized one, as its resize (#5463),
+        on the resize's half-pixel grid (#5481)."""
         image = torch.arange(48, device=device, dtype=dtype).reshape(1, 1, 6, 8) / 48
         crop = K.RandomCrop(size, cropping_mode=mode, p=1.0)
         params = crop.forward_parameters(image.shape)
@@ -281,9 +286,11 @@ class TestGeometricCropConventions(BaseTester):
         needs_scale = h > 6 or w > 8
         scale_w = (w / 8 if w > 8 else 1.0) if mode == "slice" else (w / 8 if needs_scale else 1.0)
         scale_h = (h / 6 if h > 6 else 1.0) if mode == "slice" else (h / 6 if needs_scale else 1.0)
+        shift_x = (scale_w - 1) / 2 if mode == "slice" else 0.0
+        shift_y = (scale_h - 1) / 2 if mode == "slice" else 0.0
         self.assert_close(
             crop.transform_matrix,
-            image.new_tensor([[[scale_w, 0, -left], [0, scale_h, -top], [0, 0, 1]]]),
+            image.new_tensor([[[scale_w, 0, shift_x - left], [0, scale_h, shift_y - top], [0, 0, 1]]]),
         )
         # Explicit ramp rows distinguish the slice resize from the mis-scaled, zero-padded warp.
         rows = {

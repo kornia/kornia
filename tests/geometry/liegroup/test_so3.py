@@ -637,24 +637,53 @@ class TestSo3Conventions(BaseTester):
             p = torch.tensor([p], device=device, dtype=dtype)
             self.assert_close(rot(theta) * p, torch.tensor([expected], device=device, dtype=dtype))
 
-    def test_wart_so3_non_unit_quaternion_not_normalised_4942(self, device, dtype):
-        # #4942 https://github.com/kornia/kornia/issues/4942: So3 stores the quaternion as given, and matrix() and
-        # So3 * p use the unit-quaternion formulas, so a non-unit q gives a matrix that is not a rotation and points
-        # scaled by |q|^2. This test turns red when So3 normalises its quaternion.
+    def test_convention_so3_non_unit_quaternion_is_its_direction_4942(self, device, dtype):
+        # #4942 https://github.com/kornia/kornia/issues/4942: a non-unit q is the rotation of q / |q|, as for
+        # Quaternion.matrix(). matrix() used to be a scaled non-rotation (det 4.56^3 here) and So3 * p scaled p by
+        # |q|^2 = 4.56.
         data = torch.tensor([[2.0, 0.2, -0.6, 0.4]], device=device, dtype=dtype)
-        squared_norm = 4.56
         s = So3(Quaternion(data))
+        unit = So3(Quaternion(data).normalize())
         p = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype)
         m = s.matrix()
         # det = m0 . (m1 x m2), written out so it runs where torch.linalg.det has no half-precision kernel
         det = (m[:, 0] * torch.linalg.cross(m[:, 1], m[:, 2], dim=-1)).sum(-1)
-        assert bool((det > 2.0).all()), det
-        self.assert_close((s * p).norm(dim=-1), squared_norm * p.norm(dim=-1))
-        # control: the same data through Quaternion.matrix(), and through So3 once normalised, is a rotation
-        self.assert_close(So3(Quaternion(data).normalize()).matrix(), Quaternion(data).matrix())
-        self.assert_close((So3(Quaternion(data).normalize()) * p).norm(dim=-1), p.norm(dim=-1))
-        # log() is outside the defect: it reads only the direction of q
-        self.assert_close(s.log(), So3(Quaternion(data).normalize()).log())
+        self.assert_close(det, torch.ones_like(det))
+        self.assert_close(m, Quaternion(data).matrix())
+        self.assert_close(m, unit.matrix())
+        self.assert_close(s.adjoint(), unit.adjoint())
+        # unit is normalised twice and s once, which is more than one rounding apart in half precision
+        half = dtype in (torch.float16, torch.bfloat16)
+        self.assert_close(s * p, unit * p, low_tolerance=half)
+        self.assert_close((s * p).norm(dim=-1), p.norm(dim=-1), low_tolerance=half)
+        self.assert_close(s.log(), unit.log())
+        # the quaternion itself is kept as given
+        self.assert_close(s.q.data, data)
+
+    def test_convention_so3_parameter_quaternion_stays_module_state_4942(self, device, dtype):
+        # Normalising where the quaternion is used, rather than once in the constructor, keeps an nn.Parameter
+        # quaternion registered, and matrix() follows an update of the Parameter.
+        holder = _RotationHolder(torch.tensor([[2.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype), as_parameter=True)
+        assert "rot._q._data" in holder.state_dict()
+        self.assert_close(holder.rot.matrix(), torch.eye(3, device=device, dtype=dtype)[None])
+        with torch.no_grad():
+            holder.rot.q.data.copy_(torch.tensor([[0.0, 0.0, 0.0, 3.0]], device=device, dtype=dtype))
+        # (0, 0, 0, 3) is the half turn about z
+        expected = torch.diag(torch.tensor([-1.0, -1.0, 1.0], device=device, dtype=dtype))[None]
+        self.assert_close(holder.rot.matrix(), expected)
+        # the graph is rebuilt on every use, so a second backward through the rotation works
+        for _ in range(2):
+            holder.rot.matrix().sum().backward()
+
+    def test_convention_so3_non_unit_quaternion_gradient_has_no_radial_part_4942(self, device, dtype):
+        # matrix() and So3 * p depend on q / |q| only, so their gradient with respect to q is orthogonal to q.
+        data = torch.tensor([[2.0, 0.2, -0.6, 0.4]], device=device, dtype=dtype, requires_grad=True)
+        p = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype)
+        atol = 3e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-5
+        for output in (So3(Quaternion(data)).matrix(), So3(Quaternion(data)) * p):
+            (grad,) = torch.autograd.grad(output.sum(), data)
+            cosine = (grad * data.detach()).sum(-1) / (grad.norm(dim=-1) * data.detach().norm(dim=-1))
+            self.assert_close(cosine, torch.zeros_like(cosine), rtol=0.0, atol=atol)
 
     def test_convention_so3_from_matrix_is_unchecked_by_default(self, device, dtype):
         # kornia#4773: with the default check_rotation=False, from_matrix returns an apparently valid result for an
