@@ -107,8 +107,5 @@ class RandomSolarize(IntensityAugmentationBase2D):
     ) -> torch.Tensor:
         thresholds = params["thresholds"]
         additions: Optional[torch.Tensor]
-        if "additions" in params:
-            additions = params["additions"]
-        else:
-            additions = None
+        additions = params.get("additions")
         return solarize(input, thresholds, additions)

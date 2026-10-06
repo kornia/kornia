@@ -81,7 +81,7 @@ class EfficientViT(ModelBase[EfficientViTConfig]):
         # load the model from the checkpoint
         try:
             model_file = load_state_dict_from_url(config.checkpoint, map_location="cpu")
-            model_file = model_file["state_dict"] if "state_dict" in model_file else model_file
+            model_file = model_file.get("state_dict", model_file)
         except RuntimeError:
             raise RuntimeError(f"Unable to load the model from {config.checkpoint}.") from None
 
