@@ -130,3 +130,24 @@ class TestDivergenceLoss(BaseTester):
         op = kornia.losses.js_div_loss_2d
         op_optimized = torch_optimizer(op)
         self.assert_close(op(*args), op_optimized(*args), rtol=0, atol=1e-5)
+
+    @pytest.mark.parametrize("loss", [kornia.losses.kl_div_loss_2d, kornia.losses.js_div_loss_2d])
+    def test_identical_distributions_with_zero_cells(self, device, dtype, loss):
+        # 0 * log 0 = 0: a distribution compared with itself has zero divergence and finite gradients even where it
+        # has empty cells (#5554).
+        p = torch.tensor([0.0, 0.25, 0.75, 0.0, 0.0, 0.0], device=device, dtype=dtype).view(1, 1, 2, 3)
+        pred, target = p.clone().requires_grad_(), p.clone().requires_grad_()
+        actual = loss(pred, target)
+        self.assert_close(actual, torch.zeros_like(actual), rtol=0, atol=0)
+        actual.backward()
+        assert torch.isfinite(pred.grad).all() and torch.isfinite(target.grad).all()
+        assert torch.equal(pred.grad[p == 0], torch.zeros_like(pred.grad[p == 0]))
+        assert torch.equal(target.grad[p == 0], torch.zeros_like(target.grad[p == 0]))
+
+    def test_zero_cell_in_one_input(self, device, dtype):
+        # A zero cell in target alone contributes 0; a zero cell in pred where target > 0 is the true KL, +inf (#5554).
+        p = torch.tensor([0.0, 0.25, 0.75, 0.0, 0.0, 0.0], device=device, dtype=dtype).view(1, 1, 2, 3)
+        q = torch.tensor([0.1, 0.2, 0.3, 0.1, 0.2, 0.1], device=device, dtype=dtype).view(1, 1, 2, 3)
+        expected = (p[p > 0] * (p[p > 0].log() - q[p > 0].log())).sum()
+        self.assert_close(kornia.losses.kl_div_loss_2d(q, p), expected)
+        assert kornia.losses.kl_div_loss_2d(p, q).item() == math.inf
