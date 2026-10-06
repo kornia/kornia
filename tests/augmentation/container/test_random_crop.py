@@ -231,8 +231,8 @@ class TestRandomCropAnnotations(BaseTester):
 
         for actual, target in zip(output, expected):
             self.assert_close(actual, target)
-        # Equal spatial sizes let the image path select rows. Mixed shape-changing crops
-        # and mixed inverse have separate size/unpadding issues and are not asserted here.
+        # Equal spatial sizes let the image path select rows. A mixed gate on a shape-changing crop raises
+        # (test_mixed_gate_with_shape_change_raises_4497); the mixed inverse is not asserted here.
         for actual, target in zip(output, inputs):
             self.assert_close(actual[1], target[1], rtol=0, atol=0)
 
