@@ -575,10 +575,10 @@ class MultiprocessWrapper:
 
 
 #: How small an image each padding mode can filter, given the kernel extent ``k`` along that axis.
-#: ``filter2d`` pads an even kernel asymmetrically -- ``(k - 1) // 2`` in front and ``k // 2``
-#: behind -- so the constraint is against the wider of the two, ``k // 2``, not against the radius.
-#: ``reflect`` cannot mirror a pad as wide as the axis and ``circular`` cannot wrap one wider than
-#: it; ``"valid"`` is the no-padding case, where the kernel itself must fit. ``constant`` and
+#: ``filter2d`` and ``filter3d`` pad an even kernel asymmetrically -- ``(k - 1) // 2`` in front and
+#: ``k // 2`` behind -- so the constraint is against the wider of the two, ``k // 2``, not against the
+#: radius. ``reflect`` cannot mirror a pad as wide as the axis and ``circular`` cannot wrap one wider
+#: than it; ``"valid"`` is the no-padding case, where the kernel itself must fit. ``constant`` and
 #: ``replicate`` invent their padding and run on a 1-pixel axis.
 _MIN_FILTERED_SIZE: Dict[str, Callable[[int], int]] = {
     "reflect": lambda extent: extent // 2 + 1,
@@ -586,28 +586,35 @@ _MIN_FILTERED_SIZE: Dict[str, Callable[[int], int]] = {
     "valid": lambda extent: extent,
 }
 
+#: Names of the trailing spatial axes, read from the right: a 2D filter uses the last two.
+_SPATIAL_AXIS_NAMES = ("depth", "height", "width")
+
 
 def _check_filter_min_size(
     name: str,
     input: torch.Tensor,
-    kernel_size: Union[int, Tuple[int, int], List[int]],
+    kernel_size: Union[int, Tuple[int, ...], List[int]],
     border_type: str = "reflect",
+    spatial_dims: int = 2,
 ) -> None:
     """Refuse an image the filter's padding cannot handle, naming the class and the shape.
 
     torch raises about "padding size" or "calculated padded input size" from two layers below,
-    which names neither the augmentation nor the image the caller passed.
+    which names neither the augmentation nor the image the caller passed. ``spatial_dims`` is the
+    number of trailing axes the kernel spans: 2 for an image, 3 for a volume.
     """
-    size = (kernel_size, kernel_size) if isinstance(kernel_size, int) else tuple(kernel_size)
+    size = (kernel_size,) * spatial_dims if isinstance(kernel_size, int) else tuple(kernel_size)
     smallest = _MIN_FILTERED_SIZE.get(str(border_type).lower())
     if smallest is None:
         return
-    for axis, (extent, side) in enumerate(zip(size, input.shape[-2:])):
+    subject, unit = ("an image", "pixel") if spatial_dims == 2 else ("a volume", "voxel")
+    axes = _SPATIAL_AXIS_NAMES[-spatial_dims:]
+    for axis, extent, side in zip(axes, size, input.shape[-spatial_dims:]):
         minimum = smallest(int(extent))
         if side < minimum:
             raise ValueError(
-                f"{name} cannot filter an image this small: kernel_size="
+                f"{name} cannot filter {subject} this small: kernel_size="
                 f"{tuple(int(s) for s in size)} with border_type={border_type!r} needs at least "
-                f"{minimum} pixel(s) along {'height' if axis == 0 else 'width'}, but the input is "
+                f"{minimum} {unit}(s) along {axis}, but the input is "
                 f"{tuple(int(s) for s in input.shape)}."
             )

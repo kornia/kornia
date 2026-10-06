@@ -193,11 +193,8 @@ def apply_colormap(input_tensor: torch.Tensor, colormap: ColorMap) -> torch.Tens
     Convention:
         Accepts a rank-3 (C, H, W) or rank-4 (B, C, H, W) tensor and returns
         (B, 3*C, H, W), with B = 1 for rank-3 input; input channel c becomes output channels
-        3c to 3c + 2. Unit-range floating inputs and integer inputs in [0, 255] are the intended ranges.
-
-    .. warning::
-        The [0, 1] or [0, 255] range is chosen from the maximum over the whole tensor, so scaling
-        depends on every channel and sample: `#5306 <https://github.com/kornia/kornia/issues/5306>`_.
+        3c to 3c + 2. Integer inputs use [0, 255]. Floating inputs use [0, 1] or [0, 255]
+        independently for each sample and channel, based on that channel's maximum.
 
     Args:
         input_tensor: the input torch.Tensor of image.
@@ -250,13 +247,16 @@ def _apply_colormap(input_tensor: torch.Tensor, colors: torch.Tensor) -> torch.T
 
     B, C, H, W = input_tensor.shape
     input_tensor = input_tensor.reshape(B, C, -1)
-    # torch.where instead of a Python ternary on input_tensor.max() so the op is
-    # torch.compile fullgraph-safe (branching on a tensor value breaks the graph).
-    max_value = torch.where(
-        input_tensor.max() <= 1.0,
-        torch.tensor(1.0, device=input_tensor.device, dtype=torch.float),
-        torch.tensor(255.0, device=input_tensor.device, dtype=torch.float),
-    )
+    if input_tensor.is_floating_point():
+        # The tensor-valued condition keeps range selection compile-safe and independent
+        # of other samples and channels.
+        max_value = torch.where(
+            input_tensor.amax(dim=-1, keepdim=True) <= 1.0,
+            torch.tensor(1.0, device=input_tensor.device, dtype=torch.float),
+            torch.tensor(255.0, device=input_tensor.device, dtype=torch.float),
+        )
+    else:
+        max_value = 255.0
     input_tensor = input_tensor.float() / max_value
 
     colors = colors.permute(1, 0)

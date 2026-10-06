@@ -925,7 +925,8 @@ class TestIntensityColourConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         aug = K.RandomRGBShift(r_shift_limit=0.5, g_shift_limit=0.0, b_shift_limit=0.0, p=1.0)
         shifts = aug.forward_parameters((512, 3, 2, 2))["r_shift"]
-        assert float(shifts.min()) < -0.4 and float(shifts.max()) > 0.4
+        assert float(shifts.min()) < -0.4
+        assert float(shifts.max()) > 0.4
         assert float(shifts.abs().max()) <= 0.5
         image = torch.tensor([1.5, -0.25], device=device, dtype=dtype).reshape(1, 1, 1, 2).expand(1, 3, 1, 2)
         torch.manual_seed(_FORWARD_SEED)
@@ -953,7 +954,8 @@ class TestIntensityColourConventions(BaseTester):
         aug(torch.rand(64, 3, 2, 2))
         for name, (low, high) in {"r_shift": (0.1, 0.2), "g_shift": (-0.3, -0.1), "b_shift": (-0.05, 0.05)}.items():
             drawn = aug._params[name]
-            assert bool((drawn >= low).all()) and bool((drawn <= high).all()), name
+            assert bool((drawn >= low).all()), name
+            assert bool((drawn <= high).all()), name
         # A 1-D tensor is a pair too, and a pair's domain is as unbounded as a number's.
         K.RandomRGBShift(torch.tensor([0.1, 0.2]), (-2.0, 2.0), 2.0)
         with pytest.raises(ValueError, match=r"r_shift\[0\] should be smaller than r_shift\[1\]"):
@@ -985,7 +987,8 @@ class TestIntensityColourConventions(BaseTester):
         red_gain, blue_gain = (float(value) for value in aug.pl[0])
         scaled = torch.stack([image[:, 0] * red_gain, image[:, 1], image[:, 2] * blue_gain], dim=1)
         self.assert_close(out, scaled.clamp(max=1.0))
-        assert float(out[0, 1, 0, 0]) == 1.0 and float(out[0, 2, 0, 0]) < 0.01
+        assert float(out[0, 1, 0, 0]) == 1.0
+        assert float(out[0, 2, 0, 0]) < 0.01
         assert bool((out[..., 1] < 0).all())
 
     # Issue #4574: the coefficient table follows the input dtype, so a half-precision input is not promoted.
@@ -1086,7 +1089,8 @@ class TestIntensityColourConventions(BaseTester):
         aug = K.RandomJPEG(jpeg_quality=(50.0, 50.0), p=1.0)
         out = aug(image)
         assert bool(torch.isfinite(out).all())
-        assert float(out.min()) >= 0.0 and float(out.max()) <= 1.0
+        assert float(out.min()) >= 0.0
+        assert float(out.max()) <= 1.0
         assert bool(((out > 0.0) & (out < 1.0)).any())
         # Quantization can also give a constant black input small positive values, so the range
         # assertion alone would not catch a misplaced input clamp.
@@ -1283,7 +1287,8 @@ class TestIntensityColourConventions(BaseTester):
         assert K.RandomBrightness(0.5, p=1.0).brightness.tolist() == [0.5, 1.5]
         torch.manual_seed(_FORWARD_SEED)
         sharpness = K.RandomSharpness(0.5, p=1.0).forward_parameters((2000, 1, 4, 4))["sharpness"]
-        assert float(sharpness.min()) >= 0.0 and float(sharpness.max()) <= 0.5
+        assert float(sharpness.min()) >= 0.0
+        assert float(sharpness.max()) <= 0.5
         assert float(sharpness.min()) < 0.1  # the lower end is the floored -x, not a centred x / 2
         jpeg = K.RandomJPEG(50.0, p=1.0)._param_generator
         assert (float(jpeg.jpeg_quality_sampler.low), float(jpeg.jpeg_quality_sampler.high)) == (1.0, 100.0)
@@ -1457,12 +1462,14 @@ class TestIntensityColourConventions(BaseTester):
         image = (torch.rand(2, 3, 16, 16) * 0.8 + 0.1).requires_grad_()
         torch.manual_seed(_FORWARD_SEED)
         fast = K.RandomClahe(p=1.0)(image)
-        assert not fast.requires_grad and fast.grad_fn is None
+        assert not fast.requires_grad
+        assert fast.grad_fn is None
         torch.manual_seed(_FORWARD_SEED)
         slow = K.RandomClahe(p=1.0, slow_and_differentiable=True)(image)
         assert slow.requires_grad
         slow.sum().backward()
-        assert image.grad is not None and float(image.grad.abs().sum()) > 0.0
+        assert image.grad is not None
+        assert float(image.grad.abs().sum()) > 0.0
 
     # The uint8 round trip is a step function, so the gradient below bits=8 is structurally zero even
     # though requires_grad stays True; bits=8 skips the round trip and is the identity.

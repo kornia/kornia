@@ -31,6 +31,59 @@ from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_availa
 
 
 class TestRandomCropAnnotations(BaseTester):
+    def test_slice_crop_boxes_match_pixels_when_only_height_is_oversized(self, device, dtype):
+        height, width, size = 329, 1209, 416
+        x = torch.arange(width, device=device, dtype=dtype).view(1, 1, 1, width).expand(1, 1, height, width)
+        boxes = torch.tensor([[[600.0, 100.0, 700.0, 200.0]]], device=device, dtype=dtype)
+        seq = K.AugmentationSequential(
+            K.RandomCrop((size, size), p=1.0, cropping_mode="slice"), data_keys=["input", "bbox_xyxy"]
+        )
+
+        out, out_boxes = seq(x, boxes)
+        x_offset = out[0, 0, 0, 0]
+
+        self.assert_close(out_boxes[0, 0, [0, 2]], boxes[0, 0, [0, 2]] - x_offset)
+
+    @pytest.mark.parametrize(
+        ("input_size", "size"),
+        [((5, 12), (10, 8)), ((12, 5), (8, 10)), ((5, 6), (10, 9))],
+        ids=["height", "width", "both"],
+    )
+    def test_slice_crop_annotations_sit_on_the_stretched_pixels_5481(self, input_size, size, device, dtype):
+        """Sampling the output image at a transformed point must give back the point's source coordinates."""
+        height, width = input_size
+        ys, xs = torch.meshgrid(
+            torch.arange(height, device=device, dtype=dtype),
+            torch.arange(width, device=device, dtype=dtype),
+            indexing="ij",
+        )
+        ramp = torch.stack([xs, ys])[None]  # each pixel stores its own source (x, y)
+        seq = K.AugmentationSequential(
+            K.RandomCrop(size, p=1.0, cropping_mode="slice"), data_keys=["input", "keypoints", "bbox_xyxy"]
+        )
+        h, w = size
+        # An oversized axis starts at 0 and is stretched; an axis that fits is cropped, here from 1.
+        x0, y0 = float(w < width), float(h < height)
+        x1, y1 = x0 + min(w, width) - 1, y0 + min(h, height) - 1
+        params = seq.forward_parameters(ramp.shape)
+        params[0].data["src"] = ramp.new_tensor(
+            [[[x0, y0], [x0 + w - 1, y0], [x0 + w - 1, y0 + h - 1], [x0, y0 + h - 1]]]
+        )
+        points = ramp.new_tensor([[[x0 + 1, y0 + 1], [x1 - 1, y1 - 1]]])
+        boxes = points.view(1, 1, 4)
+
+        out, out_points, out_boxes = seq(ramp, points, boxes, params=params)
+
+        self.assert_close(out_boxes[0, 0].view(2, 2), out_points[0])
+        # The stored coordinates are separable, so read x along the first row and y down the first column.
+        x_of_column, y_of_row = out[0, 0, 0], out[0, 1, :, 0]
+        for (x, y), (px, py) in zip(points[0].tolist(), out_points[0].tolist()):
+            assert 0 < px < size[1] - 1 and 0 < py < size[0] - 1  # inside the rows and columns the resize clamps
+            x_lo, y_lo = int(px // 1), int(py // 1)
+            sampled_x = torch.lerp(x_of_column[x_lo], x_of_column[x_lo + 1], px - x_lo)
+            sampled_y = torch.lerp(y_of_row[y_lo], y_of_row[y_lo + 1], py - y_lo)
+            self.assert_close(torch.stack((sampled_x, sampled_y)), ramp.new_tensor([x, y]), low_tolerance=True)
+
     @staticmethod
     def inputs(batch_size, device, dtype):
         # Each pixel identifies its position and image, independently of the crop's matrix.

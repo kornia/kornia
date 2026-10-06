@@ -37,7 +37,7 @@ from kornia.image.utils import image_to_tensor
 
 from .base import TransformMatrixMinIn
 from .image import ImageSequential
-from .ops import AugmentationSequentialOps, DataType
+from .ops import AugmentationSequentialOps, DataType, InputSequentialOps
 from .params import ParamItem
 from .patch import PatchSequential
 from .video import VideoSequential
@@ -164,8 +164,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           interpolation is not recovered.
         - ``same_on_batch`` and ``keepdim`` default to ``None``, which keeps each child's own setting;
           ``True`` or ``False`` overrides it.
-        - ``.transform_matrix`` of a chain holding a nested container is unreliable: it can raise, omit the
-          nested transform or return a stale one (`#4476 <https://github.com/kornia/kornia/issues/4476>`_).
+        - Nested :class:`AugmentationSequential` children contribute the matrix they record for the current call
+          under their own ``transformation_matrix_mode``; one whose children are all non-rigid records none and is
+          skipped. A plain :class:`ImageSequential` child is still omitted from the outer matrix
+          (`#4476 <https://github.com/kornia/kornia/issues/4476>`_).
 
     .. warning::
         A non-rigid child silently desynchronizes the coordinate data keys:
@@ -385,8 +387,37 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         return super().clear_state()
 
     def _update_transform_matrix_for_valid_op(self, module: nn.Module) -> None:
+        if is_exporting():
+            return
+        matrix = module.transform_matrix
+        # A nested container whose children are all non-rigid records no matrix under its own mode: skip it, as its
+        # own mode skipped them. Appending ``None`` made the product raise or drop it depending on the child order.
+        if matrix is not None:
+            self._transform_matrices.append(matrix)
+
+    def transform_inputs(
+        self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
+        """Apply prepared parameters and record the current transformation matrix.
+
+        Nested containers use this entry point instead of :meth:`forward`.
+
+        Args:
+            input: Input tensor.
+            params: Parameters for each child in execution order.
+            extra_args: Optional overrides forwarded to child modules.
+
+        Returns:
+            Transformed tensor.
+        """
+        self.clear_state()
+        for param in params:
+            module = self.get_submodule(param.name)
+            input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
+            self._update_transform_matrix_by_module(module)
         if not is_exporting():
-            self._transform_matrices.append(module.transform_matrix)
+            self._params = params
+        return input
 
     def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
         """Return identity matrix."""
@@ -438,7 +469,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 outputs = self.transform_op.inverse(  # type: ignore
                     *outputs, module=module, param=param, extra_args=self.extra_args
                 )
-                if not isinstance(outputs, list | tuple):
+                if not isinstance(outputs, (list, tuple)):
                     # Make sure we are unpacking a list whilst post-proc
                     outputs = [outputs]
 
@@ -462,7 +493,12 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             raise AssertionError(
                 f"The number of inputs must align with the number of data_keys. Got {len(args)} and {len(data_keys)}."
             )
-        image = next((arg for arg, key in zip(args, data_keys) if key in _IMG_OPTIONS), None)
+        # A plain loop, not next(generator, None): Dynamo on torch 2.5/2.6 cannot trace next() with a default.
+        image = None
+        for arg, key in zip(args, data_keys):
+            if key in _IMG_OPTIONS:
+                image = arg
+                break
         if not isinstance(image, torch.Tensor) or image.ndim not in (3, 4):
             return
         image_batch = image.shape[0] if image.ndim == 4 else 1
@@ -534,7 +570,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
             elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
                 _out_k = self._postproc_keypoint(in_arg, cast(Keypoints, out_arg), dcate)
-                if is_autocast_enabled() and isinstance(in_arg, torch.Tensor | Keypoints):
+                if is_autocast_enabled() and isinstance(in_arg, (torch.Tensor, Keypoints)):
                     if isinstance(_out_k, list):
                         _out_k = [i.type(in_arg.dtype) for i in _out_k]
                     else:
@@ -543,7 +579,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
             elif DataKey.get(dcate) in _BOXES_OPTIONS:
                 _out_b = self._postproc_boxes(in_arg, cast(Boxes, out_arg), dcate)
-                if is_autocast_enabled() and isinstance(in_arg, torch.Tensor | Boxes):
+                if is_autocast_enabled() and isinstance(in_arg, (torch.Tensor, Boxes)):
                     if isinstance(_out_b, list):
                         _out_b = [i.type(in_arg.dtype) for i in _out_b]
                     else:
@@ -614,9 +650,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 if DataKey.INPUT in original_data_keys:
                     inp = in_args[0]
                     # A video input shall be BCDHW while an image input shall be BCHW
-                    if self.contains_video_sequential:
-                        _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
-                    elif self.contains_3d_augmentation:
+                    if self.contains_video_sequential or self.contains_3d_augmentation:
                         _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
                     else:
                         _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
@@ -628,7 +662,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             for param in params:
                 module = self.get_submodule(param.name)
                 outputs = self.transform_op.transform(*outputs, module=module, param=param, extra_args=self.extra_args)
-                if not isinstance(outputs, list | tuple):
+                if not isinstance(outputs, (list, tuple)):
                     # Make sure we are unpacking a list whilst post-proc
                     outputs = [outputs]
                 self._update_transform_matrix_by_module(module)
@@ -666,7 +700,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         Arguments convert by data key, and only an image takes the image conversion. A mask given as a NumPy array,
         a PIL image or an image file path keeps its dtype and label values, palette indices included. Every mask
-        must match the image's height and width, with a batch size of 1 or the image's.
+        must match the image's height and width, with a batch size of 1 or the image's. Arguments converted from NumPy
+        go to the container's device when it has parameters or buffers, as the image does.
 
         Args:
             inputs: Inputs to operate on.
@@ -704,7 +739,12 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             # run the forward pass in tensor mode and convert the output to ``output_type`` only after the image
             # has been cached, so ``.show()`` / ``.save()`` never receive a NumPy array or PIL images
             tensor_output = self._call_converted(
-                super(ImageSequential, self).__call__, converted_inputs, kwargs, input_names_to_handle, "pt"
+                super(ImageSequential, self).__call__,
+                converted_inputs,
+                kwargs,
+                input_names_to_handle,
+                "pt",
+                signature_source=self.forward,
             )
 
             in_data_keys: Optional[List[DataKey]]
@@ -738,10 +778,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             if _is_numpy_array(arg):
                 if not arg.dtype.isnative:  # torch.from_numpy rejects big-endian data, such as PIL's "I;16B" mode
                     arg = arg.astype(arg.dtype.newbyteorder("="))
-                return image_to_tensor(arg)
+                return self._to_module_device(image_to_tensor(arg))
             return arg
         if _is_numpy_array(arg):
-            return torch.as_tensor(arg)
+            return self._to_module_device(torch.as_tensor(arg))
         return arg
 
     def _select_output_image(
@@ -753,7 +793,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         idx = data_keys.index(DataKey.INPUT)
         if isinstance(output, dict):
             return output[original_keys[idx]]
-        if len(data_keys) > 1 and isinstance(output, list | tuple):
+        if len(data_keys) > 1 and isinstance(output, (list, tuple)):
             return output[idx]
         return output
 

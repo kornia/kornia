@@ -81,6 +81,94 @@ class TestBilateralBlur(BaseTester):
             with pytest.raises(BaseError, match="Kernel size must be an odd integer bigger than 0"):
                 call()
 
+    @pytest.mark.parametrize(
+        "sigma_color",
+        [0.0, 0, -0.1, [0.0, 0.0], [0.1, 0.0], [-0.1, 0.1]],
+        ids=["float_zero", "int_zero", "negative_float", "zero_tensor", "one_zero_row", "negative_row"],
+    )
+    def test_convention_sigma_color_must_be_positive_5169(self, sigma_color, device, dtype):
+        # The colour kernel divides by sigma_color squared, so a zero entry divides by zero and the sign of a negative
+        # one is lost: every entry must be positive. The check names the argument, runs before any padding and covers
+        # the joint filter and the modules.
+        from kornia.core.exceptions import BaseError
+
+        image = torch.rand(2, 3, 8, 9, device=device, dtype=dtype)
+        if isinstance(sigma_color, list):
+            sigma_color = torch.tensor(sigma_color, device=device, dtype=dtype)
+        calls = (
+            lambda: bilateral_blur(image, 3, sigma_color, (1.0, 1.0)),
+            lambda: joint_bilateral_blur(image, image, 3, sigma_color, (1.0, 1.0)),
+            lambda: BilateralBlur(3, sigma_color, (1.0, 1.0))(image),
+            lambda: JointBilateralBlur(3, sigma_color, (1.0, 1.0))(image, image),
+        )
+        for call in calls:
+            with pytest.raises(BaseError, match="sigma_color must be positive"):
+                call()
+
+    @pytest.mark.parametrize("name", ["sigma_color", "sigma_space"])
+    @pytest.mark.parametrize(
+        "batch, rows",
+        [(2, 3), (4, 2), (4, 3), (1, 3)],
+        ids=["2_vs_3", "4_vs_2", "4_vs_3", "1_vs_3"],
+    )
+    def test_sigma_batch_mismatch_5430(self, name, batch, rows, device, dtype):
+        # A tensor sigma batch that is neither 1 nor the input batch raises at the entry with a message naming the
+        # argument and both sizes, not a torch broadcast error. Input batch 1 with 3 sigma rows used to succeed and
+        # silently return a batch of 3, so it is covered too. The check covers the joint filter and the modules.
+        from kornia.core.exceptions import BaseError
+
+        image = torch.rand(batch, 3, 8, 9, device=device, dtype=dtype)
+        sigma_color = 0.5
+        sigma_space = (1.0, 1.0)
+        if name == "sigma_color":
+            sigma_color = torch.linspace(0.5, 1.0, rows, device=device, dtype=dtype)
+        else:
+            sigma_space = torch.full((rows, 2), 1.5, device=device, dtype=dtype)
+
+        calls = (
+            lambda: bilateral_blur(image, 3, sigma_color, sigma_space),
+            lambda: joint_bilateral_blur(image, image, 3, sigma_color, sigma_space),
+            lambda: BilateralBlur(3, sigma_color, sigma_space)(image),
+            lambda: JointBilateralBlur(3, sigma_color, sigma_space)(image, image),
+        )
+        for call in calls:
+            with pytest.raises(BaseError, match=f"{name} batch of {rows} for an input batch of {batch}"):
+                call()
+
+    @pytest.mark.parametrize("name", ["sigma_color", "sigma_space"])
+    @pytest.mark.parametrize("per_sample", [False, True], ids=["shared", "per_sample"])
+    def test_sigma_batch_accepted_5430(self, name, per_sample, device, dtype):
+        # A sigma batch of 1 is shared by the input and a batch equal to the input gives each sample its own sigma:
+        # both keep working and match filtering every sample alone.
+        batch = 4
+        rows = batch if per_sample else 1
+        image = torch.rand(batch, 3, 8, 9, device=device, dtype=dtype)
+        if name == "sigma_color":
+            sigma_color = torch.linspace(0.3, 0.9, rows, device=device, dtype=dtype)
+            kwargs = {"sigma_color": sigma_color, "sigma_space": (1.2, 1.4)}
+        else:
+            sigma_space = torch.stack((torch.linspace(0.8, 1.6, rows), torch.linspace(1.0, 2.0, rows)), dim=-1)
+            kwargs = {"sigma_color": 0.5, "sigma_space": sigma_space.to(device=device, dtype=dtype)}
+
+        actual = bilateral_blur(image, 3, **kwargs)
+        assert actual.shape == image.shape
+
+        for i in range(batch):
+            row = i if per_sample else 0
+            single = {k: (v[row : row + 1] if isinstance(v, torch.Tensor) else v) for k, v in kwargs.items()}
+            self.assert_close(actual[i : i + 1], bilateral_blur(image[i : i + 1], 3, **single))
+
+    @pytest.mark.parametrize("shape", [(), (2,), (1, 1)], ids=["0d", "1d", "one_column"])
+    def test_sigma_space_shape_is_checked_before_its_batch_5430(self, shape, device, dtype):
+        # The (B, 2) shape check runs before the batch check: a 0-d sigma_space has no batch to read, and a 1-D pair
+        # on a batch-1 input would otherwise be reported as a sigma_space batch of 2.
+        from kornia.core.exceptions import ShapeError
+
+        image = torch.ones(1, 1, 8, 9, device=device, dtype=dtype)
+        sigma_space = torch.full(shape, 1.5, device=device, dtype=dtype)
+        with pytest.raises(ShapeError):
+            bilateral_blur(image, 3, 0.5, sigma_space)
+
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
         inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
@@ -126,6 +214,32 @@ class TestBilateralBlur(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(data), op_optimized(data))
+
+    def test_dynamo_tensor_sigma_color_fullgraph_5169(self, device, dtype, torch_optimizer):
+        """The data-dependent sigma_color check is skipped under compile, so a tensor sigma_color stays one graph."""
+        data = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        op = BilateralBlur(3, torch.tensor([0.3, 0.7], device=device, dtype=dtype), (1.0, 1.0))
+        op_optimized = torch_optimizer(op, fullgraph=True)
+        self.assert_close(op_optimized(data), op(data))
+
+    @pytest.mark.parametrize("per_sample", [False, True], ids=["shared_sigma", "per_sample_sigma"])
+    def test_dynamo_sigma_batch_check_is_dynamic_5430(self, per_sample, device, dtype, torch_optimizer):
+        """The sigma batch check does not specialize the batch: one dynamic graph serves every batch (#5430)."""
+        from torch._dynamo.testing import CompileCounter
+
+        def op(x, sigma_color, sigma_space):
+            return bilateral_blur(x, 3, sigma_color, sigma_space, "constant")
+
+        counter = CompileCounter()
+        compiled = torch_optimizer(op, backend=counter, fullgraph=True, dynamic=True)
+        # no batch equals another axis, including sigma_space's 2 columns, so duck sizing cannot tie the batch to it
+        for batch in (4, 5, 6):
+            rows = batch if per_sample else 1
+            image = torch.rand(batch, 3, 7, 9, device=device, dtype=dtype)
+            sigma_color = torch.rand(rows, device=device, dtype=dtype) + 0.5
+            sigma_space = torch.rand(rows, 2, device=device, dtype=dtype) + 0.5
+            self.assert_close(compiled(image, sigma_color, sigma_space), op(image, sigma_color, sigma_space))
+        assert counter.frame_count == 1
 
     def test_opencv_grayscale(self, device, dtype):
         img = [[95, 130, 108, 228], [98, 142, 187, 166], [114, 166, 190, 141], [150, 83, 174, 216]]

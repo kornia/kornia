@@ -129,8 +129,8 @@ Rotations and rigid motions
 :class:`~kornia.geometry.liegroup.Se3`, :class:`~kornia.geometry.liegroup.So2` and
 :class:`~kornia.geometry.liegroup.Se2` compose the same way and act on a point as ``R p + t``, with ``R`` the
 ``matrix()`` of the rotation part. ``So2`` and ``Se2`` do so for any complex number, and a non-unit one also scales by
-its modulus; ``So3`` and ``Se3`` need a unit quaternion
-(`#4942 <https://github.com/kornia/kornia/issues/4942>`_). The tangent vectors of ``Se3`` and ``Se2`` put the
+its modulus; ``So3`` and ``Se3`` rotate by the direction :math:`q / |q|` of a non-unit quaternion, without scaling,
+like ``Quaternion.matrix()``. The tangent vectors of ``Se3`` and ``Se2`` put the
 rotation part, in radians, last: ``[υ, ω]`` and ``[vx, vy, θ]``. ``log`` is principal: its rotation angle is at most
 :math:`\pi` in magnitude. The Jacobians of ``So3`` satisfy
 :math:`\exp(\omega + \delta) \approx \exp(\omega) \exp(J_r \delta) = \exp(J_l \delta) \exp(\omega)`. A transform
@@ -414,8 +414,9 @@ Augmentations
 - Boxes use the inclusive ``xyxy_plus`` convention of
   :class:`kornia.geometry.boxes.Boxes` (see *Bounding boxes* above). Flips use
   integer pixel centres: ``x' = W - 1 - x``.
-- The outer ``.transform_matrix`` of a nested container can be missing or
-  stale, even with only rigid children
+- Nested ``AugmentationSequential`` children contribute matrices from the
+  current call. A plain ``ImageSequential`` child is still omitted from an
+  outer ``AugmentationSequential`` matrix
   (`#4476 <https://github.com/kornia/kornia/issues/4476>`_).
 - Dictionary keys match a data-key name exactly or before an ``_``/``-``
   suffix, the longest match winning. Unrecognized keys are returned unchanged
@@ -705,8 +706,8 @@ normalised camera coordinates, and :func:`~kornia.geometry.homography.find_homog
    * - pose from ``E``
      - ``decompose_essential_matrix`` returns ``R1``, ``R2`` and a unit ``t``; which candidate is the true pose is
        not fixed.
-       ``motion_from_essential_choose_solution`` selects it by cheirality from pixel coordinates, and returns
-       candidate 0 when no point passes (`#4879 <https://github.com/kornia/kornia/issues/4879>`_)
+       ``motion_from_essential_choose_solution`` selects it by cheirality from pixel coordinates and also returns
+       the number of points that passed; ``0`` means none did
      - ``decomposeEssentialMat`` returns the same candidate set, whose labels are not fixed either and differ from
        kornia's, so a candidate index does not port; ``recoverPose`` selects the same pose and also returns the
        inlier count
