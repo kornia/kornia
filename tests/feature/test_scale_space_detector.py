@@ -17,6 +17,7 @@
 
 import pytest
 import torch
+from torch.utils._python_dispatch import TorchDispatchMode
 
 import kornia
 from kornia.core.check import ShapeError
@@ -78,6 +79,52 @@ def _canonical_order(lafs: torch.Tensor, responses: torch.Tensor) -> tuple[torch
 
 
 class TestScaleSpaceDetector(BaseTester):
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("constructor", [ScalePyramid, ScaleSpaceDetector, kornia.feature.SIFTFeatureScaleSpace])
+    @pytest.mark.parametrize("use_set_default_device", [False, True])
+    def test_constructor_without_non_cpu_float64(self, constructor, use_set_default_device):
+        # Model MPS's float64 restriction on meta so this regression also runs on CPU-only machines.
+        class NoDoubleOffCPU(TorchDispatchMode):
+            def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+                kwargs = kwargs or {}
+                if kwargs.get("dtype") == torch.float64:
+                    assert torch.device(kwargs.get("device", "cpu")).type == "cpu"
+                return func(*args, **kwargs)
+
+        # SIFTFeatureScaleSpace explicitly moves to CPU unless its device argument is given.
+        constructor_kwargs = {"device": "meta"} if constructor is kornia.feature.SIFTFeatureScaleSpace else {}
+        original = torch.get_default_device()
+        try:
+            with NoDoubleOffCPU():
+                if use_set_default_device:
+                    torch.set_default_device("meta")
+                    module = constructor(**constructor_kwargs)
+                else:
+                    with torch.device("meta"):
+                        module = constructor(**constructor_kwargs)
+        finally:
+            if use_set_default_device:
+                torch.set_default_device(original)
+
+        pyramids = [child for child in module.modules() if isinstance(child, ScalePyramid)]
+        assert len(pyramids) == 1
+        buffers = dict(pyramids[0].named_buffers())
+        assert buffers
+        for kernel in buffers.values():
+            assert kernel.device.type == "meta"
+            assert kernel.dtype == torch.float32
+
+    @pytest.mark.parametrize("constructor", [ScaleSpaceDetector, kornia.feature.SIFTFeatureScaleSpace])
+    def test_constructor_under_default_device(self, device, constructor):
+        with device:
+            module = constructor()
+        pyramid = next(child for child in module.modules() if isinstance(child, ScalePyramid))
+        target = "cpu" if constructor is kornia.feature.SIFTFeatureScaleSpace else device
+        expected_device = torch.empty(0, device=target).device
+        for kernel in pyramid.buffers():
+            assert kernel.device == expected_device
+            assert kernel.dtype == torch.float32
+
     @pytest.mark.parametrize("subpix_type", [AdaptiveQuadInterp3d, ConvQuadInterp3d, IterativeQuadInterp3d])
     @pytest.mark.parametrize("batch", [1, 2])
     @pytest.mark.parametrize("max_candidates", [None, 3])
