@@ -327,10 +327,15 @@ class TestRandomCropPaddingMatrix(BaseTester):
         params["src"] = (
             image.new_tensor([[[1, 1], [size[1], 1], [size[1], size[0]], [1, size[0]]]]).expand(2, -1, -1).clone()
         )
+        if size != image.shape[-2:]:
+            # Skipped rows cannot keep their shape in a cropped batch (#4497).
+            with pytest.raises(ValueError, match="mixes applied and skipped rows"):
+                torch_optimizer(crop)(image, params=params)
+            return
         output = torch_optimizer(crop)(image, params=params)
         padded = torch.nn.functional.pad(image, (1, 1, 2, 2))
         expected = padded[..., 1 : size[0] + 1, 1 : size[1] + 1].clone()
-        expected[0] = image[0] if size == image.shape[-2:] else padded[0, :, : size[0], : size[1]]
+        expected[0] = image[0]
         self.assert_close(output, expected, rtol=0, atol=0)
         matrix = image.new_tensor([[[1, 0, 0], [0, 1, 0], [0, 0, 1]], [[1, 0, 0], [0, 1, 1], [0, 0, 1]]])
         self.assert_close(crop.transform_matrix, matrix, rtol=0, atol=0)

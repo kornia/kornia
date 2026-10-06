@@ -35,14 +35,18 @@ from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
 
-def _mixed_gate_shape_error(input_shape: Tuple[int, ...], output_shape: Tuple[int, ...]) -> ValueError:
+def _mixed_gate_shape_error(
+    input_shape: Tuple[int, ...], output_shape: Tuple[int, ...], inverse: bool = False
+) -> ValueError:
     """Build the error for a per-row gate on an augmentation that changes the sample shape.
 
     A batch can only hold one sample shape, so the rows the gate skips cannot keep their own shape next to the
-    rows it applies to. See `#4497 <https://github.com/kornia/kornia/issues/4497>`_.
+    rows it applies to. ``inverse`` names the inverse call, which maps the output shape back to the input shape.
+    See `#4497 <https://github.com/kornia/kornia/issues/4497>`_.
     """
+    subject = "the inverse of this augmentation" if inverse else "this augmentation"
     return ValueError(
-        "`batch_prob` mixes applied and skipped rows, but this augmentation changes the sample shape from "
+        f"`batch_prob` mixes applied and skipped rows, but {subject} changes the sample shape from "
         f"{tuple(input_shape)} to {tuple(output_shape)}, so the skipped rows cannot keep their shape. "
         "Pass a `batch_prob` that is all ones or all zeros."
     )

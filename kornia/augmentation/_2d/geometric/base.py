@@ -251,7 +251,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             output = self.inverse_transform(in_tensor, flags=flags, transform=transform, size=size)
         else:
             if size is not None and tuple(in_tensor.shape[-2:]) != size:
-                raise _mixed_gate_shape_error(in_tensor.shape[1:], (*in_tensor.shape[1:-2], *size))
+                raise _mixed_gate_shape_error(in_tensor.shape[1:], (*in_tensor.shape[1:-2], *size), inverse=True)
             output[to_apply] = self.inverse_transform(
                 in_tensor[to_apply],
                 transform=transform[to_apply] if transform is not None else transform,
