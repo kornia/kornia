@@ -31,6 +31,7 @@ from kornia.filters.sobel import spatial_gradient
 from kornia.geometry.grid import create_meshgrid
 
 from .camera import PinholeCamera, cam2pixel, pixel2cam, project_points, unproject_points
+from .camera.pinhole import _embed_intrinsics
 from .conversions import normalize_pixel_coordinates, normalize_points_with_intrinsics
 from .linalg import convert_points_to_homogeneous, transform_points
 
@@ -454,6 +455,8 @@ class DepthWarper(nn.Module):
         - :meth:`compute_projection_matrix` stores ``K_dst @ (E_dst @ inverse(E_src))``, the matrix above, from
           the constructor's ``pinhole_dst`` and that method's ``pinhole_src`` (both
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`, world-to-camera extrinsics).
+          Both cameras use only the top-left 3x3 block of their intrinsics, embedded in
+          homogeneous 4x4 form; the stored fourth row and column are ignored.
         - the ``grid`` attribute is the homogeneous integer-centre pixel grid (pixel ``(0, 0)`` is
           ``(0, 0, 1)``); :meth:`warp_grid` returns sampling positions in ``grid_sample``'s
           ``align_corners=True`` normalized coordinates of the **destination** image.
@@ -553,8 +556,7 @@ class DepthWarper(nn.Module):
         dst_trans_src[..., :3, :3] = composed_rmat
         dst_trans_src[..., :3, 3:] = composed_tvec
 
-        # intrinsics (Nx3x3) @ extrinsics (Nx4x4)
-        dst_proj_src = torch.matmul(self._pinhole_dst.intrinsics, dst_trans_src)
+        dst_proj_src = torch.matmul(_embed_intrinsics(self._pinhole_dst.camera_matrix), dst_trans_src)
 
         self._pinhole_src = pinhole_src
         self._dst_proj_src = dst_proj_src

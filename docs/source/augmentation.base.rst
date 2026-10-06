@@ -48,8 +48,8 @@ Kornia augmentations generally follow a `sample-apply` routine.
   Apart from transforming image tensors, Kornia also supports inverse operations that revert the transform,
   and transforms of other data modalities (`data keys` in Kornia) such as masks, keypoints, and bounding boxes.
   These features depend on the concrete operation and its data-key handlers. `AugmentationSequential` passes the
-  recorded matrix to the mask, box and keypoint handlers of geometric children and of custom
-  `RigidAffineAugmentationBase2D` subclasses. Non-rigid coordinate transforms are not supplied automatically
+  matrix of the call's parameters to the mask, box and keypoint handlers of geometric children and of custom
+  `RigidAffineAugmentationBase2D` subclasses, recomputing it from replayed ``params`` that the child did not last apply to an image. Non-rigid coordinate transforms are not supplied automatically
   (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
 
 Custom Augmentation Classes

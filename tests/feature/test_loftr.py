@@ -171,7 +171,8 @@ class TestCoarseMatching(BaseTester):
         n_pad = max(n_train - self.N_PRED, self.CFG["train_pad_num_gt_min"])  # 3
         assert out["b_ids"].shape[0] == self.N_PRED + n_pad
         assert (out["b_ids"] == 0).all()
-        assert (out["i_ids"] < L).all() and (out["j_ids"] < S).all()
+        assert (out["i_ids"] < L).all()
+        assert (out["j_ids"] < S).all()
         assert out["i_ids"][: self.N_PRED].tolist() == list(range(self.N_PRED))
         assert out["j_ids"][: self.N_PRED].tolist() == list(range(self.N_PRED))
         assert (out["i_ids"][self.N_PRED :] == L - 1).all()

@@ -30,6 +30,9 @@ from kornia.core._small_linalg import (
     _adjugate_2x2,
     _adjugate_3x3,
     _adjugate_4x4,
+    _det_perm_2x2,
+    _det_perm_3x3,
+    _det_perm_4x4,
     _inverse_3x3_cross,
     _inverse_3x3_scalar,
 )
@@ -71,9 +74,8 @@ def get_mps_device_if_available() -> torch.device:
 
     """
     dev = "cpu"
-    if hasattr(torch.backends, "mps"):
-        if torch.backends.mps.is_available():
-            dev = "mps"
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        dev = "mps"
     return torch.device(dev)
 
 
@@ -243,6 +245,22 @@ def _adjugate_closed_form(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tens
     raise NotImplementedError(f"Closed-form inverse only supports 2x2, 3x3 and 4x4 matrices, got {list(input.shape)}")
 
 
+def _det_perm_closed_form(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Determinant of batched square matrices up to 4x4 and the permanent of their absolute values.
+
+    Raises:
+        NotImplementedError: for shapes other than ``(..., n, n)`` with ``n`` in 2, 3, 4.
+    """
+    n = input.shape[-1]
+    if input.shape[-2] == n and n == 2:
+        return _det_perm_2x2(input)
+    if input.shape[-2] == n and n == 3:
+        return _det_perm_3x3(input)
+    if input.shape[-2] == n and n == 4:
+        return _det_perm_4x4(input)
+    raise NotImplementedError(f"Closed-form determinant supports 2x2, 3x3 and 4x4 matrices, got {list(input.shape)}")
+
+
 def _has_closed_form_inverse(input: torch.Tensor) -> bool:
     n = input.shape[-1]
     return input.shape[-2] == n and n in (2, 3, 4)
@@ -260,6 +278,12 @@ def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:
     include ``aten::linalg_inv``, which neither ONNX exporter lowers. ``torch.jit.is_tracing()``
     is JIT-script-safe (unlike ``torch.onnx.is_in_onnx_export``, which contains an ``import``
     statement).
+
+    Singular input is not checked here. In eager mode ``torch.linalg.inv`` decides, and raises, from the
+    pivots of its own factorization; under capture the adjugate is divided by the determinant, which gives
+    non-finite or large values. Which near-singular matrices raise, and which return large values, depends
+    on the torch version, the device and the capture mode. Callers that need a verdict use
+    :func:`safe_inverse_with_mask`, whose mask follows one rule everywhere.
     """
     KORNIA_CHECK_IS_TENSOR(input, "Input must be torch.Tensor")
     dtype = _normalize_to_float32_or_float64(input.dtype)
@@ -383,13 +407,53 @@ def _rows_finite(x: torch.Tensor) -> torch.Tensor:
     return x.isfinite().all(-1).all(-1)
 
 
+def _is_singular(A: torch.Tensor) -> torch.Tensor:
+    """Whether each 2x2, 3x3 or 4x4 matrix of ``A`` counts as singular, as a mask over its batch.
+
+    One rule decides, the same in eager mode and under graph capture, on every torch version and device,
+    and unchanged by scaling the matrix: a matrix is singular when its closed-form determinant is within
+    the rounding error of that determinant,
+
+    ``|det A| <= 8 * n * eps * perm |A|``,
+
+    where ``perm |A|``, the permanent of the absolute values, is the sum of the absolute values of the terms
+    of the determinant expansion, ``eps`` the machine epsilon of the dtype of ``A`` and ``n`` its order. The
+    permanent, unlike ``||A||^n``, does not grow with a translation: a homography that moves by 5000 pixels
+    has ``det 1`` and ``perm 1``. A matrix with a non-finite entry is not flagged; its inverse is not finite
+    and the callers reject it on that account.
+
+    Both sides are linear in every row and every column, so the rule is read on the matrix with each row,
+    then each column, divided by its largest magnitude. That leaves the ratio unchanged and keeps the
+    products of ``n`` entries from overflowing or underflowing: unscaled, ``1e10 * I`` of order 4 in float32
+    reads ``inf <= inf`` and ``1e-13 * I`` reads ``0 <= 0``, and both would count as singular.
+
+    Raises:
+        NotImplementedError: for shapes other than ``(..., n, n)`` with ``n`` in 2, 3, 4.
+    """
+    if torch.jit.is_scripting():
+        # ``torch.finfo`` does not script; the callers hand this float32 or float64 only.
+        double = A.dtype == torch.float64
+        eps = 2.220446049250313e-16 if double else 1.1920928955078125e-07
+        tiny = 2.2250738585072014e-308 if double else 1.1754943508222875e-38
+    else:
+        eps = torch.finfo(A.dtype).eps
+        tiny = torch.finfo(A.dtype).tiny
+    A = A / A.abs().amax(-1, keepdim=True).clamp_min(tiny)
+    A = A / A.abs().amax(-2, keepdim=True).clamp_min(tiny)
+    det, perm = _det_perm_closed_form(A)
+    return det.abs() <= (8 * A.shape[-1] * eps) * perm
+
+
 def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Solves the system of equations.
 
     Avoids crashing because of singular matrix input and outputs the mask of valid solution.
 
-    A system is valid when the LU factorization of ``A`` has no zero pivot and the solution is finite in
-    the dtype of ``B``. An invalid system is solved with the identity in place of ``A``, so its row of
+    A system is valid when ``A`` is not singular and the solution is finite in the dtype of ``B``. A 2x2,
+    3x3 or 4x4 ``A`` is singular when ``|det A| <= 8 * n * eps * perm |A|``, the closed-form determinant
+    against the permanent of the absolute values (:func:`_is_singular`), which is the same on every torch
+    version, or when its LU factorization has a zero pivot; a larger ``A`` by the zero pivot alone. An
+    invalid system is solved with the identity in place of ``A``, so its row of
     ``X`` holds ``B`` and its row of the returned LU factor is the identity's. The differentiated solve
     therefore never sees a singular matrix, and the gradient with respect to the valid systems (and to
     any parameter they share with an invalid one) stays finite.
@@ -421,9 +485,12 @@ def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor
     # identity. Masking the output instead is not enough: the backward of ``lu_factor`` / ``lu_solve`` at
     # a singular matrix is non-finite, and ``0 * nan`` leaks it into every shared parameter.
     # Since kornia requires torch>=2.5.1, we can always use torch.linalg.lu_factor_ex and torch.linalg.lu_solve
-    LU_detached, pivots_detached, info = torch.linalg.lu_factor_ex(A_cast.detach())
+    A_detached = A_cast.detach()
+    LU_detached, pivots_detached, info = torch.linalg.lu_factor_ex(A_detached)
     X_detached = torch.linalg.lu_solve(LU_detached, pivots_detached, B_cast.detach())
     valid_mask: torch.Tensor = (info == 0) & _rows_finite(X_detached.to(B.dtype))
+    if _has_closed_form_inverse(A):
+        valid_mask = valid_mask & ~_is_singular(A_detached)
 
     eye = torch.eye(A_cast.shape[-1], device=A_cast.device, dtype=dtype)
     A_safe = torch.where(valid_mask[..., None, None], A_cast, eye)
@@ -438,8 +505,11 @@ def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
 
     Avoids crashing because of non-invertable matrix input and outputs the mask of valid solution.
 
-    A matrix is valid when it is invertible (no zero pivot in eager mode, a non-zero determinant under
-    graph capture) and its inverse is finite in the dtype of ``A``. An invalid matrix is inverted as the
+    A matrix is valid when it is not singular and its inverse is finite in the dtype of ``A``. A 2x2, 3x3
+    or 4x4 matrix is singular when ``|det A| <= 8 * n * eps * perm |A|``, the closed-form determinant
+    against the permanent of the absolute values (:func:`_is_singular`), which is the same in eager mode and
+    under graph capture and on every torch version, or, in eager mode, when ``inv_ex`` reports a zero
+    pivot; a larger matrix by the zero pivot alone. An invalid matrix is inverted as the
     identity, so its row of the output is the identity. The differentiated inverse therefore never sees a
     singular matrix, and the gradient with respect to the valid matrices (and to any parameter they
     share with an invalid one) stays finite.
@@ -460,18 +530,20 @@ def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
     # Decide validity on a detached pass, then invert a batch whose invalid matrices are replaced by the
     # identity. Masking the output instead is not enough: the backward of ``inv`` reuses its non-finite
     # output, and ``0 * nan`` leaks it into every shared parameter.
+    A_detached = A_cast.detach()
     if _is_tracing_or_exporting() and _has_closed_form_inverse(A):
-        # ``linalg_inv_ex`` has no ONNX lowering; the adjugate form is basic arithmetic, and a
-        # zero determinant is exactly the singularity ``inv_ex`` flags through ``info``.
-        adj_detached, det_detached = _adjugate_closed_form(A_cast.detach())
-        mask = det_detached != 0
+        # ``linalg_inv_ex`` has no ONNX lowering; the adjugate form is basic arithmetic.
+        adj_detached, det_detached = _adjugate_closed_form(A_detached)
+        mask = ~_is_singular(A_detached)
         safe_det = torch.where(mask, det_detached, torch.ones_like(det_detached))
         mask = mask & _rows_finite((adj_detached / safe_det[..., None, None]).to(dtype_original))
         adj, det = _adjugate_closed_form(torch.where(mask[..., None, None], A_cast, eye))
         return (adj / det[..., None, None]).to(dtype_original), mask
 
-    inverse_detached, info = inv_ex(A_cast.detach())
+    inverse_detached, info = inv_ex(A_detached)
     mask = (info == 0) & _rows_finite(inverse_detached.to(dtype_original))
+    if _has_closed_form_inverse(A):
+        mask = mask & ~_is_singular(A_detached)
     inverse, _ = inv_ex(torch.where(mask[..., None, None], A_cast, eye))
     return inverse.to(dtype_original), mask
 
@@ -562,6 +634,9 @@ def dataclass_to_dict(obj: Any) -> Any:
     """Recursively convert dataclass instances to dictionaries."""
     if is_dataclass(obj) and not isinstance(obj, type):
         return {key: dataclass_to_dict(value) for key, value in asdict(obj).items()}
+    if isinstance(obj, tuple) and hasattr(obj, "_fields"):
+        # a namedtuple's constructor takes one argument per field, so expand positionally
+        return type(obj)(*(dataclass_to_dict(item) for item in obj))
     if isinstance(obj, (list, tuple)):
         return type(obj)(dataclass_to_dict(item) for item in obj)
     if isinstance(obj, dict):

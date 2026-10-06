@@ -276,8 +276,8 @@ def binary_focal_loss_with_logits(
         log_probs_neg = log_probs_neg * target_mask
         log_probs_pos = log_probs_pos * target_mask
 
-    pos_term: torch.Tensor = -log_probs_neg.exp().pow(gamma) * target * log_probs_pos
-    neg_term: torch.Tensor = -log_probs_pos.exp().pow(gamma) * (1.0 - target) * log_probs_neg
+    pos_term: torch.Tensor = -(gamma * log_probs_neg).exp() * target * log_probs_pos
+    neg_term: torch.Tensor = -(gamma * log_probs_pos).exp() * (1.0 - target) * log_probs_neg
     if alpha is not None:
         pos_term = alpha * pos_term
         neg_term = (1.0 - alpha) * neg_term

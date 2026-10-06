@@ -160,7 +160,7 @@ def KORNIA_CHECK_SHAPE(x: torch.Tensor, shape: list[str], msg: Optional[str] = N
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
@@ -242,7 +242,7 @@ def KORNIA_CHECK(condition: bool, msg: Optional[str] = None, raises: bool = True
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
@@ -295,7 +295,7 @@ def KORNIA_CHECK_TYPE(x: Any, typ: _T | tuple[_T, ...], msg: Optional[str] = Non
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
@@ -350,7 +350,7 @@ def KORNIA_CHECK_IS_TENSOR(x: Any, msg: Optional[str] = None, raises: bool = Tru
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
@@ -404,7 +404,7 @@ def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Optional[Sequence[Any]], raises: bool = Tr
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
@@ -449,7 +449,7 @@ def KORNIA_CHECK_SAME_DEVICE(x: torch.Tensor, y: torch.Tensor, raises: bool = Tr
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
@@ -492,7 +492,7 @@ def KORNIA_CHECK_SAME_DEVICES(tensors: list[torch.Tensor], msg: Optional[str] = 
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
@@ -555,7 +555,7 @@ def KORNIA_CHECK_SAME_SHAPE(x: torch.Tensor, y: torch.Tensor, raises: bool = Tru
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
@@ -598,7 +598,7 @@ def KORNIA_CHECK_IS_COLOR(x: torch.Tensor, msg: Optional[str] = None, raises: bo
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
@@ -635,7 +635,7 @@ def KORNIA_CHECK_IS_GRAY(x: torch.Tensor, msg: Optional[str] = None, raises: boo
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
@@ -672,7 +672,7 @@ def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: torch.Tensor, msg: Optional[str] = None, ra
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
@@ -719,7 +719,7 @@ def KORNIA_CHECK_IS_IMAGE(x: torch.Tensor, msg: Optional[str] = None, raises: bo
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
@@ -777,7 +777,7 @@ def KORNIA_CHECK_DM_DESC(desc1: torch.Tensor, desc2: torch.Tensor, dm: torch.Ten
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 

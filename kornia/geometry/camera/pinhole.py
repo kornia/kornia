@@ -25,6 +25,14 @@ from kornia.geometry.conversions import convert_points_from_homogeneous, convert
 from kornia.geometry.linalg import inverse_transformation, transform_points
 
 
+def _embed_intrinsics(camera_matrix: torch.Tensor) -> torch.Tensor:
+    """Embed a (..., 3, 3) camera matrix in homogeneous 4x4 form."""
+    intrinsics = camera_matrix.new_zeros(*camera_matrix.shape[:-2], 4, 4)
+    intrinsics[..., :3, :3] = camera_matrix
+    intrinsics[..., 3, 3] = 1.0
+    return intrinsics
+
+
 class PinholeCamera:
     r"""Class that represents a Pinhole Camera model.
 
@@ -51,8 +59,9 @@ class PinholeCamera:
         `#4263 <https://github.com/kornia/kornia/issues/4263>`_. With the :math:`(B, N, 4, 4)` storage the
         validator admits, :meth:`project` raises on :math:`(B, N, 3)` points:
         `#4266 <https://github.com/kornia/kornia/issues/4266>`_. The ``intrinsics`` form is not validated, but
-        :meth:`project` and :meth:`unproject` read only the top-left :math:`3 \times 3` block, so a zero-padded
-        ``K`` round-trips like its homogeneous embedding.
+        :meth:`project`, :meth:`unproject`, :meth:`intrinsics_inverse` and
+        :class:`~kornia.geometry.depth.DepthWarper` read only the top-left :math:`3 \times 3` block, so a
+        zero-padded ``K`` behaves like its homogeneous embedding.
 
     Args:
         intrinsics: torch.Tensor with shape :math:`(B, 4, 4)`
@@ -289,15 +298,18 @@ class PinholeCamera:
         return PinholeCamera(self.intrinsics, self.extrinsics, self.height, self.width)
 
     def intrinsics_inverse(self) -> torch.Tensor:
-        r"""Return the inverse of the 4x4 intrinsics matrix.
+        r"""Return the homogeneous 4x4 embedding of the inverse camera matrix.
 
-        See the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+        Only the top-left 3x3 block of ``intrinsics`` is inverted. The remaining entries
+        are ignored, so zero-padded intrinsics are supported. The result has a zero
+        last row and column except for the homogeneous component at ``[..., 3, 3]``,
+        which is one. See the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
 
         Returns:
             torch.Tensor of shape :math:`(B, 4, 4)`.
 
         """
-        return _torch_inverse_cast(self.intrinsics)
+        return _embed_intrinsics(_torch_inverse_cast(self.camera_matrix))
 
     def scale(self, scale_factor: torch.Tensor) -> "PinholeCamera":
         r"""Scale the pinhole model.

@@ -196,14 +196,12 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
             std = torch.tensor([std] * shape[1], device=data.device, dtype=data.dtype)
 
         # Allow broadcast on channel dimension
-        if mean.shape and mean.shape[0] != 1:
-            if mean.shape[0] != data.shape[1] and mean.shape[:2] != data.shape[:2]:
-                raise ValueError(f"mean length and number of channels do not match. Got {mean.shape} and {data.shape}.")
+        if mean.shape and mean.shape[0] != 1 and mean.shape[0] != data.shape[1] and mean.shape[:2] != data.shape[:2]:
+            raise ValueError(f"mean length and number of channels do not match. Got {mean.shape} and {data.shape}.")
 
         # Allow broadcast on channel dimension
-        if std.shape and std.shape[0] != 1:
-            if std.shape[0] != data.shape[1] and std.shape[:2] != data.shape[:2]:
-                raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
+        if std.shape and std.shape[0] != 1 and std.shape[0] != data.shape[1] and std.shape[:2] != data.shape[:2]:
+            raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
 
         mean = torch.as_tensor(mean, device=data.device, dtype=data.dtype)
         std = torch.as_tensor(std, device=data.device, dtype=data.dtype)
@@ -312,11 +310,6 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
         This is the elementwise inverse of :func:`normalize` for matching mean and std
         on ``(B, C, *)`` input.
 
-    .. warning::
-        Outside rank four, a ``(C,)`` mean or std is checked against the wrong axis, so valid
-        statistics can be rejected and mismatched ones accepted; pass ``(1, C)`` instead
-        (`#5318 <https://github.com/kornia/kornia/issues/5318>`_).
-
     .. math::
         \text{input[channel] = (input[channel] * std[channel]) + mean[channel]}
 
@@ -374,14 +367,12 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
             std = torch.tensor([std] * shape[1], device=data.device, dtype=data.dtype)
 
         # Allow broadcast on channel dimension
-        if mean.shape and mean.shape[0] != 1:
-            if mean.shape[0] != data.shape[-3] and mean.shape[:2] != data.shape[:2]:
-                raise ValueError(f"mean length and number of channels do not match. Got {mean.shape} and {data.shape}.")
+        if mean.shape and mean.shape[0] != 1 and mean.shape[0] != data.shape[1] and mean.shape[:2] != data.shape[:2]:
+            raise ValueError(f"mean length and number of channels do not match. Got {mean.shape} and {data.shape}.")
 
         # Allow broadcast on channel dimension
-        if std.shape and std.shape[0] != 1:
-            if std.shape[0] != data.shape[-3] and std.shape[:2] != data.shape[:2]:
-                raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
+        if std.shape and std.shape[0] != 1 and std.shape[0] != data.shape[1] and std.shape[:2] != data.shape[:2]:
+            raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
 
         mean = torch.as_tensor(mean, device=data.device, dtype=data.dtype)
         std = torch.as_tensor(std, device=data.device, dtype=data.dtype)

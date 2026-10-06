@@ -436,7 +436,8 @@ class TestConventionTriangulation(BaseTester):
             x2 = torch.cat([two_view["x2"], x2_inf], -2).requires_grad_()
             out = epi.triangulate_points(p1, p2, x1, x2, solver=solver)
             finite = ~out.isnan().any(-1)
-            assert not finite[..., -1].any() and finite[..., :-1].all()
+            assert not finite[..., -1].any()
+            assert finite[..., :-1].all()
             for grad in torch.autograd.grad(out[finite].sum(), (p1, p2, x1, x2)):
                 assert torch.isfinite(grad).all()
 

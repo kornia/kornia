@@ -25,7 +25,7 @@ from torch import float16, float32, float64
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input, _transform_input_by_shape, _validate_input_dtype
 from kornia.core.ops import eye_like
-from kornia.core.utils import is_autocast_enabled
+from kornia.core.utils import is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -168,6 +168,7 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
     # ``apply_func`` defers the matrix and ``transform_matrix`` computes it on first access.
     _compute_matrix_lazily: bool = False
     _lazy_matrix_args: Optional[_LazyMatrixArgs] = None
+    _transform_matrix_params: Optional[Dict[str, Any]] = None
 
     @property
     def transform_matrix(self) -> Optional[torch.Tensor]:
@@ -278,6 +279,10 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
     ) -> torch.Tensor:
         if flags is None:
             flags = self.flags
+        # ``forward`` committed the caller's params dict as ``_params`` before overriding a copy for this call (and
+        # ``transform_inputs`` commits that copy). Pair the caller's dict with the matrix, so the container's annotation
+        # handlers can tell a replay of this draw from another one by identity.
+        matrix_params = self._params
 
         if self._compute_matrix_lazily:
             # apply_transform ignores the matrix for these ops, so don't build it here; defer to
@@ -298,10 +303,14 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
                 # PyTorch 2.5 snapshots torch.Size as a tuple during non-strict export.
                 matrix_input = _InputMetadata(tuple(in_tensor.shape), in_tensor.dtype, in_tensor.device)
             self._commit_state(transform_matrix=None, lazy_matrix_args=(matrix_input, params, flags))
+            if not is_exporting():
+                self._transform_matrix_params = matrix_params
             return self.transform_inputs(in_tensor, params, flags, None)
 
         trans_matrix = self.generate_transformation_matrix(in_tensor, params, flags)
         output = self.transform_inputs(in_tensor, params, flags, trans_matrix)
         self._commit_state(transform_matrix=trans_matrix, lazy_matrix_args=None)
+        if not is_exporting():
+            self._transform_matrix_params = matrix_params
 
         return output
