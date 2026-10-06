@@ -2335,6 +2335,28 @@ class TestConventionsKernels(BaseTester):
         get_motion_kernel3d(5, angle, torch.tensor([0.3, -0.3], device=device, dtype=dtype)).sum().backward()
         self.assert_close(angle.grad, torch.zeros_like(angle))
 
+    @pytest.mark.parametrize("kernel_size", [3, 5, 7])
+    def test_convention_motion_kernel3d_nearest_next_to_a_tie_is_rotate3d_5510(self, kernel_size, device, dtype):
+        """1e-4 degrees from a tie, the taps are rotate3d()'s: only an exact tie is snapped (#5510)."""
+        from kornia.geometry.transform import rotate3d
+
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("an angle 1e-4 degrees from a tie is not representable in half precision")
+        ties = torch.tensor([30.0, 60.0, 120.0, 150.0, 210.0, 240.0, 300.0, 330.0], dtype=torch.float64)
+        near = torch.cat([ties - 1e-4, ties + 1e-4])
+        zero = torch.zeros_like(near)
+        # a pitch alone and a roll alone, where the ties are
+        angle = torch.cat([torch.stack([zero, near, zero], -1), torch.stack([zero, zero, near], -1)])
+        angle = angle.to(device=device, dtype=dtype)
+        # 1e-4 degrees moves a source more than 1e-6 px off the half: rotate3d() in float64 resolves it, and so must
+        # the snap, which only merges sources closer than 2**-21 (4.8e-7) px to a tie
+        center = kernel_size // 2
+        line = torch.zeros(angle.shape[0], 1, kernel_size, kernel_size, kernel_size, dtype=torch.float64)
+        line[:, 0, center, center] = torch.linspace(0.65, 0.35, kernel_size, dtype=torch.float64)
+        expected = rotate3d(line, *angle.cpu().double().unbind(-1), mode="nearest", align_corners=True)[:, 0]
+        kernel = get_motion_kernel3d(kernel_size, angle, torch.full((angle.shape[0],), 0.3, device=device, dtype=dtype))
+        self.assert_close(kernel.cpu().double(), expected / expected.sum((1, 2, 3), keepdim=True), rtol=0, atol=1e-5)
+
     def test_convention_gaussian_discrete_kernel1d_has_kernel_size_taps_5158(self, device, dtype):
         """get_gaussian_discrete_kernel1d gives kernel_size taps, [1.0] for size 1, and rejects an even size (#5158)."""
         self.assert_close(
