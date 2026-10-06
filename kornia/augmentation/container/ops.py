@@ -78,7 +78,7 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
 
         if isinstance(input, list):
             input = input[0] if input else None
-        if isinstance(input, Boxes | Keypoints):
+        if isinstance(input, (Boxes, Keypoints)):
             input = input.data
         reference = input if isinstance(input, torch.Tensor) else None
         device = reference.device if reference is not None else forward_input_shape.device
