@@ -63,10 +63,6 @@ on:
         required: false
         type: boolean
         default: false
-      ref:
-        required: false
-        type: string
-        default: ${{ github.sha }}
       cache-path:
         required: false
         type: string
@@ -96,8 +92,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.ref }}
 
       - name: Restore cache
         if: inputs.cache-path != ''
