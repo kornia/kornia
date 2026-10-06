@@ -54,7 +54,8 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     Args:
         points1: A set of calibrated points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=5`.
-        weights: Not used, kept for compatibility.
+        weights: Not used, kept for compatibility: the five-point algorithm is a minimal solver and cannot use
+          weights.
 
     Returns:
         the computed essential matrix with shape :math:`(B, 10, 3, 3)`.
@@ -868,12 +869,12 @@ def find_essential(
           copied back, which on an Apple M1 was also faster than a float32 solve on the device. A sample whose five
           design rows are rank deficient, such as one with a repeated correspondence, has no unique solution: ten
           ``NaN`` slots and a zero gradient.
-        - Known defects: ``weights`` is ignored (`#4876 <https://github.com/kornia/kornia/issues/4876>`_).
 
     Args:
          points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
          points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=5`.
-         weights: Accepted with a shape of :math:`(B, N)` and ignored (see Known defects).
+         weights: Accepted with a shape of :math:`(B, N)` and ignored: the five-point algorithm is a minimal
+           solver and cannot use weights.
 
     Returns:
          the computed essential matrices with shape :math:`(B, 10, 3, 3)`.
