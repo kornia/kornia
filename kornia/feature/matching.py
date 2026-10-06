@@ -257,6 +257,119 @@ def match_smnn(
     return match_dists, matches_idxs
 
 
+def match_smnn_batched(
+    desc1: torch.Tensor,
+    desc2: torch.Tensor,
+    th: float = 0.95,
+    dm: Optional[torch.Tensor] = None,
+    mask1: Optional[torch.Tensor] = None,
+    mask2: Optional[torch.Tensor] = None,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    r"""Match independent descriptor pairs with a batched symmetric nearest-neighbor ratio test.
+
+    Like :func:`match_smnn`, each match must pass Lowe's first/second L2 distance
+    ratio test in both directions and have mutual nearest neighbors. The returned
+    quality is the larger of the two ratios. Pairs are processed together with
+    batched distance computation and top-k reductions, without a per-pair loop.
+
+    Args:
+        desc1: First descriptors, shape :math:`(B, N, D)`.
+        desc2: Second descriptors, shape :math:`(B, M, D)`.
+        th: Inclusive distance-ratio threshold.
+        dm: Optional precomputed L2 distances, shape :math:`(B, N, M)`.
+        mask1: Optional boolean mask of valid first descriptors, shape :math:`(B, N)`.
+        mask2: Optional boolean mask of valid second descriptors, shape :math:`(B, M)`.
+            Masks allow padding variable-length pairs; padding never becomes a neighbor.
+
+    Returns:
+        - Ratios, shape :math:`(K, 1)`, with the input device and dtype.
+        - Long indices, shape :math:`(K, 3)`: ``(batch_index, index_in_desc1, index_in_desc2)``.
+          Indices refer to the original padded tensors, sorted by batch and first-descriptor index.
+          A pair with fewer than two valid descriptors on either side contributes no matches.
+
+    Note:
+        Memory for the distance matrix scales as :math:`B N M`. Bucket pairs by
+        descriptor counts and limit batch size when matching large collections.
+        Half-precision descriptors use float32 distance computation before ratios
+        are converted back to the input dtype.
+        As in :func:`match_smnn`, a zero second-neighbor distance produces an
+        undefined ratio and that ambiguous match is rejected. Ties follow
+        :func:`torch.topk` and do not have a guaranteed cross-device ordering.
+
+    Example:
+        >>> a = torch.tensor([[[0., 0.], [1., 1.], [2., 2.]]])
+        >>> ratios, indices = match_smnn_batched(a, a.flip(1))
+        >>> indices
+        tensor([[0, 0, 2],
+                [0, 1, 1],
+                [0, 2, 0]])
+
+    """
+    KORNIA_CHECK_SHAPE(desc1, ["B", "N", "D"])
+    KORNIA_CHECK_SHAPE(desc2, ["B", "M", "D"])
+    batch, n, dim = desc1.shape
+    if desc2.shape[0] != batch or desc2.shape[2] != dim:
+        raise ValueError("Descriptor batch sizes and dimensions must match")
+    if desc1.device != desc2.device or desc1.dtype != desc2.dtype or not desc1.is_floating_point():
+        raise ValueError("Descriptors must have the same floating dtype and device")
+    m = desc2.shape[1]
+    if dm is not None and (dm.shape != (batch, n, m) or dm.device != desc1.device or dm.dtype != desc1.dtype):
+        raise ValueError("Distance matrix must have shape (B, N, M) and the descriptor dtype/device")
+    for mask, shape in ((mask1, (batch, n)), (mask2, (batch, m))):
+        if mask is not None and (mask.shape != shape or mask.dtype != torch.bool or mask.device != desc1.device):
+            raise ValueError("Validity masks must be boolean tensors with shape (B, N)/(B, M) on the input device")
+    if batch == 0 or n < 2 or m < 2:
+        return desc1.new_empty((0, 1)), torch.empty((0, 3), dtype=torch.long, device=desc1.device)
+
+    valid1 = torch.ones((batch, n), dtype=torch.bool, device=desc1.device) if mask1 is None else mask1
+    valid2 = torch.ones((batch, m), dtype=torch.bool, device=desc1.device) if mask2 is None else mask2
+    # Preserve cdist's direct small-input path: a norm-sum minus dot-product
+    # expansion loses nearby distances when descriptors have a large offset.
+    if dm is None:
+        work1 = desc1.float() if desc1.dtype in (torch.float16, torch.bfloat16) else desc1
+        work2 = desc2.float() if desc2.dtype in (torch.float16, torch.bfloat16) else desc2
+        if not is_exporting() and not is_mps_tensor_safe(desc1):
+            distances = torch.cdist(work1, work2)
+        else:
+            # MPS/ONNX lack cdist. Accumulate direct differences in descriptor
+            # chunks to bound temporary memory without looping over pairs.
+            squared = work1.new_zeros((batch, n, m))
+            for start in range(0, dim, 16):
+                difference = work1[:, :, None, start : start + 16] - work2[:, None, :, start : start + 16]
+                squared = squared + (difference * difference).sum(-1)
+            positive = squared > 0
+            distances = torch.where(positive, torch.where(positive, squared, torch.ones_like(squared)).sqrt(), 0.0)
+    else:
+        distances = dm
+    if mask1 is not None or mask2 is not None:
+        distances = distances.masked_fill(~(valid1.unsqueeze(2) & valid2.unsqueeze(1)), float("inf"))
+    values1, neighbors1 = distances.topk(2, dim=2, largest=False)
+    values2, neighbors2 = distances.transpose(1, 2).topk(2, dim=2, largest=False)
+    defined1 = torch.isfinite(values1).all(-1) & (values1[..., 1] > 0)
+    defined2 = torch.isfinite(values2).all(-1) & (values2[..., 1] > 0)
+    # Substitute finite operands before division: rejecting a 0/0 ratio only
+    # after division would still leave NaNs in the backward pass for dm.
+    ratios1 = torch.where(defined1, values1[..., 0], 0.0) / torch.where(defined1, values1[..., 1], 1.0)
+    ratios2 = torch.where(defined2, values2[..., 0], 0.0) / torch.where(defined2, values2[..., 1], 1.0)
+    nearest2 = neighbors1[..., 0]
+    reverse_ratio = ratios2.gather(1, nearest2)
+    mutual = neighbors2[..., 0].gather(1, nearest2) == torch.arange(n, device=desc1.device)
+    enough = (valid1.sum(1) >= 2) & (valid2.sum(1) >= 2)
+    keep = (
+        valid1
+        & enough.unsqueeze(1)
+        & defined1
+        & defined2.gather(1, nearest2)
+        & mutual
+        & (ratios1 <= th)
+        & (reverse_ratio <= th)
+    )
+    batch_index, index1 = keep.nonzero(as_tuple=True)
+    indices = torch.stack((batch_index, index1, nearest2[batch_index, index1]), dim=1)
+    ratios = torch.maximum(ratios1, reverse_ratio)[batch_index, index1].unsqueeze(1).to(desc1.dtype)
+    return ratios, indices
+
+
 def match_fginn(
     desc1: torch.Tensor,
     desc2: torch.Tensor,

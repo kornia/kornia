@@ -75,6 +75,7 @@ from .matching import (
     match_mnn,
     match_nn,
     match_smnn,
+    match_smnn_batched,
     match_snn,
 )
 from .mkd import MKDDescriptor
@@ -181,6 +182,7 @@ __all__ = [
     "match_mnn",
     "match_nn",
     "match_smnn",
+    "match_smnn_batched",
     "match_snn",
     "normalize_laf",
     "perspective_transform_lafs",
