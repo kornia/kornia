@@ -210,7 +210,11 @@ class TestFocalLoss(BaseTester):
 
         actual = kornia.losses.focal_loss(logits, labels, alpha, gamma, reduction)
         self.assert_close(actual, expected)
-        self.assert_close(torch.autograd.grad(actual.sum(), logits)[0], expected_grad)
+        # detect_anomaly also rejects a NaN inside the backward that torch.where would discard, so this pins the safe
+        # base of the unselected branch and not only the final gradient.
+        with torch.autograd.detect_anomaly():
+            grad = torch.autograd.grad(actual.sum(), logits)[0]
+        self.assert_close(grad, expected_grad)
 
     @pytest.mark.parametrize("gamma", [0.5, 2.0])
     def test_dynamo_saturated_logits(self, device, dtype, torch_optimizer, gamma):
