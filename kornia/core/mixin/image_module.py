@@ -16,6 +16,7 @@
 #
 
 import datetime
+import inspect
 import math
 import os
 import sys
@@ -86,9 +87,13 @@ class ImageModuleMixIn:
     or :math:`(B, H, W, C)`, a PIL image or an image path becomes a :math:`(C, H, W)` or :math:`(B, C, H, W)` tensor.
     An integer image is scaled by the maximum of its dtype (``uint8`` by 255, ``uint16`` by 65535; a signed image keeps
     its negative values), a ``bool`` image becomes 0 and 1, and a floating image keeps its values. Tensors pass through
-    unchanged. ``output_type="numpy"`` returns channels-last arrays with the values of the output tensor, so a floating
-    output fed back in converts to the same tensor. ``output_type="pil"``, :meth:`show` and :meth:`save` clamp a
-    floating image to ``[0, 1]`` and round it to 8 bits on the CPU, and pass a ``uint8`` image through with its values.
+    unchanged. For an :class:`torch.nn.Module` with state, converted inputs use the device of its first parameter (or
+    first buffer when it has no parameters) and the dtype of its first floating parameter or buffer, falling back to
+    the default floating dtype when none exists. A module without state and a standalone mixin keep the CPU and
+    default floating dtype. ``output_type="numpy"`` returns
+    channels-last arrays with the values of the output tensor, so a floating output fed back in converts to the same
+    tensor. ``output_type="pil"``, :meth:`show` and :meth:`save` clamp a floating image to ``[0, 1]`` and round it to
+    8 bits on the CPU, and pass a ``uint8`` image through with its values.
     """
 
     _output_image: Any
@@ -103,7 +108,8 @@ class ImageModuleMixIn:
         """Convert input and output types for a function.
 
         Args:
-            input_names_to_handle: List of input names to convert.
+            input_names_to_handle: List of parameter names to convert. Module calls use the ``forward``
+                signature; a variadic parameter name selects all its values.
                 If None, convert every tensor, NumPy array and PIL image argument, and load a string as an image
                 path only if it is the first positional argument.
             output_type: Desired output type ('pt', 'numpy', or 'pil').
@@ -135,6 +141,8 @@ class ImageModuleMixIn:
         kwargs: dict[str, Any],
         input_names_to_handle: Optional[List[Any]],
         output_type: Literal["pt", "numpy", "pil"],
+        *,
+        signature_source: Optional[Callable[..., Any]] = None,
     ) -> Union[Any, List[Any]]:
         if input_names_to_handle is None:
             args = tuple(
@@ -146,13 +154,39 @@ class ImageModuleMixIn:
                 for k, v in kwargs.items()
             }
         else:
-            args = list(args)
-            for i, (arg, name) in enumerate(zip(args, func.__code__.co_varnames)):  # ty: ignore[unresolved-attribute]
-                if name in input_names_to_handle:
-                    args[i] = self.to_tensor(arg)  # type:ignore
-            for name, value in kwargs.items():
-                if name in input_names_to_handle:
-                    kwargs[name] = self.to_tensor(value)
+            signature = inspect.signature(func if signature_source is None else signature_source)
+            try:
+                bound = signature.bind(*args, **kwargs)
+            except TypeError:
+                # the arguments do not fit the signature: let the call raise its own error, which names the function
+                return func(*args, **kwargs)
+            for name, value in bound.arguments.items():
+                kind = signature.parameters[name].kind
+                if kind == inspect.Parameter.VAR_KEYWORD:
+                    bound.arguments[name] = {
+                        key: self.to_tensor(item)
+                        if name in input_names_to_handle or key in input_names_to_handle
+                        else item
+                        for key, item in value.items()
+                    }
+                elif name in input_names_to_handle:
+                    if kind == inspect.Parameter.VAR_POSITIONAL:
+                        bound.arguments[name] = tuple(self.to_tensor(item) for item in value)
+                    else:
+                        bound.arguments[name] = self.to_tensor(value)
+            # pass the converted values the way the caller did, positional or keyword, so hooks registered with
+            # ``with_kwargs=True`` see the same split as without ``input_names_to_handle``
+            var_keyword = next(
+                (p.name for p in signature.parameters.values() if p.kind == inspect.Parameter.VAR_KEYWORD), None
+            )
+            named = (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+            converted_kwargs: dict[str, Any] = {}
+            for key in kwargs:
+                if key in signature.parameters and signature.parameters[key].kind in named:
+                    converted_kwargs[key] = bound.arguments[key]
+                else:
+                    converted_kwargs[key] = bound.arguments[var_keyword][key]
+            args, kwargs = bound.args[: len(args)], converted_kwargs
 
         return func(*args, **kwargs)
 
@@ -218,8 +252,9 @@ class ImageModuleMixIn:
         ``PA``) is converted to RGB, or RGBA when it has transparency, first. An integer image is divided by the maximum
         of its dtype (``uint8`` by 255, ``uint16`` by 65535, a PIL mode ``I`` image by the ``int32`` maximum); a signed
         image maps to ``[iinfo.min / iinfo.max, 1]``, so its negative values stay negative. A ``bool`` image becomes 0
-        and 1, and a floating image keeps its values; integer and ``bool`` images become the default floating dtype. A
-        tensor is returned unchanged.
+        and 1, and a floating image keeps its values; integer and ``bool`` images become the default floating dtype.
+        When this mixin belongs to a stateful :class:`torch.nn.Module`, the converted image is moved to the module's
+        device and first floating parameter or buffer dtype. A tensor is returned unchanged.
 
         Args:
             x: The input to convert.
@@ -231,16 +266,43 @@ class ImageModuleMixIn:
         if isinstance(x, str):
             from kornia.io import ImageLoadType, load_image  # pylint: disable=C0415
 
-            return _image_to_float(load_image(x, ImageLoadType.UNCHANGED))
-        if isinstance(x, torch.Tensor):
+            image = _image_to_float(load_image(x, ImageLoadType.UNCHANGED))
+        elif isinstance(x, torch.Tensor):
             return x
-        if isinstance(x, np.ndarray):  # type: ignore
-            return _array_to_float_image(x)
-        if isinstance(x, Image.Image):  # type: ignore
+        elif isinstance(x, np.ndarray):  # type: ignore
+            image = _array_to_float_image(x)
+        elif isinstance(x, Image.Image):  # type: ignore
             if x.mode in ("P", "PA"):  # palette indices are not intensities
                 x = x.convert("RGBA" if x.mode == "PA" or "transparency" in x.info else "RGB")
-            return _array_to_float_image(np.array(x))  # type: ignore
-        raise TypeError("Input type not supported")
+            image = _array_to_float_image(np.array(x))  # type: ignore
+        else:
+            raise TypeError("Input type not supported")
+        return self._to_module_device_dtype(image)
+
+    def _module_state_reference(self) -> Optional[torch.Tensor]:
+        """Return the module's first parameter, else its first buffer, or None for a stateless module or a mixin."""
+        if not isinstance(self, torch.nn.Module):
+            return None
+        first_parameter = next(self.parameters(), None)
+        return first_parameter if first_parameter is not None else next(self.buffers(), None)
+
+    def _to_module_device(self, data: torch.Tensor) -> torch.Tensor:
+        """Move a tensor converted from a non-tensor input to the module's device, keeping its dtype."""
+        reference = self._module_state_reference()
+        return data if reference is None else data.to(reference.device)
+
+    def _to_module_device_dtype(self, image: torch.Tensor) -> torch.Tensor:
+        reference = self._module_state_reference()
+        if reference is None or not isinstance(self, torch.nn.Module):
+            return image
+        floating_dtype = next(
+            (parameter.dtype for parameter in self.parameters() if parameter.is_floating_point()), None
+        )
+        if floating_dtype is None:
+            floating_dtype = next((buffer.dtype for buffer in self.buffers() if buffer.is_floating_point()), None)
+        if floating_dtype is None:
+            floating_dtype = torch.get_default_dtype()
+        return image.to(device=reference.device, dtype=floating_dtype)
 
     def to_numpy(self, x: Any) -> "np.array":  # type: ignore
         """Convert input to numpy array.
@@ -317,7 +379,7 @@ class ImageModuleMixIn:
     ) -> Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]:
         if isinstance(output_image, torch.Tensor):
             return output_image.detach()
-        if isinstance(output_image, list | tuple):
+        if isinstance(output_image, (list, tuple)):
             return type(output_image)([self._detach_tensor(out) for out in output_image])  # type: ignore
         raise RuntimeError(f"Unexpected object {output_image} with a type of `{type(output_image)}`")
 

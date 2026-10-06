@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import platform
@@ -574,10 +575,8 @@ def _normalize_selector(selector: str, rootpath: Path | None = None) -> str:
     path, separator, node = selector.partition("::")
     selector_path = Path(path)
     if selector_path.is_absolute() and rootpath is not None:
-        try:
+        with contextlib.suppress(ValueError):
             selector_path = selector_path.relative_to(rootpath)
-        except ValueError:
-            pass
     normalized_path = selector_path.as_posix().removeprefix("./").rstrip("/")
     return f"{normalized_path}::{node}" if separator else normalized_path
 
