@@ -227,6 +227,7 @@ select = [
   "RSE",  # flake8-raise
   "RUF",  # Ruff-specific rules
   "S",  # flake8-bandit
+  "SIM102",  # collapsible-if
   "SIM103",  # needless-bool
   "SIM105",  # suppressible-exception
   "SIM114",  # if-with-same-arms
