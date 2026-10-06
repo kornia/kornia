@@ -251,6 +251,8 @@ class TestMutualInformationLoss(BaseTester):
     @pytest.mark.parametrize("module", [MILossFromRef, NMILossFromRef])
     def test_to_dtype_matches_module_built_in_that_dtype(self, device, module):
         """``.to(dtype)`` makes the module use that dtype's epsilon, like one built in that dtype (#5547)."""
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
         generator = torch.Generator().manual_seed(0)
         target = torch.rand(2, 12, 20, generator=generator).to(device)
         pred = torch.rand(2, 12, 20, generator=generator).to(device)
