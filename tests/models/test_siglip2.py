@@ -108,9 +108,9 @@ class TestSigLip2Builder:
         with (
             patch.object(siglip2_builder, "download_hf_file", return_value="cached.safetensors"),
             patch.object(siglip2_builder, "load_safetensors", side_effect=FileNotFoundError("gone")),
+            pytest.raises(FileNotFoundError, match=r"Could not find model\.safetensors for google/nope"),
         ):
-            with pytest.raises(FileNotFoundError, match=r"Could not find model\.safetensors for google/nope"):
-                siglip2_builder._download_weights("google/nope", None)
+            siglip2_builder._download_weights("google/nope", None)
 
 
 class TestSigLip2Model(BaseTester):

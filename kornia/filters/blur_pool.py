@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import operator
+import warnings
 
 import torch
 import torch.nn.functional as F
@@ -105,7 +106,9 @@ class MaxBlurPool2D(nn.Module):
         kernel_size: the kernel size for max pooling.
         stride: stride for pooling.
         max_pool_size: the kernel size for max pooling.
-        ceil_mode: should be true to match output size of conv2d with same kernel size.
+        ceil_mode: deprecated, has no effect. The max pool runs at stride 1, where floor and ceil
+            rounding give the same size, and the strided blur has no rounding mode. Passing it emits a
+            :class:`DeprecationWarning`; it will be removed in a future release.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -122,7 +125,7 @@ class MaxBlurPool2D(nn.Module):
         >>> import torch.nn as nn
         >>> from kornia.filters.blur_pool import BlurPool2D
         >>> input = torch.eye(5)[None, None]
-        >>> mbp = MaxBlurPool2D(kernel_size=3, stride=2, max_pool_size=2, ceil_mode=False)
+        >>> mbp = MaxBlurPool2D(kernel_size=3, stride=2, max_pool_size=2)
         >>> mbp(input)
         tensor([[[[0.5625, 0.3125],
                   [0.3125, 0.8750]]]])
@@ -134,13 +137,18 @@ class MaxBlurPool2D(nn.Module):
     """
 
     def __init__(
-        self, kernel_size: tuple[int, int] | int, stride: int = 2, max_pool_size: int = 2, ceil_mode: bool = False
+        self,
+        kernel_size: tuple[int, int] | int,
+        stride: int = 2,
+        max_pool_size: int = 2,
+        ceil_mode: bool | None = None,
     ) -> None:
         super().__init__()
+        _warn_ceil_mode_deprecated(ceil_mode)
         self.kernel_size = kernel_size
         self.stride = stride
         self.max_pool_size = max_pool_size
-        self.ceil_mode = ceil_mode
+        self.ceil_mode = bool(ceil_mode)
         self.kernel = get_pascal_kernel_2d(kernel_size, norm=True)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
@@ -164,7 +172,7 @@ class MaxBlurPool2D(nn.Module):
         """
         self.kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
         return _max_blur_pool_by_kernel2d(
-            input, self.kernel.repeat((input.size(1), 1, 1, 1)), self.stride, self.max_pool_size, self.ceil_mode
+            input, self.kernel.repeat((input.size(1), 1, 1, 1)), self.stride, self.max_pool_size
         )
 
 
@@ -176,7 +184,8 @@ class EdgeAwareBlurPool2D(nn.Module):
 
     Args:
         kernel_size: The size of the Gaussian blur kernel.
-        edge_threshold: The threshold for detecting edges. Default: 1.25.
+        edge_threshold: The intensity ratio between pixels 4 apart above which a pixel counts as an edge and keeps
+            its value. It must be greater than 1. Default: 1.25.
         edge_dilation_kernel_size: The kernel size for dilating the edge map. It must be an odd positive integer.
             Default: 3.
     """
@@ -266,7 +275,7 @@ def max_blur_pool2d(
     kernel_size: tuple[int, int] | int,
     stride: int = 2,
     max_pool_size: int = 2,
-    ceil_mode: bool = False,
+    ceil_mode: bool | None = None,
 ) -> torch.Tensor:
     r"""Compute pools and blurs and downsample a given feature map.
 
@@ -279,7 +288,9 @@ def max_blur_pool2d(
         kernel_size: the kernel size for max pooling.
         stride: stride for pooling.
         max_pool_size: the kernel size for max pooling.
-        ceil_mode: should be true to match output size of conv2d with same kernel size.
+        ceil_mode: deprecated, has no effect. The max pool runs at stride 1, where floor and ceil
+            rounding give the same size, and the strided blur has no rounding mode. Passing it emits a
+            :class:`DeprecationWarning`; it will be removed in a future release.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/filtering_operators.html>`__.
@@ -291,12 +302,24 @@ def max_blur_pool2d(
                   [0.3125, 0.8750]]]])
 
     """
+    _warn_ceil_mode_deprecated(ceil_mode)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
     kernel = get_pascal_kernel_2d(kernel_size, norm=True, device=input.device, dtype=input.dtype).repeat(
         (input.shape[1], 1, 1, 1)
     )
-    return _max_blur_pool_by_kernel2d(input, kernel, stride, max_pool_size, ceil_mode)
+    return _max_blur_pool_by_kernel2d(input, kernel, stride, max_pool_size)
+
+
+def _warn_ceil_mode_deprecated(ceil_mode: bool | None) -> None:
+    """Warn that ``ceil_mode`` was passed: at the stride-1 max pool it cannot change the result."""
+    if ceil_mode is not None:
+        warnings.warn(
+            "`ceil_mode` is deprecated and has no effect: the max pool runs at stride 1, where floor and ceil "
+            "rounding agree. It will be removed in a future release; stop passing it.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
 
 
 def _blur_pool_conv2d(input: torch.Tensor, kernel: torch.Tensor, stride: int) -> torch.Tensor:
@@ -324,7 +347,7 @@ def _blur_pool_by_kernel2d(input: torch.Tensor, kernel: torch.Tensor, stride: in
 
 
 def _max_blur_pool_by_kernel2d(
-    input: torch.Tensor, kernel: torch.Tensor, stride: int, max_pool_size: int, ceil_mode: bool
+    input: torch.Tensor, kernel: torch.Tensor, stride: int, max_pool_size: int
 ) -> torch.Tensor:
     """Compute max_blur_pool by a given :math:`CxC_(out, None)xNxN` kernel."""
     KORNIA_CHECK(
@@ -332,7 +355,7 @@ def _max_blur_pool_by_kernel2d(
         f"Invalid kernel shape. Expect CxC_outxNxN, Got {kernel.shape}",
     )
     # compute local maxima
-    input = F.max_pool2d(input, kernel_size=max_pool_size, padding=0, stride=1, ceil_mode=ceil_mode)
+    input = F.max_pool2d(input, kernel_size=max_pool_size, padding=0, stride=1)
     # blur and downsample
     return _blur_pool_conv2d(input, kernel, stride)
 
@@ -361,7 +384,8 @@ def edge_aware_blur_pool2d(
     Args:
         input: the input image to blur with shape :math:`(B, C, H, W)`.
         kernel_size: the kernel size for max pooling.
-        edge_threshold: positive threshold for the edge decision rule; edge/non-edge.
+        edge_threshold: intensity ratio between pixels 4 apart above which a pixel counts as an edge and keeps its
+            value. It must be greater than 1.
         edge_dilation_kernel_size: the kernel size for dilating the edges. It must be an odd positive integer.
         epsilon: for numerical stability.
 
@@ -372,7 +396,7 @@ def edge_aware_blur_pool2d(
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     edge_dilation_kernel_size = operator.index(edge_dilation_kernel_size)
     _check_kernel_size(edge_dilation_kernel_size)
-    KORNIA_CHECK(edge_threshold > 0.0, f"edge threshold should be positive, but got '{edge_threshold}'")
+    KORNIA_CHECK(edge_threshold > 1.0, f"edge_threshold must be greater than 1. Got {edge_threshold}")
 
     # Keep the edge comparison's fixed 2-pixel halo separate from the blur halo. The
     # blur_pool2d convolution zero-pads by its kernel radius, so reflect-padding by at

@@ -36,7 +36,9 @@ from kornia.filters import (
 
 from testing.base import (
     BaseTester,
+    supports_arange,
     supports_bilinear_3d_grid_sample,
+    supports_nearest_2d_grid_sample,
     supports_nearest_3d_grid_sample,
     supports_reflect_padding,
     supports_replicate_padding_3d,
@@ -137,6 +139,22 @@ class TestMotionBlur(BaseTester):
         with pytest.raises(Exception, match=r"direction and angle must have the same length. Got 2 and 3."):
             get_motion_kernel2d(3, angle, direction)
 
+    @pytest.mark.parametrize("kernel_size", [(5, 5), [5, 5], 5.0], ids=["tuple", "list", "float"])
+    def test_convention_kernel_size_must_be_an_int_5169(self, kernel_size, device, dtype):
+        # The motion kernel is square, so kernel_size is a single int. Anything else raises a kornia error that names
+        # the argument, from the kernel builder, the function and the module alike.
+        image = torch.rand(1, 1, 8, 9, device=device, dtype=dtype)
+        angle = torch.tensor([30.0], device=device, dtype=dtype)
+        direction = torch.tensor([0.5], device=device, dtype=dtype)
+        calls = (
+            lambda: get_motion_kernel2d(kernel_size, angle, direction),
+            lambda: motion_blur(image, kernel_size, 30.0, 0.5),
+            lambda: MotionBlur(kernel_size, 30.0, 0.5)(image),
+        )
+        for call in calls:
+            with pytest.raises(BaseError, match=f"kernel_size must be an int. Got {type(kernel_size).__name__}"):
+                call()
+
     def test_noncontiguous(self, device, dtype):
         if not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
@@ -206,6 +224,38 @@ class TestMotionBlur(BaseTester):
         expected = filter2d(img, kernel, "reflect")
         self.assert_close(motion_blur(img, 7, angle, 0.3, "reflect"), expected, rtol=0, atol=0)
         self.assert_close(MotionBlur(7, angle, 0.3, "reflect")(img), expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("tensor_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+    @pytest.mark.parametrize("tensor_parameter", ["angle", "angle_0d", "direction"])
+    def test_tensor_parameter_with_a_python_number_is_built_like_the_tensor(
+        self, tensor_parameter, tensor_dtype, device, dtype
+    ):
+        # A tensor angle or direction with a Python number for the other builds the number on the tensor's device and
+        # in its dtype, whatever the input's dtype, so the blur is the one of the two tensors.
+        if device.type == "mps" and torch.float64 in (dtype, tensor_dtype):
+            pytest.skip("MPS has no float64")
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+        if not supports_nearest_2d_grid_sample(device, tensor_dtype):
+            pytest.skip(f"the kernel is rotated with grid_sample, which this device lacks for {tensor_dtype}")
+        if not supports_arange(device, tensor_dtype):
+            pytest.skip(f"the kernel taps are built with arange, which this device lacks for {tensor_dtype}")
+        torch.manual_seed(0)
+        image = torch.rand(1, 2, 9, 11, device=device, dtype=dtype)
+        angle = torch.tensor([30.0], device=device, dtype=tensor_dtype)
+        direction = torch.tensor([0.5], device=device, dtype=tensor_dtype)
+        expected = motion_blur(image, 5, angle, direction)
+        if tensor_parameter == "angle":
+            params = (angle, 0.5)
+        elif tensor_parameter == "angle_0d":
+            params = (angle[0], 0.5)
+        else:
+            params = (30.0, direction)
+        actual = motion_blur(image, 5, *params)
+        assert actual.dtype == dtype
+        assert actual.device == image.device
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        self.assert_close(MotionBlur(5, *params)(image), expected, rtol=0, atol=0)
 
     # A blur of a constant image is that constant. ``(1, 1, 3, 9)`` and ``(1, 1, 9, 3)`` are shorter than the
     # 5-tap kernel along one axis.
@@ -336,6 +386,22 @@ class TestMotionBlur3D(BaseTester):
         assert actual.shape == (batch_size, ksize, ksize, ksize)
         self.assert_close(actual.sum(), expected.sum())
 
+    @pytest.mark.parametrize("kernel_size", [(5, 5, 5), [5, 5, 5], 5.0], ids=["tuple", "list", "float"])
+    def test_convention_kernel_size_must_be_an_int_5169(self, kernel_size, device, dtype):
+        # The motion kernel is cubic, so kernel_size is a single int. Anything else raises a kornia error that names
+        # the argument, from the kernel builder, the function and the module alike.
+        volume = torch.rand(1, 1, 6, 8, 9, device=device, dtype=dtype)
+        angle = torch.tensor([[0.0, 90.0, 90.0]], device=device, dtype=dtype)
+        direction = torch.tensor([0.5], device=device, dtype=dtype)
+        calls = (
+            lambda: get_motion_kernel3d(kernel_size, angle, direction),
+            lambda: motion_blur3d(volume, kernel_size, (0.0, 90.0, 90.0), 0.5),
+            lambda: MotionBlur3D(kernel_size, (0.0, 90.0, 90.0), 0.5)(volume),
+        )
+        for call in calls:
+            with pytest.raises(BaseError, match=f"kernel_size must be an int. Got {type(kernel_size).__name__}"):
+                call()
+
     def test_noncontiguous(self, device, dtype):
         if not supports_replicate_padding_3d(device, dtype):
             pytest.skip("replication_pad3d is unavailable for this device/dtype")
@@ -440,6 +506,31 @@ class TestMotionBlur3D(BaseTester):
         expected = filter3d(volume, kernel, "replicate")
         self.assert_close(motion_blur3d(volume, 5, angle, 0.3, "replicate"), expected, rtol=0, atol=0)
         self.assert_close(MotionBlur3D(5, angle, 0.3, "replicate")(volume), expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("tensor_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+    @pytest.mark.parametrize("tensor_parameter", ["angle", "direction"])
+    def test_tensor_parameter_with_a_python_number_is_built_like_the_tensor(
+        self, tensor_parameter, tensor_dtype, device, dtype
+    ):
+        # A tensor angle or direction with a Python number, or a tuple, for the other builds that one on the tensor's
+        # device and in its dtype, whatever the input's dtype, so the blur is the one of the two tensors.
+        if device.type == "mps" and torch.float64 in (dtype, tensor_dtype):
+            pytest.skip("MPS has no float64")
+        if not supports_replicate_padding_3d(device, dtype):
+            pytest.skip("replication_pad3d is unavailable for this device/dtype")
+        if not supports_nearest_3d_grid_sample(device, tensor_dtype):
+            pytest.skip(f"the kernel is rotated with grid_sample, which this device lacks for {tensor_dtype}")
+        torch.manual_seed(0)
+        volume = torch.rand(1, 2, 6, 7, 8, device=device, dtype=dtype)
+        angle = torch.tensor([[10.0, 20.0, 30.0]], device=device, dtype=tensor_dtype)
+        direction = torch.tensor([0.5], device=device, dtype=tensor_dtype)
+        expected = motion_blur3d(volume, 3, angle, direction)
+        params = (angle, 0.5) if tensor_parameter == "angle" else ((10.0, 20.0, 30.0), direction)
+        actual = motion_blur3d(volume, 3, *params)
+        assert actual.dtype == dtype
+        assert actual.device == volume.device
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        self.assert_close(MotionBlur3D(3, *params)(volume), expected, rtol=0, atol=0)
 
     @pytest.mark.skip(reason="After the op be optimized the results are not the same")
     @pytest.mark.parametrize("batch_size", [1, 2])

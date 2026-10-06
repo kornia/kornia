@@ -144,19 +144,20 @@ class TestLoadStateDictFromUrl:
                 raise OSError("primary down")
             return self._SD
 
-        with patch(self._MOCK_TARGET, side_effect=side_effect) as mock:
-            with warnings.catch_warnings(record=True) as w:
-                warnings.simplefilter("always")
-                result = load_state_dict_from_url([primary, fallback])
+        with patch(self._MOCK_TARGET, side_effect=side_effect) as mock, warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = load_state_dict_from_url([primary, fallback])
 
         assert result == self._SD
         assert mock.call_count == 2
         assert any("primary down" in str(warning.message) for warning in w)
 
     def test_all_fail_raises_runtime_error(self) -> None:
-        with patch(self._MOCK_TARGET, side_effect=OSError("down")):
-            with pytest.raises(RuntimeError, match="Failed to load weights from all 2 source"):
-                load_state_dict_from_url(["http://a.com/m.pth", "http://b.com/m.pth"])
+        with (
+            patch(self._MOCK_TARGET, side_effect=OSError("down")),
+            pytest.raises(RuntimeError, match="Failed to load weights from all 2 source"),
+        ):
+            load_state_dict_from_url(["http://a.com/m.pth", "http://b.com/m.pth"])
 
     def test_file_name_pinned_to_primary(self) -> None:
         primary = "http://primary.example.com/weights-abc123.pth"
@@ -167,10 +168,9 @@ class TestLoadStateDictFromUrl:
                 raise OSError("primary down")
             return self._SD
 
-        with patch(self._MOCK_TARGET, side_effect=side_effect) as mock:
-            with warnings.catch_warnings(record=True):
-                warnings.simplefilter("always")
-                load_state_dict_from_url([primary, fallback])
+        with patch(self._MOCK_TARGET, side_effect=side_effect) as mock, warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            load_state_dict_from_url([primary, fallback])
 
         # fallback call must carry the primary's filename, not the fallback's
         fallback_call = mock.call_args_list[1]
@@ -185,10 +185,9 @@ class TestLoadStateDictFromUrl:
                 raise OSError("primary down")
             return self._SD
 
-        with patch(self._MOCK_TARGET, side_effect=side_effect) as mock:
-            with warnings.catch_warnings(record=True):
-                warnings.simplefilter("always")
-                load_state_dict_from_url([primary, fallback], file_name="custom.pth")
+        with patch(self._MOCK_TARGET, side_effect=side_effect) as mock, warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            load_state_dict_from_url([primary, fallback], file_name="custom.pth")
 
         for c in mock.call_args_list:
             assert c.kwargs.get("file_name") == "custom.pth"
@@ -477,12 +476,11 @@ class TestPoisonedCacheEntry:
         def always_fails(url: str, **kwargs: object) -> dict:
             raise RuntimeError("Attempting to deserialize object on a CUDA device")
 
-        with patch(self._MOCK_TARGET, side_effect=always_fails):
-            with warnings.catch_warnings(record=True):
-                warnings.simplefilter("always")
-                for _ in range(3):
-                    with pytest.raises(RuntimeError):
-                        load_state_dict_from_url([self._PRIMARY, self._FALLBACK])
+        with patch(self._MOCK_TARGET, side_effect=always_fails), warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            for _ in range(3):
+                with pytest.raises(RuntimeError):
+                    load_state_dict_from_url([self._PRIMARY, self._FALLBACK])
 
         # One refetch in total, not one per source per call.
         assert transfers == [self._FALLBACK]
@@ -525,20 +523,19 @@ class TestPoisonedCacheEntry:
         def always_fails(url: str, **kwargs: object) -> dict:
             raise RuntimeError("Attempting to deserialize object on a CUDA device")
 
-        with patch(self._MOCK_TARGET, side_effect=always_fails):
-            with warnings.catch_warnings(record=True):
-                warnings.simplefilter("always")
+        with patch(self._MOCK_TARGET, side_effect=always_fails), warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            with pytest.raises(RuntimeError):
+                load_state_dict_from_url(self._PRIMARY)
+
+            # Within the failing call itself: the discard was paid for by a
+            # refetch, so the caller ends it with the entry it started with.
+            assert transfers == [self._PRIMARY]
+            assert cached.exists()
+
+            for _ in range(2):
                 with pytest.raises(RuntimeError):
                     load_state_dict_from_url(self._PRIMARY)
-
-                # Within the failing call itself: the discard was paid for by a
-                # refetch, so the caller ends it with the entry it started with.
-                assert transfers == [self._PRIMARY]
-                assert cached.exists()
-
-                for _ in range(2):
-                    with pytest.raises(RuntimeError):
-                        load_state_dict_from_url(self._PRIMARY)
 
         # And the bound holds: one refetch per path per process, not one per call.
         assert transfers == [self._PRIMARY]
@@ -571,11 +568,10 @@ class TestPoisonedCacheEntry:
         def always_fails(url: str, **kwargs: object) -> dict:
             raise RuntimeError("Attempting to deserialize object on a CUDA device")
 
-        with patch(self._MOCK_TARGET, side_effect=always_fails):
-            with warnings.catch_warnings(record=True):
-                warnings.simplefilter("always")
-                with pytest.raises(RuntimeError):
-                    load_state_dict_from_url([self._PRIMARY, self._FALLBACK])
+        with patch(self._MOCK_TARGET, side_effect=always_fails), warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            with pytest.raises(RuntimeError):
+                load_state_dict_from_url([self._PRIMARY, self._FALLBACK])
 
         # The fallback really was tried, and each of its transient failures retried;
         # then, since nothing had replaced the path, the discarded primary was given
@@ -609,11 +605,10 @@ class TestPoisonedCacheEntry:
         def always_fails(url: str, **kwargs: object) -> dict:
             raise RuntimeError("Attempting to deserialize object on a CUDA device")
 
-        with patch(self._MOCK_TARGET, side_effect=always_fails):
-            with warnings.catch_warnings(record=True):
-                warnings.simplefilter("always")
-                with pytest.raises(RuntimeError) as excinfo:
-                    load_state_dict_from_url(self._PRIMARY)
+        with patch(self._MOCK_TARGET, side_effect=always_fails), warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            with pytest.raises(RuntimeError) as excinfo:
+                load_state_dict_from_url(self._PRIMARY)
 
         message = str(excinfo.value)
         assert "Last error: RuntimeError: Attempting to deserialize object on a CUDA device" in message
@@ -680,11 +675,10 @@ class TestPoisonedCacheEntry:
         def cuda_on_a_cpu_build(url: str, **kwargs: object) -> dict:
             raise RuntimeError("Attempting to deserialize object on a CUDA device")
 
-        with patch(self._MOCK_TARGET, side_effect=cuda_on_a_cpu_build):
-            with warnings.catch_warnings(record=True):
-                warnings.simplefilter("always")
-                with pytest.raises(RuntimeError):
-                    load_state_dict_from_url([self._PRIMARY, self._FALLBACK])
+        with patch(self._MOCK_TARGET, side_effect=cuda_on_a_cpu_build), warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            with pytest.raises(RuntimeError):
+                load_state_dict_from_url([self._PRIMARY, self._FALLBACK])
 
         assert cached.read_bytes() == before
         assert not list(cached.parent.glob("*" + download_mod._QUARANTINE_SUFFIX))
@@ -790,12 +784,11 @@ class TestPoisonedCacheEntry:
         def always_fails(url: str, **kwargs: object) -> dict:
             raise RuntimeError("Attempting to deserialize object on a CUDA device")
 
-        with patch(self._MOCK_TARGET, side_effect=always_fails):
-            with warnings.catch_warnings(record=True):
-                warnings.simplefilter("always")
-                for _ in range(3):
-                    with pytest.raises(RuntimeError):
-                        load_state_dict_from_url(self._PRIMARY)
+        with patch(self._MOCK_TARGET, side_effect=always_fails), warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            for _ in range(3):
+                with pytest.raises(RuntimeError):
+                    load_state_dict_from_url(self._PRIMARY)
 
         # The first call's transfer, then the one discard this path is allowed.
         assert transfers == [self._PRIMARY, self._PRIMARY]
@@ -1309,9 +1302,11 @@ class TestWeightsOnly(BaseTester):
     )
     def test_weights_only_is_true_unless_the_caller_passes_false(self, kwargs, forwarded) -> None:
         # ``None`` counts as omitted: torch 2.5 reads it as ``False``.
-        with patch("kornia.core.download._prefetch_to_cache", return_value=False):
-            with patch("kornia.core.download.torch.hub.load_state_dict_from_url", return_value={}) as mock:
-                load_state_dict_from_url("http://example.com/model.pth", **kwargs)
+        with (
+            patch("kornia.core.download._prefetch_to_cache", return_value=False),
+            patch("kornia.core.download.torch.hub.load_state_dict_from_url", return_value={}) as mock,
+        ):
+            load_state_dict_from_url("http://example.com/model.pth", **kwargs)
         mock.assert_called_once_with("http://example.com/model.pth", weights_only=forwarded)
 
 
@@ -2416,9 +2411,11 @@ class TestTruncatedTransfer:
         responses["/t.bin"] = (1000, b"z" * 10)
         self._partial_in_use(monkeypatch, code)
 
-        with pytest.warns(UserWarning, match="Could not remove the temporary download file"):
-            with pytest.raises(download_mod._TruncatedTransfer):
-                download_mod._download_url_to_file(url("/t.bin"), str(tmp_path / "t.bin"), progress=False, timeout=5.0)
+        with (
+            pytest.warns(UserWarning, match="Could not remove the temporary download file"),
+            pytest.raises(download_mod._TruncatedTransfer),
+        ):
+            download_mod._download_url_to_file(url("/t.bin"), str(tmp_path / "t.bin"), progress=False, timeout=5.0)
 
         assert [p.suffix for p in tmp_path.iterdir()] == [".partial"]
 

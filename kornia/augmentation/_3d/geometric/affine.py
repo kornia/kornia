@@ -32,7 +32,9 @@ class RandomAffine3D(GeometricAugmentationBase3D):
     The transformation is computed so that the center is kept invariant.
 
     Args:
-        degrees: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
+        degrees: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from. The three
+            are sampled independently and concatenated into one axis-angle vector, not composed
+            as per-axis Euler rotations; see :class:`RandomRotation3D` for the convention.
             If degrees is a number, then yaw, pitch, roll will be generated from the range of (-degrees, +degrees).
             If degrees is a tuple of (min, max), then yaw, pitch, roll will be generated from the range of (min, max).
             If degrees is a list of floats [a, b, c], then yaw, pitch, roll will be generated from (-a, a), (-b, b)
@@ -73,9 +75,12 @@ class RandomAffine3D(GeometricAugmentationBase3D):
     Convention:
         See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
 
-        - ``degrees`` is ordered ``(yaw, pitch, roll)`` about the ``(x, y, z)`` voxel-coordinate axes. A positive
-          roll turns a displayed ``H x W`` slice counter-clockwise, and the rotation block is the transpose of
-          :class:`RandomRotation3D`'s (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
+        - each sampled ``degrees`` triple ``(yaw, pitch, roll) = (rx, ry, rz)`` is **one axis-angle vector**
+          in degrees and is converted into a single Rodrigues rotation, not composed as per-axis Euler
+          rotations; see :class:`RandomRotation3D` for the convention.
+        - A positive roll turns a displayed ``H x W`` slice counter-clockwise, and the rotation
+          block is the transpose of :class:`RandomRotation3D`'s
+          (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
         - the default is bilinear resampling with ``align_corners=False``.
         - a two-value ``scale=(a, b)`` is isotropic: one factor per sample is drawn from ``[a, b]`` and applied
           to all three axes, as the 2D :class:`~kornia.augmentation.RandomAffine` does. The three-pair form
@@ -183,7 +188,7 @@ class RandomAffine3D(GeometricAugmentationBase3D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if not isinstance(transform, torch.Tensor):
-            raise TypeError(f"Expected the transform to be a torch.Tensor. Gotcha {type(transform)}")
+            raise TypeError(f"Expected the transform to be a torch.Tensor. Got {type(transform)}")
 
         return warp_affine3d(
             input,

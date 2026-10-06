@@ -89,8 +89,10 @@ class RandomCrop(GeometricAugmentationBase2D):
 
         With ``pad_if_needed=False``, an oversized request does not raise: slice mode resizes the available slice,
         and resample mode uses a mis-scaled warp that rescales both matrix axes and can blend in zero padding
-        (`#4414 <https://github.com/kornia/kornia/issues/4414>`_). The scale is computed against the padded canvas,
-        so a crop that fits after explicit padding gets no scale correction.
+        (`#4414 <https://github.com/kornia/kornia/issues/4414>`_). Slice mode scales only the matrix axes along
+        which the request exceeds the canvas, as its resize does, and on the resize's half-pixel grid:
+        ``x' = (x + 0.5) * W_out / W_in - 0.5`` along a stretched axis (likewise for ``y``). The scale is computed
+        against the padded canvas, so a crop that fits after explicit padding gets no scale correction.
 
         Slice mode uses :func:`~kornia.geometry.transform.crop_by_indices` with its own defaults and ignores this
         class's ``resample`` and ``align_corners``. Resample mode uses the configured interpolation and
@@ -227,7 +229,15 @@ class RandomCrop(GeometricAugmentationBase2D):
                 h += padding[2] + padding[3]
                 w += padding[0] + padding[1]
                 h_out, w_out = flags["size"]
-                if h_out > h or w_out > w:
+                if flags["cropping_mode"] == "slice":
+                    # The slice resize of an oversized axis is on the half-pixel grid: x' = (x + 0.5) * scale - 0.5.
+                    if w_out > w:
+                        transform[:, 0, 0] *= w_out / w
+                        transform[:, 0, 2] += (w_out / w - 1) / 2
+                    if h_out > h:
+                        transform[:, 1, 1] *= h_out / h
+                        transform[:, 1, 2] += (h_out / h - 1) / 2
+                elif h_out > h or w_out > w:
                     transform[:, 0, 0] *= w_out / w
                     transform[:, 1, 1] *= h_out / h
                 return transform
@@ -238,17 +248,20 @@ class RandomCrop(GeometricAugmentationBase2D):
             h_out, w_out = flags["size"]
             needs_scale = (h_out > padded_h) | (w_out > padded_w)
             scale_w = torch.where(
-                needs_scale,
+                (w_out > padded_w) if flags["cropping_mode"] == "slice" else needs_scale,
                 torch.full_like(padded_w, w_out, dtype=transform.dtype) / padded_w.to(dtype=transform.dtype),
                 torch.ones_like(padded_w, dtype=transform.dtype),
             )
             scale_h = torch.where(
-                needs_scale,
+                (h_out > padded_h) if flags["cropping_mode"] == "slice" else needs_scale,
                 torch.full_like(padded_h, h_out, dtype=transform.dtype) / padded_h.to(dtype=transform.dtype),
                 torch.ones_like(padded_h, dtype=transform.dtype),
             )
             transform[:, 0, 0] *= scale_w
             transform[:, 1, 1] *= scale_h
+            if flags["cropping_mode"] == "slice":
+                transform[:, 0, 2] += (scale_w - 1) / 2
+                transform[:, 1, 2] += (scale_h - 1) / 2
 
             return transform
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")

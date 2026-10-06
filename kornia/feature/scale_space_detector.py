@@ -581,7 +581,7 @@ class ScaleSpaceDetector(nn.Module):
         else:
             raise TypeError(
                 "Expected the scale pyramid module to have `n_levels` as a torch.Tensor or int."
-                f"Gotcha {type(self.scale_pyr.n_levels)}"
+                f"Got {type(self.scale_pyr.n_levels)}"
             )
         rotmat = torch.eye(2, dtype=dtype, device=dev).view(1, 1, 2, 2)
         # Read the live module once per forward, so a refiner swapped in after construction, or a

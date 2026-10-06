@@ -459,6 +459,121 @@ class TestDenormalize(BaseTester):
         pass
 
 
+class TestNormalizeIntegerInput(BaseTester):
+    """`normalize` and `denormalize` used to cast mean and std to an integer input's dtype (#5403).
+
+    A fractional statistic then truncated to an integer (0.5 -> 0) and the arithmetic ran in the integer dtype, so
+    `normalize` divided by zero and `denormalize` wrapped. Integer and bool inputs are now promoted to torch's
+    default floating dtype first, as `x * 0.5` does, and both functions return that dtype.
+    """
+
+    INTEGER_DTYPES = (torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64, torch.bool)
+
+    @staticmethod
+    def _image(device, input_dtype):
+        g = torch.Generator().manual_seed(0)
+        values = torch.randint(0, 2 if input_dtype is torch.bool else 128, (2, 3, 4, 5), generator=g)
+        return values.to(device, input_dtype)
+
+    @pytest.mark.parametrize("input_dtype", INTEGER_DTYPES)
+    @pytest.mark.parametrize("fn", ["normalize", "denormalize"])
+    @pytest.mark.parametrize("stats", ["float", "tensor"])
+    def test_integer_input_matches_the_float_path_5403(self, device, input_dtype, fn, stats):
+        # The same values held as float32 are the reference: nothing is truncated, wrapped or non-finite.
+        op = getattr(kornia.enhance, fn)
+        img = self._image(device, input_dtype)
+        if stats == "float":
+            mean, std = 0.5, 0.25
+        else:
+            mean = torch.tensor([0.5, 0.25, 0.75], device=device)
+            std = torch.tensor([0.25, 0.5, 2.0], device=device)
+
+        out = op(img, mean, std)
+
+        assert out.dtype == torch.get_default_dtype()
+        assert out.shape == img.shape
+        assert torch.isfinite(out).all()
+        self.assert_close(out, op(img.to(torch.get_default_dtype()), mean, std))
+
+    def test_issue_values_5403(self, device):
+        x = torch.tensor([[[[0, 128, 255]]]], device=device, dtype=torch.uint8)
+
+        # 0.5 used to truncate to 0: [nan, inf, inf]
+        self.assert_close(
+            kornia.enhance.normalize(x, 0.5, 0.5),
+            torch.tensor([[[[-1.0, 255.0, 509.0]]]], device=device),
+        )
+        # 0 - 100 used to wrap to 156 in uint8: [3.12, 0.56, 3.10]
+        self.assert_close(
+            kornia.enhance.normalize(x, 100.0, 50.0),
+            torch.tensor([[[[-2.0, 0.56, 3.1]]]], device=device),
+        )
+        # used to return [0, 0, 0] uint8
+        self.assert_close(
+            kornia.enhance.denormalize(x, 0.5, 0.5),
+            torch.tensor([[[[0.5, 64.5, 128.0]]]], device=device),
+        )
+        # 128 * 2 + 10 and 255 * 2 + 10 used to wrap in uint8: [10, 10, 8]
+        self.assert_close(
+            kornia.enhance.denormalize(x, 10.0, 2.0),
+            torch.tensor([[[[10.0, 266.0, 520.0]]]], device=device),
+        )
+
+    @pytest.mark.parametrize("module", ["Normalize", "Denormalize"])
+    def test_modules_promote_integer_input_5403(self, device, module):
+        img = self._image(device, torch.uint8)
+        op = getattr(kornia.enhance, module)(0.5, 0.25).to(device)
+
+        out = op(img)
+
+        assert out.dtype == torch.get_default_dtype()
+        assert torch.isfinite(out).all()
+        self.assert_close(out, op(img.to(torch.get_default_dtype())))
+
+    def test_uint8_pixel_scale_round_trip_5403(self, device):
+        # Statistics in the 0-255 pixel scale are what a caller holding a uint8 image passes.
+        mean = torch.tensor([123.675, 116.28, 103.53], device=device)
+        std = torch.tensor([58.395, 57.12, 57.375], device=device)
+        img = torch.randint(0, 256, (2, 3, 6, 7), device=device, dtype=torch.uint8)
+
+        normalized = kornia.enhance.normalize(img, mean, std)
+
+        assert normalized.dtype == torch.get_default_dtype()
+        assert normalized.abs().max() < 3.0
+        self.assert_close(kornia.enhance.denormalize(normalized, mean, std), img.to(normalized.dtype))
+
+    def test_integer_input_follows_the_default_dtype_5403(self, device):
+        # The promotion target is torch's default floating dtype, the same as `x * 0.5`, not a hardcoded float32.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        img = self._image(device, torch.uint8)
+        previous = torch.get_default_dtype()
+        torch.set_default_dtype(torch.float64)
+        try:
+            assert (img * 0.5).dtype == torch.float64
+            assert kornia.enhance.normalize(img, 0.5, 0.25).dtype == torch.float64
+            assert kornia.enhance.denormalize(img, 0.5, 0.25).dtype == torch.float64
+        finally:
+            torch.set_default_dtype(previous)
+
+    def test_float_input_keeps_its_dtype_5403(self, device, dtype):
+        # Only integer and bool inputs are promoted; a floating input is returned in its own dtype.
+        img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
+        assert kornia.enhance.normalize(img, 0.5, 0.25).dtype == dtype
+        assert kornia.enhance.denormalize(img, 0.5, 0.25).dtype == dtype
+
+    @pytest.mark.parametrize("fn", ["normalize", "denormalize"])
+    def test_complex_input_is_not_cast_5403(self, device, fn):
+        # Promoting a complex tensor to a real dtype would drop its imaginary part, so it must stay complex.
+        op = getattr(kornia.enhance, fn)
+        img = torch.complex(torch.rand(1, 3, 2, 2), torch.rand(1, 3, 2, 2)).to(device)
+
+        out = op(img, 0.5, 0.25)
+
+        assert out.dtype == img.dtype
+        assert out.imag.abs().sum() > 0
+
+
 class TestNormalizeMinMax(BaseTester):
     @pytest.mark.parametrize("shape", [(4, 5), (3, 4, 5), (2, 3, 4, 5), (2, 2, 3, 4, 5)])
     def test_noncontiguous(self, shape, device, dtype):

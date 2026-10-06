@@ -25,6 +25,36 @@ from torch import nn
 from kornia.image.utils import perform_keep_shape_image
 
 
+def _tuple_bound(bound: tuple[Any, ...], input: torch.Tensor) -> torch.Tensor:
+    if input.is_floating_point() or input.is_complex():
+        return torch.tensor(bound, device=input.device, dtype=input.dtype)
+    # Preserve Python float precision and exact integer bounds. Normalize on CPU before moving to devices
+    # such as MPS, which do not support float64.
+    dtype = torch.int64 if all(isinstance(value, int) for value in bound) else torch.float64
+    return torch.tensor(bound, dtype=dtype)
+
+
+def _compare_bound(input: torch.Tensor, bound: torch.Tensor, lower: bool) -> torch.Tensor:
+    if input.is_floating_point() or input.is_complex():
+        bound = bound.to(input)
+    elif bound.is_floating_point():
+        # Round the bound, not the image: promoting large integer pixels to float can change the comparison.
+        bound = bound.ceil() if lower else bound.floor()
+        minimum = 0 if input.dtype == torch.bool else torch.iinfo(input.dtype).min
+        maximum = 1 if input.dtype == torch.bool else torch.iinfo(input.dtype).max
+        below = bound < minimum
+        above = bound >= maximum + 1
+        # max + 1 is an exact power of two even when max itself rounds up in the bound's floating dtype.
+        safe_bound = torch.where((bound >= minimum) & (bound < maximum + 1), bound, 0).to(input)
+        below, above = below.to(input.device), above.to(input.device)
+        if lower:
+            return ((input >= safe_bound) | below) & ~above & ~bound.isnan().to(input.device)
+        return ((input <= safe_bound) | above) & ~below & ~bound.isnan().to(input.device)
+    else:
+        bound = bound.to(device=input.device)
+    return input >= bound if lower else input <= bound
+
+
 def _as_bchw_bound(name: str, bound: torch.Tensor, input_shape: torch.Size) -> torch.Tensor:
     """Validate a Tensor bound against the ``(B, C, H, W)`` input and return it as a 4-D Tensor.
 
@@ -68,16 +98,17 @@ def in_range(
         \text{out}(I) = \bigwedge_{c=0}^{C-1}
         \left( \text{lower}_c(I) \leq \text{input}_c(I) \leq \text{upper}_c(I) \right)
 
-    where `C` is the number of channels. Both comparisons are inclusive.
+    where `C` is the number of channels. Both comparisons are inclusive. For integer inputs, fractional lower
+    bounds are rounded up and fractional upper bounds down. Bounds outside the input dtype's range do not
+    wrap or overflow; a range containing no representable input value produces an empty mask.
 
     Convention:
         - A NaN channel fails its pixel. The mask has the input's dtype, 1 for a pass. ``lower > upper`` is not
           rejected and selects nothing.
         - ``return_mask=False`` returns ``input * mask``: the channels of a failing pixel become 0, except a NaN or
           infinite one, which becomes NaN.
-        - The bounds, laid out as the note below says, are cast to the input's dtype.
-        - Known defect: on an integer image a fractional bound truncates toward zero, so a lower bound of ``100.7``
-          admits ``100`` (`#5423 <https://github.com/kornia/kornia/issues/5423>`_).
+        - For integer inputs, fractional lower bounds round up and fractional upper bounds round down. Bounds outside
+          the input dtype's range do not wrap or overflow.
 
     Args:
         input: The input torch.Tensor to be filtered in the shape of :math:`(*, *, H, W)`.
@@ -163,26 +194,18 @@ def in_range(
         if len(lower) != input_shape[1] or len(upper) != input_shape[1]:
             raise ValueError("Shape of `lower`, `upper` and `input` image channels must have same shape.")
 
-        lower = (
-            torch.tensor(lower, device=input.device, dtype=input.dtype)
-            .reshape(1, -1, 1, 1)
-            .repeat(input_shape[0], 1, 1, 1)
-        )
-        upper = (
-            torch.tensor(upper, device=input.device, dtype=input.dtype)
-            .reshape(1, -1, 1, 1)
-            .repeat(input_shape[0], 1, 1, 1)
-        )
+        lower = _tuple_bound(lower, input).reshape(1, -1, 1, 1).repeat(input_shape[0], 1, 1, 1)
+        upper = _tuple_bound(upper, input).reshape(1, -1, 1, 1).repeat(input_shape[0], 1, 1, 1)
 
     elif isinstance(lower, torch.Tensor) and isinstance(upper, torch.Tensor):
-        lower = _as_bchw_bound("lower", lower, input_shape).to(input)
-        upper = _as_bchw_bound("upper", upper, input_shape).to(input)
+        lower = _as_bchw_bound("lower", lower, input_shape)
+        upper = _as_bchw_bound("upper", upper, input_shape)
 
     else:
         raise TypeError("Invalid `lower` and `upper` format. Both should be tuples or both torch.Tensor.")
 
     # Apply lower and upper bounds. Combine masks with logical_and.
-    mask = torch.logical_and(input >= lower, input <= upper)
+    mask = torch.logical_and(_compare_bound(input, lower, lower=True), _compare_bound(input, upper, lower=False))
     mask = mask.all(dim=(1), keepdim=True).to(input.dtype)
 
     if return_mask:

@@ -336,9 +336,9 @@ class TestConventionsLaplacian(BaseTester):
 
     def test_wart_laplacian_integer_input_returns_zeros_5155(self, device, dtype):
         """#5155: the kernel takes the integer input's dtype, so the normalised taps truncate to 0."""
+        if device.type != "cpu":
+            pytest.skip("integer convolution raises on this device, so there is no truncated result to pin (#5155)")
         self._require_reflect_padding(device, dtype)
-        if device.type == "mps":
-            pytest.skip("#5155: MPS rejects integer convolution instead of returning zeros")
         img = torch.full((1, 1, 5, 7), 100, device=device, dtype=torch.uint8)
         img[0, 0, 2, 3] = 180
         # in a float dtype: (8 * 100 - 8 * 180) / 16 = -40 at the bright pixel, (180 - 100) / 16 = 5 beside it

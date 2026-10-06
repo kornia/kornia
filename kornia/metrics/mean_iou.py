@@ -105,6 +105,11 @@ def _convert_boxes_to_xyxy(boxes: torch.Tensor, box_format: str) -> torch.Tensor
     raise ValueError(f"Unsupported box format: {box_format}. Must be one of 'xyxy', 'xywh', or 'cxcywh'.")
 
 
+def _promote_integer_boxes(boxes: torch.Tensor) -> torch.Tensor:
+    """Return integer and bool boxes as float32; floating point boxes are returned unchanged."""
+    return boxes if boxes.is_floating_point() else boxes.to(torch.float32)
+
+
 def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str = "xyxy") -> torch.Tensor:
     """Compute the IoU of the cartesian product of two sets of boxes.
 
@@ -120,6 +125,10 @@ def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str 
     Returns:
         a tensor in dimensions :math:`(B1, B2)`, representing the
         intersection of each of the boxes in set 1 with respect to each of the boxes in set 2.
+
+    .. note::
+        Integer (and bool) boxes are computed in ``float32``, so the result is ``float32`` and widths, areas and the
+        union do not wrap around in a narrow integer dtype such as ``uint8``, ``int8`` or ``int16``.
 
     Example:
         >>> # XYXY format
@@ -142,9 +151,22 @@ def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str 
                 [0.1429, 0.2500]])
 
     """
+    # Integer boxes would otherwise form every width, area and the union in their own dtype, where uint8, int8 and
+    # int16 wrap around. Promote them before the format conversion too, because 'xywh' adds x + w in the box dtype.
+    # Bool boxes are covered as well (they cannot be subtracted). The result is float32 for integer input either way.
+    boxes_1 = _promote_integer_boxes(boxes_1)
+    boxes_2 = _promote_integer_boxes(boxes_2)
+
     # Convert boxes to xyxy format
     boxes_1_xyxy = _convert_boxes_to_xyxy(boxes_1, box_format)
     boxes_2_xyxy = _convert_boxes_to_xyxy(boxes_2, box_format)
+
+    output_dtype = torch.promote_types(boxes_1_xyxy.dtype, boxes_2_xyxy.dtype)
+    # Ordinary image-sized areas overflow float16; compute the ratio before rounding back.
+    if boxes_1_xyxy.dtype in (torch.float16, torch.bfloat16):
+        boxes_1_xyxy = boxes_1_xyxy.float()
+    if boxes_2_xyxy.dtype in (torch.float16, torch.bfloat16):
+        boxes_2_xyxy = boxes_2_xyxy.float()
 
     # Validate boxes are in proper xyxy format. The checks read the data, which graph capture cannot do;
     # skip them under export.
@@ -173,4 +195,5 @@ def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str 
     # Find the union
     union = areas_set_1.unsqueeze(1) + areas_set_2.unsqueeze(0) - intersection  # (n1, n2)
 
-    return intersection / union  # (n1, n2)
+    iou = intersection / union  # (n1, n2)
+    return iou.to(output_dtype) if output_dtype in (torch.float16, torch.bfloat16) else iou
