@@ -240,7 +240,6 @@ class TestImageModuleMixIn:
             img_module.show(backend="matplotlib", display=False)
 
     def test_save_without_output_image_raises(self, img_module, tmpdir):
-        img_module._output_image = None
         with pytest.raises(ValueError, match="No pre-computed images found"):
             img_module.save(name=tmpdir.join("test_image.jpg"))
 
@@ -378,6 +377,8 @@ class TestLazyOutputCache(BaseTester):
         image = torch.rand(1, 3, 6, 8, device=device, dtype=dtype)
         module(image)
         assert module._output_image is not None
+        module.disable_features = False
+        assert module._output_image is not None
 
         module.disable_features = True
         assert module._output_image is None
@@ -432,6 +433,9 @@ class TestLazyOutputCache(BaseTester):
             module.show(display=False)
         with pytest.raises(ValueError, match="Expected a 3D or 4D image tensor"):
             module.save(name=str(tmp_path / "2d.png"))
+        module._output_image = [torch.rand(3, 4, 5), torch.rand(3, 4, 5)]
+        with pytest.raises(ValueError, match="got list"):
+            module.show(display=False)
 
     def test_bfloat16_output_can_be_shown_and_converted_to_numpy(self):
         module = _Identity()
@@ -445,14 +449,14 @@ class TestLazyOutputCache(BaseTester):
 
     @pytest.mark.parametrize("output_type", ["numpy", "pil"])
     def test_requested_output_conversion_4957(self, module, output_type, device, dtype):
-        if dtype == torch.bfloat16 and output_type == "numpy":
-            pytest.skip("NumPy does not support bfloat16")
         image = torch.rand(1, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
         output = module(image, output_type=output_type)
         expected = image.sigmoid().detach().cpu()
         if output_type == "numpy":
             assert isinstance(output, np.ndarray)
-            np.testing.assert_array_equal(output, expected.permute(0, 2, 3, 1).numpy())
+            # NumPy has no bfloat16: to_numpy upcasts it to float32, which holds every bfloat16 value exactly
+            numpy_dtype = torch.float32 if dtype == torch.bfloat16 else dtype
+            np.testing.assert_array_equal(output, expected.to(numpy_dtype).permute(0, 2, 3, 1).numpy())
         else:
             assert isinstance(output, list)
             assert len(output) == 1
@@ -463,8 +467,6 @@ class TestLazyOutputCache(BaseTester):
 
     @pytest.mark.parametrize("output_type", ["numpy", "pil"])
     def test_converted_output_can_be_shown_and_saved_4964(self, module, output_type, device, dtype, tmp_path):
-        if dtype == torch.bfloat16 and output_type == "numpy":
-            pytest.skip("NumPy does not support bfloat16")
         image = torch.rand(1, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
         module(image, output_type=output_type)
         cached = module._output_image
@@ -746,9 +748,6 @@ class TestTupleOutputCache(BaseTester):
     @pytest.mark.parametrize("count", [1, 2])
     @pytest.mark.parametrize("output_type", ["pt", "numpy", "pil"])
     def test_tuple_conversion_and_cache(self, container, count, output_type, device, dtype):
-        if dtype == torch.bfloat16 and output_type == "numpy":
-            pytest.skip("NumPy does not support bfloat16")
-
         class TupleModule(container):
             def forward(self, x):
                 return tuple(x.sigmoid() for _ in range(count))
@@ -773,7 +772,8 @@ class TestTupleOutputCache(BaseTester):
                 assert output.requires_grad
                 self.assert_close(output, expected)
             elif output_type == "numpy":
-                np.testing.assert_array_equal(output, expected.cpu().permute(1, 2, 0).numpy())
+                numpy_dtype = torch.float32 if dtype == torch.bfloat16 else dtype
+                np.testing.assert_array_equal(output, expected.cpu().to(numpy_dtype).permute(1, 2, 0).numpy())
             else:
                 assert isinstance(output, PILImage.Image)
                 working = expected.cpu().to(torch.promote_types(dtype, torch.float32))

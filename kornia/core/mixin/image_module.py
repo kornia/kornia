@@ -312,7 +312,8 @@ class ImageModuleMixIn:
         converts back to the same tensor. A tensor of any other rank keeps its shape. Every 3-D or 4-D tensor is taken
         to be an image, so a non-image element of a tuple output, such as a :math:`(B, N, 4)` box tensor, is moved to
         channels-last too; modules with several outputs are tracked in
-        `#5210 <https://github.com/kornia/kornia/issues/5210>`_.
+        `#5210 <https://github.com/kornia/kornia/issues/5210>`_. A ``bfloat16`` tensor becomes a ``float32`` array,
+        since NumPy has no ``bfloat16``.
 
         Args:
             x: The input to convert.
@@ -417,14 +418,12 @@ class ImageModuleMixIn:
 
         if len(output_image.shape) == 3:
             out_image = output_image
-        elif len(output_image.shape) == 4:
+        else:
             from kornia.image.utils import make_grid  # pylint: disable=C0415
 
             if n_row is None:
                 n_row = math.ceil(output_image.shape[0] ** 0.5)
             out_image = make_grid(output_image, n_row, padding=2)
-        else:
-            raise ValueError("Expected a 3D or 4D image tensor.")
 
         if backend == "pil" and display:
             self.to_pil(out_image).show()
