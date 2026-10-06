@@ -114,6 +114,11 @@ class TestVideoSequential:
             [K.RandomCrop((2, 2), padding=2)],
             [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)],
             [K.RandomAffine(360, p=0.0), K.ImageSequential(K.RandomAffine(360, p=0.0))],
+            [
+                K.RandomAffine(360, p=1.0),
+                K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)),
+            ],
+            [K.ImageSequential(K.RandomAffine(360, p=0.5), K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.5))],
         ],
     )
     @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
@@ -140,6 +145,32 @@ class TestVideoSequential:
         if data_format == "BCTHW":
             output_2 = output_2.transpose(1, 2)
         assert_close(output_1, output_2)
+
+    @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
+    def test_nested_container_draws_per_frame_5513(self, data_format, device, dtype):
+        # A nested container runs on the flattened B * T frames, so its parameters are drawn per frame too.
+        aug = K.VideoSequential(
+            K.ImageSequential(K.RandomAffine(360, p=1.0)), data_format=data_format, same_on_frame=False
+        )
+        batch, frames = 2, 4
+        shape = (batch, 3, frames, 5, 6) if data_format == "BCTHW" else (batch, frames, 3, 5, 6)
+        x = torch.rand(*shape, device=device, dtype=dtype)
+
+        torch.manual_seed(0)
+        out = aug(x)
+        assert out.shape == x.shape
+        assert aug._params[0].data[0].data["batch_prob"].shape == (batch * frames,)
+        if data_format == "BCTHW":
+            assert not torch.allclose(out[:, :, 0], out[:, :, 1])
+        else:
+            assert not torch.allclose(out[:, 0], out[:, 1])
+        assert aug.inverse(out, params=aug._params).shape == x.shape
+        reproducibility_test(x, aug)
+
+        with pytest.raises(ValueError, match="same_on_frame"):
+            K.VideoSequential(K.ImageSequential(K.RandomAffine(360, p=1.0)), same_on_frame=True).forward_parameters(
+                torch.Size(shape)
+            )
 
     @pytest.mark.skip(reason="turn off due to Union Type")
     def test_jit(self, device, dtype):
