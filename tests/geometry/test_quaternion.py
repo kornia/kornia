@@ -792,7 +792,7 @@ class TestQuaternionConventions(BaseTester):
         q = Quaternion(data)
         # precondition: |q| = sqrt(4.56) = 2.14, far from unit
         assert (q.norm() - 1.0).abs().max() > 1.0
-        # matrix() is the rotation of q / |q|, a proper rotation (So3.matrix() is not, #4942)
+        # matrix() is the rotation of q / |q|, a proper rotation, as So3.matrix() is (#4942)
         rotation = q.matrix()
         self.assert_close(rotation, q.normalize().matrix())
         eye = torch.eye(3, device=device, dtype=dtype)[None]
