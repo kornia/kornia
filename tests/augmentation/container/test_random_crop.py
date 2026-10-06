@@ -231,10 +231,40 @@ class TestRandomCropAnnotations(BaseTester):
 
         for actual, target in zip(output, expected):
             self.assert_close(actual, target)
-        # Equal spatial sizes let the image path select rows. Mixed shape-changing crops
-        # and mixed inverse have separate size/unpadding issues and are not asserted here.
+        # Equal spatial sizes let the image path select rows. A mixed gate on a shape-changing crop raises
+        # (test_mixed_gate_with_shape_change_raises_4497); the mixed inverse is not asserted here.
         for actual, target in zip(output, inputs):
             self.assert_close(actual[1], target[1], rtol=0, atol=0)
+
+    @pytest.mark.parametrize(
+        "make_aug",
+        [
+            lambda: K.RandomCrop((20, 26), padding=(1, 2), p=0.5, cropping_mode="slice"),
+            lambda: K.RandomCrop((20, 26), padding=(1, 2), p=0.5, cropping_mode="resample"),
+            lambda: K.Resize((20, 26), p=0.5),
+        ],
+        ids=["crop-slice", "crop-resample", "resize"],
+    )
+    def test_mixed_gate_with_shape_change_raises_4497(self, make_aug, device, dtype):
+        # A batch holds one sample shape, so rows skipped by the gate cannot keep their own size.
+        # Before #4497 they were silently transformed too, and inverse failed with a shape mismatch.
+        aug = make_aug()
+        image = torch.rand(4, 1, 24, 32, device=device, dtype=dtype)
+        params = aug.forward_parameters(image.shape)
+        params["batch_prob"] = torch.tensor([0.0, 1.0, 0.0, 1.0])
+        with pytest.raises(ValueError, match="mixes applied and skipped rows"):
+            aug(image, params=deepcopy(params))
+        if aug.flags.get("cropping_mode", "resample") == "resample":
+            output = torch.rand(4, 1, 20, 26, device=device, dtype=dtype)
+            with pytest.raises(ValueError, match="mixes applied and skipped rows"):
+                aug.inverse(output, params=deepcopy(params))
+
+        # A whole-batch gate in either direction is still accepted.
+        for gate in ([1.0] * 4, [0.0] * 4):
+            params["batch_prob"] = torch.tensor(gate)
+            output = aug(image, params=deepcopy(params))
+            expected = (20, 26) if gate[0] else (24, 32)
+            assert output.shape == (4, 1, *expected)
 
     @pytest.mark.parametrize("box_format", ["bbox", "bbox_xyxy", "bbox_xywh"])
     @pytest.mark.parametrize("unbatched", [False, True])
@@ -350,10 +380,15 @@ class TestRandomCropPaddingMatrix(BaseTester):
         params["src"] = (
             image.new_tensor([[[1, 1], [size[1], 1], [size[1], size[0]], [1, size[0]]]]).expand(2, -1, -1).clone()
         )
+        if size != image.shape[-2:]:
+            # Skipped rows cannot keep their shape in a cropped batch (#4497).
+            with pytest.raises(ValueError, match="mixes applied and skipped rows"):
+                torch_optimizer(crop)(image, params=params)
+            return
         output = torch_optimizer(crop)(image, params=params)
         padded = torch.nn.functional.pad(image, (1, 1, 2, 2))
         expected = padded[..., 1 : size[0] + 1, 1 : size[1] + 1].clone()
-        expected[0] = image[0] if size == image.shape[-2:] else padded[0, :, : size[0], : size[1]]
+        expected[0] = image[0]
         self.assert_close(output, expected, rtol=0, atol=0)
         matrix = image.new_tensor([[[1, 0, 0], [0, 1, 0], [0, 0, 1]], [[1, 0, 0], [0, 1, 1], [0, 0, 1]]])
         self.assert_close(crop.transform_matrix, matrix, rtol=0, atol=0)
