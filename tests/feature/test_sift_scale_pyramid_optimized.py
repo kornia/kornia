@@ -120,7 +120,8 @@ class TestSIFTScalePyramidCPUOptimized(BaseTester):
         actual.square().mean().backward()
         expected.square().mean().backward()
 
-        assert actual_input.grad is not None and torch.isfinite(actual_input.grad).all()
+        assert actual_input.grad is not None
+        assert torch.isfinite(actual_input.grad).all()
         self.assert_close(actual_input.grad, expected_input.grad)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
