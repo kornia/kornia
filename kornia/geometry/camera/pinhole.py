@@ -59,8 +59,9 @@ class PinholeCamera:
         `#4263 <https://github.com/kornia/kornia/issues/4263>`_. With the :math:`(B, N, 4, 4)` storage the
         validator admits, :meth:`project` raises on :math:`(B, N, 3)` points:
         `#4266 <https://github.com/kornia/kornia/issues/4266>`_. The ``intrinsics`` form is not validated, but
-        :meth:`project` and :meth:`unproject` read only the top-left :math:`3 \times 3` block, so a zero-padded
-        ``K`` round-trips like its homogeneous embedding.
+        :meth:`project`, :meth:`unproject`, :meth:`intrinsics_inverse` and
+        :class:`~kornia.geometry.depth.DepthWarper` read only the top-left :math:`3 \times 3` block, so a
+        zero-padded ``K`` behaves like its homogeneous embedding.
 
     Args:
         intrinsics: torch.Tensor with shape :math:`(B, 4, 4)`
@@ -302,7 +303,7 @@ class PinholeCamera:
         Only the top-left 3x3 block of ``intrinsics`` is inverted. The remaining entries
         are ignored, so zero-padded intrinsics are supported. The result has a zero
         last row and column except for the homogeneous component at ``[..., 3, 3]``,
-        which is one.
+        which is one. See the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
 
         Returns:
             torch.Tensor of shape :math:`(B, 4, 4)`.

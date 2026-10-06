@@ -180,18 +180,15 @@ Intrinsics layout
   :func:`kornia.geometry.camera.perspective.project_points` alike. With a skewed ``K``, apply ``inv(K)`` to homogeneous
   pixel coordinates, or ``K`` to normalized ones, directly.
 - :class:`kornia.geometry.camera.pinhole.PinholeCamera` instead stores a ``4x4`` ``intrinsics`` whose canonical
-  form is the homogeneous embedding ``[[fx, 0, cx, 0], [0, fy, cy, 0], [0, 0, 1, 0], [0, 0, 0, 1]]``.
-  :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.project` and
-  :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.unproject` build their projection from the top-left
-  ``3x3`` block only, so a non-zero ``intrinsics[0, 3]`` never enters a projection, and a ``3x3`` ``K``
-  zero-padded without ``intrinsics[3, 3] = 1`` round-trips exactly like its homogeneous embedding
-  (`#4771 <https://github.com/kornia/kornia/issues/4771>`_). Its class docstring documents the layout and the
-  zero-padded case.
-  :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.intrinsics_inverse`,
-  :class:`~kornia.geometry.depth.DepthWarper` and :func:`~kornia.geometry.depth.depth_warp`
-  use only the top-left ``3x3`` block, ignoring the stored fourth row and column.
-  ``intrinsics_inverse`` returns the homogeneous ``4x4`` embedding of that block's inverse;
-  zero-padded intrinsics therefore work for these operations.
+  form is the homogeneous embedding ``[[fx, 0, cx, 0], [0, fy, cy, 0], [0, 0, 1, 0], [0, 0, 0, 1]]``. Only the
+  top-left ``3x3`` block is read: :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.project` and
+  :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.unproject` build their projection from it,
+  :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.intrinsics_inverse` returns the homogeneous ``4x4``
+  embedding of its inverse, and :class:`~kornia.geometry.depth.DepthWarper` and
+  :func:`~kornia.geometry.depth.depth_warp` use both. So a non-zero ``intrinsics[0, 3]`` never enters a
+  projection, and a ``3x3`` ``K`` zero-padded without ``intrinsics[3, 3] = 1`` behaves exactly like its
+  homogeneous embedding (`#4771 <https://github.com/kornia/kornia/issues/4771>`_). Its class docstring documents
+  the layout and the zero-padded case.
 - **Depth means two different things.** It is the camera-frame ``z`` by default, and the Euclidean ray length
   when :func:`kornia.geometry.camera.perspective.unproject_points` is called with ``normalize=True`` (the
   ``normalize_points`` flags of :func:`kornia.geometry.depth.depth_to_3d` and
