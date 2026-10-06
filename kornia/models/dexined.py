@@ -248,9 +248,11 @@ class DexiNed(ONNXExportMixin, nn.Module):
         """Load pretrained DexiNed weights and switch the module to evaluation mode.
 
         Args:
-            path_file: URL or local checkpoint path accepted by
+            path_file: URL accepted by
                 :func:`kornia.core.download.load_state_dict_from_url`, or a list
-                of candidate URLs tried in order (HF-first fallback).
+                of candidate URLs tried in order (HF-first fallback). A local
+                path is refused; load a local checkpoint with :func:`torch.load`
+                and pass it to ``load_state_dict``.
         """
         # use torch.hub to load pretrained model
         pretrained_dict = load_state_dict_from_url(path_file, map_location=torch.device("cpu"))

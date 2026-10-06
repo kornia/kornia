@@ -151,8 +151,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           warps lose the pixels they move out of the frame and, when they resample, restore the rest only
           approximately. Tracked in `#4477 <https://github.com/kornia/kornia/issues/4477>`_.
         - the ``mask``, box and ``keypoints`` handlers of a geometric child, or of a custom
-          :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` subclass, receive the transform it recorded,
-          subject to the mask limitations above; a handler the subclass does not implement raises
+          :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` subclass, receive the transform of the
+          call's ``params``: the one the child recorded when it last transformed an image with those params, or
+          else one recomputed from them, so a replay without the image or after a newer draw follows ``params``.
+          The mask limitations above apply; a handler the subclass does not implement raises
           ``NotImplementedError``. A non-rigid warp child has no matrix, so the coordinate keys are left unchanged;
           see the warning below.
         - ``.inverse()`` undoes the 2D geometric steps and leaves intensity, custom rigid and non-rigid steps
@@ -491,7 +493,12 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             raise AssertionError(
                 f"The number of inputs must align with the number of data_keys. Got {len(args)} and {len(data_keys)}."
             )
-        image = next((arg for arg, key in zip(args, data_keys) if key in _IMG_OPTIONS), None)
+        # A plain loop, not next(generator, None): Dynamo on torch 2.5/2.6 cannot trace next() with a default.
+        image = None
+        for arg, key in zip(args, data_keys):
+            if key in _IMG_OPTIONS:
+                image = arg
+                break
         if not isinstance(image, torch.Tensor) or image.ndim not in (3, 4):
             return
         image_batch = image.shape[0] if image.ndim == 4 else 1

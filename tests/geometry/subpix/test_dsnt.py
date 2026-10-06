@@ -90,8 +90,10 @@ class TestRenderGaussian2d(BaseTester):
         self.assert_close(heatmap[0, :, 0], y_profile.to(device=device, dtype=dtype))
         self.assert_close(heatmap[..., 1:], torch.zeros_like(heatmap[..., 1:]))
         (heatmap * torch.arange(25, device=device, dtype=dtype).view(1, 5, 5)).sum().backward()
-        assert mean.grad is not None and std.grad is not None
-        assert torch.isfinite(mean.grad).all() and torch.isfinite(std.grad).all()
+        assert mean.grad is not None
+        assert std.grad is not None
+        assert torch.isfinite(mean.grad).all()
+        assert torch.isfinite(std.grad).all()
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         mean = torch.tensor([0.0, 0.0], dtype=dtype, device=device)
