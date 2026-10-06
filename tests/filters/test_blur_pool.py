@@ -451,8 +451,8 @@ class TestConventionsBlurPool(BaseTester):
         # A pixel keeps its value where the channel mean of log2(I(x + 2) / I(x - 2)), along x or y, exceeds
         # log2(edge_threshold) in magnitude (dilated by edge_dilation_kernel_size), and is blurred elsewhere: the
         # threshold is a ratio of intensities 4 px apart, so the decision is scale-invariant for intensities well
-        # above epsilon. The comparison is strict. Positive intensities are assumed: a negative pixel's log is NaN,
-        # which never counts as an edge.
+        # above epsilon. The comparison is strict. Positive intensities are assumed: where input + epsilon is negative
+        # the log is NaN, which never counts as an edge.
         # The default edge_threshold is 1.25, and the output keeps the input size. On a vertical step between
         # columns 5 and 6 the blur would move those two columns by a quarter of the step.
         if not supports_reflect_padding(device, dtype):
@@ -480,6 +480,11 @@ class TestConventionsBlurPool(BaseTester):
         out = edge_aware_blur_pool2d(step, 3)
         assert moved(step, out) > 0.3 / 8
         assert not out.isnan().any()
+        # the log is taken of input + epsilon, so a negative step above -epsilon is an edge: with epsilon=1 a
+        # -0.5 -> -0.125 step compares 0.5 with 0.875, a log2 ratio of 0.81 > log2(1.25)
+        step = torch.full((1, 1, 9, 12), -0.5, device=device, dtype=dtype)
+        step[..., 6:] = -0.125
+        self.assert_close(edge_aware_blur_pool2d(step, 3, epsilon=1.0)[..., 5:7], step[..., 5:7])
         # strict: with epsilon=0 a 1 -> 2 step has a log2 ratio of exactly 1 = log2(2), which is not an edge at
         # edge_threshold=2 and is one just below it
         step = torch.ones(1, 1, 9, 12, device=device, dtype=dtype)

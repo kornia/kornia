@@ -410,9 +410,10 @@ def edge_aware_blur_pool2d(
           blurred with :func:`~kornia.filters.blur_pool2d`'s kernel at stride 1, with the border reflected as
           ``border_type='reflect'`` reflects it in :func:`~kornia.filters.filter2d`, so a constant image keeps its
           value to roundoff.
-        - The input is taken to be positive: the logarithm of a negative value is NaN, which never exceeds the
-          threshold, so a test that reads a negative value never finds an edge, and negative regions are blurred
-          except where the dilation of an adjacent edge reaches them.
+        - The input is taken to be positive. Where ``input + epsilon`` is negative its logarithm is NaN, which never
+          exceeds the threshold, so a test that reads such a value never finds an edge, and those regions are blurred
+          except where the dilation of an adjacent edge reaches them. Values in ``(-epsilon, 0]`` keep a finite
+          logarithm and can form edges, and ``input = -epsilon`` gives ``-inf``, an edge against any value above it.
 
     Args:
         input: the input image to blur with shape :math:`(B, C, H, W)`.

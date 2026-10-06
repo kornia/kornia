@@ -385,3 +385,21 @@ class TestConventionsMedianBlur(BaseTester):
             default = median_blur(noisy, kernel_size).detach()
             self.assert_close(default, median_blur(noisy, kernel_size, border_type="reflect").detach())
             assert not torch.equal(default, median_blur(noisy, kernel_size, border_type="replicate").detach())
+
+    @pytest.mark.parametrize("requires_grad", [False, True], ids=["selection_network", "conv_median"])
+    @pytest.mark.parametrize("invalid", [float("nan"), float("inf")])
+    def test_convention_median_blur_non_finite_window_is_nan(self, invalid, requires_grad, device, dtype):
+        # Any window of more than one pixel that reaches the non-finite pixel is NaN, even when its other values are
+        # all 0.5; a 1x1 window returns the pixel itself.
+        image = torch.full((1, 1, 9, 11), 0.5, device=device, dtype=dtype)
+        image[0, 0, 4, 5] = invalid
+        image.requires_grad_(requires_grad)
+        for kernel_size in (3, 5, 7, (1, 3), (3, 1)):
+            ky, kx = (kernel_size, kernel_size) if isinstance(kernel_size, int) else kernel_size
+            expected = torch.zeros(1, 1, 9, 11, dtype=torch.bool, device=device)
+            expected[..., 4 - ky // 2 : 5 + ky // 2, 5 - kx // 2 : 6 + kx // 2] = True
+            assert torch.equal(median_blur(image, kernel_size, "replicate").detach().isnan(), expected)
+        for kernel_size in (1, (1, 1)):
+            out = median_blur(image, kernel_size).detach()
+            assert torch.equal(out.isnan(), image.detach().isnan())
+            self.assert_close(out.nan_to_num(), image.detach().nan_to_num())
