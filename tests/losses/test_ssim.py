@@ -437,14 +437,27 @@ class TestSSIM3DLoss(BaseTester):
 
         actual = kornia.losses.ssim3d_loss(img1, img2, window_size, reduction=reduction_type)
 
+        # DSSIM = (1 - SSIM) / 2 of ones against zeros, the value ssim_loss gives in 2-D (#5533).
         if reduction_type == "mean":
-            expected = torch.tensor(0.9999, device=device, dtype=dtype)
+            expected = torch.tensor(0.49995, device=device, dtype=dtype)
         elif reduction_type == "sum":
-            expected = (torch.ones_like(img1, device=device, dtype=dtype) * 0.9999).sum()
+            expected = (torch.ones_like(img1, device=device, dtype=dtype) * 0.49995).sum()
         elif reduction_type == "none":
-            expected = torch.ones_like(img1, device=device, dtype=dtype) * 0.9999
+            expected = torch.ones_like(img1, device=device, dtype=dtype) * 0.49995
 
         self.assert_close(actual, expected)
+
+    def test_documented_dssim_form(self, device, dtype):
+        # The loss is clamp((1 - SSIM) / 2, 0, 1): anti-correlated volumes gave 1.97, outside [0, 1] (#5533).
+        generator = torch.Generator().manual_seed(0)
+        img1 = torch.rand(2, 1, 7, 9, 11, generator=generator).to(device=device, dtype=dtype)
+        img2 = 1.0 - img1
+        ssim_map = kornia.metrics.ssim3d(img1, img2, 5)
+        expected = ((1.0 - ssim_map) / 2).clamp(0, 1)
+        actual = kornia.losses.ssim3d_loss(img1, img2, 5, reduction="none")
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        assert actual.min() >= 0 and actual.max() <= 1
+        self.assert_close(kornia.losses.SSIM3DLoss(5)(img1, img2), expected.mean())
 
     def test_module(self, device, dtype):
         img1 = torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)
