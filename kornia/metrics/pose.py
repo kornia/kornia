@@ -76,7 +76,10 @@ def angle_error_mat(R1: Tensor, R2: Tensor) -> Tensor:
     # (R - R^T) / 2 = sin(theta) [n]_x and ||[n]_x||_F^2 = 2, so the squared Frobenius norm of
     # the skew part is 2 sin^2(theta): no cancellation near theta = 0 or pi.
     skew = (relative - relative.transpose(-2, -1)) / 2.0
-    sin_theta = ((skew * skew).sum(dim=(-2, -1)) / 2.0).clamp(min=0.0).sqrt()
+    sin_sq = (skew * skew).sum(dim=(-2, -1)) / 2.0
+    # sqrt'(0) is infinite and atan2 passes a nonzero upstream gradient at 0 and 180 degrees,
+    # so the square root is guarded: the value and the gradient are both 0 at sin == 0
+    sin_theta = torch.where(sin_sq > 0, sin_sq.clamp(min=0.0).sqrt(), torch.zeros_like(sin_sq))
     return torch.rad2deg(torch.atan2(sin_theta, cos_theta))
 
 
@@ -121,7 +124,11 @@ def angle_error_vec(v1: Tensor, v2: Tensor) -> Tensor:
     cos_theta = (dot / norms).clamp(-1.0, 1.0)
     # |v1 x v2| = sin(theta) |v1| |v2|: the cross product keeps full precision near 0 and 180
     # degrees, where the dot product has no digits left for the angle.
-    sin_theta = (torch.cross(v1, v2, dim=-1).norm(dim=-1) / norms).clamp(-1.0, 1.0)
+    cross = torch.cross(v1, v2, dim=-1)
+    sin_sq = (cross * cross).sum(dim=-1) / (norms * norms)
+    # sqrt'(0) is infinite and atan2 passes a nonzero upstream gradient at 0 and 180 degrees,
+    # so the square root is guarded: the value and the gradient are both 0 at sin == 0
+    sin_theta = torch.where(sin_sq > 0, sin_sq.clamp(min=0.0).sqrt(), torch.zeros_like(sin_sq))
     return torch.rad2deg(torch.atan2(sin_theta, cos_theta))
 
 

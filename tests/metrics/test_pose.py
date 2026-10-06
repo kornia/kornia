@@ -72,13 +72,14 @@ class TestAngleErrorMat(BaseTester):
         # the skew part keeps them.
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("half precision cannot encode the rotation entries the sub-degree angle lives in")
-        axis = torch.tensor([[0.3, -0.5, 0.8]], device=device, dtype=torch.float64)
+        # Built in float64 on CPU (MPS has no float64) and moved once to the device under test
+        axis = torch.tensor([[0.3, -0.5, 0.8]], dtype=torch.float64)
         axis = axis / axis.norm(dim=-1, keepdim=True)
-        z = torch.tensor([[0.0, 0.0, 1.0]], device=device, dtype=torch.float64)
+        z = torch.tensor([[0.0, 0.0, 1.0]], dtype=torch.float64)
         R1 = kornia.geometry.axis_angle_to_rotation_matrix(axis)
         for deg, expected in [(0.01, 0.01), (0.1, 0.1), (179.99, 179.99)]:
             R2 = R1 @ kornia.geometry.axis_angle_to_rotation_matrix(math.radians(deg) * z)
-            out = kornia.metrics.angle_error_mat(R1.to(dtype), R2.to(dtype))
+            out = kornia.metrics.angle_error_mat(R1.to(device=device, dtype=dtype), R2.to(device=device, dtype=dtype))
             expected_t = torch.tensor([expected], device=device, dtype=dtype)
             self.assert_close(out, expected_t, rtol=1e-3, atol=1e-4)
 
@@ -154,12 +155,13 @@ class TestAngleErrorVec(BaseTester):
         # to 180 in float32; the cross-product sin keeps them.
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("half precision cannot encode the vector entries the sub-degree angle lives in")
-        x = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=torch.float64)
-        v1 = torch.tensor([[0.0, 0.6, 0.8]], device=device, dtype=torch.float64)
+        # Built in float64 on CPU (MPS has no float64) and moved once to the device under test
+        x = torch.tensor([[1.0, 0.0, 0.0]], dtype=torch.float64)
+        v1 = torch.tensor([[0.0, 0.6, 0.8]], dtype=torch.float64)
         for deg, expected in [(0.01, 0.01), (0.1, 0.1), (179.99, 179.99)]:
             rot = kornia.geometry.axis_angle_to_rotation_matrix(math.radians(deg) * x)
             v2 = (rot @ v1[..., None])[..., 0]
-            out = kornia.metrics.angle_error_vec(v1.to(dtype), v2.to(dtype))
+            out = kornia.metrics.angle_error_vec(v1.to(device=device, dtype=dtype), v2.to(device=device, dtype=dtype))
             expected_t = torch.tensor([expected], device=device, dtype=dtype)
             self.assert_close(out, expected_t, rtol=1e-3, atol=1e-4)
 
