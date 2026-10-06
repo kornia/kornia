@@ -26,7 +26,7 @@ from torch._dynamo.testing import CompileCounter, CompileCounterWithBackend
 
 import kornia.augmentation as K
 
-from testing.base import BaseTester
+from testing.base import BaseTester, dynamo_is_available
 
 
 class TestAugmentationCompile(BaseTester):
@@ -71,6 +71,18 @@ class TestAugmentationCompile(BaseTester):
         out_input, out_mask = torch_optimizer(aug, fullgraph=True)(input, mask)
         self.assert_close(out_input, input.flip(-1))
         self.assert_close(out_mask, mask.flip(-1))
+
+    def test_dynamo_sequential_bbox(self, device, dtype, torch_optimizer):
+        # The 'bbox' key imports through Boxes.from_tensor('vertices_plus'), whose finiteness check is
+        # asynchronous, so the box path compiles with fullgraph=True (#4177).
+        input = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        bbox = torch.tensor([[[1.0, 1.0], [4.0, 1.0], [4.0, 5.0], [1.0, 5.0]]], device=device, dtype=dtype)
+        bbox = bbox.expand(2, 1, 4, 2).contiguous()
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "bbox"])
+        expected = aug(input, bbox)
+        actual = torch_optimizer(aug, fullgraph=True)(input, bbox)
+        self.assert_close(actual[0], expected[0])
+        self.assert_close(actual[1], expected[1])
 
     def test_compile_distinct_classes(self, device, dtype, torch_optimizer):
         # More classes than Dynamo's default per-code-object cache limit (#4658).
@@ -404,3 +416,36 @@ class TestRandomCropCompile(BaseTester):
             [[[0, 0], [size - 1, 0], [size - 1, size - 1], [0, size - 1]]], device=device, dtype=dtype
         )
         self.assert_close(torch_optimizer(aug, fullgraph=True)(input, params=params), input, atol=0, rtol=0)
+
+
+class TestContainerCompile(BaseTester):
+    # Named without "compile" or "dynamo" so the ordinary jobs collect it: the CompileCounter backend needs no
+    # optimizer, and those jobs are the only ones that run torch 2.5.1 with Dynamo (Python 3.11 and 3.12).
+    @pytest.mark.skipif(not dynamo_is_available(), reason="no Dynamo on this torch/python pair")
+    @pytest.mark.parametrize("disable_features", [True, False])
+    @pytest.mark.parametrize(
+        "container,data_keys",
+        [
+            (K.ImageSequential, None),
+            (K.AugmentationSequential, ["input"]),
+            (K.AugmentationSequential, ["input", "mask"]),
+        ],
+    )
+    def test_eager_backend_traces_container_in_one_graph(self, device, dtype, container, data_keys, disable_features):
+        # Dynamo on torch 2.5.1 cannot trace isinstance() against a PEP 604 union (#5223).
+        torch._dynamo.reset()
+        kwargs = {} if data_keys is None else {"data_keys": data_keys}
+        aug = container(K.RandomHorizontalFlip(p=1.0), **kwargs)
+        aug.disable_features = disable_features
+        input = torch.rand(1, 3, 4, 6, device=device, dtype=dtype)
+        args = (input,) * len(data_keys or ["input"])
+        counter = CompileCounter()
+        fn = torch.compile(aug, backend=counter, fullgraph=True)
+        actual, expected = fn(*args), aug(*args)
+        if len(args) == 1:
+            actual, expected = [actual], [expected]
+        assert len(actual) == len(args)
+        for out, ref in zip(actual, expected, strict=True):
+            self.assert_close(out, ref)
+            self.assert_close(out, input.flip(-1))
+        assert counter.frame_count == 1

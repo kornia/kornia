@@ -412,7 +412,7 @@ class LineSegmentDetectionModule:
         if not isinstance(self.junction_refine_cfg, JunctionRefineCfg):
             raise TypeError(
                 "Expected to have dataclass of type JunctionRefineCfg for junction."
-                f"Gotcha {type(self.junction_refine_cfg)}"
+                f"Got {type(self.junction_refine_cfg)}"
             )
         num_perturbs = self.junction_refine_cfg.num_perturbs
         perturb_interval = self.junction_refine_cfg.perturb_interval

@@ -183,6 +183,8 @@ jobs:
       pytorch-version: '["2.9.1"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
       known-failure-profile: cpu-${{ matrix.pytorch-dtype }}
+      # Same hang guard as the PR half-precision job (#5493).
+      pytest-extra: --timeout=600 --timeout-method=thread -o faulthandler_timeout=300
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
       cache-restore-keys: |

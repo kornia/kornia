@@ -449,9 +449,8 @@ class TestLightGlue(BaseTester):
             seen["device_type"] = kwargs.get("device_type", "")
             return real_ac(*args, **kwargs)
 
-        with unittest.mock.patch("kornia.feature.lightglue.torch.autocast", side_effect=_spy):
-            with torch.no_grad():
-                out = lg(data)
+        with unittest.mock.patch("kornia.feature.lightglue.torch.autocast", side_effect=_spy), torch.no_grad():
+            out = lg(data)
 
         assert seen["device_type"] == data["image0"]["keypoints"].device.type
         assert "matches0" in out
