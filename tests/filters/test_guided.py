@@ -701,3 +701,55 @@ class TestGuidedBlur(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(guide, data), op_optimized(guide, data))
+
+
+class TestConventionsGuidedBlur(BaseTester):
+    """Pins for the argument order, the window and the ``eps`` units of :func:`guided_blur`."""
+
+    @staticmethod
+    def _skip_without_reflect_padding(device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+
+    @pytest.mark.parametrize("guidance_channels", [1, 3])
+    def test_convention_guided_blur_eps_is_in_squared_guidance_units(self, guidance_channels, device, dtype):
+        # eps regularises the local variance of the guidance, so it is in squared guidance units: scaling guidance and
+        # input by s needs eps * s**2 for the same (scaled) result. OpenCV's ximgproc.guidedFilter eps is the same
+        # quantity. A power of two keeps the rescaling exact in every dtype.
+        self._skip_without_reflect_padding(device, dtype)
+        torch.manual_seed(0)
+        guidance = torch.rand(2, guidance_channels, 9, 13).to(device=device, dtype=dtype)
+        image = torch.rand(2, 2, 9, 13).to(device=device, dtype=dtype)
+        reference = guided_blur(guidance, image, 5, 0.01)
+        self.assert_close(guided_blur(16 * guidance, 16 * image, 5, 0.01 * 16**2), 16 * reference)
+        # control: eps scaled like the intensities, not like their square, is a different filter
+        assert (guided_blur(16 * guidance, 16 * image, 5, 0.01 * 16) - 16 * reference).abs().max() > 0.1
+
+    def test_convention_guided_blur_guidance_first_and_kernel_size_is_the_full_window(self, device, dtype):
+        # guided_blur(guidance, input, kernel_size, eps) takes the guidance first, unlike joint_bilateral_blur(input,
+        # guidance, ...), and kernel_size = (kH, kW) is the whole box window, 2r + 1 for the radius r of He et al. and
+        # of OpenCV's ximgproc.guidedFilter. With a flat guidance the local linear model has slope 0 and the filter is
+        # the mean of the local means: box_blur of box_blur of the input, which keeps its own channel count.
+        self._skip_without_reflect_padding(device, dtype)
+        torch.manual_seed(0)
+        image = torch.rand(2, 2, 9, 13).to(device=device, dtype=dtype)
+        flat = torch.full((2, 1, 9, 13), 0.5, device=device, dtype=dtype)
+        out = guided_blur(flat, image, (3, 5), 0.01)
+        assert out.shape == image.shape
+        self.assert_close(out, box_blur(box_blur(image, (3, 5)), (3, 5)))
+        self.assert_close(GuidedBlur((3, 5), 0.01)(flat, image), out)
+        # controls: the window read as (kW, kH), or kernel_size read as radii (7 x 11 windows), is another filter
+        assert (out - box_blur(box_blur(image, (5, 3)), (5, 3))).abs().max() > 0.05
+        assert (out - box_blur(box_blur(image, (7, 11)), (7, 11))).abs().max() > 0.05
+
+    @pytest.mark.parametrize("guidance_channels", [1, 3])
+    def test_convention_guided_blur_subsample_takes_any_size_5167(self, guidance_channels, device, dtype):
+        """guided_blur(subsample=s) filters an image whose H and W are not multiples of s, at the input size (#5167)."""
+        self._skip_without_reflect_padding(device, dtype)
+        torch.manual_seed(0)
+        guidance = torch.rand(1, guidance_channels, 9, 13).to(device=device, dtype=dtype)
+        image = torch.rand(1, 2, 9, 13).to(device=device, dtype=dtype)
+        out = guided_blur(guidance, image, 5, 0.01, subsample=2)
+        assert out.shape == image.shape
+        assert out.isfinite().all()
+        self.assert_close(GuidedBlur(5, 0.01, subsample=2)(guidance, image), out)

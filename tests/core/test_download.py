@@ -2109,8 +2109,27 @@ class TestUrlArguments:
             (None, TypeError, "URL string"),
             (b"http://127.0.0.1:9/w.pth", TypeError, "URL string"),
             ([b"http://127.0.0.1:9/w.pth"], TypeError, "URL string"),
+            ("/no/such/dir/w.pth", ValueError, "scheme"),
+            ("w.pth", ValueError, "scheme"),
+            ("~/typo/w.pth", ValueError, "scheme"),
+            (r"C:\no\such\w.pth", ValueError, "scheme"),
+            (["http://127.0.0.1:9/w.pth", "/no/such/dir/w.pth"], ValueError, "scheme"),
         ],
-        ids=["empty_list", "empty_str", "empty_str_in_list", "path", "path_in_list", "none", "bytes", "bytes_in_list"],
+        ids=[
+            "empty_list",
+            "empty_str",
+            "empty_str_in_list",
+            "path",
+            "path_in_list",
+            "none",
+            "bytes",
+            "bytes_in_list",
+            "posix_path_str",
+            "bare_name",
+            "home_path_str",
+            "windows_path_str",
+            "path_str_in_list",
+        ],
     )
     @pytest.mark.parametrize("entry", list(_ENTRY_POINTS))
     def test_a_value_that_is_not_a_url_is_refused(self, hub_dir_in_tmp, url, error, match, entry) -> None:
@@ -2118,6 +2137,16 @@ class TestUrlArguments:
             _ENTRY_POINTS[entry](url, progress=False)
 
         assert not hub_dir_in_tmp.exists()
+
+    @pytest.mark.parametrize("entry", list(_ENTRY_POINTS))
+    def test_a_path_is_refused_even_when_the_cache_holds_its_name(self, hub_dir_in_tmp, entry) -> None:
+        """The cache is keyed by base name, so a mistyped path used to load the cached file (#5404)."""
+        cached = hub_dir_in_tmp / "checkpoints" / "x.pt"
+        cached.parent.mkdir(parents=True)
+        torch.save({"w": torch.zeros(2)}, cached)
+
+        with pytest.raises(ValueError, match="scheme"):
+            _ENTRY_POINTS[entry]("/no/such/dir/x.pt", progress=False)
 
 
 class TestHfUrlEscaping:

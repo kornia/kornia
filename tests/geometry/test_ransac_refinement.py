@@ -126,10 +126,10 @@ class TestRANSACRefinementCPU(BaseTester):
         weights = x1.new_ones(1, len(x1) + 1)
         weights[0, -1] = 0.0
         with torch.no_grad():
-            # 0.1 keeps the retained residuals away from the truncated-loss acceptance boundary, where
-            # adding an otherwise zero row can change float32 reduction order.
+            # The control masks a regular correspondence in the same slot, so both runs reduce over the same number
+            # of rows. Five unconverged LM steps amplify a change in float32 reduction order past the tolerance.
             initial = refine(matrix, x1, x2, None, loss, 0.1, 0)
-            expected = refine(matrix, x1, x2, None, loss, 0.1, 5)
+            expected = refine(matrix, torch.cat([x1, x1[:1]]), torch.cat([x2, x2[:1]]), weights, loss, 0.1, 5)
             actual = refine(matrix, torch.cat([x1, singular_x1]), torch.cat([x2, singular_x2]), weights, loss, 0.1, 5)
         assert torch.isfinite(actual).all()
         assert (expected - initial).norm() > 1e-3

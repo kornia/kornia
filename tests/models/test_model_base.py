@@ -236,6 +236,18 @@ class TestModelBaseLoadCheckpoint(BaseTester):
         with pytest.raises(pickle.UnpicklingError):
             load_without_running_payload(marker, lambda: model.load_checkpoint(str(path)))
 
+    def test_a_home_relative_path_loads_the_local_file(self, tmp_path, monkeypatch, dtype) -> None:
+        source = _TinyModel().to(dtype)
+        torch.save(source.state_dict(), tmp_path / "x.pt")
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+
+        model = _TinyModel().to(dtype)
+        model.load_checkpoint("~/x.pt")
+
+        self.assert_close(model.linear.weight, source.linear.weight)
+        self.assert_close(model.linear.bias, source.linear.bias)
+
     def test_a_local_state_dict_loads(self, tmp_path, dtype) -> None:
         source = _TinyModel().to(dtype)
         path = tmp_path / "model.pth"

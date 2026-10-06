@@ -20,10 +20,10 @@ import importlib
 import pytest
 import torch
 
-from kornia.filters import BoxBlur, box_blur, filter2d, filter2d_separable
+from kornia.filters import BoxBlur, box_blur, filter2d, filter2d_separable, gaussian_blur2d, median_blur
 from kornia.filters.kernels import get_box_kernel1d, get_box_kernel2d
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_reflect_padding
 
 blur_module = importlib.import_module("kornia.filters.blur")
 
@@ -347,3 +347,62 @@ class TestBoxBlur(BaseTester):
             box_blur(data, kernel_size, border_type, separable=separable),
             functional_optimized(data, kernel_size, border_type, separable=separable),
         )
+
+
+class TestConventionsBoxBlur(BaseTester):
+    """Pins for the window of :func:`box_blur` and the ``kernel_size`` order the blurs share."""
+
+    @pytest.mark.parametrize(
+        "blur",
+        [
+            pytest.param(box_blur, id="box_blur"),
+            pytest.param(lambda image, size: gaussian_blur2d(image, size, (1.5, 1.5)), id="gaussian_blur2d"),
+            pytest.param(median_blur, id="median_blur"),
+        ],
+    )
+    def test_convention_blur_kernel_size_is_height_then_width(self, blur, device, dtype):
+        # kernel_size = (kH, kW): a (1, 5) window slides along a row and leaves a full-width horizontal bar as it is,
+        # while a (5, 1) window spans five rows and spreads the bar (the median erases it). cv2.blur and
+        # cv2.GaussianBlur take ksize = (width, height) instead.
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+        bar = torch.zeros(1, 1, 7, 10, device=device, dtype=dtype)
+        bar[0, 0, 2, :] = 1.0
+        self.assert_close(blur(bar, (1, 5)), bar)
+        assert (blur(bar, (5, 1)) - bar).abs().max() > 0.5
+
+        # Relabelling check: transpose the image, and the two sizes swap roles.
+        column = bar.transpose(-1, -2).contiguous()
+        self.assert_close(blur(column, (5, 1)), column)
+        assert (blur(column, (1, 5)) - column).abs().max() > 0.5
+
+    @pytest.mark.parametrize("separable", [True, False])
+    def test_convention_box_blur_even_kernel_is_centred_at_k_minus_1_over_2(self, separable, device, dtype):
+        # An even extent k averages [i - (k - 1) // 2, i + k // 2] with weight 1 / (kH * kW) and keeps the image size:
+        # the window's centre is (k - 1) // 2, as in filter2d and torch's F.conv2d(padding="same"). cv2.blur's default
+        # anchor and scipy's uniform_filter(origin=0) centre an even window at k // 2 instead.
+        # Snippet used to generate expected:
+        #   x = torch.zeros(1, 1, 9, 13); x[0, 0, 3, 8] = 1
+        #   nz = box_blur(x, (2, 4))[0, 0].nonzero(); print(nz[:, 0].unique(), nz[:, 1].unique())
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+        image = torch.zeros(1, 1, 9, 13, device=device, dtype=dtype)
+        image[0, 0, 3, 8] = 1.0
+        # the (2, 4) / (4, 2) pair is the relabelling check
+        for kernel_size, rows, cols in (((2, 4), [2, 3], [6, 7, 8, 9]), ((4, 2), [1, 2, 3, 4], [7, 8])):
+            out = box_blur(image, kernel_size, separable=separable)
+            assert out.shape == image.shape
+            lit = out[0, 0].nonzero()
+            assert lit[:, 0].unique().tolist() == rows
+            assert lit[:, 1].unique().tolist() == cols
+            self.assert_close(out[out != 0], torch.full((8,), 1 / 8, device=device, dtype=dtype))
+
+    def test_wart_box_blur_integer_image_blurs_to_zero_5155(self, device):
+        """box_blur builds its kernel in an integer input's dtype, so a uint8 image blurs to zero (#5155)."""
+        if device.type != "cpu":
+            pytest.skip("#5155 is pinned on the CPU; MPS raises for an integer convolution instead")
+        image = torch.full((1, 1, 5, 7), 100, device=device, dtype=torch.uint8)
+        for separable in (True, False):
+            assert box_blur(image, (3, 3), separable=separable).eq(0).all()
+        # the same blur of the same values in floating point keeps the constant image
+        self.assert_close(box_blur(image.float(), (3, 3)), image.float())

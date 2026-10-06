@@ -54,8 +54,11 @@ def _scalar_params_as_tensors(
 class MotionBlur(nn.Module):
     r"""Blur 2D images (4D torch.Tensor) using the motion filter.
 
+    Convention:
+        See the Convention block on :func:`~kornia.filters.motion_blur`.
+
     Args:
-        kernel_size: motion kernel width and height. It should be odd and positive.
+        kernel_size: motion kernel width and height, an odd integer of at least 3.
         angle: angle of the motion blur in degrees (anti-clockwise rotation).
         direction: forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
@@ -123,8 +126,11 @@ class MotionBlur(nn.Module):
 class MotionBlur3D(nn.Module):
     r"""Blur 3D volumes (5D torch.Tensor) using the motion filter.
 
+    Convention:
+        See the Convention block on :func:`~kornia.filters.motion_blur3d`.
+
     Args:
-        kernel_size: motion kernel width and height. It should be odd and positive.
+        kernel_size: motion kernel width, height and depth, an odd integer of at least 3.
         angle: Components of one Rodrigues axis-angle vector ``(rx, ry, rz)`` in degrees, not Euler angles; see
             :func:`~kornia.filters.get_motion_kernel3d`. A scalar sets all three components to the same value;
             a three-element sequence sets each component, and a tensor must have shape :math:`(B, 3)`.
@@ -223,9 +229,14 @@ def motion_blur(
 
     .. image:: _static/img/motion_blur.png
 
+    Convention:
+        - The kernel is :func:`~kornia.filters.get_motion_kernel2d`'s, correlated with the image by
+          :func:`~kornia.filters.filter2d`; their Convention blocks cover ``angle``, ``direction`` (including the
+          side on which the streak of a bright point is heaviest), ``mode``, the tensor shapes and the border modes.
+
     Args:
         input: the input torch.Tensor with shape :math:`(B, C, H, W)`.
-        kernel_size: motion kernel width and height. It should be odd and positive.
+        kernel_size: motion kernel width and height, an odd integer of at least 3.
         angle (Union[torch.Tensor, float]): angle of the motion blur in degrees (anti-clockwise rotation).
             If torch.Tensor, it must be :math:`(B,)`.
         direction : forward/backward direction of the motion blur.
@@ -271,9 +282,16 @@ def motion_blur3d(
 ) -> torch.Tensor:
     r"""Perform motion blur on 3D volumes (5D torch.Tensor).
 
+    Convention:
+        - The kernel is :func:`~kornia.filters.get_motion_kernel3d`'s, correlated with the volume by
+          :func:`~kornia.filters.filter3d`; their Convention blocks cover ``angle``, ``direction``, ``mode`` and the
+          border modes. With ``direction=1`` and a zero ``angle`` the streak of a bright voxel is heaviest toward
+          increasing ``W``; a positive roll alone turns it toward increasing ``H``, and a positive pitch alone toward
+          decreasing ``D``.
+
     Args:
         input: the input torch.Tensor with shape :math:`(B, C, D, H, W)`.
-        kernel_size: motion kernel width, height and depth. It should be odd and positive.
+        kernel_size: motion kernel width, height and depth, an odd integer of at least 3.
         angle: ``(yaw, pitch, roll)``, one Rodrigues axis-angle vector ``(rx, ry, rz)`` in degrees, not Euler
             angles; see :func:`~kornia.filters.get_motion_kernel3d`. If torch.Tensor, it must be :math:`(B, 3)`.
         direction: forward/backward direction of the motion blur.

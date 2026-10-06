@@ -379,7 +379,8 @@ class TestSampsonHomographyDistance(BaseTester):
         H = torch.eye(3, device=device, dtype=dtype)[None]
         for squared in (True, False):
             distances = sampson_homography_distance(pts, pts + 0.1, H, squared=squared)
-            assert bool(torch.isnan(distances[0, 1])) and bool(torch.isfinite(distances[0, [0, 2]]).all())
+            assert bool(torch.isnan(distances[0, 1]))
+            assert bool(torch.isfinite(distances[0, [0, 2]]).all())
         nan_homography = torch.full((1, 3, 3), float("nan"), device=device, dtype=dtype)
         assert bool(torch.isnan(sampson_homography_distance(pts[:, :1], pts[:, :1], nan_homography)).all())
 
@@ -421,7 +422,8 @@ class TestSampsonHomographyDistance(BaseTester):
         pts1 = torch.tensor([[[0, 0]]], device=device)
         pts2 = torch.tensor([[[1, 0]]], device=device)
         distance = sampson_homography_distance(pts1, pts2, torch.eye(3, dtype=torch.long, device=device)[None])
-        assert distance.dtype == torch.float32 and distance.tolist() == [[0.5]]
+        assert distance.dtype == torch.float32
+        assert distance.tolist() == [[0.5]]
 
     def test_singular_jacobian_is_inf(self, device, dtype):
         # The zero matrix makes both residual rows and the Jacobian vanish: no finite correction exists.
@@ -1222,7 +1224,8 @@ class TestConventionHomography(BaseTester):
         self.assert_close(default, there_and_back)
         unsquared = symmetric_transfer_error(p1, p2_off, H, squared=False)
         self.assert_close(unsquared[0, 5], default[0, 5].sqrt())
-        assert default[0, 5] > 50.0 and default[0, others].max() < 1e-6
+        assert default[0, 5] > 50.0
+        assert default[0, others].max() < 1e-6
         assert symmetric_transfer_error(p2_off, p1, H).min() > 1e3
 
     def test_convention_sample_is_valid_for_homography_rejects_reflection(self, device, dtype):
@@ -1249,7 +1252,8 @@ class TestConventionHomography(BaseTester):
         mask = sample_is_valid_for_homography(
             torch.tensor([view1] * 3, device=device, dtype=dtype), torch.tensor([view2] * 3, device=device, dtype=dtype)
         )
-        assert mask.dtype == torch.bool and mask.shape == (3,)
+        assert mask.dtype == torch.bool
+        assert mask.shape == (3,)
 
     @pytest.mark.parametrize("model", ["points", "lines"])
     def test_convention_find_homography_dlt_iterated_n_iter_counts_solves(self, model, device, dtype, monkeypatch):
@@ -1426,7 +1430,8 @@ class TestConventionHomography(BaseTester):
         ):
             for squared in (True, False):
                 out = fn(p1, p2, H, squared=squared)
-                assert bool(out[0, 0].isposinf()) and out[0, 1] == 0, out
+                assert bool(out[0, 0].isposinf()), out
+                assert out[0, 1] == 0, out
                 (grad,) = torch.autograd.grad(out.sum(), p1)
                 assert torch.isfinite(grad).all(), grad
 
