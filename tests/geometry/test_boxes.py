@@ -316,7 +316,8 @@ class TestBoxes2D(BaseTester):
         masked, indexed = lb[mask], lb[indices]
         assert masked._N == indexed._N == [2, 0]
         masked_boxes, indexed_boxes = masked.to_tensor("xyxy"), indexed.to_tensor("xyxy")
-        assert isinstance(masked_boxes, list) and isinstance(indexed_boxes, list)
+        assert isinstance(masked_boxes, list)
+        assert isinstance(indexed_boxes, list)
         for actual, expected in zip(masked_boxes, indexed_boxes):
             self.assert_close(actual, expected)
         assert [boxes.shape[0] for boxes in masked_boxes] == [1, 3]

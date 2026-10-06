@@ -697,11 +697,9 @@ class TestQuarticSolver(BaseTester):
     def test_close_real_roots_bound_4906(self, device, dtype):
         # #4906: row 4 of torch.manual_seed(95); torch.randn(10, 4) on CPU, through test_random's float32
         # coefficient construction. Two real roots sit 0.056 apart. The float32 rounding of the coefficients
-        # alone moves the roots by up to 4.1e-4 (the float64 solve of these coefficients); float32 solve_quartic
-        # misses them by 2.3e-2, the solver-side loss #4906 tracks. Keep the literals exact: moving two
-        # coefficients by one ulp brings the float32 error down to 2.3e-4 and the case stops being one.
-        # float32 is bounded at about twice today's error, so a pair that is dropped or misplaced further fails
-        # and a solver fix passes (tighten the bound then); float64 is bounded by the coefficient rounding.
+        # alone moves the roots by up to 4.1e-4 (the float64 solve of these coefficients). Keep the literals
+        # exact: moving two coefficients by one ulp removes the original 2.3e-2 float32 solver-side error.
+        # Both dtypes are now bounded by coefficient rounding, separately from solver accuracy below.
         if dtype not in (torch.float32, torch.float64):
             pytest.skip("the case bounds the float32 loss and the float64 coefficient rounding")
         coeffs = torch.tensor(
@@ -715,8 +713,84 @@ class TestQuarticSolver(BaseTester):
             dtype=dtype,
         )
         out = solver.solve_quartic(coeffs).sort(-1).values
-        atol = 5e-2 if dtype == torch.float32 else 1e-3
-        self.assert_close(out, true_roots, atol=atol, rtol=0.0)
+        self.assert_close(out, true_roots, atol=1e-3, rtol=0.0)
+
+    def test_close_real_roots_same_coefficients_4906(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("this regression separates float32 solver error from coefficient rounding")
+        # Exact float32 coefficients: issue seeds 95 and 10, a cluster for which float32 lost all
+        # candidates, and a well-separated control. References solve THESE coefficients, not the
+        # generating roots: numpy.roots(np.array(row, dtype=np.float64)), cross-checked with float64
+        # solve_quartic. In particular seed 10's rounded coefficients widen its pair gap to 0.00831.
+        coeffs = torch.tensor(
+            [
+                [1.0, 4.4621620178222656, 7.4423127174377441, 5.4986057281494141, 1.518401026725769],
+                [1.0, -4.067328453063965, 6.175639629364014, -4.146894454956055, 1.0385831594467163],
+                [1.0, 8.073843002319336, 24.425722122192383, 32.81570816040039, 16.51930809020996],
+                [1.0, -10.0, 35.0, -50.0, 24.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        expected = torch.tensor(
+            [
+                [-1.2488913493704268, -1.193254868897449, -1.0449774473549063, -0.9750383521990926],
+                [0.8297586315359857, 1.0000497091697647, 1.114603594165587, 1.1229165181917928],
+                [-2.126456753929611, -2.0938150726449853, -1.9748027394050875, -1.8787684363396553],
+                [1.0, 2.0, 3.0, 4.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        roots = solver.solve_quartic(coeffs).sort(dim=-1).values
+        assert bool((roots != 0).all()), "all four roots must survive, including seed 10's close pair"
+        # Casting the high-precision answer costs at most half an ulp. Float64 leaves a little room
+        # for Ferrari's cancellation on the clustered rows and for the independent reference solve.
+        rtol = 2 * torch.finfo(dtype).eps if dtype == torch.float32 else 1e-8
+        self.assert_close(roots, expected, atol=0.0, rtol=rtol)
+        residual = coeffs[:, :1].expand_as(roots)
+        scale = residual.abs()
+        for column in range(1, 5):
+            residual = residual * roots + coeffs[:, column : column + 1]
+            scale = scale * roots.abs() + coeffs[:, column : column + 1].abs()
+        self.assert_close(residual / scale, torch.zeros_like(residual), atol=8 * torch.finfo(dtype).eps, rtol=0.0)
+        for row in range(len(coeffs)):
+            self.assert_close(solver.solve_quartic(coeffs[row : row + 1]).sort(dim=-1).values, roots[row : row + 1])
+
+    def test_close_real_roots_float32_gradient_4906(self, device):
+        coeffs = torch.tensor(
+            [[1.0, -4.067328453063965, 6.175639629364014, -4.146894454956055, 1.0385831594467163]],
+            device=device,
+            dtype=torch.float32,
+            requires_grad=True,
+        )
+        # Check the gradient through the precision retry against the same coefficients in float64.
+        # MPS follows the documented CPU fallback, including the copies in both directions.
+        reference = coeffs.detach().cpu().double().requires_grad_()
+        weights = torch.tensor([[1.0, 2.0, 3.0, 4.0]], device=device)
+        (solver.solve_quartic(coeffs).sort(dim=-1).values * weights).sum().backward()
+        (solver.solve_quartic(reference).sort(dim=-1).values * weights.cpu().double()).sum().backward()
+        assert bool(torch.isfinite(coeffs.grad).all())
+        self.assert_close(coeffs.grad, reference.grad.to(coeffs), atol=0.0, rtol=2 * torch.finfo(torch.float32).eps)
+
+    def test_close_real_roots_retry_margin_4906(self, device):
+        # The retry's rounding estimate needs its margin. These float32 rows have |discriminant| at 0.37 and 0.26
+        # of the estimated uncertainty. With a quarter of the eight-epsilon roundoff they are no longer retried:
+        # the first then reports its complex pair -0.4795 +- 6.0e-4j as two real roots, the second loses its real
+        # pair 1.2417, 1.2548 (gap 0.013) to zero padding. Real roots: numpy.roots of the exact float32 values.
+        coeffs = torch.tensor(
+            [
+                [1.0, 1.684098243713379, 0.8085256814956665, 0.05472347512841225, -0.02685355208814144],
+                [1.0, -4.816625595092773, 9.516379356384277, -9.02255916595459, 3.3748888969421387],
+            ],
+            device=device,
+            dtype=torch.float32,
+        )
+        expected = torch.tensor([[-0.8607131, 0.13567771], [1.24165737, 1.2547649]], device=device, dtype=torch.float32)
+        roots = solver.solve_quartic(coeffs)
+        assert (roots != 0).sum(-1).tolist() == [2, 2], f"expected two real roots per row, got {roots.tolist()}"
+        found = roots[roots != 0].view(2, 2).sort(dim=-1).values
+        self.assert_close(found, expected, atol=0.0, rtol=1e-5)
 
     @pytest.mark.parametrize(
         "coeffs, expected_solutions",
@@ -1186,17 +1260,22 @@ class TestQuarticSolver(BaseTester):
                 (torch.float32, torch.float64),
             ),
             ([1.0, 12.0, 27.0, 50.0, 450.0], [-9.0, -5.0], (torch.float32, torch.float64)),
-            # ...and not 1e-3: at 1e-3 the double root at -2 loses a copy (roots -5, -2, -2, 2.25).
+            # ...and not 1e-3: at 1e-3 the float32 solve lost a copy of the double root at -2 (roots -5, -2, -2,
+            # 2.25). The float32 precision retry (#4906) now solves this row in float64, which keeps both copies
+            # at 1e-3, so the row no longer pins that side.
             ([1.0, 6.75, 3.75, -34.0, -45.0], [-5.0, -2.0, -2.0, 2.25], (torch.float32, torch.float64)),
             # The ulp floor in the coincidence window: without it 4.75 comes back twice (roots 4.75, -5, 9 +- 3i).
             ([1.0, -17.75, 61.75, 450.0, -2137.5], [-5.0, 4.75], (torch.float32, torch.float64)),
-            # The residual tolerance, pinned from both sides. At sqrt(eps) instead of sqrt(eps) / 4, this
-            # quartic with two complex pairs returns -7.2066 and -6.7561 twice each...
+            # Two complex pairs, no real root. Before the float32 precision retry (#4906) this row pinned the
+            # residual tolerance from above (at sqrt(eps) it returned -7.2066 and -6.7561 twice each); the
+            # retry now solves it in float64, and test_residual_tolerance_for_half_inputs_4474 pins both sides.
             ([1.0, 27.91975997, 297.7351036, 1435.935501, 2645.836994], [], (torch.float32,)),
-            # ...and at sqrt(eps) / 16 both copies of the double root at 0.558935 are dropped.
+            # This originally pinned an approximate double root at 0.558935. The actual float32
+            # coefficients have a complex pair 0.5589346 +/- 1.17188435e-5j (numpy.roots in float64).
+            # The precision retry must reject that pair rather than preserve two spurious real roots.
             (
                 [1.0, -7.636022673, 0.9114557167, 5.439310611, -2.089195035],
-                [-0.901329, 0.558935, 0.558935, 7.419483],
+                [-0.901329, 7.419483],
                 (torch.float32,),
             ),
             # A recovered placeholder's step bound, from below: at eps * |x| instead of sqrt(eps) * |x| the
@@ -1218,6 +1297,27 @@ class TestQuarticSolver(BaseTester):
         tol = 1e-2 if dtype == torch.float32 else 1e-6
         want = torch.tensor(sorted(expected), device=device, dtype=dtype)
         self.assert_close(found, want, rtol=tol, atol=tol)
+
+    def test_residual_tolerance_for_half_inputs_4474(self, device, dtype):
+        # float16 quartics are solved in float32 without the float32 precision retry (#4906), so the float32
+        # residual tolerance sqrt(eps) / 4 still decides these rows. From below: at sqrt(eps) / 16 the first
+        # loses its real root at 0.8855. From above: at sqrt(eps) the second also reports its complex pair
+        # -0.2796 +- 0.0092j as two real roots. Real roots: numpy.roots of the exact float16 values.
+        if dtype != torch.float16:
+            pytest.skip("Half inputs are where the float32 residual tolerance still applies.")
+        coeffs = torch.tensor(
+            [
+                [1.0, -4.8203125, 8.6640625, -6.8828125, 2.033203125],
+                [1.0, 0.57568359375, -0.11761474609375, -0.1134033203125, -0.01605224609375],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        expected = torch.tensor([[0.88545993, 1.53287539], [-0.46115802, 0.44471336]], device=device, dtype=dtype)
+        roots = solver.solve_quartic(coeffs)
+        assert (roots != 0).sum(-1).tolist() == [2, 2], f"expected two real roots per row, got {roots.tolist()}"
+        found = roots[roots != 0].view(2, 2).sort(dim=-1).values
+        self.assert_close(found, expected, atol=0.0, rtol=1e-2)
 
     def test_ferrari_candidate_is_kept_over_a_recovered_copy_4474(self, device, dtype):
         # A placeholder recovered to 2.288697 and Ferrari's own 2.289372 are copies of the root at
