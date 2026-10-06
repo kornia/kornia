@@ -459,6 +459,23 @@ class TestSSIM3DLoss(BaseTester):
         assert actual.min() >= 0 and actual.max() <= 1
         self.assert_close(kornia.losses.SSIM3DLoss(5)(img1, img2), expected.mean())
 
+    def test_clamps_roundoff_into_the_unit_range(self, device, dtype):
+        # The clamp is inert in exact arithmetic, where the SSIM map lies in [-1, 1]. Float32 volumes with a large
+        # constant offset make the moments cancel and push the map far outside [-1, 1] on both sides; the loss stays
+        # in [0, 1], as ssim_loss does (#5533).
+        if dtype != torch.float32:
+            pytest.skip("the clamp does not depend on the dtype; the offset fixture needs float32 roundoff")
+        generator = torch.Generator().manual_seed(0)
+        img1 = (1000.0 + 1e-2 * torch.rand(2, 2, 7, 23, 31, generator=generator, dtype=torch.float64)).to(device, dtype)
+        img2 = (1000.0 + 1e-2 * torch.rand(2, 2, 7, 23, 31, generator=generator, dtype=torch.float64)).to(device, dtype)
+        unclamped = (1.0 - kornia.metrics.ssim3d(img1, img2, 5)) / 2
+        assert (unclamped < 0).any()
+        assert (unclamped > 1).any()
+        loss = kornia.losses.ssim3d_loss(img1, img2, 5, reduction="none")
+        self.assert_close(loss, unclamped.clamp(0, 1))
+        assert loss.min() >= 0
+        assert loss.max() <= 1
+
     def test_module(self, device, dtype):
         img1 = torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)
         img2 = torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)
