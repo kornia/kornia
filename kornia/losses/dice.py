@@ -70,7 +70,8 @@ def dice_loss(
         average:
             Reduction applied in multi-class scenario:
             - ``'micro'`` [default]: Calculate the loss across all classes.
-            - ``'macro'``: Calculate the loss for each class separately and average the metrics across classes.
+            - ``'macro'``: Average class losses over classes present in each sample's non-ignored target.
+              Samples with all pixels ignored have loss 1.
         eps: Scalar to enforce numerical stabiliy.
         weight: weights for classes with shape :math:`(num\_of\_classes,)`.
         ignore_index: labels with this value are ignored in the loss computation.
@@ -158,7 +159,13 @@ def dice_loss(
 
     # reduce the loss across samples (and classes in case of `macro` averaging)
     if average == "macro":
-        dice_loss = (dice_loss * weight).sum(-1) / weight.sum()
+        # Only on-class entries are 1; off-class entries may contain the one_hot epsilon floor.
+        present = (target_one_hot == 1).any(dim=-1).any(dim=-1)
+        weight = weight * present
+        empty = ~present.any(dim=-1)
+        normalizer = weight.sum(-1).masked_fill(empty, 1)
+        dice_loss = (dice_loss * weight).sum(-1) / normalizer
+        dice_loss = dice_loss.masked_fill(empty, 1)
 
     return torch.mean(dice_loss).to(output_dtype)
 
@@ -171,7 +178,8 @@ class DiceLoss(nn.Module):
 
     Args:
         average: Reduction strategy for multi-class computation. Use "micro" to aggregate
-            classes globally, or "macro" to average class-wise Dice scores.
+            classes globally, or "macro" to average over classes present in each sample's
+            non-ignored target. Samples with all pixels ignored have loss 1.
         eps: Small constant added to the denominator for numerical stability.
         weight: Optional class-weight tensor of shape :math:`(C,)`.
         ignore_index: Label value to exclude from loss computation.
