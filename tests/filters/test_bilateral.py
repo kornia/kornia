@@ -597,6 +597,24 @@ class TestConventionsBilateralBlur(BaseTester):
         # the same filter on the same values in floating point keeps the stripes
         self.assert_close(bilateral_blur(stripes.float(), 3, 50.0, (1.0, 1.0)), stripes.float(), rtol=0.0, atol=0.01)
 
+    def test_wart_bilateral_blur_wider_sigma_space_promotes_the_output_5521(self, device, dtype):
+        """A tensor sigma_space or guidance of a wider dtype promotes the output; sigma_color does not (#5521)."""
+        # sigma_space builds the spatial kernel in its own dtype, and the product with the colour kernel promotes.
+        # A fix that casts sigma_space to the input's dtype, as gaussian_blur2d casts sigma, fails this pin.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        if dtype == torch.float64:
+            pytest.skip("nothing is wider than a float64 input")
+        self._skip_without_reflect_padding(device, dtype)
+        image = torch.rand(1, 1, 7, 9, device=device).to(dtype)
+        wide_space = torch.full((1, 2), 1.5, device=device, dtype=torch.float64)
+        assert bilateral_blur(image, 3, 0.1, wide_space).dtype == torch.float64
+        assert joint_bilateral_blur(image, image, 3, 0.1, wide_space).dtype == torch.float64
+        assert joint_bilateral_blur(image, image.double(), 3, 0.1, (1.5, 1.5)).dtype == torch.float64
+        # control: a wider sigma_color is cast to the input's dtype
+        wide_color = torch.tensor([0.1], device=device, dtype=torch.float64)
+        assert bilateral_blur(image, 3, wide_color, (1.5, 1.5)).dtype == dtype
+
     @pytest.mark.parametrize("kernel_size", [4, (3, 4)])
     def test_convention_bilateral_blur_even_kernel_size_is_rejected_up_front_5163(self, kernel_size, device, dtype):
         """The bilateral filters reject an even kernel_size with a kornia error, the modules at construction (#5163)."""
