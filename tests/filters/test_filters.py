@@ -16,6 +16,8 @@
 #
 
 
+from fractions import Fraction
+
 import pytest
 import torch
 import torch.nn.functional as F
@@ -2272,6 +2274,66 @@ class TestConventionsKernels(BaseTester):
         expected[2, 2, 2] = 1 / 3
         expected[3, 1, 2] = 1 / 2
         self.assert_close(kernel((90.0, 90.0, 0.0)), expected)
+
+    @pytest.mark.parametrize("kernel_size", [3, 5, 7])
+    def test_convention_motion_kernel3d_tie_goes_half_to_even_5510(self, kernel_size, device, dtype):
+        """A source between two taps is an exact tie, broken half to even as grid_sample does (#5510)."""
+        # cos and sin of the multiples of 30 degrees as a + b * sqrt(3), with exact fractions
+        half, root = Fraction(1, 2), (Fraction(0), Fraction(1, 2))
+        cos_sin = {
+            30: (root, (half, 0)),
+            60: ((half, 0), root),
+            120: ((-half, 0), root),
+            150: ((0, -root[1]), (half, 0)),
+        }
+        cos_sin.update({a + 180: ((-c[0], -c[1]), (-s[0], -s[1])) for a, (c, s) in list(cos_sin.items())})
+        center, line = kernel_size // 2, [0.85 - 0.7 * col / (kernel_size - 1) for col in range(kernel_size)]
+
+        def nearest(a, b):
+            # the absolute source coordinate center + a + b * sqrt(3): exact ties only when b == 0
+            return round(center + a) if b == 0 else round(center + float(a) + float(b) * 3**0.5)
+
+        for axis in (1, 2):
+            for angle, ((ca, cb), (sa, sb)) in sorted(cos_sin.items()):
+                expected = torch.zeros(kernel_size, kernel_size, kernel_size, dtype=torch.float64)
+                for z in range(kernel_size):
+                    for y in range(kernel_size):
+                        for x in range(kernel_size):
+                            u, v, w = x - center, y - center, z - center
+                            # the source of a voxel is R^T (p - c) + c: a pitch turns the x-z plane, a roll the x-y
+                            if axis == 1:
+                                col, row, slab = (
+                                    nearest(ca * u - sa * w, cb * u - sb * w),
+                                    y,
+                                    nearest(sa * u + ca * w, sb * u + cb * w),
+                                )
+                            else:
+                                col, row, slab = (
+                                    nearest(ca * u + sa * v, cb * u + sb * v),
+                                    nearest(-sa * u + ca * v, -sb * u + cb * v),
+                                    z,
+                                )
+                            if row == center and slab == center and 0 <= col < kernel_size:
+                                expected[z, y, x] = line[col]
+                vector = [0.0, 0.0, 0.0]
+                vector[axis] = float(angle)
+                kernel = get_motion_kernel3d(kernel_size, torch.tensor([vector], device=device, dtype=dtype), 0.7)
+                self.assert_close(kernel[0].cpu().double(), expected / expected.sum(), rtol=0, atol=1e-2)
+
+    def test_convention_motion_kernel3d_same_taps_for_every_dtype_5510(self, device, dtype):
+        """Every dtype and device picks the taps of the float64 CPU kernel, at the tie angles too (#5510)."""
+        values = torch.tensor([0.0, 30.0, 45.0, 60.0, 90.0, 120.0, 150.0, 210.0, 240.0, 300.0], dtype=torch.float64)
+        angles = torch.stack(torch.meshgrid(values, values, values, indexing="ij"), -1).reshape(-1, 3)
+        direction = torch.full((angles.shape[0],), 0.3, dtype=torch.float64)
+        reference = get_motion_kernel3d(5, angles, direction)
+        kernel = get_motion_kernel3d(5, angles.to(device=device, dtype=dtype), direction.to(device=device, dtype=dtype))
+        self.assert_close(kernel.cpu().double(), reference, rtol=0, atol=1e-2)
+
+    def test_motion_kernel3d_nearest_angle_gradient_is_zero(self, device, dtype):
+        """Nearest sampling keeps the angle in the graph with a zero gradient, as grid_sample gives."""
+        angle = torch.tensor([[0.0, 30.0, 0.0], [10.0, 20.0, 37.0]], device=device, dtype=dtype, requires_grad=True)
+        get_motion_kernel3d(5, angle, torch.tensor([0.3, -0.3], device=device, dtype=dtype)).sum().backward()
+        self.assert_close(angle.grad, torch.zeros_like(angle))
 
     def test_convention_gaussian_discrete_kernel1d_has_kernel_size_taps_5158(self, device, dtype):
         """get_gaussian_discrete_kernel1d gives kernel_size taps, [1.0] for size 1, and rejects an even size (#5158)."""
