@@ -111,6 +111,14 @@ class TestMeanAveragePrecision(BaseTester):
             kornia.metrics.mean_average_precision([boxes], [labels], [scores], [boxes], [labels[:1]], 3)
         with pytest.raises(BaseError, match=r"one row per detection.*2 boxes, 2 labels and 1 scores"):
             kornia.metrics.mean_average_precision([boxes], [labels], [scores[:1]], [boxes], [labels], 3)
+        with pytest.raises(BaseError, match=r"one row per detection.*1 boxes, 2 labels and 2 scores"):
+            kornia.metrics.mean_average_precision([boxes[:1]], [labels], [scores], [boxes], [labels], 3)
+        # each of the five lists in turn one image short
+        lists = [[boxes] * 2, [labels] * 2, [scores] * 2, [boxes] * 2, [labels] * 2]
+        for i, name in enumerate(("pred_boxes", "pred_labels", "pred_scores", "gt_boxes", "gt_labels")):
+            args = [x[:1] if j == i else x for j, x in enumerate(lists)]
+            with pytest.raises(BaseError, match=rf"same length.*{name} 1"):
+                kornia.metrics.mean_average_precision(*args, 3)
 
     @pytest.mark.parametrize("box_dtype", [torch.int64, torch.int32, torch.uint8])
     def test_integer_boxes_match_the_float_result(self, device, box_dtype):
@@ -129,6 +137,36 @@ class TestMeanAveragePrecision(BaseTester):
 
         assert mean_ap.dtype == torch.float32
         self.assert_close(mean_ap, torch.tensor((6 + 5 * 2 / 3) / 11, device=device))
+        self.assert_close(mean_ap, expected, rtol=0, atol=0)
+        assert ap == expected_ap
+
+    @pytest.mark.parametrize(
+        "pred_dtype, gt_dtype",
+        [
+            (torch.int64, torch.float16),
+            (torch.float16, torch.int64),
+            (torch.float16, torch.float32),
+            (torch.float32, torch.float16),
+        ],
+    )
+    def test_mixed_box_dtypes_compute_in_the_promoted_floating_dtype(self, device, pred_dtype, gt_dtype):
+        # Integer boxes count as float32, and the two box sets meet in their promoted dtype, as in mean_iou_bbox. The
+        # TP/FP counts used to take the prediction dtype and the precisions the ground-truth dtype, so float16 boxes
+        # with float32 ones gave a float16 AP. Same TP, FP, TP ranking as above.
+        gt_boxes = torch.tensor([[0, 0, 10, 20], [30, 5, 45, 12]], device=device)
+        gt_labels = torch.tensor([1, 1], device=device, dtype=torch.long)
+        boxes = torch.tensor([[0, 0, 10, 20], [100, 100, 120, 130], [30, 5, 45, 12]], device=device)
+        labels = torch.tensor([1, 1, 1], device=device, dtype=torch.long)
+        scores = torch.tensor([0.9, 0.8, 0.7], device=device)
+
+        mean_ap, ap = kornia.metrics.mean_average_precision(
+            [boxes.to(pred_dtype)], [labels], [scores], [gt_boxes.to(gt_dtype)], [gt_labels], 2
+        )
+        expected, expected_ap = kornia.metrics.mean_average_precision(
+            [boxes.float()], [labels], [scores], [gt_boxes.float()], [gt_labels], 2
+        )
+
+        assert mean_ap.dtype == torch.float32
         self.assert_close(mean_ap, expected, rtol=0, atol=0)
         assert ap == expected_ap
 

@@ -95,10 +95,12 @@ def mean_average_precision(
         f"{_pred_labels.size(0)} labels and {_pred_scores.size(0)} scores",
     )
 
-    # The precisions need a floating dtype; integer boxes compute their overlaps in float32 (mean_iou_bbox).
-    ap_dtype = torch.promote_types(_pred_boxes.dtype, _gt_boxes.dtype)
-    if not ap_dtype.is_floating_point:
-        ap_dtype = torch.float32
+    # The precisions need a floating dtype. Integer boxes count as float32, as mean_iou_bbox computes their overlaps,
+    # and the two sets meet in their promoted dtype: integer and float16 boxes give float32, not float16.
+    ap_dtype = torch.promote_types(
+        _pred_boxes.dtype if _pred_boxes.is_floating_point() else torch.float32,
+        _gt_boxes.dtype if _gt_boxes.is_floating_point() else torch.float32,
+    )
 
     # Calculate APs for each class (except background)
     average_precisions = torch.zeros((n_classes - 1), device=_pred_boxes.device, dtype=ap_dtype)  # (n_classes - 1)
