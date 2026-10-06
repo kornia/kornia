@@ -25,6 +25,8 @@ import torch
 
 from conftest import _is_subprocess_isolated_test, skip_half_precision_on_cuda
 
+from testing.base import DYNAMO_UNAVAILABLE_REASON, dynamo_is_available
+
 pytest_plugins = ["pytester"]
 # Deliberately *not* marked device_agnostic. These are the runner's own regression tests, and
 # several of them guard accelerator-only entry points -- `test_isolated_skip_is_reported_with_
@@ -382,5 +384,40 @@ class TestDeviceAgnosticSelection:
             "--device=cuda",
             "--dtype=float32",
             "--run-device-agnostic",
+        )
+        result.assert_outcomes(passed=2)
+
+
+class TestKeepDistributionValidation:
+    # Named without "compile" or "dynamo" so the ordinary jobs, the ones that run the tests pinned on a
+    # validation error, collect it.
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_the_first_torch_optimizer_entry_leaves_validation_on_for_the_next_test(self, pytester):
+        # Dynamo's one-time setup turns torch.distributions argument validation off process-wide; the
+        # autouse fixture puts it back after the test that entered Dynamo, so the next test, and a test pinned
+        # on a validation error, sees the validation it would see on its own.
+        test_file = pytester.makepyfile(
+            """
+            import torch
+            from torch.distributions import Distribution
+
+            def test_first_entry():
+                assert Distribution._validate_args
+                torch.compile(lambda x: x + 1)
+                assert not Distribution._validate_args
+
+            def test_next():
+                assert Distribution._validate_args
+            """
+        )
+
+        result = pytester.runpytest_subprocess(
+            "-p",
+            "conftest",
+            str(test_file),
+            "-o",
+            "testpaths=.",
+            "--device=cpu",
+            "--dtype=float32",
         )
         result.assert_outcomes(passed=2)

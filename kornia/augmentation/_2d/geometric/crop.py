@@ -90,8 +90,9 @@ class RandomCrop(GeometricAugmentationBase2D):
         With ``pad_if_needed=False``, an oversized request does not raise: slice mode resizes the available slice,
         and resample mode uses a mis-scaled warp that rescales both matrix axes and can blend in zero padding
         (`#4414 <https://github.com/kornia/kornia/issues/4414>`_). Slice mode scales only the matrix axes along
-        which the request exceeds the canvas, as its resize does. The scale is computed against the padded canvas,
-        so a crop that fits after explicit padding gets no scale correction.
+        which the request exceeds the canvas, as its resize does, and on the resize's half-pixel grid:
+        ``x' = (x + 0.5) * W_out / W_in - 0.5`` along a stretched axis (likewise for ``y``). The scale is computed
+        against the padded canvas, so a crop that fits after explicit padding gets no scale correction.
 
         Slice mode uses :func:`~kornia.geometry.transform.crop_by_indices` with its own defaults and ignores this
         class's ``resample`` and ``align_corners``. Resample mode uses the configured interpolation and
@@ -229,10 +230,13 @@ class RandomCrop(GeometricAugmentationBase2D):
                 w += padding[0] + padding[1]
                 h_out, w_out = flags["size"]
                 if flags["cropping_mode"] == "slice":
+                    # The slice resize of an oversized axis is on the half-pixel grid: x' = (x + 0.5) * scale - 0.5.
                     if w_out > w:
                         transform[:, 0, 0] *= w_out / w
+                        transform[:, 0, 2] += (w_out / w - 1) / 2
                     if h_out > h:
                         transform[:, 1, 1] *= h_out / h
+                        transform[:, 1, 2] += (h_out / h - 1) / 2
                 elif h_out > h or w_out > w:
                     transform[:, 0, 0] *= w_out / w
                     transform[:, 1, 1] *= h_out / h
@@ -255,6 +259,9 @@ class RandomCrop(GeometricAugmentationBase2D):
             )
             transform[:, 0, 0] *= scale_w
             transform[:, 1, 1] *= scale_h
+            if flags["cropping_mode"] == "slice":
+                transform[:, 0, 2] += (scale_w - 1) / 2
+                transform[:, 1, 2] += (scale_h - 1) / 2
 
             return transform
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
