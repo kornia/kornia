@@ -153,6 +153,13 @@ class TestMeanAveragePrecision(BaseTester):
                 one_each + one_each[:1],
                 2,
             )
+        # the first image holds the extra row, of each kind the checks compare in turn
+        with pytest.raises(BaseError, match=r"Got image 0: 1 boxes and 2 labels"):
+            kornia.metrics.mean_average_precision(boxes, labels, scores, [a, b], labels, 2)
+        with pytest.raises(BaseError, match=r"Got image 0: 2 boxes, 1 labels and 2 scores"):
+            kornia.metrics.mean_average_precision(boxes, one_each, scores, boxes, labels, 2)
+        with pytest.raises(BaseError, match=r"Got image 0: 1 boxes, 1 labels and 2 scores"):
+            kornia.metrics.mean_average_precision([a, b], one_each, scores, boxes, labels, 2)
 
     @pytest.mark.parametrize("box_dtype", [torch.int64, torch.int32, torch.uint8])
     def test_integer_boxes_match_the_float_result(self, device, box_dtype):
