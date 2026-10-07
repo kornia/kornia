@@ -170,17 +170,36 @@ class TestPatchSequentialRegression(BaseTester):
         self.assert_close(seq(x), expected, rtol=0, atol=0)
 
     @pytest.mark.parametrize("empty", [False, True])
-    def test_nested_valid_padding_updates_tracked_shape(self, empty):
+    @pytest.mark.parametrize("grid,image_size,tracked_size", [((2, 2), (9, 9), (8, 8)), ((2, 3), (9, 10), (8, 9))])
+    def test_nested_valid_padding_updates_tracked_shape_5596(self, empty, grid, image_size, tracked_size):
         patch_seq = K.PatchSequential(
             *([] if empty else [K.RandomHorizontalFlip(p=1.0)]),
-            grid_size=(2, 2),
+            grid_size=grid,
             padding="valid",
             patchwise_apply=False,
         )
         seq = K.ImageSequential(K.ImageSequential(patch_seq), K.RandomCrop((4, 4), p=1.0))
-        params = seq.forward_parameters(torch.Size((64, 1, 9, 9)))
+        params = seq.forward_parameters(torch.Size((64, 1, *image_size)))
         crop_input_size = params[1].data["input_size"]
-        assert torch.equal(crop_input_size, torch.full_like(crop_input_size, 8))
+        assert torch.equal(crop_input_size, crop_input_size.new_tensor(tracked_size).expand_as(crop_input_size))
+
+    def test_nested_valid_padding_in_a_video_clip_5596(self, device, dtype):
+        x = torch.zeros(2, 3, 1, 9, 9, device=device, dtype=dtype)
+        inner = K.PatchSequential(
+            K.RandomHorizontalFlip(p=1.0), grid_size=(2, 2), padding="valid", patchwise_apply=False
+        )
+        seq = K.AugmentationSequential(K.VideoSequential(inner, same_on_frame=False))
+        assert seq(x).shape == (2, 3, 1, 8, 8)
+
+    def test_patch_child_resize_does_not_change_tracked_image_shape_5596(self):
+        patch_seq = K.PatchSequential(K.RandomResizedCrop((4, 4), p=1.0), grid_size=(2, 2), patchwise_apply=False)
+        seq = K.VideoSequential(
+            patch_seq,
+            K.RandomCrop((2, 2), p=1.0),
+            same_on_frame=False,
+        )
+        params = seq.forward_parameters(torch.Size((2, 3, 1, 8, 8)))
+        assert params[1].data["input_size"][0].tolist() == [8, 8]
 
     @pytest.mark.parametrize("same_on_batch", [True, False, None])
     def test_location_wise_modules_cover_every_sample(self, same_on_batch, device, dtype):

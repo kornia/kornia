@@ -29,7 +29,7 @@ from kornia.core.ops import eye_like
 from kornia.core.utils import is_exporting
 
 from .base import ImageSequentialBase
-from .params import ParamItem
+from .params import ParamItem, PatchParamItem
 
 __all__ = ["ImageSequential"]
 
@@ -485,20 +485,22 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
 
         if isinstance(module, PatchSequential):
             if module.padding == "valid":
-                left, right, top, bottom = module._compute_padding(batch_shape, module.padding)
+                # Crop the last two dimensions to a multiple of the grid; video containers track 5-D shapes.
+                rows, columns = module.grid_size
                 new_batch_shape = list(batch_shape)
-                new_batch_shape[-2] += top + bottom
-                new_batch_shape[-1] += left + right
+                new_batch_shape[-2] -= new_batch_shape[-2] % rows
+                new_batch_shape[-1] -= new_batch_shape[-1] % columns
                 return torch.Size(new_batch_shape)
             return batch_shape
 
     # If data is a list, process all subitems (exit early if all subitems are None)
     if isinstance(data, list):
+        if data and isinstance(data[0], PatchParamItem):
+            # Patch children transform patches in place; their output_size does not change the image size.
+            return batch_shape
         children = dict(module.named_children()) if module is not None else {}
         for p in data:
-            child_param = p.param if hasattr(p, "param") else p
-            child_module = children.get(child_param.name)
-            batch_shape = _get_new_batch_shape(child_param, batch_shape, child_module)
+            batch_shape = _get_new_batch_shape(p, batch_shape, children.get(p.name))
         return batch_shape
 
     # Carefully avoid evaluating expression multiple times; batch_prob is often a 1-element torch.Tensor
