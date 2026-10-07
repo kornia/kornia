@@ -19,6 +19,8 @@ from typing import Dict, List, Tuple
 
 import torch
 
+from kornia.core.check import KORNIA_CHECK
+
 from .mean_iou import mean_iou_bbox
 
 
@@ -34,19 +36,22 @@ def mean_average_precision(
     """Calculate the Mean Average Precision (mAP) of detected objects.
 
     Code altered from https://github.com/sgrvinod/a-PyTorch-Tutorial-to-Object-Detection/blob/master/utils.py#L271.
-    Background class (0 index) is excluded.
+    Background class (0 index) is excluded. Only foreground classes with ground-truth objects
+    across the evaluated images contribute to mAP. Classes without ground truth have undefined
+    AP, represented by ``-1.0`` as in COCO. If no foreground class has ground truth, mAP is ``-1.0``.
+    Classes with ground truth but no detections have AP ``0.0`` and contribute to mAP.
 
     Args:
         pred_boxes: a torch.Tensor list of predicted bounding boxes.
-        pred_labels: a torch.Tensor list of predicted labels.
+        pred_labels: a torch.Tensor list of predicted labels in ``[0, n_classes)``.
         pred_scores: a torch.Tensor list of predicted labels' scores.
         gt_boxes: a torch.Tensor list of ground truth bounding boxes.
-        gt_labels: a torch.Tensor list of ground truth labels.
+        gt_labels: a torch.Tensor list of ground truth labels in ``[0, n_classes)``.
         n_classes: the number of classes.
         threshold: count as a positive if the overlap is greater than the threshold.
 
     Returns:
-        mean average precision (mAP), list of average precisions for each class.
+        mean average precision (mAP), dictionary of average precisions for each foreground class.
 
     Examples:
         >>> boxes, labels, scores = torch.tensor([[100, 50, 150, 100.]]), torch.tensor([1]), torch.tensor([.7])
@@ -83,6 +88,12 @@ def mean_average_precision(
     if not _pred_images.size(0) == _pred_boxes.size(0) == _pred_labels.size(0) == _pred_scores.size(0):
         raise AssertionError
 
+    for name, labels in (("pred_labels", _pred_labels), ("gt_labels", _gt_labels)):
+        KORNIA_CHECK(
+            bool(((labels >= 0) & (labels < n_classes)).all()),
+            f"{name} must satisfy 0 <= label < n_classes ({n_classes}).",
+        )
+
     # Calculate APs for each class (except background)
     average_precisions = torch.zeros(
         (n_classes - 1), device=_pred_boxes.device, dtype=_pred_boxes.dtype
@@ -91,6 +102,10 @@ def mean_average_precision(
         # Extract only objects with this class
         gt_class_images = _gt_images[_gt_labels == c]  # (n_class_objects)
         gt_class_boxes = _gt_boxes[_gt_labels == c]  # (n_class_objects, 4)
+
+        if gt_class_images.size(0) == 0:
+            average_precisions[c - 1] = -1.0
+            continue
 
         # Keep track of which true objects with this class have already been 'detected'
         # (n_class_objects)
@@ -175,7 +190,8 @@ def mean_average_precision(
         average_precisions[c - 1] = precisions.mean()  # c is in [1, n_classes - 1]
 
     # Calculate Mean Average Precision (mAP)
-    mean_ap = average_precisions.mean()
+    defined_precisions = average_precisions[average_precisions >= 0]
+    mean_ap = defined_precisions.mean() if defined_precisions.numel() else average_precisions.new_tensor(-1.0)
 
     # Keep class-wise average precisions in a dictionary
     ap_dict = {c + 1: float(v) for c, v in enumerate(average_precisions.tolist())}
