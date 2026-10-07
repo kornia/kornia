@@ -264,7 +264,7 @@ class VideoSequential(ImageSequential):
             else:
                 param = ParamItem(name, None)
 
-            batch_shape = _get_new_batch_shape(param, batch_shape)
+            batch_shape = _get_new_batch_shape(param, batch_shape, module)
             params.append(param)
 
         return params

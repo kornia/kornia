@@ -98,6 +98,85 @@ class TestCharbonnierLoss(BaseTester):
 
         self.assert_close(op(img1, img2), op_module(img1, img2))
 
+    @pytest.mark.parametrize("reduction", ["mean", "sum", "none", None])
+    def test_small_residual(self, device, dtype, reduction):
+        # These powers of two are exact in the input dtype. The reference uses the original formula:
+        # with decimal.localcontext() as ctx:
+        #     ctx.prec = 80
+        #     expected = (Decimal(1) + Decimal(residual) ** 2).sqrt() - Decimal(1)
+        residual, expected_value = {
+            torch.float16: (2**-6, 0.000122062862828759023779),
+            torch.bfloat16: (2**-6, 0.000122062862828759023779),
+            torch.float32: (2**-16, 1.16415321820158550875879e-10),
+            torch.float64: (2**-30, 4.33680868994201773508942e-19),
+        }[dtype]
+        img1 = torch.tensor([-residual, 0.0, residual], device=device, dtype=dtype)
+        img2 = torch.zeros_like(img1)
+        expected = torch.tensor([expected_value, 0.0, expected_value], device=device, dtype=dtype)
+        if reduction == "mean":
+            expected = expected.mean()
+        elif reduction == "sum":
+            expected = expected.sum()
+
+        # An absolute tolerance would hide the failure: the old implementation returned all zeros.
+        self.assert_close(
+            kornia.losses.charbonnier_loss(img1, img2, reduction),
+            expected,
+            rtol=4 * torch.finfo(dtype).eps,
+            atol=0,
+        )
+        self.assert_close(
+            kornia.losses.CharbonnierLoss(reduction)(img1, img2),
+            expected,
+            rtol=4 * torch.finfo(dtype).eps,
+            atol=0,
+        )
+
+    def test_moderate_residual(self, device, dtype):
+        # Below |r| = 1 the original formula loses digits long before it returns 0: at r = 0.0625 it is off by about
+        # 16 eps (relative) in float32, 168 in float64 and 128 in bfloat16, and at r = 0.25 by 16 in float16. Residuals
+        # up to 0.4375 also catch the threshold of the rationalized form moved from r**2 = 1 to below 0.19. These
+        # residuals and their squares are exact in every dtype; the references are generated as in test_small_residual.
+        residual = torch.tensor([0.4375, 0.375, 0.3125, 0.25, 0.125, 0.09375, 0.0625], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [
+                9.151557478581129039506523e-2,
+                6.800046816469139598395604e-2,
+                4.769091339001313302785597e-2,
+                3.077640640441513745535246e-2,
+                7.782218537318706545826654e-3,
+                4.384917499262331490555988e-3,
+                1.951221367587335304459672e-3,
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        actual = kornia.losses.charbonnier_loss(residual, torch.zeros_like(residual))
+        self.assert_close(actual, expected, rtol=4 * torch.finfo(dtype).eps, atol=0)
+
+    def test_zero_gradient(self, device, dtype):
+        img1 = torch.zeros(3, device=device, dtype=dtype, requires_grad=True)
+        img2 = torch.zeros_like(img1, requires_grad=True)
+        loss = kornia.losses.charbonnier_loss(img1, img2, reduction="sum")
+        grad1, grad2 = torch.autograd.grad(loss, (img1, img2))
+        self.assert_close(grad1, torch.zeros_like(img1))
+        self.assert_close(grad2, torch.zeros_like(img2))
+
+    def test_large_residual(self, device, dtype):
+        # Squaring this finite residual overflows. Its unused rationalized branch must
+        # neither change the original loss nor contaminate the gradient with inf / inf.
+        overflow_residual = 2.0 * torch.finfo(dtype).max ** 0.5
+        img1 = torch.tensor([1.0, 3.0, overflow_residual], device=device, dtype=dtype, requires_grad=True)
+        img2 = torch.zeros_like(img1)
+        actual = kornia.losses.charbonnier_loss(img1, img2)
+        expected = (img1.square() + 1.0).sqrt() - 1.0
+        self.assert_close(actual, expected, rtol=4 * torch.finfo(dtype).eps, atol=0)
+        # detect_anomaly also rejects a nan inside the backward that the outer torch.where would discard.
+        with torch.autograd.detect_anomaly():
+            grad_actual = torch.autograd.grad(actual.sum(), img1, retain_graph=True)[0]
+        grad_expected = torch.autograd.grad(expected.sum(), img1)[0]
+        self.assert_close(grad_actual, grad_expected)
+
     @pytest.mark.parametrize("reduction", ["mean", "sum"])
     @pytest.mark.parametrize("shape", [(1, 2, 9, 9), (2, 4, 3, 6)])
     def test_perfect_prediction(self, device, dtype, reduction, shape):
