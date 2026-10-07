@@ -49,20 +49,7 @@ def mean_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int, eps: fl
         tensor([[1., 1., 1.]])
 
     """
-    if not torch.is_tensor(pred) and pred.dtype is not torch.int64:
-        raise TypeError(f"Input pred type is not a torch.Tensor with torch.int64 dtype. Got {type(pred)}")
-
-    if not torch.is_tensor(target) and target.dtype is not torch.int64:
-        raise TypeError(f"Input target type is not a torch.Tensor with torch.int64 dtype. Got {type(target)}")
-    if not pred.shape == target.shape:
-        raise ValueError(f"Inputs pred and target must have the same shape. Got: {pred.shape} and {target.shape}")
-    if not pred.device == target.device:
-        raise ValueError(f"Inputs must be in the same device. Got: {pred.device} - {target.device}")
-
-    if not isinstance(num_classes, int) or num_classes < 2:
-        raise ValueError(f"The number of classes must be an integer bigger than two. Got: {num_classes}")
-
-    # we first compute the confusion matrix
+    # we first compute the confusion matrix, which validates the labels and the class count
     conf_mat: torch.Tensor = confusion_matrix(pred, target, num_classes)
 
     # compute the actual intersection over union

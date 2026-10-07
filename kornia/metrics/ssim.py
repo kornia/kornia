@@ -20,8 +20,9 @@ from typing import List
 import torch
 from torch import nn
 
+from kornia.core.check import KORNIA_CHECK
 from kornia.filters import filter2d_separable, get_gaussian_kernel1d
-from kornia.filters.filter import _compute_padding
+from kornia.filters.filter import _VALID_PADDING, _compute_padding
 
 
 def _crop(img: torch.Tensor, cropping_shape: List[int]) -> torch.Tensor:
@@ -96,6 +97,13 @@ def ssim(
 
     if not img1.shape == img2.shape:
         raise ValueError(f"img1 and img2 shapes must be the same. Got: {img1.shape} and {img2.shape}")
+
+    KORNIA_CHECK(
+        str(padding).lower() in _VALID_PADDING,
+        f"Invalid padding mode, {padding}. Expected one of {_VALID_PADDING}",
+    )
+    # the check is case-insensitive, so dispatch on the lower-case spelling as well
+    padding = str(padding).lower()
 
     # Preserve fractional Gaussian weights and avoid integer moment overflow.
     if not img1.is_floating_point() and not img1.is_complex():

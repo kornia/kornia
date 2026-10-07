@@ -76,6 +76,9 @@ def _bilateral_blur(
     if isinstance(sigma_space, torch.Tensor):
         KORNIA_CHECK_SHAPE(sigma_space, ["B", "2"])
         _check_sigma_batch("sigma_space", sigma_space, input)
+        # the spatial kernel takes the dtype of a tensor sigma, so match a floating input as for sigma_color
+        if input.is_floating_point():
+            sigma_space = sigma_space.to(device=input.device, dtype=input.dtype)
 
     ky, kx = _unpack_2d_ks(kernel_size)
     _check_kernel_size((ky, kx))
@@ -89,6 +92,9 @@ def _bilateral_blur(
         guidance = input
         unfolded_guidance = unfolded_input
     else:
+        # the colour kernel takes the guidance's dtype, so a wider guidance would promote the output
+        if input.is_floating_point() and guidance.is_floating_point():
+            guidance = guidance.to(input.dtype)
         padded_guidance = F.pad(guidance, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
         unfolded_guidance = padded_guidance.unfold(2, ky, 1).unfold(3, kx, 1)  # (B, C, H, W, Ky, Kx)
 
@@ -133,13 +139,12 @@ def bilateral_blur(
         - ``sigma_color`` is in the units of the input values: an image scaled by ``s > 0``, filtered with
           ``sigma_color * s``, gives the result scaled by ``s``.
         - The border modes are :func:`~kornia.filters.filter2d`'s, but only in lower case; see its Convention block.
+        - A floating input keeps its dtype: a tensor ``sigma_color`` or ``sigma_space`` is cast to it and moved to
+          its device.
         - Known defects:
 
           - an integer input is differenced in its own dtype, so uint8 differences wrap and the filter blends
             across edges it should keep (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
-          - a tensor ``sigma_space`` keeps its own dtype, unlike ``sigma_color``, so a wider one promotes the output:
-            a float32 image with a float64 ``sigma_space`` comes back float64
-            (`#5521 <https://github.com/kornia/kornia/issues/5521>`_).
 
     Arguments:
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
@@ -196,9 +201,9 @@ def joint_bilateral_blur(
           ``guidance``, and ``input`` is what gets averaged.
         - ``input`` comes first and ``guidance`` second, the opposite of :func:`~kornia.filters.guided_blur`.
         - ``guidance`` may have its own channel count; its batch size and :math:`(H, W)` must equal ``input``'s.
+        - A floating ``guidance`` is cast to the dtype of a floating ``input``, so the output keeps ``input``'s dtype.
         - Known defects: those of :func:`~kornia.filters.bilateral_blur`, for an integer ``guidance``
-          (`#5155 <https://github.com/kornia/kornia/issues/5155>`_) and for a tensor ``sigma_space`` of a wider dtype,
-          which ``guidance`` of a wider dtype shares (`#5521 <https://github.com/kornia/kornia/issues/5521>`_).
+          (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Arguments:
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
