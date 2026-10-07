@@ -46,6 +46,11 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
     Return:
         the computed loss as a scalar.
 
+    .. note::
+        Integer and bool images are converted to float32, as in :func:`~kornia.metrics.ssim`, and the two images are
+        compared in their promoted dtype. An integer image paired with a float16 or bfloat16 image therefore gives a
+        float32 result. Pixel values are not rescaled.
+
     Examples:
         >>> ones = torch.ones(1)
         >>> psnr(ones, 1.2 * ones, 2.) # 10 * log(4/((1.2-1)**2)) / log(10)
@@ -63,5 +68,14 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
 
     if image.shape != target.shape:
         raise TypeError(f"Expected tensors of equal shapes, but got {image.shape} and {target.shape}")
+
+    # mse has no integer kernel; compute integer images in float32 as ssim does.
+    if not image.is_floating_point() and not image.is_complex():
+        image = image.to(torch.float32)
+    if not target.is_floating_point() and not target.is_complex():
+        target = target.to(torch.float32)
+    # Give mse_loss one dtype: on two dtypes it aborts the process on MPS, and its backward raises on torch 2.5.1.
+    dtype = torch.promote_types(image.dtype, target.dtype)
+    image, target = image.to(dtype), target.to(dtype)
 
     return 10.0 * torch.log10(max_val**2 / mse(image, target, reduction="mean"))
