@@ -100,6 +100,181 @@ class TestAugmentationSequential:
 
         assert out_input.shape == input.shape
 
+<<<<<<< ours
+=======
+    @pytest.mark.parametrize("as_dict", [False, True])
+    @pytest.mark.parametrize("as_path", [False, True])
+    @pytest.mark.parametrize("mode", ["L", "P"])
+    def test_pil_masks_keep_label_values(self, tmp_path, as_dict, as_path, mode):
+        Image = pytest.importorskip("PIL.Image")
+        image = np.zeros((8, 9, 3), dtype=np.uint8)
+        labels = np.zeros((8, 9), dtype=np.uint8)
+        labels[2:5, 1:3] = 3
+        mask = Image.fromarray(labels, mode=mode)
+        if mode == "P":
+            mask.putpalette([0, 0, 0, 128, 0, 0, 0, 128, 0, 128, 128, 0] + [0] * 756)
+        if as_path:
+            mask_path = tmp_path / "mask.png"
+            mask.save(mask_path)
+            mask = str(mask_path)
+
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=None if as_dict else ["input", "mask"])
+        if as_dict:
+            output = aug({"input": image, "mask": mask})
+            out_mask = output["mask"]
+        else:
+            _, out_mask = aug(image, mask)
+
+        assert out_mask.shape == (1, 1, 8, 9)
+        assert out_mask.dtype == torch.uint8
+        assert set(out_mask.unique().tolist()) == {0, 3}
+
+    def test_numpy_mask_with_incompatible_shape_raises(self):
+        image = np.zeros((2, 8, 9, 3), dtype=np.uint8)
+        mask = np.zeros((2, 8, 9), dtype=np.uint8)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=["input", "mask"])
+
+        with pytest.raises(ValueError, match="Image and mask must have matching spatial dimensions"):
+            aug(image, mask)
+
+    @pytest.mark.parametrize("mode", ["I;16", "I;16B"])
+    def test_pil_16bit_masks_keep_label_values(self, mode):
+        Image = pytest.importorskip("PIL.Image")
+        image = np.zeros((8, 9, 3), dtype=np.uint8)
+        labels = np.zeros((8, 9), dtype=np.uint16)
+        labels[2:5, 1:3] = 1000
+        mask = Image.frombytes(mode, (9, 8), labels.astype("<u2" if mode == "I;16" else ">u2").tobytes())
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+
+        _, out_mask = aug(image, mask)
+
+        assert out_mask.dtype == torch.uint16
+        expected = torch.from_numpy(np.ascontiguousarray(labels[:, ::-1]).astype(np.int32))[None, None]
+        assert torch.equal(out_mask.to(torch.int32), expected)
+
+    def test_tensor_mask_does_not_need_pillow(self, monkeypatch):
+        # Pillow is optional: converting PIL masks must not import it for a tensor mask.
+        import sys
+
+        from kornia.core.external import PILImage as lazy_pil
+
+        monkeypatch.setattr(lazy_pil, "module", None)
+        monkeypatch.setitem(sys.modules, "PIL.Image", None)
+        image, mask = torch.rand(2, 3, 8, 9), torch.rand(2, 1, 8, 9)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+
+        _, out_mask = aug(image, mask)
+
+        assert torch.equal(out_mask, mask.flip(-1))
+
+    @pytest.mark.parametrize(
+        ("image_shape", "mask_shape", "batch"),
+        [((2, 3, 8, 9), (3, 1, 8, 9), 2), ((3, 8, 9), (3, 1, 8, 9), 1), ((3, 8, 9), (1, 1, 8, 10), 1)],
+    )
+    def test_mask_with_incompatible_shape_raises(self, image_shape, mask_shape, batch):
+        image, mask = torch.zeros(image_shape), torch.zeros(mask_shape)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+
+        with pytest.raises(ValueError, match=rf"compatible batch sizes \(1 or {batch}\)"):
+            aug(image, mask)
+
+    def test_pil_rgb_mask_with_a_single_image(self):
+        Image = pytest.importorskip("PIL.Image")
+        labels = np.zeros((8, 9, 3), dtype=np.uint8)
+        labels[2:5, 1:3] = (1, 2, 3)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=["input", "mask"])
+
+        _, out_mask = aug(np.zeros((8, 9, 3), dtype=np.uint8), Image.fromarray(labels, mode="RGB"))
+
+        assert torch.equal(out_mask, torch.from_numpy(labels).permute(2, 0, 1)[None])
+
+    def test_single_mask_with_a_batch_is_broadcast_not_rejected(self):
+        image, mask = torch.zeros(2, 3, 8, 9), torch.rand(1, 1, 8, 9)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+
+        _, out_mask = aug(image, mask)
+
+        assert torch.equal(out_mask, mask.flip(-1).expand(2, -1, -1, -1))
+
+    @pytest.mark.parametrize("mask_shape", [(1, 1, 8, 8), (1, 8, 8), (3, 8, 8)])
+    @pytest.mark.parametrize(
+        "make_child",
+        [
+            lambda: K.RandomHorizontalFlip(p=1.0),
+            lambda: K.RandomHorizontalFlip(p=0.5),
+            lambda: K.RandomCrop((4, 4), p=1.0),
+            lambda: K.RandomAffine(30.0, p=1.0, resample="nearest"),
+        ],
+        ids=["flip", "flip_half", "crop", "affine"],
+    )
+    def test_single_mask_follows_each_samples_own_transform(self, make_child, mask_shape):
+        # Every image is a copy of the mask, so each output mask must equal its own augmented image. A mask that was
+        # transformed with sample 0's draw only (flip, crop) or that made the warp fail (affine) breaks this.
+        mask = torch.rand(*mask_shape)
+        image = mask.reshape(1, mask.shape[-3], 8, 8).expand(4, -1, -1, -1).clone()
+        for seed in range(5):
+            torch.manual_seed(seed)
+            aug = K.AugmentationSequential(make_child(), data_keys=["input", "mask"])
+
+            out_image, out_mask = aug(image, mask)
+
+            assert out_mask.shape == out_image.shape
+            assert_close(out_mask, out_image)
+
+    @pytest.mark.parametrize("mask_shape", [(1, 1, 8, 8), (1, 8, 8)])
+    def test_single_mask_equals_an_explicit_full_batch_mask(self, mask_shape):
+        image = torch.rand(3, 3, 8, 8)
+        mask = (torch.rand(*mask_shape) > 0.5).float()
+        outputs = []
+        for candidate in (mask, mask.expand(3, *mask.shape[1:]).clone()):
+            torch.manual_seed(7)
+            aug = K.AugmentationSequential(
+                K.RandomAffine(30.0, p=1.0), K.RandomHorizontalFlip(p=0.5), data_keys=["input", "mask"]
+            )
+            outputs.append(aug(image, candidate)[1])
+
+        assert outputs[0].shape == (3, 1, 8, 8)
+        assert_close(outputs[0], outputs[1])
+
+    @pytest.mark.parametrize("mask_shape", [(2, 1, 8, 8), (2, 8, 8)])
+    def test_full_batch_mask_is_not_repeated(self, mask_shape):
+        # A leading size equal to the image batch is one mask per image, in both the 3D and the 4D layout.
+        mask = torch.rand(*mask_shape)
+        image = mask.reshape(2, 1, 8, 8).expand(-1, 3, -1, -1).clone()
+        torch.manual_seed(0)
+        aug = K.AugmentationSequential(K.RandomCrop((4, 4), p=1.0), data_keys=["input", "mask"])
+
+        out_image, out_mask = aug(image, mask)
+
+        assert out_mask.shape == (2, 1, 4, 4)
+        assert_close(out_mask, out_image[:, :1])
+
+    def test_single_mask_broadcast_keeps_the_callers_mask_and_inverts(self):
+        image, mask = torch.rand(2, 3, 8, 8), torch.rand(1, 1, 8, 8)
+        original = mask.clone()
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+
+        out_image, out_mask = aug(image, mask)
+        _, inv_mask = aug.inverse(out_image, out_mask)
+
+        assert torch.equal(mask, original)
+        assert_close(inv_mask, original.expand(2, -1, -1, -1))
+
+    def test_single_mask_broadcast_through_a_dict_and_keepdim(self):
+        image, mask = torch.rand(2, 3, 8, 8), torch.rand(1, 8, 8)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None, keepdim=True)
+
+        out = aug({"image": image, "mask": mask})
+
+        assert out["mask"].shape == (2, 8, 8)
+
+    def test_single_mask_with_an_unbatched_image_stays_single(self):
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+
+        _, out_mask = aug(torch.rand(3, 8, 8), torch.rand(1, 1, 8, 8))
+
+        assert out_mask.shape == (1, 1, 8, 8)
+
     def test_call_time_data_keys_are_restored_after_forward_exception(self, device, dtype):
         image = torch.rand(1, 3, 16, 20, device=device, dtype=dtype)
         mask = torch.ones(1, 1, 16, 20, device=device, dtype=dtype)
