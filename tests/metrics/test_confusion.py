@@ -72,12 +72,37 @@ class TestConfusionMatrix(BaseTester):
         conf_mat = kornia.metrics.confusion_matrix(predicted, actual, num_classes, normalized)
 
         conf_mat_real = torch.tensor(
-            [[[0.5000, 0.3333, 0.4000], [0.3750, 0.0000, 0.4000], [0.1250, 0.6667, 0.2000]]],
+            [[[4 / 7, 1 / 7, 2 / 7], [3 / 5, 0, 2 / 5], [1 / 4, 2 / 4, 1 / 4]]],
             device=device,
             dtype=torch.float32,
         )
 
         self.assert_close(conf_mat, conf_mat_real)
+
+    def test_normalized_target_rows_batch(self, device, dtype):
+        pred = torch.tensor([[0, 0, 1, 1, 1, 2, 2, 0], [0, 1, 1, 2, 2, 2, 2, 2]], device=device, dtype=torch.long)
+        target = torch.tensor([[0, 0, 0, 1, 1, 2, 2, 2], [0, 0, 0, 0, 0, 2, 2, 2]], device=device, dtype=torch.long)
+        counts = torch.tensor(
+            [[[2, 1, 0], [0, 2, 0], [1, 0, 2]], [[1, 2, 2], [0, 0, 0], [0, 0, 3]]],
+            device=device,
+            dtype=torch.float32,
+        )
+        expected = torch.tensor(
+            [[[2 / 3, 1 / 3, 0], [0, 1, 0], [1 / 3, 0, 2 / 3]], [[1 / 5, 2 / 5, 2 / 5], [0, 0, 0], [0, 0, 1]]],
+            device=device,
+            dtype=torch.float32,
+        )
+
+        self.assert_close(kornia.metrics.confusion_matrix(pred, target, 3), counts)
+        normalized = kornia.metrics.confusion_matrix(pred, target, 3, normalized=True)
+        self.assert_close(normalized, expected)
+        self.assert_close(
+            normalized.sum(dim=2), torch.tensor([[1, 1, 1], [1, 0, 1]], device=device, dtype=torch.float32)
+        )
+        assert not torch.allclose(normalized, counts / (counts.sum(dim=1, keepdim=True) + 1e-6))
+        assert torch.count_nonzero(normalized[1, 1]) == 0
+        assert normalized.dtype == torch.float32
+        assert normalized.device == pred.device
 
     def test_four_classes_2d_perfect(self, device, dtype):
         num_classes = 4

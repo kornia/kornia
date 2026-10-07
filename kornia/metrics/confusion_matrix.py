@@ -35,11 +35,13 @@ def confusion_matrix(
           values between 0 and K-1, where targets are assumed to be provided as
           one-hot vectors.
         num_classes: total possible number of classes in target.
-        normalized: whether to return the confusion matrix normalized.
+        normalized: whether to normalize each target row by its sum plus ``1e-6``.
+          Non-empty rows sum approximately to one; empty rows remain zero.
 
     Returns:
         a tensor containing the confusion matrix with shape
-        :math:`(B, K, K)` where K is the number of classes.
+        :math:`(B, K, K)` where K is the number of classes, rows represent targets,
+        and columns represent predictions.
 
     Example:
         >>> logits = torch.tensor([[0, 1, 0]])
@@ -84,7 +86,7 @@ def confusion_matrix(
     confusion_mat: torch.Tensor = confusion_vec.view(batch_size, num_classes, num_classes).to(torch.float32)  # BxKxK
 
     if normalized:
-        norm_val: torch.Tensor = torch.sum(confusion_mat, dim=1, keepdim=True)
+        norm_val: torch.Tensor = torch.sum(confusion_mat, dim=2, keepdim=True)
         confusion_mat = confusion_mat / (norm_val + 1e-6)
 
     return confusion_mat
