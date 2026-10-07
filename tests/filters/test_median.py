@@ -410,7 +410,8 @@ class TestConventionsMedianBlur(BaseTester):
         for kernel_size, changed in ((3, 4), (5, 12)):
             self.assert_close(median_blur(image, kernel_size).detach(), image.detach())
             zero_padded = median_blur(image, kernel_size, border_type="constant").detach()
-            assert zero_padded[0, 0, 0, 0] == 0 and zero_padded[0, 0, -1, -1] == 0
+            assert zero_padded[0, 0, 0, 0] == 0
+            assert zero_padded[0, 0, -1, -1] == 0
             assert int((zero_padded != image.detach()).sum()) == changed
         # the default is 'reflect', not just a mode that keeps a constant
         torch.manual_seed(0)

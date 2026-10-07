@@ -104,12 +104,10 @@ def _scale_factor_interpolate(x, size=None, scale_factor=None, mode=None, **kwar
     assert not kwargs
     (h, w), (H, W) = x.shape[-2:], size
     ratio = max(h, H) // min(h, H)
-    assert (
-        ratio > 1
-        and ratio * min(h, H) == max(h, H)
-        and ratio * min(w, W) == max(w, W)
-        and max(w, W) // min(w, W) == ratio
-    )
+    assert ratio > 1
+    assert ratio * min(h, H) == max(h, H)
+    assert ratio * min(w, W) == max(w, W)
+    assert max(w, W) // min(w, W) == ratio
     if H < h:
         return F.interpolate(x, scale_factor=1 / ratio, mode="nearest")
     return F.interpolate(x, scale_factor=ratio, mode="bilinear")
