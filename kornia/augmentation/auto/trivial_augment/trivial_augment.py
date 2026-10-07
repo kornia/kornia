@@ -83,10 +83,7 @@ class TrivialAugment(PolicyAugmentBase):
     def __init__(
         self, policy: Optional[List[SUBPOLICY_CONFIG]] = None, transformation_matrix_mode: str = "silent"
     ) -> None:
-        if policy is None:
-            _policy = default_policy
-        else:
-            _policy = policy
+        _policy = default_policy if policy is None else policy
 
         super().__init__(_policy, transformation_matrix_mode=transformation_matrix_mode)
         selection_weights = torch.tensor([1.0 / len(self)] * len(self))

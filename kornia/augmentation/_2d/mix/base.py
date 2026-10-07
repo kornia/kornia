@@ -267,10 +267,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> Union[torch.Tensor, List[torch.Tensor]]:
         keys: List[DataKey]
-        if data_keys is None:
-            keys = self.data_keys
-        else:
-            keys = [DataKey.get(inp) for inp in data_keys]
+        keys = self.data_keys if data_keys is None else [DataKey.get(inp) for inp in data_keys]
 
         for key in keys:
             self._validate_data_key(key)

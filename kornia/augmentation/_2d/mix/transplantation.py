@@ -389,10 +389,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
         **kwargs: dict[str, Any],
     ) -> torch.Tensor | list[torch.Tensor]:
         keys: list[DataKey]
-        if data_keys is None:
-            keys = self.data_keys
-        else:
-            keys = [DataKey.get(inp) for inp in data_keys]
+        keys = self.data_keys if data_keys is None else [DataKey.get(inp) for inp in data_keys]
 
         if params is None:
             self._check_mask_given(input, keys)
