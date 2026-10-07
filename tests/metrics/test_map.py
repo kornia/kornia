@@ -56,7 +56,7 @@ class TestMeanAveragePrecision(BaseTester):
         # Two images. Class 1 has 3 objects and 2 exact detections: recall 1/3, 2/3 at precision 1, so 7 of the 11
         # recall thresholds (0 to 0.6) are reached and AP = 7/11. Class 2 has 2 objects, the higher-scored detection
         # is a false positive and the other is exact: recall 0, 1/2 at precision 0, 1/2, so AP = 6 * 0.5 / 11. Class 3
-        # is predicted but has no objects: every detection is a false positive and AP = 0. The recall denominators
+        # is predicted but has no objects: AP is undefined and excluded from mAP. The recall denominators
         # (3, 2, 0) differ from the detection counts (2, 2, 1), from the detected counts and from the total (5).
         gt_boxes = [
             torch.tensor([[0.0, 0.0, 10.0, 10.0], [20.0, 20.0, 30.0, 30.0], [40.0, 40.0, 50.0, 50.0]]),
@@ -82,9 +82,112 @@ class TestMeanAveragePrecision(BaseTester):
             4,
         )
 
-        expected = torch.tensor([7 / 11, 3 / 11, 0.0], device=device, dtype=dtype)
+        expected = torch.tensor([7 / 11, 3 / 11, -1.0], device=device, dtype=dtype)
         self.assert_close(torch.tensor([ap[1], ap[2], ap[3]], device=device, dtype=dtype), expected)
-        self.assert_close(mean_ap, expected.mean())
+        self.assert_close(mean_ap, expected[:2].mean())
+
+    @pytest.mark.parametrize("n_classes", [3, 4, 5])
+    def test_absent_classes_do_not_change_map_5540(self, device, dtype, n_classes):
+        boxes = torch.tensor([[0.0, 0.0, 10.0, 20.0], [30.0, 5.0, 45.0, 12.0]], device=device, dtype=dtype)
+        labels = torch.tensor([1, 2], device=device, dtype=torch.long)
+        scores = torch.tensor([0.9, 0.8], device=device, dtype=dtype)
+
+        mean_ap, ap = kornia.metrics.mean_average_precision([boxes], [labels], [scores], [boxes], [labels], n_classes)
+
+        self.assert_close(mean_ap, boxes.new_tensor(1.0))
+        assert mean_ap.shape == torch.Size([])
+        assert mean_ap.dtype == dtype
+        assert mean_ap.device == boxes.device
+        assert set(ap) == set(range(1, n_classes))
+        self.assert_close(ap[1], 1.0)
+        self.assert_close(ap[2], 1.0)
+        assert all(ap[c] == -1.0 for c in range(3, n_classes))
+
+    def test_detections_without_ground_truth_5540(self, device, dtype):
+        boxes = torch.tensor([[0.0, 0.0, 10.0, 20.0], [30.0, 5.0, 45.0, 12.0]], device=device, dtype=dtype)
+        labels = torch.tensor([1, 2], device=device, dtype=torch.long)
+        scores = torch.tensor([0.9, 0.8], device=device, dtype=dtype)
+
+        mean_ap, ap = kornia.metrics.mean_average_precision([boxes], [labels], [scores], [boxes[:1]], [labels[:1]], 3)
+
+        self.assert_close(mean_ap, boxes.new_tensor(1.0))
+        self.assert_close(ap[1], 1.0)
+        assert ap[2] == -1.0
+
+    @pytest.mark.parametrize("n_detections", [0, 1])
+    def test_ground_truth_without_detections_5540(self, device, dtype, n_detections):
+        boxes = torch.tensor([[0.0, 0.0, 10.0, 20.0], [30.0, 5.0, 45.0, 12.0]], device=device, dtype=dtype)
+        labels = torch.tensor([1, 2], device=device, dtype=torch.long)
+        scores = torch.tensor([0.9, 0.8], device=device, dtype=dtype)
+
+        mean_ap, ap = kornia.metrics.mean_average_precision(
+            [boxes[:n_detections]], [labels[:n_detections]], [scores[:n_detections]], [boxes], [labels], 4
+        )
+
+        self.assert_close(mean_ap, boxes.new_tensor(n_detections / 2))
+        self.assert_close(ap[1], float(n_detections))
+        assert ap[2] == 0.0
+        assert ap[3] == -1.0
+
+    @pytest.mark.parametrize("n_classes", [1, 3])
+    @pytest.mark.parametrize("with_background_gt", [False, True])
+    @pytest.mark.parametrize("with_detections", [False, True])
+    def test_no_foreground_ground_truth_5540(self, device, dtype, n_classes, with_background_gt, with_detections):
+        boxes = torch.tensor([[0.0, 0.0, 10.0, 20.0]], device=device, dtype=dtype)
+        labels = torch.tensor([n_classes - 1], device=device, dtype=torch.long)
+        scores = torch.tensor([0.9], device=device, dtype=dtype)
+        gt_labels = torch.zeros(1, device=device, dtype=torch.long)
+
+        mean_ap, ap = kornia.metrics.mean_average_precision(
+            [boxes[: int(with_detections)]],
+            [labels[: int(with_detections)]],
+            [scores[: int(with_detections)]],
+            [boxes[: int(with_background_gt)]],
+            [gt_labels[: int(with_background_gt)]],
+            n_classes,
+        )
+
+        self.assert_close(mean_ap, boxes.new_tensor(-1.0))
+        assert mean_ap.dtype == dtype
+        assert mean_ap.device == boxes.device
+        assert ap == dict.fromkeys(range(1, n_classes), -1.0)
+
+    @pytest.mark.parametrize("invalid_label", [-1, 3, 5])
+    @pytest.mark.parametrize("label_source", ["pred_labels", "gt_labels"])
+    def test_label_range_5540(self, device, dtype, invalid_label, label_source):
+        boxes = torch.tensor([[0.0, 0.0, 10.0, 20.0]], device=device, dtype=dtype)
+        labels = torch.tensor([1], device=device, dtype=torch.long)
+        invalid = torch.tensor([invalid_label], device=device, dtype=torch.long)
+        scores = torch.tensor([0.9], device=device, dtype=dtype)
+        pred_labels = [labels, invalid if label_source == "pred_labels" else labels]
+        gt_labels = [labels, invalid if label_source == "gt_labels" else labels]
+
+        with pytest.raises(BaseError, match=rf"{label_source} must satisfy 0 <= label < n_classes \(3\)"):
+            kornia.metrics.mean_average_precision([boxes] * 2, pred_labels, [scores] * 2, [boxes] * 2, gt_labels, 3)
+
+    def test_background_is_excluded(self, device, dtype):
+        boxes = torch.tensor([[0.0, 0.0, 10.0, 20.0], [30.0, 5.0, 45.0, 12.0]], device=device, dtype=dtype)
+        labels = torch.tensor([0, 1], device=device, dtype=torch.long)
+        scores = torch.tensor([0.9, 0.8], device=device, dtype=dtype)
+
+        # The foreground detection misses its object. A perfect background detection must not raise mAP to 0.5.
+        gt_boxes = boxes.clone()
+        gt_boxes[1] += 100
+        mean_ap, ap = kornia.metrics.mean_average_precision([boxes], [labels], [scores], [gt_boxes], [labels], 2)
+        self.assert_close(mean_ap, boxes.new_tensor(0.0))
+        assert ap == {1: 0.0}
+
+    def test_false_positive_in_image_without_class_ground_truth(self, device, dtype):
+        boxes = torch.tensor([[0.0, 0.0, 10.0, 20.0]], device=device, dtype=dtype)
+        labels = torch.tensor([1], device=device, dtype=torch.long)
+        scores = torch.tensor([0.9], device=device, dtype=dtype)
+
+        # Class 1 has GT in the second image: its higher-scored detection in the first image still counts as FP.
+        mean_ap, ap = kornia.metrics.mean_average_precision(
+            [boxes, boxes], [labels, labels], [scores, scores - 0.1], [boxes[:0], boxes], [labels[:0], labels], 2
+        )
+        self.assert_close(mean_ap, boxes.new_tensor(0.5))
+        self.assert_close(ap[1], 0.5)
 
     def test_raise(self, device, dtype):
         boxes = torch.tensor([[100, 50, 150, 100.0]], device=device, dtype=dtype)
