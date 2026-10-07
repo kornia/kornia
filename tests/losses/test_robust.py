@@ -42,7 +42,7 @@ class TestRobustLossPrecision(BaseTester):
         r = img1.detach().cpu().double()
         q = r.square()
         if loss_fn is kornia.losses.charbonnier_loss:
-            expected = (q + 1).sqrt() - 1
+            expected = q / ((q + 1).sqrt() + 1)
             expected_grad = r / (q + 1).sqrt()
         elif loss_fn is kornia.losses.cauchy_loss:
             expected = (1 + q / 2).log()
@@ -62,9 +62,7 @@ class TestRobustLossPrecision(BaseTester):
         assert actual.dtype == dtype
         assert actual.device == img1.device
         assert torch.isfinite(actual).all()
-        # The unchanged float32 Charbonnier subtraction loses a few ulps at ordinary small residuals.
-        value_rtol = (16 if not large and loss_fn is kornia.losses.charbonnier_loss else 4) * torch.finfo(dtype).eps
-        self.assert_close(actual, expected, rtol=value_rtol, atol=0)
+        self.assert_close(actual, expected, rtol=4 * torch.finfo(dtype).eps, atol=0)
         self.assert_close(loss_module(reduction)(img1, img2), actual, rtol=0, atol=0)
         self.assert_close(loss_fn(img2, img1, reduction), actual, rtol=0, atol=0)
         with torch.autograd.detect_anomaly():
