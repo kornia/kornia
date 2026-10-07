@@ -108,18 +108,15 @@ class TestTverskyLoss(BaseTester):
         assert "pred and target must be in the same device. Got:" in str(errinfo)
 
         # The target batch has to match the prediction batch, as for focal_loss (#5544).
-        with pytest.raises(ValueError) as errinfo:
+        with pytest.raises(ValueError, match=r"Expected target size torch.Size\(\[2, 4, 6\]\)"):
             criterion(torch.rand(2, 3, 4, 6), torch.randint(0, 3, (1, 4, 6)))
-        assert "pred and target shapes must be the same. Got:" in str(errinfo)
 
-        with pytest.raises(ValueError) as errinfo:
+        with pytest.raises(ValueError, match=r"Expected target size torch.Size\(\[1, 4, 6\]\)"):
             criterion(torch.rand(1, 3, 4, 6), torch.randint(0, 3, (2, 4, 6)))
-        assert "pred and target shapes must be the same. Got:" in str(errinfo)
 
         # A target with a channel axis, (B, 1, H, W), is not (B, H, W) either.
-        with pytest.raises(ValueError) as errinfo:
+        with pytest.raises(ValueError, match=r"Expected target size torch.Size\(\[1, 4, 6\]\)"):
             criterion(torch.rand(1, 3, 4, 6), torch.randint(0, 3, (1, 1, 4, 6)))
-        assert "pred and target shapes must be the same. Got:" in str(errinfo)
 
     @pytest.mark.parametrize("ignore_index", [-100, None])
     def test_all_zeros(self, device, dtype, ignore_index):
