@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import io
 import os
 import sys
 from unittest.mock import MagicMock
@@ -239,7 +240,6 @@ class TestImageModuleMixIn:
             img_module.show(backend="matplotlib", display=False)
 
     def test_save_without_output_image_raises(self, img_module, tmpdir):
-        img_module._output_image = None
         with pytest.raises(ValueError, match="No pre-computed images found"):
             img_module.save(name=tmpdir.join("test_image.jpg"))
 
@@ -366,16 +366,97 @@ class TestLazyOutputCache(BaseTester):
         assert module._output_image is cached
         assert cached.device == image.device
 
+    def test_fresh_module_show_and_save_raise(self, module, tmp_path):
+        assert module._output_image is None
+        with pytest.raises(ValueError, match="No pre-computed images found"):
+            module.show(display=False)
+        with pytest.raises(ValueError, match="No pre-computed images found"):
+            module.save(name=str(tmp_path / "empty.png"))
+
+    def test_disabling_features_clears_output_cache(self, module, device, dtype, tmp_path):
+        image = torch.rand(1, 3, 6, 8, device=device, dtype=dtype)
+        module(image)
+        assert module._output_image is not None
+        module.disable_features = False
+        assert module._output_image is not None
+
+        module.disable_features = True
+        assert module._output_image is None
+        module(image)
+        assert module._output_image is None
+        with pytest.raises(ValueError, match="No pre-computed images found"):
+            module.show(display=False)
+        with pytest.raises(ValueError, match="No pre-computed images found"):
+            module.save(name=str(tmp_path / "disabled.png"))
+
+    @pytest.mark.parametrize("container", ["module", "core_sequential", "augmentation_sequential"])
+    def test_output_cache_is_not_serialized(self, container):
+        if container == "module":
+            module = _Identity()
+        elif container == "core_sequential":
+            module = ImageSequential(torch.nn.Identity())
+        else:
+            module = AugmentationImageSequential(torch.nn.Identity())
+
+        def serialized_size():
+            buffer = io.BytesIO()
+            torch.save(module, buffer)
+            return buffer.tell()
+
+        before = serialized_size()
+        output = module(torch.rand(4, 3, 64, 64))
+        assert "_output_image" not in module.__getstate__()
+        assert serialized_size() - before < output.numel() * output.element_size()
+        buffer = io.BytesIO()
+        torch.save(module, buffer)
+        buffer.seek(0)
+        restored = torch.load(buffer, weights_only=False)
+        assert not hasattr(restored, "_output_image")
+
+    @pytest.mark.parametrize("shape,expected_size", [((3, 1, 5), (5, 1)), ((3, 5, 1), (1, 5))])
+    def test_show_and_save_preserve_unit_spatial_dimensions(self, shape, expected_size, tmp_path):
+        module = _Identity()
+        module(torch.rand(shape))
+        image = module.show(display=False)
+        assert image.mode == "RGB"
+        assert image.size == expected_size
+        path = tmp_path / "single-row-or-column.png"
+        module.save(name=str(path))
+        with PILImage.open(path) as saved:
+            assert saved.mode == "RGB"
+            assert saved.size == expected_size
+
+    def test_two_dimensional_output_has_clear_show_and_save_error(self, tmp_path):
+        module = ImageModuleMixIn()
+        module._output_image = torch.rand(4, 5)
+        with pytest.raises(ValueError, match="Expected a 3D or 4D image tensor"):
+            module.show(display=False)
+        with pytest.raises(ValueError, match="Expected a 3D or 4D image tensor"):
+            module.save(name=str(tmp_path / "2d.png"))
+        module._output_image = [torch.rand(3, 4, 5), torch.rand(3, 4, 5)]
+        with pytest.raises(ValueError, match="got list"):
+            module.show(display=False)
+
+    def test_bfloat16_output_can_be_shown_and_converted_to_numpy(self):
+        module = _Identity()
+        image = torch.rand(3, 4, 6, dtype=torch.bfloat16)
+        output = module(image, output_type="numpy")
+        assert output.dtype == np.float32
+        np.testing.assert_array_equal(output, image.float().permute(1, 2, 0).numpy())
+        rendered = module.show(display=False)
+        assert rendered.mode == "RGB"
+        assert rendered.size == (6, 4)
+
     @pytest.mark.parametrize("output_type", ["numpy", "pil"])
     def test_requested_output_conversion_4957(self, module, output_type, device, dtype):
-        if dtype == torch.bfloat16 and output_type == "numpy":
-            pytest.skip("NumPy does not support bfloat16")
         image = torch.rand(1, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
         output = module(image, output_type=output_type)
         expected = image.sigmoid().detach().cpu()
         if output_type == "numpy":
             assert isinstance(output, np.ndarray)
-            np.testing.assert_array_equal(output, expected.permute(0, 2, 3, 1).numpy())
+            # NumPy has no bfloat16: to_numpy upcasts it to float32, which holds every bfloat16 value exactly
+            numpy_dtype = torch.float32 if dtype == torch.bfloat16 else dtype
+            np.testing.assert_array_equal(output, expected.to(numpy_dtype).permute(0, 2, 3, 1).numpy())
         else:
             assert isinstance(output, list)
             assert len(output) == 1
@@ -386,8 +467,6 @@ class TestLazyOutputCache(BaseTester):
 
     @pytest.mark.parametrize("output_type", ["numpy", "pil"])
     def test_converted_output_can_be_shown_and_saved_4964(self, module, output_type, device, dtype, tmp_path):
-        if dtype == torch.bfloat16 and output_type == "numpy":
-            pytest.skip("NumPy does not support bfloat16")
         image = torch.rand(1, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
         module(image, output_type=output_type)
         cached = module._output_image
@@ -669,9 +748,6 @@ class TestTupleOutputCache(BaseTester):
     @pytest.mark.parametrize("count", [1, 2])
     @pytest.mark.parametrize("output_type", ["pt", "numpy", "pil"])
     def test_tuple_conversion_and_cache(self, container, count, output_type, device, dtype):
-        if dtype == torch.bfloat16 and output_type == "numpy":
-            pytest.skip("NumPy does not support bfloat16")
-
         class TupleModule(container):
             def forward(self, x):
                 return tuple(x.sigmoid() for _ in range(count))
@@ -696,7 +772,8 @@ class TestTupleOutputCache(BaseTester):
                 assert output.requires_grad
                 self.assert_close(output, expected)
             elif output_type == "numpy":
-                np.testing.assert_array_equal(output, expected.cpu().permute(1, 2, 0).numpy())
+                numpy_dtype = torch.float32 if dtype == torch.bfloat16 else dtype
+                np.testing.assert_array_equal(output, expected.cpu().to(numpy_dtype).permute(1, 2, 0).numpy())
             else:
                 assert isinstance(output, PILImage.Image)
                 working = expected.cpu().to(torch.promote_types(dtype, torch.float32))

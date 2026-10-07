@@ -225,9 +225,10 @@ class ScalePyramid(nn.Module):
     @staticmethod
     def _make_gaussian_kernel1d(sigma: float, ksize: int) -> torch.Tensor:
         """Normalized 1D Gaussian kernel as a float32 tensor."""
-        x = torch.arange(ksize, dtype=torch.float64) - ksize // 2
+        # MPS has no float64: compute on CPU, then move the rounded kernel to the default device.
+        x = torch.arange(ksize, device="cpu", dtype=torch.float64) - ksize // 2
         kernel = torch.exp(-0.5 * x**2 / sigma**2)
-        return (kernel / kernel.sum()).float()
+        return (kernel / kernel.sum()).float().to(torch.empty(0, dtype=torch.float32).device)
 
     def _precompute_gauss_kernels(
         self, n_levels: int, extra_levels: int, init_sigma: float, double_image: bool

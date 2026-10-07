@@ -110,8 +110,11 @@ def dice_loss(
 
     target, target_mask = mask_ignore_pixels(target, ignore_index)
 
-    # create the labels one hot torch.Tensor
-    target_one_hot: torch.Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
+    # create the labels one hot torch.Tensor. A half-precision target is built in float32, the dtype of the sums below:
+    # the intersection gradient of a class absent from the target is 2 / (cardinality + eps) up to the averaging, past
+    # the float16 range once that class's probabilities underflow, and float16 inf times the zero target is NaN.
+    target_dtype = torch.float32 if pred.dtype in (torch.float16, torch.bfloat16) else pred.dtype
+    target_one_hot: torch.Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=target_dtype)
 
     # mask ignore pixels
     if target_mask is not None:
@@ -138,6 +141,9 @@ def dice_loss(
     # set dimensions for the appropriate averaging
     dims: tuple[int, ...] = (2, 3)
 
+    # The weighted micro Dice is 2 sum(w p t) / sum(w (p + t)): the weight enters the intersection once, through the
+    # weighted scores, so the intersection pairs them with the unweighted target.
+    intersection_target = target_one_hot
     if average == "micro":
         dims = (1, *dims)
 
@@ -147,7 +153,7 @@ def dice_loss(
 
     # Half-precision pixel counts can overflow before the Dice ratio is formed.
     reduction_dtype = torch.float32 if pred_soft.dtype in (torch.float16, torch.bfloat16) else pred_soft.dtype
-    intersection = torch.sum(pred_soft * target_one_hot, dims, dtype=reduction_dtype)
+    intersection = torch.sum(pred_soft * intersection_target, dims, dtype=reduction_dtype)
     cardinality = torch.sum(pred_soft + target_one_hot, dims, dtype=reduction_dtype)
 
     dice_score = 2.0 * intersection / (cardinality + eps)
