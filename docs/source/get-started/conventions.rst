@@ -827,12 +827,16 @@ Porting from other libraries:
   ``(B, C, H, W)`` batch. Its ``'mean'`` averages those per-image sums over the batch, where the ``'mean'`` of
   :func:`~kornia.losses.total_variation` averages each difference term over its own count.
 - ``kl_div_loss_2d(pred, target)`` equals ``F.kl_div(pred.log(), target, reduction='batchmean')`` on the
-  ``(B * N, H * W)`` reshape, ``scipy.stats.entropy(target, pred)`` on every slice and torchmetrics'
-  ``kl_divergence(target, pred)`` on the reshape; torch's ``reduction='mean'`` divides by every element instead.
-  :func:`~kornia.losses.js_div_loss_2d` is ``scipy.spatial.distance.jensenshannon(pred, target) ** 2`` with scipy's
-  default natural logarithm.
+  ``(B * N, H * W)`` reshape and torchmetrics' ``kl_divergence(target, pred)`` on that reshape; torch's
+  ``reduction='mean'`` divides by every element instead. For scipy, reshape ``pred`` and ``target`` to NumPy arrays
+  ``p`` and ``q`` of shape ``(B, N, H * W)``. Then ``scipy.stats.entropy(q, p, axis=-1).mean()`` matches the default
+  KL loss, and ``(scipy.spatial.distance.jensenshannon(p, q, axis=-1) ** 2).mean()`` matches
+  :func:`~kornia.losses.js_div_loss_2d`, using scipy's default natural logarithm. Without the final ``mean()``, each
+  returns ``(B, N)``, matching ``reduction='none'``. SciPy normalises its inputs, so these mappings require each
+  spatial slice to sum to one.
 - :func:`~kornia.losses.inverse_depth_smoothness_loss` does not normalise the inverse depth, where Monodepth2 divides
-  the disparity by its mean before its smoothness term: pass ``idepth / idepth.mean((2, 3), keepdim=True)`` to port it.
+  the disparity by its mean plus ``1e-7`` before its smoothness term: pass
+  ``idepth / (idepth.mean((2, 3), keepdim=True) + 1e-7)`` to port it, keeping zero inverse depth finite.
 
 Dense-prediction losses
 ^^^^^^^^^^^^^^^^^^^^^^^
