@@ -309,10 +309,7 @@ class TestSo3(BaseTester):
     def test_mul_vec(self, device, dtype, batch_size):
         q1 = Quaternion.identity(batch_size, device, dtype)
         q2 = Quaternion.random(batch_size, device, dtype)
-        if batch_size is None:
-            shape = ()
-        else:
-            shape = (batch_size,)
+        shape = () if batch_size is None else (batch_size,)
         t = Vector3.random(shape, device, dtype)
         s1 = So3(q1)
         s2 = So3(q2)
