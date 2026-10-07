@@ -172,6 +172,18 @@ class TestSsim(BaseTester):
         with pytest.raises(ValueError, match="img1 and img2 shapes must be the same"):
             ssim(img1, img2, window_size=3)
 
+    def test_exception_real_complex_pair(self, device):
+        # A real/complex pair builds its Gaussian window in the complex promoted dtype, which raises in either order;
+        # a real img1 with a complex img2 used to return a complex map (#5574). torch raises NotImplementedError, a
+        # RuntimeError subclass, and a plain RuntimeError on 2.5.1.
+        real = torch.rand(1, 1, 8, 8, device=device)
+        complex_ = real.to(torch.complex64)
+        for img1, img2 in ((real, complex_), (complex_, real)):
+            with pytest.raises(RuntimeError, match="not implemented for 'ComplexFloat'"):
+                ssim(img1, img2, window_size=3)
+            with pytest.raises(RuntimeError, match="not implemented for 'ComplexFloat'"):
+                SSIM(window_size=3)(img1, img2)
+
     def test_ssim_module(self, device, dtype):
         img1 = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
         img2 = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
