@@ -1053,7 +1053,7 @@ class VideoBoxes(Boxes):
         - :meth:`to_tensor` accepts every :class:`Boxes` mode and restores the temporal axis
           (``to_tensor('xyxy')`` is :math:`(B, T, N, 4)`).
         - Indexing selects the video batch axis while preserving the temporal axis. An integer index returns a
-          one-video :class:`VideoBoxes` so :meth:`to_tensor` keeps the shape :math:`(1, T, \\ldots)`.
+          one-video :class:`VideoBoxes` so :meth:`to_tensor` keeps the shape :math:`(1, T, \ldots)`.
         - A transformation matrix is :math:`(B \cdot T, 3, 3)`; a :math:`(3, 3)` matrix raises ``ValueError``
           unless :math:`B \cdot T = 1`.
         - :meth:`transform_boxes`, :meth:`translate`, :meth:`clamp`, :meth:`filter_boxes_by_area` and
