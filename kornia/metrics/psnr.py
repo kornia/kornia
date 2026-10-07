@@ -46,9 +46,7 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
           ``[0, 255]``), not the maximum of the tensor; pixel values are not rescaled.
         - ``image`` and ``target`` must have the same shape, without broadcasting; the value is symmetric in them.
           Identical inputs give an MSE of 0 and ``inf``, while a batch with one identical pair stays finite.
-        - Known defect: integer images are not supported: they reach torch's ``mse_loss`` unconverted, where
-          :func:`~kornia.metrics.ssim` computes them in float32, and the result is undefined
-          (`#5536 <https://github.com/kornia/kornia/issues/5536>`_).
+        - Integer and bool images are converted to float32 before computing the MSE; pixel values are not rescaled.
 
     Args:
         image: the input image with arbitrary shape :math:`(*)`.
@@ -57,6 +55,11 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
 
     Return:
         the PSNR as a scalar.
+
+    .. note::
+        Integer and bool images are converted to float32, as in :func:`~kornia.metrics.ssim`, and the two images are
+        compared in their promoted dtype. An integer image paired with a float16 or bfloat16 image therefore gives a
+        float32 result. Pixel values are not rescaled.
 
     Examples:
         >>> ones = torch.ones(1)
@@ -75,5 +78,14 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
 
     if image.shape != target.shape:
         raise TypeError(f"Expected tensors of equal shapes, but got {image.shape} and {target.shape}")
+
+    # mse has no integer kernel; compute integer images in float32 as ssim does.
+    if not image.is_floating_point() and not image.is_complex():
+        image = image.to(torch.float32)
+    if not target.is_floating_point() and not target.is_complex():
+        target = target.to(torch.float32)
+    # Give mse_loss one dtype: on two dtypes it aborts the process on MPS, and its backward raises on torch 2.5.1.
+    dtype = torch.promote_types(image.dtype, target.dtype)
+    image, target = image.to(dtype), target.to(dtype)
 
     return 10.0 * torch.log10(max_val**2 / mse(image, target, reduction="mean"))

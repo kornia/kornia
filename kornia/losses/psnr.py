@@ -35,8 +35,6 @@ def psnr_loss(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torc
     Convention:
         - See the Convention block of :func:`~kornia.metrics.psnr`: the MSE is pooled over the batch, and identical
           inputs give ``-inf``.
-        - Known defect: integer images are not supported, as in :func:`~kornia.metrics.psnr`
-          (`#5536 <https://github.com/kornia/kornia/issues/5536>`_).
 
     Args:
         image: the input image with shape :math:`(*)`.

@@ -110,8 +110,11 @@ def dice_loss(
 
     target, target_mask = mask_ignore_pixels(target, ignore_index)
 
-    # create the labels one hot torch.Tensor
-    target_one_hot: torch.Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
+    # create the labels one hot torch.Tensor. A half-precision target is built in float32, the dtype of the sums below:
+    # the intersection gradient of a class absent from the target is 2 / (cardinality + eps) up to the averaging, past
+    # the float16 range once that class's probabilities underflow, and float16 inf times the zero target is NaN.
+    target_dtype = torch.float32 if pred.dtype in (torch.float16, torch.bfloat16) else pred.dtype
+    target_one_hot: torch.Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=target_dtype)
 
     # mask ignore pixels
     if target_mask is not None:

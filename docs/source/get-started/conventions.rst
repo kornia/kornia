@@ -762,8 +762,7 @@ What the families take:
 Where a function takes ``reduction``, the names are torch's: ``'none'``, ``'mean'`` and ``'sum'``. What is averaged or
 added and the default differ between families, so each Convention block states both; the table lists the defaults. A
 string outside a function's vocabulary raises, ``BaseError`` from the robust losses and
-:func:`~kornia.losses.total_variation` and ``NotImplementedError`` from the others, except in the divergences, which
-silently return the ``'sum'`` (`#5535 <https://github.com/kornia/kornia/issues/5535>`_).
+:func:`~kornia.losses.total_variation` and ``NotImplementedError`` from the others.
 
 .. list-table::
    :header-rows: 1
@@ -811,8 +810,7 @@ Porting from other libraries:
   ``'same'`` map instead.
 - :func:`~kornia.losses.ssim_loss` is the structural dissimilarity ``(1 - SSIM) / 2``, clamped to ``[0, 1]``. The
   ``1 - SSIM`` loss is twice that: ``1 - ssim(x, y, w).mean()`` equals ``2 * ssim_loss(x, y, w)`` wherever the clamp
-  does not act. :func:`~kornia.losses.ssim3d_loss` returns ``1 - SSIM`` instead, a known defect
-  (`#5533 <https://github.com/kornia/kornia/issues/5533>`_).
+  does not act. :func:`~kornia.losses.ssim3d_loss` uses the same clamped DSSIM formula for volumes.
 - :class:`~kornia.losses.MS_SSIMLoss` filters with one Gaussian per entry of ``sigmas`` at full resolution, the
   approximation of Zhao et al.; pytorch-msssim's ``ms_ssim`` and torchmetrics'
   ``multiscale_structural_similarity_index_measure`` downsample through a dyadic pyramid, so ``1 - ms_ssim(x, y)`` is

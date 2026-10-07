@@ -417,7 +417,8 @@ class TestSSIM3DLoss(BaseTester):
 
     @pytest.mark.parametrize("window_size", [5, 11])
     @pytest.mark.parametrize("reduction_type", ["mean", "sum", "none"])
-    @pytest.mark.parametrize("shape", [(1, 1, 2, 16, 16), (2, 4, 2, 15, 20)])
+    # The reflect padding of 'same' needs every spatial size to be larger than window_size // 2.
+    @pytest.mark.parametrize("shape", [(1, 1, 6, 16, 16), (2, 4, 6, 15, 20)])
     def test_ssim(self, device, dtype, shape, window_size, reduction_type):
         if device.type == "xla":
             pytest.skip("test highly unstable with tpu")
@@ -438,14 +439,44 @@ class TestSSIM3DLoss(BaseTester):
 
         actual = kornia.losses.ssim3d_loss(img1, img2, window_size, reduction=reduction_type)
 
+        # DSSIM = (1 - SSIM) / 2 of ones against zeros, the value ssim_loss gives in 2-D (#5533).
         if reduction_type == "mean":
-            expected = torch.tensor(0.9999, device=device, dtype=dtype)
+            expected = torch.tensor(0.49995, device=device, dtype=dtype)
         elif reduction_type == "sum":
-            expected = (torch.ones_like(img1, device=device, dtype=dtype) * 0.9999).sum()
+            expected = (torch.ones_like(img1, device=device, dtype=dtype) * 0.49995).sum()
         elif reduction_type == "none":
-            expected = torch.ones_like(img1, device=device, dtype=dtype) * 0.9999
+            expected = torch.ones_like(img1, device=device, dtype=dtype) * 0.49995
 
         self.assert_close(actual, expected)
+
+    def test_documented_dssim_form(self, device, dtype):
+        # The loss is clamp((1 - SSIM) / 2, 0, 1): anti-correlated volumes gave 1.97, outside [0, 1] (#5533).
+        generator = torch.Generator().manual_seed(0)
+        img1 = torch.rand(2, 1, 7, 9, 11, generator=generator).to(device=device, dtype=dtype)
+        img2 = 1.0 - img1
+        ssim_map = kornia.metrics.ssim3d(img1, img2, 5)
+        expected = ((1.0 - ssim_map) / 2).clamp(0, 1)
+        actual = kornia.losses.ssim3d_loss(img1, img2, 5, reduction="none")
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        assert actual.min() >= 0 and actual.max() <= 1
+        self.assert_close(kornia.losses.SSIM3DLoss(5)(img1, img2), expected.mean())
+
+    def test_clamps_roundoff_into_the_unit_range(self, device, dtype):
+        # The clamp is inert in exact arithmetic, where the SSIM map lies in [-1, 1]. Float32 volumes with a large
+        # constant offset make the moments cancel and push the map far outside [-1, 1] on both sides; the loss stays
+        # in [0, 1], as ssim_loss does (#5533).
+        if dtype != torch.float32:
+            pytest.skip("the clamp does not depend on the dtype; the offset fixture needs float32 roundoff")
+        generator = torch.Generator().manual_seed(0)
+        img1 = (1000.0 + 1e-2 * torch.rand(2, 2, 7, 23, 31, generator=generator, dtype=torch.float64)).to(device, dtype)
+        img2 = (1000.0 + 1e-2 * torch.rand(2, 2, 7, 23, 31, generator=generator, dtype=torch.float64)).to(device, dtype)
+        unclamped = (1.0 - kornia.metrics.ssim3d(img1, img2, 5)) / 2
+        assert (unclamped < 0).any()
+        assert (unclamped > 1).any()
+        loss = kornia.losses.ssim3d_loss(img1, img2, 5, reduction="none")
+        self.assert_close(loss, unclamped.clamp(0, 1))
+        assert loss.min() >= 0
+        assert loss.max() <= 1
 
     def test_module(self, device, dtype):
         img1 = torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)
@@ -467,7 +498,7 @@ class TestSSIM3DLoss(BaseTester):
         # TODO: review method since it needs `nondet_tol` in cuda sometimes.
         self.gradcheck(kornia.losses.ssim3d_loss, (img, img, 3), nondet_tol=1e-8)
 
-    @pytest.mark.parametrize("shape", [(1, 2, 3, 5, 5), (2, 4, 2, 5, 5)])
+    @pytest.mark.parametrize("shape", [(1, 2, 3, 5, 5), (2, 4, 3, 5, 5)])
     def test_cardinality(self, shape, device, dtype):
         img = torch.rand(shape, device=device, dtype=dtype)
 
@@ -483,7 +514,7 @@ class TestSSIM3DLoss(BaseTester):
 
 
 class TestConventionsSSIMLoss(BaseTester):
-    """Pins for the loss forms of :func:`ssim_loss`, :class:`MS_SSIMLoss` and :func:`ssim3d_loss` (wart #5533)."""
+    """Pins for the loss forms of :func:`ssim_loss`, :class:`MS_SSIMLoss` and :func:`ssim3d_loss` (#5533)."""
 
     @staticmethod
     def _pair(shape, device, dtype):
@@ -567,19 +598,20 @@ class TestConventionsSSIMLoss(BaseTester):
         self.assert_close(scaled, expected, rtol=tol, atol=tol)
         assert kornia.losses.MS_SSIMLoss().to(device, dtype)(256 * x, 256 * y) > 10 * expected
 
-    def test_wart_ssim3d_loss_is_one_minus_ssim_5533(self, device, dtype):
-        """ssim3d_loss is 1 - SSIM per voxel, not the documented (1 - SSIM) / 2 of ssim_loss, and unclamped (#5533)."""
-        # Sample 0 is a noisy copy, where no clamp acts; sample 1 is anti-correlated, where 1 - SSIM exceeds 1.
+    def test_convention_ssim3d_loss_is_clamped_half_dissimilarity_5533(self, device, dtype):
+        """ssim3d_loss is the clamped (1 - SSIM) / 2 per voxel (#5533)."""
+        # Sample 0 is a noisy copy, while sample 1 is anti-correlated and gives negative SSIM.
         x, y = self._pair((2, 1, 6, 7, 9), device, dtype)
         y[1] = 1.0 - x[1]
         ssim_map = kornia.metrics.ssim3d(x, y, 5)
         loss = kornia.losses.ssim3d_loss(x, y, 5, reduction="none")
-        self.assert_close(loss, 1.0 - ssim_map)
-        self.assert_close(kornia.losses.SSIM3DLoss(5)(x, y), (1.0 - ssim_map).mean())
+        expected = ((1.0 - ssim_map) / 2).clamp(0, 1)
+        self.assert_close(loss, expected)
+        self.assert_close(kornia.losses.SSIM3DLoss(5)(x, y), expected.mean())
 
-    def test_wart_ssim3d_loss_exceeds_one_5533(self, device, dtype):
-        """ssim3d_loss is not clamped to [0, 1], so anti-correlated volumes give a loss above 1 (#5533)."""
+    def test_convention_ssim3d_loss_is_bounded_5533(self, device, dtype):
+        """ssim3d_loss stays in [0, 1] for anti-correlated volumes (#5533)."""
         g = torch.Generator().manual_seed(0)
         x = torch.rand(1, 1, 6, 7, 9, generator=g).to(device, dtype)
         loss = kornia.losses.ssim3d_loss(x, 1.0 - x, 5)
-        assert loss > 1.0
+        assert 0.0 <= loss <= 1.0

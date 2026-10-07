@@ -33,6 +33,73 @@ class TestPsnr(BaseTester):
         actual = kornia.metrics.psnr(sample, 1.2 * sample, 2.0)
         self.assert_close(actual, expected)
 
+    @pytest.mark.parametrize("image_dtype", [torch.uint8, torch.int64, torch.bool])
+    def test_integer_images_match_the_float32_result(self, device, image_dtype):
+        # Integer images are computed in float32, as ssim computes them (#5536).
+        generator = torch.Generator().manual_seed(0)
+        image = (torch.rand(2, 3, 9, 13, generator=generator) * 255).to(device)
+        target = (torch.rand(2, 3, 9, 13, generator=generator) * 255).to(device)
+        if image_dtype == torch.bool:
+            # threshold: a plain cast to bool makes both images all True, and identical images give inf
+            image, target, max_val = image > 127, target > 127, 1.0
+        else:
+            image, target, max_val = image.to(image_dtype), target.to(image_dtype), 255.0
+        expected = kornia.metrics.psnr(image.float(), target.float(), max_val)
+        actual = kornia.metrics.psnr(image, target, max_val)
+        assert actual.dtype == torch.float32
+        assert torch.isfinite(expected)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("partner_dtype", [torch.float16, torch.bfloat16, torch.float64])
+    def test_integer_image_with_a_floating_partner(self, device, partner_dtype):
+        # The integer image counts as float32 and the pair is computed in the promoted dtype, as in ssim, so a half
+        # partner gives float32, not the half dtype. Given two dtypes, mse_loss aborts the process on MPS and its
+        # backward raises on torch 2.5.1 (#5536).
+        if device.type == "mps" and partner_dtype == torch.float64:
+            pytest.skip("MPS has no float64")
+        generator = torch.Generator().manual_seed(0)
+        image = (torch.rand(2, 3, 9, 13, generator=generator) * 255).to(torch.uint8).to(device)
+        partner = (torch.rand(2, 3, 9, 13, generator=generator) * 255).round().to(device, partner_dtype)
+        compute_dtype = torch.promote_types(torch.float32, partner_dtype)
+        expected = kornia.metrics.psnr(image.to(compute_dtype), partner.to(compute_dtype), 255.0)
+        for actual in (kornia.metrics.psnr(image, partner, 255.0), kornia.metrics.psnr(partner, image, 255.0)):
+            assert actual.dtype == compute_dtype
+            self.assert_close(actual, expected, rtol=0, atol=0)
+        partner.requires_grad_()
+        kornia.metrics.psnr(image, partner, 255.0).backward()
+        assert partner.grad is not None
+        assert partner.grad.dtype == partner_dtype
+
+    @pytest.mark.parametrize(
+        "dtypes",
+        [
+            (torch.float16, torch.float32),
+            (torch.bfloat16, torch.float32),
+            (torch.float16, torch.bfloat16),
+            (torch.float32, torch.float64),
+        ],
+        ids=["f16-f32", "bf16-f32", "f16-bf16", "f32-f64"],
+    )
+    def test_two_floating_dtypes(self, device, dtypes):
+        # Two floating images of different dtypes are compared in their promoted dtype, in either order, and each
+        # gradient keeps its image's dtype. Given two dtypes, mse_loss aborts the process on MPS and its backward
+        # raises on torch 2.5.1 (#5536).
+        if device.type == "mps" and torch.float64 in dtypes:
+            pytest.skip("MPS has no float64")
+        generator = torch.Generator().manual_seed(0)
+        image = torch.rand(2, 3, 9, 13, generator=generator).to(device, dtypes[0])
+        target = torch.rand(2, 3, 9, 13, generator=generator).to(device, dtypes[1])
+        compute_dtype = torch.promote_types(*dtypes)
+        expected = kornia.metrics.psnr(image.to(compute_dtype), target.to(compute_dtype), 1.0)
+        for actual in (kornia.metrics.psnr(image, target, 1.0), kornia.metrics.psnr(target, image, 1.0)):
+            assert actual.dtype == compute_dtype
+            self.assert_close(actual, expected, rtol=0, atol=0)
+        image.requires_grad_()
+        target.requires_grad_()
+        kornia.metrics.psnr(image, target, 1.0).backward()
+        assert image.grad.dtype == dtypes[0]
+        assert target.grad.dtype == dtypes[1]
+
     def test_exception_shape_mismatch(self, device, dtype):
         a = torch.ones(4, device=device, dtype=dtype)
         b = torch.ones(8, device=device, dtype=dtype)
@@ -87,16 +154,13 @@ class TestConventionsPsnr(BaseTester):
         b[1, :, :, :3] = 0.75
         self.assert_close(kornia.metrics.psnr(b, a, 1.0), kornia.metrics.psnr(a, b, 1.0))
 
-    def test_wart_psnr_does_not_compute_integer_images_in_float32_5536(self, device, dtype):
-        """psnr does not compute integer images in float32, as ssim does: torch gets them unconverted (#5536)."""
-        # The uint8 differences of this pair wrap, so the unconverted pair either raises or misses the value of its
-        # float32 copy. The same values in a floating dtype give a finite value.
+    def test_convention_psnr_computes_integer_images_in_float32_5536(self, device, dtype):
+        """psnr computes integer images in float32, matching its float32 inputs (#5536)."""
+        # These uint8 differences wrap when left unconverted, so this pair detects either an error or a wrong result.
         a = torch.tensor([[0, 64, 128], [192, 255, 32]], dtype=torch.uint8).view(1, 1, 2, 3).to(device)
         b = torch.tensor([[16, 64, 100], [200, 250, 0]], dtype=torch.uint8).view(1, 1, 2, 3).to(device)
         expected = kornia.metrics.psnr(a.float(), b.float(), 255.0)
-        try:
-            actual = kornia.metrics.psnr(a, b, 255.0)
-        except (NotImplementedError, RuntimeError):
-            actual = None
-        assert actual is None or (actual.float() - expected).abs() > 0.1
+        actual = kornia.metrics.psnr(a, b, 255.0)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0.0, atol=0.0)
         assert torch.isfinite(kornia.metrics.psnr(a.to(dtype), b.to(dtype), 255.0))

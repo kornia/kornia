@@ -77,6 +77,15 @@ class TestPSNRLoss(BaseTester):
 
         self.assert_close(op(*args), op_module(pred, target))
 
+    def test_integer_images(self, device):
+        # psnr_loss and PSNRLoss inherit the float32 computation of integer images from psnr (#5536).
+        generator = torch.Generator().manual_seed(0)
+        pred = (torch.rand(2, 3, 3, 2, generator=generator) * 255).to(torch.uint8).to(device)
+        target = (torch.rand(2, 3, 3, 2, generator=generator) * 255).to(torch.uint8).to(device)
+        expected = kornia.losses.psnr_loss(pred.float(), target.float(), 255.0)
+        self.assert_close(kornia.losses.psnr_loss(pred, target, 255.0), expected, rtol=0, atol=0)
+        self.assert_close(kornia.losses.PSNRLoss(255.0)(pred, target), expected, rtol=0, atol=0)
+
     def test_gradcheck(self, device, dtype):
         dtype = torch.float64
         pred = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
