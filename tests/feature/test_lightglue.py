@@ -263,8 +263,10 @@ class TestTokenConfidence(BaseTester):
         d0 = torch.rand(1, 20, 32, device=device, dtype=dtype)
         d1 = torch.rand(1, 20, 32, device=device, dtype=dtype)
         s0, s1 = tc(d0, d1)
-        assert (s0 >= 0).all() and (s0 <= 1).all()
-        assert (s1 >= 0).all() and (s1 <= 1).all()
+        assert (s0 >= 0).all()
+        assert (s0 <= 1).all()
+        assert (s1 >= 0).all()
+        assert (s1 <= 1).all()
 
     def test_gradcheck(self, device):
         pass  # TokenConfidence uses detach() on inputs; not differentiable w.r.t. inputs

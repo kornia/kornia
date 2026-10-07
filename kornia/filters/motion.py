@@ -41,7 +41,7 @@ def _scalar_params_as_tensors(
         angle = torch.as_tensor(angle, device=direction.device, dtype=direction.dtype)
     # Two Python-number parameters build the kernel in the input's floating dtype, but never below float32: a float64
     # input keeps float64 precision, while a half-precision kernel would quantise the rotation and move the
-    # nearest-neighbour samples. That kernel is built on the CPU: MPS builds a different one at some angles (#5181).
+    # nearest-neighbour samples. That kernel is built on the CPU.
     # Tensor parameters keep their own device and dtype.
     dtype = torch.promote_types(input.dtype, torch.float32) if input.is_floating_point() else torch.get_default_dtype()
     if not isinstance(angle, torch.Tensor):

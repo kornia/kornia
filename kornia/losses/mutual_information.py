@@ -120,8 +120,12 @@ def _normalize_signal(data: torch.Tensor, num_bins: int, eps: float = 1e-8) -> t
     min_val, _ = data.min(dim=-1)
     max_val, _ = data.max(dim=-1)
     diff = (max_val - min_val).unsqueeze(-1)
-    # signal is considered trivial if too low variation
-    return torch.where(diff > eps, (data - min_val.unsqueeze(-1)) / diff * num_bins, 0)
+    # Map the range onto the bin centres 0 ... num_bins - 1, so that the maximum lands on the last centre and gets
+    # full histogram weight like every other sample. The signal is considered trivial if too low variation; its range
+    # is replaced by one inside the division, so that the discarded branch does not backpropagate 0 / 0.
+    nontrivial = diff > eps
+    safe_diff = torch.where(nontrivial, diff, torch.ones_like(diff))
+    return torch.where(nontrivial, (data - min_val.unsqueeze(-1)) / safe_diff * (num_bins - 1), 0)
 
 
 def _joint_histogram_to_entropies(joint_histogram: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
@@ -182,10 +186,10 @@ class EntropyBasedLossBase(torch.nn.Module):
         super().__init__()
         self._ref_mask_is_full = _mask_is_full(mask)
         mask = self.fix_mask(mask, reference_signal)
-        self.eps = torch.finfo(reference_signal.dtype).eps
+        eps = torch.finfo(reference_signal.dtype).eps
         self.initial_shape = reference_signal.shape
         signal = reference_signal[..., mask]
-        self.register_buffer("signal", _normalize_signal(signal, num_bins, self.eps))
+        self.register_buffer("signal", _normalize_signal(signal, num_bins, eps))
         self.register_buffer("mask", mask)
         self.num_bins = num_bins
         if kernel_function not in MIKernel:
@@ -194,7 +198,13 @@ class EntropyBasedLossBase(torch.nn.Module):
             )
         self.kernel_function = partial(kernel_function.value, window_radius=window_radius)
         self.window_radius = window_radius
-        self.bin_centers = torch.arange(self.num_bins, device=self.signal.device)
+        # A non-persistent buffer follows ``Module.to(device)`` and keeps the ``state_dict`` keys as they are.
+        self.register_buffer("bin_centers", torch.arange(self.num_bins, device=self.signal.device), persistent=False)
+
+    @property
+    def eps(self) -> float:
+        """Machine epsilon of the cached reference signal, so that it follows ``Module.to(dtype)``."""
+        return torch.finfo(self.signal.dtype).eps
 
     @staticmethod
     def fix_mask(mask: torch.Tensor, masked_guy: torch.Tensor) -> torch.Tensor:

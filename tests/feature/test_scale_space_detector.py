@@ -180,7 +180,8 @@ class TestScaleSpaceDetector(BaseTester):
             self.assert_close(a, e)
         # The subclass refines each sign of every octave in its own call. The built-in refiner
         # stacks both signs into one call, unless a candidate cap keeps it on the separate path.
-        assert len(separate_calls) > 0 and len(separate_calls) % 2 == 0
+        assert len(separate_calls) > 0
+        assert len(separate_calls) % 2 == 0
         assert len(joint_calls) == (len(separate_calls) if max_candidates is not None else len(separate_calls) // 2)
         actual_grad = torch.autograd.grad(sum(x.sum() for x in actual), img, retain_graph=True)[0]
         expected_grad = torch.autograd.grad(sum(x.sum() for x in expected), img)[0]
@@ -288,7 +289,8 @@ class TestScaleSpaceDetector(BaseTester):
         n_real = int((~zero_laf).sum())
         assert bool((~zero_laf[:n_real]).all()), "real detections must come first"
         lafs_fwd, resps_fwd = det(inp)
-        assert torch.equal(resps_fwd, resps) and torch.equal(lafs_fwd, lafs)
+        assert torch.equal(resps_fwd, resps)
+        assert torch.equal(lafs_fwd, lafs)
 
     def test_negative_detections_sort_before_the_padding(self, device, dtype):
         # A signed response function can have every maximum below zero. The padding must still
@@ -319,7 +321,8 @@ class TestScaleSpaceDetector(BaseTester):
         filled = lafs[0].ne(0).any(dim=-1).any(dim=-1)
         n_real = int(filled.sum())
         assert 0 < n_real < 50, f"expected a partially filled result, got {n_real}"
-        assert bool(filled[:n_real].all()) and not bool(filled[n_real:].any())
+        assert bool(filled[:n_real].all())
+        assert not bool(filled[n_real:].any())
         assert (resps[0, :n_real] < 0).all()
         assert (resps[0, n_real:] == 0).all()
 
@@ -357,7 +360,8 @@ class TestScaleSpaceDetector(BaseTester):
         self.assert_close(resps[0][~right], torch.tensor([-0.20, -0.40], device=device, dtype=dtype))
         self.assert_close(resps[0][right], torch.tensor([-0.50, -0.60], device=device, dtype=dtype))
         assert resps[0].tolist() == sorted(resps[0].tolist(), reverse=True)
-        assert xs[0] < 48 and xs[1] < 48, f"a down-weighted candidate outranked a full-weight one: {xs.tolist()}"
+        assert xs[0] < 48, f"a down-weighted candidate outranked a full-weight one: {xs.tolist()}"
+        assert xs[1] < 48, f"a down-weighted candidate outranked a full-weight one: {xs.tolist()}"
 
     def test_a_weighted_negative_response_never_sorts_below_the_padding(self, device, dtype):
         # A weight *divides* a negative score, and a small weight can push the quotient past the
@@ -409,7 +413,8 @@ class TestScaleSpaceDetector(BaseTester):
         filled1 = lafs1.ne(0).any(dim=-1).any(dim=-1)
         filled2 = lafs2.ne(0).any(dim=-1).any(dim=-1)
         assert int(filled1.sum()) == 4, f"single-image path lost a detection: {resps1.tolist()}"
-        assert int(filled2[0].sum()) == 4 and int(filled2[1].sum()) == 4, f"batched path lost one: {resps2.tolist()}"
+        assert int(filled2[0].sum()) == 4, f"batched path lost one: {resps2.tolist()}"
+        assert int(filled2[1].sum()) == 4, f"batched path lost one: {resps2.tolist()}"
         assert torch.isfinite(resps2).all()
         self.assert_close(resps2[0], resps1[0])
 
@@ -431,7 +436,8 @@ class TestScaleSpaceDetector(BaseTester):
         mask = torch.zeros(1, 1, 96, 96, device=device, dtype=torch.bool)
         mask[..., 32:] = True
         lafs, resps = det(img, mask)
-        assert bool((lafs == 0).all()) and bool((resps == 0).all()), (
+        assert bool((lafs == 0).all()), f"a refined centre at {lafs[0, 0, :, 2].tolist()} lies in the masked-out region"
+        assert bool((resps == 0).all()), (
             f"a refined centre at {lafs[0, 0, :, 2].tolist()} lies in the masked-out region"
         )
         # Control: the same peak is returned, refined, when the mask allows the pixels it touches.
@@ -477,7 +483,8 @@ class TestScaleSpaceDetector(BaseTester):
         det = ScaleSpaceDetector(50).to(device, dtype)
         lafs_b, resps_b = det(inp, torch.ones(1, 1, 64, 64, device=device, dtype=torch.bool))
         lafs_f, resps_f = det(inp, torch.full((1, 1, 64, 64), 255.0, device=device, dtype=dtype))
-        assert torch.equal(resps_f, resps_b) and torch.equal(lafs_f, lafs_b)
+        assert torch.equal(resps_f, resps_b)
+        assert torch.equal(lafs_f, lafs_b)
 
     def test_a_zero_response_maximum_keeps_its_laf(self, device, dtype):
         # The response function is pluggable and may be signed, so an exact zero can be a genuine
@@ -567,8 +574,10 @@ class TestScaleSpaceDetector(BaseTester):
         valid = lafs.ne(0).any(dim=-1).any(dim=-1)
         centers = lafs[..., 2][valid]
         assert bool(valid.any())
-        assert (centers[:, 0] >= 0).all() and (centers[:, 0] <= 95).all()
-        assert (centers[:, 1] >= 0).all() and (centers[:, 1] <= 95).all()
+        assert (centers[:, 0] >= 0).all()
+        assert (centers[:, 0] <= 95).all()
+        assert (centers[:, 1] >= 0).all()
+        assert (centers[:, 1] <= 95).all()
 
     def test_multichannel_response_is_rejected(self, device, dtype):
         inp = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
@@ -732,8 +741,10 @@ class TestMultiResolutionDetector(BaseTester):
         lafs, _ = det(inp)
         cx = lafs[0, :, 0, 2]
         cy = lafs[0, :, 1, 2]
-        assert (cx >= 0).all() and (cx <= 64).all()
-        assert (cy >= 0).all() and (cy <= 64).all()
+        assert (cx >= 0).all()
+        assert (cx <= 64).all()
+        assert (cy >= 0).all()
+        assert (cy <= 64).all()
 
     def test_no_upscale_levels(self, device, dtype):
         # up_levels=0 disables the upsampling branch; should still produce valid output.
@@ -859,7 +870,8 @@ class TestMultiResolutionDetector(BaseTester):
         det = self._make_detector().to(device, dtype)
         lafs_b, resps_b = det(inp, torch.ones(1, 1, 64, 64, device=device, dtype=torch.bool))
         lafs_f, resps_f = det(inp, torch.full((1, 1, 64, 64), 255.0, device=device, dtype=dtype))
-        assert torch.equal(resps_f, resps_b) and torch.equal(lafs_f, lafs_b)
+        assert torch.equal(resps_f, resps_b)
+        assert torch.equal(lafs_f, lafs_b)
 
     def test_float_mask_weights_the_score_and_keeps_the_candidates(self, device, dtype):
         # A graded mask used to be multiplied into the response before the NMS and the sub-pixel
@@ -881,7 +893,8 @@ class TestMultiResolutionDetector(BaseTester):
 
         self.assert_close(order(lafs[0][keep]), order(lafs_plain[0][keep_plain]))
         ratio = resps[0][keep] / resps_plain[0][keep]
-        assert float(ratio.min()) >= 0.2 - 1e-2 and float(ratio.max()) <= 1.0 + 1e-2
+        assert float(ratio.min()) >= 0.2 - 1e-2
+        assert float(ratio.max()) <= 1.0 + 1e-2
         assert not torch.allclose(resps[0][keep], resps_plain[0][keep_plain])
 
     def test_response_map_must_match_the_level_size(self, device, dtype):
@@ -1011,8 +1024,10 @@ class TestMultiResolutionDetector(BaseTester):
         assert bool(found.any())
         cx = lafs[0, :, 0, 2]
         cy = lafs[0, :, 1, 2]
-        assert (cx >= 0).all() and (cx <= 63).all()
-        assert (cy >= 0).all() and (cy <= 63).all()
+        assert (cx >= 0).all()
+        assert (cx <= 63).all()
+        assert (cy >= 0).all()
+        assert (cy <= 63).all()
 
     def test_multichannel_response_is_rejected(self, device, dtype):
         inp = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
@@ -1181,7 +1196,8 @@ class TestMultiResolutionDetector(BaseTester):
         ref = self._make_detector(num_features=10).to(device, dtype)
         lafs, resps = det(inp)
         lafs_ref, resps_ref = ref(inp)
-        assert torch.equal(lafs, lafs_ref) and torch.equal(resps, resps_ref)
+        assert torch.equal(lafs, lafs_ref)
+        assert torch.equal(resps, resps_ref)
         with pytest.raises(TypeError):
             det(inp, torch.ones(1, 1, 64, 64, device=device, dtype=dtype))
 

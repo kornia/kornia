@@ -232,9 +232,40 @@ class TestRandomCropAnnotations(BaseTester):
         for actual, target in zip(output, expected):
             self.assert_close(actual, target)
         # Equal spatial sizes let the image path select rows. A mixed gate on a shape-changing crop raises
-        # (test_mixed_gate_with_shape_change_raises_4497); the mixed inverse is not asserted here.
+        # (test_mixed_gate_with_shape_change_raises_4497); the mixed inverse is in test_same_size_mixed_inverse_5512.
         for actual, target in zip(output, inputs):
             self.assert_close(actual[1], target[1], rtol=0, atol=0)
+
+    def test_same_size_mixed_inverse_5512(self, device, dtype):
+        # The inverse of an equal-size padded crop returns the unpadded input size, so, like forward (#4473),
+        # it selects rows: the applied rows are inverted and unpadded, the skipped rows are left alone.
+        inputs = self.inputs(2, device, dtype)
+        seq = K.AugmentationSequential(
+            K.RandomCrop((6, 10), padding=(1, 2, 3, 0), p=0.5, cropping_mode="resample", resample="nearest"),
+            data_keys=["input", "mask", "keypoints", "bbox_xyxy"],
+        )
+        mixed = self.fixed_params(seq, inputs[0].shape, [0.0, 1.0])
+        output = seq(*inputs, params=deepcopy(mixed))
+        forward_output = [value.clone() for value in output]
+        restored = seq.inverse(*output, params=deepcopy(mixed))
+        # The inverse writes the applied rows into a copy, not into the forward output it was given.
+        for actual, before in zip(output, forward_output):
+            self.assert_close(actual, before, rtol=0, atol=0)
+        whole = self.fixed_params(seq, inputs[0].shape, [1.0, 1.0])
+        reference = seq.inverse(*seq(*inputs, params=deepcopy(whole)), params=deepcopy(whole))
+        for actual, skipped, applied in zip(restored, inputs, reference):
+            assert actual.shape == skipped.shape
+            self.assert_close(actual[0], skipped[0], rtol=0, atol=0)
+            self.assert_close(actual[1], applied[1], rtol=0, atol=0)
+
+        # A padded crop that changes the size still rejects a mixed gate, naming the shapes the caller sees.
+        aug = K.RandomCrop((4, 8), padding=(1, 2, 3, 0), p=0.5, cropping_mode="resample")
+        params = aug.forward_parameters(inputs[0].shape)
+        params["batch_prob"] = torch.tensor([0.0, 1.0])
+        with pytest.raises(ValueError, match=r"from \(1, 6, 10\) to \(1, 4, 8\)"):
+            aug(inputs[0], params=deepcopy(params))
+        with pytest.raises(ValueError, match=r"from \(1, 4, 8\) to \(1, 6, 10\)"):
+            aug.inverse(torch.zeros(2, 1, 4, 8, device=device, dtype=dtype), params=deepcopy(params))
 
     @pytest.mark.parametrize(
         "make_aug",

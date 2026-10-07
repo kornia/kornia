@@ -811,5 +811,7 @@ class TestCDist(BaseTester):
         assert dists[1, 2] == 0.0
         loss = dists.sum()
         loss.backward()
-        assert d1.grad is not None and torch.isfinite(d1.grad).all()
-        assert d2.grad is not None and torch.isfinite(d2.grad).all()
+        assert d1.grad is not None
+        assert torch.isfinite(d1.grad).all()
+        assert d2.grad is not None
+        assert torch.isfinite(d2.grad).all()
