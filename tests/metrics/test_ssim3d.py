@@ -180,6 +180,16 @@ class TestSSIM3d(BaseTester):
             kornia.metrics.ssim3d(img, img_b, 3)
         assert "img1 and img2 shapes must be the same. Got:" in str(errinfo)
 
+    def test_exception_complex_volumes(self, device):
+        # The window is built in the input dtype, so a complex volume raises as in ssim, in every pairing; ssim3d used
+        # to return a complex map (#5534). torch raises NotImplementedError, a RuntimeError subclass, and a plain
+        # RuntimeError on 2.5.1.
+        real = torch.rand(1, 1, 6, 8, 8, device=device)
+        complex_ = real.to(torch.complex64)
+        for img1, img2 in ((real, complex_), (complex_, real), (complex_, complex_)):
+            with pytest.raises(RuntimeError, match="not implemented for 'ComplexFloat'"):
+                kornia.metrics.ssim3d(img1, img2, 3)
+
     def test_unit(self, device, dtype):
         img_a = torch.tensor(
             [
