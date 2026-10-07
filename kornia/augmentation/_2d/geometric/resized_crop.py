@@ -78,8 +78,9 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         follows its ``transform_matrix``, and at ``align_corners=False`` the two modes give different images: slice
         mode resizes the crop on the half-pixel grid, ``x' = (x - x0 + 0.5) * W_out / W_crop - 0.5`` for a crop
         starting at column ``x0`` (likewise for ``y``), while resample mode maps the crop's corner pixel centres
-        onto the output's. Only resample mode supports :meth:`inverse`, which resamples onto the original canvas
-        and cannot recover discarded information.
+        onto the output's. Nearest sampling in slice mode uses the half-pixel grid and PyTorch's
+        ``nearest-exact`` interpolation. Only resample mode supports
+        :meth:`inverse`, which resamples onto the original canvas and cannot recover discarded information.
 
     Note:
         Compiled slice-mode interpolation matches eager execution to floating-point tolerance,
@@ -142,10 +143,9 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        if (
-            flags["cropping_mode"] == "slice"
-            and not flags["align_corners"]
-            and flags["resample"] in (Resample.BILINEAR, Resample.BICUBIC)
+        if flags["cropping_mode"] == "slice" and (
+            flags["resample"] == Resample.NEAREST
+            or (not flags["align_corners"] and flags["resample"] in (Resample.BILINEAR, Resample.BICUBIC))
         ):
             return _half_pixel_resize_transform(params["src"].to(input), params["dst"].to(input)).expand(
                 input.shape[0], -1, -1
@@ -175,9 +175,9 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
                 align_corners=flags["align_corners"],
             )
         if flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
-            mode = flags["resample"].name.lower()
+            mode = "nearest-exact" if flags["resample"] == Resample.NEAREST else flags["resample"].name.lower()
             # ``interpolate`` rejects ``align_corners`` for nearest resampling.
-            align_corners = None if mode == "nearest" else flags["align_corners"]
+            align_corners = None if mode in ("nearest", "nearest-exact") else flags["align_corners"]
             if is_compiling():
                 return _compiled_slice_resize(input, params["src"], flags["size"], mode, align_corners)
             return crop_by_indices(
