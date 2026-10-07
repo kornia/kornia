@@ -22,6 +22,8 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+
 
 def _kl_div_2d(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
     # D_KL(P || Q)
@@ -43,7 +45,18 @@ def _js_div_2d(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
 def _reduce_loss(losses: torch.Tensor, reduction: str) -> torch.Tensor:
     if reduction == "none":
         return losses
-    return torch.mean(losses) if reduction == "mean" else torch.sum(losses)
+    if reduction == "mean":
+        return torch.mean(losses)
+    if reduction == "sum":
+        return torch.sum(losses)
+    raise NotImplementedError(f"Invalid reduction mode: {reduction}")
+
+
+def _check_heatmaps(pred: torch.Tensor, target: torch.Tensor) -> None:
+    KORNIA_CHECK_SHAPE(pred, ["B", "N", "H", "W"])
+    KORNIA_CHECK(
+        pred.shape == target.shape, f"pred and target shapes must be the same. Got: {pred.shape} and {target.shape}"
+    )
 
 
 def js_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> torch.Tensor:
@@ -65,6 +78,7 @@ def js_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "m
         0.0
 
     """
+    _check_heatmaps(pred, target)
     return _reduce_loss(_js_div_2d(target, pred), reduction)
 
 
@@ -87,4 +101,5 @@ def kl_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "m
         0.0
 
     """
+    _check_heatmaps(pred, target)
     return _reduce_loss(_kl_div_2d(target, pred), reduction)
