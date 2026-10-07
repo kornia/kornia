@@ -779,6 +779,29 @@ class TestConventionAugmentationBase2D(BaseTester):
             with pytest.raises(NotImplementedError):
                 handler(data, aug._params, aug.flags, transform=aug.transform_matrix)
 
+    def test_convention_geometric_bhw_mask_compiles_fullgraph_5598(self, device, dtype):
+        augmentation = K.RandomHorizontalFlip(p=1.0)
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        mask = torch.rand(2, 8, 8, device=device, dtype=dtype)
+
+        augmentation(image)
+        expected = augmentation.transform_masks(
+            mask, augmentation._params, augmentation.flags, transform=augmentation.transform_matrix
+        )
+
+        torch._dynamo.reset()
+        compiled = torch.compile(
+            lambda x: augmentation.transform_masks(
+                x, augmentation._params, augmentation.flags, transform=augmentation.transform_matrix
+            ),
+            fullgraph=True,
+        )
+
+        actual = compiled(mask)
+
+        assert actual.shape == (2, 1, 8, 8)
+        self.assert_close(actual, expected)
+
     def test_convention_direct_geometric_mask_handler_rejects_bool(self, device, dtype):
         # The container casts bool masks around geometric dispatch. Calling the geometric handler directly
         # instead takes the image dtype guard, so float masks work while bool masks raise TypeError.
