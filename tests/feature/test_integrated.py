@@ -309,7 +309,8 @@ class TestSIFTFeatureHalfPrecision(BaseTester):
         img = torch.rand(1, 1, 64, 64, device=device, dtype=torch.float16)
         with torch.no_grad():
             lafs, _, descs = SIFTFeature(50).to(device, torch.float16)(img)
-        assert lafs.dtype == torch.float16 and descs.dtype == torch.float16
+        assert lafs.dtype == torch.float16
+        assert descs.dtype == torch.float16
         assert int(lafs[0].ne(0).any(dim=-1).any(dim=-1).sum()) > 0
         assert torch.isfinite(lafs).all()
         assert torch.isfinite(descs).all()
@@ -601,7 +602,8 @@ class TestSIFTDescriptorLayoutArgument(BaseTester):
         image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
         default = preset(num_features=8, descriptor_backend=backend).to(device, dtype).eval()
         opencv = preset(num_features=8, descriptor_backend=backend, descriptor_layout="opencv").to(device, dtype).eval()
-        assert default.descriptor_layout == "kornia" and opencv.descriptor_layout == "opencv"
+        assert default.descriptor_layout == "kornia"
+        assert opencv.descriptor_layout == "opencv"
         lafs, responses, descriptors = default(image)
         opencv_lafs, opencv_responses, opencv_descriptors = opencv(image)
         self.assert_close(opencv_lafs, lafs)

@@ -46,9 +46,12 @@ def normalize_keypoints(kpts: torch.Tensor, size: torch.Tensor) -> torch.Tensor:
     # backend (CUDA, NPU, XPU, MPS) and on CPU-only builds where
     # ``torch.accelerator.current_accelerator()`` would be ``None``.
     device_type = kpts.device.type
-    if kpts.is_floating_point() and kpts.dtype in (torch.float16, torch.bfloat16):
-        if torch.is_autocast_enabled(device_type):
-            kpts = kpts.to(torch.float32)
+    if (
+        kpts.is_floating_point()
+        and kpts.dtype in (torch.float16, torch.bfloat16)
+        and torch.is_autocast_enabled(device_type)
+    ):
+        kpts = kpts.to(torch.float32)
     shift = size.float().to(kpts) / 2
     scale = size.max(1).values.float().to(kpts) / 2
     return (kpts - shift[:, None]) / scale[:, None, None]

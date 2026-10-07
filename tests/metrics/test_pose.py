@@ -73,6 +73,32 @@ class TestAngleErrorMat(BaseTester):
         with pytest.raises(Exception):
             kornia.metrics.angle_error_mat(R1, R2)
 
+    def test_small_and_near_half_turn_angles(self, device, dtype):
+        # Built in float64 and cast, so the angle is exact up to the cast. The skew part resolves these;
+        # acos((tr - 1) / 2) returns exactly 0 and 180 for all four.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("a rotation this small rounds to the identity in half precision")
+        small = {torch.float32: 0.01, torch.float64: 1e-6}[dtype]
+        atol = {torch.float32: 1e-4, torch.float64: 1e-9}[dtype]
+        angles = torch.tensor([small, 180.0 - small], dtype=torch.float64)
+        # Unit length with all three components nonzero, so each entry of the skew part carries part of sin(theta).
+        axis = torch.tensor([[0.48, 0.6, 0.64]], dtype=torch.float64)
+        R1 = kornia.geometry.axis_angle_to_rotation_matrix(torch.tensor([[0.3, -0.5, 0.8]], dtype=torch.float64))
+        R2 = R1 @ kornia.geometry.axis_angle_to_rotation_matrix(torch.deg2rad(angles)[:, None] * axis)
+        R1 = R1.expand(2, 3, 3).to(device=device, dtype=dtype)
+        out = kornia.metrics.angle_error_mat(R1, R2.to(device=device, dtype=dtype))
+        self.assert_close(out, angles.to(device=device, dtype=dtype), rtol=0.0, atol=atol)
+
+    def test_gradient_is_zero_at_zero_and_half_turn(self, device, dtype):
+        # Both ends are kinks of the angle: norm returns the subgradient 0 at the zero skew part.
+        eye = torch.eye(3, device=device, dtype=dtype)
+        half_turn = torch.diag(torch.tensor([1.0, -1.0, -1.0], device=device, dtype=dtype))
+        R1 = torch.stack([eye, eye]).requires_grad_()
+        out = kornia.metrics.angle_error_mat(R1, torch.stack([eye, half_turn]))
+        self.assert_close(out, torch.tensor([0.0, 180.0], device=device, dtype=dtype))
+        out.sum().backward()
+        self.assert_close(R1.grad, torch.zeros_like(R1))
+
 
 class TestAngleErrorVec(BaseTester):
     def test_aligned_orthogonal_opposite(self, device, dtype):
@@ -95,6 +121,17 @@ class TestAngleErrorVec(BaseTester):
         zero = torch.zeros(3, device=device, dtype=dtype)
         unit = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
         assert torch.isnan(kornia.metrics.angle_error_vec(zero, unit))
+        assert torch.isnan(kornia.metrics.angle_error_vec(unit, zero))
+
+    def test_huge_and_tiny_vectors(self, device, dtype):
+        # The squared norm of these overflows (huge) or underflows (tiny) in the dtype; the angle is still 45 degrees.
+        finfo = torch.finfo(dtype)
+        # Negative entries, so the scale has to come from the magnitude of the largest entry.
+        a = torch.tensor([-1.0, 0.0, 0.0], device=device, dtype=dtype)
+        b = torch.tensor([-1.0, -1.0, 0.0], device=device, dtype=dtype)
+        expected = torch.tensor(45.0, device=device, dtype=dtype)
+        for scale in (4.0 * finfo.max**0.5, 0.25 * finfo.tiny**0.5):
+            self.assert_close(kornia.metrics.angle_error_vec(scale * a, scale * b), expected)
 
     def test_mismatched_batch_raises(self, device, dtype):
         # A batch of 1 against a batch of 5 used to broadcast instead of raising.
@@ -107,6 +144,32 @@ class TestAngleErrorVec(BaseTester):
         v1 = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=torch.float64)
         v2 = torch.tensor([0.0, 1.0, 0.0], device=device, dtype=torch.float64)
         self.gradcheck(kornia.metrics.angle_error_vec, (v1, v2), requires_grad=(True, False))
+
+    def test_small_and_near_half_turn_angles(self, device, dtype):
+        # Rotating v1 about an axis orthogonal to it opens exactly that angle between the two vectors. The
+        # cross product resolves these; acos(cos) returns exactly 0 and 180 for all four.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("two directions this close round to the same direction in half precision")
+        small = {torch.float32: 0.01, torch.float64: 1e-6}[dtype]
+        atol = {torch.float32: 1e-4, torch.float64: 1e-9}[dtype]
+        angles = torch.tensor([small, 180.0 - small], dtype=torch.float64)
+        axis = torch.tensor([[1.0, 0.0, 0.0]], dtype=torch.float64)
+        v1 = torch.tensor([[0.0, 0.6, 0.8]], dtype=torch.float64)
+        R = kornia.geometry.axis_angle_to_rotation_matrix(torch.deg2rad(angles)[:, None] * axis)
+        v2 = 3.0 * (R @ v1[..., None])[..., 0]
+        out = kornia.metrics.angle_error_vec(
+            v1.expand(2, 3).to(device=device, dtype=dtype), v2.to(device=device, dtype=dtype)
+        )
+        self.assert_close(out, angles.to(device=device, dtype=dtype), rtol=0.0, atol=atol)
+
+    def test_gradient_is_zero_at_zero_and_half_turn(self, device, dtype):
+        # Both ends are kinks of the angle: norm returns the subgradient 0 at the zero cross product.
+        x = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
+        v1 = torch.stack([x, x]).requires_grad_()
+        out = kornia.metrics.angle_error_vec(v1, torch.stack([x, -x]))
+        self.assert_close(out, torch.tensor([0.0, 180.0], device=device, dtype=dtype))
+        out.sum().backward()
+        self.assert_close(v1.grad, torch.zeros_like(v1))
 
 
 class TestTranslationAte(BaseTester):

@@ -88,7 +88,8 @@ class TestSIFTDescriptor(BaseTester):
         expected[0, 0], expected[1, 4] = descriptors[0, 0], descriptors[1, 4]
         # The float32 pi in the bin scale leaked every vote into the bin below (4.3e-8 after normalisation).
         self.assert_close(descriptors, expected, rtol=0.0, atol=1e-12)
-        assert (descriptors[0, 0] > 0.1).all() and (descriptors[1, 4] > 0.1).all()
+        assert (descriptors[0, 0] > 0.1).all()
+        assert (descriptors[1, 4] > 0.1).all()
 
     @pytest.mark.skip("Compiled functions can't take variable number")
     def test_jit(self, device, dtype):
@@ -205,7 +206,8 @@ class TestSIFTConstantPatchIsFinite(BaseTester):
         out = SIFTDescriptor(32, rootsift=rootsift).to(device, desc_dtype)(patches)
         out.sum().backward()
         assert torch.isfinite(out).all()
-        assert patches.grad is not None and torch.isfinite(patches.grad).all()
+        assert patches.grad is not None
+        assert torch.isfinite(patches.grad).all()
 
     @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16, torch.float32])
     @pytest.mark.parametrize("rootsift", [False, True])
@@ -222,7 +224,8 @@ class TestSIFTConstantPatchIsFinite(BaseTester):
         out = SIFTDescriptor(16, rootsift=rootsift).to(device, desc_dtype)(patches)
         out.sum().backward()
         assert torch.isfinite(out).all()
-        assert patches.grad is not None and torch.isfinite(patches.grad).all(), patches.grad.abs().max()
+        assert patches.grad is not None, patches.grad.abs().max()
+        assert torch.isfinite(patches.grad).all(), patches.grad.abs().max()
         assert bool((patches.grad == 0).all()), f"flat patch has a gradient of {patches.grad.abs().max().item()}"
 
     @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
@@ -233,7 +236,8 @@ class TestSIFTConstantPatchIsFinite(BaseTester):
             pytest.skip("MPS does not support float64")
         x = torch.zeros(3, 8, device=device, dtype=desc_dtype, requires_grad=True)
         _l2_normalize(x, dim=1).sum().backward()
-        assert x.grad is not None and bool((x.grad == 0).all()), x.grad
+        assert x.grad is not None, x.grad
+        assert bool((x.grad == 0).all()), x.grad
         # and a non-zero vector keeps `F.normalize`'s value and gradient
         torch.manual_seed(0)
         y = torch.rand(3, 8, device=device, dtype=desc_dtype, requires_grad=True)
@@ -433,7 +437,8 @@ class TestConvertSIFTDescriptorLayout(BaseTester):
         descriptors = torch.rand(2, 5, 128, device=device, dtype=dtype)
         converted = convert_sift_descriptor_layout(descriptors, "kornia", "opencv")
         assert converted.shape == descriptors.shape
-        assert converted.dtype == dtype and converted.device == descriptors.device
+        assert converted.dtype == dtype
+        assert converted.device == descriptors.device
 
     def test_index_mapping(self, device, dtype):
         # kornia stores (angle, row, column) and OpenCV (row, column, angle), with the angle bins counted the other
