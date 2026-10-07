@@ -178,7 +178,8 @@ class TestOrientationHalfPrecisionIsFinite(BaseTester):
         patches = torch.zeros(2, 1, 32, 32, device=device, dtype=ori_dtype, requires_grad=True)
         out = PatchDominantGradientOrientation(32).to(device, ori_dtype)(patches)
         out.sum().backward()
-        assert patches.grad is not None and torch.isfinite(patches.grad).all()
+        assert patches.grad is not None
+        assert torch.isfinite(patches.grad).all()
         assert bool((patches.grad == 0).all()), patches.grad.abs().max().item()
 
     @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
