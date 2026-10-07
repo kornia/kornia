@@ -2165,6 +2165,21 @@ class TestVideoBoxes(BaseTester):
         assert selected.temporal_channel_size == 2
         self.assert_close(selected.to_tensor(), boxes[videos], atol=0.0, rtol=0.0)
 
+    @pytest.mark.parametrize("kind", ["int", "negative", "scalar", "slice", "step", "long", "mask", "empty"])
+    def test_convention_index_assignment_writes_whole_videos_4249(self, kind, device, dtype):
+        # Convention pin: assignment takes the same key as indexing, so video_boxes[key] = other[key] copies
+        # whole videos and leaves the other videos untouched.
+        boxes = self._numbered_video_boxes(device, dtype)
+        key = self._video_key(kind, device)
+        videos = torch.arange(3, device=device)[key].reshape(-1)
+        target = VideoBoxes.from_tensor(torch.zeros_like(boxes))
+
+        target[key] = VideoBoxes.from_tensor(boxes)[key]
+
+        expected = torch.zeros_like(boxes)
+        expected[videos] = boxes[videos]
+        self.assert_close(target.to_tensor(), expected, atol=0.0, rtol=0.0)
+
     def test_convention_inherited_methods_split_copies_from_in_place_updates(self, device, dtype):
         # Convention pin: transform_boxes, translate, clamp, filter_boxes_by_area and merge copy through
         # clone, so they return a new VideoBoxes carrying the temporal size and leave the source

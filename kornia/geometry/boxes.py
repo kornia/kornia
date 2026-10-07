@@ -1053,7 +1053,8 @@ class VideoBoxes(Boxes):
         - :meth:`to_tensor` accepts every :class:`Boxes` mode and restores the temporal axis
           (``to_tensor('xyxy')`` is :math:`(B, T, N, 4)`).
         - Indexing selects the video batch axis while preserving the temporal axis. An integer index returns a
-          one-video :class:`VideoBoxes` so :meth:`to_tensor` keeps the shape :math:`(1, T, \ldots)`.
+          one-video :class:`VideoBoxes` so :meth:`to_tensor` keeps the shape :math:`(1, T, \ldots)`. Index
+          assignment, ``video_boxes[key] = other``, writes the same whole videos.
         - A transformation matrix is :math:`(B \cdot T, 3, 3)`; a :math:`(3, 3)` matrix raises ``ValueError``
           unless :math:`B \cdot T = 1`.
         - :meth:`transform_boxes`, :meth:`translate`, :meth:`clamp`, :meth:`filter_boxes_by_area` and
@@ -1121,6 +1122,12 @@ class VideoBoxes(Boxes):
         out._mode = self._mode
         out.temporal_channel_size = self.temporal_channel_size
         return out
+
+    def __setitem__(self, key: slice | int | torch.Tensor, value: Boxes) -> VideoBoxes:
+        r"""Write whole videos, selected by ``key`` on the video-batch axis as in :meth:`__getitem__`."""
+        size = self.temporal_channel_size
+        self._data.view(-1, size, *self._data.shape[1:])[key] = value.data.view(-1, size, *value.data.shape[1:])
+        return self
 
     def to_tensor(
         self, mode: Optional[str] = None, as_padded_sequence: bool = False
