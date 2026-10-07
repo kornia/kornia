@@ -520,9 +520,13 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         # conversion happens under ``torch.export``, where that attribute is deliberately left untouched. Masks
         # after an image use the most recent image, as before; a call with no image falls back to the attribute.
         working_dtype = self.input_dtype
+        image_batch: Optional[int] = None
         for arg, dcate in zip(args, data_keys):
             if DataKey.get(dcate) in _IMG_OPTIONS:
                 working_dtype = cast(torch.Tensor, arg).dtype
+                # Only a batched ``(B, C, H, W)`` image has a batch to broadcast a single mask over.
+                if isinstance(arg, torch.Tensor) and arg.ndim == 4:
+                    image_batch = arg.shape[0]
                 break
         inp: List[DataType] = []
         for arg, dcate in zip(args, data_keys):
@@ -544,7 +548,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                             self.mask_dtype = arg[0].dtype
                     else:
                         self.mask_dtype = cast(torch.Tensor, arg).dtype
-                inp.append(self._preproc_mask(arg, working_dtype))
+                inp.append(self._preproc_mask(arg, working_dtype, image_batch))
             elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
                 inp.append(self._preproc_keypoints(arg, dcate))
             elif DataKey.get(dcate) in _BOXES_OPTIONS:
@@ -700,8 +704,11 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         Arguments convert by data key, and only an image takes the image conversion. A mask given as a NumPy array,
         a PIL image or an image file path keeps its dtype and label values, palette indices included. Every mask
-        must match the image's height and width, with a batch size of 1 or the image's. Arguments converted from NumPy
-        go to the container's device when it has parameters or buffers, as the image does.
+        must match the image's height and width, with a batch size of 1 or the image's. A single tensor mask
+        (batch 1, or one ``(C, H, W)`` mask) is repeated to the image's batch, so every sample's own parameters
+        apply to its copy and the output mask has the image's batch size; a 3D mask whose leading size equals the
+        image batch is read as ``(B, H, W)``. Arguments converted from NumPy go to the container's device when it
+        has parameters or buffers, as the image does.
 
         Args:
             inputs: Inputs to operate on.
@@ -833,13 +840,38 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         return valid_data_keys, invalid_keys
 
-    def _preproc_mask(self, arg: MaskDataType, dtype: Optional[torch.dtype]) -> MaskDataType:
+    def _preproc_mask(
+        self, arg: MaskDataType, dtype: Optional[torch.dtype], image_batch: Optional[int] = None
+    ) -> MaskDataType:
         # ``dtype`` is the calling image's working dtype, resolved by ``_arguments_preproc``; ``float32`` when the
-        # call has no image and no earlier call recorded one.
+        # call has no image and no earlier call recorded one. ``image_batch`` is the batch size of a ``(B, C, H, W)``
+        # image in the call, ``None`` when there is none.
         working = dtype if dtype is not None else torch.float
         if isinstance(arg, list):
+            # A list keeps its per-entry gate semantics (see the class docstring); it is not broadcast.
             return [a.to(working) for a in arg]
-        return arg.to(working)
+        return self._broadcast_single_mask(arg.to(working), image_batch)
+
+    @staticmethod
+    def _broadcast_single_mask(mask: torch.Tensor, image_batch: Optional[int]) -> torch.Tensor:
+        """Repeat a single mask along the batch so that each image sample transforms its own copy.
+
+        A mask that stands for "this mask for every image" is accepted by ``_validate_args_datakeys`` next to an
+        image of batch ``B > 1``. Left unbroadcast it was transformed with the parameters of sample 0 only (flip,
+        crop) or failed inside the warp (affine, perspective, ...), so it no longer lined up with images ``1..B-1``.
+
+        The single-mask layouts are ``(1, C, H, W)``, ``(1, H, W)`` and ``(C, H, W)``. A 3D mask is read like
+        ``transform_tensor`` reads it: as ``(B, H, W)`` when its leading size is the image batch (so it is left
+        alone), otherwise as one ``(C, H, W)`` mask.
+        """
+        if image_batch is None or image_batch == 1 or mask.ndim not in (3, 4):
+            return mask
+        if mask.ndim == 3 and mask.shape[0] not in (1, image_batch):
+            mask = mask[None]  # one multi-channel (C, H, W) mask
+        elif mask.shape[0] != 1:
+            return mask  # already one mask per image
+        # ``contiguous`` materialises the copy: a stride-0 view would break in-place edits made by a child.
+        return mask.expand(image_batch, *mask.shape[1:]).contiguous()
 
     def _postproc_mask(self, arg: MaskDataType, like: MaskDataType) -> MaskDataType:
         # Each mask output goes back to the dtype of its own argument, per element for a list. A single shared

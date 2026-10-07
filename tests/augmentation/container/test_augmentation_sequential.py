@@ -186,13 +186,92 @@ class TestAugmentationSequential:
 
         assert torch.equal(out_mask, torch.from_numpy(labels).permute(2, 0, 1)[None])
 
-    def test_single_mask_with_a_batch_is_not_rejected(self):
+    def test_single_mask_with_a_batch_is_broadcast_not_rejected(self):
         image, mask = torch.zeros(2, 3, 8, 9), torch.rand(1, 1, 8, 9)
         aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
 
         _, out_mask = aug(image, mask)
 
-        assert torch.equal(out_mask, mask.flip(-1))
+        assert torch.equal(out_mask, mask.flip(-1).expand(2, -1, -1, -1))
+
+    @pytest.mark.parametrize("mask_shape", [(1, 1, 8, 8), (1, 8, 8), (3, 8, 8)])
+    @pytest.mark.parametrize(
+        "make_child",
+        [
+            lambda: K.RandomHorizontalFlip(p=1.0),
+            lambda: K.RandomHorizontalFlip(p=0.5),
+            lambda: K.RandomCrop((4, 4), p=1.0),
+            lambda: K.RandomAffine(30.0, p=1.0, resample="nearest"),
+        ],
+        ids=["flip", "flip_half", "crop", "affine"],
+    )
+    def test_single_mask_follows_each_samples_own_transform(self, make_child, mask_shape):
+        # Every image is a copy of the mask, so each output mask must equal its own augmented image. A mask that was
+        # transformed with sample 0's draw only (flip, crop) or that made the warp fail (affine) breaks this.
+        mask = torch.rand(*mask_shape)
+        image = mask.reshape(1, mask.shape[-3], 8, 8).expand(4, -1, -1, -1).clone()
+        for seed in range(5):
+            torch.manual_seed(seed)
+            aug = K.AugmentationSequential(make_child(), data_keys=["input", "mask"])
+
+            out_image, out_mask = aug(image, mask)
+
+            assert out_mask.shape == out_image.shape
+            assert_close(out_mask, out_image)
+
+    @pytest.mark.parametrize("mask_shape", [(1, 1, 8, 8), (1, 8, 8)])
+    def test_single_mask_equals_an_explicit_full_batch_mask(self, mask_shape):
+        image = torch.rand(3, 3, 8, 8)
+        mask = (torch.rand(*mask_shape) > 0.5).float()
+        outputs = []
+        for candidate in (mask, mask.expand(3, *mask.shape[1:]).clone()):
+            torch.manual_seed(7)
+            aug = K.AugmentationSequential(
+                K.RandomAffine(30.0, p=1.0), K.RandomHorizontalFlip(p=0.5), data_keys=["input", "mask"]
+            )
+            outputs.append(aug(image, candidate)[1])
+
+        assert outputs[0].shape == (3, 1, 8, 8)
+        assert_close(outputs[0], outputs[1])
+
+    @pytest.mark.parametrize("mask_shape", [(2, 1, 8, 8), (2, 8, 8)])
+    def test_full_batch_mask_is_not_repeated(self, mask_shape):
+        # A leading size equal to the image batch is one mask per image, in both the 3D and the 4D layout.
+        mask = torch.rand(*mask_shape)
+        image = mask.reshape(2, 1, 8, 8).expand(-1, 3, -1, -1).clone()
+        torch.manual_seed(0)
+        aug = K.AugmentationSequential(K.RandomCrop((4, 4), p=1.0), data_keys=["input", "mask"])
+
+        out_image, out_mask = aug(image, mask)
+
+        assert out_mask.shape == (2, 1, 4, 4)
+        assert_close(out_mask, out_image[:, :1])
+
+    def test_single_mask_broadcast_keeps_the_callers_mask_and_inverts(self):
+        image, mask = torch.rand(2, 3, 8, 8), torch.rand(1, 1, 8, 8)
+        original = mask.clone()
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+
+        out_image, out_mask = aug(image, mask)
+        _, inv_mask = aug.inverse(out_image, out_mask)
+
+        assert torch.equal(mask, original)
+        assert_close(inv_mask, original.expand(2, -1, -1, -1))
+
+    def test_single_mask_broadcast_through_a_dict_and_keepdim(self):
+        image, mask = torch.rand(2, 3, 8, 8), torch.rand(1, 8, 8)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None, keepdim=True)
+
+        out = aug({"image": image, "mask": mask})
+
+        assert out["mask"].shape == (2, 8, 8)
+
+    def test_single_mask_with_an_unbatched_image_stays_single(self):
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+
+        _, out_mask = aug(torch.rand(3, 8, 8), torch.rand(1, 1, 8, 8))
+
+        assert out_mask.shape == (1, 1, 8, 8)
 
     def test_call_time_data_keys_are_restored_after_forward_exception(self, device, dtype):
         image = torch.rand(1, 3, 16, 20, device=device, dtype=dtype)
