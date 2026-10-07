@@ -101,7 +101,7 @@ class MIKernel(Enum):
 def _validate_mask(mask: torch.Tensor | None, shape: torch.Size) -> None:
     if mask is not None:
         KORNIA_CHECK_IS_TENSOR(mask, "mask must be a boolean tensor or None.")
-        KORNIA_CHECK(mask.dtype == torch.bool, "mask must have boolean dtype (torch.bool).")
+        KORNIA_CHECK(mask.dtype in (torch.bool, torch.uint8), "mask must have boolean dtype (torch.bool or uint8).")
         KORNIA_CHECK(
             mask.shape == shape,
             f"mask must have one-sample shape {shape}, common to the batch. Got {mask.shape}.",
@@ -237,7 +237,7 @@ class EntropyBasedLossBase(torch.nn.Module):
         _validate_mask(mask, masked_guy.shape[-1:])
         if mask is None:
             return torch.ones(masked_guy.shape[-1], dtype=torch.bool, device=masked_guy.device)
-        return mask.to(masked_guy.device)
+        return mask.to(masked_guy.device, torch.bool)
 
     # TODO: optimize method below, maybe with ihdex coordinates conversion
     def trace_in_ref_mask(self, other_signal, other_mask):

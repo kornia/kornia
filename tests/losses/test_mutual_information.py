@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+import warnings
+
 import pytest
 import torch
 
@@ -386,7 +388,7 @@ class TestMutualInformationLoss(BaseTester):
     ],
 )
 class TestMutualInformationValidation(BaseTester):
-    @pytest.mark.parametrize("mask_dtype", [torch.int64, torch.uint8, torch.float32])
+    @pytest.mark.parametrize("mask_dtype", [torch.int64, torch.int8, torch.float32])
     def test_mask_dtype(self, device, dtype, loss_fn, module, shape, mask_dtype):
         signal = torch.arange(1, 1 + torch.Size(shape).numel(), device=device, dtype=dtype).reshape(shape)
         mask = (signal > 2).to(mask_dtype)
@@ -398,6 +400,20 @@ class TestMutualInformationValidation(BaseTester):
             module(signal, mask)
         with pytest.raises(BaseError, match=r"mask.*boolean"):
             module(signal)(signal, mask)
+
+    def test_uint8_mask_reads_as_boolean(self, device, dtype, loss_fn, module, shape):
+        # A uint8 0/1 mask selected the same samples as a boolean one before the dtype check (#5548): keep it,
+        # without torch's deprecation warning for uint8 indices.
+        signal = torch.linspace(0, 1, 2 * torch.Size(shape).numel(), device=device, dtype=dtype).reshape(2, *shape)
+        target = signal.flip(-1) ** 2
+        mask = torch.arange(torch.Size(shape).numel(), device=device).reshape(shape) % 3 != 1
+        expected = loss_fn(signal, target, mask, mask)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            actual = loss_fn(signal, target, mask.to(torch.uint8), mask.to(torch.uint8))
+            from_ref = module(target, mask.to(torch.uint8))(signal, mask.to(torch.uint8))
+        assert torch.equal(actual, expected)
+        assert torch.equal(from_ref, expected)
 
     @pytest.mark.parametrize("kind", ["transposed", "batched", "singleton", "scalar"])
     def test_mask_shape(self, device, dtype, loss_fn, module, shape, kind):
