@@ -198,15 +198,18 @@ class ParametrizedLine(nn.Module):
         Note:
             If the line is parallel to the plane (``|normal . direction| < eps``) there is no unique
             intersection; the function returns lambda ``0`` and the line origin as the point.
+            Within this fallback branch, lambda has zero derivatives and the point differentiates as the origin.
 
         """
         dot_prod = batched_dot_product(plane.normal.data, self.direction)
         dot_prod_mask = dot_prod.abs() >= eps
 
-        # TODO: add check for dot product
+        # torch.where differentiates both branches: dividing by zero in a parallel row gives NaN gradients
+        # even though its selected lambda is zero. Substitute a safe denominator before the division.
+        dot_prod_safe = torch.where(dot_prod_mask, dot_prod, torch.ones_like(dot_prod))
         res_lambda = torch.where(
             dot_prod_mask,
-            -(plane.offset.data + batched_dot_product(plane.normal.data, self.origin)) / dot_prod,
+            -(plane.offset.data + batched_dot_product(plane.normal.data, self.origin)) / dot_prod_safe,
             torch.zeros_like(dot_prod),
         )
 

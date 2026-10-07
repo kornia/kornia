@@ -247,3 +247,34 @@ class TestMutualInformationLoss(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(*args), op_optimized(*args), low_tolerance=True)
+
+    @pytest.mark.parametrize("module", [MILossFromRef, NMILossFromRef])
+    def test_to_dtype_matches_module_built_in_that_dtype(self, device, module):
+        """``.to(dtype)`` makes the module use that dtype's epsilon, like one built in that dtype (#5547)."""
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        generator = torch.Generator().manual_seed(0)
+        target = torch.rand(2, 12, 20, generator=generator).to(device)
+        pred = torch.rand(2, 12, 20, generator=generator).to(device)
+
+        moved = module(target).to(torch.float64)
+        built = module(target.double())
+
+        assert moved.eps == torch.finfo(torch.float64).eps
+        self.assert_close(moved(pred.double()), built(pred.double()))
+
+    @pytest.mark.parametrize("module", [MILossFromRef, NMILossFromRef])
+    def test_to_device_moves_bin_centers(self, device, module):
+        """``.to(device)`` moves ``bin_centers`` with the buffers and the ``state_dict`` keys stay the same (#5547)."""
+        target = torch.rand(2, 3, 3, 2)
+        pred = torch.rand(2, 3, 3, 2, device=device)
+
+        mod = module(target).to(device)
+
+        assert list(mod.state_dict().keys()) == ["signal", "mask"]
+        assert mod.bin_centers.device == mod.signal.device
+        self.assert_close(mod(pred), module(target.to(device))(pred))
+
+        # The meta device stands in for an accelerator on a CPU-only runner.
+        meta = module(target).to("meta")
+        assert meta.bin_centers.device.type == meta.signal.device.type == "meta"
