@@ -319,10 +319,7 @@ def zca_mean(
 
     cov = inp_center_flat.t().mm(inp_center_flat)
 
-    if unbiased:
-        cov = cov / float(N - 1)
-    else:
-        cov = cov / float(N)
+    cov = cov / float(N - 1 if unbiased else N)
 
     U, S, _ = _torch_svd_cast(cov)
 
