@@ -210,7 +210,8 @@ class TestAugmentationAudit(BaseTester):
         outputs, report = audit(aug, image, points)
         self.assert_close(outputs[1], points)
         assert report.geometry_status == "unsupported"
-        assert report.matrix is None and report.inverse_matrix is None
+        assert report.matrix is None
+        assert report.inverse_matrix is None
         assert report.spatial[0].roundtrip_valid_count.item() == 0
         assert torch.isnan(report.spatial[0].roundtrip_max).all()
         assert "non-rigid" in report.summary()
@@ -247,8 +248,11 @@ class TestAugmentationAudit(BaseTester):
         aug = K.AugmentationSequential(torch.nn.Identity(), data_keys=["input", "keypoints"])
         _, report = audit(aug, image, points)
         item = report.spatial[0]
-        assert item.count.item() == 4 and item.out_of_frame.item() == 1 and item.nonfinite.item() == 1
-        assert item.out_of_frame_fraction.item() == 0.25 and item.roundtrip_valid_count.item() == 3
+        assert item.count.item() == 4
+        assert item.out_of_frame.item() == 1
+        assert item.nonfinite.item() == 1
+        assert item.out_of_frame_fraction.item() == 0.25
+        assert item.roundtrip_valid_count.item() == 3
         json.loads(report.to_json())
 
     def test_snapshots_and_gradients(self, device, dtype):
@@ -320,7 +324,8 @@ class TestAugmentationAudit(BaseTester):
         image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
         output, report = audit(K.AugmentationSequential(), image)
         self.assert_close(output, image)
-        assert report.steps == [] and report.params == []
+        assert report.steps == []
+        assert report.params == []
         assert report.geometry_status == "available"
         self.assert_close(report.matrix, torch.eye(3, device=device, dtype=report.matrix.dtype).unsqueeze(0))
 
@@ -426,11 +431,13 @@ class TestAugmentationAudit(BaseTester):
         aug = K.AugmentationSequential(policy, data_keys=["input", "keypoints"])
         outputs, report = audit(aug, image, points)
         assert report.geometry_status == "unsupported"
-        assert report.matrix is None and report.inverse_matrix is None
+        assert report.matrix is None
+        assert report.inverse_matrix is None
         assert not report.invertible.any()
         assert report.spatial[0].roundtrip_valid_count.item() == 0
         assert report.steps == []
-        assert policy_name in report.summary() and "capture" in report.summary()
+        assert policy_name in report.summary()
+        assert "capture" in report.summary()
         replay = aug(image, points, params=report.params)
         for actual, expected in zip(outputs, replay):
             self.assert_close(actual, expected)
@@ -521,7 +528,8 @@ class TestAugmentationAudit(BaseTester):
         image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
         output, report = audit(aug, image, params=None if nested else [])
         self.assert_close(output, image)
-        assert report.steps == [] and report.geometry_status == "available"
+        assert report.steps == []
+        assert report.geometry_status == "available"
         assert not report.warnings
 
     @pytest.mark.parametrize("name", ["Resize", "LongestMaxSize"])
@@ -679,6 +687,7 @@ class TestAugmentationAudit(BaseTester):
         )
         assert report.steps[0].flags["cropping_mode"] == effective
         assert module.flags["cropping_mode"] == configured
-        assert outputs[0][0, 0, 2, 3].item() == 1 and outputs[0][1, 0, 2, 3].item() == 1
+        assert outputs[0][0, 0, 2, 3].item() == 1
+        assert outputs[0][1, 0, 2, 3].item() == 1
         assert report.geometry_status == "available"
         self.assert_close(report.matrix[:, :2, 2], report.matrix.new_tensor([[0, 1], [0, 1]]))

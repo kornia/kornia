@@ -19,6 +19,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
 
@@ -96,8 +97,23 @@ class TestMeanIoU(BaseTester):
 
     def test_exception_num_classes_too_small(self, device, dtype):
         pred = torch.zeros(1, 4, dtype=torch.long, device=device)
-        with pytest.raises(ValueError, match="bigger than two"):
+        with pytest.raises(ValueError, match="at least two"):
             kornia.metrics.mean_iou(pred, pred, num_classes=1)
+
+    def test_exception_out_of_range(self, device, dtype):
+        # A prediction of num_classes was counted in another cell and gave an IoU for it (#5549).
+        pred = torch.tensor([[0, 3]], device=device, dtype=torch.long)
+        target = torch.tensor([[0, 0]], device=device, dtype=torch.long)
+        with pytest.raises(BaseError, match=r"Input pred must contain values in \[0, 3\)"):
+            kornia.metrics.mean_iou(pred, target, num_classes=3)
+
+    def test_uint8_labels_match_int64(self, device, dtype):
+        # The confusion matrix index wrapped in uint8 from num_classes = 17, so a perfect uint8 prediction reported
+        # an IoU of about 5e-7 for two classes that do not occur (#5549).
+        labels = torch.tensor([[[20, 0, 5], [5, 20, 0]]], device=device, dtype=torch.uint8)
+        actual = kornia.metrics.mean_iou(labels, labels, num_classes=21)
+        self.assert_close(actual, kornia.metrics.mean_iou(labels.long(), labels.long(), num_classes=21), rtol=0, atol=0)
+        self.assert_close(actual, torch.ones(1, 21, device=device, dtype=torch.float32))
 
     def test_empty_batch(self, device, dtype):
         num_classes = 3

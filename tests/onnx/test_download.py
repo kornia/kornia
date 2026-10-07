@@ -195,7 +195,8 @@ class TestCachedDownloader:
             server.server_close()
             server_thread.join(5)
 
-        assert len(errors) == 1 and isinstance(errors[0], TimeoutError), errors
+        assert len(errors) == 1, errors
+        assert isinstance(errors[0], TimeoutError), errors
         assert not path.exists()
         assert not list(path.parent.glob("*.partial"))
 

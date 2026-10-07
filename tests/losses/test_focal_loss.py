@@ -330,6 +330,18 @@ class TestFocalLoss(BaseTester):
 
         self.assert_close(actual_values, expected_values)
 
+    def test_value_non_target_classes_are_zero(self, device, dtype):
+        # The target is an exact one-hot, so the per-class values of a pixel are 0 off its class.
+        num_classes = 3
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
+        labels = torch.randint(num_classes, (2, 3, 2), device=device)
+
+        values = kornia.losses.focal_loss(logits, labels, alpha=0.5, gamma=2.0, reduction="none")
+
+        off_class = F.one_hot(labels, num_classes).movedim(-1, 1) == 0
+        self.assert_close(values[off_class], torch.zeros_like(values[off_class]), rtol=0, atol=0)
+        assert (values[~off_class] > 0).all()
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         num_classes = 3
         logits = torch.rand(2, num_classes, device=device, dtype=dtype)

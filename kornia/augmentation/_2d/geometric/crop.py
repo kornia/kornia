@@ -23,6 +23,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.augmentation.base import _mixed_gate_shape_error
 from kornia.augmentation.utils.helpers import _constant_tensor, _pad_with_fill
 from kornia.constants import Resample
 from kornia.core.utils import is_compiling, is_exporting
@@ -392,12 +393,28 @@ class RandomCrop(GeometricAugmentationBase2D):
             # onto forward_input_shape (the padded canvas), then removes its border below.
             transform = transform.clone()
             transform[:, :2, 2] += params["padding_size"][:, ::2].to(transform)
-        out = super().inverse_inputs(input, params, flags, transform, **kwargs)
-        if not params["batch_prob"].all():
-            return out
+        to_apply = torch.atleast_1d(params["batch_prob"] > 0.5)
+        if not to_apply.any():
+            return super().inverse_inputs(input, params, flags, transform, **kwargs)
         padding_size = params["padding_size"].unique(dim=0).cpu().squeeze().tolist()
-        padding_size = [-padding_size[0], -padding_size[1], -padding_size[2], -padding_size[3]]
-        return self.precrop_padding(out, padding_size)
+        unpadding = [-padding_size[0], -padding_size[1], -padding_size[2], -padding_size[3]]
+        if to_apply.all():
+            out = super().inverse_inputs(input, params, flags, transform, **kwargs)
+            return self.precrop_padding(out, unpadding)
+        # A mixed gate: the applied rows come back at the unpadded input size, so invert and unpad them on
+        # their own, and judge the shape change the caller sees, not the padded canvas.
+        in_tensor = self.transform_tensor(input)
+        canvas = params["forward_input_shape"].tolist()
+        unpadded = (canvas[-2] - padding_size[2] - padding_size[3], canvas[-1] - padding_size[0] - padding_size[1])
+        if tuple(in_tensor.shape[-2:]) != unpadded:
+            raise _mixed_gate_shape_error(in_tensor.shape[1:], (*in_tensor.shape[1:-2], *unpadded), inverse=True)
+        applied_params = dict(params)
+        applied_params["batch_prob"] = params["batch_prob"][to_apply]
+        applied_transform = transform[to_apply] if isinstance(transform, torch.Tensor) else transform
+        out = super().inverse_inputs(in_tensor[to_apply], applied_params, flags, applied_transform, **kwargs)
+        output = in_tensor.clone()
+        output[to_apply] = self.precrop_padding(out, unpadding)
+        return output
 
     def inverse_boxes(
         self,

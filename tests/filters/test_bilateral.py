@@ -167,6 +167,30 @@ class TestBilateralBlur(BaseTester):
             single = {k: (v[row : row + 1] if isinstance(v, torch.Tensor) else v) for k, v in kwargs.items()}
             self.assert_close(actual[i : i + 1], bilateral_blur(image[i : i + 1], 3, **single))
 
+    @pytest.mark.parametrize("sigma_dtype", [torch.float16, torch.float64])
+    def test_tensor_sigma_space_keeps_the_input_dtype_5521(self, sigma_dtype, device, dtype):
+        # A tensor sigma_space of another dtype is cast to the input's, as a tensor sigma_color is, so it neither
+        # promotes the output nor changes the result of the equivalent float sigma_space. It is built on the CPU, which
+        # also has float64, so on another device it is moved to the input's device as well.
+        image = torch.rand(2, 3, 8, 9, device=device, dtype=dtype)
+        sigma_space = torch.tensor([[1.25, 1.5]], dtype=sigma_dtype)
+
+        actual = bilateral_blur(image, 3, 0.5, sigma_space)
+        assert actual.dtype == dtype
+        self.assert_close(actual, bilateral_blur(image, 3, 0.5, (1.25, 1.5)))
+        assert BilateralBlur(3, 0.5, sigma_space)(image).dtype == dtype
+
+    def test_integer_input_keeps_a_tensor_sigma_space_5521(self, device):
+        # Only a floating input casts sigma_space: a uint8 cast would truncate 1.5 to 1. With a huge sigma_color every
+        # colour weight is 1 whatever the uint8 differences do (#5155), so the filter is gaussian_blur2d's.
+        if device.type not in ("cpu", "mps"):
+            pytest.skip("uint8 reflect padding is pinned on the CPU and MPS only")
+        image = (torch.arange(63, device=device).view(1, 1, 7, 9) * 4).to(torch.uint8)
+        sigma_space = torch.tensor([[1.5, 1.5]], device=device)
+
+        actual = bilateral_blur(image, 3, 1e6, sigma_space)
+        self.assert_close(actual, gaussian_blur2d(image.float(), 3, sigma_space))
+
     @pytest.mark.parametrize("shape", [(), (2,), (1, 1)], ids=["0d", "1d", "one_column"])
     def test_sigma_space_shape_is_checked_before_its_batch_5430(self, shape, device, dtype):
         # The (B, 2) shape check runs before the batch check: a 0-d sigma_space has no batch to read, and a 1-D pair
@@ -496,6 +520,31 @@ class TestJointBilateralBlur(BaseTester):
         out = joint_bilateral_blur(img, guide, kernel_size, sigma_color, sigma_distance)
         self.assert_close(out, expected)
 
+    def test_wider_guidance_keeps_the_input_dtype_5521(self, device, dtype):
+        # A floating guidance is cast to the input's dtype, so a wider one does not promote the output.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        image = torch.rand(2, 3, 8, 9, device=device, dtype=dtype)
+        guidance = torch.rand(2, 1, 8, 9, device=device, dtype=torch.float64)
+
+        actual = joint_bilateral_blur(image, guidance, 3, 0.5, (1.5, 1.5))
+        assert actual.dtype == dtype
+        self.assert_close(actual, joint_bilateral_blur(image, guidance.to(dtype), 3, 0.5, (1.5, 1.5)))
+        assert JointBilateralBlur(3, 0.5, (1.5, 1.5))(image, guidance).dtype == dtype
+
+    def test_integer_input_keeps_a_floating_guidance_5521(self, device):
+        # Only a floating input casts guidance: a uint8 cast would truncate a [0, 1] guidance to zeros. The guidance is
+        # what gets differenced, so a uint8 input filters as its float copy does. A tuple sigma_space would build the
+        # spatial kernel in uint8 (#5155); a float tensor one keeps it in floating point.
+        if device.type not in ("cpu", "mps"):
+            pytest.skip("uint8 reflect padding is pinned on the CPU and MPS only")
+        image = (torch.arange(63, device=device).view(1, 1, 7, 9) * 4).to(torch.uint8)
+        guidance = torch.linspace(0, 1, 63, device=device).view(1, 1, 7, 9)
+        sigma_space = torch.tensor([[1.5, 1.5]], device=device)
+
+        actual = joint_bilateral_blur(image, guidance, 3, 0.1, sigma_space)
+        self.assert_close(actual, joint_bilateral_blur(image.float(), guidance, 3, 0.1, sigma_space))
+
 
 class TestConventionsBilateralBlur(BaseTester):
     """Pins for the colour and space parameters of :func:`bilateral_blur` and :func:`joint_bilateral_blur`."""
@@ -597,10 +646,8 @@ class TestConventionsBilateralBlur(BaseTester):
         # the same filter on the same values in floating point keeps the stripes
         self.assert_close(bilateral_blur(stripes.float(), 3, 50.0, (1.0, 1.0)), stripes.float(), rtol=0.0, atol=0.01)
 
-    def test_wart_bilateral_blur_wider_sigma_space_promotes_the_output_5521(self, device, dtype):
-        """A tensor sigma_space or guidance of a wider dtype promotes the output; sigma_color does not (#5521)."""
-        # sigma_space builds the spatial kernel in its own dtype, and the product with the colour kernel promotes.
-        # A fix that casts sigma_space to the input's dtype, as gaussian_blur2d casts sigma, fails this pin.
+    def test_convention_bilateral_blur_wider_sigma_space_keeps_the_input_dtype_5521(self, device, dtype):
+        """A tensor sigma_space or guidance of a wider dtype is cast to the input's, as sigma_color is (#5521)."""
         if device.type == "mps":
             pytest.skip("MPS has no float64")
         if dtype == torch.float64:
@@ -608,10 +655,9 @@ class TestConventionsBilateralBlur(BaseTester):
         self._skip_without_reflect_padding(device, dtype)
         image = torch.rand(1, 1, 7, 9, device=device).to(dtype)
         wide_space = torch.full((1, 2), 1.5, device=device, dtype=torch.float64)
-        assert bilateral_blur(image, 3, 0.1, wide_space).dtype == torch.float64
-        assert joint_bilateral_blur(image, image, 3, 0.1, wide_space).dtype == torch.float64
-        assert joint_bilateral_blur(image, image.double(), 3, 0.1, (1.5, 1.5)).dtype == torch.float64
-        # control: a wider sigma_color is cast to the input's dtype
+        assert bilateral_blur(image, 3, 0.1, wide_space).dtype == dtype
+        assert joint_bilateral_blur(image, image, 3, 0.1, wide_space).dtype == dtype
+        assert joint_bilateral_blur(image, image.double(), 3, 0.1, (1.5, 1.5)).dtype == dtype
         wide_color = torch.tensor([0.1], device=device, dtype=torch.float64)
         assert bilateral_blur(image, 3, wide_color, (1.5, 1.5)).dtype == dtype
 

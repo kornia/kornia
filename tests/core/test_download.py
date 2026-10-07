@@ -105,7 +105,8 @@ class TestHfCacheFileName:
 
     def test_the_result_is_one_path_component(self) -> None:
         name = _hf_cache_file_name("google/siglip2-base-patch16-224", "model.safetensors")
-        assert os.sep not in name and "/" not in name
+        assert os.sep not in name
+        assert "/" not in name
 
 
 class TestLoadStateDictFromUrl:
@@ -1407,7 +1408,8 @@ class TestDownloadFileFromUrl:
 
         message = str(excinfo.value)
         assert "Failed to download the file from all 2 source" in message
-        assert "HTTPError" in message and "404" in message
+        assert "HTTPError" in message
+        assert "404" in message
         assert os.path.join(str(tmp_path), "checkpoints", "m.safetensors") in message
         assert isinstance(excinfo.value.__cause__, HTTPError)
 
@@ -1914,10 +1916,12 @@ class TestTransferTimeout:
         assert isinstance(outcome, RuntimeError), f"expected the documented RuntimeError, got {outcome!r}"
         assert isinstance(outcome.__cause__, TimeoutError)
         message = str(outcome)
-        assert "TimeoutError" in message and f"{self._TIMEOUT:g} s" in message
+        assert "TimeoutError" in message
+        assert f"{self._TIMEOUT:g} s" in message
         assert str(cache / "w.pth") in message
         # Where the bound can be raised, including for callers such as pretrained constructors that take no timeout=.
-        assert "timeout=" in message and "KORNIA_DOWNLOAD_TIMEOUT" in message
+        assert "timeout=" in message
+        assert "KORNIA_DOWNLOAD_TIMEOUT" in message
         assert "_DOWNLOAD_TIMEOUT_SECONDS" not in message
         # A timeout is transient, so the retry logic got control on every attempt.
         assert len(stalled_server.connections) == download_mod._MAX_ATTEMPTS
@@ -2594,7 +2598,8 @@ class TestDownloadTimeoutEnvironment:
         finally:
             server.close()
 
-        assert isinstance(outcome, RuntimeError) and isinstance(outcome.__cause__, TimeoutError)
+        assert isinstance(outcome, RuntimeError)
+        assert isinstance(outcome.__cause__, TimeoutError)
         assert "0.25 s" in str(outcome)
 
     def test_an_explicit_timeout_does_not_read_the_variable(self, scripted_server, monkeypatch, tmp_path) -> None:
