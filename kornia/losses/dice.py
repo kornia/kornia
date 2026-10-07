@@ -138,6 +138,9 @@ def dice_loss(
     # set dimensions for the appropriate averaging
     dims: tuple[int, ...] = (2, 3)
 
+    # The weighted micro Dice is 2 sum(w p t) / sum(w (p + t)): the weight enters the intersection once, through the
+    # weighted scores, so the intersection pairs them with the unweighted target.
+    intersection_target = target_one_hot
     if average == "micro":
         dims = (1, *dims)
 
@@ -147,7 +150,7 @@ def dice_loss(
 
     # Half-precision pixel counts can overflow before the Dice ratio is formed.
     reduction_dtype = torch.float32 if pred_soft.dtype in (torch.float16, torch.bfloat16) else pred_soft.dtype
-    intersection = torch.sum(pred_soft * target_one_hot, dims, dtype=reduction_dtype)
+    intersection = torch.sum(pred_soft * intersection_target, dims, dtype=reduction_dtype)
     cardinality = torch.sum(pred_soft + target_one_hot, dims, dtype=reduction_dtype)
 
     dice_score = 2.0 * intersection / (cardinality + eps)

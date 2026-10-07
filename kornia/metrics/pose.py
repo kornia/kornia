@@ -38,11 +38,25 @@ from kornia.core.check import (
 )
 
 
+def _angle_deg(sin_theta: Tensor, cos_theta: Tensor) -> Tensor:
+    """Angle in degrees from a non-negative sine and a cosine, the same in eager, compiled and ONNX graphs."""
+    # -atan2(-sin, cos) is atan2(sin, cos). At sin = +0 and cos < 0 the ONNX export's atan2 returns -pi instead of
+    # pi; with -0 it returns -pi in both, which the negation turns into pi.
+    theta = torch.rad2deg(-torch.atan2(-sin_theta, cos_theta))
+    # The ONNX export's atan2 also maps NaN to 0, so a NaN input (a zero vector) would read as a perfect match.
+    nan = sin_theta + cos_theta
+    return torch.where(torch.isnan(nan), nan, theta)
+
+
 def angle_error_mat(R1: Tensor, R2: Tensor) -> Tensor:
     r"""Geodesic angle (in degrees) between two rotation matrices.
 
-    The relative rotation :math:`R_1^\top R_2` has trace :math:`1 + 2\cos\theta`, so the geodesic
-    angle is :math:`\theta = \arccos\!\big((\mathrm{tr}(R_1^\top R_2) - 1) / 2\big)`.
+    The relative rotation :math:`R = R_1^\top R_2` has trace :math:`1 + 2\cos\theta` and skew part
+    :math:`(R - R^\top) / 2 = \sin\theta\,[\mathbf{n}]_\times` for its unit axis :math:`\mathbf{n}`, so the
+    geodesic angle is :math:`\theta = \operatorname{atan2}(\sin\theta, \cos\theta)`. Reading
+    :math:`\sin\theta` from the skew part keeps the digits of small angles that
+    :math:`\arccos\!\big((\mathrm{tr}\,R - 1) / 2\big)` loses next to :math:`1`: in float32 the result
+    stays within about :math:`2 \cdot 10^{-5}` degrees of the exact angle over the whole range.
 
     Args:
         R1: a rotation matrix of shape :math:`(*, 3, 3)`.
@@ -52,10 +66,9 @@ def angle_error_mat(R1: Tensor, R2: Tensor) -> Tensor:
         the per-matrix angle in degrees, with shape :math:`(*,)`.
 
     .. note::
-        The gradient is infinite/NaN exactly at :math:`0^\circ` and :math:`180^\circ` (identical or
-        opposite rotations), because :math:`\frac{d}{dx}\arccos(x) \to \infty` at :math:`x = \pm 1`.
-        This is inherent to every geodesic/angular metric; it only bites if you backpropagate through
-        a perfect or exactly-opposite match.
+        The angle has a kink at exactly :math:`0^\circ` and :math:`180^\circ` (identical or opposite
+        rotations). The gradient there is the subgradient :math:`0` that ``norm`` returns at a zero
+        vector, so backpropagating through a perfect or exactly-opposite match stays finite.
 
     Example:
         >>> angle_error_mat(torch.eye(3), torch.eye(3))
@@ -69,14 +82,21 @@ def angle_error_mat(R1: Tensor, R2: Tensor) -> Tensor:
 
     relative = R1.transpose(-2, -1) @ R2
     trace = relative.diagonal(dim1=-2, dim2=-1).sum(-1)
-    cos_theta = ((trace - 1.0) / 2.0).clamp(-1.0, 1.0)
-    return torch.rad2deg(cos_theta.acos())
+    cos_theta = (trace - 1.0) / 2.0
+    # (R - R^T) / 2 = sin(theta) [n]_x, so its three independent entries have norm sin(theta).
+    skew = relative - relative.transpose(-2, -1)
+    sin_theta = 0.5 * torch.stack((skew[..., 2, 1], skew[..., 0, 2], skew[..., 1, 0]), dim=-1).norm(dim=-1)
+    return _angle_deg(sin_theta, cos_theta)
 
 
 def angle_error_vec(v1: Tensor, v2: Tensor) -> Tensor:
     r"""Angle (in degrees) between two vectors.
 
-    The angle is :math:`\theta = \arccos\!\big((v_1 \cdot v_2) / (\lVert v_1 \rVert \lVert v_2 \rVert)\big)`.
+    With the unit vectors :math:`\hat v_1` and :math:`\hat v_2`, the angle is
+    :math:`\theta = \operatorname{atan2}(\lVert \hat v_1 \times \hat v_2 \rVert, \hat v_1 \cdot \hat v_2)`.
+    Reading :math:`\sin\theta` from the cross product keeps the digits of small angles that
+    :math:`\arccos(\hat v_1 \cdot \hat v_2)` loses next to :math:`1`: in float32 the result stays within
+    about :math:`2 \cdot 10^{-5}` degrees of the exact angle over the whole range.
 
     Args:
         v1: a vector of shape :math:`(*, 3)`.
@@ -86,10 +106,9 @@ def angle_error_vec(v1: Tensor, v2: Tensor) -> Tensor:
         the per-vector angle in degrees, with shape :math:`(*,)`.
 
     .. note::
-        The gradient is infinite/NaN exactly at :math:`0^\circ` and :math:`180^\circ` (identical or
-        opposite vectors), because :math:`\frac{d}{dx}\arccos(x) \to \infty` at :math:`x = \pm 1`.
-        This is inherent to every geodesic/angular metric; it only bites if you backpropagate through
-        a perfect or exactly-opposite match.
+        The angle has a kink at exactly :math:`0^\circ` and :math:`180^\circ` (identical or opposite
+        vectors). The gradient there is the subgradient :math:`0` that ``norm`` returns at a zero
+        vector, so backpropagating through a perfect or exactly-opposite match stays finite.
 
     .. note::
         A zero-length vector gives ``NaN`` rather than raising, since the angle is undefined there.
@@ -106,10 +125,13 @@ def angle_error_vec(v1: Tensor, v2: Tensor) -> Tensor:
     KORNIA_CHECK_SHAPE(v2, ["*", "3"])
     KORNIA_CHECK_SAME_SHAPE(v1, v2)
 
-    dot = (v1 * v2).sum(-1)
-    norms = v1.norm(dim=-1) * v2.norm(dim=-1)
-    cos_theta = (dot / norms).clamp(-1.0, 1.0)
-    return torch.rad2deg(cos_theta.acos())
+    # atan2 does not depend on the length of either vector, so scaling each one by its largest entry is enough.
+    # Unlike a norm, that cannot overflow or underflow, and a zero vector still gives 0 / 0 = NaN.
+    v1 = v1 / v1.abs().amax(dim=-1, keepdim=True)
+    v2 = v2 / v2.abs().amax(dim=-1, keepdim=True)
+    sin_theta = torch.linalg.cross(v1, v2, dim=-1).norm(dim=-1)
+    cos_theta = (v1 * v2).sum(-1)
+    return _angle_deg(sin_theta, cos_theta)
 
 
 def translation_ate(t: Tensor, t_gt: Tensor) -> Tensor:
@@ -129,9 +151,7 @@ def translation_ate(t: Tensor, t_gt: Tensor) -> Tensor:
         treated as a single sample and returns shape :math:`(1,)`.
 
     .. note::
-        Unlike the :func:`angle_error_vec` / :func:`angle_error_mat` angular metrics, this has no
-        ``arccos`` singularity: the gradient stays finite even at zero distance, where ``norm``
-        returns the subgradient ``0``.
+        The gradient stays finite even at zero distance, where ``norm`` returns the subgradient ``0``.
 
     Example:
         >>> t = torch.tensor([0.0, 0.0, 0.0])

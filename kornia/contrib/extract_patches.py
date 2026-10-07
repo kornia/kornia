@@ -383,23 +383,22 @@ def combine_tensor_patches(
             f"Stride={stride} should be less than or equal to Window size={window_size}, information is missing"
         )
 
-    if not unpadding:
-        # if padding is specified, we leave it up to the user to ensure it fits
-        # otherwise we check here if it will fit and offer to calculate padding
-        if not _check_patch_fit(original_size, window_size, stride):
-            if not allow_auto_unpadding:
-                warn(
-                    f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\n"
-                    f"Image size: {original_size}\n"
-                    "This means we probably cannot correctly recombine patches. By enabling `allow_auto_unpadding`, "
-                    "the input will be unpadded to fit the window and stride.\n"
-                    "If the patches have been obtained through `extract_tensor_patches` with the correct padding or "
-                    "the argument `allow_auto_padding`, this will result in a correct reconstruction.",
-                    stacklevel=1,
-                )
-            else:
-                unpadding = compute_padding(original_size=original_size, window_size=window_size, stride=stride)
-                # TODO: Can't we just do actual size minus original size to get padding?
+    # if padding is specified, we leave it up to the user to ensure it fits
+    # otherwise we check here if it will fit and offer to calculate padding
+    if not unpadding and not _check_patch_fit(original_size, window_size, stride):
+        if not allow_auto_unpadding:
+            warn(
+                f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\n"
+                f"Image size: {original_size}\n"
+                "This means we probably cannot correctly recombine patches. By enabling `allow_auto_unpadding`, "
+                "the input will be unpadded to fit the window and stride.\n"
+                "If the patches have been obtained through `extract_tensor_patches` with the correct padding or "
+                "the argument `allow_auto_padding`, this will result in a correct reconstruction.",
+                stacklevel=1,
+            )
+        else:
+            unpadding = compute_padding(original_size=original_size, window_size=window_size, stride=stride)
+            # TODO: Can't we just do actual size minus original size to get padding?
 
     if unpadding:
         unpadding = create_padding_tuple(unpadding)
@@ -500,20 +499,19 @@ def extract_tensor_patches(
     stride = cast(Tuple[int, int], _pair(stride))
     original_size = (input.shape[-2], input.shape[-1])
 
-    if not padding:
-        # if padding is specified, we leave it up to the user to ensure it fits
-        # otherwise we check here if it will fit and offer to calculate padding
-        if not _check_patch_fit(original_size, window_size, stride):
-            if not allow_auto_padding:
-                warn(
-                    f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\n"
-                    f"Image size: {original_size}\n"
-                    "This means that the final incomplete patches will be dropped. By enabling `allow_auto_padding`, "
-                    "the input will be padded to fit the window and stride.",
-                    stacklevel=1,
-                )
-            else:
-                padding = compute_padding(original_size=original_size, window_size=window_size, stride=stride)
+    # if padding is specified, we leave it up to the user to ensure it fits
+    # otherwise we check here if it will fit and offer to calculate padding
+    if not padding and not _check_patch_fit(original_size, window_size, stride):
+        if not allow_auto_padding:
+            warn(
+                f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\n"
+                f"Image size: {original_size}\n"
+                "This means that the final incomplete patches will be dropped. By enabling `allow_auto_padding`, "
+                "the input will be padded to fit the window and stride.",
+                stacklevel=1,
+            )
+        else:
+            padding = compute_padding(original_size=original_size, window_size=window_size, stride=stride)
 
     if padding:
         padding = create_padding_tuple(padding)
