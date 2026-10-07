@@ -472,6 +472,26 @@ class TestPatchSequentialRegression(BaseTester):
         assert params[1].data["input_size"][0].tolist() == [8, 8]
         assert seq(x, params=params).shape == (2, 3, 3, 4, 4)
 
+    @pytest.mark.parametrize(
+        "children, grid_size, padding, image_size, tracked",
+        [
+            # a child resizing each 4 x 4 patch to 4 x 4 reports output_size 4 x 4; the image stays 8 x 8
+            (lambda: [K.RandomResizedCrop((4, 4), p=1.0)], (2, 2), "same", (8, 8), [8, 8]),
+            # a non-square grid crops the rows and the columns by their own remainders: 9 x 10 becomes 8 x 9
+            (lambda: [K.RandomHorizontalFlip(p=1.0)], (2, 3), "valid", (9, 10), [8, 9]),
+            # an empty patch sequential hands the parent an empty parameter list
+            (list, (2, 2), "same", (8, 8), [8, 8]),
+        ],
+        ids=["patch_size_child", "non_square_valid", "no_children"],
+    )
+    def test_nested_tracks_the_image_shape_5584(self, children, grid_size, padding, image_size, tracked, device, dtype):
+        inner = K.PatchSequential(*children(), grid_size=grid_size, padding=padding, patchwise_apply=False)
+        seq = K.ImageSequential(inner, K.RandomCrop((2, 2), p=1.0))
+        x = torch.zeros(2, 1, *image_size, device=device, dtype=dtype)
+        params = seq.forward_parameters(x.shape)
+        assert params[1].data["input_size"][0].tolist() == tracked
+        assert seq(x, params=params).shape == (2, 1, 2, 2)
+
 
 @pytest.mark.usefixtures("restore_torch_rng")
 class TestConventionPatchSequential(BaseTester):
