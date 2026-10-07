@@ -383,9 +383,9 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
         KORNIA_CHECK_IS_TENSOR(weights, "weights must be a tensor")
         KORNIA_CHECK_SHAPE(weights, ["B", "N"])
         KORNIA_CHECK(points.shape[0] == weights.shape[0])
-    compute_dtype = points.dtype if weights is None else torch.promote_types(points.dtype, weights.dtype)
-    if compute_dtype in (torch.float16, torch.bfloat16):
-        compute_dtype = torch.float32
+    # The output keeps the promoted dtype of points and weights, as in the D = 2 branch.
+    out_dtype = points.dtype if weights is None else torch.promote_types(points.dtype, weights.dtype)
+    compute_dtype = torch.float32 if out_dtype in (torch.float16, torch.bfloat16) else out_dtype
     work_points = points.to(compute_dtype)
 
     if weights is not None:
@@ -418,7 +418,7 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
     V = V.transpose(-2, -1)
 
     # the first left eigenvector is the direction on the fitted line
-    direction = V[..., 0, :].to(points.dtype)  # BxD
-    origin = mean[..., 0, :].to(points.dtype)  # BxD
+    direction = V[..., 0, :].to(out_dtype)  # BxD
+    origin = mean[..., 0, :].to(out_dtype)  # BxD
 
     return ParametrizedLine(origin, direction)
