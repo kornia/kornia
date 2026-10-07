@@ -17,6 +17,7 @@
 import pytest
 import torch
 
+from kornia.core._compat import torch_version_lt
 from kornia.core.exceptions import BaseError
 from kornia.losses.mutual_information import (
     MIKernel,
@@ -36,7 +37,7 @@ from kornia.losses.mutual_information import (
     rectangular_kernel,
 )
 
-from testing.base import BaseTester
+from testing.base import BaseTester, dynamo_is_available
 
 
 class TestMutualInformationLoss(BaseTester):
@@ -505,3 +506,28 @@ class TestRectangularKernel(BaseTester):
         actual = rectangular_kernel(signal)
         assert actual.dtype == dtype and actual.device == device
         self.assert_close(actual, signal.new_tensor([0, 1, 1, 1, 0]))
+
+
+@pytest.mark.skipif(not dynamo_is_available() or torch_version_lt(2, 9, 0), reason="Dynamo traces the gathers from 2.9")
+@pytest.mark.parametrize(
+    "loss_fn,shape",
+    [
+        (mutual_information_loss, (12,)),
+        (normalized_mutual_information_loss, (12,)),
+        (mutual_information_loss_2d, (3, 4)),
+        (normalized_mutual_information_loss_2d, (3, 4)),
+        (mutual_information_loss_3d, (2, 3, 4)),
+        (normalized_mutual_information_loss_3d, (2, 3, 4)),
+    ],
+)
+class TestMutualInformationEagerBackendTraces(BaseTester):
+    # The names keep "compile" and "dynamo" out, so the ordinary jobs run these.
+    def test_eager_backend_traces_without_a_mask(self, device, dtype, loss_fn, shape):
+        # Without a mask the losses trace in one graph: the empty-mask check must not guard on the size of the
+        # unmasked gather.
+        signal = torch.linspace(0, 1, 2 * torch.Size(shape).numel(), device=device, dtype=dtype).reshape(2, *shape)
+        target = signal.flip(-1) ** 2
+        torch._dynamo.reset()
+        with torch._dynamo.config.patch(capture_dynamic_output_shape_ops=True):
+            compiled = torch.compile(loss_fn, backend="eager", fullgraph=True)
+            self.assert_close(compiled(signal, target), loss_fn(signal, target))

@@ -207,7 +207,9 @@ class EntropyBasedLossBase(torch.nn.Module):
         eps = torch.finfo(reference_signal.dtype).eps
         self.initial_shape = reference_signal.shape
         signal = reference_signal[..., mask]
-        KORNIA_CHECK(signal.shape[-1] > 0, "mask must select at least one sample.")
+        # Without a mask the gather keeps every sample: checking its size would guard on a data-dependent size
+        # and break ``fullgraph`` capture.
+        KORNIA_CHECK(self._ref_mask_is_full or signal.shape[-1] > 0, "mask must select at least one sample.")
         self.register_buffer("signal", _normalize_signal(signal, num_bins, eps))
         self.register_buffer("mask", mask)
         self.num_bins = num_bins
