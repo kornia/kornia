@@ -22,7 +22,7 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 
 
 def one_hot(
-    labels: torch.Tensor, num_classes: int, device: torch.device, dtype: torch.dtype, eps: float = 1e-6
+    labels: torch.Tensor, num_classes: int, device: torch.device, dtype: torch.dtype, eps: float = 0.0
 ) -> torch.Tensor:
     r"""Convert an integer label x-D torch.Tensor to a one-hot (x+1)-D torch.Tensor.
 
@@ -32,7 +32,8 @@ def one_hot(
         num_classes: number of classes in labels.
         device: the desired device of returned torch.Tensor.
         dtype: the desired data type of returned torch.Tensor.
-        eps: epsilon for numerical stability.
+        eps: optional smoothing floor. The default 0 returns the exact one-hot. A non-zero value replaces the
+          zeros with ``eps`` and keeps the ones, which needs a floating point ``dtype``.
 
     Returns:
         the labels in one hot torch.Tensor of shape :math:`(N, C, *)`,
@@ -40,19 +41,20 @@ def one_hot(
     Examples:
         >>> labels = torch.LongTensor([[[0, 1], [2, 0]]])
         >>> one_hot(labels, num_classes=3, device=torch.device('cpu'), dtype=torch.float32)
-        tensor([[[[1.0000e+00, 1.0000e-06],
-                  [1.0000e-06, 1.0000e+00]],
+        tensor([[[[1., 0.],
+                  [0., 1.]],
         <BLANKLINE>
-                 [[1.0000e-06, 1.0000e+00],
-                  [1.0000e-06, 1.0000e-06]],
+                 [[0., 1.],
+                  [0., 0.]],
         <BLANKLINE>
-                 [[1.0000e-06, 1.0000e-06],
-                  [1.0000e+00, 1.0000e-06]]]])
+                 [[0., 0.],
+                  [1., 0.]]]])
 
     """
     KORNIA_CHECK_IS_TENSOR(labels, "Input labels must be a torch.Tensor")
     KORNIA_CHECK(labels.dtype == torch.int64, f"labels must be of dtype torch.int64. Got: {labels.dtype}")
     KORNIA_CHECK(num_classes >= 1, f"The number of classes must be >= 1. Got: {num_classes}")
+    KORNIA_CHECK(eps == 0 or dtype.is_floating_point, f"A non-zero eps needs a floating point dtype. Got: {dtype}")
 
     # Use PyTorch's built-in one_hot function
     one_hot_tensor = F.one_hot(labels, num_classes=num_classes)
@@ -64,8 +66,9 @@ def one_hot(
     permute_dims = [0] + [ndim] + list(range(1, ndim))
     one_hot_tensor = one_hot_tensor.permute(*permute_dims)
 
-    # Convert to desired dtype and device, then apply eps for numerical stability
     one_hot_tensor = one_hot_tensor.to(dtype=dtype, device=device)
+    if eps == 0:
+        return one_hot_tensor
 
-    # Apply eps: multiply by (1-eps) and add eps to all elements
+    # Optional smoothing floor: the zeros become eps and the ones stay 1
     return one_hot_tensor * (1.0 - eps) + eps
