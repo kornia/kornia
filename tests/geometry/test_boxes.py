@@ -2117,14 +2117,20 @@ class TestVideoBoxes(BaseTester):
         assert transformed.temporal_channel_size == 3
         self.assert_close(transformed.to_tensor(), boxes, atol=0.0, rtol=0.0)
 
-    def test_wart_indexing_drops_the_temporal_size_4249(self, device, dtype):
-        # kornia#4249: Boxes.__getitem__ builds the result with type(self)(...) and never sets
-        # temporal_channel_size, so the sliced wrapper's to_tensor fails. Invert when #4249 is fixed.
-        video_boxes = VideoBoxes.from_tensor(self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=1))
-        frame = video_boxes[0]
-        assert isinstance(frame, VideoBoxes)
-        with pytest.raises(AttributeError, match="temporal_channel_size"):
-            frame.to_tensor()
+    def test_getitem_preserves_the_temporal_axis_4249(self, device, dtype):
+        boxes = self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=1)
+        boxes[1] += 1.0
+        video_boxes = VideoBoxes.from_tensor(boxes)
+
+        first = video_boxes[0]
+        assert isinstance(first, VideoBoxes)
+        assert first.temporal_channel_size == 3
+        self.assert_close(first.to_tensor(), boxes[:1], atol=0.0, rtol=0.0)
+
+        selected = video_boxes[torch.tensor([1, 0], device=device)]
+        assert isinstance(selected, VideoBoxes)
+        assert selected.temporal_channel_size == 3
+        self.assert_close(selected.to_tensor(), boxes[[1, 0]], atol=0.0, rtol=0.0)
 
     def test_convention_inherited_methods_split_copies_from_in_place_updates(self, device, dtype):
         # Convention pin: transform_boxes, translate, clamp, filter_boxes_by_area and merge copy through
