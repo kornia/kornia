@@ -95,10 +95,7 @@ class TestImageHistogram2d(BaseTester):
         sample = torch.linspace(0, 255, 10, device=device, dtype=dtype)
         sample_x, _ = torch.meshgrid(sample, sample, indexing="ij")
         sample_x = sample_x.repeat(*size)
-        if kernel == "gaussian":
-            bandwidth = 2 * 0.4**2
-        else:
-            bandwidth = None
+        bandwidth = 2 * 0.4**2 if kernel == "gaussian" else None
         hist, _ = TestImageHistogram2d.fcn(sample_x, 0.0, 255.0, 10, bandwidth=bandwidth, centers=sample, kernel=kernel)
         ans = 10 * torch.ones_like(hist)
         self.assert_close(ans, hist)
@@ -109,10 +106,7 @@ class TestImageHistogram2d(BaseTester):
         sample = torch.linspace(0, 255, 10, device=device, dtype=dtype)
         sample_x, _ = torch.meshgrid(sample, sample, indexing="ij")
         sample_x = sample_x.repeat(*size)
-        if kernel == "gaussian":
-            bandwidth = 2 * 0.4**2
-        else:
-            bandwidth = None
+        bandwidth = 2 * 0.4**2 if kernel == "gaussian" else None
         hist, pdf = TestImageHistogram2d.fcn(
             sample_x, 0.0, 255.0, 10, bandwidth=bandwidth, centers=sample, kernel=kernel, return_pdf=True
         )

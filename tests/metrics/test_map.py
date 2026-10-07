@@ -120,6 +120,47 @@ class TestMeanAveragePrecision(BaseTester):
             with pytest.raises(BaseError, match=rf"same length.*{name} 1"):
                 kornia.metrics.mean_average_precision(*args, 3)
 
+    def test_exception_per_image_counts(self, device, dtype):
+        # The counts are checked per image, so mismatches that cancel over the images do not pair the rows of one
+        # image with another's (#5580).
+        a = torch.tensor([[0.0, 0.0, 10.0, 10.0]], device=device, dtype=dtype)
+        b = torch.tensor([[50.0, 50.0, 60.0, 60.0]], device=device, dtype=dtype)
+        none = torch.zeros(0, 4, device=device, dtype=dtype)
+        boxes = [torch.cat([a, b]), none]
+        labels = [torch.tensor([1, 1], device=device), torch.tensor([], device=device, dtype=torch.long)]
+        scores = [torch.tensor([0.9, 0.8], device=device, dtype=dtype), torch.zeros(0, device=device, dtype=dtype)]
+        one_each = [torch.tensor([1], device=device), torch.tensor([1], device=device)]
+        one_score_each = [
+            torch.tensor([0.9], device=device, dtype=dtype),
+            torch.tensor([0.8], device=device, dtype=dtype),
+        ]
+
+        mean_ap, _ = kornia.metrics.mean_average_precision(boxes, labels, scores, boxes, labels, 2)
+        self.assert_close(mean_ap, torch.tensor(1.0, device=device, dtype=dtype))
+        with pytest.raises(BaseError, match=r"one row per object in every image. Got image 0: 2 boxes and 1 labels"):
+            kornia.metrics.mean_average_precision(boxes, labels, scores, boxes, one_each, 2)
+        with pytest.raises(
+            BaseError, match=r"one row per detection in every image. Got image 0: 2 boxes, 1 labels and 1 scores"
+        ):
+            kornia.metrics.mean_average_precision(boxes, one_each, one_score_each, boxes, labels, 2)
+        # the first image is consistent, so the second is named
+        with pytest.raises(BaseError, match=r"Got image 1: 2 boxes and 1 labels"):
+            kornia.metrics.mean_average_precision(
+                [a, a, b],
+                one_each + one_each[:1],
+                one_score_each + one_score_each[:1],
+                [a, boxes[0], none],
+                one_each + one_each[:1],
+                2,
+            )
+        # the first image holds the extra row, of each kind the checks compare in turn
+        with pytest.raises(BaseError, match=r"Got image 0: 1 boxes and 2 labels"):
+            kornia.metrics.mean_average_precision(boxes, labels, scores, [a, b], labels, 2)
+        with pytest.raises(BaseError, match=r"Got image 0: 2 boxes, 1 labels and 2 scores"):
+            kornia.metrics.mean_average_precision(boxes, one_each, scores, boxes, labels, 2)
+        with pytest.raises(BaseError, match=r"Got image 0: 1 boxes, 1 labels and 2 scores"):
+            kornia.metrics.mean_average_precision([a, b], one_each, scores, boxes, labels, 2)
+
     @pytest.mark.parametrize("box_dtype", [torch.int64, torch.int32, torch.uint8])
     def test_integer_boxes_match_the_float_result(self, device, box_dtype):
         # Integer boxes give the AP of their float copies in float32, as mean_iou_bbox computes them (#5551). The

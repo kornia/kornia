@@ -65,35 +65,34 @@ def mean_average_precision(
         f"gt_boxes {len(gt_boxes)}, gt_labels {len(gt_labels)}",
     )
 
-    # Store all (true) objects in a single continuous torch.Tensor while keeping track of the image it is from
+    # Store all (true) objects in a single continuous torch.Tensor while keeping track of the image it is from.
+    # The counts are checked per image: totals that agree can still pair the rows of one image with another's.
     gt_images = []
-    for i, labels in enumerate(gt_labels):
+    for i, (boxes, labels) in enumerate(zip(gt_boxes, gt_labels)):
+        KORNIA_CHECK(
+            boxes.size(0) == labels.size(0),
+            f"gt_boxes and gt_labels must have one row per object in every image. Got image {i}: {boxes.size(0)} "
+            f"boxes and {labels.size(0)} labels",
+        )
         gt_images.extend([i] * labels.size(0))
     # (n_objects), n_objects is the total no. of objects across all images
     _gt_boxes = torch.cat(gt_boxes, 0)  # (n_objects, 4)
     _gt_labels = torch.cat(gt_labels, 0)  # (n_objects)
     _gt_images = torch.tensor(gt_images, device=_gt_boxes.device, dtype=torch.long)
 
-    KORNIA_CHECK(
-        _gt_images.size(0) == _gt_boxes.size(0) == _gt_labels.size(0),
-        f"gt_boxes and gt_labels must have one row per object. Got: {_gt_boxes.size(0)} boxes and "
-        f"{_gt_labels.size(0)} labels",
-    )
-
     # Store all detections in a single continuous torch.Tensor while keeping track of the image it is from
     pred_images = []
-    for i, labels in enumerate(pred_labels):
+    for i, (boxes, labels, scores) in enumerate(zip(pred_boxes, pred_labels, pred_scores)):
+        KORNIA_CHECK(
+            boxes.size(0) == labels.size(0) == scores.size(0),
+            f"pred_boxes, pred_labels and pred_scores must have one row per detection in every image. Got image {i}: "
+            f"{boxes.size(0)} boxes, {labels.size(0)} labels and {scores.size(0)} scores",
+        )
         pred_images.extend([i] * labels.size(0))
     _pred_boxes = torch.cat(pred_boxes, 0)  # (n_detections, 4)
     _pred_labels = torch.cat(pred_labels, 0)  # (n_detections)
     _pred_scores = torch.cat(pred_scores, 0)  # (n_detections)
     _pred_images = torch.tensor(pred_images, device=_pred_boxes.device, dtype=torch.long)  # (n_detections)
-
-    KORNIA_CHECK(
-        _pred_images.size(0) == _pred_boxes.size(0) == _pred_labels.size(0) == _pred_scores.size(0),
-        f"pred_boxes, pred_labels and pred_scores must have one row per detection. Got: {_pred_boxes.size(0)} boxes, "
-        f"{_pred_labels.size(0)} labels and {_pred_scores.size(0)} scores",
-    )
 
     # The precisions need a floating dtype. Integer boxes count as float32, as mean_iou_bbox computes their overlaps,
     # and the two sets meet in their promoted dtype: integer and float16 boxes give float32, not float16.

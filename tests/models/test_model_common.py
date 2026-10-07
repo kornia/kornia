@@ -149,7 +149,8 @@ class TestWindowPartition:
         # H=8, W=8, window_size=4 -> no padding
         x = torch.rand(2, 8, 8, 16)
         windows, (Hp, Wp) = window_partition(x, window_size=4)
-        assert Hp == 8 and Wp == 8
+        assert Hp == 8
+        assert Wp == 8
         # 2 batches * (8/4)*(8/4) = 2*4 = 8 windows
         assert windows.shape == (8, 4, 4, 16)
 

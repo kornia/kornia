@@ -36,10 +36,7 @@ class TestSe3(BaseTester):
 
     def _make_rand_se3d_vec(self, device, dtype, batch_size) -> Se3:
         q = Quaternion.random(batch_size, device, dtype)
-        if batch_size is None:
-            shape = ()
-        else:
-            shape = (batch_size,)
+        shape = () if batch_size is None else (batch_size,)
         t = Vector3.random(shape, device, dtype)
         return Se3(So3(q), t)
 
@@ -169,10 +166,7 @@ class TestSe3(BaseTester):
     def test_mul_vector(self, device, dtype, batch_size):
         world_pose_s1: Se3 = self._make_rand_se3d(device, dtype, batch_size)
         world_pose_s2: Se3 = self._make_rand_se3d_vec(device, dtype, batch_size)
-        if batch_size is None:
-            shape = ()
-        else:
-            shape = (batch_size,)
+        shape = () if batch_size is None else (batch_size,)
         pt_in_world = Vector3.random(shape, device, dtype)
         s1_pose_s2: Se3 = world_pose_s1.inverse() * world_pose_s2
         pt_in_s1 = world_pose_s1.inverse() * pt_in_world
