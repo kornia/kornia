@@ -54,7 +54,8 @@ class TestSegmentationModelsBuilder(BaseTester):
         out = model(images)
         assert isinstance(out, torch.Tensor)
         assert out.shape == (2, 2, 8, 12)
-        assert out.device == images.device and out.dtype == dtype
+        assert out.device == images.device
+        assert out.dtype == dtype
         assert torch.isfinite(out).all()
         # The softmax head normalizes over the class axis, so the output is not a degenerate map.
         self.assert_close(out.sum(dim=1), torch.ones(2, 8, 12, device=device, dtype=dtype))
@@ -63,8 +64,10 @@ class TestSegmentationModelsBuilder(BaseTester):
         model = SegmentationModelsBuilder.build(_stand_in_network(), IMAGENET_PARAMS).to(device, dtype)
         images = [torch.rand(3, 8, 12, device=device, dtype=dtype), torch.rand(3, 6, 6, device=device, dtype=dtype)]
         out = model(images)
-        assert isinstance(out, list) and len(out) == 2
-        assert out[0].shape == (2, 8, 12) and out[1].shape == (2, 6, 6)
+        assert isinstance(out, list)
+        assert len(out) == 2
+        assert out[0].shape == (2, 8, 12)
+        assert out[1].shape == (2, 6, 6)
         self.assert_close(out[0], model(images[0][None])[0])
 
     def test_default_name(self):
@@ -93,7 +96,9 @@ class TestSegmentationModelsBuilder(BaseTester):
         expected = (x64.flip(1) * 255.0 - mean_t) / std_t
         out64 = out.cpu().to(torch.float64)
 
-        assert out.shape == x.shape and out.dtype == dtype and out.device == x.device
+        assert out.shape == x.shape
+        assert out.dtype == dtype
+        assert out.device == x.device
         # The pipeline chains three rounding ops in the working dtype at magnitudes up to ~1100, so the
         # accumulated error reaches ~2 eps (measured over 50 draws: 1.9 float32, 1.3 float16, 1.4 bfloat16)
         # while BaseTester's half-precision defaults are rtol ~1 eps and fail here. The pipeline builds its
@@ -114,7 +119,8 @@ class TestSegmentationModelsBuilder(BaseTester):
         x = torch.tensor([0.0, 0.5, 1.0], device=device, dtype=dtype).view(1, 3, 1, 1).expand(1, 3, 2, 2)
         expected = torch.tensor([0.0, 127.5, 255.0], device=device, dtype=dtype).view(1, 3, 1, 1).expand(1, 3, 2, 2)
         out = pipeline(x)
-        assert out.dtype == dtype and out.device == x.device
+        assert out.dtype == dtype
+        assert out.device == x.device
         assert torch.equal(out, expected)
 
     def test_preprocessing_rgb_unit_range(self, device, dtype):
@@ -171,8 +177,10 @@ class TestSemanticSegmentation(BaseTester):
         assert torch.isfinite(vis).all()
         # Same through the per-image list path, which draws a colormap per mask.
         vis_list = model.visualize([images[0], images[1]])
-        assert isinstance(vis_list, list) and len(vis_list) == 2
-        assert vis_list[0].shape == (3, 6, 6) and vis_list[0].device == images.device
+        assert isinstance(vis_list, list)
+        assert len(vis_list) == 2
+        assert vis_list[0].shape == (3, 6, 6)
+        assert vis_list[0].device == images.device
         self.assert_close(vis_list[0], vis[0])
 
     def test_visualize_rejects_logits(self, device, dtype):
