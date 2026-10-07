@@ -22,8 +22,6 @@ from typing import List, Tuple, Union
 import torch
 from torch import nn
 
-from kornia.image.utils import perform_keep_shape_image
-
 __all__ = ["Denormalize", "Normalize", "denormalize", "normalize", "normalize_min_max"]
 
 
@@ -198,14 +196,12 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
             std = torch.tensor([std] * shape[1], device=data.device, dtype=data.dtype)
 
         # Allow broadcast on channel dimension
-        if mean.shape and mean.shape[0] != 1:
-            if mean.shape[0] != data.shape[1] and mean.shape[:2] != data.shape[:2]:
-                raise ValueError(f"mean length and number of channels do not match. Got {mean.shape} and {data.shape}.")
+        if mean.shape and mean.shape[0] != 1 and mean.shape[0] != data.shape[1] and mean.shape[:2] != data.shape[:2]:
+            raise ValueError(f"mean length and number of channels do not match. Got {mean.shape} and {data.shape}.")
 
         # Allow broadcast on channel dimension
-        if std.shape and std.shape[0] != 1:
-            if std.shape[0] != data.shape[1] and std.shape[:2] != data.shape[:2]:
-                raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
+        if std.shape and std.shape[0] != 1 and std.shape[0] != data.shape[1] and std.shape[:2] != data.shape[:2]:
+            raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
 
         mean = torch.as_tensor(mean, device=data.device, dtype=data.dtype)
         std = torch.as_tensor(std, device=data.device, dtype=data.dtype)
@@ -371,14 +367,12 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
             std = torch.tensor([std] * shape[1], device=data.device, dtype=data.dtype)
 
         # Allow broadcast on channel dimension
-        if mean.shape and mean.shape[0] != 1:
-            if mean.shape[0] != data.shape[1] and mean.shape[:2] != data.shape[:2]:
-                raise ValueError(f"mean length and number of channels do not match. Got {mean.shape} and {data.shape}.")
+        if mean.shape and mean.shape[0] != 1 and mean.shape[0] != data.shape[1] and mean.shape[:2] != data.shape[:2]:
+            raise ValueError(f"mean length and number of channels do not match. Got {mean.shape} and {data.shape}.")
 
         # Allow broadcast on channel dimension
-        if std.shape and std.shape[0] != 1:
-            if std.shape[0] != data.shape[1] and std.shape[:2] != data.shape[:2]:
-                raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
+        if std.shape and std.shape[0] != 1 and std.shape[0] != data.shape[1] and std.shape[:2] != data.shape[:2]:
+            raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
 
         mean = torch.as_tensor(mean, device=data.device, dtype=data.dtype)
         std = torch.as_tensor(std, device=data.device, dtype=data.dtype)
@@ -399,7 +393,6 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
     return torch.addcmul(mean, data, std)
 
 
-@perform_keep_shape_image
 def normalize_min_max(
     input: torch.Tensor, min_val: float = 0.0, max_val: float = 1.0, eps: float = 1e-6
 ) -> torch.Tensor:
@@ -407,7 +400,8 @@ def normalize_min_max(
 
     Convention:
         Input is ``(*, C, H, W)``: minima and maxima are taken over H and W separately for every
-        leading index and channel. Constant planes map to min_val.
+        leading index and channel. Constant planes map to min_val. Empty leading dimensions are
+        preserved; channel and spatial dimensions must be nonzero.
 
     The data is normalised using the following formulation:
 
@@ -437,6 +431,12 @@ def normalize_min_max(
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"data should be a torch.Tensor. Got: {type(input)}.")
 
+    if input.ndim < 2:
+        raise ValueError(f"Input tensor must have at least two dimensions. Got {input.shape}")
+
+    if 0 in input.shape[-3:]:
+        raise ValueError("Invalid input tensor, channel and spatial dimensions must be nonzero.")
+
     if not isinstance(min_val, float):
         raise TypeError(f"'min_val' should be a float. Got: {type(min_val)}.")
 
@@ -444,11 +444,9 @@ def normalize_min_max(
         raise TypeError(f"'max_val' should be a float. Got: {type(max_val)}.")
 
     shape = input.shape
-    B, C = shape[0], shape[1]
-
-    x_reshaped = input.reshape(B, C, -1)
-    x_min = x_reshaped.min(-1, keepdim=True)[0]  # Shape: (B, C, 1)
-    x_max = x_reshaped.max(-1, keepdim=True)[0]  # Shape: (B, C, 1)
+    x_reshaped = input.flatten(start_dim=-2)
+    x_min = x_reshaped.min(-1, keepdim=True)[0]
+    x_max = x_reshaped.max(-1, keepdim=True)[0]
 
     x_out = (max_val - min_val) * (x_reshaped - x_min) / (x_max - x_min + eps) + min_val
     return x_out.reshape(shape)

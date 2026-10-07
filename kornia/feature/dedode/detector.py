@@ -52,10 +52,8 @@ class DeDoDeDetector(nn.Module):
         scales = ["8", "4", "2", "1"]
         for idx, (feature_map, scale) in enumerate(zip(reversed(features), scales)):
             delta_logits, context = self.decoder(feature_map, context=context, scale=scale)
-            if logits is None:
-                logits = delta_logits
-            else:
-                logits = logits + delta_logits.float()  # ensure float (need bf16 doesn't have f.interpolate)
+            # ensure float (need bf16 doesn't have f.interpolate)
+            logits = delta_logits if logits is None else logits + delta_logits.float()
             if idx < len(scales) - 1:
                 size = sizes[-(idx + 2)]
                 logits = F.interpolate(logits, size=size, mode="bicubic", align_corners=False)

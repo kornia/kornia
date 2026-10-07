@@ -330,11 +330,16 @@ class TestSharedSIFTScaleSpace(BaseTester):
 
         lafs, responses, descriptors = feature(image, mask)
 
-        assert not lafs.any() and not responses.any() and not descriptors.any()
-        assert lafs.requires_grad and responses.requires_grad and descriptors.requires_grad
+        assert not lafs.any()
+        assert not responses.any()
+        assert not descriptors.any()
+        assert lafs.requires_grad
+        assert responses.requires_grad
+        assert descriptors.requires_grad
         (lafs.sum() + responses.sum() + descriptors.sum()).backward()
         assert image.grad is not None
-        assert torch.isfinite(image.grad).all() and not image.grad.any()
+        assert torch.isfinite(image.grad).all()
+        assert not image.grad.any()
 
     def test_float16_tiny_float32_mask_is_suppressed(self, device, dtype):
         if dtype != torch.float16:
@@ -344,7 +349,8 @@ class TestSharedSIFTScaleSpace(BaseTester):
         detector = _SIFTScaleSpaceDetector(1, _FixedPyramid(dog)).to(device, dtype)
         mask = torch.full((1, 1, 32, 32), 1e-10, device=device, dtype=torch.float32)
         lafs, responses = detector(image, mask)
-        assert not lafs.any() and not responses.any()
+        assert not lafs.any()
+        assert not responses.any()
 
     def test_flat_gradient_backward(self, device, dtype):
         image = torch.zeros(1, 1, 1, 32, 32, device=device, dtype=dtype, requires_grad=True)
@@ -405,7 +411,8 @@ class TestSharedSIFTScaleSpace(BaseTester):
         weights = torch.linspace(0.1, 1.0, actual.numel(), device=device, dtype=work_dtype).reshape_as(actual)
         (actual * weights).sum().backward()
         (expected * weights).sum().backward()
-        assert actual_images.grad is not None and expected_images.grad is not None
+        assert actual_images.grad is not None
+        assert expected_images.grad is not None
         self.assert_close(actual_images.grad, expected_images.grad)
 
     def test_grid_inference_matches_autograd_path(self, device, dtype):
@@ -551,12 +558,14 @@ class TestSIFTScalePyramid(BaseTester):
         assert not pyramid.state_dict()
         for index, expected in enumerate(reference):
             kernel = getattr(pyramid, f"kernel_{index}")
-            assert kernel.device.type == device.type and kernel.dtype == kernel_dtype
+            assert kernel.device.type == device.type
+            assert kernel.dtype == kernel_dtype
             assert torch.equal(kernel.cpu(), expected.to(kernel_dtype))
         pyramid.cpu()
         for index, expected in enumerate(reference):
             kernel = getattr(pyramid, f"kernel_{index}")
-            assert kernel.dtype == torch.float64 and torch.equal(kernel, expected)
+            assert kernel.dtype == torch.float64
+            assert torch.equal(kernel, expected)
 
     def test_whole_module_pickle_rebuilds_kernels_where_they_land(self, device):
         from kornia.feature.sift.scale_space import _SIFTScalePyramid
@@ -572,7 +581,8 @@ class TestSIFTScalePyramid(BaseTester):
             expected = _SIFTScalePyramid().to(target)
             for index in range(6):
                 kernel, reference = getattr(restored, f"kernel_{index}"), getattr(expected, f"kernel_{index}")
-                assert kernel.device.type == target.type and kernel.dtype == reference.dtype
+                assert kernel.device.type == target.type
+                assert kernel.dtype == reference.dtype
                 assert torch.equal(kernel, reference)
 
     def test_pyramid_backend_rejects_unknown_compile_component(self):
@@ -656,7 +666,8 @@ class TestSIFTScaleSpaceDetector(BaseTester):
         loss = sum((value * weights.to(device)).sum() for value in actual[4:7]) + image[..., :0].sum()
         reference_loss.backward()
         loss.backward()
-        assert image.grad is not None and reference_image.grad is not None
+        assert image.grad is not None
+        assert reference_image.grad is not None
         assert torch.isfinite(image.grad).all()
         self.assert_close(image.grad, reference_image.grad.to(device))
 
@@ -679,7 +690,8 @@ class TestSIFTScaleSpaceDetector(BaseTester):
         dog[0, 2 + ds, 16 + dy, 16 + dx] = sign
         detector = _SIFTScaleSpaceDetector(2, _FixedPyramid(dog))
         lafs, responses = detector(torch.zeros(1, 1, 32, 32, device=device, dtype=dtype))
-        assert not lafs.any() and not responses.any()
+        assert not lafs.any()
+        assert not responses.any()
 
     def test_checkerboard_equal_diagonals_reject_before_neighbourhood_gather(self, device, dtype, monkeypatch):
         y = torch.arange(32, device=device).view(1, 1, 32, 1)
@@ -718,7 +730,9 @@ class TestSIFTScaleSpaceDetector(BaseTester):
         with torch.inference_mode():
             result = detector._octave(gaussian, 0, None)
         limit = 16384 if device.type == "cpu" else 65536
-        assert len(calls) > 1 and sum(calls) > limit and max(calls) <= limit
+        assert len(calls) > 1
+        assert sum(calls) > limit
+        assert max(calls) <= limit
         assert all(value.numel() == 0 for value in result)
 
     def test_many_middle_scale_extrema_refine_in_chunks(self, device, dtype, monkeypatch):
@@ -741,7 +755,9 @@ class TestSIFTScaleSpaceDetector(BaseTester):
         with torch.inference_mode():
             *_, responses, _, _, _ = detector._octave(gaussian, 0, None)
         expected_count = coordinates.numel() ** 2
-        assert len(calls) > 1 and sum(calls) == expected_count and max(calls) <= 16384
+        assert len(calls) > 1
+        assert sum(calls) == expected_count
+        assert max(calls) <= 16384
         assert responses.numel() == expected_count
         self.assert_close(responses, torch.ones_like(responses))
 
@@ -802,13 +818,15 @@ class TestSIFTScaleSpaceDetector(BaseTester):
         assert laf_is_filled(lafs)[:, 0].all()
         self.assert_close(weighted[:, 0], unmasked[:, 0] * 0.25, rtol=2e-3, atol=2e-3)
         zero_lafs, zero_responses = detector(image, torch.zeros_like(mask))
-        assert not zero_lafs.any() and not zero_responses.any()
+        assert not zero_lafs.any()
+        assert not zero_responses.any()
 
     def test_flat_and_singular_refinement_reject_without_oob_access(self, device, dtype):
         image = torch.zeros(1, 1, 32, 32, device=device, dtype=dtype)
         flat = torch.zeros(1, 5, 32, 32, device=device, dtype=dtype)
         lafs, responses = _SIFTScaleSpaceDetector(2, _FixedPyramid(flat)).to(device, dtype)(image)
-        assert not lafs.any() and not responses.any()
+        assert not lafs.any()
+        assert not responses.any()
         detector = _SIFTScaleSpaceDetector(1, _FixedPyramid(flat)).to(device, dtype)
         b = torch.zeros(1, device=device, dtype=torch.long)
         s = torch.full_like(b, 2)

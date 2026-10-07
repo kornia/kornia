@@ -754,8 +754,10 @@ class TestCDist(BaseTester):
         assert dists[1, 2] == 0.0
         loss = dists.sum()
         loss.backward()
-        assert d1.grad is not None and torch.isfinite(d1.grad).all()
-        assert d2.grad is not None and torch.isfinite(d2.grad).all()
+        assert d1.grad is not None
+        assert torch.isfinite(d1.grad).all()
+        assert d2.grad is not None
+        assert torch.isfinite(d2.grad).all()
 
 
 class TestMatchSMNNBatched(BaseTester):
@@ -788,7 +790,8 @@ class TestMatchSMNNBatched(BaseTester):
         ratios, indices = matching.match_smnn_batched(a, b)
         assert indices.tolist() == [[0, 2, 2]]
         ratios.sum().backward()
-        assert torch.isfinite(a.grad).all() and torch.isfinite(b.grad).all()
+        assert torch.isfinite(a.grad).all()
+        assert torch.isfinite(b.grad).all()
 
     @pytest.mark.parametrize("masked", [False, True])
     def test_dynamo(self, device, dtype, torch_optimizer, masked):
@@ -806,7 +809,8 @@ class TestMatchSMNNBatched(BaseTester):
         mask = torch.tensor([[True, True, False], [True, True, False]], device=device)
         ratios, _ = matching.match_smnn_batched(a, b, 1.0, mask1=mask)
         ratios.sum().backward()
-        assert torch.isfinite(a.grad).all() and torch.isfinite(b.grad).all()
+        assert torch.isfinite(a.grad).all()
+        assert torch.isfinite(b.grad).all()
         self.assert_close(a.grad[:, 2], torch.zeros_like(a.grad[:, 2]))
 
     @pytest.mark.parametrize("batch,n,m", [(1, 5, 7), (3, 5, 7), (2, 8, 3)])
@@ -817,7 +821,8 @@ class TestMatchSMNNBatched(BaseTester):
         assert ratios.shape == (len(indices), 1)
         assert indices.shape[1] == 3
         assert indices.dtype == torch.long
-        assert ratios.device == a.device and ratios.dtype == a.dtype
+        assert ratios.device == a.device
+        assert ratios.dtype == a.dtype
         for i in range(batch):
             # The new API accumulates half-precision L2 distances in float32;
             # compare to that reference rather than legacy half norm cancellation.
@@ -896,8 +901,10 @@ class TestMatchSMNNBatched(BaseTester):
         self.assert_close(indices, reference_indices)
         self.assert_close(a.grad[:, valid_a], compact_a.grad)
         self.assert_close(b.grad[:, valid_b], compact_b.grad)
-        assert torch.isfinite(a.grad).all() and torch.isfinite(b.grad).all()
-        assert a.grad[:, valid_a].abs().sum() > 0 and b.grad[:, valid_b].abs().sum() > 0
+        assert torch.isfinite(a.grad).all()
+        assert torch.isfinite(b.grad).all()
+        assert a.grad[:, valid_a].abs().sum() > 0
+        assert b.grad[:, valid_b].abs().sum() > 0
         if mask_first:
             self.assert_close(a.grad[:, 3], torch.zeros_like(a.grad[:, 3]))
         if mask_second:
@@ -925,15 +932,18 @@ class TestMatchSMNNBatched(BaseTester):
         a = torch.empty(batch, n, 4, device=device, dtype=dtype)
         b = torch.empty(batch, m, 4, device=device, dtype=dtype)
         r, ix = matching.match_smnn_batched(a, b)
-        assert r.shape == (0, 1) and ix.shape == (0, 3)
-        assert r.dtype == dtype and ix.device == a.device
+        assert r.shape == (0, 1)
+        assert ix.shape == (0, 3)
+        assert r.dtype == dtype
+        assert ix.device == a.device
 
     def test_short_valid_rows_return_no_matches(self, device, dtype):
         a = torch.rand(2, 3, 4, device=device, dtype=dtype)
         b = torch.rand(2, 4, 4, device=device, dtype=dtype)
         mask = torch.tensor([[True, False, False], [False, False, False]], device=device)
         r, ix = matching.match_smnn_batched(a, b, mask1=mask)
-        assert r.shape == (0, 1) and ix.shape == (0, 3)
+        assert r.shape == (0, 1)
+        assert ix.shape == (0, 3)
 
     @pytest.mark.parametrize("problem", ["batch", "dim", "mask_shape", "mask_dtype", "dm_shape"])
     def test_invalid_inputs(self, device, dtype, problem):

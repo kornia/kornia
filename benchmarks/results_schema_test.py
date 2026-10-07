@@ -155,7 +155,8 @@ def test_non_object_payload_rejected(tmp_path) -> None:
     p.parent.mkdir()
     p.write_text(json.dumps(["metadata", "results"]))
     errors = results_schema.validate_result(p)
-    assert errors and "object" in errors[0]
+    assert errors
+    assert "object" in errors[0]
 
 
 def test_non_object_metadata_rejected(tmp_path) -> None:
@@ -163,7 +164,8 @@ def test_non_object_metadata_rejected(tmp_path) -> None:
     p.parent.mkdir()
     p.write_text(json.dumps({"metadata": "oops", "results": []}))
     errors = results_schema.validate_result(p)
-    assert errors and "metadata must be an object" in errors[0]
+    assert errors
+    assert "metadata must be an object" in errors[0]
 
 
 def test_bool_batch_rejected(tmp_path) -> None:

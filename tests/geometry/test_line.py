@@ -259,6 +259,65 @@ class TestParametrizedLine(BaseTester):
         self.assert_close(lmbda, torch.tensor(0.0, device=device, dtype=dtype))
         self.assert_close(point, p0)
 
+    @pytest.mark.parametrize("parallel_dot", [0.0, 5e-7, -5e-7])
+    @pytest.mark.parametrize("parallel_offset", [-1.0, 0.0])
+    def test_intersect_plane_parallel_gradients(self, device, dtype, parallel_dot, parallel_offset):
+        # The parallel fallback is locally (lambda, point) = (0, origin), so its Jacobian is zero except for
+        # d point / d origin = I. An unselected division by zero used to poison all four input gradients.
+        origin = torch.tensor([[0.0, 4.0, 0.0], [2.0, 3.0, 4.0]], device=device, dtype=dtype, requires_grad=True)
+        direction = torch.tensor(
+            [[1.0, 0.0, parallel_dot], [0.0, 0.0, -2.0]], device=device, dtype=dtype, requires_grad=True
+        )
+        normal = torch.tensor([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype, requires_grad=True)
+        offset = torch.tensor([parallel_offset, -2.0], device=device, dtype=dtype, requires_grad=True)
+        plane = Hyperplane(Vector3(normal), Scalar(offset))
+
+        lmbda, point = ParametrizedLine(origin, direction).intersect(plane)
+
+        self.assert_close(lmbda, torch.tensor([0.0, 1.0], device=device, dtype=dtype))
+        self.assert_close(point, torch.tensor([[0.0, 4.0, 0.0], [2.0, 3.0, 2.0]], device=device, dtype=dtype))
+        (lmbda.sum() + point.sum()).backward()
+        expected = (
+            [[1.0, 1.0, 1.0], [1.0, 1.0, 0.5]],
+            [[0.0, 0.0, 0.0], [1.0, 1.0, 0.5]],
+            [[0.0, 0.0, 0.0], [-1.0, -1.5, -1.0]],
+            [0.0, -0.5],
+        )
+        for tensor, gradient in zip((origin, direction, normal, offset), expected):
+            self.assert_close(tensor.grad, torch.tensor(gradient, device=device, dtype=dtype))
+
+    def test_intersect_plane_parallel_gradcheck(self, device):
+        origin = torch.tensor([[0.0, 4.0, 0.0], [2.0, 3.0, 4.0]], device=device, dtype=torch.float64)
+        direction = torch.tensor([[1.0, 0.0, 0.0], [0.0, 0.0, -2.0]], device=device, dtype=torch.float64)
+        normal = torch.tensor([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]], device=device, dtype=torch.float64)
+        offset = torch.tensor([-1.0, -2.0], device=device, dtype=torch.float64)
+
+        def intersect(origin, direction, normal, offset):
+            plane = Hyperplane(Vector3(normal), Scalar(offset))
+            # Keep numerical perturbations inside the parallel branch, away from its threshold.
+            return ParametrizedLine(origin, direction).intersect(plane, eps=1e-3)
+
+        self.gradcheck(intersect, (origin, direction, normal, offset))
+
+    def test_dynamo_intersect_plane_parallel_gradients(self, device, dtype, torch_optimizer):
+        origin = torch.tensor([[0.0, 4.0, 0.0], [2.0, 3.0, 4.0]], device=device, dtype=dtype, requires_grad=True)
+        direction = torch.tensor([[1.0, 0.0, 0.0], [0.0, 0.0, -2.0]], device=device, dtype=dtype, requires_grad=True)
+        normal = torch.tensor([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype, requires_grad=True)
+        offset = torch.tensor([-1.0, -2.0], device=device, dtype=dtype, requires_grad=True)
+        inputs = (origin, direction, normal, offset)
+
+        def intersect(origin, direction, normal, offset):
+            return ParametrizedLine(origin, direction).intersect(Hyperplane(Vector3(normal), Scalar(offset)))
+
+        expected_lambda, expected_point = intersect(*inputs)
+        expected_gradients = torch.autograd.grad(expected_lambda.sum() + expected_point.sum(), inputs)
+        actual_lambda, actual_point = torch_optimizer(intersect)(*inputs)
+        actual_gradients = torch.autograd.grad(actual_lambda.sum() + actual_point.sum(), inputs)
+        self.assert_close(actual_lambda, expected_lambda)
+        self.assert_close(actual_point, expected_point)
+        for actual, expected in zip(actual_gradients, expected_gradients):
+            self.assert_close(actual, expected)
+
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
         pass
@@ -567,6 +626,80 @@ class TestFitLine(BaseTester):
             self.assert_close(scaled.direction, line.direction.expand(2, 2))
             self.assert_close(scaled.origin / scales[..., 0], line.origin.expand(2, 2))
 
+    @pytest.mark.parametrize("weighted", [False, True])
+    @pytest.mark.parametrize(
+        "dtype,scales", [(torch.float16, (256.0, 1.0 / 256.0)), (torch.float32, (2.0**64, 2.0**-64))]
+    )
+    def test_fit_line_3d_scale_invariance(self, device, weighted, dtype, scales):
+        points = torch.tensor(
+            [[[10.0, -5.0, 2.0], [11.0, -3.0, 5.0], [12.0, -0.5, 8.0], [13.0, 1.0, 11.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        weights = torch.tensor([[1.0, 2.0, 1.0, 3.0]], device=device, dtype=points.dtype) if weighted else None
+        expected = fit_line(points.float(), None if weights is None else weights.float())
+
+        for scale in scales:
+            actual = fit_line(points * scale, weights)
+            self.assert_close(actual.direction.abs().float(), expected.direction.abs(), atol=1e-3, rtol=1e-3)
+            self.assert_close(actual.origin.float() / scale, expected.origin, atol=1e-3, rtol=1e-3)
+
+        if weighted and dtype == torch.float32:
+            # 2**124 * 13 overflows float32 in sum(w p) unless the weights are normalised first.
+            actual = fit_line(points, weights * 2.0**124)
+            self.assert_close(actual.direction.abs(), expected.direction.abs())
+            self.assert_close(actual.origin, expected.origin)
+
+    def test_fit_line_3d_rows_rescaled_on_their_own(self, device):
+        # Two rows of one batch, at coordinate scales 2**64 and 2**-64 and weight scales 2**100 and 2**-100: a scale
+        # shared by the batch would underflow the second row's scatter matrix, or its weights to a zero sum.
+        points = torch.tensor(
+            [[10.0, -5.0, 2.0], [11.0, -3.0, 5.0], [12.0, -0.5, 8.0], [13.0, 1.0, 11.0]], device=device
+        )
+        weights = torch.tensor([1.0, 2.0, 1.0, 3.0], device=device)
+        expected = fit_line(points[None], weights[None])
+        s = torch.tensor([2.0**64, 2.0**-64], device=device)[:, None, None]
+        ws = torch.tensor([2.0**100, 2.0**-100], device=device)[:, None]
+        actual = fit_line(points * s, weights * ws)
+        self.assert_close(actual.direction.abs(), expected.direction.abs().expand(2, 3))
+        self.assert_close(actual.origin / s[..., 0], expected.origin.expand(2, 3))
+
+    def test_fit_line_3d_weighted_float16_centroid_in_float32(self, device):
+        # 128 float16 points near x = 1000: sum(w p) is 1.3e5, past the float16 maximum 65504, so the weighted
+        # centroid is accumulated in float32. The output stays float16.
+        # The float64 oracle is fitted on the CPU (MPS has no float64) from the float16-rounded points.
+        t = torch.linspace(-1.0, 1.0, 128, dtype=torch.float64)
+        points = torch.stack([1000.0 + 8.0 * t, 4.0 * t, -2.0 * t], -1)[None].half()
+        expected = fit_line(points.double(), torch.ones(1, 128, dtype=torch.float64))
+        actual = fit_line(points.to(device), torch.ones(1, 128, device=device, dtype=torch.float16))
+        assert actual.origin.dtype == actual.direction.dtype == torch.float16
+        self.assert_close(actual.direction.abs().cpu().double(), expected.direction.abs(), atol=1e-3, rtol=1e-3)
+        self.assert_close(actual.origin.cpu().double(), expected.origin, atol=0.5, rtol=1e-3)
+
+    def test_fit_line_3d_float16_centred_in_float32(self, device):
+        # Unweighted float16 points near 1500, where the float16 spacing is 1: their centroid rounded to float16 is
+        # about 0.45 off, which tilts the direction by about 6e-3. The centroid and the offsets are formed in float32.
+        # The float64 oracle is fitted on the CPU (MPS has no float64) from the float16-rounded points.
+        t = torch.linspace(-0.7, 1.0, 64, dtype=torch.float64)
+        points = torch.stack([1500.0 + 6.0 * t, 1500.0 - 3.0 * t, 1500.0 + 2.0 * t], -1)[None].half()
+        expected = fit_line(points.double())
+        actual = fit_line(points.to(device))
+        assert actual.direction.dtype == torch.float16
+        self.assert_close(actual.direction.abs().cpu().double(), expected.direction.abs(), atol=1e-3, rtol=1e-3)
+
+    def test_fit_line_3d_keeps_promoted_dtype(self, device):
+        # Like the D = 2 branch, the line is returned in the promoted dtype of points and weights.
+        points = torch.tensor(
+            [[[0.0, 0.1, 0.3], [1.0, 0.4, 0.2], [2.0, 0.9, 0.1], [3.0, 1.6, 0.4], [4.0, 1.7, 0.3]]], device=device
+        )
+        f16, f32 = torch.float16, torch.float32
+        for pdt, wdt in ((f16, f32), (f32, f16), (f16, f16)):
+            weights = torch.ones(1, 5, device=device, dtype=wdt)
+            line = fit_line(points.to(pdt), weights)
+            expected = torch.promote_types(pdt, wdt)
+            assert line.origin.dtype == line.direction.dtype == expected
+            assert fit_line(points[..., :2].to(pdt), weights).origin.dtype == expected
+
     def test_fit_line_2d_degenerate_row_with_checks_disabled(self, device, dtype):
         # With checks disabled, as under torch.compile, identical 2-D points are not rejected: their scatter is 0,
         # and they get the direction (1, 0) rather than NaN, without touching the other rows.
@@ -581,6 +714,26 @@ class TestFitLine(BaseTester):
                 self.assert_close(line.direction[:1], expected.direction)
                 self.assert_close(line.direction[1], torch.tensor([1.0, 0.0], device=device, dtype=dtype))
                 self.assert_close(line.origin[1], points[1, 0])
+        finally:
+            if checks_were_enabled:
+                enable_checks()
+
+    def test_fit_line_3d_degenerate_row_with_checks_disabled(self, device, dtype):
+        # With checks disabled, as under torch.compile, a row of identical 3-D points has a zero scatter matrix: it
+        # is not divided by its zero scale, whose NaN would make the batched SVD raise for every row.
+        points = torch.tensor(
+            [[[0.0, 0.0, 0.0], [1.0, 3.0, 2.0], [2.0, 5.0, 3.0]], [[1.0, 2.0, 3.0]] * 3], device=device, dtype=dtype
+        )
+        weights = torch.tensor([[1.0, 2.0, 1.0], [1.0, 1.0, 1.0]], device=device, dtype=dtype)
+        checks_were_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            for w in (None, weights):
+                line = fit_line(points, w)
+                expected = fit_line(points[:1], None if w is None else w[:1])
+                self.assert_close(line.direction[:1].abs(), expected.direction.abs())
+                self.assert_close(line.origin[1], points[1, 0])
+                assert torch.isfinite(line.direction[1]).all()
         finally:
             if checks_were_enabled:
                 enable_checks()

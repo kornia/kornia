@@ -1715,7 +1715,10 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("p", [0, 0.5, 1.0])
     @pytest.mark.parametrize("width,height", [(200, 200)])
     @pytest.mark.parametrize("num_mix", [1, 3])
-    @pytest.mark.parametrize("beta", [None, torch.tensor(1e-15), torch.tensor(1.0)])
+    # The small beta is 1e-2: Beta(1e-2, 1e-2) puts most draws of lambda next to 0 or 1, so the generator reaches
+    # the full-size and the empty cut in every dtype. A tinier value does not: 1e-15 rounds to 0 in float16, which
+    # Beta rejects, and torch samples exactly 0.5 from Beta(1e-15, 1e-15) in float32 and float64.
+    @pytest.mark.parametrize("beta", [None, torch.tensor(1e-2), torch.tensor(1.0)])
     @pytest.mark.parametrize("cut_size", [None, torch.tensor([0.0, 1.0]), torch.tensor([0.3, 0.6])])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_valid_param_combinations(
@@ -2013,12 +2016,9 @@ class TestHalfPrecisionPositionSamplers:
         generator.set_rng_device_and_dtype(device, half_dtype)
         torch.manual_seed(0)
         params = generator(batch_shape)
-        if isinstance(generator, PatchMixGenerator):
-            # (B, 2) patch starts; the far corner of a size-4 patch is 3 pixels on.
-            last_covered = params["patch_coords"] + 3
-        else:
-            # (B, 4, 2) or (B, 8, 3) crop corners in pixel coordinates.
-            last_covered = params["src"]
+        # PatchMix gives (B, 2) patch starts, and the far corner of a size-4 patch is 3 pixels on; the other
+        # generators give (B, 4, 2) or (B, 8, 3) crop corners in pixel coordinates.
+        last_covered = params["patch_coords"] + 3 if isinstance(generator, PatchMixGenerator) else params["src"]
         assert int(last_covered.min()) >= 0
         assert int(last_covered.max()) < 8
 

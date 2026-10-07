@@ -70,7 +70,8 @@ def dice_loss(
         average:
             Reduction applied in multi-class scenario:
             - ``'micro'`` [default]: Calculate the loss across all classes.
-            - ``'macro'``: Calculate the loss for each class separately and average the metrics across classes.
+            - ``'macro'``: Average class losses over classes present in each sample's non-ignored target.
+              Samples with all pixels ignored, or whose present classes all have weight 0, have loss 1.
         eps: Scalar to enforce numerical stabiliy.
         weight: weights for classes with shape :math:`(num\_of\_classes,)`.
         ignore_index: labels with this value are ignored in the loss computation.
@@ -101,6 +102,9 @@ def dice_loss(
 
     if not pred.device == target.device:
         raise ValueError(f"pred and target must be in the same device. Got: {pred.device} and {target.device}")
+
+    if not (pred.shape[0] == target.shape[0] and pred.shape[2:] == target.shape[1:]):
+        raise ValueError(f"Expected target size {torch.Size((pred.shape[0], *pred.shape[2:]))}, got {target.shape}")
     num_of_classes = pred.shape[1]
     possible_average = {"micro", "macro"}
     KORNIA_CHECK(average in possible_average, f"The `average` has to be one of {possible_average}. Got: {average}")
@@ -110,8 +114,11 @@ def dice_loss(
 
     target, target_mask = mask_ignore_pixels(target, ignore_index)
 
-    # create the labels one hot torch.Tensor
-    target_one_hot: torch.Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
+    # create the labels one hot torch.Tensor. A half-precision target is built in float32, the dtype of the sums below:
+    # the intersection gradient of a class absent from the target is 2 / (cardinality + eps) up to the averaging, past
+    # the float16 range once that class's probabilities underflow, and float16 inf times the zero target is NaN.
+    target_dtype = torch.float32 if pred.dtype in (torch.float16, torch.bfloat16) else pred.dtype
+    target_one_hot: torch.Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=target_dtype)
 
     # mask ignore pixels
     if target_mask is not None:
@@ -138,6 +145,9 @@ def dice_loss(
     # set dimensions for the appropriate averaging
     dims: tuple[int, ...] = (2, 3)
 
+    # The weighted micro Dice is 2 sum(w p t) / sum(w (p + t)): the weight enters the intersection once, through the
+    # weighted scores, so the intersection pairs them with the unweighted target.
+    intersection_target = target_one_hot
     if average == "micro":
         dims = (1, *dims)
 
@@ -147,7 +157,7 @@ def dice_loss(
 
     # Half-precision pixel counts can overflow before the Dice ratio is formed.
     reduction_dtype = torch.float32 if pred_soft.dtype in (torch.float16, torch.bfloat16) else pred_soft.dtype
-    intersection = torch.sum(pred_soft * target_one_hot, dims, dtype=reduction_dtype)
+    intersection = torch.sum(pred_soft * intersection_target, dims, dtype=reduction_dtype)
     cardinality = torch.sum(pred_soft + target_one_hot, dims, dtype=reduction_dtype)
 
     dice_score = 2.0 * intersection / (cardinality + eps)
@@ -155,7 +165,14 @@ def dice_loss(
 
     # reduce the loss across samples (and classes in case of `macro` averaging)
     if average == "macro":
-        dice_loss = (dice_loss * weight).sum(-1) / weight.sum()
+        # A class is present in a sample when one of the sample's non-ignored target pixels has it.
+        present = (target_one_hot == 1).any(dim=-1).any(dim=-1)
+        weight = weight * present
+        normalizer = weight.sum(-1)
+        # No present class with a nonzero weight (all pixels ignored, or weight 0): loss 1, as before.
+        empty = normalizer == 0
+        dice_loss = (dice_loss * weight).sum(-1) / normalizer.masked_fill(empty, 1)
+        dice_loss = dice_loss.masked_fill(empty, 1)
 
     return torch.mean(dice_loss).to(output_dtype)
 
@@ -168,7 +185,9 @@ class DiceLoss(nn.Module):
 
     Args:
         average: Reduction strategy for multi-class computation. Use "micro" to aggregate
-            classes globally, or "macro" to average class-wise Dice scores.
+            classes globally, or "macro" to average over classes present in each sample's
+            non-ignored target. Samples with all pixels ignored, or whose present classes all have
+            weight 0, have loss 1.
         eps: Small constant added to the denominator for numerical stability.
         weight: Optional class-weight tensor of shape :math:`(C,)`.
         ignore_index: Label value to exclude from loss computation.

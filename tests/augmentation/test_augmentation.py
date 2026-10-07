@@ -1415,10 +1415,7 @@ class TestColorJiggle(BaseTester):
     @pytest.mark.parametrize("layout", ["channels_last", "transposed"])
     def test_dynamo_fixed_order_noncontiguous(self, layout):
         image = torch.rand(2, 3, 8, 10)
-        if layout == "channels_last":
-            image = image.to(memory_format=torch.channels_last)
-        else:
-            image = image.transpose(-1, -2)
+        image = image.to(memory_format=torch.channels_last) if layout == "channels_last" else image.transpose(-1, -2)
         image.requires_grad_()
 
         op = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))

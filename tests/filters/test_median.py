@@ -247,14 +247,18 @@ class TestMedianBlur(BaseTester):
         inp = torch.ones(1, 1, 7, 9, device=device, dtype=dtype)
         inp[..., 3, 4] = invalid
         inp.requires_grad_()
+        # The same window-local expectation as test_selection_nonfinite, built without a convolution: a bf16
+        # convolution reference spreads the NaN outside its windows on the x86 CI runners, which is what the
+        # autograd path stopped following.
         radius = kernel_size // 2
-        padded = torch.nn.functional.pad(
-            inp,
-            (radius, radius, radius, radius),
-            mode=border_type,
-        )
-        weights = get_binary_kernel2d(kernel_size, device=device, dtype=dtype)
-        expected = torch.nn.functional.conv2d(padded, weights, padding=0).median(1).values[:, None]
+        expected = torch.ones_like(inp)
+        if border_type == "constant":
+            for y in range(7):
+                for x in range(9):
+                    rows = min(7, y + radius + 1) - max(0, y - radius)
+                    cols = min(9, x + radius + 1) - max(0, x - radius)
+                    expected[..., y, x] = float(rows * cols > kernel_size**2 // 2)
+        expected[..., 3 - radius : 4 + radius, 4 - radius : 5 + radius] = float("nan")
         actual = median_blur(inp, kernel_size, border_type)
         self.assert_close(actual.isnan(), expected.isnan())
         self.assert_close(actual.nan_to_num(), expected.nan_to_num())
@@ -406,7 +410,8 @@ class TestConventionsMedianBlur(BaseTester):
         for kernel_size, changed in ((3, 4), (5, 12)):
             self.assert_close(median_blur(image, kernel_size).detach(), image.detach())
             zero_padded = median_blur(image, kernel_size, border_type="constant").detach()
-            assert zero_padded[0, 0, 0, 0] == 0 and zero_padded[0, 0, -1, -1] == 0
+            assert zero_padded[0, 0, 0, 0] == 0
+            assert zero_padded[0, 0, -1, -1] == 0
             assert int((zero_padded != image.detach()).sum()) == changed
         # the default is 'reflect', not just a mode that keeps a constant
         torch.manual_seed(0)

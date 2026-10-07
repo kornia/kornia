@@ -17,7 +17,6 @@
 
 import copy
 import pickle
-import re
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -1158,11 +1157,34 @@ class TestConventionAugmentationBase2D(BaseTester):
         container = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input"])
         assert container(empty).shape == (0, 3, 6, 8)
 
-    def test_wart_zero_batch_raises_a_validation_error_4429(self, device, dtype):
-        # Wart pin (#4429): `B = 0` is not uniformly "empty in, empty out". RandomAutoContrast raises its
-        # deliberate validation error; the int-size resizes are pinned in the convention test below.
-        with pytest.raises(ValueError, match=re.escape("Invalid input tensor, it is empty.")):
-            K.RandomAutoContrast(p=1.0)(torch.rand(0, 3, 6, 8, device=device, dtype=dtype))
+    @pytest.mark.parametrize("augmentation", [K.RandomGaussianIllumination, K.RandomLinearCornerIllumination])
+    @pytest.mark.parametrize("probability", [0.0, 0.5, 1.0])
+    def test_minmax_illumination_empty_batch_4429(self, augmentation, probability, device, dtype):
+        data = torch.empty(0, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
+        output = augmentation(p=probability)(data)
+        assert output.shape == data.shape
+        assert output.dtype == dtype
+        assert output.device == device
+        output.sum().backward()
+        assert data.grad is not None
+        assert data.grad.shape == data.shape
+
+    @pytest.mark.parametrize("probability", [0.0, 0.5, 1.0])
+    @pytest.mark.parametrize("clip_output", [False, True])
+    def test_autocontrast_empty_batch_4429(self, probability, clip_output, device, dtype):
+        data = torch.empty(0, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
+        augmentation = K.RandomAutoContrast(p=probability, clip_output=clip_output)
+        output = augmentation(data)
+        replay = augmentation(data, params=augmentation._params)
+        for actual in (output, replay):
+            assert actual.shape == data.shape
+            assert actual.dtype == dtype
+            assert actual.device == device
+        output.sum().backward()
+        assert data.grad is not None
+        assert data.grad.shape == data.shape
+        sequence = K.AugmentationSequential(augmentation, data_keys=["input"])
+        assert sequence(data).shape == data.shape
 
     @pytest.mark.parametrize(
         ("augmentation", "shape"),
@@ -1177,12 +1199,11 @@ class TestConventionAugmentationBase2D(BaseTester):
             pytest.param(
                 lambda: K.RandomAutoContrast(p=1.0),
                 (0, 3, 6, 8),
-                marks=pytest.mark.xfail(strict=True, raises=ValueError, reason="Tracked in #4429"),
             ),
         ],
     )
     def test_convention_zero_batch_is_empty_in_empty_out(self, augmentation, shape, device, dtype):
-        # Strict xfail (#4429): each listed augmentation must preserve an empty batch with its intended
-        # output geometry. Per-class markers turn an unrelated repair into a failure rather than an XFAIL.
+        # Convention pin (#4429): each listed augmentation preserves an empty batch with its intended
+        # output geometry. Other empty-batch configurations remain tracked by the umbrella issue.
         empty = torch.rand(0, 3, 6, 8, device=device, dtype=dtype)
         assert augmentation()(empty).shape == shape
