@@ -777,14 +777,8 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         if len(desc2.shape) == 2:
             desc2 = desc2.unsqueeze(0)
         dev = lafs1.device
-        if hw1 is None:
-            hw1_ = keypoints1.max(dim=1)[0].squeeze().flip(0)
-        else:
-            hw1_ = torch.tensor(hw1, device=dev)
-        if hw2 is None:
-            hw2_ = keypoints2.max(dim=1)[0].squeeze().flip(0)
-        else:
-            hw2_ = torch.tensor(hw2, device=dev)
+        hw1_ = keypoints1.max(dim=1)[0].squeeze().flip(0) if hw1 is None else torch.tensor(hw1, device=dev)
+        hw2_ = keypoints2.max(dim=1)[0].squeeze().flip(0) if hw2 is None else torch.tensor(hw2, device=dev)
         scale0, ori0 = _lightglue_keypoint_scale_ori(lafs1, self.feature_name)
         scale1, ori1 = _lightglue_keypoint_scale_ori(lafs2, self.feature_name)
         input_dict = {

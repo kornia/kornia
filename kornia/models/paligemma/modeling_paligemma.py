@@ -323,10 +323,7 @@ class PaliGemma(nn.Module):
         """
         vision_outputs = self.vision_tower(pixel_values)
 
-        if isinstance(vision_outputs, (tuple, list)):
-            image_features = vision_outputs[1]
-        else:
-            image_features = vision_outputs
+        image_features = vision_outputs[1] if isinstance(vision_outputs, (tuple, list)) else vision_outputs
 
         if image_features.dim() != 3:
             image_features = image_features.unsqueeze(1)
