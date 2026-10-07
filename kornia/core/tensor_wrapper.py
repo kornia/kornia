@@ -472,10 +472,7 @@ class TensorWrapper:
         Returns:
             Wrapped result of the operation.
         """
-        if swap:
-            args = (other, self)
-        else:
-            args = (self, other)
+        args = (other, self) if swap else (self, other)
         return self.__torch_function__(func, (type(self),), args)
 
     def __inplace_op__(self, func: Any, other: Any) -> Self:

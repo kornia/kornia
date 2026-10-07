@@ -90,15 +90,9 @@ def compute_padding(
     # it might be best to apply padding only to the far edges (right, bottom), so
     # that fewer patches are affected by the padding.
     # For now, just use the default padding
-    if remainder_vertical != 0:
-        vertical_padding = stride[0] - remainder_vertical
-    else:
-        vertical_padding = 0
+    vertical_padding = stride[0] - remainder_vertical if remainder_vertical != 0 else 0
 
-    if remainder_horizontal != 0:
-        horizontal_padding = stride[1] - remainder_horizontal
-    else:
-        horizontal_padding = 0
+    horizontal_padding = stride[1] - remainder_horizontal if remainder_horizontal != 0 else 0
 
     if vertical_padding % 2 == 0:
         top_padding = bottom_padding = vertical_padding // 2

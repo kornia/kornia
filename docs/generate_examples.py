@@ -468,10 +468,7 @@ def main():
         img_in = img3.repeat(num_samples, 1, 1, 1)
         if fn_name == "jpeg_codec_differentiable":
             img_in = img_in[..., :176, :]
-        if fn_name == "add_weighted":
-            args_in = (img_in, args[0], img2, args[1], args[2])
-        else:
-            args_in = (img_in, *args)
+        args_in = (img_in, args[0], img2, args[1], args[2]) if fn_name == "add_weighted" else (img_in, *args)
         # import function and apply
         fn = getattr(mod, fn_name)
         out = fn(*args_in)

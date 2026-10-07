@@ -48,10 +48,7 @@ class TestSSIMLoss(BaseTester):
 
         loss = kornia.losses.ssim_loss(img, img, window_size, reduction=reduction_type)
 
-        if reduction_type == "none":
-            expected = torch.zeros_like(img)
-        else:
-            expected = torch.tensor(0.0, device=device, dtype=dtype)
+        expected = torch.zeros_like(img) if reduction_type == "none" else torch.tensor(0.0, device=device, dtype=dtype)
 
         self.assert_close(loss, expected)
 
@@ -426,10 +423,7 @@ class TestSSIM3DLoss(BaseTester):
         # Sanity test
         img = torch.rand(shape, device=device, dtype=dtype)
         actual = kornia.losses.ssim3d_loss(img, img, window_size, reduction=reduction_type)
-        if reduction_type == "none":
-            expected = torch.zeros_like(img)
-        else:
-            expected = torch.tensor(0.0, device=device, dtype=dtype)
+        expected = torch.zeros_like(img) if reduction_type == "none" else torch.tensor(0.0, device=device, dtype=dtype)
 
         self.assert_close(actual, expected)
 

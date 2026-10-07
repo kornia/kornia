@@ -185,12 +185,7 @@ def filter2d(
     # convolve the tensor with the kernel.
     output = F.conv2d(input, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1)
 
-    if padding == "same":
-        out = output.view(b, c, h, w)
-    else:
-        out = output.view(b, c, h - height + 1, w - width + 1)
-
-    return out
+    return output.view(b, c, h, w) if padding == "same" else output.view(b, c, h - height + 1, w - width + 1)
 
 
 def filter2d_separable(
