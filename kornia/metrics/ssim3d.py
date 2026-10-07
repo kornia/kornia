@@ -23,7 +23,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.filters import filter3d, get_gaussian_kernel3d
-from kornia.filters.filter import _compute_padding
+from kornia.filters.filter import _VALID_PADDING, _compute_padding
 
 
 def _crop(img: torch.Tensor, cropping_shape: List[int]) -> torch.Tensor:
@@ -79,6 +79,9 @@ def ssim3d(
        The ssim index map with shape :math:`(B, C, D, H, W)`.
 
     Note:
+        The volume is reflected at its faces for ``padding='same'``, as :func:`kornia.metrics.ssim` does for
+        images, so every spatial size must be larger than ``window_size // 2``. The Gaussian window is built in
+        the device and dtype of the inputs.
         Integer images are converted to float32 before computing the local moments.
         Half-precision inputs are evaluated in float32 for numerical stability.
         Filtering runs with autocast disabled; the result uses the promoted input dtype.
@@ -98,6 +101,13 @@ def ssim3d(
     if not isinstance(max_val, float):
         raise TypeError(f"Input max_val type is not a float. Got {type(max_val)}")
 
+    KORNIA_CHECK(
+        str(padding).lower() in _VALID_PADDING,
+        f"Invalid padding mode, {padding}. Expected one of {_VALID_PADDING}",
+    )
+    # the check is case-insensitive, so dispatch on the lower-case spelling as well
+    padding = str(padding).lower()
+
     # Preserve fractional Gaussian weights and avoid integer moment overflow.
     if not img1.is_floating_point() and not img1.is_complex():
         img1 = img1.to(torch.float32)
@@ -110,9 +120,14 @@ def ssim3d(
         img1 = img1.float()
     if img2.dtype in (torch.float16, torch.bfloat16):
         img2 = img2.float()
+    # Mixed inputs are filtered in their common dtype, which is also the dtype of the window.
+    compute_dtype = torch.promote_types(img1.dtype, img2.dtype)
+    img1, img2 = img1.to(compute_dtype), img2.to(compute_dtype)
 
     # prepare kernel
-    kernel: torch.Tensor = get_gaussian_kernel3d((window_size, window_size, window_size), (1.5, 1.5, 1.5))
+    kernel: torch.Tensor = get_gaussian_kernel3d(
+        (window_size, window_size, window_size), (1.5, 1.5, 1.5), device=img1.device, dtype=compute_dtype
+    )
 
     # compute coefficients
     C1: float = (0.01 * max_val) ** 2
@@ -120,8 +135,8 @@ def ssim3d(
 
     # compute local mean per channel
     with torch.autocast(device_type=img1.device.type, enabled=False):
-        mu1: torch.Tensor = filter3d(img1, kernel)
-        mu2: torch.Tensor = filter3d(img2, kernel)
+        mu1: torch.Tensor = filter3d(img1, kernel, border_type="reflect")
+        mu2: torch.Tensor = filter3d(img2, kernel, border_type="reflect")
 
     cropping_shape: List[int] = []
     if padding == "valid":
@@ -137,9 +152,9 @@ def ssim3d(
     mu1_mu2 = mu1 * mu2
 
     with torch.autocast(device_type=img1.device.type, enabled=False):
-        mu_img1_sq = filter3d(img1**2, kernel)
-        mu_img2_sq = filter3d(img2**2, kernel)
-        mu_img1_img2 = filter3d(img1 * img2, kernel)
+        mu_img1_sq = filter3d(img1**2, kernel, border_type="reflect")
+        mu_img2_sq = filter3d(img2**2, kernel, border_type="reflect")
+        mu_img1_img2 = filter3d(img1 * img2, kernel, border_type="reflect")
 
     if padding == "valid":
         mu_img1_sq = _crop(mu_img1_sq, cropping_shape)

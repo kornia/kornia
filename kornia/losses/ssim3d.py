@@ -68,7 +68,7 @@ def ssim3d_loss(
     ssim_map: torch.Tensor = metrics.ssim3d(img1, img2, window_size, max_val, eps, padding)
 
     # compute and reduce the loss
-    loss = 1.0 - ssim_map
+    loss = torch.clamp((1.0 - ssim_map) / 2, min=0, max=1)
 
     if reduction == "mean":
         loss = loss.mean()

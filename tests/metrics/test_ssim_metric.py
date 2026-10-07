@@ -20,6 +20,7 @@ from __future__ import annotations
 import pytest
 import torch
 
+from kornia.core.exceptions import BaseError
 from kornia.metrics.ssim import SSIM, ssim
 
 from testing.base import BaseTester
@@ -126,6 +127,26 @@ class TestSsim(BaseTester):
         # valid crops the border — output is smaller than 'same'
         assert out_valid.shape[2] < out_same.shape[2]
         assert out_valid.shape[3] < out_same.shape[3]
+
+    @pytest.mark.parametrize("padding", ["VALID", "Valid"])
+    def test_padding_case_insensitive(self, device, dtype, padding):
+        # Case variants select their branch as the filters do since #5156 (#5537).
+        img1 = torch.rand(1, 1, 13, 17, device=device, dtype=dtype)
+        img2 = torch.rand(1, 1, 13, 17, device=device, dtype=dtype)
+        expected = ssim(img1, img2, window_size=5, padding="valid")
+        actual = ssim(img1, img2, window_size=5, padding=padding)
+        assert actual.shape == (1, 1, 9, 13)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        self.assert_close(SSIM(5, padding=padding)(img1, img2), expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("padding", ["full", "bogus"])
+    def test_exception_invalid_padding(self, device, dtype, padding):
+        # Any other value raises instead of silently returning the 'same' map (#5537).
+        img = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
+        with pytest.raises(BaseError, match="Invalid padding mode"):
+            ssim(img, img, window_size=3, padding=padding)
+        with pytest.raises(BaseError, match="Invalid padding mode"):
+            SSIM(3, padding=padding)(img, img)
 
     def test_exception_non_tensor_img1(self, device, dtype):
         img2 = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
