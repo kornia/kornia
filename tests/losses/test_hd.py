@@ -56,11 +56,17 @@ class TestHausdorffLoss(BaseTester):
             kornia.losses.HausdorffERLoss3D()((torch.rand(1, 2, 1) > 0.5) * 1, (torch.rand(1, 1, 1, 2) > 0.5) * 1)
         assert "Only 3D images supported. Got " in str(errinf)
 
+        # The 3-D loss validates its target like the 2-D one: long dtype and labels in [0, C) (#5545).
         with pytest.raises(ValueError) as errinf:
             kornia.losses.HausdorffERLoss3D()(
-                (torch.rand(1, 2, 1, 1, 1) > 0.5) * 1, torch.tensor([[[[[5]]]]], dtype=torch.float32)
+                (torch.rand(1, 2, 1, 1, 1) > 0.5) * 1, torch.tensor([[[[[1]]]]], dtype=torch.float32)
             )
-        assert "Invalid target value" in str(errinf)
+        assert "Expect long type target value in range [0, 2). Got torch.float32." in str(errinf)
+
+        for label in (-1, 2, 5):
+            with pytest.raises(ValueError) as errinf:
+                kornia.losses.HausdorffERLoss3D()(torch.rand(1, 2, 1, 1, 1), torch.tensor([[[[[label]]]]]))
+            assert f"Expect long type target value in range [0, 2). ({label}, {label})" in str(errinf)
 
     def test_numeric(self, device, dtype, cudnn_tf32_follows_option):
         # `cudnn_tf32_follows_option` keeps CUDA's float32 `conv2d` out of TF32: rounding its inputs to 10 mantissa bits
