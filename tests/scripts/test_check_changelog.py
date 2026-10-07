@@ -23,7 +23,8 @@ import pytest
 
 _SCRIPT = Path(__file__).parent.parent.parent / ".github" / "scripts" / "check_changelog.py"
 _SPEC = importlib.util.spec_from_file_location("check_changelog", _SCRIPT)
-assert _SPEC is not None and _SPEC.loader is not None
+assert _SPEC is not None
+assert _SPEC.loader is not None
 check_changelog = importlib.util.module_from_spec(_SPEC)
 sys.modules[_SPEC.name] = check_changelog
 _SPEC.loader.exec_module(check_changelog)
