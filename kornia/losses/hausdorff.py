@@ -114,11 +114,11 @@ class _HausdorffERLossBase(nn.Module):
             )
 
         if target.dtype != torch.long:
-            raise ValueError(f"Expect long type target value in range (0, {pred.size(1)}). Got {target.dtype}.")
+            raise ValueError(f"Expect long type target value in range [0, {pred.size(1)}). Got {target.dtype}.")
         # The range check reads the data, which graph capture cannot do; skip it under export.
         if not is_exporting() and not (target.max() < pred.size(1) and target.min() >= 0):
             raise ValueError(
-                f"Expect long type target value in range (0, {pred.size(1)}). ({target.min()}, {target.max()})"
+                f"Expect long type target value in range [0, {pred.size(1)}). ({target.min()}, {target.max()})"
             )
 
         out = torch.stack(

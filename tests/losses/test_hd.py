@@ -61,12 +61,12 @@ class TestHausdorffLoss(BaseTester):
             kornia.losses.HausdorffERLoss3D()(
                 (torch.rand(1, 2, 1, 1, 1) > 0.5) * 1, torch.tensor([[[[[1]]]]], dtype=torch.float32)
             )
-        assert "Expect long type target value in range (0, 2). Got torch.float32." in str(errinf)
+        assert "Expect long type target value in range [0, 2). Got torch.float32." in str(errinf)
 
         for label in (-1, 2, 5):
             with pytest.raises(ValueError) as errinf:
                 kornia.losses.HausdorffERLoss3D()(torch.rand(1, 2, 1, 1, 1), torch.tensor([[[[[label]]]]]))
-            assert f"Expect long type target value in range (0, 2). ({label}, {label})" in str(errinf)
+            assert f"Expect long type target value in range [0, 2). ({label}, {label})" in str(errinf)
 
     def test_numeric(self, device, dtype):
         if dtype == torch.float64:
