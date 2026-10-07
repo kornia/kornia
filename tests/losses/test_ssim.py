@@ -457,7 +457,8 @@ class TestSSIM3DLoss(BaseTester):
         expected = ((1.0 - ssim_map) / 2).clamp(0, 1)
         actual = kornia.losses.ssim3d_loss(img1, img2, 5, reduction="none")
         self.assert_close(actual, expected, rtol=0, atol=0)
-        assert actual.min() >= 0 and actual.max() <= 1
+        assert actual.min() >= 0
+        assert actual.max() <= 1
         self.assert_close(kornia.losses.SSIM3DLoss(5)(img1, img2), expected.mean())
 
     def test_clamps_roundoff_into_the_unit_range(self, device, dtype):
