@@ -146,6 +146,29 @@ class TestMutualInformationLoss(BaseTester):
 
         self.assert_close(_normalize_signal(signal, num_bins=64), torch.zeros_like(signal))
 
+    @pytest.mark.parametrize("kernel", [MIKernel.xu, MIKernel.truncated_gaussian])
+    def test_constant_signal_has_zero_gradient(self, device, dtype, kernel):
+        # A constant sample is normalised to zero, and the discarded branch of that `where` must not backpropagate
+        # 0 / 0: the loss does not change under any perturbation that keeps the range below eps, so its gradient is 0.
+        generator = torch.Generator().manual_seed(0)
+        pred = torch.rand(2, 12, 20, generator=generator).to(device, dtype)
+        target = (pred**2 + 0.1 * torch.rand(2, 12, 20, generator=generator).to(device, dtype)).detach()
+        pred[1] = 0.3
+        for loss_fn in (mutual_information_loss_2d, normalized_mutual_information_loss_2d):
+            pred_, target_ = pred.clone().requires_grad_(), target.clone().requires_grad_()
+            grad_pred, grad_target = torch.autograd.grad(
+                loss_fn(pred_, target_, kernel_function=kernel).sum(), (pred_, target_)
+            )
+            assert grad_pred.isfinite().all() and grad_target.isfinite().all()
+            self.assert_close(grad_pred[1], torch.zeros_like(grad_pred[1]), rtol=0, atol=0)
+            assert grad_pred[0].abs().sum() > 0
+        scale = torch.ones((), device=device, dtype=dtype, requires_grad=True)
+        mutual_information_loss_2d(pred * scale, target, kernel_function=kernel).sum().backward()
+        assert scale.grad.isfinite()
+        reference = torch.full((240,), 0.5, device=device, dtype=dtype, requires_grad=True)
+        MILossFromRef(reference, kernel_function=kernel)(target[0].reshape(-1)).backward()
+        self.assert_close(reference.grad, torch.zeros_like(reference), rtol=0, atol=0)
+
     def test_normalizes_onto_bin_centres(self, device, dtype):
         signal = torch.tensor([2.0, 2.5, 3.0], device=device, dtype=dtype)
         expected = torch.tensor([0.0, 31.5, 63.0], device=device, dtype=dtype)
