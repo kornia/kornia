@@ -468,7 +468,8 @@ class TestSo2DtypeMigration(BaseTester):
         before = rotation.z.detach().clone()
 
         assert self._cast(rotation, dtype, method) is rotation
-        assert rotation.z.is_complex() and rotation.z.real.dtype == dtype
+        assert rotation.z.is_complex()
+        assert rotation.z.real.dtype == dtype
         assert rotation.state_dict()["_z"].shape == shape
         self.assert_close(rotation.z.real, before.real.to(dtype))
         self.assert_close(rotation.z.imag, before.imag.to(dtype))
@@ -493,9 +494,11 @@ class TestSo2DtypeMigration(BaseTester):
         parent = torch.nn.ModuleDict({"rotation": rotation})
 
         assert self._cast(parent, dtype, method) is parent
-        assert rotation.z.is_complex() and rotation.z.real.dtype == dtype
+        assert rotation.z.is_complex()
+        assert rotation.z.real.dtype == dtype
         assert rotation.extra.value.dtype == dtype
-        assert rotation.extra.weight.dtype == dtype and rotation.extra.weight.grad.dtype == dtype
+        assert rotation.extra.weight.dtype == dtype
+        assert rotation.extra.weight.grad.dtype == dtype
         assert dict(parent.named_parameters())["rotation.extra.weight"] is rotation.extra.weight
         assert dict(parent.named_buffers())["rotation._z"] is rotation._z
 
@@ -510,7 +513,8 @@ class TestSo2DtypeMigration(BaseTester):
 
         assert isinstance(rotation._z, torch.nn.Parameter)
         assert dict(rotation.named_parameters())["_z"] is rotation._z
-        assert rotation._z.grad.is_complex() and rotation._z.grad.real.dtype == dtype
+        assert rotation._z.grad.is_complex()
+        assert rotation._z.grad.real.dtype == dtype
         self.assert_close(rotation._z.grad.real, torch.ones(2, device=device, dtype=dtype))
         self.assert_close(rotation._z.grad.imag, torch.full((2,), 2.0, device=device, dtype=dtype))
         torch.optim.SGD(rotation.parameters(), lr=0.125).step()
@@ -573,10 +577,12 @@ class TestSo2DtypeMigration(BaseTester):
         target = So2.exp((-theta).requires_grad_()).to(dtype=dtype)
         assert target._z.data_ptr() != legacy_state["_z"].data_ptr()
         result = target.load_state_dict(legacy_state)
-        assert not result.missing_keys and not result.unexpected_keys
+        assert not result.missing_keys
+        assert not result.unexpected_keys
         assert list(target.state_dict()) == ["_z"]
         assert target.state_dict()["_z"].shape == legacy_state["_z"].shape
-        assert target.z.is_complex() and target.z.real.dtype == dtype
+        assert target.z.is_complex()
+        assert target.z.real.dtype == dtype
         self.assert_close(target.z.real, legacy_state["_z"].real.to(dtype))
         self.assert_close(target.z.imag, legacy_state["_z"].imag.to(dtype))
         restored = So2.identity(2, device, dtype)
@@ -601,7 +607,8 @@ class TestSo2DtypeMigration(BaseTester):
         else:
             parent.to(device=device)
         assert rotation.z.device == device
-        assert rotation.z.is_complex() and rotation.z.real.dtype == dtype
+        assert rotation.z.is_complex()
+        assert rotation.z.real.dtype == dtype
         assert parent.state_dict()["rotation._z"].device == device
         assert isinstance(rotation._z, torch.nn.Parameter) == as_parameter
         c, s = angle.cos().to(device=device, dtype=dtype), angle.sin().to(device=device, dtype=dtype)

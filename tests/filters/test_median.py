@@ -25,7 +25,7 @@ from kornia.core.exceptions import BaseError
 from kornia.filters import MedianBlur, median_blur
 from kornia.filters.kernels import get_binary_kernel2d
 
-from testing.base import BaseTester, supports_reflect_padding
+from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
 
 median_module = importlib.import_module("kornia.filters.median")
 
@@ -247,17 +247,51 @@ class TestMedianBlur(BaseTester):
         inp = torch.ones(1, 1, 7, 9, device=device, dtype=dtype)
         inp[..., 3, 4] = invalid
         inp.requires_grad_()
+        # The same window-local expectation as test_selection_nonfinite, built without a convolution: a bf16
+        # convolution reference spreads the NaN outside its windows on the x86 CI runners, which is what the
+        # autograd path stopped following.
         radius = kernel_size // 2
-        padded = torch.nn.functional.pad(
-            inp,
-            (radius, radius, radius, radius),
-            mode=border_type,
-        )
-        weights = get_binary_kernel2d(kernel_size, device=device, dtype=dtype)
-        expected = torch.nn.functional.conv2d(padded, weights, padding=0).median(1).values[:, None]
+        expected = torch.ones_like(inp)
+        if border_type == "constant":
+            for y in range(7):
+                for x in range(9):
+                    rows = min(7, y + radius + 1) - max(0, y - radius)
+                    cols = min(9, x + radius + 1) - max(0, x - radius)
+                    expected[..., y, x] = float(rows * cols > kernel_size**2 // 2)
+        expected[..., 3 - radius : 4 + radius, 4 - radius : 5 + radius] = float("nan")
         actual = median_blur(inp, kernel_size, border_type)
         self.assert_close(actual.isnan(), expected.isnan())
         self.assert_close(actual.nan_to_num(), expected.nan_to_num())
+
+    @pytest.mark.parametrize("conv_nonfinite", ["drops", "spreads"])
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    @pytest.mark.parametrize("kernel_size", [3, 7, (5, 7)])
+    @pytest.mark.parametrize("invalid", [float("nan"), float("inf")])
+    def test_nonfinite_window_does_not_depend_on_convolution(
+        self, monkeypatch, invalid, kernel_size, requires_grad, conv_nonfinite, device, dtype
+    ):
+        # CPU bf16 convolution on the x86 CI runners can drop a NaN from the one-hot features (7x7 windows) or
+        # spread it outside the window. Emulate both: only the windows that hold the non-finite pixel are NaN.
+        conv2d = torch.nn.functional.conv2d
+
+        def nonfinite_conv2d(x, *args, **kwargs):
+            if conv_nonfinite == "drops":
+                return conv2d(torch.where(torch.isfinite(x), x, torch.zeros_like(x)), *args, **kwargs)
+            out = conv2d(x, *args, **kwargs)
+            return torch.where(torch.isfinite(x).all(), out, torch.full_like(out, float("nan")))
+
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip(f"this torch build has no replicate padding kernel for {dtype} on {device.type}")
+        monkeypatch.setattr(torch.nn.functional, "conv2d", nonfinite_conv2d)
+        image = torch.full((1, 1, 9, 11), 0.5, device=device, dtype=dtype)
+        image[0, 0, 4, 5] = invalid
+        image.requires_grad_(requires_grad)
+        ky, kx = (kernel_size, kernel_size) if isinstance(kernel_size, int) else kernel_size
+        expected = torch.zeros(1, 1, 9, 11, dtype=torch.bool, device=device)
+        expected[..., 4 - ky // 2 : 5 + ky // 2, 5 - kx // 2 : 6 + kx // 2] = True
+        actual = median_blur(image, kernel_size, "replicate").detach()
+        assert torch.equal(actual.isnan(), expected)
+        assert torch.equal(actual[~expected], torch.full_like(actual[~expected], 0.5))
 
     @pytest.mark.parametrize("kernel_size", [3, 5])
     @pytest.mark.parametrize("shape", [(1, 2, 7, 9), (1, 4, 512, 512)])
@@ -376,7 +410,8 @@ class TestConventionsMedianBlur(BaseTester):
         for kernel_size, changed in ((3, 4), (5, 12)):
             self.assert_close(median_blur(image, kernel_size).detach(), image.detach())
             zero_padded = median_blur(image, kernel_size, border_type="constant").detach()
-            assert zero_padded[0, 0, 0, 0] == 0 and zero_padded[0, 0, -1, -1] == 0
+            assert zero_padded[0, 0, 0, 0] == 0
+            assert zero_padded[0, 0, -1, -1] == 0
             assert int((zero_padded != image.detach()).sum()) == changed
         # the default is 'reflect', not just a mode that keeps a constant
         torch.manual_seed(0)

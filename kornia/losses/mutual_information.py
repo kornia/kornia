@@ -21,6 +21,7 @@ from functools import partial
 
 import torch
 
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE
 from kornia.core.utils import is_exporting
 
 
@@ -60,7 +61,7 @@ def rectangular_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Ten
         torch.Tensor: transformed signal
     """
     x = torch.abs(x)
-    return torch.where(x <= window_radius, 1.0, 0.0)
+    return (x <= window_radius).to(x.dtype)
 
 
 def truncated_gaussian_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
@@ -97,14 +98,23 @@ class MIKernel(Enum):
     truncated_gaussian = member(truncated_gaussian_kernel)
 
 
-def _flatten_mask(mask: torch.Tensor | None) -> torch.Tensor:
-    if mask is None:
-        return torch.tensor([True])
-    return mask.view(-1)
+def _validate_mask(mask: torch.Tensor | None, shape: torch.Size) -> None:
+    if mask is not None:
+        KORNIA_CHECK_IS_TENSOR(mask, "mask must be a boolean tensor or None.")
+        KORNIA_CHECK(mask.dtype in (torch.bool, torch.uint8), "mask must have boolean dtype (torch.bool or uint8).")
+        KORNIA_CHECK(
+            mask.shape == shape,
+            f"mask must have one-sample shape {shape}, common to the batch. Got {mask.shape}.",
+        )
+
+
+def _flatten_mask(mask: torch.Tensor | None, shape: torch.Size) -> torch.Tensor | None:
+    _validate_mask(mask, shape)
+    return None if mask is None else mask.reshape(-1)
 
 
 def _mask_is_full(mask: torch.Tensor | None) -> bool:
-    """Whether ``mask`` selects everything: ``None`` or a single ``True`` broadcast over the signal.
+    """Whether ``mask`` selects everything: ``None`` or ``True`` for a one-element signal.
 
     A one-element mask is decided structurally under graph capture (a single ``False`` would mask
     the whole signal, which is never meaningful), so exported graphs carry no data-dependent gather.
@@ -120,8 +130,12 @@ def _normalize_signal(data: torch.Tensor, num_bins: int, eps: float = 1e-8) -> t
     min_val, _ = data.min(dim=-1)
     max_val, _ = data.max(dim=-1)
     diff = (max_val - min_val).unsqueeze(-1)
-    # signal is considered trivial if too low variation
-    return torch.where(diff > eps, (data - min_val.unsqueeze(-1)) / diff * num_bins, 0)
+    # Map the range onto the bin centres 0 ... num_bins - 1, so that the maximum lands on the last centre and gets
+    # full histogram weight like every other sample. The signal is considered trivial if too low variation; its range
+    # is replaced by one inside the division, so that the discarded branch does not backpropagate 0 / 0.
+    nontrivial = diff > eps
+    safe_diff = torch.where(nontrivial, diff, torch.ones_like(diff))
+    return torch.where(nontrivial, (data - min_val.unsqueeze(-1)) / safe_diff * (num_bins - 1), 0)
 
 
 def _joint_histogram_to_entropies(joint_histogram: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
@@ -167,7 +181,7 @@ class EntropyBasedLossBase(torch.nn.Module):
             reference_signal (torch.Tensor): reference signal to which
                 other signals will be compared by the forward method
             mask (torch.Tensor | None): mask of roi in reference_signal, by default None
-                singleton shape, equal to reference_signal.shape[:-1]. It is a common mask for all the samples
+                boolean with shape (N,), equal to reference_signal.shape[-1:]. It is common to all the samples
                 in reference_signal.
             kernel_function (MIKernel): Used kernel function for kernel
                 density estimate, by default MIKernel.xu
@@ -180,21 +194,34 @@ class EntropyBasedLossBase(torch.nn.Module):
             ValueError: If kernel_function is not a valid MIKernel member.
         """
         super().__init__()
+        KORNIA_CHECK(
+            isinstance(num_bins, int) and not isinstance(num_bins, bool) and num_bins >= 2,
+            "num_bins must be an integer >= 2.",
+        )
+        KORNIA_CHECK(window_radius > 0, "window_radius must be > 0.")
+        if not isinstance(kernel_function, MIKernel):
+            raise ValueError(f"kernel_function must be a MIKernel member, the available options are {list(MIKernel)}.")
+        _validate_mask(mask, reference_signal.shape[-1:])
         self._ref_mask_is_full = _mask_is_full(mask)
         mask = self.fix_mask(mask, reference_signal)
-        self.eps = torch.finfo(reference_signal.dtype).eps
+        eps = torch.finfo(reference_signal.dtype).eps
         self.initial_shape = reference_signal.shape
         signal = reference_signal[..., mask]
-        self.register_buffer("signal", _normalize_signal(signal, num_bins, self.eps))
+        # Without a mask the gather keeps every sample: checking its size would guard on a data-dependent size
+        # and break ``fullgraph`` capture.
+        KORNIA_CHECK(self._ref_mask_is_full or signal.shape[-1] > 0, "mask must select at least one sample.")
+        self.register_buffer("signal", _normalize_signal(signal, num_bins, eps))
         self.register_buffer("mask", mask)
         self.num_bins = num_bins
-        if kernel_function not in MIKernel:
-            raise ValueError(
-                f"The passed_kernel_function is not an accepted MIKernel, the available options are {list(MIKernel)}."
-            )
         self.kernel_function = partial(kernel_function.value, window_radius=window_radius)
         self.window_radius = window_radius
-        self.bin_centers = torch.arange(self.num_bins, device=self.signal.device)
+        # A non-persistent buffer follows ``Module.to(device)`` and keeps the ``state_dict`` keys as they are.
+        self.register_buffer("bin_centers", torch.arange(self.num_bins, device=self.signal.device), persistent=False)
+
+    @property
+    def eps(self) -> float:
+        """Machine epsilon of the cached reference signal, so that it follows ``Module.to(dtype)``."""
+        return torch.finfo(self.signal.dtype).eps
 
     @staticmethod
     def fix_mask(mask: torch.Tensor, masked_guy: torch.Tensor) -> torch.Tensor:
@@ -207,12 +234,10 @@ class EntropyBasedLossBase(torch.nn.Module):
         Returns:
             torch.Tensor: normalized mask
         """
+        _validate_mask(mask, masked_guy.shape[-1:])
         if mask is None:
-            mask = torch.tensor(1, dtype=torch.bool)
-        if mask.ndim > 1:
-            raise ValueError("the mask has to be a common mask for all elements of the batch, not a batch of masks")
-        mask = mask.broadcast_to(masked_guy.shape[-1])
-        return mask.to(masked_guy.device)
+            return torch.ones(masked_guy.shape[-1], dtype=torch.bool, device=masked_guy.device)
+        return mask.to(masked_guy.device, torch.bool)
 
     # TODO: optimize method below, maybe with ihdex coordinates conversion
     def trace_in_ref_mask(self, other_signal, other_mask):
@@ -267,6 +292,7 @@ class EntropyBasedLossBase(torch.nn.Module):
             raise ValueError(
                 f"The two signals have incompatible shapes: {other_signal.shape} and {self.initial_shape}."
             )
+        _validate_mask(other_mask, other_signal.shape[-1:])
         if self._ref_mask_is_full and _mask_is_full(other_mask):
             # No roi on either side: skip the boolean-mask gathers, whose output sizes depend on the
             # mask values and therefore cannot be captured by ``torch.export``/ONNX.
@@ -275,11 +301,12 @@ class EntropyBasedLossBase(torch.nn.Module):
         else:
             # normalize in restriction to mask and recast in self.signal coords
             other_mask = self.fix_mask(other_mask, other_signal)
+            common_mask = other_mask[self.mask]
+            ref_signal = self.signal[..., common_mask]
+            KORNIA_CHECK(ref_signal.shape[-1] > 0, "mask intersection must select at least one sample.")
             other_signal = other_signal[..., other_mask]
             other_signal = _normalize_signal(other_signal, num_bins=self.num_bins, eps=eps)
             other_signal = self.trace_in_ref_mask(other_signal, other_mask)
-            common_mask = other_mask[self.mask]
-            ref_signal = self.signal[..., common_mask]
             other_signal = other_signal[..., common_mask]
 
         diff_1 = self.bin_centers.unsqueeze(-1) - ref_signal.unsqueeze(-2)
@@ -410,8 +437,13 @@ class MILossFromRef2D(MILossFromRef):
                 interval, by default 1.0
         """
         super().__init__(
-            self.arrange_shape(reference_signal), _flatten_mask(mask), kernel_function, num_bins, window_radius
+            self.arrange_shape(reference_signal),
+            _flatten_mask(mask, reference_signal.shape[-2:]),
+            kernel_function,
+            num_bins,
+            window_radius,
         )
+        self._reference_shape = reference_signal.shape
 
     @staticmethod
     def arrange_shape(tensor: torch.Tensor) -> torch.Tensor:
@@ -446,7 +478,11 @@ class MILossFromRef2D(MILossFromRef):
         Returns:
             torch.Tensor: tensor of losses, shape B as above
         """
-        return super().forward(self.arrange_shape(other_signal), _flatten_mask(other_mask))
+        KORNIA_CHECK(
+            other_signal.shape == self._reference_shape,
+            f"input and reference must have the same shape. Got {other_signal.shape} and {self._reference_shape}.",
+        )
+        return super().forward(self.arrange_shape(other_signal), _flatten_mask(other_mask, other_signal.shape[-2:]))
 
 
 class MILossFromRef3D(MILossFromRef):
@@ -482,8 +518,13 @@ class MILossFromRef3D(MILossFromRef):
                 interval, by default 1.0
         """
         super().__init__(
-            self.arrange_shape(reference_signal), _flatten_mask(mask), kernel_function, num_bins, window_radius
+            self.arrange_shape(reference_signal),
+            _flatten_mask(mask, reference_signal.shape[-3:]),
+            kernel_function,
+            num_bins,
+            window_radius,
         )
+        self._reference_shape = reference_signal.shape
 
     @staticmethod
     def arrange_shape(tensor: torch.Tensor) -> torch.Tensor:
@@ -518,7 +559,11 @@ class MILossFromRef3D(MILossFromRef):
         Returns:
             torch.Tensor: tensor of losses, shape B as above
         """
-        return super().forward(self.arrange_shape(other_signal), _flatten_mask(other_mask))
+        KORNIA_CHECK(
+            other_signal.shape == self._reference_shape,
+            f"input and reference must have the same shape. Got {other_signal.shape} and {self._reference_shape}.",
+        )
+        return super().forward(self.arrange_shape(other_signal), _flatten_mask(other_mask, other_signal.shape[-3:]))
 
 
 class NMILossFromRef2D(NMILossFromRef):
@@ -554,8 +599,13 @@ class NMILossFromRef2D(NMILossFromRef):
                 interval, by default 1.0
         """
         super().__init__(
-            self.arrange_shape(reference_signal), _flatten_mask(mask), kernel_function, num_bins, window_radius
+            self.arrange_shape(reference_signal),
+            _flatten_mask(mask, reference_signal.shape[-2:]),
+            kernel_function,
+            num_bins,
+            window_radius,
         )
+        self._reference_shape = reference_signal.shape
 
     @staticmethod
     def arrange_shape(tensor: torch.Tensor) -> torch.Tensor:
@@ -589,7 +639,11 @@ class NMILossFromRef2D(NMILossFromRef):
         Returns:
             torch.Tensor: tensor of losses, shape B as above
         """
-        return super().forward(self.arrange_shape(other_signal), _flatten_mask(other_mask))
+        KORNIA_CHECK(
+            other_signal.shape == self._reference_shape,
+            f"input and reference must have the same shape. Got {other_signal.shape} and {self._reference_shape}.",
+        )
+        return super().forward(self.arrange_shape(other_signal), _flatten_mask(other_mask, other_signal.shape[-2:]))
 
 
 class NMILossFromRef3D(NMILossFromRef):
@@ -625,8 +679,13 @@ class NMILossFromRef3D(NMILossFromRef):
                 interval, by default 1.0
         """
         super().__init__(
-            self.arrange_shape(reference_signal), _flatten_mask(mask), kernel_function, num_bins, window_radius
+            self.arrange_shape(reference_signal),
+            _flatten_mask(mask, reference_signal.shape[-3:]),
+            kernel_function,
+            num_bins,
+            window_radius,
         )
+        self._reference_shape = reference_signal.shape
 
     @staticmethod
     def arrange_shape(tensor: torch.Tensor) -> torch.Tensor:
@@ -660,7 +719,11 @@ class NMILossFromRef3D(NMILossFromRef):
         Returns:
             torch.Tensor: tensor of losses, shape B as above
         """
-        return super().forward(self.arrange_shape(other_signal), _flatten_mask(other_mask))
+        KORNIA_CHECK(
+            other_signal.shape == self._reference_shape,
+            f"input and reference must have the same shape. Got {other_signal.shape} and {self._reference_shape}.",
+        )
+        return super().forward(self.arrange_shape(other_signal), _flatten_mask(other_mask, other_signal.shape[-3:]))
 
 
 def mutual_information_loss(
@@ -683,8 +746,8 @@ def mutual_information_loss(
             is any batch dimensions tuple, possibly empty.
         target (torch.Tensor): Batch of flat tensors, same shape as
             input.
-        input_mask (torch.Tensor): mask of roi in input, defaults to None.
-        target_mask (torch.Tensor): mask of roi in target, defaults to None.
+        input_mask (torch.Tensor): boolean roi mask of shape (N,), common to the batch. Defaults to None.
+        target_mask (torch.Tensor): boolean roi mask of shape (N,), common to the batch. Defaults to None.
 
         kernel_function (MIKernel): Used kernel function for kernel
             density estimate, by default MIKernel.xu
@@ -696,6 +759,7 @@ def mutual_information_loss(
         torch.Tensor: tensor of losses, shape B (common batch dims tuple
         of input and target)
     """
+    KORNIA_CHECK_SAME_SHAPE(input, target)
     module = MILossFromRef(
         reference_signal=target,
         mask=target_mask,
@@ -725,8 +789,8 @@ def mutual_information_loss_2d(
         input (torch.Tensor): Batch of 2d tensors shape (B,H,W) where B
             is any batch dimensions tuple, possibly empty.
         target (torch.Tensor): Batch of 2d tensors, same shape as input.
-        input_mask (torch.Tensor): mask of roi in input, defaults to None.
-        target_mask (torch.Tensor): mask of roi in target, defaults to None.
+        input_mask (torch.Tensor): boolean roi mask of shape (H, W), common to the batch. Defaults to None.
+        target_mask (torch.Tensor): boolean roi mask of shape (H, W), common to the batch. Defaults to None.
         kernel_function (MIKernel): Used kernel function for kernel
             density estimate, by default MIKernel.xu
         num_bins (int): The number of bins used for KDE, defaults to 64.
@@ -737,6 +801,7 @@ def mutual_information_loss_2d(
         torch.Tensor: tensor of losses, shape B (common batch dims tuple
         of input and target)
     """
+    KORNIA_CHECK_SAME_SHAPE(input, target)
     module = MILossFromRef2D(
         reference_signal=target,
         mask=target_mask,
@@ -766,8 +831,8 @@ def mutual_information_loss_3d(
         input (torch.Tensor): Batch of 3d tensors shape (B,D,H,W) where
             B is any batch dimensions tuple, possibly empty.
         target (torch.Tensor): Batch of 3d tensors, same shape as input.
-        input_mask (torch.Tensor): mask of roi in input, defaults to None.
-        target_mask (torch.Tensor): mask of roi in target, defaults to None.
+        input_mask (torch.Tensor): boolean roi mask of shape (D, H, W), common to the batch. Defaults to None.
+        target_mask (torch.Tensor): boolean roi mask of shape (D, H, W), common to the batch. Defaults to None.
 
         kernel_function (MIKernel): Used kernel function for kernel
             density estimate, by default MIKernel.xu
@@ -779,6 +844,7 @@ def mutual_information_loss_3d(
         torch.Tensor: tensor of losses, shape B (common batch dims tuple
         of input and target)
     """
+    KORNIA_CHECK_SAME_SHAPE(input, target)
     module = MILossFromRef3D(
         reference_signal=target,
         mask=target_mask,
@@ -809,8 +875,8 @@ def normalized_mutual_information_loss(
             is any batch dimensions tuple, possibly empty.
         target (torch.Tensor): Batch of flat tensors, same shape as
             input.
-        input_mask (torch.Tensor): mask of roi in input, defaults to None.
-        target_mask (torch.Tensor): mask of roi in target, defaults to None.
+        input_mask (torch.Tensor): boolean roi mask of shape (N,), common to the batch. Defaults to None.
+        target_mask (torch.Tensor): boolean roi mask of shape (N,), common to the batch. Defaults to None.
 
         kernel_function (MIKernel): Used kernel function for kernel
             density estimate, by default MIKernel.xu
@@ -822,6 +888,7 @@ def normalized_mutual_information_loss(
         torch.Tensor: tensor of losses, shape B (common batch dims tuple
         of input and target)
     """
+    KORNIA_CHECK_SAME_SHAPE(input, target)
     module = NMILossFromRef(
         reference_signal=target,
         kernel_function=kernel_function,
@@ -851,8 +918,8 @@ def normalized_mutual_information_loss_2d(
         input (torch.Tensor): Batch of 2d tensors shape (B,H,W) where B
             is any batch dimensions tuple, possibly empty.
         target (torch.Tensor): Batch of 2d tensors, same shape as input.
-        input_mask (torch.Tensor): mask of roi in input, defaults to None.
-        target_mask (torch.Tensor): mask of roi in target, defaults to None.
+        input_mask (torch.Tensor): boolean roi mask of shape (H, W), common to the batch. Defaults to None.
+        target_mask (torch.Tensor): boolean roi mask of shape (H, W), common to the batch. Defaults to None.
 
         kernel_function (MIKernel): Used kernel function for kernel
             density estimate, by default MIKernel.xu
@@ -864,6 +931,7 @@ def normalized_mutual_information_loss_2d(
         torch.Tensor: tensor of losses, shape B (common batch dims tuple
         of input and target)
     """
+    KORNIA_CHECK_SAME_SHAPE(input, target)
     module = NMILossFromRef2D(
         reference_signal=target,
         mask=target_mask,
@@ -893,8 +961,8 @@ def normalized_mutual_information_loss_3d(
         input (torch.Tensor): Batch of 3d tensors shape (B,D,H,W) where
             B is any batch dimensions tuple, possibly empty.
         target (torch.Tensor): Batch of 3d tensors, same shape as input.
-        input_mask (torch.Tensor): mask of roi in input, defaults to None.
-        target_mask (torch.Tensor): mask of roi in target, defaults to None.
+        input_mask (torch.Tensor): boolean roi mask of shape (D, H, W), common to the batch. Defaults to None.
+        target_mask (torch.Tensor): boolean roi mask of shape (D, H, W), common to the batch. Defaults to None.
 
         kernel_function (MIKernel): Used kernel function for kernel
             density estimate, by default MIKernel.xu
@@ -906,6 +974,7 @@ def normalized_mutual_information_loss_3d(
         torch.Tensor: tensor of losses, shape B (common batch dims tuple
         of input and target)
     """
+    KORNIA_CHECK_SAME_SHAPE(input, target)
     module = NMILossFromRef3D(
         reference_signal=target,
         mask=target_mask,

@@ -219,6 +219,7 @@ select = [
   "PT013",  # flake8-pytest-style: pytest imports
   "PT014",  # flake8-pytest-style: duplicate parametrized cases
   "PT017",  # flake8-pytest-style: assertions in exception handlers
+  "PT018",  # flake8-pytest-style: composite assertions
   "PT022",  # flake8-pytest-style: useless yield fixtures
   "PT023",  # flake8-pytest-style: mark parentheses
   "PT030",  # flake8-pytest-style: specific warning matches
@@ -227,6 +228,7 @@ select = [
   "RSE",  # flake8-raise
   "RUF",  # Ruff-specific rules
   "S",  # flake8-bandit
+  "SIM102",  # collapsible-if
   "SIM103",  # needless-bool
   "SIM105",  # suppressible-exception
   "SIM114",  # if-with-same-arms
