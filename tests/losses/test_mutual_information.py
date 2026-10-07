@@ -20,7 +20,7 @@ import pytest
 import torch
 
 from kornia.core._compat import torch_version_lt
-from kornia.core.exceptions import BaseError
+from kornia.core.exceptions import BaseError, ShapeError
 from kornia.losses.mutual_information import (
     MIKernel,
     MILossFromRef,
@@ -439,7 +439,7 @@ class TestMutualInformationValidation(BaseTester):
     def test_signal_shape_before_flattening(self, device, dtype, loss_fn, module, shape):
         signal = torch.ones((2, *shape), device=device, dtype=dtype)
         other = signal.transpose(-1, -2).contiguous()
-        with pytest.raises(BaseError, match="same shape"):
+        with pytest.raises(ShapeError, match="same shape"):
             loss_fn(signal, other)
         # The generic module retains its documented ValueError for incompatible signal shapes.
         with pytest.raises((BaseError, ValueError), match="shape"):
@@ -490,10 +490,11 @@ class TestMutualInformationValidation(BaseTester):
         generator = torch.Generator().manual_seed(5548)
         signal = torch.rand((2, *shape), generator=generator).to(device, dtype)
         target = torch.rand((2, *shape), generator=generator).to(device, dtype)
-        # A strided mask with exactly one sample's shape remains valid.
-        storage = torch.ones((*shape, 2), device=device, dtype=torch.bool)
-        mask = storage[..., 0]
-        mask.reshape(-1)[1::3] = False
+        # A non-contiguous mask with exactly one sample's shape remains valid; an image mask is laid out so that it
+        # cannot be viewed flat.
+        mask = torch.ones(shape, device=device, dtype=torch.bool)
+        mask.view(-1)[1::3] = False
+        mask = torch.stack([mask, mask], -1)[..., 0] if len(shape) == 1 else mask.mT.contiguous().mT
         assert not mask.is_contiguous()
         kwargs = {"kernel_function": kernel, "num_bins": 2, "window_radius": 0.5}
         actual = loss_fn(signal, target, mask, mask, **kwargs)
@@ -507,20 +508,23 @@ class TestMutualInformationValidation(BaseTester):
         )
         self.assert_close(actual, expected)
         self.assert_close(actual, module(target, mask, **kwargs)(signal, mask))
-        assert actual.dtype == dtype and actual.device == device
+        assert actual.dtype == dtype
+        assert actual.device == device
         assert actual.isfinite().all()
         full_mask = torch.ones(shape, device=device, dtype=torch.bool)
         no_mask = loss_fn(signal, target, **kwargs)
         self.assert_close(no_mask, loss_fn(signal, target, full_mask, full_mask, **kwargs))
         self.assert_close(no_mask, module(target, **kwargs)(signal))
-        assert no_mask.dtype == dtype and no_mask.device == device
+        assert no_mask.dtype == dtype
+        assert no_mask.device == device
 
 
 class TestRectangularKernel(BaseTester):
     def test_dtype_and_values(self, device, dtype):
         signal = torch.tensor([-2, -1, 0, 1, 2], device=device, dtype=dtype)
         actual = rectangular_kernel(signal)
-        assert actual.dtype == dtype and actual.device == device
+        assert actual.dtype == dtype
+        assert actual.device == device
         self.assert_close(actual, signal.new_tensor([0, 1, 1, 1, 0]))
 
 
