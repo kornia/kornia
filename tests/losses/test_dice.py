@@ -58,9 +58,10 @@ class TestDiceLoss(BaseTester):
         for sample in range(2):
             class_losses, class_weights = [], []
             for label in labels[sample].unique():
-                target = (labels[sample] == label).to(dtype) * (1 - 1e-6) + 1e-6
-                pred = probabilities[sample, label]
+                # dice_loss builds an exact one-hot target, in float32 for half inputs.
                 reduction_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+                target = (labels[sample] == label).to(reduction_dtype)
+                pred = probabilities[sample, label]
                 intersection = (pred * target).sum(dtype=reduction_dtype)
                 cardinality = (pred + target).sum(dtype=reduction_dtype)
                 class_losses.append(1 - 2 * intersection / (cardinality + 1e-8))
@@ -84,10 +85,11 @@ class TestDiceLoss(BaseTester):
     def test_unchanged_aggregation(self, device, dtype, average, all_classes, weighted):
         labels = torch.tensor([[[0, 1, 2 if all_classes else 1]]], device=device)
         logits = torch.arange(9, device=device, dtype=dtype).reshape(1, 3, 1, 3) / 4
-        target = kornia.losses.one_hot(labels, 3, device=device, dtype=dtype)
+        # dice_loss builds the one-hot target in float32 for half inputs.
+        reduction_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        target = kornia.losses.one_hot(labels, 3, device=device, dtype=reduction_dtype)
         pred = logits.softmax(1)
         dims = (1, 2, 3) if average == "micro" else (2, 3)
-        reduction_dtype = torch.float64 if dtype == torch.float64 else torch.float32
         intersection = (pred * target).sum(dims, dtype=reduction_dtype)
         cardinality = (pred + target).sum(dims, dtype=reduction_dtype)
         expected = 1 - 2 * intersection / (cardinality + 1e-8)
