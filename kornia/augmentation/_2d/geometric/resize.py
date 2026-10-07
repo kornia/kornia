@@ -52,7 +52,9 @@ class Resize(GeometricAugmentationBase2D):
         This class uses :func:`kornia.geometry.transform.resize`; ``align_corners`` is forwarded for bilinear and
         bicubic sampling, and ``transform_matrix`` follows the grid they sample: at ``align_corners=False`` it is
         the half-pixel map ``x' = (x + 0.5) * W_out / W_in - 0.5`` (likewise for ``y``), and at ``True`` it maps
-        the corner pixel centres onto each other. :meth:`inverse` resamples to the prior canvas and cannot recover
+        the corner pixel centres onto each other. Nearest sampling uses the half-pixel grid and PyTorch's
+        ``nearest-exact`` interpolation.
+        :meth:`inverse` resamples to the prior canvas and cannot recover
         values discarded by a resize.
 
     """
@@ -85,7 +87,9 @@ class Resize(GeometricAugmentationBase2D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        if not flags["align_corners"] and flags["resample"] in (Resample.BILINEAR, Resample.BICUBIC):
+        if flags["resample"] == Resample.NEAREST or (
+            not flags["align_corners"] and flags["resample"] in (Resample.BILINEAR, Resample.BICUBIC)
+        ):
             return _half_pixel_resize_transform(params["src"].to(input), params["dst"].to(input)).expand(
                 input.shape[0], -1, -1
             )
@@ -124,7 +128,7 @@ class Resize(GeometricAugmentationBase2D):
         return resize(
             input,
             out_size,
-            interpolation=flags["resample"].name.lower(),
+            interpolation="nearest-exact" if flags["resample"] == Resample.NEAREST else flags["resample"].name.lower(),
             align_corners=(
                 flags["align_corners"] if flags["resample"] in [Resample.BILINEAR, Resample.BICUBIC] else None
             ),
@@ -144,8 +148,18 @@ class Resize(GeometricAugmentationBase2D):
         if not isinstance(transform, torch.Tensor):
             raise TypeError(f"Expected the `transform` be a torch.Tensor. Got {type(transform)}.")
 
+        if flags["resample"] == Resample.NEAREST:
+            # ``grid_sample`` only supports legacy ``nearest``. The forward path uses
+            # ``nearest-exact``, so invert a resize with the same interpolation rule.
+            return resize(input, size, interpolation="nearest-exact")
+
         return crop_by_transform_mat(
-            input, transform[:, :2, :], size, flags["resample"].name.lower(), "zeros", flags["align_corners"]
+            input,
+            transform[:, :2, :],
+            size,
+            flags["resample"].name.lower(),
+            "zeros",
+            flags["align_corners"],
         )
 
 
