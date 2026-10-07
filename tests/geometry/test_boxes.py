@@ -2132,6 +2132,39 @@ class TestVideoBoxes(BaseTester):
         assert selected.temporal_channel_size == 3
         self.assert_close(selected.to_tensor(), boxes[[1, 0]], atol=0.0, rtol=0.0)
 
+    @staticmethod
+    def _numbered_video_boxes(device, dtype, batch: int = 3, time: int = 2) -> torch.Tensor:
+        # Every frame is shifted by 10 * its flattened index, so a swapped or flattened frame changes the values.
+        offsets = 10.0 * torch.arange(batch * time, device=device, dtype=dtype).view(batch, time, 1, 1, 1)
+        return TestVideoBoxes._sample_video_boxes(device, dtype, batch=batch, time=time, n_boxes=2) + offsets
+
+    @staticmethod
+    def _video_key(kind: str, device):
+        return {
+            "int": 1,
+            "negative": -1,
+            "scalar": torch.tensor(2, device=device),
+            "slice": slice(1, None),
+            "step": slice(None, None, 2),
+            "long": torch.tensor([2, 0], device=device),
+            "mask": torch.tensor([True, False, True], device=device),
+            "empty": torch.zeros(3, dtype=torch.bool, device=device),
+        }[kind]
+
+    @pytest.mark.parametrize("kind", ["int", "negative", "scalar", "slice", "step", "long", "mask", "empty"])
+    def test_convention_indexing_selects_whole_videos_4249(self, kind, device, dtype):
+        # Convention pin: every key kind selects videos on the B axis and keeps all T frames in order; an integer
+        # or 0-d key keeps a batch of one.
+        boxes = self._numbered_video_boxes(device, dtype)
+        key = self._video_key(kind, device)
+        videos = torch.arange(3, device=device)[key].reshape(-1)
+
+        selected = VideoBoxes.from_tensor(boxes)[key]
+
+        assert isinstance(selected, VideoBoxes)
+        assert selected.temporal_channel_size == 2
+        self.assert_close(selected.to_tensor(), boxes[videos], atol=0.0, rtol=0.0)
+
     def test_convention_inherited_methods_split_copies_from_in_place_updates(self, device, dtype):
         # Convention pin: transform_boxes, translate, clamp, filter_boxes_by_area and merge copy through
         # clone, so they return a new VideoBoxes carrying the temporal size and leave the source
