@@ -99,6 +99,9 @@ def tversky_loss(
     if not pred.device == target.device:
         raise ValueError(f"pred and target must be in the same device. Got: {pred.device} and {target.device}")
 
+    if not (pred.shape[0] == target.shape[0] and pred.shape[2:] == target.shape[1:]):
+        raise ValueError(f"Expected target size {torch.Size((pred.shape[0], *pred.shape[2:]))}, got {target.shape}")
+
     # Keep the ratio's backward pass in float32 through softmax for half inputs.
     reduction_dtype = torch.float32 if pred.dtype in (torch.float16, torch.bfloat16) else pred.dtype
     pred_soft = F.softmax(pred, dim=1, dtype=reduction_dtype)

@@ -173,7 +173,8 @@ class TestDivergenceLoss(BaseTester):
         # tolerance.
         self.assert_close(actual, torch.zeros_like(actual))
         actual.backward()
-        assert torch.isfinite(pred.grad).all() and torch.isfinite(target.grad).all()
+        assert torch.isfinite(pred.grad).all()
+        assert torch.isfinite(target.grad).all()
         assert torch.equal(pred.grad[p == 0], torch.zeros_like(pred.grad[p == 0]))
         assert torch.equal(target.grad[p == 0], torch.zeros_like(target.grad[p == 0]))
 
@@ -193,7 +194,8 @@ class TestDivergenceLoss(BaseTester):
         q = torch.tensor([0.1, 0.2, 0.3, 0.1, 0.2, 0.1], device=device, dtype=dtype).view(1, 1, 2, 3)
         pred, target = q.clone().requires_grad_(), p.clone().requires_grad_()
         loss(pred, target).backward()
-        assert torch.isfinite(pred.grad).all() and torch.isfinite(target.grad).all()
+        assert torch.isfinite(pred.grad).all()
+        assert torch.isfinite(target.grad).all()
 
     @pytest.mark.parametrize("loss", [kornia.losses.kl_div_loss_2d, kornia.losses.js_div_loss_2d])
     def test_invalid_cells_stay_nan(self, device, dtype, loss):

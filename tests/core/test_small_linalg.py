@@ -260,7 +260,8 @@ class TestDetPermKernels(BaseTester):
         det, perm = DET_PERM[n](_well_conditioned(n, device, dtype))
         assert det.shape == ()
         assert perm.shape == ()
-        assert det.dtype == dtype and perm.dtype == dtype
+        assert det.dtype == dtype
+        assert perm.dtype == dtype
 
     @pytest.mark.parametrize("n", [2, 3, 4])
     @pytest.mark.parametrize("batch", [(), (2,), (2, 3)])
