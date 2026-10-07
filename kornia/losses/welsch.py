@@ -71,8 +71,12 @@ def welsch_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
 
     KORNIA_CHECK(reduction in ("mean", "sum", "none"), f"Given type of reduction is not supported. Got: {reduction}")
 
-    # compute loss
-    loss = 1.0 - (-0.5 * (img1 - img2) ** 2).exp()
+    # 1 - exp(-s) cancels for small s = r^2 / 2. There it equals 2 t / (1 + t) with t = tanh(s / 2), which does not
+    # cancel; torch.expm1 has only the precision of exp(x) - 1 on MPS (pytorch/pytorch#198708) and in ONNX export.
+    # The exp form is kept for r^2 >= 1, where it is accurate and keeps the gradient of the saturating loss.
+    squared = (img1 - img2) ** 2
+    t = torch.tanh(0.25 * squared)
+    loss = torch.where(squared < 1.0, 2.0 * t / (1.0 + t), 1.0 - (-0.5 * squared).exp())
 
     # perform reduction
     if reduction == "mean":

@@ -2016,12 +2016,9 @@ class TestHalfPrecisionPositionSamplers:
         generator.set_rng_device_and_dtype(device, half_dtype)
         torch.manual_seed(0)
         params = generator(batch_shape)
-        if isinstance(generator, PatchMixGenerator):
-            # (B, 2) patch starts; the far corner of a size-4 patch is 3 pixels on.
-            last_covered = params["patch_coords"] + 3
-        else:
-            # (B, 4, 2) or (B, 8, 3) crop corners in pixel coordinates.
-            last_covered = params["src"]
+        # PatchMix gives (B, 2) patch starts, and the far corner of a size-4 patch is 3 pixels on; the other
+        # generators give (B, 4, 2) or (B, 8, 3) crop corners in pixel coordinates.
+        last_covered = params["patch_coords"] + 3 if isinstance(generator, PatchMixGenerator) else params["src"]
         assert int(last_covered.min()) >= 0
         assert int(last_covered.max()) < 8
 

@@ -81,7 +81,16 @@ def charbonnier_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "n
     # Keep the square and its backward in float32 for half-precision residuals.
     diff = img1 - img2
     compute_diff = diff.float() if diff.dtype in (torch.float16, torch.bfloat16) else diff
-    loss = (compute_diff**2 + 1.0).sqrt() - 1.0
+    # Rationalize small residuals to avoid subtracting two nearly equal numbers.
+    # Keep the original large-residual branch, including its behavior when the square overflows.
+    squared = compute_diff**2
+    small = squared < 1.0
+    small_squared = torch.where(small, squared, 0.0)
+    loss = torch.where(
+        small,
+        small_squared / ((small_squared + 1.0).sqrt() + 1.0),
+        (squared + 1.0).sqrt() - 1.0,
+    )
 
     # perform reduction
     if reduction == "mean":

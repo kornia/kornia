@@ -189,10 +189,7 @@ def _infer_batch_shape(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tens
 
     Input may be either (torch.Tensor,) or (torch.Tensor, transform_matrix)
     """
-    if isinstance(input, tuple):
-        tensor_var = _transform_input(input[0])
-    else:
-        tensor_var = _transform_input(input)
+    tensor_var = _transform_input(input[0]) if isinstance(input, tuple) else _transform_input(input)
     return tensor_var.shape
 
 
@@ -201,10 +198,7 @@ def _infer_batch_shape3d(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Te
 
     Input may be either (torch.Tensor,) or (torch.Tensor, transform_matrix)
     """
-    if isinstance(input, tuple):
-        tensor_var = _transform_input3d(input[0])
-    else:
-        tensor_var = _transform_input3d(input)
+    tensor_var = _transform_input3d(input[0]) if isinstance(input, tuple) else _transform_input3d(input)
     return tensor_var.shape
 
 
