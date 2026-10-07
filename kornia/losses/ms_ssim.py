@@ -46,8 +46,8 @@ class MS_SSIMLoss(nn.Module):
 
     Each channel is filtered at every scale. The MS-SSIM of a channel is its luminance at the coarsest scale times its
     contrast-structure at every scale, and :math:`\mathcal{L_{MSSIM}}` is one minus the mean of the per-channel
-    MS-SSIM: the formula of the reference implementation [2] of [1], which evaluates it at the centre of a patch rather
-    than at every pixel. The L1 term is filtered at the coarsest scale and averaged over the channels.
+    MS-SSIM: the formula of the reference implementation [2] of [1]. [2] evaluates it once per patch, at its centre;
+    this loss evaluates it at every pixel. The L1 term is filtered at the coarsest scale and averaged over the channels.
 
     Convention:
         - "Multi-scale" means one Gaussian per entry of ``sigmas``, all at full resolution, as in [1], not the dyadic

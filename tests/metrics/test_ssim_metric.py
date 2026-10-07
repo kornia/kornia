@@ -192,7 +192,7 @@ class TestSsim(BaseTester):
 
 
 class TestConventionsSSIM(BaseTester):
-    """Pins for the map shape, the border, the window, ``max_val`` and the ``padding`` wart of :func:`ssim`."""
+    """Pins for the map shape, the border, the window, ``max_val`` and ``padding`` validation of :func:`ssim`."""
 
     @staticmethod
     def _pair(device, dtype):

@@ -108,7 +108,7 @@ class TestPsnr(BaseTester):
 
 
 class TestConventionsPsnr(BaseTester):
-    """Pins for the batch pooling, ``max_val``, identical images and the integer-image wart of :func:`psnr`."""
+    """Pins for the batch pooling, ``max_val``, identical images and integer images of :func:`psnr`."""
 
     def test_convention_psnr_pools_mse_over_the_batch(self, device, dtype):
         a = torch.zeros(2, 1, 4, 6, device=device, dtype=dtype)

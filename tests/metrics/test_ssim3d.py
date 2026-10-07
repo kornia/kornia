@@ -20,6 +20,7 @@ import torch
 import torch.nn.functional as F
 
 import kornia
+from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
 
@@ -163,8 +164,6 @@ class TestSSIM3d(BaseTester):
     @pytest.mark.parametrize("padding", ["full", "bogus"])
     def test_exception_invalid_padding(self, device, dtype, padding):
         # Any other value raises instead of silently returning the 'same' map (#5537).
-        from kornia.core.exceptions import BaseError
-
         img = torch.rand(1, 1, 3, 3, 3, device=device, dtype=dtype)
         with pytest.raises(BaseError, match="Invalid padding mode"):
             kornia.metrics.ssim3d(img, img, 3, padding=padding)
@@ -305,7 +304,7 @@ class TestSSIM3d(BaseTester):
 
 
 class TestConventionsSSIM3D(BaseTester):
-    """Pins for the map shape of :func:`ssim3d` and its border, window and ``padding`` warts."""
+    """Pins for the map shape of :func:`ssim3d`, its reflected border, its window dtype and ``padding`` validation."""
 
     @staticmethod
     def _pair(device, dtype):
@@ -376,7 +375,5 @@ class TestConventionsSSIM3D(BaseTester):
         x, y = self._pair(device, dtype)
         valid = kornia.metrics.ssim3d(x, y, 5, padding="valid")
         self.assert_close(kornia.metrics.ssim3d(x, y, 5, padding="VALID"), valid, rtol=0.0, atol=0.0)
-        from kornia.core.exceptions import BaseError
-
         with pytest.raises(BaseError, match="Invalid padding mode"):
             kornia.metrics.ssim3d(x, y, 5, padding="bogus")

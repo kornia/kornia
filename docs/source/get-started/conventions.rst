@@ -757,7 +757,7 @@ What the families take:
   ``(b, n)`` slice of a ``(B, N, H, W)`` input is a distribution over ``H x W``.
 - The losses on the segmentation page take raw logits (see `Dense-prediction losses`_) and
   :class:`~kornia.losses.HausdorffERLoss` takes probabilities; the mutual-information losses take intensities of any
-  range, which they normalise per sample.
+  range, which they normalise per signal: per channel of each sample for an image batch.
 
 Where a function takes ``reduction``, the names are torch's: ``'none'``, ``'mean'`` and ``'sum'``. What is averaged or
 added and the default differ between families, so each Convention block states both; the table lists the defaults. A
@@ -792,7 +792,7 @@ string outside a function's vocabulary raises, ``BaseError`` from the robust los
      - a scalar
    * - ``mutual_information_loss`` and the other mutual-information losses
      - no ``reduction``
-     - one value per sample
+     - one value per signal: ``(B, C)`` for an image batch in the 2-D and 3-D variants
    * - :func:`~kornia.metrics.ssim`, :func:`~kornia.metrics.ssim3d` and the other metrics
      - no ``reduction``
      - stated by each function
