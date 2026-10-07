@@ -78,7 +78,9 @@ class TestRandomCropAnnotations(BaseTester):
         # The stored coordinates are separable, so read x along the first row and y down the first column.
         x_of_column, y_of_row = out[0, 0, 0], out[0, 1, :, 0]
         for (x, y), (px, py) in zip(points[0].tolist(), out_points[0].tolist()):
-            assert 0 < px < size[1] - 1 and 0 < py < size[0] - 1  # inside the rows and columns the resize clamps
+            # inside the rows and columns the resize clamps
+            assert 0 < px < size[1] - 1
+            assert 0 < py < size[0] - 1
             x_lo, y_lo = int(px // 1), int(py // 1)
             sampled_x = torch.lerp(x_of_column[x_lo], x_of_column[x_lo + 1], px - x_lo)
             sampled_y = torch.lerp(y_of_row[y_lo], y_of_row[y_lo + 1], py - y_lo)

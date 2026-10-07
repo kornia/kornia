@@ -425,10 +425,7 @@ class Boxes:
         Returns:
             :class:`Boxes` containing the updated coordinates.
         """
-        if inplace:
-            _data = self._data
-        else:
-            _data = self._data.clone()
+        _data = self._data if inplace else self._data.clone()
 
         if isinstance(values, Boxes):
             _data.index_put_(indices, values.data)
@@ -542,10 +539,7 @@ class Boxes:
                 "`Boxes.clamp` accepts `topleft` and `botright` as `(B, 2)` torch.Tensor bounds; "
                 f"got topleft={type(topleft).__name__} and botright={type(botright).__name__}."
             )
-        if inplace:
-            _data = self._data
-        else:
-            _data = self._data.clone()
+        _data = self._data if inplace else self._data.clone()
         # Broadcast the per-image bounds rather than materialising them at the data's shape: the
         # masked assignment this replaces needed a bound tensor of exactly the mask's shape, which
         # is what tied it to the batched (B, N, 4) indexing. ``torch.where`` on the same comparison
@@ -611,10 +605,7 @@ class Boxes:
             out-of-range boxes replaced by zero coordinates.
         """
         area = self.compute_area()
-        if inplace:
-            _data = self._data
-        else:
-            _data = self._data.clone()
+        _data = self._data if inplace else self._data.clone()
         if min_area is not None:
             _data[area < min_area] = 0.0
         if max_area is not None:
@@ -884,10 +875,7 @@ class Boxes:
         # GPU Hotpath (vectorized)
         # -----------------
         out_shape: Tuple[int, ...]
-        if is_batched:
-            out_shape = (self.shape[0], self.shape[1], height, width)
-        else:
-            out_shape = (self.shape[0], height, width)
+        out_shape = (self.shape[0], self.shape[1], height, width) if is_batched else (self.shape[0], height, width)
 
         xyxy = clipped_boxes_xyxy.view(-1, 4).round().long()
 
