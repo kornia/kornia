@@ -259,6 +259,9 @@ class TestConventionsDivergence(BaseTester):
         assert none.shape == (2, 3)
         self.assert_close(none, expected)
         self.assert_close(kornia.losses.kl_div_loss_2d(pred, target), expected.mean())
+        # The direct PyTorch port is valid on this strictly positive support.
+        torch_loss = torch.nn.functional.kl_div(pred.reshape(6, -1).log(), target.reshape(6, -1), reduction="batchmean")
+        self.assert_close(kornia.losses.kl_div_loss_2d(pred, target), torch_loss)
         self.assert_close(kornia.losses.kl_div_loss_2d(pred, target, reduction="sum"), expected.sum())
         # Nothing is normalised: doubling both inputs doubles every slice's value.
         self.assert_close(kornia.losses.kl_div_loss_2d(2 * pred, 2 * target, reduction="none"), 2 * expected)
@@ -320,6 +323,20 @@ class TestConventionsDivergence(BaseTester):
             (p[p > 0] * (p[p > 0] / m[p > 0]).log()).sum() + (q[q > 0] * (q[q > 0] / m[q > 0]).log()).sum()
         )
         self.assert_close(kornia.losses.js_div_loss_2d(p, q), expected)
+        # The sparse PyTorch port must mask zero-target/finite-pred cells before the logarithm. This pair includes
+        # shared zeros, a zero target with positive pred, and unequal positive entries.
+        pred, target = full.clone(), p.clone()
+        pred[..., 0, 0] = 0.0
+        pred[..., 1, 2] += 0.125  # keep pred normalised without changing either positive target cell
+        empty = (target == 0) & (pred >= 0) & torch.isfinite(pred)
+        torch_loss = torch.nn.functional.kl_div(
+            pred.masked_fill(empty, 1.0).reshape(1, -1).log(),
+            target.masked_fill(empty, 1.0).reshape(1, -1),
+            reduction="batchmean",
+        )
+        expected_kl = p.new_tensor(0.25 * math.log(2.0) + 0.75 * math.log(3.0))
+        self.assert_close(torch_loss, expected_kl)
+        self.assert_close(kornia.losses.kl_div_loss_2d(pred, target), torch_loss)
         batch = torch.cat([p, full])
         none = kornia.losses.kl_div_loss_2d(batch, batch, reduction="none")
         self.assert_close(none, torch.zeros_like(none))

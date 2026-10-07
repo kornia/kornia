@@ -233,15 +233,15 @@ class TestConventionsSSIM(BaseTester):
         assert (same - padded("replicate")).abs().max() > 0.1
 
     def test_convention_ssim_matches_scikit_image_gaussian_ssim(self, device, dtype):
-        # The window is a sampled Gaussian with sigma = 1.5 whatever window_size is; window_size=11 with 'valid' gives
-        # scikit-image's Gaussian SSIM (Wang et al. 2004), averaged over the channels.
+        # The window is a sampled Gaussian with sigma = 1.5 whatever window_size is; window_size=11 with 'valid' and
+        # eps=0 matches scikit-image's Gaussian SSIM (Wang et al. 2004), averaged over the channels.
         # Snippet used to generate expected (scikit-image 0.26.0, numpy 2.0.0):
         #   x = (np.arange(2 * 13 * 17).reshape(2, 13, 17) * 7 % 11) / 16
         #   structural_similarity(x, x**2, gaussian_weights=True, sigma=1.5, use_sample_covariance=False,
         #                         data_range=1.0, channel_axis=0)
         x = (torch.arange(2 * 13 * 17, dtype=torch.float32).reshape(1, 2, 13, 17) * 7 % 11) / 16
         x = x.to(device, dtype)
-        actual = ssim(x, x**2, 11, max_val=1.0, padding="valid").mean()
+        actual = ssim(x, x**2, 11, max_val=1.0, eps=0.0, padding="valid").mean()
         self.assert_close(actual, torch.tensor(0.649510247445418, device=device, dtype=dtype))
         # The same sigma at another size: window_size=7 equals SSIM with a sampled 7-tap Gaussian of sigma 1.5 and
         # reflect padding, written out with the default constants C1 = 0.01**2, C2 = 0.03**2 and eps.
@@ -259,6 +259,22 @@ class TestConventionsSSIM(BaseTester):
         sx, sy, sxy = blur(xw * xw) - mx**2, blur(yw * yw) - my**2, blur(xw * yw) - mx * my
         expected = (2 * mx * my + 1e-4) * (2 * sxy + 9e-4) / ((mx**2 + my**2 + 1e-4) * (sx + sy + 9e-4) + 1e-12)
         self.assert_close(ssim(x, y, 7), expected.to(dtype))
+
+    @pytest.mark.parametrize(
+        "max_val,expected",
+        [(1.0, 0.9999888890123443), (0.1, 0.9), (0.01, 0.0008991907283444898)],
+    )
+    def test_convention_ssim_epsilon_biases_identical_black_images(self, device, dtype, max_val, expected):
+        # Identical black images have SSIM 1 in the reference implementations. Kornia's denominator epsilon changes
+        # the score to C1*C2/(C1*C2 + eps), even at max_val=1; at small ranges the difference is substantial.
+        # The expected values use C1=(0.01*max_val)**2, C2=(0.03*max_val)**2, eps=1e-12 in float64 arithmetic.
+        x = torch.zeros(1, 1, 13, 17, device=device, dtype=dtype)
+        score = ssim(x, x, 11, max_val=max_val, padding="valid").mean()
+        self.assert_close(score, x.new_tensor(expected))
+        reference = ssim(x, x, 11, max_val=max_val, eps=0.0, padding="valid").mean()
+        self.assert_close(reference, x.new_tensor(1.0), rtol=0.0, atol=0.0)
+        if max_val < 1.0:
+            assert (reference - score) > 0.05
 
     def test_convention_ssim_max_val_is_the_data_range(self, device, dtype):
         # max_val is the data range L in C1 = (0.01 L)**2 and C2 = (0.03 L)**2: images and max_val scaled together give

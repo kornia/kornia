@@ -67,8 +67,9 @@ def ssim(
         - ``max_val`` is the data range :math:`L`, a Python ``float``: :math:`c_1 = (0.01 L)^2` and
           :math:`c_2 = (0.03 L)^2`. Pixel values are not rescaled, so images in ``[0, 255]`` need ``max_val=255.0``.
           ``eps`` is added to the denominator: two identical flat images of value :math:`\mu` score
-          :math:`1 - \text{eps} / ((2\mu^2 + c_1)\, c_2 + \text{eps})`, which is below the float32 roundoff except for
-          images near 0 at a small ``max_val``.
+          :math:`1 - \text{eps} / ((2\mu^2 + c_1)\, c_2 + \text{eps})`. With the default ``eps=1e-12``, black
+          images score about ``0.99998889`` at ``max_val=1.0``; the bias grows to ``0.1`` at ``max_val=0.1``.
+          Use ``eps=0.0`` to omit this denominator term when matching reference implementations.
         - The map is not reduced: one value per pixel, channel and sample, symmetric in ``img1`` and ``img2``, in
           :math:`[-1, 1]` in exact arithmetic and negative for anti-correlated content.
           :ref:`Losses and metrics <losses-metrics-conventions>` maps its mean onto scikit-image, pytorch-msssim and

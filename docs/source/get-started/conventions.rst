@@ -802,12 +802,15 @@ and always sums.
 
 Porting from other libraries:
 
-- ``ssim(x, y, 11, max_val=L, padding='valid').mean()`` for one image equals scikit-image's
+- ``ssim(x, y, 11, max_val=L, eps=0.0, padding='valid').mean()`` for one image matches scikit-image's
   ``structural_similarity(x, y, gaussian_weights=True, sigma=1.5, use_sample_covariance=False, data_range=L,
-  channel_axis=-1)`` on the ``(H, W, C)`` arrays, and over a batch it matches pytorch-msssim's
-  ``ssim(x, y, data_range=L)``. scikit-image's defaults, a 7 x 7 uniform window with the sample covariance, give
-  another value. torchmetrics' ``structural_similarity_index_measure(x, y, data_range=L)`` equals the mean of the
-  ``'same'`` map instead.
+  channel_axis=-1)`` on the ``(H, W, C)`` arrays up to floating-point differences, and over a batch it matches
+  pytorch-msssim's ``ssim(x, y, data_range=L)``. Set ``eps=0.0`` to remove Kornia's added denominator term when
+  matching these implementations. The default ``eps=1e-12`` can matter: identical black images score about
+  ``0.99998889`` at ``L=1.0``, ``0.9`` at ``L=0.1`` and ``0.00089919`` at ``L=0.01``, where the references give 1.
+  scikit-image's defaults, a 7 x 7 uniform window with the sample covariance, give another value. torchmetrics'
+  ``structural_similarity_index_measure(x, y, data_range=L)`` averages over a reflected ``'same'`` map instead;
+  it has no added denominator epsilon and clamps negative variance estimates from roundoff to zero.
 - :func:`~kornia.losses.ssim_loss` is the structural dissimilarity ``(1 - SSIM) / 2``, clamped to ``[0, 1]``. The
   ``1 - SSIM`` loss is twice that: ``1 - ssim(x, y, w).mean()`` equals ``2 * ssim_loss(x, y, w)`` wherever the clamp
   does not act. :func:`~kornia.losses.ssim3d_loss` uses the same clamped DSSIM formula for volumes.
@@ -826,11 +829,15 @@ Porting from other libraries:
 - torchmetrics' ``total_variation(img, reduction='none')`` equals ``total_variation(img).sum(-1)`` for a
   ``(B, C, H, W)`` batch. Its ``'mean'`` averages those per-image sums over the batch, where the ``'mean'`` of
   :func:`~kornia.losses.total_variation` averages each difference term over its own count.
-- ``kl_div_loss_2d(pred, target)`` equals ``F.kl_div(pred.log(), target, reduction='batchmean')`` on the
-  ``(B * N, H * W)`` reshape and torchmetrics' ``kl_divergence(target, pred)`` on that reshape; torch's
-  ``reduction='mean'`` divides by every element instead. For scipy, reshape ``pred`` and ``target`` to NumPy arrays
-  ``p`` and ``q`` of shape ``(B, N, H * W)``. Then ``scipy.stats.entropy(q, p, axis=-1).mean()`` matches the default
-  KL loss, and ``(scipy.spatial.distance.jensenshannon(p, q, axis=-1) ** 2).mean()`` matches
+- For strictly positive probabilities, ``kl_div_loss_2d(pred, target)`` equals
+  ``F.kl_div(pred.log(), target, reduction='batchmean')`` on the ``(B * N, H * W)`` reshape; torch's
+  ``reduction='mean'`` divides by every element instead. Kornia defines zero-target cells with finite nonnegative
+  predictions as contributing zero, including shared zero cells, where the raw PyTorch recipe returns NaN. Replace
+  both arguments with 1 in these cells before taking the logarithm to reproduce Kornia's handling. torchmetrics'
+  ``kl_divergence(target, pred)`` on the reshape matches Kornia's value, including shared zeros. For scipy, reshape
+  ``pred`` and ``target`` to NumPy arrays ``p`` and ``q`` of shape ``(B, N, H * W)``. Then
+  ``scipy.stats.entropy(q, p, axis=-1).mean()`` matches the default KL loss, and
+  ``(scipy.spatial.distance.jensenshannon(p, q, axis=-1) ** 2).mean()`` matches
   :func:`~kornia.losses.js_div_loss_2d`, using scipy's default natural logarithm. Without the final ``mean()``, each
   returns ``(B, N)``, matching ``reduction='none'``. SciPy normalises its inputs, so these mappings require each
   spatial slice to sum to one.
