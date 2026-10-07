@@ -17,15 +17,23 @@
 import pytest
 import torch
 
+from kornia.core.exceptions import BaseError
 from kornia.losses.mutual_information import (
     MIKernel,
     MILossFromRef,
+    MILossFromRef2D,
+    MILossFromRef3D,
     NMILossFromRef,
+    NMILossFromRef2D,
+    NMILossFromRef3D,
     _normalize_signal,
     mutual_information_loss,
     mutual_information_loss_2d,
+    mutual_information_loss_3d,
     normalized_mutual_information_loss,
     normalized_mutual_information_loss_2d,
+    normalized_mutual_information_loss_3d,
+    rectangular_kernel,
 )
 
 from testing.base import BaseTester
@@ -278,3 +286,146 @@ class TestMutualInformationLoss(BaseTester):
         # The meta device stands in for an accelerator on a CPU-only runner.
         meta = module(target).to("meta")
         assert meta.bin_centers.device.type == meta.signal.device.type == "meta"
+
+    @pytest.mark.parametrize("loss_fn", [mutual_information_loss, normalized_mutual_information_loss])
+    @pytest.mark.parametrize("kernel", [MIKernel.xu, MIKernel.truncated_gaussian])
+    def test_masked_gradcheck(self, device, loss_fn, kernel):
+        generator = torch.Generator().manual_seed(5548)
+        signal = torch.rand((2, 8), generator=generator, dtype=torch.float64).to(device).requires_grad_()
+        target = torch.rand((2, 8), generator=generator, dtype=torch.float64).to(device).requires_grad_()
+        mask = torch.tensor([True, False, True, True, False, True, True, True], device=device)
+        self.gradcheck(lambda x, y: loss_fn(x, y, mask, mask, kernel, 4), (signal, target))
+
+
+@pytest.mark.parametrize(
+    "loss_fn,module,shape",
+    [
+        (mutual_information_loss, MILossFromRef, (12,)),
+        (normalized_mutual_information_loss, NMILossFromRef, (12,)),
+        (mutual_information_loss_2d, MILossFromRef2D, (3, 4)),
+        (normalized_mutual_information_loss_2d, NMILossFromRef2D, (3, 4)),
+        (mutual_information_loss_3d, MILossFromRef3D, (2, 3, 4)),
+        (normalized_mutual_information_loss_3d, NMILossFromRef3D, (2, 3, 4)),
+    ],
+)
+class TestMutualInformationValidation(BaseTester):
+    @pytest.mark.parametrize("mask_dtype", [torch.int64, torch.uint8, torch.float32])
+    def test_mask_dtype(self, device, dtype, loss_fn, module, shape, mask_dtype):
+        signal = torch.arange(1, 1 + torch.Size(shape).numel(), device=device, dtype=dtype).reshape(shape)
+        mask = (signal > 2).to(mask_dtype)
+        with pytest.raises(BaseError, match=r"mask.*boolean"):
+            loss_fn(signal, signal, input_mask=mask)
+        with pytest.raises(BaseError, match=r"mask.*boolean"):
+            loss_fn(signal, signal, target_mask=mask)
+        with pytest.raises(BaseError, match=r"mask.*boolean"):
+            module(signal, mask)
+        with pytest.raises(BaseError, match=r"mask.*boolean"):
+            module(signal)(signal, mask)
+
+    @pytest.mark.parametrize("kind", ["transposed", "batched", "singleton", "scalar"])
+    def test_mask_shape(self, device, dtype, loss_fn, module, shape, kind):
+        signal = torch.ones((2, *shape), device=device, dtype=dtype)
+        mask = torch.ones(shape, device=device, dtype=torch.bool)
+        if kind == "transposed":
+            mask = mask.unsqueeze(0) if len(shape) == 1 else mask.transpose(-1, -2).contiguous()
+        elif kind == "batched":
+            mask = mask.expand(2, *shape)
+        elif kind == "singleton":
+            mask = mask.new_ones((1,) * len(shape))
+        else:
+            mask = mask.new_ones(())
+        with pytest.raises(BaseError, match=r"mask.*one-sample shape"):
+            loss_fn(signal, signal, input_mask=mask)
+        with pytest.raises(BaseError, match=r"mask.*one-sample shape"):
+            loss_fn(signal, signal, target_mask=mask)
+        with pytest.raises(BaseError, match=r"mask.*one-sample shape"):
+            module(signal, mask)
+        with pytest.raises(BaseError, match=r"mask.*one-sample shape"):
+            module(signal)(signal, mask)
+
+    def test_signal_shape_before_flattening(self, device, dtype, loss_fn, module, shape):
+        signal = torch.ones((2, *shape), device=device, dtype=dtype)
+        other = signal.transpose(-1, -2).contiguous()
+        with pytest.raises(BaseError, match="same shape"):
+            loss_fn(signal, other)
+        # The generic module retains its documented ValueError for incompatible signal shapes.
+        with pytest.raises((BaseError, ValueError), match="shape"):
+            module(signal)(other)
+
+    @pytest.mark.parametrize("kind", ["input_empty", "target_empty", "disjoint"])
+    def test_empty_mask_intersection(self, device, dtype, loss_fn, module, shape, kind):
+        signal = torch.arange(torch.Size(shape).numel(), device=device, dtype=dtype).reshape(shape)
+        input_mask = signal < 2
+        target_mask = ~input_mask
+        if kind == "input_empty":
+            input_mask = torch.zeros_like(input_mask)
+            target_mask = None
+        elif kind == "target_empty":
+            target_mask = torch.zeros_like(target_mask)
+            input_mask = None
+        with pytest.raises(BaseError, match=r"mask.*at least one sample"):
+            loss_fn(signal, signal, input_mask, target_mask)
+        with pytest.raises(BaseError, match=r"mask.*at least one sample"):
+            module(signal, target_mask)(signal, input_mask)
+
+    @pytest.mark.parametrize("num_bins", [0, 1, -1, 2.5, 2.0, True])
+    def test_num_bins(self, device, dtype, loss_fn, module, shape, num_bins):
+        signal = torch.ones(shape, device=device, dtype=dtype)
+        with pytest.raises(BaseError, match="num_bins must be an integer >= 2"):
+            loss_fn(signal, signal, num_bins=num_bins)
+        with pytest.raises(BaseError, match="num_bins must be an integer >= 2"):
+            module(signal, num_bins=num_bins)
+
+    @pytest.mark.parametrize("window_radius", [0.0, -1.0])
+    def test_window_radius(self, device, dtype, loss_fn, module, shape, window_radius):
+        signal = torch.ones(shape, device=device, dtype=dtype)
+        with pytest.raises(BaseError, match="window_radius must be > 0"):
+            loss_fn(signal, signal, window_radius=window_radius)
+        with pytest.raises(BaseError, match="window_radius must be > 0"):
+            module(signal, window_radius=window_radius)
+
+    @pytest.mark.parametrize("kernel", ["xu", MIKernel.xu.value, None, 0])
+    def test_kernel_member(self, device, dtype, loss_fn, module, shape, kernel):
+        signal = torch.ones(shape, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="kernel_function must be a MIKernel member"):
+            loss_fn(signal, signal, kernel_function=kernel)
+        with pytest.raises(ValueError, match="kernel_function must be a MIKernel member"):
+            module(signal, kernel_function=kernel)
+
+    @pytest.mark.parametrize("kernel", list(MIKernel))
+    def test_valid_masks_and_boundaries(self, device, dtype, loss_fn, module, shape, kernel):
+        generator = torch.Generator().manual_seed(5548)
+        signal = torch.rand((2, *shape), generator=generator).to(device, dtype)
+        target = torch.rand((2, *shape), generator=generator).to(device, dtype)
+        # A strided mask with exactly one sample's shape remains valid.
+        storage = torch.ones((*shape, 2), device=device, dtype=torch.bool)
+        mask = storage[..., 0]
+        mask.reshape(-1)[1::3] = False
+        assert not mask.is_contiguous()
+        kwargs = {"kernel_function": kernel, "num_bins": 2, "window_radius": 0.5}
+        actual = loss_fn(signal, target, mask, mask, **kwargs)
+        flat_loss = (
+            normalized_mutual_information_loss
+            if module in (NMILossFromRef, NMILossFromRef2D, NMILossFromRef3D)
+            else mutual_information_loss
+        )
+        expected = flat_loss(
+            signal.reshape(2, -1)[:, mask.reshape(-1)], target.reshape(2, -1)[:, mask.reshape(-1)], **kwargs
+        )
+        self.assert_close(actual, expected)
+        self.assert_close(actual, module(target, mask, **kwargs)(signal, mask))
+        assert actual.dtype == dtype and actual.device == device
+        assert actual.isfinite().all()
+        full_mask = torch.ones(shape, device=device, dtype=torch.bool)
+        no_mask = loss_fn(signal, target, **kwargs)
+        self.assert_close(no_mask, loss_fn(signal, target, full_mask, full_mask, **kwargs))
+        self.assert_close(no_mask, module(target, **kwargs)(signal))
+        assert no_mask.dtype == dtype and no_mask.device == device
+
+
+class TestRectangularKernel(BaseTester):
+    def test_dtype_and_values(self, device, dtype):
+        signal = torch.tensor([-2, -1, 0, 1, 2], device=device, dtype=dtype)
+        actual = rectangular_kernel(signal)
+        assert actual.dtype == dtype and actual.device == device
+        self.assert_close(actual, signal.new_tensor([0, 1, 1, 1, 0]))
