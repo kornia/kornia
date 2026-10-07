@@ -58,11 +58,7 @@ class RepVggBlock(nn.Module):
             Feature map after either the fused convolution or the summed
             ``3x3`` and ``1x1`` branches followed by SiLU activation.
         """
-        if self.conv is not None:
-            out = self.act(self.conv(x))
-        else:
-            out = self.act(self.conv1(x) + self.conv2(x))
-        return out
+        return self.act(self.conv(x) if self.conv is not None else self.conv1(x) + self.conv2(x))
 
     @torch.no_grad()
     def optimize_for_deployment(self) -> None:

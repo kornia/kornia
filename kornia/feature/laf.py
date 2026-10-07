@@ -678,10 +678,7 @@ def extract_patches_simple(
     laf = laf.to(device=img.device)
     grid_dtype = _promoted_grid_dtype(img.dtype, laf.dtype)
     laf = laf.to(grid_dtype) if laf.dtype != grid_dtype else laf
-    if normalize_lafs_before_extraction:
-        nlaf = normalize_laf(laf, img)
-    else:
-        nlaf = laf
+    nlaf = normalize_laf(laf, img) if normalize_lafs_before_extraction else laf
     _, ch, h, w = img.size()
     B, N, _, _ = laf.size()
     if B == 0 or N == 0:
@@ -732,10 +729,7 @@ def extract_patches_from_pyramid(
     laf = laf.to(device=img.device)
     grid_dtype = _promoted_grid_dtype(img.dtype, laf.dtype)
     laf = laf.to(grid_dtype) if laf.dtype != grid_dtype else laf
-    if normalize_lafs_before_extraction:
-        nlaf = normalize_laf(laf, img)
-    else:
-        nlaf = laf
+    nlaf = normalize_laf(laf, img) if normalize_lafs_before_extraction else laf
     B, N, _, _ = laf.size()
     _, ch, h, w = img.size()
     if B == 0 or N == 0:
