@@ -56,10 +56,7 @@ class TestSe2(BaseTester):
         assert s.exp(theta).so2.z.shape == input_shape
         assert s.exp(theta).t.shape == t_input_shape
         assert s.log().shape == (*input_shape, 3)
-        if not any(input_shape):
-            expected_hat_shape = (3, 3)
-        else:
-            expected_hat_shape = (input_shape[0], 3, 3)
+        expected_hat_shape = (input_shape[0], 3, 3) if any(input_shape) else (3, 3)
         assert s.hat(theta).shape == expected_hat_shape
         assert s.inverse().so2.z.shape == input_shape
         assert s.inverse().t.shape == t_input_shape
@@ -163,10 +160,7 @@ class TestSe2(BaseTester):
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_mul_vector(self, device, dtype, batch_size):
         s1 = Se2.identity(batch_size, device, dtype)
-        if batch_size is None:
-            shape = ()
-        else:
-            shape = (batch_size,)
+        shape = () if batch_size is None else (batch_size,)
         s2 = Se2(So2.identity(batch_size, device, dtype), Vector2.random(shape, device, dtype))
         s1_pose_s2 = s1 * s2
         s2_pose_s2 = s2 * s2.inverse()
