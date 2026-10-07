@@ -71,8 +71,10 @@ def welsch_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
 
     KORNIA_CHECK(reduction in ("mean", "sum", "none"), f"Given type of reduction is not supported. Got: {reduction}")
 
-    # compute loss
-    loss = 1.0 - (-0.5 * (img1 - img2) ** 2).exp()
+    # Avoid cancellation near zero. Keep exp for larger residuals because expm1's
+    # backward adds 1 to its output, losing gradients as the loss saturates.
+    squared = (img1 - img2) ** 2
+    loss = torch.where(squared.abs() < 1.0, -torch.expm1(-0.5 * squared), 1.0 - (-0.5 * squared).exp())
 
     # perform reduction
     if reduction == "mean":
