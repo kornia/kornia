@@ -212,6 +212,12 @@ to either gate: `RandomMixUpV2` gates the batch and `RandomJigsaw` individual sa
 (`#4425 <https://github.com/kornia/kornia/issues/4425>`_). When ``0 < p_batch < 1``, the base draws the batch
 Bernoulli before the per-sample gate; endpoints skip that draw, and ``p=1.0, p_batch=0.0`` selects no sample.
 
+A ``batch_prob`` that a caller puts into ``params`` is the gate whatever ``p`` is. With ``p=1.0, p_batch=1.0`` the
+base skips the non-transform branch and the blend only when every entry selects its sample; otherwise it follows
+the general path, so the image, the transformation matrix, the labels and ``inverse`` agree on which samples were
+transformed (`#5585 <https://github.com/kornia/kornia/issues/5585>`_). Under ``torch.compile`` and export capture
+the gate is not read, so the static probabilities decide alone.
+
 Random Generators
 ^^^^^^^^^^^^^^^^^
 To get an automatically generated ``__repr__`` that lists all custom parameters, implement

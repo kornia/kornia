@@ -99,6 +99,13 @@ class AugmentationBase2D(_AugmentationBase):
           caller's dict by reference and, if ``batch_prob`` is absent, inserts an all-true gate into it. Replaying
           parameters reproduces the output, except for :class:`RandomDissolving`, whose VAE latents are drawn
           during application and are not stored.
+        - a ``batch_prob`` put into ``params`` is the gate, whatever ``p`` and ``p_batch`` are: the image, the
+          transformation matrix, the labels and ``inverse`` all leave a sample it deselects untouched
+          (`#5585 <https://github.com/kornia/kornia/issues/5585>`_). With static ``p=1.0, p_batch=1.0`` the sampled
+          gate is all ones, and the base skips the non-transform branch and the blend after reading the gate once,
+          which synchronizes with the device when the gate lives on an accelerator. Under ``torch.compile`` and
+          export capture the gate cannot be read without a graph break, so the static probabilities decide alone
+          and a hand-made gate that skips a sample is honored in eager mode only.
         - some ``_param_generator.*`` range buffers in ``state_dict()`` do not update the samplers when loaded
           (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
         - an empty batch gives an empty output, except on a minority of classes that raise on ``B = 0``
@@ -201,9 +208,9 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
 
         trans_matrix_applied = self.compute_transformation(in_tensor, params=params, flags=flags)
 
-        if self.p == 1.0 and self.p_batch == 1.0:
-            # Always applied (static probabilities): the blend selects the computed matrix
-            # everywhere, so it equals `trans_matrix_applied`. Skip building the identity and
+        if self._is_always_applied(params):
+            # Always applied (static probabilities and a gate that selects every sample): the blend selects the
+            # computed matrix everywhere, so it equals `trans_matrix_applied`. Skip building the identity and
             # the `where` — this is a hot per-call cost (~40% of a flip's forward is the matrix
             # path) that the image output never needs. Mirrors the `transform_inputs` fast path.
             trans_matrix = trans_matrix_applied

@@ -30,7 +30,7 @@ from kornia.augmentation.utils import (
     override_parameters,
 )
 from kornia.augmentation.utils.helpers import _constant_tensor
-from kornia.core.utils import is_autocast_enabled, is_exporting
+from kornia.core.utils import is_autocast_enabled, is_compiling, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -409,6 +409,32 @@ class _AugmentationBase(_BasicAugmentationBase):
             raise _mixed_gate_shape_error(not_transformed.shape[1:], transformed.shape[1:])
         return transformed if apply_any else not_transformed
 
+    def _is_always_applied(self, params: Dict[str, torch.Tensor]) -> bool:
+        """Tell whether ``params`` selects every sample, so the skipped branch and the gate can be elided.
+
+        The image output, the transformation matrix and the crop padding offset all share this one decision.
+        They must agree, or an image row, its matrix and its labels disagree about whether it was transformed.
+
+        With static ``p == 1`` and ``p_batch == 1`` the gate that :meth:`forward_parameters` samples is all ones, so
+        the transformed branch is the output and the gate does not have to be read. A caller can still replace
+        ``params["batch_prob"]``, and then the gate is the contract: it is read here, and the fast path is taken only
+        when every entry selects its sample.
+
+        Under ``torch.compile`` and export capture the gate cannot be read without a graph break, so the static
+        probabilities decide alone. A hand-made gate that skips a sample is therefore honored in eager mode only.
+        Reading the gate costs a device sync when it lives on an accelerator; the sampled gate lives on the module's
+        RNG device, which is the CPU by default.
+        """
+        if not (self.p == 1.0 and self.p_batch == 1.0):
+            return False
+        if is_exporting() or is_compiling():
+            return True
+        batch_prob = params.get("batch_prob")
+        if batch_prob is None:
+            # ``forward`` fills in an all-true gate for params without one.
+            return True
+        return bool((batch_prob > 0.5).all())
+
     def transform_inputs(
         self,
         input: torch.Tensor,
@@ -428,13 +454,12 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         output_transformed = self.apply_transform(in_tensor, params, flags, transform=transform)
 
-        if self.p == 1.0 and self.p_batch == 1.0:
-            # Always applied (static probabilities): the output is unconditionally the
-            # transformed one. Skip the non-transform branch and the blend entirely — this
+        if self._is_always_applied(params):
+            # Always applied (static probabilities and a gate that selects every sample): the output is
+            # unconditionally the transformed one. Skip the non-transform branch and the blend entirely — this
             # also makes shape-changing augmentations (e.g. Resize) fullgraph-compilable,
             # since the data-dependent shape comparison / `to_apply.any()` fallback is avoided.
-            # (The `to_apply` gate is only needed on the p < 1 path below, so it is not computed
-            # here.)
+            # (The `to_apply` gate is only needed on the blend path below, so it is not computed here.)
             output = output_transformed
         else:
             to_apply = torch.atleast_1d(params["batch_prob"] > 0.5)
