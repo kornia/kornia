@@ -67,6 +67,36 @@ class TestPsnr(BaseTester):
         assert partner.grad is not None
         assert partner.grad.dtype == partner_dtype
 
+    @pytest.mark.parametrize(
+        "dtypes",
+        [
+            (torch.float16, torch.float32),
+            (torch.bfloat16, torch.float32),
+            (torch.float16, torch.bfloat16),
+            (torch.float32, torch.float64),
+        ],
+        ids=["f16-f32", "bf16-f32", "f16-bf16", "f32-f64"],
+    )
+    def test_two_floating_dtypes(self, device, dtypes):
+        # Two floating images of different dtypes are compared in their promoted dtype, in either order, and each
+        # gradient keeps its image's dtype. Given two dtypes, mse_loss aborts the process on MPS and its backward
+        # raises on torch 2.5.1 (#5536).
+        if device.type == "mps" and torch.float64 in dtypes:
+            pytest.skip("MPS has no float64")
+        generator = torch.Generator().manual_seed(0)
+        image = torch.rand(2, 3, 9, 13, generator=generator).to(device, dtypes[0])
+        target = torch.rand(2, 3, 9, 13, generator=generator).to(device, dtypes[1])
+        compute_dtype = torch.promote_types(*dtypes)
+        expected = kornia.metrics.psnr(image.to(compute_dtype), target.to(compute_dtype), 1.0)
+        for actual in (kornia.metrics.psnr(image, target, 1.0), kornia.metrics.psnr(target, image, 1.0)):
+            assert actual.dtype == compute_dtype
+            self.assert_close(actual, expected, rtol=0, atol=0)
+        image.requires_grad_()
+        target.requires_grad_()
+        kornia.metrics.psnr(image, target, 1.0).backward()
+        assert image.grad.dtype == dtypes[0]
+        assert target.grad.dtype == dtypes[1]
+
     def test_exception_shape_mismatch(self, device, dtype):
         a = torch.ones(4, device=device, dtype=dtype)
         b = torch.ones(8, device=device, dtype=dtype)
