@@ -117,6 +117,29 @@ class TestDiceLoss(BaseTester):
         self.assert_close(logits.grad[1], torch.zeros_like(logits.grad[1]), rtol=0, atol=0)
         self.assert_close(logits.grad[0, :, :, 1], torch.zeros_like(logits.grad[0, :, :, 1]), rtol=0, atol=0)
 
+    def test_macro_sample_without_weighted_class(self, device, dtype):
+        # Sample 0 holds only class 0, whose weight is 0: no weighted class is left, as in a fully ignored sample, so
+        # it keeps loss 1 with a zero gradient instead of 0 / 0 spreading NaN over the batch.
+        labels = torch.tensor([[[0, 0, 0, 0]], [[0, 1, 1, 2]]], device=device)
+        logits = torch.tensor(
+            [
+                [[[2.0, 0.0, 1.0, -1.0]], [[0.0, 2.0, 0.0, 1.0]], [[1.0, 1.0, 3.0, 2.0]]],
+                [[[1.0, 3.0, 2.0, 0.0]], [[2.0, 0.0, 1.0, 3.0]], [[0.0, 2.0, 0.0, 1.0]]],
+            ],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        weight = torch.tensor([0.0, 1.0, 2.0], device=device, dtype=dtype)
+        kwargs = {"average": "macro", "weight": weight}
+        alone = kornia.losses.dice_loss(logits[:1], labels[:1], **kwargs)
+        self.assert_close(alone, logits.new_tensor(1.0), rtol=0, atol=0)
+        loss = kornia.losses.dice_loss(logits, labels, **kwargs)
+        self.assert_close(loss, (1 + kornia.losses.dice_loss(logits[1:], labels[1:], **kwargs)) / 2)
+        loss.backward()
+        assert torch.isfinite(logits.grad).all()
+        self.assert_close(logits.grad[0], torch.zeros_like(logits.grad[0]), rtol=0, atol=0)
+
     def test_macro_absent_gradcheck(self, device):
         logits = torch.arange(12, device=device, dtype=torch.float64).reshape(2, 3, 1, 2) / 4
         labels = torch.tensor([[[1, -100]], [[-100, -100]]], device=device)

@@ -71,7 +71,7 @@ def dice_loss(
             Reduction applied in multi-class scenario:
             - ``'micro'`` [default]: Calculate the loss across all classes.
             - ``'macro'``: Average class losses over classes present in each sample's non-ignored target.
-              Samples with all pixels ignored have loss 1.
+              Samples with all pixels ignored, or whose present classes all have weight 0, have loss 1.
         eps: Scalar to enforce numerical stabiliy.
         weight: weights for classes with shape :math:`(num\_of\_classes,)`.
         ignore_index: labels with this value are ignored in the loss computation.
@@ -165,12 +165,13 @@ def dice_loss(
 
     # reduce the loss across samples (and classes in case of `macro` averaging)
     if average == "macro":
-        # Only on-class entries are 1; off-class entries may contain the one_hot epsilon floor.
+        # A class is present in a sample when one of the sample's non-ignored target pixels has it.
         present = (target_one_hot == 1).any(dim=-1).any(dim=-1)
         weight = weight * present
-        empty = ~present.any(dim=-1)
-        normalizer = weight.sum(-1).masked_fill(empty, 1)
-        dice_loss = (dice_loss * weight).sum(-1) / normalizer
+        normalizer = weight.sum(-1)
+        # No present class with a nonzero weight (all pixels ignored, or weight 0): loss 1, as before.
+        empty = normalizer == 0
+        dice_loss = (dice_loss * weight).sum(-1) / normalizer.masked_fill(empty, 1)
         dice_loss = dice_loss.masked_fill(empty, 1)
 
     return torch.mean(dice_loss).to(output_dtype)
@@ -185,7 +186,8 @@ class DiceLoss(nn.Module):
     Args:
         average: Reduction strategy for multi-class computation. Use "micro" to aggregate
             classes globally, or "macro" to average over classes present in each sample's
-            non-ignored target. Samples with all pixels ignored have loss 1.
+            non-ignored target. Samples with all pixels ignored, or whose present classes all have
+            weight 0, have loss 1.
         eps: Small constant added to the denominator for numerical stability.
         weight: Optional class-weight tensor of shape :math:`(C,)`.
         ignore_index: Label value to exclude from loss computation.
