@@ -49,20 +49,7 @@ def mean_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int, eps: fl
         tensor([[1., 1., 1.]])
 
     """
-    if not torch.is_tensor(pred) and pred.dtype is not torch.int64:
-        raise TypeError(f"Input pred type is not a torch.Tensor with torch.int64 dtype. Got {type(pred)}")
-
-    if not torch.is_tensor(target) and target.dtype is not torch.int64:
-        raise TypeError(f"Input target type is not a torch.Tensor with torch.int64 dtype. Got {type(target)}")
-    if not pred.shape == target.shape:
-        raise ValueError(f"Inputs pred and target must have the same shape. Got: {pred.shape} and {target.shape}")
-    if not pred.device == target.device:
-        raise ValueError(f"Inputs must be in the same device. Got: {pred.device} - {target.device}")
-
-    if not isinstance(num_classes, int) or num_classes < 2:
-        raise ValueError(f"The number of classes must be an integer bigger than two. Got: {num_classes}")
-
-    # we first compute the confusion matrix
+    # we first compute the confusion matrix, which validates the labels and the class count
     conf_mat: torch.Tensor = confusion_matrix(pred, target, num_classes)
 
     # compute the actual intersection over union
@@ -105,6 +92,11 @@ def _convert_boxes_to_xyxy(boxes: torch.Tensor, box_format: str) -> torch.Tensor
     raise ValueError(f"Unsupported box format: {box_format}. Must be one of 'xyxy', 'xywh', or 'cxcywh'.")
 
 
+def _promote_integer_boxes(boxes: torch.Tensor) -> torch.Tensor:
+    """Return integer and bool boxes as float32; floating point boxes are returned unchanged."""
+    return boxes if boxes.is_floating_point() else boxes.to(torch.float32)
+
+
 def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str = "xyxy") -> torch.Tensor:
     """Compute the IoU of the cartesian product of two sets of boxes.
 
@@ -120,6 +112,10 @@ def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str 
     Returns:
         a tensor in dimensions :math:`(B1, B2)`, representing the
         intersection of each of the boxes in set 1 with respect to each of the boxes in set 2.
+
+    .. note::
+        Integer (and bool) boxes are computed in ``float32``, so the result is ``float32`` and widths, areas and the
+        union do not wrap around in a narrow integer dtype such as ``uint8``, ``int8`` or ``int16``.
 
     Example:
         >>> # XYXY format
@@ -142,6 +138,12 @@ def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str 
                 [0.1429, 0.2500]])
 
     """
+    # Integer boxes would otherwise form every width, area and the union in their own dtype, where uint8, int8 and
+    # int16 wrap around. Promote them before the format conversion too, because 'xywh' adds x + w in the box dtype.
+    # Bool boxes are covered as well (they cannot be subtracted). The result is float32 for integer input either way.
+    boxes_1 = _promote_integer_boxes(boxes_1)
+    boxes_2 = _promote_integer_boxes(boxes_2)
+
     # Convert boxes to xyxy format
     boxes_1_xyxy = _convert_boxes_to_xyxy(boxes_1, box_format)
     boxes_2_xyxy = _convert_boxes_to_xyxy(boxes_2, box_format)

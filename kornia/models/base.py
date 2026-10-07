@@ -152,8 +152,9 @@ class ModelBase(ABC, nn.Module, ModelBaseMixin, Generic[ModelConfig]):
             device: The desired device to load the weights and move the model
 
         """
-        if isinstance(checkpoint, str) and os.path.isfile(checkpoint):
-            with open(checkpoint, "rb") as f:
+        local = os.path.expanduser(checkpoint) if isinstance(checkpoint, str) else None
+        if local is not None and os.path.isfile(local):
+            with open(local, "rb") as f:
                 state_dict = torch.load(f, map_location=device, weights_only=True)
         else:
             state_dict = load_state_dict_from_url(checkpoint, map_location=device)

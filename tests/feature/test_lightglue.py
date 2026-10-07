@@ -263,8 +263,10 @@ class TestTokenConfidence(BaseTester):
         d0 = torch.rand(1, 20, 32, device=device, dtype=dtype)
         d1 = torch.rand(1, 20, 32, device=device, dtype=dtype)
         s0, s1 = tc(d0, d1)
-        assert (s0 >= 0).all() and (s0 <= 1).all()
-        assert (s1 >= 0).all() and (s1 <= 1).all()
+        assert (s0 >= 0).all()
+        assert (s0 <= 1).all()
+        assert (s1 >= 0).all()
+        assert (s1 <= 1).all()
 
     def test_gradcheck(self, device):
         pass  # TokenConfidence uses detach() on inputs; not differentiable w.r.t. inputs
@@ -449,9 +451,8 @@ class TestLightGlue(BaseTester):
             seen["device_type"] = kwargs.get("device_type", "")
             return real_ac(*args, **kwargs)
 
-        with unittest.mock.patch("kornia.feature.lightglue.torch.autocast", side_effect=_spy):
-            with torch.no_grad():
-                out = lg(data)
+        with unittest.mock.patch("kornia.feature.lightglue.torch.autocast", side_effect=_spy), torch.no_grad():
+            out = lg(data)
 
         assert seen["device_type"] == data["image0"]["keypoints"].device.type
         assert "matches0" in out

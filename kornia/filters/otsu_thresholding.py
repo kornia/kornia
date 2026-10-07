@@ -25,7 +25,12 @@ from kornia.core.check import KORNIA_CHECK
 
 
 class OtsuThreshold(torch.nn.Module):
-    """Otsu thresholding module for PyTorch tensors."""
+    """Otsu thresholding module for PyTorch tensors.
+
+    Convention:
+        See the Convention block on :func:`~kornia.filters.otsu_threshold`. ``forward`` has no ``return_mask`` and
+        always returns the thresholded tensor with the thresholds.
+    """
 
     # Standard deviation, in bin widths, of the Gaussian kernel density estimate whose histogram selects the
     # threshold of ``slow_and_differentiable=True``.
@@ -63,6 +68,17 @@ class OtsuThreshold(torch.nn.Module):
         min_values = values.amin(dim=1, keepdim=True)
         max_values = values.amax(dim=1, keepdim=True)
         widths = max_values - min_values
+        # Preserve histc's operation order on safe planes, including its rounding at bin boundaries. If the
+        # range or its product with bins overflows, use bounded units as in `_upper_edge` before subtracting:
+        # finite extrema then lie in [-1, 1], so no infinite bin coordinate reaches the integer conversion.
+        scale = torch.where(
+            (widths * bins).isfinite(),
+            torch.ones_like(widths),
+            torch.maximum(min_values.abs(), max_values.abs()).clamp_min(torch.finfo(edge_dtype).tiny),
+        )
+        values = values / scale
+        min_values, max_values = min_values / scale, max_values / scale
+        widths = max_values - min_values
         safe_widths = torch.where(widths > 0, widths, torch.ones_like(widths))
         indices = ((values - min_values) * bins / safe_widths).to(torch.int64).clamp(0, bins - 1)
         histograms = values.new_zeros((values.shape[0], bins)).scatter_add(1, indices, torch.ones_like(values))
@@ -76,7 +92,7 @@ class OtsuThreshold(torch.nn.Module):
             torch.addcmul(min_values, positions, steps),
             torch.addcmul(max_values, positions - bins, steps),
         )
-        return histograms / histograms.sum(dim=1, keepdim=True), bin_edges, indices
+        return histograms / histograms.sum(dim=1, keepdim=True), bin_edges * scale, indices
 
     @staticmethod
     def _kde_histogram(coords: torch.Tensor, bins: int, bandwidth: float) -> torch.Tensor:
@@ -364,17 +380,31 @@ def otsu_threshold(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Apply automatic image thresholding using Otsu algorithm to the input tensor.
 
-    Each image/channel plane uses its own histogram range. The threshold is the upper edge of the selected histogram
-    bin. For an integer input it is the largest integer below that value, so ``x > threshold`` keeps every pixel on
-    or above it. For floating input, rounding is corrected when necessary to keep the threshold at or above the
-    largest background pixel and below the smallest foreground pixel, so ``x > threshold`` matches the histogram
-    split. On MPS, a zero foreground boundary in float32 or bfloat16 uses the smallest normal negative
-    value because comparisons flush subnormal values to zero. Empty bins do not introduce candidate splits. A
-    constant plane uses its constant value as the threshold. Both paths support ``torch.export`` and full-graph
-    ``torch.compile``.
+    Convention:
+        - One threshold is returned per plane over the last two axes: a :math:`(B, C, H, W)` input gives ``B * C``
+          thresholds, flattened, and a tensor of at most two dimensions is one plane.
+        - Each plane is histogrammed on its own range, ``nbins`` bins between its minimum and its maximum, not over a
+          fixed :math:`[0, 1]` or :math:`[0, 255]`. The threshold is the upper edge of the selected histogram bin,
+          in input units and in the input's dtype. For an integer input it is the largest integer below that value,
+          so ``x > threshold`` keeps every pixel on or above it. For floating input, rounding is corrected when
+          necessary to keep the threshold at or above the largest background pixel and below the smallest foreground
+          pixel, so ``x > threshold`` matches the histogram split. On MPS, a zero foreground boundary in float32 or
+          bfloat16 uses the smallest normal negative value because comparisons flush subnormal values to zero.
+        - Histogram and bin-edge arithmetic uses float64 only for float64 input, and float32 for every other input
+          dtype, including integers and half precision. Large or narrowly spaced integer values can therefore lose
+          distinctions and select a different split; when that precision is required, pass float64 input whose
+          values are representable there, on a device that supports float64 (not MPS).
+        - Empty bins do not introduce candidate splits, so the lowest split across a run of empty bins wins on
+          every device. A constant plane uses its constant value as the threshold.
+        - The foreground is ``x > threshold``, strictly. The first output is ``x * (x > threshold)``, not a
+          binary image, and its gradient is that mask.
+        - With ``slow_and_differentiable=True``, every pixel contributes to a Gaussian kernel density estimate and
+          the threshold has a straight-through gradient; see the note below for the estimate and surrogate.
+          The default path's threshold has no gradient. Both paths support ``torch.export`` and full-graph
+          ``torch.compile``.
 
     Args:
-        x (Tensor): Input tensor (image or batch of images).
+        x (Tensor): Input tensor (image or batch of images) of at most five dimensions.
         nbins (int): Number of bins for histogram computation, default is 256.
         slow_and_differentiable (bool): If True, build the histogram from a Gaussian kernel density estimate and give
             the threshold a gradient with respect to ``x``; see the note below. Default is False.
@@ -384,20 +414,15 @@ def otsu_threshold(
 
     Returns:
         Tuple[torch.Tensor, torch.Tensor]: Thresholded tensor, or the boolean mask ``x > threshold`` when
-        ``return_mask`` is True, and the computed threshold values. The thresholded tensor cannot tell a kept pixel
-        of value 0 from a dropped one; use the mask for that.
+        ``return_mask`` is True, each with the shape of ``x``, and the computed threshold values. The thresholded
+        tensor cannot tell a kept pixel of value 0 from a dropped one; use the mask for that.
 
     Raises:
-        ValueError: If the input tensor has unsupported dimensionality or dtype.
+        ValueError: If the input tensor has more than five dimensions.
+        ~kornia.core.exceptions.BaseError: If the input dtype is not supported.
 
     .. note::
-        - The input tensor can be of various types, but float types are preferred for accuracy
-          in histogram computation, especially on CPU. Integer types will be cast to float.
-        - If `use_thresh` is True, the threshold must have been computed previously and set in the module.
-        - If `threshold` is provided, it overrides the computed threshold.
-
-    .. note::
-        You may found more information about the Otsu algorithm here: https://en.wikipedia.org/wiki/Otsu's_method
+        You can find more information about the Otsu algorithm here: https://en.wikipedia.org/wiki/Otsu's_method
 
     .. note::
         With ``slow_and_differentiable=True``, each pixel is spread into a Gaussian with a standard deviation of 0.1

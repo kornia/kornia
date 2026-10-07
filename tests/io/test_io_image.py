@@ -213,6 +213,18 @@ class TestIoImage:
 
         assert file_path.is_file()
 
+    @pytest.mark.parametrize("shape", [(1, 1, 5), (1, 5, 1)])
+    def test_write_image_one_row_or_one_column_grayscale(self, tmp_path: Path, shape) -> None:
+        # (1, 1, W) and (1, H, 1) must keep their unit height or width on the way to the encoder.
+        img = torch.arange(5, dtype=torch.uint8).reshape(shape) * 50
+        path = tmp_path / "line.png"
+
+        write_image(path, img)
+
+        loaded = load_image(path, ImageLoadType.UNCHANGED)
+        assert loaded.shape == shape
+        assert torch.equal(loaded, img)
+
 
 class TestDownloadImage:
     """Offline pins for ``kornia.io.sample.download_image``; ``urlopen`` is mocked, no network is touched."""

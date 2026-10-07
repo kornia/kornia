@@ -166,9 +166,7 @@ class ColorJitter(_PicklableCompileMixin, IntensityAugmentationBase2D):
             if len(order) != len(set(order)):
                 raise ValueError(f"`order` must not repeat an index; each adjustment applies at most once. Got {order}")
         self._fixed_order: Optional[Tuple[int, ...]] = order
-        # torch.cond raises where Dynamo is unavailable (torch 2.5.1 on Python 3.13), so a fixed order keeps
-        # the Python dispatch there. Checked here because Dynamo cannot trace the check inside forward.
-        self._cond_fn = _apply_cond if order is not None and torch._dynamo.is_dynamo_supported() else None
+        self._cond_fn = _apply_cond if order is not None else None
 
         # native functions
         self._brightness_fn = adjust_brightness_accumulative
@@ -183,8 +181,8 @@ class ColorJitter(_PicklableCompileMixin, IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        # The same dispatch as ColorJiggle: a fixed order on an RGB input runs torch.cond in eager and compiled
-        # mode, every other call the Python guards, which accept any channel count for a skipped step.
+        # The same branch-free dispatch as ColorJiggle for fixed RGB orders; other inputs use Python guards,
+        # which accept any channel count for a skipped step.
         steps: _Steps = (self._brightness_fn, self._contrast_fn, self._saturation_fn, self._adjust_hue_turns)
         return _dispatch_color_steps(input, params, self._fixed_order, self._cond_fn, _NEUTRAL, steps)
 
@@ -212,8 +210,8 @@ class ColorJitter(_PicklableCompileMixin, IntensityAugmentationBase2D):
                 "disable": disable,
             },
         )
-        # A fixed order on an RGB input runs every step through the torch.cond dispatcher, which is compiled
-        # as one graph; the four helpers serve the random order and non-RGB inputs.
+        # A fixed order on an RGB input runs every step through the branch-free dispatcher; the four helpers
+        # serve the random order and non-RGB inputs.
         if self._cond_fn is not None:
             self._cond_fn = torch.compile(
                 self._cond_fn,

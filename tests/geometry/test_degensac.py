@@ -160,7 +160,8 @@ class TestHDegenerateSample:
             if reference is None:
                 assert result is None
             else:
-                assert result is not None and torch.equal(result, reference)
+                assert result is not None
+                assert torch.equal(result, reference)
 
     @pytest.mark.parametrize("count", [0, 3])
     def test_empty_or_invalid_batch(self, count):
@@ -225,7 +226,8 @@ class TestInnerHomography:
         x1, x2 = _plane_with_outliers(H, torch.Generator().manual_seed(4))
         first = _inner_homography(H, x1, x2, self.THRESHOLD, torch.Generator().manual_seed(5))
         second = _inner_homography(H, x1, x2, self.THRESHOLD, torch.Generator().manual_seed(5))
-        assert torch.equal(first[0], second[0]) and torch.equal(first[1], second[1])
+        assert torch.equal(first[0], second[0])
+        assert torch.equal(first[1], second[1])
 
     def test_repetitions_without_inliers_contribute_nothing(self, monkeypatch):
         # When every subset model h0 has fewer than 4 inliers, iterH returns an empty score, h0 included, so innerH
@@ -287,7 +289,9 @@ class TestPlaneParallaxSearch:
         found = _plane_parallax_search(H_normalized, y1, y2, 2.0 * scale**2, 256, torch.Generator().manual_seed(8))
         assert found is not None
         models, support = found
-        assert len(models) <= 8 and bool((support > 4).all()) and int(support[0]) >= 38
+        assert len(models) <= 8
+        assert bool((support > 4).all())
+        assert int(support[0]) >= 38
         best = T.T @ models[0] @ T  # y = T x, so y2^T F y1 = x2^T (T^T F T) x1
         assert _same_up_to_scale(best, F) < 1e-6
 

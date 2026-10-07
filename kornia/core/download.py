@@ -324,7 +324,7 @@ def _url_list(url: object) -> list[str]:
 
     Raises:
         TypeError: if *url* is not a string or an iterable of strings.
-        ValueError: if there is no URL, or one of them is empty.
+        ValueError: if there is no URL, or one of them is empty or has no scheme.
     """
     expected = "url must be a URL string or a list of them"
     if isinstance(url, (str, bytes, os.PathLike)):
@@ -339,11 +339,16 @@ def _url_list(url: object) -> list[str]:
     checked: list[str] = []
     for u in urls:
         if isinstance(u, os.PathLike):
-            raise TypeError(f"{expected}, got a {type(u).__name__}; for a local file pass its path.as_uri().")
+            raise TypeError(f"{expected}, got a {type(u).__name__}; to load a local file use torch.load.")
         if not isinstance(u, str):
             raise TypeError(f"{expected}, got {type(u).__name__}.")
         if not u:
             raise ValueError(f"url must not be empty, got {url!r}.")
+        # The cache is looked up by the URL's base name before anything is
+        # fetched, so a local path here would load whichever cached file shares
+        # its name. A one-letter scheme is a Windows drive letter, not a URL.
+        if len(urlparse(u).scheme) <= 1:
+            raise ValueError(f"url must be a URL with a scheme, got {u!r}; to load a local file use torch.load.")
         checked.append(u)
     return checked
 
@@ -1089,7 +1094,10 @@ def load_state_dict_from_url(url: str | list[str], *, timeout: float | None = No
     ``model_dir`` is expanded.
 
     Args:
-        url: a URL string, or a list of URL strings tried left-to-right.
+        url: a URL string, or a list of URL strings tried left-to-right. A
+            ``file://`` URL is cached by its base name like any other URL, so a
+            cache entry of that name is returned instead of the local file; load
+            a local file with :func:`torch.load`.
         timeout: seconds a connection attempt or a single read may stall before the
             attempt fails; it bounds each wait, not the whole transfer. ``None``
             uses the ``KORNIA_DOWNLOAD_TIMEOUT`` environment variable, read at
@@ -1106,7 +1114,8 @@ def load_state_dict_from_url(url: str | list[str], *, timeout: float | None = No
     Raises:
         TypeError: if ``url`` is not a URL string or a list of them, ``timeout``
             is not a number, or a keyword is not one the torch function takes.
-        ValueError: if ``url`` is empty; if ``timeout`` is not greater than 0 and
+        ValueError: if ``url`` is empty or has no scheme (a local path is not a
+            URL); if ``timeout`` is not greater than 0 and
             at most ``threading.TIMEOUT_MAX``, or it is omitted and
             ``KORNIA_DOWNLOAD_TIMEOUT`` holds such a value or no number (the message
             names which); if ``file_name`` is not a bare file name, or it is omitted
@@ -1289,7 +1298,10 @@ def download_file_from_url(
     names it in every error it raises for the same reason.
 
     Args:
-        url: a URL string, or a list of URL strings tried left-to-right.
+        url: a URL string, or a list of URL strings tried left-to-right. A
+            ``file://`` URL is cached by its base name like any other URL, so a
+            cache entry of that name is returned instead of the local file; read
+            a local file directly.
         file_name: name to cache the file under. Defaults to the basename of the
             URL -- of the *first* URL when several are given, so that every
             source shares one cache slot. Pass it explicitly whenever that
@@ -1321,7 +1333,8 @@ def download_file_from_url(
             is not a number.
         ValueError: if ``file_name`` is not a single path component, or it is
             omitted and the first URL's path does not end in a file name; if
-            ``url`` is empty; or if ``timeout`` is not greater than 0 and at most
+            ``url`` is empty or has no scheme (a local path is not a URL); or if
+            ``timeout`` is not greater than 0 and at most
             ``threading.TIMEOUT_MAX``, or it is omitted and
             ``KORNIA_DOWNLOAD_TIMEOUT`` holds such a value or no number (the message
             names which).

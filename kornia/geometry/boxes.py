@@ -65,7 +65,7 @@ def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
     boxes_per_batch, n_points_per_box, coordinates_dimension = boxes.shape[-3:]
     if boxes_per_batch == 0:
         return boxes
-    points = boxes.view(-1, n_points_per_box * boxes_per_batch, coordinates_dimension)
+    points = boxes.reshape(-1, n_points_per_box * boxes_per_batch, coordinates_dimension)
     M = M if M.ndim == 3 else M.unsqueeze(0)
 
     if points.shape[0] != M.shape[0]:
@@ -425,10 +425,7 @@ class Boxes:
         Returns:
             :class:`Boxes` containing the updated coordinates.
         """
-        if inplace:
-            _data = self._data
-        else:
-            _data = self._data.clone()
+        _data = self._data if inplace else self._data.clone()
 
         if isinstance(values, Boxes):
             _data.index_put_(indices, values.data)
@@ -542,10 +539,7 @@ class Boxes:
                 "`Boxes.clamp` accepts `topleft` and `botright` as `(B, 2)` torch.Tensor bounds; "
                 f"got topleft={type(topleft).__name__} and botright={type(botright).__name__}."
             )
-        if inplace:
-            _data = self._data
-        else:
-            _data = self._data.clone()
+        _data = self._data if inplace else self._data.clone()
         # Broadcast the per-image bounds rather than materialising them at the data's shape: the
         # masked assignment this replaces needed a bound tensor of exactly the mask's shape, which
         # is what tied it to the batched (B, N, 4) indexing. ``torch.where`` on the same comparison
@@ -611,10 +605,7 @@ class Boxes:
             out-of-range boxes replaced by zero coordinates.
         """
         area = self.compute_area()
-        if inplace:
-            _data = self._data
-        else:
-            _data = self._data.clone()
+        _data = self._data if inplace else self._data.clone()
         if min_area is not None:
             _data[area < min_area] = 0.0
         if max_area is not None:
@@ -641,7 +632,7 @@ class Boxes:
         Returns:
             Area for each box, shaped :math:`(N,)` or :math:`(B, N)`.
         """
-        coords = self._data.view((-1, 4, 2)) if self._data.ndim == 4 else self._data
+        coords = self._data.flatten(0, 1) if self._data.ndim == 4 else self._data
         # calculate centroid of the box
         centroid = coords.mean(dim=1, keepdim=True)
         # calculate the angle from centroid to each corner
@@ -884,10 +875,7 @@ class Boxes:
         # GPU Hotpath (vectorized)
         # -----------------
         out_shape: Tuple[int, ...]
-        if is_batched:
-            out_shape = (self.shape[0], self.shape[1], height, width)
-        else:
-            out_shape = (self.shape[0], height, width)
+        out_shape = (self.shape[0], self.shape[1], height, width) if is_batched else (self.shape[0], height, width)
 
         xyxy = clipped_boxes_xyxy.view(-1, 4).round().long()
 
@@ -1064,15 +1052,14 @@ class VideoBoxes(Boxes):
           :meth:`Boxes.from_tensor` does for ``'vertices_plus'``.
         - :meth:`to_tensor` accepts every :class:`Boxes` mode and restores the temporal axis
           (``to_tensor('xyxy')`` is :math:`(B, T, N, 4)`).
+        - Indexing selects the video batch axis while preserving the temporal axis. An integer index returns a
+          one-video :class:`VideoBoxes` so :meth:`to_tensor` keeps the shape :math:`(1, T, \ldots)`. Index
+          assignment, ``video_boxes[key] = other``, writes the same whole videos.
         - A transformation matrix is :math:`(B \cdot T, 3, 3)`; a :math:`(3, 3)` matrix raises ``ValueError``
           unless :math:`B \cdot T = 1`.
         - :meth:`transform_boxes`, :meth:`translate`, :meth:`clamp`, :meth:`filter_boxes_by_area` and
           :meth:`merge` return a new :class:`VideoBoxes`; :meth:`pad`, :meth:`unpad`, :meth:`to` and
           :meth:`type` update ``self`` in place.
-
-    .. warning::
-        Indexing returns a wrapper without :attr:`temporal_channel_size`, so its :meth:`to_tensor` raises
-        ``AttributeError``: `#4249 <https://github.com/kornia/kornia/issues/4249>`_.
 
     Attributes:
         temporal_channel_size: Number of frames :math:`T` stored with the boxes.
@@ -1118,6 +1105,29 @@ class VideoBoxes(Boxes):
         out = cls(quadrilaterals, False, "vertices_plus")
         out.temporal_channel_size = temporal_channel_size
         return out
+
+    def __getitem__(self, key: slice | int | torch.Tensor) -> VideoBoxes:
+        r"""Select videos while preserving the temporal axis.
+
+        An integer or scalar tensor keeps a singleton video-batch dimension. Slices, integer tensors, and boolean
+        tensors follow the corresponding PyTorch indexing behavior on the video-batch axis.
+        """
+        batch_size = self._data.shape[0] // self.temporal_channel_size
+        video_data = self._data.view(batch_size, self.temporal_channel_size, *self._data.shape[1:])
+        selected = video_data[key]
+        if selected.ndim == self._data.ndim:
+            selected = selected.unsqueeze(0)
+
+        out = type(self)(selected.flatten(0, 1), False)
+        out._mode = self._mode
+        out.temporal_channel_size = self.temporal_channel_size
+        return out
+
+    def __setitem__(self, key: slice | int | torch.Tensor, value: Boxes) -> VideoBoxes:
+        r"""Write whole videos, selected by ``key`` on the video-batch axis as in :meth:`__getitem__`."""
+        size = self.temporal_channel_size
+        self._data.view(-1, size, *self._data.shape[1:])[key] = value.data.view(-1, size, *value.data.shape[1:])
+        return self
 
     def to_tensor(
         self, mode: Optional[str] = None, as_padded_sequence: bool = False

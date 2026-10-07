@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import os
 from collections import OrderedDict
 from typing import ClassVar, Optional
 
@@ -248,12 +249,19 @@ class DexiNed(ONNXExportMixin, nn.Module):
         """Load pretrained DexiNed weights and switch the module to evaluation mode.
 
         Args:
-            path_file: URL or local checkpoint path accepted by
+            path_file: path of a local checkpoint file, a URL accepted by
                 :func:`kornia.core.download.load_state_dict_from_url`, or a list
-                of candidate URLs tried in order (HF-first fallback).
+                of candidate URLs tried in order (HF-first fallback). A string
+                naming an existing file (a leading ``~`` is expanded) is read with
+                :func:`torch.load` and ``weights_only=True``; anything else goes
+                through the hub cache, which is keyed by base name.
         """
-        # use torch.hub to load pretrained model
-        pretrained_dict = load_state_dict_from_url(path_file, map_location=torch.device("cpu"))
+        local = os.path.expanduser(path_file) if isinstance(path_file, str) else None
+        if local is not None and os.path.isfile(local):
+            with open(local, "rb") as f:
+                pretrained_dict = torch.load(f, map_location=torch.device("cpu"), weights_only=True)
+        else:
+            pretrained_dict = load_state_dict_from_url(path_file, map_location=torch.device("cpu"))
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 

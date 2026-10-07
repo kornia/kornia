@@ -717,7 +717,7 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(cloned.tx, torch.tensor([9.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
     def test_convention_intrinsics_inverse_inverts_intrinsics(self, device, dtype):
-        # intrinsics_inverse() is the inverse of the full 4x4 intrinsics (the pair DepthWarper feeds pixel2cam),
+        # For homogeneous intrinsics, intrinsics_inverse() also inverts the full 4x4 matrix,
         # checked on an asymmetric fx = 100, fy = 50, cx = 4, cy = 3.
         cam = kornia.geometry.camera.PinholeCamera(
             _k44(device, dtype, fy=50.0),
@@ -727,6 +727,51 @@ class TestPinholeCamera(BaseTester):
         )
         product = cam.intrinsics_inverse() @ cam.intrinsics
         self.assert_close(product, torch.eye(4, device=device, dtype=dtype)[None])
+
+    @pytest.mark.parametrize("padding", ["zero", "homogeneous", "arbitrary"])
+    def test_intrinsics_inverse_reads_3x3_block_5480(self, device, dtype, padding):
+        k3 = torch.tensor(
+            [[[2.0, 0.5, 2.0], [0.0, 4.0, 1.5], [0.0, 0.0, 1.0]], [[4.0, -0.5, 1.0], [0.0, 2.0, 0.5], [0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        intrinsics = torch.zeros(2, 4, 4, device=device, dtype=dtype)
+        intrinsics[:, :3, :3] = k3
+        if padding == "homogeneous":
+            intrinsics[:, 3, 3] = 1.0
+        elif padding == "arbitrary":
+            intrinsics[:, :3, 3] = 5.0
+            intrinsics[:, 3, :] = 2.0
+        cam = kornia.geometry.camera.PinholeCamera(
+            intrinsics,
+            _e44(device, dtype).repeat(2, 1, 1),
+            torch.tensor([4, 4], device=device),
+            torch.tensor([5, 5], device=device),
+        )
+        actual = cam.intrinsics_inverse()
+        expected = torch.eye(4, device=device, dtype=dtype)[None].repeat(2, 1, 1)
+        # linalg.inv requires full precision on CPU; retain native float64 for the double control.
+        inverse_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        expected[:, :3, :3] = torch.linalg.inv(k3.to(inverse_dtype)).to(dtype)
+        assert actual.shape == (2, 4, 4)
+        assert actual.dtype == dtype
+        assert actual.device == intrinsics.device
+        self.assert_close(actual, expected, atol=0.0, rtol=8 * torch.finfo(dtype).eps)
+        self.assert_close(actual[:, 3, :], expected[:, 3, :], atol=0.0, rtol=0.0)
+        self.assert_close(actual[:, :3, 3], expected[:, :3, 3], atol=0.0, rtol=0.0)
+        self.assert_close(cam.intrinsics, intrinsics, atol=0.0, rtol=0.0)
+
+    def test_intrinsics_inverse_block_gradcheck(self, device):
+        intrinsics = _k44(device, torch.float64, fx=2.0, fy=4.0)
+        intrinsics[:, 3, 3] = 0.0
+        intrinsics.requires_grad_()
+
+        def inverse(k):
+            return kornia.geometry.camera.PinholeCamera(
+                k, _e44(device, k.dtype), torch.tensor([6], device=device), torch.tensor([8], device=device)
+            ).intrinsics_inverse()
+
+        self.gradcheck(inverse, (intrinsics,))
 
     def test_wart_scale_rescales_the_principal_point_by_the_half_pixel_rule_4263(self, device, dtype):
         # Wart pin for #4263: scale(s) gives cx' = s * cx (2.0 for cx = 4, s = 0.5), the half-pixel rule, while
@@ -901,6 +946,19 @@ class TestPinholeCamera(BaseTester):
         assert camera.project(torch.zeros(0, 3, device=device, dtype=dtype)).shape == (0, 2)
         assert camera.project(torch.zeros(0, 1, 3, device=device, dtype=dtype)).shape == (0, 1, 2)
 
+    def test_project_rejects_unbatched_points_on_a_camera_batch_4969(self, device, dtype):
+        # kornia#4969: (B, 3) points on a batch-B camera have no batch axis, so they get transform_points'
+        # batch-size ValueError, as (N, 3) with N != B does; before the fix N == B failed inside bmm.
+        trans = torch.eye(4, device=device, dtype=dtype).expand(2, 4, 4)
+        ones = torch.ones(2, device=device, dtype=dtype)
+        camera = kornia.geometry.camera.PinholeCamera(trans, trans, ones, ones)
+        points = torch.zeros(2, 1, 3, device=device, dtype=dtype)
+        points[..., 2] = 1.0
+
+        assert camera.project(points).shape == (2, 1, 2)
+        with pytest.raises(ValueError, match="Input batch size must be the same"):
+            camera.project(points[:, 0])
+
     @pytest.mark.parametrize("batch_sizes", [(1, 2, 1, 1), (0, 1, 0, 0)])
     def test_constructor_rejects_mismatched_batch_sizes_4281(self, batch_sizes, device, dtype):
         with pytest.raises(ValueError, match="Arguments shapes must match"):
@@ -935,11 +993,10 @@ class TestPinholeCamera(BaseTester):
         regular = torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype)
         self.assert_close(cam.project(regular), kornia.geometry.camera.project_points(regular, K3))
 
-    def test_wart_unproject_fails_on_zero_padded_intrinsics_4771(self, device, dtype):
-        # Wart pin for #4771: a 3x3 K zero-padded to 4x4 ([3, 3] = 0) constructs and projects correctly, but
-        # unproject inverts the singular intrinsics @ extrinsics and raises. Delete or invert when #4771 is
-        # repaired (constructor validation or a 3x3-block unproject both fail this pin). The control sets
-        # [3, 3] = 1 and changes nothing else, so the raise is attributable to the zero pad.
+    def test_convention_project_and_unproject_read_the_3x3_block_4771(self, device, dtype):
+        # Convention pin for #4771: project and unproject both build the projection from the intrinsics'
+        # top-left 3x3 block, so a 3x3 K zero-padded to 4x4 ([3, 3] = 0) round-trips exactly like its
+        # homogeneous embedding. The control sets [3, 3] = 1 and changes nothing else.
         height, width = torch.tensor([6], device=device), torch.tensor([8], device=device)
         point = torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype)
         depth = torch.tensor([[4.0]], device=device, dtype=dtype)
@@ -954,8 +1011,16 @@ class TestPinholeCamera(BaseTester):
             kornia.geometry.camera.PinholeCamera(control, _e44(device, dtype), height, width).unproject(uv, depth),
             point,
         )
-        with pytest.raises(RuntimeError):
-            cam.unproject(uv, depth)
+        self.assert_close(cam.unproject(uv, depth), point)
+
+        # The rest of the 4x4 is ignored too. Before #4771 was fixed, intrinsics[0, 3] = 10 shifted u by
+        # 10 / z (29 -> 31.5) and intrinsics[3, 3] = 2 doubled every unprojected point.
+        shifted = control.clone()
+        shifted[:, 0, 3] = 10.0
+        shifted[:, 3, 3] = 2.0
+        shifted_cam = kornia.geometry.camera.PinholeCamera(shifted, _e44(device, dtype), height, width)
+        self.assert_close(shifted_cam.project(point), uv)
+        self.assert_close(shifted_cam.unproject(uv, depth), point)
 
     def test_convention_from_parameters_fills_every_batch_element_4279(self, device, dtype):
         # Regression pin for #4279: image size must be filled for every camera in the batch.

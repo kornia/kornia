@@ -218,7 +218,7 @@ class ZCAWhitening(nn.Module):
             raise RuntimeError("Did not compute inverse ZCA. Please set compute_inv to True")
 
         if self.transform_inv is None:
-            raise TypeError("The transform inverse should be a torch.Tensor. Gotcha None.")
+            raise TypeError("The transform inverse should be a torch.Tensor. Got None.")
 
         mean_inv: torch.Tensor = -self.mean_vector.mm(self.transform_matrix)
 
@@ -319,10 +319,7 @@ def zca_mean(
 
     cov = inp_center_flat.t().mm(inp_center_flat)
 
-    if unbiased:
-        cov = cov / float(N - 1)
-    else:
-        cov = cov / float(N)
+    cov = cov / float(N - 1 if unbiased else N)
 
     U, S, _ = _torch_svd_cast(cov)
 

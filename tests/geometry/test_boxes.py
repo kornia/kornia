@@ -316,7 +316,8 @@ class TestBoxes2D(BaseTester):
         masked, indexed = lb[mask], lb[indices]
         assert masked._N == indexed._N == [2, 0]
         masked_boxes, indexed_boxes = masked.to_tensor("xyxy"), indexed.to_tensor("xyxy")
-        assert isinstance(masked_boxes, list) and isinstance(indexed_boxes, list)
+        assert isinstance(masked_boxes, list)
+        assert isinstance(indexed_boxes, list)
         for actual, expected in zip(masked_boxes, indexed_boxes):
             self.assert_close(actual, expected)
         assert [boxes.shape[0] for boxes in masked_boxes] == [1, 3]
@@ -792,6 +793,40 @@ class TestBoxes2D(BaseTester):
             computed_area == expected_area
             for computed_area, expected_area in zip(flattened_computed_areas_w_batch, expected_values)
         )
+
+    def test_compute_area_supports_non_contiguous_batched_boxes(self, device, dtype):
+        boxes_n_b = torch.tensor(
+            [
+                [
+                    [[0.0, 0.0], [4.0, 0.0], [4.0, 3.0], [0.0, 3.0]],
+                    [[10.0, 10.0], [12.0, 10.0], [12.0, 12.0], [10.0, 12.0]],
+                ],
+                [
+                    [[0.0, 0.0], [2.0, 0.0], [2.0, 3.0], [0.0, 3.0]],
+                    [[1.0, 1.0], [6.0, 1.0], [6.0, 7.0], [1.0, 7.0]],
+                ],
+                [
+                    [[0.0, 0.0], [3.0, 0.0], [3.0, 4.0], [0.0, 4.0]],
+                    [[2.0, 2.0], [5.0, 2.0], [5.0, 6.0], [2.0, 6.0]],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        boxes_b_n = boxes_n_b.transpose(0, 1)
+        assert boxes_b_n.shape == (2, 3, 4, 2)
+        assert not boxes_b_n.is_contiguous()
+
+        area = Boxes(boxes_b_n).compute_area()
+
+        expected = torch.tensor([[12.0, 6.0, 12.0], [4.0, 30.0, 12.0]], device=device, dtype=dtype)
+        assert torch.equal(area, expected)
+
+        # transform_boxes (and translate, which calls it) flattened the same layout with .view too.
+        shift = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device=device, dtype=dtype)
+        translated = Boxes(boxes_b_n).translate(shift).data
+        expected_translated = boxes_b_n.contiguous() + shift[:, None, None, :]
+        assert torch.equal(translated, expected_translated)
 
     def test_wart_compute_area_is_shoelace_of_inclusive_vertices_4010(self, device, dtype):
         # kornia#4010: compute_area applies shoelace to the stored inclusive vertices, so a valid exclusive
@@ -2082,14 +2117,68 @@ class TestVideoBoxes(BaseTester):
         assert transformed.temporal_channel_size == 3
         self.assert_close(transformed.to_tensor(), boxes, atol=0.0, rtol=0.0)
 
-    def test_wart_indexing_drops_the_temporal_size_4249(self, device, dtype):
-        # kornia#4249: Boxes.__getitem__ builds the result with type(self)(...) and never sets
-        # temporal_channel_size, so the sliced wrapper's to_tensor fails. Invert when #4249 is fixed.
-        video_boxes = VideoBoxes.from_tensor(self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=1))
-        frame = video_boxes[0]
-        assert isinstance(frame, VideoBoxes)
-        with pytest.raises(AttributeError, match="temporal_channel_size"):
-            frame.to_tensor()
+    def test_getitem_preserves_the_temporal_axis_4249(self, device, dtype):
+        boxes = self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=1)
+        boxes[1] += 1.0
+        video_boxes = VideoBoxes.from_tensor(boxes)
+
+        first = video_boxes[0]
+        assert isinstance(first, VideoBoxes)
+        assert first.temporal_channel_size == 3
+        self.assert_close(first.to_tensor(), boxes[:1], atol=0.0, rtol=0.0)
+
+        selected = video_boxes[torch.tensor([1, 0], device=device)]
+        assert isinstance(selected, VideoBoxes)
+        assert selected.temporal_channel_size == 3
+        self.assert_close(selected.to_tensor(), boxes[[1, 0]], atol=0.0, rtol=0.0)
+
+    @staticmethod
+    def _numbered_video_boxes(device, dtype, batch: int = 3, time: int = 2) -> torch.Tensor:
+        # Every frame is shifted by 10 * its flattened index, so a swapped or flattened frame changes the values.
+        offsets = 10.0 * torch.arange(batch * time, device=device, dtype=dtype).view(batch, time, 1, 1, 1)
+        return TestVideoBoxes._sample_video_boxes(device, dtype, batch=batch, time=time, n_boxes=2) + offsets
+
+    @staticmethod
+    def _video_key(kind: str, device):
+        return {
+            "int": 1,
+            "negative": -1,
+            "scalar": torch.tensor(2, device=device),
+            "slice": slice(1, None),
+            "step": slice(None, None, 2),
+            "long": torch.tensor([2, 0], device=device),
+            "mask": torch.tensor([True, False, True], device=device),
+            "empty": torch.zeros(3, dtype=torch.bool, device=device),
+        }[kind]
+
+    @pytest.mark.parametrize("kind", ["int", "negative", "scalar", "slice", "step", "long", "mask", "empty"])
+    def test_convention_indexing_selects_whole_videos_4249(self, kind, device, dtype):
+        # Convention pin: every key kind selects videos on the B axis and keeps all T frames in order; an integer
+        # or 0-d key keeps a batch of one.
+        boxes = self._numbered_video_boxes(device, dtype)
+        key = self._video_key(kind, device)
+        videos = torch.arange(3, device=device)[key].reshape(-1)
+
+        selected = VideoBoxes.from_tensor(boxes)[key]
+
+        assert isinstance(selected, VideoBoxes)
+        assert selected.temporal_channel_size == 2
+        self.assert_close(selected.to_tensor(), boxes[videos], atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("kind", ["int", "negative", "scalar", "slice", "step", "long", "mask", "empty"])
+    def test_convention_index_assignment_writes_whole_videos_4249(self, kind, device, dtype):
+        # Convention pin: assignment takes the same key as indexing, so video_boxes[key] = other[key] copies
+        # whole videos and leaves the other videos untouched.
+        boxes = self._numbered_video_boxes(device, dtype)
+        key = self._video_key(kind, device)
+        videos = torch.arange(3, device=device)[key].reshape(-1)
+        target = VideoBoxes.from_tensor(torch.zeros_like(boxes))
+
+        target[key] = VideoBoxes.from_tensor(boxes)[key]
+
+        expected = torch.zeros_like(boxes)
+        expected[videos] = boxes[videos]
+        self.assert_close(target.to_tensor(), expected, atol=0.0, rtol=0.0)
 
     def test_convention_inherited_methods_split_copies_from_in_place_updates(self, device, dtype):
         # Convention pin: transform_boxes, translate, clamp, filter_boxes_by_area and merge copy through

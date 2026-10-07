@@ -1120,8 +1120,11 @@ def test_mixed_removals_have_separate_actionable_remedies(tmp_path, capsys):
     assert _in_repo(repo, lambda: main(["--base-ref", "base"])) == 1
     errors = [line for line in capsys.readouterr().out.splitlines() if "Removed from __all__" in line]
     assert len(errors) == 2
-    assert "['a']" in errors[0] and INVENTORY_PATH in errors[0] and REMOVALS_PATH not in errors[0]
-    assert "['b']" in errors[1] and REMOVALS_PATH in errors[1]
+    assert "['a']" in errors[0]
+    assert INVENTORY_PATH in errors[0]
+    assert REMOVALS_PATH not in errors[0]
+    assert "['b']" in errors[1]
+    assert REMOVALS_PATH in errors[1]
 
 
 def test_explicit_record_does_not_replace_exact_inventory_update(tmp_path, capsys):

@@ -183,6 +183,11 @@ class TensorWrapper:
 
         # Get value from underlying tensor
         val = getattr(self._data, name)
+        # A tensor method is returned as is, so its result is not wrapped. Deciding this from the class keeps
+        # ``_wrap`` from asking for the bound method's type, which Dynamo does not know when the tensor is an
+        # intermediate, nor on torch 2.5.1 for any tensor.
+        if callable(getattr(Tensor, name, None)):
+            return val
 
         # Wrap the result if it's a tensor
         return _wrap(val, type(self))

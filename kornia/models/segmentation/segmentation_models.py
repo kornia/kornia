@@ -143,15 +143,9 @@ class SegmentationModelsBuilder:
             raise ValueError(f"Unsupported input range: {input_range}")
 
         # Handle mean and std normalization
-        if preproc_params["mean"] is not None:
-            mean = torch.tensor([preproc_params["mean"]])
-        else:
-            mean = torch.tensor(0.0)
+        mean = torch.tensor([preproc_params["mean"]]) if preproc_params["mean"] is not None else torch.tensor(0.0)
 
-        if preproc_params["std"] is not None:
-            std = torch.tensor([preproc_params["std"]])
-        else:
-            std = torch.tensor(1.0)
+        std = torch.tensor([preproc_params["std"]]) if preproc_params["std"] is not None else torch.tensor(1.0)
         proc_sequence.append(kornia.enhance.Normalize(mean=mean, std=std))
 
         return kornia.augmentation.container.ImageSequential(*proc_sequence)

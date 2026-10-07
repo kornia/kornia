@@ -254,7 +254,9 @@ class VideoSequential(ImageSequential):
                 param = ParamItem(name, mod_param)
 
             elif isinstance(module, (SequentialBase,)):
-                seq_param = module.forward_parameters(batch_shape)
+                # Frames are flattened to (B * T, ...) before the nested container runs, so it
+                # needs one draw per frame, like the unnested branch above.
+                seq_param = module.forward_parameters(torch.Size([batch_shape[0] * frame_num, *batch_shape[1:]]))
                 if self.same_on_frame:
                     raise ValueError("nn.Sequential is currently unsupported for ``same_on_frame``.")
                 param = ParamItem(name, seq_param)
@@ -262,7 +264,7 @@ class VideoSequential(ImageSequential):
             else:
                 param = ParamItem(name, None)
 
-            batch_shape = _get_new_batch_shape(param, batch_shape)
+            batch_shape = _get_new_batch_shape(param, batch_shape, module)
             params.append(param)
 
         return params
