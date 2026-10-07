@@ -20,8 +20,9 @@ from typing import List
 import torch
 from torch import nn
 
+from kornia.core.check import KORNIA_CHECK
 from kornia.filters import filter2d_separable, get_gaussian_kernel1d
-from kornia.filters.filter import _compute_padding
+from kornia.filters.filter import _VALID_PADDING, _compute_padding
 
 
 def _crop(img: torch.Tensor, cropping_shape: List[int]) -> torch.Tensor:
@@ -71,6 +72,7 @@ def ssim(
     Note:
         Integer images are converted to float32 before computing the local moments.
         Half-precision inputs are evaluated in float32 for numerical stability.
+        A float32/float64 pair is filtered in float64, with the Gaussian window built in that dtype.
         Filtering runs with autocast disabled; the result uses the promoted input dtype.
 
     Examples:
@@ -97,6 +99,13 @@ def ssim(
     if not img1.shape == img2.shape:
         raise ValueError(f"img1 and img2 shapes must be the same. Got: {img1.shape} and {img2.shape}")
 
+    KORNIA_CHECK(
+        str(padding).lower() in _VALID_PADDING,
+        f"Invalid padding mode, {padding}. Expected one of {_VALID_PADDING}",
+    )
+    # the check is case-insensitive, so dispatch on the lower-case spelling as well
+    padding = str(padding).lower()
+
     # Preserve fractional Gaussian weights and avoid integer moment overflow.
     if not img1.is_floating_point() and not img1.is_complex():
         img1 = img1.to(torch.float32)
@@ -109,9 +118,12 @@ def ssim(
         img1 = img1.float()
     if img2.dtype in (torch.float16, torch.bfloat16):
         img2 = img2.float()
+    # Mixed inputs are filtered in their common dtype, which is also the dtype of the window.
+    compute_dtype = torch.promote_types(img1.dtype, img2.dtype)
+    img1, img2 = img1.to(compute_dtype), img2.to(compute_dtype)
 
     # prepare kernel
-    kernel: torch.Tensor = get_gaussian_kernel1d(window_size, 1.5, device=img1.device, dtype=img1.dtype)
+    kernel: torch.Tensor = get_gaussian_kernel1d(window_size, 1.5, device=img1.device, dtype=compute_dtype)
 
     # compute coefficients
     C1: float = (0.01 * max_val) ** 2

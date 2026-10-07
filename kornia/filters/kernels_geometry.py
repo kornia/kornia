@@ -22,6 +22,7 @@ import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.utils import _extract_device_dtype
+from kornia.geometry.conversions import axis_angle_to_rotation_matrix
 from kornia.geometry.transform import rotate, rotate3d
 
 from .kernels import _check_kernel_size, _unpack_2d_ks, _unpack_3d_ks
@@ -47,10 +48,10 @@ def get_motion_kernel2d(
         - A floating tensor ``angle`` of shape :math:`(B,)` gives :math:`(B, k, k)` in its dtype. A tensor
           ``direction`` must match it in length, dtype and device; a float ``direction`` is not broadcast, so it
           raises for ``B > 1``.
-        - Known defect: with ``'nearest'``, at angles where the rotated line falls on sampling ties, such as 30 or
-          60 degrees, roundoff breaks the ties, so the kernel can change with the dtype, the device or a full turn
-          added to the angle; on MPS a tensor angle and the same float angle can blur differently
-          (`#5181 <https://github.com/kornia/kornia/issues/5181>`_).
+        - With ``'nearest'``, each pixel copies the tap nearest to its source under the inverse rotation, picked
+          with exact arithmetic: where the source falls exactly between two taps, such as at 30 or 120 degrees, the
+          tie goes to the even coordinate, as ``torch.nn.functional.grid_sample`` breaks it. The kernel is the
+          same on every device and dtype, for every full turn added to the angle, and with ``torch.compile``.
 
     Args:
         kernel_size: motion kernel width and height, an odd integer of at least 3.
@@ -120,9 +121,40 @@ def get_motion_kernel2d(
     kernel = kernel[:, None, ...]
 
     # rotate (counterclockwise) kernel by given angle
-    kernel = rotate(kernel, angle, mode=mode, align_corners=True)
-    kernel = kernel[:, 0]
+    if mode == "nearest":
+        kernel = _rotate_nearest(kernel[:, 0], angle)
+    else:
+        kernel = rotate(kernel, angle, mode=mode, align_corners=True)
+        kernel = kernel[:, 0]
     return kernel / kernel.sum(dim=(1, 2), keepdim=True)
+
+
+def _rotate_nearest(kernel: torch.Tensor, angle: torch.Tensor) -> torch.Tensor:
+    """Rotate square kernels :math:`(B, k, k)` counter-clockwise by ``angle`` degrees with nearest sampling.
+
+    Each pixel copies the tap at its source under the inverse rotation, as ``rotate`` with ``mode='nearest'`` and
+    ``align_corners=True`` does with exact arithmetic. The source is computed in float64 on the CPU and snapped to a
+    :math:`2^{-20}` grid, so a source that falls between two taps is an exact tie whatever the roundoff of ``cos``
+    and ``sin``, and ``torch.round`` breaks it half to even as ``grid_sample`` does. The weights are then gathered in
+    the kernel's own dtype and device, so gradients still reach them.
+    """
+    batch_size, kernel_size = kernel.shape[0], kernel.shape[-1]
+    center = (kernel_size - 1) / 2
+    # move first, then cast: on MPS a single .to(device="cpu", dtype=torch.float64) returns zeros (torch 2.14)
+    radians = torch.deg2rad(angle.detach().cpu().to(torch.float64) % 360.0)
+    cos, sin = radians.cos()[:, None, None], radians.sin()[:, None, None]
+    offsets = torch.arange(kernel_size, dtype=torch.float64) - center
+    v, u = torch.meshgrid(offsets, offsets, indexing="ij")
+    snap = 2.0**20
+    col = (((cos * u - sin * v) * snap).round() / snap + center).round()
+    row = (((sin * u + cos * v) * snap).round() / snap + center).round()
+    inside = (col >= 0) & (col < kernel_size) & (row >= 0) & (row < kernel_size)
+    # flat index plus one; 0 picks the zero weight padded in front, for a source outside the kernel
+    source = torch.where(inside, row * kernel_size + col + 1, 0.0).long().flatten(1).to(kernel.device)
+    weights = F.pad(kernel.flatten(1), [1, 0])
+    kernel = weights.gather(1, source).view(batch_size, kernel_size, kernel_size)
+    # nearest sampling has a zero gradient in the angle, as grid_sample gives; keep the angle in the graph with it
+    return kernel * (1 + 0 * angle[:, None, None])
 
 
 def get_motion_kernel3d(
@@ -143,6 +175,10 @@ def get_motion_kernel3d(
         off the line); a positive pitch alone turns the line's -x end, the heavy end for a positive ``direction``,
         towards +z, and a positive roll alone turns the line clockwise as displayed, the opposite of the 2d
         ``angle``.
+        With ``'nearest'``, each voxel copies the tap nearest to its source under the inverse rotation, picked with
+        exact arithmetic: where the source falls exactly between two taps, such as at a pitch or roll of 30 or 120
+        degrees, the tie goes to the even coordinate, as ``torch.nn.functional.grid_sample`` breaks it. The kernel
+        is the same on every device and dtype and with ``torch.compile``.
 
     Args:
         kernel_size: motion kernel width, height and depth, an odd integer of at least 3.
@@ -232,6 +268,38 @@ def get_motion_kernel3d(
     kernel = kernel[:, None, ...]
 
     # rotate (counterclockwise) kernel by given angle
-    kernel = rotate3d(kernel, angle[:, 0], angle[:, 1], angle[:, 2], mode=mode, align_corners=True)
-    kernel = kernel[:, 0]
+    if mode == "nearest":
+        kernel = _rotate3d_nearest(kernel[:, 0], angle)
+    else:
+        kernel = rotate3d(kernel, angle[:, 0], angle[:, 1], angle[:, 2], mode=mode, align_corners=True)
+        kernel = kernel[:, 0]
     return kernel / kernel.sum(dim=(1, 2, 3), keepdim=True)
+
+
+def _rotate3d_nearest(kernel: torch.Tensor, angle: torch.Tensor) -> torch.Tensor:
+    """Rotate cubic kernels :math:`(B, k, k, k)` by the axis-angle vector ``angle`` in degrees with nearest sampling.
+
+    Each voxel copies the tap at its source under the inverse rotation, as ``rotate3d`` with ``mode='nearest'`` and
+    ``align_corners=True`` does with exact arithmetic. The source is computed in float64 on the CPU and snapped to a
+    :math:`2^{-20}` grid, so a source that falls between two taps is an exact tie whatever the roundoff of the
+    rotation matrix, and ``torch.round`` breaks it half to even as ``grid_sample`` does. The weights are then
+    gathered in the kernel's own dtype and device, so gradients still reach them.
+    """
+    batch_size, kernel_size = kernel.shape[0], kernel.shape[-1]
+    center = (kernel_size - 1) / 2
+    # move first, then cast: on MPS a single .to(device="cpu", dtype=torch.float64) returns zeros (torch 2.14)
+    rotation = axis_angle_to_rotation_matrix(torch.deg2rad(angle.detach().cpu().to(torch.float64)))
+    offsets = torch.arange(kernel_size, dtype=torch.float64) - center
+    z, y, x = torch.meshgrid(offsets, offsets, offsets, indexing="ij")
+    # the source of voxel p is R^T (p - c) + c, written as a row vector times R
+    source = torch.stack((x, y, z), -1).reshape(1, -1, 3) @ rotation
+    snap = 2.0**20
+    source = ((source * snap).round() / snap + center).round()
+    inside = ((source >= 0) & (source < kernel_size)).all(-1)
+    col, row, slab = source.unbind(-1)
+    # flat index plus one; 0 picks the zero weight padded in front, for a source outside the kernel
+    flat = torch.where(inside, (slab * kernel_size + row) * kernel_size + col + 1, 0.0).long().to(kernel.device)
+    weights = F.pad(kernel.flatten(1), [1, 0])
+    kernel = weights.gather(1, flat).view(batch_size, kernel_size, kernel_size, kernel_size)
+    # nearest sampling has a zero gradient in the angle, as grid_sample gives; keep the angle in the graph with it
+    return kernel * (1 + 0 * angle.sum(-1)[:, None, None, None])

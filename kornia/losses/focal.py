@@ -103,7 +103,13 @@ def focal_loss(
     log_pred_soft: torch.Tensor = pred.log_softmax(1)
 
     # compute the actual focal loss
-    loss_tmp: torch.Tensor = -torch.pow(1.0 - log_pred_soft.exp(), gamma) * log_pred_soft * target_one_hot
+    # For 0 < gamma < 1, x ** gamma has an infinite derivative at x = 0, so a probability that rounds to 1 gives a
+    # NaN gradient. The loss term (1 - p) ** gamma * log(p) has a zero derivative at p = 1, so saturated entries take
+    # the factor's value from a detached copy and pass no gradient through it.
+    base = 1.0 - log_pred_soft.exp()
+    saturated = base == 0
+    focal_weight = torch.where(saturated, base.detach().pow(gamma), base.masked_fill(saturated, 1.0).pow(gamma))
+    loss_tmp: torch.Tensor = -focal_weight * log_pred_soft * target_one_hot
 
     num_of_classes = pred.shape[1]
     broadcast_dims = [-1] + [1] * len(pred.shape[2:])
