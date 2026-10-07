@@ -23,7 +23,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.filters import filter3d, get_gaussian_kernel3d
-from kornia.filters.filter import _compute_padding
+from kornia.filters.filter import _VALID_PADDING, _compute_padding
 
 
 def _crop(img: torch.Tensor, cropping_shape: List[int]) -> torch.Tensor:
@@ -97,6 +97,13 @@ def ssim3d(
 
     if not isinstance(max_val, float):
         raise TypeError(f"Input max_val type is not a float. Got {type(max_val)}")
+
+    KORNIA_CHECK(
+        str(padding).lower() in _VALID_PADDING,
+        f"Invalid padding mode, {padding}. Expected one of {_VALID_PADDING}",
+    )
+    # the check is case-insensitive, so dispatch on the lower-case spelling as well
+    padding = str(padding).lower()
 
     # Preserve fractional Gaussian weights and avoid integer moment overflow.
     if not img1.is_floating_point() and not img1.is_complex():
