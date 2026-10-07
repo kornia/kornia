@@ -478,10 +478,27 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
     if data is None:
         return batch_shape
 
+    # PatchSequential changes the image shape through its own padding/cropping, including when it is empty.
+    # Its parameters describe operations on individual patches and cannot encode this image-level change.
+    if module is not None:
+        from .patch import PatchSequential
+
+        if isinstance(module, PatchSequential):
+            if module.padding == "valid":
+                left, right, top, bottom = module._compute_padding(batch_shape, module.padding)
+                new_batch_shape = list(batch_shape)
+                new_batch_shape[-2] += top + bottom
+                new_batch_shape[-1] += left + right
+                return torch.Size(new_batch_shape)
+            return batch_shape
+
     # If data is a list, process all subitems (exit early if all subitems are None)
     if isinstance(data, list):
+        children = dict(module.named_children()) if module is not None else {}
         for p in data:
-            batch_shape = _get_new_batch_shape(p, batch_shape)
+            child_param = p.param if hasattr(p, "param") else p
+            child_module = children.get(child_param.name)
+            batch_shape = _get_new_batch_shape(child_param, batch_shape, child_module)
         return batch_shape
 
     # Carefully avoid evaluating expression multiple times; batch_prob is often a 1-element torch.Tensor

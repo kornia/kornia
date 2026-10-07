@@ -169,6 +169,19 @@ class TestPatchSequentialRegression(BaseTester):
                 expected[..., rows, cols] = x[..., rows, cols].flip(-1)
         self.assert_close(seq(x), expected, rtol=0, atol=0)
 
+    @pytest.mark.parametrize("empty", [False, True])
+    def test_nested_valid_padding_updates_tracked_shape(self, empty):
+        patch_seq = K.PatchSequential(
+            *([] if empty else [K.RandomHorizontalFlip(p=1.0)]),
+            grid_size=(2, 2),
+            padding="valid",
+            patchwise_apply=False,
+        )
+        seq = K.ImageSequential(K.ImageSequential(patch_seq), K.RandomCrop((4, 4), p=1.0))
+        params = seq.forward_parameters(torch.Size((64, 1, 9, 9)))
+        crop_input_size = params[1].data["input_size"]
+        assert torch.equal(crop_input_size, torch.full_like(crop_input_size, 8))
+
     @pytest.mark.parametrize("same_on_batch", [True, False, None])
     def test_location_wise_modules_cover_every_sample(self, same_on_batch, device, dtype):
         seq = K.PatchSequential(
