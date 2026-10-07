@@ -100,8 +100,6 @@ class TestAugmentationSequential:
 
         assert out_input.shape == input.shape
 
-<<<<<<< ours
-=======
     @pytest.mark.parametrize("as_dict", [False, True])
     @pytest.mark.parametrize("as_path", [False, True])
     @pytest.mark.parametrize("mode", ["L", "P"])

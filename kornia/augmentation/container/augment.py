@@ -644,8 +644,6 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     ) -> Any:
         """Overwrite the __call__ function to handle various inputs.
 
-<<<<<<< ours
-=======
         Arguments convert by data key, and only an image takes the image conversion. A mask given as a NumPy array,
         a PIL image or an image file path keeps its dtype and label values, palette indices included. Every mask
         must match the image's height and width, with a batch size of 1 or the image's. A single tensor mask
