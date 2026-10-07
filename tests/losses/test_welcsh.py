@@ -126,7 +126,9 @@ class TestWelschLoss(BaseTester):
             dtype=dtype,
         )
         actual = kornia.losses.welsch_loss(img1, img2)
-        self.assert_close(actual, expected, rtol=4 * torch.finfo(dtype).eps, atol=0)
+        # MPS float32 has about 2.52e-6 relative error at residual 0.125 (PR #5604 CI).
+        rtol = 3e-6 if device.type == "mps" and dtype == torch.float32 else 4 * torch.finfo(dtype).eps
+        self.assert_close(actual, expected, rtol=rtol, atol=0)
         self.assert_close(actual, kornia.losses.welsch_loss(img2, img1), rtol=0, atol=0)
         grad1, grad2 = torch.autograd.grad(actual.sum(), (img1, img2))
         expected_grad = img1.detach() * (-0.5 * img1.detach().square()).exp()
