@@ -1164,7 +1164,11 @@ class TestRandomTransplantation(BaseTester):
         image_out2, mask_out2 = AugmentationSequential(f)(image, mask, data_keys=["image", "mask"])
 
         self.assert_close(image_out, image_out2)
-        self.assert_close(mask_out, mask_out2)
+        if n_spatial == 2:
+            assert mask_out2.shape == (mask.shape[0], 1, *mask.shape[1:])
+            self.assert_close(mask_out, mask_out2[:, 0])
+        else:
+            self.assert_close(mask_out, mask_out2)
 
     @pytest.mark.parametrize(
         "input_shape_image, input_shape_mask, target_shape_image",
@@ -1221,7 +1225,7 @@ class TestRandomTransplantation(BaseTester):
         with pytest.raises(Exception, match="There cannot be more selected labels"):
             f(image, mask, params=params_copy)
 
-        with pytest.raises(Exception, match="Every image input must have one additional dimension"):
+        with pytest.raises(Exception, match="Every segmentation mask must have one fewer dimension"):
             f(image.unsqueeze(dim=-1), mask)
 
         image = torch.rand(1, 3, 2, 5, device=device, dtype=torch.float64)

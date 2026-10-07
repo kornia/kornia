@@ -299,8 +299,8 @@ class RandomTransplantation(MixAugmentationBaseV2):
             if key == DataKey.INPUT:
                 KORNIA_CHECK(
                     _input.ndim == mask.ndim + 1,
-                    "Every image input must have one additional dimension (channel dimension) than the segmentation "
-                    f"mask, but got {_input.ndim} for the input image and {mask.ndim} for the segmentation mask.",
+                    "Every segmentation mask must have one fewer dimension (no channel dimension) than the image, "
+                    f"but got {mask.ndim} for the segmentation mask and {_input.ndim} for the input image.",
                 )
                 KORNIA_CHECK(
                     mask.size() == torch.Size([s for i, s in enumerate(_input.size()) if i != self._channel_dim]),

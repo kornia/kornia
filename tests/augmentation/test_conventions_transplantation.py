@@ -100,7 +100,7 @@ class TestTransplantationConventions(BaseTester):
             cls(p=1.0)(torch.rand(2, 4, 5), torch.randint(0, 3, (4, 5)))
         mask = torch.randint(0, 3, (3, 4, 5))
         for image in (torch.rand(3, 4, 5), torch.rand(3, 2, 4, 5, 6)):
-            with pytest.raises(BaseError, match="one additional dimension"):
+            with pytest.raises(BaseError, match="one fewer dimension"):
                 cls(p=1.0)(image, mask)
 
     @pytest.mark.device_agnostic
@@ -483,6 +483,31 @@ class TestTransplantationConventions(BaseTester):
         self.assert_close(out_image, direct_image)
         assert torch.equal(out_mask[:, 0], direct_mask)
         assert not torch.equal(direct_mask, mask)  # something really moved
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("keepdim", [False, True])
+    @pytest.mark.parametrize("has_following_step", [False, True])
+    def test_convention_container_transplant_mask_rank_is_consistent_4750(self, keepdim, has_following_step):
+        image, mask = _labelled_batch(batch=3)
+        modules = [K.RandomTransplantation(p=1.0)]
+        if has_following_step:
+            modules.append(K.RandomHorizontalFlip(p=0.0))
+        aug = K.AugmentationSequential(*modules, data_keys=["image", "mask"], keepdim=keepdim)
+
+        _, out_mask = aug(image, mask)
+
+        expected_shape = mask.shape if keepdim else (mask.shape[0], 1, *mask.shape[1:])
+        assert out_mask.shape == expected_shape
+        actual_mask = out_mask if keepdim else out_mask[:, 0]
+        assert torch.equal(actual_mask, mask.roll(1, dims=0))
+
+    @pytest.mark.device_agnostic
+    def test_convention_invalid_mask_rank_error_names_mask_4750(self):
+        image = torch.rand(3, 2, 4, 6)
+        mask = torch.randint(0, 3, (3, 2, 4, 6))
+
+        with pytest.raises(BaseError, match="Every segmentation mask must have one fewer dimension"):
+            K.RandomTransplantation(p=1.0)(image, mask)
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize(

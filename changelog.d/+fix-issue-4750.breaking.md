@@ -1,0 +1,1 @@
+`AugmentationSequential` now returns a batched `(B, H, W)` mask as `(B, 1, H, W)` even when its only child is `RandomTransplantation`; previously that pipeline returned `(B, H, W)`. With `keepdim=True`, the mask remains `(B, H, W)`.
