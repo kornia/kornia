@@ -33,14 +33,21 @@ class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
     return one image tensor only.
 
     Note:
-        The additional add-on features increase the use of memories. To restore the
-        original behaviour, you may set `disable_features = True`.
+        The output cache retains a detached reference to the last tensor output, so it can keep that storage alive and
+        reflects later in-place edits. Setting ``disable_features = True`` clears the cache and bypasses the extra
+        behavior. The cache is omitted when the module is pickled.
 
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._disable_features: bool = False
+        self._output_image = None
+
+    def __getstate__(self) -> dict[str, Any]:
+        state = super().__getstate__()
+        state.pop("_output_image", None)
+        return state
 
     @property
     def disable_features(self) -> bool:
@@ -67,6 +74,8 @@ class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
                 - ``False``: keep helper features active.
         """
         self._disable_features = value
+        if value:
+            self._output_image = None
 
     def __call__(
         self,
@@ -111,14 +120,21 @@ class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
     return one image tensor only.
 
     Note:
-        The additional add-on features increase the use of memories. To restore the
-        original behaviour, you may set `disable_features = True`.
+        The output cache retains a detached reference to the last tensor output, so it can keep that storage alive and
+        reflects later in-place edits. Setting ``disable_features = True`` clears the cache and bypasses the extra
+        behavior. The cache is omitted when the module is pickled.
 
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._disable_features: bool = False
+        self._output_image = None
+
+    def __getstate__(self) -> dict[str, Any]:
+        state = super().__getstate__()
+        state.pop("_output_image", None)
+        return state
 
     @property
     def disable_features(self) -> bool:
@@ -145,6 +161,8 @@ class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
                 - ``False``: keep helper features active.
         """
         self._disable_features = value
+        if value:
+            self._output_image = None
 
     def __call__(
         self,
