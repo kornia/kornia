@@ -676,6 +676,17 @@ class TestFitLine(BaseTester):
         self.assert_close(actual.direction.abs().cpu().double(), expected.direction.abs(), atol=1e-3, rtol=1e-3)
         self.assert_close(actual.origin.cpu().double(), expected.origin, atol=0.5, rtol=1e-3)
 
+    def test_fit_line_3d_float16_centred_in_float32(self, device):
+        # Unweighted float16 points near 1500, where the float16 spacing is 1: their centroid rounded to float16 is
+        # about 0.45 off, which tilts the direction by about 6e-3. The centroid and the offsets are formed in float32.
+        # The float64 oracle is fitted on the CPU (MPS has no float64) from the float16-rounded points.
+        t = torch.linspace(-0.7, 1.0, 64, dtype=torch.float64)
+        points = torch.stack([1500.0 + 6.0 * t, 1500.0 - 3.0 * t, 1500.0 + 2.0 * t], -1)[None].half()
+        expected = fit_line(points.double())
+        actual = fit_line(points.to(device))
+        assert actual.direction.dtype == torch.float16
+        self.assert_close(actual.direction.abs().cpu().double(), expected.direction.abs(), atol=1e-3, rtol=1e-3)
+
     def test_fit_line_3d_keeps_promoted_dtype(self, device):
         # Like the D = 2 branch, the line is returned in the promoted dtype of points and weights.
         points = torch.tensor(
