@@ -113,9 +113,13 @@ class _HausdorffERLossBase(nn.Module):
                 f"Got {pred.shape} and {target.shape}."
             )
 
+        if target.dtype != torch.long:
+            raise ValueError(f"Expect long type target value in range [0, {pred.size(1)}). Got {target.dtype}.")
         # The range check reads the data, which graph capture cannot do; skip it under export.
-        if not is_exporting() and pred.size(1) < target.max().item():
-            raise ValueError("Invalid target value.")
+        if not is_exporting() and not (target.max() < pred.size(1) and target.min() >= 0):
+            raise ValueError(
+                f"Expect long type target value in range [0, {pred.size(1)}). ({target.min()}, {target.max()})"
+            )
 
         out = torch.stack(
             [
@@ -208,13 +212,6 @@ class HausdorffERLoss(_HausdorffERLossBase):
         if pred.dim() != 4:
             raise ValueError(f"Only 2D images supported. Got {pred.dim()}.")
 
-        if target.dtype != torch.long:
-            raise ValueError(f"Expect long type target value in range (0, {pred.size(1)}). Got {target.dtype}.")
-        # The range check reads the data, which graph capture cannot do; skip it under export.
-        if not is_exporting() and not (target.max() < pred.size(1) and target.min() >= 0):
-            raise ValueError(
-                f"Expect long type target value in range (0, {pred.size(1)}). ({target.min()}, {target.max()})"
-            )
         return super().forward(pred, target)
 
 

@@ -102,6 +102,9 @@ def dice_loss(
 
     if not pred.device == target.device:
         raise ValueError(f"pred and target must be in the same device. Got: {pred.device} and {target.device}")
+
+    if not (pred.shape[0] == target.shape[0] and pred.shape[2:] == target.shape[1:]):
+        raise ValueError(f"Expected target size {torch.Size((pred.shape[0], *pred.shape[2:]))}, got {target.shape}")
     num_of_classes = pred.shape[1]
     possible_average = {"micro", "macro"}
     KORNIA_CHECK(average in possible_average, f"The `average` has to be one of {possible_average}. Got: {average}")
@@ -111,8 +114,11 @@ def dice_loss(
 
     target, target_mask = mask_ignore_pixels(target, ignore_index)
 
-    # create the labels one hot torch.Tensor
-    target_one_hot: torch.Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
+    # create the labels one hot torch.Tensor. A half-precision target is built in float32, the dtype of the sums below:
+    # the intersection gradient of a class absent from the target is 2 / (cardinality + eps) up to the averaging, past
+    # the float16 range once that class's probabilities underflow, and float16 inf times the zero target is NaN.
+    target_dtype = torch.float32 if pred.dtype in (torch.float16, torch.bfloat16) else pred.dtype
+    target_one_hot: torch.Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=target_dtype)
 
     # mask ignore pixels
     if target_mask is not None:

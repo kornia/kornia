@@ -120,8 +120,12 @@ def _normalize_signal(data: torch.Tensor, num_bins: int, eps: float = 1e-8) -> t
     min_val, _ = data.min(dim=-1)
     max_val, _ = data.max(dim=-1)
     diff = (max_val - min_val).unsqueeze(-1)
-    # signal is considered trivial if too low variation
-    return torch.where(diff > eps, (data - min_val.unsqueeze(-1)) / diff * num_bins, 0)
+    # Map the range onto the bin centres 0 ... num_bins - 1, so that the maximum lands on the last centre and gets
+    # full histogram weight like every other sample. The signal is considered trivial if too low variation; its range
+    # is replaced by one inside the division, so that the discarded branch does not backpropagate 0 / 0.
+    nontrivial = diff > eps
+    safe_diff = torch.where(nontrivial, diff, torch.ones_like(diff))
+    return torch.where(nontrivial, (data - min_val.unsqueeze(-1)) / safe_diff * (num_bins - 1), 0)
 
 
 def _joint_histogram_to_entropies(joint_histogram: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:

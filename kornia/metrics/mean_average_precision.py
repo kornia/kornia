@@ -19,6 +19,8 @@ from typing import Dict, List, Tuple
 
 import torch
 
+from kornia.core.check import KORNIA_CHECK
+
 from .mean_iou import mean_iou_bbox
 
 
@@ -56,8 +58,12 @@ def mean_average_precision(
 
     """
     # these are all lists of tensors of the same length, i.e. number of images
-    if not len(pred_boxes) == len(pred_labels) == len(pred_scores) == len(gt_boxes) == len(gt_labels):
-        raise AssertionError
+    KORNIA_CHECK(
+        len(pred_boxes) == len(pred_labels) == len(pred_scores) == len(gt_boxes) == len(gt_labels),
+        "The five per-image lists must have the same length. Got: "
+        f"pred_boxes {len(pred_boxes)}, pred_labels {len(pred_labels)}, pred_scores {len(pred_scores)}, "
+        f"gt_boxes {len(gt_boxes)}, gt_labels {len(gt_labels)}",
+    )
 
     # Store all (true) objects in a single continuous torch.Tensor while keeping track of the image it is from
     gt_images = []
@@ -68,8 +74,11 @@ def mean_average_precision(
     _gt_labels = torch.cat(gt_labels, 0)  # (n_objects)
     _gt_images = torch.tensor(gt_images, device=_gt_boxes.device, dtype=torch.long)
 
-    if not _gt_images.size(0) == _gt_boxes.size(0) == _gt_labels.size(0):
-        raise AssertionError
+    KORNIA_CHECK(
+        _gt_images.size(0) == _gt_boxes.size(0) == _gt_labels.size(0),
+        f"gt_boxes and gt_labels must have one row per object. Got: {_gt_boxes.size(0)} boxes and "
+        f"{_gt_labels.size(0)} labels",
+    )
 
     # Store all detections in a single continuous torch.Tensor while keeping track of the image it is from
     pred_images = []
@@ -80,13 +89,21 @@ def mean_average_precision(
     _pred_scores = torch.cat(pred_scores, 0)  # (n_detections)
     _pred_images = torch.tensor(pred_images, device=_pred_boxes.device, dtype=torch.long)  # (n_detections)
 
-    if not _pred_images.size(0) == _pred_boxes.size(0) == _pred_labels.size(0) == _pred_scores.size(0):
-        raise AssertionError
+    KORNIA_CHECK(
+        _pred_images.size(0) == _pred_boxes.size(0) == _pred_labels.size(0) == _pred_scores.size(0),
+        f"pred_boxes, pred_labels and pred_scores must have one row per detection. Got: {_pred_boxes.size(0)} boxes, "
+        f"{_pred_labels.size(0)} labels and {_pred_scores.size(0)} scores",
+    )
+
+    # The precisions need a floating dtype. Integer boxes count as float32, as mean_iou_bbox computes their overlaps,
+    # and the two sets meet in their promoted dtype: integer and float16 boxes give float32, not float16.
+    ap_dtype = torch.promote_types(
+        _pred_boxes.dtype if _pred_boxes.is_floating_point() else torch.float32,
+        _gt_boxes.dtype if _gt_boxes.is_floating_point() else torch.float32,
+    )
 
     # Calculate APs for each class (except background)
-    average_precisions = torch.zeros(
-        (n_classes - 1), device=_pred_boxes.device, dtype=_pred_boxes.dtype
-    )  # (n_classes - 1)
+    average_precisions = torch.zeros((n_classes - 1), device=_pred_boxes.device, dtype=ap_dtype)  # (n_classes - 1)
     for c in range(1, n_classes):
         # Extract only objects with this class
         gt_class_images = _gt_images[_gt_labels == c]  # (n_class_objects)
@@ -112,12 +129,8 @@ def mean_average_precision(
         pred_class_boxes = pred_class_boxes[sort_ind]  # (n_class_detections, 4)
 
         # In the order of decreasing scores, check if true or false positive
-        gt_positives = torch.zeros(
-            (n_class_detections,), dtype=pred_class_boxes.dtype, device=pred_class_boxes.device
-        )  # (n_class_detections)
-        false_positives = torch.zeros(
-            (n_class_detections,), dtype=pred_class_boxes.dtype, device=pred_class_boxes.device
-        )  # (n_class_detections)
+        gt_positives = torch.zeros((n_class_detections,), dtype=ap_dtype, device=pred_class_boxes.device)
+        false_positives = torch.zeros((n_class_detections,), dtype=ap_dtype, device=pred_class_boxes.device)
         for d in range(n_class_detections):
             this_detection_box = pred_class_boxes[d].unsqueeze(0)  # (1, 4)
             this_image = pred_class_images[d]  # (), scalar
@@ -165,7 +178,7 @@ def mean_average_precision(
         # Exact tenths as Python floats: each comparison below casts them to the recall dtype. A float32 arange widened
         # to Python floats gives 0.10000000149..., which a float64 recall of exactly 1/10 never reaches (#5083).
         recall_thresholds = [i / 10 for i in range(11)]  # (11)
-        precisions = torch.zeros((len(recall_thresholds)), device=_gt_boxes.device, dtype=_gt_boxes.dtype)  # (11)
+        precisions = torch.zeros((len(recall_thresholds)), device=_gt_boxes.device, dtype=ap_dtype)  # (11)
         for i, t in enumerate(recall_thresholds):
             recalls_above_t = cumul_recall >= t
             if recalls_above_t.any():

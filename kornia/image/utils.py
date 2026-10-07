@@ -204,8 +204,9 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False, force_contiguou
     elif len(input_shape) == 3:
         # (C, H, W) -> (H, W, C)
         if input_shape[0] == 1:
-            # Grayscale for proper plt.imshow needs to be (H,W)
-            image = image.squeeze()
+            # Grayscale for proper plt.imshow needs to be (H,W); squeeze only the channel axis so that a unit H or W
+            # of a 1-row or 1-column image survives.
+            image = image.squeeze(0)
         else:
             image = image.permute(1, 2, 0)
     elif len(input_shape) == 4:
