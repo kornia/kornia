@@ -339,7 +339,7 @@ def _url_list(url: object) -> list[str]:
     checked: list[str] = []
     for u in urls:
         if isinstance(u, os.PathLike):
-            raise TypeError(f"{expected}, got a {type(u).__name__}; for a local file pass its path.as_uri().")
+            raise TypeError(f"{expected}, got a {type(u).__name__}; to load a local file use torch.load.")
         if not isinstance(u, str):
             raise TypeError(f"{expected}, got {type(u).__name__}.")
         if not u:
@@ -1094,7 +1094,10 @@ def load_state_dict_from_url(url: str | list[str], *, timeout: float | None = No
     ``model_dir`` is expanded.
 
     Args:
-        url: a URL string, or a list of URL strings tried left-to-right.
+        url: a URL string, or a list of URL strings tried left-to-right. A
+            ``file://`` URL is cached by its base name like any other URL, so a
+            cache entry of that name is returned instead of the local file; load
+            a local file with :func:`torch.load`.
         timeout: seconds a connection attempt or a single read may stall before the
             attempt fails; it bounds each wait, not the whole transfer. ``None``
             uses the ``KORNIA_DOWNLOAD_TIMEOUT`` environment variable, read at
@@ -1295,7 +1298,10 @@ def download_file_from_url(
     names it in every error it raises for the same reason.
 
     Args:
-        url: a URL string, or a list of URL strings tried left-to-right.
+        url: a URL string, or a list of URL strings tried left-to-right. A
+            ``file://`` URL is cached by its base name like any other URL, so a
+            cache entry of that name is returned instead of the local file; read
+            a local file directly.
         file_name: name to cache the file under. Defaults to the basename of the
             URL -- of the *first* URL when several are given, so that every
             source shares one cache slot. Pass it explicitly whenever that

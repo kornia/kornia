@@ -20,6 +20,7 @@ from __future__ import annotations
 import pytest
 import torch
 
+from kornia.core.exceptions import BaseError
 from kornia.metrics.ssim import SSIM, ssim
 
 from testing.base import BaseTester
@@ -68,6 +69,18 @@ class TestSsim(BaseTester):
         c1 = (0.01 * 255.0) ** 2
         expected = torch.full_like(actual, (2 * 128 * 64 + c1) / (128**2 + 64**2 + c1))
         self.assert_close(actual, expected)
+
+    def test_mixed_float32_float64_pair_is_computed_in_float64(self, device, dtype):
+        # A float32/float64 pair is filtered in float64, the result dtype, with a float64 window, whichever argument
+        # is the float32 one, so it equals the all-float64 result to roundoff (#5574).
+        if dtype != torch.float64:
+            pytest.skip("the pair needs a float64 argument")
+        generator = torch.Generator().manual_seed(0)
+        img1 = (0.9 + 0.1 * torch.rand(1, 1, 16, 16, generator=generator, dtype=torch.float64)).float().to(device)
+        img2 = (0.9 + 0.1 * torch.rand(1, 1, 16, 16, generator=generator, dtype=torch.float64)).to(device)
+        expected = ssim(img1.double(), img2, 5)
+        self.assert_close(ssim(img1, img2, 5), expected, rtol=1e-12, atol=1e-12)
+        self.assert_close(ssim(img2, img1, 5), expected, rtol=1e-12, atol=1e-12)
 
     def test_pixel_range_gradients(self, device, dtype):
         if device.type == "mps":
@@ -127,6 +140,26 @@ class TestSsim(BaseTester):
         assert out_valid.shape[2] < out_same.shape[2]
         assert out_valid.shape[3] < out_same.shape[3]
 
+    @pytest.mark.parametrize("padding", ["VALID", "Valid"])
+    def test_padding_case_insensitive(self, device, dtype, padding):
+        # Case variants select their branch as the filters do since #5156 (#5537).
+        img1 = torch.rand(1, 1, 13, 17, device=device, dtype=dtype)
+        img2 = torch.rand(1, 1, 13, 17, device=device, dtype=dtype)
+        expected = ssim(img1, img2, window_size=5, padding="valid")
+        actual = ssim(img1, img2, window_size=5, padding=padding)
+        assert actual.shape == (1, 1, 9, 13)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        self.assert_close(SSIM(5, padding=padding)(img1, img2), expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("padding", ["full", "bogus"])
+    def test_exception_invalid_padding(self, device, dtype, padding):
+        # Any other value raises instead of silently returning the 'same' map (#5537).
+        img = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
+        with pytest.raises(BaseError, match="Invalid padding mode"):
+            ssim(img, img, window_size=3, padding=padding)
+        with pytest.raises(BaseError, match="Invalid padding mode"):
+            SSIM(3, padding=padding)(img, img)
+
     def test_exception_non_tensor_img1(self, device, dtype):
         img2 = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
         with pytest.raises(TypeError, match=r"Input img1 type is not a torch\.Tensor"):
@@ -159,6 +192,18 @@ class TestSsim(BaseTester):
         img2 = torch.rand(1, 1, 8, 16, device=device, dtype=dtype)
         with pytest.raises(ValueError, match="img1 and img2 shapes must be the same"):
             ssim(img1, img2, window_size=3)
+
+    def test_exception_real_complex_pair(self, device):
+        # A real/complex pair builds its Gaussian window in the complex promoted dtype, which raises in either order;
+        # a real img1 with a complex img2 used to return a complex map (#5574). torch raises NotImplementedError, a
+        # RuntimeError subclass, and a plain RuntimeError on 2.5.1.
+        real = torch.rand(1, 1, 8, 8, device=device)
+        complex_ = real.to(torch.complex64)
+        for img1, img2 in ((real, complex_), (complex_, real)):
+            with pytest.raises(RuntimeError, match="not implemented for 'ComplexFloat'"):
+                ssim(img1, img2, window_size=3)
+            with pytest.raises(RuntimeError, match="not implemented for 'ComplexFloat'"):
+                SSIM(window_size=3)(img1, img2)
 
     def test_ssim_module(self, device, dtype):
         img1 = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)

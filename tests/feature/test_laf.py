@@ -868,8 +868,10 @@ class TestExtractPatchesSimple(BaseTester):
         self.assert_close(patches[:, :1], expected_finite)
         assert patches[:, 1:].abs().sum().item() == 0
         patches.sum().backward()
-        assert grad_img.grad is not None and bool(grad_img.grad.isfinite().all())
-        assert grad_laf.grad is not None and bool(grad_laf.grad.isfinite().all())
+        assert grad_img.grad is not None
+        assert bool(grad_img.grad.isfinite().all())
+        assert grad_laf.grad is not None
+        assert bool(grad_laf.grad.isfinite().all())
         assert grad_laf.grad[:, 1:].abs().sum().item() == 0
 
     def test_same_odd(self, device, dtype):
@@ -1157,8 +1159,10 @@ class TestExtractPatchesPyr(BaseTester):
             self.assert_close(patches[:, :1], expected_finite)
             assert patches[:, 1:].abs().sum().item() == 0
             patches.sum().backward()
-            assert grad_img.grad is not None and bool(grad_img.grad.isfinite().all())
-            assert grad_laf.grad is not None and bool(grad_laf.grad.isfinite().all())
+            assert grad_img.grad is not None
+            assert bool(grad_img.grad.isfinite().all())
+            assert grad_laf.grad is not None
+            assert bool(grad_laf.grad.isfinite().all())
             assert grad_laf.grad[:, 1:].abs().sum().item() == 0
 
     def test_giant_laf_uses_actual_coarsest_level(self, device, dtype):
@@ -1384,7 +1388,8 @@ class TestExtractPatchesPyr(BaseTester):
         pyramid = kornia.feature.extract_patches_from_pyramid(img, laf, 16)
         reference = kornia.feature.extract_patches_simple(img.float(), laf.float(), 16).to(dtype)
         assert simple.dtype == pyramid.dtype == dtype
-        assert bool(simple.isfinite().all()) and bool(pyramid.isfinite().all())
+        assert bool(simple.isfinite().all())
+        assert bool(pyramid.isfinite().all())
         self.assert_close(simple, reference)
         self.assert_close(pyramid, reference)
 
