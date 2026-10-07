@@ -26,11 +26,17 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
 def _kl_div_2d(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
-    # D_KL(P || Q)
+    # D_KL(P || Q) with the convention 0 * log 0 = 0. Cells with p == 0 and a finite q >= 0 contribute nothing to the
+    # value or the gradient: both arguments are replaced by 1 there, so a q == 0 in such a cell cannot turn the term
+    # into NaN. Every other cell keeps the value of F.kl_div, so a NaN or a negative entry in either input, or an
+    # infinite q where p == 0, still gives NaN.
     batch, chans, height, width = p.shape
-    unsummed_kl = F.kl_div(
-        q.reshape(batch * chans, height * width).log(), p.reshape(batch * chans, height * width), reduction="none"
-    )
+    p = p.reshape(batch * chans, height * width)
+    q = q.reshape(batch * chans, height * width)
+    empty = (p == 0) & (q >= 0) & torch.isfinite(q)
+    p = p.masked_fill(empty, 1.0)
+    q = q.masked_fill(empty, 1.0)
+    unsummed_kl = F.kl_div(q.log(), p, reduction="none")
 
     return unsummed_kl.sum(-1).view(batch, chans)
 
