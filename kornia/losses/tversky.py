@@ -24,6 +24,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.losses._utils import mask_ignore_pixels
+from kornia.losses.one_hot import one_hot
 
 # based on:
 # https://github.com/kevinzakka/pytorch-goodies/blob/master/losses.py
@@ -47,15 +48,19 @@ def tversky_loss(
           \frac{|PG|}{|PG| + \alpha |P \setminus G| + \beta |G \setminus P|}
 
     Where:
-       - :math:`P` and :math:`G` are the predicted and ground truth binary
-         labels.
+       - :math:`P` and :math:`G` are the softmax probabilities and exact one-hot
+         targets for each class, restricted to non-ignored pixels.
        - :math:`\alpha` and :math:`\beta` control the magnitude of the
          penalties for FPs and FNs, respectively.
 
     Note:
-       - :math:`\alpha = \beta = 0.5` => dice coeff
-       - :math:`\alpha = \beta = 1` => tanimoto coeff
-       - :math:`\alpha + \beta = 1` => F beta coeff
+       - Scores are computed per class and averaged over classes present in each
+         sample's non-ignored target, then over samples. Fully ignored samples have loss 1.
+       - :math:`\alpha = \beta = 0.5` corresponds to macro Dice with exact targets
+         and a denominator epsilon of :math:`2\,\text{eps}` in the Dice formula.
+       - :math:`\alpha = \beta = 1` corresponds to the per-class Tanimoto coefficient.
+       - For :math:`\alpha + \beta = 1` and :math:`\alpha > 0`, the unsmoothed
+         per-class score is :math:`F_{\sqrt{\beta / \alpha}}`.
 
     Args:
         pred: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes.
@@ -70,9 +75,9 @@ def tversky_loss(
         the computed loss.
 
     Note:
-        Spatial reductions and the ratio use float32 for float16 and bfloat16
-        inputs to avoid overflow on large images. The returned loss retains
-        the input dtype.
+        Softmax, spatial reductions and the ratio use float32 for float16 and
+        bfloat16 inputs to avoid overflow in large-image sums and ratio gradients.
+        The returned loss retains the input dtype.
 
     Example:
         >>> N = 5  # num_classes
@@ -94,33 +99,27 @@ def tversky_loss(
     if not pred.device == target.device:
         raise ValueError(f"pred and target must be in the same device. Got: {pred.device} and {target.device}")
 
-    # compute softmax over the classes axis
-    pred_soft = F.softmax(pred, dim=1)
+    # Keep the ratio's backward pass in float32 through softmax for half inputs.
+    reduction_dtype = torch.float32 if pred.dtype in (torch.float16, torch.bfloat16) else pred.dtype
+    pred_soft = F.softmax(pred, dim=1, dtype=reduction_dtype)
     target, target_mask = mask_ignore_pixels(target, ignore_index)
 
-    p_true = pred_soft.gather(1, target.unsqueeze(1))  # (B,1,H,W)
-
-    # Half-precision pixel counts can overflow before the ratio is formed.
-    reduction_dtype = torch.float32 if pred.dtype in (torch.float16, torch.bfloat16) else pred.dtype
+    target_one_hot = one_hot(target, pred.shape[1], device=pred.device, dtype=reduction_dtype, eps=0.0)
 
     if target_mask is not None:
-        m = target_mask.unsqueeze(1).to(dtype=pred.dtype)
-        p_true = p_true * m
-        total = m.sum((1, 2, 3), dtype=reduction_dtype)
-    else:
-        B, _, H, W = pred.shape
-        total = torch.full((B,), H * W, dtype=reduction_dtype, device=pred.device)
+        mask = target_mask.unsqueeze(1)
+        pred_soft = pred_soft * mask
+        target_one_hot = target_one_hot * mask
 
-    intersection = p_true.sum((1, 2, 3), dtype=reduction_dtype)
-    # denominator = intersection + (alpha + beta) * (total - intersection) + eps
-    # instead of multiple ops, do it in one fused step:
-    denominator = torch.addcmul(
-        intersection,  # base
-        total - intersection,  # tensor1
-        torch.full_like(total, alpha + beta),  # tensor2 (scalar as tensor)
-        value=1.0,  # (intersection) + 1 * (tensor1*tensor2)
-    ).add_(eps)  # in-place add eps
-    score = intersection.div(denominator)
+    dims = (2, 3)
+    tp = (pred_soft * target_one_hot).sum(dims)
+    fp = (pred_soft * (1.0 - target_one_hot)).sum(dims)
+    fn = ((1.0 - pred_soft) * target_one_hot).sum(dims)
+    present = target_one_hot.sum(dims) > 0
+    denominator = tp + alpha * fp + beta * fn + eps
+    # Absent classes do not enter the mean; avoid undefined ratios even when eps is zero.
+    score = (tp / denominator.masked_fill(~present, 1.0)).masked_fill(~present, 0.0)
+    score = score.sum(-1) / present.sum(-1).clamp_min(1)
 
     return (1.0 - score.mean()).to(pred.dtype)
 
@@ -136,15 +135,19 @@ class TverskyLoss(nn.Module):
           \frac{|PG|}{|PG| + \alpha |P \setminus G| + \beta |G \setminus P|}
 
     Where:
-       - :math:`P` and :math:`G` are the predicted and ground truth binary
-         labels.
+       - :math:`P` and :math:`G` are the softmax probabilities and exact one-hot
+         targets for each class, restricted to non-ignored pixels.
        - :math:`\alpha` and :math:`\beta` control the magnitude of the
          penalties for FPs and FNs, respectively.
 
     Note:
-       - :math:`\alpha = \beta = 0.5` => dice coeff
-       - :math:`\alpha = \beta = 1` => tanimoto coeff
-       - :math:`\alpha + \beta = 1` => F beta coeff
+       - Scores are computed per class and averaged over classes present in each
+         sample's non-ignored target, then over samples. Fully ignored samples have loss 1.
+       - :math:`\alpha = \beta = 0.5` corresponds to macro Dice with exact targets
+         and a denominator epsilon of :math:`2\,\text{eps}` in the Dice formula.
+       - :math:`\alpha = \beta = 1` corresponds to the per-class Tanimoto coefficient.
+       - For :math:`\alpha + \beta = 1` and :math:`\alpha > 0`, the unsmoothed
+         per-class score is :math:`F_{\sqrt{\beta / \alpha}}`.
 
     Args:
         alpha: the first coefficient in the denominator.
