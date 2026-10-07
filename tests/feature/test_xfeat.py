@@ -196,8 +196,10 @@ class TestXFeat(BaseTester):
         if out[0]["keypoints"].numel() == 0:
             pytest.skip("No keypoints detected on random input")
         kpts = out[0]["keypoints"].float()
-        assert (kpts[:, 0] >= 0).all() and (kpts[:, 0] < W).all()
-        assert (kpts[:, 1] >= 0).all() and (kpts[:, 1] < H).all()
+        assert (kpts[:, 0] >= 0).all()
+        assert (kpts[:, 0] < W).all()
+        assert (kpts[:, 1] >= 0).all()
+        assert (kpts[:, 1] < H).all()
 
     def test_dense_output_shapes(self, device, dtype):
         top_k = 32
