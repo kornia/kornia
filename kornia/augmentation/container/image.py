@@ -478,21 +478,29 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
     if data is None:
         return batch_shape
 
-    # If data is a list, process all subitems (exit early if all subitems are None)
-    if isinstance(data, list):
-        if len(data) > 0 and isinstance(data[0], PatchParamItem):
-            # The parameter list of a PatchSequential. Its children work on patches and write their output back
-            # into the patch buffer, so they cannot change the image size; only ``padding="valid"`` crops the image
-            # to a multiple of the grid size. The recursion below has no module and leaves the shape unchanged.
-            if module is not None and getattr(module, "padding", None) == "valid":
+    # PatchSequential changes the image shape through its own padding/cropping, including when it is empty.
+    # Its parameters describe operations on individual patches and cannot encode this image-level change.
+    if module is not None:
+        from .patch import PatchSequential
+
+        if isinstance(module, PatchSequential):
+            if module.padding == "valid":
+                # Crop the last two dimensions to a multiple of the grid; video containers track 5-D shapes.
                 rows, columns = module.grid_size
                 new_batch_shape = list(batch_shape)
                 new_batch_shape[-2] -= new_batch_shape[-2] % rows
                 new_batch_shape[-1] -= new_batch_shape[-1] % columns
                 return torch.Size(new_batch_shape)
             return batch_shape
+
+    # If data is a list, process all subitems (exit early if all subitems are None)
+    if isinstance(data, list):
+        if data and isinstance(data[0], PatchParamItem):
+            # Patch children transform patches in place; their output_size does not change the image size.
+            return batch_shape
+        children = dict(module.named_children()) if module is not None else {}
         for p in data:
-            batch_shape = _get_new_batch_shape(p, batch_shape)
+            batch_shape = _get_new_batch_shape(p, batch_shape, children.get(p.name))
         return batch_shape
 
     # Carefully avoid evaluating expression multiple times; batch_prob is often a 1-element torch.Tensor
