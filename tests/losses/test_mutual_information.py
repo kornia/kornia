@@ -170,7 +170,8 @@ class TestMutualInformationLoss(BaseTester):
             grad_pred, grad_target = torch.autograd.grad(
                 loss_fn(pred_, target_, kernel_function=kernel).sum(), (pred_, target_)
             )
-            assert grad_pred.isfinite().all() and grad_target.isfinite().all()
+            assert grad_pred.isfinite().all()
+            assert grad_target.isfinite().all()
             self.assert_close(grad_pred[1], torch.zeros_like(grad_pred[1]), rtol=0, atol=0)
             assert grad_pred[0].abs().sum() > 0
         scale = torch.ones((), device=device, dtype=dtype, requires_grad=True)
