@@ -103,7 +103,7 @@ def dice_loss(
         raise ValueError(f"pred and target must be in the same device. Got: {pred.device} and {target.device}")
 
     if not (pred.shape[0] == target.shape[0] and pred.shape[2:] == target.shape[1:]):
-        raise ValueError(f"Expected target size {(pred.shape[0],) + pred.shape[2:]}, got {target.shape}")
+        raise ValueError(f"Expected target size {torch.Size((pred.shape[0], *pred.shape[2:]))}, got {target.shape}")
     num_of_classes = pred.shape[1]
     possible_average = {"micro", "macro"}
     KORNIA_CHECK(average in possible_average, f"The `average` has to be one of {possible_average}. Got: {average}")
