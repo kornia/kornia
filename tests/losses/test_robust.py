@@ -101,3 +101,18 @@ class TestRobustLossPrecision(BaseTester):
             gradient = torch.autograd.grad(actual.sum(), img1)[0]
         assert torch.isfinite(gradient).all()
         self.assert_close(gradient, img1.new_tensor([derivative, -derivative]), rtol=4 * torch.finfo(dtype).eps, atol=0)
+
+    def test_half_precision_is_evaluated_in_float32(self, device, dtype, loss_fn, loss_module):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("only half-precision inputs are evaluated in float32")
+        # Half-precision inputs are evaluated in float32 and rounded once. bfloat16 does not overflow at these
+        # residuals, but evaluated in bfloat16 instead, 6 to 19 percent of these losses round differently.
+        residual = torch.linspace(-40.0, 40.0, 641, device=device, dtype=dtype)
+        img1 = residual.clone().requires_grad_(True)
+        actual = loss_fn(img1, torch.zeros_like(img1))
+        (grad,) = torch.autograd.grad(actual.sum(), img1)
+        img1_float = residual.float().requires_grad_(True)
+        expected = loss_fn(img1_float, torch.zeros_like(img1_float))
+        (expected_grad,) = torch.autograd.grad(expected.sum(), img1_float)
+        self.assert_close(actual, expected.to(dtype), rtol=0, atol=0)
+        self.assert_close(grad, expected_grad.to(dtype), rtol=0, atol=0)
