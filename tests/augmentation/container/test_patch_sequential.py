@@ -436,6 +436,62 @@ class TestPatchSequentialRegression(BaseTester):
         params = seq._params
         self.gradcheck(lambda value: seq(value, params=params), (x.requires_grad_(),))
 
+    @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
+    def test_nested_in_a_container_5584(self, container, device, dtype):
+        # The parent reads the nested PatchSequential's PatchParamItem list while tracking the image shape; it used
+        # to treat the items as ParamItem and raise AttributeError. A patch sequential does not change the image
+        # size, so the sibling after it draws its crop for the full image.
+        x = torch.arange(2 * 3 * 8 * 8, device=device).to(dtype).reshape(2, 3, 8, 8) / 384
+        inner = K.PatchSequential(K.RandomInvert(p=1.0), grid_size=(2, 2), patchwise_apply=False)
+        seq = container(inner, K.RandomCrop((6, 6), p=1.0))
+        params = seq.forward_parameters(x.shape)
+        assert params[1].data["input_size"][0].tolist() == [8, 8]
+        out = seq(x, params=params)
+        expected = K.RandomCrop((6, 6), p=1.0)(inner(x, params=params[0].data), params=params[1].data)
+        self.assert_close(out, expected, rtol=0, atol=0)
+
+    def test_nested_valid_padding_tracks_the_cropped_size_5584(self, device, dtype):
+        # padding="valid" crops a 9 x 9 image to 8 x 8 before the patches are taken, and the sibling must see that.
+        x = torch.arange(2 * 1 * 9 * 9, device=device).to(dtype).reshape(2, 1, 9, 9)
+        inner = K.PatchSequential(
+            K.RandomHorizontalFlip(p=1.0), grid_size=(2, 2), padding="valid", patchwise_apply=False
+        )
+        seq = K.ImageSequential(inner, K.RandomCrop((4, 4), p=1.0))
+        params = seq.forward_parameters(x.shape)
+        assert params[1].data["input_size"][0].tolist() == [8, 8]
+        assert params[1].data["src"].max().item() <= 7
+        assert seq(x, params=params).shape == (2, 1, 4, 4)
+
+    def test_nested_in_video_sequential_5584(self, device, dtype):
+        x = torch.arange(2 * 3 * 3 * 9 * 9, device=device).to(dtype).reshape(2, 3, 3, 9, 9)
+        inner = K.PatchSequential(
+            K.RandomHorizontalFlip(p=1.0), grid_size=(2, 2), padding="valid", patchwise_apply=False
+        )
+        seq = K.VideoSequential(inner, K.RandomCrop((4, 4), p=1.0), same_on_frame=False)
+        params = seq.forward_parameters(x.shape)
+        assert params[1].data["input_size"][0].tolist() == [8, 8]
+        assert seq(x, params=params).shape == (2, 3, 3, 4, 4)
+
+    @pytest.mark.parametrize(
+        "children, grid_size, padding, image_size, tracked",
+        [
+            # a child resizing each 4 x 4 patch to 4 x 4 reports output_size 4 x 4; the image stays 8 x 8
+            (lambda: [K.RandomResizedCrop((4, 4), p=1.0)], (2, 2), "same", (8, 8), [8, 8]),
+            # a non-square grid crops the rows and the columns by their own remainders: 9 x 10 becomes 8 x 9
+            (lambda: [K.RandomHorizontalFlip(p=1.0)], (2, 3), "valid", (9, 10), [8, 9]),
+            # an empty patch sequential hands the parent an empty parameter list
+            (list, (2, 2), "same", (8, 8), [8, 8]),
+        ],
+        ids=["patch_size_child", "non_square_valid", "no_children"],
+    )
+    def test_nested_tracks_the_image_shape_5584(self, children, grid_size, padding, image_size, tracked, device, dtype):
+        inner = K.PatchSequential(*children(), grid_size=grid_size, padding=padding, patchwise_apply=False)
+        seq = K.ImageSequential(inner, K.RandomCrop((2, 2), p=1.0))
+        x = torch.zeros(2, 1, *image_size, device=device, dtype=dtype)
+        params = seq.forward_parameters(x.shape)
+        assert params[1].data["input_size"][0].tolist() == tracked
+        assert seq(x, params=params).shape == (2, 1, 2, 2)
+
 
 @pytest.mark.usefixtures("restore_torch_rng")
 class TestConventionPatchSequential(BaseTester):

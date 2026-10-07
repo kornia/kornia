@@ -29,7 +29,7 @@ from kornia.core.ops import eye_like
 from kornia.core.utils import is_exporting
 
 from .base import ImageSequentialBase
-from .params import ParamItem
+from .params import ParamItem, PatchParamItem
 
 __all__ = ["ImageSequential"]
 
@@ -480,6 +480,17 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
 
     # If data is a list, process all subitems (exit early if all subitems are None)
     if isinstance(data, list):
+        if len(data) > 0 and isinstance(data[0], PatchParamItem):
+            # The parameter list of a PatchSequential. Its children work on patches and write their output back
+            # into the patch buffer, so they cannot change the image size; only ``padding="valid"`` crops the image
+            # to a multiple of the grid size. The recursion below has no module and leaves the shape unchanged.
+            if module is not None and getattr(module, "padding", None) == "valid":
+                rows, columns = module.grid_size
+                new_batch_shape = list(batch_shape)
+                new_batch_shape[-2] -= new_batch_shape[-2] % rows
+                new_batch_shape[-1] -= new_batch_shape[-1] % columns
+                return torch.Size(new_batch_shape)
+            return batch_shape
         for p in data:
             batch_shape = _get_new_batch_shape(p, batch_shape)
         return batch_shape
