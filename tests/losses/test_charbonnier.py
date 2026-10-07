@@ -163,13 +163,15 @@ class TestCharbonnierLoss(BaseTester):
         self.assert_close(grad2, torch.zeros_like(img2))
 
     def test_large_residual(self, device, dtype):
-        # Squaring this finite residual overflows. Its unused rationalized branch must
-        # neither change the original loss nor contaminate the gradient with inf / inf.
+        # Squaring this finite residual overflows the dtype the loss is computed in; float16 residuals are squared in
+        # float32 and do not overflow. The unused rationalized branch must neither change the original loss nor
+        # contaminate the gradient with inf / inf.
         overflow_residual = 2.0 * torch.finfo(dtype).max ** 0.5
         img1 = torch.tensor([1.0, 3.0, overflow_residual], device=device, dtype=dtype, requires_grad=True)
         img2 = torch.zeros_like(img1)
         actual = kornia.losses.charbonnier_loss(img1, img2)
-        expected = (img1.square() + 1.0).sqrt() - 1.0
+        compute = img1.float() if dtype in (torch.float16, torch.bfloat16) else img1
+        expected = ((compute.square() + 1.0).sqrt() - 1.0).to(dtype)
         self.assert_close(actual, expected, rtol=4 * torch.finfo(dtype).eps, atol=0)
         # detect_anomaly also rejects a nan inside the backward that the outer torch.where would discard.
         with torch.autograd.detect_anomaly():

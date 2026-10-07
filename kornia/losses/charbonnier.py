@@ -78,9 +78,12 @@ def charbonnier_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "n
         reduction in ("mean", "sum", "none", None), f"Given type of reduction is not supported. Got: {reduction}"
     )
 
+    # Keep the square and its backward in float32 for half-precision residuals.
+    diff = img1 - img2
+    compute_diff = diff.float() if diff.dtype in (torch.float16, torch.bfloat16) else diff
     # Rationalize small residuals to avoid subtracting two nearly equal numbers.
     # Keep the original large-residual branch, including its behavior when the square overflows.
-    squared = (img1 - img2) ** 2
+    squared = compute_diff**2
     small = squared < 1.0
     small_squared = torch.where(small, squared, 0.0)
     loss = torch.where(
@@ -99,7 +102,7 @@ def charbonnier_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "n
     else:
         raise NotImplementedError("Invalid reduction option.")
 
-    return loss
+    return loss.to(diff.dtype) if diff.dtype in (torch.float16, torch.bfloat16) else loss
 
 
 class CharbonnierLoss(nn.Module):
