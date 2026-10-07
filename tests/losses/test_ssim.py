@@ -416,7 +416,8 @@ class TestSSIM3DLoss(BaseTester):
 
     @pytest.mark.parametrize("window_size", [5, 11])
     @pytest.mark.parametrize("reduction_type", ["mean", "sum", "none"])
-    @pytest.mark.parametrize("shape", [(1, 1, 2, 16, 16), (2, 4, 2, 15, 20)])
+    # The reflect padding of 'same' needs every spatial size to be larger than window_size // 2.
+    @pytest.mark.parametrize("shape", [(1, 1, 6, 16, 16), (2, 4, 6, 15, 20)])
     def test_ssim(self, device, dtype, shape, window_size, reduction_type):
         if device.type == "xla":
             pytest.skip("test highly unstable with tpu")
@@ -496,7 +497,7 @@ class TestSSIM3DLoss(BaseTester):
         # TODO: review method since it needs `nondet_tol` in cuda sometimes.
         self.gradcheck(kornia.losses.ssim3d_loss, (img, img, 3), nondet_tol=1e-8)
 
-    @pytest.mark.parametrize("shape", [(1, 2, 3, 5, 5), (2, 4, 2, 5, 5)])
+    @pytest.mark.parametrize("shape", [(1, 2, 3, 5, 5), (2, 4, 3, 5, 5)])
     def test_cardinality(self, shape, device, dtype):
         img = torch.rand(shape, device=device, dtype=dtype)
 

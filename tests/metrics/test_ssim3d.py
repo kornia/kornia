@@ -202,6 +202,16 @@ class TestSSIM3d(BaseTester):
             kornia.metrics.ssim3d(img, img_b, 3)
         assert "img1 and img2 shapes must be the same. Got:" in str(errinfo)
 
+    def test_exception_complex_volumes(self, device):
+        # The window is built in the input dtype, so a complex volume raises as in ssim, in every pairing; ssim3d used
+        # to return a complex map (#5534). torch raises NotImplementedError, a RuntimeError subclass, and a plain
+        # RuntimeError on 2.5.1.
+        real = torch.rand(1, 1, 6, 8, 8, device=device)
+        complex_ = real.to(torch.complex64)
+        for img1, img2 in ((real, complex_), (complex_, real), (complex_, complex_)):
+            with pytest.raises(RuntimeError, match="not implemented for 'ComplexFloat'"):
+                kornia.metrics.ssim3d(img1, img2, 3)
+
     def test_unit(self, device, dtype):
         img_a = torch.tensor(
             [
@@ -225,9 +235,9 @@ class TestSSIM3d(BaseTester):
             [
                 [
                     [
-                        [[0.0093, 0.0080, 0.0075], [0.0075, 0.0068, 0.0063], [0.0067, 0.0060, 0.0056]],
-                        [[0.0077, 0.0070, 0.0065], [0.0077, 0.0069, 0.0064], [0.0075, 0.0066, 0.0062]],
-                        [[0.0075, 0.0069, 0.0064], [0.0078, 0.0070, 0.0065], [0.0077, 0.0067, 0.0064]],
+                        [[0.0070, 0.0065, 0.0066], [0.0073, 0.0068, 0.0065], [0.0074, 0.0073, 0.0070]],
+                        [[0.0076, 0.0076, 0.0071], [0.0074, 0.0069, 0.0066], [0.0076, 0.0072, 0.0068]],
+                        [[0.0072, 0.0068, 0.0067], [0.0075, 0.0069, 0.0066], [0.0085, 0.0085, 0.0075]],
                     ]
                 ]
             ],
@@ -236,6 +246,33 @@ class TestSSIM3d(BaseTester):
         )
 
         self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
+
+    def test_same_padding_matches_ssim_on_identical_slices(self, device, dtype):
+        """'same' padding reflects the volume at its faces as ssim does, so a stack of identical slices reproduces
+        the 2-D map on every slice; in float64 the window is float64 too, so they agree to roundoff (#5534)."""
+        generator = torch.Generator().manual_seed(0)
+        img1 = torch.rand(1, 2, 9, 11, generator=generator).to(device=device, dtype=dtype)
+        img2 = torch.rand(1, 2, 9, 11, generator=generator).to(device=device, dtype=dtype)
+        vol1 = img1[:, :, None].repeat(1, 1, 7, 1, 1)
+        vol2 = img2[:, :, None].repeat(1, 1, 7, 1, 1)
+
+        expected = kornia.metrics.ssim(img1, img2, 5)[:, :, None].repeat(1, 1, 7, 1, 1)
+        actual = kornia.metrics.ssim3d(vol1, vol2, 5, padding="same")
+
+        tolerance = {"rtol": 1e-12, "atol": 1e-12} if dtype == torch.float64 else {}
+        self.assert_close(actual, expected, **tolerance)
+
+    def test_mixed_float32_float64_pair_is_computed_in_float64(self, device, dtype):
+        # A float32/float64 pair is filtered in float64, the result dtype, with a float64 window, whichever argument
+        # is the float32 one, so it equals the all-float64 result to roundoff (#5534).
+        if dtype != torch.float64:
+            pytest.skip("the pair needs a float64 argument")
+        generator = torch.Generator().manual_seed(0)
+        img1 = torch.rand(1, 2, 6, 7, 9, generator=generator).to(device)
+        img2 = torch.rand(1, 2, 6, 7, 9, generator=generator, dtype=torch.float64).to(device)
+        expected = kornia.metrics.ssim3d(img1.double(), img2, 5)
+        self.assert_close(kornia.metrics.ssim3d(img1, img2, 5), expected, rtol=1e-12, atol=1e-12)
+        self.assert_close(kornia.metrics.ssim3d(img2, img1, 5), expected, rtol=1e-12, atol=1e-12)
 
     @pytest.mark.parametrize(
         "shape,padding,window_size,max_value",
