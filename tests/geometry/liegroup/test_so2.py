@@ -51,10 +51,7 @@ class TestSo2(BaseTester):
         assert (s * s).z.shape == input_shape
         assert s.exp(theta).z.shape == input_shape
         assert s.log().shape == input_shape
-        if not any(input_shape):
-            expected_hat_shape = (2, 2)
-        else:
-            expected_hat_shape = (input_shape[0], 2, 2)
+        expected_hat_shape = (input_shape[0], 2, 2) if any(input_shape) else (2, 2)
         assert s.hat(theta).shape == expected_hat_shape
         assert s.inverse().z.shape == input_shape
 
@@ -151,10 +148,7 @@ class TestSo2(BaseTester):
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_mul_vector(self, device, dtype, batch_size):
         s1 = So2.identity(batch_size, device, dtype)
-        if batch_size is None:
-            shape = ()
-        else:
-            shape = (batch_size,)
+        shape = () if batch_size is None else (batch_size,)
         t1 = Vector2.random(shape, device, dtype)
         t2 = Vector2.random(shape, device, dtype)
         self.assert_close((s1 * t1), t1)
