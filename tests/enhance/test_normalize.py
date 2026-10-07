@@ -678,9 +678,12 @@ class TestNormalizeMinMax(BaseTester):
         actual = kornia.enhance.normalize_min_max(x, min_val=-1.0, max_val=1.0)
         self.assert_close(actual, expected, low_tolerance=True)
 
-    @pytest.mark.parametrize("shape", [(1, 1, 1, 1), (0, 3, 6, 8), (2, 0, 3, 6, 8)])
+    @pytest.mark.parametrize(
+        "shape", [(1, 1, 1, 1), (6, 8), (3, 6, 8), (2, 3, 6, 8), (2, 2, 3, 6, 8), (0, 3, 6, 8), (2, 0, 3, 6, 8)]
+    )
     def test_jit(self, shape, device, dtype):
-        x = torch.ones(shape, device=device, dtype=dtype)
+        # Non-constant planes of every rank: the scripted function must normalise the same (*, C, H, W) planes as eager.
+        x = torch.arange(torch.Size(shape).numel(), device=device, dtype=dtype).reshape(shape)
         op = kornia.enhance.normalize_min_max
         op_jit = torch.jit.script(op)
         self.assert_close(op(x), op_jit(x))
