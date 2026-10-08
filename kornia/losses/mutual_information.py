@@ -211,7 +211,8 @@ class EntropyBasedLossBase(torch.nn.Module):
         # and break ``fullgraph`` capture.
         KORNIA_CHECK(self._ref_mask_is_full or signal.shape[-1] > 0, "mask must select at least one sample.")
         self.register_buffer("signal", _normalize_signal(signal, num_bins, eps))
-        self.register_buffer("mask", mask)
+        # Keep the mask consistent with the cached reference if the caller edits its tensor.
+        self.register_buffer("mask", mask.clone())
         self.num_bins = num_bins
         self.kernel_function = partial(kernel_function.value, window_radius=window_radius)
         self.window_radius = window_radius
