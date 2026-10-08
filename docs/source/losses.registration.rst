@@ -18,7 +18,7 @@ The losses use the natural logarithm, as scikit-learn's ``mutual_info_score`` do
 is scikit-image's ``normalized_mutual_information``. scikit-learn's ``normalized_mutual_info_score`` divides the mutual
 information by the arithmetic mean of the two entropies, its default, and equals :math:`2 - 2 / \mathrm{NMI}`
 for the same joint histogram with nonzero joint entropy. If both signals are constant, scikit-image returns NaN
-(:math:`0 / 0`), whereas scikit-learn returns 1.0.
+(:math:`0 / 0`) and scikit-learn returns 1.0, while kornia's value is undefined.
 
 Both libraries count a hard histogram. scikit-image's ``bins`` defaults to 100, kornia's ``num_bins`` to 64. With the
 default kernel and ``window_radius``, kornia's histogram is a hard one when every value sits on a bin centre, as on

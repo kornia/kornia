@@ -812,8 +812,8 @@ def mutual_information_loss(
         - The joint histogram has ``num_bins`` bins per signal, and each value spreads over the bins within
           ``window_radius`` bin widths of it, weighted by ``kernel_function``, a :class:`~kornia.losses.MIKernel`
           member. With continuous values and the default ``window_radius``, this soft histogram scores an image
-          against itself below its entropy. Changing ``num_bins`` or ``window_radius`` changes the estimate without
-          a guaranteed direction, so values compare only at equal ``num_bins``, ``window_radius`` and kernel.
+          against itself below its entropy. The estimate depends on ``num_bins`` and ``window_radius``, in no fixed
+          direction, so values compare only at equal ``num_bins``, ``window_radius`` and kernel.
         - With ``MIKernel.xu`` (the default) and ``MIKernel.truncated_gaussian``, ``input`` and ``target`` both get
           gradients. ``MIKernel.rectangular`` is piecewise constant: its loss has no gradient and serves for
           evaluation only.
@@ -963,8 +963,8 @@ def normalized_mutual_information_loss(
     Convention:
         - The loss is the negative of Studholme's normalized mutual information,
           :math:`(H(X) + H(Y)) / H(X, Y)`, which lies in :math:`[1, 2]`: the loss lies in ``[-2, -1]`` and is ``-1``
-          when one signal is constant and the other is not. With continuous values and the default
-          ``window_radius``, even an image against itself scores above ``-2``.
+          when one signal is constant and the other is not; for two constant signals its value is undefined. With
+          continuous values and the default ``window_radius``, even an image against itself scores above ``-2``.
           :ref:`Registration <mutual-information-porting>` maps this normalisation onto scikit-image and
           scikit-learn.
         - Everything else, the known defect included, is as in the Convention block of
