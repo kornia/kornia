@@ -58,6 +58,11 @@ def angle_error_mat(R1: Tensor, R2: Tensor) -> Tensor:
     :math:`\arccos\!\big((\mathrm{tr}\,R - 1) / 2\big)` loses next to :math:`1`: in float32 the result
     stays within about :math:`2 \cdot 10^{-5}` degrees of the exact angle over the whole range.
 
+    Convention:
+        See the Convention block of :func:`~kornia.metrics.pose_errors`, whose ``"R_err"`` this is: one angle in
+        degrees per pair, symmetric in ``R1`` and ``R2``. An unbatched pair gives a 0-d tensor. The inputs are not
+        checked to be rotations.
+
     Args:
         R1: a rotation matrix of shape :math:`(*, 3, 3)`.
         R2: a rotation matrix of shape :math:`(*, 3, 3)`.
@@ -97,6 +102,12 @@ def angle_error_vec(v1: Tensor, v2: Tensor) -> Tensor:
     Reading :math:`\sin\theta` from the cross product keeps the digits of small angles that
     :math:`\arccos(\hat v_1 \cdot \hat v_2)` loses next to :math:`1`: in float32 the result stays within
     about :math:`2 \cdot 10^{-5}` degrees of the exact angle over the whole range.
+
+    Convention:
+        See the Convention block of :func:`~kornia.metrics.pose_errors`, whose ``"t_err"`` is this angle before
+        folding: one angle in degrees per pair, symmetric in ``v1`` and ``v2`` up to roundoff. An unbatched pair gives
+        a 0-d tensor. Only the directions are compared, so the vectors need not have unit length. The angle is not
+        folded: opposite vectors give 180.
 
     Args:
         v1: a vector of shape :math:`(*, 3)`.
@@ -142,6 +153,11 @@ def translation_ate(t: Tensor, t_gt: Tensor) -> Tensor:
     translations share a common metric scale (it is **not** scale-invariant, so it is not suitable
     for raw essential-matrix translations).
 
+    Convention:
+        See the Convention block of :func:`~kornia.metrics.pose_errors`, whose ``"t_err"`` compares translation
+        directions only; this function keeps the magnitude. The result is one distance per sample, in the units of
+        the translations, with no alignment: a trajectory shifted by a constant keeps that offset at every pose.
+
     Args:
         t: an estimated translation of shape :math:`(*, 3)`.
         t_gt: a ground-truth translation of the same shape as ``t``.
@@ -172,6 +188,14 @@ def translation_ate(t: Tensor, t_gt: Tensor) -> Tensor:
 
 def pose_errors(P: Tensor, P_gt: Tensor, fold_translation: bool = True) -> dict[str, Tensor]:
     r"""Rotation and translation angular error (in degrees) between two relative poses.
+
+    Convention:
+        - Every error is an angle in **degrees**, one per pose and never averaged over the batch; an unbatched pose
+          gives shape :math:`(1,)`, where :func:`~kornia.metrics.angle_error_mat` gives a 0-d tensor.
+        - ``"R_err"`` is :func:`~kornia.metrics.angle_error_mat` of the two rotation blocks and is never folded.
+          ``"t_err"`` is :func:`~kornia.metrics.angle_error_vec` of the two translations, so it compares their
+          directions only, folded as ``fold_translation`` says. ``"max_err"`` is the larger of the two per pose.
+        - Only the top three rows are read: the bottom row of a :math:`(4, 4)` pose is ignored.
 
     Args:
         P: an estimated relative pose ``[R | t]`` of shape :math:`(3, 4)`, :math:`(4, 4)`, or batched
@@ -219,6 +243,16 @@ def auc_from_errors(errors: Tensor, thresholds: float | Sequence[float] = (1, 3,
     The metric is generic: any non-negative error array works. Pose-error metrics (e.g. the
     ``"max_err"`` of :func:`pose_errors`) are one common source, but the thresholds simply need to be
     in the same units as ``errors``.
+
+    Convention:
+        - See the Convention block of :func:`~kornia.metrics.pose_errors`, whose ``"max_err"`` is the usual input.
+        - All errors are pooled into one curve, whatever their shape. The recall curve rises by :math:`1/n` at each
+          of the :math:`n` sorted errors, joined to :math:`(0, 0)` and to each other by straight lines (the trapezoid
+          rule), and is held flat from the last error below the threshold out to the threshold. The AUC is its area
+          divided by the threshold, times 100: a **percentage**, keyed by the threshold as a Python float. An ``inf``
+          error never enters the area, so it counts as a failure. :ref:`Losses and metrics
+          <losses-metrics-conventions>` maps the AUC and :func:`~kornia.metrics.pose_errors` onto glue-factory and
+          SuperGlue.
 
     Args:
         errors: per-sample error values of shape :math:`(B,)`. Must be non-negative. Integer and

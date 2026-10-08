@@ -312,3 +312,41 @@ class TestTverskyLoss(BaseTester):
         actual = op_module(logits, labels)
         expected = op(logits, labels, *params)
         self.assert_close(actual, expected)
+
+
+class TestConventionsTverskyLoss(BaseTester):
+    """Pins for the ignored labels and the Dice correspondence of :func:`tversky_loss`."""
+
+    def test_convention_tversky_loss_ignore_index_excludes_pixels_per_sample(self, device, dtype):
+        # Ignored pixels leave the sums of their own sample, which then enters the batch mean like the others: the same
+        # as cropping them out of that sample. An image whose pixels are all ignored enters the batch mean as loss 1.
+        def tversky(logits, labels):
+            return kornia.losses.tversky_loss(logits, labels, 0.3, 0.7)
+
+        g = torch.Generator().manual_seed(0)
+        logits = torch.randn(2, 3, 4, 7, generator=g).to(device=device, dtype=dtype)
+        labels = torch.randint(0, 3, (2, 4, 7), generator=g).to(device)
+        ignored = labels.clone()
+        ignored[0, :, -3:] = -100  # image 0 loses its last three columns
+        expected = (tversky(logits[:1, ..., :-3], labels[:1, :, :-3]) + tversky(logits[1:], labels[1:])) / 2
+        self.assert_close(tversky(logits, ignored), expected)
+        ignored[0] = -100
+        self.assert_close(tversky(logits, ignored), (1 + tversky(logits[1:], labels[1:])) / 2)
+
+    def test_convention_tversky_loss_half_half_is_macro_dice_with_twice_the_eps_5543(self, device, dtype):
+        # alpha = beta = 0.5 turns TP / (TP + alpha FP + beta FN + eps) into 2 TP / (2 TP + FP + FN + 2 eps), the
+        # per-class Dice with twice the eps, averaged as dice_loss(average='macro') averages it: per class, over the
+        # classes present in each sample's non-ignored target (#5543). Class 1 is absent from image 1 and three of its
+        # pixels are ignored; the pooled 'micro' Dice is another value.
+        g = torch.Generator().manual_seed(0)
+        logits = torch.randn(2, 3, 4, 6, generator=g).to(device=device, dtype=dtype)
+        labels = torch.randint(0, 3, (2, 4, 6), generator=g)
+        labels[1][labels[1] == 1] = 2
+        labels[1, 0, :3] = -100
+        labels = labels.to(device)
+        dice = kornia.losses.dice_loss
+        tversky = kornia.losses.tversky_loss(logits, labels, 0.5, 0.5)
+        self.assert_close(tversky, dice(logits, labels, average="macro", eps=2e-8))
+        assert (tversky - dice(logits, labels)).abs() > 0.01
+        tversky = kornia.losses.tversky_loss(logits, labels, 0.5, 0.5, eps=1.0)
+        self.assert_close(tversky, dice(logits, labels, average="macro", eps=2.0))
