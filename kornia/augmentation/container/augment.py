@@ -133,7 +133,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           ``(B, N, 4)`` for ``bbox_xyxy`` and ``bbox_xywh``, and ``(B, N, 2)`` in ``(x, y)`` for ``keypoints``;
           ``N = 0`` is accepted. 3D inputs are ``(D, H, W)`` or ``(B, C, D, H, W)``; rank 4 is rejected as
           ambiguous. A ``(B, H, W)`` mask is returned as ``(B, 1, H, W)``, or as ``(B, H, W)`` under
-          ``keepdim=True``. A wrong input rank raises ``RuntimeError`` here rather than the ``ValueError`` of a
+          ``keepdim=True``. A single tensor mask, ``(H, W)``, ``(1, H, W)``, ``(1, C, H, W)`` or one ``(C, H, W)``,
+          next to a ``(B, C, H, W)`` image is repeated to batch ``B`` before the first child, so each sample's own
+          parameters apply to its copy; a 3D mask whose leading size is ``B`` is read as ``(B, H, W)``. A list of
+          masks is not repeated. A wrong input rank raises ``RuntimeError`` here rather than the ``ValueError`` of a
           bare augmentation (`#4424 <https://github.com/kornia/kornia/issues/4424>`_).
         - boxes use the inclusive ``xyxy_plus`` convention of :class:`~kornia.geometry.boxes.Boxes`. Flips map
           ``x' = W - 1 - x`` and ``y' = H - 1 - y`` for every key, as :func:`~kornia.geometry.transform.hflip`
@@ -705,10 +708,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         Arguments convert by data key, and only an image takes the image conversion. A mask given as a NumPy array,
         a PIL image or an image file path keeps its dtype and label values, palette indices included. Every mask
         must match the image's height and width, with a batch size of 1 or the image's. A single tensor mask
-        (batch 1, or one ``(C, H, W)`` mask) is repeated to the image's batch, so every sample's own parameters
-        apply to its copy and the output mask has the image's batch size; a 3D mask whose leading size equals the
-        image batch is read as ``(B, H, W)``. Arguments converted from NumPy go to the container's device when it
-        has parameters or buffers, as the image does.
+        (``(H, W)``, batch 1, or one ``(C, H, W)`` mask) is repeated to the image's batch, so every sample's own
+        parameters apply to its copy and the output mask has the image's batch size; a 3D mask whose leading size
+        equals the image batch is read as ``(B, H, W)``. Arguments converted from NumPy go to the container's device
+        when it has parameters or buffers, as the image does.
 
         Args:
             inputs: Inputs to operate on.
@@ -857,15 +860,19 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         """Repeat a single mask along the batch so that each image sample transforms its own copy.
 
         A mask that stands for "this mask for every image" is accepted by ``_validate_args_datakeys`` next to an
-        image of batch ``B > 1``. Left unbroadcast it was transformed with the parameters of sample 0 only (flip,
-        crop) or failed inside the warp (affine, perspective, ...), so it no longer lined up with images ``1..B-1``.
+        image of batch ``B > 1``. Unrepeated, a child would transform it with the parameters of sample 0 only
+        (flip, crop) or fail inside a per-sample warp (affine, perspective, ...), so it would not line up with
+        images ``1..B-1``.
 
-        The single-mask layouts are ``(1, C, H, W)``, ``(1, H, W)`` and ``(C, H, W)``. A 3D mask is read like
-        ``transform_tensor`` reads it: as ``(B, H, W)`` when its leading size is the image batch (so it is left
-        alone), otherwise as one ``(C, H, W)`` mask.
+        The single-mask layouts are ``(H, W)``, ``(1, C, H, W)``, ``(1, H, W)`` and ``(C, H, W)``; an ``(H, W)``
+        mask is read as ``(1, H, W)``, as a NumPy ``(H, W)`` mask is. A 3D mask is read like ``transform_tensor``
+        reads it: as ``(B, H, W)`` when its leading size is the image batch (so it is left alone), otherwise as
+        one ``(C, H, W)`` mask.
         """
-        if image_batch is None or image_batch == 1 or mask.ndim not in (3, 4):
+        if image_batch is None or image_batch == 1 or mask.ndim not in (2, 3, 4):
             return mask
+        if mask.ndim == 2:
+            mask = mask[None]  # one (H, W) mask
         if mask.ndim == 3 and mask.shape[0] not in (1, image_batch):
             mask = mask[None]  # one multi-channel (C, H, W) mask
         elif mask.shape[0] != 1:

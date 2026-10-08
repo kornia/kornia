@@ -273,6 +273,30 @@ class TestAugmentationSequential:
 
         assert out_mask.shape == (1, 1, 8, 8)
 
+    @pytest.mark.parametrize("keepdim", [None, True])
+    def test_single_hw_mask_is_broadcast_5611(self, keepdim, device, dtype):
+        # An (H, W) tensor mask is one mask for every image, like the NumPy (H, W) mask it may come from.
+        mask = torch.rand(8, 8, device=device, dtype=dtype)
+        image = mask.expand(4, 3, 8, 8).clone()
+        aug = K.AugmentationSequential(
+            K.RandomAffine(30.0, p=1.0, resample="nearest"), data_keys=["input", "mask"], keepdim=keepdim
+        )
+
+        out_image, out_mask = aug(image, mask)
+
+        assert out_mask.shape == ((4, 8, 8) if keepdim else (4, 1, 8, 8))
+        assert_close(out_mask.reshape(4, 1, 8, 8), out_image[:, :1])
+
+    def test_multi_channel_mask_with_a_batch_one_image_is_not_repeated(self, device, dtype):
+        # With B == 1 there is nothing to repeat: a (C, H, W) mask keeps its shape under keepdim=True.
+        image = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
+        mask = torch.rand(2, 8, 8, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"], keepdim=True)
+
+        _, out_mask = aug(image, mask)
+
+        assert_close(out_mask, mask.flip(-1))
+
     def test_call_time_data_keys_are_restored_after_forward_exception(self, device, dtype):
         image = torch.rand(1, 3, 16, 20, device=device, dtype=dtype)
         mask = torch.ones(1, 1, 16, 20, device=device, dtype=dtype)
