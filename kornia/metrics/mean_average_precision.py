@@ -109,6 +109,8 @@ def mean_average_precision(
             bool(((labels >= 0) & (labels < n_classes)).all()),
             f"{name} must satisfy 0 <= label < n_classes ({n_classes}).",
         )
+        if labels.is_floating_point():
+            KORNIA_CHECK(bool((labels == labels.round()).all()), f"{name} must contain integer-valued labels.")
 
     # Calculate APs for each class (except background)
     average_precisions = torch.zeros((n_classes - 1), device=_pred_boxes.device, dtype=ap_dtype)  # (n_classes - 1)

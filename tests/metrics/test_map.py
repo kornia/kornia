@@ -165,6 +165,50 @@ class TestMeanAveragePrecision(BaseTester):
         with pytest.raises(BaseError, match=rf"{label_source} must satisfy 0 <= label < n_classes \(3\)"):
             kornia.metrics.mean_average_precision([boxes] * 2, pred_labels, [scores] * 2, [boxes] * 2, gt_labels, 3)
 
+    @pytest.mark.parametrize("label_source", ["pred_labels", "gt_labels"])
+    def test_fractional_labels_5629(self, device, dtype, label_source):
+        boxes = torch.tensor([[0.0, 0.0, 10.0, 20.0]], device=device, dtype=dtype)
+        labels = torch.tensor([1], device=device, dtype=torch.long)
+        invalid = torch.tensor([1.5], device=device, dtype=dtype)
+        scores = torch.tensor([0.9], device=device, dtype=dtype)
+        pred_labels = [labels, invalid if label_source == "pred_labels" else labels]
+        gt_labels = [labels, invalid if label_source == "gt_labels" else labels]
+
+        with pytest.raises(BaseError, match=rf"{label_source} must contain integer-valued labels"):
+            kornia.metrics.mean_average_precision([boxes] * 2, pred_labels, [scores] * 2, [boxes] * 2, gt_labels, 3)
+
+    @pytest.mark.parametrize("label_source", ["pred_labels", "gt_labels", "both"])
+    def test_integer_valued_float_labels_5629(self, device, dtype, label_source):
+        boxes = torch.tensor([[0.0, 0.0, 10.0, 20.0], [30.0, 5.0, 45.0, 12.0]], device=device, dtype=dtype)
+        labels = torch.tensor([1, 2], device=device, dtype=torch.long)
+        scores = torch.tensor([0.9, 0.8], device=device, dtype=dtype)
+        expected_map, expected_ap = kornia.metrics.mean_average_precision(
+            [boxes], [labels], [scores], [boxes], [labels], 3
+        )
+        pred_labels = labels.to(dtype) if label_source in ("pred_labels", "both") else labels
+        gt_labels = labels.to(dtype) if label_source in ("gt_labels", "both") else labels
+
+        mean_ap, ap = kornia.metrics.mean_average_precision([boxes], [pred_labels], [scores], [boxes], [gt_labels], 3)
+
+        self.assert_close(expected_map, boxes.new_tensor(1.0))
+        self.assert_close(expected_ap[1], 1.0)
+        self.assert_close(expected_ap[2], 1.0)
+        self.assert_close(mean_ap, expected_map)
+        assert ap == expected_ap
+
+    @pytest.mark.parametrize("invalid_label", [-1.0, 3.0, -0.5, 3.5])
+    @pytest.mark.parametrize("label_source", ["pred_labels", "gt_labels"])
+    def test_float_label_range_5629(self, device, dtype, invalid_label, label_source):
+        boxes = torch.tensor([[0.0, 0.0, 10.0, 20.0]], device=device, dtype=dtype)
+        labels = torch.tensor([1.0], device=device, dtype=dtype)
+        invalid = torch.tensor([invalid_label], device=device, dtype=dtype)
+        scores = torch.tensor([0.9], device=device, dtype=dtype)
+        pred_labels = [invalid if label_source == "pred_labels" else labels]
+        gt_labels = [invalid if label_source == "gt_labels" else labels]
+
+        with pytest.raises(BaseError, match=rf"{label_source} must satisfy 0 <= label < n_classes \(3\)"):
+            kornia.metrics.mean_average_precision([boxes], pred_labels, [scores], [boxes], gt_labels, 3)
+
     def test_background_is_excluded(self, device, dtype):
         boxes = torch.tensor([[0.0, 0.0, 10.0, 20.0], [30.0, 5.0, 45.0, 12.0]], device=device, dtype=dtype)
         labels = torch.tensor([0, 1], device=device, dtype=torch.long)
