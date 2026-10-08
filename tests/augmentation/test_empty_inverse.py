@@ -525,15 +525,16 @@ class TestEmptyCenterResizedCropHistory(BaseTester):
         inverse_input = (
             output if channels == 3 else torch.empty(0, 1, 2, 3, device=device, dtype=dtype, requires_grad=True)
         )
+        # Replay through the container before direct child inverses can update their saved state.
+        replayed = sequence.inverse(inverse_input, params=params, data_keys=["input" if channels == 3 else "mask"])
+        assert replayed.shape == (0, channels, *input_size)
+        assert replayed.device == device
+        assert replayed.dtype == dtype
+        assert replayed.numel() == 0
         intermediate = sequence[1].inverse(inverse_input, params=params[1].data)
         assert intermediate.shape == (0, channels, *crop_size)
         restored = sequence[0].inverse(intermediate, params=params[0].data)
         assert restored.shape == (0, channels, *input_size)
-        replayed = sequence.inverse(inverse_input, params=params, data_keys=["input" if channels == 3 else "mask"])
-        assert replayed.shape == restored.shape
-        assert replayed.device == device
-        assert replayed.dtype == dtype
-        assert replayed.numel() == 0
         replayed.sum().backward()
         original = image if channels == 3 else inverse_input
         assert original.grad is not None
