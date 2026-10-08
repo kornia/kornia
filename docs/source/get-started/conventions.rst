@@ -852,6 +852,48 @@ The losses on the :doc:`segmentation page </losses.segmentation>` take raw logit
 :func:`~kornia.losses.focal_loss` documents the multi-class input, with the classes on axis 1 and an integer label map
 as the target.
 
+**Class 0 is the background** wherever a loss or a metric singles one class out:
+:func:`~kornia.losses.focal_loss` weights class 0 by ``1 - alpha`` and classes ``1`` to ``C - 1`` by ``alpha``, and
+:func:`~kornia.metrics.mean_average_precision` never scores class 0, which its ``n_classes`` still counts. Keep the
+background at label 0 when porting a label map: moving it changes both results. ``focal_loss`` with ``alpha=None``,
+:func:`~kornia.losses.dice_loss`, :func:`~kornia.losses.tversky_loss`, :func:`~kornia.losses.lovasz_softmax_loss` and
+:class:`~kornia.losses.HausdorffERLoss` treat class 0 like every other class.
+
+With ``alpha=None`` and ``gamma=0``, the target slice of :func:`~kornia.losses.focal_loss` is the cross entropy, but
+its ``'mean'`` is not that of :func:`~torch.nn.functional.cross_entropy`. It divides the sum by every element of the
+``(B, C, *)`` output, ``C`` times the pixel count, ignored pixels included, and it does not normalise ``weight``, where
+``cross_entropy`` divides by the summed weights of the target classes of the non-ignored pixels. To port
+``F.cross_entropy(pred, target, weight=w, ignore_index=i)``, divide
+``focal_loss(pred, target, alpha=None, gamma=0.0, reduction='sum', weight=w, ignore_index=i)`` by
+``w[target[target != i]].sum()``, or by the number of non-ignored pixels when there is no ``w``.
+
+The other dense-prediction losses against their references:
+
+- :func:`~kornia.losses.binary_focal_loss_with_logits` with its defaults, ``alpha=0.25`` on the positive term,
+  ``gamma=2`` and ``reduction='none'``, equals ``torchvision.ops.sigmoid_focal_loss`` on targets of 0 and 1. On a
+  fractional target ``t`` they differ: kornia weights its positive and negative focal terms by ``t`` and ``1 - t``,
+  torchvision applies ``alpha_t * (1 - p_t) ** gamma`` to the whole binary cross entropy. Its ``pos_weight`` of shape
+  ``(C,)`` runs along dim 1: ``binary_focal_loss_with_logits(pred, target, alpha=None, gamma=0.0, pos_weight=pw)``
+  equals ``F.binary_cross_entropy_with_logits(pred, target, pos_weight=pw.view(C, 1, 1), reduction='none')`` on
+  ``(B, C, H, W)``, where torch broadcasts a ``(C,)`` ``pos_weight`` along the last axis.
+- The Lovász losses score each image on its own, as the reference implementation of Berman et al.
+  (``bermanmaxim/LovaszSoftmax``) does with ``per_image=True``: :func:`~kornia.losses.lovasz_hinge_loss` is its
+  ``lovasz_hinge(pred[:, 0], target, per_image=True)``, the reference default, and
+  :func:`~kornia.losses.lovasz_softmax_loss` is ``lovasz_softmax(pred.softmax(1), target, classes='all',
+  per_image=True)``. The ``lovasz_softmax`` defaults, ``classes='present'`` and ``per_image=False``, score only the
+  classes present and flatten the batch into one image, which gives another value.
+
+A class absent from the target has no overlap to score, and the per-class functions treat it differently:
+
+- :func:`~kornia.metrics.mean_iou` returns IoU 1 for a class absent from both the target and the prediction, through
+  its ``eps``, and leaves the averaging over classes to the caller: drop the classes that occur in neither map before
+  averaging its ``(B, K)`` output. scikit-learn's ``jaccard_score`` leaves such a class out unless ``labels`` names it,
+  and then scores it 0, or 1 with ``zero_division=1.0``.
+- ``dice_loss(average='macro')`` and :func:`~kornia.losses.tversky_loss` leave it out of the sample's mean, whether
+  it is predicted or not.
+- :func:`~kornia.metrics.mean_average_precision` pools the images and leaves out a class without a ground-truth object
+  in any of them, detected or not; its entry in the per-class dictionary is ``-1``.
+
 Task metrics
 ^^^^^^^^^^^^
 
