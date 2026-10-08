@@ -869,9 +869,12 @@ class TestCropByIndices(BaseTester):
         assert out.is_contiguous()
         self.assert_close(out, kornia.geometry.transform.crop_by_indices(inp, src_box, size=(3, 4)), atol=0.0, rtol=0.0)
 
-    def test_crop_by_indices_copies_once_per_batch_4531(self, device, dtype):
+    @pytest.mark.parametrize("size", [(3, 4), [3, 4]])
+    def test_crop_by_indices_copies_once_per_batch_4531(self, size, device, dtype):
         # The per-row loop issued one `copy_` per row, so its kernel launches grew with the batch;
-        # rows that already match `size` are now copied by a single `cat`.
+        # rows that already match `size` are now copied by a single `cat`, except on MPS, where the
+        # row copies are faster. A list `size`, as RandomCrop passes it, must match the slices too:
+        # compared as a list it never equals a `torch.Size`, and every row was resized to its own size.
         import collections
 
         from torch.utils._python_dispatch import TorchDispatchMode
@@ -889,10 +892,16 @@ class TestCropByIndices(BaseTester):
         src_box, _ = self._per_row_boxes_4531(device)
         counter = _CountOps()
         with counter:
-            kornia.geometry.transform.crop_by_indices(inp, src_box, size=(3, 4))
+            out = kornia.geometry.transform.crop_by_indices(inp, src_box, size=size)
 
-        assert counter.calls["cat"] == 1
-        assert counter.calls["copy_"] == 0
+        assert out.shape == (4, 2, 3, 4)
+        if device.type == "mps":
+            assert counter.calls["cat"] == 0
+            assert counter.calls["copy_"] == 4
+        else:
+            assert counter.calls["cat"] == 1
+            assert counter.calls["copy_"] == 0
+        assert not any(name.startswith("upsample") for name in counter.calls)
 
     def test_gradcheck_per_row_boxes_4531(self, device):
         inp = torch.rand(4, 1, 6, 7, device=device, dtype=torch.float64)
