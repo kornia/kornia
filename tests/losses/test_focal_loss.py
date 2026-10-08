@@ -375,3 +375,165 @@ class TestFocalLoss(BaseTester):
         op = kornia.losses.focal_loss
         op_module = kornia.losses.FocalLoss(*args)
         self.assert_close(op_module(logits, labels), op(logits, labels, *args))
+
+
+class TestConventionsFocalLoss(BaseTester):
+    """Pins for the class weighting, reductions and ignored labels of the focal losses."""
+
+    @staticmethod
+    def _logits_and_labels(device, dtype, scale=1.0):
+        # two 4 x 5 images with different class balances
+        g = torch.Generator().manual_seed(0)
+        logits = (scale * torch.randn(2, 3, 4, 5, generator=g)).to(device=device, dtype=dtype)
+        labels = torch.randint(0, 3, (2, 4, 5), generator=g).to(device)
+        return logits, labels
+
+    def test_convention_focal_loss_alpha_weights_class_0_by_one_minus_alpha(self, device, dtype):
+        # alpha_t is 1 - alpha for class 0 (background) and alpha for classes 1 .. C-1, as in Detectron's softmax
+        # focal loss: a relabelling that keeps class 0 in place leaves the loss unchanged, one that moves class 0
+        # changes it, and alpha=None is invariant under both
+        logits, labels = self._logits_and_labels(device, dtype, scale=2.0)
+        focal = kornia.losses.focal_loss
+        target = labels[:, None]
+        alpha_t = torch.where(target == 0, 0.75, 0.25).to(dtype)
+        self.assert_close(
+            focal(logits, labels, 0.25).gather(1, target), alpha_t * focal(logits, labels, None).gather(1, target)
+        )
+        for order, moves_class_0 in (([0, 2, 1], False), ([1, 2, 0], True)):
+            perm = torch.tensor(order, device=device)  # class c becomes class perm[c]
+            relabelled = (logits[:, perm.argsort()], perm[labels])
+            self.assert_close(focal(*relabelled, None, reduction="sum"), focal(logits, labels, None, reduction="sum"))
+            moved = focal(*relabelled, 0.25, reduction="sum")
+            kept = focal(logits, labels, 0.25, reduction="sum")
+            if moves_class_0:
+                assert (moved - kept).abs() > 0.05 * kept.abs()
+            else:
+                self.assert_close(moved, kept)
+
+    def test_convention_focal_loss_default_reduction_is_none_in_the_input_layout(self, device, dtype):
+        # the default reduction is 'none': a (B, C, H, W) map whose target slice holds (1 - p_t)^gamma (-log p_t)
+        logits, labels = self._logits_and_labels(device, dtype)
+        out = kornia.losses.focal_loss(logits, labels, None)
+        assert out.shape == (2, 3, 4, 5)
+        log_p_t = logits.cpu().double().log_softmax(1).gather(1, labels.cpu()[:, None])
+        expected = (1 - log_p_t.exp()) ** 2 * -log_p_t
+        self.assert_close(out.gather(1, labels[:, None]), expected.to(device=device, dtype=dtype))
+        transposed = kornia.losses.focal_loss(logits.transpose(-2, -1), labels.transpose(-2, -1), None)
+        self.assert_close(transposed, out.transpose(-2, -1))
+
+    def test_convention_focal_loss_mean_divides_by_the_class_axis_too(self, device, dtype):
+        # 'mean' averages every element of the (B, C, *) output, so with gamma = 0 and alpha = None it is the per-pixel
+        # cross entropy divided by C, where torch's cross_entropy 'mean' averages over the pixels only
+        logits, labels = self._logits_and_labels(device, dtype)
+        cross_entropy = -logits.cpu().double().log_softmax(1).gather(1, labels.cpu()[:, None])
+        mean = kornia.losses.focal_loss(logits, labels, None, gamma=0.0, reduction="mean")
+        self.assert_close(mean, (cross_entropy.mean() / 3).to(device=device, dtype=dtype))
+        total = kornia.losses.focal_loss(logits, labels, None, gamma=0.0, reduction="sum")
+        self.assert_close(total, cross_entropy.sum().to(device=device, dtype=dtype))
+
+    def test_convention_focal_loss_does_not_validate_alpha_and_gamma(self, device, dtype):
+        # alpha outside [0, 1] and a negative gamma are accepted and give a finite loss: kornia checks neither
+        logits, labels = self._logits_and_labels(device, dtype, scale=0.5)
+        for alpha, gamma in ((2.0, 2.0), (0.25, -1.0)):
+            assert kornia.losses.focal_loss(logits, labels, alpha, gamma, "mean").isfinite()
+
+    def test_convention_focal_loss_weight_is_not_normalised_in_the_mean(self, device, dtype):
+        # weight (C,) scales each class's slice and 'mean' still divides by the element count, where torch's
+        # cross_entropy(weight=) 'mean' divides by the summed weights of the target labels
+        logits, labels = self._logits_and_labels(device, dtype)
+        weight = torch.tensor([0.2, 1.0, 4.0], device=device, dtype=dtype)
+        w_t = torch.tensor([0.2, 1.0, 4.0], dtype=torch.float64)[labels.cpu()[:, None]]
+        weighted = -w_t * logits.cpu().double().log_softmax(1).gather(1, labels.cpu()[:, None])
+        mean = kornia.losses.focal_loss(logits, labels, None, gamma=0.0, reduction="mean", weight=weight)
+        self.assert_close(mean, (weighted.sum() / (3 * labels.numel())).to(device=device, dtype=dtype))
+        assert (mean.cpu().double() * 3 - weighted.sum() / w_t.sum()).abs() > 0.05 * weighted.sum() / w_t.sum()
+
+    def test_convention_focal_losses_ignored_labels_are_zero_weighted_in_the_mean(self, device, dtype):
+        # A label equal to ignore_index (-100) contributes 0 but its elements stay in the 'mean' denominator; torch's
+        # cross_entropy(ignore_index=) and binary_cross_entropy over the valid entries drop them from the mean instead
+        logits, labels = self._logits_and_labels(device, dtype)
+        labels[0, 0, :4] = -100  # 4 ignored pixels in image 0, 3 in image 1
+        labels[1, 3, 2:] = -100
+        ignored = labels.cpu() == -100
+        safe = labels.cpu().clamp_min(0)[:, None]
+        out = kornia.losses.focal_loss(logits, labels, None, gamma=0.0)
+        assert (out.cpu().movedim(1, -1)[ignored] == 0).all()
+        cross_entropy = -logits.cpu().double().log_softmax(1).gather(1, safe)[:, 0][~ignored]
+        mean = kornia.losses.focal_loss(logits, labels, None, gamma=0.0, reduction="mean")
+        self.assert_close(mean, (cross_entropy.sum() / out.numel()).to(device=device, dtype=dtype))
+        assert (mean.cpu().double() * 3 - cross_entropy.mean()).abs() > 0.05 * cross_entropy.mean()
+        # binary: a target entry equal to -100 is zero-weighted the same way
+        target = (labels[:, None] > 0).to(dtype).expand(-1, 2, -1, -1).clone()
+        target[:, 0][ignored.to(device)] = -100
+        out = kornia.losses.binary_focal_loss_with_logits(logits[:, :2], target, None, gamma=0.0)
+        assert (out[target == -100] == 0).all()
+        target = target.cpu().double()
+        bce = F.binary_cross_entropy_with_logits(logits[:, :2].cpu().double(), target, reduction="none")
+        mean = kornia.losses.binary_focal_loss_with_logits(logits[:, :2], target.to(device, dtype), None, 0.0, "mean")
+        self.assert_close(mean, (bce[target != -100].sum() / target.numel()).to(device=device, dtype=dtype))
+
+    def test_convention_focal_loss_two_class_target_slice_is_binary_focal_loss(self, device, dtype):
+        # With C = 2, logits [z0, z1] and class 1 the positive class, the target slice of focal_loss is
+        # binary_focal_loss_with_logits(z1 - z0): alpha weights class 1 in both
+        logits, labels = self._logits_and_labels(device, dtype, scale=2.0)
+        labels = labels.clamp_max(1)
+        multiclass = kornia.losses.focal_loss(logits[:, :2], labels, 0.25).gather(1, labels[:, None])
+        binary = kornia.losses.binary_focal_loss_with_logits(logits[:, 1:2] - logits[:, :1], labels[:, None].to(dtype))
+        self.assert_close(multiclass, binary)
+
+    def test_convention_binary_focal_loss_matches_sigmoid_focal_loss_on_hard_targets(self, device, dtype):
+        # alpha weights the positive term and 1 - alpha the negative one, and the function defaults to alpha = 0.25,
+        # gamma = 2, reduction 'none'. Snippet used to generate expected (torchvision 0.29.0, torch 2.14.0, float64):
+        #   torchvision.ops.sigmoid_focal_loss(z, t, alpha=0.25, gamma=2.0, reduction="none")
+        z = torch.tensor(
+            [[[[-2.0, -0.5, 0.0], [0.75, 1.5, 3.0]], [[2.5, -1.25, 0.25], [-3.0, 1.0, -0.75]]]],
+            device=device,
+            dtype=dtype,
+        )
+        t = torch.tensor(
+            [[[[1.0, 0.0, 1.0], [0.0, 1.0, 1.0]], [[0.0, 0.0, 1.0], [1.0, 0.0, 1.0]]]], device=device, dtype=dtype
+        )
+        expected = torch.tensor(
+            [
+                [
+                    [[0.41252, 0.0506801, 0.0433217], [0.393315, 0.00167571, 2.73208e-05]],
+                    [[1.65185, 0.00937088, 0.0276004], [0.69157, 0.526401, 0.131105]],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(kornia.losses.binary_focal_loss_with_logits(z, t), expected)
+
+    def test_convention_binary_focal_loss_fractional_target_mixes_the_two_terms(self, device, dtype):
+        # A target t in (0, 1) weights the positive term by t and the negative term by 1 - t:
+        #   t alpha (1 - p)^gamma (-log p) + (1 - t) (1 - alpha) p^gamma (-log(1 - p)).
+        # torchvision's sigmoid_focal_loss applies alpha_t (1 - p_t)^gamma to the whole BCE instead; at t = 0.3 with the
+        # defaults alpha = 0.25, gamma = 2 it gives 0.0611245, 0.1039721, 0.2952082 for z = -1, 0, 1.5 (torchvision
+        # 0.29.0, torch 2.14.0, float64); the two agree at t in {0, 1}. Snippet used to generate those values:
+        #   torchvision.ops.sigmoid_focal_loss(z, torch.full_like(z, 0.3), alpha=0.25, gamma=2.0, reduction="none")
+        z = torch.tensor([[-1.0, 0.0, 1.5]], dtype=torch.float64)
+        p = z.sigmoid()
+        expected = 0.3 * 0.25 * (1 - p) ** 2 * -p.log() + 0.7 * 0.75 * p**2 * -(1 - p).log()
+        actual = kornia.losses.binary_focal_loss_with_logits(
+            z.to(device, dtype), torch.full_like(z, 0.3).to(device, dtype)
+        )
+        self.assert_close(actual, expected.to(device, dtype))
+        assert (actual[0, 2].cpu().double() - 0.2952082).abs() > 0.1
+
+    def test_convention_binary_focal_loss_pos_weight_runs_along_the_channel_axis(self, device, dtype):
+        # pos_weight (C,) scales channel c's positive term: with gamma = 0 and alpha = None the loss is
+        # binary_cross_entropy_with_logits(pos_weight=pos_weight.view(C, 1, 1)); torch broadcasts a (C,) pos_weight
+        # along the last axis instead
+        logits, labels = self._logits_and_labels(device, dtype)
+        logits = logits[:, :2]
+        target = torch.stack([labels == 1, labels == 2], 1).to(dtype)
+        pos_weight = torch.tensor([3.0, 0.5], device=device, dtype=dtype)
+        actual = kornia.losses.binary_focal_loss_with_logits(logits, target, None, 0.0, pos_weight=pos_weight)
+        expected = F.binary_cross_entropy_with_logits(
+            logits.cpu().double(),
+            target.cpu().double(),
+            pos_weight=torch.tensor([3.0, 0.5]).double().view(2, 1, 1),
+            reduction="none",
+        )
+        self.assert_close(actual, expected.to(device=device, dtype=dtype))
