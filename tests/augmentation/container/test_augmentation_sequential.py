@@ -58,11 +58,19 @@ class TestAugmentationSequential:
         assert torch.equal(out_keypoints, torch.from_numpy(keypoints))
 
     @pytest.mark.parametrize(
-        "data_keys", ["input", "image", ["mask", "input"], ["input", "bbox_yxyx"], [0, 10], [BorderType.REFLECT]]
+        "data_keys,error_type,match",
+        [
+            ("input", KeyError, "I"),
+            ("image", KeyError, "I"),
+            (["mask", "input"], NotImplementedError, "first input must be DataKey.IMAGE"),
+            (["input", "bbox_yxyx"], KeyError, "BBOX_YXYX"),
+            ([0, 10], ValueError, "10 is not a valid DataKey"),
+            ([BorderType.REFLECT], TypeError, "DataKey"),
+        ],
     )
     @pytest.mark.parametrize("augmentation_list", [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)])
-    def test_exception(self, augmentation_list, data_keys, device, dtype):
-        with pytest.raises(Exception):  # AssertError and NotImplementedError
+    def test_exception(self, augmentation_list, data_keys, error_type, match, device, dtype):
+        with pytest.raises(error_type, match=match):
             K.AugmentationSequential(augmentation_list, data_keys=data_keys)
 
     @pytest.mark.slow
@@ -874,7 +882,7 @@ class TestAugmentationSequential:
             data_keys=["input", "mask", "bbox", "keypoints", "bbox", "BBOX_XYWH", "BBOX_XYWH"],
             random_apply=random_apply,
         )
-        with pytest.raises(Exception):  # No parameters available for inversing.
+        with pytest.raises(ValueError, match=r"No parameters available for inversing"):
             aug.inverse(inp, mask, bbox, keypoints, bbox_2, bbox_wh, bbox_wh_2)
 
         out = aug(inp, mask, bbox, keypoints, bbox_2, bbox_wh, bbox_wh_2)
