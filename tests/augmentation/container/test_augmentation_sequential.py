@@ -387,6 +387,15 @@ class TestAugmentationSequential:
         with pytest.raises(ValueError, match="batch"):
             aug(image, mask)
 
+    def test_video_mask_frame_count_mismatch_raises_5624(self, device, dtype):
+        image = torch.rand(2, 4, 3, 8, 8, device=device, dtype=dtype)
+        mask = torch.rand(2, 3, 1, 8, 8, device=device, dtype=dtype)  # 3 frames, the video has 4
+        aug = K.AugmentationSequential(
+            K.VideoSequential(K.RandomHorizontalFlip(p=1.0), data_format="BTCHW"), data_keys=["input", "mask"]
+        )
+        with pytest.raises(ValueError, match="frames"):
+            aug(image, mask)
+
     def test_replay_mask_batch_mismatch_raises_5624(self, device, dtype):
         # A replayed mask batch that is neither 1 nor the recorded batch is rejected the same way.
         image = torch.rand(3, 3, 8, 8, device=device, dtype=dtype)

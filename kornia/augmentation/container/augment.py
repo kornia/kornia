@@ -534,6 +534,14 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                     f"A mask next to a video must be 5D, (1, T, C, H, W) or (B, T, C, H, W); got mask "
                     f"{tuple(mask.shape)}."
                 )
+            if is_video and isinstance(image, torch.Tensor) and image.ndim == 5:
+                video = next((c for c in self.children() if isinstance(c, VideoSequential)), None)
+                temporal_dim = 2 if video is not None and str(video.data_format).upper() == "BCTHW" else 1
+                if mask.shape[temporal_dim] != image.shape[temporal_dim]:
+                    raise ValueError(
+                        "Video and mask must have the same number of frames; "
+                        f"got video {tuple(image.shape)} and mask {tuple(mask.shape)}."
+                    )
             mask_batch = mask.shape[0] if mask.ndim in (4, 5) else 1
             if image_size is None:
                 if mask_batch not in (1, image_batch):
