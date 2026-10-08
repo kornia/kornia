@@ -58,8 +58,11 @@ class TestPolynomialSolversCompile(BaseTester):
         assert bool(torch.isfinite(gradient).all()), gradient
 
     def test_quadratic_extreme_scale_invariance(self, device, dtype):
-        """Power-of-two homogeneous scaling preserves tiny roots and gradients."""
-        exponent = {torch.float16: 8, torch.bfloat16: 16, torch.float32: 60, torch.float64: 500}[dtype]
+        """Power-of-two homogeneous scaling preserves roots and gradients where b^2 and 4ac overflow."""
+        if dtype == torch.float16:
+            pytest.skip("float16 is solved in float32, where no float16 coefficient overflows b^2.")
+        # Beyond the square root of the largest float, so that only the rescaling keeps the discriminant finite.
+        exponent = {torch.bfloat16: 70, torch.float32: 70, torch.float64: 520}[dtype]
         base = torch.tensor([[1.0, -3.0, -4.0]], device=device, dtype=dtype, requires_grad=True)
         roots = solve_quadratic(base)
         (base_grad,) = torch.autograd.grad(roots.sum(), base)
@@ -105,12 +108,22 @@ class TestPolynomialSolversCompile(BaseTester):
     def test_dynamo_close_pair_matches_eager(self, device, dtype, torch_optimizer, optimizer_backend):
         if optimizer_backend == "jit" or device.type != "cpu" or dtype != torch.float32:
             pytest.skip("The fullgraph regression is explicitly exercised on CPU float32.")
-        values = torch.tensor(
-            [[1.0, -481.0438232421875, 57850.8359375, -11.54153823852539]], device=device, dtype=dtype
-        )
+        # Three real roots 3.62100, 3.61973 and 2.41171, two of them close. A float32 per-row uncertainty bound on
+        # the discriminant misses this row, so eager execution agrees with the graph only if it solves the row
+        # in float64 as the graph does.
+        values = torch.tensor([[1.0, -9.652440071105957, 30.569580078125, -31.61037254333496]], device=device, dtype=dtype)
         eager = solve_cubic(values)
         compiled = torch_optimizer(solve_cubic, fullgraph=True)(values)
-        self.assert_close(compiled, eager, rtol=2e-5, atol=1e-7)
+        self.assert_close(compiled, eager, rtol=0.0, atol=0.0)
+        expected = torch.tensor([[2.41171, 3.61973, 3.62100]], device=device, dtype=dtype)
+        self.assert_close(eager.sort(-1).values, expected, rtol=1e-5, atol=0.0)
+
+    def test_cubic_lowered_quadratic_count_with_tiny_coefficients(self, device, dtype):
+        if dtype != torch.float32:
+            pytest.skip("The literal's products underflow in float32.")
+        # 1e-30 (x^2 + x + 1) has no real roots, although every product in its discriminant underflows.
+        _, count = _solve_cubic_with_count(torch.tensor([[0.0, 1e-30, 1e-30, 1e-30]], device=device, dtype=dtype))
+        assert count.tolist() == [0]
 
     @pytest.mark.parametrize("sign", [1.0, -1.0])
     def test_cubic_lowered_quadratic_count_uses_scaled_discriminant(self, sign, device, dtype):
