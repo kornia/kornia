@@ -69,8 +69,8 @@ class OperationBase(nn.Module):
         - a symmetric magnitude applies the magnitude mapping first and then a random sign per row, so a mapping
           that quantizes to zero stays zero (``Posterize`` maps ``0.5`` to ``0`` bits with ``magnitude_range=(0, 8)``).
         - the concrete classes in ``kornia.augmentation.auto.operations.ops`` wrap public 2D augmentations and
-          inherit their input, dtype, RNG and replay contracts. A wrapper pickles with any magnitude mapping and
-          either sign setting, since the identity and the sign flip are module-level
+          inherit their input, dtype, RNG and replay contracts. A wrapper pickles when its magnitude mapping is
+          picklable, with either sign setting, since the identity and the sign flip are module-level
           (`#4469 <https://github.com/kornia/kornia/issues/4469>`_).
 
     """
