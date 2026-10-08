@@ -566,19 +566,24 @@ def _rank8_null_vector(normal: torch.Tensor) -> torch.Tensor:
     ``h[8] != 0`` and, the matrix being symmetric, its leading 8x8 block is non-singular: fixing ``h[8] = 1``
     leaves that block's system, solved with ``normal`` itself so the result stays differentiable. Roundoff
     can leave a degenerate matrix with tiny non-zero pivots instead, so the first eight must also be above
-    ``sqrt(eps)`` relative to the largest: on exact correspondences they stay above ``4e-2``, on collinear or
-    coincident points below ``1e-6``.
+    ``sqrt(eps)`` relative to the largest. On the integer keypoints of the tests (exact identities, shifts
+    and 90-degree rotations) the smallest stayed above ``4e-2``; on coincident or collinear points it was
+    below ``1e-6``. Non-finite matrices are factorized as zeros (see #4770) and give NaN.
     """
     work_dtype = torch.float64 if normal.dtype == torch.float64 else torch.float32
     normal = normal.to(work_dtype)
+    finite = normal.isfinite().flatten(1).all(-1)
+    normal = torch.where(finite[:, None, None], normal, torch.zeros_like(normal))
     lu, _, info = torch.linalg.lu_factor_ex(normal.detach())
     diagonal = lu.diagonal(dim1=-2, dim2=-1).abs()
     tiny = torch.finfo(work_dtype).tiny
     leading = diagonal[:, :8].amin(-1) > diagonal.amax(-1).clamp_min(tiny) * torch.finfo(work_dtype).eps ** 0.5
-    rank8 = (info == normal.shape[-1]) & leading
-    block = normal[:, :8, :8]
-    eye = torch.eye(8, device=normal.device, dtype=work_dtype).expand_as(block)
-    head = torch.linalg.solve(torch.where(rank8[:, None, None], block, eye), -normal[:, :8, 8])
+    rank8 = finite & (info == normal.shape[-1]) & leading
+    # Rows that are not rank 8 solve the identity against zero, so their (discarded) values and gradients
+    # stay finite and cannot leak NaN into parameters shared with the rest of the batch.
+    block = torch.where(rank8[:, None, None], normal[:, :8, :8], torch.eye(8, device=normal.device, dtype=work_dtype))
+    rhs = torch.where(rank8[:, None], -normal[:, :8, 8], torch.zeros_like(normal[:, :8, 8]))
+    head = torch.linalg.solve(block, rhs)
     null = torch.cat([head, torch.ones_like(head[:, :1])], -1)
     return torch.where(rank8[:, None], null, torch.full_like(null, float("nan")))
 
@@ -629,9 +634,9 @@ def _homography_from_dlt_system(
             # Roundoff usually keeps the LU pivots non-zero and the solve above lands on that vector, but an
             # exactly zero last pivot (identical point sets after Hartley normalization, an integer shift)
             # makes the solve fail. With only that pivot zero the rank is 8, so the homography is unique and
-            # the 8 pivot rows determine it with h[8] = 1. An earlier zero pivot means coincident or
-            # collinear points with no unique homography: report those as NaN rather than the identity
-            # system's solution that ``safe_solve_with_mask`` leaves in their place.
+            # the leading 8x8 block determines it with h[8] = 1. Any other singular system (an earlier zero
+            # pivot, as for coincident points) has no unique homography: report it as NaN rather than the
+            # identity system's solution that ``safe_solve_with_mask`` leaves in its place.
             sol = torch.where(valid[:, None, None], sol, _rank8_null_vector(A).to(sol.dtype)[..., None])
         else:
             # A four-point sample gives eight equations for nine unknowns, so the normal matrix
