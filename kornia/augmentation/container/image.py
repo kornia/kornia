@@ -27,6 +27,7 @@ from kornia.core import ImageModule
 from kornia.core.mixin.image_module import ImageModuleMixIn
 from kornia.core.ops import eye_like
 from kornia.core.utils import is_exporting
+from kornia.geometry.transform.affwarp import _side_to_image_size
 
 from .base import ImageSequentialBase
 from .params import ParamItem, PatchParamItem
@@ -472,6 +473,8 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
 
     Note:
        Augmentations that change the image size must provide the parameter `output_size`.
+       Empty crops and resizes have no sampled output-size rows, so their configured size is used
+       only when the image forward path always applies the transform.
 
     """
     data = param.data
@@ -502,6 +505,18 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
         for p in data:
             batch_shape = _get_new_batch_shape(p, batch_shape, children.get(p.name))
         return batch_shape
+
+    if batch_shape[0] == 0 and isinstance(module, (K.RandomCrop, K.Resize)):
+        # Match the image forward's unconditional path. An empty gate selects the original
+        # canvas in the other probability branches, including Resize's p_batch setting (#4429).
+        if module.p != 1.0 or module.p_batch != 1.0:
+            return batch_shape
+        size = module.flags["size"]
+        if isinstance(module, K.Resize) and isinstance(size, int):
+            size = _side_to_image_size(size, batch_shape[-1] / batch_shape[-2], module.flags["side"])
+        new_batch_shape = list(batch_shape)
+        new_batch_shape[-2:] = size
+        return torch.Size(new_batch_shape)
 
     # Carefully avoid evaluating expression multiple times; batch_prob is often a 1-element torch.Tensor
     if "output_size" in data:

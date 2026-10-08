@@ -56,6 +56,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
           call depends on its implementation and configuration: slice-mode crops, for example, do not support it.
           Inverse resampling cannot recover image or mask information lost through cropping, padding, or
           interpolation. Tensor-form boxes may lose rotated corners through axis-aligned enclosure.
+          For an empty batch, image and mask inverse restore the spatial dimensions recorded in the parameters.
         - container mask processing has dtype- and operator-specific limitations; see
           `#4478 <https://github.com/kornia/kornia/issues/4478>`_. Direct ``transform_masks`` calls use the
           image dtype guard and therefore reject ``bool`` masks.
@@ -228,6 +229,11 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
         **kwargs: Any,
     ) -> torch.Tensor:
+        """Inverse image inputs.
+
+        For an empty batch with recorded input-shape metadata, image and mask inverses
+        restore the recorded spatial size while preserving the inverse input's channel count.
+        """
         in_tensor = self.transform_tensor(input)
         output = in_tensor.clone()
         batch_prob = params["batch_prob"]
@@ -243,8 +249,11 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             _size = params["forward_input_shape"].tolist()
             size = (_size[-2], _size[-1])
 
+        # An empty batch has no applied rows, but still needs its recorded spatial shape restored.
+        if in_tensor.shape[0] == 0 and size is not None:
+            output = in_tensor.reshape(*in_tensor.shape[:-2], *size)
         # if no augmentation needed
-        if not to_apply.any():
+        elif not to_apply.any():
             output = in_tensor
         # if all data needs to be augmented
         elif to_apply.all():
