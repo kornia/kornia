@@ -549,18 +549,21 @@ class TestFindHomographyDLT(BaseTester):
     )
     def test_exact_correspondences_lu(self, points, linear, shift, device, dtype):
         # On these exact correspondences the last LU pivot of the normal matrix is exactly zero in float32
-        # and float64. The homography is still unique (rank 8), so the LU solver has to return it, as the
-        # SVD solver and cv2.findHomography(points1, points2, 0) do, rather than NaN.
+        # and float64 on CPU. The homography is still unique (rank 8), so the LU solver has to return it, as the
+        # SVD solver and cv2.findHomography(points1, points2, 0) do, rather than NaN. Six points in general
+        # position determine it, so it is checked through the points it maps (MPS float32 gets the pixel-unit
+        # translation of the 90-degree rotation to about 2e-4).
         _skip_half(dtype, _HALF_DLT)
         points1 = torch.tensor([points], device=device, dtype=dtype)
         linear_part = torch.tensor(linear, device=device, dtype=dtype)
         points2 = points1 @ linear_part.T + torch.tensor(shift, device=device, dtype=dtype)
-        expected = torch.eye(3, device=device, dtype=dtype)[None].clone()
-        expected[0, :2, :2] = linear_part
-        expected[0, :2, 2] = torch.tensor(shift, device=device, dtype=dtype)
         weights = torch.ones(1, 6, device=device, dtype=dtype)
-        self.assert_close(find_homography_dlt(points1, points2, solver="lu"), expected, rtol=1e-4, atol=1e-4)
-        self.assert_close(find_homography_dlt_iterated(points1, points2, weights), expected, rtol=1e-4, atol=1e-4)
+        for H in (
+            find_homography_dlt(points1, points2, solver="lu"),
+            find_homography_dlt_iterated(points1, points2, weights),
+        ):
+            assert H.isfinite().all().item()
+            self.assert_close(kornia.geometry.transform_points(H, points1), points2, rtol=1e-4, atol=1e-3)
 
     def test_collinear_points_lu_give_nan(self, device, dtype):
         # Roundoff can leave the normal matrix of collinear points with tiny non-zero leading pivots and a
