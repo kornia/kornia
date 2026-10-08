@@ -1,0 +1,1 @@
+Polynomial solvers preserve repeated roots and real/complex distinctions across coefficient scales, retain finite gradients in mixed batches, and support full-graph compilation. `solve_quartic` returns genuine quartic roots in descending order followed by padding.

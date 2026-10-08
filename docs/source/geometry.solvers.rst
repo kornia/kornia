@@ -16,6 +16,14 @@ Homogeneous Solvers
 Polynomial Solvers
 ------------------
 
+The polynomial solvers accept coefficients in descending degree order and return
+real roots with multiplicity, using zero padding for missing real roots. The
+public quadratic, cubic and quartic paths support fixed-shape graph capture,
+including mixed batches with lower-degree rows. Near repeated roots, input
+coefficient rounding can change whether a pair is real or complex; correctness
+is defined by the represented coefficients. See each function's precision and
+gradient conventions.
+
 .. autofunction:: solve_quadratic
 .. autofunction:: solve_cubic
 .. autofunction:: solve_quartic
