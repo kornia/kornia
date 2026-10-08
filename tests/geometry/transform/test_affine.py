@@ -765,8 +765,6 @@ class TestAffine2d(BaseTester):
         self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     def test_affine_rotate_translate(self, device, dtype):
-        if device.type == "cuda" and dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("CUDA half-precision rotation exceeds 1e-4. See https://github.com/kornia/kornia/issues/5523")
         batch_size = 2
 
         input = torch.tensor(
@@ -788,7 +786,10 @@ class TestAffine2d(BaseTester):
             device=device, dtype=dtype
         )
         actual = transform(input)
-        self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
+        # The half dtypes round the 180-degree rotation and the bilinear weights: the output is off by up to 3.9e-3
+        # in float16 and 2.3e-2 in bfloat16 on CPU and CUDA, against 1.0 for a dropped translation.
+        tol = {torch.float16: 1e-2, torch.bfloat16: 5e-2}.get(dtype, 1e-4)
+        self.assert_close(actual, expected, atol=tol, rtol=tol)
 
     def test_compose_affine_matrix_3x3(self, device, dtype):
         """To get parameters:
