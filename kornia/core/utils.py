@@ -266,6 +266,34 @@ def _has_closed_form_inverse(input: torch.Tensor) -> bool:
     return input.shape[-2] == n and n in (2, 3, 4)
 
 
+def _closed_form_inverse(input: torch.Tensor) -> torch.Tensor:
+    """Inverse of batched 2x2, 3x3 or 4x4 matrices as ``adj / det``, computed on a scaled copy.
+
+    The entries of the adjugate and the determinant are products of up to ``n`` entries, which overflow or
+    underflow the dtype long before the inverse does: for ``1e13 * I`` or ``1e-13 * I`` of order 4 in
+    float32 they are ``inf`` or ``0`` while the inverse is ``1e-13 * I`` or ``1e13 * I``. So each row, then
+    each column, is divided by the power of two below its largest magnitude first,
+    ``inv(A) = D_c inv(D_r A D_c) D_r``, and the rows and columns of the result are divided by the same
+    factors. A power of two keeps every rounding step the one of the unscaled computation, so the result is
+    bit for bit the former ``adj / det`` whenever that one is finite. A zero row or column is left alone; its
+    determinant is 0 either way.
+
+    Raises:
+        NotImplementedError: for shapes other than ``(..., n, n)`` with ``n`` in 2, 3, 4.
+    """
+    row_scale = _power_of_two_below(input.abs().amax(-1, keepdim=True))
+    scaled = input / row_scale
+    col_scale = _power_of_two_below(scaled.abs().amax(-2, keepdim=True))
+    adj, det = _adjugate_closed_form(scaled / col_scale)
+    return adj / det[..., None, None] / col_scale.transpose(-2, -1) / row_scale.transpose(-2, -1)
+
+
+def _power_of_two_below(x: torch.Tensor) -> torch.Tensor:
+    """The largest power of two at most ``x`` for positive ``x``, 1 where ``x`` is 0."""
+    x = torch.where(x > 0, x, torch.ones_like(x))
+    return torch.pow(2.0, torch.floor(torch.log2(x)))
+
+
 def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:
     """Make torch.inverse work with other than fp32/64.
 
@@ -288,8 +316,7 @@ def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:
     KORNIA_CHECK_IS_TENSOR(input, "Input must be torch.Tensor")
     dtype = _normalize_to_float32_or_float64(input.dtype)
     if _is_tracing_or_exporting() and _has_closed_form_inverse(input):
-        adj, det = _adjugate_closed_form(input.to(dtype))
-        return (adj / det[..., None, None]).to(input.dtype)
+        return _closed_form_inverse(input.to(dtype)).to(input.dtype)
     return torch.linalg.inv(input.to(dtype)).to(input.dtype)
 
 
@@ -532,13 +559,14 @@ def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
     # output, and ``0 * nan`` leaks it into every shared parameter.
     A_detached = A_cast.detach()
     if _is_tracing_or_exporting() and _has_closed_form_inverse(A):
-        # ``linalg_inv_ex`` has no ONNX lowering; the adjugate form is basic arithmetic.
-        adj_detached, det_detached = _adjugate_closed_form(A_detached)
+        # ``linalg_inv_ex`` has no ONNX lowering; the adjugate form is basic arithmetic. It is computed on a
+        # scaled copy (:func:`_closed_form_inverse`), so a regular matrix at a scale whose adjugate or
+        # determinant leaves the dtype keeps its finite inverse and its ``True`` mask, as in eager mode.
         mask = ~_is_singular(A_detached)
-        safe_det = torch.where(mask, det_detached, torch.ones_like(det_detached))
-        mask = mask & _rows_finite((adj_detached / safe_det[..., None, None]).to(dtype_original))
-        adj, det = _adjugate_closed_form(torch.where(mask[..., None, None], A_cast, eye))
-        return (adj / det[..., None, None]).to(dtype_original), mask
+        inverse_detached = _closed_form_inverse(torch.where(mask[..., None, None], A_detached, eye))
+        mask = mask & _rows_finite(inverse_detached.to(dtype_original))
+        inverse = _closed_form_inverse(torch.where(mask[..., None, None], A_cast, eye))
+        return inverse.to(dtype_original), mask
 
     inverse_detached, info = inv_ex(A_detached)
     mask = (info == 0) & _rows_finite(inverse_detached.to(dtype_original))
