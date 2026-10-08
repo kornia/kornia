@@ -190,7 +190,9 @@ class VideoSequential(ImageSequential):
         return v
 
     @staticmethod
-    def _record_video_batch_size(param: Union[Dict[str, torch.Tensor], List[ParamItem]], original_batch_size: int) -> None:
+    def _record_video_batch_size(
+        param: Union[Dict[str, torch.Tensor], List[ParamItem]], original_batch_size: int
+    ) -> None:
         """Attach the original video batch size to nested replay metadata.
 
         Args:
@@ -206,9 +208,7 @@ class VideoSequential(ImageSequential):
         if isinstance(param, list):
             for item in param:
                 if isinstance(item, ParamItem):
-                    if isinstance(item.data, dict):
-                        VideoSequential._record_video_batch_size(item.data, original_batch_size)
-                    elif isinstance(item.data, list):
+                    if isinstance(item.data, dict) or isinstance(item.data, list):
                         VideoSequential._record_video_batch_size(item.data, original_batch_size)
 
     def _input_shape_convert_in(self, input: torch.Tensor, frame_num: int) -> torch.Tensor:
