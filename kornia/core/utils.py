@@ -271,42 +271,45 @@ def _closed_form_inverse(input: torch.Tensor) -> torch.Tensor:
 
     The entries of the adjugate and the determinant are products of up to ``n`` entries, which overflow or
     underflow the dtype long before the inverse does: for ``1e13 * I`` or ``1e-13 * I`` of order 4 in
-    float32 they are ``inf`` or ``0`` while the inverse is ``1e-13 * I`` or ``1e13 * I``. So each row, then
-    each column, is divided by the power of two below its largest magnitude first,
-    ``inv(A) = D_c inv(D_r A D_c) D_r``, and the rows and columns of the result are scaled back by the same
-    factors. A power of two keeps every rounding step the one of the unscaled computation, so the result is
-    bit for bit the former ``adj / det`` whenever that one is finite, short of an entry below ``2 ** -149``
-    (float32) or ``2 ** -1074`` (float64) of the largest magnitude of its row, which the row scaling flushes
-    to zero. A zero row or column is left alone; its determinant is 0 either way.
+    float32 they are ``inf`` or ``0`` while the inverse is ``1e-13 * I`` or ``1e13 * I``. So the matrix is
+    balanced first, each row divided by the power of two below its largest magnitude and then each column of
+    that by the power of two below its own, ``inv(A) = D_c inv(D_r A D_c) D_r``, and the rows and columns of
+    the result are scaled back by the same factors. A power of two keeps every rounding step the one of the
+    unscaled computation, so the result is bit for bit the former ``adj / det`` wherever its adjugate and
+    determinant were normal numbers; where one of them overflowed or went subnormal the former result was
+    ``inf``, ``nan``, zero or rounded (``diag(2 ** -100, 2 ** -40)`` in float32 has a subnormal determinant
+    and was off by 1.2e-7), and the new one is the inverse.
 
-    The two factors of an entry of the result can multiply to more than the dtype holds while the entry
-    itself fits: ``[[2 ** 80, 2 ** -50], [2 ** 80, -2 ** -50]]`` in float32 has a column factor of
-    ``2 ** -130`` and an inverse with entries ``2 ** 49``. So the combined exponent is applied as three powers
-    of two of about a third of it each; every intermediate lies between the scaled entry and the final one,
-    and is exact wherever the final one is a normal number.
+    The scaling works on the exponents and never forms the row-scaled matrix: ``[[2 ** 100, 2 ** -60],
+    [2 ** 100, -2 ** -60]]`` in float32 would lose its second column to underflow on the way, and its inverse
+    is finite. The combined exponent of an entry can exceed what the dtype holds while the entry itself fits,
+    so it is applied as three powers of two of about a third of it each; every intermediate lies between the
+    start and the end, and is exact wherever the end is a normal number. A zero row or column is left alone;
+    its determinant is 0 either way.
 
     Raises:
         NotImplementedError: for shapes other than ``(..., n, n)`` with ``n`` in 2, 3, 4.
     """
-    row_exponent = _exponent_below(input.abs().amax(-1, keepdim=True))
-    scaled = input / torch.pow(2.0, row_exponent)
-    col_exponent = _exponent_below(scaled.abs().amax(-2, keepdim=True))
-    adj, det = _adjugate_closed_form(scaled / torch.pow(2.0, col_exponent))
-    exponent = -(col_exponent.transpose(-2, -1) + row_exponent.transpose(-2, -1))
-    step = torch.round(exponent / 3)
-    inverse = adj / det[..., None, None]
-    return inverse * torch.pow(2.0, step) * torch.pow(2.0, step) * torch.pow(2.0, exponent - 2 * step)
+    exponent = torch.floor(torch.log2(input.abs()))  # -inf at a zero entry, which no maximum below picks
+    row = exponent.amax(-1, keepdim=True)
+    row = torch.where(torch.isinf(row), torch.zeros_like(row), row)
+    col = (exponent - row).amax(-2, keepdim=True)
+    col = torch.where(torch.isinf(col), torch.zeros_like(col), col)
+    adj, det = _adjugate_closed_form(_times_power_of_two(input, -(row + col)))
+    return _times_power_of_two(adj / det[..., None, None], -(col.transpose(-2, -1) + row.transpose(-2, -1)))
 
 
-def _exponent_below(x: torch.Tensor) -> torch.Tensor:
-    """``floor(log2 x)`` for positive ``x``, 0 where ``x`` is 0, capped at the largest exponent of the dtype.
+def _times_power_of_two(x: torch.Tensor, exponent: torch.Tensor) -> torch.Tensor:
+    """``x * 2 ** exponent`` in three steps of about a third of the exponent each.
 
-    ``log2`` rounds the largest finite float32, ``(2 - 2 ** -23) * 2 ** 127``, up to 128, and ``2 ** 128`` is
-    ``inf``; the cap keeps the power of two representable.
+    No step and no intermediate leaves the dtype while the result is inside it. ``exponent`` is integer
+    valued and is clipped to three times the largest exponent of the dtype, beyond which a nonzero result is
+    ``inf`` or ``0`` anyway and a zero one stays ``0`` instead of turning into ``0 * inf``.
     """
-    x = torch.where(x > 0, x, torch.ones_like(x))
-    largest = 1023.0 if x.dtype == torch.float64 else 127.0
-    return torch.floor(torch.log2(x)).clamp_max(largest)
+    largest = 3069.0 if x.dtype == torch.float64 else 381.0  # 3 * 1023, 3 * 127
+    exponent = exponent.clamp(-largest, largest)
+    step = torch.round(exponent / 3)
+    return x * torch.pow(2.0, step) * torch.pow(2.0, step) * torch.pow(2.0, exponent - 2 * step)
 
 
 def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:

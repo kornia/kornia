@@ -80,6 +80,16 @@ def _regular_at_extreme_scales(device, dtype):
     return torch.stack([eye * big, eye / big, A * big, A / big, A @ D, D @ A, eye * torch.finfo(dtype).max, compound])
 
 
+def _regular_with_a_vanishing_column(n, device, dtype):
+    """``[[2 ** 100, 2 ** -60], [2 ** 100, -2 ** -60]]`` (``2 ** 1000`` and ``2 ** -600`` in float64) in the corner of
+    the identity of order ``n``: regular, with a finite inverse and a finite ``adj / det``, while the second column is
+    ``2 ** -160`` of the first in both rows and would underflow in a row scaling that is carried out."""
+    huge, tiny = (2.0**100, 2.0**-60) if dtype == torch.float32 else (2.0**1000, 2.0**-600)
+    A = torch.eye(n, device=device, dtype=dtype)
+    A[:2, :2] = torch.tensor([[huge, tiny], [huge, -tiny]], device=device, dtype=dtype)
+    return A
+
+
 # One row is the sum of two others, or a multiple of the other, in small integers: exactly singular, and every
 # product of the closed-form determinant is exact.
 _DEPENDENT_ROWS = {
@@ -252,15 +262,20 @@ class TestInverseCast:
 
     @pytest.mark.parametrize("n", [2, 3, 4])
     def test_scaled_closed_form_is_adj_over_det_bit_for_bit(self, device, dtype, n):
-        # The closed-form inverse scales rows and columns by powers of two before the adjugate (#5507). A power of
-        # two changes no rounding step, so wherever ``adj / det`` is finite the result is the same to the bit.
+        # The closed-form inverse balances rows and columns by powers of two before the adjugate (#5507). A power
+        # of two changes no rounding step, so wherever the adjugate and the determinant are normal numbers the
+        # result is the same to the bit. The last matrix has a second column that is ``2 ** -160`` of the first in
+        # every row: a row scaling that is carried out would flush it, the exponent arithmetic does not.
         if dtype not in (torch.float32, torch.float64):
             pytest.skip("the capture path computes in float32 or float64")
         torch.manual_seed(0)
         x = torch.randn(64, n, n, device=device, dtype=dtype)
         x = x * torch.logspace(-3, 3, 64, device=device, dtype=dtype)[:, None, None]
         x[::2] *= torch.logspace(-2, 2, n, device=device, dtype=dtype)[None, :, None]
+        x = torch.cat([x, _regular_with_a_vanishing_column(n, device, dtype)[None]])
         adj, det = _adjugate_closed_form(x)
+        assert torch.isfinite(adj).all()
+        assert torch.isfinite(det).all()
         assert torch.equal(_closed_form_inverse(x), adj / det[..., None, None])
 
     def test_trace_keeps_the_inverse_finite_at_an_extreme_scale_5507(self, device, dtype):
@@ -268,7 +283,10 @@ class TestInverseCast:
         # while eager returned ``1e-13 * I``. The scaled adjugate keeps the traced inverse finite and eager-close.
         if dtype not in (torch.float32, torch.float64):
             pytest.skip("tracing under half precision is not a supported surface")
-        A = _regular_at_extreme_scales(device, dtype)
+        # The last matrix is regular with a column ``2 ** -160`` of the other in every row; ``_is_singular`` reads it
+        # as singular in eager mode and under capture alike, so it is tested on this mask-free path.
+        vanishing = _regular_with_a_vanishing_column(4, device, dtype)
+        A = torch.cat([_regular_at_extreme_scales(device, dtype), vanishing[None]])
         traced = torch.jit.trace(_torch_inverse_cast, A, check_trace=False)
         inverse = traced(A)
         assert torch.isfinite(inverse).all()
