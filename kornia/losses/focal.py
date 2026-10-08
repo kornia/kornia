@@ -109,6 +109,8 @@ def focal_loss(
     base = 1.0 - log_pred_soft.exp()
     saturated = base == 0
     focal_weight = torch.where(saturated, base.detach().pow(gamma), base.masked_fill(saturated, 1.0).pow(gamma))
+    # Mask before multiplying: a non-target log probability of -inf otherwise gives NaN values and gradients.
+    log_pred_soft = log_pred_soft.masked_fill(target_one_hot == 0, 0.0)
     loss_tmp: torch.Tensor = -focal_weight * log_pred_soft * target_one_hot
 
     num_of_classes = pred.shape[1]

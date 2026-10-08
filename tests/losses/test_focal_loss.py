@@ -171,6 +171,65 @@ class TestBinaryFocalLossWithLogits(BaseTester):
 
 class TestFocalLoss(BaseTester):
     @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    @pytest.mark.parametrize("gamma", [0.0, 0.5, 2.0])
+    @pytest.mark.parametrize("alpha", [None, 0.25])
+    @pytest.mark.parametrize("weighted", [False, True])
+    def test_overflowing_non_target_log_probability_5628(self, device, dtype, reduction, gamma, alpha, weighted):
+        # Exact float16/float32 reproducers from #5628; exercise the same overflow in the other dtypes too.
+        big = {torch.float16: 40000.0, torch.float32: 3e38}.get(dtype, 0.75 * torch.finfo(dtype).max)
+        logits = torch.tensor([[big, -big, 0.0], [1.0, 2.0, 3.0]], device=device, dtype=dtype, requires_grad=True)
+        labels = torch.tensor([0, 2], device=device)
+        assert logits.isfinite().all()
+        assert logits.log_softmax(1)[0, 1].isneginf()
+        weight = torch.tensor([0.5, 1.5, 2.0], device=device, dtype=dtype) if weighted else None
+        # A finite logit gap gives the same saturated probabilities, without overflowing log-softmax.
+        control = torch.tensor(
+            [[10000.0, -10000.0, 0.0], [1.0, 2.0, 3.0]], device=device, dtype=dtype, requires_grad=True
+        )
+        expected = kornia.losses.focal_loss(control, labels, alpha, gamma, reduction, weight)
+        expected_grad = torch.autograd.grad(expected.sum(), control)[0]
+        actual = kornia.losses.focal_loss(logits, labels, alpha, gamma, reduction, weight)
+        assert actual.isfinite().all()
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        grad = torch.autograd.grad(actual.sum(), logits)[0]
+        assert grad.isfinite().all()
+        self.assert_close(grad[0], torch.zeros_like(grad[0]), rtol=0, atol=0)
+        self.assert_close(grad[1], expected_grad[1])
+        if reduction == "none":
+            self.assert_close(actual[0], torch.zeros_like(actual[0]), rtol=0, atol=0)
+
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    @pytest.mark.parametrize("gamma", [0.0, 0.5, 2.0])
+    @pytest.mark.parametrize("alpha", [None, 0.25])
+    @pytest.mark.parametrize("weighted", [False, True])
+    def test_finite_loss_and_gradient(self, device, dtype, reduction, gamma, alpha, weighted):
+        logits = torch.tensor(
+            [[[1.0, -0.5], [2.0, 0.3], [3.0, 1.5]], [[-1.0, 0.2], [0.5, -0.7], [0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        labels = torch.tensor([[2, 0], [1, 2]], device=device)
+        weight = torch.tensor([0.5, 1.5, 2.0], device=device, dtype=dtype) if weighted else None
+        # Original finite-input formula, before masking non-target log probabilities.
+        reference = logits.detach().clone().requires_grad_()
+        logp = reference.log_softmax(1)
+        expected = -(1.0 - logp.exp()).pow(gamma) * logp * F.one_hot(labels, 3).movedim(-1, 1).to(dtype)
+        if alpha is not None:
+            expected = torch.tensor([1.0 - alpha, alpha, alpha], device=device, dtype=dtype).view(3, 1) * expected
+        if weight is not None:
+            expected = weight.view(3, 1) * expected
+        if reduction == "mean":
+            expected = expected.mean()
+        elif reduction == "sum":
+            expected = expected.sum()
+        actual = kornia.losses.focal_loss(logits, labels, alpha, gamma, reduction, weight)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        self.assert_close(
+            torch.autograd.grad(actual.sum(), logits)[0], torch.autograd.grad(expected.sum(), reference)[0]
+        )
+
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
     @pytest.mark.parametrize("gamma", [0.0, 2.0])
     @pytest.mark.parametrize("weighted", [False, True])
     @pytest.mark.parametrize("spatial", [False, True])
