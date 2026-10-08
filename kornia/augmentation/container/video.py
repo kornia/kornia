@@ -207,9 +207,8 @@ class VideoSequential(ImageSequential):
             return
         if isinstance(param, list):
             for item in param:
-                if isinstance(item, ParamItem):
-                    if isinstance(item.data, dict) or isinstance(item.data, list):
-                        VideoSequential._record_video_batch_size(item.data, original_batch_size)
+                if isinstance(item, ParamItem) and isinstance(item.data, (dict, list)):
+                    VideoSequential._record_video_batch_size(item.data, original_batch_size)
 
     def _input_shape_convert_in(self, input: torch.Tensor, frame_num: int) -> torch.Tensor:
         # Convert any shape to (B, T, C, H, W)
