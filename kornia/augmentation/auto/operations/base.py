@@ -25,6 +25,23 @@ from kornia.augmentation.base import _AugmentationBase
 T = TypeVar("T", bound="OperationBase")
 
 
+def _identity(x: torch.Tensor) -> torch.Tensor:
+    return x
+
+
+class _RandomSign:
+    """Multiply the magnitude mapping by a random sign per row. Module-level so the operation pickles (#4469)."""
+
+    def __init__(self, fn: Callable[[torch.Tensor], torch.Tensor]) -> None:
+        self.fn = fn
+
+    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        # a sign, not a mask: multiplying by the bool would zero half the
+        # magnitudes instead of negating them
+        sign = torch.where(torch.rand((x.shape[0],), device=x.device) > 0.5, 1.0, -1.0)
+        return self.fn(x) * sign.to(x.dtype)
+
+
 class OperationBase(nn.Module):
     """Base class of differentiable augmentation operations.
 
@@ -52,9 +69,9 @@ class OperationBase(nn.Module):
         - a symmetric magnitude applies the magnitude mapping first and then a random sign per row, so a mapping
           that quantizes to zero stays zero (``Posterize`` maps ``0.5`` to ``0`` bits with ``magnitude_range=(0, 8)``).
         - the concrete classes in ``kornia.augmentation.auto.operations.ops`` wrap public 2D augmentations and
-          inherit their input, dtype, RNG and replay contracts. A wrapper pickles only with a named magnitude
-          mapping and ``symmetric_megnitude=False`` (with default arguments, only ``Posterize``); otherwise its
-          local closure blocks pickling (`#4469 <https://github.com/kornia/kornia/issues/4469>`_).
+          inherit their input, dtype, RNG and replay contracts. A wrapper pickles with any magnitude mapping and
+          either sign setting, since the identity and the sign flip are module-level
+          (`#4469 <https://github.com/kornia/kornia/issues/4469>`_).
 
     """
 
@@ -93,23 +110,11 @@ class OperationBase(nn.Module):
     def _init_magnitude_fn(
         self, magnitude_fn: Optional[Callable[[torch.Tensor], torch.Tensor]]
     ) -> Callable[[torch.Tensor], torch.Tensor]:
-        def _identity(x: torch.Tensor) -> torch.Tensor:
-            return x
-
-        def _random_flip(fn: Callable[[torch.Tensor], torch.Tensor]) -> Callable[[torch.Tensor], torch.Tensor]:
-            def f(x: torch.Tensor) -> torch.Tensor:
-                # a sign, not a mask: multiplying by the bool would zero half the
-                # magnitudes instead of negating them
-                sign = torch.where(torch.rand((x.shape[0],), device=x.device) > 0.5, 1.0, -1.0)
-                return fn(x) * sign.to(x.dtype)
-
-            return f
-
         if magnitude_fn is None:
             magnitude_fn = _identity
 
         if self.symmetric_megnitude:
-            return _random_flip(magnitude_fn)
+            return _RandomSign(magnitude_fn)
 
         return magnitude_fn
 

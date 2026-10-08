@@ -499,33 +499,26 @@ class TestAutoAugmentConventions(BaseTester):
         self.assert_close(mapped.abs(), torch.full_like(mapped, 0.29 * 180))
 
     @pytest.mark.device_agnostic
-    def test_wart_operation_wrappers_cannot_be_pickled_4469(self):
+    def test_convention_operation_wrappers_pickle_and_replay_4469(self):
         import pickle
 
-        # Python 3.14 raises PicklingError for a local object where earlier versions raise AttributeError.
-        local_object_error = (AttributeError, pickle.PicklingError)
-        failed = set()
+        x = torch.rand(2, 3, 16, 16)
+        # every wrapper restores from a pickle and replays the same draw under the same seed
         for name in ops.__all__:
             operation = getattr(ops, name)()
-            pickle.loads(pickle.dumps(operation.op))  # noqa: S301 - the wrapped augmentation always pickles
-            try:
-                pickle.loads(pickle.dumps(operation))  # noqa: S301
-            except local_object_error:
-                failed.add(name)
-        # With default arguments only Posterize avoids a local closure: it passes a named mapping and no sign flip.
-        assert failed == set(ops.__all__) - {"Posterize"}
-        # It is the configuration, not the class: ShearX / ShearY pass a named mapping too, and pickle without
-        # the sign flip, while the sign flip makes Posterize unpicklable.
-        for operation in (ops.ShearX(symmetric_megnitude=False), ops.ShearY(symmetric_megnitude=False)):
+            restored = pickle.loads(pickle.dumps(operation))  # noqa: S301
+            torch.manual_seed(0)
+            expected = operation(x)
+            torch.manual_seed(0)
+            assert torch.equal(restored(x), expected), name
+        for operation in (ops.ShearX(symmetric_megnitude=True), ops.Posterize(symmetric_megnitude=True)):
             pickle.loads(pickle.dumps(operation))  # noqa: S301
-        with pytest.raises(local_object_error):
-            pickle.dumps(ops.Posterize(symmetric_megnitude=True))
-        with pytest.raises(local_object_error):
-            pickle.dumps(ops.Rotate(symmetric_megnitude=False))  # no named mapping: the identity closure
-        # So the default policies, which hold such wrappers, do not pickle either.
         for policy in (AutoAugment(), RandAugment(n=2, m=15), TrivialAugment()):
-            with pytest.raises(local_object_error):
-                pickle.dumps(policy)
+            restored = pickle.loads(pickle.dumps(policy))  # noqa: S301
+            torch.manual_seed(0)
+            expected = policy(x)
+            torch.manual_seed(0)
+            assert torch.equal(restored(x), expected)
 
     @pytest.mark.device_agnostic
     def test_convention_rigid_matrix_mode_accepts_intensity_operations(self):
