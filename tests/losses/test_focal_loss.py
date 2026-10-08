@@ -378,7 +378,7 @@ class TestFocalLoss(BaseTester):
 
 
 class TestConventionsFocalLoss(BaseTester):
-    """Pins for the class weighting, reductions and ignored labels of the focal losses."""
+    """Pins for the class weighting, reductions, ignored labels and known defect of the focal losses."""
 
     @staticmethod
     def _logits_and_labels(device, dtype, scale=1.0):
@@ -537,3 +537,21 @@ class TestConventionsFocalLoss(BaseTester):
             reduction="none",
         )
         self.assert_close(actual, expected.to(device=device, dtype=dtype))
+
+    def test_wart_focal_loss_overflowing_non_target_log_probability_5628(self, device, dtype):
+        # A logit gap beyond the range of the dtype overflows a non-target log-probability to -inf, and its term times
+        # the exact zero of the one-hot target is 0 * -inf = NaN (#5628): that slice, the reduced loss and the gradient
+        # of that pixel's logits are NaN, while the target slice is 0 and the other pixel stays finite
+        big = 0.75 * torch.finfo(dtype).max
+        logits = torch.tensor([[[[big, 1.0]], [[-big, -0.5]], [[0.0, 0.3]]]], device=device, dtype=dtype)
+        logits.requires_grad_()
+        labels = torch.zeros(1, 1, 2, device=device, dtype=torch.long)
+        out = kornia.losses.focal_loss(logits, labels, None)
+        assert out[0, 1, 0, 0].isnan()
+        assert out[0, 0, 0, 0] == 0
+        assert out[0, :, 0, 1].isfinite().all()
+        total = kornia.losses.focal_loss(logits, labels, None, reduction="sum")
+        assert total.isnan()
+        (grad,) = torch.autograd.grad(total, logits)
+        assert grad[..., 0].isnan().all()
+        assert grad[..., 1].isfinite().all()
