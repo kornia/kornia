@@ -716,16 +716,20 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         work = coeffs.cpu().double()
     else:
         work = coeffs.double()
-    a, b, c, d, e = work.unbind(-1)
     zero_tol = 1e-12 if original_dtype == torch.float64 else 1e-6
-    row_scale = work.abs().amax(-1).clamp(max=1.0)
-    bound = (
-        (b.abs() > a.abs() / zero_tol)
-        | (c.abs() > a.abs() / zero_tol**2)
-        | (d.abs() > a.abs() / zero_tol**3)
-        | (e.abs() > a.abs() / zero_tol**4)
-    )
-    lower = (a == 0) | ((a.abs() < zero_tol * row_scale) & bound)
+    # Selections, rounding-error bounds and conditioning choices below never carry a derivative;
+    # forming them without autograd leaves every gradient unchanged.
+    with torch.no_grad():
+        absolute = work.abs()
+        abs_a, abs_b, abs_c, abs_d, abs_e = absolute.unbind(-1)
+        row_scale = absolute.amax(-1).clamp(max=1.0)
+        bound = (
+            (abs_b > abs_a / zero_tol)
+            | (abs_c > abs_a / zero_tol**2)
+            | (abs_d > abs_a / zero_tol**3)
+            | (abs_e > abs_a / zero_tol**4)
+        )
+        lower = (abs_a == 0) | ((abs_a < zero_tol * row_scale) & bound)
     if not torch.compiler.is_compiling() and bool(lower.all()):
         lower_roots = solve_cubic(coeffs[:, 1:])
         return torch.cat([lower_roots, torch.zeros_like(coeffs[:, :1])], -1)
@@ -733,14 +737,15 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     quartic_coeffs = torch.where(lower[:, None], fallback, work)
     a_q, b_q, c_q, d_q, e_q = quartic_coeffs.unbind(-1)
     A, B, C, D = b_q / a_q, c_q / a_q, d_q / a_q, e_q / a_q
-    root_bound = torch.maximum(
-        torch.maximum(A.abs(), B.abs().sqrt()), torch.maximum(C.abs().pow(1 / 3), D.abs().sqrt().sqrt())
-    ).detach()
-    positive = root_bound > 0
-    exponent = torch.floor(torch.log2(torch.where(positive, root_bound, torch.ones_like(root_bound))))
-    exponent = torch.where(positive, exponent, torch.zeros_like(exponent))
-    variable_scale = _exact_power_of_two(exponent)
-    inverse_scale = _exact_power_of_two(-exponent)
+    with torch.no_grad():
+        root_bound = torch.maximum(
+            torch.maximum(A.abs(), B.abs().sqrt()), torch.maximum(C.abs().pow(1 / 3), D.abs().sqrt().sqrt())
+        )
+        positive = root_bound > 0
+        exponent = torch.floor(torch.log2(torch.where(positive, root_bound, torch.ones_like(root_bound))))
+        exponent = torch.where(positive, exponent, torch.zeros_like(exponent))
+        variable_scale = _exact_power_of_two(exponent)
+        inverse_scale = _exact_power_of_two(-exponent)
     A = A * inverse_scale
     B = B * inverse_scale * inverse_scale
     C = C * inverse_scale * inverse_scale * inverse_scale
@@ -750,17 +755,18 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     pure_biquadratic = (A == 0) & (B == 0) & (C == 0)
     C = torch.where(pure_biquadratic, C.detach(), C)
 
-    # Resolvent cubic coefficients
-    rc_a = torch.ones_like(A)
-    rc_b = -B
-    rc_c = A * C - 4.0 * D
-    rc_d = -1.0 * (A * A * D - 4.0 * B * D + C * C)
+    # Resolvent cubic coefficients. Its roots are taken detached, so the resolvent carries no derivative.
+    with torch.no_grad():
+        rc_a = torch.ones_like(A)
+        rc_b = -B
+        rc_c = A * C - 4.0 * D
+        rc_d = -1.0 * (A * A * D - 4.0 * B * D + C * C)
 
-    cubic_coeffs = torch.stack([rc_a, rc_b, rc_c, rc_d], dim=1)
+        cubic_coeffs = torch.stack([rc_a, rc_b, rc_c, rc_d], dim=1)
 
-    # The largest real resolvent root gives the best separated Ferrari factors. The private
-    # fixed-shape kernel supplies an explicit validity mask instead of zero placeholders.
-    y_roots, valid = _solve_cubic_real(cubic_coeffs, polish=False)
+        # The largest real resolvent root gives the best separated Ferrari factors. The private
+        # fixed-shape kernel supplies an explicit validity mask instead of zero placeholders.
+        y_roots, valid = _solve_cubic_real(cubic_coeffs, polish=False)
     A_sq = A * A
     candidates = 0.25 * A_sq[:, None] - B[:, None] + y_roots
     index = torch.where(valid, candidates, -torch.inf).argmax(-1, keepdim=True)
@@ -772,10 +778,12 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     # float32 (including half inputs evaluated in float32) keeps the narrower half-epsilon budget
     # so genuine small positive R^2 values are not snapped away. This happens before the guarded
     # sqrt so the exact-zero gradient convention remains unchanged.
-    R_sq_scale = torch.maximum(torch.ones_like(R_sq), 0.25 * A_sq + torch.abs(B) + torch.abs(y))
-    R_sq_snap_multiplier = 4.0 if R_sq.dtype == torch.float64 else 0.5
-    R_sq_snap_tol = R_sq_snap_multiplier * torch.finfo(R_sq.dtype).eps * R_sq_scale
-    R_sq = torch.where(torch.abs(R_sq) <= R_sq_snap_tol, torch.zeros_like(R_sq), R_sq)
+    with torch.no_grad():
+        R_sq_scale = torch.maximum(torch.ones_like(R_sq), 0.25 * A_sq + torch.abs(B) + torch.abs(y))
+        R_sq_snap_multiplier = 4.0 if R_sq.dtype == torch.float64 else 0.5
+        R_sq_snap_tol = R_sq_snap_multiplier * torch.finfo(R_sq.dtype).eps * R_sq_scale
+        R_sq_snapped = torch.abs(R_sq) <= R_sq_snap_tol
+    R_sq = torch.where(R_sq_snapped, torch.zeros_like(R_sq), R_sq)
 
     # `clamp(min=0).sqrt()` does not guard the gradient: d(sqrt)/dx is unbounded at 0, and on
     # torch < 2.14 clamp passes the incoming gradient straight through at the bound, as measured in PR #4406, so
@@ -809,18 +817,19 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     # normalized Ferrari coefficient reconstruction errors in the actual Ferrari compute dtype.
     safe_R = torch.where(R > 0, R, torch.ones_like(R))
     E_division = E_cross_term / (4.0 * safe_R)
-    root_sq_scale = torch.maximum(torch.ones_like(R_sq), A_sq)
-    root_sq_scale = torch.maximum(root_sq_scale, torch.abs(B))
-    root_sq_scale = torch.maximum(root_sq_scale, torch.abs(y))
-    root_scale = torch.sqrt(root_sq_scale)
+    with torch.no_grad():
+        root_sq_scale = torch.maximum(torch.ones_like(R_sq), A_sq)
+        root_sq_scale = torch.maximum(root_sq_scale, torch.abs(B))
+        root_sq_scale = torch.maximum(root_sq_scale, torch.abs(y))
+        root_scale = torch.sqrt(root_sq_scale)
 
-    division_C_error = torch.abs(0.5 * A * y - 2.0 * R * E_division - C) / (root_sq_scale * root_scale)
-    division_D_error = torch.abs(0.25 * y * y - E_division * E_division - D) / (root_sq_scale * root_sq_scale)
-    constant_C_error = torch.abs(0.5 * A * y - 2.0 * R * E_constant - C) / (root_sq_scale * root_scale)
-    constant_D_error = torch.abs(0.25 * y * y - E_constant * E_constant - D) / (root_sq_scale * root_sq_scale)
-    division_error = torch.maximum(division_C_error, division_D_error)
-    constant_error = torch.maximum(constant_C_error, constant_D_error)
-    use_constant_E = (R == 0) | (constant_error < division_error)
+        division_C_error = torch.abs(0.5 * A * y - 2.0 * R * E_division - C) / (root_sq_scale * root_scale)
+        division_D_error = torch.abs(0.25 * y * y - E_division * E_division - D) / (root_sq_scale * root_sq_scale)
+        constant_C_error = torch.abs(0.5 * A * y - 2.0 * R * E_constant - C) / (root_sq_scale * root_scale)
+        constant_D_error = torch.abs(0.25 * y * y - E_constant * E_constant - D) / (root_sq_scale * root_sq_scale)
+        division_error = torch.maximum(division_C_error, division_D_error)
+        constant_error = torch.maximum(constant_C_error, constant_D_error)
+        use_constant_E = (R == 0) | (constant_error < division_error)
     E = torch.where(use_constant_E, E_constant, E_division)
 
     # Solve two resulting quadratic equations
@@ -975,7 +984,7 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
             lower.to(device=coeffs.device)[:, None], coeffs[:, 1:], torch.zeros_like(coeffs[:, 1:])
         )
         lower_roots = solve_cubic(lower_coeffs).to(device=work.device).to(dtype=work.dtype)
-        padded = torch.cat([lower_roots, torch.zeros_like(a[:, None])], -1)
+        padded = torch.cat([lower_roots, torch.zeros_like(lower_roots[:, :1])], -1)
         roots = torch.where(lower[:, None], padded, roots)
     elif bool(lower.any()):
         selected = lower.to(device=coeffs.device)
