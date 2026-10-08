@@ -126,6 +126,27 @@ class TestQuadraticSolver(BaseTester):
         roots = solver.solve_quadratic(torch.tensor([coeffs], device=device, dtype=dtype))
         self.assert_close(roots, torch.tensor([expected], device=device, dtype=dtype), rtol=1e-6, atol=0.0)
 
+    @pytest.mark.parametrize(
+        "coeffs, expected",
+        [
+            # b^2 and 4ac are float32 subnormals; MPS flushed them on the device.
+            (
+                [4.551530624417491e-20, 8.750074717878078e-19, -7.599072411803117e-20],
+                [0.086456982708514018, -19.310923299460849],
+            ),
+            (
+                [3.3937770899027226e-18, -9.990941796453828e-19, 1.3676081403565554e-21],
+                [0.2930147690886763, 0.0013752727964907445],
+            ),
+        ],
+    )
+    def test_float32_products_below_the_normal_range(self, coeffs, expected, device, dtype):
+        if dtype != torch.float32:
+            pytest.skip("The products are subnormal in float32.")
+        # References: sympy real-root isolation of the represented coefficients.
+        actual = solver.solve_quadratic(torch.tensor([coeffs], device=device, dtype=dtype))
+        self.assert_close(actual, torch.tensor([expected], device=device, dtype=dtype), atol=0.0, rtol=1e-5)
+
 
 class TestCubicSolver(BaseTester):
     def test_smoke(self, device, dtype):
@@ -234,6 +255,32 @@ class TestCubicSolver(BaseTester):
         flagged = [1.0, -481.0438232421875, 57850.8359375, -11.54153823852539]
         batched = solver.solve_cubic(torch.tensor([row, flagged], device=device, dtype=dtype))
         self.assert_close(batched[:1], alone, rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize(
+        "coeffs, expected",
+        [
+            # A close pair whose float32 Cardano discriminant is cancellation noise inside Q and R.
+            (
+                [1.0, -9.652440071105957, 30.569580078125, -31.61037254333496],
+                [2.4117069997755705, 3.619729296815576, 3.6210037745148106],
+            ),
+            # Three normal roots of a cubic whose coefficients are near the bottom of the float32 range.
+            (
+                [5.415209174622424e-38, 1.7378307161929965e-37, -8.82384773460241e-37, 2.9499504686657103e-38],
+                [-5.9589682615339355, 0.03365700614862145, 2.7161448868227056],
+            ),
+        ],
+    )
+    def test_float32_rows_float32_arithmetic_cannot_resolve(self, coeffs, expected, device, dtype):
+        if dtype != torch.float32:
+            pytest.skip("The rows exercise float32 arithmetic.")
+        if device.type not in ("cpu", "mps"):
+            pytest.skip("Eager CUDA promotes only the rows its float32 discriminant bound flags.")
+        # CPU and MPS solve float32 cubics in float64. References: sympy real-root isolation.
+        roots, num_real = _solve_cubic_with_count(torch.tensor([coeffs], device=device, dtype=dtype))
+        assert num_real.tolist() == [3]
+        expected = torch.tensor([expected], device=device, dtype=dtype)
+        self.assert_close(roots.sort(-1).values, expected, atol=0.0, rtol=1e-5)
 
     def test_root_beside_a_complex_pair_is_not_taken_as_dominant(self, device, dtype):
         # x (x^2 + x + 3) has one real root, 0. The closed form returns a cancellation remnant of about eps there, and
