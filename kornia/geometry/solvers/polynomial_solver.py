@@ -185,13 +185,14 @@ def _scaled_quadratic_coefficients(coeffs: torch.Tensor) -> tuple[torch.Tensor, 
     tiny_value = torch.tensor(finfo.tiny, device=coeffs.device, dtype=coeffs.dtype)
     b_squared = (raw_b * raw_b).detach()
     abs_ac = (raw_a * raw_c).detach().abs()
+    # One discriminant term underflowing is harmless while the other is at least 16 * tiny: its absolute error
+    # is below half the smallest subnormal. Rescaling such a row by its largest coefficient could instead flush a
+    # small coefficient to zero, so only overflow or a discriminant that is tiny as a whole rescales.
     rescale = (
         ~torch.isfinite(b_squared)
         | ~torch.isfinite(abs_ac)
         | (b_squared > max_value / 8)
         | (abs_ac > max_value / 32)
-        | ((b_squared == 0) & (raw_b != 0))
-        | ((abs_ac == 0) & (raw_a != 0) & (raw_c != 0))
         | ((b_squared + 4 * abs_ac < tiny_value * 16) & ((raw_b != 0) | ((raw_a != 0) & (raw_c != 0))))
     )
     exponent = torch.floor(torch.log2(torch.where(magnitude > 0, magnitude, one)))
@@ -418,8 +419,14 @@ def _solve_cubic(coeffs: torch.Tensor, _allow_promotion: bool = True) -> tuple[t
     detached_lead = a.detach() * safe_dominant
     detached_product = -d.detach() / detached_lead
     other_scale = detached_product.abs().sqrt()
+    # The largest root is at least a third of the root bound, which is above half the scale. A smaller
+    # closed-form root is a cancellation remnant beside a complex pair, e.g. the root 0 of x^3 + x^2 + 3x, and
+    # Vieta's quotients by it would invent a real pair of size 1 / remnant.
     mask_dominant = (
-        mask_cubic & (dominant_detached != 0) & (dominant_detached.abs() > _DOMINANT_ROOT_RATIO * other_scale)
+        mask_cubic
+        & (dominant_detached != 0)
+        & (dominant_detached.abs() > _DOMINANT_ROOT_RATIO * other_scale)
+        & (8 * dominant_detached.abs() >= scale)
     )
 
     if compiling:

@@ -110,6 +110,22 @@ class TestQuadraticSolver(BaseTester):
         (grad,) = torch.autograd.grad(solver.solve_quadratic(x).sum(), x)
         self.assert_close(grad, torch.tensor([[0.0, 0.0, 0.0], [-6.0, -1.0, 0.0]], device=device, dtype=dtype))
 
+    @pytest.mark.parametrize(
+        "coeffs, expected, literal_dtype",
+        [
+            # b^2 underflows, but it is negligible against 4ac: rescaling by the largest coefficient flushed a to 0.
+            ([2.0**-45, 2.0**-121, -(2.0**105)], [2.0**75, -(2.0**75)], "float32"),
+            ([2.0**-500, 2.0**-1000, -(2.0**600)], [2.0**550, -(2.0**550)], "float64"),
+            # No real root; the rescaled row lost its subnormal a and became a linear equation with a root at -2.6e33.
+            ([-2.129973665773722e-43, -6.776749542384429e-25, -1768312192.0], [0.0, 0.0], "float32"),
+        ],
+    )
+    def test_underflowed_negligible_term_keeps_small_coefficients(self, coeffs, expected, literal_dtype, device, dtype):
+        if dtype != getattr(torch, literal_dtype) or device.type != "cpu":
+            pytest.skip("The literal needs exact CPU subnormal and extreme-exponent arithmetic in its own dtype.")
+        roots = solver.solve_quadratic(torch.tensor([coeffs], device=device, dtype=dtype))
+        self.assert_close(roots, torch.tensor([expected], device=device, dtype=dtype), rtol=1e-6, atol=0.0)
+
 
 class TestCubicSolver(BaseTester):
     def test_smoke(self, device, dtype):
@@ -218,6 +234,17 @@ class TestCubicSolver(BaseTester):
         flagged = [1.0, -481.0438232421875, 57850.8359375, -11.54153823852539]
         batched = solver.solve_cubic(torch.tensor([row, flagged], device=device, dtype=dtype))
         self.assert_close(batched[:1], alone, rtol=0.0, atol=0.0)
+
+    def test_root_beside_a_complex_pair_is_not_taken_as_dominant(self, device, dtype):
+        # x (x^2 + x + 3) has one real root, 0. The closed form returns a cancellation remnant of about eps there, and
+        # treating it as a dominant root made Vieta's quotients by it report a spurious real pair of size 1 / eps.
+        rows = [[1.0, 1.0, 3.0, 0.0], [1.0, 1.0, 1.0, 0.0]]
+        if dtype in (torch.float32, torch.float64):
+            rows.append([1.0, 1.0, 1.0, -1e-30])  # (x - 1e-30) (x^2 + x + 1), up to rounding
+        roots, count = _solve_cubic_with_count(torch.tensor(rows, device=device, dtype=dtype))
+        assert count.tolist() == [1] * len(rows)
+        atol = 8 * torch.finfo(dtype).eps
+        self.assert_close(roots, torch.zeros_like(roots), rtol=0.0, atol=atol)
 
     @pytest.mark.parametrize(
         "coeffs, root",
