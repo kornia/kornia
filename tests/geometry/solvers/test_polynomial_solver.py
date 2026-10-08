@@ -204,6 +204,21 @@ class TestCubicSolver(BaseTester):
         mixed = torch.tensor([three, one], device=device, dtype=dtype)
         self.assert_close(solver.solve_cubic(mixed)[0], solver.solve_cubic(alone)[0])
 
+    def test_float32_close_pair_does_not_depend_on_the_batch(self, device, dtype):
+        # The float32 Cardano discriminant of this row takes the wrong sign at the close pair near 3.62, and an
+        # uncertainty bound on |Q^3| + R^2 misses the cancellation inside Q and R. Solved alone it returned one root;
+        # next to a row that forced float64, all three.
+        if dtype != torch.float32 or device.type != "cpu":
+            pytest.skip("CPU solves every float32 cubic in float64; eager accelerators promote flagged rows only.")
+        row = [1.0, -9.652440071105957, 30.569580078125, -31.61037254333496]
+        alone = solver.solve_cubic(torch.tensor([row], device=device, dtype=dtype))
+        # Roots of the represented float32 coefficients, solved in float64.
+        expected = torch.tensor([[2.411706999775569, 3.619729296817037, 3.621003774513351]], device=device, dtype=dtype)
+        self.assert_close(alone.sort(-1).values, expected, rtol=1e-6, atol=0.0)
+        flagged = [1.0, -481.0438232421875, 57850.8359375, -11.54153823852539]
+        batched = solver.solve_cubic(torch.tensor([row, flagged], device=device, dtype=dtype))
+        self.assert_close(batched[:1], alone, rtol=0.0, atol=0.0)
+
     @pytest.mark.parametrize(
         "coeffs, root",
         [

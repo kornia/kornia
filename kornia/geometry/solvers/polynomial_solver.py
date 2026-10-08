@@ -220,28 +220,40 @@ def _cubic_discriminant_is_uncertain(coeffs: torch.Tensor) -> torch.Tensor:
 
 
 def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
-    r"""Solve a batched cubic equation and return its real roots.
+    r"""Solve given cubic equation.
 
-    Coefficients have shape (B, 4), highest degree first. Three real
-    roots are returned unsorted; one-real-root rows are padded with zero.
-    A zero leading coefficient lowers the degree.
+    The function takes the coefficients of cubic equation and returns
+    the real roots.
 
-    Half-precision inputs are promoted to float32. Float32 cubics are solved
-    in float64 on CPU and in captured graphs, so a row's roots do not depend on
-    the rest of its batch; eager accelerator paths promote only the rows whose
-    float32 discriminant sign is uncertain.
-    MPS copies rows needing float64 to CPU; captured graphs use CPU float64 throughout.
-    At a repeated-root acos boundary backward uses a finite surrogate derivative.
+    .. math:: coeffs[0]x^3 + coeffs[1]x^2 + coeffs[2]x + coeffs[3] = 0
+
+    Convention:
+        - Coefficient layout and zero padding as :func:`solve_quadratic`. Three real roots are returned unsorted,
+          and a single real root is in slot 0.
+        - A zero leading coefficient lowers the degree, and the roots of the remaining polynomial come first.
+        - The closed form is evaluated on the row scaled by an exact power of two to a unit root bound, and the
+          roots are scaled back, so its intermediates neither overflow nor underflow for a tiny leading coefficient
+          or for roots far from unit scale (#4914).
+        - Half inputs are evaluated in float32. Float32 cubics are solved in float64 on CPU and in captured graphs,
+          so a row's roots do not depend on the rest of its batch. Eager accelerator paths promote only the rows
+          whose float32 discriminant sign is uncertain, and MPS solves those rows on the CPU. The output retains
+          the input dtype and device.
 
     Args:
-        coeffs: Coefficients of shape :math:`(B, 4)`, highest degree first.
+        coeffs : The coefficients cubic equation : `(B, 4)`
 
     Returns:
-        Real roots of shape :math:`(B, 3)`, with multiplicity and zero padding.
+        A torch.Tensor of shape `(B, 3)` containing the real roots to the cubic equation.
 
     Example:
         >>> solve_cubic(torch.tensor([[1., 0., 0., 1.]]))
         tensor([[-1.,  0.,  0.]])
+
+    .. note::
+       At the acos boundary reached by a repeated (or near-repeated) real root, backward suppresses
+       the derivative of the acos argument to keep gradients finite. Repeated-root derivatives are
+       undefined; this is a surrogate convention, not a mathematical Jacobian. :func:`solve_quartic`
+       inherits this convention for the rows it solves as cubics.
 
     """
     return _solve_cubic_with_count(coeffs)[0]
