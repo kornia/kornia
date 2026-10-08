@@ -32,6 +32,7 @@ from kornia.core.utils import (
     _torch_svd_cast,
     batched_forward,
     is_autocast_enabled,
+    is_compiling,
     is_exporting,
     is_mps_tensor_safe,
     register_module_state,
@@ -39,7 +40,7 @@ from kornia.core.utils import (
     safe_solve_with_mask,
 )
 
-from testing.base import BaseTester, assert_close
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, assert_close, dynamo_is_available
 
 
 def _issue_5476_batch(device, dtype):
@@ -257,27 +258,32 @@ class TestExportHelpers:
             pytest.skip(f"no Dynamo here: {e}")
         assert seen == [True]
 
-    def test_is_exporting_true_under_compile_with_public_flag(self):
-        # The same promise without the fallback: Torch does not fold ``torch.compiler.is_exporting``
-        # to ``True`` for ``torch.compile`` on every supported release -- on 2.14 a Dynamo trace sees
-        # ``False`` there -- so the guard has to reach ``is_compiling`` for the compiled graph to
-        # contain the export-safe paths on every version.
-        from kornia.core import utils
-
-        if utils._torch_is_exporting is None:
-            pytest.skip("torch has no export flag; covered by the fallback test")
-        assert is_exporting() is False
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_is_compiling_covers_capture_and_export(self):
+        # Whether ``is_exporting`` is also true inside a compiled trace depends on the Torch release
+        # (#5037), so the promise that holds across versions is on ``is_compiling``: both capture
+        # modes are reported, which is what a guard that only means "do not branch on data" needs.
+        x = torch.zeros(2)
         seen = []
 
-        def fn(x):
-            seen.append(is_exporting())
-            return x + 1
+        def fn(v):
+            seen.append(is_compiling())
+            return v + 1
 
-        try:
-            torch.compile(fn, backend="eager")(torch.zeros(2))
-        except RuntimeError as e:  # e.g. "Dynamo is not supported on Python 3.13+" on torch 2.5
-            pytest.skip(f"no Dynamo here: {e}")
+        torch.compile(fn, backend="eager")(x)
         assert seen == [True]
+
+        exported = []
+
+        class Mod(torch.nn.Module):
+            def forward(self, v):
+                exported.append(is_compiling())
+                return v + 1
+
+        torch.export.export(Mod(), (x,))
+        assert exported
+        assert all(exported)
+        assert is_compiling() is False
 
     def test_register_module_state_wraps_leaf(self, device, dtype):
         m = torch.nn.Module()

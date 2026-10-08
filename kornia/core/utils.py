@@ -584,26 +584,30 @@ def is_compiling() -> bool:
 @torch.jit.unused
 def _is_exporting_eager() -> bool:
     if _torch_is_exporting is not None:
-        # ``torch.compiler.is_exporting`` is not folded to ``True`` for ``torch.compile`` across the
-        # whole supported range: on torch 2.14 a Dynamo trace reports ``False`` here while
-        # ``is_compiling()`` is ``True``, so the flag alone makes the paths a compiled graph takes
-        # depend on the torch version. Both are graph captures and want the same arithmetic, so
-        # honour either.
-        return bool(_torch_is_exporting()) or is_compiling()
-    # torch < 2.6 has no export flag, so ``is_compiling`` is the fallback with the same semantics.
+        return bool(_torch_is_exporting())
+    # torch < 2.6 has no export flag, so ``is_compiling`` is the fallback: it is true under
+    # ``torch.compile`` and ``torch.export`` alike. Newer releases differ - ``torch.compile`` can
+    # report ``False`` for the export flag - which is why call sites must pick the predicate they
+    # actually mean.
     return is_compiling()
 
 
 def is_exporting() -> bool:
-    """Whether execution is inside a graph capture by ``torch.compile``, ``torch.export`` or the dynamo ONNX exporter.
+    """Whether execution is inside a graph capture by ``torch.export`` or the dynamo ONNX exporter.
 
     Used to switch to export-safe arithmetic (closed-form inverses, ``sort``-based medians, ...) and
-    to skip in-``forward`` side effects (e.g. stashing per-call state on ``self``) that graph capture
-    rejects, without changing the captured output. ``torch.compile`` counts as capturing too: Torch
-    does not fold its export flag to ``True`` for a Dynamo trace on every supported release, so
-    ``is_compiling`` is taken as well to give one behaviour per capture mode instead of one per torch
-    version. On torch < 2.6, which has no export flag, ``is_compiling`` is used for the same reason.
-    Always ``False`` inside TorchScript, so the guard is safe to call from scripted functions.
+    to skip in-``forward`` side effects (e.g. stashing per-call state on ``self``) that
+    ``torch.export`` rejects, without changing the captured output. Always ``False`` inside
+    TorchScript, so the guard is safe to call from scripted functions.
+
+    The flag is export-specific, not capture-specific: whether it is also true inside a
+    ``torch.compile`` trace depends on the Torch release, so a compiled call can take different
+    paths across versions. Where the intent is "any graph capture" - skipping data-dependent
+    validation, or avoiding ``self`` side effects - use :func:`is_compiling`, which covers
+    ``torch.compile`` and ``torch.export`` alike on every supported release. Keep this predicate for
+    paths that exist only for export, such as :func:`crop_by_indices` routing to its dedicated
+    export implementation: letting a compiled call take that route changes the sampling the eager
+    and compiled paths agree on.
     """
     if torch.jit.is_scripting():
         return False
