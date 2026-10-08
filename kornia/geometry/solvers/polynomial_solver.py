@@ -976,14 +976,15 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
             break
         roots = torch.where(improved, candidate, roots)
         value = torch.where(improved, residual, value)
-    # Attach the implicit-function Jacobian at simple roots without moving their values.
+    # Attach the implicit-function Jacobian at simple roots without moving their values: the
+    # detached difference is exactly zero, whereas (fixed - correction) + correction rounds.
     fixed = roots.detach()
     value_for_grad = (((fixed + a1) * fixed + b1) * fixed + c1) * fixed + d1
     slope_for_grad = ((4 * fixed + a3) * fixed + b2) * fixed + c1
     with torch.no_grad():
         simple = newton & (slope_for_grad.abs() > 8 * eps * _quartic_slope_scale(columns, fixed.abs()))
     correction = value_for_grad / torch.where(simple, slope_for_grad, 1.0)
-    implicit = fixed - correction + correction.detach()
+    implicit = fixed + (correction.detach() - correction)
     roots = torch.where(simple, implicit, roots)
     # Multiple-root Jacobians are undefined. Keep the finite midpoint convention.
     # For close simple roots, tiny forward errors prevent cancellation of their large
