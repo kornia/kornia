@@ -453,6 +453,26 @@ class TestCubicSolver(BaseTester):
         assert num_real.tolist() == [3, 1, 3], num_real
         self.gradcheck(solver.solve_cubic, (rows.requires_grad_(),))
 
+    def test_tiny_leading_coefficient_gradient_stays_finite(self, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("The coefficients need the float64 exponent range.")
+        coeffs = torch.tensor(
+            [[-3.261706204944339e-40, -2.3121190290020114e101, 9.353450215509385e-208, -3.1729113405545114e257]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        root = solver.solve_cubic(coeffs)[0, 0]
+        (gradient,) = torch.autograd.grad(root, coeffs)
+        # The implicit derivative -[r^3, r^2, r, 1] / p'(r), from mpmath at 50 digits. The quotient b / a has the
+        # derivative b / a^2, which overflows; the root's derivative with respect to a does not.
+        expected = torch.tensor(
+            [[-2.173304145468546e180, 3.0658800553039539e39, -4.325036849126378e-102, 6.1013292786649817e-243]],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(gradient, expected, atol=0.0, rtol=1e-8)
+
     def test_exact_double_root(self, device, dtype):
         if dtype not in (torch.float32, torch.float64):
             pytest.skip("The coefficients are exact in float32 and float64.")

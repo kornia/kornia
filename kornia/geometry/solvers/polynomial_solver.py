@@ -321,10 +321,17 @@ def _solve_cubic(coeffs: torch.Tensor, _allow_promotion: bool = True) -> tuple[t
     # All candidates are evaluated at fixed batch shape. Feed unused lanes
     # benign values before nonlinear operations: torch.where selects values,
     # but autograd still visits the unselected expression's backward graph.
+    # The quotients are correctly rounded, but their derivative b / a^2 overflows for a tiny a, as in
+    # [-3.3e-40, -2.3e101, 9.4e-208, -3.2e257], whose root's derivative is a finite -2.2e180. The derivative with
+    # respect to a is formed from the quotient instead, -(b / a) / a, which overflows only where it is infinite:
+    # the relative step (a - a) / a is an exact zero in the forward pass with derivative 1 / a.
     safe_a = torch.where(mask_cubic, a, one)
-    b_a = torch.where(mask_cubic, b / safe_a, zero)
-    c_a = torch.where(mask_cubic, c / safe_a, zero)
-    d_a = torch.where(mask_cubic, d / safe_a, zero)
+    detached_a = safe_a.detach()
+    relative_step = (safe_a - detached_a) / detached_a
+    b_a, c_a, d_a = (
+        torch.where(mask_cubic, q - torch.nan_to_num(q.detach() * relative_step, nan=0.0), zero)
+        for q in (b / detached_a, c / detached_a, d / detached_a)
+    )
 
     # Scale the independent variable by an exact power of two. Its detached
     # exponent is a piecewise-constant conditioning choice, not a derivative.
