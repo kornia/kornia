@@ -757,28 +757,39 @@ class TestConventionAugmentationBase2D(BaseTester):
             with pytest.raises(NotImplementedError):
                 K.AugmentationSequential(aug, data_keys=["input", key])(image, data)
 
-    def test_convention_geometric_bhw_mask_compiles_fullgraph_5598(self, device, dtype):
-        augmentation = K.RandomHorizontalFlip(p=1.0)
-        image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
-        mask = torch.rand(2, 8, 8, device=device, dtype=dtype)
+    def test_convention_bhw_mask_list_entry_follows_the_image_5598(self, device, dtype):
+        # A batched (B, H, W) mask takes its batch size from ``batch_prob`` (#5598). A list entry has a 0-d gate and
+        # still reads a first dimension equal to the image batch as that batch, so each row gets its own crop window.
+        # The meaning of a mask list is tracked in #4477.
+        image = torch.arange(2 * 64, device=device).to(dtype).reshape(2, 1, 8, 8)
+        sequence = K.AugmentationSequential(K.RandomCrop((4, 4), p=1.0), data_keys=["input", "mask"])
+        output_image, output_masks = sequence(image, [image[:, 0]])
+        assert output_masks[0].shape == (2, 1, 4, 4)
+        self.assert_close(output_masks[0], output_image, rtol=0, atol=0)
 
-        augmentation(image)
-        expected = augmentation.transform_masks(
-            mask, augmentation._params, augmentation.flags, transform=augmentation.transform_matrix
+    @pytest.mark.parametrize("first_dim", [2, 3])
+    def test_convention_3d_mask_keepdim_returns_its_rank_5598(self, device, dtype, first_dim):
+        # Under keepdim a 3-D mask whose first dimension is the image batch stays (B, H, W); otherwise it is a
+        # single (C, H, W) mask that is broadcast across the image batch.
+        image = torch.zeros(2, 1, 8, 8, device=device, dtype=dtype)
+        mask = torch.arange(first_dim * 64, device=device).to(dtype).reshape(first_dim, 8, 8)
+        sequence = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"], keepdim=True)
+        _, output_mask = sequence(image, mask)
+        expected = (
+            mask.flip(-1)
+            if first_dim == image.shape[0]
+            else mask.flip(-1).unsqueeze(0).expand(image.shape[0], -1, -1, -1)
         )
+        self.assert_close(output_mask, expected, rtol=0, atol=0)
 
-        torch._dynamo.reset()
-        compiled = torch.compile(
-            lambda x: augmentation.transform_masks(
-                x, augmentation._params, augmentation.flags, transform=augmentation.transform_matrix
-            ),
-            fullgraph=True,
-        )
-
-        actual = compiled(mask)
-
-        assert actual.shape == (2, 1, 8, 8)
-        self.assert_close(actual, expected)
+    def test_convention_video_bthw_mask_follows_the_clip_5598(self, device, dtype):
+        # VideoSequential flattens a (B, T, H, W) mask to (B * T, H, W). With same_on_frame=True the child draws for B
+        # and its gates are broadcast to B * T, which is the batch the mask has; the drawn shape says B (#5598).
+        clip = torch.arange(2 * 3 * 64, device=device).to(dtype).reshape(2, 3, 1, 8, 8)
+        video = K.VideoSequential(K.RandomHorizontalFlip(p=1.0))
+        sequence = K.AugmentationSequential(video, data_keys=["input", "mask"])
+        output_clip, output_mask = sequence(clip, clip[:, :, 0])
+        self.assert_close(output_mask, output_clip, rtol=0, atol=0)
 
     def test_convention_direct_geometric_mask_handler_rejects_bool(self, device, dtype):
         # The container casts bool masks around geometric dispatch. Calling the geometric handler directly
