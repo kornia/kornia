@@ -849,8 +849,10 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         - Coefficient layout and zero padding as :func:`solve_quadratic`. Genuine quartic roots are sorted in
           descending order, followed by padding; lower-degree rows preserve :func:`solve_cubic`'s order.
         - Quartics are evaluated after an exact power-of-two variable rescaling to a unit root bound.
-          Root reality and multiplicity near a stationary point are resolved against the original coefficients
-          with compensated Horner evaluation, before monic normalization can erase the distinction.
+          Root reality and multiplicity are resolved against the original coefficients with compensated Horner
+          evaluation, before monic normalization can erase the distinction: the signs of the quartic at its
+          stationary points fix the number of real roots wherever they are resolvable, and the local Taylor
+          quadratic decides a nearly multiple root.
         - A row is solved as the cubic of its last four coefficients when its leading coefficient is 0, or when both
           hold: ``|a|`` is smaller than ``1e-6`` (``1e-12`` in float64) times ``min(1, max_i |coeffs_i|)``, and the
           scale-invariant root bound ``max(|b/a|, |c/a|^(1/2), |d/a|^(1/3), |e/a|^(1/4))`` exceeds ``1 / tol``
@@ -876,7 +878,9 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     .. note::
        Variable rescaling is bounded to normal reciprocal powers of two in the compute dtype. It does not
        recover input coefficients that have underflowed, and extreme subnormal coefficient scales may remain
-       below unit scale.
+       below unit scale. A float64 coefficient that underflows once the variable is rescaled counts as 0: in
+       :math:`x^4 + 1.75 x^3 - 78 x^2 + 5 \cdot 10^{-324}`, the real pair :math:`\pm 2.5 \cdot 10^{-163}` is
+       reported as a double root at 0.
 
     .. note::
        Simple roots use the implicit-function Jacobian, coupled to preserve Vieta's sum

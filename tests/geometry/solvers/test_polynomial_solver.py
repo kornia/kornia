@@ -907,6 +907,15 @@ class TestQuarticSolver(BaseTester):
         assert int((actual != 0).sum()) == int((expected != 0).sum())
         self.assert_close(actual, expected, atol=0.0, rtol=1e-5)
 
+    def test_coefficient_underflowed_by_rescaling_counts_as_zero(self, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("The constant term is the smallest float64 subnormal.")
+        # The documented limit: rescaled to a unit root bound, 5e-324 underflows, and the real pair
+        # +-2.5e-163 is reported as a double root at 0.
+        coeffs = torch.tensor([[1.0, 1.75, -78.0, 0.0, 5e-324]], device=device, dtype=dtype)
+        expected = torch.tensor([[8.0, 0.0, 0.0, -9.75]], device=device, dtype=dtype)
+        self.assert_close(solver.solve_quartic(coeffs), expected, atol=0.0, rtol=0.0)
+
     def test_exact_zero_double_root_gradient(self, device, dtype):
         if dtype != torch.float64:
             pytest.skip("The analytic Jacobian is compared in float64.")
