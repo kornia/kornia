@@ -887,8 +887,8 @@ A class absent from the target has no overlap to score, and the per-class functi
 
 - :func:`~kornia.metrics.mean_iou` returns IoU 1 for a class absent from both the target and the prediction, through
   its ``eps``, and leaves the averaging over classes to the caller: drop the classes that occur in neither map before
-  averaging its ``(B, K)`` output. scikit-learn's ``jaccard_score`` reports 0 for such a class instead, and 1 with
-  ``zero_division=1.0``.
+  averaging its ``(B, K)`` output. scikit-learn's ``jaccard_score`` leaves such a class out unless ``labels`` names it,
+  and then scores it 0, or 1 with ``zero_division=1.0``.
 - ``dice_loss(average='macro')`` and :func:`~kornia.losses.tversky_loss` leave it out of the sample's mean, whether
   it is predicted or not.
 - :func:`~kornia.metrics.mean_average_precision` pools the images and leaves out a class without a ground-truth object
