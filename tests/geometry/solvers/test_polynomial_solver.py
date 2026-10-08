@@ -1328,21 +1328,21 @@ class TestQuarticSolver(BaseTester):
         found = roots[roots != 0].view(2, 2).sort(dim=-1).values
         self.assert_close(found, expected, atol=0.0, rtol=1e-2)
 
-    def test_simple_root_threshold_for_half_inputs_5509(self, device, dtype):
-        # Half quartics are solved in float32 without the float32 precision retry (#4906). The double root at
-        # -1.5 must therefore survive the simple-root filter; lowering its threshold from 1e-2 to 1e-3 loses a copy.
+    def test_double_root_for_half_inputs_5509(self, device, dtype):
+        # Half quartics are solved in float32 without the float32 precision retry (#4906). These exact coefficients
+        # represent (x + 2.5)^2 (x + 3.5) (x - 10), so the assertion checks the true double root at -2.5.
         if dtype != torch.float16:
-            pytest.skip("The float32 precision retry masks this threshold mutation for float32 inputs.")
-        coeffs = torch.tensor([[1.0, 9.5, 33.25, 50.625, 28.125]], device=device, dtype=dtype)
-        expected = torch.tensor([[-3.0, -2.5, -1.5, -1.5]], device=device, dtype=dtype)
+            pytest.skip("Only float16 inputs exercise the half-precision quartic path without the float32 retry.")
+        coeffs = torch.tensor([[1.0, -1.5, -61.25, -215.625, -218.75]], device=device, dtype=dtype)
+        expected = torch.tensor([[-3.5, -2.5, -2.5, 10.0]], device=device, dtype=dtype)
 
         roots = solver.solve_quartic(coeffs)
 
         self.assert_close(roots.sort(dim=-1).values, expected, atol=0.0, rtol=0.0)
 
     def test_simple_root_derivative_threshold_is_pinned_5509(self):
-        # Float32 precision retries mask changes to this filter in existing rows. Keep the calibrated boundary
-        # explicit: raising it to 1e-1 misclassifies spurious repeats, while lowering it to 1e-3 rejects half roots.
+        # Float32 precision retries mask the threshold mutations in the historical rows. Pin the calibrated value
+        # explicitly alongside behavioral tests for half precision repeated roots and recovered placeholders.
         assert polynomial_solver_module._QUARTIC_SIMPLE_ROOT_DERIVATIVE == 1e-2
 
     def test_ferrari_candidate_is_kept_over_a_recovered_copy_4474(self, device, dtype):

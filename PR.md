@@ -1,6 +1,6 @@
 ## What does this pull request do?
 
-Adds mutation pins for all three filter changes reported in #5509: the upper and lower simple-root derivative threshold mutations, and tightening the recovered-placeholder step bound from `sqrt(eps)` to `eps`. The float16 coefficients represent `(x + 1.5)^2 (x + 2.5) (x + 3)` and verify both double-root copies survive. A separate float32 quartic verifies that a recovered small root is retained. The float32 retry masks the reported upper-threshold example, so its calibrated value is asserted explicitly.
+Adds mutation pins for the filter changes reported in #5509: the upper and lower simple-root derivative threshold mutations, and tightening the recovered-placeholder step bound from `sqrt(eps)` to `eps`. The float16 coefficients represent `(x + 2.5)^2 (x + 3.5) (x - 10)` and verify both copies of the true double root survive. A separate float32 quartic verifies that a recovered small root is retained. The float32 retry masks the reported upper-threshold example, so its calibrated value is asserted explicitly.
 
 Adds the fixed changelog fragment `changelog.d/5621.fixed.md`.
 
