@@ -113,8 +113,7 @@ class TestONNXExportMixin(BaseTester):
     )
     def test_saved_model_has_the_documented_opset(self, tmp_path, channels, module):
         # The dynamo exporter builds opset 18 and down-converts a lower request only when every op has an adapter, which
-        # a convolution has and the blur's ``Pad`` has not. Static shapes: the legacy exporter cannot export
-        # GaussianBlur2d with a dynamic dimension, even the batch alone (#5222).
+        # a convolution has and the blur's ``Pad`` has not.
         path = tmp_path / "model.onnx"
         shape = [2, channels, 16, 16]
         op = ImageSequential(module()).to_onnx(onnx_name=str(path), input_shape=shape, output_shape=shape)

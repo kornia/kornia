@@ -535,6 +535,45 @@ class TestGaussianBlur2d(BaseTester):
             torch.onnx.export(model, sample_input, buf, **export_kwargs)
         assert buf.getbuffer().nbytes > 0
 
+        # a dynamic batch and spatial size used to leave the convolution weight without a static shape (#5222)
+        dynamic_buf = io.BytesIO()
+        dynamic_axes = {
+            "input": {0: "batch", 2: "height", 3: "width"},
+            "output": {0: "batch", 2: "height", 3: "width"},
+        }
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            torch.onnx.export(model, sample_input, dynamic_buf, dynamic_axes=dynamic_axes, **export_kwargs)
+        assert dynamic_buf.getbuffer().nbytes > 0
+
+    @pytest.mark.device_agnostic
+    def test_onnx_export_legacy_dynamic_matches_eager(self, dtype):
+        if dtype != torch.float32:
+            pytest.skip("the exported graph is checked once, in float32")
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+        model = GaussianBlur2d((3, 3), (1.5, 1.5))
+        sample_input = torch.rand(1, 3, 8, 8, dtype=dtype)
+        buf = io.BytesIO()
+        export_kwargs: dict[str, Any] = {
+            "input_names": ["input"],
+            "output_names": ["output"],
+            "opset_version": 17,
+            "dynamic_axes": {
+                "input": {0: "batch", 2: "height", 3: "width"},
+                "output": {0: "batch", 2: "height", 3: "width"},
+            },
+        }
+        if torch_version_ge(2, 5, 0):
+            export_kwargs["dynamo"] = False
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            torch.onnx.export(model, sample_input, buf, **export_kwargs)
+        session = ort.InferenceSession(buf.getvalue(), providers=["CPUExecutionProvider"])
+        for image in (sample_input, torch.rand(2, 3, 5, 9, dtype=dtype)):
+            exported = torch.from_numpy(session.run(None, {"input": image.numpy()})[0])
+            self.assert_close(exported, model(image))
+
     @pytest.mark.device_agnostic
     # 2.5 is where `dynamo=` first exists, but there it still routes through the experimental
     # `_compat.export_compat` shim. This test passes `fallback=False` implicitly, so on the 2.5.1
