@@ -802,6 +802,111 @@ class TestQuarticSolver(BaseTester):
         expected = torch.tensor([expected], device=device, dtype=dtype)
         self.assert_close(solver.solve_quartic(coeffs), expected, atol=0.0, rtol=1e-6)
 
+    @pytest.mark.parametrize(
+        "coefficients, expected, dtypes",
+        [
+            # (x - 1)(x - 3)((x - 1)^2 + 2^-24)
+            ([1.0, -6.0, 12.000000059604645, -10.000000238418579, 3.0000001788139343], [3.0, 1.0], (torch.float64,)),
+            # (x - 2)(x - 3)((x - 2)^2 + 2^-18)
+            (
+                [1.0, -9.0, 30.000003814697266, -44.00001907348633, 24.000022888183594],
+                [3.0, 2.0],
+                (torch.float32, torch.float64),
+            ),
+        ],
+    )
+    def test_simple_root_beside_a_close_complex_pair(self, coefficients, expected, dtypes, device, dtype):
+        if dtype not in dtypes:
+            pytest.skip("The coefficients are exact in the listed dtypes only.")
+        # The pair makes the simple root's slope small, yet the root's Ferrari partner is the other real root.
+        coeffs = torch.tensor([coefficients], device=device, dtype=dtype)
+        expected = torch.tensor([expected + [0.0, 0.0]], device=device, dtype=dtype)
+        self.assert_close(solver.solve_quartic(coeffs), expected, atol=1e-6, rtol=1e-6)
+
+    def test_simple_root_beside_a_close_complex_pair_grid(self, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("The grid coefficients are exact in float64.")
+        # (x - r)(x - s)((x - r)^2 + d^2) on dyadic r, s and d: exactly two real roots.
+        r = torch.tensor([-2.5, -0.75, 1.0, 3.25], dtype=torch.float64)
+        gap = torch.tensor([-2.0, 1.5, 4.0], dtype=torch.float64)
+        width = 2.0 ** torch.tensor([-8.0, -11.0, -14.0], dtype=torch.float64)
+        r, gap, width = (v.flatten() for v in torch.meshgrid(r, gap, width, indexing="ij"))
+        s = r + gap
+        d = width * r.abs().clamp(min=1)
+        linear = torch.stack([torch.ones_like(r), -(r + s), r * s], -1)
+        pair = torch.stack([torch.ones_like(r), -2 * r, r * r + d * d], -1)
+        coeffs = torch.zeros(len(r), 5, dtype=torch.float64)
+        for i in range(3):
+            for j in range(3):
+                coeffs[:, i + j] += linear[:, i] * pair[:, j]
+        expected = torch.stack([torch.maximum(r, s), torch.minimum(r, s)], -1)
+        expected = torch.cat([expected, torch.zeros_like(expected)], -1)
+        actual = solver.solve_quartic(coeffs.to(device=device, dtype=dtype))
+        self.assert_close(actual, expected.to(device=device, dtype=dtype), atol=1e-6, rtol=1e-6)
+
+    @pytest.mark.parametrize(
+        "coefficients, expected, dtypes",
+        [
+            # Four real roots within 2% of each other: the resolvent has a near-triple root.
+            (
+                [1.0, -8.8321223404358, 29.251986018365162, -43.0583174138504, 23.767524638771818],
+                [2.2279948162159041, 2.2083975939262021, 2.2081449386622555, 2.1875849916314388],
+                (torch.float64,),
+            ),
+            # Two real roots and a complex pair in one cluster.
+            (
+                [1.0, -0.7960158586502075, 0.23761533200740814, -0.03152422606945038, 0.0015683587407693267],
+                [0.20183169083788146, 0.19617540615477025],
+                (torch.float32, torch.float64),
+            ),
+            # A separated real pair inside a cluster with a complex pair.
+            (
+                [-0.0014945328030236183, 0.13165948745769898, -4.349402922389792, 63.8592944813424, -351.6004102965555],
+                [22.119540865055652, 21.998521966226848],
+                (torch.float64,),
+            ),
+            # A real root beside a close complex pair, and a far root.
+            (
+                [0.28430994261445064, -1.8145339507785327, 3.534044520265233, -2.7811262287698018, 0.7766973115733834],
+                [3.6612115102922415, 0.90699103508695153],
+                (torch.float64,),
+            ),
+            (
+                [1.0, -4.024720362857346, 5.810396766987136, -3.469536959883321, 0.6775864610358943],
+                [1.215961780224748, 0.37690253008267075],
+                (torch.float64,),
+            ),
+            # A near-double complex pair that Ferrari split between two real factors.
+            (
+                [-0.7672792631437675, -0.2277980718973569, 2.8115738175174863, 0.3210495206426153, 0.00913104309961989],
+                [1.8310604836611197, -2.014346817978239],
+                (torch.float64,),
+            ),
+            # A near-triple root with one real root: a second copy of it is not a root.
+            (
+                [1.0, -2.01993465423584, -0.6778868906849311, -0.07099884823303, -0.0024409612243582344],
+                [2.3248481750488281, -0.10163741311517308],
+                (torch.float64,),
+            ),
+            # A near-quadruple root with no real roots.
+            (
+                [-0.010004346039634609, -0.01847789435683093, -0.01279815961393944, -0.003939671824814085, -0.00045478259830212733],
+                [],
+                (torch.float64,),
+            ),
+        ],
+    )
+    def test_real_roots_in_clusters(self, coefficients, expected, dtypes, device, dtype):
+        if dtype not in dtypes:
+            pytest.skip("The coefficients are exact in the listed dtypes only.")
+        # References: sympy real-root isolation of the represented coefficients. Inside a cluster a root is
+        # determined to about eps^(1/k) for a k-fold cluster, hence the tolerance.
+        coeffs = torch.tensor([coefficients], device=device, dtype=dtype)
+        expected = torch.tensor([expected + [0.0] * (4 - len(expected))], device=device, dtype=dtype)
+        actual = solver.solve_quartic(coeffs)
+        assert int((actual != 0).sum()) == int((expected != 0).sum())
+        self.assert_close(actual, expected, atol=0.0, rtol=1e-5)
+
     def test_exact_zero_double_root_gradient(self, device, dtype):
         if dtype != torch.float64:
             pytest.skip("The analytic Jacobian is compared in float64.")
