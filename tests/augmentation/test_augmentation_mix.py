@@ -24,6 +24,7 @@ from kornia.augmentation import (
     AugmentationSequential,
     PatchMix,
     RandomCutMixV2,
+    RandomHorizontalFlip,
     RandomJigsaw,
     RandomMixUpV2,
     RandomMosaic,
@@ -662,6 +663,61 @@ class TestRandomMosaic(BaseTester):
 
         torch.testing.assert_close(output[0], boxes[0])
         torch.testing.assert_close(output[2], boxes[2])
+
+    @pytest.mark.parametrize("sequential", [False, True])
+    @pytest.mark.parametrize("data_key", ["bbox_xyxy", "bbox_xywh", "bbox"])
+    def test_mosaic_filtered_exports_4714(self, sequential, data_key, device, dtype):
+        image = torch.zeros(2, 1, 6, 8, device=device, dtype=dtype)
+        xyxy = image.new_tensor([[[1.0, 1.0, 2.0, 2.0]], [[1.0, 1.0, 4.0, 4.0]]])
+        mode = {"bbox_xyxy": "xyxy", "bbox_xywh": "xywh", "bbox": "vertices_plus"}[data_key]
+        if data_key == "bbox" and not sequential:
+            mode = "vertices"
+        boxes = Boxes.from_tensor(xyxy).to_tensor(mode)
+        mosaic = RandomMosaic(p=1.0, min_bbox_size=99.0)
+        aug = AugmentationSequential(mosaic, data_keys=["input", data_key]) if sequential else mosaic
+        if sequential:
+            aug(image, boxes)
+            params = aug._params
+            params[0].data["batch_prob"] = image.new_tensor([0.0, 1.0])
+            _, output = aug(image, boxes, params=params)
+        else:
+            params = mosaic.forward_parameters(image.shape)
+            params["batch_prob"] = image.new_tensor([0.0, 1.0])
+            _, output = aug(image, boxes, params=params, data_keys=["input", data_key])
+        self.assert_close(output[0, :1], boxes[0], atol=0.0, rtol=0.0)
+        assert output[0, 1:].count_nonzero() == 0
+        assert output[1].count_nonzero() == 0
+
+    def test_annotation_filter_validity_follows_gate_4714(self, device, dtype):
+        class FilterBoxes(RandomHorizontalFlip):
+            def apply_transform_box(self, input, params, flags, transform=None):
+                return input.filter_boxes_by_area(2.0)
+
+        image = torch.zeros(2, 1, 6, 8, device=device, dtype=dtype)
+        xyxy = image.new_tensor([[[1.0, 1.0, 2.0, 2.0]], [[1.0, 1.0, 2.0, 2.0]]])
+        boxes = Boxes.from_tensor(xyxy)
+        aug = FilterBoxes(p=1.0)
+        params = aug.forward_parameters(image.shape)
+        params["batch_prob"] = image.new_tensor([0.0, 1.0])
+        output = aug.transform_boxes(boxes, params, aug.flags)
+        self.assert_close(output.to_tensor("xyxy")[0], xyxy[0])
+        assert output.to_tensor("xyxy")[1].count_nonzero() == 0
+        self.assert_close(boxes.to_tensor("xyxy"), xyxy)
+
+    def test_mosaic_permutates_filtered_validity_4714(self, device, dtype):
+        image = torch.zeros(2, 1, 6, 8, device=device, dtype=dtype)
+        boxes = Boxes.from_tensor(
+            image.new_tensor([[[1.0, 1.0, 2.0, 2.0]], [[1.0, 1.0, 4.0, 4.0]]])
+        ).filter_boxes_by_area(2.0)
+        aug = RandomMosaic(p=1.0, output_size=(12, 16), start_ratio_range=(0.0, 0.0))
+        params = aug.forward_parameters(image.shape)
+        params["permutation"] = torch.tensor([[0, 1, 0, 1], [1, 0, 1, 0]], device=device)
+        output = aug.apply_transform_boxes(boxes, params, aug.flags).to_tensor("xyxy")
+        invalid = params["permutation"] == 0
+        assert output[invalid].count_nonzero() == 0
+        # Select whole boxes before slicing coordinates; mixed mask/slice indexing differs across torch versions.
+        valid_boxes = output[~invalid]
+        assert (valid_boxes[:, 2:] > valid_boxes[:, :2]).all()
 
     def test_partial_batch_preserves_unselected_filtered_boxes_4679(self, device, dtype):
         input = torch.rand(4, 1, 6, 8, device=device, dtype=dtype)

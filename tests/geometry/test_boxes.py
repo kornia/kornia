@@ -947,6 +947,123 @@ class TestBoxes2D(BaseTester):
         assert filtered.data.shape == boxes.data.shape
         assert not torch.equal(boxes.data, torch.zeros_like(boxes.data))
 
+    @pytest.mark.parametrize("inplace", [False, True])
+    @pytest.mark.parametrize("batched", [False, True])
+    def test_filter_exports_and_masks_4714(self, inplace, batched, device, dtype, monkeypatch):
+        xyxy = torch.tensor(
+            [[1.0, 1.0, 4.0, 4.0], [1.0, 1.0, 2.0, 2.0], [2.0, 2.0, 5.0, 5.0]], device=device, dtype=dtype
+        )
+        if batched:
+            xyxy = torch.stack([xyxy, xyxy.flip(0).roll(1, 0)])
+        boxes = Boxes.from_tensor(xyxy)
+        before = boxes.clone()
+        filtered = boxes.filter_boxes_by_area(min_area=2.0, inplace=inplace)
+        invalid = (xyxy[..., 2] - xyxy[..., 0]) == 1
+        assert (filtered is boxes) == inplace
+        for mode in ("xyxy", "xywh", "vertices", "xyxy_plus", "vertices_plus"):
+            expected = before.to_tensor(mode)
+            expected[invalid] = 0
+            self.assert_close(filtered.to_tensor(mode), expected, atol=0.0, rtol=0.0)
+        expected_mask = before.to_mask(6, 6)
+        expected_mask[invalid] = 0
+        self.assert_close(filtered.to_mask(6, 6), expected_mask, atol=0.0, rtol=0.0)
+        monkeypatch.setattr(boxes_module, "is_exporting", lambda: True)
+        self.assert_close(filtered.to_mask(6, 6), expected_mask, atol=0.0, rtol=0.0)
+        if not inplace:
+            self.assert_close(boxes.to_tensor("xyxy"), xyxy, atol=0.0, rtol=0.0)
+
+    def test_filter_origin_all_none_and_repeat_4714(self, device, dtype):
+        # The valid origin pixel and a filtered box have identical raw inclusive coordinates.
+        xyxy = torch.tensor([[0.0, 0.0, 1.0, 1.0], [1.0, 1.0, 4.0, 4.0]], device=device, dtype=dtype)
+        boxes = Boxes.from_tensor(xyxy)
+        filtered = boxes.filter_boxes_by_area(max_area=0.0)
+        self.assert_close(filtered.to_tensor("xyxy"), xyxy.new_tensor([[0.0, 0.0, 1.0, 1.0], [0.0, 0.0, 0.0, 0.0]]))
+        assert filtered.to_mask(5, 5)[0, 0, 0] == 1
+        assert filtered.to_mask(5, 5)[1].count_nonzero() == 0
+        for mode in ("xyxy", "xywh", "vertices", "xyxy_plus", "vertices_plus"):
+            self.assert_close(
+                boxes.filter_boxes_by_area(min_area=0.0).to_tensor(mode), boxes.to_tensor(mode), atol=0.0, rtol=0.0
+            )
+            assert boxes.filter_boxes_by_area(min_area=99.0).to_tensor(mode).count_nonzero() == 0
+            self.assert_close(
+                filtered.filter_boxes_by_area().to_tensor(mode), filtered.to_tensor(mode), atol=0.0, rtol=0.0
+            )
+        assert boxes.filter_boxes_by_area(min_area=99.0).to_mask(5, 5).count_nonzero() == 0
+        empty = Boxes.from_tensor(xyxy[:0]).filter_boxes_by_area(2.0)
+        assert empty.to_tensor("xyxy").shape == (0, 4)
+
+    def test_filter_copy_index_and_transforms_4714(self, device, dtype):
+        xyxy = torch.tensor([[[1.0, 1.0, 4.0, 4.0], [1.0, 1.0, 2.0, 2.0]]], device=device, dtype=dtype)
+        boxes = Boxes.from_tensor(xyxy.repeat(2, 1, 1)).filter_boxes_by_area(2.0)
+        expected = boxes.to_tensor("xyxy")
+        for key in (slice(None), 0, torch.tensor([1, 0], device=device), torch.tensor([True, False], device=device)):
+            self.assert_close(boxes[key].to_tensor("xyxy"), expected[key], atol=0.0, rtol=0.0)
+        cloned = boxes.clone()
+        cloned.filter_boxes_by_area(99.0, inplace=True)
+        self.assert_close(boxes.to_tensor("xyxy"), expected, atol=0.0, rtol=0.0)
+        assert cloned.to_tensor("xyxy").count_nonzero() == 0
+        offset = xyxy.new_tensor([[2.0, 3.0]])
+        moved = boxes.translate(offset.expand(2, -1))
+        for mode in ("xyxy", "xywh", "vertices", "xyxy_plus", "vertices_plus"):
+            assert moved.to_tensor(mode)[:, 1].count_nonzero() == 0
+        padding = xyxy.new_tensor([[2.0, 0.0, 3.0, 0.0]])
+        for result in (boxes.clone().pad(padding), moved.clamp(xyxy.new_zeros(1, 2), xyxy.new_full((1, 2), 9.0))):
+            assert result.to_mask(10, 10)[:, 1].count_nonzero() == 0
+        self.assert_close(boxes.clone().pad(padding).unpad(padding).to_tensor("xyxy"), expected)
+        converted = boxes.clone().to(device=torch.device("cpu"), dtype=torch.float32).type(dtype).to(device=device)
+        self.assert_close(converted.to_tensor("xyxy"), expected)
+        assert converted._valid.dtype == torch.bool
+        assert converted._valid.device == converted.device
+        # Basic slices share both coordinates and filtering state.
+        original = Boxes.from_tensor(xyxy)
+        original[:].filter_boxes_by_area(2.0, inplace=True)
+        assert original.to_tensor("xyxy")[:, 1].count_nonzero() == 0
+
+    @pytest.mark.parametrize("inplace", [False, True])
+    def test_filter_assignment_4714(self, inplace, device, dtype):
+        xyxy = torch.tensor([[[1.0, 1.0, 4.0, 4.0], [1.0, 1.0, 2.0, 2.0]]], device=device, dtype=dtype)
+        boxes = Boxes.from_tensor(xyxy.repeat(2, 1, 1))
+        filtered = boxes[:1].filter_boxes_by_area(2.0)
+        index = torch.tensor([1], device=device)
+        updated = boxes.index_put((index,), filtered, inplace=inplace)
+        assert updated.to_tensor("xyxy")[1, 1].count_nonzero() == 0
+        self.assert_close(updated.to_tensor("xyxy")[0], xyxy[0])
+        updated[index] = Boxes.from_tensor(xyxy)
+        self.assert_close(updated.to_tensor("xyxy")[1], xyxy[0])
+        updated[index] = filtered
+        assert updated.to_mask(5, 5)[1, 1].count_nonzero() == 0
+        if not inplace:
+            self.assert_close(boxes.to_tensor("xyxy"), xyxy.repeat(2, 1, 1))
+
+    @pytest.mark.parametrize("inplace", [False, True])
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_filter_merge_and_padding_4714(self, inplace, reverse, device, dtype):
+        xyxy = torch.tensor(
+            [[1.0, 1.0, 4.0, 4.0], [1.0, 1.0, 2.0, 2.0], [2.0, 2.0, 5.0, 5.0]], device=device, dtype=dtype
+        )
+        first = Boxes.from_tensor([xyxy, xyxy[:1]]).filter_boxes_by_area(2.0)
+        second = Boxes.from_tensor(xyxy[:1].expand(2, 1, 4))
+        if reverse:
+            first, second = second, first
+        first_out = first.to_tensor("xyxy")
+        second_out = second.to_tensor("xyxy")
+        expected = [torch.cat([a, b]) for a, b in zip(first_out, second_out)]
+        merged = first.merge(second, inplace=inplace)
+        assert merged._N == [0, 2]
+        assert merged.to_tensor("xyxy")[0][2 if reverse else 1].count_nonzero() == 0
+        for actual, wanted in zip(merged.to_tensor("xyxy"), expected):
+            self.assert_close(actual, wanted, atol=0.0, rtol=0.0)
+        assert merged.to_mask(6, 6)[1, 2:].count_nonzero() == 0
+        dense = Boxes.from_tensor(xyxy).filter_boxes_by_area(2.0)
+        dense_merged = dense.merge(Boxes.from_tensor(xyxy[:1]))
+        self.assert_close(dense_merged.to_tensor("xyxy"), torch.cat([dense.to_tensor("xyxy"), xyxy[:1]]))
+
+    def test_filter_gradcheck_4714(self, device):
+        xyxy = torch.tensor(
+            [[1.0, 1.0, 4.0, 4.0], [1.0, 1.0, 2.0, 2.0]], device=device, dtype=torch.float64, requires_grad=True
+        )
+        self.gradcheck(lambda x: Boxes.from_tensor(x).filter_boxes_by_area(2.0).to_tensor("xyxy"), (xyxy,))
+
     def test_convention_filter_boxes_by_area_maximum_zeroes_in_place(self, device, dtype):
         # The shoelace areas are 2 and 8. Equal lower/upper bounds retain the
         # first box, pinning both inclusive endpoints; the larger box is zeroed.
@@ -2005,6 +2122,20 @@ class TestTransformBoxes3D(BaseTester):
 
 
 class TestVideoBoxes(BaseTester):
+    def test_filter_video_copy_index_assignment_4714(self, device, dtype):
+        data = torch.tensor([[[1.0, 1.0, 4.0, 4.0], [1.0, 1.0, 2.0, 2.0]]], device=device, dtype=dtype)
+        vertices = Boxes.from_tensor(data).data.repeat(4, 1, 1, 1).reshape(2, 2, 2, 4, 2)
+        video = VideoBoxes.from_tensor(vertices)
+        filtered = video.filter_boxes_by_area(2.0)
+        expected = filtered.to_tensor("xyxy")
+        assert expected[:, :, 1].count_nonzero() == 0
+        for selected in (filtered.clone(), filtered[:], filtered[0]):
+            assert selected.to_tensor("xyxy")[..., 1, :].count_nonzero() == 0
+        video[0] = filtered[1]
+        self.assert_close(video.to_tensor("xyxy")[:1], expected[:1])
+        assert video.to_tensor("xyxy")[1, :, 1].count_nonzero() > 0
+        assert filtered.to_mask(5, 5)[:, 1].count_nonzero() == 0
+
     """Public API and round-trip coverage for :class:`VideoBoxes` (#4016)."""
 
     @staticmethod

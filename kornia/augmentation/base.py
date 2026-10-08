@@ -510,6 +510,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         # and swap in the blended data, same effect as the index_put on .data.
         output = output_not_transformed.clone()
         output._data = blended_data
+        output._valid = self._blend_by_prob(output_transformed._valid, output_not_transformed._valid, to_apply)
         return output
 
     def transform_keypoints(
