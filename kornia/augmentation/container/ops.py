@@ -486,7 +486,9 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
             )
 
         elif isinstance(module, K.RandomTransplantation):
-            input = module(input, params=cls.get_instance_module_param(param), data_keys=[DataKey.MASK], **extra_args)
+            output = module(input, params=cls.get_instance_module_param(param), data_keys=[DataKey.MASK], **extra_args)
+            # A (B, H, W) mask leaves the transplant as (B, 1, H, W), like any other child without keepdim.
+            input = output.unsqueeze(1) if output.ndim == 3 and not module.keepdim else output
 
         elif isinstance(module, K.MixAugmentationBaseV2):
             # Dispatch to the mix child's own mask handler. Unsupported children
