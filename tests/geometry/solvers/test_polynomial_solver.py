@@ -21,6 +21,7 @@ import torch
 
 import kornia.geometry.solvers as solver
 from kornia.core.exceptions import ShapeError
+from kornia.geometry.solvers import polynomial_solver as polynomial_solver_module
 from kornia.geometry.solvers.polynomial_solver import _exact_power_of_two, _solve_cubic_real, _solve_cubic_with_count
 
 from testing.base import BaseTester
@@ -1252,8 +1253,9 @@ class TestQuarticSolver(BaseTester):
             ),
             # Coincidence factor 4, not 1: at 1 a second -1.5 survives (roots -2, -1.5, 4 +- 0.5i).
             ([1.0, -4.5, -8.75, 32.875, 48.75], [-2.0, -1.5], (torch.float32, torch.float64)),
-            # Simple-root threshold 1e-2, not 1e-1: at 1e-1 -4031 is returned twice (roots -4031, -4689,
-            # 231 +- 875i). The smaller case (roots -9, -5, 1 +- 3i) guards the same repeat at -9.
+            # Historical simple-root threshold case (roots -4031, -4689, 231 +- 875i). The float32 precision
+            # retry now masks threshold mutations for this row; test_simple_root_derivative_threshold_is_pinned_5509
+            # keeps the threshold itself explicit, and the half-input case below exercises its lower boundary.
             (
                 [1.0, 8258.0, 15691705.0, -1590869938.0, 15479948400000.0],
                 [-4689.0, -4031.0],
@@ -1278,11 +1280,18 @@ class TestQuarticSolver(BaseTester):
                 [-0.901329, 7.419483],
                 (torch.float32,),
             ),
-            # A recovered placeholder's step bound, from below: at eps * |x| instead of sqrt(eps) * |x| the
-            # root at 0.0009864 next to roots of 1 to 946 is lost.
+            # The original small-root example remains useful coverage, though the Ferrari candidates can also
+            # recover it when the placeholder bound is tightened.
             (
                 [1.0, -1333.67141, 366869.5534, -369281.897, 363.9159878],
                 [0.0009864, 1.009293, 386.1998282, 946.4613022],
+                (torch.float32,),
+            ),
+            # The small root depends on placeholder recovery: replacing sqrt(eps) with eps loses it, while the
+            # other three roots stay well separated. Coefficients are rounded to float32 as supplied here.
+            (
+                [1.0, -425.47784423828125, 26013.806640625, -406434.28125, 29.878591537475586],
+                [0.00007351430043, 26.0205064, 43.9344337, 355.522843],
                 (torch.float32,),
             ),
         ],
@@ -1318,6 +1327,23 @@ class TestQuarticSolver(BaseTester):
         assert (roots != 0).sum(-1).tolist() == [2, 2], f"expected two real roots per row, got {roots.tolist()}"
         found = roots[roots != 0].view(2, 2).sort(dim=-1).values
         self.assert_close(found, expected, atol=0.0, rtol=1e-2)
+
+    def test_simple_root_threshold_for_half_inputs_5509(self, device, dtype):
+        # Half quartics are solved in float32 without the float32 precision retry (#4906). The double root at
+        # -1.5 must therefore survive the simple-root filter; lowering its threshold from 1e-2 to 1e-3 loses a copy.
+        if dtype != torch.float16:
+            pytest.skip("The float32 precision retry masks this threshold mutation for float32 inputs.")
+        coeffs = torch.tensor([[1.0, 9.5, 33.25, 50.625, 28.125]], device=device, dtype=dtype)
+        expected = torch.tensor([[-3.0, -2.5, -1.5, -1.5]], device=device, dtype=dtype)
+
+        roots = solver.solve_quartic(coeffs)
+
+        self.assert_close(roots.sort(dim=-1).values, expected, atol=0.0, rtol=0.0)
+
+    def test_simple_root_derivative_threshold_is_pinned_5509(self):
+        # Float32 precision retries mask changes to this filter in existing rows. Keep the calibrated boundary
+        # explicit: raising it to 1e-1 misclassifies spurious repeats, while lowering it to 1e-3 rejects half roots.
+        assert polynomial_solver_module._QUARTIC_SIMPLE_ROOT_DERIVATIVE == 1e-2
 
     def test_ferrari_candidate_is_kept_over_a_recovered_copy_4474(self, device, dtype):
         # A placeholder recovered to 2.288697 and Ferrari's own 2.289372 are copies of the root at
