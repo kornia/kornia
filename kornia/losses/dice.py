@@ -69,6 +69,7 @@ def dice_loss(
           is in range :math:`0 ≤ targets[i] ≤ C-1`.
         average:
             Reduction applied in multi-class scenario:
+
             - ``'micro'`` [default]: Calculate the loss across all classes.
             - ``'macro'``: Average class losses over classes present in each sample's non-ignored target.
               Samples with all pixels ignored, or whose present classes all have weight 0, have loss 1.
