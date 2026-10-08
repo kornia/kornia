@@ -11,7 +11,7 @@ Fixes #5509
 ## What did you check?
 
 ```text
-$ .venv/bin/pytest tests/geometry/solvers/test_polynomial_solver.py -k simple_root_threshold_for_half_inputs_5509 --device=cpu --dtype=float16
+$ .venv/bin/pytest tests/geometry/solvers/test_polynomial_solver.py -k double_root_for_half_inputs_5509 --device=cpu --dtype=float16
 1 passed
 
 $ .venv/bin/pytest tests/geometry/solvers/test_polynomial_solver.py -k 'not test_random' --device=cpu --dtype=float16,float32,float64
