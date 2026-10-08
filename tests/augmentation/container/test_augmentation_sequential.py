@@ -167,7 +167,13 @@ class TestAugmentationSequential:
 
     @pytest.mark.parametrize(
         ("image_shape", "mask_shape", "batch"),
-        [((2, 3, 8, 9), (3, 1, 8, 9), 2), ((3, 8, 9), (3, 1, 8, 9), 1), ((3, 8, 9), (1, 1, 8, 10), 1)],
+        [
+            ((2, 3, 8, 9), (3, 1, 8, 9), 2),
+            ((3, 8, 9), (3, 1, 8, 9), 1),
+            ((3, 8, 9), (1, 1, 8, 10), 1),
+            ((2, 3, 8, 9), (9, 9), 2),
+            ((3, 8, 9), (8, 10), 1),
+        ],
     )
     def test_mask_with_incompatible_shape_raises(self, image_shape, mask_shape, batch):
         image, mask = torch.zeros(image_shape), torch.zeros(mask_shape)

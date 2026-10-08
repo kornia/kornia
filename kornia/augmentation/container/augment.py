@@ -507,7 +507,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         image_batch = image.shape[0] if image.ndim == 4 else 1
         image_size = image.shape[-2:]
         for mask, key in zip(args, data_keys):
-            if key not in _MSK_OPTIONS or not isinstance(mask, torch.Tensor) or mask.ndim not in (3, 4):
+            if key not in _MSK_OPTIONS or not isinstance(mask, torch.Tensor) or mask.ndim not in (2, 3, 4):
                 continue
             mask_batch = mask.shape[0] if mask.ndim == 4 else 1
             if mask_batch not in (1, image_batch) or mask.shape[-2:] != image_size:
