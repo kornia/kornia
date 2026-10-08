@@ -59,11 +59,15 @@ def _scales(dtype):
 
 
 def _regular_at_extreme_scales(device, dtype):
-    """A well-conditioned 4x4 scaled so that the products of four entries overflow or underflow the dtype while the
-    inverse fits: the identity and the matrix at ``big`` and ``1 / big``, and the matrix with two columns, then two
-    rows, scaled by ``small``. Powers of two keep the scaling exact."""
+    """Well-conditioned 4x4 matrices scaled so that the products of four entries overflow or underflow the dtype
+    while the inverse fits: the identity and a dense matrix at ``big`` and ``1 / big``, the dense matrix with two
+    columns, then two rows, scaled by ``small``, the identity at the largest finite value of the dtype, where ``log2``
+    rounds up to the exponent above, and a matrix whose row factor ``huge`` and column factor ``tiny / huge``
+    compound to more than the dtype holds while its inverse, with entries ``1 / (2 tiny)``, fits. Powers of two keep
+    the scaling exact."""
     big = 2.0**40 if dtype == torch.float32 else 2.0**300
     small = 2.0**-80 if dtype == torch.float32 else 2.0**-600
+    huge, tiny = (2.0**80, 2.0**-50) if dtype == torch.float32 else (2.0**800, 2.0**-250)
     A = torch.tensor(
         [[4.0, 1.0, 2.0, 1.0], [1.0, 5.0, 1.0, 2.0], [2.0, 1.0, 6.0, 1.0], [1.0, 2.0, 1.0, 7.0]],
         device=device,
@@ -71,7 +75,9 @@ def _regular_at_extreme_scales(device, dtype):
     )
     eye = torch.eye(4, device=device, dtype=dtype)
     D = torch.diag(torch.tensor([1.0, 1.0, small, small], device=device, dtype=dtype))
-    return torch.stack([eye * big, eye / big, A * big, A / big, A @ D, D @ A])
+    compound = eye.clone()
+    compound[:2, :2] = torch.tensor([[huge, tiny], [huge, -tiny]], device=device, dtype=dtype)
+    return torch.stack([eye * big, eye / big, A * big, A / big, A @ D, D @ A, eye * torch.finfo(dtype).max, compound])
 
 
 # One row is the sum of two others, or a multiple of the other, in small integers: exactly singular, and every
