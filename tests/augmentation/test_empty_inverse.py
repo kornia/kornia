@@ -152,6 +152,8 @@ class TestEmptyGeometricInverse(BaseTester):
         output = sequence(image)
         saved_params = deepcopy(sequence._params)
 
+        # With p < 1 an empty batch keeps its input size, because the blend falls back to the skipped
+        # branch (tracked in #4429). This pins the current forward, which the tracked shapes must follow.
         crop_size = (4, 5) if crop_p == 1.0 else (height, width)
         output_size = (3, 4) if resize_p == 1.0 else crop_size
         assert saved_params[0].data["forward_input_shape"].tolist() == [0, 3, height, width]
@@ -371,6 +373,8 @@ class TestEmptyGeometricInverse(BaseTester):
             pytest.skip("The forward resampling kernel does not support this device/dtype's backward pass.")
         image = torch.empty(0, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
         output = aug(image)
+        # With p < 1 an empty batch keeps its input size (blend fallback, tracked in #4429); the inverse
+        # must undo whichever size the forward produced.
         expected_size = output_size if p == 1.0 else (6, 8)
         assert output.shape == (0, 3, *expected_size)
         restored = aug.inverse(output)
@@ -386,3 +390,41 @@ class TestEmptyGeometricInverse(BaseTester):
         output = aug(image)
         with pytest.raises(NotImplementedError, match="only applicable for resample cropping mode"):
             aug.inverse(output)
+
+    @pytest.mark.parametrize(
+        "make_first,intermediate_size",
+        [
+            (lambda: K.LongestMaxSize(12), (9, 12)),
+            (lambda: K.Resize(12, side="long"), (9, 12)),
+            (lambda: K.SmallestMaxSize(12), (12, 14)),
+        ],
+        ids=["longest", "resize-long", "smallest"],
+    )
+    def test_empty_max_size_shape_history_4429(self, make_first, intermediate_size, device, dtype):
+        # The container must size an integer resize on the side the module selects, as the module does.
+        first = make_first()
+        second = K.Resize((3, 4))
+        sequence = K.AugmentationSequential(first, second, data_keys=["input"])
+        image = torch.empty(0, 3, 9, 11, device=device, dtype=dtype)
+        assert first(image).shape == (0, 3, *intermediate_size)
+        output = sequence(image)
+        assert output.shape == (0, 3, 3, 4)
+        params = sequence._params
+        assert params[1].data["forward_input_shape"].tolist() == [0, 3, *intermediate_size]
+        mask = torch.empty(0, 1, 3, 4, device=device, dtype=dtype)
+        assert second.inverse(mask, params=params[1].data).shape == (0, 1, *intermediate_size)
+        assert sequence.inverse(mask, params=params, data_keys=["mask"]).shape == (0, 1, 9, 11)
+
+    @pytest.mark.parametrize("same_on_frame", [False, True])
+    def test_empty_video_resize_4429(self, same_on_frame, device, dtype):
+        # VideoSequential tracks shapes with the same helper; an empty batch used to raise IndexError there.
+        sequence = K.VideoSequential(
+            K.RandomCrop((6, 7), cropping_mode="resample"),
+            K.LongestMaxSize(10),
+            data_format="BTCHW",
+            same_on_frame=same_on_frame,
+        )
+        video = torch.empty(0, 2, 3, 9, 11, device=device, dtype=dtype)
+        output = sequence(video)
+        assert output.shape == (0, 2, 3, 8, 10)
+        assert sequence.inverse(output).shape == video.shape
