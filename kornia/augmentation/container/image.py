@@ -508,7 +508,7 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
 
     if batch_shape[0] == 0 and isinstance(module, (K.RandomCrop, K.Resize)):
         # Match the image forward's unconditional path. An empty gate selects the original
-        # canvas in the other probability branches, including Resize's p_batch setting.
+        # canvas in the other probability branches, including Resize's p_batch setting (#4429).
         if module.p != 1.0 or module.p_batch != 1.0:
             return batch_shape
         size = module.flags["size"]
