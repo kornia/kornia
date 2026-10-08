@@ -19,6 +19,7 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so2.py
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Optional, Union, overload
 
 import torch
@@ -37,14 +38,31 @@ class So2(nn.Module):
     :math:`R^2` under the operation of composition.
     See more: https://en.wikipedia.org/wiki/Orthogonal_group#Special_orthogonal_group
 
-    We internally represent the rotation by a torch.complex number.
+    Convention:
+        - Represents the rotation as a complex number ``z`` of shape :math:`()` or :math:`(B,)`; a :math:`(B, 1)`
+          ``z`` or angle is accepted and read as :math:`(B,)`. For unit :math:`z = \cos\theta + i \sin\theta`,
+          ``matrix()`` is :math:`[[\cos\theta, -\sin\theta], [\sin\theta, \cos\theta]]`. Non-unit ``z = a + i b``
+          is accepted and produces :math:`[[a, -b], [b, a]]`, which rotates and scales by :math:`|z|`. The complex
+          storage has no bfloat16 counterpart in PyTorch.
+        - A positive angle rotates the x axis toward the y axis: counter-clockwise in a y-up frame, clockwise as
+          displayed on y-down image axes. For a unit rotation, ``matrix()`` is the transpose of
+          :func:`~kornia.geometry.conversions.angle_to_rotation_matrix`, which takes degrees.
+          ``log`` returns the angle in :math:`[-\pi, \pi]`, and ``adjoint()`` is the 2x2 identity.
+        - ``hat`` returns the so(2) generator :math:`[[0, -\theta], [\theta, 0]]` and ``vee`` reads its ``[1, 0]``
+          entry, so ``matrix_exp(hat(theta))`` equals ``exp(theta).matrix()``.
+        - Module dtype conversions act on the real and imaginary components together: ``.float()`` and
+          ``.to(torch.float32)`` use complex64 state, while ``.double()`` and ``.to(torch.float64)`` use complex128.
+          Device-only conversions preserve the complex precision, and explicit complex dtypes are also accepted.
+          The complex checkpoint key ``_z`` and its shape are unchanged. ``.half()`` uses PyTorch's experimental
+          complex32 dtype. Since PyTorch has no complex bfloat16 dtype, ``.bfloat16()`` and ``.to(torch.bfloat16)``
+          keep the rotation's existing complex precision while following any requested device move.
 
     Example:
-        >>> real = torch.tensor([1.0])
-        >>> imag = torch.tensor([2.0])
+        >>> real = torch.tensor([0.6])
+        >>> imag = torch.tensor([0.8])
         >>> So2(torch.complex(real, imag))
         Parameter containing:
-        tensor([1.+2.j], requires_grad=True)
+        tensor([0.6000+0.8000j], requires_grad=True)
 
     """
 
@@ -54,14 +72,14 @@ class So2(nn.Module):
         Internally represented by torch.complex number `z`.
 
         Args:
-            z: Complex number with the shape of :math:`(B, 1)` or :math:`(B)`.
+            z: Complex number with the shape of :math:`(B,)` or :math:`()`; :math:`(B, 1)` is read as :math:`(B,)`.
 
         Example:
-            >>> real = torch.tensor(1.0)
-            >>> imag = torch.tensor(2.0)
+            >>> real = torch.tensor(0.6)
+            >>> imag = torch.tensor(0.8)
             >>> So2(torch.complex(real, imag)).z
             Parameter containing:
-            tensor(1.+2.j, requires_grad=True)
+            tensor(0.6000+0.8000j, requires_grad=True)
 
         """
         super().__init__()
@@ -73,13 +91,35 @@ class So2(nn.Module):
 
         if not (is_scalar or is_flat or is_column):
             raise ValueError(f"Invalid input size, we expect [], [B], or [B, 1]. Got: {z.shape}")
+        # A (B, 1) z is stored as given, so a caller's nn.Parameter stays the module's own parameter, and the ``z``
+        # property reads it as (B,): kept as a column, it broadcast against the (B,) coordinates of __mul__ as an
+        # outer product (#4932).
         register_module_state(self, "_z", z)
+
+    def _apply(self, fn: Callable[[torch.Tensor], torch.Tensor], recurse: bool = True) -> So2:
+        def convert(tensor: torch.Tensor) -> torch.Tensor:
+            if not tensor.is_complex():
+                return fn(tensor)
+            # Apply real dtype conversions to both components, without losing the imaginary part.
+            components = torch.view_as_real(tensor.resolve_conj())
+            converted = fn(components)
+            if converted.is_complex():
+                return fn(tensor)  # An explicit complex target already has the correct native semantics.
+            if converted is components:
+                return tensor
+            if converted.dtype == torch.bfloat16:
+                # No complex bfloat16 exists: move the rotation, keeping its complex precision.
+                return tensor.to(device=converted.device)
+            return torch.view_as_complex(converted)
+
+        # Let Module manage parameters, existing gradients, buffers and child-module recursion.
+        return super()._apply(convert, recurse=recurse)
 
     def __repr__(self) -> str:
         return f"{self.z}"
 
     def __getitem__(self, idx: int | slice) -> So2:
-        return So2(self._z[idx])
+        return So2(self.z[idx])
 
     @overload
     def __mul__(self, right: So2) -> So2: ...
@@ -91,16 +131,17 @@ class So2(nn.Module):
         """Perform a left-multiplication either rotation concatenation or point-transform.
 
         Args:
-            right: the other So2 transformation.
+            right: the other So2 transformation, or points of shape :math:`(B, 2)` or :math:`(2,)` as a tensor or
+                a ``Vector2``.
 
         Return:
-            The resulting So2 transformation.
+            The resulting So2 transformation, or the rotated points with the type of ``right``.
 
         """
         z = self.z
         if isinstance(right, So2):
             return So2(z * right.z)
-        elif isinstance(right, (Vector2, torch.Tensor)):
+        if isinstance(right, (Vector2, torch.Tensor)):
             if isinstance(right, torch.Tensor):
                 # check_so2_t_shape
                 is_batch_shape = KORNIA_CHECK_SHAPE(right, ["B", "2"], raises=False)
@@ -115,22 +156,24 @@ class So2(nn.Module):
             out = torch.stack((real * x - imag * y, imag * x + real * y), -1)
             if isinstance(right, torch.Tensor):
                 return out
-            else:
-                return Vector2(out)
-        else:
-            raise TypeError(f"Not So2 or torch.Tensor type. Got: {type(right)}")
+            return Vector2(out)
+        raise TypeError(f"Not So2 or torch.Tensor type. Got: {type(right)}")
 
     @property
     def z(self) -> torch.Tensor:
-        """Return the underlying data with shape :math:`(B, 1)`."""
-        return self._z
+        """Return the underlying complex number of shape :math:`()` or :math:`(B,)`.
+
+        A :math:`(B, 1)` ``z`` given to the constructor stays stored, and registered, as it was given, and is read
+        here as a :math:`(B,)` view.
+        """
+        return self._z.squeeze(-1) if self._z.dim() == 2 else self._z
 
     @staticmethod
     def exp(theta: torch.Tensor) -> So2:
         """Convert elements of lie algebra to elements of lie group.
 
         Args:
-            theta: angle in radians of shape :math:`(B, 1)` or :math:`(B)`.
+            theta: angle in radians of shape :math:`(B,)` or :math:`()`; :math:`(B, 1)` is squeezed to :math:`(B,)`.
 
         Example:
             >>> v = torch.tensor([3.1415/2])
@@ -152,26 +195,29 @@ class So2(nn.Module):
         """Convert elements of lie group to elements of lie algebra.
 
         Example:
-            >>> real = torch.tensor([1.0])
-            >>> imag = torch.tensor([3.0])
+            >>> real = torch.tensor([0.6])
+            >>> imag = torch.tensor([0.8])
             >>> So2(torch.complex(real, imag)).log()
-            tensor([1.2490], grad_fn=<Atan2Backward0>)
+            tensor([0.9273], grad_fn=<Atan2Backward0>)
 
         """
         return self.z.imag.atan2(self.z.real)
 
     @staticmethod
     def hat(theta: torch.Tensor) -> torch.Tensor:
-        """Convert elements from vector space to lie algebra. Returns matrix of shape :math:`(B, 2, 2)`.
+        r"""Convert an angle to the so(2) generator :math:`[[0, -\theta], [\theta, 0]]`, which :meth:`vee` inverts.
+
+        The output has shape :math:`(2, 2)` or :math:`(B, 2, 2)`; a :math:`(B, 1)` angle is squeezed to :math:`(B,)`.
+        Its matrix exponential is the rotation :meth:`exp` returns.
 
         Args:
-            theta: angle in radians of shape :math:`(B)`.
+            theta: angle in radians of shape :math:`(B,)` or :math:`()`; :math:`(B, 1)` is squeezed to :math:`(B,)`.
 
         Example:
             >>> theta = torch.tensor(3.1415/2)
             >>> So2.hat(theta)
-            tensor([[0.0000, 1.5707],
-                    [1.5707, 0.0000]])
+            tensor([[ 0.0000, -1.5707],
+                    [ 1.5707,  0.0000]])
 
         """
         # check_so2_theta_shape
@@ -180,17 +226,23 @@ class So2(nn.Module):
         is_column = KORNIA_CHECK_SHAPE(theta, ["B", "1"], raises=False)
         if not (is_scalar or is_flat or is_column):
             raise ValueError(f"Invalid input size, we expect [], [B], or [B, 1]. Got: {theta.shape}")
+        if is_column:
+            theta = theta.squeeze(-1)  # (B, 1) would give (B, 1, 2, 2), which vee() rejects (#4932)
         z = torch.zeros_like(theta)
-        row0 = torch.stack((z, theta), -1)
+        row0 = torch.stack((z, -theta), -1)
         row1 = torch.stack((theta, z), -1)
-        return torch.stack((row0, row1), -1)
+        return torch.stack((row0, row1), -2)
 
     @staticmethod
     def vee(omega: torch.Tensor) -> torch.Tensor:
-        """Convert elements from lie algebra to vector space. Returns vector of shape :math:`(B,)`.
+        r"""Read the angle back from a :meth:`hat` matrix of shape :math:`(2, 2)` or :math:`(B, 2, 2)`.
+
+        Returns a scalar or a :math:`(B,)` vector, respectively.
+
+        It reads the ``[1, 0]`` entry, :math:`\theta` in the so(2) generator :math:`[[0, -\theta], [\theta, 0]]`.
 
         Args:
-            omega: 2x2-matrix representing lie algebra.
+            omega: 2x2-matrix built by :meth:`hat`.
 
         Example:
             >>> v = torch.ones(3)
@@ -204,10 +256,10 @@ class So2(nn.Module):
         is_single = KORNIA_CHECK_SHAPE(omega, ["2", "2"], raises=False)
         if not (is_batch or is_single):
             raise ValueError(f"Invalid input size, we expect [B, 2, 2] or [2, 2]. Got: {omega.shape}")
-        return omega[..., 0, 1]
+        return omega[..., 1, 0]
 
     def matrix(self) -> torch.Tensor:
-        """Convert the torch.complex number to a rotation matrix of shape :math:`(B, 2, 2)`.
+        """Return a matrix of shape ``z.shape + (2, 2)`` for each stored complex number.
 
         Example:
             >>> s = So2.identity()
@@ -301,7 +353,7 @@ class So2(nn.Module):
         device: Union[str, torch.device, None] = None,
         dtype: Union[torch.dtype, None] = None,
     ) -> So2:
-        """Create a So2 group representing a random rotation.
+        r"""Create a So2 group with a unit rotation whose angle is drawn from :math:`U[-\pi, \pi)`.
 
         Args:
             batch_size: the batch size of the underlying data.
@@ -313,14 +365,15 @@ class So2(nn.Module):
             >>> s = So2.random(batch_size=3)
 
         """
+        shape: tuple[int, ...] = ()
         if batch_size is not None:
             KORNIA_CHECK(batch_size >= 1, msg="batch_size must be positive")
-            real_data = torch.rand((batch_size,), device=device, dtype=dtype)
-            imag_data = torch.rand((batch_size,), device=device, dtype=dtype)
-        else:
-            real_data = torch.rand((), device=device, dtype=dtype)
-            imag_data = torch.rand((), device=device, dtype=dtype)
-        return cls(torch.complex(real_data, imag_data))
+            shape = (batch_size,)
+        # a uniform rotation has a uniform angle on [-pi, pi). Independent uniform real and imaginary parts on
+        # [0, 1) gave |z| anywhere in (0, sqrt 2), so matrix() was a rotation scaled by |z| (determinant |z|**2),
+        # and every angle was in the first quadrant (#4930).
+        theta = (2 * torch.rand(shape, device=device, dtype=dtype) - 1) * torch.pi
+        return cls.exp(theta)
 
     def adjoint(self) -> torch.Tensor:
         """Return the adjoint matrix of shape :math:`(B, 2, 2)`.

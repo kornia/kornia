@@ -245,10 +245,9 @@ class DeDoDe(nn.Module):
             H, W = crop_h, crop_w
 
         if keypoints is not None:
-            described_keypoints = F.grid_sample(
-                descriptions.float(), keypoints[:, None], mode="bilinear", align_corners=False
-            )[:, :, 0].mT
-            return described_keypoints
+            return F.grid_sample(descriptions.float(), keypoints[:, None], mode="bilinear", align_corners=False)[
+                :, :, 0
+            ].mT
         return descriptions
 
     @classmethod

@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
@@ -75,8 +77,31 @@ class TestPSNRLoss(BaseTester):
 
         self.assert_close(op(*args), op_module(pred, target))
 
+    def test_integer_images(self, device):
+        # psnr_loss and PSNRLoss inherit the float32 computation of integer images from psnr (#5536).
+        generator = torch.Generator().manual_seed(0)
+        pred = (torch.rand(2, 3, 3, 2, generator=generator) * 255).to(torch.uint8).to(device)
+        target = (torch.rand(2, 3, 3, 2, generator=generator) * 255).to(torch.uint8).to(device)
+        expected = kornia.losses.psnr_loss(pred.float(), target.float(), 255.0)
+        self.assert_close(kornia.losses.psnr_loss(pred, target, 255.0), expected, rtol=0, atol=0)
+        self.assert_close(kornia.losses.PSNRLoss(255.0)(pred, target), expected, rtol=0, atol=0)
+
     def test_gradcheck(self, device, dtype):
         dtype = torch.float64
         pred = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
         target = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
         self.gradcheck(kornia.losses.psnr_loss, (pred, target, 1.0))
+
+
+class TestConventionsPSNRLoss(BaseTester):
+    def test_convention_psnr_loss_is_minus_psnr(self, device, dtype):
+        # psnr_loss is -psnr on the MSE pooled over the batch, PSNRLoss is the same function, and identical images give
+        # -inf: here -10 log10(2 / (0.125**2 + 0.375**2)) = -11.0721
+        a = torch.zeros(2, 1, 4, 6, device=device, dtype=dtype)
+        b = a.clone()
+        b[0] += 0.125
+        b[1] += 0.375
+        expected = torch.tensor(-10.0 * math.log10(2.0 / (0.125**2 + 0.375**2)), device=device, dtype=dtype)
+        self.assert_close(kornia.losses.psnr_loss(a, b, 1.0), expected)
+        self.assert_close(kornia.losses.PSNRLoss(1.0)(a, b), expected)
+        assert kornia.losses.psnr_loss(a, a, 1.0).item() == -math.inf

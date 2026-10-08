@@ -20,6 +20,7 @@ import math
 import pytest
 import torch
 
+from kornia.core.exceptions import BaseError
 from kornia.geometry import create_meshgrid
 from kornia.image import draw_convex_polygon, draw_rectangle
 from kornia.image.draw import draw_line, draw_point2d
@@ -88,6 +89,66 @@ class TestDrawPoint(BaseTester):
         drawn_mat_img = draw_point2d(mat_img, points, color_mat)
         # Ensure that we get the same underlying image back
         self.assert_close(drawn_vec_img, drawn_mat_img)
+
+    def test_draw_point2d_single_1d_point(self, dtype, device):
+        """A single [x, y] vector used to TypeError via zip over 0-d scalars."""
+        points = torch.tensor([1, 3], device=device)
+        color = torch.tensor([5, 10, 15], dtype=dtype, device=device)
+        img = torch.zeros(3, 8, 8, dtype=dtype, device=device)
+        img = draw_point2d(img, points, color)
+        self.assert_close(img[:, 3, 1], color.to(img.dtype))
+
+    def test_draw_point2d_empty_points(self, dtype, device):
+        """An empty (0, 2) point set used to fail unpacking zip(*points)."""
+        points = torch.zeros(0, 2, device=device)
+        color = torch.tensor([5, 10, 15], dtype=dtype, device=device)
+        img = torch.arange(3 * 8 * 8, device=device).reshape(3, 8, 8).to(dtype)
+        expected = img.clone()
+        out = draw_point2d(img, points, color)
+        assert out is img
+        self.assert_close(out, expected)
+
+    @pytest.mark.parametrize("points", [[[1, 3], [2, 4]], [1, 3]])
+    @pytest.mark.parametrize("shape", [(3, 8, 8), (8, 8)])
+    def test_draw_point2d_draws_in_place_and_returns_the_input(self, points, shape, dtype, device):
+        """The Return section documents in-place drawing into, and returning, the input tensor."""
+        img = torch.zeros(shape, dtype=dtype, device=device)
+        color = torch.ones(shape[0] if len(shape) == 3 else 1, dtype=dtype, device=device)
+        out = draw_point2d(img, torch.tensor(points, device=device), color)
+        assert out is img
+        assert img.count_nonzero() > 0
+
+    @pytest.mark.parametrize(
+        "shape, match",
+        [
+            ((0,), "1D points tensor"),
+            ((3,), "1D points tensor"),
+            ((0, 3), "shape \\(N, 2\\)"),
+            ((5, 0), "shape \\(N, 2\\)"),
+            ((2, 3), "shape \\(N, 2\\)"),
+            ((2, 2, 2), "shape \\(N, 2\\)"),
+        ],
+        ids=["empty-1d", "three-1d", "empty-three-columns", "zero-columns", "three-columns", "batched"],
+    )
+    def test_draw_point2d_rejects_malformed_points(self, shape, match, dtype, device):
+        """Only (N, 2) and (2,) are accepted, including when the tensor is empty."""
+        points = torch.zeros(shape, dtype=torch.int64, device=device)
+        color = torch.tensor([5, 10, 15], dtype=dtype, device=device)
+        img = torch.zeros(3, 8, 8, dtype=dtype, device=device)
+        with pytest.raises(BaseError, match=match):
+            draw_point2d(img, points, color)
+
+    @pytest.mark.parametrize("shape", [(1, 4, 4), (4, 4)])
+    def test_draw_point2d_accepts_0d_scalar_color(self, shape, dtype, device):
+        """A 0-d color used to IndexError reading its channel dimension, as draw_line did before."""
+        img = torch.zeros(shape, dtype=dtype, device=device)
+        out = draw_point2d(img, torch.tensor([[1, 1]], device=device), torch.tensor(9, dtype=dtype, device=device))
+        assert out[..., 1, 1].flatten().tolist() == [9.0]
+
+    def test_draw_point2d_0d_color_on_multichannel_image_fails_the_channel_check(self, dtype, device):
+        img = torch.zeros(3, 4, 4, dtype=dtype, device=device)
+        with pytest.raises(BaseError, match="Color dim must match"):
+            draw_point2d(img, torch.tensor([[1, 1]], device=device), torch.tensor(9, dtype=dtype, device=device))
 
 
 class TestDrawLine(BaseTester):
@@ -312,10 +373,75 @@ class TestDrawLine(BaseTester):
             excinfo.value
         )
 
+    # The tests below sit after test_point_size on purpose: its parametrize arguments call torch.rand at
+    # import time, and testing/half_precision_eager_rng.py audits that call by line number (305).
+    # Moving them above it shifts that line and fails the audit.
+    def test_draw_line_lights_both_endpoints(self, dtype, device):
+        # The integer ceiling reaches minor exactly at t = major, so p1 and p2 are both drawn. The float
+        # step this replaced left p2 dark on about 7% of random lines.
+        generator = torch.Generator().manual_seed(0)
+        height, width = 37, 91
+        xs = torch.randint(0, width, (300, 2), generator=generator)
+        ys = torch.randint(0, height, (300, 2), generator=generator)
+        color = torch.tensor([1.0])
+        for (x1, x2), (y1, y2) in zip(xs.tolist(), ys.tolist()):
+            img = torch.zeros(1, height, width, dtype=dtype, device=device)
+            img = draw_line(img, torch.tensor([x1, y1]), torch.tensor([x2, y2]), color)
+            assert img[0, y1, x1] == 1.0, ((x1, y1), (x2, y2))
+            assert img[0, y2, x2] == 1.0, ((x1, y1), (x2, y2))
+            assert img.sum() == max(abs(x2 - x1), abs(y2 - y1)) + 1, ((x1, y1), (x2, y2))
+
+    def test_draw_line_empty_batch_draws_nothing(self, dtype, device):
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
+        empty = torch.zeros(0, 2, dtype=torch.long)
+        out = draw_line(img, empty, empty, torch.tensor([1.0]))
+        assert out.shape == (1, 8, 8)
+        assert out.count_nonzero() == 0
+
+    @pytest.mark.parametrize("p1, p2", [([1, 4], [6, 4]), ([[1, 1], [0, 7]], [[6, 6], [7, 0]])])
+    def test_draw_line_draws_in_place_and_returns_the_input(self, p1, p2, dtype, device):
+        """The Return section documents in-place drawing into, and returning, the input tensor."""
+        img = torch.zeros(2, 8, 8, dtype=dtype, device=device)
+        out = draw_line(img, torch.tensor(p1), torch.tensor(p2), torch.ones(2, dtype=dtype, device=device))
+        assert out is img
+        assert img.count_nonzero() > 0
+
+    def test_draw_line_rejects_points_of_different_shapes(self, dtype, device):
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
+        with pytest.raises(ValueError, match="must have the same batch sizes"):
+            draw_line(img, torch.tensor([1, 1]), torch.tensor([[2, 2], [3, 3]]), torch.tensor([1.0]))
+
+    def test_draw_line_passes_through_its_exact_lattice_points(self, dtype, device):
+        # The segment from (0, 0) to (117, 18) passes exactly through (13k, 2k). The minor coordinate
+        # is ceil(t * 18 / 117), and a float step landed just above the exact integer at some of
+        # these points, which rounded the pixel up a row: (26, 5) instead of (26, 4).
+        img = torch.zeros(1, 19, 118, dtype=dtype, device=device)
+        img = draw_line(img, torch.tensor([0, 0]), torch.tensor([117, 18]), torch.tensor([1.0]))
+        for k in range(10):
+            assert img[0, 2 * k, 13 * k] == 1.0, (13 * k, 2 * k)
+            assert img[0, :, 13 * k].sum() == 1.0, 13 * k
+
+    def test_draw_lines_batched_matches_drawing_each_line(self, dtype, device):
+        # One batch mixing a vertical, a horizontal, a single point and both slope regimes.
+        p1 = torch.tensor([[3, 1], [0, 9], [5, 5], [1, 2], [30, 0], [7, 18]])
+        p2 = torch.tensor([[3, 17], [31, 9], [5, 5], [29, 11], [2, 19], [26, 3]])
+        color = torch.tensor([1.0, 2.0])
+        batched = draw_line(torch.zeros(2, 20, 32, dtype=dtype, device=device), p1, p2, color)
+        expected = torch.zeros(2, 20, 32, dtype=dtype, device=device)
+        for a, b in zip(p1, p2):
+            expected = draw_line(expected, a, b, color)
+        self.assert_close(batched, expected, rtol=0.0, atol=0.0)
+
+    def test_draw_line_accepts_0d_scalar_color(self, dtype, device):
+        # torch.tensor(255) is a natural grayscale color; color.size(0) used to IndexError.
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
+        out = draw_line(img, torch.tensor([1, 4]), torch.tensor([6, 4]), torch.tensor(255, dtype=dtype, device=device))
+        assert out[0, 4, 1:7].tolist() == [255.0] * 6
+
 
 class TestDrawRectangle(BaseTester):
-    @pytest.mark.parametrize("batch", (4, 17))
-    @pytest.mark.parametrize("color", (torch.Tensor([1.0]), torch.Tensor([0.5])))
+    @pytest.mark.parametrize("batch", [4, 17])
+    @pytest.mark.parametrize("color", [torch.Tensor([1.0]), torch.Tensor([0.5])])
     def test_smoke(self, device, batch, color):
         black_image = torch.zeros(batch, 1, 3, 3, device=device)  # 1 channel 3x3 black_image
         points = torch.tensor([1.0, 1.0, 1.0, 1.0]).to(device).expand(batch, 1, 4)  # single pixel rectangle
@@ -327,10 +453,10 @@ class TestDrawRectangle(BaseTester):
 
         assert torch.all(black_image == target)
 
-    @pytest.mark.parametrize("batch", (8, 11))
-    @pytest.mark.parametrize("fill", (True, False))
-    @pytest.mark.parametrize("height", (12, 106, 298))
-    @pytest.mark.parametrize("width", (7, 123, 537))
+    @pytest.mark.parametrize("batch", [8, 11])
+    @pytest.mark.parametrize("fill", [True, False])
+    @pytest.mark.parametrize("height", [12, 106, 298])
+    @pytest.mark.parametrize("width", [7, 123, 537])
     def test_fill_and_edges(self, device, batch, fill, height, width):
         black_image = torch.zeros(batch, 3, height, width, device=device)
         # we should pass height - 1 and width - 1 but rectangle should clip correctly
@@ -345,9 +471,9 @@ class TestDrawRectangle(BaseTester):
             # corners are double counted
             assert image_w_rectangle.sum() == batch * 3 * (2 * height + 2 * width - 4)
 
-    @pytest.mark.parametrize("batch", (4, 6))
-    @pytest.mark.parametrize("N", (5, 12))
-    @pytest.mark.parametrize("fill", (True, False))
+    @pytest.mark.parametrize("batch", [4, 6])
+    @pytest.mark.parametrize("N", [5, 12])
+    @pytest.mark.parametrize("fill", [True, False])
     def test_n_rectangles(self, device, batch, N, fill):
         points_list = []
         h, w = 20, 20
@@ -407,7 +533,7 @@ class TestDrawRectangle(BaseTester):
                         == (points_list[b][n][2] - points_list[b][n][0] + 1) * 3
                     )
 
-    @pytest.mark.parametrize("color", (torch.tensor([0.5, 0.3, 0.15]), torch.tensor([0.23, 0.33, 0.8])))
+    @pytest.mark.parametrize("color", [torch.tensor([0.5, 0.3, 0.15]), torch.tensor([0.23, 0.33, 0.8])])
     def test_color_background(self, device, color):
         image = torch.zeros(1, 3, 40, 40, device=device)
         image[:, 0, :, :] = color[0]
@@ -429,7 +555,7 @@ class TestDrawRectangle(BaseTester):
             <= 0.0001
         )
 
-    @pytest.mark.parametrize("color", (torch.tensor([0.34, 0.63, 0.16]), torch.tensor([0.29, 0.13, 0.48])))
+    @pytest.mark.parametrize("color", [torch.tensor([0.34, 0.63, 0.16]), torch.tensor([0.29, 0.13, 0.48])])
     def test_color_foreground(self, device, color):
         image = torch.zeros(1, 3, 50, 40, device=device)
         image_w_rectangle = image.clone()
@@ -449,6 +575,25 @@ class TestDrawRectangle(BaseTester):
             )
             <= 0.0001
         )
+
+    @pytest.mark.parametrize("fill", [False, True])
+    def test_0d_scalar_color_matches_one_channel_color(self, fill, dtype, device):
+        """A 0-d color used to fail unpacking (b, n, c); it now draws like a size-1 color."""
+        rect = torch.tensor([[[1, 1, 3, 3]]], device=device)
+        out = draw_rectangle(
+            torch.zeros(1, 1, 5, 5, dtype=dtype, device=device),
+            rect,
+            torch.tensor(9.0, dtype=dtype, device=device),
+            fill=fill,
+        )
+        expected = draw_rectangle(
+            torch.zeros(1, 1, 5, 5, dtype=dtype, device=device),
+            rect,
+            torch.tensor([9.0], dtype=dtype, device=device),
+            fill=fill,
+        )
+        self.assert_close(out, expected)
+        assert out.count_nonzero() > 0
 
 
 class TestFillConvexPolygon(BaseTester):
@@ -548,3 +693,63 @@ class TestFillConvexPolygon(BaseTester):
         rect = torch.cat((pts[..., 0, :], pts[..., 2, :]), dim=-1)[:, None]
         rect_im = draw_rectangle(im.clone(), rect, color[:, None], fill=True)
         self.assert_close(rect_im, poly_im)
+
+    def test_empty_polygon_leaves_image_unchanged(self, device, dtype):
+        """An empty (B, 0, 2) polygon batch must not IndexError on loop close."""
+        im = torch.rand(1, 3, 12, 16, device=device, dtype=dtype)
+        pts = torch.zeros(1, 0, 2, device=device, dtype=dtype)
+        color = torch.tensor([[0.5, 0.5, 0.5]], device=device, dtype=dtype)
+        out = draw_convex_polygon(im.clone(), pts, color)
+        self.assert_close(out, im)
+
+    def test_empty_polygon_is_still_validated(self, device, dtype):
+        im = torch.rand(1, 3, 12, 16, device=device, dtype=dtype)
+        color = torch.tensor([[0.5, 0.5, 0.5]], device=device, dtype=dtype)
+        with pytest.raises(BaseError, match="same batch dimension"):
+            draw_convex_polygon(im, torch.zeros(2, 0, 2, device=device, dtype=dtype), color)
+        with pytest.raises(BaseError, match="xy"):
+            draw_convex_polygon(im, torch.zeros(1, 0, 3, device=device, dtype=dtype), color)
+
+    def test_single_vertex_fills_its_pixel(self, device, dtype):
+        """A one-vertex polygon draws that point, like a zero-length two-vertex polygon."""
+        im = torch.rand(1, 3, 12, 16, device=device, dtype=dtype)
+        color = torch.tensor([[0.5, 0.5, 0.5]], device=device, dtype=dtype)
+        vertex = torch.tensor([[[4.0, 4.0]]], device=device, dtype=dtype)
+        out = draw_convex_polygon(im.clone(), vertex, color)
+        expected = draw_convex_polygon(im.clone(), vertex.expand(1, 2, 2), color)
+        self.assert_close(out, expected)
+        self.assert_close(out[..., 4, 4], color)
+
+    def test_empty_polygon_in_a_list_leaves_its_image_unchanged(self, device, dtype):
+        """An empty polygon has no vertex to pad with; the rest of the batch is still drawn."""
+        im = torch.rand(2, 3, 12, 16, device=device, dtype=dtype)
+        square = torch.tensor([[4, 4], [12, 4], [12, 8], [4, 8]], device=device, dtype=dtype)
+        color = torch.tensor([[0.5, 0.5, 0.5], [0.5, 0.5, 0.75]], device=device, dtype=dtype)
+        out = draw_convex_polygon(im.clone(), [torch.zeros(0, 2, device=device, dtype=dtype), square], color)
+        self.assert_close(out[:1], im[:1])
+        self.assert_close(out[1:], draw_convex_polygon(im[1:].clone(), square[None], color[1:]))
+
+    def test_empty_list_with_empty_batch(self, device, dtype):
+        im = torch.rand(0, 3, 12, 16, device=device, dtype=dtype)
+        color = torch.zeros(0, 3, device=device, dtype=dtype)
+        out = draw_convex_polygon(im.clone(), [], color)
+        assert out.shape == im.shape
+
+    def test_sloped_edge_fills_the_pixel_it_passes_through(self, device, dtype):
+        """The right edge of this triangle crosses x = 4 + 2 * (y - 4) exactly, and that pixel is inside."""
+        tri = torch.tensor([[[4.0, 4.0], [12.0, 8.0], [4.0, 8.0]]], device=device, dtype=dtype)
+        im = torch.zeros(1, 1, 12, 16, device=device, dtype=dtype)
+        out = draw_convex_polygon(im, tri, torch.ones(1, 1, device=device, dtype=dtype))
+        ys = torch.arange(12, device=device)[:, None]
+        xs = torch.arange(16, device=device)[None, :]
+        expected = (ys >= 4) & (ys <= 8) & (xs >= 4) & (xs <= 4 + 2 * (ys - 4))
+        assert out[0, 0].eq(expected).all()
+
+    def test_0d_scalar_color_matches_one_channel_color(self, device, dtype):
+        """A 0-d color used to fail unpacking (b, c); it now fills like a size-1 color."""
+        square = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        im = torch.zeros(1, 1, 5, 5, device=device, dtype=dtype)
+        out = draw_convex_polygon(im.clone(), square, torch.tensor(9.0, device=device, dtype=dtype))
+        expected = draw_convex_polygon(im.clone(), square, torch.tensor([9.0], device=device, dtype=dtype))
+        self.assert_close(out, expected)
+        assert out.count_nonzero() > 0

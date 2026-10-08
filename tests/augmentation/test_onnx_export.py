@@ -93,6 +93,26 @@ def _erasing() -> torch.nn.Module:
     return K.RandomErasing(p=1.0)
 
 
+@pytest.mark.parametrize(
+    "parameter_dtype,image_dtype",
+    [
+        (torch.float16, torch.float32),
+        (torch.float16, torch.float16),
+        (torch.bfloat16, torch.float32),
+    ],
+    ids=["float16-params-float32-image", "float16-params-float16-image", "bfloat16-params-float32-image"],
+)
+@pytest.mark.device_agnostic
+def test_onnx_export_random_erasing_tensor_parameters(parameter_dtype, image_dtype) -> None:
+    module = K.RandomErasing(
+        scale=torch.tensor((0.25, 0.25), dtype=parameter_dtype),
+        ratio=torch.tensor((1.0, 1.0), dtype=parameter_dtype),
+        p=1.0,
+    )
+    size = _try_export(module, torch.randn(2, 3, 16, 16, dtype=image_dtype))
+    assert size > 0
+
+
 def _posterize() -> torch.nn.Module:
     return K.RandomPosterize(3, p=1.0)
 
@@ -309,6 +329,20 @@ def _run_onnx(module: torch.nn.Module, x: torch.Tensor) -> Any:
     return sess.run(["output"], {"input": x.numpy()})[0]
 
 
+@pytest.mark.parametrize("shape", [(1, 1, 1, 8), (1, 1, 8, 1), (1, 1, 1, 1)])
+@pytest.mark.device_agnostic
+def test_onnx_random_perspective_singleton_axis_is_identity_5000(shape: Tuple[int, ...]) -> None:
+    """A size-1 axis exported through the legacy tracer is the identity at zero distortion, as in eager."""
+    # Start at 1: an all-zero 1x1 image cannot tell the identity from the zeros the broken export returned.
+    image = torch.arange(1, shape[-2] * shape[-1] + 1, dtype=torch.float32).reshape(shape)
+    aug = K.RandomPerspective(0.0, p=1.0).eval()
+    eager = aug(image).numpy()
+    onnx_out = _run_onnx(aug, image)
+    assert eager.shape == onnx_out.shape
+    assert float(np.abs(eager - image.numpy()).max()) < 1e-5
+    assert float(np.abs(onnx_out - eager).max()) < 1e-5
+
+
 @pytest.mark.parametrize("name,factory", ONNX_NUMERICAL_EQUIVALENT, ids=[n for n, _ in ONNX_NUMERICAL_EQUIVALENT])
 @pytest.mark.device_agnostic
 def test_onnx_export_numerically_matches_eager(name: str, factory: Callable[[], torch.nn.Module]) -> None:
@@ -322,3 +356,14 @@ def test_onnx_export_numerically_matches_eager(name: str, factory: Callable[[], 
     assert eager.shape == onnx_out.shape, f"{name}: shape mismatch {eager.shape} vs {onnx_out.shape}"
     max_diff = float(np.abs(eager - onnx_out).max())
     assert max_diff < 1e-3, f"{name}: max abs diff {max_diff:.4f} exceeds 1e-3"
+
+
+@pytest.mark.parametrize("size", [(9, 21), (5, 7)])
+@pytest.mark.device_agnostic
+def test_onnx_nearest_resize_exports_through_the_legacy_tracer(size: Tuple[int, int]) -> None:
+    """Nearest ``Resize`` samples ``nearest-exact``, which the legacy tracer cannot lower; export gathers instead."""
+    image = torch.arange(3 * 7 * 12, dtype=torch.float32).reshape(1, 3, 7, 12)
+    aug = K.Resize(size, resample="nearest").eval()
+    eager = aug(image).numpy()
+    onnx_out = _run_onnx(aug, image)
+    assert np.array_equal(onnx_out, eager)

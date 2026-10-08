@@ -18,10 +18,10 @@
 from typing import Optional, Tuple, Union, cast
 
 import torch
-import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK
 from kornia.core.tensor_wrapper import TensorWrapper, _wrap  # type: ignore[attr-defined]
+from kornia.geometry.conversions import _normalize_last_dim
 from kornia.geometry.linalg import batched_dot_product, batched_squared_norm
 
 __all__ = ["Scalar", "Vector2", "Vector3"]
@@ -29,14 +29,34 @@ __all__ = ["Scalar", "Vector2", "Vector3"]
 
 # TODO: implement more functionality to validate
 class Scalar(TensorWrapper):
-    """Wrap a tensor representing a scalar value."""
+    """Wrap a tensor of scalars of any shape, such as the per-vector result of :meth:`Vector3.dot`.
+
+    The tensor is wrapped without a copy, and the call-path type defect of :class:`Vector3` applies to it
+    (`#5022 <https://github.com/kornia/kornia/issues/5022>`_).
+    """
 
     def __init__(self, data: torch.Tensor) -> None:
         super().__init__(data)
 
 
 class Vector3(TensorWrapper):
-    """Wrap a tensor representing a 3D vector."""
+    r"""Wrap a tensor of 3D vectors, shape :math:`(*, 3)`.
+
+    Convention:
+        - The tensor is wrapped without a copy; any leading shape and dtype are accepted. :attr:`x`, :attr:`y` and
+          :attr:`z` are plain tensors of the leading shape :math:`(*)`, and :meth:`dot` and :meth:`squared_norm`
+          return a :class:`Scalar` of that shape (for :meth:`dot`, the two operands' broadcast leading shape).
+        - :meth:`random` draws vectors uniformly in the unit cube from torch's global generator, so every vector
+          lies in the first octant: it is not a random direction.
+        - ``copy.deepcopy``, ``copy.copy`` and pickle return a ``Vector3``. An in-place operator such as ``v += 1``
+          updates the wrapped tensor, so an alias and the tensor the vector was built from see the change; the
+          operator rules are those of :class:`~kornia.core.TensorWrapper`.
+        - Known defect: the returned type depends on the call path (``v.clone()`` is a plain tensor, while a torch
+          function rewraps its result as a ``Vector3``, so ``torch.linalg.norm(v, dim=-1)`` raises unless its
+          result happens to end in 3), an operator with a :class:`Scalar` on the left returns a ``Scalar`` that
+          holds the vectors (``s * v``, while ``v * s`` is a ``Vector3``), and a tuple index such as ``v[..., 0]``
+          raises (`#5022 <https://github.com/kornia/kornia/issues/5022>`_).
+    """
 
     def __init__(self, vector: torch.Tensor) -> None:
         super().__init__(vector)
@@ -64,14 +84,14 @@ class Vector3(TensorWrapper):
         return self.data[..., 2]
 
     def normalized(self) -> "Vector3":
-        """Return a copy with unit Euclidean length.
+        """Return a copy with each vector divided by its Euclidean norm.
 
         Returns:
-            New :class:`Vector3` with the same leading shape as this vector.
-            The last dimension is normalized with the L2 norm, so each
-            ``(x, y, z)`` vector has length one when the input norm is nonzero.
+            New :class:`Vector3` of the same shape. The norm is floored at ``1e-12``, so a shorter vector is scaled
+            by ``1e12`` instead of normalized (`#3952 <https://github.com/kornia/kornia/issues/3952>`_). A zero
+            vector stays zero in every dtype.
         """
-        return Vector3(F.normalize(self.data, p=2, dim=-1))
+        return Vector3(_normalize_last_dim(self.data, 1e-12))
 
     def dot(self, right: "Vector3") -> Scalar:
         """Compute dot products with another 3D vector wrapper.
@@ -103,6 +123,8 @@ class Vector3(TensorWrapper):
         dtype: Optional[torch.dtype] = None,
     ) -> "Vector3":
         """Create random 3D vectors with optional leading dimensions.
+
+        See the Convention block on :class:`Vector3`.
 
         Args:
             shape: Optional leading dimensions before the final coordinate
@@ -165,7 +187,7 @@ class Vector3(TensorWrapper):
             :class:`Vector3` containing the assembled coordinates.
         """
         KORNIA_CHECK(type(x) is type(y) is type(z))
-        KORNIA_CHECK(isinstance(x, torch.Tensor | float))
+        KORNIA_CHECK(isinstance(x, (torch.Tensor, float)))
         if isinstance(x, float):
             return _wrap(torch.as_tensor((x, y, z), device=device, dtype=dtype), Vector3)
         # TODO: this is totally insane ...
@@ -174,7 +196,11 @@ class Vector3(TensorWrapper):
 
 
 class Vector2(TensorWrapper):
-    """Wrap a tensor representing a 2D vector."""
+    r"""Wrap a tensor of 2D vectors, shape :math:`(*, 2)`.
+
+    See the Convention block on :class:`Vector3`, which applies to ``(x, y)`` vectors; :meth:`random` fills the
+    unit square.
+    """
 
     def __init__(self, vector: torch.Tensor) -> None:
         super().__init__(vector)
@@ -197,14 +223,12 @@ class Vector2(TensorWrapper):
         return self.data[..., 1]
 
     def normalized(self) -> "Vector2":
-        """Return a copy with unit Euclidean length.
+        """Return a copy with each vector divided by its Euclidean norm.
 
         Returns:
-            New :class:`Vector2` with the same leading shape as this vector.
-            The last dimension is normalized so each ``(x, y)`` vector has
-            length one when the input norm is nonzero.
+            New :class:`Vector2` of the same shape, with the norm floored as in :meth:`Vector3.normalized`.
         """
-        return Vector2(F.normalize(self.data, p=2, dim=-1))
+        return Vector2(_normalize_last_dim(self.data, 1e-12))
 
     def dot(self, right: "Vector2") -> Scalar:
         """Compute dot products with another 2D vector wrapper.
@@ -235,6 +259,8 @@ class Vector2(TensorWrapper):
         dtype: Optional[torch.dtype] = None,
     ) -> "Vector2":
         """Create random 2D vectors with optional leading dimensions.
+
+        See the Convention block on :class:`Vector3`.
 
         Args:
             shape: Optional leading dimensions before the final coordinate
@@ -275,7 +301,7 @@ class Vector2(TensorWrapper):
             :class:`Vector2` containing the assembled coordinates.
         """
         KORNIA_CHECK(type(x) is type(y))
-        KORNIA_CHECK(isinstance(x, torch.Tensor | float))
+        KORNIA_CHECK(isinstance(x, (torch.Tensor, float)))
         if isinstance(x, float):
             return _wrap(torch.as_tensor((x, y), device=device, dtype=dtype), Vector2)
         # TODO: this is totally insane ...

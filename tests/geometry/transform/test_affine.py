@@ -714,15 +714,12 @@ class TestAffine2d(BaseTester):
             kornia.geometry.transform.Affine()
 
     def test_affine_batch_size_mismatch(self, device, dtype):
+        angle = torch.rand(1, device=device, dtype=dtype)
+        translation = torch.rand(2, 2, device=device, dtype=dtype)
         with pytest.raises(RuntimeError):
-            angle = torch.rand(1, device=device, dtype=dtype)
-            translation = torch.rand(2, 2, device=device, dtype=dtype)
             kornia.geometry.transform.Affine(angle, translation)
 
     def test_affine_rotate(self, device, dtype):
-        # TODO: Remove when #666 is implemented
-        if device.type == "cuda":
-            pytest.skip("Currently breaks in CUDA.See https://github.com/kornia/kornia/issues/666")
         torch.manual_seed(0)
         angle = torch.rand(1, device=device, dtype=dtype) * 90.0
         input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
@@ -733,9 +730,6 @@ class TestAffine2d(BaseTester):
         self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     def test_affine_translate(self, device, dtype):
-        # TODO: Remove when #666 is implemented
-        if device.type == "cuda":
-            pytest.skip("Currently breaks in CUDA.See https://github.com/kornia/kornia/issues/666")
         torch.manual_seed(0)
         translation = torch.rand(1, 2, device=device, dtype=dtype) * 2.0
         input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
@@ -746,9 +740,6 @@ class TestAffine2d(BaseTester):
         self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     def test_affine_scale(self, device, dtype):
-        # TODO: Remove when #666 is implemented
-        if device.type == "cuda":
-            pytest.skip("Currently breaks in CUDA.See https://github.com/kornia/kornia/issues/666")
         torch.manual_seed(0)
         _scale_factor = torch.rand(1, device=device, dtype=dtype) * 2.0
         scale_factor = torch.stack([_scale_factor, _scale_factor], dim=1)
@@ -774,9 +765,6 @@ class TestAffine2d(BaseTester):
         self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     def test_affine_rotate_translate(self, device, dtype):
-        # TODO: Remove when #666 is implemented
-        if device.type == "cuda":
-            pytest.skip("Currently breaks in CUDA.See https://github.com/kornia/kornia/issues/666")
         batch_size = 2
 
         input = torch.tensor(
@@ -798,7 +786,10 @@ class TestAffine2d(BaseTester):
             device=device, dtype=dtype
         )
         actual = transform(input)
-        self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
+        # The half dtypes round the 180-degree rotation and the bilinear weights: the output is off by up to 3.9e-3
+        # in float16 and 2.3e-2 in bfloat16 on CPU and CUDA, against 1.0 for a dropped translation.
+        tol = {torch.float16: 1e-2, torch.bfloat16: 5e-2}.get(dtype, 1e-4)
+        self.assert_close(actual, expected, atol=tol, rtol=tol)
 
     def test_compose_affine_matrix_3x3(self, device, dtype):
         """To get parameters:

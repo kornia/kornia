@@ -106,7 +106,7 @@ class TestIterativeQuadInterp3dVsRefFormula:
         assert nms3d(resp_t, (3, 3, 3), True).sum().item() >= 1, "no NMS peak found"
 
         # Our function — one iteration keeps the initial integer position
-        coords, _ = conv_quad_interp3d(resp_t, n_iters=1, strict_maxima_bonus=0)
+        coords, _ = conv_quad_interp3d(resp_t, n_iters=1)
 
         # Reference: apply the C++ formula to the numpy arrays
         resp_np = resp_t.cpu().float().numpy()[0, 0]  # (3, H, W)
@@ -143,7 +143,7 @@ class TestIterativeQuadInterp3dAccuracy:
         nms_mask = nms3d(resp_t, (3, 3, 3), True)
         assert nms_mask.sum().item() >= 1, "no NMS peak"
 
-        coords, _ = conv_quad_interp3d(resp_t, strict_maxima_bonus=0)
+        coords, _ = conv_quad_interp3d(resp_t)
         d_peak = 1
         h_peak, w_peak = round(cy), round(cx)
         ours_x = coords[0, 0, 1, d_peak, h_peak, w_peak].item()
@@ -165,7 +165,7 @@ class TestIterativeQuadInterp3dAccuracy:
         """Blob at an integer position — recovered coords should be very close to integer."""
         cx, cy, cs = 9.0, 9.0, 1.0
         resp_t = _make_3d_gauss_response(19, 19, cx, cy, cs)
-        coords, _ = conv_quad_interp3d(resp_t, strict_maxima_bonus=0)
+        coords, _ = conv_quad_interp3d(resp_t)
         d_peak = 1
         h_peak, w_peak = round(cy), round(cx)
         ours_x = coords[0, 0, 1, d_peak, h_peak, w_peak].item()
@@ -186,7 +186,7 @@ class TestIterativeQuadInterp3dAccuracy:
                 resp_np[d] += np.exp(-((xx - bx) ** 2 + (yy - by) ** 2) / (2 * 1.5**2) - (d - bs) ** 2 / (2 * 1.0**2))
         resp_t = torch.from_numpy(resp_np).unsqueeze(0).unsqueeze(0)
 
-        coords, _ = conv_quad_interp3d(resp_t, strict_maxima_bonus=0)
+        coords, _ = conv_quad_interp3d(resp_t)
         d_peak = 1
         for bx, by, _ in blobs:
             h_int, w_int = round(by), round(bx)

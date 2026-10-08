@@ -151,9 +151,7 @@ def _one_diamond_one_square(
     square_centers = (square_regions > 0).to(img.dtype)
 
     # TODO (anguelos) make sure square_centers*square_regions is needed
-    new_img = new_img + square_centers * random_img + (1 - random_scale) * square_centers * square_regions
-
-    return new_img
+    return new_img + square_centers * random_img + (1 - random_scale) * square_centers * square_regions
 
 
 def diamond_square(

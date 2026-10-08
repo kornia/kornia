@@ -66,7 +66,7 @@ class TestObjectDetector(BaseTester):
         # an XPASS rather than sit silent until the 2.15 bound expires. Both variants fail today.
         strict=True,
     )
-    @pytest.mark.parametrize("variant", ("resnet50d", "hgnetv2_l"))
+    @pytest.mark.parametrize("variant", ["resnet50d", "hgnetv2_l"])
     def test_onnx(self, device, dtype, tmp_path: Path, variant: str):
         config = RTDETRConfig(variant, 1)
         model = RTDETR.from_config(config).to(device=device, dtype=dtype).eval()

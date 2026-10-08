@@ -13,6 +13,7 @@ Geometric
 .. autoclass:: RandomCrop3D
 .. autoclass:: RandomDepthicalFlip3D
 .. autoclass:: RandomHorizontalFlip3D
+.. autoclass:: RandomPerspective3D
 .. autoclass:: RandomRotation3D
 .. autoclass:: RandomVerticalFlip3D
 

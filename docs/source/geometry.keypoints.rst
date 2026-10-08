@@ -2,10 +2,11 @@ kornia.geometry.keypoints
 =========================
 
 .. meta::
-   :description: The kornia.geometry.keypoints module offers essential functionalities for the manipulation of 2D and 3D keypoints. This module provides tools for working with keypoints in both 2D and 3D space, enabling tasks such as feature detection, matching, and transformation. The module includes the `Keypoints` and `Keypoints3D` classes, which facilitate the management and processing of keypoint data, making it useful for applications like object recognition, tracking, and 3D reconstruction.
+   :description: The kornia.geometry.keypoints module provides the Keypoints container for 2D (x, y) keypoints, which kornia.augmentation transforms together with the images, and the Keypoints3D container for 3D (x, y, z) points.
 
-Object-oriented API for 2D and 3D keypoints: the :class:`~kornia.geometry.keypoints.Keypoints` and
-:class:`~kornia.geometry.keypoints.Keypoints3D` classes wrap a tensor of points and provide transformations and padding.
+Object-oriented API for keypoints: :class:`~kornia.geometry.keypoints.Keypoints` wraps a tensor of 2D ``(x, y)``
+points and transforms and pads it; :class:`~kornia.geometry.keypoints.Keypoints3D` validates and stores 3D
+``(x, y, z)`` points.
 
 .. autoclass:: kornia.geometry.keypoints.Keypoints
    :members:

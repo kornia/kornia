@@ -21,7 +21,12 @@ import torch
 from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
-from kornia.augmentation.utils import _adapted_rsampling, _check_positive_int_or_traced, _common_param_check
+from kornia.augmentation.utils import (
+    _adapted_rsampling,
+    _check_positive_int_or_traced,
+    _common_param_check,
+    _truncate_to_start,
+)
 from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.core.utils import _extract_device_dtype, is_exporting
 from kornia.geometry.bbox import bbox_generator3d
@@ -29,6 +34,8 @@ from kornia.geometry.bbox import bbox_generator3d
 
 class CropGenerator3D(RandomGeneratorBase):
     r"""Get parameters for ```crop``` transformation for crop transform.
+
+    See the Convention block on :class:`~kornia.augmentation.RandomCrop3D`.
 
     Args:
         size (tuple): Desired size of the crop operation, like (d, h, w).
@@ -61,8 +68,12 @@ class CropGenerator3D(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        # The draw is truncated to a start position, so keep it in float32: half-precision
+        # torch.rand on MPS can return exactly 1.0, which lands one past the last valid start (#4553).
+        sampler_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
         self.rand_sampler = Uniform(
-            torch.tensor(0.0, device=device, dtype=dtype), torch.tensor(1.0, device=device, dtype=dtype)
+            torch.tensor(0.0, device=device, dtype=sampler_dtype),
+            torch.tensor(1.0, device=device, dtype=sampler_dtype),
         )
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
@@ -93,8 +104,10 @@ class CropGenerator3D(RandomGeneratorBase):
         y_diff = height - size[:, 1] + 1
         z_diff = depth - size[:, 0] + 1
 
+        # ``*_diff`` is the number of valid start offsets, so it is 1 when the crop covers the whole
+        # axis and 0 when the crop is one voxel too large. The guard has to reject that zero as well.
         # The size check reads the data, which graph capture cannot do; skip it under export.
-        if not is_exporting() and ((x_diff < 0).any() or (y_diff < 0).any() or (z_diff < 0).any()):
+        if not is_exporting() and ((x_diff <= 0).any() or (y_diff <= 0).any() or (z_diff <= 0).any()):
             raise ValueError(
                 f"input_size {(depth, height, width)} cannot be smaller than crop size {size!s} in any dimension."
             )
@@ -105,13 +118,11 @@ class CropGenerator3D(RandomGeneratorBase):
                 "dst": torch.zeros([0, 8, 3], device=_device, dtype=_dtype),
             }
 
-        x_start = _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch).to(device=_device, dtype=_dtype)
-        y_start = _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch).to(device=_device, dtype=_dtype)
-        z_start = _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch).to(device=_device, dtype=_dtype)
-
-        x_start = (x_start * x_diff).floor()
-        y_start = (y_start * y_diff).floor()
-        z_start = (z_start * z_diff).floor()
+        # The draw is scaled and floored in the draw's dtype when that is the wider one: cast to a half ``size``
+        # dtype first, a draw close to 1 rounds up to 1.0 and the start lands one past the last valid position.
+        x_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), x_diff)
+        y_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), y_diff)
+        z_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), z_diff)
 
         crop_src = bbox_generator3d(
             x_start.view(-1), y_start.view(-1), z_start.view(-1), size[:, 2] - 1, size[:, 1] - 1, size[:, 0] - 1
@@ -166,6 +177,8 @@ def center_crop_generator3d(
     device: Union[str, torch.device, None] = None,
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ```center_crop3d``` transformation for center crop transform.
+
+    See the Convention block on :class:`~kornia.augmentation.CenterCrop3D`.
 
     Args:
         batch_size (int): the torch.Tensor batch size.

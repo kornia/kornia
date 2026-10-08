@@ -15,14 +15,14 @@
 # limitations under the License.
 #
 
+import math
 import warnings
-from typing import ClassVar, Dict, List, Optional, Tuple, Union
+from typing import ClassVar, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
 from torch import nn
 
 from kornia.color import rgb_to_grayscale
-from kornia.constants import pi
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_LAF
 from kornia.core.utils import is_exporting
 from kornia.geometry.subpix import ConvQuadInterp3d
@@ -49,7 +49,34 @@ from .scale_space_detector import (
     ScaleSpaceDetector,
     get_default_detector_config,
 )
-from .siftdesc import SIFTDescriptor
+from .sift import SIFTDescriptorFromPyramid
+from .sift.scale_space import _SIFTScalePyramid, _SIFTScaleSpaceDescriptor, _SIFTScaleSpaceDetector
+from .siftdesc import SIFTDescriptor, _check_sift_descriptor_layout, convert_sift_descriptor_layout
+
+
+def _in_sift_layout(descriptors: torch.Tensor, layout: str) -> torch.Tensor:
+    """Return kornia-layout SIFT descriptors in ``layout``; the default ``"kornia"`` returns them unchanged."""
+    return descriptors if layout == "kornia" else convert_sift_descriptor_layout(descriptors, "kornia", layout)
+
+
+def _lightglue_keypoint_scale_ori(lafs: torch.Tensor, feature_name: str) -> Tuple[torch.Tensor, torch.Tensor]:
+    r"""Return the keypoint scales and orientations, shape :math:`(1, N)`, that LightGlue takes for ``lafs``.
+
+    LightGlue's ``"sift"`` weights were trained on COLMAP keypoints, whose scale is the detection sigma and whose
+    orientation is the image angle of the frame's x-axis in :math:`(-\pi, \pi]`: the negative of the LAF
+    orientation. The scale is taken as a sixth of the LAF scale, which is sigma for 6-sigma DoG frames such as
+    :class:`SIFTFeatureScaleSpace`'s. Every other feature keeps the LAF scale and the LAF orientation in
+    :math:`[0, 2\pi)`. The ``"sift"`` scale is converted here rather than through :class:`LightGlue`'s
+    ``scale_coef``, which the ``"doghardnet"`` configurations use, so that ``LightGlue("sift")`` itself keeps taking
+    keypoints in the training convention.
+    """
+    scales = get_laf_scale(lafs).reshape(1, -1)
+    oris = torch.deg2rad(get_laf_orientation(lafs).reshape(1, -1))
+    if feature_name == "sift":
+        oris = -oris
+        return scales / 6.0, torch.where(oris <= -math.pi, oris + 2.0 * math.pi, oris)
+    oris[oris < 0] += 2.0 * math.pi
+    return scales, oris
 
 
 def get_laf_descriptors(
@@ -164,7 +191,7 @@ class LocalFeature(nn.Module):
 
     """
 
-    def __init__(self, detector: nn.Module, descriptor: LAFDescriptor, scaling_coef: float = 1.0) -> None:
+    def __init__(self, detector: nn.Module, descriptor: nn.Module, scaling_coef: float = 1.0) -> None:
         super().__init__()
         self.detector = detector
         self.descriptor = descriptor
@@ -212,8 +239,41 @@ class LocalFeature(nn.Module):
         return (lafs, responses, descs)
 
 
-class SIFTFeature(LocalFeature):
+class _SIFTFeature(LocalFeature):
+    """Compose a sparse SIFT detector with a patch or pyramid extraction backend."""
+
+    def __init__(
+        self, detector: nn.Module, descriptor: nn.Module, upright: bool, descriptor_layout: str = "kornia"
+    ) -> None:
+        _check_sift_descriptor_layout(descriptor_layout)
+        super().__init__(detector, descriptor)
+        self.upright = upright
+        self.descriptor_layout = descriptor_layout
+
+    def forward(
+        self, img: torch.Tensor, mask: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Return sparse LAFs, detector responses, and one descriptor per LAF."""
+        if not isinstance(self.descriptor, SIFTDescriptorFromPyramid):
+            lafs, responses, descriptors = super().forward(img, mask)
+        else:
+            lafs, responses = self.detector(img, mask)
+            lafs = scale_laf(lafs, self.scaling_coef)
+            gray_image = rgb_to_grayscale(img) if img.shape[1] == 3 else img
+            lafs, descriptors = self.descriptor.orient_and_describe(gray_image, lafs, upright=self.upright)
+        return lafs, responses, _in_sift_layout(descriptors, self.descriptor_layout)
+
+
+class SIFTFeature(_SIFTFeature):
     """Convenience module, which implements DoG detector + (Root)SIFT descriptor.
+
+    ``descriptor_backend="pyramid"`` uses :class:`SIFTDescriptorFromPyramid` for
+    orientation and description at the detector's sparse LAFs. Detection and the
+    feature budget are unchanged. The default ``"patch"`` backend retains the
+    existing patch-wise pipeline. Both return descriptors in kornia's SIFT layout by
+    default; ``descriptor_layout="opencv"`` returns them in OpenCV's, which
+    :class:`~kornia.feature.LightGlueMatcher` expects with ``"sift"``.
+    :func:`~kornia.feature.convert_sift_descriptor_layout` converts between the two.
 
     Using `kornia.feature.MultiResolutionDetector` without blur pyramid Still not as good as OpenCV/VLFeat because of
     https://github.com/kornia/kornia/pull/884,
@@ -229,7 +289,12 @@ class SIFTFeature(LocalFeature):
         config: Optional[Detector_config] = None,
         compile_model: bool = False,
         score_threshold: float = 0.0,
+        descriptor_backend: Literal["patch", "pyramid"] = "patch",
+        descriptor_layout: Literal["kornia", "opencv"] = "kornia",
     ) -> None:
+        if descriptor_backend not in ("patch", "pyramid"):
+            raise ValueError(f"Unknown SIFT descriptor backend: {descriptor_backend!r}")
+        _check_sift_descriptor_layout(descriptor_layout)
         patch_size: int = 41
         if device is None:
             device = torch.device("cpu")
@@ -239,21 +304,37 @@ class SIFTFeature(LocalFeature):
             BlobDoGSingle(1.0, 1.6),
             num_features,
             config,
-            ori_module=PassLAF() if upright else LAFOrienter(19),
+            ori_module=PassLAF() if upright or descriptor_backend == "pyramid" else LAFOrienter(19),
             aff_module=PassLAF(),
             compile_model=compile_model,
             score_threshold=score_threshold,
         ).to(device)
-        descriptor = LAFDescriptor(
-            SIFTDescriptor(patch_size=patch_size, rootsift=rootsift), patch_size=patch_size, grayscale_descriptor=True
-        ).to(device)
-        super().__init__(detector, descriptor)
+        descriptor: nn.Module
+        if descriptor_backend == "pyramid":
+            descriptor = SIFTDescriptorFromPyramid(rootsift=rootsift).to(device)
+        else:
+            descriptor = LAFDescriptor(
+                SIFTDescriptor(patch_size=patch_size, rootsift=rootsift),
+                patch_size=patch_size,
+                grayscale_descriptor=True,
+            ).to(device)
+        super().__init__(detector, descriptor, upright, descriptor_layout)
 
 
 class SIFTFeatureScaleSpace(LocalFeature):
     """Convenience module, which implements DoG detector + (Root)SIFT descriptor.
 
-    Using `kornia.feature.ScaleSpaceDetector` with blur pyramid.
+    The default patch backend uses `kornia.feature.ScaleSpaceDetector`. Select
+    ``descriptor_backend="pyramid"`` for a specialized SIFT pipeline that reuses
+    the detector's Gaussian images and each detection's octave and layer. Image
+    gradients are computed once per used layer and sampled for sparse orientation
+    and descriptor integration. A dedicated DoG detector refines only sparse
+    extrema and ranks all valid candidates by response, without contrast or edge
+    rejection. The feature budget is unchanged; detections may differ.
+    The default ``"patch"`` backend retains patch-wise orientation and description.
+    Both return descriptors in kornia's SIFT layout by default; ``descriptor_layout="opencv"``
+    returns them in OpenCV's, which :class:`~kornia.feature.LightGlueMatcher` expects with
+    ``"sift"``. :func:`~kornia.feature.convert_sift_descriptor_layout` converts between the two.
 
     Still not as good as OpenCV/VLFeat because of https://github.com/kornia/kornia/pull/884, but we are working on it
     """
@@ -265,25 +346,68 @@ class SIFTFeatureScaleSpace(LocalFeature):
         rootsift: bool = True,
         device: Union[str, torch.device, None] = None,
         compile_modules: Union[bool, List[str]] = False,
+        descriptor_backend: Literal["patch", "pyramid"] = "patch",
+        descriptor_layout: Literal["kornia", "opencv"] = "kornia",
     ) -> None:
+        if descriptor_backend not in ("patch", "pyramid"):
+            raise ValueError(f"Unknown SIFT descriptor backend: {descriptor_backend!r}")
+        _check_sift_descriptor_layout(descriptor_layout)
         if device is None:
             device = torch.device("cpu")
         patch_size: int = 41
-        detector = ScaleSpaceDetector(
-            num_features,
-            resp_module=BlobDoG(),
-            subpix_module=ConvQuadInterp3d(strict_maxima_bonus=0.0),
-            scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True),
-            ori_module=PassLAF() if upright else LAFOrienter(19),
-            scale_space_response=True,
-            minima_are_also_good=True,
-            mr_size=6.0,
-            compile_modules=compile_modules,
-        ).to(device)
-        descriptor = LAFDescriptor(
-            SIFTDescriptor(patch_size=patch_size, rootsift=rootsift), patch_size=patch_size, grayscale_descriptor=True
-        ).to(device)
+        if descriptor_backend == "pyramid":
+            detector = _SIFTScaleSpaceDetector(num_features, _SIFTScalePyramid()).to(device)
+            if compile_modules:
+                selected = {"scale_pyr", "subpix"} if compile_modules is True else set(compile_modules)
+                unknown = selected - {"scale_pyr", "subpix"}
+                if unknown:
+                    raise ValueError("The SIFT pyramid backend supports compile_modules=['scale_pyr', 'subpix'] only")
+                if "scale_pyr" in selected:
+                    # In-place compilation preserves buffer paths and module
+                    # serialization, unlike wrapping or replacing forward.
+                    detector.scale_pyr.compile()
+                if "subpix" in selected:
+                    detector._refine = torch.compile(detector._refine)
+        else:
+            detector = ScaleSpaceDetector(
+                num_features,
+                resp_module=BlobDoG(),
+                subpix_module=ConvQuadInterp3d(),
+                scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True),
+                ori_module=PassLAF() if upright or descriptor_backend == "pyramid" else LAFOrienter(19),
+                scale_space_response=True,
+                minima_are_also_good=True,
+                mr_size=6.0,
+                compile_modules=compile_modules,
+            ).to(device)
+        descriptor: nn.Module
+        if descriptor_backend == "pyramid":
+            descriptor = _SIFTScaleSpaceDescriptor(rootsift=rootsift).to(device)
+        else:
+            descriptor = LAFDescriptor(
+                SIFTDescriptor(patch_size=patch_size, rootsift=rootsift),
+                patch_size=patch_size,
+                grayscale_descriptor=True,
+            ).to(device)
         super().__init__(detector, descriptor)
+        self.upright = upright
+        self.descriptor_backend = descriptor_backend
+        self.descriptor_layout = descriptor_layout
+
+    def forward(
+        self, img: torch.Tensor, mask: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Detect and describe sparse SIFT features, sharing scale space when selected."""
+        if self.descriptor_backend == "patch":
+            lafs, responses, descriptors = super().forward(img, mask)
+            return lafs, responses, _in_sift_layout(descriptors, self.descriptor_layout)
+        gray = rgb_to_grayscale(img) if img.shape[1] == 3 else img
+        responses, lafs, _, pyramid, octaves, levels = self.detector._detect_with_pyramid(
+            gray, self.detector.num_features, mask
+        )
+        lafs = scale_laf(lafs, self.scaling_coef)
+        lafs, descriptors = self.descriptor(pyramid, lafs, octaves, levels, upright=self.upright)
+        return lafs, responses, _in_sift_layout(descriptors.to(img.dtype), self.descriptor_layout)
 
 
 class GFTTAffNetHardNet(LocalFeature):
@@ -479,7 +603,7 @@ class LocalFeatureMatcher(nn.Module):
         """
         num_image_pairs: int = data["image0"].shape[0]
 
-        if ("lafs0" not in data.keys()) or ("descriptors0" not in data.keys()):
+        if ("lafs0" not in data) or ("descriptors0" not in data):
             # One can supply pre-extracted local features
             mask0 = data.get("mask0")
             if mask0 is not None and mask0.dim() == 3:
@@ -489,7 +613,7 @@ class LocalFeatureMatcher(nn.Module):
         else:
             lafs0, descs0 = data["lafs0"], data["descriptors0"]
 
-        if ("lafs1" not in data.keys()) or ("descriptors1" not in data.keys()):
+        if ("lafs1" not in data) or ("descriptors1" not in data):
             mask1 = data.get("mask1")
             if mask1 is not None and mask1.dim() == 3:
                 mask1 = mask1.unsqueeze(1)
@@ -576,14 +700,25 @@ class LocalFeatureMatcher(nn.Module):
 
 
 class LightGlueMatcher(GeometryAwareDescriptorMatcher):
-    """LightGlue-based matcher in kornia API.
+    r"""LightGlue-based matcher in kornia API.
 
     This is based on the original code from paper "LightGlue: Local Feature Matching at Light Speed".
     See :cite:`LightGlue2023` for more details.
 
     Args:
-        feature_name: type of feature for matching, can be `disk` or `superpoint`.
+        feature_name: type of feature for matching, one of ``known_modes``.
         params: LightGlue params.
+
+    With ``"sift"``, the descriptors must be in OpenCV's SIFT layout, which LightGlue's SIFT weights expect. kornia's
+    SIFT descriptors use another order of the same values: create the feature with ``descriptor_layout="opencv"``,
+    or convert them first with :func:`~kornia.feature.convert_sift_descriptor_layout`::
+
+        descs = convert_sift_descriptor_layout(descs, "kornia", "opencv")
+
+    The keypoint scale and orientation taken from the LAFs are converted to the convention of the COLMAP keypoints
+    the ``"sift"`` weights were trained on: the orientation is the negated LAF orientation in :math:`(-\pi, \pi]`,
+    and the scale is a sixth of the LAF scale, which is the detection sigma for 6-sigma DoG frames such as
+    :class:`~kornia.feature.SIFTFeatureScaleSpace`'s.
 
     """
 
@@ -642,22 +777,14 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         if len(desc2.shape) == 2:
             desc2 = desc2.unsqueeze(0)
         dev = lafs1.device
-        if hw1 is None:
-            hw1_ = keypoints1.max(dim=1)[0].squeeze().flip(0)
-        else:
-            hw1_ = torch.tensor(hw1, device=dev)
-        if hw2 is None:
-            hw2_ = keypoints2.max(dim=1)[0].squeeze().flip(0)
-        else:
-            hw2_ = torch.tensor(hw2, device=dev)
-        ori0 = torch.deg2rad(get_laf_orientation(lafs1).reshape(1, -1))
-        ori0[ori0 < 0] += 2.0 * pi
-        ori1 = torch.deg2rad(get_laf_orientation(lafs2).reshape(1, -1))
-        ori1[ori1 < 0] += 2.0 * pi
+        hw1_ = keypoints1.max(dim=1)[0].squeeze().flip(0) if hw1 is None else torch.tensor(hw1, device=dev)
+        hw2_ = keypoints2.max(dim=1)[0].squeeze().flip(0) if hw2 is None else torch.tensor(hw2, device=dev)
+        scale0, ori0 = _lightglue_keypoint_scale_ori(lafs1, self.feature_name)
+        scale1, ori1 = _lightglue_keypoint_scale_ori(lafs2, self.feature_name)
         input_dict = {
             "image0": {
                 "keypoints": keypoints1,
-                "scales": get_laf_scale(lafs1).reshape(1, -1),
+                "scales": scale0,
                 "oris": ori0,
                 "lafs": lafs1,
                 "descriptors": desc1,
@@ -666,7 +793,7 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
             "image1": {
                 "keypoints": keypoints2,
                 "lafs": lafs2,
-                "scales": get_laf_scale(lafs2).reshape(1, -1),
+                "scales": scale1,
                 "oris": ori1,
                 "descriptors": desc2,
                 "image_size": hw2_.flip(0).reshape(-1, 2).to(dev),

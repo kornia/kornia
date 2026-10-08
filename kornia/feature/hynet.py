@@ -307,5 +307,4 @@ class HyNet(nn.Module):
             x = self.desc_norm(x.float() + self.eps_l2_norm).to(x.dtype)
         else:
             x = self.desc_norm(x + self.eps_l2_norm)
-        x = x.view(x.size(0), -1)
-        return x
+        return x.view(x.size(0), -1)

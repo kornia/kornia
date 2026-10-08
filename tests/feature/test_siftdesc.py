@@ -18,9 +18,12 @@
 import pytest
 import torch
 
+from kornia.core.exceptions import BaseError
+from kornia.feature import convert_sift_descriptor_layout
 from kornia.feature.siftdesc import (
     DenseSIFTDescriptor,
     SIFTDescriptor,
+    _dense_sift_histograms_from_gradients,
     get_sift_bin_ksize_stride_pad,
     get_sift_pooling_kernel,
 )
@@ -73,6 +76,20 @@ class TestSIFTDescriptor(BaseTester):
         patches = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         sift = SIFTDescriptor(15).to(device, dtype)
         self.gradcheck(sift, (patches,), nondet_tol=1e-4)
+
+    def test_float64_axis_ramps_vote_in_one_bin_5127(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        # Every gradient of a ramp along +x (-x) points at angle 0 (pi), the centre of angular bin 0 (4).
+        axis = torch.arange(32, device=device, dtype=torch.float64)
+        patches = torch.stack([axis.expand(32, 32), -axis.expand(32, 32)]).unsqueeze(1)
+        descriptors = SIFTDescriptor(32, rootsift=False).to(device, torch.float64)(patches).view(2, 8, 16)
+        expected = torch.zeros_like(descriptors)
+        expected[0, 0], expected[1, 4] = descriptors[0, 0], descriptors[1, 4]
+        # The float32 pi in the bin scale leaked every vote into the bin below (4.3e-8 after normalisation).
+        self.assert_close(descriptors, expected, rtol=0.0, atol=1e-12)
+        assert (descriptors[0, 0] > 0.1).all()
+        assert (descriptors[1, 4] > 0.1).all()
 
     @pytest.mark.skip("Compiled functions can't take variable number")
     def test_jit(self, device, dtype):
@@ -189,7 +206,8 @@ class TestSIFTConstantPatchIsFinite(BaseTester):
         out = SIFTDescriptor(32, rootsift=rootsift).to(device, desc_dtype)(patches)
         out.sum().backward()
         assert torch.isfinite(out).all()
-        assert patches.grad is not None and torch.isfinite(patches.grad).all()
+        assert patches.grad is not None
+        assert torch.isfinite(patches.grad).all()
 
     @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16, torch.float32])
     @pytest.mark.parametrize("rootsift", [False, True])
@@ -206,7 +224,8 @@ class TestSIFTConstantPatchIsFinite(BaseTester):
         out = SIFTDescriptor(16, rootsift=rootsift).to(device, desc_dtype)(patches)
         out.sum().backward()
         assert torch.isfinite(out).all()
-        assert patches.grad is not None and torch.isfinite(patches.grad).all(), patches.grad.abs().max()
+        assert patches.grad is not None, patches.grad.abs().max()
+        assert torch.isfinite(patches.grad).all(), patches.grad.abs().max()
         assert bool((patches.grad == 0).all()), f"flat patch has a gradient of {patches.grad.abs().max().item()}"
 
     @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
@@ -217,7 +236,8 @@ class TestSIFTConstantPatchIsFinite(BaseTester):
             pytest.skip("MPS does not support float64")
         x = torch.zeros(3, 8, device=device, dtype=desc_dtype, requires_grad=True)
         _l2_normalize(x, dim=1).sum().backward()
-        assert x.grad is not None and bool((x.grad == 0).all()), x.grad
+        assert x.grad is not None, x.grad
+        assert bool((x.grad == 0).all()), x.grad
         # and a non-zero vector keeps `F.normalize`'s value and gradient
         torch.manual_seed(0)
         y = torch.rand(3, 8, device=device, dtype=desc_dtype, requires_grad=True)
@@ -225,6 +245,17 @@ class TestSIFTConstantPatchIsFinite(BaseTester):
         _l2_normalize(y, dim=1).sum().backward()
         torch.nn.functional.normalize(y_ref.float(), dim=1, eps=1e-12).to(desc_dtype).sum().backward()
         self.assert_close(y.grad, y_ref.grad)
+
+    def test_l2_normalize_propagates_nan(self, device):
+        from kornia.core.utils import _l2_normalize
+
+        nan, inf = float("nan"), float("inf")
+        # [-3, 0]: a non-zero vector whose largest entry is 0, so the zero test must run on magnitudes
+        x = torch.tensor([[nan, 1.0], [inf, 0.0], [0.0, 0.0], [3.0, 4.0], [-3.0, 0.0]], device=device)
+        out = _l2_normalize(x, dim=1)
+        # a vector holding a NaN is not a zero vector: it keeps `F.normalize`'s NaN instead of becoming zeros
+        assert bool(torch.isnan(out[0]).all()), out[0]
+        torch.testing.assert_close(out[1:], torch.nn.functional.normalize(x[1:], dim=1), equal_nan=True)
 
     @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16, torch.float32])
     def test_dense_sift(self, device, desc_dtype):
@@ -385,3 +416,81 @@ class TestDenseSIFTDescriptor(BaseTester):
         batch_size, channels, height, width = 1, 1, 16, 16
         patches = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(DenseSIFTDescriptor(4, 2, 2), (patches), nondet_tol=1e-4)
+
+    def test_float64_bin_centre_gradient_votes_in_one_bin_5127(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        bins = 8
+        angle = torch.arange(bins, device=device, dtype=torch.float64) * (2 * torch.pi / bins)
+        # Unit gradients at the bin centres, plus one zero gradient that votes nowhere.
+        gx = torch.cat([torch.cos(angle), angle.new_zeros(1)]).view(1, 1, 1, bins + 1)
+        gy = torch.cat([torch.sin(angle), angle.new_zeros(1)]).view(1, 1, 1, bins + 1)
+        histograms = _dense_sift_histograms_from_gradients(gx, gy, bins, eps=0.0)
+        expected = torch.zeros(bins, bins + 1, device=device, dtype=torch.float64)
+        expected[:, :bins] = torch.eye(bins, device=device, dtype=torch.float64)
+        # The float32 pi in the orientation offset and the bin scale leaked up to 1e-7 into the lower bin.
+        self.assert_close(histograms[0, :, 0], expected, rtol=0.0, atol=1e-12)
+
+
+class TestConvertSIFTDescriptorLayout(BaseTester):
+    def test_smoke(self, device, dtype):
+        descriptors = torch.rand(2, 5, 128, device=device, dtype=dtype)
+        converted = convert_sift_descriptor_layout(descriptors, "kornia", "opencv")
+        assert converted.shape == descriptors.shape
+        assert converted.dtype == dtype
+        assert converted.device == descriptors.device
+
+    def test_index_mapping(self, device, dtype):
+        # kornia stores (angle, row, column) and OpenCV (row, column, angle), with the angle bins counted the other
+        # way round: kornia index a * 16 + y * 4 + x is OpenCV index (y * 4 + x) * 8 + (-a mod 8).
+        one_hot = torch.eye(128, device=device, dtype=dtype)
+        converted = convert_sift_descriptor_layout(one_hot, "kornia", "opencv")
+        assert torch.equal(converted.sum(0), torch.ones(128, device=device, dtype=dtype))
+        for kornia_index, opencv_index in ((0, 0), (18, 23), (13, 104), (32, 6), (127, 121)):
+            assert converted[kornia_index].argmax().item() == opencv_index
+
+    @pytest.mark.parametrize("num_ang_bins, num_spatial_bins", [(8, 4), (6, 3), (4, 1)])
+    def test_round_trip(self, device, dtype, num_ang_bins, num_spatial_bins):
+        descriptors = torch.rand(3, 2, num_ang_bins * num_spatial_bins**2, device=device, dtype=dtype)
+        bins = {"num_ang_bins": num_ang_bins, "num_spatial_bins": num_spatial_bins}
+        opencv = convert_sift_descriptor_layout(descriptors, "kornia", "opencv", **bins)
+        assert not torch.equal(opencv, descriptors)
+        assert torch.equal(convert_sift_descriptor_layout(opencv, "opencv", "kornia", **bins), descriptors)
+        assert torch.equal(convert_sift_descriptor_layout(descriptors, "kornia", "kornia", **bins), descriptors)
+
+    def test_angle_bins_follow_each_convention(self, device, dtype):
+        # Intensity grows downwards, so every gradient points along +y. kornia measures angles from +x towards +y
+        # (image rows run downwards), which puts it in bin 2 of 8. OpenCV measures them towards -y: bin 6.
+        ramp = torch.arange(32, device=device, dtype=torch.float32).view(32, 1).expand(32, 32)
+        descriptor = SIFTDescriptor(32, rootsift=False).to(device)(ramp[None, None]).to(dtype)
+        assert descriptor.view(8, 16).sum(-1).argmax().item() == 2
+        opencv = convert_sift_descriptor_layout(descriptor, "kornia", "opencv")
+        assert opencv.view(16, 8).sum(0).argmax().item() == 6
+
+    def test_exception(self, device, dtype):
+        descriptors = torch.rand(2, 128, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="layout"):
+            convert_sift_descriptor_layout(descriptors, "kornia", "vlfeat")
+        with pytest.raises(ValueError, match="layout"):
+            convert_sift_descriptor_layout(descriptors, "colmap", "kornia")
+        with pytest.raises(BaseError):
+            convert_sift_descriptor_layout(torch.rand(2, 100, device=device, dtype=dtype), "kornia", "opencv")
+        # -4 spatial bins square to the size of 4, and 0 angle bins match an empty descriptor.
+        with pytest.raises(ValueError, match="bin counts must be positive"):
+            convert_sift_descriptor_layout(descriptors, "kornia", "opencv", num_spatial_bins=-4)
+        with pytest.raises(ValueError, match="bin counts must be positive"):
+            convert_sift_descriptor_layout(descriptors[:, :0], "kornia", "opencv", num_ang_bins=0)
+
+    def test_gradcheck(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64 gradcheck")
+        descriptors = torch.rand(2, 128, device=device, dtype=torch.float64)
+        self.gradcheck(lambda d: convert_sift_descriptor_layout(d, "kornia", "opencv"), (descriptors,))
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        descriptors = torch.rand(2, 128, device=device, dtype=dtype)
+
+        def op(d: torch.Tensor) -> torch.Tensor:
+            return convert_sift_descriptor_layout(d, "kornia", "opencv")
+
+        self.assert_close(torch_optimizer(op, fullgraph=True)(descriptors), op(descriptors))

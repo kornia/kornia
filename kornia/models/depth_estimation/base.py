@@ -53,11 +53,10 @@ class DepthEstimation(HFONNXComunnityModel):
             ),
         ):
             results = [super(DepthEstimation, self).__call__(image[None].cpu().numpy())[0] for image in images]
-            results = [
+            return [
                 self.resize_back(torch.tensor(result, device=image.device, dtype=image.dtype), image)
                 for result, image in zip(results, images)
             ]
-            return results
 
         result = super().__call__(images.cpu().numpy())[0]
         result = torch.tensor(result, device=images.device, dtype=images.dtype)

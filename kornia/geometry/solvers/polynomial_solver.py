@@ -18,6 +18,7 @@
 """nn.Module containing the functionalities for computing the real roots of polynomial equation."""
 
 import math
+from typing import Tuple
 
 import torch
 
@@ -32,6 +33,18 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
 
     .. math:: coeffs[0]x^2 + coeffs[1]x + coeffs[2] = 0
 
+    Convention:
+        - The coefficients of :func:`solve_quadratic`, :func:`solve_cubic` and :func:`solve_quartic` are batched
+          ``(B, k + 1)`` for degree ``k``, highest degree first; :ref:`two-view-conventions` compares this with
+          ``numpy.roots``.
+        - Only real roots are returned, and a repeated root is repeated. A missing real root is reported as
+          ``0.0``, which is indistinguishable from a root at 0, so count real roots from the discriminant when
+          it matters.
+        - For ``coeffs = [a, b, c]`` and ``D = b**2 - 4 * a * c``, ``solve_quadratic`` returns
+          ``[(-b + sqrt(D)) / (2 * a), (-b - sqrt(D)) / (2 * a)]``, so the order flips with the sign of ``a``.
+        - A zero leading coefficient lowers the degree: with ``a = 0`` the root ``-c / b`` of the linear equation
+          is in slot 0, as :func:`solve_cubic` and :func:`solve_quartic` do for their lower-degree rows.
+
     Args:
         coeffs : The coefficients of quadratic equation :`(B, 3)`
 
@@ -41,11 +54,6 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
     Example:
         >>> coeffs = torch.tensor([[1., 4., 4.]])
         >>> roots = solve_quadratic(coeffs)
-
-    .. note::
-       In cases where a quadratic polynomial has only one real root, the output will be in the format
-       [real_root, 0]. And for the torch.complex roots should be represented as 0. This is done to maintain
-       a consistent output shape for all cases.
 
     """
     KORNIA_CHECK_SHAPE(coeffs, ["B", "3"])
@@ -62,8 +70,11 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
     mask_negative = delta < 0
     mask_zero = delta == 0
 
-    # Calculate 1/(2*a) for efficient computation
-    inv_2a = 0.5 / a
+    # With a == 0 the equation is linear, bx + c = 0: its root goes to slot 0 and slot 1 is padded.
+    # Dividing by a placeholder 1 there keeps the unused quadratic lanes (and their gradients) finite.
+    one = torch.ones_like(a)
+    mask_linear = a == 0
+    mask_b_zero = b == 0
 
     # Branch-free selection so the function traces under graph capture. The square root is only taken
     # where delta > 0: a zero discriminant yields the double root -b/(2a) with sqrt_delta = 0, and a
@@ -74,13 +85,52 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
         mask_nonpositive, zero, torch.sqrt(torch.where(mask_nonpositive, torch.ones_like(delta), delta))
     )
 
-    root_plus = (-b + sqrt_delta) * inv_2a
-    root_minus = (-b - sqrt_delta) * inv_2a
-    solutions = torch.stack(
-        [torch.where(mask_negative, zero, root_plus), torch.where(mask_negative, zero, root_minus)], dim=-1
-    )
+    # (-b +- sqrt(delta)) / (2a) subtracts nearly equal numbers for the root of smaller magnitude when
+    # |4ac| << b^2 (#4914). q = -(b + sign(b) sqrt(delta)) / 2 adds numbers of the same sign; the roots are
+    # q / a and c / q, which are (-b - sqrt(delta)) / (2a) and (-b + sqrt(delta)) / (2a) for b >= 0 and the
+    # other way round for b < 0. c / q is only taken where delta > 0 and a != 0, where |q| >= sqrt(delta) / 2 > 0;
+    # at a double root both slots are q / a = -b / (2a). Elsewhere a placeholder q keeps the discarded lane's
+    # gradient finite: with no real root and a tiny b, c / q^2 overflows and torch.where would turn it into nan.
+    sign_b = torch.where(b >= 0, one, -one)
+    q = -0.5 * (b + sign_b * sqrt_delta)
+    mask_distinct = ~(mask_nonpositive | mask_linear)
+    root_q_over_a = q / torch.where(mask_linear, one, a)
+    root_c_over_q = torch.where(mask_distinct, c / torch.where(mask_distinct, q, one), root_q_over_a)
+    root_plus = torch.where(b >= 0, root_c_over_q, root_q_over_a)
+    root_minus = torch.where(b >= 0, root_q_over_a, root_c_over_q)
 
-    return solutions
+    # The a * x^2 / b term is 0 in the forward pass, but it keeps the root's dependence on a in the
+    # gradient (d root / da = -root^2 / b). With b == 0 as well there is no root to report. The lane
+    # takes c only from the linear rows: torch.where differentiates the lane it discards too, and for an
+    # ordinary row with a tiny b, (c / b)^2 overflows there and turns the row's gradient into nan.
+    safe_b = torch.where(mask_b_zero, one, b)
+    root_linear = -torch.where(mask_linear, c, zero) / safe_b
+    root_linear = torch.where(mask_b_zero, zero, root_linear - a * root_linear * root_linear / safe_b)
+
+    root_0 = torch.where(mask_linear, root_linear, torch.where(mask_negative, zero, root_plus))
+    root_1 = torch.where(mask_linear | mask_negative, zero, root_minus)
+    return torch.stack([root_0, root_1], dim=-1)
+
+
+# Bit layout of the float dtypes solve_cubic scales in: the integer dtype of the same width, the exponent bias and the
+# number of mantissa bits. A float with a zero mantissa is 2 ** (stored exponent - bias).
+_FLOAT_LAYOUT = {torch.float32: (torch.int32, 127, 23), torch.float64: (torch.int64, 1023, 52)}
+
+# A cubic root that is this many times larger than the other two is taken as dominant by solve_cubic, which then gets
+# the other two from Vieta's relations instead of the closed form. See the comment there.
+_DOMINANT_ROOT_RATIO = 2.0**4
+
+
+def _exact_power_of_two(exponent: torch.Tensor) -> torch.Tensor:
+    """Return ``2 ** exponent`` for an integer-valued float tensor, exact on every backend.
+
+    ``torch.exp2`` and ``torch.pow`` are not exact for integer arguments on every backend (MPS), and a scale that is
+    not a power of two changes the bits of the scaled row. The exponent is clamped so that both ``2 ** exponent`` and
+    ``2 ** -exponent`` are normal floats, and is written into the exponent field of the float.
+    """
+    int_dtype, bias, mantissa_bits = _FLOAT_LAYOUT[exponent.dtype]
+    biased = exponent.clamp(1 - bias, bias - 1).to(int_dtype) + bias
+    return (biased * 2**mantissa_bits).view(exponent.dtype)
 
 
 def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
@@ -90,6 +140,14 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     the real roots.
 
     .. math:: coeffs[0]x^3 + coeffs[1]x^2 + coeffs[2]x + coeffs[3] = 0
+
+    Convention:
+        - Coefficient layout and zero padding as :func:`solve_quadratic`. Three real roots are returned unsorted,
+          and a single real root is in slot 0.
+        - A zero leading coefficient lowers the degree, and the roots of the remaining polynomial come first.
+        - The closed form is evaluated on the row scaled by an exact power of two to a unit root bound, and the
+          roots are scaled back, so its intermediates neither overflow nor underflow for a tiny leading coefficient
+          or for roots far from unit scale (#4914).
 
     Args:
         coeffs : The coefficients cubic equation : `(B, 4)`
@@ -102,9 +160,8 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         >>> roots = solve_cubic(coeffs)
 
     .. note::
-       In cases where a cubic polynomial has only one or two real roots, the output for the non-real
-       roots should be represented as 0. Thus, the output for a single real root should be in the
-       format [real_root, 0, 0], and for two real roots, it should be [real_root_1, real_root_2, 0].
+       ``float16`` and ``bfloat16`` cubics are solved in ``float32`` and the roots are cast back to
+       the input dtype.
 
     .. note::
        At the acos boundary reached by a repeated (or near-repeated) real root, backward suppresses
@@ -113,7 +170,27 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
        inherits this convention wherever it falls back to :func:`solve_cubic`.
 
     """
+    return _solve_cubic_with_count(coeffs)[0]
+
+
+def _solve_cubic_with_count(coeffs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """Solve a cubic as :func:`solve_cubic` does and also count its real roots.
+
+    Returns:
+        The roots of :func:`solve_cubic`, shape `(B, 3)`, and the number of real roots per row counted with
+        multiplicity, shape `(B,)`. The real roots fill the first slots and the rest are the ``0.0`` padding,
+        which the count tells apart from a root at 0.
+
+    """
     KORNIA_CHECK_SHAPE(coeffs, ["B", "4"])
+
+    # In float16, Q^3 underflows to 0 for |Q| below about 4e-3. With R == 0 that makes D == 0, so
+    # the D <= 0 branch divides 0 by sqrt(0) when Q < 0 and takes sqrt(-Q) of a positive Q when
+    # Q > 0: every root comes back NaN. Solve half-precision cubics in float32 and return the roots
+    # in the input dtype, as solve_quartic does for its Ferrari path.
+    if coeffs.dtype in (torch.float16, torch.bfloat16):
+        roots, num_real = _solve_cubic_with_count(coeffs.float())
+        return roots.to(coeffs.dtype), num_real
 
     _PI = torch.tensor(math.pi, device=coeffs.device, dtype=coeffs.dtype)
 
@@ -124,6 +201,7 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     d = coeffs[:, 3]  # constant term
 
     solutions = torch.zeros((len(coeffs), 3), device=a.device, dtype=a.dtype)
+    num_real = torch.zeros(len(coeffs), device=a.device, dtype=torch.long)
 
     mask_a_zero = a == 0
     mask_b_zero = b == 0
@@ -133,21 +211,47 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     # No need for explicit handling of mask_zero_order as solutions already contains torch.zeros by default.
 
     mask_first_order = mask_a_zero & mask_b_zero & ~mask_c_zero
-    mask_second_order = mask_a_zero & ~mask_b_zero & ~mask_c_zero
+    mask_second_order = mask_a_zero & ~mask_b_zero
 
     if torch.any(mask_second_order):
         solutions[mask_second_order, 0:2] = solve_quadratic(coeffs[mask_second_order, 1:])
+        # solve_quadratic's own discriminant: two real roots (a double root repeated) or none.
+        quad_b, quad_c, quad_d = b[mask_second_order], c[mask_second_order], d[mask_second_order]
+        num_real[mask_second_order] = torch.where(quad_c * quad_c - 4 * quad_b * quad_d < 0, 0, 2)
 
     if torch.any(mask_first_order):
-        solutions[mask_first_order, 0] = torch.tensor(1.0, device=a.device, dtype=a.dtype)
+        # cx + d = 0. The (a * x + b) * x^2 / c term is 0 in the forward pass, but it keeps the root's
+        # dependence on a and b in the gradient, as solve_quadratic does for its linear case.
+        c_first = c[mask_first_order]
+        x0_first = -d[mask_first_order] / c_first
+        a_first, b_first = a[mask_first_order], b[mask_first_order]
+        solutions[mask_first_order, 0] = x0_first - (a_first * x0_first + b_first) * x0_first * x0_first / c_first
+        num_real[mask_first_order] = 1
 
     # Normalized form x^3 + a2 * x^2 + a1 * x + a0 = 0
     inv_a = 1.0 / a[~mask_a_zero]
     b_a = inv_a * b[~mask_a_zero]
-    b_a2 = b_a * b_a
-
     c_a = inv_a * c[~mask_a_zero]
     d_a = inv_a * d[~mask_a_zero]
+
+    # Solve for y = x / s, with s the power of two just above max(|b/a|, |c/a|^(1/2), |d/a|^(1/3)), which bounds the
+    # root magnitude. The scaled coefficients b/(a s), c/(a s^2) and d/(a s^3) are below 1 in magnitude, so Q^3 and
+    # R^2 below neither overflow when a tiny leading coefficient makes b/a, c/a and d/a huge (#4914) nor underflow for
+    # tiny roots. Multiplying by a power of two is exact, so a row that neither overflowed nor underflowed takes the
+    # same branch as before and its D <= 0 roots are the same bits. s is a step function of the coefficients, so it is
+    # a constant for autograd. A row with b == c == d == 0 has bound 0 and keeps s = 1.
+    bound = torch.maximum(torch.maximum(b_a.abs(), c_a.abs().sqrt()), d_a.abs().pow(1.0 / 3.0)).detach()
+    positive_bound = bound > 0
+    exponent = torch.floor(torch.log2(torch.where(positive_bound, bound, torch.ones_like(bound)))) + 1
+    exponent = torch.where(positive_bound, exponent, torch.zeros_like(exponent))
+    s = _exact_power_of_two(exponent)
+    inv_s = _exact_power_of_two(-exponent)
+    b_a = b_a * inv_s
+    c_a = c_a * inv_s * inv_s
+    d_a = d_a * inv_s * inv_s * inv_s
+    b_a2 = b_a * b_a
+    scale = torch.ones_like(a)
+    scale[~mask_a_zero] = s
 
     # Solve the cubic equation
     Q = (3 * c_a - b_a2) / 9
@@ -169,8 +273,14 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     mask_Q_zero_solutions = (a_Q_zero == 0) & (a_R_zero != 0)
 
     if torch.any(mask_Q_zero):
-        x0_Q_zero = torch.pow(2 * R[mask_Q_zero], 1 / 3) - b_a_3[mask_Q_zero]
+        # torch.pow of a negative base to 1/3 is nan: take the cube root of |2R| and restore the sign.
+        R_Q_zero = R[mask_Q_zero]
+        A_Q_zero = torch.sign(R_Q_zero) * torch.pow(2 * R_Q_zero.abs(), 1 / 3)
+        # The root is A - Q / A, as in the D > 0 branch. The Q / A term is 0 in the forward pass,
+        # but it keeps the root's dependence on Q in the gradient (d root / dQ = -1 / A).
+        x0_Q_zero = A_Q_zero - Q[mask_Q_zero] / A_Q_zero - b_a_3[mask_Q_zero]
         solutions[mask_Q_zero_solutions, 0] = x0_Q_zero
+        num_real[mask_Q_zero_solutions] = 1
 
     mask_QR_zero = (Q == 0) & (R == 0)
     mask_QR_zero_solutions = (a_Q_zero == 0) & (a_R_zero == 0)
@@ -179,6 +289,7 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         solutions[mask_QR_zero_solutions] = torch.stack(
             [-b_a_3[mask_QR_zero], -b_a_3[mask_QR_zero], -b_a_3[mask_QR_zero]], dim=1
         )
+        num_real[mask_QR_zero_solutions] = 3
 
     # D <= 0
     mask_D_zero = (D <= 0) & (Q != 0)
@@ -204,6 +315,7 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         x1_D_zero = 2 * sqrt_Q_D_zero * torch.cos((theta_D_zero + 2 * _PI) / 3.0) - b_a_3[mask_D_zero]
         x2_D_zero = 2 * sqrt_Q_D_zero * torch.cos((theta_D_zero + 4 * _PI) / 3.0) - b_a_3[mask_D_zero]
         solutions[mask_D_zero_solutions] = torch.stack([x0_D_zero, x1_D_zero, x2_D_zero], dim=1)
+        num_real[mask_D_zero_solutions] = 3
 
     a_D_positive = torch.zeros_like(a)
     a_D_positive[~mask_a_zero] = D
@@ -211,25 +323,160 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     mask_D_positive_solution = (a_D_positive > 0) & (a_Q_zero != 0)
     mask_D_positive = (D > 0) & (Q != 0)
     if torch.any(mask_D_positive):
-        AD = torch.zeros_like(R)
-        BD = torch.zeros_like(R)
-        R_abs = torch.abs(R)
-        # Intersect with mask_D_positive: sqrt(D) on a D <= 0 row is nan, and
-        # although such a row is never read out of AD/BD, `-Q / nan` stays in
-        # the graph and its backward poisons every coefficient's gradient.
-        mask_R_positive = (R_abs > 1e-16) & mask_D_positive
-        if torch.any(mask_R_positive):
-            AD[mask_R_positive] = torch.pow(R_abs[mask_R_positive] + torch.sqrt(D[mask_R_positive]), 1 / 3)
-            mask_R_positive_ = R < 0
-
-            if torch.any(mask_R_positive_):
-                AD[mask_R_positive_] = -AD[mask_R_positive_]
-
-            BD[mask_R_positive] = -Q[mask_R_positive] / AD[mask_R_positive]
-        x0_D_positive = AD[mask_D_positive] + BD[mask_D_positive] - b_a_3[mask_D_positive]
+        # Cardano: the real root is A + B with A = cbrt(R + sqrt(D)) and B = cbrt(R - sqrt(D)) = -Q / A. Take the cube
+        # root of the larger magnitude, |R| + sqrt(D), and restore the sign of R, so A is never 0 and no floor on |R|
+        # is needed. Only the mask_D_positive rows enter: sqrt(D) on a D <= 0 row is nan, and although such a row
+        # would never be read out, `-Q / nan` would stay in the graph and its backward poison every coefficient's
+        # gradient.
+        Q_pos, R_pos, D_pos = Q[mask_D_positive], R[mask_D_positive], D[mask_D_positive]
+        AD = torch.pow(R_pos.abs() + torch.sqrt(D_pos), 1 / 3)
+        AD = torch.where(R_pos < 0, -AD, AD)
+        BD = -Q_pos / AD
+        # When Q > 0, A and B have opposite signs and A + B cancels once the root is small next to sqrt(Q), the case
+        # of a tiny leading coefficient (#4914): the finite root of 1e-30 x^3 + 2 x - 6 came out as 0 in float64.
+        # A^3 + B^3 = 2 R and A B = -Q, so A + B = 2 R / (A^2 - A B + B^2) = 2 R / (A^2 + B^2 + Q), a quotient of
+        # same-sign sums when Q > 0. When Q < 0, A and B have the same sign, A + B does not cancel and stays the more
+        # accurate form. With t = A^2 / Q >= 1, a relative rounding error in A moves A + B by (t + 1) / (t - 1) times
+        # as much and the quotient by 2 (t^2 - 1) / (t^2 + t + 1) times as much; the two are equal at
+        # t = (5 + sqrt(21)) / 2 = 4.79, so the quotient is only taken below that, where A + B cancels, and A + B is
+        # kept where |R| >> Q^(3/2) and the quotient would be up to twice as sensitive.
+        quotient_is_better = (Q_pos > 0) & (AD * AD < 4.79 * Q_pos)
+        sum_AB = torch.where(quotient_is_better, 2 * R_pos / (AD * AD + BD * BD + Q_pos), AD + BD)
+        x0_D_positive = sum_AB - b_a_3[mask_D_positive]
         solutions[mask_D_positive_solution, 0] = x0_D_positive
+        num_real[mask_D_positive_solution] = 1
 
-    return solutions
+    roots = solutions * scale[:, None]
+
+    # A root that dominates the other two, the case of a tiny leading coefficient with b != 0 (#4914: the row is
+    # y^3 + b' y^2 + tiny y + tinier after scaling), makes D = Q^3 + R^2 a difference of nearly equal numbers, so the
+    # branch is chosen by rounding: the D > 0 branch then drops two real roots, and the trigonometric branch returns
+    # the two small roots as differences of numbers of size |b'| / 3, which are not roots at all. Both branches get
+    # the dominant root x0 right. Keep it and take the other two from Vieta's relations, x1 x2 = -d / (a x0) and
+    # x1 + x2 = (c + d / x0) / (a x0), which are well conditioned when |x0| dominates (a x0 is then about -b), and
+    # let the stable quadratic decide whether they are real. They are formed in the original scale, where the two
+    # small roots are ordinary numbers; in the scaled row they can be below the dtype's normal range. Only a row
+    # whose largest root exceeds _DOMINANT_ROOT_RATIO times the scale of the other two enters, so every other row
+    # keeps its bits. The gate is decided on detached values: a rejected row can overflow these quotients, and a lane
+    # that autograd differentiates must not. The dominant root keeps its slot and the other two take the remaining
+    # slots in the order closest to the closed-form values they replace, so a row the closed form got right keeps its
+    # slot order; a complex pair puts the single real root in slot 0 as everywhere else.
+    mask_cubic = ~mask_a_zero
+    if torch.any(mask_cubic):
+        x = roots[mask_cubic]
+        slot0 = x.abs().argmax(dim=1, keepdim=True)
+        x0 = x.gather(1, slot0).squeeze(1)
+        a_cubic, c_cubic, d_cubic = a[mask_cubic], c[mask_cubic], d[mask_cubic]
+        x0_detached = x0.detach()
+        safe_x0 = torch.where(x0_detached == 0, torch.ones_like(x0_detached), x0_detached)
+        lead = a_cubic.detach() * safe_x0
+        product = -d_cubic.detach() / lead
+        total = (c_cubic.detach() + d_cubic.detach() / safe_x0) / lead
+        other_scale = torch.maximum(total.abs(), product.abs().sqrt())
+        mask_dominant = (x0_detached != 0) & (x0_detached.abs() > _DOMINANT_ROOT_RATIO * other_scale)
+        if torch.any(mask_dominant):
+            x0_dominant = x0[mask_dominant]
+            lead = a_cubic[mask_dominant] * x0_dominant
+            product = -d_cubic[mask_dominant] / lead
+            total = (c_cubic[mask_dominant] + d_cubic[mask_dominant] / x0_dominant) / lead
+            others = solve_quadratic(torch.stack([torch.ones_like(total), -total, product], dim=1))
+            pair_is_real = total * total - 4 * product >= 0
+            previous = x[mask_dominant]
+            slot0_dominant = slot0[mask_dominant]
+            rest = torch.sort(torch.cat([(slot0_dominant + 1) % 3, (slot0_dominant + 2) % 3], dim=1), dim=1).values
+            previous_rest = previous.gather(1, rest)
+            swap = (previous_rest - others.flip(1)).abs().sum(1) < (previous_rest - others).abs().sum(1)
+            others = torch.where(swap[:, None], others.flip(1), others)
+            in_place = torch.zeros_like(previous)
+            in_place.scatter_(1, slot0_dominant, x0_dominant[:, None])
+            in_place.scatter_(1, rest, others)
+            alone = torch.stack([x0_dominant, torch.zeros_like(x0_dominant), torch.zeros_like(x0_dominant)], dim=1)
+            mask_dominant_rows = torch.zeros_like(mask_a_zero)
+            mask_dominant_rows[mask_cubic] = mask_dominant
+            roots[mask_dominant_rows] = torch.where(pair_is_real[:, None], in_place, alone)
+            num_real[mask_dominant_rows] = torch.where(pair_is_real, 3, 1)
+
+    return roots, num_real
+
+
+def _solve_cubic_real(coeffs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Real roots ``(B, 3)`` of the cubics ``coeffs (B, 4)``, highest degree first, and a mask of the genuine ones.
+
+    Cardano's formula for one real root, the trigonometric one for three, followed by a Newton step. A cubic with one
+    real root repeats it in the two masked slots, so a caller builds every candidate from finite roots and masks
+    afterwards. The caller chooses a well-conditioned pencil parametrization with a nonzero leading coefficient.
+
+    A private kernel for the seven-point solvers rather than :func:`solve_cubic`, whose public contract differs where a
+    hot loop cares: it pads missing roots with 0.0, indistinguishable from a genuine root at 0; it lowers the degree of
+    a vanishing leading coefficient behind ``torch.any`` tests, a device synchronization per call; and it defines a
+    surrogate backward at repeated roots. Here the closed form runs without gradient and the Newton step carries it:
+    at a simple root that is the implicit-function derivative ``-(dp/dc) / p'(x)``, and the ``clamp``-guarded
+    ``sqrt``, ``acos`` and cube roots of the closed form, whose derivatives are unbounded at their bounds (#4229),
+    never enter the backward pass. At a repeated root ``p'(x) = 0``; the division is guarded and the gradient finite.
+    """
+    c3, c2, c1, c0 = coeffs.unbind(1)
+    a, b, c = c2 / c3, c1 / c3, c0 / c3
+    with torch.no_grad():
+        a3 = a / 3
+        p = b - a * a3
+        q = (2 * a3 * a3 - b) * a3 + c
+        discriminant = 0.25 * q * q + p * p * p / 27
+        # Cancellation at a repeated root can round the discriminant slightly positive.
+        discriminant_scale = 0.25 * q.square() + p.abs().pow(3) / 27
+        three = discriminant <= 32 * torch.finfo(coeffs.dtype).eps * discriminant_scale
+        root = discriminant.clamp(min=0).sqrt()
+        u, w = root - 0.5 * q, -root - 0.5 * q
+        single = torch.copysign(u.abs().pow(1 / 3), u) + torch.copysign(w.abs().pow(1 / 3), w)
+        radius = (-p / 3).clamp(min=0).sqrt()
+        safe_radius = torch.where(radius > 0, radius, torch.ones_like(radius))
+        angle = torch.acos((-0.5 * q / safe_radius.pow(3)).clamp(-1, 1)) / 3
+        offsets = torch.tensor([0.0, 2 * math.pi / 3, 4 * math.pi / 3], dtype=c3.dtype, device=c3.device)
+        triple = 2 * radius[:, None] * torch.cos(angle[:, None] - offsets)
+        x = torch.where(three[:, None], triple, single[:, None].expand(-1, 3)) - a3[:, None]
+    value = ((x + a[:, None]) * x + b[:, None]) * x + c[:, None]
+    slope = (3 * x + 2 * a[:, None]) * x + b[:, None]
+    # At repeated roots rounding can leave a tiny nonzero slope: dividing two rounding errors then moves an
+    # already accurate root far away. Bound the derivative relative to its terms, including their cancellation.
+    slope_scale = 3 * x.square() + 2 * a[:, None].abs() * x.abs() + b[:, None].abs()
+    simple = slope.abs() > 8 * torch.finfo(coeffs.dtype).eps * slope_scale
+    correction = value / torch.where(simple, slope, torch.ones_like(slope))
+    x = x - torch.where(simple, correction, torch.zeros_like(correction))
+    valid = torch.stack([torch.ones_like(three), three, three], 1)
+    return x, valid
+
+
+def _quartic_root_residual_tol(dtype: torch.dtype) -> float:
+    """Largest scaled Horner residual a polished quartic candidate may leave and still count as a root.
+
+    Relative to the magnitude of the polynomial's terms at the candidate, which is what a Horner
+    evaluation cannot resolve below a few ``eps``. The candidates are Newton-polished before the
+    test, so a genuine root arrives near that floor and a value that is not a root of the quartic
+    at all cannot. ``sqrt(eps) / 4`` is 8.6e-5 in float32 and 3.7e-9 in float64. Measured on
+    100k-row sweeps per family, genuine simple float32 roots leave at most 5.8e-6 after polishing and
+    float64 roots from an ill-conditioned cluster 3.7e-11. In float32 the margin is narrower at both
+    ends: the values Ferrari's collapsed factorisation produces in #4474 go down to about 5e-4, 6x the
+    tolerance, and a root next to a near-double root or inside a tight cluster, which Newton only
+    approaches linearly, can sit at the tolerance itself. Those margins are for Ferrari's own
+    candidates. A value polished from a complex-pair placeholder can stop inside the tolerance next to
+    two close roots, so ``solve_quartic`` also requires those to have converged.
+    """
+    return math.sqrt(torch.finfo(dtype).eps) / 4
+
+
+# Two accepted quartic candidates are the same root when they sit within each other's error bound:
+# the Newton step |p / p'| of a polished candidate at a simple root is a first-order estimate of its
+# distance to the nearest root, so a spurious repeat that stopped short of the root still reaches it,
+# while two distinct roots, however close, do not (a float64 quartic with roots 0.01 and 0.0109
+# keeps both). A candidate at a multiple root contributes nothing to the bound: p' vanishes there and
+# its Newton step is not an error estimate. The factor covers the first-order truncation and the
+# ulp floor, and was measured against 4, 16 and 64: 4 loses no root that 16 or 64 keep.
+_QUARTIC_COINCIDENCE_FACTOR = 4.0
+
+# A polished candidate whose derivative, relative to the size of the derivative's terms, exceeds this
+# sits at a simple root. Measured over 100k-row families: polished genuine double roots stay below
+# 1.1e-3 at the 99th percentile in float32 and below 1e-7 in float64, while a spurious repeat of a
+# simple root sits above 1e-2 at the 1st percentile in float32 and above 2e-2 in float64.
+_QUARTIC_SIMPLE_ROOT_DERIVATIVE = 1e-2
 
 
 def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
@@ -239,6 +486,18 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     the real roots.
 
     .. math:: coeffs[0]x^4 + coeffs[1]x^3 + coeffs[2]x^2 + coeffs[3]x + coeffs[4] = 0
+
+    Convention:
+        - Coefficient layout and zero padding as :func:`solve_quadratic`; the roots are unordered.
+        - Small-root quartics are evaluated after an exact power-of-two variable rescaling. Within the normal
+          exponent range of the compute dtype, the Ferrari thresholds then apply at unit coefficient scale.
+          Rows whose monic coefficient scale is at least 1 are unchanged.
+        - A row is solved as the cubic of its last four coefficients when its leading coefficient is 0, or when both
+          hold: ``|a|`` is smaller than ``1e-6`` (``1e-12`` in float64) times ``min(1, max_i |coeffs_i|)``, and the
+          scale-invariant root bound ``max(|b/a|, |c/a|^(1/2), |d/a|^(1/3), |e/a|^(1/4))`` exceeds ``1 / tol``
+          (tested as ``|coeffs_k| > |a| / tol^k``, without dividing by ``a``). Since the bound is at most 4 times
+          the largest root's magnitude, a quartic whose roots are all smaller than ``1 / (4 * tol)`` stays a
+          quartic at every scale; the bound can only move a row from the cubic path to the quartic path.
 
     Args:
         coeffs : The coefficients quartic equation : `(B, 5)`
@@ -251,11 +510,17 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         >>> roots = solve_quartic(coeffs)
 
     .. note::
-       In cases where a quartic polynomial has fewer than four real roots, the remaining entries
-       in the output are set to 0. Similarly, any non-real (complex) roots are represented as 0.
-       This is done to maintain a consistent output shape for all cases.
        For ``float16`` and ``bfloat16`` quartics, Ferrari intermediates are evaluated in ``float32``
        and the returned roots are cast back to the input dtype.
+
+       Float32 rows whose resolvent discriminant is obscured by rounding are recomputed in float64,
+       including root polishing, and cast back. On MPS, which has no float64, these rows are computed
+       on the CPU and copied back; autograd follows both copies.
+
+    .. note::
+       Variable rescaling is bounded to normal reciprocal powers of two in the compute dtype. It does not
+       recover input coefficients that have underflowed, and extreme subnormal coefficient scales may remain
+       below unit scale.
 
     .. note::
        For a repeated (or near-repeated) real root, the resolvent-cubic solve internally
@@ -273,14 +538,27 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
 
     # Coefficients
     a = coeffs[:, 0]
+    b, c, d, e = coeffs[:, 1], coeffs[:, 2], coeffs[:, 3], coeffs[:, 4]
 
     solutions = torch.zeros((len(coeffs), 4), device=coeffs.device, dtype=coeffs.dtype)
 
-    # Numerical tolerances
-    zero_tol = 1e-6 if coeffs.dtype == torch.float32 else 1e-12
+    # Numerical tolerances. Half-precision quartics are solved in float32 below, so they share
+    # float32's cubic-fallback tolerance; float64's 1e-12 would also round to 0 in float16.
+    zero_tol = 1e-6 if coeffs.dtype in (torch.float32, torch.float16, torch.bfloat16) else 1e-12
 
-    # Cubic fallback for a approx 0
-    mask_a_zero = torch.abs(a) < zero_tol
+    # Cubic fallback for a approx 0. The first test is relative below unit scale and absolute above it, which on
+    # its own sends a scaled quartic whose roots are well below 1 / zero_tol to the cubic. The second is the
+    # scale-invariant root bound max(|b/a|, |c/a|^(1/2), |d/a|^(1/3), |e/a|^(1/4)) > 1 / zero_tol, written as
+    # |coeffs_k| > |a| / zero_tol**k so it never divides by a. ANDed in, it can only move a row to the quartic
+    # path. If |a| / zero_tol**k overflows, the bound exceeds any representable coefficient, so False is correct.
+    row_scale = coeffs.abs().amax(dim=-1).clamp(max=1.0)
+    bound = (
+        (b.abs() > a.abs() / zero_tol)
+        | (c.abs() > a.abs() / zero_tol**2)
+        | (d.abs() > a.abs() / zero_tol**3)
+        | (e.abs() > a.abs() / zero_tol**4)
+    )
+    mask_a_zero = ((torch.abs(a) < zero_tol * row_scale) & bound) | (a == 0)
     mask_quartic = ~mask_a_zero
 
     if torch.any(mask_a_zero):
@@ -292,7 +570,7 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     # Normalized coefficients: x^4 + A*x^3 + B*x^2 + C*x + D = 0
     # The Ferrari intermediates overflow or quantize too coarsely in half dtypes even when the
     # final roots are representable. Keep the public half-precision contract while evaluating the
-    # quartic-only path in float32; the cubic fallback above remains in the input dtype.
+    # quartic-only path in float32; the cubic fallback above does the same inside solve_cubic.
     quartic_coeffs = coeffs[mask_quartic]
     if coeffs.dtype in (torch.float16, torch.bfloat16):
         quartic_coeffs = quartic_coeffs.float()
@@ -303,6 +581,25 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     B = c_q * inv_a
     C = d_q * inv_a
     D = e_q * inv_a
+
+    # Solve for u = x / s when the monic root bound is below 1. Otherwise the unit floors in Ferrari's
+    # radicand, residual and derivative thresholds become absolute as x shrinks: real roots are dropped and
+    # complex roots turn into accepted non-roots. Within the helper's normal-exponent range, an exact power of
+    # two brings the coefficient scale into [1, 2) without rounding; extreme subnormal scales may stay below 1.
+    # Keep s = 1 for ordinary rows and x^4, and scale each coefficient
+    # one factor at a time to avoid underflow in s**4. The discrete scale is constant for autograd.
+    bound = torch.maximum(
+        torch.maximum(A.abs(), B.abs().sqrt()), torch.maximum(C.abs().pow(1.0 / 3.0), D.abs().sqrt().sqrt())
+    ).detach()
+    positive_bound = bound > 0
+    exponent = torch.floor(torch.log2(torch.where(positive_bound, bound, torch.ones_like(bound)))).clamp(max=0)
+    exponent = torch.where(positive_bound, exponent, torch.zeros_like(exponent))
+    variable_scale = _exact_power_of_two(exponent)
+    inverse_scale = _exact_power_of_two(-exponent)
+    A = A * inverse_scale
+    B = B * inverse_scale * inverse_scale
+    C = C * inverse_scale * inverse_scale * inverse_scale
+    D = D * inverse_scale * inverse_scale * inverse_scale * inverse_scale
 
     # Resolvent cubic coefficients
     rc_a = torch.ones_like(A)
@@ -429,11 +726,167 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     q2_b = 0.5 * A + R
     q2_c = 0.5 * y + E
 
+    # When one root pair is much larger than the other, the small factor's constant y/2 -+ E is the difference of two
+    # numbers of the large pair's size, and in float32 that cancellation flips its discriminant: the small real roots
+    # come back as zero placeholders. The large factor has no such cancellation. Rebuild the small factor from
+    # it with Vieta's relations for the product (x^2 + b1 x + c1)(x^2 + b2 x + c2): c1 * c2 = D and
+    # b1 * c2 + b2 * c1 = C, as solve_quadratic takes its small root as c / q. A separation of _DOMINANT_ROOT_RATIO
+    # between the two constants decides it; the roots do not depend on the ratio anywhere from 2 to 1024.
+    first_small = torch.abs(q1_c) <= torch.abs(q2_c)
+    c_large = torch.where(first_small, q2_c, q1_c)
+    b_large = torch.where(first_small, q2_b, q1_b)
+    separated = _DOMINANT_ROOT_RATIO * torch.minimum(torch.abs(q1_c), torch.abs(q2_c)) < torch.abs(c_large)
+    safe_c_large = torch.where(separated, c_large, torch.ones_like(c_large))
+    c_small = D / safe_c_large
+    b_small = (C - b_large * c_small) / safe_c_large
+    q1_b = torch.where(separated & first_small, b_small, q1_b)
+    q1_c = torch.where(separated & first_small, c_small, q1_c)
+    q2_b = torch.where(separated & ~first_small, b_small, q2_b)
+    q2_c = torch.where(separated & ~first_small, c_small, q2_c)
+
     roots1 = solve_quadratic(torch.stack([q1_a, q1_b, q1_c], dim=1))
     roots2 = solve_quadratic(torch.stack([q2_a, q2_b, q2_c], dim=1))
 
+    # Ferrari reports the roots of the factorization it built, not of the quartic it was
+    # given, and in float32 those can differ completely. When solve_cubic loses a near-double
+    # resolvent root -- which is exactly what a near-perfect-square quartic produces -- the
+    # best remaining candidate leaves R^2 < 0, R falls back to 0, E's radicand goes negative
+    # too, and both quadratics collapse to x^2 + (A/2)x + y/2. Its roots are then returned as
+    # the quartic's while leaving a residual of 25 and 64 on the two cases in #4474.
+    #
+    # So polish, then verify. Ferrari's arithmetic also loses digits to cancellation on ordinary
+    # quartics: a genuine, well-conditioned root can arrive thousands of ulps off (1.4e-5 on a root
+    # of 0.024 in float32, a scaled residual of 1.1e-4) and no fixed residual cutoff separates such
+    # a root from the collapsed-factorisation values above. Two Newton steps, each kept only when it
+    # lowers |p|, pull a genuine root to the evaluation floor; a value that is not a root of this
+    # quartic cannot be pulled there, and a step near a multiple root that would overshoot is not
+    # taken, so the polish never makes a candidate worse. The zeros solve_quadratic returns for a
+    # complex pair are polished too: when rounding sends a real pair's discriminant negative, the
+    # pair comes back as placeholders and Newton from zero recovers the root nearest zero (one real
+    # root of 1e-3 next to roots of 1 to 1e3, say). They are judged apart from Ferrari's own
+    # candidates below, because from zero Newton can also stop anywhere |p| is merely small.
+    root_candidates = torch.cat([roots1, roots2], dim=-1)
+    is_candidate = root_candidates != 0
+    A_e, B_e, C_e, D_e = (t.unsqueeze(-1) for t in (A, B, C, D))
+
+    def quartic(x: torch.Tensor) -> torch.Tensor:
+        return (((x + A_e) * x + B_e) * x + C_e) * x + D_e
+
+    def quartic_derivative(x: torch.Tensor) -> torch.Tensor:
+        return ((4.0 * x + 3.0 * A_e) * x + 2.0 * B_e) * x + C_e
+
+    root_residual = quartic(root_candidates)
+    for _ in range(2):
+        derivative = quartic_derivative(root_candidates)
+        can_step = derivative != 0
+        safe_derivative = torch.where(can_step, derivative, torch.ones_like(derivative))
+        stepped = torch.where(can_step, root_candidates - root_residual / safe_derivative, root_candidates)
+        stepped_residual = quartic(stepped)
+        improved = torch.abs(stepped_residual) < torch.abs(root_residual)
+        root_candidates = torch.where(improved, stepped, root_candidates)
+        root_residual = torch.where(improved, stepped_residual, root_residual)
+
+    # The derivative at each polished candidate, relative to the size of the derivative's terms,
+    # tells a simple root (p' clear of zero) from a multiple one; at a simple root |p / p'| is a
+    # first-order estimate of the distance to the root.
+    abs_root = torch.abs(root_candidates)
+    abs_derivative = torch.abs(quartic_derivative(root_candidates))
+    derivative_scale = torch.maximum(
+        torch.ones_like(root_candidates),
+        4.0 * abs_root**3 + 3.0 * torch.abs(A_e) * abs_root**2 + 2.0 * torch.abs(B_e) * abs_root + torch.abs(C_e),
+    )
+    is_simple = abs_derivative / derivative_scale > _QUARTIC_SIMPLE_ROOT_DERIVATIVE
+    eps = torch.finfo(root_candidates.dtype).eps
+    root_error = torch.where(
+        is_simple,
+        torch.abs(root_residual) / torch.maximum(abs_derivative, eps * derivative_scale),
+        torch.zeros_like(root_candidates),
+    )
+
+    # Then drop the candidates that are not roots of the normalized quartic, using the zero
+    # placeholder this function already returns for a quartic with no real roots. The tolerance is
+    # relative to the size of the terms at the candidate: a cluster of close real roots is
+    # ill-conditioned in float32 and lands a long way from the true values while still satisfying
+    # the polynomial, and those stay.
+    root_residual_scale = torch.maximum(
+        torch.ones_like(root_candidates),
+        abs_root**4
+        + torch.abs(A_e) * abs_root**3
+        + torch.abs(B_e) * abs_root**2
+        + torch.abs(C_e) * abs_root
+        + torch.abs(D_e),
+    )
+    is_root = torch.abs(root_residual) / root_residual_scale <= _quartic_root_residual_tol(root_candidates.dtype)
+    # A polished placeholder is kept only where Newton converged, at a simple root: its remaining step
+    # |p / p'| must be within sqrt(eps) of |x| itself, the reach of a root the dtype can resolve. The
+    # bound is relative with no floor at 1, so a root near zero is held to the same standard; with a
+    # floor it becomes absolute there and admits a value 25% off a root at 1e-3. Two steps from zero
+    # can also stop inside the residual tolerance a tenth away from two close real roots, where |p|
+    # stays small over a wide interval; p' is small there too, and the step still to go is far larger.
+    recovered = is_simple & (root_error <= math.sqrt(eps) * abs_root)
+    is_root = is_root & (is_candidate | recovered)
+    root_candidates = torch.where(is_root, root_candidates, torch.zeros_like(root_candidates))
+
+    # Polishing can also carry a non-root onto a root the other quadratic already reports: when the
+    # quadratic that should have held the complex pair collapses to a double candidate near a real
+    # root, both copies converge onto it and a simple root comes back two or three times. A simple
+    # root cannot repeat, so a candidate that coincides with an earlier accepted one is dropped
+    # unless the root is multiple, which the derivative decides: at a multiple root p' vanishes
+    # with p, at a simple one it does not. Two genuine roots that merely lie close have a small
+    # derivative between them for the same reason and are both kept.
+    ulp_floor = eps * torch.maximum(abs_root.unsqueeze(-1), abs_root.unsqueeze(-2))
+    coincidence = _QUARTIC_COINCIDENCE_FACTOR * (root_error.unsqueeze(-1) + root_error.unsqueeze(-2) + ulp_floor)
+    coincide = torch.abs(root_candidates.unsqueeze(-1) - root_candidates.unsqueeze(-2)) <= coincidence
+    # Of two copies, the one kept is Ferrari's own candidate over a root recovered from a placeholder,
+    # which had only two steps from zero to get there while the other started at the root; between
+    # two of the same kind, the earlier one.
+    slot = torch.arange(4, device=root_candidates.device).expand_as(root_candidates)
+    rank = slot + 4 * (~is_candidate).to(slot.dtype)
+    outranked_by = rank.unsqueeze(-2) < rank.unsqueeze(-1)
+    accepted = root_candidates != 0
+    is_repeat = (coincide & outranked_by & accepted.unsqueeze(-1) & accepted.unsqueeze(-2)).any(dim=-1)
+    root_candidates = torch.where(is_repeat & is_simple, torch.zeros_like(root_candidates), root_candidates)
+    root_candidates = root_candidates * variable_scale.unsqueeze(-1)
+    roots1, roots2 = root_candidates[:, :2], root_candidates[:, 2:]
+
     solutions[mask_quartic, 0:2] = roots1.to(dtype=solutions.dtype)
     solutions[mask_quartic, 2:4] = roots2.to(dtype=solutions.dtype)
+
+    if coeffs.dtype == torch.float32:
+        # The resolvent's Cardano discriminant is (J^2 - 4 I^3) / 2916. Near a repeated root,
+        # rounding its coefficients and then Q/R can change its sign (#4906), before root selection
+        # or the R^2 test. Estimate that uncertainty from the magnitudes of the expanded terms:
+        # eight epsilons cover the products and sums; propagate their errors through 4 I^3 - J^2.
+        # This only selects precision, never accepts a root or changes a real/complex tolerance.
+        vA, vB, vC, vD = (v.detach() for v in (A, B, C, D))
+        invariant_i = vB.square() - 3.0 * vA * vC + 12.0 * vD
+        invariant_j = (
+            72.0 * vB * vD + 9.0 * vA * vB * vC - 27.0 * vC.square() - 27.0 * vA.square() * vD - 2.0 * vB.pow(3)
+        )
+        roundoff = 8.0 * torch.finfo(coeffs.dtype).eps
+        error_i = roundoff * (vB.square() + 3.0 * (vA * vC).abs() + 12.0 * vD.abs())
+        error_j = roundoff * (
+            72.0 * (vB * vD).abs()
+            + 9.0 * (vA * vB * vC).abs()
+            + 27.0 * vC.square()
+            + 27.0 * (vA.square() * vD).abs()
+            + 2.0 * vB.abs().pow(3)
+        )
+        discriminant = 4.0 * invariant_i.pow(3) - invariant_j.square()
+        uncertainty = 12.0 * (invariant_i.abs() + error_i).square() * error_i
+        uncertainty = uncertainty + (2.0 * invariant_j.abs() + error_j) * error_j
+        retry = (discriminant.abs() <= uncertainty) & (uncertainty > 0) & torch.isfinite(uncertainty)
+        retry_rows = torch.zeros_like(mask_quartic)
+        retry_rows[mask_quartic] = retry
+        # Start from the original coefficients: promoting a rounded resolvent is too late. Keep
+        # polishing in float64 too, since float32 Horner cancellation can move an accurate root away.
+        precise_coeffs = coeffs[retry_rows]
+        if coeffs.device.type == "mps":
+            precise_coeffs = precise_coeffs.cpu()
+        # Cast before the device copy: its backward must not combine an MPS-to-CPU copy with
+        # a float64 cast (pytorch/pytorch#197715). Both dtype conversions then run on CPU for MPS.
+        precise_roots = solve_quartic(precise_coeffs.double()).to(dtype=coeffs.dtype)
+        solutions[retry_rows] = precise_roots.to(device=coeffs.device)
 
     return solutions
 
@@ -2017,11 +2470,16 @@ def determinant_to_polynomial(
 ) -> torch.Tensor:
     r"""Represent the determinant by the 10th polynomial, used for 5PC solver [@nister2004efficient].
 
+    Convention:
+        - Each row of ``A`` holds two cubics (columns 0 to 3 and 4 to 7) and a quartic (columns 8 to 12) in
+          ``z``, highest degree first. The returned coefficients are lowest degree first (``cs[i]`` multiplies
+          ``z**i``), the reverse of the :func:`solve_quadratic` layout.
+
     Args:
-        A: torch.Tensor :math:`(*, 3, 13)`.
+        A: torch.Tensor :math:`(B, 3, 13)`.
 
     Returns:
-        a degree 10 poly, representing determinant (Eqn. 14 in the paper).
+        a degree 10 poly of shape :math:`(B, 11)`, representing determinant (Eqn. 14 in the paper).
 
     """
     B, device, dtype = A.shape[0], A.device, A.dtype

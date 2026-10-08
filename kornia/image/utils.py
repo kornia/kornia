@@ -131,7 +131,7 @@ def _to_bchw(tensor: torch.Tensor) -> torch.Tensor:
         tensor = tensor.unsqueeze(0)
 
     if len(tensor.shape) > 4:
-        tensor = tensor.view(-1, tensor.shape[-3], tensor.shape[-2], tensor.shape[-1])
+        tensor = tensor.reshape(-1, tensor.shape[-3], tensor.shape[-2], tensor.shape[-1])
 
     return tensor
 
@@ -159,7 +159,7 @@ def _to_bcdhw(tensor: torch.Tensor) -> torch.Tensor:
         tensor = tensor.unsqueeze(0)
 
     if len(tensor.shape) > 5:
-        tensor = tensor.view(-1, tensor.shape[-4], tensor.shape[-3], tensor.shape[-2], tensor.shape[-1])
+        tensor = tensor.reshape(-1, tensor.shape[-4], tensor.shape[-3], tensor.shape[-2], tensor.shape[-1])
 
     return tensor
 
@@ -204,8 +204,9 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False, force_contiguou
     elif len(input_shape) == 3:
         # (C, H, W) -> (H, W, C)
         if input_shape[0] == 1:
-            # Grayscale for proper plt.imshow needs to be (H,W)
-            image = image.squeeze()
+            # Grayscale for proper plt.imshow needs to be (H,W); squeeze only the channel axis so that a unit H or W
+            # of a 1-row or 1-column image survives.
+            image = image.squeeze(0)
         else:
             image = image.permute(1, 2, 0)
     elif len(input_shape) == 4:
@@ -298,15 +299,14 @@ def make_grid(tensor: torch.Tensor, n_row: Optional[int] = None, padding: int = 
     # crop trailing right/bottom padding to match original
     combined_H = n_row * padded_H - padding
     combined_W = n_col * padded_W - padding
-    combined = combined[:, :combined_H, :combined_W]
 
-    return combined
+    return combined[:, :combined_H, :combined_W]
 
 
 def perform_keep_shape_image(f: Callable[..., torch.Tensor]) -> Callable[..., torch.Tensor]:
     """Apply `f` to an image of arbitrary leading dimensions `(*, C, H, W)`.
 
-    It works by first viewing the image as `(B, C, H, W)`, applying the function and re-viewing the image as original
+    The input is reshaped to `(B, C, H, W)`, the function is applied, and the output is reshaped back to the original
     shape.
     """
 
@@ -319,7 +319,7 @@ def perform_keep_shape_image(f: Callable[..., torch.Tensor]) -> Callable[..., to
             raise ValueError("Invalid input tensor, it is empty.")
 
         input_shape = input.shape
-        input = _to_bchw(input)  # view input as (B, C, H, W)
+        input = _to_bchw(input)  # reshape input as (B, C, H, W)
         output = f(input, *args, **kwargs)
         if len(input_shape) == 3:
             output = output[0]
@@ -328,7 +328,7 @@ def perform_keep_shape_image(f: Callable[..., torch.Tensor]) -> Callable[..., to
             output = output[0, 0]
 
         if len(input_shape) > 4:
-            output = output.view(*(input_shape[:-3] + output.shape[-3:]))
+            output = output.reshape(*(input_shape[:-3] + output.shape[-3:]))
 
         return output
 
@@ -338,7 +338,7 @@ def perform_keep_shape_image(f: Callable[..., torch.Tensor]) -> Callable[..., to
 def perform_keep_shape_video(f: Callable[..., torch.Tensor]) -> Callable[..., torch.Tensor]:
     """Apply `f` to an image of arbitrary leading dimensions `(*, C, D, H, W)`.
 
-    It works by first viewing the image as `(B, C, D, H, W)`, applying the function and re-viewing the image as original
+    The input is reshaped to `(B, C, D, H, W)`, the function is applied, and the output is reshaped back to the original
     shape.
     """
 
@@ -351,7 +351,7 @@ def perform_keep_shape_video(f: Callable[..., torch.Tensor]) -> Callable[..., to
             raise ValueError("Invalid input tensor, it is empty.")
 
         input_shape = input.shape
-        input = _to_bcdhw(input)  # view input as (B, C, D, H, W)
+        input = _to_bcdhw(input)  # reshape input as (B, C, D, H, W)
         output = f(input, *args, **kwargs)
         if len(input_shape) == 4:
             output = output[0]
@@ -360,7 +360,7 @@ def perform_keep_shape_video(f: Callable[..., torch.Tensor]) -> Callable[..., to
             output = output[0, 0]
 
         if len(input_shape) > 5:
-            output = output.view(*(input_shape[:-4] + output.shape[-4:]))
+            output = output.reshape(*(input_shape[:-4] + output.shape[-4:]))
 
         return output
 

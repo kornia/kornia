@@ -53,8 +53,7 @@ class LinearIlluminationGenerator(RandomGeneratorBase):
 
     def __repr__(self) -> str:
         r"""Return a string representation of the object."""
-        repr = f"gain={self.gain}, sign={self.sign}"
-        return repr
+        return f"gain={self.gain}, sign={self.sign}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         r"""Create samplers for generating random gaussian illumination parameters."""
@@ -147,8 +146,7 @@ class LinearCornerIlluminationGenerator(RandomGeneratorBase):
 
     def __repr__(self) -> str:
         r"""Return a string representation of the object."""
-        repr = f"gain={self.gain}, sign={self.sign}"
-        return repr
+        return f"gain={self.gain}, sign={self.sign}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         r"""Create samplers for generating random gaussian illumination parameters."""

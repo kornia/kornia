@@ -15,6 +15,9 @@
 # limitations under the License.
 #
 
+import warnings
+from unittest.mock import patch
+
 import pytest
 import torch
 
@@ -66,8 +69,9 @@ class TestRandomPerspectiveGen3D(RandomGeneratorBaseTests):
     )
     def test_invalid_param_combinations(self, depth, height, width, distortion_scale, device, dtype):
         with pytest.raises(Exception):
-            param_gen = PerspectiveGenerator3D(distortion_scale=distortion_scale.to(device=device, dtype=dtype))
-            param_gen(batch_shape=torch.Size((2, depth, height, width)))
+            PerspectiveGenerator3D(distortion_scale=distortion_scale.to(device=device, dtype=dtype))(
+                batch_shape=torch.Size((2, depth, height, width))
+            )
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -199,6 +203,50 @@ class TestRandomPerspectiveGen3D(RandomGeneratorBaseTests):
         assert_close(res["start_points"], expected["start_points"], atol=1e-4, rtol=1e-4)
         assert_close(res["end_points"], expected["end_points"], atol=1e-4, rtol=1e-4)
 
+    @pytest.mark.parametrize("depth,height,width", [(1, 4, 4), (4, 1, 4), (4, 4, 1), (1, 1, 1), (2, 3, 5)])
+    @pytest.mark.device_agnostic
+    def test_traced_singleton_axis_5110(self, depth, height, width):
+        # #5110: torch.jit.trace passes the sizes as 0-d tensors, so the size-1 rule of #5071 has to be tensor
+        # arithmetic to reach the graph: a unit source extent and no corner offset along that axis. Every other axis
+        # keeps the eager extent, so the traced parameters equal the eager ones for the same seed.
+        class _Params(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.generator = PerspectiveGenerator3D(torch.tensor(1.0))
+
+            def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+                params = self.generator(x.shape)
+                return params["start_points"], params["end_points"]
+
+        volume = torch.zeros(2, 1, depth, height, width)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            traced = torch.jit.trace(_Params(), volume, check_trace=False)
+        torch.manual_seed(0)
+        start, end = traced(volume)
+        torch.manual_seed(0)
+        eager = PerspectiveGenerator3D(torch.tensor(1.0))(volume.shape)
+
+        x_end, y_end, z_end = max(width - 1, 1), max(height - 1, 1), max(depth - 1, 1)
+        expected = torch.tensor(
+            [
+                [0.0, 0.0, 0.0],
+                [x_end, 0.0, 0.0],
+                [x_end, y_end, 0.0],
+                [0.0, y_end, 0.0],
+                [0.0, 0.0, z_end],
+                [x_end, 0.0, z_end],
+                [x_end, y_end, z_end],
+                [0.0, y_end, z_end],
+            ]
+        ).expand(2, 8, 3)
+        assert torch.equal(start, expected)
+        assert torch.equal(start, eager["start_points"])
+        assert torch.equal(end, eager["end_points"])
+        for axis, size in ((0, width), (1, height), (2, depth)):
+            if size == 1:
+                assert torch.equal(end[..., axis], start[..., axis])
+
 
 class TestRandomAffineGen3D(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("batch_shape", [(0, 200, 300, 400), (1, 200, 300, 400), (8, 200, 300, 400)])
@@ -234,7 +282,6 @@ class TestRandomAffineGen3D(RandomGeneratorBaseTests):
             (100, 100, -100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, None, None),
             # (100, 100, 100, torch.tensor([0, 9]), None, None, None),
             (100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), torch.tensor([0.1, 0.2]), None, None),
-            (100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), torch.tensor([0.1, 0.2]), None, None),
             (100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), torch.tensor([0.1]), None, None),
             (100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, torch.tensor([[0.2, 0.2, 0.2]]), None),
             (100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, torch.tensor([0.2]), None),
@@ -253,8 +300,9 @@ class TestRandomAffineGen3D(RandomGeneratorBaseTests):
             shear.to(dtype=dtype, device=device)
 
         with pytest.raises(Exception):
-            param_gen = AffineGenerator3D(degrees=degrees, translate=translate, scale=scale, shears=shear)
-            param_gen(batch_shape=torch.Size((2, depth, height, width)))
+            AffineGenerator3D(degrees=degrees, translate=translate, scale=scale, shears=shear)(
+                batch_shape=torch.Size((2, depth, height, width))
+            )
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -351,8 +399,7 @@ class TestRandomRotationGen3D(RandomGeneratorBaseTests):
     )
     def test_invalid_param_combinations(self, degrees, device, dtype):
         with pytest.raises(Exception):
-            param_gen = RotationGenerator3D(degrees=degrees.to(device=device, dtype=dtype))
-            param_gen(torch.Size((2,)))
+            RotationGenerator3D(degrees=degrees.to(device=device, dtype=dtype))(torch.Size((2,)))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -411,11 +458,10 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
     )
     def test_invalid_param_combinations(self, input_size, size, resize_to, device, dtype):
         with pytest.raises(Exception):
-            param_gen = CropGenerator3D(
+            CropGenerator3D(
                 size=size.to(device=device, dtype=dtype) if isinstance(size, torch.Tensor) else size,
                 resize_to=resize_to,
-            )
-            param_gen(batch_shape=torch.Size((2, 1, *input_size)))
+            )(batch_shape=torch.Size((2, 1, *input_size)))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -644,13 +690,11 @@ class TestRandomMotionBlur3D(RandomGeneratorBaseTests):
     )
     def test_invalid_param_combinations(self, kernel_size, angle, direction, device, dtype):
         with pytest.raises(Exception):
-            param_gen = MotionBlurGenerator3D(
+            MotionBlurGenerator3D(
                 kernel_size=kernel_size,
                 angle=angle.to(device=device, dtype=dtype),
                 direction=direction.to(device=device, dtype=dtype),
-            )
-
-            param_gen(batch_shape=torch.Size((2,)))
+            )(batch_shape=torch.Size((2,)))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -691,3 +735,105 @@ class TestRandomMotionBlur3D(RandomGeneratorBaseTests):
         assert_close(res["ksize_factor"], expected["ksize_factor"], rtol=1e-4, atol=1e-4)
         assert_close(res["angle_factor"], expected["angle_factor"], rtol=1e-4, atol=1e-4)
         assert_close(res["direction_factor"], expected["direction_factor"], rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.device_agnostic
+    def test_ranged_kernel_size_is_constant_across_batch(self, device, dtype):
+        param_gen = MotionBlurGenerator3D(
+            kernel_size=(3, 7),
+            angle=torch.tensor([(0.0, 0.0)] * 3, device=device, dtype=dtype),
+            direction=torch.tensor([0.0, 0.0], device=device, dtype=dtype),
+        )
+
+        for seed in range(20):
+            torch.manual_seed(seed)
+            res = param_gen(batch_shape=torch.Size((6,)), same_on_batch=False)
+
+            assert res["ksize_factor"].shape == (6,)
+            assert res["ksize_factor"].unique().numel() == 1
+            assert int(res["ksize_factor"][0]) in {3, 5, 7}
+
+    @pytest.mark.device_agnostic
+    def test_ranged_kernel_size_includes_upper_bound(self, device, dtype):
+        param_gen = MotionBlurGenerator3D(
+            kernel_size=(3, 7),
+            angle=torch.tensor([(0.0, 0.0)] * 3, device=device, dtype=dtype),
+            direction=torch.tensor([0.0, 0.0], device=device, dtype=dtype),
+        )
+
+        seen = set()
+        for seed in range(1000):
+            torch.manual_seed(seed)
+            res = param_gen(batch_shape=torch.Size((1,)), same_on_batch=False)
+            seen.add(int(res["ksize_factor"][0]))
+
+        assert seen == {3, 5, 7}
+
+    # Issue #4672: an even upper bound used to admit the odd size above it -- `ks[1] // 2 + 1` took the
+    # `+ 1` off `ks[1] // 2` rather than off the largest odd size in the range -- so (3, 20) drew 21 and
+    # (3, 4) drew 5.  The bound is now the largest odd size not above `ks[1]`, as in 2D after #4610.
+    @pytest.mark.device_agnostic
+    def test_ranged_kernel_size_even_upper_bound_caps_at_largest_odd(self, device, dtype):
+        param_gen = MotionBlurGenerator3D(
+            kernel_size=(3, 20),
+            angle=torch.tensor([(0.0, 0.0)] * 3, device=device, dtype=dtype),
+            direction=torch.tensor([0.0, 0.0], device=device, dtype=dtype),
+        )
+
+        seen = set()
+        for seed in range(1000):
+            torch.manual_seed(seed)
+            res = param_gen(batch_shape=torch.Size((1,)), same_on_batch=False)
+            seen.add(int(res["ksize_factor"][0]))
+
+        assert seen == {3, 5, 7, 9, 11, 13, 15, 17, 19}
+
+    # A range holding no odd size keeps rounding up out of the range, which 2D documents as well: the
+    # half-size floor is taken from the lower bound, so (4, 4) draws 5 and (2, 2) draws 3.
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(("kernel_size", "expected"), [((4, 4), 5), ((2, 2), 3)])
+    def test_ranged_kernel_size_without_an_odd_size_rounds_up(self, kernel_size, expected, device, dtype):
+        param_gen = MotionBlurGenerator3D(
+            kernel_size=kernel_size,
+            angle=torch.tensor([(0.0, 0.0)] * 3, device=device, dtype=dtype),
+            direction=torch.tensor([0.0, 0.0], device=device, dtype=dtype),
+        )
+
+        seen = set()
+        for seed in range(200):
+            torch.manual_seed(seed)
+            res = param_gen(batch_shape=torch.Size((1,)), same_on_batch=False)
+            seen.add(int(res["ksize_factor"][0]))
+
+        assert seen == {expected}
+
+    # The sampler is half-open on [lo, hi + 1), so a float32 draw can round up onto `hi + 1` itself and
+    # leave the range.  Forcing the largest float below 1 through the sampler used to draw 7 for (3, 5).
+    @pytest.mark.device_agnostic
+    def test_ranged_kernel_size_top_draw_stays_in_range(self, device, dtype):
+        param_gen = MotionBlurGenerator3D(
+            kernel_size=(3, 5),
+            angle=torch.tensor([(0.0, 0.0)] * 3, device=device, dtype=dtype),
+            direction=torch.tensor([0.0, 0.0], device=device, dtype=dtype),
+        )
+        param_gen.make_samplers(device, dtype)
+
+        def _top_draw(*args, **kwargs):
+            shape = args[0] if args else kwargs["size"]
+            forwarded = {k: v for k, v in kwargs.items() if k in ("dtype", "device")}
+            return torch.full(shape, 1 - 2**-24, **forwarded)
+
+        with patch("torch.rand", _top_draw):
+            res = param_gen(batch_shape=torch.Size((4,)), same_on_batch=False)
+
+        assert int(res["ksize_factor"].max()) == 5
+
+    # A reversed pair used to be accepted and drew a constant above *both* bounds: (20, 3) drew 9.
+    @pytest.mark.device_agnostic
+    def test_reversed_kernel_size_raises(self, device, dtype):
+        # `make_samplers` runs from `__post_init__`, so the pair is refused as the generator is built.
+        with pytest.raises(ValueError, match="should be smaller than or equal to"):
+            MotionBlurGenerator3D(
+                kernel_size=(20, 3),
+                angle=torch.tensor([(0.0, 0.0)] * 3, device=device, dtype=dtype),
+                direction=torch.tensor([0.0, 0.0], device=device, dtype=dtype),
+            )

@@ -31,11 +31,17 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
 
     The image data is assumed to be in the range of (0, 1).
 
+    Convention:
+        Channels are H, L, S at axis -3. Hue is measured in radians in [0, 2π), unlike
+        OpenCV, which uses degrees (halved for 8-bit images).
+
     NOTE: this method cannot be compiled with JIT in pytohrch < 1.7.0
 
     Args:
         image: RGB image to be converted to HLS with shape :math:`(*, 3, H, W)`.
-        eps: epsilon value to avoid div by zero.
+        eps: bias added to the chroma and lightness denominators before dividing. The zero
+            denominators themselves are handled by a safe-substitution guard, so ``eps`` is not
+            what keeps the result finite and ``eps=0`` is well defined.
 
     Returns:
         HLS version of the image with shape :math:`(*, 3, H, W)`.
@@ -78,11 +84,16 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
         torch.add(maxc, minc, out=l_)  # l = max + min
         torch.sub(maxc, minc, out=s)  # s = max - min
 
-    # precompute image / (max - min)
-    im = image / (s + eps).unsqueeze(-3)
+    # Use unit divisors when chroma or the lightness denominator is zero.
+    # Preserve the epsilon-adjusted calculation for nonzero denominators.
+    chroma_denominator = torch.where(s == 0, torch.ones_like(s), s + eps)
+    im = image / chroma_denominator.unsqueeze(-3)
 
-    # epsilon cannot be inside the where to avoid precision issues
-    s /= torch.where(l_ < 1.0, l_, 2.0 - l_) + eps  # saturation
+    lightness_denominator = torch.where(l_ < 1.0, l_, 2.0 - l_)
+    saturation_denominator = torch.where(
+        lightness_denominator == 0, torch.ones_like(lightness_denominator), lightness_denominator + eps
+    )
+    s /= saturation_denominator  # saturation
     l_ /= 2  # luminance
 
     # note that r,g and b were previously div by (max - min)
@@ -100,6 +111,10 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     h += (r - g + 4) * cond[..., 2, :, :]
     # h = 2.0 * math.pi * (60.0 * h) / 360.0
     h *= math.pi / 3.0  # hue [0, 2*pi]
+    if image.requires_grad:
+        h = h.masked_fill(h >= 2.0 * math.pi, 0.0)
+    else:
+        h.masked_fill_(h >= 2.0 * math.pi, 0.0)
 
     if image.requires_grad:
         return torch.stack([h, l_, s], -3)
@@ -110,6 +125,9 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a HLS image to RGB.
 
     The image data is assumed to be in the range of (0, 1).
+
+    Convention:
+        Expects H, L, S channels at axis -3 with hue in radians.
 
     Args:
         image: HLS image to be converted to RGB with shape :math:`(*, 3, H, W)`.
@@ -150,6 +168,8 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
 class RgbToHls(nn.Module):
     r"""Convert an image from RGB to HLS.
 
+    See the Convention block on :func:`rgb_to_hls`.
+
     The image data is assumed to be in the range of (0, 1).
 
     Returns:
@@ -185,6 +205,8 @@ class RgbToHls(nn.Module):
 
 class HlsToRgb(nn.Module):
     r"""Convert an image from HLS to RGB.
+
+    See the Convention block on :func:`hls_to_rgb`.
 
     The image data is assumed to be in the range of (0, 1).
 

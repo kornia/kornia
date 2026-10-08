@@ -33,6 +33,9 @@ def grayscale_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     The image data is assumed to be in the range of (0, 1).
 
+    Convention:
+        The singleton channel at axis -3 is repeated into R, G and B. Leading dimensions are preserved.
+
     Args:
         image: grayscale image torch.Tensor to be converted to RGB with shape :math:`(*,1,H,W)`.
 
@@ -51,8 +54,7 @@ def grayscale_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     shape = list(image.shape)
     shape[-3] = 3
-    # Use expand to create a view that repeats along channel dimension, no memory overhead.
-    return image.expand(*shape)
+    return image.expand(*shape).clone()
 
 
 def rgb_to_grayscale(image: torch.Tensor, rgb_weights: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -61,6 +63,14 @@ def rgb_to_grayscale(image: torch.Tensor, rgb_weights: Optional[torch.Tensor] = 
     .. image:: _static/img/rgb_to_grayscale.png
 
     The image data is assumed to be in the range of (0, 1).
+
+    Convention:
+        RGB is channel-first at axis -3 and the result has one channel. Default weights are
+        ITU-R BT.601 luma weights (0.299, 0.587, 0.114) in RGB order.
+
+    .. warning::
+        On integer input, explicit float ``rgb_weights`` truncate to zero and integer weights wrap
+        (`#5109 <https://github.com/kornia/kornia/issues/5109>`_).
 
     Args:
         image: RGB image to be converted to grayscale with shape :math:`(*,3,H,W)`.
@@ -84,11 +94,15 @@ def rgb_to_grayscale(image: torch.Tensor, rgb_weights: Optional[torch.Tensor] = 
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     if rgb_weights is None:
-        # 8 bit images
+        # 8 bit images: OpenCV's fixed-point COLOR_RGB2GRAY weights, 0.299, 0.587 and 0.114 scaled by 2**15 and
+        # summing to 2**15, so a flat grey maps to itself and the result matches cv2.cvtColor bit for bit. A uint8
+        # multiply wraps (white came back as 1, pure red as 180), so accumulate in int32 and round back.
         if image.dtype == torch.uint8:
-            rgb_weights = torch.tensor([76, 150, 29], device=image.device, dtype=torch.uint8)
+            r, g, b = image.unbind(dim=-3)
+            acc = r.to(torch.int32) * 9798 + g.to(torch.int32) * 19235 + b.to(torch.int32) * 3735
+            return ((acc + 16384) // 32768).to(dtype=torch.uint8).unsqueeze(-3)
         # floating point images
-        elif image.dtype in (torch.bfloat16, torch.float16, torch.float32, torch.float64):
+        if image.dtype in (torch.bfloat16, torch.float16, torch.float32, torch.float64):
             rgb_weights = torch.tensor([0.299, 0.587, 0.114], device=image.device, dtype=image.dtype)
         else:
             raise TypeError(f"Unknown data type: {image.dtype}")
@@ -114,6 +128,9 @@ def bgr_to_grayscale(image: torch.Tensor) -> torch.Tensor:
 
     The image data is assumed to be in the range of (0, 1). First flips to RGB, then converts.
 
+    Convention:
+        BGR is channel-first at axis -3. This uses the RGB luma weights after reversing channel order.
+
     Args:
         image: BGR image to be converted to grayscale with shape :math:`(*,3,H,W)`.
 
@@ -136,6 +153,8 @@ def bgr_to_grayscale(image: torch.Tensor) -> torch.Tensor:
 
 class GrayscaleToRgb(nn.Module):
     r"""nn.Module to convert a grayscale image to RGB version of image.
+
+    See the Convention block on :func:`grayscale_to_rgb`.
 
     The image data is assumed to be in the range of (0, 1).
 
@@ -173,6 +192,8 @@ class GrayscaleToRgb(nn.Module):
 class RgbToGrayscale(nn.Module):
     r"""nn.Module to convert a RGB image to grayscale version of image.
 
+    See the Convention block on :func:`rgb_to_grayscale`.
+
     The image data is assumed to be in the range of (0, 1).
 
     Shape:
@@ -194,8 +215,9 @@ class RgbToGrayscale(nn.Module):
 
     def __init__(self, rgb_weights: Optional[torch.Tensor] = None) -> None:
         super().__init__()
-        if rgb_weights is None:
-            rgb_weights = torch.Tensor([0.299, 0.587, 0.114])
+        # None stays None: rgb_to_grayscale then picks the weights for the image dtype. Float32 defaults stored here
+        # were cast to the image, so a uint8 image got the weights [0, 0, 0] and came back all zeros, and a float64
+        # image got float32-rounded weights (#5109).
         self.rgb_weights = rgb_weights
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
@@ -214,6 +236,8 @@ class RgbToGrayscale(nn.Module):
 
 class BgrToGrayscale(nn.Module):
     r"""nn.Module to convert a BGR image to grayscale version of image.
+
+    See the Convention block on :func:`bgr_to_grayscale`.
 
     The image data is assumed to be in the range of (0, 1). First flips to RGB, then converts.
 

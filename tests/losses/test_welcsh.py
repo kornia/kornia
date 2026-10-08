@@ -66,6 +66,75 @@ class TestWelschLoss(BaseTester):
 
         self.assert_close(op(img1, img2), op_module(img1, img2))
 
+    @pytest.mark.parametrize("reduction", ["mean", "sum", "none"])
+    def test_small_residual(self, device, dtype, reduction):
+        # Exact powers of two from #5600. Reference from the original formula:
+        # with decimal.localcontext() as ctx:
+        #     ctx.prec = 80
+        #     expected = Decimal(1) - (-Decimal(residual) ** 2 / 2).exp()
+        residual, expected_value = {
+            torch.float16: (2**-6, 0.0001220628622225587251301834),
+            torch.bfloat16: (2**-4, 0.001951218892524527289957341),
+            torch.float32: (2**-12, 2.980232194360610706156728e-8),
+            torch.float64: (2**-30, 4.336808689942017735089416e-19),
+        }[dtype]
+        img1 = torch.tensor([-residual, 0.0, residual], device=device, dtype=dtype, requires_grad=True)
+        img2 = torch.zeros_like(img1, requires_grad=True)
+        expected = torch.tensor([expected_value, 0.0, expected_value], device=device, dtype=dtype)
+        if reduction == "mean":
+            expected = expected.mean()
+        elif reduction == "sum":
+            expected = expected.sum()
+
+        actual = kornia.losses.welsch_loss(img1, img2, reduction)
+        assert actual.dtype == dtype
+        assert actual.device == device
+        assert (actual > 0).any()
+        # Absolute tolerance would hide the original all-zero output.
+        self.assert_close(actual, expected, rtol=4 * torch.finfo(dtype).eps, atol=0)
+        self.assert_close(
+            kornia.losses.WelschLoss(reduction)(img1, img2), expected, rtol=4 * torch.finfo(dtype).eps, atol=0
+        )
+        self.assert_close(actual, kornia.losses.welsch_loss(img2, img1, reduction), rtol=0, atol=0)
+
+        grad1, grad2 = torch.autograd.grad(actual.sum(), (img1, img2))
+        expected_grad = img1.detach() * (-0.5 * img1.detach().square()).exp()
+        if reduction == "mean":
+            expected_grad = expected_grad / img1.numel()
+        assert torch.isfinite(grad1).all()
+        assert torch.isfinite(grad2).all()
+        assert grad1[0] < 0
+        assert grad1[2] > 0
+        self.assert_close(grad1, expected_grad, rtol=4 * torch.finfo(dtype).eps, atol=0)
+        self.assert_close(grad2, -expected_grad, rtol=4 * torch.finfo(dtype).eps, atol=0)
+
+    def test_residual_values_and_gradients(self, device, dtype):
+        # Values generated with the Decimal snippet in test_small_residual.
+        img1 = torch.tensor([0.0, 0.125, 0.5, 1.0, 3.0, 6.0, 10.0], device=device, dtype=dtype, requires_grad=True)
+        img2 = torch.zeros_like(img1, requires_grad=True)
+        expected = torch.tensor(
+            [
+                0.0,
+                0.00778206173975648789406,
+                0.117503097415404597135,
+                0.393469340287366576396,
+                0.988891003461757693504,
+                0.999999984770020255287,
+                1.0,
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        actual = kornia.losses.welsch_loss(img1, img2)
+        self.assert_close(actual, expected, rtol=4 * torch.finfo(dtype).eps, atol=0)
+        self.assert_close(actual, kornia.losses.welsch_loss(img2, img1), rtol=0, atol=0)
+        grad1, grad2 = torch.autograd.grad(actual.sum(), (img1, img2))
+        expected_grad = img1.detach() * (-0.5 * img1.detach().square()).exp()
+        assert torch.isfinite(grad1).all()
+        assert torch.isfinite(grad2).all()
+        self.assert_close(grad1, expected_grad, rtol=4 * torch.finfo(dtype).eps, atol=0)
+        self.assert_close(grad2, -expected_grad, rtol=4 * torch.finfo(dtype).eps, atol=0)
+
     @pytest.mark.parametrize("reduction", ["mean", "sum"])
     @pytest.mark.parametrize("shape", [(1, 2, 9, 9), (2, 4, 3, 6)])
     def test_perfect_prediction(self, device, dtype, reduction, shape):

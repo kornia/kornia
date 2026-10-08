@@ -200,14 +200,10 @@ class Hourglass(nn.Module):
         low1 = F.max_pool2d(x, 2, stride=2)
         low1 = self.hg[n - 1][1](low1)  # type: ignore[index]
 
-        if n > 1:
-            low2 = self._hour_glass_forward(n - 1, low1)
-        else:
-            low2 = self.hg[n - 1][3](low1)  # type: ignore[index]
+        low2 = self._hour_glass_forward(n - 1, low1) if n > 1 else self.hg[n - 1][3](low1)  # type: ignore[index]
         low3 = self.hg[n - 1][2](low2)  # type: ignore[index]
         up2 = F.interpolate(low3, size=up1.shape[2:])
-        out = up1 + up2
-        return out
+        return up1 + up2
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Run this SOLD2 backbone component forward.
@@ -367,8 +363,7 @@ class SuperpointDecoder(nn.Module):
 
         # Convert from semi-dense to dense heatmap
         junc_prob = softmax(semi, dim=1)
-        junc_pred = pixel_shuffle(junc_prob[:, :-1, :, :], self.grid_size)[:, 0]
-        return junc_pred
+        return pixel_shuffle(junc_prob[:, :-1, :, :], self.grid_size)[:, 0]
 
 
 class PixelShuffleDecoder(nn.Module):
@@ -442,9 +437,7 @@ class PixelShuffleDecoder(nn.Module):
 
         # Output layer
         out = self.conv_block_lst[-1](out)
-        heatmap = softmax(out, dim=1)[:, 1, :, :]
-
-        return heatmap
+        return softmax(out, dim=1)[:, 1, :, :]
 
 
 class SuperpointDescriptor(nn.Module):
@@ -474,9 +467,7 @@ class SuperpointDescriptor(nn.Module):
             Semi-dense descriptors with shape :math:`(B, 128, H/4, W/4)`.
         """
         feat = self.relu(self.convPa(input_features))
-        semi = self.convPb(feat)
-
-        return semi
+        return self.convPb(feat)
 
 
 # [Combination of all previous models in one]

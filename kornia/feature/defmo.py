@@ -22,15 +22,10 @@ from torch import nn
 
 from kornia.core.download import hf_url, load_state_dict_from_url
 
+# One source: the authors' own copies are not served over verifiable https.
 urls: Dict[str, str | list[str]] = {}
-urls["defmo_encoder"] = [
-    hf_url("defmo", "encoder_best.pt"),
-    "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/encoder_best.pt",
-]
-urls["defmo_rendering"] = [
-    hf_url("defmo", "rendering_best.pt"),
-    "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/rendering_best.pt",
-]
+urls["defmo_encoder"] = hf_url("defmo", "encoder_best.pt")
+urls["defmo_rendering"] = hf_url("defmo", "rendering_best.pt")
 
 
 # conv1x1, conv3x3, Bottleneck, ResNet are taken from:
@@ -134,9 +129,7 @@ class Bottleneck(nn.Module):
             identity = self.downsample(x)
 
         out += identity
-        out = self.relu(out)
-
-        return out
+        return self.relu(out)
 
 
 class ResNet(nn.Module):
@@ -259,9 +252,7 @@ class ResNet(nn.Module):
 
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
-        x = self.fc(x)
-
-        return x
+        return self.fc(x)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Run the ResNet backbone and classification head.
@@ -426,5 +417,4 @@ class DeFMO(nn.Module):
             temporal sub-frames and 4 stores red, green, blue, and alpha channels.
         """
         latent = self.encoder(input_data)
-        x_out = self.rendering(latent)
-        return x_out
+        return self.rendering(latent)

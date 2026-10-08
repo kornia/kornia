@@ -52,6 +52,8 @@ class VideoSequential(ImageSequential):
             If (a,), x number of transformations (a <= x <= len(args)) will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.
             If None, the whole list of args will be processed as a sequence.
+        if_unsupported_ops: what ``inverse`` does on reaching a plain ``nn.Module``, as in
+            :class:`~kornia.augmentation.container.ImageSequential`: ``'raise'`` or ``'skip'``.
 
     Convention:
         - the input is 5-dimensional and the layout is named by ``data_format``, which accepts ``"BTCHW"``
@@ -137,6 +139,7 @@ class VideoSequential(ImageSequential):
         same_on_frame: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
+        if_unsupported_ops: str = "raise",
     ) -> None:
         super().__init__(
             *args,
@@ -144,6 +147,7 @@ class VideoSequential(ImageSequential):
             keepdim=None,
             random_apply=random_apply,
             random_apply_weights=random_apply_weights,
+            if_unsupported_ops=if_unsupported_ops,
         )
         self.same_on_frame = same_on_frame
         self.data_format = data_format.upper()
@@ -179,9 +183,9 @@ class VideoSequential(ImageSequential):
 
         if same_on_frame and same_on_batch:
             return v.repeat(batch_shape[0] * frame_num, *([1] * (v.ndim - 1)))
-        elif same_on_frame:
+        if same_on_frame:
             return self.__repeat_param_across_channels__(v, frame_num)
-        elif same_on_batch:
+        if same_on_batch:
             return v.unsqueeze(1).repeat(1, batch_shape[0], *([1] * (v.ndim - 1))).reshape(-1, *v.shape[1:])
         return v
 
@@ -193,8 +197,7 @@ class VideoSequential(ImageSequential):
         if self.data_format == "BTCHW":
             pass
 
-        input = input.reshape(-1, *input.shape[2:])
-        return input
+        return input.reshape(-1, *input.shape[2:])
 
     def _input_shape_convert_back(self, input: torch.Tensor, frame_num: int) -> torch.Tensor:
         input = input.view(-1, frame_num, *input.shape[1:])
@@ -251,7 +254,9 @@ class VideoSequential(ImageSequential):
                 param = ParamItem(name, mod_param)
 
             elif isinstance(module, (SequentialBase,)):
-                seq_param = module.forward_parameters(batch_shape)
+                # Frames are flattened to (B * T, ...) before the nested container runs, so it
+                # needs one draw per frame, like the unnested branch above.
+                seq_param = module.forward_parameters(torch.Size([batch_shape[0] * frame_num, *batch_shape[1:]]))
                 if self.same_on_frame:
                     raise ValueError("nn.Sequential is currently unsupported for ``same_on_frame``.")
                 param = ParamItem(name, seq_param)
@@ -259,7 +264,7 @@ class VideoSequential(ImageSequential):
             else:
                 param = ParamItem(name, None)
 
-            batch_shape = _get_new_batch_shape(param, batch_shape)
+            batch_shape = _get_new_batch_shape(param, batch_shape, module)
             params.append(param)
 
         return params
@@ -282,8 +287,7 @@ class VideoSequential(ImageSequential):
 
         input = super().transform_inputs(input, params, extra_args=extra_args)
 
-        input = self._input_shape_convert_back(input, frame_num)
-        return input
+        return self._input_shape_convert_back(input, frame_num)
 
     def inverse_inputs(
         self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
@@ -303,8 +307,7 @@ class VideoSequential(ImageSequential):
 
         input = super().inverse_inputs(input, params, extra_args=extra_args)
 
-        input = self._input_shape_convert_back(input, frame_num)
-        return input
+        return self._input_shape_convert_back(input, frame_num)
 
     def transform_masks(
         self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
@@ -324,8 +327,7 @@ class VideoSequential(ImageSequential):
 
         input = super().transform_masks(input, params, extra_args=extra_args)
 
-        input = self._input_shape_convert_back(input, frame_num)
-        return input
+        return self._input_shape_convert_back(input, frame_num)
 
     def inverse_masks(
         self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
@@ -345,8 +347,7 @@ class VideoSequential(ImageSequential):
 
         input = super().inverse_masks(input, params, extra_args=extra_args)
 
-        input = self._input_shape_convert_back(input, frame_num)
-        return input
+        return self._input_shape_convert_back(input, frame_num)
 
     def transform_boxes(  # type: ignore[override]
         self, input: Union[torch.Tensor, Boxes], params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
@@ -461,6 +462,4 @@ class VideoSequential(ImageSequential):
             self._params = self.forward_parameters(input.shape)
             params = self._params
 
-        output = self.transform_inputs(input, params, extra_args=extra_args)
-
-        return output
+        return self.transform_inputs(input, params, extra_args=extra_args)

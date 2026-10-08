@@ -38,14 +38,32 @@ class TestIntegralTensor(BaseTester):
     def test_exception(self, device, dtype):
         tensor = torch.rand(1, 1, 4, 4, device=device, dtype=dtype)
         with pytest.raises(Exception):
-            dim = (0, 1, 2, 3, 4)
-            integral_tensor(tensor, dim)
+            integral_tensor(tensor, (0, 1, 2, 3, 4))
         with pytest.raises(Exception):
-            dim = (4, 5)
-            integral_tensor(tensor, dim)
+            integral_tensor(tensor, (4, 5))
         with pytest.raises(Exception) as errinfo:
             integral_tensor(tensor, ())
         assert "dim must be a non-empty tuple." in str(errinfo)
+
+    @pytest.mark.parametrize("dim", [(1, 1), (-1, 1), (1, -1)])
+    def test_duplicate_dimensions(self, device, dtype, dim):
+        tensor = torch.ones(2, 2, device=device, dtype=dtype)
+        with pytest.raises(Exception, match="unique dimensions"):
+            integral_tensor(tensor, dim)
+
+    @pytest.mark.parametrize("dim", [(2,), (-3,), (0, -3)])
+    def test_out_of_range_dimensions(self, device, dtype, dim):
+        # -3 + 2 = -1 is a valid cumsum axis, so a missing bounds check would integrate the last axis silently.
+        tensor = torch.ones(2, 2, device=device, dtype=dtype)
+        with pytest.raises(Exception, match="valid dimensions"):
+            integral_tensor(tensor, dim)
+
+    @pytest.mark.parametrize("dim", [(0, 1), (1, 0), (-2, -1)])
+    def test_distinct_dimensions(self, device, dtype, dim):
+        tensor = torch.ones(2, 2, device=device, dtype=dtype)
+        output = integral_tensor(tensor, dim)
+        expected = torch.tensor([[1, 2], [2, 4]], device=device, dtype=dtype)
+        self.assert_close(output, expected)
 
     def test_module(self, device, dtype):
         mod = IntegralTensor()

@@ -16,8 +16,8 @@
 #
 
 import io
+import re
 from pathlib import Path
-from urllib.request import urlopen
 
 import kornia_rs
 import numpy as np
@@ -35,26 +35,19 @@ def create_random_img8_torch(height: int, width: int, channels: int, device=None
     return (torch.rand(channels, height, width, device=device) * 255).to(torch.uint8)
 
 
-def _download_image(url: str, filename: str = "") -> Path:
-    # TODO: move this to testing
-
-    filename = url.rsplit("/", maxsplit=1)[-1] if len(filename) == 0 else filename
-    # Download
-    # url is a fixed https:// literal defined by each fixture above.
-    with urlopen(url, timeout=60) as resp:  # noqa: S310
-        bytesio = io.BytesIO(resp.read())
-    # Save file
-    with open(filename, "wb") as outfile:
-        outfile.write(bytesio.getbuffer())
-
-    return Path(filename)
+def write_random_png_u16(path: Path, mode: str) -> None:
+    """Write a random 16-bit PNG, ``"mono"`` (grayscale) or ``"rgba"``; ``write_image`` cannot write RGBA."""
+    channels = {"mono": 1, "rgba": 4}[mode]
+    img_np = np.random.randint(0, 65535, (4, 5, channels)).astype(np.uint16)  # noqa: NPY002
+    kornia_rs.io.write_image_png_u16(str(path), img_np, mode=mode)
 
 
 @pytest.fixture(scope="session")
 def png_image(tmp_path_factory):
-    url = "https://github.com/kornia/data/raw/main/simba.png"
+    """RGB PNG written locally so load tests do not depend on the network."""
     filename = tmp_path_factory.mktemp("data") / "image.png"
-    filename = _download_image(url, str(filename))
+    img_rgb = np.random.randint(0, 255, (32, 32, 3), dtype=np.uint8)  # noqa: NPY002
+    kornia_rs.io.write_image_png_u8(str(filename), img_rgb, mode="rgb")
     return filename
 
 
@@ -69,9 +62,9 @@ def rgba_png_image(tmp_path_factory):
 
 @pytest.fixture(scope="session")
 def jpg_image(tmp_path_factory):
-    url = "https://github.com/kornia/data/raw/main/crowd.jpg"
+    """RGB JPEG written locally so load tests do not depend on the network."""
     filename = tmp_path_factory.mktemp("data") / "image.jpg"
-    filename = _download_image(url, str(filename))
+    write_image(str(filename), create_random_img8_torch(32, 32, 3))
     return filename
 
 
@@ -81,6 +74,47 @@ def images_fn(png_image, jpg_image):
 
 
 class TestIoImage:
+    @pytest.mark.parametrize(
+        ("suffix", "channels", "dtype"),
+        [
+            (".png", 1, torch.uint8),  # read_image_png_u8
+            (".png", 1, torch.uint16),  # read_image_png_u16
+            (".png", 3, torch.uint8),  # read_image (RGB PNG)
+            (".jpg", 3, torch.uint8),  # read_image_jpegturbo
+            (".tiff", 3, torch.uint8),  # read_image (any other extension)
+        ],
+        ids=["png-gray8", "png-gray16", "png-rgb8", "jpg-rgb8", "tiff-rgb8"],
+    )
+    def test_truncated_image_decode_error_includes_path(self, suffix, channels, dtype, tmp_path: Path) -> None:
+        pixels = (torch.arange(channels * 64 * 64, dtype=torch.int32) * 37 % 251).reshape(channels, 64, 64).to(dtype)
+        path = tmp_path / f"truncated_{channels}c_{str(dtype).removeprefix('torch.')}{suffix}"
+        write_image(path, pixels)
+        data = path.read_bytes()
+        path.write_bytes(data[: len(data) // 2])
+
+        with pytest.raises(ValueError, match=re.escape(path.name)) as exc_info:
+            load_image(path, ImageLoadType.UNCHANGED)
+
+        assert exc_info.value.__cause__ is not None
+        assert str(exc_info.value.__cause__) in str(exc_info.value)
+
+    @pytest.mark.parametrize(
+        ("suffix", "error"), [(".png", FileNotFoundError), (".jpg", FileNotFoundError), (".tiff", FileNotFoundError)]
+    )
+    def test_missing_file_keeps_its_os_error(self, suffix, error, tmp_path: Path) -> None:
+        # a missing file is not a decode failure: callers catching FileNotFoundError or OSError keep working
+        with pytest.raises(error, match=re.escape(f"missing{suffix}")):
+            load_image(tmp_path / f"missing{suffix}")
+
+    @pytest.mark.parametrize("suffix", [".jpg", ".tiff", ".xyz"])
+    def test_directory_path_raises_os_error_naming_the_path(self, suffix, tmp_path: Path) -> None:
+        # every format path goes through open(), so a directory names itself instead of a bare OSError (.jpg, .tiff)
+        # or a ValueError for an unrecognised format (.xyz); Windows raises PermissionError for open() on a directory,
+        # POSIX raises IsADirectoryError
+        (tmp_path / f"dir{suffix}").mkdir()
+        with pytest.raises((IsADirectoryError, PermissionError), match=re.escape(f"dir{suffix}")):
+            load_image(tmp_path / f"dir{suffix}")
+
     def test_smoke(self, tmp_path: Path) -> None:
         height, width = 4, 5
         img_th: torch.Tensor = create_random_img8_torch(height, width, 3)
@@ -147,6 +181,27 @@ class TestIoImage:
         assert img.shape[0] == expected_channels
         assert img.dtype == expected_type
 
+    @pytest.mark.parametrize("channels,mode", [(1, "mono"), (3, "rgb")])
+    def test_load_opaque_image_as_rgba(self, tmp_path: Path, channels: int, mode: str) -> None:
+        pixels = np.full((2, 2, channels), 64, dtype=np.uint8)
+        path = tmp_path / "image.png"
+        kornia_rs.io.write_image_png_u8(str(path), pixels, mode=mode)
+
+        rgba = load_image(path, ImageLoadType.RGBA8)
+
+        assert rgba.shape == (4, 2, 2)
+        assert torch.equal(rgba[:3], torch.full((3, 2, 2), 64, dtype=torch.uint8))
+        assert torch.equal(rgba[3], torch.full((2, 2), 255, dtype=torch.uint8))
+
+    def test_unchanged_loads_an_8_bit_grayscale_png_as_one_uint8_channel(self, tmp_path: Path) -> None:
+        img = create_random_img8_torch(4, 5, 1)
+        path = tmp_path / "image.png"
+        write_image(path, img)
+        loaded = load_image(path, ImageLoadType.UNCHANGED)
+        assert loaded.dtype == torch.uint8
+        assert loaded.shape == (1, 4, 5)
+        assert torch.equal(loaded, img)
+
     @pytest.mark.parametrize("ext", ["jpg"])
     @pytest.mark.parametrize("channels", [3])
     def test_write_image(self, device, tmp_path, ext, channels):
@@ -157,6 +212,18 @@ class TestIoImage:
         write_image(file_path, img_th)
 
         assert file_path.is_file()
+
+    @pytest.mark.parametrize("shape", [(1, 1, 5), (1, 5, 1)])
+    def test_write_image_one_row_or_one_column_grayscale(self, tmp_path: Path, shape) -> None:
+        # (1, 1, W) and (1, H, 1) must keep their unit height or width on the way to the encoder.
+        img = torch.arange(5, dtype=torch.uint8).reshape(shape) * 50
+        path = tmp_path / "line.png"
+
+        write_image(path, img)
+
+        loaded = load_image(path, ImageLoadType.UNCHANGED)
+        assert loaded.shape == shape
+        assert torch.equal(loaded, img)
 
 
 class TestDownloadImage:
@@ -271,6 +338,54 @@ class TestWiderThanUint8Decodes:
         loaded = load_image(path, ImageLoadType.UNCHANGED)
         assert loaded.dtype == dtype
         assert torch.equal(loaded, img)
+
+    def test_unchanged_loads_a_16_bit_grayscale_png(self, tmp_path):
+        img = torch.randint(0, 65535, (1, 4, 5), dtype=torch.int32).to(torch.uint16)
+        path = tmp_path / "image.png"
+        write_image(path, img)
+        loaded = load_image(path, ImageLoadType.UNCHANGED)
+        assert loaded.dtype == torch.uint16
+        assert torch.equal(loaded, img)
+
+    def test_unchanged_loads_a_16_bit_rgba_png(self, tmp_path):
+        img_np = np.random.randint(0, 65535, (4, 5, 4)).astype(np.uint16)  # noqa: NPY002
+        path = tmp_path / "image.png"
+        kornia_rs.io.write_image_png_u16(str(path), img_np, mode="rgba")
+        loaded = load_image(path, ImageLoadType.UNCHANGED)
+        assert loaded.dtype == torch.uint16
+        assert torch.equal(loaded, torch.from_numpy(img_np).permute(2, 0, 1))
+
+    @pytest.mark.parametrize("mode", ["mono", "rgba"])
+    def test_16_bit_png_goes_to_the_16_bit_reader(self, tmp_path, monkeypatch, mode):
+        """kornia_rs's ``read_image`` also decodes these files, so the dtype alone cannot show which reader ran."""
+        path = tmp_path / "image.png"
+        write_random_png_u16(path, mode)
+        calls = []
+        real = kornia_rs.io.read_image_png_u16
+
+        def spy(*args, **kwargs):
+            calls.append(args[1])
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(kornia_rs.io, "read_image_png_u16", spy)
+        assert load_image(path, ImageLoadType.UNCHANGED).dtype == torch.uint16
+        assert calls == [mode]
+
+    @pytest.mark.parametrize("mode", ["mono", "rgba"])
+    @pytest.mark.parametrize("load_type", [t for t in ImageLoadType if t != ImageLoadType.UNCHANGED])
+    def test_eight_bit_load_types_reject_a_16_bit_png(self, tmp_path, mode, load_type):
+        path = tmp_path / "image.png"
+        write_random_png_u16(path, mode)
+        expected = rf"decoded to torch\.uint16, and ImageLoadType\.{load_type.name} .*ImageLoadType\.UNCHANGED"
+        with pytest.raises(NotImplementedError, match=expected):
+            load_image(path, load_type)
+
+    @pytest.mark.parametrize("mode", ["mono", "rgba"])
+    def test_default_load_type_rejects_a_16_bit_png(self, tmp_path, mode):
+        path = tmp_path / "image.png"
+        write_random_png_u16(path, mode)
+        with pytest.raises(NotImplementedError, match=r"decoded to torch\.uint16, and ImageLoadType\.RGB32"):
+            load_image(path)
 
     @pytest.mark.parametrize("load_type", [ImageLoadType.RGB8, ImageLoadType.GRAY8, ImageLoadType.RGB32])
     def test_eight_bit_load_types_reject_a_float_decode(self, tmp_path, load_type):

@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import platform
@@ -321,9 +322,12 @@ class FailureRecorder:
             blockers = eager_rng_calls_for_node(report.nodeid)
             if blockers:
                 self.eager_blockers[report.nodeid] = blockers
-        if report.when == "teardown" and report.outcome != "passed":
-            if report.nodeid in self.entries or report.nodeid in self.previous_entries:
-                self.abort_reasons.append(f"unrepresentable teardown failure for {report.nodeid}")
+        if (
+            report.when == "teardown"
+            and report.outcome != "passed"
+            and (report.nodeid in self.entries or report.nodeid in self.previous_entries)
+        ):
+            self.abort_reasons.append(f"unrepresentable teardown failure for {report.nodeid}")
 
     def _check_completeness(self, session: pytest.Session) -> None:
         if session.config.option.collectonly:
@@ -571,10 +575,8 @@ def _normalize_selector(selector: str, rootpath: Path | None = None) -> str:
     path, separator, node = selector.partition("::")
     selector_path = Path(path)
     if selector_path.is_absolute() and rootpath is not None:
-        try:
+        with contextlib.suppress(ValueError):
             selector_path = selector_path.relative_to(rootpath)
-        except ValueError:
-            pass
     normalized_path = selector_path.as_posix().removeprefix("./").rstrip("/")
     return f"{normalized_path}::{node}" if separator else normalized_path
 

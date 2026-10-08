@@ -75,6 +75,7 @@ from .matching import (
     match_mnn,
     match_nn,
     match_smnn,
+    match_smnn_batched,
     match_snn,
 )
 from .mkd import MKDDescriptor
@@ -92,7 +93,8 @@ from .responses import (
     hessian_response,
 )
 from .scale_space_detector import MultiResolutionDetector, PassLAF, ScaleSpaceDetector
-from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor
+from .sift import SIFTDescriptorFromPyramid
+from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor, convert_sift_descriptor_layout
 from .sold2 import SOLD2, SOLD2_detector
 from .sosnet import SOSNet
 from .tfeat import TFeat
@@ -144,6 +146,7 @@ __all__ = [
     "PatchAffineShapeEstimator",
     "PatchDominantGradientOrientation",
     "SIFTDescriptor",
+    "SIFTDescriptorFromPyramid",
     "SIFTFeature",
     "SIFTFeatureScaleSpace",
     "SOLD2_detector",
@@ -152,6 +155,7 @@ __all__ = [
     "TFeat",
     "XFeat",
     "XFeatModel",
+    "convert_sift_descriptor_layout",
     "denormalize_laf",
     "dog_response",
     "dog_response_single",
@@ -178,6 +182,7 @@ __all__ = [
     "match_mnn",
     "match_nn",
     "match_smnn",
+    "match_smnn_batched",
     "match_snn",
     "normalize_laf",
     "perspective_transform_lafs",

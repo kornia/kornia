@@ -28,6 +28,8 @@ class RandomEqualize(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomEqualize.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         p: Probability to equalize an image.
         same_on_batch: apply the same transformation across the batch.
@@ -38,9 +40,14 @@ class RandomEqualize(IntensityAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
 
+    Convention:
+        - an input outside ``[0, 1]`` raises a ``RuntimeError`` naming :func:`kornia.enhance.equalize` and that
+          range, instead of being transformed. The check guards a 256-entry lookup indexed with
+          ``(input * 255).long()``, so a value less than one 8-bit code outside ``[0, 1]`` is still admitted, up
+          to the rounding of ``input * 255`` in the input's dtype.
+
     .. note::
-        This function internally uses :func:`kornia.enhance.equalize`, which expects the input in
-        :math:`[0, 1]` and raises a ``RuntimeError`` naming that range for values it cannot equalize.
+        This function internally uses :func:`kornia.enhance.equalize`.
 
     Examples:
         >>> rng = torch.manual_seed(0)

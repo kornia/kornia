@@ -209,10 +209,11 @@ class TestStereoCamera(BaseTester):
         disparity = torch.ones(disparity_shape, device=device, dtype=dtype)
 
         with pytest.raises(StereoException) as exc_info:
-            if entrypoint == "method":
+            (
                 camera.reproject_disparity_to_3D(disparity)
-            else:
-                reproject_disparity_to_3D(disparity, camera.Q)
+                if entrypoint == "method"
+                else reproject_disparity_to_3D(disparity, camera.Q)
+            )
 
         assert str(exc_info.value).splitlines()[0] == (
             "Expected 'disparity_tensor' to have channels-last shape (B, H, W, 1) "
@@ -375,19 +376,9 @@ class TestStereoCamera(BaseTester):
         return StereoCamera(left, right)
 
     def test_convention_reproject_disparity_takes_bhw1(self, device, dtype):
-        # Convention pin: the disparity map is
-        # channels-LAST, (B, H, W, 1), for both the method and the module-level function, and the returned point
-        # cloud is (B, H, W, 3). The channels-FIRST (B, 1, H, W) layout that the rest of kornia uses for images
-        # is rejected, and so is an unbatched (B, H, W). The method's docstring used to say (B, 1, H, W) -- the
-        # layout the shared guard rejects -- and now says (B, H, W, 1), matching the module-level function and
-        # the private guard's own docstring. The message names the required layout and the last-dimension
-        # channel check (regression for kornia#4374).
-        # The shape claim carries a value so it cannot pass on a dummy: with fx = 100 and tx = 0.5, a disparity
-        # of 10 puts every point at Z = fx * tx / d = 5.
-        # Snippet used to generate expected: cam.reproject_disparity_to_3D(full((1, 3, 5, 1), 10.0)) executed
-        # recorded in original commit 1a96bfd1 (torch 2.14.0) -> shape (1, 3, 5, 3) with Z = 5.0,
-        # and StereoException for the (1, 1, 3, 5) and (1, 3, 5) layouts, on cpu for float32, float64,
-        # float16 and bfloat16 and on mps for float32 and float16.
+        # The disparity map is channels-last (B, H, W, 1) for the method and the module-level function, and the
+        # cloud is (B, H, W, 3); (B, 1, H, W) and (B, H, W) are rejected with a message naming the layout
+        # (#4374). With fx = 100 and tx = 0.5, a disparity of 10 puts every point at Z = fx * tx / d = 5.
         cam = self._asymmetric_stereo(device, dtype)
         disparity = torch.full((1, 3, 5, 1), 10.0, device=device, dtype=dtype)
         points = cam.reproject_disparity_to_3D(disparity)
@@ -399,14 +390,8 @@ class TestStereoCamera(BaseTester):
             cam.reproject_disparity_to_3D(torch.full((1, 3, 5), 10.0, device=device, dtype=dtype))
 
     def test_convention_reproject_method_and_free_function_are_byte_identical(self, device, dtype):
-        # Convention pin: the method is
-        # a thin forwarder -- it passes ``self.Q`` to the module-level function and returns its result bit for
-        # bit. ``Q`` is the cached tensor, not a fresh one, so the two calls see the same matrix. The result is
-        # not a degenerate all-zero cloud (it reaches 5.0), so the equality is not the trivial one.
-        # Snippet used to generate expected: torch.equal(cam.reproject_disparity_to_3D(d),
-        # reproject_disparity_to_3D(d, cam.Q)) and cam.Q is cam._Q_matrix recorded in original commit 1a96bfd1
-        # (torch 2.14.0) -> True and True on cpu for float32, float64, float16 and bfloat16 and on mps for
-        # float32 and float16.
+        # The method forwards the cached self.Q to the module-level function. The cloud is not all zero, so the
+        # equality is not the trivial one.
         cam = self._asymmetric_stereo(device, dtype)
         disparity = torch.full((1, 3, 5, 1), 10.0, device=device, dtype=dtype)
         assert torch.equal(cam.reproject_disparity_to_3D(disparity), reproject_disparity_to_3D(disparity, cam.Q))
@@ -414,18 +399,9 @@ class TestStereoCamera(BaseTester):
         assert cam.reproject_disparity_to_3D(disparity).abs().max().item() > 0.1
 
     def test_convention_tx_is_the_right_translation_over_fx_and_fixes_q(self, device, dtype):
-        # Convention pin: the baseline is read off the
-        # right camera's last column, tx = -P_right[0, 3] / fx, and Q is built from it. Note which focal length
-        # sits in which row: Q[0, 0] = fy * (-tx) and Q[1, 1] = fx * (-tx), i.e. the row that scales the FIRST
-        # output coordinate carries fy. The fy = 50 arm varies exactly that one intrinsic and moves Q by 2500,
-        # so a reading in which Q[0, 0] carried fx would fail here while passing on the fx = fy camera.
-        # Q[3, 3] = fy * (cx_left - cx_right) is always 0, because the constructor rejects differing principal
-        # points outright (pinned as a wart below).
-        # Snippet used to generate expected, recorded in original commit 1a96bfd1 (torch 2.14.0) ->
-        # [[[-50, 0, 0, 200], [0, -50, 0, 150], [0, 0, 0, -5000], [0, 0, -100, 0]]] for fy = 100 and
-        # [[[-25, 0, 0, 100], [0, -50, 0, 150], [0, 0, 0, -2500], [0, 0, -50, 0]]] for fy = 50, on cpu for
-        # float32, float64, float16 and bfloat16 and on mps for float32 and float16 (bfloat16 rounds the -5000
-        # and -2500 entries to -4992 and -2496, hence the dtype tolerance rather than an exact comparison).
+        # tx = -P_right[0, 3] / fx, and Q is built from it with Q[0, 0] = fy * (-tx), Q[1, 1] = fx * (-tx): the
+        # row that scales the first output coordinate carries fy, so the fy = 50 arm fails a reading with fx
+        # there. Q[3, 3] = fy * (cx_left - cx_right) is always 0 (#4270, below).
         cam = self._asymmetric_stereo(device, dtype)
         self.assert_close(cam.tx, torch.tensor([0.5], device=device, dtype=dtype))
         self.assert_close(cam.tx, -cam.rectified_right_camera[..., 0, 3] / cam.fx)
@@ -444,40 +420,28 @@ class TestStereoCamera(BaseTester):
         self.assert_close(self._asymmetric_stereo(device, dtype, fy=50.0).Q, asymmetric_q)
         assert (symmetric_q - asymmetric_q).abs().max().item() > 1.0
 
-    def test_convention_q_signs_only_cancel_away_from_a_zero_homogeneous_coordinate(self, device, dtype):
-        # The homogeneous conversion divides by W only when abs(W) > 1e-8. With zero disparity, this Q gives
-        # W = 0, so the conversion returns the homogeneous numerator. Negating Q therefore negates the result
-        # instead of cancelling as it does for ordinary Euclidean points.
-        # The map is a single pixel (u = v = 0) on purpose: the claim is about W = 0, and a 1 x 1 map reads the
-        # same whichever index feeds which coordinate, so this pin survives the #4269 repair unchanged.
-        # Snippet used to generate expected: reproject_disparity_to_3D(zeros(1, 1, 1, 1), q) and the same call
-        # with -q, executed 2026-09-08 at commit 089daad9 (torch 2.14.0) -> [1, 2, 3] and its negation on cpu
-        # for float32, float64, float16 and bfloat16 and on mps for float32 and float16.
+    def test_wart_reproject_disparity_zero_disparity_returns_the_numerator_4555(self, device, dtype):
+        # kornia#4555: zero disparity (a point at infinity) gives W = 0, and the masked homogeneous divide (the
+        # #4267 rule) returns the numerator as a finite placeholder -- behind the camera on a real rig, and Q and
+        # -Q disagree there -- with nothing flagging it invalid. Update when #4555 adds a validity signal.
+        disparity = torch.zeros(1, 1, 1, 1, device=device, dtype=dtype)
+        self.assert_close(
+            self._asymmetric_stereo(device, dtype).reproject_disparity_to_3D(disparity),
+            torch.tensor([[[[200.0, 150.0, -5000.0]]]], device=device, dtype=dtype),
+        )
         q = torch.tensor(
             [[[1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 0.0, 2.0], [0.0, 0.0, 0.0, 3.0], [0.0, 0.0, 1.0, 0.0]]],
             device=device,
             dtype=dtype,
         )
-        disparity = torch.zeros(1, 1, 1, 1, device=device, dtype=dtype)
-        points = reproject_disparity_to_3D(disparity, q)
         expected = torch.tensor([[[[1.0, 2.0, 3.0]]]], device=device, dtype=dtype)
-        self.assert_close(points, expected)
+        self.assert_close(reproject_disparity_to_3D(disparity, q), expected)
         self.assert_close(reproject_disparity_to_3D(disparity, -q), -expected)
 
     def test_convention_reproject_disparity_uses_the_column_as_u_4269(self, device, dtype):
-        # The contract, repaired by #4269 and an ordinary passing regression since: u is the COLUMN index and
-        # v the ROW index, as in cv2.reprojectImageTo3D -- X = (u - cx) Z / fx, Y = (v - cy) Z / fy, with
-        # Z = fx * tx / d. On this fixture (fx = fy = 100, cx = 4, cy = 3, tx = 0.5, d = 10, so Z = 5) that is
-        # [-0.1, -0.15, 5] at (row 0, col 2), [-0.2, -0.1, 5] at (row 1, col 0) and [0.0, -0.05, 5] at
-        # (row 2, col 4). It was a strict xfail while the two indices were transposed.
-        cam = self._asymmetric_stereo(device, dtype)
-        points = cam.reproject_disparity_to_3D(torch.full((1, 3, 5, 1), 10.0, device=device, dtype=dtype))
-        self.assert_close(points[0, 0, 2], torch.tensor([-0.1, -0.15, 5.0], device=device, dtype=dtype))
-        self.assert_close(points[0, 1, 0], torch.tensor([-0.2, -0.1, 5.0], device=device, dtype=dtype))
-        self.assert_close(points[0, 2, 4], torch.tensor([0.0, -0.05, 5.0], device=device, dtype=dtype))
-        # The whole map on a camera with fx = 100 != fy = 50, so a reading that swapped the focal lengths as
-        # well as the indices could not reproduce it. This arm is what the deleted wart pin asserted
-        # transposed.
+        # u is the column index and v the row index, as in cv2.reprojectImageTo3D: X = (u - cx) Z / fx,
+        # Y = (v - cy) Z / fy, Z = fx * tx / d (repaired in #4269). fx = 100 != fy = 50 and H != W, so a reading
+        # that swapped the indices or the focal lengths cannot reproduce the map.
         points = self._asymmetric_stereo(device, dtype, fy=50.0).reproject_disparity_to_3D(
             torch.full((1, 3, 5, 1), 10.0, device=device, dtype=dtype)
         )
@@ -486,87 +450,53 @@ class TestStereoCamera(BaseTester):
         depth = torch.full((3, 5), 5.0, device=device, dtype=dtype)
         opencv = torch.stack([(columns - 4.0) * 0.05, (rows - 3.0) * 0.1, depth], dim=-1)[None]
         self.assert_close(points, opencv)
-
-    def test_convention_reproject_disparity_x_varies_with_the_column_4269(self, device, dtype):
-        # The axis-dependence form of the contract, and the one statement that survives any change of fixture
-        # because it asserts which INDEX each output coordinate depends on rather than a literal. On a constant
-        # disparity map X is a function of the column, so it varies along a row and is constant down a column;
-        # Y is the mirror image. This was a wart pin asserting the reverse while the indices were transposed.
-        cam = self._asymmetric_stereo(device, dtype)
-        points = cam.reproject_disparity_to_3D(torch.full((1, 3, 5, 1), 10.0, device=device, dtype=dtype))
-        # X: steps by 0.05 along a row, constant down a column.
-        self.assert_close(points[0, 0, :, 0], torch.tensor([-0.2, -0.15, -0.1, -0.05, 0.0], device=device, dtype=dtype))
-        x_down_column = points[0, :, 0, 0]
-        assert bool((x_down_column == x_down_column[0]).all())
-        # Y: constant along a row, steps by 0.05 down a column.
-        y_along_row = points[0, 0, :, 1]
-        assert bool((y_along_row == y_along_row[0]).all())
-        self.assert_close(points[0, :, 0, 1], torch.tensor([-0.15, -0.1, -0.05], device=device, dtype=dtype))
+        # X depends only on the column and Y only on the row.
+        assert bool((points[0, :, :, 0] == points[0, :1, :, 0]).all())
+        assert bool((points[0, :, :, 1] == points[0, :, :1, 1]).all())
 
     def test_wart_stereo_rejects_differing_principal_points_4270(self, device, dtype):
-        # Wart pin for kornia#4270: the docs page says "cx may differ between
-        # the left and right cameras, which is taken into account here", and Q[3, 3] = fy * (cx_left -
-        # cx_right) exists for exactly that case -- but the constructor requires the two camera matrices to be
-        # equal outside the last column, so cx_left and cx_right can never differ and Q[3, 3] is always 0.
-        # Snippet used to generate expected: StereoCamera(left, right) with the right camera's cx set to 5.0
-        # recorded in original commit 1a96bfd1 (torch 2.14.0) -> StereoException("Expected
-        # 'left_rectified_camera' and 'rectified_right_camera' to havesame parameters except for the last
-        # column.") on cpu for float32, float64, float16 and bfloat16 and on mps for float32 and float16; on the
-        # accepted camera, cx_left == cx_right (torch.equal True) and Q[3, 3] == 0.0.
-        # Pins the CURRENT behavior; NOT a contract; delete when #4270 is repaired.
+        # Wart pin for #4270: Q[3, 3] = fy * (cx_left - cx_right) exists for a differing cx, but the constructor
+        # rejects one, so Q[3, 3] is always 0. Delete when #4270 is repaired.
         with pytest.raises(StereoException, match="same parameters except for the last column"):
             self._asymmetric_stereo(device, dtype, cx_right=5.0)
         cam = self._asymmetric_stereo(device, dtype)
         assert torch.equal(cam.cx_left, cam.cx_right)
         assert cam.Q[0, 3, 3].item() == 0.0
 
-    def test_wart_stereo_accepts_a_batch_with_one_positive_tx_fx_4270(self, device, dtype):
-        # Wart pin for kornia#4270: the sign guard is
-        # ``torch.all(torch.gt(tx * fx, 0))``, which fires only when EVERY element of the batch is positive, so
-        # a batch whose second element has the cameras the wrong way round is accepted and silently reprojects
-        # that element behind the camera (its tx is -0.5). An all-positive batch is rejected, which is what
-        # shows the guard exists and is simply quantified over the wrong side.
-        # Snippet used to generate expected: StereoCamera(left, right) with right[0, 0, 3] = -50 and
-        # right[1, 0, 3] = +50, recorded in original commit 1a96bfd1 (torch 2.14.0) -> accepted, tx =
-        # [0.5, -0.5]; with both elements at +50 -> StereoException("Expected :math:`T_x * f_x` to be
-        # negative."). Both hold on cpu for float32, float64, float16 and bfloat16 and on mps for float32 and
-        # float16.
-        # Pins the CURRENT behavior; NOT a contract; delete when #4270 is repaired.
+    @pytest.mark.parametrize("bad_index", [0, 1])
+    def test_convention_stereo_rejects_a_batch_with_one_positive_tx_fx_4270(self, bad_index, device, dtype):
+        # The right camera's last column is -tx * fx; a batch in which any rig has it positive (cameras swapped)
+        # is rejected (#4270), whichever position the bad rig holds.
         left = torch.tensor(
             [[[100.0, 0.0, 4.0, 0.0], [0.0, 100.0, 3.0, 0.0], [0.0, 0.0, 1.0, 0.0]]] * 2, device=device, dtype=dtype
         )
-        mixed_right = torch.tensor(
-            [
-                [[100.0, 0.0, 4.0, -50.0], [0.0, 100.0, 3.0, 0.0], [0.0, 0.0, 1.0, 0.0]],
-                [[100.0, 0.0, 4.0, 50.0], [0.0, 100.0, 3.0, 0.0], [0.0, 0.0, 1.0, 0.0]],
-            ],
-            device=device,
-            dtype=dtype,
+        right = torch.tensor(
+            [[[100.0, 0.0, 4.0, -50.0], [0.0, 100.0, 3.0, 0.0], [0.0, 0.0, 1.0, 0.0]]] * 2, device=device, dtype=dtype
         )
-        mixed = StereoCamera(left, mixed_right)
-        self.assert_close(mixed.tx, torch.tensor([0.5, -0.5], device=device, dtype=dtype))
+        mixed_right = right.clone()
+        mixed_right[bad_index, 0, 3] = 50.0
+
+        with pytest.raises(StereoException, match="to be negative"):
+            StereoCamera(left, mixed_right)
         with pytest.raises(StereoException, match="to be negative"):
             self._asymmetric_stereo(device, dtype, tx_fx=50.0)
+        # the all-negative batch is still accepted, with the baseline read back unchanged
+        self.assert_close(StereoCamera(left, right).tx, torch.tensor([0.5, 0.5], device=device, dtype=dtype))
 
-    def test_wart_stereo_tx_zero_collapses_every_point_to_the_origin_4270(self, device, dtype):
-        # Wart pin for kornia#4270: tx * fx == 0 is not "greater than zero",
-        # so a pair of coincident cameras passes the sign guard. The whole Q matrix then collapses to zeros
-        # except Q[3, 2] = -fy, and every disparity -- including a large, perfectly valid one -- reprojects to
-        # exactly the origin, with no warning and no inf to notice. A degenerate rig should be rejected by the
-        # guard that already exists for the reversed one.
-        # Snippet used to generate expected: StereoCamera(left, right) with the right camera's last column 0,
-        # recorded in original commit 1a96bfd1 (torch 2.14.0) -> Q is zeros with Q[3, 2] = -100 (torch.equal
-        # True) and the reprojection of a constant disparity 10 is exactly zeros (torch.equal True), on cpu for
-        # float32, float64, float16 and bfloat16 and on mps for float32 and float16; the tx = 0.5 rig on the
-        # same disparity reaches 5.0.
-        # Pins the CURRENT behavior; NOT a contract; delete when #4270 is repaired.
-        degenerate = self._asymmetric_stereo(device, dtype, tx_fx=0.0)
-        expected_q = torch.zeros(1, 4, 4, device=device, dtype=dtype)
-        expected_q[0, 3, 2] = -100.0
-        self.assert_close(degenerate.Q, expected_q, atol=0.0, rtol=0.0)
+    @pytest.mark.parametrize("zero", [0.0, -0.0])
+    def test_convention_stereo_rejects_a_zero_baseline_4270(self, zero, device, dtype):
+        # tx * fx == 0 (no baseline) is rejected (#4270) for a single rig and for one rig of a batch; -0.0 too.
+        with pytest.raises(StereoException, match="non-zero stereo baseline"):
+            self._asymmetric_stereo(device, dtype, tx_fx=zero)
+
+        good = self._asymmetric_stereo(device, dtype, batch=2)
+        right = good.rectified_right_camera.clone()
+        right[1, 0, 3] = zero
+        with pytest.raises(StereoException, match="non-zero stereo baseline"):
+            StereoCamera(good.rectified_left_camera, right)
+
+        # a real baseline on the same fixture still reprojects away from the origin
         disparity = torch.full((1, 3, 5, 1), 10.0, device=device, dtype=dtype)
-        points = degenerate.reproject_disparity_to_3D(disparity)
-        self.assert_close(points, torch.zeros(1, 3, 5, 3, device=device, dtype=dtype), atol=0.0, rtol=0.0)
         assert self._asymmetric_stereo(device, dtype).reproject_disparity_to_3D(disparity).abs().max().item() > 0.1
 
     def test_convention_stereo_rejects_a_four_by_four_pair_4270(self, device, dtype):

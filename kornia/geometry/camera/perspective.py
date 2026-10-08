@@ -34,16 +34,13 @@ def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch
     Convention:
         - ``point_3d`` is a **camera-frame** point and ``camera_matrix`` the :math:`(*, 3, 3)` ``K``; the
           function takes no extrinsics, so it does not move between frames.
-        - the input must be at least rank 2: an unbatched :math:`(3,)` point raises :class:`ValueError`
-          although the shape below reads :math:`(*, 3)`.
-        - a point with ``z = 0`` does not raise: the perspective divide is skipped and ``K`` is applied to the
-          undivided point, giving ``fx x + cx``. A point behind the camera is projected just as silently.
-
-        See :doc:`camera and world conventions </get-started/camera-conventions>` for camera-frame coordinates,
-        intrinsics and the pixel-centre convention.
+        - the input must be at least rank 2: an unbatched :math:`(3,)` point raises :class:`ValueError`.
 
     .. warning::
-        The ``z = 0`` answer is tracked in `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+        At ``abs(z) <= 1e-8`` the divide is skipped and ``K`` is applied to the undivided point, giving the
+        finite placeholder ``fx x + cx``; the other projection entry points do not follow this rule yet:
+        `#4267 <https://github.com/kornia/kornia/issues/4267>`_. Neither that placeholder nor a point behind the
+        camera is flagged as invalid: `#4555 <https://github.com/kornia/kornia/issues/4555>`_.
 
     Args:
         point_3d: tensor containing the 3d points to be projected
@@ -85,9 +82,6 @@ def unproject_points(
           :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.unproject` is the world-frame counterpart.
         - ``depth`` is the camera-frame ``z`` of the result. With ``normalize=True`` it is read as the
           Euclidean ray length instead, so the result has that norm and a smaller ``z``.
-
-        See :doc:`camera and world conventions </get-started/camera-conventions>` for camera-frame depth,
-        intrinsics and the pixel-centre convention.
 
     Args:
         point_2d: tensor containing the 2d points to be projected to

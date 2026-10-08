@@ -32,6 +32,10 @@ disagrees stores the file where nothing looks for it, leaving the cache
 silently useless. Values mirror the URL list in kornia, so the fallback source
 and the retry/backoff of :func:`kornia.core.download.load_state_dict_from_url`
 apply to the prefetch too.
+
+A ``.safetensors`` key is fetched with :func:`kornia.core.download_file_from_url`
+and checked with :func:`kornia.core.check_safetensors`, as kornia reads it; every
+other key is a pickle, loaded with ``load_state_dict_from_url``.
 """
 
 import argparse
@@ -40,6 +44,7 @@ import os
 
 import torch
 
+from kornia.core import check_safetensors, download_file_from_url
 from kornia.core.download import load_state_dict_from_url
 
 logger = logging.getLogger(__name__)
@@ -48,22 +53,25 @@ logger = logging.getLogger(__name__)
 MODELS: dict[str, "str | list[str]"] = {
     # Reference tensors used by conftest.py's data fixture. Prefetch these once
     # before the matrix so every job does not download them on a cold cache.
-    "loftr_outdoor_and_homography_data.pt": (
+    "loftr_outdoor_and_homography_data.safetensors": (
         "https://raw.githubusercontent.com/kornia/data_test/"
-        "cb8f42bf28b9f347df6afba5558738f62a11f28a/loftr_outdoor_and_homography_data.pt"
+        "4ffed08df3d82af85aa9012d3104f19ca4b62604/loftr_outdoor_and_homography_data.safetensors"
     ),
-    "loftr_indoor_and_fundamental_data.pt": (
+    "loftr_indoor_and_fundamental_data.safetensors": (
         "https://raw.githubusercontent.com/kornia/data_test/"
-        "cb8f42bf28b9f347df6afba5558738f62a11f28a/loftr_indoor_and_fundamental_data.pt"
+        "4ffed08df3d82af85aa9012d3104f19ca4b62604/loftr_indoor_and_fundamental_data.safetensors"
     ),
-    "adalam_test.pt": (
-        "https://raw.githubusercontent.com/kornia/data_test/f7d8da661701424babb64850e03c5e8faec7ea62/adalam_test.pt"
+    "adalam_test.safetensors": (
+        "https://raw.githubusercontent.com/kornia/data_test/"
+        "4ffed08df3d82af85aa9012d3104f19ca4b62604/adalam_test.safetensors"
     ),
-    "knchurch_disk.pt": (
-        "https://raw.githubusercontent.com/kornia/data_test/8b98f44abbe92b7a84631ed06613b08fee7dae14/knchurch_disk.pt"
+    "knchurch_disk.safetensors": (
+        "https://raw.githubusercontent.com/kornia/data_test/"
+        "4ffed08df3d82af85aa9012d3104f19ca4b62604/knchurch_disk.safetensors"
     ),
-    "xfeat_reference.pt": (
-        "https://raw.githubusercontent.com/kornia/data_test/279e95e411f2d3926953dea3842347242190f4da/xfeat_reference.pt"
+    "xfeat_reference.safetensors": (
+        "https://raw.githubusercontent.com/kornia/data_test/"
+        "4ffed08df3d82af85aa9012d3104f19ca4b62604/xfeat_reference.safetensors"
     ),
     # -- detectors, descriptors and orientation estimators -------------------
     # AffNet + OriNet: LAFAffNetShapeEstimator / LAFOrienter, and every composite
@@ -84,8 +92,10 @@ MODELS: dict[str, "str | list[str]"] = {
     # HardNet: the default descriptor of LAFDescriptor, so nearly every composite.
     "checkpoint_liberty_with_aug.pth": [
         "https://huggingface.co/kornia/hardnet/resolve/main/checkpoint_liberty_with_aug.pth",
-        "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/"
-        "checkpoint_liberty_with_aug.pth",
+        (
+            "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/"
+            "checkpoint_liberty_with_aug.pth"
+        ),
     ],
     # Patch descriptors with pretrained smoke/jit tests.
     "HyNet_LIB.pth": [
@@ -113,11 +123,11 @@ MODELS: dict[str, "str | list[str]"] = {
     # LoFTR: tests instantiate both the outdoor and indoor weights.
     "loftr_outdoor.ckpt": [
         "https://huggingface.co/kornia/loftr/resolve/main/loftr_outdoor.ckpt",
-        "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_outdoor.ckpt",
+        "https://cmp.felk.cvut.cz/~mishkdmy/models/loftr_outdoor.ckpt",
     ],
     "loftr_indoor.ckpt": [
         "https://huggingface.co/kornia/loftr/resolve/main/loftr_indoor.ckpt",
-        "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_indoor.ckpt",
+        "https://cmp.felk.cvut.cz/~mishkdmy/models/loftr_indoor.ckpt",
     ],
     # LightGlue pins its own cache names; these keys are not the URL basenames.
     "superpoint_lightglue_v0-1_arxiv-pth": [
@@ -147,11 +157,11 @@ MODELS: dict[str, "str | list[str]"] = {
     # -- line, edge and object models ---------------------------------------
     "sold2_wireframe.pth": [
         "https://huggingface.co/kornia/sold2/resolve/main/sold2_wireframe.pth",
-        "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth",
+        "https://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth",
     ],
     "DexiNed_BIPED_10.pth": [
         "https://huggingface.co/kornia/dexined/resolve/main/DexiNed_BIPED_10.pth",
-        "http://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth",
+        "https://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth",
     ],
     "yunet_final.pth": [
         "https://huggingface.co/kornia/yunet/resolve/main/yunet_final.pth",
@@ -162,6 +172,9 @@ MODELS: dict[str, "str | list[str]"] = {
         "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r18vd_dec3_6x_coco_from_paddle.pth",
     ],
     "vit_b-16.pth": "https://huggingface.co/kornia/vit_b16_augreg_i21k_r224/resolve/main/vit_b-16.pth",
+    # ViT-S/32: TestVisionTransformer.test_from_config_pretrained. Its Hub repository is the
+    # one ViT repository off the naming pattern, so the cached copy also guards that URL.
+    "vit_s-32.pth": "https://huggingface.co/kornia/vit_s32_i21k_augreg_i21k_r224/resolve/main/vit_s-32.pth",
     # ALIKED and XFeat: no pytest job builds them pretrained, but
     # ``generate_examples.main`` does, once per docs build, and the docs job
     # restores this same cache.
@@ -172,14 +185,8 @@ MODELS: dict[str, "str | list[str]"] = {
     "xfeat.pt": "https://github.com/verlab/accelerated_features/raw/main/weights/xfeat.pt",
     # -- deblurring ----------------------------------------------------------
     # DeFMO(True): smoke and jit tests instantiate both halves.
-    "encoder_best.pt": [
-        "https://huggingface.co/kornia/defmo/resolve/main/encoder_best.pt",
-        "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/encoder_best.pt",
-    ],
-    "rendering_best.pt": [
-        "https://huggingface.co/kornia/defmo/resolve/main/rendering_best.pt",
-        "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/rendering_best.pt",
-    ],
+    "encoder_best.pt": "https://huggingface.co/kornia/defmo/resolve/main/encoder_best.pt",
+    "rendering_best.pt": "https://huggingface.co/kornia/defmo/resolve/main/rendering_best.pt",
 }
 
 
@@ -215,7 +222,10 @@ if __name__ == "__main__":
             # Don't pass model_dir - use the default from torch.hub.set_dir()
             # This ensures files go to {hub_dir}/checkpoints/ matching test behavior.
             # file_name is pinned so the entry lands where kornia will look for it.
-            load_state_dict_from_url(url, map_location=torch.device("cpu"), file_name=file_name)
+            if file_name.endswith(".safetensors"):
+                download_file_from_url(url, file_name=file_name, validate=check_safetensors)
+            else:
+                load_state_dict_from_url(url, map_location=torch.device("cpu"), file_name=file_name)
         except Exception as e:  # noqa: BLE001 - report every failure, not just the first
             logger.error(f"Failed to download `{file_name}`: {type(e).__name__}: {e}")
             failed.append(file_name)

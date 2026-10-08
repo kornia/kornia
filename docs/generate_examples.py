@@ -107,9 +107,7 @@ def draw_bbox_kpts(imgs: torch.Tensor, bboxes: torch.Tensor, keypoints: torch.Te
         rectangle2[..., n, 2] = keypoints[..., n, 0] + 2
         rectangle2[..., n, 3] = keypoints[..., n, 1] + 2
     color = torch.tensor([0, 0, 1]).repeat(imgs.shape[0], imgs.shape[1], 1)
-    imgs_draw = K.image.draw_rectangle(imgs_draw, rectangle2, color=color, fill=True)
-
-    return imgs_draw
+    return K.image.draw_rectangle(imgs_draw, rectangle2, color=color, fill=True)
 
 
 def main():
@@ -131,8 +129,10 @@ def main():
     BASE_IMAGE_URL4: str = "https://raw.githubusercontent.com/kornia/data/main/baby_giraffe.png"  # morphology
     BASE_IMAGE_URL5: str = "https://raw.githubusercontent.com/kornia/data/main/persistencia_memoria.jpg"  # filters
     BASE_IMAGE_URL6: str = "https://raw.githubusercontent.com/kornia/data/main/delorean.png"  # geometry
-    hash1 = "8b98f44abbe92b7a84631ed06613b08fee7dae14"
-    BASE_IMAGEOUTDOOR_URL7: str = f"https://github.com/kornia/data_test/raw/{hash1}/knchurch_disk.pt"  # image matching
+    hash1 = "4ffed08df3d82af85aa9012d3104f19ca4b62604"
+    BASE_IMAGEOUTDOOR_URL7: str = (  # image matching
+        f"https://github.com/kornia/data_test/raw/{hash1}/knchurch_disk.safetensors"
+    )
     BASE_IMAGEOUTDOOR_URL8: str = (  # Response functions
         "https://github.com/kornia/data/raw/main/kornia_banner_pixie.png"
     )
@@ -671,8 +671,8 @@ def main():
         print(f"Generated image example for {fn_name}. {sig}")
 
     # Image Matching and local features
-    img_matching_data = torch.hub.load_state_dict_from_url(BASE_IMAGEOUTDOOR_URL7, map_location=torch.device("cpu"))
-    img_outdoor = img_matching_data["img2"]
+    img_matching_path = K.core.download_file_from_url(BASE_IMAGEOUTDOOR_URL7, validate=K.core.check_safetensors)
+    img_outdoor = K.core.load_safetensors(img_matching_path)["img2"]
     print("Generating local feature detections ")
     disk = K.feature.DISK.from_pretrained("depth")
     with torch.no_grad():
@@ -720,6 +720,8 @@ def main():
         "DISK",
         "ALIKED",
         "XFeat",
+        "SIFTDescriptorFromPyramid",
+        "SIFTFeatureScaleSpace",
     ]
     # ITERATE OVER THE TRANSFORMS
     for fn_name in responses:
@@ -752,6 +754,34 @@ def main():
             out = torch.nn.functional.interpolate(out, img_outdoor.shape[-2:], mode="bilinear", align_corners=False)
             out = K.color.grayscale_to_rgb(out)
             img_in = img_outdoor
+        elif fn_name == "SIFTFeatureScaleSpace":
+            fn = K.feature.SIFTFeatureScaleSpace(num_features=2048, descriptor_backend="pyramid").eval()
+            with torch.no_grad():
+                lafs, scores, _ = fn(img_in)
+            h, w = img_in.shape[-2:]
+            valid = K.feature.laf_is_filled(lafs)[0]
+            xy = K.feature.get_laf_center(lafs)[0, valid].round().long()
+            heatmap = img_in.new_zeros(1, 1, h * w)
+            index = xy[:, 1].clamp(0, h - 1) * w + xy[:, 0].clamp(0, w - 1)
+            heatmap[0, 0].scatter_add_(0, index, scores[0, valid].abs())
+            out = K.color.grayscale_to_rgb(F.max_pool2d(heatmap.view(1, 1, h, w), 5, stride=1, padding=2))
+            img_in = K.color.grayscale_to_rgb(img_in)
+        elif fn_name == "SIFTDescriptorFromPyramid":
+            # A regular LAF grid turns the sparse descriptor into a compact score map:
+            # show distance to the centre descriptor on the same RGB canvas as other examples.
+            h, w = img_kornia.shape[-2:]
+            ys = torch.arange(12, h - 12, 12, device=img_kornia.device, dtype=img_kornia.dtype)
+            xs = torch.arange(12, w - 12, 12, device=img_kornia.device, dtype=img_kornia.dtype)
+            yy, xx = torch.meshgrid(ys, xs, indexing="ij")
+            xy = torch.stack([xx, yy], dim=-1).reshape(1, -1, 2)
+            scale = torch.full((*xy.shape[:2], 1, 1), 6.0, device=xy.device, dtype=xy.dtype)
+            lafs = K.feature.laf_from_center_scale_ori(xy, scale)
+            desc = K.feature.SIFTDescriptorFromPyramid().eval()(K.color.rgb_to_grayscale(img_kornia), lafs)
+            centre = desc[:, desc.shape[1] // 2 : desc.shape[1] // 2 + 1]
+            out = (desc - centre).square().sum(-1).sqrt().reshape(1, 1, yy.shape[0], yy.shape[1])
+            out = F.interpolate(out, (h, w), mode="bilinear", align_corners=False)
+            out = K.color.grayscale_to_rgb(out)
+            img_in = img_kornia
         else:
             fn = getattr(mod, fn_name)
             out = fn(img_in)

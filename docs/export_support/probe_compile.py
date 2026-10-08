@@ -200,23 +200,26 @@ def main() -> None:
             results.append(done[c["name"]])
             continue
         # write a crash marker first so a hard crash (segfault, OOM) is visible on resume
-        json.dump(
-            results + [{"name": c["name"], "group": c["group"], "export": "crashed", "compile": "crashed"}],
-            open(out_json, "w"),
-            indent=1,
-            default=str,
-        )
+        with open(out_json, "w") as fh:
+            json.dump(
+                results + [{"name": c["name"], "group": c["group"], "export": "crashed", "compile": "crashed"}],
+                fh,
+                indent=1,
+                default=str,
+            )
         try:
             rec = run_case(c)
         except Poisoned:
             # drop the crash marker, keep what is done and let the caller start a fresh interpreter
             kept = {r["name"]: r for r in done.values()} if only else {}
             kept.update({r["name"]: r for r in results})
-            json.dump(list(kept.values()), open(out_json, "w"), indent=1, default=str)
+            with open(out_json, "w") as fh:
+                json.dump(list(kept.values()), fh, indent=1, default=str)
             print(f"{c['name']}: interpreter poisoned by an earlier case, exiting for a restart", flush=True)
             sys.exit(POISON_EXIT)
         results.append(rec)
-        json.dump(results, open(out_json, "w"), indent=1, default=str)
+        with open(out_json, "w") as fh:
+            json.dump(results, fh, indent=1, default=str)
         print(
             f"{rec['name']:48s} export={rec.get('export'):8s} compile={rec.get('compile'):14s} "
             f"{rec.get('export_s', ''):>6} {rec.get('compile_s', ''):>6} "
@@ -228,7 +231,8 @@ def main() -> None:
         for r in results:
             merged[r["name"]] = r
         order = [c["name"] for c in cases]
-        json.dump([merged[n] for n in order if n in merged], open(out_json, "w"), indent=1, default=str)
+        with open(out_json, "w") as fh:
+            json.dump([merged[n] for n in order if n in merged], fh, indent=1, default=str)
     from collections import Counter
 
     print(

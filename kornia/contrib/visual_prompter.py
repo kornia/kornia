@@ -129,9 +129,8 @@ class VisualPrompter:
         encoder_im_size = self.model.image_encoder.img_size
         pad_h = encoder_im_size - x.shape[-2]
         pad_w = encoder_im_size - x.shape[-1]
-        x = F.pad(x, (0, pad_w, 0, pad_h))
 
-        return x
+        return F.pad(x, (0, pad_w, 0, pad_h))
 
     @torch.no_grad()
     def set_image(

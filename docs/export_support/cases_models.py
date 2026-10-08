@@ -1123,8 +1123,9 @@ A(
         "contrib",
         _kmeans_fit,
         [torch.randn(20, 2) * 0.5 + torch.tensor([2.5, 2.5])],
-        note="max_iterations=5, tolerance=None (fixed iteration count) but fit() uses torch.nonzero + data-dependent "
-        "`if selected.shape[0] == 0` per cluster",
+        note="max_iterations=5, tolerance=None (fixed iteration count); the centroid update has no "
+        "data-dependent control flow, so torch.export and the ONNX export now succeed; the one remaining "
+        "graph break is torch.manual_seed in __init__",
     )
 )
 A(case("contrib.Lambda", "contrib", K.contrib.Lambda(K.color.rgb_to_grayscale), [IMG], note="wraps rgb_to_grayscale"))
@@ -1478,7 +1479,7 @@ A(
         "image",
         K.image.draw_line,
         [torch.zeros(3, 16, 24), torch.tensor([2, 3]), torch.tensor([20, 12]), torch.tensor([1.0, 0.5, 0.2])],
-        note="Bresenham-like Python loop over max(|dx|,|dy|) computed from tensor values",
+        note="per-line pixels built on the device with nonzero; int(max) of the longest line reads a tensor value",
     )
 )
 A(

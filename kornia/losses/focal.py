@@ -96,12 +96,20 @@ def focal_loss(
     if target_mask is not None:
         target_mask.unsqueeze_(1)
         target_one_hot = target_one_hot * target_mask
+        # Exclude ignored logits before log-softmax: an overflowing log probability times zero is NaN.
+        pred = pred.masked_fill(~target_mask, 0.0)
 
     # compute F.softmax over the classes axis
     log_pred_soft: torch.Tensor = pred.log_softmax(1)
 
     # compute the actual focal loss
-    loss_tmp: torch.Tensor = -torch.pow(1.0 - log_pred_soft.exp(), gamma) * log_pred_soft * target_one_hot
+    # For 0 < gamma < 1, x ** gamma has an infinite derivative at x = 0, so a probability that rounds to 1 gives a
+    # NaN gradient. The loss term (1 - p) ** gamma * log(p) has a zero derivative at p = 1, so saturated entries take
+    # the factor's value from a detached copy and pass no gradient through it.
+    base = 1.0 - log_pred_soft.exp()
+    saturated = base == 0
+    focal_weight = torch.where(saturated, base.detach().pow(gamma), base.masked_fill(saturated, 1.0).pow(gamma))
+    loss_tmp: torch.Tensor = -focal_weight * log_pred_soft * target_one_hot
 
     num_of_classes = pred.shape[1]
     broadcast_dims = [-1] + [1] * len(pred.shape[2:])
@@ -274,8 +282,8 @@ def binary_focal_loss_with_logits(
         log_probs_neg = log_probs_neg * target_mask
         log_probs_pos = log_probs_pos * target_mask
 
-    pos_term: torch.Tensor = -log_probs_neg.exp().pow(gamma) * target * log_probs_pos
-    neg_term: torch.Tensor = -log_probs_pos.exp().pow(gamma) * (1.0 - target) * log_probs_neg
+    pos_term: torch.Tensor = -(gamma * log_probs_neg).exp() * target * log_probs_pos
+    neg_term: torch.Tensor = -(gamma * log_probs_pos).exp() * (1.0 - target) * log_probs_neg
     if alpha is not None:
         pos_term = alpha * pos_term
         neg_term = (1.0 - alpha) * neg_term
@@ -331,7 +339,7 @@ class BinaryFocalLossWithLogits(nn.Module):
 
         \text{FL}(p_t) = -\alpha_t (1 - p_t)^{\gamma} \, \text{log}(p_t)
 
-    torch.where:
+    where:
        - :math:`p_t` is the model's estimated probability for each class.
 
     Args:

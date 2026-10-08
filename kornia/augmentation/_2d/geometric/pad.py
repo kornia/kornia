@@ -45,20 +45,14 @@ class PadTo(GeometricAugmentationBase2D):
         This function internally uses :func:`torch.nn.functional.pad`.
 
     Convention:
-        See :class:`~kornia.augmentation.AugmentationBase2D` for input, dtype, probability, and replay,
-        :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` for transformation matrices, and
-        :class:`~kornia.augmentation.GeometricAugmentationBase2D` for inverse behavior.
-        This operation always runs and applies its padding on the
-        right and bottom, using ``pad_mode`` and ``pad_value``. A target smaller than the input supplies negative
-        padding to :func:`torch.nn.functional.pad`, which crops those axes instead; a target can consequently pad
-        one axis while cropping the other. This wart is tracked in
-        `#4410 <https://github.com/kornia/kornia/issues/4410>`_.
+        See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
+        This operation always runs and pads on the right and bottom, using ``pad_mode`` and ``pad_value``. A
+        target smaller than the input crops that axis instead, so a target can pad one axis while cropping the
+        other (`#4410 <https://github.com/kornia/kornia/issues/4410>`_).
 
         :meth:`inverse` slices to the prior input size. It exactly removes right/bottom padding, but after a crop it
         returns the cropped result unchanged rather than restoring discarded pixels. The transformation matrix is
-        identity, leaving coordinates unchanged. Keypoints and boxes are not clipped or removed when cropping
-        puts them outside the output canvas. Canvas extents are carried separately in the input metadata used by
-        :meth:`inverse`.
+        identity, so keypoints and boxes are neither moved nor clipped when cropping puts them outside the canvas.
 
     Examples:
         >>> import torch

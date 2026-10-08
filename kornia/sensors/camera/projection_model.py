@@ -38,14 +38,12 @@ class Z1Projection:
 
         Convention:
             - ``points`` is in the **camera frame** and the result is on the normalized :math:`z = 1` plane,
-              not in pixels: the map is ``xy / z``, with no epsilon and no validation. A point on the camera
-              plane (:math:`z = 0`) therefore projects to an infinity instead of raising -- to ``nan`` on an
-              axis whose numerator is zero as well -- and a point behind the camera to a finite coordinate.
+              not in pixels: the map is ``xy / z``, with no epsilon and no validation.
 
         .. warning::
-            That :math:`z = 0` answer is one of several that the projection entry points of kornia give for
-            the same input; they are collected in `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
-            The behaviour above is documented as it is.
+            A point with :math:`z = 0` projects to an infinity (``nan`` for a zero numerator) instead of raising:
+            `#4267 <https://github.com/kornia/kornia/issues/4267>`_. A point behind the camera projects to a
+            finite coordinate and is not flagged: `#4555 <https://github.com/kornia/kornia/issues/4555>`_.
 
         Args:
             points: Vector3 representing the points to project.
@@ -75,8 +73,7 @@ class Z1Projection:
         Convention:
             - ``depth`` is the camera-frame ``z``: the :math:`z = 1` point is multiplied by it, so the third
               coordinate of the result is the ``depth`` that was passed in, and not a Euclidean ray length.
-            - a python ``float`` or ``int`` ``depth`` is promoted to a one-element tensor on the device and in
-              the dtype of ``points``, so it gives the same result as the tensor spelling of the same value.
+            - a python ``float`` or ``int`` ``depth`` is converted to the device and dtype of ``points``.
 
         Args:
             points: Vector2 representing the points to unproject.

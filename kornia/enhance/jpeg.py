@@ -25,13 +25,12 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.color import rgb_to_ycbcr, ycbcr_to_rgb
-from kornia.constants import pi
 from kornia.core.check import (
     KORNIA_CHECK,
     KORNIA_CHECK_IS_TENSOR,
     KORNIA_CHECK_SHAPE,
 )
-from kornia.core.utils import is_exporting
+from kornia.core.utils import is_compiling, is_exporting
 from kornia.geometry.transform.affwarp import rescale
 from kornia.image.utils import perform_keep_shape_image
 
@@ -208,7 +207,7 @@ def _idct_8x8(input: torch.Tensor) -> torch.Tensor:
     spatial_idx = idx.unsqueeze(0)
     freq_idx = idx.unsqueeze(1)
 
-    basis = torch.cos((2.0 * spatial_idx + 1.0) * freq_idx * pi / 16.0)
+    basis = torch.cos((2.0 * spatial_idx + 1.0) * freq_idx * math.pi / 16.0)
     alpha = torch.ones(8, dtype=dtype, device=device)
     alpha[0] = 1.0 / (2**0.5)
     dct_scale = torch.outer(alpha, alpha)
@@ -217,8 +216,7 @@ def _idct_8x8(input: torch.Tensor) -> torch.Tensor:
     tmp = input @ basis
     output = (tmp.transpose(-1, -2) @ basis).transpose(-1, -2)
 
-    output = output * 0.25 + 128.0
-    return output
+    return output * 0.25 + 128.0
 
 
 def _jpeg_quality_to_scale(
@@ -281,8 +279,7 @@ def _quantize(
     )
     output: torch.Tensor = input / quantization_table
     # Perform rounding
-    output = _differentiable_polynomial_rounding(output)
-    return output
+    return _differentiable_polynomial_rounding(output)
 
 
 def _dequantize(
@@ -499,6 +496,12 @@ def jpeg_codec_differentiable(
 ) -> torch.Tensor:
     r"""Differentiable JPEG encoding-decoding module.
 
+    Convention:
+        Input is RGB in [0, 1] with shape ``(*, 3, H, W)``; the leading axes flatten to N images.
+        jpeg_quality is a one-dimensional (1,) shared quality or (N,) per-image quality; a 0-D
+        scalar is rejected. The codec pads on the bottom and right internally and crops back to
+        the input shape. See :class:`JPEGCodecDifferentiable` for the reusable-table wrapper.
+
     Based on :cite:`reich2024` :cite:`shin2017`, we perform differentiable JPEG encoding-decoding as follows:
 
     .. image:: _static/img/jpeg_codec_differentiable.png
@@ -649,28 +652,45 @@ def jpeg_codec_differentiable(
     # Clip coded image
     image_rgb_jpeg = _differentiable_clipping(input=image_rgb_jpeg, min_val=0.0, max_val=255.0)
     # Crop the image again to the original shape
-    image_rgb_jpeg = image_rgb_jpeg[..., : H - h_pad, : W - w_pad]
-    return image_rgb_jpeg
+    return image_rgb_jpeg[..., : H - h_pad, : W - w_pad]
 
 
 def _get_dct8_basis_scale(
     dtype: Union[torch.dtype, None], device: Union[str, torch.device, None]
 ) -> tuple[torch.Tensor, torch.Tensor]:
+    # ``torch.compile``, ``torch.export`` and the dynamo ONNX exporter trace the forward: build the basis inside the
+    # graph and leave the cache alone, so that no traced tensor leaks into later eager calls and the captured graph
+    # does not depend on earlier calls.
+    if is_compiling():
+        return _build_dct8_basis_scale(dtype, device)
     key = (dtype, device)
     if key not in _DCT8_CACHE:
-        i = torch.arange(8, dtype=dtype, device=device)
-        freq = (2.0 * i + 1.0)[:, None] * i[None, :] * (pi / 16.0)
-        basis_1d = torch.cos(freq)
-        dct_tensor = basis_1d[:, None, :, None] * basis_1d[None, :, None, :]
-        alpha = torch.ones(8, dtype=dtype, device=device)
-        alpha[0] = 1.0 / (2**0.5)
-        dct_scale = torch.outer(alpha, alpha) * 0.25
-        _DCT8_CACHE[key] = (dct_tensor, dct_scale)
+        # Build outside inference mode: an inference tensor in the cache would make later calls in which autograd
+        # tracks the input fail, since autograd cannot save it for backward.
+        with torch.inference_mode(False):
+            _DCT8_CACHE[key] = _build_dct8_basis_scale(dtype, device)
     return _DCT8_CACHE[key]
+
+
+def _build_dct8_basis_scale(
+    dtype: Union[torch.dtype, None], device: Union[str, torch.device, None]
+) -> tuple[torch.Tensor, torch.Tensor]:
+    i = torch.arange(8, dtype=dtype, device=device)
+    freq = (2.0 * i + 1.0)[:, None] * i[None, :] * (math.pi / 16.0)
+    basis_1d = torch.cos(freq)
+    dct_tensor = basis_1d[:, None, :, None] * basis_1d[None, :, None, :]
+    alpha = torch.ones(8, dtype=dtype, device=device)
+    alpha[0] = 1.0 / (2**0.5)
+    dct_scale = torch.outer(alpha, alpha) * 0.25
+    return dct_tensor, dct_scale
 
 
 class JPEGCodecDifferentiable(nn.Module):
     r"""Differentiable JPEG encoding-decoding module.
+
+    Convention:
+        See :func:`jpeg_codec_differentiable`: its (1,) or (N,) JPEG quality policy
+        also applies to forward.
 
     Based on :cite:`reich2024` :cite:`shin2017`, we perform differentiable JPEG encoding-decoding as follows:
 
@@ -773,10 +793,7 @@ class JPEGCodecDifferentiable(nn.Module):
 
         Args:
             image_rgb: Input RGB tensor with shape :math:`(*, 3, H, W)`.
-            jpeg_quality: JPEG quality factor tensor. It can be scalar or
-                batched, and must be broadcast-compatible with the leading
-                dimensions of ``image_rgb`` as required by
-                :func:`jpeg_codec_differentiable`.
+            jpeg_quality: JPEG quality factor with shape (1,) or (N,), N being the number of images.
 
         Returns:
             Reconstructed RGB tensor after differentiable JPEG processing, with

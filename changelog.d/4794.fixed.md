@@ -1,0 +1,1 @@
+`find_homography_dlt` no longer hangs on CUDA when a four-point sample contains NaN or infinite values: the minimal LU path keeps non-finite entries out of `torch.linalg.qr` and returns a NaN homography for the affected batch elements, as on CPU.

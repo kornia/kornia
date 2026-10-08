@@ -30,7 +30,7 @@ def cauchy_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
 
     .. math::
 
-        \text{WL}(x, y) = log(\frac{1}{2} (x - y)^{2} + 1)
+        \text{loss}(x, y) = log(\frac{1}{2} (x - y)^{2} + 1)
 
     Where:
        - :math:`x` is the prediction.
@@ -39,6 +39,10 @@ def cauchy_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
     Reference:
         [1] https://arxiv.org/pdf/1701.03077.pdf
         [2] https://files.is.tue.mpg.de/black/papers/cviu.63.1.1996.pdf
+
+    Convention:
+        See the Convention block of :func:`~kornia.losses.charbonnier_loss`; this is Barron's loss with
+        :math:`\alpha = 0`.
 
     Args:
         img1: the predicted torch.Tensor with shape :math:`(*)`.
@@ -50,7 +54,7 @@ def cauchy_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
           summed.
 
     Return:
-        a scalar with the computed loss.
+        the computed loss, with the shape of the inputs for ``reduction='none'`` and a scalar otherwise.
 
     Example:
         >>> img1 = torch.randn(2, 3, 32, 32, requires_grad=True)
@@ -71,8 +75,10 @@ def cauchy_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
         reduction in ("mean", "sum", "none", None), f"Given type of reduction is not supported. Got: {reduction}"
     )
 
-    # compute loss
-    loss = torch.log1p(0.5 * torch.square(img1 - img2))
+    # Keep the square and its backward in float32 for half-precision residuals.
+    diff = img1 - img2
+    compute_diff = diff.float() if diff.dtype in (torch.float16, torch.bfloat16) else diff
+    loss = torch.log1p(0.5 * torch.square(compute_diff))
 
     # perform reduction
     if reduction == "mean":
@@ -84,7 +90,7 @@ def cauchy_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
     else:
         raise NotImplementedError("Invalid reduction option.")
 
-    return loss
+    return loss.to(diff.dtype) if diff.dtype in (torch.float16, torch.bfloat16) else loss
 
 
 class CauchyLoss(nn.Module):
@@ -94,7 +100,7 @@ class CauchyLoss(nn.Module):
 
     .. math::
 
-        \text{WL}(x, y) = log(\frac{1}{2} (x - y)^{2} + 1)
+        \text{loss}(x, y) = log(\frac{1}{2} (x - y)^{2} + 1)
 
     Where:
        - :math:`x` is the prediction.
@@ -103,6 +109,9 @@ class CauchyLoss(nn.Module):
     Reference:
         [1] https://arxiv.org/pdf/1701.03077.pdf
         [2] https://files.is.tue.mpg.de/black/papers/cviu.63.1.1996.pdf
+
+    Convention:
+        See the Convention block of :func:`~kornia.losses.cauchy_loss`.
 
     Args:
         reduction: Specifies the reduction to apply to the

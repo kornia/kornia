@@ -1,0 +1,1 @@
+`kornia.morphology.dilation`/`erosion` (and `opening`, `closing`, `gradient`, `top_hat`, `bottom_hat`) no longer crash with `engine="convolution"` when the input tensor's dtype differs from the kernel's dtype; the result now preserves the input tensor's dtype.

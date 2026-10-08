@@ -286,7 +286,7 @@ class ScaleSpaceDetector(nn.Module):
             resp_module = BlobHessian()
         self.resp = _maybe_compile(resp_module, "resp")
         if subpix_module is None:
-            subpix_module = AdaptiveQuadInterp3d(strict_maxima_bonus=0.0, allow_scale_steps=True)
+            subpix_module = AdaptiveQuadInterp3d(allow_scale_steps=True)
         self.subpix = _maybe_compile(subpix_module, "subpix")
         if ori_module is None:
             ori_module = PassLAF()
@@ -581,7 +581,7 @@ class ScaleSpaceDetector(nn.Module):
         else:
             raise TypeError(
                 "Expected the scale pyramid module to have `n_levels` as a torch.Tensor or int."
-                f"Gotcha {type(self.scale_pyr.n_levels)}"
+                f"Got {type(self.scale_pyr.n_levels)}"
             )
         rotmat = torch.eye(2, dtype=dtype, device=dev).view(1, 1, 2, 2)
         # Read the live module once per forward, so a refiner swapped in after construction, or a

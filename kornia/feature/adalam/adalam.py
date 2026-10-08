@@ -91,7 +91,7 @@ def match_adalam(
     else:
         config_ = get_adalam_default_config()
         for key, val in config.items():
-            if key not in config_.keys():
+            if key not in config_:
                 print(
                     f"WARNING: custom configuration contains a key which is not recognized ({key}). "
                     f"Known configurations are {list(config_.keys())}."
@@ -266,18 +266,16 @@ class AdalamFilter:
             keypoints in k1 and k2.
 
         """
-        if s1 is None or s2 is None:
-            if self.config["scale_rate_threshold"] is not None:
-                raise AttributeError(
-                    "Current configuration considers keypoint scales for filtering, but scales have not been provided.\n"  # noqa: E501
-                    "Please either provide scales or set 'scale_rate_threshold' to None to disable scale filtering"
-                )
-        if o1 is None or o2 is None:
-            if self.config["orientation_difference_threshold"] is not None:
-                raise AttributeError(
-                    "Current configuration considers keypoint orientations for filtering, but orientations have not been provided.\n"  # noqa: E501
-                    "Please either provide orientations or set 'orientation_difference_threshold' to None to disable orientations filtering"  # noqa: E501
-                )
+        if (s1 is None or s2 is None) and self.config["scale_rate_threshold"] is not None:
+            raise AttributeError(
+                "Current configuration considers keypoint scales for filtering, but scales have not been provided.\n"
+                "Please either provide scales or set 'scale_rate_threshold' to None to disable scale filtering"
+            )
+        if (o1 is None or o2 is None) and self.config["orientation_difference_threshold"] is not None:
+            raise AttributeError(
+                "Current configuration considers keypoint orientations for filtering, but orientations have not been provided.\n"  # noqa: E501
+                "Please either provide orientations or set 'orientation_difference_threshold' to None to disable orientations filtering"  # noqa: E501
+            )
         _k1 = torch.as_tensor(k1, device=self.config["device"], dtype=torch.float32)
         _k2 = torch.as_tensor(k2, device=self.config["device"], dtype=torch.float32)
         _d1 = torch.as_tensor(d1, device=self.config["device"], dtype=torch.float32)

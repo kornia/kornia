@@ -95,23 +95,25 @@ class TestBinaryFocalLossWithLogits(BaseTester):
         ).shape
         assert actual_shape == expected_shape
 
-    def test_dynamo(self, device, dtype, torch_optimizer):
+    @pytest.mark.parametrize("gamma", [0.5, 2.0])
+    def test_dynamo(self, device, dtype, torch_optimizer, gamma):
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
         op = kornia.losses.binary_focal_loss_with_logits
         op_optimized = torch_optimizer(op)
 
-        args = (0.25, 2.0)
+        args = (0.25, gamma)
         actual = op_optimized(logits, labels, *args)
         expected = op(logits, labels, *args)
         self.assert_close(actual, expected)
 
-    def test_gradcheck(self, device, dtype):
+    @pytest.mark.parametrize("gamma", [0.5, 2.0])
+    def test_gradcheck(self, device, dtype, gamma):
         logits = torch.rand(2, 3, 2, device=device, dtype=torch.float64)
         labels = torch.rand(2, 3, 2, device=device, dtype=torch.float64)
 
-        args = (0.25, 2.0)
+        args = (0.25, gamma)
         op = kornia.losses.binary_focal_loss_with_logits
         self.gradcheck(op, (logits, labels, *args))
 
@@ -143,8 +145,119 @@ class TestBinaryFocalLossWithLogits(BaseTester):
         expected = torch.tensor([[0.0, 0.0]], dtype=dtype, device=device)
         self.assert_close(actual, expected)
 
+    @pytest.mark.parametrize("gamma", [0.25, 0.5, 0.75, 2.0])
+    @pytest.mark.parametrize("alpha", [None, 0.25])
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    def test_numeric_stability_backward(self, device, dtype, gamma, alpha, reduction):
+        logits = torch.tensor([[1000.0, -1000.0], [1000.0, -1000.0]], device=device, dtype=dtype, requires_grad=True)
+        labels = torch.tensor([[1.0, 0.0], [0.0, 1.0]], device=device, dtype=dtype)
+        # The focal objective tends to zero for correct predictions and |logit| for incorrect predictions.
+        expected = torch.tensor([[0.0, 0.0], [1000.0, 1000.0]], device=device, dtype=dtype)
+        expected_grad = torch.tensor([[0.0, 0.0], [1.0, -1.0]], device=device, dtype=dtype)
+        if alpha is not None:
+            factors = torch.tensor([[alpha, 1.0 - alpha], [1.0 - alpha, alpha]], device=device, dtype=dtype)
+            expected = expected * factors
+            expected_grad = expected_grad * factors
+        if reduction == "mean":
+            expected = expected.mean()
+            expected_grad = expected_grad / logits.numel()
+        elif reduction == "sum":
+            expected = expected.sum()
+
+        actual = kornia.losses.binary_focal_loss_with_logits(logits, labels, alpha, gamma, reduction)
+        self.assert_close(actual, expected)
+        self.assert_close(torch.autograd.grad(actual.sum(), logits)[0], expected_grad)
+
 
 class TestFocalLoss(BaseTester):
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    @pytest.mark.parametrize("gamma", [0.0, 2.0])
+    @pytest.mark.parametrize("weighted", [False, True])
+    @pytest.mark.parametrize("spatial", [False, True])
+    def test_ignored_extreme_logits(self, device, dtype, reduction, gamma, weighted, spatial):
+        extreme = torch.finfo(dtype).max
+        logits = torch.tensor([[extreme, -extreme], [0.0, 0.0]], device=device, dtype=dtype)
+        labels = torch.tensor([-100, 0], device=device)
+        if spatial:
+            logits = logits.T.reshape(1, 2, 1, 2)
+            labels = labels.reshape(1, 1, 2)
+        logits = logits.requires_grad_()
+        weight = torch.tensor([0.5, 1.5], device=device, dtype=dtype) if weighted else None
+        alpha = 0.25 if weighted else None
+        safe_logits = torch.zeros_like(logits, requires_grad=True)
+        op = kornia.losses.focal_loss
+        expected = op(safe_logits, labels, alpha, gamma, reduction, weight)
+        actual = op(logits, labels, alpha, gamma, reduction, weight)
+        self.assert_close(actual, expected)
+        self.assert_close(
+            torch.autograd.grad(actual.sum(), logits)[0], torch.autograd.grad(expected.sum(), safe_logits)[0]
+        )
+        self.assert_close(kornia.losses.FocalLoss(alpha, gamma, reduction, weight)(logits, labels), expected)
+
+    @pytest.mark.parametrize("ignore_index", [-100, 255])
+    def test_all_ignored_extreme_logits(self, device, dtype, ignore_index):
+        extreme = torch.finfo(dtype).max
+        logits = torch.tensor([[extreme, -extreme]], device=device, dtype=dtype, requires_grad=True)
+        labels = torch.full((1,), ignore_index, device=device, dtype=torch.int64)
+        loss = kornia.losses.focal_loss(logits, labels, alpha=None, reduction="sum", ignore_index=ignore_index)
+        self.assert_close(loss, torch.zeros_like(loss))
+        self.assert_close(torch.autograd.grad(loss, logits)[0], torch.zeros_like(logits))
+
+    @pytest.mark.parametrize("value", [float("inf"), float("-inf"), float("nan")])
+    def test_ignored_non_finite_logits(self, device, dtype, value):
+        logits = torch.tensor([[value, 0.0], [0.3, -0.2]], device=device, dtype=dtype, requires_grad=True)
+        safe_logits = torch.tensor([[0.0, 0.0], [0.3, -0.2]], device=device, dtype=dtype, requires_grad=True)
+        labels = torch.tensor([-100, 1], device=device)
+        actual = kornia.losses.focal_loss(logits, labels, alpha=0.25, reduction="sum")
+        expected = kornia.losses.focal_loss(safe_logits, labels, alpha=0.25, reduction="sum")
+        self.assert_close(actual, expected)
+        grad = torch.autograd.grad(actual, logits)[0]
+        assert (grad[0] == 0).all()
+        self.assert_close(grad, torch.autograd.grad(expected, safe_logits)[0])
+
+    @pytest.mark.parametrize("gamma", [0.0, 0.25, 0.5, 0.75, 1.0, 2.0])
+    @pytest.mark.parametrize("alpha", [None, 0.25])
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    def test_saturated_logits_backward(self, device, dtype, gamma, alpha, reduction):
+        # Row 0 is saturated on its target class, row 1 on a wrong class.
+        logits = torch.tensor([[1000.0, 0.0, 0.0], [0.0, 1000.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
+        labels = torch.tensor([0, 0], device=device)
+        # Every probability rounds to 0 or 1: (1 - p) ** gamma is 1 where p = 0 and multiplies log(p) = 0 where p = 1,
+        # so the loss and its gradient reduce to the gamma = 0 ones, which have no singularity.
+        cross_entropy_logits = logits.detach().clone().requires_grad_()
+        expected = kornia.losses.focal_loss(cross_entropy_logits, labels, alpha, 0.0, reduction)
+        expected_grad = torch.autograd.grad(expected.sum(), cross_entropy_logits)[0]
+        if reduction == "sum":
+            # A correct saturated prediction costs nothing and a wrong one its logit gap.
+            self.assert_close(
+                expected, torch.tensor(1000.0 * (1.0 - alpha if alpha else 1.0), device=device, dtype=dtype)
+            )
+
+        actual = kornia.losses.focal_loss(logits, labels, alpha, gamma, reduction)
+        self.assert_close(actual, expected)
+        # detect_anomaly also rejects a NaN inside the backward that torch.where would discard, so this pins the safe
+        # base of the unselected branch and not only the final gradient.
+        with torch.autograd.detect_anomaly():
+            grad = torch.autograd.grad(actual.sum(), logits)[0]
+        self.assert_close(grad, expected_grad)
+
+    @pytest.mark.parametrize("gamma", [0.5, 2.0])
+    def test_dynamo_saturated_logits(self, device, dtype, torch_optimizer, gamma):
+        logits = torch.tensor([[1000.0, 0.0, 0.0], [0.0, 1000.0, 0.0]], device=device, dtype=dtype)
+        labels = torch.tensor([0, 0], device=device)
+        op = kornia.losses.focal_loss
+        op_optimized = torch_optimizer(op)
+        self.assert_close(op_optimized(logits, labels, 0.25, gamma), op(logits, labels, 0.25, gamma))
+
+    def test_dynamo_ignored_extreme_logits(self, device, dtype, torch_optimizer):
+        extreme = torch.finfo(dtype).max
+        logits = torch.tensor([[extreme, -extreme]], device=device, dtype=dtype, requires_grad=True)
+        labels = torch.full((1,), -100, device=device, dtype=torch.int64)
+        op = torch_optimizer(kornia.losses.focal_loss)
+        loss = op(logits, labels, None, reduction="sum")
+        self.assert_close(loss, torch.zeros_like(loss))
+        self.assert_close(torch.autograd.grad(loss, logits)[0], torch.zeros_like(logits))
+
     @pytest.mark.parametrize("reduction,expected_shape", [("none", (2, 3, 3, 2)), ("mean", ()), ("sum", ())])
     @pytest.mark.parametrize("alpha", [None, 0.2, 0.5])
     @pytest.mark.parametrize("gamma", [0.0, 1.0, 2.0])
@@ -216,6 +329,18 @@ class TestFocalLoss(BaseTester):
         )
 
         self.assert_close(actual_values, expected_values)
+
+    def test_value_non_target_classes_are_zero(self, device, dtype):
+        # The target is an exact one-hot, so the per-class values of a pixel are 0 off its class.
+        num_classes = 3
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
+        labels = torch.randint(num_classes, (2, 3, 2), device=device)
+
+        values = kornia.losses.focal_loss(logits, labels, alpha=0.5, gamma=2.0, reduction="none")
+
+        off_class = F.one_hot(labels, num_classes).movedim(-1, 1) == 0
+        self.assert_close(values[off_class], torch.zeros_like(values[off_class]), rtol=0, atol=0)
+        assert (values[~off_class] > 0).all()
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         num_classes = 3

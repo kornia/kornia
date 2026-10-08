@@ -18,9 +18,10 @@
 import pytest
 import torch
 
+import kornia.augmentation as K
 from kornia.geometry.keypoints import Keypoints, Keypoints3D, VideoKeypoints
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_bilinear_2d_grid_sample
 
 
 class TestKeypoints(BaseTester):
@@ -132,6 +133,33 @@ class TestKeypoints(BaseTester):
         self.assert_close(kp.data[0, :, 0], torch.full((4,), 4.0, device=device, dtype=dtype))
         self.assert_close(kp.data[0, :, 1], torch.full((4,), 3.0, device=device, dtype=dtype))
 
+    def test_pad_unpad_unbatched_5021(self, device, dtype):
+        # kornia#5021: an unbatched (N, 2) container indexes as (N,), so the (1, 1) padding column
+        # broadcast the in-place update to (1, N) and raised "output with shape [2] doesn't match the
+        # broadcast shape [1, 2]". The result must match the singleton-batch container.
+        data = torch.tensor([[8.0, 2.0], [3.0, 5.0]], device=device, dtype=dtype)
+        padding = torch.tensor([[3.0, 100.0, 7.0, 1000.0]], device=device, dtype=dtype)
+
+        padded = Keypoints(data.clone()).pad(padding)
+        self.assert_close(padded.data, torch.tensor([[11.0, 9.0], [6.0, 12.0]], device=device, dtype=dtype))
+        self.assert_close(padded.data, Keypoints(data[None].clone()).pad(padding).data[0])
+
+        unpadded = Keypoints(data.clone()).unpad(padding)
+        self.assert_close(unpadded.data, torch.tensor([[5.0, -5.0], [0.0, -2.0]], device=device, dtype=dtype))
+        self.assert_close(unpadded.data, Keypoints(data[None].clone()).unpad(padding).data[0])
+
+        self.assert_close(Keypoints(data.clone()).pad(padding).unpad(padding).data, data)
+
+    def test_pad_padding_on_cpu(self, device, dtype):
+        # kornia#5021: like Boxes.pad, the padding is moved to the keypoints' device, so a CPU
+        # padding_size works for keypoints on an accelerator.
+        padding = torch.tensor([[1.0, 0.0, 2.0, 0.0]], dtype=dtype)
+        for data in (torch.zeros(3, 2, device=device, dtype=dtype), torch.zeros(1, 3, 2, device=device, dtype=dtype)):
+            kp = Keypoints(data.clone()).pad(padding)
+            assert kp.device == device
+            self.assert_close(kp.data[..., 0], torch.full(data.shape[:-1], 1.0, device=device, dtype=dtype))
+            self.assert_close(kp.data[..., 1], torch.full(data.shape[:-1], 2.0, device=device, dtype=dtype))
+
     def test_index_put(self, device, dtype):
         data = torch.zeros(10, 2, device=device, dtype=dtype)
         kp = Keypoints(data)
@@ -156,6 +184,13 @@ class TestKeypoints(BaseTester):
         kp.type(torch.float64)
         assert kp.dtype == torch.float64
 
+    def test_not_implemented(self, device, dtype):
+        kp = Keypoints(torch.rand(2, 5, 2, device=device, dtype=dtype))
+        with pytest.raises(NotImplementedError, match="from a list of tensors is not implemented"):
+            Keypoints([torch.rand(3, 2, device=device, dtype=dtype), torch.rand(5, 2, device=device, dtype=dtype)])
+        with pytest.raises(NotImplementedError, match=r"`Keypoints\.to_tensor\(as_padded_sequence=True\)`"):
+            kp.to_tensor(as_padded_sequence=True)
+
     def test_exception(self, device, dtype):
         with pytest.raises(TypeError):
             Keypoints("not a tensor")
@@ -178,6 +213,16 @@ class TestKeypoints(BaseTester):
         kp = Keypoints(torch.rand(2, 4, 2, device=device, dtype=dtype))
         with pytest.raises(RuntimeError):
             kp.pad(torch.zeros(2, 3, device=device, dtype=dtype))
+
+        # an unbatched container carries a single image, so it takes exactly one padding row
+        unbatched = Keypoints(torch.rand(4, 2, device=device, dtype=dtype))
+        with pytest.raises(RuntimeError, match="one row"):
+            unbatched.pad(torch.zeros(2, 4, device=device, dtype=dtype))
+        with pytest.raises(RuntimeError, match="one row"):
+            unbatched.unpad(torch.zeros(2, 4, device=device, dtype=dtype))
+        # zero rows as well: a `> 1` check would let it through to an IndexError instead
+        with pytest.raises(RuntimeError, match="one row"):
+            unbatched.pad(torch.zeros(0, 4, device=device, dtype=dtype))
 
     def test_int_input_raises_by_default(self, device, dtype):
         with pytest.raises(ValueError):
@@ -332,12 +377,18 @@ class TestKeypoints3D(BaseTester):
 
     def test_not_implemented(self, device, dtype):
         kp = Keypoints3D(torch.rand(5, 3, device=device, dtype=dtype))
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(NotImplementedError, match=r"`Keypoints3D\.pad` is not implemented"):
             kp.pad(torch.zeros(1, 6, device=device, dtype=dtype))
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(NotImplementedError, match=r"`Keypoints3D\.unpad` is not implemented"):
             kp.unpad(torch.zeros(1, 6, device=device, dtype=dtype))
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(NotImplementedError, match="transform_points"):
             kp.transform_keypoints(torch.eye(4, device=device, dtype=dtype))
+        with pytest.raises(NotImplementedError, match="transform_points"):
+            kp.transform_keypoints_(torch.eye(4, device=device, dtype=dtype))
+        with pytest.raises(NotImplementedError, match="from a list of tensors is not implemented"):
+            Keypoints3D([torch.rand(3, 3, device=device, dtype=dtype), torch.rand(5, 3, device=device, dtype=dtype)])
+        with pytest.raises(NotImplementedError, match=r"`Keypoints3D\.to_tensor\(as_padded_sequence=True\)`"):
+            kp.to_tensor(as_padded_sequence=True)
 
     def test_exception(self, device, dtype):
         with pytest.raises(TypeError):
@@ -365,3 +416,192 @@ class TestKeypoints3D(BaseTester):
 
     def test_module(self, device, dtype):
         pass
+
+
+@pytest.mark.usefixtures("restore_torch_rng")
+class TestConventionsKeypoints(BaseTester):
+    """Pins for the coordinate, transform and aliasing conventions of :class:`Keypoints`."""
+
+    @staticmethod
+    def _value_at(image, xy):
+        # The image value at the pixel nearest to an (x, y) keypoint, or None when that pixel is outside the image.
+        x, y = (int(v) for v in xy.round().tolist())
+        if 0 <= x < image.shape[-1] and 0 <= y < image.shape[-2]:
+            return float(image[0, 0, y, x])
+        return None
+
+    @pytest.mark.parametrize(
+        "make_augmentation",
+        [
+            pytest.param(lambda: K.RandomAffine(degrees=(90.0, 90.0), p=1.0), id="rotate90"),
+            pytest.param(lambda: K.RandomAffine(degrees=0.0, translate=(0.2, 0.0), p=1.0), id="translate_x"),
+        ],
+    )
+    def test_convention_keypoints_are_xy_pixel_coordinates(self, make_augmentation, device, dtype):
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip(f"this torch build has no bilinear 2D grid_sample kernel for {dtype} on {device.type}")
+        # A keypoint is (x, y) in pixels: x indexes the columns (W) and y the rows (H). Image-content oracle: the
+        # single bright pixel at row 2, column 8 of a 7 x 11 image is the keypoint (8, 2), and wherever the
+        # augmentation moves that pixel, the transformed keypoint lands on it.
+        height, width, row, col = 7, 11, 2, 8
+        image = torch.zeros(1, 1, height, width, device=device, dtype=dtype)
+        image[0, 0, row, col] = 1.0
+        keypoints = torch.tensor([[[col, row]]], device=device, dtype=dtype)
+
+        torch.manual_seed(0)
+        augmentation = K.AugmentationSequential(make_augmentation(), data_keys=["input", "keypoints"])
+        out_image, out_keypoints = augmentation(image, keypoints)
+        landed = tuple(int(v) for v in out_keypoints[0, 0].round().tolist())
+        brightest = int(out_image[0, 0].flatten().argmax())
+        # rotate90 moves the pixel to (6, 6) and the seeded x-translation by +1.18 px to (9, 2)
+        assert (brightest % width, brightest // width) == landed
+        assert landed != (col, row)
+        value = self._value_at(out_image, out_keypoints[0, 0])
+        assert value is not None
+        assert value > 0.5
+
+        # Relabel control: the same pixel read as (row, col) = (2, 8) leaves the image or lands on a dark pixel
+        # ((0, 0) after rotate90, row 8 of a 7-row image after the translation).
+        torch.manual_seed(0)
+        augmentation = K.AugmentationSequential(make_augmentation(), data_keys=["input", "keypoints"])
+        _, out_relabelled = augmentation(image, keypoints.flip(-1))
+        value = self._value_at(out_image, out_relabelled[0, 0])
+        assert value is None or value < 0.5
+
+    def test_convention_keypoints_transform_is_column_vector_then_divided(self, device, dtype):
+        # transform_keypoints maps a point p to M @ [x, y, 1]^T (a column vector, M on the left) and divides by the
+        # third component. M != M^T and the projective row is non-zero, so for the first point the row-vector
+        # reading [x, y, 1] @ M of the affine matrix ([0.2452, -0.0065]) and the undivided projective result
+        # ([6.2, 3.2]) are far from the literals.
+        points = torch.tensor([[8.0, 2.0], [3.0, 5.0]], device=device, dtype=dtype)
+        affine = torch.tensor([[0.9, -0.3, 4.0], [0.2, 1.1, -1.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        projective = torch.tensor([[1.0, 0.1, -2.0], [0.05, 0.9, 1.0], [0.01, 0.02, 1.0]], device=device, dtype=dtype)
+
+        expected_affine = torch.tensor([[10.6, 2.8], [5.2, 5.1]], device=device, dtype=dtype)
+        self.assert_close(Keypoints(points.clone()).transform_keypoints(affine).data, expected_affine)
+
+        # M @ [x, y, 1]^T = (6.2, 3.2, 1.12) and (1.5, 5.65, 1.13)
+        expected_projective = torch.tensor(
+            [[6.2 / 1.12, 3.2 / 1.12], [1.5 / 1.13, 5.65 / 1.13]], device=device, dtype=dtype
+        )
+        self.assert_close(Keypoints(points.clone()).transform_keypoints(projective).data, expected_projective)
+        batched = Keypoints(points[None].clone()).transform_keypoints(projective[None])
+        self.assert_close(batched.data, expected_projective[None])
+
+    def test_convention_keypoints_transform_inplace_rebinds_copy_does_not_alias(self, device, dtype):
+        # inplace=False returns a new Keypoints on new storage, so writing into the result reaches neither the
+        # original container nor the caller's tensor. inplace=True, and transform_keypoints_, return self after
+        # rebinding its data to the transformed tensor, so the caller's tensor keeps the old coordinates.
+        original = torch.tensor([[[8.0, 2.0], [3.0, 5.0]]], device=device, dtype=dtype)
+        affine = torch.tensor([[0.9, -0.3, 4.0], [0.2, 1.1, -1.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[[10.6, 2.8], [5.2, 5.1]]], device=device, dtype=dtype)
+
+        caller = original.clone()
+        kp = Keypoints(caller)
+        out = kp.transform_keypoints(affine)
+        assert out is not kp
+        self.assert_close(out.data, expected)
+        out.data.fill_(999.0)
+        assert kp.data is caller
+        self.assert_close(caller, original)
+
+        caller = original.clone()
+        kp = Keypoints(caller)
+        assert kp.transform_keypoints(affine, inplace=True) is kp
+        self.assert_close(kp.data, expected)
+        self.assert_close(caller, original)
+
+        caller = original.clone()
+        kp = Keypoints(caller)
+        assert kp.transform_keypoints_(affine) is kp
+        self.assert_close(kp.data, expected)
+        self.assert_close(caller, original)
+
+    @pytest.mark.parametrize("layout", ["batched", "unbatched", "strided"])
+    def test_convention_keypoints_wrap_without_copy_and_edits_write_through(self, layout, device, dtype):
+        # The constructor wraps the caller's tensor without copying it, a non-contiguous view included, and pad /
+        # unpad shift that tensor in place and return self. padding_size rows are (left, right, top, bottom):
+        # x += left and y += top. The four distinct padding values make a slot mix-up visible. clone() gives
+        # independent storage. Item assignment and index_put(inplace=True) also write into the caller's tensor.
+        original = torch.tensor([[8.0, 2.0], [3.0, 5.0]], device=device, dtype=dtype)
+        padded = torch.tensor([[11.0, 9.0], [6.0, 12.0]], device=device, dtype=dtype)
+        padding = torch.tensor([[3.0, 100.0, 7.0, 1000.0]], device=device, dtype=dtype)
+        if layout == "batched":
+            caller = original[None].clone()
+        elif layout == "unbatched":
+            caller = original.clone()
+        else:
+            caller = original.t().contiguous().t()
+            assert not caller.is_contiguous()
+
+        kp = Keypoints(caller)
+        assert kp.pad(padding) is kp
+        self.assert_close(caller.reshape(2, 2), padded)
+        assert kp.unpad(padding) is kp
+        self.assert_close(caller.reshape(2, 2), original)
+
+        independent = kp.clone()
+        independent.pad(padding)
+        self.assert_close(independent.data.reshape(2, 2), padded)
+        self.assert_close(caller.reshape(2, 2), original)
+
+        second_point = (torch.tensor([1], device=device),)
+        if layout == "batched":
+            second_point = (torch.tensor([0], device=device), *second_point)
+        kp.index_put(second_point, torch.tensor([100.0, 200.0], device=device, dtype=dtype), inplace=True)
+        kp[..., :1, :] = Keypoints(torch.tensor([[70.0, 60.0]], device=device, dtype=dtype))
+        edited = torch.tensor([[70.0, 60.0], [100.0, 200.0]], device=device, dtype=dtype)
+        self.assert_close(caller.reshape(2, 2), edited)
+
+    def test_convention_keypoints_single_padding_row_broadcasts_batch(self, device, dtype):
+        caller = torch.tensor([[[8.0, 2.0], [3.0, 5.0]], [[1.0, 4.0], [6.0, 7.0]]], device=device, dtype=dtype)
+        original = caller.clone()
+        padding = torch.tensor([[3.0, 100.0, 7.0, 1000.0]], device=device, dtype=dtype)
+        keypoints = Keypoints(caller)
+
+        assert keypoints.pad(padding) is keypoints
+        expected = torch.tensor([[[11.0, 9.0], [6.0, 12.0]], [[4.0, 11.0], [9.0, 14.0]]], device=device, dtype=dtype)
+        self.assert_close(caller, expected)
+        assert keypoints.unpad(padding) is keypoints
+        self.assert_close(caller, original)
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "keypoints_list_input",
+            "keypoints_from_tensor_list",
+            "keypoints_to_tensor_padded_sequence",
+            "keypoints3d_list_input",
+            "keypoints3d_from_tensor_list",
+            "keypoints3d_to_tensor_padded_sequence",
+            "keypoints3d_pad",
+            "keypoints3d_unpad",
+            "keypoints3d_transform_keypoints",
+            "keypoints3d_transform_keypoints_",
+        ],
+    )
+    def test_wart_keypoints_documented_paths_not_implemented_5023(self, path, device, dtype):
+        # Wart pin (#5023): the API offers list input (the List[Tensor] annotation), to_tensor(as_padded_sequence=True)
+        # and the Keypoints3D pad / unpad / transform_keypoints methods, and every one of these paths raises
+        # NotImplementedError. Implementing a path, or removing it from the API, flips its case. The message is
+        # not asserted, so rewording it leaves every case green.
+        kp2d = torch.tensor([[[8.0, 2.0], [3.0, 5.0]]], device=device, dtype=dtype)
+        kp3d = torch.tensor([[[8.0, 2.0, 4.0], [3.0, 5.0, 1.0]]], device=device, dtype=dtype)
+        calls = {
+            "keypoints_list_input": lambda: Keypoints([kp2d[0], kp2d[0, :1]]),
+            "keypoints_from_tensor_list": lambda: Keypoints.from_tensor([kp2d[0], kp2d[0, :1]]),
+            "keypoints_to_tensor_padded_sequence": lambda: Keypoints(kp2d).to_tensor(as_padded_sequence=True),
+            "keypoints3d_list_input": lambda: Keypoints3D([kp3d[0], kp3d[0, :1]]),
+            "keypoints3d_from_tensor_list": lambda: Keypoints3D.from_tensor([kp3d[0], kp3d[0, :1]]),
+            "keypoints3d_to_tensor_padded_sequence": lambda: Keypoints3D(kp3d).to_tensor(as_padded_sequence=True),
+            "keypoints3d_pad": lambda: Keypoints3D(kp3d).pad(torch.zeros(1, 6, device=device, dtype=dtype)),
+            "keypoints3d_unpad": lambda: Keypoints3D(kp3d).unpad(torch.zeros(1, 6, device=device, dtype=dtype)),
+            "keypoints3d_transform_keypoints": lambda: Keypoints3D(kp3d).transform_keypoints(
+                torch.eye(4, device=device, dtype=dtype)[None]
+            ),
+            "keypoints3d_transform_keypoints_": lambda: Keypoints3D(kp3d).transform_keypoints_(
+                torch.eye(4, device=device, dtype=dtype)[None]
+            ),
+        }
+        with pytest.raises(NotImplementedError):
+            calls[path]()

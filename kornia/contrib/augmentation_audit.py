@@ -30,7 +30,6 @@ import torch
 from torch import Tensor, nn
 
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
-from kornia.augmentation._2d.geometric.crop import RandomCrop
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation._3d.base import AugmentationBase3D
 from kornia.augmentation.container.image import ImageSequential
@@ -244,31 +243,6 @@ def _capture_warnings(sequence: AugmentationSequential, steps: list[Augmentation
     return []
 
 
-def _crop_matrix(
-    module: RandomCrop,
-    matrix: Tensor,
-    params: dict[str, Any],
-    flags: dict[str, Any],
-    image: Tensor,
-    output: Tensor,
-) -> tuple[Tensor | None, str | None]:
-    applied = params["batch_prob"] > 0.5
-    static = module.p == 1.0 and module.p_batch == 1.0
-    changed_shape = output.shape[-2:] != image.shape[-2:]
-    if not static and changed_shape and flags["cropping_mode"] == "slice" and not bool(applied.all()):
-        # The shape-changing blend returns every transformed row, but slice uses
-        # src indices even where the cached per-row matrix is the identity.
-        return None, "mixed-application slice crop has no reliable per-row image matrix after changing shape"
-    if static or changed_shape:
-        # These paths return the entire transformed branch, including prepadding.
-        applied = torch.ones_like(applied)
-    padding = params["padding_size"].to(matrix)
-    translation = torch.eye(3, device=matrix.device, dtype=matrix.dtype).expand_as(matrix).clone()
-    translation[:, 0, 2] = padding[:, 0] * applied.to(matrix)
-    translation[:, 1, 2] = padding[:, 2] * applied.to(matrix)
-    return matrix @ translation, None
-
-
 def _coordinates(value: DataType, key: DataKey) -> Tensor:
     if (isinstance(value, Boxes) and key not in _BOX_MODES) or (
         isinstance(value, Keypoints) and key != DataKey.KEYPOINTS
@@ -306,22 +280,8 @@ def _capture(
     reason = None
     if isinstance(module, (GeometricAugmentationBase2D, IntensityAugmentationBase2D)):
         # Materialize lazy matrices in the caller's context so the ordinary spatial
-        # outputs remain identical, then adjust diagnostics outside autocast.
+        # outputs remain identical.
         matrix = _snapshot(module.transform_matrix)
-        with torch.autocast(device_type=image.device.type, enabled=False):
-            if matrix is not None and isinstance(module, RandomCrop):
-                matrix, reason = _crop_matrix(module, matrix, params, flags, image, output)
-            elif (
-                matrix is not None
-                and output.shape[-2:] != image.shape[-2:]
-                and not (module.p == 1.0 and module.p_batch == 1.0)
-                and not bool((params["batch_prob"] > 0.5).all())
-            ):
-                # A shape-changing image blend returns the transformed branch for
-                # every row when any row is selected. Matrices and spatial labels
-                # remain blended per row, so they cannot certify the returned image.
-                matrix = None
-                reason = "mixed-application shape-changing operation has no reliable per-row image matrix"
         if matrix is not None and matrix.shape != (image.shape[0], 3, 3):
             matrix = None
             reason = "operation produced a matrix with an unsupported shape"

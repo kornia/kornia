@@ -62,5 +62,4 @@ def build_norm(name: str = "bn2d", num_features: Optional[int] = None, **kwargs:
         norm_cls = REGISTERED_NORM_DICT[name]
         args = build_kwargs_from_config(kwargs, norm_cls)
         return norm_cls(**args)
-    else:
-        return None
+    return None

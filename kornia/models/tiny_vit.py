@@ -168,8 +168,7 @@ class PatchMerging(nn.Module):
         if x.ndim == 3:
             x = x.transpose(1, 2).unflatten(2, self.input_resolution)  # (B, H * W, C) -> (B, C, H, W)
         x = self.conv3(self.conv2(self.conv1(x)))
-        x = x.flatten(2).transpose(1, 2)  # (B, C, H, W) -> (B, H * W, C)
-        return x
+        return x.flatten(2).transpose(1, 2)  # (B, C, H, W) -> (B, H * W, C)
 
 
 class ConvLayer(nn.Module):
@@ -359,8 +358,7 @@ class Attention(nn.Module):
 
         attn = attn.softmax(dim=-1)
         x = (attn @ v).transpose(1, 2).reshape(B, N, self.dh)
-        x = self.proj(x)
-        return x
+        return self.proj(x)
 
 
 class TinyViTBlock(nn.Module):
@@ -431,8 +429,7 @@ class TinyViTBlock(nn.Module):
         x = self.local_conv(x)
         x = x.view(B, C, L).transpose(1, 2)
 
-        x = x + self.drop_path2(self.mlp(x))
-        return x
+        return x + self.drop_path2(self.mlp(x))
 
 
 class BasicLayer(nn.Module):
@@ -692,13 +689,17 @@ urls: dict[str, dict[str, list[str]]] = {
         ],
         "in1k_384": [
             hf_url("tiny_vit", "tiny_vit_21m_22kto1k_384_distill.pth"),
-            "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/"
-            "tiny_vit_21m_22kto1k_384_distill.pth",
+            (
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/"
+                "tiny_vit_21m_22kto1k_384_distill.pth"
+            ),
         ],
         "in1k_512": [
             hf_url("tiny_vit", "tiny_vit_21m_22kto1k_512_distill.pth"),
-            "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/"
-            "tiny_vit_21m_22kto1k_512_distill.pth",
+            (
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/"
+                "tiny_vit_21m_22kto1k_512_distill.pth"
+            ),
         ],
     },
 }
@@ -714,7 +715,7 @@ def _load_pretrained(model: TinyViT, url: str | list[str]) -> TinyViT:
 
     # https://github.com/microsoft/Cream/blob/8dc38822b99fff8c262c585a32a4f09ac504d693/TinyViT/utils.py#L163
     # bicubic interpolate attention biases
-    ab_keys = [k for k in state_dict.keys() if "attention_biases" in k]
+    ab_keys = [k for k in state_dict if "attention_biases" in k]
     for k in ab_keys:
         n_heads1, L1 = state_dict[k].shape
         n_heads2, L2 = model_state_dict[k].shape

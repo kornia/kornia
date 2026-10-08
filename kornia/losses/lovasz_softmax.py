@@ -63,7 +63,8 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
         weight: weights for classes with shape :math:`(num\_of\_classes,)`.
 
     Return:
-        a scalar with the computed loss.
+        a scalar with the computed loss, in the dtype of ``pred`` promoted with the dtype of ``weight``.
+        The Jaccard weights and the sum over pixels are computed in float32 for a float16 or bfloat16 ``pred``.
 
     Example:
         >>> N = 5  # num_classes
@@ -104,7 +105,7 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
     target_flatten: Tensor = target.reshape(target.shape[0], -1)
 
     # get shapes
-    B, C, N = pred_flatten.shape
+    _, C, N = pred_flatten.shape
 
     # compute softmax over the classes axis
     pred_soft: Tensor = pred_flatten.softmax(1)
@@ -115,8 +116,11 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
     )
     errors: Tensor = (pred_soft - foreground).abs()
     errors_sorted, permutations = torch.sort(errors, dim=2, descending=True)
-    batch_index = torch.arange(B, device=pred.device).unsqueeze(1).unsqueeze(2).expand(B, C, N)
-    target_sorted = target_flatten[batch_index, permutations]
+    # The Jaccard gradient uses the foreground indicator for each class, not the class labels.
+    # Pixel counts, the Jaccard weights and the sum over pixels are accumulated in the prediction dtype, or in
+    # float32 for a half-precision prediction, where counts stay exact up to 2**24 pixels.
+    accumulation_dtype = torch.promote_types(pred.dtype, torch.float32)
+    target_sorted = foreground.gather(2, permutations).to(accumulation_dtype)
     target_sorted_sum = target_sorted.sum(2, keepdim=True)
     intersection = target_sorted_sum - target_sorted.cumsum(2)
     union = target_sorted_sum + (1.0 - target_sorted).cumsum(2)
@@ -125,10 +129,12 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
         gradient[..., 1:] = gradient[..., 1:] - gradient[..., :-1]
     weighted_errors = errors_sorted * gradient
     loss_per_class = weighted_errors.sum(2).mean(0)
+    output_dtype = pred.dtype
     if weight is not None:
-        loss_per_class *= weight
+        loss_per_class = loss_per_class * weight
+        output_dtype = torch.promote_types(output_dtype, weight.dtype)
     final_loss: Tensor = loss_per_class.mean()
-    return final_loss
+    return final_loss.to(output_dtype)
 
 
 class LovaszSoftmaxLoss(nn.Module):
@@ -166,7 +172,8 @@ class LovaszSoftmaxLoss(nn.Module):
         weight: weights for classes with shape :math:`(num\_of\_classes,)`.
 
     Return:
-        a scalar with the computed loss.
+        a scalar with the computed loss, in the dtype of ``pred`` promoted with the dtype of ``weight``.
+        The Jaccard weights and the sum over pixels are computed in float32 for a float16 or bfloat16 ``pred``.
 
     Example:
         >>> N = 5  # num_classes

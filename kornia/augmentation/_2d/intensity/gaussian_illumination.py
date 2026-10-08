@@ -21,7 +21,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _PicklableCompileMixin
 from kornia.augmentation.random_generator._2d import GaussianIlluminationGenerator
 from kornia.core.check import KORNIA_CHECK
 
@@ -42,10 +42,12 @@ def _apply_gaussian_illumination(
     return input.add(gradient).clamp_(0, 1)
 
 
-class RandomGaussianIllumination(IntensityAugmentationBase2D):
+class RandomGaussianIllumination(_PicklableCompileMixin, IntensityAugmentationBase2D):
     r"""Applies random 2D Gaussian illumination patterns to a batch of images.
 
     .. image:: _static/img/RandomGaussianIllumination.png
+
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
         gain: Range for the gain factor (intensity) applied to the generated illumination.
@@ -64,6 +66,24 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
+    Convention:
+        - the class adds the drawn field ``_params["gradient"]`` to the image and clamps the sum into ``[0, 1]``,
+          so the output stays inside that range even when the input does not.
+        - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and only whether the draw is negative
+          is used: it decides whether that sample's gradient darkens or brightens, so one batch can hold both
+          a darkened and a brightened image. A point range such as ``sign=1.0`` brightens every sample.
+        - ``sigma`` is a fraction of the axis length, not an absolute width: the generator draws it and
+          multiplies by the image's width and height before building the kernel, so the same ``sigma`` is a
+          narrower kernel on a smaller image. Every admitted ``sigma`` gives a finite kernel, ``0`` included.
+        - ``center`` is a fraction of the axis length too, and the peak sits at the pixel-centre position
+          ``center * L - 0.5`` without rounding to a whole pixel: ``center=0.5`` is the middle of any axis, ``0``
+          and ``1`` are the outer edges of the first and last pixel. At ``sigma=0`` the field is an impulse on the
+          pixel nearest that position, split between two pixels when it falls halfway.
+
+    .. warning::
+        An all-negative input can come back as an all-zero image, depending on the sampled gradient. Tracked in
+        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
+
     .. note::
         The generated random numbers are not reproducible across different devices and dtypes. By default,
         the parameters will be generated on CPU. This can be changed by calling
@@ -74,17 +94,17 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         >>> input = torch.ones(1, 3, 3, 3) * 0.5
         >>> aug = RandomGaussianIllumination(gain=0.5, p=1.)
         >>> aug(input)
-        tensor([[[[0.7266, 1.0000, 0.7266],
-                  [0.6621, 0.9121, 0.6621],
-                  [0.5000, 0.6911, 0.5000]],
+        tensor([[[[0.8675, 1.0000, 0.6834],
+                  [0.7891, 0.9075, 0.6246],
+                  [0.6229, 0.7113, 0.5000]],
         <BLANKLINE>
-                 [[0.7266, 1.0000, 0.7266],
-                  [0.6621, 0.9121, 0.6621],
-                  [0.5000, 0.6911, 0.5000]],
+                 [[0.8675, 1.0000, 0.6834],
+                  [0.7891, 0.9075, 0.6246],
+                  [0.6229, 0.7113, 0.5000]],
         <BLANKLINE>
-                 [[0.7266, 1.0000, 0.7266],
-                  [0.6621, 0.9121, 0.6621],
-                  [0.5000, 0.6911, 0.5000]]]])
+                 [[0.8675, 1.0000, 0.6834],
+                  [0.7891, 0.9075, 0.6246],
+                  [0.6229, 0.7113, 0.5000]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.rand(1, 3, 32, 32)
@@ -200,6 +220,17 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         options: Optional[Dict[Any, Any]] = None,
         disable: bool = False,
     ) -> RandomGaussianIllumination:
+        self._record_compile(
+            ["_fn"],
+            {
+                "fullgraph": fullgraph,
+                "dynamic": dynamic,
+                "backend": backend,
+                "mode": mode,
+                "options": options,
+                "disable": disable,
+            },
+        )
         self._fn = torch.compile(
             self._fn,
             fullgraph=fullgraph,

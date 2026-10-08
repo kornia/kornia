@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import contextlib
 import os
 import random
 import subprocess
@@ -28,12 +29,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import torch
-
-try:
-    from pytest import CallInfo, TestReport  # public since pytest 7.x
-except ImportError:  # pragma: no cover
-    from _pytest.reports import TestReport  # type: ignore[no-redef]
-    from _pytest.runner import CallInfo  # type: ignore[no-redef]
+from torch.distributions import Distribution
 
 import kornia
 from kornia.core.download import load_state_dict_from_url
@@ -47,7 +43,7 @@ from testing.half_precision_ci import (
     seed_test_rng,
 )
 from testing.known_failures import mark_known_failures
-from testing.reference_data import TEST_DATA_URLS
+from testing.reference_data import TEST_CHECKPOINT_URLS, TEST_DATA_URLS, load_reference_data
 
 try:
     import torch._dynamo
@@ -108,7 +104,7 @@ TEST_OPTIMIZER_BACKEND = {"", None, "jit", *_backends_non_experimental}
 DEVICE_DTYPE_BLACKLIST: set[tuple[str, ...]] = set()
 
 
-@pytest.fixture()
+@pytest.fixture
 def device(device_name) -> torch.device:
     """Return device for testing, skipping if device is unavailable."""
     if device_name not in TEST_DEVICES:
@@ -116,7 +112,7 @@ def device(device_name) -> torch.device:
     return TEST_DEVICES[device_name]
 
 
-@pytest.fixture()
+@pytest.fixture
 def restore_torch_rng():
     """Keep explicitly opted-in tests from shifting later CPU/CUDA/MPS random draws (#4446)."""
     cpu_state = torch.random.get_rng_state()
@@ -133,13 +129,30 @@ def restore_torch_rng():
             torch.mps.set_rng_state(mps_state)
 
 
-@pytest.fixture()
+@pytest.fixture
 def dtype(dtype_name) -> torch.dtype:
     """Return dtype for testing."""
     return TEST_DTYPES[dtype_name]
 
 
-@pytest.fixture()
+@pytest.fixture(autouse=True)
+def keep_distribution_validation():
+    """Leave ``torch.distributions`` argument validation as each test found it.
+
+    The first Dynamo entry in a process, ``torch.compile`` included, runs a one-time setup that calls
+    ``Distribution.set_default_validate_args(False)`` process-wide. Without this fixture every test after
+    that entry runs with validation off, so a test pinned on a validation error passes or fails depending
+    on whether a compile test ran before it in the session.
+    """
+    validate_args = Distribution._validate_args
+    try:
+        yield
+    finally:
+        if Distribution._validate_args != validate_args:
+            Distribution.set_default_validate_args(validate_args)
+
+
+@pytest.fixture
 def torch_optimizer(optimizer_backend):
     """Return torch optimizer based on backend selection.
 
@@ -159,7 +172,7 @@ def torch_optimizer(optimizer_backend):
     return partial(torch.compile, backend=optimizer_backend)
 
 
-@pytest.fixture()
+@pytest.fixture
 def cudnn_tf32_follows_option(request):
     """Compute convolutions in real float32 on CUDA, so a float32 tolerance means float32.
 
@@ -248,10 +261,8 @@ def _validate_complete_known_failure_run(config, option: str) -> None:
     for arg in config.args:
         target = Path(arg.split("::", maxsplit=1)[0])
         if target.is_absolute():
-            try:
+            with contextlib.suppress(ValueError):
                 target = target.relative_to(config.rootpath)
-            except ValueError:
-                pass
         normalized_args.add(target.as_posix().removeprefix("./").rstrip("/"))
     if normalized_args != {"tests"}:
         raise pytest.UsageError(f"{option} requires exactly the full tests/ target")
@@ -713,7 +724,7 @@ main deps:
     - torch-{torch.__version__}
         - commit: {torch.version.git_version}
         - cuda: {torch.version.cuda}
-        - nvidia-driver: {env_info["nvidia"] if "nvidia" in env_info else None}
+        - nvidia-driver: {env_info.get("nvidia")}
 x deps:
     - {accelerate_info}
 dev deps:
@@ -838,8 +849,8 @@ def pytest_runtest_protocol(item, nextitem):
         outcome = "failed"
         longrepr = _extract_failure_output(output)
 
-    def _report(when: str, out: str, rep_longrepr, dur: float = 0.0) -> TestReport:
-        return TestReport(
+    def _report(when: str, out: str, rep_longrepr, dur: float = 0.0) -> pytest.TestReport:
+        return pytest.TestReport(
             nodeid=item.nodeid,
             location=item.location,
             keywords=dict(item.keywords),
@@ -860,7 +871,7 @@ def pytest_runtest_protocol(item, nextitem):
     # Capture finalizer failures as teardown errors rather than aborting the runner.
     if item.session.shouldfail or item.session.shouldstop:
         nextitem = None
-    teardown = CallInfo.from_call(
+    teardown = pytest.CallInfo.from_call(
         lambda: item.session._setupstate.teardown_exact(nextitem),
         when="teardown",
         reraise=(KeyboardInterrupt, pytest.exit.Exception),
@@ -889,7 +900,7 @@ def _isolated_test_rng(seed: int):
         torch.random.set_rng_state(torch_state)
 
 
-@pytest.fixture()
+@pytest.fixture
 def test_rng_seed(request) -> int:
     """Return the stable seed for this pytest node without changing global RNG state."""
     return seed_test_rng(request.node.nodeid)
@@ -1052,6 +1063,8 @@ def data(request):
 
     Use with @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     """
-    if request.param not in TEST_DATA_URLS:
-        raise ValueError(f"Unknown test data: {request.param}. Available: {list(TEST_DATA_URLS.keys())}")
-    return load_state_dict_from_url(TEST_DATA_URLS[request.param], map_location=torch.device("cpu"))
+    if request.param in TEST_DATA_URLS:
+        return load_reference_data(request.param)
+    if request.param in TEST_CHECKPOINT_URLS:
+        return load_state_dict_from_url(TEST_CHECKPOINT_URLS[request.param], map_location=torch.device("cpu"))
+    raise ValueError(f"Unknown test data: {request.param}. Available: {[*TEST_DATA_URLS, *TEST_CHECKPOINT_URLS]}")

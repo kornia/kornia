@@ -207,13 +207,12 @@ class ResNetD(nn.Module):
         variant = str(variant)
         if variant == "18":
             return ResNetD([2, 2, 2, 2], BasicBlockD)
-        elif variant == "34":
+        if variant == "34":
             return ResNetD([3, 4, 6, 3], BasicBlockD)
-        elif variant == "50":
+        if variant == "50":
             return ResNetD([3, 4, 6, 3], BottleneckD)
-        elif variant == "101":
+        if variant == "101":
             return ResNetD([3, 4, 23, 3], BottleneckD)
-        elif variant == "152":
+        if variant == "152":
             return ResNetD([3, 8, 36, 3], BottleneckD)
-        else:
-            raise ValueError("Only variant 18, 34, 50, 101, and 152 are supported")
+        raise ValueError("Only variant 18, 34, 50, 101, and 152 are supported")

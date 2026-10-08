@@ -28,6 +28,7 @@ from torch import nn
 
 from kornia.core.download import load_state_dict_from_url
 from kornia.core.external import PILImage as Image
+from kornia.core.mixin.image_module import _to_uint8_image
 from kornia.image.utils import tensor_to_image
 from kornia.io import write_image
 
@@ -36,27 +37,15 @@ logger = logging.getLogger(__name__)
 ModelConfig = TypeVar("ModelConfig")
 
 
-def _to_writable_png(image: torch.Tensor) -> torch.Tensor:
-    """Convert a visualization tensor to the dtype ``write_image`` accepts for PNG.
+def _write_png_batch(path_stem: str, image: torch.Tensor) -> None:
+    """Write one image, or one file per item of a batch.
 
     ``visualize`` returns float images in ``[0, 1]``, but ``write_image`` writes
     PNG only for ``uint8``/``uint16``; float32 is TIFF-only and every other
-    float dtype is rejected outright.
-
-    These are pictures for a human to look at, not data to round-trip, so the
-    conversion is to ``uint8`` -- the same thing ``ImageModule`` already does
-    before handing a tensor to PIL. Values are clamped first: a visualization
-    that overshoots ``[0, 1]`` would otherwise wrap and put black where it
-    should be white. Non-float images pass through untouched, so a ``uint8``
-    or ``uint16`` visualization is written as-is.
-    """
-    if not image.is_floating_point():
-        return image
-    return (image.detach().clamp(0.0, 1.0) * 255).round().to(torch.uint8)
-
-
-def _write_png_batch(path_stem: str, image: torch.Tensor) -> None:
-    """Write one image, or one file per item of a batch.
+    float dtype is rejected outright. These are pictures for a human to look at,
+    not data to round-trip, so a float image is converted to ``uint8`` the way
+    ``ImageModule`` hands a tensor to PIL: clamped, scaled and rounded. A
+    ``uint8`` or ``uint16`` visualization is written as-is.
 
     ``write_image`` takes ``(3, H, W)``, ``(1, H, W)`` or ``(H, W)``, but the
     containers document their inputs as ``(B, 3, H, W)`` and passed the batch
@@ -67,7 +56,7 @@ def _write_png_batch(path_stem: str, image: torch.Tensor) -> None:
     A batch of one still gets an index suffix, so a caller does not have to
     guess whether a file will be ``name.png`` or ``name_0.png``.
     """
-    image = _to_writable_png(image)
+    image = _to_uint8_image(image)
     if image.dim() == 4:
         for i, item in enumerate(image):
             write_image(f"{path_stem}_{i}.png", item)
@@ -99,13 +88,11 @@ class ModelBaseMixin:
         """
         if output_type == "torch":
             return output
-        elif output_type == "pil":
+        if output_type == "pil":
             if isinstance(output, list):
                 return [tensor_to_image(t) for t in output]
-            else:
-                return tensor_to_image(output)
-        else:
-            raise RuntimeError(f"Output type {output_type} is not supported. Accepted values are 'torch' and 'pil'.")
+            return tensor_to_image(output)
+        raise RuntimeError(f"Output type {output_type} is not supported. Accepted values are 'torch' and 'pil'.")
 
     def save(self, output: Union[torch.Tensor, List[torch.Tensor]], directory: str, is_batch: bool = False) -> None:
         """Save the output tensor to a directory.
@@ -156,14 +143,19 @@ class ModelBase(ABC, nn.Module, ModelBaseMixin, Generic[ModelConfig]):
     def load_checkpoint(self, checkpoint: str | list[str], device: Optional[torch.device] = None) -> None:
         """Load checkpoint from a given url or file.
 
+        Either way the file is loaded with ``weights_only=True``, so it may hold
+        tensors, primitive types and plain containers only; see
+        :func:`kornia.core.download.load_state_dict_from_url`.
+
         Args:
             checkpoint: The url or filepath for the respective checkpoint
             device: The desired device to load the weights and move the model
 
         """
-        if isinstance(checkpoint, str) and os.path.isfile(checkpoint):
-            with open(checkpoint, "rb") as f:
-                state_dict = torch.load(f, map_location=device)
+        local = os.path.expanduser(checkpoint) if isinstance(checkpoint, str) else None
+        if local is not None and os.path.isfile(local):
+            with open(local, "rb") as f:
+                state_dict = torch.load(f, map_location=device, weights_only=True)
         else:
             state_dict = load_state_dict_from_url(checkpoint, map_location=device)
 
@@ -208,5 +200,4 @@ class ModelBase(ABC, nn.Module, ModelBaseMixin, Generic[ModelConfig]):
         compiled = torch.compile(
             self, fullgraph=fullgraph, dynamic=dynamic, backend=backend, mode=mode, options=options, disable=disable
         )
-        compiled = cast(ModelBase[ModelConfig], compiled)
-        return compiled
+        return cast(ModelBase[ModelConfig], compiled)

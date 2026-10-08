@@ -40,7 +40,9 @@ CPU or GPU and kornia is differentiable; albumentations/OpenCV/PIL run single ui
 CPU in a Python loop — their native regime. OpenCV and PIL are only listed where the augmentation
 is parameter-free (flip via ``Image.transpose``, grayscale via ``convert("L")``): for
 randomly-parameterized augmentations, albumentations *is* the OpenCV-backed baseline. PIL is
-usually the slowest but serves as the signal-processing-correct reference implementation.
+usually the slowest but serves as the signal-processing-correct reference implementation. PIL
+receives ready-made ``Image`` objects, as kornia receives a ready-made tensor; the PIL cells of the
+``0.9.0rc1`` result files still include the ``Image.fromarray`` conversion.
 Parameter distributions are matched in spirit across libraries, but
 parameterizations differ (e.g. perspective distortion scales) — columns are regime comparisons,
 not bit-exact races. RandomResizedCrop outputs size//2 per side for every backend;
@@ -54,31 +56,42 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import platform
-import random
 import sys
 from pathlib import Path
 from types import ModuleType
-from typing import Callable, Optional
+from typing import Optional
 
-import numpy as np
 import torch
 
+# Prefer this checkout to an installed wheel or another editable checkout.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common import (
-    add_contribute_args,
-    collect_load_metrics,
-    contribute_result,
-    print_preflight,
+    Backend,
+    KorniaRows,
+    add_flagship_args,
+    batch_list,
+    finish_run,
+    image_batch,
+    image_row_fields,
+    optional_import,
     run_batch_sweep,
-    run_metadata,
-    save_json,
-    versions_line,
+    setup_run,
+    start_run,
 )
 
 import kornia.augmentation as KA
 
-Backend = Optional[Callable[[], object]]
+OPS = (
+    "RandomHorizontalFlip",
+    "RandomAffine",
+    "RandomPerspective",
+    "RandomResizedCrop",
+    "ColorJiggle",
+    "RandomGaussianBlur",
+    "RandomBrightness",
+    "RandomGrayscale",
+)
 
 
 def build_ops(
@@ -93,44 +106,21 @@ def build_ops(
     cv2: Optional[ModuleType],
     pil: Optional[ModuleType],
     skip_compile: frozenset[str] = frozenset(),
+    selected: Optional[frozenset[str]] = None,
 ) -> tuple[dict[str, dict[str, Backend]], dict[str, str]]:
-    """Build {op: {backend: zero-arg callable}}; each callable transforms the whole batch once."""
-    rng = np.random.default_rng(0)
-    imgs_u8 = [(rng.random((h, w, 3)) * 255).astype(np.uint8) for _ in range(b)]
-    batch_f = (
-        torch.stack([torch.from_numpy(im).permute(2, 0, 1) for im in imgs_u8]).to(device=device, dtype=dtype).div(255)
-    )
+    """Build {op: {backend: zero-arg callable}}; each callable transforms the whole batch once.
 
-    compile_failures: dict[str, str] = {}
+    Rows outside ``selected`` (``--ops``) are not built, so they are neither compiled nor timed.
+    """
+    imgs_u8, batch_f = image_batch(b, h, w, device, dtype)
+    pil_imgs = [pil.fromarray(im) for im in imgs_u8] if pil else []
+    compiled_rows = KorniaRows(device, do_compile, skip_compile)
+
+    def include(name: str) -> bool:
+        return selected is None or name in selected
 
     def kornia_row(label: str, aug: torch.nn.Module) -> dict[str, Backend]:
-        aug = aug.to(device)
-        row: dict[str, Backend] = {"kornia (eager)": lambda: aug(batch_f)}
-        if do_compile and label not in skip_compile:
-            torch._dynamo.reset()
-            compiled = torch.compile(aug)
-            try:
-                compiled(batch_f)  # warmup: compile + autotune before the timed region
-                if device.type == "cuda":
-                    torch.cuda.synchronize()  # surface async kernel faults HERE, not at the next op
-                row["kornia (compiled)"] = lambda: compiled(batch_f)
-            except Exception as e:
-                errors = str(e)
-                if device.type == "cuda":
-                    try:
-                        torch.cuda.synchronize()  # a FAILED warmup may still have launched kernels
-                    except Exception as sync_err:
-                        errors += " | " + str(sync_err)
-                if "illegal memory access" in errors:
-                    raise SystemExit(
-                        f"FATAL: CUDA context poisoned during torch.compile warmup of '{label}' "
-                        "(illegal memory access); no later measurement would be trustworthy. "
-                        f"Rerun with --skip-compile-ops {label} to keep it eager-only, or without "
-                        "--compile; CUDA_LAUNCH_BLOCKING=1 localizes the kernel."
-                    ) from e
-                row["kornia (compiled)"] = None
-                compile_failures[label] = type(e).__name__
-        return row
+        return compiled_rows(label, aug.to(device), batch_f)
 
     def tv(t: object) -> Backend:
         return lambda: t(batch_f)
@@ -140,143 +130,109 @@ def build_ops(
 
     ops: dict[str, dict[str, Backend]] = {}
 
-    row = kornia_row("RandomHorizontalFlip", KA.RandomHorizontalFlip(p=1.0))
-    row["torchvision v2"] = tv(T2.RandomHorizontalFlip(p=1.0)) if T2 else None
-    row["albumentations"] = alb(A.HorizontalFlip(p=1.0)) if A else None
-    row["opencv"] = (lambda: [cv2.flip(im, 1) for im in imgs_u8]) if cv2 else None
-    row["PIL"] = (
-        (lambda: [pil.fromarray(im).transpose(pil.Transpose.FLIP_LEFT_RIGHT) for im in imgs_u8]) if pil else None
-    )
-    ops["RandomHorizontalFlip"] = row
+    if include("RandomHorizontalFlip"):
+        row = kornia_row("RandomHorizontalFlip", KA.RandomHorizontalFlip(p=1.0))
+        row["torchvision v2"] = tv(T2.RandomHorizontalFlip(p=1.0)) if T2 else None
+        row["albumentations"] = alb(A.HorizontalFlip(p=1.0)) if A else None
+        row["opencv"] = (lambda: [cv2.flip(im, 1) for im in imgs_u8]) if cv2 else None
+        row["PIL"] = (lambda: [im.transpose(pil.Transpose.FLIP_LEFT_RIGHT) for im in pil_imgs]) if pil else None
+        ops["RandomHorizontalFlip"] = row
 
-    row = kornia_row("RandomAffine", KA.RandomAffine(degrees=30.0, translate=(0.1, 0.1), scale=(0.8, 1.2), p=1.0))
-    row["torchvision v2"] = tv(T2.RandomAffine(degrees=30.0, translate=(0.1, 0.1), scale=(0.8, 1.2))) if T2 else None
-    row["albumentations"] = (
-        alb(A.Affine(rotate=(-30.0, 30.0), translate_percent=(0.0, 0.1), scale=(0.8, 1.2), p=1.0)) if A else None
-    )
-    row["opencv"] = None
-    ops["RandomAffine"] = row
+    if include("RandomAffine"):
+        row = kornia_row("RandomAffine", KA.RandomAffine(degrees=30.0, translate=(0.1, 0.1), scale=(0.8, 1.2), p=1.0))
+        row["torchvision v2"] = (
+            tv(T2.RandomAffine(degrees=30.0, translate=(0.1, 0.1), scale=(0.8, 1.2))) if T2 else None
+        )
+        row["albumentations"] = (
+            alb(A.Affine(rotate=(-30.0, 30.0), translate_percent=(0.0, 0.1), scale=(0.8, 1.2), p=1.0)) if A else None
+        )
+        ops["RandomAffine"] = row
 
-    row = kornia_row("RandomPerspective", KA.RandomPerspective(0.5, p=1.0))
-    row["torchvision v2"] = tv(T2.RandomPerspective(distortion_scale=0.5, p=1.0)) if T2 else None
-    row["albumentations"] = alb(A.Perspective(scale=(0.05, 0.1), p=1.0)) if A else None
-    row["opencv"] = None
-    ops["RandomPerspective"] = row
+    if include("RandomPerspective"):
+        row = kornia_row("RandomPerspective", KA.RandomPerspective(0.5, p=1.0))
+        row["torchvision v2"] = tv(T2.RandomPerspective(distortion_scale=0.5, p=1.0)) if T2 else None
+        row["albumentations"] = alb(A.Perspective(scale=(0.05, 0.1), p=1.0)) if A else None
+        ops["RandomPerspective"] = row
 
-    dst = (h // 2, w // 2)
-    row = kornia_row("RandomResizedCrop", KA.RandomResizedCrop(dst))
-    row["torchvision v2"] = tv(T2.RandomResizedCrop(dst, antialias=False)) if T2 else None
-    row["albumentations"] = alb(A.RandomResizedCrop(size=dst, p=1.0)) if A else None
-    row["opencv"] = None
-    ops["RandomResizedCrop"] = row
+    if include("RandomResizedCrop"):
+        dst = (h // 2, w // 2)
+        row = kornia_row("RandomResizedCrop", KA.RandomResizedCrop(dst))
+        row["torchvision v2"] = tv(T2.RandomResizedCrop(dst, antialias=False)) if T2 else None
+        row["albumentations"] = alb(A.RandomResizedCrop(size=dst, p=1.0)) if A else None
+        ops["RandomResizedCrop"] = row
 
-    row = kornia_row("ColorJiggle", KA.ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0))
-    row["torchvision v2"] = tv(T2.ColorJitter(0.2, 0.2, 0.2, 0.1)) if T2 else None
-    row["albumentations"] = alb(A.ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0)) if A else None
-    row["opencv"] = None
-    ops["ColorJiggle"] = row
+    if include("ColorJiggle"):
+        row = kornia_row("ColorJiggle", KA.ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0))
+        row["torchvision v2"] = tv(T2.ColorJitter(0.2, 0.2, 0.2, 0.1)) if T2 else None
+        row["albumentations"] = alb(A.ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0)) if A else None
+        ops["ColorJiggle"] = row
 
-    row = kornia_row("RandomGaussianBlur", KA.RandomGaussianBlur((5, 5), (0.1, 2.0), p=1.0))
-    row["torchvision v2"] = tv(T2.GaussianBlur(5, sigma=(0.1, 2.0))) if T2 else None
-    row["albumentations"] = alb(A.GaussianBlur(blur_limit=(5, 5), sigma_limit=(0.1, 2.0), p=1.0)) if A else None
-    row["opencv"] = None
-    ops["RandomGaussianBlur"] = row
+    if include("RandomGaussianBlur"):
+        row = kornia_row("RandomGaussianBlur", KA.RandomGaussianBlur((5, 5), (0.1, 2.0), p=1.0))
+        row["torchvision v2"] = tv(T2.GaussianBlur(5, sigma=(0.1, 2.0))) if T2 else None
+        row["albumentations"] = alb(A.GaussianBlur(blur_limit=(5, 5), sigma_limit=(0.1, 2.0), p=1.0)) if A else None
+        ops["RandomGaussianBlur"] = row
 
-    row = kornia_row("RandomBrightness", KA.RandomBrightness(brightness=(0.8, 1.2), p=1.0))
-    row["torchvision v2"] = tv(T2.ColorJitter(brightness=(0.8, 1.2))) if T2 else None
-    row["albumentations"] = (
-        alb(A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.0, p=1.0)) if A else None
-    )
-    row["opencv"] = None
-    ops["RandomBrightness"] = row
+    if include("RandomBrightness"):
+        row = kornia_row("RandomBrightness", KA.RandomBrightness(brightness=(0.8, 1.2), p=1.0))
+        row["torchvision v2"] = tv(T2.ColorJitter(brightness=(0.8, 1.2))) if T2 else None
+        row["albumentations"] = (
+            alb(A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.0, p=1.0)) if A else None
+        )
+        ops["RandomBrightness"] = row
 
-    row = kornia_row("RandomGrayscale", KA.RandomGrayscale(p=1.0))
-    row["torchvision v2"] = tv(T2.RandomGrayscale(p=1.0)) if T2 else None
-    row["albumentations"] = alb(A.ToGray(p=1.0)) if A else None
-    row["opencv"] = (lambda: [cv2.cvtColor(im, cv2.COLOR_RGB2GRAY) for im in imgs_u8]) if cv2 else None
-    row["PIL"] = (lambda: [pil.fromarray(im).convert("L") for im in imgs_u8]) if pil else None
-    ops["RandomGrayscale"] = row
+    if include("RandomGrayscale"):
+        row = kornia_row("RandomGrayscale", KA.RandomGrayscale(p=1.0))
+        row["torchvision v2"] = tv(T2.RandomGrayscale(p=1.0)) if T2 else None
+        row["albumentations"] = alb(A.ToGray(p=1.0)) if A else None
+        row["opencv"] = (lambda: [cv2.cvtColor(im, cv2.COLOR_RGB2GRAY) for im in imgs_u8]) if cv2 else None
+        row["PIL"] = (lambda: [im.convert("L") for im in pil_imgs]) if pil else None
+        ops["RandomGrayscale"] = row
 
-    return ops, compile_failures
+    return ops, compiled_rows.compile_failures
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--batches", type=str, default="1,8,32", help="comma-separated batch sizes to sweep")
-    parser.add_argument("--size", type=int, default=256)
-    parser.add_argument("--device", type=str, default="cpu")
-    parser.add_argument("--dtype", type=str, default="float32", choices=["float32", "float16", "bfloat16"])
-    parser.add_argument("--threads", type=int, default=4)
-    parser.add_argument("--compile", action="store_true", help="also time torch.compile'd kornia")
-    parser.add_argument(
-        "--skip-compile-ops",
-        type=str,
-        default="",
-        help="comma-separated op names to keep eager-only (workaround for faulting compiled kernels)",
-    )
-    parser.add_argument("--json", type=str, default=None, help="write machine-readable results to this path")
-    add_contribute_args(parser)
+    add_flagship_args(parser, ops=OPS)
     args = parser.parse_args()
-    skip_compile = frozenset(s.strip() for s in args.skip_compile_ops.split(",") if s.strip())
+    device, dtype, sync = setup_run(args)
 
-    torch.set_num_threads(args.threads)
-    torch.manual_seed(0)
-    np.random.seed(0)  # noqa: NPY002 — albumentations samples from the legacy global RNG
-    random.seed(0)
-    device = torch.device(args.device)
-    dtype = getattr(torch, args.dtype)
-    sync = torch.mps.synchronize if device.type == "mps" else None  # Timer only syncs CUDA
+    T2, t2_error = optional_import("torchvision.transforms.v2")
+    A, a_error = optional_import("albumentations")
+    cv2, cv2_error = optional_import("cv2")
+    pil, pil_error = optional_import("PIL.Image")
 
-    try:
-        import torchvision.transforms.v2 as T2
-    except Exception:
-        T2 = None
-    try:
-        import albumentations as A
-    except Exception:
-        A = None
-    try:
-        import cv2
-    except Exception:
-        cv2 = None
-    try:
-        from PIL import Image as pil
-    except Exception:
-        pil = None
-
-    meta = run_metadata(device)
-    meta["load"] = collect_load_metrics()
-    if args.contribute:
-        print_preflight(meta["load"])
-    print(f"# flagship augmentation benchmark — commit {meta['git_commit']} — {platform.platform()}")
-    print(versions_line(meta))
-    if device.type == "cuda":
-        print(f"# CUDA device: {meta['cuda_device']} (CUDA {meta['cuda_version']})")
-    print(f"# device={device}, dtype={args.dtype}, threads={args.threads}, size={args.size} — throughput img/s")
-    print("# augmentation classes built once; timed region = parameter sampling + application per call")
-    print(
-        "# kornia/torchvision: batched float BCHW; albumentations/opencv/PIL: uint8 HWC per-image loop (CPU); "
-        "'-' = skipped"
+    libs = [
+        (T2, "torchvision", t2_error),
+        (A, "albumentations", a_error),
+        (cv2, "opencv", cv2_error),
+        (pil, "PIL", pil_error),
+    ]
+    meta = start_run(
+        "flagship augmentation",
+        args,
+        device,
+        units="img/s",
+        regimes=[
+            "augmentation classes built once; timed region = parameter sampling + application per call",
+            "kornia/torchvision: batched float BCHW; albumentations/opencv/PIL: uint8 HWC per-image loop (CPU)",
+        ],
+        missing=[(name, err) for lib, name, err in libs if lib is None],
     )
-    for lib, name in [(T2, "torchvision"), (A, "albumentations"), (cv2, "opencv"), (pil, "PIL")]:
-        if lib is None:
-            print(f"# NOTE: {name} not installed — its column is skipped")
-    if skip_compile:
-        print(f"# NOTE: --skip-compile-ops keeps eager-only: {', '.join(sorted(skip_compile))}")
-
     backends = ["kornia (eager)", "kornia (compiled)", "torchvision v2", "albumentations", "opencv", "PIL"]
     results = run_batch_sweep(
-        [int(x) for x in args.batches.split(",") if x.strip()],
-        lambda b: build_ops(b, args.size, args.size, device, dtype, args.compile, T2, A, cv2, pil, skip_compile),
+        batch_list(args),
+        lambda b: build_ops(
+            b, args.size, args.size, device, dtype, args.compile, T2, A, cv2, pil, args.skip_compile_ops, args.ops
+        ),
         backends,
-        row_fields=lambda b: {"height": args.size, "width": args.size, "dtype": args.dtype},
+        row_fields=image_row_fields(args),
         sync=sync,
+        units="img/s",
+        min_run_time=args.min_run_time,
     )
-    if args.json:
-        out = save_json(args.json, meta, results)
-        print(f"# results written to {out}")
-    if args.contribute:
-        contribute_result(args.contribute, "augmentation", meta, results, slug_override=args.machine_slug)
+    finish_run(args, "augmentation", meta, results)
 
 
 if __name__ == "__main__":

@@ -131,9 +131,8 @@ class ConvRefiner(nn.Module):
             Decoder block (``nn.Sequential``) configured for the requested channels.
         """
         num_groups = 1 if not dw else in_dim
-        if dw:
-            if out_dim % in_dim != 0:
-                raise Exception("outdim must be divisible by indim for depthwise")
+        if dw and out_dim % in_dim != 0:
+            raise Exception("outdim must be divisible by indim for depthwise")
         conv1 = nn.Conv2d(
             in_dim,
             out_dim,
@@ -164,5 +163,4 @@ class ConvRefiner(nn.Module):
             x = self.hidden_blocks(x0)
             if self.residual:
                 x = (x + x0) / 1.4
-            x = self.out_conv(x)
-            return x
+            return self.out_conv(x)

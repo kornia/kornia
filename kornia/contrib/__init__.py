@@ -23,7 +23,7 @@ This subpackage provides community-contributed and experimental features.
 from kornia.models.tiny_vit import TinyViT
 
 from .augmentation_audit import AugmentationAuditReport, AugmentationAuditStep, SpatialAudit, audit
-from .connected_components import connected_components
+from .connected_components import connected_components, connected_components_union_find
 from .diamond_square import diamond_square
 from .distance_transform import DistanceTransform, distance_transform
 from .edge_detection import EdgeDetector, EdgeDetectorBuilder
@@ -65,6 +65,7 @@ __all__ = [
     "combine_tensor_patches",
     "compute_padding",
     "connected_components",
+    "connected_components_union_find",
     "diamond_square",
     "distance_transform",
     "extract_tensor_patches",

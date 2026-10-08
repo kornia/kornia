@@ -123,8 +123,7 @@ class PromptEncoder(nn.Module):
 
     def _embed_masks(self, masks: torch.Tensor) -> torch.Tensor:
         """Embeds mask inputs."""
-        mask_embedding = self.mask_downscaling(masks)
-        return mask_embedding
+        return self.mask_downscaling(masks)
 
     def _get_batch_size(
         self,
@@ -135,12 +134,11 @@ class PromptEncoder(nn.Module):
         """Get the batch size of the output given the batch size of the input prompts."""
         if points is not None:
             return points[0].shape[0]
-        elif boxes is not None:
+        if boxes is not None:
             return boxes.shape[0]
-        elif masks is not None:
+        if masks is not None:
             return masks.shape[0]
-        else:
-            return 1
+        return 1
 
     def _get_device(self) -> torch.device:
         return self.point_embeddings[0].weight.device

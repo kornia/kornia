@@ -293,6 +293,15 @@ class TestExplicitSpacialEncoding(BaseTester):
         ese = ExplicitSpacialEncoding(kernel_type=kernel_type, fmap_size=15, in_dims=7).to(device)
         ese.__repr__()
 
+    @pytest.mark.parametrize("kernel_type", ["cart", "polar"])
+    def test_exception(self, kernel_type, device):
+        ese = ExplicitSpacialEncoding(kernel_type=kernel_type, fmap_size=15, in_dims=7).to(device)
+        # a wrong channel count must raise rather than return a descriptor of the wrong width
+        with pytest.raises(ValueError, match="we expect Bx7xHxW"):
+            ese(torch.ones(2, 5, 15, 15, device=device))
+        with pytest.raises(ValueError, match="we expect Bx7xHxW"):
+            ese(torch.ones(7, 15, 15, device=device))
+
     def test_toy(self, device):
         inp = torch.ones(1, 2, 6, 6).to(device).float()
         inp[0, 0, :, :] = 0

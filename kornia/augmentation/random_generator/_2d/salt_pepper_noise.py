@@ -57,8 +57,7 @@ class SaltAndPepperGenerator(RandomGeneratorBase):
 
     def __repr__(self) -> str:
         r"""Return a string representation of the object."""
-        repr = f"amount={self.amount}, salt_and_pepper={self.salt_and_pepper}"
-        return repr
+        return f"amount={self.amount}, salt_and_pepper={self.salt_and_pepper}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         r"""Create samplers for generating random noise parameters."""

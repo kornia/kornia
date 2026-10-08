@@ -227,8 +227,8 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
     def _sample_inputs(self, inputs: _inputs_type, data_keys: _data_keys_type, p_tensor: torch.Tensor) -> _inputs_type:
         if isinstance(inputs, dict):
             return {key: inputs[key][p_tensor] for key in data_keys}
-        else:
-            return inputs[p_tensor]
+
+        return inputs[p_tensor]
 
     def _merge_inputs(
         self,
@@ -239,7 +239,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         merged: _inputs_type
         if isinstance(original, dict) and isinstance(augmented, dict):
             merged = {}
-            for key in original.keys():
+            for key in original:
                 merged_tensor = original[key].clone()
                 merged_tensor[p_tensor] = augmented[key]
                 merged[key] = merged_tensor

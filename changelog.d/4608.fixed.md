@@ -1,0 +1,1 @@
+`kornia.enhance.solarize` accepts `additions` of exactly `-0.5` and `0.5`, the closed range `RandomSolarize` already admits at construction. `RandomSolarize(additions=(-0.5, 0.5))` no longer raises `The addition must be in the open range (-0.5, 0.5)` on the forward pass when it draws an endpoint, or on every call for an endpoint-only range.

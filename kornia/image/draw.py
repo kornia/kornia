@@ -31,19 +31,33 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
 
     Args:
         image: the input image on which to draw the points with shape :math`(C,H,W)` or :math`(H,W)`.
-        points: the [x, y] points to be drawn on the image.
+        points: the [x, y] points to be drawn on the image with shape :math`(N, 2)`, a single
+            point with shape :math`(2,)`, or an empty tensor with shape :math`(0, 2)`.
         color: the color of the pixel with :math`(C)` where :math`C` is the number of channels of the image.
+            A 0-d scalar is accepted when the image has a single channel or is :math`(H,W)`.
 
     Return:
-        The image with points set to the color.
+        The image with points set to the color. This operation modifies image inplace but also
+        returns the drawn tensor for convenience. An empty point set leaves the image unchanged.
 
     """
+    # A 0-d scalar has no channel dimension for the check below to read; treat it as one channel, as draw_line does.
+    if color.ndim == 0:
+        color = color.unsqueeze(0)
     KORNIA_CHECK(
         (len(image.shape) == 2 and len(color.shape) == 1) or (image.shape[0] == color.shape[0]),
         "Color dim must match the channel dims of the provided image",
     )
     points = points.to(dtype=torch.int64, device=image.device)
-    x, y = zip(*points)
+    # A single [x, y] vector is a common call shape; zip(*points) iterated 0-d
+    # scalars and raised TypeError. An empty (0, 2) set used to fail unpacking;
+    # indexing with empty columns now leaves the image unchanged.
+    if points.ndim == 1:
+        KORNIA_CHECK(points.numel() == 2, "A 1D points tensor must have shape (2,) as [x, y]")
+        points = points.unsqueeze(0)
+    KORNIA_CHECK(points.ndim == 2 and points.shape[-1] == 2, "points must have shape (N, 2)")
+    x = points[:, 0]
+    y = points[:, 1]
     if len(color.shape) == 1:
         color = torch.unsqueeze(color, dim=1)
     color = color.to(dtype=image.dtype, device=image.device)
@@ -73,14 +87,20 @@ def _draw_pixel(image: torch.Tensor, x: int, y: int, color: torch.Tensor) -> Non
 def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: torch.Tensor) -> torch.Tensor:
     r"""Draw a single line into an image.
 
+    Each line is rasterized one pixel per step along its major axis, the one with the larger extent:
+    at step ``t = 0 .. major`` the minor coordinate advances by ``ceil(t * minor / major)``, computed in
+    integers. Both ``p1`` and ``p2`` are therefore always drawn.
+
     Args:
         image: the input image to where to draw the lines with shape :math`(C,H,W)`.
         p1: the start point [x y] of the line with shape (2, ) or (B, 2).
-        p2: the end point [x y] of the line with shape (2, ) or (B, 2).
-        color: the color of the line with shape :math`(C)` where :math`C` is the number of channels of the image.
+        p2: the end point [x y] of the line, with the same shape as ``p1``.
+        color: the color of the line with shape :math`(C)` where :math`C` is the number of channels
+            of the image. A 0-d scalar is accepted when the image has a single channel.
 
     Return:
-        the image with containing the line.
+        The image containing the line. This operation modifies image inplace but also returns
+        the drawn tensor for convenience.
 
     Examples:
         >>> image = torch.zeros(1, 8, 8)
@@ -95,7 +115,8 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
                  [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.]]])
 
     """
-    if (p1.shape[0] != p2.shape[0]) or (p1.shape[-1] != 2 or p2.shape[-1] != 2):
+    # equal shapes, not just equal leading sizes: a (2,) p1 would otherwise broadcast against a (2, 2) p2
+    if (p1.shape != p2.shape) or (p1.shape[-1] != 2):
         raise ValueError(
             "Input points must be 2D points with shape (2, ) or (B, 2) and must have the same batch sizes."
         )
@@ -117,6 +138,11 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
     if len(image.size()) != 3:
         raise ValueError("image must have 3 dimensions (C,H,W).")
 
+    # A 0-d scalar (e.g. torch.tensor(255) for grayscale) is a common call shape;
+    # color.size(0) used to IndexError. Treat it as a length-1 channel vector.
+    if color.ndim == 0:
+        color = color.unsqueeze(0)
+
     if color.size(0) != image.size(0):
         raise ValueError("color must have the same number of channels as the image.")
 
@@ -126,81 +152,35 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
     p2 = p2.to(image.device).to(torch.int64)
     color = color.to(image)
 
-    x1, y1 = p1[..., 0], p1[..., 1]
-    x2, y2 = p2[..., 0], p2[..., 1]
-    dx = x2 - x1
-    dy = y2 - y1
+    p1 = p1.reshape(-1, 2)
+    p2 = p2.reshape(-1, 2)
+    x1, y1 = p1[:, 0:1], p1[:, 1:2]
+    dx = p2[:, 0:1] - x1
+    dy = p2[:, 1:2] - y1
     dx_sign = torch.sign(dx)
     dy_sign = torch.sign(dy)
     dx, dy = torch.abs(dx), torch.abs(dy)
-    dx_zero_mask = dx == 0
-    dy_zero_mask = dy == 0
-    dx_gt_dy_mask = (dx > dy) & ~(dx_zero_mask | dy_zero_mask)
-    rest_mask = ~(dx_zero_mask | dy_zero_mask | dx_gt_dy_mask)
 
-    dx_zero_x_coords, dx_zero_y_coords = [], []
-    dy_zero_x_coords, dy_zero_y_coords = [], []
-    dx_gt_dy_x_coords, dx_gt_dy_y_coords = [], []
-    rest_x_coords, rest_y_coords = [], []
+    # Every line steps one pixel at a time along its major axis and places the minor coordinate at
+    # ceil(t * minor / major). The (line, t) pairs with t <= major are taken first, so the work is one
+    # entry per drawn pixel rather than a (B, longest line) grid that pads every short line out. The
+    # ceiling is taken in integers: a float step lands just above an exact integer quotient and rounds
+    # it up a pixel. A vertical or horizontal line has minor = 0, and a single point has major = 0,
+    # which the clamp keeps from dividing by 0. An empty batch draws nothing.
+    x_major = dx > dy
+    major = torch.where(x_major, dx, dy)
+    minor = torch.where(x_major, dy, dx)
+    num_steps = int(major.max()) + 1 if major.numel() else 1
+    steps = torch.arange(num_steps, device=image.device).unsqueeze(0)
+    line, t = (steps <= major).nonzero(as_tuple=True)
+    divisor = major[line, 0].clamp_min(1)
+    t_minor = torch.div(t * minor[line, 0] + divisor - 1, divisor, rounding_mode="floor")
+    x_maj = x_major[line, 0]
+    x_coords = x1[line, 0] + dx_sign[line, 0] * torch.where(x_maj, t, t_minor)
+    y_coords = y1[line, 0] + dy_sign[line, 0] * torch.where(x_maj, t_minor, t)
 
-    if dx_zero_mask.any():
-        dx_zero_x_coords = [
-            x for x_i, dy_i in zip(x1[dx_zero_mask], dy[dx_zero_mask]) for x in x_i.repeat(int(dy_i.item() + 1))
-        ]
-        dx_zero_y_coords = [
-            y
-            for y_i, s, dy_ in zip(y1[dx_zero_mask], dy_sign[dx_zero_mask], dy[dx_zero_mask])
-            for y in (y_i + s * torch.arange(0, dy_ + 1, 1, device=image.device))
-        ]
-
-    if dy_zero_mask.any():
-        dy_zero_x_coords = [
-            x
-            for x_i, s, dx_i in zip(x1[dy_zero_mask], dx_sign[dy_zero_mask], dx[dy_zero_mask])
-            for x in (x_i + s * torch.arange(0, dx_i + 1, 1, device=image.device))
-        ]
-        dy_zero_y_coords = [
-            y for y_i, dx_i in zip(y1[dy_zero_mask], dx[dy_zero_mask]) for y in y_i.repeat(int(dx_i.item() + 1))
-        ]
-
-    if dx_gt_dy_mask.any():
-        dx_gt_dy_x_coords = [
-            x
-            for x_i, s, dx_i in zip(x1[dx_gt_dy_mask], dx_sign[dx_gt_dy_mask], dx[dx_gt_dy_mask])
-            for x in (x_i + s * torch.arange(0, dx_i + 1, 1, device=image.device))
-        ]
-        dx_gt_dy_y_coords = [
-            y
-            for y_i, s, dx_i, dy_i in zip(
-                y1[dx_gt_dy_mask], dy_sign[dx_gt_dy_mask], dx[dx_gt_dy_mask], dy[dx_gt_dy_mask]
-            )
-            for y in (
-                y_i + s * torch.arange(0, dy_i + 1, dy_i / dx_i, device=image.device)[: int(dx_i.item()) + 1].ceil()
-            )
-        ]
-    if rest_mask.any():
-        rest_x_coords = [
-            x
-            for x_i, s, dx_i, dy_ in zip(x1[rest_mask], dx_sign[rest_mask], dx[rest_mask], dy[rest_mask])
-            for x in (
-                x_i + s * torch.arange(0, dx_i + 1, dx_i / dy_, device=image.device)[: int(dy_.item()) + 1].ceil()
-            )
-        ]
-        rest_y_coords = [
-            y
-            for y_i, s, dy_i in zip(y1[rest_mask], dy_sign[rest_mask], dy[rest_mask])
-            for y in (y_i + s * torch.arange(0, dy_i + 1, 1, device=image.device))
-        ]
-    x_coords = torch.clamp(
-        torch.tensor(dx_zero_x_coords + dy_zero_x_coords + dx_gt_dy_x_coords + rest_x_coords).long(),
-        min=0,
-        max=image.shape[-1] - 1,
-    )
-    y_coords = torch.clamp(
-        torch.tensor(dx_zero_y_coords + dy_zero_y_coords + dx_gt_dy_y_coords + rest_y_coords).long(),
-        min=0,
-        max=image.shape[-2] - 1,
-    )
+    x_coords = torch.clamp(x_coords, min=0, max=image.shape[-1] - 1)
+    y_coords = torch.clamp(y_coords, min=0, max=image.shape[-2] - 1)
     image[:, y_coords, x_coords] = color.view(-1, 1)
     return image
 
@@ -215,7 +195,7 @@ def draw_rectangle(
         rectangle: represents number of rectangles to draw in BxNx4
             N is the number of boxes to draw per batch index[x1, y1, x2, y2]
             4 is in (top_left.x, top_left.y, bot_right.x, bot_right.y).
-        color: a size 1, size 3, BxNx1, or BxNx3 tensor.
+        color: a 0-d, size 1, size 3, BxNx1, or BxNx3 tensor.
             If C is 3, and color is 1 channel it will be broadcasted.
         fill: is a flag used to fill the boxes with color if True.
 
@@ -249,7 +229,7 @@ def draw_rectangle(
     if fill is None:
         fill = False
 
-    if len(color.shape) == 1:
+    if len(color.shape) <= 1:
         color = color.expand(batch, num_rectangle, c)
     b, n, color_channels = color.shape
 
@@ -298,6 +278,11 @@ def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
     """
     dtype = polygon.dtype
 
+    # A single vertex is its own first and last point, so the loop below would leave no edge;
+    # draw it as a zero-length edge, like a two-vertex polygon whose vertices coincide.
+    if polygon.shape[-2] == 1:
+        polygon = torch.cat((polygon, polygon), dim=-2)
+
     # Check if polygons are in loop closed format, if not -> make it so
     if not torch.allclose(polygon[..., -1, :], polygon[..., 0, :]):
         polygon = torch.cat((polygon, polygon[..., :1, :]), dim=-2)  # (B, N+1, 2)
@@ -308,7 +293,11 @@ def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
 
     # Create scanlines, edge dx/dy, and produce x values
     ys = torch.arange(h, device=polygon.device, dtype=dtype)
-    dx = ((x_end - x_start) / (y_end - y_start + 1e-12)).clamp(-w, w)
+    # A horizontal or zero-length edge is active only on its own scanline, where xs is x_start for any finite dx,
+    # so its dx is set to 0. An epsilon added to dy instead underflows in float16 (0 / 0 blanks the scanline), and
+    # in float64 it shifts a sloped edge enough to drop a pixel centre lying exactly on it.
+    dy = y_end - y_start
+    dx = torch.where(dy == 0, 0.0, (x_end - x_start) / dy).clamp(-w, w)
     xs = (ys[..., :, None] - y_start[..., None, :]) * dx[..., None, :] + x_start[..., None, :]
 
     # Only count edge in their active regions (i.e between the vertices)
@@ -343,6 +332,9 @@ def _batch_polygons(polygons: List[Tensor]) -> Tensor:
     B, N = len(polygons), len(max(polygons, key=len))
     batched_polygons = torch.zeros(B, N, 2, dtype=polygons[0].dtype, device=polygons[0].device)
     for b, p in enumerate(polygons):
+        if len(p) == 0:
+            # No last vertex to repeat; the row stays zero and the caller must not fill it.
+            continue
         batched_polygons[b] = torch.cat((p, p[-1:].expand(N - len(p), 2))) if len(p) < N else p
     return batched_polygons
 
@@ -355,7 +347,7 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
         polygons: represents polygons as points, either BxNx2 or List of variable length polygons.
             N is the number of points.
             2 is (x, y).
-        colors: a B x 3 tensor or 3 tensor with color to fill in.
+        colors: a B x 3 tensor, 3 tensor, or 0-d scalar with color to fill in.
 
     Returns:
         This operation modifies image inplace but also returns the drawn tensor for
@@ -375,18 +367,26 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
     # TODO: implement optional linetypes for smooth edges
     KORNIA_CHECK_SHAPE(images, ["B", "C", "H", "W"])
     b_i, c_i, h_i, w_i, device = *images.shape, images.device
+    empty_polygons = None
     if isinstance(polygons, List):
-        polygons = _batch_polygons(polygons)
+        empty_polygons = torch.tensor([len(p) == 0 for p in polygons], dtype=torch.bool, device=device)
+        # `[]` has no polygon to take a dtype or device from; an empty (0, 0, 2) batch returns below.
+        polygons = _batch_polygons(polygons) if polygons else images.new_zeros(0, 0, 2)
     b_p, _, xy, device_p, dtype_p = *polygons.shape, polygons.device, polygons.dtype
-    if len(colors.shape) == 1:
+    if len(colors.shape) <= 1:
         colors = colors.expand(b_i, c_i)
     b_c, _, device_c = *colors.shape, colors.device
     KORNIA_CHECK(xy == 2, "Polygon vertices must be xy, i.e. 2-dimensional")
     KORNIA_CHECK(b_i == b_p == b_c, "Image, polygon, and color must have same batch dimension")
     KORNIA_CHECK(device == device_p == device_c, "Image, polygon, and color must have same device")
+    # A polygon without vertices has nothing to fill, and closing its loop below needs a vertex.
+    if polygons.shape[1] == 0:
+        return images
 
     x_left, x_right = _get_convex_edges(polygons, h_i, w_i)
     ws = torch.arange(w_i, device=device, dtype=dtype_p)[None, None, :]
     fill_region = (ws >= x_left[..., :, None]) & (ws <= x_right[..., :, None])
+    if empty_polygons is not None:
+        fill_region &= ~empty_polygons[:, None, None]
     images.mul_(~fill_region[:, None]).add_(fill_region[:, None] * colors[..., None, None])
     return images
