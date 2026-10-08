@@ -489,7 +489,7 @@ class Test3DAugmentationConventions(BaseTester):
         volume = torch.rand(1, 1, 4, 5, 6)
         with pytest.raises(AssertionError):
             K.CenterCrop3D((5, 5, 6), p=1.0)(volume)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"cannot be smaller than crop size"):
             K.RandomCrop3D((5, 5, 6), p=1.0)(volume)
         assert K.CenterCrop3D(2, p=1.0)(volume).shape == (1, 1, 2, 2, 2)
         with pytest.raises(AssertionError):
