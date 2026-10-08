@@ -373,6 +373,10 @@ class MILossFromRef(EntropyBasedLossBase):
           ``signal``, next to the buffer ``mask``; later in-place changes to the reference tensor are not seen. The
           cache is not detached: a reference that requires grad receives a gradient from the first backward pass,
           and a second backward pass through the same module raises.
+        - Known defect: a boolean ``mask`` on the reference's device is stored as the buffer ``mask`` itself, not a
+          copy, while ``signal`` was restricted with it at construction: editing that mask in place afterwards
+          silently changes the loss, or raises when the number of selected positions changes
+          (`#5630 <https://github.com/kornia/kornia/issues/5630>`_).
     """
 
     def forward(self, other_signal: torch.Tensor, other_mask: torch.Tensor | None = None) -> torch.Tensor:
@@ -818,8 +822,9 @@ def mutual_information_loss(
           both masks have no effect. Masks of another shape, or with no position in common, raise an error.
         - Known defect: in float16 and bfloat16 the empty bins are floored at ``torch.finfo(dtype).eps`` counts
           before the histogram is normalised: both dtypes bias the loss of small images, and float16 returns NaN for
-          large ones, from about ``2**15 / window_radius**2`` pixels with the default ``MIKernel.xu`` and from a
-          quarter of that with ``MIKernel.rectangular`` (`#4153 <https://github.com/kornia/kornia/issues/4153>`_).
+          large ones, from about ``2**15 / window_radius**2`` pixels with the default ``MIKernel.xu``, from a
+          quarter of that with ``MIKernel.rectangular`` and from about ``2**16`` pixels, whatever the radius, with
+          ``MIKernel.truncated_gaussian`` (`#4153 <https://github.com/kornia/kornia/issues/4153>`_).
 
     Args:
         input (torch.Tensor): Batch of flat tensors shape (B,N) where B
@@ -866,8 +871,8 @@ def mutual_information_loss_2d(
 
     Convention:
         See the Convention block of :func:`~kornia.losses.mutual_information_loss`; this function applies it to
-        ``input.flatten(-2)`` and ``target.flatten(-2)``, row-major. Every axis before the last two is a batch axis,
-        so a ``(B, C, H, W)`` input gives one loss per image and channel, ``(B, C)``. The masks are ``(H, W)``.
+        ``input.flatten(-2)`` and ``target.flatten(-2)``. Every axis before the last two is a batch axis, so a
+        ``(B, C, H, W)`` input gives one loss per image and channel, ``(B, C)``. The masks are ``(H, W)``.
 
     Args:
         input (torch.Tensor): Batch of 2d tensors shape (B,H,W) where B
@@ -913,9 +918,8 @@ def mutual_information_loss_3d(
 
     Convention:
         See the Convention block of :func:`~kornia.losses.mutual_information_loss`; this function applies it to
-        ``input.flatten(-3)`` and ``target.flatten(-3)``, row-major, with ``(D, H, W)`` masks. Every axis before the
-        last three is a batch axis, so a ``(B, C, H, W)`` tensor is read as ``B`` volumes of depth ``C`` and gives
-        ``(B,)``.
+        ``input.flatten(-3)`` and ``target.flatten(-3)``, with ``(D, H, W)`` masks. Every axis before the last three
+        is a batch axis, so a ``(B, C, H, W)`` tensor is read as ``B`` volumes of depth ``C`` and gives ``(B,)``.
 
     Args:
         input (torch.Tensor): Batch of 3d tensors shape (B,D,H,W) where

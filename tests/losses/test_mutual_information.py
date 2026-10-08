@@ -678,6 +678,10 @@ class TestConventionsMutualInformation(BaseTester):
             nmi = normalized_mutual_information_loss_2d(x, y, num_bins=16)
             assert (mi.abs() < 0.05).all()
             assert ((nmi + 1).abs() < 0.05).all()
+        # a sample below the threshold also gets a zero gradient, not only an exactly constant one
+        x = tiny.clone().requires_grad_(True)
+        (grad,) = torch.autograd.grad(mutual_information_loss_2d(x, c, num_bins=16).sum(), (x,))
+        self.assert_close(grad, torch.zeros_like(grad), rtol=0.0, atol=0.0)
         # control: at 64 eps per unit the same image is a signal (a power-of-two scaling changes no position)
         self.assert_close(
             mutual_information_loss_2d(a * (64 * eps), c, num_bins=16), mutual_information_loss_2d(a, c, num_bins=16)
@@ -929,6 +933,16 @@ class TestConventionsMutualInformation(BaseTester):
         assert torch.equal(moved.signal, native.signal)
         x = self._images(device, moved_dtype)[0][0]
         assert torch.equal(moved(x), native(x))
+
+    def test_wart_mi_from_ref_keeps_the_callers_mask_tensor_5630(self, device, dtype):
+        """The ``mask`` buffer is the caller's mask tensor, so editing it in place changes the loss (#5630)."""
+        a, c, _ = self._images(device, dtype)
+        _, target_mask = self._masks(device)
+        module = MILossFromRef2D(c, target_mask)
+        expected = module(a)
+        # move the ROI down four rows: as many positions as before, so nothing raises
+        target_mask.copy_(torch.roll(target_mask, 4, 0))
+        assert ((module(a) - expected).abs() > 0.1).all()
 
     def test_wart_mi_losses_float16_nan_on_a_large_image_4153(self, device, dtype):
         """The empty-bin floor of ``finfo(dtype).eps`` counts makes float16 NaN on large images (#4153)."""
