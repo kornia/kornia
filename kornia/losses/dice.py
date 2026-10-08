@@ -161,7 +161,10 @@ def dice_loss(
     intersection = torch.sum(pred_soft * intersection_target, dims, dtype=reduction_dtype)
     cardinality = torch.sum(pred_soft + target_one_hot, dims, dtype=reduction_dtype)
 
-    dice_score = 2.0 * intersection / (cardinality + eps)
+    # An empty weighted reduction can occur for fully ignored samples or when all contributing class weights are zero.
+    # Make the denominator safe before division so the unused branch cannot introduce NaNs into the backward pass.
+    empty = cardinality == 0
+    dice_score = (2.0 * intersection / (cardinality + eps).masked_fill(empty, 1.0)).masked_fill(empty, 0.0)
     dice_loss = -dice_score + 1.0
 
     # reduce the loss across samples (and classes in case of `macro` averaging)

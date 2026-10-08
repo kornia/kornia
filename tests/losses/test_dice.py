@@ -117,6 +117,37 @@ class TestDiceLoss(BaseTester):
         self.assert_close(logits.grad[1], torch.zeros_like(logits.grad[1]), rtol=0, atol=0)
         self.assert_close(logits.grad[0, :, :, 1], torch.zeros_like(logits.grad[0, :, :, 1]), rtol=0, atol=0)
 
+    @pytest.mark.parametrize("average", ["micro", "macro"])
+    @pytest.mark.parametrize("empty_by", ["ignored", "zero_weight"])
+    def test_empty_reduction_eps_zero(self, device, dtype, average, empty_by):
+        logits = torch.randn(2, 3, 2, 2, device=device, dtype=dtype, requires_grad=True)
+        labels = torch.tensor([[[0, 1], [2, 1]], [[0, 1], [2, 1]]], device=device)
+        weight = None
+        if empty_by == "ignored":
+            labels[0] = -100
+        else:
+            weight = torch.zeros(3, device=device, dtype=dtype)
+
+        loss = kornia.losses.dice_loss(logits, labels, average=average, eps=0.0, weight=weight)
+        assert torch.isfinite(loss)
+        loss.backward()
+        assert torch.isfinite(logits.grad).all()
+        if empty_by == "ignored":
+            self.assert_close(logits.grad[0], torch.zeros_like(logits.grad[0]), rtol=0, atol=0)
+        else:
+            self.assert_close(logits.grad, torch.zeros_like(logits.grad), rtol=0, atol=0)
+
+    def test_micro_empty_weight_half_default_eps(self, device):
+        logits = torch.randn(1, 3, 2, 2, device=device, dtype=torch.float16, requires_grad=True)
+        labels = torch.tensor([[[0, 1], [2, 1]]], device=device)
+        weight = torch.zeros(3, device=device, dtype=torch.float16)
+
+        loss = kornia.losses.dice_loss(logits, labels, average="micro", weight=weight)
+        self.assert_close(loss, logits.new_tensor(1.0), rtol=0, atol=0)
+        loss.backward()
+        assert torch.isfinite(logits.grad).all()
+        self.assert_close(logits.grad, torch.zeros_like(logits.grad), rtol=0, atol=0)
+
     def test_macro_sample_without_weighted_class(self, device, dtype):
         # Sample 0 holds only class 0, whose weight is 0: no weighted class is left, as in a fully ignored sample, so
         # it keeps loss 1 with a zero gradient instead of 0 / 0 spreading NaN over the batch.
