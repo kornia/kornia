@@ -500,6 +500,7 @@ class TestAutoAugmentConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_convention_operation_wrappers_pickle_and_replay_4469(self):
+        import io
         import pickle
 
         x = torch.rand(2, 3, 16, 16)
@@ -515,6 +516,17 @@ class TestAutoAugmentConventions(BaseTester):
             pickle.loads(pickle.dumps(operation))  # noqa: S301
         for policy in (AutoAugment(), RandAugment(n=2, m=15), TrivialAugment()):
             restored = pickle.loads(pickle.dumps(policy))  # noqa: S301
+            torch.manual_seed(0)
+            expected = policy(x)
+            torch.manual_seed(0)
+            assert torch.equal(restored(x), expected)
+        # torch.save/torch.load of a policy that has already run a forward pass; the buffer is written in-process here
+        for policy in (AutoAugment(), RandAugment(n=2, m=15), TrivialAugment()):
+            policy(x)
+            buffer = io.BytesIO()
+            torch.save(policy, buffer)
+            buffer.seek(0)
+            restored = torch.load(buffer, weights_only=False)
             torch.manual_seed(0)
             expected = policy(x)
             torch.manual_seed(0)
