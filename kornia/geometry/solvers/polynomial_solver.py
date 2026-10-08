@@ -371,7 +371,19 @@ def _solve_cubic(coeffs: torch.Tensor, _allow_promotion: bool = True) -> tuple[t
         spread = b_a2 - 3 * c_a
         ambiguous = cubic_q_nonzero & (spread > 0) & (discriminant.abs() <= 32 * eps * (q3.abs() + r * r))
     double = torch.zeros_like(mask_cubic)
-    has_ambiguous = compiling or bool(ambiguous.any())
+    # A captured graph evaluates every branch at fixed shape. Eager execution reads all branch flags with one host
+    # synchronization and skips the branches no row takes; their torch.where selections would be identities. An
+    # ambiguous row can move to the three-root branch, which it then keeps.
+    if compiling:
+        has_ambiguous = has_q_only = has_qr_zero = has_three = has_one = has_second_order = has_first_order = True
+    else:
+        flags = torch.stack(
+            [ambiguous, mask_q_only, mask_qr_zero, mask_three, mask_one, mask_second_order, mask_first_order]
+        )
+        has_ambiguous, has_q_only, has_qr_zero, has_three, has_one, has_second_order, has_first_order = (
+            flags.any(-1).tolist()
+        )
+        has_three = has_three or has_ambiguous
     if has_ambiguous:
         # The stationary points solve 3 x^2 + 2 b x + c = 0; the smaller one is c / (3 * larger).
         first = -(b_a + torch.where(b_a >= 0, 1.0, -1.0) * torch.where(ambiguous, spread, one).sqrt()) / 3
@@ -395,15 +407,6 @@ def _solve_cubic(coeffs: torch.Tensor, _allow_promotion: bool = True) -> tuple[t
         double_roots = torch.stack([-b_a - 2 * double_root, double_root, double_root], -1)
         mask_three = (mask_three | three_real) & ~double
         mask_one = mask_one & ~three_real & ~double
-
-    # A captured graph evaluates every branch at fixed shape. Eager execution
-    # reads all branch flags with one host synchronization and skips the
-    # branches no row takes; their torch.where selections would be identities.
-    if compiling:
-        has_q_only = has_qr_zero = has_three = has_one = has_second_order = has_first_order = True
-    else:
-        flags = torch.stack([mask_q_only, mask_qr_zero, mask_three, mask_one, mask_second_order, mask_first_order])
-        has_q_only, has_qr_zero, has_three, has_one, has_second_order, has_first_order = flags.any(-1).tolist()
 
     q_only_root = zero
     if has_q_only:
