@@ -804,15 +804,16 @@ def mutual_information_loss(
           not broadcast over a batch of inputs. There is no ``reduction``: the result holds one loss per leading
           index, shape ``*``, in the input dtype (:ref:`Losses and metrics <losses-metrics-conventions>` lists the
           defaults of the other losses).
-        - Each signal is min-max normalised per sample, over its mask, so no data range is assumed: a positive
-          rescaling and a shift of one sample leave its loss unchanged up to roundoff, while one outlier squeezes the
-          other values of its sample into a few bins. A sample whose range is at most ``torch.finfo(dtype).eps``,
-          an absolute threshold, counts as constant: its MI is 0 and it gets a zero gradient.
+        - Each signal is min-max normalised per sample, over its mask, so no data range is assumed. A positive
+          rescaling and a shift of one sample leave its loss unchanged up to roundoff when both its original and
+          transformed ranges exceed the absolute threshold ``torch.finfo(dtype).eps``. One outlier squeezes the
+          other values of its sample into a few bins. A sample whose range is at most that threshold counts as
+          constant: its MI is 0 and it gets a zero gradient.
         - The joint histogram has ``num_bins`` bins per signal, and each value spreads over the bins within
           ``window_radius`` bin widths of it, weighted by ``kernel_function``, a :class:`~kornia.losses.MIKernel`
           member. With continuous values and the default ``window_radius``, this soft histogram scores an image
-          against itself below its entropy. More bins raise MI and a wider window lowers it, so values compare only
-          at equal ``num_bins``, ``window_radius`` and kernel.
+          against itself below its entropy. Changing ``num_bins`` or ``window_radius`` changes the estimate without
+          a guaranteed direction, so values compare only at equal ``num_bins``, ``window_radius`` and kernel.
         - With ``MIKernel.xu`` (the default) and ``MIKernel.truncated_gaussian``, ``input`` and ``target`` both get
           gradients. ``MIKernel.rectangular`` is piecewise constant: its loss has no gradient and serves for
           evaluation only.

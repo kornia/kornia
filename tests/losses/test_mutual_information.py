@@ -877,12 +877,17 @@ class TestConventionsMutualInformation(BaseTester):
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip(_HALF_FLOOR_SKIP)
         a, c, _ = self._images(device, dtype)
-        # finer bins raise MI, a wider kernel lowers it: values compare only at equal settings
+        # On this fixture finer bins raise MI and a wider kernel lowers it; these are not general monotonic rules.
         mi_aa = [mutual_information_loss_2d(a, a, num_bins=n) for n in (4, 16, 64)]
         assert (mi_aa[0] > mi_aa[1]).all()
         assert (mi_aa[1] > mi_aa[2]).all()
         mi_ac = [mutual_information_loss_2d(a, c, window_radius=r) for r in (0.5, 1.0, 2.0, 4.0)]
         assert all((low < high).all() for low, high in zip(mi_ac, mi_ac[1:]))
+        # A counterexample to both trends: finer bins lower MI, and a wider kernel raises it.
+        x = torch.tensor([0.0, 0.25, 0.5, 0.75, 1.0], device=device, dtype=dtype)
+        y = torch.tensor([0.0, 1.0, 0.0, 1.0, 0.0], device=device, dtype=dtype)
+        assert mutual_information_loss(x, y, num_bins=6) > mutual_information_loss(x, y, num_bins=5)
+        assert mutual_information_loss(x, y, window_radius=2.0) < mutual_information_loss(x, y, window_radius=1.0)
         # the default histogram is soft: an image is not fully informative about itself, MI(a, a) < H(a) and
         # NMI(a, a) < 2 ...
         h_a, _, _ = MILossFromRef(a.flatten(-2)).entropies(a.flatten(-2))
