@@ -60,7 +60,7 @@ def charbonnier_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "n
           the inputs.
         - This loss, :func:`~kornia.losses.cauchy_loss` and :func:`~kornia.losses.geman_mcclure_loss` evaluate
           float16 and bfloat16 inputs in float32, gradients included, and return the input dtype;
-          :func:`~kornia.losses.welsch_loss` computes in the input dtype.
+          :func:`~kornia.losses.welsch_loss` does not upcast them.
 
     Args:
         img1: the predicted torch.Tensor with shape :math:`(*)`.

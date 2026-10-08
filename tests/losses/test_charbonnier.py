@@ -263,8 +263,10 @@ class TestConventionsRobustLosses(BaseTester):
         if dtype not in (torch.float16, torch.bfloat16):
             pytest.skip("only half-precision inputs can be evaluated in another dtype")
         # Charbonnier, Cauchy and Geman-McClure evaluate half-precision inputs in float32 and round once; their
-        # gradients are pinned in test_robust.py. Welsch computes in the input dtype, so some of these 641 values round
-        # differently from the float32 evaluation (46 to 68 on arm64 CPU and MPS). All four return the input dtype.
+        # gradients are pinned in test_robust.py. Welsch does not upcast, so in eager mode some of these 641 values
+        # round differently from the float32 evaluation (46 to 68 on arm64 CPU and MPS). This pin runs eagerly:
+        # inductor keeps fused intermediates in float32, and compiled Welsch matches the float32 evaluation on the
+        # same grid (torch 2.14, CPU and MPS). All four return the input dtype.
         residual = torch.linspace(-8.0, 8.0, 641, device=device, dtype=dtype)
         out = loss_fn(residual, torch.zeros_like(residual))
         assert out.dtype == dtype
