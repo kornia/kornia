@@ -745,6 +745,51 @@ class TestQuarticSolver(BaseTester):
     @pytest.mark.parametrize(
         "coefficients, expected",
         [
+            ([1.0, -6.25, -1.625, 0.0, 0.0], [6.5, 0.0, 0.0, -0.25]),  # x^2 (x - 6.5)(x + 0.25)
+            ([1.0, -2.0, -3.0, 0.0, 0.0], [3.0, 0.0, 0.0, -1.0]),
+            ([2.0, -4.0, 2.0, 0.0, 0.0], [1.0, 1.0, 0.0, 0.0]),  # 2 x^2 (x - 1)^2
+            ([1.0, 0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]),  # x^2 (x^2 + 1): the pair is padding
+            ([1.0, -3.0, 0.0, 0.0, 0.0], [3.0, 0.0, 0.0, 0.0]),
+            ([-0.5, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]),
+        ],
+    )
+    def test_exact_zero_roots_are_deflated(self, coefficients, expected, device, dtype):
+        # A trailing pair of zero coefficients is an exact multiple root at 0. The rest of the
+        # row is solved without it, and the zeros sort with the genuine roots.
+        coeffs = torch.tensor([coefficients], device=device, dtype=dtype)
+        actual = solver.solve_quartic(coeffs)
+        self.assert_close(actual, torch.tensor([expected], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+
+    def test_exact_zero_double_root_grid(self, device, dtype):
+        # x^2 (x - p)(x - q) for every pair of distinct nonzero quarter-integers in [-6, 6].
+        values = torch.arange(-24, 25, dtype=torch.float64) / 4
+        pairs = torch.combinations(values[values != 0], r=2)
+        roots = torch.cat([pairs, torch.zeros_like(pairs)], -1)
+        coefficients = _monic_from_roots(roots)
+        exact = (coefficients.to(dtype).double() == coefficients).all(-1)
+        coefficients = coefficients[exact].to(device=device, dtype=dtype)
+        expected = roots[exact].sort(-1, descending=True).values.to(device=device, dtype=dtype)
+        self.assert_close(solver.solve_quartic(coefficients), expected, atol=1e-5, rtol=1e-5)
+
+    def test_exact_zero_double_root_gradient(self, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("The analytic Jacobian is compared in float64.")
+        coeffs = torch.tensor([[1.0, -6.25, -1.625, 0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
+        roots = solver.solve_quartic(coeffs)
+        # The simple root 6.5 has the implicit Jacobian -[r^4, r^3, r^2, r, 1] / p'(r), e included.
+        r = 6.5
+        slope = 4 * r**3 - 18.75 * r**2 - 3.25 * r
+        expected = -torch.tensor([[r**4, r**3, r**2, r, 1.0]], device=device, dtype=dtype) / slope
+        (gradient,) = torch.autograd.grad(roots[0, 0], coeffs, retain_graph=True)
+        self.assert_close(gradient, expected, atol=1e-12, rtol=1e-12)
+        # The double zero keeps the repeated-root convention: the four roots sum to -b / a.
+        (gradient,) = torch.autograd.grad(roots.sum(), coeffs)
+        expected = torch.tensor([[-6.25, -1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
+        self.assert_close(gradient, expected, atol=1e-12, rtol=1e-12)
+
+    @pytest.mark.parametrize(
+        "coefficients, expected",
+        [
             # Two distinct real roots near a stationary point. References below
             # solve the represented coefficients, not their generating roots.
             (

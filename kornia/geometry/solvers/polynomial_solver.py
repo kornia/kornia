@@ -970,6 +970,38 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         roots = torch.where(biquadratic[:, None], bi_roots, roots)
         genuine = torch.where(biquadratic[:, None], bi_real, genuine)
 
+    # Trailing zero coefficients d = e = 0 make 0 a multiple root, which Ferrari only approximates: the
+    # factors' constants are rounding noise, and the pair at 0 can leave as padding or take a simple root
+    # with it. Deflate x^k instead and solve the rest with solve_cubic's lower-degree convention, so the
+    # zeros are exact and the other roots continue as Ferrari's candidates would. A single trailing zero
+    # needs no deflation: Newton reaches the simple root at 0 exactly.
+    zero_pair = (d_q == 0) & (e_q == 0)
+    if compiling or bool(zero_pair.any()):
+        with torch.no_grad():
+            c_zero = zero_pair & (c_q == 0)
+            b_zero = c_zero & (b_q == 0)
+            ones, zeros = torch.ones_like(a_q), torch.zeros_like(a_q)
+            deflated = torch.where(
+                b_zero[:, None],
+                torch.stack([zeros, zeros, zeros, a_q], -1),
+                torch.where(
+                    c_zero[:, None],
+                    torch.stack([zeros, zeros, a_q, b_q], -1),
+                    torch.stack([zeros, a_q, b_q, c_q], -1),
+                ),
+            )
+            deflated = torch.where(zero_pair[:, None], deflated, torch.stack([zeros, ones, zeros, -ones], -1))
+            deflated_roots, deflated_count = _solve_cubic(deflated)
+            # Slots below the deflated degree hold its roots; the remaining slots are the zeros.
+            degree = 2 - c_zero.long() - b_zero.long()
+            slot = torch.arange(4, device=roots.device)
+            deflated_genuine = (slot < deflated_count[:, None]) | (slot >= degree[:, None])
+            deflated_roots = torch.cat([deflated_roots, zeros[:, None]], -1) * inverse_scale[:, None]
+        roots = torch.where(zero_pair[:, None], deflated_roots, roots)
+        genuine = torch.where(zero_pair[:, None], deflated_genuine, genuine)
+        use_local = use_local & ~zero_pair[:, None]
+        real_double = real_double & ~zero_pair[:, None]
+
     with torch.no_grad():
         stationary, unresolved = _quartic_stationary_points(roots, columns)
         root_locally_real, is_double, _, _, _ = _quartic_local_discriminant_is_real(
