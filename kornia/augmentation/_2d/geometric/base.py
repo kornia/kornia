@@ -229,6 +229,11 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
         **kwargs: Any,
     ) -> torch.Tensor:
+        """Inverse image inputs.
+
+        For an empty batch with recorded input-shape metadata, image and mask inverses
+        restore the recorded spatial size while preserving the inverse input's channel count.
+        """
         in_tensor = self.transform_tensor(input)
         output = in_tensor.clone()
         batch_prob = params["batch_prob"]

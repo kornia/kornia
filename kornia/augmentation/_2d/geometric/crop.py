@@ -389,9 +389,6 @@ class RandomCrop(GeometricAugmentationBase2D):
             raise NotImplementedError(
                 f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
             )
-        if input.shape[0] == 0:
-            # Empty forward parameters record the original canvas; there are no padding rows to undo.
-            return super().inverse_inputs(input, params, flags, transform, **kwargs)
         if isinstance(transform, torch.Tensor):
             # The inverse matrix returns original coordinates. The image inverse still renders
             # onto forward_input_shape (the padded canvas), then removes its border below.

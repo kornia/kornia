@@ -85,7 +85,12 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
         dtype = reference.dtype if reference is not None and torch.is_floating_point(reference) else torch.float32
         input_shape = tuple(forward_input_shape.tolist())
         padding_size = params.get("padding_size")
-        if not is_exporting() and isinstance(padding_size, torch.Tensor) and len(input_shape) >= 2:
+        if (
+            not is_exporting()
+            and isinstance(padding_size, torch.Tensor)
+            and padding_size.shape[0] > 0
+            and len(input_shape) >= 2
+        ):
             left, right, top, bottom = padding_size[0].tolist()
             input_shape = (*input_shape[:-2], input_shape[-2] - top - bottom, input_shape[-1] - left - right)
         matrix_input = torch.empty((), device=device, dtype=dtype).expand(input_shape)

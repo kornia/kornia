@@ -1,1 +1,2 @@
-Geometric image and mask inverse operations restore the recorded spatial dimensions for empty batches. RandomCrop resample-mode inverse handles empty batches with padding and replays their original shape after changing padding or size flags.
+Fix an IndexError from padding[0] when replaying saved parameters for an empty RandomCrop mask inverse
+without a cached transformation matrix. Part of #4429. Other empty-batch inverse paths remain unchanged.

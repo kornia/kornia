@@ -108,7 +108,8 @@ class TestEmptyGeometricInverse(BaseTester):
         self.assert_close(output, image, rtol=0, atol=0)
 
     @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
-    def test_sequential_round_trip_4429(self, p, device, dtype):
+    @pytest.mark.parametrize("height,width", [(6, 8), (9, 13)])
+    def test_sequential_round_trip_4429(self, p, height, width, device, dtype):
         if not supports_bilinear_2d_grid_sample_backward(device, dtype):
             pytest.skip("The forward resampling kernel does not support this device/dtype's backward pass.")
         aug = K.AugmentationSequential(
@@ -116,17 +117,99 @@ class TestEmptyGeometricInverse(BaseTester):
             K.Resize((2, 3)),
             data_keys=["input"],
         )
-        image = torch.empty(0, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
+        image = torch.empty(0, 3, height, width, device=device, dtype=dtype, requires_grad=True)
         output = aug(image)
         mask = torch.empty(0, 1, *output.shape[-2:], device=device, dtype=dtype, requires_grad=True)
         restored_image, restored_mask = aug.inverse(output, mask, data_keys=["input", "mask"])
         assert restored_image.shape == image.shape
-        assert restored_mask.shape == (0, 1, 6, 8)
+        assert restored_mask.shape == (0, 1, height, width)
         for restored, original in ((restored_image, image), (restored_mask, mask)):
             assert restored.device == original.device
             assert restored.dtype == original.dtype
             restored.sum().backward()
             self.assert_close(original.grad, torch.empty_like(original))
+
+    @pytest.mark.parametrize("height,width", [(6, 8), (9, 13)])
+    @pytest.mark.parametrize("replay_state", ["immediate", "after-forward", "fresh-instance"])
+    def test_mask_only_saved_params_replay_4429(self, height, width, replay_state, device, dtype):
+        if not supports_bilinear_2d_grid_sample_backward(device, dtype):
+            pytest.skip("The forward resampling kernel does not support this device/dtype's backward pass.")
+
+        def make_sequence():
+            return K.AugmentationSequential(
+                K.RandomCrop(
+                    (4, 5),
+                    padding=(1, 2, 3, 4),
+                    cropping_mode="resample",
+                    p=1.0,
+                ),
+                data_keys=["input"],
+            )
+
+        sequence = make_sequence()
+        output = sequence(torch.empty(0, 3, height, width, device=device, dtype=dtype))
+        saved_params = deepcopy(sequence._params)
+        assert output.shape == (0, 3, 4, 5)
+        assert saved_params[0].data["forward_input_shape"].tolist() == [0, 3, height, width]
+
+        if replay_state == "after-forward":
+            next_height, next_width = (9, 13) if (height, width) == (6, 8) else (6, 8)
+            nonempty = torch.arange(
+                2 * 3 * next_height * next_width,
+                device=device,
+                dtype=dtype,
+            ).reshape(2, 3, next_height, next_width)
+            sequence(nonempty)
+        elif replay_state == "fresh-instance":
+            sequence = make_sequence()
+
+        mask = torch.empty(0, 1, *output.shape[-2:], device=device, dtype=dtype, requires_grad=True)
+        restored = sequence.inverse(mask, params=saved_params, data_keys=["mask"])
+        assert restored.shape == (0, 1, height, width)
+        assert restored.device == device
+        assert restored.dtype == dtype
+        restored.sum().backward()
+        assert mask.grad is not None
+        assert mask.grad.shape == mask.shape
+
+    @pytest.mark.parametrize(
+        "make_sequence",
+        [
+            lambda: K.AugmentationSequential(
+                K.RandomCrop(
+                    (4, 5),
+                    padding=(1, 2, 3, 4),
+                    cropping_mode="resample",
+                    p=1.0,
+                ),
+                data_keys=["input"],
+            ),
+            lambda: K.AugmentationSequential(K.Resize((4, 5)), data_keys=["input"]),
+        ],
+        ids=["random-crop", "resize"],
+    )
+    def test_dynamo_mask_only_saved_params_replay_4429(
+        self,
+        make_sequence,
+        torch_optimizer,
+        device,
+        dtype,
+    ):
+        sequence = make_sequence()
+        output = sequence(torch.empty(0, 3, 9, 13, device=device, dtype=dtype))
+        saved_params = deepcopy(sequence._params)
+        mask = torch.empty(0, 1, *output.shape[-2:], device=device, dtype=dtype)
+
+        def replay(saved_mask):
+            return sequence.inverse(saved_mask, params=saved_params, data_keys=["mask"])
+
+        eager = replay(mask)
+        compiled = torch_optimizer(replay)
+        actual = compiled(mask)
+        self.assert_close(actual, eager)
+        assert actual.shape == (0, 1, 9, 13)
+        assert actual.device == device
+        assert actual.dtype == dtype
 
     @pytest.mark.parametrize(
         "make_aug,output_size",
