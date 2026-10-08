@@ -212,10 +212,10 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     roots are returned unsorted; one-real-root rows are padded with zero.
     A zero leading coefficient lowers the degree.
 
-    Half-precision inputs are promoted to float32. Float32 discriminant
-    boundaries use float64: CPU batches containing an uncertain row and
-    compiled graphs use float64 throughout; eager accelerator paths promote
-    only the uncertain rows.
+    Half-precision inputs are promoted to float32. Float32 cubics are solved
+    in float64 on CPU and in captured graphs, so a row's roots do not depend on
+    the rest of its batch; eager accelerator paths promote only the rows whose
+    float32 discriminant sign is uncertain.
     MPS copies rows needing float64 to CPU; captured graphs use CPU float64 throughout.
     At a repeated-root acos boundary backward uses a finite surrogate derivative.
 
@@ -244,15 +244,17 @@ def _solve_cubic_with_count(coeffs: torch.Tensor, _allow_promotion: bool = True)
         return roots.to(coeffs.dtype), num_real
 
     # Float32 cannot reliably resolve the sign of Cardano's discriminant for
-    # close large roots. Compiled graphs use float64 for their fixed batch;
-    # eager execution promotes only rows inside the floating-point error bound.
+    # close large roots. CPU and compiled graphs solve every row in float64: on
+    # CPU that costs less than locating the uncertain rows, and it keeps each
+    # row independent of its batch. Eager accelerator execution promotes only
+    # rows inside the floating-point error bound.
     # The seven-point kernel keeps its native precision in _solve_cubic_real.
     if coeffs.dtype == torch.float32 and _allow_promotion:
         # MPS has no float64 kernels; separate device and dtype copies avoid
         # its combined conversion losing values. Captured graphs keep fixed shape.
-        if torch.compiler.is_compiling():
+        if coeffs.device.type == "cpu" or torch.compiler.is_compiling():
             precise_coeffs = coeffs.cpu().double() if coeffs.device.type == "mps" else coeffs.double()
-            roots, num_real = _solve_cubic_with_count(precise_coeffs)
+            roots, num_real = _solve_cubic_with_count(precise_coeffs, False)
             return roots.to(dtype=coeffs.dtype).to(device=coeffs.device), num_real.to(device=coeffs.device)
         with torch.no_grad():
             uncertain = _cubic_discriminant_is_uncertain(coeffs)
@@ -260,11 +262,6 @@ def _solve_cubic_with_count(coeffs: torch.Tensor, _allow_promotion: bool = True)
                 bits = coeffs.view(torch.int32).bitwise_and(0x7FFFFFFF)
                 uncertain = uncertain | ((bits > 0) & (bits < 2**23)).any(-1)
         if torch.any(uncertain):
-            # On CPU, one double-precision solve is cheaper than building two
-            # complete eager graphs for a native batch plus its uncertain rows.
-            if coeffs.device.type == "cpu":
-                roots, num_real = _solve_cubic_with_count(coeffs.double(), False)
-                return roots.to(coeffs.dtype), num_real
             placeholder = torch.tensor([1.0, 0.0, 0.0, -1.0], device=coeffs.device, dtype=coeffs.dtype)
             native_coeffs = torch.where(uncertain[:, None], placeholder, coeffs)
             roots, num_real = _solve_cubic_with_count(native_coeffs, False)
