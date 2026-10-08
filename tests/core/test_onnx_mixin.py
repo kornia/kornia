@@ -112,6 +112,7 @@ class TestONNXExportMixin(BaseTester):
         ids=["conv", "gaussian_blur"],
     )
     def test_saved_model_has_the_documented_opset(self, tmp_path, channels, module):
+        """Test that the saved ONNX model uses the documented opset."""
         # The dynamo exporter builds opset 18 and down-converts a lower request only when every op has an adapter, which
         # a convolution has and the blur's ``Pad`` has not.
         path = tmp_path / "model.onnx"

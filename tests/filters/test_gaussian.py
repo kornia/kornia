@@ -548,6 +548,7 @@ class TestGaussianBlur2d(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_onnx_export_legacy_dynamic_matches_eager(self, dtype):
+        """Test that a dynamic-axes legacy export of GaussianBlur2d matches eager execution."""
         if dtype != torch.float32:
             pytest.skip("the exported graph is checked once, in float32")
         pytest.importorskip("onnx")
