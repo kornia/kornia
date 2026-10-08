@@ -116,9 +116,11 @@ def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str 
           nothing is averaged, and swapping the two sets transposes it.
         - Boxes are exclusive in every ``box_format``: the area of ``(x1, y1, x2, y2)`` is
           :math:`(x_2 - x_1)(y_2 - y_1)`, with no ``+ 1``, as in :func:`~kornia.geometry.bbox.nms`. A box with a
-          non-positive width or height raises ``AssertionError``, except during export, which skips the check. A
-          :class:`~kornia.geometry.boxes.Boxes` gives the same IoU through ``to_tensor('xyxy')``, not through its
-          inclusive ``'xyxy_plus'`` export.
+          non-positive width or height raises ``AssertionError``, unless the call is exported or compiled, which may
+          skip the check. A :class:`~kornia.geometry.boxes.Boxes` gives the same IoU through ``to_tensor('xyxy')``,
+          not through its inclusive ``'xyxy_plus'`` export.
+        - Known defect: a compiled call can skip that check, and an invalid box then gives an IoU of 0 or NaN instead
+          of raising (`#5037 <https://github.com/kornia/kornia/issues/5037>`_).
 
     Args:
         boxes_1: a tensor of bounding boxes in :math:`(B1, 4)`.

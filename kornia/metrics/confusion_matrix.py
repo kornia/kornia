@@ -47,15 +47,18 @@ def confusion_matrix(
     r"""Compute confusion matrix to evaluate the accuracy of a classification.
 
     Convention:
-        - ``pred`` and ``target`` are class labels of the same shape, prediction first, in any integer dtype; a bool
-          tensor counts as the labels 0 and 1. A floating-point label tensor raises, and so does a label outside
-          :math:`[0, K)`, except during export, which skips the range check.
+        - ``pred`` and ``target`` are class labels of the same shape, prediction first, in ``uint8`` or any signed
+          integer dtype; a bool tensor counts as the labels 0 and 1. A floating-point label tensor raises, and so does
+          a label outside :math:`[0, K)`, unless the call is exported or compiled, which may skip the range check.
         - The first axis is always the batch: the result holds one :math:`(K, K)` float32 count matrix per sample,
           :math:`(B, K, K)`, and is never pooled over the batch, so a flat :math:`(N,)` label vector gives :math:`N`
           matrices that count one label each. Sum over the first axis for the matrix of a whole batch or dataset.
         - Rows are the target and columns the prediction, ``cm[b, target, pred]``; swapping the two arguments
           transposes every count matrix. :ref:`Losses and metrics <losses-metrics-conventions>` maps the matrix and
           ``normalized`` onto scikit-learn.
+        - Known defect: the range check follows ``is_exporting()``, whose meaning under ``torch.compile`` depends on
+          the torch version, so a compiled call can skip it and count an out-of-range prediction in another cell
+          (`#5037 <https://github.com/kornia/kornia/issues/5037>`_).
 
     Args:
         pred: tensor with estimated targets returned by a

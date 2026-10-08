@@ -888,7 +888,8 @@ class absent from a sample, see `Dense-prediction losses`_.
    * - :func:`~kornia.metrics.mean_average_precision`
      - a 0-d tensor and a ``{class id: AP}`` dict
      - the detections of all images, per class, then a mean over the classes with objects
-     - fraction, ``[0, 1]``; ``-1`` for a class without objects
+     - fraction, ``[0, 1]``; ``-1`` for a class without objects, and for the mAP when no image has a foreground
+       object
    * - :func:`~kornia.metrics.aepe`, :func:`~kornia.metrics.average_endpoint_error`, :class:`~kornia.metrics.AEPE`
      - 0-d, or ``(*)`` for ``reduction='none'``
      - every position of every sample
