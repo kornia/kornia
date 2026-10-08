@@ -230,7 +230,9 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
 
     Convention:
         - Coefficient layout and zero padding as :func:`solve_quadratic`. Three real roots are returned unsorted,
-          and a single real root is in slot 0.
+          and a single real root is in slot 0. Where the discriminant is within rounding of 0, the cubic's values
+          at its stationary points, evaluated with compensated Horner on the input coefficients, decide between
+          one root, a double root and three roots.
         - A zero leading coefficient lowers the degree, and the roots of the remaining polynomial come first.
         - The closed form is evaluated on the row scaled by an exact power of two to a unit root bound, and the
           roots are scaled back, so its intermediates neither overflow nor underflow for a tiny leading coefficient
@@ -253,8 +255,10 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     .. note::
        At the acos boundary reached by a repeated (or near-repeated) real root, backward suppresses
        the derivative of the acos argument to keep gradients finite. Repeated-root derivatives are
-       undefined; this is a surrogate convention, not a mathematical Jacobian. :func:`solve_quartic`
-       inherits this convention for the rows it solves as cubics.
+       undefined; this is a surrogate convention, not a mathematical Jacobian. A double root that the
+       cubic's values at its stationary points identify takes the derivative of that stationary point, and
+       the third root keeps the sum of the roots at ``-b / a``. :func:`solve_quartic` inherits these
+       conventions for the rows it solves as cubics.
 
     """
     return _solve_cubic_with_count(coeffs)[0]
@@ -348,10 +352,46 @@ def _solve_cubic(coeffs: torch.Tensor, _allow_promotion: bool = True) -> tuple[t
     mask_three = cubic_q_nonzero & (discriminant <= 0)
     mask_one = cubic_q_nonzero & (discriminant > 0)
 
+    # At an exact double root Cardano's discriminant is rounding noise of either sign, and a positive one
+    # reported a single root: (x + 5.25)(x - 3.125)^2 came back [-5.25, 0, 0]. The discriminant is a multiple of
+    # the product of the cubic's values at its two stationary points, so where it is within rounding of 0 those
+    # values decide, evaluated with compensated Horner on the input coefficients. A value within its error
+    # bound, plus the drift p'^2 / |p''| from the stationary point's own rounding, is a double root there, with
+    # the third root from Vieta's sum; two certain values of opposite sign are three real roots.
+    compiling = torch.compiler.is_compiling()
+    eps = torch.finfo(coeffs.dtype).eps
+    with torch.no_grad():
+        spread = b_a2 - 3 * c_a
+        ambiguous = cubic_q_nonzero & (spread > 0) & (discriminant.abs() <= 32 * eps * (q3.abs() + r * r))
+    double = torch.zeros_like(mask_cubic)
+    has_ambiguous = compiling or bool(ambiguous.any())
+    if has_ambiguous:
+        # The stationary points solve 3 x^2 + 2 b x + c = 0; the smaller one is c / (3 * larger).
+        first = -(b_a + torch.where(b_a >= 0, 1.0, -1.0) * torch.where(ambiguous, spread, one).sqrt()) / 3
+        second = c_a / (3 * torch.where(ambiguous, first, one))
+        with torch.no_grad():
+            x = torch.stack([first, second], -1) * scale[:, None]
+            original = torch.where(mask_cubic[:, None], coeffs, 1.0)
+            value, error, scaled = _compensated_horner(original, x)
+            lead, quadratic, linear, _ = (v[:, None] for v in scaled.unbind(-1))
+            slope = (3 * lead * x + 2 * quadratic) * x + linear
+            drift = slope.square() / (6 * lead * x + 2 * quadratic).abs()
+            certain = value.abs() > error + drift
+            # At extreme scales the evaluation overflows, or its normalization flushes a small coefficient to 0,
+            # and decides nothing.
+            flushed = ((scaled == 0) & (original != 0)).any(-1)
+            decidable = ambiguous & ~flushed & torch.isfinite(value + error + drift).all(-1)
+            at_first = decidable & ~certain[:, 0] & certain[:, 1]
+            double = at_first | (decidable & certain[:, 0] & ~certain[:, 1])
+            three_real = decidable & certain.all(-1) & (value[:, 0] * value[:, 1] < 0)
+        double_root = torch.where(at_first, first, second)
+        double_roots = torch.stack([-b_a - 2 * double_root, double_root, double_root], -1)
+        mask_three = (mask_three | three_real) & ~double
+        mask_one = mask_one & ~three_real & ~double
+
     # A captured graph evaluates every branch at fixed shape. Eager execution
     # reads all branch flags with one host synchronization and skips the
     # branches no row takes; their torch.where selections would be identities.
-    compiling = torch.compiler.is_compiling()
     if compiling:
         has_q_only = has_qr_zero = has_three = has_one = has_second_order = has_first_order = True
     else:
@@ -406,8 +446,10 @@ def _solve_cubic(coeffs: torch.Tensor, _allow_promotion: bool = True) -> tuple[t
         cubic_roots = torch.where(mask_three[:, None], three_roots, cubic_roots)
     if has_one:
         cubic_roots = torch.where(mask_one[:, None], torch.stack([one_root, zero, zero], dim=-1), cubic_roots)
+    if has_ambiguous:
+        cubic_roots = torch.where(double[:, None], double_roots, cubic_roots)
     cubic_roots = cubic_roots * scale[:, None]
-    cubic_count = torch.where(mask_qr_zero | mask_three, 3, torch.where(mask_cubic, 1, 0))
+    cubic_count = torch.where(mask_qr_zero | mask_three | double, 3, torch.where(mask_cubic, 1, 0))
 
     # A dominant root makes the closed-form discriminant ill-conditioned. The
     # detached gate permits us to form Vieta's smaller quadratic only where it
@@ -424,6 +466,7 @@ def _solve_cubic(coeffs: torch.Tensor, _allow_promotion: bool = True) -> tuple[t
     # Vieta's quotients by it would invent a real pair of size 1 / remnant.
     mask_dominant = (
         mask_cubic
+        & ~double
         & (dominant_detached != 0)
         & (dominant_detached.abs() > _DOMINANT_ROOT_RATIO * other_scale)
         & (8 * dominant_detached.abs() >= scale)
@@ -621,8 +664,8 @@ def _quartic_stationary_points(x: torch.Tensor, p: _QuarticColumns) -> tuple[tor
 
 
 @torch.no_grad()
-def _quartic_compensated_value(coeffs: torch.Tensor, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Evaluate the quartics ``coeffs (B, 5)`` at ``x (B, k)`` with compensated Horner.
+def _compensated_horner(coeffs: torch.Tensor, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Evaluate the polynomials ``coeffs (B, n + 1)``, highest degree first, at ``x (B, k)`` with compensated Horner.
 
     Returns the value, a bound on its error, and the coefficients after the exact power-of-two scaling the value
     is computed with, which preserves the sign of every term.
@@ -653,13 +696,17 @@ def _quartic_compensated_value(coeffs: torch.Tensor, x: torch.Tensor) -> tuple[t
         correction = correction * x + (product_error + sum_error)
         value = total
     value = value + correction
-    a, b, c, d, e = (v[:, None] for v in coeffs.unbind(-1))
     ax = x.abs()
-    value_scale = (((a.abs() * ax + b.abs()) * ax + c.abs()) * ax + d.abs()) * ax + e.abs()
-    # u = eps/2; gamma_8 bounds eight rounded operations. Compensated degree-four
-    # Horner has error u*|p| + gamma_8^2*sum(|a_i*x^i|), rather than O(eps)*scale.
+    magnitudes = coeffs.abs()
+    value_scale = magnitudes[:, :1] * ax
+    for magnitude in magnitudes[:, 1:-1].unbind(-1):
+        value_scale = (value_scale + magnitude[:, None]) * ax
+    value_scale = value_scale + magnitudes[:, -1:]
+    # u = eps/2; gamma_2n bounds 2n rounded operations. Compensated degree-n
+    # Horner has error u*|p| + gamma_2n^2*sum(|a_i*x^i|), rather than O(eps)*scale.
     eps = torch.finfo(x.dtype).eps
-    gamma = 4.0 * eps / (1.0 - 4.0 * eps)
+    degree = coeffs.shape[-1] - 1
+    gamma = degree * eps / (1.0 - degree * eps)
     return value, gamma**2 * value_scale + eps * value.abs(), coeffs
 
 
@@ -683,7 +730,7 @@ def _quartic_local_discriminant_is_real(
     # The local quadratic has discriminant p'^2 - 2*p*p''. At a double root it vanishes;
     # at a nearby extremum with no real pair it is negative. Its sign needs p to more than
     # working precision, so p is evaluated with compensated Horner.
-    value, value_error, coeffs = _quartic_compensated_value(coeffs, x)
+    value, value_error, coeffs = _compensated_horner(coeffs, x)
     a, b, c, d, e = (v[:, None] for v in coeffs.unbind(-1))
     slope = ((4.0 * a * x + 3.0 * b) * x + 2.0 * c) * x + d
     curvature = (12.0 * a * x + 6.0 * b) * x + 2.0 * c
@@ -784,14 +831,16 @@ def _quartic_certified_genuine(coeffs: torch.Tensor, *rest: torch.Tensor) -> tup
     # A cubic with one real root repeats it, which leaves two empty intervals.
     stationary = (shift[:, None] + scale[:, None] * t).sort(-1, descending=True).values
     x = stationary * variable_scale[:, None]
-    value, error, scaled = _quartic_compensated_value(coeffs, x)
+    value, error, scaled = _compensated_horner(coeffs, x)
     # A computed stationary point is off by about p' / p'', which moves the critical value by up to p'^2 / |p''|:
     # at a double root that is twice the value itself, so it is never certified. A zero p'' leaves it undecided.
     lead, cubic, quadratic, linear, _ = (v[:, None] for v in scaled.unbind(-1))
     slope = ((4 * lead * x + 3 * cubic) * x + 2 * quadratic) * x + linear
     curvature = (12 * lead * x + 6 * cubic) * x + 2 * quadratic
     drift = slope.square() / curvature.abs()
-    certain_value = value.abs() > error + drift
+    # An evaluation whose normalization flushed a small coefficient to 0 decides nothing.
+    flushed = ((scaled == 0) & (coeffs != 0)).any(-1, keepdim=True)
+    certain_value = (value.abs() > error + drift) & ~flushed
     sign = torch.where(certain_value, torch.sign(value) * torch.sign(coeffs[:, :1]), torch.zeros_like(value))
     # Interval k lies below stationary point k - 1 and above stationary point k; the monic quartic is
     # positive beyond its last stationary point on either side.

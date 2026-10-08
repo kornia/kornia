@@ -453,6 +453,43 @@ class TestCubicSolver(BaseTester):
         assert num_real.tolist() == [3, 1, 3], num_real
         self.gradcheck(solver.solve_cubic, (rows.requires_grad_(),))
 
+    def test_exact_double_root(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("The coefficients are exact in float32 and float64.")
+        # (x + 5.25)(x - 3.125)^2: a rounding-level positive discriminant reported the single root -5.25.
+        coeffs = torch.tensor([[1.0, -1.0, -23.046875, 51.26953125]], device=device, dtype=dtype)
+        roots, num_real = _solve_cubic_with_count(coeffs)
+        expected = torch.tensor([[-5.25, 3.125, 3.125]], device=device, dtype=dtype)
+        self.assert_close(roots.sort(-1).values, expected, atol=0.0, rtol=0.0)
+        assert num_real.tolist() == [3]
+
+    def test_exact_double_root_grid(self, device, dtype):
+        # (x - r)^2 (x - s) for every pair of distinct nonzero quarter-integers in [-6, 6]; coefficients exact.
+        values = torch.arange(-24, 25, dtype=torch.float64) / 4
+        values = values[values != 0]
+        r, s = (v.flatten() for v in torch.meshgrid(values, values, indexing="ij"))
+        r, s = r[r != s], s[r != s]
+        coeffs = torch.stack([torch.ones_like(r), -(2 * r + s), r * r + 2 * r * s, -r * r * s], -1)
+        exact = (coeffs.to(dtype).double() == coeffs).all(-1)
+        coeffs = coeffs[exact].to(device=device, dtype=dtype)
+        expected = torch.stack([r, r, s], -1)[exact].sort(-1).values.to(device=device, dtype=dtype)
+        roots, num_real = _solve_cubic_with_count(coeffs)
+        assert bool((num_real == 3).all())
+        self.assert_close(roots.sort(-1).values, expected, atol=1e-6, rtol=1e-6)
+
+    def test_exact_double_root_gradient(self, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("The Jacobian is compared in float64.")
+        coeffs = torch.tensor([[1.0, -1.0, -23.046875, 51.26953125], [2.0, -10.0, 16.0, -8.0]], device=device, dtype=dtype)
+        coeffs.requires_grad_()
+        roots = solver.solve_cubic(coeffs)
+        (gradient,) = torch.autograd.grad(roots.sum(), coeffs)
+        # A repeated root's Jacobian is undefined; the surrogate stays finite and keeps the sum of the roots, -b / a.
+        expected = torch.zeros_like(gradient)
+        expected[:, 0] = coeffs.detach()[:, 1] / coeffs.detach()[:, 0].square()
+        expected[:, 1] = -1 / coeffs.detach()[:, 0]
+        self.assert_close(gradient, expected, atol=1e-12, rtol=1e-12)
+
 
 class TestMultiplyDegOnePoly(BaseTester):
     def test_smoke(self, device, dtype):
