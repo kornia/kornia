@@ -59,24 +59,28 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
 
     """
     KORNIA_CHECK_SHAPE(coeffs, ["B", "3"])
+    return _solve_quadratic(coeffs)
 
+
+def _solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
+    """Solve quadratics as :func:`solve_quadratic` does, for a ``(B, 3)`` input that is already checked."""
     # Forming b**2 or 4*a*c in a half dtype is needlessly fragile; solve in
     # float32 just as the cubic solver does, then preserve the public dtype.
     if coeffs.dtype in (torch.float16, torch.bfloat16):
-        return solve_quadratic(coeffs.float()).to(coeffs.dtype)
+        return _solve_quadratic(coeffs.float()).to(coeffs.dtype)
 
     # MPS flushes float32 subnormals in products even when the input tensor
     # retains them. CPU float64 preserves the public tiny-root convention.
     if coeffs.dtype == torch.float32 and coeffs.device.type == "mps":
         if torch.compiler.is_compiling():
-            roots = solve_quadratic(coeffs.cpu().double())
+            roots = _solve_quadratic(coeffs.cpu().double())
             return roots.to(dtype=coeffs.dtype).to(device=coeffs.device)
         bits = coeffs.view(torch.int32).bitwise_and(0x7FFFFFFF)
         subnormal = ((bits > 0) & (bits < 2**23)).any(-1)
         if bool(subnormal.any()):
             placeholder = torch.tensor([1.0, 0.0, -1.0], device=coeffs.device, dtype=coeffs.dtype)
-            roots = solve_quadratic(torch.where(subnormal[:, None], placeholder, coeffs))
-            precise = solve_quadratic(coeffs[subnormal].cpu().double())
+            roots = _solve_quadratic(torch.where(subnormal[:, None], placeholder, coeffs))
+            precise = _solve_quadratic(coeffs[subnormal].cpu().double())
             roots[subnormal] = precise.to(dtype=coeffs.dtype).to(device=coeffs.device)
             return roots
 
@@ -150,6 +154,16 @@ def _exact_power_of_two(exponent: torch.Tensor) -> torch.Tensor:
     int_dtype, bias, mantissa_bits = _FLOAT_LAYOUT[exponent.dtype]
     biased = exponent.clamp(1 - bias, bias - 1).to(int_dtype) + bias
     return (biased * 2**mantissa_bits).view(exponent.dtype)
+
+
+def _exact_powers_of_two(exponent: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return ``(2 ** exponent, 2 ** -exponent)`` as :func:`_exact_power_of_two` computes each of them."""
+    int_dtype, bias, mantissa_bits = _FLOAT_LAYOUT[exponent.dtype]
+    clamped = exponent.clamp(1 - bias, bias - 1).to(int_dtype)
+    return (
+        ((bias + clamped) * 2**mantissa_bits).view(exponent.dtype),
+        ((bias - clamped) * 2**mantissa_bits).view(exponent.dtype),
+    )
 
 
 def _scaled_quadratic_coefficients(coeffs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -233,14 +247,18 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     return _solve_cubic_with_count(coeffs)[0]
 
 
-def _solve_cubic_with_count(coeffs: torch.Tensor, _allow_promotion: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
+def _solve_cubic_with_count(coeffs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """Solve a cubic as :func:`solve_cubic` does and also count its real roots."""
     KORNIA_CHECK_SHAPE(coeffs, ["B", "4"])
+    return _solve_cubic(coeffs)
 
+
+def _solve_cubic(coeffs: torch.Tensor, _allow_promotion: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
+    """Solve and count as :func:`_solve_cubic_with_count` does, for a ``(B, 4)`` input that is already checked."""
     # Cubic intermediates underflow in half precision. The dtype test is static
     # for a compiled graph, while the recursive call contains only tensor work.
     if coeffs.dtype in (torch.float16, torch.bfloat16):
-        roots, num_real = _solve_cubic_with_count(coeffs.float(), _allow_promotion)
+        roots, num_real = _solve_cubic(coeffs.float(), _allow_promotion)
         return roots.to(coeffs.dtype), num_real
 
     # Float32 cannot reliably resolve the sign of Cardano's discriminant for
@@ -254,7 +272,7 @@ def _solve_cubic_with_count(coeffs: torch.Tensor, _allow_promotion: bool = True)
         # its combined conversion losing values. Captured graphs keep fixed shape.
         if coeffs.device.type == "cpu" or torch.compiler.is_compiling():
             precise_coeffs = coeffs.cpu().double() if coeffs.device.type == "mps" else coeffs.double()
-            roots, num_real = _solve_cubic_with_count(precise_coeffs, False)
+            roots, num_real = _solve_cubic(precise_coeffs, False)
             return roots.to(dtype=coeffs.dtype).to(device=coeffs.device), num_real.to(device=coeffs.device)
         with torch.no_grad():
             uncertain = _cubic_discriminant_is_uncertain(coeffs)
@@ -264,10 +282,10 @@ def _solve_cubic_with_count(coeffs: torch.Tensor, _allow_promotion: bool = True)
         if torch.any(uncertain):
             placeholder = torch.tensor([1.0, 0.0, 0.0, -1.0], device=coeffs.device, dtype=coeffs.dtype)
             native_coeffs = torch.where(uncertain[:, None], placeholder, coeffs)
-            roots, num_real = _solve_cubic_with_count(native_coeffs, False)
+            roots, num_real = _solve_cubic(native_coeffs, False)
             selected = coeffs[uncertain]
             precise_coeffs = selected.cpu().double() if coeffs.device.type == "mps" else selected.double()
-            precise_roots, precise_count = _solve_cubic_with_count(precise_coeffs, False)
+            precise_roots, precise_count = _solve_cubic(precise_coeffs, False)
             roots = roots.clone()
             num_real = num_real.clone()
             roots[uncertain] = precise_roots.to(dtype=coeffs.dtype).to(device=coeffs.device)
@@ -297,8 +315,7 @@ def _solve_cubic_with_count(coeffs: torch.Tensor, _allow_promotion: bool = True)
     positive_bound = bound > 0
     exponent = torch.floor(torch.log2(torch.where(positive_bound, bound, one))) + 1
     exponent = torch.where(positive_bound, exponent, zero)
-    scale = _exact_power_of_two(exponent)
-    inv_scale = _exact_power_of_two(-exponent)
+    scale, inv_scale = _exact_powers_of_two(exponent)
     b_a = b_a * inv_scale
     c_a = c_a * inv_scale * inv_scale
     d_a = d_a * inv_scale * inv_scale * inv_scale
@@ -323,10 +340,10 @@ def _solve_cubic_with_count(coeffs: torch.Tensor, _allow_promotion: bool = True)
     # branches no row takes; their torch.where selections would be identities.
     compiling = torch.compiler.is_compiling()
     if compiling:
-        has_q_only = has_three = has_one = has_second_order = has_first_order = True
+        has_q_only = has_qr_zero = has_three = has_one = has_second_order = has_first_order = True
     else:
-        flags = torch.stack([mask_q_only, mask_three, mask_one, mask_second_order, mask_first_order]).any(-1)
-        has_q_only, has_three, has_one, has_second_order, has_first_order = flags.tolist()
+        flags = torch.stack([mask_q_only, mask_qr_zero, mask_three, mask_one, mask_second_order, mask_first_order])
+        has_q_only, has_qr_zero, has_three, has_one, has_second_order, has_first_order = flags.any(-1).tolist()
 
     q_only_root = zero
     if has_q_only:
@@ -367,10 +384,15 @@ def _solve_cubic_with_count(coeffs: torch.Tensor, _allow_promotion: bool = True)
         sum_ab = torch.where(quotient_is_better, 2 * one_r / (a_one * a_one + b_one * b_one + one_q), a_one + b_one)
         one_root = sum_ab - shift
 
-    cubic_roots = torch.where(mask_q_only[:, None], torch.stack([q_only_root, zero, zero], dim=-1), zero[:, None])
-    cubic_roots = torch.where(mask_qr_zero[:, None], (-shift)[:, None].expand(-1, 3), cubic_roots)
-    cubic_roots = torch.where(mask_three[:, None], three_roots, cubic_roots)
-    cubic_roots = torch.where(mask_one[:, None], torch.stack([one_root, zero, zero], dim=-1), cubic_roots)
+    cubic_roots = zero[:, None].expand(-1, 3)
+    if has_q_only:
+        cubic_roots = torch.where(mask_q_only[:, None], torch.stack([q_only_root, zero, zero], dim=-1), cubic_roots)
+    if has_qr_zero:
+        cubic_roots = torch.where(mask_qr_zero[:, None], (-shift)[:, None].expand(-1, 3), cubic_roots)
+    if has_three:
+        cubic_roots = torch.where(mask_three[:, None], three_roots, cubic_roots)
+    if has_one:
+        cubic_roots = torch.where(mask_one[:, None], torch.stack([one_root, zero, zero], dim=-1), cubic_roots)
     cubic_roots = cubic_roots * scale[:, None]
     cubic_count = torch.where(mask_qr_zero | mask_three, 3, torch.where(mask_cubic, 1, 0))
 
@@ -415,7 +437,7 @@ def _solve_cubic_with_count(coeffs: torch.Tensor, _allow_promotion: bool = True)
     num_real = torch.where(mask_cubic, cubic_count, 0)
     if has_second_order:
         quad_coeffs = torch.where(mask_second_order[:, None], coeffs[:, 1:], torch.stack([one, zero, zero], dim=-1))
-        quadratic_roots = solve_quadratic(quad_coeffs)
+        quadratic_roots = _solve_quadratic(quad_coeffs)
         quadratic_padded = torch.cat([quadratic_roots, zero[:, None]], dim=-1)
         quadratic_a, quadratic_b, quadratic_c = _scaled_quadratic_coefficients(quad_coeffs)
         quadratic_delta = quadratic_b * quadratic_b - 4 * (quadratic_a * quadratic_c)
@@ -451,7 +473,7 @@ def _cubic_roots_beside_dominant(
     lead = a * dominant_for_vieta
     product = -d / lead
     total = (c + d / dominant_for_vieta) / lead
-    others = solve_quadratic(torch.stack([torch.ones_like(total), -total, product], dim=-1))
+    others = _solve_quadratic(torch.stack([torch.ones_like(total), -total, product], dim=-1))
     pair_is_real = total * total - 4 * product >= 0
     rest = torch.sort(torch.cat([(slot0 + 1) % 3, (slot0 + 2) % 3], dim=-1), dim=-1).values
     previous_rest = previous.gather(1, rest)
@@ -731,7 +753,7 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         )
         lower = (abs_a == 0) | ((abs_a < zero_tol * row_scale) & bound)
     if not torch.compiler.is_compiling() and bool(lower.all()):
-        lower_roots = solve_cubic(coeffs[:, 1:])
+        lower_roots = _solve_cubic(coeffs[:, 1:])[0]
         return torch.cat([lower_roots, torch.zeros_like(coeffs[:, :1])], -1)
     fallback = torch.tensor([1.0, 0.0, 0.0, 0.0, -1.0], dtype=work.dtype, device=work.device)
     quartic_coeffs = torch.where(lower[:, None], fallback, work)
@@ -744,8 +766,7 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         positive = root_bound > 0
         exponent = torch.floor(torch.log2(torch.where(positive, root_bound, torch.ones_like(root_bound))))
         exponent = torch.where(positive, exponent, torch.zeros_like(exponent))
-        variable_scale = _exact_power_of_two(exponent)
-        inverse_scale = _exact_power_of_two(-exponent)
+        variable_scale, inverse_scale = _exact_powers_of_two(exponent)
     A = A * inverse_scale
     B = B * inverse_scale * inverse_scale
     C = C * inverse_scale * inverse_scale * inverse_scale
@@ -921,7 +942,7 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     if compiling or bool(biquadratic.any()):
         depressed_p = B - 6 * shift.square()
         depressed_r = D - shift * C + shift.square() * B - 3 * shift.pow(4)
-        z = solve_quadratic(torch.stack([torch.ones_like(A), depressed_p, depressed_r], -1))
+        z = _solve_quadratic(torch.stack([torch.ones_like(A), depressed_p, depressed_r], -1))
         z_real = depressed_p.square() - 4 * depressed_r >= 0
         z_positive = z > 0
         z_radius = torch.where(z_positive, torch.sqrt(torch.where(z_positive, z, 1.0)), 0.0)
@@ -983,12 +1004,12 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         lower_coeffs = torch.where(
             lower.to(device=coeffs.device)[:, None], coeffs[:, 1:], torch.zeros_like(coeffs[:, 1:])
         )
-        lower_roots = solve_cubic(lower_coeffs).to(device=work.device).to(dtype=work.dtype)
+        lower_roots = _solve_cubic(lower_coeffs)[0].to(device=work.device).to(dtype=work.dtype)
         padded = torch.cat([lower_roots, torch.zeros_like(lower_roots[:, :1])], -1)
         roots = torch.where(lower[:, None], padded, roots)
     elif bool(lower.any()):
         selected = lower.to(device=coeffs.device)
-        lower_roots = solve_cubic(coeffs[selected, 1:]).to(device=work.device).to(dtype=work.dtype)
+        lower_roots = _solve_cubic(coeffs[selected, 1:])[0].to(device=work.device).to(dtype=work.dtype)
         roots[lower] = torch.cat([lower_roots, torch.zeros_like(lower_roots[:, :1])], -1)
 
     return roots.to(dtype=original_dtype).to(device=coeffs.device)
