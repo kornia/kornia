@@ -485,7 +485,7 @@ class TestTransplantationConventions(BaseTester):
         assert not torch.equal(direct_mask, mask)  # something really moved
 
     @pytest.mark.device_agnostic
-    @pytest.mark.parametrize("keepdim", [False, True])
+    @pytest.mark.parametrize("keepdim", [None, False, True])
     @pytest.mark.parametrize("has_following_step", [False, True])
     def test_convention_container_transplant_mask_rank_is_consistent_4750(self, keepdim, has_following_step):
         image, mask = _labelled_batch(batch=3)
@@ -508,6 +508,18 @@ class TestTransplantationConventions(BaseTester):
 
         with pytest.raises(BaseError, match="Every segmentation mask must have one fewer dimension"):
             K.RandomTransplantation(p=1.0)(image, mask)
+
+    @pytest.mark.device_agnostic
+    def test_convention_container_child_keepdim_keeps_the_mask_rank_4750(self):
+        # The promotion belongs to the transplant: a child with keepdim=True under the container's keepdim=None
+        # still returns the caller's rank, for a batched mask and for per-sample masks in a list.
+        image, mask = _labelled_batch(batch=3)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0, keepdim=True), data_keys=["image", "mask"])
+        _, out_mask = aug(image, mask)
+        assert out_mask.shape == mask.shape
+        masks = [mask[:1], torch.cat([mask[1:2], mask[1:2]]), mask[2:]]
+        _, out_masks = aug(image, masks)
+        assert [m.shape for m in out_masks] == [m.shape for m in masks]
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize(

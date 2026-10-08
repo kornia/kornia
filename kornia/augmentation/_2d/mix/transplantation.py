@@ -87,7 +87,9 @@ class RandomTransplantation(MixAugmentationBaseV2):
     Convention:
         - the transplant is driven by the first ``"mask"`` input. An image is ``(B, C, *spatial)`` and a mask
           ``(B, *spatial)`` for any number of spatial dimensions, including none (a ``(B,)`` mask moves whole
-          images). There is no unbatched form, and the inherited ``keepdim`` is inert.
+          images). There is no unbatched form, and the inherited ``keepdim`` is inert on a direct call. In
+          :class:`~kornia.augmentation.container.AugmentationSequential` a 2D ``(B, H, W)`` mask comes back as
+          ``(B, 1, H, W)``, like from any other child, unless the container sets ``keepdim=True``.
         - ``p`` gates samples and ``p_batch`` the whole call. The donor of acceptor ``i`` is image ``(i - 1) mod B``
           of the full batch, with its original content, whether or not it is an acceptor itself; at ``B = 1`` the
           call is an identity.

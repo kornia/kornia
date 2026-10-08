@@ -845,21 +845,11 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         # Each mask output goes back to the dtype of its own argument, per element for a list. A single shared
         # dtype would cast every mask to whichever mask came last: an integer semantic mask followed by a boolean
         # one came back boolean, and its labels collapsed to ``True``.
-        # Restore the documented channel layout unless the caller requests the input rank.
         if isinstance(arg, list):
             likes = like if isinstance(like, list) else [like] * len(arg)
-            outputs = []
-            for a, ref in zip(arg, likes):
-                output = a.to(ref.dtype)
-                if not self.keepdim and ref.ndim == 3 and output.ndim == 3:
-                    output = output.unsqueeze(1)
-                outputs.append(output)
-            return outputs
+            return [a.to(ref.dtype) for a, ref in zip(arg, likes)]
         ref = like[0] if isinstance(like, list) else like
-        output = arg.to(ref.dtype)
-        if not self.keepdim and ref.ndim == 3 and output.ndim == 3:
-            return output.unsqueeze(1)
-        return output
+        return arg.to(ref.dtype)
 
     def _preproc_boxes(self, arg: DataType, dcate: DataKey) -> Boxes:
         if DataKey.get(dcate) in [DataKey.BBOX]:
