@@ -31,27 +31,33 @@ from .adalam import get_adalam_default_config, match_adalam
 def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
     r"""Compute pairwise L2 distances between rows of d1 and d2.
 
-    Uses ``torch.cdist`` for float32/float64 on non-MPS devices.  Falls back to a
-    manual expand-and-norm implementation for MPS tensors and for half-precision
-    dtypes (float16/bfloat16), since ``torch.cdist`` does not support half precision
-    on CUDA and may be unavailable for these dtypes elsewhere.
+    Uses ``torch.cdist`` on non-MPS devices outside export. Falls back to a manual
+    squared-distance implementation for MPS tensors and export. Half-precision
+    inputs are computed in float32: in half precision the squared norms round away
+    the squared distance between nearby descriptors, and ``torch.cdist`` has no
+    float16 kernel on CPU. Distances are returned in the input dtype.
     """
     half = (torch.float16, torch.bfloat16)
+    output_dtype = d1.dtype
+    if output_dtype in half and d2.dtype == output_dtype:
+        d1, d2 = d1.float(), d2.float()
     if (
         not is_exporting()  # `torch.cdist` has no ONNX lowering
         and (not is_mps_tensor_safe(d1))
         and (not is_mps_tensor_safe(d2))
-        and d1.dtype not in half
-        and d2.dtype not in half
     ):
-        return torch.cdist(d1, d2)
-    d1_sq = (d1**2).sum(dim=1, keepdim=True)
-    d2_sq = (d2**2).sum(dim=1, keepdim=True)
-    dm = d1_sq.repeat(1, d2.size(0)) + d2_sq.repeat(1, d1.size(0)).t() - 2.0 * d1 @ d2.t()
-    dm = dm.clamp(min=0.0)
-    mask = dm > 0.0
-    safe_dm = torch.where(mask, dm, torch.ones_like(dm))
-    return torch.where(mask, safe_dm.sqrt(), torch.zeros_like(dm))
+        distances = torch.cdist(d1, d2)
+    else:
+        # Autocast would lower the matmul precision again and cancel nearby distances.
+        with torch.autocast(device_type="cpu", enabled=False), torch.autocast(device_type="cuda", enabled=False):
+            d1_sq = (d1**2).sum(dim=1, keepdim=True)
+            d2_sq = (d2**2).sum(dim=1, keepdim=True)
+            dm = d1_sq.repeat(1, d2.size(0)) + d2_sq.repeat(1, d1.size(0)).t() - 2.0 * d1 @ d2.t()
+            dm = dm.clamp(min=0.0)
+            mask = dm > 0.0
+            safe_dm = torch.where(mask, dm, torch.ones_like(dm))
+            distances = torch.where(mask, safe_dm.sqrt(), torch.zeros_like(dm))
+    return distances.to(output_dtype)
 
 
 def _get_default_fginn_params() -> Dict[str, Any]:

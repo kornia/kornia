@@ -277,12 +277,14 @@ class TestMatchFGINN(BaseTester):
 
     def test_matching1(self, device, dtype):
         desc1 = torch.tensor([[0, 0.0], [1, 1.001], [2, 2], [3, 3.0], [5, 5.0]], dtype=dtype, device=device)
-        desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.3, 2.4], [1, 1.001], [0, 0.0]], dtype=dtype, device=device)
+        # Exact half-precision coordinates keep the ratio independent of input rounding.
+        desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.25, 2.25], [1, 1.001], [0, 0.0]], dtype=dtype, device=device)
         lafs1 = laf_from_center_scale_ori(desc1[None])
         lafs2 = laf_from_center_scale_ori(desc2[None])
 
         dists, idxs = match_fginn(desc1, desc2, lafs1, lafs2, 0.8, 0.01)
-        expected_dists = torch.tensor([0, 0, 0.3536, 0, 0], dtype=dtype, device=device).view(-1, 1)
+        # The third query's nearest distances are sqrt(2) / 4 and sqrt(2).
+        expected_dists = torch.tensor([0, 0, 0.25, 0, 0], dtype=dtype, device=device).view(-1, 1)
         expected_idx = torch.tensor([[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]], device=device)
         self.assert_close(dists, expected_dists, rtol=0.001, atol=1e-3)
         self.assert_close(idxs, expected_idx)
@@ -741,6 +743,62 @@ class TestMatchSteererLocal(BaseTester):
 
 
 class TestCDist(BaseTester):
+    @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("use_autocast", [False, True])
+    @pytest.mark.parametrize("scripted", [False, True])
+    def test_half_precision_nearby_descriptors(self, device, desc_dtype, use_autocast, scripted):
+        if use_autocast and device.type not in ("cpu", "cuda"):
+            pytest.skip("autocast coverage requires CPU or CUDA")
+        desc1 = torch.full((1, 128), 0.0625, device=device, dtype=desc_dtype)
+        desc2 = desc1.repeat(2, 1)
+        desc2[0, 0] += 0.03125
+        desc2[1, 0] += 0.0078125
+        # Only one coordinate differs, so its absolute difference is the Euclidean distance.
+        expected = torch.tensor([[0.03125, 0.0078125]], device=device, dtype=desc_dtype)
+        distance_fn = torch.jit.script(_cdist) if scripted else _cdist
+        autocast_device = "cuda" if device.type == "cuda" else "cpu"
+        with torch.autocast(device_type=autocast_device, enabled=use_autocast):
+            actual = distance_fn(desc1, desc2)
+            distances, indices = match_nn(desc1, desc2)
+            ratios, ratio_indices = match_snn(desc1, desc2)
+        self.assert_close(actual, expected)
+        self.assert_close(distances, expected[:, 1:])
+        self.assert_close(indices, torch.tensor([[0, 1]], device=device))
+        self.assert_close(ratios, torch.tensor([[0.25]], device=device, dtype=desc_dtype))
+        self.assert_close(ratio_indices, indices)
+        assert actual.dtype == desc_dtype
+
+    @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16])
+    def test_half_precision_large_descriptors(self, device, desc_dtype):
+        desc1 = torch.tensor([[300.0, 300.0]], device=device, dtype=desc_dtype, requires_grad=True)
+        desc2 = torch.tensor([[304.0, 300.0]], device=device, dtype=desc_dtype, requires_grad=True)
+        distances = _cdist(desc1, desc2)
+        self.assert_close(distances, torch.tensor([[4.0]], device=device, dtype=desc_dtype))
+        distances.sum().backward()
+        self.assert_close(desc1.grad, torch.tensor([[-1.0, 0.0]], device=device, dtype=desc_dtype))
+        self.assert_close(desc2.grad, torch.tensor([[1.0, 0.0]], device=device, dtype=desc_dtype))
+
+    @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16])
+    def test_half_precision_export_branch_ignores_autocast(self, device, desc_dtype, monkeypatch):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("autocast coverage requires CPU or CUDA")
+        # Export traces the manual branch; autocast must not lower its float32 matmul back to half.
+        monkeypatch.setattr("kornia.feature.matching.is_exporting", lambda: True)
+        desc1 = torch.full((1, 128), 0.0625, device=device, dtype=desc_dtype)
+        desc2 = desc1.repeat(2, 1)
+        desc2[0, 0] += 0.03125
+        desc2[1, 0] += 0.0078125
+        with torch.autocast(device_type=device.type):
+            actual = _cdist(desc1, desc2)
+        self.assert_close(actual, torch.tensor([[0.03125, 0.0078125]], device=device, dtype=desc_dtype))
+        assert actual.dtype == desc_dtype
+
+    @pytest.mark.parametrize(("dtype1", "dtype2"), [(torch.float16, torch.float32), (torch.float16, torch.bfloat16)])
+    def test_mixed_dtypes_raise(self, device, dtype1, dtype2):
+        # Only same-dtype half inputs are promoted; a mixed pair is not silently computed in float32.
+        with pytest.raises(RuntimeError):
+            _cdist(torch.ones(2, 4, device=device, dtype=dtype1), torch.ones(3, 4, device=device, dtype=dtype2))
+
     @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16])
     def test_half_precision_zero_distance_gradient(self, device, desc_dtype):
         if not supports_matmul(device, desc_dtype):
