@@ -23,6 +23,7 @@ from typing import NamedTuple, Tuple
 import torch
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.utils import is_exporting
 
 
 # Reference : https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/polynom_solver.cpp
@@ -144,14 +145,32 @@ _FLOAT_LAYOUT = {torch.float32: (torch.int32, 127, 23), torch.float64: (torch.in
 _DOMINANT_ROOT_RATIO = 2.0**4
 
 
+def _power_of_two_by_bits(magnitude: torch.Tensor, bias: int) -> torch.Tensor:
+    """Return ``2 ** magnitude`` for an integer-valued float tensor in ``[0, bias)`` as a product of exact powers of two.
+
+    Every factor and partial product is a power of two below ``2 ** bias``, so each multiplication is exact.
+    """
+    power = torch.ones_like(magnitude)
+    for bit in range(bias.bit_length()):
+        set_bit = torch.remainder(torch.floor(magnitude / 2**bit), 2) == 1
+        power = torch.where(set_bit, power * 2.0 ** (2**bit), power)
+    return power
+
+
 def _exact_power_of_two(exponent: torch.Tensor) -> torch.Tensor:
     """Return ``2 ** exponent`` for an integer-valued float tensor, exact on every backend.
 
     ``torch.exp2`` and ``torch.pow`` are not exact for integer arguments on every backend (MPS), and a scale that is
     not a power of two changes the bits of the scaled row. The exponent is clamped so that both ``2 ** exponent`` and
-    ``2 ** -exponent`` are normal floats, and is written into the exponent field of the float.
+    ``2 ** -exponent`` are normal floats, and is written into the exponent field of the float. The exporters have no
+    bit cast (``aten.view.dtype`` has no ONNX lowering), so a captured graph multiplies exact powers of two instead,
+    with the same result.
     """
     int_dtype, bias, mantissa_bits = _FLOAT_LAYOUT[exponent.dtype]
+    if is_exporting():
+        clamped = exponent.clamp(1 - bias, bias - 1)
+        power = _power_of_two_by_bits(clamped.abs(), bias)
+        return torch.where(clamped < 0, 1 / power, power)
     biased = exponent.clamp(1 - bias, bias - 1).to(int_dtype) + bias
     return (biased * 2**mantissa_bits).view(exponent.dtype)
 
@@ -159,6 +178,11 @@ def _exact_power_of_two(exponent: torch.Tensor) -> torch.Tensor:
 def _exact_powers_of_two(exponent: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """Return ``(2 ** exponent, 2 ** -exponent)`` as :func:`_exact_power_of_two` computes each of them."""
     int_dtype, bias, mantissa_bits = _FLOAT_LAYOUT[exponent.dtype]
+    if is_exporting():
+        clamped = exponent.clamp(1 - bias, bias - 1)
+        power = _power_of_two_by_bits(clamped.abs(), bias)
+        inverse = 1 / power
+        return torch.where(clamped < 0, inverse, power), torch.where(clamped < 0, power, inverse)
     clamped = exponent.clamp(1 - bias, bias - 1).to(int_dtype)
     return (
         ((bias + clamped) * 2**mantissa_bits).view(exponent.dtype),
