@@ -909,6 +909,23 @@ class TestConventionAugmentationSequential(BaseTester):
         self.assert_close(inv_image, expected, atol=0, rtol=0)
         self.assert_close(inv_mask, expected, atol=0, rtol=0)
 
+    @pytest.mark.parametrize("keepdim", [False, None])
+    def test_inverse_bhw_mask_without_keepdim_5597(self, keepdim, device, dtype):
+        # A (B, H, W) mask that is not a forward output (a prediction, say) is read per sample, as the forward
+        # reads it, and comes back in the batch form (B, 1, H, W) when keepdim is off.
+        image = torch.arange(3 * 2 * 6 * 8, device=device, dtype=dtype).reshape(3, 2, 6, 8) / 288
+        mask = (torch.arange(3 * 6 * 8, device=device).reshape(3, 6, 8) % 3 == 0).to(dtype)
+        seq = K.AugmentationSequential(
+            K.RandomAffine((-60.0, 60.0), p=1.0), data_keys=["image", "mask"], keepdim=keepdim
+        )
+        out_image = seq(image, data_keys=["image"])
+
+        _, inv_mask = seq.inverse(out_image, mask, data_keys=["image", "mask"])
+        _, reference = seq.inverse(out_image, mask.unsqueeze(1), data_keys=["image", "mask"])
+
+        assert inv_mask.shape == (3, 1, 6, 8)
+        self.assert_close(inv_mask, reference, atol=0, rtol=0)
+
     @pytest.mark.parametrize("mask_first", [True, False])
     def test_inverse_mask_exception_preserves_next_image_5290(self, mask_first, device, dtype):
         image = torch.arange(16 * 20, device=device, dtype=dtype).reshape(1, 1, 16, 20) / 320
