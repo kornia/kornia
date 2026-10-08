@@ -146,7 +146,7 @@ _DOMINANT_ROOT_RATIO = 2.0**4
 
 
 def _power_of_two_by_bits(magnitude: torch.Tensor, bias: int) -> torch.Tensor:
-    """Return ``2 ** magnitude`` for an integer-valued float tensor in ``[0, bias)`` as a product of exact powers of two.
+    """Return ``2 ** magnitude`` for an integer-valued float tensor in ``[0, bias)``, a product of exact powers of two.
 
     Every factor and partial product is a power of two below ``2 ** bias``, so each multiplication is exact.
     """
@@ -404,9 +404,8 @@ def _solve_cubic(coeffs: torch.Tensor, _allow_promotion: bool = True) -> tuple[t
         flags = torch.stack(
             [ambiguous, mask_q_only, mask_qr_zero, mask_three, mask_one, mask_second_order, mask_first_order]
         )
-        has_ambiguous, has_q_only, has_qr_zero, has_three, has_one, has_second_order, has_first_order = (
-            flags.any(-1).tolist()
-        )
+        found = flags.any(-1).tolist()
+        has_ambiguous, has_q_only, has_qr_zero, has_three, has_one, has_second_order, has_first_order = found
         has_three = has_three or has_ambiguous
     if has_ambiguous:
         # The stationary points solve 3 x^2 + 2 b x + c = 0; the smaller one is c / (3 * larger).
@@ -765,7 +764,7 @@ def _quartic_local_discriminant_is_real(
     # at a nearby extremum with no real pair it is negative. Its sign needs p to more than
     # working precision, so p is evaluated with compensated Horner.
     value, value_error, coeffs = _compensated_horner(coeffs, x)
-    a, b, c, d, e = (v[:, None] for v in coeffs.unbind(-1))
+    a, b, c, d, _ = (v[:, None] for v in coeffs.unbind(-1))
     slope = ((4.0 * a * x + 3.0 * b) * x + 2.0 * c) * x + d
     curvature = (12.0 * a * x + 6.0 * b) * x + 2.0 * c
     ax = x.abs()
@@ -807,7 +806,7 @@ def _monic_cubic_pair_beside(
 
 @torch.no_grad()
 def _monic_cubic_real_roots(coeffs: torch.Tensor, polish: bool) -> tuple[torch.Tensor, torch.Tensor]:
-    """Real roots and validity of monic cubics as :func:`_solve_cubic_real` returns them, accurate beside a dominant root.
+    """Real roots and validity of monic cubics as :func:`_solve_cubic_real` returns them, also beside a dominant root.
 
     The trigonometric form's error is relative to the largest root. When the roots span many decades, the two
     smaller ones come back with no correct digits, sometimes with the wrong sign. As in solve_cubic, they are taken
@@ -909,7 +908,9 @@ def _quartic_certified_genuine(coeffs: torch.Tensor, *rest: torch.Tensor) -> tup
     odd = ~decided & (candidates % 2 == 1)
     magnitude = torch.maximum(roots.abs()[:, :, None], roots.abs()[:, None, :])
     copies = genuine_i & genuine_j & ~torch.eye(roots.shape[-1], dtype=torch.bool, device=roots.device)
-    copies = copies & ((roots[:, :, None] - roots[:, None, :]).abs() <= torch.finfo(roots.dtype).eps ** (1 / 3) * magnitude)
+    copies = copies & (
+        (roots[:, :, None] - roots[:, None, :]).abs() <= torch.finfo(roots.dtype).eps ** (1 / 3) * magnitude
+    )
     copy = copies.any(-1)
     dropped = copy & (residual == torch.where(copy, residual, -torch.inf).amax(-1, keepdim=True))
     promoted = ~genuine & (residual == torch.where(genuine, torch.inf, residual).amin(-1, keepdim=True))
@@ -1262,7 +1263,16 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         close = (close & genuine[:, :2, None] & genuine[:, None, 2:]).flatten(1)
         doubtful = unresolved.any(-1) | (uncertain | near_double).any(-1) | close.any(-1) | clustered
         doubtful = doubtful | (genuine.sum(-1) % 2 == 1)
-        certify_inputs = (quartic_coeffs, *centred, cluster_shift, cluster_scale, variable_scale, *columns, roots, genuine)
+        certify_inputs = (
+            quartic_coeffs,
+            *centred,
+            cluster_shift,
+            cluster_scale,
+            variable_scale,
+            *columns,
+            roots,
+            genuine,
+        )
         if compiling:
             certified, decided = _quartic_certified_genuine(*certify_inputs)
             genuine = torch.where(doubtful[:, None], certified, genuine)

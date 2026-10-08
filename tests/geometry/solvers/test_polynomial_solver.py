@@ -502,16 +502,22 @@ class TestCubicSolver(BaseTester):
             pytest.skip("The coefficients are exact in float64.")
         # A close real pair whose discriminant is 4e-19 of its terms, beyond 2 eps but within the 32 eps window
         # in which the stationary points decide. Reference: sympy real-root isolation.
-        coeffs = torch.tensor([[1.0, -6.566669464111328, 12.517459229177803, -7.397783069339488]], device=device, dtype=dtype)
+        coeffs = torch.tensor(
+            [[1.0, -6.566669464111328, 12.517459229177803, -7.397783069339488]], device=device, dtype=dtype
+        )
         roots, num_real = _solve_cubic_with_count(coeffs)
-        expected = torch.tensor([[1.4022817537442716, 1.4022817685945957, 3.7621059417724609]], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [[1.4022817537442716, 1.4022817685945957, 3.7621059417724609]], device=device, dtype=dtype
+        )
         assert num_real.tolist() == [3]
         self.assert_close(roots.sort(-1).values, expected, atol=0.0, rtol=1e-7)
 
     def test_exact_double_root_gradient(self, device, dtype):
         if dtype != torch.float64:
             pytest.skip("The Jacobian is compared in float64.")
-        coeffs = torch.tensor([[1.0, -1.0, -23.046875, 51.26953125], [2.0, -10.0, 16.0, -8.0]], device=device, dtype=dtype)
+        coeffs = torch.tensor(
+            [[1.0, -1.0, -23.046875, 51.26953125], [2.0, -10.0, 16.0, -8.0]], device=device, dtype=dtype
+        )
         coeffs.requires_grad_()
         roots = solver.solve_cubic(coeffs)
         (gradient,) = torch.autograd.grad(roots.sum(), coeffs)
@@ -958,7 +964,13 @@ class TestQuarticSolver(BaseTester):
             ),
             # A near-quadruple root with no real roots.
             (
-                [-0.010004346039634609, -0.01847789435683093, -0.01279815961393944, -0.003939671824814085, -0.00045478259830212733],
+                [
+                    -0.010004346039634609,
+                    -0.01847789435683093,
+                    -0.01279815961393944,
+                    -0.003939671824814085,
+                    -0.00045478259830212733,
+                ],
                 [],
                 (torch.float64,),
             ),
@@ -1009,7 +1021,12 @@ class TestQuarticSolver(BaseTester):
             ),
             # (x - 2)^3 (x + 9) with b one ulp up: one real root at 2. A resolvent root counts as dominant only
             # 16 times the others' size away; at twice, the closed form's triple comes back.
-            ([1.0, 3.0000000000000004, -42.0, 100.0, -72.0], [1.9999931389943847, -9.0000000000000002], "float64", 1e-5),
+            (
+                [1.0, 3.0000000000000004, -42.0, 100.0, -72.0],
+                [1.9999931389943847, -9.0000000000000002],
+                "float64",
+                1e-5,
+            ),
             # An exact double root at 1 inside a near-quadruple cluster. A stationary point's value certifies the
             # critical value only beyond the drift p'^2 / |p''| of the point's own error; without it this
             # minimum reads as positive and both roots are lost.
@@ -1021,7 +1038,13 @@ class TestQuarticSolver(BaseTester):
             ),
             # No real roots: without the final residual test the pair at 0.486 is reported.
             (
-                [0.24079275675471995, -0.5063849033527095, 0.3993460088867061, -0.13997015029289017, 0.0183972443730235],
+                [
+                    0.24079275675471995,
+                    -0.5063849033527095,
+                    0.3993460088867061,
+                    -0.13997015029289017,
+                    0.0183972443730235,
+                ],
                 [],
                 "float64",
                 0.0,

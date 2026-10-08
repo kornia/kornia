@@ -111,7 +111,9 @@ class TestPolynomialSolversCompile(BaseTester):
         # Three real roots 3.62100, 3.61973 and 2.41171, two of them close. A float32 per-row uncertainty bound on
         # the discriminant misses this row, so eager execution agrees with the graph only if it solves the row
         # in float64 as the graph does.
-        values = torch.tensor([[1.0, -9.652440071105957, 30.569580078125, -31.61037254333496]], device=device, dtype=dtype)
+        values = torch.tensor(
+            [[1.0, -9.652440071105957, 30.569580078125, -31.61037254333496]], device=device, dtype=dtype
+        )
         eager = solve_cubic(values)
         compiled = torch_optimizer(solve_cubic, fullgraph=True)(values)
         self.assert_close(compiled, eager, rtol=0.0, atol=0.0)
