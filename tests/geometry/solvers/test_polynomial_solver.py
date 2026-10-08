@@ -497,6 +497,17 @@ class TestCubicSolver(BaseTester):
         assert bool((num_real == 3).all())
         self.assert_close(roots.sort(-1).values, expected, atol=1e-6, rtol=1e-6)
 
+    def test_double_root_beside_a_rounding_level_discriminant(self, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("The coefficients are exact in float64.")
+        # A close real pair whose discriminant is 4e-19 of its terms, beyond 2 eps but within the 32 eps window
+        # in which the stationary points decide. Reference: sympy real-root isolation.
+        coeffs = torch.tensor([[1.0, -6.566669464111328, 12.517459229177803, -7.397783069339488]], device=device, dtype=dtype)
+        roots, num_real = _solve_cubic_with_count(coeffs)
+        expected = torch.tensor([[1.4022817537442716, 1.4022817685945957, 3.7621059417724609]], device=device, dtype=dtype)
+        assert num_real.tolist() == [3]
+        self.assert_close(roots.sort(-1).values, expected, atol=0.0, rtol=1e-7)
+
     def test_exact_double_root_gradient(self, device, dtype):
         if dtype != torch.float64:
             pytest.skip("The Jacobian is compared in float64.")
@@ -810,9 +821,9 @@ class TestQuarticSolver(BaseTester):
             ([-0.5, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]),
         ],
     )
-    def test_exact_zero_roots_are_deflated(self, coefficients, expected, device, dtype):
-        # A trailing pair of zero coefficients is an exact multiple root at 0. The rest of the
-        # row is solved without it, and the zeros sort with the genuine roots.
+    def test_exact_zero_roots(self, coefficients, expected, device, dtype):
+        # A trailing pair of zero coefficients is an exact multiple root at 0: it is reported exactly, and the
+        # zeros sort with the genuine roots.
         coeffs = torch.tensor([coefficients], device=device, dtype=dtype)
         actual = solver.solve_quartic(coeffs)
         self.assert_close(actual, torch.tensor([expected], device=device, dtype=dtype), atol=0.0, rtol=0.0)
@@ -963,6 +974,76 @@ class TestQuarticSolver(BaseTester):
         actual = solver.solve_quartic(coeffs)
         assert int((actual != 0).sum()) == int((expected != 0).sum())
         self.assert_close(actual, expected, atol=0.0, rtol=1e-5)
+
+    @pytest.mark.parametrize(
+        "coefficients, expected, literal_dtype, rtol",
+        [
+            # Three close roots and a far one: their stationary points are classified only inside the local
+            # quadratic region (cubic and quartic terms at most an eighth of the curvature term).
+            (
+                [1.0, 7.1414729471261325, 11.216197417652605, -17.58471566143806, -41.87878316906568],
+                [1.6589838853480642, -2.9334722967452928, -2.9334786391423401, -2.9335058965865637],
+                "float64",
+                1e-6,
+            ),
+            # Two small roots beside a large complex pair: not a cluster. Centring rows whose centred root bound
+            # reaches half the root bound loses the small root.
+            (
+                [1.0, 159457.2390277729, 6356652658.430805, -8862577.852632554, -15.019852486487155],
+                [0.0013959135242863893, -1.6926947842228866e-6],
+                "float64",
+                1e-9,
+            ),
+            (
+                [1.0, -40172.53538678672, 403458261.3150447, -2221380.9118629876, 3040.3600233223606],
+                [0.0029599318540459437, 0.0025459210183159004],
+                "float64",
+                1e-9,
+            ),
+            # A near-triple root beside a fourth one: centring it needs a gate of a quarter, not a sixteenth.
+            (
+                [1.0, -6.542885780334473, 15.241097447951688, -15.246880367553306, 5.582061569668052],
+                [2.7396306991577154, 1.2677443459345709],
+                "float64",
+                1e-5,
+            ),
+            # (x - 2)^3 (x + 9) with b one ulp up: one real root at 2. A resolvent root counts as dominant only
+            # 16 times the others' size away; at twice, the closed form's triple comes back.
+            ([1.0, 3.0000000000000004, -42.0, 100.0, -72.0], [1.9999931389943847, -9.0000000000000002], "float64", 1e-5),
+            # An exact double root at 1 inside a near-quadruple cluster. A stationary point's value certifies the
+            # critical value only beyond the drift p'^2 / |p''| of the point's own error; without it this
+            # minimum reads as positive and both roots are lost.
+            (
+                [1.0, -4.008663177490234, 6.026017665863037, -4.026045799255371, 1.0086913108825684],
+                [1.0, 1.0],
+                "float32",
+                1e-6,
+            ),
+            # No real roots: without the final residual test the pair at 0.486 is reported.
+            (
+                [0.24079275675471995, -0.5063849033527095, 0.3993460088867061, -0.13997015029289017, 0.0183972443730235],
+                [],
+                "float64",
+                0.0,
+            ),
+            (
+                [1.0, 2685.27490234375, -481271392.0, -13682.7939453125, -0.11872430890798569],
+                [20636.308565148697, -23321.583439061931],
+                "float32",
+                1e-6,
+            ),
+        ],
+    )
+    def test_threshold_margins(self, coefficients, expected, literal_dtype, rtol, device, dtype):
+        if dtype != getattr(torch, literal_dtype):
+            pytest.skip("The coefficients are exact in the listed dtype; the row pins a threshold there.")
+        # References: sympy real-root isolation of the represented coefficients. Each row fails when its
+        # threshold is moved by a factor of 2 to 16 in the direction the comment names.
+        coeffs = torch.tensor([coefficients], device=device, dtype=dtype)
+        expected = torch.tensor([expected + [0.0] * (4 - len(expected))], device=device, dtype=dtype)
+        actual = solver.solve_quartic(coeffs)
+        assert int((actual != 0).sum()) == int((expected != 0).sum())
+        self.assert_close(actual, expected, atol=0.0, rtol=rtol)
 
     def test_coefficient_underflowed_by_rescaling_counts_as_zero(self, device, dtype):
         if dtype != torch.float64:
