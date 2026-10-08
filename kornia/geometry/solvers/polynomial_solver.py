@@ -807,6 +807,24 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         # The largest real resolvent root gives the best separated Ferrari factors. The private
         # fixed-shape kernel supplies an explicit validity mask instead of zero placeholders.
         y_roots, valid = _solve_cubic_real(cubic_coeffs, polish=False)
+        # The trigonometric form's error is relative to the largest root. When the quartic's roots span many
+        # decades, two resolvent roots sit far below the third and come back with no correct digits, sometimes
+        # with the wrong sign. As in solve_cubic, take them from Vieta's relations with the dominant root. Its
+        # gate also requires the dominant root to reach the root bound, of which the largest root is at least a
+        # third: a smaller one is a remnant of a closed form that has lost a complex pair.
+        slot0 = y_roots.abs().argmax(-1, keepdim=True)
+        dominant = y_roots.gather(1, slot0).squeeze(1)
+        safe_dominant = torch.where(dominant != 0, dominant, torch.ones_like(dominant))
+        resolvent_bound = torch.maximum(torch.maximum(rc_b.abs(), rc_c.abs().sqrt()), rc_d.abs().pow(1 / 3))
+        beside = (
+            valid.all(-1)
+            & (dominant.abs() > _DOMINANT_ROOT_RATIO * (rc_d / safe_dominant).abs().sqrt())
+            & (8 * dominant.abs() >= resolvent_bound)
+        )
+        vieta_roots, pair_is_real = _cubic_roots_beside_dominant(
+            rc_a, rc_c, rc_d, safe_dominant, dominant, slot0, y_roots
+        )
+        y_roots = torch.where((beside & pair_is_real)[:, None], vieta_roots, y_roots)
     A_sq = A * A
     candidates = 0.25 * A_sq[:, None] - B[:, None] + y_roots
     index = torch.where(valid, candidates, -torch.inf).argmax(-1, keepdim=True)

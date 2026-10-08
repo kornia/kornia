@@ -771,6 +771,37 @@ class TestQuarticSolver(BaseTester):
         expected = roots[exact].sort(-1, descending=True).values.to(device=device, dtype=dtype)
         self.assert_close(solver.solve_quartic(coefficients), expected, atol=1e-5, rtol=1e-5)
 
+    @pytest.mark.parametrize(
+        "coefficients, expected, dtypes",
+        [
+            # Exact roots 512, 2^-13, 2^-18 and -2^19.
+            (
+                [1.0, 523775.999874115, -268435521.9355469, 33792.00024390221, -0.125],
+                [512.0, 2.0**-13, 2.0**-18, -(2.0**19)],
+                (torch.float64,),
+            ),
+            (
+                [1.0, 499500.0, -250000048.0, 26000.0, -0.10000000149011612],
+                [499.99999200799115, 0.000100000000750412, 4.0000000927561731e-6, -500000.00009600799],
+                (torch.float32, torch.float64),
+            ),
+            # The two small resolvent roots came back with the wrong sign.
+            (
+                [1.0, 19749794.506627306, -268558166469888.28, 705704923847.0411, 57874906.04389983],
+                [9258104.658492141, 0.0027073533624295231, -7.9598886503736466e-5, -29007899.167747202],
+                (torch.float64,),
+            ),
+        ],
+    )
+    def test_roots_spanning_many_decades(self, coefficients, expected, dtypes, device, dtype):
+        if dtype not in dtypes:
+            pytest.skip("The coefficients are exact in the listed dtypes only.")
+        # References: sympy real-root isolation of the represented coefficients. Four real roots
+        # span up to 11 decades; the resolvent's two small roots sit as far below its third.
+        coeffs = torch.tensor([coefficients], device=device, dtype=dtype)
+        expected = torch.tensor([expected], device=device, dtype=dtype)
+        self.assert_close(solver.solve_quartic(coeffs), expected, atol=0.0, rtol=1e-6)
+
     def test_exact_zero_double_root_gradient(self, device, dtype):
         if dtype != torch.float64:
             pytest.skip("The analytic Jacobian is compared in float64.")
