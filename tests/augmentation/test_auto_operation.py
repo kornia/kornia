@@ -151,10 +151,7 @@ class TestRandAugment(BaseTester):
 
     @pytest.mark.parametrize("policy", [None, [[("translate_y", -0.5, 0.5)]]])
     def test_smoke(self, policy):
-        if policy is None:
-            n = len(randaug_config)
-        else:
-            n = 1
+        n = len(randaug_config) if policy is None else 1
         aug = RandAugment(n=n, m=15, policy=policy)
         in_tensor = torch.rand(10, 3, 50, 50, requires_grad=True)
         aug(in_tensor)

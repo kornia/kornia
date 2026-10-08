@@ -52,10 +52,7 @@ class SegmentationResults:
            based on the original resolution logits.
            Otherwise, this will use the low resolution logits (self.logits).
         """
-        if self._original_res_logits is not None:
-            x = self._original_res_logits
-        else:
-            x = self.logits
+        x = self._original_res_logits if self._original_res_logits is not None else self.logits
 
         return x > self.mask_threshold
 

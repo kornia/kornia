@@ -75,8 +75,10 @@ def cauchy_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
         reduction in ("mean", "sum", "none", None), f"Given type of reduction is not supported. Got: {reduction}"
     )
 
-    # compute loss
-    loss = torch.log1p(0.5 * torch.square(img1 - img2))
+    # Keep the square and its backward in float32 for half-precision residuals.
+    diff = img1 - img2
+    compute_diff = diff.float() if diff.dtype in (torch.float16, torch.bfloat16) else diff
+    loss = torch.log1p(0.5 * torch.square(compute_diff))
 
     # perform reduction
     if reduction == "mean":
@@ -88,7 +90,7 @@ def cauchy_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
     else:
         raise NotImplementedError("Invalid reduction option.")
 
-    return loss
+    return loss.to(diff.dtype) if diff.dtype in (torch.float16, torch.bfloat16) else loss
 
 
 class CauchyLoss(nn.Module):

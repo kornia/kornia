@@ -1271,10 +1271,7 @@ class TestConventionAugmentationSequential(BaseTester):
         )
         blocks = ((yy // 2) + (xx // 2)) % 2
 
-        if mask_dtype == torch.bool:
-            mask = blocks.bool()
-        else:
-            mask = (2 + blocks).to(mask_dtype)
+        mask = blocks.bool() if mask_dtype == torch.bool else (2 + blocks).to(mask_dtype)
 
         mask = mask[None, None]
         image = torch.rand(1, 3, 12, 16, device=device, dtype=dtype)

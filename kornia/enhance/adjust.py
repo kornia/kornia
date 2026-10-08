@@ -539,10 +539,7 @@ def adjust_contrast_with_mean_subtraction(image: torch.Tensor, factor: Union[flo
 
     # KORNIA_CHECK(any(factor >= 0), "Contrast factor must be positive.")
 
-    if image.shape[-3] == 3:
-        img_mean = rgb_to_grayscale(image).mean((-2, -1), True)
-    else:
-        img_mean = image.mean((-3, -2, -1), True)
+    img_mean = rgb_to_grayscale(image).mean((-2, -1), True) if image.shape[-3] == 3 else image.mean((-3, -2, -1), True)
 
     # Apply contrast factor subtracting the mean
     img_adjust: torch.Tensor = image * factor + img_mean * (1 - factor)
@@ -708,11 +705,7 @@ def adjust_sigmoid(image: torch.Tensor, cutoff: float = 0.5, gain: float = 10, i
     """
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
 
-    if inv:
-        img_adjust = 1 - 1 / (1 + (gain * (cutoff - image)).exp())
-    else:
-        img_adjust = 1 / (1 + (gain * (cutoff - image)).exp())
-    return img_adjust
+    return 1 - 1 / (1 + (gain * (cutoff - image)).exp()) if inv else 1 / (1 + (gain * (cutoff - image)).exp())
 
 
 def adjust_log(image: torch.Tensor, gain: float = 1, inv: bool = False, clip_output: bool = True) -> torch.Tensor:
@@ -745,10 +738,7 @@ def adjust_log(image: torch.Tensor, gain: float = 1, inv: bool = False, clip_out
     """
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
 
-    if inv:
-        img_adjust = (2**image - 1) * gain
-    else:
-        img_adjust = (1 + image).log2() * gain
+    img_adjust = (2**image - 1) * gain if inv else (1 + image).log2() * gain
 
     # truncate between pixel values
     if clip_output:
@@ -1208,10 +1198,7 @@ def invert(image: torch.Tensor, max_val: Optional[torch.Tensor] = None) -> torch
     if not isinstance(image, torch.Tensor):
         raise AssertionError(f"Input is not a torch.Tensor. Got: {type(input)}")
 
-    if max_val is None:
-        _max_val = torch.tensor([1.0])
-    else:
-        _max_val = max_val
+    _max_val = torch.tensor([1.0]) if max_val is None else max_val
     if not isinstance(_max_val, torch.Tensor):
         raise AssertionError(f"max_val is not a torch.Tensor. Got: {type(_max_val)}")
 

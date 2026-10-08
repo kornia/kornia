@@ -116,4 +116,5 @@ class TestConventionsUnsharpMask(BaseTester):
         out = unsharp_mask(step, (5, 5), (1.5, 1.5))
         expected = [0.0, 0.0, 0.0, -0.120078, -0.353959, 1.353959, 1.120078, 1.0, 1.0, 1.0]
         self.assert_close(out[0, 0, 3], torch.tensor(expected, device=device, dtype=dtype))
-        assert out.min() < -0.3 and out.max() > 1.3
+        assert out.min() < -0.3
+        assert out.max() > 1.3
