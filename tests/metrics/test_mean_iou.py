@@ -25,6 +25,15 @@ from testing.base import BaseTester
 
 
 class TestMeanIoU(BaseTester):
+    def test_transposed_label_maps(self, device):
+        pred = torch.tensor([[[0, 1, 2], [2, 1, 0]], [[2, 0, 1], [1, 2, 0]]], device=device).transpose(1, 2)
+        target = torch.tensor([[[0, 2, 2], [1, 1, 0]], [[2, 0, 0], [1, 2, 1]]], device=device).transpose(1, 2)
+        expected = torch.tensor([[1, 1 / 3, 1 / 3], [1 / 3, 1 / 3, 1]], device=device, dtype=torch.float32)
+
+        assert not pred.is_contiguous()
+        assert not target.is_contiguous()
+        self.assert_close(kornia.metrics.mean_iou(pred, target, 3), expected)
+
     def test_two_classes_perfect(self, device, dtype):
         batch_size = 1
         num_classes = 2

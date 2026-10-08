@@ -26,6 +26,28 @@ from testing.base import BaseTester
 
 
 class TestConfusionMatrix(BaseTester):
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.parametrize("label_dtype", [torch.long, torch.uint8])
+    @pytest.mark.parametrize("normalized", [False, True])
+    def test_transposed_label_maps(self, device, batch_size, label_dtype, normalized):
+        pred = torch.tensor([[[0, 1, 2], [2, 1, 0]], [[2, 0, 1], [1, 2, 0]]], device=device, dtype=label_dtype)[
+            :batch_size
+        ].transpose(1, 2)
+        target = torch.tensor([[[0, 2, 2], [1, 1, 0]], [[2, 0, 0], [1, 2, 1]]], device=device, dtype=label_dtype)[
+            :batch_size
+        ].transpose(1, 2)
+        expected = torch.tensor(
+            [[[2, 0, 0], [0, 1, 1], [0, 1, 1]], [[1, 1, 0], [1, 1, 0], [0, 0, 2]]],
+            device=device,
+            dtype=torch.float32,
+        )[:batch_size]
+        if normalized:
+            expected = expected / 2
+
+        assert not pred.is_contiguous()
+        assert not target.is_contiguous()
+        self.assert_close(kornia.metrics.confusion_matrix(pred, target, 3, normalized), expected)
+
     def test_two_classes(self, device, dtype):
         num_classes = 2
         actual = torch.tensor([[1, 1, 1, 1, 0, 0, 0, 0]], device=device, dtype=torch.long)
