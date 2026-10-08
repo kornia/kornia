@@ -538,6 +538,38 @@ class TestFindHomographyDLT(BaseTester):
         H = find_homography_dlt(points, points, solver="lu")
         assert H.isnan().all().item()
 
+    @pytest.mark.parametrize(
+        ("points", "linear", "shift"),
+        [
+            # identical point sets: the Hartley-normalized systems are bitwise equal
+            ([[140, 30], [130, 40], [0, 120], [150, 110], [120, 180], [20, 40]], [[1, 0], [0, 1]], [0, 0]),
+            ([[140, 30], [130, 40], [0, 120], [150, 110], [120, 180], [20, 40]], [[1, 0], [0, 1]], [3, -5]),
+            ([[122, 119], [0, 180], [173, 155], [105, 57], [180, 19], [14, 118]], [[0, -1], [1, 0]], [0, 0]),
+        ],
+    )
+    def test_exact_correspondences_lu(self, points, linear, shift, device, dtype):
+        # On these exact correspondences the last LU pivot of the normal matrix is exactly zero in float32
+        # and float64. The homography is still unique (rank 8), so the LU solver has to return it, as the
+        # SVD solver and cv2.findHomography(points1, points2, 0) do, rather than NaN.
+        _skip_half(dtype, _HALF_DLT)
+        points1 = torch.tensor([points], device=device, dtype=dtype)
+        linear_part = torch.tensor(linear, device=device, dtype=dtype)
+        points2 = points1 @ linear_part.T + torch.tensor(shift, device=device, dtype=dtype)
+        expected = torch.eye(3, device=device, dtype=dtype)[None].clone()
+        expected[0, :2, :2] = linear_part
+        expected[0, :2, 2] = torch.tensor(shift, device=device, dtype=dtype)
+        weights = torch.ones(1, 6, device=device, dtype=dtype)
+        self.assert_close(find_homography_dlt(points1, points2, solver="lu"), expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(find_homography_dlt_iterated(points1, points2, weights), expected, rtol=1e-4, atol=1e-4)
+
+    def test_collinear_points_lu_give_nan(self, device, dtype):
+        # Roundoff can leave the normal matrix of collinear points with tiny non-zero leading pivots and a
+        # zero last one, which must not be taken for the unique homography of exact correspondences.
+        points = torch.tensor(
+            [[[0.0, 0.0], [1.0, 1.0], [2.0, 2.0], [3.0, 3.0], [4.0, 4.0]]], device=device, dtype=dtype
+        )
+        assert find_homography_dlt(points, points, solver="lu").isnan().all().item()
+
     @pytest.mark.parametrize("solver", ["svd", "lu"])
     def test_singular_normalization_gives_nan(self, device, dtype, solver):
         # A spread whose squared radius overflows gives points2 a zero Hartley scale and a singular
