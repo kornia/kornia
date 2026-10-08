@@ -1003,20 +1003,21 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     C = torch.where(pure_biquadratic, C.detach(), C)
 
     # When all four roots lie in a cluster away from 0, the resolvent has a near-triple root and Ferrari's two
-    # factors coincide, so the cluster comes back as two wrong values or not at all. Centred on the root mean
-    # -A/4 and rescaled to the cluster's width, x = s + w t, the same quartic is well conditioned, so Ferrari's
-    # factors are formed for t from the Taylor coefficients of p at s. Only a tight cluster moves, where every
-    # root is far from 0 compared with the cluster's width and the shift back costs no relative precision; a
+    # factors coincide, so the cluster comes back as two wrong values or not at all; a near-triple root beside a
+    # fourth one comes back as three copies. Centred on the root mean -A/4 and rescaled to the cluster's width,
+    # x = s + w t, the same quartic is well conditioned, so Ferrari's factors are formed for t from the Taylor
+    # coefficients of p at s. Only a row whose centred root bound is below a quarter of its root bound moves; a
     # row with roots at 0 keeps them. The candidates return to x before classification and polishing, which
-    # evaluate the input quartic: its rounded Taylor coefficients would cap a close pair's accuracy.
+    # evaluate the input quartic: its rounded Taylor coefficients would cap a close pair's accuracy, and the
+    # polishing restores the relative precision of a root that the shift back leaves near 0.
     quartic_A, quartic_B, quartic_C, quartic_D = A, B, C, D
     cluster_shift = -0.25 * A
     shifted_B = (6 * cluster_shift + 3 * A) * cluster_shift + B
     shifted_C = ((4 * cluster_shift + 3 * A) * cluster_shift + 2 * B) * cluster_shift + C
     shifted_D = (((cluster_shift + A) * cluster_shift + B) * cluster_shift + C) * cluster_shift + D
     with torch.no_grad():
-        # 16 times the centred root bound max(|B|^(1/2), |C|^(1/3), |D|^(1/4)) below 1, compared as powers.
-        tight = (shifted_B.abs() < 2.0**-8) & (shifted_C.abs() < 2.0**-12) & (shifted_D.abs() < 2.0**-16)
+        # 4 times the centred root bound max(|B|^(1/2), |C|^(1/3), |D|^(1/4)) below 1, compared as powers.
+        tight = (shifted_B.abs() < 2.0**-4) & (shifted_C.abs() < 2.0**-6) & (shifted_D.abs() < 2.0**-8)
         nonzero = (shifted_B != 0) | (shifted_C != 0) | (shifted_D != 0)
         clustered = tight & nonzero & ((d_q != 0) | (e_q != 0))
     if compiling or bool(clustered.any()):
@@ -1222,38 +1223,6 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         bi_real = ((z >= 0) & z_real[:, None]).repeat_interleave(2, -1)
         roots = torch.where(biquadratic[:, None], bi_roots, roots)
         genuine = torch.where(biquadratic[:, None], bi_real, genuine)
-
-    # Trailing zero coefficients d = e = 0 make 0 a multiple root, which Ferrari only approximates: the
-    # factors' constants are rounding noise, and the pair at 0 can leave as padding or take a simple root
-    # with it. Deflate x^k instead and solve the rest with solve_cubic's lower-degree convention, so the
-    # zeros are exact and the other roots continue as Ferrari's candidates would. A single trailing zero
-    # needs no deflation: Newton reaches the simple root at 0 exactly.
-    zero_pair = (d_q == 0) & (e_q == 0)
-    if compiling or bool(zero_pair.any()):
-        with torch.no_grad():
-            c_zero = zero_pair & (c_q == 0)
-            b_zero = c_zero & (b_q == 0)
-            ones, zeros = torch.ones_like(a_q), torch.zeros_like(a_q)
-            deflated = torch.where(
-                b_zero[:, None],
-                torch.stack([zeros, zeros, zeros, a_q], -1),
-                torch.where(
-                    c_zero[:, None],
-                    torch.stack([zeros, zeros, a_q, b_q], -1),
-                    torch.stack([zeros, a_q, b_q, c_q], -1),
-                ),
-            )
-            deflated = torch.where(zero_pair[:, None], deflated, torch.stack([zeros, ones, zeros, -ones], -1))
-            deflated_roots, deflated_count = _solve_cubic(deflated)
-            # Slots below the deflated degree hold its roots; the remaining slots are the zeros.
-            degree = 2 - c_zero.long() - b_zero.long()
-            slot = torch.arange(4, device=roots.device)
-            deflated_genuine = (slot < deflated_count[:, None]) | (slot >= degree[:, None])
-            deflated_roots = torch.cat([deflated_roots, zeros[:, None]], -1) * inverse_scale[:, None]
-        roots = torch.where(zero_pair[:, None], deflated_roots, roots)
-        genuine = torch.where(zero_pair[:, None], deflated_genuine, genuine)
-        use_local = use_local & ~zero_pair[:, None]
-        real_double = real_double & ~zero_pair[:, None]
 
     with torch.no_grad():
         stationary, unresolved = _quartic_stationary_points(roots, columns)
