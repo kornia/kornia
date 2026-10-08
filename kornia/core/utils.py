@@ -303,13 +303,17 @@ def _times_power_of_two(x: torch.Tensor, exponent: torch.Tensor) -> torch.Tensor
     """``x * 2 ** exponent`` in three steps of about a third of the exponent each.
 
     No step and no intermediate leaves the dtype while the result is inside it. ``exponent`` is integer
-    valued and is clipped to three times the largest exponent of the dtype, beyond which a nonzero result is
-    ``inf`` or ``0`` anyway and a zero one stays ``0`` instead of turning into ``0 * inf``.
+    valued and is clipped to three times the largest exponent of a normal number of the dtype, beyond which a
+    nonzero result is ``inf`` or ``0`` anyway and a zero one stays ``0`` instead of turning into ``0 * inf``.
+    The powers of two are read from a table, not computed by ``pow``, which is not exact on every device
+    (MPS), and the scaling has to be exact to leave every rounding step as it was.
     """
-    largest = 3069.0 if x.dtype == torch.float64 else 381.0  # 3 * 1023, 3 * 127
-    exponent = exponent.clamp(-largest, largest)
+    largest = 1022 if x.dtype == torch.float64 else 126
+    exponent = exponent.clamp(-3.0 * largest, 3.0 * largest)
     step = torch.round(exponent / 3)
-    return x * torch.pow(2.0, step) * torch.pow(2.0, step) * torch.pow(2.0, exponent - 2 * step)
+    powers = torch.tensor([2.0**k for k in range(-largest, largest + 2)], dtype=x.dtype, device=x.device)
+    scale = powers[(step + largest).to(torch.int64)]
+    return x * scale * scale * powers[(exponent - 2 * step + largest).to(torch.int64)]
 
 
 def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:

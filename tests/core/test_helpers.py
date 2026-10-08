@@ -62,12 +62,13 @@ def _regular_at_extreme_scales(device, dtype):
     """Well-conditioned 4x4 matrices scaled so that the products of four entries overflow or underflow the dtype
     while the inverse fits: the identity and a dense matrix at ``big`` and ``1 / big``, the dense matrix with two
     columns, then two rows, scaled by ``small``, the identity at the largest finite value of the dtype, where ``log2``
-    rounds up to the exponent above, and a matrix whose row factor ``huge`` and column factor ``tiny / huge``
-    compound to more than the dtype holds while its inverse, with entries ``1 / (2 tiny)``, fits. Powers of two keep
-    the scaling exact."""
+    rounds up to the exponent above, and a block matrix whose column factor ``tiny / huge`` and the row factor ``low``
+    of its other block add up to an exponent beyond the dtype, by which the zeros of its inverse are scaled back,
+    while no entry of its row- or column-scaled copy is subnormal (MPS flushes those to zero). Powers of two keep the
+    scaling exact."""
     big = 2.0**40 if dtype == torch.float32 else 2.0**300
     small = 2.0**-80 if dtype == torch.float32 else 2.0**-600
-    huge, tiny = (2.0**80, 2.0**-50) if dtype == torch.float32 else (2.0**800, 2.0**-250)
+    huge, tiny, low = (2.0**80, 2.0**-40, 2.0**-20) if dtype == torch.float32 else (2.0**800, 2.0**-200, 2.0**-100)
     A = torch.tensor(
         [[4.0, 1.0, 2.0, 1.0], [1.0, 5.0, 1.0, 2.0], [2.0, 1.0, 6.0, 1.0], [1.0, 2.0, 1.0, 7.0]],
         device=device,
@@ -75,19 +76,23 @@ def _regular_at_extreme_scales(device, dtype):
     )
     eye = torch.eye(4, device=device, dtype=dtype)
     D = torch.diag(torch.tensor([1.0, 1.0, small, small], device=device, dtype=dtype))
-    compound = eye.clone()
+    compound = eye * low
     compound[:2, :2] = torch.tensor([[huge, tiny], [huge, -tiny]], device=device, dtype=dtype)
     return torch.stack([eye * big, eye / big, A * big, A / big, A @ D, D @ A, eye * torch.finfo(dtype).max, compound])
 
 
 def _regular_with_a_vanishing_column(n, device, dtype):
     """``[[2 ** 100, 2 ** -60], [2 ** 100, -2 ** -60]]`` (``2 ** 1000`` and ``2 ** -600`` in float64) in the corner of
-    the identity of order ``n``: regular, with a finite inverse and a finite ``adj / det``, while the second column is
-    ``2 ** -160`` of the first in both rows and would underflow in a row scaling that is carried out."""
+    the identity of order ``n``, and its inverse, ``[[1 / (2 huge), 1 / (2 huge)], [1 / (2 tiny), -1 / (2 tiny)]]`` in
+    the corner. Regular, with a finite inverse and a finite ``adj / det``, while the second column is ``2 ** -160`` of
+    the first in both rows and would underflow in a row scaling that is carried out. ``torch.linalg.inv`` of torch
+    2.5.1 returns ``[[1 / huge, 0], [1 / tiny, -1 / tiny]]`` for it, off by 1 in ``A @ inv``; torch 2.14 is exact."""
     huge, tiny = (2.0**100, 2.0**-60) if dtype == torch.float32 else (2.0**1000, 2.0**-600)
     A = torch.eye(n, device=device, dtype=dtype)
     A[:2, :2] = torch.tensor([[huge, tiny], [huge, -tiny]], device=device, dtype=dtype)
-    return A
+    inverse = torch.eye(n, device=device, dtype=dtype)
+    inverse[:2, :2] = torch.tensor([[0.5 / huge, 0.5 / huge], [0.5 / tiny, -0.5 / tiny]], device=device, dtype=dtype)
+    return A, inverse
 
 
 # One row is the sum of two others, or a multiple of the other, in small integers: exactly singular, and every
@@ -270,9 +275,9 @@ class TestInverseCast:
             pytest.skip("the capture path computes in float32 or float64")
         torch.manual_seed(0)
         x = torch.randn(64, n, n, device=device, dtype=dtype)
-        x = x * torch.logspace(-3, 3, 64, device=device, dtype=dtype)[:, None, None]
-        x[::2] *= torch.logspace(-2, 2, n, device=device, dtype=dtype)[None, :, None]
-        x = torch.cat([x, _regular_with_a_vanishing_column(n, device, dtype)[None]])
+        x = x * torch.logspace(-3, 3, 64, dtype=dtype).to(device)[:, None, None]  # ``logspace`` has no MPS kernel
+        x[::2] *= torch.logspace(-2, 2, n, dtype=dtype).to(device)[None, :, None]
+        x = torch.cat([x, _regular_with_a_vanishing_column(n, device, dtype)[0][None]])
         adj, det = _adjugate_closed_form(x)
         assert torch.isfinite(adj).all()
         assert torch.isfinite(det).all()
@@ -284,13 +289,17 @@ class TestInverseCast:
         if dtype not in (torch.float32, torch.float64):
             pytest.skip("tracing under half precision is not a supported surface")
         # The last matrix is regular with a column ``2 ** -160`` of the other in every row; ``_is_singular`` reads it
-        # as singular in eager mode and under capture alike, so it is tested on this mask-free path.
-        vanishing = _regular_with_a_vanishing_column(4, device, dtype)
+        # as singular in eager mode and under capture alike, so it is tested on this mask-free path. It is read
+        # against its exact inverse, which the powers of two reach to the bit, not against eager, whose LU loses the
+        # column on torch 2.5.1.
+        vanishing, vanishing_inverse = _regular_with_a_vanishing_column(4, device, dtype)
         A = torch.cat([_regular_at_extreme_scales(device, dtype), vanishing[None]])
         traced = torch.jit.trace(_torch_inverse_cast, A, check_trace=False)
         inverse = traced(A)
         assert torch.isfinite(inverse).all()
-        assert_close(inverse, _torch_inverse_cast(A), atol=0.0, rtol=1e-5 if dtype == torch.float32 else 1e-12)
+        rtol = 1e-5 if dtype == torch.float32 else 1e-12
+        assert_close(inverse[:-1], _torch_inverse_cast(A[:-1]), atol=0.0, rtol=rtol)
+        assert torch.equal(inverse[-1], vanishing_inverse)
 
 
 class TestExportHelpers:
