@@ -576,6 +576,111 @@ class TestDeterminantToPolynomial(BaseTester):
 
 
 class TestQuarticSolver(BaseTester):
+    @pytest.mark.parametrize(
+        "expected",
+        [
+            [-3.0, -2.5, -2.5, -1.5],  # Newton moved a copy of -2.5 onto -1.5 (#5509/#5621).
+            [-6.0, -5.0, -5.0, -3.0],
+            [-6.0, -6.0, -5.75, -3.5],  # A negative factor discriminant discarded the double root.
+            [-6.0, -5.75, 4.25, 4.25],
+            [-6.0, -5.0, -5.0, -3.75],  # Small R amplifies the factor coefficient roundoff.
+            [-1.75, 1.0, 1.0, 6.0],
+        ],
+    )
+    @pytest.mark.parametrize("scale", [2.0**-20, 1.0, -(2.0**20)])
+    def test_exact_double_root_multiplicity_5622(self, expected, scale, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("These exact coefficient and root comparisons require float32 or float64.")
+        roots = torch.tensor([expected], dtype=torch.float64)
+        coeffs = (_monic_from_roots(roots) * scale).to(device=device, dtype=dtype)
+        actual = solver.solve_quartic(coeffs)
+        assert actual.dtype == dtype
+        assert bool((actual != 0).all())
+        # Sorting all four slots tests multiplicity as well as presence: neither padding nor
+        # moving a copy onto a simple root can satisfy this bound (the smallest gap is 0.25).
+        self.assert_close(actual.sort(-1).values, roots.to(device=device, dtype=dtype), atol=1e-5, rtol=1e-5)
+
+    @pytest.mark.parametrize("delta", [2.0**-52, 2.0**-50])
+    def test_near_double_complex_roots_are_not_recovered_5622(self, delta, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("The perturbation must remain representable in the input coefficients.")
+        # (x^2 - 1)^2 + delta*(x^2 + 1) is strictly positive. Both stationary
+        # points satisfy the old residual/derivative bounds but are not real roots.
+        coeffs = torch.tensor([[1.0, 0.0, -2.0 + delta, 0.0, 1.0 + delta]], device=device, dtype=dtype)
+        actual = solver.solve_quartic(coeffs)
+        self.assert_close(actual, torch.zeros_like(actual), atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("scale", [2.0**-900, 1.0, -(2.0**900)])
+    def test_double_root_recovery_real_complex_boundary_5622(self, scale, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("The perturbation and coefficient scales require float64.")
+        # ((x - 1)^2 + delta)*(x + 1)*(x + 2) has only two real roots.
+        # The second row needs recovery of an exact double root, even at extreme scales.
+        delta = 2.0**-50
+        coeffs = (
+            torch.tensor(
+                [
+                    [1.0, 1.0, -3.0 + delta, -1.0 + 3.0 * delta, 2.0 + 2.0 * delta],
+                    [1.0, 3.25, -47.3125, -81.015625, 623.15625],
+                ],
+                device=device,
+                dtype=dtype,
+            )
+            * scale
+        )
+        expected = torch.tensor([[-2.0, -1.0, 0.0, 0.0], [-6.0, -5.75, 4.25, 4.25]], device=device, dtype=dtype)
+        self.assert_close(solver.solve_quartic(coeffs).sort(-1).values, expected, atol=1e-5, rtol=1e-5)
+
+    def test_double_root_controls_5622(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("Close distinct-root controls require float32 or float64.")
+        expected = torch.tensor(
+            [[-3.0, -2.5, -2.375, -1.5], [-6.0, -5.75, 4.125, 4.25], [-6.0, -1.75, 1.0, 1.125]],
+            dtype=torch.float64,
+        )
+        coeffs = _monic_from_roots(expected).to(device=device, dtype=dtype)
+        self.assert_close(
+            solver.solve_quartic(coeffs).sort(-1).values, expected.to(device=device, dtype=dtype), atol=1e-5, rtol=1e-5
+        )
+        # (x + 6)(x + 5.75)((x - 4.25)^2 + 1/16): its nearby complex pair must stay padding.
+        coeffs = torch.tensor([[1.0, 3.25, -47.25, -80.28125, 625.3125]], device=device, dtype=dtype)
+        expected = torch.tensor([[-6.0, -5.75, 0.0, 0.0]], device=device, dtype=dtype)
+        self.assert_close(solver.solve_quartic(coeffs).sort(-1).values, expected, atol=1e-5, rtol=1e-5)
+
+    def test_double_root_gradient_and_dtype_5622(self, device, dtype):
+        # The first row is exact in float16; the second is also exact in bfloat16.
+        rows = [[1.0, 9.5, 33.25, 50.625, 28.125], [1.0, 0.0, -9.0, 4.0, 12.0]]
+        expected = [[-3.0, -2.5, -2.5, -1.5], [-3.0, -1.0, 2.0, 2.0]]
+        if dtype == torch.bfloat16:
+            rows, expected = rows[1:], expected[1:]
+        elif dtype in (torch.float32, torch.float64):
+            rows.append([1.0, 3.25, -47.3125, -81.015625, 623.15625])
+            expected.append([-6.0, -5.75, 4.25, 4.25])
+        coeffs = torch.tensor(rows, device=device, dtype=dtype, requires_grad=True)
+        actual = solver.solve_quartic(coeffs)
+        assert actual.dtype == dtype
+        self.assert_close(
+            actual.sort(-1).values, torch.tensor(expected, device=device, dtype=dtype), atol=1e-5, rtol=1e-5
+        )
+        actual.sum().backward()
+        assert bool(torch.isfinite(coeffs.grad).all())
+        # The sum of the four real roots is -b/a. A detached-output fix fails this derivative.
+        expected_grad = torch.zeros_like(coeffs)
+        expected_grad[:, 0] = coeffs.detach()[:, 1]
+        expected_grad[:, 1] = -1.0
+        self.assert_close(coeffs.grad, expected_grad, atol=1e-4, rtol=1e-4)
+
+    def test_double_root_dynamo_5622(self, device, dtype, torch_optimizer):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("The issue coefficients are exact in float32 and float64.")
+        coeffs = torch.tensor(
+            [[1.0, 9.5, 33.25, 50.625, 28.125], [1.0, 3.25, -47.3125, -81.015625, 623.15625]],
+            device=device,
+            dtype=dtype,
+        )
+        compiled = torch_optimizer(solver.solve_quartic)
+        self.assert_close(compiled(coeffs), solver.solve_quartic(coeffs), atol=1e-5, rtol=1e-5)
+
     def test_smoke(self, device, dtype):
         coeffs = torch.rand(1, 5, device=device, dtype=dtype)
         roots = solver.solve_quartic(coeffs)

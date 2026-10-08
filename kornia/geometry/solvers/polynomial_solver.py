@@ -479,6 +479,62 @@ _QUARTIC_COINCIDENCE_FACTOR = 4.0
 _QUARTIC_SIMPLE_ROOT_DERIVATIVE = 1e-2
 
 
+@torch.no_grad()
+def _quartic_local_discriminant_is_real(coeffs: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+    """Reject a resolved negative discriminant of the quadratic Taylor polynomial at ``x``."""
+    # An exact power-of-two scaling preserves the input polynomial's signs without the
+    # rounding introduced by monic normalization, and protects the squared quantities below.
+    exponent = torch.floor(torch.log2(coeffs.abs().amax(dim=-1, keepdim=True)))
+    coeffs = coeffs * _exact_power_of_two(-exponent)
+    # A small p and p' do not distinguish an exact double root from a nearby complex pair.
+    # The local quadratic has discriminant p'^2 - 2*p*p''. At a double root it vanishes;
+    # at a nearby extremum with no real pair it is negative. Ordinary Horner rounding can
+    # hide the sign, so evaluate p with compensated Horner (Graillat, 2008, Algorithm 4):
+    # https://doi.org/10.1016/j.camwa.2008.02.027
+    # TwoProduct splits each operand into high/low halves; TwoSum retains each addition's
+    # rounding error. The correction polynomial is accumulated alongside ordinary Horner.
+    splitter = 2.0**27 + 1.0 if x.dtype == torch.float64 else 2.0**12 + 1.0
+    split_x = splitter * x
+    x_high = split_x - (split_x - x)
+    x_low = x - x_high
+    value = coeffs[:, :1].expand_as(x)
+    correction = torch.zeros_like(x)
+    for coefficient in coeffs[:, 1:].unbind(-1):
+        product = value * x
+        split_value = splitter * value
+        value_high = split_value - (split_value - value)
+        value_low = value - value_high
+        product_error = ((value_high * x_high - product) + value_high * x_low + value_low * x_high) + value_low * x_low
+        total = product + coefficient[:, None]
+        z = total - product
+        sum_error = (product - (total - z)) + (coefficient[:, None] - z)
+        correction = correction * x + (product_error + sum_error)
+        value = total
+    value = value + correction
+
+    a, b, c, d, e = (v[:, None] for v in coeffs.unbind(-1))
+    slope = ((4.0 * a * x + 3.0 * b) * x + 2.0 * c) * x + d
+    curvature = (12.0 * a * x + 6.0 * b) * x + 2.0 * c
+    ax = x.abs()
+    value_scale = (((a.abs() * ax + b.abs()) * ax + c.abs()) * ax + d.abs()) * ax + e.abs()
+    slope_scale = ((4.0 * a.abs() * ax + 3.0 * b.abs()) * ax + 2.0 * c.abs()) * ax + d.abs()
+    curvature_scale = (12.0 * a.abs() * ax + 6.0 * b.abs()) * ax + 2.0 * c.abs()
+    # u = eps/2; gamma_8 bounds eight rounded operations. Compensated degree-four
+    # Horner has error u*|p| + gamma_8^2*sum(|a_i*x^i|), rather than O(eps)*scale.
+    # Use eps in the last rounding allowance and propagate the derivative errors into
+    # the discriminant. This budget is derived from the evaluation, not the root grid.
+    eps = torch.finfo(x.dtype).eps
+    gamma = 4.0 * eps / (1.0 - 4.0 * eps)
+    value_error = gamma**2 * value_scale + eps * value.abs()
+    slope_error = gamma * slope_scale
+    curvature_error = gamma * curvature_scale
+    discriminant = slope.square() - 2.0 * curvature * value
+    error = (2.0 * slope.abs() + slope_error) * slope_error
+    error = error + 2.0 * ((curvature.abs() + curvature_error) * value_error + value.abs() * curvature_error)
+    error = error + eps * (slope.square() + 2.0 * (curvature * value).abs())
+    return torch.isfinite(error) & (discriminant >= -error)
+
+
 def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     r"""Solve given quartic equation.
 
@@ -775,10 +831,48 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     def quartic_derivative(x: torch.Tensor) -> torch.Tensor:
         return ((4.0 * x + 3.0 * A_e) * x + 2.0 * B_e) * x + C_e
 
+    # A rounded Ferrari factor can have a negative discriminant at an exact double root.
+    # Test its midpoint against the original quartic and its derivative: both must vanish
+    # within Horner roundoff (eight epsilons for the products and sums). Testing only the
+    # factor discriminant misses error amplified by R or E reconstruction, while the usual
+    # sqrt(eps) residual tolerance would also admit genuinely complex pairs near the axis.
+    factor_b = torch.stack([q1_b, q2_b], dim=-1)
+    factor_c = torch.stack([q1_c, q2_c], dim=-1)
+    midpoint = -0.5 * factor_b
+    midpoint_abs = midpoint.abs()
+    midpoint_scale = ((midpoint_abs + A_e.abs()) * midpoint_abs + B_e.abs()) * midpoint_abs + C_e.abs()
+    midpoint_scale = midpoint_scale * midpoint_abs + D_e.abs()
+    midpoint_derivative_scale = (4.0 * midpoint_abs + 3.0 * A_e.abs()) * midpoint_abs + 2.0 * B_e.abs()
+    midpoint_derivative_scale = midpoint_derivative_scale * midpoint_abs + C_e.abs()
+    roundoff = 8.0 * torch.finfo(midpoint.dtype).eps
+    recover_double = (
+        (factor_b.square() - 4.0 * factor_c < 0)
+        & (quartic(midpoint).abs() <= roundoff * midpoint_scale)
+        & (quartic_derivative(midpoint).abs() <= roundoff * midpoint_derivative_scale)
+    )
+    # Check the original input coefficients, before monic normalization can round away
+    # a real/complex distinction. This only selects candidates; their gradients still
+    # follow Ferrari's midpoint and the existing finite surrogate conventions.
+    recover_double = recover_double & _quartic_local_discriminant_is_real(
+        quartic_coeffs, midpoint * variable_scale[:, None]
+    )
+    root_candidates = torch.where(
+        recover_double.repeat_interleave(2, dim=-1), midpoint.repeat_interleave(2, dim=-1), root_candidates
+    )
+    is_candidate = is_candidate | recover_double.repeat_interleave(2, dim=-1)
+
     root_residual = quartic(root_candidates)
     for _ in range(2):
         derivative = quartic_derivative(root_candidates)
-        can_step = derivative != 0
+        derivative_scale = (
+            4.0 * root_candidates.abs() ** 3
+            + 3.0 * A_e.abs() * root_candidates.square()
+            + 2.0 * B_e.abs() * root_candidates.abs()
+            + C_e.abs()
+        )
+        # Dividing two rounding errors at an accurate multiple root can jump to another root
+        # with a smaller residual. Only polish when the derivative is resolved (#5622).
+        can_step = derivative.abs() > roundoff * derivative_scale
         safe_derivative = torch.where(can_step, derivative, torch.ones_like(derivative))
         stepped = torch.where(can_step, root_candidates - root_residual / safe_derivative, root_candidates)
         stepped_residual = quartic(stepped)
