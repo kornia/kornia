@@ -248,3 +248,28 @@ class TestConventionsRobustLosses(BaseTester):
         self.assert_close(out, expected_map)
         self.assert_close(loss_fn(img2, img1), expected_map)
         self.assert_close(module()(img1, img2), expected_map)
+
+    @pytest.mark.parametrize(
+        "loss_fn",
+        [
+            kornia.losses.charbonnier_loss,
+            kornia.losses.cauchy_loss,
+            kornia.losses.geman_mcclure_loss,
+            kornia.losses.welsch_loss,
+        ],
+        ids=["charbonnier", "cauchy", "geman_mcclure", "welsch"],
+    )
+    def test_convention_robust_loss_half_precision_compute_dtype(self, loss_fn, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("only half-precision inputs can be evaluated in another dtype")
+        # Charbonnier, Cauchy and Geman-McClure evaluate half-precision inputs in float32 and round once; their
+        # gradients are pinned in test_robust.py. Welsch computes in the input dtype, so some of these 641 values round
+        # differently from the float32 evaluation (46 to 68 on arm64 CPU and MPS). All four return the input dtype.
+        residual = torch.linspace(-8.0, 8.0, 641, device=device, dtype=dtype)
+        out = loss_fn(residual, torch.zeros_like(residual))
+        assert out.dtype == dtype
+        in_float32 = loss_fn(residual.float(), torch.zeros_like(residual, dtype=torch.float32)).to(dtype)
+        if loss_fn is kornia.losses.welsch_loss:
+            assert not torch.equal(out, in_float32)
+        else:
+            self.assert_close(out, in_float32, rtol=0, atol=0)

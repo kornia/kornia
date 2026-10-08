@@ -58,6 +58,9 @@ def charbonnier_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "n
         - The losses are symmetric in ``img1`` and ``img2``, which must have the same shape, without broadcasting,
           and the same device. The default ``reduction='none'`` returns the loss of every element, in the shape of
           the inputs.
+        - This loss, :func:`~kornia.losses.cauchy_loss` and :func:`~kornia.losses.geman_mcclure_loss` evaluate
+          float16 and bfloat16 inputs in float32, gradients included, and return the input dtype;
+          :func:`~kornia.losses.welsch_loss` computes in the input dtype.
 
     Args:
         img1: the predicted torch.Tensor with shape :math:`(*)`.
