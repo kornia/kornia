@@ -19,6 +19,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
 
@@ -220,3 +221,37 @@ class TestTotalVariation(BaseTester):
         dtype = torch.float64
         image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         self.gradcheck(kornia.losses.total_variation, (image,))
+
+
+class TestConventionsTotalVariation(BaseTester):
+    @staticmethod
+    def _edges(device, dtype):
+        # H = 5, W = 8. Channel 0 holds one vertical edge (a step along W in each of the 5 rows), channel 1 one
+        # horizontal edge (a step along H in each of the 8 columns), channel 2 is constant; sample 1 doubles sample 0.
+        img = torch.zeros(2, 3, 5, 8)
+        img[:, 0, :, 3:] = 1.0
+        img[:, 1, 2:, :] = 1.0
+        img[:, 2] = 0.5
+        img[1] *= 2
+        return img.to(device, dtype)
+
+    def test_convention_total_variation_sums_over_the_last_two_axes(self, device, dtype):
+        # Anisotropic L1 total variation, sum |d/dy| + sum |d/dx| over the last two axes only: (B, C, H, W) gives
+        # (B, C), with the channels kept apart. The default reduction is 'sum', and TotalVariation always sums.
+        img = self._edges(device, dtype)
+        expected = torch.tensor([[5.0, 8.0, 0.0], [10.0, 16.0, 0.0]], device=device, dtype=dtype)
+        self.assert_close(kornia.losses.total_variation(img), expected)
+        self.assert_close(kornia.losses.TotalVariation()(img), expected)
+        self.assert_close(kornia.losses.total_variation(img[0, 1]), expected[0, 1])
+
+    def test_convention_total_variation_mean_divides_each_term_by_its_own_count(self, device, dtype):
+        # 'mean' is mean |d/dy| over the (H - 1) W vertical differences plus mean |d/dx| over the H (W - 1) horizontal
+        # ones: a vertical edge gives 1 / (W - 1) = 1/7 and a horizontal edge 1 / (H - 1) = 1/4, where dividing the sum
+        # by H W would give 1/8 and 1/5. Only 'mean' and 'sum' are accepted.
+        img = self._edges(device, dtype)
+        expected = torch.tensor([[1 / 7, 1 / 4, 0.0], [2 / 7, 2 / 4, 0.0]], device=device, dtype=dtype)
+        self.assert_close(kornia.losses.total_variation(img, reduction="mean"), expected)
+        # Relabelling check: transposing the image transposes both counts with it, so the values stay.
+        self.assert_close(kornia.losses.total_variation(img.transpose(-2, -1), reduction="mean"), expected)
+        with pytest.raises((ValueError, BaseError)):
+            kornia.losses.total_variation(img, reduction="none")

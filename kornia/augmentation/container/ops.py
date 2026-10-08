@@ -85,7 +85,12 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
         dtype = reference.dtype if reference is not None and torch.is_floating_point(reference) else torch.float32
         input_shape = tuple(forward_input_shape.tolist())
         padding_size = params.get("padding_size")
-        if not is_exporting() and isinstance(padding_size, torch.Tensor) and len(input_shape) >= 2:
+        if (
+            not is_exporting()
+            and isinstance(padding_size, torch.Tensor)
+            and padding_size.shape[0] > 0
+            and len(input_shape) >= 2
+        ):
             left, right, top, bottom = padding_size[0].tolist()
             input_shape = (*input_shape[:-2], input_shape[-2] - top - bottom, input_shape[-1] - left - right)
         matrix_input = torch.empty((), device=device, dtype=dtype).expand(input_shape)
@@ -486,7 +491,9 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
             )
 
         elif isinstance(module, K.RandomTransplantation):
-            input = module(input, params=cls.get_instance_module_param(param), data_keys=[DataKey.MASK], **extra_args)
+            output = module(input, params=cls.get_instance_module_param(param), data_keys=[DataKey.MASK], **extra_args)
+            # A (B, H, W) mask leaves the transplant as (B, 1, H, W), like any other child without keepdim.
+            input = output.unsqueeze(1) if output.ndim == 3 and not module.keepdim else output
 
         elif isinstance(module, K.MixAugmentationBaseV2):
             # Dispatch to the mix child's own mask handler. Unsupported children

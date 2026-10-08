@@ -452,13 +452,10 @@ def _refine_homography_lm(
         tangent = (eye9 - 2 * v[:, :, None] * v[:, None, :])[:, :, :8]  # (K, 9, 8)
         stacked = torch.cat([h[:, :, None], tangent], 2).mT.reshape(K, 27, 3)  # rows of H, then of each direction
         P = (stacked @ x1.T).reshape(K, 9, 3, -1)  # (K, 9, 3, N): P = H x1, then its directional derivatives
-        if mask is None:
-            iz = 1.0 / P[:, 0, 2]
-        else:
-            # A zero mask excludes the correspondence. Guarding its projective divisor keeps the residual and
-            # Jacobian of a finite row finite, so the zero weight below removes it exactly; masking the whole
-            # derivative stack as well costs the compiled CUDA program about 10% of a homography call.
-            iz = 1.0 / torch.where(mask != 0, P[:, 0, 2], torch.ones_like(P[:, 0, 2]))
+        # When a mask is given, a zero mask excludes the correspondence. Guarding its projective divisor keeps the
+        # residual and Jacobian of a finite row finite, so the zero weight below removes it exactly; masking the whole
+        # derivative stack as well costs the compiled CUDA program about 10% of a homography call.
+        iz = 1.0 / (P[:, 0, 2] if mask is None else torch.where(mask != 0, P[:, 0, 2], torch.ones_like(P[:, 0, 2])))
         uv = P[:, 0, :2] * iz[:, None]  # (K, 2, N)
         r = (uv - x2.T).flatten(1)  # (K, 2N): u residuals, then v residuals
         J = ((P[:, 1:, :2] - uv[:, None] * P[:, 1:, 2:3]) * iz[:, None, None]).flatten(2)  # (K, 8, 2N)

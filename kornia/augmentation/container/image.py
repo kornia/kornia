@@ -27,9 +27,10 @@ from kornia.core import ImageModule
 from kornia.core.mixin.image_module import ImageModuleMixIn
 from kornia.core.ops import eye_like
 from kornia.core.utils import is_exporting
+from kornia.geometry.transform.affwarp import _side_to_image_size
 
 from .base import ImageSequentialBase
-from .params import ParamItem
+from .params import ParamItem, PatchParamItem
 
 __all__ = ["ImageSequential"]
 
@@ -472,17 +473,50 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
 
     Note:
        Augmentations that change the image size must provide the parameter `output_size`.
+       Empty crops and resizes have no sampled output-size rows, so their configured size is used
+       only when the image forward path always applies the transform.
 
     """
     data = param.data
     if data is None:
         return batch_shape
 
+    # PatchSequential changes the image shape through its own padding/cropping, including when it is empty.
+    # Its parameters describe operations on individual patches and cannot encode this image-level change.
+    if module is not None:
+        from .patch import PatchSequential
+
+        if isinstance(module, PatchSequential):
+            if module.padding == "valid":
+                # Crop the last two dimensions to a multiple of the grid; video containers track 5-D shapes.
+                rows, columns = module.grid_size
+                new_batch_shape = list(batch_shape)
+                new_batch_shape[-2] -= new_batch_shape[-2] % rows
+                new_batch_shape[-1] -= new_batch_shape[-1] % columns
+                return torch.Size(new_batch_shape)
+            return batch_shape
+
     # If data is a list, process all subitems (exit early if all subitems are None)
     if isinstance(data, list):
+        if data and isinstance(data[0], PatchParamItem):
+            # Patch children transform patches in place; their output_size does not change the image size.
+            return batch_shape
+        children = dict(module.named_children()) if module is not None else {}
         for p in data:
-            batch_shape = _get_new_batch_shape(p, batch_shape)
+            batch_shape = _get_new_batch_shape(p, batch_shape, children.get(p.name))
         return batch_shape
+
+    if batch_shape[0] == 0 and isinstance(module, (K.RandomCrop, K.Resize)):
+        # Match the image forward's unconditional path. An empty gate selects the original
+        # canvas in the other probability branches, including Resize's p_batch setting (#4429).
+        if module.p != 1.0 or module.p_batch != 1.0:
+            return batch_shape
+        size = module.flags["size"]
+        if isinstance(module, K.Resize) and isinstance(size, int):
+            size = _side_to_image_size(size, batch_shape[-1] / batch_shape[-2], module.flags["side"])
+        new_batch_shape = list(batch_shape)
+        new_batch_shape[-2:] = size
+        return torch.Size(new_batch_shape)
 
     # Carefully avoid evaluating expression multiple times; batch_prob is often a 1-element torch.Tensor
     if "output_size" in data:

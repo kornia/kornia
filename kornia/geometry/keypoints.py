@@ -145,10 +145,7 @@ class Keypoints:
         Returns:
             :class:`Keypoints` object containing the updated coordinates.
         """
-        if inplace:
-            _data = self._data
-        else:
-            _data = self._data.clone()
+        _data = self._data if inplace else self._data.clone()
 
         if isinstance(values, Keypoints):
             _data.index_put_(indices, values.data)

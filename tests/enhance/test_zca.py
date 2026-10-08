@@ -81,10 +81,7 @@ class TestZCA(BaseTester):
     def test_zca_unbiased(self, unbiased, device, dtype):
         data = torch.tensor([[0, 1], [1, 0], [-1, 0], [0, -1]], device=device, dtype=dtype)
 
-        if unbiased:
-            unbiased_val = 1.5
-        else:
-            unbiased_val = 2.0
+        unbiased_val = 1.5 if unbiased else 2.0
 
         expected = torch.sqrt(unbiased_val * torch.abs(data)) * torch.sign(data)
 
@@ -307,10 +304,7 @@ class TestZCA(BaseTester):
     def test_zca_whiten_func_unbiased(self, unbiased, device, dtype):
         data = torch.tensor([[0, 1], [1, 0], [-1, 0], [0, -1]], device=device, dtype=dtype)
 
-        if unbiased:
-            unbiased_val = 1.5
-        else:
-            unbiased_val = 2.0
+        unbiased_val = 1.5 if unbiased else 2.0
 
         expected = torch.sqrt(unbiased_val * torch.abs(data)) * torch.sign(data)
 

@@ -113,11 +113,20 @@ def _seq_resize_then_resample_crop() -> torch.nn.Module:
     return K.AugmentationSequential(K.Resize((16, 16)), K.CenterCrop(8, cropping_mode="resample"), data_keys=["input"])
 
 
+def _seq_nested_resize_then_resample_crop() -> torch.nn.Module:
+    return K.AugmentationSequential(
+        K.ImageSequential(K.Resize((16, 16))),
+        K.CenterCrop(8, cropping_mode="resample"),
+        data_keys=["input"],
+    )
+
+
 TORCH_EXPORT_CONTAINERS: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
     ("Seq[Norm,Bright]", _seq_pointwise),
     ("Seq[Norm,Resize]", _seq_resize),
     ("Seq[Norm,CenterCrop,PadTo]", _seq_crop_pad),
     ("Seq[Resize,CenterCrop-resample]", _seq_resize_then_resample_crop),
+    ("Seq[NestedResize,CenterCrop-resample]", _seq_nested_resize_then_resample_crop),
 ]
 
 

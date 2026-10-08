@@ -56,10 +56,7 @@ class TestSe2(BaseTester):
         assert s.exp(theta).so2.z.shape == input_shape
         assert s.exp(theta).t.shape == t_input_shape
         assert s.log().shape == (*input_shape, 3)
-        if not any(input_shape):
-            expected_hat_shape = (3, 3)
-        else:
-            expected_hat_shape = (input_shape[0], 3, 3)
+        expected_hat_shape = (input_shape[0], 3, 3) if any(input_shape) else (3, 3)
         assert s.hat(theta).shape == expected_hat_shape
         assert s.inverse().so2.z.shape == input_shape
         assert s.inverse().t.shape == t_input_shape
@@ -163,10 +160,7 @@ class TestSe2(BaseTester):
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_mul_vector(self, device, dtype, batch_size):
         s1 = Se2.identity(batch_size, device, dtype)
-        if batch_size is None:
-            shape = ()
-        else:
-            shape = (batch_size,)
+        shape = () if batch_size is None else (batch_size,)
         s2 = Se2(So2.identity(batch_size, device, dtype), Vector2.random(shape, device, dtype))
         s1_pose_s2 = s1 * s2
         s2_pose_s2 = s2 * s2.inverse()
@@ -496,12 +490,14 @@ class TestSe2(BaseTester):
         else:
             before_dtype = pose.so2.z.dtype
             parent.to(device=device)
-            assert pose.so2.z.dtype == before_dtype and pose.t.dtype == source_dtype
+            assert pose.so2.z.dtype == before_dtype
+            assert pose.t.dtype == source_dtype
             name = {torch.float16: "half", torch.float32: "float", torch.float64: "double"}[dtype]
             getattr(parent, name)()
 
         assert pose.so2.z.device == pose.t.device == device
-        assert pose.so2.z.is_complex() and pose.so2.z.real.dtype == pose.t.dtype == dtype
+        assert pose.so2.z.is_complex()
+        assert pose.so2.z.real.dtype == pose.t.dtype == dtype
         assert set(parent.state_dict()) == {"pose._rotation._z", "pose._translation"}
         assert set(dict(parent.named_buffers())) == {"pose._rotation._z", "pose._translation"}
         assert not dict(parent.named_parameters())
@@ -535,9 +531,11 @@ class TestSe2(BaseTester):
         }
         target = Se2.identity(1, device, source_dtype).to(dtype=dtype)
         result = target.load_state_dict(legacy_state)
-        assert not result.missing_keys and not result.unexpected_keys
+        assert not result.missing_keys
+        assert not result.unexpected_keys
         assert set(target.state_dict()) == set(legacy_state)
-        assert target.so2.z.is_complex() and target.so2.z.real.dtype == target.t.dtype == dtype
+        assert target.so2.z.is_complex()
+        assert target.so2.z.real.dtype == target.t.dtype == dtype
         expected_matrix = torch.tensor(
             [[[0.0, -1.0, 3.0], [1.0, 0.0, 4.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
         )

@@ -22,8 +22,7 @@ from torch.nn.functional import mse_loss as mse
 def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Tensor:
     r"""Create a function that calculates the PSNR between 2 images.
 
-    PSNR is Peek Signal to Noise Ratio, which is similar to mean squared error.
-    Given an m x n image, the PSNR is:
+    PSNR is the Peak Signal to Noise Ratio. For one m x n image, the PSNR is:
 
     .. math::
 
@@ -38,13 +37,24 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
     and :math:`\text{MAX}_I` is the maximum possible input value
     (e.g for floating point images :math:`\text{MAX}_I=1`).
 
+    Convention:
+        - One MSE is pooled over every element, batch and channels included, and the result is a single value: for a
+          batch it is the PSNR of the pooled MSE, not the mean of per-image PSNRs, so compute per-image values one
+          image at a time. :ref:`Losses and metrics <losses-metrics-conventions>` maps both onto scikit-image and
+          torchmetrics.
+        - ``max_val`` is :math:`\text{MAX}_I`, the data range of the images (``1.0`` for ``[0, 1]``, ``255.0`` for
+          ``[0, 255]``), not the maximum of the tensor; pixel values are not rescaled.
+        - ``image`` and ``target`` must have the same shape, without broadcasting; the value is symmetric in them.
+          Identical inputs give an MSE of 0 and ``inf``, while a batch with one identical pair stays finite.
+        - Integer and bool images are converted to float32 before computing the MSE; pixel values are not rescaled.
+
     Args:
         image: the input image with arbitrary shape :math:`(*)`.
         target: the labels image with arbitrary shape :math:`(*)`.
-        max_val: The maximum value in the input tensor.
+        max_val: the data range of the images, :math:`\text{MAX}_I`.
 
     Return:
-        the computed loss as a scalar.
+        the PSNR as a scalar.
 
     .. note::
         Integer and bool images are converted to float32, as in :func:`~kornia.metrics.ssim`, and the two images are

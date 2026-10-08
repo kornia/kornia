@@ -100,6 +100,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         ``align_corners`` and maps constant, replicate and reflect pre-padding to zero, border and reflection
         sampler padding. Only resample mode supports :meth:`inverse`, which removes the pre-crop padding but cannot
         restore cropped or interpolated content.
+        For an empty batch, ``forward_input_shape`` records the original, unpadded canvas for inverse replay.
 
     Note:
         Compiled slice-mode interpolation matches eager execution to floating-point tolerance,
@@ -455,6 +456,7 @@ class RandomCrop(GeometricAugmentationBase2D):
             )
         )
         padding_size = _constant_tensor(tuple(input_pad), dtype=torch.long).expand(batch_shape[0], -1)
-        _params = super().forward_parameters(batch_shape_new)
+        # An empty batch has no padding rows and no pixels to pad. Keep its original canvas for inverse replay.
+        _params = super().forward_parameters(batch_shape if batch_shape[0] == 0 else batch_shape_new)
         _params.update({"padding_size": padding_size})
         return _params

@@ -730,7 +730,8 @@ class TestInverseWithMask:
     def test_rule_reads_the_determinant_against_the_permanent(self, device, dtype, n):
         A = torch.tensor(_DEPENDENT_ROWS[n], device=device, dtype=dtype)
         det, perm = _det_perm_closed_form(A)
-        assert torch.equal(det, torch.zeros_like(det)) and perm.item() > 0
+        assert torch.equal(det, torch.zeros_like(det))
+        assert perm.item() > 0
         assert _is_singular(A).item()
         # [[1, 1], [1, 1 + d]] has determinant d, exact for a power of two d, against a permanent of 2 + d:
         # the threshold ``8 * n * eps * perm`` sits at about 32 eps, so 64 eps is regular and 24 eps singular
