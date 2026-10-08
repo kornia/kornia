@@ -203,7 +203,7 @@ class TestOrientationHalfPrecisionIsFinite(BaseTester):
         if not supports_replicate_padding(device, torch.float16):
             pytest.skip(f"no float16 replicate-pad kernel on {device.type}")
         torch.manual_seed(0)
-        patches = torch.rand(4, 1, 32, 32, device=device)
+        patches = torch.rand(4, 1, 32, 32).to(device)
         ref = PatchDominantGradientOrientation(32).to(device)(patches)
         out = PatchDominantGradientOrientation(32).to(device, torch.float16)(patches.half())
         self.assert_close(out.float(), ref, atol=5e-2, rtol=0)

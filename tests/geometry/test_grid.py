@@ -174,9 +174,9 @@ def test_normalized_meshgrid_trace_matches_eager_at_unrepresentable_sizes(is_3d,
     shape = (1, 1, 2, size, 4) if is_3d else (1, 1, size, 4)
     image = torch.zeros(*shape, device=device, dtype=dtype)
     traced = torch.jit.trace(MeshGrid(), image)
-    # CUDA eager's Python-scalar division multiplies by a host-computed reciprocal, which can
-    # round differently from the traced tensor division (#4195).
-    assert_close(traced(image).cpu(), MeshGrid()(image.cpu()), atol=0.0, rtol=0.0)
+    # CUDA's Python-scalar division can differ from traced tensor division by one ULP (#4195).
+    tolerance = torch.finfo(dtype).eps if device.type != "cpu" else 0.0
+    assert_close(traced(image).cpu(), MeshGrid()(image.cpu()), atol=tolerance, rtol=0.0)
 
 
 @pytest.mark.parametrize("normalized_coordinates", [False, True], ids=["pixel", "normalized"])
