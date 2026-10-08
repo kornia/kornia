@@ -260,7 +260,7 @@ select = [
   # "FA",   # flake8-future-annotations
   # "FBT",  # flake8-boolean-trap
   # "FIX",  # flake8-fixme
-  "G",    # flake8-logging-format
+  "G",  # flake8-logging-format
   # "INP",  # flake8-no-pep420
   "ISC",  # flake8-implicit-str-concat
   # "N",    # pep8-naming
