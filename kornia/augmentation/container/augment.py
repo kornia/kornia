@@ -523,7 +523,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if image_batch is None:
             return
         for mask, key in zip(args, data_keys):
-            if key not in _MSK_OPTIONS or not isinstance(mask, torch.Tensor) or mask.ndim not in (2, 3, 4, 5):
+            if key not in _MSK_OPTIONS:
+                continue
+            if not isinstance(mask, torch.Tensor):
                 continue
             # A mask must be 5D next to a video and never otherwise; any other combination raises here
             # instead of guessing and failing later with a confusing reshape error.
@@ -940,23 +942,13 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         """
 
         def _read_batch_size(value: Any) -> Optional[int]:
-            """Recursively extract the original batch size from nested replay parameters.
+            """Recursively read the original batch size stored in nested parameter metadata.
 
             Args:
                 value: A nested replay parameter value produced by a sequential augmentation.
 
             Returns:
-                The recovered batch size, or None when the value does not carry one.
-            """
-
-        def _read_batch_size(value: Any) -> Optional[int]:
-            """Recursively extract the original batch size from nested replay parameters.
-
-            Args:
-                value: A nested replay parameter value produced by a sequential augmentation.
-
-            Returns:
-                The recovered batch size, or None when the value does not carry one.
+                The recovered batch size, or None when no batch metadata is present.
             """
             if isinstance(value, ParamItem):
                 return _read_batch_size(value.data)
