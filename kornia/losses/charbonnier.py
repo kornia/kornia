@@ -31,7 +31,7 @@ def charbonnier_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "n
 
     .. math::
 
-        \text{WL}(x, y) = \sqrt{(x - y)^{2} + 1} - 1
+        \text{loss}(x, y) = \sqrt{(x - y)^{2} + 1} - 1
 
     Where:
        - :math:`x` is the prediction.
@@ -47,6 +47,21 @@ def charbonnier_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "n
         This implementation follows the formulation by Barron [1]. Other works utilize
         a slightly different implementation (see [4]).
 
+    Convention:
+        - The robust losses are the general loss of Barron [1] on the residual ``img1 - img2`` at scale
+          :math:`c = 1`: :math:`\alpha = 1` here, :math:`\alpha = 0` in :func:`~kornia.losses.cauchy_loss`,
+          :math:`\alpha = -2` in :func:`~kornia.losses.geman_mcclure_loss` and :math:`\alpha = -\infty` in
+          :func:`~kornia.losses.welsch_loss`.
+        - There is no scale argument: :math:`c = 1` is in the units of the data, so the shape of the penalty depends
+          on them; for a scale :math:`c`, pass ``img1 / c`` and ``img2 / c``.
+          :ref:`Losses and metrics <losses-metrics-conventions>` maps the losses onto Barron's code.
+        - The losses are symmetric in ``img1`` and ``img2``, which must have the same shape, without broadcasting,
+          and the same device. The default ``reduction='none'`` returns the loss of every element, in the shape of
+          the inputs.
+        - This loss, :func:`~kornia.losses.cauchy_loss` and :func:`~kornia.losses.geman_mcclure_loss` evaluate
+          float16 and bfloat16 inputs in float32, gradients included, and return the input dtype;
+          :func:`~kornia.losses.welsch_loss` does not upcast them.
+
     Args:
         img1: the predicted torch.Tensor with shape :math:`(*)`.
         img2: the target torch.Tensor with the same shape as img1.
@@ -57,7 +72,7 @@ def charbonnier_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "n
           summed.
 
     Return:
-        a scalar with the computed loss.
+        the computed loss, with the shape of the inputs for ``reduction='none'`` and a scalar otherwise.
 
     Example:
         >>> img1 = torch.randn(2, 3, 32, 32, requires_grad=True)
@@ -112,7 +127,7 @@ class CharbonnierLoss(nn.Module):
 
     .. math::
 
-        \text{WL}(x, y) = \sqrt{(x - y)^{2} + 1} - 1
+        \text{loss}(x, y) = \sqrt{(x - y)^{2} + 1} - 1
 
     Where:
        - :math:`x` is the prediction.
@@ -127,6 +142,9 @@ class CharbonnierLoss(nn.Module):
     .. note::
         This implementation follows the formulation by Barron [1]. Other works utilize
         a slightly different implementation (see [4]).
+
+    Convention:
+        See the Convention block of :func:`~kornia.losses.charbonnier_loss`.
 
     Args:
         reduction: Specifies the reduction to apply to the

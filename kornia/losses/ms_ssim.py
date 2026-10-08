@@ -30,32 +30,51 @@ from torch import nn
 class MS_SSIMLoss(nn.Module):
     r"""Creates a criterion that computes MSSIM + L1 loss.
 
-    According to [1], we compute the MS_SSIM + L1 loss as follows:
+    We compute the MS_SSIM + L1 loss of [1] as follows:
 
     .. math::
-        \text{loss}(x, y) = \alpha \cdot \mathcal{L_{MSSIM}}(x,y)+(1 - \alpha) \cdot G_\alpha \cdot \mathcal{L_1}(x,y)
+        \text{loss}(x, y) = c \cdot \left(\alpha \cdot \mathcal{L_{MSSIM}}(x,y)
+        + (1 - \alpha) \cdot G_{\sigma_M} * \mathcal{L_1}(x,y) / L\right)
 
     Where:
-        - :math:`\alpha` is the weight parameter.
+        - :math:`\alpha` is the weight parameter ``alpha``, :math:`c` is ``compensation`` and :math:`L` is
+          ``data_range``.
         - :math:`x` and :math:`y` are the reconstructed and true reference images.
         - :math:`\mathcal{L_{MSSIM}}` is the MS-SSIM loss.
-        - :math:`G_\alpha` is the sigma values for computing multi-scale SSIM.
+        - :math:`G_{\sigma_M}` is the Gaussian of the last entry :math:`\sigma_M` of ``sigmas``, the coarsest scale.
         - :math:`\mathcal{L_1}` is the L1 loss.
 
     Each channel is filtered at every scale. The MS-SSIM of a channel is its luminance at the coarsest scale times its
     contrast-structure at every scale, and :math:`\mathcal{L_{MSSIM}}` is one minus the mean of the per-channel
-    MS-SSIM, as in the reference implementation [2] of [1]. The L1 term is filtered at the coarsest scale and averaged
-    over the channels.
+    MS-SSIM: the formula of the reference implementation [2] of [1]. [2] evaluates it once per patch, at its centre;
+    this loss evaluates it at every pixel. The L1 term is filtered at the coarsest scale and averaged over the channels.
+
+    Convention:
+        - "Multi-scale" means one Gaussian per entry of ``sigmas``, all at full resolution, as in [1], not the dyadic
+          pyramid of Wang et al.; :ref:`Losses and metrics <losses-metrics-conventions>` compares it with pytorch-msssim
+          and torchmetrics.
+        - The last entry of ``sigmas`` is the coarsest scale, so the order matters: it sets the window,
+          ``2 * int(2 * sigmas[-1]) + 1`` taps wide, the luminance term and the Gaussian of the L1 term.
+        - The images are zero-padded by ``int(2 * sigmas[-1])`` pixels, 16 at the default, where
+          :func:`~kornia.metrics.ssim` reflects, so the loss is biased in a band that wide along every border: the
+          zeros attenuate the L1 term there but can raise the MS-SSIM term, so the band scores lower on the whole than
+          reflect padding would at the default ``alpha`` and can score higher at a large ``alpha``.
+        - ``data_range`` is the ``max_val`` of :func:`~kornia.metrics.ssim`: it sets :math:`C_1` and :math:`C_2` and
+          divides the L1 term; pixel values are not rescaled.
+        - The defaults follow [3]: ``alpha=0.025``, as in [2], and ``compensation=200``, which neither [1] nor [2]
+          applies; [1] sets :math:`\alpha = 0.84`. The default ``reduction='mean'`` averages the :math:`(B, H, W)`
+          map, whose channels are already averaged.
 
     Reference:
         [1]: https://research.nvidia.com/sites/default/files/pubs/2017-03_Loss-Functions-for/NN_ImgProc.pdf#page11
         [2]: https://github.com/NVlabs/PL4NN/blob/master/src/loss.py (``MSSSIML1``)
+        [3]: https://github.com/psyrocloud/MS-SSIM_L1_LOSS
 
     Args:
-        sigmas: gaussian sigma values.
+        sigmas: the Gaussian sigma of each scale; the last entry is taken as the coarsest.
         data_range: the range of the images.
-        K: k values.
-        alpha : specifies the alpha value
+        K: the constants :math:`(k_1, k_2)` of :math:`C_1 = (k_1 L)^2` and :math:`C_2 = (k_2 L)^2`.
+        alpha: the weight of the MS-SSIM term; the L1 term gets :math:`1 - \alpha`.
         compensation: specifies the scaling coefficient.
         reduction : Specifies the reduction to apply to the
          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,

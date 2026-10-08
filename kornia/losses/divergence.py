@@ -68,6 +68,13 @@ def _check_heatmaps(pred: torch.Tensor, target: torch.Tensor) -> None:
 def js_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> torch.Tensor:
     r"""Calculate the Jensen-Shannon divergence loss between heatmaps.
 
+    Convention:
+        - The divergence is :math:`\frac{1}{2} \mathrm{KL}(P \,\|\, M) + \frac{1}{2} \mathrm{KL}(Q \,\|\, M)`
+          with :math:`M = (P + Q) / 2`, in nats: symmetric in ``pred`` and ``target``, and at most :math:`\ln 2`. The
+          inputs and the reductions are those of :func:`~kornia.losses.kl_div_loss_2d`; see its Convention block.
+        - A cell that is zero in both inputs contributes zero, including to the gradients. Both inputs must have
+          the same shape; unsupported reductions raise ``NotImplementedError``.
+
     Args:
         pred: the input torch.Tensor with shape :math:`(B, N, H, W)`.
         target: the target torch.Tensor with shape :math:`(B, N, H, W)`.
@@ -90,6 +97,20 @@ def js_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "m
 
 def kl_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> torch.Tensor:
     r"""Calculate the Kullback-Leibler divergence loss between heatmaps.
+
+    Convention:
+        - ``kl_div_loss_2d(pred, target)`` is :math:`\mathrm{KL}(\text{target} \,\|\, \text{pred})`, the sum of
+          ``target * (log(target) - log(pred))`` over :math:`H \times W` for every :math:`(b, n)`: the order of torch's
+          ``F.kl_div(pred.log(), target)``. :ref:`Losses and metrics <losses-metrics-conventions>` maps it onto torch,
+          scipy and torchmetrics.
+        - The inputs are probabilities, each :math:`(b, n)` slice a distribution over :math:`H \times W`. The log is
+          taken inside, so log-probabilities give NaN, and nothing is normalised. A zero in ``pred`` where ``target``
+          is positive gives ``inf``.
+        - ``reduction='none'`` returns :math:`(B, N)`; the default ``'mean'`` averages over the :math:`B N`
+          distributions and ``'sum'`` adds them.
+        - Both inputs must have the same shape. Unsupported reductions, including torch's ``'batchmean'``, raise
+          ``NotImplementedError``. A zero in ``target`` with a finite nonnegative ``pred`` contributes zero to the
+          value and gradients, including when both entries are zero.
 
     Args:
         pred: the input torch.Tensor with shape :math:`(B, N, H, W)`.

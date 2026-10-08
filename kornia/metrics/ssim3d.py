@@ -66,6 +66,13 @@ def ssim3d(
       - :math:`L` is the dynamic range of the pixel-values (typically this is
         :math:`2^{\#\text{bits per pixel}}-1`).
 
+    Convention:
+        - See the Convention block of :func:`~kornia.metrics.ssim` for the window, reflected border, ``padding`` and
+          ``max_val``. ``ssim3d`` applies them to :math:`(D, H, W)` with an isotropic Gaussian window, and ``'valid'``
+          crops every axis. A volume of identical slices reproduces the 2-D map up to floating-point roundoff.
+        - The Gaussian window uses the computation dtype of the inputs; integer and half-precision inputs are
+          evaluated in float32.
+
     Args:
         img1: the first input image with shape :math:`(B, C, D, H, W)`.
         img2: the second input image with shape :math:`(B, C, D, H, W)`.
@@ -76,7 +83,8 @@ def ssim3d(
          area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
     Returns:
-       The ssim index map with shape :math:`(B, C, D, H, W)`.
+       The ssim index map with shape :math:`(B, C, D, H, W)`, or :math:`(B, C, D - 2p, H - 2p, W - 2p)` with
+       ``p = window_size // 2`` under ``padding='valid'``.
 
     Note:
         The volume is reflected at its faces for ``padding='same'``, as :func:`kornia.metrics.ssim` does for
@@ -193,6 +201,9 @@ class SSIM3D(nn.Module):
       - :math:`L` is the dynamic range of the pixel-values (typically this is
         :math:`2^{\#\text{bits per pixel}}-1`).
 
+    Convention:
+        See the Convention block of :func:`~kornia.metrics.ssim3d`.
+
     Args:
         window_size: the size of the gaussian kernel to smooth the images.
         max_val: the dynamic range of the images.
@@ -203,7 +214,8 @@ class SSIM3D(nn.Module):
     Shape:
         - Input: :math:`(B, C, D, H, W)`.
         - Target :math:`(B, C, D, H, W)`.
-        - Output: :math:`(B, C, D, H, W)`.
+        - Output: :math:`(B, C, D, H, W)`, or :math:`(B, C, D - 2p, H - 2p, W - 2p)` with ``p = window_size // 2``
+          under ``padding='valid'``.
 
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 5, 5)
@@ -228,7 +240,7 @@ class SSIM3D(nn.Module):
             img2: Second volume tensor with the same shape as ``img1``.
 
         Returns:
-            Tensor with shape :math:`(B, C, D, H, W)` containing local
+            Tensor with shape :math:`(B, C, D, H, W)`, cropped under ``padding='valid'``, containing local
             structural similarity values across depth, height, and width.
         """
         return ssim3d(img1, img2, self.window_size, self.max_val, self.eps, self.padding)

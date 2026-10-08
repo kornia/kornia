@@ -17,8 +17,10 @@
 
 import pytest
 import torch
+import torch.nn.functional as F
 
 import kornia
+from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
 
@@ -162,8 +164,6 @@ class TestSSIM3d(BaseTester):
     @pytest.mark.parametrize("padding", ["full", "bogus"])
     def test_exception_invalid_padding(self, device, dtype, padding):
         # Any other value raises instead of silently returning the 'same' map (#5537).
-        from kornia.core.exceptions import BaseError
-
         img = torch.rand(1, 1, 3, 3, 3, device=device, dtype=dtype)
         with pytest.raises(BaseError, match="Invalid padding mode"):
             kornia.metrics.ssim3d(img, img, 3, padding=padding)
@@ -301,3 +301,79 @@ class TestSSIM3d(BaseTester):
         op = kornia.metrics.ssim3d
 
         self.gradcheck(op, (img, img, 3), nondet_tol=1e-8)
+
+
+class TestConventionsSSIM3D(BaseTester):
+    """Pins for the map shape of :func:`ssim3d`, its reflected border, its window dtype and ``padding`` validation."""
+
+    @staticmethod
+    def _pair(device, dtype):
+        # a two-sample, two-channel batch with D != H != W; y is a noisy copy of x
+        g = torch.Generator().manual_seed(0)
+        x = torch.rand(2, 2, 6, 7, 9, generator=g)
+        y = (x + 0.3 * torch.randn(2, 2, 6, 7, 9, generator=g)).clamp(0, 1)
+        return x.to(device, dtype), y.to(device, dtype)
+
+    def test_convention_ssim3d_map_shape_and_valid_crop(self, device, dtype):
+        # ssim3d scores every voxel of (B, C, D, H, W); 'valid' crops (window_size - 1) / 2 voxels from both ends of
+        # each of D, H and W, and equals the 'same' map with that border cut off.
+        x, y = self._pair(device, dtype)
+        same = kornia.metrics.ssim3d(x, y, 5)
+        valid = kornia.metrics.ssim3d(x, y, 5, padding="valid")
+        assert same.shape == (2, 2, 6, 7, 9)
+        assert valid.shape == (2, 2, 2, 3, 5)
+        self.assert_close(valid, same[..., 2:-2, 2:-2, 2:-2])
+        # Relabelling check: swapping D and W in both volumes swaps them in the map (the window is isotropic).
+        swapped = kornia.metrics.ssim3d(x.transpose(-3, -1), y.transpose(-3, -1), 5)
+        self.assert_close(swapped, same.transpose(-3, -1))
+
+    def test_convention_ssim3d_same_border_is_reflect_5534(self, device, dtype):
+        """The 'same' border of ssim3d reflects, as ssim does (#5534)."""
+        # The 'same' map equals the 'valid' map of reflect-padded volumes and differs from replicate padding at the
+        # border.
+        x, y = self._pair(device, dtype)
+        work = torch.promote_types(dtype, torch.float32)  # ssim3d computes half-precision volumes in float32
+
+        def padded(mode):
+            xp = F.pad(x.to(work), (2, 2, 2, 2, 2, 2), mode=mode)
+            yp = F.pad(y.to(work), (2, 2, 2, 2, 2, 2), mode=mode)
+            return kornia.metrics.ssim3d(xp, yp, 5, padding="valid").to(dtype)
+
+        same = kornia.metrics.ssim3d(x, y, 5)
+        self.assert_close(same, padded("reflect"))
+        assert (same - padded("replicate")).abs().max() > 0.1
+
+    def test_convention_ssim3d_window_uses_input_dtype_5534(self, device, dtype):
+        """ssim3d builds its Gaussian window in the input dtype (#5534)."""
+        # A float64 ssim3d equals a float64 SSIM computed with a float64 window, rather than a float32-rounded one.
+        # The comparison runs on the valid voxels.
+        if dtype != torch.float64:
+            pytest.skip("the input window dtype differs from float32 only for float64 inputs")
+        g = torch.Generator().manual_seed(0)
+        x = torch.rand(1, 1, 6, 7, 9, generator=g, dtype=torch.float64).to(device)
+        y = torch.rand(1, 1, 6, 7, 9, generator=g, dtype=torch.float64).to(device)
+
+        def reference(window_dtype):
+            window = kornia.filters.get_gaussian_kernel3d((5, 5, 5), (1.5, 1.5, 1.5), dtype=window_dtype)
+            window = window.to(device, torch.float64)[None]
+
+            def blur(t):
+                return F.conv3d(t, window)
+
+            mu_x, mu_y = blur(x), blur(y)
+            var_x, var_y = blur(x * x) - mu_x**2, blur(y * y) - mu_y**2
+            cov = blur(x * y) - mu_x * mu_y
+            c1, c2 = 0.01**2, 0.03**2
+            return (2 * mu_x * mu_y + c1) * (2 * cov + c2) / ((mu_x**2 + mu_y**2 + c1) * (var_x + var_y + c2) + 1e-12)
+
+        actual = kornia.metrics.ssim3d(x, y, 5, padding="valid")
+        assert (actual - reference(torch.float64)).abs().max() < 1e-13
+        assert (actual - reference(torch.float32)).abs().max() > 1e-9
+
+    def test_convention_ssim3d_padding_is_case_insensitive_and_validated_5537(self, device, dtype):
+        """'VALID' selects the valid map, while an unknown padding mode raises (#5537)."""
+        x, y = self._pair(device, dtype)
+        valid = kornia.metrics.ssim3d(x, y, 5, padding="valid")
+        self.assert_close(kornia.metrics.ssim3d(x, y, 5, padding="VALID"), valid, rtol=0.0, atol=0.0)
+        with pytest.raises(BaseError, match="Invalid padding mode"):
+            kornia.metrics.ssim3d(x, y, 5, padding="bogus")

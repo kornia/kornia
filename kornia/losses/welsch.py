@@ -42,6 +42,10 @@ def welsch_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
         [2] https://www.tandfonline.com/doi/abs/10.1080/03610917808812083
         [3] https://link.springer.com/article/10.1007/BF00054839
 
+    Convention:
+        See the Convention block of :func:`~kornia.losses.charbonnier_loss`; this is Barron's loss with
+        :math:`\alpha = -\infty`.
+
     Args:
         img1: the predicted torch.Tensor with shape :math:`(*)`.
         img2: the target torch.Tensor with the same shape as img1.
@@ -52,7 +56,7 @@ def welsch_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
           summed.
 
     Return:
-        a scalar with the computed loss.
+        the computed loss, with the shape of the inputs for ``reduction='none'`` and a scalar otherwise.
 
     Example:
         >>> img1 = torch.randn(2, 3, 32, 32, requires_grad=True)
@@ -108,6 +112,9 @@ class WelschLoss(nn.Module):
         [1] https://arxiv.org/pdf/1701.03077.pdf
         [2] https://www.tandfonline.com/doi/abs/10.1080/03610917808812083
         [3] https://link.springer.com/article/10.1007/BF00054839
+
+    Convention:
+        See the Convention block of :func:`~kornia.losses.welsch_loss`.
 
     Args:
         reduction: Specifies the reduction to apply to the
