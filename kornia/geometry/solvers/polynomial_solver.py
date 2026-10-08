@@ -933,25 +933,26 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         repeated_roots = genuine & is_double
         newton = genuine & ~repeated_roots
     roots = torch.where(repeated_roots, roots + (stationary - roots).detach(), roots)
+    a1, b1, c1, d1 = A[:, None], B[:, None], C[:, None], D[:, None]
+    a3, b2 = 3 * a1, 2 * b1
     # Guard the Newton division at unresolved multiple roots to preserve multiplicity.
+    value = (((roots + a1) * roots + b1) * roots + c1) * roots + d1
     for _ in range(4):
-        value = (((roots + A[:, None]) * roots + B[:, None]) * roots + C[:, None]) * roots + D[:, None]
-        slope = ((4 * roots + 3 * A[:, None]) * roots + 2 * B[:, None]) * roots + C[:, None]
+        slope = ((4 * roots + a3) * roots + b2) * roots + c1
         with torch.no_grad():
             simple = newton & (slope.abs() > 8 * eps * _quartic_slope_scale(columns, roots.abs()))
         candidate = roots - torch.where(simple, value, 0.0) / torch.where(simple, slope, 1.0)
-        residual = (((candidate + A[:, None]) * candidate + B[:, None]) * candidate + C[:, None]) * candidate + D[
-            :, None
-        ]
+        residual = (((candidate + a1) * candidate + b1) * candidate + c1) * candidate + d1
         improved = simple & (residual.abs() <= value.abs())
         # Once no root moves, every remaining step would repeat this one exactly; eager execution stops.
         if not compiling and not bool((improved & (candidate != roots)).any()):
             break
         roots = torch.where(improved, candidate, roots)
+        value = torch.where(improved, residual, value)
     # Attach the implicit-function Jacobian at simple roots without moving their values.
     fixed = roots.detach()
-    value_for_grad = (((fixed + A[:, None]) * fixed + B[:, None]) * fixed + C[:, None]) * fixed + D[:, None]
-    slope_for_grad = ((4 * fixed + 3 * A[:, None]) * fixed + 2 * B[:, None]) * fixed + C[:, None]
+    value_for_grad = (((fixed + a1) * fixed + b1) * fixed + c1) * fixed + d1
+    slope_for_grad = ((4 * fixed + a3) * fixed + b2) * fixed + c1
     with torch.no_grad():
         simple = newton & (slope_for_grad.abs() > 8 * eps * _quartic_slope_scale(columns, fixed.abs()))
     correction = value_for_grad / torch.where(simple, slope_for_grad, 1.0)
