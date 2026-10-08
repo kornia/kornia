@@ -55,9 +55,9 @@ def mean_average_precision(
           ``0, 0.1, ..., 1``, of the highest precision at a recall of at least that level.
         - The result is a 0-d tensor and a dict of Python floats, fractions in :math:`[0, 1]` apart from that
           ``-1.0``. The tensor takes the floating dtype of the boxes: integer boxes count as float32, and predicted
-          and ground-truth boxes of different dtypes give the promotion of those two floating dtypes (float32 for
-          integer and float16 boxes). :ref:`Losses and metrics <losses-metrics-conventions>` compares the match rule
-          with the VOC devkit and COCO.
+          and ground-truth boxes of different dtypes give the promotion of those two floating dtypes (float32 when one
+          set is integer and the other float16). :ref:`Losses and metrics <losses-metrics-conventions>` compares the
+          match rule with the VOC devkit and COCO.
         - Known defect: labels are checked for their range only, so a fractional label such as ``1.5`` matches no
           class and its detections and objects are dropped without an error
           (`#5629 <https://github.com/kornia/kornia/issues/5629>`_).
