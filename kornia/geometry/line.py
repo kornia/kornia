@@ -274,6 +274,14 @@ def _fit_line_weighted_tls_2d(points: torch.Tensor, weights: torch.Tensor) -> Pa
 
     Centred relative to the first point, like :func:`_fit_line_tls_2d`.
     """
+    out_dtype = torch.promote_types(points.dtype, weights.dtype)
+    compute_dtype = torch.float32 if out_dtype in (torch.float16, torch.bfloat16) else out_dtype
+    points, weights = points.to(compute_dtype), weights.to(compute_dtype)
+    # Uniform weight scaling preserves the centroid and direction. Normalise before the sums,
+    # and accumulate half-precision inputs in float32, as in the D >= 3 branch.
+    weight_scale = weights.abs().amax(dim=-1, keepdim=True)
+    weights = weights / torch.where(weight_scale > 0, weight_scale, torch.ones_like(weight_scale))
+
     x0 = points[..., :1, 0]  # (B, 1)
     y0 = points[..., :1, 1]  # (B, 1)
     x = points[..., 0] - x0  # (B, N)
@@ -284,7 +292,7 @@ def _fit_line_weighted_tls_2d(points: torch.Tensor, weights: torch.Tensor) -> Pa
 
     direction = _tls_direction_2d(x - x_mean, y - y_mean, weights)
     origin = torch.cat([x0 + x_mean, y0 + y_mean], dim=-1)
-    return ParametrizedLine(origin, direction)
+    return ParametrizedLine(origin.to(out_dtype), direction.to(out_dtype))
 
 
 def _reject_degenerate_line(points: torch.Tensor, weights: Optional[torch.Tensor]) -> None:

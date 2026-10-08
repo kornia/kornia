@@ -577,6 +577,41 @@ class TestFitLine(BaseTester):
         self.assert_close(line.direction, expected_direction)
         self.assert_close(line.origin, torch.stack([x_mean, y_mean])[None])
 
+    def test_fit_line_2d_weight_scale_invariance(self, device, dtype):
+        # Scaling all weights in a row changes neither its centroid nor the TLS direction.
+        points = torch.tensor([[[2.0, 4.0], [4.0, 8.0], [6.0, 12.0]]], device=device, dtype=dtype)
+        weights = torch.tensor([[1.0, 2.0, 1.0]], device=device, dtype=dtype)
+        exponent = math.frexp(torch.finfo(dtype).max)[1] - 3
+        scales = torch.tensor([2.0**exponent, 2.0**-exponent], device=device, dtype=dtype)[:, None]
+
+        line = fit_line(points.expand(2, 3, 2), weights * scales)
+
+        expected_origin = torch.tensor([[4.0, 8.0]], device=device, dtype=dtype).expand(2, 2)
+        expected_direction = torch.tensor([[1.0 / math.sqrt(5), 2.0 / math.sqrt(5)]], device=device, dtype=dtype)
+        self.assert_close(line.origin, expected_origin)
+        self.assert_close(line.direction, expected_direction.expand(2, 2))
+        assert line.origin.dtype == line.direction.dtype == dtype
+
+    def test_fit_line_weighted_2d_float16_centroid(self, device):
+        # Unit weights still overflow sum(w * offsets) for 256 float16 points in pixel coordinates.
+        t = torch.arange(256, device=device, dtype=torch.float16)
+        points = torch.stack([1000.0 + 4.0 * t, -500.0 + 2.0 * t], -1)[None]
+        line = fit_line(points, torch.ones(1, 256, device=device, dtype=torch.float16))
+
+        self.assert_close(line.origin, torch.tensor([[1510.0, -245.0]], device=device, dtype=torch.float16))
+        direction = torch.tensor([[2.0 / math.sqrt(5), 1.0 / math.sqrt(5)]], device=device, dtype=torch.float16)
+        self.assert_close(line.direction, direction)
+        assert line.origin.dtype == line.direction.dtype == torch.float16
+
+    def test_fit_line_weighted_2d_gradcheck(self, device):
+        points = torch.tensor([[[0.0, 0.1], [1.0, 0.4], [2.0, 0.9], [3.0, 1.2]]], device=device)
+        weights = torch.tensor([[1.0, 2.0, 1.0, 3.0]], device=device)
+
+        def op(points, weights):
+            return fit_line(points, weights).projection(points[:, 0])
+
+        self.gradcheck(op, (points, weights), requires_grad=(True, True))
+
     @pytest.mark.parametrize("weighted", [False, True])
     def test_fit_line_2d_exactly_vertical_is_0_1_5040(self, device, dtype, weighted):
         # #5040: the direction of an exactly vertical line is (0, 1). Rounding in the mean used to leave a tiny

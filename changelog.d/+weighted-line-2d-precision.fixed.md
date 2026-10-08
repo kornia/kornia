@@ -1,0 +1,1 @@
+Keep weighted 2D `fit_line` origins and directions finite when positive weight scales or float16 accumulation overflow intermediate sums. The returned line keeps the dtype promoted from points and weights.
