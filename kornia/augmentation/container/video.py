@@ -200,6 +200,24 @@ class VideoSequential(ImageSequential):
         return input.reshape(-1, *input.shape[2:])
 
     def _input_shape_convert_back(self, input: torch.Tensor, frame_num: int) -> torch.Tensor:
+        """Reshape a flattened video tensor back to its original layout.
+
+        Args:
+            input: Flattened tensor with the frame dimension merged into the batch axis.
+            frame_num: Number of frames in each video clip.
+
+        Returns:
+            The tensor reshaped back to the original video layout.
+        """
+        """Reshape a flattened video tensor back to its original layout.
+
+        Args:
+            input: Flattened tensor with the frame dimension merged into the batch axis.
+            frame_num: Number of frames in each video clip.
+
+        Returns:
+            The tensor reshaped back to the original video layout.
+        """
         input = input.view(-1, frame_num, *input.shape[1:])
         if self.data_format == "BCTHW":
             input = input.transpose(1, 2)
@@ -219,6 +237,7 @@ class VideoSequential(ImageSequential):
             across frames depending on ``same_on_frame`` and module settings.
         """
         frame_num = batch_shape[self._temporal_channel]
+        original_batch_size = batch_shape[0]
         named_modules = self.get_forward_sequence()
         # Got param generation shape to (B, C, H, W). Ignoring T.
         batch_shape = self.__infer_channel_exclusive_batch_shape__(batch_shape, self._temporal_channel)
@@ -240,9 +259,15 @@ class VideoSequential(ImageSequential):
                 mod_param = module.forward_parameters(mod_shape)
 
                 if isinstance(mod_param, dict):
-                    for k, v in mod_param.items():
+                    if "forward_input_shape" in mod_param:
+                        mod_param["video_batch_size"] = torch.full(
+                            (), original_batch_size, device=mod_param["forward_input_shape"].device, dtype=torch.long
+                        )
+                    for k, v in list(mod_param.items()):
                         # TODO: revise ColorJiggle and ColorJitter order param in the future to align the standard.
                         if k == "order" and isinstance(module, (K.ColorJiggle, K.ColorJitter)):
+                            continue
+                        if k == "video_batch_size":
                             continue
                         if k == "forward_input_shape":
                             mod_param.update({k: v})

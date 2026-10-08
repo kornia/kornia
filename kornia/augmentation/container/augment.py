@@ -930,21 +930,56 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
     @staticmethod
     def _batch_size_from_params(params: List[ParamItem]) -> Optional[int]:
-        """Read the batch a replay's params were drawn for, with no image in the call to read it from.
+        """Extract the replay batch size when no image is available.
 
-        A ``VideoSequential`` child nests its own params one level deeper (a list, not a dict), so
-        recursing once gives the same ``forward_input_shape`` as a plain child.
+        Args:
+            params: Recorded parameter tree for the replayed augmentation call.
+
+        Returns:
+            The original batch size, or None if no batch size could be recovered.
         """
-        if not params:
-            return None
-        data = params[0].data
-        if isinstance(data, list):
-            if not data:
+
+        def _read_batch_size(value: Any) -> Optional[int]:
+            """Recursively extract the original batch size from nested replay parameters.
+
+            Args:
+                value: A nested replay parameter value produced by a sequential augmentation.
+
+            Returns:
+                The recovered batch size, or None when the value does not carry one.
+            """
+
+        def _read_batch_size(value: Any) -> Optional[int]:
+            """Recursively extract the original batch size from nested replay parameters.
+
+            Args:
+                value: A nested replay parameter value produced by a sequential augmentation.
+
+            Returns:
+                The recovered batch size, or None when the value does not carry one.
+            """
+            if isinstance(value, ParamItem):
+                return _read_batch_size(value.data)
+            if isinstance(value, list):
+                for item in value:
+                    batch = _read_batch_size(item)
+                    if batch is not None:
+                        return batch
                 return None
-            data = data[0].data
-        if not isinstance(data, dict) or "forward_input_shape" not in data:
+            if isinstance(value, dict):
+                video_batch = value.get("video_batch_size")
+                if video_batch is not None:
+                    return int(torch.as_tensor(video_batch).reshape(-1)[0].item())
+                forward_input_shape = value.get("forward_input_shape")
+                if forward_input_shape is not None:
+                    return int(torch.as_tensor(forward_input_shape).reshape(-1)[0].item())
             return None
-        return int(data["forward_input_shape"][0])
+
+        for item in params:
+            batch = _read_batch_size(item)
+            if batch is not None:
+                return batch
+        return None
 
     def _postproc_mask(self, arg: MaskDataType, like: MaskDataType) -> MaskDataType:
         # Each mask output goes back to the dtype of its own argument, per element for a list. A single shared

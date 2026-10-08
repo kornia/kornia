@@ -305,22 +305,18 @@ class TestAugmentationSequential:
 
     def test_video_single_mask_follows_each_samples_own_flip_5624(self, device, dtype):
         # Entry point 1 of #5624: a (1, T, C, H, W) mask next to a (B, T, C, H, W) video; each output mask
-        # must equal its own sample's augmented image, and the fixture's draws must actually differ per sample.
+        # must equal its own sample's augmented image, and the test uses a fixed per-sample batch_prob so the
+        # fixture is deterministic and not dependent on the global RNG.
         mask = torch.rand(1, 4, 1, 8, 8, device=device, dtype=dtype)
         image = mask.expand(2, -1, 3, -1, -1).clone()
-        # With p=0.5 both samples can draw the same flip, which would make this test vacuous. Try seeds until
-        # the two samples draw differently, so the test never depends on one seed that may change with torch.
-        for seed in range(100):
-            torch.manual_seed(seed)
-            aug = K.AugmentationSequential(
-                K.VideoSequential(K.RandomHorizontalFlip(p=0.5), data_format="BTCHW"), data_keys=["input", "mask"]
-            )
-            out_image, out_mask = aug(image, mask)
-            batch_prob = aug._params[0].data[0].data["batch_prob"].view(2, 4)
-            if not torch.equal(batch_prob[0], batch_prob[1]):
-                break
-        else:
-            pytest.fail("no seed in range(100) made the two samples draw differently")
+        aug = K.AugmentationSequential(
+            K.VideoSequential(K.RandomHorizontalFlip(p=0.5), data_format="BTCHW"), data_keys=["input", "mask"]
+        )
+        out_image, out_mask = aug(image, mask)
+        aug._params[0].data[0].data["batch_prob"] = torch.tensor(
+            [True, False, True, False, False, True, False, True], device=device, dtype=torch.bool
+        )
+        out_image, out_mask = aug(image, mask, params=aug._params)
 
         assert out_mask.shape == (2, 4, 1, 8, 8)
         assert_close(out_mask, out_image[:, :, :1])
@@ -343,20 +339,13 @@ class TestAugmentationSequential:
 
     def test_replay_single_mask_follows_each_samples_own_flip_5624(self, device, dtype):
         # Entry point 2 of #5624: a mask replayed alone (no image) with params recorded for batch > 1 must
-        # match an already-expanded replay, and the recorded draws must actually differ per sample.
+        # match an already-expanded replay, and the fixture uses a fixed batch_prob pattern so the result is
+        # deterministic and independent of global RNG state.
         image = torch.rand(3, 3, 8, 8, device=device, dtype=dtype)
         mask = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
-        # With p=0.5 all samples can draw the same flip, which would make this test vacuous. Try seeds until
-        # they differ, so the test never depends on one seed that may change with torch.
-        for seed in range(100):
-            torch.manual_seed(seed)
-            aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.5), data_keys=["input", "mask"])
-            aug(image, mask.expand(3, -1, -1, -1).clone())
-            batch_prob = aug._params[0].data["batch_prob"]
-            if not torch.all(batch_prob == batch_prob[0]):
-                break
-        else:
-            pytest.fail("no seed in range(100) made the samples draw differently")
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.5), data_keys=["input", "mask"])
+        aug(image, mask.expand(3, -1, -1, -1).clone())
+        aug._params[0].data["batch_prob"] = torch.tensor([True, False, True], device=device, dtype=torch.bool)
 
         out_mask = aug(mask, params=aug._params, data_keys=["mask"])
         expected = aug(mask.expand(3, -1, -1, -1).clone(), params=aug._params, data_keys=["mask"])
