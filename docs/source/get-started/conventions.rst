@@ -790,7 +790,7 @@ string outside a function's vocabulary raises, ``BaseError`` from the robust los
        :func:`~kornia.losses.inverse_depth_smoothness_loss`
      - no ``reduction``
      - a scalar
-   * - ``mutual_information_loss`` and the other mutual-information losses
+   * - :func:`~kornia.losses.mutual_information_loss` and the other mutual-information losses
      - no ``reduction``
      - one value per signal: ``(B, C)`` for an image batch in the 2-D and 3-D variants
    * - :func:`~kornia.metrics.ssim`, :func:`~kornia.metrics.ssim3d` and the other metrics
