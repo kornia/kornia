@@ -257,6 +257,28 @@ class TestExportHelpers:
             pytest.skip(f"no Dynamo here: {e}")
         assert seen == [True]
 
+    def test_is_exporting_true_under_compile_with_public_flag(self):
+        # The same promise without the fallback: Torch does not fold ``torch.compiler.is_exporting``
+        # to ``True`` for ``torch.compile`` on every supported release -- on 2.14 a Dynamo trace sees
+        # ``False`` there -- so the guard has to reach ``is_compiling`` for the compiled graph to
+        # contain the export-safe paths on every version.
+        from kornia.core import utils
+
+        if utils._torch_is_exporting is None:
+            pytest.skip("torch has no export flag; covered by the fallback test")
+        assert is_exporting() is False
+        seen = []
+
+        def fn(x):
+            seen.append(is_exporting())
+            return x + 1
+
+        try:
+            torch.compile(fn, backend="eager")(torch.zeros(2))
+        except RuntimeError as e:  # e.g. "Dynamo is not supported on Python 3.13+" on torch 2.5
+            pytest.skip(f"no Dynamo here: {e}")
+        assert seen == [True]
+
     def test_register_module_state_wraps_leaf(self, device, dtype):
         m = torch.nn.Module()
         x = torch.rand(3, device=device, dtype=dtype)

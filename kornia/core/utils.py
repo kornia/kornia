@@ -584,23 +584,26 @@ def is_compiling() -> bool:
 @torch.jit.unused
 def _is_exporting_eager() -> bool:
     if _torch_is_exporting is not None:
-        return bool(_torch_is_exporting())
-    # torch < 2.6 has no export flag. Inside a Dynamo trace the newer releases constant-fold
-    # ``torch.compiler.is_exporting`` to ``True`` for ``torch.compile`` as well as for
-    # ``torch.export``, so ``is_compiling`` is the fallback with the same semantics.
+        # ``torch.compiler.is_exporting`` is not folded to ``True`` for ``torch.compile`` across the
+        # whole supported range: on torch 2.14 a Dynamo trace reports ``False`` here while
+        # ``is_compiling()`` is ``True``, so the flag alone makes the paths a compiled graph takes
+        # depend on the torch version. Both are graph captures and want the same arithmetic, so
+        # honour either.
+        return bool(_torch_is_exporting()) or is_compiling()
+    # torch < 2.6 has no export flag, so ``is_compiling`` is the fallback with the same semantics.
     return is_compiling()
 
 
 def is_exporting() -> bool:
-    """Whether execution is inside a graph capture by ``torch.export`` or the dynamo ONNX exporter.
+    """Whether execution is inside a graph capture by ``torch.compile``, ``torch.export`` or the dynamo ONNX exporter.
 
     Used to switch to export-safe arithmetic (closed-form inverses, ``sort``-based medians, ...) and
-    to skip in-``forward`` side effects (e.g. stashing per-call state on ``self``) that
-    ``torch.export`` rejects, without changing the captured output. Inside a Dynamo trace torch
-    folds its own flag to ``True`` for ``torch.compile`` too, so the export-safe paths are also
-    what a compiled graph contains; on torch < 2.6, which has no export flag, ``is_compiling`` is
-    used for the same reason. Always ``False`` inside TorchScript, so the guard is safe to call
-    from scripted functions.
+    to skip in-``forward`` side effects (e.g. stashing per-call state on ``self``) that graph capture
+    rejects, without changing the captured output. ``torch.compile`` counts as capturing too: Torch
+    does not fold its export flag to ``True`` for a Dynamo trace on every supported release, so
+    ``is_compiling`` is taken as well to give one behaviour per capture mode instead of one per torch
+    version. On torch < 2.6, which has no export flag, ``is_compiling`` is used for the same reason.
+    Always ``False`` inside TorchScript, so the guard is safe to call from scripted functions.
     """
     if torch.jit.is_scripting():
         return False
