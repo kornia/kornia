@@ -136,8 +136,12 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           ``keepdim=True``. A single tensor mask, ``(H, W)``, ``(1, H, W)``, ``(1, C, H, W)`` or one ``(C, H, W)``,
           next to a ``(B, C, H, W)`` image is repeated to batch ``B`` before the first child, so each sample's own
           parameters apply to its copy; a 3D mask whose leading size is ``B`` is read as ``(B, H, W)``. A list of
-          masks is not repeated. A wrong input rank raises ``RuntimeError`` here rather than the ``ValueError`` of a
-          bare augmentation (`#4424 <https://github.com/kornia/kornia/issues/4424>`_).
+          masks is not repeated. A single ``(1, T, C, H, W)`` mask is repeated the same way next to a
+          ``(B, T, C, H, W)`` video; any other mask rank next to a video, or a 5D mask next to a non-video
+          image, raises ``ValueError`` instead of guessing. A replay with no image (``params=`` given,
+          no ``INPUT`` key) reads the batch to repeat to from the recorded params instead. A wrong input rank
+          raises ``RuntimeError`` here rather than the ``ValueError`` of a bare augmentation
+          (`#4424 <https://github.com/kornia/kornia/issues/4424>`_).
         - boxes use the inclusive ``xyxy_plus`` convention of :class:`~kornia.geometry.boxes.Boxes`. Flips map
           ``x' = W - 1 - x`` and ``y' = H - 1 - y`` for every key, as :func:`~kornia.geometry.transform.hflip`
           does. Labels pass through geometric steps untouched.
@@ -491,7 +495,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         return outputs
 
-    def _validate_args_datakeys(self, *args: DataType, data_keys: List[DataKey]) -> None:
+    def _validate_args_datakeys(
+        self, *args: DataType, data_keys: List[DataKey], params: Optional[List[ParamItem]] = None
+    ) -> None:
         if len(args) != len(data_keys):
             raise AssertionError(
                 f"The number of inputs must align with the number of data_keys. Got {len(args)} and {len(data_keys)}."
@@ -502,21 +508,46 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             if key in _IMG_OPTIONS:
                 image = arg
                 break
-        if not isinstance(image, torch.Tensor) or image.ndim not in (3, 4):
+        image_size: Optional[torch.Size] = None
+        # Set once at construction from this container's children; distinguishes a video from a 5D
+        # ``(B, C, D, H, W)`` 3D image, which this function leaves untouched, as before.
+        is_video = self.contains_video_sequential
+        if isinstance(image, torch.Tensor) and (image.ndim in (3, 4) or (image.ndim == 5 and is_video)):
+            image_batch: Optional[int] = image.shape[0] if image.ndim in (4, 5) else 1
+            image_size = image.shape[-2:]
+        elif image is None and params is not None and not self.contains_3d_augmentation:
+            # A replay has no image; only the mask batch is checked, against the recorded params.
+            image_batch = self._batch_size_from_params(params)
+        else:
             return
-        image_batch = image.shape[0] if image.ndim == 4 else 1
-        image_size = image.shape[-2:]
+        if image_batch is None:
+            return
         for mask, key in zip(args, data_keys):
-            if key not in _MSK_OPTIONS or not isinstance(mask, torch.Tensor) or mask.ndim not in (2, 3, 4):
+            if key not in _MSK_OPTIONS or not isinstance(mask, torch.Tensor) or mask.ndim not in (2, 3, 4, 5):
                 continue
-            mask_batch = mask.shape[0] if mask.ndim == 4 else 1
+            # A mask must be 5D next to a video and never otherwise; any other combination raises here
+            # instead of guessing and failing later with a confusing reshape error.
+            if mask.ndim == 5 and not is_video:
+                raise ValueError(f"A 5D mask is only valid next to a video; got mask {tuple(mask.shape)}.")
+            if is_video and mask.ndim != 5:
+                raise ValueError(
+                    f"A mask next to a video must be 5D, (1, T, C, H, W) or (B, T, C, H, W); got mask "
+                    f"{tuple(mask.shape)}."
+                )
+            mask_batch = mask.shape[0] if mask.ndim in (4, 5) else 1
+            if image_size is None:
+                if mask_batch not in (1, image_batch):
+                    raise ValueError(f"Mask batch size must be 1 or {image_batch}; got mask {tuple(mask.shape)}.")
+                continue
             if mask_batch not in (1, image_batch) or mask.shape[-2:] != image_size:
                 raise ValueError(
                     "Image and mask must have matching spatial dimensions and compatible batch sizes "
                     f"(1 or {image_batch}); got image {tuple(image.shape)} and mask {tuple(mask.shape)}."
                 )
 
-    def _arguments_preproc(self, *args: DataType, data_keys: List[DataKey]) -> List[DataType]:
+    def _arguments_preproc(
+        self, *args: DataType, data_keys: List[DataKey], params: Optional[List[ParamItem]] = None
+    ) -> List[DataType]:
         # Resolve this call's image dtype before any mask is converted, so a mask that precedes the image in
         # dictionary insertion order uses it too, rather than the previous call's image dtype (or ``float32`` on
         # a fresh container). It is kept in a local rather than read back from ``self.input_dtype``, so the same
@@ -524,13 +555,21 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         # after an image use the most recent image, as before; a call with no image falls back to the attribute.
         working_dtype = self.input_dtype
         image_batch: Optional[int] = None
+        has_image = False
         for arg, dcate in zip(args, data_keys):
             if DataKey.get(dcate) in _IMG_OPTIONS:
+                has_image = True
                 working_dtype = cast(torch.Tensor, arg).dtype
-                # Only a batched ``(B, C, H, W)`` image has a batch to broadcast a single mask over.
-                if isinstance(arg, torch.Tensor) and arg.ndim == 4:
+                # Only a batched ``(B, C, H, W)`` image, or a video's ``(B, T, C, H, W)``, has a batch to
+                # broadcast a single mask over; a 5D 3D-augmentation volume is left alone, as before.
+                if isinstance(arg, torch.Tensor) and (
+                    arg.ndim == 4 or (arg.ndim == 5 and self.contains_video_sequential)
+                ):
                     image_batch = arg.shape[0]
                 break
+        if not has_image and params is not None:
+            # A replay has no image in this call; fall back to the batch its params were drawn for.
+            image_batch = self._batch_size_from_params(params)
         inp: List[DataType] = []
         for arg, dcate in zip(args, data_keys):
             if DataKey.get(dcate) in _IMG_OPTIONS:
@@ -629,9 +668,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         self.transform_op.data_keys = original_data_keys
 
         try:
-            self._validate_args_datakeys(*args, data_keys=original_data_keys)
+            self._validate_args_datakeys(*args, data_keys=original_data_keys, params=params)
 
-            in_args = self._arguments_preproc(*args, data_keys=original_data_keys)
+            in_args = self._arguments_preproc(*args, data_keys=original_data_keys, params=params)
 
             # Annotation handlers may read the matrix recorded by the image call. Process INPUT first for every child,
             # including nested containers and policies, then restore the caller's order below.
@@ -867,9 +906,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         The single-mask layouts are ``(H, W)``, ``(1, C, H, W)``, ``(1, H, W)`` and ``(C, H, W)``; an ``(H, W)``
         mask is read as ``(1, H, W)``, as a NumPy ``(H, W)`` mask is. A 3D mask is read like ``transform_tensor``
         reads it: as ``(B, H, W)`` when its leading size is the image batch (so it is left alone), otherwise as
-        one ``(C, H, W)`` mask.
+        one ``(C, H, W)`` mask. A 5D ``(1, T, C, H, W)`` mask, next to a video, only expands dim 0; ``T`` is left
+        alone.
         """
-        if image_batch is None or image_batch == 1 or mask.ndim not in (2, 3, 4):
+        if image_batch is None or image_batch == 1 or mask.ndim not in (2, 3, 4, 5):
             return mask
         if mask.ndim == 2:
             mask = mask[None]  # one (H, W) mask
@@ -879,6 +919,24 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             return mask  # already one mask per image
         # ``contiguous`` materialises the copy: a stride-0 view would break in-place edits made by a child.
         return mask.expand(image_batch, *mask.shape[1:]).contiguous()
+
+    @staticmethod
+    def _batch_size_from_params(params: List[ParamItem]) -> Optional[int]:
+        """Read the batch a replay's params were drawn for, with no image in the call to read it from.
+
+        A ``VideoSequential`` child nests its own params one level deeper (a list, not a dict), so
+        recursing once gives the same ``forward_input_shape`` as a plain child.
+        """
+        if not params:
+            return None
+        data = params[0].data
+        if isinstance(data, list):
+            if not data:
+                return None
+            data = data[0].data
+        if not isinstance(data, dict) or "forward_input_shape" not in data:
+            return None
+        return int(data["forward_input_shape"][0])
 
     def _postproc_mask(self, arg: MaskDataType, like: MaskDataType) -> MaskDataType:
         # Each mask output goes back to the dtype of its own argument, per element for a list. A single shared

@@ -303,6 +303,125 @@ class TestAugmentationSequential:
 
         assert_close(out_mask, mask.flip(-1))
 
+    def test_video_single_mask_follows_each_samples_own_flip_5624(self, device, dtype):
+        # Entry point 1 of #5624: a (1, T, C, H, W) mask next to a (B, T, C, H, W) video; each output mask
+        # must equal its own sample's augmented image, and the fixture's draws must actually differ per sample.
+        torch.manual_seed(0)
+        mask = torch.rand(1, 4, 1, 8, 8, device=device, dtype=dtype)
+        image = mask.expand(2, -1, 3, -1, -1).clone()
+        aug = K.AugmentationSequential(
+            K.VideoSequential(K.RandomHorizontalFlip(p=0.5), data_format="BTCHW"), data_keys=["input", "mask"]
+        )
+
+        out_image, out_mask = aug(image, mask)
+
+        batch_prob = aug._params[0].data[0].data["batch_prob"].view(2, 4)
+        assert not torch.equal(batch_prob[0], batch_prob[1]), "fixture draws nothing to tell apart"
+        assert out_mask.shape == (2, 4, 1, 8, 8)
+        assert_close(out_mask, out_image[:, :, :1])
+
+    def test_video_single_mask_equals_an_explicit_full_batch_mask_5624(self, device, dtype):
+        # Entry point 1 of #5624, RandomAffine: a single mask must match an already-expanded one, not just avoid
+        # the grid_sampler batch-size error.
+        image = torch.rand(2, 4, 3, 8, 8, device=device, dtype=dtype)
+        mask = torch.rand(1, 4, 1, 8, 8, device=device, dtype=dtype)
+        outputs = []
+        for candidate in (mask, mask.expand(2, -1, 1, -1, -1).clone()):
+            torch.manual_seed(5)
+            aug = K.AugmentationSequential(
+                K.VideoSequential(K.RandomAffine(30.0, p=1.0), data_format="BTCHW"), data_keys=["input", "mask"]
+            )
+            outputs.append(aug(image, candidate)[1])
+
+        assert outputs[0].shape == (2, 4, 1, 8, 8)
+        assert_close(outputs[0], outputs[1])
+
+    def test_replay_single_mask_follows_each_samples_own_flip_5624(self, device, dtype):
+        # Entry point 2 of #5624: a mask replayed alone (no image) with params recorded for batch > 1 must
+        # match an already-expanded replay, and the recorded draws must actually differ per sample.
+        torch.manual_seed(2)
+        image = torch.rand(3, 3, 8, 8, device=device, dtype=dtype)
+        mask = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.5), data_keys=["input", "mask"])
+        aug(image, mask.expand(3, -1, -1, -1).clone())
+
+        batch_prob = aug._params[0].data["batch_prob"]
+        assert not torch.all(batch_prob == batch_prob[0]), "fixture draws nothing to tell apart"
+
+        out_mask = aug(mask, params=aug._params, data_keys=["mask"])
+        expected = aug(mask.expand(3, -1, -1, -1).clone(), params=aug._params, data_keys=["mask"])
+        assert out_mask.shape == expected.shape
+        assert_close(out_mask, expected)
+
+    def test_replay_single_mask_equals_an_explicit_full_batch_mask_5624(self, device, dtype):
+        # Entry point 2 of #5624, RandomAffine: a replayed single mask must match an already-expanded one, not
+        # just avoid the grid_sampler batch-size error.
+        image = torch.rand(3, 3, 8, 8, device=device, dtype=dtype)
+        mask = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomAffine(30.0, p=1.0), data_keys=["input", "mask"])
+        aug(image, mask.expand(3, -1, -1, -1).clone())
+
+        out_single = aug(mask, params=aug._params, data_keys=["mask"])
+        out_full = aug(mask.expand(3, -1, -1, -1).clone(), params=aug._params, data_keys=["mask"])
+        assert out_single.shape == (3, 1, 8, 8)
+        assert_close(out_single, out_full)
+
+    def test_video_mask_batch_mismatch_raises_5624(self, device, dtype):
+        # A mask batch that is neither 1 nor the video batch is rejected, as for a 4-D image (#5618).
+        image = torch.rand(2, 4, 3, 8, 8, device=device, dtype=dtype)
+        mask = torch.rand(3, 4, 1, 8, 8, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(
+            K.VideoSequential(K.RandomHorizontalFlip(p=1.0), data_format="BTCHW"), data_keys=["input", "mask"]
+        )
+
+        with pytest.raises(ValueError, match="batch"):
+            aug(image, mask)
+
+    def test_replay_mask_batch_mismatch_raises_5624(self, device, dtype):
+        # A replayed mask batch that is neither 1 nor the recorded batch is rejected the same way.
+        image = torch.rand(3, 3, 8, 8, device=device, dtype=dtype)
+        mask = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+        aug(image, mask.expand(3, -1, -1, -1).clone())
+        bad_mask = torch.rand(2, 1, 8, 8, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="batch"):
+            aug(bad_mask, params=aug._params, data_keys=["mask"])
+
+    @pytest.mark.parametrize("mask_shape", [(1, 4, 8, 8), (4, 1, 8, 8), (8, 8)])
+    def test_video_ambiguous_mask_rank_raises_5624(self, mask_shape, device, dtype):
+        # A mask next to a video that is not 5D is ambiguous (missing channel? missing batch? a plain 2D
+        # mask?), so it must raise here rather than fail later inside VideoSequential's own reshape.
+        image = torch.rand(2, 4, 3, 8, 8, device=device, dtype=dtype)
+        mask = torch.rand(*mask_shape, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(
+            K.VideoSequential(K.RandomHorizontalFlip(p=1.0), data_format="BTCHW"), data_keys=["input", "mask"]
+        )
+
+        with pytest.raises(ValueError, match="5D"):
+            aug(image, mask)
+
+    def test_5d_mask_without_a_video_raises_5624(self, device, dtype):
+        # The mirror case: a 5D mask is only meaningful next to a video. Next to a plain 4D image it is
+        # ambiguous, so it must raise here rather than fail later with a confusing shape error.
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        mask = torch.rand(1, 4, 1, 8, 8, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+
+        with pytest.raises(ValueError, match="5D"):
+            aug(image, mask)
+
+    def test_3d_augmentation_replay_mask_keeps_its_own_error_5624(self, device, dtype):
+        # A 3D augmentation's own "not yet supported" mask error must still surface on replay, not the
+        # video/5D-mask ValueError meant for a video (3D volumes and videos are both 5D).
+        volume = torch.rand(2, 1, 4, 8, 8, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip3D(p=1.0), data_keys=["input", "mask"])
+        aug(volume, data_keys=["input"])
+        mask = torch.rand(2, 1, 4, 8, 8, device=device, dtype=dtype)
+
+        with pytest.raises(NotImplementedError, match="3d mask"):
+            aug(mask, params=aug._params, data_keys=["mask"])
+
     def test_call_time_data_keys_are_restored_after_forward_exception(self, device, dtype):
         image = torch.rand(1, 3, 16, 20, device=device, dtype=dtype)
         mask = torch.ones(1, 1, 16, 20, device=device, dtype=dtype)
