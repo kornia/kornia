@@ -522,11 +522,12 @@ class TestAutoAugmentConventions(BaseTester):
             assert torch.equal(restored(x), expected)
         # torch.save/torch.load of a policy that has already run a forward pass; the buffer is written in-process here
         for policy in (AutoAugment(), RandAugment(n=2, m=15), TrivialAugment()):
-            policy(x)
+            first = policy(x)
             buffer = io.BytesIO()
             torch.save(policy, buffer)
             buffer.seek(0)
             restored = torch.load(buffer, weights_only=False)
+            assert torch.equal(restored(x, params=restored._params), first)
             torch.manual_seed(0)
             expected = policy(x)
             torch.manual_seed(0)
