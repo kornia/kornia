@@ -1002,13 +1002,14 @@ Porting the task metrics from other libraries:
   the mean of per-image D1. The devkit also reads a ground-truth disparity of 0 as invalid and scores its own
   interpolated version of the estimate: pass a dense prediction and ``valid_mask=target > 0`` to reproduce its
   number.
-- glue-factory, the evaluation code of LightGlue, and SuperGlue report the pose AUC as a fraction: SuperGlue's
-  ``pose_auc`` and glue-factory's ``cal_error_auc``, which rounds to four decimals, equal
-  :func:`~kornia.metrics.auc_from_errors` divided by 100 for errors without NaN: the references count a NaN as a
-  failure, kornia propagates it. glue-factory's pose error, the larger of the rotation angle and the folded
-  translation angle, is the ``"max_err"`` of :func:`~kornia.metrics.pose_errors` with the default
-  ``fold_translation=True``. For a zero ground-truth translation glue-factory reads a translation error of 90 degrees,
-  where :func:`~kornia.metrics.pose_errors` returns NaN.
+- SuperGlue's ``pose_auc`` and the ``cal_error_auc`` of glue-factory, the evaluation code of LightGlue, return the pose
+  AUC as a fraction, glue-factory's rounded to four decimals. Both equal :func:`~kornia.metrics.auc_from_errors`
+  divided by 100 for errors without NaN: the references count a NaN as a failure, kornia propagates it. SuperGlue's
+  ``match_pairs.py`` prints 100 times that fraction, a percentage like kornia's; glue-factory reports the fraction
+  itself. glue-factory's pose error, the larger of the rotation angle and the folded translation angle, is the
+  ``"max_err"`` of :func:`~kornia.metrics.pose_errors` with the default ``fold_translation=True``. For a zero
+  ground-truth translation glue-factory reads a translation error of 90 degrees, where
+  :func:`~kornia.metrics.pose_errors` returns NaN.
 
 .. _two-view-conventions:
 
