@@ -600,14 +600,16 @@ def is_exporting() -> bool:
     ``torch.export`` rejects, without changing the captured output. Always ``False`` inside
     TorchScript, so the guard is safe to call from scripted functions.
 
-    The flag is export-specific, not capture-specific: whether it is also true inside a
-    ``torch.compile`` trace depends on the Torch release, so a compiled call can take different
-    paths across versions. Where the intent is "any graph capture" - skipping data-dependent
-    validation, or avoiding ``self`` side effects - use :func:`is_compiling`, which covers
-    ``torch.compile`` and ``torch.export`` alike on every supported release. Keep this predicate for
-    paths that exist only for export, such as :func:`crop_by_indices` routing to its dedicated
-    export implementation: letting a compiled call take that route changes the sampling the eager
-    and compiled paths agree on.
+    The flag is meant to be export-specific, not capture-specific, but whether it is also true inside
+    a ``torch.compile`` trace depends on the Torch release, so a compiled call can take different
+    paths across versions (#5037). It is false under ``torch.jit.trace`` and the legacy ONNX
+    exporter. Where the intent is "inside any Dynamo capture" - skipping a data-dependent check that
+    breaks ``fullgraph`` - use :func:`is_compiling`, which covers ``torch.compile`` and
+    ``torch.export`` alike on every supported release. Keep this predicate for what only an export
+    needs: :func:`crop_by_indices` routing to its dedicated export implementation, where letting a
+    compiled call take that route changes the sampling the eager and compiled paths agree on, and
+    skipping per-call state on ``self`` that ``torch.export`` rejects but a compiled call records and
+    a caller reads back afterwards, such as the ``transform_matrix`` of an augmentation.
     """
     if torch.jit.is_scripting():
         return False

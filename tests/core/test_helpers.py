@@ -239,9 +239,9 @@ class TestExportHelpers:
         assert torch.jit.script(is_exporting)() is False
 
     def test_is_exporting_falls_back_to_is_compiling(self, monkeypatch):
-        # torch < 2.6 has no ``torch.compiler.is_exporting``; inside a Dynamo trace the guard must
-        # still be true, as it is on newer torch where Dynamo folds the flag to True for
-        # ``torch.compile`` as well.
+        # torch < 2.6 has no ``torch.compiler.is_exporting``, so inside a Dynamo trace the guard falls
+        # back to ``is_compiling`` and is true under ``torch.compile`` too. Newer torch answers with its
+        # own flag, whose value under ``torch.compile`` depends on the release (#5037).
         from kornia.core import utils
 
         monkeypatch.setattr(utils, "_torch_is_exporting", None)
