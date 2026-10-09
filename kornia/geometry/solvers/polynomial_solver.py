@@ -256,6 +256,14 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
        the third root keeps the sum of the roots at ``-b / a``. :func:`solve_quartic` inherits these
        conventions for the rows it solves as cubics.
 
+    .. note::
+       Known limitation, not planned to be fixed: under :func:`torch.compile` with the Inductor backend on CUDA,
+       Triton contracts a multiplication followed by an addition into one fused multiply-add by default. That
+       breaks the error-free transformations of the compensated evaluation at the stationary points, so an exact
+       double root can come back as a single root: 1 % of exact ``(x - p)(x - q)^2`` rows in float32 and 2 % in
+       float64. Eager execution, other backends and Inductor on CPU are not affected, and
+       ``torch._inductor.config.emulate_precision_casts = True`` turns the contraction off.
+
     """
     return _solve_cubic_with_count(coeffs)[0]
 
@@ -934,6 +942,15 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
        when all four roots are real. A repeated-root Jacobian is undefined; repeated roots
        use a finite surrogate with the same sum convention. Coefficient rounding can turn a generating
        repeated root into a complex pair; the solver classifies the represented input polynomial.
+
+    .. note::
+       Known limitation, not planned to be fixed: under :func:`torch.compile` with the Inductor backend on CUDA,
+       Triton contracts a multiplication followed by an addition into one fused multiply-add by default. That
+       breaks the error-free transformations of the compensated Horner evaluation that decides multiplicity and
+       the number of real roots, so a quartic with an exact double root or a tight cluster can lose roots: 7 % of
+       exact ``(x - p)^2 (x - q)(x - r)`` rows, and 3 % of four-root clusters in float64. Eager execution, other
+       backends and Inductor on CPU are not affected, and ``torch._inductor.config.emulate_precision_casts = True``
+       turns the contraction off.
 
     .. note::
        The same surrogate convention applies at this function's own two ``sqrt`` boundaries:

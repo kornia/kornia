@@ -57,6 +57,39 @@ class TestPolynomialSolversCompile(BaseTester):
         (gradient,) = torch.autograd.grad(actual.sum(), values)
         assert bool(torch.isfinite(gradient).all()), gradient
 
+    @staticmethod
+    def _exact_double_root_cubics(device, dtype):
+        # (x - p)(x - q)^2 for every pair of distinct quarter-integers in [-8, 8]; the coefficients are exact.
+        values = torch.arange(-32, 33, dtype=torch.float64) / 4
+        p, q = (v.flatten() for v in torch.meshgrid(values, values, indexing="ij"))
+        p, q = p[p != q], q[p != q]
+        coeffs = torch.stack([torch.ones_like(p), -(p + 2 * q), q * q + 2 * p * q, -p * q * q], -1)
+        exact = (coeffs.to(dtype).double() == coeffs).all(-1)
+        roots = torch.stack([p, q, q], -1)[exact].sort(-1).values
+        return coeffs[exact].to(device=device, dtype=dtype), roots.to(device=device, dtype=dtype)
+
+    def test_dynamo_cuda_double_roots_without_contraction(self, device, dtype, torch_optimizer, optimizer_backend):
+        if optimizer_backend != "inductor" or device.type != "cuda" or dtype not in (torch.float32, torch.float64):
+            pytest.skip("The documented workaround concerns Inductor's Triton kernels on CUDA.")
+        # The workaround named in solve_cubic's known-limitation note: without fused multiply-adds, the compensated
+        # evaluation keeps every exact double root under Inductor on CUDA.
+        coeffs, roots = self._exact_double_root_cubics(device, dtype)
+        with torch._inductor.config.patch(emulate_precision_casts=True):
+            actual = torch_optimizer(solve_cubic, fullgraph=True)(coeffs)
+        self.assert_close(actual.sort(-1).values, roots, atol=1e-5, rtol=1e-5)
+
+    @pytest.mark.xfail(
+        strict=False,
+        reason="Known limitation, not planned to be fixed: Triton's fused multiply-adds break the compensated "
+        "evaluation under Inductor on CUDA, and 1-2 % of exact double roots come back as single roots.",
+    )
+    def test_wart_dynamo_cuda_contraction_loses_double_roots(self, device, dtype, torch_optimizer, optimizer_backend):
+        if optimizer_backend != "inductor" or device.type != "cuda" or dtype not in (torch.float32, torch.float64):
+            pytest.skip("The limitation concerns Inductor's Triton kernels on CUDA.")
+        coeffs, roots = self._exact_double_root_cubics(device, dtype)
+        actual = torch_optimizer(solve_cubic, fullgraph=True)(coeffs)
+        self.assert_close(actual.sort(-1).values, roots, atol=1e-5, rtol=1e-5)
+
     def test_quadratic_extreme_scale_invariance(self, device, dtype):
         """Power-of-two homogeneous scaling preserves roots and gradients where b^2 and 4ac overflow."""
         if dtype == torch.float16:
