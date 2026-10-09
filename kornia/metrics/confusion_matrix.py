@@ -46,22 +46,34 @@ def confusion_matrix(
 ) -> torch.Tensor:
     r"""Compute confusion matrix to evaluate the accuracy of a classification.
 
+    Convention:
+        - ``pred`` and ``target`` are class labels of the same shape, prediction first, in ``uint8`` or any signed
+          integer dtype; a bool tensor counts as the labels 0 and 1. A floating-point label tensor raises, and so does
+          a label outside :math:`[0, K)`, unless the call is exported or compiled, which may skip the range check.
+        - The first axis is always the batch: the result holds one :math:`(K, K)` float32 count matrix per sample,
+          :math:`(B, K, K)`, and is never pooled over the batch, so a flat :math:`(N,)` label vector gives :math:`N`
+          matrices that count one label each. Sum over the first axis for the matrix of a whole batch or dataset.
+        - Rows are the target and columns the prediction, ``cm[b, target, pred]``; swapping the two arguments
+          transposes every count matrix. :ref:`Losses and metrics <losses-metrics-conventions>` maps the matrix and
+          ``normalized`` onto scikit-learn.
+        - Known defect: the range check follows ``is_exporting()``, whose meaning under ``torch.compile`` depends on
+          the torch version, so a compiled call can skip it and count an out-of-range prediction in another cell
+          (`#5037 <https://github.com/kornia/kornia/issues/5037>`_).
+
     Args:
         pred: tensor with estimated targets returned by a
           classifier. The shape can be :math:`(B, *)` and must contain integer
           values between 0 and K-1.
         target: tensor with ground truth (correct) target
-          values. The shape can be :math:`(B, *)` and must contain integer
-          values between 0 and K-1, where targets are assumed to be provided as
-          one-hot vectors.
+          values. The shape must be that of ``pred``, and it must contain integer
+          values between 0 and K-1.
         num_classes: total possible number of classes in target.
         normalized: whether to normalize each target row by its sum plus ``1e-6``.
           Non-empty rows sum approximately to one; empty rows remain zero.
 
     Returns:
         a tensor containing the confusion matrix with shape
-        :math:`(B, K, K)` where K is the number of classes, rows represent targets,
-        and columns represent predictions.
+        :math:`(B, K, K)` where K is the number of classes.
 
     Example:
         >>> logits = torch.tensor([[0, 1, 0]])
