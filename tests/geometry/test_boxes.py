@@ -2189,9 +2189,9 @@ class TestVideoBoxes(BaseTester):
 
     def test_exception(self, device, dtype):
         frame = self._sample_video_boxes(device, dtype, batch=1, time=1)[0]  # (T, N, 4, 2)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Please input an `BxTxNx4x2` tensor directly"):
             VideoBoxes.from_tensor(frame)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Please input an `BxTxNx4x2` tensor directly"):
             VideoBoxes.from_tensor([self._sample_video_boxes(device, dtype)])
 
     def test_cardinality(self, device, dtype):
