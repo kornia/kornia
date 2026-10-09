@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from kornia.core.exceptions import BaseError
 from kornia.losses.one_hot import one_hot
 
-from testing.base import assert_close
+from testing.base import BaseTester, assert_close
 
 
 class TestOneHot:
@@ -74,3 +74,19 @@ class TestOneHot:
 
         with pytest.raises(BaseError, match="floating point dtype"):
             one_hot(labels, 2, device, torch.int64, eps=1e-6)
+
+
+class TestConventionsOneHot(BaseTester):
+    """Pins for the layout of :func:`kornia.losses.one_hot`."""
+
+    def test_convention_one_hot_class_axis_is_dim_1(self, device, dtype):
+        # int64 labels (N, *) -> (N, C, *): the class axis is dim 1 where F.one_hot puts it last, and with the default
+        # eps=0 the result is F.one_hot(labels, C).movedim(-1, 1).to(device, dtype)
+        labels = torch.tensor([[[0, 2, 1, 3, 3], [1, 0, 0, 2, 0], [3, 3, 1, 0, 2]]], device=device)
+        labels = torch.cat([labels, labels.flip(-1)])  # (2, 3, 5)
+        out = one_hot(labels, 4, device, dtype)
+        assert out.shape == (2, 4, 3, 5)
+        assert torch.equal(out, F.one_hot(labels, 4).movedim(-1, 1).to(dtype))
+        assert torch.equal(one_hot(labels.transpose(1, 2), 4, device, dtype), out.transpose(2, 3))
+        assert one_hot(labels[:, 0, 0], 4, device, dtype).shape == (2, 4)
+        assert one_hot(labels.cpu(), 4, torch.device("meta"), dtype).device.type == "meta"

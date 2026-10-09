@@ -952,6 +952,89 @@ class TestAugmentationSequential:
 class TestConventionAugmentationSequential(BaseTester):
     """Convention checks and pins for documented `AugmentationSequential` limitations."""
 
+    @pytest.mark.parametrize("batch_size", [2, 3])
+    @pytest.mark.parametrize("keepdim,child_keepdim", [(True, False), (None, True), (False, True)])
+    @pytest.mark.parametrize("mask_layout", ["BHW", "BCHW"])
+    @pytest.mark.parametrize("augmentation", ["flip", "affine", "crop"])
+    def test_inverse_mask_shape_5597(
+        self, batch_size, keepdim, child_keepdim, mask_layout, augmentation, device, dtype
+    ):
+        image = torch.rand(batch_size, 3, 8, 10, device=device, dtype=dtype)
+        mask = (torch.arange(batch_size * 80, device=device).reshape(batch_size, 8, 10) % 3 == 0).to(dtype)
+        if mask_layout == "BCHW":
+            mask = mask.unsqueeze(1)
+        if augmentation == "flip":
+            child = K.RandomHorizontalFlip(p=1.0, keepdim=child_keepdim)
+        elif augmentation == "affine":
+            child = K.RandomAffine((-60.0, 60.0), p=1.0, keepdim=child_keepdim)
+        else:
+            child = K.RandomCrop((5, 7), cropping_mode="resample", p=1.0, keepdim=child_keepdim)
+        seq = K.AugmentationSequential(child, data_keys=["image", "mask"], keepdim=keepdim)
+
+        out_image, out_mask = seq(image, mask)
+        inv_image, inv_mask = seq.inverse(out_image, out_mask)
+
+        expected_mask = mask.unsqueeze(1) if mask_layout == "BHW" and keepdim is False else mask
+        assert inv_mask.shape == expected_mask.shape
+        assert inv_mask.dtype == mask.dtype
+        assert inv_mask.device == mask.device
+        assert inv_image.shape == image.shape
+        assert inv_image.dtype == image.dtype
+        assert inv_image.device == image.device
+        if augmentation == "flip":
+            self.assert_close(inv_image, image, atol=0, rtol=0)
+            self.assert_close(inv_mask, expected_mask, atol=0, rtol=0)
+        # The established BCHW path is a reference for lossy warps; replay exactly the same parameters.
+        reference_mask = out_mask.unsqueeze(1) if out_mask.ndim == 3 else out_mask
+        reference_image, reference_mask = seq.inverse(out_image, reference_mask)
+        self.assert_close(inv_image, reference_image, atol=0, rtol=0)
+        self.assert_close(inv_mask.reshape(reference_mask.shape), reference_mask, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("batch_prob", [[True, True, True], [False, True, False], [False, False, False]])
+    @pytest.mark.parametrize("mask_dtype", [torch.bool, torch.int64])
+    def test_inverse_bhw_mask_gates_and_dtype_5597(self, batch_prob, mask_dtype, device, dtype):
+        image = torch.rand(3, 2, 6, 8, device=device, dtype=dtype)
+        mask = (torch.arange(3 * 48, device=device).reshape(3, 6, 8) % 3 == 0).to(mask_dtype)
+        seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.5), data_keys=["image", "mask"], keepdim=True)
+        params = seq.forward_parameters(image.shape)
+        params[0].data["batch_prob"] = torch.tensor(batch_prob, device=device)
+
+        inv_image, inv_mask = seq.inverse(*seq(image, mask, params=params))
+
+        self.assert_close(inv_image, image, atol=0, rtol=0)
+        self.assert_close(inv_mask, mask, atol=0, rtol=0)
+        assert inv_mask.dtype == mask_dtype
+        assert inv_mask.device == mask.device
+
+    @pytest.mark.parametrize("shape", [(6, 8), (2, 6, 8), (1, 2, 6, 8)])
+    @pytest.mark.parametrize("keepdim", [True, False])
+    def test_inverse_unbatched_image_and_mask_shape_5597(self, shape, keepdim, device, dtype):
+        image = torch.rand(shape, device=device, dtype=dtype)
+        seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["image", "mask"], keepdim=keepdim)
+
+        inv_image, inv_mask = seq.inverse(*seq(image, image.clone()))
+
+        expected = image if keepdim else image.reshape(1, -1, 6, 8)
+        self.assert_close(inv_image, expected, atol=0, rtol=0)
+        self.assert_close(inv_mask, expected, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("keepdim", [False, None])
+    def test_inverse_bhw_mask_without_keepdim_5597(self, keepdim, device, dtype):
+        # A (B, H, W) mask that is not a forward output (a prediction, say) is read per sample, as the forward
+        # reads it, and comes back in the batch form (B, 1, H, W) when keepdim is off.
+        image = torch.arange(3 * 2 * 6 * 8, device=device, dtype=dtype).reshape(3, 2, 6, 8) / 288
+        mask = (torch.arange(3 * 6 * 8, device=device).reshape(3, 6, 8) % 3 == 0).to(dtype)
+        seq = K.AugmentationSequential(
+            K.RandomAffine((-60.0, 60.0), p=1.0), data_keys=["image", "mask"], keepdim=keepdim
+        )
+        out_image = seq(image, data_keys=["image"])
+
+        _, inv_mask = seq.inverse(out_image, mask, data_keys=["image", "mask"])
+        _, reference = seq.inverse(out_image, mask.unsqueeze(1), data_keys=["image", "mask"])
+
+        assert inv_mask.shape == (3, 1, 6, 8)
+        self.assert_close(inv_mask, reference, atol=0, rtol=0)
+
     @pytest.mark.parametrize("mask_first", [True, False])
     def test_inverse_mask_exception_preserves_next_image_5290(self, mask_first, device, dtype):
         image = torch.arange(16 * 20, device=device, dtype=dtype).reshape(1, 1, 16, 20) / 320
@@ -990,9 +1073,10 @@ class TestConventionAugmentationSequential(BaseTester):
 
     @pytest.mark.parametrize("align_corners", [None, False, True])
     @pytest.mark.parametrize("resample", [None, Resample.BILINEAR])
-    def test_inverse_mask_preserves_sampling_overrides_5290(self, align_corners, resample, device, dtype):
-        aug = K.RandomAffine((17.0, 17.0), align_corners=True, p=1.0)
-        mask = (torch.arange(6 * 8, device=device).reshape(1, 1, 6, 8) % 3 == 0).to(dtype)
+    @pytest.mark.parametrize("mask_layout", ["BCHW", "BHW"])
+    def test_inverse_mask_preserves_sampling_overrides_5290(self, align_corners, resample, mask_layout, device, dtype):
+        aug = K.RandomAffine((17.0, 17.0), align_corners=True, p=1.0, keepdim=True)
+        mask = (torch.arange(3 * 6 * 8, device=device).reshape(3, 1, 6, 8) % 3 == 0).to(dtype)
         aug(mask)
         transform = torch.linalg.inv(aug.transform_matrix.to(torch.float32)).to(dtype)
         original_flags = dict(aug.flags)
@@ -1000,11 +1084,14 @@ class TestConventionAugmentationSequential(BaseTester):
         if resample is not None:
             kwargs["resample"] = resample
 
-        actual = aug.inverse_masks(mask, aug._params, aug.flags, transform=transform, **kwargs)
+        input_mask = mask[:, 0] if mask_layout == "BHW" else mask
+        actual = aug.inverse_masks(input_mask, aug._params, aug.flags, transform=transform, **kwargs)
         expected_flags = dict(original_flags)
         expected_flags["resample"] = Resample.NEAREST if resample is None else resample
         expected_flags["align_corners"] = True if align_corners is None else align_corners
         expected = aug.inverse_inputs(mask, aug._params, expected_flags, transform=transform)
+        if mask_layout == "BHW":
+            expected = expected[:, 0]
 
         self.assert_close(actual, expected, atol=0, rtol=0)
         if resample is None:
