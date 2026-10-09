@@ -234,7 +234,7 @@ class DiceLoss(nn.Module):
         super().__init__()
         self.average = average
         self.eps = eps
-        self.weight = weight
+        self.register_buffer("weight", weight, persistent=False)
         self.ignore_index = ignore_index
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
