@@ -782,14 +782,24 @@ def _monic_cubic_real_roots(coeffs: torch.Tensor, polish: bool) -> tuple[torch.T
         & (reach.square() * reach >= d.abs())
     )
 
+    # Where Vieta's pair is complex, the closed form's other two values are a spurious real pair: the dominant root
+    # is the only real one, repeated in the masked slots as _solve_cubic_real does. Ferrari picked the spurious
+    # pair's larger R^2 and lost a quartic root, e.g. two spread real roots beside a small complex pair.
+    single = torch.zeros_like(valid)
+    single[:, 0] = True
     if torch.compiler.is_compiling():
         vieta_roots, pair_is_real = _monic_cubic_pair_beside(c, product, dominant)
-        return torch.where((beside & pair_is_real)[:, None], vieta_roots, roots), valid
+        complex_pair = beside & ~pair_is_real
+        roots = torch.where((beside & pair_is_real)[:, None], vieta_roots, roots)
+        roots = torch.where(complex_pair[:, None], dominant[:, None].expand(-1, 3), roots)
+        return roots, torch.where(complex_pair[:, None], single, valid)
     # Eager execution solves the few rows beside a dominant root; every operation is row-wise.
     if bool(beside.any()):
         rows = beside.nonzero().squeeze(1)
         vieta_roots, pair_is_real = _monic_cubic_pair_beside(c[rows], product[rows], dominant[rows])
-        roots = roots.index_put((rows,), torch.where(pair_is_real[:, None], vieta_roots, roots[rows]))
+        alone = dominant[rows][:, None].expand(-1, 3)
+        roots = roots.index_put((rows,), torch.where(pair_is_real[:, None], vieta_roots, alone))
+        valid = valid.index_put((rows,), torch.where(pair_is_real[:, None], valid[rows], single[rows]))
     return roots, valid
 
 

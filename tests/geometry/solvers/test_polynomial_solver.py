@@ -903,6 +903,25 @@ class TestQuarticSolver(BaseTester):
         expected = roots[exact].sort(-1, descending=True).values.to(device=device, dtype=dtype)
         self.assert_close(solver.solve_quartic(coefficients), expected, atol=1e-5, rtol=1e-5)
 
+    def test_spread_real_roots_beside_a_small_complex_pair(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("The coefficients span about 25 decades.")
+        # (x - r1)(x - r2)(x^2 - 2 m cos(t) x + m^2) with |r1| in [1e4, 1e5], |r2| in [1e2, 1e3] and m in [1e-5, 1e-4].
+        # Beside its dominant root, the resolvent's closed form returned a spurious real pair where Vieta's pair is
+        # complex. Ferrari took that pair's larger R^2 and lost r2 on 6 % of these rows; main kept them all.
+        rng = np.random.default_rng(0)
+        n = 2000
+        r1 = np.exp(rng.uniform(np.log(1e4), np.log(1e5), n)) * rng.choice([-1.0, 1.0], n)
+        r2 = np.exp(rng.uniform(np.log(1e2), np.log(1e3), n)) * rng.choice([-1.0, 1.0], n)
+        m = np.exp(rng.uniform(np.log(1e-5), np.log(1e-4), n))
+        p, q = -2 * m * np.cos(rng.uniform(0.1, np.pi - 0.1, n)), m * m
+        u, v = -(r1 + r2), r1 * r2
+        coeffs = np.stack([np.ones(n), p + u, q + p * u + v, p * v + q * u, q * v], -1)
+        actual = solver.solve_quartic(torch.from_numpy(coeffs).to(device=device, dtype=dtype))
+        expected = torch.from_numpy(np.stack([np.maximum(r1, r2), np.minimum(r1, r2), np.zeros(n), np.zeros(n)], -1))
+        rtol = 1e-9 if dtype == torch.float64 else 1e-5
+        self.assert_close(actual, expected.to(device=device, dtype=dtype), atol=0.0, rtol=rtol)
+
     @pytest.mark.parametrize(
         "coefficients, expected, dtypes",
         [
