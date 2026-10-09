@@ -533,14 +533,16 @@ def shear(
     .. image:: _static/img/shear.png
 
     Convention:
-        - ``shear`` is ``(shx, shy)``
+        - ``shear`` is a pair of raw factors ``(shx, shy)`` about pixel ``(0, 0)``:
+          ``x_out = x + shx * y``, ``y_out = y + shy * x`` (x right, y down).
+          Unlike :class:`Affine`, these are not angles or ordered, centered shears.
         - align_corners: ``False`` by default (differs from the other 2D affine warps and from
           :class:`Shear`, which default to ``True``)
 
     Args:
         tensor: The image tensor to be skewed with shape of :math:`(B, C, H, W)`.
-        shear: tensor containing the angle to shear
-          in the x and y direction. The tensor must have a shape of
+        shear: tensor containing raw shear factors
+          in the x and y direction about pixel (0, 0). The tensor must have a shape of
           (B, 2), where B is batch size, last dimension contains shx shy.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
@@ -873,7 +875,10 @@ class Affine(nn.Module):
     r"""Apply multiple elementary affine transforms simultaneously.
 
     Convention:
-        - See the convention block of :func:`affine`.
+        - ``shear`` contains angles in radians, using the negative-tangent, x-then-y convention
+          of :func:`get_shear_matrix2d` about ``center`` (by default ``((W - 1) / 2, (H - 1) / 2)``).
+          This differs from the raw factors about pixel ``(0, 0)`` used by :func:`shear` and :class:`Shear`.
+        - ``align_corners`` defaults to ``True``. See the convention block of :func:`affine`.
 
     Args:
         angle: Angle in degrees for counter-clockwise rotation around the center. The tensor
@@ -882,7 +887,7 @@ class Affine(nn.Module):
             have a shape of (B, 2), where B is the batch size and the last dimension contains dx and dy.
         scale_factor: Factor for scaling. The tensor must have a shape of (B,2), where B is the
             batch size and the last dimension contains scale factors for x and y direction.
-        shear: Factor for shearing in x- and y-direction around the center. The
+        shear: Angles in radians for shearing in x- and y-direction around the center. The
             tensor must have a shape of (B, 2), where B is the batch size and the last dimension
             contains sx and sy.
         center: Transformation center in pixels. The tensor must have a shape of (B, 2), where
@@ -1228,8 +1233,8 @@ class Shear(nn.Module):
         - See the convention block of :func:`shear`.
 
     Args:
-        shear: tensor containing the angle to shear
-          in the x and y direction. The tensor must have a shape of
+        shear: tensor containing raw shear factors
+          in the x and y direction about pixel (0, 0). The tensor must have a shape of
           (B, 2), where B is batch size, last dimension contains shx shy.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
