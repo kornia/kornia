@@ -891,6 +891,18 @@ class TestQuarticSolver(BaseTester):
         expected = roots[exact].sort(-1, descending=True).values.to(device=device, dtype=dtype)
         self.assert_close(solver.solve_quartic(coefficients), expected, atol=1e-5, rtol=1e-5)
 
+    def test_exact_two_double_roots_grid(self, device, dtype):
+        # (x - p)^2 (x - q)^2 for every pair of distinct quarter-integers in [-4, 4]: a biquadratic in x + (p + q) / 2
+        # with an exact double root in its square. shift.pow(4) is not exact on CUDA, and 32 of these rows, such as
+        # x^2 (x + 4)^2, came back without roots there.
+        values = torch.arange(-16, 17, dtype=torch.float64) / 4
+        roots = torch.combinations(values, r=2).repeat_interleave(2, dim=-1)
+        coefficients = _monic_from_roots(roots)
+        exact = (coefficients.to(dtype).double() == coefficients).all(-1)
+        coefficients = coefficients[exact].to(device=device, dtype=dtype)
+        expected = roots[exact].sort(-1, descending=True).values.to(device=device, dtype=dtype)
+        self.assert_close(solver.solve_quartic(coefficients), expected, atol=1e-5, rtol=1e-5)
+
     @pytest.mark.parametrize(
         "coefficients, expected, dtypes",
         [

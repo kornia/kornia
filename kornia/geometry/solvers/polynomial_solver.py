@@ -1192,7 +1192,9 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     biquadratic = depressed_q == 0
     if compiling or bool(biquadratic.any()):
         depressed_p = B - 6 * shift.square()
-        depressed_r = D - shift * C + shift.square() * B - 3 * shift.pow(4)
+        # shift.pow(4) is not exact on CUDA (0.5 ** 4 in float64), and an exact double pair of y^2 then got a
+        # negative discriminant: x^2 (x + 4)^2 came back without roots. Squaring twice is exact on every device.
+        depressed_r = D - shift * C + shift.square() * B - 3 * shift.square().square()
         z = _solve_quadratic(torch.stack([torch.ones_like(A), depressed_p, depressed_r], -1))
         z_real = depressed_p.square() - 4 * depressed_r >= 0
         z_positive = z > 0
