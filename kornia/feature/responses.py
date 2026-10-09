@@ -187,15 +187,13 @@ def gftt_response(
     dy2: torch.Tensor = gaussian_blur2d(dy**2, (7, 7), (1.0, 1.0))
     dxy: torch.Tensor = gaussian_blur2d(dx * dy, (7, 7), (1.0, 1.0))
 
+    det_m: torch.Tensor = dx2 * dy2 - dxy * dxy
     trace_m: torch.Tensor = dx2 + dy2
 
-    # trace^2 - 4 det as a sum of squares: it is never negative, and the sqrt below gets a zero gradient instead
-    # of 0 / 0 = nan where the structure tensor vanishes, which is every flat 9 x 9 patch of the image.
-    disc: torch.Tensor = (dx2 - dy2) ** 2 + 4.0 * dxy * dxy
-    positive = disc > 0
-    root: torch.Tensor = torch.where(positive, torch.where(positive, disc, torch.ones_like(disc)).sqrt(), 0.0)
+    e1: torch.Tensor = 0.5 * (trace_m + torch.sqrt((trace_m**2 - 4 * det_m).abs()))
+    e2: torch.Tensor = 0.5 * (trace_m - torch.sqrt((trace_m**2 - 4 * det_m).abs()))
 
-    scores: torch.Tensor = 0.5 * (trace_m - root)  # the smaller eigenvalue
+    scores: torch.Tensor = torch.min(e1, e2)
 
     if sigmas is not None:
         scores = scores * sigmas.pow(4).view(-1, 1, 1, 1)
