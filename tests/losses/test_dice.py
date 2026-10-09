@@ -129,6 +129,12 @@ class TestDiceLoss(BaseTester):
             weight = torch.zeros(3, device=device, dtype=dtype)
 
         loss = kornia.losses.dice_loss(logits, labels, average=average, eps=0.0, weight=weight)
+        if empty_by == "ignored":
+            valid_loss = kornia.losses.dice_loss(logits[1:], labels[1:], average=average, eps=0.0, weight=weight)
+            expected_loss = (1.0 + valid_loss) / 2.0
+        else:
+            expected_loss = logits.new_tensor(1.0)
+        self.assert_close(loss, expected_loss)
         assert torch.isfinite(loss)
         loss.backward()
         assert torch.isfinite(logits.grad).all()
