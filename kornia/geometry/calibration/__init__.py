@@ -21,13 +21,13 @@ This subpackage provides functions for camera calibration, distortion, and undis
 """
 
 from .distort import distort_points, tilt_projection
+from .intrinsics import intrinsics_from_homographies
 from .pnp import solve_pnp_dlt
 from .undistort import undistort_image, undistort_points
-from .zhang import init_camera_intrinsics_zhang
 
 __all__ = [
     "distort_points",
-    "init_camera_intrinsics_zhang",
+    "intrinsics_from_homographies",
     "solve_pnp_dlt",
     "tilt_projection",
     "undistort_image",
