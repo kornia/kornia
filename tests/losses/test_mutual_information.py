@@ -391,6 +391,47 @@ class TestMutualInformationLoss(BaseTester):
     ],
 )
 class TestMutualInformationValidation(BaseTester):
+    def test_reference_mask_owns_storage(self, device, dtype, loss_fn, module, shape):
+        target = torch.arange(torch.Size(shape).numel(), device=device, dtype=dtype).reshape(shape)
+        mask = target > 2
+        mod = module(target, mask)
+
+        assert mod.mask.untyped_storage().data_ptr() != mask.untyped_storage().data_ptr()
+        assert mod.mask.dtype == torch.bool
+        assert mod.mask.device == device
+        assert mod.mask.shape == (mask.numel(),)
+        assert dict(mod.named_buffers())["mask"] is mod.mask
+        self.assert_close(mod.state_dict()["mask"], mask.reshape(-1))
+
+    @pytest.mark.parametrize("change_cardinality", [False, True])
+    def test_caller_mask_mutation_leaves_reference_unchanged(
+        self, device, dtype, loss_fn, module, shape, change_cardinality
+    ):
+        generator = torch.Generator().manual_seed(5630)
+        target = torch.rand((2, *shape), generator=generator).to(device, dtype)
+        pred = torch.rand((2, *shape), generator=generator).to(device, dtype)
+        mask = (torch.arange(torch.Size(shape).numel(), device=device) % 3 != 1).reshape(shape)
+        original_mask = mask.clone()
+        mod = module(target, mask, num_bins=4)
+        before = mod(pred)
+        cached_signal = mod.signal.clone()
+        self.assert_close(before, loss_fn(pred, target, target_mask=original_mask, num_bins=4))
+
+        # Contiguous spatial masks flatten to views in the 2D/3D constructors (#5630).
+        mask.copy_(mask.reshape(-1).roll(1).reshape(shape))
+        if change_cardinality:
+            mask.reshape(-1)[2] = True
+        assert bool(mask.sum() != original_mask.sum()) == change_cardinality
+
+        after = mod(pred)
+        self.assert_close(after, before, atol=0, rtol=0)
+        self.assert_close(mod.mask, original_mask.reshape(-1))
+        self.assert_close(mod.signal, cached_signal, atol=0, rtol=0)
+        fresh = module(target, mask, num_bins=4)
+        self.assert_close(fresh.mask, mask.reshape(-1))
+        self.assert_close(fresh(pred), loss_fn(pred, target, target_mask=mask, num_bins=4))
+        assert not torch.equal(fresh(pred), before)
+
     @pytest.mark.parametrize("mask_dtype", [torch.int64, torch.int8, torch.float32])
     def test_mask_dtype(self, device, dtype, loss_fn, module, shape, mask_dtype):
         signal = torch.arange(1, 1 + torch.Size(shape).numel(), device=device, dtype=dtype).reshape(shape)
@@ -939,15 +980,18 @@ class TestConventionsMutualInformation(BaseTester):
         x = self._images(device, moved_dtype)[0][0]
         assert torch.equal(moved(x), native(x))
 
-    def test_wart_mi_from_ref_keeps_the_callers_mask_tensor_5630(self, device, dtype):
-        """The ``mask`` buffer is the caller's mask tensor, so editing it in place changes the loss (#5630)."""
+    def test_convention_mi_from_ref_keeps_a_copy_of_the_mask_5630(self, device, dtype):
+        """The ``mask`` buffer is a copy of the caller's mask: editing that tensor in place changes nothing (#5630)."""
         a, c, _ = self._images(device, dtype)
         _, target_mask = self._masks(device)
         module = MILossFromRef2D(c, target_mask)
         expected = module(a)
-        # move the ROI down four rows: as many positions as before, so nothing raises
+        # move the ROI down four rows: as many positions as before; an aliased mask changed the loss by more than 0.1
         target_mask.copy_(torch.roll(target_mask, 4, 0))
-        assert ((module(a) - expected).abs() > 0.1).all()
+        self.assert_close(module(a), expected, rtol=0, atol=0)
+        # one more position no longer matches the cached reference's size, and is not seen either
+        target_mask[0, 0] = True
+        self.assert_close(module(a), expected, rtol=0, atol=0)
 
     def test_wart_mi_losses_float16_nan_on_a_large_image_4153(self, device, dtype):
         """The empty-bin floor of ``finfo(dtype).eps`` counts makes float16 NaN on large images (#4153)."""
