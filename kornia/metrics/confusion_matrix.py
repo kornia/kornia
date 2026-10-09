@@ -109,7 +109,7 @@ def confusion_matrix(
     # NOTE: torch.bincount does not implement batched version
     # The cell index is formed in int64: in the labels' own dtype it wraps, for uint8 from num_classes = 17.
     pre_bincount: torch.Tensor = pred.long() + target.long() * num_classes
-    pre_bincount_vec: torch.Tensor = pre_bincount.view(batch_size, -1)
+    pre_bincount_vec: torch.Tensor = pre_bincount.reshape(batch_size, -1)
 
     confusion_list = []
     for iter_id in range(batch_size):
