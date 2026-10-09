@@ -52,21 +52,21 @@ class TestQuaternion(BaseTester):
         self.assert_close(q1, q2)
 
     def test_init_fail(self, device, dtype):
-        with pytest.raises(Exception):
+        with pytest.raises(TypeError, match=r"Expected torch\.Tensor or nn\.Parameter"):
             _ = Quaternion("q")
 
-        with pytest.raises(Exception):
+        with pytest.raises(TypeError, match=r"Expected torch\.Tensor or nn\.Parameter"):
             _ = Quaternion([1, 0, 0, 0])
 
-        with pytest.raises(Exception):
+        with pytest.raises(TypeError):
             _ = Quaternion(1, [0, 0, 0])
 
     def test_constructor_scalar_tensre(self, device, dtype):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Quaternion input must have last dimension == 4"):
             Quaternion(torch.tensor(1.0, device=device, dtype=dtype))
 
     def test_constructor_wrong_last_dim(self, device, dtype):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Quaternion input must have last dimension == 4"):
             Quaternion(torch.randn(3, 5, device=device, dtype=dtype))
 
     def test_constructor_valid_shape(self, device, dtype):
@@ -715,7 +715,7 @@ class TestQuaternionAverage(BaseTester):
         """Mismatched number of weights should raise"""
         Q = Quaternion.random(3, device=device, dtype=dtype)
         w = torch.tensor([0.5, 0.5], device=device, dtype=dtype)  # wrong length
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"weights length 2 must match number of quaternions 3"):
             average_quaternions(Q, w=w)
         # #4974: a negative weight extrapolated past a member, and an all-zero weight divided by zero
         with pytest.raises(ValueError, match="non-negative"):
