@@ -84,15 +84,17 @@ def test_constructor_tensor_follows_conversion(case, device, dtype):
 def test_explicit_parameter_remains_trainable(case, device, dtype):
     parameter = torch.nn.Parameter(_value(case))
     module, name = _module(case, parameter)
-    module.to(device=device, dtype=dtype)
-    assert getattr(module, name) is parameter
-    assert parameter.device == torch.device(device)
-    assert parameter.dtype == dtype
     assert dict(module.named_parameters())[name] is parameter
+    module.to(device=device, dtype=dtype)
+    stored = getattr(module, name)
+    assert isinstance(stored, torch.nn.Parameter)
+    assert stored.device == torch.device(device)
+    assert stored.dtype == dtype
+    assert dict(module.named_parameters())[name] is stored
     assert name in module.state_dict()
     _forward(module, case, device, dtype).sum().backward()
-    assert parameter.grad is not None
-    assert torch.isfinite(parameter.grad).all()
+    assert stored.grad is not None
+    assert torch.isfinite(stored.grad).all()
 
 
 @pytest.mark.parametrize("case", CASES)
