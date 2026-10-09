@@ -550,8 +550,10 @@ class TestFindHomographyDLT(BaseTester):
         ],
     )
     def test_exact_correspondences_lu(self, points, linear, shift, device, dtype):
-        # On these exact correspondences the last LU pivot of the normal matrix is exactly zero in float32
-        # and float64 on CPU. The homography is still unique (rank 8), so the LU solver has to return it, as the
+        # On these exact correspondences the last LU pivot of the normal matrix is exactly zero with some BLAS
+        # and LAPACK builds (float32 and float64 on Windows x86), not with others (macOS arm64), so they pin the
+        # fix only where it shows; test_exact_rank8_system_lu_gives_the_homography_5644 pins it on every backend.
+        # The homography is still unique (rank 8), so the LU solver has to return it, as the
         # SVD solver and cv2.findHomography(points1, points2, 0) do, rather than NaN. Six points in general
         # position determine it, so it is checked through the points it maps (MPS float32 gets the pixel-unit
         # translation of the 90-degree rotation to about 2e-4).
