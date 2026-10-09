@@ -40,7 +40,8 @@ def mean_average_precision(
     Convention:
         - Every argument but ``n_classes`` and ``threshold`` is a list with one tensor per image. The call raises when
           the five lists differ in length, when the boxes, labels and scores of an image differ in their number of
-          rows, or when a label lies outside ``[0, n_classes)``. Boxes are exclusive ``xyxy``, the default format of
+          rows, or when a label lies outside ``[0, n_classes)`` or is not a whole number: a floating-point label
+          such as ``1.0`` counts as class 1, and ``1.5`` raises. Boxes are exclusive ``xyxy``, the default format of
           :func:`~kornia.metrics.mean_iou_bbox`, which computes the overlaps.
         - Class 0 is background: its objects and detections are never scored, and ``n_classes`` counts it, so the
           classes ``1`` to ``n_classes - 1`` are scored.
@@ -58,9 +59,6 @@ def mean_average_precision(
           and ground-truth boxes of different dtypes give the promotion of those two floating dtypes (float32 when one
           set is integer and the other float16). :ref:`Losses and metrics <losses-metrics-conventions>` compares the
           match rule with the VOC devkit and COCO.
-        - Known defect: labels are checked for their range only, so a fractional label such as ``1.5`` matches no
-          class and its detections and objects are dropped without an error
-          (`#5629 <https://github.com/kornia/kornia/issues/5629>`_).
 
     Args:
         pred_boxes: a torch.Tensor list of predicted bounding boxes.
@@ -130,6 +128,8 @@ def mean_average_precision(
             bool(((labels >= 0) & (labels < n_classes)).all()),
             f"{name} must satisfy 0 <= label < n_classes ({n_classes}).",
         )
+        if labels.is_floating_point():
+            KORNIA_CHECK(bool((labels == labels.round()).all()), f"{name} must contain integer-valued labels.")
 
     # Calculate APs for each class (except background)
     average_precisions = torch.zeros((n_classes - 1), device=_pred_boxes.device, dtype=ap_dtype)  # (n_classes - 1)
