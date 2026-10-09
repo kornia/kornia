@@ -444,7 +444,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         """
         original_keys = None
         if len(args) == 1 and isinstance(args[0], dict):
-            original_keys, data_keys, args, invalid_data = self._preproc_dict_data(cast(Dict[str, DataType], args[0]))
+            original_keys, data_keys, args, invalid_data = self._preproc_dict_data(cast("Dict[str, DataType]", args[0]))
 
         # args here should already be `DataType`
         # NOTE: how to right type to: unpacked args <-> tuple of args to unpack
@@ -526,7 +526,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         image_batch: Optional[int] = None
         for arg, dcate in zip(args, data_keys):
             if DataKey.get(dcate) in _IMG_OPTIONS:
-                working_dtype = cast(torch.Tensor, arg).dtype
+                working_dtype = cast("torch.Tensor", arg).dtype
                 # Only a batched ``(B, C, H, W)`` image has a batch to broadcast a single mask over.
                 if isinstance(arg, torch.Tensor) and arg.ndim == 4:
                     image_batch = arg.shape[0]
@@ -534,7 +534,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         inp: List[DataType] = []
         for arg, dcate in zip(args, data_keys):
             if DataKey.get(dcate) in _IMG_OPTIONS:
-                arg = cast(torch.Tensor, arg)
+                arg = cast("torch.Tensor", arg)
                 working_dtype = arg.dtype
                 if not is_exporting():
                     self.input_dtype = arg.dtype
@@ -550,7 +550,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                         if len(arg) > 0:
                             self.mask_dtype = arg[0].dtype
                     else:
-                        self.mask_dtype = cast(torch.Tensor, arg).dtype
+                        self.mask_dtype = cast("torch.Tensor", arg).dtype
                 inp.append(self._preproc_mask(arg, working_dtype, image_batch))
             elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
                 inp.append(self._preproc_keypoints(arg, dcate))
@@ -572,11 +572,11 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 out.append(out_arg)
                 # TODO: may add the float to integer (for masks), etc.
             elif DataKey.get(dcate) in _MSK_OPTIONS:
-                _out_m = self._postproc_mask(cast(MaskDataType, out_arg), cast(MaskDataType, in_arg))
+                _out_m = self._postproc_mask(cast("MaskDataType", out_arg), cast("MaskDataType", in_arg))
                 out.append(_out_m)
 
             elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
-                _out_k = self._postproc_keypoint(in_arg, cast(Keypoints, out_arg), dcate)
+                _out_k = self._postproc_keypoint(in_arg, cast("Keypoints", out_arg), dcate)
                 if is_autocast_enabled() and isinstance(in_arg, (torch.Tensor, Keypoints)):
                     if isinstance(_out_k, list):
                         _out_k = [i.type(in_arg.dtype) for i in _out_k]
@@ -585,7 +585,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 out.append(_out_k)
 
             elif DataKey.get(dcate) in _BOXES_OPTIONS:
-                _out_b = self._postproc_boxes(in_arg, cast(Boxes, out_arg), dcate)
+                _out_b = self._postproc_boxes(in_arg, cast("Boxes", out_arg), dcate)
                 if is_autocast_enabled() and isinstance(in_arg, (torch.Tensor, Boxes)):
                     if isinstance(_out_b, list):
                         _out_b = [i.type(in_arg.dtype) for i in _out_b]
@@ -623,7 +623,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         # Unpack/handle dictionary args
         original_keys = None
         if len(args) == 1 and isinstance(args[0], dict):
-            original_keys, data_keys, args, invalid_data = self._preproc_dict_data(cast(Dict[str, DataType], args[0]))
+            original_keys, data_keys, args, invalid_data = self._preproc_dict_data(cast("Dict[str, DataType]", args[0]))
 
         original_data_keys = self.transform_op.preproc_datakeys(data_keys)
         self.transform_op.data_keys = original_data_keys
@@ -902,11 +902,11 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if isinstance(arg, Boxes):
             return arg
         if self.contains_video_sequential:
-            arg = cast(torch.Tensor, arg)
+            arg = cast("torch.Tensor", arg)
             return VideoBoxes.from_tensor(arg)
         if self.contains_3d_augmentation:
             raise NotImplementedError("3D box handlers are not yet supported.")
-        arg = cast(torch.Tensor, arg)
+        arg = cast("torch.Tensor", arg)
         return Boxes.from_tensor(arg, mode=mode)
 
     def _postproc_boxes(
@@ -934,7 +934,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         dtype = None
 
         if self.contains_video_sequential:
-            arg = cast(Union[torch.Tensor, List[torch.Tensor]], arg)
+            arg = cast("Union[torch.Tensor, List[torch.Tensor]]", arg)
             if isinstance(arg, list):
                 if not torch.is_floating_point(arg[0]):
                     dtype = arg[0].dtype
@@ -948,7 +948,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             raise NotImplementedError("3D keypoint handlers are not yet supported.")
         if isinstance(arg, Keypoints):
             return arg
-        arg = cast(torch.Tensor, arg)
+        arg = cast("torch.Tensor", arg)
         if not torch.is_floating_point(arg):
             dtype = arg.dtype
             arg = arg.float()

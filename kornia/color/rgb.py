@@ -116,7 +116,7 @@ def rgb_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
     # add one channel
     r, g, b = torch.chunk(image, image.shape[-3], dim=-3)
 
-    a: torch.Tensor = cast(torch.Tensor, alpha_val)
+    a: torch.Tensor = cast("torch.Tensor", alpha_val)
 
     if isinstance(alpha_val, float):
         a = torch.full_like(r, fill_value=float(alpha_val))

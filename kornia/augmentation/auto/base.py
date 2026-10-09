@@ -116,9 +116,9 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
         # Define as 1 for broadcasting
         res_mat: Optional[torch.Tensor] = None
         for (_, module), param in zip(named_modules, params if params is not None else []):
-            module = cast(PolicySequential, module)
+            module = cast("PolicySequential", module)
             mat = module.get_transformation_matrix(
-                input, params=cast(Optional[List[ParamItem]], param.data), recompute=recompute, extra_args=extra_args
+                input, params=cast("Optional[List[ParamItem]]", param.data), recompute=recompute, extra_args=extra_args
             )
             res_mat = mat if res_mat is None else mat @ res_mat
         return res_mat
@@ -134,7 +134,7 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
         """
         named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence(params)
         for _, module in named_modules:
-            module = cast(PolicySequential, module)
+            module = cast("PolicySequential", module)
             if not module.is_intensity_only():
                 return False
         return True
@@ -153,13 +153,13 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
         """
         names: List[str] = []
         for (_, module), param in zip(self.get_forward_sequence(params), params):
-            subpolicy = cast(PolicySequential, module)
-            subparams = cast(List[ParamItem], param.data)
+            subpolicy = cast("PolicySequential", module)
+            subparams = cast("List[ParamItem]", param.data)
             for (_, operation), subparam in zip(subpolicy.get_forward_sequence(subparams), subparams):
-                operation = cast(OperationBase, operation)
+                operation = cast("OperationBase", operation)
                 if isinstance(operation.op, GeometricAugmentationBase2D):
                     continue
-                batch_prob = cast(Dict[str, torch.Tensor], subparam.data).get("batch_prob")
+                batch_prob = cast("Dict[str, torch.Tensor]", subparam.data).get("batch_prob")
                 if batch_prob is not None and not batch_prob.any():
                     continue
                 names.append(operation.op.__class__.__name__)
@@ -212,7 +212,7 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
         params: List[ParamItem] = []
         mod_param: Union[Dict[str, torch.Tensor], List[ParamItem]]
         for name, module in named_modules:
-            module = cast(OperationBase, module)
+            module = cast("OperationBase", module)
             mod_param = module.forward_parameters(batch_shape)
             param = ParamItem(name, mod_param)
             params.append(param)

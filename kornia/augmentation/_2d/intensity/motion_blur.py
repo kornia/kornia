@@ -153,7 +153,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
             # entries are equal and taking the first is legit.) This branch is inherently
             # data-dependent and not fullgraph-compilable.
             kernel_size_list: List[int] = params["ksize_factor"].tolist()
-            idx: int = cast(int, params["idx"][0])
+            idx: int = cast("int", params["idx"][0])
             kernel_size = kernel_size_list[idx]
         border_type = flags["border_type"].name.lower()
         _check_filter_min_size("RandomMotionBlur", input, kernel_size, border_type=border_type)

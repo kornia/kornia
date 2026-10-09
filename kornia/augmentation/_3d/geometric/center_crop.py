@@ -123,7 +123,7 @@ class CenterCrop3D(GeometricAugmentationBase3D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        transform = cast(torch.Tensor, transform)
+        transform = cast("torch.Tensor", transform)
         return crop_by_transform_mat3d(
             input, transform, self.size, mode=flags["resample"].name.lower(), align_corners=flags["align_corners"]
         )

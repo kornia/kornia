@@ -200,4 +200,4 @@ class ModelBase(ABC, nn.Module, ModelBaseMixin, Generic[ModelConfig]):
         compiled = torch.compile(
             self, fullgraph=fullgraph, dynamic=dynamic, backend=backend, mode=mode, options=options, disable=disable
         )
-        return cast(ModelBase[ModelConfig], compiled)
+        return cast("ModelBase[ModelConfig]", compiled)

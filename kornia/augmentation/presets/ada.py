@@ -295,7 +295,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
 
         selected_inputs: _inputs_type = self._sample_inputs(inputs, data_keys=data_keys, p_tensor=p_tensor)
         augmented_inputs = cast(
-            _inputs_type,
+            "_inputs_type",
             super().forward(
                 selected_inputs,  # type: ignore[arg-type]
                 params=params,

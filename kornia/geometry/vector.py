@@ -191,7 +191,7 @@ class Vector3(TensorWrapper):
         if isinstance(x, float):
             return _wrap(torch.as_tensor((x, y, z), device=device, dtype=dtype), Vector3)
         # TODO: this is totally insane ...
-        tensors: Tuple[torch.Tensor, ...] = (x, cast(torch.Tensor, y), cast(torch.Tensor, z))
+        tensors: Tuple[torch.Tensor, ...] = (x, cast("torch.Tensor", y), cast("torch.Tensor", z))
         return _wrap(torch.stack(tensors, -1), Vector3)
 
 
@@ -305,7 +305,7 @@ class Vector2(TensorWrapper):
         if isinstance(x, float):
             return _wrap(torch.as_tensor((x, y), device=device, dtype=dtype), Vector2)
         # TODO: this is totally insane ...
-        tensors: Tuple[torch.Tensor, ...] = (x, cast(torch.Tensor, y))
+        tensors: Tuple[torch.Tensor, ...] = (x, cast("torch.Tensor", y))
         return _wrap(torch.stack(tensors, -1), Vector2)
 
 

@@ -166,7 +166,7 @@ def parse_manifest(
             raise ValueError(f"{label}:{line_number}: exception identity and node ID must be non-empty")
         if nodeid in entries:
             raise ValueError(f"{label}:{line_number}: duplicate node ID: {nodeid}")
-        entries[nodeid] = ManifestEntry(cast(Literal["setup", "call"], phase), exception, nodeid)
+        entries[nodeid] = ManifestEntry(cast("Literal['setup', 'call']", phase), exception, nodeid)
 
     identity = {
         "known-failure-schema": _SCHEMA_VERSION,

@@ -65,7 +65,7 @@ class SOLD2(nn.Module):
 
     def __init__(self, pretrained: bool = True, config: Optional[DetectorCfg] = None) -> None:
         if isinstance(config, dict):
-            config = dict_to_dataclass(cast(Dict[str, Any], config), DetectorCfg)
+            config = dict_to_dataclass(cast("Dict[str, Any]", config), DetectorCfg)
         super().__init__()
         # Initialize some parameters
         self.config = config if config is not None else DetectorCfg()

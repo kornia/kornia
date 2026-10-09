@@ -335,7 +335,7 @@ class Boxes:
             (tensor([[1., 1.]]), tensor([[1., 2.]]))
 
         """
-        boxes_xywh = cast(torch.Tensor, self.to_tensor("xywh", as_padded_sequence=True))
+        boxes_xywh = cast("torch.Tensor", self.to_tensor("xywh", as_padded_sequence=True))
         widths, heights = boxes_xywh[..., 2], boxes_xywh[..., 3]
         return heights, widths
 
@@ -841,7 +841,7 @@ class Boxes:
         device = self.device
 
         # Boxes coordinates can be outside the image size after transforms. Clamp values to the image size.
-        clipped_boxes_xyxy = cast(torch.Tensor, self.to_tensor("xyxy", as_padded_sequence=True))
+        clipped_boxes_xyxy = cast("torch.Tensor", self.to_tensor("xyxy", as_padded_sequence=True))
         clipped_boxes_xyxy[..., ::2].clamp_(0, width)
         clipped_boxes_xyxy[..., 1::2].clamp_(0, height)
         if self._N is not None:

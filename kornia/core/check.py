@@ -266,7 +266,7 @@ def KORNIA_UNWRAP(maybe_obj: Any, typ: Any) -> Any:
 
     """
     # TODO: this function will change after kornia/pr#1987
-    return cast(typ, maybe_obj)
+    return cast("typ", maybe_obj)
 
 
 _T = TypeVar("_T", bound=type)

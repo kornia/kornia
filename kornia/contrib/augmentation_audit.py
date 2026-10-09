@@ -52,13 +52,13 @@ _BOX_MODES = {DataKey.BBOX: "vertices_plus", DataKey.BBOX_XYXY: "xyxy_plus", Dat
 
 def _snapshot(value: _T) -> _T:
     if isinstance(value, Tensor):
-        return cast(_T, value.detach().clone())
+        return cast("_T", value.detach().clone())
     if isinstance(value, ParamItem):
-        return cast(_T, ParamItem(value.name, _snapshot(value.data)))
+        return cast("_T", ParamItem(value.name, _snapshot(value.data)))
     if isinstance(value, dict):
-        return cast(_T, {key: _snapshot(item) for key, item in value.items()})
+        return cast("_T", {key: _snapshot(item) for key, item in value.items()})
     if isinstance(value, (tuple, list)):
-        return cast(_T, type(value)(_snapshot(item) for item in value))
+        return cast("_T", type(value)(_snapshot(item) for item in value))
     return value
 
 
@@ -180,7 +180,7 @@ class AugmentationAuditReport:
 
     def to_dict(self) -> dict[str, Any]:
         """Export JSON-safe metadata; tensor values include dtype/device/shape, and NaNs become None."""
-        return cast(dict[str, Any], _json_value(self))
+        return cast("dict[str, Any]", _json_value(self))
 
     def to_json(self, *, indent: int | None = 2) -> str:
         """Serialize the report as strict JSON (nonfinite diagnostic values become null)."""
@@ -214,7 +214,7 @@ def _leaves(sequence: ImageSequential, prefix: str = "", seen: set[int] | None =
         if isinstance(module, (VideoSequential, PatchSequential, AugmentationBase3D)):
             raise ValueError("audit supports 2D image pipelines, not video, patch or 3D augmentations.")
         if _supported_sequence(module):
-            result.extend(_leaves(cast(ImageSequential, module), path, seen))
+            result.extend(_leaves(cast("ImageSequential", module), path, seen))
         else:
             result.append((path, module))
     return result
@@ -227,7 +227,7 @@ def _selected_paths(sequence: ImageSequential, params: list[ParamItem], prefix: 
         path = f"{prefix}.{param.name}" if prefix else param.name
         if _supported_sequence(module) and isinstance(param.data, list):
             # Use this occurrence's tree, not the nested module's last cached params.
-            paths.extend(_selected_paths(cast(ImageSequential, module), param.data, path))
+            paths.extend(_selected_paths(cast("ImageSequential", module), param.data, path))
         else:
             paths.append(path)
     return paths
@@ -445,7 +445,7 @@ def audit(
         expected_ndim = 3 if key == DataKey.KEYPOINTS else 4
         if tensor.ndim != expected_ndim or tensor.shape[0] != image.shape[0] or tensor.device != image.device:
             raise ValueError("audit inputs must be batched with the same batch size and device as the image.")
-        original = value.data if isinstance(value, (Boxes, Keypoints)) else cast(Tensor, value)
+        original = value.data if isinstance(value, (Boxes, Keypoints)) else cast("Tensor", value)
         metadata.append(
             {
                 "data_key": key.name,

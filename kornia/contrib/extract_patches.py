@@ -31,7 +31,7 @@ PadType = Union[int, TuplePadType]
 
 def create_padding_tuple(padding: PadType, unpadding: bool = False) -> FullPadType:
     """Create argument for padding op."""
-    padding = cast(TuplePadType, _pair(padding))
+    padding = cast("TuplePadType", _pair(padding))
 
     if len(padding) not in [2, 4]:
         raise AssertionError(
@@ -45,7 +45,7 @@ def create_padding_tuple(padding: PadType, unpadding: bool = False) -> FullPadTy
         pad_vert = padding[:2]
         pad_horz = padding[2:]
 
-    return cast(FullPadType, pad_horz + pad_vert)
+    return cast("FullPadType", pad_horz + pad_vert)
 
 
 def compute_padding(
@@ -79,11 +79,11 @@ def compute_padding(
         `allow_auto_(un)padding` is set to True.
 
     """  # noqa: D205
-    original_size = cast(Tuple[int, int], _pair(original_size))
-    window_size = cast(Tuple[int, int], _pair(window_size))
+    original_size = cast("Tuple[int, int]", _pair(original_size))
+    window_size = cast("Tuple[int, int]", _pair(window_size))
     if stride is None:
         stride = window_size
-    stride = cast(Tuple[int, int], _pair(stride))
+    stride = cast("Tuple[int, int]", _pair(stride))
 
     remainder_vertical = (original_size[0] - window_size[0]) % stride[0]
     remainder_horizontal = (original_size[1] - window_size[1]) % stride[1]
@@ -374,9 +374,9 @@ def combine_tensor_patches(
     if patches.ndim != 5:
         raise ValueError(f"Invalid input shape, we expect BxNxCxHxW. Got: {patches.shape}")
 
-    original_size = cast(Tuple[int, int], _pair(original_size))
-    window_size = cast(Tuple[int, int], _pair(window_size))
-    stride = cast(Tuple[int, int], _pair(stride))
+    original_size = cast("Tuple[int, int]", _pair(original_size))
+    window_size = cast("Tuple[int, int]", _pair(window_size))
+    stride = cast("Tuple[int, int]", _pair(stride))
 
     if (stride[0] > window_size[0]) | (stride[1] > window_size[1]):
         raise AssertionError(
@@ -495,8 +495,8 @@ def extract_tensor_patches(
 
     # check if the window sliding over the image will fit into the image
     # torch's unfold drops the final patches that don't fit
-    window_size = cast(Tuple[int, int], _pair(window_size))
-    stride = cast(Tuple[int, int], _pair(stride))
+    window_size = cast("Tuple[int, int]", _pair(window_size))
+    stride = cast("Tuple[int, int]", _pair(stride))
     original_size = (input.shape[-2], input.shape[-1])
 
     # if padding is specified, we leave it up to the user to ensure it fits

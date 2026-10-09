@@ -173,8 +173,8 @@ class RandAugment(PolicyAugmentBase):
 
         for name, module in named_modules:
             # The Input PolicySequential only got one child.
-            op = cast(PolicySequential, module)[0]
-            op = cast(OperationBase, op)
+            op = cast("PolicySequential", module)[0]
+            op = cast("OperationBase", op)
             mag = None
             if op.magnitude_range is not None:
                 minval, maxval = op.magnitude_range

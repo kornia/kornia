@@ -373,7 +373,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                     if _mat is not None:
                         _mat = torch.as_tensor(_mat, device=input.device, dtype=input.dtype)
                 else:
-                    maybe_param_data = cast(Optional[List[ParamItem]], param.data)
+                    maybe_param_data = cast("Optional[List[ParamItem]]", param.data)
                     _mat = module.get_transformation_matrix(
                         input, maybe_param_data, recompute=recompute, extra_args=extra_args
                     )

@@ -65,7 +65,7 @@ class SOLD2_detector(nn.Module):
                 category=DeprecationWarning,
                 stacklevel=2,
             )
-            config = dict_to_dataclass(cast(Dict[str, Any], config), DetectorCfg)
+            config = dict_to_dataclass(cast("Dict[str, Any]", config), DetectorCfg)
         super().__init__()
         # Initialize some parameters
         self.config = config if config is not None else DetectorCfg()

@@ -47,7 +47,7 @@ class TestParamValidation:
         with pytest.raises(AssertionError):
             _common_param_check(batch_size=batch_size)
 
-    @pytest.mark.parametrize("same_on_batch", [cast(bool, "invalid")])
+    @pytest.mark.parametrize("same_on_batch", [cast("bool", "invalid")])
     def test_common_param_check_invalid_same_on_batch(self, same_on_batch):
         """
         Invalid runtime values for same_on_batch should raise.

@@ -312,7 +312,7 @@ class VideoKeypoints(Keypoints):
 
     def to_tensor(self) -> torch.torch.Tensor:  # type: ignore[override]
         out = super().to_tensor(as_padded_sequence=False)
-        out = cast(torch.torch.Tensor, out)
+        out = cast("torch.torch.Tensor", out)
         return out.view(-1, self.temporal_channel_size, *out.shape[1:])
 
     def transform_keypoints(self, M: torch.torch.Tensor, inplace: bool = False) -> "VideoKeypoints":

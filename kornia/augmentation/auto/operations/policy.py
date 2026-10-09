@@ -108,7 +108,7 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         # Define as 1 for broadcasting
         res_mat: torch.Tensor = self.identity_matrix(_transform_input(input))
         for (_, module), param in zip(named_modules, params if params is not None else []):
-            module = cast(OperationBase, module)
+            module = cast("OperationBase", module)
             if isinstance(module.op, (K.GeometricAugmentationBase2D,)) and isinstance(param.data, dict):
                 ori_shape = input.shape
                 input = module.op.transform_tensor(input)
@@ -133,7 +133,7 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
             ``True`` when no geometric operation is present.
         """
         for module in self.children():
-            module = cast(OperationBase, module)
+            module = cast("OperationBase", module)
             if isinstance(module.op, (K.GeometricAugmentationBase2D,)):
                 return False
         return True
@@ -166,7 +166,7 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         params: List[ParamItem] = []
         mod_param: Union[Dict[str, torch.Tensor], List[ParamItem]]
         for name, module in named_modules:
-            module = cast(OperationBase, module)
+            module = cast("OperationBase", module)
             mod_param = module.forward_parameters(batch_shape)
             param = ParamItem(name, mod_param)
             params.append(param)
