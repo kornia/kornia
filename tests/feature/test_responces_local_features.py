@@ -263,6 +263,32 @@ class TestCornerGFTT(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.gftt_response, (img), nondet_tol=1e-4)
 
+    def test_flat_patch_gradient(self, device, dtype):
+        # the structure tensor is exactly zero inside a flat 12 x 12 patch, where the old sqrt(abs(trace^2 - 4 det))
+        # backward was 0 * inf = nan for the whole image
+        img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
+        img[..., 8:20, 8:20] = 0.5
+        img.requires_grad_(True)
+        # anomaly mode also sees a nan that a ``torch.where`` masks out of the result, i.e. a sqrt evaluated at 0
+        with torch.autograd.detect_anomaly():
+            scores = kornia.feature.gftt_response(img)
+            (grad,) = torch.autograd.grad(scores.sum(), img)
+        assert torch.isfinite(scores).all()
+        assert torch.isfinite(grad).all()
+        self.assert_close(scores[..., 14, 14], torch.zeros_like(scores[..., 14, 14]))
+        self.assert_close(grad[..., 14, 14], torch.zeros_like(grad[..., 14, 14]))
+
+    def test_smaller_eigenvalue(self, device, dtype):
+        img = torch.rand(2, 3, 24, 20, device=device, dtype=dtype)
+        gradients = kornia.filters.spatial_gradient(img)
+        dx, dy = gradients[:, :, 0], gradients[:, :, 1]
+        dx2 = kornia.filters.gaussian_blur2d(dx**2, (7, 7), (1.0, 1.0))
+        dy2 = kornia.filters.gaussian_blur2d(dy**2, (7, 7), (1.0, 1.0))
+        dxy = kornia.filters.gaussian_blur2d(dx * dy, (7, 7), (1.0, 1.0))
+        structure = torch.stack((torch.stack((dx2, dxy), -1), torch.stack((dxy, dy2), -1)), -2)
+        expected = torch.linalg.eigvalsh(structure.cpu().double())[..., 0].to(device, dtype)
+        self.assert_close(kornia.feature.gftt_response(img), expected)
+
 
 class TestBlobHessian(BaseTester):
     def test_shape(self, device):
