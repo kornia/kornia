@@ -428,3 +428,221 @@ class TestEmptyGeometricInverse(BaseTester):
         output = sequence(video)
         assert output.shape == (0, 2, 3, 8, 10)
         assert sequence.inverse(output).shape == video.shape
+
+
+class TestEmptyCenterResizedCropHistory(BaseTester):
+    @pytest.fixture(params=[K.CenterCrop, K.RandomResizedCrop], ids=["center", "resized"])
+    def crop_type(self, request):
+        return request.param
+
+    @pytest.fixture(
+        params=[("center", True), ("resized", False), ("resized", True)],
+        ids=["center", "resized", "resized-same-batch"],
+    )
+    def video_crop(self, request):
+        name, same_on_batch = request.param
+        if name == "center":
+            return K.CenterCrop((4, 5), cropping_mode="resample")
+        return K.RandomResizedCrop((4, 5), cropping_mode="resample", same_on_batch=same_on_batch)
+
+    def _assert_params_equal(self, actual, expected):
+        assert len(actual) == len(expected)
+        for left, right in zip(actual, expected):
+            assert left.name == right.name
+            assert type(left.data) is type(right.data)
+            if isinstance(left.data, list):
+                self._assert_params_equal(left.data, right.data)
+            else:
+                assert left.data.keys() == right.data.keys()
+                for key in left.data:
+                    self.assert_close(left.data[key], right.data[key], rtol=0, atol=0)
+
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
+    @pytest.mark.parametrize("input_size,crop_size", [((6, 8), (4, 5)), ((9, 13), (3, 7))])
+    def test_new_crop_parameter_shape_history_4429(
+        self, crop_type, cropping_mode, p, input_size, crop_size, device, dtype
+    ):
+        crop = crop_type(crop_size, cropping_mode=cropping_mode, p=p)
+        sequence = K.ImageSequential(crop, K.Resize((2, 3)))
+        image = torch.empty(0, 3, *input_size, device=device, dtype=dtype)
+
+        torch.manual_seed(17)
+        standalone = deepcopy(crop.forward_parameters(image.shape))
+        torch.manual_seed(17)
+        params = sequence.forward_parameters(image.shape)
+        assert params[0].data.keys() == standalone.keys()
+        for key in standalone:
+            self.assert_close(params[0].data[key], standalone[key], rtol=0, atol=0)
+        assert params[0].data["forward_input_shape"].tolist() == [0, 3, *input_size]
+        # Follow the current empty-gate blend, not a desired probability specification (#4429).
+        expected_size = crop_size if p == 1.0 else input_size
+        assert params[1].data["forward_input_shape"].tolist() == [0, 3, *expected_size]
+        if crop_type is K.CenterCrop:
+            assert params[0].data["output_size"].shape == (0, 2)
+        else:
+            assert "output_size" not in params[0].data
+
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    def test_center_integer_shape_history_4429(self, cropping_mode, device, dtype):
+        sequence = K.ImageSequential(K.CenterCrop(4, cropping_mode=cropping_mode), K.Resize((2, 3)))
+        image = torch.empty(0, 3, 9, 13, device=device, dtype=dtype)
+        params = sequence.forward_parameters(image.shape)
+        assert params[0].data["forward_input_shape"].tolist() == [0, 3, 9, 13]
+        assert params[1].data["forward_input_shape"].tolist() == [0, 3, 4, 4]
+
+    @pytest.mark.parametrize("input_size,crop_size", [((6, 8), (4, 5)), ((9, 13), (3, 7))])
+    @pytest.mark.parametrize("replay_state", ["immediate", "after-forward", "fresh-instance"])
+    @pytest.mark.parametrize("channels", [1, 3], ids=["mask", "image"])
+    def test_new_crop_saved_params_replay_4429(
+        self, crop_type, input_size, crop_size, replay_state, channels, device, dtype
+    ):
+        if not supports_bilinear_2d_grid_sample_backward(device, dtype):
+            pytest.skip("The resampling kernel does not support this device/dtype's backward pass.")
+
+        def make_sequence():
+            return K.AugmentationSequential(
+                crop_type(crop_size, cropping_mode="resample"), K.Resize((2, 3)), data_keys=["input"]
+            )
+
+        sequence = make_sequence()
+        image = torch.empty(0, 3, *input_size, device=device, dtype=dtype, requires_grad=True)
+        output = sequence(image)
+        params = deepcopy(sequence._params)
+        snapshot = deepcopy(params)
+        assert output.shape == (0, 3, 2, 3)
+        assert output.device == device
+        assert output.dtype == dtype
+        assert params[0].data["forward_input_shape"].tolist() == [0, 3, *input_size]
+        assert params[1].data["forward_input_shape"].tolist() == [0, 3, *crop_size]
+
+        if replay_state == "after-forward":
+            later = torch.arange(2 * 3 * 11 * 17, device=device, dtype=dtype).reshape(2, 3, 11, 17)
+            sequence(later)
+        elif replay_state == "fresh-instance":
+            sequence = make_sequence()
+
+        inverse_input = (
+            output if channels == 3 else torch.empty(0, 1, 2, 3, device=device, dtype=dtype, requires_grad=True)
+        )
+        # Replay through the container before direct child inverses can update their saved state.
+        replayed = sequence.inverse(inverse_input, params=params, data_keys=["input" if channels == 3 else "mask"])
+        assert replayed.shape == (0, channels, *input_size)
+        assert replayed.device == device
+        assert replayed.dtype == dtype
+        assert replayed.numel() == 0
+        intermediate = sequence[1].inverse(inverse_input, params=params[1].data)
+        assert intermediate.shape == (0, channels, *crop_size)
+        restored = sequence[0].inverse(intermediate, params=params[0].data)
+        assert restored.shape == (0, channels, *input_size)
+        replayed.sum().backward()
+        original = image if channels == 3 else inverse_input
+        assert original.grad is not None
+        assert original.grad.shape == original.shape
+        self._assert_params_equal(params, snapshot)
+
+    @pytest.mark.parametrize("input_size,crop_size", [((6, 8), (4, 5)), ((9, 13), (3, 7))])
+    def test_new_crop_nested_shape_history_4429(self, crop_type, input_size, crop_size, device, dtype):
+        if not supports_bilinear_2d_grid_sample_backward(device, dtype):
+            pytest.skip("The resampling kernel does not support this device/dtype's backward pass.")
+        crop = crop_type(crop_size, cropping_mode="resample")
+        inner_resize = K.Resize((2, 3))
+        inner = K.ImageSequential(crop, inner_resize)
+        outer_resize = K.Resize((3, 4))
+        sequence = K.AugmentationSequential(inner, outer_resize, data_keys=["input"])
+        image = torch.empty(0, 3, *input_size, device=device, dtype=dtype)
+        output = sequence(image)
+        params = deepcopy(sequence._params)
+        snapshot = deepcopy(params)
+        inner_params = params[0].data
+        assert output.shape == (0, 3, 3, 4)
+        assert inner_params[0].data["forward_input_shape"].tolist() == [0, 3, *input_size]
+        assert inner_params[1].data["forward_input_shape"].tolist() == [0, 3, *crop_size]
+        assert params[1].data["forward_input_shape"].tolist() == [0, 3, 2, 3]
+
+        mask = torch.empty(0, 1, 3, 4, device=device, dtype=dtype, requires_grad=True)
+        outer_restored = outer_resize.inverse(mask, params=params[1].data)
+        assert outer_restored.shape == (0, 1, 2, 3)
+        inner_restored = inner_resize.inverse(outer_restored, params=inner_params[1].data)
+        assert inner_restored.shape == (0, 1, *crop_size)
+        restored = crop.inverse(inner_restored, params=inner_params[0].data)
+        assert restored.shape == (0, 1, *input_size)
+        replayed = sequence.inverse(mask, params=params, data_keys=["mask"])
+        assert replayed.shape == (0, 1, *input_size)
+        assert replayed.device == device
+        assert replayed.dtype == dtype
+        replayed.sum().backward()
+        assert mask.grad is not None
+        assert mask.grad.shape == mask.shape
+        self._assert_params_equal(params, snapshot)
+
+    @pytest.mark.parametrize("data_format", ["BTCHW", "BCTHW"])
+    @pytest.mark.parametrize("same_on_frame", [False, True])
+    def test_new_crop_video_parameters_4429(self, video_crop, data_format, same_on_frame, device, dtype):
+        sequence = K.VideoSequential(video_crop, K.Resize((2, 3)), data_format=data_format, same_on_frame=same_on_frame)
+        shape = (0, 2, 3, 9, 13) if data_format == "BTCHW" else (0, 3, 2, 9, 13)
+        video = torch.empty(shape, device=device, dtype=dtype)
+        params = sequence.forward_parameters(video.shape)
+        # Video draws may have a nonzero leading dimension before frame/batch broadcasting.
+        assert params[0].data["forward_input_shape"][-2:].tolist() == [9, 13]
+        assert params[1].data["forward_input_shape"][-2:].tolist() == [4, 5]
+
+    @pytest.mark.parametrize("data_format", ["BTCHW", "BCTHW"])
+    @pytest.mark.parametrize("same_on_frame", [False, True])
+    def test_new_crop_video_round_trip_4429(self, video_crop, data_format, same_on_frame, device, dtype):
+        if not supports_bilinear_2d_grid_sample_backward(device, dtype):
+            pytest.skip("The resampling kernel does not support this device/dtype's backward pass.")
+        sequence = K.VideoSequential(video_crop, K.Resize((2, 3)), data_format=data_format, same_on_frame=same_on_frame)
+        shape = (0, 2, 3, 9, 13) if data_format == "BTCHW" else (0, 3, 2, 9, 13)
+        output_shape = (0, 2, 3, 2, 3) if data_format == "BTCHW" else (0, 3, 2, 2, 3)
+        video = torch.empty(shape, device=device, dtype=dtype, requires_grad=True)
+        params = deepcopy(sequence.forward_parameters(video.shape))
+        snapshot = deepcopy(params)
+        output = sequence(video, params=params)
+        assert output.shape == output_shape
+        assert output.device == device
+        assert output.dtype == dtype
+        assert params[0].data["forward_input_shape"][-2:].tolist() == [9, 13]
+        assert params[1].data["forward_input_shape"][-2:].tolist() == [4, 5]
+        intermediate = sequence[1].inverse(output.reshape(0, 3, 2, 3), params=params[1].data)
+        assert intermediate.shape == (0, 3, 4, 5)
+        assert sequence[0].inverse(intermediate, params=params[0].data).shape == (0, 3, 9, 13)
+        restored = sequence.inverse(output, params=params)
+        assert restored.shape == video.shape
+        assert restored.device == device
+        assert restored.dtype == dtype
+        restored.sum().backward()
+        assert video.grad is not None
+        assert video.grad.shape == video.shape
+        self._assert_params_equal(params, snapshot)
+
+    def test_resized_crop_downstream_center_validation_4429(self, device, dtype):
+        sequence = K.ImageSequential(K.RandomResizedCrop((4, 5)), K.CenterCrop((6, 7)))
+        image = torch.empty(0, 3, 9, 13, device=device, dtype=dtype)
+        with pytest.raises(AssertionError, match=r"Crop size must be smaller.*\(4, 5\).*\(6, 7\)"):
+            sequence.forward_parameters(image.shape)
+
+    @pytest.mark.parametrize("input_size,crop_size", [((6, 8), (4, 5)), ((9, 13), (3, 7))])
+    def test_dynamo_new_crop_shape_history_4429(self, crop_type, input_size, crop_size, torch_optimizer, device, dtype):
+        sequence = K.AugmentationSequential(
+            crop_type(crop_size, cropping_mode="resample"), K.Resize((2, 3)), data_keys=["input"]
+        )
+
+        def run(image):
+            params = sequence.forward_parameters(image.shape)
+            output = sequence(image, params=params)
+            return output, params[1].data["forward_input_shape"]
+
+        image = torch.empty(0, 3, *input_size, device=device, dtype=dtype)
+        expected_shape = [0, 3, *crop_size]
+        eager_output, eager_shape = run(image)
+        assert eager_output.shape == (0, 3, 2, 3)
+        assert eager_shape.tolist() == expected_shape
+        compiled = torch_optimizer(run)
+        actual_output, actual_shape = compiled(image)
+        assert actual_output.shape == (0, 3, 2, 3)
+        assert actual_output.dtype == dtype
+        assert actual_output.device == device
+        assert actual_shape.tolist() == expected_shape
+        self.assert_close(actual_output, eager_output)
+        self.assert_close(actual_shape, eager_shape, rtol=0, atol=0)
