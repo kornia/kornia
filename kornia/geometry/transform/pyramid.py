@@ -303,8 +303,9 @@ class ScalePyramid(nn.Module):
         Returns:
             Tuple ``(cur_level, cur_sigma, pixel_distance)``. ``cur_level`` is
             the first image level, ``cur_sigma`` is its effective blur sigma,
-            and ``pixel_distance`` tells how one pixel in this level maps back
-            to the original input image.
+            and ``pixel_distance`` is the level's nominal pixel spacing in input
+            pixels (``0.5`` when doubled). It is not the coordinate map: see the
+            class Convention for where a level pixel lies in the input.
         """
         pixel_distance = 1.0
         cur_sigma = 0.5
@@ -347,8 +348,9 @@ class ScalePyramid(nn.Module):
             image levels, ``sigmas`` contains the octave-relative nominal blur
             sigma for each level (multiply by the matching ``pixel_dists``
             entry for the nominal absolute blur in original-image pixels), and
-            ``pixel_dists`` contains the pixel spacing of each level relative
-            to the original image.
+            ``pixel_dists`` contains the nominal pixel spacing of each level
+            relative to the original image. It is not the coordinate map: see
+            the class Convention for where an octave pixel lies in the input.
         """
         bs, _, _, _ = x.size()
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)

@@ -682,17 +682,28 @@ class TestScaleSpaceDetector(BaseTester):
         self.assert_close(resps[1], resps[0])
 
     @pytest.mark.parametrize(
-        "double_image, sigma",
-        [(True, 1.5), (True, 3.0), (True, 6.0), (True, 12.0), (False, 3.0), (False, 6.0), (False, 12.0)],
+        "double_image, sigma, octave_div",
+        [
+            (True, 1.5, 0.5),
+            (True, 3.0, 1),
+            (True, 6.0, 2),
+            (True, 12.0, 4),
+            (False, 3.0, 1),
+            (False, 6.0, 2),
+            (False, 12.0, 4),
+        ],
     )
-    def test_detection_lands_on_the_blob_centre_in_every_octave_5675(self, device, dtype, double_image, sigma):
+    def test_detection_lands_on_the_blob_centre_in_every_octave_5675(
+        self, device, dtype, double_image, sigma, octave_div
+    ):
         # One blob per octave, far from the origin. ScalePyramid resizes with align_corners=True, so octave pixel u
         # is input pixel u * (W - 1) / (W_o - 1); mapping it by 2 ** o instead put the doubled octave ~0.4 px past
         # the blob and pulled every coarser octave towards the origin, by ~0.8 px at 1/2 and ~2.3 px at 1/4.
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("the sub-pixel refinement alone moves a half-precision centre by more than the tolerance")
+        h, w = 241, 320
         yy, xx = torch.meshgrid(
-            torch.arange(240, dtype=torch.float64), torch.arange(320, dtype=torch.float64), indexing="ij"
+            torch.arange(h, dtype=torch.float64), torch.arange(w, dtype=torch.float64), indexing="ij"
         )
         blob = torch.exp(-((xx - 251.3) ** 2 + (yy - 180.6) ** 2) / (2 * sigma**2))
         det = ScaleSpaceDetector(
@@ -703,6 +714,16 @@ class TestScaleSpaceDetector(BaseTester):
         lafs, _ = det(blob[None, None].to(device, dtype))
         expected = torch.tensor([[251.3, 180.6]], device=device, dtype=dtype)
         self.assert_close(kornia.feature.get_laf_center(lafs)[0, :1], expected, rtol=0.0, atol=0.1)
+        # The frame follows the same per-axis map. With an odd height the two factors differ (by 0.05 % on the
+        # doubled octave, 0.5 % at 1/2, 0.7 % at 1/4), so an isotropic frame in octave units fails the ratio.
+        h_o, w_o = (2 * h, 2 * w) if octave_div == 0.5 else (h // octave_div, w // octave_div)
+        sx, sy = (w - 1) / (w_o - 1), (h - 1) / (h_o - 1)
+        frame = lafs[0, 0, :, :2]
+        assert frame[0, 1] == 0
+        assert frame[1, 0] == 0
+        self.assert_close(
+            frame[1, 1] / frame[0, 0], torch.tensor(sy / sx, device=device, dtype=dtype), rtol=1e-5, atol=0.0
+        )
 
     def test_few_detections_padding(self, device, dtype):
         # Constant image → very few (possibly zero) NMS candidates; output must still
