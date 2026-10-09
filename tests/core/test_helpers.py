@@ -899,10 +899,10 @@ def test_is_autocast_enabled_cpu():
     assert not is_autocast_enabled()
 
 
-def test_mps_linalg_helpers_avoid_unsupported_kernels(monkeypatch):
+def test_mps_linalg_helpers_avoid_unsupported_kernels(device, monkeypatch):
     """MPS fall back to the host instead of calling kernels missing on the torch floor."""
-    if not torch.backends.mps.is_available():
-        pytest.skip("MPS is not available")
+    if device.type != "mps":
+        pytest.skip("MPS is not the selected test device")
 
     def reject_mps(fn):
         def wrapped(*args, **kwargs):
@@ -921,7 +921,6 @@ def test_mps_linalg_helpers_avoid_unsupported_kernels(monkeypatch):
     monkeypatch.setattr(torch, "lu_unpack", reject_mps(torch.lu_unpack))
     monkeypatch.setattr(torch, "det", reject_mps(torch.det))
 
-    device = torch.device("mps")
     A = torch.eye(3, device=device)
     B = torch.ones(1, 3, 1, device=device)
 

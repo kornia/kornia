@@ -33,17 +33,16 @@ def _reject_mps(fn):
     return wrapped
 
 
-def test_mps_geometry_helpers_fall_back_to_cpu(monkeypatch):
+def test_mps_geometry_helpers_fall_back_to_cpu(device, monkeypatch):
     """Public geometry APIs on MPS must avoid kernels missing on the torch floor."""
-    if not torch.backends.mps.is_available():
-        pytest.skip("MPS is not available")
+    if device.type != "mps":
+        pytest.skip("MPS is not the selected test device")
 
     for name in ("lu_factor_ex", "lu_solve", "solve", "solve_ex", "svdvals", "qr"):
         monkeypatch.setattr(torch.linalg, name, _reject_mps(getattr(torch.linalg, name)))
     monkeypatch.setattr(torch, "lu_unpack", _reject_mps(torch.lu_unpack))
     monkeypatch.setattr(torch, "det", _reject_mps(torch.det))
 
-    device = torch.device("mps")
     torch.manual_seed(0)
 
     points1 = torch.rand(1, 8, 2, device=device)
