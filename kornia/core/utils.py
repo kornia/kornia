@@ -284,17 +284,18 @@ def _closed_form_inverse(input: torch.Tensor) -> torch.Tensor:
     [2 ** 100, -2 ** -60]]`` in float32 would lose its second column to underflow on the way, and its inverse
     is finite. The combined exponent of an entry can exceed what the dtype holds while the entry itself fits,
     so it is applied as three powers of two of about a third of it each; every intermediate lies between the
-    start and the end, and is exact wherever the end is a normal number. A zero row or column is left alone;
-    its determinant is 0 either way.
+    start and the end, and is exact wherever the end is a normal number. A zero row or column is left alone, and
+    so is one holding a NaN, whose exponent would index the table of powers of two out of range (a NaN casts to
+    the most negative int64 on x86 and CUDA); its determinant is 0 or NaN either way.
 
     Raises:
         NotImplementedError: for shapes other than ``(..., n, n)`` with ``n`` in 2, 3, 4.
     """
     exponent = torch.floor(torch.log2(input.abs()))  # -inf at a zero entry, which no maximum below picks
     row = exponent.amax(-1, keepdim=True)
-    row = torch.where(torch.isinf(row), torch.zeros_like(row), row)
+    row = torch.where(torch.isfinite(row), row, torch.zeros_like(row))
     col = (exponent - row).amax(-2, keepdim=True)
-    col = torch.where(torch.isinf(col), torch.zeros_like(col), col)
+    col = torch.where(torch.isfinite(col), col, torch.zeros_like(col))
     adj, det = _adjugate_closed_form(_times_power_of_two(input, -(row + col)))
     return _times_power_of_two(adj / det[..., None, None], -(col.transpose(-2, -1) + row.transpose(-2, -1)))
 
