@@ -27,6 +27,7 @@ from kornia.geometry.epipolar import normalize_points
 from kornia.geometry.homography import (
     _four_point_homography,
     _homography_design_rows,
+    _homography_from_dlt_system,
     _oneway_transfer_error_shared_impl_,
     _transfer_basis,
     _transfer_errors,
@@ -572,6 +573,22 @@ class TestFindHomographyDLT(BaseTester):
             [[[0.0, 0.0], [1.0, 1.0], [2.0, 2.0], [3.0, 3.0], [4.0, 4.0]]], device=device, dtype=dtype
         )
         assert find_homography_dlt(points, points, solver="lu").isnan().all().item()
+
+    @pytest.mark.parametrize("weights", [None, [1.0, 3.0, 2.0, 0.5, 3.0, 1.0, 2.0, 3.5]])
+    def test_exact_rank8_system_lu_gives_the_homography_5644(self, weights, device, dtype):
+        # Whether the normal matrix of real correspondences gets an exactly zero last LU pivot depends on the
+        # rounding of the BLAS and LAPACK in use. This design matrix has entries -1, 0 and 1 (the corners of the
+        # normalized square, each twice, turned by 90 degrees), so its normal matrix is integer and its pivoted LU
+        # is exact on every backend: pivots 8 (16 with these weights, which give every corner the same total)
+        # and a last one of 0. The rank is 8, so the homography is unique, and the LU solver must return it.
+        _skip_half(dtype, _HALF_DLT)
+        corners = torch.tensor([[1.0, 1.0], [-1.0, 1.0], [-1.0, -1.0], [1.0, -1.0]] * 2, device=device, dtype=dtype)
+        rotation = torch.tensor([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        A = _homography_design_rows(corners[None], (corners @ rotation[:2, :2].T)[None])
+        w = None if weights is None else torch.tensor([weights], device=device, dtype=dtype)
+        eye = torch.eye(3, device=device, dtype=dtype)[None]
+        H = _homography_from_dlt_system(A, w, eye, eye, "lu", torch.device(device), dtype)
+        assert torch.equal(H, rotation[None])
 
     @pytest.mark.parametrize("solver", ["svd", "lu"])
     def test_singular_normalization_gives_nan(self, device, dtype, solver):

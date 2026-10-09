@@ -583,7 +583,7 @@ def _rank8_null_vector(normal: torch.Tensor) -> torch.Tensor:
     # stay finite and cannot leak NaN into parameters shared with the rest of the batch.
     block = torch.where(rank8[:, None, None], normal[:, :8, :8], torch.eye(8, device=normal.device, dtype=work_dtype))
     rhs = torch.where(rank8[:, None], -normal[:, :8, 8], torch.zeros_like(normal[:, :8, 8]))
-    head = torch.linalg.solve(block, rhs)
+    head = torch.linalg.solve_ex(block, rhs)[0]
     null = torch.cat([head, torch.ones_like(head[:, :1])], -1)
     return torch.where(rank8[:, None], null, torch.full_like(null, float("nan")))
 
