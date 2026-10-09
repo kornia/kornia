@@ -980,15 +980,18 @@ class TestConventionsMutualInformation(BaseTester):
         x = self._images(device, moved_dtype)[0][0]
         assert torch.equal(moved(x), native(x))
 
-    def test_wart_mi_from_ref_keeps_the_callers_mask_tensor_5630(self, device, dtype):
-        """The ``mask`` buffer is the caller's mask tensor, so editing it in place changes the loss (#5630)."""
+    def test_convention_mi_from_ref_keeps_a_copy_of_the_mask_5630(self, device, dtype):
+        """The ``mask`` buffer is a copy of the caller's mask: editing that tensor in place changes nothing (#5630)."""
         a, c, _ = self._images(device, dtype)
         _, target_mask = self._masks(device)
         module = MILossFromRef2D(c, target_mask)
         expected = module(a)
-        # move the ROI down four rows: as many positions as before, so nothing raises
+        # move the ROI down four rows: as many positions as before; an aliased mask changed the loss by more than 0.1
         target_mask.copy_(torch.roll(target_mask, 4, 0))
-        assert ((module(a) - expected).abs() > 0.1).all()
+        self.assert_close(module(a), expected, rtol=0, atol=0)
+        # one more position no longer matches the cached reference's size, and is not seen either
+        target_mask[0, 0] = True
+        self.assert_close(module(a), expected, rtol=0, atol=0)
 
     def test_wart_mi_losses_float16_nan_on_a_large_image_4153(self, device, dtype):
         """The empty-bin floor of ``finfo(dtype).eps`` counts makes float16 NaN on large images (#4153)."""

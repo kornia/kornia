@@ -371,13 +371,10 @@ class MILossFromRef(EntropyBasedLossBase):
           ``(*, N)`` with a boolean ``(N,)`` ``mask``, and the module is called with an ``other_signal`` of the same
           shape and its own ``(N,)`` mask.
         - At construction the reference is restricted to its mask, min-max normalised and stored as the buffer
-          ``signal``, next to the buffer ``mask``; later in-place changes to the reference tensor are not seen. The
-          cache is not detached: a reference that requires grad receives a gradient from the first backward pass,
-          and a second backward pass through the same module raises.
-        - Known defect: a boolean ``mask`` on the reference's device is stored as the buffer ``mask`` itself, not a
-          copy, while ``signal`` was restricted with it at construction: editing that mask in place afterwards
-          silently changes the loss, or raises when the number of selected positions changes
-          (`#5630 <https://github.com/kornia/kornia/issues/5630>`_).
+          ``signal``, next to a copy of the mask as the buffer ``mask``; later in-place changes to the reference
+          tensor or to the mask tensor are not seen. The cache is not detached: a reference that requires grad
+          receives a gradient from the first backward pass, and a second backward pass through the same module
+          raises.
     """
 
     def forward(self, other_signal: torch.Tensor, other_mask: torch.Tensor | None = None) -> torch.Tensor:
