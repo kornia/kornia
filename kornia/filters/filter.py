@@ -169,20 +169,12 @@ def filter2d(
     if normalized:
         tmp_kernel = normalize_kernel2d(tmp_kernel)
 
-    # Under the legacy ONNX tracer every ``shape`` read is a graph value, so with dynamic axes the
-    # convolution weight has no static shape and the export fails. A kernel batch of 1 is shared by
-    # every sample: bake its channel count and size in as ints, and name every weight dimension,
-    # since ``reshape(-1, ...)`` loses them again. Per-sample kernels keep the symbolic path.
-    shared_kernel = torch.jit.is_tracing() and int(tmp_kernel.shape[0]) == 1
-    if shared_kernel:
-        channels = int(c)
-        height = int(tmp_kernel.shape[-2])
-        width = int(tmp_kernel.shape[-1])
-    else:
-        channels = c
-        height, width = tmp_kernel.shape[-2:]
+    # The legacy ONNX tracer records ``input.shape`` reads as graph values, so with a dynamic batch or size the
+    # expanded kernel, and with it the convolution weight, has no static shape and the export fails (#5222).
+    # The channel count sets the convolution's ``groups``, which ONNX needs as a constant anyway: read it as an int.
+    tmp_kernel = tmp_kernel.expand(-1, int(c) if torch.jit.is_tracing() else c, -1, -1)
 
-    tmp_kernel = tmp_kernel.expand(-1, channels, -1, -1)
+    height, width = tmp_kernel.shape[-2:]
 
     # pad the input tensor
     if padding == "same":
@@ -190,16 +182,11 @@ def filter2d(
         input = F.pad(input, padding_shape, mode=border_type)
 
     # kernel and input tensor reshape to align element-wise or batch-wise params
-    if shared_kernel:
-        groups = channels
-        tmp_kernel = tmp_kernel.reshape(groups, 1, height, width)
-    else:
-        tmp_kernel = tmp_kernel.reshape(-1, 1, height, width)
-        groups = tmp_kernel.size(0)
-    input = input.reshape(-1, groups, input.size(-2), input.size(-1))
+    tmp_kernel = tmp_kernel.reshape(-1, 1, height, width)
+    input = input.reshape(-1, tmp_kernel.size(0), input.size(-2), input.size(-1))
 
     # convolve the tensor with the kernel.
-    output = F.conv2d(input, tmp_kernel, groups=groups, padding=0, stride=1)
+    output = F.conv2d(input, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1)
 
     if padding == "same":
         out = output.view(b, c, h, w)
