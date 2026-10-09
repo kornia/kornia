@@ -129,8 +129,10 @@ class TestZeroTiltGradients(BaseTester):
         points = torch.tensor([[[0.3, 0.2]]], device=device, dtype=dtype)
         K = torch.eye(3, device=device, dtype=dtype)[None]
         dist = torch.zeros(1, 14, device=device, dtype=dtype, requires_grad=True)
-        compiled = torch_optimizer(op)
-        output = compiled(points, K, dist)
+        compiled = torch_optimizer(op, fullgraph=True)
+        # At zero coefficients one iteration has the same tilt derivatives as the default five;
+        # keep the backward graph small for the oldest supported compiler.
+        output = compiled(points, K, dist, num_iters=1) if op is undistort_points else compiled(points, K, dist)
         self.assert_close(output, points)
         compiled_gradient = torch.autograd.grad(output.sum(), dist)[0]
         expected = torch.tensor([[0.1, -0.15]], device=device, dtype=dtype)
