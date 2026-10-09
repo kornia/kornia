@@ -27,6 +27,7 @@ def _distort_points_kannala_brandt_impl(
     projected_points_in_camera_z1_plane: torch.Tensor,
     params: torch.Tensor,
     radius_sq: torch.Tensor,
+    nonlinear_mask: torch.Tensor,
 ) -> torch.Tensor:
     # https://github.com/farm-ng/sophus-rs/blob/20f6cac68f17fe1ac41d0aa8a27489e2b886806f/
     # src/sensor/kannala_brandt.rs#L51-L67
@@ -41,9 +42,11 @@ def _distort_points_kannala_brandt_impl(
     k2 = params[..., 6]
     k3 = params[..., 7]
 
-    radius = radius_sq.sqrt()
+    # Keep the inactive branch finite: torch.where still differentiates both branch tensors.
+    radius = torch.where(nonlinear_mask, radius_sq, torch.ones_like(radius_sq)).sqrt()
     radius_inverse = 1.0 / radius
     theta = radius.atan2(torch.ones_like(radius))
+    theta = torch.where(nonlinear_mask, theta, torch.zeros_like(theta))
     theta2 = theta**2
     theta4 = theta2**2
     theta6 = theta2 * theta4
@@ -95,13 +98,15 @@ def distort_points_kannala_brandt(
     y = projected_points_in_camera_z1_plane[..., 1]
 
     radius_sq = x**2 + y**2
+    nonlinear_mask = radius_sq > 1e-8
 
     return torch.where(
-        radius_sq[..., None] > 1e-8,
+        nonlinear_mask[..., None],
         _distort_points_kannala_brandt_impl(
             projected_points_in_camera_z1_plane,
             params,
             radius_sq,
+            nonlinear_mask,
         ),
         distort_points_affine(projected_points_in_camera_z1_plane, params[..., :4]),
     )
