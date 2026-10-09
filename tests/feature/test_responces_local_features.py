@@ -269,10 +269,13 @@ class TestCornerGFTT(BaseTester):
         img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
         img[..., 8:20, 8:20] = 0.5
         img.requires_grad_(True)
-        scores = kornia.feature.gftt_response(img)
-        (grad,) = torch.autograd.grad(scores.sum(), img)
+        # anomaly mode also sees a nan that a ``torch.where`` masks out of the result, i.e. a sqrt evaluated at 0
+        with torch.autograd.detect_anomaly():
+            scores = kornia.feature.gftt_response(img)
+            (grad,) = torch.autograd.grad(scores.sum(), img)
         assert torch.isfinite(scores).all()
         assert torch.isfinite(grad).all()
+        self.assert_close(scores[..., 14, 14], torch.zeros_like(scores[..., 14, 14]))
         self.assert_close(grad[..., 14, 14], torch.zeros_like(grad[..., 14, 14]))
 
     def test_smaller_eigenvalue(self, device, dtype):
