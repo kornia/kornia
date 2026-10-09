@@ -605,6 +605,36 @@ class TestScaleSpaceDetector(BaseTester):
         # minmax detector should find a higher total response magnitude (it sees both blobs).
         assert resps_minmax.abs().sum() >= resps_max.abs().sum()
 
+    @pytest.mark.parametrize("extra_levels", [2, 3])
+    def test_extra_pyramid_levels_do_not_duplicate_octave_boundary(self, extra_levels):
+        """Extra pyramid levels must not duplicate octave-boundary detections (#5670)."""
+        yy, xx = torch.meshgrid(
+            torch.arange(160.0),
+            torch.arange(200.0),
+            indexing="ij",
+        )
+        img = torch.exp(
+            -((xx - 150.3) ** 2 + (yy - 110.6) ** 2) / (2 * 2.016**2)
+        )[None, None].double()
+
+        detector = ScaleSpaceDetector(
+            16,
+            resp_module=kornia.feature.BlobHessian(),
+            mr_size=6.0,
+            scale_space_response=False,
+            scale_pyr_module=ScalePyramid(
+                3, 1.6, 32, double_image=True, extra_levels=extra_levels
+            ),
+        ).double()
+
+        with torch.no_grad():
+            lafs, responses = detector(img)
+
+        keep = kornia.feature.laf_is_filled(lafs)[0] & (
+            responses[0] > 1e-3 * responses[0].max()
+        )
+        assert int(keep.sum()) == 1
+
     def test_scale_space_response_mode(self, device, dtype):
         # Smoke test: scale_space_response=True uses a different internal code path.
         # BlobDoG operates on the 5D scale-space tensor directly.

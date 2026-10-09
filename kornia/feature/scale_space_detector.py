@@ -397,6 +397,11 @@ class ScaleSpaceDetector(nn.Module):
         # Iterative sub-pixel modules flatten the full response volume internally. The
         # level/channel permutation above is contiguous when CH == 1 (the common path), but
         # not for a response that preserves multiple channels.
+        # Keep only the searchable levels and their NMS neighbours.
+        # Levels 0 and num_levels + 1 are borders, so only levels 1..num_levels
+        # can produce detections. Extra pyramid levels must not create duplicates
+        # at octave boundaries.
+        oct_resp = oct_resp[:, :, : num_levels + 2]
         oct_resp = oct_resp.contiguous()
         scale_sigmas = sigmas_oct[:, : oct_resp.shape[2]]
 
