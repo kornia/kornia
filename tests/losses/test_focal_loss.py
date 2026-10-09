@@ -616,3 +616,19 @@ class TestConventionsFocalLoss(BaseTester):
         (grad,) = torch.autograd.grad(total, logits)
         self.assert_close(grad[..., 0], torch.zeros_like(grad[..., 0]), rtol=0, atol=0)
         self.assert_close(grad[..., 1:], torch.autograd.grad(rest_total, rest)[0])
+
+
+def test_focal_losses_weights_are_non_persistent_buffers():
+    """``weight`` and ``pos_weight`` must follow ``.to()`` without entering ``state_dict()``."""
+    focal = kornia.losses.FocalLoss(alpha=0.5, weight=torch.ones(3)).to(torch.float64)
+    assert focal.weight.dtype == torch.float64
+    assert "weight" in dict(focal.named_buffers())
+    assert not focal.state_dict()
+
+    binary = kornia.losses.BinaryFocalLossWithLogits(alpha=0.5, pos_weight=torch.ones(3), weight=torch.ones(3)).to(
+        torch.float64
+    )
+    assert binary.pos_weight.dtype == torch.float64
+    assert binary.weight.dtype == torch.float64
+    assert {"weight", "pos_weight"} <= set(dict(binary.named_buffers()))
+    assert not binary.state_dict()
