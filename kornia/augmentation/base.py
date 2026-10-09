@@ -465,6 +465,15 @@ class _AugmentationBase(_BasicAugmentationBase):
         ori_shape = input.shape
 
         shape = params["forward_input_shape"]
+
+        # A batched call has one gate per sample, so ``batch_prob`` gives the batch size as a Python int. The shape
+        # helpers read it from the ``forward_input_shape`` tensor, a data-dependent branch that breaks
+        # ``torch.compile(fullgraph=True)`` for a ``(B, H, W)`` mask (#5598). A list entry (0-d gate) keeps them.
+        channel_dim: Optional[int] = None
+        if input.dim() == 3 and batch_prob.dim() == 1:
+            channel_dim = 1 if input.shape[0] == batch_prob.shape[0] else 0
+            input = input.unsqueeze(channel_dim)
+
         in_tensor = self.transform_tensor(input, shape=shape, match_channel=False)
 
         self.validate_tensor(in_tensor)
@@ -474,7 +483,11 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         output = self._blend_by_prob(output_transformed, output_not_transformed, to_apply)
 
-        return _transform_output_shape(output, ori_shape, reference_shape=shape) if self.keepdim else output
+        if not self.keepdim:
+            return output
+        if channel_dim is not None:
+            return output.squeeze(channel_dim)
+        return _transform_output_shape(output, ori_shape, reference_shape=shape)
 
     def transform_boxes(
         self,

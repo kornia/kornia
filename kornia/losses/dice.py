@@ -51,8 +51,8 @@ def dice_loss(
         \text{Dice}(x, class) = \frac{2 |X \cap Y|}{|X| + |Y|}
 
     Where:
-       - :math:`X` expects to be the scores of each class.
-       - :math:`Y` expects to be the one-hot torch.Tensor with the class labels.
+       - :math:`X` is the softmax of ``pred`` over the classes.
+       - :math:`Y` is the one-hot encoding of ``target`` by :func:`~kornia.losses.one_hot`.
 
     the loss, is finally computed as:
 
@@ -63,6 +63,22 @@ def dice_loss(
     Reference:
         [1] https://en.wikipedia.org/wiki/S%C3%B8rensen%E2%80%93Dice_coefficient
 
+    Convention:
+        - ``pred`` and ``target`` are those of :func:`~kornia.losses.focal_loss` (logits with the softmax taken
+          inside, int64 class indices; see its Convention block), restricted to ``(B, C, H, W)`` and ``(B, H, W)``.
+          A one-channel ``pred`` has a softmax of 1 everywhere and gives a constant loss with zero gradient: a binary
+          task passes two channels.
+        - ``'micro'`` (default) computes one Dice per sample over all classes and pixels, ``weight`` scaling the
+          terms of class ``c`` in both sums: :math:`1 - 2 \sum_c w_c |X_c \cap Y_c| / \sum_c w_c (|X_c| + |Y_c|)`.
+          ``'macro'`` computes one Dice per sample and class and averages them as
+          :math:`\sum_c w_c \, \text{loss}_c / \sum_c w_c` over the classes present in the sample's non-ignored
+          target: a class that is predicted but absent from the target is left out. Both then average over the batch
+          and return a 0-d tensor; there is no ``reduction``.
+        - ``eps`` is added to the denominator only: :math:`1 - 2 |X \cap Y| / (|X| + |Y| + \epsilon)`.
+        - Pixels labelled ``ignore_index`` (default ``-100``) leave both sums of their own sample. A sample whose
+          pixels are all ignored, or whose present classes all have weight 0, enters the batch mean as loss 1 with a
+          zero gradient, at ``eps=0`` as well.
+
     Args:
         pred: logits torch.Tensor with shape :math:`(N, C, H, W)` where C = number of classes.
         target: labels torch.Tensor with shape :math:`(N, H, W)` where each value
@@ -71,10 +87,10 @@ def dice_loss(
             Reduction applied in multi-class scenario:
 
             - ``'micro'`` [default]: Calculate the loss across all classes.
-            - ``'macro'``: Average class losses over classes present in each sample's non-ignored target.
-              Samples with all pixels ignored, or whose present classes all have weight 0, have loss 1.
-        eps: Scalar to enforce numerical stabiliy.
-        weight: weights for classes with shape :math:`(num\_of\_classes,)`.
+            - ``'macro'``: Average the class losses of each sample; see the Convention block.
+        eps: Scalar added to the denominator of the Dice ratio for numerical stability.
+        weight: weights for classes with shape :math:`(num\_of\_classes,)`; see the Convention block for how each
+          ``average`` applies them.
         ignore_index: labels with this value are ignored in the loss computation.
 
     Return:
@@ -161,7 +177,10 @@ def dice_loss(
     intersection = torch.sum(pred_soft * intersection_target, dims, dtype=reduction_dtype)
     cardinality = torch.sum(pred_soft + target_one_hot, dims, dtype=reduction_dtype)
 
-    dice_score = 2.0 * intersection / (cardinality + eps)
+    # An empty weighted reduction can occur for fully ignored samples or when all contributing class weights are zero.
+    # Make the denominator safe before division so the unused branch cannot introduce NaNs into the backward pass.
+    empty = cardinality == 0
+    dice_score = (2.0 * intersection / (cardinality + eps).masked_fill(empty, 1.0)).masked_fill(empty, 0.0)
     dice_loss = -dice_score + 1.0
 
     # reduce the loss across samples (and classes in case of `macro` averaging)
@@ -181,14 +200,12 @@ def dice_loss(
 class DiceLoss(nn.Module):
     r"""Criterion that computes Sørensen-Dice Coefficient loss.
 
-    Dice-based objectives are common in medical and semantic segmentation because pixel classes
-    are often highly imbalanced. This loss directly optimizes region-level agreement.
+    Convention:
+        See the Convention block of :func:`~kornia.losses.dice_loss`.
 
     Args:
-        average: Reduction strategy for multi-class computation. Use "micro" to aggregate
-            classes globally, or "macro" to average over classes present in each sample's
-            non-ignored target. Samples with all pixels ignored, or whose present classes all have
-            weight 0, have loss 1.
+        average: Reduction strategy for multi-class computation. Use "micro" to pool the classes of each
+            sample, or "macro" to average over classes present in each sample's non-ignored target.
         eps: Small constant added to the denominator for numerical stability.
         weight: Optional class-weight tensor of shape :math:`(C,)`.
         ignore_index: Label value to exclude from loss computation.
@@ -196,7 +213,7 @@ class DiceLoss(nn.Module):
     Shapes:
         - pred: :math:`(N, C, H, W)` where C is the number of classes.
         - target: :math:`(N, H, W)` where each value is in the range :math:`[0, C-1]`.
-        - Output: scalar by default.
+        - Output: scalar.
     """
 
     def __init__(
