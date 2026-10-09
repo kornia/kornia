@@ -433,6 +433,27 @@ class TestEqualization(BaseTester):
         expected = torch.tensor([[63.0] * 4, [159.0] * 4], device=device, dtype=dtype).div(255.0)[None, None]
         self.assert_close(out, expected)
 
+    @pytest.mark.parametrize("clip_as_tensor", [False, True])
+    def test_clahe_residual_spread_after_the_whole_share(self, clip_as_tensor, device, dtype):
+        # One 32 x 32 tile of 1024 pixels: 342 in bin 0, 341 in bin 100 and 341 in bin 200. Clip limit 40 caps every
+        # bin at 40 * 1024 // 256 = 160, so 544 counts are clipped. Every bin takes the whole share 544 // 256 = 2, and
+        # the residual 32 goes, as in OpenCV, to every 256 // 32 = 8th bin from bin 0. The LUT is
+        # floor(cumsum * 255 / 1024): bin 100 maps to floor(535 * 255 / 1024) = 133 and bin 200 to
+        # floor(908 * 255 / 1024) = 226, where writing the residual into bins 0..31 gave 137 and 227.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the cumulative counts of a 1024-pixel tile are not exact below float32")
+        values = torch.cat([torch.zeros(342), torch.full((341,), 100 / 256), torch.full((341,), 200 / 256)])
+        tiles = values.to(device, dtype).view(1, 1, 1, 1, 32, 32)
+        clip = torch.tensor([40.0], device=device, dtype=dtype) if clip_as_tensor else 40.0
+        luts = enhance.equalization._compute_luts(tiles, clip=clip)
+        hist = torch.full((256,), 2.0, dtype=torch.float64)
+        hist[::8] += 1
+        hist[[0, 100, 200]] += 160
+        expected = (hist.cumsum(0) * 255 / 1024).floor()
+        assert expected[100] == 133
+        assert expected[200] == 226
+        self.assert_close(luts.view(256), expected.to(device, dtype))
+
     def test_clahe_non_square_grid(self, device, dtype):
         # Pixel values are 0 and powers of two, exact in every dtype. With 4 x 4 tiles every interpolation weight
         # is a multiple of 1/3, so 9 * 255 * output is an integer. The expected integers come from an exact
