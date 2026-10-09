@@ -27,7 +27,9 @@ from kornia.geometry.epipolar import normalize_points
 from kornia.geometry.homography import (
     _four_point_homography,
     _homography_design_rows,
+    _homography_from_dlt_system,
     _oneway_transfer_error_shared_impl_,
+    _rank8_null_vector,
     _transfer_basis,
     _transfer_errors,
     _transfer_from_basis,
@@ -537,6 +539,78 @@ class TestFindHomographyDLT(BaseTester):
         points = torch.zeros(1, 6, 2, device=device, dtype=dtype)
         H = find_homography_dlt(points, points, solver="lu")
         assert H.isnan().all().item()
+
+    @pytest.mark.parametrize(
+        ("points", "linear", "shift"),
+        [
+            # identical point sets: the Hartley-normalized systems are bitwise equal
+            ([[140, 30], [130, 40], [0, 120], [150, 110], [120, 180], [20, 40]], [[1, 0], [0, 1]], [0, 0]),
+            ([[140, 30], [130, 40], [0, 120], [150, 110], [120, 180], [20, 40]], [[1, 0], [0, 1]], [3, -5]),
+            ([[122, 119], [0, 180], [173, 155], [105, 57], [180, 19], [14, 118]], [[0, -1], [1, 0]], [0, 0]),
+        ],
+    )
+    def test_exact_correspondences_lu(self, points, linear, shift, device, dtype):
+        # On these exact correspondences the last LU pivot of the normal matrix is exactly zero with some BLAS
+        # and LAPACK builds (float32 and float64 on Windows x86), not with others (macOS arm64), so they pin the
+        # fix only where it shows; test_exact_rank8_system_lu_gives_the_homography_5644 pins it on every backend.
+        # The homography is still unique (rank 8), so the LU solver has to return it, as the
+        # SVD solver and cv2.findHomography(points1, points2, 0) do, rather than NaN. Six points in general
+        # position determine it, so it is checked through the points it maps (MPS float32 gets the pixel-unit
+        # translation of the 90-degree rotation to about 2e-4).
+        _skip_half(dtype, _HALF_DLT)
+        points1 = torch.tensor([points], device=device, dtype=dtype)
+        linear_part = torch.tensor(linear, device=device, dtype=dtype)
+        points2 = points1 @ linear_part.T + torch.tensor(shift, device=device, dtype=dtype)
+        weights = torch.ones(1, 6, device=device, dtype=dtype)
+        for H in (
+            find_homography_dlt(points1, points2, solver="lu"),
+            find_homography_dlt_iterated(points1, points2, weights),
+        ):
+            assert H.isfinite().all().item()
+            self.assert_close(kornia.geometry.transform_points(H, points1), points2, rtol=1e-4, atol=1e-3)
+
+    def test_collinear_points_lu_give_nan(self, device, dtype):
+        # Roundoff can leave the normal matrix of collinear points with tiny non-zero leading pivots and a
+        # zero last one, which must not be taken for the unique homography of exact correspondences.
+        points = torch.tensor(
+            [[[0.0, 0.0], [1.0, 1.0], [2.0, 2.0], [3.0, 3.0], [4.0, 4.0]]], device=device, dtype=dtype
+        )
+        assert find_homography_dlt(points, points, solver="lu").isnan().all().item()
+
+    @pytest.mark.parametrize("weights", [None, [1.0, 3.0, 2.0, 0.5, 3.0, 1.0, 2.0, 3.5]])
+    def test_exact_rank8_system_lu_gives_the_homography_5644(self, weights, device, dtype):
+        # Whether the normal matrix of real correspondences gets an exactly zero last LU pivot depends on the
+        # rounding of the BLAS and LAPACK in use. This design matrix has entries -1, 0 and 1 (the corners of the
+        # normalized square, each twice, turned by 90 degrees), so its normal matrix is integer and its pivoted LU
+        # is exact on every backend: pivots 8 (16 with these weights, which give every corner the same total)
+        # and a last one of 0. The rank is 8, so the homography is unique, and the LU solver must return it.
+        _skip_half(dtype, _HALF_DLT)
+        corners = torch.tensor([[1.0, 1.0], [-1.0, 1.0], [-1.0, -1.0], [1.0, -1.0]] * 2, device=device, dtype=dtype)
+        rotation = torch.tensor([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        A = _homography_design_rows(corners[None], (corners @ rotation[:2, :2].T)[None])
+        w = None if weights is None else torch.tensor([weights], device=device, dtype=dtype)
+        eye = torch.eye(3, device=device, dtype=dtype)[None]
+        H = _homography_from_dlt_system(A, w, eye, eye, "lu", torch.device(device), dtype)
+        assert torch.equal(H, rotation[None])
+
+    def test_rank8_fallback_needs_leading_pivots_above_sqrt_eps_5644(self, device, dtype):
+        # Roundoff can give a degenerate normal matrix an exactly zero last pivot and tiny non-zero leading ones, so
+        # the fallback takes a zero last pivot for rank 8 only when the other pivots are above ``sqrt(eps)`` of the
+        # largest. ``L diag(1, ..., 1, tau, 0) L^T`` with ``L[8, :8] = 1/2`` has an exact LU with exactly those
+        # pivots and the null vector ``(-1/2, ..., -1/2, 1)``: returned for ``tau`` just above the bound, NaN just
+        # below it, where ``eps`` itself would still accept it.
+        _skip_half(dtype, _HALF_DLT)
+        bound = 26 if dtype == torch.float64 else 11  # sqrt(eps) is 2 ** -26 (float64) or 2 ** -11.5 (float32)
+        null = torch.tensor([-0.5] * 8 + [1.0], device=device, dtype=dtype)
+        normals = []
+        for tau in (2.0 ** -(bound - 2), 2.0 ** -(bound + 2)):
+            L = torch.eye(9, device=device, dtype=dtype)
+            L[8, :8] = 0.5
+            d = torch.tensor([1.0] * 7 + [tau, 0.0], device=device, dtype=dtype)
+            normals.append(L @ torch.diag(d) @ L.T)
+        result = _rank8_null_vector(torch.stack(normals))
+        assert torch.equal(result[0], null)
+        assert result[1].isnan().all()
 
     @pytest.mark.parametrize("solver", ["svd", "lu"])
     def test_singular_normalization_gives_nan(self, device, dtype, solver):
