@@ -326,3 +326,11 @@ class TestConventionsLovaszSoftmaxLoss(BaseTester):
         self.assert_close(
             loss(logits, labels, weight), sum(w * loss(logits, labels, e) for w, e in zip(weight, one_class))
         )
+
+
+def test_lovasz_softmax_loss_weight_is_a_non_persistent_buffer():
+    """``weight`` must follow ``.to()`` like the torch loss modules, without entering ``state_dict()``."""
+    loss = kornia.losses.LovaszSoftmaxLoss(weight=torch.ones(3)).to(torch.float64)
+    assert loss.weight.dtype == torch.float64
+    assert "weight" in dict(loss.named_buffers())
+    assert not loss.state_dict()
