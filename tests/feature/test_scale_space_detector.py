@@ -617,6 +617,66 @@ class TestScaleSpaceDetector(BaseTester):
         assert lafs.shape == torch.Size([1, n_feats, 2, 3])
         assert resps.shape == torch.Size([1, n_feats])
 
+    @pytest.mark.parametrize("sigma", [2.016, 4.032])
+    def test_octave_boundary_scale_is_detected_once_5670(self, device, dtype, sigma):
+        # sigma = 1.6 * 2 ** (4 / 3) * 2 ** k is level 4 of one octave and level 1 of the next. With
+        # extra_levels=3 a per-level response has a level 4 in every octave, but it is only the NMS neighbour of
+        # level 3: searching it as well found this blob once in each octave.
+        if dtype == torch.bfloat16:
+            pytest.skip(
+                "in bfloat16 the octave-1 copy of this blob does not survive NMS, with or without a spare level"
+            )
+        yy, xx = torch.meshgrid(
+            torch.arange(160, dtype=torch.float64), torch.arange(200, dtype=torch.float64), indexing="ij"
+        )
+        blob = torch.exp(-((xx - 150.3) ** 2 + (yy - 110.6) ** 2) / (2 * sigma**2))
+        img = blob[None, None].to(device, dtype)
+        det = ScaleSpaceDetector(
+            16,
+            resp_module=kornia.feature.BlobHessian(),
+            scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True, extra_levels=3),
+        ).to(device, dtype)
+        lafs, resps = det(img)
+        found = kornia.feature.laf_is_filled(lafs)[0] & (resps[0] > 1e-3 * resps[0].max())
+        assert int(found.sum()) == 1
+
+    @pytest.mark.parametrize(
+        "resp_module, scale_space_response, minima_are_also_good, extra_levels",
+        [
+            (kornia.feature.BlobHessian, False, False, (2, 3)),
+            (kornia.feature.BlobDoG, True, True, (3, 4)),
+        ],
+    )
+    def test_spare_pyramid_levels_do_not_change_the_detections_5670(
+        self, device, dtype, resp_module, scale_space_response, minima_are_also_good, extra_levels
+    ):
+        # Each octave searches response levels 1..n_levels, and levels 0 and n_levels + 1 are their NMS
+        # neighbours. A pyramid that builds a level past those detects exactly what the minimal one does.
+        # Bright and dark blobs from below the first octave boundary to above the second.
+        yy, xx = torch.meshgrid(
+            torch.arange(96, device=device, dtype=dtype), torch.arange(128, device=device, dtype=dtype), indexing="ij"
+        )
+        img = torch.zeros_like(xx)
+        for i, sigma in enumerate((1.3, 1.6, 2.016, 2.6, 3.2, 4.032, 5.0)):
+            cx, cy = 18.0 + 15.0 * i, 30.0 + 36.0 * (i % 2)
+            img = img + (-1) ** i * torch.exp(-((xx - cx) ** 2 + (yy - cy) ** 2) / (2 * sigma**2))
+        img = img[None, None]
+        lafs, resps = [], []
+        for extra in extra_levels:
+            det = ScaleSpaceDetector(
+                30,
+                mr_size=1.0,
+                resp_module=resp_module(),
+                scale_pyr_module=ScalePyramid(3, 1.6, 16, extra_levels=extra),
+                scale_space_response=scale_space_response,
+                minima_are_also_good=minima_are_also_good,
+            ).to(device, dtype)
+            out_lafs, out_resps = det(img)
+            lafs.append(out_lafs)
+            resps.append(out_resps)
+        self.assert_close(lafs[1], lafs[0])
+        self.assert_close(resps[1], resps[0])
+
     def test_few_detections_padding(self, device, dtype):
         # Constant image → very few (possibly zero) NMS candidates; output must still
         # have the requested shape because the detect() method pads with zeros.
