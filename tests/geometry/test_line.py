@@ -936,7 +936,37 @@ class TestFitLine(BaseTester):
 
         pts = torch.rand(2, 5, dim, device=device)
         weights = torch.rand(2, 5, device=device)
-        self.gradcheck(proxy_func, (pts, weights), requires_grad=(True, False))
+        self.gradcheck(proxy_func, (pts, weights), requires_grad=(True, True))
+
+    @pytest.mark.parametrize("dim", [3, 4])
+    def test_weighted_fit_saves_linear_storage(self, device, dtype, dim):
+        # A differentiable fit needs storage proportional to the points, not an N-by-N weight matrix.
+        points = torch.rand(2, 128, dim, device=device, dtype=dtype, requires_grad=True)
+        weights = torch.rand(2, 128, device=device, dtype=dtype, requires_grad=True)
+        saved_sizes = []
+
+        def pack(tensor):
+            saved_sizes.append(tensor.numel())
+            return tensor
+
+        with torch.autograd.graph.saved_tensors_hooks(pack, lambda tensor: tensor):
+            line = fit_line(points, weights)
+            loss = line.projection(points[:, 0]).square().sum()
+            loss.backward()
+
+        assert max(saved_sizes) <= 8 * points.numel()
+        assert torch.isfinite(points.grad).all()
+        assert torch.isfinite(weights.grad).all()
+
+    def test_dynamo_weighted_fit_3d(self, device, dtype, torch_optimizer):
+        points = torch.rand(2, 32, 3, device=device, dtype=dtype)
+        weights = torch.rand(2, 32, device=device, dtype=dtype)
+
+        def op(points, weights):
+            line = fit_line(points, weights)
+            return line.projection(points[:, 0])
+
+        self.assert_close(torch_optimizer(op)(points, weights), op(points, weights))
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):

@@ -417,7 +417,8 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
     scale = A.abs().amax(dim=(-2, -1), keepdim=True)
     A = A / torch.where(scale > 0, scale, torch.ones_like(scale))
     if weights is not None:
-        A = A.transpose(-2, -1) @ torch.diag_embed(work_weights) @ A
+        # Scale the columns directly instead of allocating an N-by-N diagonal weight matrix.
+        A = (A.transpose(-2, -1) * work_weights[..., None, :]) @ A
     else:
         A = A.transpose(-2, -1) @ A
 
