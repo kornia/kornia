@@ -537,8 +537,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                     f"{tuple(mask.shape)}."
                 )
             if is_video and isinstance(image, torch.Tensor) and image.ndim == 5:
-                video = next((c for c in self.children() if isinstance(c, VideoSequential)), None)
-                temporal_dim = 2 if video is not None and str(video.data_format).upper() == "BCTHW" else 1
+                # A list, not next(generator, None), which Dynamo on torch 2.5/2.6 cannot trace (see above).
+                videos = [c for c in self.children() if isinstance(c, VideoSequential)]
+                temporal_dim = videos[0]._temporal_channel if videos else 1
                 if mask.shape[temporal_dim] != image.shape[temporal_dim]:
                     raise ValueError(
                         "Video and mask must have the same number of frames; "
