@@ -180,7 +180,7 @@ class TestImageRegistrator(BaseTester):
 
         registrator = ImageRegistrator("similarity", allow_shape_mismatch=False)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Cannot register images of different shapes"):
             registrator.register(img1, img2)
 
     def test_warp_dst_into_src_and_deprecated_alias(self, device, dtype):
@@ -405,5 +405,5 @@ class TestConventionsImageRegistrator(BaseTester):
         dst = self._scene(0.0, 0.0, device, dtype)
         ir.register(dst[..., ::2, ::2], dst)
         assert set(seen) == {((1, 1, self.height, self.width), (1, 1, self.height, self.width))}
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Cannot register images of different shapes"):
             ir.register(dst.expand(1, 3, -1, -1), dst)
