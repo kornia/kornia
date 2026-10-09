@@ -19,6 +19,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
 
@@ -87,3 +88,33 @@ class TestAepe(BaseTester):
 
         criterion = kornia.metrics.AEPE()
         assert criterion(input, target) is not None
+
+
+class TestConventionsAepe(BaseTester):
+    def test_convention_aepe_flow_is_channel_last_and_pools_every_element(self, device, dtype):
+        """aepe reads (*, 2) flow in pixels; 'mean' averages the endpoint error over every pixel of every sample."""
+        # (B, H, W, 2) = (2, 3, 4, 2). Sample 0: one pixel off by (3, 4), error 5; sample 1: two pixels off by 1.
+        target = torch.zeros(2, 3, 4, 2, device=device, dtype=dtype)
+        flow = target.clone()
+        flow[0, 1, 2] = flow.new_tensor([3.0, 4.0])
+        flow[1, 2, 3] = flow.new_tensor([0.0, -1.0])
+        flow[1, 0, 0] = flow.new_tensor([1.0, 0.0])
+        # (5 + 1 + 1) / 24 pixels; the sum is 7 px, not normalised by the image size
+        mean = kornia.metrics.aepe(flow, target)
+        assert mean.shape == ()
+        self.assert_close(mean, torch.tensor(7.0 / 24.0, device=device, dtype=dtype))
+        self.assert_close(
+            kornia.metrics.aepe(flow, target, reduction="sum"), torch.tensor(7.0, device=device, dtype=dtype)
+        )
+        epe = kornia.metrics.aepe(flow, target, reduction="none")
+        assert epe.shape == (2, 3, 4)
+        expected = torch.zeros(2, 3, 4, device=device, dtype=dtype)
+        expected[0, 1, 2], expected[1, 2, 3], expected[1, 0, 0] = 5.0, 1.0, 1.0
+        self.assert_close(epe, expected)
+        # a channel-first (B, 2, H, W) flow, as RAFT and torchvision store it, is rejected here because W = 4 != 2 (with
+        # W == 2 it is accepted and read wrongly): permute it to (B, H, W, 2)
+        with pytest.raises((ValueError, BaseError)):
+            kornia.metrics.aepe(flow.permute(0, 3, 1, 2), target.permute(0, 3, 1, 2))
+        # average_endpoint_error is aepe itself, and AEPE(reduction) calls it
+        assert kornia.metrics.average_endpoint_error is kornia.metrics.aepe
+        self.assert_close(kornia.metrics.AEPE("sum")(flow, target), torch.tensor(7.0, device=device, dtype=dtype))
