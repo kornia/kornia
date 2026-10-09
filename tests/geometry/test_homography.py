@@ -29,6 +29,7 @@ from kornia.geometry.homography import (
     _homography_design_rows,
     _homography_from_dlt_system,
     _oneway_transfer_error_shared_impl_,
+    _rank8_null_vector,
     _transfer_basis,
     _transfer_errors,
     _transfer_from_basis,
@@ -589,6 +590,25 @@ class TestFindHomographyDLT(BaseTester):
         eye = torch.eye(3, device=device, dtype=dtype)[None]
         H = _homography_from_dlt_system(A, w, eye, eye, "lu", torch.device(device), dtype)
         assert torch.equal(H, rotation[None])
+
+    def test_rank8_fallback_needs_leading_pivots_above_sqrt_eps_5644(self, device, dtype):
+        # Roundoff can give a degenerate normal matrix an exactly zero last pivot and tiny non-zero leading ones, so
+        # the fallback takes a zero last pivot for rank 8 only when the other pivots are above ``sqrt(eps)`` of the
+        # largest. ``L diag(1, ..., 1, tau, 0) L^T`` with ``L[8, :8] = 1/2`` has an exact LU with exactly those
+        # pivots and the null vector ``(-1/2, ..., -1/2, 1)``: returned for ``tau`` just above the bound, NaN just
+        # below it, where ``eps`` itself would still accept it.
+        _skip_half(dtype, _HALF_DLT)
+        bound = 26 if dtype == torch.float64 else 11  # sqrt(eps) is 2 ** -26 (float64) or 2 ** -11.5 (float32)
+        null = torch.tensor([-0.5] * 8 + [1.0], device=device, dtype=dtype)
+        normals = []
+        for tau in (2.0 ** -(bound - 2), 2.0 ** -(bound + 2)):
+            L = torch.eye(9, device=device, dtype=dtype)
+            L[8, :8] = 0.5
+            d = torch.tensor([1.0] * 7 + [tau, 0.0], device=device, dtype=dtype)
+            normals.append(L @ torch.diag(d) @ L.T)
+        result = _rank8_null_vector(torch.stack(normals))
+        assert torch.equal(result[0], null)
+        assert result[1].isnan().all()
 
     @pytest.mark.parametrize("solver", ["svd", "lu"])
     def test_singular_normalization_gives_nan(self, device, dtype, solver):
