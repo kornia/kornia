@@ -840,7 +840,8 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
             (-100, 100, torch.tensor([10, 20]), None, None, None),
             (100, -100, torch.tensor([10, 20]), None, None, None),
             # A scalar 0.5 is valid; use an out-of-range tensor to reach generator validation.
-            (100, 100, torch.tensor([-361, 361]), None, None, None),
+            # bfloat16 rounds 361 to 360, inside the range; 400 is exact in every dtype.
+            (100, 100, torch.tensor([-400, 400]), None, None, None),
             (100, 100, torch.tensor([10, 20, 30]), None, None, None),
             (100, 100, torch.tensor([10, 20]), torch.tensor([0.1]), None, None),
             (10, 10, torch.tensor([1, 2]), torch.tensor([0.1, 0.2, 0.3]), None, None),

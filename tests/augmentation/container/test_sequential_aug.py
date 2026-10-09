@@ -27,10 +27,13 @@ from testing.base import BaseTester
 
 
 class TestSequential:
-    @pytest.mark.parametrize("random_apply_weights", [None, [0.8, 0.9]])
-    def test_exception(self, random_apply_weights, device, dtype):
+    @pytest.mark.parametrize(
+        "random_apply_weights,match",
+        [(None, r"No parameters available for inversing"), ([0.8, 0.9], r"length of `random_apply_weights`")],
+    )
+    def test_exception(self, random_apply_weights, match, device, dtype):
         inp = torch.randn(1, 3, 30, 30, device=device, dtype=dtype)
-        with pytest.raises(ValueError, match=r"No parameters available for inversing|length of `random_apply_weights`"):
+        with pytest.raises(ValueError, match=match):
             K.ImageSequential(
                 K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), random_apply_weights=random_apply_weights
             ).inverse(inp)
