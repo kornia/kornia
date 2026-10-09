@@ -46,7 +46,7 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
         - A zero leading coefficient lowers the degree: with ``a = 0`` the root ``-c / b`` of the linear equation
           is in slot 0, as :func:`solve_cubic` and :func:`solve_quartic` do for their lower-degree rows.
         - Half inputs are evaluated in float32. On MPS, which has no float64 and flushes float32 subnormals in
-          products, float32 inputs are solved on the CPU in float64; beyond roughly ``10**5`` rows this is slower
+          products, float32 inputs are solved on the CPU in float64; from about ``10**3`` rows this is slower
           than an on-device solve. The output retains the input dtype and device.
 
     Args:
@@ -236,7 +236,7 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
           or for roots far from unit scale (#4914).
         - Half inputs are evaluated in float32. Float32 cubics are solved in float64 (on MPS, which has no
           float64, on the CPU), so a row's roots do not depend on the rest of its batch. On MPS, beyond roughly
-          ``10**5`` rows this is slower than an on-device solve. The output retains the input dtype and device.
+          ``5 * 10**5`` rows this is slower than an on-device solve. The output retains the input dtype and device.
 
     Args:
         coeffs : The coefficients cubic equation : `(B, 4)`
