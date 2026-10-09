@@ -549,20 +549,22 @@ class TestConventionsDiceLoss(BaseTester):
         self.assert_close(dice(logits, ignored), (1 + dice(logits[1:], labels[1:])) / 2)
 
     def test_convention_dice_loss_empty_reductions_are_finite_5631(self, device, dtype):
-        # Empty weighted reductions return loss 1 and have finite gradients, including with eps=0.
+        # Empty weighted reductions return loss 1 and have finite gradients, including with eps=0. The loss is then the
+        # constant 1, so the gradient with respect to an all-zero weight is zero as well.
         g = torch.Generator().manual_seed(0)
         logits = torch.randn(2, 3, 4, 6, generator=g).to(device=device, dtype=dtype).requires_grad_()
         labels = torch.randint(0, 3, (2, 4, 6), generator=g).to(device)
         dice = kornia.losses.dice_loss
-        zero = torch.zeros(3, device=device, dtype=dtype)
+        zero = torch.zeros(3, device=device, dtype=dtype, requires_grad=True)
 
         for average in ("micro", "macro"):
             loss = dice(logits, labels, average=average, eps=0.0, weight=zero)
             self.assert_close(loss.detach(), logits.new_tensor(1.0))
-            (grad,) = torch.autograd.grad(loss, logits, retain_graph=True)
+            grad, grad_weight = torch.autograd.grad(loss, (logits, zero), retain_graph=True)
             assert loss.isfinite()
             assert grad.isfinite().all()
             self.assert_close(grad, torch.zeros_like(grad), rtol=0, atol=0)
+            self.assert_close(grad_weight, torch.zeros_like(grad_weight), rtol=0, atol=0)
 
         if dtype == torch.float16:
             micro = dice(logits, labels, weight=zero)

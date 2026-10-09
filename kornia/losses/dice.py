@@ -76,11 +76,8 @@ def dice_loss(
           and return a 0-d tensor; there is no ``reduction``.
         - ``eps`` is added to the denominator only: :math:`1 - 2 |X \cap Y| / (|X| + |Y| + \epsilon)`.
         - Pixels labelled ``ignore_index`` (default ``-100``) leave both sums of their own sample. A sample whose
-          pixels are all ignored, or whose present classes all have weight 0, enters the batch mean as loss 1.
-        - Known defect: with ``eps=0``, a sample whose pixels are all ignored gives a NaN loss in ``'micro'`` and a
-          NaN gradient in ``'macro'``, and a ``weight`` that is 0 for every class gives a NaN ``'micro'`` loss; in
-          float16 that weight also gives a non-finite ``'micro'`` gradient at the default ``eps``
-          (`#5631 <https://github.com/kornia/kornia/issues/5631>`_).
+          pixels are all ignored, or whose present classes all have weight 0, enters the batch mean as loss 1 with a
+          zero gradient, at ``eps=0`` as well.
 
     Args:
         pred: logits torch.Tensor with shape :math:`(N, C, H, W)` where C = number of classes.
