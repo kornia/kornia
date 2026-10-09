@@ -1,0 +1,1 @@
+`find_homography_dlt`, `solve_pnp_dlt`, `get_tps_transform` and `get_perspective_transform3d` now fall back to CPU kernels instead of failing on MPS when the torch floor lacks the required linear-algebra operations.
