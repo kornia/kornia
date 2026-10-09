@@ -118,6 +118,43 @@ class TestDiceLoss(BaseTester):
         self.assert_close(logits.grad[1], torch.zeros_like(logits.grad[1]), rtol=0, atol=0)
         self.assert_close(logits.grad[0, :, :, 1], torch.zeros_like(logits.grad[0, :, :, 1]), rtol=0, atol=0)
 
+    @pytest.mark.parametrize("average", ["micro", "macro"])
+    @pytest.mark.parametrize("empty_by", ["ignored", "zero_weight"])
+    def test_empty_reduction_eps_zero(self, device, dtype, average, empty_by):
+        logits = torch.randn(2, 3, 2, 2, device=device, dtype=dtype, requires_grad=True)
+        labels = torch.tensor([[[0, 1], [2, 1]], [[0, 1], [2, 1]]], device=device)
+        weight = None
+        if empty_by == "ignored":
+            labels[0] = -100
+        else:
+            weight = torch.zeros(3, device=device, dtype=dtype)
+
+        loss = kornia.losses.dice_loss(logits, labels, average=average, eps=0.0, weight=weight)
+        if empty_by == "ignored":
+            valid_loss = kornia.losses.dice_loss(logits[1:], labels[1:], average=average, eps=0.0, weight=weight)
+            expected_loss = (1.0 + valid_loss) / 2.0
+        else:
+            expected_loss = logits.new_tensor(1.0)
+        self.assert_close(loss, expected_loss)
+        assert torch.isfinite(loss)
+        loss.backward()
+        assert torch.isfinite(logits.grad).all()
+        if empty_by == "ignored":
+            self.assert_close(logits.grad[0], torch.zeros_like(logits.grad[0]), rtol=0, atol=0)
+        else:
+            self.assert_close(logits.grad, torch.zeros_like(logits.grad), rtol=0, atol=0)
+
+    def test_micro_empty_weight_half_default_eps(self, device):
+        logits = torch.randn(1, 3, 2, 2, device=device, dtype=torch.float16, requires_grad=True)
+        labels = torch.tensor([[[0, 1], [2, 1]]], device=device)
+        weight = torch.zeros(3, device=device, dtype=torch.float16)
+
+        loss = kornia.losses.dice_loss(logits, labels, average="micro", weight=weight)
+        self.assert_close(loss, logits.new_tensor(1.0), rtol=0, atol=0)
+        loss.backward()
+        assert torch.isfinite(logits.grad).all()
+        self.assert_close(logits.grad, torch.zeros_like(logits.grad), rtol=0, atol=0)
+
     def test_macro_sample_without_weighted_class(self, device, dtype):
         # Sample 0 holds only class 0, whose weight is 0: no weighted class is left, as in a fully ignored sample, so
         # it keeps loss 1 with a zero gradient instead of 0 / 0 spreading NaN over the batch.
@@ -511,34 +548,36 @@ class TestConventionsDiceLoss(BaseTester):
         ignored[0] = -100
         self.assert_close(dice(logits, ignored), (1 + dice(logits[1:], labels[1:])) / 2)
 
-    def test_wart_dice_loss_all_ignored_sample_with_zero_eps_5631(self, device, dtype):
-        # With eps=0 a sample whose pixels are all ignored has empty sums and Dice divides 0 by 0 (#5631): 'micro'
-        # returns NaN, and 'macro' returns the documented loss 1 for that sample but a non-finite gradient, where
-        # tversky_loss substitutes a safe denominator. A weight of 0 for every class empties the weighted 'micro'
-        # cardinality of every sample the same way, while 'macro' keeps loss 1; in float16 that weight's 'micro'
-        # gradient is non-finite at the default eps too, its 2 / eps intersection gradient being past the float16
-        # range. The default eps keeps the all-ignored sample finite in both averages.
+    def test_convention_dice_loss_empty_reductions_are_finite_5631(self, device, dtype):
+        # Empty weighted reductions return loss 1 and have finite gradients, including with eps=0. The loss is then the
+        # constant 1, so the gradient with respect to an all-zero weight is zero as well.
         g = torch.Generator().manual_seed(0)
         logits = torch.randn(2, 3, 4, 6, generator=g).to(device=device, dtype=dtype).requires_grad_()
         labels = torch.randint(0, 3, (2, 4, 6), generator=g).to(device)
         dice = kornia.losses.dice_loss
-        zero = torch.zeros(3, device=device, dtype=dtype)
-        assert dice(logits, labels, eps=0.0, weight=zero).isnan()
-        self.assert_close(dice(logits, labels, average="macro", eps=0.0, weight=zero).detach(), logits.new_tensor(1.0))
+        zero = torch.zeros(3, device=device, dtype=dtype, requires_grad=True)
+
+        for average in ("micro", "macro"):
+            loss = dice(logits, labels, average=average, eps=0.0, weight=zero)
+            self.assert_close(loss.detach(), logits.new_tensor(1.0))
+            grad, grad_weight = torch.autograd.grad(loss, (logits, zero), retain_graph=True)
+            assert loss.isfinite()
+            assert grad.isfinite().all()
+            self.assert_close(grad, torch.zeros_like(grad), rtol=0, atol=0)
+            self.assert_close(grad_weight, torch.zeros_like(grad_weight), rtol=0, atol=0)
+
         if dtype == torch.float16:
             micro = dice(logits, labels, weight=zero)
             (grad,) = torch.autograd.grad(micro, logits)
             self.assert_close(micro.detach(), logits.new_tensor(1.0))
-            assert not grad.isfinite().all()
+            assert grad.isfinite().all()
+
         labels[0] = -100
-        assert dice(logits, labels, eps=0.0).isnan()
-        macro = dice(logits, labels, average="macro", eps=0.0)
-        rest = dice(logits[1:], labels[1:], average="macro", eps=0.0)
-        self.assert_close(macro.detach(), (1 + rest.detach()) / 2)
-        (grad,) = torch.autograd.grad(macro, logits)
-        assert not grad.isfinite().all()
         for average in ("micro", "macro"):
-            loss = dice(logits, labels, average=average)
+            loss = dice(logits, labels, average=average, eps=0.0)
+            rest = dice(logits[1:], labels[1:], average=average, eps=0.0)
+            self.assert_close(loss.detach(), (1 + rest.detach()) / 2)
             (grad,) = torch.autograd.grad(loss, logits)
             assert loss.isfinite()
             assert grad.isfinite().all()
+            self.assert_close(grad[0], torch.zeros_like(grad[0]), rtol=0, atol=0)

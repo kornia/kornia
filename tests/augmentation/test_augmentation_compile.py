@@ -72,6 +72,21 @@ class TestAugmentationCompile(BaseTester):
         self.assert_close(out_input, input.flip(-1))
         self.assert_close(out_mask, mask.flip(-1))
 
+    @pytest.mark.parametrize("keepdim", [None, True])
+    def test_dynamo_sequential_bhw_mask_5598(self, device, dtype, torch_optimizer, keepdim):
+        # A (B, H, W) mask takes its batch size from ``batch_prob``; reading it from the ``forward_input_shape``
+        # tensor was a data-dependent branch, on the way in and, under keepdim, on the way out.
+        input = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        mask = torch.rand(2, 8, 8, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(
+            K.RandomHorizontalFlip(p=1.0),
+            data_keys=["input", "mask"],
+            keepdim=keepdim,
+        )
+        out_input, out_mask = torch_optimizer(aug, fullgraph=True)(input, mask)
+        self.assert_close(out_input, input.flip(-1))
+        self.assert_close(out_mask, mask.flip(-1) if keepdim else mask.flip(-1).unsqueeze(1))
+
     def test_dynamo_sequential_bbox(self, device, dtype, torch_optimizer):
         # The 'bbox' key imports through Boxes.from_tensor('vertices_plus'), whose finiteness check is
         # asynchronous, so the box path compiles with fullgraph=True (#4177).
