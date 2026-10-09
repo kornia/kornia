@@ -225,7 +225,7 @@ class FocalLoss(nn.Module):
         self.alpha: Optional[float] = alpha
         self.gamma: float = gamma
         self.reduction: str = reduction
-        self.weight: Optional[torch.Tensor] = weight
+        self.register_buffer("weight", weight, persistent=False)
         self.ignore_index: Optional[int] = ignore_index
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
@@ -435,8 +435,8 @@ class BinaryFocalLossWithLogits(nn.Module):
         self.alpha: Optional[float] = alpha
         self.gamma: float = gamma
         self.reduction: str = reduction
-        self.pos_weight: Optional[torch.Tensor] = pos_weight
-        self.weight: Optional[torch.Tensor] = weight
+        self.register_buffer("pos_weight", pos_weight, persistent=False)
+        self.register_buffer("weight", weight, persistent=False)
         self.ignore_index: Optional[int] = ignore_index
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
