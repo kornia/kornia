@@ -274,9 +274,8 @@ class TestCubicSolver(BaseTester):
     def test_float32_rows_float32_arithmetic_cannot_resolve(self, coeffs, expected, device, dtype):
         if dtype != torch.float32:
             pytest.skip("The rows exercise float32 arithmetic.")
-        if device.type not in ("cpu", "mps"):
-            pytest.skip("Eager CUDA promotes only the rows its float32 discriminant bound flags.")
-        # CPU and MPS solve float32 cubics in float64. References: sympy real-root isolation.
+        # Float32 cubics are solved in float64 on every device; a per-row float32 bound on CUDA missed the
+        # close pair. References: sympy real-root isolation.
         roots, num_real = _solve_cubic_with_count(torch.tensor([coeffs], device=device, dtype=dtype))
         assert num_real.tolist() == [3]
         expected = torch.tensor([expected], device=device, dtype=dtype)

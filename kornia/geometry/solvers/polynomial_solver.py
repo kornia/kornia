@@ -217,26 +217,6 @@ def _scaled_quadratic_coefficients(coeffs: torch.Tensor) -> tuple[torch.Tensor, 
     return (coeffs / scale[:, None]).unbind(dim=-1)
 
 
-def _cubic_discriminant_is_uncertain(coeffs: torch.Tensor) -> torch.Tensor:
-    """Return float32 cubic rows whose Cardano discriminant needs more precision."""
-    a, b, c, d = coeffs.unbind(dim=-1)
-    one = torch.ones_like(a)
-    zero = torch.zeros_like(a)
-    cubic = a != 0
-    safe_a = torch.where(cubic, a, one)
-    b_a = torch.where(cubic, b / safe_a, zero)
-    c_a = torch.where(cubic, c / safe_a, zero)
-    d_a = torch.where(cubic, d / safe_a, zero)
-    q = (3 * c_a - b_a * b_a) / 9
-    r = (9 * b_a * c_a - 27 * d_a - 2 * b_a * b_a * b_a) / 54
-    q3 = q * q * q
-    discriminant = q3 + r * r
-    error_bound = 32 * torch.finfo(coeffs.dtype).eps * (q3.abs() + r * r)
-    return cubic & (
-        (torch.isfinite(discriminant) & (discriminant.abs() <= error_bound)) | ~torch.isfinite(discriminant)
-    )
-
-
 def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     r"""Solve given cubic equation.
 
@@ -254,11 +234,9 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         - The closed form is evaluated on the row scaled by an exact power of two to a unit root bound, and the
           roots are scaled back, so its intermediates neither overflow nor underflow for a tiny leading coefficient
           or for roots far from unit scale (#4914).
-        - Half inputs are evaluated in float32. Float32 cubics are solved in float64 on CPU, on MPS (on the CPU,
-          as MPS has no float64) and in captured graphs, so a row's roots do not depend on the rest of its batch.
-          On MPS, beyond roughly ``10**5`` rows this is slower than an on-device solve. Eager CUDA execution
-          promotes only the rows whose float32 discriminant sign is uncertain. The output retains the input dtype
-          and device.
+        - Half inputs are evaluated in float32. Float32 cubics are solved in float64 (on MPS, which has no
+          float64, on the CPU), so a row's roots do not depend on the rest of its batch. On MPS, beyond roughly
+          ``10**5`` rows this is slower than an on-device solve. The output retains the input dtype and device.
 
     Args:
         coeffs : The coefficients cubic equation : `(B, 4)`
@@ -296,32 +274,17 @@ def _solve_cubic(coeffs: torch.Tensor, _allow_promotion: bool = True) -> tuple[t
         roots, num_real = _solve_cubic(coeffs.float(), _allow_promotion)
         return roots.to(coeffs.dtype), num_real
 
-    # Float32 cannot reliably resolve the sign of Cardano's discriminant for
-    # close large roots. CPU, MPS and compiled graphs solve every row in float64:
-    # on CPU that costs less than locating the uncertain rows, and it keeps each
-    # row independent of its batch. MPS has no float64, so its rows go to the
-    # CPU; a per-row float32 bound there missed cancellation inside Q and R.
-    # Eager CUDA execution promotes only rows inside the floating-point error bound.
-    # The seven-point kernel keeps its native precision in _solve_cubic_real.
+    # Float32 cannot reliably resolve the sign of Cardano's discriminant for close large roots, so every float32
+    # row is solved in float64, which also keeps each row independent of its batch. A per-row float32 error bound
+    # missed cancellation inside Q and R and miscounted 5-6 % of close-pair rows on CUDA; on CUDA, promoting every
+    # row is also faster, as it drops that bound's pass and host synchronizations. MPS has no float64, so its rows
+    # go to the CPU. The seven-point kernel keeps its native precision in _solve_cubic_real.
     if coeffs.dtype == torch.float32 and _allow_promotion:
         # Separate device and dtype copies avoid MPS's combined conversion losing
-        # values (pytorch#197715). Captured graphs keep fixed shape.
-        if coeffs.device.type in ("cpu", "mps") or torch.compiler.is_compiling():
-            precise_coeffs = coeffs.cpu().double() if coeffs.device.type == "mps" else coeffs.double()
-            roots, num_real = _solve_cubic(precise_coeffs, False)
-            return roots.to(dtype=coeffs.dtype).to(device=coeffs.device), num_real.to(device=coeffs.device)
-        with torch.no_grad():
-            uncertain = _cubic_discriminant_is_uncertain(coeffs)
-        if torch.any(uncertain):
-            placeholder = torch.tensor([1.0, 0.0, 0.0, -1.0], device=coeffs.device, dtype=coeffs.dtype)
-            native_coeffs = torch.where(uncertain[:, None], placeholder, coeffs)
-            roots, num_real = _solve_cubic(native_coeffs, False)
-            precise_roots, precise_count = _solve_cubic(coeffs[uncertain].double(), False)
-            roots = roots.clone()
-            num_real = num_real.clone()
-            roots[uncertain] = precise_roots.to(dtype=coeffs.dtype).to(device=coeffs.device)
-            num_real[uncertain] = precise_count.to(device=coeffs.device)
-            return roots, num_real
+        # values (pytorch#197715).
+        precise_coeffs = coeffs.cpu().double() if coeffs.device.type == "mps" else coeffs.double()
+        roots, num_real = _solve_cubic(precise_coeffs, False)
+        return roots.to(dtype=coeffs.dtype).to(device=coeffs.device), num_real.to(device=coeffs.device)
 
     a, b, c, d = coeffs.unbind(dim=-1)
     zero = torch.zeros_like(a)
