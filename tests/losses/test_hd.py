@@ -178,3 +178,48 @@ class TestHausdorffLoss(BaseTester):
         loss = hd(k=2)
 
         self.gradcheck(loss, (logits, labels), dtypes=[torch.float64, torch.int64])
+
+
+class TestConventionsHausdorffERLoss(BaseTester):
+    """Pins for the input form, output layout and per-image scoring of the Hausdorff erosion losses."""
+
+    @pytest.mark.parametrize(
+        "hd,spatial", [(kornia.losses.HausdorffERLoss, (9, 13)), (kornia.losses.HausdorffERLoss3D, (5, 7, 9))]
+    )
+    def test_convention_hausdorff_er_loss_none_is_class_first_and_channel_c_scores_label_c(
+        self, hd, spatial, device, dtype
+    ):
+        # pred holds per-class probabilities and nothing is applied to it; channel c is compared with target == c,
+        # class 0 included, and reduction='none' returns (C, B, 1, *spatial), class axis first; the default 'mean' is
+        # the plain mean of that tensor
+        labels = torch.zeros(2, 1, *spatial, dtype=torch.long, device=device)
+        labels[0, 0, ..., 1:4, 1:4] = 1
+        labels[0, 0, ..., 3:6, 5:8] = 2
+        labels[1, 0, ..., 2:6, 4:8] = 1
+        labels[1, 0, ..., 0:2, 0:3] = 2
+        pred = (labels == torch.arange(3, device=device).view(1, 3, *[1] * len(spatial))).to(dtype)
+        none = hd(reduction="none")
+        self.assert_close(none(pred, labels), torch.zeros(3, 2, 1, *spatial, device=device, dtype=dtype))
+        pred[1, 0, ..., 3:6, 0:4] = 1 - pred[1, 0, ..., 3:6, 0:4]  # a 3 x 4 error in class 0 of image 1
+        pred[0, 2, ..., 0:3, 5:8] = 1 - pred[0, 2, ..., 0:3, 5:8]  # a 3 x 3 error in class 2 of image 0
+        out = none(pred, labels)
+        assert out.shape == (3, 2, 1, *spatial)
+        assert (out.flatten(2).sum(-1) > 0).tolist() == [[False, True], [False, False], [True, False]]
+        self.assert_close(hd()(pred, labels), out.mean())
+
+    @pytest.mark.parametrize(
+        "hd,spatial", [(kornia.losses.HausdorffERLoss, (9, 13)), (kornia.losses.HausdorffERLoss3D, (5, 7, 9))]
+    )
+    def test_convention_hausdorff_er_loss_scores_each_image_on_its_own(self, hd, spatial, device, dtype):
+        # The erosions are min-max normalised per image and class, so an image's 'none' slice does not depend on the
+        # other images of the batch: a thin error (image 0) and a thick one (image 1), scored together and alone
+        labels = torch.zeros(2, 1, *spatial, dtype=torch.long, device=device)
+        labels[0, 0, ..., 1:4, 1:4] = 1
+        labels[1, 0, ..., 2:6, 4:8] = 1
+        pred = (labels == torch.arange(2, device=device).view(1, 2, *[1] * len(spatial))).to(dtype)
+        pred[0, 1, ..., 2:3, 1:4] = 0.0  # image 0 misses one row of its object: a thin error
+        pred[1, 1, ..., 2:6, 4:8] = 0.0  # image 1 misses its whole object
+        none = hd(reduction="none")
+        batch = none(pred, labels)
+        self.assert_close(batch[:, :1], none(pred[:1], labels[:1]))
+        self.assert_close(batch[:, 1:], none(pred[1:], labels[1:]))

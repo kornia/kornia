@@ -14,7 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+import math
 import warnings
+from functools import cache
 
 import pytest
 import torch
@@ -593,3 +595,413 @@ class TestMutualInformationEagerBackendTraces(BaseTester):
         with torch._dynamo.config.patch(capture_dynamic_output_shape_ops=True):
             compiled = torch.compile(loss_fn, backend="eager", fullgraph=True)
             self.assert_close(compiled(signal, target), loss_fn(signal, target))
+
+
+_HALF_FLOOR_SKIP = (
+    "MI in half precision is biased by the empty-bin floor finfo(dtype).eps, applied in count units before the "
+    "histogram is normalised (#4153)"
+)
+
+
+@cache
+def _supports_bool_index_backward(device_type: str, dtype: torch.dtype) -> bool:
+    """Whether boolean-mask indexing has a backward kernel here (torch 2.5.1 has none for MPS half).
+
+    The losses index the target with its mask, so a gradient to the target needs it.
+    """
+    x = torch.zeros(2, device=device_type, dtype=dtype, requires_grad=True)
+    try:
+        x[torch.ones(2, dtype=torch.bool, device=device_type)].sum().backward()
+    except RuntimeError:
+        return False
+    return True
+
+
+class TestConventionsMutualInformation(BaseTester):
+    @staticmethod
+    def _images(device, dtype):
+        """A batch of two asymmetric 12 x 20 images: a column ramp plus noise, a nonlinear function of it, noise."""
+        g = torch.Generator().manual_seed(0)
+        a = torch.rand(2, 12, 20, generator=g, dtype=torch.float64) + torch.linspace(0, 1, 20, dtype=torch.float64)
+        c = a**2 + 0.05 * torch.rand(2, 12, 20, generator=g, dtype=torch.float64)
+        b = torch.rand(2, 12, 20, generator=g, dtype=torch.float64)
+        return tuple(t.to(device=device, dtype=dtype) for t in (a, c, b))
+
+    @staticmethod
+    def _masks(device):
+        """Input ROI = left 14 columns, target ROI = top 8 rows of a 12 x 20 image (112 pixels in both)."""
+        input_mask = torch.zeros(12, 20, dtype=torch.bool)
+        input_mask[:, :14] = True
+        target_mask = torch.zeros(12, 20, dtype=torch.bool)
+        target_mask[:8] = True
+        return input_mask.to(device), target_mask.to(device)
+
+    @staticmethod
+    def _levels(device):
+        """Integer images with levels 0 .. 8, both extremes present in each."""
+        i = torch.arange(12, device=device)[:, None]
+        j = torch.arange(20, device=device)[None, :]
+        a = (i + 2 * j) % 9
+        return a, (2 * a + i % 3) % 9
+
+    def test_convention_mi_losses_are_negative_mi_and_nmi_in_nats(self, device, dtype):
+        a, c, b = self._images(device, dtype)
+        x, y = a.flatten(-2), c.flatten(-2)
+        # the module built on the target returns the marginal entropies of the joint histogram and its joint entropy
+        h_1, h_2, h_12 = MILossFromRef(y).entropies(x)
+        self.assert_close(mutual_information_loss(x, y), -(h_1 + h_2 - h_12))
+        self.assert_close(normalized_mutual_information_loss(x, y), -(h_1 + h_2) / h_12)
+        # minimising the loss maximises the dependence: identical < dependent < independent, per sample
+        mi = [mutual_information_loss_2d(a, t) for t in (a, c, b)]
+        nmi = [normalized_mutual_information_loss_2d(a, t) for t in (a, c, b)]
+        for losses in (mi, nmi):
+            assert (losses[0] < losses[1]).all()
+            assert (losses[1] < losses[2]).all()
+        # NMI = (H_1 + H_2) / H_12 lies in [1, 2], so its loss lies in [-2, -1]
+        nmi = torch.stack(nmi)
+        assert ((nmi >= -2) & (nmi <= -1)).all()
+        # natural log: a ramp fills the bins evenly, so each marginal entropy is close to ln(num_bins) nats
+        # (in bits it would be 4 and 6)
+        ramp = torch.linspace(0, 1, 4096, device=device, dtype=dtype)
+        for num_bins in (16, 64):
+            h_1, h_2, _ = MILossFromRef(ramp, num_bins=num_bins).entropies(ramp)
+            assert abs(h_1.item() - math.log(num_bins)) < 0.05
+            assert abs(h_2.item() - math.log(num_bins)) < 0.05
+        # entropies() returns the compared signal's marginal first: a cubed ramp crowds the low bins
+        h_1, h_2, _ = MILossFromRef(ramp).entropies(ramp**3)
+        assert h_1 < h_2 - 0.1
+
+    def test_convention_mi_losses_are_symmetric_and_ignore_pixel_order(self, device, dtype):
+        a, c, _ = self._images(device, dtype)
+        x, y = a.flatten(-2), c.flatten(-2)
+        perm = torch.randperm(240, generator=torch.Generator().manual_seed(1)).to(device)
+        for loss in (mutual_information_loss, normalized_mutual_information_loss):
+            expected = loss(x, y)
+            self.assert_close(loss(y, x), expected)
+            # relabelling the pixels of both images alike changes nothing ...
+            self.assert_close(loss(x[..., perm], y[..., perm]), expected)
+            # ... while permuting one image only destroys the correspondence (control)
+            assert (loss(x[..., perm], y) - expected > 0.1).all()
+        # transposing both images (H != W) leaves the 2-D losses unchanged
+        self.assert_close(mutual_information_loss_2d(a.mT, c.mT), mutual_information_loss_2d(a, c))
+        self.assert_close(
+            normalized_mutual_information_loss_2d(a.mT, c.mT), normalized_mutual_information_loss_2d(a, c)
+        )
+
+    def test_convention_mi_losses_min_max_normalise_each_sample(self, device, dtype):
+        a, c, _ = self._images(device, dtype)
+        expected = mutual_information_loss_2d(a, c)
+        # positive affine maps of sample 1 in both images: no assumed data range (sample 1 unchanged) and no
+        # batch-wide range (sample 0 bitwise unchanged)
+        x, y = a.clone(), c.clone()
+        x[1] = x[1] * 1000 + 50
+        y[1] = y[1] * 1000 - 50
+        loss = mutual_information_loss_2d(x, y)
+        assert torch.equal(loss[0], expected[0])
+        # half precision rounds the mapped values to a coarser grid of bin positions
+        self.assert_close(loss[1], expected[1], low_tolerance=dtype in (torch.float16, torch.bfloat16))
+        # one outlier stretches its sample's range and squeezes every other value into a few bins
+        x = a.clone()
+        x[0, 3, 5] = 50.0
+        loss = mutual_information_loss_2d(x, c)
+        assert loss[0] - expected[0] > 1.0
+        assert torch.equal(loss[1], expected[1])
+
+    def test_convention_mi_losses_treat_a_range_below_eps_as_constant(self, device, dtype):
+        a, c, _ = self._images(device, dtype)
+        eps = torch.finfo(dtype).eps
+        constant = torch.full_like(c, 0.3)
+        # the threshold is absolute: a * eps / 4 spans about eps / 2, although its relative range is about 1
+        tiny = a * (eps / 4)
+        for x, y in ((a, constant), (constant, c), (tiny, c)):
+            # num_bins=16 keeps the empty-bin floor small in half precision; the rule does not depend on it
+            mi = mutual_information_loss_2d(x, y, num_bins=16)
+            nmi = normalized_mutual_information_loss_2d(x, y, num_bins=16)
+            assert (mi.abs() < 0.05).all()
+            assert ((nmi + 1).abs() < 0.05).all()
+        # a sample below the threshold also gets a zero gradient, not only an exactly constant one
+        x = tiny.clone().requires_grad_(True)
+        (grad,) = torch.autograd.grad(mutual_information_loss_2d(x, c, num_bins=16).sum(), (x,))
+        self.assert_close(grad, torch.zeros_like(grad), rtol=0.0, atol=0.0)
+        # control: at 64 eps per unit the same image is a signal (a power-of-two scaling changes no position)
+        self.assert_close(
+            mutual_information_loss_2d(a * (64 * eps), c, num_bins=16), mutual_information_loss_2d(a, c, num_bins=16)
+        )
+        # the threshold includes eps itself: levels 0, eps / 2 and eps are constant, levels 0, eps and 2 eps are not
+        med = c.flatten(-2).median(-1).values[:, None, None]
+        for k, is_constant in ((1, True), (2, False)):
+            t = torch.where(c < med, 0.0, k * eps / 2).to(dtype)
+            t[:, 0, 0] = k * eps
+            mi = mutual_information_loss_2d(t, c, num_bins=16)
+            assert (mi.abs() < 0.05).all() if is_constant else (mi < -0.3).all()
+
+    def test_convention_mi_losses_return_one_value_per_leading_index(self, device, dtype):
+        g = torch.Generator().manual_seed(2)
+        x = torch.rand(2, 3, 6, 10, generator=g, dtype=torch.float64)
+        y = x**2 + 0.1 * torch.rand(2, 3, 6, 10, generator=g, dtype=torch.float64)
+        x, y = x.to(device=device, dtype=dtype), y.to(device=device, dtype=dtype)
+        pairs = (
+            (mutual_information_loss_2d, mutual_information_loss_3d),
+            (normalized_mutual_information_loss_2d, normalized_mutual_information_loss_3d),
+        )
+        for loss_2d, loss_3d in pairs:
+            # no reduction: _2d reads (B, C, H, W) as B x C images, _3d as B volumes of depth C
+            out_2d, out_3d = loss_2d(x, y), loss_3d(x, y)
+            assert out_2d.shape == (2, 3)
+            assert out_3d.shape == (2,)
+            assert out_2d.dtype == dtype
+            assert out_3d.dtype == dtype
+            for i in range(2):
+                self.assert_close(out_3d[i], loss_3d(x[i], y[i]))
+                for j in range(3):
+                    self.assert_close(out_2d[i, j], loss_2d(x[i, j], y[i, j]))
+        # one target is not broadcast over a batch of inputs
+        with pytest.raises((ValueError, BaseError)):
+            mutual_information_loss(x[:, 0].flatten(-2), y[0, 0].flatten())
+
+    @pytest.mark.parametrize(
+        "flat, loss_2d, loss_3d",
+        [
+            (mutual_information_loss, mutual_information_loss_2d, mutual_information_loss_3d),
+            (
+                normalized_mutual_information_loss,
+                normalized_mutual_information_loss_2d,
+                normalized_mutual_information_loss_3d,
+            ),
+        ],
+    )
+    def test_convention_mi_losses_2d_3d_flatten_the_trailing_axes(self, device, dtype, flat, loss_2d, loss_3d):
+        a, c, _ = self._images(device, dtype)
+        input_mask, target_mask = self._masks(device)
+        # _2d is the flat loss on the row-major flattened last two axes; its masks are one image's (H, W)
+        assert torch.equal(
+            loss_2d(a, c, input_mask, target_mask),
+            flat(a.flatten(-2), c.flatten(-2), input_mask.flatten(), target_mask.flatten()),
+        )
+        # _3d flattens the last three axes; volumes of D = 4, H = 3, W = 20 with (D, H, W) masks
+        v, w = a.reshape(2, 4, 3, 20), c.reshape(2, 4, 3, 20)
+        v_mask, w_mask = input_mask.reshape(4, 3, 20), target_mask.reshape(4, 3, 20)
+        assert torch.equal(
+            loss_3d(v, w, v_mask, w_mask), flat(v.flatten(-3), w.flatten(-3), v_mask.flatten(), w_mask.flatten())
+        )
+        # a volume of depth 1 is an image
+        assert torch.equal(loss_3d(a[:, None], c[:, None]), loss_2d(a, c))
+
+    @pytest.mark.parametrize(
+        "loss, module, shape",
+        [
+            (mutual_information_loss, MILossFromRef, (240,)),
+            (mutual_information_loss_2d, MILossFromRef2D, (12, 20)),
+            (mutual_information_loss_3d, MILossFromRef3D, (4, 3, 20)),
+            (normalized_mutual_information_loss, NMILossFromRef, (240,)),
+            (normalized_mutual_information_loss_2d, NMILossFromRef2D, (12, 20)),
+            (normalized_mutual_information_loss_3d, NMILossFromRef3D, (4, 3, 20)),
+        ],
+    )
+    def test_convention_mi_losses_equal_the_from_ref_module_built_on_the_target(
+        self, device, dtype, loss, module, shape
+    ):
+        a, c, _ = self._images(device, dtype)
+        input_mask, target_mask = self._masks(device)
+        x, y = a.reshape(2, *shape), c.reshape(2, *shape)
+        x_mask, y_mask = input_mask.reshape(shape), target_mask.reshape(shape)
+        # bitwise: the target is the cached reference, the input the forward argument
+        assert torch.equal(loss(x, y, x_mask, y_mask), module(y, y_mask)(x, x_mask))
+
+    def test_convention_mi_losses_histogram_the_mask_intersection_normalised_per_own_mask(self, device, dtype):
+        a, c, _ = self._images(device, dtype)
+        input_mask, target_mask = self._masks(device)
+        expected = mutual_information_loss_2d(a, c, input_mask, target_mask)
+
+        def loss(x, y):
+            return mutual_information_loss_2d(x, y, input_mask, target_mask)
+
+        # pixel (11, 19) is outside both masks: extreme values there change nothing
+        x, y = a.clone(), c.clone()
+        x[:, 11, 19], y[:, 11, 19] = 1000.0, -1000.0
+        assert torch.equal(loss(x, y), expected)
+        # pixel (10, 0) is inside the input mask only: an in-range value there is not in the joint histogram ...
+        both = input_mask & target_mask
+        x = a.clone()
+        x[:, 10, 0] = (a[:, both].amin(-1) + a[:, both].amax(-1)) / 2
+        assert torch.equal(loss(x, c), expected)
+        # ... but the pixel takes part in the input's min-max normalisation, so a new maximum there moves the loss
+        x[:, 10, 0] = 5.0
+        assert ((loss(x, c) - expected).abs() > 0.1).all()
+        # likewise pixel (0, 19), inside the target mask only, as a new minimum of the target
+        y = c.clone()
+        y[:, 0, 19] = -5.0
+        assert ((loss(a, y) - expected).abs() > 0.1).all()
+        # the input is normalised over its own mask only: an extreme input value at the target-only pixel (0, 19)
+        # changes nothing, and an in-range target value there is not in the joint histogram
+        x = a.clone()
+        x[:, 0, 19] = 1000.0
+        assert torch.equal(loss(x, c), expected)
+        y = c.clone()
+        y[:, 0, 19] = (c[:, both].amin(-1) + c[:, both].amax(-1)) / 2
+        assert torch.equal(loss(a, y), expected)
+        # masks have one image's (H, W) layout: transposing the images together with their masks changes nothing
+        transposed = mutual_information_loss_2d(a.mT, c.mT, input_mask.T.contiguous(), target_mask.T.contiguous())
+        self.assert_close(transposed, expected)
+
+    def test_convention_mi_from_ref_caches_a_normalised_copy_of_the_reference(self, device, dtype):
+        a, c, b = self._images(device, dtype)
+        input_mask, target_mask = self._masks(device)
+        reference = c.clone()
+        module = MILossFromRef2D(reference, target_mask)
+        # bin_centers is a non-persistent buffer, so the state_dict holds the reference and its mask only
+        assert sorted(module.state_dict()) == ["mask", "signal"]
+        expected = module(a, input_mask)
+        # editing the reference after construction is not seen
+        reference.mul_(3).add_(b)
+        assert torch.equal(module(a, input_mask), expected)
+        assert ((MILossFromRef2D(reference, target_mask)(a, input_mask) - expected).abs() > 0.1).all()
+        # the cache is not detached: a reference that requires grad gets one, and only one, backward pass
+        if not _supports_bool_index_backward(device.type, dtype):
+            pytest.skip("no boolean-index backward kernel for this device and dtype")
+        reference = c.clone().requires_grad_(True)
+        module = MILossFromRef2D(reference)
+        module(a).sum().backward()
+        assert reference.grad is not None
+        assert reference.grad.abs().sum() > 0
+        with pytest.raises(RuntimeError):
+            module(a).sum().backward()
+
+    def test_convention_mi_kernel_members_hold_the_kernel_functions(self, device, dtype):
+        assert [k.name for k in MIKernel] == ["xu", "rectangular", "truncated_gaussian"]
+        d = torch.tensor([0.0, 0.25, 0.5, 0.75, 1.0, 1.5], device=device, dtype=dtype)
+        # the members are not callable; their value is the kernel f(d, window_radius=1.0)
+        with pytest.raises(TypeError):
+            MIKernel.xu(d)
+        # xu (Xu et al. 2008, Eq. 22): 1 - 0.1|d| - 1.8 d^2 below |d| = 0.5, 1.9 - 3.7|d| + 1.8 d^2 up to |d| = 1;
+        # rectangular: 1 on the closed support; truncated_gaussian: N(0, 1) density cut at |d| = 1
+        gaussian = [math.exp(-(v**2) / 2) / math.sqrt(2 * math.pi) for v in (0.0, 0.25, 0.5, 0.75, 1.0)]
+        values = {
+            "xu": [1.0, 0.8625, 0.5, 0.1375, 0.0, 0.0],
+            "rectangular": [1.0, 1.0, 1.0, 1.0, 1.0, 0.0],
+            "truncated_gaussian": [*gaussian, 0.0],
+        }
+        tol = 4 * torch.finfo(dtype).eps
+        for kernel in MIKernel:
+            actual = kernel.value(d)
+            expected = torch.tensor(values[kernel.name], device=device, dtype=actual.dtype)
+            self.assert_close(actual, expected, rtol=0.0, atol=tol)
+            # window_radius stretches the support; it is also the Gaussian's sigma, which halves that density
+            scale = 0.5 if kernel is MIKernel.truncated_gaussian else 1.0
+            self.assert_close(kernel.value(2 * d, window_radius=2.0), expected * scale, rtol=0.0, atol=tol)
+        # at radius 1, xu weights over unit-spaced bin centres sum to 1 (0.8625 + 0.1375, 0.5 + 0.5)
+        centres = torch.arange(64, device=device).to(dtype)
+        t = torch.tensor([0.25, 17.75, 40.5, 62.75], device=device, dtype=dtype)
+        self.assert_close(MIKernel.xu.value(centres[:, None] - t).sum(0), torch.ones_like(t), rtol=0.0, atol=tol)
+
+    @pytest.mark.parametrize("kernel", list(MIKernel))
+    def test_convention_mi_losses_differentiate_both_arguments_except_rectangular(self, device, dtype, kernel):
+        if kernel is not MIKernel.rectangular and not _supports_bool_index_backward(device.type, dtype):
+            pytest.skip("no boolean-index backward kernel for this device and dtype")
+        a, c, _ = self._images(device, dtype)
+        x, y = a.requires_grad_(True), c.requires_grad_(True)
+        for loss_fn in (mutual_information_loss_2d, normalized_mutual_information_loss_2d):
+            loss = loss_fn(x, y, kernel_function=kernel)
+            if kernel is MIKernel.rectangular:
+                # the box kernel is piecewise constant: the loss has no autograd graph (evaluation only)
+                assert not loss.requires_grad
+                with pytest.raises(RuntimeError):
+                    loss.sum().backward()
+            else:
+                # the target is rebuilt on every call, so both arguments get a gradient, in every sample
+                grad_x, grad_y = torch.autograd.grad(loss.sum(), (x, y))
+                for grad in (grad_x, grad_y):
+                    assert torch.isfinite(grad).all()
+                    assert (grad.abs().flatten(1).sum(1) > 0).all()
+
+    def test_convention_mi_losses_num_bins_and_window_radius_set_the_resolution(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip(_HALF_FLOOR_SKIP)
+        a, c, _ = self._images(device, dtype)
+        # On this fixture finer bins raise MI and a wider kernel lowers it; these are not general monotonic rules.
+        mi_aa = [mutual_information_loss_2d(a, a, num_bins=n) for n in (4, 16, 64)]
+        assert (mi_aa[0] > mi_aa[1]).all()
+        assert (mi_aa[1] > mi_aa[2]).all()
+        mi_ac = [mutual_information_loss_2d(a, c, window_radius=r) for r in (0.5, 1.0, 2.0, 4.0)]
+        assert all((low < high).all() for low, high in zip(mi_ac, mi_ac[1:]))
+        # A counterexample to both trends: finer bins lower MI, and a wider kernel raises it.
+        x = torch.tensor([0.0, 0.25, 0.5, 0.75, 1.0], device=device, dtype=dtype)
+        y = torch.tensor([0.0, 1.0, 0.0, 1.0, 0.0], device=device, dtype=dtype)
+        assert mutual_information_loss(x, y, num_bins=6) > mutual_information_loss(x, y, num_bins=5)
+        assert mutual_information_loss(x, y, window_radius=2.0) < mutual_information_loss(x, y, window_radius=1.0)
+        # the default histogram is soft: an image is not fully informative about itself, MI(a, a) < H(a) and
+        # NMI(a, a) < 2 ...
+        h_a, _, _ = MILossFromRef(a.flatten(-2)).entropies(a.flatten(-2))
+        assert (-mutual_information_loss_2d(a, a) < h_a - 0.1).all()
+        assert (normalized_mutual_information_loss_2d(a, a) > -1.9).all()
+        # ... while window_radius=0.5 gives every sample a single bin, a hard histogram: NMI(a, a) = 2
+        self.assert_close(
+            normalized_mutual_information_loss_2d(a, a, window_radius=0.5),
+            torch.full((2,), -2.0, device=device, dtype=dtype),
+        )
+
+    def test_convention_mi_losses_match_hard_histograms_on_integer_levels_5546(self, device, dtype):
+        """Integer levels 0 .. K on the bin centres (``num_bins=K + 1``) give the hard-histogram MI and NMI (#5546)."""
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip(_HALF_FLOOR_SKIP + "; float16 entropies also miss the reference literals' tolerance")
+        # levels 0 .. 8 with both extremes present normalise onto the centres 0 .. 8 of num_bins=9, where the
+        # default kernel puts every pixel, the maximum included, in its own bin. scikit-learn 1.9.0 /
+        # scikit-image 0.26.0 (numpy 2.0.0) on the same arrays:
+        #   mutual_info_score(A.ravel(), B.ravel()) = 1.0991837969703617
+        #   normalized_mutual_information(A, B, bins=9) = 1.3338539514099725
+        levels_a, levels_b = self._levels(device)
+        x, y = levels_a.to(dtype), levels_b.to(dtype)
+        mi = mutual_information_loss_2d(x, y, num_bins=9)
+        self.assert_close(mi, torch.tensor(-1.0991837969703617, device=device, dtype=dtype))
+        self.assert_close(
+            normalized_mutual_information_loss_2d(x, y, num_bins=9),
+            torch.tensor(-1.3338539514099725, device=device, dtype=dtype),
+        )
+        # every pixel counts, so MI does not depend on the intensity polarity
+        self.assert_close(mutual_information_loss_2d(8 - x, y, num_bins=9), mi)
+
+    def test_convention_mi_from_ref_follows_to_dtype_5547(self, device, dtype):
+        """A ``FromRef`` module moved with ``.to(dtype)`` computes like one built in that dtype (#5547)."""
+        # each move crosses a large gap in eps (MPS has no float64), so a module that kept its construction eps,
+        # the empty-bin floor, would compute a different loss (into float16: NaN)
+        if dtype in (torch.float16, torch.bfloat16):
+            moved_dtype = torch.float32
+        elif dtype == torch.float32 and device.type != "mps":
+            moved_dtype = torch.float64
+        else:
+            moved_dtype = torch.float16
+        # integer levels 0 .. 4 normalise to multiples of (num_bins - 1) / 4 exactly in every dtype, so the cached
+        # reference converts exactly and any difference comes from the module's own state
+        reference = self._levels(device)[0] % 5
+        # eps acts here as the empty-bin floor (#4153); re-derive the fixture if the floor changes
+        moved = MILossFromRef2D(reference.to(dtype)).to(moved_dtype)
+        native = MILossFromRef2D(reference.to(moved_dtype))
+        assert torch.equal(moved.signal, native.signal)
+        x = self._images(device, moved_dtype)[0][0]
+        assert torch.equal(moved(x), native(x))
+
+    def test_wart_mi_from_ref_keeps_the_callers_mask_tensor_5630(self, device, dtype):
+        """The ``mask`` buffer is the caller's mask tensor, so editing it in place changes the loss (#5630)."""
+        a, c, _ = self._images(device, dtype)
+        _, target_mask = self._masks(device)
+        module = MILossFromRef2D(c, target_mask)
+        expected = module(a)
+        # move the ROI down four rows: as many positions as before, so nothing raises
+        target_mask.copy_(torch.roll(target_mask, 4, 0))
+        assert ((module(a) - expected).abs() > 0.1).all()
+
+    def test_wart_mi_losses_float16_nan_on_a_large_image_4153(self, device, dtype):
+        """The empty-bin floor of ``finfo(dtype).eps`` counts makes float16 NaN on large images (#4153)."""
+        if dtype != torch.float16:
+            pytest.skip("float16 only: the floor eps / mass rounds to 0 once the mass passes 2**15")
+        g = torch.Generator().manual_seed(7)
+        u = torch.rand(184, 184, generator=g, dtype=torch.float64)
+        v = u**2 + 0.05 * torch.rand(184, 184, generator=g, dtype=torch.float64)
+        x, y = u.to(device, dtype), v.to(device, dtype)
+        assert torch.isnan(mutual_information_loss_2d(x, y)).all()
+        # control: a smaller image in float16 and the same image in float32 are finite
+        assert torch.isfinite(mutual_information_loss_2d(x[:120, :120], y[:120, :120])).all()
+        assert torch.isfinite(mutual_information_loss_2d(x.float(), y.float())).all()
+        # the rectangular kernel counts each sample in about two bins per signal, four times xu's histogram mass
+        rect = mutual_information_loss_2d(x[:100, :100], y[:100, :100], kernel_function=MIKernel.rectangular)
+        assert torch.isnan(rect).all()
