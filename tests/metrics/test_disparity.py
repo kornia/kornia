@@ -586,3 +586,75 @@ class TestKittiD1Error(BaseTester):
         op = kornia.metrics.kitti_d1_error
         op_optimized = torch_optimizer(op)
         self.assert_close(op(input, target, 3.0, 0.05, mask), op_optimized(input, target, 3.0, 0.05, mask))
+
+
+class TestConventionsDisparity(BaseTester):
+    # Two (H, W) = (3, 4) maps. Sample 0: all 12 pixels valid, errors 4, 3 and 2 px on disparities 10, 60 and 45.
+    # Sample 1: only the first row valid, errors 4 px on 100 (4 %) and 6 px on 90 (6.7 %); its masked rows hide a
+    # 1 px error on a disparity of 5.
+    TARGET = [
+        [[10.0, 20.0, 30.0, 40.0], [50.0, 60.0, 70.0, 80.0], [15.0, 25.0, 35.0, 45.0]],
+        [[100.0, 90.0, 80.0, 70.0], [60.0, 50.0, 40.0, 30.0], [20.0, 10.0, 5.0, 1.0]],
+    ]
+    INPUT = [
+        [[14.0, 20.0, 30.0, 40.0], [50.0, 63.0, 70.0, 80.0], [15.0, 25.0, 35.0, 47.0]],
+        [[104.0, 96.0, 80.0, 70.0], [60.0, 50.0, 40.0, 30.0], [20.0, 10.0, 6.0, 1.0]],
+    ]
+
+    def _sample(self, device, dtype):
+        input = torch.tensor(self.INPUT, device=device, dtype=dtype)
+        target = torch.tensor(self.TARGET, device=device, dtype=dtype)
+        mask = torch.ones(2, 3, 4, device=device, dtype=torch.bool)
+        mask[1, 1:] = False
+        return input, target, mask
+
+    def test_convention_disparity_metrics_pool_every_valid_pixel_of_the_batch(self, device, dtype):
+        """The four metrics pool the valid pixels of all images into one value; bad-pixel and D1 are fractions."""
+        input, target, mask = self._sample(device, dtype)
+        # Pooled over the 16 valid pixels, against the mean of the two per-image values:
+        #   MAE   (4 + 3 + 2 + 4 + 6) / 16 = 1.1875, not (9/12 + 10/4) / 2 = 1.625
+        #   RMSE  sqrt((16 + 9 + 4 + 16 + 36) / 16) = 2.25, not (sqrt(29/12) + sqrt(52/4)) / 2 = 2.5801
+        #   bad   3 / 16 = 0.1875 (the 3 px error is not > 3), not (1/12 + 2/4) / 2 = 0.2917
+        #   D1    2 / 16 = 0.125 (4 px on 100 is not > 5 %), not (1/12 + 1/4) / 2 = 0.1667
+        # The KITTI devkit (evaluate_scene_flow.cpp lines 51, 487, 673) sums the outlier and pixel counts over the
+        # images before dividing: D1 = 0.125 here.
+        expected = {
+            kornia.metrics.mean_absolute_disparity_error: 1.1875,
+            kornia.metrics.root_mean_squared_disparity_error: 2.25,
+            kornia.metrics.mean_bad_pixel_error: 0.1875,
+            kornia.metrics.kitti_d1_error: 0.125,
+        }
+        for metric, value in expected.items():
+            pooled = metric(input, target, valid_mask=mask)
+            assert pooled.shape == ()
+            self.assert_close(pooled, torch.tensor(value, device=device, dtype=dtype))
+            assert metric(input, target, valid_mask=mask, reduction="none").shape == (2, 3, 4)
+        # A NaN at a valid pixel, input[0, 0, 0] (a bad pixel and a D1 outlier above), propagates into MAE and RMSE,
+        # while bad-pixel and D1 count it as a good pixel: 2 / 16 and 1 / 16.
+        nan_input = input.clone()
+        nan_input[0, 0, 0] = float("nan")
+        assert torch.isnan(kornia.metrics.mean_absolute_disparity_error(nan_input, target, valid_mask=mask))
+        assert torch.isnan(kornia.metrics.root_mean_squared_disparity_error(nan_input, target, valid_mask=mask))
+        self.assert_close(
+            kornia.metrics.mean_bad_pixel_error(nan_input, target, valid_mask=mask),
+            torch.tensor(0.125, device=device, dtype=dtype),
+        )
+        self.assert_close(
+            kornia.metrics.kitti_d1_error(nan_input, target, valid_mask=mask),
+            torch.tensor(0.0625, device=device, dtype=dtype),
+        )
+
+    def test_convention_disparity_valid_mask_broadcasts_from_the_right(self, device, dtype):
+        """valid_mask is broadcast to the input from the right: (H, W) masks every image, (B, 1, 1) whole images."""
+        input, target, _ = self._sample(device, dtype)
+        metric = kornia.metrics.mean_absolute_disparity_error
+        # (H, W): the first row of both images, errors 4 | 4 and 6 over 8 pixels
+        first_row = torch.zeros(3, 4, device=device, dtype=torch.bool)
+        first_row[0] = True
+        self.assert_close(metric(input, target, valid_mask=first_row), torch.tensor(1.75, device=device, dtype=dtype))
+        # (B, 1, 1): image 0 only, 9 px over its 12 pixels
+        image_0 = torch.tensor([True, False], device=device).view(2, 1, 1)
+        self.assert_close(metric(input, target, valid_mask=image_0), torch.tensor(0.75, device=device, dtype=dtype))
+        # a (B,) mask is aligned with W, not with the batch: rejected here since W = 4 != B = 2 (W == B would broadcast)
+        with pytest.raises((ValueError, BaseError)):
+            metric(input, target, valid_mask=torch.tensor([True, False], device=device))

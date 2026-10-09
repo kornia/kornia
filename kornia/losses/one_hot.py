@@ -26,6 +26,12 @@ def one_hot(
 ) -> torch.Tensor:
     r"""Convert an integer label x-D torch.Tensor to a one-hot (x+1)-D torch.Tensor.
 
+    Convention:
+        - int64 ``labels`` of shape ``(N, *)`` become ``(N, C, *)``: the class axis is dim 1, where
+          :func:`~torch.nn.functional.one_hot` puts it last. With the default ``eps=0.0`` the result is
+          ``F.one_hot(labels, num_classes).movedim(-1, 1).to(device, dtype)``. Labels outside ``[0, num_classes)``
+          are not validated by kornia; the result for them is undefined.
+
     Args:
         labels: torch.Tensor with labels of shape :math:`(N, *)`, where N is batch size.
           Each value is an integer representing correct classification.
