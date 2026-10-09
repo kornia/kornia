@@ -353,28 +353,31 @@ class TestEqualization(BaseTester):
         res_diff = enhance.equalize_clahe(img, clip_limit=clip_limit, grid_size=grid_size, slow_and_differentiable=True)
         # NOTE: for next versions we need to improve the computation of the LUT
         # and test with a better image
+        # Each 4 x 4 tile holds 4 columns of one value each, so with the clip limit of 1 count per bin the 12
+        # clipped counts are spread over every 21st bin, as in OpenCV, and the gradient keeps its range; piling
+        # them into the first 12 bins mapped every pixel but the first above 0.81.
         expected = torch.tensor(
             [
                 [
                     [
                         0.1216,
-                        0.8745,
-                        0.9373,
-                        0.9163,
-                        0.8745,
-                        0.8745,
-                        0.9373,
-                        0.8745,
-                        0.8745,
-                        0.8118,
-                        0.9373,
-                        0.8745,
-                        0.8745,
-                        0.8118,
-                        0.8745,
-                        0.8745,
-                        0.8327,
-                        0.8118,
+                        0.1843,
+                        0.3098,
+                        0.2889,
+                        0.3098,
+                        0.3725,
+                        0.4353,
+                        0.4353,
+                        0.4980,
+                        0.4353,
+                        0.6235,
+                        0.6235,
+                        0.6235,
+                        0.6235,
+                        0.6863,
+                        0.7490,
+                        0.7699,
+                        0.7490,
                         0.8745,
                         1.0000,
                     ]
@@ -388,24 +391,24 @@ class TestEqualization(BaseTester):
                 [
                     [
                         0.1250,
-                        0.8752,
-                        0.9042,
-                        0.9167,
-                        0.8401,
-                        0.8852,
-                        0.9302,
-                        0.9120,
-                        0.8750,
-                        0.8370,
-                        0.9620,
-                        0.9077,
-                        0.8750,
-                        0.8754,
-                        0.9204,
-                        0.9167,
-                        0.8370,
-                        0.8806,
-                        0.9096,
+                        0.1877,
+                        0.2792,
+                        0.3111,
+                        0.2892,
+                        0.3227,
+                        0.4302,
+                        0.4745,
+                        0.4560,
+                        0.4620,
+                        0.6495,
+                        0.5952,
+                        0.6414,
+                        0.6254,
+                        0.7329,
+                        0.7803,
+                        0.7306,
+                        0.8181,
+                        0.8471,
                         1.0000,
                     ]
                 ]
@@ -416,13 +419,29 @@ class TestEqualization(BaseTester):
         self.assert_close(res[..., 0, :], expected, low_tolerance=True)
         self.assert_close(res_diff[..., 0, :], exp_diff, low_tolerance=True)
 
+    @pytest.mark.parametrize("clip_as_tensor", [False, True])
+    def test_clahe_residual_spread(self, clip_as_tensor, device, dtype):
+        # One 2 x 4 tile of 8 pixels, 4 at level 0 and 4 at level 100, clip limit 40: the per-bin limit is
+        # max(40 * 8 // 256, 1) = 1, so 6 counts are clipped. OpenCV spreads a residual below the bin count over
+        # every (256 // 6) = 42nd bin from bin 0 (bins 0, 42, 84, 126, 168, 210), which leaves 2 counts at or
+        # below bin 0 and 5 at or below bin 100: the levels map to floor(2 * 255 / 8) = 63 and
+        # floor(5 * 255 / 8) = 159. Piling the residual into bins 0..5 instead gave 8 counts at bin 100 and
+        # mapped it to 255.
+        img = torch.tensor([[0.0] * 4, [100.0] * 4], device=device, dtype=dtype).div(255.0)[None, None]
+        clip = torch.tensor([40.0], device=device, dtype=dtype) if clip_as_tensor else 40.0
+        out = enhance.equalization._equalize_clahe(img, clip, (1, 1), False)
+        expected = torch.tensor([[63.0] * 4, [159.0] * 4], device=device, dtype=dtype).div(255.0)[None, None]
+        self.assert_close(out, expected)
+
     def test_clahe_non_square_grid(self, device, dtype):
         # Pixel values are 0 and powers of two, exact in every dtype. With 4 x 4 tiles every interpolation weight
         # is a multiple of 1/3, so 9 * 255 * output is an integer. The expected integers come from an exact
         # rational evaluation of CLAHE pixel by pixel, independent of this implementation's tile indexing; the
         # reference is an exact-Fraction restatement of _compute_tiles/_compute_luts/_compute_equalized_tiles
         # (tile size ceil(n/g) rounded up to even, trailing reflect pad, floor(v*256) histogram, clip and
-        # redistribute, floor(cumsum*255/P), axis blend weight (T-1-k)/(T-1)); it is posted in full on #4628.
+        # redistribute, floor(cumsum*255/P), axis blend weight (T-1-k)/(T-1)); it is posted in full on #4628, with
+        # the residual of the clipped counts now spread over every (256 // residual)-th bin from bin 0 as OpenCV
+        # does, instead of over the first ``residual`` bins.
         codes = torch.tensor(
             [
                 [1, 2, 6, 7, 1, 7, 1, 5, 4, 8, 4, 6],
@@ -440,14 +459,14 @@ class TestEqualization(BaseTester):
         img = levels[codes][None, None]
         expected = torch.tensor(
             [
-                [423, 567, 1575, 1815, 423, 1719, 423, 1431, 1143, 2295, 1143, 1719],
-                [567, 1863, 1863, 2295, 279, 1143, 1719, 759, 1431, 279, 855, 423],
-                [855, 855, 1287, 1335, 1767, 711, 1143, 2295, 1431, 1431, 1143, 1143],
-                [1623, 1431, 327, 1255, 1367, 903, 663, 2295, 455, 1143, 1911, 1911],
-                [855, 519, 375, 1751, 695, 2295, 2295, 967, 839, 951, 1335, 1335],
-                [2295, 999, 423, 1191, 2295, 999, 1431, 327, 855, 1719, 423, 2007],
-                [2295, 2295, 999, 1191, 2295, 1431, 1431, 951, 519, 1431, 2295, 1431],
-                [999, 1719, 2295, 1719, 1335, 1719, 1719, 1335, 375, 423, 1863, 423],
+                [279, 423, 1431, 1671, 279, 1575, 279, 1239, 903, 2295, 855, 1431],
+                [423, 1719, 1719, 2295, 279, 999, 1575, 567, 1191, 279, 567, 279],
+                [711, 711, 1143, 1191, 1623, 567, 999, 2295, 1191, 1143, 855, 855],
+                [1383, 1143, 327, 999, 1143, 711, 471, 2295, 311, 759, 1719, 1719],
+                [519, 375, 375, 1543, 423, 2295, 2295, 647, 503, 567, 855, 855],
+                [2295, 567, 423, 711, 2295, 711, 1143, 327, 471, 1143, 423, 1719],
+                [2295, 2295, 567, 711, 2295, 1143, 1143, 567, 375, 855, 2295, 855],
+                [567, 1431, 2295, 1479, 951, 1575, 1575, 951, 375, 423, 1431, 423],
             ],
             dtype=torch.float64,
         )
