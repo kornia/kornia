@@ -163,7 +163,10 @@ class ScalePyramid(nn.Module):
         - an ``init_sigma`` below the assumed input blur (``0.5``, or ``1.0`` with
           ``double_image=True``) leaves the first level at that blur, and the octave is built and
           labelled from it, as if ``init_sigma`` were the assumed input blur
-        - the internal resizes use ``align_corners=True``; there is no ``align_corners`` parameter
+        - the internal resizes use ``align_corners=True``; there is no ``align_corners`` parameter. They keep the
+          first and last pixel centres, so pixel :math:`(u, v)` of octave ``o`` is input pixel
+          :math:`(u (W - 1) / (W_o - 1), v (H - 1) / (H_o - 1))`; ``pixel_dists`` is the nominal spacing
+          :math:`2^o` (:math:`2^{o - 1}` with ``double_image=True``), not this map
 
     Args:
         n_levels: number of the levels in octave.
@@ -174,7 +177,7 @@ class ScalePyramid(nn.Module):
     Returns:
         1st output: images
         2nd output: sigmas (coefficients for scale conversion)
-        3rd output: pixelDists (coefficients for coordinate conversion)
+        3rd output: pixelDists (nominal pixel spacing of each level relative to the input)
 
     Shape:
         - Input: :math:`(B, C, H, W)`
