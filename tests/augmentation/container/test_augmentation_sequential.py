@@ -418,18 +418,40 @@ class TestAugmentationSequential:
         with pytest.raises(ValueError, match="batch"):
             aug(bad_mask, params=aug._params, data_keys=["mask"])
 
-    @pytest.mark.parametrize("mask_shape", [(1, 4, 8, 8), (4, 1, 8, 8), (8, 8)])
-    def test_video_ambiguous_mask_rank_raises_5624(self, mask_shape, device, dtype):
-        # A mask next to a video that is not 5D is ambiguous (missing channel? missing batch? a plain 2D
-        # mask?), so it must raise here rather than fail later inside VideoSequential's own reshape.
-        image = torch.rand(2, 4, 3, 8, 8, device=device, dtype=dtype)
+    @pytest.mark.parametrize(
+        "data_format,mask_shape",
+        [("BTCHW", (8, 8)), ("BTCHW", (4, 8, 8)), ("BTCHW", (1, 2, 4, 1, 8, 8)), ("BCTHW", (2, 4, 8, 8))],
+    )
+    def test_video_ambiguous_mask_rank_raises_5624(self, data_format, mask_shape, device, dtype):
+        # Next to a video a mask is 5D, or (B, T, H, W) for a BTCHW video; any other rank is ambiguous (missing
+        # channel? missing batch? a plain 2D mask?), so it must raise here rather than fail later inside
+        # VideoSequential's own reshape. A BCTHW video reads its frames from dim 2, which a 4D mask does not have.
+        shape = (2, 4, 3, 8, 8) if data_format == "BTCHW" else (2, 3, 4, 8, 8)
+        image = torch.rand(*shape, device=device, dtype=dtype)
         mask = torch.rand(*mask_shape, device=device, dtype=dtype)
         aug = K.AugmentationSequential(
-            K.VideoSequential(K.RandomHorizontalFlip(p=1.0), data_format="BTCHW"), data_keys=["input", "mask"]
+            K.VideoSequential(K.RandomHorizontalFlip(p=1.0), data_format=data_format), data_keys=["input", "mask"]
         )
 
         with pytest.raises(ValueError, match="5D"):
             aug(image, mask)
+
+    @pytest.mark.parametrize("mask_batch", [1, 2])
+    def test_video_bthw_mask_equals_the_5d_mask_5624(self, mask_batch, device, dtype):
+        # A BTCHW video reads a (B, T, H, W) mask with one channel and repeats a single (1, T, H, W) mask like a 5D
+        # one. The default same_on_frame=True also needs the batch_prob rule of #5598 for a 4D mask.
+        video = torch.rand(2, 4, 3, 8, 8, device=device, dtype=dtype)
+        mask = torch.rand(mask_batch, 4, 8, 8, device=device, dtype=dtype)
+        outputs = []
+        for candidate in (mask, mask.expand(2, -1, -1, -1)[:, :, None].clone()):
+            torch.manual_seed(5)
+            aug = K.AugmentationSequential(
+                K.VideoSequential(K.RandomAffine(30.0, p=1.0), same_on_frame=False), data_keys=["input", "mask"]
+            )
+            outputs.append(aug(video, candidate)[1])
+
+        assert outputs[0].shape == (2, 4, 1, 8, 8)
+        assert_close(outputs[0], outputs[1])
 
     def test_5d_mask_without_a_video_raises_5624(self, device, dtype):
         # The mirror case: a 5D mask is only meaningful next to a video. Next to a plain 4D image it is

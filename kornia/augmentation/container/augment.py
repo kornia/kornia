@@ -137,11 +137,12 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           next to a ``(B, C, H, W)`` image is repeated to batch ``B`` before the first child, so each sample's own
           parameters apply to its copy; a 3D mask whose leading size is ``B`` is read as ``(B, H, W)``. A list of
           masks is not repeated. A single ``(1, T, C, H, W)`` mask is repeated the same way next to a
-          ``(B, T, C, H, W)`` video; any other mask rank next to a video, or a 5D mask next to a non-video
-          image, raises ``ValueError`` instead of guessing. A replay with no image (``params=`` given,
-          no ``INPUT`` key) reads the batch to repeat to from the recorded params instead. A wrong input rank
-          raises ``RuntimeError`` here rather than the ``ValueError`` of a bare augmentation
-          (`#4424 <https://github.com/kornia/kornia/issues/4424>`_).
+          ``(B, T, C, H, W)`` video. Next to a BTCHW video a ``(B, T, H, W)`` mask is read with one channel and
+          returned as ``(B, T, 1, H, W)``, and a single ``(1, T, H, W)`` mask is repeated too. Any other mask rank
+          next to a video, or a 5D mask next to a non-video image, raises ``ValueError`` instead of guessing. A
+          replay with no image (``params=`` given, no ``INPUT`` key) reads the batch to repeat to from the recorded
+          params instead. A wrong input rank raises ``RuntimeError`` here rather than the ``ValueError`` of a bare
+          augmentation (`#4424 <https://github.com/kornia/kornia/issues/4424>`_).
         - boxes use the inclusive ``xyxy_plus`` convention of :class:`~kornia.geometry.boxes.Boxes`. Flips map
           ``x' = W - 1 - x`` and ``y' = H - 1 - y`` for every key, as :func:`~kornia.geometry.transform.hflip`
           does. Labels pass through geometric steps untouched.
@@ -522,29 +523,35 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             return
         if image_batch is None:
             return
+        # The frame axis of a video, 1 for BTCHW and 2 for BCTHW. A list, not next(generator, None), which Dynamo on
+        # torch 2.5/2.6 cannot trace (see above).
+        videos = [c for c in self.children() if isinstance(c, VideoSequential)] if is_video else []
+        temporal_dim = videos[0]._temporal_channel if videos else 1
         for mask, key in zip(args, data_keys):
             if key not in _MSK_OPTIONS:
                 continue
             if not isinstance(mask, torch.Tensor):
                 continue
-            # A mask must be 5D next to a video and never otherwise; any other combination raises here
-            # instead of guessing and failing later with a confusing reshape error.
+            # A mask next to a video is 5D, or (B, T, H, W) next to a BTCHW video, which VideoSequential reads with
+            # one channel as it reads a (B, H, W) mask next to an image. A 5D mask is never valid next to an image.
+            # Any other combination raises here instead of guessing and failing later with a confusing reshape error.
             if mask.ndim == 5 and not is_video:
                 raise ValueError(f"A 5D mask is only valid next to a video; got mask {tuple(mask.shape)}.")
-            if is_video and mask.ndim != 5:
+            if is_video and not (mask.ndim == 5 or (mask.ndim == 4 and temporal_dim == 1)):
                 raise ValueError(
-                    f"A mask next to a video must be 5D, (1, T, C, H, W) or (B, T, C, H, W); got mask "
-                    f"{tuple(mask.shape)}."
+                    "A mask next to a video must be 5D, (1, T, C, H, W) or (B, T, C, H, W), or (1, T, H, W) or "
+                    f"(B, T, H, W) next to a BTCHW video; got mask {tuple(mask.shape)}."
                 )
-            if is_video and isinstance(image, torch.Tensor) and image.ndim == 5:
-                # A list, not next(generator, None), which Dynamo on torch 2.5/2.6 cannot trace (see above).
-                videos = [c for c in self.children() if isinstance(c, VideoSequential)]
-                temporal_dim = videos[0]._temporal_channel if videos else 1
-                if mask.shape[temporal_dim] != image.shape[temporal_dim]:
-                    raise ValueError(
-                        "Video and mask must have the same number of frames; "
-                        f"got video {tuple(image.shape)} and mask {tuple(mask.shape)}."
-                    )
+            if (
+                is_video
+                and isinstance(image, torch.Tensor)
+                and image.ndim == 5
+                and mask.shape[temporal_dim] != image.shape[temporal_dim]
+            ):
+                raise ValueError(
+                    "Video and mask must have the same number of frames; "
+                    f"got video {tuple(image.shape)} and mask {tuple(mask.shape)}."
+                )
             mask_batch = mask.shape[0] if mask.ndim in (4, 5) else 1
             if image_size is None:
                 if mask_batch not in (1, image_batch):
@@ -917,8 +924,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         The single-mask layouts are ``(H, W)``, ``(1, C, H, W)``, ``(1, H, W)`` and ``(C, H, W)``; an ``(H, W)``
         mask is read as ``(1, H, W)``, as a NumPy ``(H, W)`` mask is. A 3D mask is read like ``transform_tensor``
         reads it: as ``(B, H, W)`` when its leading size is the image batch (so it is left alone), otherwise as
-        one ``(C, H, W)`` mask. A 5D ``(1, T, C, H, W)`` mask, next to a video, only expands dim 0; ``T`` is left
-        alone.
+        one ``(C, H, W)`` mask. A 5D ``(1, T, C, H, W)`` mask, or a 4D ``(1, T, H, W)`` one, next to a video, only
+        expands dim 0; ``T`` is left alone.
         """
         if image_batch is None or image_batch == 1 or mask.ndim not in (2, 3, 4, 5):
             return mask
