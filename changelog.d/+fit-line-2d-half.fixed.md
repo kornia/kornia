@@ -1,0 +1,1 @@
+Keep unweighted 2D `fit_line` finite and accurate for half-precision point sets whose coordinate differences or accumulated second moments exceed the input dtype's range. The fitted origin and direction retain the input dtype.

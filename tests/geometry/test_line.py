@@ -605,6 +605,42 @@ class TestFitLine(BaseTester):
         self.assert_close(line.direction, direction)
         assert line.origin.dtype == line.direction.dtype == torch.float16
 
+    def test_fit_line_2d_large_offsets(self, device, dtype):
+        # All coordinates fit in float16, but subtracting the first point does not.
+        points = torch.tensor([[[-40000.0, -20000.0], [0.0, 0.0], [40000.0, 20000.0]]], device=device, dtype=dtype)
+        points.requires_grad_(True)
+        line = fit_line(points)
+
+        self.assert_close(line.origin, torch.zeros(1, 2, device=device, dtype=dtype))
+        expected = torch.tensor([[2.0 / math.sqrt(5), 1.0 / math.sqrt(5)]], device=device, dtype=dtype)
+        self.assert_close(line.direction, expected)
+        assert line.origin.dtype == line.direction.dtype == dtype
+        (line.origin.sum() + line.direction.sum()).backward()
+        assert torch.isfinite(points.grad).all()
+
+    def test_fit_line_2d_repeated_points(self, device, dtype):
+        # Repeating the same two points cannot change their line. The scaled x second moment is
+        # 65536 here, which overflows float16 and used to turn this into a horizontal direction.
+        points = torch.tensor([[[-2.0, -1.0], [2.0, 1.0]]], device=device, dtype=dtype).repeat(1, 32768, 1)
+        line = fit_line(points)
+
+        self.assert_close(line.origin, torch.zeros(1, 2, device=device, dtype=dtype))
+        expected = torch.tensor([[2.0 / math.sqrt(5), 1.0 / math.sqrt(5)]], device=device, dtype=dtype)
+        self.assert_close(line.direction, expected)
+        assert line.origin.dtype == line.direction.dtype == dtype
+
+    def test_dynamo_fit_line_2d_large_offsets(self, device, dtype, torch_optimizer):
+        points = torch.tensor([[[-40000.0, -20000.0], [0.0, 0.0], [40000.0, 20000.0]]], device=device, dtype=dtype)
+
+        def op(points):
+            line = fit_line(points)
+            return line.origin, line.direction
+
+        origin, direction = torch_optimizer(op)(points)
+        self.assert_close(origin, torch.zeros(1, 2, device=device, dtype=dtype))
+        expected = torch.tensor([[2.0 / math.sqrt(5), 1.0 / math.sqrt(5)]], device=device, dtype=dtype)
+        self.assert_close(direction, expected)
+
     def test_fit_line_weighted_2d_gradcheck(self, device):
         points = torch.tensor([[[0.0, 0.1], [1.0, 0.4], [2.0, 0.9], [3.0, 1.2]]], device=device)
         weights = torch.tensor([[1.0, 2.0, 1.0, 3.0]], device=device)
