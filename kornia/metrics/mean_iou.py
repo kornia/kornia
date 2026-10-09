@@ -23,24 +23,35 @@ from .confusion_matrix import confusion_matrix
 
 
 def mean_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int, eps: float = 1e-6) -> torch.Tensor:
-    r"""Calculate mean Intersection-Over-Union (mIOU).
+    r"""Calculate the Intersection-Over-Union (IoU) of every class in every sample.
 
     The function internally computes the confusion matrix.
+
+    Convention:
+        - See the Convention block of :func:`~kornia.metrics.confusion_matrix`, which counts the labels: the same
+          label contract, one result per sample.
+        - The result is the IoU of every class in every sample, :math:`(B, K)` float32, each a fraction in
+          :math:`[0, 1]`; despite the name, neither axis is averaged. Averaging it over :math:`B` gives the mean of
+          per-image IoUs; for the IoU of a whole dataset, sum :func:`~kornia.metrics.confusion_matrix` over all
+          images and take the IoU of the sum.
+        - ``eps`` is added to the numerator and the denominator, so a class absent from both maps scores 1 (NaN with
+          ``eps=0``), and a class only predicted or only in the target scores about 0. Exclude absent classes before
+          averaging over :math:`K`: a larger ``num_classes`` can only raise the average.
+          :ref:`Losses and metrics <losses-metrics-conventions>` compares this absent-class rule with the losses,
+          :func:`~kornia.metrics.mean_average_precision` and scikit-learn.
 
     Args:
         pred : tensor with estimated targets returned by a
           classifier. The shape can be :math:`(B, *)` and must contain integer
           values between 0 and K-1.
         target: tensor with ground truth (correct) target
-          values. The shape can be :math:`(B, *)` and must contain integer
-          values between 0 and K-1, where targets are assumed to be provided as
-          one-hot vectors.
+          values. The shape must be that of ``pred``, and it must contain integer
+          values between 0 and K-1.
         num_classes: total possible number of classes in target.
-        eps: epsilon for numerical stability.
+        eps: the value added to the numerator and the denominator of every IoU.
 
     Returns:
-        a tensor representing the mean intersection-over union
-        with shape :math:`(B, K)` where K is the number of classes.
+        a tensor with the IoU of every class, with shape :math:`(B, K)` where K is the number of classes.
 
     Example:
         >>> logits = torch.tensor([[0, 1, 0]])
@@ -100,6 +111,17 @@ def _promote_integer_boxes(boxes: torch.Tensor) -> torch.Tensor:
 def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str = "xyxy") -> torch.Tensor:
     """Compute the IoU of the cartesian product of two sets of boxes.
 
+    Convention:
+        - The result is the IoU of every pair, :math:`(B1, B2)`, each a fraction in :math:`[0, 1]`; despite the name,
+          nothing is averaged, and swapping the two sets transposes it.
+        - Boxes are exclusive in every ``box_format``: the area of ``(x1, y1, x2, y2)`` is
+          :math:`(x_2 - x_1)(y_2 - y_1)`, with no ``+ 1``, as in :func:`~kornia.geometry.bbox.nms`. A box with a
+          non-positive width or height raises ``AssertionError``, unless the call is exported or compiled, which may
+          skip the check. A :class:`~kornia.geometry.boxes.Boxes` gives the same IoU through ``to_tensor('xyxy')``,
+          not through its inclusive ``'xyxy_plus'`` export.
+        - Known defect: a compiled call can skip that check, and an invalid box then gives an IoU of 0 or NaN instead
+          of raising (`#5037 <https://github.com/kornia/kornia/issues/5037>`_).
+
     Args:
         boxes_1: a tensor of bounding boxes in :math:`(B1, 4)`.
         boxes_2: a tensor of bounding boxes in :math:`(B2, 4)`.
@@ -111,7 +133,7 @@ def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str 
 
     Returns:
         a tensor in dimensions :math:`(B1, B2)`, representing the
-        intersection of each of the boxes in set 1 with respect to each of the boxes in set 2.
+        IoU of each of the boxes in set 1 with each of the boxes in set 2.
 
     .. note::
         Integer (and bool) boxes are computed in ``float32``, so the result is ``float32`` and widths, areas and the

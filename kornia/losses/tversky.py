@@ -54,13 +54,18 @@ def tversky_loss(
          penalties for FPs and FNs, respectively.
 
     Note:
-       - Scores are computed per class and averaged over classes present in each
-         sample's non-ignored target, then over samples. Fully ignored samples have loss 1.
-       - :math:`\alpha = \beta = 0.5` corresponds to macro Dice with exact targets
-         and a denominator epsilon of :math:`2\,\text{eps}` in the Dice formula.
+       - :math:`\alpha = \beta = 0.5` gives :func:`~kornia.losses.dice_loss` with ``average='macro'`` and twice
+         the ``eps``.
        - :math:`\alpha = \beta = 1` corresponds to the per-class Tanimoto coefficient.
        - For :math:`\alpha + \beta = 1` and :math:`\alpha > 0`, the unsmoothed
          per-class score is :math:`F_{\sqrt{\beta / \alpha}}`.
+
+    Convention:
+        ``pred``, ``target`` and ``ignore_index`` behave as in :func:`~kornia.losses.dice_loss`: logits
+        ``(B, C, H, W)`` with the softmax taken inside, int64 class indices ``(B, H, W)`` and ignored pixels removed
+        from their own sample. The index is computed per sample and class, averaged over the classes present in the
+        sample's non-ignored target, then over the batch into a 0-d tensor; a sample whose pixels are all ignored
+        enters the batch mean as loss 1. There is no ``weight``, ``average`` or ``reduction``.
 
     Args:
         pred: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes.
@@ -144,13 +149,14 @@ class TverskyLoss(nn.Module):
          penalties for FPs and FNs, respectively.
 
     Note:
-       - Scores are computed per class and averaged over classes present in each
-         sample's non-ignored target, then over samples. Fully ignored samples have loss 1.
-       - :math:`\alpha = \beta = 0.5` corresponds to macro Dice with exact targets
-         and a denominator epsilon of :math:`2\,\text{eps}` in the Dice formula.
+       - :math:`\alpha = \beta = 0.5` gives :func:`~kornia.losses.dice_loss` with ``average='macro'`` and twice
+         the ``eps``.
        - :math:`\alpha = \beta = 1` corresponds to the per-class Tanimoto coefficient.
        - For :math:`\alpha + \beta = 1` and :math:`\alpha > 0`, the unsmoothed
          per-class score is :math:`F_{\sqrt{\beta / \alpha}}`.
+
+    Convention:
+        See the Convention block of :func:`~kornia.losses.tversky_loss`.
 
     Args:
         alpha: the first coefficient in the denominator.

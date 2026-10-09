@@ -17,6 +17,7 @@
 
 import pytest
 import torch
+import torch.nn.functional as F
 
 import kornia
 
@@ -491,3 +492,90 @@ class TestDiceLoss(BaseTester):
         op_module = kornia.losses.DiceLoss()
 
         self.assert_close(op(logits, labels), op_module(logits, labels))
+
+
+class TestConventionsDiceLoss(BaseTester):
+    """Pins for the averaging modes, ignored labels and known defect of :func:`dice_loss`."""
+
+    @staticmethod
+    def _exact_dice_loss(logits, labels, dims):
+        # 1 - 2 sum(p t) / sum(p + t) in float64, with an exact one-hot target
+        p = logits.cpu().double().softmax(1)
+        t = F.one_hot(labels.cpu(), logits.shape[1]).movedim(-1, 1).double()
+        return 1 - 2 * (p * t).sum(dims) / (p + t).sum(dims)
+
+    def test_convention_dice_loss_micro_pools_the_classes_and_macro_averages_them_per_sample(self, device, dtype):
+        # 'micro': one Dice per sample over every class and pixel; 'macro': one Dice per (sample, class), averaged over
+        # the classes of the sample's target (both, here); both are then averaged over the batch. A two-class map with
+        # unequal class sizes tells the two modes apart, and two samples with different balances tell 'macro' from
+        # pooling the batch (MONAI's DiceLoss(batch=True)). Every sample's 'micro' denominator is 2 H W here, so
+        # per-sample and batch-pooled 'micro' coincide;
+        # test_convention_dice_loss_ignore_index_excludes_pixels_per_sample separates them.
+        labels = torch.zeros(2, 4, 6, dtype=torch.long, device=device)
+        labels[0, 1:3, 1:4] = 1  # 6 of 24 pixels
+        labels[1, :, 2:] = 1  # 16 of 24 pixels
+        predicted = labels.clone()
+        predicted[0, 1, 1:4] = 0  # image 0 misses half of class 1
+        predicted[1, 0, :2] = 1  # image 1 over-segments class 1 by two pixels
+        g = torch.Generator().manual_seed(0)
+        logits = torch.randn(2, 2, 4, 6, generator=g).to(device=device, dtype=dtype)
+        logits = logits + 4.0 * F.one_hot(predicted, 2).movedim(-1, 1).to(dtype)
+        micro = self._exact_dice_loss(logits, labels, (1, 2, 3)).mean()  # 0.1548
+        macro = self._exact_dice_loss(logits, labels, (2, 3)).mean()  # 0.2085
+        pooled_macro = self._exact_dice_loss(logits, labels, (0, 2, 3)).mean()  # 0.1564
+        assert (micro - macro).abs() > 0.04
+        assert (macro - pooled_macro).abs() > 0.04
+        self.assert_close(kornia.losses.dice_loss(logits, labels), micro.to(device=device, dtype=dtype))
+        self.assert_close(
+            kornia.losses.dice_loss(logits, labels, average="macro"), macro.to(device=device, dtype=dtype)
+        )
+
+    @pytest.mark.parametrize("average", ["micro", "macro"])
+    def test_convention_dice_loss_ignore_index_excludes_pixels_per_sample(self, average, device, dtype):
+        # Ignored pixels leave both sums of their own sample, which then enters the batch mean like the others: the
+        # same as cropping them out of that sample. An image whose pixels are all ignored enters the batch mean as
+        # loss 1.
+        def dice(logits, labels):
+            return kornia.losses.dice_loss(logits, labels, average=average)
+
+        g = torch.Generator().manual_seed(0)
+        logits = torch.randn(2, 3, 4, 7, generator=g).to(device=device, dtype=dtype)
+        labels = torch.randint(0, 3, (2, 4, 7), generator=g).to(device)
+        ignored = labels.clone()
+        ignored[0, :, -3:] = -100  # image 0 loses its last three columns
+        expected = (dice(logits[:1, ..., :-3], labels[:1, :, :-3]) + dice(logits[1:], labels[1:])) / 2
+        self.assert_close(dice(logits, ignored), expected)
+        ignored[0] = -100
+        self.assert_close(dice(logits, ignored), (1 + dice(logits[1:], labels[1:])) / 2)
+
+    def test_wart_dice_loss_all_ignored_sample_with_zero_eps_5631(self, device, dtype):
+        # With eps=0 a sample whose pixels are all ignored has empty sums and Dice divides 0 by 0 (#5631): 'micro'
+        # returns NaN, and 'macro' returns the documented loss 1 for that sample but a non-finite gradient, where
+        # tversky_loss substitutes a safe denominator. A weight of 0 for every class empties the weighted 'micro'
+        # cardinality of every sample the same way, while 'macro' keeps loss 1; in float16 that weight's 'micro'
+        # gradient is non-finite at the default eps too, its 2 / eps intersection gradient being past the float16
+        # range. The default eps keeps the all-ignored sample finite in both averages.
+        g = torch.Generator().manual_seed(0)
+        logits = torch.randn(2, 3, 4, 6, generator=g).to(device=device, dtype=dtype).requires_grad_()
+        labels = torch.randint(0, 3, (2, 4, 6), generator=g).to(device)
+        dice = kornia.losses.dice_loss
+        zero = torch.zeros(3, device=device, dtype=dtype)
+        assert dice(logits, labels, eps=0.0, weight=zero).isnan()
+        self.assert_close(dice(logits, labels, average="macro", eps=0.0, weight=zero).detach(), logits.new_tensor(1.0))
+        if dtype == torch.float16:
+            micro = dice(logits, labels, weight=zero)
+            (grad,) = torch.autograd.grad(micro, logits)
+            self.assert_close(micro.detach(), logits.new_tensor(1.0))
+            assert not grad.isfinite().all()
+        labels[0] = -100
+        assert dice(logits, labels, eps=0.0).isnan()
+        macro = dice(logits, labels, average="macro", eps=0.0)
+        rest = dice(logits[1:], labels[1:], average="macro", eps=0.0)
+        self.assert_close(macro.detach(), (1 + rest.detach()) / 2)
+        (grad,) = torch.autograd.grad(macro, logits)
+        assert not grad.isfinite().all()
+        for average in ("micro", "macro"):
+            loss = dice(logits, labels, average=average)
+            (grad,) = torch.autograd.grad(loss, logits)
+            assert loss.isfinite()
+            assert grad.isfinite().all()
