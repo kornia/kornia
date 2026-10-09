@@ -490,26 +490,31 @@ class TestConventionsMeanAveragePrecision(BaseTester):
         mean_ap, _ = self._map(device, dtype, objects, [[1, 1]], [[0.9, 0.8]], objects, [[1, 1]], 2)
         self.assert_close(mean_ap, torch.tensor(1.0, device=device, dtype=dtype))
 
-    def test_wart_mean_average_precision_drops_fractional_labels_5629(self, device, dtype):
-        """A fractional label passes the range check and matches no class, so its boxes are dropped (#5629)."""
+    def test_convention_mean_average_precision_labels_are_whole_numbers_5629(self, device, dtype):
+        """Integer-valued float labels score like int64 ones; a fractional label raises, naming its argument (#5629)."""
         boxes = [torch.tensor([self.BOX_1, self.BOX_2], device=device, dtype=dtype)]
         scores = [torch.tensor([0.9, 0.8], device=device, dtype=dtype)]
-
-        def run(labels):
-            labels = [torch.tensor(labels, device=device, dtype=dtype)]
-            return kornia.metrics.mean_average_precision(boxes, labels, scores, boxes, labels, 3)
+        int_labels = [torch.tensor([1, 2], device=device)]
+        float_labels = [torch.tensor([1.0, 2.0], device=device, dtype=dtype)]
 
         # control: integer-valued floating-point labels give the result of int64 labels, two perfect classes
         expected_map, expected_ap = kornia.metrics.mean_average_precision(
-            boxes, [torch.tensor([1, 2], device=device)], scores, boxes, [torch.tensor([1, 2], device=device)], 3
+            boxes, int_labels, scores, boxes, int_labels, 3
         )
-        mean_ap, ap = run([1.0, 2.0])
+        mean_ap, ap = kornia.metrics.mean_average_precision(boxes, float_labels, scores, boxes, float_labels, 3)
         self.assert_close(mean_ap, expected_map)
         self._assert_aps(ap, expected_ap, device, dtype)
         self._assert_aps(ap, {1: 1.0, 2: 1.0}, device, dtype)
-        # label 1.25 (exact in every float dtype; rounding or truncating it gives class 1, so those changes flip this
-        # pin too): its detection and its object enter no class, so class 1 reads "no objects" (-1) and the mAP is
-        # class 2's alone, without an error
-        mean_ap, ap = run([1.25, 2.0])
+        # bool labels are accepted too (True is class 1): torch.round has no bool kernel, so the whole-number check
+        # must only look at floating-point labels
+        bool_labels = [torch.tensor([True, True], device=device)]
+        mean_ap, ap = kornia.metrics.mean_average_precision(boxes, bool_labels, scores, boxes, bool_labels, 2)
         self.assert_close(mean_ap, torch.tensor(1.0, device=device, dtype=dtype))
-        self._assert_aps(ap, {1: -1.0, 2: 1.0}, device, dtype)
+        self._assert_aps(ap, {1: 1.0}, device, dtype)
+        # label 1.25 (exact in every float dtype; rounding or truncating it gives class 1) raises instead of matching
+        # no class, which dropped its detection or object without an error
+        fractional = [torch.tensor([1.25, 2.0], device=device, dtype=dtype)]
+        with pytest.raises(BaseError, match="pred_labels must contain integer-valued labels"):
+            kornia.metrics.mean_average_precision(boxes, fractional, scores, boxes, float_labels, 3)
+        with pytest.raises(BaseError, match="gt_labels must contain integer-valued labels"):
+            kornia.metrics.mean_average_precision(boxes, float_labels, scores, boxes, fractional, 3)
