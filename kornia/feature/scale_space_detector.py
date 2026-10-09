@@ -223,7 +223,11 @@ class ScaleSpaceDetector(nn.Module):
         mr_size: multiplier for local feature scale compared to the detection scale.
           6.0 is matching OpenCV 12.0 convention for SIFT.
         scale_pyr_module: generates scale pyramid. See :class:`~kornia.geometry.ScalePyramid` for details.
-          Default: ScalePyramid(3, 1.6, 15).
+          Default: ``ScalePyramid(3, 1.6, 16, extra_levels=3)`` with a scale-space response,
+          ``extra_levels=2`` without. Each octave searches ``n_levels`` response levels, levels
+          ``1..n_levels``; the levels below and above them are NMS neighbours only, and any further
+          level is ignored. A per-level response therefore needs ``extra_levels >= 2``, and DoG,
+          which has one level fewer than its pyramid, ``extra_levels >= 3``.
         resp_module: calculates ``'cornerness'`` of the pixel.
         subpix_module: performs non-maximum suppression and refines keypoint location to sub-pixel /
           sub-scale accuracy. See :class:`~kornia.geometry.subpix.ConvQuadInterp3d` for details.
@@ -368,6 +372,15 @@ class ScaleSpaceDetector(nn.Module):
         since the response alone cannot.
         """
         dev = octave.device
+        # An octave searches `num_levels` response levels, 1..num_levels; levels 0 and num_levels + 1 are only
+        # their NMS neighbours. A further level would make level num_levels + 1 searchable too, and that level has
+        # the scale of level 1 of the next octave, which the per-octave NMS never compares it with: that scale
+        # would be detected twice. A per-level response is computed on the levels it needs only; a scale-space
+        # response is cut once it has run.
+        n_resp_levels = num_levels + 2
+        if not self.scale_space_response:
+            octave = octave[:, :, :n_resp_levels]
+            sigmas_oct = sigmas_oct[:, :n_resp_levels]
         B, CH, L, H, W = octave.size()
 
         # Run response function
@@ -376,7 +389,7 @@ class ScaleSpaceDetector(nn.Module):
                 oct_resp = self.resp(octave, sigmas_oct.view(-1))  # (B, 1, Ldog, H, W)
         else:
             with self._dynamo_config_patch(("resp",)):
-                level_resp = self.resp(octave.permute(0, 2, 1, 3, 4).reshape(B * L, CH, H, W), sigmas_oct.view(-1))
+                level_resp = self.resp(octave.permute(0, 2, 1, 3, 4).reshape(B * L, CH, H, W), sigmas_oct.reshape(-1))
             KORNIA_CHECK(
                 level_resp.dim() == 4
                 and level_resp.shape[0] == B * L
@@ -396,8 +409,8 @@ class ScaleSpaceDetector(nn.Module):
         )
         # Iterative sub-pixel modules flatten the full response volume internally. The
         # level/channel permutation above is contiguous when CH == 1 (the common path), but
-        # not for a response that preserves multiple channels.
-        oct_resp = oct_resp.contiguous()
+        # not for a response that preserves multiple channels, nor for a scale-space response cut to its levels.
+        oct_resp = oct_resp[:, :, :n_resp_levels].contiguous()
         scale_sigmas = sigmas_oct[:, : oct_resp.shape[2]]
 
         # Always precompute NMS masks in one fused pass.
