@@ -96,7 +96,8 @@ def canny(
           to the input, and the edge map is not.
         - Hysteresis keeps a weak pixel connected to a strong one through any of its 8 neighbours, repeated until
           nothing changes, and returns edges of 0 and 1.
-        - A 3-channel integer image other than uint8 raises, as :func:`~kornia.color.rgb_to_grayscale` does.
+        - An integer image is promoted to float32 before the grayscale conversion, so a 3-channel integer image
+          is converted with the floating weights rather than rounded to an integer grey.
 
     Args:
         input: input image torch.Tensor with shape :math:`(B,C,H,W)`, with :math:`C` equal to 1, or to 3 for an RGB
@@ -131,12 +132,14 @@ def canny(
     KORNIA_CHECK_IS_COLOR_OR_GRAY(input, f"canny expects 1 or 3 channels. Got: {input.shape[1]}")
     _check_thresholds(low_threshold, high_threshold)
 
+    # an integer image is processed in float32, so both outputs are float32 (#5155); promoting before the grayscale
+    # conversion keeps the fractional grey a uint8 conversion would round away
+    input = _to_floating(input)
+
     # To Grayscale
     if input.shape[1] == 3:
         input = rgb_to_grayscale(input)
 
-    # an integer image is processed in float32, so both outputs are float32 (#5155)
-    input = _to_floating(input)
     device = input.device
     dtype = input.dtype
 

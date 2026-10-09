@@ -640,10 +640,11 @@ class TestConventionsBilateralBlur(BaseTester):
         assert out.dtype == torch.float32
         self.assert_close(out, bilateral_blur(stripes.float(), 3, 50.0, (1.0, 1.0)))
         self.assert_close(out, stripes.float(), rtol=0.0, atol=0.01)
-        # an integer guidance is differenced in the input's dtype
-        guided = joint_bilateral_blur(stripes.double(), stripes, 3, 50.0, (1.0, 1.0))
-        assert guided.dtype == torch.float64
-        self.assert_close(guided, stripes.double(), rtol=0.0, atol=0.01)
+        # an integer guidance is differenced in the input's dtype (float32 where MPS has no float64)
+        wide = torch.float32 if device.type == "mps" else torch.float64
+        guided = joint_bilateral_blur(stripes.to(wide), stripes, 3, 50.0, (1.0, 1.0))
+        assert guided.dtype == wide
+        self.assert_close(guided, stripes.to(wide), rtol=0.0, atol=0.01)
 
     def test_convention_bilateral_blur_wider_sigma_space_keeps_the_input_dtype_5521(self, device, dtype):
         """A tensor sigma_space or guidance of a wider dtype is cast to the input's, as sigma_color is (#5521)."""

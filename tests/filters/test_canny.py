@@ -766,9 +766,23 @@ class TestConventionsCanny(BaseTester):
         """#5155: an integer image is blurred in float32, so it finds the edge of the same image in floating point."""
         self._require_padding(device, dtype)
         # the ramped step 0 | 6 | 10: in a floating dtype its blurred ridge, about 26, gives one edge pixel per row
-        img = self._ramped_step(10.0, device, torch.float64)
+        img = self._ramped_step(10.0, device, torch.float32)
         _, edges = canny(img.to(dtype), 5.0, 10.0)
         assert edges[0, 0].nonzero()[:, 1].tolist() == [7] * 9
         for int_dtype in (torch.int16, torch.int32, torch.int64):
             _, edges = canny(img.to(int_dtype), 5.0, 10.0)
             assert edges[0, 0].nonzero()[:, 1].tolist() == [7] * 9
+
+    def test_convention_canny_integer_rgb_is_promoted_before_grayscale_5155(self, device, dtype):
+        """#5155: an integer RGB image is converted to grey in float32, so a faint red step is not rounded away."""
+        self._require_padding(device, dtype)
+        # a red-only step of 1 is a grey step of 0.299; a uint8 grey conversion rounds it to 0 and finds no edge
+        rgb = torch.zeros(1, 3, 9, 14, device=device, dtype=torch.uint8)
+        rgb[:, 0, :, 7:] = 1
+        for int_dtype in (torch.uint8, torch.int16, torch.int32):
+            magnitude, edges = canny(rgb.to(int_dtype))
+            assert magnitude.dtype == edges.dtype == torch.float32
+            expected_magnitude, expected_edges = canny(rgb.float())
+            assert edges.count_nonzero().item() > 0
+            self.assert_close(magnitude, expected_magnitude)
+            self.assert_close(edges, expected_edges)
