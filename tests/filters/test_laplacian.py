@@ -334,22 +334,18 @@ class TestConventionsLaplacian(BaseTester):
         ramp = (torch.arange(6, device=device, dtype=dtype) ** 2).expand(1, 1, 5, 6)
         self.assert_close(laplacian(ramp, (1, 3))[0, 0, 2, 1:-1], torch.full((4,), 0.5, device=device, dtype=dtype))
 
-    def test_wart_laplacian_integer_input_returns_zeros_5155(self, device, dtype):
-        """#5155: the kernel takes the integer input's dtype, so the normalised taps truncate to 0."""
-        if device.type != "cpu":
-            pytest.skip("integer convolution raises on this device, so there is no truncated result to pin (#5155)")
+    def test_convention_laplacian_integer_input_is_filtered_in_float32_5155(self, device, dtype):
+        """#5155: an integer input is filtered in float32 with a floating kernel, so it gets the float response."""
         self._require_reflect_padding(device, dtype)
         img = torch.full((1, 1, 5, 7), 100, device=device, dtype=torch.uint8)
         img[0, 0, 2, 3] = 180
-        # in a float dtype: (8 * 100 - 8 * 180) / 16 = -40 at the bright pixel, (180 - 100) / 16 = 5 beside it
-        reference = laplacian(img.to(dtype), 3)[0, 0, [2, 1], [3, 3]]
-        self.assert_close(reference, torch.tensor([-40.0, 5.0], device=device, dtype=dtype))
-        # every tap of the normalised kernel is below 1 in magnitude (1/16 and -8/16 in int16; 1/256 and 248/256 in
-        # uint8, whose centre wraps) and truncates to 0, so the wrap does not decide the result
+        # (8 * 100 - 8 * 180) / 16 = -40 at the bright pixel, (180 - 100) / 16 = 5 beside it
+        expected = torch.tensor([-40.0, 5.0], device=device)
         for int_dtype in (torch.uint8, torch.int16):
-            assert laplacian(img.to(int_dtype), 3).count_nonzero().item() == 0
-        # unnormalised, the taps survive but the sum is uint8 arithmetic: -640 at the bright pixel reads -640 mod 256
-        assert laplacian(img, 3, normalized=False)[0, 0, 2, 3].item() == 128
+            out = laplacian(img.to(int_dtype), 3)
+            assert out.dtype == torch.float32
+            self.assert_close(out[0, 0, [2, 1], [3, 3]], expected)
+            self.assert_close(out, laplacian(img.float(), 3))
 
     def test_convention_laplacian_border_type_is_case_insensitive_5156(self, device, dtype):
         """border_type is case-insensitive: 'REFLECT' and 'Reflect' pad as 'reflect' does, and so for every mode."""

@@ -1,0 +1,6 @@
+`filter2d`, `filter2d_separable`, `filter3d`, `fft_conv`, `gaussian_blur2d`, `box_blur`, `laplacian`,
+`bilateral_blur`, `joint_bilateral_blur` and `canny` filter an integer or bool image in float32 with a floating
+kernel, as the color conversions do (#4053). A uint8 image used to blur to zeros, because the fractional kernel taps
+were cast to uint8; integer sums wrapped (a 3x3 box of ones over 100 gave 132); `normalized=True` raised a dtype
+error; a `sigma` below 1 was truncated to 0 and rejected; `bilateral_blur` subtracted uint8 values and blended the
+edges it should keep; and `canny` found no edge on a signed integer image and raised on uint8 (#5155).

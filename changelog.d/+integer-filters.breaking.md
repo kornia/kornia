@@ -1,0 +1,3 @@
+For an integer or bool input, `filter2d`, `filter2d_separable`, `filter3d`, `gaussian_blur2d`, `box_blur`,
+`laplacian` and both `canny` outputs now return float32, on the input's scale and without rounding or clamping,
+instead of the input's integer dtype. Floating inputs keep their dtype (#5155).

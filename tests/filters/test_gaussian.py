@@ -771,18 +771,16 @@ class TestConventionsGaussianBlur(BaseTester):
             for separable in (True, False):
                 self.assert_close(gaussian_blur2d(image, (5, 7), (1.0, 2.0), border_type, separable), expected)
 
-    def test_wart_gaussian_blur2d_integer_image_blurs_to_zero_5155(self, device):
-        """gaussian_blur2d casts sigma and the kernel to an integer dtype: a uint8 image blurs to zero (#5155)."""
-        if device.type != "cpu":
-            pytest.skip("#5155 is pinned on the CPU; MPS raises for an integer convolution instead")
+    def test_convention_gaussian_blur2d_integer_image_is_blurred_in_float32_5155(self, device):
+        """An integer image is blurred in float32 and returns float32: a constant uint8 image stays constant (#5155)."""
         image = torch.full((1, 1, 5, 7), 100, device=device, dtype=torch.uint8)
         for separable in (True, False):
-            assert gaussian_blur2d(image, (3, 3), (1.0, 1.0), separable=separable).eq(0).all()
-        # a sigma below 1 truncates to 0 in uint8 and is then rejected as not positive
-        with pytest.raises(BaseError):
-            gaussian_blur2d(image, (3, 3), (0.5, 0.5))
-        # the same blur of the same values in floating point keeps the constant image
-        self.assert_close(gaussian_blur2d(image.float(), (3, 3), (1.0, 1.0)), image.float())
+            out = gaussian_blur2d(image, (3, 3), (1.0, 1.0), separable=separable)
+            assert out.dtype == torch.float32
+            self.assert_close(out, gaussian_blur2d(image.float(), (3, 3), (1.0, 1.0), separable=separable))
+            self.assert_close(out, image.float())
+        # a sigma below 1 is no longer truncated to 0 and rejected
+        self.assert_close(gaussian_blur2d(image, (3, 3), (0.5, 0.5)), image.float())
 
     def test_convention_gaussian_blur2d_sigma_batch_is_one_or_the_input_batch_5169(self, device, dtype):
         """gaussian_blur2d rejects a tensor sigma whose batch is neither 1 nor B, on both paths (#5169)."""

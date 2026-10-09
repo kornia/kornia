@@ -31,6 +31,7 @@ from kornia.core.check import (
     KORNIA_CHECK_SHAPE,
 )
 
+from .filter import _to_floating
 from .gaussian import gaussian_blur2d
 from .kernels import get_hysteresis_kernel
 from .sobel import spatial_gradient
@@ -72,7 +73,8 @@ def canny(
 
     Convention:
         - A 3-channel input is converted with :func:`~kornia.color.rgb_to_grayscale`, which reads channel 0 as
-          red. For a floating input both outputs are :math:`(B, 1, H, W)` in the input's dtype.
+          red. Both outputs are :math:`(B, 1, H, W)`, in the input's dtype for a floating input and in float32 for
+          an integer one, which is processed in float32 on its own scale.
         - The image is blurred with ``gaussian_blur2d(input, kernel_size, sigma)``; the Convention block on
           :func:`~kornia.filters.gaussian_blur2d` gives the order of both pairs, and ``kernel_size=1`` skips the
           blur. The magnitude is :math:`\sqrt{g_x^2 + g_y^2 + \epsilon}` of the **unnormalised** Sobel gradient
@@ -94,10 +96,7 @@ def canny(
           to the input, and the edge map is not.
         - Hysteresis keeps a weak pixel connected to a strong one through any of its 8 neighbours, repeated until
           nothing changes, and returns edges of 0 and 1.
-        - Known defect: an integer input is not converted to a floating dtype. With the default blur a 1-channel
-          signed integer image blurs to zeros and yields no edge; a uint8 image, a 3-channel integer image, or any
-          integer image where torch has no integer convolution raises
-          (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+        - A 3-channel integer image other than uint8 raises, as :func:`~kornia.color.rgb_to_grayscale` does.
 
     Args:
         input: input image torch.Tensor with shape :math:`(B,C,H,W)`, with :math:`C` equal to 1, or to 3 for an RGB
@@ -132,12 +131,14 @@ def canny(
     KORNIA_CHECK_IS_COLOR_OR_GRAY(input, f"canny expects 1 or 3 channels. Got: {input.shape[1]}")
     _check_thresholds(low_threshold, high_threshold)
 
-    device = input.device
-    dtype = input.dtype
-
     # To Grayscale
     if input.shape[1] == 3:
         input = rgb_to_grayscale(input)
+
+    # an integer image is processed in float32, so both outputs are float32 (#5155)
+    input = _to_floating(input)
+    device = input.device
+    dtype = input.dtype
 
     # Gaussian filter
     blurred: torch.Tensor = gaussian_blur2d(input, kernel_size, sigma)

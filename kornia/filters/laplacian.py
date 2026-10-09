@@ -25,7 +25,7 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK
 from kornia.core.utils import is_autocast_enabled, is_compiling
 
 from .blur import _HAS_MKLDNN, _ONEDNN_LARGE_INPUT, _needs_convolution_for_extreme_cpu_values
-from .filter import filter2d
+from .filter import _to_floating, filter2d
 from .kernels import (
     _check_kernel_size,
     _check_laplacian_kernel_size,
@@ -76,10 +76,8 @@ def laplacian(
           :func:`~kornia.filters.spatial_gradient`, this does not give derivative units: size 3 returns
           :math:`3 \nabla^2 / 16`. :ref:`Filtering <filtering-conventions>` compares both scales with scipy and
           OpenCV.
-        - Known defect: an integer input casts the kernel to its dtype, as :func:`~kornia.filters.filter2d` does,
-          so the normalised kernel truncates to 0 and on the CPU the output is all zeros. For uint8, the negative
-          centre wraps before normalisation, making its absolute sum 256 for size 3, but every normalised tap still
-          truncates to 0 (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+        - An integer or bool input is filtered in float32 and the output is float32, as in
+          :func:`~kornia.filters.filter2d`.
 
     Args:
         input: the input image tensor with shape :math:`(B, C, H, W)`.
@@ -122,6 +120,8 @@ def laplacian(
     border_type = str(border_type).lower()
 
     ky, kx = _check_laplacian_size(kernel_size)
+    # the kernel is built in the input's dtype, where an integer dtype truncates its normalized taps (#5155)
+    input = _to_floating(input)
 
     if not _laplacian_slices_eligible(input) or _needs_convolution_for_extreme_cpu_values(input, ky * kx):
         kernel = get_laplacian_kernel2d((ky, kx), device=input.device, dtype=input.dtype)[None]

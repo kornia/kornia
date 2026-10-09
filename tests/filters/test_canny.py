@@ -762,10 +762,8 @@ class TestConventionsCanny(BaseTester):
             with pytest.raises(ImageError):
                 Canny()(torch.rand(1, channels, 12, 13, device=device, dtype=dtype))
 
-    def test_wart_canny_integer_input_finds_no_edge_5155(self, device, dtype):
-        """#5155: an integer image is not converted to a floating dtype, and the default blur truncates it to zeros."""
-        if device.type != "cpu":
-            pytest.skip("integer convolution raises on this device, so there is no truncated result to pin (#5155)")
+    def test_convention_canny_integer_input_finds_the_float_edge_5155(self, device, dtype):
+        """#5155: an integer image is blurred in float32, so it finds the edge of the same image in floating point."""
         self._require_padding(device, dtype)
         # the ramped step 0 | 6 | 10: in a floating dtype its blurred ridge, about 26, gives one edge pixel per row
         img = self._ramped_step(10.0, device, torch.float64)
@@ -773,4 +771,4 @@ class TestConventionsCanny(BaseTester):
         assert edges[0, 0].nonzero()[:, 1].tolist() == [7] * 9
         for int_dtype in (torch.int16, torch.int32, torch.int64):
             _, edges = canny(img.to(int_dtype), 5.0, 10.0)
-            assert edges.count_nonzero().item() == 0
+            assert edges[0, 0].nonzero()[:, 1].tolist() == [7] * 9

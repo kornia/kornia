@@ -51,6 +51,17 @@ def _compute_padding(kernel_size: list[int]) -> list[int]:
     return out_padding
 
 
+def _to_floating(input: torch.Tensor) -> torch.Tensor:
+    """Promote an integer or bool input to float32, the compute dtype for filtering.
+
+    A kernel cast to an integer dtype truncates its fractional taps and wraps its sums, so an integer image is filtered
+    in float32 and the result stays float32, as the color conversions do for integer images (#4053, #5155).
+    """
+    if input.is_floating_point() or input.is_complex():
+        return input
+    return input.to(torch.float32)
+
+
 def _check_kernel_batch(input: torch.Tensor, kernel: torch.Tensor) -> None:
     """Check that the kernel batch is 1 or the input batch."""
     # Format the sizes only on failure: an f-string evaluated on every call makes Dynamo specialize the batch size,
@@ -97,11 +108,9 @@ def filter2d(
           ``'CONV'`` are ``'reflect'``, ``'same'`` and ``'conv'``.
         - The kernel is cast to the input's dtype and device and stays differentiable; the output has the input's
           dtype.
-        - Known defects:
-
-          - an integer input casts the kernel to its dtype, so a fractional kernel truncates to 0: a uint8 image
-            filtered with a box kernel comes back as zeros, or the call raises where torch has no integer
-            convolution (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+        - An integer or bool input is filtered in float32 and the output is float32, on the input's scale: a uint8
+          image is not rescaled to :math:`[0, 1]`, and the result is not rounded or clamped back to the integer
+          range (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Args:
         input: the input tensor with shape of
@@ -158,6 +167,8 @@ def filter2d(
     )
     # the checks are case-insensitive, so dispatch on the lower-case spelling as well
     border_type, padding, behaviour = str(border_type).lower(), str(padding).lower(), str(behaviour).lower()
+
+    input = _to_floating(input)
 
     # prepare kernel
     b, c, h, w = input.shape
@@ -346,6 +357,8 @@ def filter3d(
     # the checks are case-insensitive, so dispatch on the lower-case spelling as well
     border_type, behaviour = str(border_type).lower(), str(behaviour).lower()
 
+    input = _to_floating(input)
+
     # prepare kernel
     b, c, d, h, w = input.shape
     if behaviour == "conv":
@@ -403,11 +416,8 @@ def fft_conv(
           ``fft_conv`` returns the same result, to roundoff. A NaN or inf in a channel of the input makes that
           channel's whole output non-finite, where :func:`~kornia.filters.filter2d` keeps it to the pixels whose
           window reaches it.
-        - Known defects:
-
-          - an integer input truncates a fractional kernel to 0, as in :func:`~kornia.filters.filter2d`, and the
-            result is in torch's default floating dtype (float32) instead of the input's
-            (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+        - An integer or bool input is filtered in float32 and the output is float32, as in
+          :func:`~kornia.filters.filter2d`.
 
     Args:
         input: Input tensor of shape :math:`(B, C, H, W)`.
@@ -481,6 +491,8 @@ def fft_conv(
     )
     # the checks are case-insensitive, so dispatch on the lower-case spelling as well
     border_type, padding, behaviour = str(border_type).lower(), str(padding).lower(), str(behaviour).lower()
+
+    input = _to_floating(input)
 
     _, c, h, w = input.shape
     kh, kw = kernel.shape[-2:]
