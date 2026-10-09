@@ -30,7 +30,7 @@ def _identity(x: torch.Tensor) -> torch.Tensor:
 
 
 class _RandomSign:
-    """Multiply the magnitude mapping by a random sign per row. Module-level so the operation pickles (#4469)."""
+    """Multiply the magnitude mapping by a random sign per row; a class rather than a closure, so wrappers pickle."""
 
     def __init__(self, fn: Callable[[torch.Tensor], torch.Tensor]) -> None:
         self.fn = fn
@@ -69,9 +69,8 @@ class OperationBase(nn.Module):
         - a symmetric magnitude applies the magnitude mapping first and then a random sign per row, so a mapping
           that quantizes to zero stays zero (``Posterize`` maps ``0.5`` to ``0`` bits with ``magnitude_range=(0, 8)``).
         - the concrete classes in ``kornia.augmentation.auto.operations.ops`` wrap public 2D augmentations and
-          inherit their input, dtype, RNG and replay contracts. A wrapper pickles when its magnitude mapping is
-          picklable, with either sign setting, since the identity and the sign flip are module-level
-          (`#4469 <https://github.com/kornia/kornia/issues/4469>`_).
+          inherit their input, dtype, RNG and replay contracts. A wrapper pickles, with either sign setting, when
+          its magnitude mapping is picklable.
 
     """
 

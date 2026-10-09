@@ -507,11 +507,11 @@ Serializing an augmentation
   ``_param_generator.*`` buffers that loading does not feed back into the
   samplers (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
 - ``pickle`` and ``copy.deepcopy`` keep the configuration and the recorded
-  ``_params``, which replay on the same input. The default
-  ``kornia.augmentation.auto`` policies cannot be pickled (a policy can be
-  pickled only when every operation wrapper in it can), though they deep-copy
-  (`#4469 <https://github.com/kornia/kornia/issues/4469>`_). What lazily
-  computed matrices retain is described in :doc:`/augmentation.base`.
+  ``_params``, which replay on the same input. This includes the
+  ``kornia.augmentation.auto`` policies: a policy pickles when every operation
+  wrapper in it does, and a wrapper does when its magnitude mapping is
+  picklable (the built-in mappings are). What lazily computed matrices retain
+  is described in :doc:`/augmentation.base`.
 
 Morphology
 ----------
