@@ -967,13 +967,13 @@ class TestTransformModuleBuffers(BaseTester):
         assert not list(transform.parameters())
         assert not transform.state_dict()
 
-    def test_constructor_gradient_after_to(self, device):
+    def test_constructor_gradient_after_to(self, device, dtype):
         angle = torch.tensor([17.0], requires_grad=True)
-        transform = kornia.geometry.transform.Rotate(angle).to(device=device, dtype=torch.float64)
-        image = torch.arange(30, device=device, dtype=torch.float64).reshape(1, 1, 5, 6) / 30
+        transform = kornia.geometry.transform.Rotate(angle).to(device=device, dtype=dtype)
+        image = torch.arange(30, device=device, dtype=dtype).reshape(1, 1, 5, 6) / 30
         weights = image.flip(-1)
         actual = torch.autograd.grad((transform(image) * weights).sum(), angle)[0]
-        reference_angle = angle.detach().to(device=device, dtype=torch.float64).requires_grad_()
+        reference_angle = angle.detach().to(device=device, dtype=dtype).requires_grad_()
         expected = torch.autograd.grad(
             (kornia.geometry.transform.rotate(image, reference_angle) * weights).sum(), reference_angle
         )[0]
