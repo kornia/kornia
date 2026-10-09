@@ -201,7 +201,7 @@ select = [
   "BLE",  # flake8-blind-except
   "C4",  # flake8-comprehensions
   "C90",  # McCabe cyclomatic complexity
-  # "CPY",    # Copyright-related rules
+  # "CPY",    # Copyright-related rules. No: preview-only; the add-license-header pre-commit hook writes headers
   "DTZ",  # flake8-datetimez
   "E",  # pycodestyle
   "F",  # Pyflakes
@@ -247,35 +247,38 @@ select = [
   "UP",  # pyupgrade
   "W",  # pycodestyle
   "YTT",  # flake8-2020
-  # "A",    # flake8-builtins
-  # "ANN",  # flake8-annotations
-  # "ARG",  # flake8-unused-arguments
-  # "COM",  # flake8-commas
+  # The families still commented out were assessed in #2445, which gives the reasons in full.
+  # "No" means the family is not wanted: please do not open a PR that enables it.
+  # "Partial" names the rules of that family that are still wanted.
+  # "A",    # flake8-builtins. No: public parameters such as `input` shadow builtins; renaming breaks the API
+  # "ANN",  # flake8-annotations. No: ty checks the types
+  # "ARG",  # flake8-unused-arguments. No: unused arguments keep interface signatures such as `forward`
+  # "COM",  # flake8-commas. No: COM812 conflicts with ruff format
   "D",  # pydocstyle
   "D400",  # missing-trailing-period
-  # "DJ",   # flake8-django
-  # "EM",   # flake8-errmsg
-  # "ERA",  # eradicate
+  # "DJ",   # flake8-django. No: kornia does not use Django
+  # "EM",   # flake8-errmsg. No: f-strings stay inline in `raise`
+  # "ERA",  # eradicate. No: also flags math and shape notes such as `# u = fx * X + cx`
   "EXE",  # flake8-executable
-  # "FA",   # flake8-future-annotations
-  # "FBT",  # flake8-boolean-trap
-  # "FIX",  # flake8-fixme
-  # "G",    # flake8-logging-format
-  # "INP",  # flake8-no-pep420
+  # "FA",   # flake8-future-annotations. No: does nothing for target-version py311
+  # "FBT",  # flake8-boolean-trap. No: keyword-only booleans would break public signatures
+  # "FIX",  # flake8-fixme. No: TODO comments are allowed
+  # "G",    # flake8-logging-format. No: f-strings are preferred in logging calls
+  # "INP",  # flake8-no-pep420. No: test, benchmark and script directories are not packages
   "ISC",  # flake8-implicit-str-concat
-  # "N",    # pep8-naming
-  # "PD",   # pandas-vet
-  # "PERF", # Perflint
-  # "PGH",  # pygrep-hooks
-  # "PT",   # flake8-pytest-style
-  # "PTH",  # flake8-use-pathlib
-  # "Q",    # flake8-quotes
-  # "SIM",  # flake8-simplify
-  # "SLF",  # flake8-self
-  # "T20",  # flake8-print
-  # "TCH",  # flake8-type-checking
-  # "TD",   # flake8-todos
-  # "TRY",  # tryceratops
+  # "N",    # pep8-naming. No: math names such as `R`, `K` and `H` stay
+  # "PD",   # pandas-vet. No: kornia does not use pandas
+  # "PERF", # Perflint. No: PERF401 rewrites append loops as comprehensions
+  # "PGH",  # pygrep-hooks. Partial: PGH004 is enabled above. No: PGH003, ty ignores the code in `type: ignore[x]`
+  # "PT",   # flake8-pytest-style. Partial: the PT rules above, and PT011 is wanted. No: PT006
+  # "PTH",  # flake8-use-pathlib. No: os.path to pathlib churn
+  # "Q",    # flake8-quotes. No: ruff format handles quotes
+  # "SIM",  # flake8-simplify. Partial: the SIM rules above. No: SIM300, it reads names such as `H` as constants
+  # "SLF",  # flake8-self. No: tests check private members on purpose
+  # "T20",  # flake8-print. Partial: T201 is wanted for `kornia/` only
+  # "TC",   # flake8-type-checking. Partial: TC004 and TC005 are wanted. No: TC001-TC003, TC006
+  # "TD",   # flake8-todos. No: the TODO format is not checked
+  # "TRY",  # tryceratops. Partial: TRY002 is wanted. No: TRY003 (as EM), TRY004 (changes exception classes)
 ]
 ignore = [
   "B905",  # `zip()` without explicit `strict=` - too many to fix, not a bug
