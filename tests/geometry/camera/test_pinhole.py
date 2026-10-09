@@ -898,9 +898,9 @@ class TestPinholeCamera(BaseTester):
             torch.tensor([8], device=device),
         )
         point = torch.tensor([1.0, 2.0, 4.0], device=device, dtype=dtype)
-        with pytest.raises(ValueError) as cam_error:
+        with pytest.raises(ValueError, match=r"Input must be at least a 2D tensor") as cam_error:
             cam.project(point)
-        with pytest.raises(ValueError) as function_error:
+        with pytest.raises(ValueError, match=r"Input must be at least a 2D tensor") as function_error:
             kornia.geometry.camera.project_points(point, _k44(device, dtype)[:, :3, :3].contiguous())
         assert (
             str(cam_error.value)
