@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import pickle
 from functools import partial
 
 import pytest
@@ -1057,6 +1058,16 @@ class TestBoxes2D(BaseTester):
         dense = Boxes.from_tensor(xyxy).filter_boxes_by_area(2.0)
         dense_merged = dense.merge(Boxes.from_tensor(xyxy[:1]))
         self.assert_close(dense_merged.to_tensor("xyxy"), torch.cat([dense.to_tensor("xyxy"), xyxy[:1]]))
+
+    def test_unpickle_without_filter_validity_4714(self, device, dtype):
+        # A Boxes pickled by an earlier kornia has no ``_valid``: it loads with every box valid and can be filtered.
+        xyxy = torch.tensor([[[1.0, 1.0, 4.0, 4.0], [0.0, 0.0, 1.0, 1.0]]], device=device, dtype=dtype)
+        boxes = Boxes.from_tensor(xyxy)
+        del boxes._valid
+        restored = pickle.loads(pickle.dumps(boxes))  # noqa: S301
+        self.assert_close(restored.to_tensor("xyxy"), xyxy, atol=0.0, rtol=0.0)
+        filtered = restored.filter_boxes_by_area(min_area=2.0).to_tensor("xyxy")
+        self.assert_close(filtered, torch.cat([xyxy[:, :1], torch.zeros_like(xyxy[:, 1:])], 1), atol=0.0, rtol=0.0)
 
     def test_filter_gradcheck_4714(self, device):
         xyxy = torch.tensor(

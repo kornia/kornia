@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Optional, Tuple, cast
+from typing import Any, Optional, Tuple, cast
 
 import torch
 from torch import Size
@@ -294,6 +294,11 @@ class Boxes:
         self._mode = mode
         # Filtering can leave holes; _N only describes trailing list padding.
         self._valid = torch.ones(boxes.shape[:-2], device=boxes.device, dtype=torch.bool)
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
+        if "_valid" not in state:  # pickled before filtering kept validity: every box is valid
+            self._valid = torch.ones(self._data.shape[:-2], device=self._data.device, dtype=torch.bool)
 
     def __getitem__(self, key: slice | int | torch.Tensor) -> Boxes:
         new_box = type(self)(self._data[key], False)
