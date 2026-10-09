@@ -60,9 +60,9 @@ def focal_loss(
           logit difference ``pred[:, 1:] - pred[:, :1]`` and the target ``target[:, None]``, with the same ``alpha``
           and ``gamma``: class 1 is the positive class.
         - The default ``reduction='none'`` returns a ``(B, C, *)`` map whose target slice holds the focal term above
-          and whose other slices are 0 where their log-probability is finite. ``'mean'`` divides its sum by every
-          element of that map, ``C`` times the pixel count, so with ``gamma=0`` and ``alpha=None`` it is the mean
-          cross entropy divided by ``C``.
+          and whose other slices are 0, also where their log-probability overflows to ``-inf``. ``'mean'`` divides
+          its sum by every element of that map, ``C`` times the pixel count, so with ``gamma=0`` and ``alpha=None``
+          it is the mean cross entropy divided by ``C``.
         - ``weight`` multiplies the slice of class ``c`` by ``weight[c]``; ``'mean'`` is not normalised by the
           weights.
         - A pixel labelled ``ignore_index`` (default ``-100``) is 0 in every slice and still counts in the ``'mean'``
@@ -70,9 +70,6 @@ def focal_loss(
           :ref:`Losses and metrics <losses-metrics-conventions>` ports
           :func:`~torch.nn.functional.cross_entropy` to this loss.
         - ``alpha`` outside ``[0, 1]`` and a negative ``gamma`` are not validated.
-        - Known defect: a non-target class whose log-probability overflows to ``-inf``, at a logit gap beyond the
-          range of the dtype (about 65504 in float16), turns its slice, the reduced loss and the gradient of that
-          pixel's logits into NaN (`#5628 <https://github.com/kornia/kornia/issues/5628>`_).
 
     Args:
         pred: logits torch.Tensor with shape :math:`(N, C, *)` where C = number of classes.

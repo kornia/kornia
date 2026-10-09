@@ -597,20 +597,22 @@ class TestConventionsFocalLoss(BaseTester):
         )
         self.assert_close(actual, expected.to(device=device, dtype=dtype))
 
-    def test_wart_focal_loss_overflowing_non_target_log_probability_5628(self, device, dtype):
-        # A logit gap beyond the range of the dtype overflows a non-target log-probability to -inf, and its term times
-        # the exact zero of the one-hot target is 0 * -inf = NaN (#5628): that slice, the reduced loss and the gradient
-        # of that pixel's logits are NaN, while the target slice is 0 and the other pixel stays finite
+    def test_convention_focal_loss_overflowing_non_target_log_probability_5628(self, device, dtype):
+        # A logit gap beyond the range of the dtype overflows a non-target log-probability to -inf; its slice is still
+        # 0 (#5628). The pixel is classified with probability 1, so its loss and its logits' gradient are 0, as for
+        # F.cross_entropy, and the other pixel keeps the value it has on its own.
         big = 0.75 * torch.finfo(dtype).max
         logits = torch.tensor([[[[big, 1.0]], [[-big, -0.5]], [[0.0, 0.3]]]], device=device, dtype=dtype)
         logits.requires_grad_()
         labels = torch.zeros(1, 1, 2, device=device, dtype=torch.long)
+        assert logits.log_softmax(1)[0, 1, 0, 0].isneginf()
         out = kornia.losses.focal_loss(logits, labels, None)
-        assert out[0, 1, 0, 0].isnan()
-        assert out[0, 0, 0, 0] == 0
-        assert out[0, :, 0, 1].isfinite().all()
+        self.assert_close(out[..., 0], torch.zeros_like(out[..., 0]), rtol=0, atol=0)
+        rest = logits[..., 1:].detach().clone().requires_grad_()
+        rest_total = kornia.losses.focal_loss(rest, labels[..., 1:], None, reduction="sum")
+        self.assert_close(out[..., 1:], kornia.losses.focal_loss(rest, labels[..., 1:], None))
         total = kornia.losses.focal_loss(logits, labels, None, reduction="sum")
-        assert total.isnan()
+        self.assert_close(total, rest_total)
         (grad,) = torch.autograd.grad(total, logits)
-        assert grad[..., 0].isnan().all()
-        assert grad[..., 1].isfinite().all()
+        self.assert_close(grad[..., 0], torch.zeros_like(grad[..., 0]), rtol=0, atol=0)
+        self.assert_close(grad[..., 1:], torch.autograd.grad(rest_total, rest)[0])
