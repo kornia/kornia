@@ -201,7 +201,7 @@ select = [
   "BLE",  # flake8-blind-except
   "C4",  # flake8-comprehensions
   "C90",  # McCabe cyclomatic complexity
-  # "CPY",    # Copyright-related rules. No: preview-only; the add-license-header pre-commit hook writes headers
+  # "CPY",    # Copyright-related rules. No: the add-license-header pre-commit hook already writes the headers
   "DTZ",  # flake8-datetimez
   "E",  # pycodestyle
   "F",  # Pyflakes
@@ -253,7 +253,7 @@ select = [
   # "A",    # flake8-builtins. No: public parameters such as `input` shadow builtins; renaming breaks the API
   # "ANN",  # flake8-annotations. No: ty checks the types
   # "ARG",  # flake8-unused-arguments. No: unused arguments keep interface signatures such as `forward`
-  # "COM",  # flake8-commas. No: COM812 conflicts with ruff format
+  # "COM",  # flake8-commas. No: ruff format already handles trailing commas
   "D",  # pydocstyle
   "D400",  # missing-trailing-period
   # "DJ",   # flake8-django. No: kornia does not use Django
