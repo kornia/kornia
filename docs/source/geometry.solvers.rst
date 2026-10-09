@@ -16,6 +16,17 @@ Homogeneous Solvers
 Polynomial Solvers
 ------------------
 
+The polynomial solvers accept coefficients in descending degree order and return
+real roots with multiplicity, using zero padding for missing real roots. The
+public quadratic, cubic and quartic paths support fixed-shape graph capture,
+including mixed batches with lower-degree rows. Near repeated roots, input
+coefficient rounding can change whether a pair is real or complex; correctness
+is defined by the represented coefficients. See each function's precision and
+gradient conventions. Under ``torch.compile`` with Inductor on CUDA, fused
+multiply-adds can lose exact double roots; this known limitation is not planned
+to be fixed, and the notes on :func:`solve_cubic` and :func:`solve_quartic` give
+the rates and a workaround.
+
 .. autofunction:: solve_quadratic
 .. autofunction:: solve_cubic
 .. autofunction:: solve_quartic

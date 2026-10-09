@@ -1073,8 +1073,9 @@ normalised camera coordinates, and :func:`~kornia.geometry.homography.find_homog
      - ``ransacReprojThreshold`` of ``findHomography``, the same unit for points
    * - polynomial roots
      - ``solve_quadratic``, ``solve_cubic`` and ``solve_quartic`` take coefficients highest degree first and
-       return only the real roots, a missing root padded with ``0.0``; ``solve_quartic``'s order is unspecified;
-       a zero leading coefficient lowers the degree
+       return only the real roots, a missing root padded with ``0.0``; ``solve_quartic`` returns its roots in
+       descending order before the padding, and its lower-degree rows keep ``solve_cubic``'s order; a zero
+       leading coefficient lowers the degree
      - ``numpy.roots`` takes the same coefficient order, returns the complex roots too and drops leading zeros
 
 Pitfall checklist
