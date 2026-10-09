@@ -581,7 +581,9 @@ class TestFitLine(BaseTester):
         # Scaling all weights in a row changes neither its centroid nor the TLS direction.
         points = torch.tensor([[[2.0, 4.0], [4.0, 8.0], [6.0, 12.0]]], device=device, dtype=dtype)
         weights = torch.tensor([[1.0, 2.0, 1.0]], device=device, dtype=dtype)
-        exponent = math.frexp(torch.finfo(dtype).max)[1] - 3
+        # The largest weight is 2**(e - 1), so the weight sum 2**e overflows the dtype: normalising by the sum would not
+        # help, normalising by the largest weight does.
+        exponent = math.frexp(torch.finfo(dtype).max)[1] - 2
         scales = torch.tensor([2.0**exponent, 2.0**-exponent], device=device, dtype=dtype)[:, None]
 
         line = fit_line(points.expand(2, 3, 2), weights * scales)
@@ -611,6 +613,22 @@ class TestFitLine(BaseTester):
             return fit_line(points, weights).projection(points[:, 0])
 
         self.gradcheck(op, (points, weights), requires_grad=(True, True))
+
+    @pytest.mark.parametrize("scale", [2.0**100, 2.0**-100], ids=["2**100", "2**-100"])
+    def test_fit_line_weighted_2d_gradient_weight_scale_invariance(self, device, scale):
+        # Scaling the weights changes neither the fit nor its gradient. Unnormalised float32 weights at these scales
+        # gave a finite direction whose gradient with respect to the points was exactly zero.
+        points = torch.tensor([[[0.0, 0.1], [1.0, 0.4], [2.0, 0.9], [3.0, 1.2]]], device=device)
+        weights = torch.tensor([[1.0, 2.0, 1.0, 3.0]], device=device)
+
+        def direction_grad(weights):
+            points_ = points.clone().requires_grad_(True)
+            fit_line(points_, weights).direction.sum().backward()
+            return points_.grad
+
+        expected = direction_grad(weights)
+        assert expected.abs().amax() > 0.1
+        self.assert_close(direction_grad(weights * scale), expected)
 
     @pytest.mark.parametrize("weighted", [False, True])
     def test_fit_line_2d_exactly_vertical_is_0_1_5040(self, device, dtype, weighted):
