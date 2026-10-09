@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.augmentation.base import _mixed_gate_shape_error
+from kornia.augmentation.utils import _transform_output_shape
 from kornia.constants import Resample
 from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry.boxes import Boxes
@@ -294,7 +295,11 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
                 kwargs["align_corners"] = normalized_align_corners
             else:
                 flags["align_corners"] = kwargs["align_corners"]
-        return self.inverse_inputs(input, params, flags, transform, **kwargs)
+        # Interpret mask batches as in transform_masks, rather than treating every 3-D mask as CHW.
+        shape = params.get("forward_input_shape")
+        in_tensor = self.transform_tensor(input, shape=shape, match_channel=False)
+        output = self.inverse_inputs(in_tensor, params, flags, transform, **kwargs)
+        return _transform_output_shape(output, input.shape, reference_shape=shape) if self.keepdim else output
 
     def inverse_boxes(
         self,
