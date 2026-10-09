@@ -22,6 +22,7 @@ import torch
 
 import kornia
 from kornia.core._compat import torch_version_le
+from kornia.core.exceptions import BaseError, ShapeError
 from kornia.geometry.conversions import convert_points_from_homogeneous
 from kornia.geometry.epipolar import normalize_points
 from kornia.geometry.homography import (
@@ -435,9 +436,9 @@ class TestSampsonHomographyDistance(BaseTester):
 
     def test_exception(self, device, dtype):
         pts = torch.rand(1, 3, 2, device=device, dtype=dtype)
-        with pytest.raises(Exception):
+        with pytest.raises(ShapeError, match=r"Shape dimension mismatch: expected 3 dimensions, got 2"):
             sampson_homography_distance(pts, pts, torch.eye(3, device=device, dtype=dtype))
-        with pytest.raises(Exception):
+        with pytest.raises(BaseError, match=r"points must have 2 or 3 coordinates"):
             sampson_homography_distance(pts[..., :1], pts[..., :1], torch.eye(3, device=device, dtype=dtype)[None])
 
     def test_gradcheck(self, device):
@@ -1195,7 +1196,7 @@ class TestConventionHomography(BaseTester):
             # Relabelling the images returns the inverse.
             self.assert_close(find_homography_dlt(p2, p1), _inverse(H_true), rtol=1e-4, atol=1e-4)
         # Four or more correspondences: three are rejected before any solve.
-        with pytest.raises(Exception):
+        with pytest.raises(AssertionError):
             find_homography_dlt(p1[:, :3], p2[:, :3])
 
     def test_convention_find_homography_dlt_lu_equals_svd(self, device, dtype):
