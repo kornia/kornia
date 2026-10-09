@@ -19,6 +19,8 @@ Loss functions for training vision models. Each functional loss has an ``nn.Modu
      - Jensen-Shannon and Kullback-Leibler divergences between 2D distributions.
    * - :doc:`losses.morphology`
      - Hausdorff distance losses in 2D and 3D.
+   * - :doc:`losses.registration`
+     - Mutual information and normalized mutual information losses (flat signals, 2D and 3D) for image registration.
 
 .. toctree::
    :hidden:
@@ -27,3 +29,4 @@ Loss functions for training vision models. Each functional loss has an ``nn.Modu
    segmentation <losses.segmentation>
    distributions <losses.distributions>
    morphology <losses.morphology>
+   registration <losses.registration>

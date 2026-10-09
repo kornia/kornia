@@ -244,3 +244,34 @@ class TestConfusionMatrix(BaseTester):
         exported = torch.export.export(_ConfusionMatrix(), (pred, target), strict=True).module()
         for p, t in ((pred, target), (target, pred.flip(-1))):
             self.assert_close(exported(p, t), kornia.metrics.confusion_matrix(p, t, num_classes=3), rtol=0, atol=0)
+
+
+class TestConventionsConfusionMatrix(BaseTester):
+    # Two (H, W) = (3, 4) label maps, three classes; the class counts differ between target and prediction (rows 3, 5,
+    # 4 against columns 3, 4, 5 in sample 0) and between the two samples.
+    PRED = [[[0, 0, 1, 2], [1, 1, 2, 2], [0, 2, 2, 1]], [[2, 2, 2, 2], [0, 1, 1, 0], [0, 0, 1, 2]]]
+    TARGET = [[[0, 1, 1, 2], [1, 1, 1, 2], [0, 0, 2, 2]], [[2, 2, 1, 1], [0, 0, 1, 0], [1, 0, 1, 2]]]
+
+    def test_convention_confusion_matrix_rows_are_targets_per_sample(self, device, dtype):
+        """confusion_matrix returns one float32 count matrix per sample, cm[b, target, prediction]."""
+        pred = torch.tensor(self.PRED, device=device)
+        target = torch.tensor(self.TARGET, device=device)
+        # Snippet used to generate expected (scikit-learn 1.9.0, same orientation: rows y_true, columns y_pred):
+        #   [sklearn.metrics.confusion_matrix(np.ravel(t), np.ravel(p), labels=[0, 1, 2]) for p, t in zip(PRED, TARGET)]
+        expected = torch.tensor(
+            [[[2.0, 0.0, 1.0], [1.0, 3.0, 1.0], [0.0, 1.0, 3.0]], [[3.0, 1.0, 0.0], [1.0, 2.0, 2.0], [0.0, 0.0, 3.0]]],
+            device=device,
+        )
+        cm = kornia.metrics.confusion_matrix(pred, target, 3)
+        assert cm.dtype == torch.float32
+        self.assert_close(cm, expected)
+        # swapping the arguments transposes every matrix
+        self.assert_close(kornia.metrics.confusion_matrix(target, pred, 3), expected.transpose(-2, -1))
+        # relabel: renaming class c to perm[c] in both maps permutes the rows and the columns alike
+        perm = torch.tensor([2, 0, 1], device=device)
+        inv = torch.argsort(perm)
+        self.assert_close(kornia.metrics.confusion_matrix(perm[pred], perm[target], 3), expected[:, inv][:, :, inv])
+        # the first axis is always the batch: a flat (N,) label vector gives N one-pixel matrices, not one matrix
+        flat = kornia.metrics.confusion_matrix(pred[0, 0], target[0, 0], 3)
+        assert flat.shape == (4, 3, 3)
+        self.assert_close(flat.sum(0), torch.tensor([[1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 0.0, 1.0]], device=device))

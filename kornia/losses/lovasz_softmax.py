@@ -37,17 +37,19 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
 
         \text{IoU}(x, class) = \frac{|X \cap Y|}{|X \cup Y|}
 
-    [1] approximates this fomular with a surrogate, which is fully differentable.
+    [1] approximates this formula with a surrogate, which is fully differentiable.
 
     Where:
-       - :math:`X` expects to be the scores of each class.
-       - :math:`Y` expects to be the long tensor with the class labels.
+       - :math:`X` is the softmax of ``pred`` over the classes.
+       - :math:`Y` is the one-hot encoding of the integer class labels in ``target``.
 
-    the loss, is finally computed as:
+    the Jaccard loss of each class is
 
     .. math::
 
-        \text{loss}(x, class) = 1 - \text{IoU}(x, class)
+        \Delta_J(x, class) = 1 - \text{IoU}(x, class)
+
+    and the loss is the mean over the classes of its Lovász extension, evaluated at the errors :math:`|X - Y|`.
 
     Reference:
         [1] https://arxiv.org/pdf/1705.08790.pdf
@@ -55,6 +57,17 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
     .. note::
         This loss function only supports multi-class (C > 1) labels. For binary
         labels please use the Lovasz-Hinge loss.
+
+    Convention:
+        - ``pred`` holds logits ``(B, C, H, W)`` with ``C >= 2`` and the softmax over dim 1 is taken inside;
+          ``target`` holds class labels ``(B, H, W)`` in ``[0, C)``. There is no ``ignore_index`` and the labels are
+          not validated: a label of ``-100`` is not ignored, and the result for it is undefined.
+        - Each image is scored on its own and the losses are averaged over the batch into a 0-d tensor; there is no
+          ``reduction``. An image's loss is the mean over all ``C`` classes: a class absent from the image enters it
+          with that image's largest probability for the class.
+        - ``weight`` multiplies the term of each class and the mean still divides by ``C``, so a uniform weight of 2
+          doubles the loss, where ``dice_loss(average='macro')`` divides by the summed weights of the classes it
+          averages.
 
     Args:
         pred: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes > 1.
@@ -146,17 +159,19 @@ class LovaszSoftmaxLoss(nn.Module):
 
         \text{IoU}(x, class) = \frac{|X \cap Y|}{|X \cup Y|}
 
-    [1] approximates this fomular with a surrogate, which is fully differentable.
+    [1] approximates this formula with a surrogate, which is fully differentiable.
 
     Where:
-       - :math:`X` expects to be the scores of each class.
-       - :math:`Y` expects to be the binary tensor with the class labels.
+       - :math:`X` is the softmax of ``pred`` over the classes.
+       - :math:`Y` is the one-hot encoding of the integer class labels in ``target``.
 
-    the loss, is finally computed as:
+    the Jaccard loss of each class is
 
     .. math::
 
-        \text{loss}(x, class) = 1 - \text{IoU}(x, class)
+        \Delta_J(x, class) = 1 - \text{IoU}(x, class)
+
+    and the loss is the mean over the classes of its Lovász extension, evaluated at the errors :math:`|X - Y|`.
 
     Reference:
         [1] https://arxiv.org/pdf/1705.08790.pdf
@@ -165,9 +180,12 @@ class LovaszSoftmaxLoss(nn.Module):
         This loss function only supports multi-class (C > 1) labels. For binary
         labels please use the Lovasz-Hinge loss.
 
+    Convention:
+        See the Convention block of :func:`~kornia.losses.lovasz_softmax_loss`.
+
     Args:
         pred: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes > 1.
-        labels: labels tensor with shape :math:`(N, H, W)` where each value
+        target: labels tensor with shape :math:`(N, H, W)` where each value
           is in range :math:`0 ≤ targets[i] ≤ C-1`.
         weight: weights for classes with shape :math:`(num\_of\_classes,)`.
 
