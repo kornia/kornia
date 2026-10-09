@@ -121,6 +121,9 @@ class ExtractTensorPatches(nn.Module):
     In the simplest case, the output value of the operator with input size
     :math:`(B, C, H, W)` is :math:`(B, N, C, H_{out}, W_{out})`.
 
+    An empty batch preserves the number of windows, channels and patch spatial dimensions.
+    Channels and window sizes must remain non-empty.
+
     where
       - :math:`B` is the batch size.
       - :math:`N` denotes the total number of extracted patches stacked in
@@ -221,6 +224,8 @@ class CombineTensorPatches(nn.Module):
 
     In the simplest case, the output value of the operator with input size
     :math:`(B, N, C, H_{out}, W_{out})` is :math:`(B, C, H, W)`.
+
+    Empty batches are reconstructed with the same spatial size and unpadding as non-empty batches.
 
     where
       - :math:`B` is the batch size.
@@ -417,7 +422,7 @@ def combine_tensor_patches(
     restored_size = ones_tensor.shape[2:]
 
     patches = patches.permute(0, 2, 3, 4, 1)
-    patches = patches.reshape(patches.shape[0], -1, patches.shape[-1])
+    patches = patches.flatten(1, 3)
     int_flag = 0
     if not torch.is_floating_point(patches):
         int_flag = 1
@@ -446,12 +451,11 @@ def combine_tensor_patches(
 def _extract_tensor_patchesnd(
     input: torch.Tensor, window_sizes: Tuple[int, ...], strides: Tuple[int, ...]
 ) -> torch.Tensor:
-    batch_size, num_channels = input.size()[:2]
     dims = range(2, input.dim())
     for dim, patch_size, stride in zip(dims, window_sizes, strides):
         input = input.unfold(dim, patch_size, stride)
     input = input.permute(0, *dims, 1, *(dim + len(dims) for dim in dims)).contiguous()
-    return input.view(batch_size, -1, num_channels, *window_sizes)
+    return input.flatten(1, len(dims))
 
 
 def extract_tensor_patches(
@@ -497,6 +501,10 @@ def extract_tensor_patches(
     # torch's unfold drops the final patches that don't fit
     window_size = cast(Tuple[int, int], _pair(window_size))
     stride = cast(Tuple[int, int], _pair(stride))
+    if input.shape[1] == 0:
+        raise ValueError("extract_tensor_patches requires a non-empty channel dimension.")
+    if any(size <= 0 for size in window_size):
+        raise ValueError(f"window_size must contain positive values. Got {window_size}.")
     original_size = (input.shape[-2], input.shape[-1])
 
     # if padding is specified, we leave it up to the user to ensure it fits
