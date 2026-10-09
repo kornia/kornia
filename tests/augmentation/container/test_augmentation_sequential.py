@@ -321,21 +321,43 @@ class TestAugmentationSequential:
         assert out_mask.shape == (2, 4, 1, 8, 8)
         assert_close(out_mask, out_image[:, :, :1])
 
-    def test_video_single_mask_equals_an_explicit_full_batch_mask_5624(self, device, dtype):
+    @pytest.mark.parametrize("data_format", ["BTCHW", "BCTHW"])
+    def test_video_single_mask_equals_an_explicit_full_batch_mask_5624(self, data_format, device, dtype):
         # Entry point 1 of #5624, RandomAffine: a single mask must match an already-expanded one, not just avoid
-        # the grid_sampler batch-size error.
-        image = torch.rand(2, 4, 3, 8, 8, device=device, dtype=dtype)
-        mask = torch.rand(1, 4, 1, 8, 8, device=device, dtype=dtype)
+        # the grid_sampler batch-size error. BCTHW puts the frames on dim 2, so its frame check must not read the
+        # channel axis (1 mask channel against 3 image channels).
+        channels_first = data_format == "BCTHW"
+        image = torch.rand(*((2, 3, 4) if channels_first else (2, 4, 3)), 8, 8, device=device, dtype=dtype)
+        mask = torch.rand(*((1, 1, 4) if channels_first else (1, 4, 1)), 8, 8, device=device, dtype=dtype)
         outputs = []
-        for candidate in (mask, mask.expand(2, -1, 1, -1, -1).clone()):
+        for candidate in (mask, mask.expand(2, -1, -1, -1, -1).clone()):
             torch.manual_seed(5)
             aug = K.AugmentationSequential(
-                K.VideoSequential(K.RandomAffine(30.0, p=1.0), data_format="BTCHW"), data_keys=["input", "mask"]
+                K.VideoSequential(K.RandomAffine(30.0, p=1.0), data_format=data_format), data_keys=["input", "mask"]
             )
             outputs.append(aug(image, candidate)[1])
 
-        assert outputs[0].shape == (2, 4, 1, 8, 8)
+        assert outputs[0].shape == (2, *mask.shape[1:])
         assert_close(outputs[0], outputs[1])
+
+    @pytest.mark.parametrize("nested", [False, True])
+    def test_video_replay_single_mask_uses_the_video_batch_5624(self, nested, device, dtype):
+        # Entry point 2 of #5624 for a video: with same_on_frame=False each child records B * T rows in
+        # forward_input_shape, so a mask-only replay must repeat a single mask to the video batch B that
+        # VideoSequential records, also through a nested container.
+        video = torch.rand(3, 4, 3, 8, 8, device=device, dtype=dtype)
+        mask = torch.rand(1, 4, 1, 8, 8, device=device, dtype=dtype)
+        child = K.RandomAffine(30.0, p=1.0)
+        aug = K.AugmentationSequential(
+            K.VideoSequential(K.ImageSequential(child) if nested else child, same_on_frame=False),
+            data_keys=["input", "mask"],
+        )
+        aug(video, mask.expand(3, -1, -1, -1, -1).clone())
+
+        out_single = aug(mask, params=aug._params, data_keys=["mask"])
+        out_full = aug(mask.expand(3, -1, -1, -1, -1).clone(), params=aug._params, data_keys=["mask"])
+        assert out_single.shape == (3, 4, 1, 8, 8)
+        assert_close(out_single, out_full)
 
     def test_replay_single_mask_follows_each_samples_own_flip_5624(self, device, dtype):
         # Entry point 2 of #5624: a mask replayed alone (no image) with params recorded for batch > 1 must
