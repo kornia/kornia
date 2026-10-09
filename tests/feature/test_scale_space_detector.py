@@ -504,8 +504,12 @@ class TestScaleSpaceDetector(BaseTester):
         lafs, resps = det(torch.zeros(1, 1, 96, 96, device=device, dtype=dtype))
         assert (resps == 0).all()
         centers = lafs[0, :, :, 2]
-        found = (centers == 48).all(dim=-1)
-        assert int(found.sum()) == 3, f"expected the three centre maxima, got {centers.tolist()}"
+        # The maximum sits at octave pixel W_o // 2 of the 96, 48 and 24 px octaves, which ScalePyramid's
+        # align_corners=True resizes put at 48, 24 * 95 / 47 and 12 * 95 / 23 in the input.
+        expected = torch.tensor([48.0, 24 * 95 / 47, 12 * 95 / 23], device=device, dtype=dtype)
+        atol = {torch.float16: 0.02, torch.bfloat16: 0.13, torch.float32: 1e-4}.get(dtype, 1e-9)
+        found = torch.isclose(centers[:, None, :], expected[None, :, None], rtol=0.0, atol=atol).all(-1).any(0)
+        assert bool(found.all()), f"expected the three maxima at {expected.tolist()}, got {centers.tolist()}"
 
     def test_batched_underfill_does_not_leak_the_topk_sentinel(self, device, dtype):
         # For B > 1 the octave top-K ranks over the whole volume with non-candidates masked to
@@ -676,6 +680,50 @@ class TestScaleSpaceDetector(BaseTester):
             resps.append(out_resps)
         self.assert_close(lafs[1], lafs[0])
         self.assert_close(resps[1], resps[0])
+
+    @pytest.mark.parametrize(
+        "double_image, sigma, octave_div",
+        [
+            (True, 1.5, 0.5),
+            (True, 3.0, 1),
+            (True, 6.0, 2),
+            (True, 12.0, 4),
+            (False, 3.0, 1),
+            (False, 6.0, 2),
+            (False, 12.0, 4),
+        ],
+    )
+    def test_detection_lands_on_the_blob_centre_in_every_octave_5675(
+        self, device, dtype, double_image, sigma, octave_div
+    ):
+        # One blob per octave, far from the origin. ScalePyramid resizes with align_corners=True, so octave pixel u
+        # is input pixel u * (W - 1) / (W_o - 1); mapping it by 2 ** o instead put the doubled octave ~0.4 px past
+        # the blob and pulled every coarser octave towards the origin, by ~0.8 px at 1/2 and ~2.3 px at 1/4.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the sub-pixel refinement alone moves a half-precision centre by more than the tolerance")
+        h, w = 241, 320
+        yy, xx = torch.meshgrid(
+            torch.arange(h, dtype=torch.float64), torch.arange(w, dtype=torch.float64), indexing="ij"
+        )
+        blob = torch.exp(-((xx - 251.3) ** 2 + (yy - 180.6) ** 2) / (2 * sigma**2))
+        det = ScaleSpaceDetector(
+            4,
+            resp_module=kornia.feature.BlobHessian(),
+            scale_pyr_module=ScalePyramid(3, 1.6, 15, double_image=double_image, extra_levels=2),
+        ).to(device, dtype)
+        lafs, _ = det(blob[None, None].to(device, dtype))
+        expected = torch.tensor([[251.3, 180.6]], device=device, dtype=dtype)
+        self.assert_close(kornia.feature.get_laf_center(lafs)[0, :1], expected, rtol=0.0, atol=0.1)
+        # The frame follows the same per-axis map. With an odd height the two factors differ (by 0.05 % on the
+        # doubled octave, 0.5 % at 1/2, 0.7 % at 1/4), so an isotropic frame in octave units fails the ratio.
+        h_o, w_o = (2 * h, 2 * w) if octave_div == 0.5 else (h // octave_div, w // octave_div)
+        sx, sy = (w - 1) / (w_o - 1), (h - 1) / (h_o - 1)
+        frame = lafs[0, 0, :, :2]
+        assert frame[0, 1] == 0
+        assert frame[1, 0] == 0
+        self.assert_close(
+            frame[1, 1] / frame[0, 0], torch.tensor(sy / sx, device=device, dtype=dtype), rtol=1e-5, atol=0.0
+        )
 
     def test_few_detections_padding(self, device, dtype):
         # Constant image → very few (possibly zero) NMS candidates; output must still
