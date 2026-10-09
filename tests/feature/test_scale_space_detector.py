@@ -613,26 +613,20 @@ class TestScaleSpaceDetector(BaseTester):
             torch.arange(200.0),
             indexing="ij",
         )
-        img = torch.exp(
-            -((xx - 150.3) ** 2 + (yy - 110.6) ** 2) / (2 * 2.016**2)
-        )[None, None].double()
+        img = torch.exp(-((xx - 150.3) ** 2 + (yy - 110.6) ** 2) / (2 * 2.016**2))[None, None].double()
 
         detector = ScaleSpaceDetector(
             16,
             resp_module=kornia.feature.BlobHessian(),
             mr_size=6.0,
             scale_space_response=False,
-            scale_pyr_module=ScalePyramid(
-                3, 1.6, 32, double_image=True, extra_levels=extra_levels
-            ),
+            scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True, extra_levels=extra_levels),
         ).double()
 
         with torch.no_grad():
             lafs, responses = detector(img)
 
-        keep = kornia.feature.laf_is_filled(lafs)[0] & (
-            responses[0] > 1e-3 * responses[0].max()
-        )
+        keep = kornia.feature.laf_is_filled(lafs)[0] & (responses[0] > 1e-3 * responses[0].max())
         assert int(keep.sum()) == 1
 
     def test_scale_space_response_mode(self, device, dtype):
