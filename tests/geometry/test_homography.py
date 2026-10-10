@@ -981,6 +981,82 @@ class TestFindHomographyFromLinesDLT(BaseTester):
 
         self.gradcheck(find_homography_lines_dlt, (ls1, ls2, weights), rtol=1e-6, atol=1e-6)
 
+    def test_weighted_lines_save_linear_storage(self, device, dtype):
+        # The weighted branch used to build a (B, 2N, 2N) diagonal weight matrix, which the backward
+        # pass saved whole. Scaling the design rows keeps every saved tensor proportional to the
+        # number of segments instead of its square.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("the weighted SVD backward is only defined in float32 and float64")
+
+        ls1 = torch.rand(2, 64, 2, 2, device=device, dtype=dtype, requires_grad=True)
+        ls2 = torch.rand(2, 64, 2, 2, device=device, dtype=dtype, requires_grad=True)
+        weights = torch.rand(2, 64, device=device, dtype=dtype, requires_grad=True)
+        saved_sizes = []
+
+        def pack(tensor):
+            saved_sizes.append(tensor.numel())
+            return tensor
+
+        with torch.autograd.graph.saved_tensors_hooks(pack, lambda tensor: tensor):
+            find_homography_lines_dlt(ls1, ls2, weights).square().sum().backward()
+
+        inputs = ls1.numel() + ls2.numel() + weights.numel()
+        # The diagonal weight matrix alone holds 2 * (2N) * (2N) = 32768 entries against 1152 input entries.
+        assert max(saved_sizes) <= 8 * inputs
+        assert torch.isfinite(ls1.grad).all()
+        assert torch.isfinite(weights.grad).all()
+
+    def test_gradcheck_weighted_lines(self, device):
+        # Gradcheck with a weight per segment exercises the weighted normal equations end to end.
+        ls1 = torch.rand(1, 6, 2, 2, device=device, dtype=torch.float64, requires_grad=True)
+        ls2 = torch.rand(1, 6, 2, 2, device=device, dtype=torch.float64, requires_grad=True)
+        weights = torch.rand(1, 6, device=device, dtype=torch.float64, requires_grad=True)
+
+        self.gradcheck(find_homography_lines_dlt, (ls1, ls2, weights), rtol=1e-6, atol=1e-6)
+
+    def test_weighted_lines_pin_explicit_normal_equations(self, device, dtype):
+        # Value pin from the explicit weighted normal equations A^T diag(w) A, solved by the same SVD.
+        # The perturbed correspondences are inconsistent, so the weights move the estimate and a
+        # weight applied on the wrong design-matrix axis cannot land on these numbers.
+        #
+        #   import torch
+        #   from kornia.geometry.homography import find_homography_lines_dlt, transform_points
+        #   h_true = torch.tensor([[1.0, 0.12, 3.0], [0.05, 0.98, -2.0], [7e-4, 9e-4, 1.0]], dtype=torch.float64)
+        #   seg1 = torch.tensor(SEG1, dtype=torch.float64)
+        #   noise = (torch.arange(20, dtype=torch.float64).reshape(1, 10, 2) % 7) * 0.3 - 0.9
+        #   seg2 = (transform_points(h_true[None], seg1.reshape(1, -1, 2)) + noise).reshape(1, 5, 2, 2)
+        #   weights = torch.tensor([[0.5, 2.0, 1.0, 3.0, 0.25]], dtype=torch.float64)
+        #   find_homography_lines_dlt(seg1[None], seg2, weights)
+        if dtype != torch.float64 or device.type == "mps":
+            pytest.skip("The pinned values are float64 results")
+        seg1 = torch.tensor(
+            [
+                [[0.0, 0.0], [40.0, 6.0]],
+                [[30.0, -12.0], [8.0, 44.0]],
+                [[-18.0, 25.0], [55.0, 30.0]],
+                [[62.0, 5.0], [22.0, -28.0]],
+                [[12.0, 14.0], [44.0, 60.0]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        h_true = torch.tensor(
+            [[1.0, 0.12, 3.0], [0.05, 0.98, -2.0], [7e-4, 9e-4, 1.0]], device=device, dtype=dtype
+        )
+        noise = (torch.arange(20, device=device, dtype=dtype).reshape(1, 10, 2) % 7) * 0.3 - 0.9
+        seg2 = (transform_points(h_true[None], seg1.reshape(1, -1, 2)) + noise).reshape(1, 5, 2, 2)
+        weights = torch.tensor([[0.5, 2.0, 1.0, 3.0, 0.25]], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [
+                [0.9947263297391988, 0.11088599621453082, 3.665932747316061],
+                [0.05927747696363576, 0.9754523942043515, -2.1305310188897137],
+                [0.0008137869276654468, 0.0005046981728602953, 1.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(find_homography_lines_dlt(seg1[None], seg2, weights)[0], expected, rtol=0.0, atol=1e-9)
+
 
 class TestHomographyNormalization(BaseTester):
     @pytest.mark.parametrize("solver", ["lu", "svd", "lines"])
