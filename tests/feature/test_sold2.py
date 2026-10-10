@@ -86,7 +86,7 @@ class TestSOLD2(BaseTester):
         model_jit = torch.jit.script(model)
         self.assert_close(model(img), model_jit(img))
 
-    def test_config_is_not_modified_NNNN(self):
+    def test_config_is_not_modified_5722(self):
         cfg = DetectorCfg()
         assert cfg.use_descriptor is False
         sold2 = SOLD2(pretrained=False, config=cfg)
@@ -94,20 +94,20 @@ class TestSOLD2(BaseTester):
         assert sold2.config is not cfg
         assert sold2.config.use_descriptor is True
 
-    def test_config_dict_is_not_modified_NNNN(self):
+    def test_config_dict_is_not_modified_5722(self):
         cfg = {"grid_size": 4}
         sold2 = SOLD2(pretrained=False, config=cfg)
         assert cfg == {"grid_size": 4}
         assert sold2.config.grid_size == 4
         assert sold2.config.use_descriptor is True
 
-    def test_detector_config_is_not_modified_NNNN(self):
+    def test_detector_config_is_not_modified_5722(self):
         cfg = DetectorCfg()
         detector = SOLD2_detector(pretrained=False, config=cfg)
         assert cfg.use_descriptor is False
         assert detector.config.use_descriptor is False
 
-    def test_match_keeps_torch_diag_NNNN(self, device, dtype):
+    def test_match_keeps_torch_diag_5722(self, device, dtype):
         sold2 = SOLD2(pretrained=False).to(device, dtype)
         diag = torch.diag
         seg1 = torch.tensor([[[10.0, 10.0], [60.0, 90.0]], [[20.0, 70.0], [80.0, 20.0]]], device=device, dtype=dtype)
@@ -121,7 +121,7 @@ class TestSOLD2(BaseTester):
 
 
 class TestWunschLineMatcher(BaseTester):
-    def test_needleman_wunsch_keeps_torch_diag_NNNN(self, device, dtype):
+    def test_needleman_wunsch_keeps_torch_diag_5722(self, device, dtype):
         diag = torch.diag
         scores = torch.rand(2, 3, 5, device=device, dtype=dtype)
         out = WunschLineMatcher().needleman_wunsch(scores)
@@ -131,7 +131,7 @@ class TestWunschLineMatcher(BaseTester):
             torch.diag(torch.ones(3, device=device, dtype=dtype)), torch.eye(3, device=device, dtype=dtype)
         )
 
-    def test_needleman_wunsch_float64_matches_float32_NNNN(self, device):
+    def test_needleman_wunsch_float64_matches_float32_5722(self, device):
         if torch.device(device).type == "mps":
             pytest.skip("MPS does not support float64")
         scores = torch.rand(2, 3, 5, device=device, dtype=torch.float32)
