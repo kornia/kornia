@@ -18,7 +18,7 @@
 # kornia.geometry.plane module inspired by Eigen::geometry::Hyperplane
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h
 
-from typing import Optional
+from typing import Any, Optional
 
 import torch
 from torch import nn
@@ -68,6 +68,20 @@ class Hyperplane(nn.Module):
             else:
                 # Integer plane coefficients cannot be trainable parameters.
                 self.register_buffer(name, value)
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        super().__setstate__(state)
+        # Whole-object checkpoints predating registered state still hold the tensor wrappers.
+        # Restore the module first so its hooks, training flag and other attributes survive.
+        for name in ("_n", "_d"):
+            value = self.__dict__.get(name)
+            if isinstance(value, (Vector3, Scalar)):
+                delattr(self, name)
+                tensor = value.data
+                if tensor.is_floating_point() or tensor.is_complex():
+                    register_module_state(self, name, tensor)
+                else:
+                    self.register_buffer(name, tensor)
 
     def __str__(self) -> str:
         return f"Normal: {self.normal}\nOffset: {self.offset}"

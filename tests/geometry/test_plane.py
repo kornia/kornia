@@ -114,6 +114,34 @@ class TestHyperplane(BaseTester):
         loaded_plane = torch.load(file_path, weights_only=False)
         self.assert_close(plane.normal.unwrap(), loaded_plane.normal.unwrap())
 
+    @pytest.mark.parametrize("integer", [False, True])
+    def test_legacy_serialization(self, device, dtype, tmp_path, integer):
+        # Recreate the pre-registration object layout without calling the current constructor.
+        legacy = Hyperplane.__new__(Hyperplane)
+        torch.nn.Module.__init__(legacy)
+        coefficient_dtype = torch.int64 if integer else torch.float32
+        legacy._n = Vector3(torch.tensor([0, 0, 1], dtype=coefficient_dtype))
+        legacy._d = Scalar(torch.tensor(-2, dtype=coefficient_dtype))
+        legacy.description = "retained attribute"
+        legacy.eval()
+        path = tmp_path / "legacy_plane.pt"
+        torch.save(legacy, path)
+
+        loaded = torch.load(path, weights_only=False)
+        assert isinstance(loaded.normal.data, torch.Tensor)
+        assert isinstance(loaded.offset.data, torch.Tensor)
+        assert set(loaded.state_dict()) == {"_n", "_d"}
+        assert loaded.description == legacy.description
+        assert not loaded.training
+        loaded.to(device=device, dtype=dtype)
+        coefficient_dtype = torch.int64 if integer else dtype
+        assert loaded.normal.data.device == torch.device(device)
+        assert loaded.offset.data.device == torch.device(device)
+        assert loaded.normal.data.dtype == coefficient_dtype
+        assert loaded.offset.data.dtype == coefficient_dtype
+        point = Vector3(torch.tensor([4, 5, 3], device=device, dtype=coefficient_dtype))
+        assert loaded.signed_distance(point).data.item() == 1
+
     @pytest.mark.parametrize("constructor", ["direct", "from_vector", "through", "fit_plane"])
     def test_module_state_round_trip(self, device, dtype, tmp_path, constructor):
         points = torch.tensor([[0.0, 0.0, 2.0], [2.0, 0.0, 2.0], [0.0, 1.0, 2.0]])
