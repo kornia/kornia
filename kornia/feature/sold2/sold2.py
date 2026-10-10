@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import copy
 from typing import Any, Dict, Optional, Tuple, cast
 
 import torch
@@ -43,8 +44,9 @@ class SOLD2(nn.Module):
     Occlusion-aware Line Detector and Descriptor". See :cite:`SOLD22021` for more details.
 
     Args:
-        config: Dict specifying parameters. None will load the default parameters,
-            which are tuned for images in the range 400~800 px.
+        config: :class:`~kornia.feature.sold2.structures.DetectorCfg` specifying parameters. None will load the
+            default parameters, which are tuned for images in the range 400~800 px. The model works on a copy with
+            ``use_descriptor`` set to True; the object passed in is not modified.
         pretrained: If True, download and set pretrained weights to the model.
 
     Returns:
@@ -68,7 +70,8 @@ class SOLD2(nn.Module):
             config = dict_to_dataclass(cast(Dict[str, Any], config), DetectorCfg)
         super().__init__()
         # Initialize some parameters
-        self.config = config if config is not None else DetectorCfg()
+        # Copy so the descriptor head flag never leaks into the caller's object.
+        self.config = copy.deepcopy(config) if config is not None else DetectorCfg()
         self.config.use_descriptor = True  # Only difference to SOLD2_detector DetectorCfg
         self.grid_size = self.config.grid_size
         self.junc_detect_thresh = self.config.detection_thresh
@@ -321,8 +324,8 @@ class WunschLineMatcher(nn.Module):
             j = k - i
             up = dp[:, i - 1, j]
             left = dp[:, i, j - 1]
-            torch.diag = dp[:, i - 1, j - 1] + S[:, i - 1, j - 1]
-            dp[:, i, j] = torch.max(torch.max(up, left), torch.diag)
+            diag = dp[:, i - 1, j - 1] + S[:, i - 1, j - 1]
+            dp[:, i, j] = torch.max(torch.max(up, left), diag)
         return dp[:, -1, -1]
 
 

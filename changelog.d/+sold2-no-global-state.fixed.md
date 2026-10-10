@@ -1,0 +1,1 @@
+`SOLD2.match` no longer replaces the global `torch.diag` with a tensor, which made every later `torch.diag(...)` call in the process (including `MKDDescriptor(whitening=...)`) raise `TypeError`. `SOLD2(config=cfg)` no longer sets `use_descriptor = True` on the `DetectorCfg` it is given; it works on a copy.

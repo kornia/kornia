@@ -21,7 +21,8 @@ import torch.nn.functional as F
 
 from kornia.core.check import ShapeError
 from kornia.feature.sold2 import SOLD2, SOLD2_detector
-from kornia.feature.sold2.sold2 import keypoints_to_grid
+from kornia.feature.sold2.sold2 import WunschLineMatcher, keypoints_to_grid
+from kornia.feature.sold2.structures import DetectorCfg
 
 from testing.base import BaseTester
 
@@ -84,6 +85,61 @@ class TestSOLD2(BaseTester):
         model = SOLD2().to(img.device, img.dtype).eval()
         model_jit = torch.jit.script(model)
         self.assert_close(model(img), model_jit(img))
+
+    def test_config_is_not_modified_NNNN(self):
+        cfg = DetectorCfg()
+        assert cfg.use_descriptor is False
+        sold2 = SOLD2(pretrained=False, config=cfg)
+        assert cfg.use_descriptor is False
+        assert sold2.config is not cfg
+        assert sold2.config.use_descriptor is True
+
+    def test_config_dict_is_not_modified_NNNN(self):
+        cfg = {"grid_size": 4}
+        sold2 = SOLD2(pretrained=False, config=cfg)
+        assert cfg == {"grid_size": 4}
+        assert sold2.config.grid_size == 4
+        assert sold2.config.use_descriptor is True
+
+    def test_detector_config_is_not_modified_NNNN(self):
+        cfg = DetectorCfg()
+        detector = SOLD2_detector(pretrained=False, config=cfg)
+        assert cfg.use_descriptor is False
+        assert detector.config.use_descriptor is False
+
+    def test_match_keeps_torch_diag_NNNN(self, device, dtype):
+        if dtype != torch.float32:
+            pytest.skip("SOLD2 is built in float32; this test does not convert the model")
+        sold2 = SOLD2(pretrained=False).to(device)
+        diag = torch.diag
+        seg1 = torch.tensor([[[10.0, 10.0], [60.0, 90.0]], [[20.0, 70.0], [80.0, 20.0]]], device=device)
+        desc = torch.randn(1, 128, 24, 32, device=device)
+        sold2.match(seg1, seg1 + 1.0, desc, desc.flip(-1))
+        assert torch.diag is diag
+        assert callable(torch.diag)
+        self.assert_close(torch.diag(torch.ones(3, device=device)), torch.eye(3, device=device))
+
+
+class TestWunschLineMatcher(BaseTester):
+    def test_needleman_wunsch_keeps_torch_diag_NNNN(self, device, dtype):
+        if dtype != torch.float32:
+            pytest.skip("WunschLineMatcher.needleman_wunsch allocates its table in the default dtype")
+        diag = torch.diag
+        scores = torch.rand(2, 3, 5, device=device, dtype=dtype)
+        out = WunschLineMatcher().needleman_wunsch(scores)
+        assert out.shape == (2,)
+        assert torch.diag is diag
+        self.assert_close(
+            torch.diag(torch.ones(3, device=device, dtype=dtype)), torch.eye(3, device=device, dtype=dtype)
+        )
+
+    def test_needleman_wunsch_value(self, device, dtype):
+        if dtype != torch.float32:
+            pytest.skip("WunschLineMatcher.needleman_wunsch allocates its table in the default dtype")
+        # one-to-one alignment: dp[-1, -1] is the best sum of (score - 0.1) over a monotone matching
+        scores = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 2.0, 0.0]]], device=device, dtype=dtype)
+        out = WunschLineMatcher().needleman_wunsch(scores)
+        self.assert_close(out, torch.tensor([2.8], device=device, dtype=dtype), low_tolerance=True)
 
 
 class TestKeypointsToGrid(BaseTester):
