@@ -23,8 +23,8 @@ from typing import ClassVar, Union
 import torch
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
-from kornia.core.external import numpy as np
-from kornia.core.external import onnxruntime as ort
+from kornia.core.external import numpy as _np
+from kornia.core.external import onnxruntime as _ort
 
 from .utils import download_onnx_from_url, normalize_keypoints
 
@@ -61,7 +61,7 @@ class OnnxLightGlue:
         # Import onnxruntime through the lazy loader, not an `importlib.util.find_spec` probe, so that
         # `kornia_config.lazyloader.installation_mode` handles a missing module before the weights are downloaded.
         # `__version__` is module metadata, which the loader imports the module for; `__doc__` would not import it.
-        _ = ort.__version__
+        _ = _ort.__version__
         KORNIA_CHECK(importlib.util.find_spec("numpy") is not None, "numpy is not installed.")
 
         device = torch.device(device)  # type: ignore
@@ -87,7 +87,7 @@ class OnnxLightGlue:
 
             weights = download_onnx_from_url(url)
 
-        self.session = ort.InferenceSession(weights, providers=providers)
+        self.session = _ort.InferenceSession(weights, providers=providers)
 
     def __call__(self, data: dict[str, dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
         """Run the ONNX LightGlue matcher.
@@ -172,7 +172,7 @@ class OnnxLightGlue:
                 name,
                 device_type=self.device.type,
                 device_id=0,
-                element_type=np.float32,
+                element_type=_np.float32,
                 shape=tuple(tensor.shape),
                 buffer_ptr=tensor.data_ptr(),
             )
