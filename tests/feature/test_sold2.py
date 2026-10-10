@@ -122,8 +122,6 @@ class TestSOLD2(BaseTester):
 
 class TestWunschLineMatcher(BaseTester):
     def test_needleman_wunsch_keeps_torch_diag_NNNN(self, device, dtype):
-        if dtype != torch.float32:
-            pytest.skip("WunschLineMatcher.needleman_wunsch allocates its table in the default dtype")
         diag = torch.diag
         scores = torch.rand(2, 3, 5, device=device, dtype=dtype)
         out = WunschLineMatcher().needleman_wunsch(scores)
@@ -133,9 +131,16 @@ class TestWunschLineMatcher(BaseTester):
             torch.diag(torch.ones(3, device=device, dtype=dtype)), torch.eye(3, device=device, dtype=dtype)
         )
 
+    def test_needleman_wunsch_float64_matches_float32_NNNN(self, device):
+        if torch.device(device).type == "mps":
+            pytest.skip("MPS does not support float64")
+        scores = torch.rand(2, 3, 5, device=device, dtype=torch.float32)
+        out32 = WunschLineMatcher().needleman_wunsch(scores)
+        out64 = WunschLineMatcher().needleman_wunsch(scores.double())
+        assert out64.dtype == torch.float64
+        self.assert_close(out64.float(), out32, low_tolerance=True)
+
     def test_needleman_wunsch_value(self, device, dtype):
-        if dtype != torch.float32:
-            pytest.skip("WunschLineMatcher.needleman_wunsch allocates its table in the default dtype")
         # one-to-one alignment: dp[-1, -1] is the best sum of (score - 0.1) over a monotone matching
         scores = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 2.0, 0.0]]], device=device, dtype=dtype)
         out = WunschLineMatcher().needleman_wunsch(scores)
