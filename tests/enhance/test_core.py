@@ -200,6 +200,24 @@ class TestAddWeighted(BaseTester):
         assert module.state_dict() == {}
 
     @pytest.mark.device_agnostic
+    def test_explicit_parameter_remains_trainable(self):
+        alpha = torch.nn.Parameter(torch.tensor(0.25))
+        module = kornia.enhance.AddWeighted(alpha, 0.5, 0.125)
+
+        assert module.alpha is alpha
+        assert dict(module.named_parameters())["alpha"] is alpha
+        assert "alpha" in module.state_dict()
+
+        module = module.to(dtype=torch.float64)
+        src1 = torch.ones(2, 3, dtype=torch.float64)
+        src2 = torch.full((2, 3), 2.0, dtype=torch.float64)
+
+        module(src1, src2).sum().backward()
+
+        assert module.alpha.grad is not None
+        assert torch.isfinite(module.alpha.grad).all()
+
+    @pytest.mark.device_agnostic
     def test_python_scalar_coefficients_remain_supported(self):
         module = kornia.enhance.AddWeighted(0.25, 0.5, 0.125)
 
