@@ -305,7 +305,7 @@ def fit_plane(points: Vector3) -> Hyperplane:
     points_centered = points - mean
 
     # NOTE: not optimal for 2d points, but for now works for other dimensions
-    _, S, V = _torch_svd_cast(points_centered)
+    _, S, V = _torch_svd_cast(_unwrap(points_centered))
 
     # The plane is determined when the centred points have rank 2: the second singular value
     # must be nonzero relative to the first, a scale-invariant test that keeps a small or thin

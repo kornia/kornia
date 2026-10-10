@@ -927,3 +927,77 @@ class TestGetShearMatrix(BaseTester):
         )
         assert out.device.type == center.device.type, "Output device must match center device"
         assert out.dtype == center.dtype, "Output dtype must match center dtype"
+
+
+class TestTransformModuleBuffers(BaseTester):
+    @pytest.mark.parametrize(
+        "module_name,with_center",
+        [(name, center) for name in ("Rotate", "Scale", "Affine") for center in (False, True)]
+        + [("Translate", False), ("Shear", False)],
+    )
+    def test_module_to(self, device, dtype, module_name, with_center):
+        initial_dtype = torch.float64 if dtype == torch.float32 else torch.float32
+        values = {
+            "Rotate": {"angle": [23.0]},
+            "Scale": {"scale_factor": [[0.8, 1.2]]},
+            "Affine": {
+                "angle": [23.0],
+                "translation": [[0.4, -0.2]],
+                "scale_factor": [[0.8, 1.2]],
+                "shear": [[0.1, -0.05]],
+            },
+            "Translate": {"translation": [[0.4, -0.2]]},
+            "Shear": {"shear": [[0.1, -0.05]]},
+        }[module_name]
+        if with_center and module_name in ("Rotate", "Scale", "Affine"):
+            values["center"] = [[1.5, 2.0]]
+        kwargs = {name: torch.tensor(value, dtype=initial_dtype) for name, value in values.items()}
+        constructor = getattr(kornia.geometry.transform, module_name)
+        transform = constructor(**kwargs).to(device=device, dtype=dtype)
+        # Reference constructs directly on the destination, without calling Module.to.
+        expected_transform = constructor(
+            **{name: value.to(device=device, dtype=dtype) for name, value in kwargs.items()}
+        )
+        image = torch.arange(30, device=device, dtype=dtype).reshape(1, 1, 5, 6) / 30
+        self.assert_close(transform(image), expected_transform(image))
+        for name in kwargs:
+            assert getattr(transform, name).device == image.device
+            assert getattr(transform, name).dtype == image.dtype
+        # These fixed constructor values have never been trainable parameters or checkpoint entries.
+        assert not list(transform.parameters())
+        assert not transform.state_dict()
+
+    def test_constructor_gradient_after_to(self, device, dtype):
+        angle = torch.tensor([17.0], requires_grad=True)
+        transform = kornia.geometry.transform.Rotate(angle).to(device=device, dtype=dtype)
+        image = torch.arange(30, device=device, dtype=dtype).reshape(1, 1, 5, 6) / 30
+        weights = image.flip(-1)
+        actual = torch.autograd.grad((transform(image) * weights).sum(), angle)[0]
+        reference_angle = angle.detach().to(device=device, dtype=dtype).requires_grad_()
+        expected = torch.autograd.grad(
+            (kornia.geometry.transform.rotate(image, reference_angle) * weights).sum(), reference_angle
+        )[0]
+        self.assert_close(actual.to(expected), expected)
+
+    @pytest.mark.parametrize(
+        "module_name,name,value",
+        [
+            ("Rotate", "angle", [17.0]),
+            ("Scale", "scale_factor", [[0.8, 1.2]]),
+            ("Affine", "angle", [17.0]),
+            ("Translate", "translation", [[0.4, -0.2]]),
+            ("Shear", "shear", [[0.1, -0.05]]),
+        ],
+    )
+    def test_trainable_constructor_parameter(self, device, dtype, module_name, name, value):
+        parameter = torch.nn.Parameter(torch.tensor(value))
+        transform = getattr(kornia.geometry.transform, module_name)(**{name: parameter})
+        transform = transform.to(device=device, dtype=dtype)
+        stored = getattr(transform, name)
+        assert isinstance(stored, torch.nn.Parameter)
+        assert dict(transform.named_parameters())[name] is stored
+        assert set(transform.state_dict()) == {name}
+        image = torch.arange(30, device=device, dtype=dtype).reshape(1, 1, 5, 6) / 30
+        gradient = torch.autograd.grad((transform(image) * image.flip(-1)).sum(), stored)[0]
+        assert torch.isfinite(gradient).all()
+        assert gradient.abs().sum() > 0

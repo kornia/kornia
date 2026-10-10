@@ -85,6 +85,8 @@ class PatchSequential(ImageSequential):
         - with ``patchwise_apply=True`` and ``random_apply=False``, each module processes its grid location
           across all images. ``same_on_batch`` controls parameter sharing, not which images are processed.
         - with ``patchwise_apply=False``, the selected sequence is applied to every patch.
+        - an empty image batch retains the grid's patch count and spatial sizes. Children must themselves
+          support empty inputs; geometric patch inverses and mask transforms remain unsupported.
         - ``padding="valid"`` requires at least one pixel per patch in each spatial dimension. For example,
           an ``8 x 8`` image on a ``(3, 3)`` grid remains ``8 x 8`` with ``"same"`` and becomes ``6 x 6``
           with ``"valid"``. The batch size, channel count, device and dtype are preserved.

@@ -21,7 +21,6 @@ import pickle
 import pytest
 import torch
 
-from kornia.core.check import BaseError
 from kornia.geometry.plane import Hyperplane
 from kornia.geometry.vector import Scalar, Vector2, Vector3
 
@@ -345,38 +344,78 @@ class TestConventionsVector(BaseTester):
         data = torch.tensor([[0.5, 1.5, 2.0], [1.0, 3.0, 0.75]], device=device, dtype=dtype)
         self.assert_close(torch.compile(fn, backend="eager", fullgraph=True)(data), fn(data))
 
-    def test_wart_vector3_call_path_type_split_5022(self, device, dtype):
-        # Wart pin (#5022): tensor methods lose the wrapper, while torch functions rewrap their result. A
-        # shape-changing torch function then fails Vector3 validation. Each part flips when its path is fixed.
-        wrapped = (
-            Vector3(torch.tensor([[0.3, -1.2, 2.5]], device=device, dtype=dtype)),
-            Vector2(torch.tensor([[0.3, -1.2]], device=device, dtype=dtype)),
-            Scalar(torch.tensor([2.5], device=device, dtype=dtype)),
-        )
-        for obj in wrapped:
-            assert type(obj.clone()) is torch.Tensor
-            assert type(torch.clone(obj)) is type(obj)
+    @pytest.mark.parametrize("vector_type, dim", [(Vector2, 2), (Vector3, 3)])
+    def test_convention_vector_result_type_by_one_rule_5022(self, vector_type, dim, device, dtype):
+        # A torch function, a tensor method, a tensor attribute and an operator give the same type: the vector class
+        # while the result still holds vectors, else a plain tensor. Removing an axis returns a plain tensor even
+        # when the result ends in dim by chance, as the norms of dim vectors do. The rule reads shapes only, so the
+        # transpose of a square (dim, dim) batch would keep the class: four vectors keep v.T unambiguous here.
+        data = torch.tensor(
+            [[0.3, -1.2, 2.5], [1.0, 2.0, 3.0], [-0.5, 0.25, 1.5], [2.0, -1.0, 0.5]], device=device, dtype=dtype
+        )[..., :dim]
+        v = vector_type(data)
+        kept = (v.clone(), torch.clone(v), torch.clone(input=v), v.mean(0, keepdim=True), torch.cat([v, v]))
+        for out in (*kept, v + torch.ones_like(data)):
+            assert type(out) is vector_type
+        batched = v + torch.zeros(5, 1, dim, device=device, dtype=dtype)
+        assert type(batched) is vector_type
+        assert batched.data.shape == (5, 4, dim)
 
-        with pytest.raises(BaseError):
-            torch.linalg.norm(wrapped[0], dim=-1)
-        # A reduced result with three elements instead passes shape validation and is miswrapped as a Vector3.
-        lucky_shape = Vector3(torch.ones(3, 3, device=device, dtype=dtype))
-        reduced = torch.linalg.norm(lucky_shape, dim=-1)
-        assert type(reduced) is Vector3
-        assert reduced.data.shape == (3,)
+        norms = torch.linalg.norm(v, dim=-1)
+        assert type(norms) is torch.Tensor
+        self.assert_close(norms, torch.linalg.norm(data, dim=-1), rtol=0, atol=0)
+        for out in (v.norm(dim=-1), v.T, v.sum(-1), v.reshape(-1), v.unbind(0)[0]):
+            assert type(out) is torch.Tensor
+        square = vector_type(torch.ones(dim, dim, device=device, dtype=dtype))
+        for out in (torch.linalg.norm(square, dim=-1), square.sum(0), square.norm(dim=-1)):
+            assert type(out) is torch.Tensor
+            assert out.shape == (dim,)
 
-    def test_wart_vector3_scalar_left_operand_wins_5022(self, device, dtype):
-        # Wart pin (#5022): an operator wraps its result in the left operand's class, so a Scalar on the left
-        # returns a Scalar that holds the (2, 3) vectors, while the same product with the Vector3 on the left is a
-        # Vector3. A fix that returns a Vector3 whichever side the Scalar is on flips it.
+        # A tensor attribute follows the same rule: the gradient of vectors is vectors.
+        leaf = vector_type(data.clone().requires_grad_())
+        (leaf.data**2).sum().backward()
+        assert type(leaf.grad) is vector_type
+        self.assert_close(leaf.grad.data, 2 * data)
+
+        scalar = Scalar(torch.tensor([2.5], device=device, dtype=dtype))
+        assert type(torch.clone(scalar)) is Scalar
+        assert type(scalar.clone()) is Scalar
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason="no Dynamo on this torch/python pair")
+    def test_eager_backend_traces_the_result_type_rule(self, device, dtype):
+        # The rule runs inside a compiled function: a Scalar on the left gives a Vector3, a method keeps it, and a
+        # norm drops it.
+        def fn(t):
+            v = Scalar(t[..., :1]) * Vector3(t)
+            kept = v.clone()
+            norms = kept.norm(dim=-1)
+            return kept.data, norms, isinstance(kept, Vector3) and isinstance(norms, torch.Tensor)
+
+        torch._dynamo.reset()
+        data = torch.tensor([[0.5, 1.5, 2.0], [1.0, 3.0, 0.75], [2.0, -1.0, 0.25]], device=device, dtype=dtype)
+        compiled = torch.compile(fn, backend="eager", fullgraph=True)(data)
+        expected = fn(data)
+        assert compiled[2] is expected[2] is True
+        self.assert_close(compiled[0], expected[0])
+        self.assert_close(compiled[1], expected[1])
+
+    def test_convention_vector3_scalar_on_either_side_5022(self, device, dtype):
+        # An operation between a Scalar and a Vector3 is a Vector3 whichever side the Scalar is on.
         data = torch.tensor([[0.3, -1.2, 2.5], [1.0, 2.0, 3.0]], device=device, dtype=dtype)
         scale = torch.tensor([[2.0], [3.0]], device=device, dtype=dtype)
         v, s = Vector3(data), Scalar(scale)
-        for out, expected in [(s * v, scale * data), (s / v, scale / data), (s + v, scale + data)]:
-            assert type(out) is Scalar
-            assert out.data.shape == (2, 3)
+        for out, expected in [
+            (s * v, scale * data),
+            (v * s, data * scale),
+            (s / v, scale / data),
+            (s + v, scale + data),
+            (torch.mul(s, v), scale * data),
+            (s.mul(v), scale * data),
+        ]:
+            assert type(out) is Vector3
             self.assert_close(out.data, expected, rtol=0, atol=0)
-        assert type(v * s) is Vector3
+        # A result that does not hold vectors falls back to the Scalar.
+        assert type(torch.cat([v, s], -1)) is Scalar
 
     def test_wart_vector3_normalized_scales_below_eps_3952(self, device, dtype):
         # Wart pin (#3952): normalized() divides by max(norm, 1e-12), so a vector shorter than 1e-12 is scaled by 1e12
@@ -391,21 +430,34 @@ class TestConventionsVector(BaseTester):
         )
 
     @pytest.mark.parametrize("vector_type, dim", [(Vector2, 2), (Vector3, 3)])
-    def test_wart_vector_tuple_index_raises_5022(self, vector_type, dim, device, dtype):
-        # Wart pin (#5022): Vector.__getitem__ indexes data[idx, ...], so a tuple key is turned into an index
-        # tensor and raises RuntimeError (v[..., 0], v[:, 0]), and an int index of an unbatched vector leaves a 0-d
-        # tensor that fails the last-dimension check (IndexError). A fix (index data[idx] and return a Tensor when
-        # the result is not (..., dim)) flips all three; indexing the batch, as in a[1], already works.
+    def test_convention_vector_indexing_5022(self, vector_type, dim, device, dtype):
+        # Indexing returns what the same key returns on the wrapped tensor: in the vector class while the key leaves
+        # the coordinate axis last and whole, else as a plain tensor.
         data = torch.tensor([[0.3, -1.2, 2.5], [4.0, 0.5, -0.7]], device=device, dtype=dtype)[..., :dim]
         a = vector_type(data)
-        with pytest.raises(RuntimeError):
-            _ = a[..., 0]
-        with pytest.raises(RuntimeError):
-            _ = a[:, 0]
-        single = vector_type(data[0])
-        with pytest.raises(IndexError):
-            _ = single[0]
+        mask = torch.tensor([True, False], device=device)
+        index = torch.tensor([1, 0, 1], device=device)
+        for key in (1, slice(1, None), mask, index, [1, 0], (Ellipsis,), (slice(None), None), None, (0, slice(None))):
+            out = a[key]
+            assert type(out) is vector_type, key
+            self.assert_close(out.data, data[key], rtol=0, atol=0)
+        for key in ((Ellipsis, 0), (slice(None), 0), (1, 1), (Ellipsis, None), (Ellipsis, slice(0, 1)), (0, index)):
+            out = a[key]
+            assert type(out) is torch.Tensor, key
+            self.assert_close(out, data[key], rtol=0, atol=0)
 
-        row = a[1]
-        assert isinstance(row, vector_type)
-        self.assert_close(row.data, data[1])
+        # A mask over both axes selects dim elements here, so only the key tells they are not one vector.
+        full_mask = torch.zeros(2, dim, dtype=torch.bool, device=device)
+        full_mask[0, :] = True
+        for key in (full_mask, (full_mask, Ellipsis), (Ellipsis, full_mask)):
+            assert type(a[key]) is torch.Tensor, key
+            self.assert_close(a[key], data[key], rtol=0, atol=0)
+        # An ellipsis spanning no axis does not hide the axes consumed before it.
+        assert type(a[0, slice(None), Ellipsis]) is vector_type
+        assert type(a[0, 1, Ellipsis]) is torch.Tensor
+
+        single = vector_type(data[0])
+        assert type(single[0]) is torch.Tensor
+        assert single[0].shape == ()
+        assert type(single[None]) is vector_type
+        assert type(single[True]) is vector_type

@@ -399,11 +399,11 @@ class TestTensorWrapperProtocol(BaseTester):
             (lambda t: TensorWrapper(t).unwrap(), True),
             (lambda t: (TensorWrapper(t) + 1).unwrap(), True),
             (_build_and_update, True),
-            (lambda t: TensorWrapper(t).sum(), True),
+            (lambda t: TensorWrapper(t).sum().unwrap(), True),
             # A forwarded method on a wrapper built from an intermediate tensor (#5241).
-            (lambda t: TensorWrapper(t.clone()).sum(), True),
-            (lambda t: TensorWrapper(t * 2).mean(dim=-1), True),
-            (lambda t: TensorWrapper(t + 1).reshape(-1), True),
+            (lambda t: TensorWrapper(t.clone()).sum().unwrap(), True),
+            (lambda t: TensorWrapper(t * 2).mean(dim=-1).unwrap(), True),
+            (lambda t: TensorWrapper(t + 1).reshape(-1).unwrap(), True),
             # torch 2.5.1's Dynamo breaks the graph here, cleanly: it does not send unary ``-`` or ``~``, a
             # comparison, ``@`` or a binary or in-place operator with a tensor operand to a user class, and it cannot
             # trace a torch function on a wrapper or ``__getitem__``.
@@ -495,8 +495,10 @@ class TestTensorWrapperProtocol(BaseTester):
         for exponent in (np.array(2.0), np.array([[2.0, 0.5, 3.0]])):
             expected = data**exponent
             out = TensorWrapper(data.clone()) ** exponent
-            assert type(out) is type(expected)
-            self.assert_close(out, expected, rtol=0, atol=0)
+            # NumPy hands the result back through the forwarded ``__array_wrap__``, so it is wrapped like the
+            # result of any other operator.
+            assert type(out) is TensorWrapper
+            self.assert_close(out.data, expected, rtol=0, atol=0)
 
     def test_result_class_with_a_wrapper_subclass_on_the_right(self, device, dtype):
         # Arithmetic takes the left wrapper's class; a comparison takes the right operand's subclass, because Python

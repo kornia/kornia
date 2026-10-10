@@ -46,6 +46,16 @@ __all__ = [
     "translate",
 ]
 
+
+def _register_transform_tensor(module: nn.Module, name: str, value: Optional[torch.Tensor]) -> None:
+    # Preserve trainable constructor parameters; ordinary tensors follow Module.to
+    # without adding new entries to existing checkpoints.
+    if isinstance(value, nn.Parameter):
+        module.register_parameter(name, value)
+    else:
+        module.register_buffer(name, value, persistent=False)
+
+
 # utilities to compute affine matrices
 
 
@@ -939,18 +949,18 @@ class Affine(nn.Module):
 
         if angle is None:
             angle = torch.zeros(batch_size, device=device, dtype=dtype)
-        self.angle = angle
+        _register_transform_tensor(self, "angle", angle)
 
         if translation is None:
             translation = torch.zeros(batch_size, 2, device=device, dtype=dtype)
-        self.translation = translation
+        _register_transform_tensor(self, "translation", translation)
 
         if scale_factor is None:
             scale_factor = torch.ones(batch_size, 2, device=device, dtype=dtype)
-        self.scale_factor = scale_factor
+        _register_transform_tensor(self, "scale_factor", scale_factor)
 
-        self.shear = shear
-        self.center = center
+        _register_transform_tensor(self, "shear", shear)
+        _register_transform_tensor(self, "center", center)
         self.mode = mode
         self.padding_mode = padding_mode
         self.align_corners = align_corners
@@ -1079,8 +1089,8 @@ class Rotate(nn.Module):
         align_corners: bool = True,
     ) -> None:
         super().__init__()
-        self.angle: torch.Tensor = angle
-        self.center: Union[torch.Tensor, None] = center
+        _register_transform_tensor(self, "angle", angle)
+        _register_transform_tensor(self, "center", center)
         self.mode: str = mode
         self.padding_mode: str = padding_mode
         self.align_corners: bool = align_corners
@@ -1137,7 +1147,7 @@ class Translate(nn.Module):
         align_corners: bool = True,
     ) -> None:
         super().__init__()
-        self.translation: torch.Tensor = translation
+        _register_transform_tensor(self, "translation", translation)
         self.mode: str = mode
         self.padding_mode: str = padding_mode
         self.align_corners: bool = align_corners
@@ -1198,8 +1208,8 @@ class Scale(nn.Module):
         align_corners: bool = True,
     ) -> None:
         super().__init__()
-        self.scale_factor: torch.Tensor = scale_factor
-        self.center: Union[torch.Tensor, None] = center
+        _register_transform_tensor(self, "scale_factor", scale_factor)
+        _register_transform_tensor(self, "center", center)
         self.mode: str = mode
         self.padding_mode: str = padding_mode
         self.align_corners: bool = align_corners
@@ -1253,7 +1263,7 @@ class Shear(nn.Module):
         self, shear: torch.Tensor, mode: str = "bilinear", padding_mode: str = "zeros", align_corners: bool = True
     ) -> None:
         super().__init__()
-        self.shear: torch.Tensor = shear
+        _register_transform_tensor(self, "shear", shear)
         self.mode: str = mode
         self.padding_mode: str = padding_mode
         self.align_corners: bool = align_corners
