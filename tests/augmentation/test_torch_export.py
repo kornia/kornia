@@ -203,5 +203,6 @@ def test_torch_export_integer_mask_labels_4478(image_dtype: torch.dtype) -> None
     assert output.dtype == mask.dtype
     assert torch.equal(output, mask.flip(-1))
     label = 2**53 + 1 if image_dtype == torch.float64 else 2**24 + 1
-    with pytest.raises(RuntimeError, match="Integer mask labels"):
-        exported(image, torch.full_like(mask, label))
+    for invalid in (label, torch.iinfo(torch.int64).max):
+        with pytest.raises(RuntimeError, match="Integer mask labels"):
+            exported(image, torch.full_like(mask, invalid))

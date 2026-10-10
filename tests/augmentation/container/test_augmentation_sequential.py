@@ -1884,6 +1884,23 @@ class TestConventionAugmentationSequential(BaseTester):
         with pytest.raises(RuntimeError, match=r"Integer mask labels.*exactly representable"):
             seq(image, mask)
 
+    @pytest.mark.parametrize("mask_dtype", [torch.int32, torch.uint32, torch.int64, torch.uint64])
+    def test_integer_mask_boundary_labels_4478(self, dtype, mask_dtype):
+        # Keep invalid assertions on CPU: accelerator assertion failures can poison the stream.
+        limits = torch.iinfo(mask_dtype)
+        precision = 53 if dtype == torch.float64 else 24
+        exponent = limits.bits - int(limits.min < 0)
+        # The largest representable integer below 2**exponent has spacing 2**(exponent - precision).
+        last_exact = limits.max if exponent <= precision else 2**exponent - 2 ** (exponent - precision)
+        image = torch.ones(1, 1, 2, 2, dtype=dtype)
+        mask = torch.tensor([limits.min, last_exact, 0, limits.min], dtype=mask_dtype).reshape_as(image)
+        expected = torch.tensor([last_exact, limits.min, limits.min, 0], dtype=mask_dtype).reshape_as(image)
+        seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+        assert torch.equal(seq(image, mask)[1], expected)
+        if exponent > precision:
+            with pytest.raises(RuntimeError, match=r"Integer mask labels.*exactly representable"):
+                seq(image, torch.full_like(mask, limits.max))
+
     @pytest.mark.parametrize("mask_dtype", [torch.bool, torch.uint8, torch.int16, torch.int32, torch.int64])
     def test_integer_mask_partial_gate_and_replay_4478(self, mask_dtype, device, dtype):
         labels = [0, 1, 2] if mask_dtype in (torch.bool, torch.uint8) else [257, -2049, 26001]
@@ -1917,8 +1934,9 @@ class TestConventionAugmentationSequential(BaseTester):
         self.assert_close(compiled(mask), op(mask), atol=0, rtol=0)
         if device.type == "cpu":
             label = 2**53 + 1 if dtype == torch.float64 else 2**24 + 1
-            with pytest.raises(RuntimeError, match="Integer mask labels"):
-                compiled(torch.full_like(mask, label))
+            for invalid in (label, torch.iinfo(torch.int64).max):
+                with pytest.raises(RuntimeError, match="Integer mask labels"):
+                    compiled(torch.full_like(mask, invalid))
 
     def test_integer_mask_float64_accepts_larger_exact_labels_4478(self):
         image = torch.ones(1, 1, 2, 2, dtype=torch.float64)

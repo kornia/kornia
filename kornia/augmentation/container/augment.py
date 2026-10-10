@@ -924,7 +924,13 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         # Smaller integer types (and bool) are exactly representable in float32. For wider types, even float64
         # cannot represent every int64 label, so check the actual round trip instead of a conservative bound.
         if mask.dtype in (torch.int32, torch.int64, torch.uint32, torch.uint64):
-            exact = (converted.to(mask.dtype) == mask).all()
+            limits = torch.iinfo(mask.dtype)
+            # The exclusive upper bound is an exact power of two. limits.max itself can round up to that bound.
+            # The minimum is exact too, so integer-to-float conversion cannot round below it. Replace overflow
+            # with zero before casting back: an overflowing positive label cannot equal zero, and casting an
+            # out-of-range float to an integer has undefined behavior even when it happens to match the input.
+            safe = torch.where(converted < float(limits.max + 1), converted, 0.0)
+            exact = (safe.to(mask.dtype) == mask).all()
             message = (
                 f"Integer mask labels must be exactly representable in {dtype}. "
                 "Use a float64 image where supported or remap labels to smaller integers."
