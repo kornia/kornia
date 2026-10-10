@@ -18,8 +18,8 @@
 
 import warnings
 from functools import wraps
-from inspect import isclass
-from typing import Any, Callable, Optional, Tuple
+from inspect import isclass, isfunction
+from typing import Any, Callable, Optional, Tuple, cast
 
 import torch
 
@@ -131,8 +131,12 @@ def torch_version_ge(major: int, minor: int, patch: Optional[int] = None) -> boo
 def _emit_deprecation_warning(
     name: str, replace_with: Optional[str], version: Optional[str], extra_reason: Optional[str]
 ) -> None:
-    """Emit a deprecation warning with the given parameters."""
+    """Emit a deprecation warning with the given parameters.
+
+    ``extra_reason`` is joined to the sentence with exactly one space, whatever whitespace it starts or ends with.
+    """
     beginning = f"Since kornia {version} the " if version is not None else ""
+    extra_reason = extra_reason.strip() if extra_reason else ""
     extra = f" {extra_reason}" if extra_reason else ""
 
     if replace_with is not None:
@@ -146,13 +150,24 @@ def _emit_deprecation_warning(
     )
 
 
+def _bind_init(raw_init: Any, instance: Any) -> Any:
+    """Bind a class's stored ``__init__`` to ``instance`` the way ``type.__call__`` does.
+
+    ``type.__call__`` binds the attribute through the descriptor protocol against the instance's type, so a
+    ``staticmethod`` gets no instance, a ``classmethod`` gets the class being instantiated and a callable without
+    ``__get__`` is called as stored.
+    """
+    get = getattr(type(raw_init), "__get__", None)
+    return raw_init if get is None else get(raw_init, instance, type(instance))
+
+
 def deprecated(
     replace_with: Optional[str] = None, version: Optional[str] = None, extra_reason: Optional[str] = None
 ) -> Any:
     """Mark functions or classes as deprecated with a warning.
 
-    This decorator emits a :class:`DeprecationWarning` when the decorated function or class is called.
-    It provides information about when the deprecation was introduced and what should be used instead.
+    This decorator emits a :class:`DeprecationWarning` when the decorated function is called or the decorated class is
+    instantiated. It provides information about when the deprecation was introduced and what should be used instead.
 
     Args:
         replace_with: The name of the replacement function/class that should be used instead.
@@ -160,10 +175,35 @@ def deprecated(
         version: The kornia version when the deprecation was introduced (e.g., "0.8.3").
             If provided, the warning message will include "Since kornia {version}".
         extra_reason: Additional context or reason for the deprecation. This will be appended
-            to the warning message.
+            to the warning message after a single space; leading and trailing whitespace is ignored.
 
     Returns:
-        A decorator that wraps the function or class with deprecation warnings.
+        A decorator that wraps the function, or the ``__init__`` of the class, with deprecation warnings. A decorated
+        class stays the same class, so ``isinstance``, subclassing, class attributes and classmethods keep working. A
+        subclass whose ``__init__`` reaches the decorated class's warns as well, naming the decorated class.
+
+    Note:
+        The class is modified in place and returned, so ``Old = deprecated(...)(New)`` deprecates ``New`` itself; to
+        deprecate a separate name, decorate a subclass of ``New``.
+
+        The warning points at the line that calls the class; for a subclass, at its ``super().__init__()`` line. It
+        points one frame short when a Python frame, such as a generic alias call (``Old[int](...)``) or a Python
+        metaclass ``__call__``, sits between the caller and the class.
+
+        A subclass whose ``__init__`` does not call ``super().__init__()`` does not warn, and neither does a class
+        whose metaclass skips ``__init__``: calling an ``Enum`` or looking up a member never warns. A decorated
+        memberless ``Enum`` base warns once for each member a subclass defines, when the subclass is created.
+
+        For an ordinary class (no ``__new__`` of its own, no Python metaclass ``__call__``), ``inspect.signature``
+        is unchanged if the decorated class has an ``__init__`` of its own, and is
+        ``(*args: Any, **kwargs: Any) -> None`` if it has none, because under multiple inheritance another
+        ``__init__`` may run; a subclass of a builtin such as ``dict``, ``int``, ``str`` or ``Exception``, for which
+        ``inspect`` finds no signature, reports the same instead of raising ``ValueError``.
+
+        Put ``@deprecated`` above ``@dataclass`` and any other decorator that generates ``__init__``. In the other
+        order the dataclass keeps the decorator's ``__init__`` (``slots=True`` copies it into the new class), so the
+        class raises ``TypeError`` when called with arguments and no field is ever set; a field with a plain default
+        can still be read from the class, except with ``slots=True``.
 
     Example:
         Basic usage without replacement:
@@ -185,7 +225,7 @@ def deprecated(
         @deprecated(
             replace_with="new_function",
             version="0.8.3",
-            extra_reason=" The old implementation has performance issues."
+            extra_reason="The old implementation has performance issues."
         )
         def old_function():
             pass
@@ -204,26 +244,67 @@ def deprecated(
         name = getattr(func, "__name__", "unknown")
 
         if isclass(func):
-            # For classes, wrap in a function that emits warning and instantiates the class
-            # We manually preserve important class attributes since @wraps doesn't work on classes
-            def class_wrapper(*args: Any, **kwargs: Any) -> Any:
-                _emit_deprecation_warning(name, replace_with, version, extra_reason)
-                return func(*args, **kwargs)
+            # Keep the class itself (so isinstance, subclassing, class attributes and classmethods keep working) and
+            # warn from its ``__init__``, which ``type.__call__`` runs on every instantiation but which copy and
+            # pickle do not run.
+            cls = cast("type[Any]", func)
+            orig_init = cls.__init__
+            has_own_init = "__init__" in cls.__dict__
+            # ``orig_init`` went through descriptor lookup on ``cls``; call the stored attribute bound to the instance
+            # instead, so a ``staticmethod`` or ``classmethod`` ``__init__`` gets the arguments it gets undecorated.
+            raw_init = next(k.__dict__["__init__"] for k in cls.__mro__ if "__init__" in k.__dict__)
 
-            # Preserve important class attributes
-            class_wrapper.__name__ = name
-            class_wrapper.__qualname__ = getattr(func, "__qualname__", name)
-            class_wrapper.__module__ = getattr(func, "__module__", None)
-            class_wrapper.__doc__ = func.__doc__
-            class_wrapper.__annotations__ = getattr(func, "__annotations__", {})
-            return class_wrapper
-        else:
-            # For functions, use @wraps normally
-            @wraps(func)
-            def wrapper(*args: Any, **kwargs: Any) -> Any:
+            def class_init(self: Any, *args: Any, **kwargs: Any) -> None:
                 _emit_deprecation_warning(name, replace_with, version, extra_reason)
-                return func(*args, **kwargs)
+                if has_own_init:
+                    _bind_init(raw_init, self)(*args, **kwargs)
+                    return
+                # No ``__init__`` of its own: continue with the next one along the instance's MRO, as
+                # ``super(owner, self).__init__`` does, because under multiple inheritance that is not necessarily
+                # the one ``cls`` inherits. ``owner`` is the class that carries this wrapper, found by identity
+                # because a decorator above ``@deprecated`` may have re-created the class.
+                mro = type(self).__mro__
+                position = next((i for i, k in enumerate(mro) if k.__dict__.get("__init__") is class_init), None)
+                if position is None and cls in mro:
+                    # Something replaced the wrapper in the class dict after the decoration (a second decoration, or
+                    # a decorator above this one that wraps ``__init__``) and still calls it.
+                    position = mro.index(cls)
+                if position is None:  # called on an object that is not an instance of ``cls``
+                    _bind_init(raw_init, self)(*args, **kwargs)
+                    return
+                next_class = next(k for k in mro[position + 1 :] if "__init__" in k.__dict__)
+                if next_class is not object:
+                    super(mro[position], self).__init__(*args, **kwargs)
+                # ``object.__init__`` rejects any argument once ``__init__`` is replaced, and ``object.__new__`` no
+                # longer does. Reproduce what the undecorated class does: reject arguments unless the class
+                # customises ``__new__`` (``tuple`` subclasses and the like).
+                elif (args or kwargs) and type(self).__new__ is object.__new__:
+                    raise TypeError(f"{type(self).__name__}() takes no arguments")
 
-            return wrapper
+            if has_own_init:
+                # Copies the name, module and docstring of the original ``__init__``; ``__wrapped__`` points at it,
+                # which is the ``__init__`` that runs for the class and for every subclass that inherits it.
+                wraps(orig_init)(class_init)
+            else:
+                # Named like the ``__init__`` the class had before, but with no ``__wrapped__`` for ``inspect`` to
+                # follow: which ``__init__`` runs depends on the MRO of the instance.
+                class_init.__name__ = "__init__"
+                class_init.__doc__ = orig_init.__doc__
+                if isfunction(orig_init):
+                    class_init.__module__ = orig_init.__module__
+                    class_init.__qualname__ = orig_init.__qualname__
+                else:  # a C-level ``__init__`` such as ``object.__init__``
+                    class_init.__module__ = cls.__module__
+                    class_init.__qualname__ = f"{cls.__qualname__}.__init__"
+            cls.__init__ = class_init
+            return cls
+
+        # For functions, use @wraps normally
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            _emit_deprecation_warning(name, replace_with, version, extra_reason)
+            return func(*args, **kwargs)
+
+        return wrapper
 
     return _deprecated

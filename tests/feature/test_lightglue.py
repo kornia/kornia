@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import unittest.mock
+
 import pytest
 import torch
 
@@ -110,6 +112,21 @@ def test_normalize_keypoints_range():
     out = normalize_keypoints(kpts, size)
     assert out.min() >= -1.0 - 1e-3
     assert out.max() <= 1.0 + 1e-3
+
+
+def test_normalize_keypoints_autocast_promotes_to_f32():
+    """Under CPU autocast, bf16 keypoints are promoted to fp32 for normalization.
+
+    On the main branch (before #4624) the decorator-based ``@AMP_CUSTOM_FWD_F32``
+    with ``device_type="cuda"`` did not fire under CPU autocast, so bf16 inputs
+    remained bf16.  This head's per-tensor inline autocast guard correctly promotes.
+    """
+    kpts = torch.randn(1, 5, 2, dtype=torch.bfloat16)
+    size = torch.tensor([[100, 200]])
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        out = normalize_keypoints(kpts, size)
+    assert out.dtype == torch.float32
+    assert out.shape == kpts.shape
 
 
 def test_pad_to_length_no_pad():
@@ -246,8 +263,10 @@ class TestTokenConfidence(BaseTester):
         d0 = torch.rand(1, 20, 32, device=device, dtype=dtype)
         d1 = torch.rand(1, 20, 32, device=device, dtype=dtype)
         s0, s1 = tc(d0, d1)
-        assert (s0 >= 0).all() and (s0 <= 1).all()
-        assert (s1 >= 0).all() and (s1 <= 1).all()
+        assert (s0 >= 0).all()
+        assert (s0 <= 1).all()
+        assert (s1 >= 0).all()
+        assert (s1 <= 1).all()
 
     def test_gradcheck(self, device):
         pass  # TokenConfidence uses detach() on inputs; not differentiable w.r.t. inputs
@@ -278,7 +297,7 @@ class TestTokenConfidence(BaseTester):
 # ---------------------------------------------------------------------------
 
 
-def _make_lightglue(device, dtype, input_dim=64, n_layers=2):
+def _make_lightglue(device, dtype, input_dim=64, n_layers=2, mp=False):
     """Instantiate a small LightGlue with random weights (features=None)."""
     return (
         LightGlue(
@@ -290,6 +309,7 @@ def _make_lightglue(device, dtype, input_dim=64, n_layers=2):
             depth_confidence=-1,
             width_confidence=-1,
             flash=False,
+            mp=mp,
         )
         .to(device, dtype)
         .eval()
@@ -408,6 +428,35 @@ class TestLightGlue(BaseTester):
             out = lg(data)
         assert isinstance(out, dict)
 
+    def test_mp_forward_uses_input_device_type(self, device, dtype):
+        """With ``mp=True``, ``forward`` derives the autocast ``device_type`` from the
+        keypoints device (the computation device), not from a hardcoded ``\"cuda\"`` nor
+        from the first tensor encountered while scanning the input dict (regression for
+        #4624).
+        """
+        if dtype == torch.float16:
+            pytest.skip("LightGlue requires float32 or float64")
+        lg = _make_lightglue(device, dtype, mp=True)
+        data = _make_data(device, dtype)
+        # Put a non-keypoint tensor (image_size) first so a naive "first tensor wins"
+        # resolver would select it instead of the keypoints device.
+        data["image0"] = {
+            "image_size": data["image0"].pop("image_size"),
+            **data["image0"],
+        }
+        seen: dict[str, str] = {}
+        real_ac = torch.autocast
+
+        def _spy(*args: object, **kwargs: object):
+            seen["device_type"] = kwargs.get("device_type", "")
+            return real_ac(*args, **kwargs)
+
+        with unittest.mock.patch("kornia.feature.lightglue.torch.autocast", side_effect=_spy), torch.no_grad():
+            out = lg(data)
+
+        assert seen["device_type"] == data["image0"]["keypoints"].device.type
+        assert "matches0" in out
+
     @pytest.mark.slow
     def test_pretrained_smoke(self, device):
         """Instantiating with real feature type downloads and loads weights."""
@@ -417,3 +466,23 @@ class TestLightGlue(BaseTester):
         with torch.no_grad():
             out = lg(data)
         assert "matches0" in out
+
+
+@pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS is not available")
+@pytest.mark.parametrize(
+    ("model_device", "autocast_device", "autocast_dtype"),
+    [("cpu", "mps", torch.float16), ("mps", "cpu", torch.bfloat16)],
+    # Ids must not start with "mps": conftest skips every "[mps" node whose name mentions autocast.
+    ids=["model_cpu-autocast_mps", "model_mps-autocast_cpu"],
+)
+def test_autocast_of_another_device_type_leaves_descriptors_alone(model_device, autocast_device, autocast_dtype):
+    """An autocast region of another device type must not cast the descriptors to half (#5198).
+
+    The no-argument ``torch.is_autocast_enabled()`` reports MPS autocast on torch 2.14, so the half cast hit CPU
+    descriptors and the CPU float32 projection raised a dtype mismatch.
+    """
+    lg = _make_lightglue(model_device, torch.float32)
+    data = _make_data(model_device, torch.float32)
+    with torch.no_grad(), torch.autocast(autocast_device, dtype=autocast_dtype):
+        out = lg(data)
+    assert out["log_assignment"].dtype == torch.float32

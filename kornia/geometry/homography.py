@@ -15,16 +15,32 @@
 # limitations under the License.
 #
 
+import math
 import warnings
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import torch
 
-from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.utils import _extract_device_dtype, _torch_svd_cast, safe_inverse_with_mask, safe_solve_with_mask
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
-from kornia.geometry.epipolar import normalize_points
-from kornia.geometry.linalg import transform_points
+from kornia.geometry.epipolar import normalize_points, normalize_transformation
+from kornia.geometry.epipolar._metrics import _shares_points
+from kornia.geometry.epipolar.fundamental import _robust_loss
+from kornia.geometry.linalg import _inf_where, _nonzero, _sqrt_or_zero, transform_points
+from kornia.geometry.solvers.homogeneous import _null_space_lu
+
+__all__ = [
+    "find_homography_dlt",
+    "find_homography_dlt_iterated",
+    "find_homography_lines_dlt",
+    "find_homography_lines_dlt_iterated",
+    "line_segment_transfer_error_one_way",
+    "oneway_transfer_error",
+    "sample_is_valid_for_homography",
+    "sampson_homography_distance",
+    "symmetric_transfer_error",
+]
 
 TupleTensor = Tuple[torch.Tensor, torch.Tensor]
 
@@ -34,6 +50,17 @@ def oneway_transfer_error(
 ) -> torch.Tensor:
     r"""Return transfer error in image 2 for correspondences given the homography matrix.
 
+    Convention:
+        - ``oneway_transfer_error(pts1, pts2, H)`` measures in image 2, between ``H`` applied to ``pts1`` and
+          ``pts2``.
+        - One set of correspondences scored against several homographies (points with leading dimensions of
+          size 1) is computed from one matrix product for all of them, in at least float32; the result matches the
+          per-homography computation to roundoff.
+        - ``squared=True``, the default here and in :func:`symmetric_transfer_error`, returns the squared
+          distance; :func:`line_segment_transfer_error_one_way` defaults to ``squared=False``.
+        - The error does not depend on the scale of ``H``, and an exact match scores exactly 0, with a zero
+          gradient, with ``squared=False``. A point that ``H`` maps to infinity (:math:`w' = 0`) has error ``inf``.
+
     Args:
         pts1: correspondences from the left images with shape
           (B, N, 2 or 3). If they are homogeneous, converted automatically.
@@ -41,13 +68,17 @@ def oneway_transfer_error(
           (B, N, 2 or 3). If they are homogeneous, converted automatically.
         H: Homographies with shape :math:`(B, 3, 3)`.
         squared: if True (default), the squared distance is returned.
-        eps: Small constant for safe sqrt.
+        eps: unused; it was added to the projective denominator and inside the square root, which made the error
+            depend on the scale of ``H`` and an exact match score ``sqrt(eps)`` (#4881). The singular case is
+            guarded exactly instead. Accepted so that existing calls keep working.
 
     Returns:
         the computed distance with shape :math:`(B, N)`.
 
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
+    if H.shape[0] >= 2 and _shares_points(pts1, pts2):
+        return _oneway_transfer_error_shared_impl_(pts1, pts2, H, squared)
 
     if pts1.shape[-1] == 3:
         x1y1 = convert_points_from_homogeneous(pts1)
@@ -84,20 +115,26 @@ def oneway_transfer_error(
     y_num = h10 * x1 + h11 * y1 + h12
     w_den = h20 * x1 + h21 * y1 + h22
 
-    u1in2 = x_num / (w_den + eps)
-    v1in2 = y_num / (w_den + eps)
+    # A point mapped to infinity (w' = 0) is singular (#4881).
+    w_safe = _nonzero(w_den)
+    u1in2 = x_num / w_safe
+    v1in2 = y_num / w_safe
 
     # ---- Squared transfer error in image 2 ----
-    err2 = (u1in2 - u2).pow(2) + (v1in2 - v2).pow(2)
-    if squared:
-        return err2
-    return (err2 + eps).sqrt()
+    err2 = _inf_where((u1in2 - u2).pow(2) + (v1in2 - v2).pow(2), w_den == 0)
+    return err2 if squared else _sqrt_or_zero(err2)
 
 
 def symmetric_transfer_error(
     pts1: torch.Tensor, pts2: torch.Tensor, H: torch.Tensor, squared: bool = True, eps: float = 1e-8
 ) -> torch.Tensor:
     r"""Return Symmetric transfer error for correspondences given the homography matrix.
+
+    Convention:
+        - Argument order as :func:`oneway_transfer_error`. The squared value is the image-2 error of ``H`` plus
+          the image-1 error of ``H^-1``, and ``squared=False`` returns the square root of that sum.
+        - As :func:`oneway_transfer_error`, the error does not depend on the scale of ``H`` and an exact match
+          scores exactly 0 with ``squared=False``.
 
     Args:
         pts1: correspondences from the left images with shape
@@ -106,7 +143,7 @@ def symmetric_transfer_error(
           (B, N, 2 or 3). If they are homogeneous, converted automatically.
         H: Homographies with shape :math:`(B, 3, 3)`.
         squared: if True (default), the squared distance is returned.
-        eps: Small constant for safe sqrt.
+        eps: unused, as in :func:`oneway_transfer_error` (#4881).
 
     Returns:
         the computed distance with shape :math:`(B, N)`. Rows whose homography is not invertible
@@ -132,24 +169,107 @@ def symmetric_transfer_error(
     H_safe = torch.where(good_H.view(-1, 1, 1), H, eye)
     H_inv_safe, _ = safe_inverse_with_mask(H_safe)
 
-    there: torch.Tensor = oneway_transfer_error(pts1, pts2, H_safe, True, eps)
-    back: torch.Tensor = oneway_transfer_error(pts2, pts1, H_inv_safe, True, eps)
+    there: torch.Tensor = oneway_transfer_error(pts1, pts2, H_safe, True)
+    back: torch.Tensor = oneway_transfer_error(pts2, pts1, H_inv_safe, True)
     good_H_reshape: torch.Tensor = good_H.view(-1, 1).expand_as(there)
 
     out = there + back
     if not squared:
-        out = (out + eps).sqrt()
+        out = _sqrt_or_zero(out)
     max_tensor = torch.full_like(out, max_num)
     return torch.where(good_H_reshape, out, max_tensor)
+
+
+def sampson_homography_distance(
+    pts1: torch.Tensor, pts2: torch.Tensor, H: torch.Tensor, squared: bool = True
+) -> torch.Tensor:
+    r"""Return the Sampson distance of correspondences to homographies.
+
+    The first-order approximation of the geometric error: the squared distance by which ``pts1`` and ``pts2``
+    together must move for :math:`x_2 \sim H x_1` to hold (Hartley and Zisserman, *Multiple View Geometry*, 2nd ed.,
+    section 4.2.6). With :math:`x_1 = (x, y, 1)`, :math:`x_2 = (u, v, 1)` and :math:`H x_1 = (p, q, w)`, the
+    algebraic residuals :math:`\epsilon = (v w - q, p - u w)` and their Jacobian :math:`J` with respect to
+    :math:`(x, y, u, v)` give :math:`d^2 = \epsilon^\top (J J^\top)^{-1} \epsilon`.
+
+    Convention:
+        - Argument order and direction as :func:`oneway_transfer_error`: ``H`` maps ``pts1`` to ``pts2``. Unlike the
+          one-way transfer error, the distance accounts for noise in both images and does not depend on the scale
+          of ``H``.
+        - For an affine ``H`` the constraint is linear in the coordinates, and the distance is the exact geometric
+          error.
+        - An exact correspondence scores 0; a correspondence whose :math:`J J^\top` is singular scores ``inf``; a
+          non-finite correspondence or homography gives NaN.
+        - Computed in at least float32 and returned in the promoted dtype of the inputs, or in float32 when they are
+          all integers.
+
+    Args:
+        pts1: points in the first image with shape :math:`(B, N, 2)`, or homogeneous :math:`(B, N, 3)`.
+        pts2: points in the second image with shape :math:`(B, N, 2)`, or homogeneous :math:`(B, N, 3)`.
+        H: homographies with shape :math:`(B, 3, 3)`. Points with a leading dimension of 1 are scored against every
+            homography.
+        squared: if True (default), the squared distance is returned, else the distance.
+
+    Returns:
+        the computed distance with shape :math:`(B, N)`.
+
+    """
+    KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
+    KORNIA_CHECK(pts1.shape[-1] in (2, 3) and pts2.shape[-1] in (2, 3), "points must have 2 or 3 coordinates")
+    dtype = torch.promote_types(torch.promote_types(pts1.dtype, pts2.dtype), H.dtype)
+    work = torch.promote_types(dtype, torch.float32)
+    # Integer coordinates give a floating distance. Everything runs in at least float32, the dehomogenization too:
+    # x / w of a small w overflows float16.
+    out_dtype = dtype if dtype.is_floating_point else work
+    pts1, pts2 = pts1.to(work), pts2.to(work)
+    if pts1.shape[-1] == 3:
+        finite = torch.isfinite(pts1).all(-1, keepdim=True)
+        pts1 = convert_points_from_homogeneous(pts1).masked_fill(~finite, float("nan"))
+    if pts2.shape[-1] == 3:
+        finite = torch.isfinite(pts2).all(-1, keepdim=True)
+        pts2 = convert_points_from_homogeneous(pts2).masked_fill(~finite, float("nan"))
+    x, y = pts1[..., 0], pts1[..., 1]
+    u, v = pts2[..., 0], pts2[..., 1]
+    # The distance does not depend on the scale of H, but its quadratic is of fourth order in H: dividing by the
+    # largest entry keeps tiny and huge finite scales in range. A zero H stays zero, and non-finite entries give NaN.
+    H = H.to(work)
+    scale = H.abs().amax(dim=(-2, -1), keepdim=True)
+    h = (H / torch.where(scale > 0, scale, torch.ones_like(scale)))[..., None]
+    p = h[..., 0, 0, :] * x + h[..., 0, 1, :] * y + h[..., 0, 2, :]
+    q = h[..., 1, 0, :] * x + h[..., 1, 1, :] * y + h[..., 1, 2, :]
+    w = h[..., 2, 0, :] * x + h[..., 2, 1, :] * y + h[..., 2, 2, :]
+    e1, e2 = v * w - q, p - u * w
+    # Jacobian rows over (x, y, u, v): (v h20 - h10, v h21 - h11, 0, w) and (h00 - u h20, h01 - u h21, -w, 0).
+    jx1, jy1 = v * h[..., 2, 0, :] - h[..., 1, 0, :], v * h[..., 2, 1, :] - h[..., 1, 1, :]
+    jx2, jy2 = h[..., 0, 0, :] - u * h[..., 2, 0, :], h[..., 0, 1, :] - u * h[..., 2, 1, :]
+    a = jx1.square() + jy1.square() + w.square()
+    c = jx2.square() + jy2.square() + w.square()
+    b = jx1 * jx2 + jy1 * jy2
+    det = a * c - b.square()
+    num = c * e1.square() - 2 * b * e1 * e2 + a * e2.square()
+    # A singular J J^T has no finite correction. The division takes a safe denominator inside the where, so the
+    # inf branch leaves finite gradients (#4229); rounding can make the quadratic form slightly negative. NaN fails
+    # every comparison below and passes through, as in oneway_transfer_error.
+    d2 = num / torch.where(det > 0, det, torch.ones_like(det))
+    d2 = torch.where(det <= 0, torch.full_like(det, math.inf), d2)
+    d2 = torch.where(d2 < 0, torch.zeros_like(d2), d2)
+    if not squared:
+        positive = d2 > 0
+        d2 = torch.where(positive, torch.where(positive, d2, torch.ones_like(d2)).sqrt(), d2)
+    return d2.to(out_dtype)
 
 
 def line_segment_transfer_error_one_way(
     ls1: torch.Tensor, ls2: torch.Tensor, H: torch.Tensor, squared: bool = False
 ) -> torch.Tensor:
-    r"""Return transfer error in image 2 for line segment correspondences given the homography matrix.
+    r"""Return the mean perpendicular transfer distance in image 2 for line segment correspondences.
 
-    Line segment end points are reprojected into image 2, and point-to-line error is calculated w.r.t. line,
-    induced by line segment in image 2. See :cite:`homolines2001` for details.
+    Both endpoints of each image-1 segment are mapped into image 2 by ``H`` and scored against the line through
+    the matching image-2 segment. See :cite:`homolines2001` for details.
+
+    Convention:
+        - Argument order and direction as :func:`oneway_transfer_error`.
+        - The image-2 line is scaled to unit :math:`(a, b)`, so the error is the mean perpendicular distance of
+          the two mapped endpoints, in pixels.
 
     Args:
         ls1: line segment correspondences from the left images with shape
@@ -157,10 +277,10 @@ def line_segment_transfer_error_one_way(
         ls2: line segment correspondences from the right images with shape
           (B, N, 2, 2).
         H: Homographies with shape :math:`(B, 3, 3)`.
-        squared: if True (default is False), the squared distance is returned.
+        squared: if True (default is False), the squared error is returned.
 
     Returns:
-        the computed distance with shape :math:`(B, N)`.
+        the computed error with shape :math:`(B, N)`.
 
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
@@ -172,8 +292,15 @@ def line_segment_transfer_error_one_way(
     ps2_h = convert_points_to_homogeneous(ps2)
     pe2_h = convert_points_to_homogeneous(pe2)
     ln2 = torch.linalg.cross(ps2_h, pe2_h, dim=3)
-    ps1_in2 = convert_points_to_homogeneous(transform_points(H, ps1))
-    pe1_in2 = convert_points_to_homogeneous(transform_points(H, pe1))
+    # Scale the image-2 line to a unit (a, b) so the error is a perpendicular distance in pixels, not that
+    # distance times the image-2 segment length (#4867). A zero-length segment defines no line; as before the
+    # fix its error reads as zero, and the callers that need infinity guard on the segment length themselves.
+    scale = ln2[..., :, :2].norm(dim=-1, keepdim=True)
+    ln2 = ln2 / torch.where(scale > 0, scale, torch.ones_like(scale))
+    # Pass (B, N, 2) points so transform_points applies each H once; (B, N, 1, 2) points are flattened to
+    # (B*N, 1, 2) and every H is repeated N times.
+    ps1_in2 = convert_points_to_homogeneous(transform_points(H, ps1.squeeze(-2))).unsqueeze(-2)
+    pe1_in2 = convert_points_to_homogeneous(transform_points(H, pe1.squeeze(-2))).unsqueeze(-2)
     er_st1 = (ln2 @ ps1_in2.transpose(-2, -1)).view(B, N).abs()
     er_end1 = (ln2 @ pe1_in2.transpose(-2, -1)).view(B, N).abs()
     error = 0.5 * (er_st1 + er_end1)
@@ -182,17 +309,212 @@ def line_segment_transfer_error_one_way(
     return error
 
 
+def _line_segment_squared_distance_one_way(ls1: torch.Tensor, ls2: torch.Tensor, H: torch.Tensor) -> torch.Tensor:
+    """Squared perpendicular distance, in pixels, of the mapped image-1 endpoints from the image-2 line.
+
+    :func:`line_segment_transfer_error_one_way` returns that pixel distance directly since #4867; a zero-length
+    image-2 segment defines no line, so its distance is infinite.
+    """
+    distance = line_segment_transfer_error_one_way(ls1, ls2, H)
+    length = (ls2[..., 1, :] - ls2[..., 0, :]).norm(dim=-1)
+    return torch.where(length > 0, distance.square(), torch.full_like(distance, float("inf")))
+
+
+def _homography_rows(p1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
+    """DLT rows ``(..., 2N, 9)`` of homogeneous ``p1`` ``(..., N, 3)`` with unit last coordinate and ``points2``.
+
+    Two rows per correspondence, ``[0, -p1, y2 p1]`` and ``[p1, 0, -x2 p1]``, so that ``row . vec(H) = 0`` for
+    ``points2 ~ H p1`` with ``H`` row-major; only the first two coordinates of ``points2`` are read.
+    """
+    # DIAPO 11: https://www.uio.no/studier/emner/matnat/its/nedlagte-emner/UNIK4690/v16/forelesninger/lecture_4_3-estimating-homographies-from-feature-correspondences.pdf  # noqa: E501
+    zeros = torch.zeros_like(p1)
+    ax = torch.cat([zeros, -p1, points2[..., 1:2] * p1], dim=-1)
+    ay = torch.cat([p1, zeros, -points2[..., 0:1] * p1], dim=-1)
+    return torch.stack([ax, ay], dim=-2).flatten(-3, -2)
+
+
+def _homography_design_rows(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
+    """DLT rows ``(..., 2N, 9)`` of correspondences ``(..., N, 2)``, as :func:`_homography_rows`.
+
+    Each entry is the product the rows used to be written out with coordinate by coordinate, in fewer kernels.
+    """
+    return _homography_rows(torch.cat([points1, torch.ones_like(points1[..., :1])], dim=-1), points2)
+
+
+def _four_point_homography(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
+    """Homographies ``(B, 3, 3)`` of unit Frobenius norm through four normalized correspondences.
+
+    ``x1`` is homogeneous ``(B, 4, 3)`` with unit last coordinate and ``x2`` ``(B, 4, 2)`` or homogeneous. The null
+    vector of :func:`_homography_rows` comes from :func:`~kornia.geometry.solvers.homogeneous._null_space_lu`, in at
+    least float32. Unlike :func:`find_homography_dlt` there is no per-sample normalization, gauge solve or
+    ``H[2, 2] = 1`` scaling: RANSAC's sampler normalizes once per call and scores unit-norm models.
+    """
+    A = _homography_rows(x1, x2)
+    h = _null_space_lu(A.to(torch.promote_types(A.dtype, torch.float32)))[..., 0]
+    return (h * h.square().sum(-1, keepdim=True).rsqrt()).reshape(-1, 3, 3).to(x1.dtype)
+
+
+def _transfer_errors(H: torch.Tensor, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
+    """Squared one-way transfer errors ``(M, N)`` of homographies ``(M, 3, 3)`` on one set of correspondences.
+
+    ``x1`` is homogeneous ``(N, 3)`` with unit last coordinate and ``x2`` ``(N, 2)``. ``H x1`` of every model is one
+    ``(3M, 3) @ (3, N)`` product; the rest is :func:`oneway_transfer_error`'s formula, with its guard of ``w' = 0``.
+    """
+    m, n = H.shape[0], x1.shape[0]
+    projected = (H.reshape(3 * m, 3) @ x1.T).view(m, 3, n)
+    w = projected[:, 2]
+    w_safe = _nonzero(w)
+    err2 = (projected[:, 0] / w_safe - x2[:, 0]).square() + (projected[:, 1] / w_safe - x2[:, 1]).square()
+    return _inf_where(err2, w == 0)
+
+
+def _oneway_transfer_error_shared_impl_(
+    pts1: torch.Tensor, pts2: torch.Tensor, H: torch.Tensor, squared: bool
+) -> torch.Tensor:
+    """One-way transfer errors of many homographies on one set of correspondences, by :func:`_transfer_errors`.
+
+    ``pts1`` and ``pts2`` have leading dimensions of size 1; homogeneous points are dehomogenized. Half precision is
+    computed in float32 and returned in the input dtype.
+    """
+    num_points = pts1.shape[-2]
+    dtype = torch.promote_types(torch.promote_types(pts1.dtype, pts2.dtype), H.dtype)
+    work = torch.promote_types(dtype, torch.float32)
+    x1 = pts1.reshape(num_points, pts1.shape[-1]).to(work)
+    x2 = pts2.reshape(num_points, pts2.shape[-1]).to(work)
+    if x1.shape[-1] == 3:
+        x1 = convert_points_from_homogeneous(x1)
+    if x2.shape[-1] == 3:
+        x2 = convert_points_from_homogeneous(x2)
+    err2 = _transfer_errors(H.to(work), convert_points_to_homogeneous(x1), x2)
+    out = err2 if squared else _sqrt_or_zero(err2)
+    shape = torch.broadcast_shapes(pts1.shape[:-2], pts2.shape[:-2], H.shape[:-2])
+    return out.reshape(*shape, num_points).to(dtype)
+
+
+def _transfer_basis(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
+    """Per-correspondence monomials ``(9, 3N)`` of the one-way transfer error, for RANSAC's sampling loop only.
+
+    ``vec(H) @ basis`` is ``[P_0 - u P_2 | P_1 - v P_2 | P_2]`` for ``P = H x1`` and ``x2 = (u, v)``, with ``x1``
+    homogeneous ``(N, 3)``. Folding the subtraction into the product is about 10% faster than
+    :func:`_transfer_errors` in RANSAC's loop on CPU (2048 models x 500 points: 6.6 against 7.2 ms) and 20-35 us per
+    CUDA batch of 512-8192 models; it is accurate on normalized points, but in pixel units its float32 error was 2.5x
+    that of :func:`oneway_transfer_error`.
+    """
+    n = x1.shape[0]
+    basis = x1.new_zeros(9, 3 * n)
+    basis[0:3, :n] = x1.T
+    basis[6:9, :n] = -(x2[:, 0:1] * x1).T
+    basis[3:6, n : 2 * n] = x1.T
+    basis[6:9, n : 2 * n] = -(x2[:, 1:2] * x1).T
+    basis[6:9, 2 * n :] = x1.T
+    return basis
+
+
+def _transfer_from_basis(H: torch.Tensor, basis: torch.Tensor) -> torch.Tensor:
+    """Squared one-way transfer errors ``(M, N)`` of homographies ``(M, 3, 3)`` from :func:`_transfer_basis`."""
+    n = basis.shape[1] // 3
+    out = H.flatten(1) @ basis
+    return (out[:, :n].square() + out[:, n : 2 * n].square()) / out[:, 2 * n :].square()
+
+
+def _refine_homography_lm(
+    H: torch.Tensor,
+    x1: torch.Tensor,
+    x2: torch.Tensor,
+    mask: Optional[torch.Tensor],
+    loss: str,
+    scale2: Union[float, torch.Tensor],
+    iters: int,
+) -> torch.Tensor:
+    """Levenberg-Marquardt on the one-way transfer error, batched over homographies ``(K, 3, 3)``.
+
+    In the spirit of PoseLib's ``refine_homography``: steps are taken in the eight-dimensional orthogonal complement of
+    the unit-norm ``vec(H)`` and renormalized. ``x1`` is homogeneous ``(N, 3)`` and ``x2`` ``(N, 2)``, normalized by
+    the caller; the loss, ``mask`` and step acceptance are those of
+    :func:`~kornia.geometry.epipolar.fundamental._refine_fundamental_lm`. For RANSAC, under ``torch.no_grad``.
+    """
+    K = H.shape[0]
+    dtype, device = H.dtype, H.device
+    cpu = K > 0 and device.type == "cpu" and not torch.is_grad_enabled()
+    if cpu and K == 1 and mask is not None and mask.dtype == torch.bool:
+        x1, x2, mask = x1[mask[0]], x2[mask[0]], None
+    eye8 = torch.eye(8, dtype=dtype, device=device)
+    eye9 = torch.eye(9, dtype=dtype, device=device)
+    last = eye9[8]
+    h = H.flatten(1)
+    h = h * h.square().sum(1, keepdim=True).rsqrt()
+    damping = torch.full((K, 1, 1), 1e-3, dtype=dtype, device=device)
+
+    def normal_equations(h: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        # Householder reflection of h onto the last axis: its other eight columns span the tangent space.
+        v = h + torch.where(h[:, 8:9] >= 0, 1.0, -1.0) * last
+        v = v * v.square().sum(1, keepdim=True).rsqrt()
+        tangent = (eye9 - 2 * v[:, :, None] * v[:, None, :])[:, :, :8]  # (K, 9, 8)
+        stacked = torch.cat([h[:, :, None], tangent], 2).mT.reshape(K, 27, 3)  # rows of H, then of each direction
+        P = (stacked @ x1.T).reshape(K, 9, 3, -1)  # (K, 9, 3, N): P = H x1, then its directional derivatives
+        # When a mask is given, a zero mask excludes the correspondence. Guarding its projective divisor keeps the
+        # residual and Jacobian of a finite row finite, so the zero weight below removes it exactly; masking the whole
+        # derivative stack as well costs the compiled CUDA program about 10% of a homography call.
+        iz = 1.0 / (P[:, 0, 2] if mask is None else torch.where(mask != 0, P[:, 0, 2], torch.ones_like(P[:, 0, 2])))
+        uv = P[:, 0, :2] * iz[:, None]  # (K, 2, N)
+        r = (uv - x2.T).flatten(1)  # (K, 2N): u residuals, then v residuals
+        J = ((P[:, 1:, :2] - uv[:, None] * P[:, 1:, 2:3]) * iz[:, None, None]).flatten(2)  # (K, 8, 2N)
+        r2 = r[:, : x1.shape[0]].square() + r[:, x1.shape[0] :].square()
+        w, rho = _robust_loss(r2, loss, scale2)
+        if mask is not None:
+            w, rho = w * mask, rho * mask
+        Jw = J * torch.cat([w, w], 1)[:, None]
+        return torch.cat([Jw @ J.mT, Jw @ r[..., None]], 2), rho.sum(1), tangent
+
+    system, cost, tangent = normal_equations(h)
+    for iteration in range(iters):
+        delta = -torch.linalg.solve_ex(system[..., :8] + damping * eye8, system[..., 8:])[0]
+        h_new = h + (tangent @ delta)[..., 0]
+        h_new = h_new * h_new.square().sum(1, keepdim=True).rsqrt()
+        if cpu and iteration + 1 == iters:
+            projection = h_new.reshape(K, 3, 3) @ x1.T
+            divisor = projection[:, 2]
+            if mask is not None:
+                divisor = torch.where(mask != 0, divisor, torch.ones_like(divisor))
+            r2 = (projection[:, :2] / divisor[:, None] - x2.T).square().sum(1)
+            rho = (
+                torch.log1p(r2 / scale2)
+                if loss == "cauchy"
+                else torch.fmin(r2, torch.as_tensor(scale2, dtype=r2.dtype, device=r2.device))
+            )
+            cost_new = (rho if mask is None else rho * mask).sum(1)
+            accepted = cost_new < cost
+            return torch.where(accepted[:, None], h_new, h).reshape(K, 3, 3)
+        system_new, cost_new, tangent_new = normal_equations(h_new)
+        accept = (cost_new < cost)[:, None, None]
+        h, cost = torch.where(accept[:, :, 0], h_new, h), torch.where(accept[:, 0, 0], cost_new, cost)
+        system, tangent = torch.where(accept, system_new, system), torch.where(accept, tangent_new, tangent)
+        damping = damping * torch.where(accept, 0.1, 10.0)
+    return h.reshape(K, 3, 3)
+
+
 def find_homography_dlt(
     points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None, solver: str = "lu"
 ) -> torch.Tensor:
     r"""Compute the homography matrix using the DLT formulation.
 
-    The linear system is solved by using the Weighted Least Squares Solution for the 4 Points algorithm.
+    The weighted DLT system of four or more correspondences is solved with ``solver``.
+
+    Convention:
+        - ``H`` maps ``points1`` to ``points2``, ``points2 ~ H @ points1``, and is scaled so that
+          ``H[2, 2] = 1`` by :func:`~kornia.geometry.epipolar.normalize_transformation`, which leaves it at its
+          unnormalised scale when ``|H[2, 2]|`` is at most ``1e-8``; :ref:`two-view-conventions` compares this
+          with OpenCV.
+        - ``weights`` multiply each correspondence's squared algebraic residual: a weight of 0 removes the
+          correspondence from the equations, and only relative weights matter.
+        - ``solver="lu"`` and ``"svd"`` give the same homography on exact data, to roundoff scaled by the
+          conditioning of the system; on noisy data they solve different least-squares problems and differ.
 
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2)`.
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
+          Zero-weight points are excluded from the DLT equations and Hartley normalization.
         solver: variants: svd, lu.
 
 
@@ -200,6 +522,27 @@ def find_homography_dlt(
         the computed homography matrix with shape :math:`(B, 3, 3)`.
 
     """
+    device, dtype = _extract_device_dtype([points1, points2])
+    A, transform1, transform2 = _homography_dlt_system(points1, points2, weights)
+    return _homography_from_dlt_system(
+        A, weights, transform1, _inverse_normalization(transform2), solver, device, dtype
+    )
+
+
+def _inverse_normalization(transform: torch.Tensor) -> torch.Tensor:
+    """Invert a Hartley normalization, NaN where it is singular.
+
+    A point set whose mean radius overflows gets a zero scale and a singular normalization. Its homography
+    is undefined, so it is NaN rather than built from the identity ``safe_inverse_with_mask`` substitutes.
+    """
+    inverse, valid = safe_inverse_with_mask(transform)
+    return torch.where(valid[..., None, None], inverse, torch.full_like(inverse, float("nan")))
+
+
+def _homography_dlt_system(
+    points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Build the weighted-normalized DLT design matrix and its two normalizing transforms."""
     if points1.shape != points2.shape:
         raise AssertionError(points1.shape)
     if points1.shape[1] < 4:
@@ -207,34 +550,72 @@ def find_homography_dlt(
     KORNIA_CHECK_SHAPE(points1, ["B", "N", "2"])
     KORNIA_CHECK_SHAPE(points2, ["B", "N", "2"])
 
-    device, dtype = _extract_device_dtype([points1, points2])
+    if weights is not None and weights.shape != points1.shape[:2]:
+        raise AssertionError(weights.shape)
+    points1_norm, transform1 = normalize_points(points1, weights=weights)
+    points2_norm, transform2 = normalize_points(points2, weights=weights)
 
+    A = _homography_design_rows(points1_norm, points2_norm)
+    return A, transform1, transform2
+
+
+def _rank8_null_vector(normal: torch.Tensor) -> torch.Tensor:
+    """Null vector of a ``(B, 9, 9)`` DLT normal matrix whose LU has only its last pivot zero, else NaN.
+
+    Only the last pivot being zero means the first eight columns are independent, so the null vector has
+    ``h[8] != 0`` and, the matrix being symmetric, its leading 8x8 block is non-singular: fixing ``h[8] = 1``
+    leaves that block's system, solved with ``normal`` itself so the result stays differentiable. Roundoff
+    can leave a degenerate matrix with tiny non-zero pivots instead, so the first eight must also be above
+    ``sqrt(eps)`` relative to the largest. On the integer keypoints of the tests (exact identities, shifts
+    and 90-degree rotations) the smallest stayed above ``4e-2``; on coincident or collinear points it was
+    below ``1e-6``. Non-finite matrices are factorized as zeros (see #4770) and give NaN.
+    """
+    work_dtype = torch.float64 if normal.dtype == torch.float64 else torch.float32
+    normal = normal.to(work_dtype)
+    finite = normal.isfinite().flatten(1).all(-1)
+    normal = torch.where(finite[:, None, None], normal, torch.zeros_like(normal))
+    lu, _, info = torch.linalg.lu_factor_ex(normal.detach())
+    diagonal = lu.diagonal(dim1=-2, dim2=-1).abs()
+    tiny = torch.finfo(work_dtype).tiny
+    leading = diagonal[:, :8].amin(-1) > diagonal.amax(-1).clamp_min(tiny) * torch.finfo(work_dtype).eps ** 0.5
+    rank8 = finite & (info == normal.shape[-1]) & leading
+    # Rows that are not rank 8 solve the identity against zero, so their (discarded) values and gradients
+    # stay finite and cannot leak NaN into parameters shared with the rest of the batch.
+    block = torch.where(rank8[:, None, None], normal[:, :8, :8], torch.eye(8, device=normal.device, dtype=work_dtype))
+    rhs = torch.where(rank8[:, None], -normal[:, :8, 8], torch.zeros_like(normal[:, :8, 8]))
+    head = torch.linalg.solve_ex(block, rhs)[0]
+    null = torch.cat([head, torch.ones_like(head[:, :1])], -1)
+    return torch.where(rank8[:, None], null, torch.full_like(null, float("nan")))
+
+
+def _homography_from_dlt_system(
+    A: torch.Tensor,
+    weights: Optional[torch.Tensor],
+    transform1: torch.Tensor,
+    transform2_inv: torch.Tensor,
+    solver: str,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    """Solve the (weighted) DLT system of :func:`_homography_dlt_system` and denormalize the homography.
+
+    The operand order matches the original single-call implementation.
+    """
     eps: float = 1e-8
-    points1_norm, transform1 = normalize_points(points1)
-    points2_norm, transform2 = normalize_points(points2)
-
-    x1, y1 = torch.chunk(points1_norm, dim=-1, chunks=2)  # BxNx1
-    x2, y2 = torch.chunk(points2_norm, dim=-1, chunks=2)  # BxNx1
-    ones, zeros = torch.ones_like(x1), torch.zeros_like(x1)
-
-    # DIAPO 11: https://www.uio.no/studier/emner/matnat/its/nedlagte-emner/UNIK4690/v16/forelesninger/lecture_4_3-estimating-homographies-from-feature-correspondences.pdf  # noqa: E501
-    ax = torch.cat([zeros, zeros, zeros, -x1, -y1, -ones, y2 * x1, y2 * y1, y2], dim=-1)
-    ay = torch.cat([x1, y1, ones, zeros, zeros, zeros, -x2 * x1, -x2 * y1, -x2], dim=-1)
-    A = torch.cat((ax, ay), dim=-1).reshape(ax.shape[0], -1, ax.shape[-1])
-
+    num_points = A.shape[1] // 2
     if weights is None:
         # All points are equally important
         w_full = None
     else:
         # We should use provided weights
-        if not (len(weights.shape) == 2 and weights.shape == points1.shape[:2]):
+        if not (len(weights.shape) == 2 and weights.shape == (A.shape[0], num_points)):
             raise AssertionError(weights.shape)
         w_full = weights.repeat_interleave(2, dim=1).unsqueeze(1)
 
     # Only the minimal four-point LU path works from the design matrix itself (see below).
     # Every other case forms the normal equations in the exact operand order the pre-gauge
     # implementation used, so weighted results stay bit-identical to it.
-    minimal_lu = solver == "lu" and points1.shape[1] == 4
+    minimal_lu = solver == "lu" and num_points == 4
     if not minimal_lu:
         A = A.transpose(-2, -1) @ A if w_full is None else (A.transpose(-2, -1) * w_full) @ A
 
@@ -243,23 +624,43 @@ def find_homography_dlt(
             _, _, V = _torch_svd_cast(A)
         except RuntimeError:
             warnings.warn("SVD did not converge", RuntimeWarning, stacklevel=1)
-            return torch.empty((points1_norm.size(0), 3, 3), device=device, dtype=dtype)
+            return torch.empty((A.shape[0], 3, 3), device=device, dtype=dtype)
         H = V[..., -1].view(-1, 3, 3)
     elif solver == "lu":
         if not minimal_lu:
             B = torch.ones(A.shape[0], A.shape[1], device=device, dtype=dtype)
-            sol, _, _ = safe_solve_with_mask(B, A)
+            sol, _, valid = safe_solve_with_mask(B, A)
+            # Exact correspondences leave the normal matrix singular, and its null vector is the homography.
+            # Roundoff usually keeps the LU pivots non-zero and the solve above lands on that vector, but an
+            # exactly zero last pivot (identical point sets after Hartley normalization, an integer shift)
+            # makes the solve fail. With only that pivot zero the rank is 8, so the homography is unique and
+            # the leading 8x8 block determines it with h[8] = 1. Any other singular system (an earlier zero
+            # pivot, as for coincident points) has no unique homography: report it as NaN rather than the
+            # identity system's solution that ``safe_solve_with_mask`` leaves in its place.
+            sol = torch.where(valid[:, None, None], sol, _rank8_null_vector(A).to(sol.dtype)[..., None])
         else:
             # A four-point sample gives eight equations for nine unknowns, so the normal matrix
             # is singular and LU-factoring it is what produced all-NaN homographies. Work from
-            # the design matrix instead: its null vector comes from a complete QR, the largest
-            # component of that vector fixes the homogeneous gauge, and the retained 8x8 system
-            # is solved for the rest. A fixed h33=1 gauge is invalid whenever the bottom-right
-            # entry is zero. Five or more points keep the normal-equation formulation above.
+            # the design matrix instead: its null vector comes from a pivoted LU factorization of
+            # it, the largest component of that vector fixes the homogeneous gauge, and the
+            # retained 8x8 system is solved for the rest. A fixed h33=1 gauge is invalid whenever
+            # the bottom-right entry is zero. Five or more points keep the normal-equation
+            # formulation above.
             Aw = A if w_full is None else A * w_full.transpose(-2, -1)
+            # torch.linalg.qr on CUDA can spin forever on a design matrix that mixes NaN with the
+            # structured zeros of the DLT rows (#4770). Hand QR and the solve finite entries only,
+            # and report the affected batch elements as NaN below, as the CPU path already does.
+            finite_entries = Aw.isfinite()
+            finite = finite_entries.flatten(1).all(-1)
+            Aw = torch.where(finite_entries, Aw, torch.zeros_like(Aw))
             gauge_dtype = torch.float64 if dtype == torch.float64 else torch.float32
-            Q, _ = torch.linalg.qr(Aw.detach().to(gauge_dtype).transpose(-2, -1), mode="complete")
-            null = Q[..., -1]
+            design = Aw.detach().to(gauge_dtype)
+            # One batched LU factorization on every backend: torch.linalg.qr has no batched CUDA kernel
+            # (one cusolver call per matrix, ~250 ms for a 2048-sample RANSAC batch), and a batched SVD or
+            # QR costs about three times the LU on CPU. A zero-weight correspondence leaves the null vector
+            # finite, since the unit triangular factor the basis is solved from is never singular.
+            null = _null_space_lu(design)[..., 0]
+            null = null / null.norm(dim=-1, keepdim=True)
             gauge = null.abs().argmax(dim=-1)
             retained = torch.arange(8, device=device).expand(A.shape[0], -1)
             retained = retained + (retained >= gauge[:, None]).to(retained.dtype)
@@ -277,12 +678,12 @@ def find_homography_dlt(
             sol = torch.where(
                 positions == gauge[:, None], torch.ones_like(positions, dtype=sol.dtype), sol.gather(-1, source)
             )
+            sol = torch.where(finite[:, None], sol, torch.full_like(sol, float("nan")))
         H = sol.reshape(-1, 3, 3)
     else:
         raise NotImplementedError
-    H = safe_inverse_with_mask(transform2)[0] @ (H @ transform1)
-    H_norm = H / (H[..., -1:, -1:] + eps)
-    return H_norm
+    H = transform2_inv @ (H @ transform1)
+    return normalize_transformation(H, eps)
 
 
 def find_homography_dlt_iterated(
@@ -290,25 +691,35 @@ def find_homography_dlt_iterated(
 ) -> torch.Tensor:
     r"""Compute the homography matrix using the iteratively-reweighted least squares (IRWLS).
 
-    The linear system is solved by using the Reweighted Least Squares Solution for the 4 Points algorithm.
+    Convention:
+        - Direction and ``H[2, 2] = 1`` as :func:`find_homography_dlt`. Each solve after the first re-weights
+          with the Gaussian kernel ``exp(-e**2 / (2 * soft_inl_th**2))`` of the symmetric transfer error ``e``
+          (the root of the summed squared forward and backward transfer errors), so ``soft_inl_th`` is a
+          standard deviation in pixels: a correspondence with ``e = soft_inl_th`` keeps weight ``exp(-1/2)``.
 
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2)`.
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
           Used for the first iteration of the IRWLS.
-        soft_inl_th: Soft inlier threshold used for weight calculation.
-        n_iter: number of iterations.
+        soft_inl_th: standard deviation, in pixels, of the Gaussian re-weighting kernel given above.
+        n_iter: number of solves, including the initial one.
 
     Returns:
         the computed homography matrix with shape :math:`(B, 3, 3)`.
 
     """
-    H: torch.Tensor = find_homography_dlt(points1, points2, weights)
+    device, dtype = _extract_device_dtype([points1, points2])
+    # Weighted Hartley normalization changes with each set of IRLS weights.
+    A, transform1, transform2 = _homography_dlt_system(points1, points2, weights)
+    transform2_inv = _inverse_normalization(transform2)
+    H: torch.Tensor = _homography_from_dlt_system(A, weights, transform1, transform2_inv, "lu", device, dtype)
     for _ in range(n_iter - 1):
-        errors: torch.Tensor = symmetric_transfer_error(points1, points2, H, False)
-        weights_new: torch.Tensor = torch.exp(-errors / (2.0 * (soft_inl_th**2)))
-        H = find_homography_dlt(points1, points2, weights_new)
+        squared_errors: torch.Tensor = symmetric_transfer_error(points1, points2, H, True)
+        weights_new: torch.Tensor = torch.exp(-squared_errors / (2.0 * (soft_inl_th**2)))
+        A, transform1, transform2 = _homography_dlt_system(points1, points2, weights_new)
+        transform2_inv = _inverse_normalization(transform2)
+        H = _homography_from_dlt_system(A, weights_new, transform1, transform2_inv, "lu", device, dtype)
     return H
 
 
@@ -317,9 +728,17 @@ def sample_is_valid_for_homography(points1: torch.Tensor, points2: torch.Tensor)
 
     Analogous to https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/usac/degeneracy.cpp#L88
 
+    Convention:
+        - :class:`~kornia.geometry.ransac.RANSAC` uses it to discard minimal samples for ``"homography"``. It
+          checks only that the four triples of the first four points keep their orientation across the two
+          views, so a mirror-image sample is rejected. A triple that is collinear in both views, for instance
+          through a repeated point, counts as kept, so collinearity alone does not reject a sample.
+
     Args:
-        points1: A set of points in the first image with a tensor shape :math:`(B, 4, 2)`.
-        points2: A set of points in the second image with a tensor shape :math:`(B, 4, 2)`.
+        points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`; only the first four
+          points are used.
+        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2)`; only the first four
+          points are used.
 
     Returns:
         Mask with the minimal sample is good for homography estimation :math:`(B)`.
@@ -327,14 +746,15 @@ def sample_is_valid_for_homography(points1: torch.Tensor, points2: torch.Tensor)
     """
     if points1.shape != points2.shape:
         raise AssertionError(points1.shape)
-    # Triples to test: (0,1,2), (0,1,3), (0,2,3), (1,2,3)
-    idx_i = torch.tensor([0, 0, 0, 1], device=points1.device)
-    J = torch.tensor([1, 1, 2, 2], device=points1.device)
-    K = torch.tensor([2, 3, 3, 3], device=points1.device)
 
-    # Gather the triples for both sets: shape (B, 4, 2)
-    p1_i, p1_j, p1_k = points1[:, idx_i], points1[:, J], points1[:, K]
-    p2_i, p2_j, p2_k = points2[:, idx_i], points2[:, J], points2[:, K]
+    # Triples to test: (0,1,2), (0,1,3), (0,2,3), (1,2,3), gathered by slicing, shape (B, 4, 2). Index tensors
+    # would be copied to the device on every call.
+    def _triples(points: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        p0, p1, p2, p3 = points[:, 0], points[:, 1], points[:, 2], points[:, 3]
+        return torch.stack([p0, p0, p0, p1], 1), torch.stack([p1, p1, p2, p2], 1), torch.stack([p2, p3, p3, p3], 1)
+
+    p1_i, p1_j, p1_k = _triples(points1)
+    p2_i, p2_j, p2_k = _triples(points2)
 
     # 2D orientation (signed area) for each triple:
     # orient(a,b,c) = cross2d(b-a, c-a) = (bx-ax)*(cy-ay) - (by-ay)*(cx-ax)
@@ -347,23 +767,29 @@ def sample_is_valid_for_homography(points1: torch.Tensor, points2: torch.Tensor)
     right_sign = torch.sign(_orient(p2_i, p2_j, p2_k))
 
     # Valid if all four orientation signs match across views
-    sample_is_valid = (left_sign == right_sign).all(dim=1)
-    return sample_is_valid
+    return (left_sign == right_sign).all(dim=1)
 
 
 def find_homography_lines_dlt(
     ls1: torch.Tensor, ls2: torch.Tensor, weights: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-    """Compute the homography matrix using the DLT formulation for line correspondences.
+    """Compute the homography matrix from line segment correspondences with a DLT formulation.
 
     See :cite:`homolines2001` for details.
 
-    The linear system is solved by using the Weighted Least Squares Solution for the 4 Line correspondences algorithm.
+    Convention:
+        - ``H`` maps image-1 points to image-2 points, as in :func:`find_homography_dlt`. Each segment is a
+          ``[start, end]`` pair of ``(x, y)`` points, and ``weights`` has one entry per segment.
+        - Both endpoints of image-1 segment ``i`` are constrained to lie, after mapping by ``H``, on the line
+          through image-2 segment ``i``, so the endpoints need not be point correspondences.
 
     Args:
-        ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`.
-        ls2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`.
-        weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
+        ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`, or
+          :math:`(N, 2, 2)`, which is treated as :math:`B = 1`.
+        ls2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`, or
+          :math:`(N, 2, 2)`, which is treated as :math:`B = 1`.
+        weights: Tensor containing the weights per segment with a shape of :math:`(B, N)`.
+          Zero-weight segments are excluded from Hartley normalization.
 
     Returns:
         the computed homography matrix with shape :math:`(B, 3, 3)`.
@@ -381,10 +807,16 @@ def find_homography_lines_dlt(
     points1 = ls1.reshape(BS, 2 * N, 2)
     points2 = ls2.reshape(BS, 2 * N, 2)
 
-    points1_norm, transform1 = normalize_points(points1)
-    points2_norm, transform2 = normalize_points(points2)
-    lst1, le1 = torch.chunk(points1_norm, dim=1, chunks=2)
-    lst2, le2 = torch.chunk(points2_norm, dim=1, chunks=2)
+    if weights is not None and weights.shape != ls1.shape[:2]:
+        raise AssertionError(weights.shape)
+    endpoint_weights = weights.repeat_interleave(2, dim=1) if weights is not None else None
+    points1_norm, transform1 = normalize_points(points1, weights=endpoint_weights)
+    points2_norm, transform2 = normalize_points(points2, weights=endpoint_weights)
+    # Pair each segment's own endpoints: the flattened points are [start_0, end_0, start_1, end_1, ...].
+    segments1_norm = points1_norm.reshape(BS, N, 2, 2)
+    segments2_norm = points2_norm.reshape(BS, N, 2, 2)
+    lst1, le1 = segments1_norm[:, :, 0], segments1_norm[:, :, 1]
+    lst2, le2 = segments2_norm[:, :, 0], segments2_norm[:, :, 1]
 
     xs1, ys1 = torch.chunk(lst1, dim=-1, chunks=2)  # BxNx1
     xs2, ys2 = torch.chunk(lst2, dim=-1, chunks=2)  # BxNx1
@@ -409,8 +841,10 @@ def find_homography_lines_dlt(
         # We should use provided weights
         if not ((len(weights.shape) == 2) and (weights.shape == ls1.shape[:2])):
             raise AssertionError(weights.shape)
-        w_diag = torch.diag_embed(weights.unsqueeze(dim=-1).repeat(1, 1, 2).reshape(weights.shape[0], -1))
-        A = A.transpose(-2, -1) @ w_diag @ A
+        # Scale each segment's two design rows by its weight instead of materializing the
+        # (B, 2N, 2N) diagonal weight matrix, whose storage grows quadratically with N.
+        w_full = weights.repeat_interleave(2, dim=1).unsqueeze(1)
+        A = (A.transpose(-2, -1) * w_full) @ A
 
     try:
         _, _, V = _torch_svd_cast(A)
@@ -419,9 +853,8 @@ def find_homography_lines_dlt(
         return torch.empty((points1_norm.size(0), 3, 3), device=device, dtype=dtype)
 
     H = V[..., -1].view(-1, 3, 3)
-    H = safe_inverse_with_mask(transform2)[0] @ (H @ transform1)
-    H_norm = H / (H[..., -1:, -1:] + eps)
-    return H_norm
+    H = _inverse_normalization(transform2) @ (H @ transform1)
+    return normalize_transformation(H, eps)
 
 
 def find_homography_lines_dlt_iterated(
@@ -429,15 +862,19 @@ def find_homography_lines_dlt_iterated(
 ) -> torch.Tensor:
     r"""Compute the homography matrix using the iteratively-reweighted least squares (IRWLS) from line segments.
 
-    The linear system is solved by using the Reweighted Least Squares Solution for the 4 line segments algorithm.
+    Convention:
+        - As :func:`find_homography_dlt_iterated`, with :func:`find_homography_lines_dlt` as the solver and, as
+          ``e`` in the Gaussian kernel, the perpendicular distance in pixels of the mapped image-1 endpoints from
+          the image-2 line. A zero-length image-2 segment gets weight zero.
 
     Args:
         ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`.
         ls2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`.
-        weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
+        weights: Tensor containing the weights per segment with a shape of :math:`(B, N)`.
           Used for the first iteration of the IRWLS.
-        soft_inl_th: Soft inlier threshold used for weight calculation.
-        n_iter: number of iterations.
+        soft_inl_th: standard deviation, in pixels, of the Gaussian re-weighting kernel of
+          :func:`find_homography_dlt_iterated`.
+        n_iter: number of solves, including the initial one.
 
     Returns:
         the computed homography matrix with shape :math:`(B, 3, 3)`.
@@ -445,7 +882,7 @@ def find_homography_lines_dlt_iterated(
     """
     H: torch.Tensor = find_homography_lines_dlt(ls1, ls2, weights)
     for _ in range(n_iter - 1):
-        errors: torch.Tensor = line_segment_transfer_error_one_way(ls1, ls2, H, False)
-        weights_new: torch.Tensor = torch.exp(-errors / (2.0 * (soft_inl_th**2)))
+        squared_distances: torch.Tensor = _line_segment_squared_distance_one_way(ls1, ls2, H)
+        weights_new: torch.Tensor = torch.exp(-squared_distances / (2.0 * (soft_inl_th**2)))
         H = find_homography_lines_dlt(ls1, ls2, weights_new)
     return H

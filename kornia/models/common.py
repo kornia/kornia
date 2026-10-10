@@ -142,7 +142,7 @@ class DropPath(nn.Module):
 
 
 # From https://github.com/facebookresearch/detectron2/blob/main/detectron2/layers/batch_norm.py
-# Itself from https://github.com/facebookresearch/ConvNeXt/blob/d1fa8f6fef0a165b27399986cc2bdacc92777e40/models/convnext.py#L119  # noqa
+# Itself from https://github.com/facebookresearch/ConvNeXt/blob/d1fa8f6fef0a165b27399986cc2bdacc92777e40/models/convnext.py#L119  # noqa: E501
 class LayerNorm2d(nn.Module):
     """Apply Layer Normalization over a 4D input tensor (NCHW)."""
 
@@ -167,8 +167,7 @@ class LayerNorm2d(nn.Module):
         u = x.mean(1, keepdim=True)
         s = (x - u).pow(2).mean(1, keepdim=True)
         x = (x - u) / (s + self.eps).sqrt()
-        x = self.weight[:, None, None] * x + self.bias[:, None, None]
-        return x
+        return self.weight[:, None, None] * x + self.bias[:, None, None]
 
 
 def window_partition(x: torch.Tensor, window_size: int) -> tuple[torch.Tensor, tuple[int, int]]:

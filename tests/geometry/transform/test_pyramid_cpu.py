@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import importlib
+
 import pytest
 import torch
 
@@ -30,7 +32,7 @@ class TestScalePyramidCpu(BaseTester):
             pytest.skip("the optimized scale-pyramid blur supports native CPU float32 and float64 only")
         # Exercise the generic ScalePyramid integration even on hosts where
         # oneDNN would normally keep the existing convolution implementation.
-        monkeypatch.setattr(torch.backends.mkldnn, "is_available", lambda: False)
+        monkeypatch.setattr(importlib.import_module("kornia.filters.gaussian"), "_HAS_MKLDNN", False)
         pyramid = ScalePyramid(n_levels=2).to(device=device, dtype=dtype)
         image = torch.rand(2, 1, 256, 256, device=device, dtype=dtype)
         kernel = pyramid._gk_0

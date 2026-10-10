@@ -229,9 +229,6 @@ def warp_perspective(
         - input: :math:`(B, C, H, W)`; ``dsize`` is ``(h, w)``
         - ``M`` is the source→destination **pixel** homography :math:`(B, 3, 3)`
           (contrast :func:`homography_warp`, which by default consumes destination→source normalized)
-        - coordinates: ``(x, y)``, pixel centers, origin at top-left
-        - align_corners: ``True`` by default
-        - padding_mode: ``'zeros'`` by default
         - a zero output dimension returns an autograd-connected empty tensor;
           negative output dimensions raise ``ValueError``
 
@@ -304,8 +301,8 @@ def warp_perspective(
     # Substitutes F.affine_grid (which only handles the affine 2x3 case) by applying the full 3x3
     # projective transform to every grid point directly.
     grid = create_meshgrid(
-        h_out, w_out, normalized_coordinates=True, device=src.device, align_corners=align_corners
-    ).to(src.dtype)
+        h_out, w_out, normalized_coordinates=True, device=src.device, dtype=src.dtype, align_corners=align_corners
+    )
     if torch.jit.is_tracing():
         # Under tracing/ONNX use the reference transform_points path (its op set exports cleanly).
         grid = transform_points(src_norm_trans_dst_norm[:, None, None], grid.expand(B, h_out, w_out, 2))
@@ -353,9 +350,6 @@ def warp_affine(
 
         - input: :math:`(B, C, H, W)`; ``dsize`` is ``(h, w)``
         - ``M`` is the source→destination **pixel** affine matrix :math:`(B, 2, 3)`
-        - coordinates: ``(x, y)``, pixel centers, origin at top-left
-        - align_corners: ``True`` by default
-        - padding_mode: ``'zeros'`` by default
         - a zero output dimension returns an autograd-connected empty tensor;
           negative output dimensions raise ``ValueError``
 
@@ -671,8 +665,8 @@ def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor
 
     Convention:
         - points: ``(x, y)``, pixel centers, origin at top-left; shape :math:`(B, 4, 2)`
-        - returns the source→destination **pixel** homography :math:`(B, 3, 3)`
-          (contrast :func:`homography_warp`, which by default consumes destination→source normalized)
+        - returns the source→destination **pixel** homography :math:`(B, 3, 3)` that
+          :func:`warp_perspective` takes
 
     Args:
         points_src: coordinates of quadrangle vertices in the source image with shape :math:`(B, 4, 2)`.
@@ -822,7 +816,9 @@ def remap(
         - input: :math:`(B, C, H, W)`; ``map_x``/``map_y`` are :math:`(B, H, W)` pixel coordinates
           unless ``normalized_coordinates=True``
         - align_corners: ``None`` by default, resolved to ``False`` internally
-        - padding_mode: ``'zeros'`` by default
+        - pixel maps are normalized with the ``align_corners=True`` convention whatever flag
+          reaches ``grid_sample``, so at ``False``/``None`` even an identity map resamples the image;
+          pass ``align_corners=True`` (`#4504 <https://github.com/kornia/kornia/issues/4504>`_)
         - the output spatial size comes from the maps; a zero map axis returns an
           autograd-connected empty output, including when the matching source axis is empty
 
@@ -855,7 +851,7 @@ def remap(
                   [0., 0.]]]])
 
     .. note::
-        This function is often used in conjunction with :func:`kornia.geometry.create_meshgrid`.
+        This function is often used in conjunction with :func:`kornia.geometry.grid.create_meshgrid`.
 
     """
     KORNIA_CHECK_SHAPE(image, ["B", "C", "H", "W"])
@@ -951,6 +947,8 @@ def get_affine_matrix2d(
         - ``center`` is ``(x, y)`` in pixels, origin at top-left
         - positive ``angle`` rotates **clockwise** as displayed — this function negates ``angle``
           before delegating to :func:`get_rotation_matrix2d`, whose convention is CCW-positive
+        - ``sx`` and ``sy`` are angles in radians, using :func:`get_shear_matrix2d`'s
+          negative-tangent, x-then-y shear about ``center``, applied before rotation, scale and translation
         - returns :math:`(B, 3, 3)` affine matrix in pixel coordinates
 
     Args:
@@ -958,8 +956,8 @@ def get_affine_matrix2d(
         center: torch.Tensor containing the center vector with shape :math:`(B, 2)`.
         scale: torch.Tensor containing the scale factor with shape :math:`(B, 2)`.
         angle: torch.Tensor of angles in degrees :math:`(B)`.
-        sx: torch.Tensor containing the shear factor in the x-direction with shape :math:`(B)`.
-        sy: torch.Tensor containing the shear factor in the y-direction with shape :math:`(B)`.
+        sx: torch.Tensor containing the shear angle in radians in the x-direction with shape :math:`(B)`.
+        sy: torch.Tensor containing the shear angle in radians in the y-direction with shape :math:`(B)`.
 
     Returns:
         the affine transformation matrix :math:`(B, 3, 3)`.
@@ -1001,9 +999,7 @@ def get_translation_matrix2d(translations: torch.Tensor) -> torch.Tensor:
     transform[..., 2] += translations  # tx/ty
 
     # F.pad transform to get Bx3x3
-    transform_h = convert_affinematrix_to_homography(transform)
-
-    return transform_h
+    return convert_affinematrix_to_homography(transform)
 
 
 def get_shear_matrix2d(
@@ -1019,14 +1015,19 @@ def get_shear_matrix2d(
             a & ab + 1 \\
         \end{bmatrix}
 
+    Here :math:`a = -\tan(sy)` and :math:`b = -\tan(sx)`.
+
     Convention:
         - ``center`` is ``(x, y)`` in pixels, origin at top-left
+        - ``sx`` and ``sy`` are angles in radians; about ``center = (cx, cy)``, the forward mapping is
+          ``x_out = x - tan(sx) * (y - cy)``, then ``y_out = y - tan(sy) * (x_out - cx)``.
+          Pixel x increases rightward and y downward. This differs from :func:`shear`'s raw factors.
         - returns :math:`(B, 3, 3)` affine matrix in pixel coordinates
 
     Args:
         center: shearing center coordinates of (x, y).
-        sx: shearing angle along x axis in radiants.
-        sy: shearing angle along y axis in radiants
+        sx: shearing angle along x axis in radians.
+        sy: shearing angle along y axis in radians
 
     Returns:
         params to be passed to the affine transformation with shape :math:`(B, 3, 3)`.
@@ -1059,8 +1060,7 @@ def get_shear_matrix2d(
         [ones_tensor, -sx_tan, sx_tan * y, -sy_tan, ones_tensor + sx_tan * sy_tan, sy_tan * (x - sx_tan * y)], dim=-1
     ).view(-1, 2, 3)
 
-    shear_mat = convert_affinematrix_to_homography(shear_mat)
-    return shear_mat
+    return convert_affinematrix_to_homography(shear_mat)
 
 
 def get_affine_matrix3d(
@@ -1214,9 +1214,7 @@ def get_shear_matrix3d(
     )
 
     shear_mat = torch.stack([m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23], -1).view(-1, 3, 4)
-    shear_mat = convert_affinematrix_to_homography3d(shear_mat)
-
-    return shear_mat
+    return convert_affinematrix_to_homography3d(shear_mat)
 
 
 def _compute_shear_matrix_3d(
@@ -1711,10 +1709,7 @@ def homography_warp(
           consumed as the source→destination **pixel** homography, exactly like
           :func:`warp_perspective`
         - ``dsize`` is ``(h, w)``
-        - align_corners: ``False`` by default; ``mode``: ``'bilinear'`` by default (both only
-          honored when ``normalized_homography=True`` — the pixel-homography path currently
-          forces ``align_corners=True`` and ``mode='bilinear'``)
-        - padding_mode: ``'zeros'`` by default
+        - align_corners: ``False`` by default (differs from :func:`warp_perspective`)
         - negative output dimensions raise ``ValueError``
 
     Args:
@@ -1769,7 +1764,7 @@ def homography_warp(
 
         return F.grid_sample(patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
     return warp_perspective(
-        patch_src, src_homo_dst, dsize, mode="bilinear", padding_mode=padding_mode, align_corners=True
+        patch_src, src_homo_dst, dsize, mode=mode, padding_mode=padding_mode, align_corners=align_corners
     )
 
 
@@ -1843,7 +1838,12 @@ def homography_warp3d(
 
     depth, height, width = dsize
     grid = create_meshgrid3d(
-        depth, height, width, normalized_coordinates=normalized_coordinates, device=patch_src.device
+        depth,
+        height,
+        width,
+        normalized_coordinates=normalized_coordinates,
+        device=patch_src.device,
+        dtype=torch.promote_types(patch_src.dtype, src_homo_dst.dtype),
     )
     # ``create_meshgrid3d`` follows kornia's ``(d, x, y)`` convention, which
     # ``normalize_pixel_coordinates3d`` and ``conv_soft_argmax3d`` rely on. ``warp_grid3d`` and

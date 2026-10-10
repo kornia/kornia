@@ -40,12 +40,9 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - See :class:`~kornia.augmentation.AugmentationBase2D` for input, sampling, and replay,
-          :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` for transformation matrices, and
-          :class:`~kornia.augmentation.GeometricAugmentationBase2D` for inverse behavior.
-          Coordinates are inclusive pixel centers: a selected flip maps
-          ``(x, y)`` to ``(x, H - 1 - y)`` and applies the exact discrete :func:`~kornia.geometry.transform.vflip`
-          operation, without resampling.
+        A selected flip maps ``(x, y)`` to ``(x, H - 1 - y)`` with the exact discrete
+        :func:`~kornia.geometry.transform.vflip`, without resampling; see
+        :class:`~kornia.augmentation.GeometricAugmentationBase2D` for the shared contract.
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.vflip`.

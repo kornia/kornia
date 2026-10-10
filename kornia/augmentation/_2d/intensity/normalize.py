@@ -49,17 +49,13 @@ class Normalize(IntensityAugmentationBase2D):
     Convention:
         - ``mean`` and ``std`` accept a float, a per-channel sequence or tensor, or a per-sample ``(B, C)``
           tensor; a length that is neither ``1`` nor the channel count raises.
-        - ``p`` gates the whole batch rather than each sample: the constructor hard-codes
-          ``same_on_batch=True``, which collapses the per-sample draw to a single one, and it takes no
-          ``same_on_batch`` argument of its own.
-        - the statistics live in ``flags`` rather than in a buffer, so ``state_dict()`` is empty and
-          ``Module.to(...)`` leaves their device and dtype alone.
-        - :class:`Denormalize` built with the same float, integer, sequence or tensor ``mean`` and ``std``
-          inverts this class, up to float rounding, when both apply -- each draws its own ``p`` gate.
+        - ``p`` gates the whole batch rather than each sample: the constructor hard-codes ``same_on_batch=True``
+          and takes no ``same_on_batch`` argument.
+        - the statistics live in ``flags`` rather than in a buffer: ``state_dict()`` is empty and
+          ``Module.to(...)`` does not move them; they are cast to the input's device and dtype on each call.
+        - :class:`Denormalize` built with the same ``mean`` and ``std`` inverts this class, up to float
+          rounding, when both apply -- each draws its own ``p`` gate.
         - the result is not clamped: moving an image out of ``[0, 1]`` is what this class is for.
-
-        - non-contiguous input, such as a transposed or permuted image, produces the same
-          values as its contiguous copy.
 
     .. note::
         This function internally uses :func:`kornia.enhance.normalize`.

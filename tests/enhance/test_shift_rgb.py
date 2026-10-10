@@ -24,6 +24,15 @@ from testing.base import BaseTester
 
 
 class TestRGBShift(BaseTester):
+    @pytest.mark.parametrize("shape", [(3, 1, 1), (2, 2, 3, 1, 1)])
+    def test_invalid_image_rank(self, shape, device, dtype):
+        from kornia.core.exceptions import ShapeError
+
+        image = torch.zeros(shape, device=device, dtype=dtype)
+        shifts = torch.zeros(1 if len(shape) == 3 else 2, device=device, dtype=dtype)
+        with pytest.raises(ShapeError):
+            kornia.enhance.shift_rgb(image, shifts, shifts, shifts)
+
     def test_rgb_shift_no_shift(self, device, dtype):
         r_shift, g_shift, b_shift = torch.Tensor([0]), torch.Tensor([0]), torch.Tensor([0])
         image = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)

@@ -57,6 +57,26 @@ class Quaternion(nn.Module):
 
         Q = \begin{bmatrix} q_w & q_x & q_y & q_z \end{bmatrix}
 
+    Convention:
+        - ``data`` is ``(w, x, y, z)``, real part first, with shape :math:`(*, 4)`; only the last axis is checked.
+          Other libraries' orders, such as scipy's default ``(x, y, z, w)``, are mapped on
+          :ref:`Rotations and rigid motions <rotation-conventions>`.
+        - ``*`` between quaternions is the Hamilton product, so ``(q1 * q2).matrix()`` is
+          ``q1.matrix() @ q2.matrix()``, ``q1 / q2`` is ``q1 * q2.inv()``, and ``q`` and ``-q`` are the same rotation.
+          A float or tensor operand of ``+``, ``-``, ``*`` or ``/`` is the real quaternion ``[s, 0, 0, 0]``, and a
+          tensor of the shape of ``q.w`` holds one such scalar per quaternion of the batch.
+        - Nothing normalises the stored data or the results of ``*``, ``**`` and ``inv()``. ``matrix()``,
+          ``to_axis_angle()``, ``to_euler()``, ``polar_angle`` and ``slerp`` read only the direction of ``q``:
+          rescaling ``q`` by a positive factor changes their result by roundoff only, as long as its squared
+          components stay within the range of the dtype and its norm stays above ``1e-12``.
+        - At construction, plain tensor data is registered as a persistent buffer; an explicit ``nn.Parameter``
+          remains a parameter. Both are saved and restored by ``state_dict()`` and ``load_state_dict()`` and follow
+          an enclosing module's device and dtype conversions. Construction preserves the input tensor and its
+          autograd history. ``Quaternion.to()`` returns a new quaternion; enclosing module conversions update the
+          existing module's state.
+        - Known defects: below a norm of ``1e-12``, ``matrix()`` and ``slerp`` give wrong results, and the zero
+          quaternion's ``matrix()`` is the identity (`#3952 <https://github.com/kornia/kornia/issues/3952>`_).
+
     Example:
         >>> q = Quaternion.identity(batch_size=4)
         >>> q.data
@@ -80,7 +100,8 @@ class Quaternion(nn.Module):
         """Construct a quaternion from torch.Tensor or parameter data.
 
         Args:
-            data: torch.Tensor or parameter containing the quaternion data with the shape of :math:`(B, 4)`.
+            data: torch.Tensor or parameter containing the quaternion data with the shape of :math:`(*, 4)`.
+                Stored without copying as a persistent buffer, or as a parameter if already an ``nn.Parameter``.
 
         Example:
             >>> # Create with torch.tensor(no gradients tracked by default)
@@ -99,7 +120,10 @@ class Quaternion(nn.Module):
 
         if data.ndim == 0 or data.shape[-1] != 4:
             raise ValueError(f"Quaternion input must have last dimension == 4. Got shape {tuple(data.shape)}")
-        self._data = data
+        if isinstance(data, nn.Parameter):
+            self._data = data
+        else:
+            self.register_buffer("_data", data)
 
     def to(self, *args: Any, **kwargs: Any) -> "Quaternion":
         """Move and/or cast the quaternion data.
@@ -164,7 +188,7 @@ class Quaternion(nn.Module):
 
         Example:
             >>> q = Quaternion.identity()
-            >>> -q.data
+            >>> (-q).data
             tensor([-1., -0., -0., -0.])
 
         """
@@ -186,9 +210,8 @@ class Quaternion(nn.Module):
         """
         if isinstance(right, Quaternion):
             return Quaternion(self.data + right.data)
-        else:
-            right_quat = self._to_scalar_quaternion(right)
-            return Quaternion(self.data + right_quat.data)
+        right_quat = self._to_scalar_quaternion(right)
+        return Quaternion(self.data + right_quat.data)
 
     def __sub__(self, right: Union["Quaternion", torch.Tensor, float]) -> "Quaternion":
         """Subtract a given quaternion, scalar, or torch.Tensor.
@@ -206,13 +229,12 @@ class Quaternion(nn.Module):
         """
         if isinstance(right, Quaternion):
             return Quaternion(self.data - right.data)
-        else:
-            right_quat = self._to_scalar_quaternion(right)
-            # For scalar operations, ensure we return a torch.Tensor to preserve gradients
-            result_data = self.data - right_quat.data
-            if isinstance(result_data, nn.Parameter):
-                result_data = result_data.data  # Convert to torch.Tensor to preserve gradients
-            return Quaternion(result_data)
+        right_quat = self._to_scalar_quaternion(right)
+        # For scalar operations, ensure we return a torch.Tensor to preserve gradients
+        result_data = self.data - right_quat.data
+        if isinstance(result_data, nn.Parameter):
+            result_data = result_data.data  # Convert to torch.Tensor to preserve gradients
+        return Quaternion(result_data)
 
     def __mul__(self, right: Union["Quaternion", torch.Tensor, float]) -> "Quaternion":
         # If right is a Quaternion, do quaternion multiplication
@@ -226,15 +248,14 @@ class Quaternion(nn.Module):
             return Quaternion(torch.cat((new_real[..., None], new_vec), -1))
 
         # If right is a scalar/torch.Tensor, convert to scalar quaternion and multiply
-        else:
-            right_quat = self._to_scalar_quaternion(right)
-            new_real = self.real * right_quat.real - batched_dot_product(self.vec, right_quat.vec)
-            new_vec = (
-                self.real[..., None] * right_quat.vec
-                + right_quat.real[..., None] * self.vec
-                + torch.linalg.cross(self.vec, right_quat.vec, dim=-1)
-            )
-            return Quaternion(torch.cat((new_real[..., None], new_vec), -1))
+        right_quat = self._to_scalar_quaternion(right)
+        new_real = self.real * right_quat.real - batched_dot_product(self.vec, right_quat.vec)
+        new_vec = (
+            self.real[..., None] * right_quat.vec
+            + right_quat.real[..., None] * self.vec
+            + torch.linalg.cross(self.vec, right_quat.vec, dim=-1)
+        )
+        return Quaternion(torch.cat((new_real[..., None], new_vec), -1))
 
     def __rmul__(self, left: Union[torch.Tensor, float]) -> "Quaternion":
         """Right multiplication (left * self) where left is a scalar or torch.Tensor."""
@@ -250,25 +271,24 @@ class Quaternion(nn.Module):
     def __div__(self, right: Union[torch.Tensor, "Quaternion", float]) -> "Quaternion":
         if isinstance(right, Quaternion):
             return self * right.inv()
+        # For scalars/tensors, just divide the quaternion data directly
+        if isinstance(right, (int, float)):
+            right_tensor = torch.tensor(right, device=self.data.device, dtype=self.data.dtype)
         else:
-            # For scalars/tensors, just divide the quaternion data directly
-            if isinstance(right, (int, float)):
-                right_tensor = torch.tensor(right, device=self.data.device, dtype=self.data.dtype)
-            else:
-                right_tensor = right.to(device=self.data.device, dtype=self.data.dtype)
+            right_tensor = right.to(device=self.data.device, dtype=self.data.dtype)
 
-            # For division by scalar, expand to [right, right, right, right] for element-wise division
-            if right_tensor.dim() == 0:  # scalar
-                divisor = right_tensor.expand_as(self.data[..., 0]).unsqueeze(-1).expand_as(self.data)
-            else:
-                # Broadcast the torch.Tensor to match the quaternion dimensions
-                divisor = right_tensor.unsqueeze(-1).expand_as(self.data)
+        # For division by scalar, expand to [right, right, right, right] for element-wise division
+        if right_tensor.dim() == 0:  # scalar
+            divisor = right_tensor.expand_as(self.data[..., 0]).unsqueeze(-1).expand_as(self.data)
+        else:
+            # Broadcast the torch.Tensor to match the quaternion dimensions
+            divisor = right_tensor.unsqueeze(-1).expand_as(self.data)
 
-            # For scalar operations, ensure we return a torch.Tensor to preserve gradients
-            result_data = self.data / divisor
-            if isinstance(result_data, nn.Parameter):
-                result_data = result_data.data  # Convert to torch.Tensor to preserve gradients
-            return Quaternion(result_data)
+        # For scalar operations, ensure we return a torch.Tensor to preserve gradients
+        result_data = self.data / divisor
+        if isinstance(result_data, nn.Parameter):
+            result_data = result_data.data  # Convert to torch.Tensor to preserve gradients
+        return Quaternion(result_data)
 
     def __truediv__(self, right: Union[torch.Tensor, "Quaternion", float]) -> "Quaternion":
         return self.__div__(right)
@@ -292,23 +312,48 @@ class Quaternion(nn.Module):
         """Right division (left / self) where left is a scalar or torch.Tensor."""
         return self.__rtruediv__(left)
 
-    def __pow__(self, t: float) -> "Quaternion":
-        """Return the power of a quaternion raised to exponent t.
+    def __pow__(self, t: Union[float, torch.Tensor]) -> "Quaternion":
+        r"""Return the power of a quaternion raised to exponent t.
+
+        For :math:`q = \|q\| (\cos\theta + n \sin\theta)` this is
+        :math:`q^t = \|q\|^t (\cos t\theta + n \sin t\theta)`, so ``q**2 == q * q`` and ``q**-1 == q.inv()``.
+
+        On the negative real axis (``w < 0`` and a zero vector part) :math:`\theta = \pi` and the axis :math:`n` is
+        undefined: for a non-integer ``t`` every unit vector gives a valid power. This method takes :math:`n = e_x`
+        there, so ``q**t`` has norm :math:`\|q\|^t` and angle :math:`t\pi`, ``(q**0.5)**2 == q``, and the result is
+        the limit from the ``+x`` side of the axis. An integer ``t`` keeps a zero vector part.
 
         Args:
-            t: raised exponent.
+            t: raised exponent, a float or a tensor that broadcasts against ``(..., 1)``.
 
         Example:
             >>> q = Quaternion(torch.tensor([1., .5, 0., 0.]))
             >>> q_pow = q**2
 
         """
-        theta = self.polar_angle[..., None]
+        w = self.scalar[..., None]
         vec_norm = self.vec.norm(dim=-1, keepdim=True)
-        n = torch.where(vec_norm != 0, self.vec / vec_norm, self.vec * 0)
-        w = (t * theta).cos()
-        xyz = (t * theta).sin() * n
-        return Quaternion(torch.cat((w, xyz), -1))
+        theta = torch.atan2(vec_norm, w)
+        # On the real axis (|v| = 0) take sin(t * theta) / |v| from its limit t * cos(t * theta) / w, exact when
+        # theta = 0 or t is an integer, and keep both arms' denominators nonzero so values and gradients stay finite.
+        is_real = vec_norm == 0
+        safe_vec_norm = torch.where(is_real, torch.ones_like(vec_norm), vec_norm)
+        safe_w = torch.where(w == 0, torch.ones_like(w), w)
+        sin_ratio = torch.where(is_real, t * (t * theta).cos() / safe_w, (t * theta).sin() / safe_vec_norm)
+        scale = self.norm(keepdim=True) ** t
+        vec = scale * sin_ratio * self.vec
+        # The negative real axis is the branch cut of the power: theta = pi and n = v / |v| is undefined, so the arm
+        # above leaves the vector part at 0 and only an integer t gives a valid result there (#4955). Take n = e_x on
+        # the cut: add |q|^t sin(t pi) to x, which is 0 there. sin(t pi) is reduced by the nearest integer k so that it
+        # is exactly 0 for an integer t, and only the cut is touched, so every other value and an integer t keep the
+        # arm above bit for bit. The reduction stays in torch so that a tensor t (0-d or batched) keeps its gradient.
+        t_ = torch.as_tensor(t, dtype=scale.dtype, device=scale.device)
+        k = t_.detach().round()
+        sin_t_pi = (1.0 - 2.0 * k.remainder(2.0)) * torch.sin(pi * (t_ - k))
+        on_cut = is_real & (w < 0) & (sin_t_pi != 0)
+        vec_x = vec[..., :1]
+        vec = torch.cat((torch.where(on_cut, vec_x + scale * sin_t_pi, vec_x), vec[..., 1:]), -1)
+        return Quaternion(torch.cat((scale * (t * theta).cos(), vec), -1))
 
     @property
     def data(self) -> torch.Tensor:
@@ -324,8 +369,7 @@ class Quaternion(nn.Module):
     def real(self) -> torch.Tensor:
         """Return the real part with shape :math:`(B,)`.
 
-        Alias for
-        :func: `~kornia.geometry.quaternion.Quaternion.w`
+        Alias for :attr:`~kornia.geometry.quaternion.Quaternion.w`.
         """
         return self.w
 
@@ -346,8 +390,7 @@ class Quaternion(nn.Module):
     def scalar(self) -> torch.Tensor:
         """Return a scalar with the real with shape :math:`(B,)`.
 
-        Alias for
-        :func: `~kornia.geometry.quaternion.Quaternion.w`
+        Alias for :attr:`~kornia.geometry.quaternion.Quaternion.w`.
         """
         return self.real
 
@@ -378,7 +421,9 @@ class Quaternion(nn.Module):
 
     @property
     def polar_angle(self) -> torch.Tensor:
-        """Return the polar angle with shape :math:`(B,1)`.
+        r"""Return the polar angle :math:`\arccos(w / |q|)` in :math:`[0, \pi]`, with shape :math:`(B,)`.
+
+        ``q`` rotates by twice this angle about the axis ``vec``.
 
         Example:
             >>> q = Quaternion.identity()
@@ -386,7 +431,9 @@ class Quaternion(nn.Module):
             tensor(0.)
 
         """
-        return (self.scalar / self.norm()).acos()
+        # atan2(|v|, w) is the same angle, but it keeps the digits of an angle below sqrt(eps) that acos(w / |q|)
+        # rounds to zero, and its gradient on the real axis (v = 0, the identity included) is zero instead of nan.
+        return torch.atan2(self.vec.norm(dim=-1), self.scalar)
 
     def matrix(self) -> torch.Tensor:
         """Convert the quaternion to a rotation matrix of shape :math:`(B, 3, 3)`.
@@ -403,11 +450,16 @@ class Quaternion(nn.Module):
         return quaternion_to_rotation_matrix(self.data)
 
     @classmethod
-    def from_matrix(cls, matrix: torch.Tensor) -> "Quaternion":
+    def from_matrix(cls, matrix: torch.Tensor, check_rotation: bool = False) -> "Quaternion":
         """Create a quaternion from a rotation matrix.
 
         Args:
             matrix: the rotation matrix to convert of shape :math:`(B, 3, 3)`.
+            check_rotation: if ``True``, raise ``ValueError`` unless every input
+                is a rotation matrix. The default ``False`` keeps the unchecked
+                behaviour, under which a reflection such as
+                ``diag(-1, 1, 1)`` returns a non-unit quaternion rather than
+                being reported as invalid.
 
         Example:
             >>> m = torch.eye(3)[None]
@@ -416,7 +468,7 @@ class Quaternion(nn.Module):
             tensor([[1., 0., 0., 0.]])
 
         """
-        return cls(rotation_matrix_to_quaternion(matrix))
+        return cls(rotation_matrix_to_quaternion(matrix, check_rotation=check_rotation))
 
     @classmethod
     def from_euler(cls, roll: torch.Tensor, pitch: torch.Tensor, yaw: torch.Tensor) -> "Quaternion":
@@ -442,14 +494,14 @@ class Quaternion(nn.Module):
         """Convert the quaternion to a triple of Euler angles (roll, pitch, yaw).
 
         Example:
-            >>> q = Quaternion(torch.tensor([2., 0., 1., 1.]))
+            >>> q = Quaternion.from_euler(torch.tensor(0.3), torch.tensor(0.2), torch.tensor(0.1))
             >>> roll, pitch, yaw = q.to_euler()
             >>> roll
-            tensor(2.0344)
+            tensor(0.3000)
             >>> pitch
-            tensor(1.5708)
+            tensor(0.2000)
             >>> yaw
-            tensor(2.2143)
+            tensor(0.1000)
 
         """
         return euler_from_quaternion(self.w, self.x, self.y, self.z)
@@ -557,14 +609,23 @@ class Quaternion(nn.Module):
         q4 = r1.sqrt() * (2 * pi * r3).cos()
         return cls(torch.stack((q1, q2, q3, q4), -1))
 
-    def slerp(self, q1: "Quaternion", t: float) -> "Quaternion":
+    def slerp(self, q1: "Quaternion", t: Union[float, torch.Tensor]) -> "Quaternion":
         """Return a unit quaternion spherically interpolated between quaternions self.q and q1.
+
+        The interpolation follows the shorter arc between the two rotations, whatever the signs of the stored
+        quaternions: ``q1`` and ``-q1`` give the same result, and at ``t = 1`` the output is ``q1`` or ``-q1``.
+        The exception is a half turn whose relative quaternion ``self.inv() * q1`` has a real part of exactly zero:
+        both arcs are then equally short and the path is not unique. The arc taken follows the sign of the vector
+        part of ``self.inv() * q1``, so ``q1`` and ``-q1`` take opposite arcs, and the result is not continuous in
+        ``q1`` there.
 
         See more: https://en.wikipedia.org/wiki/Slerp
 
         Args:
             q1: second quaternion to be interpolated between.
-            t: interpolation ratio, range [0-1]
+            t: interpolation ratio, ``0`` at ``self`` and ``1`` at ``q1``. It is not validated: values outside
+                ``[0, 1]`` extrapolate along the same arc. A per-batch ratio has shape :math:`(B,)`, like
+                ``self.w``, or :math:`(B, 1)`.
 
         Example:
             >>> q0 = Quaternion.identity()
@@ -575,7 +636,14 @@ class Quaternion(nn.Module):
         KORNIA_CHECK_TYPE(q1, Quaternion)
         q0 = self.normalize()
         q1 = q1.normalize()
-        return q0 * (q0.inv() * q1) ** t
+        # q0 * exp(t * log(q0^-1 q1)): the principal log of the relative rotation selects the shorter arc, and both
+        # conversions keep a finite gradient at the identity (q0 == q1).
+        rel = quaternion_to_axis_angle((q0.inv() * q1).data)
+        if isinstance(t, torch.Tensor) and t.dim() > 0 and t.dim() == rel.dim() - 1:
+            # One ratio per quaternion, of the shape of ``w``: scale each rotation vector, not its components. A 0-d
+            # ratio is left alone: it multiplies as a scalar, whatever its device and dtype, and would not with an axis.
+            t = t[..., None]
+        return q0 * Quaternion(axis_angle_to_quaternion(t * rel))
 
     def norm(self, keepdim: bool = False) -> torch.Tensor:
         """Compute the norm (magnitude) of the quaternion.
@@ -650,7 +718,16 @@ class Quaternion(nn.Module):
 
 
 def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Quaternion":
-    """Compute (weighted) average of multiple quaternions.
+    r"""Compute (weighted) average of multiple quaternions.
+
+    Convention:
+        - The chordal mean of scipy's ``Rotation.mean``: the eigenvector of
+          :math:`\sum_i w_i q_i q_i^\top / \sum_i w_i` with the largest eigenvalue. ``q_i`` and ``-q_i`` count the
+          same, and the sign of the result is arbitrary.
+        - ``w`` need not sum to one: scaling it by a positive factor does not change the result. A negative weight,
+          or weights that are all zero, raise ``ValueError``.
+        - The members are normalised first, so only their directions count: a member stored as ``3 * q`` weighs
+          the same as ``q``.
 
     Args:
         Q (Quaternion): quaternion object containing data of shape (M, 4).
@@ -658,10 +735,13 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
 
 
     Returns:
-        Quaternion: averaged quaternion (shape (4,)), wrapped back in the Quaternion class.
+        Quaternion: averaged quaternion of shape (1, 4), wrapped back in the Quaternion class.
     """
-    data = Q.data
     KORNIA_CHECK_TYPE(Q, Quaternion)
+    # the chordal mean is the top eigenvector of sum_i w_i q_i q_i^T, which is sign invariant but weights each member
+    # by its squared norm: a member stored as 3 q counted 9 times (#4974). Every other rotation-valued method depends
+    # only on the direction of q, so normalise the members first.
+    data = Q.normalize().data
 
     M = data.shape[0]
     if w is None:
@@ -670,7 +750,12 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
         w = w.to(data.device, dtype=data.dtype)
         if w.numel() != M:
             raise ValueError(f"weights length {w.numel()} must match number of quaternions {M}")
-        w = w / w.sum()
+        if bool((w < 0).any()):
+            raise ValueError("weights must be non-negative")
+        w_sum = w.sum()
+        if bool(w_sum == 0):
+            raise ValueError("weights must not all be zero")
+        w = w / w_sum
         A = data.T @ torch.diag(w) @ data
 
     orig_dtype = A.dtype

@@ -26,18 +26,18 @@ from kornia.core.utils import is_exporting
 
 
 class _HausdorffERLossBase(nn.Module):
-    """Base class for binary Hausdorff loss based on morphological erosion.
+    """Base class for the Hausdorff losses based on morphological erosion, one binary map per class channel.
 
     This is an Hausdorff Distance (HD) Loss that based on morphological erosion,which provided
     a differentiable approximation of Hausdorff distance as stated in :cite:`karimi2019reducing`.
     The code is refactored on top of `here <https://github.com/PatRyg99/HausdorffLoss/
-        blob/master/hausdorff_loss.py>`__.
+    blob/master/hausdorff_loss.py>`__.
 
     Args:
-        alpha: controls the erosion rate in each iteration.
+        alpha: the exponent of the weight ``(i + 1) ** alpha`` of erosion ``i = 0, ..., k - 1``.
         k: the number of iterations of erosion.
         reduction: Specifies the reduction to apply to the output: 'none' | 'mean' | 'sum'.
-            'none': no reduction will be applied, 'mean': the weighted mean of the output is taken,
+            'none': no reduction will be applied, 'mean': the mean of the output is taken,
             'sum': the output will be summed.
 
     Returns:
@@ -101,7 +101,7 @@ class _HausdorffERLossBase(nn.Module):
         Args:
             pred: predicted torch.Tensor with a shape of :math:`(B, C, H, W)` or :math:`(B, C, D, H, W)`.
                 Each channel is as binary as: 1 -> fg, 0 -> bg.
-            target: target torch.Tensor with a shape of :math:`(B, 1, H, W)` or :math:`(B, C, D, H, W)`.
+            target: target torch.Tensor with a shape of :math:`(B, 1, H, W)` or :math:`(B, 1, D, H, W)`.
 
         Returns:
             Estimated Hausdorff Loss.
@@ -113,9 +113,13 @@ class _HausdorffERLossBase(nn.Module):
                 f"Got {pred.shape} and {target.shape}."
             )
 
+        if target.dtype != torch.long:
+            raise ValueError(f"Expect long type target value in range [0, {pred.size(1)}). Got {target.dtype}.")
         # The range check reads the data, which graph capture cannot do; skip it under export.
-        if not is_exporting() and pred.size(1) < target.max().item():
-            raise ValueError("Invalid target value.")
+        if not is_exporting() and not (target.max() < pred.size(1) and target.min() >= 0):
+            raise ValueError(
+                f"Expect long type target value in range [0, {pred.size(1)}). ({target.min()}, {target.max()})"
+            )
 
         out = torch.stack(
             [
@@ -144,7 +148,7 @@ class _HausdorffERLossBase(nn.Module):
 
 
 class HausdorffERLoss(_HausdorffERLossBase):
-    r"""Binary Hausdorff loss based on morphological erosion.
+    r"""Hausdorff loss based on morphological erosion, one binary map per class channel.
 
     Hausdorff Distance loss measures the maximum distance of a predicted segmentation boundary to
     the nearest ground-truth edge pixel. For two segmentation point sets X and Y ,
@@ -165,16 +169,26 @@ class HausdorffERLoss(_HausdorffERLossBase):
     The code is refactored on top of `here <https://github.com/PatRyg99/HausdorffLoss/
     blob/master/hausdorff_loss.py>`__.
 
+    Convention:
+        - ``pred`` holds per-class probabilities ``(B, C, H, W)`` and nothing is applied to it, unlike the logits of
+          :func:`~kornia.losses.focal_loss`: pass a softmax. ``target`` holds int64 labels ``(B, 1, H, W)`` in
+          ``[0, C)``. Channel ``c`` is compared with ``target == c``, class 0 included.
+        - ``reduction='none'`` returns ``(C, B, 1, H, W)``, class axis first; the default ``'mean'`` is the plain
+          mean of that tensor.
+        - Each of the ``k`` erosions is min-max normalised per image and class and weighted by
+          :math:`(i + 1)^\alpha` for :math:`i = 0, \dots, k - 1`: the value is a unitless surrogate, not a distance
+          in pixels.
+
     Args:
-        alpha: controls the erosion rate in each iteration.
+        alpha: the exponent of the weight :math:`(i + 1)^\alpha` of erosion :math:`i = 0, \dots, k - 1`.
         k: the number of iterations of erosion.
         reduction: Specifies the reduction to apply to the output: 'none' | 'mean' | 'sum'.
-            'none': no reduction will be applied, 'mean': the weighted mean of the output is taken,
+            'none': no reduction will be applied, 'mean': the mean of the output is taken,
             'sum': the output will be summed.
 
     Examples:
         >>> hdloss = HausdorffERLoss()
-        >>> input = torch.randn(5, 3, 20, 20)
+        >>> input = torch.randn(5, 3, 20, 20).softmax(1)
         >>> target = (torch.rand(5, 1, 20, 20) * 2).long()
         >>> res = hdloss(input, target)
 
@@ -208,18 +222,11 @@ class HausdorffERLoss(_HausdorffERLossBase):
         if pred.dim() != 4:
             raise ValueError(f"Only 2D images supported. Got {pred.dim()}.")
 
-        if target.dtype != torch.long:
-            raise ValueError(f"Expect long type target value in range (0, {pred.size(1)}). Got {target.dtype}.")
-        # The range check reads the data, which graph capture cannot do; skip it under export.
-        if not is_exporting() and not (target.max() < pred.size(1) and target.min() >= 0):
-            raise ValueError(
-                f"Expect long type target value in range (0, {pred.size(1)}). ({target.min()}, {target.max()})"
-            )
         return super().forward(pred, target)
 
 
 class HausdorffERLoss3D(_HausdorffERLossBase):
-    r"""Binary 3D Hausdorff loss based on morphological erosion.
+    r"""3D Hausdorff loss based on morphological erosion, one binary map per class channel.
 
     Hausdorff Distance loss measures the maximum distance of a predicted segmentation boundary to
     the nearest ground-truth edge pixel. For two segmentation point sets X and Y ,
@@ -240,16 +247,22 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
     The code is refactored on top of `here <https://github.com/PatRyg99/HausdorffLoss/
     blob/master/hausdorff_loss.py>`__.
 
+    Convention:
+        - As in :class:`~kornia.losses.HausdorffERLoss` (see its Convention block), for ``pred`` of shape
+          ``(B, C, D, H, W)`` and ``target`` of shape ``(B, 1, D, H, W)``; ``reduction='none'`` returns
+          ``(C, B, 1, D, H, W)``. The erosion kernel is the voxel and its six face neighbours, so the erosion also
+          runs along ``D``.
+
     Args:
-        alpha: controls the erosion rate in each iteration.
+        alpha: the exponent of the weight :math:`(i + 1)^\alpha` of erosion :math:`i = 0, \dots, k - 1`.
         k: the number of iterations of erosion.
         reduction: Specifies the reduction to apply to the output: 'none' | 'mean' | 'sum'.
-            'none': no reduction will be applied, 'mean': the weighted mean of the output is taken,
+            'none': no reduction will be applied, 'mean': the mean of the output is taken,
             'sum': the output will be summed.
 
     Examples:
         >>> hdloss = HausdorffERLoss3D()
-        >>> input = torch.randn(5, 3, 20, 20, 20)
+        >>> input = torch.randn(5, 3, 20, 20, 20).softmax(1)
         >>> target = (torch.rand(5, 1, 20, 20, 20) * 2).long()
         >>> res = hdloss(input, target)
 

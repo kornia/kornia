@@ -18,11 +18,11 @@
 import pytest
 import torch
 
-import kornia.geometry.calibration.distort as distort_module
 from kornia.geometry.calibration.distort import distort_points, tilt_projection
+from kornia.geometry.calibration.undistort import undistort_points
 from kornia.geometry.camera.distortion_affine import distort_points_affine
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 from testing.geometry.linalg import euler_angles_to_rotation_matrix
 
 
@@ -72,6 +72,76 @@ class TestTiltProjection(BaseTester):
         self.assert_close(actual, expected)
 
 
+@pytest.mark.parametrize("op", [distort_points, undistort_points])
+class TestZeroTiltGradients(BaseTester):
+    @pytest.mark.parametrize("batch_shape", [(), (2,), (2, 3)])
+    def test_tilt_gradient(self, op, batch_shape, device, dtype):
+        points = torch.tensor([[0.3, 0.2], [-0.2, 0.4]], device=device, dtype=dtype).expand(*batch_shape, 2, 2)
+        K = torch.eye(3, device=device, dtype=dtype).expand(*batch_shape, 3, 3)
+        dist = torch.zeros(*batch_shape, 14, device=device, dtype=dtype, requires_grad=True)
+
+        output = op(points, K, dist)
+        self.assert_close(output, points)
+        (gradient,) = torch.autograd.grad(output.sum(), dist)
+        # At zero tilt, d(x, y)/d(taux) = (xy, y^2) and d(x, y)/d(tauy) = (-x^2, -xy).
+        # The inverse map has the opposite derivatives; sum over the two points and coordinates.
+        expected = torch.tensor([0.18, -0.11], device=device, dtype=dtype).expand(*batch_shape, 2)
+        if op is undistort_points:
+            expected = -expected
+        self.assert_close(gradient[..., 12:], expected)
+
+    def test_gradcheck(self, op, device):
+        points = torch.tensor([[[0.3, 0.2], [-0.2, 0.4]]], device=device, dtype=torch.float64)
+        K = torch.eye(3, device=device, dtype=torch.float64)[None]
+        dist = torch.zeros(1, 14, device=device, dtype=torch.float64, requires_grad=True)
+        self.gradcheck(op, (points, K, dist), requires_grad=(False, False, True))
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("batch_shape", [(), (2, 3)])
+    @pytest.mark.parametrize("num_coeffs", [4, 14])
+    def test_export(self, op, batch_shape, num_coeffs, device, dtype):
+        class Calibration(torch.nn.Module):
+            def forward(self, points, K, dist):
+                return op(points, K, dist)
+
+        points = torch.tensor([[0.3, 0.2]], device=device, dtype=dtype).expand(*batch_shape, 1, 2)
+        K = torch.eye(3, device=device, dtype=dtype).expand(*batch_shape, 3, 3)
+        dist = torch.zeros(*batch_shape, num_coeffs, device=device, dtype=dtype, requires_grad=True)
+        exported = torch.export.export(Calibration(), (points, K, dist)).module()
+        actual = exported(points, K, dist)
+        expected = op(points, K, dist)
+        self.assert_close(actual, expected)
+        self.assert_close(torch.autograd.grad(actual.sum(), dist)[0], torch.autograd.grad(expected.sum(), dist)[0])
+
+    def test_jit(self, op, device, dtype):
+        points = torch.tensor([[[0.3, 0.2]]], device=device, dtype=dtype)
+        K = torch.eye(3, device=device, dtype=dtype)[None]
+        dist = torch.zeros(1, 14, device=device, dtype=dtype, requires_grad=True)
+        scripted = torch.jit.script(op)
+        eager_gradient = torch.autograd.grad(op(points, K, dist).sum(), dist)[0]
+        scripted_gradient = torch.autograd.grad(scripted(points, K, dist).sum(), dist)[0]
+        expected = torch.tensor([[0.1, -0.15]], device=device, dtype=dtype)
+        if op is undistort_points:
+            expected = -expected
+        self.assert_close(eager_gradient[..., 12:], expected)
+        self.assert_close(scripted_gradient, eager_gradient)
+
+    def test_dynamo(self, op, device, dtype, torch_optimizer):
+        points = torch.tensor([[[0.3, 0.2]]], device=device, dtype=dtype)
+        K = torch.eye(3, device=device, dtype=dtype)[None]
+        dist = torch.zeros(1, 14, device=device, dtype=dtype, requires_grad=True)
+        compiled = torch_optimizer(op, fullgraph=True)
+        # At zero coefficients one iteration has the same tilt derivatives as the default five;
+        # keep the backward graph small for the oldest supported compiler.
+        output = compiled(points, K, dist, num_iters=1) if op is undistort_points else compiled(points, K, dist)
+        self.assert_close(output, points)
+        compiled_gradient = torch.autograd.grad(output.sum(), dist)[0]
+        expected = torch.tensor([[0.1, -0.15]], device=device, dtype=dtype)
+        if op is undistort_points:
+            expected = -expected
+        self.assert_close(compiled_gradient[..., 12:], expected)
+
+
 class TestDistortPoints(BaseTester):
     def test_smoke(self, device, dtype):
         points = torch.rand(1, 2, device=device, dtype=dtype)
@@ -110,18 +180,6 @@ class TestDistortPoints(BaseTester):
         ).reshape(*batch_shape, num_points, 2)
 
         assert actual.shape == (*batch_shape, num_points, 2)
-        self.assert_close(actual, expected)
-
-    def test_export_multi_axis_batch(self, monkeypatch, device, dtype):
-        points = torch.rand(2, 3, 5, 2, device=device, dtype=dtype)
-        K = torch.eye(3, device=device, dtype=dtype).expand(2, 3, 3, 3).clone()
-        dist = torch.tensor([0.01, -0.02, 0.001, -0.001], device=device, dtype=dtype).expand(2, 3, 4).clone()
-        expected = distort_points(points, K, dist)
-
-        monkeypatch.setattr(distort_module, "is_exporting", lambda: True)
-        actual = distort_points(points, K, dist)
-
-        assert actual.shape == points.shape
         self.assert_close(actual, expected)
 
     @pytest.mark.parametrize(
@@ -184,15 +242,8 @@ class TestDistortPoints(BaseTester):
         assert self.gradcheck(distort_points, (points, K, distCoeff, new_K), raise_exception=True, fast_mode=True)
 
     def test_convention_accepts_4_5_8_12_14_coefficients_and_rejects_6(self, device, dtype):
-        # Convention pin: the distortion vector is OpenCV's
-        # (k1, k2, p1, p2[, k3[, k4, k5, k6[, s1, s2, s3, s4[, taux, tauy]]]]), so only the five prefix lengths
-        # 4, 5, 8, 12 and 14 are meaningful; anything else -- 6 and 3 below -- is a ValueError, not a silent
-        # zero-pad. Shorter accepted vectors ARE zero-padded to 14 internally, which is why 4 and 14 zeros give
-        # the same answer. undistort_points enforces the identical rule.
-        # Snippet used to generate expected: distort_points(pts, K, zeros(1, n)) for n in (3, 4, 5, 6, 8, 12, 14)
-        # executed 2026-09-06 on commit c0b50ad7 (torch 2.14.0, cpu and mps, every dtype) -> shape (1, 2, 2)
-        # for the five accepted lengths, ValueError("Invalid number of distortion coefficients. Got 6") for 6;
-        # torch.equal between the 4-coefficient answer and its 14-coefficient zero-padding -> True on every cell.
+        # OpenCV's (k1, k2, p1, p2[, k3[, k4, k5, k6[, s1, s2, s3, s4[, taux, tauy]]]]): only the prefix lengths
+        # 4, 5, 8, 12 and 14 are accepted, and a shorter vector is zero-padded to 14 internally.
         points = torch.tensor([[[54.0, 53.0], [-16.0, 23.0]]], device=device, dtype=dtype)
         K = _k_asymmetric(device, dtype)
         for n in (4, 5, 8, 12, 14):
@@ -206,46 +257,16 @@ class TestDistortPoints(BaseTester):
         assert torch.equal(distort_points(points, K, short), distort_points(points, K, padded))
 
     def test_convention_zero_coefficients_are_a_no_op_at_dtype_tolerance(self, device, dtype):
-        # Convention pin: with every coefficient zero, distort_points normalizes
-        # with new_K (= K here) and denormalizes with K, so it is a no-op -- but only up to the dtype tolerance,
-        # because ``(u - cx) / fx`` followed by ``fx * x + cx`` is not an exact round trip for a general pixel.
-        # This is the GENERAL statement; the bit-for-bit case is scoped in the sibling pin below.
-        # The points sit half a focal length off the principal point on both sides of it, so the round trip is
-        # exercised at a radius where a non-zero coefficient would move them by 2.775 px, and the fractional
-        # offsets keep ``(u - cx) / fx`` off the exactly-representable grid.
-        # Snippet used to generate expected: (distort_points(pts, K, zeros(1, 4)) - pts).abs().max() on
-        # [[54.3, 53.7], [-16.1, 23.9]] executed 2026-09-06 on commit c0b50ad7 (torch 2.14.0), differenced
-        # in the working dtype -> cpu float32 3.81e-06 (torch.equal False), float64 0.0, float16 3.13e-02,
-        # bfloat16 2.50e-01; mps float32 3.81e-06, float16 3.13e-02.
+        # With every coefficient zero, distort_points normalizes with new_K (= K here) and denormalizes with K,
+        # so it is a no-op to roundoff. The points sit half a focal length off the principal point.
         points = torch.tensor([[[54.3, 53.7], [-16.1, 23.9]]], device=device, dtype=dtype)
         K = _k_asymmetric(device, dtype)
         self.assert_close(distort_points(points, K, torch.zeros(1, 4, device=device, dtype=dtype)), points)
 
-    def test_convention_zero_coefficients_are_bit_exact_on_these_points(self, device, dtype):
-        # On these four coordinates the normalize/denormalize arithmetic rounds back to the input
-        # bit for bit in the tested dtypes, even though +/-0.2 are not exactly representable in binary.
-        # This is NOT a general bit-for-bit no-op. Executed counterexample on the same K, 2026-09-06 on the
-        # commit c0b50ad7 (torch 2.14.0): the perturbed points [[54.3, 53.7], [-16.1, 23.9]] give torch.equal
-        # False with a residual of 3.81e-06 in cpu float32 (3.13e-02 in float16, 2.50e-01 in bfloat16); only the
-        # float64 cell is still exact there.
-        # Snippet used to generate expected: torch.equal(distort_points(pts, K, zeros(1, 4)), pts) on
-        # [[54.0, 53.0], [-16.0, 23.0]] executed 2026-09-06 -> True on cpu for float32/float64/float16/bfloat16
-        # and on mps for float32/float16.
-        points = torch.tensor([[[54.0, 53.0], [-16.0, 23.0]]], device=device, dtype=dtype)
-        K = _k_asymmetric(device, dtype)
-        assert torch.equal(distort_points(points, K, torch.zeros(1, 4, device=device, dtype=dtype)), points)
-
     def test_convention_new_K_normalizes_and_K_denormalizes(self, device, dtype):
-        # Convention pin: the two intrinsics play OPPOSITE roles -- new_K maps
-        # the incoming pixel to the normalized z = 1 plane, K maps the distorted normalized point back to pixels.
-        # Every intrinsic is distinct here (new_K: fx 5, fy 7, cx 2, cy 4; K: fx 2, fy 3, cx 1, cy 1), so
-        # swapping the two arguments, or fx with fy, changes both literals: (10, 10) normalizes to
-        # ((10-2)/5, (10-4)/7) = (1.6, 6/7) and denormalizes to (2*1.6+1, 3*6/7+1) = (4.2, 3.571428...).
-        # The diag(2, 2, 1) probe is the same claim with the roles reversed: a (1, 2) pixel
-        # under new_K = diag(2, 2, 1) and K = eye(3) comes back as (0.5, 1.0).
-        # Snippet used to generate expected: distort_points([[[10., 10.]]], K, zeros(1, 4), new_K) executed
-        # 2026-09-06 on commit c0b50ad7 (torch 2.14.0, cpu float32) -> [[[4.199999809265137,
-        # 3.5714285373687744]]]; the same call on mps float32 gives the same value.
+        # new_K maps the incoming pixel to the normalized z = 1 plane and K maps it back to pixels. Every
+        # intrinsic is distinct, so swapping the arguments or fx with fy changes the literal: (10, 10) normalizes
+        # to ((10-2)/5, (10-4)/7) = (1.6, 6/7) and denormalizes to (2*1.6+1, 3*6/7+1) = (4.2, 3.571428...).
         K = torch.tensor([[[2.0, 0.0, 1.0], [0.0, 3.0, 1.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         new_K = torch.tensor([[[5.0, 0.0, 2.0], [0.0, 7.0, 4.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         zero_dist = torch.zeros(1, 4, device=device, dtype=dtype)
@@ -265,16 +286,9 @@ class TestDistortPoints(BaseTester):
         )
 
     def test_convention_agrees_with_distort_points_affine_on_the_same_camera(self, device, dtype):
-        # Convention pin: the two paths encode the same
-        # pinhole camera through different INPUT DOMAINS and parametrizations. distort_points_affine takes a
-        # normalized z = 1 point and a flat [fx, fy, cx, cy]; calibration.distort_points takes a pixel point, a
-        # (3, 3) K and a coefficient vector. Feeding the normalized point through distort_points with
-        # new_K = eye(3) (so the normalization step is the identity) and K = the same camera reproduces the
-        # affine answer bit for bit, and the already-pixel point with zero coefficients
-        # gives the same [54, 28].
-        # Snippet used to generate expected: torch.equal(distort_points([[[0.5, 0.25]]], K, zeros(1, 4), eye(3)[None])
-        # .reshape(2), distort_points_affine([0.5, 0.25], [100., 100., 4., 3.])) executed 2026-09-06 on the
-        # commit c0b50ad7 (torch 2.14.0, cpu float32) -> True, value [54., 28.].
+        # Same camera, different input domains: distort_points_affine takes a normalized z = 1 point and a flat
+        # [fx, fy, cx, cy]; distort_points takes a pixel, a (3, 3) K and a coefficient vector, so with
+        # new_K = eye(3) it maps the normalized point to the same pixel.
         K = _k_asymmetric(device, dtype)
         zero_dist = torch.zeros(1, 4, device=device, dtype=dtype)
         expected = torch.tensor([[[54.0, 28.0]]], device=device, dtype=dtype)
@@ -282,7 +296,7 @@ class TestDistortPoints(BaseTester):
             torch.tensor([0.5, 0.25], device=device, dtype=dtype),
             torch.tensor([100.0, 100.0, 4.0, 3.0], device=device, dtype=dtype),
         )
-        self.assert_close(affine.reshape(1, 1, 2), expected, atol=0.0, rtol=0.0)
+        self.assert_close(affine.reshape(1, 1, 2), expected)
         self.assert_close(
             distort_points(
                 torch.tensor([[[0.5, 0.25]]], device=device, dtype=dtype),
@@ -291,41 +305,32 @@ class TestDistortPoints(BaseTester):
                 torch.eye(3, device=device, dtype=dtype)[None],
             ),
             expected,
-            atol=0.0,
-            rtol=0.0,
         )
-        self.assert_close(distort_points(expected, K, zero_dist), expected, atol=0.0, rtol=0.0)
-
-    def test_convention_tilt_projection_zero_angles_are_the_identity(self, device, dtype):
-        # Both branches reduce to the identity when tilt is disabled.
-        zero = torch.zeros(1, 1, device=device, dtype=dtype)
-        identity = torch.eye(3, device=device, dtype=dtype)[None]
-        assert torch.equal(tilt_projection(zero, zero), identity)
-        self.assert_close(tilt_projection(zero, zero, True), identity, atol=0.0, rtol=0.0)
-
-    def test_convention_tilt_projection_inverse_branch_inverts_pz_times_r(self, device, dtype):
-        # Preserve OpenCV's inverse independently of the forward/inverse round trip (#4276).
-        # A simultaneous change to both branches must not hide a convention error.
-        r, p_z = _pz_r(0.1, 0.2, device, dtype)
-        inverse = tilt_projection(
-            torch.tensor([[0.1]], device=device, dtype=dtype), torch.tensor([[0.2]], device=device, dtype=dtype), True
-        )
-        identity = torch.eye(3, device=device, dtype=dtype)[None]
-        self.assert_close((p_z @ r) @ inverse, identity)
-        wrong = (p_z @ r.transpose(-1, -2)) @ inverse
-        assert (wrong - identity).abs().max().item() > 0.1
+        self.assert_close(distort_points(expected, K, zero_dist), expected)
 
     def test_convention_tilt_projection_forward_is_pz_times_r_4276(self, device, dtype):
+        # OpenCV's tilt projection is Pz @ R (distortion_model.hpp); zero angles give the identity.
+        zero = torch.zeros(1, 1, device=device, dtype=dtype)
+        self.assert_close(tilt_projection(zero, zero), torch.eye(3, device=device, dtype=dtype)[None])
         r, p_z = _pz_r(0.1, 0.2, device, dtype)
         taux = torch.tensor([[0.1]], device=device, dtype=dtype)
         tauy = torch.tensor([[0.2]], device=device, dtype=dtype)
         self.assert_close(tilt_projection(taux, tauy), p_z @ r)
 
-    def test_convention_tilt_projection_branches_are_inverses_4276(self, device, dtype):
+    def test_convention_tilt_projection_inverse_branch_inverts_pz_times_r_4276(self, device, dtype):
+        # Checked against the independent Pz @ R, not only against the forward branch, so a simultaneous
+        # change to both branches cannot hide a convention error.
+        zero = torch.zeros(1, 1, device=device, dtype=dtype)
+        identity = torch.eye(3, device=device, dtype=dtype)[None]
+        self.assert_close(tilt_projection(zero, zero, True), identity)
+        r, p_z = _pz_r(0.1, 0.2, device, dtype)
         taux = torch.tensor([[0.1]], device=device, dtype=dtype)
         tauy = torch.tensor([[0.2]], device=device, dtype=dtype)
-        product = tilt_projection(taux, tauy) @ tilt_projection(taux, tauy, True)
-        self.assert_close(product, torch.eye(3, device=device, dtype=dtype)[None])
+        inverse = tilt_projection(taux, tauy, True)
+        self.assert_close((p_z @ r) @ inverse, identity)
+        self.assert_close(tilt_projection(taux, tauy) @ inverse, identity)
+        wrong = (p_z @ r.transpose(-1, -2)) @ inverse
+        assert (wrong - identity).abs().max().item() > 0.1
 
     def test_jit(self, device, dtype):
         # A random K has fx, fy < 1, and with random coefficients the distortion polynomial

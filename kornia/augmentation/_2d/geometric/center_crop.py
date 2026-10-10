@@ -22,7 +22,8 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
-from kornia.geometry.transform import crop_by_transform_mat, get_perspective_transform
+from kornia.geometry.transform import crop_by_transform_mat
+from kornia.geometry.transform.crop2d import _crop_translation
 
 
 class CenterCrop(GeometricAugmentationBase2D):
@@ -52,20 +53,14 @@ class CenterCrop(GeometricAugmentationBase2D):
         This function internally uses :func:`kornia.geometry.transform.crop_by_boxes`.
 
     Convention:
-        See :class:`~kornia.augmentation.AugmentationBase2D` for input, dtype, probability, and replay,
-        :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` for transformation matrices, and
-        :class:`~kornia.augmentation.GeometricAugmentationBase2D` for inverse behavior.
-        ``size`` accepts an integer for a square crop or an
-        ``(height, width)`` tuple. The fixed centre crop is shared by every selected image in a batch.
+        See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
+        ``size`` accepts an integer for a square crop or an ``(height, width)`` tuple, unlike
+        :class:`RandomCrop` and :class:`RandomResizedCrop` (`#4417 <https://github.com/kornia/kornia/issues/4417>`_).
 
-        When the crop is selected, ``cropping_mode="slice"`` indexes the input directly and returns a writable view
-        of it; modifying the result therefore modifies the corresponding centre region of the input. This wart is
-        tracked in
-        `#4413 <https://github.com/kornia/kornia/issues/4413>`_. ``cropping_mode="resample"`` uses
-        ``crop_by_transform_mat`` with the configured ``resample`` (bilinear by default), ``align_corners`` (``True``
-        by default), and zero padding. Only resample mode supports
-        :meth:`inverse`; it resamples onto the original canvas with zero padding by default and cannot restore discarded
-        data. The inverse call can override ``padding_mode``, for example with ``padding_mode="border"``.
+        ``cropping_mode="slice"`` indexes the input and returns a copy, so writing to the result leaves the input
+        unchanged. ``cropping_mode="resample"`` warps with the configured ``resample`` and ``align_corners``. Only
+        resample mode supports :meth:`inverse`, which resamples onto the original canvas (zero padding unless the
+        call passes ``padding_mode``) and cannot restore discarded data.
 
     Examples:
         >>> import torch
@@ -129,9 +124,8 @@ class CenterCrop(GeometricAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
         if flags["cropping_mode"] in ("resample", "slice"):
-            transform: torch.Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
-            transform = transform.expand(input.shape[0], -1, -1)
-            return transform
+            transform = _crop_translation(params["src"].to(input), params["dst"].to(input))
+            return transform.expand(input.shape[0], -1, -1)
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_transform(
@@ -160,11 +154,14 @@ class CenterCrop(GeometricAugmentationBase2D):
             # `int(coord_tensor[i])` indexing break torch.compile fullgraph. The offsets match
             # `center_crop_generator` (`int(dim/2 - size/2)` == `(dim - size) // 2` for size <=
             # dim, which the generator guarantees) and the slice equals the requested size, so
-            # this is byte-identical.
+            # this is byte-identical. The slice is a view of the caller's tensor, so return a copy:
+            # writing to the output must not modify the input, matching `RandomCrop`/`RandomResizedCrop`
+            # in slice mode and `resample` mode (#4413). `contiguous()` is not enough, because a
+            # full-size or rows-only crop can already be contiguous and would come back as the view.
             crop_h, crop_w = int(flags["size"][0]), int(flags["size"][1])
             top = (input.shape[-2] - crop_h) // 2
             left = (input.shape[-1] - crop_w) // 2
-            return input[..., top : top + crop_h, left : left + crop_w]
+            return input[..., top : top + crop_h, left : left + crop_w].clone()
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def inverse_transform(

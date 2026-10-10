@@ -18,12 +18,17 @@
 from __future__ import annotations
 
 import os
+import pickle
 from unittest.mock import patch
 
 import pytest
 import torch
+from torch import nn
 
-from kornia.models.base import ModelBaseMixin
+from kornia.models.base import ModelBase, ModelBaseMixin
+
+from testing.base import BaseTester
+from testing.pickle_payload import CreatesMarkerOnLoad, load_without_running_payload
 
 
 class DummyMixin(ModelBaseMixin):
@@ -207,3 +212,49 @@ class TestModelBaseMixinSaveWritesRealFiles:
         written = sorted(p.name for p in tmp_path.iterdir())
         assert len(written) == 2
         assert all("_mask_" in name for name in written)
+
+
+class _TinyModel(ModelBase[None]):
+    def __init__(self) -> None:
+        super().__init__()
+        self.linear = nn.Linear(2, 3)
+
+    @staticmethod
+    def from_config(config: None) -> _TinyModel:
+        return _TinyModel()
+
+
+class TestModelBaseLoadCheckpoint(BaseTester):
+    """A local checkpoint is loaded as data, as a downloaded one is (``weights_only=True``)."""
+
+    def test_a_pickled_callable_in_a_local_file_is_refused_and_never_run(self, tmp_path) -> None:
+        marker = tmp_path / "marker"
+        path = tmp_path / "model.pth"
+        torch.save({**_TinyModel().state_dict(), "extra": CreatesMarkerOnLoad(marker)}, path)
+
+        model = _TinyModel()
+        with pytest.raises(pickle.UnpicklingError):
+            load_without_running_payload(marker, lambda: model.load_checkpoint(str(path)))
+
+    def test_a_home_relative_path_loads_the_local_file(self, tmp_path, monkeypatch, dtype) -> None:
+        source = _TinyModel().to(dtype)
+        torch.save(source.state_dict(), tmp_path / "x.pt")
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+
+        model = _TinyModel().to(dtype)
+        model.load_checkpoint("~/x.pt")
+
+        self.assert_close(model.linear.weight, source.linear.weight)
+        self.assert_close(model.linear.bias, source.linear.bias)
+
+    def test_a_local_state_dict_loads(self, tmp_path, dtype) -> None:
+        source = _TinyModel().to(dtype)
+        path = tmp_path / "model.pth"
+        torch.save(source.state_dict(), path)
+
+        model = _TinyModel().to(dtype)
+        model.load_checkpoint(str(path))
+
+        self.assert_close(model.linear.weight, source.linear.weight)
+        self.assert_close(model.linear.bias, source.linear.bias)

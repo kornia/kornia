@@ -35,17 +35,19 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
 
         \text{IoU}(x, class) = \frac{|X \cap Y|}{|X \cup Y|}
 
-    [1] approximates this fomular with a surrogate, which is fully differentable.
+    [1] approximates this formula with a surrogate, which is fully differentiable.
 
     Where:
-       - :math:`X` expects to be the scores of each class.
-       - :math:`Y` expects to be the binary tensor with the class labels.
+       - :math:`X` is the foreground predicted by the single logit channel of ``pred``.
+       - :math:`Y` is the foreground of the binary ``target``.
 
-    the loss, is finally computed as:
+    the Jaccard loss is
 
     .. math::
 
-        \text{loss}(x, class) = 1 - \text{IoU}(x, class)
+        \Delta_J(x, class) = 1 - \text{IoU}(x, class)
+
+    and the loss is its Lovász extension [1], evaluated at the hinge errors; see the Convention block.
 
     Reference:
         [1] http://proceedings.mlr.press/v37/yub15.pdf
@@ -55,12 +57,26 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
         This loss function only supports binary labels. For multi-class labels please
         use the Lovasz-Softmax loss.
 
+    Convention:
+        - ``pred`` holds one logit channel ``(B, 1, H, W)`` and ``target`` the labels ``(B, H, W)``, 1 for the
+          foreground and 0 for the background. The loss is computed per image and averaged over the batch into a
+          0-d tensor; there is no ``reduction``.
+        - The loss is the Lovász extension of the Jaccard loss at the hinge errors :math:`\max(0, 1 - z (2t - 1))`
+          of logit :math:`z` and label :math:`t`, not :math:`1 - \text{IoU}`: logits of :math:`\pm 1` that are
+          positive on the predicted foreground give :math:`2 (1 - \text{IoU})` of that prediction, and correct
+          logits of magnitude at least 1 give 0.
+        - ``target`` is not validated and there is no ``ignore_index``: a label of 2 is accepted, and ``-100``, the
+          ``ignore_index`` of :func:`~kornia.losses.focal_loss` and :func:`~kornia.losses.dice_loss`, can make the
+          loss negative.
+
     Args:
         pred: logits tensor with shape :math:`(N, 1, H, W)`.
         target: labels tensor with shape :math:`(N, H, W)` with binary values.
 
     Return:
-        a scalar with the computed loss.
+        a scalar with the computed loss, in the dtype of a floating-point ``pred`` and in float32 for an
+        integer or bool ``pred``. The Jaccard weights and the sum over pixels are computed in float32 for a
+        float16 or bfloat16 ``pred``.
 
     Example:
         >>> N = 1  # num_classes
@@ -81,8 +97,11 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
         raise ValueError(f"pred and target must be in the same device. Got: {pred.device} and {target.device}")
 
     # flatten pred and target [B, -1] and to float
+    # The labels, the Jaccard weights and the sum over pixels are accumulated in the prediction dtype, or in float32
+    # for a half-precision prediction, where pixel counts stay exact up to 2**24 pixels.
+    accumulation_dtype = torch.promote_types(pred.dtype, torch.float32)
     pred_flatten: Tensor = pred.reshape(pred.shape[0], -1)
-    target_flatten: Tensor = target.reshape(target.shape[0], -1)
+    target_flatten: Tensor = target.reshape(target.shape[0], -1).to(accumulation_dtype)
 
     # get shapes
     B, N = pred_flatten.shape
@@ -101,7 +120,8 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
     if N > 1:
         gradient[..., 1:] = gradient[..., 1:] - gradient[..., :-1]
     loss: Tensor = (errors_sorted.relu() * gradient).sum(1).mean()
-    return loss
+    # an integer or bool pred keeps the float32 loss instead of truncating it
+    return loss.to(pred.dtype if pred.is_floating_point() else accumulation_dtype)
 
 
 class LovaszHingeLoss(nn.Module):
@@ -113,17 +133,19 @@ class LovaszHingeLoss(nn.Module):
 
         \text{IoU}(x, class) = \frac{|X \cap Y|}{|X \cup Y|}
 
-    [1] approximates this fomular with a surrogate, which is fully differentable.
+    [1] approximates this formula with a surrogate, which is fully differentiable.
 
     Where:
-       - :math:`X` expects to be the scores of each class.
-       - :math:`Y` expects to be the binary tensor with the class labels.
+       - :math:`X` is the foreground predicted by the single logit channel of ``pred``.
+       - :math:`Y` is the foreground of the binary ``target``.
 
-    the loss, is finally computed as:
+    the Jaccard loss is
 
     .. math::
 
-        \text{loss}(x, class) = 1 - \text{IoU}(x, class)
+        \Delta_J(x, class) = 1 - \text{IoU}(x, class)
+
+    and the loss is its Lovász extension [1], evaluated at the hinge errors.
 
     Reference:
         [1] http://proceedings.mlr.press/v37/yub15.pdf
@@ -133,12 +155,17 @@ class LovaszHingeLoss(nn.Module):
         This loss function only supports binary labels. For multi-class labels please
         use the Lovasz-Softmax loss.
 
+    Convention:
+        See the Convention block of :func:`~kornia.losses.lovasz_hinge_loss`.
+
     Args:
         pred: logits tensor with shape :math:`(N, 1, H, W)`.
-        labels: labels tensor with shape :math:`(N, H, W)` with binary values.
+        target: labels tensor with shape :math:`(N, H, W)` with binary values.
 
     Return:
-        a scalar with the computed loss.
+        a scalar with the computed loss, in the dtype of a floating-point ``pred`` and in float32 for an
+        integer or bool ``pred``. The Jaccard weights and the sum over pixels are computed in float32 for a
+        float16 or bfloat16 ``pred``.
 
     Example:
         >>> N = 1  # num_classes

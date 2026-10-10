@@ -112,8 +112,7 @@ def get_laf_center(LAF: torch.Tensor) -> torch.Tensor:
 
     """
     KORNIA_CHECK_LAF(LAF)
-    out = LAF[..., 2]
-    return out
+    return LAF[..., 2]
 
 
 def get_laf_orientation(LAF: torch.Tensor) -> torch.Tensor:
@@ -200,8 +199,7 @@ def laf_from_center_scale_ori(
     KORNIA_CHECK_SHAPE(scale, ["B", "N", "1", "1"])
     KORNIA_CHECK_SHAPE(ori, ["B", "N", "1"])
     unscaled_laf = torch.cat([angle_to_rotation_matrix(ori.squeeze(-1)), xy.unsqueeze(-1)], dim=-1)
-    laf = scale_laf(unscaled_laf, scale)
-    return laf
+    return scale_laf(unscaled_laf, scale)
 
 
 def scale_laf(laf: torch.Tensor, scale_coef: Union[float, torch.Tensor]) -> torch.Tensor:
@@ -265,8 +263,10 @@ def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
 def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
     """Convert ellipse regions to LAF format.
 
-    Ellipse (a, b, c) and upright covariance matrix [a11 a12; 0 a22] are connected
-    by inverse matrix square root: A = invsqrt([a b; b c]).
+    The returned LAF holds the upright, lower-triangular ``A`` with ``A @ A.T == inverse([[a, b], [b, c]])``: the
+    Cholesky factor of the inverse ellipse matrix, not the symmetric inverse square root (the two differ by a
+    rotation). Either one maps the unit circle onto the ellipse :math:`a x^2 + 2 b x y + c y^2 = 1` centred at
+    ``(x, y)``; the upright one is what :func:`make_upright` returns for a LAF of that region with positive determinant.
 
     See also https://github.com/vlfeat/vlfeat/blob/master/toolbox/sift/vl_frame2oell.m
 
@@ -277,14 +277,12 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
         LAF :math:`(B, N, 2, 3)`
 
     Note:
-        A degenerate ellipse -- one whose ``a`` or ``c`` is ``0`` after rounding to ``ells.dtype`` --
-        describes an unbounded strip rather than a bounded region, and makes the matrix being inverted
-        singular. Its LAF is non-finite: ``inf`` always appears on the diagonal, while ``nan`` appears
-        only in the sub-case where the off-diagonal ``b`` is exactly ``0`` (``0 * inf``) -- the generic
-        degenerate ellipse is ``inf``-only, so screen results with :func:`laf_is_valid` rather than an
-        ``isnan`` test, which misses it. :func:`get_laf_scale` of such a LAF is non-finite as
-        well. The conversion does not raise. Rounding is part of the condition: in ``float16`` an ``a``
-        below roughly ``3e-8`` (half the smallest subnormal) rounds to ``0``, and a backend that
+        The conversion does not raise and does not check its input. An ellipse that is degenerate or indefinite
+        (``a``, ``c`` or ``a * c - b * b`` not positive) is not a bounded region; its LAF has ``inf`` or ``nan``
+        entries, or huge finite ones where rounding leaves ``a - b * b / c`` barely positive. Rounding also works the
+        other way: a nearly singular valid ellipse can give ``inf`` or ``nan``. Screen results with
+        :func:`laf_is_valid` rather than an ``isnan`` test. In ``float16`` an
+        ``a`` or ``c`` below roughly ``3e-8`` (half the smallest subnormal) rounds to ``0``, and a backend that
         flushes subnormals to zero raises that cutoff to the smallest normal, about ``6e-5``.
 
     Example:
@@ -299,32 +297,26 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
     #                       torch.cat([ells[..., 3:4], ells[..., 4:5]], dim=2).unsqueeze(2)], dim=2).view(-1, 2, 2)
     # out = torch.matrix_power(torch.cholesky(ell_shape, False), -1).view(B, N, 2, 2)
 
-    # We will calculate 2x2 matrix square root via special case formula
-    # https://en.wikipedia.org/wiki/Square_root_of_a_matrix
-    # "The Cholesky factorization provides another particular example of square root
-    #  which should not be confused with the unique non-negative square root."
-    # https://en.wikipedia.org/wiki/Square_root_of_a_2_by_2_matrix
-    # M = (A 0; C D)
-    # R = (sqrt(A) 0; C / (sqrt(A)+sqrt(D)) sqrt(D))
-    a11 = ells[..., 2:3].abs().sqrt()
-    a22 = ells[..., 4:5].abs().sqrt()
-    a21 = ells[..., 3:4] / (a11 + a22)
-    # The matrix [[a11, 0], [a21, a22]] is lower-triangular, so its inverse is the closed form
-    # [[1/a11, 0], [-a21/(a11*a22), 1/a22]] — no batched torch.inverse, which is orders of
-    # magnitude slower, unsupported in float16/bfloat16 on CPU, and pathological on MPS.
-    inv11 = 1.0 / a11
-    inv22 = 1.0 / a22
-    # Divide by the product of the roots instead of multiplying the reciprocals: every ordering of
-    # `-a21 * inv11 * inv22` has an input region where an intermediate overflows to inf (or a
-    # mathematically-zero off-diagonal becomes 0 * inf = nan) or flushes a representable result to
-    # zero. a11 * a22 = sqrt(a) * sqrt(c) can neither overflow nor round to zero, so the single
-    # division is correctly rounded (not exact) wherever the product is a normal number; when the
-    # product is subnormal the result loses precision but is never a corrupted zero, inf, or nan.
-    # What remains non-finite is exactly the singular ellipse, which we deliberately do not guard.
-    inv21 = -a21 / (a11 * a22)
+    # The LAF is the upright (lower-triangular) A with A @ A.T == inverse([[a, b], [b, c]]), i.e. the
+    # Cholesky factor of the inverse ellipse matrix, written with the Schur complement a - b^2 / c
+    # (= det / c) so that b == 0 reduces to the plain 1 / sqrt(a), 1 / sqrt(c) diagonal.
+    # Scaling b by 1 / sqrt(c) first keeps b^2 out of the arithmetic (it overflows for large but valid
+    # ellipses) and, for a positive definite ellipse, b / sqrt(c) <= sqrt(a) can neither overflow nor
+    # flush a representable off-diagonal to zero. The off-diagonal -b / (c * sqrt(a - b^2 / c)) is then
+    # a single division by sqrt(c) * sqrt(a - b^2 / c) = sqrt(det), which stays within range whenever the
+    # factors do; forming it as -(b / c) / sqrt(...) or -b / (c * sqrt(...)) instead has valid inputs
+    # where b / c underflows or c * sqrt(...) overflows although the result itself is representable.
+    a = ells[..., 2:3]
+    b = ells[..., 3:4]
+    c = ells[..., 4:5]
+    sqrt_c = c.sqrt()
+    b_scaled = b / sqrt_c
+    sqrt_schur = (a - b_scaled * b_scaled).sqrt()
+    inv11 = 1.0 / sqrt_schur
+    inv22 = 1.0 / sqrt_c
+    inv21 = -b_scaled / (sqrt_c * sqrt_schur)
     A = torch.stack([inv11, torch.zeros_like(inv11), inv21, inv22], dim=-1).view(B, N, 2, 2)
-    out = torch.cat([A, ells[..., :2].view(B, N, 2, 1)], dim=3)
-    return out
+    return torch.cat([A, ells[..., :2].view(B, N, 2, 1)], dim=3)
 
 
 def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
@@ -485,10 +477,10 @@ def generate_patch_grid_from_normalized_LAF(img: torch.Tensor, LAF: torch.Tensor
     LAF_renorm = denormalize_laf(LAF, img)
 
     grid = F.affine_grid(LAF_renorm.view(B * N, 2, 3), [B * N, ch, PS, PS], align_corners=False)
-    # A singleton axis has no spatial extent; one pixel of denominator keeps the grid finite and
-    # lets the border padding return that single pixel (see `denormalize_laf`).
-    grid[..., :, 0] = 2.0 * grid[..., :, 0].clone() / float(max(w - 1, 1)) - 1.0
-    grid[..., :, 1] = 2.0 * grid[..., :, 1].clone() / float(max(h - 1, 1)) - 1.0
+    # The grid is in pixels, centres at integers (the LAF frame); `grid_sample(align_corners=False)` puts pixel x at
+    # (2x + 1) / W - 1. A singleton axis maps every sample to its only pixel's centre.
+    grid[..., :, 0] = (2.0 * grid[..., :, 0].clone() + 1.0) / float(w) - 1.0
+    grid[..., :, 1] = (2.0 * grid[..., :, 1].clone() + 1.0) / float(h) - 1.0
     return grid
 
 
@@ -596,6 +588,31 @@ def _sample_patches(img: torch.Tensor, grid: torch.Tensor, h: int, w: int) -> to
     return _grid_sample_patches(img, folded, h, w).view(B, ch, N, PS, PS).permute(0, 2, 1, 3, 4)
 
 
+def _pyramid_grid_frame(nlaf: torch.Tensor, h: int, w: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    r"""Return the scale ``k`` and translation ``t`` that map a normalized LAF's patch grid to sampling coordinates.
+
+    ``grid = affine_grid(A, align_corners=False) * k + t`` addresses, for ``grid_sample(align_corners=False)``, the
+    input pixels the LAF describes: pixel :math:`x` of the :math:`(h, w)` input sits at :math:`(2x + 1) / w - 1`.
+    ``pyrdown`` resizes to ``floor(side / 2)`` with ``align_corners=False``, so input pixel :math:`x` is pixel
+    :math:`(x + 0.5) w_l / w - 0.5` of level :math:`l` -- which that level's ``grid_sample`` addresses at the same
+    :math:`(2x + 1) / w - 1`. One grid therefore serves every pyramid level.
+
+    Args:
+        nlaf: normalized LAFs :math:`(B, N, 2, 3)` (``normalize_laf``'s frame).
+        h: input height.
+        w: input width.
+
+    Returns:
+        ``k`` of shape :math:`(2,)` and ``t`` of shape :math:`(B, N, 2)`, in ``nlaf``'s dtype and device.
+    """
+    # `denormalize_laf`'s extents: a singleton axis counts as one pixel.
+    wf, hf = float(max(w - 1, 1)), float(max(h - 1, 1))
+    min_size = min(wf, hf)
+    k = nlaf.new_tensor([2.0 * min_size / float(w), 2.0 * min_size / float(h)])
+    t = (2.0 * nlaf[..., :, 2] * nlaf.new_tensor([wf, hf]) + 1.0) / nlaf.new_tensor([float(w), float(h)]) - 1.0
+    return k, t
+
+
 def _extract_patches_from_pyramid_levelwise(
     img: torch.Tensor,
     nlaf: torch.Tensor,
@@ -620,7 +637,7 @@ def _extract_patches_from_pyramid_levelwise(
     chunk = _grid_chunk_lafs(B, N, ch, PS, _grid_elem_bytes(grid_dtype))
     cur_img = img.to(grid_laf.dtype) if img.dtype != grid_laf.dtype else img
     laf_a = grid_laf[..., :2]
-    t = 2.0 * grid_laf[..., :, 2] - 1.0
+    k, t = _pyramid_grid_frame(grid_laf, heights[0], widths[0])
 
     # Most calls fit in one bounded chunk, so their level-independent affine grid can be reused
     # across the streaming pyramid. A multi-chunk call rebuilds each chunk's grid per level rather
@@ -649,11 +666,6 @@ def _extract_patches_from_pyramid_levelwise(
                     B, nc, PS, PS, 2
                 )
             translation = t[:, st:en].view(B, nc, 1, 1, 2)
-            # Match `normalize_laf` / `denormalize_laf`: a singleton axis counts as one pixel of
-            # extent. Border padding still repeats that axis's only pixel, while the other axis
-            # keeps its spatial variation instead of being collapsed by a shared zero `min_l`.
-            min_l = float(min(max(h_l - 1, 1), max(w_l - 1, 1)))
-            k = base_grid.new_tensor([2.0 * min_l / float(max(w_l - 1, 1)), 2.0 * min_l / float(max(h_l - 1, 1))])
             grid = base_grid * k + translation
             patches = _sample_patches(cur_img, grid, h_l, w_l).to(img.dtype)
             mask = (pyr_idx[:, st:en] == level_idx).view(B, en - st, 1, 1, 1)
@@ -686,10 +698,7 @@ def extract_patches_simple(
     laf = laf.to(device=img.device)
     grid_dtype = _promoted_grid_dtype(img.dtype, laf.dtype)
     laf = laf.to(grid_dtype) if laf.dtype != grid_dtype else laf
-    if normalize_lafs_before_extraction:
-        nlaf = normalize_laf(laf, img)
-    else:
-        nlaf = laf
+    nlaf = normalize_laf(laf, img) if normalize_lafs_before_extraction else laf
     _, ch, h, w = img.size()
     B, N, _, _ = laf.size()
     if B == 0 or N == 0:
@@ -740,10 +749,7 @@ def extract_patches_from_pyramid(
     laf = laf.to(device=img.device)
     grid_dtype = _promoted_grid_dtype(img.dtype, laf.dtype)
     laf = laf.to(grid_dtype) if laf.dtype != grid_dtype else laf
-    if normalize_lafs_before_extraction:
-        nlaf = normalize_laf(laf, img)
-    else:
-        nlaf = laf
+    nlaf = normalize_laf(laf, img) if normalize_lafs_before_extraction else laf
     B, N, _, _ = laf.size()
     _, ch, h, w = img.size()
     if B == 0 or N == 0:
@@ -794,15 +800,12 @@ def extract_patches_from_pyramid(
     # levelwise path preserves the same clamping and reduced-precision grid semantics. The atlas
     # is built in the grid's dtype -- reduced-precision inputs are upcast once, so the replicate
     # pad, `pyrdown` and every chunk's `grid_sample` run on kernels every torch build has, and no
-    # full-atlas recast is paid per chunk. A 1-pixel axis in any *built level* -- a 1-pixel input
-    # image, or a coarse level that `PS == 1` lets the pyramid descend to -- would make the level
-    # constants' Python `size - 1` division below raise; the levelwise sampler treats that axis
-    # as having zero spatial extent instead.
+    # full-atlas recast is paid per chunk.
     atlas_elements = B * ch * atlas_h * atlas_w
     atlas_bytes = atlas_elements * _grid_elem_bytes(grid_dtype)
     if img.dtype != grid_dtype:
         atlas_bytes += B * ch * h * w * _grid_elem_bytes(grid_dtype)  # the one-time upcast copy
-    if min(heights[-1], widths[-1]) < 2 or not _pyramid_atlas_fits(atlas_bytes):
+    if not _pyramid_atlas_fits(atlas_bytes):
         return _extract_patches_from_pyramid_levelwise(img, nlaf, pyr_idx, heights, widths, PS)
     sample_img = img.to(grid_dtype) if img.dtype != grid_dtype else img
     atlas = sample_img.new_zeros(B, ch, atlas_h, atlas_w)
@@ -818,7 +821,7 @@ def extract_patches_from_pyramid(
     # zero translation; reduced-precision inputs need float32 grid arithmetic because the atlas is
     # wider than the original image.
     laf_a = nlaf[..., :2].to(grid_dtype)
-    t = 2.0 * nlaf[..., :, 2].to(grid_dtype) - 1.0
+    k, t = _pyramid_grid_frame(nlaf.to(grid_dtype), h, w)
 
     # Gather all level-dependent conversion constants per patch, packed as (x, y) pairs so the
     # remap below runs on the whole grid tensor step by step, never holding split-axis copies. A
@@ -827,11 +830,8 @@ def extract_patches_from_pyramid(
     xoff = 0
     constants = []
     for h_l, w_l in zip(heights, widths):
-        min_l = float(min(h_l - 1, w_l - 1))
         constants.append(
             (
-                2.0 * min_l / float(w_l - 1),  # k: LAF frame -> level-normalized units
-                2.0 * min_l / float(h_l - 1),
                 -1.0 + 1.0 / float(w_l),  # lo/hi: the level's outermost pixel centers
                 -1.0 + 1.0 / float(h_l),
                 1.0 - 1.0 / float(w_l),
@@ -843,7 +843,7 @@ def extract_patches_from_pyramid(
             )
         )
         xoff += w_l + 2
-    level_constants = torch.tensor(constants, dtype=grid_dtype, device=nlaf.device).view(-1, 5, 2)
+    level_constants = torch.tensor(constants, dtype=grid_dtype, device=nlaf.device).view(-1, 4, 2)
 
     # The folded grid and its remap intermediates scale with B*N*PS^2, so sampling is chunked
     # along N to bound peak memory; each chunk repeats exactly the single-call arithmetic, and
@@ -859,9 +859,7 @@ def extract_patches_from_pyramid(
         nc = en - st
         theta = torch.cat([laf_a[:, st:en], torch.zeros(B, nc, 2, 1, dtype=grid_dtype, device=nlaf.device)], dim=-1)
         grid = F.affine_grid(theta.view(B * nc, 2, 3), [B * nc, ch, PS, PS], align_corners=False).view(B, nc, PS, PS, 2)
-        k, lo, hi, level_scale, level_offset = (
-            level_constants[safe_pyr_idx[:, st:en]].view(B, nc, 1, 1, 5, 2).unbind(-2)
-        )
+        lo, hi, level_scale, level_offset = level_constants[safe_pyr_idx[:, st:en]].view(B, nc, 1, 1, 4, 2).unbind(-2)
         grid = grid * k
         grid = grid + t[:, st:en].view(B, nc, 1, 1, 2)
         grid = grid.maximum(lo)
@@ -895,8 +893,7 @@ def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor, border: int = 0
     y_max = float(h - 1) - border
     good_lafs_mask = (pts[..., 0] >= border) * (pts[..., 0] <= x_max) * (pts[..., 1] >= border) * (pts[..., 1] <= y_max)
     # `.all` rather than `.min` on the bool mask: ONNX ReduceMin has no bool overload.
-    good_lafs_mask = good_lafs_mask.all(dim=2)
-    return good_lafs_mask
+    return good_lafs_mask.all(dim=2)
 
 
 def laf_to_three_points(laf: torch.Tensor) -> torch.Tensor:
@@ -911,8 +908,7 @@ def laf_to_three_points(laf: torch.Tensor) -> torch.Tensor:
 
     """  # noqa:D205
     KORNIA_CHECK_LAF(laf)
-    three_pts = torch.stack([laf[..., 2] + laf[..., 0], laf[..., 2] + laf[..., 1], laf[..., 2]], dim=-1)
-    return three_pts
+    return torch.stack([laf[..., 2] + laf[..., 0], laf[..., 2] + laf[..., 1], laf[..., 2]], dim=-1)
 
 
 def laf_from_three_points(threepts: torch.Tensor) -> torch.Tensor:
@@ -927,10 +923,9 @@ def laf_from_three_points(threepts: torch.Tensor) -> torch.Tensor:
         laf :math:`(B, N, 2, 3)`.
 
     """
-    laf = torch.stack(
+    return torch.stack(
         [threepts[..., 0] - threepts[..., 2], threepts[..., 1] - threepts[..., 2], threepts[..., 2]], dim=-1
     )
-    return laf
 
 
 def perspective_transform_lafs(trans_01: torch.Tensor, lafs_1: torch.Tensor) -> torch.Tensor:

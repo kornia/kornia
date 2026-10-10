@@ -72,7 +72,11 @@ class TestGetLAFDescriptors(BaseTester):
         B, C, H, W = 1, 1, 32, 32
         PS = 16
         img = torch.rand(B, C, H, W, device=device)
-        centers = torch.tensor([[H / 2.0, W / 2.0], [2.0 * H / 3.0, W / 2.0]], device=device, dtype=dtype).view(1, 2, 2)
+        # Off the pixel lattice: a sample exactly on a pixel centre sits on a kink of bilinear interpolation, where the
+        # central difference and the one-sided analytical derivative disagree.
+        centers = torch.tensor(
+            [[H / 2.0 + 0.3, W / 2.0 + 0.3], [2.0 * H / 3.0, W / 2.0 + 0.3]], device=device, dtype=dtype
+        ).view(1, 2, 2)
         scales = torch.tensor([(H + W) / 5.0, (H + W) / 6.0], device=device, dtype=dtype).view(1, 2, 1, 1)
         ori = torch.tensor([0.0, 30.0], device=device, dtype=dtype).view(1, 2, 1)
         lafs = kornia.feature.laf_from_center_scale_ori(centers, scales, ori)
@@ -104,7 +108,7 @@ class TestGetLAFDescriptorsEmptyPath(BaseTester):
             torch.full((1, 1, 1, 1), 8.0, device=device, dtype=dtype),
         )
         non_empty = kornia.feature.get_laf_descriptors(img, laf, desc, 32)
-        with pytest.warns(UserWarning):
+        with pytest.warns(UserWarning, match=r"LAF contains no keypoints"):
             empty = kornia.feature.get_laf_descriptors(
                 img, torch.zeros(1, 0, 2, 3, device=device, dtype=dtype), desc, 32
             )
@@ -141,7 +145,7 @@ class TestGetLAFDescriptorsEmptyPath(BaseTester):
             torch.full((1, 1, 1, 1), 8.0, device=device, dtype=dtype),
         )
         non_empty = kornia.feature.get_laf_descriptors(img, laf, desc, 32)
-        with pytest.warns(UserWarning):
+        with pytest.warns(UserWarning, match=r"LAF contains no keypoints"):
             empty = kornia.feature.get_laf_descriptors(
                 img, torch.zeros(1, 0, 2, 3, device=device, dtype=dtype), desc, 32
             )
@@ -216,7 +220,11 @@ class TestLAFDescriptor(BaseTester):
         B, C, H, W = 1, 1, 32, 32
         PS = 16
         img = torch.rand(B, C, H, W, device=device)
-        centers = torch.tensor([[H / 2.0, W / 2.0], [2.0 * H / 3.0, W / 2.0]], device=device).view(1, 2, 2)
+        # Off the pixel lattice: a sample exactly on a pixel centre sits on a kink of bilinear interpolation, where the
+        # central difference and the one-sided analytical derivative disagree.
+        centers = torch.tensor([[H / 2.0 + 0.3, W / 2.0 + 0.3], [2.0 * H / 3.0, W / 2.0 + 0.3]], device=device).view(
+            1, 2, 2
+        )
         scales = torch.tensor([(H + W) / 5.0, (H + W) / 6.0], device=device).view(1, 2, 1, 1)
         ori = torch.tensor([0.0, 30.0], device=device).view(1, 2, 1)
         lafs = kornia.feature.laf_from_center_scale_ori(centers, scales, ori)
@@ -309,7 +317,8 @@ class TestSIFTFeatureHalfPrecision(BaseTester):
         img = torch.rand(1, 1, 64, 64, device=device, dtype=torch.float16)
         with torch.no_grad():
             lafs, _, descs = SIFTFeature(50).to(device, torch.float16)(img)
-        assert lafs.dtype == torch.float16 and descs.dtype == torch.float16
+        assert lafs.dtype == torch.float16
+        assert descs.dtype == torch.float16
         assert int(lafs[0].ne(0).any(dim=-1).any(dim=-1).sum()) > 0
         assert torch.isfinite(lafs).all()
         assert torch.isfinite(descs).all()
@@ -564,3 +573,54 @@ class TestSIFTPyramidBackend(BaseTester):
         self.assert_close(returned, lafs)
         self.assert_close(responses, image.new_ones(1, 1))
         self.assert_close(descriptors, descriptor(image, lafs))
+
+
+class TestLightGlueKeypointConventions(BaseTester):
+    def _lafs(self, device, dtype, orientations):
+        centers = torch.zeros(1, len(orientations), 2, device=device, dtype=dtype)
+        scales = torch.full((1, len(orientations), 1, 1), 12.0, device=device, dtype=dtype)
+        angles = torch.tensor(orientations, device=device, dtype=dtype).view(1, -1, 1)
+        return kornia.feature.laf_from_center_scale_ori(centers, scales, angles)
+
+    def test_sift_uses_the_colmap_convention_of_its_training_keypoints(self, device, dtype):
+        from kornia.feature.integrated import _lightglue_keypoint_scale_ori
+
+        # kornia orientation +30 deg is COLMAP's -30 deg, -90 is +90, and 180 stays at pi in (-pi, pi]; the
+        # 12-pixel LAF is a 6-sigma DoG frame, so sigma is 2.
+        lafs = self._lafs(device, dtype, [30.0, -90.0, 180.0])
+        scales, oris = _lightglue_keypoint_scale_ori(lafs, "sift")
+        self.assert_close(scales, torch.full((1, 3), 2.0, device=device, dtype=dtype))
+        expected = torch.tensor([[-torch.pi / 6, torch.pi / 2, torch.pi]], device=device, dtype=dtype)
+        self.assert_close(oris, expected)
+
+    def test_other_features_keep_the_laf_scale_and_orientation(self, device, dtype):
+        from kornia.feature.integrated import _lightglue_keypoint_scale_ori
+
+        lafs = self._lafs(device, dtype, [30.0, -90.0])
+        scales, oris = _lightglue_keypoint_scale_ori(lafs, "doghardnet")
+        self.assert_close(scales, torch.full((1, 2), 12.0, device=device, dtype=dtype))
+        expected = torch.tensor([[torch.pi / 6, 3 * torch.pi / 2]], device=device, dtype=dtype)
+        self.assert_close(oris, expected)
+
+
+class TestSIFTDescriptorLayoutArgument(BaseTester):
+    @pytest.mark.parametrize("preset", [kornia.feature.SIFTFeature, kornia.feature.SIFTFeatureScaleSpace])
+    @pytest.mark.parametrize("backend", ["patch", "pyramid"])
+    def test_opencv_layout_reorders_only_the_descriptors(self, device, dtype, preset, backend):
+        image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        default = preset(num_features=8, descriptor_backend=backend).to(device, dtype).eval()
+        opencv = preset(num_features=8, descriptor_backend=backend, descriptor_layout="opencv").to(device, dtype).eval()
+        assert default.descriptor_layout == "kornia"
+        assert opencv.descriptor_layout == "opencv"
+        lafs, responses, descriptors = default(image)
+        opencv_lafs, opencv_responses, opencv_descriptors = opencv(image)
+        self.assert_close(opencv_lafs, lafs)
+        self.assert_close(opencv_responses, responses)
+        self.assert_close(
+            opencv_descriptors, kornia.feature.convert_sift_descriptor_layout(descriptors, "kornia", "opencv")
+        )
+
+    @pytest.mark.parametrize("preset", [kornia.feature.SIFTFeature, kornia.feature.SIFTFeatureScaleSpace])
+    def test_invalid_layout(self, preset):
+        with pytest.raises(ValueError, match="layout"):
+            preset(descriptor_layout="vlfeat")

@@ -178,8 +178,7 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         """
         images, images_sizes = self.pre_processor(images)
         logits, boxes = self.model(images)
-        detections = self.post_processor(logits, boxes, images_sizes)
-        return detections
+        return self.post_processor(logits, boxes, images_sizes)
 
     def visualize(
         self,
@@ -371,8 +370,7 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
         combined_mask = confidence_mask & class_mask  # [B, D]
 
         if self.filter_as_zero:
-            filtered_boxes = boxes * combined_mask[:, :, None]
-            return filtered_boxes
+            return boxes * combined_mask[:, :, None]
 
         filtered_boxes_list = []
         for i in range(boxes.shape[0]):

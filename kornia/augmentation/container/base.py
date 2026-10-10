@@ -423,9 +423,7 @@ class ImageSequentialBase(SequentialBase):
                 )
             params = self._params
 
-        input = self.inverse_inputs(input, params, extra_args=extra_args)
-
-        return input
+        return self.inverse_inputs(input, params, extra_args=extra_args)
 
     def forward(
         self, input: torch.Tensor, params: Optional[List[ParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None

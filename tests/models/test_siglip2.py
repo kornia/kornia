@@ -108,9 +108,9 @@ class TestSigLip2Builder:
         with (
             patch.object(siglip2_builder, "download_hf_file", return_value="cached.safetensors"),
             patch.object(siglip2_builder, "load_safetensors", side_effect=FileNotFoundError("gone")),
+            pytest.raises(FileNotFoundError, match=r"Could not find model\.safetensors for google/nope"),
         ):
-            with pytest.raises(FileNotFoundError, match=r"Could not find model\.safetensors for google/nope"):
-                siglip2_builder._download_weights("google/nope", None)
+            siglip2_builder._download_weights("google/nope", None)
 
 
 class TestSigLip2Model(BaseTester):
@@ -168,20 +168,20 @@ class TestSigLip2Model(BaseTester):
     def test_exception(self, device, dtype, model, config):
         """Test exception handling."""
         # Test invalid pixel_values shape (wrong number of dimensions)
+        image_size = config.vision_config.image_size
+        invalid_pixel_values = torch.randn(3, image_size, image_size, device=device, dtype=dtype)
         with pytest.raises((RuntimeError, ValueError, IndexError)):
-            image_size = config.vision_config.image_size
-            invalid_pixel_values = torch.randn(3, image_size, image_size, device=device, dtype=dtype)
             model.get_image_features(invalid_pixel_values)
 
         # Test invalid attention mask shape
+        input_ids = _create_input_ids(2, 10, config, device)
+        invalid_attention_mask = torch.ones(2, 5, device=device)  # Wrong sequence length
         with pytest.raises((RuntimeError, ValueError, IndexError)):
-            input_ids = _create_input_ids(2, 10, config, device)
-            invalid_attention_mask = torch.ones(2, 5, device=device)  # Wrong sequence length
             model.get_text_features(input_ids, attention_mask=invalid_attention_mask)
 
         # Test input_ids with wrong number of dimensions
+        invalid_input_ids = torch.randint(0, 100, (10,), device=device)  # Missing batch dimension
         with pytest.raises((RuntimeError, ValueError, IndexError)):
-            invalid_input_ids = torch.randint(0, 100, (10,), device=device)  # Missing batch dimension
             model.get_text_features(invalid_input_ids)
 
     def test_get_image_features(self, device, dtype, model, config):

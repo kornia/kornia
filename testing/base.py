@@ -208,6 +208,36 @@ def supports_bilinear_2d_grid_sample_backward(device: torch.device, dtype: torch
     return _supports_kernel_probe(_bilinear_2d_grid_sample_backward_op, device.type, dtype)
 
 
+def _nearest_2d_grid_sample_op(device_type: str, dtype: torch.dtype) -> None:
+    inp = _probe_zeros(device_type, dtype, 1, 1, 2, 2)
+    grid = _probe_zeros(device_type, dtype, 1, 1, 1, 2)
+    F.grid_sample(inp, grid, mode="nearest", align_corners=True)
+
+
+def supports_nearest_2d_grid_sample(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device supports nearest interpolation in 2D ``grid_sample`` for ``dtype``.
+
+    Probed at runtime and cached per (device type, dtype), so tests guarded by this helper
+    auto-enable once PyTorch adds the missing interpolation kernel.
+    """
+    return _supports_kernel_probe(_nearest_2d_grid_sample_op, device.type, dtype)
+
+
+def _arange_op(device_type: str, dtype: torch.dtype) -> None:
+    _probe_zeros(device_type, dtype, 1)
+    torch.arange(2, device=device_type, dtype=dtype)
+
+
+def supports_arange(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device has a ``torch.arange`` kernel for ``dtype``.
+
+    :func:`kornia.filters.get_motion_kernel2d` builds its taps with ``arange`` in the dtype of ``direction``;
+    torch 2.5.1 has no bfloat16 ``arange`` on MPS. Probed at runtime and cached per (device type, dtype), so it
+    auto-enables once PyTorch fills the kernel in.
+    """
+    return _supports_kernel_probe(_arange_op, device.type, dtype)
+
+
 def _bicubic_2d_grid_sample_op(device_type: str, dtype: torch.dtype) -> None:
     inp = _probe_zeros(device_type, dtype, 1, 1, 2, 2)
     grid = _probe_zeros(device_type, dtype, 1, 1, 1, 2)
@@ -253,6 +283,20 @@ def supports_nearest_3d_grid_sample(device: torch.device, dtype: torch.dtype) ->
     return _supports_kernel_probe(_nearest_3d_grid_sample_op, device.type, dtype)
 
 
+def _unit_size_3d_affine_grid_op(device_type: str, dtype: torch.dtype) -> None:
+    theta = _probe_zeros(device_type, dtype, 1, 3, 4)
+    F.affine_grid(theta, [1, 1, 1, 2, 2], align_corners=True)
+
+
+def supports_unit_size_3d_affine_grid(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether 3D ``affine_grid`` with ``align_corners=True`` can build a grid with a size-1 axis for ``dtype``.
+
+    PyTorch builds a size-1 axis through ``torch.tensor``, which has no CPU kernel for half precision.
+    Probed at runtime and cached per (device type, dtype).
+    """
+    return _supports_kernel_probe(_unit_size_3d_affine_grid_op, device.type, dtype)
+
+
 def _reflect_padding_op(device_type: str, dtype: torch.dtype) -> None:
     F.pad(_probe_zeros(device_type, dtype, 1, 1, 2, 2), (1, 1, 1, 1), mode="reflect")
 
@@ -276,6 +320,20 @@ def supports_replicate_padding(device: torch.device, dtype: torch.dtype) -> bool
     (device type, dtype), so it auto-enables once PyTorch fills the kernel in.
     """
     return _supports_kernel_probe(_replicate_padding_op, device.type, dtype)
+
+
+def _replicate_padding_3d_op(device_type: str, dtype: torch.dtype) -> None:
+    F.pad(_probe_zeros(device_type, dtype, 1, 1, 2, 2, 2), (1, 1, 1, 1, 1, 1), mode="replicate")
+
+
+def supports_replicate_padding_3d(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device has a 3D ``mode="replicate"`` pad kernel (``replication_pad3d``) for ``dtype``.
+
+    :func:`kornia.filters.filter3d` and :func:`kornia.filters.motion_blur3d` pad that way by default.
+    torch 2.5.1 has no float16 CPU ``replication_pad3d`` (bfloat16 is fine). Probed at runtime and cached per
+    (device type, dtype), so it auto-enables once PyTorch fills the kernel in.
+    """
+    return _supports_kernel_probe(_replicate_padding_3d_op, device.type, dtype)
 
 
 def _conv2d_op(device_type: str, dtype: torch.dtype) -> None:

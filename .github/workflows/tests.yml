@@ -63,10 +63,6 @@ on:
         required: false
         type: boolean
         default: false
-      ref:
-        required: false
-        type: string
-        default: ${{ github.sha }}
       cache-path:
         required: false
         type: string
@@ -83,9 +79,10 @@ permissions:
 jobs:
   tests:
     runs-on: ${{ inputs.os }}
-    # Hang guard: norms are ~6–15m (ubuntu), ~25m (MPS), ~61m (hosted macOS CPU).
+    # Hang guard: norms are ~6–15m (ubuntu), ~25m (MPS), ~61m (hosted macOS CPU), and 26–45m for the
+    # inductor leg, whose cold compiles run ~1.6x slower on EPYC 7763 runners than on 9V45 ones.
     # Keep well under GitHub's 6h default so a wedged test fails as a timeout.
-    timeout-minutes: ${{ inputs.device == 'mps' && 45 || startsWith(inputs.os, 'macos') && 90 || 45 }}
+    timeout-minutes: ${{ inputs.device == 'mps' && 45 || startsWith(inputs.os, 'macos') && 90 || inputs.optimizer == 'inductor' && 60 || 45 }}
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
       matrix:
@@ -95,8 +92,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.ref }}
 
       - name: Restore cache
         if: inputs.cache-path != ''
@@ -207,6 +202,21 @@ jobs:
         run: |
           echo "ATEN_CPU_CAPABILITY=avx2" >> $GITHUB_ENV
           echo "DNNL_MAX_CPU_ISA=AVX2" >> $GITHUB_ENV
+
+      # On AVX512-FP16 Intel runners (Xeon 6973P-C, Xeon Platinum 8573C), oneDNN hangs while
+      # creating its native float16 depthwise convolution primitive, reached from
+      # ScalePyramid._blur_fast (pyramid.py line 266, F.conv2d). Cap oneDNN below AVX512-FP16
+      # so float16 convolutions use ATen's own kernel, as on AMD runners. Refs #5493.
+      - name: Limit oneDNN ISA for CPU float16
+        if: runner.os == 'Linux' && inputs.device == 'cpu' && inputs.pytorch-dtype == 'float16'
+        shell: bash
+        run: echo "ONEDNN_MAX_CPU_ISA=AVX512_CORE_BF16" >> "$GITHUB_ENV"
+
+      - name: Verify oneDNN float16 support is disabled
+        if: runner.os == 'Linux' && inputs.device == 'cpu' && inputs.pytorch-dtype == 'float16'
+        run: |
+          pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync python -c \
+            "import torch; supported = torch.ops.mkldnn._is_mkldnn_fp16_supported(); print(supported); assert not supported"
 
       # The `device` fixture skips every test when the requested device is missing, so an mps
       # leg on a runner without a Metal device would be green with zero tests run. Fail here

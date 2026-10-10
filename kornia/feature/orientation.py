@@ -15,13 +15,13 @@
 # limitations under the License.
 #
 
+import math
 from typing import Dict, Optional
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.constants import pi
 from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.filters import SpatialGradient, get_gaussian_discrete_kernel1d, get_gaussian_kernel2d
@@ -129,7 +129,7 @@ class PatchDominantGradientOrientation(nn.Module):
         mag, ori = _gradient_magnitude_orientation(gx, gy, self.eps)
         mag = mag * weighting
 
-        o_big = float(self.num_ang_bins) * (ori + 1.0 * pi) / (2.0 * pi)
+        o_big = float(self.num_ang_bins) * (ori + math.pi) / (2.0 * math.pi)
         bo0_big = torch.floor(o_big)
         wo1_big = o_big - bo0_big
         bo0_big = bo0_big % self.num_ang_bins
@@ -178,8 +178,7 @@ class PatchDominantGradientOrientation(nn.Module):
         # uniform one has no peak: the parabolic refinement is `0 / 0` there, so it is skipped.
         denom = left + right - 2.0 * center
         c_subpix = torch.where(denom != 0, 0.5 * (left - right) / denom, torch.zeros_like(denom))
-        angle = -((2.0 * pi * (indices.to(patch.dtype) + c_subpix) / float(self.num_ang_bins)) - pi)
-        return angle
+        return -((2.0 * math.pi * (indices.to(patch.dtype) + c_subpix) / float(self.num_ang_bins)) - math.pi)
 
 
 class OriNet(nn.Module):
@@ -262,8 +261,7 @@ class OriNet(nn.Module):
 
         """
         xy = self.features(self._normalize_input(patch)).view(-1, 2)
-        angle = torch.atan2(xy[:, 0] + 1e-8, xy[:, 1] + self.eps)
-        return angle
+        return torch.atan2(xy[:, 0] + 1e-8, xy[:, 1] + self.eps)
 
 
 class LAFOrienter(nn.Module):

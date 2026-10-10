@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import pickle
 from functools import partial
 
 import pytest
@@ -61,9 +62,43 @@ class TestBoxes2D(BaseTester):
                     with pytest.raises(ValueError, match="non-finite coordinates"):
                         Boxes.from_tensor(invalid_source, mode=mode, validate_boxes=True)
 
-    def test_convention_from_tensor_opt_out_preserves_non_finite_input_4238(self, device, dtype):
-        source = torch.tensor([[0.0, 0.0, float("nan"), 4.0]], device=device, dtype=dtype)
-        boxes = Boxes.from_tensor(source, mode="xyxy", validate_boxes=False)
+    @pytest.mark.parametrize("mode", ["vertices", "vertices_plus"])
+    @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+    def test_convention_vertex_modes_reject_non_finite_coordinates_4177(self, mode, value, device, dtype):
+        # Kornia#4177: vertex modes accept arbitrary finite quadrilaterals, but
+        # validate_boxes=True rejects non-finite coordinates.
+        if device.type != "cpu":
+            # The check is torch._assert_async: skipped on MPS by design, a device-side assert on CUDA.
+            pytest.skip("the vertex check raises synchronously only on CPU")
+        vertices = torch.tensor(
+            [[[0.0, 0.0], [4.0, 0.0], [4.0, 4.0], [0.0, 4.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        vertices[0, 1, 0] = value
+
+        with pytest.raises(RuntimeError, match="non-finite coordinates"):
+            Boxes.from_tensor(vertices, mode=mode, validate_boxes=True)
+
+    @pytest.mark.parametrize("mode", ["vertices", "vertices_plus"])
+    def test_dynamo_vertex_import_is_fullgraph_4177(self, mode, device, dtype, torch_optimizer):
+        # The vertex check is asynchronous, so a validated vertex import adds no graph break.
+        vertices = torch.tensor([[[1.0, 2.0], [4.0, 1.0], [5.0, 4.0], [2.0, 5.0]]], device=device, dtype=dtype)
+
+        def import_boxes(data: torch.Tensor) -> torch.Tensor:
+            return Boxes.from_tensor(data, mode=mode, validate_boxes=True).data
+
+        self.assert_close(torch_optimizer(import_boxes, fullgraph=True)(vertices), import_boxes(vertices))
+
+    @pytest.mark.parametrize("container", ["Boxes", "Boxes3D"])
+    def test_convention_from_tensor_opt_out_preserves_non_finite_input_4238(self, container, device, dtype):
+        # kornia#4238 (2D) and kornia#4258 (3D): validate_boxes=False keeps a non-finite coordinate.
+        if container == "Boxes":
+            source = torch.tensor([[0.0, 0.0, float("nan"), 4.0]], device=device, dtype=dtype)
+            boxes = Boxes.from_tensor(source, mode="xyxy", validate_boxes=False)
+        else:
+            source = torch.tensor([[0.0, 0.0, 0.0, float("nan"), 4.0, 4.0]], device=device, dtype=dtype)
+            boxes = Boxes3D.from_tensor(source, mode="xyzxyz", validate_boxes=False)
         assert torch.isnan(boxes.data).any()
 
     @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
@@ -83,32 +118,20 @@ class TestBoxes2D(BaseTester):
         output = Boxes.from_tensor(source, mode=mode).to_tensor(mode=mode)
         self.assert_close(output, source, atol=0.0, rtol=0.0)
 
-    @pytest.mark.parametrize(
-        ("box_dtype", "source_values", "expected_values"),
-        [
-            (torch.bfloat16, [256.0, 256.0, 258.0, 258.0], [256.0, 256.0, 256.0, 256.0]),
-            (torch.float16, [-385.25, 0.0, 400.0, 2.0], [-385.25, 0.0, 399.75, 2.0]),
-        ],
-    )
-    def test_convention_round_trip_requires_exact_intermediate_arithmetic(
-        self, device, box_dtype, source_values, expected_values
-    ):
-        # bfloat16 cannot represent the +/-1 intermediate at 256. The float16
-        # case can represent its offsets, but rounds the cross-zero width first.
-        # Both discrepancies exist only because of the +/-1 offsets tracked in kornia#3934.
-        source = torch.tensor([source_values], device=device, dtype=box_dtype)
+    def test_wart_bfloat16_round_trip_rounds_the_offset_intermediate_3934(self, device):
+        # kornia#3934: the xyxy round trip goes through the +/-1 inclusive offsets, which bfloat16 cannot represent
+        # at 256, so [256, 256, 258, 258] comes back as [256, 256, 256, 256]; without the offsets it is exact.
+        source = torch.tensor([[256.0, 256.0, 258.0, 258.0]], device=device, dtype=torch.bfloat16)
         output = Boxes.from_tensor(source, mode="xyxy").to_tensor("xyxy")
-        expected = torch.tensor([expected_values], device=device, dtype=box_dtype)
+        expected = torch.tensor([[256.0, 256.0, 256.0, 256.0]], device=device, dtype=torch.bfloat16)
         self.assert_close(output, expected, atol=0.0, rtol=0.0)
         assert not torch.equal(output, source)
 
     @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
     def test_wart_sub_unit_extent_round_trip_boundary_4061(self, mode, device, dtype):
-        # Wart pin for kornia#4061: the three converting modes place the top-right
-        # vertex at ``xmin + width - 1``, which lands left of the top-left vertex when
-        # the extent is below one unit. The stored quadrilateral is inverted on both
-        # axes and to_tensor recovers a larger box. 'xyxy_plus' cancels the -1,
-        # while 'vertices_plus' bypasses offset conversion.
+        # kornia#4061: the converting modes place the top-right vertex at ``xmin + width - 1``, left of the
+        # top-left vertex for a sub-unit extent, so to_tensor recovers a larger box. 'xyxy_plus' cancels the -1
+        # and 'vertices_plus' bypasses the conversion.
         source_by_mode = {
             "xyxy": [0.1, 0.1, 0.6, 0.9],
             "xyxy_plus": [0.1, 0.1, 0.6, 0.9],
@@ -126,8 +149,6 @@ class TestBoxes2D(BaseTester):
         source = torch.tensor([source_by_mode[mode]], device=device, dtype=dtype)
         expected = torch.tensor([expected_by_mode[mode]], device=device, dtype=dtype)
         # validate_boxes=True does not reject the input: the extents are positive.
-        # Half-precision converting modes use dtype-aware tolerance because their
-        # expected decimal results are not all exactly representable.
         output = Boxes.from_tensor(source, mode=mode, validate_boxes=True).to_tensor(mode=mode)
         self.assert_close(output, expected)
 
@@ -139,10 +160,9 @@ class TestBoxes2D(BaseTester):
         self.assert_close(heights, torch.tensor([2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
         self.assert_close(widths, torch.tensor([4.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
-    def test_convention_get_boxes_shape_includes_list_padding(self, device, dtype):
-        # get_boxes_shape uses the padded xywh export, so padding entries appear as
-        # 1-by-1 boxes even though an ordinary to_tensor export trims them. The 1-by-1
-        # value depends on the inclusive +1 tracked in kornia#3934.
+    def test_wart_get_boxes_shape_reports_list_padding_as_one_by_one_3934(self, device, dtype):
+        # kornia#3934: get_boxes_shape uses the padded xywh export, so padding entries appear as 1-by-1 boxes, the
+        # inclusive +1 of a zero box, even though an ordinary to_tensor export trims them.
         first = torch.tensor([[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
         second = torch.cat([first, first])
         boxes = Boxes([first, second])
@@ -165,17 +185,46 @@ class TestBoxes2D(BaseTester):
         self.assert_close(widths, torch.tensor([5.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
     @pytest.mark.parametrize("mode", ["vertices", "vertices_plus"])
-    def test_wart_vertices_import_is_not_validated_4177(self, mode, device, dtype):
-        # Wart pin for kornia#4177: neither vertex mode is validated. The exclusive
-        # 'vertices' import also subtracts one from fixed positions, so a non-rectangular
-        # quadrilateral is silently reshaped instead of rejected with validate_boxes=True.
-        # The -1 deformation is the inclusive offset tracked in kornia#3934.
-        quadrilateral = torch.tensor([[[0.0, 0.0], [9.0, 0.0], [3.0, 7.0], [0.0, 1.0]]], device=device, dtype=dtype)
+    @pytest.mark.parametrize(
+        "quadrilateral",
+        [
+            # Rotated quadrilateral.
+            [[[1.0, 2.0], [4.0, 1.0], [5.0, 4.0], [2.0, 5.0]]],
+            # Sheared quadrilateral.
+            [[[3.0, 2.0], [6.0, 2.0], [7.0, 3.0], [4.0, 3.0]]],
+            # Projective quadrilateral.
+            [[[0.0, 0.0], [8.0, 1.0], [7.0, 6.0], [1.0, 5.0]]],
+            # Reordered vertices.
+            [[[0.0, 0.0], [0.0, 5.0], [6.0, 5.0], [6.0, 0.0]]],
+        ],
+    )
+    def test_convention_vertex_modes_accept_arbitrary_quadrilaterals_4177(self, mode, quadrilateral, device, dtype):
+        # kornia#4177: the vertex modes validate finiteness only, so validate_boxes=True accepts rotated, sheared,
+        # projective and reordered quadrilaterals. 'vertices_plus' stores them unchanged; 'vertices' subtracts the
+        # inclusive offset at fixed vertex slots, which deforms them (kornia#3934).
+        quadrilateral = torch.tensor(quadrilateral, device=device, dtype=dtype)
+
         boxes = Boxes.from_tensor(quadrilateral, mode=mode, validate_boxes=True)
+
         expected = quadrilateral.clone()
         if mode == "vertices":
-            expected = torch.tensor([[[0.0, 0.0], [8.0, 0.0], [2.0, 6.0], [0.0, 0.0]]], device=device, dtype=dtype)
+            expected[..., 1:3, 0] -= 1
+            expected[..., 2:, 1] -= 1
+
         self.assert_close(boxes.data, expected, atol=0.0, rtol=0.0)
+
+    def test_vertices_plus_import_accepts_one_pixel_box_4177(self, device, dtype):
+        # Kornia#4177: vertices_plus may represent a one-pixel box with four
+        # identical vertices, and validate_boxes=True must accept it.
+        vertices = torch.tensor(
+            [[[5.0, 5.0], [5.0, 5.0], [5.0, 5.0], [5.0, 5.0]]],
+            device=device,
+            dtype=dtype,
+        )
+
+        boxes = Boxes.from_tensor(vertices, mode="vertices_plus", validate_boxes=True)
+
+        self.assert_close(boxes.data, vertices, atol=0.0, rtol=0.0)
 
     def test_convention_constructor_mode_is_only_an_export_label(self, device, dtype):
         vertices = torch.tensor([[[1.0, 2.0], [5.0, 2.0], [5.0, 4.0], [1.0, 4.0]]], device=device, dtype=dtype)
@@ -196,6 +245,8 @@ class TestBoxes2D(BaseTester):
         sheared = boxes.transform_boxes(shear)
         expected_data = torch.tensor([[[3.0, 2.0], [6.0, 2.0], [7.0, 3.0], [4.0, 3.0]]], device=device, dtype=dtype)
         self.assert_close(sheared.data, expected_data, atol=0.0, rtol=0.0)
+        imported = Boxes.from_tensor(sheared.data, mode="vertices_plus", validate_boxes=True)
+        self.assert_close(imported.data, sheared.data, atol=0.0, rtol=0.0)
         expected_export = torch.tensor([[[3.0, 2.0], [7.0, 2.0], [7.0, 3.0], [3.0, 3.0]]], device=device, dtype=dtype)
         self.assert_close(sheared.to_tensor("vertices_plus"), expected_export, atol=0.0, rtol=0.0)
 
@@ -248,6 +299,33 @@ class TestBoxes2D(BaseTester):
         self.assert_close(updated.data[:, 1], replacement_before, atol=0.0, rtol=0.0)
         self.assert_close(boxes.data, boxes_before, atol=0.0, rtol=0.0)
         self.assert_close(replacement.data, replacement_before, atol=0.0, rtol=0.0)
+
+    def test_getitem_preserves_list_padding_metadata(self, device, dtype):
+        # #4179: slicing a list-backed Boxes must keep _N so pad rows stay trimmed.
+        first = torch.tensor([[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        lb = Boxes([first, torch.cat([first, first]), torch.cat([first, first, first])])
+        assert lb._N == [2, 1, 0]
+        sliced = lb[0:1]
+        assert sliced._N == [2]
+        exported = sliced.to_tensor("xyxy")
+        assert isinstance(exported, list)
+        assert len(exported) == 1
+        assert exported[0].shape == (1, 4)
+
+        mask = torch.tensor([True, False, True], device=device)
+        indices = torch.tensor([0, 2], device=device)
+        masked, indexed = lb[mask], lb[indices]
+        assert masked._N == indexed._N == [2, 0]
+        masked_boxes, indexed_boxes = masked.to_tensor("xyxy"), indexed.to_tensor("xyxy")
+        assert isinstance(masked_boxes, list)
+        assert isinstance(indexed_boxes, list)
+        for actual, expected in zip(masked_boxes, indexed_boxes):
+            self.assert_close(actual, expected)
+        assert [boxes.shape[0] for boxes in masked_boxes] == [1, 3]
+
+        scalar = lb[torch.tensor(1, device=device)]
+        assert scalar._N is None
+        assert isinstance(scalar.to_tensor("xyxy"), torch.Tensor)
 
     def test_smoke(self, device, dtype):
         def _create_tensor_box():
@@ -389,6 +467,37 @@ class TestBoxes2D(BaseTester):
 
         assert boxes_vertices_plus.shape == expected_box.shape
         self.assert_close(boxes_vertices_plus, expected_box)
+
+    @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
+    @pytest.mark.parametrize("batched", [False, True])
+    def test_from_tensor_accepts_nested_numeric_list(self, mode, batched, device, dtype):
+        """A nested Python list converts like the tensor it spells, in every mode."""
+        rows = [[1.0, 2.0, 5.0, 4.0], [6.0, 3.0, 9.0, 8.0]]
+        if mode.startswith("vertices"):
+            rows = Boxes.from_tensor(torch.tensor(rows), mode="xyxy").to_tensor(mode).tolist()
+        if batched:
+            rows = [rows]
+        boxes = Boxes.from_tensor(rows, mode=mode)
+        expected = Boxes.from_tensor(torch.tensor(rows, device=device, dtype=dtype), mode=mode)
+        assert boxes.data.shape == expected.data.shape
+        self.assert_close(boxes.data.to(device=device, dtype=dtype), expected.data)
+        self.assert_close(boxes.to_tensor(mode).to(device=device, dtype=dtype), expected.to_tensor(mode))
+
+    def test_from_tensor_nested_numeric_list_honours_validate_boxes(self):
+        with pytest.raises(ValueError, match="negative widths"):
+            Boxes.from_tensor([[1.0, 2.0, -3.0, 4.0]], mode="xyxy")
+        assert Boxes.from_tensor([[1.0, 2.0, -3.0, 4.0]], mode="xyxy", validate_boxes=False).data.shape == (1, 4, 2)
+
+    @pytest.mark.parametrize("mode", ["xyxy", "xywh", "vertices"])
+    def test_from_tensor_accepts_empty_list(self, mode):
+        """An empty Python list yields an empty boxes tensor, as an empty (0, 4) tensor does."""
+        boxes = Boxes.from_tensor([], mode=mode)
+        assert boxes.data.shape == (0, 4, 2)
+        assert boxes.to_tensor("xyxy").shape == (0, 4)
+
+    def test_from_tensor_empty_list_checks_mode(self):
+        with pytest.raises(ValueError, match="Unknown mode"):
+            Boxes.from_tensor([], mode="bogus")
 
     @pytest.mark.parametrize("shape", [(1, 4), (1, 1, 4)])
     def test_from_invalid_tensor(self, shape, device, dtype):
@@ -686,11 +795,44 @@ class TestBoxes2D(BaseTester):
             for computed_area, expected_area in zip(flattened_computed_areas_w_batch, expected_values)
         )
 
+    def test_compute_area_supports_non_contiguous_batched_boxes(self, device, dtype):
+        boxes_n_b = torch.tensor(
+            [
+                [
+                    [[0.0, 0.0], [4.0, 0.0], [4.0, 3.0], [0.0, 3.0]],
+                    [[10.0, 10.0], [12.0, 10.0], [12.0, 12.0], [10.0, 12.0]],
+                ],
+                [
+                    [[0.0, 0.0], [2.0, 0.0], [2.0, 3.0], [0.0, 3.0]],
+                    [[1.0, 1.0], [6.0, 1.0], [6.0, 7.0], [1.0, 7.0]],
+                ],
+                [
+                    [[0.0, 0.0], [3.0, 0.0], [3.0, 4.0], [0.0, 4.0]],
+                    [[2.0, 2.0], [5.0, 2.0], [5.0, 6.0], [2.0, 6.0]],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        boxes_b_n = boxes_n_b.transpose(0, 1)
+        assert boxes_b_n.shape == (2, 3, 4, 2)
+        assert not boxes_b_n.is_contiguous()
+
+        area = Boxes(boxes_b_n).compute_area()
+
+        expected = torch.tensor([[12.0, 6.0, 12.0], [4.0, 30.0, 12.0]], device=device, dtype=dtype)
+        assert torch.equal(area, expected)
+
+        # transform_boxes (and translate, which calls it) flattened the same layout with .view too.
+        shift = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device=device, dtype=dtype)
+        translated = Boxes(boxes_b_n).translate(shift).data
+        expected_translated = boxes_b_n.contiguous() + shift[:, None, None, :]
+        assert torch.equal(translated, expected_translated)
+
     def test_wart_compute_area_is_shoelace_of_inclusive_vertices_4010(self, device, dtype):
-        # Wart pin for kornia#4010: compute_area applies shoelace to the stored
-        # inclusive vertices. A valid exclusive 2-by-1 box collapses to a line,
-        # and a raw four-by-three rectangle has area six rather than the twelve
-        # reported by get_boxes_shape. These are current values, not a contract.
+        # kornia#4010: compute_area applies shoelace to the stored inclusive vertices, so a valid exclusive
+        # 2-by-1 box collapses to a line and a raw four-by-three rectangle has area six, not the twelve that
+        # get_boxes_shape reports.
         two_by_one = Boxes.from_tensor(torch.tensor([[[1.0, 1.0, 3.0, 2.0]]], device=device, dtype=dtype), mode="xyxy")
         four_by_three = Boxes(
             torch.tensor([[[1.0, 1.0], [4.0, 1.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
@@ -790,6 +932,12 @@ class TestBoxes2D(BaseTester):
         self.assert_close(translated.data, expected, atol=0.0, rtol=0.0)
         assert translated is not boxes
 
+    def test_translate_unknown_method_raises(self, device, dtype):
+        # The message names the accepted methods and repeats the rejected one, so a typo is visible.
+        boxes = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype), mode="xyxy")
+        with pytest.raises(NotImplementedError, match=r"method='warp'.*method='fast'.*got method='wrap'"):
+            boxes.translate(torch.tensor([[1.0, 2.0]], device=device, dtype=dtype), method="wrap")
+
     def test_wart_filter_boxes_by_area_zeroes_small_boxes_4010(self, device, dtype):
         # Wart pin for kornia#4010: filtering acts on compute_area, so the
         # valid two-by-one box with shoelace area zero is zeroed, not removed.
@@ -799,6 +947,133 @@ class TestBoxes2D(BaseTester):
         self.assert_close(filtered.data, torch.zeros_like(boxes.data), atol=0.0, rtol=0.0)
         assert filtered.data.shape == boxes.data.shape
         assert not torch.equal(boxes.data, torch.zeros_like(boxes.data))
+
+    @pytest.mark.parametrize("inplace", [False, True])
+    @pytest.mark.parametrize("batched", [False, True])
+    def test_filter_exports_and_masks_4714(self, inplace, batched, device, dtype, monkeypatch):
+        xyxy = torch.tensor(
+            [[1.0, 1.0, 4.0, 4.0], [1.0, 1.0, 2.0, 2.0], [2.0, 2.0, 5.0, 5.0]], device=device, dtype=dtype
+        )
+        if batched:
+            xyxy = torch.stack([xyxy, xyxy.flip(0).roll(1, 0)])
+        boxes = Boxes.from_tensor(xyxy)
+        before = boxes.clone()
+        filtered = boxes.filter_boxes_by_area(min_area=2.0, inplace=inplace)
+        invalid = (xyxy[..., 2] - xyxy[..., 0]) == 1
+        assert (filtered is boxes) == inplace
+        for mode in ("xyxy", "xywh", "vertices", "xyxy_plus", "vertices_plus"):
+            expected = before.to_tensor(mode)
+            expected[invalid] = 0
+            self.assert_close(filtered.to_tensor(mode), expected, atol=0.0, rtol=0.0)
+        expected_mask = before.to_mask(6, 6)
+        expected_mask[invalid] = 0
+        self.assert_close(filtered.to_mask(6, 6), expected_mask, atol=0.0, rtol=0.0)
+        monkeypatch.setattr(boxes_module, "is_exporting", lambda: True)
+        self.assert_close(filtered.to_mask(6, 6), expected_mask, atol=0.0, rtol=0.0)
+        if not inplace:
+            self.assert_close(boxes.to_tensor("xyxy"), xyxy, atol=0.0, rtol=0.0)
+
+    def test_filter_origin_all_none_and_repeat_4714(self, device, dtype):
+        # The valid origin pixel and a filtered box have identical raw inclusive coordinates.
+        xyxy = torch.tensor([[0.0, 0.0, 1.0, 1.0], [1.0, 1.0, 4.0, 4.0]], device=device, dtype=dtype)
+        boxes = Boxes.from_tensor(xyxy)
+        filtered = boxes.filter_boxes_by_area(max_area=0.0)
+        self.assert_close(filtered.to_tensor("xyxy"), xyxy.new_tensor([[0.0, 0.0, 1.0, 1.0], [0.0, 0.0, 0.0, 0.0]]))
+        assert filtered.to_mask(5, 5)[0, 0, 0] == 1
+        assert filtered.to_mask(5, 5)[1].count_nonzero() == 0
+        for mode in ("xyxy", "xywh", "vertices", "xyxy_plus", "vertices_plus"):
+            self.assert_close(
+                boxes.filter_boxes_by_area(min_area=0.0).to_tensor(mode), boxes.to_tensor(mode), atol=0.0, rtol=0.0
+            )
+            assert boxes.filter_boxes_by_area(min_area=99.0).to_tensor(mode).count_nonzero() == 0
+            self.assert_close(
+                filtered.filter_boxes_by_area().to_tensor(mode), filtered.to_tensor(mode), atol=0.0, rtol=0.0
+            )
+        assert boxes.filter_boxes_by_area(min_area=99.0).to_mask(5, 5).count_nonzero() == 0
+        empty = Boxes.from_tensor(xyxy[:0]).filter_boxes_by_area(2.0)
+        assert empty.to_tensor("xyxy").shape == (0, 4)
+
+    def test_filter_copy_index_and_transforms_4714(self, device, dtype):
+        xyxy = torch.tensor([[[1.0, 1.0, 4.0, 4.0], [1.0, 1.0, 2.0, 2.0]]], device=device, dtype=dtype)
+        boxes = Boxes.from_tensor(xyxy.repeat(2, 1, 1)).filter_boxes_by_area(2.0)
+        expected = boxes.to_tensor("xyxy")
+        for key in (slice(None), 0, torch.tensor([1, 0], device=device), torch.tensor([True, False], device=device)):
+            self.assert_close(boxes[key].to_tensor("xyxy"), expected[key], atol=0.0, rtol=0.0)
+        cloned = boxes.clone()
+        cloned.filter_boxes_by_area(99.0, inplace=True)
+        self.assert_close(boxes.to_tensor("xyxy"), expected, atol=0.0, rtol=0.0)
+        assert cloned.to_tensor("xyxy").count_nonzero() == 0
+        offset = xyxy.new_tensor([[2.0, 3.0]])
+        moved = boxes.translate(offset.expand(2, -1))
+        for mode in ("xyxy", "xywh", "vertices", "xyxy_plus", "vertices_plus"):
+            assert moved.to_tensor(mode)[:, 1].count_nonzero() == 0
+        padding = xyxy.new_tensor([[2.0, 0.0, 3.0, 0.0]])
+        for result in (boxes.clone().pad(padding), moved.clamp(xyxy.new_zeros(1, 2), xyxy.new_full((1, 2), 9.0))):
+            assert result.to_mask(10, 10)[:, 1].count_nonzero() == 0
+        self.assert_close(boxes.clone().pad(padding).unpad(padding).to_tensor("xyxy"), expected)
+        converted = boxes.clone().to(device=torch.device("cpu"), dtype=torch.float32).type(dtype).to(device=device)
+        self.assert_close(converted.to_tensor("xyxy"), expected)
+        assert converted._valid.dtype == torch.bool
+        assert converted._valid.device == converted.device
+        # Basic slices share both coordinates and filtering state.
+        original = Boxes.from_tensor(xyxy)
+        original[:].filter_boxes_by_area(2.0, inplace=True)
+        assert original.to_tensor("xyxy")[:, 1].count_nonzero() == 0
+
+    @pytest.mark.parametrize("inplace", [False, True])
+    def test_filter_assignment_4714(self, inplace, device, dtype):
+        xyxy = torch.tensor([[[1.0, 1.0, 4.0, 4.0], [1.0, 1.0, 2.0, 2.0]]], device=device, dtype=dtype)
+        boxes = Boxes.from_tensor(xyxy.repeat(2, 1, 1))
+        filtered = boxes[:1].filter_boxes_by_area(2.0)
+        index = torch.tensor([1], device=device)
+        updated = boxes.index_put((index,), filtered, inplace=inplace)
+        assert updated.to_tensor("xyxy")[1, 1].count_nonzero() == 0
+        self.assert_close(updated.to_tensor("xyxy")[0], xyxy[0])
+        updated[index] = Boxes.from_tensor(xyxy)
+        self.assert_close(updated.to_tensor("xyxy")[1], xyxy[0])
+        updated[index] = filtered
+        assert updated.to_mask(5, 5)[1, 1].count_nonzero() == 0
+        if not inplace:
+            self.assert_close(boxes.to_tensor("xyxy"), xyxy.repeat(2, 1, 1))
+
+    @pytest.mark.parametrize("inplace", [False, True])
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_filter_merge_and_padding_4714(self, inplace, reverse, device, dtype):
+        xyxy = torch.tensor(
+            [[1.0, 1.0, 4.0, 4.0], [1.0, 1.0, 2.0, 2.0], [2.0, 2.0, 5.0, 5.0]], device=device, dtype=dtype
+        )
+        first = Boxes.from_tensor([xyxy, xyxy[:1]]).filter_boxes_by_area(2.0)
+        second = Boxes.from_tensor(xyxy[:1].expand(2, 1, 4))
+        if reverse:
+            first, second = second, first
+        first_out = first.to_tensor("xyxy")
+        second_out = second.to_tensor("xyxy")
+        expected = [torch.cat([a, b]) for a, b in zip(first_out, second_out)]
+        merged = first.merge(second, inplace=inplace)
+        assert merged._N == [0, 2]
+        assert merged.to_tensor("xyxy")[0][2 if reverse else 1].count_nonzero() == 0
+        for actual, wanted in zip(merged.to_tensor("xyxy"), expected):
+            self.assert_close(actual, wanted, atol=0.0, rtol=0.0)
+        assert merged.to_mask(6, 6)[1, 2:].count_nonzero() == 0
+        dense = Boxes.from_tensor(xyxy).filter_boxes_by_area(2.0)
+        dense_merged = dense.merge(Boxes.from_tensor(xyxy[:1]))
+        self.assert_close(dense_merged.to_tensor("xyxy"), torch.cat([dense.to_tensor("xyxy"), xyxy[:1]]))
+
+    def test_unpickle_without_filter_validity_4714(self, device, dtype):
+        # A Boxes pickled by an earlier kornia has no ``_valid``: it loads with every box valid and can be filtered.
+        xyxy = torch.tensor([[[1.0, 1.0, 4.0, 4.0], [0.0, 0.0, 1.0, 1.0]]], device=device, dtype=dtype)
+        boxes = Boxes.from_tensor(xyxy)
+        del boxes._valid
+        restored = pickle.loads(pickle.dumps(boxes))  # noqa: S301
+        self.assert_close(restored.to_tensor("xyxy"), xyxy, atol=0.0, rtol=0.0)
+        filtered = restored.filter_boxes_by_area(min_area=2.0).to_tensor("xyxy")
+        self.assert_close(filtered, torch.cat([xyxy[:, :1], torch.zeros_like(xyxy[:, 1:])], 1), atol=0.0, rtol=0.0)
+
+    def test_filter_gradcheck_4714(self, device):
+        xyxy = torch.tensor(
+            [[1.0, 1.0, 4.0, 4.0], [1.0, 1.0, 2.0, 2.0]], device=device, dtype=torch.float64, requires_grad=True
+        )
+        self.gradcheck(lambda x: Boxes.from_tensor(x).filter_boxes_by_area(2.0).to_tensor("xyxy"), (xyxy,))
 
     def test_convention_filter_boxes_by_area_maximum_zeroes_in_place(self, device, dtype):
         # The shoelace areas are 2 and 8. Equal lower/upper bounds retain the
@@ -827,12 +1102,8 @@ class TestBoxes2D(BaseTester):
     def test_convention_clamp_leaves_coordinates_alone_for_a_non_finite_bound_4244(
         self, non_finite, bound, position, device, dtype
     ):
-        # clamp is comparison-based: every comparison against a non-finite bound that is NaN is
-        # False, so the coordinate is left alone rather than taking the bound. maximum/minimum do
-        # not agree here -- they propagate the NaN into every coordinate on that axis -- which is
-        # why this pin exists alongside the rank fix that motivated rewriting the bound broadcast.
-        # An infinite bound is a real clamp on one side and a no-op on the other, so it is swept
-        # too, and both bound tensors and both coordinate positions are covered.
+        # clamp applies the lower bound, then the upper bound, by comparison: a NaN bound leaves the coordinate
+        # alone (where torch.maximum/minimum would propagate the NaN), and an infinite bound clamps on one side.
         data = torch.tensor([[[[1.0, 2.0], [5.0, 2.0], [5.0, 4.0], [1.0, 4.0]]]], device=device, dtype=dtype)
         topleft = torch.tensor([[0.0, 0.0]], device=device, dtype=dtype)
         botright = torch.tensor([[10.0, 10.0]], device=device, dtype=dtype)
@@ -843,14 +1114,8 @@ class TestBoxes2D(BaseTester):
 
         out = Boxes(data.clone()).clamp(topleft, botright, inplace=False).data
 
-        # Hand-derived from the two ordered comparison passes, lower bound first:
-        #   topleft=nan  -> `c < nan` is False, so the coordinate is left alone
-        #   topleft=+inf -> `c < inf` raises every coordinate to +inf, which the botright pass then
-        #                   lowers to botright (10), so +inf never survives
-        #   topleft=-inf -> `c < -inf` is False, left alone
-        #   botright=nan -> `c > nan` is False, left alone
-        #   botright=+inf-> `c > inf` is False, left alone
-        #   botright=-inf-> `c > -inf` lowers every coordinate to -inf
+        # topleft=+inf raises every coordinate, and the botright pass lowers it to 10; botright=-inf lowers it to
+        # -inf; every other case leaves the coordinate alone.
         expected = data.clone()
         if bound == "topleft" and non_finite == float("inf"):
             expected[..., position] = botright[0, position]
@@ -917,10 +1182,9 @@ class TestBoxes2D(BaseTester):
 
     @pytest.mark.parametrize("batched", [False, True])
     @pytest.mark.parametrize("inplace", [False, True])
-    def test_wart_transform_boxes_empty_copy_aliases_input_4020(self, batched, inplace, device, dtype):
-        # Wart pin for tracking issue #4020: transforming an empty container
-        # preserves its tensor storage. The non-inplace wrapper is new but
-        # aliases the input data; the in-place wrapper remains self.
+    def test_convention_transform_boxes_empty_container_keeps_its_tensor(self, batched, inplace, device, dtype):
+        # Transforming an empty container keeps its tensor: the non-inplace wrapper is new but aliases the input
+        # data, and the in-place wrapper remains self.
         data = torch.empty((1, 0, 4, 2) if batched else (0, 4, 2), device=device, dtype=dtype)
         boxes = Boxes(data)
         original = boxes.data
@@ -1105,11 +1369,8 @@ class TestTransformBoxes2D(BaseTester):
 class TestBbox3D(BaseTester):
     @pytest.mark.parametrize("mode", ["xyzxyz", "xyzxyz_plus", "xyzwhd"])
     def test_convention_from_tensor_rejects_non_finite_coordinates_4258(self, mode, device, dtype):
-        # Pin kornia#4258, the 3D counterpart of the #4238 pin on Boxes.from_tensor: eager
-        # validation rejects non-finite values in both the unbatched and batched layouts, even when
-        # a valid row is present too. Before the fix an inf passed the positive-extent checks
-        # outright (inf - 0 > 0) and a nan passed them because every comparison against nan is
-        # False, so the box was constructed with non-finite vertices.
+        # kornia#4258, the 3D counterpart of #4238: eager validation rejects non-finite values in the unbatched
+        # and batched layouts, even when a valid row is present too.
         source = torch.tensor(
             [[0.0, 0.0, 0.0, 4.0, 4.0, 4.0], [1.0, 1.0, 1.0, 5.0, 5.0, 5.0]], device=device, dtype=dtype
         )
@@ -1120,11 +1381,6 @@ class TestBbox3D(BaseTester):
                     invalid_source.reshape(-1, 6)[1, coordinate_index] = non_finite
                     with pytest.raises(ValueError, match="non-finite coordinates"):
                         Boxes3D.from_tensor(invalid_source, mode=mode, validate_boxes=True)
-
-    def test_convention_from_tensor_opt_out_preserves_non_finite_input_4258(self, device, dtype):
-        source = torch.tensor([[0.0, 0.0, 0.0, float("nan"), 4.0, 4.0]], device=device, dtype=dtype)
-        boxes = Boxes3D.from_tensor(source, mode="xyzxyz", validate_boxes=False)
-        assert torch.isnan(boxes.data).any()
 
     def test_smoke(self, device, dtype):
         def _create_tensor_box():
@@ -1533,15 +1789,11 @@ class TestBbox3D(BaseTester):
         self.gradcheck(lambda x: Boxes3D.from_tensor(x, mode="xyzxyz_plus").data, (t_boxes_xyzxyz,))
         self.gradcheck(lambda x: Boxes3D.from_tensor(x, mode="xyzwhd").data, (t_boxes_xyzxyz1,))
 
-    def test_convention_to_tensor_tie_gradient_is_an_even_subgradient_1396(self, device):
-        # #1396: to_tensor used to raise RuntimeError whenever its input required grad, because
-        # gradcheck disagreed with the analytical gradient on an axis-aligned box -- every face of
-        # such a box has a 4-way vertex tie, and PyTorch's amin/amax backward splits the gradient
-        # evenly across tied vertices (1/4 each here) rather than picking one, which is a valid
-        # subgradient but not what central-difference gradcheck expects at a kink (it does not probe
-        # a genuine derivative there, since none exists in the classical sense). This pins that even
-        # split as the actual, correct, and now-unguarded behavior, so a future change that alters it
-        # (e.g. reverting to computing to_tensor without amin/amax) has to touch this test.
+    def test_convention_to_tensor_gradient_reaches_the_extremal_vertices_1396(self, device):
+        # #1396: to_tensor reduces the stored vertices with amin/amax and does not reject an input that
+        # requires grad. d(xmin)/d(vertices) is therefore supported on the vertices attaining the minimum, shared
+        # equally among them and summing to 1: a single vertex when it is unique, a tie of four on an axis-aligned
+        # face (a min(dim=...) reduction would give all of it to one vertex).
         vertices = torch.tensor(
             [
                 [
@@ -1557,16 +1809,18 @@ class TestBbox3D(BaseTester):
             ],
             device=device,
             dtype=torch.float32,
-            requires_grad=True,
         )
-        boxes = Boxes3D(vertices)
-        out = boxes.to_tensor(mode="xyzxyz")  # (N=1, 6): not batched, so to_tensor squeezes the batch dim
-        out[0, 0].backward()  # d(xmin)/d(vertices): xmin ties across vertices 0, 3, 4, 7
-
-        expected_grad = torch.zeros_like(vertices)
-        for tied_vertex in (0, 3, 4, 7):
-            expected_grad[0, tied_vertex, 0] = 0.25
-        self.assert_close(vertices.grad, expected_grad)
+        for tied in ((0, 3, 4, 7), (4,)):
+            data = vertices.clone()
+            if tied == (4,):
+                data[0, 4, 0] = -1.0  # vertex 4 alone attains xmin, so a fixed-index reading is caught
+            data.requires_grad_()
+            Boxes3D(data).to_tensor(mode="xyzxyz")[0, 0].backward()
+            outside = torch.ones_like(data, dtype=torch.bool)
+            outside[0, list(tied), 0] = False
+            assert bool((data.grad[outside] == 0).all())
+            self.assert_close(data.grad[0, list(tied), 0].sum(), torch.tensor(1.0, device=device))
+            assert data.grad[0, list(tied), 0].unique().numel() == 1
 
     @staticmethod
     def _asymmetric_xyzxyz(device, dtype) -> torch.Tensor:
@@ -1879,6 +2133,20 @@ class TestTransformBoxes3D(BaseTester):
 
 
 class TestVideoBoxes(BaseTester):
+    def test_filter_video_copy_index_assignment_4714(self, device, dtype):
+        data = torch.tensor([[[1.0, 1.0, 4.0, 4.0], [1.0, 1.0, 2.0, 2.0]]], device=device, dtype=dtype)
+        vertices = Boxes.from_tensor(data).data.repeat(4, 1, 1, 1).reshape(2, 2, 2, 4, 2)
+        video = VideoBoxes.from_tensor(vertices)
+        filtered = video.filter_boxes_by_area(2.0)
+        expected = filtered.to_tensor("xyxy")
+        assert expected[:, :, 1].count_nonzero() == 0
+        for selected in (filtered.clone(), filtered[:], filtered[0]):
+            assert selected.to_tensor("xyxy")[..., 1, :].count_nonzero() == 0
+        video[0] = filtered[1]
+        self.assert_close(video.to_tensor("xyxy")[:1], expected[:1])
+        assert video.to_tensor("xyxy")[1, :, 1].count_nonzero() > 0
+        assert filtered.to_mask(5, 5)[:, 1].count_nonzero() == 0
+
     """Public API and round-trip coverage for :class:`VideoBoxes` (#4016)."""
 
     @staticmethod
@@ -1896,6 +2164,28 @@ class TestVideoBoxes(BaseTester):
         video_boxes = VideoBoxes.from_tensor(boxes)
         assert isinstance(video_boxes, VideoBoxes)
         assert video_boxes.temporal_channel_size == boxes.size(1)
+
+    def test_validate_boxes_preserves_arbitrary_quadrilaterals_4177(self, device, dtype):
+        boxes = self._sample_video_boxes(device, dtype)
+        boxes[0, 0, 0] = torch.tensor(
+            [[0.0, 0.0], [9.0, 0.0], [3.0, 7.0], [0.0, 1.0]],
+            device=device,
+            dtype=dtype,
+        )
+
+        video_boxes = VideoBoxes.from_tensor(boxes, validate_boxes=True)
+
+        self.assert_close(video_boxes.data, boxes.reshape(-1, 1, 4, 2), atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+    def test_validate_boxes_rejects_non_finite_vertices_4177(self, value, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("the vertex check is torch._assert_async: synchronous only on CPU")
+        boxes = self._sample_video_boxes(device, dtype)
+        boxes[0, 0, 0, 0, 0] = value
+
+        with pytest.raises(RuntimeError, match="non-finite coordinates"):
+            VideoBoxes.from_tensor(boxes, validate_boxes=True)
 
     def test_exception(self, device, dtype):
         frame = self._sample_video_boxes(device, dtype, batch=1, time=1)[0]  # (T, N, 4, 2)
@@ -1969,25 +2259,68 @@ class TestVideoBoxes(BaseTester):
         assert transformed.temporal_channel_size == 3
         self.assert_close(transformed.to_tensor(), boxes, atol=0.0, rtol=0.0)
 
-    def test_wart_indexing_drops_the_temporal_size_4249(self, device, dtype):
-        # Wart pin for the part of kornia#4249 that survives #4176: Boxes.__getitem__ builds the result
-        # with type(self)(...) and never sets temporal_channel_size, so the sliced wrapper's to_tensor
-        # fails. get_boxes_shape and to_mask no longer raise; that half is pinned as a convention by
-        # test_convention_inherited_shape_and_mask_work_on_the_temporal_wrapper_4249. The inherited
-        # methods keep the temporal size whether they copy or update in place;
-        # test_convention_inherited_methods_split_copies_from_in_place_updates pins which is which.
-        video_boxes = VideoBoxes.from_tensor(self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=1))
-        frame = video_boxes[0]
-        assert isinstance(frame, VideoBoxes)
-        with pytest.raises(AttributeError, match="temporal_channel_size"):
-            frame.to_tensor()
-        bounds = torch.zeros(6, 2, device=device, dtype=dtype)
-        assert video_boxes.clamp(bounds, bounds + 2.0).temporal_channel_size == 3
-        assert video_boxes.filter_boxes_by_area(1.0).temporal_channel_size == 3
-        assert video_boxes.translate(bounds + 1.0).temporal_channel_size == 3
-        assert video_boxes.pad(torch.ones(6, 4, device=device, dtype=dtype)).temporal_channel_size == 3
-        assert video_boxes.merge(video_boxes).temporal_channel_size == 3
-        assert video_boxes.to(dtype=torch.float32).temporal_channel_size == 3
+    def test_getitem_preserves_the_temporal_axis_4249(self, device, dtype):
+        boxes = self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=1)
+        boxes[1] += 1.0
+        video_boxes = VideoBoxes.from_tensor(boxes)
+
+        first = video_boxes[0]
+        assert isinstance(first, VideoBoxes)
+        assert first.temporal_channel_size == 3
+        self.assert_close(first.to_tensor(), boxes[:1], atol=0.0, rtol=0.0)
+
+        selected = video_boxes[torch.tensor([1, 0], device=device)]
+        assert isinstance(selected, VideoBoxes)
+        assert selected.temporal_channel_size == 3
+        self.assert_close(selected.to_tensor(), boxes[[1, 0]], atol=0.0, rtol=0.0)
+
+    @staticmethod
+    def _numbered_video_boxes(device, dtype, batch: int = 3, time: int = 2) -> torch.Tensor:
+        # Every frame is shifted by 10 * its flattened index, so a swapped or flattened frame changes the values.
+        offsets = 10.0 * torch.arange(batch * time, device=device, dtype=dtype).view(batch, time, 1, 1, 1)
+        return TestVideoBoxes._sample_video_boxes(device, dtype, batch=batch, time=time, n_boxes=2) + offsets
+
+    @staticmethod
+    def _video_key(kind: str, device):
+        return {
+            "int": 1,
+            "negative": -1,
+            "scalar": torch.tensor(2, device=device),
+            "slice": slice(1, None),
+            "step": slice(None, None, 2),
+            "long": torch.tensor([2, 0], device=device),
+            "mask": torch.tensor([True, False, True], device=device),
+            "empty": torch.zeros(3, dtype=torch.bool, device=device),
+        }[kind]
+
+    @pytest.mark.parametrize("kind", ["int", "negative", "scalar", "slice", "step", "long", "mask", "empty"])
+    def test_convention_indexing_selects_whole_videos_4249(self, kind, device, dtype):
+        # Convention pin: every key kind selects videos on the B axis and keeps all T frames in order; an integer
+        # or 0-d key keeps a batch of one.
+        boxes = self._numbered_video_boxes(device, dtype)
+        key = self._video_key(kind, device)
+        videos = torch.arange(3, device=device)[key].reshape(-1)
+
+        selected = VideoBoxes.from_tensor(boxes)[key]
+
+        assert isinstance(selected, VideoBoxes)
+        assert selected.temporal_channel_size == 2
+        self.assert_close(selected.to_tensor(), boxes[videos], atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("kind", ["int", "negative", "scalar", "slice", "step", "long", "mask", "empty"])
+    def test_convention_index_assignment_writes_whole_videos_4249(self, kind, device, dtype):
+        # Convention pin: assignment takes the same key as indexing, so video_boxes[key] = other[key] copies
+        # whole videos and leaves the other videos untouched.
+        boxes = self._numbered_video_boxes(device, dtype)
+        key = self._video_key(kind, device)
+        videos = torch.arange(3, device=device)[key].reshape(-1)
+        target = VideoBoxes.from_tensor(torch.zeros_like(boxes))
+
+        target[key] = VideoBoxes.from_tensor(boxes)[key]
+
+        expected = torch.zeros_like(boxes)
+        expected[videos] = boxes[videos]
+        self.assert_close(target.to_tensor(), expected, atol=0.0, rtol=0.0)
 
     def test_convention_inherited_methods_split_copies_from_in_place_updates(self, device, dtype):
         # Convention pin: transform_boxes, translate, clamp, filter_boxes_by_area and merge copy through

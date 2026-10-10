@@ -21,10 +21,20 @@ import io
 
 import pytest
 import torch
+import torch.nn.functional as F
 from torch import nn
 
-from kornia.feature import SIFTFeatureScaleSpace, get_laf_center, get_laf_orientation, laf_is_filled
-from kornia.feature.sift.scale_space import _SIFTScaleSpaceDescriptor, _SIFTScaleSpaceDetector
+from kornia.feature import (
+    LAFDescriptor,
+    SIFTDescriptor,
+    SIFTDescriptorFromPyramid,
+    SIFTFeatureScaleSpace,
+    convert_sift_descriptor_layout,
+    get_laf_center,
+    get_laf_orientation,
+    laf_is_filled,
+)
+from kornia.feature.sift.scale_space import _SIFTScalePyramid, _SIFTScaleSpaceDescriptor, _SIFTScaleSpaceDetector
 from kornia.filters import spatial_gradient
 
 from testing.base import (
@@ -36,17 +46,76 @@ from testing.base import (
 )
 
 
+def _opencv_reference_image(device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    """Three asymmetric blobs on a ramp, quantized to the uint8 image OpenCV described."""
+    # Built in float64 on the CPU, which every device can receive: MPS has no float64.
+    yy, xx = torch.meshgrid(torch.arange(48, dtype=torch.float64), torch.arange(48, dtype=torch.float64), indexing="ij")
+
+    def blob(cx: float, cy: float, sigma: float) -> torch.Tensor:
+        return torch.exp(-((xx - cx) ** 2 + (yy - cy) ** 2) / (2 * sigma * sigma))
+
+    image = 0.5 + 0.3 * blob(26, 21, 2.5) - 0.25 * blob(19, 27, 2.0) + 0.15 * blob(30, 30, 1.5) + 0.004 * xx
+    return (torch.round(255 * image) / 255).to(device=device, dtype=dtype)[None, None]
+
+
+# OpenCV's SIFT descriptor of `_opencv_reference_image` at (24, 24): upright, sigma 1.6, taken from Gaussian layer 3 of
+# the doubled octave. Generated with OpenCV 5.0.0 from the same image built in numpy:
+#   image = np.round(255 * image).astype(np.uint8)
+#   keypoint = cv2.KeyPoint(24.0, 24.0, 3.2, 0.0, 0.0, (-1 & 255) | (3 << 8))  # size 2 * sigma; octave -1, layer 3
+#   _, descriptor = cv2.SIFT_create().compute(image, [keypoint])
+_OPENCV_SIFT_DESCRIPTOR = [
+    37, 3, 0, 0, 0, 0, 0, 7, 67, 2, 0, 0, 0, 0, 16, 123, 11, 0, 0, 0, 6, 47, 125, 92, 2, 0, 0, 0, 18, 66, 32, 3,
+    25, 45, 48, 23, 1, 0, 0, 2, 125, 125, 26, 2, 0, 0, 3, 54, 68, 100, 71, 56, 46, 40, 43, 51, 0, 0, 8, 63, 109, 45,
+    4, 0, 7, 29, 46, 64, 57, 32, 14, 7, 125, 125, 38, 7, 3, 4, 12, 39, 64, 125, 108, 36, 3, 0, 2, 8, 7, 3, 17, 49,
+    20, 20, 13, 7, 3, 0, 0, 1, 14, 49, 61, 19, 60, 6, 0, 0, 1, 5, 44, 105, 96, 43, 4, 0, 0, 0, 1, 17, 17, 22,
+    21, 15, 12, 11, 7, 6,
+]  # fmt: skip
+
+
+def _describe_reference_frame(device: torch.device, dtype: torch.dtype) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return the pyramid backend's upright descriptor at the OpenCV reference frame, and the frame's image."""
+    # Build the pyramid in float32 for half inputs, as the detector does.
+    work_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+    image = _opencv_reference_image(device, work_dtype)
+    pyramid = [level.to(dtype) for level in _SIFTScalePyramid().to(device, work_dtype)(image)]
+    # LAF scale 6 sigma; the descriptor itself integrates over 1.25 times the frame, as OpenCV does.
+    lafs = torch.tensor([[[[9.6, 0.0, 24.0], [0.0, 9.6, 24.0]]]], device=device, dtype=dtype)
+    octaves = torch.zeros(1, 1, device=device, dtype=torch.long)
+    levels = torch.full((1, 1), 3, device=device, dtype=torch.long)
+    _, descriptor = _SIFTScaleSpaceDescriptor(rootsift=False)(pyramid, lafs, octaves, levels, upright=True)
+    return descriptor[0], image
+
+
 class TestSharedSIFTScaleSpace(BaseTester):
+    def test_descriptor_matches_opencv_after_layout_conversion(self, device, dtype):
+        descriptor, _ = _describe_reference_frame(device, dtype)
+        expected = torch.tensor(_OPENCV_SIFT_DESCRIPTOR, device=device, dtype=torch.float32)[None]
+        opencv = convert_sift_descriptor_layout(descriptor, "kornia", "opencv").float()
+        # 0.997 in float32 and float64; a descriptor stored in another order stays below 0.6.
+        assert F.cosine_similarity(opencv, expected).item() > 0.99
+
+    def test_descriptor_layout_matches_the_other_sift_descriptors(self, device, dtype):
+        work_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        descriptor, image = _describe_reference_frame(device, dtype)
+        # The same frame, integrated over the same 1.25 times its LAF by the two other kornia SIFT descriptors.
+        lafs = torch.tensor([[[[12.0, 0.0, 24.0], [0.0, 12.0, 24.0]]]], device=device, dtype=work_dtype)
+        patch = LAFDescriptor(SIFTDescriptor(41, rootsift=False), patch_size=41).to(device, work_dtype)(image, lafs)
+        pyramid = SIFTDescriptorFromPyramid(rootsift=False).to(device, work_dtype)(image, lafs)
+        # 0.92 with the patch descriptor and 0.88 with the pyramid one; the scale-space descriptor in its former
+        # (row, column, angle) order scored 0.44.
+        for other in (patch[0], pyramid[0]):
+            assert F.cosine_similarity(descriptor.to(work_dtype), other).item() > 0.8
+
     def test_trilinear_histogram_bins(self, device, dtype):
-        # Hand-computed votes in (row, column, angle) order. Cancel Gaussian
-        # weighting to isolate spatial interpolation and the angle 7 -> 0 seam.
+        # Hand-computed votes indexed (row, column, angle); the descriptor stores them angle-major. Cancel
+        # Gaussian weighting to isolate spatial interpolation and the angle 7 -> 0 seam.
         work_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
         xx = torch.tensor([-0.6, -0.2, 0.2, 0.6, 0.0], device=device, dtype=work_dtype)
         yy = torch.tensor([0.6, -0.6, 0.2, -0.2, 0.2], device=device, dtype=work_dtype)
         mass = xx.new_tensor([1.0, 2.0, 3.0, 4.0, 2.0])
         mag = (mass * torch.exp(0.78125 * (xx.square() + yy.square()))).view(1, 1, -1)
         angle = xx.new_tensor([0.25, 1.5, 7.75, 4.0, 2.5]).view(1, 1, -1) * (torch.pi / 4)
-        actual = _SIFTScaleSpaceDescriptor._descriptor_histograms(mag, angle, xx, yy).reshape(4, 4, 8)
+        actual = _SIFTScaleSpaceDescriptor._descriptor_histograms(mag, angle, xx, yy).reshape(8, 4, 4).permute(1, 2, 0)
         expected = torch.zeros_like(actual)
         expected[3, 0, 0], expected[3, 0, 1] = 0.75, 0.25
         expected[0, 1, 1:3] = 1.0
@@ -54,6 +123,28 @@ class TestSharedSIFTScaleSpace(BaseTester):
         expected[1, 3, 4] = 4.0
         expected[2, 1:3, 2:4] = 0.5
         self.assert_close(actual, expected, atol=2e-6, rtol=2e-6)
+
+    def test_float64_bin_centre_angles_fill_one_bin_5127(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        angle = torch.arange(36, device=device, dtype=torch.float64).view(1, 36, 1) * (2 * torch.pi / 36)
+        # The gradient angles arrive in [2 pi, 4 pi), where the `%` takes part as well.
+        for offset in (0.0, 2 * torch.pi):
+            histogram = _SIFTScaleSpaceDescriptor._angular_histogram(torch.ones_like(angle), angle + offset, 36)
+            # The float32 pi in the bin scale leaked up to 9.7e-7 of the upper bins into their lower neighbour.
+            eye = torch.eye(36, device=device, dtype=torch.float64)
+            self.assert_close(histogram[0], eye, rtol=0.0, atol=1e-12)
+
+    def test_float64_bin_centre_angles_fill_one_descriptor_bin_5127(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        # One sample per frame at the patch centre, whose angle sits on one of the 8 bin centres.
+        angle = 2 * torch.pi + torch.arange(8, device=device, dtype=torch.float64).view(1, 8, 1) * (torch.pi / 4)
+        centre = torch.zeros(1, device=device, dtype=torch.float64)
+        votes = _SIFTScaleSpaceDescriptor._descriptor_histograms(torch.ones_like(angle), angle, centre, centre)
+        # Summing the 16 spatial cells, the trailing axis of each angle bin, leaves each frame's angular histogram.
+        histogram = votes.reshape(8, 8, 16).sum(2)
+        self.assert_close(histogram, torch.eye(8, device=device, dtype=torch.float64), rtol=0.0, atol=1e-12)
 
     def test_histogram_gradcheck(self, device):
         if device.type == "mps":
@@ -199,6 +290,20 @@ class TestSharedSIFTScaleSpace(BaseTester):
         self.assert_close(desc[0, 0], desc[0, 1], atol=0.002, rtol=0.002)
         self.assert_close(desc.norm(dim=-1), torch.ones(1, 2, device=device, dtype=dtype))
 
+    def test_float64_vertical_gradient_orientation_5127(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        axis = torch.arange(64, device=device, dtype=torch.float64)
+        pyramid = [torch.stack([axis[None, :].expand(64, 64), axis[:, None].expand(64, 64)])[None, None]]
+        lafs = torch.tensor([[[[6.0, 0, 16], [0, 6.0, 16]]] * 2], device=device, dtype=torch.float64)
+        octaves = torch.zeros(1, 2, device=device, dtype=torch.long)
+        levels = torch.tensor([[0, 1]], device=device)
+        oriented, _ = _SIFTScaleSpaceDescriptor()(pyramid, lafs, octaves, levels)
+        angles = torch.deg2rad(get_laf_orientation(oriented)).flatten()
+        # The vertical layer peaks on orientation bin 9 of 36; the float32 pi put its angle 1.6e-8 rad off.
+        expected = torch.tensor([0.0, -torch.pi / 2], device=device, dtype=torch.float64)
+        self.assert_close(angles, expected, rtol=0.0, atol=1e-9)
+
     def test_mask_padding_and_empty(self, device, dtype):
         feature = SIFTFeatureScaleSpace(4, descriptor_backend="pyramid").to(device, dtype)
         image = torch.rand(2, 1, 40, 40, device=device, dtype=dtype)
@@ -226,11 +331,16 @@ class TestSharedSIFTScaleSpace(BaseTester):
 
         lafs, responses, descriptors = feature(image, mask)
 
-        assert not lafs.any() and not responses.any() and not descriptors.any()
-        assert lafs.requires_grad and responses.requires_grad and descriptors.requires_grad
+        assert not lafs.any()
+        assert not responses.any()
+        assert not descriptors.any()
+        assert lafs.requires_grad
+        assert responses.requires_grad
+        assert descriptors.requires_grad
         (lafs.sum() + responses.sum() + descriptors.sum()).backward()
         assert image.grad is not None
-        assert torch.isfinite(image.grad).all() and not image.grad.any()
+        assert torch.isfinite(image.grad).all()
+        assert not image.grad.any()
 
     def test_float16_tiny_float32_mask_is_suppressed(self, device, dtype):
         if dtype != torch.float16:
@@ -240,7 +350,8 @@ class TestSharedSIFTScaleSpace(BaseTester):
         detector = _SIFTScaleSpaceDetector(1, _FixedPyramid(dog)).to(device, dtype)
         mask = torch.full((1, 1, 32, 32), 1e-10, device=device, dtype=torch.float32)
         lafs, responses = detector(image, mask)
-        assert not lafs.any() and not responses.any()
+        assert not lafs.any()
+        assert not responses.any()
 
     def test_flat_gradient_backward(self, device, dtype):
         image = torch.zeros(1, 1, 1, 32, 32, device=device, dtype=dtype, requires_grad=True)
@@ -301,7 +412,8 @@ class TestSharedSIFTScaleSpace(BaseTester):
         weights = torch.linspace(0.1, 1.0, actual.numel(), device=device, dtype=work_dtype).reshape_as(actual)
         (actual * weights).sum().backward()
         (expected * weights).sum().backward()
-        assert actual_images.grad is not None and expected_images.grad is not None
+        assert actual_images.grad is not None
+        assert expected_images.grad is not None
         self.assert_close(actual_images.grad, expected_images.grad)
 
     def test_grid_inference_matches_autograd_path(self, device, dtype):
@@ -393,6 +505,87 @@ class TestSIFTScalePyramid(BaseTester):
         for octave in pyramid(image):
             assert (octave - value).abs().max() < 1e-14
 
+    def test_device_argument_and_device_only_move(self, device):
+        # Registered as float64 buffers, the reference kernels made `device="mps"` and `.to("mps")` raise, because
+        # MPS has no float64. Only a move that also cast the dtype, `.to("mps", torch.float32)`, worked.
+        # Built on the default device, they also made construction under `with torch.device("mps")` raise.
+        image = torch.rand(1, 1, 48, 52, device=device)
+        expected = SIFTFeatureScaleSpace(8, descriptor_backend="pyramid").to(device, torch.float32)(image)
+        with device:
+            under_default_device = SIFTFeatureScaleSpace(8, descriptor_backend="pyramid")
+        for feature in (
+            SIFTFeatureScaleSpace(8, descriptor_backend="pyramid", device=device),
+            SIFTFeatureScaleSpace(8, descriptor_backend="pyramid").to(device),
+            under_default_device,
+        ):
+            # Not bitwise: on MPS, the orientation histogram's scatter_add_ varies from run to run at float32 rounding.
+            for actual, reference in zip(feature(image), expected):
+                assert actual.device == image.device
+                self.assert_close(actual, reference)
+
+    def test_dynamo_on_device(self, device, torch_optimizer):
+        from kornia.feature.sift.scale_space import _SIFTScalePyramid
+
+        # A compiled graph must not build a float64 tensor on MPS, which rejects it: the kernels are float32 there, and
+        # forward casts a kernel's dtype before any move.
+        pyramid = _SIFTScalePyramid().to(device)
+        image = torch.rand(1, 1, 33, 37, device=device)
+        expected = pyramid(image)
+        for actual_octave, expected_octave in zip(torch_optimizer(pyramid)(image), expected):
+            self.assert_close(actual_octave, expected_octave)
+
+    @pytest.mark.parametrize("module_dtype", [torch.float16, torch.bfloat16])
+    def test_module_dtype_cast_keeps_reference_kernels(self, device, module_dtype):
+        from kornia.feature.sift.scale_space import _SIFTScalePyramid
+
+        # The detector builds its pyramid in float32 for half inputs, so a half-cast module still blurs float32 images.
+        # Casting the module must not round the Gaussian kernels to its dtype: rounded kernels miss their unit sum, and
+        # a constant image drifts octave by octave, from 8e-5 in the first to 4.9e-4 in the fifth with float16 kernels,
+        # and from 1.1e-3 to 3.0e-3 with bfloat16 ones.
+        value = 0.37
+        image = torch.full((1, 1, 96, 96), value, device=device, dtype=torch.float32)
+        for octave in _SIFTScalePyramid().to(device, module_dtype)(image):
+            assert (octave - value).abs().max() < 1e-6
+
+    def test_kernels_are_buffers_that_follow_device_moves(self, device):
+        from kornia.feature.sift.scale_space import _SIFTScalePyramid
+
+        # The kernels live on the module's device, so forward does not copy them there on every call. A move rebuilds
+        # them from float64, in float32 on MPS, which has no float64; a dtype cast of the module leaves them alone. They
+        # stay out of state_dict: loading a checkpoint saved on MPS would round a CPU module's kernels to float32.
+        reference = [getattr(_SIFTScalePyramid(), f"kernel_{index}") for index in range(6)]
+        pyramid = _SIFTScalePyramid().to(device).half()
+        kernel_dtype = torch.float32 if device.type == "mps" else torch.float64
+        assert not pyramid.state_dict()
+        for index, expected in enumerate(reference):
+            kernel = getattr(pyramid, f"kernel_{index}")
+            assert kernel.device.type == device.type
+            assert kernel.dtype == kernel_dtype
+            assert torch.equal(kernel.cpu(), expected.to(kernel_dtype))
+        pyramid.cpu()
+        for index, expected in enumerate(reference):
+            kernel = getattr(pyramid, f"kernel_{index}")
+            assert kernel.dtype == torch.float64
+            assert torch.equal(kernel, expected)
+
+    def test_whole_module_pickle_rebuilds_kernels_where_they_land(self, device):
+        from kornia.feature.sift.scale_space import _SIFTScalePyramid
+
+        # The pickle holds float32 copies of the kernels, which `map_location` can put on MPS, and loading rebuilds
+        # them on the device they land on. A float64 CPU copy could not be mapped to MPS, and float32 MPS kernels
+        # mapped to the CPU would cap float64 images at float32 accuracy.
+        for source, target in ((device, torch.device("cpu")), (torch.device("cpu"), device)):
+            checkpoint = io.BytesIO()
+            torch.save(_SIFTScalePyramid().to(source), checkpoint)
+            checkpoint.seek(0)
+            restored = torch.load(checkpoint, map_location=target, weights_only=False)
+            expected = _SIFTScalePyramid().to(target)
+            for index in range(6):
+                kernel, reference = getattr(restored, f"kernel_{index}"), getattr(expected, f"kernel_{index}")
+                assert kernel.device.type == target.type
+                assert kernel.dtype == reference.dtype
+                assert torch.equal(kernel, reference)
+
     def test_pyramid_backend_rejects_unknown_compile_component(self):
         with pytest.raises(ValueError, match="compile_modules"):
             SIFTFeatureScaleSpace(descriptor_backend="pyramid", compile_modules=["resp"])
@@ -428,7 +621,7 @@ def _quadratic_dog(
 
 
 class TestSIFTScaleSpaceDetector(BaseTester):
-    @pytest.mark.parametrize("case", ["random", "quadratic", "singular", "outside"])
+    @pytest.mark.parametrize("case", ["random", "quadratic", "singular", "outside", "ramp", "flat_scale", "saddle"])
     def test_cuda_refinement_matches_reference(self, device, dtype, case):
         if device.type not in ("cpu", "cuda"):
             pytest.skip("CUDA implementation; CPU checks its arithmetic against the reference")
@@ -448,6 +641,18 @@ class TestSIFTScaleSpaceDetector(BaseTester):
             # fixed-trip CUDA iterations must not introduce NaNs in backward.
             dog.fill_(float("nan"))
             s = index * 0 - 1
+        elif case in ("ramp", "flat_scale", "saddle"):
+            # A steep x ramp under a shallow cap: normalised by the gradient, the Hessian is small, and its tiny scale
+            # curvature puts the determinant on the other side of the relative floor of #5065 from a variant rule.
+            # "ramp" is solved where an absolute floor, or a floor on m**2, rejects it; "flat_scale" and "saddle" are
+            # rejected where a floor that leaves the diagonal or the (largest) off-diagonal term out of m solves them.
+            # float64 resolves these determinants; in float32 the scale curvature rounds away on both paths alike.
+            yy, xx = torch.meshgrid(torch.arange(32, dtype=dtype), torch.arange(32, dtype=dtype), indexing="ij")
+            scale_curvature = {"ramp": 1e-5, "flat_scale": 1e-8, "saddle": 5e-8}[case]
+            dog = _quadratic_dog(torch.device("cpu"), dtype, 1e-3, (scale_curvature, 1.0, 1.0)) + xx
+            if case == "saddle":
+                dog = dog + 8e-3 * (xx - 11.2) * (yy - 10.3)
+            s, y, x = index * 0 + 2, index % 3 + 9, index % 4 + 10
         reference_image = dog.clone().requires_grad_()
         image = dog.to(device).requires_grad_()
         detector = _SIFTScaleSpaceDetector(24, nn.Identity())
@@ -462,7 +667,8 @@ class TestSIFTScaleSpaceDetector(BaseTester):
         loss = sum((value * weights.to(device)).sum() for value in actual[4:7]) + image[..., :0].sum()
         reference_loss.backward()
         loss.backward()
-        assert image.grad is not None and reference_image.grad is not None
+        assert image.grad is not None
+        assert reference_image.grad is not None
         assert torch.isfinite(image.grad).all()
         self.assert_close(image.grad, reference_image.grad.to(device))
 
@@ -485,7 +691,8 @@ class TestSIFTScaleSpaceDetector(BaseTester):
         dog[0, 2 + ds, 16 + dy, 16 + dx] = sign
         detector = _SIFTScaleSpaceDetector(2, _FixedPyramid(dog))
         lafs, responses = detector(torch.zeros(1, 1, 32, 32, device=device, dtype=dtype))
-        assert not lafs.any() and not responses.any()
+        assert not lafs.any()
+        assert not responses.any()
 
     def test_checkerboard_equal_diagonals_reject_before_neighbourhood_gather(self, device, dtype, monkeypatch):
         y = torch.arange(32, device=device).view(1, 1, 32, 1)
@@ -524,7 +731,9 @@ class TestSIFTScaleSpaceDetector(BaseTester):
         with torch.inference_mode():
             result = detector._octave(gaussian, 0, None)
         limit = 16384 if device.type == "cpu" else 65536
-        assert len(calls) > 1 and sum(calls) > limit and max(calls) <= limit
+        assert len(calls) > 1
+        assert sum(calls) > limit
+        assert max(calls) <= limit
         assert all(value.numel() == 0 for value in result)
 
     def test_many_middle_scale_extrema_refine_in_chunks(self, device, dtype, monkeypatch):
@@ -547,7 +756,9 @@ class TestSIFTScaleSpaceDetector(BaseTester):
         with torch.inference_mode():
             *_, responses, _, _, _ = detector._octave(gaussian, 0, None)
         expected_count = coordinates.numel() ** 2
-        assert len(calls) > 1 and sum(calls) == expected_count and max(calls) <= 16384
+        assert len(calls) > 1
+        assert sum(calls) == expected_count
+        assert max(calls) <= 16384
         assert responses.numel() == expected_count
         self.assert_close(responses, torch.ones_like(responses))
 
@@ -608,13 +819,15 @@ class TestSIFTScaleSpaceDetector(BaseTester):
         assert laf_is_filled(lafs)[:, 0].all()
         self.assert_close(weighted[:, 0], unmasked[:, 0] * 0.25, rtol=2e-3, atol=2e-3)
         zero_lafs, zero_responses = detector(image, torch.zeros_like(mask))
-        assert not zero_lafs.any() and not zero_responses.any()
+        assert not zero_lafs.any()
+        assert not zero_responses.any()
 
     def test_flat_and_singular_refinement_reject_without_oob_access(self, device, dtype):
         image = torch.zeros(1, 1, 32, 32, device=device, dtype=dtype)
         flat = torch.zeros(1, 5, 32, 32, device=device, dtype=dtype)
         lafs, responses = _SIFTScaleSpaceDetector(2, _FixedPyramid(flat)).to(device, dtype)(image)
-        assert not lafs.any() and not responses.any()
+        assert not lafs.any()
+        assert not responses.any()
         detector = _SIFTScaleSpaceDetector(1, _FixedPyramid(flat)).to(device, dtype)
         b = torch.zeros(1, device=device, dtype=torch.long)
         s = torch.full_like(b, 2)

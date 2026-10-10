@@ -18,7 +18,7 @@
 """In this module several equalization methods are exposed: he, ahe, clahe."""
 
 import math
-from typing import Tuple
+from typing import Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -26,7 +26,7 @@ import torch.nn.functional as F
 from kornia.core.utils import _normalize_to_float32_or_float64
 from kornia.image.utils import perform_keep_shape_image
 
-from .adjust import _assert_async_value_check
+from .adjust import _lookup_value_check
 from .histogram import histogram
 
 
@@ -64,8 +64,19 @@ def _compute_tiles(
     pad_horz = kernel_horz * grid_size[1] - w
 
     # add the padding in the last coluns and rows
-    if pad_vert > batch.shape[-2] or pad_horz > batch.shape[-1]:
-        raise ValueError("Cannot compute tiles on the image according to the given grid size")
+    # reflect padding needs the pad strictly below the axis it reflects, so >= is the bound: an
+    # 8 x 8 image on an 8 x 8 grid pads by 8 on an axis of 8 and fails inside F.pad otherwise.
+    if pad_vert >= batch.shape[-2] or pad_horz >= batch.shape[-1]:
+        # An even tile has to cover more than one grid cell, so the axis must exceed the grid;
+        # an odd one only has to exceed half of it.
+        min_vert = grid_size[0] + 1 if even_tile_size else grid_size[0] // 2 + 1
+        min_horz = grid_size[1] + 1 if even_tile_size else grid_size[1] // 2 + 1
+        raise ValueError(
+            "Cannot compute tiles on the image according to the given grid size. "
+            f"Got image size ({h}, {w}) and grid size {tuple(grid_size)}, which needs "
+            f"({pad_vert}, {pad_horz}) of reflect padding, more than the image has to reflect. "
+            f"The smallest image this grid admits is ({min_vert}, {min_horz})."
+        )
 
     if pad_vert > 0 or pad_horz > 0:
         batch = F.pad(batch, [0, pad_horz, 0, pad_vert], mode="reflect")  # B x C x H' x W'
@@ -165,8 +176,33 @@ def _tiles_histc(tiles: torch.Tensor, bins: int) -> torch.Tensor:
     return counts[:, :bins].to(tiles.dtype)
 
 
+def _spread_residual(residual: torch.Tensor, num_bins: int) -> torch.Tensor:
+    r"""Spread the residual of the clipped pixels over the histogram bins the way OpenCV does.
+
+    ``residual`` is the part of the clipped mass of each tile that is left after every bin took the same whole
+    share, so it is below ``num_bins``. OpenCV adds one count to every ``step``-th bin starting at bin 0, with
+    ``step = max(num_bins // residual, 1)``, until the residual is spent. Writing it into the first ``residual``
+    bins instead piles it onto the darkest levels and lifts the whole lookup table, which brightens small tiles
+    by tens of levels.
+
+    Args:
+        residual: residual per tile, shape :math:`(T,)`, below ``num_bins``.
+        num_bins: number of histogram bins.
+
+    Returns:
+        the counts to add, 0 or 1 per bin, shape :math:`(T, num_bins)` in the dtype of ``residual``.
+
+    """
+    bins: torch.Tensor = torch.arange(num_bins, device=residual.device)
+    step: torch.Tensor = torch.div(num_bins, residual.clamp(min=1), rounding_mode="floor").clamp(min=1).unsqueeze(1)
+    hit: torch.Tensor = (torch.remainder(bins, step) == 0) & (
+        torch.div(bins, step, rounding_mode="floor") < residual.unsqueeze(1)
+    )
+    return hit.to(residual.dtype)
+
+
 def _compute_luts(
-    tiles_x_im: torch.Tensor, num_bins: int = 256, clip: float = 40.0, diff: bool = False
+    tiles_x_im: torch.Tensor, num_bins: int = 256, clip: Union[float, torch.Tensor] = 40.0, diff: bool = False
 ) -> torch.Tensor:
     r"""Compute luts for a batched set of tiles.
 
@@ -196,7 +232,22 @@ def _compute_luts(
         histos = histogram(tiles, bins, torch.tensor(0.001))
         histos *= pixels
 
-    if clip > 0.0:
+    if isinstance(clip, torch.Tensor):
+        # Match Python scalar arithmetic before rounding each image's threshold, then broadcast
+        # over its tiles and channels. Keeping the limits in tensors avoids compile guards on draws.
+        # MPS cannot store doubles; compute its thresholds on CPU before copying them with the LUTs. Move first,
+        # then cast: a single clip.to("cpu", torch.float64) from MPS raises on torch 2.5.1 and returns zeros on 2.14.
+        limits = clip.cpu().double() if clip.device.type == "mps" else clip.double()
+        max_vals = (limits * pixels).div(num_bins, rounding_mode="floor").clamp(min=1)
+        max_vals = max_vals.to(histos).view(b, 1).expand(b, gh * gw * c).reshape(-1, 1)
+        limited = histos.clamp(max=max_vals)
+        clipped_tensor = torch.relu(histos - max_vals).sum(1) if diff else pixels - limited.sum(1)
+        residual_tensor = torch.remainder(clipped_tensor, num_bins)
+        limited = limited + ((clipped_tensor - residual_tensor) / num_bins).unsqueeze(1)
+        limited = limited + _spread_residual(residual_tensor, num_bins)
+        enabled = (clip > 0).to(device=histos.device).view(b, 1).expand(b, gh * gw * c).reshape(-1, 1)
+        histos = torch.where(enabled, limited, histos)
+    elif clip > 0.0:
         max_val: float = max(clip * pixels // num_bins, 1)
         if diff:
             clipped: torch.Tensor = torch.relu(histos - max_val).sum(1)
@@ -206,18 +257,14 @@ def _compute_luts(
         residual: torch.Tensor = torch.remainder(clipped, num_bins)
         redist: torch.Tensor = (clipped - residual).div(num_bins)
         histos += redist[None].transpose(0, 1)
-        # trick to avoid using a loop to assign the residual
-        v_range: torch.Tensor = torch.arange(num_bins, device=histos.device)
-        mat_range: torch.Tensor = v_range.repeat(histos.shape[0], 1)
-        histos += mat_range < residual[None].transpose(0, 1)
+        histos += _spread_residual(residual, num_bins)
 
     lut_scale: float = (num_bins - 1) / pixels
     luts: torch.Tensor = torch.cumsum(histos, 1) * lut_scale
     luts = luts.clamp(0, num_bins - 1)
     if not diff:
-        luts = luts.floor()  # to get the same values as converting to int maintaining the type
-    luts = luts.view((b, gh, gw, c, num_bins))
-    return luts
+        luts = luts.round()  # match OpenCV's round-to-nearest LUT quantization
+    return luts.view((b, gh, gw, c, num_bins))
 
 
 def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
@@ -365,6 +412,11 @@ def equalize_clahe(
 ) -> torch.Tensor:
     r"""Apply clahe equalization on the input tensor.
 
+    Convention:
+        Expects values in [0, 1], splits the final two axes into grid_size[0] tiles along H and
+        grid_size[1] tiles along W, and returns the input shape.
+        See :func:`equalize` for global equalization.
+
     .. image:: _static/img/equalize_clahe.png
 
     NOTE: Lut computation uses the same approach as in OpenCV, in next versions this can change.
@@ -372,7 +424,8 @@ def equalize_clahe(
     Args:
         input: images tensor to equalize with values in the range [0, 1] and shape :math:`(*, C, H, W)`.
         clip_limit: threshold value for contrast limiting. If 0 clipping is disabled.
-        grid_size: number of tiles to be cropped in each direction (GH, GW).
+        grid_size: number of tiles to be cropped in each direction (GH, GW). Each image axis must be larger
+            than its grid size; otherwise a ``ValueError`` names the smallest image the grid admits.
         slow_and_differentiable: flag to select implementation
 
     Returns:
@@ -392,13 +445,24 @@ def equalize_clahe(
     .. note::
        The input is expected in :math:`[0, 1]`; each tile is equalized from a 256-bin lookup table.
        Values the lookup cannot index (outside roughly :math:`[0, 1]`) raise a ``RuntimeError``
-       naming the range. The check runs on CPU and CUDA (via ``torch._assert_async``); on MPS it is
-       skipped, as for :func:`kornia.enhance.equalize`.
+       naming the range. The check is ``torch._assert_async``, which has an MPS kernel from torch
+       ``2.13``; on an older MPS release the condition is read on the host instead, one device sync per
+       call, and is skipped there under ``torch.compile``, as for :func:`kornia.enhance.equalize`.
 
     """
     if not isinstance(clip_limit, float):
         raise TypeError(f"Input clip_limit type is not float. Got {type(clip_limit)}")
 
+    return _equalize_clahe(input, clip_limit, grid_size, slow_and_differentiable)
+
+
+def _equalize_clahe(
+    input: torch.Tensor,
+    clip_limit: Union[float, torch.Tensor],
+    grid_size: Tuple[int, int],
+    slow_and_differentiable: bool,
+) -> torch.Tensor:
+    """Equalize a BCHW tensor using a scalar or one tensor clip limit per image."""
     if not isinstance(grid_size, tuple):
         raise TypeError(f"Input grid_size type is not Tuple. Got {type(grid_size)}")
 
@@ -413,8 +477,9 @@ def equalize_clahe(
 
     # The tile LUTs are gathered below with ``(interp_tiles * 255).long()``, which is in bounds
     # only for values in (-1/255, 256/255). Check that domain without ``.item()``, so there is no
-    # device sync and fullgraph still compiles; inputs the lookup can index are unchanged.
-    _assert_async_value_check(
+    # device sync and fullgraph still compiles; on MPS before torch 2.13 it costs one host sync instead
+    # (see ``_lookup_value_check``). Inputs the lookup can index are unchanged.
+    _lookup_value_check(
         ((input * 255.0 > -1.0) & (input * 255.0 < 256.0)).all(),
         "equalize_clahe expects input values in [0, 1]. Scale the image into that range first, "
         "for example image / 255.0 for 8-bit data.",

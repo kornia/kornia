@@ -1,0 +1,737 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+from __future__ import annotations
+
+import math
+import warnings
+
+import pytest
+import torch
+
+import kornia
+import kornia.augmentation as K
+
+from testing.base import (
+    BaseTester,
+    supports_bilinear_3d_grid_sample,
+    supports_nearest_3d_grid_sample,
+    supports_replicate_padding_3d,
+    supports_unit_size_3d_affine_grid,
+)
+
+
+class Test3DAugmentationConventions(BaseTester):
+    def test_convention_rank_keepdim_and_dtype_guard(self, device, dtype):
+        # 3D augmentations promote D,H,W and C,D,H,W to B,C,D,H,W. keepdim restores only promoted dimensions.
+        augmentation = K.RandomHorizontalFlip3D(p=1.0, keepdim=True)
+        unchannelled = torch.arange(24, device=device, dtype=dtype).reshape(2, 3, 4)
+        channelled = unchannelled.unsqueeze(0)
+        batch = channelled.unsqueeze(0)
+        assert augmentation(unchannelled).shape == unchannelled.shape
+        assert augmentation(channelled).shape == channelled.shape
+        assert augmentation(batch).shape == batch.shape
+        with pytest.raises(TypeError, match="float16"):
+            augmentation(torch.ones(1, 1, 2, 3, 4, device=device, dtype=torch.int64))
+
+    def test_convention_flip_axes_and_inclusive_matrices(self, device, dtype):
+        volume = torch.zeros(1, 1, 3, 4, 5, device=device, dtype=dtype)
+        volume[..., 0, 2, 3] = 1
+        cases = (
+            (K.RandomHorizontalFlip3D, -1, [[-1, 0, 0, 4], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]),
+            (K.RandomVerticalFlip3D, -2, [[1, 0, 0, 0], [0, -1, 0, 3], [0, 0, 1, 0], [0, 0, 0, 1]]),
+            (K.RandomDepthicalFlip3D, -3, [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, -1, 2], [0, 0, 0, 1]]),
+        )
+        for cls, axis, matrix in cases:
+            augmentation = cls(p=1.0)
+            output = augmentation(volume)
+            self.assert_close(output, torch.flip(volume, (axis,)))
+            self.assert_close(augmentation.transform_matrix, volume.new_tensor(matrix)[None])
+
+    def test_convention_flip_matrix_keeps_the_input_dtype(self, device, dtype):
+        augmentation = K.RandomHorizontalFlip3D(p=1.0)
+        augmentation(torch.zeros(1, 1, 2, 3, 4, device=device, dtype=dtype))
+        assert augmentation.transform_matrix.dtype == dtype
+
+    @pytest.mark.device_agnostic
+    def test_convention_degrees_and_motion_angle_follow_xyz_order(self):
+        ranges = ((10.0, 10.0), (20.0, 20.0), (30.0, 30.0))
+        shape = (2, 1, 3, 4, 5)
+        affine = K.RandomAffine3D(ranges, p=1.0).forward_parameters(shape)
+        rotation = K.RandomRotation3D(ranges, p=1.0).forward_parameters(shape)
+        motion = K.RandomMotionBlur3D(3, ranges, (0.0, 0.0), p=1.0).forward_parameters(shape)
+        expected = torch.tensor([10.0, 20.0, 30.0]).expand(2, 3)
+        assert torch.equal(affine["angles"], expected)
+        assert torch.equal(torch.stack((rotation["yaw"], rotation["pitch"], rotation["roll"]), dim=-1), expected)
+        assert torch.equal(motion["angle_factor"], expected)
+        volume = torch.zeros(1, 1, 5, 5, 5)
+        for axis, diagonal in enumerate(((0, 0), (1, 1), (2, 2))):
+            degrees = [(0.0, 0.0)] * 3
+            degrees[axis] = (30.0, 30.0)
+            augmentation = K.RandomRotation3D(tuple(degrees), p=1.0, align_corners=True)
+            augmentation(volume)
+            assert augmentation.transform_matrix[0, diagonal[0], diagonal[1]] == 1
+
+    def test_convention_crop_size_padding_defaults_and_batch_gate(self, device, dtype):
+        if not supports_bilinear_3d_grid_sample(device, dtype):
+            pytest.skip("bilinear 3D grid_sample is unavailable for this device and dtype")
+        volume = torch.arange(120, device=device, dtype=dtype).reshape(1, 1, 4, 5, 6)
+        center = K.CenterCrop3D((2, 3, 4), p=1.0)
+        crop = K.RandomCrop3D((2, 3, 4), p=1.0, same_on_batch=True)
+        assert center.flags["align_corners"]
+        assert crop.flags["align_corners"]
+        assert center.flags["resample"].name == crop.flags["resample"].name == "BILINEAR"
+        assert center(volume).shape == crop(volume).shape == (1, 1, 2, 3, 4)
+        self.assert_close(center(volume), volume[..., 1:3, 1:4, 1:5])
+        self.assert_close(K.CenterCrop3D((2, 3, 4), p=0.0)(volume), volume, rtol=0, atol=0)
+        self.assert_close(K.RandomCrop3D((2, 3, 4), p=0.0)(volume), volume, rtol=0, atol=0)
+        padded = K.RandomCrop3D((2, 3, 4), padding=(1, 2, 3, 4, 5, 6), p=1.0).precrop_padding(volume)
+        assert padded.shape[-3:] == (15, 12, 9)
+        self.assert_close(padded[..., 5:9, 3:8, 1:7], volume)
+        padded = K.RandomCrop3D((2, 3, 4), padding=(1, 2, 3), p=1.0).precrop_padding(volume)
+        assert padded.shape[-3:] == (10, 9, 8)
+        self.assert_close(padded[..., 3:7, 2:7, 1:7], volume)
+        padded = K.RandomCrop3D((2, 3, 4), padding=1, p=1.0).precrop_padding(volume)
+        assert padded.shape[-3:] == (6, 7, 8)
+        self.assert_close(padded[..., 1:5, 1:6, 1:7], volume)
+        # The gate is call-wide: it never selects a strict subset of the rows.
+        for augmentation in (K.CenterCrop3D((2, 3, 4), p=0.5), K.RandomCrop3D((2, 3, 4), p=0.5)):
+            for _ in range(20):
+                batch_prob = augmentation.forward_parameters(torch.Size([8, 1, 4, 5, 6]))["batch_prob"]
+                assert batch_prob.numel() == 8
+                assert bool((batch_prob == batch_prob[0]).all())
+
+    def test_convention_random_crop3d_uses_sampled_nonzero_offset(self, device, dtype):
+        if not supports_nearest_3d_grid_sample(device, dtype):
+            pytest.skip("nearest 3D grid_sample is unavailable for this device and dtype")
+        volume = torch.arange(120, device=device, dtype=dtype).reshape(1, 1, 4, 5, 6)
+        augmentation = K.RandomCrop3D((2, 3, 4), resample="nearest", p=1.0)
+        params = augmentation.forward_parameters(volume.shape)
+        # The source cube starts at (x, y, z) = (1, 1, 1), deliberately excluding the top-left crop.
+        params["src"] = torch.tensor(
+            [[[1, 1, 1], [4, 1, 1], [4, 3, 1], [1, 3, 1], [1, 1, 2], [4, 1, 2], [4, 3, 2], [1, 3, 2]]],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(augmentation(volume, params=params), volume[..., 1:3, 1:4, 1:5])
+
+    @pytest.mark.parametrize("size", [(1, 3, 4), (2, 1, 4), (2, 3, 1), (1, 1, 1)])
+    def test_convention_crop3d_accepts_a_size_one_axis_4705(self, size, device, dtype):
+        # A crop is a translation. Solving the perspective system from the box vertices instead raised
+        # _LinAlgError here, because a size-1 axis makes the vertices coplanar.
+        if not supports_bilinear_3d_grid_sample(device, dtype):
+            pytest.skip("bilinear 3D grid_sample is unavailable for this device and dtype")
+        if not supports_unit_size_3d_affine_grid(device, dtype):
+            pytest.skip("3D affine_grid cannot build a size-1 axis for this device and dtype")
+        volume = torch.arange(120, device=device, dtype=dtype).reshape(1, 1, 4, 5, 6)
+        for augmentation in (K.CenterCrop3D(size, p=1.0), K.RandomCrop3D(size, p=1.0)):
+            output = augmentation(volume)
+            x, y, z = augmentation._params["src"][0, 0].long().tolist()
+            self.assert_close(output, volume[..., z : z + size[0], y : y + size[1], x : x + size[2]])
+
+    def test_convention_geometric_defaults_and_identity(self, device, dtype):
+        if not supports_bilinear_3d_grid_sample(device, dtype):
+            pytest.skip("bilinear 3D grid_sample is unavailable for this device and dtype")
+        volume = torch.arange(60, device=device, dtype=dtype).reshape(1, 1, 3, 4, 5) / 64
+        affine = K.RandomAffine3D((0.0, 0.0, 0.0), p=1.0)
+        rotation = K.RandomRotation3D((0.0, 0.0, 0.0), p=1.0)
+        perspective = K.RandomPerspective3D(0.0, p=1.0)
+        assert not affine.flags["align_corners"]
+        assert not rotation.flags["align_corners"]
+        assert not perspective.flags["align_corners"]
+        assert (
+            affine.flags["resample"].name
+            == rotation.flags["resample"].name
+            == perspective.flags["resample"].name
+            == "BILINEAR"
+        )
+        self.assert_close(affine(volume), volume)
+        self.assert_close(rotation(volume), volume)
+
+    def test_wart_random_perspective3d_identity_align_corners_false_4503(self, device, dtype):
+        # #4503: the default false-setting perspective path still mixes coordinate normalizations. A zero
+        # distortion matrix is identity, but a non-constant volume is resampled away from its voxel centres.
+        if not supports_bilinear_3d_grid_sample(device, dtype):
+            pytest.skip("bilinear 3D grid_sample is unavailable for this device and dtype")
+        volume = torch.arange(60, device=device, dtype=dtype).reshape(1, 1, 3, 4, 5)
+        default = K.RandomPerspective3D(0.0, p=1.0)
+        aligned = K.RandomPerspective3D(0.0, p=1.0, align_corners=True)
+        assert (default(volume) - volume).abs().max() > 1
+        self.assert_close(aligned(volume), volume)
+
+    @pytest.mark.xfail(strict=True, raises=AssertionError, reason="3D normalization ignores align_corners, #4503")
+    def test_convention_random_perspective3d_identity_align_corners_false(self, device, dtype):
+        if not supports_bilinear_3d_grid_sample(device, dtype):
+            pytest.skip("bilinear 3D grid_sample is unavailable for this device and dtype")
+        volume = torch.arange(60, device=device, dtype=dtype).reshape(1, 1, 3, 4, 5)
+        self.assert_close(K.RandomPerspective3D(0.0, p=1.0)(volume), volume)
+
+    @pytest.mark.parametrize("size", [(1, 4, 5), (4, 1, 5), (4, 5, 1), (1, 1, 5), (1, 4, 1), (4, 1, 1), (1, 1, 1)])
+    @pytest.mark.parametrize("align_corners", [False, True])
+    def test_convention_random_perspective3d_singleton_identity_5001(self, device, dtype, size, align_corners):
+        if not supports_bilinear_3d_grid_sample(device, dtype):
+            pytest.skip("bilinear 3D grid_sample is unavailable for this device and dtype")
+        volume = torch.linspace(0, 1, 2 * size[0] * size[1] * size[2], device=device, dtype=dtype).reshape(2, 1, *size)
+        augmentation = K.RandomPerspective3D(0.0, p=1.0, align_corners=align_corners)
+
+        output = augmentation(volume)
+
+        assert output.shape == volume.shape
+        assert output.device == volume.device
+        assert output.dtype == dtype
+        assert torch.isfinite(output).all()
+        matrix = augmentation.transform_matrix
+        assert torch.isfinite(matrix).all()
+        self.assert_close(matrix, torch.eye(4, device=device, dtype=dtype).expand(2, -1, -1))
+        # #4503 still affects output identity with align_corners=False, independently of the corner solve.
+        if align_corners:
+            self.assert_close(output, volume, low_tolerance=True)
+
+    @pytest.mark.parametrize("size", [(1, 4, 5), (4, 1, 5), (4, 5, 1), (1, 1, 5), (1, 4, 1), (4, 1, 1), (1, 1, 1)])
+    @pytest.mark.parametrize("align_corners", [False, True])
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_convention_random_perspective3d_singleton_axis_stays_fixed_5001(
+        self, device, dtype, size, align_corners, same_on_batch
+    ):
+        if not supports_bilinear_3d_grid_sample(device, dtype):
+            pytest.skip("bilinear 3D grid_sample is unavailable for this device and dtype")
+        torch.manual_seed(0)
+        volume = torch.rand(2, 1, *size, device=device, dtype=dtype)
+        augmentation = K.RandomPerspective3D(0.5, p=1.0, align_corners=align_corners, same_on_batch=same_on_batch)
+
+        output = augmentation(volume)
+
+        assert torch.isfinite(output).all()
+        start, end = augmentation._params["start_points"], augmentation._params["end_points"]
+        x, y, z = (max(n - 1, 1) for n in reversed(size))
+        expected = start.new_tensor(
+            [[0, 0, 0], [x, 0, 0], [x, y, 0], [0, y, 0], [0, 0, z], [x, 0, z], [x, y, z], [0, y, z]]
+        ).expand_as(start)
+        assert torch.equal(start, expected)
+        if same_on_batch:
+            assert torch.equal(end[0], end[1])
+        matrix = augmentation.transform_matrix.to(torch.float32)
+        assert torch.isfinite(matrix).all()
+        zz, yy, xx = torch.meshgrid(*(torch.arange(n, device=device, dtype=torch.float32) for n in size), indexing="ij")
+        points = torch.stack([xx, yy, zz], dim=-1).reshape(1, -1, 3).expand(2, -1, -1)
+        homogeneous = torch.cat([points, torch.ones_like(points[..., :1])], dim=-1) @ matrix.transpose(-1, -2)
+        mapped = homogeneous[..., :3] / homogeneous[..., 3:]
+        for axis, extent in enumerate(reversed(size)):
+            if extent == 1:
+                assert torch.equal(start[..., axis], end[..., axis])
+                self.assert_close(mapped[..., axis], torch.zeros_like(mapped[..., axis]), low_tolerance=True)
+            else:
+                assert not torch.allclose(mapped[..., axis], points[..., axis], atol=1e-2)
+
+    @pytest.mark.parametrize(
+        "depth,height,width", [(1, 4, 5), (4, 1, 5), (4, 5, 1), (1, 1, 5), (1, 4, 1), (4, 1, 1), (1, 1, 1), (2, 3, 4)]
+    )
+    @pytest.mark.device_agnostic
+    def test_convention_random_perspective3d_traced_singleton_matches_eager_5110(self, depth, height, width):
+        # #5110: torch.jit.trace passes the sizes as 0-d tensors. The generator's unit extent and the corner order
+        # that keeps a singleton x plane fixed both have to reach the traced graph; otherwise a size-1 depth or
+        # height raises a singular solve and a size-1 width warps differently from eager.
+        volume = torch.linspace(0, 1, 2 * depth * height * width).reshape(2, 1, depth, height, width)
+        augmentation = K.RandomPerspective3D(0.5, p=1.0, align_corners=True)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            traced = torch.jit.trace(augmentation, volume, check_trace=False)
+        torch.manual_seed(0)
+        output = traced(volume)
+        torch.manual_seed(0)
+        expected = augmentation(volume)
+        self.assert_close(output, expected, rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.device_agnostic
+    def test_wart_positive_roll_direction_splits_the_rotation_entry_points_4408(self):
+        # An off-centre marker in a 7 x 7 slice: a counter-clockwise quarter turn sends (row 1, col 4) to (2, 1),
+        # a clockwise one to (4, 5).
+        image = torch.zeros(1, 1, 7, 7)
+        image[0, 0, 1, 4] = 1
+        volume = image[:, :, None].repeat(1, 1, 7, 1, 1)
+        zero, quarter = (0.0, 0.0), (90.0, 90.0)
+
+        def marker(plane):
+            return divmod(int(plane.flatten().argmax()), 7)
+
+        assert marker(kornia.geometry.transform.rotate(image, torch.tensor([90.0]))[0, 0]) == (2, 1)
+        assert marker(K.RandomRotation(quarter, p=1.0)(image)[0, 0]) == (2, 1)
+        assert marker(K.RandomAffine3D((zero, zero, quarter), p=1.0)(volume)[0, 0, 3]) == (2, 1)
+        assert marker(K.RandomAffine(quarter, p=1.0)(image)[0, 0]) == (4, 5)
+        assert marker(K.RandomRotation3D((zero, zero, quarter), p=1.0)(volume)[0, 0, 3]) == (4, 5)
+        angles = [torch.tensor([value]) for value in (0.0, 0.0, 90.0)]
+        assert marker(kornia.geometry.transform.rotate3d(volume, *angles)[0, 0, 3]) == (4, 5)
+
+        # The motion-blur kernels split the same way: the 3D roll follows RandomRotation3D, the 2D angle does not.
+        def tilt(plane):
+            nonzero = (plane.abs() > 1e-4).nonzero().float()
+            centred = nonzero - nonzero.mean(0)
+            return float((centred[:, 0] * centred[:, 1]).sum())
+
+        impulse = torch.zeros(1, 1, 3, 15, 15)
+        impulse[0, 0, 1, 7, 7] = 1.0
+        rolled = K.RandomMotionBlur3D(9, (zero, zero, (30.0, 30.0)), 0.0, p=1.0)(impulse)[0, 0, 1]
+        flat = K.RandomMotionBlur(9, (30.0, 30.0), 0.0, p=1.0)(impulse[:, :, 1])[0, 0]
+        assert tilt(rolled) > 0  # rows increase with columns: clockwise as displayed
+        assert tilt(flat) == -tilt(rolled)
+
+    @pytest.mark.parametrize(
+        ("axis", "rotation_position", "affine_position"),
+        [(0, (1, 4, 3), (3, 2, 3)), (1, (3, 2, 3), (1, 2, 5)), (2, (1, 2, 5), (1, 4, 3))],
+    )
+    def test_wart_affine_and_rotation3d_move_an_asymmetric_marker_opposite_ways_4408(
+        self, axis, rotation_position, affine_position, device, dtype
+    ):
+        # #4408: RandomAffine3D turns the other way from RandomRotation3D; flips when either follows the other.
+        if not supports_nearest_3d_grid_sample(device, dtype):
+            pytest.skip("nearest 3D grid_sample is unavailable for this device and dtype")
+        # Odd, unequal D/H/W dimensions put the rotation centre on voxels and make all axes observable.
+        volume = torch.zeros(1, 1, 5, 7, 9, device=device, dtype=dtype)
+        volume[..., 1, 2, 3] = 1
+        degrees = [(0.0, 0.0)] * 3
+        degrees[axis] = (90.0, 90.0)
+        rotation = K.RandomRotation3D(tuple(degrees), resample="nearest", p=1.0, align_corners=True)
+        affine = K.RandomAffine3D(tuple(degrees), resample="nearest", p=1.0, align_corners=True)
+        rotated, affined = rotation(volume), affine(volume)
+        expected_rotation, expected_affine = torch.zeros_like(volume), torch.zeros_like(volume)
+        expected_rotation[(0, 0, *rotation_position)] = 1
+        expected_affine[(0, 0, *affine_position)] = 1
+        self.assert_close(rotated, expected_rotation)
+        self.assert_close(affined, expected_affine)
+
+    def test_convention_equalize_small_volume_roundoff(self, device, dtype):
+        small = torch.linspace(0.1, 0.9, 255, device=device, dtype=dtype).reshape(1, 1, 1, 1, 255)
+        augmentation = K.RandomEqualize3D(p=1.0)
+        self.assert_close(augmentation(small), small, rtol=0, atol=torch.finfo(dtype).eps)
+        self.assert_close(augmentation.transform_matrix, torch.eye(4, device=device, dtype=dtype)[None])
+        # 256 voxels is the smallest volume the lookup can change: 128 zeros and 128 singly occupied bins.
+        ramp = torch.arange(1, 129, device=device, dtype=dtype)
+        large = torch.cat([torch.zeros_like(ramp), ramp / 255]).reshape(1, 1, 1, 1, 256)
+        expected = torch.cat([torch.zeros_like(ramp), (ramp + 127) / 255]).reshape(1, 1, 1, 1, 256)
+        self.assert_close(augmentation(large), expected)
+
+    @pytest.mark.device_agnostic
+    def test_convention_equalize_range_check_on_cpu(self):
+        with pytest.raises(RuntimeError, match="values in \\[0, 1\\]"):
+            K.RandomEqualize3D(p=1.0)(torch.full((1, 1, 1, 1, 2), -0.1))
+
+    @pytest.mark.device_agnostic
+    def test_convention_motion_blur_defaults_and_probability(self):
+        augmentation = K.RandomMotionBlur3D(3, (0.0, 0.0, 0.0), 0.0, p=0.5)
+        assert augmentation.flags["resample"].name == "NEAREST"
+        assert augmentation.p_batch == 1.0
+        assert augmentation.p == 0.5
+
+    def test_convention_motion_blur3d_fixed_kernel_filters_an_impulse(self, device, dtype):
+        volume = torch.zeros(1, 1, 5, 5, 5, device=device, dtype=dtype)
+        volume[..., 2, 2, 2] = 1
+        output = K.RandomMotionBlur3D(3, (0.0, 0.0, 0.0), 0.0, p=1.0)(volume)
+        expected = torch.zeros_like(volume)
+        expected[..., 2, 2, 1:4] = 1 / 3
+        self.assert_close(output, expected)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(
+        ("axis", "line"),
+        [(0, (2, 2, slice(1, 4))), (1, (slice(1, 4), 2, 2)), (2, (2, slice(1, 4), 2))],
+        ids=["yaw-about-x", "pitch-about-y", "roll-about-z"],
+    )
+    def test_convention_motion_blur3d_kernel_uses_the_yaw_pitch_roll_order(self, axis, line):
+        # The zero-angle kernel is a line along x (W). A quarter turn about x leaves it in place, one about y
+        # stands it along D, and one about z lays it along H -- so the three angle slots are distinguishable.
+        volume = torch.zeros(1, 1, 5, 5, 5)
+        volume[..., 2, 2, 2] = 1
+        angle = [(0.0, 0.0)] * 3
+        angle[axis] = (90.0, 90.0)
+        output = K.RandomMotionBlur3D(3, tuple(angle), (0.0, 0.0), p=1.0)(volume)
+        expected = torch.zeros_like(volume)
+        expected[(0, 0, *line)] = 1 / 3
+        self.assert_close(output, expected, atol=1e-4, rtol=0)
+
+    @staticmethod
+    def _rodrigues(degrees: tuple[float, float, float]) -> torch.Tensor:
+        """Rodrigues' rotation matrix for an axis-angle vector given in degrees.
+
+        Written out rather than taken from kornia, so the pin below compares the implementation
+        against the formula its docstrings now describe and not against itself.
+        """
+        vector = torch.tensor(degrees, dtype=torch.float64)
+        axis = vector / vector.norm()
+        angle = math.radians(float(vector.norm()))
+        skew = torch.tensor(
+            [[0.0, -axis[2], axis[1]], [axis[2], 0.0, -axis[0]], [-axis[1], axis[0], 0.0]], dtype=torch.float64
+        )
+        return torch.eye(3, dtype=torch.float64) + math.sin(angle) * skew + (1 - math.cos(angle)) * (skew @ skew)
+
+    @pytest.mark.device_agnostic
+    def test_convention_degrees_are_one_axis_angle_vector_not_euler_5286(self):
+        # test_convention_degrees_and_motion_angle_follow_xyz_order and
+        # test_convention_motion_blur3d_kernel_uses_the_yaw_pitch_roll_order each move ONE angle, which cannot
+        # tell the axis-angle reading apart from per-axis Euler rotations: a single non-zero component behaves
+        # the same under both. Two non-zero components do not, so this moves two.
+        augmentation = K.RandomRotation3D(((90.0, 90.0), (90.0, 90.0), (0.0, 0.0)), p=1.0)
+        augmentation(torch.zeros(1, 1, 3, 3, 3))
+        rotation = augmentation.transform_matrix[0, :3, :3].to(dtype=torch.float64)
+
+        # (90, 90, 0) is one axis-angle vector, so it turns through 90 * sqrt(2) = 127.28 degrees
+        # about (1, 1, 0) / sqrt(2). Neither Euler order gives that matrix: a quarter turn about
+        # x and then about y, or the reverse, differs from it by 0.80 in its largest entry.
+        expected = self._rodrigues((90.0, 90.0, 0.0))
+        self.assert_close(rotation, expected, atol=1e-6, rtol=0)
+        quarter_x = torch.tensor([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]], dtype=torch.float64)
+        quarter_y = torch.tensor([[0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]], dtype=torch.float64)
+        for name, euler in (("x-then-y", quarter_y @ quarter_x), ("y-then-x", quarter_x @ quarter_y)):
+            assert not torch.allclose(rotation, euler, atol=1e-3), name
+
+    @pytest.mark.device_agnostic
+    def test_convention_rotate3d_matches_random_rotation3d_on_a_mixed_axis_5286(self):
+        # The same (90, 90, 0) triple through the geometry entry point the augmentation docstrings
+        # point at: both are the single Rodrigues rotation, and both differ from either Euler
+        # composition, so the two docstrings describe one convention rather than two.
+        rotate3d = kornia.geometry.transform.rotate3d
+        z, y, x = torch.meshgrid(*(torch.arange(9.0) - 4.0,) * 3, indexing="ij")
+        volume = torch.exp(-((x + 3.0) ** 2 + y**2 + z**2) / 0.5)[None, None]
+
+        def peak(result: torch.Tensor) -> tuple[int, int, int]:
+            index = int(result[0, 0].flatten().argmax())
+            return (index % 9 - 4, index // 9 % 9 - 4, index // 81 - 4)  # (x, y, z)
+
+        def rotate(yaw: float, pitch: float, roll: float, source: torch.Tensor | None = None) -> torch.Tensor:
+            return rotate3d(volume if source is None else source, *[torch.tensor([v]) for v in (yaw, pitch, roll)])
+
+        assert peak(rotate(90.0, 90.0, 0.0)) == (-1, -2, 2)
+        assert peak(K.RandomRotation3D(((90.0, 90.0), (90.0, 90.0), (0.0, 0.0)), p=1.0)(volume)) == (-1, -2, 2)
+        # Euler, x then y and y then x, puts the blob on the z axis or the y axis instead.
+        assert peak(rotate(0.0, 90.0, 0.0, rotate(90.0, 0.0, 0.0))) == (0, 0, 3)
+        assert peak(rotate(90.0, 0.0, 0.0, rotate(0.0, 90.0, 0.0))) == (0, -3, 0)
+
+    @pytest.mark.device_agnostic
+    def test_convention_3d_augmentations_have_no_direct_inverse(self):
+        augmentations = (
+            K.RandomAffine3D((0.0, 0.0, 0.0)),
+            K.CenterCrop3D((2, 2, 2)),
+            K.RandomCrop3D((2, 2, 2)),
+            K.RandomDepthicalFlip3D(),
+            K.RandomHorizontalFlip3D(),
+            K.RandomPerspective3D(),
+            K.RandomRotation3D((0.0, 0.0, 0.0)),
+            K.RandomVerticalFlip3D(),
+            K.RandomEqualize3D(),
+            K.RandomMotionBlur3D(3, (0.0, 0.0, 0.0), 0.0),
+        )
+        assert all(not hasattr(augmentation, "inverse") for augmentation in augmentations)
+
+    @pytest.mark.parametrize("axis", [0, 1, 2])
+    def test_wart_random_affine3d_rotation_is_the_rotation3d_transpose_4408(self, axis, device, dtype):
+        # The matrix literal anchors RandomRotation3D's own direction; #4408 is RandomAffine3D being its transpose.
+        if not supports_bilinear_3d_grid_sample(device, dtype):
+            pytest.skip("bilinear 3D grid_sample is unavailable for this device and dtype")
+        degrees = [(0.0, 0.0)] * 3
+        degrees[axis] = (30.0, 30.0)
+        volume = torch.zeros(1, 1, 5, 5, 5, device=device, dtype=dtype)
+        rotation = K.RandomRotation3D(tuple(degrees), p=1.0, align_corners=True)
+        affine = K.RandomAffine3D(tuple(degrees), p=1.0, align_corners=True)
+        rotation(volume)
+        affine(volume)
+        first, second = [index for index in range(3) if index != axis]
+        matrix = rotation.transform_matrix[0, :3, :3]
+        self.assert_close(matrix[first, second].abs(), matrix.new_tensor(0.5))
+        self.assert_close(matrix[first, second], -matrix[second, first])
+        expected_sign = {0: -1.0, 1: 1.0, 2: -1.0}[axis]
+        assert torch.sign(matrix[first, second]) == expected_sign
+        self.assert_close(affine.transform_matrix[0, :3, :3], matrix.transpose(-1, -2))
+
+    @pytest.mark.device_agnostic
+    def test_convention_random_crop3d_returns_the_unpadded_input_when_gated_off(self):
+        # #4654: a gated-off call returns the input, not the padded volume.
+        volume = torch.rand(1, 1, 4, 5, 6)
+        for kwargs in (
+            {"size": (2, 3, 4), "padding": 2},
+            {"size": (6, 7, 9), "pad_if_needed": True},
+            {"size": (2, 3, 4)},
+        ):
+            augmentation = K.RandomCrop3D(p=0.0, **kwargs)
+            self.assert_close(augmentation(volume), volume, rtol=0, atol=0)
+            self.assert_close(augmentation.transform_matrix, torch.eye(4)[None])
+        assert K.RandomCrop3D((2, 3, 4), padding=2, p=1.0)(volume).shape == (1, 1, 2, 3, 4)
+
+    @pytest.mark.device_agnostic
+    def test_convention_crop3d_validates_size_before_a_disabled_gate(self):
+        # The exception types are split between the two classes (#4417); this pin is about the order only.
+        volume = torch.rand(1, 1, 4, 5, 6)
+        with pytest.raises((AssertionError, ValueError)):
+            K.CenterCrop3D((5, 6, 7), p=0.0)(volume)
+        with pytest.raises((AssertionError, ValueError)):
+            K.RandomCrop3D((9, 9, 9), padding=1, p=0.0)(volume)
+        # (6, 5, 6) fits the padded (6, 7, 8) volume but not the (4, 5, 6) input: validation sees the padded one.
+        self.assert_close(K.RandomCrop3D((6, 5, 6), padding=1, p=0.0)(volume), volume, rtol=0, atol=0)
+        with pytest.raises((AssertionError, ValueError)):
+            K.RandomCrop3D((6, 5, 6), p=0.0)(volume)
+
+    @pytest.mark.device_agnostic
+    def test_wart_crop3d_siblings_disagree_on_size_errors_4417(self):
+        # #4417: flips when the two classes validate `size` the same way; which assertion fails depends on the
+        # direction of the fix.
+        volume = torch.rand(1, 1, 4, 5, 6)
+        with pytest.raises(AssertionError):
+            K.CenterCrop3D((5, 5, 6), p=1.0)(volume)
+        with pytest.raises(ValueError, match=r"cannot be smaller than crop size"):
+            K.RandomCrop3D((5, 5, 6), p=1.0)(volume)
+        assert K.CenterCrop3D(2, p=1.0)(volume).shape == (1, 1, 2, 2, 2)
+        with pytest.raises(AssertionError):
+            K.RandomCrop3D(2, p=1.0)(volume)
+        with pytest.raises(IndexError):
+            K.CenterCrop3D((2, 2), p=1.0)(volume)
+
+    @pytest.mark.parametrize(
+        "padding,size,marker",
+        [(1, (5, 5, 5), (2, 2, 2)), ((1, 2, 3), (9, 7, 5), (4, 3, 2))],
+    )
+    def test_convention_random_crop3d_matrix_maps_original_coordinates_4801(self, padding, size, marker, device, dtype):
+        # #4801: the recorded matrix includes the left, top, and front padding.
+        if not supports_nearest_3d_grid_sample(device, dtype):
+            pytest.skip("nearest 3D grid_sample is unavailable for this device and dtype")
+        volume = torch.zeros(1, 1, 3, 3, 3, device=device, dtype=dtype)
+        volume[..., 1, 1, 1] = 1
+        # Nearest sampling isolates the coordinate frame from half-precision interpolation roundoff.
+        augmentation = K.RandomCrop3D(size, padding=padding, resample="nearest", p=1.0)
+        output = augmentation(volume)
+        expected = torch.zeros_like(output)
+        expected[..., marker[0], marker[1], marker[2]] = 1
+        self.assert_close(output, expected)
+        mapped = augmentation.transform_matrix[0] @ volume.new_tensor([1, 1, 1, 1])
+        self.assert_close(mapped[:3], volume.new_tensor(marker[::-1]), rtol=0, atol=0)
+
+    @pytest.mark.device_agnostic
+    def test_convention_motion_blur3d_kernel_range_is_drawn_once_per_call_bounds_included(self):
+        # #4653: one size per call, both bounds reachable.
+        volume = torch.rand(6, 1, 4, 5, 6)
+        sizes = set()
+        for seed in range(40):
+            torch.manual_seed(seed)
+            augmentation = K.RandomMotionBlur3D((3, 7), 35.0, 0.5, p=1.0)
+            assert augmentation(volume).shape == volume.shape
+            drawn = augmentation._params["ksize_factor"]
+            assert drawn.shape == (6,)
+            assert drawn.unique().numel() == 1
+            sizes.update(drawn.tolist())
+        assert sizes == {3, 5, 7}
+        rounded_up = K.RandomMotionBlur3D((4, 4), 35.0, 0.5, p=1.0)
+        rounded_up(volume)
+        assert rounded_up._params["ksize_factor"].tolist() == [5] * 6
+        with pytest.raises(ValueError, match="smaller than or equal to"):
+            K.RandomMotionBlur3D((7, 3), 35.0, 0.5)
+
+    # The three rows of #4999: "reflect" and "circular" refuse a volume they cannot pad with a ValueError naming the
+    # class and the axis, as RandomMotionBlur does for an image (#4784), and "constant" runs on it.
+    @pytest.mark.parametrize(
+        ("shape", "border", "kernel_size", "too_short"),
+        [
+            ((1, 1, 1, 8, 8), "reflect", 3, "depth"),
+            ((1, 1, 1, 1, 1), "circular", 5, "depth"),
+            ((1, 1, 1, 8, 8), "constant", 3, None),
+        ],
+    )
+    def test_convention_motion_blur3d_names_the_size_it_needs_4999(
+        self, device, dtype, shape, border, kernel_size, too_short
+    ):
+        volume = torch.rand(*shape, device=device, dtype=dtype)
+        message = f"RandomMotionBlur3D cannot filter a volume this small.*along {too_short}"
+        # A ranged kernel_size is checked against the size drawn for the call.
+        for size in (kernel_size, (kernel_size, kernel_size)):
+            augmentation = K.RandomMotionBlur3D(size, 35.0, 0.5, border_type=border, p=1.0)
+            if too_short is None:
+                assert augmentation(volume).shape == volume.shape
+            else:
+                with pytest.raises(ValueError, match=message):
+                    augmentation(volume)
+        # "replicate" invents its padding as "constant" does, so it runs on every row too.
+        if supports_replicate_padding_3d(device, dtype):
+            replicate = K.RandomMotionBlur3D(kernel_size, 35.0, 0.5, border_type="replicate", p=1.0)
+            assert replicate(volume).shape == volume.shape
+
+    # Each spatial axis needs ``k // 2 + 1`` voxels under "reflect" and ``k // 2`` under "circular": a volume at
+    # exactly that size runs, and one voxel fewer along depth, height or width raises, naming that axis.
+    @pytest.mark.parametrize("axis", ["depth", "height", "width"])
+    @pytest.mark.parametrize(("border", "bound"), [("reflect", 3), ("circular", 2)])
+    def test_convention_motion_blur3d_runs_at_the_size_bound_4999(self, device, dtype, border, bound, axis):
+        def volume(side: int) -> torch.Tensor:
+            shape = [1, 1, 6, 6, 6]
+            shape[2 + ("depth", "height", "width").index(axis)] = side
+            return torch.rand(*shape, device=device, dtype=dtype)
+
+        augmentation = K.RandomMotionBlur3D(5, 35.0, 0.5, border_type=border, p=1.0)
+        at_bound = volume(bound)
+        assert augmentation(at_bound).shape == at_bound.shape
+        with pytest.raises(ValueError, match=rf"needs at least {bound} voxel\(s\) along {axis}"):
+            augmentation(volume(bound - 1))
+
+    @pytest.mark.device_agnostic
+    def test_convention_only_transplantation3d_exposes_p_batch(self):
+        import inspect
+
+        def concrete(cls):
+            for sub in cls.__subclasses__():
+                # Library classes only: other test modules define their own 3D subclasses in the same process.
+                if sub.__module__.startswith("kornia.") and not sub.__name__.endswith("Base3D"):
+                    yield sub
+                yield from concrete(sub)
+
+        # Enumerate the subclasses rather than a hand-written list or `__all__`.
+        classes = set(concrete(K.AugmentationBase3D))
+        assert {K.RandomAffine3D, K.CenterCrop3D, K.RandomEqualize3D, K.RandomTransplantation3D} <= classes
+        exposing = {cls.__name__ for cls in classes if "p_batch" in inspect.signature(cls.__init__).parameters}
+        assert exposing == {"RandomTransplantation3D"}
+        with pytest.raises(TypeError):
+            K.RandomHorizontalFlip3D(p=1.0, p_batch=0.5)
+        volume = torch.rand(4, 1, 3, 4, 5)
+        mask = torch.randint(0, 3, (4, 3, 4, 5))
+        skipped, _ = K.RandomTransplantation3D(p=1.0, p_batch=0.0)(volume, mask, data_keys=["input", "mask"])
+        self.assert_close(skipped, volume, rtol=0, atol=0)
+
+    @pytest.mark.device_agnostic
+    def test_convention_random_crop3d_rejects_a_one_voxel_oversized_crop_4688(self):
+        # #4688: a crop one voxel larger than the input raises on every axis; the whole volume is a valid crop.
+        volume = torch.ones(1, 1, 4, 5, 6)
+        for size in ((5, 5, 6), (4, 6, 6), (4, 5, 7), (6, 5, 6)):
+            with pytest.raises((AssertionError, ValueError)):
+                K.RandomCrop3D(size, p=1.0)(volume)
+        self.assert_close(K.RandomCrop3D((4, 5, 6), p=1.0)(volume), volume)
+
+    @pytest.mark.device_agnostic
+    def test_perspective3d_float64_identity_is_exact_4776(self):
+        # #4776: the perspective sampling grid is built in float64, so the identity warp is exact to float64
+        # roundoff like the rotation path, at any size.
+        for shape in ((1, 1, 4, 5, 6), (1, 1, 8, 16, 32)):
+            volume = torch.rand(*shape, dtype=torch.float64)
+            rotation = float((K.RandomRotation3D(0.0, p=1.0, align_corners=True)(volume) - volume).abs().max())
+            residual = float((K.RandomPerspective3D(0.0, p=1.0, align_corners=True)(volume) - volume).abs().max())
+            assert rotation < 1e-12
+            assert residual < 1e-12
+
+    @pytest.mark.device_agnostic
+    def test_convention_random_crop3d_offset_reaches_both_ends(self):
+        # The offset pin overwrites params["src"], so the sampler's inclusive range is never measured.
+        aug = K.RandomCrop3D((2, 3, 4), p=1.0)
+        starts = [set(), set(), set()]
+        for _ in range(20):
+            src = aug.forward_parameters(torch.Size([8, 1, 4, 5, 6]))["src"]
+            for axis in range(3):
+                starts[axis].update(int(value) for value in src[:, 0, axis])
+        # x: 6 - 4, y: 5 - 3, z: 4 - 2 -> the inclusive range [0, 2] on every axis, each with its own bound.
+        assert starts == [{0, 1, 2}] * 3
+
+    @pytest.mark.device_agnostic
+    def test_convention_random_crop3d_fixed_padding_feeds_pad_if_needed(self):
+        # `padding` and `pad_if_needed` together: the second padding pass keeps per-axis bookkeeping.
+        volume = torch.rand(1, 1, 4, 5, 6)
+        aug = K.RandomCrop3D((12, 3, 3), padding=(0, 0, 0, 0, 3, 3), pad_if_needed=True, p=1.0)
+        assert aug._compute_padding(tuple(volume.shape), aug.flags) == [[0, 0, 0, 0, 3, 3], [0, 0, 0, 0, 2, 2]]
+        assert aug.precrop_padding(volume).shape[-3:] == (14, 5, 6)
+        # Six different paddings and three different deficits, so that each axis has to read its own pair.
+        aug = K.RandomCrop3D((16, 14, 12), padding=(1, 2, 3, 4, 5, 6), pad_if_needed=True, p=1.0)
+        assert aug._compute_padding(tuple(volume.shape), aug.flags) == [
+            [1, 2, 3, 4, 5, 6],
+            [0, 0, 0, 0, 1, 1],
+            [0, 0, 2, 2, 0, 0],
+            [3, 3, 0, 0, 0, 0],
+        ]
+        assert aug.precrop_padding(volume).shape[-3:] == (17, 16, 15)
+
+    @pytest.mark.device_agnostic
+    def test_convention_motion_blur3d_rejects_a_mixed_replayed_kernel_size(self):
+        volume = torch.rand(2, 1, 5, 5, 5)
+        aug = K.RandomMotionBlur3D((3, 7), 35.0, 0.5, p=1.0)
+        params = aug.forward_parameters(volume.shape)
+        params["ksize_factor"] = torch.tensor([3, 7], dtype=torch.int32)
+        with pytest.raises(RuntimeError):
+            aug(volume, params=params)
+
+    @pytest.mark.device_agnostic
+    def test_convention_random_affine3d_two_value_scale_is_isotropic_4704(self):
+        # A two-value scale draws one factor per sample for all three axes, as the 2D class does; the
+        # three-pair form draws each axis independently.
+        flat = K.RandomAffine(0.0, scale=(0.5, 2.0), p=1.0).forward_parameters(torch.Size([64, 1, 6, 7]))["scale"]
+        assert bool((flat[:, 0] == flat[:, 1]).all())
+        aug = K.RandomAffine3D(0.0, scale=(0.5, 2.0), p=1.0)
+        aug(torch.rand(64, 1, 5, 6, 7))
+        scale = aug._params["scale"]
+        assert scale.shape == (64, 3)
+        assert bool((scale[:, 0] == scale[:, 1]).all())
+        assert bool((scale[:, 1] == scale[:, 2]).all())
+        assert 0.5 <= float(scale.min())
+        assert float(scale.max()) <= 2.0
+        assert len(scale[:, 0].unique()) > 1
+        self.assert_close(aug.transform_matrix[:, :3, :3].diagonal(dim1=-2, dim2=-1), scale)
+        shared = K.RandomAffine3D(0.0, scale=(0.5, 2.0), same_on_batch=True, p=1.0)
+        shared_scale = shared.forward_parameters(torch.Size([64, 1, 5, 6, 7]))["scale"]
+        assert len(shared_scale.unique()) == 1
+        per_axis = K.RandomAffine3D(0.0, scale=((0.5, 2.0), (0.5, 2.0), (0.5, 2.0)), p=1.0)
+        axes = per_axis.forward_parameters(torch.Size([64, 1, 5, 6, 7]))["scale"]
+        assert axes.shape == (64, 3)
+        assert not bool((axes[:, 0] == axes[:, 1]).any())
+        assert not bool((axes[:, 1] == axes[:, 2]).any())
+        # The two-value form is range-checked under its own name.
+        with pytest.raises(ValueError, match="scale out of bounds"):
+            K.RandomAffine3D(0.0, scale=(-0.5, 2.0), p=1.0)
+
+    @pytest.mark.device_agnostic
+    def test_convention_random_affine3d_six_pair_shears_keep_their_lower_bound(self):
+        pairs = ((1, 2), (3, 4), (5, 6), (7, 8), (9, 10), (11, 12))
+        params = K.RandomAffine3D(0.0, shears=pairs, p=1.0).forward_parameters(torch.Size([64, 1, 4, 5, 6]))
+        for key, (low, high) in zip(("sxy", "sxz", "syx", "syz", "szx", "szy"), pairs):
+            assert low <= float(params[key].min())
+            assert float(params[key].max()) <= high
+
+    @pytest.mark.device_agnostic
+    def test_convention_random_crop3d_padding_modes_are_those_of_f_pad(self):
+        volume = torch.rand(2, 1, 4, 5, 6)
+        for mode in ("constant", "reflect", "replicate", "circular"):
+            assert K.RandomCrop3D((5, 6, 7), padding=1, padding_mode=mode, p=1.0)(volume).shape == (2, 1, 5, 6, 7)
+
+    @pytest.mark.device_agnostic
+    def test_convention_3d_generator_keys_match_their_returns_sections(self):
+        from kornia.augmentation import random_generator as rg
+
+        shape = torch.Size([3, 1, 4, 5, 6])
+        assert rg.AffineGenerator3D(10.0)(shape)["angles"].shape == (3, 3)
+        perspective = rg.PerspectiveGenerator3D(0.3)(shape)
+        assert set(perspective) == {"start_points", "end_points"}
+        assert perspective["start_points"].shape == perspective["end_points"].shape == (3, 8, 3)
+        blur = rg.MotionBlurGenerator3D(3, 35.0, 0.5)(shape)
+        assert blur["angle_factor"].shape == (3, 3)
+        assert blur["ksize_factor"].shape == (3,)
+        # "odd and at least 3": a kernel of one voxel is rejected.
+        with pytest.raises(AssertionError, match="must be odd and greater than 3"):
+            K.RandomMotionBlur3D(1, 35.0, 0.5, p=1.0)(torch.rand(1, 1, 5, 5, 5))
+
+    @pytest.mark.device_agnostic
+    def test_convention_identity_warp_is_roundoff_exact_only_in_full_precision(self):
+        # In half precision the sampling grid is itself rounded, so a large volume moves far beyond roundoff.
+        large = torch.rand(1, 1, 32, 48, 96)
+        assert float((K.RandomRotation3D(0.0, p=1.0)(large) - large).abs().max()) < 1e-3
+        if supports_bilinear_3d_grid_sample(torch.device("cpu"), torch.bfloat16):
+            half = large.to(torch.bfloat16)
+            for aug in (K.RandomRotation3D(0.0, p=1.0), K.RandomAffine3D(0.0, p=1.0)):
+                assert float((aug(half) - half).abs().max()) > 0.1
+
+    @pytest.mark.device_agnostic
+    def test_convention_center_crop3d_centres_each_axis_with_its_own_offset(self):
+        # Offsets (z, y, x) = (1, 2, 4), all different: a (1, 1, 1) fixture cannot tell the axes apart.
+        volume = torch.arange(6 * 8 * 12.0).reshape(1, 1, 6, 8, 12)
+        output = K.CenterCrop3D((4, 4, 4), resample="nearest", p=1.0)(volume)
+        self.assert_close(output, volume[..., 1:5, 2:6, 4:8], rtol=0, atol=0)

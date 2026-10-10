@@ -204,8 +204,9 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False, force_contiguou
     elif len(input_shape) == 3:
         # (C, H, W) -> (H, W, C)
         if input_shape[0] == 1:
-            # Grayscale for proper plt.imshow needs to be (H,W)
-            image = image.squeeze()
+            # Grayscale for proper plt.imshow needs to be (H,W); squeeze only the channel axis so that a unit H or W
+            # of a 1-row or 1-column image survives.
+            image = image.squeeze(0)
         else:
             image = image.permute(1, 2, 0)
     elif len(input_shape) == 4:
@@ -298,9 +299,8 @@ def make_grid(tensor: torch.Tensor, n_row: Optional[int] = None, padding: int = 
     # crop trailing right/bottom padding to match original
     combined_H = n_row * padded_H - padding
     combined_W = n_col * padded_W - padding
-    combined = combined[:, :combined_H, :combined_W]
 
-    return combined
+    return combined[:, :combined_H, :combined_W]
 
 
 def perform_keep_shape_image(f: Callable[..., torch.Tensor]) -> Callable[..., torch.Tensor]:

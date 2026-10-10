@@ -98,8 +98,7 @@ class MultiHeadAttention(nn.Module):
         out = torch.einsum("bhal, bhlv -> bhav ", att, v)
         out = out.permute(0, 2, 1, 3).contiguous().view(B, N, -1)
         out = self.projection(out)
-        out = self.projection_drop(out)
-        return out
+        return self.projection_drop(out)
 
 
 class TransformerEncoderBlock(nn.Sequential):
@@ -277,8 +276,7 @@ class VisionTransformer(nn.Module):
 
         out = self.patch_embedding(x)
         out = self.encoder(out)
-        out = self.norm(out)
-        return out
+        return self.norm(out)
 
     @staticmethod
     def from_config(variant: str, pretrained: bool = False, **kwargs: Any) -> VisionTransformer:
@@ -329,9 +327,13 @@ class VisionTransformer(nn.Module):
 
 _AVAILABLE_WEIGHTS = ["vit_l/16", "vit_b/16", "vit_s/16", "vit_ti/16", "vit_b/32", "vit_s/32"]
 
+# Hub repositories that do not follow the ``{model_type}{patch_size}_augreg_i21k_r224`` pattern.
+_HUB_REPO_OVERRIDES = {"vit_s/32": "vit_s32_i21k_augreg_i21k_r224"}
+
 
 def _get_weight_url(variant: str) -> str:
     """Return the URL of the model weights."""
     KORNIA_CHECK(variant in _AVAILABLE_WEIGHTS, f"Variant {variant} does not have pre-trained checkpoint")
     model_type, patch_size = variant.split("/")
-    return f"https://huggingface.co/kornia/{model_type}{patch_size}_augreg_i21k_r224/resolve/main/{model_type}-{patch_size}.pth"
+    repo = _HUB_REPO_OVERRIDES.get(variant, f"{model_type}{patch_size}_augreg_i21k_r224")
+    return f"https://huggingface.co/kornia/{repo}/resolve/main/{model_type}-{patch_size}.pth"

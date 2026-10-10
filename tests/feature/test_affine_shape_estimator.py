@@ -40,6 +40,15 @@ class OverflowShape(torch.nn.Module):
         return torch.cat([tiny, one, tiny], dim=-1)
 
 
+class NearlySingularShape(torch.nn.Module):
+    # In float32, a * c - b * b is positive (3e-8) but a - (b / sqrt(c)) ** 2, the square of the first diagonal
+    # entry of the inverse LAF that ellipse_to_laf forms, rounds to 0. c is a perfect square, so sqrt(c) is exact on
+    # every backend and only the correctly rounded multiplications and division decide where the two paths land.
+    def forward(self, patches: torch.Tensor) -> torch.Tensor:
+        zero = patches.mean(dim=(-2, -1), keepdim=False).unsqueeze(-1) * 0
+        return torch.cat([zero + 0.75, zero + 0.6495190262794495, zero + 0.5625], dim=-1)
+
+
 class SingularAffNetOutput(torch.nn.Module):
     def forward(self, patches: torch.Tensor) -> torch.Tensor:
         zero = patches.mean(dim=(-3, -2, -1), keepdim=True) * 0
@@ -163,9 +172,10 @@ class TestLAFAffineShapeEstimator(BaseTester):
         aff = LAFAffineShapeEstimator(32, preserve_orientation=False).to(device, dtype)
         inp = torch.zeros(1, 1, 32, 32, device=device, dtype=dtype)
         inp[:, :, 15:-15, 9:-9] = 1
-        laf = torch.tensor([[[[20.0, 0.0, 16.0], [0.0, 20.0, 16.0]]]], device=device, dtype=dtype)
+        # The bar (rows 15-16, columns 9-22) is centred on pixel (15.5, 15.5), where the LAF sits.
+        laf = torch.tensor([[[[20.0, 0.0, 15.5], [0.0, 20.0, 15.5]]]], device=device, dtype=dtype)
         new_laf = aff(laf, inp)
-        expected = torch.tensor([[[[35.078, 0.0, 16.0], [0.0, 11.403, 16.0]]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[[36.6428, 0.0, 15.5], [0.0, 10.9162, 15.5]]]], device=device, dtype=dtype)
         if dtype in (torch.float16, torch.bfloat16):
             # Use the repository's dtype-specific tolerances for the newly supported half-precision path.
             self.assert_close(new_laf, expected)
@@ -176,9 +186,10 @@ class TestLAFAffineShapeEstimator(BaseTester):
         aff = LAFAffineShapeEstimator(32, preserve_orientation=True).to(device, dtype)
         inp = torch.zeros(1, 1, 32, 32, device=device, dtype=dtype)
         inp[:, :, 15:-15, 9:-9] = 1
-        laf = torch.tensor([[[[0.0, 20.0, 16.0], [-20.0, 0.0, 16.0]]]], device=device, dtype=dtype)
+        # The bar (rows 15-16, columns 9-22) is centred on pixel (15.5, 15.5), where the LAF sits.
+        laf = torch.tensor([[[[0.0, 20.0, 15.5], [-20.0, 0.0, 15.5]]]], device=device, dtype=dtype)
         new_laf = aff(laf, inp)
-        expected = torch.tensor([[[[0.0, 35.078, 16.0], [-11.403, 0, 16.0]]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[[0.0, 36.6428, 15.5], [-10.9162, 0, 15.5]]]], device=device, dtype=dtype)
         if dtype in (torch.float16, torch.bfloat16):
             # Orientation recovery adds small absolute noise to entries whose ideal value is zero.
             self.assert_close(new_laf, expected, atol=2e-2, rtol=1e-3 if dtype == torch.float16 else 7.8e-3)
@@ -189,9 +200,10 @@ class TestLAFAffineShapeEstimator(BaseTester):
         aff = LAFAffineShapeEstimator(32, preserve_orientation=False).to(device)
         inp = torch.zeros(1, 1, 32, 32, device=device)
         inp[:, :, 15:-15, 9:-9] = 1
-        laf = torch.tensor([[[[0.0, 20.0, 16.0], [-20.0, 0.0, 16.0]]]], device=device)
+        # The bar (rows 15-16, columns 9-22) is centred on pixel (15.5, 15.5), where the LAF sits.
+        laf = torch.tensor([[[[0.0, 20.0, 15.5], [-20.0, 0.0, 15.5]]]], device=device)
         new_laf = aff(laf, inp)
-        expected = torch.tensor([[[[35.078, 0, 16.0], [0, 11.403, 16.0]]]], device=device)
+        expected = torch.tensor([[[[36.6428, 0, 15.5], [0, 10.9162, 15.5]]]], device=device)
         self.assert_close(new_laf, expected, atol=1e-4, rtol=1e-4)
 
     def test_degenerate_ellipse_falls_back_to_input_laf_float16(self, device, dtype):
@@ -262,6 +274,22 @@ class TestLAFAffineShapeEstimator(BaseTester):
         assert laf.grad is not None
         assert torch.isfinite(laf.grad).all()
 
+    def test_nearly_singular_shape_falls_back_with_finite_backward(self, device):
+        dtype = torch.float32
+        img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype, requires_grad=True)
+        laf = torch.tensor([[[[8.0, 0.0, 16.0], [0.0, 8.0, 16.0]]]], device=device, dtype=dtype, requires_grad=True)
+        a, b, c = NearlySingularShape()(img).unbind(-1)
+        assert a * c - b * b > 0
+        assert a - (b / c.sqrt()).square() <= 0
+        out = LAFAffineShapeEstimator(32, NearlySingularShape(), preserve_orientation=True).to(device, dtype)(laf, img)
+        assert torch.isfinite(out).all()
+        self.assert_close(out, laf)
+        out.sum().backward()
+        assert img.grad is not None
+        assert torch.isfinite(img.grad).all()
+        assert laf.grad is not None
+        assert torch.isfinite(laf.grad).all()
+
     def test_degenerate_ellipse_fallback_respects_upright_contract(self, device):
         dtype = torch.float32
         img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
@@ -272,7 +300,8 @@ class TestLAFAffineShapeEstimator(BaseTester):
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 40, 40
         patches = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
-        laf = torch.tensor([[[[5.0, 0.0, 26.0], [0.0, 5.0, 26.0]]]], device=device, dtype=torch.float64)
+        # Off the pixel lattice: a sample exactly on a pixel centre sits on a kink of bilinear interpolation.
+        laf = torch.tensor([[[[5.0, 0.0, 26.3], [0.0, 5.0, 26.3]]]], device=device, dtype=torch.float64)
         self.gradcheck(
             LAFAffineShapeEstimator(11).to(device),
             (laf, patches),
@@ -342,17 +371,19 @@ class TestLAFAffNetShapeEstimator(BaseTester):
         aff = LAFAffNetShapeEstimator(True).to(device, dtype).eval()
         inp = torch.zeros(1, 1, 32, 32, device=device, dtype=dtype)
         inp[:, :, 15:-15, 9:-9] = 1
-        laf = torch.tensor([[[[20.0, 0.0, 16.0], [0.0, 20.0, 16.0]]]], device=device, dtype=dtype)
+        # The bar (rows 15-16, columns 9-22) is centred on pixel (15.5, 15.5), where the LAF sits.
+        laf = torch.tensor([[[[20.0, 0.0, 15.5], [0.0, 20.0, 15.5]]]], device=device, dtype=dtype)
         new_laf = aff(laf, inp)
-        expected = torch.tensor([[[[33.2073, 0.0, 16.0], [-1.3766, 12.0456, 16.0]]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[[40.87576, 0.0, 15.5], [-0.38244, 9.78575, 15.5]]]], device=device, dtype=dtype)
         if dtype in (torch.float16, torch.bfloat16):
             # AffNet's convolutions carry reduced-precision noise proportional to the LAF's own scale
-            # (~33 px), not to each entry's magnitude, so the small a21 entry (-1.38) cannot be held to a
-            # relative bound: it misses by 0.024 (float16) and 0.031 (bfloat16), bitwise identical on
-            # torch 2.9.1 and 2.14.0. The 1e-1 bound is ~3 float16 ULP at that scale, so it is set by the
-            # dtype rather than by the observed miss and does not need re-tuning per platform. It still
-            # discriminates: a genuine shape regression moves these entries by O(1).
-            self.assert_close(new_laf, expected, atol=1e-1, rtol=1e-3 if dtype == torch.float16 else 7.8e-3)
+            # (~41 px), not to each entry's magnitude, so the small a21 entry (-0.38) cannot be held to a
+            # relative bound: the largest miss is 0.032 in float16 and 0.149 in bfloat16 (torch 2.14.0).
+            # The bounds are set by the dtype, not by the observed miss: ~3 float16 ULP (1e-1) and one
+            # bfloat16 ULP (0.25) at that scale. They still discriminate: a genuine shape regression
+            # moves these entries by O(1).
+            atol = 1e-1 if dtype == torch.float16 else 0.25
+            self.assert_close(new_laf, expected, atol=atol, rtol=1e-3 if dtype == torch.float16 else 7.8e-3)
         else:
             atol = 5e-3 if (device.type == "cuda" and dtype == torch.float32) else 1e-4
             self.assert_close(new_laf, expected, atol=atol, rtol=1e-4)

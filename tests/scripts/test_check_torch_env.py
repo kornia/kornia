@@ -142,7 +142,8 @@ class TestCheckEnvironment:
         problems = check_environment("2.6.0+cpu", CPU_WHEEL_REQUIRES, installed, "pinned", "2.6.0", LINUX_PY311)
 
         assert len(problems) == 1
-        assert "sympy" in problems[0] and "not installed" in problems[0]
+        assert "sympy" in problems[0]
+        assert "not installed" in problems[0]
 
     def test_flags_a_requirement_left_at_the_locked_version(self):
         # The failure mode option 1 of #4199 addresses: a dependency the pin step did not move.
@@ -193,8 +194,10 @@ def test_scan_installed_finds_no_duplicates_after_setuptools_adds_its_vendor_pat
         [
             sys.executable,
             "-c",
-            f"import sys; sys.path.insert(0, {str(script_dir)!r}); import setuptools; "
-            "from check_torch_env import scan_installed; assert scan_installed()[1] == {}",
+            (
+                f"import sys; sys.path.insert(0, {str(script_dir)!r}); import setuptools; "
+                "from check_torch_env import scan_installed; assert scan_installed()[1] == {}"
+            ),
         ],
         check=False,
         capture_output=True,
@@ -232,6 +235,38 @@ def test_scan_installed_keeps_first_path_entry_when_locations_disagree(tmp_path)
 
     assert installed["example"] == "1.0"
     assert duplicates == {}
+
+
+class _Distribution:
+    def __init__(self, name, version, path):
+        self.metadata = {"Name": name}
+        self.version = version
+        self.path = path
+
+    def locate_file(self, suffix):
+        return self.path / suffix
+
+
+def test_scan_installed_uses_the_first_sys_path_entry(monkeypatch, tmp_path):
+    first = _Distribution("packaging", "25.0", tmp_path / "venv")
+    shadowed = _Distribution("packaging", "26.0", tmp_path / "pixi")
+    monkeypatch.setattr(check_torch_env, "distributions", lambda: [first, shadowed])
+
+    installed, duplicates = scan_installed()
+
+    assert installed == {"packaging": "25.0"}
+    assert duplicates == {}
+
+
+def test_scan_installed_reports_conflicting_metadata_in_one_path(monkeypatch, tmp_path):
+    first = _Distribution("packaging", "25.0", tmp_path / "venv")
+    conflicting = _Distribution("packaging", "26.0", tmp_path / "venv")
+    monkeypatch.setattr(check_torch_env, "distributions", lambda: [first, conflicting])
+
+    installed, duplicates = scan_installed()
+
+    assert installed == {"packaging": "25.0"}
+    assert duplicates == {"packaging": ["25.0", "26.0"]}
 
 
 class TestMain:

@@ -91,7 +91,7 @@ class TestAddWeighted(BaseTester):
         with pytest.raises(Exception):
             TestAddWeighted.fcn(src1, 1.0, src2, 1.0, 0.0)
 
-    @pytest.mark.parametrize("size1, size2", [((2, 3, 5, 5), (2, 3, 5, 5)), ((2, 3, 5, 5), (2, 3, 5, 5))])
+    @pytest.mark.parametrize("size1, size2", [((2, 3, 5, 5), (2, 3, 5, 5))])
     @pytest.mark.parametrize("alpha", [torch.randn(2, 3, 5, 5), 1.0])
     @pytest.mark.parametrize("beta", [torch.randn(2, 3, 5, 5), 1.0])
     @pytest.mark.parametrize("gamma", [torch.randn(2, 3, 5, 5), 1.0])
@@ -105,6 +105,30 @@ class TestAddWeighted(BaseTester):
         if isinstance(gamma, torch.Tensor):
             gamma = gamma.to(src1)
         self.assert_close(TestAddWeighted.fcn(src1, alpha, src2, beta, gamma), src1 * alpha + src2 * beta + gamma)
+
+    @pytest.mark.parametrize("coef_shape", [(), (1,), (5,), (2, 1, 1, 1), (1, 3, 1, 1), (3, 5, 5)])
+    def test_broadcastable_tensor_coefficients(self, device, dtype, coef_shape):
+        src1 = torch.randn(2, 3, 5, 5, device=device, dtype=dtype)
+        src2 = torch.randn(2, 3, 5, 5, device=device, dtype=dtype)
+        alpha = torch.rand(coef_shape, device=device, dtype=dtype)
+        beta = torch.rand(coef_shape, device=device, dtype=dtype)
+        gamma = torch.rand(coef_shape, device=device, dtype=dtype)
+
+        actual = TestAddWeighted.fcn(src1, alpha, src2, beta, gamma)
+
+        assert actual.shape == src1.shape
+        self.assert_close(actual, src1 * alpha + src2 * beta + gamma)
+        self.assert_close(kornia.enhance.AddWeighted(alpha, beta, gamma)(src1, src2), actual)
+
+    @pytest.mark.parametrize("name", ["alpha", "beta", "gamma"])
+    @pytest.mark.parametrize("coef_shape", [(4,), (3, 1, 1, 1), (1, 2, 3, 5, 5)])
+    def test_non_broadcastable_tensor_coefficient(self, device, dtype, name, coef_shape):
+        src1 = torch.randn(2, 3, 5, 5, device=device, dtype=dtype)
+        src2 = torch.randn(2, 3, 5, 5, device=device, dtype=dtype)
+        coefs = {"alpha": 0.5, "beta": 0.5, "gamma": 0.0}
+        coefs[name] = torch.rand(coef_shape, device=device, dtype=dtype)
+        with pytest.raises(Exception, match=name):
+            TestAddWeighted.fcn(src1, coefs["alpha"], src2, coefs["beta"], coefs["gamma"])
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         src1, src2, alpha, beta, gamma = self.get_input(device, dtype, size=3)

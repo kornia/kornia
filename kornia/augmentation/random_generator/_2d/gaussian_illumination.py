@@ -72,8 +72,7 @@ class GaussianIlluminationGenerator(RandomGeneratorBase):
 
     def __repr__(self) -> str:
         r"""Return a string representation of the object."""
-        repr_buf = f"gain={self.gain}, center={self.center}, sigma={self.sigma}, sign={self.sign}"
-        return repr_buf
+        return f"gain={self.gain}, center={self.center}, sigma={self.sigma}, sign={self.sign}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         r"""Create samplers for generating random gaussian illumination parameters."""
@@ -109,11 +108,15 @@ class GaussianIlluminationGenerator(RandomGeneratorBase):
 
         sigma_x = width * _adapted_rsampling((batch_size, 1), self.sigma_sampler, same_on_batch)
 
-        center_x = torch.round(width * _adapted_rsampling((batch_size, 1), self.center_sampler, same_on_batch))
+        # ``center`` maps to the pixel-centre coordinate ``center * L - 0.5``, not rounded to a whole pixel.
+        # ``gaussian`` adds 0.5 to its offsets on an even-length axis, so its mean there is ``center * L``.
+        center_x = width * _adapted_rsampling((batch_size, 1), self.center_sampler, same_on_batch)
+        center_x = center_x - (0.5 if width % 2 else 0.0)
 
         sigma_y = height * _adapted_rsampling((batch_size, 1), self.sigma_sampler, same_on_batch)
 
-        center_y = torch.round(height * _adapted_rsampling((batch_size, 1), self.center_sampler, same_on_batch))
+        center_y = height * _adapted_rsampling((batch_size, 1), self.center_sampler, same_on_batch)
+        center_y = center_y - (0.5 if height % 2 else 0.0)
 
         sign = (_adapted_rsampling((batch_size, 1, 1, 1), self.sign_sampler, same_on_batch) >= 0.0).to(
             device=_device, dtype=_dtype

@@ -19,10 +19,11 @@ from __future__ import annotations
 
 import logging
 import os
-import urllib.request
+import urllib.error
 from typing import Any, Optional
 
 from kornia.config import kornia_config
+from kornia.core import download as _core_download
 
 __all__ = ["CachedDownloader"]
 
@@ -49,14 +50,15 @@ class CachedDownloader:
         # Determine the local file path
         if cache_dir is None:
             cache_dir = kornia_config.hub_cache_dir
+        cache_dir = os.path.expanduser(cache_dir)
 
         # The filename is the model name (without directory path)
         if suffix is not None and not model_name.endswith(suffix):
             file_name = f"{os.path.split(model_name)[-1]}{suffix}"
         else:
             file_name = os.path.split(model_name)[-1]
-        file_path = os.path.join(*cache_dir.split(os.sep), *model_name.split(os.sep)[:-1], file_name)
-        return file_path
+
+        return os.path.join(cache_dir, *model_name.split(os.sep)[:-1], file_name)
 
     @classmethod
     def download_to_cache(cls, url: str, name: str, download: bool = True, **kwargs: Any) -> str:
@@ -78,12 +80,15 @@ class CachedDownloader:
             Local filesystem path to the cached file.
 
         Raises:
-            ValueError: If ``url`` is not an HTTP or HTTPS URL, or if download is
-                disabled and the file is missing.
+            ValueError: If ``url`` is not an HTTP or HTTPS URL, if download is
+                disabled and the file is missing, or if the server answers with an HTTP error.
+            TimeoutError: If the server goes ``KORNIA_DOWNLOAD_TIMEOUT`` seconds without answering (see ``download``).
+            urllib.error.URLError: If the server cannot be reached, or ``urllib.error.ContentTooShortError``
+                if the body is shorter than its ``Content-Length`` (see ``download``).
         """
         if url.startswith(("http:", "https:")):
-            cache_dir = kwargs.get("cache_dir", None)
-            suffix = kwargs.get("suffix", None)
+            cache_dir = kwargs.get("cache_dir")
+            suffix = kwargs.get("suffix")
             file_path = cls._get_file_path(name, cache_dir, suffix=suffix)
             cls.download(url, file_path, download_if_not_exists=download)
             return file_path
@@ -103,7 +108,18 @@ class CachedDownloader:
             file_path: The local path where the downloaded model should be saved.
             download_if_not_exists: If True, the file will be downloaded if it's not already downloaded.
 
+        Raises:
+            ValueError: If the file is missing and ``download_if_not_exists`` is ``False``, if ``url`` is not an
+                HTTP or HTTPS URL, if the server answers with an HTTP error, or if ``KORNIA_DOWNLOAD_TIMEOUT`` is
+                set to anything but a positive number of seconds.
+            TimeoutError: If the server goes ``KORNIA_DOWNLOAD_TIMEOUT`` seconds (30 s when it is unset) without
+                answering. Nothing is left at ``file_path``.
+            urllib.error.ContentTooShortError: If the body is shorter than its ``Content-Length``. Nothing is
+                left at ``file_path``, so the next call downloads again.
+            urllib.error.URLError: If the server cannot be reached.
+
         """
+        file_path = os.path.expanduser(file_path)
         if os.path.exists(file_path):
             _logger.info(f"Loading `{url}` from `{file_path}`.")
             return
@@ -111,13 +127,19 @@ class CachedDownloader:
         if not download_if_not_exists:
             raise ValueError(f"`{file_path}` not found. You may set `download=True`.")
 
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)  # Create the cache directory if it doesn't exist
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
         if url.startswith(("http:", "https:")):
             try:
                 _logger.info(f"Downloading `{url}` to `{file_path}`.")
-                urllib.request.urlretrieve(url, file_path)  # noqa: S310
-            except urllib.error.HTTPError as e:
-                raise ValueError(f"Error in resolving `{url}`.") from e
+                _core_download._download_url_to_file(url, file_path, progress=False)
+            except urllib.error.HTTPError as exc:
+                raise ValueError(f"Error in resolving `{url}`.") from exc
+            except _core_download._TruncatedTransfer as exc:
+                # urlretrieve's type and message for a body shorter than its Content-Length; any other
+                # IncompleteRead (a chunked body cut mid-chunk) propagates unchanged, as it did from urlretrieve
+                raise urllib.error.ContentTooShortError(
+                    f"retrieval incomplete: got only {exc.received} out of {exc.announced} bytes", b""
+                ) from exc
         else:
             raise ValueError("URL must start with 'http:' or 'https:'")

@@ -24,7 +24,7 @@ from testing.base import BaseTester
 
 
 class TestRenderGaussian2d(BaseTester):
-    @pytest.fixture()
+    @pytest.fixture
     def gaussian(self, device, dtype):
         # For a standard gaussian on 5 points [-1, -0.5, 0, 0.5, 1] with std=0.25
         # The equation is exp( -x^2 / (2 * std^2) ) -> exp( -x^2 * 8 )
@@ -56,6 +56,45 @@ class TestRenderGaussian2d(BaseTester):
 
         self.assert_close(actual[0], gaussian, rtol=1e-5, atol=1e-5)
 
+    @pytest.mark.parametrize("normalized", [False, True])
+    def test_in_image_sums_to_one(self, device, dtype, normalized):
+        # An off-centre, anisotropic Gaussian well inside a 9 x 11 grid: the per-axis renormalisation makes it sum to
+        # one up to roundoff (a +1e-8 bias in the denominators left this one 8.3e-9 short, visible only in float64).
+        size = (9, 11)
+        mean_px, std_px = [4.3, 3.7], [1.2, 0.8]
+        if normalized:
+            mean = [2 * mean_px[0] / (size[1] - 1) - 1, 2 * mean_px[1] / (size[0] - 1) - 1]
+            std = [2 * std_px[0] / (size[1] - 1), 2 * std_px[1] / (size[0] - 1)]
+        else:
+            mean, std = mean_px, std_px
+        mean_t = torch.tensor([mean], device=device, dtype=dtype)
+        std_t = torch.tensor([std], device=device, dtype=dtype)
+
+        heatmap = kornia.geometry.subpix.render_gaussian2d(mean_t, std_t, size, normalized)
+
+        total = heatmap.cpu().double().sum().item()  # on CPU: MPS has no float64
+        tol = 1e-12 if dtype == torch.float64 else 4 * torch.finfo(dtype).eps
+        assert abs(total - 1.0) < tol, f"sum {total!r} is not 1 within {tol}"
+
+    @pytest.mark.parametrize("mean_x", [-14.0, -60.0])
+    def test_mean_far_off_grid_renders_on_border(self, device, dtype, mean_x):
+        # With std 1, the nearest x sample of a mean at -14 has exp(-98) = 2.7e-43, subnormal in float32; at -60,
+        # exp(-1800) is 0 in every dtype. Either way the heatmap is the grid part of the Gaussian rescaled to one:
+        # all of the x mass on column 0, and there the y profile of a mean at y = 2. The gradient stays finite.
+        mean = torch.tensor([[mean_x, 2.0]], device=device, dtype=dtype, requires_grad=True)
+        std = torch.tensor([[1.0, 1.0]], device=device, dtype=dtype, requires_grad=True)
+
+        heatmap = kornia.geometry.subpix.render_gaussian2d(mean, std, (5, 5), False)
+
+        y_profile = torch.softmax(-0.5 * (torch.arange(5, dtype=torch.float64) - 2.0) ** 2, dim=-1)
+        self.assert_close(heatmap[0, :, 0], y_profile.to(device=device, dtype=dtype))
+        self.assert_close(heatmap[..., 1:], torch.zeros_like(heatmap[..., 1:]))
+        (heatmap * torch.arange(25, device=device, dtype=dtype).view(1, 5, 5)).sum().backward()
+        assert mean.grad is not None
+        assert std.grad is not None
+        assert torch.isfinite(mean.grad).all()
+        assert torch.isfinite(std.grad).all()
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         mean = torch.tensor([0.0, 0.0], dtype=dtype, device=device)
         std = torch.tensor([0.25, 0.25], dtype=dtype, device=device)
@@ -67,6 +106,45 @@ class TestRenderGaussian2d(BaseTester):
         res_opt = op_optimized(mean.view(1, 2), std.view(1, 2), (5, 5), True)
 
         self.assert_close(res_orig, res_opt)
+
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("normalized", [False, True])
+    @pytest.mark.parametrize("axis", ["x", "y"])
+    # 2049.3 is above float16's exact-integer limit (2048); 1500.2 is below it, where only bfloat16 (limit 256)
+    # collapses. One mean is not enough: bfloat16 in normalized mode is 1 px off at 2049.3 but 7 px off at 1500.2.
+    @pytest.mark.parametrize("mu", [2049.3, 1500.2])
+    def test_large_grid_peak_not_distorted(self, device, dtype, normalized, axis, mu):
+        """The coordinate grid must not collapse in half precision (float16 above 2048, bfloat16 above ~256)."""
+        n = 2200
+        size = (10, n) if axis == "x" else (n, 10)
+        mu_norm = mu / (n - 1) * 2 - 1
+        mean_xy = [mu, 5.0] if axis == "x" else [5.0, mu]
+        std_xy = [2.0, 2.0]
+        if normalized:
+            mean_xy = [mu_norm, 0.0] if axis == "x" else [0.0, mu_norm]
+            # A sigma of 6 pixels on EACH axis, expressed in that axis's own normalized units. Wide enough to keep
+            # 1 / sigma**2 inside the float16 range on the long axis, and (unlike one shared value) still wide enough
+            # to cover grid points on the short axis, where a tiny sigma makes the whole heatmap round to zero.
+            (h, w) = size
+            std_xy = [6.0 * 2 / (w - 1), 6.0 * 2 / (h - 1)]
+        mean = torch.tensor([mean_xy], dtype=dtype, device=device)
+        std = torch.tensor([std_xy], dtype=dtype, device=device)
+
+        heatmap = kornia.geometry.subpix.render_gaussian2d(mean, std, size, normalized)
+
+        assert heatmap.dtype == dtype
+        # Compare against the mean as actually stored (post half rounding), so only the grid is under test.
+        stored = mean[0, 0 if axis == "x" else 1].item()
+        expected = round((stored + 1) / 2 * (n - 1)) if normalized else round(stored)
+        line = heatmap[0, 5] if axis == "x" else heatmap[0, :, 5]
+        # Guard against a vacuous pass: an all-zero line satisfies `line[expected] == line.max()` as 0 == 0.
+        assert line.max() > 0, "heatmap rounded entirely to zero, so the peak position is not being tested"
+        # A collapsed coordinate grid does not move the peak to one wrong pixel, it smears the maximum over a
+        # plateau of tied pixels, so `line[expected] == line.max()` alone accepts any plateau containing `expected`.
+        # Require every tied maximum to sit within one pixel of it (a tie between two neighbours is legitimate).
+        assert line[expected] == line.max()
+        tied = (line == line.max()).nonzero().flatten()
+        assert (tied - expected).abs().max() <= 1, f"peak plateau {tied.tolist()} is not centred on pixel {expected}"
 
 
 class TestSpatialSoftmax2d(BaseTester):
@@ -94,6 +172,32 @@ class TestSpatialSoftmax2d(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(input), op_optimized(input))
+
+    @pytest.mark.parametrize("as_tensor", [False, True])
+    @pytest.mark.parametrize("temperature", [0.5, 2.0])
+    def test_temperature_divides_input(self, device, dtype, temperature, as_tensor):
+        # An asymmetric map, so dividing by T and multiplying by T give different distributions for T != 1.
+        input = torch.tensor([[[[0.0, 1.0, 3.0], [2.0, -1.0, 0.5]]]], device=device, dtype=dtype)
+        t = torch.tensor(temperature, device=device, dtype=dtype) if as_tensor else temperature
+
+        actual = kornia.geometry.subpix.spatial_softmax2d(input, t)
+
+        # The float64 reference is computed on CPU: MPS has no float64.
+        reference = input.cpu().double().reshape(1, 1, -1)
+        expected = torch.softmax(reference / temperature, dim=-1).view(1, 1, 2, 3)
+        self.assert_close(actual, expected.to(device=device, dtype=dtype))
+        wrong = torch.softmax(reference * temperature, dim=-1).view(1, 1, 2, 3)
+        assert not torch.allclose(actual.cpu().double(), wrong, atol=1e-2)
+
+    @pytest.mark.parametrize("temperature", [0.0, -1.0, float("nan"), "tensor", "nan_tensor"])
+    def test_nonpositive_temperature_raises(self, device, dtype, temperature):
+        input = torch.zeros(1, 1, 2, 3, device=device, dtype=dtype)
+        if temperature == "tensor":
+            temperature = torch.tensor(0.0, device=device, dtype=dtype)
+        elif temperature == "nan_tensor":
+            temperature = torch.tensor(float("nan"), device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Temperature should be positive"):
+            kornia.geometry.subpix.spatial_softmax2d(input, temperature)
 
 
 class TestSpatialExpectation2d(BaseTester):
@@ -128,6 +232,34 @@ class TestSpatialExpectation2d(BaseTester):
 
         self.assert_close(actual, expected)
 
+    def test_float64_normalized_grid_is_exact_5019(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        # #5019: the normalised grid was built in float32 and cast afterwards, so float64 coordinates carried
+        # float32 rounding error (4e-8 here). A width of 7 has spacing 1/3, which float32 cannot represent.
+        heatmap = torch.zeros(1, 1, 4, 7, device=device, dtype=torch.float64)
+        heatmap[0, 0, 1, 5] = 1.0
+        out = kornia.geometry.subpix.spatial_expectation2d(heatmap, True)
+        assert out.dtype == torch.float64
+        expected = torch.tensor([[[2 / 3, -1 / 3]]], device=device, dtype=torch.float64)
+        self.assert_close(out, expected, rtol=0.0, atol=1e-15)
+
+        probs = torch.softmax(torch.randn(1, 1, 48, 64, device=device, dtype=torch.float64).flatten(-2), -1)
+        probs = probs.view(1, 1, 48, 64)
+        xs = torch.linspace(-1, 1, 64, device=device, dtype=torch.float64)
+        ys = torch.linspace(-1, 1, 48, device=device, dtype=torch.float64)
+        reference = torch.stack([(probs.sum(-2) * xs).sum(-1), (probs.sum(-1) * ys).sum(-1)], -1)
+        self.assert_close(kornia.geometry.subpix.spatial_expectation2d(probs, True), reference, rtol=0.0, atol=1e-14)
+
+    def test_bfloat16_grid_rounds_once_5019(self, device):
+        # bfloat16 keeps building the grid in float32 and rounds each coordinate once. Built directly in bfloat16,
+        # the pixel coordinate 2057 comes out as 2048 instead of its nearest bfloat16 value 2064.
+        heatmap = torch.zeros(1, 1, 1, 3001, device=device, dtype=torch.bfloat16)
+        heatmap[0, 0, 0, 2057] = 1.0
+        out = kornia.geometry.subpix.spatial_expectation2d(heatmap, False)
+        expected = torch.tensor([[[2064.0, 0.0]]], device=device, dtype=torch.bfloat16)
+        self.assert_close(out, expected, rtol=0.0, atol=0.0)
+
     @pytest.mark.skip("After the op be optimized the results are not the same")
     def test_dynamo(self, dtype, device, torch_optimizer):
         data = torch.tensor([[[[0.0, 0.0, 1.0], [0.0, 0.0, 0.0]]]], device=device, dtype=dtype)
@@ -135,3 +267,66 @@ class TestSpatialExpectation2d(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(data, True), op_optimized(data, True))
+
+
+class TestConventionsDsnt(BaseTester):
+    def test_convention_spatial_soft_argmax2d_is_xy_corner_aligned(self, device, dtype):
+        # The output is (x, y) = (column, row): pixel coordinates of the input grid, or normalized corner-aligned
+        # ones (pixel centres 0 and W - 1 at -1 and +1). H != W and an off-centre peak, so neither a (y, x) output
+        # nor a half-pixel grid can pass; the transposed map is the relabel control. A logit of 30 makes the softmax
+        # one-hot at every dtype.
+        heatmap = torch.zeros(1, 1, 4, 7, device=device, dtype=dtype)
+        heatmap[0, 0, 1, 5] = 30.0
+        pixel = kornia.geometry.subpix.spatial_soft_argmax2d(heatmap, normalized_coordinates=False)
+        self.assert_close(pixel, torch.tensor([[[5.0, 1.0]]], device=device, dtype=dtype))
+        transposed = heatmap.transpose(-2, -1).contiguous()
+        pixel = kornia.geometry.subpix.spatial_soft_argmax2d(transposed, normalized_coordinates=False)
+        self.assert_close(pixel, torch.tensor([[[1.0, 5.0]]], device=device, dtype=dtype))
+
+        normalized = kornia.geometry.subpix.spatial_soft_argmax2d(heatmap)
+        self.assert_close(normalized, torch.tensor([[[2 / 3, -1 / 3]]], device=device, dtype=dtype))
+        corner = torch.zeros(1, 1, 4, 7, device=device, dtype=dtype)
+        corner[0, 0, 0, 6] = 30.0
+        # corner-aligned: the last column is +1 and the first row -1; a half-pixel grid gives (6/7, -3/4)
+        normalized = kornia.geometry.subpix.spatial_soft_argmax2d(corner)
+        self.assert_close(normalized, torch.tensor([[[1.0, -1.0]]], device=device, dtype=dtype))
+
+    def test_convention_render_gaussian2d_mean_std_are_xy(self, device, dtype):
+        # mean and std are (x, y) = (column, row) and size is (H, W): an anisotropic Gaussian off the centre of a
+        # 25 x 21 canvas has a column marginal with mean 10 and std 2 and a row marginal with mean 12 and std 1.
+        mean = torch.tensor([[10.0, 12.0]], device=device, dtype=dtype)
+        std = torch.tensor([[2.0, 1.0]], device=device, dtype=dtype)
+        heatmap = kornia.geometry.subpix.render_gaussian2d(mean, std, (25, 21), False)
+        assert heatmap.shape == (1, 25, 21)
+
+        # Measure the rendered distribution's moments in float64.
+        h = heatmap[0].cpu().double()
+        total = h.sum()
+        cols = torch.arange(21, dtype=torch.float64)
+        rows = torch.arange(25, dtype=torch.float64)
+        mean_x = float((h.sum(0) * cols).sum() / total)
+        mean_y = float((h.sum(1) * rows).sum() / total)
+        std_x = float(((h.sum(0) * (cols - mean_x) ** 2).sum() / total).sqrt())
+        std_y = float(((h.sum(1) * (rows - mean_y) ** 2).sum() / total).sqrt())
+        tol = 5e-3 if dtype in (torch.float16, torch.bfloat16) else 1e-5
+        assert abs(mean_x - 10.0) < tol, mean_x
+        assert abs(mean_y - 12.0) < tol, mean_y
+        assert abs(std_x - 2.0) < tol, std_x
+        assert abs(std_y - 1.0) < tol, std_y
+
+        # relabel: swapping the (x, y) components and the (H, W) size renders the transpose
+        swapped = kornia.geometry.subpix.render_gaussian2d(mean.flip(-1), std.flip(-1), (21, 25), False)
+        self.assert_close(swapped[0], heatmap[0].T)
+
+    def test_convention_spatial_expectation2d_uses_the_input_as_given(self, device, dtype):
+        # The heatmap is not renormalized: a map summing to s scales the expected (x, y) by s, in pixels and in
+        # normalized coordinates alike. Mass 0.75 at (row 0, col 4) and 0.25 at (row 2, col 1) of a 3 x 5 map gives
+        # (x, y) = (3.25, 0.5) in pixels and (0.625, -0.5) normalized; doubling the map doubles both.
+        probs = torch.zeros(1, 1, 3, 5, device=device, dtype=dtype)
+        probs[0, 0, 0, 4] = 0.75
+        probs[0, 0, 2, 1] = 0.25
+        for scale in (1.0, 2.0):
+            pixel = kornia.geometry.subpix.spatial_expectation2d(scale * probs, normalized_coordinates=False)
+            self.assert_close(pixel, scale * torch.tensor([[[3.25, 0.5]]], device=device, dtype=dtype))
+            normalized = kornia.geometry.subpix.spatial_expectation2d(scale * probs)
+            self.assert_close(normalized, scale * torch.tensor([[[0.625, -0.5]]], device=device, dtype=dtype))

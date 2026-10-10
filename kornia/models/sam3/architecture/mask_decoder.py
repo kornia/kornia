@@ -81,9 +81,7 @@ class CrossAttentionTransformer(nn.Module):
         # MLP
         prompts_norm = self.norm3(prompts)
         mlp_out = self.mlp(prompts_norm)
-        prompts = prompts + mlp_out
-
-        return prompts
+        return prompts + mlp_out
 
 
 class MaskDecoder(nn.Module):

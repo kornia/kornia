@@ -19,6 +19,7 @@ import pytest
 import torch
 
 from kornia.geometry import solvers
+from kornia.geometry.solvers.homogeneous import _null_space_lu
 
 from testing.base import BaseTester
 
@@ -37,7 +38,8 @@ def _make_rank3_matrix(null_vec: torch.Tensor, device, dtype) -> torch.Tensor:
     """
     # Build the 4x4 matrix whose columns span the orthogonal complement of null_vec.
     # We use a Gram-Schmidt orthonormalisation relative to null_vec.
-    n = null_vec.to(device="cpu", dtype=torch.float64)
+    # move, then cast: a single .to("cpu", torch.float64) from MPS returns zeros on torch 2.14
+    n = null_vec.cpu().double()
     n = n / n.norm()
 
     # Start from the standard basis and remove the component along n.
@@ -246,3 +248,86 @@ class TestNullVector3x4(BaseTester):
         A = torch.rand(1, 3, 4, device=device, dtype=dtype)
         v = s.null_vector_3x4(A)
         assert v.shape == (1, 4)
+
+
+class TestConventionNullVector3x4(BaseTester):
+    def test_convention_null_vector_3x4_cofactor_sign(self, device, dtype):
+        def null(rows):
+            return solvers.null_vector_3x4(torch.tensor(rows, device=device, dtype=dtype))
+
+        def expect(values):
+            return torch.tensor(values, device=device, dtype=dtype)
+
+        identity = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]
+        # v_j = (-1)^j det(A without column j): [I | 0] gives [0, 0, 0, -1], not the unit vector +e4, and the vector
+        # is not normalised (2 [I | 0] gives -8 e4).
+        self.assert_close(null(identity), expect([0.0, 0.0, 0.0, -1.0]))
+        self.assert_close(null([[2.0 * x for x in row] for row in identity]), expect([0.0, 0.0, 0.0, -8.0]))
+        # A generic integer matrix: the cofactors are exact in every dtype. |v| = sqrt(2896), where an SVD's null
+        # vector has unit norm and an arbitrary sign.
+        A = [[2.0, -1.0, 0.0, 3.0], [1.0, 3.0, -2.0, 0.0], [0.0, 1.0, 4.0, -1.0]]
+        self.assert_close(null(A), expect([40.0, -16.0, -4.0, -32.0]))
+        # Swapping two rows flips the sign; a rank-2 matrix gives the zero vector.
+        self.assert_close(null([A[1], A[0], A[2]]), expect([-40.0, 16.0, 4.0, 32.0]))
+        rank2 = [A[0], A[1], [a + 2.0 * b for a, b in zip(A[0], A[1])]]
+        self.assert_close(null(rank2), expect([0.0, 0.0, 0.0, 0.0]))
+
+
+class TestNullSpaceLU(BaseTester):
+    """``_null_space_lu``, the batched null space behind the seven-, eight- and four-point minimal solvers."""
+
+    @pytest.mark.parametrize("rows", [7, 8])
+    @pytest.mark.parametrize("batch_size", [1, 32])
+    def test_mps_matches_cpu(self, device, dtype, rows, batch_size, monkeypatch):
+        if device.type != "mps" or dtype != torch.float32:
+            pytest.skip("MPS float32 regression")
+        generator = torch.Generator().manual_seed(0)
+        A = torch.randn(batch_size, rows, 9, generator=generator, dtype=dtype)
+        expected = _null_space_lu(A)
+        solve_triangular = torch.linalg.solve_triangular
+        calls = []
+
+        def check_layout(square, rhs, **kwargs):
+            assert square.device == rhs.device == device
+            assert square.is_contiguous()
+            assert rhs.is_contiguous()
+            calls.append(True)
+            return solve_triangular(square, rhs, **kwargs)
+
+        # Newer MPS kernels handle strides, so also guard the layout needed by older releases.
+        monkeypatch.setattr(torch.linalg, "solve_triangular", check_layout)
+        actual = _null_space_lu(A.to(device))
+        assert calls == [True]
+        assert actual.device == device
+        assert actual.dtype == dtype
+        actual = actual.cpu()
+        actual = actual / actual.norm(dim=1, keepdim=True)
+        expected = expected / expected.norm(dim=1, keepdim=True)
+        self.assert_close(actual, expected, atol=1e-5, rtol=1e-5)
+        self.assert_close(A @ actual, torch.zeros(batch_size, rows, 9 - rows, dtype=dtype), atol=1e-5, rtol=0)
+
+    @pytest.mark.parametrize("rows", [7, 8])
+    def test_matches_svd_subspace(self, device, dtype, rows):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("no backend factorizes half precision; callers promote to float32")
+        A = torch.randn(64, rows, 9, device=device, dtype=dtype)
+        basis = _null_space_lu(A)
+        assert basis.shape == (64, 9, 9 - rows)
+        basis = basis / basis.norm(dim=1, keepdim=True)
+        self.assert_close((A @ basis).abs().amax(), torch.zeros((), device=device, dtype=dtype), atol=1e-5, rtol=0)
+        # The same subspace as the SVD's null space: projecting onto it keeps the basis.
+        null = torch.linalg.svd(A.cpu().double(), full_matrices=True)[2][:, rows:].mT
+        projected = null @ (null.mT @ basis.cpu().double())
+        self.assert_close(projected, basis.cpu().double(), atol=1e-5, rtol=0)
+
+    def test_rank_deficient_stays_in_null_space(self, device):
+        # Zero rows, as a zero-weight correspondence gives the DLT design matrix: the unit triangular factor the
+        # basis is solved from stays regular, so the vectors are finite and still annihilated by A.
+        A = torch.randn(3, 8, 9, device=device, dtype=torch.float32)
+        A[0, 6:] = 0
+        A[1, 4:] = 0
+        A[2] = 0
+        basis = _null_space_lu(A)
+        assert torch.isfinite(basis).all()
+        basis = basis / basis.norm(dim=1, keepdim=True)
+        assert (A @ basis).abs().amax() < 1e-5

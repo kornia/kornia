@@ -33,3 +33,40 @@ callable that lets the download half reject a truncated cache entry.
 .. autofunction:: load_safetensors
 
 .. autofunction:: check_safetensors
+
+Exceptions
+----------
+
+.. currentmodule:: kornia.core.exceptions
+
+The errors raised by kornia's ``KORNIA_CHECK*`` validation helpers in
+``kornia.core.check`` (and by a few functions directly), such as a tensor with
+the wrong shape. All of them derive from :exc:`BaseError`, so ``except BaseError``
+catches any of them. Each subclass also derives from the built-in exception that
+matches its failure: :exc:`TypeCheckError` is also a :exc:`TypeError`, and
+:exc:`ShapeError`, :exc:`ValueCheckError`, :exc:`DeviceError` and
+:exc:`ImageError` are each also a :exc:`ValueError`. Many functions validate
+their inputs themselves and raise the built-in :exc:`ValueError` or
+:exc:`TypeError`, so ``except ValueError`` or ``except TypeError`` catches those
+and the matching kornia errors alike; ``except BaseError`` does not catch those
+built-ins. :exc:`BaseError` itself derives only from :exc:`Exception`: a failed
+``KORNIA_CHECK(condition)`` raises it, and neither of those two clauses catches
+it.
+
+.. autoexception:: BaseError
+    :show-inheritance:
+
+.. autoexception:: ShapeError
+    :show-inheritance:
+
+.. autoexception:: TypeCheckError
+    :show-inheritance:
+
+.. autoexception:: ValueCheckError
+    :show-inheritance:
+
+.. autoexception:: DeviceError
+    :show-inheritance:
+
+.. autoexception:: ImageError
+    :show-inheritance:

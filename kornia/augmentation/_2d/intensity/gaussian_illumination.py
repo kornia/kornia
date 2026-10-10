@@ -21,7 +21,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _PicklableCompileMixin
 from kornia.augmentation.random_generator._2d import GaussianIlluminationGenerator
 from kornia.core.check import KORNIA_CHECK
 
@@ -42,7 +42,7 @@ def _apply_gaussian_illumination(
     return input.add(gradient).clamp_(0, 1)
 
 
-class RandomGaussianIllumination(IntensityAugmentationBase2D):
+class RandomGaussianIllumination(_PicklableCompileMixin, IntensityAugmentationBase2D):
     r"""Applies random 2D Gaussian illumination patterns to a batch of images.
 
     .. image:: _static/img/RandomGaussianIllumination.png
@@ -67,44 +67,22 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - the class draws ``_params["gradient"]``, a tensor with the original normalized ``(B, C, H, W)``
-          input shape; a ``(C, H, W)`` input remains batched in stored parameters even when ``keepdim=True``.
-          It adds the field to the image and
-          clamps the sum into ``[0, 1]``, so the output stays inside that range even when the input does not --
-          except where the Gaussian kernel itself is NaN, see the warning below.
+        - the class adds the drawn field ``_params["gradient"]`` to the image and clamps the sum into ``[0, 1]``,
+          so the output stays inside that range even when the input does not.
         - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and only whether the draw is negative
           is used: it decides whether that sample's gradient darkens or brightens, so one batch can hold both
           a darkened and a brightened image. A point range such as ``sign=1.0`` brightens every sample.
-        - the clamp bites on in-range images too: once ``gain`` exceeds the headroom between the image and the
-          bound, the sum is cut there rather than rescaled.
         - ``sigma`` is a fraction of the axis length, not an absolute width: the generator draws it and
           multiplies by the image's width and height before building the kernel, so the same ``sigma`` is a
-          narrower kernel on a smaller image.
-        - the module pickles, deep-copies and passes through ``torch.save``, and the copy reproduces the
-          original's output under the same seed. After ``.compile()``, which swaps in a compiled transform,
-          it no longer pickles or passes through ``torch.save``, although it still deep-copies.
+          narrower kernel on a smaller image. Every admitted ``sigma`` gives a finite kernel, ``0`` included.
+        - ``center`` is a fraction of the axis length too, and the peak sits at the pixel-centre position
+          ``center * L - 0.5`` without rounding to a whole pixel: ``center=0.5`` is the middle of any axis, ``0``
+          and ``1`` are the outer edges of the first and last pixel. At ``sigma=0`` the field is an impulse on the
+          pixel nearest that position, split between two pixels when it falls halfway.
 
     .. warning::
-        An all-negative input can come back as an all-zero image when the sampled gradient does not raise it
-        above zero; a positive sampled gradient can recover values instead. Tracked in
+        An all-negative input can come back as an all-zero image, depending on the sampled gradient. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
-
-    .. warning::
-        A ``sigma`` at or near ``0``, which the constructor admits, can make the whole output NaN.
-        :func:`kornia.filters.gaussian` normalizes by ``gauss.sum()``, which underflows to zero there, so
-        the kernel is ``0 / 0``. ``sigma=0.0`` does it at any size. Above zero it is the kernel's
-        **absolute** width that decides -- ``sigma`` times the axis length, since ``sigma`` is relative --
-        and not the axis length on its own. With ``center=(0.5, 0.5)`` an even axis puts its nearest sample
-        half a pixel off the mean, so the kernel underflows once ``sigma * axis`` falls below about
-        ``0.034``: a ``4 x 4`` image at ``sigma=(0.005, 0.005)`` is NaN, and so is a ``64 x 64`` one at
-        ``sigma=(0.0005, 0.0005)``, while ``8 x 8`` and larger are finite at ``0.005``. An odd axis whose
-        rounded center lands on the grid keeps a sample at the mean and is finite at every positive
-        ``sigma``; the default ``center=(0.1, 0.9)`` can miss the grid only on a ``1``- or ``3``-pixel axis,
-        which is why a drawn center makes a ``3 x 3`` image NaN on some seeds but never a ``5 x 5`` one.
-        The threshold follows the **parameter** dtype, which is ``float32`` whatever the image dtype, so
-        after ``set_rng_device_and_dtype(device, torch.float64)`` the ``4 x 4`` case at ``sigma=0.005`` is
-        finite and ``0.003`` is not. The default ``sigma=(0.2, 1.0)`` is unaffected. Tracked in
-        `#4589 <https://github.com/kornia/kornia/issues/4589>`_.
 
     .. note::
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -116,17 +94,17 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         >>> input = torch.ones(1, 3, 3, 3) * 0.5
         >>> aug = RandomGaussianIllumination(gain=0.5, p=1.)
         >>> aug(input)
-        tensor([[[[0.7266, 1.0000, 0.7266],
-                  [0.6621, 0.9121, 0.6621],
-                  [0.5000, 0.6911, 0.5000]],
+        tensor([[[[0.8675, 1.0000, 0.6834],
+                  [0.7891, 0.9075, 0.6246],
+                  [0.6229, 0.7113, 0.5000]],
         <BLANKLINE>
-                 [[0.7266, 1.0000, 0.7266],
-                  [0.6621, 0.9121, 0.6621],
-                  [0.5000, 0.6911, 0.5000]],
+                 [[0.8675, 1.0000, 0.6834],
+                  [0.7891, 0.9075, 0.6246],
+                  [0.6229, 0.7113, 0.5000]],
         <BLANKLINE>
-                 [[0.7266, 1.0000, 0.7266],
-                  [0.6621, 0.9121, 0.6621],
-                  [0.5000, 0.6911, 0.5000]]]])
+                 [[0.8675, 1.0000, 0.6834],
+                  [0.7891, 0.9075, 0.6246],
+                  [0.6229, 0.7113, 0.5000]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.rand(1, 3, 32, 32)
@@ -242,6 +220,17 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         options: Optional[Dict[Any, Any]] = None,
         disable: bool = False,
     ) -> RandomGaussianIllumination:
+        self._record_compile(
+            ["_fn"],
+            {
+                "fullgraph": fullgraph,
+                "dynamic": dynamic,
+                "backend": backend,
+                "mode": mode,
+                "options": options,
+                "disable": disable,
+            },
+        )
         self._fn = torch.compile(
             self._fn,
             fullgraph=fullgraph,

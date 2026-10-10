@@ -91,8 +91,7 @@ class KMeans:
             return self._final_cluster_centers
         if isinstance(self._cluster_centers, torch.Tensor):
             return self._cluster_centers
-        else:
-            raise TypeError("Model has not been fit to a dataset")
+        raise TypeError("Model has not been fit to a dataset")
 
     @property
     def cluster_assignments(self) -> torch.Tensor:
@@ -108,8 +107,7 @@ class KMeans:
         """
         if isinstance(self._final_cluster_assignments, torch.Tensor):
             return self._final_cluster_assignments
-        else:
-            raise TypeError("Model has not been fit to a dataset")
+        raise TypeError("Model has not been fit to a dataset")
 
     def _initialise_cluster_centers(self, X: torch.Tensor, num_clusters: int) -> torch.Tensor:
         """Chooses num_cluster points from X as the initial cluster centers.
@@ -125,8 +123,7 @@ class KMeans:
         num_samples: int = len(X)
         perm = torch.randperm(num_samples, device=X.device)
         idx = perm[:num_clusters]
-        initial_state = X[idx]
-        return initial_state
+        return X[idx]
 
     def _pairwise_euclidean_distance(self, data1: torch.Tensor, data2: torch.Tensor) -> torch.Tensor:
         """Compute pairwise squared distance between 2 sets of vectors.
@@ -143,8 +140,7 @@ class KMeans:
         A = data1[:, None, ...]
         # 1*C*D
         B = data2[None, ...]
-        distance = euclidean_distance(A, B)
-        return distance
+        return euclidean_distance(A, B)
 
     def fit(self, X: torch.Tensor) -> None:
         """Fit iterative KMeans clustering till a threshold for shift in cluster centers or a maximum no of iterations
@@ -237,5 +233,4 @@ class KMeans:
         )
 
         distance = self._pairwise_euclidean_distance(x, self.cluster_centers)
-        cluster_assignment = distance.argmin(-1)
-        return cluster_assignment
+        return distance.argmin(-1)

@@ -21,9 +21,18 @@ import pytest
 import torch
 
 from kornia import enhance
+from kornia.core._compat import torch_version_ge
+from kornia.enhance.equalization import _compute_tiles
 from kornia.geometry import rotate
 
 from testing.base import BaseTester
+
+
+def _sync(device) -> None:
+    # MPS dispatches asynchronously, so a kernel error raised by the forward under test would
+    # otherwise surface inside an unrelated later test.
+    if device.type == "mps":
+        torch.mps.synchronize()
 
 
 class TestEqualization(BaseTester):
@@ -92,6 +101,46 @@ class TestEqualization(BaseTester):
             enhance.equalize_clahe(img, clip, grid)
         assert expected_error_msg in str(errinfo)
 
+    @pytest.mark.parametrize(
+        ("size", "grid"),
+        [
+            ((8, 8), (8, 8)),  # kornia#4783: an image as large as the grid
+            ((8, 16), (8, 8)),  # only the vertical axis is too small
+            ((16, 8), (8, 8)),  # only the horizontal axis is too small
+            ((4, 4), (8, 8)),  # already rejected before, message now names the limit
+            ((4, 10), (4, 6)),  # a non-square grid: the limit is named per axis, in (H, W) order
+        ],
+    )
+    def test_exception_image_too_small_for_grid_4783(self, size, grid):
+        # kornia#4783: reflect padding needs the pad below the axis it reflects, so an image that
+        # only matches the grid used to reach F.pad and fail with a raw padding error.
+        img = torch.rand(1, 1, *size)
+        with pytest.raises(ValueError) as errinfo:
+            enhance.equalize_clahe(img, grid_size=grid)
+        assert "Cannot compute tiles" in str(errinfo.value)
+        assert f"Got image size {size} and grid size {grid}" in str(errinfo.value)
+        assert f"smallest image this grid admits is ({grid[0] + 1}, {grid[1] + 1})" in str(errinfo.value)
+
+    @pytest.mark.parametrize(
+        ("size", "grid", "smallest"),
+        [((4, 10), (8, 6), (5, 4)), ((10, 3), (5, 6), (3, 4))],
+    )
+    def test_compute_tiles_odd_tiles_names_its_own_limit_4783(self, size, grid, smallest):
+        # equalize_clahe always asks for even tiles; with odd ones an axis only has to exceed half its
+        # grid size, and the limit the message names must be accepted.
+        with pytest.raises(ValueError) as errinfo:
+            _compute_tiles(torch.rand(1, 1, *size), grid, even_tile_size=False)
+        assert f"smallest image this grid admits is {smallest}" in str(errinfo.value)
+        tiles, _ = _compute_tiles(torch.rand(1, 1, *smallest), grid, even_tile_size=False)
+        assert tiles.shape[1:3] == grid
+
+    @pytest.mark.parametrize("grid", [(2, 2), (4, 4), (8, 8)])
+    def test_smallest_image_the_grid_admits_is_accepted_4783(self, grid, device, dtype):
+        # The size the message names must work, so the bound it reports is exact.
+        img = torch.rand(1, 1, grid[0] + 1, grid[1] + 1, device=device, dtype=dtype)
+        out = enhance.equalize_clahe(img, grid_size=grid)
+        assert out.shape == img.shape
+
     @pytest.mark.parametrize("dims", [(1, 1, 1, 1, 1), (1, 1)])
     def test_exception_tensor_dims(self, dims):
         img = torch.rand(dims)
@@ -108,7 +157,7 @@ class TestEqualization(BaseTester):
 
         y = enhance.equalize_clahe(x, 40.0, (1, 1))
 
-        assert y.sum().item() == pytest.approx(32.87843322753906)
+        assert y.sum().item() == pytest.approx(8416 / 255)
         assert y.max().item() == pytest.approx(1.0)
 
     @pytest.mark.parametrize("grid_size", [(1, 1), (1, 2), (2, 1), (2, 2)])
@@ -172,13 +221,15 @@ class TestEqualization(BaseTester):
     @pytest.mark.parametrize("scale, shift", [(2.0, 0.0), (1.0, -1.0)])
     def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype):
         # kornia#4564: the tile-LUT gather used to fail with a raw
-        # "index ... is out of bounds for dimension 5 with size 256".
-        if device.type != "cpu":
-            pytest.skip("value asserts are synchronous only on CPU (async on CUDA, skipped on MPS)")
+        # "index ... is out of bounds for dimension 5 with size 256". MPS range-checks it too
+        # (kornia#4600): from torch 2.13 the assert is asynchronous there, so the message arrives at
+        # the sync.
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
         torch.manual_seed(0)
         x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype) * scale + shift
         with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
-            enhance.equalize_clahe(x)
+            _sync(enhance.equalize_clahe(x).device)
 
     def test_input_the_lookup_can_index_is_still_accepted(self, device, dtype):
         # The check covers exactly the domain the gather can index, so a hair above 1 keeps working.
@@ -192,12 +243,25 @@ class TestEqualization(BaseTester):
         compiled = torch.compile(enhance.equalize_clahe, fullgraph=True, backend="eager")
         self.assert_close(compiled(x), enhance.equalize_clahe(x))
 
-    @pytest.fixture()
+    def test_dynamo_fullgraph_out_of_range_input_names_the_range(self, device, dtype):
+        # The compiled graph has to carry the same check: on MPS kornia#4600 is only fixed while
+        # compiling if the asynchronous assert is traced, because a host read cannot be.
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
+        if device.type == "mps" and not torch_version_ge(2, 13):
+            pytest.skip("no MPS kernel for _assert_async before torch 2.13, so the check is skipped here")
+        torch.manual_seed(0)
+        x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype) * 2.0
+        torch._dynamo.reset()
+        compiled = torch.compile(enhance.equalize_clahe, fullgraph=True, backend="eager")
+        with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
+            _sync(compiled(x).device)
+
+    @pytest.fixture
     def img(self, device, dtype):
         height, width = 20, 20
         # TODO: test with a more realistic pattern
-        img = torch.arange(width, device=device).div(float(width - 1))[None].expand(height, width)[None][None]
-        return img
+        return torch.arange(width, device=device).div(float(width - 1))[None].expand(height, width)[None][None]
 
     def test_he(self, img):
         # should be similar to enhance.equalize but slower. Similar because the lut is computed in a different way.
@@ -212,25 +276,25 @@ class TestEqualization(BaseTester):
                 [
                     [
                         [
-                            0.0471,
-                            0.0980,
+                            0.051,
+                            0.102,
                             0.1490,
                             0.2000,
-                            0.2471,
+                            0.251,
                             0.2980,
                             0.3490,
                             0.3490,
-                            0.4471,
-                            0.4471,
+                            0.451,
+                            0.451,
                             0.5490,
                             0.5490,
-                            0.6471,
-                            0.6471,
+                            0.651,
+                            0.651,
                             0.6980,
                             0.7490,
                             0.8000,
-                            0.8471,
-                            0.8980,
+                            0.851,
+                            0.902,
                             1.0000,
                         ]
                     ]
@@ -253,25 +317,25 @@ class TestEqualization(BaseTester):
                 [
                     [
                         [
-                            0.2471,
-                            0.4980,
+                            0.251,
+                            0.502,
                             0.7490,
                             0.6667,
-                            0.4980,
-                            0.4980,
+                            0.5007,
+                            0.502,
                             0.7490,
                             0.4993,
-                            0.4980,
-                            0.2471,
+                            0.5007,
+                            0.251,
                             0.7490,
                             0.4993,
-                            0.4980,
-                            0.2471,
-                            0.4980,
+                            0.5007,
+                            0.251,
+                            0.502,
                             0.4993,
                             0.3333,
-                            0.2471,
-                            0.4980,
+                            0.251,
+                            0.502,
                             1.0000,
                         ]
                     ]
@@ -289,28 +353,31 @@ class TestEqualization(BaseTester):
         res_diff = enhance.equalize_clahe(img, clip_limit=clip_limit, grid_size=grid_size, slow_and_differentiable=True)
         # NOTE: for next versions we need to improve the computation of the LUT
         # and test with a better image
+        # Each 4 x 4 tile holds 4 columns of one value each, so with the clip limit of 1 count per bin the 12
+        # clipped counts are spread over every 21st bin, as in OpenCV, and the gradient keeps its range; piling
+        # them into the first 12 bins mapped every pixel but the first above 0.81.
         expected = torch.tensor(
             [
                 [
                     [
-                        0.1216,
-                        0.8745,
-                        0.9373,
-                        0.9163,
-                        0.8745,
-                        0.8745,
-                        0.9373,
-                        0.8745,
-                        0.8745,
-                        0.8118,
-                        0.9373,
-                        0.8745,
-                        0.8745,
-                        0.8118,
-                        0.8745,
-                        0.8745,
-                        0.8327,
-                        0.8118,
+                        0.1255,
+                        0.1882,
+                        0.3137,
+                        0.2928,
+                        0.3137,
+                        0.3765,
+                        0.4392,
+                        0.4392,
+                        0.5007,
+                        0.4392,
+                        0.6235,
+                        0.6248,
+                        0.6235,
+                        0.6235,
+                        0.6863,
+                        0.7490,
+                        0.7699,
+                        0.7490,
                         0.8745,
                         1.0000,
                     ]
@@ -324,24 +391,24 @@ class TestEqualization(BaseTester):
                 [
                     [
                         0.1250,
-                        0.8752,
-                        0.9042,
-                        0.9167,
-                        0.8401,
-                        0.8852,
-                        0.9302,
-                        0.9120,
-                        0.8750,
-                        0.8370,
-                        0.9620,
-                        0.9077,
-                        0.8750,
-                        0.8754,
-                        0.9204,
-                        0.9167,
-                        0.8370,
-                        0.8806,
-                        0.9096,
+                        0.1877,
+                        0.2792,
+                        0.3111,
+                        0.2892,
+                        0.3227,
+                        0.4302,
+                        0.4745,
+                        0.4560,
+                        0.4620,
+                        0.6495,
+                        0.5952,
+                        0.6414,
+                        0.6254,
+                        0.7329,
+                        0.7803,
+                        0.7306,
+                        0.8181,
+                        0.8471,
                         1.0000,
                     ]
                 ]
@@ -352,13 +419,82 @@ class TestEqualization(BaseTester):
         self.assert_close(res[..., 0, :], expected, low_tolerance=True)
         self.assert_close(res_diff[..., 0, :], exp_diff, low_tolerance=True)
 
+    @pytest.mark.parametrize("count, expected_level", [(100, 100), (128, 128)])
+    @pytest.mark.parametrize("clip_as_tensor", [False, True])
+    def test_clahe_lut_rounding(self, count, expected_level, clip_as_tensor, device, dtype):
+        # With clipping disabled, the first CDF value is count * 255 / 256:
+        # 99.609375 rounds to 100, and the tie 127.5 rounds to 128 (#5659).
+        img = torch.ones(256, device=device, dtype=dtype)
+        img[:count] = 0
+        img = img.view(1, 1, 16, 16)
+        if clip_as_tensor:
+            clip = torch.tensor([0.0], device=device, dtype=dtype)
+            out = enhance.equalization._equalize_clahe(img, clip, (1, 1), False)
+        else:
+            out = enhance.equalize_clahe(img, 0.0, (1, 1))
+        expected = torch.full_like(img, 255).flatten()
+        expected[:count] = expected_level
+        self.assert_close(out, expected.view_as(img).div(255), rtol=0, atol=0)
+        assert out.dtype == dtype
+        assert out.device == device
+
+    def test_clahe_lut_rounding_ties_to_even(self, device, dtype):
+        # Four bins with counts [1, 2, 1, 2] give CDF values [0.5, 1.5, 2, 3].
+        tiles = torch.tensor([0.0, 0.25, 0.25, 0.5, 0.75, 0.75], device=device, dtype=dtype)
+        luts = enhance.equalization._compute_luts(tiles.view(1, 1, 1, 1, 2, 3), num_bins=4, clip=0.0)
+        expected = torch.tensor([0.0, 2.0, 2.0, 3.0], device=device, dtype=dtype)
+        self.assert_close(luts.flatten(), expected, rtol=0, atol=0)
+
+    def test_clahe_differentiable_lut_is_not_rounded(self, device, dtype):
+        tiles = torch.ones(256, device=device, dtype=dtype)
+        tiles[:100] = 0
+        luts = enhance.equalization._compute_luts(tiles.view(1, 1, 1, 1, 16, 16), clip=0.0, diff=True)
+        assert ((luts > luts.floor()) & (luts < luts.ceil())).any()
+
+    @pytest.mark.parametrize("clip_as_tensor", [False, True])
+    def test_clahe_residual_spread(self, clip_as_tensor, device, dtype):
+        # One 2 x 4 tile of 8 pixels, 4 at level 0 and 4 at level 100, clip limit 40: the per-bin limit is
+        # max(40 * 8 // 256, 1) = 1, so 6 counts are clipped. OpenCV spreads a residual below the bin count over
+        # every (256 // 6) = 42nd bin from bin 0 (bins 0, 42, 84, 126, 168, 210), which leaves 2 counts at or
+        # below bin 0 and 5 at or below bin 100: the levels map to round(2 * 255 / 8) = 64 and
+        # round(5 * 255 / 8) = 159. Piling the residual into bins 0..5 instead gave 8 counts at bin 100 and
+        # mapped it to 255.
+        img = torch.tensor([[0.0] * 4, [100.0] * 4], device=device, dtype=dtype).div(255.0)[None, None]
+        clip = torch.tensor([40.0], device=device, dtype=dtype) if clip_as_tensor else 40.0
+        out = enhance.equalization._equalize_clahe(img, clip, (1, 1), False)
+        expected = torch.tensor([[64.0] * 4, [159.0] * 4], device=device, dtype=dtype).div(255.0)[None, None]
+        self.assert_close(out, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("clip_as_tensor", [False, True])
+    def test_clahe_residual_spread_after_the_whole_share(self, clip_as_tensor, device, dtype):
+        # One 32 x 32 tile of 1024 pixels: 342 in bin 0, 341 in bin 100 and 341 in bin 200. Clip limit 40 caps every
+        # bin at 40 * 1024 // 256 = 160, so 544 counts are clipped. Every bin takes the whole share 544 // 256 = 2, and
+        # the residual 32 goes, as in OpenCV, to every 256 // 32 = 8th bin from bin 0. The LUT is
+        # round(cumsum * 255 / 1024): bin 100 maps to round(535 * 255 / 1024) = 133 and bin 200 to
+        # round(908 * 255 / 1024) = 226, where writing the residual into bins 0..31 would give 138 and 228.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the cumulative counts of a 1024-pixel tile are not exact below float32")
+        values = torch.cat([torch.zeros(342), torch.full((341,), 100 / 256), torch.full((341,), 200 / 256)])
+        tiles = values.to(device, dtype).view(1, 1, 1, 1, 32, 32)
+        clip = torch.tensor([40.0], device=device, dtype=dtype) if clip_as_tensor else 40.0
+        luts = enhance.equalization._compute_luts(tiles, clip=clip)
+        hist = torch.full((256,), 2.0, dtype=torch.float64)
+        hist[::8] += 1
+        hist[[0, 100, 200]] += 160
+        expected = (hist.cumsum(0) * 255 / 1024).round()
+        assert expected[100] == 133
+        assert expected[200] == 226
+        self.assert_close(luts.view(256), expected.to(device, dtype))
+
     def test_clahe_non_square_grid(self, device, dtype):
         # Pixel values are 0 and powers of two, exact in every dtype. With 4 x 4 tiles every interpolation weight
         # is a multiple of 1/3, so 9 * 255 * output is an integer. The expected integers come from an exact
         # rational evaluation of CLAHE pixel by pixel, independent of this implementation's tile indexing; the
         # reference is an exact-Fraction restatement of _compute_tiles/_compute_luts/_compute_equalized_tiles
         # (tile size ceil(n/g) rounded up to even, trailing reflect pad, floor(v*256) histogram, clip and
-        # redistribute, floor(cumsum*255/P), axis blend weight (T-1-k)/(T-1)); it is posted in full on #4628.
+        # redistribute, round(cumsum*255/P), axis blend weight (T-1-k)/(T-1)); the reference posted on #4628 is
+        # evaluated here with round-to-even LUTs and the clipped residual spread over every (256 // residual)-th
+        # bin from bin 0, as OpenCV does.
         codes = torch.tensor(
             [
                 [1, 2, 6, 7, 1, 7, 1, 5, 4, 8, 4, 6],
@@ -376,17 +512,25 @@ class TestEqualization(BaseTester):
         img = levels[codes][None, None]
         expected = torch.tensor(
             [
-                [423, 567, 1575, 1815, 423, 1719, 423, 1431, 1143, 2295, 1143, 1719],
-                [567, 1863, 1863, 2295, 279, 1143, 1719, 759, 1431, 279, 855, 423],
-                [855, 855, 1287, 1335, 1767, 711, 1143, 2295, 1431, 1431, 1143, 1143],
-                [1623, 1431, 327, 1255, 1367, 903, 663, 2295, 455, 1143, 1911, 1911],
-                [855, 519, 375, 1751, 695, 2295, 2295, 967, 839, 951, 1335, 1335],
-                [2295, 999, 423, 1191, 2295, 999, 1431, 327, 855, 1719, 423, 2007],
-                [2295, 2295, 999, 1191, 2295, 1431, 1431, 951, 519, 1431, 2295, 1431],
-                [999, 1719, 2295, 1719, 1335, 1719, 1719, 1335, 375, 423, 1863, 423],
+                [288, 432, 1431, 1671, 288, 1575, 288, 1242, 912, 2295, 864, 1431],
+                [432, 1719, 1719, 2295, 288, 1008, 1575, 576, 1197, 288, 576, 288],
+                [720, 720, 1152, 1197, 1623, 576, 1008, 2295, 1197, 1152, 864, 864],
+                [1383, 1152, 336, 1008, 1148, 720, 480, 2295, 320, 768, 1719, 1719],
+                [528, 384, 384, 1543, 432, 2295, 2295, 656, 512, 576, 864, 864],
+                [2295, 576, 432, 720, 2295, 720, 1152, 336, 480, 1152, 432, 1719],
+                [2295, 2295, 576, 720, 2295, 1152, 1152, 576, 384, 864, 2295, 864],
+                [576, 1431, 2295, 1479, 960, 1575, 1575, 960, 384, 432, 1431, 432],
             ],
             dtype=torch.float64,
         )
+        if dtype == torch.float16:
+            # 9 * 255 / 16 = 143.4375 becomes 143.5 in float16, so its LUT entry rounds to 144, not 143.
+            # Propagate that one-level difference through the exact rational interpolation weights.
+            expected[0, 7] += 6
+            expected[1, 8] += 3
+            expected[2, [3, 8]] += 3
+            expected[3, 0] += 3
+            expected[3, 4] += 4
         expected = expected.div(9 * 255).to(dtype).to(device)[None, None]
         # Both orientations: the two border regions are indexed by the grid size of different axes.
         self.assert_close(enhance.equalize_clahe(img, 40.0, (2, 3)), expected)

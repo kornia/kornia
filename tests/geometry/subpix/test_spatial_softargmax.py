@@ -15,6 +15,10 @@
 # limitations under the License.
 #
 
+import itertools
+import math
+import warnings
+
 import pytest
 import torch
 from torch.nn.functional import mse_loss
@@ -27,6 +31,74 @@ from kornia.geometry.subpix.spatial_soft_argmax import (
 )
 
 from testing.base import BaseTester
+
+
+class TestStridedSubpixel(BaseTester):
+    @pytest.mark.parametrize(
+        "operation", ["conv_soft_argmax2d", "conv_soft_argmax3d", "conv_quad_interp3d", "iterative_quad_interp3d"]
+    )
+    @pytest.mark.parametrize("layout", ["channels_last", "batch_channel_transpose", "spatial_transpose", "slice"])
+    def test_heatmap_layout(self, device, dtype, operation, layout):
+        shape = (2, 3, 5, 7) if operation.endswith("2d") else (2, 3, 5, 6, 7)
+        sample = torch.arange(math.prod(shape), device=device, dtype=torch.float32)
+        sample = sample.sin().reshape(shape).to(dtype)
+        if layout == "channels_last":
+            memory_format = torch.channels_last if len(shape) == 4 else torch.channels_last_3d
+            sample = sample.to(memory_format=memory_format)
+        elif layout == "batch_channel_transpose":
+            sample = sample.transpose(0, 1)
+        elif layout == "spatial_transpose":
+            sample = sample.transpose(-1, -2)
+        else:
+            sample = sample[..., ::2]
+        assert not sample.is_contiguous()
+        function = getattr(kornia.geometry.subpix, operation)
+        kwargs = {"output_value": True} if "soft_argmax" in operation else {}
+
+        expected = function(sample.contiguous(), **kwargs)
+        actual = function(sample, **kwargs)
+
+        for result, reference in zip(actual, expected):
+            self.assert_close(result, reference, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("operation", ["conv_soft_argmax2d", "conv_soft_argmax3d"])
+    def test_channels_last_gradient(self, device, operation):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        shape = (2, 3, 5, 7) if operation.endswith("2d") else (2, 3, 5, 6, 7)
+        sample = torch.arange(math.prod(shape), device=device, dtype=torch.float64).sin().reshape(shape)
+        reference = sample.clone().requires_grad_()
+        memory_format = torch.channels_last if len(shape) == 4 else torch.channels_last_3d
+        strided = sample.to(memory_format=memory_format).requires_grad_()
+        function = getattr(kornia.geometry.subpix, operation)
+
+        expected = function(reference, output_value=True)
+        actual = function(strided, output_value=True)
+        expected_grad = torch.autograd.grad(sum(value.sum() for value in expected), reference)[0]
+        actual_grad = torch.autograd.grad(sum(value.sum() for value in actual), strided)[0]
+
+        self.assert_close(actual_grad, expected_grad)
+
+    @pytest.mark.parametrize("operation", ["conv_quad_interp3d", "iterative_quad_interp3d"])
+    @pytest.mark.parametrize("layout", ["channels_last", "batch_channel_transpose", "spatial_transpose"])
+    def test_precomputed_mask_layout(self, device, dtype, operation, layout):
+        sample = torch.arange(2 * 3 * 5 * 6 * 7, device=device, dtype=torch.float32).sin()
+        sample = sample.reshape(2, 3, 5, 6, 7).to(dtype)
+        mask = kornia.geometry.subpix.nms3d(sample, (3, 3, 3), True)
+        if layout == "channels_last":
+            mask = mask.to(memory_format=torch.channels_last_3d)
+        elif layout == "batch_channel_transpose":
+            mask, sample = mask.transpose(0, 1), sample.transpose(0, 1).contiguous()
+        else:
+            mask, sample = mask.transpose(-1, -2), sample.transpose(-1, -2).contiguous()
+        assert not mask.is_contiguous()
+        function = getattr(kornia.geometry.subpix, operation)
+
+        expected = function(sample, precomputed_nms_mask=mask.contiguous())
+        actual = function(sample, precomputed_nms_mask=mask)
+
+        for result, reference in zip(actual, expected):
+            self.assert_close(result, reference, atol=0, rtol=0)
 
 
 class TestCenterKernel2d(BaseTester):
@@ -141,6 +213,26 @@ class TestSpatialSoftArgmax2d(BaseTester):
         self.assert_close(coord[1, 0, 1].item(), 1.0, atol=1e-4, rtol=1e-4)
         self.assert_close(coord[1, 1, 0].item(), 1.0, atol=1e-4, rtol=1e-4)  # bottom-right
         self.assert_close(coord[1, 1, 1].item(), 1.0, atol=1e-4, rtol=1e-4)
+
+    def test_temperature_divides_input(self, device, dtype):
+        # An asymmetric map: a soft-argmax at T = 0.5 must equal the expectation of softmax(x / 0.5).
+        sample = torch.tensor([[[[0.0, 1.0, 3.0], [2.0, -1.0, 0.5]]]], device=device, dtype=dtype)
+        # The float64 reference is computed on CPU: MPS has no float64.
+        probs = torch.softmax(sample.cpu().double().reshape(1, 1, -1) / 0.5, dim=-1).view(1, 1, 2, 3)
+        expected = kornia.geometry.subpix.spatial_expectation2d(probs, normalized_coordinates=False)
+        expected = expected.to(device=device, dtype=dtype)
+
+        actual = kornia.geometry.subpix.spatial_soft_argmax2d(sample, 0.5, normalized_coordinates=False)
+        self.assert_close(actual, expected)
+        module = kornia.geometry.subpix.SpatialSoftArgmax2d(temperature=0.5, normalized_coordinates=False)
+        self.assert_close(module(sample), expected)
+
+    def test_nonpositive_temperature_raises(self, device, dtype):
+        sample = torch.zeros(1, 1, 2, 3, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Temperature should be positive"):
+            kornia.geometry.subpix.spatial_soft_argmax2d(sample, 0.0)
+        with pytest.raises(ValueError, match="Temperature should be positive"):
+            kornia.geometry.subpix.SpatialSoftArgmax2d(temperature=-1.0)(sample)
 
     def test_gradcheck(self, device):
         sample = torch.rand(2, 3, 3, 2, device=device, dtype=torch.float64)
@@ -319,6 +411,126 @@ class TestConvSoftArgmax2d(BaseTester):
         self.assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
         self.assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
+    def test_dynamo_tensor_temperature(self, device, dtype, torch_optimizer):
+        # The positivity check reads a tensor temperature; it must not break graph capture.
+        data = torch.zeros(1, 1, 5, 7, device=device, dtype=dtype)
+        data[..., 2, 4] = 1.0
+        temperature = torch.tensor(0.5, device=device, dtype=dtype)
+        op = kornia.geometry.subpix.conv_soft_argmax2d
+        op_opt = torch_optimizer(op, fullgraph=True)
+        self.assert_close(op(data, temperature=temperature), op_opt(data, temperature=temperature))
+
+    @pytest.mark.parametrize("kernel_size", [(3, 3), (5, 5), (7, 7), (4, 6)])
+    def test_window_offset_in_pixels_5017(self, device, dtype, kernel_size):
+        # Every window that holds the one hot pixel puts all its softmax weight on it, so it reports that
+        # pixel, whatever the window size. The offset kernel used to span [-1, 1] instead of pixel offsets,
+        # which scaled the offset by 2 / (k - 1): a 5-wide window reported x = 7 for a peak at x = 8.
+        ky, kx = kernel_size
+        data = torch.zeros(1, 1, 15, 17, device=device, dtype=dtype)
+        data[..., 7, 8] = 50.0
+        coords = kornia.geometry.subpix.conv_soft_argmax2d(
+            data, kernel_size, (1, 1), (0, 0), normalized_coordinates=False
+        )
+        rows = torch.arange(coords.shape[-2], device=device)
+        cols = torch.arange(coords.shape[-1], device=device)
+        holds_peak = ((rows <= 7) & (rows > 7 - ky))[:, None] & ((cols <= 8) & (cols > 8 - kx))[None, :]
+        assert holds_peak.sum().item() == kx * ky
+        expected = torch.tensor([8.0, 7.0], device=device, dtype=dtype)[:, None].expand(2, kx * ky)
+        self.assert_close(coords[0, 0][:, holds_peak], expected, atol=1e-4, rtol=1e-4)
+
+    @pytest.mark.parametrize(
+        "kernel_size, padding", [((2, 2), (1, 1)), ((4, 4), (2, 2)), ((4, 6), (2, 3)), ((3, 3), (1, 1))]
+    )
+    @pytest.mark.parametrize("peak", [(0, 0), (6, 8)])
+    def test_border_window_centre_with_padding_5066(self, device, dtype, kernel_size, padding, peak):
+        # Every window that holds the one hot pixel reports it, including the border windows of an even kernel_size
+        # at padding = k / 2, whose centre falls between a border pixel and a padded one. The coordinate grid used to
+        # be zero-padded, so those windows averaged 0 into their centre: x = 3.5 instead of 8 at the right border.
+        (ky, kx), (py, px), (row, col) = kernel_size, padding, peak
+        data = torch.zeros(1, 1, 7, 9, device=device, dtype=dtype)
+        data[..., row, col] = 50.0
+        coords = kornia.geometry.subpix.conv_soft_argmax2d(
+            data, kernel_size, (1, 1), padding, normalized_coordinates=False
+        )
+        rows = torch.arange(coords.shape[-2], device=device)
+        cols = torch.arange(coords.shape[-1], device=device)
+        holds_peak = ((rows - py <= row) & (rows - py > row - ky))[:, None] & (
+            (cols - px <= col) & (cols - px > col - kx)
+        )[None, :]
+        n = int(holds_peak.sum())
+        assert n > 0
+        expected = torch.tensor([float(col), float(row)], device=device, dtype=dtype)[:, None]
+        self.assert_close(coords[0, 0][:, holds_peak], expected.expand(2, n), atol=1e-4, rtol=1e-4)
+
+    def test_window_centre_rounds_once_on_wide_maps(self, device, dtype):
+        # On a flat map every full window reports its own centre. The padded centre grid is offset before its cast,
+        # so a bfloat16 column is rounded once, as on an unpadded grid: offsetting after the cast rounded twice and
+        # moved columns above 256 by one bfloat16 step (column 256 read 255).
+        data = torch.zeros(1, 1, 3, 600, device=device, dtype=dtype)
+        coords = kornia.geometry.subpix.conv_soft_argmax2d(data, (3, 3), (1, 1), (1, 1), normalized_coordinates=False)
+        expected = torch.arange(1, 599, device=device, dtype=torch.float32).to(dtype)
+        self.assert_close(coords[0, 0, 0, 1, 1:-1], expected, rtol=0, atol=0)
+
+    def test_int_padding_matches_tuple(self, device, dtype):
+        data = torch.zeros(1, 1, 5, 9, device=device, dtype=dtype)
+        data[0, 0, 2, 8] = 5.0
+        data[0, 0, 0, 0] = 3.0
+        for kernel_size, padding in (((4, 4), 2), ((3, 3), 1)):
+            expected = kornia.geometry.subpix.conv_soft_argmax2d(
+                data, kernel_size, (1, 1), (padding, padding), normalized_coordinates=False
+            )
+            actual = kornia.geometry.subpix.conv_soft_argmax2d(
+                data, kernel_size, (1, 1), padding, normalized_coordinates=False
+            )
+            self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("temperature", [0.0, float("nan"), "tensor"])
+    @pytest.mark.parametrize(
+        "op, shape", [("conv_soft_argmax2d", (1, 1, 3, 3)), ("conv_soft_argmax3d", (1, 1, 3, 3, 3))]
+    )
+    def test_nonpositive_temperature_raises(self, device, dtype, temperature, op, shape):
+        data = torch.zeros(shape, device=device, dtype=dtype)
+        if temperature == "tensor":
+            temperature = torch.tensor([0.5, -1.0], device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Temperature should be positive"):
+            getattr(kornia.geometry.subpix, op)(data, temperature=temperature)
+
+    @pytest.mark.parametrize(
+        "op, shape", [("conv_soft_argmax2d", (2, 3, 5, 7)), ("conv_soft_argmax3d", (2, 3, 4, 5, 7))]
+    )
+    def test_tensor_temperature_matches_float(self, device, dtype, op, shape):
+        # A one-element tensor temperature of any rank that broadcasts against the map gives the float result: the
+        # map is divided before its windows are unfolded, so a (1, 1, 1, 1) temperature does not broadcast against
+        # the (N, k, L) windows instead.
+        data = torch.zeros(shape, device=device, dtype=dtype)
+        data[0, 1, ..., 1, 3] = 2.0
+        data[1, 2, ..., 3, 5] = 1.0
+        fn = getattr(kornia.geometry.subpix, op)
+        expected = fn(data, temperature=0.5, output_value=True)
+        for temperature_shape in ((), (1,), (1,) * len(shape)):
+            temperature = torch.full(temperature_shape, 0.5, device=device, dtype=dtype)
+            actual = fn(data, temperature=temperature, output_value=True)
+            for got, want in zip(actual, expected):
+                self.assert_close(got, want, rtol=0, atol=0)
+
+    @pytest.mark.parametrize(
+        "op, kernel_size, padding",
+        [
+            ("conv_soft_argmax2d", (3, 3), (2, 1)),
+            ("conv_soft_argmax2d", (1, 3), (1, 0)),
+            ("conv_soft_argmax2d", (3, 3), (1, -1)),
+            ("conv_soft_argmax3d", (3, 3, 3), (1, 1, 2)),
+            ("conv_soft_argmax3d", (1, 3, 3), (1, 1, 1)),
+            ("conv_soft_argmax3d", (3, 3, 3), (-1, 1, 1)),
+        ],
+    )
+    def test_padding_over_half_kernel_raises(self, device, dtype, op, kernel_size, padding):
+        # A padding above half the window, or a negative one, raises as the pooling kernels did: past the window
+        # size a window would hold padding only and have no softmax, and a negative padding would crop the map.
+        data = torch.zeros((1, 1) + (3, 5, 7)[-len(kernel_size) :], device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="padding must be non-negative and at most half of kernel_size"):
+            getattr(kornia.geometry.subpix, op)(data, kernel_size, (1,) * len(kernel_size), padding)
+
 
 class TestConvSoftArgmax3d(BaseTester):
     def test_smoke(self, device, dtype):
@@ -461,6 +673,76 @@ class TestConvSoftArgmax3d(BaseTester):
         self.assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
         self.assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
+    def test_dynamo_tensor_temperature(self, device, dtype, torch_optimizer):
+        # The positivity check reads a tensor temperature; it must not break graph capture.
+        data = torch.zeros(1, 1, 3, 5, 7, device=device, dtype=dtype)
+        data[..., 1, 2, 4] = 1.0
+        temperature = torch.tensor(0.5, device=device, dtype=dtype)
+        op = kornia.geometry.subpix.conv_soft_argmax3d
+        op_opt = torch_optimizer(op, fullgraph=True)
+        for expected, actual in zip(op(data, temperature=temperature), op_opt(data, temperature=temperature)):
+            self.assert_close(expected, actual)
+
+    @pytest.mark.parametrize("kernel_size", [(3, 3, 3), (5, 5, 5), (5, 3, 4), (4, 4, 2)])
+    def test_window_offset_in_pixels_5017(self, device, dtype, kernel_size):
+        # 3-D counterpart of TestConvSoftArgmax2d::test_window_offset_in_pixels_5017: the depth offset used to
+        # come from linspace(-1, 1, d), so a 5-deep window reported depth 4 for a peak at depth 5.
+        kz, ky, kx = kernel_size
+        data = torch.zeros(1, 1, 11, 11, 13, device=device, dtype=dtype)
+        data[..., 5, 4, 6] = 50.0
+        coords = kornia.geometry.subpix.conv_soft_argmax3d(
+            data, kernel_size, (1, 1, 1), (0, 0, 0), normalized_coordinates=False, output_value=False
+        )
+        levels = torch.arange(coords.shape[-3], device=device)
+        rows = torch.arange(coords.shape[-2], device=device)
+        cols = torch.arange(coords.shape[-1], device=device)
+        holds_peak = (
+            ((levels <= 5) & (levels > 5 - kz))[:, None, None]
+            & ((rows <= 4) & (rows > 4 - ky))[None, :, None]
+            & ((cols <= 6) & (cols > 6 - kx))[None, None, :]
+        )
+        assert holds_peak.sum().item() == kx * ky * kz
+        # channels are (depth, x, y)
+        expected = torch.tensor([5.0, 6.0, 4.0], device=device, dtype=dtype)[:, None].expand(3, kx * ky * kz)
+        self.assert_close(coords[0, 0][:, holds_peak], expected, atol=1e-4, rtol=1e-4)
+
+    @pytest.mark.parametrize(
+        "kernel_size, padding", [((3, 3, 4), (1, 1, 2)), ((2, 2, 2), (1, 1, 1)), ((4, 2, 3), (2, 1, 1))]
+    )
+    @pytest.mark.parametrize("peak", [(0, 0, 0), (4, 5, 6)])
+    def test_border_window_centre_with_padding_5066(self, device, dtype, kernel_size, padding, peak):
+        # 3-D counterpart of TestConvSoftArgmax2d::test_border_window_centre_with_padding_5066: a zero-padded
+        # coordinate grid pulled every channel of an even border window toward 0, not only the straddling axis.
+        (kz, ky, kx), (pz, py, px), (lev, row, col) = kernel_size, padding, peak
+        data = torch.zeros(1, 1, 5, 6, 7, device=device, dtype=dtype)
+        data[..., lev, row, col] = 50.0
+        coords = kornia.geometry.subpix.conv_soft_argmax3d(
+            data, kernel_size, (1, 1, 1), padding, normalized_coordinates=False, output_value=False
+        )
+        levels = torch.arange(coords.shape[-3], device=device)
+        rows = torch.arange(coords.shape[-2], device=device)
+        cols = torch.arange(coords.shape[-1], device=device)
+        holds_peak = (
+            ((levels - pz <= lev) & (levels - pz > lev - kz))[:, None, None]
+            & ((rows - py <= row) & (rows - py > row - ky))[None, :, None]
+            & ((cols - px <= col) & (cols - px > col - kx))[None, None, :]
+        )
+        n = int(holds_peak.sum())
+        assert n > 0
+        # channels are (depth, x, y)
+        expected = torch.tensor([float(lev), float(col), float(row)], device=device, dtype=dtype)[:, None]
+        self.assert_close(coords[0, 0][:, holds_peak], expected.expand(3, n), atol=1e-4, rtol=1e-4)
+
+    def test_int_padding_matches_tuple(self, device, dtype):
+        data = torch.zeros(1, 1, 4, 5, 7, device=device, dtype=dtype)
+        data[0, 0, 3, 4, 6] = 5.0
+        data[0, 0, 0, 0, 0] = 3.0
+        for kernel_size, padding in (((2, 2, 2), 1), ((3, 3, 3), 1)):
+            expected = kornia.geometry.subpix.conv_soft_argmax3d(data, kernel_size, (1, 1, 1), (padding,) * 3)
+            actual = kornia.geometry.subpix.conv_soft_argmax3d(data, kernel_size, (1, 1, 1), padding)
+            for got, want in zip(actual, expected):
+                self.assert_close(got, want, rtol=0, atol=0)
+
 
 class TestConvQuadInterp3dModule(BaseTester):
     def test_smoke(self, device, dtype):
@@ -473,7 +755,7 @@ class TestConvQuadInterp3dModule(BaseTester):
     def test_gradcheck(self, device):
         sample = torch.rand(1, 1, 3, 5, 5, device=device, dtype=torch.float64)
         sample[0, 0, 1, 2, 2] += 20.0
-        self.gradcheck(kornia.geometry.ConvQuadInterp3d(strict_maxima_bonus=0), (sample), atol=1e-3, rtol=1e-3)
+        self.gradcheck(kornia.geometry.ConvQuadInterp3d(), (sample), atol=1e-3, rtol=1e-3)
 
     def test_diag(self, device, dtype):
         sample = torch.tensor(
@@ -521,7 +803,7 @@ class TestConvQuadInterp3dModule(BaseTester):
                         [
                             [2.2504e-04, 2.3146e-02, 1.6808e-01, 2.3188e-02, 2.3628e-04],
                             [2.3146e-02, 1.8118e-01, 7.4338e-01, 1.8955e-01, 2.5413e-02],
-                            [1.6807e-01, 7.4227e-01, 1.1086e01, 8.0414e-01, 1.8482e-01],
+                            [1.6807e-01, 7.4227e-01, 1.0865e00, 8.0414e-01, 1.8482e-01],
                             [2.3146e-02, 1.8118e-01, 7.4338e-01, 1.8955e-01, 2.5413e-02],
                             [2.2504e-04, 2.3146e-02, 1.6808e-01, 2.3188e-02, 2.3628e-04],
                         ],
@@ -625,7 +907,7 @@ class TestConvQuadInterp3dModule(BaseTester):
 class TestConvQuadInterp3d(BaseTester):
     def test_smoke(self, device, dtype):
         sample = torch.randn(2, 3, 3, 4, 4, device=device, dtype=dtype)
-        op = kornia.geometry.subpix.ConvQuadInterp3d(n_iters=3, strict_maxima_bonus=1)
+        op = kornia.geometry.subpix.ConvQuadInterp3d(n_iters=3)
         coord, val = op(sample)
         assert coord.shape == (2, 3, 3, 3, 4, 4)
         assert val.shape == (2, 3, 3, 4, 4)
@@ -647,7 +929,7 @@ class TestConvQuadInterp3d(BaseTester):
         sample = torch.rand(1, 1, 3, 5, 5, device=device, dtype=torch.float64)
         sample[0, 0, 1, 2, 2] += 20.0
         self.gradcheck(
-            kornia.geometry.subpix.ConvQuadInterp3d(strict_maxima_bonus=0, n_iters=1),
+            kornia.geometry.subpix.ConvQuadInterp3d(n_iters=1),
             (sample,),
             atol=1e-3,
             rtol=1e-3,
@@ -656,7 +938,7 @@ class TestConvQuadInterp3d(BaseTester):
     def test_dynamo(self, device, dtype, torch_optimizer):
         sample = torch.rand(1, 1, 3, 5, 5, device=device, dtype=dtype)
         sample[0, 0, 1, 2, 2] += 20.0
-        op = kornia.geometry.subpix.ConvQuadInterp3d(strict_maxima_bonus=0, n_iters=1)
+        op = kornia.geometry.subpix.ConvQuadInterp3d(n_iters=1)
         op_opt = torch_optimizer(op)
         self.assert_close(op(sample)[0], op_opt(sample)[0])
         self.assert_close(op(sample)[1], op_opt(sample)[1])
@@ -669,7 +951,7 @@ class TestConvQuadInterp3d(BaseTester):
         # Pinned in float16 specifically: bfloat16 keeps float32's exponent range.
         torch.manual_seed(0)
         sample = torch.rand(1, 1, 5, 40, 40, device=device, dtype=torch.float16, requires_grad=True)
-        coords, vals = kornia.geometry.subpix.ConvQuadInterp3d(strict_maxima_bonus=0.0)(sample)
+        coords, vals = kornia.geometry.subpix.ConvQuadInterp3d()(sample)
         grad = torch.autograd.grad(coords.sum() + vals.sum(), sample)[0]
         assert torch.isfinite(grad).all()
 
@@ -677,7 +959,7 @@ class TestConvQuadInterp3d(BaseTester):
         # A clear peak at scale=1, h=2, w=2 should return coords close to (1, 2, 2).
         sample = torch.zeros(1, 1, 3, 5, 5, device=device, dtype=dtype)
         sample[0, 0, 1, 2, 2] = 10.0
-        coord, _val = conv_quad_interp3d(sample, strict_maxima_bonus=0)
+        coord, _val = conv_quad_interp3d(sample)
         # coords_max layout: dim2 = [scale, x(width), y(height)]
         assert coord[0, 0, 0, 1, 2, 2].item() == pytest.approx(1.0, abs=1e-3)  # scale
         assert coord[0, 0, 1, 1, 2, 2].item() == pytest.approx(2.0, abs=1e-3)  # x
@@ -693,7 +975,7 @@ class TestConvQuadInterp3d(BaseTester):
                 for dw in range(-1, 2):
                     dist2 = (dd - 0.2) ** 2 + (dh - 0.1) ** 2 + (dw + 0.15) ** 2
                     sample[0, 0, 2 + dd, 3 + dh, 3 + dw] += float(torch.exp(torch.tensor(-dist2 * 4)))
-        coord, _ = conv_quad_interp3d(sample, strict_maxima_bonus=0)
+        coord, _ = conv_quad_interp3d(sample)
         # The refined x (width) coord at the integer peak (d=2, h=3, w=3) should shift toward -0.15.
         x_coord = coord[0, 0, 1, 2, 3, 3].item()
         assert x_coord < 3.0  # shift in negative x direction
@@ -701,7 +983,7 @@ class TestConvQuadInterp3d(BaseTester):
     def test_no_keypoints(self, device, dtype):
         # Flat input — no NMS maxima, output should equal input coords/values.
         sample = torch.ones(1, 1, 3, 4, 4, device=device, dtype=dtype)
-        coord, val = conv_quad_interp3d(sample, strict_maxima_bonus=0)
+        coord, val = conv_quad_interp3d(sample)
         assert coord.shape == (1, 1, 3, 3, 4, 4)
         assert val.shape == (1, 1, 3, 4, 4)
 
@@ -709,9 +991,68 @@ class TestConvQuadInterp3d(BaseTester):
         # With a clear symmetric peak a single iteration should converge.
         sample = torch.zeros(1, 1, 3, 5, 5, device=device, dtype=dtype)
         sample[0, 0, 1, 2, 2] = 5.0
-        coord1, _ = conv_quad_interp3d(sample, n_iters=1, strict_maxima_bonus=0)
-        coord5, _ = conv_quad_interp3d(sample, n_iters=5, strict_maxima_bonus=0)
+        coord1, _ = conv_quad_interp3d(sample, n_iters=1)
+        coord5, _ = conv_quad_interp3d(sample, n_iters=5)
         self.assert_close(coord1, coord5, atol=1e-5, rtol=1e-5)
+
+    @pytest.mark.parametrize("op", ["conv_quad_interp3d", "iterative_quad_interp3d"])
+    @pytest.mark.parametrize("n_iters", [1, 2])
+    @pytest.mark.parametrize("axis", [0, 1, 2], ids=["scale", "x", "y"])
+    @pytest.mark.parametrize("sign", [1.0, -1.0], ids=["pos", "neg"])
+    def test_last_iteration_move_rejects_5038(self, device, dtype, op, n_iters, axis, sign):
+        # Quadratic with its peak (value 0) 0.65 voxel from the candidate at (d, y, x) = (2, 2, 5) along one axis,
+        # either way. The solve at the candidate asks for a 0.65 > max_subpixel_shift move, so the centre steps one
+        # voxel toward the peak. With n_iters=1 no solve follows: the point has not converged and is rejected,
+        # keeping its grid coordinates and the value read at that voxel, -(0.65)**2. It used to be reported at the
+        # new centre plus the old shift, one voxel beyond the peak, with the value read at the moved voxel. With
+        # n_iters=2 the solve at the new centre converges to the peak.
+        D, H, W = 5, 6, 9
+        candidate = [2.0, 5.0, 2.0]  # coords_max layout: dim2 = [scale, x(width), y(height)]
+        peak = list(candidate)
+        peak[axis] += sign * 0.65
+        zz, yy, xx = torch.meshgrid(
+            torch.arange(D, device=device, dtype=dtype),
+            torch.arange(H, device=device, dtype=dtype),
+            torch.arange(W, device=device, dtype=dtype),
+            indexing="ij",
+        )
+        sample = (-((zz - peak[0]) ** 2) - (xx - peak[1]) ** 2 - (yy - peak[2]) ** 2)[None, None]
+        mask = torch.zeros(1, 1, D, H, W, dtype=torch.bool, device=device)
+        mask[0, 0, 2, 2, 5] = True
+        kwargs = {"dilation_radius": 2} if op == "conv_quad_interp3d" else {}
+        coord, val = getattr(kornia.geometry.subpix, op)(sample, n_iters=n_iters, precomputed_nms_mask=mask, **kwargs)
+        converged = n_iters == 2
+        expected = torch.tensor(peak if converged else candidate, device=device, dtype=dtype)
+        self.assert_close(coord[0, 0, :, 2, 2, 5], expected, atol=1e-4, rtol=1e-4)
+        # a rejected point keeps the input value at its NMS voxel; the converged one reads the peak value 0
+        expected_val = torch.zeros((), device=device, dtype=dtype) if converged else sample[0, 0, 2, 2, 5]
+        self.assert_close(val[0, 0, 2, 2, 5], expected_val, atol=1e-4, rtol=1e-4)
+
+    @pytest.mark.parametrize("op", ["conv_quad_interp3d", "iterative_quad_interp3d"])
+    @pytest.mark.parametrize("amplitude", [1.0, 1e-2, 1e-3])
+    def test_determinant_floor_is_relative_5065(self, device, dtype, op, amplitude):
+        # A maximum with a neighbour of half its value to the right: the fit is the same parabola at every amplitude
+        # and peaks at x = 5 + 1/6. The determinant of its Hessian is cubic in the amplitude (-6e-9 at 1e-3), and the
+        # absolute floor |det H| > 1e-7 rejected the fit as singular below an amplitude of about 2.6e-3, leaving x = 5.
+        fn = getattr(kornia.geometry.subpix, op)
+        volume = torch.zeros(1, 1, 4, 6, 9, device=device, dtype=dtype)
+        volume[0, 0, 1, 2, 5] = amplitude
+        volume[0, 0, 1, 2, 6] = 0.5 * amplitude
+        coords, vals = fn(volume)
+        expected = torch.tensor([1.0, 5 + 1 / 6, 2.0], device=device, dtype=dtype)
+        self.assert_close(coords[0, 0, :, 1, 2, 5], expected, atol=1e-4, rtol=1e-4)
+        # the fit's value at its peak, 1 + 1/48 of the maximum, scales with the amplitude as well
+        self.assert_close(vals[0, 0, 1, 2, 5], torch.tensor(49 / 48 * amplitude, device=device, dtype=dtype))
+
+        # A fit that is singular at any amplitude is still rejected: the same x profile repeated at every depth
+        # has no curvature along the scale axis, so the candidate keeps its grid coordinates.
+        flat = torch.zeros_like(volume)
+        flat[0, 0, :, 2, 5] = amplitude
+        flat[0, 0, :, 2, 6] = 0.5 * amplitude
+        mask = torch.zeros_like(flat, dtype=torch.bool)
+        mask[0, 0, 1, 2, 5] = True
+        coords, _ = fn(flat, precomputed_nms_mask=mask)
+        self.assert_close(coords[0, 0, :, 1, 2, 5], torch.tensor([1.0, 5.0, 2.0], device=device, dtype=dtype))
 
 
 class TestAdaptiveQuadInterp3d(BaseTester):
@@ -730,8 +1071,8 @@ class TestAdaptiveQuadInterp3d(BaseTester):
         """patch and conv backends must produce numerically identical results."""
         torch.manual_seed(7)
         x = torch.randn(1, 1, 5, 16, 16, device=device, dtype=dtype)
-        coords_p, vals_p = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="patch", strict_maxima_bonus=0)(x)
-        coords_c, vals_c = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="conv", strict_maxima_bonus=0)(x)
+        coords_p, vals_p = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="patch")(x)
+        coords_c, vals_c = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="conv")(x)
         from kornia.geometry.subpix import nms3d
 
         mask = nms3d(x, (3, 3, 3), True)
@@ -742,9 +1083,9 @@ class TestAdaptiveQuadInterp3d(BaseTester):
     def test_auto_dispatches(self, device, dtype):
         """auto mode must use conv on CUDA, patch on CPU (verified via result equality)."""
         x = torch.randn(1, 1, 3, 8, 8, device=device, dtype=dtype)
-        auto = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="auto", strict_maxima_bonus=0)
+        auto = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="auto")
         expected_mode = "conv" if x.is_cuda else "patch"
-        ref = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode=expected_mode, strict_maxima_bonus=0)
+        ref = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode=expected_mode)
         self.assert_close(auto(x)[0], ref(x)[0], atol=1e-5, rtol=1e-5)
         self.assert_close(auto(x)[1], ref(x)[1], atol=1e-5, rtol=1e-5)
 
@@ -752,7 +1093,7 @@ class TestAdaptiveQuadInterp3d(BaseTester):
         x = torch.zeros(1, 1, 3, 5, 5, device=device, dtype=torch.float64)
         x[0, 0, 1, 2, 2] = 5.0
         self.gradcheck(
-            kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="patch", strict_maxima_bonus=0),
+            kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="patch"),
             (x,),
             atol=1e-3,
             rtol=1e-3,
@@ -761,7 +1102,7 @@ class TestAdaptiveQuadInterp3d(BaseTester):
     def test_dynamo(self, device, dtype, torch_optimizer):
         x = torch.rand(1, 1, 3, 5, 5, device=device, dtype=dtype)
         x[0, 0, 1, 2, 2] += 20.0
-        op = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="patch", strict_maxima_bonus=0)
+        op = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="patch")
         op_opt = torch_optimizer(op)
         self.assert_close(op(x)[0], op_opt(x)[0])
 
@@ -794,10 +1135,8 @@ class TestAdaptiveQuadInterp3d(BaseTester):
             )
 
         max_mask, _ = nms3d_minmax(x)
-        coord_conv, _ = conv_quad_interp3d(
-            x, n_iters=5, strict_maxima_bonus=0.0, precomputed_nms_mask=max_mask, dilation_radius=3
-        )
-        coord_iter, _ = iterative_quad_interp3d(x, n_iters=5, strict_maxima_bonus=0.0)
+        coord_conv, _ = conv_quad_interp3d(x, n_iters=5, precomputed_nms_mask=max_mask, dilation_radius=3)
+        coord_iter, _ = iterative_quad_interp3d(x, n_iters=5)
 
         d_idx, h_idx, w_idx = torch.where(max_mask.view(D, H, W))
         assert len(d_idx) > 0, "No NMS maxima found — check the synthetic input"
@@ -850,6 +1189,34 @@ class TestPackedQuadraticFit(BaseTester):
             assert got.shape == (2, 5)
             self.assert_close(got.reshape(-1), want, atol=0, rtol=0)
 
+    @pytest.mark.parametrize("solver", ["_solve_cramer_sym3x3", "_solve_cramer_sym3x3_cuda"])
+    @pytest.mark.parametrize("amplitude", [1e-3, 1.0, 1e3])
+    def test_cramer_relative_floor_5065(self, device, dtype, solver, amplitude):
+        from kornia.geometry.subpix import spatial_soft_argmax as subpix
+
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("Packed quadratic fit is dispatched only for float32/float64")
+        # Rows are (dxx, dyy, dss, dxy, dxs, dys). A fit is singular when |det| <= 1e-7 * m**3, with m the largest
+        # Hessian magnitude, so each row keeps its status at every amplitude. The first row sits a decade above that
+        # floor and the second a decade below. Each later singular row has its unique largest entry in a different
+        # slot and would be solved if that slot were left out of m; the last row is all zero.
+        e, t = -1e-4, -1e-8
+        hessians = [
+            (-1.0, -1.0, -1e-6, 0.0, 0.0, 0.0),
+            (-1.0, -1.0, -1e-8, 0.0, 0.0, 0.0),
+            (-1.0, e, e, 0.0, 0.0, 0.0),
+            (e, -1.0, e, 0.0, 0.0, 0.0),
+            (e, e, -1.0, 0.0, 0.0, 0.0),
+            (e, e, t, 1.0, 0.0, 0.0),
+            (e, t, e, 0.0, 1.0, 0.0),
+            (t, e, e, 0.0, 0.0, 1.0),
+            (0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        ]
+        # The right-hand side is larger than the Hessian and must not enter m.
+        system = torch.tensor([h + (10.0, 10.0, 10.0) for h in hessians], device=device, dtype=dtype).T * amplitude
+        solved = getattr(subpix, solver)(*system)[3]
+        assert solved.tolist() == [True] + [False] * 8
+
     @pytest.mark.parametrize("count", [0, 19])
     def test_patch_derivatives(self, device, dtype, count):
         from kornia.geometry.subpix import spatial_soft_argmax as subpix
@@ -888,7 +1255,7 @@ class TestPackedQuadraticFit(BaseTester):
         op = getattr(subpix, op_name)
         sample = torch.rand(2, 2, 5, 9, 8, dtype=dtype).requires_grad_()
         cuda_sample = sample.detach().to(device).requires_grad_()
-        kwargs = {"n_iters": n_iters, "allow_scale_steps": allow_scale_steps, "strict_maxima_bonus": 0.0}
+        kwargs = {"n_iters": n_iters, "allow_scale_steps": allow_scale_steps}
         expected = op(sample, **kwargs)
         actual = op(cuda_sample, **kwargs)
         for got, want in zip(actual, expected):
@@ -896,3 +1263,303 @@ class TestPackedQuadraticFit(BaseTester):
         grad = torch.autograd.grad(sum(t.square().mean() for t in actual), cuda_sample)[0]
         grad_ref = torch.autograd.grad(sum(t.square().mean() for t in expected), sample)[0]
         self.assert_close(grad.cpu(), grad_ref)
+
+
+def _bump3d(device, dtype):
+    # One smooth off-grid peak, built without the RNG: a strict NMS maximum at (1, 3, 3) whose
+    # refined value differs from its grid value, so a bonus at that maximum shows in the output.
+    d = torch.arange(3, device=device, dtype=dtype).view(3, 1, 1)
+    h = torch.arange(7, device=device, dtype=dtype).view(1, 7, 1)
+    w = torch.arange(7, device=device, dtype=dtype).view(1, 1, 7)
+    return torch.exp(-((d - 1.1) ** 2 + (h - 3.2) ** 2 + (w - 2.8) ** 2) / 2)[None, None]
+
+
+class TestStrictMaximaBonusDeprecated(BaseTester):
+    # `strict_maxima_bonus` is deprecated since kornia 0.9.0. It is still accepted wherever 0.8.3 accepted it,
+    # by keyword or in its positional slot, but it warns and is ignored: a call that passes it returns what the
+    # call without it returns, and test_default_adds_no_bonus pins that the latter carries no bonus. The argument
+    # handling does not depend on the dtype, so these run in float32 only.
+    _SOFT = kornia.geometry.subpix.conv_soft_argmax3d
+    _CONV = kornia.geometry.subpix.conv_quad_interp3d
+    _ITER = kornia.geometry.subpix.iterative_quad_interp3d
+
+    @pytest.mark.parametrize(
+        "fn, args, kwargs",
+        [
+            (_SOFT, (), {"strict_maxima_bonus": 10.0}),
+            (_SOFT, ((3, 3, 3), (1, 1, 1), (1, 1, 1), 1.0, False, 1e-8, True, 10.0), {}),
+            (_CONV, (), {"strict_maxima_bonus": 10.0}),
+            (_CONV, (5, 10.0, 0.6), {}),
+            (_ITER, (), {"strict_maxima_bonus": 10.0}),
+            (_ITER, (5, 10.0, 0.6), {}),
+        ],
+        ids=["soft-keyword", "soft-positional", "conv-keyword", "conv-positional", "iter-keyword", "iter-positional"],
+    )
+    def test_function_warns_and_ignores(self, device, fn, args, kwargs):
+        x = _bump3d(device, torch.float32)
+        with pytest.warns(DeprecationWarning, match="strict_maxima_bonus") as record:
+            actual = fn(x, *args, **kwargs)
+        assert len(record) == 1
+        assert record[0].filename == __file__
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            expected = fn(x)
+        for got, want in zip(actual, expected):
+            self.assert_close(got, want, atol=0, rtol=0)
+
+    @pytest.mark.parametrize(
+        "cls, kwargs",
+        [
+            (kornia.geometry.subpix.ConvSoftArgmax3d, {}),
+            (kornia.geometry.subpix.ConvQuadInterp3d, {}),
+            (kornia.geometry.subpix.IterativeQuadInterp3d, {}),
+            (kornia.geometry.subpix.AdaptiveQuadInterp3d, {"mode": "conv"}),
+            (kornia.geometry.subpix.AdaptiveQuadInterp3d, {"mode": "patch"}),
+        ],
+        ids=["ConvSoftArgmax3d", "ConvQuadInterp3d", "IterativeQuadInterp3d", "Adaptive-conv", "Adaptive-patch"],
+    )
+    def test_module_warns_once_and_ignores(self, device, cls, kwargs):
+        x = _bump3d(device, torch.float32)
+        with pytest.warns(DeprecationWarning, match="strict_maxima_bonus") as record:
+            module = cls(strict_maxima_bonus=10.0, **kwargs)
+        assert len(record) == 1
+        assert record[0].filename == __file__
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            actual = module(x)
+            expected = cls(**kwargs)(x)
+        assert "strict_maxima_bonus" not in repr(module)
+        for got, want in zip(actual, expected):
+            self.assert_close(got, want, atol=0, rtol=0)
+
+    def test_default_adds_no_bonus(self, device):
+        # The refined value at the maximum is the quadratic fit's peak, which lies just above the grid value.
+        x = _bump3d(device, torch.float32)
+        for fn in (kornia.geometry.subpix.conv_quad_interp3d, kornia.geometry.subpix.iterative_quad_interp3d):
+            with warnings.catch_warnings():
+                warnings.simplefilter("error")
+                _, vals = fn(x)
+            peak = vals[0, 0, 1, 3, 3]
+            assert x[0, 0, 1, 3, 3] < peak < 1.0
+
+    def test_scale_space_detector_083_idiom(self, device):
+        # The 0.8.3 documented detector setup keeps working and gives the same detections.
+        img = torch.arange(64 * 64, device=device, dtype=torch.float32).view(1, 1, 64, 64)
+        img = torch.sin(img * 0.37) * torch.cos(img * 0.011)
+        with pytest.warns(DeprecationWarning, match="strict_maxima_bonus"):
+            subpix = kornia.geometry.subpix.AdaptiveQuadInterp3d(strict_maxima_bonus=0.0, allow_scale_steps=True)
+        old = kornia.feature.ScaleSpaceDetector(16, subpix_module=subpix).to(device)
+        new = kornia.feature.ScaleSpaceDetector(16).to(device)
+        for got, want in zip(old(img), new(img)):
+            self.assert_close(got, want, atol=0, rtol=0)
+
+
+def _window_softmax_reference(data, kernel_size, stride, padding, temperature):
+    """Softmax of every window of a ``(1, 1, *spatial)`` map over its in-image pixels, in float64 on the CPU.
+
+    Returns the coordinates, channels ``(x, y)`` in 2D and ``(d, x, y)`` in 3D, and the values.
+    """
+    data = data.cpu().double()[0, 0]
+    spatial = data.shape
+    out = [(n + 2 * p - k) // s + 1 for n, k, s, p in zip(spatial, kernel_size, stride, padding)]
+    coords = torch.zeros(len(spatial), *out, dtype=torch.float64)
+    values = torch.zeros(*out, dtype=torch.float64)
+    for index in itertools.product(*(range(n) for n in out)):
+        ranges = [
+            [q for q in range(i * s - p, i * s - p + k) if 0 <= q < n]
+            for i, n, k, s, p in zip(index, spatial, kernel_size, stride, padding)
+        ]
+        pixels = torch.tensor(list(itertools.product(*ranges)), dtype=torch.float64)
+        window = data[tuple(pixels.long().T)]
+        weights = torch.softmax(window / temperature, 0)
+        position = weights @ pixels  # (row, column) or (depth, row, column)
+        coords[(slice(None), *index)] = position[[1, 0]] if len(spatial) == 2 else position[[0, 2, 1]]
+        values[index] = weights @ window
+    return coords, values
+
+
+class TestConventionsConvSoftArgmax(BaseTester):
+    def test_convention_conv_soft_argmax2d_is_xy(self, device, dtype):
+        # Every window returns (x, y) = (column, row) of the input grid: pixel coordinates, or normalized
+        # corner-aligned ones (the default). One hot pixel at (row 1, col 6) of a 5 x 8 map: the window on it and the
+        # four windows beside it, which see it one step off their centre along one axis, all return (6, 1), so neither
+        # the window centres nor the in-window offsets may swap the axes. The transposed map is the relabel control.
+        heatmap = torch.zeros(1, 1, 5, 8, device=device, dtype=dtype)
+        heatmap[0, 0, 1, 6] = 30.0
+        coords = kornia.geometry.subpix.conv_soft_argmax2d(heatmap, (3, 3), normalized_coordinates=False)
+        assert coords.shape == (1, 1, 2, 5, 8)
+        expected = torch.tensor([6.0, 1.0], device=device, dtype=dtype)
+        for row, col in ((1, 6), (1, 5), (1, 7), (0, 6), (2, 6)):
+            self.assert_close(coords[0, 0, :, row, col], expected)
+
+        transposed = heatmap.transpose(-2, -1).contiguous()
+        coords = kornia.geometry.subpix.conv_soft_argmax2d(transposed, (3, 3), normalized_coordinates=False)
+        self.assert_close(coords[0, 0, :, 6, 1], torch.tensor([1.0, 6.0], device=device, dtype=dtype))
+
+        # corner-aligned: (2 * 6 / 7 - 1, 2 * 1 / 4 - 1); a half-pixel normalization gives (0.625, -0.4)
+        coords = kornia.geometry.subpix.conv_soft_argmax2d(heatmap, (3, 3))
+        self.assert_close(coords[0, 0, :, 1, 6], torch.tensor([5 / 7, -0.5], device=device, dtype=dtype))
+
+    def test_convention_conv_soft_argmax3d_is_dxy(self, device, dtype):
+        # The 3-D windows return (d, x, y) = (depth, column, row). D != H != W, one hot voxel at (d 2, row 1, col 6):
+        # the window on it and the six beside it return (2, 6, 1). Swapping D and W is the relabel control.
+        volume = torch.zeros(1, 1, 4, 5, 8, device=device, dtype=dtype)
+        volume[0, 0, 2, 1, 6] = 30.0
+        coords, _ = kornia.geometry.subpix.conv_soft_argmax3d(volume, (3, 3, 3))
+        assert coords.shape == (1, 1, 3, 4, 5, 8)
+        expected = torch.tensor([2.0, 6.0, 1.0], device=device, dtype=dtype)
+        for d, row, col in ((2, 1, 6), (1, 1, 6), (3, 1, 6), (2, 0, 6), (2, 2, 6), (2, 1, 5), (2, 1, 7)):
+            self.assert_close(coords[0, 0, :, d, row, col], expected)
+
+        permuted = volume.permute(0, 1, 4, 3, 2).contiguous()  # (D, H, W) = (8, 5, 4), hot at (6, 1, 2)
+        coords, _ = kornia.geometry.subpix.conv_soft_argmax3d(permuted, (3, 3, 3))
+        self.assert_close(coords[0, 0, :, 6, 1, 2], torch.tensor([6.0, 2.0, 1.0], device=device, dtype=dtype))
+
+        coords, _ = kornia.geometry.subpix.conv_soft_argmax3d(volume, (3, 3, 3), normalized_coordinates=True)
+        expected = torch.tensor([1 / 3, 5 / 7, -0.5], device=device, dtype=dtype)
+        self.assert_close(coords[0, 0, :, 2, 1, 6], expected)
+
+    def test_convention_conv_soft_argmax_far_window_is_its_own_softmax_5020(self, device, dtype):
+        # #5020: each window is shifted by its own maximum, so a local peak far below the map maximum keeps the
+        # softmax of its own 3 x 3 window and its value, in float16 too, and `eps` plays no part. The map-wide shift
+        # used to send this window to (10, 0) from a gap of 40 and to NaN in float16 from a gap of 20.
+        heatmap = torch.zeros(1, 1, 7, 15, device=device, dtype=dtype)
+        heatmap[0, 0, 3, 10] = 1.0
+        heatmap[0, 0, 3, 11] = 0.8  # pulls the window's soft-argmax right of its centre
+        window = heatmap[0, 0, 2:5, 9:12].cpu().double().flatten()  # float64 reference on CPU, MPS has no float64
+        weights = torch.softmax(window, 0)
+        expected_x = (weights * torch.arange(9, 12, dtype=torch.float64).repeat(3)).sum().to(device=device, dtype=dtype)
+        expected_value = (weights * window).sum().to(device=device, dtype=dtype)
+        for far_maximum in (0.0, 20.0, 40.0, 1000.0):
+            heatmap[0, 0, 3, 2] = far_maximum  # eight columns from the window under test
+            for eps in (1e-8, 0.0):
+                coords, values = kornia.geometry.subpix.conv_soft_argmax2d(
+                    heatmap, (3, 3), normalized_coordinates=False, output_value=True, eps=eps
+                )
+                self.assert_close(coords[0, 0, 0, 3, 10], expected_x)
+                self.assert_close(values[0, 0, 3, 10], expected_value)
+
+    def test_convention_conv_soft_argmax2d_even_window_border_centre_5066(self, device, dtype):
+        # #5066: an even border window whose centre straddles the padding reports its hot pixel, as an odd one does.
+        heatmap = torch.zeros(1, 1, 5, 9, device=device, dtype=dtype)
+        heatmap[0, 0, 2, 8] = 50.0
+        expected = torch.tensor([8.0, 2.0], device=device, dtype=dtype)
+        odd = kornia.geometry.subpix.conv_soft_argmax2d(heatmap, (3, 3), (1, 1), (1, 1), normalized_coordinates=False)
+        self.assert_close(odd[0, 0, :, 2, -1], expected)
+        even = kornia.geometry.subpix.conv_soft_argmax2d(heatmap, (4, 4), (1, 1), (2, 2), normalized_coordinates=False)
+        assert even.shape[-1] == 10
+        self.assert_close(even[0, 0, :, 2, -1], expected)
+
+    @pytest.mark.parametrize(
+        "op, shape, kernel_size, stride, padding",
+        [
+            ("conv_soft_argmax2d", (6, 9), (3, 4), (2, 3), (1, 2)),
+            ("conv_soft_argmax3d", (5, 6, 7), (3, 2, 3), (2, 1, 2), (1, 1, 1)),
+        ],
+    )
+    def test_convention_conv_soft_argmax_is_the_softmax_of_each_window(
+        self, device, dtype, op, shape, kernel_size, stride, padding
+    ):
+        # Every window, with unequal strides, kernel sides and paddings, is the softmax of its in-image pixels:
+        # a padded position carries no weight, not the weight of a 0 logit. A deterministic map in [0, 2] keeps the
+        # border windows' padded positions within a few units of temperature of their pixels.
+        numel = 1
+        for n in shape:
+            numel *= n
+        data = ((torch.arange(numel, device=device) * 7 % 11) / 5).reshape(1, 1, *shape).to(dtype)
+        coords, values = getattr(kornia.geometry.subpix, op)(
+            data, kernel_size, stride, padding, 0.5, normalized_coordinates=False, output_value=True
+        )
+        expected_coords, expected_values = _window_softmax_reference(data, kernel_size, stride, padding, 0.5)
+        self.assert_close(coords[0, 0], expected_coords.to(device=device, dtype=dtype))
+        self.assert_close(values[0, 0], expected_values.to(device=device, dtype=dtype))
+
+
+class TestConventionsQuadInterp3d(BaseTester):
+    _FUNCTIONS = (kornia.geometry.subpix.conv_quad_interp3d, kornia.geometry.subpix.iterative_quad_interp3d)
+
+    @staticmethod
+    def _separable(device, dtype, profile_w, depth_peak=1.0):
+        # f(d, h, w) = profile_w[w] - (h - 2) ** 2 - (d - depth_peak) ** 2 on a 4 x 6 x 9 volume: no mixed terms, so
+        # the quadratic fit at a voxel solves each axis on its own from the samples either side of it.
+        d = torch.arange(4, dtype=torch.float64).view(4, 1, 1)
+        h = torch.arange(6, dtype=torch.float64).view(1, 6, 1)
+        w = torch.tensor(profile_w, dtype=torch.float64).view(1, 1, 9)
+        return (w - (h - 2) ** 2 - (d - depth_peak) ** 2)[None, None].to(device, dtype)
+
+    @pytest.mark.parametrize("fn", _FUNCTIONS, ids=["conv", "iterative"])
+    def test_convention_quad_interp3d_coords_are_dxy_voxel_indices(self, device, dtype, fn):
+        # The refined coordinates are (d, x, y) = (depth, column, row) absolute voxel indices of the input, not
+        # offsets. A 1.0 peak at (d 1, row 2, col 5) with one 0.5 neighbour on one axis at a time moves 1/6 toward
+        # it along that axis only; other voxels keep their grid index. The transposed volume is the relabel control.
+        cases = (
+            ((1, 2, 6), [1.0, 5 + 1 / 6, 2.0]),  # right neighbour: x grows
+            ((1, 2, 4), [1.0, 5 - 1 / 6, 2.0]),  # left neighbour: x shrinks
+            ((1, 3, 5), [1.0, 5.0, 2 + 1 / 6]),  # neighbour one row down: y grows
+            ((2, 2, 5), [1 + 1 / 6, 5.0, 2.0]),  # neighbour one level deeper: d grows
+        )
+        for neighbour, expected in cases:
+            volume = torch.zeros(1, 1, 4, 6, 9, device=device, dtype=dtype)
+            volume[0, 0, 1, 2, 5] = 1.0
+            volume[(0, 0, *neighbour)] = 0.5
+            coords, _ = fn(volume)
+            self.assert_close(coords[0, 0, :, 1, 2, 5], torch.tensor(expected, device=device, dtype=dtype))
+            self.assert_close(coords[0, 0, :, 3, 4, 7], torch.tensor([3.0, 7.0, 4.0], device=device, dtype=dtype))
+
+        volume = torch.zeros(1, 1, 4, 6, 9, device=device, dtype=dtype)
+        volume[0, 0, 1, 2, 5] = 1.0
+        volume[0, 0, 1, 2, 6] = 0.5
+        coords, _ = fn(volume.transpose(-2, -1).contiguous())  # peak at (1, 5, 2), neighbour one row down
+        self.assert_close(coords[0, 0, :, 1, 5, 2], torch.tensor([1.0, 2.0, 5 + 1 / 6], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("fn", _FUNCTIONS, ids=["conv", "iterative"])
+    def test_convention_quad_interp3d_move_and_reject_thresholds(self, device, dtype, fn):
+        # A shift above max_subpixel_shift (0.6) on an axis moves the integer centre one voxel and the fit is solved
+        # again there; a final shift above 1.5 on any axis rejects the point, which then keeps its grid coordinates.
+        # The candidate is forced at (d 1, row 2, col 5) and only the x profile varies. The x samples are not one
+        # parabola, so the fit at col 6 disagrees with the fit at col 5 and the reported x shows whether it moved.
+        mask = torch.zeros(1, 1, 4, 6, 9, device=device, dtype=torch.bool)
+        mask[0, 0, 1, 2, 5] = True
+        low = -6.0
+        # fit at col 5: shift 0.55, no move -> 5.55 (a move would land on the fit at col 6: 6 - 1/3)
+        stays = [low, low, low, low, -2.1, 0.0, 0.1, -0.4, low]
+        # fit at col 5: shift 0.65, move; fit at col 6: shift -0.2, stay -> 5.8 (without the move: 5.65)
+        moves = [low, low, low, low, -2.3, 0.0, 0.3, -0.4, low]
+        for profile, expected in ((stays, 5.55), (moves, 5.8)):
+            coords, _ = fn(self._separable(device, dtype, profile), n_iters=2, precomputed_nms_mask=mask)
+            self.assert_close(coords[0, 0, :, 1, 2, 5], torch.tensor([1.0, expected, 2.0], device=device, dtype=dtype))
+
+        # With allow_scale_steps=False, the depth shift itself meets the 1.5 bound: 1.4 is kept, 1.6 is rejected.
+        parabola = [-((w - 5.0) ** 2) for w in range(9)]
+        for depth_peak, expected in ((2.4, [2.4, 5.0, 2.0]), (2.6, [1.0, 5.0, 2.0])):
+            volume = self._separable(device, dtype, parabola, depth_peak)
+            coords, _ = fn(volume, precomputed_nms_mask=mask, allow_scale_steps=False)
+            self.assert_close(coords[0, 0, :, 1, 2, 5], torch.tensor(expected, device=device, dtype=dtype))
+
+        # The same 1.5 bound on x: with max_subpixel_shift=2 an x shift of 1.4 or 1.6 does not move the centre, and
+        # only 1.6 rejects the point.
+        for peak, expected in ((6.4, 6.4), (6.6, 5.0)):
+            volume = self._separable(device, dtype, [-((w - peak) ** 2) for w in range(9)])
+            coords, _ = fn(volume, precomputed_nms_mask=mask, max_subpixel_shift=2.0)
+            self.assert_close(coords[0, 0, 1, 1, 2, 5], torch.tensor(expected, device=device, dtype=dtype))
+
+        # x peak at 7.4: two moves (col 5 -> 6 -> 7), then the shift 0.4 stays. The conv backend has solved only
+        # the voxels within dilation_radius of the candidate, so radius 1 rejects the point and radius 2 keeps it.
+        volume = self._separable(device, dtype, [-((w - 7.4) ** 2) for w in range(9)])
+        if fn is kornia.geometry.subpix.conv_quad_interp3d:
+            coords, _ = fn(volume, precomputed_nms_mask=mask, dilation_radius=1)
+            self.assert_close(coords[0, 0, 1, 1, 2, 5], torch.tensor(5.0, device=device, dtype=dtype))
+            coords, _ = fn(volume, precomputed_nms_mask=mask, dilation_radius=2)
+        else:
+            coords, _ = fn(volume, precomputed_nms_mask=mask)
+        self.assert_close(coords[0, 0, 1, 1, 2, 5], torch.tensor(7.4, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("fn", _FUNCTIONS, ids=["conv", "iterative"])
+    def test_convention_quad_interp3d_relative_determinant_floor_5065(self, device, dtype, fn):
+        # #5065: the Hessian determinant floor is relative, so this peak is refined at unit amplitude and at 1e-3.
+        for amplitude in (1.0, 1e-3):
+            volume = torch.zeros(1, 1, 4, 6, 9, device=device, dtype=dtype)
+            volume[0, 0, 1, 2, 5] = amplitude
+            volume[0, 0, 1, 2, 6] = 0.5 * amplitude
+            coords, _ = fn(volume)
+            self.assert_close(coords[0, 0, 1, 1, 2, 5], torch.tensor(5 + 1 / 6, device=device, dtype=dtype))

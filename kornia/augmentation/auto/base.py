@@ -35,7 +35,26 @@ SUBPOLICY_CONFIG = List[OP_CONFIG]
 
 
 class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
-    """Policy-based image augmentation."""
+    """Base class for policy-based image augmentations.
+
+    Convention:
+        - a concrete policy selects one or more :class:`PolicySequential` children for each forward call and
+          records that selected path, including every operation parameter dictionary, in ``_params``. Passing
+          that list to ``forward(input, params=...)`` selects the recorded children rather than drawing a new
+          path and reproduces their output.
+        - the selected operations run in the order recorded in ``_params``: the listed order inside a sub-policy,
+          and for :class:`RandAugment` the order in which its sub-policies were drawn. When matrix computation is
+          enabled, their geometric transformation matrices
+          compose in that same execution order; a nonempty policy containing only intensity
+          operations has the identity matrix. An empty selected sub-policy has no matrix.
+          ``inverse`` reverses a geometry-only selected path and raises ``RuntimeError`` when an applied
+          intensity operation cannot be undone.
+        - input normalization, random-number generation, parameter placement, replay, and serialization follow
+          the canonical augmentation contract in :doc:`/get-started/conventions`. This base does not expose a
+          per-instance generator.
+
+    Concrete policies define how they select children and interpret policy magnitudes.
+    """
 
     def __init__(self, policy: List[SUBPOLICY_CONFIG], transformation_matrix_mode: str = "silence") -> None:
         policies = self.compose_policy(policy)
@@ -153,8 +172,8 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
 
         Only geometric operations are invertible. A policy draw that contains an intensity operation is
         not round-trippable, and inverting it would return a tensor that still carries that operation --
-        for a draw with no geometry at all, the input unchanged. This raises instead, as
-        :meth:`kornia.augmentation.MixAugmentationBaseV2.inverse` already does for the mix classes.
+        for a draw with no geometry at all, the input unchanged. This raises instead, as ``inverse`` on
+        :class:`~kornia.augmentation.MixAugmentationBaseV2` already does for the mix classes.
 
         Args:
             input: Tensor produced by a forward pass.

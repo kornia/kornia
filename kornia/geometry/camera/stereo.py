@@ -56,42 +56,26 @@ class StereoCamera:
           shape :math:`(B, 3, 4)`: ``[[fx, 0, cx, 0], [0, fy, cy, 0], [0, 0, 1, 0]]`` for the left camera, and
           the same matrix with ``-tx * fx`` in the last column for the right one. The constructor requires the
           two to be equal outside that last column.
-        - the baseline is read back from that column as ``tx = -P_right[0, 3] / fx``, and :attr:`Q` is built
-          from ``fx``, ``fy``, ``cx_left``, ``cy`` and that ``tx``. Note which focal length sits in which row:
-          ``Q[0, 0]`` carries ``fy`` and ``Q[1, 1]`` carries ``fx``, while the homogeneous divide is by
-          ``-fy * disparity``, so the two cancel and the first output coordinate ends up scaled by ``1 / fx``
-          and the second by ``1 / fy``.
-        - a point cloud is a homogeneous transform by :attr:`Q` followed by the divide by ``W``. When
-          ``abs(W) > 1e-8``, an overall sign on :attr:`Q` cancels, so :attr:`Q` and its negation return the
-          same points. For ``abs(W) <= 1e-8``, the homogeneous conversion returns the numerator unchanged,
-          and the two matrices return opposing values. :attr:`Q` is exactly the matrix written out on the
-          :doc:`/geometry.camera.stereo` page, above this docstring, evaluated at the page's own ``tx``: the
-          page's :math:`P_1` carries ``fx * tx`` in its last column, so that ``tx`` is ``P_right[0, 3] / fx``,
-          which the constructor requires to be strictly **negative** for every rig in the batch; a zero product
-          (a degenerate baseline) and a positive one (the cameras swapped) both raise. The :attr:`tx` attribute
-          exposes the negation of that symbol, ``-P_right[0, 3] / fx``; substituting the attribute's value for
-          the page's ``tx`` gives neither :attr:`Q` nor its negation, because the page's last row carries no
-          ``tx`` and does not flip.
-        - a disparity map is channels-**last**, :math:`(B, H, W, 1)`, for
-          :meth:`~kornia.geometry.camera.stereo.StereoCamera.reproject_disparity_to_3D` and for the module-level
-          :func:`~kornia.geometry.camera.stereo.reproject_disparity_to_3D` alike -- the :math:`(B, 1, H, W)`
-          layout the rest of kornia uses for images is rejected -- and the returned point cloud is
-          :math:`(B, H, W, 3)`.
-        - the pixels are the integer pixel centres that :func:`~kornia.geometry.grid.create_meshgrid`
-          enumerates, described in the Convention block on
+        - the baseline is read back as the attribute :attr:`tx` ``= -P_right[0, 3] / fx``, which must be
+          strictly **positive** for every rig in the batch: a zero baseline and swapped cameras both raise. A
+          non-finite ``P_right[0, 3]`` is not screened, and these checks and the equal-intrinsics check are
+          skipped under ``torch.export``.
+          The :doc:`/geometry.camera.stereo` page's symbol ``tx`` is the negation of this attribute; :attr:`Q`
+          is the page's matrix evaluated at the page's ``tx``.
+        - ``Q[0, 0]`` carries ``fy`` and ``Q[1, 1]`` carries ``fx``; with the divide by ``W = -fy * disparity``
+          the result is ``X = (u - cx) Z / fx``, ``Y = (v - cy) Z / fy``, ``Z = fx * tx / disparity``.
+        - ``u`` is the **column** index and ``v`` the **row** index, as in ``cv2.reprojectImageTo3D``.
+        - a disparity map is channels-**last**, :math:`(B, H, W, 1)` (a :math:`(B, 1, H, W)` map is rejected),
+          and the point cloud is :math:`(B, H, W, 3)`.
+        - pixel centres are integers; see the Convention block on
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
-        - ``u`` is the **column** index and ``v`` the **row** index, as in ``cv2.reprojectImageTo3D``:
-          :math:`X = (u - c_x) Z / f_x` and :math:`Y = (v - c_y) Z / f_y`.
-
-        See :doc:`camera and world conventions </get-started/camera-conventions>` for the shared intrinsics,
-        depth and integer pixel-centre conventions.
 
     .. warning::
-        A differing ``cx`` is **rejected**, even though :attr:`cx_left` and :attr:`cx_right` are exposed
-        separately and ``Q[3, 3]`` carries ``fy * (cx_left - cx_right)`` for exactly that case, so that factor
-        is zero on any rig the constructor accepts. Whether to admit a differing ``cx`` or to drop that claim is
-        tracked as `#4270 <https://github.com/kornia/kornia/issues/4270>`_ and pinned by
-        ``test_wart_stereo_rejects_differing_principal_points_4270`` in ``tests/geometry/camera/test_stereo.py``.
+        A differing ``cx`` is **rejected**, although ``Q[3, 3] = fy * (cx_left - cx_right)`` exists for that
+        case, so it is zero on every rig the constructor accepts outside ``torch.export``:
+        `#4270 <https://github.com/kornia/kornia/issues/4270>`_. A zero disparity (a point at infinity) makes
+        ``W = 0``; the divide is then skipped and a finite placeholder, behind the camera on a real rig, is
+        returned and not flagged as invalid: `#4555 <https://github.com/kornia/kornia/issues/4555>`_.
 
     .. warning::
         The module-level :func:`~kornia.geometry.camera.stereo.reproject_disparity_to_3D` is rendered on

@@ -19,6 +19,7 @@ import pytest
 import torch
 
 from kornia.core._compat import torch_version_le
+from kornia.feature import matching
 from kornia.feature.integrated import LightGlueMatcher
 from kornia.feature.laf import laf_from_center_scale_ori
 from kornia.feature.matching import (
@@ -156,6 +157,61 @@ class TestMatchSNN(BaseTester):
 
 
 class TestMatchSMNN(BaseTester):
+    @pytest.mark.parametrize("mps_fallback", [False, True])
+    def test_mutual_matches_keep_integer_indices(self, device, dtype, monkeypatch, mps_fallback):
+        # Half precision cannot distinguish all descriptor indices: float16 rounds 2049 to
+        # 2048, and bfloat16 rounds 257 to 256. Only the last pair below is mutual.
+        count = 2050 if dtype == torch.float16 else 258 if dtype == torch.bfloat16 else 16
+        desc = torch.zeros(count, 1, device=device, dtype=dtype)
+        dm = torch.full((count, count), 10.0, device=device, dtype=dtype)
+        dm[-2, -2] = 1.0
+        dm[-1, -2] = 0.5
+        dm[-1, -1] = 0.1
+        if mps_fallback:
+            monkeypatch.setattr(matching, "is_mps_tensor_safe", lambda _: True)
+
+        ratios, indices = match_smnn(desc, desc, 0.95, dm)
+
+        expected_indices = torch.tensor([[count - 1, count - 1]], device=device, dtype=torch.long)
+        self.assert_close(indices, expected_indices)
+        self.assert_close(ratios, torch.tensor([[0.2]], device=device, dtype=dtype))
+
+    def test_reverse_ratios_follow_the_matches(self, device, dtype):
+        # Reverse matches arrive in target-index order; forward matches arrive in source-index order.
+        # Reject source 1 in the reverse direction and source 3 in the forward direction.
+        dm = torch.tensor(
+            [[4.0, 10.0, 1.0], [10.0, 1.5, 10.0], [1.0, 10.0, 10.0], [2.0, 2.0, 10.0]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        ratios, indices = match_smnn(dm[:, :1], dm[0, :, None], 0.7, dm)
+        self.assert_close(indices, torch.tensor([[0, 2], [2, 0]], device=device, dtype=torch.long))
+        self.assert_close(ratios, torch.tensor([[0.25], [0.5]], device=device, dtype=dtype))
+        ratios.sum().backward()
+        expected_grad = torch.tensor(
+            [[-0.0625, 0.0, 0.25], [0.0, 0.0, 0.0], [0.5, 0.0, 0.0], [-0.25, 0.0, 0.0]],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(dm.grad, expected_grad)
+
+    def test_nonempty_directional_matches_have_empty_intersection(self, device, dtype):
+        dm = torch.tensor([[1.0, 2.0], [0.5, 0.75]], device=device, dtype=dtype)
+        # The forward ratio test keeps 0 -> 0; the reverse test keeps 0 -> 1 and 1 -> 1.
+        ratios, indices = match_smnn(dm[:, :1], dm[0, :, None], 0.6, dm)
+        assert ratios.shape == (0, 1)
+        assert indices.shape == (0, 2)
+        assert indices.dtype == torch.long
+
+    def test_target_without_reverse_match_is_not_mutual(self, device, dtype):
+        # Sources 0 and 1 both match target 0, which ties between them and has no reverse match. The last reverse
+        # match (target 2 -> source 0) names source 0, and the first (target 1 -> source 1) names source 1.
+        dm = torch.tensor([[1.0, 10.0, 2.0], [1.0, 3.0, 10.0], [10.0, 10.0, 10.0]], device=device, dtype=dtype)
+        ratios, indices = match_smnn(dm[:, :1], dm[0, :, None], 0.7, dm)
+        assert ratios.shape == (0, 1)
+        assert indices.shape == (0, 2)
+
     @pytest.mark.parametrize("num_desc1, num_desc2, dim", [(2, 4, 4), (2, 5, 128), (6, 2, 32)])
     def test_shape(self, num_desc1, num_desc2, dim, device):
         desc1 = torch.rand(num_desc1, dim, device=device)
@@ -276,12 +332,14 @@ class TestMatchFGINN(BaseTester):
 
     def test_matching1(self, device, dtype):
         desc1 = torch.tensor([[0, 0.0], [1, 1.001], [2, 2], [3, 3.0], [5, 5.0]], dtype=dtype, device=device)
-        desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.3, 2.4], [1, 1.001], [0, 0.0]], dtype=dtype, device=device)
+        # Exact half-precision coordinates keep the ratio independent of input rounding.
+        desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.25, 2.25], [1, 1.001], [0, 0.0]], dtype=dtype, device=device)
         lafs1 = laf_from_center_scale_ori(desc1[None])
         lafs2 = laf_from_center_scale_ori(desc2[None])
 
         dists, idxs = match_fginn(desc1, desc2, lafs1, lafs2, 0.8, 0.01)
-        expected_dists = torch.tensor([0, 0, 0.3536, 0, 0], dtype=dtype, device=device).view(-1, 1)
+        # The third query's nearest distances are sqrt(2) / 4 and sqrt(2).
+        expected_dists = torch.tensor([0, 0, 0.25, 0, 0], dtype=dtype, device=device).view(-1, 1)
         expected_idx = torch.tensor([[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]], device=device)
         self.assert_close(dists, expected_dists, rtol=0.001, atol=1e-3)
         self.assert_close(idxs, expected_idx)
@@ -583,6 +641,55 @@ class TestLightGlueHardNet(BaseTester):
         assert isinstance(lg, LightGlueMatcher)
 
 
+class TestLightGlueMatcherOrientations(BaseTester):
+    @staticmethod
+    def _record_lightglue_inputs(monkeypatch, device):
+        seen = {}
+
+        class _RecordingLightGlue(torch.nn.Module):
+            # Stands in for the network, whose construction downloads weights; the matcher only
+            # prepares its inputs.
+            def __init__(self, *args, **kwargs):
+                super().__init__()
+
+            def forward(self, data):
+                seen.update(data)
+                matches = torch.full((1, data["image0"]["keypoints"].shape[1]), -1, device=device)
+                return {"matches0": matches, "matching_scores0": torch.zeros_like(matches, dtype=torch.float32)}
+
+        monkeypatch.setattr("kornia.feature.integrated.LightGlue", _RecordingLightGlue)
+        return seen
+
+    def test_float64_orientations_wrap_by_full_precision_two_pi_5127(self, device, monkeypatch):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        seen = self._record_lightglue_inputs(monkeypatch, device)
+        degrees = torch.tensor([[-90.0, -45.0, 30.0], [-135.0, 60.0, -30.0]], device=device, dtype=torch.float64)
+        xy = torch.rand(2, 3, 2, device=device, dtype=torch.float64) * 50
+        scale = torch.full((2, 3, 1, 1), 4.0, device=device, dtype=torch.float64)
+        lafs = laf_from_center_scale_ori(xy, scale, degrees.unsqueeze(-1))
+        descriptors = torch.rand(3, 128, device=device, dtype=torch.float64)
+        LightGlueMatcher("disk")(descriptors, descriptors, lafs[:1], lafs[1:])
+        # Negative angles move into [0, 2 pi); the float32 pi added 1.7e-7 rad too much.
+        expected = torch.remainder(torch.deg2rad(degrees), 2 * torch.pi)
+        self.assert_close(seen["image0"]["oris"], expected[:1], rtol=0.0, atol=1e-12)
+        self.assert_close(seen["image1"]["oris"], expected[1:], rtol=0.0, atol=1e-12)
+
+    def test_sift_passes_the_training_keypoint_convention(self, device, dtype, monkeypatch):
+        seen = self._record_lightglue_inputs(monkeypatch, device)
+        degrees = torch.tensor([[30.0, -90.0, 180.0]], device=device, dtype=dtype)
+        xy = torch.tensor([[[10.0, 20.0], [30.0, 40.0], [50.0, 60.0]]], device=device, dtype=dtype)
+        scale = torch.full((1, 3, 1, 1), 12.0, device=device, dtype=dtype)
+        lafs = laf_from_center_scale_ori(xy, scale, degrees.unsqueeze(-1))
+        descriptors = torch.rand(3, 128, device=device, dtype=dtype)
+        LightGlueMatcher("sift")(descriptors, descriptors, lafs, lafs)
+        # The negated orientation in (-pi, pi], and sigma of the 12-pixel 6-sigma frame.
+        expected = torch.tensor([[-torch.pi / 6, torch.pi / 2, torch.pi]], device=device, dtype=dtype)
+        for image in ("image0", "image1"):
+            self.assert_close(seen[image]["oris"], expected)
+            self.assert_close(seen[image]["scales"], torch.full((1, 3), 2.0, device=device, dtype=dtype))
+
+
 class TestMatchSteererGlobal(BaseTester):
     @pytest.mark.parametrize("num_desc1, num_desc2, dim", [(1, 4, 4), (2, 5, 128), (6, 2, 32), (32, 32, 8)])
     @pytest.mark.parametrize("matching_mode", ["nn", "mnn", "snn", "smnn"])
@@ -692,6 +799,62 @@ class TestMatchSteererLocal(BaseTester):
 
 class TestCDist(BaseTester):
     @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("use_autocast", [False, True])
+    @pytest.mark.parametrize("scripted", [False, True])
+    def test_half_precision_nearby_descriptors(self, device, desc_dtype, use_autocast, scripted):
+        if use_autocast and device.type not in ("cpu", "cuda"):
+            pytest.skip("autocast coverage requires CPU or CUDA")
+        desc1 = torch.full((1, 128), 0.0625, device=device, dtype=desc_dtype)
+        desc2 = desc1.repeat(2, 1)
+        desc2[0, 0] += 0.03125
+        desc2[1, 0] += 0.0078125
+        # Only one coordinate differs, so its absolute difference is the Euclidean distance.
+        expected = torch.tensor([[0.03125, 0.0078125]], device=device, dtype=desc_dtype)
+        distance_fn = torch.jit.script(_cdist) if scripted else _cdist
+        autocast_device = "cuda" if device.type == "cuda" else "cpu"
+        with torch.autocast(device_type=autocast_device, enabled=use_autocast):
+            actual = distance_fn(desc1, desc2)
+            distances, indices = match_nn(desc1, desc2)
+            ratios, ratio_indices = match_snn(desc1, desc2)
+        self.assert_close(actual, expected)
+        self.assert_close(distances, expected[:, 1:])
+        self.assert_close(indices, torch.tensor([[0, 1]], device=device))
+        self.assert_close(ratios, torch.tensor([[0.25]], device=device, dtype=desc_dtype))
+        self.assert_close(ratio_indices, indices)
+        assert actual.dtype == desc_dtype
+
+    @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16])
+    def test_half_precision_large_descriptors(self, device, desc_dtype):
+        desc1 = torch.tensor([[300.0, 300.0]], device=device, dtype=desc_dtype, requires_grad=True)
+        desc2 = torch.tensor([[304.0, 300.0]], device=device, dtype=desc_dtype, requires_grad=True)
+        distances = _cdist(desc1, desc2)
+        self.assert_close(distances, torch.tensor([[4.0]], device=device, dtype=desc_dtype))
+        distances.sum().backward()
+        self.assert_close(desc1.grad, torch.tensor([[-1.0, 0.0]], device=device, dtype=desc_dtype))
+        self.assert_close(desc2.grad, torch.tensor([[1.0, 0.0]], device=device, dtype=desc_dtype))
+
+    @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16])
+    def test_half_precision_export_branch_ignores_autocast(self, device, desc_dtype, monkeypatch):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("autocast coverage requires CPU or CUDA")
+        # Export traces the manual branch; autocast must not lower its float32 matmul back to half.
+        monkeypatch.setattr("kornia.feature.matching.is_exporting", lambda: True)
+        desc1 = torch.full((1, 128), 0.0625, device=device, dtype=desc_dtype)
+        desc2 = desc1.repeat(2, 1)
+        desc2[0, 0] += 0.03125
+        desc2[1, 0] += 0.0078125
+        with torch.autocast(device_type=device.type):
+            actual = _cdist(desc1, desc2)
+        self.assert_close(actual, torch.tensor([[0.03125, 0.0078125]], device=device, dtype=desc_dtype))
+        assert actual.dtype == desc_dtype
+
+    @pytest.mark.parametrize(("dtype1", "dtype2"), [(torch.float16, torch.float32), (torch.float16, torch.bfloat16)])
+    def test_mixed_dtypes_raise(self, device, dtype1, dtype2):
+        # Only same-dtype half inputs are promoted; a mixed pair is not silently computed in float32.
+        with pytest.raises(RuntimeError):
+            _cdist(torch.ones(2, 4, device=device, dtype=dtype1), torch.ones(3, 4, device=device, dtype=dtype2))
+
+    @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16])
     def test_half_precision_zero_distance_gradient(self, device, desc_dtype):
         if not supports_matmul(device, desc_dtype):
             pytest.skip(f"no matmul kernel for {desc_dtype} on {device.type}")
@@ -704,5 +867,216 @@ class TestCDist(BaseTester):
         assert dists[1, 2] == 0.0
         loss = dists.sum()
         loss.backward()
-        assert d1.grad is not None and torch.isfinite(d1.grad).all()
-        assert d2.grad is not None and torch.isfinite(d2.grad).all()
+        assert d1.grad is not None
+        assert torch.isfinite(d1.grad).all()
+        assert d2.grad is not None
+        assert torch.isfinite(d2.grad).all()
+
+
+class TestMatchSMNNBatched(BaseTester):
+    def test_large_common_descriptor_offset(self, device):
+        a = torch.tensor([[[10000.0, 10000.0], [10001.0, 10000.0], [10000.0, 10002.0]]], device=device)
+        b = a.flip(1)
+        ratios, indices = matching.match_smnn_batched(a, b)
+        reference_ratio = torch.zeros(3, 1, device=device)
+        reference_index = torch.tensor([[0, 2], [1, 1], [2, 0]], device=device)
+        self.assert_close(indices[:, 1:], reference_index)
+        self.assert_close(ratios, reference_ratio)
+
+    def test_undefined_provided_distance_ratios_have_finite_gradients(self, device, dtype):
+        a = torch.zeros(1, 3, 4, device=device, dtype=dtype)
+        b = torch.zeros(1, 4, 4, device=device, dtype=dtype)
+        dm = torch.tensor(
+            [[[0.0, 0.0, 2.0, 3.0], [0.0, 0.0, 2.0, 3.0], [2.0, 3.0, 0.1, 4.0]]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        ratios, indices = matching.match_smnn_batched(a, b, 1.0, dm=dm)
+        assert indices.tolist() == [[0, 2, 2]]
+        ratios.sum().backward()
+        assert torch.isfinite(dm.grad).all()
+
+    def test_ambiguous_zero_distance_gradients(self, device, dtype):
+        a = torch.tensor([[[0.0, 0.0], [0.0, 0.0], [1.0, 2.0]]], device=device, dtype=dtype, requires_grad=True)
+        b = torch.tensor([[[0.0, 0.0], [0.0, 0.0], [2.0, 1.0]]], device=device, dtype=dtype, requires_grad=True)
+        ratios, indices = matching.match_smnn_batched(a, b)
+        assert indices.tolist() == [[0, 2, 2]]
+        ratios.sum().backward()
+        assert torch.isfinite(a.grad).all()
+        assert torch.isfinite(b.grad).all()
+
+    @pytest.mark.parametrize("masked", [False, True])
+    def test_dynamo(self, device, dtype, torch_optimizer, masked):
+        a = torch.rand(2, 3, 4, device=device, dtype=dtype)
+        b = torch.rand(2, 4, 4, device=device, dtype=dtype)
+        kwargs = {"mask1": torch.tensor([[True, True, False], [True, True, True]], device=device)} if masked else {}
+        expected = matching.match_smnn_batched(a, b, **kwargs)
+        actual = torch_optimizer(matching.match_smnn_batched)(a, b, **kwargs)
+        self.assert_close(actual[0], expected[0])
+        self.assert_close(actual[1], expected[1])
+
+    def test_masked_gradients_are_finite(self, device, dtype):
+        a = torch.rand(2, 3, 4, device=device, dtype=dtype, requires_grad=True)
+        b = torch.rand(2, 4, 4, device=device, dtype=dtype, requires_grad=True)
+        mask = torch.tensor([[True, True, False], [True, True, False]], device=device)
+        ratios, _ = matching.match_smnn_batched(a, b, 1.0, mask1=mask)
+        ratios.sum().backward()
+        assert torch.isfinite(a.grad).all()
+        assert torch.isfinite(b.grad).all()
+        self.assert_close(a.grad[:, 2], torch.zeros_like(a.grad[:, 2]))
+
+    @pytest.mark.parametrize("batch,n,m", [(1, 5, 7), (3, 5, 7), (2, 8, 3)])
+    def test_matches_independent_pairs(self, device, dtype, batch, n, m):
+        a = torch.rand(batch, n, 8, device=device, dtype=dtype)
+        b = torch.rand(batch, m, 8, device=device, dtype=dtype)
+        ratios, indices = matching.match_smnn_batched(a, b, 0.95)
+        assert ratios.shape == (len(indices), 1)
+        assert indices.shape[1] == 3
+        assert indices.dtype == torch.long
+        assert ratios.device == a.device
+        assert ratios.dtype == a.dtype
+        for i in range(batch):
+            # The new API accumulates half-precision L2 distances in float32;
+            # compare to that reference rather than legacy half norm cancellation.
+            if dtype in (torch.float16, torch.bfloat16):
+                expected_ratio, expected_index = match_smnn(a[i].float(), b[i].float(), 0.95)
+                expected_ratio = expected_ratio.to(dtype)
+            else:
+                expected_ratio, expected_index = match_smnn(a[i], b[i], 0.95)
+            self.assert_close(indices[indices[:, 0] == i, 1:], expected_index)
+            self.assert_close(ratios[indices[:, 0] == i], expected_ratio)
+
+    def test_masks_preserve_original_indices(self, device, dtype):
+        a = torch.tensor(
+            [[[0.0, 0.0], [10.0, 10.0], [1.0, 2.0], [2.0, 1.0]], [[0.0, 0.0], [0.0, 0.0], [3.0, 3.0], [4.0, 4.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        b = torch.tensor(
+            [
+                [[2.0, 1.0], [0.0, 0.0], [1.0, 2.0], [10.0, 10.0], [0.0, 0.0]],
+                [[0.0, 0.0], [3.0, 3.0], [4.0, 4.0], [0.0, 0.0], [0.0, 0.0]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        mask_a = torch.tensor([[True, False, True, True], [False, False, True, True]], device=device)
+        mask_b = torch.tensor([[True, True, True, False, False], [False, True, True, False, False]], device=device)
+        ratios, indices = matching.match_smnn_batched(a, b, 0.95, mask1=mask_a, mask2=mask_b)
+        for i in range(2):
+            valid_a, valid_b = mask_a[i].nonzero().flatten(), mask_b[i].nonzero().flatten()
+            r, ix = match_smnn(a[i, valid_a], b[i, valid_b], 0.95)
+            original = torch.stack((valid_a[ix[:, 0]], valid_b[ix[:, 1]]), dim=1)
+            self.assert_close(indices[indices[:, 0] == i, 1:], original)
+            self.assert_close(ratios[indices[:, 0] == i], r)
+
+    @pytest.mark.parametrize("mask_first, mask_second", [(True, False), (False, True), (True, True)])
+    def test_masks_large_offset_padded_descriptors(self, device, mask_first, mask_second):
+        a = torch.full((1, 30, 2), -1e4, device=device)
+        b = torch.full((1, 31, 2), -2e4, device=device)
+        a[0, [1, 8, 29]] = torch.tensor([[10000.0, 10000.0], [10001.0, 10000.0], [10000.0, 10002.0]], device=device)
+        b[0, [3, 15, 30]] = a[0, [1, 8, 29]]
+        mask1 = torch.zeros(1, 30, dtype=torch.bool, device=device) if mask_first else None
+        mask2 = torch.zeros(1, 31, dtype=torch.bool, device=device) if mask_second else None
+        if mask1 is not None:
+            mask1[0, [1, 8, 29]] = True
+        if mask2 is not None:
+            mask2[0, [3, 15, 30]] = True
+        ratios, indices = matching.match_smnn_batched(a, b, mask1=mask1, mask2=mask2)
+        expected = torch.tensor([[0, 1, 3], [0, 8, 15], [0, 29, 30]], device=device)
+        self.assert_close(indices, expected)
+        self.assert_close(ratios, torch.zeros(3, 1, device=device))
+
+    @pytest.mark.parametrize("mask_first, mask_second", [(True, False), (False, True), (True, True)])
+    def test_nonfinite_padding_matches_compact_gradients(self, device, dtype, mask_first, mask_second):
+        a_padding = [float("nan"), float("inf")] if mask_first else [4.0, 0.0]
+        b_padding = [float("-inf"), float("nan")] if mask_second else [4.0, 0.0]
+        a = torch.tensor(
+            [[[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], a_padding]], device=device, dtype=dtype, requires_grad=True
+        )
+        b = torch.tensor(
+            [[[0.1, 0.0], [1.2, 0.0], [3.0, 0.0], b_padding]], device=device, dtype=dtype, requires_grad=True
+        )
+        mask1 = torch.tensor([[True, True, True, False]], device=device) if mask_first else None
+        mask2 = torch.tensor([[True, True, True, False]], device=device) if mask_second else None
+        ratios, indices = matching.match_smnn_batched(a, b, 1.0, mask1=mask1, mask2=mask2)
+        ratios.sum().backward()
+
+        valid_a = mask1[0].nonzero().flatten() if mask1 is not None else torch.arange(4, device=device)
+        valid_b = mask2[0].nonzero().flatten() if mask2 is not None else torch.arange(4, device=device)
+        compact_a = a.detach()[:, valid_a].clone().requires_grad_()
+        compact_b = b.detach()[:, valid_b].clone().requires_grad_()
+        reference_ratios, reference_indices = matching.match_smnn_batched(compact_a, compact_b, 1.0)
+        reference_ratios.sum().backward()
+
+        self.assert_close(ratios, reference_ratios)
+        self.assert_close(indices, reference_indices)
+        self.assert_close(a.grad[:, valid_a], compact_a.grad)
+        self.assert_close(b.grad[:, valid_b], compact_b.grad)
+        assert torch.isfinite(a.grad).all()
+        assert torch.isfinite(b.grad).all()
+        assert a.grad[:, valid_a].abs().sum() > 0
+        assert b.grad[:, valid_b].abs().sum() > 0
+        if mask_first:
+            self.assert_close(a.grad[:, 3], torch.zeros_like(a.grad[:, 3]))
+        if mask_second:
+            self.assert_close(b.grad[:, 3], torch.zeros_like(b.grad[:, 3]))
+
+    def test_provided_distance_matrix_and_ties(self, device, dtype):
+        a = torch.zeros(2, 3, 4, device=device, dtype=dtype)
+        b = torch.zeros(2, 4, 4, device=device, dtype=dtype)
+        dm = torch.tensor(
+            [
+                [[0.0, 1.0, 2.0, 3.0], [2.0, 0.1, 3.0, 4.0], [3.0, 4.0, 0.2, 5.0]],
+                [[0.0, 0.0, 2.0, 3.0], [0.0, 0.0, 2.0, 3.0], [2.0, 3.0, 0.1, 4.0]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        ratios, indices = matching.match_smnn_batched(a, b, 0.95, dm)
+        for i in range(2):
+            r, ix = match_smnn(a[i], b[i], 0.95, dm[i])
+            self.assert_close(indices[indices[:, 0] == i, 1:], ix)
+            self.assert_close(ratios[indices[:, 0] == i], r)
+
+    @pytest.mark.parametrize("batch,n,m", [(0, 3, 4), (2, 0, 4), (2, 3, 0), (2, 1, 4), (2, 4, 1)])
+    def test_empty_and_short(self, device, dtype, batch, n, m):
+        a = torch.empty(batch, n, 4, device=device, dtype=dtype)
+        b = torch.empty(batch, m, 4, device=device, dtype=dtype)
+        r, ix = matching.match_smnn_batched(a, b)
+        assert r.shape == (0, 1)
+        assert ix.shape == (0, 3)
+        assert r.dtype == dtype
+        assert ix.device == a.device
+
+    def test_short_valid_rows_return_no_matches(self, device, dtype):
+        a = torch.rand(2, 3, 4, device=device, dtype=dtype)
+        b = torch.rand(2, 4, 4, device=device, dtype=dtype)
+        mask = torch.tensor([[True, False, False], [False, False, False]], device=device)
+        r, ix = matching.match_smnn_batched(a, b, mask1=mask)
+        assert r.shape == (0, 1)
+        assert ix.shape == (0, 3)
+
+    @pytest.mark.parametrize("problem", ["batch", "dim", "mask_shape", "mask_dtype", "dm_shape"])
+    def test_invalid_inputs(self, device, dtype, problem):
+        a = torch.rand(2, 3, 4, device=device, dtype=dtype)
+        b = torch.rand(2, 5, 4, device=device, dtype=dtype)
+        kwargs = {}
+        if problem == "batch":
+            b = b[:1]
+        elif problem == "dim":
+            b = b[..., :3]
+        elif problem == "mask_shape":
+            kwargs["mask1"] = torch.ones(2, 2, dtype=torch.bool, device=device)
+        elif problem == "mask_dtype":
+            kwargs["mask2"] = torch.ones(2, 5, dtype=dtype, device=device)
+        else:
+            kwargs["dm"] = torch.rand(2, 3, 4, dtype=dtype, device=device)
+        with pytest.raises(ValueError):
+            matching.match_smnn_batched(a, b, **kwargs)
+
+    def test_gradcheck(self, device):
+        a = torch.rand(2, 3, 4, device=device, dtype=torch.float64)
+        b = torch.rand(2, 4, 4, device=device, dtype=torch.float64)
+        self.gradcheck(matching.match_smnn_batched, (a, b, 1.0))

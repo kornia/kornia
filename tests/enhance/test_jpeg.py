@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
@@ -24,6 +26,55 @@ from testing.base import BaseTester
 
 
 class TestDiffJPEG(BaseTester):
+    def test_float64_dct_basis_uses_full_precision_pi(self) -> None:
+        from kornia.enhance.jpeg import _get_dct8_basis_scale
+
+        dct_basis, _ = _get_dct8_basis_scale(torch.float64, "cpu")
+        index = torch.arange(8, dtype=torch.float64)
+        basis_1d = torch.cos((2.0 * index + 1.0)[:, None] * index[None, :] * (math.pi / 16.0))
+        expected = basis_1d[:, None, :, None] * basis_1d[None, :, None, :]
+        torch.testing.assert_close(dct_basis, expected, rtol=0.0, atol=0.0)
+
+    def test_float64_idct_uses_full_precision_pi(self) -> None:
+        from kornia.enhance.jpeg import _idct_8x8
+
+        # A non-symmetric block, so a transposed basis fails too.
+        coefficients = (torch.arange(64, dtype=torch.float64) * 37 % 64 - 31.5).view(1, 1, 8, 8)
+        basis = torch.tensor(
+            [[math.cos((2 * s + 1) * f * math.pi / 16) for s in range(8)] for f in range(8)], dtype=torch.float64
+        )
+        alpha = torch.tensor([1.0 / math.sqrt(2.0)] + [1.0] * 7, dtype=torch.float64)
+        expected = 0.25 * basis.T @ (coefficients[0, 0] * alpha[:, None] * alpha[None, :]) @ basis + 128.0
+        # A float32 pi puts the result about 3e-5 off.
+        self.assert_close(_idct_8x8(coefficients)[0, 0], expected, rtol=0.0, atol=1e-10)
+
+    def test_strict_torch_export(self) -> None:
+        from kornia.enhance.jpeg import _DCT8_CACHE, JPEGCodecDifferentiable
+
+        image = torch.rand(1, 3, 16, 16)
+        quality = torch.tensor([50.0])
+        codec = JPEGCodecDifferentiable()
+        cache = _DCT8_CACHE.copy()
+        try:
+            for warm_cache in (False, True):
+                _DCT8_CACHE.clear()
+                if warm_cache:
+                    expected = codec(image, quality)
+                try:
+                    exported = torch.export.export(codec, (image, quality), strict=True).module()
+                except RuntimeError as e:
+                    # torch 2.5.1 routes strict export through Dynamo, which rejects Python 3.13+.
+                    if "Python 3.13+ not yet supported for torch.compile" in str(e):
+                        pytest.skip(f"strict torch.export is unavailable in this environment: {e}")
+                    raise
+                _DCT8_CACHE.clear()
+                if not warm_cache:
+                    expected = codec(image, quality)
+                self.assert_close(exported(image, quality), expected)
+        finally:
+            _DCT8_CACHE.clear()
+            _DCT8_CACHE.update(cache)
+
     def test_smoke(self, device, dtype) -> None:
         """This test standard usage."""
         B, H, W = 2, 32, 32
@@ -143,37 +194,37 @@ class TestDiffJPEG(BaseTester):
 
     def test_exception(self, device, dtype) -> None:
         """Test exceptions (non-tensor input, wrong JPEG quality shape, wrong img shape, and wrong QT shape.)"""
+        B = 2
+        jpeg_quality = torch.randint(low=1, high=100, size=(B,), device=device, dtype=dtype)
         with pytest.raises(TypeError) as errinfo:
-            B = 2
-            jpeg_quality = torch.randint(low=1, high=100, size=(B,), device=device, dtype=dtype)
             kornia.enhance.jpeg_codec_differentiable(1904.0, jpeg_quality)
         assert "Input input type is not a torch.Tensor" in str(errinfo.value)
 
         from kornia.core.exceptions import TypeCheckError
 
+        B, H, W = 2, 32, 32
+        img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
         with pytest.raises(TypeCheckError) as errinfo:
-            B, H, W = 2, 32, 32
-            img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
             kornia.enhance.jpeg_codec_differentiable(img, None)
         assert "Type mismatch: expected Tensor" in str(errinfo.value)
 
         from kornia.core.exceptions import BaseError
 
+        B, H, W = 2, 32, 32
+        img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
+        jpeg_quality = torch.randint(low=1, high=100, size=(B, 3, 2, 1), device=device, dtype=dtype)
         with pytest.raises(BaseError) as errinfo:
-            B, H, W = 2, 32, 32
-            img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
-            jpeg_quality = torch.randint(low=1, high=100, size=(B, 3, 2, 1), device=device, dtype=dtype)
             kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality)
         assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
         from kornia.core.exceptions import BaseError
 
+        B, H, W = 4, 32, 32
+        img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
+        jpeg_quality = torch.randint(low=1, high=100, size=(B,), device=device, dtype=dtype)
+        qt_y = torch.randint(low=1, high=255, size=(B, 7, 8), device=device, dtype=dtype)
+        qt_c = torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype)
         with pytest.raises(BaseError) as errinfo:
-            B, H, W = 4, 32, 32
-            img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
-            jpeg_quality = torch.randint(low=1, high=100, size=(B,), device=device, dtype=dtype)
-            qt_y = torch.randint(low=1, high=255, size=(B, 7, 8), device=device, dtype=dtype)
-            qt_c = torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype)
             kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
         assert (
             "Shape dimension mismatch" in str(errinfo.value)
@@ -183,12 +234,12 @@ class TestDiffJPEG(BaseTester):
 
         from kornia.core.exceptions import BaseError
 
+        B, H, W = 4, 32, 32
+        img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
+        jpeg_quality = torch.randint(low=1, high=100, size=(B,), device=device, dtype=dtype)
+        qt_y = torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype)
+        qt_c = torch.randint(low=1, high=255, size=(B, 8, 7), device=device, dtype=dtype)
         with pytest.raises(BaseError) as errinfo:
-            B, H, W = 4, 32, 32
-            img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
-            jpeg_quality = torch.randint(low=1, high=100, size=(B,), device=device, dtype=dtype)
-            qt_y = torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype)
-            qt_c = torch.randint(low=1, high=255, size=(B, 8, 7), device=device, dtype=dtype)
             kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
         assert (
             "Shape dimension mismatch" in str(errinfo.value)
@@ -198,34 +249,34 @@ class TestDiffJPEG(BaseTester):
 
         from kornia.core.exceptions import BaseError
 
+        B, H, W = 4, 32, 32
+        img = torch.rand(B, B, 3, H, W, device=device, dtype=dtype)
+        jpeg_quality = torch.randint(low=1, high=100, size=(B * B,), device=device, dtype=dtype)
+        qt_y = torch.randint(low=1, high=255, size=(B * B, 8, 8), device=device, dtype=dtype)
+        qt_c = torch.randint(low=1, high=255, size=(B * 2, 8, 8), device=device, dtype=dtype)
         with pytest.raises(BaseError) as errinfo:
-            B, H, W = 4, 32, 32
-            img = torch.rand(B, B, 3, H, W, device=device, dtype=dtype)
-            jpeg_quality = torch.randint(low=1, high=100, size=(B * B,), device=device, dtype=dtype)
-            qt_y = torch.randint(low=1, high=255, size=(B * B, 8, 8), device=device, dtype=dtype)
-            qt_c = torch.randint(low=1, high=255, size=(B * 2, 8, 8), device=device, dtype=dtype)
             kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
         assert "Batch dimensions do not match" in str(errinfo.value)
 
         from kornia.core.exceptions import BaseError
 
+        B, H, W = 4, 32, 32
+        img = torch.rand(B, B, 3, H, W, device=device, dtype=dtype)
+        jpeg_quality = torch.randint(low=1, high=100, size=(B * B,), device=device, dtype=dtype)
+        qt_y = torch.randint(low=1, high=255, size=(B * 2, 8, 8), device=device, dtype=dtype)
+        qt_c = torch.randint(low=1, high=255, size=(B * B, 8, 8), device=device, dtype=dtype)
         with pytest.raises(BaseError) as errinfo:
-            B, H, W = 4, 32, 32
-            img = torch.rand(B, B, 3, H, W, device=device, dtype=dtype)
-            jpeg_quality = torch.randint(low=1, high=100, size=(B * B,), device=device, dtype=dtype)
-            qt_y = torch.randint(low=1, high=255, size=(B * 2, 8, 8), device=device, dtype=dtype)
-            qt_c = torch.randint(low=1, high=255, size=(B * B, 8, 8), device=device, dtype=dtype)
             kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
         assert "Batch dimensions do not match" in str(errinfo.value)
 
         from kornia.core.exceptions import BaseError
 
+        B, H, W = 4, 32, 32
+        img = torch.rand(B, B, 3, H, W, device=device, dtype=dtype)
+        jpeg_quality = torch.randint(low=1, high=100, size=(B * 2,), device=device, dtype=dtype)
+        qt_y = torch.randint(low=1, high=255, size=(B * B, 8, 8), device=device, dtype=dtype)
+        qt_c = torch.randint(low=1, high=255, size=(B * B, 8, 8), device=device, dtype=dtype)
         with pytest.raises(BaseError) as errinfo:
-            B, H, W = 4, 32, 32
-            img = torch.rand(B, B, 3, H, W, device=device, dtype=dtype)
-            jpeg_quality = torch.randint(low=1, high=100, size=(B * 2,), device=device, dtype=dtype)
-            qt_y = torch.randint(low=1, high=255, size=(B * B, 8, 8), device=device, dtype=dtype)
-            qt_c = torch.randint(low=1, high=255, size=(B * B, 8, 8), device=device, dtype=dtype)
             kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
         assert "Batch dimensions do not match" in str(errinfo.value)
 
@@ -1157,3 +1208,55 @@ class TestDiffJPEG(BaseTester):
         # We use a slightly higher tolerance since our implementation varies from the reference implementation
         self.assert_close(img.grad.mean().view(-1), img_jpeg_mean_grad_ref, rtol=0.01, atol=0.01)
         self.assert_close(jpeg_quality.grad, jpeg_quality_grad_ref, rtol=0.01, atol=0.01)
+
+    def test_basis_cache_after_inference_mode(self, device, dtype, monkeypatch) -> None:
+        """A first call under ``torch.inference_mode()`` must not break later calls that track gradients.
+
+        The DCT basis is memoized per dtype and device. Caching the inference tensors built by that first call made
+        later calls in which autograd tracks the image fail in the forward with "Inference tensors cannot be saved
+        for backward".
+        """
+        monkeypatch.setattr("kornia.enhance.jpeg._DCT8_CACHE", {})
+        torch.manual_seed(0)
+        img = torch.rand(2, 3, 16, 16).to(device=device, dtype=dtype)
+        jpeg_quality = torch.tensor([30.0, 90.0], device=device, dtype=dtype)
+        with torch.inference_mode():
+            expected = kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality)
+        img = img.clone().requires_grad_(True)
+        img_jpeg = kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality)
+        img_jpeg.sum().backward()
+        self.assert_close(img_jpeg.detach(), expected)
+        assert img.grad is not None
+        assert torch.isfinite(img.grad).all()
+
+    def test_basis_cache_after_compile_in_inference_mode(self, device, dtype, torch_optimizer, monkeypatch) -> None:
+        """A compiled first call under ``torch.inference_mode()`` must not break later calls that track gradients."""
+        monkeypatch.setattr("kornia.enhance.jpeg._DCT8_CACHE", {})
+        torch.manual_seed(0)
+        img = torch.rand(2, 3, 16, 16).to(device=device, dtype=dtype)
+        jpeg_quality = torch.tensor([30.0, 90.0], device=device, dtype=dtype)
+        op_optimized = torch_optimizer(kornia.enhance.jpeg_codec_differentiable)
+        with torch.inference_mode():
+            op_optimized(img, jpeg_quality)
+        img = img.clone().requires_grad_(True)
+        kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality).sum().backward()
+        assert img.grad is not None
+        assert torch.isfinite(img.grad).all()
+
+    @pytest.mark.device_agnostic
+    def test_basis_cache_after_export(self, monkeypatch) -> None:
+        """Tracing with ``torch.export`` must not leave fake tensors in the DCT basis cache.
+
+        The trace runs the forward on fake tensors. Caching the basis built there made later eager calls in the same
+        process return fake tensors without data: ``.item()`` gave a symbol and ``.numpy()`` raised.
+        """
+        monkeypatch.setattr("kornia.enhance.jpeg._DCT8_CACHE", {})
+        torch.manual_seed(0)
+        img = torch.rand(1, 3, 16, 16)
+        jpeg_quality = torch.tensor([50.0])
+        module = kornia.enhance.JPEGCodecDifferentiable()
+        torch.export.export(module, (img, jpeg_quality), strict=False)
+        img_jpeg = module(img, jpeg_quality)
+        assert type(img_jpeg) is torch.Tensor
+        kornia.enhance.jpeg._DCT8_CACHE.clear()
+        self.assert_close(img_jpeg, module(img, jpeg_quality))

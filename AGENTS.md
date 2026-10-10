@@ -23,7 +23,7 @@ Use Pixi for project tasks and environment selection. The tasks call `uv`, and P
 
 ```bash
 pixi install
-pixi run install
+pixi run -e default install
 pixi install -e py312
 pixi run -e py312 install
 pixi install -e py313
@@ -41,7 +41,7 @@ pixi run typecheck
 pixi run toml-fmt
 pixi run doctest
 pixi run doctest-weights
-pixi run build-docs
+pixi run -e default build-docs
 ```
 
 The `py312` and `py313` features select isolated `.venv-py312` and `.venv-py313` project environments automatically for install and test tasks.
@@ -57,7 +57,7 @@ Supported fixtures include CPU, CUDA, MPS, and TPU when available, and `float16`
 
 `test-module` forwards its arguments to `pytest`, so a node ID or a `-k` expression narrows a run to a single test.
 
-Use `KORNIA_TEST_RUNSLOW=true` to include slow tests. `KORNIA_TEST_OPTIMIZER=inductor` enables the dynamo and compile tests, which are deselected when the variable is unset. `pixi run doctest` skips docstring examples that would download an uncached model checkpoint, so it stays fast and works offline; use `pixi run doctest-weights` (or `KORNIA_DOCTEST_DOWNLOAD=1`) to run those examples for real, which costs ~838 MB on a cold cache. Pull-request CI relies on the restored weights cache and skips whatever it misses; the post-merge run on `main` downloads, so the model examples are always exercised somewhere. Before presenting a code change as finished, run the full pre-commit command above together with focused tests and other relevant checks; `pixi run lint` runs only the Ruff hooks.
+Use `KORNIA_TEST_RUNSLOW=true` to include slow tests. `KORNIA_TEST_OPTIMIZER=inductor` enables the dynamo and compile tests, which are deselected when the variable is unset. `pixi run doctest` skips docstring examples that would download an uncached model checkpoint, so it stays fast and works offline; use `pixi run doctest-weights` (or `KORNIA_DOCTEST_DOWNLOAD=1`) to run those examples for real, which costs ~838 MB on a cold cache. Pull-request CI relies on the restored weights cache and skips whatever it misses; the scheduled run on `main` (00:23 and 12:23 UTC) downloads, so the model examples are always exercised somewhere. Before presenting a code change as finished, run the full pre-commit command above together with focused tests and other relevant checks; `pixi run lint` runs only the Ruff hooks.
 
 ### Comparing a branch against another revision
 
@@ -97,7 +97,7 @@ when more than one virtualenv is in play: name the interpreter explicitly rather
   recording, fresh-process replay, and manual installation.
 - CUDA `float16`/`bfloat16` tests need per-test subprocess isolation; use `pixi run -e cuda test-cuda-half` or pytest's `--isolate-half-precision` option.
 - MPS does not support float64 gradcheck. MPS autocast can also change the effective dtype; inspect nearby tests before changing tolerances or skips.
-- The blocking MPS job runs `--device=mps --dtype=float32 --xfail-known-failures`. Its exact strict-xfail baseline is `testing/known_failure_xfails/mps_float32.txt` and is tracked in #4159. A fix removes its manifest line; a rename or reparametrization updates the node ID; a new failure is fixed or explicitly documented before being added. The manifest contract requires a full-suite run, without `-k` or a partial path.
+- The blocking MPS job runs `--device=mps --dtype=float32 --xfail-known-failures`. Its exact strict-xfail baseline is `testing/known_failure_xfails/mps_float32.txt`. A fix removes its manifest line; a rename or reparametrization updates the node ID; a new failure is fixed, or gets its own tracking issue named in a manifest comment before being added. The manifest contract requires a full-suite run, without `-k` or a partial path.
 - TF32 matmul is disabled by default; `--tf32` enables it. cuDNN convolutions still use PyTorch's TF32 default. Tests marked `tf32` are xfailed at collection unless `--tf32` is passed, and that marker is non-strict, so a default run reports neither their failure nor their recovery.
 - `torch.clamp` is not a portable gradient guard: its derivative **at the bound** passes the incoming gradient
   through (`1.0`) on torch 2.5.1 and 2.9.1 and returns `0.0` on 2.14.0. Wherever the bound is also the singular

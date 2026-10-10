@@ -76,8 +76,7 @@ class PlainUniformGenerator(RandomGeneratorBase):
                 self.register_buffer(name, factor)
 
     def __repr__(self) -> str:
-        repr = ", ".join([f"{name}={factor}" for factor, name, _, _ in self.samplers])
-        return repr
+        return ", ".join([f"{name}={factor}" for factor, name, _, _ in self.samplers])
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         self.sampler_dict: Dict[str, Distribution] = {}

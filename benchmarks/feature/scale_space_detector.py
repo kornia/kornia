@@ -139,9 +139,9 @@ RESP_REGISTRY: dict[str, tuple] = {
 }
 
 SUBPIX_REGISTRY: dict[str, Callable] = {
-    "adaptive": lambda: AdaptiveQuadInterp3d(strict_maxima_bonus=0.0, allow_scale_steps=True),
-    "conv": lambda: ConvQuadInterp3d(strict_maxima_bonus=0.0),
-    "iterative": lambda: IterativeQuadInterp3d(strict_maxima_bonus=0.0),
+    "adaptive": lambda: AdaptiveQuadInterp3d(allow_scale_steps=True),
+    "conv": ConvQuadInterp3d,
+    "iterative": IterativeQuadInterp3d,
     "soft": lambda: ConvSoftArgmax3d((3, 3, 3), (1, 1, 1), (1, 1, 1), normalized_coordinates=False, output_value=True),
 }
 

@@ -16,14 +16,13 @@
 #
 
 import math
-from typing import Tuple
+from typing import Any, Dict, List, Tuple
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.constants import pi
-from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.utils import _l2_normalize
 from kornia.filters import get_gaussian_kernel2d, spatial_gradient
 
@@ -67,7 +66,7 @@ def _gradient_magnitude_orientation(
     sq = gx * gx + gy * gy
     nonzero = sq > 0
     mag = torch.where(nonzero, torch.sqrt(sq + eps), torch.zeros_like(sq))
-    ori = torch.where(nonzero, torch.atan2(gy, gx + eps) + 2.0 * pi, torch.full_like(sq, 2.0 * pi))
+    ori = torch.where(nonzero, torch.atan2(gy, gx + eps) + 2.0 * math.pi, torch.full_like(sq, 2.0 * math.pi))
     return mag.to(dtype), ori.to(dtype)
 
 
@@ -82,7 +81,7 @@ def _dense_sift_histograms_from_gradients(
     descriptor tensor.
     """
     mag, ori = _gradient_magnitude_orientation(gx, gy, eps)
-    o_big = float(num_ang_bins) * ori / (2.0 * pi)
+    o_big = float(num_ang_bins) * ori / (2.0 * math.pi)
     bo0 = torch.floor(o_big)
     w1 = o_big - bo0
     bo0 = bo0 % num_ang_bins
@@ -109,12 +108,20 @@ def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
     """
     ks_2: float = float(ksize) / 2.0
     xc2 = ks_2 - (torch.arange(ksize).float() + 0.5 - ks_2).abs()
-    kernel = torch.ger(xc2, xc2) / (ks_2**2)
-    return kernel
+    return torch.ger(xc2, xc2) / (ks_2**2)
 
 
 def get_sift_bin_ksize_stride_pad(patch_size: int, num_spatial_bins: int) -> Tuple[int, int, int]:
-    r"""Return a tuple with SIFT parameters.
+    r"""Return the spatial pooling parameters of :class:`SIFTDescriptor`.
+
+    The pooling is a convolution with :func:`get_sift_pooling_kernel` of size ``ksize``, stride ``stride`` and zero
+    padding ``pad`` on every side. Its ``num_spatial_bins`` cells per side are ``stride`` pixels apart and the grid
+    is centred on the patch centre :math:`(\text{patch\_size} - 1) / 2`, where the descriptor's Gaussian weighting
+    window is centred: cell :math:`k` is centred at
+    :math:`(\text{patch\_size} - 1) / 2 + (k - (\text{num\_spatial\_bins} - 1) / 2) \cdot \text{stride}`.
+
+    ``ksize`` is :math:`2 \lfloor \text{patch\_size} / (\text{num\_spatial\_bins} + 1) \rfloor`, plus one when a
+    centred grid needs a kernel centred on a pixel rather than between two, as at the default patch size 41.
 
     Args:
         patch_size: the given patch size.
@@ -124,11 +131,15 @@ def get_sift_bin_ksize_stride_pad(patch_size: int, num_spatial_bins: int) -> Tup
         ksize, stride, pad.
 
     """
-    ksize: int = 2 * int(patch_size / (num_spatial_bins + 1))
     stride: int = patch_size // num_spatial_bins
-    pad: int = ksize // 4
-    out_size: int = (patch_size + 2 * pad - (ksize - 1) - 1) // stride + 1
-    if out_size != num_spatial_bins:
+    ksize: int = 2 * int(patch_size / (num_spatial_bins + 1))
+    # The first cell is centred at -pad + (ksize - 1) / 2 and the grid at that plus (num_spatial_bins - 1) * stride / 2.
+    # Setting the grid centre to (patch_size - 1) / 2 gives 2 * pad below, so ksize takes its parity.
+    if (ksize - patch_size + (num_spatial_bins - 1) * stride) % 2 != 0:
+        ksize += 1
+    pad: int = (ksize - patch_size + (num_spatial_bins - 1) * stride) // 2
+    out_size: int = (patch_size + 2 * pad - (ksize - 1) - 1) // stride + 1 if stride > 0 else 0
+    if pad < 0 or out_size != num_spatial_bins:
         raise ValueError(
             f"Patch size {patch_size} is incompatible with the requested number of spatial bins "
             f"{num_spatial_bins} for SIFT descriptor. Usually it happens when patch size is too small "
@@ -153,6 +164,15 @@ class SIFTDescriptor(nn.Module):
     Shape:
         - Input: :math:`(B, 1, \text{patch_size}, \text{patch_size})`
         - Output: :math:`(B, \text{num_ang_bins * num_spatial_bins ** 2})`
+
+    The output is in kornia's angle-major SIFT layout; :func:`~kornia.feature.convert_sift_descriptor_layout` reorders
+    it to OpenCV's.
+
+    The ``num_spatial_bins`` x ``num_spatial_bins`` grid of spatial cells and the Gaussian weighting window are both
+    centred on the patch centre :math:`(\text{patch\_size} - 1) / 2`; :func:`get_sift_bin_ksize_stride_pad` gives the
+    cell spacing and pooling kernel. A patch mirrored upside down therefore has a descriptor that is a permutation of
+    the original's; so does a patch mirrored left to right when ``num_ang_bins`` is even, and a ``torch.rot90``-rotated
+    one when ``num_ang_bins`` is a multiple of four, as the default 8 is.
 
     Example:
         >>> input = torch.rand(23, 1, 32, 32)
@@ -206,6 +226,33 @@ class SIFTDescriptor(nn.Module):
         )
         self.pk.weight.data.copy_(nw.reshape(1, 1, nw.size(0), nw.size(1)))
 
+    def _load_from_state_dict(
+        self,
+        state_dict: Dict[str, Any],
+        prefix: str,
+        local_metadata: Dict[str, Any],
+        strict: bool,
+        missing_keys: List[str],
+        unexpected_keys: List[str],
+        error_msgs: List[str],
+    ) -> None:
+        # The pooling kernel used to be 2 * int(patch_size / (num_spatial_bins + 1)) wide at every patch size; the
+        # centred grid widens it by one pixel at some, 41 among them. A state dict saved with the narrower kernel
+        # holds an untrained kernel that `patch_size` fully determines, so it is replaced by the untrained kernel of
+        # the current width instead of failing a strict load on its shape -- rebuilt here, not copied from `self.pk`,
+        # which may have been trained since construction. A kernel with any other values still fails.
+        key = prefix + "pk.weight"
+        weight = state_dict.get(key)
+        if isinstance(weight, torch.Tensor) and weight.shape != self.pk.weight.shape:
+            former = get_sift_pooling_kernel(2 * int(self.patch_size / (self.num_spatial_bins + 1)))
+            former = former.to(weight.dtype).reshape(1, 1, *former.shape)
+            if weight.shape == former.shape and torch.equal(weight.cpu(), former):
+                current = get_sift_pooling_kernel(self.bin_ksize).float()
+                state_dict[key] = current.reshape(1, 1, *current.shape).to(weight.device, weight.dtype)
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+        )
+
     def get_pooling_kernel(self) -> torch.Tensor:
         """Return the spatial pooling kernel used for histogram accumulation.
 
@@ -247,7 +294,7 @@ class SIFTDescriptor(nn.Module):
 
         mag, ori = _gradient_magnitude_orientation(gx, gy, self.eps)
         mag = mag * self.gk.expand_as(mag).type_as(mag).to(mag.device)
-        o_big = float(self.num_ang_bins) * ori / (2.0 * pi)
+        o_big = float(self.num_ang_bins) * ori / (2.0 * math.pi)
 
         bo0_big_ = torch.floor(o_big)
         wo1_big_ = o_big - bo0_big_
@@ -294,6 +341,88 @@ def _rootsift(desc: torch.Tensor, eps: float) -> torch.Tensor:
     if desc.dtype == torch.float16:
         return torch.sqrt(F.normalize(desc.float(), p=1, eps=1e-12) + eps).to(desc.dtype)
     return torch.sqrt(F.normalize(desc, p=1, eps=1e-12) + eps)
+
+
+_SIFT_DESCRIPTOR_LAYOUTS = ("kornia", "opencv")
+
+
+def _check_sift_descriptor_layout(layout: str) -> None:
+    if layout not in _SIFT_DESCRIPTOR_LAYOUTS:
+        raise ValueError(f"Unknown SIFT descriptor layout {layout!r}; expected one of {_SIFT_DESCRIPTOR_LAYOUTS}")
+
+
+def _opencv_order(num_ang_bins: int, num_spatial_bins: int) -> list[int]:
+    """For each OpenCV descriptor position, the kornia position holding the same histogram value."""
+    cells = num_spatial_bins * num_spatial_bins
+    # Negating the angle maps bin a to bin -a (mod num_ang_bins); the map is its own inverse.
+    return [((-angle) % num_ang_bins) * cells + cell for cell in range(cells) for angle in range(num_ang_bins)]
+
+
+def convert_sift_descriptor_layout(
+    descriptors: torch.Tensor,
+    source: str,
+    target: str,
+    num_ang_bins: int = 8,
+    num_spatial_bins: int = 4,
+) -> torch.Tensor:
+    r"""Reorder SIFT descriptors between kornia's layout and OpenCV's.
+
+    Both layouts hold the same histogram values, one per angle bin :math:`a` and spatial cell :math:`(y, x)`
+    of the frame, with :math:`A` = ``num_ang_bins`` and :math:`S` = ``num_spatial_bins``:
+
+    - ``"kornia"``, the layout of every kornia SIFT descriptor (:class:`~kornia.feature.SIFTDescriptor`,
+      :class:`~kornia.feature.SIFTDescriptorFromPyramid`, and :class:`~kornia.feature.SIFTFeature` and
+      :class:`~kornia.feature.SIFTFeatureScaleSpace` with either ``descriptor_backend``): angle-major, value
+      :math:`(a, y, x)` at index :math:`a S^2 + y S + x`. Bin :math:`a` is centred on the direction
+      :math:`2 \pi a / A`, measured from :math:`+x` towards :math:`+y`, with :math:`y` growing downwards as image
+      rows do.
+    - ``"opencv"``, the layout of OpenCV's ``cv2.SIFT``: spatial-major, index :math:`(y S + x) A + a'`, with angles
+      measured from :math:`+x` towards :math:`-y`. A gradient in kornia's bin :math:`a` falls in OpenCV's bin
+      :math:`a' = -a \bmod A`.
+
+    LightGlue's ``"sift"`` weights expect the ``"opencv"`` layout: convert kornia descriptors before passing them to
+    :class:`~kornia.feature.LightGlueMatcher` with ``"sift"``. The conversion only reorders values, so it applies
+    equally to SIFT and RootSIFT descriptors and keeps their scale; converting back restores the input exactly.
+
+    Args:
+        descriptors: SIFT descriptors of shape :math:`(*, A S^2)`.
+        source: layout of ``descriptors``, ``"kornia"`` or ``"opencv"``.
+        target: layout to return, ``"kornia"`` or ``"opencv"``.
+        num_ang_bins: number of angle bins :math:`A`.
+        num_spatial_bins: number of spatial bins :math:`S` per side.
+
+    Returns:
+        The descriptors in the ``target`` layout, with the input's shape, dtype and device.
+
+    Example:
+        >>> descs = SIFTDescriptor(32)(torch.rand(4, 1, 32, 32))
+        >>> opencv_descs = convert_sift_descriptor_layout(descs, "kornia", "opencv")
+        >>> torch.equal(convert_sift_descriptor_layout(opencv_descs, "opencv", "kornia"), descs)
+        True
+
+    """
+    _check_sift_descriptor_layout(source)
+    _check_sift_descriptor_layout(target)
+    if num_ang_bins < 1 or num_spatial_bins < 1:
+        raise ValueError(
+            f"SIFT bin counts must be positive. Got num_ang_bins={num_ang_bins}, num_spatial_bins={num_spatial_bins}"
+        )
+    size = num_ang_bins * num_spatial_bins * num_spatial_bins
+    KORNIA_CHECK(
+        descriptors.shape[-1] == size,
+        f"Expected descriptors of size num_ang_bins * num_spatial_bins**2 = {size}, got {descriptors.shape[-1]}",
+    )
+    if source == target:
+        order = list(range(size))
+    elif target == "opencv":
+        order = _opencv_order(num_ang_bins, num_spatial_bins)
+    else:
+        # Invert the permutation: kornia position k takes the OpenCV value that `_opencv_order` sends to k.
+        inverse = [0] * size
+        for opencv_index, kornia_index in enumerate(_opencv_order(num_ang_bins, num_spatial_bins)):
+            inverse[kornia_index] = opencv_index
+        order = inverse
+    return descriptors.index_select(-1, torch.tensor(order, device=descriptors.device, dtype=torch.long))
 
 
 def sift_describe(

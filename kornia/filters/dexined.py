@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import os
 from collections import OrderedDict
 from typing import ClassVar, Optional
 
@@ -31,7 +32,7 @@ from kornia.core.download import hf_url, load_state_dict_from_url
 
 url: str | list[str] = [
     hf_url("dexined", "DexiNed_BIPED_10.pth"),
-    "http://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth",
+    "https://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth",
 ]
 
 
@@ -231,8 +232,7 @@ class UpConvBlock(nn.Module):
             :math:`(B, 1, H, W)` for an edge prediction branch.
         """
         out = self.features(x)
-        out = F.interpolate(out, out_shape, mode="bilinear")
-        return out
+        return F.interpolate(out, out_shape, mode="bilinear")
 
 
 class SingleConvBlock(nn.Module):
@@ -364,12 +364,19 @@ class DexiNed(nn.Module):
         normalization use inference behavior.
 
         Args:
-            path_file: URL or local checkpoint identifier accepted by
-                :func:`kornia.core.download.load_state_dict_from_url`, or a
-                list of candidate URLs tried in order (HF-first fallback).
+            path_file: path of a local checkpoint file, a URL accepted by
+                :func:`kornia.core.download.load_state_dict_from_url`, or a list
+                of candidate URLs tried in order (HF-first fallback). A string
+                naming an existing file (a leading ``~`` is expanded) is read with
+                :func:`torch.load` and ``weights_only=True``; anything else goes
+                through the hub cache, which is keyed by base name.
         """
-        # use torch.hub to load pretrained model
-        pretrained_dict = load_state_dict_from_url(path_file, map_location=torch.device("cpu"))
+        local = os.path.expanduser(path_file) if isinstance(path_file, str) else None
+        if local is not None and os.path.isfile(local):
+            with open(local, "rb") as f:
+                pretrained_dict = torch.load(f, map_location=torch.device("cpu"), weights_only=True)
+        else:
+            pretrained_dict = load_state_dict_from_url(path_file, map_location=torch.device("cpu"))
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
@@ -436,8 +443,7 @@ class DexiNed(nn.Module):
         out_4 = self.up_block_4(block_4, out_shape)
         out_5 = self.up_block_5(block_5, out_shape)
         out_6 = self.up_block_6(block_6, out_shape)
-        results = [out_1, out_2, out_3, out_4, out_5, out_6]
-        return results
+        return [out_1, out_2, out_3, out_4, out_5, out_6]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Predict a fused edge map from an RGB image batch.
@@ -461,6 +467,4 @@ class DexiNed(nn.Module):
 
         # torch.cat multiscale outputs
         block_cat = torch.cat(features, 1)  # Bx6xHxW
-        block_cat = self.block_cat(block_cat)  # Bx1xHxW
-
-        return block_cat
+        return self.block_cat(block_cat)  # Bx1xHxW

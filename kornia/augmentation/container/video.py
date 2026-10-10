@@ -52,6 +52,8 @@ class VideoSequential(ImageSequential):
             If (a,), x number of transformations (a <= x <= len(args)) will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.
             If None, the whole list of args will be processed as a sequence.
+        if_unsupported_ops: what ``inverse`` does on reaching a plain ``nn.Module``, as in
+            :class:`~kornia.augmentation.container.ImageSequential`: ``'raise'`` or ``'skip'``.
 
     Convention:
         - the input is 5-dimensional and the layout is named by ``data_format``, which accepts ``"BTCHW"``
@@ -137,6 +139,7 @@ class VideoSequential(ImageSequential):
         same_on_frame: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
+        if_unsupported_ops: str = "raise",
     ) -> None:
         super().__init__(
             *args,
@@ -144,6 +147,7 @@ class VideoSequential(ImageSequential):
             keepdim=None,
             random_apply=random_apply,
             random_apply_weights=random_apply_weights,
+            if_unsupported_ops=if_unsupported_ops,
         )
         self.same_on_frame = same_on_frame
         self.data_format = data_format.upper()
@@ -185,6 +189,27 @@ class VideoSequential(ImageSequential):
             return v.unsqueeze(1).repeat(1, batch_shape[0], *([1] * (v.ndim - 1))).reshape(-1, *v.shape[1:])
         return v
 
+    @staticmethod
+    def _record_video_batch_size(
+        param: Union[Dict[str, torch.Tensor], List[ParamItem]], original_batch_size: int
+    ) -> None:
+        """Attach the original video batch size to nested replay metadata.
+
+        Args:
+            param: Parameter tree returned by a nested sequential container.
+            original_batch_size: Batch size of the public video before frame flattening.
+        """
+        if isinstance(param, dict):
+            if "forward_input_shape" in param:
+                param["video_batch_size"] = torch.full(
+                    (), original_batch_size, device=param["forward_input_shape"].device, dtype=torch.long
+                )
+            return
+        if isinstance(param, list):
+            for item in param:
+                if isinstance(item, ParamItem) and isinstance(item.data, (dict, list)):
+                    VideoSequential._record_video_batch_size(item.data, original_batch_size)
+
     def _input_shape_convert_in(self, input: torch.Tensor, frame_num: int) -> torch.Tensor:
         # Convert any shape to (B, T, C, H, W)
         if self.data_format == "BCTHW":
@@ -193,10 +218,18 @@ class VideoSequential(ImageSequential):
         if self.data_format == "BTCHW":
             pass
 
-        input = input.reshape(-1, *input.shape[2:])
-        return input
+        return input.reshape(-1, *input.shape[2:])
 
     def _input_shape_convert_back(self, input: torch.Tensor, frame_num: int) -> torch.Tensor:
+        """Reshape a flattened video tensor back to its original layout.
+
+        Args:
+            input: Flattened tensor with the frame dimension merged into the batch axis.
+            frame_num: Number of frames in each video clip.
+
+        Returns:
+            The tensor reshaped back to the original video layout.
+        """
         input = input.view(-1, frame_num, *input.shape[1:])
         if self.data_format == "BCTHW":
             input = input.transpose(1, 2)
@@ -216,6 +249,7 @@ class VideoSequential(ImageSequential):
             across frames depending on ``same_on_frame`` and module settings.
         """
         frame_num = batch_shape[self._temporal_channel]
+        original_batch_size = batch_shape[0]
         named_modules = self.get_forward_sequence()
         # Got param generation shape to (B, C, H, W). Ignoring T.
         batch_shape = self.__infer_channel_exclusive_batch_shape__(batch_shape, self._temporal_channel)
@@ -237,9 +271,12 @@ class VideoSequential(ImageSequential):
                 mod_param = module.forward_parameters(mod_shape)
 
                 if isinstance(mod_param, dict):
-                    for k, v in mod_param.items():
+                    self._record_video_batch_size(mod_param, original_batch_size)
+                    for k, v in list(mod_param.items()):
                         # TODO: revise ColorJiggle and ColorJitter order param in the future to align the standard.
                         if k == "order" and isinstance(module, (K.ColorJiggle, K.ColorJitter)):
+                            continue
+                        if k == "video_batch_size":
                             continue
                         if k == "forward_input_shape":
                             mod_param.update({k: v})
@@ -247,11 +284,16 @@ class VideoSequential(ImageSequential):
                         mod_param[k] = self.__broadcast_param__(
                             v, batch_shape, frame_num, self.same_on_frame, is_same_on_batch
                         )
+                elif isinstance(mod_param, list):
+                    self._record_video_batch_size(mod_param, original_batch_size)
 
                 param = ParamItem(name, mod_param)
 
             elif isinstance(module, (SequentialBase,)):
-                seq_param = module.forward_parameters(batch_shape)
+                # Frames are flattened to (B * T, ...) before the nested container runs, so it
+                # needs one draw per frame, like the unnested branch above.
+                seq_param = module.forward_parameters(torch.Size([batch_shape[0] * frame_num, *batch_shape[1:]]))
+                self._record_video_batch_size(seq_param, original_batch_size)
                 if self.same_on_frame:
                     raise ValueError("nn.Sequential is currently unsupported for ``same_on_frame``.")
                 param = ParamItem(name, seq_param)
@@ -259,7 +301,7 @@ class VideoSequential(ImageSequential):
             else:
                 param = ParamItem(name, None)
 
-            batch_shape = _get_new_batch_shape(param, batch_shape)
+            batch_shape = _get_new_batch_shape(param, batch_shape, module)
             params.append(param)
 
         return params
@@ -282,8 +324,7 @@ class VideoSequential(ImageSequential):
 
         input = super().transform_inputs(input, params, extra_args=extra_args)
 
-        input = self._input_shape_convert_back(input, frame_num)
-        return input
+        return self._input_shape_convert_back(input, frame_num)
 
     def inverse_inputs(
         self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
@@ -303,8 +344,7 @@ class VideoSequential(ImageSequential):
 
         input = super().inverse_inputs(input, params, extra_args=extra_args)
 
-        input = self._input_shape_convert_back(input, frame_num)
-        return input
+        return self._input_shape_convert_back(input, frame_num)
 
     def transform_masks(
         self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
@@ -324,8 +364,7 @@ class VideoSequential(ImageSequential):
 
         input = super().transform_masks(input, params, extra_args=extra_args)
 
-        input = self._input_shape_convert_back(input, frame_num)
-        return input
+        return self._input_shape_convert_back(input, frame_num)
 
     def inverse_masks(
         self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
@@ -345,8 +384,7 @@ class VideoSequential(ImageSequential):
 
         input = super().inverse_masks(input, params, extra_args=extra_args)
 
-        input = self._input_shape_convert_back(input, frame_num)
-        return input
+        return self._input_shape_convert_back(input, frame_num)
 
     def transform_boxes(  # type: ignore[override]
         self, input: Union[torch.Tensor, Boxes], params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
@@ -461,6 +499,4 @@ class VideoSequential(ImageSequential):
             self._params = self.forward_parameters(input.shape)
             params = self._params
 
-        output = self.transform_inputs(input, params, extra_args=extra_args)
-
-        return output
+        return self.transform_inputs(input, params, extra_args=extra_args)

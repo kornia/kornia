@@ -30,7 +30,7 @@ def geman_mcclure_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = 
 
     .. math::
 
-        \text{WL}(x, y) = \frac{2 (x - y)^{2}}{(x - y)^{2} + 4}
+        \text{loss}(x, y) = \frac{2 (x - y)^{2}}{(x - y)^{2} + 4}
 
     Where:
        - :math:`x` is the prediction.
@@ -39,6 +39,10 @@ def geman_mcclure_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = 
     Reference:
         [1] https://arxiv.org/pdf/1701.03077.pdf
         [2] Bayesian image analysis: An application to single photon emission tomography, Geman and McClure, 1985
+
+    Convention:
+        See the Convention block of :func:`~kornia.losses.charbonnier_loss`; this is Barron's loss with
+        :math:`\alpha = -2`.
 
     Args:
         img1: the predicted torch.Tensor with shape :math:`(*)`.
@@ -50,7 +54,7 @@ def geman_mcclure_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = 
           summed.
 
     Return:
-        a scalar with the computed loss.
+        the computed loss, with the shape of the inputs for ``reduction='none'`` and a scalar otherwise.
 
     Example:
         >>> img1 = torch.randn(2, 3, 32, 32, requires_grad=True)
@@ -71,9 +75,10 @@ def geman_mcclure_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = 
         reduction in ("mean", "sum", "none", None), f"Given type of reduction is not supported. Got: {reduction}"
     )
 
-    # compute loss
+    # Keep the square, doubled numerator and their backward in float32 for half-precision residuals.
     diff = img1 - img2
-    diff2 = torch.square(diff)
+    compute_diff = diff.float() if diff.dtype in (torch.float16, torch.bfloat16) else diff
+    diff2 = torch.square(compute_diff)
     loss = 2.0 * diff2 / (diff2 + 4.0)
 
     # perform reduction
@@ -86,7 +91,7 @@ def geman_mcclure_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = 
     else:
         raise NotImplementedError("Invalid reduction option.")
 
-    return loss
+    return loss.to(diff.dtype) if diff.dtype in (torch.float16, torch.bfloat16) else loss
 
 
 class GemanMcclureLoss(nn.Module):
@@ -96,7 +101,7 @@ class GemanMcclureLoss(nn.Module):
 
     .. math::
 
-        \text{WL}(x, y) = \frac{2 (x - y)^{2}}{(x - y)^{2} + 4}
+        \text{loss}(x, y) = \frac{2 (x - y)^{2}}{(x - y)^{2} + 4}
 
     Where:
        - :math:`x` is the prediction.
@@ -105,6 +110,9 @@ class GemanMcclureLoss(nn.Module):
     Reference:
         [1] https://arxiv.org/pdf/1701.03077.pdf
         [2] Bayesian image analysis: An application to single photon emission tomography, Geman and McClure, 1985
+
+    Convention:
+        See the Convention block of :func:`~kornia.losses.geman_mcclure_loss`.
 
     Args:
         reduction: Specifies the reduction to apply to the

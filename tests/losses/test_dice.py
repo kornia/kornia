@@ -17,6 +17,7 @@
 
 import pytest
 import torch
+import torch.nn.functional as F
 
 import kornia
 
@@ -24,6 +25,204 @@ from testing.base import BaseTester
 
 
 class TestDiceLoss(BaseTester):
+    def test_macro_absent_channels_5539(self, device, dtype):
+        labels = torch.zeros((1, 4, 6), device=device, dtype=torch.int64)
+        labels[0, :, 3:] = 1
+        labels[0, 0, 0] = 1
+        losses = []
+        for num_classes in (2, 3, 4):
+            logits = torch.full((1, num_classes, 4, 6), -20.0, device=device, dtype=dtype)
+            logits.scatter_(1, labels[:, None], 20.0)
+            loss = kornia.losses.dice_loss(logits, labels, average="macro")
+            assert loss.dtype == dtype
+            assert loss.device == device
+            losses.append(loss)
+        for loss in losses[1:]:
+            self.assert_close(loss, losses[0], rtol=0, atol=1e-6)
+
+    @pytest.mark.parametrize("weighted", [False, True])
+    def test_macro_target_presence_per_sample(self, device, dtype, weighted):
+        labels = torch.tensor([[[0, 1, 1, 0]], [[2, 2, 2, 2]]], device=device)
+        logits = torch.tensor(
+            [
+                [[[2.0, 0.0, 1.0, -1.0]], [[0.0, 2.0, 0.0, 1.0]], [[1.0, 1.0, 3.0, 2.0]]],
+                [[[1.0, 3.0, 2.0, 0.0]], [[2.0, 0.0, 1.0, 3.0]], [[0.0, 2.0, 0.0, 1.0]]],
+            ],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        weight = torch.tensor([0.25, 0.5, 8.0], device=device, dtype=dtype) if weighted else None
+        probabilities = logits.softmax(1)
+        # Evaluate only actual target labels, including when an absent class wins argmax.
+        sample_losses = []
+        for sample in range(2):
+            class_losses, class_weights = [], []
+            for label in labels[sample].unique():
+                # dice_loss builds an exact one-hot target, in float32 for half inputs.
+                reduction_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+                target = (labels[sample] == label).to(reduction_dtype)
+                pred = probabilities[sample, label]
+                intersection = (pred * target).sum(dtype=reduction_dtype)
+                cardinality = (pred + target).sum(dtype=reduction_dtype)
+                class_losses.append(1 - 2 * intersection / (cardinality + 1e-8))
+                class_weights.append(weight[label] if weighted else logits.new_tensor(1.0))
+            weights = torch.stack(class_weights)
+            sample_losses.append((torch.stack(class_losses) * weights).sum() / weights.sum())
+        expected = torch.stack(sample_losses).mean().to(dtype)
+        actual = kornia.losses.dice_loss(logits, labels, average="macro", weight=weight)
+        self.assert_close(actual, expected)
+        actual_grad = torch.autograd.grad(actual, logits, retain_graph=True)[0]
+        expected_grad = torch.autograd.grad(expected, logits)[0]
+        assert actual_grad.dtype == dtype
+        assert actual_grad.device == device
+        assert torch.isfinite(actual_grad).all()
+        self.assert_close(actual_grad, expected_grad)
+
+    @pytest.mark.parametrize(
+        "average,all_classes,weighted",
+        [("micro", False, False), ("micro", True, False), ("macro", True, False), ("macro", True, True)],
+    )
+    def test_unchanged_aggregation(self, device, dtype, average, all_classes, weighted):
+        labels = torch.tensor([[[0, 1, 2 if all_classes else 1]]], device=device)
+        logits = torch.arange(9, device=device, dtype=dtype).reshape(1, 3, 1, 3) / 4
+        # dice_loss builds the one-hot target in float32 for half inputs.
+        reduction_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        target = kornia.losses.one_hot(labels, 3, device=device, dtype=reduction_dtype)
+        pred = logits.softmax(1)
+        dims = (1, 2, 3) if average == "micro" else (2, 3)
+        intersection = (pred * target).sum(dims, dtype=reduction_dtype)
+        cardinality = (pred + target).sum(dims, dtype=reduction_dtype)
+        expected = 1 - 2 * intersection / (cardinality + 1e-8)
+        weight = torch.tensor([0.25, 0.5, 8.0], device=device, dtype=dtype) if weighted else None
+        if weighted:
+            expected = (expected * weight).sum(-1) / weight.sum()
+        expected = expected.mean().to(dtype)
+        actual = kornia.losses.dice_loss(logits, labels, average=average, weight=weight)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("ignore_index", [-100, 0, 255])
+    @pytest.mark.parametrize("weighted", [False, True])
+    def test_macro_ignored_samples(self, device, dtype, ignore_index, weighted):
+        labels = torch.tensor([[[1, ignore_index]], [[ignore_index, ignore_index]]], device=device)
+        logits = torch.zeros((2, 3, 1, 2), device=device, dtype=dtype, requires_grad=True)
+        weight = torch.tensor([8.0, 0.25, 4.0], device=device, dtype=dtype) if weighted else None
+        kwargs = {"average": "macro", "ignore_index": ignore_index, "weight": weight}
+        loss = kornia.losses.dice_loss(logits, labels, **kwargs)
+        # One valid class: Dice = 2 * (1/3) / (1 + 1/3) = 1/2; empty sample: loss 1.
+        self.assert_close(loss, logits.new_tensor(0.75))
+        empty_loss = kornia.losses.dice_loss(logits[1:], labels[1:], **kwargs)
+        self.assert_close(empty_loss, logits.new_tensor(1.0), rtol=0, atol=0)
+        loss.backward()
+        assert torch.isfinite(logits.grad).all()
+        self.assert_close(logits.grad[1], torch.zeros_like(logits.grad[1]), rtol=0, atol=0)
+        self.assert_close(logits.grad[0, :, :, 1], torch.zeros_like(logits.grad[0, :, :, 1]), rtol=0, atol=0)
+
+    @pytest.mark.parametrize("average", ["micro", "macro"])
+    @pytest.mark.parametrize("empty_by", ["ignored", "zero_weight"])
+    def test_empty_reduction_eps_zero(self, device, dtype, average, empty_by):
+        logits = torch.randn(2, 3, 2, 2, device=device, dtype=dtype, requires_grad=True)
+        labels = torch.tensor([[[0, 1], [2, 1]], [[0, 1], [2, 1]]], device=device)
+        weight = None
+        if empty_by == "ignored":
+            labels[0] = -100
+        else:
+            weight = torch.zeros(3, device=device, dtype=dtype)
+
+        loss = kornia.losses.dice_loss(logits, labels, average=average, eps=0.0, weight=weight)
+        if empty_by == "ignored":
+            valid_loss = kornia.losses.dice_loss(logits[1:], labels[1:], average=average, eps=0.0, weight=weight)
+            expected_loss = (1.0 + valid_loss) / 2.0
+        else:
+            expected_loss = logits.new_tensor(1.0)
+        self.assert_close(loss, expected_loss)
+        assert torch.isfinite(loss)
+        loss.backward()
+        assert torch.isfinite(logits.grad).all()
+        if empty_by == "ignored":
+            self.assert_close(logits.grad[0], torch.zeros_like(logits.grad[0]), rtol=0, atol=0)
+        else:
+            self.assert_close(logits.grad, torch.zeros_like(logits.grad), rtol=0, atol=0)
+
+    def test_micro_empty_weight_half_default_eps(self, device):
+        logits = torch.randn(1, 3, 2, 2, device=device, dtype=torch.float16, requires_grad=True)
+        labels = torch.tensor([[[0, 1], [2, 1]]], device=device)
+        weight = torch.zeros(3, device=device, dtype=torch.float16)
+
+        loss = kornia.losses.dice_loss(logits, labels, average="micro", weight=weight)
+        self.assert_close(loss, logits.new_tensor(1.0), rtol=0, atol=0)
+        loss.backward()
+        assert torch.isfinite(logits.grad).all()
+        self.assert_close(logits.grad, torch.zeros_like(logits.grad), rtol=0, atol=0)
+
+    def test_macro_sample_without_weighted_class(self, device, dtype):
+        # Sample 0 holds only class 0, whose weight is 0: no weighted class is left, as in a fully ignored sample, so
+        # it keeps loss 1 with a zero gradient instead of 0 / 0 spreading NaN over the batch.
+        labels = torch.tensor([[[0, 0, 0, 0]], [[0, 1, 1, 2]]], device=device)
+        logits = torch.tensor(
+            [
+                [[[2.0, 0.0, 1.0, -1.0]], [[0.0, 2.0, 0.0, 1.0]], [[1.0, 1.0, 3.0, 2.0]]],
+                [[[1.0, 3.0, 2.0, 0.0]], [[2.0, 0.0, 1.0, 3.0]], [[0.0, 2.0, 0.0, 1.0]]],
+            ],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        weight = torch.tensor([0.0, 1.0, 2.0], device=device, dtype=dtype)
+        kwargs = {"average": "macro", "weight": weight}
+        alone = kornia.losses.dice_loss(logits[:1], labels[:1], **kwargs)
+        self.assert_close(alone, logits.new_tensor(1.0), rtol=0, atol=0)
+        loss = kornia.losses.dice_loss(logits, labels, **kwargs)
+        self.assert_close(loss, (1 + kornia.losses.dice_loss(logits[1:], labels[1:], **kwargs)) / 2)
+        loss.backward()
+        assert torch.isfinite(logits.grad).all()
+        self.assert_close(logits.grad[0], torch.zeros_like(logits.grad[0]), rtol=0, atol=0)
+
+    def test_macro_absent_gradcheck(self, device):
+        logits = torch.arange(12, device=device, dtype=torch.float64).reshape(2, 3, 1, 2) / 4
+        labels = torch.tensor([[[1, -100]], [[-100, -100]]], device=device)
+        weight = torch.tensor([8.0, 0.25, 4.0], device=device, dtype=torch.float64)
+        self.gradcheck(
+            lambda pred, target: kornia.losses.dice_loss(pred, target, average="macro", weight=weight),
+            (logits, labels),
+            dtypes=[torch.float64, torch.int64],
+        )
+
+    @pytest.mark.parametrize("height", [256, 512])
+    @pytest.mark.parametrize("average", ["micro", "macro"])
+    @pytest.mark.parametrize("weighted", [False, True])
+    def test_large_image_reduction(self, device, dtype, height, average, weighted):
+        logits = torch.full((1, 2, height, 256), -2.0, device=device, dtype=dtype, requires_grad=True)
+        with torch.no_grad():
+            logits[:, 0] = 2.0
+        labels = torch.zeros((1, height, 256), device=device, dtype=torch.int64)
+        weight = torch.tensor([1.0, 2.0], device=device, dtype=dtype) if weighted else None
+        criterion = kornia.losses.DiceLoss(average=average, weight=weight)
+
+        loss = criterion(logits, labels)
+        reference_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        reference = kornia.losses.dice_loss(
+            logits.to(reference_dtype),
+            labels,
+            average=average,
+            weight=weight.to(reference_dtype) if weight is not None else None,
+        ).to(dtype)
+
+        assert loss.dtype == dtype
+        assert loss.device == device
+        assert torch.isfinite(loss)
+        self.assert_close(loss, reference)
+        loss.backward()
+        assert torch.isfinite(logits.grad).all()
+
+    @pytest.mark.parametrize("average", ["micro", "macro"])
+    def test_weight_dtype_promotion(self, device, dtype, average):
+        logits = torch.tensor([2.0, -2.0], device=device, dtype=dtype).reshape(1, 2, 1, 1)
+        labels = torch.zeros((1, 1, 1), device=device, dtype=torch.int64)
+        weight = torch.tensor([1.0, 2.0], device=device, dtype=torch.float32)
+        loss = kornia.losses.dice_loss(logits, labels, average=average, weight=weight)
+        assert loss.dtype == torch.promote_types(dtype, weight.dtype)
+
     def test_smoke(self, device, dtype):
         num_classes = 3
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
@@ -46,6 +245,30 @@ class TestDiceLoss(BaseTester):
         loss = criterion(logits, labels)
         self.assert_close(loss, torch.zeros_like(loss), rtol=1e-3, atol=1e-3)
 
+    def test_perfect_prediction_of_a_rare_class(self, device, dtype):
+        # The target is an exact one-hot, so a perfect prediction scores 0 whatever the image size. The former
+        # eps floor of the target gave the one-pixel class a cardinality of 1 + eps * (pixels - 1), 0.006 here.
+        labels = torch.zeros(1, 128, 192, device=device, dtype=torch.int64)
+        labels[0, 10, 10] = 1
+        logits = torch.full((1, 2, 128, 192), -30.0, device=device, dtype=dtype).scatter(1, labels[:, None], 30.0)
+
+        loss = kornia.losses.dice_loss(logits, labels, average="macro")
+
+        self.assert_close(loss, torch.zeros_like(loss))
+
+    def test_gradient_of_an_absent_class_is_finite(self, device, dtype):
+        # Class 2 is absent from the target and its probabilities underflow, so its cardinality is eps alone and its
+        # intersection gradient is far past the float16 range. Times the exact zero target, that must not give NaN.
+        labels = torch.zeros(1, 16, 16, device=device, dtype=torch.int64)
+        labels[0, :, 8:] = 1
+        logits = torch.full((1, 3, 16, 16), -10.0, device=device, dtype=dtype).scatter(1, labels[:, None], 10.0)
+        logits.requires_grad_(True)
+
+        loss = kornia.losses.dice_loss(logits, labels, average="macro")
+        (grad,) = torch.autograd.grad(loss, logits)
+
+        assert grad.isfinite().all()
+
     def test_exception(self):
         with pytest.raises(ValueError) as errinf:
             kornia.losses.DiceLoss()(torch.rand(1, 1, 1), torch.rand(1, 1, 1))
@@ -59,6 +282,17 @@ class TestDiceLoss(BaseTester):
             kornia.losses.DiceLoss()(torch.rand(1, 1, 1, 1), torch.rand(1, 1, 1, 1, device="meta"))
         assert "pred and target must be in the same device. Got:" in str(errinf)
 
+        # The target batch has to match the prediction batch, as for focal_loss (#5544).
+        with pytest.raises(ValueError, match=r"Expected target size torch.Size\(\[2, 4, 6\]\)"):
+            kornia.losses.DiceLoss()(torch.rand(2, 3, 4, 6), torch.randint(0, 3, (1, 4, 6)))
+
+        with pytest.raises(ValueError, match=r"Expected target size torch.Size\(\[1, 4, 6\]\)"):
+            kornia.losses.DiceLoss()(torch.rand(1, 3, 4, 6), torch.randint(0, 3, (2, 4, 6)))
+
+        # A target with a channel axis, (B, 1, H, W), is not (B, H, W) either.
+        with pytest.raises(ValueError, match=r"Expected target size torch.Size\(\[1, 4, 6\]\)"):
+            kornia.losses.DiceLoss()(torch.rand(1, 3, 4, 6), torch.randint(0, 3, (1, 1, 4, 6)))
+
     def test_averaging_micro(self, device, dtype):
         num_classes = 2
         eps = 1e-8
@@ -69,7 +303,7 @@ class TestDiceLoss(BaseTester):
         logits[:, 1, 0:3] = 1.0
         logits[:, 1, 3:4] = 10.0
 
-        labels = torch.zeros(2, 4, 1, device=device, dtype=torch.int64)
+        labels = torch.zeros(1, 4, 1, device=device, dtype=torch.int64)
 
         exp_1_0 = torch.exp(torch.tensor([1.0], device=device, dtype=dtype))
         exp_10_0 = torch.exp(torch.tensor([10.0], device=device, dtype=dtype))
@@ -137,7 +371,7 @@ class TestDiceLoss(BaseTester):
                 (
                     1
                     - 2
-                    * (w_cl_0 * tp_cl_0 + w_cl_1 * tp_cl_1) ** 2
+                    * (w_cl_0 * tp_cl_0 + w_cl_1 * tp_cl_1)
                     / (w_cl_0 * (2 * tp_cl_0 + fnfp_cl_0) + w_cl_1 * (2 * tp_cl_1 + fnfp_cl_1) + eps)
                 )
                 .mean()
@@ -149,6 +383,40 @@ class TestDiceLoss(BaseTester):
         loss = criterion(logits, labels)
         self.assert_close(loss, expected_loss, rtol=1e-3, atol=1e-3)
 
+    @pytest.mark.parametrize("avg", ["micro", "macro"])
+    @pytest.mark.parametrize("scale", [0.5, 2.0])
+    def test_uniform_weight(self, device, dtype, avg, scale):
+        num_classes = 3
+        logits = torch.randn(2, num_classes, 4, 6, device=device, dtype=dtype)
+        labels = torch.randint(num_classes, (2, 4, 6), device=device)
+        weight = torch.full((num_classes,), scale, device=device, dtype=dtype)
+        expected = kornia.losses.dice_loss(logits, labels, average=avg)
+        self.assert_close(kornia.losses.dice_loss(logits, labels, average=avg, weight=weight), expected)
+
+        # a perfect prediction has zero loss whatever the scale of the weights
+        perfect = torch.full_like(logits, -30.0).scatter(1, labels[:, None], 30.0)
+        loss = kornia.losses.dice_loss(perfect, labels, average=avg, weight=weight)
+        self.assert_close(loss, torch.zeros_like(loss), rtol=1e-3, atol=1e-3)
+
+    def test_weight_micro_formula(self, device, dtype):
+        num_classes = 3
+        eps = 1e-8
+        logits = torch.randn(2, num_classes, 4, 6, device=device, dtype=dtype)
+        labels = torch.randint(num_classes, (2, 4, 6), device=device)
+        weight = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
+
+        # weighted Dice per sample: 2 sum(w p t) / sum(w (p + t)), summed over classes and pixels
+        probs = logits.softmax(1)
+        targets = torch.nn.functional.one_hot(labels, num_classes).permute(0, 3, 1, 2).to(dtype)
+        w = weight.view(1, -1, 1, 1)
+        intersection = (w * probs * targets).sum((1, 2, 3))
+        cardinality = (w * (probs + targets)).sum((1, 2, 3))
+        expected = (1.0 - 2.0 * intersection / (cardinality + eps)).mean()
+
+        loss = kornia.losses.dice_loss(logits, labels, average="micro", eps=eps, weight=weight)
+        self.assert_close(loss, expected)
+        assert 0.0 <= loss.item() <= 1.0
+
     def test_averaging_macro(self, device, dtype):
         num_classes = 2
         eps = 1e-8
@@ -159,20 +427,20 @@ class TestDiceLoss(BaseTester):
         logits[:, 1, :, 0:3] = 1.0
         logits[:, 1, :, 3:4] = 10.0
 
-        labels = torch.zeros(2, 1, 4, device=device, dtype=torch.int64)
+        labels = torch.zeros(1, 1, 4, device=device, dtype=torch.int64)
 
         exp_1_0 = torch.exp(torch.tensor([1.0], device=device, dtype=dtype))
         exp_10_0 = torch.exp(torch.tensor([10.0], device=device, dtype=dtype))
 
         expected_intersection_1 = (3.0 * exp_10_0 + exp_1_0) / (exp_1_0 + exp_10_0)
-        expected_intersection_2 = 0.0  # all labels are 0 so the intersection for the second class is empty
         expected_cardinality_1 = 4.0 + (3.0 * exp_10_0 + 1.0 * exp_1_0) / (exp_1_0 + exp_10_0)
-        expected_cardinality_2 = 0.0 + (1.0 * exp_10_0 + 3.0 * exp_1_0) / (exp_1_0 + exp_10_0)
 
-        expected_loss_1 = 1.0 - 2.0 * expected_intersection_1 / (expected_cardinality_1 + eps)
-        expected_loss_2 = 1.0 - 2.0 * expected_intersection_2 / (expected_cardinality_2 + eps)
-        expected_loss = (expected_loss_1 + expected_loss_2) / 2.0
-        expected_loss = expected_loss.squeeze()
+        reduction_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        expected_loss_1 = 1.0 - 2.0 * expected_intersection_1.to(reduction_dtype) / (
+            expected_cardinality_1.to(reduction_dtype) + eps
+        )
+        # Class 1 is absent from the target, so only class 0 contributes to the macro mean.
+        expected_loss = expected_loss_1.squeeze().to(dtype)
 
         criterion = kornia.losses.DiceLoss(average="macro", eps=eps)
         loss = criterion(logits, labels)
@@ -202,7 +470,8 @@ class TestDiceLoss(BaseTester):
         labels[ignore] = -100
         self.gradcheck(kornia.losses.dice_loss, (logits, labels), dtypes=[torch.float64, torch.int64])
 
-    def test_dynamo(self, device, dtype, torch_optimizer):
+    @pytest.mark.parametrize("average", ["micro", "macro"])
+    def test_dynamo(self, device, dtype, torch_optimizer, average):
         num_classes = 3
         logits = torch.rand(2, num_classes, 1, 2, device=device, dtype=dtype)
         labels = torch.rand(2, 1, 2) * num_classes
@@ -211,7 +480,7 @@ class TestDiceLoss(BaseTester):
         op = kornia.losses.dice_loss
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(logits, labels), op_optimized(logits, labels))
+        self.assert_close(op(logits, labels, average=average), op_optimized(logits, labels, average=average))
 
     def test_module(self, device, dtype):
         num_classes = 3
@@ -223,3 +492,92 @@ class TestDiceLoss(BaseTester):
         op_module = kornia.losses.DiceLoss()
 
         self.assert_close(op(logits, labels), op_module(logits, labels))
+
+
+class TestConventionsDiceLoss(BaseTester):
+    """Pins for the averaging modes, ignored labels and known defect of :func:`dice_loss`."""
+
+    @staticmethod
+    def _exact_dice_loss(logits, labels, dims):
+        # 1 - 2 sum(p t) / sum(p + t) in float64, with an exact one-hot target
+        p = logits.cpu().double().softmax(1)
+        t = F.one_hot(labels.cpu(), logits.shape[1]).movedim(-1, 1).double()
+        return 1 - 2 * (p * t).sum(dims) / (p + t).sum(dims)
+
+    def test_convention_dice_loss_micro_pools_the_classes_and_macro_averages_them_per_sample(self, device, dtype):
+        # 'micro': one Dice per sample over every class and pixel; 'macro': one Dice per (sample, class), averaged over
+        # the classes of the sample's target (both, here); both are then averaged over the batch. A two-class map with
+        # unequal class sizes tells the two modes apart, and two samples with different balances tell 'macro' from
+        # pooling the batch (MONAI's DiceLoss(batch=True)). Every sample's 'micro' denominator is 2 H W here, so
+        # per-sample and batch-pooled 'micro' coincide;
+        # test_convention_dice_loss_ignore_index_excludes_pixels_per_sample separates them.
+        labels = torch.zeros(2, 4, 6, dtype=torch.long, device=device)
+        labels[0, 1:3, 1:4] = 1  # 6 of 24 pixels
+        labels[1, :, 2:] = 1  # 16 of 24 pixels
+        predicted = labels.clone()
+        predicted[0, 1, 1:4] = 0  # image 0 misses half of class 1
+        predicted[1, 0, :2] = 1  # image 1 over-segments class 1 by two pixels
+        g = torch.Generator().manual_seed(0)
+        logits = torch.randn(2, 2, 4, 6, generator=g).to(device=device, dtype=dtype)
+        logits = logits + 4.0 * F.one_hot(predicted, 2).movedim(-1, 1).to(dtype)
+        micro = self._exact_dice_loss(logits, labels, (1, 2, 3)).mean()  # 0.1548
+        macro = self._exact_dice_loss(logits, labels, (2, 3)).mean()  # 0.2085
+        pooled_macro = self._exact_dice_loss(logits, labels, (0, 2, 3)).mean()  # 0.1564
+        assert (micro - macro).abs() > 0.04
+        assert (macro - pooled_macro).abs() > 0.04
+        self.assert_close(kornia.losses.dice_loss(logits, labels), micro.to(device=device, dtype=dtype))
+        self.assert_close(
+            kornia.losses.dice_loss(logits, labels, average="macro"), macro.to(device=device, dtype=dtype)
+        )
+
+    @pytest.mark.parametrize("average", ["micro", "macro"])
+    def test_convention_dice_loss_ignore_index_excludes_pixels_per_sample(self, average, device, dtype):
+        # Ignored pixels leave both sums of their own sample, which then enters the batch mean like the others: the
+        # same as cropping them out of that sample. An image whose pixels are all ignored enters the batch mean as
+        # loss 1.
+        def dice(logits, labels):
+            return kornia.losses.dice_loss(logits, labels, average=average)
+
+        g = torch.Generator().manual_seed(0)
+        logits = torch.randn(2, 3, 4, 7, generator=g).to(device=device, dtype=dtype)
+        labels = torch.randint(0, 3, (2, 4, 7), generator=g).to(device)
+        ignored = labels.clone()
+        ignored[0, :, -3:] = -100  # image 0 loses its last three columns
+        expected = (dice(logits[:1, ..., :-3], labels[:1, :, :-3]) + dice(logits[1:], labels[1:])) / 2
+        self.assert_close(dice(logits, ignored), expected)
+        ignored[0] = -100
+        self.assert_close(dice(logits, ignored), (1 + dice(logits[1:], labels[1:])) / 2)
+
+    def test_convention_dice_loss_empty_reductions_are_finite_5631(self, device, dtype):
+        # Empty weighted reductions return loss 1 and have finite gradients, including with eps=0. The loss is then the
+        # constant 1, so the gradient with respect to an all-zero weight is zero as well.
+        g = torch.Generator().manual_seed(0)
+        logits = torch.randn(2, 3, 4, 6, generator=g).to(device=device, dtype=dtype).requires_grad_()
+        labels = torch.randint(0, 3, (2, 4, 6), generator=g).to(device)
+        dice = kornia.losses.dice_loss
+        zero = torch.zeros(3, device=device, dtype=dtype, requires_grad=True)
+
+        for average in ("micro", "macro"):
+            loss = dice(logits, labels, average=average, eps=0.0, weight=zero)
+            self.assert_close(loss.detach(), logits.new_tensor(1.0))
+            grad, grad_weight = torch.autograd.grad(loss, (logits, zero), retain_graph=True)
+            assert loss.isfinite()
+            assert grad.isfinite().all()
+            self.assert_close(grad, torch.zeros_like(grad), rtol=0, atol=0)
+            self.assert_close(grad_weight, torch.zeros_like(grad_weight), rtol=0, atol=0)
+
+        if dtype == torch.float16:
+            micro = dice(logits, labels, weight=zero)
+            (grad,) = torch.autograd.grad(micro, logits)
+            self.assert_close(micro.detach(), logits.new_tensor(1.0))
+            assert grad.isfinite().all()
+
+        labels[0] = -100
+        for average in ("micro", "macro"):
+            loss = dice(logits, labels, average=average, eps=0.0)
+            rest = dice(logits[1:], labels[1:], average=average, eps=0.0)
+            self.assert_close(loss.detach(), (1 + rest.detach()) / 2)
+            (grad,) = torch.autograd.grad(loss, logits)
+            assert loss.isfinite()
+            assert grad.isfinite().all()
+            self.assert_close(grad[0], torch.zeros_like(grad[0]), rtol=0, atol=0)

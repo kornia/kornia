@@ -47,17 +47,18 @@ Kornia augmentations generally follow a `sample-apply` routine.
 - `apply`: with the generated (or user-provided) parameters, the augmentation is performed accordingly.
   Apart from transforming image tensors, Kornia also supports inverse operations that revert the transform,
   and transforms of other data modalities (`data keys` in Kornia) such as masks, keypoints, and bounding boxes.
-  These features depend on the concrete operation and its data-key handlers. `AugmentationSequential` dispatches
-  geometric coordinate transforms by the geometric base type; implementing a matrix on a custom rigid base alone
-  does not enable that dispatch (`#4481 <https://github.com/kornia/kornia/issues/4481>`_). Non-rigid coordinate
-  transforms are not supplied automatically (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
+  These features depend on the concrete operation and its data-key handlers. `AugmentationSequential` passes the
+  matrix of the call's parameters to the mask, box and keypoint handlers of geometric children and of custom
+  `RigidAffineAugmentationBase2D` subclasses, recomputing it from replayed ``params`` that the child did not last apply to an image. Non-rigid coordinate transforms are not supplied automatically
+  (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
 
 Custom Augmentation Classes
 ---------------------------
 
 `IntensityAugmentationBase2D` supplies an identity matrix and default passthrough handlers for most annotations.
-Subclasses can override these defaults: `RandomErasing` zero-fills the erased mask region. Direct intensity
-`transform_boxes` calls return the boxes unchanged; the container skips intensity transforms for boxes.
+Subclasses can override these defaults: `RandomErasing` zero-fills the erased mask region. Direct and container
+calls pass masks, boxes, and keypoints through unchanged unless a subclass overrides
+`apply_transform_mask`, `apply_transform_box`, or `apply_transform_keypoint`.
 `GeometricAugmentationBase2D` supplies the dispatch used for geometric coordinate transformations.
 
 For a geometric operation, implement `compute_transformation` and `apply_transform`. Supporting image inversion
@@ -181,9 +182,8 @@ transform-matrix machinery — `compute_transformation` and the `transform_matri
 
    .. automethod:: compute_transformation
 
-The 3D bases provide analogous shape, matrix and data-key machinery, but do not implement a standalone
-geometric inverse. In `AugmentationSequential`, geometric 3D children raise during inversion while intensity
-3D children are skipped, leaving their effects applied.
+The 3D bases provide analogous shape, matrix and data-key machinery; see :class:`AugmentationBase3D` for their
+contract, including the missing inverse.
 
 .. autoclass:: AugmentationBase3D
 
@@ -207,14 +207,10 @@ Some Further Notes
 
 Probabilities
 ^^^^^^^^^^^^^
-`_BasicAugmentationBase` has a per-sample `p` and a whole-batch `p_batch` gate. A concrete constructor can
-map its public ``p`` to either gate, so consult that class's contract. For example, `RandomMixUpV2` gates the
-batch, while `RandomJigsaw` gates individual samples. Mixing classes do not inherit all of the
-`AugmentationBase2D` forward conventions.
-
-When ``0 < p_batch < 1``, the base draws a batch Bernoulli before the per-sample gate; endpoints skip the
-Bernoulli draw. With ``p=1.0, p_batch=0.0`` no sample is selected. Only some concrete constructors expose
-``p_batch`` directly; `#4425 <https://github.com/kornia/kornia/issues/4425>`_ tracks that limitation.
+:class:`AugmentationBase2D` states the ``p`` / ``p_batch`` model. A concrete constructor can map its public ``p``
+to either gate: `RandomMixUpV2` gates the batch and `RandomJigsaw` individual samples
+(`#4425 <https://github.com/kornia/kornia/issues/4425>`_). When ``0 < p_batch < 1``, the base draws the batch
+Bernoulli before the per-sample gate; endpoints skip that draw, and ``p=1.0, p_batch=0.0`` selects no sample.
 
 Random Generators
 ^^^^^^^^^^^^^^^^^
@@ -225,37 +221,13 @@ generate simple uniform parameters with less boilerplate code.
 
 Random Reproducibility
 ^^^^^^^^^^^^^^^^^^^^^^
-Parameter sampling generally starts on CPU, independently of the image device. ``set_rng_device_and_dtype``
-requests new sampler placement and precision, but not every internal tensor follows that request, and some
-generator/device combinations can still fail during forward
-(`#4426 <https://github.com/kornia/kornia/issues/4426>`_). Returned parameter placement is separate from
-sampling placement: constructor ranges and casts can put a sampled tensor on another device or in another dtype.
-
-See :doc:`/get-started/conventions` for global seeding, worker seeds, consumption order, replay and the limits
-of sampler configuration. Application-time randomness is not always recorded: the dissolving VAE latents
-require controlling their random state for replay. The base's keyword and incomplete-parameter handling do not
-apply uniformly to mix augmentations.
+See :class:`AugmentationBase2D` for where parameters are sampled and what ``params=`` replays, and
+:doc:`/get-started/conventions` for seeding, worker seeds and consumption order.
 
 Serialization
 ^^^^^^^^^^^^^
-Several constructors accept ``nn.Parameter`` ranges and can propagate gradients to them. Numeric range buffers
-are not necessarily connected to cached samplers after ``load_state_dict``; reconstruct those configurations
-to change their sampling ranges (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
-
-The ``kornia.augmentation.auto`` policies cannot be pickled (`#4469 <https://github.com/kornia/kornia/issues/4469>`_).
-
-The built-in 2D intensity augmentations, flips, ``Resize`` (including ``LongestMaxSize`` and
-``SmallestMaxSize``), and slice-mode ``RandomResizedCrop`` compute their transformation matrix
-only when it is requested. Their pending matrix state keeps the input's shape, dtype and device
-alongside the transformation parameters, without retaining the image tensor itself. Consequently,
-``pickle``, ``copy.deepcopy`` and ``torch.save`` of these modules do not carry the last image batch
-merely because its matrix has not yet been read. Parameters remain available for replay, including
-their existing gradient connections.
-
-Custom lazy subclasses may use pixel values in ``transform_tensor``, ``generate_transformation_matrix``,
-``compute_transformation`` or ``identity_matrix``. Overriding any of these four methods keeps the
-original input-based lazy behavior, retaining the input until the matrix is read or another forward
-replaces the pending state. Inheriting unchanged built-in implementations preserves their compact
-metadata state; an override does not implicitly promise that it can operate without pixel data.
-
-See :doc:`/get-started/conventions` for replay and serialization details.
+- Several constructors that accept ``nn.Parameter`` ranges propagate gradients to them.
+- A ``kornia.augmentation.auto`` policy pickles when every operation wrapper in it does, and a wrapper does when
+  its magnitude mapping is picklable; the built-in mappings are.
+- :class:`AugmentationBase2D` covers the range buffers in ``state_dict()``, and
+  :class:`RigidAffineAugmentationBase2D` what a lazily built matrix keeps.

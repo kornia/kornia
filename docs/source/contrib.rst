@@ -71,13 +71,13 @@ Interpreting the report
 * Crop matrices can invert coordinates even after image content has been discarded.
   The report records this distinction and never evaluates image reconstruction.
   Cropping and downsampling emit possible content-loss warnings.
-* Partially applied ``RandomCrop`` mappings follow the returned image branch. A
-  crop skipped for the whole batch leaves images and labels unchanged, including
-  with ``padding`` or ``pad_if_needed`` (#4473). Manually supplied parameters that
-  apply the crop to only some rows can still return a transformed image with
-  untransformed labels on the skipped rows; the resulting round-trip error records
-  that inconsistency. Mixed shape-changing operations are reported as
-  ``unsupported`` when their cached matrices cannot certify every returned image row.
+* A ``RandomCrop`` skipped for the whole batch leaves images and labels unchanged,
+  including with ``padding`` or ``pad_if_needed`` (#4473). Manually supplied
+  parameters that apply a shape-changing operation to only some rows raise
+  ``ValueError``, as the ordinary forward call does, because the skipped rows
+  cannot keep their shape (#4497). With ``p=1.0``, an overridden ``batch_prob``
+  still gates the labels while every image row is cropped; the round-trip error
+  records that inconsistency.
 * Non-rigid and unknown operations are explicitly unsupported for matrix
   composition. A transformation-matrix identity fallback is not treated as proof
   of correspondence. Supported neighboring operations remain in the provenance.
@@ -242,6 +242,26 @@ Real-Time Detection Transformer (RT-DETR)
 Image Segmentation
 ------------------
 .. autofunction:: connected_components
+
+.. autofunction:: connected_components_union_find
+
+Choosing a labeling method
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``connected_components_union_find`` computes the exact 8-connected partition
+without an iteration budget. It accepts boolean masks and returns ``int64``
+labels, so half-precision inputs do not cause distinct component IDs to collide.
+It is useful for segmentation masks containing long structures such as vessels,
+roads and text strokes. Its convergence checks synchronize the accelerator with
+the host, and the result is not differentiable.
+
+``connected_components`` retains its fixed-count pooling implementation and its
+existing output dtype and label convention. When using it, choose enough
+iterations for the largest component's graph diameter: the default 100 steps
+can leave a long component split into multiple labels. A small fixed budget may
+be faster than union-find for small or fragmented masks, but does not guarantee
+convergence. The two implementations produce different numerical label IDs;
+compare their foreground partitions instead of comparing label values directly.
 
 Segment Anything (SAM)
 ^^^^^^^^^^^^^^^^^^^^^^

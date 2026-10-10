@@ -1,0 +1,1 @@
+`ImageRegistrator.register` applies `tolerance` within each pyramid level, so every level takes at least its first optimization step. Previously the first loss of a finer level was compared with the final loss of the coarser level, and when the two differed by less than `tolerance` that level stopped before any update (#5073).

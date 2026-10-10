@@ -31,10 +31,6 @@ class RandomRotation3D(GeometricAugmentationBase3D):
     r"""Apply random rotations to 3D volumes (5D torch.Tensor).
 
     Input should be a torch.Tensor of shape (C, D, H, W) or a batch of tensors :math:`(B, C, D, H, W)`.
-    If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
-    the corresponding transformation matrix that has been applied to them. In this case the module
-    will rotate the tensors and torch.cat the corresponding transformation matrix to the
-    previous one. This is especially useful when using this functionality as part of an ``nn.Sequential`` module.
 
     Args:
         degrees: Range of degrees to select from.
@@ -52,13 +48,31 @@ class RandomRotation3D(GeometricAugmentationBase3D):
           to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
         - Output: :math:`(B, C, D, H, W)`
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation torch.Tensor and returned.
+
+    Convention:
+        See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
+
+        - each sampled ``degrees`` triple ``(yaw, pitch, roll) = (rx, ry, rz)`` is **one axis-angle vector**
+          in degrees and is converted into a single Rodrigues rotation, not composed as per-axis Euler
+          rotations, exactly as :func:`kornia.geometry.transform.rotate3d` does. The rotation axis
+          is ``(rx, ry, rz) / ||(rx, ry, rz)||`` and the angle is ``||(rx, ry, rz)||`` degrees, so a
+          sampled ``(90, 90, 0)`` turns through ``90 * sqrt(2)`` degrees about ``(1, 1, 0) / sqrt(2)``
+          while a sampled ``(30, 0, 0)`` is a 30-degree turn about ``x``. One non-zero component is
+          therefore the per-axis rotation it names; two or more are not, and neither Euler order
+          reproduces the axis-angle result. To rotate about the axes in turn, compose the rotation
+          matrix yourself and convert it with
+          :func:`~kornia.geometry.conversions.rotation_matrix_to_axis_angle`, which returns radians.
+        - A positive roll turns a displayed ``H x W`` slice clockwise, as
+          :func:`kornia.geometry.transform.rotate3d` does; :class:`RandomAffine3D`, the 2D
+          :class:`~kornia.augmentation.RandomRotation` and
+          :func:`kornia.geometry.transform.rotate` turn it counter-clockwise
+          (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
+        - the default interpolation is bilinear with ``align_corners=False``.
 
     Examples:
         >>> import torch
@@ -133,6 +147,6 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if not isinstance(transform, torch.Tensor):
-            raise TypeError(f"Expected the transform to be a torch.Tensor. Gotcha {type(transform)}")
+            raise TypeError(f"Expected the transform to be a torch.Tensor. Got {type(transform)}")
 
         return affine3d(input, transform[..., :3, :4], flags["resample"].name.lower(), "zeros", flags["align_corners"])

@@ -67,8 +67,7 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         self.value = value
 
     def __repr__(self) -> str:
-        repr = f"scale={self.scale}, resize_to={self.ratio}, value={self.value}"
-        return repr
+        return f"scale={self.scale}, resize_to={self.ratio}, value={self.value}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         scale = torch.as_tensor(self.scale, device=device, dtype=dtype)

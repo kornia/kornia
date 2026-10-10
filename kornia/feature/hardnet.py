@@ -35,7 +35,7 @@ urls["liberty_aug"] = [
 ]
 urls["hardnet8v2"] = [
     hf_url("hardnet", "hardnet8v2.pt"),
-    "http://cmp.felk.cvut.cz/~mishkdmy/hardnet8v2.pt",
+    "https://cmp.felk.cvut.cz/~mishkdmy/hardnet8v2.pt",
 ]
 
 
@@ -139,7 +139,8 @@ class HardNet8(nn.Module):
     See :cite:`HardNet2020` for more details.
 
     Args:
-        pretrained: Download and set pretrained weights to the model.
+        pretrained: Download and set pretrained weights to the model. The 512-d features are projected to 128-d by a
+            PCA stored with the weights; without them, the projection keeps the first 128 features.
 
     Returns:
         torch.Tensor: HardNet8 descriptor of the patches.
@@ -186,7 +187,9 @@ class HardNet8(nn.Module):
             nn.BatchNorm2d(512, affine=False),
         )
         self.features.apply(self.weights_init)
-        self.register_buffer("components", torch.ones(512, 128, dtype=torch.float))
+        # Placeholder PCA until a checkpoint replaces it: keep the first 128 of the 512 features. An all-ones
+        # projection would collapse every descriptor to +-(1, ..., 1) / sqrt(128), with a zero gradient.
+        self.register_buffer("components", torch.eye(512, 128, dtype=torch.float))
         self.register_buffer("mean", torch.zeros(512, dtype=torch.float))
 
         # use torch.hub to load pretrained model

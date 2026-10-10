@@ -21,8 +21,9 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
+from kornia.augmentation._3d.geometric.crop import _crop_translation3d
 from kornia.constants import Resample
-from kornia.geometry import crop_by_transform_mat3d, get_perspective_transform3d
+from kornia.geometry import crop_by_transform_mat3d
 
 
 class CenterCrop3D(GeometricAugmentationBase3D):
@@ -39,13 +40,21 @@ class CenterCrop3D(GeometricAugmentationBase3D):
           to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
         - Output: :math:`(B, C, out_d, out_h, out_w)`
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation torch.Tensor and returned.
+
+    Convention:
+        See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
+
+        - ``size`` is ``(D, H, W)``. The crop is shared across the batch; its ``p`` is the call-wide gate, so a
+          valid ``p=0`` request returns the un-cropped input and ``p=1`` returns the requested crop. Size validation
+          still runs when the call is skipped, so an oversized crop raises even at ``p=0``. The exception types
+          differ from :class:`RandomCrop3D`'s, and a two-element ``size`` fails with ``IndexError``
+          (`#4417 <https://github.com/kornia/kornia/issues/4417>`_).
+        - defaults are bilinear resampling and ``align_corners=True``.
 
     Examples:
         >>> import torch
@@ -104,9 +113,8 @@ class CenterCrop3D(GeometricAugmentationBase3D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        transform: torch.Tensor = get_perspective_transform3d(params["src"].to(input), params["dst"].to(input))
-        transform = transform.expand(input.shape[0], -1, -1)
-        return transform
+        transform = _crop_translation3d(params["src"].to(input), params["dst"].to(input))
+        return transform.expand(input.shape[0], -1, -1)
 
     def apply_transform(
         self,

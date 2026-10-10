@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+from copy import deepcopy
+
 import pytest
 import torch
 from torch import nn
@@ -43,7 +45,7 @@ class TestPatchSequential:
         ],
     )
     def test_exception(self, error_param):
-        with pytest.raises(Exception):  # AssertError and NotImplementedError
+        with pytest.raises(ValueError, match=r"number of processing modules|Only boolean value allowed"):
             K.PatchSequential(
                 K.ImageSequential(
                     K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.5),
@@ -168,6 +170,38 @@ class TestPatchSequentialRegression(BaseTester):
                 rows, cols = slice(row * h, (row + 1) * h), slice(col * w, (col + 1) * w)
                 expected[..., rows, cols] = x[..., rows, cols].flip(-1)
         self.assert_close(seq(x), expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("empty", [False, True])
+    @pytest.mark.parametrize("grid,image_size,tracked_size", [((2, 2), (9, 9), (8, 8)), ((2, 3), (9, 10), (8, 9))])
+    def test_nested_valid_padding_updates_tracked_shape_5596(self, empty, grid, image_size, tracked_size):
+        patch_seq = K.PatchSequential(
+            *([] if empty else [K.RandomHorizontalFlip(p=1.0)]),
+            grid_size=grid,
+            padding="valid",
+            patchwise_apply=False,
+        )
+        seq = K.ImageSequential(K.ImageSequential(patch_seq), K.RandomCrop((4, 4), p=1.0))
+        params = seq.forward_parameters(torch.Size((64, 1, *image_size)))
+        crop_input_size = params[1].data["input_size"]
+        assert torch.equal(crop_input_size, crop_input_size.new_tensor(tracked_size).expand_as(crop_input_size))
+
+    def test_nested_valid_padding_in_a_video_clip_5596(self, device, dtype):
+        x = torch.zeros(2, 3, 1, 9, 9, device=device, dtype=dtype)
+        inner = K.PatchSequential(
+            K.RandomHorizontalFlip(p=1.0), grid_size=(2, 2), padding="valid", patchwise_apply=False
+        )
+        seq = K.AugmentationSequential(K.VideoSequential(inner, same_on_frame=False))
+        assert seq(x).shape == (2, 3, 1, 8, 8)
+
+    def test_patch_child_resize_does_not_change_tracked_image_shape_5596(self):
+        patch_seq = K.PatchSequential(K.RandomResizedCrop((4, 4), p=1.0), grid_size=(2, 2), patchwise_apply=False)
+        seq = K.VideoSequential(
+            patch_seq,
+            K.RandomCrop((2, 2), p=1.0),
+            same_on_frame=False,
+        )
+        params = seq.forward_parameters(torch.Size((2, 3, 1, 8, 8)))
+        assert params[1].data["input_size"][0].tolist() == [8, 8]
 
     @pytest.mark.parametrize("same_on_batch", [True, False, None])
     def test_location_wise_modules_cover_every_sample(self, same_on_batch, device, dtype):
@@ -436,6 +470,62 @@ class TestPatchSequentialRegression(BaseTester):
         params = seq._params
         self.gradcheck(lambda value: seq(value, params=params), (x.requires_grad_(),))
 
+    @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
+    def test_nested_in_a_container_5584(self, container, device, dtype):
+        # The parent reads the nested PatchSequential's PatchParamItem list while tracking the image shape; it used
+        # to treat the items as ParamItem and raise AttributeError. A patch sequential does not change the image
+        # size, so the sibling after it draws its crop for the full image.
+        x = torch.arange(2 * 3 * 8 * 8, device=device).to(dtype).reshape(2, 3, 8, 8) / 384
+        inner = K.PatchSequential(K.RandomInvert(p=1.0), grid_size=(2, 2), patchwise_apply=False)
+        seq = container(inner, K.RandomCrop((6, 6), p=1.0))
+        params = seq.forward_parameters(x.shape)
+        assert params[1].data["input_size"][0].tolist() == [8, 8]
+        out = seq(x, params=params)
+        expected = K.RandomCrop((6, 6), p=1.0)(inner(x, params=params[0].data), params=params[1].data)
+        self.assert_close(out, expected, rtol=0, atol=0)
+
+    def test_nested_valid_padding_tracks_the_cropped_size_5584(self, device, dtype):
+        # padding="valid" crops a 9 x 9 image to 8 x 8 before the patches are taken, and the sibling must see that.
+        x = torch.arange(2 * 1 * 9 * 9, device=device).to(dtype).reshape(2, 1, 9, 9)
+        inner = K.PatchSequential(
+            K.RandomHorizontalFlip(p=1.0), grid_size=(2, 2), padding="valid", patchwise_apply=False
+        )
+        seq = K.ImageSequential(inner, K.RandomCrop((4, 4), p=1.0))
+        params = seq.forward_parameters(x.shape)
+        assert params[1].data["input_size"][0].tolist() == [8, 8]
+        assert params[1].data["src"].max().item() <= 7
+        assert seq(x, params=params).shape == (2, 1, 4, 4)
+
+    def test_nested_in_video_sequential_5584(self, device, dtype):
+        x = torch.arange(2 * 3 * 3 * 9 * 9, device=device).to(dtype).reshape(2, 3, 3, 9, 9)
+        inner = K.PatchSequential(
+            K.RandomHorizontalFlip(p=1.0), grid_size=(2, 2), padding="valid", patchwise_apply=False
+        )
+        seq = K.VideoSequential(inner, K.RandomCrop((4, 4), p=1.0), same_on_frame=False)
+        params = seq.forward_parameters(x.shape)
+        assert params[1].data["input_size"][0].tolist() == [8, 8]
+        assert seq(x, params=params).shape == (2, 3, 3, 4, 4)
+
+    @pytest.mark.parametrize(
+        "children, grid_size, padding, image_size, tracked",
+        [
+            # a child resizing each 4 x 4 patch to 4 x 4 reports output_size 4 x 4; the image stays 8 x 8
+            (lambda: [K.RandomResizedCrop((4, 4), p=1.0)], (2, 2), "same", (8, 8), [8, 8]),
+            # a non-square grid crops the rows and the columns by their own remainders: 9 x 10 becomes 8 x 9
+            (lambda: [K.RandomHorizontalFlip(p=1.0)], (2, 3), "valid", (9, 10), [8, 9]),
+            # an empty patch sequential hands the parent an empty parameter list
+            (list, (2, 2), "same", (8, 8), [8, 8]),
+        ],
+        ids=["patch_size_child", "non_square_valid", "no_children"],
+    )
+    def test_nested_tracks_the_image_shape_5584(self, children, grid_size, padding, image_size, tracked, device, dtype):
+        inner = K.PatchSequential(*children(), grid_size=grid_size, padding=padding, patchwise_apply=False)
+        seq = K.ImageSequential(inner, K.RandomCrop((2, 2), p=1.0))
+        x = torch.zeros(2, 1, *image_size, device=device, dtype=dtype)
+        params = seq.forward_parameters(x.shape)
+        assert params[1].data["input_size"][0].tolist() == tracked
+        assert seq(x, params=params).shape == (2, 1, 2, 2)
+
 
 @pytest.mark.usefixtures("restore_torch_rng")
 class TestConventionPatchSequential(BaseTester):
@@ -486,3 +576,168 @@ class TestConventionPatchSequential(BaseTester):
         seq = K.PatchSequential(K.RandomHorizontalFlip(p=1.0), grid_size=(1, 1))
         image = torch.arange(128, device=device, dtype=dtype).reshape(2, 1, 8, 8)
         self.assert_close(seq(image), image.flip(-1))
+
+
+class TestEmptyPatchSequential(BaseTester):
+    """Empty image batches keep patch geometry and the existing container contracts (#4429)."""
+
+    @staticmethod
+    def _sequence(padding, patchwise=False, random_apply=False, same_on_batch=None, children=2):
+        modules = [K.RandomHorizontalFlip(p=0.5) if i % 2 else K.RandomVerticalFlip(p=1) for i in range(children)]
+        return K.PatchSequential(
+            *modules,
+            grid_size=(2, 3),
+            padding=padding,
+            patchwise_apply=patchwise,
+            random_apply=random_apply,
+            same_on_batch=same_on_batch,
+        )
+
+    def _assert_params_equal(self, actual, expected):
+        assert len(actual) == len(expected)
+        for actual_item, expected_item in zip(actual, expected):
+            assert actual_item.indices == expected_item.indices
+            assert actual_item.param.name == expected_item.param.name
+            assert actual_item.param.data.keys() == expected_item.param.data.keys()
+            for key in actual_item.param.data:
+                self.assert_close(actual_item.param.data[key], expected_item.param.data[key], rtol=0, atol=0)
+
+    @pytest.mark.parametrize("padding,patch_size,output_size", [("same", 5, (9, 13)), ("valid", 4, (8, 12))])
+    @pytest.mark.parametrize(
+        "patchwise,random_apply,same_on_batch,children",
+        [
+            (False, False, None, 2),
+            (False, True, None, 2),
+            (False, 2, None, 2),
+            (False, (1, 2), None, 2),
+            (True, False, None, 6),
+            (True, True, False, 2),
+            (True, True, True, 2),
+            (False, False, None, 0),
+        ],
+    )
+    def test_empty_patch_pipeline_4429(
+        self, padding, patch_size, output_size, patchwise, random_apply, same_on_batch, children, device, dtype
+    ):
+        sequence = self._sequence(padding, patchwise, random_apply, same_on_batch, children)
+        image = torch.empty(0, 3, 9, 13, device=device, dtype=dtype, requires_grad=True)
+        pad = sequence.compute_padding(image, padding)
+        patches = sequence.extract_patches(image, pad=pad)
+        assert patches.shape == (0, 6, 3, patch_size, patch_size)
+        assert patches.dtype == dtype
+        assert patches.device == device
+        rng = torch.get_rng_state()
+        params = sequence.forward_parameters(image.shape)
+        sampled_rng = torch.get_rng_state()
+        torch.set_rng_state(rng)
+        patch_params = sequence.forward_parameters(patches.shape)
+        self._assert_params_equal(params, patch_params)
+        assert torch.equal(torch.get_rng_state(), sampled_rng)
+        for item in params:
+            assert item.indices == []
+            assert item.param.data["forward_input_shape"].tolist() == [0, 3, patch_size, patch_size]
+        transformed = sequence.forward_by_params(patches, params)
+        assert transformed.shape == patches.shape
+        restored = sequence.restore_from_patches(transformed, pad=pad)
+        assert restored.shape == (0, 3, *output_size)
+        output = sequence(image, params=params)
+        assert output.shape == restored.shape
+        assert output.dtype == dtype
+        assert output.device == device
+        assert output.numel() == 0
+        output.sum().backward()
+        assert image.grad is not None
+        assert image.grad.shape == image.shape
+
+    @pytest.mark.parametrize("padding,output_size", [("same", (9, 13)), ("valid", (8, 12))])
+    @pytest.mark.parametrize("patchwise", [False, True])
+    @pytest.mark.parametrize("replay_state", ["same_params", "after_forward", "fresh_instance"])
+    def test_empty_saved_patch_params_4429(
+        self, padding, output_size, patchwise, replay_state, device, dtype, monkeypatch
+    ):
+        children = 6 if patchwise else 2
+        sequence = self._sequence(padding, patchwise, children=children)
+        image = torch.empty(0, 3, 9, 13, device=device, dtype=dtype, requires_grad=True)
+        sequence(image)
+        params = sequence._params if replay_state == "same_params" else deepcopy(sequence._params)
+        snapshot = deepcopy(params)
+        if replay_state == "after_forward":
+            sequence(torch.zeros(2, 3, 7, 11, device=device, dtype=dtype))
+        elif replay_state == "fresh_instance":
+            sequence = self._sequence(padding, patchwise, children=children)
+        monkeypatch.setattr(sequence, "forward_parameters", lambda _: pytest.fail("Replay must not draw parameters"))
+        rng = torch.get_rng_state()
+        output = sequence(image, params=params)
+        assert output.shape == (0, 3, *output_size)
+        assert output.dtype == dtype
+        assert output.device == device
+        assert torch.equal(torch.get_rng_state(), rng)
+        self._assert_params_equal(params, snapshot)
+        output.sum().backward()
+        assert image.grad is not None
+        assert image.grad.shape == image.shape
+
+    @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
+    @pytest.mark.parametrize("padding,tracked_size", [("same", (9, 13)), ("valid", (8, 12))])
+    @pytest.mark.parametrize("children", [0, 2])
+    def test_empty_nested_patch_shape_history_4429(self, container, padding, tracked_size, children, device, dtype):
+        sequence = container(K.ImageSequential(self._sequence(padding, children=children)), K.Resize((3, 4)))
+        image = torch.empty(0, 3, 9, 13, device=device, dtype=dtype, requires_grad=True)
+        params = sequence.forward_parameters(image.shape)
+        assert params[1].data["forward_input_shape"][-2:].tolist() == list(tracked_size)
+        received = []
+        handle = sequence[1].register_forward_pre_hook(lambda _, args: received.append(args[0].shape))
+        try:
+            output = sequence(image, params=params)
+        finally:
+            handle.remove()
+        assert received == [torch.Size((0, 3, *tracked_size))]
+        assert output.shape == (0, 3, 3, 4)
+        assert output.dtype == dtype
+        assert output.device == device
+        output.sum().backward()
+        assert image.grad is not None
+        assert image.grad.shape == image.shape
+
+    @pytest.mark.parametrize("layout", ["BTCHW", "BCTHW"])
+    @pytest.mark.parametrize("padding,tracked_size", [("same", (9, 13)), ("valid", (8, 12))])
+    def test_empty_video_patch_shape_history_4429(self, layout, padding, tracked_size, device, dtype):
+        # Nested containers currently support same_on_frame=False only; do not change that contract.
+        sequence = K.VideoSequential(self._sequence(padding), K.Resize((3, 4)), data_format=layout, same_on_frame=False)
+        shape = (0, 2, 3, 9, 13) if layout == "BTCHW" else (0, 3, 2, 9, 13)
+        expected_shape = (0, 2, 3, 3, 4) if layout == "BTCHW" else (0, 3, 2, 3, 4)
+        image = torch.empty(*shape, device=device, dtype=dtype, requires_grad=True)
+        params = sequence.forward_parameters(image.shape)
+        assert params[1].data["forward_input_shape"][-2:].tolist() == list(tracked_size)
+        output = sequence(image, params=params)
+        assert output.shape == expected_shape
+        assert output.dtype == dtype
+        assert output.device == device
+        output.sum().backward()
+        assert image.grad is not None
+        assert image.grad.shape == image.shape
+
+    def test_empty_patch_validation_and_unsupported_ops_4429(self, device, dtype):
+        sequence = self._sequence("valid")
+        with pytest.raises(ValueError, match="non-empty patches"):
+            sequence(torch.empty(0, 3, 1, 2, device=device, dtype=dtype))
+        with pytest.raises(ValueError, match="non-empty spatial"):
+            sequence(torch.empty(0, 3, 0, 13, device=device, dtype=dtype))
+        with pytest.raises(ValueError, match="patch count"):
+            sequence.restore_from_patches(torch.empty(0, 5, 3, 4, 4, device=device, dtype=dtype))
+        image = torch.empty(0, 3, 9, 13, device=device, dtype=dtype)
+        output = sequence(image)
+        with pytest.raises(NotImplementedError, match="geometric transformations"):
+            sequence.inverse(output)
+        with pytest.raises(NotImplementedError, match="geometric transformations"):
+            sequence.transform_masks(torch.empty(0, 1, 8, 12, device=device, dtype=dtype), sequence._params)
+
+    @pytest.mark.parametrize("padding,output_size", [("same", (9, 13)), ("valid", (8, 12))])
+    def test_dynamo_empty_patch_pipeline_4429(self, padding, output_size, device, dtype, torch_optimizer):
+        sequence = self._sequence(padding)
+        image = torch.empty(0, 3, 9, 13, device=device, dtype=dtype)
+        params = sequence.forward_parameters(image.shape)
+        actual = torch_optimizer(sequence)(image, params=params)
+        assert actual.shape == (0, 3, *output_size)
+        assert actual.dtype == dtype
+        assert actual.device == device

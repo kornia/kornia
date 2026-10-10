@@ -19,4 +19,21 @@ from kornia.augmentation._3d.base import RigidAffineAugmentationBase3D
 
 
 class IntensityAugmentationBase3D(RigidAffineAugmentationBase3D):
-    pass
+    r"""Base class for 3D intensity augmentations.
+
+    See the Convention block on :class:`~kornia.augmentation.AugmentationBase3D`.
+
+    Args:
+        p: probability for applying an augmentation. This param controls the augmentation probabilities
+          element-wise for a batch.
+        p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
+          probabilities batch-wise.
+        same_on_batch: apply the same transformation across the batch.
+        keepdim: whether to keep the output shape the same as input ``True`` or broadcast it to the batch
+          form ``False``.
+
+    Convention:
+        - these augmentations leave voxel coordinates in place: they record an identity ``(B, 4, 4)`` matrix,
+          and a container skips them on its inverse path.
+
+    """

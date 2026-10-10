@@ -219,9 +219,7 @@ class GemmaAttention(nn.Module):
         attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.view(bsz, q_len, self.hidden_size)
 
-        attn_output = self.o_proj(attn_output)
-
-        return attn_output
+        return self.o_proj(attn_output)
 
 
 class GemmaDecoderLayer(nn.Module):
@@ -265,9 +263,7 @@ class GemmaDecoderLayer(nn.Module):
         residual = hidden_states
         hidden_states = self.post_attention_layernorm(hidden_states)
         hidden_states = self.mlp(hidden_states)
-        hidden_states = residual + hidden_states
-
-        return hidden_states
+        return residual + hidden_states
 
 
 class PaliGemma(nn.Module):
@@ -327,10 +323,7 @@ class PaliGemma(nn.Module):
         """
         vision_outputs = self.vision_tower(pixel_values)
 
-        if isinstance(vision_outputs, (tuple, list)):
-            image_features = vision_outputs[1]
-        else:
-            image_features = vision_outputs
+        image_features = vision_outputs[1] if isinstance(vision_outputs, (tuple, list)) else vision_outputs
 
         if image_features.dim() != 3:
             image_features = image_features.unsqueeze(1)
@@ -356,6 +349,4 @@ class PaliGemma(nn.Module):
             )
 
         hidden_states = self.norm(hidden_states)
-        logits = self.lm_head(hidden_states)
-
-        return logits
+        return self.lm_head(hidden_states)

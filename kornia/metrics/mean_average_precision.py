@@ -19,6 +19,8 @@ from typing import Dict, List, Tuple
 
 import torch
 
+from kornia.core.check import KORNIA_CHECK
+
 from .mean_iou import mean_iou_bbox
 
 
@@ -34,19 +36,41 @@ def mean_average_precision(
     """Calculate the Mean Average Precision (mAP) of detected objects.
 
     Code altered from https://github.com/sgrvinod/a-PyTorch-Tutorial-to-Object-Detection/blob/master/utils.py#L271.
-    Background class (0 index) is excluded.
+
+    Convention:
+        - Every argument but ``n_classes`` and ``threshold`` is a list with one tensor per image. The call raises when
+          the five lists differ in length, when the boxes, labels and scores of an image differ in their number of
+          rows, or when a label lies outside ``[0, n_classes)`` or is not a whole number: a floating-point label
+          such as ``1.0`` counts as class 1, and ``1.5`` raises. Boxes are exclusive ``xyxy``, the default format of
+          :func:`~kornia.metrics.mean_iou_bbox`, which computes the overlaps.
+        - Class 0 is background: its objects and detections are never scored, and ``n_classes`` counts it, so the
+          classes ``1`` to ``n_classes - 1`` are scored.
+        - The detections of a class are ranked by score over all images at once, so the AP is not a mean of
+          per-image APs. In that order, a detection takes the object of its image and class that it overlaps most;
+          it is a true positive when that IoU is strictly greater than ``threshold`` and the object is not taken
+          yet, and a false positive otherwise. A class with objects and no detection has AP 0.
+        - A class without objects in any image has no AP: its entry is ``-1.0`` and it stays out of the mean, so
+          neither a larger ``n_classes`` nor detections of such a class change the mAP. Without any foreground
+          object the mAP is ``-1.0`` too.
+        - The AP is the 11-point interpolated AP of PASCAL VOC2007: the mean, over the recall levels
+          ``0, 0.1, ..., 1``, of the highest precision at a recall of at least that level.
+        - The result is a 0-d tensor and a dict of Python floats, fractions in :math:`[0, 1]` apart from that
+          ``-1.0``. The tensor takes the floating dtype of the boxes: integer boxes count as float32, and predicted
+          and ground-truth boxes of different dtypes give the promotion of those two floating dtypes (float32 when one
+          set is integer and the other float16). :ref:`Losses and metrics <losses-metrics-conventions>` compares the
+          match rule with the VOC devkit and COCO.
 
     Args:
         pred_boxes: a torch.Tensor list of predicted bounding boxes.
-        pred_labels: a torch.Tensor list of predicted labels.
+        pred_labels: a torch.Tensor list of predicted labels in ``[0, n_classes)``.
         pred_scores: a torch.Tensor list of predicted labels' scores.
         gt_boxes: a torch.Tensor list of ground truth bounding boxes.
-        gt_labels: a torch.Tensor list of ground truth labels.
-        n_classes: the number of classes.
+        gt_labels: a torch.Tensor list of ground truth labels in ``[0, n_classes)``.
+        n_classes: the number of classes, background (class 0) included.
         threshold: count as a positive if the overlap is greater than the threshold.
 
     Returns:
-        mean average precision (mAP), list of average precisions for each class.
+        the mAP, and a dict mapping each scored class id to its average precision.
 
     Examples:
         >>> boxes, labels, scores = torch.tensor([[100, 50, 150, 100.]]), torch.tensor([1]), torch.tensor([.7])
@@ -56,41 +80,67 @@ def mean_average_precision(
 
     """
     # these are all lists of tensors of the same length, i.e. number of images
-    if not len(pred_boxes) == len(pred_labels) == len(pred_scores) == len(gt_boxes) == len(gt_labels):
-        raise AssertionError
+    KORNIA_CHECK(
+        len(pred_boxes) == len(pred_labels) == len(pred_scores) == len(gt_boxes) == len(gt_labels),
+        "The five per-image lists must have the same length. Got: "
+        f"pred_boxes {len(pred_boxes)}, pred_labels {len(pred_labels)}, pred_scores {len(pred_scores)}, "
+        f"gt_boxes {len(gt_boxes)}, gt_labels {len(gt_labels)}",
+    )
 
-    # Store all (true) objects in a single continuous torch.Tensor while keeping track of the image it is from
+    # Store all (true) objects in a single continuous torch.Tensor while keeping track of the image it is from.
+    # The counts are checked per image: totals that agree can still pair the rows of one image with another's.
     gt_images = []
-    for i, labels in enumerate(gt_labels):
+    for i, (boxes, labels) in enumerate(zip(gt_boxes, gt_labels)):
+        KORNIA_CHECK(
+            boxes.size(0) == labels.size(0),
+            f"gt_boxes and gt_labels must have one row per object in every image. Got image {i}: {boxes.size(0)} "
+            f"boxes and {labels.size(0)} labels",
+        )
         gt_images.extend([i] * labels.size(0))
     # (n_objects), n_objects is the total no. of objects across all images
     _gt_boxes = torch.cat(gt_boxes, 0)  # (n_objects, 4)
     _gt_labels = torch.cat(gt_labels, 0)  # (n_objects)
     _gt_images = torch.tensor(gt_images, device=_gt_boxes.device, dtype=torch.long)
 
-    if not _gt_images.size(0) == _gt_boxes.size(0) == _gt_labels.size(0):
-        raise AssertionError
-
     # Store all detections in a single continuous torch.Tensor while keeping track of the image it is from
     pred_images = []
-    for i, labels in enumerate(pred_labels):
+    for i, (boxes, labels, scores) in enumerate(zip(pred_boxes, pred_labels, pred_scores)):
+        KORNIA_CHECK(
+            boxes.size(0) == labels.size(0) == scores.size(0),
+            f"pred_boxes, pred_labels and pred_scores must have one row per detection in every image. Got image {i}: "
+            f"{boxes.size(0)} boxes, {labels.size(0)} labels and {scores.size(0)} scores",
+        )
         pred_images.extend([i] * labels.size(0))
     _pred_boxes = torch.cat(pred_boxes, 0)  # (n_detections, 4)
     _pred_labels = torch.cat(pred_labels, 0)  # (n_detections)
     _pred_scores = torch.cat(pred_scores, 0)  # (n_detections)
     _pred_images = torch.tensor(pred_images, device=_pred_boxes.device, dtype=torch.long)  # (n_detections)
 
-    if not _pred_images.size(0) == _pred_boxes.size(0) == _pred_labels.size(0) == _pred_scores.size(0):
-        raise AssertionError
+    # The precisions need a floating dtype. Integer boxes count as float32, as mean_iou_bbox computes their overlaps,
+    # and the two sets meet in their promoted dtype: integer and float16 boxes give float32, not float16.
+    ap_dtype = torch.promote_types(
+        _pred_boxes.dtype if _pred_boxes.is_floating_point() else torch.float32,
+        _gt_boxes.dtype if _gt_boxes.is_floating_point() else torch.float32,
+    )
+
+    for name, labels in (("pred_labels", _pred_labels), ("gt_labels", _gt_labels)):
+        KORNIA_CHECK(
+            bool(((labels >= 0) & (labels < n_classes)).all()),
+            f"{name} must satisfy 0 <= label < n_classes ({n_classes}).",
+        )
+        if labels.is_floating_point():
+            KORNIA_CHECK(bool((labels == labels.round()).all()), f"{name} must contain integer-valued labels.")
 
     # Calculate APs for each class (except background)
-    average_precisions = torch.zeros(
-        (n_classes - 1), device=_pred_boxes.device, dtype=_pred_boxes.dtype
-    )  # (n_classes - 1)
+    average_precisions = torch.zeros((n_classes - 1), device=_pred_boxes.device, dtype=ap_dtype)  # (n_classes - 1)
     for c in range(1, n_classes):
         # Extract only objects with this class
         gt_class_images = _gt_images[_gt_labels == c]  # (n_class_objects)
         gt_class_boxes = _gt_boxes[_gt_labels == c]  # (n_class_objects, 4)
+
+        if gt_class_images.size(0) == 0:
+            average_precisions[c - 1] = -1.0
+            continue
 
         # Keep track of which true objects with this class have already been 'detected'
         # (n_class_objects)
@@ -112,12 +162,8 @@ def mean_average_precision(
         pred_class_boxes = pred_class_boxes[sort_ind]  # (n_class_detections, 4)
 
         # In the order of decreasing scores, check if true or false positive
-        gt_positives = torch.zeros(
-            (n_class_detections,), dtype=pred_class_boxes.dtype, device=pred_class_boxes.device
-        )  # (n_class_detections)
-        false_positives = torch.zeros(
-            (n_class_detections,), dtype=pred_class_boxes.dtype, device=pred_class_boxes.device
-        )  # (n_class_detections)
+        gt_positives = torch.zeros((n_class_detections,), dtype=ap_dtype, device=pred_class_boxes.device)
+        false_positives = torch.zeros((n_class_detections,), dtype=ap_dtype, device=pred_class_boxes.device)
         for d in range(n_class_detections):
             this_detection_box = pred_class_boxes[d].unsqueeze(0)  # (1, 4)
             this_image = pred_class_images[d]  # (), scalar
@@ -159,11 +205,13 @@ def mean_average_precision(
         cumul_precision = cumul_gt_positives / (
             cumul_gt_positives + cumul_false_positives + 1e-10
         )  # (n_class_detections)
-        cumul_recall = cumul_gt_positives / _gt_boxes.size(0)  # (n_class_detections)
+        cumul_recall = cumul_gt_positives / gt_class_images.size(0)  # (n_class_detections)
 
         # Find the mean of the maximum of the precisions corresponding to recalls above the threshold 't'
-        recall_thresholds = torch.arange(start=0, end=1.1, step=0.1).tolist()  # (11)
-        precisions = torch.zeros((len(recall_thresholds)), device=_gt_boxes.device, dtype=_gt_boxes.dtype)  # (11)
+        # Exact tenths as Python floats: each comparison below casts them to the recall dtype. A float32 arange widened
+        # to Python floats gives 0.10000000149..., which a float64 recall of exactly 1/10 never reaches (#5083).
+        recall_thresholds = [i / 10 for i in range(11)]  # (11)
+        precisions = torch.zeros((len(recall_thresholds)), device=_gt_boxes.device, dtype=ap_dtype)  # (11)
         for i, t in enumerate(recall_thresholds):
             recalls_above_t = cumul_recall >= t
             if recalls_above_t.any():
@@ -173,7 +221,8 @@ def mean_average_precision(
         average_precisions[c - 1] = precisions.mean()  # c is in [1, n_classes - 1]
 
     # Calculate Mean Average Precision (mAP)
-    mean_ap = average_precisions.mean()
+    defined_precisions = average_precisions[average_precisions >= 0]
+    mean_ap = defined_precisions.mean() if defined_precisions.numel() else average_precisions.new_tensor(-1.0)
 
     # Keep class-wise average precisions in a dictionary
     ap_dict = {c + 1: float(v) for c, v in enumerate(average_precisions.tolist())}

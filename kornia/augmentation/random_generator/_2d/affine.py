@@ -84,8 +84,7 @@ class AffineGenerator(RandomGeneratorBase):
         self.shear = shear
 
     def __repr__(self) -> str:
-        repr = f"degrees={self.degrees}, translate={self.translate}, scale={self.scale}, shear={self.shear}"
-        return repr
+        return f"degrees={self.degrees}, translate={self.translate}, scale={self.scale}, shear={self.shear}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         _degrees = _range_bound(self.degrees, "degrees", 0, (-360, 360)).to(device=device, dtype=dtype)

@@ -31,32 +31,37 @@ from .adalam import get_adalam_default_config, match_adalam
 def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
     r"""Compute pairwise L2 distances between rows of d1 and d2.
 
-    Uses ``torch.cdist`` for float32/float64 on non-MPS devices.  Falls back to a
-    manual expand-and-norm implementation for MPS tensors and for half-precision
-    dtypes (float16/bfloat16), since ``torch.cdist`` does not support half precision
-    on CUDA and may be unavailable for these dtypes elsewhere.
+    Uses ``torch.cdist`` on non-MPS devices outside export. Falls back to a manual
+    squared-distance implementation for MPS tensors and export. Half-precision
+    inputs are computed in float32: in half precision the squared norms round away
+    the squared distance between nearby descriptors, and ``torch.cdist`` has no
+    float16 kernel on CPU. Distances are returned in the input dtype.
     """
     half = (torch.float16, torch.bfloat16)
+    output_dtype = d1.dtype
+    if output_dtype in half and d2.dtype == output_dtype:
+        d1, d2 = d1.float(), d2.float()
     if (
         not is_exporting()  # `torch.cdist` has no ONNX lowering
         and (not is_mps_tensor_safe(d1))
         and (not is_mps_tensor_safe(d2))
-        and d1.dtype not in half
-        and d2.dtype not in half
     ):
-        return torch.cdist(d1, d2)
-    d1_sq = (d1**2).sum(dim=1, keepdim=True)
-    d2_sq = (d2**2).sum(dim=1, keepdim=True)
-    dm = d1_sq.repeat(1, d2.size(0)) + d2_sq.repeat(1, d1.size(0)).t() - 2.0 * d1 @ d2.t()
-    dm = dm.clamp(min=0.0)
-    mask = dm > 0.0
-    safe_dm = torch.where(mask, dm, torch.ones_like(dm))
-    return torch.where(mask, safe_dm.sqrt(), torch.zeros_like(dm))
+        distances = torch.cdist(d1, d2)
+    else:
+        # Autocast would lower the matmul precision again and cancel nearby distances.
+        with torch.autocast(device_type="cpu", enabled=False), torch.autocast(device_type="cuda", enabled=False):
+            d1_sq = (d1**2).sum(dim=1, keepdim=True)
+            d2_sq = (d2**2).sum(dim=1, keepdim=True)
+            dm = d1_sq.repeat(1, d2.size(0)) + d2_sq.repeat(1, d1.size(0)).t() - 2.0 * d1 @ d2.t()
+            dm = dm.clamp(min=0.0)
+            mask = dm > 0.0
+            safe_dm = torch.where(mask, dm, torch.ones_like(dm))
+            distances = torch.where(mask, safe_dm.sqrt(), torch.zeros_like(dm))
+    return distances.to(output_dtype)
 
 
 def _get_default_fginn_params() -> Dict[str, Any]:
-    config = {"th": 0.85, "mutual": False, "spatial_th": 10.0}
-    return config
+    return {"th": 0.85, "mutual": False, "spatial_th": 10.0}
 
 
 def _get_lazy_distance_matrix(
@@ -234,28 +239,142 @@ def match_smnn(
     dists2, idx2 = match_snn(desc2, desc1, th, distance_matrix.t())
 
     if len(dists2) > 0 and len(dists1) > 0:
-        idx2 = idx2.flip(1)
-        if not is_mps_tensor_safe(idx1):
-            idxs_dm = torch.cdist(idx1.float(), idx2.float(), p=1.0)
-        else:
-            idxs1_rep = idx1.to(desc1).repeat_interleave(idx2.size(0), dim=0)
-            idxs_dm = (idx2.to(desc2).repeat(idx1.size(0), 1) - idxs1_rep).abs().sum(dim=1)
-            idxs_dm = idxs_dm.reshape(idx1.size(0), idx2.size(0))
-        mutual_idxs1 = idxs_dm.min(dim=1)[0] < 1e-8
-        mutual_idxs2 = idxs_dm.min(dim=0)[0] < 1e-8
-        good_idxs1 = idx1[mutual_idxs1.view(-1)]
-        good_idxs2 = idx2[mutual_idxs2.view(-1)]
-        dists1_good = dists1[mutual_idxs1.view(-1)]
-        dists2_good = dists2[mutual_idxs2.view(-1)]
-        _, idx_upl1 = torch.sort(good_idxs1[:, 0])
-        _, idx_upl2 = torch.sort(good_idxs2[:, 0])
-        good_idxs1 = good_idxs1[idx_upl1]
-        match_dists = torch.max(dists1_good[idx_upl1], dists2_good[idx_upl2])
-        matches_idxs = good_idxs1
-        match_dists, matches_idxs = match_dists.view(-1, 1), matches_idxs.view(-1, 2)
+        # Each target occurs at most once in idx2. Join on its integer index instead of
+        # comparing every pair of matches in floating point (quadratic memory and inexact in half).
+        reverse_lookup = torch.full((desc2.size(0),), -1, dtype=torch.long, device=idx2.device)
+        reverse_lookup[idx2[:, 0]] = torch.arange(idx2.size(0), device=idx2.device)
+        reverse_positions = reverse_lookup[idx1[:, 1]]
+        mutual = (reverse_positions >= 0) & (idx2[reverse_positions, 1] == idx1[:, 0])
+        # match_snn already returns source indices in ascending order.
+        matches_idxs = idx1[mutual]
+        match_dists = torch.maximum(dists1[mutual], dists2[reverse_positions[mutual]])
     else:
         match_dists, matches_idxs = _no_match(distance_matrix)
     return match_dists, matches_idxs
+
+
+def match_smnn_batched(
+    desc1: torch.Tensor,
+    desc2: torch.Tensor,
+    th: float = 0.95,
+    dm: Optional[torch.Tensor] = None,
+    mask1: Optional[torch.Tensor] = None,
+    mask2: Optional[torch.Tensor] = None,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    r"""Match independent descriptor pairs with a batched symmetric nearest-neighbor ratio test.
+
+    Like :func:`match_smnn`, each match must pass Lowe's first/second L2 distance
+    ratio test in both directions and have mutual nearest neighbors. The returned
+    quality is the larger of the two ratios. Pairs are processed together with
+    batched distance computation and top-k reductions, without a per-pair loop.
+
+    Args:
+        desc1: First descriptors, shape :math:`(B, N, D)`.
+        desc2: Second descriptors, shape :math:`(B, M, D)`.
+        th: Inclusive distance-ratio threshold.
+        dm: Optional precomputed L2 distances, shape :math:`(B, N, M)`.
+        mask1: Optional boolean mask of valid first descriptors, shape :math:`(B, N)`.
+        mask2: Optional boolean mask of valid second descriptors, shape :math:`(B, M)`.
+            Masks allow padding variable-length pairs; padding never becomes a neighbor.
+
+    Returns:
+        - Ratios, shape :math:`(K, 1)`, with the input device and dtype.
+        - Long indices, shape :math:`(K, 3)`: ``(batch_index, index_in_desc1, index_in_desc2)``.
+          Indices refer to the original padded tensors, sorted by batch and first-descriptor index.
+          A pair with fewer than two valid descriptors on either side contributes no matches.
+
+    Note:
+        Memory for the distance matrix scales as :math:`B N M`. Bucket pairs by
+        descriptor counts and limit batch size when matching large collections.
+        Half-precision descriptors use float32 distance computation before ratios
+        are converted back to the input dtype.
+        Masked inputs use ``torch.cdist``'s direct Euclidean path to avoid the
+        cancellation possible in its matrix-multiplication implementation. This
+        can be slower for large masked descriptor sets; unmasked inputs retain
+        the default small-input direct path and large-input matrix implementation.
+        As in :func:`match_smnn`, a zero second-neighbor distance produces an
+        undefined ratio and that ambiguous match is rejected. Ties follow
+        :func:`torch.topk` and do not have a guaranteed cross-device ordering.
+
+    Example:
+        >>> a = torch.tensor([[[0., 0.], [1., 1.], [2., 2.]]])
+        >>> ratios, indices = match_smnn_batched(a, a.flip(1))
+        >>> indices
+        tensor([[0, 0, 2],
+                [0, 1, 1],
+                [0, 2, 0]])
+
+    """
+    KORNIA_CHECK_SHAPE(desc1, ["B", "N", "D"])
+    KORNIA_CHECK_SHAPE(desc2, ["B", "M", "D"])
+    batch, n, dim = desc1.shape
+    if desc2.shape[0] != batch or desc2.shape[2] != dim:
+        raise ValueError("Descriptor batch sizes and dimensions must match")
+    if desc1.device != desc2.device or desc1.dtype != desc2.dtype or not desc1.is_floating_point():
+        raise ValueError("Descriptors must have the same floating dtype and device")
+    m = desc2.shape[1]
+    if dm is not None and (dm.shape != (batch, n, m) or dm.device != desc1.device or dm.dtype != desc1.dtype):
+        raise ValueError("Distance matrix must have shape (B, N, M) and the descriptor dtype/device")
+    for mask, shape in ((mask1, (batch, n)), (mask2, (batch, m))):
+        if mask is not None and (mask.shape != shape or mask.dtype != torch.bool or mask.device != desc1.device):
+            raise ValueError("Validity masks must be boolean tensors with shape (B, N)/(B, M) on the input device")
+    if batch == 0 or n < 2 or m < 2:
+        return desc1.new_empty((0, 1)), torch.empty((0, 3), dtype=torch.long, device=desc1.device)
+
+    valid1 = torch.ones((batch, n), dtype=torch.bool, device=desc1.device) if mask1 is None else mask1
+    valid2 = torch.ones((batch, m), dtype=torch.bool, device=desc1.device) if mask2 is None else mask2
+    masked = mask1 is not None or mask2 is not None
+    if dm is None:
+        # Exclude padded values from the calculation itself. Masking the resulting
+        # distances is too late for NaN/Inf padding, which can poison gradients.
+        work1 = desc1.masked_fill(~valid1.unsqueeze(-1), 0.0) if mask1 is not None else desc1
+        work2 = desc2.masked_fill(~valid2.unsqueeze(-1), 0.0) if mask2 is not None else desc2
+        work1 = work1.float() if work1.dtype in (torch.float16, torch.bfloat16) else work1
+        work2 = work2.float() if work2.dtype in (torch.float16, torch.bfloat16) else work2
+        if not is_exporting() and not is_mps_tensor_safe(desc1):
+            distances = torch.cdist(
+                work1,
+                work2,
+                compute_mode="donot_use_mm_for_euclid_dist" if masked else "use_mm_for_euclid_dist_if_necessary",
+            )
+        else:
+            # MPS/ONNX lack cdist. Accumulate direct differences in descriptor
+            # chunks to bound temporary memory without looping over pairs.
+            squared = work1.new_zeros((batch, n, m))
+            for start in range(0, dim, 16):
+                difference = work1[:, :, None, start : start + 16] - work2[:, None, :, start : start + 16]
+                squared = squared + (difference * difference).sum(-1)
+            positive = squared > 0
+            distances = torch.where(positive, torch.where(positive, squared, torch.ones_like(squared)).sqrt(), 0.0)
+    else:
+        distances = dm
+    if mask1 is not None or mask2 is not None:
+        distances = distances.masked_fill(~(valid1.unsqueeze(2) & valid2.unsqueeze(1)), float("inf"))
+    values1, neighbors1 = distances.topk(2, dim=2, largest=False)
+    values2, neighbors2 = distances.transpose(1, 2).topk(2, dim=2, largest=False)
+    defined1 = torch.isfinite(values1).all(-1) & (values1[..., 1] > 0)
+    defined2 = torch.isfinite(values2).all(-1) & (values2[..., 1] > 0)
+    # Substitute finite operands before division: rejecting a 0/0 ratio only
+    # after division would still leave NaNs in the backward pass for dm.
+    ratios1 = torch.where(defined1, values1[..., 0], 0.0) / torch.where(defined1, values1[..., 1], 1.0)
+    ratios2 = torch.where(defined2, values2[..., 0], 0.0) / torch.where(defined2, values2[..., 1], 1.0)
+    nearest2 = neighbors1[..., 0]
+    reverse_ratio = ratios2.gather(1, nearest2)
+    mutual = neighbors2[..., 0].gather(1, nearest2) == torch.arange(n, device=desc1.device)
+    enough = (valid1.sum(1) >= 2) & (valid2.sum(1) >= 2)
+    keep = (
+        valid1
+        & enough.unsqueeze(1)
+        & defined1
+        & defined2.gather(1, nearest2)
+        & mutual
+        & (ratios1 <= th)
+        & (reverse_ratio <= th)
+    )
+    batch_index, index1 = keep.nonzero(as_tuple=True)
+    indices = torch.stack((batch_index, index1, nearest2[batch_index, index1]), dim=1)
+    ratios = torch.maximum(ratios1, reverse_ratio)[batch_index, index1].unsqueeze(1).to(desc1.dtype)
+    return ratios, indices
 
 
 def match_fginn(
@@ -484,14 +603,13 @@ class DescriptorMatcherWithSteerer(nn.Module):
         """
         if self.match_mode == "nn":
             return match_nn(d1, d2, dm=dm)
-        elif self.match_mode == "mnn":
+        if self.match_mode == "mnn":
             return match_mnn(d1, d2, dm=dm)
-        elif self.match_mode == "snn":
+        if self.match_mode == "snn":
             return match_snn(d1, d2, self.th, dm=dm)
-        elif self.match_mode == "smnn":
+        if self.match_mode == "smnn":
             return match_smnn(d1, d2, self.th, dm=dm)
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     def forward(
         self,

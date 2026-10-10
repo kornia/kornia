@@ -25,5 +25,13 @@ class RandomTransplantation3D(RandomTransplantation, AugmentationBase3D):  # typ
     """RandomTransplantation3D augmentation.
 
     3D version of the :class:`kornia.augmentation.RandomTransplantation` augmentation intended to be used with
-    :class:`kornia.augmentation.AugmentationSequential`. The interface is identical to the 2D version.
+    :class:`kornia.augmentation.container.AugmentationSequential`. The interface is identical to the 2D version.
+
+    See the Convention block on :class:`~kornia.augmentation.RandomTransplantation`.
+
+    Convention:
+        - called directly it behaves exactly like the 2D class; it exists so that
+          :class:`~kornia.augmentation.container.AugmentationSequential` dispatches it as a 3D augmentation. Inside a
+          container use it for ``(B, C, D, H, W)`` volumes and :class:`~kornia.augmentation.RandomTransplantation`
+          for ``(B, C, H, W)`` images; the container rejects 4D input for this class and 5D input for the 2D one.
     """

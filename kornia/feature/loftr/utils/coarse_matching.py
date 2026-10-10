@@ -76,8 +76,7 @@ def compute_max_candidates(p_m0: torch.Tensor, p_m1: torch.Tensor) -> torch.Tens
     """
     h0s, w0s = p_m0.sum(1).max(-1)[0], p_m0.sum(-1).max(-1)[0]
     h1s, w1s = p_m1.sum(1).max(-1)[0], p_m1.sum(-1).max(-1)[0]
-    max_cand = torch.sum(torch.min(torch.stack([h0s * w0s, h1s * w1s], -1), -1)[0])
-    return max_cand
+    return torch.sum(torch.min(torch.stack([h0s * w0s, h1s * w1s], -1), -1)[0])
 
 
 class CoarseMatching(nn.Module):
