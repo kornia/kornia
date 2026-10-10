@@ -1321,15 +1321,16 @@ def euler_from_quaternion(
     # returned triple no longer represents the rotation (#3950). Only one combined
     # angle survives there -- yaw - roll at +pi/2 and yaw + roll at -pi/2 -- so pin
     # roll to 0 and return that angle as yaw, which reconstructs the input rotation.
-    # cos(pitch) is measured as hypot(sinr_cosp, cosr_cosp) rather than
-    # sqrt(1 - sinp**2): the latter cancels an already-rounded sinp against itself
+    # cos(pitch)**2 is measured as sinr_cosp**2 + cosr_cosp**2 rather than
+    # 1 - sinp**2: the latter cancels an already-rounded sinp against itself
     # and lands close to the threshold at a true pole (up to 6.0e-4 against 6.9e-4
-    # over 20000 random float32 poles), while hypot stays at rounding level there
-    # (below 4e-7 in float32). Inside the band the snapped triple is off by about
-    # the pitch offset, while the atan2 path's error grows like eps / cos(pitch);
+    # over 20000 random float32 poles), while the roll pair stays at rounding level
+    # there (below 4e-7 in float32). It is compared squared, against (2*sqrt(eps))**2,
+    # because neither ONNX exporter supports torch.hypot. Inside the band the snapped
+    # triple is off by about the pitch offset, while the atan2 path's error grows like eps / cos(pitch);
     # the two are about equal at cos(pitch) = 1.5*sqrt(eps), just inside the band.
-    cos_pitch = torch.hypot(sinr_cosp, cosr_cosp)
-    gimbal = cos_pitch < 2.0 * torch.finfo(w.dtype).eps ** 0.5
+    cos_pitch_sq = sinr_cosp * sinr_cosp + cosr_cosp * cosr_cosp
+    gimbal = cos_pitch_sq < 4.0 * torch.finfo(w.dtype).eps
     up = sinp > 0.0
     # Snap pitch to exactly ±pi/2 there (asin returns pi/2 - O(sqrt(eps)) once its
     # argument rounds below 1, which alone would leave the round trip off by ~1e-8),

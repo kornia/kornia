@@ -17,6 +17,7 @@
 
 import dis
 import inspect
+import io
 import math
 import warnings
 from collections.abc import Iterator
@@ -5627,6 +5628,41 @@ class TestEulerFromQuaternion(BaseTester):
             assert bool(torch.isfinite(grad).all()), f"kornia#3993: d{name}/dq is not finite:\n{grad}"
         assert torch.equal(grad_roll[3:], torch.zeros_like(grad_roll[3:]))
         assert torch.equal(grad_pitch[3:], torch.zeros_like(grad_pitch[3:]))
+
+    @pytest.mark.device_agnostic
+    def test_onnx_export_legacy_matches_eager_at_gimbal_lock_3993(self, dtype):
+        # The gimbal check must stay exportable: neither ONNX exporter supports torch.hypot.
+        if dtype != torch.float32:
+            pytest.skip("the exported graph is checked once, in float32")
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+
+        class Euler(torch.nn.Module):
+            def forward(self, q: torch.Tensor) -> torch.Tensor:
+                return torch.stack(euler_from_quaternion(q[..., 0], q[..., 1], q[..., 2], q[..., 3]), -1)
+
+        half = math.sqrt(0.5)
+        q = torch.tensor(
+            [
+                [1.0, 0.0, 0.0, 0.0],
+                [0.9, 0.1, -0.3, 0.2],
+                [0.0, 0.0, 0.0, 1.0],  # half-turn about z
+                [half, 0.0, half, 0.0],  # pitch +pi/2
+                [-0.5, 0.5, -0.5, -0.5],  # pitch +pi/2, negative w
+                [half, 0.0, -half, 0.0],  # pitch -pi/2
+            ],
+            dtype=dtype,
+        )
+        model = Euler()
+        buffer = io.BytesIO()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            torch.onnx.export(model, (q,), buffer, input_names=["q"], opset_version=17, dynamo=False)
+        session = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"])
+        exported = torch.from_numpy(session.run(None, {"q": q.numpy()})[0])
+        # compare modulo 2*pi: at the half-turn eager returns yaw = pi and the exported atan2 -pi, as on main
+        difference = torch.remainder(exported - model(q) + math.pi, 2 * math.pi) - math.pi
+        self.assert_close(difference, torch.zeros_like(difference))
 
     def test_convention_euler_from_quaternion_normalizes_its_input_3953(self, device, dtype):
         # Intended behavior: the euler angles of a quaternion depend only on the rotation it
