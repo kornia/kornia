@@ -599,10 +599,17 @@ Filtering
 :doc:`kornia.filters </filters>` follows torch's vocabulary: its kernels are correlated by default, ``border_type``
 takes the :func:`torch.nn.functional.pad` mode names, and an even kernel is anchored where
 ``F.conv2d(padding='same')`` anchors it. The correlation matches ``cv2.filter2D`` and ``scipy.ndimage.correlate``; the
-border names and the even-kernel anchor do not. An integer or bool image is filtered in float32 and comes back as
-float32 on its own scale, neither rescaled to :math:`[0, 1]` nor rounded and clamped to its dtype, where
-``cv2.filter2D(img, -1, k)``, ``cv2.GaussianBlur`` and ``cv2.blur`` return a uint8 image rounded and saturated to
-uint8; a floating image keeps its dtype.
+border names and the even-kernel anchor do not. :func:`~kornia.filters.filter2d`,
+:func:`~kornia.filters.filter2d_separable`, :func:`~kornia.filters.filter3d`, :func:`~kornia.filters.fft_conv`,
+:func:`~kornia.filters.box_blur`, :func:`~kornia.filters.gaussian_blur2d`, :func:`~kornia.filters.laplacian`,
+:func:`~kornia.filters.motion_blur`, :func:`~kornia.filters.bilateral_blur`,
+:func:`~kornia.filters.joint_bilateral_blur`, :func:`~kornia.filters.canny` and their modules filter an integer or
+bool image in float32 and return float32 on its own scale, neither rescaled to :math:`[0, 1]` nor rounded and clamped
+to its dtype, where ``cv2.filter2D(img, -1, k)``, ``cv2.GaussianBlur`` and ``cv2.blur`` return a uint8 image rounded
+and saturated to uint8; a floating image keeps its dtype. :func:`~kornia.filters.median_blur`,
+:func:`~kornia.filters.unsharp_mask`, :func:`~kornia.filters.spatial_gradient`, :func:`~kornia.filters.sobel`,
+:func:`~kornia.filters.guided_blur` and the blur pools do not follow this yet: most of them raise on an integer image
+(`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
 - :func:`~kornia.filters.filter2d`, :func:`~kornia.filters.filter3d` and :func:`~kornia.filters.fft_conv`
   **correlate** by default, as ``cv2.filter2D`` and ``scipy.ndimage.correlate`` do; ``behaviour='conv'`` flips the
