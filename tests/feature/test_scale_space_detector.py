@@ -22,7 +22,6 @@ from torch.utils._python_dispatch import TorchDispatchMode
 import kornia
 from kornia.core.check import ShapeError
 from kornia.feature.scale_space_detector import (
-    _MAX_ABS_SIN_12,
     MultiResolutionDetector,
     ScaleSpaceDetector,
     _resize_mask,
@@ -735,26 +734,32 @@ class TestScaleSpaceDetector(BaseTester):
         assert lafs.shape == torch.Size([1, n_feats, 2, 3])
         assert resps.shape == torch.Size([1, n_feats])
 
-    def test_inline_boundary_constant_matches_reference(self):
-        """`_MAX_ABS_SIN_12` must be the x-extent `laf_to_boundary_points(laf, 12)` actually produces.
+    @pytest.mark.parametrize("x0", [80, 15])
+    def test_frame_overhanging_the_border_between_boundary_samples_is_rejected_NNNN(self, device, dtype, x0):
+        # A candidate is kept when half its frame lies inside the octave less a 5 px border, the rule of
+        # `laf_is_inside_image(scale_laf(frame, 0.5), octave, 5)`. One response maximum at level 2 of the first
+        # octave, row 32 and column 80 or 15, gets a half frame of radius 10.3, which overhangs the border at x = 90
+        # or x = 5 by 0.3 px. Ten points sampled on that circle reach only 10.3 sin(72 deg) = 9.8 px and kept it.
+        class PeakResponse(torch.nn.Module):
+            def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
+                out = -torch.ones_like(x)
+                if x.shape[-1] == 96:  # the first octave only
+                    out[:, :, 2, 32, x0] = 0.0
+                return out
 
-        `_process_octave` inlines `laf_is_inside_image(scale_laf(lafs, 0.5), octave, 5)` for the
-        isotropic LAFs it builds. That inline form is only equivalent to the reference if the
-        constant is the maximum ``|sin|`` over the angles the reference samples, which are
-        ``linspace(0, 2 * pi, n_pts - 1)`` -- spacing ``2 * pi / 10``, not ``2 * pi / 11`` (#4064).
-        Device- and dtype-independent: this pins a Python float against a sampling convention.
-        """
-        cx, cy, half_s = 10.0, 20.0, 3.0
-        laf = kornia.feature.laf_from_center_scale_ori(
-            torch.tensor([[[cx, cy]]], dtype=torch.float64),
-            torch.full((1, 1, 1, 1), half_s, dtype=torch.float64),
-        )
-        pts = kornia.feature.laf_to_boundary_points(laf, 12)
-        # `laf_to_boundary_points` builds its angles in float32 before casting, so compare at
-        # float32 resolution -- the wrong spacing is off by 4e-2, four orders of magnitude more.
-        assert abs(((pts[..., 0].max() - cx) / half_s).item() - _MAX_ABS_SIN_12) < 1e-6
-        # ... and the y-extent the same block hardcodes as `half_s` (max|cos| = 1).
-        assert abs(((pts[..., 1].max() - cy) / half_s).item() - 1.0) < 1e-6
+        sigma = 1.6 * 2 ** (2 / 3)  # the scale of level 2 of the first octave
+        img = torch.zeros(1, 1, 64, 96, device=device, dtype=dtype)
+        for radius, kept in ((10.3, False), (9.7, True)):
+            det = ScaleSpaceDetector(
+                1, resp_module=PeakResponse(), scale_space_response=True, mr_size=2 * radius / sigma
+            ).to(device, dtype)
+            lafs, _ = det(img)
+            assert bool(kornia.feature.laf_is_filled(lafs)[0, 0]) == kept
+            half_frame = kornia.feature.laf_from_center_scale_ori(
+                torch.tensor([[[float(x0), 32.0]]], device=device, dtype=dtype),
+                torch.full((1, 1, 1, 1), radius, device=device, dtype=dtype),
+            )
+            assert bool(kornia.feature.laf_is_inside_image(half_frame, img, 5)[0, 0]) == kept
 
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_scale_space_detector_init_preserves_global_config_4095(self):
