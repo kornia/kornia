@@ -121,9 +121,6 @@ class ExtractTensorPatches(nn.Module):
     In the simplest case, the output value of the operator with input size
     :math:`(B, C, H, W)` is :math:`(B, N, C, H_{out}, W_{out})`.
 
-    An empty batch preserves the number of windows, channels and patch spatial dimensions.
-    Channels and window sizes must remain non-empty.
-
     where
       - :math:`B` is the batch size.
       - :math:`N` denotes the total number of extracted patches stacked in
@@ -132,6 +129,9 @@ class ExtractTensorPatches(nn.Module):
       - :math:`H_{out}`, :math:`W_{out}` denote to denote to the patch size
         defined in the function signature.
         left-right and top-bottom order.
+
+    An empty batch (:math:`B = 0`) gives an empty output with the same :math:`N`, :math:`C`, :math:`H_{out}` and
+    :math:`W_{out}` as a non-empty one. :math:`C` must be non-zero and the window sizes positive.
 
     * :attr:`window_size` is the size of the sliding window and controls the
       shape of the output torch.Tensor and defines the shape of the output patch.
@@ -225,8 +225,6 @@ class CombineTensorPatches(nn.Module):
     In the simplest case, the output value of the operator with input size
     :math:`(B, N, C, H_{out}, W_{out})` is :math:`(B, C, H, W)`.
 
-    Empty batches are reconstructed with the same spatial size and unpadding as non-empty batches.
-
     where
       - :math:`B` is the batch size.
       - :math:`N` denotes the total number of extracted patches stacked in
@@ -236,6 +234,7 @@ class CombineTensorPatches(nn.Module):
         defined in the function signature.
         left-right and top-bottom order.
 
+    An empty batch (:math:`B = 0`) is reconstructed with the same spatial size and unpadding as a non-empty one.
 
     * :attr:`original_size` is the size of the original image prior to
       extracting torch.Tensor patches and defines the shape of the output patch.
