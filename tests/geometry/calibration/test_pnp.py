@@ -20,7 +20,6 @@ import torch
 
 import kornia
 from kornia.core.exceptions import BaseError, ShapeError
-from kornia.core.utils import _torch_linalg_svdvals
 from kornia.geometry.calibration.pnp import _mean_isotropic_scale_normalize
 
 from testing.base import BaseTester
@@ -335,7 +334,7 @@ class TestSolvePnpDlt(BaseTester):
             pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
         world_points = self._convention_world_points(device, dtype)
         K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
-        last = 2.0**0.5 * _torch_linalg_svdvals(_mean_isotropic_scale_normalize(world_points)[0])[0, -1].item()
+        last = 2.0**0.5 * torch.linalg.svdvals(_mean_isotropic_scale_normalize(world_points)[0])[0, -1].item()
         extra = world_points * torch.tensor([3.0, -2.0, 4.0], device=device, dtype=dtype)
         points = torch.cat([world_points, world_points, extra], 1)
         img_points = kornia.geometry.project_points(points, K)

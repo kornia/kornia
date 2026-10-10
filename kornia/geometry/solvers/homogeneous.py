@@ -22,7 +22,6 @@ from __future__ import annotations
 import torch
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-from kornia.core.utils import _torch_linalg_lu_factor_ex, _torch_lu_unpack
 
 
 def _det3(
@@ -185,16 +184,20 @@ def _null_space_lu(A: torch.Tensor) -> torch.Tensor:
     as the factorization stays finite; callers treat non-finite vectors as degenerate.
     """
     batch, m, n = A.shape
-    lu, pivots, _ = _torch_linalg_lu_factor_ex(A.mT)
+    lu, pivots, _ = torch.linalg.lu_factor_ex(A.mT)
     square = lu[:, :m, :m]
     if torch.compiler.is_compiling() and A.device.type == "cuda":
         # The CUDA meta kernel tests column-major contiguity of this strided LU view. With an unbacked
         # batch inside while_loop that needs a data-dependent guard. Make that layout check always true,
         # including empty batches; a row-major copy still needs a guard for the empty case.
         square = square.mT.contiguous().mT
-    lower = torch.linalg.solve_triangular(square, lu[:, m:, :m], upper=False, left=False, unitriangular=True)
+    rhs = lu[:, m:, :m]
+    if A.device.type == "mps":
+        # MPS solve_triangular reads strided views wrongly on torch 2.5.1 and 2.9.1.
+        square, rhs = square.contiguous(), rhs.contiguous()
+    lower = torch.linalg.solve_triangular(square, rhs, upper=False, left=False, unitriangular=True)
     eye = torch.eye(n - m, dtype=A.dtype, device=A.device).expand(batch, -1, -1)
-    permutation, _, _ = _torch_lu_unpack(lu, pivots, unpack_data=False)
+    permutation, _, _ = torch.lu_unpack(lu, pivots, unpack_data=False)
     return permutation @ torch.cat([-lower.mT, eye], 1)
 
 

@@ -18,10 +18,11 @@
 from typing import Optional, Tuple
 
 import torch
+from torch.linalg import qr as linalg_qr
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.core.ops import eye_like
-from kornia.core.utils import _torch_det, _torch_linalg_qr, _torch_linalg_svdvals, _torch_svd_cast
+from kornia.core.utils import _torch_linalg_svdvals, _torch_svd_cast
 from kornia.geometry.conversions import convert_points_to_homogeneous, normalize_points_with_intrinsics
 from kornia.geometry.linalg import transform_points
 
@@ -263,7 +264,7 @@ def solve_pnp_dlt(
     # First, we fix the sign by making sure that the determinant of
     # the all the rotation matrices are non-negative (since determinant
     # of a rotation matrix should be 1).
-    det = _torch_det(solution[:, :3, :3])
+    det = torch.det(solution[:, :3, :3])
     ones_tensor = torch.ones_like(det)
     sign_fix = torch.where(det < 0, ones_tensor * -1, ones_tensor)
     solution = solution * sign_fix[:, None, None]
@@ -278,7 +279,7 @@ def solve_pnp_dlt(
 
     # To make sure that the rotation matrix would be orthogonal, we apply
     # QR decomposition.
-    ortho, right = _torch_linalg_qr(temp[:, :3, :3])
+    ortho, right = linalg_qr(temp[:, :3, :3])
 
     # We may need to fix the signs of the columns of the ortho matrix.
     # If right[i, j, j] is negative, then we need to flip the signs of

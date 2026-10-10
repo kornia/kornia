@@ -22,14 +22,7 @@ from typing import Optional, Tuple, Union
 import torch
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
-from kornia.core.utils import (
-    _extract_device_dtype,
-    _torch_linalg_lu_factor_ex,
-    _torch_linalg_solve_ex,
-    _torch_svd_cast,
-    safe_inverse_with_mask,
-    safe_solve_with_mask,
-)
+from kornia.core.utils import _extract_device_dtype, _torch_svd_cast, safe_inverse_with_mask, safe_solve_with_mask
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.epipolar import normalize_points, normalize_transformation
 from kornia.geometry.epipolar._metrics import _shares_points
@@ -581,7 +574,7 @@ def _rank8_null_vector(normal: torch.Tensor) -> torch.Tensor:
     normal = normal.to(work_dtype)
     finite = normal.isfinite().flatten(1).all(-1)
     normal = torch.where(finite[:, None, None], normal, torch.zeros_like(normal))
-    lu, _, info = _torch_linalg_lu_factor_ex(normal.detach())
+    lu, _, info = torch.linalg.lu_factor_ex(normal.detach())
     diagonal = lu.diagonal(dim1=-2, dim2=-1).abs()
     tiny = torch.finfo(work_dtype).tiny
     leading = diagonal[:, :8].amin(-1) > diagonal.amax(-1).clamp_min(tiny) * torch.finfo(work_dtype).eps ** 0.5
@@ -590,7 +583,7 @@ def _rank8_null_vector(normal: torch.Tensor) -> torch.Tensor:
     # stay finite and cannot leak NaN into parameters shared with the rest of the batch.
     block = torch.where(rank8[:, None, None], normal[:, :8, :8], torch.eye(8, device=normal.device, dtype=work_dtype))
     rhs = torch.where(rank8[:, None], -normal[:, :8, 8], torch.zeros_like(normal[:, :8, 8]))
-    head = _torch_linalg_solve_ex(block, rhs)[0]
+    head = torch.linalg.solve_ex(block, rhs)[0]
     null = torch.cat([head, torch.ones_like(head[:, :1])], -1)
     return torch.where(rank8[:, None], null, torch.full_like(null, float("nan")))
 

@@ -26,15 +26,9 @@ from kornia.core.utils import (
     _extract_device_dtype,
     _inverse_3x3_closed_form,
     _is_singular,
-    _torch_det,
     _torch_histc_cast,
     _torch_inverse_cast,
-    _torch_linalg_lu_factor_ex,
-    _torch_linalg_lu_solve,
-    _torch_linalg_qr,
-    _torch_linalg_solve_ex,
     _torch_linalg_svdvals,
-    _torch_lu_unpack,
     _torch_solve_cast,
     _torch_svd_cast,
     batched_forward,
@@ -897,45 +891,6 @@ def test_is_autocast_enabled_cpu():
         assert is_autocast_enabled()
 
     assert not is_autocast_enabled()
-
-
-def test_mps_linalg_helpers_avoid_unsupported_kernels(device, monkeypatch):
-    """MPS fall back to the host instead of calling kernels missing on the torch floor."""
-    if device.type != "mps":
-        pytest.skip("MPS is not the selected test device")
-
-    def reject_mps(fn):
-        def wrapped(*args, **kwargs):
-            if any(torch.is_tensor(arg) and arg.device.type == "mps" for arg in args):
-                raise NotImplementedError("MPS kernel unavailable")
-            return fn(*args, **kwargs)
-
-        return wrapped
-
-    monkeypatch.setattr(torch.linalg, "lu_factor_ex", reject_mps(torch.linalg.lu_factor_ex))
-    monkeypatch.setattr(torch.linalg, "lu_solve", reject_mps(torch.linalg.lu_solve))
-    monkeypatch.setattr(torch.linalg, "solve", reject_mps(torch.linalg.solve))
-    monkeypatch.setattr(torch.linalg, "solve_ex", reject_mps(torch.linalg.solve_ex))
-    monkeypatch.setattr(torch.linalg, "svdvals", reject_mps(torch.linalg.svdvals))
-    monkeypatch.setattr(torch.linalg, "qr", reject_mps(torch.linalg.qr))
-    monkeypatch.setattr(torch, "lu_unpack", reject_mps(torch.lu_unpack))
-    monkeypatch.setattr(torch, "det", reject_mps(torch.det))
-
-    A = torch.eye(3, device=device)
-    B = torch.ones(1, 3, 1, device=device)
-
-    LU, pivots, info = _torch_linalg_lu_factor_ex(A[None])
-    X = _torch_linalg_lu_solve(LU, pivots, B)
-    solved, solved_info = _torch_linalg_solve_ex(A[None], B)
-    singular_values = _torch_linalg_svdvals(A[None])
-    Q, R = _torch_linalg_qr(A[None])
-    permutation, _, _ = _torch_lu_unpack(LU, pivots, unpack_data=False)
-    determinant = _torch_det(A[None])
-    solved_direct = _torch_solve_cast(A[None], B)
-
-    results = (LU, pivots, info, X, solved, solved_info, singular_values, Q, R, permutation, determinant, solved_direct)
-    for result in results:
-        assert result.device.type == "mps"
 
 
 def test_is_autocast_enabled_mps():

@@ -415,65 +415,17 @@ def _torch_linalg_svdvals(input: torch.Tensor) -> torch.Tensor:
     dtype = _normalize_to_float32_or_float64(input.dtype)
 
     x = input.to(dtype)
-    # MPS has no ``svdvals`` kernel on the torch 2.5.1 floor, while torch 2.14
-    # fails to build its Metal pipeline state for inputs holding 8192 elements
-    # or more. Keep every MPS call on the host; this path reaches
-    # ``solve_pnp_dlt``.
-    if is_mps_tensor_safe(x):
+    # ``svdvals`` shares the shader-compilation ceiling documented in
+    # ``_torch_svd_cast``: on torch 2.14's MPS backend an input holding
+    # 8192 elements or more fails to build its Metal pipeline state. This path
+    # reaches ``solve_pnp_dlt``, which raised for any batch large enough to
+    # cross it.
+    if is_mps_tensor_safe(x) and x.numel() >= 8192:
         out = torch.linalg.svdvals(x.cpu()).to(x.device)
     else:
+        # Since kornia requires torch>=2.5.1, we can always use torch.linalg.svdvals
         out = torch.linalg.svdvals(x)
     return out.to(input.dtype)
-
-
-def _torch_linalg_lu_factor_ex(
-    A: torch.Tensor,
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """LU factorization, falling back to the CPU when the MPS kernel is unavailable."""
-    if is_mps_tensor_safe(A):
-        LU, pivots, info = torch.linalg.lu_factor_ex(A.cpu())
-        return LU.to(A.device), pivots.to(A.device), info.to(A.device)
-    return torch.linalg.lu_factor_ex(A)
-
-
-def _torch_linalg_lu_solve(LU: torch.Tensor, pivots: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
-    """Solve from an LU factorization, falling back to the CPU when the MPS kernel is unavailable."""
-    if is_mps_tensor_safe(B):
-        return torch.linalg.lu_solve(LU.cpu(), pivots.cpu(), B.cpu()).to(B.device)
-    return torch.linalg.lu_solve(LU, pivots, B)
-
-
-def _torch_linalg_solve_ex(A: torch.Tensor, B: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Solve from a square system, falling back to the CPU when the MPS kernel is unavailable."""
-    if is_mps_tensor_safe(A):
-        solution, info = torch.linalg.solve_ex(A.cpu(), B.cpu())
-        return solution.to(A.device), info.to(A.device)
-    return torch.linalg.solve_ex(A, B)
-
-
-def _torch_linalg_qr(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-    """QR decomposition, falling back to the CPU when the MPS kernel is unavailable."""
-    if is_mps_tensor_safe(A):
-        Q, R = torch.linalg.qr(A.cpu())
-        return Q.to(A.device), R.to(A.device)
-    return torch.linalg.qr(A)
-
-
-def _torch_lu_unpack(
-    LU: torch.Tensor, pivots: torch.Tensor, *, unpack_data: bool = True
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Unpack an LU factorization, falling back to the CPU when the MPS kernel is unavailable."""
-    if is_mps_tensor_safe(LU):
-        P, L, U = torch.lu_unpack(LU.cpu(), pivots.cpu(), unpack_data=unpack_data)
-        return P.to(LU.device), L.to(LU.device), U.to(LU.device)
-    return torch.lu_unpack(LU, pivots, unpack_data=unpack_data)
-
-
-def _torch_det(A: torch.Tensor) -> torch.Tensor:
-    """Compute determinants, falling back to the CPU when the MPS kernel is unavailable."""
-    if is_mps_tensor_safe(A):
-        return torch.det(A.cpu()).to(A.device)
-    return torch.det(A)
 
 
 def _torch_solve_cast(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
@@ -494,10 +446,7 @@ def _torch_solve_cast(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
     else:
         dtype = torch.float64
 
-    if is_mps_tensor_safe(A):
-        out = torch.linalg.solve(A.to(dtype).cpu(), B.to(dtype).cpu()).to(A.device)
-    else:
-        out = torch.linalg.solve(A.to(dtype), B.to(dtype))
+    out = torch.linalg.solve(A.to(dtype), B.to(dtype))
 
     # cast back to the input dtype
     return out.to(A.dtype)
@@ -587,16 +536,16 @@ def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor
     # a singular matrix is non-finite, and ``0 * nan`` leaks it into every shared parameter.
     # Since kornia requires torch>=2.5.1, we can always use torch.linalg.lu_factor_ex and torch.linalg.lu_solve
     A_detached = A_cast.detach()
-    LU_detached, pivots_detached, info = _torch_linalg_lu_factor_ex(A_detached)
-    X_detached = _torch_linalg_lu_solve(LU_detached, pivots_detached, B_cast.detach())
+    LU_detached, pivots_detached, info = torch.linalg.lu_factor_ex(A_detached)
+    X_detached = torch.linalg.lu_solve(LU_detached, pivots_detached, B_cast.detach())
     valid_mask: torch.Tensor = (info == 0) & _rows_finite(X_detached.to(B.dtype))
     if _has_closed_form_inverse(A):
         valid_mask = valid_mask & ~_is_singular(A_detached)
 
     eye = torch.eye(A_cast.shape[-1], device=A_cast.device, dtype=dtype)
     A_safe = torch.where(valid_mask[..., None, None], A_cast, eye)
-    A_LU, pivots, _ = _torch_linalg_lu_factor_ex(A_safe)
-    X = _torch_linalg_lu_solve(A_LU, pivots, B_cast)
+    A_LU, pivots, _ = torch.linalg.lu_factor_ex(A_safe)
+    X = torch.linalg.lu_solve(A_LU, pivots, B_cast)
 
     return X.to(B.dtype), A_LU.to(A.dtype), valid_mask
 
