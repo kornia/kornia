@@ -449,8 +449,12 @@ class TestConventionsVector(BaseTester):
         # A mask over both axes selects dim elements here, so only the key tells they are not one vector.
         full_mask = torch.zeros(2, dim, dtype=torch.bool, device=device)
         full_mask[0, :] = True
-        assert type(a[full_mask]) is torch.Tensor
-        self.assert_close(a[full_mask], data[full_mask], rtol=0, atol=0)
+        for key in (full_mask, (full_mask, Ellipsis), (Ellipsis, full_mask)):
+            assert type(a[key]) is torch.Tensor, key
+            self.assert_close(a[key], data[key], rtol=0, atol=0)
+        # An ellipsis spanning no axis does not hide the axes consumed before it.
+        assert type(a[0, slice(None), Ellipsis]) is vector_type
+        assert type(a[0, 1, Ellipsis]) is torch.Tensor
 
         single = vector_type(data[0])
         assert type(single[0]) is torch.Tensor

@@ -90,19 +90,20 @@ def _keeps_last_axis(key: Any, ndim: int) -> bool:
     items = key if isinstance(key, tuple) else (key,)
 
     def consumed(item: Any) -> int:
-        if item is None or isinstance(item, bool):
+        if item is None or item is Ellipsis or isinstance(item, bool):
             return 0
         if isinstance(item, Tensor) and item.dtype in (torch.bool, torch.uint8):
             return item.ndim
         return 1
 
-    ellipsis = [i for i, item in enumerate(items) if item is Ellipsis]
-    if ellipsis:
-        # The items after the ellipsis index the trailing axes.
+    if sum(consumed(item) for item in items) < ndim:
+        ellipsis = [i for i, item in enumerate(items) if item is Ellipsis]
+        if not ellipsis:
+            # The items index leading axes only, and new axes go before the untouched trailing ones.
+            return True
+        # The ellipsis spans at least one axis, so the items after it index the trailing axes.
         items = items[ellipsis[0] + 1 :]
-    elif sum(consumed(item) for item in items) < ndim:
-        # The items index leading axes only, and new axes go before the untouched trailing ones.
-        return True
+    # Otherwise an ellipsis spans no axis, as in ``v[mask, ...]`` with a mask over every axis.
     # The last item that consumes an axis indexes the last axis. A new axis after it has size 1, which the caller's
     # width check rejects.
     for item in reversed(items):
@@ -151,7 +152,9 @@ class TensorWrapper:
         - A torch function called on a wrapper (``torch.clone(w)``), a tensor method reached through the wrapper
           (``w.clone()``), a tensor attribute (``w.T``) and every arithmetic, bitwise and comparison operator
           (``+ - * / // % ** @ & | ^ << >>``, ``== != < <= > >=``, unary ``-``, ``+``, ``abs`` and ``~``) compute
-          the wrapped tensors' result and wrap each tensor in it by one rule. The class of an operand with a
+          the wrapped tensors' result and wrap each tensor in it, or in a list or tuple of them, by one rule. A
+          ``torch.return_types`` result (``torch.sort``, ``torch.max`` with ``dim``) is returned as torch returns it,
+          with plain tensors, since the rule would also wrap its ``indices``. The class of an operand with a
           coordinate width (``Vector2``, ``Vector3``) is taken, whichever side it is on, when the result ends in
           that width and keeps at least that operand's axes. Otherwise the class of the first operand without a
           width (``Scalar``, ``TensorWrapper``) is taken: the left operand's (``w + x``), or the right operand's
