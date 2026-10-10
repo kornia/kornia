@@ -198,29 +198,37 @@ class ImageModuleMixIn:
     def _convert_output(self, tensor_outputs: Any, output_type: str) -> Any:
         """Convert a forward output to ``output_type`` the way :meth:`convert_input_output` does.
 
+        A tuple or a list is converted element by element and keeps its container type, so a
+        one-element tuple stays a tuple. An output that is not a tensor, a tuple or a list (a dict,
+        ``None``, a Python scalar) is returned as is: the mixin's contract covers a single image
+        tensor, so there is nothing to convert (#5210).
+
         Args:
-            tensor_outputs: The forward output: a tensor, or a tuple whose elements are converted one by one.
+            tensor_outputs: The forward output: a tensor, or a tuple or list whose elements are
+                converted one by one.
             output_type: Desired output type ('pt', 'numpy', or 'pil').
 
         Returns:
-            The converted output, or a list of converted outputs for a tuple of several.
+            The converted output, or a container of converted outputs of the same type.
 
         """
-        if not isinstance(tensor_outputs, tuple):
-            tensor_outputs = (tensor_outputs,)
+        if not isinstance(tensor_outputs, (list, tuple)):
+            return self._convert_single_output(tensor_outputs, output_type)
 
-        outputs = []
-        for output in tensor_outputs:
-            if output_type == "pt":
-                outputs.append(output)
-            elif output_type == "numpy":
-                outputs.append(self.to_numpy(output))
-            elif output_type == "pil":
-                outputs.append(self.to_pil(output))
-            else:
-                raise ValueError("Output type not supported. Choose from 'pt', 'numpy', or 'pil'.")
+        converted = [self._convert_single_output(output, output_type) for output in tensor_outputs]
+        return type(tensor_outputs)(converted)
 
-        return outputs if len(outputs) > 1 else outputs[0]
+    def _convert_single_output(self, output: Any, output_type: str) -> Any:
+        """Convert one forward output, passing containers and non-tensors through unchanged."""
+        if not isinstance(output, torch.Tensor):
+            return output
+        if output_type == "pt":
+            return output
+        if output_type == "numpy":
+            return self.to_numpy(output)
+        if output_type == "pil":
+            return self.to_pil(output)
+        raise ValueError("Output type not supported. Choose from 'pt', 'numpy', or 'pil'.")
 
     def _is_valid_arg(self, arg: Any) -> bool:
         """Check if the argument is a valid type for conversion.
@@ -378,13 +386,18 @@ class ImageModuleMixIn:
         return Image.fromarray(image.permute(1, 2, 0).numpy())  # type: ignore
 
     def _detach_tensor(
-        self, output_image: Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]
-    ) -> Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]:
+        self, output_image: Union[torch.Tensor, List[Any], Tuple[Any, ...]]
+    ) -> Union[torch.Tensor, List[Any], Tuple[Any, ...]]:
         if isinstance(output_image, torch.Tensor):
             return output_image.detach()
         if isinstance(output_image, (list, tuple)):
-            return type(output_image)([self._detach_tensor(out) for out in output_image])  # type: ignore
-        raise RuntimeError(f"Unexpected object {output_image} with a type of `{type(output_image)}`")
+            # keep non-tensor elements (a dict, ``None``, a scalar) as they are: there is no tensor
+            # to detach, and the cache only renders tensor entries (#5210)
+            return type(output_image)(
+                self._detach_tensor(out) if isinstance(out, torch.Tensor) else out for out in output_image
+            )  # type: ignore
+        # outside the one-tensor contract: nothing to cache, leave the output to the caller
+        return output_image
 
     def _store_output_image(self, output_image: Any, output_type: str) -> None:
         """Cache detached outputs on their device; ``.show()`` / ``.save()`` move them to CPU on use.

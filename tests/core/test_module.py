@@ -109,15 +109,17 @@ class TestImageModuleMixIn:
         assert decorated.__doc__ == dummy_func.__doc__
         assert decorated.__wrapped__ is dummy_func
 
-    def test_convert_input_output_caches_single_output_tuple_as_tensor(self, img_module, sample_tensor):
-        # A one-element tuple is returned as its element; the cache must hold the same tensor for ``show()``.
+    def test_convert_input_output_caches_single_output_tuple_as_tuple(self, img_module, sample_tensor):
+        # A one-element tuple keeps its type on the way out; the cache holds the detached tensor for ``show()``
+        # (#5210: with features on, a module returns the same container type as with features off)
         decorated = img_module.convert_input_output(cache_output=True)(lambda tensor: (tensor,))
 
         output = decorated(sample_tensor)
 
-        assert isinstance(output, torch.Tensor)
-        assert isinstance(img_module._output_image, torch.Tensor)
-        assert torch.equal(img_module._output_image, sample_tensor)
+        assert isinstance(output, tuple)
+        assert len(output) == 1
+        assert isinstance(img_module._output_image, tuple)
+        assert torch.equal(img_module._output_image[0], sample_tensor)
 
     def test_show(self, img_module, sample_tensor):
         img_module._output_image = sample_tensor
@@ -756,11 +758,9 @@ class TestTupleOutputCache(BaseTester):
         image = torch.rand(3, 6, 8, device=device, dtype=dtype, requires_grad=True)
         result = module(image, output_type=output_type)
         cached = module._output_image
-        if count == 1:
-            result, cached = [result], [cached]
-        else:
-            assert isinstance(result, list)
-            assert isinstance(cached, list)
+        # a tuple stays a tuple, whatever its length (#5210)
+        assert isinstance(result, tuple)
+        assert isinstance(cached, tuple)
         assert len(result) == len(cached) == count
         expected = image.sigmoid().detach()
         for output, tensor in zip(result, cached):
@@ -779,6 +779,98 @@ class TestTupleOutputCache(BaseTester):
                 working = expected.cpu().to(torch.promote_types(dtype, torch.float32))
                 rendered = (working.clamp(0.0, 1.0) * 255).round().to(torch.uint8).permute(1, 2, 0).numpy()
                 np.testing.assert_array_equal(np.asarray(output), rendered)
+
+
+class TestNonTensorOutputPassthrough(BaseTester):
+    """#5210: outputs outside the one-tensor contract pass through, and the container type is kept."""
+
+    @pytest.mark.parametrize("container", [ImageModule, ImageSequential])
+    @pytest.mark.parametrize("output_type", ["pt", "numpy", "pil"])
+    def test_non_tensor_outputs_pass_through_with_features_on(self, container, output_type, device, dtype):
+        class PassthroughModule(container):
+            def forward(self, x):
+                return {"image": x, "count": float(x.mean())}
+
+        module = PassthroughModule()
+        image = torch.rand(3, 6, 8, device=device, dtype=dtype)
+        result = module(image, output_type=output_type)
+
+        # a dict is outside the one-tensor contract: it passes through untouched, whatever the
+        # output_type, and only the AugmentationSequential dict path converts its values
+        assert isinstance(result, dict)
+        assert set(result) == {"image", "count"}
+        assert isinstance(result["count"], float)
+        self.assert_close(result["image"], image)
+
+    @pytest.mark.parametrize("container", [ImageModule, ImageSequential])
+    @pytest.mark.parametrize("forward_output", [None, 0.5, {"image": 1}])
+    def test_non_container_outputs_match_features_disabled(self, container, forward_output, device, dtype):
+        class FixedModule(container):
+            def forward(self, x):
+                return forward_output
+
+        image = torch.rand(3, 6, 8, device=device, dtype=dtype)
+        enabled, disabled = FixedModule(), FixedModule()
+        disabled.disable_features = True
+
+        assert enabled(image) == disabled(image)
+
+    @pytest.mark.parametrize("container", [ImageModule, ImageSequential])
+    def test_features_flag_does_not_change_container_type(self, container, device, dtype):
+        class TupleModule(container):
+            def forward(self, x):
+                return (x, x[:1])
+
+        image = torch.rand(3, 6, 8, device=device, dtype=dtype)
+        enabled, disabled = TupleModule(), TupleModule()
+        disabled.disable_features = True
+
+        assert type(enabled(image)) is type(disabled(image))
+        assert isinstance(enabled(image), tuple)
+        assert len(enabled(image)) == 2
+
+        class OneTupleModule(container):
+            def forward(self, x):
+                return (x,)
+
+        one_enabled, one_disabled = OneTupleModule(), OneTupleModule()
+        one_disabled.disable_features = True
+
+        assert isinstance(one_enabled(image), tuple)
+        assert len(one_enabled(image)) == 1
+
+    @pytest.mark.parametrize("container", [ImageModule, ImageSequential])
+    def test_list_output_converts_elements_for_numpy(self, container, device, dtype):
+        class ListModule(container):
+            def forward(self, x):
+                return [x, x[:1]]
+
+        module = ListModule()
+        image = torch.rand(3, 6, 8, device=device, dtype=dtype)
+
+        result = module(image, output_type="numpy")
+
+        assert isinstance(result, list)
+        assert len(result) == 2
+        numpy_dtype = torch.float32 if dtype == torch.bfloat16 else dtype
+        np.testing.assert_array_equal(result[0], image.cpu().to(numpy_dtype).permute(1, 2, 0).numpy())
+        np.testing.assert_array_equal(result[1], image[:1].cpu().to(numpy_dtype).permute(1, 2, 0).numpy())
+
+    @pytest.mark.parametrize("container", [ImageModule, ImageSequential])
+    def test_mixed_tuple_output_converts_tensors_only(self, container, device, dtype):
+        class MixedModule(container):
+            def forward(self, x):
+                return (x, "label")
+
+        module = MixedModule()
+        image = torch.rand(3, 6, 8, device=device, dtype=dtype)
+
+        result = module(image, output_type="numpy")
+
+        assert isinstance(result, tuple)
+        numpy_dtype = torch.float32 if dtype == torch.bfloat16 else dtype
+        np.testing.assert_array_equal(result[0], image.cpu().to(numpy_dtype).permute(1, 2, 0).numpy())
+        assert result[1] == "label"
 
 
 class TestNamedInputConversion(BaseTester):
