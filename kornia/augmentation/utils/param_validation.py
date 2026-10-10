@@ -138,7 +138,10 @@ def _shear_bound(
     """
     shear = torch.as_tensor(shear, device=device, dtype=dtype)
     if shear.shape == torch.Size([2, 2]):
-        return shear
+        shear_x = _range_bound(shear[0], "shear-x", 0, (-360, 360), device=device, dtype=dtype)
+        shear_y = _range_bound(shear[1], "shear-y", 0, (-360, 360), device=device, dtype=dtype)
+        return torch.stack([shear_x, shear_y])
+
     shear_x = _range_bound(
         shear if shear.dim() == 0 else shear[:2], "shear-x", 0, (-360, 360), device=device, dtype=dtype
     )

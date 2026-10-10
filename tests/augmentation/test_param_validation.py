@@ -267,3 +267,33 @@ class TestParamValidation:
     def test_3d_angles_inside_the_bound_still_construct(self, ctor):
         """The bound is inclusive, and the per-axis forms are unaffected."""
         assert ctor() is not None
+
+
+class TestShearBoundTensorValidation:
+    def test_valid_tensor_shear_ranges_are_preserved(self):
+        shear = torch.tensor([[-10.0, 10.0], [-20.0, 20.0]])
+        aug = K.RandomShear(shear, p=1.0)
+        params = aug.forward_parameters((2, 3, 8, 8))
+        assert params["shear_x"].shape == (2,)
+        assert params["shear_y"].shape == (2,)
+
+    @pytest.mark.parametrize(
+        "shear",
+        [
+            [[-400.0, 10.0], [-20.0, 20.0]],
+            [[-10.0, 400.0], [-20.0, 20.0]],
+            [[float("-inf"), 10.0], [-20.0, 20.0]],
+            [[-10.0, float("inf")], [-20.0, 20.0]],
+            [[10.0, -10.0], [-20.0, 20.0]],
+        ],
+        ids=[
+            "lower-bound-too-small",
+            "upper-bound-too-large",
+            "negative-infinity",
+            "positive-infinity",
+            "reversed-range",
+        ],
+    )
+    def test_invalid_tensor_shear_ranges_raise(self, shear):
+        with pytest.raises(ValueError):
+            K.RandomShear(torch.tensor(shear), p=1.0).forward_parameters((2, 3, 8, 8))
