@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import collections.abc
 import pickle
-from typing import Any, Optional, Self
+from typing import Any, ClassVar, Optional, Self
 
 import torch
 from torch import Tensor
@@ -42,6 +42,73 @@ def _wrap(v: Any, cls: type[TensorWrapper]) -> Any:
         return type(v)(_wrap(vi, cls) for vi in v)
 
     return cls(v) if isinstance(v, Tensor) else v
+
+
+def _wrappers_in(args: Any, kwargs: Optional[dict[str, Any]] = None) -> list[TensorWrapper]:
+    """Return the wrappers among ``args``, one level into a list or tuple, then among the values of ``kwargs``."""
+    found: list[TensorWrapper] = []
+    for a in (*args, *(kwargs or {}).values()):
+        if isinstance(a, TensorWrapper):
+            found.append(a)
+        elif isinstance(a, collections.abc.Sequence) and not isinstance(a, (str, bytes)):
+            found.extend(el for el in a if isinstance(el, TensorWrapper))
+    return found
+
+
+def _result_type(result: Tensor, operands: list[TensorWrapper]) -> Optional[type[TensorWrapper]]:
+    """Return the wrapper class a tensor result takes, or ``None`` when it stays a plain tensor.
+
+    The class of an operand with a coordinate width (``Vector2``, ``Vector3``) comes before the class of one without
+    (``Scalar``), whichever side of the call either is on. It is taken only when the result still holds such
+    vectors: it ends in that width and has at least the operand's number of axes. An operation that removes an axis
+    can leave a result that ends in the width by chance (the norms of three vectors), so it returns a plain tensor.
+    A class without a width takes any result.
+    """
+    # ``__class__`` rather than ``type()``: torch 2.5.1's Dynamo cannot construct a class that ``type()`` returned.
+    for op in operands:
+        width = op.__class__._WIDTH
+        if width is not None and op._data.ndim <= result.ndim and result.shape[-1] == width:
+            return op.__class__
+    for op in operands:
+        if op.__class__._WIDTH is None:
+            return op.__class__
+    return None
+
+
+def _rewrap(v: Any, operands: list[TensorWrapper]) -> Any:
+    """Wrap each tensor in ``v``, or in a list or tuple ``v``, in the class :func:`_result_type` picks."""
+    if type(v) in {tuple, list}:
+        return type(v)(_rewrap(vi, operands) for vi in v)
+    if not isinstance(v, Tensor):
+        return v
+    cls = _result_type(v, operands)
+    return v if cls is None else cls(v)
+
+
+def _keeps_last_axis(key: Any, ndim: int) -> bool:
+    """Return whether indexing a tensor of ``ndim`` axes with ``key`` leaves its last axis last, at most sliced."""
+    items = key if isinstance(key, tuple) else (key,)
+
+    def consumed(item: Any) -> int:
+        if item is None or isinstance(item, bool):
+            return 0
+        if isinstance(item, Tensor) and item.dtype in (torch.bool, torch.uint8):
+            return item.ndim
+        return 1
+
+    ellipsis = [i for i, item in enumerate(items) if item is Ellipsis]
+    if ellipsis:
+        # The items after the ellipsis index the trailing axes.
+        items = items[ellipsis[0] + 1 :]
+    elif sum(consumed(item) for item in items) < ndim:
+        # The items index leading axes only, and new axes go before the untouched trailing ones.
+        return True
+    # The last item that consumes an axis indexes the last axis. A new axis after it has size 1, which the caller's
+    # width check rejects.
+    for item in reversed(items):
+        if consumed(item):
+            return isinstance(item, slice)
+    return True
 
 
 def _is_picklable(obj: Any) -> bool:
@@ -81,12 +148,22 @@ class TensorWrapper:
           ``__dict__`` and the copy and pickle hooks. So ``copy.copy``, ``copy.deepcopy`` and pickle return the
           wrapper's class, and ``torch.compile`` can trace a function that builds a wrapper. The array and DLPack
           hooks are forwarded, so ``numpy.asarray(w)`` and ``torch.from_dlpack(w)`` convert the wrapped tensor.
-        - Every arithmetic, bitwise and comparison operator (``+ - * / // % ** @ & | ^ << >>``,
-          ``== != < <= > >=``, unary ``-``, ``+``, ``abs`` and ``~``) computes the wrapped tensor's result and
-          wraps it in the class of the left operand when that is a wrapper (``w + x``), and otherwise in the class
-          of the right operand (``2 / w``, ``t + w``). A comparison whose right operand is an instance of a subclass
-          of the left operand's wrapper class takes the subclass, because Python tries the subclass's reflected
-          comparison first.
+        - A torch function called on a wrapper (``torch.clone(w)``), a tensor method reached through the wrapper
+          (``w.clone()``), a tensor attribute (``w.T``) and every arithmetic, bitwise and comparison operator
+          (``+ - * / // % ** @ & | ^ << >>``, ``== != < <= > >=``, unary ``-``, ``+``, ``abs`` and ``~``) compute
+          the wrapped tensors' result and wrap each tensor in it by one rule. The class of an operand with a
+          coordinate width (``Vector2``, ``Vector3``) is taken, whichever side it is on, when the result ends in
+          that width and keeps at least that operand's axes. Otherwise the class of the first operand without a
+          width (``Scalar``, ``TensorWrapper``) is taken: the left operand's (``w + x``), or the right operand's
+          when the left one is not a wrapper (``2 / w``, ``t + w``). A comparison whose right operand is an
+          instance of a subclass of the left operand's class takes the subclass, because Python tries the
+          subclass's reflected comparison first. When no operand qualifies, the result is a plain tensor. So
+          ``Scalar * Vector3`` is a ``Vector3``, and ``torch.linalg.norm(v, dim=-1)`` is a plain tensor, also when
+          it happens to end in 3. The rule reads shapes only: a result of the same shape stays in the class, as
+          the transpose of a ``(3, 3)`` ``Vector3`` does.
+        - Indexing returns the indexed tensor in the wrapper's class. For a subclass with a coordinate width, it
+          does so only when the key leaves the coordinate axis last, at most sliced, and the result ends in the
+          width (``v[0]``, ``v[mask]``); otherwise it returns a plain tensor (``v[..., 0]``, ``v[:, 0]``).
         - An in-place operator (``+=``, ``-=``, ``*=``, ``/=``, ``//=``, ``%=``, ``**=``, ``&=``, ``|=``, ``^=``,
           ``<<=``, ``>>=``) updates the wrapped tensor in place and returns the same wrapper, so an alias sees the
           change. The wrapper does not copy the tensor it is built from, so the update also changes that tensor,
@@ -102,6 +179,9 @@ class TensorWrapper:
     """
 
     __slots__ = ("_data", "used_attrs", "used_calls")
+
+    # The size of the last axis a result needs to keep a subclass's class; ``None`` takes any result.
+    _WIDTH: ClassVar[Optional[int]] = None
 
     # Names ``__getattr__`` never forwards to the wrapped tensor: forwarding a slot recurses on an instance whose
     # slots are not set yet (Dynamo builds one while it traces the constructor, and looks up ``__dict__`` on it),
@@ -183,14 +263,18 @@ class TensorWrapper:
 
         # Get value from underlying tensor
         val = getattr(self._data, name)
-        # A tensor method is returned as is, so its result is not wrapped. Deciding this from the class keeps
-        # ``_wrap`` from asking for the bound method's type, which Dynamo does not know when the tensor is an
-        # intermediate, nor on torch 2.5.1 for any tensor.
+        # A tensor method returns a function that wraps the method's result like a torch function's. Deciding
+        # this from the class keeps the bound method's type out of it, which Dynamo does not know when the tensor
+        # is an intermediate, nor on torch 2.5.1 for any tensor.
         if callable(getattr(Tensor, name, None)):
-            return val
 
-        # Wrap the result if it's a tensor
-        return _wrap(val, type(self))
+            def method(*args: Any, **kwargs: Any) -> Any:
+                out = val(*_unwrap(args), **{k: _unwrap(v) for k, v in kwargs.items()})
+                return _rewrap(out, [self, *_wrappers_in(args, kwargs)])
+
+            return method
+
+        return _rewrap(val, [self])
 
     def __setattr__(self, name: str, value: Any) -> None:
         """Set attribute on underlying tensor."""
@@ -206,9 +290,13 @@ class TensorWrapper:
         """Set item on underlying tensor."""
         self._data[key] = value
 
-    def __getitem__(self, key: Any) -> TensorWrapper:
-        """Get item from underlying tensor."""
-        return _wrap(self._data[key], type(self))
+    def __getitem__(self, key: Any) -> Any:
+        """Get item from underlying tensor, see the Convention block."""
+        out = self._data[key]
+        width = self.__class__._WIDTH
+        if width is None or (_keeps_last_axis(key, self._data.ndim) and out.ndim >= 1 and out.shape[-1] == width):
+            return self.__class__(out)
+        return out
 
     @classmethod
     def __torch_function__(
@@ -222,23 +310,18 @@ class TensorWrapper:
         if kwargs is None:
             kwargs = {}
 
-        # Find instances of this class in the arguments
-        args_of_this_cls: list[TensorWrapper] = []
-        for a in args:
-            if isinstance(a, cls):
-                args_of_this_cls.append(a)
-            elif isinstance(a, collections.abc.Sequence) and not isinstance(a, (str, bytes)):
-                args_of_this_cls.extend(el for el in a if isinstance(el, cls))
+        operands = _wrappers_in(args, kwargs)
 
         # Track function usage
-        for a in args_of_this_cls:
-            a.used_calls.add(func)
+        for a in operands:
+            if isinstance(a, cls):
+                a.used_calls.add(func)
 
         # Unwrap arguments and call the function
         unwrapped_args = _unwrap(args)
         unwrapped_kwargs = {k: _unwrap(v) for k, v in kwargs.items()}
 
-        return _wrap(func(*unwrapped_args, **unwrapped_kwargs), cls)
+        return _rewrap(func(*unwrapped_args, **unwrapped_kwargs), operands)
 
     def __add__(self, other: Any) -> TensorWrapper:
         """Add operation."""
