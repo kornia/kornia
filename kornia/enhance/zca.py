@@ -316,8 +316,12 @@ def zca_mean(
     dtype = inp.dtype
     if dtype in (torch.float16, torch.bfloat16):
         # Autocast would downcast the matrix products again, undoing the promotion.
-        with torch.autocast(device_type="cpu", enabled=False), torch.autocast(device_type="cuda", enabled=False):
-            T, mean, T_inv = _zca_mean(inp_permute.float(), num_features, unbiased, eps, return_inverse)
+        with (
+            torch.autocast(device_type="cpu", enabled=False),
+            torch.autocast(device_type="cuda", enabled=False),
+            torch.autocast(device_type="mps", enabled=False),
+        ):
+            T, mean, T_inv = _zca_mean(inp_permute, num_features, unbiased, eps, return_inverse)
         return T.to(dtype), mean.to(dtype), T_inv.to(dtype) if T_inv is not None else None
 
     return _zca_mean(inp_permute, num_features, unbiased, eps, return_inverse)
@@ -328,6 +332,9 @@ def _zca_mean(
 ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
     """Fit ZCA in the working dtype after validating and moving the sample axis."""
     N = inp_permute.shape[0]
+    half_input = inp_permute.dtype in (torch.float16, torch.bfloat16)
+    if half_input:
+        inp_permute = inp_permute.float()
 
     mean: torch.Tensor = torch.mean(inp_permute, dim=0, keepdim=True)
 
@@ -335,9 +342,14 @@ def _zca_mean(
 
     inp_center_flat: torch.Tensor = inp_permute.reshape((N, num_features)) - mean
 
+    divisor = float(N - 1 if unbiased else N)
+    if half_input:
+        # Bfloat16 shares float32's exponent range, so divide before the scatter can overflow.
+        inp_center_flat = inp_center_flat / divisor**0.5
     cov = inp_center_flat.t().mm(inp_center_flat)
 
-    cov = cov / float(N - 1 if unbiased else N)
+    if not half_input:
+        cov = cov / divisor
 
     U, S, _ = _torch_svd_cast(cov)
 
