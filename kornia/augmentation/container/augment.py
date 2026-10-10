@@ -746,6 +746,14 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             # TODO: Some more behaviour for AugmentationSequential needs to be revisited later
             # e.g. We convert only images, etc.
             self._check_output_type(output_type)
+            non_images = [key.name for key in data_keys if key not in _IMG_OPTIONS and key not in _MSK_OPTIONS]
+            if output_type != "pt" and non_images:
+                # a box or keypoint tensor converted like an image (moved to channels-last, or made a PIL image) is
+                # not a box any more, so only images and masks take the conversion
+                raise ValueError(
+                    f"output_type={output_type!r} converts images and masks only, and data_keys also hold "
+                    f"{non_images}. Call with output_type='pt'."
+                )
             # run the forward pass in tensor mode and convert the output to ``output_type`` only after the image
             # has been cached, so ``.show()`` / ``.save()`` never receive a NumPy array or PIL images
             tensor_output = self._call_converted(
@@ -770,7 +778,11 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             if not is_exporting():
                 image = self._select_output_image(tensor_output, data_keys, original_keys)
                 self._output_image = image.detach() if isinstance(image, torch.Tensor) else image
-            _output_image = self._convert_output(tensor_output, output_type)
+            _output_image = (
+                {key: self._convert_output(value, output_type) for key, value in tensor_output.items()}
+                if isinstance(tensor_output, dict)
+                else self._convert_output(tensor_output, output_type)
+            )
         else:
             _output_image = super(ImageSequential, self).__call__(*inputs, **kwargs)
         return _output_image

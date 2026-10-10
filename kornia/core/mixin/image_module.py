@@ -403,13 +403,10 @@ class ImageModuleMixIn:
         if isinstance(output_image, torch.Tensor):
             return output_image.detach()
         if isinstance(output_image, (list, tuple)):
-            # keep non-tensor elements (a dict, ``None``, a scalar) as they are: there is no tensor
-            # to detach, and the cache only renders tensor entries (#5210)
-            return _rebuild_container(
-                output_image,
-                [self._detach_tensor(out) if isinstance(out, torch.Tensor) else out for out in output_image],
-            )
-        # outside the one-tensor contract: nothing to cache, leave the output to the caller
+            return _rebuild_container(output_image, [self._detach_tensor(out) for out in output_image])
+        if isinstance(output_image, dict):
+            return {key: self._detach_tensor(value) for key, value in output_image.items()}
+        # ``None`` or a Python scalar: nothing to detach
         return output_image
 
     def _store_output_image(self, output_image: Any, output_type: str) -> None:
