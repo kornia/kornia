@@ -232,7 +232,7 @@ class TestMakeUpright(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.make_upright, (img,))
 
-    def test_zero_padding_laf_stays_zero_NNNN(self, device, dtype):
+    def test_zero_padding_laf_stays_zero_5724(self, device, dtype):
         laf = torch.zeros(2, 3, 2, 3, device=device, dtype=dtype)
         laf[0, 0] = torch.tensor([[2.0, 1.0, 5.0], [0.5, 3.0, 7.0]])
         laf[1, 2] = torch.tensor([[1.0, 0.0, 9.0], [0.0, 4.0, 2.0]])
@@ -241,7 +241,7 @@ class TestMakeUpright(BaseTester):
         assert torch.equal(kornia.feature.laf_is_filled(out), expected_filled)
         assert torch.equal(out[~expected_filled], torch.zeros(4, 2, 3, device=device, dtype=dtype))
 
-    def test_zero_padding_laf_keeps_gradients_finite_NNNN(self, device):
+    def test_zero_padding_laf_keeps_gradients_finite_5724(self, device):
         laf = torch.zeros(1, 2, 2, 3, device=device)
         laf[0, 1] = torch.tensor([[2.0, 1.0, 5.0], [0.5, 3.0, 7.0]])
         laf.requires_grad_(True)
@@ -605,7 +605,7 @@ class TestLAF2pts(BaseTester):
         laf = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.laf_to_boundary_points, (laf))
 
-    def test_circle_is_built_in_the_laf_dtype_NNNN(self, device):
+    def test_circle_is_built_in_the_laf_dtype_5724(self, device):
         if torch.device(device).type == "mps":
             pytest.skip("MPS does not support float64")
         n_pts = 7
@@ -1769,7 +1769,7 @@ class TestGetLAF3pts(BaseTester):
 
 class TestGetLAFFrom3pts(BaseTester):
     @pytest.mark.parametrize("shape", [(1, 3, 3, 3), (1, 3, 2, 2), (3, 2, 3), (1, 1, 3, 2, 3)])
-    def test_wrong_shape_is_rejected_NNNN(self, device, shape):
+    def test_wrong_shape_is_rejected_5724(self, device, shape):
         with pytest.raises(ShapeError):
             kornia.feature.laf_from_three_points(torch.ones(*shape, device=device))
 

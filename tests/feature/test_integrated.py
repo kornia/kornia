@@ -284,7 +284,7 @@ class TestDescriptorModuleIsNotModified(BaseTester):
         return ref(patches.view(B * N, C, H, W)).view(B, N, -1)
 
     @pytest.mark.parametrize("train", [True, False])
-    def test_module_is_unchanged_and_output_is_the_eval_cast_copy_NNNN(self, device, train):
+    def test_module_is_unchanged_and_output_is_the_eval_cast_copy_5724(self, device, train):
         if torch.device(device).type == "mps":
             pytest.skip("MPS does not support float64")
         img, lafs = self._inputs(device, torch.float64)
@@ -296,7 +296,7 @@ class TestDescriptorModuleIsNotModified(BaseTester):
         assert out.dtype == torch.float64
         self.assert_close(out, expected)
 
-    def test_lafdescriptor_keeps_every_submodule_mode_NNNN(self, device):
+    def test_lafdescriptor_keeps_every_submodule_mode_5724(self, device):
         img, lafs = self._inputs(device, torch.float32)
         module = _TrainModeProbe().to(device).train()
         module.drop.eval()  # mixed modes are restored one by one
@@ -305,7 +305,7 @@ class TestDescriptorModuleIsNotModified(BaseTester):
         self._assert_state_equal(before, self._state(module))
         self.assert_close(out, self._reference(module, img, lafs, 16))
 
-    def test_float64_module_with_a_float32_image_NNNN(self, device):
+    def test_float64_module_with_a_float32_image_5724(self, device):
         if torch.device(device).type == "mps":
             pytest.skip("MPS does not support float64")
         img, lafs = self._inputs(device, torch.float32)
@@ -317,7 +317,7 @@ class TestDescriptorModuleIsNotModified(BaseTester):
         assert out.dtype == torch.float32
         self.assert_close(out, self._reference(module, img, lafs, 16))
 
-    def test_gradients_reach_the_module_parameters_NNNN(self, device):
+    def test_gradients_reach_the_module_parameters_5724(self, device):
         if torch.device(device).type == "mps":
             pytest.skip("MPS does not support float64")
         img, lafs = self._inputs(device, torch.float64)
@@ -331,7 +331,7 @@ class TestDescriptorModuleIsNotModified(BaseTester):
 
     @pytest.mark.parametrize("kind", ["script_hardnet", "trace_sift"])
     @pytest.mark.parametrize("image_dtype", [torch.float32, torch.float64])
-    def test_torchscript_descriptors_NNNN(self, device, kind, image_dtype):
+    def test_torchscript_descriptors_5724(self, device, kind, image_dtype):
         if torch.device(device).type == "mps" and image_dtype == torch.float64:
             pytest.skip("MPS does not support float64")
         img, lafs = self._inputs(device, image_dtype)
@@ -355,7 +355,7 @@ class TestDescriptorModuleIsNotModified(BaseTester):
         self.assert_close(out, reference(patches.view(B * N, C, H, W)).view(B, N, -1))
         assert out.dtype == image_dtype
 
-    def test_empty_lafs_leave_the_module_alone_NNNN(self, device):
+    def test_empty_lafs_leave_the_module_alone_5724(self, device):
         if torch.device(device).type == "mps":
             pytest.skip("MPS does not support float64")
         img, _ = self._inputs(device, torch.float32)
@@ -369,7 +369,7 @@ class TestDescriptorModuleIsNotModified(BaseTester):
 
 
 class TestLocalFeature(BaseTester):
-    def test_int_scaling_coef_NNNN(self, device, dtype):
+    def test_int_scaling_coef_5724(self, device, dtype):
         img = torch.rand(1, 1, 48, 64, device=device, dtype=dtype)
         det = ScaleSpaceDetector(10)
         desc = LAFDescriptor(SIFTDescriptor(32), 32)
@@ -382,7 +382,7 @@ class TestLocalFeature(BaseTester):
         self.assert_close(descs_int, descs_float)
 
     @pytest.mark.parametrize("coef", [0, 0.0, -1, -0.5])
-    def test_non_positive_scaling_coef_message_NNNN(self, coef):
+    def test_non_positive_scaling_coef_message_5724(self, coef):
         with pytest.raises(ValueError, match="should be > 0"):
             LocalFeature(ScaleSpaceDetector(10), SIFTDescriptor(32), coef)
 

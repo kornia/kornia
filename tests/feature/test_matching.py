@@ -609,7 +609,7 @@ def _adalam_scene(device, H=240, W=320, n_in=400, n_out=200, n_extra2=37, D=32, 
 
 
 class TestLightGlueMatcherSize(BaseTester):
-    def test_swapped_hw_names_hw_NNNN(self, device):
+    def test_swapped_hw_names_hw_5724(self, device):
         # LightGlueMatcher takes hw as (height, width); a random-weight LightGlue is enough to reach the range check
         matcher = LightGlueMatcher.__new__(LightGlueMatcher)
         torch.nn.Module.__init__(matcher)
@@ -629,7 +629,7 @@ class TestLightGlueMatcherSize(BaseTester):
 
 
 class TestAdalamInputs(BaseTester):
-    def test_dm_distances_reproduce_the_default_matches_NNNN(self, device):
+    def test_dm_distances_reproduce_the_default_matches_5724(self, device):
         d1, d2, l1, l2, hw = _adalam_scene(device)
         assert len(d1) != len(d2)
         q0, i0 = match_adalam(d1, d2, l1, l2, hw1=hw, hw2=hw)
@@ -639,7 +639,7 @@ class TestAdalamInputs(BaseTester):
         assert torch.equal(i0.sort(0).values, i1.sort(0).values)
         self.assert_close(q0.sort(0).values, q1.sort(0).values, low_tolerance=True)
 
-    def test_dm_drives_the_putative_matches_NNNN(self, device):
+    def test_dm_drives_the_putative_matches_5724(self, device):
         d1, d2, l1, l2, hw = _adalam_scene(device)
         _, i0 = match_adalam(d1, d2, l1, l2, hw1=hw, hw2=hw)
         dm = torch.cdist(d1, d2)
@@ -651,7 +651,7 @@ class TestAdalamInputs(BaseTester):
         flipped_rows = i1[:, 0] < 200
         assert (i1[flipped_rows, 1] != i1[flipped_rows, 0]).all()
 
-    def test_dm_ratio_comes_from_dm_NNNN(self, device):
+    def test_dm_ratio_comes_from_dm_5724(self, device):
         d1, d2, l1, l2, hw = _adalam_scene(device)
         dm = torch.cdist(d1, d2)
         _, i0 = match_adalam(d1, d2, l1, l2, hw1=hw, hw2=hw, dm=dm)
@@ -660,7 +660,7 @@ class TestAdalamInputs(BaseTester):
         _, i1 = match_adalam(d1, d2, l1, l2, hw1=hw, hw2=hw, dm=(dm**2 + 10.0).sqrt())
         assert len(i1) < len(i0) - 100
 
-    def test_dm_wrong_shape_NNNN(self, device):
+    def test_dm_wrong_shape_5724(self, device):
         d1, d2, l1, l2, hw = _adalam_scene(device)
         with pytest.raises(Exception, match="dm must have shape"):
             match_adalam(d1, d2, l1, l2, hw1=hw, hw2=hw, dm=torch.zeros(len(d1), len(d2) - 1, device=device))
@@ -668,7 +668,7 @@ class TestAdalamInputs(BaseTester):
         with pytest.raises(Exception, match="dm must have shape"):
             match_adalam(d1[:1], d2, l1[:, :1], l2, hw1=hw, hw2=hw, dm=torch.zeros(5, 5, device=device))
 
-    def test_hw_list_equals_tuple_NNNN(self, device):
+    def test_hw_list_equals_tuple_5724(self, device):
         d1, d2, l1, l2, (H, W) = _adalam_scene(device)
         # an image much larger than the keypoint spread changes the seed radius, so a list that is ignored differs
         tuple_out = match_adalam(d1, d2, l1, l2, hw1=(4 * H, 4 * W), hw2=(4 * H, 4 * W))
@@ -678,19 +678,19 @@ class TestAdalamInputs(BaseTester):
         assert torch.equal(tuple_out[1], list_out[1])
 
     @pytest.mark.parametrize("config", [{"ransac_iters": 128}, {}])
-    def test_device_follows_input_with_config_NNNN(self, device, config):
+    def test_device_follows_input_with_config_5724(self, device, config):
         d1, d2, l1, l2, hw = _adalam_scene(device)
         quality, idxs = match_adalam(d1, d2, l1, l2, config=config, hw1=hw, hw2=hw)
         assert idxs.device == d1.device
         assert quality.device == d1.device
 
-    def test_module_device_follows_input_NNNN(self, device):
+    def test_module_device_follows_input_5724(self, device):
         d1, d2, l1, l2, _ = _adalam_scene(device)
         quality, idxs = GeometryAwareDescriptorMatcher("adalam")(d1, d2, l1, l2)
         assert idxs.device == d1.device
         assert quality.device == d1.device
 
-    def test_explicit_device_is_kept_NNNN(self, device):
+    def test_explicit_device_is_kept_5724(self, device):
         d1, d2, l1, l2, hw = _adalam_scene(device)
         _, idxs = match_adalam(d1, d2, l1, l2, config={"device": torch.device("cpu")}, hw1=hw, hw2=hw)
         assert idxs.device.type == "cpu"

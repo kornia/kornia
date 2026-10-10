@@ -38,7 +38,7 @@ class TestHyNet(BaseTester):
         assert out.shape == (1, 128)
 
     @pytest.mark.parametrize("shape", [(2, 1, 40, 40), (2, 1, 32, 31), (2, 3, 32, 32), (1, 32, 32)])
-    def test_wrong_patch_shape_is_rejected_NNNN(self, device, shape):
+    def test_wrong_patch_shape_is_rejected_5724(self, device, shape):
         # without the check a 40x40 patch silently produced a (2, 1152) descriptor
         with pytest.raises(ShapeError):
             HyNet().to(device)(torch.ones(*shape, device=device))

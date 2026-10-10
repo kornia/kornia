@@ -202,7 +202,7 @@ class TestOnnxLightGlue:
         assert "Descriptors' dimensions do not match" in str(e)
 
 
-def test_onnx_lightglue_keypoint_range_message_NNNN():
+def test_onnx_lightglue_keypoint_range_message_5724():
     # the range check runs before the session is used, so a model without a session reaches it
     model = object.__new__(OnnxLightGlue)
     model.device = torch.device("cpu")
