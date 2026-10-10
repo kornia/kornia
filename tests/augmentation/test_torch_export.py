@@ -186,3 +186,22 @@ def test_torch_export_mask_uses_the_call_image_dtype_4478(case: str) -> None:
     mask = get_mask(exported.module()(*args))
     assert mask.dtype == torch.float64
     assert torch.equal(mask, expected), f"{case}: {mask.flatten().tolist()} vs {expected.flatten().tolist()}"
+
+
+@pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+@pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
+@pytest.mark.parametrize("image_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+@pytest.mark.device_agnostic
+def test_torch_export_integer_mask_labels_4478(image_dtype: torch.dtype) -> None:
+    """Export retains both the integer label precision and the exact-representability assertion."""
+    image = torch.ones(1, 1, 2, 2, dtype=image_dtype)
+    mask = torch.tensor([257, 2049, 26001, -2049]).reshape(1, 1, 2, 2)
+    seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+    exported = torch.export.export(seq, (image, mask)).module()
+    output = exported(image, mask)[1]
+    assert output.dtype == mask.dtype
+    assert torch.equal(output, mask.flip(-1))
+    label = 2**53 + 1 if image_dtype == torch.float64 else 2**24 + 1
+    with pytest.raises(RuntimeError, match="Integer mask labels"):
+        exported(image, torch.full_like(mask, label))

@@ -27,10 +27,11 @@ from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmenta
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor
 from kornia.constants import DataKey, Resample
+from kornia.core._compat import torch_version_lt
 from kornia.core.external import PILImage as Image
 from kornia.core.external import numpy as np
 from kornia.core.ops import eye_like
-from kornia.core.utils import is_autocast_enabled, is_exporting
+from kornia.core.utils import _normalize_to_float32_or_float64, is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 from kornia.image.utils import image_to_tensor
@@ -147,15 +148,17 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           ``x' = W - 1 - x`` and ``y' = H - 1 - y`` for every key, as :func:`~kornia.geometry.transform.hflip`
           does. Labels pass through geometric steps untouched.
         - masks are resampled with nearest interpolation by default (see ``extra_args``; padding can still add the
-          fill value) in the image's working dtype and come back in their own dtype; integer labels that the
-          working dtype cannot represent are rounded (`#4478 <https://github.com/kornia/kornia/issues/4478>`_).
+          fill value) and come back in their own dtype. Floating masks use the image's working dtype; integer
+          masks use at least float32 (float64 with a float64 image). Integer labels not exactly representable
+          in that working dtype raise ``RuntimeError`` instead of being rounded. On accelerators an asynchronous
+          assertion may report at the next synchronization; MPS before torch 2.13 checks on the host.
         - a ``mask`` argument can be a list of tensors with different channel counts, but its batch handling
           has limitations. Each list entry uses only ``batch_prob[i]`` as its gate, including for intensity
           children. Per-sample list tensors are unsupported by warp operations, and full-batch tensors in that
           list can become desynchronized from the image when the gate differs across samples. A list longer
           than the batch raises ``IndexError``. Use separate ``mask`` data keys for separate full-batch masks.
           ``.inverse()`` takes the list the forward pass returned and inverts it element by element with the
-          same per-entry gate. A flip round-trips each entry, subject to the working-dtype rounding above; other
+          same per-entry gate. A flip round-trips each entry, subject to the working-dtype requirements above; other
           warps lose the pixels they move out of the frame and, when they resample, restore the rest only
           approximately. Tracked in `#4477 <https://github.com/kornia/kornia/issues/4477>`_.
         - the ``mask``, box and ``keypoints`` handlers of a geometric child, or of a custom
@@ -909,8 +912,30 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         working = dtype if dtype is not None else torch.float
         if isinstance(arg, list):
             # A list keeps its per-entry gate semantics (see the class docstring); it is not broadcast.
-            return [a.to(working) for a in arg]
-        return self._broadcast_single_mask(arg.to(working), image_batch)
+            return [self._cast_mask(a, working) for a in arg]
+        return self._broadcast_single_mask(self._cast_mask(arg, working), image_batch)
+
+    @staticmethod
+    def _cast_mask(mask: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
+        """Convert masks without silently rounding integer class labels."""
+        if not mask.is_floating_point():
+            dtype = _normalize_to_float32_or_float64(dtype)
+        converted = mask.to(dtype)
+        # Smaller integer types (and bool) are exactly representable in float32. For wider types, even float64
+        # cannot represent every int64 label, so check the actual round trip instead of a conservative bound.
+        if mask.dtype in (torch.int32, torch.int64, torch.uint32, torch.uint64):
+            exact = (converted.to(mask.dtype) == mask).all()
+            message = (
+                f"Integer mask labels must be exactly representable in {dtype}. "
+                "Use a float64 image where supported or remap labels to smaller integers."
+            )
+            if mask.device.type == "mps" and torch_version_lt(2, 13, 0):
+                # Older MPS has no asynchronous assertion kernel. Do not skip a correctness check there.
+                if not bool(exact):
+                    raise RuntimeError(message)
+            else:
+                torch._assert_async(exact, message)
+        return converted
 
     @staticmethod
     def _broadcast_single_mask(mask: torch.Tensor, image_batch: Optional[int]) -> torch.Tensor:
