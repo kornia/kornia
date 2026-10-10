@@ -86,6 +86,41 @@ class TestZCA(BaseTester):
             self.assert_close(inverse, torch.tensor([[std]], device=device, dtype=input_dtype))
             self.assert_close(kornia.enhance.zca_whiten(data), (data - 127.5) / std)
 
+    @pytest.mark.device_agnostic
+    def test_xpu_covariance_accumulation_amp(self):
+        """XPU autocast must not downcast a finite float32 covariance to float16."""
+        if not torch.xpu.is_available():
+            pytest.skip("XPU is unavailable")
+        data = torch.tensor([[-255.0], [255.0]], device="xpu", dtype=torch.float16).repeat(2, 1)
+        std = math.sqrt(4 * 255.0**2 / 3 + 1e-6)
+        with torch.autocast(device_type="xpu", dtype=torch.float16):
+            transform, mean, inverse = kornia.enhance.zca_mean(data, return_inverse=True)
+            assert torch.is_autocast_enabled("xpu")
+            self.assert_close(transform, torch.full_like(transform, 1 / std))
+            self.assert_close(mean, torch.zeros_like(mean))
+            self.assert_close(inverse, torch.full_like(inverse, std))
+            self.assert_close(kornia.enhance.zca_whiten(data), data / std)
+
+    def test_covariance_accumulation_jit(self, device, dtype):
+        """Scripted fitting preserves its constant-device autocast contexts."""
+        data = torch.tensor([[-127.5], [127.5]], device=device, dtype=dtype).repeat(4, 1)
+        scripted = torch.jit.script(kornia.enhance.zca_mean)
+        actual = scripted(data, return_inverse=True)
+        expected = kornia.enhance.zca_mean(data, return_inverse=True)
+        for actual_tensor, expected_tensor in zip(actual, expected):
+            self.assert_close(actual_tensor, expected_tensor)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_covariance_accumulation_meta(self, half_dtype):
+        """Shape-only fitting works on devices without an autocast context."""
+        data = torch.empty(4, 2, device="meta", dtype=half_dtype)
+        transform, mean, inverse = kornia.enhance.zca_mean(data, return_inverse=True)
+        assert transform.shape == inverse.shape == (2, 2)
+        assert mean.shape == (1, 2)
+        assert transform.device == mean.device == inverse.device == data.device
+        assert transform.dtype == mean.dtype == inverse.dtype == half_dtype
+
     @pytest.mark.parametrize("unbiased", [True, False])
     def test_covariance_accumulation_bfloat16_range(self, device, dtype, unbiased):
         """A finite covariance must not overflow its unnormalized scatter."""

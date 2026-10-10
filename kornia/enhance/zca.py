@@ -316,12 +316,20 @@ def zca_mean(
     dtype = inp.dtype
     if dtype in (torch.float16, torch.bfloat16):
         # Autocast would downcast the matrix products again, undoing the promotion.
-        with (
-            torch.autocast(device_type="cpu", enabled=False),
-            torch.autocast(device_type="cuda", enabled=False),
-            torch.autocast(device_type="mps", enabled=False),
-        ):
+        if torch.jit.is_scripting():
+            # TorchScript requires constant device names and recognizes only these autocast backends.
+            with (
+                torch.autocast(device_type="cpu", enabled=False),
+                torch.autocast(device_type="cuda", enabled=False),
+                torch.autocast(device_type="mps", enabled=False),
+            ):
+                T, mean, T_inv = _zca_mean(inp_permute, num_features, unbiased, eps, return_inverse)
+        elif inp.device.type == "meta":
+            # Meta tensors have no autocast context and carry only shape information.
             T, mean, T_inv = _zca_mean(inp_permute, num_features, unbiased, eps, return_inverse)
+        else:
+            with torch.autocast(device_type=inp.device.type, enabled=False):
+                T, mean, T_inv = _zca_mean(inp_permute, num_features, unbiased, eps, return_inverse)
         return T.to(dtype), mean.to(dtype), T_inv.to(dtype) if T_inv is not None else None
 
     return _zca_mean(inp_permute, num_features, unbiased, eps, return_inverse)
