@@ -5544,6 +5544,31 @@ class TestEulerFromQuaternion(BaseTester):
 
         self.assert_close(rot_in, rot_back, low_tolerance=True)
 
+    @pytest.mark.parametrize("sign", [1.0, -1.0], ids=["pitch_plus_pi_over_2", "pitch_minus_pi_over_2"])
+    def test_convention_near_pole_pitch_is_not_snapped_to_gimbal_lock_3993(self, device, dtype, sign):
+        # Regression for kornia#3993: the gimbal-lock band must stay narrow. A pitch 3 * sqrt(eps)
+        # away from the pole is still resolvable -- cos(pitch) is ~3 * sqrt(eps), above the
+        # 2 * sqrt(eps) detection threshold -- so it must come back through the regular atan2 path,
+        # with its own roll, not snapped to (0, +-pi/2, yaw). Widening the threshold factor to 4 or
+        # more snaps it: measured at float32, pitch = pi/2 - 1e-3 then round trips with max error
+        # 1.0e-3 for every draw, against 3.0e-4 through the regular path.
+        _skip_if_dtype_unavailable(device, dtype)
+
+        offset = 3.0 * torch.finfo(dtype).eps ** 0.5
+        pitch_in = sign * (torch.pi / 2 - offset)
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        roll_in = (torch.rand(50, generator=generator, dtype=torch.float64) * 2 - 1) * torch.pi
+        yaw_in = (torch.rand(50, generator=generator, dtype=torch.float64) * 2 - 1) * torch.pi
+        roll_in = roll_in.to(device=device, dtype=dtype)
+        yaw_in = yaw_in.to(device=device, dtype=dtype)
+        pitch_batch = torch.full_like(roll_in, pitch_in)
+
+        roll_out, _, _ = euler_from_quaternion(*quaternion_from_euler(roll_in, pitch_batch, yaw_in))
+
+        assert (roll_out != 0).all(), (
+            f"kornia#3993: pitch {offset:.3g} away from the pole was snapped to gimbal lock (roll pinned to 0)"
+        )
+
     def test_convention_euler_from_quaternion_normalizes_its_input_3953(self, device, dtype):
         # Intended behavior: the euler angles of a quaternion depend only on the rotation it
         # represents, so rescaling the quaternion must not change them -- which is what the
