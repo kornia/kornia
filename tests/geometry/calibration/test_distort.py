@@ -22,7 +22,7 @@ from kornia.geometry.calibration.distort import distort_points, tilt_projection
 from kornia.geometry.calibration.undistort import undistort_points
 from kornia.geometry.camera.distortion_affine import distort_points_affine
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 from testing.geometry.linalg import euler_angles_to_rotation_matrix
 
 
@@ -96,6 +96,7 @@ class TestZeroTiltGradients(BaseTester):
         dist = torch.zeros(1, 14, device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(op, (points, K, dist), requires_grad=(False, False, True))
 
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     @pytest.mark.parametrize("batch_shape", [(), (2, 3)])
     @pytest.mark.parametrize("num_coeffs", [4, 14])
     def test_export(self, op, batch_shape, num_coeffs, device, dtype):
