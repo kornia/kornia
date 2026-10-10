@@ -954,7 +954,7 @@ class Affine(nn.Module):
         self._batch_size = batch_size
 
         super().__init__()
-        device, dtype = _extract_device_dtype([angle, translation, scale_factor])
+        device, dtype = _extract_device_dtype([angle, translation, scale_factor, shear])
 
         if angle is None:
             angle = torch.zeros(batch_size, device=device, dtype=dtype)

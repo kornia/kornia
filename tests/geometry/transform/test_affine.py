@@ -752,6 +752,20 @@ class TestAffine2d(BaseTester):
         expected = kornia.geometry.transform.scale(input, scale_factor)
         self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
+    @pytest.mark.parametrize("batch_size", [1, 3])
+    def test_affine_shear_only_5662(self, device, dtype, batch_size):
+        shear = torch.tensor([[0.1, -0.2]], device=device, dtype=dtype).repeat(batch_size, 1)
+        image = torch.arange(batch_size * 30, device=device, dtype=dtype).reshape(batch_size, 1, 5, 6) / 30
+        # Explicit identity components define the same shear without relying on constructor defaults.
+        expected = kornia.geometry.transform.Affine(
+            angle=torch.zeros(batch_size, device=device, dtype=dtype),
+            translation=torch.zeros(batch_size, 2, device=device, dtype=dtype),
+            scale_factor=torch.ones(batch_size, 2, device=device, dtype=dtype),
+            shear=shear,
+        )(image)
+        actual = kornia.geometry.transform.Affine(shear=shear)(image)
+        self.assert_close(actual, expected)
+
     @pytest.mark.parametrize("as_module", [False, True])
     def test_convention_shear_raw_factors_5661(self, device, dtype, as_module):
         # Both off-diagonal factors act on the original coordinates, about pixel (0, 0).
@@ -792,9 +806,8 @@ class TestAffine2d(BaseTester):
         expected = torch.zeros_like(image)
         row, col = (6, 2) if custom_center else (8, 3)
         expected[0, 0, row, col] = 1
-        # Explicit typed zero rotation avoids the separate shear-only dtype/device inference bug (#5662).
         transform = kornia.geometry.transform.Affine(
-            angle=angle, shear=shear, center=center if custom_center else None, mode="nearest", align_corners=True
+            shear=shear, center=center if custom_center else None, mode="nearest", align_corners=True
         )
         self.assert_close(transform(image), expected)
 
@@ -805,9 +818,7 @@ class TestAffine2d(BaseTester):
         image = torch.zeros(1, 1, 9, 9, device=device, dtype=dtype)
         image[0, 0, 8, 4] = 1
         sheared = kornia.geometry.transform.shear(image, shear, mode="nearest", align_corners=True)
-        # a typed zero angle, as above (#5662)
-        angle = torch.zeros(1, device=device, dtype=dtype)
-        affine = kornia.geometry.transform.Affine(angle=angle, shear=shear, mode="nearest", align_corners=True)
+        affine = kornia.geometry.transform.Affine(shear=shear, mode="nearest", align_corners=True)
         assert sheared[0, 0, 8].argmax().item() == 8
         assert affine(image)[0, 0, 8].argmax().item() == 2
 
@@ -1032,6 +1043,7 @@ class TestTransformModuleBuffers(BaseTester):
             ("Rotate", "angle", [17.0]),
             ("Scale", "scale_factor", [[0.8, 1.2]]),
             ("Affine", "angle", [17.0]),
+            ("Affine", "shear", [[0.1, -0.05]]),
             ("Translate", "translation", [[0.4, -0.2]]),
             ("Shear", "shear", [[0.1, -0.05]]),
         ],

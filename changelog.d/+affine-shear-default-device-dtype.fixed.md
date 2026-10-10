@@ -1,0 +1,1 @@
+`Affine(shear=...)` now creates its default rotation, translation and scale on the shear tensor's device and dtype, allowing shear-only transforms on accelerators and with non-default floating-point dtypes.
