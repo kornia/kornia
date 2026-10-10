@@ -154,11 +154,8 @@ def _escape(text: str) -> str:
 def _operator_cell(case: dict) -> str:
     op = case["operator"] or case["name"]
     ref = case.get("ref")
-    if ref:
-        # ``~`` shows only the last component; the full path is in the link target.
-        label = f":py:obj:`{op} <{ref}>`"
-    else:
-        label = f"``{op}``"
+    # ``~`` shows only the last component; the full path is in the link target.
+    label = f":py:obj:`{op} <{ref}>`" if ref else f"``{op}``"
     if case.get("variant") and case["operator"]:
         label += f" ``[{case['variant']}]``"
     return label

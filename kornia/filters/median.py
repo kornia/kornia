@@ -204,11 +204,8 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_
     features = features.view(b, c, ky * kx, h, w)  # BxCx(K_h * K_w)xHxW
 
     # compute the median along the feature axis
-    if is_exporting():
-        # ``median.dim`` has no ONNX lowering; a sort picks the same (lower-middle) element.
-        median = features.sort(dim=2)[0][:, :, (ky * kx - 1) // 2]
-    else:
-        median = features.median(dim=2)[0]
+    # ``median.dim`` has no ONNX lowering, so while exporting a sort picks the same (lower-middle) element.
+    median = features.sort(dim=2)[0][:, :, (ky * kx - 1) // 2] if is_exporting() else features.median(dim=2)[0]
     if invalid is not None:
         median = median.masked_fill(invalid, float("nan"))
     return median

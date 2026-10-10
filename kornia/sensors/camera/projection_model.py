@@ -60,11 +60,8 @@ class Z1Projection:
         """
         xy = points.data[..., :2]
         z = points.z
-        if len(z.shape):
-            uv = xy / z.unsqueeze(-1)
-        else:
-            # For scalar z, xy is 1-D, so no transpose needed
-            uv = xy * 1 / z
+        # For scalar z, xy is 1-D, so no unsqueeze is needed
+        uv = xy / z.unsqueeze(-1) if len(z.shape) else xy * 1 / z
         return Vector2(uv)
 
     def unproject(self, points: Vector2, depth: torch.Tensor | float) -> Vector3:

@@ -302,10 +302,7 @@ html_baseurl = "https://kornia.readthedocs.io/en/latest/"
 
 # Git ref that the "view/edit source" links and the ``linkcode`` extension point at.
 rtd_version = os.environ.get("READTHEDOCS_VERSION")
-if rtd_version and rtd_version not in {"latest", "stable"}:
-    code_ref = rtd_version
-else:
-    code_ref = "main"
+code_ref = rtd_version if rtd_version and rtd_version not in {"latest", "stable"} else "main"
 
 # Changing sidebar title to Kornia
 html_title = "Kornia"
