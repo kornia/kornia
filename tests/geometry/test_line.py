@@ -968,6 +968,34 @@ class TestFitLine(BaseTester):
 
         self.assert_close(torch_optimizer(op)(points, weights), op(points, weights))
 
+    @pytest.mark.parametrize("dim", [3, 4])
+    def test_fit_line_weighted_principal_axis_of_weighted_scatter(self, device, dtype, dim):
+        # For D >= 3 the direction is the principal axis of sum_i w_i (p_i - c)(p_i - c)^T about the weighted
+        # centroid c. The weights are uneven, so a scatter weighted by w**2, sqrt(w) or 1 tilts the axis by 0.08 or
+        # more in some component. The float64 oracle is computed on the CPU (MPS has no float64) from the
+        # dtype-rounded inputs; the sign of a D >= 3 direction is unspecified.
+        points = torch.tensor(
+            [
+                [0.0, 0.0, 0.3, 1.0],
+                [1.0, 0.4, -0.2, 0.5],
+                [2.5, 0.9, 0.1, -0.4],
+                [3.0, 1.6, 0.4, 0.2],
+                [4.2, 1.7, -0.3, 0.9],
+                [0.5, 2.0, 1.0, -1.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )[None, :, :dim]
+        weights = torch.tensor([[0.25, 1.0, 1.0, 1.0, 0.25, 8.0]], device=device, dtype=dtype)
+
+        p, w = points[0].cpu().double(), weights[0].cpu().double()
+        centred = p - (w[:, None] * p).sum(0) / w.sum()
+        axis = torch.linalg.eigh((w[:, None] * centred).T @ centred).eigenvectors[:, -1]
+
+        direction = fit_line(points, weights).direction[0]
+        axis = axis * torch.sign(direction.cpu().double() @ axis)
+        self.assert_close(direction, axis.to(device=device, dtype=dtype))
+
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
         pass
