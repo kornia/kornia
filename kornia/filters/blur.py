@@ -26,7 +26,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_autocast_enabled, is_compiling
 
-from .filter import filter2d, filter2d_separable
+from .filter import _to_floating, filter2d, filter2d_separable
 from .kernels import _unpack_2d_ks, get_box_kernel1d, get_box_kernel2d
 
 _HAS_MKLDNN = torch.backends.mkldnn.is_available()
@@ -128,8 +128,8 @@ def box_blur(
         - ``kernel_size`` is ``(kH, kW)``. An even extent is anchored at ``(k - 1) // 2`` and the output keeps the
           input's size; see the Convention block on :func:`~kornia.filters.filter2d` for the anchor and the border
           modes.
-        - Known defect: an integer input gets a kernel in its own dtype, whose ``1 / k`` taps truncate to 0, so on
-          the CPU a uint8 image comes back as zeros (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+        - An integer or bool input is blurred in float32 and the output is float32, as in
+          :func:`~kornia.filters.filter2d`.
 
     Args:
         input: the image to blur with shape :math:`(B,C,H,W)`.
@@ -155,6 +155,8 @@ def box_blur(
 
     """
     KORNIA_CHECK_IS_TENSOR(input)
+    # the box kernel is built in the input's dtype, where an integer dtype truncates its 1 / k taps (#5155)
+    input = _to_floating(input)
 
     if _box_blur_pool_eligible(input, kernel_size, separable):
         ky, kx = _unpack_2d_ks(kernel_size)

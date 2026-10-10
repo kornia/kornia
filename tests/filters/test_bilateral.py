@@ -631,20 +631,20 @@ class TestConventionsBilateralBlur(BaseTester):
                 assert out.shape == image.shape
                 self.assert_close(out, expected)
 
-    def test_wart_bilateral_blur_integer_image_wraps_its_differences_5155(self, device):
-        """bilateral_blur subtracts uint8 values in uint8, so 10 - 250 wraps and blends edges it should keep (#5155)."""
-        if device.type not in ("cpu", "mps"):
-            pytest.skip("#5155 is pinned on the CPU and MPS only")
-        # Columns alternate 10 and 250. A colour sigma of 50 keeps them apart, but the wrapped difference
-        # 10 - 250 = 16 (mod 256) makes the 10s look close to the 250s, which come back near 162.
-        # Snippet used to generate expected:
-        #   s = torch.tensor([10, 250], dtype=torch.uint8).repeat(8, 5)[None, None]
-        #   print(bilateral_blur(s, 3, 50.0, (1.0, 1.0))[0, 0, 3, :4])  # [10.0, 162.3, 10.0, 162.3]
+    def test_convention_bilateral_blur_integer_image_keeps_its_edges_5155(self, device):
+        """An integer image is differenced in float32, so 10 - 250 does not wrap and the stripes stay apart (#5155)."""
+        # Columns alternate 10 and 250. A colour sigma of 50 keeps them apart; differenced in uint8, 10 - 250 wrapped
+        # to 16 and the 250s came back near 162.
         stripes = torch.tensor([10, 250], device=device, dtype=torch.uint8).repeat(8, 5)[None, None]
         out = bilateral_blur(stripes, 3, 50.0, (1.0, 1.0))
-        assert out[0, 0, :, 1::2].max() < 200
-        # the same filter on the same values in floating point keeps the stripes
-        self.assert_close(bilateral_blur(stripes.float(), 3, 50.0, (1.0, 1.0)), stripes.float(), rtol=0.0, atol=0.01)
+        assert out.dtype == torch.float32
+        self.assert_close(out, bilateral_blur(stripes.float(), 3, 50.0, (1.0, 1.0)))
+        self.assert_close(out, stripes.float(), rtol=0.0, atol=0.01)
+        # an integer guidance is differenced in the input's dtype (float32 where MPS has no float64)
+        wide = torch.float32 if device.type == "mps" else torch.float64
+        guided = joint_bilateral_blur(stripes.to(wide), stripes, 3, 50.0, (1.0, 1.0))
+        assert guided.dtype == wide
+        self.assert_close(guided, stripes.to(wide), rtol=0.0, atol=0.01)
 
     def test_convention_bilateral_blur_wider_sigma_space_keeps_the_input_dtype_5521(self, device, dtype):
         """A tensor sigma_space or guidance of a wider dtype is cast to the input's, as sigma_color is (#5521)."""
