@@ -5368,7 +5368,7 @@ class TestEulerFromQuaternion(BaseTester):
         # naming could reproduce. The return is a TUPLE of three separate tensors, not a stacked
         # (*, 3) tensor, so it cannot be indexed or sliced like one; that is pinned first.
         # The angle is 0.6 rad rather than a quarter turn so the pin stays far from the pitch =
-        # +-pi/2 gimbal lock where this function does not recover the input at all.
+        # +-pi/2 gimbal lock, where only yaw - roll or yaw + roll is returned, not each angle.
         # Snippet used to generate the inputs (stdlib only):
         #   import math
         #   for each axis: q = (cos(0.3), sin(0.3) * axis) with 0.3 = theta / 2

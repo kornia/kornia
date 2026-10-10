@@ -1266,14 +1266,17 @@ def euler_from_quaternion(
         - the input is normalised with
           :func:`~kornia.geometry.conversions.normalize_quaternion` first, so a
           rescaled quaternion returns the same triple
-        - at gimbal lock (``|pitch| = pi/2``) only one combined angle is
-          defined, so ``pitch`` is returned as exactly ``±pi/2``, ``roll`` is
-          pinned to ``0`` and the remaining degree of freedom is folded into
-          ``yaw``; the returned triple reconstructs the input rotation
+        - at gimbal lock (``|pitch| = pi/2``, detected as ``cos(pitch)`` below
+          ``2 * sqrt(eps)`` of the dtype) only one combined angle is defined:
+          ``yaw - roll`` at ``+pi/2`` and ``yaw + roll`` at ``-pi/2``. There
+          ``pitch`` is returned as exactly ``±pi/2``, ``roll`` as ``0`` and the
+          combined angle as ``yaw``, in ``[-pi, pi]`` and the same for ``q`` and
+          ``-q``. The returned triple represents the input rotation, but the
+          input triple itself cannot be recovered
 
     .. note::
-        ``pitch``'s gradient is finite at gimbal lock, including exactly at ``pitch = +-pi/2``;
-        ``pitch`` and ``roll`` have zero gradient there, since both are pinned to constants.
+        The gradient is finite at gimbal lock, including exactly at ``pitch = ±pi/2``: there ``roll``
+        and ``pitch`` are constants with zero gradient, and all of the gradient is in ``yaw``.
 
     Args:
         w: quaternion :math:`q_w` coefficient.
@@ -1316,20 +1319,15 @@ def euler_from_quaternion(
     # Gimbal lock: at pitch = ±pi/2 the cos(pitch) factor shared by the roll and
     # yaw atan2 arguments collapses to ~0, so each becomes atan2(0, 0) and the
     # returned triple no longer represents the rotation (#3950). Only one combined
-    # angle survives there -- roll - yaw at +pi/2 and roll + yaw at -pi/2 -- so pin
-    # roll to 0 and fold that degree of freedom into yaw, which reconstructs the
-    # input rotation. cos(pitch) is measured as hypot(sinr_cosp, cosr_cosp) rather
-    # than sqrt(1 - sinp**2): both quantities are proportional to cos(pitch), but
-    # the latter cancels an already-rounded sinp against itself, so at a true pole
-    # it lands within a handful of ulps of any fixed threshold instead of at 0 --
-    # measured, sqrt(1 - sinp**2) misses 9-13 of every 500 uniformly sampled poles
-    # per (dtype, sign) cell at threshold 2*sqrt(eps), because the tie is exact at
-    # 4 ulps of rounding in |sinp| and no factor separates that tie from a
-    # genuinely resolvable near-pole pitch (they are only ~4x apart). hypot has no
-    # such cancellation: it separates poles from resolvable pitches by 4-8 orders
-    # of magnitude and is never worse than the old estimator away from them.
-    # Threshold 2*sqrt(eps) is unchanged from the original sweep -- only the
-    # quantity it is compared against changed.
+    # angle survives there -- yaw - roll at +pi/2 and yaw + roll at -pi/2 -- so pin
+    # roll to 0 and return that angle as yaw, which reconstructs the input rotation.
+    # cos(pitch) is measured as hypot(sinr_cosp, cosr_cosp) rather than
+    # sqrt(1 - sinp**2): the latter cancels an already-rounded sinp against itself
+    # and lands close to the threshold at a true pole (up to 6.0e-4 against 6.9e-4
+    # over 20000 random float32 poles), while hypot stays at rounding level there
+    # (below 4e-7 in float32). Inside the band the snapped triple is off by about
+    # the pitch offset, while the atan2 path's error grows like eps / cos(pitch);
+    # the two are about equal at cos(pitch) = 1.5*sqrt(eps), just inside the band.
     cos_pitch = torch.hypot(sinr_cosp, cosr_cosp)
     gimbal = cos_pitch < 2.0 * torch.finfo(w.dtype).eps ** 0.5
     up = sinp > 0.0
