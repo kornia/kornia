@@ -1,0 +1,1 @@
+`RandAugment`, `AutoAugment` and `TrivialAugment` can now be pickled and saved with `torch.save`. The default magnitude mapping was a local function, so every policy failed to pickle. A restored policy replays the same draw under the same seed.

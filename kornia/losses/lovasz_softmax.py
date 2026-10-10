@@ -205,7 +205,10 @@ class LovaszSoftmaxLoss(nn.Module):
 
     def __init__(self, weight: Optional[Tensor] = None) -> None:
         super().__init__()
-        self.weight = weight
+        if isinstance(weight, nn.Parameter):
+            self.weight = weight
+        else:
+            self.register_buffer("weight", weight, persistent=False)
 
     def forward(self, pred: Tensor, target: Tensor) -> Tensor:
         """Compute multi-class Lovasz-Softmax loss.
