@@ -106,8 +106,8 @@ def filter2d(
           keeps its sign.
         - ``border_type``, ``padding`` and ``behaviour`` are case-insensitive: ``'REFLECT'``, ``'SAME'`` and
           ``'CONV'`` are ``'reflect'``, ``'same'`` and ``'conv'``.
-        - The kernel is cast to the input's dtype and device and stays differentiable; the output has the input's
-          dtype.
+        - For a floating input, the kernel is cast to the input's dtype and device and stays differentiable, and the
+          output has the input's dtype.
         - An integer or bool input is filtered in float32 and the output is float32, on the input's scale: a uint8
           image is not rescaled to :math:`[0, 1]`, and the result is not rounded or clamped back to the integer
           range (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).

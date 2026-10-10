@@ -599,7 +599,10 @@ Filtering
 :doc:`kornia.filters </filters>` follows torch's vocabulary: its kernels are correlated by default, ``border_type``
 takes the :func:`torch.nn.functional.pad` mode names, and an even kernel is anchored where
 ``F.conv2d(padding='same')`` anchors it. The correlation matches ``cv2.filter2D`` and ``scipy.ndimage.correlate``; the
-border names and the even-kernel anchor do not.
+border names and the even-kernel anchor do not. An integer or bool image is filtered in float32 and comes back as
+float32 on its own scale, neither rescaled to :math:`[0, 1]` nor rounded and clamped to its dtype, where
+``cv2.filter2D(img, -1, k)``, ``cv2.GaussianBlur`` and ``cv2.blur`` return a uint8 image rounded and saturated to
+uint8; a floating image keeps its dtype.
 
 - :func:`~kornia.filters.filter2d`, :func:`~kornia.filters.filter3d` and :func:`~kornia.filters.fft_conv`
   **correlate** by default, as ``cv2.filter2D`` and ``scipy.ndimage.correlate`` do; ``behaviour='conv'`` flips the
@@ -680,9 +683,8 @@ one:
   ``scipy.ndimage.sobel(x, axis=-1, mode='nearest')`` equal channel 0 of ``spatial_gradient(x, normalized=False)``;
   OpenCV's default ``BORDER_REFLECT_101`` differs on the outermost rows and columns.
   ``skimage.filters.sobel(x, mode='nearest')`` equals ``sqrt(2) * sobel(x, eps=0)``.
-- For floating inputs, :func:`~kornia.filters.laplacian` is normalized by default too, but by the stencil's absolute
-  sum, 16 for size 3: ``laplacian(x, 3)`` estimates :math:`3 \nabla^2 / 16`, and ``normalized=False`` the
-  :math:`3 \nabla^2` above. See its Convention block for the integer-input defect.
+- :func:`~kornia.filters.laplacian` is normalized by default too, but by the stencil's absolute sum, 16 for size 3:
+  ``laplacian(x, 3)`` estimates :math:`3 \nabla^2 / 16`, and ``normalized=False`` the :math:`3 \nabla^2` above.
 - :func:`~kornia.filters.canny` compares its thresholds with the **unnormalized** Sobel magnitude of the blurred
   image, about eight times what :func:`~kornia.filters.sobel` returns by default, up to the ``eps`` inside the square
   root. For a **single-channel grayscale** uint8 image ``img``, ``cv2.Canny(img, t1, t2, L2gradient=True)`` corresponds
