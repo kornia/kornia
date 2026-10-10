@@ -146,6 +146,86 @@ class TestAddWeighted(BaseTester):
         )  # to shave time on gradcheck
         self.gradcheck(kornia.enhance.AddWeighted(alpha, beta, gamma), (src1, src2))
 
+    @pytest.mark.device_agnostic
+    def test_tensor_coefficients_follow_dtype_conversion(self):
+        alpha = torch.tensor(0.25)
+        beta = torch.tensor(0.5)
+        gamma = torch.tensor(0.125)
+
+        module = kornia.enhance.AddWeighted(alpha, beta, gamma)
+        module = module.to(dtype=torch.float64)
+
+        assert module.alpha.dtype == torch.float64
+        assert module.beta.dtype == torch.float64
+        assert module.gamma.dtype == torch.float64
+
+        src1 = torch.ones(2, 3, dtype=torch.float64)
+        src2 = torch.full((2, 3), 2.0, dtype=torch.float64)
+
+        actual = module(src1, src2)
+        expected = src1 * 0.25 + src2 * 0.5 + 0.125
+
+        torch.testing.assert_close(actual, expected)
+        assert actual.dtype == torch.float64
+
+    def test_tensor_coefficients_follow_device_and_dtype(self, device, dtype):
+        alpha = torch.tensor(0.25)
+        beta = torch.tensor(0.5)
+        gamma = torch.tensor(0.125)
+
+        module = kornia.enhance.AddWeighted(alpha, beta, gamma)
+        module = module.to(device=device, dtype=dtype)
+
+        for coefficient in (module.alpha, module.beta, module.gamma):
+            assert coefficient.device == torch.device(device)
+            assert coefficient.dtype == dtype
+
+        src1 = torch.ones(2, 3, device=device, dtype=dtype)
+        src2 = torch.full((2, 3), 2.0, device=device, dtype=dtype)
+
+        actual = module(src1, src2)
+        expected = src1 * module.alpha + src2 * module.beta + module.gamma
+
+        torch.testing.assert_close(actual, expected)
+
+    @pytest.mark.device_agnostic
+    def test_tensor_coefficients_are_non_persistent_buffers(self):
+        module = kornia.enhance.AddWeighted(
+            torch.tensor(0.25),
+            torch.tensor(0.5),
+            torch.tensor(0.125),
+        )
+
+        assert set(module._buffers) == {"alpha", "beta", "gamma"}
+        assert module.state_dict() == {}
+
+    @pytest.mark.device_agnostic
+    def test_explicit_parameter_remains_trainable(self):
+        alpha = torch.nn.Parameter(torch.tensor(0.25))
+        module = kornia.enhance.AddWeighted(alpha, 0.5, 0.125)
+
+        assert module.alpha is alpha
+        assert dict(module.named_parameters())["alpha"] is alpha
+        assert "alpha" in module.state_dict()
+
+        module = module.to(dtype=torch.float64)
+        src1 = torch.ones(2, 3, dtype=torch.float64)
+        src2 = torch.full((2, 3), 2.0, dtype=torch.float64)
+
+        module(src1, src2).sum().backward()
+
+        assert module.alpha.grad is not None
+        assert torch.isfinite(module.alpha.grad).all()
+
+    @pytest.mark.device_agnostic
+    def test_python_scalar_coefficients_remain_supported(self):
+        module = kornia.enhance.AddWeighted(0.25, 0.5, 0.125)
+
+        assert module.alpha == 0.25
+        assert module.beta == 0.5
+        assert module.gamma == 0.125
+        assert module.state_dict() == {}
+
     def test_module(self, device, dtype):
         src1, src2, alpha, beta, gamma = self.get_input(device, dtype, size=3)
         inputs = (src1, alpha, src2, beta, gamma)
