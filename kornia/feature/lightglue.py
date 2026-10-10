@@ -447,8 +447,9 @@ def filter_matches(scores: torch.Tensor, th: float) -> Tuple[torch.Tensor, torch
 
 
 _KEYPOINT_RANGE_MSG = (
-    "Keypoints must lie inside the image: normalized by the image size they have to be in [-1, 1]. The image size "
-    "is (width, height) and the keypoints are (x, y) pixel coordinates; a (height, width) size, or keypoints "
+    "Keypoints must lie inside the image: normalized by the image size they have to be in [-1, 1]. The keypoints are "
+    "(x, y) pixel coordinates. The image size is (width, height) for the ``image_size`` of LightGlue and "
+    "OnnxLightGlue, and (height, width) for the ``hw1`` / ``hw2`` of LightGlueMatcher; the wrong order, or keypoints "
     "detected on a differently sized image, put them out of range."
 )
 

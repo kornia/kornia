@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import copy
 import itertools
 import math
 import warnings
@@ -83,18 +84,28 @@ def _lightglue_keypoint_scale_ori(lafs: torch.Tensor, feature_name: str) -> Tupl
 def _run_descriptor(module: nn.Module, patches: torch.Tensor) -> torch.Tensor:
     """Run ``module`` in eval mode on ``patches`` without changing the module.
 
-    The parameters and buffers are cast to the device and dtype of ``patches`` for the call only (a no-op when they
-    already match, and differentiable, so gradients reach the module's own parameters), and the ``training`` flag of
-    every submodule is restored afterwards. Under export the module is already placed and is called directly.
+    A module whose floating-point parameters and buffers already sit on the device and dtype of ``patches`` is called
+    directly. Otherwise they are cast for the call only (through ``torch.func.functional_call``, which is
+    differentiable, so gradients reach the module's own parameters; a TorchScript module, which that API refuses,
+    runs as a cast copy). The ``training`` flag of every submodule is restored afterwards. Under export the module is
+    already placed and is called directly.
     """
     modes = [m.training for m in module.modules()]
     module.eval()
     try:
         if is_exporting():
             return module(patches)
+        tensors = list(itertools.chain(module.named_parameters(), module.named_buffers()))
+        needs_cast = any(
+            t.device != patches.device or (t.is_floating_point() and t.dtype != patches.dtype) for _, t in tensors
+        )
+        if not needs_cast:
+            return module(patches)
+        if isinstance(module, torch.jit.ScriptModule):
+            return copy.deepcopy(module).to(patches)(patches)
         state = {
             name: t.to(device=patches.device, dtype=patches.dtype) if t.is_floating_point() else t.to(patches.device)
-            for name, t in itertools.chain(module.named_parameters(), module.named_buffers())
+            for name, t in tensors
         }
         return torch.func.functional_call(module, state, (patches,))
     finally:
@@ -112,9 +123,9 @@ def get_laf_descriptors(
     r"""Get local descriptors, corresponding to LAFs (keypoints).
 
     The descriptor runs in eval mode, with its floating-point parameters and buffers cast to the device and dtype of
-    ``img`` for the call; the descriptors come back on that device and dtype. The module itself is not changed: its
-    device, dtype, parameters and the train/eval mode of every submodule stay as the caller set them, and gradients
-    still reach its parameters.
+    ``img`` for the call (a TorchScript module is called on a cast copy); the descriptors come back on that device and
+    dtype. The module itself is not changed: its device, dtype, parameters and the train/eval mode of every submodule
+    stay as the caller set them, and gradients still reach its parameters.
 
     Args:
         img: image features with shape :math:`(B,C,H,W)`.

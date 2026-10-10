@@ -62,9 +62,11 @@ def match_adalam(
 
     See :cite:`AdaLAM2020` for more details.
 
-    The putative matches are the nearest neighbours in the distance matrix ``dm``, kept when they are mutual
-    nearest neighbours (``force_seed_mnn``), with the ratio between the two smallest distances as their score.
-    If ``dm`` is not provided, the squared L2 distances between the descriptors are used.
+    The putative matches are the nearest neighbours in the distance matrix ``dm``, scored by the ratio of the two
+    smallest distances; with ``force_seed_mnn`` only mutual nearest neighbours can be seeds. ``dm`` holds plain
+    distances, like the ``dm`` of :func:`~kornia.feature.match_nn` and the other matchers: AdaLAM squares it
+    internally (its thresholds are tuned for squared distances), so ``dm=torch.cdist(desc1, desc2)`` gives the
+    matches of ``dm=None``, where the squared L2 distances between the descriptors are used.
 
     The computation runs on the device of ``desc1`` unless ``config`` sets ``"device"``.
 
@@ -74,7 +76,7 @@ def match_adalam(
         lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
         lafs2: LAFs of a shape :math:`(1, B2, 2, 3)`.
         config: dict with AdaLAM config
-        dm: torch.Tensor containing the distances from each descriptor in desc1
+        dm: torch.Tensor containing the non-negative distances (not squared) from each descriptor in desc1
           to each descriptor in desc2, shape of :math:`(B1, B2)`. Smaller is better.
         hw1: Height/width of image.
         hw2: Height/width of image.
@@ -265,9 +267,9 @@ class AdalamFilter:
                    Expected an array with shape (num_keypoints_in_source/destination_image,)
             s2: Same as s1 for destination.
             return_dist: if True, inverse confidence value is also outputted.
-            dm: distances from each descriptor in d1 to each descriptor in d2, shape
-                (num_keypoints_in_source_image, num_keypoints_in_destination_image); smaller is better. If None,
-                the squared L2 distances between d1 and d2 are used.
+            dm: non-negative distances (not squared) from each descriptor in d1 to each descriptor in d2, shape
+                (num_keypoints_in_source_image, num_keypoints_in_destination_image); smaller is better. They are
+                squared internally, like the L2 distances used when dm is None.
 
         Returns:
             Filtered putative matches.
@@ -300,6 +302,12 @@ class AdalamFilter:
         else:
             _s1, _s2 = s1, s2
 
+        if dm is not None:
+            KORNIA_CHECK(
+                tuple(dm.shape) == (len(_d1), len(_d2)),
+                f"dm must have shape {(len(_d1), len(_d2))}, got {tuple(dm.shape)}",
+            )
+
         if (len(_d2) <= 1) or (len(_d1) <= 1):
             idxs, dists = _no_match(_d1)
             if return_dist:
@@ -309,11 +317,7 @@ class AdalamFilter:
         if dm is None:
             distmat = dist_matrix(_d1, _d2, is_normalized=False)
         else:
-            KORNIA_CHECK(
-                tuple(dm.shape) == (len(_d1), len(_d2)),
-                f"dm must have shape {(len(_d1), len(_d2))}, got {tuple(dm.shape)}",
-            )
-            distmat = torch.as_tensor(dm, device=self.config["device"], dtype=torch.float32)
+            distmat = torch.as_tensor(dm, device=self.config["device"], dtype=torch.float32).pow(2)
         dd12, nn12 = torch.topk(distmat, k=2, dim=1, largest=False)  # (n1, 2)
 
         putative_matches = nn12[:, 0]

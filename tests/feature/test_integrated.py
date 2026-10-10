@@ -27,6 +27,7 @@ from kornia.core._compat import torch_version_le
 from kornia.feature import (
     DescriptorMatcher,
     GFTTAffNetHardNet,
+    HardNet,
     KeyNetHardNet,
     LAFDescriptor,
     LocalFeature,
@@ -327,6 +328,32 @@ class TestDescriptorModuleIsNotModified(BaseTester):
             assert p.grad.dtype == torch.float32
             assert torch.isfinite(p.grad).all()
         assert module.proj.weight.grad.abs().sum() > 0
+
+    @pytest.mark.parametrize("kind", ["script_hardnet", "trace_sift"])
+    @pytest.mark.parametrize("image_dtype", [torch.float32, torch.float64])
+    def test_torchscript_descriptors_NNNN(self, device, kind, image_dtype):
+        if torch.device(device).type == "mps" and image_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        img, lafs = self._inputs(device, image_dtype)
+        patch = torch.rand(2, 1, 32, 32, device=device)
+        if kind == "script_hardnet":
+            module = torch.jit.script(HardNet(False).to(device).train())
+        else:
+            module = torch.jit.trace(SIFTDescriptor(32).to(device), patch)
+        before = self._state(module)
+        if kind == "trace_sift" and image_dtype == torch.float64:
+            # the trace holds float32 constants, so a cast copy fails exactly as the module cast in place did
+            with pytest.raises(RuntimeError, match="Double but found Float"):
+                get_laf_descriptors(img, lafs, module, 32)
+            self._assert_state_equal(before, self._state(module))
+            return
+        out = get_laf_descriptors(img, lafs, module, 32)
+        self._assert_state_equal(before, self._state(module))
+        reference = copy.deepcopy(module).to(img).eval()
+        patches = extract_patches_from_pyramid(img, lafs, 32)
+        B, N, C, H, W = patches.shape
+        self.assert_close(out, reference(patches.view(B * N, C, H, W)).view(B, N, -1))
+        assert out.dtype == image_dtype
 
     def test_empty_lafs_leave_the_module_alone_NNNN(self, device):
         if torch.device(device).type == "mps":

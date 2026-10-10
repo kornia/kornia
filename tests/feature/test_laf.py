@@ -620,7 +620,7 @@ class TestLAF2pts(BaseTester):
         )
         assert pts.dtype == torch.float64
         # a float32 circle cast to float64 is off by ~1e-8 here
-        torch.testing.assert_close(pts[0, 0], expected, rtol=0, atol=1e-14)
+        self.assert_close(pts[0, 0], expected, rtol=0, atol=1e-14)
 
     def test_matches_explicit_affine_reference(self, device, dtype):
         """The boundary points are the LAF affine map applied to the origin + unit-circle basis.
