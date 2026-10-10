@@ -1009,14 +1009,21 @@ class TestMultiResolutionDetector(BaseTester):
         # A graded mask used to be multiplied into the response before the NMS and the sub-pixel
         # step, which moved maxima and their refined positions. It now weights only the score of a
         # maximum found in the unweighted response: same detections, same positions, ranked by weight.
-        torch.manual_seed(0)
-        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
-        det = self._make_detector(num_features=2000).to(device, dtype)
+        # Isolated interior peaks give a known candidate set, independent of random Hessian
+        # responses or spurious maxima created by removing the border before NMS.
+        inp = torch.zeros(1, 1, 64, 64, device=device, dtype=dtype)
+        inp[0, 0, 20, 20], inp[0, 0, 20, 44] = 4.0, 3.0
+        inp[0, 0, 44, 20], inp[0, 0, 44, 44] = 2.0, 1.0
+        # Weighting the response before NMS would move the first peak onto this shoulder.
+        inp[0, 0, 20, 21] = 3.99
+        cfg = get_default_detector_config()
+        cfg.update(pyramid_levels=0, up_levels=0)
+        det = MultiResolutionDetector(torch.nn.Identity(), num_features=2000, config=cfg).to(device, dtype)
         lafs_plain, resps_plain = det(inp)
         ramp = torch.linspace(0.2, 1.0, 64, device=device, dtype=dtype).view(1, 1, 1, 64).expand(1, 1, 64, 64)
         lafs, resps = det(inp, ramp.contiguous())
         keep_plain, keep = resps_plain[0] != 0, resps[0] != 0
-        assert int(keep.sum()) == int(keep_plain.sum()) > 20
+        assert int(keep.sum()) == int(keep_plain.sum()) == 4
         # Same set of frames, up to the order the weighted score imposes.
 
         def order(t: torch.Tensor) -> torch.Tensor:
@@ -1186,10 +1193,16 @@ class TestMultiResolutionDetector(BaseTester):
         # `detect` used to run its final top-K only when the levels had produced *more* slots than
         # `num_features`, so a short result came back in level order with each level's own padding
         # left in place and the real detections scattered through it.
-        det = self._make_detector(num_features=6000, pyramid_levels=2, up_levels=0).to(device, dtype)
-        resps, _lafs = det.detect(torch.rand(1, 1, 48, 48, device=device, dtype=dtype))
+        cfg = get_default_detector_config()
+        cfg.update(pyramid_levels=2, up_levels=0)
+        det = MultiResolutionDetector(torch.nn.Identity(), num_features=6000, config=cfg).to(device, dtype)
+        # A central impulse survives at the original and first downsampled levels, so this
+        # exercises moving a later level's detection ahead of the first level's padding.
+        inp = torch.zeros(1, 1, 48, 48, device=device, dtype=dtype)
+        inp[0, 0, 24, 24] = 1.0
+        resps, _lafs = det.detect(inp)
         found = int((resps[0] != 0).sum())
-        assert 0 < found < 6000, f"expected a short result, got {found} detections"
+        assert found == 2, f"expected one detection on each of two levels, got {found}"
         assert bool((resps[0][:found] != 0).all()), "the detections do not come first"
         assert torch.equal(resps[0], torch.sort(resps[0], descending=True).values)
 
