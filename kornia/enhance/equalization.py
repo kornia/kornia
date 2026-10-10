@@ -263,7 +263,7 @@ def _compute_luts(
     luts: torch.Tensor = torch.cumsum(histos, 1) * lut_scale
     luts = luts.clamp(0, num_bins - 1)
     if not diff:
-        luts = luts.floor()  # to get the same values as converting to int maintaining the type
+        luts = luts.round()  # match OpenCV's round-to-nearest LUT quantization
     return luts.view((b, gh, gw, c, num_bins))
 
 
