@@ -58,9 +58,9 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
           Inverse resampling cannot recover image or mask information lost through cropping, padding, or
           interpolation. Tensor-form boxes may lose rotated corners through axis-aligned enclosure.
           For an empty batch, image and mask inverse restore the spatial dimensions recorded in the parameters.
-        - container mask processing has dtype- and operator-specific limitations; see
-          `#4478 <https://github.com/kornia/kornia/issues/4478>`_. Direct ``transform_masks`` calls use the
-          image dtype guard and therefore reject ``bool`` masks.
+        - containers process integer masks in at least float32 and reject labels that cannot be represented
+          exactly in the working dtype. Direct ``transform_masks`` calls use the image dtype guard and therefore
+          reject ``bool`` masks.
         - a subclass supplies its own :meth:`inverse_transform` -- the base raises ``NotImplementedError`` --
           while :meth:`compute_inverse_transformation` defaults to inverting the sampled matrix.
         - a scalar magnitude ``x`` means ``center ± x``, as it does for the intensity classes: its lower end
