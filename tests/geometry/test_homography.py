@@ -1040,9 +1040,7 @@ class TestFindHomographyFromLinesDLT(BaseTester):
             device=device,
             dtype=dtype,
         )
-        h_true = torch.tensor(
-            [[1.0, 0.12, 3.0], [0.05, 0.98, -2.0], [7e-4, 9e-4, 1.0]], device=device, dtype=dtype
-        )
+        h_true = torch.tensor([[1.0, 0.12, 3.0], [0.05, 0.98, -2.0], [7e-4, 9e-4, 1.0]], device=device, dtype=dtype)
         noise = (torch.arange(20, device=device, dtype=dtype).reshape(1, 10, 2) % 7) * 0.3 - 0.9
         seg2 = (transform_points(h_true[None], seg1.reshape(1, -1, 2)) + noise).reshape(1, 5, 2, 2)
         weights = torch.tensor([[0.5, 2.0, 1.0, 3.0, 0.25]], device=device, dtype=dtype)
