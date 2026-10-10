@@ -790,7 +790,7 @@ string outside a function's vocabulary raises, ``BaseError`` from the robust los
        :func:`~kornia.losses.inverse_depth_smoothness_loss`
      - no ``reduction``
      - a scalar
-   * - ``mutual_information_loss`` and the other mutual-information losses
+   * - :func:`~kornia.losses.mutual_information_loss` and the other mutual-information losses
      - no ``reduction``
      - one value per signal: ``(B, C)`` for an image batch in the 2-D and 3-D variants
    * - :func:`~kornia.metrics.ssim`, :func:`~kornia.metrics.ssim3d` and the other metrics
@@ -852,11 +852,164 @@ The losses on the :doc:`segmentation page </losses.segmentation>` take raw logit
 :func:`~kornia.losses.focal_loss` documents the multi-class input, with the classes on axis 1 and an integer label map
 as the target.
 
+**Class 0 is the background** wherever a loss or a metric singles one class out:
+:func:`~kornia.losses.focal_loss` weights class 0 by ``1 - alpha`` and classes ``1`` to ``C - 1`` by ``alpha``, and
+:func:`~kornia.metrics.mean_average_precision` never scores class 0, which its ``n_classes`` still counts. Keep the
+background at label 0 when porting a label map: moving it changes both results. ``focal_loss`` with ``alpha=None``,
+:func:`~kornia.losses.dice_loss`, :func:`~kornia.losses.tversky_loss`, :func:`~kornia.losses.lovasz_softmax_loss` and
+:class:`~kornia.losses.HausdorffERLoss` treat class 0 like every other class.
+
+With ``alpha=None`` and ``gamma=0``, the target slice of :func:`~kornia.losses.focal_loss` is the cross entropy, but
+its ``'mean'`` is not that of :func:`~torch.nn.functional.cross_entropy`. It divides the sum by every element of the
+``(B, C, *)`` output, ``C`` times the pixel count, ignored pixels included, and it does not normalise ``weight``, where
+``cross_entropy`` divides by the summed weights of the target classes of the non-ignored pixels. To port
+``F.cross_entropy(pred, target, weight=w, ignore_index=i)``, divide
+``focal_loss(pred, target, alpha=None, gamma=0.0, reduction='sum', weight=w, ignore_index=i)`` by
+``w[target[target != i]].sum()``, or by the number of non-ignored pixels when there is no ``w``.
+
+The other dense-prediction losses against their references:
+
+- :func:`~kornia.losses.binary_focal_loss_with_logits` with its defaults, ``alpha=0.25`` on the positive term,
+  ``gamma=2`` and ``reduction='none'``, equals ``torchvision.ops.sigmoid_focal_loss`` on targets of 0 and 1. On a
+  fractional target ``t`` they differ: kornia weights its positive and negative focal terms by ``t`` and ``1 - t``,
+  torchvision applies ``alpha_t * (1 - p_t) ** gamma`` to the whole binary cross entropy. Its ``pos_weight`` of shape
+  ``(C,)`` runs along dim 1: ``binary_focal_loss_with_logits(pred, target, alpha=None, gamma=0.0, pos_weight=pw)``
+  equals ``F.binary_cross_entropy_with_logits(pred, target, pos_weight=pw.view(C, 1, 1), reduction='none')`` on
+  ``(B, C, H, W)``, where torch broadcasts a ``(C,)`` ``pos_weight`` along the last axis.
+- The Lovász losses score each image on its own, as the reference implementation of Berman et al.
+  (``bermanmaxim/LovaszSoftmax``) does with ``per_image=True``: :func:`~kornia.losses.lovasz_hinge_loss` is its
+  ``lovasz_hinge(pred[:, 0], target, per_image=True)``, the reference default, and
+  :func:`~kornia.losses.lovasz_softmax_loss` is ``lovasz_softmax(pred.softmax(1), target, classes='all',
+  per_image=True)``. The ``lovasz_softmax`` defaults, ``classes='present'`` and ``per_image=False``, score only the
+  classes present and flatten the batch into one image, which gives another value.
+
+A class absent from the target has no overlap to score, and the per-class functions treat it differently:
+
+- :func:`~kornia.metrics.mean_iou` returns IoU 1 for a class absent from both the target and the prediction, through
+  its ``eps``, and leaves the averaging over classes to the caller: drop the classes that occur in neither map before
+  averaging its ``(B, K)`` output. scikit-learn's ``jaccard_score`` leaves such a class out unless ``labels`` names it,
+  and then scores it 0, or 1 with ``zero_division=1.0``.
+- ``dice_loss(average='macro')`` and :func:`~kornia.losses.tversky_loss` leave it out of the sample's mean, whether
+  it is predicted or not.
+- :func:`~kornia.metrics.mean_average_precision` pools the images and leaves out a class without a ground-truth object
+  in any of them, detected or not; its entry in the per-class dictionary is ``-1``.
+
 Task metrics
 ^^^^^^^^^^^^
 
 :func:`~kornia.metrics.confusion_matrix` puts the target class on the rows and the predicted class on the columns, and
 :func:`~kornia.metrics.mean_iou` reads its per-class IoU from that matrix.
+
+The task metrics differ in what they return, in what they pool and in their scale: percent, fraction, pixels or
+degrees. Each Convention block states its own, and the table collects them. For the background class 0 and for a
+class absent from a sample, see `Dense-prediction losses`_.
+
+.. list-table::
+   :header-rows: 1
+
+   * - functions
+     - output
+     - pooled over
+     - scale
+   * - :func:`~kornia.metrics.accuracy`
+     - a list of 0-d tensors, one per entry of ``topk``
+     - the batch
+     - percent, ``[0, 100]``
+   * - :func:`~kornia.metrics.confusion_matrix`
+     - ``(B, K, K)``, rows the target and columns the prediction
+     - nothing: one matrix per sample
+     - counts
+   * - :func:`~kornia.metrics.mean_iou`
+     - ``(B, K)``
+     - nothing: one IoU per sample and class
+     - fraction, ``[0, 1]``
+   * - :func:`~kornia.metrics.mean_iou_bbox`
+     - ``(B1, B2)``
+     - nothing: one IoU per pair of boxes
+     - fraction, ``[0, 1]``
+   * - :func:`~kornia.metrics.mean_average_precision`
+     - a 0-d tensor and a ``{class id: AP}`` dict
+     - the detections of all images, per class, then a mean over the classes with objects
+     - fraction, ``[0, 1]``; ``-1`` for a class without objects, and for the mAP when no image has a foreground
+       object
+   * - :func:`~kornia.metrics.aepe`, :func:`~kornia.metrics.average_endpoint_error`, :class:`~kornia.metrics.AEPE`
+     - 0-d, or ``(*)`` for ``reduction='none'``
+     - every position of every sample
+     - the units of the flow
+   * - :func:`~kornia.metrics.mean_absolute_disparity_error`,
+       :func:`~kornia.metrics.root_mean_squared_disparity_error`
+     - 0-d, or ``(*)`` for ``reduction='none'``
+     - every valid pixel of every image
+     - pixels
+   * - :func:`~kornia.metrics.mean_bad_pixel_error`, :func:`~kornia.metrics.kitti_d1_error`
+     - 0-d, or ``(*)`` for ``reduction='none'``
+     - every valid pixel of every image
+     - fraction, ``[0, 1]``
+   * - :func:`~kornia.metrics.angle_error_mat`, :func:`~kornia.metrics.angle_error_vec`
+     - ``(*)``, 0-d for one pair
+     - nothing: one angle per pair
+     - degrees
+   * - :func:`~kornia.metrics.pose_errors`
+     - a dict of ``(B,)`` tensors, ``(1,)`` for one pose
+     - nothing: one error per pose
+     - degrees
+   * - :func:`~kornia.metrics.translation_ate`
+     - ``(*)``, ``(1,)`` for one translation
+     - nothing: one distance per sample
+     - the units of the translations
+   * - :func:`~kornia.metrics.auc_from_errors`
+     - a ``{threshold: AUC}`` dict of Python floats
+     - all errors
+     - percent, ``[0, 100]``
+   * - :class:`~kornia.metrics.AverageMeter`
+     - ``avg``, a Python float
+     - every update, weighted by its ``n``
+     - the scale of the values passed
+
+Porting the task metrics from other libraries:
+
+- scikit-learn takes the target first and kornia the prediction; both put the target on the rows:
+  ``confusion_matrix(pred, target, K)[b]`` equals
+  ``sklearn.metrics.confusion_matrix(target[b].ravel(), pred[b].ravel(), labels=range(K))``. ``normalized=True`` is
+  ``normalize='true'`` up to the ``1e-6`` added to every row sum, not the per-prediction ``normalize='pred'``. Without
+  tied scores, ``accuracy(pred, target, topk=(k,))[0]`` is 100 times
+  ``top_k_accuracy_score(target, pred, k=k, labels=range(C))`` for more than two classes, and 100 times
+  ``accuracy_score(target, pred.argmax(1))`` for ``k=1``.
+- The IoU of a whole batch or dataset, which
+  ``jaccard_score(target.ravel(), pred.ravel(), labels=range(K), average=None)`` and torchmetrics'
+  ``MulticlassJaccardIndex(num_classes=K, average='none')`` report, is the IoU of the summed matrix
+  ``confusion_matrix(pred, target, K).sum(0)``, not the mean of :func:`~kornia.metrics.mean_iou` over the batch.
+- :func:`~kornia.metrics.mean_average_precision` matches a detection to an object only when their IoU is strictly
+  greater than ``threshold``, as ``voc_eval`` of py-faster-rcnn does, and computes that IoU on exclusive boxes, as
+  :func:`~kornia.metrics.mean_iou_bbox` does, where py-faster-rcnn and the PASCAL VOC devkit add 1 to every box width
+  and height. The devkit (``VOCevaldet.m``) matches at ``IoU >= 0.5``, so a detection whose IoU equals the threshold
+  is a false positive in kornia and a true positive there.
+- COCO's evaluation, run as torchmetrics' ``MeanAveragePrecision(iou_thresholds=[0.5],
+  rec_thresholds=[i / 10 for i in range(11)], backend='pycocotools')``, pools the detections of all images,
+  interpolates at kornia's 11 recall levels and leaves a class without objects out of the mean, with AP ``-1`` where it
+  lists one, as kornia does. It reproduces kornia's AP except in five cases: it matches at ``IoU >= 0.5``; it gives a
+  detection whose best object is already matched to the best object still free; it scores class 0 like every other
+  class; it scores only the 100 highest-scoring detections of a class in each image; and it ranks detections of equal
+  score by image, then in input order, where kornia leaves their order to ``torch.sort``.
+- torchvision's RAFT models return a list of ``(B, 2, H, W)`` flows, channel first, where
+  :func:`~kornia.metrics.aepe` takes ``(B, H, W, 2)``. The endpoint error of RAFT's training code,
+  ``((pred - gt) ** 2).sum(1).sqrt()`` on channel-first flows (``sum(0)`` on one flow in its evaluation code), equals
+  ``aepe(pred.permute(0, 2, 3, 1), gt.permute(0, 2, 3, 1), reduction='none')``. Its mean is the default ``'mean'``
+  where every pixel is valid, as in RAFT's Chairs and Sintel evaluation; RAFT's training metrics and its KITTI
+  evaluation average only the valid pixels, KITTI image by image, so take those means of the ``'none'`` map.
+- :func:`~kornia.metrics.kitti_d1_error` applies the outlier rule of the KITTI 2015 devkit (``evaluate_scene_flow.cpp``)
+  and pools like it: the devkit adds up outliers and valid pixels over all images before dividing, so its value is not
+  the mean of per-image D1. The devkit also reads a ground-truth disparity of 0 as invalid and scores its own
+  interpolated version of the estimate: pass a dense prediction and ``valid_mask=target > 0`` to reproduce its
+  number.
+- SuperGlue's ``pose_auc`` and the ``cal_error_auc`` of glue-factory, the evaluation code of LightGlue, return the pose
+  AUC as a fraction, glue-factory's rounded to four decimals. Both equal :func:`~kornia.metrics.auc_from_errors`
+  divided by 100 for errors without NaN: the references count a NaN as a failure, kornia propagates it. SuperGlue's
+  ``match_pairs.py`` prints 100 times that fraction, a percentage like kornia's; glue-factory reports the fraction
+  itself. glue-factory's pose error, the larger of the rotation angle and the folded translation angle, is the
+  ``"max_err"`` of :func:`~kornia.metrics.pose_errors` with the default ``fold_translation=True``. For a zero
+  ground-truth translation glue-factory reads a translation error of 90 degrees, where
+  :func:`~kornia.metrics.pose_errors` returns NaN.
 
 .. _two-view-conventions:
 
@@ -920,8 +1073,9 @@ normalised camera coordinates, and :func:`~kornia.geometry.homography.find_homog
      - ``ransacReprojThreshold`` of ``findHomography``, the same unit for points
    * - polynomial roots
      - ``solve_quadratic``, ``solve_cubic`` and ``solve_quartic`` take coefficients highest degree first and
-       return only the real roots, a missing root padded with ``0.0``; ``solve_quartic``'s order is unspecified;
-       a zero leading coefficient lowers the degree
+       return only the real roots, a missing root padded with ``0.0``; ``solve_quartic`` returns its roots in
+       descending order before the padding, and its lower-degree rows keep ``solve_cubic``'s order; a zero
+       leading coefficient lowers the degree
      - ``numpy.roots`` takes the same coefficient order, returns the complex roots too and drops leading zeros
 
 Pitfall checklist

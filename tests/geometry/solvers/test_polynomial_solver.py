@@ -110,6 +110,43 @@ class TestQuadraticSolver(BaseTester):
         (grad,) = torch.autograd.grad(solver.solve_quadratic(x).sum(), x)
         self.assert_close(grad, torch.tensor([[0.0, 0.0, 0.0], [-6.0, -1.0, 0.0]], device=device, dtype=dtype))
 
+    @pytest.mark.parametrize(
+        "coeffs, expected, literal_dtype",
+        [
+            # b^2 underflows, but it is negligible against 4ac: rescaling by the largest coefficient flushed a to 0.
+            ([2.0**-45, 2.0**-121, -(2.0**105)], [2.0**75, -(2.0**75)], "float32"),
+            ([2.0**-500, 2.0**-1000, -(2.0**600)], [2.0**550, -(2.0**550)], "float64"),
+            # No real root; the rescaled row lost its subnormal a and became a linear equation with a root at -2.6e33.
+            ([-2.129973665773722e-43, -6.776749542384429e-25, -1768312192.0], [0.0, 0.0], "float32"),
+        ],
+    )
+    def test_underflowed_negligible_term_keeps_small_coefficients(self, coeffs, expected, literal_dtype, device, dtype):
+        if dtype != getattr(torch, literal_dtype) or device.type != "cpu":
+            pytest.skip("The literal needs exact CPU subnormal and extreme-exponent arithmetic in its own dtype.")
+        roots = solver.solve_quadratic(torch.tensor([coeffs], device=device, dtype=dtype))
+        self.assert_close(roots, torch.tensor([expected], device=device, dtype=dtype), rtol=1e-6, atol=0.0)
+
+    @pytest.mark.parametrize(
+        "coeffs, expected",
+        [
+            # b^2 and 4ac are float32 subnormals; MPS flushed them on the device.
+            (
+                [4.551530624417491e-20, 8.750074717878078e-19, -7.599072411803117e-20],
+                [0.086456982708514018, -19.310923299460849],
+            ),
+            (
+                [3.3937770899027226e-18, -9.990941796453828e-19, 1.3676081403565554e-21],
+                [0.2930147690886763, 0.0013752727964907445],
+            ),
+        ],
+    )
+    def test_float32_products_below_the_normal_range(self, coeffs, expected, device, dtype):
+        if dtype != torch.float32:
+            pytest.skip("The products are subnormal in float32.")
+        # References: sympy real-root isolation of the represented coefficients.
+        actual = solver.solve_quadratic(torch.tensor([coeffs], device=device, dtype=dtype))
+        self.assert_close(actual, torch.tensor([expected], device=device, dtype=dtype), atol=0.0, rtol=1e-5)
+
 
 class TestCubicSolver(BaseTester):
     def test_smoke(self, device, dtype):
@@ -203,6 +240,57 @@ class TestCubicSolver(BaseTester):
         alone = torch.tensor([three], device=device, dtype=dtype)
         mixed = torch.tensor([three, one], device=device, dtype=dtype)
         self.assert_close(solver.solve_cubic(mixed)[0], solver.solve_cubic(alone)[0])
+
+    def test_float32_close_pair_does_not_depend_on_the_batch(self, device, dtype):
+        # The float32 Cardano discriminant of this row takes the wrong sign at the close pair near 3.62, and an
+        # uncertainty bound on |Q^3| + R^2 misses the cancellation inside Q and R. Solved alone it returned one root;
+        # next to a row that forced float64, all three. Every device now solves float32 cubics in float64.
+        if dtype != torch.float32:
+            pytest.skip("The row exercises float32 arithmetic.")
+        row = [1.0, -9.652440071105957, 30.569580078125, -31.61037254333496]
+        alone = solver.solve_cubic(torch.tensor([row], device=device, dtype=dtype))
+        # Roots of the represented float32 coefficients, solved in float64.
+        expected = torch.tensor([[2.411706999775569, 3.619729296817037, 3.621003774513351]], device=device, dtype=dtype)
+        self.assert_close(alone.sort(-1).values, expected, rtol=1e-6, atol=0.0)
+        flagged = [1.0, -481.0438232421875, 57850.8359375, -11.54153823852539]
+        batched = solver.solve_cubic(torch.tensor([row, flagged], device=device, dtype=dtype))
+        self.assert_close(batched[:1], alone, rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize(
+        "coeffs, expected",
+        [
+            # A close pair whose float32 Cardano discriminant is cancellation noise inside Q and R.
+            (
+                [1.0, -9.652440071105957, 30.569580078125, -31.61037254333496],
+                [2.4117069997755705, 3.619729296815576, 3.6210037745148106],
+            ),
+            # Three normal roots of a cubic whose coefficients are near the bottom of the float32 range.
+            (
+                [5.415209174622424e-38, 1.7378307161929965e-37, -8.82384773460241e-37, 2.9499504686657103e-38],
+                [-5.9589682615339355, 0.03365700614862145, 2.7161448868227056],
+            ),
+        ],
+    )
+    def test_float32_rows_float32_arithmetic_cannot_resolve(self, coeffs, expected, device, dtype):
+        if dtype != torch.float32:
+            pytest.skip("The rows exercise float32 arithmetic.")
+        # Float32 cubics are solved in float64 on every device; a per-row float32 bound on CUDA missed the
+        # close pair. References: sympy real-root isolation.
+        roots, num_real = _solve_cubic_with_count(torch.tensor([coeffs], device=device, dtype=dtype))
+        assert num_real.tolist() == [3]
+        expected = torch.tensor([expected], device=device, dtype=dtype)
+        self.assert_close(roots.sort(-1).values, expected, atol=0.0, rtol=1e-5)
+
+    def test_root_beside_a_complex_pair_is_not_taken_as_dominant(self, device, dtype):
+        # x (x^2 + x + 3) has one real root, 0. The closed form returns a cancellation remnant of about eps there, and
+        # treating it as a dominant root made Vieta's quotients by it report a spurious real pair of size 1 / eps.
+        rows = [[1.0, 1.0, 3.0, 0.0], [1.0, 1.0, 1.0, 0.0]]
+        if dtype in (torch.float32, torch.float64):
+            rows.append([1.0, 1.0, 1.0, -1e-30])  # (x - 1e-30) (x^2 + x + 1), up to rounding
+        roots, count = _solve_cubic_with_count(torch.tensor(rows, device=device, dtype=dtype))
+        assert count.tolist() == [1] * len(rows)
+        atol = 8 * torch.finfo(dtype).eps
+        self.assert_close(roots, torch.zeros_like(roots), rtol=0.0, atol=atol)
 
     @pytest.mark.parametrize(
         "coeffs, root",
@@ -411,6 +499,83 @@ class TestCubicSolver(BaseTester):
         assert num_real.tolist() == [3, 1, 3], num_real
         self.gradcheck(solver.solve_cubic, (rows.requires_grad_(),))
 
+    def test_tiny_leading_coefficient_gradient_stays_finite(self, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("The coefficients need the float64 exponent range.")
+        coeffs = torch.tensor(
+            [[-3.261706204944339e-40, -2.3121190290020114e101, 9.353450215509385e-208, -3.1729113405545114e257]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        root = solver.solve_cubic(coeffs)[0, 0]
+        (gradient,) = torch.autograd.grad(root, coeffs)
+        # The implicit derivative -[r^3, r^2, r, 1] / p'(r), from mpmath at 50 digits. The quotient b / a has the
+        # derivative b / a^2, which overflows; the root's derivative with respect to a does not.
+        expected = torch.tensor(
+            [[-2.173304145468546e180, 3.0658800553039539e39, -4.325036849126378e-102, 6.1013292786649817e-243]],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(gradient[:, :3], expected[:, :3], atol=0.0, rtol=1e-8)
+        # The derivative with respect to d passes through cancellation in Cardano's one-root branch: its relative
+        # error is 1e-9 on CPU and 3e-8 on CUDA.
+        self.assert_close(gradient[:, 3:], expected[:, 3:], atol=0.0, rtol=1e-6)
+
+    def test_exact_double_root(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("The coefficients are exact in float32 and float64.")
+        # (x + 5.25)(x - 3.125)^2: a rounding-level positive discriminant reported the single root -5.25.
+        coeffs = torch.tensor([[1.0, -1.0, -23.046875, 51.26953125]], device=device, dtype=dtype)
+        roots, num_real = _solve_cubic_with_count(coeffs)
+        expected = torch.tensor([[-5.25, 3.125, 3.125]], device=device, dtype=dtype)
+        self.assert_close(roots.sort(-1).values, expected, atol=0.0, rtol=0.0)
+        assert num_real.tolist() == [3]
+
+    def test_exact_double_root_grid(self, device, dtype):
+        # (x - r)^2 (x - s) for every pair of distinct nonzero quarter-integers in [-6, 6]; coefficients exact.
+        values = torch.arange(-24, 25, dtype=torch.float64) / 4
+        values = values[values != 0]
+        r, s = (v.flatten() for v in torch.meshgrid(values, values, indexing="ij"))
+        r, s = r[r != s], s[r != s]
+        coeffs = torch.stack([torch.ones_like(r), -(2 * r + s), r * r + 2 * r * s, -r * r * s], -1)
+        exact = (coeffs.to(dtype).double() == coeffs).all(-1)
+        coeffs = coeffs[exact].to(device=device, dtype=dtype)
+        expected = torch.stack([r, r, s], -1)[exact].sort(-1).values.to(device=device, dtype=dtype)
+        roots, num_real = _solve_cubic_with_count(coeffs)
+        assert bool((num_real == 3).all())
+        self.assert_close(roots.sort(-1).values, expected, atol=1e-6, rtol=1e-6)
+
+    def test_double_root_beside_a_rounding_level_discriminant(self, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("The coefficients are exact in float64.")
+        # A close real pair whose discriminant is 4e-19 of its terms, beyond 2 eps but within the 32 eps window
+        # in which the stationary points decide. Reference: sympy real-root isolation.
+        coeffs = torch.tensor(
+            [[1.0, -6.566669464111328, 12.517459229177803, -7.397783069339488]], device=device, dtype=dtype
+        )
+        roots, num_real = _solve_cubic_with_count(coeffs)
+        expected = torch.tensor(
+            [[1.4022817537442716, 1.4022817685945957, 3.7621059417724609]], device=device, dtype=dtype
+        )
+        assert num_real.tolist() == [3]
+        self.assert_close(roots.sort(-1).values, expected, atol=0.0, rtol=1e-7)
+
+    def test_exact_double_root_gradient(self, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("The Jacobian is compared in float64.")
+        coeffs = torch.tensor(
+            [[1.0, -1.0, -23.046875, 51.26953125], [2.0, -10.0, 16.0, -8.0]], device=device, dtype=dtype
+        )
+        coeffs.requires_grad_()
+        roots = solver.solve_cubic(coeffs)
+        (gradient,) = torch.autograd.grad(roots.sum(), coeffs)
+        # A repeated root's Jacobian is undefined; the surrogate stays finite and keeps the sum of the roots, -b / a.
+        expected = torch.zeros_like(gradient)
+        expected[:, 0] = coeffs.detach()[:, 1] / coeffs.detach()[:, 0].square()
+        expected[:, 1] = -1 / coeffs.detach()[:, 0]
+        self.assert_close(gradient, expected, atol=1e-12, rtol=1e-12)
+
 
 class TestMultiplyDegOnePoly(BaseTester):
     def test_smoke(self, device, dtype):
@@ -576,6 +741,570 @@ class TestDeterminantToPolynomial(BaseTester):
 
 
 class TestQuarticSolver(BaseTester):
+    @pytest.mark.parametrize(
+        "expected",
+        [
+            [-3.0, -2.5, -2.5, -1.5],  # Newton moved a copy of -2.5 onto -1.5 (#5509/#5621).
+            [-6.0, -5.0, -5.0, -3.0],
+            [-6.0, -6.0, -5.75, -3.5],  # A negative factor discriminant discarded the double root.
+            [-6.0, -5.75, 4.25, 4.25],
+            [-6.0, -5.0, -5.0, -3.75],  # Small R amplifies the factor coefficient roundoff.
+            [-1.75, 1.0, 1.0, 6.0],
+        ],
+    )
+    @pytest.mark.parametrize("scale", [2.0**-20, 1.0, -(2.0**20)])
+    def test_exact_double_root_multiplicity_5622(self, expected, scale, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("These exact coefficient and root comparisons require float32 or float64.")
+        roots = torch.tensor([expected], dtype=torch.float64)
+        coeffs = (_monic_from_roots(roots) * scale).to(device=device, dtype=dtype)
+        actual = solver.solve_quartic(coeffs)
+        assert actual.dtype == dtype
+        assert bool((actual != 0).all())
+        # Sorting all four slots tests multiplicity as well as presence: neither padding nor
+        # moving a copy onto a simple root can satisfy this bound (the smallest gap is 0.25).
+        self.assert_close(actual.sort(-1).values, roots.to(device=device, dtype=dtype), atol=1e-5, rtol=1e-5)
+
+    @pytest.mark.parametrize("delta", [2.0**-52, 2.0**-50])
+    def test_near_double_complex_roots_are_not_recovered_5622(self, delta, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("The perturbation must remain representable in the input coefficients.")
+        # (x^2 - 1)^2 + delta*(x^2 + 1) is strictly positive. Both stationary
+        # points satisfy the old residual/derivative bounds but are not real roots.
+        coeffs = torch.tensor([[1.0, 0.0, -2.0 + delta, 0.0, 1.0 + delta]], device=device, dtype=dtype)
+        actual = solver.solve_quartic(coeffs)
+        self.assert_close(actual, torch.zeros_like(actual), atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("scale", [2.0**-900, 1.0, -(2.0**900)])
+    def test_double_root_recovery_real_complex_boundary_5622(self, scale, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("The perturbation and coefficient scales require float64.")
+        # ((x - 1)^2 + delta)*(x + 1)*(x + 2) has only two real roots.
+        # The second row needs recovery of an exact double root, even at extreme scales.
+        delta = 2.0**-50
+        coeffs = (
+            torch.tensor(
+                [
+                    [1.0, 1.0, -3.0 + delta, -1.0 + 3.0 * delta, 2.0 + 2.0 * delta],
+                    [1.0, 3.25, -47.3125, -81.015625, 623.15625],
+                ],
+                device=device,
+                dtype=dtype,
+            )
+            * scale
+        )
+        expected = torch.tensor([[-2.0, -1.0, 0.0, 0.0], [-6.0, -5.75, 4.25, 4.25]], device=device, dtype=dtype)
+        self.assert_close(solver.solve_quartic(coeffs).sort(-1).values, expected, atol=1e-5, rtol=1e-5)
+
+    def test_double_root_controls_5622(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("Close distinct-root controls require float32 or float64.")
+        expected = torch.tensor(
+            [[-3.0, -2.5, -2.375, -1.5], [-6.0, -5.75, 4.125, 4.25], [-6.0, -1.75, 1.0, 1.125]],
+            dtype=torch.float64,
+        )
+        coeffs = _monic_from_roots(expected).to(device=device, dtype=dtype)
+        self.assert_close(
+            solver.solve_quartic(coeffs).sort(-1).values, expected.to(device=device, dtype=dtype), atol=1e-5, rtol=1e-5
+        )
+        # (x + 6)(x + 5.75)((x - 4.25)^2 + 1/16): its nearby complex pair must stay padding.
+        coeffs = torch.tensor([[1.0, 3.25, -47.25, -80.28125, 625.3125]], device=device, dtype=dtype)
+        expected = torch.tensor([[-6.0, -5.75, 0.0, 0.0]], device=device, dtype=dtype)
+        self.assert_close(solver.solve_quartic(coeffs).sort(-1).values, expected, atol=1e-5, rtol=1e-5)
+
+    def test_double_root_gradient_and_dtype_5622(self, device, dtype):
+        # The first row is exact in float16; the second is also exact in bfloat16.
+        rows = [[1.0, 9.5, 33.25, 50.625, 28.125], [1.0, 0.0, -9.0, 4.0, 12.0]]
+        expected = [[-3.0, -2.5, -2.5, -1.5], [-3.0, -1.0, 2.0, 2.0]]
+        if dtype == torch.bfloat16:
+            rows, expected = rows[1:], expected[1:]
+        elif dtype in (torch.float32, torch.float64):
+            rows.append([1.0, 3.25, -47.3125, -81.015625, 623.15625])
+            expected.append([-6.0, -5.75, 4.25, 4.25])
+        coeffs = torch.tensor(rows, device=device, dtype=dtype, requires_grad=True)
+        actual = solver.solve_quartic(coeffs)
+        assert actual.dtype == dtype
+        self.assert_close(
+            actual.sort(-1).values, torch.tensor(expected, device=device, dtype=dtype), atol=1e-5, rtol=1e-5
+        )
+        actual.sum().backward()
+        assert bool(torch.isfinite(coeffs.grad).all())
+        # The sum of the four real roots is -b/a. A detached-output fix fails this derivative.
+        expected_grad = torch.zeros_like(coeffs)
+        expected_grad[:, 0] = coeffs.detach()[:, 1]
+        expected_grad[:, 1] = -1.0
+        self.assert_close(coeffs.grad, expected_grad, atol=1e-4, rtol=1e-4)
+
+    def test_double_root_dynamo_5622(self, device, dtype, torch_optimizer):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("The issue coefficients are exact in float32 and float64.")
+        coeffs = torch.tensor(
+            [[1.0, 9.5, 33.25, 50.625, 28.125], [1.0, 3.25, -47.3125, -81.015625, 623.15625]],
+            device=device,
+            dtype=dtype,
+        )
+        compiled = torch_optimizer(solver.solve_quartic)
+        self.assert_close(compiled(coeffs), solver.solve_quartic(coeffs), atol=1e-5, rtol=1e-5)
+
+    def test_exact_double_root_grid_5622(self, device, dtype):
+        # All 51,888 quartics with one double root and two different simple roots
+        # on the nonzero quarter-integer grid [-6, 6]. Coefficients are binary-exact
+        # in float32/64; half coverage retains only inputs exactly representable there.
+        values = torch.arange(-24, 25, dtype=torch.float64) / 4
+        values = values[values != 0]
+        pairs = torch.combinations(values, r=2)
+        doubled = values[:, None].expand(-1, len(pairs)).flatten()
+        simple = pairs.repeat(len(values), 1)
+        keep = (simple != doubled[:, None]).all(-1)
+        roots = torch.cat([doubled[:, None].repeat(1, 2), simple], -1)[keep]
+        coefficients = _monic_from_roots(roots)
+        exact = (coefficients.to(dtype).double() == coefficients).all(-1)
+        coefficients = coefficients[exact].to(device=device, dtype=dtype)
+        expected = roots[exact].sort(-1).values.to(device=device, dtype=dtype)
+        actual = solver.solve_quartic(coefficients).sort(-1).values
+        assert actual.shape == expected.shape
+        self.assert_close(actual, expected, atol=2e-3, rtol=2e-3)
+
+    @pytest.mark.parametrize(
+        "coefficients, expected",
+        [
+            ([1.0, -6.25, -1.625, 0.0, 0.0], [6.5, 0.0, 0.0, -0.25]),  # x^2 (x - 6.5)(x + 0.25)
+            ([1.0, -2.0, -3.0, 0.0, 0.0], [3.0, 0.0, 0.0, -1.0]),
+            ([2.0, -4.0, 2.0, 0.0, 0.0], [1.0, 1.0, 0.0, 0.0]),  # 2 x^2 (x - 1)^2
+            ([1.0, 0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]),  # x^2 (x^2 + 1): the pair is padding
+            ([1.0, -3.0, 0.0, 0.0, 0.0], [3.0, 0.0, 0.0, 0.0]),
+            ([-0.5, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]),
+        ],
+    )
+    def test_exact_zero_roots(self, coefficients, expected, device, dtype):
+        # A trailing pair of zero coefficients is an exact multiple root at 0: it is reported exactly, and the
+        # zeros sort with the genuine roots.
+        coeffs = torch.tensor([coefficients], device=device, dtype=dtype)
+        actual = solver.solve_quartic(coeffs)
+        self.assert_close(actual, torch.tensor([expected], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+
+    def test_exact_zero_double_root_grid(self, device, dtype):
+        # x^2 (x - p)(x - q) for every pair of distinct nonzero quarter-integers in [-6, 6].
+        values = torch.arange(-24, 25, dtype=torch.float64) / 4
+        pairs = torch.combinations(values[values != 0], r=2)
+        roots = torch.cat([pairs, torch.zeros_like(pairs)], -1)
+        coefficients = _monic_from_roots(roots)
+        exact = (coefficients.to(dtype).double() == coefficients).all(-1)
+        coefficients = coefficients[exact].to(device=device, dtype=dtype)
+        expected = roots[exact].sort(-1, descending=True).values.to(device=device, dtype=dtype)
+        self.assert_close(solver.solve_quartic(coefficients), expected, atol=1e-5, rtol=1e-5)
+
+    def test_exact_two_double_roots_grid(self, device, dtype):
+        # (x - p)^2 (x - q)^2 for every pair of distinct quarter-integers in [-4, 4]: a biquadratic in x + (p + q) / 2
+        # with an exact double root in its square. shift.pow(4) is not exact on CUDA, and 32 of these rows, such as
+        # x^2 (x + 4)^2, came back without roots there.
+        values = torch.arange(-16, 17, dtype=torch.float64) / 4
+        roots = torch.combinations(values, r=2).repeat_interleave(2, dim=-1)
+        coefficients = _monic_from_roots(roots)
+        exact = (coefficients.to(dtype).double() == coefficients).all(-1)
+        coefficients = coefficients[exact].to(device=device, dtype=dtype)
+        expected = roots[exact].sort(-1, descending=True).values.to(device=device, dtype=dtype)
+        self.assert_close(solver.solve_quartic(coefficients), expected, atol=1e-5, rtol=1e-5)
+
+    def test_spread_real_roots_beside_a_small_complex_pair(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("The coefficients span about 25 decades.")
+        # (x - r1)(x - r2)(x^2 - 2 m cos(t) x + m^2) with |r1| in [1e4, 1e5], |r2| in [1e2, 1e3] and m in [1e-5, 1e-4].
+        # Beside its dominant root, the resolvent's closed form returned a spurious real pair where Vieta's pair is
+        # complex. Ferrari took that pair's larger R^2 and lost r2 on 6 % of these rows; main kept them all.
+        rng = np.random.default_rng(0)
+        n = 2000
+        r1 = np.exp(rng.uniform(np.log(1e4), np.log(1e5), n)) * rng.choice([-1.0, 1.0], n)
+        r2 = np.exp(rng.uniform(np.log(1e2), np.log(1e3), n)) * rng.choice([-1.0, 1.0], n)
+        m = np.exp(rng.uniform(np.log(1e-5), np.log(1e-4), n))
+        p, q = -2 * m * np.cos(rng.uniform(0.1, np.pi - 0.1, n)), m * m
+        u, v = -(r1 + r2), r1 * r2
+        coeffs = np.stack([np.ones(n), p + u, q + p * u + v, p * v + q * u, q * v], -1)
+        actual = solver.solve_quartic(torch.from_numpy(coeffs).to(device=device, dtype=dtype))
+        expected = torch.from_numpy(np.stack([np.maximum(r1, r2), np.minimum(r1, r2), np.zeros(n), np.zeros(n)], -1))
+        rtol = 1e-9 if dtype == torch.float64 else 1e-5
+        self.assert_close(actual, expected.to(device=device, dtype=dtype), atol=0.0, rtol=rtol)
+
+    @pytest.mark.parametrize(
+        "coefficients, expected, dtypes",
+        [
+            # Exact roots 512, 2^-13, 2^-18 and -2^19.
+            (
+                [1.0, 523775.999874115, -268435521.9355469, 33792.00024390221, -0.125],
+                [512.0, 2.0**-13, 2.0**-18, -(2.0**19)],
+                (torch.float64,),
+            ),
+            (
+                [1.0, 499500.0, -250000048.0, 26000.0, -0.10000000149011612],
+                [499.99999200799115, 0.000100000000750412, 4.0000000927561731e-6, -500000.00009600799],
+                (torch.float32, torch.float64),
+            ),
+            # The two small resolvent roots came back with the wrong sign.
+            (
+                [1.0, 19749794.506627306, -268558166469888.28, 705704923847.0411, 57874906.04389983],
+                [9258104.658492141, 0.0027073533624295231, -7.9598886503736466e-5, -29007899.167747202],
+                (torch.float64,),
+            ),
+        ],
+    )
+    def test_roots_spanning_many_decades(self, coefficients, expected, dtypes, device, dtype):
+        if dtype not in dtypes:
+            pytest.skip("The coefficients are exact in the listed dtypes only.")
+        # References: sympy real-root isolation of the represented coefficients. Four real roots
+        # span up to 11 decades; the resolvent's two small roots sit as far below its third.
+        coeffs = torch.tensor([coefficients], device=device, dtype=dtype)
+        expected = torch.tensor([expected], device=device, dtype=dtype)
+        self.assert_close(solver.solve_quartic(coeffs), expected, atol=0.0, rtol=1e-6)
+
+    @pytest.mark.parametrize(
+        "coefficients, expected, dtypes",
+        [
+            # (x - 1)(x - 3)((x - 1)^2 + 2^-24)
+            ([1.0, -6.0, 12.000000059604645, -10.000000238418579, 3.0000001788139343], [3.0, 1.0], (torch.float64,)),
+            # (x - 2)(x - 3)((x - 2)^2 + 2^-18)
+            (
+                [1.0, -9.0, 30.000003814697266, -44.00001907348633, 24.000022888183594],
+                [3.0, 2.0],
+                (torch.float32, torch.float64),
+            ),
+        ],
+    )
+    def test_simple_root_beside_a_close_complex_pair(self, coefficients, expected, dtypes, device, dtype):
+        if dtype not in dtypes:
+            pytest.skip("The coefficients are exact in the listed dtypes only.")
+        # The pair makes the simple root's slope small, yet the root's Ferrari partner is the other real root.
+        coeffs = torch.tensor([coefficients], device=device, dtype=dtype)
+        expected = torch.tensor([expected + [0.0, 0.0]], device=device, dtype=dtype)
+        self.assert_close(solver.solve_quartic(coeffs), expected, atol=1e-6, rtol=1e-6)
+
+    def test_simple_root_beside_a_close_complex_pair_grid(self, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("The grid coefficients are exact in float64.")
+        # (x - r)(x - s)((x - r)^2 + d^2) on dyadic r, s and d: exactly two real roots.
+        r = torch.tensor([-2.5, -0.75, 1.0, 3.25], dtype=torch.float64)
+        gap = torch.tensor([-2.0, 1.5, 4.0], dtype=torch.float64)
+        width = 2.0 ** torch.tensor([-8.0, -11.0, -14.0], dtype=torch.float64)
+        r, gap, width = (v.flatten() for v in torch.meshgrid(r, gap, width, indexing="ij"))
+        s = r + gap
+        d = width * r.abs().clamp(min=1)
+        linear = torch.stack([torch.ones_like(r), -(r + s), r * s], -1)
+        pair = torch.stack([torch.ones_like(r), -2 * r, r * r + d * d], -1)
+        coeffs = torch.zeros(len(r), 5, dtype=torch.float64)
+        for i in range(3):
+            for j in range(3):
+                coeffs[:, i + j] += linear[:, i] * pair[:, j]
+        expected = torch.stack([torch.maximum(r, s), torch.minimum(r, s)], -1)
+        expected = torch.cat([expected, torch.zeros_like(expected)], -1)
+        actual = solver.solve_quartic(coeffs.to(device=device, dtype=dtype))
+        self.assert_close(actual, expected.to(device=device, dtype=dtype), atol=1e-6, rtol=1e-6)
+
+    @pytest.mark.parametrize(
+        "coefficients, expected, dtypes",
+        [
+            # Four real roots within 2% of each other: the resolvent has a near-triple root.
+            (
+                [1.0, -8.8321223404358, 29.251986018365162, -43.0583174138504, 23.767524638771818],
+                [2.2279948162159041, 2.2083975939262021, 2.2081449386622555, 2.1875849916314388],
+                (torch.float64,),
+            ),
+            # Two real roots and a complex pair in one cluster.
+            (
+                [1.0, -0.7960158586502075, 0.23761533200740814, -0.03152422606945038, 0.0015683587407693267],
+                [0.20183169083788146, 0.19617540615477025],
+                (torch.float32, torch.float64),
+            ),
+            # A separated real pair inside a cluster with a complex pair.
+            (
+                [-0.0014945328030236183, 0.13165948745769898, -4.349402922389792, 63.8592944813424, -351.6004102965555],
+                [22.119540865055652, 21.998521966226848],
+                (torch.float64,),
+            ),
+            # A real root beside a close complex pair, and a far root.
+            (
+                [0.28430994261445064, -1.8145339507785327, 3.534044520265233, -2.7811262287698018, 0.7766973115733834],
+                [3.6612115102922415, 0.90699103508695153],
+                (torch.float64,),
+            ),
+            (
+                [1.0, -4.024720362857346, 5.810396766987136, -3.469536959883321, 0.6775864610358943],
+                [1.215961780224748, 0.37690253008267075],
+                (torch.float64,),
+            ),
+            # A near-double complex pair that Ferrari split between two real factors.
+            (
+                [-0.7672792631437675, -0.2277980718973569, 2.8115738175174863, 0.3210495206426153, 0.00913104309961989],
+                [1.8310604836611197, -2.014346817978239],
+                (torch.float64,),
+            ),
+            # A near-triple root with one real root: a second copy of it is not a root.
+            (
+                [1.0, -2.01993465423584, -0.6778868906849311, -0.07099884823303, -0.0024409612243582344],
+                [2.3248481750488281, -0.10163741311517308],
+                (torch.float64,),
+            ),
+            # A near-quadruple root with no real roots.
+            (
+                [
+                    -0.010004346039634609,
+                    -0.01847789435683093,
+                    -0.01279815961393944,
+                    -0.003939671824814085,
+                    -0.00045478259830212733,
+                ],
+                [],
+                (torch.float64,),
+            ),
+        ],
+    )
+    def test_real_roots_in_clusters(self, coefficients, expected, dtypes, device, dtype):
+        if dtype not in dtypes:
+            pytest.skip("The coefficients are exact in the listed dtypes only.")
+        # References: sympy real-root isolation of the represented coefficients. Inside a cluster a root is
+        # determined to about eps^(1/k) for a k-fold cluster, hence the tolerance.
+        coeffs = torch.tensor([coefficients], device=device, dtype=dtype)
+        expected = torch.tensor([expected + [0.0] * (4 - len(expected))], device=device, dtype=dtype)
+        actual = solver.solve_quartic(coeffs)
+        assert int((actual != 0).sum()) == int((expected != 0).sum())
+        self.assert_close(actual, expected, atol=0.0, rtol=1e-5)
+
+    @pytest.mark.parametrize(
+        "coefficients, expected, literal_dtype, rtol",
+        [
+            # Three close roots and a far one: their stationary points are classified only inside the local
+            # quadratic region (cubic and quartic terms at most an eighth of the curvature term).
+            (
+                [1.0, 7.1414729471261325, 11.216197417652605, -17.58471566143806, -41.87878316906568],
+                [1.6589838853480642, -2.9334722967452928, -2.9334786391423401, -2.9335058965865637],
+                "float64",
+                1e-6,
+            ),
+            # Two small roots beside a large complex pair: not a cluster. Centring rows whose centred root bound
+            # reaches half the root bound loses the small root.
+            (
+                [1.0, 159457.2390277729, 6356652658.430805, -8862577.852632554, -15.019852486487155],
+                [0.0013959135242863893, -1.6926947842228866e-6],
+                "float64",
+                1e-9,
+            ),
+            (
+                [1.0, -40172.53538678672, 403458261.3150447, -2221380.9118629876, 3040.3600233223606],
+                [0.0029599318540459437, 0.0025459210183159004],
+                "float64",
+                1e-9,
+            ),
+            # A near-triple root beside a fourth one: centring it needs a gate of a quarter, not a sixteenth.
+            (
+                [1.0, -6.542885780334473, 15.241097447951688, -15.246880367553306, 5.582061569668052],
+                [2.7396306991577154, 1.2677443459345709],
+                "float64",
+                1e-5,
+            ),
+            # (x - 2)^3 (x + 9) with b one ulp up: one real root at 2. A resolvent root counts as dominant only
+            # 16 times the others' size away; at twice, the closed form's triple comes back.
+            (
+                [1.0, 3.0000000000000004, -42.0, 100.0, -72.0],
+                [1.9999931389943847, -9.0000000000000002],
+                "float64",
+                1e-5,
+            ),
+            # An exact double root at 1 inside a near-quadruple cluster. A stationary point's value certifies the
+            # critical value only beyond the drift p'^2 / |p''| of the point's own error; without it this
+            # minimum reads as positive and both roots are lost.
+            (
+                [1.0, -4.008663177490234, 6.026017665863037, -4.026045799255371, 1.0086913108825684],
+                [1.0, 1.0],
+                "float32",
+                1e-6,
+            ),
+            # No real roots: without the final residual test the pair at 0.486 is reported.
+            (
+                [
+                    0.24079275675471995,
+                    -0.5063849033527095,
+                    0.3993460088867061,
+                    -0.13997015029289017,
+                    0.0183972443730235,
+                ],
+                [],
+                "float64",
+                0.0,
+            ),
+            (
+                [1.0, 2685.27490234375, -481271392.0, -13682.7939453125, -0.11872430890798569],
+                [20636.308565148697, -23321.583439061931],
+                "float32",
+                1e-6,
+            ),
+        ],
+    )
+    def test_threshold_margins(self, coefficients, expected, literal_dtype, rtol, device, dtype):
+        if dtype != getattr(torch, literal_dtype):
+            pytest.skip("The coefficients are exact in the listed dtype; the row pins a threshold there.")
+        # References: sympy real-root isolation of the represented coefficients. Each row fails when its
+        # threshold is moved by a factor of 2 to 16 in the direction the comment names.
+        coeffs = torch.tensor([coefficients], device=device, dtype=dtype)
+        expected = torch.tensor([expected + [0.0] * (4 - len(expected))], device=device, dtype=dtype)
+        actual = solver.solve_quartic(coeffs)
+        assert int((actual != 0).sum()) == int((expected != 0).sum())
+        self.assert_close(actual, expected, atol=0.0, rtol=rtol)
+
+    def test_coefficient_underflowed_by_rescaling_counts_as_zero(self, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("The constant term is the smallest float64 subnormal.")
+        # The documented limit: rescaled to a unit root bound, 5e-324 underflows, and the real pair
+        # +-2.5e-163 is reported as a double root at 0.
+        coeffs = torch.tensor([[1.0, 1.75, -78.0, 0.0, 5e-324]], device=device, dtype=dtype)
+        expected = torch.tensor([[8.0, 0.0, 0.0, -9.75]], device=device, dtype=dtype)
+        self.assert_close(solver.solve_quartic(coeffs), expected, atol=0.0, rtol=0.0)
+
+    def test_exact_zero_double_root_gradient(self, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("The analytic Jacobian is compared in float64.")
+        coeffs = torch.tensor([[1.0, -6.25, -1.625, 0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
+        roots = solver.solve_quartic(coeffs)
+        # The simple root 6.5 has the implicit Jacobian -[r^4, r^3, r^2, r, 1] / p'(r), e included.
+        r = 6.5
+        slope = 4 * r**3 - 18.75 * r**2 - 3.25 * r
+        expected = -torch.tensor([[r**4, r**3, r**2, r, 1.0]], device=device, dtype=dtype) / slope
+        (gradient,) = torch.autograd.grad(roots[0, 0], coeffs, retain_graph=True)
+        self.assert_close(gradient, expected, atol=1e-12, rtol=1e-12)
+        # The double zero keeps the repeated-root convention: the four roots sum to -b / a.
+        (gradient,) = torch.autograd.grad(roots.sum(), coeffs)
+        expected = torch.tensor([[-6.25, -1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
+        self.assert_close(gradient, expected, atol=1e-12, rtol=1e-12)
+
+    @pytest.mark.parametrize(
+        "coefficients, expected",
+        [
+            # Two distinct real roots near a stationary point. References below
+            # solve the represented coefficients, not their generating roots.
+            (
+                [1.0, -52.14418276628962, 1007.5187742251757, -8555.967241283795, 26969.233894919536],
+                [16.7821050275422, 13.7045941923794, 10.82874356, 10.82873999],
+            ),
+            # The corresponding near-axis complex pair must stay padding.
+            (
+                [1.0, -64.8997252545787, 1572.8087859375592, -16876.08468535899, 67670.40367585233],
+                [19.322148600106, 14.574549379298, 0.0, 0.0],
+            ),
+            # Exact binary-float references: sympy.nroots with coefficients
+            # constructed as sympy.Rational(float_value), n=50, maxsteps=1000.
+            (
+                [1.0, -64.94582150986697, 1579.9948574760515, -17065.022602512025, 69044.1926650335],
+                [17.55969231808344, 16.66924737875942, 15.35847018582340, 15.35841162720071],
+            ),
+            (
+                [1.0, -63.03908361158486, 1480.402492442505, -15345.546348060858, 59217.6023118378],
+                [18.78915262046432, 12.52836237857898, 0.0, 0.0],
+            ),
+            (
+                [1.0, 58.93510754073745, 1301.9503673298948, 12777.476117348911, 47004.325578865675],
+                [-13.99561747187950, -14.47456758390348, -15.23238644901737, -15.23253603593710],
+            ),
+            # A nearly repeated resolvent can produce a completely invalid real
+            # factor even though the quartic has no real roots (#4474).
+            ([1.0, 14.0, 90.50379432823472, 290.5265602976431, 430.6412357523629], [0.0, 0.0, 0.0, 0.0]),
+            # Four separated root magnitudes require stable factors and enough
+            # polishing to converge, rather than accepting or dropping partial steps.
+            ([1.0, 499999.99001, -500000004995.0, 4995000000.00000095, 50000.0], [500000.0, 0.01, -1e-5, -1000000.0]),
+        ],
+    )
+    def test_resolvent_conditioning_boundaries(self, coefficients, expected, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("These literals separate float64 coefficient rounding from solver error.")
+        # Generation/reference: numpy.roots(numpy.array(coefficients, dtype=numpy.float64)).
+        coeffs = torch.tensor([coefficients], device=device, dtype=dtype)
+        roots = solver.solve_quartic(coeffs)
+        self.assert_close(roots, torch.tensor([expected], device=device, dtype=dtype), atol=3e-7, rtol=2e-11)
+
+    @pytest.mark.parametrize(
+        "coefficients",
+        [
+            [1.0, -64.94582150986697, 1579.9948574760515, -17065.022602512025, 69044.1926650335],
+            [1.0, 58.93510754073745, 1301.9503673298948, 12777.476117348911, 47004.325578865675],
+        ],
+    )
+    def test_close_distinct_roots_preserve_vieta_gradient(self, coefficients, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("These close distinct roots require float64 input coefficients.")
+        values = torch.tensor([coefficients], device=device, dtype=dtype, requires_grad=True)
+        actual = solver.solve_quartic(values)
+        assert bool((actual != 0).all())
+        (gradient,) = torch.autograd.grad(actual.sum(), values)
+        expected = torch.tensor([[coefficients[1], -1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
+        self.assert_close(gradient, expected, atol=1e-8, rtol=1e-10)
+
+    def test_close_pair_preserves_separated_root_jacobians(self, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("These analytic Jacobians require float64 input coefficients.")
+        values = torch.tensor(
+            [[1.0, -64.94582150986697, 1579.9948574760515, -17065.022602512025, 69044.1926650335]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        roots = solver.solve_quartic(values)
+        # Exact-binary-float roots from sympy.nroots(..., n=50): implicit
+        # derivative -[r**4, r**3, r**2, r, 1] / p'(r), independent of the solver.
+        expected = torch.tensor(
+            [
+                [-22035.41543636148, -1254.8861926053694, -71.46401940727937, -4.069776287235045, -0.23176808645125746],
+                [50463.77589809011, 3027.3577895540107, 181.6133458677674, 10.895113722961836, 0.6536056173024822],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        for slot in range(2):
+            (gradient,) = torch.autograd.grad(roots[0, slot], values, retain_graph=True)
+            self.assert_close(gradient[0], expected[slot], atol=1e-8, rtol=1e-7)
+
+    def test_conditioning_dynamo(self, device, dtype, torch_optimizer, optimizer_backend):
+        if optimizer_backend == "jit" or device.type != "cpu" or dtype != torch.float64:
+            pytest.skip("Fullgraph conditioning coverage requires CPU float64.")
+        values = torch.tensor(
+            [
+                [1.0, -64.94582150986697, 1579.9948574760515, -17065.022602512025, 69044.1926650335],
+                [1.0, -63.03908361158486, 1480.402492442505, -15345.546348060858, 59217.6023118378],
+            ],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        expected = solver.solve_quartic(values)
+        actual = torch_optimizer(solver.solve_quartic, fullgraph=True)(values)
+        self.assert_close(actual, expected, atol=3e-7, rtol=2e-11)
+        (gradient,) = torch.autograd.grad(actual[0].sum(), values)
+        expected_gradient = torch.tensor(
+            [[values[0, 1].item(), -1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype
+        )
+        self.assert_close(gradient, expected_gradient, atol=1e-8, rtol=1e-10)
+
+    def test_fullgraph_dynamo_mixed_degrees_and_backward(self, device, dtype, torch_optimizer, optimizer_backend):
+        if optimizer_backend == "jit" or device.type != "cpu" or dtype not in (torch.float32, torch.float64):
+            pytest.skip("Fullgraph Inductor coverage uses CPU float32/float64.")
+        coeffs = torch.tensor(
+            [
+                [1.0, -10.0, 35.0, -50.0, 24.0],
+                [1.0, 9.5, 33.25, 50.625, 28.125],
+                [1.0, 0.0, 0.0, 0.0, -16.0],
+                [1.0, 4.0, 14.01, 20.02, 25.05],
+                [0.0, 1.0, -6.0, 11.0, -6.0],
+                [0.0, 0.0, 0.0, 2.0, -6.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0],
+            ],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        compiled = torch_optimizer(solver.solve_quartic, fullgraph=True)
+        actual = compiled(coeffs)
+        expected = solver.solve_quartic(coeffs)
+        self.assert_close(actual, expected, atol=1e-5, rtol=1e-5)
+        grad = torch.autograd.grad(actual.sum(), coeffs, retain_graph=True)[0]
+        expected_grad = torch.autograd.grad(expected.sum(), coeffs)[0]
+        assert grad.isfinite().all()
+        self.assert_close(grad, expected_grad, atol=1e-4, rtol=1e-4)
+
     def test_smoke(self, device, dtype):
         coeffs = torch.rand(1, 5, device=device, dtype=dtype)
         roots = solver.solve_quartic(coeffs)
@@ -656,6 +1385,10 @@ class TestQuarticSolver(BaseTester):
         self.assert_close(roots_sorted, expected_sorted, rtol=1e-3, atol=1e-3)
 
     def test_random(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip(
+                "Half coefficient rounding changes close-root multiplicity; exact-input cases cover these dtypes."
+            )
         # Generate random roots and construct coefficients to ensure valid solutions exist
         torch.manual_seed(0)
         B = 10
@@ -1235,40 +1968,36 @@ class TestQuarticSolver(BaseTester):
     @pytest.mark.parametrize(
         "coeffs, expected, dtypes",
         [
-            # Each case pins one rule of the polish/filter/dedupe step: changing that rule makes it fail.
-            # Placeholders are judged apart from Ferrari's candidates: without it -8.8777 is returned twice.
+            # Historical regression root sets. Test the input polynomial and its multiplicities,
+            # independently of the solver's candidate construction and acceptance implementation.
             ([1.0, 15.49, 58.495, 144.38, 1300.075], [-8.75, -8.74], (torch.float32, torch.float64)),
-            # Placeholders are polished: without it the root at 0.003 is lost next to roots of 1e2 to 1e3.
+            # A small root survives next to roots of 1e2 to 1e3.
             (
                 [1.0, -1088.503, -128841.7345, 329286.535, -986.7],
                 [-110.0, 0.003, 2.5, 1196.0],
                 (torch.float32, torch.float64),
             ),
-            # The error bound comes only from simple roots: counting the double root drops 1.68.
+            # Float64 coefficient rounding turns the generating double root at 2.3 into a complex pair
+            # (numpy.roots of these coefficients: 2.3 +/- 2.71e-8j). Preserve the two simple roots.
             (
                 _monic_from_roots(torch.tensor([[2.3, 2.3, -4.19, 1.68]], dtype=torch.float64))[0].tolist(),
-                [-4.19, 1.68, 2.3, 2.3],
+                [-4.19, 1.68],
                 (torch.float64,),
             ),
-            # Coincidence factor 4, not 1: at 1 a second -1.5 survives (roots -2, -1.5, 4 +- 0.5i).
+            # Only two real roots: -2, -1.5; the other pair is 4 +/- 0.5i.
             ([1.0, -4.5, -8.75, 32.875, 48.75], [-2.0, -1.5], (torch.float32, torch.float64)),
-            # Simple-root threshold 1e-2, not 1e-1: at 1e-1 -4031 is returned twice (roots -4031, -4689,
-            # 231 +- 875i). The smaller case (roots -9, -5, 1 +- 3i) guards the same repeat at -9.
+            # Two real roots beside a large complex pair.
             (
                 [1.0, 8258.0, 15691705.0, -1590869938.0, 15479948400000.0],
                 [-4689.0, -4031.0],
                 (torch.float32, torch.float64),
             ),
             ([1.0, 12.0, 27.0, 50.0, 450.0], [-9.0, -5.0], (torch.float32, torch.float64)),
-            # ...and not 1e-3: at 1e-3 the float32 solve lost a copy of the double root at -2 (roots -5, -2, -2,
-            # 2.25). The float32 precision retry (#4906) now solves this row in float64, which keeps both copies
-            # at 1e-3, so the row no longer pins that side.
+            # Preserve both copies of the exact double root at -2.
             ([1.0, 6.75, 3.75, -34.0, -45.0], [-5.0, -2.0, -2.0, 2.25], (torch.float32, torch.float64)),
-            # The ulp floor in the coincidence window: without it 4.75 comes back twice (roots 4.75, -5, 9 +- 3i).
+            # Exactly two real roots, 4.75 and -5, beside 9 +/- 3i.
             ([1.0, -17.75, 61.75, 450.0, -2137.5], [-5.0, 4.75], (torch.float32, torch.float64)),
-            # Two complex pairs, no real root. Before the float32 precision retry (#4906) this row pinned the
-            # residual tolerance from above (at sqrt(eps) it returned -7.2066 and -6.7561 twice each); the
-            # retry now solves it in float64, and test_residual_tolerance_for_half_inputs_4474 pins both sides.
+            # Two complex pairs, no real roots.
             ([1.0, 27.91975997, 297.7351036, 1435.935501, 2645.836994], [], (torch.float32,)),
             # This originally pinned an approximate double root at 0.558935. The actual float32
             # coefficients have a complex pair 0.5589346 +/- 1.17188435e-5j (numpy.roots in float64).
@@ -1278,8 +2007,7 @@ class TestQuarticSolver(BaseTester):
                 [-0.901329, 7.419483],
                 (torch.float32,),
             ),
-            # A recovered placeholder's step bound, from below: at eps * |x| instead of sqrt(eps) * |x| the
-            # root at 0.0009864 next to roots of 1 to 946 is lost.
+            # A small root beside roots of 1, 386 and 946.
             (
                 [1.0, -1333.67141, 366869.5534, -369281.897, 363.9159878],
                 [0.0009864, 1.009293, 386.1998282, 946.4613022],
@@ -1299,10 +2027,8 @@ class TestQuarticSolver(BaseTester):
         self.assert_close(found, want, rtol=tol, atol=tol)
 
     def test_residual_tolerance_for_half_inputs_4474(self, device, dtype):
-        # float16 quartics are solved in float32 without the float32 precision retry (#4906), so the float32
-        # residual tolerance sqrt(eps) / 4 still decides these rows. From below: at sqrt(eps) / 16 the first
-        # loses its real root at 0.8855. From above: at sqrt(eps) the second also reports its complex pair
-        # -0.2796 +- 0.0092j as two real roots. Real roots: numpy.roots of the exact float16 values.
+        # The represented float16 coefficients in each row have exactly two
+        # real roots. Classification must preserve the close complex pair as padding.
         if dtype != torch.float16:
             pytest.skip("Half inputs are where the float32 residual tolerance still applies.")
         coeffs = torch.tensor(

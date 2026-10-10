@@ -1381,7 +1381,7 @@ class TestIntensityColourConventions(BaseTester):
         if not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         torch.manual_seed(_FORWARD_SEED)
-        with pytest.raises(ValueError) as info:
+        with pytest.raises(ValueError, match=r"Cannot compute tiles") as info:
             _sync(K.RandomClahe(p=1.0)(torch.rand(1, 1, 8, 8, device=device, dtype=dtype)).device)
         # The error names the argument the caller passed, unlike torch's padding error.
         assert "Cannot compute tiles" in str(info.value)

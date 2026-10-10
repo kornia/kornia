@@ -25,6 +25,15 @@ from testing.base import BaseTester
 
 
 class TestMeanIoU(BaseTester):
+    def test_transposed_label_maps(self, device):
+        pred = torch.tensor([[[0, 1, 2], [2, 1, 0]], [[2, 0, 1], [1, 2, 0]]], device=device).transpose(1, 2)
+        target = torch.tensor([[[0, 2, 2], [1, 1, 0]], [[2, 0, 0], [1, 2, 1]]], device=device).transpose(1, 2)
+        expected = torch.tensor([[1, 1 / 3, 1 / 3], [1 / 3, 1 / 3, 1]], device=device, dtype=torch.float32)
+
+        assert not pred.is_contiguous()
+        assert not target.is_contiguous()
+        self.assert_close(kornia.metrics.mean_iou(pred, target, 3), expected)
+
     def test_two_classes_perfect(self, device, dtype):
         batch_size = 1
         num_classes = 2
@@ -316,3 +325,68 @@ class TestMeanIoUBBox(BaseTester):
         actual = kornia.metrics.mean_iou_bbox(boxes_1, boxes_2)
         assert actual.dtype == torch.float32
         self.assert_close(actual, torch.tensor([[1.0]], device=device))
+
+
+class TestConventionsMeanIoU(BaseTester):
+    # The label maps of TestConventionsConfusionMatrix: confusion matrices [[2, 0, 1], [1, 3, 1], [0, 1, 3]] and
+    # [[3, 1, 0], [1, 2, 2], [0, 0, 3]] (rows = target).
+    PRED = [[[0, 0, 1, 2], [1, 1, 2, 2], [0, 2, 2, 1]], [[2, 2, 2, 2], [0, 1, 1, 0], [0, 0, 1, 2]]]
+    TARGET = [[[0, 1, 1, 2], [1, 1, 1, 2], [0, 0, 2, 2]], [[2, 2, 1, 1], [0, 0, 1, 0], [1, 0, 1, 2]]]
+
+    def test_convention_mean_iou_is_per_sample_per_class(self, device, dtype):
+        """mean_iou returns the IoU of every class in every sample, (B, K) float32; it averages neither axis."""
+        pred = torch.tensor(self.PRED, device=device)
+        target = torch.tensor(self.TARGET, device=device)
+        # IoU_k = TP / (TP + FP + FN) per sample: sample 0 gives 2/4, 3/6, 3/6; sample 1 gives 3/5, 2/6, 3/5
+        expected = torch.tensor([[0.5, 0.5, 0.5], [0.6, 1.0 / 3.0, 0.6]], device=device)
+        iou = kornia.metrics.mean_iou(pred, target, 3)
+        assert iou.shape == (2, 3)
+        assert iou.dtype == torch.float32
+        self.assert_close(iou, expected)
+        # relabel: renaming class c to perm[c] in both maps permutes the columns
+        perm = torch.tensor([2, 0, 1], device=device)
+        self.assert_close(kornia.metrics.mean_iou(perm[pred], perm[target], 3), expected[:, torch.argsort(perm)])
+
+    def test_convention_mean_iou_absent_class_scores_one(self, device, dtype):
+        """A class in neither map scores (0 + eps) / (0 + eps) = 1; a class only predicted scores about 0."""
+        pred = torch.tensor([[0, 0, 1, 1]], device=device)
+        target = torch.tensor([[0, 1, 1, 1]], device=device)
+        # classes 0 and 1: 1/2 and 2/3; class 2 is absent from both maps. scikit-learn 1.9.0 jaccard_score gives 0 there
+        # (with a warning) and torchmetrics 1.9.0 leaves it out of its macro average.
+        self.assert_close(
+            kornia.metrics.mean_iou(pred, target, 3), torch.tensor([[0.5, 2.0 / 3.0, 1.0]], device=device)
+        )
+        # a larger num_classes appends absent classes at 1, which raises the class average (0.7222 -> 0.7917)
+        self.assert_close(kornia.metrics.mean_iou(pred, target, 4)[0, 2:], torch.ones(2, device=device))
+        # the 1 comes from eps: eps=0 leaves 0 / 0
+        assert torch.isnan(kornia.metrics.mean_iou(pred, target, 3, eps=0.0)[0, 2])
+        # a class predicted once and never in the target scores eps / (1 + eps)
+        predicted_only = kornia.metrics.mean_iou(torch.tensor([[0, 2, 1, 1]], device=device), target, 3)
+        assert 0.0 < predicted_only[0, 2] < 1e-5
+
+    def test_convention_mean_iou_bbox_is_pairwise_and_exclusive(self, device, dtype):
+        """mean_iou_bbox returns the (N1, N2) IoU of every pair; boxes are exclusive, area (x2 - x1) * (y2 - y1)."""
+        boxes_1 = torch.tensor([[0.0, 0.0, 2.0, 2.0], [10.0, 20.0, 40.0, 30.0]], device=device, dtype=dtype)
+        boxes_2 = torch.tensor(
+            [[1.0, 1.0, 3.0, 3.0], [20.0, 20.0, 40.0, 30.0], [10.0, 20.0, 40.0, 25.0]], device=device, dtype=dtype
+        )
+        # [0, 0, 2, 2] and [1, 1, 3, 3] overlap in 1 of 4 + 4 - 1 = 7 (the VOC devkit's inclusive +1 areas give 4 / 14);
+        # the 30 x 10 box covers the 20 x 10 one (2 / 3) and the 30 x 5 one (1 / 2). torchvision 0.29.0
+        # box_iou(boxes_1, boxes_2) returns the same matrix.
+        expected = torch.tensor([[1.0 / 7.0, 0.0, 0.0], [0.0, 2.0 / 3.0, 0.5]], device=device, dtype=dtype)
+        iou = kornia.metrics.mean_iou_bbox(boxes_1, boxes_2)
+        assert iou.shape == (2, 3)
+        assert iou.dtype == dtype
+        self.assert_close(iou, expected)
+        # swapping the two sets transposes the matrix
+        self.assert_close(kornia.metrics.mean_iou_bbox(boxes_2, boxes_1), expected.T)
+
+        # the same boxes in the two other formats give the same matrix
+        def to_xywh(boxes):
+            return torch.cat([boxes[:, :2], boxes[:, 2:] - boxes[:, :2]], 1)
+
+        def to_cxcywh(boxes):
+            return torch.cat([(boxes[:, :2] + boxes[:, 2:]) / 2, boxes[:, 2:] - boxes[:, :2]], 1)
+
+        self.assert_close(kornia.metrics.mean_iou_bbox(to_xywh(boxes_1), to_xywh(boxes_2), "xywh"), expected)
+        self.assert_close(kornia.metrics.mean_iou_bbox(to_cxcywh(boxes_1), to_cxcywh(boxes_2), "cxcywh"), expected)

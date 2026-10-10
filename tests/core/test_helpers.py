@@ -21,6 +21,7 @@ import torch
 from kornia.core.exceptions import BaseError, DeviceError, TypeCheckError
 from kornia.core.utils import (
     _adjugate_closed_form,
+    _closed_form_inverse,
     _det_perm_closed_form,
     _extract_device_dtype,
     _inverse_3x3_closed_form,
@@ -55,6 +56,43 @@ def _scales(dtype):
     if dtype in (torch.float16, torch.bfloat16):
         return [2.0**-10, 1.0, 2.0**10]
     return [1e-3, 1.0, 1e3, 2.0**-20, 2.0**20]
+
+
+def _regular_at_extreme_scales(device, dtype):
+    """Well-conditioned 4x4 matrices scaled so that the products of four entries overflow or underflow the dtype
+    while the inverse fits: the identity and a dense matrix at ``big`` and ``1 / big``, the dense matrix with two
+    columns, then two rows, scaled by ``small``, the identity at the largest finite value of the dtype, where ``log2``
+    rounds up to the exponent above, and a block matrix whose column factor ``tiny / huge`` and the row factor ``low``
+    of its other block add up to an exponent beyond the dtype, by which the zeros of its inverse are scaled back,
+    while no entry of its row- or column-scaled copy is subnormal (MPS flushes those to zero). Powers of two keep the
+    scaling exact."""
+    big = 2.0**40 if dtype == torch.float32 else 2.0**300
+    small = 2.0**-80 if dtype == torch.float32 else 2.0**-600
+    huge, tiny, low = (2.0**80, 2.0**-40, 2.0**-20) if dtype == torch.float32 else (2.0**800, 2.0**-200, 2.0**-100)
+    A = torch.tensor(
+        [[4.0, 1.0, 2.0, 1.0], [1.0, 5.0, 1.0, 2.0], [2.0, 1.0, 6.0, 1.0], [1.0, 2.0, 1.0, 7.0]],
+        device=device,
+        dtype=dtype,
+    )
+    eye = torch.eye(4, device=device, dtype=dtype)
+    D = torch.diag(torch.tensor([1.0, 1.0, small, small], device=device, dtype=dtype))
+    compound = eye * low
+    compound[:2, :2] = torch.tensor([[huge, tiny], [huge, -tiny]], device=device, dtype=dtype)
+    return torch.stack([eye * big, eye / big, A * big, A / big, A @ D, D @ A, eye * torch.finfo(dtype).max, compound])
+
+
+def _regular_with_a_vanishing_column(n, device, dtype):
+    """``[[2 ** 100, 2 ** -60], [2 ** 100, -2 ** -60]]`` (``2 ** 1000`` and ``2 ** -600`` in float64) in the corner of
+    the identity of order ``n``, and its inverse, ``[[1 / (2 huge), 1 / (2 huge)], [1 / (2 tiny), -1 / (2 tiny)]]`` in
+    the corner. Regular, with a finite inverse and a finite ``adj / det``, while the second column is ``2 ** -160`` of
+    the first in both rows and would underflow in a row scaling that is carried out. ``torch.linalg.inv`` of torch
+    2.5.1 returns ``[[1 / huge, 0], [1 / tiny, -1 / tiny]]`` for it, off by 1 in ``A @ inv``; torch 2.14 is exact."""
+    huge, tiny = (2.0**100, 2.0**-60) if dtype == torch.float32 else (2.0**1000, 2.0**-600)
+    A = torch.eye(n, device=device, dtype=dtype)
+    A[:2, :2] = torch.tensor([[huge, tiny], [huge, -tiny]], device=device, dtype=dtype)
+    inverse = torch.eye(n, device=device, dtype=dtype)
+    inverse[:2, :2] = torch.tensor([[0.5 / huge, 0.5 / huge], [0.5 / tiny, -0.5 / tiny]], device=device, dtype=dtype)
+    return A, inverse
 
 
 # One row is the sum of two others, or a multiple of the other, in small integers: exactly singular, and every
@@ -226,6 +264,68 @@ class TestInverseCast:
     def test_closed_form_rejects_other_shapes(self, device, dtype):
         with pytest.raises(NotImplementedError):
             _adjugate_closed_form(torch.eye(5, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("n", [2, 3, 4])
+    def test_scaled_closed_form_is_adj_over_det_bit_for_bit(self, device, dtype, n):
+        # The closed-form inverse balances rows and columns by powers of two before the adjugate (#5507). A power
+        # of two changes no rounding step, so wherever the adjugate and the determinant are normal numbers the
+        # result is the same to the bit. The last matrix has a second column that is ``2 ** -160`` of the first in
+        # every row: a row scaling that is carried out would flush it, the exponent arithmetic does not.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("the capture path computes in float32 or float64")
+        torch.manual_seed(0)
+        x = torch.randn(64, n, n, device=device, dtype=dtype)
+        x = x * torch.logspace(-3, 3, 64, dtype=dtype).to(device)[:, None, None]  # ``logspace`` has no MPS kernel
+        x[::2] *= torch.logspace(-2, 2, n, dtype=dtype).to(device)[None, :, None]
+        x = torch.cat([x, _regular_with_a_vanishing_column(n, device, dtype)[0][None]])
+        adj, det = _adjugate_closed_form(x)
+        assert torch.isfinite(adj).all()
+        assert torch.isfinite(det).all()
+        assert torch.equal(_closed_form_inverse(x), adj / det[..., None, None])
+
+    def test_trace_keeps_the_inverse_finite_at_an_extreme_scale_5507(self, device, dtype):
+        # Under capture ``1e13 * I`` of order 4 had ``adj inf`` and ``det inf`` in float32 and came back as NaN,
+        # while eager returned ``1e-13 * I``. The scaled adjugate keeps the traced inverse finite and eager-close.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("tracing under half precision is not a supported surface")
+        # The last matrix is regular with a column ``2 ** -160`` of the other in every row; ``_is_singular`` reads it
+        # as singular in eager mode and under capture alike, so it is tested on this mask-free path. It is read
+        # against its exact inverse, which the powers of two reach to the bit, not against eager, whose LU loses the
+        # column on torch 2.5.1.
+        vanishing, vanishing_inverse = _regular_with_a_vanishing_column(4, device, dtype)
+        A = torch.cat([_regular_at_extreme_scales(device, dtype), vanishing[None]])
+        traced = torch.jit.trace(_torch_inverse_cast, A, check_trace=False)
+        inverse = traced(A)
+        assert torch.isfinite(inverse).all()
+        rtol = 1e-5 if dtype == torch.float32 else 1e-12
+        assert_close(inverse[:-1], _torch_inverse_cast(A[:-1]), atol=0.0, rtol=rtol)
+        assert torch.equal(inverse[-1], vanishing_inverse)
+
+    @pytest.mark.parametrize("n", [3, 4])
+    def test_trace_scales_the_inverse_back_beyond_the_largest_power_of_two_5507(self, device, dtype, n):
+        # The entry (1, 2) of the inverse of this matrix is ``-2 ** 45`` in float32, but its row factor ``2 ** -20``
+        # and the column factor ``2 ** -126`` of the ``2 ** -26`` entries scale it back by ``2 ** 146``, beyond the
+        # largest power of two of the dtype (``2 ** 1122`` in float64). One power of two capped at that largest
+        # one returns ``-2 ** 26``. Every entry and the exact inverse are normal powers of two.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("tracing under half precision is not a supported surface")
+        h, low, r = (100, 26, 20) if dtype == torch.float32 else (800, 222, 100)
+        A = torch.eye(n, device=device, dtype=dtype)
+        A[:3, :3] = torch.tensor(
+            [[2.0**h, 2.0**-low, 1.0], [2.0**h, -(2.0**-low), 0.0], [0.0, 0.0, 2.0**-r]], device=device, dtype=dtype
+        )
+        expected = torch.eye(n, device=device, dtype=dtype)
+        expected[:3, :3] = torch.tensor(
+            [
+                [2.0 ** -(h + 1), 2.0 ** -(h + 1), -(2.0 ** (r - h - 1))],
+                [2.0 ** (low - 1), -(2.0 ** (low - 1)), -(2.0 ** (low + r - 1))],
+                [0.0, 0.0, 2.0**r],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        traced = torch.jit.trace(_torch_inverse_cast, A[None], check_trace=False)
+        assert torch.equal(traced(A[None])[0], expected)
 
 
 class TestExportHelpers:
@@ -703,18 +803,53 @@ class TestInverseWithMask:
         # Powers of two keep the scaling exact. Half input is decided in float32, where these scales are harmless.
         if dtype not in (torch.float32, torch.float64):
             pytest.skip("half input is decided in float32")
-        big = 2.0**40 if dtype == torch.float32 else 2.0**300
-        small = 2.0**-80 if dtype == torch.float32 else 2.0**-600
-        A = torch.tensor(
-            [[4.0, 1.0, 2.0, 1.0], [1.0, 5.0, 1.0, 2.0], [2.0, 1.0, 6.0, 1.0], [1.0, 2.0, 1.0, 7.0]],
-            device=device,
-            dtype=dtype,
-        )
-        D = torch.diag(torch.tensor([1.0, 1.0, small, small], device=device, dtype=dtype))
-        A = torch.stack([A * big, A / big, A @ D, D @ A])
+        A = _regular_at_extreme_scales(device, dtype)
         assert not _is_singular(A).any()
         assert safe_inverse_with_mask(A)[1].all()
-        assert safe_solve_with_mask(torch.ones(4, 4, device=device, dtype=dtype), A)[2].all()
+        assert safe_solve_with_mask(torch.ones(len(A), 4, device=device, dtype=dtype), A)[2].all()
+
+    def test_regular_matrix_at_an_extreme_scale_is_valid_under_trace_5507(self, device, dtype):
+        # Under capture the inverse is the adjugate over the determinant, and their entries overflow or underflow
+        # the dtype long before the inverse does: ``1e13 * I`` of order 4 reads ``inf / inf`` in float32 and
+        # ``1e-13 * I`` reads ``x / 0``, so the traced mask rejected both matrices that eager accepted. The adjugate
+        # is now taken on a row- and column-scaled copy, and the traced verdict and inverse are the eager ones.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("half input is decided in float32")
+        A = _regular_at_extreme_scales(device, dtype)
+        expected_inverse, expected_mask = safe_inverse_with_mask(A)
+        traced = torch.jit.trace(safe_inverse_with_mask, (A,), check_trace=False)
+        inverse, mask = traced(A)
+        assert mask.tolist() == expected_mask.tolist() == [True] * len(A)
+        assert torch.isfinite(inverse).all()
+        assert_close(inverse, expected_inverse, atol=0.0, rtol=1e-5 if dtype == torch.float32 else 1e-12)
+
+    @pytest.mark.parametrize("n", [2, 3, 4])
+    def test_nonfinite_matrix_is_invalid_under_trace_5507(self, device, dtype, n, monkeypatch):
+        # The traced inverse balances the matrix by exponents read as indices into a table of powers of two. A NaN
+        # entry has a NaN exponent, and a NaN cast to int64 is 0 on arm64 but the most negative int64 on x86 and
+        # CUDA, out of the table's range; the exponent of a NaN or infinite row or column is 0 instead. The traced
+        # mask then rejects the matrix and its row is the identity, as in eager mode.
+        from kornia.core import utils
+
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("half input is decided in float32")
+        exponents = []
+        times_power_of_two = utils._times_power_of_two
+
+        def spy(x, exponent):
+            exponents.append(exponent)
+            return times_power_of_two(x, exponent)
+
+        monkeypatch.setattr(utils, "_times_power_of_two", spy)
+        eye = torch.eye(n, device=device, dtype=dtype)
+        A = torch.stack([eye * 2, eye, eye])
+        A[1, 0, 1] = float("nan")
+        A[2, 0, 1] = float("inf")
+        inverse, mask = torch.jit.trace(safe_inverse_with_mask, (A,), check_trace=False)(A)
+        assert mask.tolist() == safe_inverse_with_mask(A)[1].tolist() == [True, False, False]
+        assert torch.equal(inverse[1:], eye.expand(2, n, n))
+        assert exponents
+        assert all(torch.isfinite(e).all() for e in exponents)
 
     def test_rule_calls_a_zero_row_or_column_singular(self, device, dtype):
         # The rule divides each row and column by its largest magnitude; a zero row or column has to stay

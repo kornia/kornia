@@ -101,6 +101,19 @@ def mean_absolute_disparity_error(
 
         \text{MAE}(D, D^{gt}) = \frac{1}{|\mathcal{V}|}\sum_{p \in \mathcal{V}} |D_{p} - D^{gt}_{p}|
 
+    Convention:
+        - The maps hold disparities in pixels, have any shape :math:`(*)` and must have a floating dtype. ``'mean'``
+          and ``'sum'`` pool every valid pixel of every image into one 0-d value, in pixels here, so for images with
+          different numbers of valid pixels the result is not the mean of the per-image errors. The other disparity
+          metrics pool the same way.
+        - ``valid_mask`` is broadcast to the maps from the right: an :math:`(H, W)` mask applies to every image of a
+          :math:`(B, H, W)` batch and a :math:`(B, 1, 1)` mask selects whole images, while a :math:`(B,)` mask is
+          matched against the last axis, not the batch. Nothing is masked automatically: a pixel with an invalid
+          ground truth, such as a zero disparity, counts unless ``valid_mask`` excludes it.
+        - A ``nan`` at a valid pixel of either map propagates into this error and the RMSE, while
+          :func:`~kornia.metrics.mean_bad_pixel_error` and :func:`~kornia.metrics.kitti_d1_error` count it as a
+          good pixel.
+
     Args:
         input: the predicted disparity map with arbitrary shape :math:`(*)`.
         target: the ground truth disparity map with the same shape as ``input``.
@@ -159,6 +172,11 @@ def root_mean_squared_disparity_error(
 
         \text{RMSE}(D, D^{gt}) =
         \sqrt{\frac{1}{|\mathcal{V}|}\sum_{p \in \mathcal{V}} (D_{p} - D^{gt}_{p})^{2}}
+
+    Convention:
+        See the Convention block of :func:`~kornia.metrics.mean_absolute_disparity_error`: ``'mean'`` gives one 0-d
+        value in pixels, pooled over every valid pixel of the batch, and ``'sum'`` gives :math:`\sqrt{\sum e^2}`, not
+        a sum of errors.
 
     Args:
         input: the predicted disparity map with arbitrary shape :math:`(*)`.
@@ -227,6 +245,11 @@ def mean_bad_pixel_error(
     KITTI reports: that benchmark uses D1, which adds a relative criterion on top of this one.
     See :func:`kitti_d1_error`.
 
+    Convention:
+        See the Convention block of :func:`~kornia.metrics.mean_absolute_disparity_error`: ``'mean'`` gives one 0-d
+        value pooled over every valid pixel of the batch, here a **fraction** in :math:`[0, 1]`, and ``'sum'`` the
+        number of bad pixels.
+
     Args:
         input: the predicted disparity map with arbitrary shape :math:`(*)`.
         target: the ground truth disparity map with the same shape as ``input``.
@@ -242,8 +265,6 @@ def mean_bad_pixel_error(
 
     Return:
         the computed metric as a scalar, or the per-pixel bad-pixel map if ``reduction='none'``.
-        The scalar is a **fraction** in :math:`[0, 1]`, not a percentage, and a batch is **pooled**
-        over every valid pixel of every image rather than averaged per image.
 
     Note:
         If ``valid_mask`` selects no pixels, ``'mean'`` reduction returns ``nan``.
@@ -295,9 +316,15 @@ def kitti_d1_error(
         \frac{|D_{p} - D^{gt}_{p}|}{|D^{gt}_{p}|} > \tau_{rel}\right]
 
     This is the outlier ratio reported by the KITTI 2015 stereo benchmark, expressed as a fraction
-    in :math:`[0, 1]` instead of a percentage. Unlike :func:`mean_bad_pixel_error`, the additional
-    relative criterion keeps large disparities from being penalised for errors that are small
-    compared to their magnitude.
+    in :math:`[0, 1]` instead of a percentage.
+
+    Convention:
+        - See the Convention block of :func:`~kornia.metrics.mean_absolute_disparity_error`: ``'mean'`` gives one
+          0-d value pooled over every valid pixel of the batch, here a **fraction** in :math:`[0, 1]`, and ``'sum'``
+          the number of outliers. :ref:`Losses and metrics <losses-metrics-conventions>` relates it to the KITTI
+          devkit.
+        - The relative error divides by ``target``, so the two maps are not interchangeable: swapping them can
+          change the result.
 
     Args:
         input: the predicted disparity map with arbitrary shape :math:`(*)`.
@@ -315,11 +342,6 @@ def kitti_d1_error(
 
     Return:
         the computed metric as a scalar, or the per-pixel outlier map if ``reduction='none'``.
-        The scalar is a **fraction** in :math:`[0, 1]`, not a percentage. A batch is **pooled**:
-        every valid pixel of every image contributes equally to one ratio, which is what the KITTI
-        devkit accumulates and what the leaderboard reports. That is not the same as averaging the
-        per-image D1 values, and the two differ whenever the images hold different numbers of valid
-        pixels.
 
     Note:
         If ``valid_mask`` selects no pixels, ``'mean'`` reduction returns ``nan``.

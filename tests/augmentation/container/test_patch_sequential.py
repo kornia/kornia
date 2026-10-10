@@ -43,7 +43,7 @@ class TestPatchSequential:
         ],
     )
     def test_exception(self, error_param):
-        with pytest.raises(Exception):  # AssertError and NotImplementedError
+        with pytest.raises(ValueError, match=r"number of processing modules|Only boolean value allowed"):
             K.PatchSequential(
                 K.ImageSequential(
                     K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.5),

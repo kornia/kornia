@@ -477,10 +477,10 @@ def generate_patch_grid_from_normalized_LAF(img: torch.Tensor, LAF: torch.Tensor
     LAF_renorm = denormalize_laf(LAF, img)
 
     grid = F.affine_grid(LAF_renorm.view(B * N, 2, 3), [B * N, ch, PS, PS], align_corners=False)
-    # A singleton axis has no spatial extent; one pixel of denominator keeps the grid finite and
-    # lets the border padding return that single pixel (see `denormalize_laf`).
-    grid[..., :, 0] = 2.0 * grid[..., :, 0].clone() / float(max(w - 1, 1)) - 1.0
-    grid[..., :, 1] = 2.0 * grid[..., :, 1].clone() / float(max(h - 1, 1)) - 1.0
+    # The grid is in pixels, centres at integers (the LAF frame); `grid_sample(align_corners=False)` puts pixel x at
+    # (2x + 1) / W - 1. A singleton axis maps every sample to its only pixel's centre.
+    grid[..., :, 0] = (2.0 * grid[..., :, 0].clone() + 1.0) / float(w) - 1.0
+    grid[..., :, 1] = (2.0 * grid[..., :, 1].clone() + 1.0) / float(h) - 1.0
     return grid
 
 
@@ -588,6 +588,31 @@ def _sample_patches(img: torch.Tensor, grid: torch.Tensor, h: int, w: int) -> to
     return _grid_sample_patches(img, folded, h, w).view(B, ch, N, PS, PS).permute(0, 2, 1, 3, 4)
 
 
+def _pyramid_grid_frame(nlaf: torch.Tensor, h: int, w: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    r"""Return the scale ``k`` and translation ``t`` that map a normalized LAF's patch grid to sampling coordinates.
+
+    ``grid = affine_grid(A, align_corners=False) * k + t`` addresses, for ``grid_sample(align_corners=False)``, the
+    input pixels the LAF describes: pixel :math:`x` of the :math:`(h, w)` input sits at :math:`(2x + 1) / w - 1`.
+    ``pyrdown`` resizes to ``floor(side / 2)`` with ``align_corners=False``, so input pixel :math:`x` is pixel
+    :math:`(x + 0.5) w_l / w - 0.5` of level :math:`l` -- which that level's ``grid_sample`` addresses at the same
+    :math:`(2x + 1) / w - 1`. One grid therefore serves every pyramid level.
+
+    Args:
+        nlaf: normalized LAFs :math:`(B, N, 2, 3)` (``normalize_laf``'s frame).
+        h: input height.
+        w: input width.
+
+    Returns:
+        ``k`` of shape :math:`(2,)` and ``t`` of shape :math:`(B, N, 2)`, in ``nlaf``'s dtype and device.
+    """
+    # `denormalize_laf`'s extents: a singleton axis counts as one pixel.
+    wf, hf = float(max(w - 1, 1)), float(max(h - 1, 1))
+    min_size = min(wf, hf)
+    k = nlaf.new_tensor([2.0 * min_size / float(w), 2.0 * min_size / float(h)])
+    t = (2.0 * nlaf[..., :, 2] * nlaf.new_tensor([wf, hf]) + 1.0) / nlaf.new_tensor([float(w), float(h)]) - 1.0
+    return k, t
+
+
 def _extract_patches_from_pyramid_levelwise(
     img: torch.Tensor,
     nlaf: torch.Tensor,
@@ -612,7 +637,7 @@ def _extract_patches_from_pyramid_levelwise(
     chunk = _grid_chunk_lafs(B, N, ch, PS, _grid_elem_bytes(grid_dtype))
     cur_img = img.to(grid_laf.dtype) if img.dtype != grid_laf.dtype else img
     laf_a = grid_laf[..., :2]
-    t = 2.0 * grid_laf[..., :, 2] - 1.0
+    k, t = _pyramid_grid_frame(grid_laf, heights[0], widths[0])
 
     # Most calls fit in one bounded chunk, so their level-independent affine grid can be reused
     # across the streaming pyramid. A multi-chunk call rebuilds each chunk's grid per level rather
@@ -641,11 +666,6 @@ def _extract_patches_from_pyramid_levelwise(
                     B, nc, PS, PS, 2
                 )
             translation = t[:, st:en].view(B, nc, 1, 1, 2)
-            # Match `normalize_laf` / `denormalize_laf`: a singleton axis counts as one pixel of
-            # extent. Border padding still repeats that axis's only pixel, while the other axis
-            # keeps its spatial variation instead of being collapsed by a shared zero `min_l`.
-            min_l = float(min(max(h_l - 1, 1), max(w_l - 1, 1)))
-            k = base_grid.new_tensor([2.0 * min_l / float(max(w_l - 1, 1)), 2.0 * min_l / float(max(h_l - 1, 1))])
             grid = base_grid * k + translation
             patches = _sample_patches(cur_img, grid, h_l, w_l).to(img.dtype)
             mask = (pyr_idx[:, st:en] == level_idx).view(B, en - st, 1, 1, 1)
@@ -780,15 +800,12 @@ def extract_patches_from_pyramid(
     # levelwise path preserves the same clamping and reduced-precision grid semantics. The atlas
     # is built in the grid's dtype -- reduced-precision inputs are upcast once, so the replicate
     # pad, `pyrdown` and every chunk's `grid_sample` run on kernels every torch build has, and no
-    # full-atlas recast is paid per chunk. A 1-pixel axis in any *built level* -- a 1-pixel input
-    # image, or a coarse level that `PS == 1` lets the pyramid descend to -- would make the level
-    # constants' Python `size - 1` division below raise; the levelwise sampler treats that axis
-    # as having zero spatial extent instead.
+    # full-atlas recast is paid per chunk.
     atlas_elements = B * ch * atlas_h * atlas_w
     atlas_bytes = atlas_elements * _grid_elem_bytes(grid_dtype)
     if img.dtype != grid_dtype:
         atlas_bytes += B * ch * h * w * _grid_elem_bytes(grid_dtype)  # the one-time upcast copy
-    if min(heights[-1], widths[-1]) < 2 or not _pyramid_atlas_fits(atlas_bytes):
+    if not _pyramid_atlas_fits(atlas_bytes):
         return _extract_patches_from_pyramid_levelwise(img, nlaf, pyr_idx, heights, widths, PS)
     sample_img = img.to(grid_dtype) if img.dtype != grid_dtype else img
     atlas = sample_img.new_zeros(B, ch, atlas_h, atlas_w)
@@ -804,7 +821,7 @@ def extract_patches_from_pyramid(
     # zero translation; reduced-precision inputs need float32 grid arithmetic because the atlas is
     # wider than the original image.
     laf_a = nlaf[..., :2].to(grid_dtype)
-    t = 2.0 * nlaf[..., :, 2].to(grid_dtype) - 1.0
+    k, t = _pyramid_grid_frame(nlaf.to(grid_dtype), h, w)
 
     # Gather all level-dependent conversion constants per patch, packed as (x, y) pairs so the
     # remap below runs on the whole grid tensor step by step, never holding split-axis copies. A
@@ -813,11 +830,8 @@ def extract_patches_from_pyramid(
     xoff = 0
     constants = []
     for h_l, w_l in zip(heights, widths):
-        min_l = float(min(h_l - 1, w_l - 1))
         constants.append(
             (
-                2.0 * min_l / float(w_l - 1),  # k: LAF frame -> level-normalized units
-                2.0 * min_l / float(h_l - 1),
                 -1.0 + 1.0 / float(w_l),  # lo/hi: the level's outermost pixel centers
                 -1.0 + 1.0 / float(h_l),
                 1.0 - 1.0 / float(w_l),
@@ -829,7 +843,7 @@ def extract_patches_from_pyramid(
             )
         )
         xoff += w_l + 2
-    level_constants = torch.tensor(constants, dtype=grid_dtype, device=nlaf.device).view(-1, 5, 2)
+    level_constants = torch.tensor(constants, dtype=grid_dtype, device=nlaf.device).view(-1, 4, 2)
 
     # The folded grid and its remap intermediates scale with B*N*PS^2, so sampling is chunked
     # along N to bound peak memory; each chunk repeats exactly the single-call arithmetic, and
@@ -845,9 +859,7 @@ def extract_patches_from_pyramid(
         nc = en - st
         theta = torch.cat([laf_a[:, st:en], torch.zeros(B, nc, 2, 1, dtype=grid_dtype, device=nlaf.device)], dim=-1)
         grid = F.affine_grid(theta.view(B * nc, 2, 3), [B * nc, ch, PS, PS], align_corners=False).view(B, nc, PS, PS, 2)
-        k, lo, hi, level_scale, level_offset = (
-            level_constants[safe_pyr_idx[:, st:en]].view(B, nc, 1, 1, 5, 2).unbind(-2)
-        )
+        lo, hi, level_scale, level_offset = level_constants[safe_pyr_idx[:, st:en]].view(B, nc, 1, 1, 4, 2).unbind(-2)
         grid = grid * k
         grid = grid + t[:, st:en].view(B, nc, 1, 1, 2)
         grid = grid.maximum(lo)

@@ -79,7 +79,7 @@ class TestRandomProbGen(RandomGeneratorBaseTests):
         ],
     )
     def test_invalid_param_combinations(self, p):
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError, match=r"Expected parameter probs"):
             ProbabilityGenerator(p)(torch.Size([8]))
 
     @pytest.mark.parametrize(
@@ -166,7 +166,10 @@ class TestColorJiggleGen(RandomGeneratorBaseTests):
         ],
     )
     def test_invalid_param_combinations(self, brightness, contrast, saturation, hue, device, dtype):
-        with pytest.raises(Exception):
+        with pytest.raises(
+            (TypeError, ValueError),
+            match=r"(brightness|contrast|saturation|hue) (out of bounds|should be)",
+        ):
             ColorJiggleGenerator(
                 torch.as_tensor(
                     brightness if brightness is not None else torch.tensor([0.0, 0.0]),
@@ -453,7 +456,10 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
         ],
     )
     def test_invalid_param_combinations(self, brightness, contrast, saturation, hue, device, dtype):
-        with pytest.raises(Exception):
+        with pytest.raises(
+            (TypeError, ValueError),
+            match=r"(brightness|contrast|saturation|hue) (out of bounds|should be)",
+        ):
             ColorJitterGenerator(
                 torch.as_tensor(
                     brightness if brightness is not None else torch.tensor([0.0, 0.0]),
@@ -636,7 +642,7 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
         ],
     )
     def test_invalid_param_combinations(self, height, width, distortion_scale, device, dtype):
-        with pytest.raises(Exception):
+        with pytest.raises(AssertionError):
             PerspectiveGenerator(distortion_scale.to(device=device, dtype=dtype))(torch.Size([8, 1, height, width]))
 
     def test_random_gen(self, device, dtype):
@@ -803,7 +809,7 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("batch_size", [0, 1, 4])
     @pytest.mark.parametrize("height", [200])
     @pytest.mark.parametrize("width", [300])
-    @pytest.mark.parametrize("degrees", [torch.tensor([0, 30])])
+    @pytest.mark.parametrize("degrees", [torch.tensor([0, 30]), 0.5])
     @pytest.mark.parametrize("translate", [None, torch.tensor([0.1, 0.1])])
     @pytest.mark.parametrize("scale", [None, torch.tensor([0.7, 1.2])])
     @pytest.mark.parametrize("shear", [None, torch.tensor([[0, 20], [0, 20]])])
@@ -822,7 +828,7 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
         dtype,
     ):
         AffineGenerator(
-            degrees=degrees.to(device=device, dtype=dtype),
+            degrees=degrees.to(device=device, dtype=dtype) if isinstance(degrees, Tensor) else degrees,
             translate=(translate.to(device=device, dtype=dtype) if translate is not None else None),
             scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
             shear=shear.to(device=device, dtype=dtype) if shear is not None else None,
@@ -833,7 +839,9 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
         [
             (-100, 100, torch.tensor([10, 20]), None, None, None),
             (100, -100, torch.tensor([10, 20]), None, None, None),
-            (100, 100, 0.5, None, None, None),
+            # A scalar 0.5 is valid; use an out-of-range tensor to reach generator validation.
+            # bfloat16 rounds 361 to 360, inside the range; 400 is exact in every dtype.
+            (100, 100, torch.tensor([-400, 400]), None, None, None),
             (100, 100, torch.tensor([10, 20, 30]), None, None, None),
             (100, 100, torch.tensor([10, 20]), torch.tensor([0.1]), None, None),
             (10, 10, torch.tensor([1, 2]), torch.tensor([0.1, 0.2, 0.3]), None, None),
@@ -845,7 +853,10 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
         ],
     )
     def test_invalid_param_combinations(self, height, width, degrees, translate, scale, shear, device, dtype):
-        with pytest.raises(Exception):
+        with pytest.raises(
+            (AssertionError, TypeError, ValueError),
+            match=r"height|width|degrees|translate|scale|shear",
+        ):
             AffineGenerator(
                 degrees=degrees.to(device=device, dtype=dtype),
                 translate=(translate.to(device=device, dtype=dtype) if translate is not None else None),
@@ -930,7 +941,7 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
     )
     def test_invalid_param_combinations(self, input_size, size, resize_to, device, dtype):
         batch_size = 2
-        with pytest.raises(Exception):
+        with pytest.raises(AssertionError):
             CropGenerator(
                 (size.to(device=device, dtype=dtype) if isinstance(size, Tensor) else size),
                 resize_to,
@@ -1046,7 +1057,7 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
     )
     def test_invalid_param_combinations(self, size, scale, ratio, device, dtype):
         batch_size = 2
-        with pytest.raises(Exception):
+        with pytest.raises((TypeError, AssertionError), match=r"output_size|scale|ratio"):
             ResizedCropGenerator(
                 size,
                 torch.as_tensor(scale, device=device, dtype=dtype),
@@ -1183,7 +1194,7 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
     )
     def test_invalid_param_combinations(self, height, width, scale, ratio, value, device, dtype):
         batch_size = 8
-        with pytest.raises(Exception):
+        with pytest.raises((AssertionError, TypeError), match=r"height|width|value|scale|ratio"):
             RectangleEraseGenerator(
                 scale=scale.to(device=device, dtype=dtype),
                 ratio=ratio.to(device=device, dtype=dtype),
@@ -1355,7 +1366,7 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
     )
     def test_invalid_param_combinations(self, height, width, size, device, dtype):
         batch_size = 2
-        with pytest.raises(Exception):
+        with pytest.raises(AssertionError):
             center_crop_generator(batch_size=batch_size, height=height, width=width, size=size)
 
     def test_random_gen(self, device, dtype):
@@ -1433,7 +1444,7 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
         ],
     )
     def test_invalid_param_combinations(self, kernel_size, angle, direction, device, dtype):
-        with pytest.raises(Exception):
+        with pytest.raises((AssertionError, ValueError), match=r"kernel_size|direction out of bounds"):
             MotionBlurGenerator(
                 kernel_size=kernel_size,
                 angle=angle.to(device=device, dtype=dtype),
@@ -1549,7 +1560,7 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
         ],
     )
     def test_invalid_param_combinations(self, bits, device, dtype):
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError, match=r"bits.*(out of bounds|shall be)"):
             PosterizeGenerator(bits.to(device=device, dtype=dtype) if isinstance(bits, Tensor) else bits)(
                 torch.Size([3])
             )
@@ -1585,7 +1596,9 @@ class TestPlainUniformGenerator(RandomGeneratorBaseTests):
 
     @pytest.mark.parametrize("sharpness", [(torch.tensor([-1, 5])), (torch.tensor([3])), ([0, 1.0])])
     def test_invalid_param_combinations(self, sharpness, device, dtype):
-        with pytest.raises(Exception):
+        # Convert before the raises block so a list cannot fail on .to() instead of the duplicate name.
+        sharpness = torch.as_tensor(sharpness, device=device, dtype=dtype)
+        with pytest.raises(RuntimeError, match=r"factor name `sharpness` has already been registered"):
             PlainUniformGenerator(
                 (sharpness.to(device=device, dtype=dtype), "sharpness", None, None),
                 (
@@ -1642,7 +1655,7 @@ class TestPlainUniformGenerator(RandomGeneratorBaseTests):
 class TestRandomMixUpGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("batch_size", [0, 1, 8])
     @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
-    @pytest.mark.parametrize("lambda_val", [None, torch.tensor([0.0, 1.0])])
+    @pytest.mark.parametrize("lambda_val", [None, torch.tensor([0.0, 1.0]), [0.0, 1.0]])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_valid_param_combinations(self, batch_size, p, lambda_val, same_on_batch, device, dtype):
         MixupGenerator(
@@ -1656,11 +1669,10 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
             (torch.tensor([-1, 1])),
             (torch.tensor([0, 2])),
             (torch.tensor([0, 0.5, 1])),
-            ([0.0, 1.0]),
         ],
     )
     def test_invalid_param_combinations(self, lambda_val, device, dtype):
-        with pytest.raises(Exception):
+        with pytest.raises((TypeError, ValueError), match=r"lambda_val (out of bounds|should be)"):
             MixupGenerator(p=1.0, lambda_val=lambda_val.to(device=device, dtype=dtype))(
                 torch.Size([8, 3, 200, 200]), same_on_batch=False
             )
@@ -1756,7 +1768,7 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
     )
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_invalid_param_combinations(self, width, height, num_mix, beta, cut_size, same_on_batch, device, dtype):
-        with pytest.raises(Exception):
+        with pytest.raises((AssertionError, ValueError), match=r"height|width|num_mix|concentration|cut_size"):
             CutmixGenerator(
                 p=0.5,
                 num_mix=num_mix,
