@@ -16,6 +16,7 @@
 #
 
 import copy
+import math
 import sys
 
 import pytest
@@ -26,7 +27,7 @@ from kornia.feature.loftr.loftr import default_cfg
 from kornia.feature.loftr.loftr_module import FinePreprocess
 from kornia.feature.loftr.utils.coarse_matching import CoarseMatching
 from kornia.feature.loftr.utils.fine_matching import FineMatching
-from kornia.geometry import resize, transform_points
+from kornia.geometry import resize, transform_points, warp_perspective
 
 from testing.base import BaseTester
 from testing.casts import dict_to
@@ -105,6 +106,28 @@ class TestLoFTR(BaseTester):
         with torch.no_grad():
             out = loftr(sample)
         assert out is not None
+
+    @pytest.mark.slow
+    @pytest.mark.skipif(sys.platform == "win32", reason="this test takes so much memory in the CI with Windows")
+    @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
+    def test_pretrained_outdoor_images_of_different_sizes_NNNN(self, device, dtype, data):
+        # image0 is a 325 x 403 crop of the pair's first image, image1 that crop warped by a known homography (8 degree
+        # rotation and 0.9 scale about (200, 160)) into 339 x 401. No side is a multiple of 8 and the two sizes
+        # differ, so the FPN of each image upsamples to its own skip sizes.
+        loftr = LoFTR("outdoor").to(device, dtype)
+        image0 = data["image0"][..., 60:385, 100:503].to(device, dtype)
+        c, s = 0.9 * math.cos(math.radians(8.0)), 0.9 * math.sin(math.radians(8.0))
+        shift = torch.tensor([[1.0, 0.0, -200.0], [0.0, 1.0, -160.0], [0.0, 0.0, 1.0]], dtype=torch.float64)
+        rot = torch.tensor([[c, -s, 2.0], [s, c, 1.0], [0.0, 0.0, 1.0]], dtype=torch.float64)
+        homography = torch.linalg.inv(shift) @ rot @ shift  # pixel-centre frame
+        image1 = warp_perspective(image0, homography[None].to(device, dtype), (339, 401), align_corners=True)
+        with torch.no_grad():
+            out = loftr({"image0": image0, "image1": image1})
+        kpts0, kpts1 = out["keypoints0"].cpu().double() - 0.5, out["keypoints1"].cpu().double() - 0.5
+        err = (transform_points(homography[None], kpts0[None])[0] - kpts1).norm(dim=-1)
+        assert kpts0.shape[0] > 1000
+        assert (err < 1).double().mean() > 0.99, err
+        assert err.median() < 0.3, err
 
     @pytest.mark.parametrize("hw1", [(100, 67), (93, 86)])
     def test_keypoints0_on_the_8px_grid_for_any_size_NNNN(self, device, dtype, hw1):
