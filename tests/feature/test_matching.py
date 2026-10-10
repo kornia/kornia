@@ -157,6 +157,53 @@ class TestMatchSNN(BaseTester):
 
 
 class TestMatchSMNN(BaseTester):
+    @pytest.mark.parametrize("mps_fallback", [False, True])
+    def test_mutual_matches_keep_integer_indices(self, device, dtype, monkeypatch, mps_fallback):
+        # Half precision cannot distinguish all descriptor indices: float16 rounds 2049 to
+        # 2048, and bfloat16 rounds 257 to 256. Only the last pair below is mutual.
+        count = 2050 if dtype == torch.float16 else 258 if dtype == torch.bfloat16 else 16
+        desc = torch.zeros(count, 1, device=device, dtype=dtype)
+        dm = torch.full((count, count), 10.0, device=device, dtype=dtype)
+        dm[-2, -2] = 1.0
+        dm[-1, -2] = 0.5
+        dm[-1, -1] = 0.1
+        if mps_fallback:
+            monkeypatch.setattr(matching, "is_mps_tensor_safe", lambda _: True)
+
+        ratios, indices = match_smnn(desc, desc, 0.95, dm)
+
+        expected_indices = torch.tensor([[count - 1, count - 1]], device=device, dtype=torch.long)
+        self.assert_close(indices, expected_indices)
+        self.assert_close(ratios, torch.tensor([[0.2]], device=device, dtype=dtype))
+
+    def test_reverse_ratios_follow_the_matches(self, device, dtype):
+        # Reverse matches arrive in target-index order; forward matches arrive in source-index order.
+        # Reject source 1 in the reverse direction and source 3 in the forward direction.
+        dm = torch.tensor(
+            [[4.0, 10.0, 1.0], [10.0, 1.5, 10.0], [1.0, 10.0, 10.0], [2.0, 2.0, 10.0]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        ratios, indices = match_smnn(dm[:, :1], dm[0, :, None], 0.7, dm)
+        self.assert_close(indices, torch.tensor([[0, 2], [2, 0]], device=device, dtype=torch.long))
+        self.assert_close(ratios, torch.tensor([[0.25], [0.5]], device=device, dtype=dtype))
+        ratios.sum().backward()
+        expected_grad = torch.tensor(
+            [[-0.0625, 0.0, 0.25], [0.0, 0.0, 0.0], [0.5, 0.0, 0.0], [-0.25, 0.0, 0.0]],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(dm.grad, expected_grad)
+
+    def test_nonempty_directional_matches_have_empty_intersection(self, device, dtype):
+        dm = torch.tensor([[1.0, 2.0], [0.5, 0.75]], device=device, dtype=dtype)
+        # The forward ratio test keeps 0 -> 0; the reverse test keeps 0 -> 1 and 1 -> 1.
+        ratios, indices = match_smnn(dm[:, :1], dm[0, :, None], 0.6, dm)
+        assert ratios.shape == (0, 1)
+        assert indices.shape == (0, 2)
+        assert indices.dtype == torch.long
+
     @pytest.mark.parametrize("num_desc1, num_desc2, dim", [(2, 4, 4), (2, 5, 128), (6, 2, 32)])
     def test_shape(self, num_desc1, num_desc2, dim, device):
         desc1 = torch.rand(num_desc1, dim, device=device)
