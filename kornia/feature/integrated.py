@@ -87,8 +87,8 @@ def _run_descriptor(module: nn.Module, patches: torch.Tensor) -> torch.Tensor:
     A module whose floating-point parameters and buffers already sit on the device and dtype of ``patches`` is called
     directly. Otherwise they are cast for the call only (through ``torch.func.functional_call``, which is
     differentiable, so gradients reach the module's own parameters; a TorchScript module, which that API refuses,
-    runs as a cast copy). The ``training`` flag of every submodule is restored afterwards. Under export the module is
-    already placed and is called directly.
+    runs as a cast copy, whose parameters receive no gradient). The ``training`` flag of every submodule is restored
+    afterwards. Under export the module is already placed and is called directly.
     """
     modes = [m.training for m in module.modules()]
     module.eval()
@@ -125,7 +125,7 @@ def get_laf_descriptors(
     The descriptor runs in eval mode, with its floating-point parameters and buffers cast to the device and dtype of
     ``img`` for the call (a TorchScript module is called on a cast copy); the descriptors come back on that device and
     dtype. The module itself is not changed: its device, dtype, parameters and the train/eval mode of every submodule
-    stay as the caller set them, and gradients still reach its parameters.
+    stay as the caller set them, and gradients reach its parameters (except on a TorchScript copy).
 
     Args:
         img: image features with shape :math:`(B,C,H,W)`.
