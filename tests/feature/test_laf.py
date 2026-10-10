@@ -876,14 +876,16 @@ class TestExtractPatchesSimple(BaseTester):
 
     def test_same_odd(self, device, dtype):
         img = torch.arange(5)[None].repeat(5, 1)[None, None].to(device, dtype)
-        laf = torch.tensor([[2.0, 0, 2.0], [0, 2.0, 2.0]]).reshape(1, 1, 2, 3).to(device, dtype)
+        # The whole image spans pixels -0.5 .. 4.5: centre 2, scale PS / 2.
+        laf = torch.tensor([[2.5, 0, 2.0], [0, 2.5, 2.0]]).reshape(1, 1, 2, 3).to(device, dtype)
 
         patch = kornia.feature.extract_patches_simple(img, laf, 5, 1.0)
         self.assert_close(img, patch[0])
 
     def test_same_even(self, device, dtype):
         img = torch.arange(4)[None].repeat(4, 1)[None, None].to(device, dtype)
-        laf = torch.tensor([[1.5, 0, 1.5], [0, 1.5, 1.5]]).reshape(1, 1, 2, 3).to(device, dtype)
+        # The whole image spans pixels -0.5 .. 3.5: centre 1.5, scale PS / 2.
+        laf = torch.tensor([[2.0, 0, 1.5], [0, 2.0, 1.5]]).reshape(1, 1, 2, 3).to(device, dtype)
 
         patch = kornia.feature.extract_patches_simple(img, laf, 4, 1.0)
         self.assert_close(img, patch[0])
@@ -1020,14 +1022,16 @@ class TestExtractPatchesPyr(BaseTester):
 
     def test_same_odd(self, device, dtype):
         img = torch.arange(5)[None].repeat(5, 1)[None, None].to(device, dtype)
-        laf = torch.tensor([[2.0, 0, 2.0], [0, 2.0, 2.0]]).reshape(1, 1, 2, 3).to(device, dtype)
+        # The whole image spans pixels -0.5 .. 4.5: centre 2, scale PS / 2.
+        laf = torch.tensor([[2.5, 0, 2.0], [0, 2.5, 2.0]]).reshape(1, 1, 2, 3).to(device, dtype)
 
         patch = kornia.feature.extract_patches_from_pyramid(img, laf, 5, 1.0)
         self.assert_close(img, patch[0])
 
     def test_same_even(self, device, dtype):
         img = torch.arange(4)[None].repeat(4, 1)[None, None].to(device, dtype)
-        laf = torch.tensor([[1.5, 0, 1.5], [0, 1.5, 1.5]]).reshape(1, 1, 2, 3).to(device, dtype)
+        # The whole image spans pixels -0.5 .. 3.5: centre 1.5, scale PS / 2.
+        laf = torch.tensor([[2.0, 0, 1.5], [0, 2.0, 1.5]]).reshape(1, 1, 2, 3).to(device, dtype)
 
         patch = kornia.feature.extract_patches_from_pyramid(img, laf, 4, 1.0)
         self.assert_close(img, patch[0])
@@ -1092,14 +1096,14 @@ class TestExtractPatchesPyr(BaseTester):
 
     def test_one_pixel_axis_preserves_non_singleton_extent(self, device, dtype):
         # A singleton axis must collapse only itself. The other axis still has spatial extent, so
-        # a full-image LAF over a 1x5 or 5x1 ramp must retain that ramp instead of degenerating to
-        # the center pixel in both directions.
+        # a full-image LAF (scale W / 2 and H / 2) over a 1x5 or 5x1 ramp must retain that ramp
+        # instead of degenerating to the center pixel in both directions.
         for h, w in ((1, 5), (5, 1)):
             img = torch.arange(5, device=device, dtype=dtype).reshape(1, 1, h, w)
             pixel_laf = torch.tensor(
                 [
-                    [float(max(w - 1, 1)) / 2.0, 0.0, float(w - 1) / 2.0],
-                    [0.0, float(max(h - 1, 1)) / 2.0, float(h - 1) / 2.0],
+                    [float(w) / 2.0, 0.0, float(w - 1) / 2.0],
+                    [0.0, float(h) / 2.0, float(h - 1) / 2.0],
                 ],
                 device=device,
                 dtype=dtype,
@@ -1218,10 +1222,10 @@ class TestExtractPatchesPyr(BaseTester):
             monkeypatch.setattr(laf_module, "_pyramid_atlas_fits", lambda *args: limit > 0)
             img = torch.zeros(1, 1, size, size, device=device, dtype=dtype)
             img[:, :, :, -1] = 1.0
-            # A quarter pixel OUTSIDE the outermost pixel center, so the clamp engages strictly on
-            # every backend: probing exactly at the center can round onto the clamp bound, where
-            # the subgradient convention differs between CPU and MPS.
-            center_x = 1.0 - 1.0 / (4.0 * size)
+            # A quarter pixel OUTSIDE the outermost pixel center (pixel size - 1, normalized 1), so
+            # the clamp engages strictly on every backend: probing exactly at the center can round
+            # onto the clamp bound, where the subgradient convention differs between CPU and MPS.
+            center_x = 1.0 + 0.25 / (size - 1)
             nlaf = torch.tensor(
                 [[[[0.0, 0.0, center_x], [0.0, 0.0, 0.5]]]], device=device, dtype=dtype, requires_grad=True
             )
@@ -1501,6 +1505,74 @@ def test_nonfinite_laf_backward_does_not_crash_the_interpreter():
     assert result.returncode == 0, (
         f"non-finite LAF backward exited with {result.returncode}:\n{result.stdout}\n{result.stderr}"
     )
+
+
+_EXTRACTORS = [kornia.feature.extract_patches_simple, kornia.feature.extract_patches_from_pyramid]
+
+
+class TestPatchSamplingFrame(BaseTester):
+    # A LAF lives in the image's pixel frame: pixel centres at integers, as `normalize_laf` and
+    # `get_laf_center` use. Sampling it with corner-aligned grid coordinates read pixel x * W / (W - 1) - 0.5 instead.
+
+    @pytest.mark.parametrize("extract", _EXTRACTORS)
+    def test_pure_crop_laf_returns_the_image_crop_5678(self, extract, device, dtype):
+        # Axis-aligned LAF of scale PS / 2 with an odd PS: one patch pixel per image pixel, centred on an integer pixel
+        # away from the image centre, where the corner-aligned grid was exact.
+        g = torch.Generator().manual_seed(0)
+        img = torch.rand(1, 1, 60, 75, generator=g).to(device=device, dtype=dtype)
+        x, y, ps = 30, 22, 41
+        laf = kornia.feature.laf_from_center_scale_ori(
+            torch.tensor([[[float(x), float(y)]]], device=device, dtype=dtype),
+            torch.full((1, 1, 1, 1), ps / 2.0, device=device, dtype=dtype),
+        )
+        patch = extract(img, laf, ps)[0, 0, 0]
+        self.assert_close(patch, img[0, 0, y - 20 : y + 21, x - 20 : x + 21])
+        self.assert_close(patch[20, 20], img[0, 0, y, x])
+
+    @pytest.mark.parametrize("extract", _EXTRACTORS)
+    def test_laf_centre_is_sampled_at_itself_with_unit_steps_5678(self, extract, device, dtype):
+        H, W = 9, 13
+        xs = torch.arange(W, device=device, dtype=dtype).view(1, 1, 1, W).expand(1, 1, H, W).contiguous()
+        ys = torch.arange(H, device=device, dtype=dtype).view(1, 1, H, 1).expand(1, 1, H, W).contiguous()
+        for x, y in [(3.0, 2.0), (9.0, 6.0), (10.0, 3.0)]:
+            laf = kornia.feature.laf_from_center_scale_ori(
+                torch.tensor([[[x, y]]], device=device, dtype=dtype),
+                torch.full((1, 1, 1, 1), 1.5, device=device, dtype=dtype),
+            )
+            px, py = extract(xs, laf, 3)[0, 0, 0], extract(ys, laf, 3)[0, 0, 0]
+            self.assert_close(px[1], torch.tensor([x - 1.0, x, x + 1.0], device=device, dtype=dtype))
+            self.assert_close(py[:, 1], torch.tensor([y - 1.0, y, y + 1.0], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("atlas", [True, False])
+    @pytest.mark.parametrize("level", [1, 2])
+    def test_pyramid_level_samples_the_same_pixels_5678(self, level, atlas, device, dtype, monkeypatch):
+        # `pyrdown` resizes to floor(side / 2) with align_corners=False, so input pixel x is pixel
+        # (x + 0.5) * W_l / W - 0.5 of level l, per axis. A patch taken from level l has to equal the plain
+        # extraction from that level at the LAF mapped there; odd sizes make W_l / W differ from 2 ** -l.
+        import kornia.feature.laf as laf_module
+
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("pyrdown in half precision differs from the pyramid's float32 levels")
+        monkeypatch.setattr(laf_module, "_pyramid_atlas_fits", lambda *args: atlas)
+        g = torch.Generator().manual_seed(0)
+        img = torch.rand(1, 1, 61, 75, generator=g).to(device=device, dtype=dtype)
+        ps = 8
+        laf = kornia.feature.laf_from_center_scale_ori(
+            torch.tensor([[[37.3, 30.6]]], device=device, dtype=dtype),
+            torch.full((1, 1, 1, 1), 4.0 * 2**level + 0.5, device=device, dtype=dtype),
+            torch.full((1, 1, 1), 30.0, device=device, dtype=dtype),
+        )
+        level_img = img
+        for _ in range(level):
+            level_img = kornia.geometry.transform.pyrdown(level_img)
+        sx, sy = level_img.shape[-1] / img.shape[-1], level_img.shape[-2] / img.shape[-2]
+        level_laf = laf.clone()
+        level_laf[..., 0, :2] *= sx
+        level_laf[..., 1, :2] *= sy
+        level_laf[..., 0, 2] = (laf[..., 0, 2] + 0.5) * sx - 0.5
+        level_laf[..., 1, 2] = (laf[..., 1, 2] + 0.5) * sy - 0.5
+        expected = kornia.feature.extract_patches_simple(level_img, level_laf, ps)
+        self.assert_close(kornia.feature.extract_patches_from_pyramid(img, laf, ps), expected)
 
 
 class TestLAFIsTouchingBoundary(BaseTester):
