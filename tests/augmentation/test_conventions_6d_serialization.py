@@ -111,8 +111,7 @@ class TestConventionMix3DSerialization(BaseTester):
         ids=["autoaugment-posterize", "randaugment-posterize", "trivialaugment-posterize", "autoaugment-empty"],
     )
     def test_convention_a_closure_free_policy_can_be_pickled(self, name, policy):
-        # A policy pickles when every wrapper in it does: Posterize has a named mapping and no sign flip, and an
-        # empty sub-policy has no wrapper at all.
+        # A policy pickles when every wrapper in it does; an empty sub-policy has no wrapper at all.
         kwargs = {"n": 1, "m": 15} if name == "RandAugment" else {}
         augmentation = getattr(A, name)(policy=policy, **kwargs)
         image = torch.rand(2, 3, 4, 4)
