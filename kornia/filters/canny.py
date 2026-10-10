@@ -65,7 +65,9 @@ def _hysteresis_step(edges: torch.Tensor, hysteresis_kernels: torch.Tensor) -> t
     # One round of edge tracking: a weak pixel (0.5) with a strong (1) 8-neighbour becomes strong.
     weak = (edges == 0.5).to(edges.dtype)
     strong = (edges == 1).to(edges.dtype)
-    hysteresis_magnitude = F.conv2d(edges, hysteresis_kernels, padding=hysteresis_kernels.shape[-1] // 2)
+    # The kernels are always 3x3, so the padding is the constant 1. Not read from the kernel's shape: under
+    # torch.jit.trace a shape is a traced value, which torch 2.5.1 turns into an empty padding list.
+    hysteresis_magnitude = F.conv2d(edges, hysteresis_kernels, padding=1)
     hysteresis_magnitude = (hysteresis_magnitude == 1).any(1, keepdim=True).to(edges.dtype)
     hysteresis_magnitude = hysteresis_magnitude * weak + strong
     return hysteresis_magnitude + (hysteresis_magnitude == 0) * weak * 0.5
