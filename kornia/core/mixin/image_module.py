@@ -62,6 +62,18 @@ def _array_to_float_image(array: Any) -> torch.Tensor:
 _PIL_ONE_CHANNEL_DTYPES = (torch.bool, torch.int8, torch.int16, torch.uint16, torch.int32, torch.uint32)
 
 
+def _rebuild_container(source: Any, items: List[Any]) -> Any:
+    """Rebuild a tuple or list output from converted elements.
+
+    A namedtuple takes its elements as separate arguments, so a plain ``type(source)(items)``
+    call would raise a ``TypeError`` for want of one argument per field: it is rebuilt with its
+    field-aware ``_make``. A plain tuple or list takes an iterable.
+    """
+    if hasattr(type(source), "_make"):
+        return type(source)._make(items)  # type: ignore[attr-defined]
+    return type(source)(items)
+
+
 def _to_uint8_image(image: torch.Tensor) -> torch.Tensor:
     """Convert a floating image in ``[0, 1]`` to ``uint8`` for display or an 8-bit file.
 
@@ -198,29 +210,37 @@ class ImageModuleMixIn:
     def _convert_output(self, tensor_outputs: Any, output_type: str) -> Any:
         """Convert a forward output to ``output_type`` the way :meth:`convert_input_output` does.
 
+        A tuple or a list is converted element by element and keeps its container type, so a
+        one-element tuple stays a tuple. An output that is not a tensor, a tuple or a list (a dict,
+        ``None``, a Python scalar) is returned as is: the mixin's contract covers a single image
+        tensor, so there is nothing to convert (#5210).
+
         Args:
-            tensor_outputs: The forward output: a tensor, or a tuple whose elements are converted one by one.
+            tensor_outputs: The forward output: a tensor, or a tuple or list whose elements are
+                converted one by one.
             output_type: Desired output type ('pt', 'numpy', or 'pil').
 
         Returns:
-            The converted output, or a list of converted outputs for a tuple of several.
+            The converted output, or a container of converted outputs of the same type.
 
         """
-        if not isinstance(tensor_outputs, tuple):
-            tensor_outputs = (tensor_outputs,)
+        if not isinstance(tensor_outputs, (list, tuple)):
+            return self._convert_single_output(tensor_outputs, output_type)
 
-        outputs = []
-        for output in tensor_outputs:
-            if output_type == "pt":
-                outputs.append(output)
-            elif output_type == "numpy":
-                outputs.append(self.to_numpy(output))
-            elif output_type == "pil":
-                outputs.append(self.to_pil(output))
-            else:
-                raise ValueError("Output type not supported. Choose from 'pt', 'numpy', or 'pil'.")
+        converted = [self._convert_single_output(output, output_type) for output in tensor_outputs]
+        return _rebuild_container(tensor_outputs, converted)
 
-        return outputs if len(outputs) > 1 else outputs[0]
+    def _convert_single_output(self, output: Any, output_type: str) -> Any:
+        """Convert one forward output, passing containers and non-tensors through unchanged."""
+        if not isinstance(output, torch.Tensor):
+            return output
+        if output_type == "pt":
+            return output
+        if output_type == "numpy":
+            return self.to_numpy(output)
+        if output_type == "pil":
+            return self.to_pil(output)
+        raise ValueError("Output type not supported. Choose from 'pt', 'numpy', or 'pil'.")
 
     def _is_valid_arg(self, arg: Any) -> bool:
         """Check if the argument is a valid type for conversion.
@@ -378,13 +398,16 @@ class ImageModuleMixIn:
         return Image.fromarray(image.permute(1, 2, 0).numpy())  # type: ignore
 
     def _detach_tensor(
-        self, output_image: Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]
-    ) -> Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]:
+        self, output_image: Union[torch.Tensor, List[Any], Tuple[Any, ...]]
+    ) -> Union[torch.Tensor, List[Any], Tuple[Any, ...]]:
         if isinstance(output_image, torch.Tensor):
             return output_image.detach()
         if isinstance(output_image, (list, tuple)):
-            return type(output_image)([self._detach_tensor(out) for out in output_image])  # type: ignore
-        raise RuntimeError(f"Unexpected object {output_image} with a type of `{type(output_image)}`")
+            return _rebuild_container(output_image, [self._detach_tensor(out) for out in output_image])
+        if isinstance(output_image, dict):
+            return {key: self._detach_tensor(value) for key, value in output_image.items()}
+        # ``None`` or a Python scalar: nothing to detach
+        return output_image
 
     def _store_output_image(self, output_image: Any, output_type: str) -> None:
         """Cache detached outputs on their device; ``.show()`` / ``.save()`` move them to CPU on use.
@@ -397,7 +420,11 @@ class ImageModuleMixIn:
         self._output_image = self._detach_tensor(output_image) if output_type == "pt" else output_image
 
     def _get_output_image(self) -> torch.Tensor:
-        output_image = getattr(self, "_output_image", None)
+        output_image: Any = getattr(self, "_output_image", None)
+        if isinstance(output_image, tuple) and len(output_image) == 1 and isinstance(output_image[0], torch.Tensor):
+            # a one-element tuple output keeps its container (#5210): ``show()`` / ``save()`` render
+            # its sole tensor, the same image the call returned before the container was preserved
+            output_image = output_image[0]
         if output_image is None:
             raise ValueError("No pre-computed images found. Needs to execute first.")
         if not isinstance(output_image, torch.Tensor) or output_image.ndim not in (3, 4):
