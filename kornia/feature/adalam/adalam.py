@@ -19,6 +19,7 @@
 # https://github.com/cavalli1234/AdaLAM
 # Copyright (c) 2020, Luca Cavalli
 
+import warnings
 from typing import Optional, Tuple, Union
 
 import torch
@@ -92,7 +93,7 @@ def match_adalam(
         config_ = get_adalam_default_config()
         for key, val in config.items():
             if key not in config_.keys():
-                print(
+                warnings.warn(
                     f"WARNING: custom configuration contains a key which is not recognized ({key}). "
                     f"Known configurations are {list(config_.keys())}."
                 )

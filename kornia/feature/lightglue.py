@@ -637,7 +637,6 @@ class LightGlue(nn.Module):
                 pattern = f"cross_attn.{i}", f"transformers.{i}.cross_attn"
                 state_dict = {k.replace(*pattern): v for k, v in state_dict.items()}
             self.load_state_dict(state_dict, strict=False)
-        print("Loaded LightGlue model")
         # static lengths LightGlue is compiled for (only used with torch.compile)
         self.static_lengths = None
 
