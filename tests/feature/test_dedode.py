@@ -29,6 +29,11 @@ from testing.base import BaseTester
 
 
 class TestConvRefiner(BaseTester):
+    def test_depthwise_channels_must_be_divisible(self):
+        refiner = ConvRefiner(in_dim=4, hidden_dim=4, out_dim=4)
+        with pytest.raises(ValueError, match="out_dim must be divisible by in_dim"):
+            refiner.create_block(in_dim=3, out_dim=4, dw=True)
+
     def test_amp_matches_input_device(self, device):
         refiner = ConvRefiner(in_dim=4, hidden_dim=4, out_dim=4).to(device)
         autocast_enabled = []
