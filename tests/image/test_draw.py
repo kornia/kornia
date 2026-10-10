@@ -440,6 +440,73 @@ class TestDrawLine(BaseTester):
 
 
 class TestDrawRectangle(BaseTester):
+    @pytest.mark.parametrize("line_width", [1, 2, 4])
+    def test_outline_width(self, dtype, device, line_width):
+        image = torch.zeros(1, 1, 7, 9, dtype=dtype, device=device)
+        rectangle = torch.tensor([[[1, 1, 7, 5]]], device=device)
+
+        out = draw_rectangle(image, rectangle, color=torch.tensor([1.0], device=device), line_width=line_width)
+
+        expected = torch.zeros_like(image)
+        expected[:, :, 1:6, 1:8] = 1
+        if line_width == 1:
+            expected[:, :, 2:5, 2:7] = 0
+        elif line_width == 2:
+            expected[:, :, 3:4, 3:6] = 0
+        assert out is image
+        self.assert_close(out, expected)
+
+    def test_outline_width_clips_and_preserves_interior(self, dtype, device):
+        image = torch.zeros(1, 1, 6, 6, dtype=dtype, device=device)
+        rectangle = torch.tensor([[[-2, -2, 4, 4]]], device=device)
+
+        draw_rectangle(image, rectangle, color=torch.tensor([1.0], device=device), line_width=2)
+
+        expected = torch.zeros_like(image)
+        expected[:, :, :5, :5] = 1
+        expected[:, :, 2, 2] = 0
+        self.assert_close(image, expected)
+
+    def test_outline_width_keeps_batch_colors_separate(self, dtype, device):
+        image = torch.zeros(2, 3, 6, 6, dtype=dtype, device=device)
+        rectangle = torch.tensor([[[1, 1, 4, 4]], [[1, 1, 4, 4]]], device=device)
+        color = torch.tensor([[[1.0, 0.0, 0.0]], [[0.0, 1.0, 0.0]]], dtype=dtype, device=device)
+
+        draw_rectangle(image, rectangle, color=color, line_width=2)
+
+        assert torch.all(image[0, 0, 1:5, 1:5] == 1)
+        assert torch.all(image[1, 1, 1:5, 1:5] == 1)
+        assert torch.count_nonzero(image[0, 1:]) == 0
+        assert torch.count_nonzero(image[1, ::2]) == 0
+
+    def test_fill_ignores_outline_width(self, dtype, device):
+        image = torch.zeros(1, 1, 6, 6, dtype=dtype, device=device)
+        rectangle = torch.tensor([[[1, 1, 4, 4]]], device=device)
+
+        draw_rectangle(image, rectangle, color=torch.tensor([1.0], device=device), fill=True, line_width=2)
+
+        expected = torch.zeros_like(image)
+        expected[:, :, 1:5, 1:5] = 1
+        self.assert_close(image, expected)
+
+    def test_outline_width_torchscript(self, dtype, device):
+        image = torch.zeros(1, 1, 5, 5, dtype=dtype, device=device)
+        rectangle = torch.tensor([[[0, 0, 4, 4]]], device=device)
+
+        scripted = torch.jit.script(draw_rectangle)
+        out = scripted(image, rectangle, color=torch.tensor([1.0], device=device), line_width=2)
+
+        expected = torch.ones_like(image)
+        expected[:, :, 2, 2] = 0
+        self.assert_close(out, expected)
+
+    @pytest.mark.parametrize("line_width", [0, -1, 1.5])
+    def test_outline_width_must_be_positive_integer(self, line_width, device):
+        image = torch.zeros(1, 1, 5, 5, device=device)
+        rectangle = torch.tensor([[[1, 1, 3, 3]]], device=device)
+        with pytest.raises(ValueError, match="line_width must be a positive integer"):
+            draw_rectangle(image, rectangle, line_width=line_width)
+
     @pytest.mark.parametrize("batch", [4, 17])
     @pytest.mark.parametrize("color", [torch.Tensor([1.0]), torch.Tensor([0.5])])
     def test_smoke(self, device, batch, color):
