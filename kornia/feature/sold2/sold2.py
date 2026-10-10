@@ -255,7 +255,7 @@ class WunschLineMatcher(nn.Module):
         dirs = (line_seg[:, 1] - line_seg[:, 0]).unsqueeze(1)
         idx = torch.arange(M, device=dev).unsqueeze(0)
         denom = (num_pts - 1).unsqueeze(1)
-        alpha = idx / denom
+        alpha = (idx / denom).to(line_seg.dtype)
         pts = orig + dirs * alpha.unsqueeze(-1)
         valid = idx < num_pts.unsqueeze(1)
         pts = pts.masked_fill(~valid.unsqueeze(-1), 0.0)

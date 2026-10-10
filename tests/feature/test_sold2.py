@@ -108,16 +108,16 @@ class TestSOLD2(BaseTester):
         assert detector.config.use_descriptor is False
 
     def test_match_keeps_torch_diag_NNNN(self, device, dtype):
-        if dtype != torch.float32:
-            pytest.skip("SOLD2 is built in float32; this test does not convert the model")
-        sold2 = SOLD2(pretrained=False).to(device)
+        sold2 = SOLD2(pretrained=False).to(device, dtype)
         diag = torch.diag
-        seg1 = torch.tensor([[[10.0, 10.0], [60.0, 90.0]], [[20.0, 70.0], [80.0, 20.0]]], device=device)
-        desc = torch.randn(1, 128, 24, 32, device=device)
+        seg1 = torch.tensor([[[10.0, 10.0], [60.0, 90.0]], [[20.0, 70.0], [80.0, 20.0]]], device=device, dtype=dtype)
+        desc = torch.randn(1, 128, 24, 32, device=device, dtype=dtype)
         sold2.match(seg1, seg1 + 1.0, desc, desc.flip(-1))
         assert torch.diag is diag
         assert callable(torch.diag)
-        self.assert_close(torch.diag(torch.ones(3, device=device)), torch.eye(3, device=device))
+        self.assert_close(
+            torch.diag(torch.ones(3, device=device, dtype=dtype)), torch.eye(3, device=device, dtype=dtype)
+        )
 
 
 class TestWunschLineMatcher(BaseTester):
