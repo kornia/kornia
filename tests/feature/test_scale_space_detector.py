@@ -941,6 +941,63 @@ class TestMultiResolutionDetector(BaseTester):
         assert (resps == 0).all(), f"detected on the masked side: {lafs[0][resps[0] != 0][:, 0, 2].tolist()}"
         assert (lafs == 0).all()
 
+    def test_border_does_not_create_maxima_5694(self, device, dtype):
+        # A cone with its single maximum at x = 8, inside the 15 px border strip of every level. Zeroing
+        # the strip before non-maxima suppression carved an edge into the response, and on every level the
+        # pixel beside that edge was reported as a "maximum", 15 level pixels from the image border.
+        yy, xx = torch.meshgrid(
+            torch.arange(64, device=device, dtype=dtype), torch.arange(64, device=device, dtype=dtype), indexing="ij"
+        )
+
+        def cone(x0: float) -> torch.Tensor:
+            return (1 - ((xx - x0) ** 2 + (yy - 32) ** 2).sqrt() / 40).clamp(min=0)[None, None]
+
+        det = MultiResolutionDetector(torch.nn.Identity(), num_features=4).to(device, dtype)
+        lafs, resps = det(cone(8.0))
+        assert (resps == 0).all(), f"detected beside the border: {lafs[0][resps[0] != 0][:, :, 2].tolist()}"
+        assert (lafs == 0).all()
+        # A maximum outside the strip is still detected, and only there. The peak lies at x = 17 at full
+        # resolution and at x = 24 on the 90 px upscaled level, outside the strip (x < 15), and at x = 12
+        # or below on every coarser level, inside it, so a one-pixel change in how a level is resampled
+        # cannot move it across the strip's edge: exactly those two levels report it.
+        lafs, resps = det(cone(17.0))
+        found = resps[0] != 0
+        assert int(found.sum()) == 2, lafs[0][found][:, :, 2].tolist()
+        centres = lafs[0][found][:, :, 2].float()
+        target = torch.tensor([17.0, 32.0], device=device)
+        assert ((centres - target).abs() <= 1.0).all(), centres.tolist()
+
+    def test_strip_response_suppresses_like_any_neighbour(self, device, dtype):
+        # The suppression reads the response inside the strip, so a stronger response there removes a
+        # weaker maximum within `nms_size // 2` beside it, as a stronger neighbour does anywhere in the
+        # image. Only the strip's own positions are excluded from the detections.
+        cfg = get_default_detector_config()
+        cfg.update(pyramid_levels=0, up_levels=0)
+        det = MultiResolutionDetector(torch.nn.Identity(), num_features=2, config=cfg).to(device, dtype)
+        resp = torch.zeros(1, 1, 64, 64, device=device, dtype=dtype)
+        resp[0, 0, 32, 16], resp[0, 0, 32, 12], resp[0, 0, 32, 40] = 1.0, 2.0, 0.5
+        lafs, resps = det(resp)
+        self.assert_close(resps, torch.tensor([[0.5, 0.0]], device=device, dtype=dtype))
+        self.assert_close(lafs[0, 0, :, 2], torch.tensor([40.0, 32.0], device=device, dtype=dtype))
+
+    def test_remove_borders_writes_an_exact_zero(self, device, dtype):
+        # A 0/1 mask multiplied into the scores turns an infinite score inside the strip into NaN, which
+        # `topk` ranks ahead of every real detection before the validity test empties its slot.
+        cfg = get_default_detector_config()
+        cfg.update(pyramid_levels=0, up_levels=0)
+        det = MultiResolutionDetector(torch.nn.Identity(), num_features=1, config=cfg).to(device, dtype)
+        score = torch.zeros(1, 1, 64, 64, device=device, dtype=dtype)
+        score[0, 0, 32, 10], score[0, 0, 32, 32] = float("inf"), 1.0
+        out = det.remove_borders(score)
+        inside = torch.zeros_like(score, dtype=torch.bool)
+        inside[..., 15:49, 15:49] = True
+        assert bool((out[~inside] == 0).all()), out[~inside].unique().tolist()
+        assert torch.equal(out[inside], score[inside])
+        assert torch.equal(det.remove_borders(score, borders=0), score)
+        lafs, resps = det(score)
+        self.assert_close(resps, torch.ones_like(resps))
+        self.assert_close(lafs[0, 0, :, 2], torch.tensor([32.0, 32.0], device=device, dtype=dtype))
+
     def test_thin_masked_stripe_survives_downsampling(self, device, dtype):
         # A two-pixel zero stripe is narrower than the sampling step of a coarse level, so an
         # interpolated mask reads 1.0 there and the stripe is gone; the conservative resample keeps
@@ -985,25 +1042,64 @@ class TestMultiResolutionDetector(BaseTester):
         # A graded mask used to be multiplied into the response before the NMS and the sub-pixel
         # step, which moved maxima and their refined positions. It now weights only the score of a
         # maximum found in the unweighted response: same detections, same positions, ranked by weight.
-        torch.manual_seed(0)
-        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
-        det = self._make_detector(num_features=2000).to(device, dtype)
+        # Isolated interior peaks give a known candidate set, independent of random Hessian
+        # responses or spurious maxima created by removing the border before NMS.
+        inp = torch.zeros(1, 1, 64, 64, device=device, dtype=dtype)
+        inp[0, 0, 20, 20], inp[0, 0, 20, 44] = 4.0, 3.0
+        inp[0, 0, 44, 20], inp[0, 0, 44, 44] = 2.0, 1.0
+        # Weighting the response before NMS would move the first peak onto this shoulder.
+        inp[0, 0, 20, 21] = 3.99
+        cfg = get_default_detector_config()
+        cfg.update(pyramid_levels=0, up_levels=0)
+        det = MultiResolutionDetector(torch.nn.Identity(), num_features=2000, config=cfg).to(device, dtype)
         lafs_plain, resps_plain = det(inp)
         ramp = torch.linspace(0.2, 1.0, 64, device=device, dtype=dtype).view(1, 1, 1, 64).expand(1, 1, 64, 64)
         lafs, resps = det(inp, ramp.contiguous())
         keep_plain, keep = resps_plain[0] != 0, resps[0] != 0
-        assert int(keep.sum()) == int(keep_plain.sum()) > 20
-        # Same set of frames, up to the order the weighted score imposes.
+        assert int(keep.sum()) == int(keep_plain.sum()) == 4
+        self._check_weighted_like_plain(
+            lafs[0][keep], resps[0][keep], lafs_plain[0][keep_plain], resps_plain[0][keep_plain]
+        )
 
-        def order(t: torch.Tensor) -> torch.Tensor:
-            key = t[:, 0, 2].cpu().double() * 1000 + t[:, 1, 2].cpu().double()
-            return t[torch.sort(key).indices.to(t.device)]
+    def _check_weighted_like_plain(self, lafs_w, resps_w, lafs_p, resps_p):
+        # Same set of frames, up to the order the weighted score imposes: pair the detections by
+        # centre, then by scale, and compare the frames and the score of each pair.
+        def by_frame(lafs_: torch.Tensor, resps_: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+            frames = lafs_.flatten(1).cpu().double().tolist()
+            idx = sorted(range(len(frames)), key=lambda i: (frames[i][2], frames[i][5], frames[i][0]))
+            return lafs_[idx], resps_[idx]
 
-        self.assert_close(order(lafs[0][keep]), order(lafs_plain[0][keep_plain]))
-        ratio = resps[0][keep] / resps_plain[0][keep]
+        lafs_w, resps_w = by_frame(lafs_w, resps_w)
+        lafs_p, resps_p = by_frame(lafs_p, resps_p)
+        self.assert_close(lafs_w, lafs_p)
+        ratio = resps_w / resps_p
         assert float(ratio.min()) >= 0.2 - 1e-2
         assert float(ratio.max()) <= 1.0 + 1e-2
-        assert not torch.allclose(resps[0][keep], resps_plain[0][keep_plain])
+        assert float(ratio.min()) < 0.9, ratio.tolist()
+
+    def test_float_mask_weights_the_score_on_every_level(self, device, dtype):
+        # The same contract on resampled levels: the ramp is min-pooled onto every level, the upscaled
+        # one included, and still only weights the scores. Three blobs with off-grid centres give
+        # maxima on the upscaled, the full-resolution and two downsampled levels.
+        n = 96
+        yy, xx = torch.meshgrid(
+            torch.arange(n, dtype=torch.float64), torch.arange(n, dtype=torch.float64), indexing="ij"
+        )
+        blobs = [(37.3, 41.6, 1.0, 4.0), (58.7, 52.2, 0.8, 6.0), (45.1, 61.9, 0.6, 3.0)]
+        inp = sum(a * torch.exp(-((xx - x0) ** 2 + (yy - y0) ** 2) / (2 * s * s)) for x0, y0, a, s in blobs)
+        inp = inp[None, None].to(device, dtype)
+        det = MultiResolutionDetector(torch.nn.Identity(), num_features=2000).to(device, dtype)
+        lafs_plain, resps_plain = det(inp)
+        ramp = torch.linspace(0.2, 1.0, n, device=device, dtype=dtype).view(1, 1, 1, n).expand(1, 1, n, n)
+        lafs, resps = det(inp, ramp.contiguous())
+        keep_plain, keep = resps_plain[0] != 0, resps[0] != 0
+        assert int(keep.sum()) == int(keep_plain.sum())
+        # A detection's scale identifies its level.
+        levels = kornia.feature.get_laf_scale(lafs_plain)[0][keep_plain].view(-1).unique()
+        assert levels.numel() >= 3, levels.tolist()
+        self._check_weighted_like_plain(
+            lafs[0][keep], resps[0][keep], lafs_plain[0][keep_plain], resps_plain[0][keep_plain]
+        )
 
     def test_response_map_must_match_the_level_size(self, device, dtype):
         # A response index is decoded as a level pixel with no offset, so a valid-convolution net
@@ -1162,10 +1258,16 @@ class TestMultiResolutionDetector(BaseTester):
         # `detect` used to run its final top-K only when the levels had produced *more* slots than
         # `num_features`, so a short result came back in level order with each level's own padding
         # left in place and the real detections scattered through it.
-        det = self._make_detector(num_features=6000, pyramid_levels=2, up_levels=0).to(device, dtype)
-        resps, _lafs = det.detect(torch.rand(1, 1, 48, 48, device=device, dtype=dtype))
+        cfg = get_default_detector_config()
+        cfg.update(pyramid_levels=2, up_levels=0)
+        det = MultiResolutionDetector(torch.nn.Identity(), num_features=6000, config=cfg).to(device, dtype)
+        # A central impulse survives at the original and first downsampled levels, so this
+        # exercises moving a later level's detection ahead of the first level's padding.
+        inp = torch.zeros(1, 1, 48, 48, device=device, dtype=dtype)
+        inp[0, 0, 24, 24] = 1.0
+        resps, _lafs = det.detect(inp)
         found = int((resps[0] != 0).sum())
-        assert 0 < found < 6000, f"expected a short result, got {found} detections"
+        assert found == 2, f"expected one detection on each of two levels, got {found}"
         assert bool((resps[0][:found] != 0).all()), "the detections do not come first"
         assert torch.equal(resps[0], torch.sort(resps[0], descending=True).values)
 

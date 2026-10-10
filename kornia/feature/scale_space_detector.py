@@ -740,6 +740,11 @@ class MultiResolutionDetector(nn.Module):
     "Key.Net: Keypoint Detection by Handcrafted and Learned CNN Filters".
     See :cite:`KeyNet2019` for more details.
 
+    The Key.Net reference code zeroes a 15 px strip along each side of a level before the non-maxima
+    suppression, which reports a "maximum" beside the strip wherever the response rises into it. This
+    detector suppresses on the whole response and removes the strip from the suppression output instead;
+    see :meth:`detect_features_on_single_level`.
+
     Args:
         model: response function, such as KeyNet or BlobHessian
         num_features: Number of features to detect. Every pyramid level is searched for this many
@@ -806,10 +811,17 @@ class MultiResolutionDetector(nn.Module):
             self.aff = aff_module
 
     def remove_borders(self, score_map: torch.Tensor, borders: int = 15) -> torch.Tensor:
-        """Remove the borders of the image to avoid detections on the corners."""
-        mask = torch.zeros_like(score_map)
-        mask[:, :, borders:-borders, borders:-borders] = 1
-        return mask * score_map
+        """Zero the strip of ``borders`` pixels along each side of a level, so that no detection is made there.
+
+        :meth:`detect_features_on_single_level` applies it to the non-maxima suppression output, not to the
+        response, so an override receives the suppressed map. The strip is set to an exact zero whatever the
+        score there, an infinite one included.
+        """
+        h, w = score_map.shape[-2:]
+        rows = torch.arange(h, device=score_map.device)
+        cols = torch.arange(w, device=score_map.device)
+        inside = ((rows >= borders) & (rows < h - borders)).view(h, 1) & ((cols >= borders) & (cols < w - borders))
+        return score_map.masked_fill(~inside, 0.0)
 
     def detect_features_on_single_level(
         self,
@@ -824,6 +836,11 @@ class MultiResolutionDetector(nn.Module):
         The response function may consume a multi-channel image -- for example, a learned color detector -- but must
         return one response map. A LAF has no response-channel identity, so independent per-channel detections are
         ambiguous and rejected. :class:`ScaleSpaceDetector` follows the same contract.
+
+        A detection is a strict maximum of the response over its ``nms_size`` window, above ``score_threshold``,
+        that lies outside the 15 px strip along the level's sides. The suppression reads the whole response, the
+        strip included, and :meth:`remove_borders` then zeroes the strip in its output: a position beside the strip
+        is reported only when no response at least as strong, inside the strip or not, lies within its window.
 
         Args:
             level_img: Image tensor for a single pyramid level.
@@ -855,9 +872,11 @@ class MultiResolutionDetector(nn.Module):
             f"model must return a response map with the level's spatial size {tuple(level_img.shape[-2:])}. "
             f"Got {tuple(resp_map.shape[-2:])}; pad the response function so that its output matches its input.",
         )
-        det_map = self.nms(self.remove_borders(resp_map))
-        # The mask is applied to the maxima, not to the response the NMS reads: a hard edge in the
-        # response would turn every pixel beside a zeroed neighbour into a "maximum".
+        # The border and the mask are applied to the maxima, not to the response the NMS reads: a hard
+        # edge in the response would turn every pixel beside a zeroed neighbour into a "maximum". A
+        # stronger response inside the strip therefore suppresses a weaker one beside it, as a stronger
+        # neighbour does anywhere else in the image.
+        det_map = self.remove_borders(self.nms(resp_map))
         if mask is not None:
             weights = _resize_mask(mask, det_map)
             # A boolean or integer mask resamples to exactly 0/1: dropping is all it can do. A float
