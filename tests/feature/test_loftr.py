@@ -25,6 +25,7 @@ import torch
 from kornia.feature import LoFTR
 from kornia.feature.loftr.loftr import default_cfg
 from kornia.feature.loftr.loftr_module import FinePreprocess
+from kornia.feature.loftr.loftr_module.linear_attention import LinearAttention
 from kornia.feature.loftr.utils.coarse_matching import CoarseMatching
 from kornia.feature.loftr.utils.fine_matching import FineMatching
 from kornia.geometry import resize, transform_points, warp_perspective
@@ -153,8 +154,6 @@ class TestLoFTR(BaseTester):
         # A coarse cell takes the mask value of the pixel it sits on, (8x, 8y). The masks are 1 only on those pixels
         # (image0: on the ones with y < 64 and x < 40, so coarse rows 0..7 and columns 0..4), so every such cell is
         # valid, while sampling the mask at (x, y) * size / coarse size would hit a 0 everywhere but at (0, 0).
-        if dtype == torch.float16:
-            pytest.skip("CoarseMatching fills masked similarities with -1e9, which overflows float16")
         model = _loftr_matching_every_cell(device, dtype)
         h0, w0 = 100, 67
         image0 = torch.rand(1, 1, h0, w0).to(device, dtype)
@@ -279,6 +278,31 @@ class TestCoarseMatching(BaseTester):
         assert out["mconf"].dtype == torch.float32
         assert out["gt_mask"].sum() == 0
         assert out["mconf"].numel() == out["b_ids"].shape[0] == self.N_PRED
+
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+    def test_masked_dual_softmax_is_finite_NNNN(self, device, dtype):
+        # Masked pairs get a similarity of -1e9, which float16 cannot hold, so float16 takes its lowest finite value
+        # instead; -inf would make an entirely masked row or column nan. Cell 3 of image0 and cell 5 of image1 are
+        # masked, so row 3 and column 5 of the similarity matrix are masked entirely.
+        gen = torch.Generator().manual_seed(0)
+        feat0, feat1 = torch.randn(1, 12, 8, generator=gen), torch.randn(1, 9, 8, generator=gen)
+        mask0, mask1 = torch.ones(1, 12), torch.ones(1, 9)
+        mask0[0, 3], mask1[0, 5] = 0, 0
+        cm = CoarseMatching(self.CFG).to(device).eval()
+
+        def conf_matrix(dt):
+            data = {"hw0_c": (3, 4), "hw1_c": (3, 3), "stride_c": 8}
+            args = (t.to(device, dt) for t in (feat0, feat1, mask0, mask1))
+            f0, f1, m0, m1 = args
+            cm(f0, f1, data, mask_c0=m0, mask_c1=m1)
+            return data["conf_matrix"]
+
+        conf = conf_matrix(dtype)
+        assert conf.dtype == dtype
+        assert bool(torch.isfinite(conf).all())
+        self.assert_close(conf.float(), conf_matrix(torch.float32), rtol=0.0, atol=2e-2)
+        valid1 = torch.arange(9, device=device) != 5
+        assert conf[0, 3, valid1].float().max() < 1e-3
 
     def test_keypoints_use_the_coarse_stride_NNNN(self, device, dtype):
         # image0 100 x 67 -> 13 x 9 coarse cells, image1 93 x 86 -> 12 x 11: cell (x, y) of either image sits on
@@ -420,3 +444,23 @@ class TestFinePreprocess(BaseTester):
         self.assert_close(win1[:, 12], centre1.to(dtype), rtol=0.0, atol=0.0)
         # the window spans +-2 fine cells: its last element is two cells down and right of the centre
         self.assert_close(win0[1:3, 24], (centre0[1:3] + 2).to(dtype), rtol=0.0, atol=0.0)
+
+
+class TestLinearAttention(BaseTester):
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+    def test_padded_queries_stay_finite_NNNN(self, device, dtype):
+        # A padded query has a zero feature map, so its normaliser is 1 / eps = 1e6, beyond float16's 65504; the
+        # padded rows must come out as 0, not as 0 * inf = nan, and the other rows must not change.
+        gen = torch.Generator().manual_seed(0)
+        q, k, v = (torch.randn(1, n, 2, 4, generator=gen) for n in (6, 5, 5))
+        q_mask, kv_mask = torch.ones(1, 6), torch.ones(1, 5)
+        q_mask[0, [1, 4]], kv_mask[0, 2] = 0, 0
+
+        def attend(dt):
+            args = (t.to(device, dt) for t in (q, k, v, q_mask, kv_mask))
+            return LinearAttention()(*args)
+
+        out = attend(dtype)
+        assert bool(torch.isfinite(out).all())
+        self.assert_close(out[0, [1, 4]], torch.zeros_like(out[0, [1, 4]]), rtol=0.0, atol=0.0)
+        self.assert_close(out.float(), attend(torch.float32), rtol=0.0, atol=5e-2)

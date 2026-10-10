@@ -24,6 +24,15 @@ from torch import nn
 INF = 1e9
 
 
+def _masked_similarity(dtype: torch.dtype) -> float:
+    """Similarity given to masked pairs: ``-INF``, or the lowest finite value of ``dtype`` when ``INF`` overflows it.
+
+    float16 holds at most 65504. The value stays finite, so a row or column that is masked entirely still gets a
+    uniform softmax, where ``-inf`` would give ``-inf - (-inf) = nan``.
+    """
+    return -min(INF, torch.finfo(dtype).max)
+
+
 def mask_border(m: torch.Tensor, b: int, v: Union[torch.Tensor, float, bool]) -> None:
     """Mask borders with value.
 
@@ -151,14 +160,18 @@ class CoarseMatching(nn.Module):
         if self.match_type == "dual_softmax":
             sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1) / self.temperature
             if mask_c0 is not None and mask_c1 is not None:
-                sim_matrix.masked_fill_(~(mask_c0[..., None] * mask_c1[:, None]).bool(), -INF)
+                sim_matrix.masked_fill_(
+                    ~(mask_c0[..., None] * mask_c1[:, None]).bool(), _masked_similarity(sim_matrix.dtype)
+                )
             conf_matrix = F.softmax(sim_matrix, 1) * F.softmax(sim_matrix, 2)
 
         elif self.match_type == "sinkhorn":
             # sinkhorn, dustbin included
             sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1)
             if mask_c0 is not None and mask_c1 is not None:
-                sim_matrix[:, :L, :S].masked_fill_(~(mask_c0[..., None] * mask_c1[:, None]).bool(), -INF)
+                sim_matrix[:, :L, :S].masked_fill_(
+                    ~(mask_c0[..., None] * mask_c1[:, None]).bool(), _masked_similarity(sim_matrix.dtype)
+                )
 
             # build uniform prior & use sinkhorn
             log_assign_matrix = self.log_optimal_transport(sim_matrix, self.bin_score, self.skh_iters)
