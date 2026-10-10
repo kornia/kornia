@@ -170,8 +170,9 @@ class SIFTDescriptor(nn.Module):
 
     The ``num_spatial_bins`` x ``num_spatial_bins`` grid of spatial cells and the Gaussian weighting window are both
     centred on the patch centre :math:`(\text{patch\_size} - 1) / 2`; :func:`get_sift_bin_ksize_stride_pad` gives the
-    cell spacing and pooling kernel. A mirrored or ``torch.rot90``-rotated patch therefore has a descriptor that is a
-    permutation of the original's.
+    cell spacing and pooling kernel. A patch mirrored upside down therefore has a descriptor that is a permutation of
+    the original's; so does a patch mirrored left to right when ``num_ang_bins`` is even, and a ``torch.rot90``-rotated
+    one when ``num_ang_bins`` is a multiple of four, as the default 8 is.
 
     Example:
         >>> input = torch.rand(23, 1, 32, 32)
@@ -237,15 +238,17 @@ class SIFTDescriptor(nn.Module):
     ) -> None:
         # The pooling kernel used to be 2 * int(patch_size / (num_spatial_bins + 1)) wide at every patch size; the
         # centred grid widens it by one pixel at some, 41 among them. A state dict saved with the narrower kernel
-        # holds an untrained kernel that `patch_size` fully determines, so it is replaced by the current one instead
-        # of failing a strict load on its shape. A kernel with any other values still fails.
+        # holds an untrained kernel that `patch_size` fully determines, so it is replaced by the untrained kernel of
+        # the current width instead of failing a strict load on its shape -- rebuilt here, not copied from `self.pk`,
+        # which may have been trained since construction. A kernel with any other values still fails.
         key = prefix + "pk.weight"
         weight = state_dict.get(key)
         if isinstance(weight, torch.Tensor) and weight.shape != self.pk.weight.shape:
             former = get_sift_pooling_kernel(2 * int(self.patch_size / (self.num_spatial_bins + 1)))
             former = former.to(weight.dtype).reshape(1, 1, *former.shape)
             if weight.shape == former.shape and torch.equal(weight.cpu(), former):
-                state_dict[key] = self.pk.weight.detach().to(weight.dtype)
+                current = get_sift_pooling_kernel(self.bin_ksize).float()
+                state_dict[key] = current.reshape(1, 1, *current.shape).to(weight.device, weight.dtype)
         super()._load_from_state_dict(
             state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
         )

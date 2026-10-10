@@ -37,18 +37,29 @@ def test_get_sift_pooling_kernel(ksize):
     assert kernel.shape == (ksize, ksize)
 
 
-# Cell centres -pad + (ksize - 1) / 2 + k * stride: (41, 3) 7 / 20 / 33, (32, 4) 3.5 / 11.5 / 19.5 / 27.5 and
-# (41, 4) 5 / 15 / 25 / 35, each grid centred on (ps - 1) / 2.
-@pytest.mark.parametrize("ps,n_bins,ksize,stride,pad", [(41, 3, 21, 13, 3), (32, 4, 12, 8, 2), (41, 4, 17, 10, 3)])
+# Cell centres -pad + (ksize - 1) / 2 + k * stride: (41, 3) 7 / 20 / 33, (32, 4) 3.5 / 11.5 / 19.5 / 27.5,
+# (41, 4) 5 / 15 / 25 / 35 and (11, 4) 2 / 4 / 6 / 8, each grid centred on (ps - 1) / 2. The off-centre helper of
+# #5691 rejected (11, 4): its 4-pixel kernel with pad 1 gave five cells.
+@pytest.mark.parametrize(
+    "ps,n_bins,ksize,stride,pad", [(41, 3, 21, 13, 3), (32, 4, 12, 8, 2), (41, 4, 17, 10, 3), (11, 4, 5, 2, 0)]
+)
 def test_get_sift_bin_ksize_stride_pad(ps, n_bins, ksize, stride, pad):
     out = get_sift_bin_ksize_stride_pad(ps, n_bins)
     assert out == (ksize, stride, pad)
 
 
+@pytest.mark.parametrize("ps,n_bins", [(3, 4), (0, 1)])
+def test_get_sift_bin_ksize_stride_pad_rejects_a_patch_smaller_than_the_bins_5691(ps, n_bins):
+    # A zero cell spacing used to raise ZeroDivisionError from the output-size check.
+    with pytest.raises(ValueError, match="incompatible"):
+        get_sift_bin_ksize_stride_pad(ps, n_bins)
+
+
 # Every (patch_size, num_spatial_bins) the suite builds a SIFTDescriptor with, odd/even pairs (31/32/33, 40/41,
-# 64/65), and the 41-pixel default of SIFTFeature and SIFTFeatureScaleSpace.
+# 64/65), the 41-pixel default of SIFTFeature and SIFTFeatureScaleSpace, and (11, 4), which the off-centre helper
+# rejected.
 _GRID_SIZES = [
-    (6, 1), (15, 4), (16, 4), (19, 3), (31, 4), (32, 4), (33, 4), (40, 4), (41, 3), (41, 4), (64, 4), (65, 4),
+    (6, 1), (11, 4), (15, 4), (16, 4), (19, 3), (31, 4), (32, 4), (33, 4), (40, 4), (41, 3), (41, 4), (64, 4), (65, 4),
 ]  # fmt: skip
 
 
@@ -219,6 +230,11 @@ class TestSIFTDescriptorKernelBuffer(BaseTester):
         assert expected.shape == (1, 1, 17, 17)
         former = get_sift_pooling_kernel(16).reshape(1, 1, 16, 16).to(device, module_dtype)
         outer = torch.nn.Sequential(mod)
+        outer.load_state_dict({"0.pk.weight": former})
+        assert torch.equal(mod.get_pooling_kernel(), expected)
+        # The untrained kernel is rebuilt, not copied from the destination, whose kernel may have been trained.
+        with torch.no_grad():
+            mod.pk.weight.zero_()
         outer.load_state_dict({"0.pk.weight": former})
         assert torch.equal(mod.get_pooling_kernel(), expected)
         # A kernel of the former shape with other values is a trained one: it still fails on its shape.
