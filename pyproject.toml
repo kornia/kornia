@@ -243,6 +243,7 @@ select = [
   "SIM910",  # dict-get-with-none-default
   "SLOT",  # flake8-slots
   "T10",  # flake8-debugger
+  "T201",  # flake8-print: print in the library; see the per-file ignore below
   "TID",  # flake8-tidy-imports
   "UP",  # pyupgrade
   "W",  # pycodestyle
@@ -275,7 +276,7 @@ select = [
   # "Q",    # flake8-quotes. No: ruff format handles quotes
   # "SIM",  # flake8-simplify. Partial: the SIM rules above. No: SIM300, it reads names such as `H` as constants
   # "SLF",  # flake8-self. No: tests check private members on purpose
-  # "T20",  # flake8-print. Partial: T201 is wanted for `kornia/` only
+  # "T20",  # flake8-print. Partial: T201 is enabled above for `kornia/` only
   # "TC",   # flake8-type-checking. Partial: TC004 and TC005 are wanted. No: TC001-TC003, TC006
   # "TD",   # flake8-todos. No: the TODO format is not checked
   # "TRY",  # tryceratops. Partial: TRY002 is wanted. No: TRY003 (as EM), TRY004 (changes exception classes)
@@ -320,6 +321,7 @@ max-returns = 13  # Recommended: 6
 max-statements = 64  # Recommended: 50
 
 [tool.ruff.lint.per-file-ignores]
+"!kornia/**" = ["T201"]  # T201 applies to the library only
 "*/__init__.py" = ["F401", "F403"]  # Allow unused imports and star imports
 "benchmarks/*" = [
   "BLE",

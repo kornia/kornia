@@ -399,4 +399,4 @@ class Image:
         data = self.data
         if self.channels_order == ChannelsOrder.CHANNELS_LAST:
             data = data.permute(2, 0, 1)
-        print(image_to_string(data, max_width))
+        print(image_to_string(data, max_width))  # noqa: T201 - Image.print prints by design
