@@ -941,6 +941,30 @@ class TestMultiResolutionDetector(BaseTester):
         assert (resps == 0).all(), f"detected on the masked side: {lafs[0][resps[0] != 0][:, 0, 2].tolist()}"
         assert (lafs == 0).all()
 
+    def test_border_does_not_create_maxima_5694(self, device, dtype):
+        # A cone with its single maximum at x = 8, inside the 15 px border strip of every level. Zeroing
+        # the strip before non-maxima suppression carved an edge into the response, and on every level the
+        # pixel beside that edge was reported as a "maximum", 15 level pixels from the image border.
+        yy, xx = torch.meshgrid(
+            torch.arange(64, device=device, dtype=dtype), torch.arange(64, device=device, dtype=dtype), indexing="ij"
+        )
+
+        def cone(x0: float) -> torch.Tensor:
+            return (1 - ((xx - x0) ** 2 + (yy - 32) ** 2).sqrt() / 40).clamp(min=0)[None, None]
+
+        det = MultiResolutionDetector(torch.nn.Identity(), num_features=4).to(device, dtype)
+        lafs, resps = det(cone(8.0))
+        assert (resps == 0).all(), f"detected beside the border: {lafs[0][resps[0] != 0][:, :, 2].tolist()}"
+        assert (lafs == 0).all()
+        # A maximum outside the strip is still detected, and only there: it lies outside the strip on the
+        # full-resolution and upscaled levels and inside it on the coarser ones.
+        lafs, resps = det(cone(20.0))
+        found = resps[0] != 0
+        assert bool(found[0])
+        centres = lafs[0][found][:, :, 2].float()
+        target = torch.tensor([20.0, 32.0], device=device)
+        assert ((centres - target).abs() <= 1.0).all(), centres.tolist()
+
     def test_thin_masked_stripe_survives_downsampling(self, device, dtype):
         # A two-pixel zero stripe is narrower than the sampling step of a coarse level, so an
         # interpolated mask reads 1.0 there and the stripe is gone; the conservative resample keeps

@@ -855,9 +855,9 @@ class MultiResolutionDetector(nn.Module):
             f"model must return a response map with the level's spatial size {tuple(level_img.shape[-2:])}. "
             f"Got {tuple(resp_map.shape[-2:])}; pad the response function so that its output matches its input.",
         )
-        det_map = self.nms(self.remove_borders(resp_map))
-        # The mask is applied to the maxima, not to the response the NMS reads: a hard edge in the
-        # response would turn every pixel beside a zeroed neighbour into a "maximum".
+        # The border and the mask are applied to the maxima, not to the response the NMS reads: a hard
+        # edge in the response would turn every pixel beside a zeroed neighbour into a "maximum".
+        det_map = self.remove_borders(self.nms(resp_map))
         if mask is not None:
             weights = _resize_mask(mask, det_map)
             # A boolean or integer mask resamples to exactly 0/1: dropping is all it can do. A float
