@@ -23,7 +23,6 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.core.utils import is_compiling, is_exporting
 from kornia.geometry.grid import create_meshgrid
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import remap
@@ -100,6 +99,7 @@ def undistort_points(
     if dist.shape[-1] not in [4, 5, 8, 12, 14]:
         raise ValueError(f"Invalid number of distortion coefficients. Got {dist.shape[-1]}")
 
+    has_tilt = dist.shape[-1] == 14
     # Adding torch.zeros to obtain vector with 14 coeffs.
     if dist.shape[-1] < 14:
         dist = F.pad(dist, [0, 14 - dist.shape[-1]])
@@ -114,12 +114,9 @@ def undistort_points(
     x: torch.Tensor = (points[..., 0] - cx) / fx  # (BxN - Bx1)/Bx1 -> BxN
     y: torch.Tensor = (points[..., 1] - cy) / fy  # (BxN - Bx1)/Bx1 -> BxN
 
-    # Graph capture cannot read the coefficient values on the host. Apply the tilt unconditionally
-    # while compiling or exporting; zero angles give the identity. Keep eager and scripted behavior.
-    capture = is_exporting()
-    if not torch.jit.is_scripting():
-        capture = capture or is_compiling()
-    if capture or torch.any(dist[..., 12] != 0) or torch.any(dist[..., 13] != 0):
+    # Zero tilt is the identity but has nonzero angle derivatives. Branch on the model's
+    # coefficient count, not its values, so calibration can learn tilt from a zero initialization.
+    if has_tilt:
         inv_tilt = tilt_projection(dist[..., 12:13], dist[..., 13:14], True)
         if inv_tilt.dim() == 2:
             inv_tilt = inv_tilt.unsqueeze(0)

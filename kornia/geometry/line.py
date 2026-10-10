@@ -257,6 +257,11 @@ def _fit_line_tls_2d(points: torch.Tensor) -> ParametrizedLine:
     after centring, whatever the rounding of the mean. An exactly vertical set then has ``sxy = +0`` and gets the
     direction ``(0, 1)``; the float32 rounding of ``pi / 2`` can leave an x component of 1.2e-7.
     """
+    dtype = points.dtype
+    # Promote before subtracting or accumulating: finite half coordinates can have an overflowing difference,
+    # and even unit-scale second moments overflow float16 for a sufficiently large point set.
+    if dtype in (torch.float16, torch.bfloat16):
+        points = points.float()
     x0 = points[..., :1, 0]  # (B, 1)
     y0 = points[..., :1, 1]  # (B, 1)
     x = points[..., 0] - x0  # (B, N)
@@ -266,7 +271,7 @@ def _fit_line_tls_2d(points: torch.Tensor) -> ParametrizedLine:
 
     direction = _tls_direction_2d(x - x_mean, y - y_mean, None)
     origin = torch.cat([x0 + x_mean, y0 + y_mean], dim=-1)
-    return ParametrizedLine(origin, direction)
+    return ParametrizedLine(origin.to(dtype), direction.to(dtype))
 
 
 def _fit_line_weighted_tls_2d(points: torch.Tensor, weights: torch.Tensor) -> ParametrizedLine:
@@ -417,7 +422,8 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
     scale = A.abs().amax(dim=(-2, -1), keepdim=True)
     A = A / torch.where(scale > 0, scale, torch.ones_like(scale))
     if weights is not None:
-        A = A.transpose(-2, -1) @ torch.diag_embed(work_weights) @ A
+        # Scale the columns directly instead of allocating an N-by-N diagonal weight matrix.
+        A = (A.transpose(-2, -1) * work_weights[..., None, :]) @ A
     else:
         A = A.transpose(-2, -1) @ A
 

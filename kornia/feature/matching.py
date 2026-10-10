@@ -239,25 +239,15 @@ def match_smnn(
     dists2, idx2 = match_snn(desc2, desc1, th, distance_matrix.t())
 
     if len(dists2) > 0 and len(dists1) > 0:
-        idx2 = idx2.flip(1)
-        if not is_mps_tensor_safe(idx1):
-            idxs_dm = torch.cdist(idx1.float(), idx2.float(), p=1.0)
-        else:
-            idxs1_rep = idx1.to(desc1).repeat_interleave(idx2.size(0), dim=0)
-            idxs_dm = (idx2.to(desc2).repeat(idx1.size(0), 1) - idxs1_rep).abs().sum(dim=1)
-            idxs_dm = idxs_dm.reshape(idx1.size(0), idx2.size(0))
-        mutual_idxs1 = idxs_dm.min(dim=1)[0] < 1e-8
-        mutual_idxs2 = idxs_dm.min(dim=0)[0] < 1e-8
-        good_idxs1 = idx1[mutual_idxs1.view(-1)]
-        good_idxs2 = idx2[mutual_idxs2.view(-1)]
-        dists1_good = dists1[mutual_idxs1.view(-1)]
-        dists2_good = dists2[mutual_idxs2.view(-1)]
-        _, idx_upl1 = torch.sort(good_idxs1[:, 0])
-        _, idx_upl2 = torch.sort(good_idxs2[:, 0])
-        good_idxs1 = good_idxs1[idx_upl1]
-        match_dists = torch.max(dists1_good[idx_upl1], dists2_good[idx_upl2])
-        matches_idxs = good_idxs1
-        match_dists, matches_idxs = match_dists.view(-1, 1), matches_idxs.view(-1, 2)
+        # Each target occurs at most once in idx2. Join on its integer index instead of
+        # comparing every pair of matches in floating point (quadratic memory and inexact in half).
+        reverse_lookup = torch.full((desc2.size(0),), -1, dtype=torch.long, device=idx2.device)
+        reverse_lookup[idx2[:, 0]] = torch.arange(idx2.size(0), device=idx2.device)
+        reverse_positions = reverse_lookup[idx1[:, 1]]
+        mutual = (reverse_positions >= 0) & (idx2[reverse_positions, 1] == idx1[:, 0])
+        # match_snn already returns source indices in ascending order.
+        matches_idxs = idx1[mutual]
+        match_dists = torch.maximum(dists1[mutual], dists2[reverse_positions[mutual]])
     else:
         match_dists, matches_idxs = _no_match(distance_matrix)
     return match_dists, matches_idxs

@@ -131,3 +131,78 @@ class TestCombineTensorPatches(BaseTester):
             torch.arange(16.0, device=device, dtype=torch.float64).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2)
         )
         self.gradcheck(kornia.contrib.combine_tensor_patches, (patches, (4, 4), (2, 2), (2, 2)))
+
+    @pytest.mark.parametrize("batch_size", [0, 1, 2])
+    @pytest.mark.parametrize(
+        "image_size,window,stride,unpadding,auto_unpadding,pad,grid",
+        [
+            ((8, 12), (4, 4), (4, 4), 0, False, (0, 0, 0, 0), (2, 3)),
+            ((7, 11), (3, 5), (2, 3), 0, False, (0, 0, 0, 0), (3, 3)),
+            ((7, 11), (3, 5), (2, 3), (1, 1, 2, 1), False, (2, 1, 1, 1), (4, 4)),
+            ((9, 13), (4, 5), (4, 5), 0, True, (1, 1, 1, 2), (3, 3)),
+        ],
+    )
+    def test_patch_reconstruction_and_empty_batch_4429(
+        self, batch_size, image_size, window, stride, unpadding, auto_unpadding, pad, grid, device, dtype
+    ):
+        image = (torch.arange(batch_size * 3 * image_size[0] * image_size[1], device=device) % 251).to(dtype)
+        image = image.reshape(batch_size, 3, *image_size)
+        padded = torch.nn.functional.pad(image, pad)
+        # Construct patches without the extraction API so paired layout mistakes cannot cancel out.
+        patches = (
+            torch.stack(
+                [
+                    padded[
+                        ...,
+                        row * stride[0] : row * stride[0] + window[0],
+                        col * stride[1] : col * stride[1] + window[1],
+                    ]
+                    for row in range(grid[0])
+                    for col in range(grid[1])
+                ],
+                dim=1,
+            )
+            .detach()
+            .requires_grad_()
+        )
+        module = kornia.contrib.CombineTensorPatches(image_size, window, stride, unpadding, auto_unpadding)
+        actual = module(patches)
+        functional = kornia.contrib.combine_tensor_patches(
+            patches, image_size, window, stride, auto_unpadding, unpadding
+        )
+        accumulated = torch.zeros_like(padded)
+        counts = torch.zeros_like(padded)
+        for row in range(grid[0]):
+            for col in range(grid[1]):
+                rows = slice(row * stride[0], row * stride[0] + window[0])
+                cols = slice(col * stride[1], col * stride[1] + window[1])
+                accumulated[..., rows, cols] += patches[:, row * grid[1] + col]
+                counts[..., rows, cols] += 1
+        expected = torch.nn.functional.pad(accumulated / (counts + 1e-8), tuple(-value for value in pad))
+        assert actual.shape == (batch_size, 3, *image_size)
+        assert actual.dtype == dtype
+        assert actual.device == device
+        self.assert_close(actual, expected)
+        self.assert_close(functional, expected)
+        self.assert_close(actual, image)
+        weights = (torch.arange(actual.numel(), device=device) % 7 + 1).to(dtype).reshape(actual.shape)
+        actual_grad = torch.autograd.grad((actual * weights).sum(), patches)[0]
+        expected_grad = torch.autograd.grad((expected * weights).sum(), patches)[0]
+        assert actual_grad.shape == patches.shape
+        self.assert_close(actual_grad, expected_grad)
+
+    def test_invalid_empty_patch_metadata_4429(self, device, dtype):
+        patches = torch.empty(0, 6, 3, 4, 4, device=device, dtype=dtype)
+        with pytest.raises(AssertionError, match=r"Stride=.*Window size"):
+            kornia.contrib.combine_tensor_patches(patches, (8, 12), (4, 4), (5, 4))
+        with pytest.raises(RuntimeError, match="sliding blocks"):
+            kornia.contrib.combine_tensor_patches(patches[:, :5], (8, 12), (4, 4), (4, 4))
+
+    @pytest.mark.parametrize("batch_size", [0, 2])
+    def test_dynamo_patch_reconstruction_4429(self, batch_size, device, dtype, torch_optimizer):
+        patches = (torch.arange(batch_size * 6 * 3 * 4 * 4, device=device) % 251).to(dtype)
+        patches = patches.reshape(batch_size, 6, 3, 4, 4)
+        module = kornia.contrib.CombineTensorPatches((8, 12), (4, 4), (4, 4))
+        actual = torch_optimizer(module)(patches)
+        assert actual.shape == (batch_size, 3, 8, 12)
+        self.assert_close(actual, module(patches))
