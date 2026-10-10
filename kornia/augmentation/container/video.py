@@ -189,6 +189,27 @@ class VideoSequential(ImageSequential):
             return v.unsqueeze(1).repeat(1, batch_shape[0], *([1] * (v.ndim - 1))).reshape(-1, *v.shape[1:])
         return v
 
+    @staticmethod
+    def _record_video_batch_size(
+        param: Union[Dict[str, torch.Tensor], List[ParamItem]], original_batch_size: int
+    ) -> None:
+        """Attach the original video batch size to nested replay metadata.
+
+        Args:
+            param: Parameter tree returned by a nested sequential container.
+            original_batch_size: Batch size of the public video before frame flattening.
+        """
+        if isinstance(param, dict):
+            if "forward_input_shape" in param:
+                param["video_batch_size"] = torch.full(
+                    (), original_batch_size, device=param["forward_input_shape"].device, dtype=torch.long
+                )
+            return
+        if isinstance(param, list):
+            for item in param:
+                if isinstance(item, ParamItem) and isinstance(item.data, (dict, list)):
+                    VideoSequential._record_video_batch_size(item.data, original_batch_size)
+
     def _input_shape_convert_in(self, input: torch.Tensor, frame_num: int) -> torch.Tensor:
         # Convert any shape to (B, T, C, H, W)
         if self.data_format == "BCTHW":
@@ -200,6 +221,15 @@ class VideoSequential(ImageSequential):
         return input.reshape(-1, *input.shape[2:])
 
     def _input_shape_convert_back(self, input: torch.Tensor, frame_num: int) -> torch.Tensor:
+        """Reshape a flattened video tensor back to its original layout.
+
+        Args:
+            input: Flattened tensor with the frame dimension merged into the batch axis.
+            frame_num: Number of frames in each video clip.
+
+        Returns:
+            The tensor reshaped back to the original video layout.
+        """
         input = input.view(-1, frame_num, *input.shape[1:])
         if self.data_format == "BCTHW":
             input = input.transpose(1, 2)
@@ -219,6 +249,7 @@ class VideoSequential(ImageSequential):
             across frames depending on ``same_on_frame`` and module settings.
         """
         frame_num = batch_shape[self._temporal_channel]
+        original_batch_size = batch_shape[0]
         named_modules = self.get_forward_sequence()
         # Got param generation shape to (B, C, H, W). Ignoring T.
         batch_shape = self.__infer_channel_exclusive_batch_shape__(batch_shape, self._temporal_channel)
@@ -240,9 +271,12 @@ class VideoSequential(ImageSequential):
                 mod_param = module.forward_parameters(mod_shape)
 
                 if isinstance(mod_param, dict):
-                    for k, v in mod_param.items():
+                    self._record_video_batch_size(mod_param, original_batch_size)
+                    for k, v in list(mod_param.items()):
                         # TODO: revise ColorJiggle and ColorJitter order param in the future to align the standard.
                         if k == "order" and isinstance(module, (K.ColorJiggle, K.ColorJitter)):
+                            continue
+                        if k == "video_batch_size":
                             continue
                         if k == "forward_input_shape":
                             mod_param.update({k: v})
@@ -250,6 +284,8 @@ class VideoSequential(ImageSequential):
                         mod_param[k] = self.__broadcast_param__(
                             v, batch_shape, frame_num, self.same_on_frame, is_same_on_batch
                         )
+                elif isinstance(mod_param, list):
+                    self._record_video_batch_size(mod_param, original_batch_size)
 
                 param = ParamItem(name, mod_param)
 
@@ -257,6 +293,7 @@ class VideoSequential(ImageSequential):
                 # Frames are flattened to (B * T, ...) before the nested container runs, so it
                 # needs one draw per frame, like the unnested branch above.
                 seq_param = module.forward_parameters(torch.Size([batch_shape[0] * frame_num, *batch_shape[1:]]))
+                self._record_video_batch_size(seq_param, original_batch_size)
                 if self.same_on_frame:
                     raise ValueError("nn.Sequential is currently unsupported for ``same_on_frame``.")
                 param = ParamItem(name, seq_param)
