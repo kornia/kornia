@@ -18,11 +18,11 @@
 import pytest
 import torch
 
-import kornia.geometry.calibration.distort as distort_module
 from kornia.geometry.calibration.distort import distort_points, tilt_projection
+from kornia.geometry.calibration.undistort import undistort_points
 from kornia.geometry.camera.distortion_affine import distort_points_affine
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 from testing.geometry.linalg import euler_angles_to_rotation_matrix
 
 
@@ -72,6 +72,76 @@ class TestTiltProjection(BaseTester):
         self.assert_close(actual, expected)
 
 
+@pytest.mark.parametrize("op", [distort_points, undistort_points])
+class TestZeroTiltGradients(BaseTester):
+    @pytest.mark.parametrize("batch_shape", [(), (2,), (2, 3)])
+    def test_tilt_gradient(self, op, batch_shape, device, dtype):
+        points = torch.tensor([[0.3, 0.2], [-0.2, 0.4]], device=device, dtype=dtype).expand(*batch_shape, 2, 2)
+        K = torch.eye(3, device=device, dtype=dtype).expand(*batch_shape, 3, 3)
+        dist = torch.zeros(*batch_shape, 14, device=device, dtype=dtype, requires_grad=True)
+
+        output = op(points, K, dist)
+        self.assert_close(output, points)
+        (gradient,) = torch.autograd.grad(output.sum(), dist)
+        # At zero tilt, d(x, y)/d(taux) = (xy, y^2) and d(x, y)/d(tauy) = (-x^2, -xy).
+        # The inverse map has the opposite derivatives; sum over the two points and coordinates.
+        expected = torch.tensor([0.18, -0.11], device=device, dtype=dtype).expand(*batch_shape, 2)
+        if op is undistort_points:
+            expected = -expected
+        self.assert_close(gradient[..., 12:], expected)
+
+    def test_gradcheck(self, op, device):
+        points = torch.tensor([[[0.3, 0.2], [-0.2, 0.4]]], device=device, dtype=torch.float64)
+        K = torch.eye(3, device=device, dtype=torch.float64)[None]
+        dist = torch.zeros(1, 14, device=device, dtype=torch.float64, requires_grad=True)
+        self.gradcheck(op, (points, K, dist), requires_grad=(False, False, True))
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("batch_shape", [(), (2, 3)])
+    @pytest.mark.parametrize("num_coeffs", [4, 14])
+    def test_export(self, op, batch_shape, num_coeffs, device, dtype):
+        class Calibration(torch.nn.Module):
+            def forward(self, points, K, dist):
+                return op(points, K, dist)
+
+        points = torch.tensor([[0.3, 0.2]], device=device, dtype=dtype).expand(*batch_shape, 1, 2)
+        K = torch.eye(3, device=device, dtype=dtype).expand(*batch_shape, 3, 3)
+        dist = torch.zeros(*batch_shape, num_coeffs, device=device, dtype=dtype, requires_grad=True)
+        exported = torch.export.export(Calibration(), (points, K, dist)).module()
+        actual = exported(points, K, dist)
+        expected = op(points, K, dist)
+        self.assert_close(actual, expected)
+        self.assert_close(torch.autograd.grad(actual.sum(), dist)[0], torch.autograd.grad(expected.sum(), dist)[0])
+
+    def test_jit(self, op, device, dtype):
+        points = torch.tensor([[[0.3, 0.2]]], device=device, dtype=dtype)
+        K = torch.eye(3, device=device, dtype=dtype)[None]
+        dist = torch.zeros(1, 14, device=device, dtype=dtype, requires_grad=True)
+        scripted = torch.jit.script(op)
+        eager_gradient = torch.autograd.grad(op(points, K, dist).sum(), dist)[0]
+        scripted_gradient = torch.autograd.grad(scripted(points, K, dist).sum(), dist)[0]
+        expected = torch.tensor([[0.1, -0.15]], device=device, dtype=dtype)
+        if op is undistort_points:
+            expected = -expected
+        self.assert_close(eager_gradient[..., 12:], expected)
+        self.assert_close(scripted_gradient, eager_gradient)
+
+    def test_dynamo(self, op, device, dtype, torch_optimizer):
+        points = torch.tensor([[[0.3, 0.2]]], device=device, dtype=dtype)
+        K = torch.eye(3, device=device, dtype=dtype)[None]
+        dist = torch.zeros(1, 14, device=device, dtype=dtype, requires_grad=True)
+        compiled = torch_optimizer(op, fullgraph=True)
+        # At zero coefficients one iteration has the same tilt derivatives as the default five;
+        # keep the backward graph small for the oldest supported compiler.
+        output = compiled(points, K, dist, num_iters=1) if op is undistort_points else compiled(points, K, dist)
+        self.assert_close(output, points)
+        compiled_gradient = torch.autograd.grad(output.sum(), dist)[0]
+        expected = torch.tensor([[0.1, -0.15]], device=device, dtype=dtype)
+        if op is undistort_points:
+            expected = -expected
+        self.assert_close(compiled_gradient[..., 12:], expected)
+
+
 class TestDistortPoints(BaseTester):
     def test_smoke(self, device, dtype):
         points = torch.rand(1, 2, device=device, dtype=dtype)
@@ -110,18 +180,6 @@ class TestDistortPoints(BaseTester):
         ).reshape(*batch_shape, num_points, 2)
 
         assert actual.shape == (*batch_shape, num_points, 2)
-        self.assert_close(actual, expected)
-
-    def test_export_multi_axis_batch(self, monkeypatch, device, dtype):
-        points = torch.rand(2, 3, 5, 2, device=device, dtype=dtype)
-        K = torch.eye(3, device=device, dtype=dtype).expand(2, 3, 3, 3).clone()
-        dist = torch.tensor([0.01, -0.02, 0.001, -0.001], device=device, dtype=dtype).expand(2, 3, 4).clone()
-        expected = distort_points(points, K, dist)
-
-        monkeypatch.setattr(distort_module, "is_exporting", lambda: True)
-        actual = distort_points(points, K, dist)
-
-        assert actual.shape == points.shape
         self.assert_close(actual, expected)
 
     @pytest.mark.parametrize(
