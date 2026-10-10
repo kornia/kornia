@@ -15,18 +15,31 @@
 # limitations under the License.
 #
 
+import copy
 import sys
 
 import pytest
 import torch
 
 from kornia.feature import LoFTR
+from kornia.feature.loftr.loftr import default_cfg
+from kornia.feature.loftr.loftr_module import FinePreprocess
 from kornia.feature.loftr.utils.coarse_matching import CoarseMatching
 from kornia.feature.loftr.utils.fine_matching import FineMatching
-from kornia.geometry import resize
+from kornia.geometry import resize, transform_points
 
 from testing.base import BaseTester
 from testing.casts import dict_to
+
+
+def _loftr_matching_every_cell(device, dtype):
+    """Randomly initialised LoFTR with no confidence threshold and no border removal: every mutual nearest cell
+    is a match, so the keypoints show the coarse grid of the whole image."""
+    cfg = copy.deepcopy(default_cfg)
+    cfg["match_coarse"]["thr"] = 0.0
+    cfg["match_coarse"]["border_rm"] = 0
+    torch.manual_seed(0)
+    return LoFTR(pretrained=None, config=cfg).to(device, dtype)
 
 
 class TestLoFTR(BaseTester):
@@ -73,8 +86,15 @@ class TestLoFTR(BaseTester):
         data_dev = dict_to(data, device, dtype)
         with torch.no_grad():
             out = loftr(data_dev)
-        self.assert_close(out["keypoints0"], data_dev["loftr_outdoor_tentatives0"])
-        self.assert_close(out["keypoints1"], data_dev["loftr_outdoor_tentatives1"])
+        # image0 is 450 x 600; 450 is not a multiple of 8, and its 57 coarse rows sit 8 px apart. The stored
+        # tentatives place coarse cell (x, y) at 450 / 57 * (x, y), so they give the matched cells, not the pixels.
+        cells0 = torch.round(data_dev["loftr_outdoor_tentatives0"] * 57 / 450)
+        self.assert_close(out["keypoints0"], 8 * cells0, rtol=0.0, atol=0.0)
+        # keypoints1 follow the ground-truth homography of the pair (pixel-centre frame: subtract 0.5)
+        kpts0, kpts1 = out["keypoints0"].cpu().double() - 0.5, out["keypoints1"].cpu().double() - 0.5
+        err = (transform_points(data["H_gt"].cpu().double()[None], kpts0[None])[0] - kpts1).norm(dim=-1)
+        assert (err < 3).double().mean() > 0.85, err
+        assert err.median() < 1.5, err
 
     @pytest.mark.slow
     def test_mask(self, device):
@@ -85,6 +105,48 @@ class TestLoFTR(BaseTester):
         with torch.no_grad():
             out = loftr(sample)
         assert out is not None
+
+    @pytest.mark.parametrize("hw1", [(100, 67), (93, 86)])
+    def test_keypoints0_on_the_8px_grid_for_any_size_NNNN(self, device, dtype, hw1):
+        # Coarse cell (x, y) sits on pixel (8x, 8y) whatever the image size: the backbone's stride-2 stages have
+        # centred kernels and the map sizes are rounded up. H0 = 100 has 13 coarse rows, so 100 / 13 = 7.69 is not
+        # the stride. hw1 = (100, 67) runs both images through the backbone together, (93, 86) one by one.
+        model = _loftr_matching_every_cell(device, dtype)
+        h0, w0 = 100, 67
+        image0 = torch.rand(1, 1, h0, w0).to(device, dtype)
+        image1 = torch.rand(1, 1, *hw1).to(device, dtype)
+        with torch.no_grad():
+            kpts0 = model({"image0": image0, "image1": image1})["keypoints0"]
+        assert kpts0.shape[0] > 10
+        self.assert_close(kpts0, 8 * torch.round(kpts0 / 8), rtol=0.0, atol=0.0)
+        # the last coarse column and row are cells 8 and 12, on pixels 64 and 96; the matches reach far into both
+        assert kpts0.min() >= 0
+        assert kpts0[:, 0].max() <= 8 * 8
+        assert kpts0[:, 1].max() <= 8 * 12
+        assert kpts0[:, 0].max() >= 8 * 5
+        assert kpts0[:, 1].max() >= 8 * 9
+
+    def test_mask_is_read_at_the_coarse_cell_pixels_NNNN(self, device, dtype):
+        # A coarse cell takes the mask value of the pixel it sits on, (8x, 8y). The masks are 1 only on those pixels
+        # (image0: on the ones with y < 64 and x < 40, so coarse rows 0..7 and columns 0..4), so every such cell is
+        # valid, while sampling the mask at (x, y) * size / coarse size would hit a 0 everywhere but at (0, 0).
+        if dtype == torch.float16:
+            pytest.skip("CoarseMatching fills masked similarities with -1e9, which overflows float16")
+        model = _loftr_matching_every_cell(device, dtype)
+        h0, w0 = 100, 67
+        image0 = torch.rand(1, 1, h0, w0).to(device, dtype)
+        image1 = torch.rand(1, 1, 93, 86).to(device, dtype)
+        mask0 = torch.zeros(1, h0, w0, device=device, dtype=dtype)
+        mask0[:, :64:8, :40:8] = 1
+        mask1 = torch.zeros(1, 93, 86, device=device, dtype=dtype)
+        mask1[:, ::8, ::8] = 1
+        with torch.no_grad():
+            kpts0 = model({"image0": image0, "image1": image1, "mask0": mask0, "mask1": mask1})["keypoints0"]
+        assert kpts0.shape[0] > 5
+        self.assert_close(kpts0, 8 * torch.round(kpts0 / 8), rtol=0.0, atol=0.0)
+        assert kpts0[:, 0].max() <= 32
+        assert kpts0[:, 1].max() <= 56
+        assert kpts0[:, 1].max() >= 8 * 4
 
     @pytest.mark.slow
     def test_gradcheck(self, device):
@@ -148,6 +210,7 @@ class TestCoarseMatching(BaseTester):
             "hw1_c": (self.H1C, self.W1C),
             "hw0_i": (self.H0C * 8, self.W0C * 8),
             "hw1_i": (self.H1C * 8, self.W1C * 8),
+            "stride_c": 8,
             "spv_b_ids": torch.zeros(self.N_GT, dtype=torch.long, device=device),
             "spv_i_ids": torch.full((self.N_GT,), L - 1, dtype=torch.long, device=device),
             "spv_j_ids": torch.full((self.N_GT,), S - 1, dtype=torch.long, device=device),
@@ -194,6 +257,23 @@ class TestCoarseMatching(BaseTester):
         assert out["gt_mask"].sum() == 0
         assert out["mconf"].numel() == out["b_ids"].shape[0] == self.N_PRED
 
+    def test_keypoints_use_the_coarse_stride_NNNN(self, device, dtype):
+        # image0 100 x 67 -> 13 x 9 coarse cells, image1 93 x 86 -> 12 x 11: cell (x, y) of either image sits on
+        # pixel (8x, 8y). The ratios 100 / 13, 93 / 12, 67 / 9 and 86 / 11 all differ from 8 and from each other.
+        h0c, w0c, h1c, w1c = 13, 9, 12, 11
+        i_ids = torch.tensor([0, 10, 47, h0c * w0c - 1], device=device)
+        j_ids = torch.tensor([3, 40, 77, h1c * w1c - 1], device=device)
+        conf = torch.zeros(1, h0c * w0c, h1c * w1c, device=device, dtype=dtype)
+        conf[0, i_ids, j_ids] = 0.5
+        data = {"hw0_i": (100, 67), "hw1_i": (93, 86), "hw0_c": (h0c, w0c), "hw1_c": (h1c, w1c), "stride_c": 8}
+        cm = CoarseMatching(self.CFG).to(device).eval()
+        out = cm.get_coarse_match(conf, data)
+        assert out["i_ids"].tolist() == i_ids.tolist()
+        expected0 = torch.tensor([[0, 0], [8, 8], [16, 40], [64, 96]], device=device, dtype=dtype)
+        expected1 = torch.tensor([[24, 0], [56, 24], [0, 56], [80, 88]], device=device, dtype=dtype)
+        self.assert_close(out["mkpts0_c"], expected0, rtol=0.0, atol=0.0)
+        self.assert_close(out["mkpts1_c"], expected1, rtol=0.0, atol=0.0)
+
 
 class TestFineMatching(BaseTester):
     @staticmethod
@@ -210,6 +290,7 @@ class TestFineMatching(BaseTester):
         data = {
             "hw0_i": (40, 40),
             "hw0_f": (20, 20),
+            "stride_f": 2,
             "mkpts0_c": torch.zeros(M, 2, device=device, dtype=dtype),
             "mkpts1_c": torch.zeros(M, 2, device=device, dtype=dtype),
             "mconf": torch.ones(M, device=device, dtype=dtype),
@@ -242,3 +323,77 @@ class TestFineMatching(BaseTester):
         self.assert_close(std, torch.full_like(std, 0.5).sqrt() * 2)
         std.sum().backward()
         assert bool(torch.isfinite(feat_f1.grad).all()), feat_f1.grad
+
+    def test_offset_uses_the_fine_stride_NNNN(self, device, dtype):
+        # The fine window of a match is 5 x 5 fine cells, 2 px apart, so a heatmap expectation at normalized
+        # (u, v) moves keypoints1 by (W // 2) * 2 * (u, v) = 4 (u, v) px, whatever the image size. image0
+        # 99 x 67 has 50 x 34 fine cells; 99 / 50 = 1.98 is not the stride.
+        M, W, C = 3, 5, 8
+        feat_f0 = torch.zeros(M, W * W, C, device=device, dtype=dtype)
+        feat_f1 = torch.zeros(M, W * W, C, device=device, dtype=dtype)
+        feat_f0[:, W * W // 2, 0] = 30.0
+        for m, cell in enumerate((4, 16, 21)):  # (x, y) = (4, 0), (1, 3), (1, 4) in the window
+            feat_f1[m, cell, 0] = 30.0
+        data = {
+            "hw0_i": (99, 67),
+            "hw0_f": (50, 34),
+            "stride_f": 2,
+            "mkpts0_c": torch.tensor([[8.0, 16.0], [24.0, 0.0], [64.0, 96.0]], device=device, dtype=dtype),
+            "mkpts1_c": torch.tensor([[40.0, 8.0], [0.0, 32.0], [80.0, 88.0]], device=device, dtype=dtype),
+            "mconf": torch.ones(M, device=device, dtype=dtype),
+            "b_ids": torch.zeros(M, dtype=torch.long, device=device),
+        }
+        with torch.no_grad():
+            FineMatching()(feat_f0, feat_f1, data)
+        offset = data["mkpts1_f"] - data["mkpts1_c"]
+        self.assert_close(offset, data["expec_f"][:, :2] * 4)
+        # the peaks sit 2 fine cells right / up of the centre, 1 left / 1 down, 1 left / 2 down
+        self.assert_close(
+            offset,
+            torch.tensor([[4.0, -4.0], [-2.0, 2.0], [-2.0, 4.0]], device=device, dtype=dtype),
+            rtol=0.0,
+            atol=0.05,
+        )
+        self.assert_close(data["mkpts0_f"], data["mkpts0_c"], rtol=0.0, atol=0.0)
+
+
+class TestFinePreprocess(BaseTester):
+    def test_windows_centred_on_the_coarse_cells_NNNN(self, device, dtype):
+        # Coarse cell (x, y) sits on fine cell (4x, 4y) for any image size. image0 100 x 67 has 13 x 9 coarse and
+        # 50 x 34 fine cells, image1 93 x 86 has 12 x 11 and 47 x 43; 50 // 13 = 3 is not the stride. The fine
+        # maps hold their own (row, column) indices, so each window shows where it was cut.
+        cfg = {
+            "fine_concat_coarse_feat": False,
+            "fine_window_size": 5,
+            "coarse": {"d_model": 4},
+            "fine": {"d_model": 2},
+        }
+
+        def index_map(h, w):
+            rows, cols = torch.meshgrid(torch.arange(h), torch.arange(w), indexing="ij")
+            return torch.stack([rows, cols])[None].to(device, dtype)
+
+        b_ids = torch.zeros(4, dtype=torch.long, device=device)
+        i_ids = torch.tensor([0, 10, 47, 13 * 9 - 1], device=device)
+        j_ids = torch.tensor([3, 40, 77, 12 * 11 - 1], device=device)
+        data = {
+            "hw0_c": (13, 9),
+            "hw0_f": (50, 34),
+            "stride_c": 8,
+            "stride_f": 2,
+            "b_ids": b_ids,
+            "i_ids": i_ids,
+            "j_ids": j_ids,
+        }
+        feat_c = torch.zeros(1, 1, 4, device=device, dtype=dtype)
+        with torch.no_grad():
+            win0, win1 = FinePreprocess(cfg).to(device, dtype)(
+                index_map(50, 34), index_map(47, 43), feat_c, feat_c, data
+            )
+        assert win0.shape == win1.shape == (4, 25, 2)
+        centre0 = torch.stack([i_ids // 9, i_ids % 9], -1) * 4
+        centre1 = torch.stack([j_ids // 11, j_ids % 11], -1) * 4
+        self.assert_close(win0[:, 12], centre0.to(dtype), rtol=0.0, atol=0.0)
+        self.assert_close(win1[:, 12], centre1.to(dtype), rtol=0.0, atol=0.0)
+        # the window spans +-2 fine cells: its last element is two cells down and right of the centre
+        self.assert_close(win0[1:3, 24], (centre0[1:3] + 2).to(dtype), rtol=0.0, atol=0.0)

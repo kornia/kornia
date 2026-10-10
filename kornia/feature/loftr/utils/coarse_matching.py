@@ -186,7 +186,8 @@ class CoarseMatching(nn.Module):
 
         Args:
             conf_matrix (torch.Tensor): [N, L, S]
-            data (dict): with keys ['hw0_i', 'hw1_i', 'hw0_c', 'hw1_c']
+            data (dict): with keys ['hw0_c', 'hw1_c', 'stride_c'], ``stride_c`` being the pixel stride of the coarse
+                feature maps (8)
 
         Returns:
             coarse_matches (dict): {
@@ -282,8 +283,9 @@ class CoarseMatching(nn.Module):
         # These matches select patches that feed into fine-level network
         coarse_matches = {"b_ids": b_ids, "i_ids": i_ids, "j_ids": j_ids}
 
-        # 4. Update with matches in original image resolution
-        scale = data["hw0_i"][0] / data["hw0_c"][0]
+        # 4. Update with matches in original image resolution: coarse cell (x, y) of either image sits on pixel
+        # (stride_c * x, stride_c * y) for any image size
+        scale = data["stride_c"]
         scale0 = scale * data["scale0"][b_ids] if "scale0" in data else scale
         scale1 = scale * data["scale1"][b_ids] if "scale1" in data else scale
         mkpts0_c = torch.stack([i_ids % data["hw0_c"][1], i_ids // data["hw0_c"][1]], dim=1) * scale0
