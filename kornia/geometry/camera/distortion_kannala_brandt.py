@@ -42,7 +42,11 @@ def _distort_points_kannala_brandt_impl(
     k3 = params[..., 7]
 
     radius = radius_sq.sqrt()
-    radius_inverse = 1.0 / radius
+    # The reciprocal's backward squares its value, which can overflow float16.
+    if radius.dtype == torch.float16:
+        radius_inverse = (1.0 / radius.float()).to(radius.dtype)
+    else:
+        radius_inverse = 1.0 / radius
     theta = radius.atan2(torch.ones_like(radius))
     theta2 = theta**2
     theta4 = theta2**2
