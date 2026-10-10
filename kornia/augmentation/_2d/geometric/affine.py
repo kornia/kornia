@@ -69,6 +69,9 @@ class RandomAffine(GeometricAugmentationBase2D):
           move content right and down.
         - a positive ``degrees`` rotates the displayed image clockwise, unlike :class:`RandomRotation`
           (:doc:`/get-started/conventions`, `#4408 <https://github.com/kornia/kornia/issues/4408>`_).
+        - ``shear`` draws degrees, converted to radians and applied about the image centre with the sign and the
+          x-then-y order of :func:`~kornia.geometry.transform.get_shear_matrix2d`, as
+          :class:`~kornia.geometry.transform.Affine` applies its ``shear``.
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_affine`.
