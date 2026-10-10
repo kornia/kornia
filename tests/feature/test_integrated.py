@@ -72,7 +72,11 @@ class TestGetLAFDescriptors(BaseTester):
         B, C, H, W = 1, 1, 32, 32
         PS = 16
         img = torch.rand(B, C, H, W, device=device)
-        centers = torch.tensor([[H / 2.0, W / 2.0], [2.0 * H / 3.0, W / 2.0]], device=device, dtype=dtype).view(1, 2, 2)
+        # Off the pixel lattice: a sample exactly on a pixel centre sits on a kink of bilinear interpolation, where the
+        # central difference and the one-sided analytical derivative disagree.
+        centers = torch.tensor(
+            [[H / 2.0 + 0.3, W / 2.0 + 0.3], [2.0 * H / 3.0, W / 2.0 + 0.3]], device=device, dtype=dtype
+        ).view(1, 2, 2)
         scales = torch.tensor([(H + W) / 5.0, (H + W) / 6.0], device=device, dtype=dtype).view(1, 2, 1, 1)
         ori = torch.tensor([0.0, 30.0], device=device, dtype=dtype).view(1, 2, 1)
         lafs = kornia.feature.laf_from_center_scale_ori(centers, scales, ori)
@@ -216,7 +220,11 @@ class TestLAFDescriptor(BaseTester):
         B, C, H, W = 1, 1, 32, 32
         PS = 16
         img = torch.rand(B, C, H, W, device=device)
-        centers = torch.tensor([[H / 2.0, W / 2.0], [2.0 * H / 3.0, W / 2.0]], device=device).view(1, 2, 2)
+        # Off the pixel lattice: a sample exactly on a pixel centre sits on a kink of bilinear interpolation, where the
+        # central difference and the one-sided analytical derivative disagree.
+        centers = torch.tensor([[H / 2.0 + 0.3, W / 2.0 + 0.3], [2.0 * H / 3.0, W / 2.0 + 0.3]], device=device).view(
+            1, 2, 2
+        )
         scales = torch.tensor([(H + W) / 5.0, (H + W) / 6.0], device=device).view(1, 2, 1, 1)
         ori = torch.tensor([0.0, 30.0], device=device).view(1, 2, 1)
         lafs = kornia.feature.laf_from_center_scale_ori(centers, scales, ori)
