@@ -360,16 +360,18 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
     tiles_equalized: torch.Tensor = torch.zeros_like(interp_tiles)
 
     # compute the interpolation weights (shapes are 2 x TH x TW because they must be applied to 2 interp tiles)
+    # Each pair starts at a tile centre: for offset k the left/top weight is 1 - k / tile_size,
+    # matching OpenCV's pixel coordinate p / tile_size - 0.5. The last weight is 1 / tile_size, not 0.
     ih = (
-        torch.arange(2 * th - 1, -1, -1, dtype=interp_tiles.dtype, device=interp_tiles.device)
-        .div(2.0 * th - 1)[None]
+        torch.arange(2 * th, 0, -1, dtype=interp_tiles.dtype, device=interp_tiles.device)
+        .div(2.0 * th)[None]
         .transpose(-2, -1)
         .expand(2 * th, tw)
     )
     ih = ih.unfold(0, th, th).unfold(1, tw, tw)  # 2 x 1 x TH x TW
     iw = (
-        torch.arange(2 * tw - 1, -1, -1, dtype=interp_tiles.dtype, device=interp_tiles.device)
-        .div(2.0 * tw - 1)
+        torch.arange(2 * tw, 0, -1, dtype=interp_tiles.dtype, device=interp_tiles.device)
+        .div(2.0 * tw)
         .expand(th, 2 * tw)
     )
     iw = iw.unfold(0, th, th).unfold(1, tw, tw)  # 1 x 2 x TH x TW
@@ -419,7 +421,10 @@ def equalize_clahe(
 
     .. image:: _static/img/equalize_clahe.png
 
-    NOTE: Lut computation uses the same approach as in OpenCV, in next versions this can change.
+    NOTE: The fast path uses OpenCV-style LUT calculation and round-to-nearest quantization.
+    Both paths blend LUTs using pixel coordinates divided by tile size, with border LUTs clamped.
+    Full OpenCV output parity is not guaranteed: tiles are rounded up to even sizes and reflect-padded,
+    which can differ from OpenCV's tile/padding convention, and output values are not rounded to 8-bit integers.
 
     Args:
         input: images tensor to equalize with values in the range [0, 1] and shape :math:`(*, C, H, W)`.

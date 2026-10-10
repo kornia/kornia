@@ -4537,7 +4537,8 @@ class TestRandomChannelShuffle(BaseTester):
 class TestRandomClahe(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.arange(36, device=device, dtype=dtype).reshape(2, 2, 3, 3) / 36
-        expected = torch.tensor(1913 / 85, device=device, dtype=dtype)
+        # OpenCV-style coordinate blending of the 2 x 2 tile LUTs gives 6138.5 gray levels in total.
+        expected = torch.tensor(12277 / 510, device=device, dtype=dtype)
         self.assert_close(RandomClahe(p=1.0, grid_size=(2, 2))(img).sum(), expected)
 
     @pytest.mark.parametrize("batch_shape", [(1, 3, 5, 7), (3, 1, 5, 7)])
