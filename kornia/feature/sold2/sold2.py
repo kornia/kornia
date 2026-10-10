@@ -349,9 +349,7 @@ def keypoints_to_grid(keypoints: torch.Tensor, img_size: Tuple[int, int]) -> tor
     """
     KORNIA_CHECK_SHAPE(keypoints, ["N", "2"])
     n_points = len(keypoints)
-    xy = keypoints[:, [1, 0]]
-    grid_points = torch.stack((xy[:, 0] * 2.0 / img_size[1] - 1.0, xy[:, 1] * 2.0 / img_size[0] - 1.0), dim=-1)
-    return grid_points.view(-1, n_points, 1, 2)
+    return (keypoints * 2.0 / torch.tensor(img_size, device=keypoints.device) - 1.0)[:, [1, 0]].view(-1, n_points, 1, 2)
 
 
 def batched_linspace(start: torch.Tensor, end: torch.Tensor, step: int, dim: int) -> torch.Tensor:

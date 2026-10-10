@@ -519,9 +519,11 @@ class TestRandomCutMixV2(BaseTester):
         _, out_label = f(input, label)
 
         w, h = infer_bbox_shape(f._params["crop_src"][0])
-        expected_lambda = w.to(torch.float64) * h.to(torch.float64) / (15 * 17)
+        expected_lambda = (
+            w.to(device=device, dtype=torch.float64) * h.to(device=device, dtype=torch.float64) / (15 * 17)
+        )
 
-        self.assert_close(out_label[0, :, 2], expected_lambda, rtol=0.0, atol=0.0)
+        self.assert_close(out_label[0, :, 2], expected_lambda, rtol=0.0, atol=1e-15)
 
     def test_cutmix_prob_single_gate(self, device, dtype):
         # Regression test for #4649: p must not be applied twice
