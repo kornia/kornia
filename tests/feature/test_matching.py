@@ -204,6 +204,14 @@ class TestMatchSMNN(BaseTester):
         assert indices.shape == (0, 2)
         assert indices.dtype == torch.long
 
+    def test_target_without_reverse_match_is_not_mutual(self, device, dtype):
+        # Sources 0 and 1 both match target 0, which ties between them and has no reverse match. The last reverse
+        # match (target 2 -> source 0) names source 0, and the first (target 1 -> source 1) names source 1.
+        dm = torch.tensor([[1.0, 10.0, 2.0], [1.0, 3.0, 10.0], [10.0, 10.0, 10.0]], device=device, dtype=dtype)
+        ratios, indices = match_smnn(dm[:, :1], dm[0, :, None], 0.7, dm)
+        assert ratios.shape == (0, 1)
+        assert indices.shape == (0, 2)
+
     @pytest.mark.parametrize("num_desc1, num_desc2, dim", [(2, 4, 4), (2, 5, 128), (6, 2, 32)])
     def test_shape(self, num_desc1, num_desc2, dim, device):
         desc1 = torch.rand(num_desc1, dim, device=device)
