@@ -1263,34 +1263,26 @@ def euler_from_quaternion(
           ``2.2e-16``, while ``(0.2, 2.5, 0.3)`` comes back as
           ``(-2.9416, 0.6416, -2.8416)`` — a different triple for the same
           rotation, to ``1.1e-16``
+        - at ``|pitch| = pi/2`` (gimbal lock) ``roll`` and ``yaw`` are not individually
+          determined, only ``yaw - roll`` at ``+pi/2`` and ``yaw + roll`` at ``-pi/2`` are, so the
+          input triple cannot be recovered. It returns ``pitch`` exactly ``±pi/2``, ``roll`` exactly
+          ``0`` and that one combination in ``yaw``, wrapped into ``[-pi, pi]``, which reproduces
+          the rotation: the round trip through
+          :func:`~kornia.geometry.conversions.quaternion_from_euler` is exact to rounding, and ``q``
+          and ``-q`` return the same triple. Gimbal lock is detected as ``cos(pitch) < 2 *
+          sqrt(eps)`` for the dtype's ``eps`` (``6.9e-4`` for ``float32``, ``3.0e-8`` for
+          ``float64``), so a pitch that close to ``±pi/2`` is also snapped to the pole and the
+          returned rotation is off by at most its distance to it
         - the input is normalised with
           :func:`~kornia.geometry.conversions.normalize_quaternion` first, so a
           rescaled quaternion returns the same triple
 
-    .. warning::
-        At ``pitch = ±pi/2`` the returned triple usually does not represent the
-        input rotation, and no gimbal-lock branch exists to say so. ``roll`` and
-        ``yaw`` come from ``atan2`` of two quantities that cancel to nothing
-        there, so the triple that comes back is decided by rounding: it varies
-        between dtypes, between PyTorch versions, and under a one-ulp change of
-        the input pitch, and no specific triple is quoted here for that reason.
-        What is stable is that ``pitch`` lands within about ``sqrt(eps)`` of
-        ``±pi/2`` — the ``asin`` argument rounds to within an ulp of ``1``, and
-        ``asin(1 - d)`` is ``pi/2 - sqrt(2d)`` — and that the reconstructed
-        rotation is far from the input. Whether ``±pi/2`` is reached exactly
-        depends on dtype and build: at ``float64`` it is exact here, while the
-        ``float32`` round trip of ``(0.1, pi/2, 0.2)`` returns pitch
-        ``1.570451``, ``3.45e-4`` *below* ``float32``'s ``pi/2`` — an exact
-        ``pitch == pi/2`` check never fires there. Random ``(roll, yaw)``
-        at ``pitch = +pi/2`` fail this way, while ``|pitch| < pi/4`` round trips
-        to rounding. The rotation does survive on the diagonal
-        ``roll = yaw`` at ``+pi/2`` (and ``roll = -yaw`` at ``-pi/2``), where
-        random draws round trip to within a few parts in ``1e8``, though
-        ``roll`` and ``yaw`` are still not returned individually. Tracked in
-        `#3950 <https://github.com/kornia/kornia/issues/3950>`_.
-
     .. note::
-        ``pitch``'s gradient is finite at gimbal lock, including exactly at ``pitch = +-pi/2``.
+        The gradient is finite everywhere, including exactly at gimbal lock. There ``roll`` and ``pitch``
+        are constants, so their gradient is exactly ``0`` and all of it is in ``yaw``: for the quaternion of
+        ``(roll, pitch, yaw) = (0.1, pi/2, 0.2)`` the gradient of ``roll + pitch + yaw`` with respect to
+        ``(w, x, y, z)`` is ``(-0.141, -2.82, 0, 0)``. Within ``2 * sqrt(eps)`` of the pole it is the gradient
+        of that constant-pitch triple, not of the plain formulas.
 
     Args:
         w: quaternion :math:`q_w` coefficient.
@@ -1314,10 +1306,49 @@ def euler_from_quaternion(
 
     sinr_cosp = 2.0 * (w * x + y * z)
     cosr_cosp = 1.0 - 2.0 * (x * x + yy)
-    roll = sinr_cosp.atan2(cosr_cosp)
+    siny_cosp = 2.0 * (w * z + x * y)
+    cosy_cosp = 1.0 - 2.0 * (yy + z * z)
 
     sinp = 2.0 * (w * y - z * x)
     sinp = sinp.clamp(min=-1.0, max=1.0)
+
+    # Gimbal lock (kornia#3950). At |pitch| = pi/2 the factor cos(pitch) shared by the roll and yaw atan2
+    # arguments vanishes, so both are atan2(0, 0) and say nothing about the rotation. Only one combination of
+    # roll and yaw is determined there -- yaw - roll at +pi/2, yaw + roll at -pi/2 -- so the branch returns
+    # roll = 0 and puts that combination in yaw, which reproduces the input rotation.
+    #
+    # cos(pitch)**2 is measured as sinr_cosp**2 + cosr_cosp**2, not as 1 - sinp**2: both arguments are
+    # proportional to cos(pitch), so their sum of squares reads it directly. The sinp form cancels an
+    # already-rounded sinp against itself, so at a true pole it reads k * eps for a k that depends on how the
+    # inputs round and sits within a few ulps of any fixed threshold; it measurably misses ~0.3% of randomly
+    # rescaled poles. The sum of squares reads ~eps**2 at a pole, 7 (float32) to 15 (float64) orders of
+    # magnitude below the threshold. It is compared as a square, 4 * eps = (2 * sqrt(eps))**2, instead of through
+    # torch.hypot, which the ONNX exporter cannot translate (prims.hypot, torch 2.14).
+    #
+    # The threshold is a compromise: a pitch inside it is snapped to the pole and so is off by its distance to
+    # it, at most 2 * sqrt(eps) in cos(pitch) (6.9e-4 in float32, 3.0e-8 in float64). Replacing the 2 by
+    # anything from about 1.0 to 2.8 passes the tests that pin both sides; larger factors snap pitches the plain
+    # formulas still resolve better than the snap does (float32 pitch = pi/2 - 1e-3 is 3x worse at 4.0), and
+    # smaller ones leave pitches near the pole unsnapped.
+    cos_pitch_sq = sinr_cosp * sinr_cosp + cosr_cosp * cosr_cosp
+    gimbal = cos_pitch_sq < 4.0 * torch.finfo(w.dtype).eps
+    up = sinp > 0.0
+    zero = torch.zeros_like(w)
+    one = torch.ones_like(w)
+
+    # Every atan2 below gets arguments that are never (0, 0): the pole arguments are replaced inside the branch,
+    # and outside it cos(pitch) > 0. A torch.where around a plain atan2(0, 0) would still differentiate it, and
+    # its derivative is nan on torch < 2.14 even under a zero cotangent (see AGENTS.md on safe arguments).
+    # roll = atan2(0, 1) = 0 at the pole.
+    roll = torch.where(gimbal, zero, sinr_cosp).atan2(torch.where(gimbal, one, cosr_cosp))
+
+    # At the pole yaw = -+2 * atan2(x, w), written as atan2(2 * x * w, w * w - x * x) -- the same angle wrapped
+    # into [-pi, pi], unchanged by q -> -q, and defined everywhere there because w * w + x * x = 1/2.
+    double_sin = 2.0 * x * w
+    yaw_num = torch.where(gimbal, torch.where(up, -double_sin, double_sin), siny_cosp)
+    yaw_den = torch.where(gimbal, w * w - x * x, cosy_cosp)
+    yaw = yaw_num.atan2(yaw_den)
+
     # d(asin)/dx = 1/sqrt(1-x^2) is unbounded at x = +-1 (gimbal lock), returning inf there on
     # every supported torch version; the clamp above bounds the value only, and passes the
     # gradient through on torch < 2.14 (2.14 zeroes it at the boundary, masking the defect).
@@ -1327,10 +1358,10 @@ def euler_from_quaternion(
     at_boundary = sinp.abs() >= 1.0
     safe_sinp = torch.where(at_boundary, torch.zeros_like(sinp), sinp)
     pitch = torch.where(at_boundary, sinp.detach().asin(), safe_sinp.asin())
-
-    siny_cosp = 2.0 * (w * z + x * y)
-    cosy_cosp = 1.0 - 2.0 * (yy + z * z)
-    yaw = siny_cosp.atan2(cosy_cosp)
+    # Snap pitch to exactly +-pi/2 in the branch: asin of an argument that rounds just below 1 is off by
+    # O(sqrt(eps)), which alone would leave the round trip that far from the input.
+    half_pi = torch.full_like(pitch, math.pi / 2)
+    pitch = torch.where(gimbal, torch.where(up, half_pi, -half_pi), pitch)
 
     return roll, pitch, yaw
 
