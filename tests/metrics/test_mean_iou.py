@@ -354,6 +354,15 @@ class TestMeanIoUBBox(BaseTester):
         self.assert_close(actual, kornia.metrics.mean_iou_bbox(boxes_1, boxes_2))
         assert counter.frame_count == 1
 
+    def test_jit_keeps_the_box_check(self, device, dtype):
+        # TorchScript cannot call is_compiling(); a scripted call keeps the box check, as an eager call does.
+        boxes_1 = torch.tensor([[0.0, 0.0, 4.0, 4.0], [1.0, 1.0, 3.0, 6.0]], device=device, dtype=dtype)
+        boxes_2 = torch.tensor([[2.0, 2.0, 6.0, 6.0]], device=device, dtype=dtype)
+        scripted = torch.jit.script(kornia.metrics.mean_iou_bbox)
+        self.assert_close(scripted(boxes_1, boxes_2), kornia.metrics.mean_iou_bbox(boxes_1, boxes_2))
+        with pytest.raises(torch.jit.Error, match="Boxes_1 contains invalid boxes"):
+            scripted(boxes_1.flip(-1), boxes_2)
+
 
 class TestConventionsMeanIoU(BaseTester):
     # The label maps of TestConventionsConfusionMatrix: confusion matrices [[2, 0, 1], [1, 3, 1], [0, 1, 3]] and

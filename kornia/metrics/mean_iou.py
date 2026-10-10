@@ -177,8 +177,8 @@ def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str 
         boxes_2_xyxy = boxes_2_xyxy.float()
 
     # Validate boxes are in proper xyxy format. The checks read the data, which graph capture cannot do;
-    # skip them under any capture.
-    if not is_compiling():
+    # skip them under any capture. TorchScript cannot call is_compiling(), and a scripted call keeps the checks.
+    if torch.jit.is_scripting() or not is_compiling():
         if not (
             ((boxes_1_xyxy[:, 2] - boxes_1_xyxy[:, 0]) > 0).all()
             and ((boxes_1_xyxy[:, 3] - boxes_1_xyxy[:, 1]) > 0).all()
