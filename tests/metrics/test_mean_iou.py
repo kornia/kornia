@@ -17,8 +17,10 @@
 
 import pytest
 import torch
+from torch._dynamo.testing import CompileCounter
 
 import kornia
+from kornia.core._compat import torch_version_lt
 from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
@@ -133,6 +135,20 @@ class TestMeanIoU(BaseTester):
         assert mean_iou.shape == (0, num_classes)
         assert mean_iou.dtype == torch.float32
         assert mean_iou.device == pred.device
+
+    @pytest.mark.skipif(
+        torch_version_lt(2, 14, 0), reason="fullgraph tracing cannot capture the bincount before torch 2.14"
+    )
+    def test_trace_counts_like_eager(self, device, dtype):
+        # mean_iou counts through confusion_matrix, whose range check reads the data (#5037).
+        pred = torch.tensor([[0, 1, 2, 2], [1, 1, 0, 2]], device=device)
+        target = torch.tensor([[0, 2, 2, 1], [1, 0, 0, 2]], device=device)
+        counter = CompileCounter()
+        torch._dynamo.reset()
+        traced = torch.compile(kornia.metrics.mean_iou, backend=counter, fullgraph=True)
+        actual = traced(pred, target, num_classes=3)
+        self.assert_close(actual, kornia.metrics.mean_iou(pred, target, num_classes=3), rtol=0, atol=0)
+        assert counter.frame_count == 1
 
 
 class TestMeanIoUBBox(BaseTester):
@@ -325,6 +341,17 @@ class TestMeanIoUBBox(BaseTester):
         actual = kornia.metrics.mean_iou_bbox(boxes_1, boxes_2)
         assert actual.dtype == torch.float32
         self.assert_close(actual, torch.tensor([[1.0]], device=device))
+
+    def test_trace_boxes_like_eager(self, device, dtype):
+        # The box-validity check reads the data, so any capture has to skip it, not only export (#5037).
+        boxes_1 = torch.tensor([[0.0, 0.0, 4.0, 4.0], [1.0, 1.0, 3.0, 6.0]], device=device, dtype=dtype)
+        boxes_2 = torch.tensor([[2.0, 2.0, 6.0, 6.0]], device=device, dtype=dtype)
+        counter = CompileCounter()
+        torch._dynamo.reset()
+        traced = torch.compile(kornia.metrics.mean_iou_bbox, backend=counter, fullgraph=True)
+        actual = traced(boxes_1, boxes_2)
+        self.assert_close(actual, kornia.metrics.mean_iou_bbox(boxes_1, boxes_2))
+        assert counter.frame_count == 1
 
 
 class TestConventionsMeanIoU(BaseTester):

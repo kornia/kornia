@@ -18,7 +18,7 @@
 import torch
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
-from kornia.core.utils import is_exporting
+from kornia.core.utils import is_compiling
 
 # Inspired by:
 # https://github.com/pytorch/tnt/blob/master/torchnet/meter/confusionmeter.py#L68-L73
@@ -49,16 +49,14 @@ def confusion_matrix(
     Convention:
         - ``pred`` and ``target`` are class labels of the same shape, prediction first, in ``uint8`` or any signed
           integer dtype; a bool tensor counts as the labels 0 and 1. A floating-point label tensor raises, and so does
-          a label outside :math:`[0, K)`, unless the call is exported or compiled, which may skip the range check.
+          a label outside :math:`[0, K)`, unless the call captures a graph (``torch.compile`` or ``torch.export``),
+          which skips the range check.
         - The first axis is always the batch: the result holds one :math:`(K, K)` float32 count matrix per sample,
           :math:`(B, K, K)`, and is never pooled over the batch, so a flat :math:`(N,)` label vector gives :math:`N`
           matrices that count one label each. Sum over the first axis for the matrix of a whole batch or dataset.
         - Rows are the target and columns the prediction, ``cm[b, target, pred]``; swapping the two arguments
           transposes every count matrix. :ref:`Losses and metrics <losses-metrics-conventions>` maps the matrix and
           ``normalized`` onto scikit-learn.
-        - Known defect: the range check follows ``is_exporting()``, whose meaning under ``torch.compile`` depends on
-          the torch version, so a compiled call can skip it and count an out-of-range prediction in another cell
-          (`#5037 <https://github.com/kornia/kornia/issues/5037>`_).
 
     Args:
         pred: tensor with estimated targets returned by a
@@ -100,8 +98,8 @@ def confusion_matrix(
     if batch_size == 0:
         return torch.zeros(0, num_classes, num_classes, device=pred.device, dtype=torch.float32)
 
-    # The range check reads the data, which graph capture cannot do; skip it under export.
-    if not is_exporting() and pred.numel() > 0:
+    # The range check reads the data, which graph capture cannot do; skip it under any capture.
+    if not is_compiling() and pred.numel() > 0:
         _check_label_range("pred", pred, num_classes)
         _check_label_range("target", target, num_classes)
 
