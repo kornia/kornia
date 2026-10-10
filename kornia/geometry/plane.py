@@ -304,8 +304,9 @@ def fit_plane(points: Vector3) -> Hyperplane:
     mean = points.mean(-2, True)
     points_centered = points - mean
 
-    # NOTE: not optimal for 2d points, but for now works for other dimensions
-    _, S, V = _torch_svd_cast(_unwrap(points_centered))
+    # With at least three 3D points, reduced SVD retains all right singular vectors while
+    # avoiding an unused N-by-N left factor, including when autograd saves it for backward.
+    _, S, V = _torch_svd_cast(_unwrap(points_centered), full_matrices=False)
 
     # The plane is determined when the centred points have rank 2: the second singular value
     # must be nonzero relative to the first, a scale-invariant test that keeps a small or thin

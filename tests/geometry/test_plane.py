@@ -56,9 +56,37 @@ class TestFitPlane(BaseTester):
     def test_module(self, device, dtype):
         pass
 
-    @pytest.mark.skip(reason="not implemented yet")
     def test_gradcheck(self, device):
-        pass
+        t = torch.linspace(-1.0, 1.0, 6, device=device, dtype=torch.float64)
+        points = torch.stack([t, t**2, 0.2 * t**3], dim=-1)
+
+        def project(x):
+            return fit_plane(x).projection(Vector3(x)).data
+
+        self.gradcheck(project, (points,))
+
+    @pytest.mark.parametrize("n", [64, 256])
+    @pytest.mark.parametrize("batch", [False, True])
+    def test_backward_storage_scales_with_points(self, device, dtype, n, batch):
+        # Fitting an N-by-3 cloud must not retain an unused N-by-N singular-vector matrix.
+        t = torch.linspace(-1.0, 1.0, n, device=device, dtype=dtype)
+        points = torch.stack([t, t**2, 0.2 * t**3], dim=-1)
+        if batch:
+            points = torch.stack([points, points + 1.0])
+        points.requires_grad_()
+        saved_sizes = []
+
+        def pack(tensor):
+            saved_sizes.append(tensor.numel())
+            return tensor
+
+        with torch.autograd.graph.saved_tensors_hooks(pack, lambda tensor: tensor):
+            projection = fit_plane(points).projection(Vector3(points[..., 0, :])).data
+            projection.square().mean().backward()
+
+        assert points.grad is not None
+        assert torch.isfinite(points.grad).all()
+        assert max(saved_sizes) <= 4 * points.numel()
 
     def test_fit_plane_degenerate_raises_5041(self, device, dtype):
         # #5041: fewer than three points, collinear points or identical points used to
