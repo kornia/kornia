@@ -568,6 +568,59 @@ class TestCanny(BaseTester):
             self.assert_close(magnitude, expected_magnitude)
             self.assert_close(edges, expected_edges)
 
+    @staticmethod
+    def _long_weak_chain(device, dtype):
+        # A step edge at x = 7..8 that is strong only in its top rows: the weak pixels below join it one per round,
+        # so hysteresis needs 61 rounds and keeps all 71 edge pixels (kernel_size=1, thresholds 0.2 and 1.0).
+        height = torch.full((64,), 0.1, device=device, dtype=dtype)
+        height[:6] = torch.linspace(0.5, 0.15, 6, device=device, dtype=dtype)
+        img = torch.zeros(1, 1, 64, 16, device=device, dtype=dtype)
+        img[..., 8:] = height[:, None]
+        return img
+
+    @pytest.mark.device_agnostic
+    def test_torch_export_iterates_hysteresis_per_input(self, dtype):
+        if dtype != torch.float32:
+            pytest.skip("the exported graph is checked once, in float32")
+        # Graph capture cannot branch on the data, so the hysteresis loop is a while_loop: a graph traced on one image
+        # repeats until nothing changes on another. On a random image the loop stops after a few rounds; the chain
+        # needs 61.
+        model = Canny(0.2, 1.0, kernel_size=1).eval()
+        chain = self._long_weak_chain(torch.device("cpu"), dtype)
+        traced_on = torch.rand(chain.shape, dtype=dtype, generator=torch.Generator().manual_seed(0))
+        exported = torch.export.export(model, (traced_on,)).module()
+        for img in (chain, traced_on):
+            magnitude, edges = exported(img)
+            expected_magnitude, expected_edges = model(img)
+            self.assert_close(magnitude, expected_magnitude)
+            self.assert_close(edges, expected_edges, rtol=0, atol=0)
+        assert int(exported(chain)[1].sum()) == 71
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.skipif(not torch_version_ge(2, 11), reason="the dynamo exporter writes while_loop from torch 2.11")
+    def test_onnx_export_iterates_hysteresis_per_input(self, dtype):
+        if dtype != torch.float32:
+            pytest.skip("the exported graph is checked once, in float32")
+        pytest.importorskip("onnx")
+        pytest.importorskip("onnxscript")
+        ort = pytest.importorskip("onnxruntime")
+        # The while_loop becomes an ONNX Loop, which runs until nothing changes for each input.
+        model = Canny(0.2, 1.0, kernel_size=1).eval()
+        chain = self._long_weak_chain(torch.device("cpu"), dtype)
+        traced_on = torch.rand(chain.shape, dtype=dtype, generator=torch.Generator().manual_seed(0))
+        buffer = io.BytesIO()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            torch.onnx.export(model, (traced_on,), dynamo=True, opset_version=18, verbose=False).save(buffer)
+        session = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"])
+        name = session.get_inputs()[0].name
+        for img in (chain, traced_on):
+            magnitude, edges = (torch.from_numpy(out) for out in session.run(None, {name: img.numpy()}))
+            expected_magnitude, expected_edges = model(img)
+            self.assert_close(magnitude, expected_magnitude)
+            self.assert_close(edges, expected_edges, rtol=0, atol=0)
+        assert int(torch.from_numpy(session.run(None, {name: chain.numpy()})[1]).sum()) == 71
+
     @pytest.mark.parametrize("channels", [2, 4])
     def test_unsupported_channel_count_raises(self, channels, device, dtype):
         with pytest.raises(ImageError, match="1 or 3 channels"):

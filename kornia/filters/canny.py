@@ -30,6 +30,7 @@ from kornia.core.check import (
     KORNIA_CHECK_IS_TENSOR,
     KORNIA_CHECK_SHAPE,
 )
+from kornia.core.utils import is_exporting
 
 from .gaussian import gaussian_blur2d
 from .kernels import get_hysteresis_kernel
@@ -55,6 +56,16 @@ def _beats(magnitude: torch.Tensor, neighbour: torch.Tensor, direction: torch.Te
     # Directions 0 (right) and 2 (down) accept a tie; the other six need a strictly larger magnitude.
     accepts_tie = (direction == 0) | (direction == 2)
     return (magnitude > neighbour) | (accepts_tie & (magnitude == neighbour))
+
+
+def _hysteresis_step(edges: torch.Tensor, hysteresis_kernels: torch.Tensor) -> torch.Tensor:
+    # One round of edge tracking: a weak pixel (0.5) with a strong (1) 8-neighbour becomes strong.
+    weak = (edges == 0.5).to(edges.dtype)
+    strong = (edges == 1).to(edges.dtype)
+    hysteresis_magnitude = F.conv2d(edges, hysteresis_kernels, padding=hysteresis_kernels.shape[-1] // 2)
+    hysteresis_magnitude = (hysteresis_magnitude == 1).any(1, keepdim=True).to(edges.dtype)
+    hysteresis_magnitude = hysteresis_magnitude * weak + strong
+    return hysteresis_magnitude + (hysteresis_magnitude == 0) * weak * 0.5
 
 
 def canny(
@@ -93,7 +104,9 @@ def canny(
           magnitude is taken after this step, so it is zero off the edge ridges; it is differentiable with respect
           to the input, and the edge map is not.
         - Hysteresis keeps a weak pixel connected to a strong one through any of its 8 neighbours, repeated until
-          nothing changes, and returns edges of 0 and 1.
+          nothing changes, and returns edges of 0 and 1. Under ``torch.export`` the loop is a ``torch.while_loop``,
+          so the exported graph also repeats until nothing changes, for any input; the dynamo ONNX exporter writes
+          it as an ONNX ``Loop`` from torch 2.11 and cannot export it before.
         - Known defect: an integer input is not converted to a floating dtype. With the default blur a 1-channel
           signed integer image blurs to zeros and yields no edge; a uint8 image, a 3-channel integer image, or any
           integer image where torch has no integer convolution raises
@@ -206,28 +219,32 @@ def canny(
     low: torch.Tensor = magnitude > low_threshold
     high: torch.Tensor = magnitude > high_threshold
 
-    edges = low * 0.5 + high * 0.5
-    edges = edges.to(dtype)
+    # Cast before scaling: a boolean times a Python float exports as aten.mul.Scalar, which onnxscript < 0.7.2 cannot
+    # translate. The result is 0, 0.5 or 1, exact in every floating dtype; the last cast keeps an integer input's dtype.
+    edges = ((low.to(dtype) + high.to(dtype)) * 0.5).to(dtype)
 
     # Hysteresis
     if hysteresis:
         edges_old: torch.Tensor = -torch.ones(edges.shape, device=edges.device, dtype=dtype)
         hysteresis_kernels: torch.Tensor = get_hysteresis_kernel(device, dtype)
 
-        while ((edges_old - edges).abs() != 0).any():
-            weak: torch.Tensor = (edges == 0.5).to(dtype)
-            strong: torch.Tensor = (edges == 1).to(dtype)
+        if is_exporting():
+            # Graph capture cannot branch on the data, so the loop is a while_loop, which the dynamo ONNX exporter
+            # writes as a Loop node from torch 2.11. The body must not return its input, hence the clone.
+            def _changed(old: torch.Tensor, new: torch.Tensor) -> torch.Tensor:
+                return ((old - new).abs() != 0).any()
 
-            hysteresis_magnitude: torch.Tensor = F.conv2d(
-                edges, hysteresis_kernels, padding=hysteresis_kernels.shape[-1] // 2
-            )
-            hysteresis_magnitude = (hysteresis_magnitude == 1).any(1, keepdim=True).to(dtype)
-            hysteresis_magnitude = hysteresis_magnitude * weak + strong
+            def _step(old: torch.Tensor, new: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+                return new.clone(), _hysteresis_step(new, hysteresis_kernels)
 
-            edges_old = edges.clone()
-            edges = hysteresis_magnitude + (hysteresis_magnitude == 0) * weak * 0.5
+            _, edges = torch.while_loop(_changed, _step, (edges_old, edges))
+        else:
+            while ((edges_old - edges).abs() != 0).any():
+                edges_old = edges
+                edges = _hysteresis_step(edges, hysteresis_kernels)
 
-        edges = hysteresis_magnitude
+        # The weak pixels left touch no strong pixel.
+        edges = (edges == 1).to(dtype)
 
     return magnitude, edges
 
@@ -262,8 +279,8 @@ class Canny(nn.Module):
 
     """
 
-    # TODO: Handle multiple inputs and outputs models later
-    ONNX_EXPORTABLE = False
+    # The dynamo ONNX exporter writes the hysteresis loop as an ONNX Loop from torch 2.11.
+    ONNX_EXPORTABLE = True
 
     def __init__(
         self,
