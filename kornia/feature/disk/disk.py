@@ -111,7 +111,8 @@ class DISK(nn.Module):
         Args:
             images: The image to detect features in. Shape :math:`(B, 3, H, W)`.
             n: The maximum number of keypoints to detect. If None, all keypoints are returned.
-            window_size: The size of the non-maxima suppression window used to filter detections.
+            window_size: The odd size of the non-maxima suppression window used to filter detections. The window is
+                clipped at the image border, so maxima on the first and last rows and columns are kept.
             score_threshold: The minimum score a detection must have to be returned.
                              See :py:class:`DISKFeatures` for details.
             pad_if_not_divisible: if True, the non-16 divisible input is zero-padded to the closest 16-multiply

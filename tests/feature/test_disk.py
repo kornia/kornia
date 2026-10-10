@@ -21,6 +21,7 @@ import pytest
 import torch
 
 from kornia.feature.disk import DISK, DISKFeatures
+from kornia.feature.disk.detector import heatmap_to_keypoints
 
 from testing.base import BaseTester
 from testing.casts import dict_to
@@ -104,3 +105,34 @@ class TestDisk(BaseTester):
         inp = torch.ones(1, 1, 64, 64, device=device)
         with pytest.raises(ValueError):
             _ = disk(inp)
+
+    def test_keeps_border_maxima_NNNN(self, device, dtype):
+        """Like cvlab-epfl/disk, whose padded max-pool NMS keeps a maximum on the first and last rows and columns."""
+        border = [(1, 20), (40, 20), (0, 5), (79, 30), (30, 0), (50, 47)]
+        out = torch.zeros(1, 129, 48, 80, device=device, dtype=dtype)
+        out[0, 128] = -1.0
+        for x, y in border:
+            out[0, 128, y, x] = 2.0
+        disk = DISK().to(device, dtype).eval()
+        hook = disk.unet.register_forward_hook(lambda m, i, o: out)
+        try:
+            with torch.no_grad():
+                features = disk(torch.rand(1, 3, 48, 80, device=device, dtype=dtype))
+        finally:
+            hook.remove()
+        found = sorted(tuple(int(v) for v in kp) for kp in features[0].keypoints.tolist())
+        assert found == sorted(border)
+        assert features[0].descriptors.shape == (len(border), 128)
+
+    def test_nms_keeps_one_of_equal_maxima_NNNN(self, device, dtype):
+        """The reference keeps one position of a window holding equal maxima; a strict maximum test kept none."""
+        heatmap = torch.full((1, 1, 16, 32), -1.0, device=device, dtype=dtype)
+        heatmap[0, 0, 8, 10:12] = 1.0
+        keypoints = heatmap_to_keypoints(heatmap)
+        assert keypoints[0].xys.shape == (1, 2)
+        assert keypoints[0].xys[0, 1] == 8
+
+    def test_nms_window_size_must_be_odd_NNNN(self, device, dtype):
+        heatmap = torch.zeros(1, 1, 16, 32, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="odd"):
+            heatmap_to_keypoints(heatmap, window_size=4)

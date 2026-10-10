@@ -221,6 +221,35 @@ class TestXFeat(BaseTester):
         assert mkpts0.shape == mkpts1.shape
         assert mkpts0.shape[-1] == 2
 
+    @staticmethod
+    def _peaks_model(peaks, device):
+        """XFeat whose network reports a 65-way keypoint logit map with one peak at each (x, y) of ``peaks``."""
+        logits = torch.zeros(1, 65, 8, 12, device=device)
+        logits[0, 64] = 10.0
+        for x, y in peaks:
+            logits[0, (y % 8) * 8 + x % 8, y // 8, x // 8] = 12.0
+        model = XFeat().to(device).eval()
+        features = torch.randn(1, 64, 8, 12, device=device)
+        reliability = torch.full((1, 1, 8, 12), 0.5, device=device)
+        model.net.register_forward_hook(lambda m, i, o: (features, logits, reliability))
+        return model
+
+    def test_keeps_border_maxima_NNNN(self, device, dtype):
+        """Like verlab/accelerated_features, whose padded max-pool NMS keeps maxima on the first and last rows."""
+        peaks = [(1, 30), (94, 30), (50, 0), (50, 62), (40, 30)]
+        model = self._peaks_model(peaks, device)
+        out = model.detectAndCompute(torch.rand(1, 3, 64, 96, device=device))
+        found = sorted(tuple(int(v) for v in kp) for kp in out[0]["keypoints"].tolist())
+        assert found == sorted(peaks)
+
+    def test_nms_keeps_equal_maxima_NNNN(self, device, dtype):
+        """The reference keeps every position equal to its window maximum; a strict maximum test kept none."""
+        peaks = [(20, 30), (21, 30)]
+        model = self._peaks_model(peaks, device)
+        out = model.detectAndCompute(torch.rand(1, 3, 64, 96, device=device))
+        found = sorted(tuple(int(v) for v in kp) for kp in out[0]["keypoints"].tolist())
+        assert found == peaks
+
     @pytest.mark.slow
     def test_pretrained_smoke(self, device):
         model = XFeat.from_pretrained().to(device)

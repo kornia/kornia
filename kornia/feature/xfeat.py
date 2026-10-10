@@ -39,7 +39,6 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK
 from kornia.core.download import load_state_dict_from_url
-from kornia.geometry.subpix import nms2d
 
 
 class BasicLayer(nn.Module):
@@ -341,9 +340,15 @@ class XFeat(nn.Module):
 
     @staticmethod
     def _nms(x: torch.Tensor, threshold: float = 0.05, kernel_size: int = 5) -> torch.Tensor:
-        """Non-maximum suppression on a heatmap; returns (B, N, 2) integer keypoint positions."""
+        """Non-maximum suppression of XFeat's reference implementation on a heatmap.
+
+        A position is kept when it equals the maximum of the ``kernel_size`` square window centred on it (equal maxima
+        are all kept) and exceeds ``threshold``. The window is clipped at the border, so maxima on the first and last
+        rows and columns are kept. Returns (B, N, 2) integer keypoint positions, padded with ``-1``.
+        """
         B = x.shape[0]
-        pos = nms2d(x, (kernel_size, kernel_size), mask_only=True) & (x > threshold)
+        local_max = F.max_pool2d(x, kernel_size=kernel_size, stride=1, padding=kernel_size // 2)
+        pos = (x == local_max) & (x > threshold)
         pos_batched = [k.nonzero()[..., 1:].flip(-1) for k in pos]
         pad_val = max(len(p) for p in pos_batched)
         pos_out = torch.full((B, pad_val, 2), -1, dtype=torch.long, device=x.device)

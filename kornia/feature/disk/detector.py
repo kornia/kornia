@@ -18,10 +18,31 @@
 from __future__ import annotations
 
 import torch
-
-from kornia.geometry.subpix import nms2d
+import torch.nn.functional as F
 
 from .structs import Keypoints
+
+
+def _nms_mask(heatmap: torch.Tensor, window_size: int) -> torch.Tensor:
+    """Non-maxima suppression of DISK's reference implementation (cvlab-epfl/disk ``nms``).
+
+    A position is kept when it is the (first) maximum of the ``window_size`` square window centred on it. The window
+    is clipped at the image border, so a maximum on the first or last rows and columns is kept. Of several equal
+    maxima in a window only the one the max-pool reports first survives.
+
+    Args:
+        heatmap: heatmap of shape :math:`(B, 1, H, W)`.
+        window_size: odd side of the window in pixels.
+
+    Returns:
+        Boolean mask of shape :math:`(B, 1, H, W)`.
+    """
+    if window_size % 2 != 1:
+        raise ValueError(f"window_size has to be odd, got {window_size}")
+    _, ixs = F.max_pool2d(heatmap, kernel_size=window_size, stride=1, padding=window_size // 2, return_indices=True)
+    h, w = heatmap.shape[-2:]
+    coords = torch.arange(h * w, device=heatmap.device).reshape(1, 1, h, w)
+    return ixs == coords
 
 
 def heatmap_to_keypoints(
@@ -29,7 +50,7 @@ def heatmap_to_keypoints(
 ) -> list[Keypoints]:
     """Inference-time nms-based detection protocol."""
     heatmap = heatmap.squeeze(1)
-    nms_mask = nms2d(heatmap.unsqueeze(1), (window_size, window_size), mask_only=True).squeeze(1)
+    nms_mask = _nms_mask(heatmap.unsqueeze(1), window_size).squeeze(1)
     nmsed = nms_mask & (heatmap > score_threshold)
 
     keypoints = []
