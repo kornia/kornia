@@ -133,8 +133,6 @@ class TestONNXSequentialOfKorniaExports:
         from kornia.core import ImageSequential
         from kornia.filters import GaussianBlur2d
 
-        # Static shapes: the legacy exporter cannot export GaussianBlur2d with a dynamic dimension, even the batch
-        # alone (#5222).
         shapes = {"input_shape": [2, 1, 16, 16], "output_shape": [2, 1, 16, 16]}
         blur = ImageSequential(GaussianBlur2d((3, 3), (1.5, 1.5)))
         sigmoid = ImageSequential(torch.nn.Sigmoid())
