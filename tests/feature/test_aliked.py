@@ -15,13 +15,43 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
+from kornia.feature import get_laf_center
 from kornia.feature.aliked import ALIKED, ALIKEDFeatures
 from kornia.feature.aliked.deform_conv2d import deform_conv2d
 
 from testing.base import BaseTester
+
+
+def _score_map_with_maxima_chains(device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    """Return a (1, 1, 64, 96) score map of isolated peaks, chains of maxima 2 px apart and a tied pair.
+
+    Background 0.01. Isolated: 0.9 at (x, y) = (21, 13); 0.6 at (60, 20) and 0.5 at (63, 20), 3 px apart. Row 30:
+    0.9 falling to 0.6 in steps of 0.05 at x = 10, 12, ..., 22. Column 70: 0.7 / 0.62 / 0.55 at y = 40 / 42 / 44.
+    Row 52: 0.5 at both x = 40 and x = 41, then 0.45 / 0.4 / 0.35 / 0.3 at x = 43 / 45 / 47 / 49.
+    """
+    s = torch.full((1, 1, 64, 96), 0.01, device=device, dtype=dtype)
+    s[0, 0, 13, 21] = 0.9
+    s[0, 0, 20, 60], s[0, 0, 20, 63] = 0.6, 0.5
+    for i, value in enumerate((0.9, 0.85, 0.8, 0.75, 0.7, 0.65, 0.6)):
+        s[0, 0, 30, 10 + 2 * i] = value
+    s[0, 0, 40, 70], s[0, 0, 42, 70], s[0, 0, 44, 70] = 0.7, 0.62, 0.55
+    s[0, 0, 52, 40], s[0, 0, 52, 41] = 0.5, 0.5
+    for i, value in enumerate((0.45, 0.4, 0.35, 0.3)):
+        s[0, 0, 52, 43 + 2 * i] = value
+    return s
+
+
+def _aliked_with_score_map(score_map: torch.Tensor, nms_radius: int = 2) -> ALIKED:
+    """Return an untrained ``aliked-t16`` whose score head yields ``score_map`` after its sigmoid."""
+    aliked = ALIKED(model_name="aliked-t16", nms_radius=nms_radius).to(score_map.device, score_map.dtype).eval()
+    aliked.score_head.register_forward_hook(lambda module, inputs, output: torch.logit(score_map))
+    return aliked
+
 
 # ---------------------------------------------------------------------------
 # deform_conv2d tests
@@ -324,6 +354,71 @@ class TestALIKED(BaseTester):
         assert feat_dev.descriptors.device.type == device.type
         assert feat_dev.keypoint_scores.device.type == device.type
 
+    @pytest.mark.parametrize(
+        "nms_radius, expected",
+        [
+            (
+                2,
+                [
+                    [21.0, 13.0],
+                    [60.0, 20.0],
+                    [63.0, 20.0],
+                    [10.75344036, 30.0],
+                    [13.36128702, 30.0],
+                    [17.36401829, 30.0],
+                    [70.0, 40.60892188],
+                    [70.0, 42.7110507],
+                    [40.45713005, 52.0],
+                    [41.07421962, 52.0],
+                    [44.4367411, 52.0],
+                    [48.18569541, 52.0],
+                ],
+            ),
+            (
+                3,
+                [
+                    [21.0, 13.0],
+                    [60.73192275, 20.0],
+                    [10.75191131, 30.0],
+                    [13.36302377, 30.0],
+                    [17.36867735, 30.0],
+                    [70.0, 40.5990816],
+                    [70.0, 42.7543607],
+                    [40.94599394, 52.0],
+                    [41.06972181, 52.0],
+                    [44.50210413, 52.0],
+                    [48.39111553, 52.0],
+                ],
+            ),
+        ],
+    )
+    def test_nms_keeps_maxima_outside_suppressed_windows_NNNN(self, device, dtype, nms_radius, expected):
+        """ALIKED's NMS is the reference's, which re-admits maxima outside the suppressed windows in two rounds.
+
+        The expected keypoints are the reference DKD's on the same score map (cvg/LightGlue eb42fee
+        ``lightglue/aliked.py``; at radius 2 Shiaoming/ALIKED 683d7c6 ``nets/soft_detect.py`` gives the same), float64::
+
+            dkd = DKD(radius=nms_radius, top_k=-1, scores_th=0.2, n_limit=20000)
+            keypoints, _, _ = dkd(score_map)
+            torch.tensor([95.0, 63.0]) * (keypoints[0] + 1) / 2
+
+        At radius 2, the maxima at x = 14 and 18 on row 30, y = 44 on column 70 and x = 45 and 49 on row 52 are
+        outscored only by a neighbour that a kept maximum suppresses (x = 14 only by x = 12, which x = 10
+        suppresses); one strict pass drops them. The reference re-admits such maxima for two rounds, so x = 22 on
+        row 30, whose stronger neighbour x = 20 only the second-round x = 18 suppresses, stays suppressed. Both
+        tied maxima on row 52 are kept. At radius 3, (63, 20) lies in the window of (60, 20) and is suppressed.
+        """
+        score_map = _score_map_with_maxima_chains(device, dtype)
+        aliked = _aliked_with_score_map(score_map, nms_radius)
+        with torch.no_grad():
+            features = aliked(torch.rand(1, 3, 64, 96, device=device, dtype=dtype))
+        # float16 rounds the soft-argmax position to within 1.5e-3 relative, above its 1e-3 default tolerance.
+        self.assert_close(
+            features[0].keypoints,
+            torch.tensor(expected, device=device, dtype=dtype),
+            low_tolerance=dtype == torch.float16,
+        )
+
     @pytest.mark.slow
     @pytest.mark.parametrize("model_name", ["aliked-n16"])
     def test_pretrained(self, device, model_name):
@@ -420,20 +515,45 @@ class TestALIKEDForwardLAF(BaseTester):
         lafs_masked, _, _ = aliked.forward_laf(inp, mask=mask, compute_affine=False)
         assert lafs_masked.shape[0] == 1
 
-    @pytest.mark.slow
     def test_laf_affine_shape(self, device, dtype):
-        """The 2x2 affine part of each LAF should be non-degenerate for valid kpts.
-
-        Requires ``--runslow``: uses ``torch.linalg.eigh`` (cast to float32 for
-        half-precision dtypes) which is slower than the identity-affine path.
-        """
+        """The 2x2 block of each LAF is a positive multiple of the identity: upright and not mirrored."""
         top_k = 20
         aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=top_k).to(device, dtype)
         inp = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
         lafs, responses, _ = aliked.forward_laf(inp, compute_affine=True)
         valid = responses[0, :, 0] > 0
-        if valid.any():
-            A = lafs[0, valid, :, :2]  # (N_valid, 2, 2)
-            # det(A) should be non-zero (non-degenerate)
-            dets = torch.det(A)
-            assert (dets.abs() > 1e-6).all()
+        assert valid.any()
+        A = lafs[0, valid, :, :2]  # (N_valid, 2, 2)
+        assert (A[:, 0, 0] > 0).all()
+        self.assert_close(A, A[:, :1, :1] * torch.eye(2, device=device, dtype=dtype))
+
+    def test_frame_scale_is_descriptor_sampling_radius_NNNN(self, device, dtype):
+        """Each LAF is ``s * I``, ``s`` the RMS distance of the descriptor's sampling positions from the keypoint.
+
+        The offset head is set so that every keypoint's descriptor samples 8 positions at (3, 4) px and 8 at
+        (-6, 8) px from it: RMS distance ``sqrt((25 + 100) / 2)``, against a mean distance of 7.5, a largest
+        distance of 10 and a spread about the pattern's centroid of ``sqrt(24.25)``. The LAF centres are the
+        keypoints of :meth:`ALIKED.forward`; ``compute_affine=False`` gives identity blocks.
+        """
+        score_map = _score_map_with_maxima_chains(device, dtype)
+        aliked = _aliked_with_score_map(score_map)
+        offset_head = aliked.desc_head.offset_conv[2]
+        n_pos = aliked.desc_head.n_pos
+        half = n_pos // 2
+        # bias layout (x offsets of every sampling position, then y offsets)
+        offsets_xy = torch.tensor([3.0] * half + [-6.0] * half + [4.0] * half + [8.0] * half)
+        with torch.no_grad():
+            offset_head.weight.zero_()
+            offset_head.bias.copy_(offsets_xy)
+            img = torch.rand(1, 3, 64, 96, device=device, dtype=dtype)
+            lafs, _, _ = aliked.forward_laf(img)
+            lafs_unit, _, _ = aliked.forward_laf(img, compute_affine=False)
+            keypoints = aliked(img)[0].keypoints
+        n = keypoints.shape[0]
+        assert n > 0
+        assert lafs.shape == (1, n, 2, 3)
+        eye = torch.eye(2, device=device, dtype=dtype).expand(1, n, 2, 2)
+        self.assert_close(lafs[..., :2], math.sqrt(62.5) * eye)
+        self.assert_close(get_laf_center(lafs)[0], keypoints)
+        self.assert_close(lafs_unit[..., :2], eye)
+        self.assert_close(lafs_unit[..., 2], lafs[..., 2])
