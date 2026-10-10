@@ -42,11 +42,12 @@ def _distort_points_kannala_brandt_impl(
     k2 = params[..., 6]
     k3 = params[..., 7]
 
-    # Keep the inactive branch finite: torch.where still differentiates both branch tensors.
-    radius = torch.where(nonlinear_mask, radius_sq, torch.ones_like(radius_sq)).sqrt()
+    # Keep the lanes the caller discards finite: torch.where still differentiates both branch tensors.
+    # Their radius is moved to about 1 and their angle zeroed. The active lanes add 0 and multiply by 1,
+    # so they are unchanged, and this avoids two torch.where calls (slow on MPS).
+    radius = (radius_sq + ~nonlinear_mask).sqrt()
     radius_inverse = 1.0 / radius
-    theta = radius.atan2(torch.ones_like(radius))
-    theta = torch.where(nonlinear_mask, theta, torch.zeros_like(theta))
+    theta = radius.atan2(torch.ones_like(radius)) * nonlinear_mask
     theta2 = theta**2
     theta4 = theta2**2
     theta6 = theta2 * theta4
