@@ -354,7 +354,8 @@ class TestConventionsVector(BaseTester):
             [[0.3, -1.2, 2.5], [1.0, 2.0, 3.0], [-0.5, 0.25, 1.5], [2.0, -1.0, 0.5]], device=device, dtype=dtype
         )[..., :dim]
         v = vector_type(data)
-        for out in (v.clone(), torch.clone(v), v.mean(0, keepdim=True), torch.cat([v, v]), v + torch.ones_like(data)):
+        kept = (v.clone(), torch.clone(v), torch.clone(input=v), v.mean(0, keepdim=True), torch.cat([v, v]))
+        for out in (*kept, v + torch.ones_like(data)):
             assert type(out) is vector_type
         batched = v + torch.zeros(5, 1, dim, device=device, dtype=dtype)
         assert type(batched) is vector_type
@@ -409,6 +410,7 @@ class TestConventionsVector(BaseTester):
             (s / v, scale / data),
             (s + v, scale + data),
             (torch.mul(s, v), scale * data),
+            (s.mul(v), scale * data),
         ]:
             assert type(out) is Vector3
             self.assert_close(out.data, expected, rtol=0, atol=0)
@@ -454,3 +456,4 @@ class TestConventionsVector(BaseTester):
         assert type(single[0]) is torch.Tensor
         assert single[0].shape == ()
         assert type(single[None]) is vector_type
+        assert type(single[True]) is vector_type
