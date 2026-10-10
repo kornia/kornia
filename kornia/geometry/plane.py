@@ -26,7 +26,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE, are_checks_enabled
 from kornia.core.exceptions import BaseError, ValueCheckError
 from kornia.core.tensor_wrapper import _unwrap, _wrap
-from kornia.core.utils import _torch_linalg_svdvals, _torch_svd_cast, is_compiling
+from kornia.core.utils import _torch_linalg_svdvals, _torch_svd_cast, is_compiling, register_module_state
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.vector import Scalar, Vector3
 
@@ -47,8 +47,8 @@ class Hyperplane(nn.Module):
         - :meth:`through` points the normal along :math:`(p_2 - p_0) \times (p_1 - p_0)`, as Eigen's
           ``Hyperplane::Through`` does: the opposite of the right-hand normal of the loop
           :math:`p_0 \to p_1 \to p_2`. Swapping two points flips it.
-        - Known defect: ``normal`` and ``offset`` are not registered module state, so ``state_dict()`` is empty and
-          ``.to()`` neither moves nor casts them (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
+        - The normal and offset are registered module state, so checkpoints and ``.to()`` include both tensors.
+          Caller-provided parameters remain parameters; tensors with autograd history retain that history.
 
     Args:
         n: The normal vector :math:`n`, a :class:`~kornia.geometry.vector.Vector3`.
@@ -62,8 +62,12 @@ class Hyperplane(nn.Module):
         # TODO: fix checkers
         # KORNIA_CHECK_SHAPE(n, ["B", "*"])
         # KORNIA_CHECK_SHAPE(d, ["B"])
-        self._n = n
-        self._d = d
+        for name, value in (("_n", n.data), ("_d", d.data)):
+            if value.is_floating_point() or value.is_complex():
+                register_module_state(self, name, value)
+            else:
+                # Integer plane coefficients cannot be trainable parameters.
+                self.register_buffer(name, value)
 
     def __str__(self) -> str:
         return f"Normal: {self.normal}\nOffset: {self.offset}"
@@ -80,7 +84,7 @@ class Hyperplane(nn.Module):
             direction. For a 3D plane this is the vector :math:`n` in
             :math:`n^T x + d = 0`.
         """
-        return self._n
+        return Vector3(self._n)
 
     @property
     def offset(self) -> Scalar:
@@ -91,7 +95,7 @@ class Hyperplane(nn.Module):
             in :math:`n^T x + d = 0`. The value controls where the plane sits
             relative to the origin for the stored normal direction.
         """
-        return self._d
+        return Scalar(self._d)
 
     def abs_distance(self, p: Vector3) -> Scalar:
         """Compute unsigned distances from points to the hyperplane.
