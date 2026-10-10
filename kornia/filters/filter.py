@@ -169,7 +169,10 @@ def filter2d(
     if normalized:
         tmp_kernel = normalize_kernel2d(tmp_kernel)
 
-    tmp_kernel = tmp_kernel.expand(-1, c, -1, -1)
+    # The legacy ONNX tracer records ``input.shape`` reads as graph values, so with a dynamic batch or size the
+    # expanded kernel, and with it the convolution weight, has no static shape and the export fails (#5222).
+    # The channel count sets the convolution's ``groups``, which ONNX needs as a constant anyway: read it as an int.
+    tmp_kernel = tmp_kernel.expand(-1, int(c) if torch.jit.is_tracing() else c, -1, -1)
 
     height, width = tmp_kernel.shape[-2:]
 

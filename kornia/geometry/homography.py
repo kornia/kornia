@@ -841,8 +841,10 @@ def find_homography_lines_dlt(
         # We should use provided weights
         if not ((len(weights.shape) == 2) and (weights.shape == ls1.shape[:2])):
             raise AssertionError(weights.shape)
-        w_diag = torch.diag_embed(weights.unsqueeze(dim=-1).repeat(1, 1, 2).reshape(weights.shape[0], -1))
-        A = A.transpose(-2, -1) @ w_diag @ A
+        # Scale each segment's two design rows by its weight instead of materializing the
+        # (B, 2N, 2N) diagonal weight matrix, whose storage grows quadratically with N.
+        w_full = weights.repeat_interleave(2, dim=1).unsqueeze(1)
+        A = (A.transpose(-2, -1) * w_full) @ A
 
     try:
         _, _, V = _torch_svd_cast(A)
