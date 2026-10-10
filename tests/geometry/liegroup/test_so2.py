@@ -20,6 +20,7 @@ import math
 import pytest
 import torch
 
+from kornia.core.exceptions import BaseError
 from kornia.geometry.conversions import angle_to_rotation_matrix
 from kornia.geometry.liegroup import Se2, So2
 from kornia.geometry.vector import Vector2
@@ -67,23 +68,23 @@ class TestSo2(BaseTester):
     @pytest.mark.parametrize("cdtype", [torch.cfloat, torch.cdouble])
     def test_exception(self, batch_size, device, dtype, cdtype):
         z = torch.randn(batch_size, 2, dtype=cdtype, device=device)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid input size"):
             assert So2(z)
         with pytest.raises(TypeError):
             assert So2.identity(1, device, dtype) * [1.0, 2.0, 1.0]
         theta = torch.rand((2, 2), dtype=dtype, device=device)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid input size"):
             assert So2.exp(theta)
         theta = torch.rand((2, 2), dtype=dtype, device=device)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid input size"):
             assert So2.hat(theta)
         m = torch.rand((2, 2, 1), dtype=dtype, device=device)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid input size"):
             assert So2.from_matrix(m)
         m = torch.rand((2, 2, 1), dtype=dtype, device=device)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid input size"):
             assert So2.from_matrix(m)
-        with pytest.raises(Exception):
+        with pytest.raises(BaseError, match=r"batch_size must be positive"):
             assert So2.identity(batch_size=0)
 
     # TODO: implement me

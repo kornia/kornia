@@ -20,6 +20,7 @@ import math
 import pytest
 import torch
 
+from kornia.core.exceptions import BaseError
 from kornia.geometry.liegroup import Se2, So2
 from kornia.geometry.vector import Vector2
 
@@ -66,31 +67,31 @@ class TestSe2(BaseTester):
         r = So2.random(batch_size)
         t1 = torch.randn((batch_size, 1), dtype=dtype, device=device)
         t2 = torch.randn((batch_size, 3), dtype=dtype, device=device)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid translation shape"):
             Se2(r, t1)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid translation shape"):
             Se2(r, t2)
         theta = torch.rand((batch_size, 2), dtype=dtype, device=device)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid input shape"):
             Se2.exp(theta)
         v = torch.rand((batch_size, 2), dtype=dtype, device=device)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid input shape"):
             Se2.hat(v)
         omega = torch.rand((4, 4), dtype=dtype, device=device)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid input size"):
             Se2.vee(omega)
         with pytest.raises(TypeError):
             Se2.identity(1, device, dtype) * [1.0, 2.0, 1.0]
         theta = torch.rand((batch_size, 2), dtype=dtype, device=device)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid input shape"):
             Se2.hat(theta)
-        with pytest.raises(Exception):
+        with pytest.raises(BaseError, match=r"batch_size must be positive"):
             Se2.identity(batch_size=0)
-        with pytest.raises(Exception):
+        with pytest.raises(BaseError, match=r"batch_size must be positive"):
             Se2.random(batch_size=0)
         x = torch.rand(5, dtype=dtype, device=device)
         y = torch.rand(3, dtype=dtype, device=device)
-        with pytest.raises(Exception):
+        with pytest.raises(BaseError, match=r"Validation condition failed"):
             Se2.trans(x, y)
 
     def test_gradcheck(self, device):
@@ -637,7 +638,7 @@ class TestSe2(BaseTester):
         reflection = torch.tensor([[1.0, 0.0], [0.0, -1.0]], device=device, dtype=dtype)
         matrix = torch.eye(3, device=device, dtype=dtype)
         matrix[:2, :2] = reflection
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid SO2 rotation matrix"):
             Se2.from_matrix(matrix)
 
         class FromMatrix(torch.nn.Module):

@@ -66,7 +66,7 @@ class TestTransformParameters(BaseTester):
             assert kornia.geometry.transform.get_tps_transform(src, src)
 
         src = torch.rand(batch_size, 5)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid shape for points_src, expected BxNx2"):
             assert kornia.geometry.transform.get_tps_transform(src, src)
 
     def test_kernel_distance_values(self, device, dtype):
@@ -138,19 +138,19 @@ class TestWarpPoints(BaseTester):
             assert kornia.geometry.transform.warp_points_tps(src, src, kernel, affine.numpy())
 
         src_bad = torch.rand(batch_size, 5)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid shape for points_src, expected BxNx2"):
             assert kornia.geometry.transform.warp_points_tps(src_bad, src, kernel, affine)
 
         src_bad = torch.rand(batch_size, 5)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid shape for kernel_centers, expected BxNx2"):
             assert kornia.geometry.transform.warp_points_tps(src, src_bad, kernel, affine)
 
         kernel_bad = torch.rand(batch_size, 5)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid shape for kernel_weights, expected BxNx2"):
             assert kornia.geometry.transform.warp_points_tps(src, src, kernel_bad, affine)
 
         affine_bad = torch.rand(batch_size, 3)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid shape for affine_weights, expected BxNx2"):
             assert kornia.geometry.transform.warp_points_tps(src, src, kernel, affine_bad)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
@@ -226,19 +226,19 @@ class TestWarpImage(BaseTester):
             assert kornia.geometry.transform.warp_image_tps(image, dst, kernel, affine.numpy())
 
         image_bad = torch.rand(batch_size, 32, 32)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid shape for image, expected BxCxHxW"):
             assert kornia.geometry.transform.warp_image_tps(image_bad, dst, kernel, affine)
 
         dst_bad = torch.rand(batch_size, 5)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid shape for kernel_centers, expected BxNx2"):
             assert kornia.geometry.transform.warp_image_tps(image, dst_bad, kernel, affine)
 
         kernel_bad = torch.rand(batch_size, 5)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid shape for kernel_weights, expected BxNx2"):
             assert kornia.geometry.transform.warp_image_tps(image, dst, kernel_bad, affine)
 
         affine_bad = torch.rand(batch_size, 3)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid shape for affine_weights, expected BxNx2"):
             assert kornia.geometry.transform.warp_image_tps(image, dst, kernel, affine_bad)
 
     @pytest.mark.parametrize("batch_size", [1, 3])

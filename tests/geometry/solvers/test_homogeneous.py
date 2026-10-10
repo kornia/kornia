@@ -18,6 +18,7 @@
 import pytest
 import torch
 
+from kornia.core.exceptions import ShapeError, TypeCheckError
 from kornia.geometry import solvers
 from kornia.geometry.solvers.homogeneous import _null_space_lu
 
@@ -96,19 +97,19 @@ class TestNullVector3x4(BaseTester):
     # ------------------------------------------------------------------
 
     def test_exception_wrong_rows(self, device, dtype):
-        with pytest.raises(Exception):
+        with pytest.raises(ShapeError, match=r"Shape mismatch at dimension 1: expected 3, got 4"):
             solvers.null_vector_3x4(torch.rand(1, 4, 4, device=device, dtype=dtype))
 
     def test_exception_wrong_cols(self, device, dtype):
-        with pytest.raises(Exception):
+        with pytest.raises(ShapeError, match=r"Shape mismatch at dimension 2: expected 4, got 3"):
             solvers.null_vector_3x4(torch.rand(1, 3, 3, device=device, dtype=dtype))
 
     def test_exception_1d(self, device, dtype):
-        with pytest.raises(Exception):
+        with pytest.raises(ShapeError, match=r"Shape dimension mismatch: expected 2 dimensions, got 1"):
             solvers.null_vector_3x4(torch.rand(4, device=device, dtype=dtype))
 
     def test_exception_not_tensor(self, device, dtype):
-        with pytest.raises(Exception):
+        with pytest.raises(TypeCheckError, match=r"Type mismatch: expected Tensor"):
             solvers.null_vector_3x4([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]])
 
     # ------------------------------------------------------------------

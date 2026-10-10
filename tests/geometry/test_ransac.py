@@ -910,11 +910,11 @@ class TestConventionRANSAC(BaseTester):
         _cpu_only(device)
         kp1, kp2 = _planar_matches(device, dtype)
         # Too few correspondences for the validated model types raise kornia's ValueError before sampling.
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=rf"equal shape at least \[{validated_n + 1}, 2\]"):
             RANSAC(validated_type, max_iter=1, batch_size=4, seed=0)(kp1[:validated_n], kp2[:validated_n])
         # fundamental_7pt and essential are validated the same way. #4872 skipped them, and they failed inside the
         # sampler with a RuntimeError.
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=rf"equal shape at least \[{n + 1}, 2\]"):
             RANSAC(model_type, max_iter=1, batch_size=4, seed=0)(kp1[:n], kp2[:n])
 
 
@@ -1327,12 +1327,12 @@ class TestRANSACAutoBatch(BaseTester):
 
     @pytest.mark.parametrize("bad", [0, -1, 2.5, True, "large"])
     def test_rejects_bad_batch_size(self, bad):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"batch_size must be a positive integer"):
             RANSAC("homography", batch_size=bad)
 
     @pytest.mark.parametrize("bad", [0, -5, True, 1000.0])
     def test_rejects_bad_max_samples(self, bad):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"max_samples must be a positive integer"):
             RANSAC("homography", max_samples=bad)
 
     def test_explicit_batch_keeps_its_budget(self):
@@ -1532,35 +1532,35 @@ class TestRANSACBoundedLO(BaseTester):
 
 class TestRANSACValidation(BaseTester):
     @pytest.mark.parametrize(
-        "kwargs",
+        "kwargs,match",
         [
-            {"inl_th": 0.0},
-            {"inl_th": float("nan")},
-            {"batch_size": 0},
-            {"max_iter": 0},
-            {"max_lo_iters": -1},
-            {"score_type": "magsac"},
-            {"confidence": 1.5},
-            {"confidence": 0.0},
-            {"lo_sample_size": 3},
-            {"local_optimization": "irls"},
-            {"refine_iters": -1},
-            {"refine_iters": True},
-            {"refine_iters": 1.5},
+            ({"inl_th": 0.0}, "inl_th and its square must be positive and finite"),
+            ({"inl_th": float("nan")}, "inl_th and its square must be positive and finite"),
+            ({"batch_size": 0}, "batch_size must be a positive integer"),
+            ({"max_iter": 0}, "max_iter must be positive"),
+            ({"max_lo_iters": -1}, "max_lo_iters must be nonnegative"),
+            ({"score_type": "magsac"}, "Unsupported score type"),
+            ({"confidence": 1.5}, "confidence must lie in"),
+            ({"confidence": 0.0}, "confidence must lie in"),
+            ({"lo_sample_size": 3}, "lo_sample_size must be at least 4"),
+            ({"local_optimization": "irls"}, "local_optimization must be"),
+            ({"refine_iters": -1}, "refine_iters must be a nonnegative integer"),
+            ({"refine_iters": True}, "refine_iters must be a nonnegative integer"),
+            ({"refine_iters": 1.5}, "refine_iters must be a nonnegative integer"),
         ],
     )
-    def test_invalid_configuration(self, kwargs):
-        with pytest.raises(ValueError):
+    def test_invalid_configuration(self, kwargs, match):
+        with pytest.raises(ValueError, match=match):
             RANSAC(**kwargs)
 
     def test_lm_local_optimization_needs_a_supported_model(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"local_optimization=\"lm\" supports"):
             RANSAC("homography_from_linesegments", local_optimization="lm")
 
     @pytest.mark.parametrize("model", ["fundamental_7pt", "essential"])
     def test_mismatched_correspondences(self, device, dtype, model):
         points = torch.zeros(9, 2, device=device, dtype=dtype)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"kp1 and kp2 should be\s+equal shape at least"):
             RANSAC(model).validate_inputs(points, points[:8])
 
     @staticmethod
@@ -1625,7 +1625,7 @@ class TestRANSACMSACSelection(BaseTester):
     @pytest.mark.parametrize("threshold", [0.0, -1.0, float("nan"), float("inf")])
     def test_invalid_verify_threshold(self, device, dtype, threshold):
         points = torch.zeros(4, 2, device=device, dtype=dtype)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"The squared inlier threshold must be positive and finite"):
             RANSAC(score_type="msac").verify(points, points, torch.eye(3, device=device, dtype=dtype)[None], threshold)
 
 

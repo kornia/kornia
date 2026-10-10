@@ -195,18 +195,18 @@ class TestKeypoints(BaseTester):
         with pytest.raises(TypeError):
             Keypoints("not a tensor")
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Coordinates must be in floating point"):
             Keypoints(torch.tensor([1, 2, 3], dtype=torch.int32))
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Keypoints shape must be \(N, 2\) or \(B, N, 2\)"):
             Keypoints(torch.rand(3, 3, device=device, dtype=dtype))
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Keypoints shape must be \(N, 2\) or \(B, N, 2\)"):
             Keypoints(torch.rand(3, 4, 2, 2, device=device, dtype=dtype))
 
     def test_transform_exception(self, device, dtype):
         kp = Keypoints(torch.rand(5, 2, device=device, dtype=dtype))
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"The transformation matrix shape must be \(3, 3\) or \(B, 3, 3\)"):
             kp.transform_keypoints(torch.eye(4, device=device, dtype=dtype))
 
     def test_pad_exception(self, device, dtype):
@@ -225,7 +225,7 @@ class TestKeypoints(BaseTester):
             unbatched.pad(torch.zeros(0, 4, device=device, dtype=dtype))
 
     def test_int_input_raises_by_default(self, device, dtype):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Coordinates must be in floating point"):
             Keypoints(torch.ones(5, 2, device=device, dtype=torch.int32))
 
     def test_int_input_converted_when_not_raising(self, device, dtype):
@@ -298,10 +298,10 @@ class TestVideoKeypoints(BaseTester):
         assert out.temporal_channel_size == T
 
     def test_exception(self, device, dtype):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Please input an `BxTxNx2` tensor directly"):
             VideoKeypoints.from_tensor(torch.rand(5, 2, device=device, dtype=dtype))
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Please input an `BxTxNx2` tensor directly"):
             VideoKeypoints.from_tensor(torch.rand(2, 5, 10, 3, device=device, dtype=dtype))
 
     def test_gradcheck(self, device):
@@ -394,10 +394,10 @@ class TestKeypoints3D(BaseTester):
         with pytest.raises(TypeError):
             Keypoints3D("not a tensor")
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Coordinates must be in floating point"):
             Keypoints3D(torch.tensor([1, 2, 3], dtype=torch.int32))
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Keypoints shape must be \(N, 3\) or \(B, N, 3\)"):
             Keypoints3D(torch.rand(3, 2, device=device, dtype=dtype))
 
     def test_int_input_converted_when_not_raising(self, device, dtype):

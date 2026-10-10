@@ -846,7 +846,7 @@ class TestConvQuadInterp3d(BaseTester):
     def test_exception(self, device, dtype):
         with pytest.raises(TypeError):
             conv_quad_interp3d("not_a_tensor")
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid input shape, expected BxCxDxHxW"):
             conv_quad_interp3d(torch.randn(3, 4, 4, device=device, dtype=dtype))
 
     def test_cardinality(self, device, dtype):

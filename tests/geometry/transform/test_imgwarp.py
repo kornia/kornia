@@ -22,6 +22,7 @@ import torch
 
 import kornia
 from kornia.core._compat import torch_version, torch_version_lt
+from kornia.core.exceptions import BaseError
 from kornia.core.utils import _torch_inverse_cast
 
 from testing.base import BaseTester
@@ -313,7 +314,7 @@ class TestGetPerspectiveTransform(BaseTester):
         )
 
         # compute transformation between points
-        with pytest.raises(Exception):
+        with pytest.raises(BaseError, match=r"Source data type must match Destination data type"):
             _ = kornia.geometry.get_perspective_transform(points_src, points_dst)
 
     def test_back_and_forth(self, device, dtype):
@@ -525,11 +526,13 @@ class TestWarpAffine(BaseTester):
             assert kornia.geometry.warp_affine(img, 0.0, size)
 
         img = torch.rand(2, 3, 4, device=device, dtype=dtype)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Input src must be a BxCxHxW torch\.Tensor"):
             assert kornia.geometry.warp_affine(img, aff, size)
 
+        # Keep the image valid so this case reaches the matrix-shape guard.
+        img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         aff = torch.eye(2, 2, device=device, dtype=dtype)[None]
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Input M must be a Bx2x3 torch\.Tensor"):
             assert kornia.geometry.warp_affine(img, aff, size)
 
     def test_translation(self, device, dtype):
@@ -695,11 +698,13 @@ class TestWarpPerspective(BaseTester):
             assert kornia.geometry.warp_perspective(img, 0.0, size)
 
         img = torch.rand(2, 3, 4, device=device, dtype=dtype)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Input src must be a BxCxHxW torch\.Tensor"):
             assert kornia.geometry.warp_perspective(img, homo, size)
 
+        # Keep the image valid so this case reaches the matrix-shape guard.
+        img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         homo = torch.eye(2, 2, device=device, dtype=dtype)[None]
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Input M must be a Bx3x3 torch\.Tensor"):
             assert kornia.geometry.warp_perspective(img, homo, size)
 
     def test_translation(self, device, dtype):
