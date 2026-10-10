@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import itertools
 import math
 import warnings
 from typing import ClassVar, Dict, List, Literal, Optional, Tuple, Union
@@ -79,6 +80,28 @@ def _lightglue_keypoint_scale_ori(lafs: torch.Tensor, feature_name: str) -> Tupl
     return scales, oris
 
 
+def _run_descriptor(module: nn.Module, patches: torch.Tensor) -> torch.Tensor:
+    """Run ``module`` in eval mode on ``patches`` without changing the module.
+
+    The parameters and buffers are cast to the device and dtype of ``patches`` for the call only (a no-op when they
+    already match, and differentiable, so gradients reach the module's own parameters), and the ``training`` flag of
+    every submodule is restored afterwards. Under export the module is already placed and is called directly.
+    """
+    modes = [m.training for m in module.modules()]
+    module.eval()
+    try:
+        if is_exporting():
+            return module(patches)
+        state = {
+            name: t.to(device=patches.device, dtype=patches.dtype) if t.is_floating_point() else t.to(patches.device)
+            for name, t in itertools.chain(module.named_parameters(), module.named_buffers())
+        }
+        return torch.func.functional_call(module, state, (patches,))
+    finally:
+        for m, mode in zip(module.modules(), modes):
+            m.training = mode
+
+
 def get_laf_descriptors(
     img: torch.Tensor,
     lafs: torch.Tensor,
@@ -87,6 +110,11 @@ def get_laf_descriptors(
     grayscale_descriptor: bool = True,
 ) -> torch.Tensor:
     r"""Get local descriptors, corresponding to LAFs (keypoints).
+
+    The descriptor runs in eval mode, with its floating-point parameters and buffers cast to the device and dtype of
+    ``img`` for the call; the descriptors come back on that device and dtype. The module itself is not changed: its
+    device, dtype, parameters and the train/eval mode of every submodule stay as the caller set them, and gradients
+    still reach its parameters.
 
     Args:
         img: image features with shape :math:`(B,C,H,W)`.
@@ -101,11 +129,6 @@ def get_laf_descriptors(
 
     """
     KORNIA_CHECK_LAF(lafs)
-    # Moving a module swaps its parameters, which graph capture forbids; the module is already placed under export.
-    if not is_exporting():
-        patch_descriptor = patch_descriptor.to(img)
-    patch_descriptor.eval()
-
     timg: torch.Tensor = img
     if grayscale_descriptor and img.size(1) == 3:
         timg = rgb_to_grayscale(img)
@@ -118,8 +141,9 @@ def get_laf_descriptors(
         # matching width is the whole probe -- `probe.shape[-1]` would only agree for descriptors
         # whose output is 2-D. The probe has a batch of one, so its numel is that width.
         with torch.no_grad():
-            probe = patch_descriptor(
-                torch.zeros(1, timg.size(1), patch_size, patch_size, dtype=timg.dtype, device=timg.device)
+            probe = _run_descriptor(
+                patch_descriptor,
+                torch.zeros(1, timg.size(1), patch_size, patch_size, dtype=timg.dtype, device=timg.device),
             )
         return torch.empty(lafs.shape[0], 0, probe.numel(), dtype=probe.dtype, device=probe.device)
 
@@ -127,17 +151,18 @@ def get_laf_descriptors(
     # Descriptor accepts standard torch.Tensor [B, CH, H, W], while patches are [B, N, CH, H, W] shape
     # So we need to reshape a bit :)
     B, N, CH, H, W = patches.size()
-    return patch_descriptor(patches.view(B * N, CH, H, W)).view(B, N, -1)
+    return _run_descriptor(patch_descriptor, patches.view(B * N, CH, H, W)).view(B, N, -1)
 
 
 class LAFDescriptor(nn.Module):
     r"""nn.Module to get local descriptors, corresponding to LAFs (keypoints).
 
-    Internally uses :func:`~kornia.feature.get_laf_descriptors`.
+    Internally uses :func:`~kornia.feature.get_laf_descriptors`: the descriptor runs in eval mode with its parameters
+    cast to the image's device and dtype for the call, and the module itself is not changed.
 
     Args:
         patch_descriptor_module: patch descriptor module, e.g. :class:`~kornia.feature.SIFTDescriptor`
-            or :class:`~kornia.feature.HardNet`. Default: :class:`~kornia.feature.HardNet`.
+            or :class:`~kornia.feature.HardNet`. Default: :class:`~kornia.feature.HardNet` with pretrained weights.
         patch_size: patch size in pixels, which descriptor expects.
         grayscale_descriptor: ``True`` if patch_descriptor expects single-channel image.
 

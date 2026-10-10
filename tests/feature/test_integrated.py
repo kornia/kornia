@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import copy
 import sys
 
 import pytest
@@ -235,6 +236,109 @@ class TestLAFDescriptor(BaseTester):
 
         lafdesc = LAFDescriptor(_MeanPatch(), PS)
         self.gradcheck(lafdesc, (img, lafs), eps=1e-3, atol=1e-3, nondet_tol=1e-3)
+
+
+class _TrainModeProbe(nn.Module):
+    """Patch descriptor with dropout and a parameter, so mode and dtype changes are observable."""
+
+    def __init__(self):
+        super().__init__()
+        self.proj = nn.Linear(16 * 16, 5)
+        self.drop = nn.Dropout(0.5)
+
+    def forward(self, patches):
+        return self.drop(self.proj(patches.flatten(1)))
+
+
+class TestDescriptorModuleIsNotModified(BaseTester):
+    @staticmethod
+    def _inputs(device, dtype):
+        img = torch.rand(1, 1, 48, 64, device=device, dtype=dtype)
+        centers = torch.tensor([[20.0, 30.0], [30.0, 40.0]], device=device, dtype=dtype).view(1, 2, 2)
+        scales = torch.tensor([10.0, 8.0], device=device, dtype=dtype).view(1, 2, 1, 1)
+        ori = torch.tensor([0.0, 30.0], device=device, dtype=dtype).view(1, 2, 1)
+        return img, kornia.feature.laf_from_center_scale_ori(centers, scales, ori)
+
+    @staticmethod
+    def _state(module):
+        return (
+            [m.training for m in module.modules()],
+            [(p.dtype, p.device) for p in module.parameters()],
+            list(module.parameters()),
+            [p.data_ptr() for p in module.parameters()],
+        )
+
+    def _assert_state_equal(self, before, after):
+        assert before[0] == after[0]
+        assert before[1] == after[1]
+        assert all(a is b for a, b in zip(before[2], after[2]))
+        assert before[3] == after[3]
+
+    @staticmethod
+    def _reference(module, img, lafs, ps):
+        # what the descriptor gives when it is cast to the image and put in eval mode explicitly
+        ref = copy.deepcopy(module).to(img).eval()
+        patches = extract_patches_from_pyramid(img, lafs, ps)
+        B, N, C, H, W = patches.shape
+        return ref(patches.view(B * N, C, H, W)).view(B, N, -1)
+
+    @pytest.mark.parametrize("train", [True, False])
+    def test_module_is_unchanged_and_output_is_the_eval_cast_copy_NNNN(self, device, train):
+        if torch.device(device).type == "mps":
+            pytest.skip("MPS does not support float64")
+        img, lafs = self._inputs(device, torch.float64)
+        module = _TrainModeProbe().to(device).train(train)  # float32 module, float64 image
+        before = self._state(module)
+        expected = self._reference(module, img, lafs, 16)
+        out = get_laf_descriptors(img, lafs, module, 16)
+        self._assert_state_equal(before, self._state(module))
+        assert out.dtype == torch.float64
+        self.assert_close(out, expected)
+
+    def test_lafdescriptor_keeps_every_submodule_mode_NNNN(self, device):
+        img, lafs = self._inputs(device, torch.float32)
+        module = _TrainModeProbe().to(device).train()
+        module.drop.eval()  # mixed modes are restored one by one
+        before = self._state(module)
+        out = LAFDescriptor(module, 16)(img, lafs)
+        self._assert_state_equal(before, self._state(module))
+        self.assert_close(out, self._reference(module, img, lafs, 16))
+
+    def test_float64_module_with_a_float32_image_NNNN(self, device):
+        if torch.device(device).type == "mps":
+            pytest.skip("MPS does not support float64")
+        img, lafs = self._inputs(device, torch.float32)
+        module = _TrainModeProbe().to(device, torch.float64).train()
+        before = self._state(module)
+        out = get_laf_descriptors(img, lafs, module, 16)
+        self._assert_state_equal(before, self._state(module))
+        assert module.proj.weight.dtype == torch.float64
+        assert out.dtype == torch.float32
+        self.assert_close(out, self._reference(module, img, lafs, 16))
+
+    def test_gradients_reach_the_module_parameters_NNNN(self, device):
+        if torch.device(device).type == "mps":
+            pytest.skip("MPS does not support float64")
+        img, lafs = self._inputs(device, torch.float64)
+        module = _TrainModeProbe().to(device).eval()  # float32 parameters, float64 image
+        get_laf_descriptors(img, lafs, module, 16).sum().backward()
+        for p in module.parameters():
+            assert p.grad is not None
+            assert p.grad.dtype == torch.float32
+            assert torch.isfinite(p.grad).all()
+        assert module.proj.weight.grad.abs().sum() > 0
+
+    def test_empty_lafs_leave_the_module_alone_NNNN(self, device):
+        if torch.device(device).type == "mps":
+            pytest.skip("MPS does not support float64")
+        img, _ = self._inputs(device, torch.float32)
+        module = _TrainModeProbe().to(device, torch.float64).train()
+        before = self._state(module)
+        with pytest.warns(UserWarning, match="no keypoints"):
+            out = get_laf_descriptors(img, torch.zeros(1, 0, 2, 3, device=device), module, 16)
+        self._assert_state_equal(before, self._state(module))
+        assert out.shape == (1, 0, 5)
+        assert out.dtype == torch.float32
 
 
 class TestLocalFeature(BaseTester):
