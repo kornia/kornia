@@ -47,10 +47,7 @@ def _distort_points_kannala_brandt_impl(
     # so they are unchanged, and this avoids two torch.where calls (slow on MPS).
     radius = (radius_sq + ~nonlinear_mask).sqrt()
     # The reciprocal's backward squares its value, which can overflow float16.
-    if radius.dtype == torch.float16:
-        radius_inverse = (1.0 / radius.float()).to(radius.dtype)
-    else:
-        radius_inverse = 1.0 / radius
+    radius_inverse = (1.0 / radius.float()).to(radius.dtype) if radius.dtype == torch.float16 else 1.0 / radius
     theta = radius.atan2(torch.ones_like(radius)) * nonlinear_mask
     theta2 = theta**2
     theta4 = theta2**2
