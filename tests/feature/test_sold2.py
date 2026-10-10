@@ -126,14 +126,7 @@ class TestKeypointsToGrid(BaseTester):
 
         reference = kp * 2.0 / torch.tensor([H, W], device=device, dtype=dtype) - 1.0
         reference = reference[:, [1, 0]].view(1, -1, 1, 2)
-        if device.type == "cpu":
-            self.assert_close(grid, reference, atol=0.0, rtol=0.0)
-        else:
-            lower = torch.nextafter(reference, torch.full_like(reference, -torch.inf))
-            upper = torch.nextafter(reference, torch.full_like(reference, torch.inf))
-            assert grid.shape == reference.shape
-            assert grid.dtype == reference.dtype
-            assert torch.all((grid >= lower) & (grid <= upper))
+        self.assert_close(grid, reference, atol=0.0, rtol=0.0)
 
         desc_size = torch.tensor([W // g, H // g], device=device, dtype=dtype)  # (x, y)
         reads = (grid[0, :, 0] + 1.0) * desc_size / 2.0 - 0.5
