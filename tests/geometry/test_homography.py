@@ -1628,6 +1628,27 @@ class TestConventionHomography(BaseTester):
 
 
 class TestHomographySharedKernels(BaseTester):
+    @pytest.mark.parametrize("batch_size", [1, 32])
+    def test_four_point_homography_mps_matches_cpu(self, device, dtype, batch_size):
+        if device.type != "mps" or dtype != torch.float32:
+            pytest.skip("MPS float32 regression")
+        generator = torch.Generator().manual_seed(0)
+        corners = torch.tensor([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]], dtype=dtype)
+        src = corners + 0.1 * torch.randn(batch_size, 4, 2, generator=generator, dtype=dtype)
+        H = torch.eye(3, dtype=dtype) + 0.1 * torch.randn(batch_size, 3, 3, generator=generator, dtype=dtype)
+        dst = transform_points(H, src)
+        n1, _ = normalize_points(src)
+        n2, _ = normalize_points(dst)
+        expected = _four_point_homography(_hom(n1), n2)
+        actual = _four_point_homography(_hom(n1).to(device), n2.to(device))
+        assert actual.device == device
+        assert actual.dtype == dtype
+        actual = actual.cpu()
+        # Unit-norm homographies are defined up to sign.
+        sign = (actual * expected).sum(dim=(-2, -1)).sign()
+        self.assert_close(actual * sign[:, None, None], expected, atol=1e-5, rtol=1e-5)
+        self.assert_close(transform_points(actual, n1), n2, atol=1e-5, rtol=1e-5)
+
     def test_design_rows_vanish_on_exact_matches(self, device, dtype):
         _skip_half(dtype, _HALF_DLT)
         src, dst, H = _planar(device, dtype)

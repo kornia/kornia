@@ -277,6 +277,36 @@ class TestNullSpaceLU(BaseTester):
     """``_null_space_lu``, the batched null space behind the seven-, eight- and four-point minimal solvers."""
 
     @pytest.mark.parametrize("rows", [7, 8])
+    @pytest.mark.parametrize("batch_size", [1, 32])
+    def test_mps_matches_cpu(self, device, dtype, rows, batch_size, monkeypatch):
+        if device.type != "mps" or dtype != torch.float32:
+            pytest.skip("MPS float32 regression")
+        generator = torch.Generator().manual_seed(0)
+        A = torch.randn(batch_size, rows, 9, generator=generator, dtype=dtype)
+        expected = _null_space_lu(A)
+        solve_triangular = torch.linalg.solve_triangular
+        calls = []
+
+        def check_layout(square, rhs, **kwargs):
+            assert square.device == rhs.device == device
+            assert square.is_contiguous()
+            assert rhs.is_contiguous()
+            calls.append(True)
+            return solve_triangular(square, rhs, **kwargs)
+
+        # Newer MPS kernels handle strides, so also guard the layout needed by older releases.
+        monkeypatch.setattr(torch.linalg, "solve_triangular", check_layout)
+        actual = _null_space_lu(A.to(device))
+        assert calls == [True]
+        assert actual.device == device
+        assert actual.dtype == dtype
+        actual = actual.cpu()
+        actual = actual / actual.norm(dim=1, keepdim=True)
+        expected = expected / expected.norm(dim=1, keepdim=True)
+        self.assert_close(actual, expected, atol=1e-5, rtol=1e-5)
+        self.assert_close(A @ actual, torch.zeros(batch_size, rows, 9 - rows, dtype=dtype), atol=1e-5, rtol=0)
+
+    @pytest.mark.parametrize("rows", [7, 8])
     def test_matches_svd_subspace(self, device, dtype, rows):
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("no backend factorizes half precision; callers promote to float32")
