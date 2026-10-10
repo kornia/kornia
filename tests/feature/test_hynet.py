@@ -18,6 +18,7 @@
 import pytest
 import torch
 
+from kornia.core.check import ShapeError
 from kornia.feature import FilterResponseNorm2d, HyNet
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
@@ -35,6 +36,12 @@ class TestHyNet(BaseTester):
         hynet = HyNet().to(device)
         out = hynet(inp)
         assert out.shape == (1, 128)
+
+    @pytest.mark.parametrize("shape", [(2, 1, 40, 40), (2, 1, 32, 31), (2, 3, 32, 32), (1, 32, 32)])
+    def test_wrong_patch_shape_is_rejected_NNNN(self, device, shape):
+        # without the check a 40x40 patch silently produced a (2, 1152) descriptor
+        with pytest.raises(ShapeError):
+            HyNet().to(device)(torch.ones(*shape, device=device))
 
     def test_shape_batch(self, device):
         inp = torch.ones(4, 1, 32, 32, device=device)

@@ -25,6 +25,7 @@ from kornia.feature.lightglue import (
     LearnableFourierPositionalEncoding,
     LightGlue,
     TokenConfidence,
+    _check_keypoints_normalized,
     apply_cached_rotary_emb,
     normalize_keypoints,
     pad_to_length,
@@ -486,3 +487,19 @@ def test_autocast_of_another_device_type_leaves_descriptors_alone(model_device, 
     with torch.no_grad(), torch.autocast(autocast_device, dtype=autocast_dtype):
         out = lg(data)
     assert out["log_assignment"].dtype == torch.float32
+
+
+class TestKeypointRangeMessage:
+    def test_check_names_the_range_and_the_size_order_NNNN(self):
+        with pytest.raises(Exception, match=r"\[-1, 1\].*\(width, height\)"):
+            _check_keypoints_normalized(torch.tensor([[[0.0, 2.0]]]))
+
+    def test_check_accepts_normalized_keypoints_NNNN(self):
+        _check_keypoints_normalized(torch.tensor([[[-1.0, 1.0], [0.0, 0.5]]]))
+
+    def test_forward_with_a_too_small_image_size_NNNN(self, device):
+        lg = _make_lightglue(device, torch.float32)
+        data = _make_data(device, torch.float32)
+        data["image0"]["image_size"] = torch.tensor([[8.0, 8.0]], device=device)  # keypoints reach 64
+        with pytest.raises(Exception, match="Keypoints must lie inside the image"):
+            lg(data)

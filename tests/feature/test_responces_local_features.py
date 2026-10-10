@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import pytest
 import torch
 
 import kornia
@@ -155,6 +156,30 @@ class TestCornerHarris(BaseTester):
 
 
 class TestCornerGFTT(BaseTester):
+    def test_sigmas_wrong_length_is_rejected_NNNN(self, device):
+        # B = 1 with three sigmas used to broadcast silently to a (3, C, H, W) response
+        inp = torch.rand(1, 1, 8, 8, device=device)
+        with pytest.raises(ValueError, match="Invalid sigmas shape"):
+            kornia.feature.gftt_response(inp, sigmas=torch.ones(3, device=device))
+
+    def test_sigmas_wrong_ndim_is_rejected_NNNN(self, device):
+        inp = torch.rand(2, 1, 8, 8, device=device)
+        with pytest.raises(ValueError, match="Invalid sigmas shape"):
+            kornia.feature.gftt_response(inp, sigmas=torch.ones(2, 1, device=device))
+
+    def test_sigmas_wrong_type_is_rejected_NNNN(self, device):
+        inp = torch.rand(2, 1, 8, 8, device=device)
+        with pytest.raises(TypeError, match=r"sigmas type is not a torch\.Tensor"):
+            kornia.feature.gftt_response(inp, sigmas=[1.0, 2.0])  # type: ignore[arg-type]
+
+    def test_sigmas_scale_the_response_NNNN(self, device):
+        inp = torch.rand(2, 1, 8, 8, device=device)
+        sigmas = torch.tensor([1.0, 2.0], device=device)
+        plain = kornia.feature.gftt_response(inp)
+        scaled = kornia.feature.gftt_response(inp, sigmas=sigmas)
+        assert scaled.shape == plain.shape
+        self.assert_close(scaled, plain * sigmas.pow(4).view(-1, 1, 1, 1))
+
     def test_shape(self, device):
         inp = torch.ones(1, 3, 4, 4, device=device)
         shi_tomasi = kornia.feature.CornerGFTT().to(device)

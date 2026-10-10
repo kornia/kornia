@@ -342,6 +342,23 @@ class TestDescriptorModuleIsNotModified(BaseTester):
 
 
 class TestLocalFeature(BaseTester):
+    def test_int_scaling_coef_NNNN(self, device, dtype):
+        img = torch.rand(1, 1, 48, 64, device=device, dtype=dtype)
+        det = ScaleSpaceDetector(10)
+        desc = LAFDescriptor(SIFTDescriptor(32), 32)
+        as_int = LocalFeature(det, desc, 2).to(device, dtype)
+        as_float = LocalFeature(det, desc, 2.0).to(device, dtype)
+        assert isinstance(as_int.scaling_coef, float)
+        lafs_int, _, descs_int = as_int(img)
+        lafs_float, _, descs_float = as_float(img)
+        self.assert_close(lafs_int, lafs_float)
+        self.assert_close(descs_int, descs_float)
+
+    @pytest.mark.parametrize("coef", [0, 0.0, -1, -0.5])
+    def test_non_positive_scaling_coef_message_NNNN(self, coef):
+        with pytest.raises(ValueError, match="should be > 0"):
+            LocalFeature(ScaleSpaceDetector(10), SIFTDescriptor(32), coef)
+
     def test_smoke(self, device, dtype):
         det = ScaleSpaceDetector(10)
         desc = SIFTDescriptor(32)

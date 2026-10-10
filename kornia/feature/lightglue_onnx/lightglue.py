@@ -28,6 +28,12 @@ from kornia.core.external import onnxruntime as ort
 
 from .utils import download_onnx_from_url, normalize_keypoints
 
+_KEYPOINT_RANGE_MSG = (
+    "Keypoints must lie inside the image: normalized by the image size they have to be in [-1, 1]. The image size "
+    "is (width, height) and the keypoints are (x, y) pixel coordinates; a (height, width) size, or keypoints "
+    "detected on a differently sized image, put them out of range."
+)
+
 __all__ = ["OnnxLightGlue"]
 
 
@@ -159,8 +165,8 @@ class OnnxLightGlue:
         kpts0 = normalize_keypoints(kpts0_, size=size0)  # type: ignore
         kpts1 = normalize_keypoints(kpts1_, size=size1)  # type: ignore
 
-        KORNIA_CHECK(torch.all(kpts0 >= -1).item() and torch.all(kpts0 <= 1).item(), "")  # type: ignore
-        KORNIA_CHECK(torch.all(kpts1 >= -1).item() and torch.all(kpts1 <= 1).item(), "")  # type: ignore
+        KORNIA_CHECK(torch.all(kpts0 >= -1).item() and torch.all(kpts0 <= 1).item(), _KEYPOINT_RANGE_MSG)  # type: ignore
+        KORNIA_CHECK(torch.all(kpts1 >= -1).item() and torch.all(kpts1 <= 1).item(), _KEYPOINT_RANGE_MSG)  # type: ignore
 
         # Inference.
         lightglue_inputs = {"kpts0": kpts0, "kpts1": kpts1, "desc0": desc0, "desc1": desc1}

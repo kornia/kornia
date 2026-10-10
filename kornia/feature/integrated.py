@@ -212,7 +212,8 @@ class LocalFeature(nn.Module):
     Args:
         detector: the detection module.
         descriptor: the descriptor module.
-        scaling_coef: multiplier for change default detector scale (e.g. it is too small for KeyNet by default)
+        scaling_coef: multiplier for change default detector scale (e.g. it is too small for KeyNet by default).
+            An ``int`` is converted to ``float``. Must be positive.
 
     """
 
@@ -221,8 +222,9 @@ class LocalFeature(nn.Module):
         self.detector = detector
         self.descriptor = descriptor
         if scaling_coef <= 0:
-            raise ValueError(f"Scaling coef should be >= 0, got {scaling_coef}")
-        self.scaling_coef = scaling_coef
+            raise ValueError(f"Scaling coef should be > 0, got {scaling_coef}")
+        # scale_laf accepts a float or a tensor, not an int
+        self.scaling_coef = float(scaling_coef)
 
     def forward(
         self, img: torch.Tensor, mask: Optional[torch.Tensor] = None
