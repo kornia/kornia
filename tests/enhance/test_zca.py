@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
@@ -24,6 +26,61 @@ from testing.base import BaseTester
 
 
 class TestZCA(BaseTester):
+    @pytest.mark.parametrize("dim", [0, -1])
+    @pytest.mark.parametrize("unbiased", [True, False])
+    @pytest.mark.parametrize("scale,repeats", [(127.5, 2), (0.5, 65536)])
+    def test_covariance_accumulation(self, device, dtype, dim, unbiased, scale, repeats):
+        data = torch.tensor([[-1.0, -0.5], [-1.0, 0.5], [1.0, -0.5], [1.0, 0.5]], device=device, dtype=dtype)
+        mean = torch.tensor([[scale, scale / 2]], device=device, dtype=dtype)
+        data = data.repeat(repeats, 1) * scale + mean
+        sample_count = data.shape[0]
+        divisor = sample_count - 1 if unbiased else sample_count
+        # The two features have zero cross covariance and variances N * scale**2 / divisor and a quarter of it.
+        std = [math.sqrt(sample_count * s**2 / divisor + 1e-6) for s in (scale, scale / 2)]
+        expected_transform = torch.diag(torch.tensor([1 / s for s in std], device=device, dtype=dtype))
+        expected_inverse = torch.diag(torch.tensor(std, device=device, dtype=dtype))
+        expected = (data - mean) * torch.tensor([1 / s for s in std], device=device, dtype=dtype)
+        if dim != 0:
+            data, expected = data.t(), expected.t()
+
+        transform, actual_mean, inverse = kornia.enhance.zca_mean(data, dim=dim, unbiased=unbiased, return_inverse=True)
+        self.assert_close(transform, expected_transform)
+        self.assert_close(actual_mean, mean)
+        self.assert_close(inverse, expected_inverse)
+        self.assert_close(kornia.enhance.zca_whiten(data, dim=dim, unbiased=unbiased), expected)
+        model = kornia.enhance.ZCAWhitening(dim=dim, unbiased=unbiased)
+        self.assert_close(model(data, include_fit=True), expected)
+
+    @pytest.mark.parametrize("unbiased", [True, False])
+    def test_covariance_accumulation_gradient(self, device, dtype, unbiased):
+        data = torch.tensor([[0.0], [255.0]], device=device, dtype=dtype).repeat(4, 1).requires_grad_()
+        transform, _, _ = kornia.enhance.zca_mean(data, unbiased=unbiased)
+        gradient = torch.autograd.grad(1000 * transform.sum(), data)[0]
+        divisor = data.shape[0] - 1 if unbiased else data.shape[0]
+        variance = data.shape[0] * 127.5**2 / divisor
+        # Differentiate (variance + eps)**(-1/2), with d(variance)/dx = 2 * (x - mean) / divisor.
+        expected = (data.detach() - 127.5) * (-1000 / (divisor * (variance + 1e-6) ** 1.5))
+        self.assert_close(gradient, expected)
+
+    def test_dynamo_covariance_accumulation(self, device, dtype, torch_optimizer):
+        data = torch.tensor([[0.0, 0.0], [0.0, 127.5], [255.0, 0.0], [255.0, 127.5]], device=device, dtype=dtype)
+        data = data.repeat(2, 1)
+        op = kornia.enhance.zca_whiten
+        self.assert_close(torch_optimizer(op)(data), op(data))
+
+    def test_covariance_accumulation_autocast(self, device, dtype):
+        if device.type not in ("cpu", "cuda") or dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("CPU/CUDA half-precision autocast coverage")
+        data = torch.tensor([[0.0], [255.0]], device=device, dtype=dtype).repeat(4, 1)
+        std = math.sqrt(data.shape[0] * 127.5**2 / (data.shape[0] - 1) + 1e-6)
+        with torch.autocast(device_type=device.type, dtype=dtype):
+            transform, mean, inverse = kornia.enhance.zca_mean(data, return_inverse=True)
+            expected = torch.tensor([[1 / std]], device=device, dtype=dtype)
+            self.assert_close(transform, expected)
+            self.assert_close(mean, torch.tensor([[127.5]], device=device, dtype=dtype))
+            self.assert_close(inverse, torch.tensor([[std]], device=device, dtype=dtype))
+            self.assert_close(kornia.enhance.zca_whiten(data), (data - 127.5) / std)
+
     @pytest.mark.parametrize("dim", [0, 1, -1])
     @pytest.mark.parametrize("sample_count", [0, 1])
     def test_unbiased_sample_count(self, device, dtype, dim, sample_count):
