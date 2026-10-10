@@ -5515,17 +5515,13 @@ class TestEulerFromQuaternion(BaseTester):
 
     @pytest.mark.parametrize("sign", [1.0, -1.0], ids=["pitch_plus_pi_over_2", "pitch_minus_pi_over_2"])
     def test_convention_roundtrip_holds_at_gimbal_lock_random_roll_yaw_3993(self, device, dtype, sign):
-        # Regression for kornia#3993: a single fixed (roll, yaw) = (0.1, 0.2) probe at gimbal lock is
-        # not enough to catch a gimbal detector that only fires for SOME (roll, yaw) pairs at the
-        # pole -- exactly the failure mode of the cos(pitch) estimator this test guards against
-        # regressing to. sqrt(1 - sinp**2) recomputes cos(pitch) from an already-rounded sinp, so at
-        # a true pole it does not evaluate to ~0 but to sqrt(k * eps) for however many ulps k the
-        # rounded sinp fell short of 1 -- and k varies with (roll, yaw). Measured over 500 random
-        # (roll, yaw) per (dtype, sign) cell, that estimator missed 9-13 poles per 500 at the
-        # threshold this branch uses; hypot(sinr_cosp, cosr_cosp) has no such cancellation and
-        # measured 0/500. Both dtype and sign are covered here (dtype via the fixture, both signs via
-        # this parametrize) because the failure rate differs by dtype and the two signs exercise
-        # different branches of the yaw-folding logic.
+        # Regression for kornia#3993: a single fixed (roll, yaw) = (0.1, 0.2) probe at gimbal lock
+        # cannot catch a gimbal detector that fires for only SOME (roll, yaw) pairs at the pole, so
+        # 200 random pairs are drawn per dtype and sign (the two signs take different yaw branches).
+        # Besides the rotation, the returned triple itself is pinned: pitch is exactly +-pi/2 (an
+        # asin left unsnapped is up to ~6e-4 short of it in float32, which the low-tolerance rotation
+        # check alone would accept), roll is exactly 0, yaw lies in [-pi, pi] (2 * atan2(x, w) spans
+        # (-2pi, 2pi]), and -q, the same rotation, returns the same triple bit for bit.
         _skip_if_dtype_unavailable(device, dtype)
 
         pitch_in = sign * torch.pi / 2
@@ -5537,12 +5533,20 @@ class TestEulerFromQuaternion(BaseTester):
         pitch_batch = torch.full_like(roll_in, pitch_in)
 
         quaternion = quaternion_from_euler(roll_in, pitch_batch, yaw_in)
-        roundtrip = quaternion_from_euler(*euler_from_quaternion(*quaternion))
+        euler = euler_from_quaternion(*quaternion)
+        roundtrip = quaternion_from_euler(*euler)
 
         rot_in = kornia.geometry.conversions.quaternion_to_rotation_matrix(torch.stack(quaternion, dim=-1))
         rot_back = kornia.geometry.conversions.quaternion_to_rotation_matrix(torch.stack(roundtrip, dim=-1))
 
         self.assert_close(rot_in, rot_back, low_tolerance=True)
+
+        roll_out, pitch_out, yaw_out = euler
+        assert torch.equal(pitch_out, torch.full_like(pitch_out, sign * math.pi / 2))
+        assert torch.equal(roll_out, torch.zeros_like(roll_out))
+        assert bool((yaw_out.abs() <= math.pi).all()), f"yaw outside [-pi, pi]: {yaw_out.abs().max().item()}"
+        for out, out_negated in zip(euler, euler_from_quaternion(*(-component for component in quaternion))):
+            assert torch.equal(out, out_negated)
 
     @pytest.mark.parametrize("sign", [1.0, -1.0], ids=["pitch_plus_pi_over_2", "pitch_minus_pi_over_2"])
     def test_convention_near_pole_pitch_is_not_snapped_to_gimbal_lock_3993(self, device, dtype, sign):
@@ -5568,6 +5572,61 @@ class TestEulerFromQuaternion(BaseTester):
         assert (roll_out != 0).all(), (
             f"kornia#3993: pitch {offset:.3g} away from the pole was snapped to gimbal lock (roll pinned to 0)"
         )
+
+    @pytest.mark.parametrize("sign", [1.0, -1.0], ids=["pitch_plus_pi_over_2", "pitch_minus_pi_over_2"])
+    def test_convention_pitch_inside_the_gimbal_band_is_snapped_3993(self, device, dtype, sign):
+        # The other side of the near-pole pin above: a pitch sqrt(eps) / 2 from the pole is inside the
+        # 2 * sqrt(eps) band and is snapped on purpose. The snapped triple is off by about the pitch
+        # offset, while the regular atan2 path's error grows like eps / cos(pitch). Measured over these
+        # 50 draws, the rotation error is 1.0x the offset in float32 and float64 (up to 1.41x in bfloat16)
+        # when snapped, and 4.9x to 10x when the band is narrowed so that the atan2 path is taken.
+        _skip_if_dtype_unavailable(device, dtype)
+
+        offset = 0.5 * torch.finfo(dtype).eps ** 0.5
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        roll_in = (torch.rand(50, generator=generator, dtype=torch.float64) * 2 - 1) * torch.pi
+        yaw_in = (torch.rand(50, generator=generator, dtype=torch.float64) * 2 - 1) * torch.pi
+        roll_in = roll_in.to(device=device, dtype=dtype)
+        yaw_in = yaw_in.to(device=device, dtype=dtype)
+        pitch_batch = torch.full_like(roll_in, sign * (torch.pi / 2 - offset))
+
+        quaternion = quaternion_from_euler(roll_in, pitch_batch, yaw_in)
+        roundtrip = quaternion_from_euler(*euler_from_quaternion(*quaternion))
+        rot_in = kornia.geometry.conversions.quaternion_to_rotation_matrix(torch.stack(quaternion, dim=-1))
+        rot_back = kornia.geometry.conversions.quaternion_to_rotation_matrix(torch.stack(roundtrip, dim=-1))
+
+        error = (rot_in - rot_back).abs().max().item()
+        assert error < 3 * offset, f"kornia#3993: rotation error {error:.3g} at pitch offset {offset:.3g}"
+
+    def test_convention_gradient_is_finite_at_half_turns_and_gimbal_lock_3993(self, device, dtype):
+        # atan2's gradient at (0, 0) is nan on torch < 2.14 (2.14 returns 0), and torch.where does not
+        # mask a nan coming from the branch it discards. Two families of inputs put an atan2 at the
+        # origin: half-turns about an axis in the y-z plane (w = x = 0, which includes the plain
+        # yaw = pi rotation), where the locked yaw's (x, w) is (0, 0) although the lock branch is not
+        # taken, and exact poles, where the roll and yaw atan2 pairs are (0, 0) although their values
+        # are replaced. Only legs on torch < 2.14 (2.5.1, 2.9.1) can fail this pin. At the poles roll
+        # and pitch are constants, so their gradient is exactly 0 and all of it is in yaw.
+        quaternion = torch.tensor(
+            [
+                [0.0, 0.0, 0.0, 1.0],
+                [0.0, 0.0, 0.6, 0.8],
+                [0.0, 0.0, -0.6, 0.8],
+                [0.5, 0.5, 0.5, -0.5],
+                [0.5, -0.5, 0.5, 0.5],
+            ],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        roll, pitch, yaw = euler_from_quaternion(*quaternion.unbind(-1))
+        grad_roll, grad_pitch, grad_yaw = (
+            torch.autograd.grad(angle.sum(), quaternion, retain_graph=True)[0] for angle in (roll, pitch, yaw)
+        )
+
+        for name, grad in (("roll", grad_roll), ("pitch", grad_pitch), ("yaw", grad_yaw)):
+            assert bool(torch.isfinite(grad).all()), f"kornia#3993: d{name}/dq is not finite:\n{grad}"
+        assert torch.equal(grad_roll[3:], torch.zeros_like(grad_roll[3:]))
+        assert torch.equal(grad_pitch[3:], torch.zeros_like(grad_pitch[3:]))
 
     def test_convention_euler_from_quaternion_normalizes_its_input_3953(self, device, dtype):
         # Intended behavior: the euler angles of a quaternion depend only on the rotation it

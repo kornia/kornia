@@ -1297,7 +1297,6 @@ def euler_from_quaternion(
 
     sinr_cosp = 2.0 * (w * x + y * z)
     cosr_cosp = 1.0 - 2.0 * (x * x + yy)
-    roll = sinr_cosp.atan2(cosr_cosp)
 
     sinp = 2.0 * (w * y - z * x)
     sinp = sinp.clamp(min=-1.0, max=1.0)
@@ -1313,7 +1312,6 @@ def euler_from_quaternion(
 
     siny_cosp = 2.0 * (w * z + x * y)
     cosy_cosp = 1.0 - 2.0 * (yy + z * z)
-    yaw = siny_cosp.atan2(cosy_cosp)
 
     # Gimbal lock: at pitch = ±pi/2 the cos(pitch) factor shared by the roll and
     # yaw atan2 arguments collapses to ~0, so each becomes atan2(0, 0) and the
@@ -1339,9 +1337,16 @@ def euler_from_quaternion(
     # argument rounds below 1, which alone would leave the round trip off by ~1e-8),
     # pin roll to 0 and put the resolved degree of freedom into yaw.
     pitch_locked = torch.where(up, torch.full_like(pitch, math.pi / 2), torch.full_like(pitch, -math.pi / 2))
-    yaw_locked = torch.where(up, -2.0 * x.atan2(w), 2.0 * x.atan2(w))
+    # The locked yaw is 2 * atan2(x, w), taken as the atan2 of its double-angle pair so that it stays in
+    # [-pi, pi] and does not change under q -> -q. Each atan2 gets a safe argument where its value is not
+    # used -- (x, w) is (0, 0) at half-turns off the pole, the roll and yaw pairs are (0, 0) at it -- since
+    # atan2's gradient at the origin is nan on torch < 2.14 and torch.where does not mask it.
+    x_lock, w_lock = torch.where(gimbal, x, 0.0), torch.where(gimbal, w, 1.0)
+    yaw_locked = (2.0 * x_lock * w_lock).atan2(w_lock * w_lock - x_lock * x_lock)
+    yaw_locked = torch.where(up, -yaw_locked, yaw_locked)
     pitch = torch.where(gimbal, pitch_locked, pitch)
-    roll = torch.where(gimbal, torch.zeros_like(roll), roll)
+    roll = torch.where(gimbal, 0.0, sinr_cosp).atan2(torch.where(gimbal, 1.0, cosr_cosp))
+    yaw = torch.where(gimbal, 0.0, siny_cosp).atan2(torch.where(gimbal, 1.0, cosy_cosp))
     yaw = torch.where(gimbal, yaw_locked, yaw)
 
     return roll, pitch, yaw
