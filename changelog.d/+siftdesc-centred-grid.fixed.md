@@ -1,0 +1,8 @@
+`SIFTDescriptor` now centres its grid of spatial cells on the patch centre `(patch_size - 1) / 2`, where its
+Gaussian weighting window already was. The grid, inherited from pytorch-sift, sat above and to the left of it: by
+1.5 pixels at the default patch size 41, and by more at larger patch sizes. A mirrored or `rot90`-rotated patch
+therefore did not give a permuted descriptor; it now does, up to rounding. At some patch sizes, 41 among them, the
+centred grid needs a pooling kernel one pixel wider (17 instead of 16 pixels), and `get_sift_bin_ksize_stride_pad`
+returns it with the new `pad`. Descriptors change for `SIFTDescriptor`, `sift_describe` and the `"patch"` backend of
+`SIFTFeature` and `SIFTFeatureScaleSpace`; the `"pyramid"` backends and `DenseSIFTDescriptor` are unchanged. A state
+dict saved with the former pooling kernel still loads.
