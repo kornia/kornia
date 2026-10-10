@@ -343,10 +343,7 @@ def rgb2short(rgb: str) -> Tuple[str, str]:
             if s <= part <= b:
                 s1 = abs(s - part)
                 b1 = abs(b - part)
-                if s1 < b1:
-                    closest = s
-                else:
-                    closest = b
+                closest = s if s1 < b1 else b
                 res.append(closest)
                 break
             i += 1

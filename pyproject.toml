@@ -231,6 +231,7 @@ select = [
   "SIM102",  # collapsible-if
   "SIM103",  # needless-bool
   "SIM105",  # suppressible-exception
+  "SIM108",  # if-else-block-instead-of-if-exp
   "SIM114",  # if-with-same-arms
   "SIM115",  # open-file-with-context-handler
   "SIM117",  # multiple-with-statements
