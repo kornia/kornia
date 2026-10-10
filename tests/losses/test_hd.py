@@ -17,7 +17,6 @@
 
 import pytest
 import torch
-from torch._dynamo.testing import CompileCounter
 
 import kornia
 from kornia.core._compat import torch_version_lt
@@ -195,6 +194,8 @@ class TestHausdorffLoss(BaseTester):
     )
     def test_trace_labels_like_eager(self, hd, shape, device, dtype):
         # The range check reads the data, so any capture has to skip it, not only export (#5037).
+        from torch._dynamo.testing import CompileCounter
+
         num_classes = 3
         logits = torch.rand(2, num_classes, *shape, device=device, dtype=dtype)
         labels = (torch.rand(2, 1, *shape, device=device) * (num_classes - 1)).long()
