@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
@@ -765,16 +767,18 @@ class TestAffine2d(BaseTester):
 
     @pytest.mark.parametrize("custom_center", [False, True])
     def test_convention_affine_shear_radians_5661(self, device, dtype, custom_center):
-        # tan(pi/4) = 1: x' = x - (y - cy), then y' = y - (x' - cx).
-        shear = torch.full((1, 2), torch.pi / 4, device=device, dtype=dtype)
+        # tan(sx) = 1 and tan(sy) = 2: x' = x - (y - cy), then y' = y - 2 (x' - cx).
+        shear = torch.tensor([[math.pi / 4, math.atan(2.0)]], device=device, dtype=dtype)
         center = torch.tensor([[2.0, 3.0] if custom_center else [4.0, 4.0]], device=device, dtype=dtype)
         cx, cy = (2.0, 3.0) if custom_center else (4.0, 4.0)
-        matrix = torch.tensor([[[1.0, -1.0, cy], [-1.0, 2.0, cx - cy], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        matrix = torch.tensor(
+            [[[1.0, -1.0, cy], [-2.0, 3.0, 2.0 * (cx - cy)], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
+        )
         angle = torch.zeros(1, device=device, dtype=dtype)
         translation = torch.zeros(1, 2, device=device, dtype=dtype)
         scale = torch.ones(1, 2, device=device, dtype=dtype)
-        # Float16 rounds pi/4 before tan; the largest matrix error is 0.00245 (versus >= 1 for wrong order).
-        tolerance = {"atol": 3e-3, "rtol": 1e-3} if dtype == torch.float16 else {}
+        # Float16 rounds the angles before tan (versus errors >= 1 for a wrong order or swapped angles).
+        tolerance = {"atol": 5e-3, "rtol": 1e-3} if dtype == torch.float16 else {}
         self.assert_close(
             kornia.geometry.transform.get_shear_matrix2d(center, shear[:, 0], shear[:, 1]), matrix, **tolerance
         )
@@ -786,13 +790,26 @@ class TestAffine2d(BaseTester):
         image = torch.zeros(1, 1, 9, 9, device=device, dtype=dtype)
         image[0, 0, 6, 5] = 1
         expected = torch.zeros_like(image)
-        row, col = (6, 2) if custom_center else (7, 3)
+        row, col = (6, 2) if custom_center else (8, 3)
         expected[0, 0, row, col] = 1
         # Explicit typed zero rotation avoids the separate shear-only dtype/device inference bug (#5662).
         transform = kornia.geometry.transform.Affine(
             angle=angle, shear=shear, center=center if custom_center else None, mode="nearest", align_corners=True
         )
         self.assert_close(transform(image), expected)
+
+    def test_wart_shear_and_affine_shear_the_other_way_5661(self, device, dtype):
+        # One pixel at row 8, column 4. shear() reads 0.5 as a factor about pixel (0, 0) and moves it to column
+        # 4 + 0.5 * 8 = 8; Affine reads it as an angle about the centre and moves it to 4 - tan(0.5) * (8 - 4) = 1.8.
+        shear = torch.tensor([[0.5, 0.0]], device=device, dtype=dtype)
+        image = torch.zeros(1, 1, 9, 9, device=device, dtype=dtype)
+        image[0, 0, 8, 4] = 1
+        sheared = kornia.geometry.transform.shear(image, shear, mode="nearest", align_corners=True)
+        # a typed zero angle, as above (#5662)
+        angle = torch.zeros(1, device=device, dtype=dtype)
+        affine = kornia.geometry.transform.Affine(angle=angle, shear=shear, mode="nearest", align_corners=True)
+        assert sheared[0, 0, 8].argmax().item() == 8
+        assert affine(image)[0, 0, 8].argmax().item() == 2
 
     def test_affine_rotate_translate(self, device, dtype):
         batch_size = 2

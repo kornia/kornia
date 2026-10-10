@@ -535,7 +535,9 @@ def shear(
     Convention:
         - ``shear`` is a pair of raw factors ``(shx, shy)`` about pixel ``(0, 0)``:
           ``x_out = x + shx * y``, ``y_out = y + shy * x`` (x right, y down).
-          Unlike :class:`Affine`, these are not angles or ordered, centered shears.
+        - Known defect: :class:`Affine` reads its ``shear`` as angles in radians about the image centre, with the
+          opposite sign, so the same tensor shears the other way there
+          (`#5661 <https://github.com/kornia/kornia/issues/5661>`_).
         - align_corners: ``False`` by default (differs from the other 2D affine warps and from
           :class:`Shear`, which default to ``True``)
 
@@ -877,7 +879,8 @@ class Affine(nn.Module):
     Convention:
         - ``shear`` contains angles in radians, using the negative-tangent, x-then-y convention
           of :func:`get_shear_matrix2d` about ``center`` (by default ``((W - 1) / 2, (H - 1) / 2)``).
-          This differs from the raw factors about pixel ``(0, 0)`` used by :func:`shear` and :class:`Shear`.
+        - Known defect: :func:`shear` and :class:`Shear` read their ``shear`` as raw factors about pixel ``(0, 0)``,
+          with the opposite sign (`#5661 <https://github.com/kornia/kornia/issues/5661>`_).
         - ``align_corners`` defaults to ``True``. See the convention block of :func:`affine`.
 
     Args:
