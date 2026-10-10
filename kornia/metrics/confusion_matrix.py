@@ -49,8 +49,9 @@ def confusion_matrix(
     Convention:
         - ``pred`` and ``target`` are class labels of the same shape, prediction first, in ``uint8`` or any signed
           integer dtype; a bool tensor counts as the labels 0 and 1. A floating-point label tensor raises, and so does
-          a label outside :math:`[0, K)`, unless the call captures a graph (``torch.compile`` or ``torch.export``),
-          which skips the range check.
+          a label outside :math:`[0, K)`, unless graph capture traces the range check (``torch.export``,
+          ``torch.compile(fullgraph=True)``), which skips it: an out-of-range label is then counted in another cell
+          or makes the call fail.
         - The first axis is always the batch: the result holds one :math:`(K, K)` float32 count matrix per sample,
           :math:`(B, K, K)`, and is never pooled over the batch, so a flat :math:`(N,)` label vector gives :math:`N`
           matrices that count one label each. Sum over the first axis for the matrix of a whole batch or dataset.

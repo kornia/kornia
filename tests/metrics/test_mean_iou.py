@@ -23,7 +23,7 @@ import kornia
 from kornia.core._compat import torch_version_lt
 from kornia.core.exceptions import BaseError
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 
 class TestMeanIoU(BaseTester):
@@ -342,6 +342,7 @@ class TestMeanIoUBBox(BaseTester):
         assert actual.dtype == torch.float32
         self.assert_close(actual, torch.tensor([[1.0]], device=device))
 
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_trace_boxes_like_eager(self, device, dtype):
         # The box-validity check reads the data, so any capture has to skip it, not only export (#5037).
         boxes_1 = torch.tensor([[0.0, 0.0, 4.0, 4.0], [1.0, 1.0, 3.0, 6.0]], device=device, dtype=dtype)
