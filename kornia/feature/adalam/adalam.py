@@ -24,7 +24,7 @@ from typing import Optional, Tuple, Union
 
 import torch
 
-from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.feature.laf import get_laf_center, get_laf_orientation, get_laf_scale
 
 from .core import AdalamConfig, _no_match, adalam_core
@@ -62,7 +62,11 @@ def match_adalam(
 
     See :cite:`AdaLAM2020` for more details.
 
-    If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
+    The putative matches are the nearest neighbours in the distance matrix ``dm``, kept when they are mutual
+    nearest neighbours (``force_seed_mnn``), with the ratio between the two smallest distances as their score.
+    If ``dm`` is not provided, the squared L2 distances between the descriptors are used.
+
+    The computation runs on the device of ``desc1`` unless ``config`` sets ``"device"``.
 
     Args:
         desc1: Batch of descriptors of a shape :math:`(B1, D)`.
@@ -71,7 +75,7 @@ def match_adalam(
         lafs2: LAFs of a shape :math:`(1, B2, 2, 3)`.
         config: dict with AdaLAM config
         dm: torch.Tensor containing the distances from each descriptor in desc1
-          to each descriptor in desc2, shape of :math:`(B1, B2)`.
+          to each descriptor in desc2, shape of :math:`(B1, B2)`. Smaller is better.
         hw1: Height/width of image.
         hw2: Height/width of image.
 
@@ -87,10 +91,8 @@ def match_adalam(
     KORNIA_CHECK_LAF(lafs1)
     KORNIA_CHECK_LAF(lafs2)
     config_ = get_adalam_default_config()
-    if config is None:
-        config_["device"] = desc1.device
-    else:
-        config_ = get_adalam_default_config()
+    config_["device"] = desc1.device
+    if config is not None:
         for key, val in config.items():
             if key not in config_:
                 warnings.warn(
@@ -114,6 +116,7 @@ def match_adalam(
         get_laf_scale(lafs1).reshape(-1),
         get_laf_scale(lafs2).reshape(-1),
         return_dist=True,
+        dm=dm,
     )
     return quality, idxs
 
@@ -226,6 +229,7 @@ class AdalamFilter:
         s1: Optional[torch.Tensor] = None,
         s2: Optional[torch.Tensor] = None,
         return_dist: bool = False,
+        dm: Optional[torch.Tensor] = None,
     ) -> Union[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
         """Match and filter with AdaLAM.
 
@@ -261,6 +265,9 @@ class AdalamFilter:
                    Expected an array with shape (num_keypoints_in_source/destination_image,)
             s2: Same as s1 for destination.
             return_dist: if True, inverse confidence value is also outputted.
+            dm: distances from each descriptor in d1 to each descriptor in d2, shape
+                (num_keypoints_in_source_image, num_keypoints_in_destination_image); smaller is better. If None,
+                the squared L2 distances between d1 and d2 are used.
 
         Returns:
             Filtered putative matches.
@@ -299,7 +306,14 @@ class AdalamFilter:
                 return idxs, dists
             return idxs
 
-        distmat = dist_matrix(_d1, _d2, is_normalized=False)
+        if dm is None:
+            distmat = dist_matrix(_d1, _d2, is_normalized=False)
+        else:
+            KORNIA_CHECK(
+                tuple(dm.shape) == (len(_d1), len(_d2)),
+                f"dm must have shape {(len(_d1), len(_d2))}, got {tuple(dm.shape)}",
+            )
+            distmat = torch.as_tensor(dm, device=self.config["device"], dtype=torch.float32)
         dd12, nn12 = torch.topk(distmat, k=2, dim=1, largest=False)  # (n1, 2)
 
         putative_matches = nn12[:, 0]

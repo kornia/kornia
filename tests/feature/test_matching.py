@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
@@ -579,6 +581,80 @@ class TestAdalam(BaseTester):
         assert dists.shape[0] <= data_dev["descs2"].shape[0]
         expected_idxs = data_dev["expected_idxs"].long()
         self.assert_close(idxs, expected_idxs, rtol=1e-4, atol=1e-4)
+
+
+def _adalam_scene(device, H=240, W=320, n_in=400, n_out=200, D=32, seed=0):
+    # n_in affine inliers (a 10 degree rotation, 1.2 scale and a shift) plus n_out outliers, in an H x W image.
+    g = torch.Generator().manual_seed(seed)
+    xy1 = torch.rand(n_in + n_out, 2, generator=g) * torch.tensor([W - 1.0, H - 1.0])
+    a = math.radians(10.0)
+    R = 1.2 * torch.tensor([[math.cos(a), -math.sin(a)], [math.sin(a), math.cos(a)]])
+    xy2 = torch.cat(
+        [
+            (xy1[:n_in] - torch.tensor([160.0, 120.0])) @ R.T
+            + torch.tensor([165.0, 118.0])
+            + 0.7 * torch.randn(n_in, 2, generator=g),
+            torch.rand(n_out, 2, generator=g) * torch.tensor([W - 1.0, H - 1.0]),
+        ]
+    )
+    d1 = torch.nn.functional.normalize(torch.randn(n_in + n_out, D, generator=g), dim=1)
+    noisy = d1[:n_in] + 0.15 * torch.randn(n_in, D, generator=g)
+    d2 = torch.nn.functional.normalize(torch.cat([noisy, torch.randn(n_out, D, generator=g)]), dim=1)
+    s = torch.full((1, n_in + n_out, 1, 1), 8.0)
+    lafs1 = laf_from_center_scale_ori(xy1[None], s)
+    lafs2 = laf_from_center_scale_ori(xy2[None], 1.2 * s)
+    return d1.to(device), d2.to(device), lafs1.to(device), lafs2.to(device), (H, W)
+
+
+class TestAdalamInputs(BaseTester):
+    def test_dm_default_is_squared_l2_NNNN(self, device):
+        d1, d2, l1, l2, hw = _adalam_scene(device)
+        q0, i0 = match_adalam(d1, d2, l1, l2, hw1=hw, hw2=hw)
+        dm = (d1[:, None, :] - d2[None, :, :]).pow(2).sum(-1)
+        q1, i1 = match_adalam(d1, d2, l1, l2, hw1=hw, hw2=hw, dm=dm)
+        assert len(i0) > 100
+        assert torch.equal(i0.sort(0).values, i1.sort(0).values)
+        self.assert_close(q0.sort(0).values, q1.sort(0).values, low_tolerance=True)
+
+    def test_dm_drives_the_putative_matches_NNNN(self, device):
+        d1, d2, l1, l2, hw = _adalam_scene(device)
+        _, i0 = match_adalam(d1, d2, l1, l2, hw1=hw, hw2=hw)
+        _, i1 = match_adalam(d1, d2, l1, l2, hw1=hw, hw2=hw, dm=torch.cdist(d1, d2).flip(1))
+        assert not torch.equal(i0, i1)
+        # the flipped distances prefer the mirrored candidate, which is not an inlier of the scene
+        assert len(i1) < len(i0)
+
+    def test_dm_wrong_shape_NNNN(self, device):
+        d1, d2, l1, l2, hw = _adalam_scene(device)
+        with pytest.raises(Exception, match="dm must have shape"):
+            match_adalam(d1, d2, l1, l2, hw1=hw, hw2=hw, dm=torch.zeros(len(d1), len(d2) - 1, device=device))
+
+    def test_hw_list_equals_tuple_NNNN(self, device):
+        d1, d2, l1, l2, (H, W) = _adalam_scene(device)
+        # an image much larger than the keypoint spread changes the seed radius, so a list that is ignored differs
+        tuple_out = match_adalam(d1, d2, l1, l2, hw1=(4 * H, 4 * W), hw2=(4 * H, 4 * W))
+        list_out = match_adalam(d1, d2, l1, l2, hw1=[4 * H, 4 * W], hw2=[4 * H, 4 * W])
+        none_out = match_adalam(d1, d2, l1, l2)
+        assert len(tuple_out[1]) != len(none_out[1])
+        assert torch.equal(tuple_out[1], list_out[1])
+
+    @pytest.mark.parametrize("config", [{"ransac_iters": 128}, {}])
+    def test_device_follows_input_with_config_NNNN(self, device, config):
+        d1, d2, l1, l2, hw = _adalam_scene(device)
+        quality, idxs = match_adalam(d1, d2, l1, l2, config=config, hw1=hw, hw2=hw)
+        assert idxs.device == d1.device
+        assert quality.device == d1.device
+
+    def test_module_device_follows_input_NNNN(self, device):
+        d1, d2, l1, l2, _ = _adalam_scene(device)
+        quality, idxs = GeometryAwareDescriptorMatcher("adalam")(d1, d2, l1, l2)
+        assert idxs.device == d1.device
+        assert quality.device == d1.device
+
+    def test_explicit_device_is_kept_NNNN(self, device):
+        d1, d2, l1, l2, hw = _adalam_scene(device)
+        _, idxs = match_adalam(d1, d2, l1, l2, config={"device": torch.device("cpu")}, hw1=hw, hw2=hw)
+        assert idxs.device.type == "cpu"
 
 
 class TestLightGlueDISK(BaseTester):
