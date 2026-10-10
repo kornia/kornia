@@ -1873,6 +1873,28 @@ class TestConventionAugmentationSequential(BaseTester):
         assert restored_image.shape == restored_mask.shape == (0, 1, 2, 2)
         assert restored_mask.dtype == mask.dtype
 
+    @pytest.mark.parametrize(
+        "make_op", [lambda: K.Resize((4, 5)), lambda: K.CenterCrop((4, 5)), lambda: K.RandomCrop((4, 5), p=1.0)]
+    )
+    @pytest.mark.parametrize("as_dict", [False, True])
+    @pytest.mark.parametrize("mask_dtype", [torch.int64, torch.bool])
+    def test_empty_batch_shape_changing_mask_follows_image_4429(self, make_op, as_dict, mask_dtype, device, dtype):
+        image = torch.empty(0, 3, 8, 10, device=device, dtype=dtype)
+        mask = torch.empty(0, 1, 8, 10, device=device, dtype=mask_dtype)
+        seq = K.AugmentationSequential(make_op(), data_keys=None if as_dict else ["input", "mask"])
+
+        if as_dict:
+            result = seq({"input": image, "mask": mask})
+            out_image, out_mask = result["input"], result["mask"]
+        else:
+            out_image, out_mask = seq(image, mask)
+
+        assert out_image.shape == (0, 3, 4, 5)
+        assert out_mask.shape == (0, 1, 4, 5)
+        assert out_image.device == out_mask.device == device
+        assert out_image.dtype == dtype
+        assert out_mask.dtype == mask_dtype
+
     def test_dictionary_preserves_metadata_and_input_4483(self, device, dtype):
         seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)
         metadata = {"imagenet_id": 7, "maskrcnn_boxes": "unchanged", "labelled_image": None, "note": "retained"}

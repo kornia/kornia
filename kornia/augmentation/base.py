@@ -481,7 +481,12 @@ class _AugmentationBase(_BasicAugmentationBase):
         output_transformed = self.apply_transform_mask(in_tensor, params, flags, transform=transform)
         output_not_transformed = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
 
-        output = self._blend_by_prob(output_transformed, output_not_transformed, to_apply)
+        # With an empty, statically always-applied batch, the image path takes the transformed shape.
+        # An empty gate has no rows to blend, so keep the mask on that same canvas (#4429).
+        if self.p == 1.0 and self.p_batch == 1.0 and batch_prob.numel() == 0:
+            output = output_transformed
+        else:
+            output = self._blend_by_prob(output_transformed, output_not_transformed, to_apply)
 
         if not self.keepdim:
             return output
