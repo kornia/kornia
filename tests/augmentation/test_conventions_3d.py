@@ -483,19 +483,22 @@ class Test3DAugmentationConventions(BaseTester):
             K.RandomCrop3D((6, 5, 6), p=0.0)(volume)
 
     @pytest.mark.device_agnostic
-    def test_wart_crop3d_siblings_disagree_on_size_errors_4417(self):
-        # #4417: flips when the two classes validate `size` the same way; which assertion fails depends on the
-        # direction of the fix.
+    def test_crop3d_size_errors_4417(self):
+        # #4417: CenterCrop3D accepts an integer while RandomCrop3D requires a (D, H, W) tuple, but both classes
+        # name `size` and use consistent exception types for invalid and oversized values.
         volume = torch.rand(1, 1, 4, 5, 6)
-        with pytest.raises(AssertionError):
+        oversized = r"input_size \(4, 5, 6\) cannot be smaller than crop size \(5, 5, 6\) in any dimension\."
+        with pytest.raises(ValueError, match=oversized):
             K.CenterCrop3D((5, 5, 6), p=1.0)(volume)
-        with pytest.raises(ValueError, match=r"cannot be smaller than crop size"):
+        with pytest.raises(ValueError, match=oversized):
             K.RandomCrop3D((5, 5, 6), p=1.0)(volume)
         assert K.CenterCrop3D(2, p=1.0)(volume).shape == (1, 1, 2, 2, 2)
-        with pytest.raises(AssertionError):
+        with pytest.raises(TypeError, match=r"`size` must be a tuple of three integers\. Got 2\."):
             K.RandomCrop3D(2, p=1.0)(volume)
-        with pytest.raises(IndexError):
+        with pytest.raises(TypeError, match=r"`size` must be an integer or a tuple of three integers\. Got \(2, 2\)\."):
             K.CenterCrop3D((2, 2), p=1.0)(volume)
+        with pytest.raises(TypeError, match=r"`size` must be a tuple of three integers\. Got \(2, 2\)\."):
+            K.RandomCrop3D((2, 2), p=1.0)(volume)
 
     @pytest.mark.parametrize(
         "padding,size,marker",

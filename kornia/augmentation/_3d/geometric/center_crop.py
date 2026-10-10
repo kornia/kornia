@@ -51,9 +51,8 @@ class CenterCrop3D(GeometricAugmentationBase3D):
 
         - ``size`` is ``(D, H, W)``. The crop is shared across the batch; its ``p`` is the call-wide gate, so a
           valid ``p=0`` request returns the un-cropped input and ``p=1`` returns the requested crop. Size validation
-          still runs when the call is skipped, so an oversized crop raises even at ``p=0``. The exception types
-          differ from :class:`RandomCrop3D`'s, and a two-element ``size`` fails with ``IndexError``
-          (`#4417 <https://github.com/kornia/kornia/issues/4417>`_).
+          still runs when the call is skipped, so an oversized crop raises even at ``p=0``. Invalid and oversized
+          sizes raise errors that name ``size`` (`#4417 <https://github.com/kornia/kornia/issues/4417>`_).
         - defaults are bilinear resampling and ``align_corners=True``.
 
     Examples:
@@ -97,12 +96,12 @@ class CenterCrop3D(GeometricAugmentationBase3D):
         # same_on_batch is always True for CenterCrop
         # Since PyTorch does not support ragged torch.Tensor. So cropping function happens batch-wisely.
         super().__init__(p=1.0, same_on_batch=True, p_batch=p, keepdim=keepdim)
-        if isinstance(size, tuple):
+        if isinstance(size, tuple) and len(size) == 3 and all(isinstance(value, int) for value in size):
             self.size = (size[0], size[1], size[2])
         elif isinstance(size, int):
             self.size = (size, size, size)
         else:
-            raise Exception(f"Invalid size type. Expected (int, tuple(int, int int). Got: {size}.")
+            raise TypeError(f"`size` must be an integer or a tuple of three integers. Got {size}.")
         self.flags = {"align_corners": align_corners, "resample": Resample.get(resample)}
 
     def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:

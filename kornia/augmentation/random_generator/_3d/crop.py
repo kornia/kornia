@@ -108,8 +108,9 @@ class CropGenerator3D(RandomGeneratorBase):
         # axis and 0 when the crop is one voxel too large. The guard has to reject that zero as well.
         # The size check reads the data, which graph capture cannot do; skip it under export.
         if not is_exporting() and ((x_diff <= 0).any() or (y_diff <= 0).any() or (z_diff <= 0).any()):
+            crop_size = size if isinstance(self.size, torch.Tensor) else self.size
             raise ValueError(
-                f"input_size {(depth, height, width)} cannot be smaller than crop size {size!s} in any dimension."
+                f"input_size {(depth, height, width)} cannot be smaller than crop size {crop_size} in any dimension."
             )
 
         if batch_size == 0:
@@ -210,7 +211,9 @@ def center_crop_generator3d(
         and isinstance(width, int)
         and not (depth >= size[0] and height >= size[1] and width >= size[2])
     ):
-        raise AssertionError(f"Crop size must be smaller than input size. Got ({depth}, {height}, {width}) and {size}.")
+        raise ValueError(
+            f"input_size {(depth, height, width)} cannot be smaller than crop size {size} in any dimension."
+        )
 
     # unpack input sizes
     dst_d, dst_h, dst_w = size
