@@ -223,7 +223,8 @@ class EntropyBasedLossBase(torch.nn.Module):
         # and break ``fullgraph`` capture.
         KORNIA_CHECK(self._ref_mask_is_full or signal.shape[-1] > 0, "mask must select at least one sample.")
         self.register_buffer("signal", _normalize_signal(signal, num_bins, eps))
-        self.register_buffer("mask", mask)
+        # Keep the mask consistent with the cached reference if the caller edits its tensor.
+        self.register_buffer("mask", mask.clone())
         self.num_bins = num_bins
         self.kernel_function = partial(kernel_function.value, window_radius=window_radius)
         self.window_radius = window_radius
@@ -370,13 +371,10 @@ class MILossFromRef(EntropyBasedLossBase):
           ``(*, N)`` with a boolean ``(N,)`` ``mask``, and the module is called with an ``other_signal`` of the same
           shape and its own ``(N,)`` mask.
         - At construction the reference is restricted to its mask, min-max normalised and stored as the buffer
-          ``signal``, next to the buffer ``mask``; later in-place changes to the reference tensor are not seen. The
-          cache is not detached: a reference that requires grad receives a gradient from the first backward pass,
-          and a second backward pass through the same module raises.
-        - Known defect: a boolean ``mask`` on the reference's device is stored as the buffer ``mask`` itself, not a
-          copy, while ``signal`` was restricted with it at construction: editing that mask in place afterwards
-          silently changes the loss, or raises when the number of selected positions changes
-          (`#5630 <https://github.com/kornia/kornia/issues/5630>`_).
+          ``signal``, next to a copy of the mask as the buffer ``mask``; later in-place changes to the reference
+          tensor or to the mask tensor are not seen. The cache is not detached: a reference that requires grad
+          receives a gradient from the first backward pass, and a second backward pass through the same module
+          raises.
     """
 
     def forward(self, other_signal: torch.Tensor, other_mask: torch.Tensor | None = None) -> torch.Tensor:

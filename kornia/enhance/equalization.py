@@ -176,6 +176,31 @@ def _tiles_histc(tiles: torch.Tensor, bins: int) -> torch.Tensor:
     return counts[:, :bins].to(tiles.dtype)
 
 
+def _spread_residual(residual: torch.Tensor, num_bins: int) -> torch.Tensor:
+    r"""Spread the residual of the clipped pixels over the histogram bins the way OpenCV does.
+
+    ``residual`` is the part of the clipped mass of each tile that is left after every bin took the same whole
+    share, so it is below ``num_bins``. OpenCV adds one count to every ``step``-th bin starting at bin 0, with
+    ``step = max(num_bins // residual, 1)``, until the residual is spent. Writing it into the first ``residual``
+    bins instead piles it onto the darkest levels and lifts the whole lookup table, which brightens small tiles
+    by tens of levels.
+
+    Args:
+        residual: residual per tile, shape :math:`(T,)`, below ``num_bins``.
+        num_bins: number of histogram bins.
+
+    Returns:
+        the counts to add, 0 or 1 per bin, shape :math:`(T, num_bins)` in the dtype of ``residual``.
+
+    """
+    bins: torch.Tensor = torch.arange(num_bins, device=residual.device)
+    step: torch.Tensor = torch.div(num_bins, residual.clamp(min=1), rounding_mode="floor").clamp(min=1).unsqueeze(1)
+    hit: torch.Tensor = (torch.remainder(bins, step) == 0) & (
+        torch.div(bins, step, rounding_mode="floor") < residual.unsqueeze(1)
+    )
+    return hit.to(residual.dtype)
+
+
 def _compute_luts(
     tiles_x_im: torch.Tensor, num_bins: int = 256, clip: Union[float, torch.Tensor] = 40.0, diff: bool = False
 ) -> torch.Tensor:
@@ -219,7 +244,7 @@ def _compute_luts(
         clipped_tensor = torch.relu(histos - max_vals).sum(1) if diff else pixels - limited.sum(1)
         residual_tensor = torch.remainder(clipped_tensor, num_bins)
         limited = limited + ((clipped_tensor - residual_tensor) / num_bins).unsqueeze(1)
-        limited = limited + (torch.arange(num_bins, device=histos.device) < residual_tensor.unsqueeze(1))
+        limited = limited + _spread_residual(residual_tensor, num_bins)
         enabled = (clip > 0).to(device=histos.device).view(b, 1).expand(b, gh * gw * c).reshape(-1, 1)
         histos = torch.where(enabled, limited, histos)
     elif clip > 0.0:
@@ -232,10 +257,7 @@ def _compute_luts(
         residual: torch.Tensor = torch.remainder(clipped, num_bins)
         redist: torch.Tensor = (clipped - residual).div(num_bins)
         histos += redist[None].transpose(0, 1)
-        # trick to avoid using a loop to assign the residual
-        v_range: torch.Tensor = torch.arange(num_bins, device=histos.device)
-        mat_range: torch.Tensor = v_range.repeat(histos.shape[0], 1)
-        histos += mat_range < residual[None].transpose(0, 1)
+        histos += _spread_residual(residual, num_bins)
 
     lut_scale: float = (num_bins - 1) / pixels
     luts: torch.Tensor = torch.cumsum(histos, 1) * lut_scale

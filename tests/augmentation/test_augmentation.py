@@ -19,6 +19,7 @@ import copy
 import io
 import os
 import pickle
+import re
 import subprocess
 import sys
 from typing import Any, Dict, Optional, Tuple, Type
@@ -82,6 +83,7 @@ from kornia.augmentation import (
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample, pi
 from kornia.core._compat import torch_version
+from kornia.core.exceptions import BaseError
 from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry import create_meshgrid, transform_points
 
@@ -445,7 +447,7 @@ class TestRandomEqualizeAlternative(CommonTests):
         )
 
     def test_exception(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Input size must have a shape"):
             self._create_augmentation_from_params(p=1.0)(
                 torch.ones((1, 3, 4, 5) * 3, device=self.device, dtype=self.dtype)
             )
@@ -534,11 +536,11 @@ class TestCenterCropAlternative(CommonTests):
             self._create_augmentation_from_params(size=2, resample=True)
 
         # Bound check
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"size"):
             self._create_augmentation_from_params(size=-1)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"size"):
             self._create_augmentation_from_params(size=(-1, 2))
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"size"):
             self._create_augmentation_from_params(size=(2, -1))
 
 
@@ -736,13 +738,13 @@ class TestRandomRotationAlternative(CommonTests):
             self._create_augmentation_from_params(degrees=(3, 3), resample=True)
 
         # Bound check
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"degrees"):
             self._create_augmentation_from_params(degrees=-361.0)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"degrees"):
             self._create_augmentation_from_params(degrees=(-361.0, 360.0))
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"degrees"):
             self._create_augmentation_from_params(degrees=(-360.0, 361.0))
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"degrees"):
             self._create_augmentation_from_params(degrees=(360.0, -360.0))
 
 
@@ -822,7 +824,7 @@ class TestRandomRotation90(CommonTests):
         # Wrong type
         with pytest.raises(TypeError):
             self._create_augmentation_from_params(times="")
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"times out of bounds"):
             self._create_augmentation_from_params(times=(30, 60), align_corners=0)
 
 
@@ -895,9 +897,9 @@ class TestRandomGrayscaleAlternative(CommonTests):
     def test_exception(self):
         torch.manual_seed(42)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"channel"):
             self._create_augmentation_from_params(p=0.0)(torch.rand((1, 1, 4, 5), device=self.device, dtype=self.dtype))
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"channel"):
             self._create_augmentation_from_params(p=1.0)(torch.rand((1, 4, 4, 5), device=self.device, dtype=self.dtype))
 
 
@@ -3116,7 +3118,7 @@ class TestRandomGrayscale(BaseTester):
         # custom per-band weights are honoured; a wrong length is rejected
         weights = torch.full((7,), 1.0 / 7, device=device, dtype=dtype)
         self.assert_close(RandomGrayscale(rgb_weights=weights, p=1.0)(x), expected)
-        with pytest.raises(Exception):
+        with pytest.raises(BaseError, match=r"rgb_weights needs one weight per channel"):
             RandomGrayscale(rgb_weights=torch.ones(4, device=device, dtype=dtype), p=1.0)(x)
 
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
@@ -5165,7 +5167,7 @@ class TestNormalize(BaseTester):
     def test_random_normalize_invalid_parameter_shape(mean, std):
         f = Normalize(mean=mean, std=std, p=1.0)
         inputs = torch.arange(0.0, 16.0, step=1).reshape(1, 4, 4).unsqueeze(0)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"mean length and number of channels do not match"):
             f(inputs)
 
     def test_random_normalize(self, device, dtype):
@@ -6116,7 +6118,7 @@ class TestRandomSnow(BaseTester):
     def test_exception(self, device, dtype):
         exception_test_data = self._get_exception_test_data(device, dtype)
         for err_msg, snow_coef, brght_coef, input_data in exception_test_data:
-            with pytest.raises(Exception) as errinfo:
+            with pytest.raises((BaseError, ValueError), match=re.escape(err_msg)) as errinfo:
                 RandomSnow(p=1.0, snow_coefficient=snow_coef, brightness=brght_coef)(input_data)
 
             assert err_msg in str(errinfo)
@@ -6152,11 +6154,11 @@ class TestRandomMedianBlur(BaseTester):
         self.assert_close(out, expected)
 
     def test_exception(self):
-        with pytest.raises(Exception) as errinfo:
+        with pytest.raises(BaseError, match=r"Kernel size must be an odd integer bigger than 0") as errinfo:
             RandomMedianBlur((4, 4), p=1.0)
         assert "Kernel size must be an odd integer" in str(errinfo.value)
 
-        with pytest.raises(Exception) as errinfo:
+        with pytest.raises(BaseError, match=r"Kernel size must be an odd integer bigger than 0") as errinfo:
             RandomMedianBlur((3, 4), p=1.0)
         assert "Kernel size must be an odd integer" in str(errinfo.value)
 
@@ -6268,7 +6270,7 @@ class TestRandomRain(BaseTester):
     def test_exception(self, device, dtype):
         exception_test_data = self._get_exception_test_data(device, dtype)
         for err_msg, drop_height, drop_width, input_data in exception_test_data:
-            with pytest.raises(Exception) as errinfo:
+            with pytest.raises(BaseError, match=re.escape(err_msg)) as errinfo:
                 RandomRain(p=1.0, drop_height=drop_height, drop_width=drop_width)(input_data)
 
             assert err_msg in str(errinfo)

@@ -27,10 +27,13 @@ from testing.base import BaseTester
 
 
 class TestSequential:
-    @pytest.mark.parametrize("random_apply_weights", [None, [0.8, 0.9]])
-    def test_exception(self, random_apply_weights, device, dtype):
+    @pytest.mark.parametrize(
+        "random_apply_weights,match",
+        [(None, r"No parameters available for inversing"), ([0.8, 0.9], r"length of `random_apply_weights`")],
+    )
+    def test_exception(self, random_apply_weights, match, device, dtype):
         inp = torch.randn(1, 3, 30, 30, device=device, dtype=dtype)
-        with pytest.raises(Exception):  # AssertError and NotImplementedError
+        with pytest.raises(ValueError, match=match):
             K.ImageSequential(
                 K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), random_apply_weights=random_apply_weights
             ).inverse(inp)
@@ -256,10 +259,10 @@ class TestConventionImageSequential(BaseTester):
         skips = K.VideoSequential(K.RandomHorizontalFlip(p=1.0), blur, if_unsupported_ops="skip")
         out = skips(x)
         self.assert_close(skips.inverse(out), out.flip(-1))
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"if_unsupported_ops.*must be either"):
             K.VideoSequential(K.RandomHorizontalFlip(p=1.0), if_unsupported_ops="bogus")
 
     def test_convention_if_unsupported_ops_rejects_invalid_value(self):
         # #4423: construction accepts only "raise" and "skip".
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"if_unsupported_ops.*must be either"):
             K.ImageSequential(K.RandomHorizontalFlip(p=1.0), if_unsupported_ops="bogus")
