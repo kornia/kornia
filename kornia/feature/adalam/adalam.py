@@ -19,6 +19,7 @@
 # https://github.com/cavalli1234/AdaLAM
 # Copyright (c) 2020, Luca Cavalli
 
+import warnings
 from typing import Optional, Tuple, Union
 
 import torch
@@ -92,9 +93,10 @@ def match_adalam(
         config_ = get_adalam_default_config()
         for key, val in config.items():
             if key not in config_:
-                print(
+                warnings.warn(
                     f"WARNING: custom configuration contains a key which is not recognized ({key}). "
-                    f"Known configurations are {list(config_.keys())}."
+                    f"Known configurations are {list(config_.keys())}.",
+                    stacklevel=2,
                 )
                 continue
             # TypedDict does not support variable names. https://stackoverflow.com/a/59583427/1983544
@@ -310,5 +312,16 @@ class AdalamFilter:
             mnn = None
 
         return self.filter_matches(
-            _k1, _k2, putative_matches, scores, mnn, im1shape, im2shape, _o1, _o2, _s1, _s2, return_dist
+            _k1,
+            _k2,
+            putative_matches,
+            scores,
+            mnn,
+            im1shape,
+            im2shape,
+            _o1,
+            _o2,
+            _s1,
+            _s2,
+            return_dist,
         )
