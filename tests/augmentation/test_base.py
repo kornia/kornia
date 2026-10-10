@@ -34,6 +34,7 @@ from kornia.augmentation._3d.geometric.affine import RandomAffine3D
 from kornia.augmentation._3d.geometric.horizontal_flip import RandomHorizontalFlip3D
 from kornia.augmentation._3d.intensity.motion_blur import RandomMotionBlur3D
 from kornia.augmentation.base import _BasicAugmentationBase
+from kornia.augmentation.container.params import ParamItem
 from kornia.core import ImageModule
 from kornia.core._compat import torch_version_lt
 from kornia.filters.dissolving import StableDiffusionDissolving, _DissolvingWraper_HF
@@ -1241,3 +1242,191 @@ class TestConventionAugmentationBase2D(BaseTester):
         # output geometry. Other empty-batch configurations remain tracked by the umbrella issue.
         empty = torch.rand(0, 3, 6, 8, device=device, dtype=dtype)
         assert augmentation()(empty).shape == shape
+
+
+class TestHandMadeBatchProbWithStaticP(BaseTester):
+    """A hand-made ``batch_prob`` is the gate whatever ``p`` is (#5585).
+
+    ``p=1.0, p_batch=1.0`` takes a fast path that skips the non-transform branch and the blend, which is right for
+    the all-ones gate that ``forward_parameters`` samples. A caller that replaces ``params["batch_prob"]`` used to
+    have it ignored by the image and the transformation matrix but honored by ``inverse``, so an image row, its
+    matrix and its labels disagreed about whether the row was transformed.
+    """
+
+    GATE = (0.0, 1.0, 0.0)
+
+    @pytest.mark.parametrize(
+        ("augmentation_cls", "kwargs"),
+        [
+            pytest.param(K.RandomAffine, {"degrees": 30.0}, id="RandomAffine"),
+            pytest.param(K.RandomRotation, {"degrees": 45.0}, id="RandomRotation"),
+            pytest.param(K.RandomHorizontalFlip, {}, id="RandomHorizontalFlip"),
+            pytest.param(K.RandomPerspective, {"distortion_scale": 0.5}, id="RandomPerspective"),
+            pytest.param(K.RandomCrop, {"size": (8, 12), "padding": (1, 2, 3, 0)}, id="RandomCrop-equal-size-padded"),
+            pytest.param(K.RandomResizedCrop, {"size": (8, 12)}, id="RandomResizedCrop"),
+            pytest.param(K.RandomBrightness, {"brightness": (0.5, 1.5)}, id="RandomBrightness"),
+            pytest.param(K.RandomGaussianBlur, {"kernel_size": (3, 3), "sigma": (0.5, 1.5)}, id="RandomGaussianBlur"),
+            pytest.param(K.RandomErasing, {}, id="RandomErasing"),
+        ],
+    )
+    def test_skipped_rows_keep_the_input_and_the_rest_match_the_general_path(
+        self, augmentation_cls, kwargs, device, dtype
+    ):
+        torch.manual_seed(0)
+        x = torch.rand(3, 3, 8, 12, device=device, dtype=dtype)
+        gate = torch.tensor(self.GATE)
+        skipped, applied = gate == 0, gate == 1
+
+        static = augmentation_cls(p=1.0, **kwargs)
+        # `p < 1` never takes the fast path, so it is the reference for what the gate means.
+        general = augmentation_cls(p=0.999, **kwargs)
+        params = general.forward_parameters(x.shape)
+        params["batch_prob"] = gate.clone()
+
+        out_static = static(x, params=copy.deepcopy(params))
+        out_general = general(x, params=copy.deepcopy(params))
+
+        self.assert_close(out_static, out_general)
+        assert torch.equal(out_static[skipped], x[skipped])
+        assert not torch.equal(out_static[applied], x[applied])  # the gate selected a row that really changes
+
+        matrix = getattr(static, "transform_matrix", None)
+        if matrix is not None:
+            self.assert_close(matrix, general.transform_matrix)
+            if matrix.shape[-2:] == (3, 3):
+                eye = torch.eye(3, device=matrix.device, dtype=matrix.dtype).expand(int(skipped.sum()), -1, -1)
+                self.assert_close(matrix[skipped], eye)
+
+    def test_issue_5585_round_trip(self, device, dtype):
+        img = torch.rand(2, 1, 6, 10, device=device, dtype=dtype)
+        aug = K.RandomAffine(90, p=1.0)
+        params = aug.forward_parameters(img.shape)
+        params["batch_prob"] = torch.tensor([0.0, 1.0])
+
+        out = aug(img, params=copy.deepcopy(params))
+        inv = aug.inverse(out, params=copy.deepcopy(params))
+
+        assert torch.equal(out[0], img[0])  # forward leaves the skipped row alone ...
+        assert torch.equal(inv[0], out[0])  # ... and so does inverse
+        assert not torch.equal(out[1], img[1])
+
+    @pytest.mark.parametrize("augmentation_cls", [K.RandomHorizontalFlip, K.RandomVerticalFlip])
+    def test_round_trip_restores_the_batch(self, augmentation_cls, device, dtype):
+        x = torch.rand(3, 3, 8, 12, device=device, dtype=dtype)
+        aug = augmentation_cls(p=1.0)
+        params = aug.forward_parameters(x.shape)
+        params["batch_prob"] = torch.tensor(self.GATE)
+
+        out = aug(x, params=copy.deepcopy(params))
+        self.assert_close(aug.inverse(out, params=copy.deepcopy(params)), x)
+
+    @pytest.mark.parametrize(
+        ("augmentation_cls", "kwargs"),
+        [
+            pytest.param(K.RandomAffine3D, {"degrees": (30.0, 30.0, 30.0)}, id="RandomAffine3D"),
+            pytest.param(K.RandomDepthicalFlip3D, {}, id="RandomDepthicalFlip3D"),
+        ],
+    )
+    def test_3d_skipped_rows_keep_the_input(self, augmentation_cls, kwargs, device, dtype):
+        torch.manual_seed(0)
+        x = torch.rand(3, 1, 4, 6, 6, device=device, dtype=dtype)
+        gate = torch.tensor(self.GATE)
+        static, general = augmentation_cls(p=1.0, **kwargs), augmentation_cls(p=0.999, **kwargs)
+        params = general.forward_parameters(x.shape)
+        params["batch_prob"] = gate.clone()
+
+        out_static = static(x, params=copy.deepcopy(params))
+
+        self.assert_close(out_static, general(x, params=copy.deepcopy(params)))
+        assert torch.equal(out_static[gate == 0], x[gate == 0])
+        assert not torch.equal(out_static[gate == 1], x[gate == 1])
+
+    def test_labels_follow_the_same_gate_as_the_image(self, device, dtype):
+        torch.manual_seed(0)
+        x = torch.rand(3, 1, 8, 12, device=device, dtype=dtype)
+        mask = (torch.rand(3, 1, 8, 12, device=device, dtype=dtype) > 0.5).to(dtype)
+        points = torch.tensor([[[2.0, 3.0]]] * 3, device=device, dtype=dtype)
+        quads = torch.tensor([[[[2.0, 3.0], [6.0, 3.0], [6.0, 5.0], [2.0, 5.0]]]] * 3, device=device, dtype=dtype)
+        gate = torch.tensor(self.GATE)
+
+        module = K.RandomAffine(30.0, p=1.0)
+        aug = K.AugmentationSequential(module, data_keys=["input", "keypoints", "bbox", "mask"])
+        params = module.forward_parameters(x.shape)
+        params["batch_prob"] = gate.clone()
+
+        out_x, out_points, out_boxes, out_mask = aug(
+            x,
+            Keypoints(points.clone()),
+            Boxes(quads.clone()),
+            mask.clone(),
+            params=[ParamItem("RandomAffine_0", params)],
+        )
+
+        skipped, applied = gate == 0, gate == 1
+        assert torch.equal(out_x[skipped], x[skipped])
+        assert torch.equal(out_points.data[skipped], points[skipped])
+        assert torch.equal(out_boxes.data[skipped], quads[skipped])
+        assert torch.equal(out_mask[skipped], mask[skipped])
+        # The selected row moved in all four, so the checks above are not vacuous.
+        assert not torch.equal(out_x[applied], x[applied])
+        assert not torch.equal(out_points.data[applied], points[applied])
+        assert not torch.equal(out_boxes.data[applied], quads[applied])
+        # The matrix a container composes is the identity on the skipped rows.
+        self.assert_close(module.transform_matrix[skipped], torch.eye(3, device=device, dtype=dtype).expand(2, -1, -1))
+
+    @pytest.mark.parametrize(
+        ("augmentation_cls", "kwargs"),
+        [
+            pytest.param(K.Resize, {"size": (4, 6)}, id="Resize"),
+            pytest.param(K.RandomCrop, {"size": (4, 6)}, id="RandomCrop"),
+        ],
+    )
+    def test_shape_changing_augmentation(self, augmentation_cls, kwargs, device, dtype):
+        x = torch.rand(3, 3, 8, 12, device=device, dtype=dtype)
+        aug = augmentation_cls(p=1.0, **kwargs)
+        params = aug.forward_parameters(x.shape)
+
+        # A mixed gate cannot keep the skipped rows at their shape, as for `p < 1` (#4497): it raises instead of
+        # transforming every row.
+        mixed = copy.deepcopy(params)
+        mixed["batch_prob"] = torch.tensor(self.GATE)
+        with pytest.raises(ValueError, match="mixes applied and skipped rows"):
+            aug(x, params=mixed)
+
+        # A gate that skips every row leaves the batch untouched.
+        none = copy.deepcopy(params)
+        none["batch_prob"] = torch.zeros(3)
+        assert torch.equal(aug(x, params=none), x)
+
+    def test_default_gate_still_takes_the_fast_path(self, device, dtype):
+        x = torch.rand(3, 3, 8, 12, device=device, dtype=dtype)
+        aug = K.RandomHorizontalFlip(p=1.0)
+        params = aug.forward_parameters(x.shape)
+        assert params["batch_prob"].tolist() == [1.0, 1.0, 1.0]
+
+        with patch.object(aug, "apply_non_transform", wraps=aug.apply_non_transform) as non_transform:
+            aug(x, params=copy.deepcopy(params))
+            non_transform.assert_not_called()  # the skipped branch and the blend are still elided
+
+            params["batch_prob"] = torch.tensor([1.0, 0.0, 1.0])
+            aug(x, params=params)
+            non_transform.assert_called_once()
+
+    def test_params_without_a_gate_are_all_applied(self):
+        aug = K.RandomHorizontalFlip(p=1.0)
+        assert aug._is_always_applied({})
+        assert aug._is_always_applied({"batch_prob": torch.ones(0)})  # an empty batch has nothing to skip
+
+    @pytest.mark.parametrize("p, p_batch", [(0.5, 1.0), (1.0, 0.5), (0.0, 1.0)])
+    def test_non_static_probabilities_never_take_the_fast_path(self, p, p_batch):
+        aug = K.RandomHorizontalFlip(p=p, p_batch=p_batch)
+        assert not aug._is_always_applied({"batch_prob": torch.ones(3)})
+
+    @pytest.mark.parametrize("flag", ["is_compiling", "is_exporting"])
+    def test_capture_decides_by_the_static_probabilities_alone(self, flag):
+        # Under torch.compile / export the gate cannot be read without a graph break, so the hand-made gate is
+        # honored in eager mode only. `object()` has no ordering: reading it would raise.
+        aug = K.RandomHorizontalFlip(p=1.0)
+        with patch(f"kornia.augmentation.base.{flag}", return_value=True):
+            assert aug._is_always_applied({"batch_prob": object()})
+        assert not K.RandomHorizontalFlip(p=0.5)._is_always_applied({"batch_prob": object()})
