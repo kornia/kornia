@@ -18,6 +18,7 @@
 import io
 import os
 import sys
+from typing import NamedTuple
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -871,6 +872,57 @@ class TestNonTensorOutputPassthrough(BaseTester):
         numpy_dtype = torch.float32 if dtype == torch.bfloat16 else dtype
         np.testing.assert_array_equal(result[0], image.cpu().to(numpy_dtype).permute(1, 2, 0).numpy())
         assert result[1] == "label"
+
+
+class TestNamedtupleAndSingletonTupleOutput(BaseTester):
+    """A namedtuple output keeps its fields, and a one-element tuple stays renderable (#5210)."""
+
+    @pytest.mark.parametrize("container", [ImageModule, ImageSequential])
+    @pytest.mark.parametrize("output_type", ["pt", "numpy"])
+    def test_namedtuple_output_keeps_its_fields(self, container, output_type, device, dtype):
+        class Pair(NamedTuple):
+            image: torch.Tensor
+            mask: torch.Tensor
+
+        class NamedModule(container):
+            def forward(self, x):
+                return Pair(x, x[:1])
+
+        module = NamedModule()
+        image = torch.rand(3, 6, 8, device=device, dtype=dtype)
+
+        result = module(image, output_type=output_type)
+
+        assert isinstance(result, Pair)
+        if output_type == "pt":
+            self.assert_close(result.image, image)
+            self.assert_close(result.mask, image[:1])
+        else:
+            numpy_dtype = torch.float32 if dtype == torch.bfloat16 else dtype
+            np.testing.assert_array_equal(result.image, image.cpu().to(numpy_dtype).permute(1, 2, 0).numpy())
+            np.testing.assert_array_equal(result.mask, image[:1].cpu().to(numpy_dtype).permute(1, 2, 0).numpy())
+        cached = module._output_image
+        assert isinstance(cached, Pair)
+        assert isinstance(cached.image, torch.Tensor)
+        assert not cached.image.requires_grad
+
+    @pytest.mark.parametrize("container", [ImageModule, ImageSequential])
+    def test_one_element_tuple_stays_renderable(self, container, device, dtype, tmp_path):
+        class OneTupleModule(container):
+            def forward(self, x):
+                return (x,)
+
+        module = OneTupleModule()
+        image = torch.rand(3, 6, 8, device=device, dtype=dtype)
+        result = module(image)
+        assert isinstance(result, tuple)
+
+        saved = str(tmp_path / "one.png")
+        module.save(saved)
+        loaded = PILImage.open(saved)
+        working = image.cpu().to(torch.promote_types(dtype, torch.float32))
+        rendered = (working.clamp(0.0, 1.0) * 255).round().to(torch.uint8).permute(1, 2, 0).numpy()
+        np.testing.assert_array_equal(np.asarray(loaded), rendered)
 
 
 class TestNamedInputConversion(BaseTester):

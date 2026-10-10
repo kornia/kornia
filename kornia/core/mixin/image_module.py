@@ -62,6 +62,18 @@ def _array_to_float_image(array: Any) -> torch.Tensor:
 _PIL_ONE_CHANNEL_DTYPES = (torch.bool, torch.int8, torch.int16, torch.uint16, torch.int32, torch.uint32)
 
 
+def _rebuild_container(source: Any, items: List[Any]) -> Any:
+    """Rebuild a tuple or list output from converted elements.
+
+    A namedtuple takes its elements as separate arguments, so a plain ``type(source)(items)``
+    call would raise a ``TypeError`` for want of one argument per field: it is rebuilt with its
+    field-aware ``_make``. A plain tuple or list takes an iterable.
+    """
+    if hasattr(type(source), "_make"):
+        return type(source)._make(items)  # type: ignore[attr-defined]
+    return type(source)(items)
+
+
 def _to_uint8_image(image: torch.Tensor) -> torch.Tensor:
     """Convert a floating image in ``[0, 1]`` to ``uint8`` for display or an 8-bit file.
 
@@ -216,7 +228,7 @@ class ImageModuleMixIn:
             return self._convert_single_output(tensor_outputs, output_type)
 
         converted = [self._convert_single_output(output, output_type) for output in tensor_outputs]
-        return type(tensor_outputs)(converted)
+        return _rebuild_container(tensor_outputs, converted)
 
     def _convert_single_output(self, output: Any, output_type: str) -> Any:
         """Convert one forward output, passing containers and non-tensors through unchanged."""
@@ -393,9 +405,10 @@ class ImageModuleMixIn:
         if isinstance(output_image, (list, tuple)):
             # keep non-tensor elements (a dict, ``None``, a scalar) as they are: there is no tensor
             # to detach, and the cache only renders tensor entries (#5210)
-            return type(output_image)(
-                self._detach_tensor(out) if isinstance(out, torch.Tensor) else out for out in output_image
-            )  # type: ignore
+            return _rebuild_container(
+                output_image,
+                [self._detach_tensor(out) if isinstance(out, torch.Tensor) else out for out in output_image],
+            )
         # outside the one-tensor contract: nothing to cache, leave the output to the caller
         return output_image
 
@@ -410,7 +423,11 @@ class ImageModuleMixIn:
         self._output_image = self._detach_tensor(output_image) if output_type == "pt" else output_image
 
     def _get_output_image(self) -> torch.Tensor:
-        output_image = getattr(self, "_output_image", None)
+        output_image: Any = getattr(self, "_output_image", None)
+        if isinstance(output_image, tuple) and len(output_image) == 1 and isinstance(output_image[0], torch.Tensor):
+            # a one-element tuple output keeps its container (#5210): ``show()`` / ``save()`` render
+            # its sole tensor, the same image the call returned before the container was preserved
+            output_image = output_image[0]
         if output_image is None:
             raise ValueError("No pre-computed images found. Needs to execute first.")
         if not isinstance(output_image, torch.Tensor) or output_image.ndim not in (3, 4):
