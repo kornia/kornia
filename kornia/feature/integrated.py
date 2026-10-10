@@ -239,6 +239,17 @@ class LocalFeature(nn.Module):
         return (lafs, responses, descs)
 
 
+class _DoGSingleMagnitude(nn.Module):
+    """Magnitude of a single-scale DoG response, whose maxima are the DoG's maxima above zero and minima below zero."""
+
+    def __init__(self, sigma1: float = 1.0, sigma2: float = 1.6) -> None:
+        super().__init__()
+        self.dog = BlobDoGSingle(sigma1, sigma2)
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return self.dog(input).abs()
+
+
 class _SIFTFeature(LocalFeature):
     """Compose a sparse SIFT detector with a patch or pyramid extraction backend."""
 
@@ -275,6 +286,13 @@ class SIFTFeature(_SIFTFeature):
     :class:`~kornia.feature.LightGlueMatcher` expects with ``"sift"``.
     :func:`~kornia.feature.convert_sift_descriptor_layout` converts between the two.
 
+    The detector is :class:`~kornia.feature.MultiResolutionDetector` on the magnitude of a single-scale
+    :class:`~kornia.feature.BlobDoGSingle` response. Like the DoG detectors of Lowe, OpenCV and VLFeat, it keeps
+    both signs of DoG extremum: the maxima (dark blobs) and the minima (bright blobs). A keypoint is a strict
+    maximum of the magnitude over its ``nms_size`` window, so of two opposite-sign extrema in one window, such as
+    a blob and the weaker ring of opposite sign around it, the stronger suppresses the other. ``responses`` holds
+    the magnitude.
+
     Using `kornia.feature.MultiResolutionDetector` without blur pyramid Still not as good as OpenCV/VLFeat because of
     https://github.com/kornia/kornia/pull/884,
     but we are working on it
@@ -301,7 +319,7 @@ class SIFTFeature(_SIFTFeature):
         if config is None:
             config = get_default_detector_config()
         detector = MultiResolutionDetector(
-            BlobDoGSingle(1.0, 1.6),
+            _DoGSingleMagnitude(1.0, 1.6),
             num_features,
             config,
             ori_module=PassLAF() if upright or descriptor_backend == "pyramid" else LAFOrienter(19),

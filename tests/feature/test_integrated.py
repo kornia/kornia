@@ -299,6 +299,57 @@ class TestSIFTFeature(BaseTester):
         assert responses.shape == (1, 2)
         assert descriptors.shape == (1, 2, 128)
 
+    @staticmethod
+    def _blobs(h, w, blobs, device, dtype, background=0.5):
+        # Gaussian blobs (x, y, sigma, amplitude) on a constant background, built in float64 on the CPU.
+        yy, xx = torch.meshgrid(
+            torch.arange(h, dtype=torch.float64), torch.arange(w, dtype=torch.float64), indexing="ij"
+        )
+        img = torch.full_like(xx, background)
+        for x0, y0, s, a in blobs:
+            img = img + a * torch.exp(-((xx - x0) ** 2 + (yy - y0) ** 2) / (2 * s * s))
+        return img[None, None].to(device=device, dtype=dtype)
+
+    def test_detects_bright_and_dark_blobs_NNNN(self, device, dtype):
+        # The single-scale DoG is negative at a bright blob and positive at a dark one. Like Lowe's, OpenCV's and
+        # VLFeat's DoG detectors, SIFTFeature keeps the minima of the DoG as well as its maxima.
+        img = self._blobs(120, 160, [(70.0, 52.0, 3.0, 0.4), (40.0, 85.0, 3.0, -0.4)], device, dtype)
+        with torch.no_grad():
+            lafs, _, _ = SIFTFeature(8, upright=True).to(device, dtype)(img)
+        centres = get_laf_center(lafs)[0, kornia.feature.laf_is_filled(lafs)[0]].cpu().double()
+        for name, x0, y0 in (("bright", 70.0, 52.0), ("dark", 40.0, 85.0)):
+            dist = (centres - torch.tensor([x0, y0], dtype=torch.float64)).norm(dim=-1)
+            assert bool((dist <= 3.0).any()), f"no detection at the {name} blob: {centres.tolist()}"
+
+    def test_blob_is_detected_without_its_ring_NNNN(self, device, dtype):
+        # The DoG of a blob is surrounded by a weaker ring of the opposite sign. The ring lies within the blob's
+        # suppression window and is weaker, so every detection of note is at the blob, whichever its polarity.
+        for name, amplitude, background in (("bright", 1.0, 0.0), ("dark", -1.0, 1.0)):
+            img = self._blobs(120, 160, [(70.0, 52.0, 3.0, amplitude)], device, dtype, background)
+            with torch.no_grad():
+                lafs, responses, _ = SIFTFeature(32, upright=True).to(device, dtype)(img)
+            # A flat background still has extrema of rounding-error size; they are not features.
+            strong = responses[0] > 0.01 * responses[0].max()
+            centres = get_laf_center(lafs)[0, strong].cpu().double()
+            dist = (centres - torch.tensor([70.0, 52.0], dtype=torch.float64)).norm(dim=-1)
+            assert dist.numel() > 0, name
+            assert bool((dist <= 3.0).all()), f"{name} blob: detections at distances {dist.tolist()}"
+
+    def test_frames_do_not_depend_on_polarity_NNNN(self, device, dtype):
+        # DoG(1 - x) = -DoG(x): an image and its negative have the same extrema with the same magnitudes, so
+        # upright SIFTFeature finds the same frames in both. Every pixel lies in [0.5, 1], where 1 - x is exact.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the DoG is computed in the input dtype, which rounds an image and its negative differently")
+        blobs = [(34.0, 30.0, 3.0, 0.2), (88.0, 42.0, 4.0, -0.2), (58.0, 66.0, 2.5, -0.15), (100.0, 70.0, 3.5, 0.12)]
+        img = self._blobs(96, 128, blobs, device, dtype, background=0.75)
+        feature = SIFTFeature(8, upright=True).to(device, dtype)
+        with torch.no_grad():
+            lafs, responses, _ = feature(img)
+            lafs_neg, responses_neg, _ = feature(1 - img)
+        assert bool(kornia.feature.laf_is_filled(lafs).all())
+        self.assert_close(lafs_neg, lafs)
+        self.assert_close(responses_neg, responses)
+
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
         B, C, H, W = 1, 1, 32, 32
