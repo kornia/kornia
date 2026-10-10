@@ -18,6 +18,9 @@
 from __future__ import annotations
 
 import math
+import warnings
+from collections.abc import Callable
+from functools import lru_cache
 
 import torch
 import torch.nn.functional as F
@@ -68,6 +71,45 @@ def _hysteresis_step(edges: torch.Tensor, hysteresis_kernels: torch.Tensor) -> t
     return hysteresis_magnitude + (hysteresis_magnitude == 0) * weak * 0.5
 
 
+def _hysteresis_loop(edges: torch.Tensor, hysteresis_kernels: torch.Tensor) -> torch.Tensor:
+    # Repeat the round until nothing changes. Written in the subset of Python that TorchScript compiles;
+    # eager mode runs it as is, and _hysteresis_loop_traced hands a trace a scripted copy.
+    edges_old = -torch.ones_like(edges)
+    while bool((edges_old - edges).abs().ne(0).any()):
+        edges_old = edges
+        edges = _hysteresis_step(edges, hysteresis_kernels)
+    return edges
+
+
+@lru_cache(maxsize=1)
+def _scripted_hysteresis_loop() -> Callable[[torch.Tensor, torch.Tensor], torch.Tensor]:
+    # Compiled on the first trace, not at import, so only a trace pays for TorchScript.
+    with warnings.catch_warnings():
+        # torch 2.14 emits a FutureWarning that torch.jit.script is deprecated. The caller never called it
+        # and torch.jit.trace already warns for them, so this would be noise.
+        warnings.simplefilter("ignore", DeprecationWarning)
+        warnings.simplefilter("ignore", FutureWarning)
+        return torch.jit.script(_hysteresis_loop)
+
+
+def _hysteresis_loop_traced(edges: torch.Tensor, hysteresis_kernels: torch.Tensor) -> torch.Tensor:
+    # torch.jit.trace unrolls a data-dependent loop to the rounds the traced image needed. A scripted
+    # function called from a trace keeps its control flow (and becomes an ONNX Loop).
+    try:
+        scripted_loop = _scripted_hysteresis_loop()
+    except Exception as error:  # noqa: BLE001 - TorchScript may be absent, or unable to read the source
+        warnings.warn(
+            "canny with hysteresis=True could not compile its hysteresis loop with TorchScript, so the traced "
+            "graph repeats the hysteresis round as many times as the traced input needed, on every input: a "
+            "longer edge chain is cut short without an error. Export with torch.export or the dynamo ONNX "
+            f"exporter instead. torch.jit.script raised {type(error).__name__}: {error}",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+        return _hysteresis_loop(edges, hysteresis_kernels)
+    return scripted_loop(edges, hysteresis_kernels)
+
+
 def canny(
     input: torch.Tensor,
     low_threshold: float = 0.1,
@@ -107,6 +149,12 @@ def canny(
           nothing changes, and returns edges of 0 and 1. Under ``torch.export`` the loop is a ``torch.while_loop``,
           so the exported graph also repeats until nothing changes, for any input; the dynamo ONNX exporter writes
           it as an ONNX ``Loop`` from torch 2.11 and cannot export it before.
+          Under ``torch.jit.trace``, and so the legacy TorchScript ONNX exporter (``torch.onnx.export(...,
+          dynamo=False)``), the loop is a scripted function that the trace calls, so the traced graph also repeats
+          until nothing changes, for any input, and the exporter writes it as an ONNX ``Loop``. A trace cannot
+          record a loop whose condition depends on the data on its own: if TorchScript cannot compile the function,
+          a ``RuntimeWarning`` says so and the traced graph repeats the rounds the traced image needed on every input,
+          which cuts a longer edge chain short without an error.
         - Known defect: an integer input is not converted to a floating dtype. With the default blur a 1-channel
           signed integer image blurs to zeros and yields no edge; a uint8 image, a 3-channel integer image, or any
           integer image where torch has no integer convolution raises
@@ -225,10 +273,11 @@ def canny(
 
     # Hysteresis
     if hysteresis:
-        edges_old: torch.Tensor = -torch.ones(edges.shape, device=edges.device, dtype=dtype)
         hysteresis_kernels: torch.Tensor = get_hysteresis_kernel(device, dtype)
 
         if is_exporting():
+            edges_old: torch.Tensor = -torch.ones(edges.shape, device=edges.device, dtype=dtype)
+
             # Graph capture cannot branch on the data, so the loop is a while_loop, which the dynamo ONNX exporter
             # writes as a Loop node from torch 2.11. The body must not return its input, hence the clone.
             def _changed(old: torch.Tensor, new: torch.Tensor) -> torch.Tensor:
@@ -238,10 +287,10 @@ def canny(
                 return new.clone(), _hysteresis_step(new, hysteresis_kernels)
 
             _, edges = torch.while_loop(_changed, _step, (edges_old, edges))
+        elif torch.jit.is_tracing():
+            edges = _hysteresis_loop_traced(edges, hysteresis_kernels)
         else:
-            while ((edges_old - edges).abs() != 0).any():
-                edges_old = edges
-                edges = _hysteresis_step(edges, hysteresis_kernels)
+            edges = _hysteresis_loop(edges, hysteresis_kernels)
 
         # The weak pixels left touch no strong pixel.
         edges = (edges == 1).to(dtype)

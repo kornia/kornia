@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import importlib
 import io
 import warnings
 from typing import Any
@@ -629,6 +630,77 @@ class TestCanny(BaseTester):
         edges = torch.from_numpy(session.run(None, {name: chain.numpy()})[1])
         assert edges[0, 0, :, 7].all()
         assert int(edges.sum()) == 64
+
+    @pytest.mark.device_agnostic
+    def test_jit_trace_iterates_hysteresis_per_input(self, dtype):
+        if dtype != torch.float32:
+            pytest.skip("the traced graph is checked once, in float32")
+        model = Canny(0.2, 1.0, kernel_size=1).eval()
+        chain = self._long_weak_chain(dtype)
+        traced_on = torch.rand(chain.shape, dtype=dtype, generator=torch.Generator().manual_seed(0))
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            traced = torch.jit.trace(model, (traced_on,), check_trace=False)
+        assert not [w for w in caught if issubclass(w.category, RuntimeWarning) and "hysteresis" in str(w.message)]
+        assert "prim::Loop" in str(traced.inlined_graph)
+        for img in (chain, traced_on):
+            magnitude, edges = traced(img)
+            expected_magnitude, expected_edges = model(img)
+            self.assert_close(magnitude, expected_magnitude)
+            self.assert_close(edges, expected_edges, rtol=0, atol=0)
+        edges = traced(chain)[1]
+        assert edges[0, 0, :, 7].all()
+        assert int(edges.sum()) == 64
+        buffer = io.BytesIO()  # the loop survives serialization
+        torch.jit.save(traced, buffer)
+        buffer.seek(0)
+        assert int(torch.jit.load(buffer)(chain)[1].sum()) == 64
+
+    @pytest.mark.device_agnostic
+    def test_onnx_export_legacy_iterates_hysteresis_per_input(self, dtype):
+        if dtype != torch.float32:
+            pytest.skip("the exported graph is checked once, in float32")
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+        model = Canny(0.2, 1.0, kernel_size=1).eval()
+        chain = self._long_weak_chain(dtype)
+        traced_on = torch.rand(chain.shape, dtype=dtype, generator=torch.Generator().manual_seed(0))
+        export_kwargs: dict[str, Any] = {"input_names": ["input"], "opset_version": 17}
+        if torch_version_ge(2, 5, 0):
+            export_kwargs["dynamo"] = False
+        buffer = io.BytesIO()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            torch.onnx.export(model, (traced_on,), buffer, **export_kwargs)
+        session = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"])
+        for img in (chain, traced_on):
+            magnitude, edges = (torch.from_numpy(out) for out in session.run(None, {"input": img.numpy()}))
+            expected_magnitude, expected_edges = model(img)
+            self.assert_close(magnitude, expected_magnitude)
+            self.assert_close(edges, expected_edges, rtol=0, atol=0)
+        edges = torch.from_numpy(session.run(None, {"input": chain.numpy()})[1])
+        assert edges[0, 0, :, 7].all()
+        assert int(edges.sum()) == 64
+
+    @pytest.mark.device_agnostic
+    def test_jit_trace_warns_when_the_loop_cannot_be_scripted(self, dtype, monkeypatch):
+        if dtype != torch.float32:
+            pytest.skip("the traced graph is checked once, in float32")
+        canny_module = importlib.import_module("kornia.filters.canny")  # kornia.filters.canny is the function
+
+        def cannot_script():
+            raise RuntimeError("no TorchScript here")
+
+        monkeypatch.setattr(canny_module, "_scripted_hysteresis_loop", cannot_script)
+        model = Canny(0.2, 1.0, kernel_size=1).eval()
+        chain = self._long_weak_chain(dtype)
+        traced_on = torch.rand(chain.shape, dtype=dtype, generator=torch.Generator().manual_seed(0))
+        with pytest.warns(RuntimeWarning, match="could not compile its hysteresis loop.*no TorchScript here"):
+            traced = torch.jit.trace(model, (traced_on,), check_trace=False)
+        assert int(traced(chain)[1].sum()) < 64  # cut short, as the warning says
+        with warnings.catch_warnings():  # outside a trace the loop is never scripted
+            warnings.simplefilter("error")
+            assert int(model(chain)[1].sum()) == 64
 
     @pytest.mark.parametrize("channels", [2, 4])
     def test_unsupported_channel_count_raises(self, channels, device, dtype):
