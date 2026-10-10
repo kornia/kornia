@@ -268,16 +268,12 @@ class AdalamFilter:
             keypoints in k1 and k2.
 
         """
-        if (s1 is None or s2 is None) and self.config[
-            "scale_rate_threshold"
-        ] is not None:
+        if (s1 is None or s2 is None) and self.config["scale_rate_threshold"] is not None:
             raise AttributeError(
                 "Current configuration considers keypoint scales for filtering, but scales have not been provided.\n"
                 "Please either provide scales or set 'scale_rate_threshold' to None to disable scale filtering"
             )
-        if (o1 is None or o2 is None) and self.config[
-            "orientation_difference_threshold"
-        ] is not None:
+        if (o1 is None or o2 is None) and self.config["orientation_difference_threshold"] is not None:
             raise AttributeError(
                 "Current configuration considers keypoint orientations for filtering, but orientations have not been provided.\n"  # noqa: E501
                 "Please either provide orientations or set 'orientation_difference_threshold' to None to disable orientations filtering"  # noqa: E501
@@ -311,9 +307,7 @@ class AdalamFilter:
 
         if self.config["force_seed_mnn"]:
             _dd21, nn21 = torch.min(distmat, dim=0)  # (n2,)
-            mnn = nn21[putative_matches] == torch.arange(
-                _k1.shape[0], device=self.config["device"]
-            )
+            mnn = nn21[putative_matches] == torch.arange(_k1.shape[0], device=self.config["device"])
         else:
             mnn = None
 
