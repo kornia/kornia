@@ -644,7 +644,7 @@ class CenterCrop2D(nn.Module):
         elif isinstance(size, int):
             self.size = (size, size)
         else:
-            raise Exception(f"Invalid size type. Expected (int, tuple(int, int). Got: {type(size)}.")
+            raise TypeError(f"Invalid size type. Expected int or tuple[int, int]. Got: {type(size)}.")
 
         dst_h, dst_w = self.size
         points_dst = torch.tensor([[[0, 0], [dst_w - 1, 0], [dst_w - 1, dst_h - 1], [0, dst_h - 1]]], dtype=torch.long)

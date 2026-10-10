@@ -132,7 +132,7 @@ class ConvRefiner(nn.Module):
         """
         num_groups = 1 if not dw else in_dim
         if dw and out_dim % in_dim != 0:
-            raise Exception("outdim must be divisible by indim for depthwise")
+            raise ValueError("out_dim must be divisible by in_dim for depthwise convolution")
         conv1 = nn.Conv2d(
             in_dim,
             out_dim,

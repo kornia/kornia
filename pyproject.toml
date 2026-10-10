@@ -244,6 +244,7 @@ select = [
   "SLOT",  # flake8-slots
   "T10",  # flake8-debugger
   "TID",  # flake8-tidy-imports
+  "TRY002",  # raise-vanilla-class
   "UP",  # pyupgrade
   "W",  # pycodestyle
   "YTT",  # flake8-2020
@@ -278,7 +279,7 @@ select = [
   # "T20",  # flake8-print. Partial: T201 is wanted for `kornia/` only
   # "TC",   # flake8-type-checking. Partial: TC004 and TC005 are wanted. No: TC001-TC003, TC006
   # "TD",   # flake8-todos. No: the TODO format is not checked
-  # "TRY",  # tryceratops. Partial: TRY002 is wanted. No: TRY003 (as EM), TRY004 (changes exception classes)
+  # "TRY",  # tryceratops. Partial: TRY002 is enabled above. No: TRY003 (as EM), TRY004 (changes exception classes)
 ]
 ignore = [
   "B905",  # `zip()` without explicit `strict=` - too many to fix, not a bug
