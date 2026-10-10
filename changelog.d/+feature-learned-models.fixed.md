@@ -18,3 +18,13 @@ fewer keypoints than the references (`XFeat` lost 7 of 4096 on graf img1 and 56 
 and return the reference keypoint sets exactly, with identical scores and descriptors. A window holding equal maxima now
 keeps all of them in `XFeat` and the first of them in `DISK`, where `nms2d` kept none. `DISK` raises `ValueError` for
 an even `window_size`, as the reference does. `nms2d` itself is unchanged.
+
+`DeDoDe.detect` now pads an image to a multiple of 14 the way `DeDoDe.forward` and `DeDoDe.describe` do: after the
+ImageNet normalisation, so the pad is the mean colour. Previously `detect` called directly padded first and normalised
+after, so the network saw a black strip on the bottom and right, and on a 370x504 crop of Oxford graf img1 it selected
+94 of 2000 keypoints different from `forward` (`describe` and `forward` already normalised first). `DeDoDe.describe` now
+also cuts the padding off its descriptor map: with `keypoints=None` it returns the `(B, DIM, H, W)` map its docstring
+states instead of a map padded to a multiple of 14, and the descriptors it samples at the normalised keypoints of
+`detect` come from the right pixels when `H` or `W` is not a multiple of 14. `detect` followed by `describe` now returns
+exactly what `forward` returns, and images whose sides are multiples of 14 are bitwise unchanged. The mean-colour pad
+is the closer one to the reference implementation (Parskatt/DeDoDe), which does not pad.
