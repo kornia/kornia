@@ -425,7 +425,8 @@ class GFTTAffNetHardNet(LocalFeature):
         detector = ScaleSpaceDetector(
             num_features,
             resp_module=CornerGFTT(),
-            scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True),
+            # A per-level response reads n_levels + 2 levels per octave; a third extra level is never read.
+            scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True, extra_levels=2),
             ori_module=PassLAF() if upright else LAFOrienter(19),
             aff_module=LAFAffNetShapeEstimator(True, preserve_orientation=False).eval(),
             scale_space_response=False,
@@ -452,7 +453,8 @@ class HesAffNetHardNet(LocalFeature):
         detector = ScaleSpaceDetector(
             num_features,
             resp_module=BlobHessian(),
-            scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True),
+            # A per-level response reads n_levels + 2 levels per octave; a third extra level is never read.
+            scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True, extra_levels=2),
             ori_module=PassLAF() if upright else LAFOrienter(19),
             aff_module=LAFAffNetShapeEstimator(True, preserve_orientation=False).eval(),
             scale_space_response=False,
