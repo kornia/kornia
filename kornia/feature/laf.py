@@ -881,9 +881,12 @@ def extract_patches_from_pyramid(
 
 
 def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor, border: int = 0) -> torch.Tensor:
-    """Check if the LAF is touching or partly outside the image boundary.
+    """Check which LAFs lie fully inside the image.
 
-    Returns the mask of LAFs, which are fully inside the image, i.e. valid.
+    The region of a LAF ``[A | c]`` is the ellipse ``c + A u`` over the unit vectors ``u``. Along image axis
+    ``i`` (0 for x, 1 for y) it spans exactly ``c_i - r_i`` to ``c_i + r_i``, where ``r_i`` is the Euclidean norm
+    of row ``i`` of ``A``. A LAF is inside when both spans lie in ``border <= x <= w - 1 - border`` and
+    ``border <= y <= h - 1 - border``, so a region that touches the last valid pixel coordinate is inside.
 
     Args:
         laf:  :math:`(B, N, 2, 3)`.
@@ -896,14 +899,15 @@ def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor, border: int = 0
     """
     KORNIA_CHECK_LAF(laf)
     _, _, h, w = images.size()
-    pts = laf_to_boundary_points(laf, 12)
+    # r_i = max over unit u of A[i, :] u, half the side of the ellipse's axis-aligned bounding box.
+    extent = torch.linalg.vector_norm(laf[..., :2], dim=-1)
+    lo = laf[..., 2] - extent
+    hi = laf[..., 2] + extent
     # Valid pixel coordinates run 0 .. w-1 and 0 .. h-1, matching the convention documented on
     # `get_laf_center` and the `w - 1` / `h - 1` extent used by `normalize_laf` / `denormalize_laf`.
     x_max = float(w - 1) - border
     y_max = float(h - 1) - border
-    good_lafs_mask = (pts[..., 0] >= border) * (pts[..., 0] <= x_max) * (pts[..., 1] >= border) * (pts[..., 1] <= y_max)
-    # `.all` rather than `.min` on the bool mask: ONNX ReduceMin has no bool overload.
-    return good_lafs_mask.all(dim=2)
+    return (lo[..., 0] >= border) & (hi[..., 0] <= x_max) & (lo[..., 1] >= border) & (hi[..., 1] <= y_max)
 
 
 def laf_to_three_points(laf: torch.Tensor) -> torch.Tensor:

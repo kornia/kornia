@@ -24,7 +24,6 @@ import torch
 from torch import nn
 
 from kornia.core.download import hf_url, load_state_dict_from_url
-from kornia.geometry import resize
 
 from .backbone import build_backbone
 from .loftr_module import FinePreprocess, LocalFeatureTransformer
@@ -83,6 +82,14 @@ class LoFTR(nn.Module):
 
     This is based on the original code from paper "LoFTR: Detector-Free Local
     Feature Matching with Transformers". See :cite:`LoFTR2021` for more details.
+
+    With the default ``config``, whose ``resolution`` (8, 2) every pretrained model uses, the two images can differ in
+    size, and their heights and widths do not need to be multiples of 8 (the reference implementation expects
+    multiples of 8). ``keypoints0`` lie on the grid of the 1/8-resolution coarse feature map, at ``8 * (column, row)``
+    of a coarse cell, and ``keypoints1`` are refined to sub-pixel positions. Both are :math:`(x, y)` in the frame where
+    the centre of pixel :math:`(x, y)` is at :math:`(x + 0.5, y + 0.5)`, as in the reference implementation: subtract
+    0.5 to get kornia's frame, in which pixel centres have integer coordinates. With ``resolution`` (16, 4) in
+    ``config``, ``keypoints0`` lie on a 16-pixel grid, and most sizes that are not multiples of 16 raise an error.
 
     If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
 
@@ -152,11 +159,19 @@ class LoFTR(nn.Module):
             - ``batch_indexes``, batch indexes for the keypoints and lafs :math:`(NC)`.
 
         """
+        # Pixel strides of the coarse and the fine feature map, (8, 2) by default. Every stride-2 stage of the backbone
+        # has a centred kernel, so coarse cell (x, y) sits on pixel (8x, 8y) and fine cell (x, y) on pixel (2x, 2y)
+        # for any image size. The maps have ceil(H / 8) and ceil(H / 2) rows, so H divided by a map size is not the
+        # stride.
+        stride_c, stride_f = self.config["resolution"]
+
         # 1. Local Feature CNN
         _data: dict[str, torch.Tensor | int | torch.Size] = {
             "bs": data["image0"].size(0),
             "hw0_i": data["image0"].shape[2:],
             "hw1_i": data["image1"].shape[2:],
+            "stride_c": stride_c,
+            "stride_f": stride_f,
         }
 
         if _data["hw0_i"] == _data["hw1_i"]:  # faster & better BN convergence
@@ -188,10 +203,11 @@ class LoFTR(nn.Module):
         feat_c1 = feat_c1.reshape(n1, -1, c1)
 
         mask_c0 = mask_c1 = None  # mask is useful in training
+        # a coarse cell takes the mask value of the pixel it sits on
         if "mask0" in data:
-            mask_c0 = resize(data["mask0"], _data["hw0_c"], interpolation="nearest").flatten(-2)
+            mask_c0 = data["mask0"][..., ::stride_c, ::stride_c].flatten(-2)
         if "mask1" in data:
-            mask_c1 = resize(data["mask1"], _data["hw1_c"], interpolation="nearest").flatten(-2)
+            mask_c1 = data["mask1"][..., ::stride_c, ::stride_c].flatten(-2)
         feat_c0, feat_c1 = self.loftr_coarse(feat_c0, feat_c1, mask_c0, mask_c1)
 
         # 3. match coarse-level

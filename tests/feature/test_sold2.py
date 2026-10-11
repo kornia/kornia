@@ -21,9 +21,9 @@ import torch.nn.functional as F
 
 from kornia.core.check import ShapeError
 from kornia.feature.sold2 import SOLD2, SOLD2_detector
-from kornia.feature.sold2.sold2 import keypoints_to_grid
+from kornia.feature.sold2.sold2 import WunschLineMatcher, keypoints_to_grid
 from kornia.feature.sold2.sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
-from kornia.feature.sold2.structures import LineDetectorCfg
+from kornia.feature.sold2.structures import DetectorCfg, LineDetectorCfg
 
 from testing.base import BaseTester
 
@@ -177,6 +177,79 @@ class TestSOLD2(BaseTester):
         model = SOLD2().to(img.device, img.dtype).eval()
         model_jit = torch.jit.script(model)
         self.assert_close(model(img), model_jit(img))
+
+    def test_config_is_not_modified_5722(self):
+        cfg = DetectorCfg()
+        assert cfg.use_descriptor is False
+        sold2 = SOLD2(pretrained=False, config=cfg)
+        assert cfg.use_descriptor is False
+        assert sold2.config is not cfg
+        assert sold2.config.use_descriptor is True
+
+    def test_config_dict_is_not_modified_5722(self):
+        cfg = {"grid_size": 4}
+        sold2 = SOLD2(pretrained=False, config=cfg)
+        assert cfg == {"grid_size": 4}
+        assert sold2.config.grid_size == 4
+        assert sold2.config.use_descriptor is True
+
+    def test_detector_config_is_not_modified_5722(self):
+        cfg = DetectorCfg()
+        detector = SOLD2_detector(pretrained=False, config=cfg)
+        assert cfg.use_descriptor is False
+        assert detector.config.use_descriptor is False
+
+    def test_match_keeps_torch_diag_5722(self, device, dtype):
+        sold2 = SOLD2(pretrained=False).to(device, dtype)
+        diag = torch.diag
+        seg1 = torch.tensor([[[10.0, 10.0], [60.0, 90.0]], [[20.0, 70.0], [80.0, 20.0]]], device=device, dtype=dtype)
+        desc = torch.randn(1, 128, 24, 32, device=device, dtype=dtype)
+        sold2.match(seg1, seg1 + 1.0, desc, desc.flip(-1))
+        assert torch.diag is diag
+        assert callable(torch.diag)
+        self.assert_close(
+            torch.diag(torch.ones(3, device=device, dtype=dtype)), torch.eye(3, device=device, dtype=dtype)
+        )
+
+    def test_match_segment_dtype_differs_from_descriptors_5722(self, device, dtype):
+        # SOLD2.forward returns float32 segments whatever the model dtype, so match must accept segments whose
+        # dtype differs from the descriptor map's, in both directions.
+        sold2 = SOLD2(pretrained=False).to(device, dtype)
+        seg = torch.tensor(
+            [[[10.0, 10.0], [60.0, 90.0]], [[20.0, 70.0], [80.0, 20.0]], [[85.0, 5.0], [85.0, 120.0]]], device=device
+        )
+        desc = torch.randn(1, 128, 24, 32, device=device, dtype=dtype)
+        # identical segments and descriptors in both images: every line matches itself
+        assert sold2.match(seg, seg, desc, desc).tolist() == [0, 1, 2]
+        desc32 = desc.float()
+        assert sold2.match(seg.to(dtype), seg.to(dtype), desc32, desc32).tolist() == [0, 1, 2]
+
+
+class TestWunschLineMatcher(BaseTester):
+    def test_needleman_wunsch_keeps_torch_diag_5722(self, device, dtype):
+        diag = torch.diag
+        scores = torch.rand(2, 3, 5, device=device, dtype=dtype)
+        out = WunschLineMatcher().needleman_wunsch(scores)
+        assert out.shape == (2,)
+        assert torch.diag is diag
+        self.assert_close(
+            torch.diag(torch.ones(3, device=device, dtype=dtype)), torch.eye(3, device=device, dtype=dtype)
+        )
+
+    def test_needleman_wunsch_float64_matches_float32_5722(self, device):
+        if torch.device(device).type == "mps":
+            pytest.skip("MPS does not support float64")
+        scores = torch.rand(2, 3, 5, device=device, dtype=torch.float32)
+        out32 = WunschLineMatcher().needleman_wunsch(scores)
+        out64 = WunschLineMatcher().needleman_wunsch(scores.double())
+        assert out64.dtype == torch.float64
+        self.assert_close(out64.float(), out32, low_tolerance=True)
+
+    def test_needleman_wunsch_value(self, device, dtype):
+        # one-to-one alignment: dp[-1, -1] is the best sum of (score - 0.1) over a monotone matching
+        scores = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 2.0, 0.0]]], device=device, dtype=dtype)
+        out = WunschLineMatcher().needleman_wunsch(scores)
+        self.assert_close(out, torch.tensor([2.8], device=device, dtype=dtype), low_tolerance=True)
 
 
 class TestKeypointsToGrid(BaseTester):
