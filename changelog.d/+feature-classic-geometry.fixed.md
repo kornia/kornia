@@ -21,3 +21,9 @@ frames `ScaleSpaceDetector` hands to its affine module are circles in octave pix
 `HesAffNetHardNet` and `GFTTAffNetHardNet` move by about 1e-4 of their scale (median), and on the first images of the
 eight Oxford affine sequences about 50 of each pipeline's 16384 descriptors change by more than 0.01.
 `KeyNetAffNetHardNet` is unchanged.
+
+`DenseSIFTDescriptor` now spaces its `num_spatial_bins` x `num_spatial_bins` cells `spatial_bin_size` pixels apart, as
+`SIFTDescriptor` and VLFeat's dense SIFT do. They were one pixel apart, so at the defaults one output depended on a
+9 x 9 window instead of the 16 x 16 pixels of 4 cells of 4-pixel bins, and an edge anywhere in that window lit several
+cell columns at once. Descriptor values change, and the output size follows (see the breaking change). The docstring now
+states the size rule, the input position each output describes, and the default `padding` of 1 (it said 0).
