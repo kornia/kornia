@@ -15,10 +15,13 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import DeviceError, TypeCheckError
 
 from testing.base import BaseTester
 
@@ -750,19 +753,84 @@ class TestAffine2d(BaseTester):
         expected = kornia.geometry.transform.scale(input, scale_factor)
         self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
-    @pytest.mark.skip(
-        "_compute_shear_matrix and get_affine_matrix2d yield different results. "
-        "See https://github.com/kornia/kornia/issues/629 for details."
-    )
-    def test_affine_shear(self, device, dtype):
-        torch.manual_seed(0)
-        shear = torch.rand(1, 2, device=device, dtype=dtype)
-        input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
+    @pytest.mark.parametrize("batch_size", [1, 3])
+    def test_affine_shear_only_5662(self, device, dtype, batch_size):
+        shear = torch.tensor([[0.1, -0.2]], device=device, dtype=dtype).repeat(batch_size, 1)
+        image = torch.arange(batch_size * 30, device=device, dtype=dtype).reshape(batch_size, 1, 5, 6) / 30
+        # Explicit identity components define the same shear without relying on constructor defaults.
+        expected = kornia.geometry.transform.Affine(
+            angle=torch.zeros(batch_size, device=device, dtype=dtype),
+            translation=torch.zeros(batch_size, 2, device=device, dtype=dtype),
+            scale_factor=torch.ones(batch_size, 2, device=device, dtype=dtype),
+            shear=shear,
+        )(image)
+        actual = kornia.geometry.transform.Affine(shear=shear)(image)
+        self.assert_close(actual, expected)
 
-        transform = kornia.geometry.transform.Affine(shear=shear).to(device, dtype)
-        actual = transform(input)
-        expected = kornia.geometry.transform.shear(input, shear)
-        self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
+    def test_affine_shear_checked_with_other_parameters_5662(self, device, dtype):
+        # shear takes part in the constructor's device and dtype check, as angle, translation and scale_factor do.
+        shear = torch.tensor([[0.1, -0.2]], device=device, dtype=dtype)
+        other = torch.float16 if dtype != torch.float16 else torch.float32  # float64 is unavailable on MPS
+        with pytest.raises(TypeCheckError):
+            kornia.geometry.transform.Affine(angle=torch.zeros(1, device=device, dtype=other), shear=shear)
+        with pytest.raises(DeviceError):
+            kornia.geometry.transform.Affine(angle=torch.zeros(1, device="meta", dtype=dtype), shear=shear)
+
+    @pytest.mark.parametrize("as_module", [False, True])
+    def test_convention_shear_raw_factors_5661(self, device, dtype, as_module):
+        # Both off-diagonal factors act on the original coordinates, about pixel (0, 0).
+        shear = torch.tensor([[0.5, 0.25]], device=device, dtype=dtype)
+        image = torch.arange(81, device=device, dtype=dtype).reshape(1, 1, 9, 9) / 80
+        matrix = torch.tensor([[[1.0, 0.5, 0.0], [0.25, 1.0, 0.0]]], device=device, dtype=dtype)
+        expected = kornia.geometry.transform.warp_affine(image, matrix, (9, 9), align_corners=True)
+        if as_module:
+            actual = kornia.geometry.transform.Shear(shear, align_corners=True)(image)
+        else:
+            actual = kornia.geometry.transform.shear(image, shear, align_corners=True)
+        self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("custom_center", [False, True])
+    def test_convention_affine_shear_radians_5661(self, device, dtype, custom_center):
+        # tan(sx) = 1 and tan(sy) = 2: x' = x - (y - cy), then y' = y - 2 (x' - cx).
+        shear = torch.tensor([[math.pi / 4, math.atan(2.0)]], device=device, dtype=dtype)
+        center = torch.tensor([[2.0, 3.0] if custom_center else [4.0, 4.0]], device=device, dtype=dtype)
+        cx, cy = (2.0, 3.0) if custom_center else (4.0, 4.0)
+        matrix = torch.tensor(
+            [[[1.0, -1.0, cy], [-2.0, 3.0, 2.0 * (cx - cy)], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
+        )
+        angle = torch.zeros(1, device=device, dtype=dtype)
+        translation = torch.zeros(1, 2, device=device, dtype=dtype)
+        scale = torch.ones(1, 2, device=device, dtype=dtype)
+        # Float16 rounds the angles before tan (versus errors >= 1 for a wrong order or swapped angles).
+        tolerance = {"atol": 5e-3, "rtol": 1e-3} if dtype == torch.float16 else {}
+        self.assert_close(
+            kornia.geometry.transform.get_shear_matrix2d(center, shear[:, 0], shear[:, 1]), matrix, **tolerance
+        )
+        self.assert_close(
+            kornia.geometry.transform.get_affine_matrix2d(translation, center, scale, angle, shear[:, 0], shear[:, 1]),
+            matrix,
+            **tolerance,
+        )
+        image = torch.zeros(1, 1, 9, 9, device=device, dtype=dtype)
+        image[0, 0, 6, 5] = 1
+        expected = torch.zeros_like(image)
+        row, col = (6, 2) if custom_center else (8, 3)
+        expected[0, 0, row, col] = 1
+        transform = kornia.geometry.transform.Affine(
+            shear=shear, center=center if custom_center else None, mode="nearest", align_corners=True
+        )
+        self.assert_close(transform(image), expected)
+
+    def test_wart_shear_and_affine_shear_the_other_way_5661(self, device, dtype):
+        # One pixel at row 8, column 4. shear() reads 0.5 as a factor about pixel (0, 0) and moves it to column
+        # 4 + 0.5 * 8 = 8; Affine reads it as an angle about the centre and moves it to 4 - tan(0.5) * (8 - 4) = 1.8.
+        shear = torch.tensor([[0.5, 0.0]], device=device, dtype=dtype)
+        image = torch.zeros(1, 1, 9, 9, device=device, dtype=dtype)
+        image[0, 0, 8, 4] = 1
+        sheared = kornia.geometry.transform.shear(image, shear, mode="nearest", align_corners=True)
+        affine = kornia.geometry.transform.Affine(shear=shear, mode="nearest", align_corners=True)
+        assert sheared[0, 0, 8].argmax().item() == 8
+        assert affine(image)[0, 0, 8].argmax().item() == 2
 
     def test_affine_rotate_translate(self, device, dtype):
         batch_size = 2
@@ -985,6 +1053,7 @@ class TestTransformModuleBuffers(BaseTester):
             ("Rotate", "angle", [17.0]),
             ("Scale", "scale_factor", [[0.8, 1.2]]),
             ("Affine", "angle", [17.0]),
+            ("Affine", "shear", [[0.1, -0.05]]),
             ("Translate", "translation", [[0.4, -0.2]]),
             ("Shear", "shear", [[0.1, -0.05]]),
         ],

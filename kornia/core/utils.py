@@ -199,7 +199,7 @@ def _inverse_3x3_closed_form(input: torch.Tensor) -> torch.Tensor:
     """
     half = input.dtype in (torch.float16, torch.bfloat16)
     x = input.float() if half else input
-    if not _is_tracing_or_exporting():
+    if not _is_tracing_or_exporting():  # noqa: SIM108 - each branch documents its own capture path
         # Eager: three fused ``cross`` ops beat nine scalar cofactor expressions and four
         # stacks, because kernel launches dominate on matrices this small.
         out = _inverse_3x3_cross(x)
@@ -362,7 +362,7 @@ def _torch_histc_cast(input: torch.Tensor, bins: int, min: Union[float, bool], m
     return torch.histc(input.to(dtype), bins, min, max)
 
 
-def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def _torch_svd_cast(input: torch.Tensor, full_matrices: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Make torch.svd work with other than fp32/64.
 
     The function torch.svd is only implemented for fp32/64 which makes
@@ -375,6 +375,7 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
 
     An MPS input past the shader-compilation ceiling is decomposed on the CPU and moved back, which
     is what keeps the batched minimal solvers behind ``RANSAC`` working on Apple silicon.
+    ``full_matrices`` selects full or reduced factors, as in ``torch.linalg.svd``.
     """
     if is_mps_tensor_safe(input):
         dtype = torch.float32
@@ -393,10 +394,10 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
     if is_mps_tensor_safe(x) and x.numel() >= 8192:
         # SVD is per-matrix, so decomposing the whole batch on the CPU gives the same result; the
         # casts back to the MPS device keep the autograd graph intact.
-        U, S, Vh = torch.linalg.svd(x.cpu())
+        U, S, Vh = torch.linalg.svd(x.cpu(), full_matrices=full_matrices)
         out1, out2, out3H = U.to(x.device), S.to(x.device), Vh.to(x.device)
     else:
-        out1, out2, out3H = torch.linalg.svd(x)
+        out1, out2, out3H = torch.linalg.svd(x, full_matrices=full_matrices)
     # Since kornia requires torch>=2.5.1, we can always use .mH
     out3 = out3H.mH
     return (out1.to(input.dtype), out2.to(input.dtype), out3.to(input.dtype))
@@ -441,10 +442,7 @@ def _torch_solve_cast(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
     """
     KORNIA_CHECK_IS_TENSOR(A, "A must be torch.Tensor")
     KORNIA_CHECK_IS_TENSOR(B, "B must be torch.Tensor")
-    if is_mps_tensor_safe(A):
-        dtype = torch.float32
-    else:
-        dtype = torch.float64
+    dtype = torch.float32 if is_mps_tensor_safe(A) else torch.float64
 
     out = torch.linalg.solve(A.to(dtype), B.to(dtype))
 

@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import copy
+import itertools
 import math
 import warnings
 from typing import ClassVar, Dict, List, Literal, Optional, Tuple, Union
@@ -24,7 +26,6 @@ from torch import nn
 
 from kornia.color import rgb_to_grayscale
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_LAF
-from kornia.core.utils import is_exporting
 from kornia.geometry.subpix import ConvQuadInterp3d
 from kornia.geometry.transform import ScalePyramid
 
@@ -79,6 +80,46 @@ def _lightglue_keypoint_scale_ori(lafs: torch.Tensor, feature_name: str) -> Tupl
     return scales, oris
 
 
+def _run_descriptor(module: nn.Module, patches: torch.Tensor) -> torch.Tensor:
+    """Run ``module`` in eval mode on ``patches``, leaving its device, dtype and parameters as they are.
+
+    A module whose floating-point parameters and buffers already sit on the device and dtype of ``patches`` is called
+    directly. Otherwise they are cast for the call only, through ``torch.func.functional_call`` or, for a TorchScript
+    module, which that API refuses, in the slots of a copy of the module. The cast is differentiable, so gradients
+    reach the module's own parameters. Eager calls, ``torch.compile`` and ``torch.export`` take the same path. Every
+    submodule is switched to eval for the call and its ``training`` flag is restored afterwards.
+    """
+    modes = [m.training for m in module.modules()]
+    module.eval()
+    try:
+        tensors = list(itertools.chain(module.named_parameters(), module.named_buffers()))
+        needs_cast = any(
+            t.device != patches.device or (t.is_floating_point() and t.dtype != patches.dtype) for _, t in tensors
+        )
+        if not needs_cast:
+            return module(patches)
+        state = {
+            name: t.to(device=patches.device, dtype=patches.dtype) if t.is_floating_point() else t.to(patches.device)
+            for name, t in tensors
+        }
+        if not isinstance(module, torch.jit.ScriptModule):
+            return torch.func.functional_call(module, state, (patches,))
+        # functional_call refuses a TorchScript module, so the cast tensors go into the slots of a copy instead; they
+        # stay in the autograd graph, so gradients reach the module's own parameters on every device and dtype.
+        with torch.no_grad():
+            copied = copy.deepcopy(module)
+        for name, t in state.items():
+            *path, attr = name.split(".")
+            owner = copied
+            for part in path:  # ScriptModules have no get_submodule
+                owner = getattr(owner, part)
+            setattr(owner, attr, t)
+        return copied(patches)
+    finally:
+        for m, mode in zip(module.modules(), modes):
+            m.training = mode
+
+
 def get_laf_descriptors(
     img: torch.Tensor,
     lafs: torch.Tensor,
@@ -87,6 +128,11 @@ def get_laf_descriptors(
     grayscale_descriptor: bool = True,
 ) -> torch.Tensor:
     r"""Get local descriptors, corresponding to LAFs (keypoints).
+
+    The descriptor runs in eval mode, with its floating-point parameters and buffers cast to the device and dtype of
+    ``img`` for the call (a TorchScript module is called on a cast copy). The module keeps its device, dtype and
+    parameters, every submodule is switched to eval for the call and gets its train/eval mode back afterwards, and
+    gradients reach the module's parameters.
 
     Args:
         img: image features with shape :math:`(B,C,H,W)`.
@@ -101,11 +147,6 @@ def get_laf_descriptors(
 
     """
     KORNIA_CHECK_LAF(lafs)
-    # Moving a module swaps its parameters, which graph capture forbids; the module is already placed under export.
-    if not is_exporting():
-        patch_descriptor = patch_descriptor.to(img)
-    patch_descriptor.eval()
-
     timg: torch.Tensor = img
     if grayscale_descriptor and img.size(1) == 3:
         timg = rgb_to_grayscale(img)
@@ -118,8 +159,9 @@ def get_laf_descriptors(
         # matching width is the whole probe -- `probe.shape[-1]` would only agree for descriptors
         # whose output is 2-D. The probe has a batch of one, so its numel is that width.
         with torch.no_grad():
-            probe = patch_descriptor(
-                torch.zeros(1, timg.size(1), patch_size, patch_size, dtype=timg.dtype, device=timg.device)
+            probe = _run_descriptor(
+                patch_descriptor,
+                torch.zeros(1, timg.size(1), patch_size, patch_size, dtype=timg.dtype, device=timg.device),
             )
         return torch.empty(lafs.shape[0], 0, probe.numel(), dtype=probe.dtype, device=probe.device)
 
@@ -127,17 +169,19 @@ def get_laf_descriptors(
     # Descriptor accepts standard torch.Tensor [B, CH, H, W], while patches are [B, N, CH, H, W] shape
     # So we need to reshape a bit :)
     B, N, CH, H, W = patches.size()
-    return patch_descriptor(patches.view(B * N, CH, H, W)).view(B, N, -1)
+    return _run_descriptor(patch_descriptor, patches.view(B * N, CH, H, W)).view(B, N, -1)
 
 
 class LAFDescriptor(nn.Module):
     r"""nn.Module to get local descriptors, corresponding to LAFs (keypoints).
 
-    Internally uses :func:`~kornia.feature.get_laf_descriptors`.
+    Internally uses :func:`~kornia.feature.get_laf_descriptors`: the descriptor runs in eval mode with its parameters
+    cast to the image's device and dtype for the call; the module keeps its device, dtype and parameters, and its
+    train/eval modes are restored after the call.
 
     Args:
         patch_descriptor_module: patch descriptor module, e.g. :class:`~kornia.feature.SIFTDescriptor`
-            or :class:`~kornia.feature.HardNet`. Default: :class:`~kornia.feature.HardNet`.
+            or :class:`~kornia.feature.HardNet`. Default: :class:`~kornia.feature.HardNet` with pretrained weights.
         patch_size: patch size in pixels, which descriptor expects.
         grayscale_descriptor: ``True`` if patch_descriptor expects single-channel image.
 
@@ -187,7 +231,8 @@ class LocalFeature(nn.Module):
     Args:
         detector: the detection module.
         descriptor: the descriptor module.
-        scaling_coef: multiplier for change default detector scale (e.g. it is too small for KeyNet by default)
+        scaling_coef: multiplier for change default detector scale (e.g. it is too small for KeyNet by default).
+            An ``int`` is converted to ``float``. Must be positive.
 
     """
 
@@ -196,8 +241,9 @@ class LocalFeature(nn.Module):
         self.detector = detector
         self.descriptor = descriptor
         if scaling_coef <= 0:
-            raise ValueError(f"Scaling coef should be >= 0, got {scaling_coef}")
-        self.scaling_coef = scaling_coef
+            raise ValueError(f"Scaling coef should be > 0, got {scaling_coef}")
+        # scale_laf accepts a float or a tensor, not an int
+        self.scaling_coef = float(scaling_coef)
 
     def forward(
         self, img: torch.Tensor, mask: Optional[torch.Tensor] = None
@@ -239,6 +285,17 @@ class LocalFeature(nn.Module):
         return (lafs, responses, descs)
 
 
+class _DoGSingleMagnitude(nn.Module):
+    """Magnitude of a single-scale DoG response, whose maxima are maxima of the DoG above zero or minima below zero."""
+
+    def __init__(self, sigma1: float = 1.0, sigma2: float = 1.6) -> None:
+        super().__init__()
+        self.dog = BlobDoGSingle(sigma1, sigma2)
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return self.dog(input).abs()
+
+
 class _SIFTFeature(LocalFeature):
     """Compose a sparse SIFT detector with a patch or pyramid extraction backend."""
 
@@ -275,6 +332,15 @@ class SIFTFeature(_SIFTFeature):
     :class:`~kornia.feature.LightGlueMatcher` expects with ``"sift"``.
     :func:`~kornia.feature.convert_sift_descriptor_layout` converts between the two.
 
+    The detector is :class:`~kornia.feature.MultiResolutionDetector` on the magnitude of a single-scale
+    :class:`~kornia.feature.BlobDoGSingle` response. Like the DoG detectors of Lowe, OpenCV and VLFeat, it keeps
+    both signs of DoG extremum: the maxima (dark blobs) and the minima (bright blobs). A keypoint is a strict
+    maximum of the magnitude over its ``config["nms_size"]`` window (15 px by default) on its pyramid level, so a
+    stronger response of the other sign in that window suppresses a weaker extremum, be it the ring of opposite
+    sign around a blob or a nearby blob of the other polarity. Those detectors instead test a maximum against its
+    3x3x3 scale-space neighbours and a minimum likewise, so an extremum of one sign never suppresses one of the
+    other. ``responses`` holds the magnitude.
+
     Using `kornia.feature.MultiResolutionDetector` without blur pyramid Still not as good as OpenCV/VLFeat because of
     https://github.com/kornia/kornia/pull/884,
     but we are working on it
@@ -301,7 +367,7 @@ class SIFTFeature(_SIFTFeature):
         if config is None:
             config = get_default_detector_config()
         detector = MultiResolutionDetector(
-            BlobDoGSingle(1.0, 1.6),
+            _DoGSingleMagnitude(1.0, 1.6),
             num_features,
             config,
             ori_module=PassLAF() if upright or descriptor_backend == "pyramid" else LAFOrienter(19),
@@ -464,6 +530,96 @@ class HesAffNetHardNet(LocalFeature):
         ).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
         super().__init__(detector, descriptor)
+
+
+def _dog_detector(
+    num_features: int,
+    upright: bool,
+    aff_module: Optional[nn.Module],
+    compile_modules: Union[bool, List[str]],
+) -> ScaleSpaceDetector:
+    """Return the 6-sigma DoG detector of the ``"patch"`` backend of :class:`SIFTFeatureScaleSpace`."""
+    return ScaleSpaceDetector(
+        num_features,
+        resp_module=BlobDoG(),
+        subpix_module=ConvQuadInterp3d(),
+        # DoG has one level fewer than its pyramid, so it needs the default three extra levels.
+        scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True),
+        ori_module=PassLAF() if upright else LAFOrienter(19),
+        aff_module=aff_module,
+        scale_space_response=True,
+        minima_are_also_good=True,
+        mr_size=6.0,
+        compile_modules=compile_modules,
+    )
+
+
+class DoGHardNet(LocalFeature):
+    """Convenience module, which implements DoG detector + HardNet descriptor.
+
+    The detector is the DoG :class:`~kornia.feature.ScaleSpaceDetector` of
+    :class:`~kornia.feature.SIFTFeatureScaleSpace`'s ``"patch"`` backend, and the orientation is estimated on its
+    6-sigma frames. The returned LAFs are those frames scaled by two, to 12 sigma or six times OpenCV's
+    ``KeyPoint.size``, and HardNet describes them. These are the frames the ``"doghardnet"`` weights of
+    :class:`~kornia.feature.LightGlueMatcher` expect: pass the LAFs and descriptors, without the padded slots (see
+    :meth:`~kornia.feature.LocalFeature.forward`), to ``LightGlueMatcher("doghardnet")``.
+
+    The image must have one channel, :math:`(B, 1, H, W)`: convert a color image with
+    :func:`~kornia.color.rgb_to_grayscale` first.
+
+    Args:
+        num_features: the number of features to detect.
+        upright: if ``True``, skip the orientation estimation and return upright frames.
+        device: the device of the detector and descriptor modules. Default: CPU.
+        compile_modules: the detector sub-modules to wrap with :func:`torch.compile`, see
+            :class:`~kornia.feature.ScaleSpaceDetector`.
+
+    """
+
+    def __init__(
+        self,
+        num_features: int = 2048,
+        upright: bool = False,
+        device: Union[str, torch.device, None] = None,
+        compile_modules: Union[bool, List[str]] = False,
+    ) -> None:
+        if device is None:
+            device = torch.device("cpu")
+        detector = _dog_detector(num_features, upright, None, compile_modules).to(device)
+        descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
+        super().__init__(detector, descriptor, scaling_coef=2.0)
+
+
+class DoGAffNetHardNet(LocalFeature):
+    """Convenience module, which implements DoG detector + AffNet-HardNet descriptor.
+
+    As :class:`~kornia.feature.DoGHardNet`, with the affine shape of each 6-sigma DoG frame estimated by
+    :class:`~kornia.feature.LAFAffNetShapeEstimator` before its orientation. The scale of the returned LAFs, the
+    square root of their determinant, is again 12 sigma. Pass the LAFs and descriptors, without the padded slots, to
+    ``LightGlueMatcher("dog_affnet_hardnet")``. The image must have one channel, :math:`(B, 1, H, W)`.
+
+    Args:
+        num_features: the number of features to detect.
+        upright: if ``True``, skip the orientation estimation and return upright frames.
+        device: the device of the detector and descriptor modules. Default: CPU.
+        compile_modules: the detector sub-modules to wrap with :func:`torch.compile`, see
+            :class:`~kornia.feature.ScaleSpaceDetector`.
+
+    """
+
+    def __init__(
+        self,
+        num_features: int = 2048,
+        upright: bool = False,
+        device: Union[str, torch.device, None] = None,
+        compile_modules: Union[bool, List[str]] = False,
+    ) -> None:
+        if device is None:
+            device = torch.device("cpu")
+        aff_module = LAFAffNetShapeEstimator(True, preserve_orientation=False).eval()
+        detector = _dog_detector(num_features, upright, aff_module, compile_modules).to(device)
+        descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
+        super().__init__(detector, descriptor, scaling_coef=2.0)
 
 
 class KeyNetHardNet(LocalFeature):
@@ -721,6 +877,14 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
     the ``"sift"`` weights were trained on: the orientation is the negated LAF orientation in :math:`(-\pi, \pi]`,
     and the scale is a sixth of the LAF scale, which is the detection sigma for 6-sigma DoG frames such as
     :class:`~kornia.feature.SIFTFeatureScaleSpace`'s.
+
+    With ``"doghardnet"`` and ``"dog_affnet_hardnet"``, pass the LAFs the HardNet descriptors were computed on, at the
+    scale the weights were trained with: 12 sigma, six times OpenCV's ``KeyPoint.size`` and twice the 6-sigma DoG
+    frames of :class:`~kornia.feature.SIFTFeatureScaleSpace`. :class:`~kornia.feature.DoGHardNet` and
+    :class:`~kornia.feature.DoGAffNetHardNet` return such LAFs and their descriptors; with another 6-sigma DoG
+    detector, apply :func:`~kornia.feature.scale_laf` with ``2.0`` to its LAFs before describing them. The network
+    takes a sixth of the LAF scale, which is ``KeyPoint.size`` for these frames, and the LAF orientation in
+    :math:`[0, 2\pi)`.
 
     """
 

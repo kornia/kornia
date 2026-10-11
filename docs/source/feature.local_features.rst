@@ -38,6 +38,15 @@ Local features (detector and descriptor together)
 .. autoclass:: SIFTFeature
    :members: forward
 
+``SIFTFeature(descriptor_backend="pyramid")`` uses shared image-pyramid maps
+without extracting image patches. Orientation integrates a smoothed gradient
+field before angular binning, separately from the descriptor histogram maps.
+The default orientation histogram and global descriptor maps each have 36 bins,
+with independent resolutions. Descriptor maps are pooled with separable tent
+filters and remapped into 8 angular bins per local spatial cell. Both stages share
+the image pyramid, which is built independently of the detector. The default
+``patch`` backend is unchanged.
+
 The scale-space SIFT preset supports ``descriptor_backend="pyramid"`` for
 specialized sparse extraction from the detector's Gaussian pyramid::
 
@@ -66,6 +75,12 @@ generic detector and its compilation options.
    :members: forward
 
 .. autoclass:: HesAffNetHardNet
+   :members: forward
+
+.. autoclass:: DoGHardNet
+   :members: forward
+
+.. autoclass:: DoGAffNetHardNet
    :members: forward
 
 .. autoclass:: KeyNetAffNetHardNet

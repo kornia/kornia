@@ -965,10 +965,7 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     compiling = torch.compiler.is_compiling()
     # Evaluate Ferrari in double precision from the input coefficients, before forming a rounded resolvent.
     # MPS has no float64 arithmetic; the copies remain differentiable.
-    if coeffs.device.type == "mps":
-        work = coeffs.cpu().double()
-    else:
-        work = coeffs.double()
+    work = coeffs.cpu().double() if coeffs.device.type == "mps" else coeffs.double()
     zero_tol = 1e-12 if original_dtype == torch.float64 else 1e-6
     # Selections, rounding-error bounds and conditioning choices below never carry a derivative;
     # forming them without autograd leaves every gradient unchanged.

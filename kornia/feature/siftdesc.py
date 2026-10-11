@@ -88,7 +88,12 @@ def _dense_sift_histograms_from_gradients(
     bo1 = (bo0 + 1) % num_ang_bins
     w0 = (1.0 - w1) * mag
     w1 = w1 * mag
-    return torch.cat([(bo0 == i).to(gx.dtype) * w0 + (bo1 == i).to(gx.dtype) * w1 for i in range(num_ang_bins)], 1)
+    # Each gradient votes into only two bins. Scatter those votes directly,
+    # avoiding a full-image equality mask and temporary for every angular bin.
+    histograms = gx.new_zeros(gx.shape[0], num_ang_bins, gx.shape[-2], gx.shape[-1])
+    histograms.scatter_add_(1, bo0.long() % num_ang_bins, w0)
+    histograms.scatter_add_(1, bo1.long() % num_ang_bins, w1)
+    return histograms
 
 
 def _dense_sift_histograms(input: torch.Tensor, num_ang_bins: int, eps: float) -> torch.Tensor:
@@ -444,27 +449,42 @@ def sift_describe(
 class DenseSIFTDescriptor(nn.Module):
     """nn.Module, which computes SIFT descriptor densely over the image.
 
+    Every output pixel is a SIFT descriptor of the image around the input position given below. Its
+    ``num_spatial_bins`` x ``num_spatial_bins`` cells are ``spatial_bin_size`` pixels apart, each cell pooling a
+    triangular window of ``spatial_bin_size`` pixels (see :func:`get_sift_pooling_kernel`), so the cells tile an
+    extent of ``num_spatial_bins * spatial_bin_size`` pixels. The cell spacing is that of :class:`SIFTDescriptor` and
+    of the VLFeat ``vl_dsift`` grid.
+
     Args:
         num_ang_bins: Number of angular bins. (8 is default)
-        num_spatial_bins: Number of spatial bins per descriptor (4 is default). You might want to set an odd
-            number and relevant padding to keep the feature map size.
-        spatial_bin_size: Size of a spatial bin in pixels (4 is default)
+        num_spatial_bins: Number of spatial bins per descriptor (4 is default). With an odd
+            ``num_spatial_bins`` and an odd ``spatial_bin_size``,
+            ``padding = (num_spatial_bins - 1) * spatial_bin_size / 2`` keeps the feature map size at ``stride=1``.
+        spatial_bin_size: Size of a spatial bin in pixels, and the distance between neighbouring bins (4 is default)
         clipval: clipping value to reduce single-bin dominance
         rootsift: (bool) if True, RootSIFT (Arandjelović et. al, 2012) is computed
-        stride: default 1
-        padding: default 0
+        stride: step between neighbouring outputs in pixels (1 is default)
+        padding: zero padding of the pooled bin maps in pixels, on every side (1 is default)
 
     Returns:
         torch.Tensor: DenseSIFT descriptor of the image
 
     Shape:
         - Input: (B, 1, H, W)
-        - Output: (B, num_ang_bins * num_spatial_bins ** 2, (H+padding)/stride, (W+padding)/stride)
+        - Output: (B, num_ang_bins * num_spatial_bins ** 2, H_out, W_out), with
+          ``H_out = (H + e + 2 * padding - (num_spatial_bins - 1) * spatial_bin_size - 1) // stride + 1`` and
+          ``W_out`` likewise, where ``e`` is 1 for an even ``spatial_bin_size`` and 0 for an odd one.
+
+    Output pixel ``(i, j)`` describes the neighbourhood centred on the input position
+    ``x = j * stride - padding + (num_spatial_bins - 1) * spatial_bin_size / 2 - e / 2`` (``y`` likewise from
+    ``i``), in pixel-centre coordinates where the first input pixel is at 0. The centre lies on a pixel when
+    ``(num_spatial_bins - 1) * spatial_bin_size`` and ``e`` have the same parity, and half way between two pixels
+    otherwise.
 
     Examples::
         >>> input =  torch.rand(2, 1, 200, 300)
         >>> SIFT = DenseSIFTDescriptor()
-        >>> descs = SIFT(input) # 2x128x194x294
+        >>> descs = SIFT(input) # 2x128x191x291
 
     """
 
@@ -522,6 +542,7 @@ class DenseSIFTDescriptor(nn.Module):
             stride=(self.stride, self.stride),
             bias=False,
             padding=(self.pad, self.pad),
+            dilation=(self.spatial_bin_size, self.spatial_bin_size),
         )
         PoolingConv.weight.data.copy_(self._poolingconv_weight)
         self.PoolingConv = PoolingConv

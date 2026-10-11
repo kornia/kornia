@@ -543,14 +543,18 @@ def shear(
     .. image:: _static/img/shear.png
 
     Convention:
-        - ``shear`` is ``(shx, shy)``
+        - ``shear`` is a pair of raw factors ``(shx, shy)`` about pixel ``(0, 0)``:
+          ``x_out = x + shx * y``, ``y_out = y + shy * x`` (x right, y down).
+        - Known defect: :class:`Affine` reads its ``shear`` as angles in radians about the image centre and shears
+          by their negative tangent, so the same tensor shears the other way there while its values stay below
+          ``pi / 2`` in magnitude (`#5661 <https://github.com/kornia/kornia/issues/5661>`_).
         - align_corners: ``False`` by default (differs from the other 2D affine warps and from
           :class:`Shear`, which default to ``True``)
 
     Args:
         tensor: The image tensor to be skewed with shape of :math:`(B, C, H, W)`.
-        shear: tensor containing the angle to shear
-          in the x and y direction. The tensor must have a shape of
+        shear: tensor containing raw shear factors
+          in the x and y direction about pixel (0, 0). The tensor must have a shape of
           (B, 2), where B is batch size, last dimension contains shx shy.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
@@ -883,7 +887,12 @@ class Affine(nn.Module):
     r"""Apply multiple elementary affine transforms simultaneously.
 
     Convention:
-        - See the convention block of :func:`affine`.
+        - ``shear`` contains angles in radians, using the negative-tangent, x-then-y convention
+          of :func:`get_shear_matrix2d` about ``center`` (by default ``((W - 1) / 2, (H - 1) / 2)``).
+        - Known defect: :func:`shear` and :class:`Shear` read their ``shear`` as raw factors about pixel ``(0, 0)``,
+          without the negative tangent, so the same tensor shears the other way there while its values stay below
+          ``pi / 2`` in magnitude (`#5661 <https://github.com/kornia/kornia/issues/5661>`_).
+        - ``align_corners`` defaults to ``True``. See the convention block of :func:`affine`.
 
     Args:
         angle: Angle in degrees for counter-clockwise rotation around the center. The tensor
@@ -892,7 +901,7 @@ class Affine(nn.Module):
             have a shape of (B, 2), where B is the batch size and the last dimension contains dx and dy.
         scale_factor: Factor for scaling. The tensor must have a shape of (B,2), where B is the
             batch size and the last dimension contains scale factors for x and y direction.
-        shear: Factor for shearing in x- and y-direction around the center. The
+        shear: Angles in radians for shearing in x- and y-direction around the center. The
             tensor must have a shape of (B, 2), where B is the batch size and the last dimension
             contains sx and sy.
         center: Transformation center in pixels. The tensor must have a shape of (B, 2), where
@@ -906,6 +915,9 @@ class Affine(nn.Module):
 
     Raises:
         RuntimeError: If not one of ``angle``, ``translation``, ``scale_factor``, or ``shear`` is set.
+        DeviceError: If ``angle``, ``translation``, ``scale_factor`` and ``shear`` are not all on one device.
+        TypeCheckError: If they are on one device but do not all have one dtype. The ones not given are
+            created on that device and in that dtype.
 
     Returns:
         The transformed tensor with same shape as input.
@@ -945,7 +957,7 @@ class Affine(nn.Module):
         self._batch_size = batch_size
 
         super().__init__()
-        device, dtype = _extract_device_dtype([angle, translation, scale_factor])
+        device, dtype = _extract_device_dtype([angle, translation, scale_factor, shear])
 
         if angle is None:
             angle = torch.zeros(batch_size, device=device, dtype=dtype)
@@ -1238,8 +1250,8 @@ class Shear(nn.Module):
         - See the convention block of :func:`shear`.
 
     Args:
-        shear: tensor containing the angle to shear
-          in the x and y direction. The tensor must have a shape of
+        shear: tensor containing raw shear factors
+          in the x and y direction about pixel (0, 0). The tensor must have a shape of
           (B, 2), where B is batch size, last dimension contains shx shy.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.

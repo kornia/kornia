@@ -37,13 +37,6 @@ from .laf import laf_from_center_scale_ori, laf_is_filled
 from .orientation import PassLAF
 from .responses import BlobHessian
 
-# Max |sin| among the 11 boundary points sampled by laf_to_boundary_points(n_pts=12):
-#   angles = linspace(0, 2π, n_pts - 1) = linspace(0, 2π, 11) → k * 2π/10 for k=0..10
-#   max|sin| at k=2 and k=3: sin(2π/5) ≈ 0.9511;  max|cos| at k=0: cos(0) = 1.0
-# Used to inline the boundary check in _process_octave for isotropic LAFs (rotmat=eye(2)),
-# avoiding the basis allocations and the bmm every octave.
-_MAX_ABS_SIN_12: float = math.sin(2 * 2 * math.pi / 10)  # ≈ 0.9511
-
 
 def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_levels: int) -> torch.Tensor:
     r"""Auxiliary function for ScaleSpaceDetector.
@@ -530,12 +523,8 @@ class ScaleSpaceDetector(nn.Module):
         )
 
         # Inline equivalent of laf_is_inside_image(scale_laf(current_lafs, 0.5), octave[:, 0], 5)
-        # for isotropic LAFs (rotmat = eye(2)).  Avoids: scale_laf (torch.cat), and
-        # laf_to_boundary_points (linspace/sin/cos allocations and their launches, plus a small
-        # host->device copy of the basis).  Since #4217 that op no longer transfers a tensor that
-        # scales with the LAF count, so what is saved here is per-call overhead, not bandwidth.
-        # For the axis-aligned isotropic case the 12-pt boundary check reduces to:
-        #   max x-extent = max|sin| * half_s;  max y-extent = max|cos| * half_s = half_s
+        # for isotropic LAFs (rotmat = eye(2)), without the torch.cat of scale_laf. The half frame
+        # half_s * I is a circle, so it spans exactly cx -+ half_s and cy -+ half_s.
         half_s = current_lafs[:, :, 0, 0] * 0.5
         cx = current_lafs[:, :, 0, 2]
         cy = current_lafs[:, :, 1, 2]
@@ -543,12 +532,7 @@ class ScaleSpaceDetector(nn.Module):
         # Valid pixel coordinates run 0 .. w-1 / 0 .. h-1, so the upper bound is (size - 1) - border.
         x_max = float(w - 1) - 5
         y_max = float(h - 1) - 5
-        good_mask = (
-            (cx - half_s * _MAX_ABS_SIN_12 >= 5)
-            & (cx + half_s * _MAX_ABS_SIN_12 <= x_max)
-            & (cy - half_s >= 5)
-            & (cy + half_s <= y_max)
-        )
+        good_mask = (cx - half_s >= 5) & (cx + half_s <= x_max) & (cy - half_s >= 5) & (cy + half_s <= y_max)
         if oct_keep is not None:
             # The mask was checked at the integer NMS site, and the sub-pixel step has since moved
             # the centre -- across the mask boundary, when the true peak lies just inside the zero
@@ -740,6 +724,14 @@ class MultiResolutionDetector(nn.Module):
     "Key.Net: Keypoint Detection by Handcrafted and Learned CNN Filters".
     See :cite:`KeyNet2019` for more details.
 
+    The Key.Net reference code zeroes a 15 px strip along each side of a level before the non-maxima
+    suppression, which reports a "maximum" beside the strip wherever the response rises into it. This
+    detector suppresses on the whole response and removes the strip from the suppression output instead;
+    see :meth:`detect_features_on_single_level`.
+
+    Detections are maxima of the response. For a signed response whose minima are features as well, such as a
+    difference of Gaussians, pass its magnitude, as :class:`~kornia.feature.SIFTFeature` does.
+
     Args:
         model: response function, such as KeyNet or BlobHessian
         num_features: Number of features to detect. Every pyramid level is searched for this many
@@ -806,10 +798,17 @@ class MultiResolutionDetector(nn.Module):
             self.aff = aff_module
 
     def remove_borders(self, score_map: torch.Tensor, borders: int = 15) -> torch.Tensor:
-        """Remove the borders of the image to avoid detections on the corners."""
-        mask = torch.zeros_like(score_map)
-        mask[:, :, borders:-borders, borders:-borders] = 1
-        return mask * score_map
+        """Zero the strip of ``borders`` pixels along each side of a level, so that no detection is made there.
+
+        :meth:`detect_features_on_single_level` applies it to the non-maxima suppression output, not to the
+        response, so an override receives the suppressed map. The strip is set to an exact zero whatever the
+        score there, an infinite one included.
+        """
+        h, w = score_map.shape[-2:]
+        rows = torch.arange(h, device=score_map.device)
+        cols = torch.arange(w, device=score_map.device)
+        inside = ((rows >= borders) & (rows < h - borders)).view(h, 1) & ((cols >= borders) & (cols < w - borders))
+        return score_map.masked_fill(~inside, 0.0)
 
     def detect_features_on_single_level(
         self,
@@ -824,6 +823,11 @@ class MultiResolutionDetector(nn.Module):
         The response function may consume a multi-channel image -- for example, a learned color detector -- but must
         return one response map. A LAF has no response-channel identity, so independent per-channel detections are
         ambiguous and rejected. :class:`ScaleSpaceDetector` follows the same contract.
+
+        A detection is a strict maximum of the response over its ``nms_size`` window, above ``score_threshold``,
+        that lies outside the 15 px strip along the level's sides. The suppression reads the whole response, the
+        strip included, and :meth:`remove_borders` then zeroes the strip in its output: a position beside the strip
+        is reported only when no response at least as strong, inside the strip or not, lies within its window.
 
         Args:
             level_img: Image tensor for a single pyramid level.
@@ -855,9 +859,11 @@ class MultiResolutionDetector(nn.Module):
             f"model must return a response map with the level's spatial size {tuple(level_img.shape[-2:])}. "
             f"Got {tuple(resp_map.shape[-2:])}; pad the response function so that its output matches its input.",
         )
-        det_map = self.nms(self.remove_borders(resp_map))
-        # The mask is applied to the maxima, not to the response the NMS reads: a hard edge in the
-        # response would turn every pixel beside a zeroed neighbour into a "maximum".
+        # The border and the mask are applied to the maxima, not to the response the NMS reads: a hard
+        # edge in the response would turn every pixel beside a zeroed neighbour into a "maximum". A
+        # stronger response inside the strip therefore suppresses a weaker one beside it, as a stronger
+        # neighbour does anywhere else in the image.
+        det_map = self.remove_borders(self.nms(resp_map))
         if mask is not None:
             weights = _resize_mask(mask, det_map)
             # A boolean or integer mask resamples to exactly 0/1: dropping is all it can do. A float
