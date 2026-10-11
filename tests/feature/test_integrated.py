@@ -17,6 +17,7 @@
 
 import copy
 import sys
+import warnings
 
 import pytest
 import torch
@@ -43,7 +44,7 @@ from kornia.feature import (
 from kornia.feature.integrated import LocalFeatureMatcher
 from kornia.geometry import RANSAC, resize, transform_points
 
-from testing.base import BaseTester, supports_replicate_padding
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, supports_replicate_padding
 from testing.casts import dict_to
 
 
@@ -366,6 +367,48 @@ class TestDescriptorModuleIsNotModified(BaseTester):
         self._assert_state_equal(before, self._state(module))
         assert out.shape == (1, 0, 5)
         assert out.dtype == torch.float32
+
+    def test_torchscript_gradients_reach_the_module_5724(self, device):
+        # a float32 CPU module: on the CPU the image is float64 (a dtype cast), elsewhere the module is on another
+        # device than the image (a device cast)
+        image_dtype = torch.float64 if torch.device(device).type == "cpu" else torch.float32
+        img, lafs = self._inputs(device, image_dtype)
+        plain = HardNet(False)
+        scripted = torch.jit.script(copy.deepcopy(plain))
+        before = self._state(scripted)
+        get_laf_descriptors(img, lafs, plain, 32).sum().backward()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            get_laf_descriptors(img, lafs, scripted, 32).sum().backward()
+        assert not [w for w in caught if "not a leaf Tensor" in str(w.message)]
+        self._assert_state_equal(before, self._state(scripted))
+        for p, q in zip(scripted.parameters(), plain.parameters()):
+            assert p.grad is not None
+            assert p.grad.dtype == torch.float32
+            assert p.grad.device == torch.device("cpu")
+            self.assert_close(p.grad, q.grad)
+
+    def test_dynamo_casts_a_module_of_another_dtype_5724(self, device, torch_optimizer):
+        if torch.device(device).type == "mps":
+            pytest.skip("MPS does not support float64")
+        img, lafs = self._inputs(device, torch.float64)
+        module = _TrainModeProbe().to(device).train()  # float32 module, float64 image
+        before = self._state(module)
+        expected = self._reference(module, img, lafs, 16)
+        out = torch_optimizer(LAFDescriptor(module, 16))(img, lafs)
+        self._assert_state_equal(before, self._state(module))
+        self.assert_close(out, expected)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_export_casts_a_module_of_another_dtype_5724(self, device):
+        if torch.device(device).type == "mps":
+            pytest.skip("MPS does not support float64")
+        img, lafs = self._inputs(device, torch.float64)
+        module = _TrainModeProbe().to(device)  # float32 module, float64 image
+        expected = self._reference(module, img, lafs, 16)
+        # strict export cannot capture module.eval() on torch 2.5 and 2.6
+        exported = torch.export.export(LAFDescriptor(module, 16), (img, lafs), strict=False)
+        self.assert_close(exported.module()(img, lafs), expected)
 
 
 class TestLocalFeature(BaseTester):

@@ -26,7 +26,6 @@ from torch import nn
 
 from kornia.color import rgb_to_grayscale
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_LAF
-from kornia.core.utils import is_exporting
 from kornia.geometry.subpix import ConvQuadInterp3d
 from kornia.geometry.transform import ScalePyramid
 
@@ -82,32 +81,40 @@ def _lightglue_keypoint_scale_ori(lafs: torch.Tensor, feature_name: str) -> Tupl
 
 
 def _run_descriptor(module: nn.Module, patches: torch.Tensor) -> torch.Tensor:
-    """Run ``module`` in eval mode on ``patches`` without changing the module.
+    """Run ``module`` in eval mode on ``patches``, leaving its device, dtype and parameters as they are.
 
     A module whose floating-point parameters and buffers already sit on the device and dtype of ``patches`` is called
-    directly. Otherwise they are cast for the call only (through ``torch.func.functional_call``, which is
-    differentiable, so gradients reach the module's own parameters; a TorchScript module, which that API refuses,
-    runs as a cast copy, whose parameters receive no gradient). The ``training`` flag of every submodule is restored
-    afterwards. Under export the module is already placed and is called directly.
+    directly. Otherwise they are cast for the call only, through ``torch.func.functional_call`` or, for a TorchScript
+    module, which that API refuses, in the slots of a copy of the module. The cast is differentiable, so gradients
+    reach the module's own parameters. Eager calls, ``torch.compile`` and ``torch.export`` take the same path. Every
+    submodule is switched to eval for the call and its ``training`` flag is restored afterwards.
     """
     modes = [m.training for m in module.modules()]
     module.eval()
     try:
-        if is_exporting():
-            return module(patches)
         tensors = list(itertools.chain(module.named_parameters(), module.named_buffers()))
         needs_cast = any(
             t.device != patches.device or (t.is_floating_point() and t.dtype != patches.dtype) for _, t in tensors
         )
         if not needs_cast:
             return module(patches)
-        if isinstance(module, torch.jit.ScriptModule):
-            return copy.deepcopy(module).to(patches)(patches)
         state = {
             name: t.to(device=patches.device, dtype=patches.dtype) if t.is_floating_point() else t.to(patches.device)
             for name, t in tensors
         }
-        return torch.func.functional_call(module, state, (patches,))
+        if not isinstance(module, torch.jit.ScriptModule):
+            return torch.func.functional_call(module, state, (patches,))
+        # functional_call refuses a TorchScript module, so the cast tensors go into the slots of a copy instead; they
+        # stay in the autograd graph, so gradients reach the module's own parameters on every device and dtype.
+        with torch.no_grad():
+            copied = copy.deepcopy(module)
+        for name, t in state.items():
+            *path, attr = name.split(".")
+            owner = copied
+            for part in path:  # ScriptModules have no get_submodule
+                owner = getattr(owner, part)
+            setattr(owner, attr, t)
+        return copied(patches)
     finally:
         for m, mode in zip(module.modules(), modes):
             m.training = mode
@@ -123,9 +130,9 @@ def get_laf_descriptors(
     r"""Get local descriptors, corresponding to LAFs (keypoints).
 
     The descriptor runs in eval mode, with its floating-point parameters and buffers cast to the device and dtype of
-    ``img`` for the call (a TorchScript module is called on a cast copy); the descriptors come back on that device and
-    dtype. The module itself is not changed: its device, dtype, parameters and the train/eval mode of every submodule
-    stay as the caller set them, and gradients reach its parameters (except on a TorchScript copy).
+    ``img`` for the call (a TorchScript module is called on a cast copy). The module keeps its device, dtype and
+    parameters, every submodule is switched to eval for the call and gets its train/eval mode back afterwards, and
+    gradients reach the module's parameters.
 
     Args:
         img: image features with shape :math:`(B,C,H,W)`.
@@ -169,7 +176,8 @@ class LAFDescriptor(nn.Module):
     r"""nn.Module to get local descriptors, corresponding to LAFs (keypoints).
 
     Internally uses :func:`~kornia.feature.get_laf_descriptors`: the descriptor runs in eval mode with its parameters
-    cast to the image's device and dtype for the call, and the module itself is not changed.
+    cast to the image's device and dtype for the call; the module keeps its device, dtype and parameters, and its
+    train/eval modes are restored after the call.
 
     Args:
         patch_descriptor_module: patch descriptor module, e.g. :class:`~kornia.feature.SIFTDescriptor`
