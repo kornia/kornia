@@ -32,7 +32,7 @@ from kornia.core.check import (
     KORNIA_CHECK_IS_TENSOR,
 )
 from kornia.core.utils import _normalize_to_float32_or_float64, is_compiling
-from kornia.image.utils import perform_keep_shape_image, perform_keep_shape_video
+from kornia.image.utils import _to_bcdhw, _to_bchw
 
 
 def _assert_async_value_check(cond: torch.Tensor, msg: str) -> None:
@@ -869,14 +869,23 @@ def solarize(
     return _solarize(input, thresholds)
 
 
-@perform_keep_shape_image
+def _prepare_intensity_input(input: torch.Tensor, spatial_dims: int) -> torch.Tensor:
+    """Batch image or volume inputs without accepting empty channels or spatial dimensions."""
+    if not isinstance(input, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+    if 0 in input.shape[-(spatial_dims + 1) :]:
+        raise ValueError(f"Input channel and spatial dimensions must be non-zero. Got {input.shape}.")
+    return _to_bcdhw(input) if spatial_dims == 3 else _to_bchw(input)
+
+
 def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tensor:
     r"""Reduce the number of bits for each color channel.
 
     Convention:
         Expects values in [0, 1] and quantizes them through 8-bit integers; bits=8 returns the
         input unchanged. bits is a scalar, (1,), or a leading prefix of the input shape such as
-        (B,) or (B, C).
+        (B,) or (B, C), with arbitrary leading image dimensions flattened into B.
+        Empty leading dimensions are supported; channels and spatial dimensions must be non-empty.
 
     .. image:: _static/img/posterize.png
 
@@ -885,12 +894,13 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     Args:
         input: image torch.Tensor with shape :math:`(*, C, H, W)` to posterize.
         bits: number of high bits. Must be in range [0, 8].
-            If int or one element torch.Tensor, input will be posterized by this bits.
-            If 1-d torch.Tensor, input will be posterized sample-wise, len(bits) == input.shape[0]
-            -- one value per sample in the batch, not per channel; any other length raises
+            If int or one-element torch.Tensor, the same bits value is used across the whole batch.
+            A 1-d tensor with multiple elements specifies one value per sample, not per channel;
+            its length must equal the normalized batch size ``B`` after flattening leading dimensions.
+            Any other length raises
             ``Batch size must be equal between bits and input``.
-            If n-d torch.Tensor, input will be posterized element-channel-wisely,
-            bits.shape == input.shape[:len(bits.shape)]
+            A tensor with multiple dimensions specifies element-channel-wise values; its shape must
+            match the corresponding leading dimensions of the normalized ``(B, C, H, W)`` input.
 
     Returns:
         Image with reduced color channels with shape :math:`(*, C, H, W)`.
@@ -908,6 +918,9 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     """
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
+    input_shape = input.shape
+    input = _prepare_intensity_input(input, 2)
 
     if not isinstance(bits, (int, torch.Tensor)):
         raise TypeError(f"bits type is not an int or torch.Tensor. Got {type(bits)}")
@@ -946,7 +959,7 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
         return torch.where(bits == 8, input, out)
 
     if len(bits.shape) == 0 or (len(bits.shape) == 1 and len(bits) == 1):
-        return _posterize_one(input, bits)
+        return _posterize_one(input, bits).reshape(input_shape)
 
     if len(bits.shape) == 1:
         if bits.shape[0] != input.shape[0]:
@@ -956,7 +969,7 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
 
         # Broadcast the per-sample bits over (B, C, H, W) and posterize in one vectorised call
         # instead of a Python loop over the batch (which launched a kernel per sample).
-        return _posterize_one(input, bits.view(-1, *([1] * (input.ndim - 1))))
+        return _posterize_one(input, bits.view(-1, *([1] * (input.ndim - 1)))).reshape(input_shape)
 
     if bits.shape != input.shape[: len(bits.shape)]:
         raise AssertionError(
@@ -965,16 +978,17 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
         )
     # Broadcast per-(batch, channel) bits over the spatial dims and posterize in one call.
     _bits = bits.view(*bits.shape, *([1] * (input.ndim - bits.ndim)))
-    return _posterize_one(input, _bits)
+    return _posterize_one(input, _bits).reshape(input_shape)
 
 
-@perform_keep_shape_image
 def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Apply sharpness to the input torch.Tensor.
 
     Convention:
         factor=0 selects the blurred image and factor=1 preserves the input;
-        factor is a float or a (B,) tensor with one value per image.
+        factor is a float or a (B,) tensor with one value per image, with arbitrary leading image
+        dimensions flattened into B. Empty leading dimensions are supported; channels must be
+        non-empty and both spatial dimensions must be at least 3 pixels.
 
     .. image:: _static/img/sharpness.png
 
@@ -986,8 +1000,10 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
         factor: blend factor between the smoothed copy and the input. ``0`` returns the smoothed image,
             ``1`` returns the input, and a factor above ``1`` sharpens. It is not validated: ``0`` and
             negative factors are accepted and extrapolate past the smoothed image.
-            If float or one element torch.Tensor, input will be sharpened by the same factor across the whole batch.
-            If 1-d torch.Tensor, input will be sharpened element-wisely, len(factor) == len(input).
+            A scalar or 0-d tensor applies the same factor across the whole batch.
+            A 1-d tensor specifies one factor per sample; its length must equal the normalized batch
+            size ``B`` after flattening leading dimensions. A length-one vector does not broadcast
+            when ``B`` is greater than one.
 
     Returns:
         Sharpened image or images with shape :math:`(*, C, H, W)`.
@@ -998,6 +1014,10 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
         torch.Size([1, 1, 5, 5])
 
     """
+    batched_input = _prepare_intensity_input(input, 2)
+    input_shape = input.shape
+    input = batched_input
+
     if not isinstance(factor, torch.Tensor):
         factor = torch.as_tensor(factor, device=input.device, dtype=input.dtype)
     else:
@@ -1036,7 +1056,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     # bites for extrapolation, matching the previous behavior.
     if len(factor.size()) != 0:
         factor = factor.view(-1, *([1] * (result.dim() - 1)))
-    return torch.clamp(result + (input - result) * factor, 0.0, 1.0)
+    return torch.clamp(result + (input - result) * factor, 0.0, 1.0).reshape(input_shape)
 
 
 def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
@@ -1056,7 +1076,7 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     """
     shape = input.shape
     n = shape[0] * shape[1]
-    scaled = input.reshape(n, -1) * 255.0  # (N, P)
+    scaled = input.flatten(0, 1).flatten(1) * 255.0  # (N, P)
 
     # Input is expected in [0, 1]. The histogram index below is clamped, but the LUT lookup indexes
     # with the unclamped ``scaled.long()``, which is out of bounds unless ``scaled`` is in (-1, 256).
@@ -1099,13 +1119,13 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     return (result / 255.0).reshape(shape)
 
 
-@perform_keep_shape_image
 def equalize(input: torch.Tensor) -> torch.Tensor:
     r"""Apply equalize on the input torch.Tensor.
 
     Convention:
         Equalizes each channel of each image independently over [0, 1].
         :func:`equalize3d` applies the corresponding operation to volumes.
+        Empty leading dimensions are supported; channels and spatial dimensions must be non-empty.
 
     .. image:: _static/img/equalize.png
 
@@ -1132,16 +1152,16 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
 
     """
     # Scales each channel independently, batched over (B, C) in a single pass.
-    return _scale_channel_batched(input)
+    return _scale_channel_batched(_prepare_intensity_input(input, 2)).reshape(input.shape)
 
 
-@perform_keep_shape_video
 def equalize3d(input: torch.Tensor) -> torch.Tensor:
     r"""Equalize the values for a 3D volumetric torch.Tensor.
 
     Convention:
         Equalizes each channel of each volume independently over [0, 1]; see
         :func:`equalize` for the image variant and :func:`equalize_clahe` for local tiling.
+        Empty leading dimensions are supported; channels and spatial dimensions must be non-empty.
 
     Implements Equalize function for a sequence of images using PyTorch ops based on uint8 format:
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
@@ -1150,7 +1170,7 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
         input: image torch.Tensor with shape :math:`(*, C, D, H, W)` to equalize.
 
     Returns:
-        Equalized volume with shape :math:`(B, C, D, H, W)`.
+        Equalized volume with the same shape as the input.
 
     .. note::
        The input is expected in :math:`[0, 1]`, and each channel's whole :math:`(D, H, W)` volume is
@@ -1164,7 +1184,7 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
 
     """
     # Scales each channel independently (each (D, H, W) volume), batched over (B, C).
-    return _scale_channel_batched(input)
+    return _scale_channel_batched(_prepare_intensity_input(input, 3)).reshape(input.shape)
 
 
 def invert(image: torch.Tensor, max_val: Optional[torch.Tensor] = None) -> torch.Tensor:
