@@ -398,8 +398,7 @@ class TestRotationMatrix2d(BaseTester):
         with pytest.raises(ValueError, match="Inputs must have same device") as exc:
             kornia.geometry.get_rotation_matrix2d(**inputs)
         for name, value in inputs.items():
-            assert name in str(exc.value)
-            assert str(value.device) in str(exc.value)
+            assert f"{name} {value.device}" in str(exc.value)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_90deg_rotation(self, batch_size, device, dtype):
