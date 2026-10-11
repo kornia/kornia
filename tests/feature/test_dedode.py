@@ -193,6 +193,16 @@ class TestDeDoDePadding(BaseTester):
         assert model.descriptor.seen[0].shape == (1, 3, 50, 80)
 
 
+class TestDeDoDeHalfPrecision(BaseTester):
+    def test_detect_runs_in_the_model_dtype_5756(self, device, dtype):
+        model = DeDoDe(detector_model="L", descriptor_model="B", amp_dtype=dtype).to(device, dtype).eval()
+        image = torch.rand(1, 3, 56, 84, device=device, dtype=dtype)
+        keypoints, scores = model.detect(image, n=10)
+        assert keypoints.shape == (1, 10, 2)
+        assert scores.shape == (1, 10)
+        assert torch.isfinite(scores).all()
+
+
 @pytest.mark.skip(reason="DeDoDe is ummaintained")
 class TestDeDoDe:
     @pytest.mark.slow
