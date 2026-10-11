@@ -458,7 +458,7 @@ class TestDenseSIFTDescriptor(BaseTester):
             ({"padding": 0}, 40, 53, (29, 42)),
         ],
     )
-    def test_output_size_rule_NNNN(self, device, dtype, kwargs, h, w, expected):
+    def test_output_size_rule_5733(self, device, dtype, kwargs, h, w, expected):
         out = DenseSIFTDescriptor(**kwargs).to(device, dtype)(torch.rand(1, 1, h, w, device=device, dtype=dtype))
         assert out.shape[-2:] == torch.Size(expected)
 
@@ -553,7 +553,7 @@ class TestDenseSIFTDescriptor(BaseTester):
         c = DenseSIFTDescriptor(num_ang_bins=8, num_spatial_bins=4)
         self.assert_close(c._poolingconv_weight, expected)
 
-    def test_receptive_field_is_the_cell_grid_NNNN(self, device, dtype):
+    def test_receptive_field_is_the_cell_grid_5733(self, device, dtype):
         """One output depends on `num_spatial_bins * spatial_bin_size` pixels (plus the gradient stencil)."""
         torch.manual_seed(0)
         img = torch.rand(1, 1, 40, 53, device=device, dtype=dtype, requires_grad=True)
@@ -567,7 +567,7 @@ class TestDenseSIFTDescriptor(BaseTester):
         assert (int(ys.min()), int(ys.max())) == (7, 24)
         assert (int(xs.min()), int(xs.max())) == (18 - 1, 33 + 1)
 
-    def test_vertical_edge_lights_one_cell_column_NNNN(self, device, dtype):
+    def test_vertical_edge_lights_one_cell_column_5733(self, device, dtype):
         """An edge inside a cell's band is seen by that cell column only, not by its neighbours."""
         h, w, j = 40, 53, 20
         mod = DenseSIFTDescriptor(padding=0, rootsift=False, clipval=1.0).to(device, dtype)
@@ -581,7 +581,7 @@ class TestDenseSIFTDescriptor(BaseTester):
             expected[cell] = 1.0
             self.assert_close(per_col / per_col.sum(), expected, atol=1e-3, rtol=1e-3)
 
-    def test_matches_sift_descriptor_cell_layout_NNNN(self, device, dtype):
+    def test_matches_sift_descriptor_cell_layout_5733(self, device, dtype):
         """The dense descriptor at a pixel is close to `SIFTDescriptor` of the 16 x 16 patch around that pixel."""
         torch.manual_seed(0)
         img = gaussian_blur2d(torch.rand(1, 1, 60, 70, device=device, dtype=dtype), (5, 5), (1.5, 1.5))

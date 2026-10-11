@@ -277,7 +277,7 @@ class TestLAFAffineShapeEstimator(BaseTester):
             ((6.0, 3.0), _SKEWED_SHAPE),
         ],
     )
-    def test_estimate_is_composed_with_the_input_shape_NNNN(self, device, dtype, blob_axes, input_shape):
+    def test_estimate_is_composed_with_the_input_shape_5733(self, device, dtype, blob_axes, input_shape):
         img, blob_ellipse = _gaussian_blob(64, 80, (41.0, 30.0), blob_axes, 25.0, device, dtype)
         if input_shape == "matched":
             input_shape = (16.0 * torch.linalg.cholesky(blob_ellipse)).tolist()
@@ -288,7 +288,7 @@ class TestLAFAffineShapeEstimator(BaseTester):
         self.assert_close(_unit_ellipse(out), blob_ellipse, rtol=0.0, atol=0.05)
         self.assert_close(out[..., 2], laf[..., 2])
 
-    def test_repeated_application_converges_NNNN(self, device, dtype):
+    def test_repeated_application_converges_5733(self, device, dtype):
         img, blob_ellipse = _gaussian_blob(64, 80, (41.0, 30.0), (6.0, 3.0), 25.0, device, dtype)
         laf = laf_from_center_scale_ori(
             torch.tensor([[[41.0, 30.0]]], device=device, dtype=dtype),
@@ -304,7 +304,7 @@ class TestLAFAffineShapeEstimator(BaseTester):
         self.assert_close(outs[3], outs[2], rtol=0.0, atol=0.05)
 
     @pytest.mark.parametrize("preserve_orientation", [False, True])
-    def test_patch_shape_maps_through_the_sampling_frame_NNNN(self, device, dtype, preserve_orientation):
+    def test_patch_shape_maps_through_the_sampling_frame_5733(self, device, dtype, preserve_orientation):
         # The patch is sampled through make_upright(laf), so a shape estimated in patch coordinates is the image region
         # frame @ shape, whose ellipse matrix is frame @ inverse(E) @ frame.T for the patch ellipse E.
         abc = (1.0, 0.3, 0.5)
@@ -330,7 +330,7 @@ class TestLAFAffineShapeEstimator(BaseTester):
             (False, [[21.08356, 0.0], [6.92445, 12.14216]]),
         ],
     )
-    def test_isotropic_input_gets_the_patch_estimate_NNNN(self, device, dtype, preserve_orientation, expected_shape):
+    def test_isotropic_input_gets_the_patch_estimate_5733(self, device, dtype, preserve_orientation, expected_shape):
         # An isotropic input is sampled through a scaled identity frame (up to rounding), so its result is the patch
         # estimate at the input's scale. Values from torch 2.14, CPU float64.
         img, _ = _gaussian_blob(64, 80, (41.0, 30.0), (6.0, 3.0), 25.0, device, dtype)
@@ -464,7 +464,7 @@ class TestLAFAffNetShapeEstimator(BaseTester):
 
     @pytest.mark.parametrize("preserve_orientation", [False, True])
     @pytest.mark.parametrize("xy", [(0.0, 0.0, 0.0), (0.2, -0.3, -0.4)])
-    def test_prediction_maps_through_the_sampling_frame_NNNN(self, device, dtype, xy, preserve_orientation):
+    def test_prediction_maps_through_the_sampling_frame_5733(self, device, dtype, xy, preserve_orientation):
         # AffNet predicts P = [[1 + x0, 0], [x1, 1 + x2]] in the coordinates of a patch sampled through
         # make_upright(laf), so the image region is frame @ P: an identity prediction keeps the input shape.
         img = torch.rand(1, 1, 48, 64, device=device, dtype=dtype)
@@ -487,7 +487,7 @@ class TestLAFAffNetShapeEstimator(BaseTester):
         ("blob_axes", "input_shape"),
         [((4.0, 4.0), [[24.0, 0.0], [0.0, 12.0]]), ((6.0, 3.0), "matched")],
     )
-    def test_pretrained_estimate_is_composed_with_the_input_shape_NNNN(self, device, dtype, blob_axes, input_shape):
+    def test_pretrained_estimate_is_composed_with_the_input_shape_5733(self, device, dtype, blob_axes, input_shape):
         img, blob_ellipse = _gaussian_blob(64, 80, (41.0, 30.0), blob_axes, 25.0, device, dtype)
         if input_shape == "matched":
             input_shape = (16.0 * torch.linalg.cholesky(blob_ellipse)).tolist()

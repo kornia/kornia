@@ -1643,7 +1643,7 @@ class TestLAFIsTouchingBoundary(BaseTester):
         )
 
     @pytest.mark.parametrize("border", [0, 5])
-    def test_region_crossing_the_edge_between_boundary_samples_is_outside_NNNN(self, device, dtype, border):
+    def test_region_crossing_the_edge_between_boundary_samples_is_outside_5733(self, device, dtype, border):
         # A radius-16 circle reaches c_x - 16 and c_x + 16. Ten points sampled 36 degrees apart on it reach only
         # c_x -+ 16 sin(72 deg) = c_x -+ 15.22, so a circle overhanging an x edge by 0.5 px passed a sampled test.
         # The values are exact in bfloat16, and the 0.5 px overhang is two bfloat16 steps at x = 59.
@@ -1656,7 +1656,7 @@ class TestLAFIsTouchingBoundary(BaseTester):
         expected = torch.tensor([[False, False, True, True]], device=device)
         assert torch.equal(kornia.feature.laf_is_inside_image(laf, img, border), expected)
 
-    def test_anisotropic_region_uses_the_extent_of_each_row_NNNN(self, device, dtype):
+    def test_anisotropic_region_uses_the_extent_of_each_row_5733(self, device, dtype):
         # The region c + A u, |u| = 1 spans c_y -+ |A[1, :]| = c_y -+ 20 along y, and the second row points 18 deg
         # from the y axis, halfway between two boundary samples: sampled points reach only c_y + 19.02. The columns
         # of A have other norms (9.34 and 19.13), so a test that read them instead of the rows accepts the region too.

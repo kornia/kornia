@@ -735,7 +735,7 @@ class TestScaleSpaceDetector(BaseTester):
         assert resps.shape == torch.Size([1, n_feats])
 
     @pytest.mark.parametrize("x0", [80, 15])
-    def test_frame_overhanging_the_border_between_boundary_samples_is_rejected_NNNN(self, device, dtype, x0):
+    def test_frame_overhanging_the_border_between_boundary_samples_is_rejected_5733(self, device, dtype, x0):
         # A candidate is kept when half its frame lies inside the octave less a 5 px border, the rule of
         # `laf_is_inside_image(scale_laf(frame, 0.5), octave, 5)`. One response maximum at level 2 of the first
         # octave, row 32 and column 80 or 15, gets a half frame of radius 10.3, which overhangs the border at x = 90
