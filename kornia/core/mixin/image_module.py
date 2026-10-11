@@ -331,9 +331,9 @@ class ImageModuleMixIn:
         :math:`(B, H, W, C)` array with the same values, the layout :meth:`to_tensor` accepts, so a floating array
         converts back to the same tensor. A tensor of any other rank keeps its shape. Every 3-D or 4-D tensor is taken
         to be an image, so a non-image element of a tuple output, such as a :math:`(B, N, 4)` box tensor, is moved to
-        channels-last too; modules with several outputs are tracked in
-        `#5210 <https://github.com/kornia/kornia/issues/5210>`_. A ``bfloat16`` tensor becomes a ``float32`` array,
-        since NumPy has no ``bfloat16``.
+        channels-last too. :class:`~kornia.augmentation.container.AugmentationSequential` knows its outputs: it
+        converts its images and masks only, and rejects ``output_type="numpy"`` / ``"pil"`` when its data keys hold
+        boxes, keypoints or labels. A ``bfloat16`` tensor becomes a ``float32`` array, since NumPy has no ``bfloat16``.
 
         Args:
             x: The input to convert.
