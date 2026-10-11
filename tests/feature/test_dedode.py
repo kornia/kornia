@@ -193,6 +193,16 @@ class TestDeDoDePadding(BaseTester):
         assert model.descriptor.seen[0].shape == (1, 3, 50, 80)
 
 
+class TestDeDoDeHalfPrecision(BaseTester):
+    def test_detect_runs_in_the_model_dtype_5756(self, device, dtype):
+        model = DeDoDe(detector_model="L", descriptor_model="B", amp_dtype=dtype).to(device, dtype).eval()
+        image = torch.rand(1, 3, 56, 84, device=device, dtype=dtype)
+        keypoints, scores = model.detect(image, n=10)
+        assert keypoints.shape == (1, 10, 2)
+        assert scores.shape == (1, 10)
+        assert torch.isfinite(scores).all()
+
+
 class TestDeDoDeNoGrad(BaseTester):
     @staticmethod
     def _model(device, dtype):
@@ -208,9 +218,10 @@ class TestDeDoDeNoGrad(BaseTester):
     @staticmethod
     def _skip_half(dtype):
         if dtype in (torch.float16, torch.bfloat16):
-            # Not a compile matter: eager `detect` raises "Input type (float) and bias type (c10::Half)" as well,
-            # because the detector lifts its context to float32 in front of half-precision decoder weights.
-            pytest.skip("DeDoDe with half-precision weights does not run in eager either")
+            # Eager runs in half precision, but the compiled outputs differ from it by more than the tolerances below
+            # (torch 2.14 CPU: descriptors by 4e-4 in float16 and 3e-3 in bfloat16; the last bfloat16 keypoints of the
+            # top 100 move by a pixel).
+            pytest.skip("compiled half-precision DeDoDe differs from eager by more than these tolerances")
 
     def test_outputs_are_ordinary_tensors_without_grad_5737(self, device, dtype):
         # `detect` and `describe` run under `torch.no_grad()`, not `torch.inference_mode()`: inference tensors
