@@ -567,6 +567,7 @@ class TestConvSoftArgmax3d(BaseTester):
                 normalized_coordinates=normalized_coordinates,
             )
         outputs = result if isinstance(result, tuple) else (result,)
+        assert len(outputs) == (2 if output_value else 1)
         expected_shapes = [(batch_size, channels, 3, 3, 3, 2), (batch_size, channels, 3, 3, 2)]
         for output, expected_shape in zip(outputs, expected_shapes):
             assert output.shape == expected_shape
