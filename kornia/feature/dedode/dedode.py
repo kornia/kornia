@@ -81,7 +81,8 @@ class DeDoDe(nn.Module):
 
     See :cite:`edstedt2024dedode` for details.
 
-    .. note:: DeDode takes ImageNet normalized images as input (not in range [0, 1]).
+    .. note:: `forward`, `detect` and `describe` take RGB images in the range :math:`[0, 1]` and apply the ImageNet
+        normalization themselves; pass ``apply_imagenet_normalization=False`` for images that are already normalized.
 
     Args:
         detector_model: The detector model kind. Available options are: `L`.
@@ -136,9 +137,11 @@ class DeDoDe(nn.Module):
         """Detect and describe keypoints in the input images.
 
         Args:
-            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the ImageNet-Normalized input images.
+            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the RGB input images in the range
+                :math:`[0, 1]`.
             n: The number of keypoints to detect.
-            apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
+            apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images. Pass
+                ``False`` if they are already ImageNet-normalized.
             pad_if_not_divisible: Zero-pad the (normalised) image on the bottom and right so that H and W are
                 multiples of 14; the pad is the ImageNet mean colour. The padding is removed from the scoremap, so
                 keypoints are never reported in it.
@@ -177,9 +180,11 @@ class DeDoDe(nn.Module):
             detector is only used at inference time and its statistics must be frozen.
 
         Args:
-            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the input images.
+            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the RGB input images in the range
+                :math:`[0, 1]`.
             n: The number of keypoints to detect.
-            apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
+            apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images. Pass
+                ``False`` if they are already ImageNet-normalized.
             pad_if_not_divisible: Zero-pad the (normalised) image on the bottom and right so that H and W are
                 multiples of 14; the pad is the ImageNet mean colour, as in `forward` and `describe`. The padding is
                 removed from the scoremap, so keypoints are never reported in it.
@@ -224,9 +229,11 @@ class DeDoDe(nn.Module):
             descriptor is only used at inference time and its statistics must be frozen.
 
         Args:
-            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the input images.
+            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the RGB input images in the range
+                :math:`[0, 1]`.
             keypoints: An optional torch.Tensor of shape :math:`(B, N, 2)` containing the detected keypoints.
-            apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
+            apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images. Pass
+                ``False`` if they are already ImageNet-normalized.
             pad_if_not_divisible: Zero-pad the (normalised) image on the bottom and right so that H and W are
                 multiples of 14; the pad is the ImageNet mean colour, as in `forward` and `detect`. Required when
                 using the ``G`` descriptor backed by DINOv2 (patch size 14). The padding is removed from the
