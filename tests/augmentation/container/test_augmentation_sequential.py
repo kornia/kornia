@@ -32,7 +32,7 @@ from kornia.geometry.boxes import Boxes
 from kornia.geometry.transform import resize
 
 from testing.augmentation.utils import reproducibility_test
-from testing.base import BaseTester, assert_close
+from testing.base import BaseTester, assert_close, supports_bilinear_2d_grid_sample
 
 
 class TestAugmentationSequential:
@@ -1849,15 +1849,120 @@ class TestConventionAugmentationSequential(BaseTester):
         with pytest.raises(NotImplementedError, match="3d inverse"):
             geometric.inverse(geometric(image))
 
-    def test_wart_integer_masks_round_through_image_dtype_4478(self, device, dtype):
-        first_inexact = {torch.bfloat16: 257, torch.float16: 2049, torch.float32: 2**24 + 1, torch.float64: 2**53 + 1}
-        label = first_inexact[dtype]
-        image = torch.ones(1, 1, 2, 2, device=device, dtype=dtype)
+    @pytest.mark.parametrize("as_list", [False, True])
+    @pytest.mark.parametrize("operation", ["flip", "resize", "affine"])
+    def test_convention_integer_mask_labels_survive_4478(self, as_list, operation, device, dtype):
+        if operation == "affine" and not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("The image path requires bilinear grid_sample for the selected dtype.")
+        image = torch.ones(1, 1, 2, 3, device=device, dtype=dtype)
+        mask = torch.tensor([0, 257, 2049, 26001, -2049, 65535], device=device).reshape(1, 1, 2, 3)
+        children = {
+            "flip": K.RandomHorizontalFlip(p=1.0),
+            "resize": K.Resize((4, 6)),
+            "affine": K.RandomAffine(degrees=(0.0, 0.0), p=1.0),
+        }
+        seq = K.AugmentationSequential(children[operation], data_keys=["input", "mask"])
+        expected = mask.flip(-1) if operation == "flip" else mask
+        if operation == "resize":
+            expected = mask.repeat_interleave(2, -2).repeat_interleave(2, -1)
+        output = seq(image, [mask] if as_list else mask)[1]
+        output = output[0] if as_list else output
+        assert output.dtype == mask.dtype
+        assert torch.equal(output, expected)
+        if operation == "flip":
+            inverse = seq.inverse(*seq(image, [mask] if as_list else mask))[1]
+            inverse = inverse[0] if as_list else inverse
+            assert torch.equal(inverse, mask)
+
+    def test_convention_inexact_integer_mask_labels_raise_4478(self, dtype):
+        # CPU assertions report immediately; invalid asynchronous accelerator assertions can poison the stream.
+        working = torch.float64 if dtype == torch.float64 else torch.float32
+        label = 2**53 + 1 if working == torch.float64 else 2**24 + 1
+        image = torch.ones(1, 1, 2, 2, dtype=dtype)
         mask = torch.full_like(image, label, dtype=torch.int64)
         seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
-        output = seq(image, mask)[1]
-        assert output.dtype == torch.int64
-        assert torch.equal(output, torch.full_like(mask, label - 1))
+        with pytest.raises(RuntimeError, match=r"Integer mask labels.*exactly representable"):
+            seq(image, mask)
+
+    @pytest.mark.parametrize("mask_dtype", [torch.int32, torch.uint32, torch.int64, torch.uint64])
+    def test_integer_mask_boundary_labels_4478(self, dtype, mask_dtype):
+        # Keep invalid assertions on CPU: accelerator assertion failures can poison the stream.
+        limits = torch.iinfo(mask_dtype)
+        precision = 53 if dtype == torch.float64 else 24
+        exponent = limits.bits - int(limits.min < 0)
+        # The largest representable integer below 2**exponent has spacing 2**(exponent - precision).
+        last_exact = limits.max if exponent <= precision else 2**exponent - 2 ** (exponent - precision)
+        image = torch.ones(1, 1, 2, 2, dtype=dtype)
+        mask = torch.tensor([limits.min, last_exact, 0, limits.min], dtype=mask_dtype).reshape_as(image)
+        expected = torch.tensor([last_exact, limits.min, limits.min, 0], dtype=mask_dtype).reshape_as(image)
+        seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+        assert torch.equal(seq(image, mask)[1], expected)
+        if exponent > precision:
+            with pytest.raises(RuntimeError, match=r"Integer mask labels.*exactly representable"):
+                seq(image, torch.full_like(mask, limits.max))
+
+    @pytest.mark.parametrize("mask_dtype", [torch.bool, torch.uint8, torch.int16, torch.int32, torch.int64])
+    def test_integer_mask_partial_gate_and_replay_4478(self, mask_dtype, device, dtype):
+        labels = [0, 1, 2] if mask_dtype in (torch.bool, torch.uint8) else [257, -2049, 26001]
+        mask = torch.tensor(labels, device=device, dtype=mask_dtype).reshape(1, 1, 1, 3).repeat(2, 1, 2, 1)
+        image = torch.ones(2, 1, 2, 3, device=device, dtype=dtype)
+        seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+        seq(image, mask)
+        params = seq._params
+        params[0].data["batch_prob"] = torch.tensor([1.0, 0.0], device=device, dtype=dtype)
+        expected = mask.clone()
+        expected[0] = mask[0].flip(-1)
+        output = seq(image, mask, params=params)[1]
+        assert output.dtype == mask_dtype
+        assert torch.equal(output, expected)
+        replay = seq(mask, params=params, data_keys=["mask"])
+        assert torch.equal(replay, expected)
+
+    def test_integer_masks_keep_labels_under_autocast_4478(self):
+        image = torch.ones(1, 1, 2, 3)
+        mask = torch.tensor([0, 257, 2049, 26001, -2049, 65535]).reshape(1, 1, 2, 3)
+        seq = K.AugmentationSequential(K.RandomAffine(degrees=(0.0, 0.0), p=1.0), data_keys=["input", "mask"])
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            output = seq(image, mask)[1]
+        assert torch.equal(output, mask)
+
+    def test_integer_mask_cast_dynamo_4478(self, device, dtype, torch_optimizer):
+        # Exercise the dtype conversion and validation with a real fullgraph compiler, without RNG capture.
+        mask = torch.tensor([0, 257, 2049, 26001], device=device).reshape(1, 1, 2, 2)
+        op = partial(K.AugmentationSequential._cast_mask, dtype=dtype)
+        compiled = torch_optimizer(op, fullgraph=True)
+        self.assert_close(compiled(mask), op(mask), atol=0, rtol=0)
+        if device.type == "cpu":
+            label = 2**53 + 1 if dtype == torch.float64 else 2**24 + 1
+            for invalid in (label, torch.iinfo(torch.int64).max):
+                with pytest.raises(RuntimeError, match="Integer mask labels"):
+                    compiled(torch.full_like(mask, invalid))
+
+    def test_integer_mask_float64_accepts_larger_exact_labels_4478(self):
+        image = torch.ones(1, 1, 2, 2, dtype=torch.float64)
+        mask = torch.tensor([2**24 + 1, -(2**24 + 1), 2**53, -(2**53)]).reshape(1, 1, 2, 2)
+        seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+        assert torch.equal(seq(image, mask)[1], mask.flip(-1))
+
+    @pytest.mark.parametrize("padding", [0, 2])
+    @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16])
+    def test_integer_mask_resample_crop_next_to_a_half_image_4478(self, half, padding, device):
+        # The integer mask works in float32 and the crop matrix comes from the half-precision image: the resample
+        # crop must combine them in one dtype and still cut the labels out exactly.
+        if not supports_bilinear_2d_grid_sample(device, half):
+            pytest.skip("The image path requires bilinear grid_sample for the selected dtype.")
+        image = torch.ones(2, 1, 8, 10, device=device, dtype=half)
+        mask = (torch.arange(160, device=device) * 9 + 2049).reshape(2, 1, 8, 10)
+        crop = K.RandomCrop((5, 6), padding=padding, cropping_mode="resample", p=1.0)
+        seq = K.AugmentationSequential(crop, data_keys=["input", "mask"])
+
+        out_image, out_mask = seq(image, mask)
+
+        padded = torch.nn.functional.pad(mask, [padding] * 4)
+        for sample, corner in zip(range(2), seq._params[0].data["src"][:, 0].long().tolist()):
+            x0, y0 = corner
+            assert torch.equal(out_mask[sample], padded[sample, :, y0 : y0 + 5, x0 : x0 + 6])
+        assert seq.inverse(out_image, out_mask)[1].dtype == mask.dtype
 
     @pytest.mark.parametrize("mask_dtype", [None, torch.int64, torch.bool])
     def test_convention_empty_batch_with_mask_4478(self, mask_dtype, device, dtype):
