@@ -48,3 +48,18 @@ class TestRobustResidual(BaseTester):
         assert torch.isfinite(target.grad).all()
         self.assert_close(pred.grad, expected_grad.to(pred))
         self.assert_close(target.grad, -expected_grad.to(pred))
+
+    @pytest.mark.parametrize("loss_name", ["cauchy_loss", "charbonnier_loss", "geman_mcclure_loss"])
+    def test_integer_inputs_keep_a_floating_loss(self, device, loss_name):
+        # Only half-precision losses are cast back to the input dtype; an integer residual gives a float loss.
+        delta = torch.tensor([1.0, 3.0], dtype=torch.float64)
+        expected = {
+            "cauchy_loss": torch.log1p(delta.square() / 2),
+            "charbonnier_loss": torch.hypot(delta, torch.ones_like(delta)) - 1,
+            "geman_mcclure_loss": 2 / (1 + 4 / delta.square()),
+        }[loss_name]
+        loss = getattr(kornia.losses, loss_name)(
+            torch.tensor([1, 3], device=device), torch.tensor([0, 0], device=device)
+        )
+        assert loss.dtype.is_floating_point
+        self.assert_close(loss.cpu().double(), expected, rtol=1e-6, atol=1e-6)

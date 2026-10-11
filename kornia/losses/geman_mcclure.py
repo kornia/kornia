@@ -91,7 +91,7 @@ def geman_mcclure_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = 
     else:
         raise NotImplementedError("Invalid reduction option.")
 
-    return loss.to(output_dtype)
+    return loss.to(output_dtype) if output_dtype in (torch.float16, torch.bfloat16) else loss
 
 
 class GemanMcclureLoss(nn.Module):

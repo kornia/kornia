@@ -90,7 +90,7 @@ def cauchy_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
     else:
         raise NotImplementedError("Invalid reduction option.")
 
-    return loss.to(output_dtype)
+    return loss.to(output_dtype) if output_dtype in (torch.float16, torch.bfloat16) else loss
 
 
 class CauchyLoss(nn.Module):
