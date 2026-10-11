@@ -427,3 +427,20 @@ class TestConventionsMeanIoU(BaseTester):
 
         self.assert_close(kornia.metrics.mean_iou_bbox(to_xywh(boxes_1), to_xywh(boxes_2), "xywh"), expected)
         self.assert_close(kornia.metrics.mean_iou_bbox(to_cxcywh(boxes_1), to_cxcywh(boxes_2), "cxcywh"), expected)
+
+
+class TestHalfBoxConversion(BaseTester):
+    @pytest.mark.parametrize("box_format", ["xywh", "cxcywh"])
+    def test_small_width_at_large_position(self, device, dtype, box_format):
+        boxes_1 = torch.tensor([[2048.0, 0.0, 1.0, 2.0]], device=device, dtype=dtype, requires_grad=True)
+        boxes_2 = torch.tensor([[2048.0, 1.0, 1.0, 2.0]], device=device, dtype=dtype, requires_grad=True)
+        # Both boxes have area 2, their overlap has area 1, and the union has area 3.
+        actual = kornia.metrics.mean_iou_bbox(boxes_1, boxes_2, box_format)
+        assert actual.dtype == dtype
+        self.assert_close(actual, boxes_1.new_tensor([[1 / 3]]))
+        grad_1, grad_2 = torch.autograd.grad(actual.sum(), (boxes_1, boxes_2))
+        assert torch.isfinite(grad_1).all()
+        assert torch.isfinite(grad_2).all()
+        # Moving the first box vertically toward the second changes I / U by 4 / 9.
+        self.assert_close(grad_1[:, 1], boxes_1.new_tensor([4 / 9]))
+        self.assert_close(grad_2[:, 1], boxes_2.new_tensor([-4 / 9]))
