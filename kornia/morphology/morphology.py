@@ -442,8 +442,16 @@ def dilation(
             inplace,
             reduction_min,
         )
+    elif engine == "monotonic":
+        if structuring_element is not None or not bool(torch.all(kernel == 1)):
+            raise ValueError("The 'monotonic' engine requires flat rectangular structuring elements.")
+        from .monotonic import separable_dilation2d
+
+        pad_h = origin[0]
+        pad_w = origin[1]
+        return separable_dilation2d(tensor, kernel_size=(se_h, se_w), padding=(pad_h, pad_w))
     else:
-        raise NotImplementedError(f"engine {engine} is unknown, use 'auto', 'convolution', 'shift' or 'unfold'")
+        raise NotImplementedError(f"engine {engine} is unknown, use 'auto', 'convolution', 'shift', 'monotonic' or 'unfold'")
     return output.view_as(tensor)
 
 
@@ -626,8 +634,16 @@ def erosion(
             inplace,
             reduction_max,
         )
+    elif engine == "monotonic":
+        if structuring_element is not None or not bool(torch.all(kernel == 1)):
+            raise ValueError("The 'monotonic' engine requires flat rectangular structuring elements.")
+        from .monotonic import separable_erosion2d
+
+        pad_h = origin[0]
+        pad_w = origin[1]
+        return separable_erosion2d(tensor, kernel_size=(se_h, se_w), padding=(pad_h, pad_w))
     else:
-        raise NotImplementedError(f"engine {engine} is unknown, use 'auto', 'convolution', 'shift' or 'unfold'")
+        raise NotImplementedError(f"engine {engine} is unknown, use 'auto', 'convolution', 'shift', 'monotonic' or 'unfold'")
 
     return output
 

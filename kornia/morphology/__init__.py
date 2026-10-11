@@ -21,3 +21,19 @@ This package provides morphological operations for image processing tasks.
 """
 
 from .morphology import *
+from .monotonic import dilation1d, erosion1d, separable_dilation2d, separable_erosion2d
+
+__all__ = [
+    "bottom_hat",
+    "closing",
+    "dilation",
+    "erosion",
+    "gradient",
+    "opening",
+    "reconstruction",
+    "top_hat",
+    "dilation1d",
+    "erosion1d",
+    "separable_dilation2d",
+    "separable_erosion2d",
+]
