@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import copy
+import itertools
 import math
 import warnings
 from typing import ClassVar, Dict, List, Literal, Optional, Tuple, Union
@@ -24,7 +26,6 @@ from torch import nn
 
 from kornia.color import rgb_to_grayscale
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_LAF
-from kornia.core.utils import is_exporting
 from kornia.geometry.subpix import ConvQuadInterp3d
 from kornia.geometry.transform import ScalePyramid
 
@@ -79,6 +80,46 @@ def _lightglue_keypoint_scale_ori(lafs: torch.Tensor, feature_name: str) -> Tupl
     return scales, oris
 
 
+def _run_descriptor(module: nn.Module, patches: torch.Tensor) -> torch.Tensor:
+    """Run ``module`` in eval mode on ``patches``, leaving its device, dtype and parameters as they are.
+
+    A module whose floating-point parameters and buffers already sit on the device and dtype of ``patches`` is called
+    directly. Otherwise they are cast for the call only, through ``torch.func.functional_call`` or, for a TorchScript
+    module, which that API refuses, in the slots of a copy of the module. The cast is differentiable, so gradients
+    reach the module's own parameters. Eager calls, ``torch.compile`` and ``torch.export`` take the same path. Every
+    submodule is switched to eval for the call and its ``training`` flag is restored afterwards.
+    """
+    modes = [m.training for m in module.modules()]
+    module.eval()
+    try:
+        tensors = list(itertools.chain(module.named_parameters(), module.named_buffers()))
+        needs_cast = any(
+            t.device != patches.device or (t.is_floating_point() and t.dtype != patches.dtype) for _, t in tensors
+        )
+        if not needs_cast:
+            return module(patches)
+        state = {
+            name: t.to(device=patches.device, dtype=patches.dtype) if t.is_floating_point() else t.to(patches.device)
+            for name, t in tensors
+        }
+        if not isinstance(module, torch.jit.ScriptModule):
+            return torch.func.functional_call(module, state, (patches,))
+        # functional_call refuses a TorchScript module, so the cast tensors go into the slots of a copy instead; they
+        # stay in the autograd graph, so gradients reach the module's own parameters on every device and dtype.
+        with torch.no_grad():
+            copied = copy.deepcopy(module)
+        for name, t in state.items():
+            *path, attr = name.split(".")
+            owner = copied
+            for part in path:  # ScriptModules have no get_submodule
+                owner = getattr(owner, part)
+            setattr(owner, attr, t)
+        return copied(patches)
+    finally:
+        for m, mode in zip(module.modules(), modes):
+            m.training = mode
+
+
 def get_laf_descriptors(
     img: torch.Tensor,
     lafs: torch.Tensor,
@@ -87,6 +128,11 @@ def get_laf_descriptors(
     grayscale_descriptor: bool = True,
 ) -> torch.Tensor:
     r"""Get local descriptors, corresponding to LAFs (keypoints).
+
+    The descriptor runs in eval mode, with its floating-point parameters and buffers cast to the device and dtype of
+    ``img`` for the call (a TorchScript module is called on a cast copy). The module keeps its device, dtype and
+    parameters, every submodule is switched to eval for the call and gets its train/eval mode back afterwards, and
+    gradients reach the module's parameters.
 
     Args:
         img: image features with shape :math:`(B,C,H,W)`.
@@ -101,11 +147,6 @@ def get_laf_descriptors(
 
     """
     KORNIA_CHECK_LAF(lafs)
-    # Moving a module swaps its parameters, which graph capture forbids; the module is already placed under export.
-    if not is_exporting():
-        patch_descriptor = patch_descriptor.to(img)
-    patch_descriptor.eval()
-
     timg: torch.Tensor = img
     if grayscale_descriptor and img.size(1) == 3:
         timg = rgb_to_grayscale(img)
@@ -118,8 +159,9 @@ def get_laf_descriptors(
         # matching width is the whole probe -- `probe.shape[-1]` would only agree for descriptors
         # whose output is 2-D. The probe has a batch of one, so its numel is that width.
         with torch.no_grad():
-            probe = patch_descriptor(
-                torch.zeros(1, timg.size(1), patch_size, patch_size, dtype=timg.dtype, device=timg.device)
+            probe = _run_descriptor(
+                patch_descriptor,
+                torch.zeros(1, timg.size(1), patch_size, patch_size, dtype=timg.dtype, device=timg.device),
             )
         return torch.empty(lafs.shape[0], 0, probe.numel(), dtype=probe.dtype, device=probe.device)
 
@@ -127,17 +169,19 @@ def get_laf_descriptors(
     # Descriptor accepts standard torch.Tensor [B, CH, H, W], while patches are [B, N, CH, H, W] shape
     # So we need to reshape a bit :)
     B, N, CH, H, W = patches.size()
-    return patch_descriptor(patches.view(B * N, CH, H, W)).view(B, N, -1)
+    return _run_descriptor(patch_descriptor, patches.view(B * N, CH, H, W)).view(B, N, -1)
 
 
 class LAFDescriptor(nn.Module):
     r"""nn.Module to get local descriptors, corresponding to LAFs (keypoints).
 
-    Internally uses :func:`~kornia.feature.get_laf_descriptors`.
+    Internally uses :func:`~kornia.feature.get_laf_descriptors`: the descriptor runs in eval mode with its parameters
+    cast to the image's device and dtype for the call; the module keeps its device, dtype and parameters, and its
+    train/eval modes are restored after the call.
 
     Args:
         patch_descriptor_module: patch descriptor module, e.g. :class:`~kornia.feature.SIFTDescriptor`
-            or :class:`~kornia.feature.HardNet`. Default: :class:`~kornia.feature.HardNet`.
+            or :class:`~kornia.feature.HardNet`. Default: :class:`~kornia.feature.HardNet` with pretrained weights.
         patch_size: patch size in pixels, which descriptor expects.
         grayscale_descriptor: ``True`` if patch_descriptor expects single-channel image.
 
@@ -187,7 +231,8 @@ class LocalFeature(nn.Module):
     Args:
         detector: the detection module.
         descriptor: the descriptor module.
-        scaling_coef: multiplier for change default detector scale (e.g. it is too small for KeyNet by default)
+        scaling_coef: multiplier for change default detector scale (e.g. it is too small for KeyNet by default).
+            An ``int`` is converted to ``float``. Must be positive.
 
     """
 
@@ -196,8 +241,9 @@ class LocalFeature(nn.Module):
         self.detector = detector
         self.descriptor = descriptor
         if scaling_coef <= 0:
-            raise ValueError(f"Scaling coef should be >= 0, got {scaling_coef}")
-        self.scaling_coef = scaling_coef
+            raise ValueError(f"Scaling coef should be > 0, got {scaling_coef}")
+        # scale_laf accepts a float or a tensor, not an int
+        self.scaling_coef = float(scaling_coef)
 
     def forward(
         self, img: torch.Tensor, mask: Optional[torch.Tensor] = None

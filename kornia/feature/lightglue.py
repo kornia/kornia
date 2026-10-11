@@ -446,10 +446,18 @@ def filter_matches(scores: torch.Tensor, th: float) -> Tuple[torch.Tensor, torch
     return m0, m1, mscores0, mscores1
 
 
+_KEYPOINT_RANGE_MSG = (
+    "Keypoints must lie inside the image: normalized by the image size they have to be in [-1, 1]. The keypoints are "
+    "(x, y) pixel coordinates. The image size is (width, height) for the ``image_size`` of LightGlue and "
+    "OnnxLightGlue, and (height, width) for the ``hw1`` / ``hw2`` of LightGlueMatcher; the wrong order, or keypoints "
+    "detected on a differently sized image, put them out of range."
+)
+
+
 def _check_keypoints_normalized(kpts: torch.Tensor) -> None:
     """Check that keypoints lie in [-1, 1]; skipped under export, where reading the data is not possible."""
     if not is_exporting():
-        KORNIA_CHECK(torch.all(kpts >= -1).item() and torch.all(kpts <= 1).item(), "")  # type: ignore
+        KORNIA_CHECK(torch.all(kpts >= -1).item() and torch.all(kpts <= 1).item(), _KEYPOINT_RANGE_MSG)  # type: ignore
 
 
 class LightGlue(nn.Module):
