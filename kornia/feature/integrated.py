@@ -311,19 +311,29 @@ class _SIFTFeature(LocalFeature):
 
 
 class SIFTFeature(_SIFTFeature):
-    """Convenience module, which implements DoG detector + (Root)SIFT descriptor.
+    """Multiresolution DoG detection followed by a (Root)SIFT descriptor.
+
+    :class:`~kornia.feature.MultiResolutionDetector` applies a single-scale DoG response
+    independently at each image resolution and uses 2-D non-maximum suppression. It does
+    not select extrema across scale or refine positions and scales to subpixel precision.
+    It does not apply classical SIFT's contrast or Hessian edge rejection and assigns one
+    orientation per detection unless ``upright=True``. For new scale-space SIFT pipelines,
+    start with :class:`SIFTFeatureScaleSpace` and explicitly select
+    ``descriptor_backend="pyramid"``; see :ref:`sift-pipelines`.
 
     ``descriptor_backend="pyramid"`` uses :class:`SIFTDescriptorFromPyramid` for
     orientation and description at the detector's sparse LAFs. Detection and the
-    feature budget are unchanged. The default ``"patch"`` backend retains the
+    feature budget are unchanged. Its automatic orientation is under repair in
+    `#5748 <https://github.com/kornia/kornia/issues/5748>`_; this combination is not
+    recommended for new use until accuracy is recovered and a runtime or memory
+    advantage is demonstrated. No deprecation warning or removal version is set.
+    The standalone descriptor-only ``SIFTDescriptorFromPyramid.forward`` interface
+    remains useful for supplied oriented LAFs. The default ``"patch"`` backend retains the
     existing patch-wise pipeline. Both return descriptors in kornia's SIFT layout by
     default; ``descriptor_layout="opencv"`` returns them in OpenCV's, which
     :class:`~kornia.feature.LightGlueMatcher` expects with ``"sift"``.
     :func:`~kornia.feature.convert_sift_descriptor_layout` converts between the two.
 
-    Using `kornia.feature.MultiResolutionDetector` without blur pyramid Still not as good as OpenCV/VLFeat because of
-    https://github.com/kornia/kornia/pull/884,
-    but we are working on it
     """
 
     def __init__(
@@ -368,21 +378,27 @@ class SIFTFeature(_SIFTFeature):
 
 
 class SIFTFeatureScaleSpace(LocalFeature):
-    """Convenience module, which implements DoG detector + (Root)SIFT descriptor.
+    """DoG scale-space detection, position/scale refinement and (Root)SIFT description.
 
-    The default patch backend uses `kornia.feature.ScaleSpaceDetector`. Select
-    ``descriptor_backend="pyramid"`` for a specialized SIFT pipeline that reuses
+    For new scale-space SIFT pipelines, explicitly select ``descriptor_backend="pyramid"``;
+    see :ref:`sift-pipelines`. The constructor default remains ``"patch"`` and uses
+    :class:`~kornia.feature.ScaleSpaceDetector`. The pyramid backend is a specialized SIFT pipeline that reuses
     the detector's Gaussian images and each detection's octave and layer. Image
     gradients are computed once per used layer and sampled for sparse orientation
     and descriptor integration. A dedicated DoG detector refines only sparse
     extrema and ranks all valid candidates by response, without contrast or edge
-    rejection. The feature budget is unchanged; detections may differ.
+    rejection. Both backends search 3-D DoG extrema and refine position and scale;
+    neither applies classical SIFT's contrast or Hessian edge rejection, and each
+    assigns only one orientation per detection unless ``upright=True``. The backend
+    selects a different detector implementation as well as different orientation and
+    description stages. The feature budget is unchanged; detections may differ.
     The default ``"patch"`` backend retains patch-wise orientation and description.
     Both return descriptors in kornia's SIFT layout by default; ``descriptor_layout="opencv"``
     returns them in OpenCV's, which :class:`~kornia.feature.LightGlueMatcher` expects with
     ``"sift"``. :func:`~kornia.feature.convert_sift_descriptor_layout` converts between the two.
 
-    Still not as good as OpenCV/VLFeat because of https://github.com/kornia/kornia/pull/884, but we are working on it
+    Pyramid extraction is not guaranteed to be faster on every device or workload.
+    Patch extraction remains available for existing pipelines and measured performance needs.
     """
 
     def __init__(

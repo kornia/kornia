@@ -48,6 +48,13 @@ class SIFTDescriptorFromPyramid(nn.Module):
     sharing one pyramid between orientation assignment and description. The
     pyramid belongs to this descriptor; it is not reused from the detector.
 
+    Automatic orientation is under repair in
+    `#5748 <https://github.com/kornia/kornia/issues/5748>`_. This affects the
+    ``SIFTFeature(descriptor_backend="pyramid")`` convenience combination;
+    ``forward(image, lafs)`` remains available for supplied oriented frames without
+    estimating their orientation. See :ref:`sift-descriptor-interfaces` for the
+    distinct patch, dense-map and supplied-frame descriptor contracts.
+
     The module combines the shared histogram maps of `VLFeat DSIFT
     <https://www.vlfeat.org/api/dsift.html>`_ with orientation-relative spatial and
     angular binning as in OpenCV's `SIFT implementation
