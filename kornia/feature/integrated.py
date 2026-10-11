@@ -285,6 +285,17 @@ class LocalFeature(nn.Module):
         return (lafs, responses, descs)
 
 
+class _DoGSingleMagnitude(nn.Module):
+    """Magnitude of a single-scale DoG response, whose maxima are maxima of the DoG above zero or minima below zero."""
+
+    def __init__(self, sigma1: float = 1.0, sigma2: float = 1.6) -> None:
+        super().__init__()
+        self.dog = BlobDoGSingle(sigma1, sigma2)
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return self.dog(input).abs()
+
+
 class _SIFTFeature(LocalFeature):
     """Compose a sparse SIFT detector with a patch or pyramid extraction backend."""
 
@@ -323,10 +334,11 @@ class SIFTFeature(_SIFTFeature):
 
     ``descriptor_backend="pyramid"`` uses :class:`SIFTDescriptorFromPyramid` for
     orientation and description at the detector's sparse LAFs. Detection and the
-    feature budget are unchanged. Its automatic orientation is under repair in
-    `#5748 <https://github.com/kornia/kornia/issues/5748>`_; this combination is not
-    recommended for new use until accuracy is recovered and a runtime or memory
-    advantage is demonstrated. No deprecation warning or removal version is set.
+    feature budget are unchanged. Its orientation integrates smoothed image
+    gradients before angular binning without extracting image patches. The
+    remaining performance and accuracy acceptance criteria are tracked in
+    `#5748 <https://github.com/kornia/kornia/issues/5748>`_. No deprecation warning
+    or removal version is set.
     The standalone descriptor-only ``SIFTDescriptorFromPyramid.forward`` interface
     remains useful for supplied oriented LAFs. The default ``"patch"`` backend retains the
     existing patch-wise pipeline. Both return descriptors in kornia's SIFT layout by
@@ -334,6 +346,13 @@ class SIFTFeature(_SIFTFeature):
     :class:`~kornia.feature.LightGlueMatcher` expects with ``"sift"``.
     :func:`~kornia.feature.convert_sift_descriptor_layout` converts between the two.
 
+    The detector applies :class:`~kornia.feature.MultiResolutionDetector` to the
+    magnitude of a single-scale :class:`~kornia.feature.BlobDoGSingle` response.
+    It retains extrema of both polarity: dark blobs are DoG maxima and bright
+    blobs are DoG minima. On each image-pyramid level, a keypoint is a strict
+    maximum of response magnitude in its ``config["nms_size"]`` window (15 pixels
+    by default); a stronger extremum of either polarity in that window suppresses
+    a weaker one. ``responses`` contains the magnitude.
     """
 
     def __init__(
@@ -357,7 +376,7 @@ class SIFTFeature(_SIFTFeature):
         if config is None:
             config = get_default_detector_config()
         detector = MultiResolutionDetector(
-            BlobDoGSingle(1.0, 1.6),
+            _DoGSingleMagnitude(1.0, 1.6),
             num_features,
             config,
             ori_module=PassLAF() if upright or descriptor_backend == "pyramid" else LAFOrienter(19),

@@ -50,9 +50,10 @@ always faster.
      - Multiresolution, per-level DoG detection; patch orientation and description.
      - Existing multiresolution pipelines; this is an approximation to scale-space SIFT.
    * - ``SIFTFeature(..., descriptor_backend="pyramid")``
-     - The same multiresolution detector; a separate gradient-histogram pyramid
-       supplies orientation and description.
-     - Repair candidate; not recommended for new use pending the validation below.
+     - The same multiresolution detector; a separate image pyramid supplies smoothed
+       gradients for orientation and pooled histogram maps for description.
+     - Its automatic orientation was repaired in #5762. Use it for measured
+       multiresolution workloads; #5748 remains open for the validation below.
 
 The two feature classes have different detector algorithms. :class:`SIFTFeature`
 applies a single-scale DoG response independently at each image resolution, with
@@ -78,16 +79,36 @@ For this backend, ``compile_modules`` accepts ``scale_pyr`` and ``subpix`` (or
 ``True`` for both); sparse orientation and description run eagerly. The patch
 backend retains the generic detector's compilation options.
 
-Repair and possible deprecation
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Matching with LightGlue
+^^^^^^^^^^^^^^^^^^^^^^^
 
-``SIFTFeature(descriptor_backend="pyramid")`` has an orientation-accuracy issue
-tracked in `#5748 <https://github.com/kornia/kornia/issues/5748>`_. Restoring accuracy
-is necessary but not sufficient to recommend this convenience combination again:
-it must also demonstrate a runtime or memory advantage on a stated workload.
-Validation should compare against the patch backend at 1024 and 2048 features on
-IMC PhotoTourism pose estimation and Oxford homography estimation, using the same
-corrected detector and reporting matcher settings, device and timing methodology.
+Use ``descriptor_layout="opencv"`` with :class:`LightGlueMatcher` in ``"sift"``
+mode. Pass the oriented LAFs returned by the feature, filter zero-LAF padding from
+both LAFs and descriptor rows with :func:`laf_is_filled`, and supply the original
+image sizes as ``hw1=(height0, width0)`` and ``hw2=(height1, width1)``. The matcher
+converts the LAF angle and scale internally; do not apply those conversions twice.
+
+The public adapter uses one sixth of the LAF scale. For the scale-space presets'
+6-sigma frames this is the detection sigma. :class:`SIFTFeature` uses a different
+measurement-region convention, so its multiresolution frames do not imply the same
+detection sigma. Descriptor-layout compatibility alone does not guarantee equal
+matching accuracy across the four pipelines. Evaluate the complete feature/matcher
+combination at the intended feature budget.
+
+Validation and possible deprecation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+`#5762 <https://github.com/kornia/kornia/pull/5762>`_ repaired the automatic
+orientation used by ``SIFTFeature(descriptor_backend="pyramid")``. It integrates
+a 19x19 support of smoothed image gradients before angular binning, without
+extracting image patches. The issue tracked in
+`#5748 <https://github.com/kornia/kornia/issues/5748>`_ remains open: its
+acceptance criteria include performance at 1024 features and Oxford accuracy at
+2048 features. Promotion of this convenience combination requires recovered
+accuracy and a demonstrated runtime or memory advantage on a stated workload.
+Validation should compare with the patch backend at 1024 and 2048 features on
+IMC PhotoTourism pose estimation and Oxford homography estimation, reporting
+matcher settings, device and timing methodology.
 
 If repair does not establish those benefits, the plan is to deprecate this
 convenience combination and remove it only after the :doc:`API stability policy

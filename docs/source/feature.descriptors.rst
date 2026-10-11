@@ -45,10 +45,12 @@ this is not numerically identical to patch extraction.
 
 Its ``orient_and_describe(image, lafs)`` method additionally estimates orientation.
 The automatic orientation used by ``SIFTFeature(descriptor_backend="pyramid")``
-is under repair in `#5748 <https://github.com/kornia/kornia/issues/5748>`_. That issue
+was repaired in `#5762 <https://github.com/kornia/kornia/pull/5762>`_ by integrating
+smoothed gradients before angular binning. `#5748 <https://github.com/kornia/kornia/issues/5748>`_
+remains open for its performance and accuracy acceptance criteria. That validation
 does not invalidate the descriptor-only ``forward`` use on supplied oriented LAFs.
-The :ref:`repair and possible deprecation plan <sift-pipelines>` retains all three
-standalone descriptor interfaces.
+The :ref:`validation and possible deprecation plan <sift-pipelines>` retains all
+three standalone descriptor interfaces.
 
 API reference
 -------------
