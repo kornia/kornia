@@ -2497,6 +2497,15 @@ class TestConventionsKernels(BaseTester):
             build(device, int_dtype)
 
     @pytest.mark.parametrize(
+        "build", [get_gaussian_kernel1d, get_gaussian_erf_kernel1d, get_gaussian_discrete_kernel1d]
+    )
+    def test_convention_gaussian_of_an_integer_sigma_tensor_is_floating_5155(self, build, device):
+        """An integer sigma tensor gives the floating kernel of its float value, not taps truncated to 0 (#5155)."""
+        actual = build(5, torch.tensor([[2]], device=device))
+        assert actual.dtype == torch.get_default_dtype()
+        self.assert_close(actual, build(5, torch.tensor([[2.0]], device=device)))
+
+    @pytest.mark.parametrize(
         ("kernel_size", "int_dtype"),
         [
             (3, torch.int8),
@@ -2515,8 +2524,9 @@ class TestConventionsKernels(BaseTester):
         build = get_laplacian_kernel1d if isinstance(kernel_size, int) else get_laplacian_kernel2d
         actual = build(kernel_size, device=device, dtype=int_dtype)
         assert actual.dtype == int_dtype
-        expected = build(kernel_size, device=device, dtype=torch.float64)
-        assert torch.equal(actual.to(torch.float64), expected)
+        # float32 holds every tap here exactly, and unlike float64 it runs on MPS.
+        expected = build(kernel_size, device=device, dtype=torch.float32)
+        assert torch.equal(actual.to(torch.float32), expected)
 
     @pytest.mark.parametrize(
         ("kernel_size", "int_dtype"),

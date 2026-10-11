@@ -379,7 +379,12 @@ def gaussian_discrete(
     KORNIA_CHECK(window_size % 2 == 1, f"The discrete Gaussian kernel needs an odd window. Got {window_size}")
 
     output_dtype = sigma.dtype
-    if sigma.dtype in (torch.float16, torch.bfloat16):
+    if not sigma.dtype.is_floating_point:
+        # An integer sigma tensor gives a floating kernel, as it does in `gaussian` and `gaussian_discrete_erf`;
+        # casting the normalized taps back to its dtype would truncate them all to 0 (#5155).
+        output_dtype = torch.get_default_dtype()
+        sigma = sigma.to(output_dtype)
+    elif sigma.dtype in (torch.float16, torch.bfloat16):
         sigma = sigma.float()
     sigma2 = sigma * sigma
     tail = int(window_size // 2) + 1
