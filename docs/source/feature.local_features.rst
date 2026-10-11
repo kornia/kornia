@@ -68,6 +68,12 @@ generic detector and its compilation options.
 .. autoclass:: HesAffNetHardNet
    :members: forward
 
+.. autoclass:: DoGHardNet
+   :members: forward
+
+.. autoclass:: DoGAffNetHardNet
+   :members: forward
+
 .. autoclass:: KeyNetAffNetHardNet
    :members: forward
 

@@ -28,6 +28,8 @@ from .disk import DISK, DISKFeatures
 from .hardnet import HardNet, HardNet8
 from .hynet import TLU, FilterResponseNorm2d, HyNet
 from .integrated import (
+    DoGAffNetHardNet,
+    DoGHardNet,
     GFTTAffNetHardNet,
     HesAffNetHardNet,
     KeyNetAffNetHardNet,
@@ -117,6 +119,8 @@ __all__ = [
     "DeFMO",
     "DenseSIFTDescriptor",
     "DescriptorMatcher",
+    "DoGAffNetHardNet",
+    "DoGHardNet",
     "FilterResponseNorm2d",
     "GFTTAffNetHardNet",
     "GeometryAwareDescriptorMatcher",
