@@ -440,7 +440,8 @@ The honest reading:
   patch extractors, ~25× below `ellipse_to_laf`, and the least moved by `torch.compile` there
   (1.26×, against up to 9.1× elsewhere). On CPU it was ~9× slower than the similar-sized
   `make_upright`. #4217 removed the cause; see the last bullet for what it actually was. The
-  tables above predate that change, as do their `laf_is_inside_image` rows, which share it.
+  tables above predate that change, as do their `laf_is_inside_image` rows, measured when that
+  op still called `laf_to_boundary_points`.
 - **Small N on CUDA is launch-latency bound, not work bound:** at B=1 N=2000 the three cheapest
   ops all land within 8.2–14.2M LAFs/s regardless of what they compute, ~8.5–11× below their own
   B=1 N=20000 figures. Read the N=20000 rows for kernel cost and the N=2000 rows for per-call
@@ -472,8 +473,8 @@ The honest reading:
   for 1.5× the arithmetic, identically at 1, 4 and 8 threads (M=1 0.33 ms, M=2 0.65, M=3 14.87,
   M=4 16.26). #4217 multiplies by the `(2, 3)` LAF directly. Quiet back-to-back A/B on the M1
   (torch 2.14.0, 4 threads, B=1 N=20000): `laf_to_boundary_points` 1.07M → 29.6M LAFs/s eager on
-  CPU and 1.77M → 4.27M on MPS; `laf_is_inside_image`, which calls it with `n_pts=12` on every
-  detector forward, 9.75M → 29.0M on CPU and 2.70M → 8.53M on MPS. **The lesson is the method:**
+  CPU and 1.77M → 4.27M on MPS; `laf_is_inside_image`, which then called it with `n_pts=12`,
+  9.75M → 29.0M on CPU and 2.70M → 8.53M on MPS. **The lesson is the method:**
   the transfer was visible by reading the source and the cliff was only visible by timing the
   components, so the readable diagnosis got written up first and would have shipped a 1.00× fix.
 
