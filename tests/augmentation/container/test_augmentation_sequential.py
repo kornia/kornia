@@ -280,6 +280,44 @@ class TestAugmentationSequential:
 
         assert out["mask"].shape == (2, 8, 8)
 
+    def test_dict_output_leaves_unrecognized_keys_alone_5695(self, device, dtype):
+        # A dictionary key that is not a data key holds a pass-through value: converting it like an
+        # image would move a (B, C, H, W) tensor to channels-last, which is not what the caller passed in.
+        image = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
+        aux = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=None)
+
+        out = aug({"image": image, "aux": aux}, output_type="numpy")
+
+        assert out["aux"].shape == (1, 3, 8, 8)
+
+    def test_dict_output_keeps_a_three_dimensional_mask_batch_first_5695(self, device, dtype):
+        # A (B, H, W) mask returned under keepdim=True is batch-first, like the image: converting it
+        # through the generic image path would read B as channels and permute it to (H, W, B).
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        mask = torch.rand(2, 8, 8, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=None, keepdim=True)
+
+        out = aug({"image": image, "mask": mask}, output_type="numpy")
+
+        assert out["mask"].shape == (2, 8, 8)
+
+    def test_positional_output_converts_each_tensor_of_a_mask_list_5695(self, device, dtype):
+        # A mask given as a per-sample list of tensors comes back as a list of arrays for
+        # output_type != "pt"; the mask-aware conversion keeps each entry batch-first.
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        masks = [
+            torch.rand(1, 1, 8, 8, device=device, dtype=dtype),
+            torch.rand(1, 1, 8, 8, device=device, dtype=dtype),
+        ]
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=["input", "mask"])
+
+        _, out_masks = aug(image, masks, output_type="numpy")
+
+        assert [type(m) for m in out_masks] == [np.ndarray, np.ndarray]
+        assert out_masks[0].shape == (1, 8, 8)
+        assert out_masks[1].shape == (1, 8, 8)
+
     def test_single_mask_with_an_unbatched_image_stays_single(self):
         aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
 
