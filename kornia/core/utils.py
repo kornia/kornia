@@ -199,7 +199,7 @@ def _inverse_3x3_closed_form(input: torch.Tensor) -> torch.Tensor:
     """
     half = input.dtype in (torch.float16, torch.bfloat16)
     x = input.float() if half else input
-    if not _is_tracing_or_exporting():
+    if not _is_tracing_or_exporting():  # noqa: SIM108 - each branch documents its own capture path
         # Eager: three fused ``cross`` ops beat nine scalar cofactor expressions and four
         # stacks, because kernel launches dominate on matrices this small.
         out = _inverse_3x3_cross(x)
@@ -441,10 +441,7 @@ def _torch_solve_cast(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
     """
     KORNIA_CHECK_IS_TENSOR(A, "A must be torch.Tensor")
     KORNIA_CHECK_IS_TENSOR(B, "B must be torch.Tensor")
-    if is_mps_tensor_safe(A):
-        dtype = torch.float32
-    else:
-        dtype = torch.float64
+    dtype = torch.float32 if is_mps_tensor_safe(A) else torch.float64
 
     out = torch.linalg.solve(A.to(dtype), B.to(dtype))
 

@@ -190,12 +190,7 @@ class VisualPrompter:
 
             boxes = Boxes.from_tensor(boxes, mode="xyxy")
 
-        if boxes.mode == "xyxy":
-            boxes_xyxy = boxes
-        else:
-            boxes_xyxy = Boxes.from_tensor(boxes.to_tensor(mode="xyxy"), mode="xyxy")
-
-        return boxes_xyxy
+        return boxes if boxes.mode == "xyxy" else Boxes.from_tensor(boxes.to_tensor(mode="xyxy"), mode="xyxy")
 
     def _valid_masks(self, masks: torch.Tensor) -> torch.Tensor:
         """Validate the input masks shape."""

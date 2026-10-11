@@ -74,11 +74,8 @@ class Quaternion(nn.Module):
           an enclosing module's device and dtype conversions. Construction preserves the input tensor and its
           autograd history. ``Quaternion.to()`` returns a new quaternion; enclosing module conversions update the
           existing module's state.
-        - Known defects: ``to_euler()`` returns a triple that does not reproduce the rotation for most rotations
-          at a pitch of :math:`\pm\pi/2` (`#3950 <https://github.com/kornia/kornia/issues/3950>`_);
-          below a norm of ``1e-12``,
-          ``matrix()`` and ``slerp`` give wrong results, and the zero quaternion's ``matrix()`` is the identity
-          (`#3952 <https://github.com/kornia/kornia/issues/3952>`_).
+        - Known defects: below a norm of ``1e-12``, ``matrix()`` and ``slerp`` give wrong results, and the zero
+          quaternion's ``matrix()`` is the identity (`#3952 <https://github.com/kornia/kornia/issues/3952>`_).
 
     Example:
         >>> q = Quaternion.identity(batch_size=4)

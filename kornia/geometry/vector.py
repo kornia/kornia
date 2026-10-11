@@ -31,8 +31,8 @@ __all__ = ["Scalar", "Vector2", "Vector3"]
 class Scalar(TensorWrapper):
     """Wrap a tensor of scalars of any shape, such as the per-vector result of :meth:`Vector3.dot`.
 
-    The tensor is wrapped without a copy, and the call-path type defect of :class:`Vector3` applies to it
-    (`#5022 <https://github.com/kornia/kornia/issues/5022>`_).
+    The tensor is wrapped without a copy. An operation between a ``Scalar`` and a :class:`Vector3` follows the
+    rule of :class:`~kornia.core.TensorWrapper`, so ``s * v`` is a ``Vector3`` like ``v * s``.
     """
 
     def __init__(self, data: torch.Tensor) -> None:
@@ -51,12 +51,17 @@ class Vector3(TensorWrapper):
         - ``copy.deepcopy``, ``copy.copy`` and pickle return a ``Vector3``. An in-place operator such as ``v += 1``
           updates the wrapped tensor, so an alias and the tensor the vector was built from see the change; the
           operator rules are those of :class:`~kornia.core.TensorWrapper`.
-        - Known defect: the returned type depends on the call path (``v.clone()`` is a plain tensor, while a torch
-          function rewraps its result as a ``Vector3``, so ``torch.linalg.norm(v, dim=-1)`` raises unless its
-          result happens to end in 3), an operator with a :class:`Scalar` on the left returns a ``Scalar`` that
-          holds the vectors (``s * v``, while ``v * s`` is a ``Vector3``), and a tuple index such as ``v[..., 0]``
-          raises (`#5022 <https://github.com/kornia/kornia/issues/5022>`_).
+        - A result is a ``Vector3`` when it still holds 3D vectors, whether a torch function, a tensor method or an
+          operator produced it, and whichever side a :class:`Scalar` is on: ``torch.clone(v)``, ``v.clone()``,
+          ``s * v`` and ``v * s`` are ``Vector3``. A result that does not end in 3, or that lost an axis, is a
+          plain tensor: ``torch.linalg.norm(v, dim=-1)`` and ``v.norm(dim=-1)``, also for three vectors. The full
+          rule is in :class:`~kornia.core.TensorWrapper`.
+        - Indexing the leading axes returns a ``Vector3`` (``v[0]``, ``v[1:]``, ``v[mask]``). An index into the
+          coordinate axis returns a plain tensor, like the same index into the wrapped tensor: ``v[..., 0]`` and
+          ``v[:, 0]`` have the leading shape, and an unbatched ``v[0]`` is 0-d.
     """
+
+    _WIDTH = 3
 
     def __init__(self, vector: torch.Tensor) -> None:
         super().__init__(vector)
@@ -64,9 +69,6 @@ class Vector3(TensorWrapper):
 
     def __repr__(self) -> str:
         return f"x: {self.x}\ny: {self.y}\nz: {self.z}"
-
-    def __getitem__(self, idx: Union[slice, int, torch.Tensor]) -> "Vector3":
-        return Vector3(self.data[idx, ...])
 
     @property
     def x(self) -> torch.Tensor:
@@ -202,15 +204,14 @@ class Vector2(TensorWrapper):
     unit square.
     """
 
+    _WIDTH = 2
+
     def __init__(self, vector: torch.Tensor) -> None:
         super().__init__(vector)
         KORNIA_CHECK(vector.shape[-1] == 2)
 
     def __repr__(self) -> str:
         return f"x: {self.x}\ny: {self.y}"
-
-    def __getitem__(self, idx: Union[slice, int, torch.Tensor]) -> "Vector2":
-        return Vector2(self.data[idx, ...])
 
     @property
     def x(self) -> torch.Tensor:

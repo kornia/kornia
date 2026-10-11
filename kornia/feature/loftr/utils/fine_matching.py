@@ -40,7 +40,8 @@ class FineMatching(nn.Module):
         Args:
             feat_f0 (torch.Tensor): [M, WW, C]
             feat_f1 (torch.Tensor): [M, WW, C]
-            data (dict)
+            data (dict): with keys ['mkpts0_c', 'mkpts1_c', 'mconf', 'b_ids', 'stride_f'], ``stride_f`` being the
+                pixel stride of the fine feature maps (2 by default)
         Update:
             data (dict):{
                 'expec_f' (torch.Tensor): [M, 3],
@@ -50,7 +51,8 @@ class FineMatching(nn.Module):
         """
         M, WW, C = feat_f0.shape
         W = int(math.sqrt(WW))
-        scale = data["hw0_i"][0] / data["hw0_f"][0]
+        # pixel stride of the fine feature maps (2 by default), for any image size
+        scale = data["stride_f"]
         self.M, self.W, self.WW, self.C, self.scale = M, W, WW, C, scale
 
         # corner case: if no coarse matches found
