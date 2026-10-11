@@ -57,6 +57,87 @@ def _zero_padded_reference(x: torch.Tensor, k: int, s: int) -> torch.Tensor:
     return out
 
 
+@pytest.mark.parametrize("module_cls", [BlurPool2D, MaxBlurPool2D])
+class TestBlurPoolKernelState(BaseTester):
+    def test_forward_preserves_kernel(self, module_cls, device, dtype):
+        module = module_cls(3)
+        kernel = module.kernel.clone()
+        image = torch.arange(1, 65, device=device, dtype=dtype).reshape(1, 1, 8, 8)
+
+        module(image)
+
+        assert module.kernel.dtype == kernel.dtype
+        assert module.kernel.device == kernel.device
+        self.assert_close(module.kernel, kernel, rtol=0, atol=0)
+
+    def test_integer_call_preserves_kernel_5699(self, module_cls, device):
+        module = module_cls(3).to(device=device)
+        stored_kernel = module.kernel
+        kernel = stored_kernel.clone()
+        image = torch.arange(1, 65, device=device).to(torch.uint8).reshape(1, 1, 8, 8)
+
+        self._integer_call(module, image)
+
+        assert module.kernel is stored_kernel
+        assert module.kernel.dtype == kernel.dtype
+        assert module.kernel.device == kernel.device
+        self.assert_close(module.kernel, kernel, rtol=0, atol=0)
+        self.assert_close(module(image.float()), module_cls(3).to(device=device)(image.float()))
+
+    @staticmethod
+    def _integer_call(module, image):
+        # Integer output semantics remain a follow-up to #5669; even a failed call must preserve state.
+        if image.device.type == "mps":
+            with pytest.raises(RuntimeError, match="Convolution is supported only for Floating types"):
+                module(image)
+        else:
+            try:
+                module(image)
+            except RuntimeError as error:
+                # Other backends may lack Byte convolution/pooling kernels.
+                if "not implemented" not in str(error) or "Byte" not in str(error):
+                    raise
+
+    def test_dtype_call_order_5699(self, module_cls, device, dtype):
+        module = module_cls(3).to(device=device)
+        stored_kernel = module.kernel
+        kernel = stored_kernel.clone()
+        image = torch.arange(1, 65, device=device, dtype=dtype).reshape(1, 1, 8, 8)
+        expected = module_cls(3).to(device=device)(image)
+        assert expected.abs().sum() > 0
+        self.assert_close(module(image), expected)
+
+        for _ in range(2):
+            self._integer_call(module, image.to(torch.uint8))
+            assert module.kernel is stored_kernel
+            assert module.kernel.dtype == kernel.dtype
+            assert module.kernel.device == kernel.device
+            self.assert_close(module.kernel, kernel, rtol=0, atol=0)
+            self.assert_close(module(image), expected)
+            self.assert_close(module(image.float()), module_cls(3).to(device=device)(image.float()))
+            self.assert_close(module(image), expected)
+
+    def test_to_moves_nonpersistent_kernel_5699(self, module_cls, device, dtype):
+        module = module_cls(3).to(device=device, dtype=dtype)
+        image = torch.arange(1, 65, device=device, dtype=dtype).reshape(1, 1, 8, 8)
+        assert module.kernel.dtype == dtype
+        assert module.kernel.device == image.device
+        assert dict(module.named_buffers())["kernel"] is module.kernel
+        assert "kernel" not in dict(module.named_parameters())
+        assert module.state_dict() == {}
+        module.load_state_dict({}, strict=True)
+
+        stored_kernel = module.kernel
+        kernel = stored_kernel.clone()
+        # Matching input dtype/device needs no new tensor or host-to-device copy.
+        assert stored_kernel.to(device=image.device, dtype=image.dtype) is stored_kernel
+        self.assert_close(module(image), module_cls(3).to(device=device, dtype=dtype)(image))
+        assert module.kernel is stored_kernel
+        self.assert_close(module.kernel, kernel, rtol=0, atol=0)
+        assert module.state_dict() == {}
+        module_cls(3).load_state_dict(module.state_dict(), strict=True)
+
+
 class TestMaxBlurPool(BaseTester):
     @pytest.mark.parametrize("kernel_size", [3, (5, 5)])
     def test_smoke(self, kernel_size, device, dtype):

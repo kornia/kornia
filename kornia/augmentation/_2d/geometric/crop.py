@@ -306,7 +306,7 @@ class RandomCrop(GeometricAugmentationBase2D):
             padding_size = params["padding_size"].unique(dim=0).cpu().squeeze().tolist()
         if flags["cropping_mode"] == "resample" and isinstance(transform, torch.Tensor):
             # Pixels are padded below; sample with the padded-canvas crop matrix.
-            offset = self._padding_offset(input, params)
+            offset = self._padding_offset(input, params).to(transform)
             if not (self.p == 1.0 and self.p_batch == 1.0):
                 # Only selected matrices include padding. Keep skipped rows as identity.
                 applied = torch.atleast_1d(params["batch_prob"] > 0.5).to(offset)

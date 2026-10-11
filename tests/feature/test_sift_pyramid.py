@@ -26,6 +26,44 @@ from testing.base import BaseTester, supports_reflect_padding
 
 
 class TestSIFTDescriptorFromPyramid(BaseTester):
+    def test_orientation_rejects_pixel_oscillation_5748(self, device, dtype):
+        # A horizontal ramp with a four-pixel vertical oscillation. Integrating
+        # smoothed gradients preserves the ramp; the former sparse histogram
+        # sampling aliases the oscillation into an orientation about -51 degrees.
+        axis = torch.arange(65, device=device, dtype=torch.float32)
+        image = (0.2 * axis[None, :] + 0.25 * torch.sin(torch.pi / 2 * (axis[:, None] - 32)))[None, None]
+        image = image.to(dtype)
+        lafs = torch.tensor([[[[8.0, 0.0, 32.0], [0.0, 8.0, 32.0]]]], device=device, dtype=dtype)
+        oriented, _ = SIFTDescriptorFromPyramid().to(device, dtype).orient_and_describe(image, lafs)
+        self.assert_close(
+            get_laf_orientation(oriented), torch.zeros(1, 1, 1, device=device, dtype=dtype), rtol=0.0, atol=5.0
+        )
+
+    @pytest.mark.parametrize("size", [1, 3, 4, 8, 9])
+    @pytest.mark.parametrize("inference", [False, True])
+    def test_separable_pooling_matches_full_kernel(self, device, dtype, size, inference):
+        feature = SIFTDescriptorFromPyramid(spatial_bin_size=size).to(device, dtype)
+        # Cross the CPU pooling tile boundary and leave a partial final tile.
+        hist = torch.rand(2, 36, 37, 19, device=device, dtype=dtype)
+        # The public descriptor promotes reduced-precision images before pooling.
+        if dtype in (torch.float16, torch.bfloat16):
+            hist = hist.float()
+        pooled = torch.nn.functional.conv2d(
+            hist.reshape(-1, 1, 37, 19), feature.descriptor_pooling_kernel.to(hist), padding=size // 2
+        )
+        if size % 2 == 0:
+            pooled = torch.nn.functional.avg_pool2d(pooled, 2, stride=1)
+        with torch.set_grad_enabled(not inference):
+            actual = feature._pool_histograms(hist)
+        self.assert_close(actual.to(dtype), pooled.reshape_as(hist).to(dtype))
+
+    def test_orientation_bins_do_not_change_supplied_frame_descriptors(self, device, dtype):
+        image = torch.rand(1, 1, 48, 48, device=device, dtype=dtype)
+        lafs = torch.tensor([[[[8.0, 2.0, 24.0], [-2.0, 8.0, 24.0]]]], device=device, dtype=dtype)
+        coarse = SIFTDescriptorFromPyramid(orientation_bins=18).to(device, dtype)
+        fine = SIFTDescriptorFromPyramid(orientation_bins=72).to(device, dtype)
+        self.assert_close(coarse(image, lafs), fine(image, lafs))
+
     def test_shape_norm_and_empty(self, device, dtype):
         image = torch.rand(2, 1, 64, 80, device=device, dtype=dtype)
         xy = torch.tensor([[[24.0, 24.0], [48.0, 40.0]], [[20.0, 30.0], [52.0, 36.0]]], device=device, dtype=dtype)
@@ -162,7 +200,8 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
 
         monkeypatch.setattr(implementation, "spatial_gradient", gradient)
         oriented, descriptors = feature.orient_and_describe(image, lafs)
-        assert shapes == [(40, 40)]
+        # Description and orientation use distinct gradient maps at the used octave.
+        assert shapes == [(40, 40), (40, 40)]
 
         # Skipping the unused octaves must not change a single output value.
         # Only CPU can be held to bitwise equality: the histogram scatter uses
@@ -241,11 +280,23 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
         assert torch.isfinite(image.grad).all()
         assert torch.isfinite(lafs.grad).all()
 
-    def test_gradcheck(self, device):
+    @pytest.mark.parametrize("upright", [False, True])
+    def test_gradcheck(self, device, upright):
         image = torch.rand(1, 1, 8, 8, device=device, dtype=torch.float64)
         lafs = torch.tensor([[[[2.0, 0.0, 3.0], [0.0, 2.0, 3.0]]]], device=device, dtype=torch.float64)
         feature = SIFTDescriptorFromPyramid(spatial_bin_size=3).to(device, torch.float64)
-        self.gradcheck(lambda image: feature(image, lafs), (image,))
+        self.gradcheck(lambda image: feature.orient_and_describe(image, lafs, upright=upright)[1], (image,))
+
+    @pytest.mark.parametrize("inference", [False, True])
+    def test_dynamo(self, device, dtype, torch_optimizer, inference):
+        image = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
+        lafs = torch.tensor([[[[6.0, 0.0, 16.0], [0.0, 6.0, 16.0]]]], device=device, dtype=dtype)
+        feature = SIFTDescriptorFromPyramid().to(device, dtype)
+        with torch.set_grad_enabled(not inference):
+            expected_lafs, expected_descriptors = feature.orient_and_describe(image, lafs)
+            actual_lafs, actual_descriptors = torch_optimizer(feature.orient_and_describe)(image, lafs)
+        self.assert_close(actual_lafs, expected_lafs)
+        self.assert_close(actual_descriptors, expected_descriptors)
 
     def test_empty_batch(self, device, dtype):
         image = torch.empty(0, 1, 40, 40, device=device, dtype=dtype)

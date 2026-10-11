@@ -601,10 +601,10 @@ class TestDenseSIFTDescriptor(BaseTester):
         patches = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(DenseSIFTDescriptor(4, 2, 2), (patches), nondet_tol=1e-4)
 
-    def test_float64_bin_centre_gradient_votes_in_one_bin_5127(self, device):
+    @pytest.mark.parametrize("bins", [8, 36])
+    def test_float64_bin_centre_gradient_votes_in_one_bin_5127(self, device, bins):
         if device.type == "mps":
             pytest.skip("float64 is unavailable on MPS")
-        bins = 8
         angle = torch.arange(bins, device=device, dtype=torch.float64) * (2 * torch.pi / bins)
         # Unit gradients at the bin centres, plus one zero gradient that votes nowhere.
         gx = torch.cat([torch.cos(angle), angle.new_zeros(1)]).view(1, 1, 1, bins + 1)
