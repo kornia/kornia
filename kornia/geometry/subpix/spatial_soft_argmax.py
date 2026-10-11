@@ -320,7 +320,9 @@ def _unfold3d(padded: torch.Tensor, kernel_size: tuple[int, int, int], stride: t
     sz, sy, sx = stride
     columns = F.unfold(padded.reshape(n * d_p, 1, h_p, w_p), (ky, kx), stride=(sy, sx))
     num_windows = columns.shape[-1]
-    columns = columns.view(n, d_p, ky * kx, num_windows).unfold(1, kz, sz)  # (N, D_out, ky * kx, L, kz)
+    columns = columns.view(n, d_p, ky * kx, num_windows)
+    last = sz * ((d_p - kz) // sz)
+    columns = torch.stack([columns[:, i : i + last + 1 : sz] for i in range(kz)], dim=-1)  # (N, D_out, ky * kx, L, kz)
     return columns.permute(0, 1, 4, 2, 3).reshape(n, columns.shape[1], kz * ky * kx, num_windows)
 
 
