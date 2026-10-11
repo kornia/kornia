@@ -444,15 +444,17 @@ def sift_describe(
 class DenseSIFTDescriptor(nn.Module):
     """nn.Module, which computes SIFT descriptor densely over the image.
 
-    Every output pixel is a SIFT descriptor of the image around it. Its ``num_spatial_bins`` x ``num_spatial_bins``
-    cells are ``spatial_bin_size`` pixels apart, each cell pooling a triangular window of ``spatial_bin_size`` pixels
-    (see :func:`get_sift_pooling_kernel`), so the cells tile an extent of ``num_spatial_bins * spatial_bin_size``
-    pixels. This is the cell layout of :class:`SIFTDescriptor` and of the VLFeat ``vl_dsift`` grid.
+    Every output pixel is a SIFT descriptor of the image around the input position given below. Its
+    ``num_spatial_bins`` x ``num_spatial_bins`` cells are ``spatial_bin_size`` pixels apart, each cell pooling a
+    triangular window of ``spatial_bin_size`` pixels (see :func:`get_sift_pooling_kernel`), so the cells tile an
+    extent of ``num_spatial_bins * spatial_bin_size`` pixels. The cell spacing is that of :class:`SIFTDescriptor` and
+    of the VLFeat ``vl_dsift`` grid.
 
     Args:
         num_ang_bins: Number of angular bins. (8 is default)
-        num_spatial_bins: Number of spatial bins per descriptor (4 is default). You might want to set an odd
-            number and relevant padding to keep the feature map size.
+        num_spatial_bins: Number of spatial bins per descriptor (4 is default). With an odd
+            ``num_spatial_bins`` and an odd ``spatial_bin_size``,
+            ``padding = (num_spatial_bins - 1) * spatial_bin_size / 2`` keeps the feature map size.
         spatial_bin_size: Size of a spatial bin in pixels, and the distance between neighbouring bins (4 is default)
         clipval: clipping value to reduce single-bin dominance
         rootsift: (bool) if True, RootSIFT (Arandjelović et. al, 2012) is computed

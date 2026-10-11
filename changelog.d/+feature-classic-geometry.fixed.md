@@ -17,7 +17,7 @@ and applying an estimator to its own output alternated between the region's shap
 the input's centre and scale and the same `preserve_orientation` behaviour, so an input that already matches the
 region keeps its shape and repeated application converges. An isotropic input gets the same result as before. The
 frames `ScaleSpaceDetector` hands to its affine module are circles in octave pixels, which the octave-to-image factors
-`(W - 1) / (W_o - 1)` and `(H - 1) / (H_o - 1)` stretch by up to 2 % between x and y, so the frames of
+`(W - 1) / (W_o - 1)` and `(H - 1) / (H_o - 1)` stretch by up to 1.8 % between x and y on the Oxford affine images (more on very elongated images), so the frames of
 `HesAffNetHardNet` and `GFTTAffNetHardNet` move by about 1e-4 of their scale (median), and on the first images of the
 eight Oxford affine sequences about 50 of each pipeline's 16384 descriptors change by more than 0.01.
 `KeyNetAffNetHardNet` is unchanged.

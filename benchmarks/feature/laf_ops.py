@@ -39,7 +39,7 @@ op                                why it is here
 ``make_upright``                  orientation reset, per detector forward
 ``ellipse_to_laf``                Oxford-format import; :mod:`ellipse_to_laf` drills into it
 ``laf_to_boundary_points``        visualization export
-``laf_is_inside_image``           border filtering, per detector forward
+``laf_is_inside_image``           border filtering; ``ScaleSpaceDetector`` inlines the same rule
 ``extract_patches_simple``        patch sampling; one folded ``grid_sample`` since #4128
 ``extract_patches_from_pyramid``  patch sampling; one ``grid_sample`` over a packed atlas
 ================================  ==========================================================

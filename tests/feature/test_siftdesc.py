@@ -583,8 +583,6 @@ class TestDenseSIFTDescriptor(BaseTester):
 
     def test_matches_sift_descriptor_cell_layout_NNNN(self, device, dtype):
         """The dense descriptor at a pixel is close to `SIFTDescriptor` of the 16 x 16 patch around that pixel."""
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("half precision cannot hold the 0.95 cosine margin through two normalisations")
         torch.manual_seed(0)
         img = gaussian_blur2d(torch.rand(1, 1, 60, 70, device=device, dtype=dtype), (5, 5), (1.5, 1.5))
         dense = DenseSIFTDescriptor(padding=0).to(device, dtype)(img)[0]
