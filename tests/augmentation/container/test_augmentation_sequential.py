@@ -1944,6 +1944,26 @@ class TestConventionAugmentationSequential(BaseTester):
         seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
         assert torch.equal(seq(image, mask)[1], mask.flip(-1))
 
+    @pytest.mark.parametrize("padding", [0, 2])
+    @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16])
+    def test_integer_mask_resample_crop_next_to_a_half_image_4478(self, half, padding, device):
+        # The integer mask works in float32 and the crop matrix comes from the half-precision image: the resample
+        # crop must combine them in one dtype and still cut the labels out exactly.
+        if not supports_bilinear_2d_grid_sample(device, half):
+            pytest.skip("The image path requires bilinear grid_sample for the selected dtype.")
+        image = torch.ones(2, 1, 8, 10, device=device, dtype=half)
+        mask = (torch.arange(160, device=device) * 9 + 2049).reshape(2, 1, 8, 10)
+        crop = K.RandomCrop((5, 6), padding=padding, cropping_mode="resample", p=1.0)
+        seq = K.AugmentationSequential(crop, data_keys=["input", "mask"])
+
+        out_image, out_mask = seq(image, mask)
+
+        padded = torch.nn.functional.pad(mask, [padding] * 4)
+        for sample, corner in zip(range(2), seq._params[0].data["src"][:, 0].long().tolist()):
+            x0, y0 = corner
+            assert torch.equal(out_mask[sample], padded[sample, :, y0 : y0 + 5, x0 : x0 + 6])
+        assert seq.inverse(out_image, out_mask)[1].dtype == mask.dtype
+
     @pytest.mark.parametrize("mask_dtype", [None, torch.int64, torch.bool])
     def test_convention_empty_batch_with_mask_4478(self, mask_dtype, device, dtype):
         # Convention pin for kornia#4478: an empty batch with a mask returns an empty mask, forward and inverse,
