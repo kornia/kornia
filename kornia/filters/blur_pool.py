@@ -95,7 +95,9 @@ class BlurPool2D(nn.Module):
             on the input size and ``self.stride``.
         """
         self.kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
-        return _blur_pool_by_kernel2d(input, self.kernel.repeat((input.shape[1], 1, 1, 1)), self.stride)
+        # ONNX requires constant convolution groups and kernel shape, even with dynamic batch or spatial axes.
+        channels = int(input.shape[1]) if torch.jit.is_tracing() else input.shape[1]
+        return _blur_pool_by_kernel2d(input, self.kernel.repeat((channels, 1, 1, 1)), self.stride)
 
 
 class MaxBlurPool2D(nn.Module):
@@ -177,8 +179,9 @@ class MaxBlurPool2D(nn.Module):
             and ``self.stride``.
         """
         self.kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
+        channels = int(input.shape[1]) if torch.jit.is_tracing() else input.shape[1]
         return _max_blur_pool_by_kernel2d(
-            input, self.kernel.repeat((input.size(1), 1, 1, 1)), self.stride, self.max_pool_size
+            input, self.kernel.repeat((channels, 1, 1, 1)), self.stride, self.max_pool_size
         )
 
 
@@ -279,8 +282,9 @@ def blur_pool2d(input: torch.Tensor, kernel_size: tuple[int, int] | int, stride:
                   [0.0000, 0.0625, 0.3125]]]])
 
     """
+    channels = int(input.shape[1]) if torch.jit.is_tracing() else input.shape[1]
     kernel = get_pascal_kernel_2d(kernel_size, norm=True, device=input.device, dtype=input.dtype).repeat(
-        (input.size(1), 1, 1, 1)
+        (channels, 1, 1, 1)
     )
     return _blur_pool_by_kernel2d(input, kernel, stride)
 
@@ -325,8 +329,9 @@ def max_blur_pool2d(
     _warn_ceil_mode_deprecated(ceil_mode)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
+    channels = int(input.shape[1]) if torch.jit.is_tracing() else input.shape[1]
     kernel = get_pascal_kernel_2d(kernel_size, norm=True, device=input.device, dtype=input.dtype).repeat(
-        (input.shape[1], 1, 1, 1)
+        (channels, 1, 1, 1)
     )
     return _max_blur_pool_by_kernel2d(input, kernel, stride, max_pool_size)
 
@@ -450,10 +455,10 @@ def edge_aware_blur_pool2d(
     edges_y = log_input[..., 4:, :] - log_input[..., :-4, :]
     edges_x, edges_y = edges_x.mean(dim=-3, keepdim=True), edges_y.mean(dim=-3, keepdim=True)
     edges_x_mask, edges_y_mask = edges_x.abs() > log_thresh.to(edges_x), edges_y.abs() > log_thresh.to(edges_y)
-    edges_xy_mask = (edges_x_mask[..., 2:-2, :] + edges_y_mask[..., :, 2:-2]).type_as(input)
+    edges_xy_mask = (edges_x_mask[..., 2:-2, :] | edges_y_mask[..., :, 2:-2]).type_as(input)
 
     # dilate the content edges to have a soft mask of edges
-    dilated_edges = F.max_pool3d(edges_xy_mask, edge_dilation_kernel_size, 1, edge_dilation_kernel_size // 2)
+    dilated_edges = F.max_pool2d(edges_xy_mask, edge_dilation_kernel_size, 1, edge_dilation_kernel_size // 2)
 
     # slice the padded regions
     blurred_input = blurred_input[..., blur_pad_y:-blur_pad_y, blur_pad_x:-blur_pad_x]

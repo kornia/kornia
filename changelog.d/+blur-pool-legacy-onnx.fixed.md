@@ -1,0 +1,1 @@
+The blur-pool functions and modules export through the legacy ONNX exporter with dynamic batch, height and width. Edge-aware blur pooling also exports with static shapes and uses a valid boolean OR for its edge map.
