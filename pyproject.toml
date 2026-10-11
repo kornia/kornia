@@ -37,7 +37,6 @@ Issues = "https://github.com/kornia/kornia/issues"
 "Source Code" = "https://github.com/kornia/kornia"
 
 [project.optional-dependencies]
-profiler = ["pandas"]
 dev = [
   "coverage",
   "kornia[onnx]",
@@ -67,6 +66,7 @@ docs = [
 ]
 image = ["pillow"]
 onnx = ["onnx", "onnxruntime", "onnxscript"]
+profiler = ["pandas"]
 sd = ["diffusers", "transformers"]
 
 [build-system]
