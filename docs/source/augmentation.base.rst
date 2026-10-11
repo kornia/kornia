@@ -227,7 +227,7 @@ See :class:`AugmentationBase2D` for where parameters are sampled and what ``para
 Serialization
 ^^^^^^^^^^^^^
 - Several constructors that accept ``nn.Parameter`` ranges propagate gradients to them.
-- The default ``kornia.augmentation.auto`` policies cannot be pickled
-  (`#4469 <https://github.com/kornia/kornia/issues/4469>`_).
+- A ``kornia.augmentation.auto`` policy pickles when every operation wrapper in it does, and a wrapper does when
+  its magnitude mapping is picklable; the built-in mappings are.
 - :class:`AugmentationBase2D` covers the range buffers in ``state_dict()``, and
   :class:`RigidAffineAugmentationBase2D` what a lazily built matrix keeps.

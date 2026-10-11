@@ -152,8 +152,11 @@ def _affine_from_cov(cov: torch.Tensor) -> torch.Tensor:
     """Build a 2x2 affine matrix from a batch of 2x2 covariance matrices.
 
     The affine is ``U @ diag(sqrt(eigenvalues))``, where ``U`` contains the
-    orthonormal eigenvectors of ``cov`` as *columns*.  This gives an ellipse
-    whose axes align with the principal directions of the covariance.
+    orthonormal eigenvectors of ``cov`` as *columns*, in ascending order of
+    eigenvalue.  This gives an ellipse whose axes align with the principal
+    directions of the covariance (``A @ A.T == cov``).  The sign of the first
+    eigenvector is chosen so that ``det(U) = +1``: the affine is a rotation
+    times a scaling, never mirrored.
 
     Args:
         cov: symmetric positive-semi-definite matrices ``(N, 2, 2)``.
@@ -168,6 +171,11 @@ def _affine_from_cov(cov: torch.Tensor) -> torch.Tensor:
     if cov.dtype in (torch.float16, torch.bfloat16):
         cov = cov.float()
     eigenvalues, eigenvectors = torch.linalg.eigh(cov)
+    # eigh fixes each eigenvector only up to sign, and the ascending order alone swaps the axes of a covariance that
+    # is wider along x, so det(U) is often -1, a mirrored frame. Negate the first eigenvector there.
+    det_u = eigenvectors[:, 0, 0] * eigenvectors[:, 1, 1] - eigenvectors[:, 0, 1] * eigenvectors[:, 1, 0]
+    sign = 1.0 - 2.0 * (det_u < 0).to(eigenvectors.dtype)  # (N,)
+    eigenvectors = eigenvectors * torch.stack([sign, torch.ones_like(sign)], dim=-1)[:, None, :]
     scales = eigenvalues.clamp(min=1e-8).sqrt()  # (N, 2)
     # Each column of eigenvectors multiplied by the corresponding scale.
     return (eigenvectors * scales[:, None, :]).to(orig_dtype)  # (N, 2, 2)
@@ -200,7 +208,8 @@ class DKD(nn.Module):
     """Differentiable keypoint detection from a score map.
 
     Args:
-        radius: soft detection radius; NMS kernel size is ``2 * radius + 1``.
+        radius: soft detection radius; NMS kernel size is ``2 * radius + 1``. The NMS keeps strict local maxima
+            only, unlike the reference's ``simple_nms``; the note of :class:`ALIKED` explains the difference.
         top_k: if ``> 0`` return exactly the ``top_k`` highest-scoring
             keypoints; otherwise threshold mode is used.
         scores_th: score threshold when ``top_k <= 0``.
@@ -757,7 +766,19 @@ class ALIKED(nn.Module):
         max_num_keypoints: maximum number of keypoints to detect.
             ``-1`` means no limit (threshold-based mode).
         detection_threshold: minimum detection score in threshold mode.
-        nms_radius: NMS radius (kernel size ``= 2 * nms_radius + 1``).
+        nms_radius: NMS radius (kernel size ``= 2 * nms_radius + 1``). The suppression keeps strict local maxima
+            only; see the note below.
+
+    Note:
+        Keypoints are the strict local maxima of the score map: :func:`~kornia.geometry.subpix.nms2d` keeps a
+        position only if its score is greater than every other score in its ``2 * nms_radius + 1`` window. This
+        departs on purpose from the reference implementations (Shiaoming/ALIKED and LightGlue's port). Their
+        ``simple_nms`` also keeps tied maxima, and in two further rounds it adds the positions that become the
+        maximum of their window once the windows around the maxima already kept are zeroed. Those positions lie on
+        the flank of a stronger peak and are not local maxima of the score map. kornia therefore returns a subset
+        of the reference keypoints. With the pretrained ``aliked-n16`` it returns 1363 of the reference's 1514 on
+        Oxford graf img1, and each of the 151 left out has a higher score in its window. The single pass is also
+        faster on CPU than the reference's three rounds.
 
     Example:
         >>> aliked = ALIKED.from_pretrained('aliked-n16')  # doctest: +SKIP
@@ -919,10 +940,18 @@ class ALIKED(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Detect and describe local features, returning results in kornia LAF format.
 
-        Local Affine Frames are estimated from the soft-argmax weight covariance
-        computed inside :class:`DKD`: the 2x2 affine matrix captures the dominant
-        orientation and scale of each detected keypoint without any additional
-        network parameters.
+        With ``compute_affine=True`` the 2x2 block ``A`` of each LAF comes from
+        the covariance of the soft-argmax weights in the keypoint's
+        ``2 * nms_radius + 1`` detection window, computed inside :class:`DKD`
+        without any additional network parameters: ``A @ A.T`` is that
+        covariance, so the axes of the frame are its principal axes, and
+        ``det A > 0`` (the frame is never mirrored). The frame describes how
+        sharply the score map peaks, not an image structure. Its scale
+        (:func:`~kornia.feature.get_laf_scale`) is about a pixel or less: 0.14
+        to 1.25 px, median 0.62 px, on Oxford graf img1 with the pretrained
+        ``aliked-n16``. That is much smaller than the region the descriptor
+        samples, so rescale the frames, for example with
+        :func:`~kornia.feature.scale_laf`, before using them as a region size.
 
         All per-image tensors are zero-padded along the keypoint dimension so
         that the outputs are proper batched tensors.

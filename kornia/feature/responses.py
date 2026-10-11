@@ -179,6 +179,12 @@ def gftt_response(
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
+    if sigmas is not None:
+        if not isinstance(sigmas, torch.Tensor):
+            raise TypeError(f"sigmas type is not a torch.Tensor. Got {type(sigmas)}")
+        if (not len(sigmas.shape) == 1) or (sigmas.size(0) != input.size(0)):
+            raise ValueError(f"Invalid sigmas shape, we expect B == input.size(0). Got: {sigmas.shape}")
+
     gradients: torch.Tensor = spatial_gradient(input, grads_mode)
     dx: torch.Tensor = gradients[:, :, 0]
     dy: torch.Tensor = gradients[:, :, 1]

@@ -24,7 +24,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_autocast_enabled, is_compiling
 
-from .filter import filter2d, filter2d_separable
+from .filter import _to_floating, filter2d, filter2d_separable
 from .kernels import _check_kernel_size, _unpack_2d_ks, get_gaussian_kernel1d, get_gaussian_kernel2d
 
 # This build capability is immutable; querying it inside forward breaks Dynamo
@@ -101,9 +101,8 @@ def gaussian_blur2d(
           first, so ``sigma[0]`` blurs along ``H`` and ``sigma[1]`` along ``W``.
           :ref:`Filtering <filtering-conventions>` maps both pairs onto OpenCV and scipy.
         - The border modes are :func:`~kornia.filters.filter2d`'s; see its Convention block.
-        - Known defect: an integer input casts ``sigma`` and the kernel to its dtype, so on the CPU a uint8 image
-          comes back as zeros, and a ``sigma`` below 1 truncates to 0 and is rejected as not positive
-          (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+        - An integer or bool input is blurred in float32 and the output is float32, as in
+          :func:`~kornia.filters.filter2d`; ``sigma`` is cast to float32 as well.
 
     Arguments:
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
@@ -156,6 +155,8 @@ def gaussian_blur2d(
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     _check_kernel_size(kernel_size, min_value=0)
+    # promote before casting sigma and the kernel to the input's dtype, where an integer dtype truncates them (#5155)
+    input = _to_floating(input)
 
     if isinstance(sigma, tuple):
         sigma = torch.tensor([sigma], device=input.device, dtype=input.dtype)

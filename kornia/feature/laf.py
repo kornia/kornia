@@ -230,6 +230,9 @@ def scale_laf(laf: torch.Tensor, scale_coef: Union[float, torch.Tensor]) -> torc
 def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
     """Rectify the affine matrix, so that it becomes upright.
 
+    The all-zero LAF that pads an unfilled detector slot (see :func:`laf_is_filled`) is returned unchanged, so the
+    padding stays recognizable.
+
     Args:
         laf: :math:`(B, N, 2, 3)`
         eps: for safe division.
@@ -243,6 +246,12 @@ def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
 
     """
     KORNIA_CHECK_LAF(laf)
+    # Differentiate through an identity frame in place of the zero padding: sqrt at exactly zero has an infinite
+    # derivative, which torch.where below would turn into nan rather than mask.
+    filled = laf_is_filled(laf)[..., None, None]
+    eye = torch.eye(2, 3, device=laf.device, dtype=laf.dtype).expand_as(laf)
+    padding = laf
+    laf = torch.where(filled, laf, eye)
     det = get_laf_scale(laf)
     scale = det
     # The function is equivalent to doing 2x2 SVD and resetting rotation
@@ -257,7 +266,9 @@ def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
         dim=3,
     )
     laf_unit_scale = torch.cat([torch.cat([laf1_ell, laf2_ell], dim=2), laf[..., :, 2:3]], dim=3)
-    return scale_laf(laf_unit_scale, scale)
+    upright = scale_laf(laf_unit_scale, scale)
+    # The padding LAF would otherwise come back as a tiny nonzero frame (the determinant and the division carry eps).
+    return torch.where(filled, upright, padding)
 
 
 def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
@@ -334,16 +345,15 @@ def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
     """
     KORNIA_CHECK_LAF(LAF)
     B, N, _, _ = LAF.size()
+    # Build the circle on the CPU in at least float32 (the LAF's dtype when it is wider, so float64 LAFs do not carry
+    # float32 rounding), then cast it once.
+    build = torch.promote_types(LAF.dtype, torch.float32)
+    angles = torch.linspace(0, 2 * math.pi, n_pts - 1, dtype=build)
     pts = torch.cat(
-        [
-            torch.sin(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
-            torch.cos(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
-            torch.ones(n_pts - 1, 1),
-        ],
-        dim=1,
+        [torch.sin(angles).unsqueeze(-1), torch.cos(angles).unsqueeze(-1), torch.ones(n_pts - 1, 1, dtype=build)], dim=1
     )
     # Add origin to draw also the orientation
-    pts = torch.cat([torch.tensor([0.0, 0.0, 1.0]).view(1, 3), pts], dim=0)
+    pts = torch.cat([torch.tensor([0.0, 0.0, 1.0], dtype=build).view(1, 3), pts], dim=0)
     # Move the 3-column basis before broadcasting it: expanding first and casting afterwards
     # materialized -- and on an accelerator transferred -- one copy per LAF (~12 MiB at N = 20000)
     # of a tensor with `n_pts` distinct rows.
@@ -871,9 +881,12 @@ def extract_patches_from_pyramid(
 
 
 def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor, border: int = 0) -> torch.Tensor:
-    """Check if the LAF is touching or partly outside the image boundary.
+    """Check which LAFs lie fully inside the image.
 
-    Returns the mask of LAFs, which are fully inside the image, i.e. valid.
+    The region of a LAF ``[A | c]`` is the ellipse ``c + A u`` over the unit vectors ``u``. Along image axis
+    ``i`` (0 for x, 1 for y) it spans exactly ``c_i - r_i`` to ``c_i + r_i``, where ``r_i`` is the Euclidean norm
+    of row ``i`` of ``A``. A LAF is inside when both spans lie in ``border <= x <= w - 1 - border`` and
+    ``border <= y <= h - 1 - border``, so a region that touches the last valid pixel coordinate is inside.
 
     Args:
         laf:  :math:`(B, N, 2, 3)`.
@@ -886,14 +899,15 @@ def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor, border: int = 0
     """
     KORNIA_CHECK_LAF(laf)
     _, _, h, w = images.size()
-    pts = laf_to_boundary_points(laf, 12)
+    # r_i = max over unit u of A[i, :] u, half the side of the ellipse's axis-aligned bounding box.
+    extent = torch.linalg.vector_norm(laf[..., :2], dim=-1)
+    lo = laf[..., 2] - extent
+    hi = laf[..., 2] + extent
     # Valid pixel coordinates run 0 .. w-1 and 0 .. h-1, matching the convention documented on
     # `get_laf_center` and the `w - 1` / `h - 1` extent used by `normalize_laf` / `denormalize_laf`.
     x_max = float(w - 1) - border
     y_max = float(h - 1) - border
-    good_lafs_mask = (pts[..., 0] >= border) * (pts[..., 0] <= x_max) * (pts[..., 1] >= border) * (pts[..., 1] <= y_max)
-    # `.all` rather than `.min` on the bool mask: ONNX ReduceMin has no bool overload.
-    return good_lafs_mask.all(dim=2)
+    return (lo[..., 0] >= border) & (hi[..., 0] <= x_max) & (lo[..., 1] >= border) & (hi[..., 1] <= y_max)
 
 
 def laf_to_three_points(laf: torch.Tensor) -> torch.Tensor:
@@ -923,6 +937,7 @@ def laf_from_three_points(threepts: torch.Tensor) -> torch.Tensor:
         laf :math:`(B, N, 2, 3)`.
 
     """
+    KORNIA_CHECK_SHAPE(threepts, ["B", "N", "2", "3"])
     return torch.stack(
         [threepts[..., 0] - threepts[..., 2], threepts[..., 1] - threepts[..., 2], threepts[..., 2]], dim=-1
     )

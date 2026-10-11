@@ -101,7 +101,8 @@ class TestSharedSIFTScaleSpace(BaseTester):
         lafs = torch.tensor([[[[12.0, 0.0, 24.0], [0.0, 12.0, 24.0]]]], device=device, dtype=work_dtype)
         patch = LAFDescriptor(SIFTDescriptor(41, rootsift=False), patch_size=41).to(device, work_dtype)(image, lafs)
         pyramid = SIFTDescriptorFromPyramid(rootsift=False).to(device, work_dtype)(image, lafs)
-        # About 0.87 with either; the scale-space descriptor in its former (row, column, angle) order scored 0.44.
+        # 0.92 with the patch descriptor and 0.88 with the pyramid one; the scale-space descriptor in its former
+        # (row, column, angle) order scored 0.44.
         for other in (patch[0], pyramid[0]):
             assert F.cosine_similarity(descriptor.to(work_dtype), other).item() > 0.8
 

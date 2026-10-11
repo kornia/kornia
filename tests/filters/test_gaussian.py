@@ -39,7 +39,14 @@ from kornia.filters import (
 )
 from kornia.filters.kernels import gaussian_discrete, gaussian_discrete_erf
 
-from testing.base import BaseTester, assert_close, supports_reflect_padding, supports_replicate_padding
+from testing.base import (
+    DYNAMIC_EXPORT_UNAVAILABLE_REASON,
+    BaseTester,
+    assert_close,
+    dynamic_export_is_available,
+    supports_reflect_padding,
+    supports_replicate_padding,
+)
 
 
 @pytest.mark.parametrize(
@@ -535,6 +542,84 @@ class TestGaussianBlur2d(BaseTester):
             torch.onnx.export(model, sample_input, buf, **export_kwargs)
         assert buf.getbuffer().nbytes > 0
 
+        # a dynamic batch and spatial size used to leave the convolution weight without a static shape (#5222)
+        dynamic_buf = io.BytesIO()
+        dynamic_axes = {
+            "input": {0: "batch", 2: "height", 3: "width"},
+            "output": {0: "batch", 2: "height", 3: "width"},
+        }
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            torch.onnx.export(model, sample_input, dynamic_buf, dynamic_axes=dynamic_axes, **export_kwargs)
+        assert dynamic_buf.getbuffer().nbytes > 0
+
+    @pytest.mark.device_agnostic
+    def test_onnx_export_legacy_dynamic_matches_eager(self, dtype):
+        """Test that a dynamic-axes legacy export of GaussianBlur2d matches eager execution."""
+        if dtype != torch.float32:
+            pytest.skip("the exported graph is checked once, in float32")
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+        model = GaussianBlur2d((3, 3), (1.5, 1.5))
+        sample_input = torch.rand(1, 3, 8, 8, dtype=dtype)
+        buf = io.BytesIO()
+        export_kwargs: dict[str, Any] = {
+            "input_names": ["input"],
+            "output_names": ["output"],
+            "opset_version": 17,
+            "dynamic_axes": {
+                "input": {0: "batch", 2: "height", 3: "width"},
+                "output": {0: "batch", 2: "height", 3: "width"},
+            },
+        }
+        if torch_version_ge(2, 5, 0):
+            export_kwargs["dynamo"] = False
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            torch.onnx.export(model, sample_input, buf, **export_kwargs)
+        session = ort.InferenceSession(buf.getvalue(), providers=["CPUExecutionProvider"])
+        for image in (sample_input, torch.rand(2, 3, 5, 9, dtype=dtype)):
+            exported = torch.from_numpy(session.run(None, {"input": image.numpy()})[0])
+            self.assert_close(exported, model(image))
+
+    @pytest.mark.device_agnostic
+    def test_onnx_export_legacy_dynamic_size_per_sample_sigma_matches_eager(self, dtype):
+        """Test that a per-sample sigma keeps a static batch but exports a dynamic height and width (#5222)."""
+        if dtype != torch.float32:
+            pytest.skip("the exported graph is checked once, in float32")
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+        model = GaussianBlur2d((3, 5), torch.tensor([[1.5, 0.7], [0.5, 2.0]], dtype=dtype))
+        sample_input = torch.rand(2, 3, 8, 8, dtype=dtype)
+        buf = io.BytesIO()
+        export_kwargs: dict[str, Any] = {
+            "input_names": ["input"],
+            "output_names": ["output"],
+            "opset_version": 17,
+            "dynamic_axes": {"input": {2: "height", 3: "width"}, "output": {2: "height", 3: "width"}},
+        }
+        if torch_version_ge(2, 5, 0):
+            export_kwargs["dynamo"] = False
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            torch.onnx.export(model, sample_input, buf, **export_kwargs)
+        session = ort.InferenceSession(buf.getvalue(), providers=["CPUExecutionProvider"])
+        for image in (sample_input, torch.rand(2, 3, 5, 9, dtype=dtype)):
+            exported = torch.from_numpy(session.run(None, {"input": image.numpy()})[0])
+            self.assert_close(exported, model(image))
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.skipif(not dynamic_export_is_available(), reason=DYNAMIC_EXPORT_UNAVAILABLE_REASON)
+    def test_torch_export_dynamic_channels_matches_eager(self, dtype):
+        """Test that torch.export keeps a dynamic channel axis; only the legacy tracer reads it as an int (#5222)."""
+        if dtype != torch.float32:
+            pytest.skip("the exported graph is checked once, in float32")
+        model = GaussianBlur2d((3, 3), (1.5, 1.5))
+        channels = torch.export.Dim("channels", min=2, max=16)
+        exported = torch.export.export(model, (torch.rand(2, 3, 8, 8, dtype=dtype),), dynamic_shapes=({1: channels},))
+        image = torch.rand(2, 5, 8, 8, dtype=dtype)
+        self.assert_close(exported.module()(image), model(image))
+
     @pytest.mark.device_agnostic
     # 2.5 is where `dynamo=` first exists, but there it still routes through the experimental
     # `_compat.export_compat` shim. This test passes `fallback=False` implicitly, so on the 2.5.1
@@ -771,18 +856,16 @@ class TestConventionsGaussianBlur(BaseTester):
             for separable in (True, False):
                 self.assert_close(gaussian_blur2d(image, (5, 7), (1.0, 2.0), border_type, separable), expected)
 
-    def test_wart_gaussian_blur2d_integer_image_blurs_to_zero_5155(self, device):
-        """gaussian_blur2d casts sigma and the kernel to an integer dtype: a uint8 image blurs to zero (#5155)."""
-        if device.type != "cpu":
-            pytest.skip("#5155 is pinned on the CPU; MPS raises for an integer convolution instead")
+    def test_convention_gaussian_blur2d_integer_image_is_blurred_in_float32_5155(self, device):
+        """An integer image is blurred in float32 and returns float32: a constant uint8 image stays constant (#5155)."""
         image = torch.full((1, 1, 5, 7), 100, device=device, dtype=torch.uint8)
         for separable in (True, False):
-            assert gaussian_blur2d(image, (3, 3), (1.0, 1.0), separable=separable).eq(0).all()
-        # a sigma below 1 truncates to 0 in uint8 and is then rejected as not positive
-        with pytest.raises(BaseError):
-            gaussian_blur2d(image, (3, 3), (0.5, 0.5))
-        # the same blur of the same values in floating point keeps the constant image
-        self.assert_close(gaussian_blur2d(image.float(), (3, 3), (1.0, 1.0)), image.float())
+            out = gaussian_blur2d(image, (3, 3), (1.0, 1.0), separable=separable)
+            assert out.dtype == torch.float32
+            self.assert_close(out, gaussian_blur2d(image.float(), (3, 3), (1.0, 1.0), separable=separable))
+            self.assert_close(out, image.float())
+        # a sigma below 1 is no longer truncated to 0 and rejected
+        self.assert_close(gaussian_blur2d(image, (3, 3), (0.5, 0.5)), image.float())
 
     def test_convention_gaussian_blur2d_sigma_batch_is_one_or_the_input_batch_5169(self, device, dtype):
         """gaussian_blur2d rejects a tensor sigma whose batch is neither 1 nor B, on both paths (#5169)."""
