@@ -2,12 +2,13 @@
 images to pixels with `H0 / ceil(H0 / 8)` instead of the 8-pixel stride of the coarse feature map, cut the
 fine-matching windows of both images on a grid of the wrong stride, and scaled the fine offsets by `H0 / ceil(H0 / 2)`;
 its FPN also upsampled each level to the size of its skip connection, which reads the coarser level at other positions
-than the trained weights expect whenever a side is not 0 or 7 mod 8. On a 361 x 485 crop of Oxford graf and a known
-homography, 4 % of the matches were within 1 px of the ground truth (median error 2.7 px). Coarse and fine cells are
-now converted with the 8- and 2-pixel strides of the feature maps for any image size, `mask0` / `mask1` are read at
-the pixels the coarse cells sit on, and the FPN upsamples by 2 and crops to the skip size (99 % within 1 px, median
-0.23 px on the same pair; IMC PhotoTourism pose mAA@10 0.49 -> 0.72). Inputs whose heights and widths are all multiples
-of 8 give the same results as before.
+than the trained weights expect whenever a side is not 0 or 7 mod 8. On crops of Oxford graf 361 to 366 px high and
+three known homographies, 4 % of the matches were within 1 px of the ground truth, with a median error of 3.1 px and
+errors up to 9.4 px. Coarse and fine cells are now converted with the 8- and 2-pixel strides of the feature maps for
+any image size, `mask0` / `mask1` are read at the pixels the coarse cells sit on, and the FPN upsamples by 2 and crops
+to the skip size: 99 % of the matches are within 1 px on the same crops (median 0.23 px), and on IMC PhotoTourism
+validation with images resized by 0.6 the pose mAA@10 goes from 0.49 to 0.72. Inputs whose heights and widths are all
+multiples of 8 give the same results as before.
 
 `LoFTR` with `mask0` / `mask1` now runs in float16. It raised a `RuntimeError`, because the similarity -1e9 given to
 masked pairs does not fit in float16, and padded queries overflowed the linear attention's normaliser to inf, which

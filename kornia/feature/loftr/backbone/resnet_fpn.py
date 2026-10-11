@@ -149,9 +149,10 @@ class ResNetFPN_8_2(nn.Module):
         # FPN
         x3_out = self.layer3_outconv(x3)
 
-        # Upsample by 2 as the reference does, then crop to the skip size (one row / column smaller when a side is
-        # not 0 or 7 mod 8): cell i of the finer map reads the coarser map at i * (n - 1) / (2n - 1), the mapping
-        # the weights were trained with, for every image size.
+        # Upsample by 2 as the reference does, then crop to the skip size: the 1/4 map is one row / column smaller
+        # than twice the 1/8 map when a side is 1-4 mod 8, the 1/2 map than twice the 1/4 map when it is 1, 2, 5 or
+        # 6 mod 8, neither for 0 or 7. Cell i of the finer map then reads the coarser map at i * (n - 1) / (2n - 1),
+        # the mapping the weights were trained with, for every image size.
         x2_out = self.layer2_outconv(x2)
         x3_out_2x = F.interpolate(x3_out, scale_factor=2.0, mode="bilinear", align_corners=True)
         x2_out = self.layer2_outconv2(x2_out + x3_out_2x[..., : x2_out.shape[2], : x2_out.shape[3]])

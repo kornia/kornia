@@ -21,8 +21,10 @@ import sys
 
 import pytest
 import torch
+import torch.nn.functional as F
 
 from kornia.feature import LoFTR
+from kornia.feature.loftr.backbone import ResNetFPN_8_2
 from kornia.feature.loftr.loftr import default_cfg
 from kornia.feature.loftr.loftr_module import FinePreprocess
 from kornia.feature.loftr.loftr_module.linear_attention import LinearAttention
@@ -114,7 +116,7 @@ class TestLoFTR(BaseTester):
     def test_pretrained_outdoor_images_of_different_sizes_NNNN(self, device, dtype, data):
         # image0 is a 325 x 403 crop of the pair's first image, image1 that crop warped by a known homography (8 degree
         # rotation and 0.9 scale about (200, 160)) into 339 x 401. No side is a multiple of 8 and the two sizes
-        # differ, so the FPN of each image upsamples to its own skip sizes.
+        # differ, so each image's FPN crops to its own skip sizes.
         loftr = LoFTR("outdoor").to(device, dtype)
         image0 = data["image0"][..., 60:385, 100:503].to(device, dtype)
         c, s = 0.9 * math.cos(math.radians(8.0)), 0.9 * math.sin(math.radians(8.0))
@@ -444,6 +446,41 @@ class TestFinePreprocess(BaseTester):
         self.assert_close(win1[:, 12], centre1.to(dtype), rtol=0.0, atol=0.0)
         # the window spans +-2 fine cells: its last element is two cells down and right of the centre
         self.assert_close(win0[1:3, 24], (centre0[1:3] + 2).to(dtype), rtol=0.0, atol=0.0)
+
+
+class TestResNetFPN(BaseTester):
+    def test_fpn_upsamples_by_2_then_crops_NNNN(self, device, dtype):
+        # Each FPN level adds to its lateral map the coarser level upsampled by 2 (align_corners=True), cropped to
+        # the lateral size. A 65 x 74 input (1 and 2 mod 8) crops at both levels: the 1/8 map is 9 x 10 and the 1/4
+        # map 17 x 19, not 18 x 20; the 1/4 map is 17 x 19 and the 1/2 map 33 x 37, not 34 x 38. Upsampling to the
+        # lateral size instead reads the coarser map at other positions.
+        torch.manual_seed(0)
+        fpn = ResNetFPN_8_2(default_cfg["resnetfpn"]).to(device, dtype).eval()
+        seen = {}
+
+        def keep(name, output=True):
+            def hook(module, args, out=None):
+                seen[name] = out if output else args[0]
+
+            return hook
+
+        for name, module in (("x1", fpn.layer1), ("x2", fpn.layer2), ("x3_out", fpn.layer3_outconv)):
+            module.register_forward_hook(keep(name))
+        fpn.layer2_outconv2.register_forward_pre_hook(keep("sum2", output=False))
+        fpn.layer2_outconv2.register_forward_hook(keep("x2_out"))
+        fpn.layer1_outconv2.register_forward_pre_hook(keep("sum1", output=False))
+        with torch.no_grad():
+            fpn(torch.rand(1, 1, 65, 74).to(device, dtype))
+            assert seen["x3_out"].shape[2:] == (9, 10)
+            assert seen["x2"].shape[2:] == (17, 19)
+            assert seen["x1"].shape[2:] == (33, 37)
+            for coarse, lateral, total in (
+                (seen["x3_out"], fpn.layer2_outconv(seen["x2"]), seen["sum2"]),
+                (seen["x2_out"], fpn.layer1_outconv(seen["x1"]), seen["sum1"]),
+            ):
+                h, w = lateral.shape[2:]
+                up = F.interpolate(coarse, scale_factor=2.0, mode="bilinear", align_corners=True)[..., :h, :w]
+                self.assert_close(total, lateral + up)
 
 
 class TestLinearAttention(BaseTester):
