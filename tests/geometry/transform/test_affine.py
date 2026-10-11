@@ -21,6 +21,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import DeviceError, TypeCheckError
 
 from testing.base import BaseTester
 
@@ -765,6 +766,15 @@ class TestAffine2d(BaseTester):
         )(image)
         actual = kornia.geometry.transform.Affine(shear=shear)(image)
         self.assert_close(actual, expected)
+
+    def test_affine_shear_checked_with_other_parameters_5662(self, device, dtype):
+        # shear takes part in the constructor's device and dtype check, as angle, translation and scale_factor do.
+        shear = torch.tensor([[0.1, -0.2]], device=device, dtype=dtype)
+        other = torch.float16 if dtype != torch.float16 else torch.float32  # float64 is unavailable on MPS
+        with pytest.raises(TypeCheckError):
+            kornia.geometry.transform.Affine(angle=torch.zeros(1, device=device, dtype=other), shear=shear)
+        with pytest.raises(DeviceError):
+            kornia.geometry.transform.Affine(angle=torch.zeros(1, device="meta", dtype=dtype), shear=shear)
 
     @pytest.mark.parametrize("as_module", [False, True])
     def test_convention_shear_raw_factors_5661(self, device, dtype, as_module):

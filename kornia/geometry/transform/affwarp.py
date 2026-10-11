@@ -915,6 +915,9 @@ class Affine(nn.Module):
 
     Raises:
         RuntimeError: If not one of ``angle``, ``translation``, ``scale_factor``, or ``shear`` is set.
+        DeviceError: If ``angle``, ``translation``, ``scale_factor`` and ``shear`` are not all on one device.
+        TypeCheckError: If they are on one device but do not all have one dtype. The ones not given are
+            created on that device and in that dtype.
 
     Returns:
         The transformed tensor with same shape as input.
