@@ -338,17 +338,19 @@ class TestCoarseMatching(BaseTester):
         assert out["mconf"].dtype == dtype
         assert out["mkpts0_c"].shape == (self.N_PRED, 2)
 
+    @pytest.mark.parametrize("thr", [0.0, -1.0])
     @pytest.mark.parametrize("mask0_on", [False, True])
     @pytest.mark.parametrize("mask1_on", [False, True])
-    def test_masked_cell_pair_is_never_a_match_5740(self, device, mask0_on, mask1_on):
+    def test_masked_cell_pair_is_never_a_match_5740(self, device, mask0_on, mask1_on, thr):
         """A pair of masked coarse cells has the confidence 1 / (L * S): the row and the
         column of a fully masked cell are uniform under the two softmaxes, and all other
         entries are exactly 0, so the pair is also a mutual nearest neighbour. With ``thr``
         below 1 / (L * S) it was returned as a match, with keypoints in the padding of both
         images. One-sided masking is covered too: the confidence of any pair that involves a
-        masked cell is 0."""
+        masked cell is 0. A negative ``thr`` must not admit those zero confidences either:
+        ``get_coarse_match`` drops ``mconf == 0`` from the keypoints but not from ``b_ids``."""
         cfg = {
-            "thr": 0.0,
+            "thr": thr,
             "border_rm": 0,
             "train_coarse_percent": 0.5,
             "train_pad_num_gt_min": 2,
@@ -374,6 +376,7 @@ class TestCoarseMatching(BaseTester):
         cm.eval()
         cm(feat0, feat1, data, mask_c0=mask0, mask_c1=mask1)
         pairs = set(zip(data["i_ids"].tolist(), data["j_ids"].tolist()))
+        assert len(data["b_ids"]) == len(data["mconf"]) == len(data["mkpts0_c"])
         if mask0_on or mask1_on:
             # any pair that involves a masked cell has the confidence 0: one-sided masking
             # already achieved that through the -1e9 similarity fill (the softmax over the

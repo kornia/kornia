@@ -228,8 +228,9 @@ class CoarseMatching(nn.Module):
             "w1c": data["hw1_c"][1],
         }
         _device = conf_matrix.device
-        # 1. confidence thresholding
-        mask = conf_matrix > self.thr
+        # 1. confidence thresholding. A zero confidence is never a match, even for a negative `thr`: `mconf == 0` marks
+        # the training ground-truth pads below and is dropped from the keypoints, but not from `b_ids`.
+        mask = conf_matrix > max(self.thr, 0.0)
         N = conf_matrix.shape[0]
         mask = mask.reshape(N, axes_lengths["h0c"], axes_lengths["w0c"], axes_lengths["h1c"], axes_lengths["w1c"])
         # mask = rearrange(mask, 'b (h0c w0c) (h1c w1c) -> b h0c w0c h1c w1c',
