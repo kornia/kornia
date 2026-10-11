@@ -39,6 +39,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK
 from kornia.core.download import load_state_dict_from_url
+from kornia.geometry.subpix import nms2d
 
 
 class BasicLayer(nn.Module):
@@ -281,6 +282,16 @@ class XFeat(nn.Module):
         top_k: maximum number of keypoints to keep per image. Default: ``4096``.
         detection_threshold: minimum keypoint score. Default: ``0.05``.
 
+    Note:
+        Keypoints are the strict local maxima of the keypoint heatmap: :func:`~kornia.geometry.subpix.nms2d` keeps a
+        position only if its score is greater than every other score in its full 5x5 window. Tied maxima, and the
+        positions within 2 pixels of the border whose window runs off the image, are never keypoints. This departs
+        on purpose from the reference implementation (verlab/accelerated_features). Its NMS keeps every position
+        equal to the maximum of its window: all positions of a plateau survive, and whether a near-tie survives
+        depends on rounding-level differences of the scores. Its window is also clipped at the border, so it judges
+        a border position against part of its window. With the pretrained weights on Oxford graf and boat img1,
+        every candidate of the reference that kornia leaves out lies in that border strip.
+
     Example:
         >>> model = XFeat()
         >>> img = torch.rand(1, 3, 256, 256)
@@ -340,15 +351,9 @@ class XFeat(nn.Module):
 
     @staticmethod
     def _nms(x: torch.Tensor, threshold: float = 0.05, kernel_size: int = 5) -> torch.Tensor:
-        """Non-maximum suppression of XFeat's reference implementation on a heatmap.
-
-        A position is kept when it equals the maximum of the ``kernel_size`` square window centred on it (equal maxima
-        are all kept) and exceeds ``threshold``. The window is clipped at the border, so maxima on the first and last
-        rows and columns are kept. Returns (B, N, 2) integer keypoint positions, padded with ``-1``.
-        """
+        """Non-maximum suppression on a heatmap; returns (B, N, 2) integer keypoint positions."""
         B = x.shape[0]
-        local_max = F.max_pool2d(x, kernel_size=kernel_size, stride=1, padding=kernel_size // 2)
-        pos = (x == local_max) & (x > threshold)
+        pos = nms2d(x, (kernel_size, kernel_size), mask_only=True) & (x > threshold)
         pos_batched = [k.nonzero()[..., 1:].flip(-1) for k in pos]
         pad_val = max(len(p) for p in pos_batched)
         pos_out = torch.full((B, pad_val, 2), -1, dtype=torch.long, device=x.device)

@@ -5,6 +5,8 @@ so a position whose window ran off an edge was judged against duplicated copies 
 which both fabricated plateaus that suppressed genuine maxima and hid genuine neighbours that should
 have suppressed spurious ones; the `(3, 3)`, `(5, 5)` and `(7, 7)` paths meanwhile rejected the strip
 outright, so the two disagreed about the same pixel. The explicit paths' rule is now the rule
-everywhere. The one kornia detector that calls `nms2d`, `MultiResolutionDetector`, already zeroes a
-15 px border in its output, which is wider than the strip of its default `(15, 15)` window, so no detector
-output changes with its default configuration. (#4239, #4242)
+everywhere. The kornia detectors that call `nms2d` already reject that strip: ALIKED zeroes its
+`nms_radius` border by hand after the call, DISK and XFeat call it with a `(5, 5)` window by default,
+whose explicit path already had this rule, and `MultiResolutionDetector` zeroes a 15 px border in its
+output, which is wider than the strip of its default `(15, 15)` window. No detector output changes with
+its default configuration. (#4239, #4242)
