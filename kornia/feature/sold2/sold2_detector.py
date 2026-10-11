@@ -574,16 +574,32 @@ def line_map_to_segments(junctions: torch.Tensor, line_map: torch.Tensor) -> tor
 
 
 def prob_to_junctions(prob: torch.Tensor, dist: float, prob_thresh: float = 0.01, top_k: int = 0) -> torch.Tensor:
-    """Extract junctions from a probability map, apply NMS, and extract the top k candidates."""
+    """Extract junctions from a probability map, apply NMS, and extract the top k candidates.
+
+    The strongest junction is kept first and suppresses every other junction within ``dist`` pixels of it along both
+    axes, ``dist`` itself included, like ``super_nms`` of the SOLD2 reference implementation. The ``top_k`` strongest
+    survivors are returned in raster order (by row, then by column), so the first endpoint of a line segment built
+    from the junction indices is the one with the smaller row.
+
+    Args:
+        prob: junction probability map with shape :math:`(H, W)`.
+        dist: suppression distance in pixels.
+        prob_thresh: minimum probability of a junction.
+        top_k: number of junctions to keep; ``0`` keeps all.
+
+    Returns:
+        Junction locations in ``(row, col)`` order with shape :math:`(N, 2)`.
+    """
     # Extract the junctions
     junctions = torch.stack(torch.where(prob >= prob_thresh), -1).float()
     if len(junctions) == 0:
         return junctions
 
-    # Perform NMS
-    boxes = torch.cat([junctions - dist / 2, junctions + dist / 2], 1)
+    # Perform NMS. Boxes of side ``dist + 0.5`` around the integer locations overlap exactly when both coordinates
+    # differ by at most ``dist``; ``nms`` then drops every overlapping box.
+    boxes = torch.cat([junctions - (dist + 0.5) / 2, junctions + (dist + 0.5) / 2], 1)
     scores = prob[prob >= prob_thresh]
-    remainings = nms(boxes, scores, 0.001)
+    remainings = nms(boxes, scores, 0.0)
     junctions = junctions[remainings]
 
     # Keep only the topk values
@@ -591,4 +607,5 @@ def prob_to_junctions(prob: torch.Tensor, dist: float, prob_thresh: float = 0.01
         k = min(len(junctions), top_k)
         junctions = junctions[:k]
 
-    return junctions
+    # Raster order: the line map, and so the endpoints of each segment, follow the junction indices
+    return junctions[torch.argsort(junctions[:, 0] * prob.shape[-1] + junctions[:, 1])]

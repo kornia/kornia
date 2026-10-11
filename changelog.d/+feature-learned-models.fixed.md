@@ -28,3 +28,12 @@ states instead of a map padded to a multiple of 14, and the descriptors it sampl
 `detect` come from the right pixels when `H` or `W` is not a multiple of 14. `detect` followed by `describe` now returns
 exactly what `forward` returns, and images whose sides are multiples of 14 are bitwise unchanged. The mean-colour pad
 is the closer one to the reference implementation (Parskatt/DeDoDe), which does not pad.
+
+`SOLD2` and `SOLD2_detector` now pick junctions like the reference implementation (cvg/SOLD2). The junction suppression
+keeps the stronger of two junctions that are exactly 8 pixels apart along both axes or closer (`grid_size` in general),
+where it kept both at 8 pixels; and the junctions, hence the endpoints of every line segment, are in raster order, so
+the first endpoint is the one with the smaller row. Before, that held only with the default
+`use_junction_refinement=True`: with `False` the endpoints followed the junction score, and `[[191, 261], [60, 39]]`
+came out where the reference returns `[[60, 39], [191, 261]]`. With the pretrained weights on Oxford graf img1 the
+junction set drops from 416 to the reference's 399 and the 246 segments become the reference's 229, identical to the
+coordinate in both modes.
