@@ -16,7 +16,7 @@
 #
 
 import math
-from typing import NotRequired, Optional, Tuple, TypedDict, Union
+from typing import NotRequired, Optional, Sequence, Tuple, TypedDict, Union
 
 import torch
 
@@ -273,8 +273,8 @@ def adalam_core(
     scores1: torch.Tensor,
     config: AdalamConfig,
     mnn: Optional[torch.Tensor] = None,
-    im1shape: Optional[Tuple[int, int]] = None,
-    im2shape: Optional[Tuple[int, int]] = None,
+    im1shape: Optional[Sequence[int]] = None,
+    im2shape: Optional[Sequence[int]] = None,
     o1: Optional[torch.Tensor] = None,
     o2: Optional[torch.Tensor] = None,
     s1: Optional[torch.Tensor] = None,
@@ -301,11 +301,11 @@ def adalam_core(
              'force_seed_mnn' in the DEFAULT_CONFIG. If None, it disables the mutual nearest neighbor filtering on seed
              point selection. Expected a bool torch.Tensor with shape (num_keypoints_in_source_image,)
         im1shape: Shape of the source image. If None, it is inferred from keypoints max and min, at the cost of wasted
-                  runtime. So please provide it. Expected a tuple with (width, height) or (height, width) of source
-                  image
+                  runtime. So please provide it. Expected a tuple or list with (width, height) or (height, width)
+                  of source image
         im2shape: Shape of the destination image. If None, it is inferred from keypoints max and min, at the cost of
-                  wasted runtime. So please provide it. Expected a tuple with (width, height) or (height, width) of
-                  destination image
+                  wasted runtime. So please provide it. Expected a tuple or list with (width, height) or
+                  (height, width) of destination image
         o1: keypoint orientations in degrees. They can be None if 'orientation_difference_threshold' in config is
                set to None. See documentation on 'orientation_difference_threshold' in the DEFAULT_CONFIG.
                Expected a float32 torch.Tensor with shape (num_keypoints_in_source/destination_image,)

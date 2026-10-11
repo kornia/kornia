@@ -20,7 +20,7 @@
 # Copyright (c) 2020, Luca Cavalli
 
 import warnings
-from typing import Optional, Tuple, Union
+from typing import Optional, Sequence, Tuple, Union
 
 import torch
 
@@ -54,8 +54,8 @@ def match_adalam(
     lafs1: torch.Tensor,
     lafs2: torch.Tensor,
     config: Optional[AdalamConfig] = None,
-    hw1: Optional[Tuple[int, int]] = None,
-    hw2: Optional[Tuple[int, int]] = None,
+    hw1: Optional[Sequence[int]] = None,
+    hw2: Optional[Sequence[int]] = None,
     dm: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Perform descriptor matching, followed by AdaLAM filtering.
@@ -152,8 +152,8 @@ class AdalamFilter:
         putative_matches: torch.Tensor,
         scores: torch.Tensor,
         mnn: Optional[torch.Tensor] = None,
-        im1shape: Optional[Tuple[int, int]] = None,
-        im2shape: Optional[Tuple[int, int]] = None,
+        im1shape: Optional[Sequence[int]] = None,
+        im2shape: Optional[Sequence[int]] = None,
         o1: Optional[torch.Tensor] = None,
         o2: Optional[torch.Tensor] = None,
         s1: Optional[torch.Tensor] = None,
@@ -180,11 +180,11 @@ class AdalamFilter:
                  'force_seed_mnn' in the DEFAULT_CONFIG. If None, it disables the mutual nearest neighbor filtering on
                  seed point selection. Expected a bool torch.Tensor with shape (num_keypoints_in_source_image,)
             im1shape: Shape of the source image. If None, it is inferred from keypoints max and min, at the cost of
-                      wasted runtime. So please provide it. Expected a tuple with (width, height) or (height, width)
-                      of source image
+                      wasted runtime. So please provide it. Expected a tuple or list with (width, height) or
+                      (height, width) of source image
             im2shape: Shape of the destination image. If None, it is inferred from keypoints max and min, at the cost
-                      of wasted runtime. So please provide it. Expected a tuple with (width, height) or (height, width)
-                      of destination image
+                      of wasted runtime. So please provide it. Expected a tuple or list with (width, height) or
+                      (height, width) of destination image
             o1: keypoint orientations in degrees. They can be None if 'orientation_difference_threshold' in config
                    is set to None. See documentation on 'orientation_difference_threshold' in the DEFAULT_CONFIG.
                    Expected a float32 torch.Tensor with shape (num_keypoints_in_source/destination_image,)
@@ -224,8 +224,8 @@ class AdalamFilter:
         k2: torch.Tensor,
         d1: torch.Tensor,
         d2: torch.Tensor,
-        im1shape: Optional[Tuple[int, int]] = None,
-        im2shape: Optional[Tuple[int, int]] = None,
+        im1shape: Optional[Sequence[int]] = None,
+        im2shape: Optional[Sequence[int]] = None,
         o1: Optional[torch.Tensor] = None,
         o2: Optional[torch.Tensor] = None,
         s1: Optional[torch.Tensor] = None,
@@ -253,11 +253,11 @@ class AdalamFilter:
             d2: descriptors in the destination image.
                 Expected an array with shape (num_keypoints_in_destination_image, descriptor_size).
             im1shape: Shape of the source image. If None, it is inferred from keypoints max and min, at the cost of
-                      wasted runtime. So please provide it. Expected a tuple with (width, height) or (height, width)
-                      of source image
+                      wasted runtime. So please provide it. Expected a tuple or list with (width, height) or
+                      (height, width) of source image
             im2shape: Shape of the destination image. If None, it is inferred from keypoints max and min, at the cost
-                      of wasted runtime. So please provide it. Expected a tuple with (width, height) or (height, width)
-                      of destination image
+                      of wasted runtime. So please provide it. Expected a tuple or list with (width, height) or
+                      (height, width) of destination image
             o1: keypoint orientations in degrees. They can be None if 'orientation_difference_threshold' in config
                    is set to None. See documentation on 'orientation_difference_threshold' in the DEFAULT_CONFIG.
                    Expected an array with shape (num_keypoints_in_source/destination_image,)
