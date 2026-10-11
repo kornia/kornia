@@ -1,0 +1,1 @@
+`build_pyramid` and `build_laplacian_pyramid` now reject non-positive integer `max_level` values with a named validation error instead of returning a single level. Non-integer values are rejected consistently. Positive integer levels and the existing padding behavior are unchanged.

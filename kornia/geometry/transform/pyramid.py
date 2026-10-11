@@ -515,15 +515,9 @@ def build_pyramid(
         - each subsequent level is produced by :func:`pyrdown` (``floor(side / 2)``
           per dimension)
 
-    .. warning::
-        The ``max_level`` bounds check does not currently reject non-positive
-        **integer** values: passing an integer ``max_level <= 0`` returns the
-        same single-element list as ``max_level=1`` instead of raising. Tracked in
-        `#3927 <https://github.com/kornia/kornia/issues/3927>`_.
-
     Args:
         input : the torch.Tensor to be used to construct the pyramid.
-        max_level: the number of pyramid levels to return, including the
+        max_level: a positive integer giving the number of pyramid levels to return, including the
           unchanged original image as level 0.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
@@ -537,7 +531,7 @@ def build_pyramid(
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     KORNIA_CHECK(
-        isinstance(max_level, int) or max_level < 0,
+        isinstance(max_level, int) and max_level > 0,
         f"Invalid max_level, it must be a positive integer. Got: {max_level}",
     )
 
@@ -592,15 +586,9 @@ def build_laplacian_pyramid(
         - border_type: ``'reflect'`` by default
         - align_corners: ``False`` by default
 
-    .. warning::
-        The ``max_level`` bounds check does not currently reject non-positive
-        **integer** values: passing an integer ``max_level <= 0`` returns the
-        same single-element list as ``max_level=1`` instead of raising. Tracked
-        in `#3927 <https://github.com/kornia/kornia/issues/3927>`_.
-
     Args:
         input : the torch.Tensor to be used to construct the pyramid with shape :math:`(B, C, H, W)`.
-        max_level: the number of pyramid levels to return (see Convention
+        max_level: a positive integer giving the number of pyramid levels to return (see Convention
           above for what each level contains).
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
@@ -615,7 +603,7 @@ def build_laplacian_pyramid(
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     KORNIA_CHECK(
-        isinstance(max_level, int) or max_level < 0,
+        isinstance(max_level, int) and max_level > 0,
         f"Invalid max_level, it must be a positive integer. Got: {max_level}",
     )
 
