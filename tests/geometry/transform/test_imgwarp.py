@@ -684,16 +684,18 @@ class TestWarpPerspective(BaseTester):
             pytest.skip("these scales test the float32/float64 arithmetic range")
         image = torch.arange(36, device=device, dtype=dtype).reshape(1, 1, 6, 6) / 36
         # A zero bottom-right entry is valid: scale normalization must use the whole matrix.
-        matrix = torch.tensor([[[1.0, 0.1, 0.3], [0.05, 1.0, 0.2], [0.01, 0.02, 0.0]]], device=device, dtype=dtype)
+        matrix = torch.tensor([[[1.0, 0.1, 0.3], [0.05, 1.0, 0.2], [0.3, 0.2, 0.0]]], device=device, dtype=dtype)
 
         def warp(image, matrix):
             return kornia.geometry.warp_perspective(image, matrix, (5, 7), align_corners=align_corners)
 
         traced = torch.jit.trace(warp, (image, matrix))
         expected = warp(image, matrix)
-        scales = [1.0, 1e-15, -1e15] if dtype == torch.float32 else [1.0, 1e-110, -1e110]
+        assert expected.count_nonzero() > 0  # samples inside the image, not only padding
+        # 1e8 overflows nothing: the traced grid goes through transform_points, which leaves |w| <= 1e-8 undivided.
+        scales = [1.0, 1e8, 1e-15, -1e15] if dtype == torch.float32 else [1.0, 1e8, 1e-110, -1e110]
         batched_matrix = matrix * torch.tensor(scales, device=device, dtype=dtype).reshape(-1, 1, 1)
-        actual = traced(image.expand(3, -1, -1, -1), batched_matrix)
+        actual = traced(image.expand(len(scales), -1, -1, -1), batched_matrix)
         assert torch.isfinite(actual).all()
         self.assert_close(actual, expected.expand_as(actual))
 
