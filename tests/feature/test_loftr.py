@@ -362,6 +362,7 @@ class TestCoarseMatching(BaseTester):
             "hw1_c": (3, 3),
             "hw0_i": (24, 32),
             "hw1_i": (24, 24),
+            "stride_c": 8,
         }
         cm = CoarseMatching(cfg).to(device)
         cm.eval()
