@@ -311,7 +311,7 @@ class TestSIFTFeature(BaseTester):
             img = img + a * torch.exp(-((xx - x0) ** 2 + (yy - y0) ** 2) / (2 * s * s))
         return img[None, None].to(device=device, dtype=dtype)
 
-    def test_detects_bright_and_dark_blobs_NNNN(self, device, dtype):
+    def test_detects_bright_and_dark_blobs_5743(self, device, dtype):
         # The single-scale DoG is negative at a bright blob and positive at a dark one. Like Lowe's, OpenCV's and
         # VLFeat's DoG detectors, SIFTFeature keeps the minima of the DoG as well as its maxima.
         img = self._blobs(120, 160, [(70.0, 52.0, 3.0, 0.4), (40.0, 85.0, 3.0, -0.4)], device, dtype)
@@ -322,7 +322,7 @@ class TestSIFTFeature(BaseTester):
             dist = (centres - torch.tensor([x0, y0], dtype=torch.float64)).norm(dim=-1)
             assert bool((dist <= 3.0).any()), f"no detection at the {name} blob: {centres.tolist()}"
 
-    def test_responses_are_the_dog_magnitude_NNNN(self, device, dtype):
+    def test_responses_are_the_dog_magnitude_5743(self, device, dtype):
         # On a single full-resolution level a keypoint sits on a pixel, and its response is the magnitude of the
         # DoG there, for a bright blob (DoG < 0) and a dark one (DoG > 0) alike.
         cfg = get_default_detector_config()
@@ -337,7 +337,7 @@ class TestSIFTFeature(BaseTester):
         assert signed[0] < 0 < signed[1]
         self.assert_close(responses[0], signed.abs())
 
-    def test_blob_is_detected_without_its_ring_NNNN(self, device, dtype):
+    def test_blob_is_detected_without_its_ring_5743(self, device, dtype):
         # The DoG of a blob is surrounded by a weaker ring of the opposite sign. The ring lies within the blob's
         # suppression window and is weaker, so every detection of note is at the blob, whichever its polarity.
         for name, amplitude, background in (("bright", 1.0, 0.0), ("dark", -1.0, 1.0)):
@@ -351,7 +351,7 @@ class TestSIFTFeature(BaseTester):
             assert dist.numel() > 0, name
             assert bool((dist <= 3.0).all()), f"{name} blob: detections at distances {dist.tolist()}"
 
-    def test_frames_do_not_depend_on_polarity_NNNN(self, device, dtype):
+    def test_frames_do_not_depend_on_polarity_5743(self, device, dtype):
         # DoG(1 - x) = -DoG(x): an image and its negative have the same extrema with the same magnitudes, so
         # upright SIFTFeature finds the same frames in both. Every pixel lies in [0.5, 1], where 1 - x is exact.
         if dtype in (torch.float16, torch.bfloat16):
