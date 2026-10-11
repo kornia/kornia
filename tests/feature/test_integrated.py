@@ -41,6 +41,7 @@ from kornia.feature import (
     laf_is_filled,
 )
 from kornia.feature.integrated import LocalFeatureMatcher
+from kornia.feature.scale_space_detector import get_default_detector_config
 from kornia.geometry import RANSAC, resize, transform_points
 
 from testing.base import BaseTester, supports_replicate_padding
@@ -320,6 +321,21 @@ class TestSIFTFeature(BaseTester):
         for name, x0, y0 in (("bright", 70.0, 52.0), ("dark", 40.0, 85.0)):
             dist = (centres - torch.tensor([x0, y0], dtype=torch.float64)).norm(dim=-1)
             assert bool((dist <= 3.0).any()), f"no detection at the {name} blob: {centres.tolist()}"
+
+    def test_responses_are_the_dog_magnitude_NNNN(self, device, dtype):
+        # On a single full-resolution level a keypoint sits on a pixel, and its response is the magnitude of the
+        # DoG there, for a bright blob (DoG < 0) and a dark one (DoG > 0) alike.
+        cfg = get_default_detector_config()
+        cfg.update(pyramid_levels=0, up_levels=0)
+        img = self._blobs(96, 128, [(40.0, 34.0, 2.5, 0.4), (86.0, 60.0, 3.0, -0.3)], device, dtype)
+        with torch.no_grad():
+            lafs, responses, _ = SIFTFeature(2, upright=True, config=cfg).to(device, dtype)(img)
+            dog = kornia.feature.BlobDoGSingle(1.0, 1.6).to(device, dtype)(img)[0, 0]
+        xy = get_laf_center(lafs)[0].round().long()
+        assert xy.tolist() == [[40, 34], [86, 60]], xy.tolist()
+        signed = dog[xy[:, 1], xy[:, 0]]
+        assert signed[0] < 0 < signed[1]
+        self.assert_close(responses[0], signed.abs())
 
     def test_blob_is_detected_without_its_ring_NNNN(self, device, dtype):
         # The DoG of a blob is surrounded by a weaker ring of the opposite sign. The ring lies within the blob's
