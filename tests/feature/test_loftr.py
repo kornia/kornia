@@ -338,12 +338,15 @@ class TestCoarseMatching(BaseTester):
         assert out["mconf"].dtype == dtype
         assert out["mkpts0_c"].shape == (self.N_PRED, 2)
 
-    def test_masked_cell_pair_is_never_a_match_5740(self, device):
+    @pytest.mark.parametrize("mask0_on", [False, True])
+    @pytest.mark.parametrize("mask1_on", [False, True])
+    def test_masked_cell_pair_is_never_a_match_5740(self, device, mask0_on, mask1_on):
         """A pair of masked coarse cells has the confidence 1 / (L * S): the row and the
         column of a fully masked cell are uniform under the two softmaxes, and all other
         entries are exactly 0, so the pair is also a mutual nearest neighbour. With ``thr``
         below 1 / (L * S) it was returned as a match, with keypoints in the padding of both
-        images."""
+        images. One-sided masking is covered too: the confidence of any pair that involves a
+        masked cell is 0."""
         cfg = {
             "thr": 0.0,
             "border_rm": 0,
@@ -356,7 +359,10 @@ class TestCoarseMatching(BaseTester):
         feat0 = torch.randn(1, 12, 8, device=device, generator=gen)
         feat1 = torch.randn(1, 9, 8, device=device, generator=gen)
         mask0, mask1 = torch.ones(1, 12, device=device), torch.ones(1, 9, device=device)
-        mask0[0, 3], mask1[0, 4] = 0, 0
+        if mask0_on:
+            mask0[0, 3] = 0
+        if mask1_on:
+            mask1[0, 4] = 0
         data = {
             "hw0_c": (3, 4),
             "hw1_c": (3, 3),
@@ -368,8 +374,17 @@ class TestCoarseMatching(BaseTester):
         cm.eval()
         cm(feat0, feat1, data, mask_c0=mask0, mask_c1=mask1)
         pairs = set(zip(data["i_ids"].tolist(), data["j_ids"].tolist()))
-        assert (3, 4) not in pairs
-        assert data["conf_matrix"][0, 3, 4].item() == 0.0
+        if mask0_on or mask1_on:
+            # any pair that involves a masked cell has the confidence 0: one-sided masking
+            # already achieved that through the -1e9 similarity fill (the softmax over the
+            # masked row or column gives it no weight), both-sided masking is what needed the
+            # explicit zero fill after the softmaxes
+            assert (3, 4) not in pairs
+            assert data["conf_matrix"][0, 3, 4].item() == 0.0
+        else:
+            # control: without any mask the pair can be a match, the fix must not suppress it
+            assert (3, 4) in pairs
+            assert data["conf_matrix"][0, 3, 4].item() > 0.0
 
     def test_eval_path_unaffected(self, device):
         """Eval mode skips the gt-padding branch entirely -- assert that
