@@ -1094,5 +1094,4 @@ class TestKeyedAndNestedOutputs(BaseTester):
         out = aug({"input": image, "mask": mask}, output_type="numpy")
         assert set(out) == {"input", "mask"}
         assert out["input"].shape == (2, 16, 20, 3)
-        # A mask has no channels-last layout: it keeps the batch dimension first.
-        assert out["mask"].shape == (2, 16, 20)
+        assert out["mask"].shape == (2, 16, 20, 1)

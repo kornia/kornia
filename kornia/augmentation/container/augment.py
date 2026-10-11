@@ -833,81 +833,71 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
             # cache a detached view of the augmented image for ``.show()`` / ``.save()``, which move it to the
             # CPU themselves, so the forward pass pays no device-to-host copy or sync
+            image = self._select_output_image(tensor_output, data_keys, original_keys)
             if not is_exporting():
-                image = self._select_output_image(tensor_output, data_keys, original_keys)
                 self._output_image = image.detach() if isinstance(image, torch.Tensor) else image
             _output_image = (
-                self._convert_dict_output(tensor_output, output_type, data_keys)
+                self._convert_dict_output(tensor_output, output_type, image)
                 if isinstance(tensor_output, dict)
-                else self._convert_positional_output(tensor_output, output_type, data_keys)
+                else self._convert_positional_output(tensor_output, output_type, data_keys, image)
             )
         else:
             _output_image = super(ImageSequential, self).__call__(*inputs, **kwargs)
         return _output_image
 
-    def _convert_positional_output(self, tensor_output: Any, output_type: str, data_keys: List[DataKey]) -> Any:
-        """Convert a positional forward output for ``output_type``, mask-aware per data key.
+    def _convert_positional_output(
+        self, tensor_output: Any, output_type: str, data_keys: List[DataKey], image: Any
+    ) -> Any:
+        """Convert a positional forward output for ``output_type``, one value per data key.
 
-        The outputs align with ``data_keys`` positionally. A mask value is converted with the batch
-        dimension first (see :meth:`_convert_dict_output`), including a per-sample list of mask tensors,
-        whose entries convert element by element.
+        The outputs align with ``data_keys`` positionally; see :meth:`_convert_output_for_data_key`.
         """
         if isinstance(tensor_output, (list, tuple)) and len(tensor_output) == len(data_keys):
             converted = [
-                self._convert_output_for_data_key(output, output_type, data_key)
+                self._convert_output_for_data_key(output, output_type, data_key, image)
                 for output, data_key in zip(tensor_output, data_keys)
             ]
             return _rebuild_container(tensor_output, converted)
         return self._convert_output(tensor_output, output_type)
 
-    def _convert_dict_output(
-        self, tensor_output: Dict[str, Any], output_type: str, data_keys: List[DataKey]
-    ) -> Dict[str, Any]:
+    def _convert_dict_output(self, tensor_output: Dict[str, Any], output_type: str, image: Any) -> Dict[str, Any]:
         """Convert a dict forward output for ``output_type``, keyed by its data keys.
 
         Only the values under recognized image or mask keys take the conversion: an unrecognized key holds a
         pass-through value the caller supplied, and moving it to channels-last (or making it a PIL image) is
-        not what they passed in. A mask keeps the batch dimension first: a ``(B, H, W)`` mask returned under
-        ``keepdim=True`` is batch-first like the image, so reading ``B`` as channels would permute it to
-        ``(H, W, B)``. A mask value that is a list of tensors converts element by element.
+        not what they passed in. See :meth:`_convert_output_for_data_key`.
         """
         valid_data_keys, invalid_keys = self._read_datakeys_from_dict(tuple(tensor_output.keys()))
         key_data_keys = dict(zip([k for k in tensor_output if k not in (invalid_keys or [])], valid_data_keys))
         return {
-            key: self._convert_output_for_data_key(value, output_type, key_data_keys.get(key))
+            key: self._convert_output_for_data_key(value, output_type, key_data_keys.get(key), image)
             for key, value in tensor_output.items()
         }
 
-    def _convert_output_for_data_key(self, value: Any, output_type: str, data_key: Optional[DataKey]) -> Any:
-        """Convert one output value for ``output_type``, mask-aware when ``data_key`` says it is a mask."""
+    def _convert_output_for_data_key(
+        self, value: Any, output_type: str, data_key: Optional[DataKey], image: Any
+    ) -> Any:
+        """Convert one output value for ``output_type``.
+
+        A mask converts like the image, to the NumPy layout the mask input reads back (:meth:`to_numpy`), or to
+        one PIL image per sample. A 3D mask next to a batched image is read the way the input reads it: as
+        ``(B, H, W)`` when its leading size is the image batch (a mask returned under ``keepdim=True``), so it gets
+        its channel axis back and stays batch-first; any other 3D mask is one ``(C, H, W)`` mask.
+        """
         if data_key is None:
             # An unrecognized key holds a pass-through value: there is no data key to convert it by.
             return value
-        if data_key in _MSK_OPTIONS:
-            if isinstance(value, list):
-                return [self._convert_mask_output(mask, output_type) for mask in value]
-            return self._convert_mask_output(value, output_type)
+        if (
+            data_key in _MSK_OPTIONS
+            and output_type != "pt"
+            and isinstance(value, torch.Tensor)
+            and value.dim() == 3
+            and isinstance(image, torch.Tensor)
+            and image.dim() == 4
+            and value.shape[0] == image.shape[0]
+        ):
+            value = value.unsqueeze(1)
         return self._convert_output(value, output_type)
-
-    def _convert_mask_output(self, mask: Any, output_type: str) -> Any:
-        """Convert a mask tensor for ``output_type`` keeping the batch dimension first.
-
-        A mask has no channels-last layout: a ``(B, H, W)`` or ``(B, 1, H, W)`` mask becomes a batch-first
-        ``(B, H, W)`` array, and an unbatched ``(H, W)`` or ``(1, H, W)`` mask a ``(H, W)`` one.
-        """
-        if not isinstance(mask, torch.Tensor):
-            return mask
-        if output_type == "pt":
-            return mask
-        squeezed = mask[:, 0] if mask.dim() == 4 and mask.shape[1] == 1 else mask
-        if output_type == "numpy":
-            array = squeezed.detach().cpu()
-            if array.dtype == torch.bfloat16:
-                array = array.float()
-            return array.contiguous().numpy()
-        if output_type == "pil":
-            return self.to_pil(squeezed)
-        raise ValueError("Output type not supported. Choose from 'pt', 'numpy', or 'pil'.")
 
     def _convert_non_image(self, arg: Any, data_key: DataKey) -> Any:
         if data_key in _IMG_OPTIONS:
