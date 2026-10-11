@@ -89,6 +89,29 @@ class TestLoFTR(BaseTester):
             out = loftr(sample)
         assert out is not None
 
+    def test_masked_cells_do_not_match_5740(self, device):
+        """The whole-module view of #5740: with the same coarse cells masked on both sides,
+        no returned keypoint may sit in the masked region, for any ``thr``."""
+        cfg = copy.deepcopy(default_cfg)
+        cfg["match_coarse"]["thr"] = 0.0
+        cfg["match_coarse"]["border_rm"] = 0
+        gen = torch.Generator(device=device).manual_seed(3)
+        patches = torch.rand(1, 1, 64, 64, device=device, generator=gen)
+        loftr = LoFTR(pretrained=None, config=cfg).to(device)
+        mask = torch.ones(1, 64, 64, device=device)
+        mask[..., :16] = 0  # the left quarter of both images is padding
+        with torch.no_grad():
+            out = loftr({"image0": patches, "image1": patches, "mask0": mask, "mask1": mask})
+        kp0, kp1 = out["keypoints0"], out["keypoints1"]
+        assert len(kp0) > 0
+        # The masked cells are the coarse columns 0 and 1 (pixel x < 16, centers 0 and 8). Before
+        # the fix, masked-cell pairs put keypoints at those centers, and the fine level refined
+        # them to x in [0, 4] or below 0. A fine refinement of a valid coarse cell (column 2,
+        # center 16) can legitimately move a few pixels into the masked band, so the assertion
+        # covers the masked cell centres with the fine half-window to spare.
+        assert (kp0[:, 0] < 12).sum().item() == 0
+        assert (kp1[:, 0] < 12).sum().item() == 0
+
     @pytest.mark.slow
     def test_gradcheck(self, device):
         patches = torch.rand(1, 1, 32, 32, device=device, dtype=torch.float64)
@@ -229,6 +252,38 @@ class TestCoarseMatching(BaseTester):
         assert out["mconf"].numel() == self.N_PRED
         assert out["mconf"].dtype == dtype
         assert out["mkpts0_c"].shape == (self.N_PRED, 2)
+
+    def test_masked_cell_pair_is_never_a_match_5740(self, device):
+        """A pair of masked coarse cells has the confidence 1 / (L * S): the row and the
+        column of a fully masked cell are uniform under the two softmaxes, and all other
+        entries are exactly 0, so the pair is also a mutual nearest neighbour. With ``thr``
+        below 1 / (L * S) it was returned as a match, with keypoints in the padding of both
+        images."""
+        cfg = {
+            "thr": 0.0,
+            "border_rm": 0,
+            "train_coarse_percent": 0.5,
+            "train_pad_num_gt_min": 2,
+            "match_type": "dual_softmax",
+            "dsmax_temperature": 0.1,
+        }
+        gen = torch.Generator(device=device).manual_seed(0)
+        feat0 = torch.randn(1, 12, 8, device=device, generator=gen)
+        feat1 = torch.randn(1, 9, 8, device=device, generator=gen)
+        mask0, mask1 = torch.ones(1, 12, device=device), torch.ones(1, 9, device=device)
+        mask0[0, 3], mask1[0, 4] = 0, 0
+        data = {
+            "hw0_c": (3, 4),
+            "hw1_c": (3, 3),
+            "hw0_i": (24, 32),
+            "hw1_i": (24, 24),
+        }
+        cm = CoarseMatching(cfg).to(device)
+        cm.eval()
+        cm(feat0, feat1, data, mask_c0=mask0, mask_c1=mask1)
+        pairs = set(zip(data["i_ids"].tolist(), data["j_ids"].tolist()))
+        assert (3, 4) not in pairs
+        assert data["conf_matrix"][0, 3, 4].item() == 0.0
 
     def test_eval_path_unaffected(self, device):
         """Eval mode skips the gt-padding branch entirely -- assert that

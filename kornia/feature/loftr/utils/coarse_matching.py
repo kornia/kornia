@@ -151,14 +151,24 @@ class CoarseMatching(nn.Module):
         if self.match_type == "dual_softmax":
             sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1) / self.temperature
             if mask_c0 is not None and mask_c1 is not None:
-                sim_matrix.masked_fill_(~(mask_c0[..., None] * mask_c1[:, None]).bool(), -INF)
-            conf_matrix = F.softmax(sim_matrix, 1) * F.softmax(sim_matrix, 2)
+                invalid = ~(mask_c0[..., None] * mask_c1[:, None]).bool()
+                sim_matrix.masked_fill_(invalid, -INF)
+                conf_matrix = F.softmax(sim_matrix, 1) * F.softmax(sim_matrix, 2)
+                # A pair of masked cells gets the confidence 1 / (L * S) from the two softmaxes:
+                # a row or column that is masked entirely is uniform there, and all its other
+                # entries are exactly 0, so the pair is also a mutual nearest neighbour. Whenever
+                # `thr` is below 1 / (L * S), `get_coarse_match` would return it as a match, with
+                # keypoints in the padding of both images (#5740). A masked pair is never a match.
+                conf_matrix.masked_fill_(invalid, 0.0)
+            else:
+                conf_matrix = F.softmax(sim_matrix, 1) * F.softmax(sim_matrix, 2)
 
         elif self.match_type == "sinkhorn":
             # sinkhorn, dustbin included
             sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1)
             if mask_c0 is not None and mask_c1 is not None:
-                sim_matrix[:, :L, :S].masked_fill_(~(mask_c0[..., None] * mask_c1[:, None]).bool(), -INF)
+                invalid = ~(mask_c0[..., None] * mask_c1[:, None]).bool()
+                sim_matrix[:, :L, :S].masked_fill_(invalid, -INF)
 
             # build uniform prior & use sinkhorn
             log_assign_matrix = self.log_optimal_transport(sim_matrix, self.bin_score, self.skh_iters)
