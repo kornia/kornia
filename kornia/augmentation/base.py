@@ -426,8 +426,6 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         self.validate_tensor(in_tensor)
 
-        output_transformed = self.apply_transform(in_tensor, params, flags, transform=transform)
-
         if self.p == 1.0 and self.p_batch == 1.0:
             # Always applied (static probabilities): the output is unconditionally the
             # transformed one. Skip the non-transform branch and the blend entirely — this
@@ -435,9 +433,15 @@ class _AugmentationBase(_BasicAugmentationBase):
             # since the data-dependent shape comparison / `to_apply.any()` fallback is avoided.
             # (The `to_apply` gate is only needed on the p < 1 path below, so it is not computed
             # here.)
-            output = output_transformed
+            output = self.apply_transform(in_tensor, params, flags, transform=transform)
         else:
             to_apply = torch.atleast_1d(params["batch_prob"] > 0.5)
+            gate = to_apply.view(-1, *([1] * (in_tensor.ndim - 1))).to(in_tensor.device)
+            # A skipped row still passes through apply_transform before the output blend.
+            # Give that branch safe values so it cannot reject the skipped input or leave
+            # undefined gradients in the discarded result.
+            transform_input = torch.where(gate, in_tensor, torch.full_like(in_tensor, 0.5))
+            output_transformed = self.apply_transform(transform_input, params, flags, transform=transform)
             output_not_transformed = self.apply_non_transform(in_tensor, params, flags, transform=transform)
             output = self._blend_by_prob(output_transformed, output_not_transformed, to_apply)
 

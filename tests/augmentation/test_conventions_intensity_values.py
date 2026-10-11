@@ -411,36 +411,46 @@ class TestIntensityValueRangeConventions(BaseTester):
             assert out.shape == image.shape
             assert torch.isfinite(out).all()
 
-    # Issue #4576: below p=1 the base computes the transform for the whole batch and then selects the
-    # rows the gate keeps (`_AugmentationBase.transform_inputs`), so a row the gate skips still reaches
-    # the value check and the backward pass.  At p=0.0 RandomEqualize and RandomClahe raise for an image
-    # they never touch, and RandomGamma returns the input values but a NaN gradient where the discarded
-    # power's derivative is infinite.
-    # Snippet used to generate expected:
-    #   g = torch.linspace(0, 1, 1024).reshape(1, 1, 32, 32); x = torch.cat([g, g * 2])
-    #   torch.manual_seed(0); K.RandomEqualize(p=0.0)(x)  # and K.RandomClahe(p=0.0)(x)
-    #   v = torch.tensor([0.0, 0.25, 1.0]).reshape(1, 1, 1, 3).repeat(2, 1, 1, 1).requires_grad_()
-    #   torch.manual_seed(0); y = K.RandomGamma((0.5, 0.5), (1.0, 1.0), p=0.0)(v); y.sum().backward()
-    #   print(torch.equal(y, v), v.grad.flatten().tolist())  # -> True [nan, 1.0, 1.0, nan, 1.0, 1.0]
-    def test_wart_p_gate_computes_the_skipped_samples_4576(self, device, dtype):
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: the value asserts are device-side asserts that poison the context")
+    # Issue #4576: a skipped row must not trigger a value check or contribute a NaN gradient.
+    def test_skipped_p_gate_does_not_evaluate_image_4576(self, device, dtype):
         ramp = torch.linspace(0, 1, 1024).reshape(1, 1, 32, 32)
         image = torch.cat([ramp, ramp * 2.0]).to(device=device, dtype=dtype)
         for cls in (K.RandomEqualize, K.RandomClahe):
             torch.manual_seed(_FORWARD_SEED)
-            # It has to be the value check that fires, not merely some RuntimeError: the claim is that
-            # the transform ran on a sample `p=0.0` was supposed to skip.
-            with pytest.raises(RuntimeError, match=r"\[0, 1\]"):
-                _sync(cls(p=0.0)(image).device)
+            out = cls(p=0.0)(image)
+            assert torch.equal(out, image)
         values = torch.tensor([0.0, 0.25, 1.0]).reshape(1, 1, 1, 3).repeat(2, 1, 1, 1)
         values = values.to(device=device, dtype=dtype).requires_grad_()
         torch.manual_seed(_FORWARD_SEED)
         out = K.RandomGamma((0.5, 0.5), (1.0, 1.0), p=0.0)(values)
         assert torch.equal(out, values)
         out.sum().backward()
-        assert bool(values.grad[..., 0].isnan().all())
-        self.assert_close(values.grad[..., 1:], torch.ones_like(values.grad[..., 1:]))
+        assert torch.isfinite(values.grad).all()
+        self.assert_close(values.grad, torch.ones_like(values.grad))
+
+    @pytest.mark.parametrize("cls", [K.RandomEqualize, K.RandomClahe])
+    def test_mixed_p_gate_skips_invalid_image_4576(self, cls, device, dtype):
+        ramp = torch.linspace(0, 1, 1024, device=device, dtype=dtype).reshape(1, 1, 32, 32)
+        image = torch.cat([ramp, ramp * 2.0])
+        aug = cls(p=0.5)
+        params = aug.forward_parameters(image.shape)
+        params["batch_prob"] = torch.tensor([1.0, 0.0], device=params["batch_prob"].device)
+        out = aug(image, params=params)
+        expected = cls(p=1.0)(image[:1])
+        self.assert_close(out[:1], expected)
+        assert torch.equal(out[1:], image[1:])
+
+    def test_mixed_p_gate_skipped_gamma_gradient_is_identity_4576(self, device, dtype):
+        image = torch.tensor([[[[0.25, 0.5, 1.0]]], [[[0.0, 0.25, 0.5]]]], device=device, dtype=dtype).requires_grad_()
+        aug = K.RandomGamma((0.5, 0.5), (1.0, 1.0), p=0.5)
+        params = aug.forward_parameters(image.shape)
+        params["batch_prob"] = torch.tensor([1.0, 0.0], device=params["batch_prob"].device)
+        out = aug(image, params=params)
+        self.assert_close(out[0], image[0].sqrt())
+        assert torch.equal(out[1], image[1])
+        out.sum().backward()
+        assert torch.isfinite(image.grad).all()
+        self.assert_close(image.grad[1], torch.ones_like(image.grad[1]))
 
 
 class TestIntensityColourConventions(BaseTester):
