@@ -165,6 +165,9 @@ def gaussian(
 
     KORNIA_CHECK_IS_TENSOR(sigma)
     KORNIA_CHECK_SHAPE(sigma, ["B", "1"])
+    if not (sigma.dtype.is_floating_point or sigma.dtype.is_complex):
+        # as in `gaussian_discrete`: in a uint8 sigma's dtype the offsets below the mean would wrap (#5155)
+        sigma = sigma.to(torch.get_default_dtype())
     batch_size = sigma.shape[0]
 
     mean = float(window_size // 2) if mean is None else mean
@@ -379,7 +382,7 @@ def gaussian_discrete(
     KORNIA_CHECK(window_size % 2 == 1, f"The discrete Gaussian kernel needs an odd window. Got {window_size}")
 
     output_dtype = sigma.dtype
-    if not sigma.dtype.is_floating_point:
+    if not (sigma.dtype.is_floating_point or sigma.dtype.is_complex):
         # An integer sigma tensor gives a floating kernel, as it does in `gaussian` and `gaussian_discrete_erf`;
         # casting the normalized taps back to its dtype would truncate them all to 0 (#5155).
         output_dtype = torch.get_default_dtype()

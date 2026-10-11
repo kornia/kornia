@@ -2496,14 +2496,22 @@ class TestConventionsKernels(BaseTester):
         with pytest.raises(BaseError, match="fractional taps"):
             build(device, int_dtype)
 
+    @pytest.mark.parametrize("sigma_dtype", [torch.int64, torch.uint8])
     @pytest.mark.parametrize(
         "build", [get_gaussian_kernel1d, get_gaussian_erf_kernel1d, get_gaussian_discrete_kernel1d]
     )
-    def test_convention_gaussian_of_an_integer_sigma_tensor_is_floating_5155(self, build, device):
+    def test_convention_gaussian_of_an_integer_sigma_tensor_is_floating_5155(self, build, sigma_dtype, device):
         """An integer sigma tensor gives the floating kernel of its float value, not taps truncated to 0 (#5155)."""
-        actual = build(5, torch.tensor([[2]], device=device))
+        # in uint8 the offsets below the centre and 20 * 20 would wrap
+        actual = build(5, torch.tensor([[20]], device=device, dtype=sigma_dtype))
         assert actual.dtype == torch.get_default_dtype()
-        self.assert_close(actual, build(5, torch.tensor([[2.0]], device=device)))
+        self.assert_close(actual, build(5, torch.tensor([[20.0]], device=device)))
+
+    @pytest.mark.parametrize("build", [get_gaussian_kernel1d, get_gaussian_discrete_kernel1d])
+    def test_gaussian_of_a_complex_sigma_tensor_is_not_cast_to_real(self, build):
+        # only an integer sigma is promoted to floating point; a complex one must not lose its imaginary part
+        with pytest.raises(RuntimeError, match="not implemented for 'ComplexFloat'"):
+            build(5, torch.tensor([[1.0 + 1.0j]]))
 
     @pytest.mark.parametrize(
         ("kernel_size", "int_dtype"),
