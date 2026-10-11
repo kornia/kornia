@@ -24,6 +24,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.feature import LoFTR
+from kornia.feature.loftr import loftr as loftr_module
 from kornia.feature.loftr.backbone import ResNetFPN_8_2
 from kornia.feature.loftr.loftr import default_cfg
 from kornia.feature.loftr.loftr_module import FinePreprocess
@@ -195,6 +196,50 @@ class TestLoFTR(BaseTester):
         out_jit = model_jit(sample)
         for k, v in out.items():
             self.assert_close(v, out_jit[k])
+
+
+class TestLoFTRConfigIsPerInstance(BaseTester):
+    """Building a LoFTR must not write into ``default_cfg`` or into a caller-passed config."""
+
+    @pytest.fixture
+    def offline_pretrained(self, monkeypatch):
+        """Let ``LoFTR(pretrained=name)`` run its config selection without downloading a checkpoint."""
+        state = {"state_dict": LoFTR(None).state_dict()}
+        monkeypatch.setattr(loftr_module, "load_state_dict_from_url", lambda *args, **kwargs: state)
+
+    def test_indoor_new_leaves_default_cfg_untouched_5719(self, offline_pretrained):
+        before = copy.deepcopy(default_cfg)
+        LoFTR("indoor_new")
+        assert default_cfg == before
+        assert default_cfg["coarse"]["temp_bug_fix"] is False
+
+    def test_indoor_new_uses_the_fixed_positional_encoding_5719(self, offline_pretrained):
+        indoor_new = LoFTR("indoor_new")
+        assert indoor_new.config["coarse"]["temp_bug_fix"] is True
+        assert indoor_new.pos_encoding.temp_bug_fix is True
+        assert not torch.allclose(indoor_new.pos_encoding.pe, LoFTR(None).pos_encoding.pe)
+
+    def test_later_default_model_keeps_the_outdoor_positional_encoding_5719(self, offline_pretrained):
+        expected_pe = LoFTR(None).pos_encoding.pe.clone()
+        LoFTR("indoor_new")
+        later = LoFTR(None)
+        assert later.config["coarse"]["temp_bug_fix"] is False
+        assert later.pos_encoding.temp_bug_fix is False
+        self.assert_close(later.pos_encoding.pe, expected_pe)
+
+    def test_caller_config_is_not_mutated_5719(self, offline_pretrained):
+        config = copy.deepcopy(default_cfg)
+        before = copy.deepcopy(config)
+        model = LoFTR("indoor_new", config=config)
+        assert config == before
+        assert model.config is not config
+        assert model.config["coarse"]["temp_bug_fix"] is True
+
+    def test_instances_do_not_share_config_5719(self):
+        a, b = LoFTR(None), LoFTR(None)
+        assert a.config is not b.config
+        assert a.config["coarse"] is not b.config["coarse"]
+        assert a.config is not default_cfg
 
 
 class TestCoarseMatching(BaseTester):

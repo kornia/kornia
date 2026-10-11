@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Any, Optional
 
 import torch
@@ -93,10 +94,12 @@ class LoFTR(nn.Module):
     If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
 
     Args:
-        config: Dict with initialization parameters. Do not pass it, unless you know what you are doing`.
-        pretrained: Download and set pretrained weights to the model. Options: 'outdoor', 'indoor'.
-                    'outdoor' is trained on the MegaDepth dataset and 'indoor'
-                    on the ScanNet.
+        config: Dict with initialization parameters. Do not pass it, unless you know what you are doing.
+                The model works on its own deep copy, so the dict you pass is never modified.
+        pretrained: Download and set pretrained weights to the model. Options: 'outdoor', 'indoor', 'indoor_new'.
+                    'outdoor' is trained on the MegaDepth dataset and 'indoor' and 'indoor_new'
+                    on the ScanNet. 'indoor_new' also switches the positional encoding of the copy
+                    to ``temp_bug_fix=True``, which is what its checkpoint was trained with.
 
     Returns:
         Dictionary with image correspondences and confidence scores.
@@ -113,9 +116,11 @@ class LoFTR(nn.Module):
     def __init__(self, pretrained: Optional[str] = "outdoor", config: dict[str, Any] = default_cfg) -> None:
         super().__init__()
         # Misc
-        self.config = config
+        # Each instance owns its config: neither the module-level ``default_cfg`` nor a caller-passed dict is mutated.
+        config = copy.deepcopy(config)
         if pretrained == "indoor_new":
-            self.config["coarse"]["temp_bug_fix"] = True
+            config["coarse"]["temp_bug_fix"] = True
+        self.config = config
         # Modules
         self.backbone = build_backbone(config)
         self.pos_encoding = PositionEncodingSine(

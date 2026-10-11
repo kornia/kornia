@@ -466,6 +466,96 @@ class HesAffNetHardNet(LocalFeature):
         super().__init__(detector, descriptor)
 
 
+def _dog_detector(
+    num_features: int,
+    upright: bool,
+    aff_module: Optional[nn.Module],
+    compile_modules: Union[bool, List[str]],
+) -> ScaleSpaceDetector:
+    """Return the 6-sigma DoG detector of the ``"patch"`` backend of :class:`SIFTFeatureScaleSpace`."""
+    return ScaleSpaceDetector(
+        num_features,
+        resp_module=BlobDoG(),
+        subpix_module=ConvQuadInterp3d(),
+        # DoG has one level fewer than its pyramid, so it needs the default three extra levels.
+        scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True),
+        ori_module=PassLAF() if upright else LAFOrienter(19),
+        aff_module=aff_module,
+        scale_space_response=True,
+        minima_are_also_good=True,
+        mr_size=6.0,
+        compile_modules=compile_modules,
+    )
+
+
+class DoGHardNet(LocalFeature):
+    """Convenience module, which implements DoG detector + HardNet descriptor.
+
+    The detector is the DoG :class:`~kornia.feature.ScaleSpaceDetector` of
+    :class:`~kornia.feature.SIFTFeatureScaleSpace`'s ``"patch"`` backend, and the orientation is estimated on its
+    6-sigma frames. The returned LAFs are those frames scaled by two, to 12 sigma or six times OpenCV's
+    ``KeyPoint.size``, and HardNet describes them. These are the frames the ``"doghardnet"`` weights of
+    :class:`~kornia.feature.LightGlueMatcher` expect: pass the LAFs and descriptors, without the padded slots (see
+    :meth:`~kornia.feature.LocalFeature.forward`), to ``LightGlueMatcher("doghardnet")``.
+
+    The image must have one channel, :math:`(B, 1, H, W)`: convert a color image with
+    :func:`~kornia.color.rgb_to_grayscale` first.
+
+    Args:
+        num_features: the number of features to detect.
+        upright: if ``True``, skip the orientation estimation and return upright frames.
+        device: the device of the detector and descriptor modules. Default: CPU.
+        compile_modules: the detector sub-modules to wrap with :func:`torch.compile`, see
+            :class:`~kornia.feature.ScaleSpaceDetector`.
+
+    """
+
+    def __init__(
+        self,
+        num_features: int = 2048,
+        upright: bool = False,
+        device: Union[str, torch.device, None] = None,
+        compile_modules: Union[bool, List[str]] = False,
+    ) -> None:
+        if device is None:
+            device = torch.device("cpu")
+        detector = _dog_detector(num_features, upright, None, compile_modules).to(device)
+        descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
+        super().__init__(detector, descriptor, scaling_coef=2.0)
+
+
+class DoGAffNetHardNet(LocalFeature):
+    """Convenience module, which implements DoG detector + AffNet-HardNet descriptor.
+
+    As :class:`~kornia.feature.DoGHardNet`, with the affine shape of each 6-sigma DoG frame estimated by
+    :class:`~kornia.feature.LAFAffNetShapeEstimator` before its orientation. The scale of the returned LAFs, the
+    square root of their determinant, is again 12 sigma. Pass the LAFs and descriptors, without the padded slots, to
+    ``LightGlueMatcher("dog_affnet_hardnet")``. The image must have one channel, :math:`(B, 1, H, W)`.
+
+    Args:
+        num_features: the number of features to detect.
+        upright: if ``True``, skip the orientation estimation and return upright frames.
+        device: the device of the detector and descriptor modules. Default: CPU.
+        compile_modules: the detector sub-modules to wrap with :func:`torch.compile`, see
+            :class:`~kornia.feature.ScaleSpaceDetector`.
+
+    """
+
+    def __init__(
+        self,
+        num_features: int = 2048,
+        upright: bool = False,
+        device: Union[str, torch.device, None] = None,
+        compile_modules: Union[bool, List[str]] = False,
+    ) -> None:
+        if device is None:
+            device = torch.device("cpu")
+        aff_module = LAFAffNetShapeEstimator(True, preserve_orientation=False).eval()
+        detector = _dog_detector(num_features, upright, aff_module, compile_modules).to(device)
+        descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
+        super().__init__(detector, descriptor, scaling_coef=2.0)
+
+
 class KeyNetHardNet(LocalFeature):
     """Convenience module, which implements KeyNet detector + HardNet descriptor."""
 
@@ -721,6 +811,14 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
     the ``"sift"`` weights were trained on: the orientation is the negated LAF orientation in :math:`(-\pi, \pi]`,
     and the scale is a sixth of the LAF scale, which is the detection sigma for 6-sigma DoG frames such as
     :class:`~kornia.feature.SIFTFeatureScaleSpace`'s.
+
+    With ``"doghardnet"`` and ``"dog_affnet_hardnet"``, pass the LAFs the HardNet descriptors were computed on, at the
+    scale the weights were trained with: 12 sigma, six times OpenCV's ``KeyPoint.size`` and twice the 6-sigma DoG
+    frames of :class:`~kornia.feature.SIFTFeatureScaleSpace`. :class:`~kornia.feature.DoGHardNet` and
+    :class:`~kornia.feature.DoGAffNetHardNet` return such LAFs and their descriptors; with another 6-sigma DoG
+    detector, apply :func:`~kornia.feature.scale_laf` with ``2.0`` to its LAFs before describing them. The network
+    takes a sixth of the LAF scale, which is ``KeyPoint.size`` for these frames, and the LAF orientation in
+    :math:`[0, 2\pi)`.
 
     """
 
