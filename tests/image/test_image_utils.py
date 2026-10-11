@@ -23,7 +23,7 @@ import torch
 
 import kornia
 
-from testing.base import assert_close
+from testing.base import BaseTester, assert_close
 
 
 @pytest.mark.parametrize(
@@ -205,6 +205,39 @@ def test_perform_keep_shape_video_non_contiguous(device, dtype):
 
     assert result.shape == expected.shape
     assert_close(result, expected)
+
+
+class TestMakeGrid(BaseTester):
+    @pytest.mark.parametrize(
+        "batch_size,n_row,rows,columns",
+        [(6, 2, 3, 2), (5, 2, 3, 2), (5, None, 2, 3), (4, 2, 2, 2), (3, 1, 3, 1), (3, 3, 1, 3), (1, 1, 1, 1)],
+    )
+    @pytest.mark.parametrize("padding", [0, 2])
+    @pytest.mark.parametrize("channels", [1, 3])
+    def test_layout(self, device, dtype, batch_size, n_row, rows, columns, padding, channels):
+        height, width = 2, 3
+        tensor = torch.arange(batch_size * channels * height * width, device=device, dtype=dtype)
+        tensor = tensor.reshape(batch_size, channels, width, height).transpose(-1, -2)
+        assert not tensor.is_contiguous()
+
+        expected = tensor.new_zeros(
+            channels, rows * (height + padding) - padding, columns * (width + padding) - padding
+        )
+        for index in range(batch_size):
+            row, column = divmod(index, columns)
+            y, x = row * (height + padding), column * (width + padding)
+            expected[:, y : y + height, x : x + width] = tensor[index]
+
+        actual = kornia.image.make_grid(tensor, n_row=n_row, padding=padding)
+
+        assert actual.shape == expected.shape
+        assert actual.device == tensor.device
+        assert actual.dtype == tensor.dtype
+        self.assert_close(actual, expected)
+
+    def test_gradcheck(self, device):
+        tensor = torch.rand(3, 1, 2, 2, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.image.make_grid, (tensor, 2, 1))
 
 
 @pytest.mark.parametrize("channels", [1, 3])

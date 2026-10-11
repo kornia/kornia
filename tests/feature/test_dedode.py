@@ -193,6 +193,64 @@ class TestDeDoDePadding(BaseTester):
         assert model.descriptor.seen[0].shape == (1, 3, 50, 80)
 
 
+class TestDeDoDeNoGrad(BaseTester):
+    @staticmethod
+    def _model(device, dtype):
+        # Random weights: the compiled graph does not depend on the pretrained values, and nothing is downloaded.
+        torch.manual_seed(0)
+        return DeDoDe(detector_model="L", descriptor_model="B", amp_dtype=dtype).to(device, dtype).eval()
+
+    @staticmethod
+    def _image(device, dtype):
+        gen = torch.Generator().manual_seed(7)
+        return torch.rand(1, 3, 56, 84, generator=gen).to(device, dtype)
+
+    @staticmethod
+    def _skip_half(dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            # Not a compile matter: eager `detect` raises "Input type (float) and bias type (c10::Half)" as well,
+            # because the detector lifts its context to float32 in front of half-precision decoder weights.
+            pytest.skip("DeDoDe with half-precision weights does not run in eager either")
+
+    def test_outputs_are_ordinary_tensors_without_grad_5737(self, device, dtype):
+        # `detect` and `describe` run under `torch.no_grad()`, not `torch.inference_mode()`: inference tensors
+        # are what made inductor raise "Cannot set version_counter for inference tensor" on these two methods.
+        model = TestDeDoDePadding._model(device, dtype)
+        x = TestDeDoDePadding._image(device, dtype).requires_grad_()
+        kpts, scores = model.detect(x, n=4)
+        descs = model.describe(x, kpts)
+        for out in (kpts, scores, descs, model.describe(x)):
+            assert not out.is_inference()
+            assert not out.requires_grad
+        # `sample_keypoints` has a `no_grad` of its own, so the outputs of `detect` cannot show whether the network
+        # ran with gradients off: check what the networks were fed.
+        assert not model.detector.seen[0].requires_grad
+        assert not model.descriptor.seen[0].requires_grad
+
+    def test_dynamo_detect_5737(self, device, dtype, torch_optimizer, cudnn_tf32_follows_option):
+        self._skip_half(dtype)
+        model = self._model(device, dtype)
+        x = self._image(device, dtype)
+        n = 100
+        kpts, scores = model.detect(x, n=n)
+        kpts_c, scores_c = torch_optimizer(model.detect)(x, n=n)
+        # The compiled top-k may order equal scores differently and move a coordinate by one float32 ulp, so the
+        # keypoints are compared as sets: each one has a neighbour in the other set far closer than a pixel.
+        # (`torch.cdist` is not used: its matmul path returns 5e-4 for two identical float32 points.)
+        dist = (kpts_c[:, :, None] - kpts[:, None]).abs().amax(dim=-1)
+        assert dist.amin(dim=-1).max() < 1e-4
+        assert dist.amin(dim=-2).max() < 1e-4
+        self.assert_close(scores_c, scores, rtol=1e-3, atol=1e-6)
+
+    def test_dynamo_describe_5737(self, device, dtype, torch_optimizer, cudnn_tf32_follows_option):
+        self._skip_half(dtype)
+        model = self._model(device, dtype)
+        x = self._image(device, dtype)
+        kpts, _ = model.detect(x, n=100)
+        descs_c = torch_optimizer(model.describe)(x, kpts)
+        self.assert_close(descs_c, model.describe(x, kpts), rtol=1e-3, atol=1e-4)
+
+
 @pytest.mark.skip(reason="DeDoDe is ummaintained")
 class TestDeDoDe:
     @pytest.mark.slow

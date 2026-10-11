@@ -167,6 +167,13 @@ class TestSpatialSoftmax2d(BaseTester):
 
         self.assert_close(actual, expected)
 
+    @pytest.mark.parametrize("shape", [(0, 3, 4, 5), (2, 0, 4, 5)])
+    def test_empty_batch_or_channels(self, device, dtype, shape):
+        input = torch.rand(shape, device=device, dtype=dtype)
+        actual = kornia.geometry.subpix.spatial_softmax2d(input)
+        assert actual.shape == shape
+        assert actual.dtype == dtype
+
     def test_dynamo(self, input, torch_optimizer):
         op = kornia.geometry.subpix.spatial_softmax2d
         op_optimized = torch_optimizer(op)
@@ -231,6 +238,14 @@ class TestSpatialExpectation2d(BaseTester):
         actual = kornia.geometry.subpix.spatial_expectation2d(input)
 
         self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("normalized_coordinates", [True, False])
+    @pytest.mark.parametrize("shape", [(0, 3, 4, 5), (2, 0, 4, 5)])
+    def test_empty_batch_or_channels(self, device, dtype, shape, normalized_coordinates):
+        input = torch.rand(shape, device=device, dtype=dtype)
+        actual = kornia.geometry.subpix.spatial_expectation2d(input, normalized_coordinates)
+        assert actual.shape == (*shape[:2], 2)
+        assert actual.dtype == dtype
 
     def test_float64_normalized_grid_is_exact_5019(self, device):
         if device.type == "mps":
