@@ -205,7 +205,7 @@ class TestScalePyramid(BaseTester):
 
 class TestPyramidLevelValidation(BaseTester):
     @pytest.mark.parametrize("op", ["build_pyramid", "build_laplacian_pyramid"])
-    @pytest.mark.parametrize("max_level", [0, -1, -2, 1.5, -1.5, None, "2"])
+    @pytest.mark.parametrize("max_level", [0, -1, -2, 1.5, -1.5, None, "2", True, False])
     def test_invalid_max_level_3927(self, op, max_level, device, dtype):
         image = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
         with pytest.raises(BaseError, match="Invalid max_level, it must be a positive integer"):

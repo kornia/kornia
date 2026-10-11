@@ -531,7 +531,7 @@ def build_pyramid(
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     KORNIA_CHECK(
-        isinstance(max_level, int) and max_level > 0,
+        isinstance(max_level, int) and not isinstance(max_level, bool) and max_level > 0,
         f"Invalid max_level, it must be a positive integer. Got: {max_level}",
     )
 
@@ -603,7 +603,7 @@ def build_laplacian_pyramid(
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     KORNIA_CHECK(
-        isinstance(max_level, int) and max_level > 0,
+        isinstance(max_level, int) and not isinstance(max_level, bool) and max_level > 0,
         f"Invalid max_level, it must be a positive integer. Got: {max_level}",
     )
 
