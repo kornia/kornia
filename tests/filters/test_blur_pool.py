@@ -65,7 +65,8 @@ class TestBlurPoolLegacyONNX(BaseTester):
             "max": (MaxBlurPool2D, max_blur_pool2d),
             "edge": (EdgeAwareBlurPool2D, edge_aware_blur_pool2d),
         }[pool]
-        model = torch.nn.Sequential(module(kernel_size)) if as_module else _FunctionalBlurPool(function, kernel_size)
+        # Export the module itself, as users do: a wrapper would hide forward's extra arguments from the exporter.
+        model = module(kernel_size) if as_module else _FunctionalBlurPool(function, kernel_size)
         sample = torch.arange(240, dtype=dtype).reshape(1, 3, 8, 10) / 240 + 0.1
         axes = {"input": {0: "batch", 2: "height", 3: "width"}, "output": {0: "batch", 2: "height", 3: "width"}}
         buf = io.BytesIO()
@@ -82,6 +83,7 @@ class TestBlurPoolLegacyONNX(BaseTester):
                 dynamo=False,
             )
         session = ort.InferenceSession(buf.getvalue(), providers=["CPUExecutionProvider"])
+        assert [graph_input.name for graph_input in session.get_inputs()] == ["input"]
         images = [sample]
         if dynamic:
             images.append(torch.arange(2 * 3 * 11 * 13, dtype=dtype).reshape(2, 3, 11, 13) / 858 + 0.1)
@@ -90,14 +92,20 @@ class TestBlurPoolLegacyONNX(BaseTester):
             self.assert_close(actual, model(image))
 
     @pytest.mark.device_agnostic
-    @pytest.mark.parametrize("function", [blur_pool2d, max_blur_pool2d, edge_aware_blur_pool2d])
-    def test_torch_export_dynamic_channels(self, dtype, function):
+    @pytest.mark.parametrize("pool", ["blur", "max", "edge"])
+    @pytest.mark.parametrize("as_module", [True, False])
+    def test_torch_export_dynamic_channels(self, dtype, pool, as_module):
         """The tracing-only channel conversion preserves symbolic channels in torch.export."""
         if dtype != torch.float32:
             pytest.skip("the exported graph is checked once, in float32")
         if not dynamic_export_is_available():
             pytest.skip("named dynamic export is unavailable on this Torch/Python pair")
-        model = _FunctionalBlurPool(function, 3)
+        module, function = {
+            "blur": (BlurPool2D, blur_pool2d),
+            "max": (MaxBlurPool2D, max_blur_pool2d),
+            "edge": (EdgeAwareBlurPool2D, edge_aware_blur_pool2d),
+        }[pool]
+        model = module(3) if as_module else _FunctionalBlurPool(function, 3)
         sample = torch.arange(3 * 8 * 10, dtype=dtype).reshape(1, 3, 8, 10) / 240 + 0.1
         exported = torch.export.export(
             model, (sample,), dynamic_shapes=({1: torch.export.Dim("channels", min=1, max=16)},)

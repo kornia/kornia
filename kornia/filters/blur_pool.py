@@ -210,7 +210,7 @@ class EdgeAwareBlurPool2D(nn.Module):
         self.edge_threshold = edge_threshold
         self.edge_dilation_kernel_size = edge_dilation_kernel_size
 
-    def forward(self, input: torch.Tensor, epsilon: float = 1e-6) -> torch.Tensor:
+    def forward(self, input: torch.Tensor, epsilon: float | None = None) -> torch.Tensor:
         """Downsample while adapting the blur near image or feature edges.
 
         Edge-aware blur pooling estimates where strong local changes occur and
@@ -224,12 +224,15 @@ class EdgeAwareBlurPool2D(nn.Module):
                 channels, :math:`H` is the input height, and :math:`W` is the
                 input width.
             epsilon: Small positive value added to the input before the
-                logarithm of the edge test.
+                logarithm of the edge test. ``None`` means ``1e-6``, which keeps the legacy ONNX exporter from
+                turning the default into a graph input.
 
         Returns:
             Edge-aware blurred tensor with the shape of ``input``,
             :math:`(B, C, H, W)`.
         """
+        if epsilon is None:
+            epsilon = 1e-6
         return edge_aware_blur_pool2d(
             input, self.kernel_size, self.edge_threshold, self.edge_dilation_kernel_size, epsilon
         )
