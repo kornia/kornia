@@ -16,7 +16,7 @@
 #
 
 import math
-from typing import NotRequired, Optional, Tuple, TypedDict, Union
+from typing import NotRequired, Optional, Sequence, Tuple, TypedDict, Union
 
 import torch
 
@@ -273,8 +273,8 @@ def adalam_core(
     scores1: torch.Tensor,
     config: AdalamConfig,
     mnn: Optional[torch.Tensor] = None,
-    im1shape: Optional[Tuple[int, int]] = None,
-    im2shape: Optional[Tuple[int, int]] = None,
+    im1shape: Optional[Sequence[int]] = None,
+    im2shape: Optional[Sequence[int]] = None,
     o1: Optional[torch.Tensor] = None,
     o2: Optional[torch.Tensor] = None,
     s1: Optional[torch.Tensor] = None,
@@ -301,11 +301,11 @@ def adalam_core(
              'force_seed_mnn' in the DEFAULT_CONFIG. If None, it disables the mutual nearest neighbor filtering on seed
              point selection. Expected a bool torch.Tensor with shape (num_keypoints_in_source_image,)
         im1shape: Shape of the source image. If None, it is inferred from keypoints max and min, at the cost of wasted
-                  runtime. So please provide it. Expected a tuple with (width, height) or (height, width) of source
-                  image
+                  runtime. So please provide it. Expected a tuple or list with (width, height) or (height, width)
+                  of source image
         im2shape: Shape of the destination image. If None, it is inferred from keypoints max and min, at the cost of
-                  wasted runtime. So please provide it. Expected a tuple with (width, height) or (height, width) of
-                  destination image
+                  wasted runtime. So please provide it. Expected a tuple or list with (width, height) or
+                  (height, width) of destination image
         o1: keypoint orientations in degrees. They can be None if 'orientation_difference_threshold' in config is
                set to None. See documentation on 'orientation_difference_threshold' in the DEFAULT_CONFIG.
                Expected a float32 torch.Tensor with shape (num_keypoints_in_source/destination_image,)
@@ -331,14 +331,14 @@ def adalam_core(
     SCALE_RATE_THR = config["scale_rate_threshold"]
     REFIT = config["refit"]
 
-    if isinstance(im1shape, tuple):
+    if im1shape is not None:
         _im1shape = torch.tensor(im1shape, device=k1.device, dtype=k1.dtype)
     else:
         k1mins = k1.min(dim=0).values
         k1maxs = k1.max(dim=0).values
         _im1shape = k1maxs - k1mins
 
-    if isinstance(im2shape, tuple):
+    if im2shape is not None:
         _im2shape = torch.tensor(im2shape, device=k2.device, dtype=k2.dtype)
     else:
         k2mins = k2.min(dim=0).values
@@ -413,8 +413,13 @@ def adalam_core(
 
     final_matches = torch.stack([absolute_im1idx, absolute_im2idx], dim=1)
     if final_matches.shape[0] > 1:
+        # Unique rows, sorted lexicographically, through a 1-D key: torch.unique(dim=0) has no MPS kernel on torch 2.5.
         # https://stackoverflow.com/a/72005790
-        final_matches, idxs, counts = torch.unique(final_matches, dim=0, return_inverse=True, return_counts=True)
+        n2 = k2.shape[0]
+        keys, idxs, counts = torch.unique(
+            final_matches[:, 0] * n2 + final_matches[:, 1], return_inverse=True, return_counts=True
+        )
+        final_matches = torch.stack([torch.div(keys, n2, rounding_mode="floor"), keys % n2], dim=1)
         _, ind_sorted = torch.sort(idxs)
         cum_sum = counts.cumsum(0)
         cum_sum = torch.cat((torch.tensor([0], dtype=cum_sum.dtype, device=cum_sum.device), cum_sum[:-1]))

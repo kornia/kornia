@@ -20,6 +20,7 @@ from typing import Dict
 import torch
 from torch import nn
 
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
 
 urls: Dict[str, str | list[str]] = {}
@@ -286,6 +287,7 @@ class HyNet(nn.Module):
         Returns:
             HyNet descriptors with shape ``(B, D)``.
         """
+        KORNIA_CHECK_SHAPE(x, ["B", "1", "32", "32"])
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)

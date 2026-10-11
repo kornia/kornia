@@ -200,3 +200,14 @@ class TestOnnxLightGlue:
                 }
             )
         assert "Descriptors' dimensions do not match" in str(e)
+
+
+def test_onnx_lightglue_keypoint_range_message_5724():
+    # the range check runs before the session is used, so a model without a session reaches it
+    model = object.__new__(OnnxLightGlue)
+    model.device = torch.device("cpu")
+    kpts = torch.tensor([[[10.0, 10.0], [90.0, 20.0]]])
+    desc = torch.zeros(1, 2, 128)
+    side = {"keypoints": kpts, "descriptors": desc, "image_size": torch.tensor([[50, 50]])}
+    with pytest.raises(Exception, match=r"\[-1, 1\].*\(width, height\)"):
+        model({"image0": side, "image1": side})
