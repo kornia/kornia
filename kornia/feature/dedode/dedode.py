@@ -81,7 +81,9 @@ class DeDoDe(nn.Module):
 
     See :cite:`edstedt2024dedode` for details.
 
-    .. note:: DeDode takes ImageNet normalized images as input (not in range [0, 1]).
+    .. note:: :meth:`forward`, :meth:`detect` and :meth:`describe` take RGB images in the range :math:`[0, 1]` and
+        apply the ImageNet normalization themselves; pass ``apply_imagenet_normalization=False`` for images that are
+        already normalized.
 
     Args:
         detector_model: The detector model kind. Available options are: `L`.
@@ -90,7 +92,7 @@ class DeDoDe(nn.Module):
 
     Example:
         >>> dedode = DeDoDe.from_pretrained(detector_weights="L-C4-v2", descriptor_weights="B-upright")
-        >>> images = torch.randn(1, 3, 256, 256)
+        >>> images = torch.rand(1, 3, 256, 256)
         >>> keypoints, scores = dedode.detect(images)
         >>> descriptions = dedode.describe(images, keypoints = keypoints)
         >>> keypoints, scores, features = dedode(images) # alternatively do both
@@ -109,6 +111,23 @@ class DeDoDe(nn.Module):
         self.descriptor: DeDoDeDescriptor = get_descriptor(descriptor_model, amp_dtype)
         self.normalizer = Normalize(torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225]))
 
+    def _preprocess(
+        self, images: torch.Tensor, apply_imagenet_normalization: bool, pad_if_not_divisible: bool
+    ) -> torch.Tensor:
+        """Normalise, then zero-pad to a multiple of 14.
+
+        The pad is applied after the normalisation so that it is the ImageNet mean colour, the neutral value the
+        networks see, in every entry point.
+        """
+        if apply_imagenet_normalization:
+            images = self.normalizer(images)
+        if pad_if_not_divisible:
+            H, W = images.shape[-2:]
+            pd_h = 14 - H % 14 if H % 14 > 0 else 0
+            pd_w = 14 - W % 14 if W % 14 > 0 else 0
+            images = F.pad(images, (0, pd_w, 0, pd_h), value=0.0)
+        return images
+
     def forward(
         self,
         images: torch.Tensor,
@@ -119,10 +138,14 @@ class DeDoDe(nn.Module):
         """Detect and describe keypoints in the input images.
 
         Args:
-            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the ImageNet-Normalized input images.
+            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the RGB input images in the range
+                :math:`[0, 1]`.
             n: The number of keypoints to detect.
-            apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
-            pad_if_not_divisible: F.pad image shape if not evenly divisible.
+            apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images. Pass
+                ``False`` if they are already ImageNet-normalized.
+            pad_if_not_divisible: Zero-pad the (normalised) image on the bottom and right so that H and W are
+                multiples of 14; the pad is the ImageNet mean colour. The padding is removed from the scoremap, so
+                keypoints are never reported in it.
 
         Returns:
             keypoints: A torch.Tensor of shape :math:`(B, N, 2)` containing the detected keypoints in the image range,
@@ -134,15 +157,15 @@ class DeDoDe(nn.Module):
                 of the detected keypoints. DIM is 256 for B and 512 for G.
 
         """
-        if apply_imagenet_normalization:
-            images = self.normalizer(images)
         _B, _C, H, W = images.shape
-        if pad_if_not_divisible:
-            pd_h = 14 - H % 14 if H % 14 > 0 else 0
-            pd_w = 14 - W % 14 if W % 14 > 0 else 0
-            images = F.pad(images, (0, pd_w, 0, pd_h), value=0.0)
-        keypoints, scores = self.detect(images, n=n, apply_imagenet_normalization=False, crop_h=H, crop_w=W)
-        descriptions = self.describe(images, keypoints, apply_imagenet_normalization=False, crop_h=H, crop_w=W)
+        images = self._preprocess(images, apply_imagenet_normalization, pad_if_not_divisible)
+        # ``images`` is already normalised and, when asked, padded: the calls below must do neither again.
+        keypoints, scores = self.detect(
+            images, n=n, apply_imagenet_normalization=False, pad_if_not_divisible=False, crop_h=H, crop_w=W
+        )
+        descriptions = self.describe(
+            images, keypoints, apply_imagenet_normalization=False, pad_if_not_divisible=False, crop_h=H, crop_w=W
+        )
         return dedode_denormalize_pixel_coordinates(keypoints, H, W), scores, descriptions
 
     @torch.inference_mode()
@@ -163,10 +186,14 @@ class DeDoDe(nn.Module):
             detector is only used at inference time and its statistics must be frozen.
 
         Args:
-            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the input images.
+            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the RGB input images in the range
+                :math:`[0, 1]`.
             n: The number of keypoints to detect.
-            apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
-            pad_if_not_divisible: F.pad image shape if not evenly divisible.
+            apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images. Pass
+                ``False`` if they are already ImageNet-normalized.
+            pad_if_not_divisible: Zero-pad the (normalised) image on the bottom and right so that H and W are
+                multiples of 14; the pad is the ImageNet mean colour, as in :meth:`forward` and :meth:`describe`. The
+                padding is removed from the scoremap, so keypoints are never reported in it.
             crop_h: The height of the crop to be used for detection. If None, the full image is used.
             crop_w: The width of the crop to be used for detection. If None, the full image is used.
 
@@ -179,13 +206,7 @@ class DeDoDe(nn.Module):
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])
         self.train(False)
         B, _C, H, W = images.shape
-        if pad_if_not_divisible:
-            h, w = images.shape[2:]
-            pd_h = 14 - h % 14 if h % 14 > 0 else 0
-            pd_w = 14 - w % 14 if w % 14 > 0 else 0
-            images = F.pad(images, (0, pd_w, 0, pd_h), value=0.0)
-        if apply_imagenet_normalization:
-            images = self.normalizer(images)
+        images = self._preprocess(images, apply_imagenet_normalization, pad_if_not_divisible)
         logits = self.detector.forward(images)
         # Remove the padding, if any
         logits = logits[..., :H, :W]
@@ -214,11 +235,15 @@ class DeDoDe(nn.Module):
             descriptor is only used at inference time and its statistics must be frozen.
 
         Args:
-            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the input images.
+            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the RGB input images in the range
+                :math:`[0, 1]`.
             keypoints: An optional torch.Tensor of shape :math:`(B, N, 2)` containing the detected keypoints.
-            apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
-            pad_if_not_divisible: Zero-pad the image so H and W are divisible by 14. Required when
-                using the ``G`` descriptor backed by DINOv2 (patch size 14). Ignored for ``B``.
+            apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images. Pass
+                ``False`` if they are already ImageNet-normalized.
+            pad_if_not_divisible: Zero-pad the (normalised) image on the bottom and right so that H and W are
+                multiples of 14; the pad is the ImageNet mean colour, as in :meth:`forward` and :meth:`detect`.
+                Required when using the ``G`` descriptor backed by DINOv2 (patch size 14). The padding is removed from
+                the descriptor map, so the map has the size of the input image.
             crop_h: The height of the crop to be used for description. If None, the full image is used.
             crop_w: The width of the crop to be used for description. If None, the full image is used.
 
@@ -232,17 +257,13 @@ class DeDoDe(nn.Module):
         _B, _C, H, W = images.shape
         if keypoints is not None:
             KORNIA_CHECK_SHAPE(keypoints, ["B", "N", "2"])
-        if apply_imagenet_normalization:
-            images = self.normalizer(images)
-        if pad_if_not_divisible:
-            pd_h = 14 - H % 14 if H % 14 > 0 else 0
-            pd_w = 14 - W % 14 if W % 14 > 0 else 0
-            images = F.pad(images, (0, pd_w, 0, pd_h), value=0.0)
+        images = self._preprocess(images, apply_imagenet_normalization, pad_if_not_divisible)
         self.train(False)
         descriptions = self.descriptor.forward(images)
         if crop_h is not None and crop_w is not None:
-            descriptions = descriptions[..., :crop_h, :crop_w]
             H, W = crop_h, crop_w
+        # Remove the padding, so that the normalised keypoints of `detect` index the map of the input image.
+        descriptions = descriptions[..., :H, :W]
 
         if keypoints is not None:
             return F.grid_sample(descriptions.float(), keypoints[:, None], mode="bilinear", align_corners=False)[

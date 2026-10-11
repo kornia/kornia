@@ -25,7 +25,7 @@ from kornia.core.utils import _l2_normalize, is_exporting, is_mps_tensor_safe
 from kornia.feature.laf import get_laf_center
 from kornia.feature.steerers import DiscreteSteerer
 
-from .adalam import get_adalam_default_config, match_adalam
+from .adalam import match_adalam
 
 
 def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
@@ -722,9 +722,7 @@ class GeometryAwareDescriptorMatcher(nn.Module):
             params.update(self.params)
             out = match_fginn(desc1, desc2, lafs1, lafs2, params["th"], params["spatial_th"], params["mutual"])
         elif self.match_mode == "adalam":
-            _params = get_adalam_default_config()
-            _params.update(self.params)  # type: ignore[typeddict-item]
-            out = match_adalam(desc1, desc2, lafs1, lafs2, config=_params)
+            out = match_adalam(desc1, desc2, lafs1, lafs2, config=self.params)  # type: ignore[arg-type]
         else:
             raise NotImplementedError
         return out

@@ -20,15 +20,22 @@ import warnings
 import pytest
 import torch
 
+from kornia.enhance.normalize import Normalize
 from kornia.feature.dedode import DeDoDe
 from kornia.feature.dedode.decoder import ConvRefiner
 from kornia.feature.dedode.transformer.dinov2 import DinoVisionTransformer
 from kornia.feature.dedode.transformer.layers import MemEffAttention, NestedTensorBlock
+from kornia.feature.dedode.utils import dedode_denormalize_pixel_coordinates
 
 from testing.base import BaseTester
 
 
 class TestConvRefiner(BaseTester):
+    def test_depthwise_channels_must_be_divisible(self):
+        refiner = ConvRefiner(in_dim=4, hidden_dim=4, out_dim=4)
+        with pytest.raises(ValueError, match="out_dim must be divisible by in_dim"):
+            refiner.create_block(in_dim=3, out_dim=4, dw=True)
+
     def test_amp_matches_input_device(self, device):
         refiner = ConvRefiner(in_dim=4, hidden_dim=4, out_dim=4).to(device)
         autocast_enabled = []
@@ -97,6 +104,93 @@ class TestDinoVisionTransformer(BaseTester):
         assert features["x_norm_patchtokens"].shape == (2, 4, 8)
         assert features["x_prenorm"].shape == (2, 5, 8)
         assert features["masks"] is masks
+
+
+class _BlurNet(torch.nn.Module):
+    """Stand-in for a DeDoDe network: a 15x15 box blur, so the output near the border depends on the padded values."""
+
+    def __init__(self, out_channels):
+        super().__init__()
+        self.out_channels = out_channels
+        self.seen = []
+
+    def forward(self, images):
+        self.seen.append(images)
+        blurred = torch.nn.functional.avg_pool2d(images, 15, stride=1, padding=7)
+        return blurred[:, : self.out_channels]
+
+
+class TestDeDoDePadding(BaseTester):
+    @staticmethod
+    def _model(device, dtype):
+        # Networks are replaced by blurs: the padding rule is under test, not the pretrained weights.
+        model = DeDoDe.__new__(DeDoDe)  # skips building the VGG networks
+        torch.nn.Module.__init__(model)
+        model.detector = _BlurNet(1)
+        model.descriptor = _BlurNet(3)
+        model.normalizer = Normalize(torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225]))
+        return model.to(device, dtype)
+
+    @staticmethod
+    def _image(device, dtype, h=50, w=80):
+        gen = torch.Generator().manual_seed(7)
+        return torch.rand(1, 3, h, w, generator=gen).to(device, dtype)
+
+    @pytest.mark.parametrize("entry", ["forward", "detect", "describe"])
+    def test_pad_is_the_mean_colour_in_every_entry_point_5730(self, device, dtype, entry):
+        model = self._model(device, dtype)
+        x = self._image(device, dtype)  # 50x80 -> 56x84
+        if entry == "forward":
+            model(x, n=4)
+        elif entry == "detect":
+            model.detect(x, n=4)
+        else:
+            model.describe(x)
+        net = model.descriptor if entry == "describe" else model.detector
+        seen = net.seen[0]
+        assert seen.shape == (1, 3, 56, 84)
+        normalized = model.normalizer(x)
+        self.assert_close(seen[..., :50, :80], normalized)
+        # padded after the normalisation: the pad is the ImageNet mean colour, 0 in normalised units
+        assert seen[..., 50:, :].abs().max() == 0
+        assert seen[..., :, 80:].abs().max() == 0
+
+    def test_detect_and_describe_agree_with_forward_5730(self, device, dtype):
+        model = self._model(device, dtype)
+        x = self._image(device, dtype)
+        n = 40
+        kpts, scores, descs = model(x, n=n)
+        kpts_n, scores_d = model.detect(x, n=n)
+        descs_d = model.describe(x, kpts_n)
+        self.assert_close(dedode_denormalize_pixel_coordinates(kpts_n, 50, 80), kpts)
+        self.assert_close(scores_d, scores)
+        self.assert_close(descs_d, descs)
+
+    def test_dense_descriptors_have_the_size_of_the_image_5730(self, device, dtype):
+        model = self._model(device, dtype)
+        x = self._image(device, dtype)
+        assert model.describe(x).shape == (1, 3, 50, 80)
+
+    def test_multiple_of_14_is_not_padded(self, device, dtype):
+        model = self._model(device, dtype)
+        x = self._image(device, dtype, h=28, w=42)
+        model(x, n=4)
+        model.detect(x, n=4)
+        model.describe(x)
+        for seen in model.detector.seen + model.descriptor.seen:
+            self.assert_close(seen, model.normalizer(x))
+
+    @pytest.mark.parametrize("entry", ["forward", "detect_describe"])
+    def test_pad_can_be_disabled(self, device, dtype, entry):
+        model = self._model(device, dtype)
+        x = self._image(device, dtype)
+        if entry == "forward":
+            model(x, n=4, pad_if_not_divisible=False)
+        else:
+            model.detect(x, n=4, pad_if_not_divisible=False)
+            model.describe(x, pad_if_not_divisible=False)
+        assert model.detector.seen[0].shape == (1, 3, 50, 80)
+        assert model.descriptor.seen[0].shape == (1, 3, 50, 80)
 
 
 @pytest.mark.skip(reason="DeDoDe is ummaintained")

@@ -232,6 +232,22 @@ class TestMakeUpright(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.make_upright, (img,))
 
+    def test_zero_padding_laf_stays_zero_5724(self, device, dtype):
+        laf = torch.zeros(2, 3, 2, 3, device=device, dtype=dtype)
+        laf[0, 0] = torch.tensor([[2.0, 1.0, 5.0], [0.5, 3.0, 7.0]])
+        laf[1, 2] = torch.tensor([[1.0, 0.0, 9.0], [0.0, 4.0, 2.0]])
+        out = kornia.feature.make_upright(laf)
+        expected_filled = torch.tensor([[True, False, False], [False, False, True]], device=device)
+        assert torch.equal(kornia.feature.laf_is_filled(out), expected_filled)
+        assert torch.equal(out[~expected_filled], torch.zeros(4, 2, 3, device=device, dtype=dtype))
+
+    def test_zero_padding_laf_keeps_gradients_finite_5724(self, device):
+        laf = torch.zeros(1, 2, 2, 3, device=device)
+        laf[0, 1] = torch.tensor([[2.0, 1.0, 5.0], [0.5, 3.0, 7.0]])
+        laf.requires_grad_(True)
+        kornia.feature.make_upright(laf).sum().backward()
+        assert torch.isfinite(laf.grad).all()
+
     @pytest.mark.skip("Union")
     def test_jit(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 2, 3
@@ -588,6 +604,23 @@ class TestLAF2pts(BaseTester):
         batch_size, channels, height, width = 3, 2, 2, 3
         laf = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.laf_to_boundary_points, (laf))
+
+    def test_circle_is_built_in_the_laf_dtype_5724(self, device):
+        if torch.device(device).type == "mps":
+            pytest.skip("MPS does not support float64")
+        n_pts = 7
+        laf = torch.tensor([[[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]]], device=device, dtype=torch.float64)
+        pts = kornia.feature.laf_to_boundary_points(laf, n_pts)
+        angles = torch.linspace(0, 2 * math.pi, n_pts - 1, dtype=torch.float64, device=device)
+        expected = torch.cat(
+            [
+                torch.zeros(1, 2, device=device, dtype=torch.float64),
+                torch.stack([torch.sin(angles), torch.cos(angles)], 1),
+            ]
+        )
+        assert pts.dtype == torch.float64
+        # a float32 circle cast to float64 is off by ~1e-8 here
+        self.assert_close(pts[0, 0], expected, rtol=0, atol=1e-14)
 
     def test_matches_explicit_affine_reference(self, device, dtype):
         """The boundary points are the LAF affine map applied to the origin + unit-circle basis.
@@ -1642,6 +1675,44 @@ class TestLAFIsTouchingBoundary(BaseTester):
             kornia.feature.laf_is_inside_image(self._radius_laf(26.5, 16.0, r, device, dtype), img, 3)[0, 0]
         )
 
+    @pytest.mark.parametrize("border", [0, 5])
+    def test_region_crossing_the_edge_between_boundary_samples_is_outside_5733(self, device, dtype, border):
+        # A radius-16 circle reaches c_x - 16 and c_x + 16. Ten points sampled 36 degrees apart on it reach only
+        # c_x -+ 16 sin(72 deg) = c_x -+ 15.22, so a circle overhanging an x edge by 0.5 px passed a sampled test.
+        # The values are exact in bfloat16, and the 0.5 px overhang is two bfloat16 steps at x = 59.
+        img = torch.zeros(1, 1, 48, 60, device=device, dtype=dtype)  # valid x 0 .. 59, y 0 .. 47
+        b = float(border)
+        xy = torch.tensor(
+            [[[43.5 - b, 24.0], [15.5 + b, 24.0], [43.0 - b, 24.0], [16.0 + b, 24.0]]], device=device, dtype=dtype
+        )
+        laf = kornia.feature.laf_from_center_scale_ori(xy, torch.full((1, 4, 1, 1), 16.0, device=device, dtype=dtype))
+        expected = torch.tensor([[False, False, True, True]], device=device)
+        assert torch.equal(kornia.feature.laf_is_inside_image(laf, img, border), expected)
+
+    def test_anisotropic_region_uses_the_extent_of_each_row_5733(self, device, dtype):
+        # The region c + A u, |u| = 1 spans c_y -+ |A[1, :]| = c_y -+ 20 along y, and the second row points 18 deg
+        # from the y axis, halfway between two boundary samples: sampled points reach only c_y + 19.02. The columns
+        # of A have other norms (9.34 and 19.13), so a test that read them instead of the rows accepts the region too.
+        img = torch.zeros(1, 1, 48, 64, device=device, dtype=dtype)  # valid x 0 .. 63, y 0 .. 47
+        row1 = [20.0 * math.sin(math.radians(18.0)), 20.0 * math.cos(math.radians(18.0))]
+        laf = torch.tensor(
+            [[[[7.0, -2.0, 30.0], [*row1, 27.5]], [[7.0, -2.0, 30.0], [*row1, 26.875]]]], device=device, dtype=dtype
+        )
+        expected = torch.tensor([[False, True]], device=device)  # bottom edge at 47.5 and at 46.875
+        assert torch.equal(kornia.feature.laf_is_inside_image(laf, img), expected)
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        img = torch.zeros(2, 1, 40, 60, device=device, dtype=dtype)
+        xy = torch.tensor([[[43.5, 20.0], [43.0, 20.0]], [[15.5, 20.0], [16.0, 20.0]]], device=device, dtype=dtype)
+        laf = kornia.feature.laf_from_center_scale_ori(xy, torch.full((2, 2, 1, 1), 16.0, device=device, dtype=dtype))
+        expected = kornia.feature.laf_is_inside_image(laf, img, 0)
+        op = torch_optimizer(kornia.feature.laf_is_inside_image)
+        assert torch.equal(op(laf, img, 0), expected)
+        # The fixture compiles without `fullgraph`, so it would pass on a graph break too, and
+        # `laf_is_inside_image` is meant to trace as one graph -- assert that directly.
+        torch._dynamo.reset()
+        assert torch.equal(torch.compile(kornia.feature.laf_is_inside_image, fullgraph=True)(laf, img, 0), expected)
+
     def test_jit(self, device, dtype):
         w, h = 10, 5
         img = torch.rand(1, 3, h, w, device=device)
@@ -1735,6 +1806,11 @@ class TestGetLAF3pts(BaseTester):
 
 
 class TestGetLAFFrom3pts(BaseTester):
+    @pytest.mark.parametrize("shape", [(1, 3, 3, 3), (1, 3, 2, 2), (3, 2, 3), (1, 1, 3, 2, 3)])
+    def test_wrong_shape_is_rejected_5724(self, device, shape):
+        with pytest.raises(ShapeError):
+            kornia.feature.laf_from_three_points(torch.ones(*shape, device=device))
+
     def test_shape(self, device):
         inp = torch.ones(1, 3, 2, 3, device=device)
         out = kornia.feature.laf_from_three_points(inp)
