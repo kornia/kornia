@@ -568,6 +568,38 @@ class TestConventionsBilateralBlur(BaseTester):
             unscaled = bilateral_blur(16 * image, 3, 0.1, (1.0, 1.5), color_distance_type=distance)
             assert (unscaled - 16 * reference).abs().max() > 0.1
 
+    @pytest.mark.parametrize("distance", ["l1", "l2"])
+    @pytest.mark.parametrize("joint", [False, True])
+    @pytest.mark.parametrize("tensor_sigma", [False, True])
+    @pytest.mark.parametrize("large", [False, True])
+    def test_color_scale_extremes(self, distance, joint, tensor_sigma, large, device, dtype):
+        # A common power-of-two rescaling must leave the colour weights unchanged,
+        # even when squaring either the differences or sigma would leave the dtype range.
+        exponent = {torch.float16: 12, torch.bfloat16: 80, torch.float32: 80, torch.float64: 600}[dtype]
+        scale = 2.0 ** (exponent if large else -exponent)
+        image = torch.tensor([[[[0.0, 0.5, 1.0]]]], device=device, dtype=dtype, requires_grad=True)
+        guidance = torch.cat((image, image.flip(-1)), dim=1)
+        sigma = torch.tensor([1.0], device=device, dtype=dtype, requires_grad=True) if tensor_sigma else 1.0
+        kwargs = {
+            "kernel_size": (1, 3),
+            "sigma_space": (1.0, 1.0),
+            "border_type": "constant",
+            "color_distance_type": distance,
+        }
+        if joint:
+            reference = joint_bilateral_blur(image, guidance, sigma_color=sigma, **kwargs)
+            actual = joint_bilateral_blur(image, guidance * scale, sigma_color=sigma * scale, **kwargs)
+        else:
+            reference = bilateral_blur(image, sigma_color=sigma, **kwargs)
+            actual = bilateral_blur(image * scale, sigma_color=sigma * scale, **kwargs) / scale
+        assert torch.isfinite(actual).all()
+        self.assert_close(actual, reference)
+        inputs = (image, sigma) if tensor_sigma else (image,)
+        expected_grads = torch.autograd.grad(reference.sum(), inputs, retain_graph=True)
+        actual_grads = torch.autograd.grad(actual.sum(), inputs)
+        for actual_grad, expected_grad in zip(actual_grads, expected_grads):
+            self.assert_close(actual_grad, expected_grad)
+
     @pytest.mark.parametrize("border_type", ["reflect", "replicate", "constant", "circular"])
     def test_convention_bilateral_blur_sigma_space_is_gaussian_blur2d_sigma(self, border_type, device, dtype):
         # sigma_space is gaussian_blur2d's (sigma_y, sigma_x) with the same kernel_size, and border_type pads as it
