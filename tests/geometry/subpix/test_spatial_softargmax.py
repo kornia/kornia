@@ -540,6 +540,42 @@ class TestConvSoftArgmax2d(BaseTester):
 
 
 class TestConvSoftArgmax3d(BaseTester):
+    @pytest.mark.parametrize("batch_size,channels", [(0, 2), (2, 0)])
+    @pytest.mark.parametrize("output_value", [True, False])
+    @pytest.mark.parametrize("as_module", [True, False])
+    @pytest.mark.parametrize("normalized_coordinates", [True, False])
+    def test_empty_batch_or_channel(
+        self, device, dtype, batch_size, channels, output_value, as_module, normalized_coordinates
+    ):
+        """Empty batch and channel axes preserve output shapes and gradients (gh-5754)."""
+        data = torch.empty(batch_size, channels, 3, 8, 8, device=device, dtype=dtype, requires_grad=True)
+        if as_module:
+            result = kornia.geometry.subpix.ConvSoftArgmax3d(
+                (3, 3, 5),
+                (1, 2, 3),
+                (1, 0, 1),
+                output_value=output_value,
+                normalized_coordinates=normalized_coordinates,
+            )(data)
+        else:
+            result = kornia.geometry.subpix.conv_soft_argmax3d(
+                data,
+                (3, 3, 5),
+                (1, 2, 3),
+                (1, 0, 1),
+                output_value=output_value,
+                normalized_coordinates=normalized_coordinates,
+            )
+        outputs = result if isinstance(result, tuple) else (result,)
+        assert len(outputs) == (2 if output_value else 1)
+        expected_shapes = [(batch_size, channels, 3, 3, 3, 2), (batch_size, channels, 3, 3, 2)]
+        for output, expected_shape in zip(outputs, expected_shapes):
+            assert output.shape == expected_shape
+            assert output.device == device
+            assert output.dtype == dtype
+        gradient = torch.autograd.grad([output.sum() for output in outputs], data)[0]
+        assert gradient.shape == data.shape
+
     def test_smoke(self, device, dtype):
         sample = torch.zeros(1, 1, 3, 3, 3, device=device, dtype=dtype)
         m = kornia.geometry.subpix.ConvSoftArgmax3d((3, 3, 3), output_value=False)
