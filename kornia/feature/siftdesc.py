@@ -88,7 +88,12 @@ def _dense_sift_histograms_from_gradients(
     bo1 = (bo0 + 1) % num_ang_bins
     w0 = (1.0 - w1) * mag
     w1 = w1 * mag
-    return torch.cat([(bo0 == i).to(gx.dtype) * w0 + (bo1 == i).to(gx.dtype) * w1 for i in range(num_ang_bins)], 1)
+    # Each gradient votes into only two bins. Scatter those votes directly,
+    # avoiding a full-image equality mask and temporary for every angular bin.
+    histograms = gx.new_zeros(gx.shape[0], num_ang_bins, gx.shape[-2], gx.shape[-1])
+    histograms.scatter_add_(1, bo0.long() % num_ang_bins, w0)
+    histograms.scatter_add_(1, bo1.long() % num_ang_bins, w1)
+    return histograms
 
 
 def _dense_sift_histograms(input: torch.Tensor, num_ang_bins: int, eps: float) -> torch.Tensor:
