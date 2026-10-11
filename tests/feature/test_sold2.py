@@ -83,7 +83,7 @@ class TestJunctionsAndSegments(BaseTester):
             ((-9, 3), 2),
         ],
     )
-    def test_nms_radius_matches_reference_NNNN(self, device, dtype, offset, n_kept):
+    def test_nms_radius_matches_reference_5730(self, device, dtype, offset, n_kept):
         # reference: cvg/SOLD2 sold2/model/metrics.py ``super_nms`` / ``nms_fast`` (pad = 8, inclusive window)
         r0, c0 = 40, 30
         prob = self._junction_map([((r0, c0), 1.0), ((r0 + offset[0], c0 + offset[1]), 0.9)], device, dtype)
@@ -91,13 +91,13 @@ class TestJunctionsAndSegments(BaseTester):
         assert len(junctions) == n_kept
         assert [float(r0), float(c0)] in junctions.tolist()
 
-    def test_nms_is_greedy_by_score_NNNN(self, device, dtype):
+    def test_nms_is_greedy_by_score_5730(self, device, dtype):
         # the strongest junction suppresses both of its 8 px neighbours, which cannot then suppress the one beyond
         prob = self._junction_map([((40, 20), 0.9), ((40, 28), 1.0), ((40, 37), 0.8)], device, dtype)
         junctions = prob_to_junctions(prob, 8, 0.0153846, 500)
         assert junctions.tolist() == [[40.0, 28.0], [40.0, 37.0]]
 
-    def test_junctions_are_in_raster_order_NNNN(self, device, dtype):
+    def test_junctions_are_in_raster_order_5730(self, device, dtype):
         # scores run against the raster order, in an H != W map
         points = [((70, 100), 1.0), ((30, 20), 0.9), ((30, 60), 0.8), ((10, 110), 0.7), ((90, 5), 0.6)]
         # row 40 ends at a column above row 41's start with a width stride, but not with a height stride
@@ -107,14 +107,14 @@ class TestJunctionsAndSegments(BaseTester):
         expected = [[10.0, 110.0], [30.0, 20.0], [30.0, 60.0], [40.0, 120.0], [41.0, 2.0], [70.0, 100.0], [90.0, 5.0]]
         assert junctions.tolist() == expected
 
-    def test_top_k_selects_by_score_then_raster_order_NNNN(self, device, dtype):
+    def test_top_k_selects_by_score_then_raster_order_5730(self, device, dtype):
         points = [((70, 100), 1.0), ((30, 20), 0.9), ((30, 60), 0.8), ((10, 110), 0.7)]
         prob = self._junction_map(points, device, dtype)
         junctions = prob_to_junctions(prob, 8, 0.0153846, 3)
         assert junctions.tolist() == [[30.0, 20.0], [30.0, 60.0], [70.0, 100.0]]
 
     @pytest.mark.parametrize("use_junction_refinement", [False, True])
-    def test_segment_endpoints_are_in_raster_order_NNNN(self, device, dtype, use_junction_refinement):
+    def test_segment_endpoints_are_in_raster_order_5730(self, device, dtype, use_junction_refinement):
         # a line from (x, y) = (20, 30) to (100, 70), with the bottom-right junction the stronger one
         prob = self._junction_map([((70, 100), 1.0), ((30, 20), 0.5)], device, dtype)
         heatmap = torch.zeros(96, 128, device=device, dtype=dtype)

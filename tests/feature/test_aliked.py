@@ -392,7 +392,7 @@ class TestALIKED(BaseTester):
             ),
         ],
     )
-    def test_nms_keeps_maxima_outside_suppressed_windows_NNNN(self, device, dtype, nms_radius, expected):
+    def test_nms_keeps_maxima_outside_suppressed_windows_5730(self, device, dtype, nms_radius, expected):
         """ALIKED's NMS is the reference's, which re-admits maxima outside the suppressed windows in two rounds.
 
         The expected keypoints are the reference DKD's on the same score map (cvg/LightGlue eb42fee
@@ -527,7 +527,7 @@ class TestALIKEDForwardLAF(BaseTester):
         assert (A[:, 0, 0] > 0).all()
         self.assert_close(A, A[:, :1, :1] * torch.eye(2, device=device, dtype=dtype))
 
-    def test_frame_scale_is_descriptor_sampling_radius_NNNN(self, device, dtype):
+    def test_frame_scale_is_descriptor_sampling_radius_5730(self, device, dtype):
         """Each LAF is ``s * I``, ``s`` the RMS distance of the descriptor's sampling positions from the keypoint.
 
         The offset head is set so that every keypoint's descriptor samples 8 positions at (3, 4) px and 8 at

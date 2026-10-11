@@ -234,7 +234,7 @@ class TestXFeat(BaseTester):
         model.net.register_forward_hook(lambda m, i, o: (features, logits, reliability))
         return model
 
-    def test_keeps_border_maxima_NNNN(self, device):
+    def test_keeps_border_maxima_5730(self, device):
         """Like verlab/accelerated_features, whose padded max-pool NMS keeps maxima on the first and last rows."""
         peaks = [(1, 30), (94, 30), (50, 0), (50, 62), (40, 30)]
         model = self._peaks_model(peaks, device)
@@ -242,7 +242,7 @@ class TestXFeat(BaseTester):
         found = sorted(tuple(int(v) for v in kp) for kp in out[0]["keypoints"].tolist())
         assert found == sorted(peaks)
 
-    def test_nms_keeps_equal_maxima_NNNN(self, device):
+    def test_nms_keeps_equal_maxima_5730(self, device):
         """The reference keeps every position equal to its window maximum; a strict maximum test kept none."""
         peaks = [(20, 30), (21, 30)]
         model = self._peaks_model(peaks, device)

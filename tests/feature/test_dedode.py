@@ -137,7 +137,7 @@ class TestDeDoDePadding(BaseTester):
         return torch.rand(1, 3, h, w, generator=gen).to(device, dtype)
 
     @pytest.mark.parametrize("entry", ["forward", "detect", "describe"])
-    def test_pad_is_the_mean_colour_in_every_entry_point_NNNN(self, device, dtype, entry):
+    def test_pad_is_the_mean_colour_in_every_entry_point_5730(self, device, dtype, entry):
         model = self._model(device, dtype)
         x = self._image(device, dtype)  # 50x80 -> 56x84
         if entry == "forward":
@@ -155,7 +155,7 @@ class TestDeDoDePadding(BaseTester):
         assert seen[..., 50:, :].abs().max() == 0
         assert seen[..., :, 80:].abs().max() == 0
 
-    def test_detect_and_describe_agree_with_forward_NNNN(self, device, dtype):
+    def test_detect_and_describe_agree_with_forward_5730(self, device, dtype):
         model = self._model(device, dtype)
         x = self._image(device, dtype)
         n = 40
@@ -166,7 +166,7 @@ class TestDeDoDePadding(BaseTester):
         self.assert_close(scores_d, scores)
         self.assert_close(descs_d, descs)
 
-    def test_dense_descriptors_have_the_size_of_the_image_NNNN(self, device, dtype):
+    def test_dense_descriptors_have_the_size_of_the_image_5730(self, device, dtype):
         model = self._model(device, dtype)
         x = self._image(device, dtype)
         assert model.describe(x).shape == (1, 3, 50, 80)
