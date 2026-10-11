@@ -131,6 +131,8 @@ class TestHyperplane(BaseTester):
         assert isinstance(loaded.normal.data, torch.Tensor)
         assert isinstance(loaded.offset.data, torch.Tensor)
         assert set(loaded.state_dict()) == {"_n", "_d"}
+        # Migrated like a freshly built plane: floating coefficients become parameters, integer ones buffers.
+        assert {name for name, _ in loaded.named_parameters()} == (set() if integer else {"_n", "_d"})
         assert loaded.description == legacy.description
         assert not loaded.training
         loaded.to(device=device, dtype=dtype)
@@ -582,7 +584,7 @@ class TestConventionsHyperplane(BaseTester):
                 plane.signed_distance(p).data / torch.linalg.vector_norm(plane.normal.data), torch.zeros_like(one)
             )
 
-    def test_hyperplane_state_registered_4923(self, device, dtype):
+    def test_convention_hyperplane_state_registered_4923(self, device, dtype):
         normal = torch.tensor([2.0, 1.0, -2.0], device=device, dtype=dtype) / 3
         e = torch.tensor([1.0, 2.0, 0.5], device=device, dtype=dtype)
         plane = Hyperplane.from_vector(Vector3(normal), Vector3(e))

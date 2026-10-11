@@ -47,8 +47,13 @@ class Hyperplane(nn.Module):
         - :meth:`through` points the normal along :math:`(p_2 - p_0) \times (p_1 - p_0)`, as Eigen's
           ``Hyperplane::Through`` does: the opposite of the right-hand normal of the loop
           :math:`p_0 \to p_1 \to p_2`. Swapping two points flips it.
-        - The normal and offset are registered module state, so checkpoints and ``.to()`` include both tensors.
-          Caller-provided parameters remain parameters; tensors with autograd history retain that history.
+        - The normal and offset are registered module state under the keys ``_n`` and ``_d``, so ``state_dict()``,
+          ``load_state_dict()`` and ``.to()`` include both tensors. As in
+          :class:`~kornia.geometry.line.ParametrizedLine`, a floating-point tensor without autograd history becomes
+          an ``nn.Parameter``: a plane built from plain tensors, including the result of :meth:`through` and
+          :func:`fit_plane`, has trainable parameters, and the distances and projections it returns require
+          grad. A caller's ``nn.Parameter`` is kept, a tensor with autograd history keeps that history, and an
+          integer tensor is stored as a buffer.
 
     Args:
         n: The normal vector :math:`n`, a :class:`~kornia.geometry.vector.Vector3`.
