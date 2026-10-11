@@ -735,6 +735,10 @@ def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torc
     Returns:
         the affine matrix of 2D rotation with shape :math:`(B, 2, 3)`.
 
+    Raises:
+        TypeError: If any input is not a tensor.
+        ValueError: If input shapes are invalid, or batch sizes, devices or dtypes do not match.
+
     Example:
         >>> center = torch.zeros(1, 2)
         >>> scale = torch.ones((1, 2))
@@ -771,10 +775,14 @@ def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torc
             f"{scale.shape}"
         )
 
-    if not (center.device == angle.device == scale.device) or not (center.dtype == angle.dtype == scale.dtype):
+    if not (center.device == angle.device == scale.device):
         raise ValueError(
-            f"Inputs must have same device Got center ({center.device}, {center.dtype}), angle ({angle.device}, "
-            f"{angle.dtype}) and scale ({scale.device}, {scale.dtype})"
+            f"Inputs must have same device. Got center {center.device}, angle {angle.device} and scale {scale.device}."
+        )
+
+    if not (center.dtype == angle.dtype == scale.dtype):
+        raise ValueError(
+            f"Inputs must have same dtype. Got center {center.dtype}, angle {angle.dtype} and scale {scale.dtype}."
         )
 
     shift_m = eye_like(3, center)
