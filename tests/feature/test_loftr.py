@@ -382,8 +382,9 @@ class TestCoarseMatching(BaseTester):
             assert (3, 4) not in pairs
             assert data["conf_matrix"][0, 3, 4].item() == 0.0
         else:
-            # control: without any mask the pair can be a match, the fix must not suppress it
-            assert (3, 4) in pairs
+            # control: without any mask the pair keeps its normal confidence, the fix must not
+            # suppress it (whether it is a mutual nearest neighbour depends on the RNG, so only
+            # the confidence is asserted)
             assert data["conf_matrix"][0, 3, 4].item() > 0.0
 
     def test_eval_path_unaffected(self, device):
