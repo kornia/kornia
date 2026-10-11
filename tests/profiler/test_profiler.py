@@ -141,7 +141,8 @@ def test_feature_shapes_and_no_grad(device, processing):
     try:
         output = extractor(torch.randn(3, 3, 8, 8, device=device, requires_grad=True))["0"]
         expected = {"none": (3, 4, 8, 8), "flatten": (3, 256), "gap": (3, 4)}[processing]
-        assert output.shape == expected and not output.requires_grad
+        assert output.shape == expected
+        assert not output.requires_grad
     finally:
         extractor.remove_hooks()
 
@@ -197,10 +198,7 @@ def test_public_api_and_json_report(device, tmp_path, input_kind):
 @pytest.mark.parametrize("kind", ["blur", "brightness"])
 def test_actual_kornia_augmentation_and_wrapper(device, kind):
     x = torch.rand(8, 3, 16, 16, device=device)
-    if kind == "blur":
-        params = {"kernel_size": (5, 5), "sigma": (1.0, 1.0)}
-    else:
-        params = {"brightness": (0.8, 0.8)}
+    params = {"kernel_size": (5, 5), "sigma": (1.0, 1.0)} if kind == "blur" else {"brightness": (0.8, 0.8)}
     config = [{"name": kind, "params": params}]
     augmenter = AugmentationPipeline(config, mode="individual")
     changed = augmenter(x)[kind]
