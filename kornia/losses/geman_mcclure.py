@@ -76,8 +76,8 @@ def geman_mcclure_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = 
     )
 
     # Keep the square, doubled numerator and their backward in float32 for half-precision residuals.
-    diff = img1 - img2
-    compute_diff = diff.float() if diff.dtype in (torch.float16, torch.bfloat16) else diff
+    output_dtype = torch.promote_types(img1.dtype, img2.dtype)
+    compute_diff = img1.float() - img2.float() if output_dtype in (torch.float16, torch.bfloat16) else img1 - img2
     diff2 = torch.square(compute_diff)
     loss = 2.0 * diff2 / (diff2 + 4.0)
 
@@ -91,7 +91,7 @@ def geman_mcclure_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = 
     else:
         raise NotImplementedError("Invalid reduction option.")
 
-    return loss.to(diff.dtype) if diff.dtype in (torch.float16, torch.bfloat16) else loss
+    return loss.to(output_dtype)
 
 
 class GemanMcclureLoss(nn.Module):
