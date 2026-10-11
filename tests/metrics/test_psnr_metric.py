@@ -164,3 +164,29 @@ class TestConventionsPsnr(BaseTester):
         assert actual.dtype == torch.float32
         self.assert_close(actual, expected, rtol=0.0, atol=0.0)
         assert torch.isfinite(kornia.metrics.psnr(a.to(dtype), b.to(dtype), 255.0))
+
+
+class TestPSNRHalfPrecision(BaseTester):
+    @pytest.mark.parametrize("residual,max_val", [(1e-4, 1.0), (300.0, 512.0)])
+    def test_representable_psnr(self, device, dtype, residual, max_val):
+        image = torch.tensor([residual], device=device, dtype=dtype)
+        target = torch.zeros_like(image)
+        delta = image.detach().cpu().double().item()
+        expected = image.new_tensor(20 * math.log10(max_val / abs(delta)))
+        actual = kornia.metrics.psnr(image, target, max_val)
+        assert actual.dtype == dtype
+        assert torch.isfinite(actual)
+        self.assert_close(actual, expected)
+        self.assert_close(kornia.losses.psnr_loss(image, target, max_val), -expected)
+        self.assert_close(kornia.losses.PSNRLoss(max_val)(image, target), -expected)
+
+    def test_large_residual_gradient(self, device, dtype):
+        image = torch.tensor([300.0], device=device, dtype=dtype, requires_grad=True)
+        target = torch.zeros_like(image, requires_grad=True)
+        result = kornia.metrics.psnr(image, target, 512.0)
+        grad_image, grad_target = torch.autograd.grad(result, (image, target))
+        expected = image.new_tensor([-20 / (math.log(10) * image.detach().cpu().double().item())])
+        assert torch.isfinite(grad_image).all()
+        assert torch.isfinite(grad_target).all()
+        self.assert_close(grad_image, expected)
+        self.assert_close(grad_target, -expected)
