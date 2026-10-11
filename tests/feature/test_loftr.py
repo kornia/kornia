@@ -315,6 +315,35 @@ class TestCoarseMatching(BaseTester):
         assert out["mconf"].dtype == dtype
         assert out["mkpts0_c"].shape == (self.N_PRED, 2)
 
+    @pytest.mark.parametrize("masked_side", [0, 1])
+    def test_independent_optional_coarse_masks_5768(self, device, masked_side):
+        # None must be equivalent to an all-valid mask on the other image.
+        cfg = dict(self.CFG)
+        cfg["thr"] = 0.0
+        gen = torch.Generator().manual_seed(0)
+        feat0 = torch.randn(1, 12, 8, generator=gen).to(device)
+        feat1 = torch.randn(1, 9, 8, generator=gen).to(device)
+        masked = torch.ones(1, 12 if masked_side == 0 else 9, device=device)
+        masked[0, [0, 5, 7, 8, 11] if masked_side == 0 else [0, 3, 5]] = 0
+        other = torch.ones(1, 9 if masked_side == 0 else 12, device=device)
+
+        def run(other_is_none):
+            masks = (masked, None if other_is_none else other) if masked_side == 0 else (
+                None if other_is_none else other, masked
+            )
+            data = {"hw0_c": (3, 4), "hw1_c": (3, 3), "stride_c": 8}
+            CoarseMatching(cfg).to(device).eval()(feat0, feat1, data, mask_c0=masks[0], mask_c1=masks[1])
+            return data
+
+        single_mask = run(True)
+        explicit_valid_mask = run(False)
+        assert torch.equal(single_mask["conf_matrix"], explicit_valid_mask["conf_matrix"])
+        assert torch.equal(single_mask["i_ids"], explicit_valid_mask["i_ids"])
+        assert torch.equal(single_mask["j_ids"], explicit_valid_mask["j_ids"])
+        matched = single_mask["i_ids"] if masked_side == 0 else single_mask["j_ids"]
+        assert matched.numel() > 0
+        assert bool(masked[0, matched].all())
+
     def test_eval_path_unaffected(self, device):
         """Eval mode skips the gt-padding branch entirely -- assert that
         directly (gt_mask all False, count == predictions only), not just
