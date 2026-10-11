@@ -130,6 +130,28 @@ class TestImageModuleMixIn:
         img_module.save(name=save_path)
         assert os.path.exists(save_path)
 
+    @pytest.mark.parametrize("method", ["show", "save"])
+    @pytest.mark.parametrize("n_row", [None, 0, -1])
+    def test_show_save_empty_batch_n_row(self, img_module, monkeypatch, method, n_row):
+        img_module._output_image = torch.empty(0, 3, 4, 4)
+        sink = MagicMock()
+        if method == "show":
+            monkeypatch.setattr(img_module, "to_pil", sink)
+            kwargs = {"display": False}
+        else:
+            monkeypatch.setattr("kornia.io.write_image", sink)
+            kwargs = {"name": "empty.png"}
+
+        if n_row is not None:
+            with pytest.raises(ValueError, match="n_row"):
+                getattr(img_module, method)(n_row=n_row, **kwargs)
+            sink.assert_not_called()
+        else:
+            getattr(img_module, method)(**kwargs)
+            sink.assert_called_once()
+            grid = sink.call_args.args[-1]
+            assert grid.shape == (3, 4, 0)
+
     def test_to_pil_4d_tensor_returns_list(self, img_module):
         # 4D (B, C, H, W) tensor -> list of PIL Images
         t = torch.rand(3, 3, 16, 16)

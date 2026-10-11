@@ -205,3 +205,40 @@ def test_perform_keep_shape_video_non_contiguous(device, dtype):
 
     assert result.shape == expected.shape
     assert_close(result, expected)
+
+
+@pytest.mark.parametrize("channels", [1, 3])
+@pytest.mark.parametrize("n_row", [None, 1, 2])
+def test_make_grid_empty(device, dtype, channels, n_row):
+    tensor = torch.empty(0, channels, 4, 4, device=device, dtype=dtype)
+
+    actual = kornia.image.make_grid(tensor, n_row=n_row)
+    reference = kornia.image.make_grid(tensor, n_row=1 if n_row is None else n_row)
+
+    assert actual.ndim == 3
+    assert actual.shape[0] == channels
+    assert actual.numel() == 0
+    assert sorted(actual.shape[1:]) == [0, (1 if n_row is None else n_row) * 6 - 2]
+    assert actual.shape == reference.shape
+    assert actual.dtype == tensor.dtype
+    assert actual.device == tensor.device
+
+
+@pytest.mark.parametrize("batch_size", [0, 3])
+@pytest.mark.parametrize("n_row", [0, -1, -2])
+def test_make_grid_invalid_n_row(device, dtype, batch_size, n_row):
+    tensor = torch.empty(batch_size, 3, 4, 4, device=device, dtype=dtype)
+    with pytest.raises(ValueError, match="n_row"):
+        kornia.image.make_grid(tensor, n_row=n_row)
+
+
+@pytest.mark.parametrize("n_row", [None, 2])
+def test_make_grid_valid(device, dtype, n_row):
+    tensor = torch.arange(3, device=device, dtype=dtype).reshape(3, 1, 1, 1)
+    expected = tensor.new_tensor([[[0, 1], [2, 0]]])
+
+    actual = kornia.image.make_grid(tensor, n_row=n_row, padding=0)
+
+    assert actual.dtype == tensor.dtype
+    assert actual.device == tensor.device
+    assert_close(actual, expected)
