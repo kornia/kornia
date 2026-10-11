@@ -229,6 +229,8 @@ def warp_perspective(
         - input: :math:`(B, C, H, W)`; ``dsize`` is ``(h, w)``
         - ``M`` is the source→destination **pixel** homography :math:`(B, 3, 3)`
           (contrast :func:`homography_warp`, which by default consumes destination→source normalized)
+        - a nonzero scalar multiple of ``M`` describes the same warp; uniformly small or large
+          nonzero entries are rescaled toward unit magnitude before the coordinate change and inversion
         - a zero output dimension returns an autograd-connected empty tensor;
           negative output dimensions raise ``ValueError``
 
@@ -287,7 +289,19 @@ def warp_perspective(
             src, M, dsize, mode, padding_mode, align_corners, _matrix_warp_grid_dtype(src, M), fill_value
         )
 
-    # we F.normalize the 3x3 transformation matrix and convert to 3x4
+    # H and s*H represent the same projective map. Remove that arbitrary scale before
+    # the coordinate change and inverse: the cubic determinant can overflow/underflow
+    # even when every entry, the sampling positions and their gradients are finite.
+    # The scale is a projective gauge, so detaching it leaves the warp's derivative unchanged.
+    if M.is_floating_point():
+        magnitude = M.detach().abs()
+        largest = magnitude.amax(dim=(-2, -1), keepdim=True)
+        smallest = magnitude.masked_fill(magnitude == 0, float("inf")).amin(dim=(-2, -1), keepdim=True)
+        # Choose the scale closest to 1 between the nonzero magnitudes. Dividing a large
+        # translation by its maximum would instead shrink the unit diagonal toward zero.
+        scale = torch.minimum(largest, torch.ones_like(largest)).clamp_min(smallest)
+        M = M / torch.where(scale > 0, scale, torch.ones_like(scale))
+
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
         M, (H, W), (h_out, w_out), align_corners=align_corners
     )  # Bx3x3
