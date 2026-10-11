@@ -68,23 +68,35 @@ class TestZCA(BaseTester):
         op = kornia.enhance.zca_whiten
         self.assert_close(torch_optimizer(op)(data), op(data))
 
-    def test_covariance_accumulation_amp(self, device, dtype):
-        """Explicit half inputs retain fitting precision under CPU, CUDA and MPS AMP."""
+    @pytest.mark.parametrize("unbiased", [True, False])
+    def test_covariance_beyond_half_range(self, device, dtype, unbiased):
+        """A covariance above 65504 overflows float16, while the transform and its inverse fit."""
+        data = torch.tensor([[-300.0], [300.0]], device=device, dtype=dtype).repeat(2, 1)
+        std = math.sqrt(4 * 300.0**2 / (3 if unbiased else 4) + 1e-6)
+        transform, mean, inverse = kornia.enhance.zca_mean(data, unbiased=unbiased, return_inverse=True)
+        assert transform.dtype == mean.dtype == inverse.dtype == dtype
+        # Compare dimensionless values so an absolute tolerance cannot accept a zero transform.
+        self.assert_close(transform * std, torch.ones_like(transform))
+        self.assert_close(mean, torch.zeros_like(mean))
+        self.assert_close(inverse / std, torch.ones_like(inverse))
+
+    @pytest.mark.parametrize("unbiased", [True, False])
+    def test_covariance_accumulation_amp(self, device, dtype, unbiased):
+        """Fitting leaves float16 autocast, whose matrix products would overflow a covariance above 65504."""
         if device.type not in ("cpu", "cuda", "mps"):
             pytest.skip("CPU/CUDA/MPS mixed-precision coverage")
-        if device.type != "mps" and dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("Half-precision inputs only")
-        input_dtype = torch.float16 if device.type == "mps" else dtype
-        data = torch.tensor([[0.0], [255.0]], device=device, dtype=input_dtype).repeat(4, 1)
-        std = math.sqrt(data.shape[0] * 127.5**2 / (data.shape[0] - 1) + 1e-6)
-        with torch.autocast(device_type=device.type, dtype=input_dtype):
-            transform, mean, inverse = kornia.enhance.zca_mean(data, return_inverse=True)
-            assert torch.is_autocast_enabled(device.type)
-            expected = torch.tensor([[1 / std]], device=device, dtype=input_dtype)
-            self.assert_close(transform, expected)
-            self.assert_close(mean, torch.tensor([[127.5]], device=device, dtype=input_dtype))
-            self.assert_close(inverse, torch.tensor([[std]], device=device, dtype=input_dtype))
-            self.assert_close(kornia.enhance.zca_whiten(data), (data - 127.5) / std)
+        # The MPS job runs float32 only, so it fits a float16 input here as well.
+        input_dtypes = [dtype, torch.float16] if device.type == "mps" and dtype != torch.float16 else [dtype]
+        std = math.sqrt(4 * 300.0**2 / (3 if unbiased else 4) + 1e-6)
+        for input_dtype in input_dtypes:
+            data = torch.tensor([[-300.0], [300.0]], device=device, dtype=input_dtype).repeat(2, 1)
+            with torch.autocast(device_type=device.type, dtype=torch.float16):
+                transform, mean, inverse = kornia.enhance.zca_mean(data, unbiased=unbiased, return_inverse=True)
+                assert torch.is_autocast_enabled(device.type)
+            assert transform.dtype == mean.dtype == inverse.dtype == input_dtype
+            self.assert_close(transform * std, torch.ones_like(transform))
+            self.assert_close(mean, torch.zeros_like(mean))
+            self.assert_close(inverse / std, torch.ones_like(inverse))
 
     @pytest.mark.device_agnostic
     def test_xpu_covariance_accumulation_amp(self):
@@ -102,7 +114,7 @@ class TestZCA(BaseTester):
             self.assert_close(kornia.enhance.zca_whiten(data), data / std)
 
     def test_covariance_accumulation_jit(self, device, dtype):
-        """Scripted fitting preserves its constant-device autocast contexts."""
+        """Scripted fitting matches eager fitting outside autocast."""
         data = torch.tensor([[-127.5], [127.5]], device=device, dtype=dtype).repeat(4, 1)
         scripted = torch.jit.script(kornia.enhance.zca_mean)
         actual = scripted(data, return_inverse=True)

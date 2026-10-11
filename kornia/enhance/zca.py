@@ -232,7 +232,8 @@ def zca_mean(
 
     Convention:
         See :class:`ZCAWhitening`: dim selects samples and all other axes form features.
-        Float16 and bfloat16 fitting uses float32 arithmetic; the mean and transforms keep the input dtype.
+        Fitting runs with autocast disabled (not under TorchScript). Float16 and bfloat16 fitting uses float32
+        arithmetic; the mean and transforms keep the input dtype.
 
     The output can be used with :func:`linear_transform`. See :class:`ZCAWhitening` for details.
 
@@ -312,27 +313,22 @@ def zca_mean(
     if N < 1:
         raise ValueError("Covariance requires at least one sample, got 0.")
 
-    # The unnormalised scatter can overflow half precision even when the covariance and transform fit.
+    if torch.jit.is_scripting():
+        # A scripted autocast block does not leave an enclosing autocast region, so none is entered here.
+        T, mean, T_inv = _zca_mean(inp_permute, num_features, unbiased, eps, return_inverse)
+    elif inp.device.type == "meta":
+        # Meta tensors have no autocast backend and carry only shape information.
+        T, mean, T_inv = _zca_mean(inp_permute, num_features, unbiased, eps, return_inverse)
+    else:
+        # Autocast would run the scatter in float16 again, for float32 inputs too, and overflow it.
+        with torch.autocast(device_type=inp.device.type, enabled=False):
+            T, mean, T_inv = _zca_mean(inp_permute, num_features, unbiased, eps, return_inverse)
+
     dtype = inp.dtype
     if dtype in (torch.float16, torch.bfloat16):
-        # Autocast would downcast the matrix products again, undoing the promotion.
-        if torch.jit.is_scripting():
-            # TorchScript requires constant device names and recognizes only these autocast backends.
-            with (
-                torch.autocast(device_type="cpu", enabled=False),
-                torch.autocast(device_type="cuda", enabled=False),
-                torch.autocast(device_type="mps", enabled=False),
-            ):
-                T, mean, T_inv = _zca_mean(inp_permute, num_features, unbiased, eps, return_inverse)
-        elif inp.device.type == "meta":
-            # Meta tensors have no autocast context and carry only shape information.
-            T, mean, T_inv = _zca_mean(inp_permute, num_features, unbiased, eps, return_inverse)
-        else:
-            with torch.autocast(device_type=inp.device.type, enabled=False):
-                T, mean, T_inv = _zca_mean(inp_permute, num_features, unbiased, eps, return_inverse)
+        # The unnormalised scatter can overflow half precision even when the covariance and transform fit.
         return T.to(dtype), mean.to(dtype), T_inv.to(dtype) if T_inv is not None else None
-
-    return _zca_mean(inp_permute, num_features, unbiased, eps, return_inverse)
+    return T, mean, T_inv
 
 
 def _zca_mean(
