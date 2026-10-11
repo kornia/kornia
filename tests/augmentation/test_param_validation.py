@@ -277,6 +277,11 @@ class TestShearBoundTensorValidation:
         assert params["shear_x"].shape == (2,)
         assert params["shear_y"].shape == (2,)
 
+    def test_tensor_shear_ranges_keep_each_axis(self):
+        params = K.RandomShear(torch.tensor([[-10.0, 10.0], [30.0, 40.0]]), p=1.0).forward_parameters((8, 3, 8, 8))
+        assert ((params["shear_x"] >= -10.0) & (params["shear_x"] <= 10.0)).all()
+        assert ((params["shear_y"] >= 30.0) & (params["shear_y"] <= 40.0)).all()
+
     @pytest.mark.parametrize(
         "shear",
         [
@@ -285,6 +290,8 @@ class TestShearBoundTensorValidation:
             [[float("-inf"), 10.0], [-20.0, 20.0]],
             [[-10.0, float("inf")], [-20.0, 20.0]],
             [[10.0, -10.0], [-20.0, 20.0]],
+            [[-10.0, 10.0], [-400.0, 20.0]],
+            [[-10.0, 10.0], [-20.0, float("inf")]],
         ],
         ids=[
             "lower-bound-too-small",
@@ -292,6 +299,8 @@ class TestShearBoundTensorValidation:
             "negative-infinity",
             "positive-infinity",
             "reversed-range",
+            "y-lower-bound-too-small",
+            "y-positive-infinity",
         ],
     )
     def test_invalid_tensor_shear_ranges_raise(self, shear):
