@@ -1675,6 +1675,44 @@ class TestLAFIsTouchingBoundary(BaseTester):
             kornia.feature.laf_is_inside_image(self._radius_laf(26.5, 16.0, r, device, dtype), img, 3)[0, 0]
         )
 
+    @pytest.mark.parametrize("border", [0, 5])
+    def test_region_crossing_the_edge_between_boundary_samples_is_outside_5733(self, device, dtype, border):
+        # A radius-16 circle reaches c_x - 16 and c_x + 16. Ten points sampled 36 degrees apart on it reach only
+        # c_x -+ 16 sin(72 deg) = c_x -+ 15.22, so a circle overhanging an x edge by 0.5 px passed a sampled test.
+        # The values are exact in bfloat16, and the 0.5 px overhang is two bfloat16 steps at x = 59.
+        img = torch.zeros(1, 1, 48, 60, device=device, dtype=dtype)  # valid x 0 .. 59, y 0 .. 47
+        b = float(border)
+        xy = torch.tensor(
+            [[[43.5 - b, 24.0], [15.5 + b, 24.0], [43.0 - b, 24.0], [16.0 + b, 24.0]]], device=device, dtype=dtype
+        )
+        laf = kornia.feature.laf_from_center_scale_ori(xy, torch.full((1, 4, 1, 1), 16.0, device=device, dtype=dtype))
+        expected = torch.tensor([[False, False, True, True]], device=device)
+        assert torch.equal(kornia.feature.laf_is_inside_image(laf, img, border), expected)
+
+    def test_anisotropic_region_uses_the_extent_of_each_row_5733(self, device, dtype):
+        # The region c + A u, |u| = 1 spans c_y -+ |A[1, :]| = c_y -+ 20 along y, and the second row points 18 deg
+        # from the y axis, halfway between two boundary samples: sampled points reach only c_y + 19.02. The columns
+        # of A have other norms (9.34 and 19.13), so a test that read them instead of the rows accepts the region too.
+        img = torch.zeros(1, 1, 48, 64, device=device, dtype=dtype)  # valid x 0 .. 63, y 0 .. 47
+        row1 = [20.0 * math.sin(math.radians(18.0)), 20.0 * math.cos(math.radians(18.0))]
+        laf = torch.tensor(
+            [[[[7.0, -2.0, 30.0], [*row1, 27.5]], [[7.0, -2.0, 30.0], [*row1, 26.875]]]], device=device, dtype=dtype
+        )
+        expected = torch.tensor([[False, True]], device=device)  # bottom edge at 47.5 and at 46.875
+        assert torch.equal(kornia.feature.laf_is_inside_image(laf, img), expected)
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        img = torch.zeros(2, 1, 40, 60, device=device, dtype=dtype)
+        xy = torch.tensor([[[43.5, 20.0], [43.0, 20.0]], [[15.5, 20.0], [16.0, 20.0]]], device=device, dtype=dtype)
+        laf = kornia.feature.laf_from_center_scale_ori(xy, torch.full((2, 2, 1, 1), 16.0, device=device, dtype=dtype))
+        expected = kornia.feature.laf_is_inside_image(laf, img, 0)
+        op = torch_optimizer(kornia.feature.laf_is_inside_image)
+        assert torch.equal(op(laf, img, 0), expected)
+        # The fixture compiles without `fullgraph`, so it would pass on a graph break too, and
+        # `laf_is_inside_image` is meant to trace as one graph -- assert that directly.
+        torch._dynamo.reset()
+        assert torch.equal(torch.compile(kornia.feature.laf_is_inside_image, fullgraph=True)(laf, img, 0), expected)
+
     def test_jit(self, device, dtype):
         w, h = 10, 5
         img = torch.rand(1, 3, h, w, device=device)

@@ -915,6 +915,9 @@ class Affine(nn.Module):
 
     Raises:
         RuntimeError: If not one of ``angle``, ``translation``, ``scale_factor``, or ``shear`` is set.
+        DeviceError: If ``angle``, ``translation``, ``scale_factor`` and ``shear`` are not all on one device.
+        TypeCheckError: If they are on one device but do not all have one dtype. The ones not given are
+            created on that device and in that dtype.
 
     Returns:
         The transformed tensor with same shape as input.
@@ -954,7 +957,7 @@ class Affine(nn.Module):
         self._batch_size = batch_size
 
         super().__init__()
-        device, dtype = _extract_device_dtype([angle, translation, scale_factor])
+        device, dtype = _extract_device_dtype([angle, translation, scale_factor, shear])
 
         if angle is None:
             angle = torch.zeros(batch_size, device=device, dtype=dtype)

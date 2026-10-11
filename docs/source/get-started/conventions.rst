@@ -397,12 +397,14 @@ Augmentations
   the image.
 - Geometric children normally resample masks with nearest interpolation, so
   labels are not blended, but padding can introduce its fill value. The container
-  processes a mask in the dtype of the image it is working on (the most recent
+  processes a floating mask in the dtype of the image it is working on (the most recent
   image argument before the mask, or the call's first image when the mask
-  comes first) and returns it in the mask's own dtype, so
-  integer labels outside that dtype's exact range change even through a flip:
-  ``2049`` becomes ``2048`` in ``float16``
-  (`#4478 <https://github.com/kornia/kornia/issues/4478>`_). A direct
+  comes first) and returns it in the mask's own dtype. Integer masks use at least
+  float32, or float64 with a float64 image, so half-precision images do not round
+  their class labels. Labels not exactly representable in that working dtype raise
+  ``RuntimeError``; remap them to smaller integers or use a float64 image where
+  supported. On accelerators the asynchronous assertion may report at the next
+  synchronization; MPS before torch 2.13 checks on the host. A direct
   geometric ``transform_masks`` call requires a floating tensor.
 - A list of masks is not a substitute for separate full-batch tensors: list
   index ``i`` selects sample ``i``'s gate, so full-batch entries desynchronize

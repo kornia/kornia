@@ -73,7 +73,7 @@ class BlurPool2D(nn.Module):
         super().__init__()
         self.kernel_size = kernel_size
         self.stride = stride
-        self.kernel = get_pascal_kernel_2d(kernel_size, norm=True)
+        self.register_buffer("kernel", get_pascal_kernel_2d(kernel_size, norm=True), persistent=False)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """Downsample a feature map after applying an anti-aliasing blur.
@@ -94,8 +94,8 @@ class BlurPool2D(nn.Module):
             the sizes given in the Shape section of the class. They depend only
             on the input size and ``self.stride``.
         """
-        self.kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
-        return _blur_pool_by_kernel2d(input, self.kernel.repeat((input.shape[1], 1, 1, 1)), self.stride)
+        kernel = self.kernel.to(device=input.device, dtype=input.dtype)
+        return _blur_pool_by_kernel2d(input, kernel.repeat((input.shape[1], 1, 1, 1)), self.stride)
 
 
 class MaxBlurPool2D(nn.Module):
@@ -155,7 +155,7 @@ class MaxBlurPool2D(nn.Module):
         self.stride = stride
         self.max_pool_size = max_pool_size
         self.ceil_mode = bool(ceil_mode)
-        self.kernel = get_pascal_kernel_2d(kernel_size, norm=True)
+        self.register_buffer("kernel", get_pascal_kernel_2d(kernel_size, norm=True), persistent=False)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """Apply max pooling and then anti-aliased blur downsampling.
@@ -176,9 +176,9 @@ class MaxBlurPool2D(nn.Module):
             class. They depend only on the input size, ``self.max_pool_size``
             and ``self.stride``.
         """
-        self.kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
+        kernel = self.kernel.to(device=input.device, dtype=input.dtype)
         return _max_blur_pool_by_kernel2d(
-            input, self.kernel.repeat((input.size(1), 1, 1, 1)), self.stride, self.max_pool_size
+            input, kernel.repeat((input.size(1), 1, 1, 1)), self.stride, self.max_pool_size
         )
 
 
