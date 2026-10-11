@@ -1696,21 +1696,37 @@ class TestConventionsFilter2d(BaseTester):
         assert counter.frame_count == 1
 
     @pytest.mark.parametrize("name", ["filter2d", "filter2d_separable", "filter3d", "fft_conv"])
-    def test_wart_integer_input_truncates_a_fractional_kernel_to_zero_5155(self, name, device, dtype):
-        """An integer input casts the kernel to its dtype: a 1/9 box kernel turns a constant 100 image to 0 (#5155)."""
-        if name != "fft_conv" and device.type != "cpu":
-            pytest.skip("integer convolution raises on this device, so there is no truncated result to pin (#5155)")
+    def test_convention_integer_input_is_filtered_in_float32_5155(self, name, device, dtype):
+        """An integer input is filtered in float32 with a floating kernel and returns float32 (#5155)."""
         spatial = (3, 5, 7) if name == "filter3d" else (5, 7)
         image = torch.full((1, 1, *spatial), 100, dtype=torch.uint8, device=device)
-        if name == "filter2d_separable":
-            third = torch.full((1, 3), 1 / 3, device=device, dtype=dtype)
-            out = filter2d_separable(image, third, third, "constant")
-        elif name == "filter3d":
-            out = filter3d(image, torch.full((1, 3, 3, 3), 1 / 27, device=device, dtype=dtype), "constant")
-        else:
-            out = _FILTER2D_FNS[name](image, torch.full((1, 3, 3), 1 / 9, device=device, dtype=dtype), "constant")
-        # the interior of a box-filtered constant image is 100 in floating point
-        assert out[..., 2, 3].flatten()[0].item() == 0
+
+        def run(x):
+            if name == "filter2d_separable":
+                third = torch.full((1, 3), 1 / 3, device=device, dtype=dtype)
+                return filter2d_separable(x, third, third, "constant")
+            if name == "filter3d":
+                return filter3d(x, torch.full((1, 3, 3, 3), 1 / 27, device=device, dtype=dtype), "constant")
+            return _FILTER2D_FNS[name](x, torch.full((1, 3, 3), 1 / 9, device=device, dtype=dtype), "constant")
+
+        out = run(image)
+        assert out.dtype == torch.float32
+        self.assert_close(out, run(image.float()), rtol=1e-4, atol=1e-4)
+        # the interior of a box-filtered constant image is 100, no longer truncated to 0; a half-precision kernel
+        # rounds its 1 / 9 taps, which moves the sum by up to 0.4
+        interior = out[0, 0, 1, 2, 3] if name == "filter3d" else out[0, 0, 2, 3]
+        self.assert_close(interior, torch.tensor(100.0, device=device), rtol=0.0, atol=0.5)
+
+    def test_convention_integer_sums_do_not_wrap_5155(self, device):
+        """A box of ones over a uint8 100 sums to 900 in float32 instead of wrapping to 132 (#5155)."""
+        image = torch.full((1, 1, 5, 7), 100, dtype=torch.uint8, device=device)
+        out = filter2d(image, torch.ones(1, 3, 3))
+        assert out.dtype == torch.float32
+        assert out[0, 0, 2, 3].item() == 900
+        out3d = filter3d(image[:, :, None].expand(-1, -1, 3, -1, -1), torch.ones(1, 3, 3, 3))
+        assert out3d[0, 0, 1, 2, 3].item() == 2700
+        # normalized=True used to raise a dtype error on an integer input
+        self.assert_close(filter2d(image, torch.ones(1, 3, 3), normalized=True), image.float())
 
     @pytest.mark.parametrize("name", ["filter2d", "fft_conv"])
     def test_convention_padding_and_behaviour_are_case_insensitive_5156(self, name, device, dtype):

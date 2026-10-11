@@ -947,6 +947,8 @@ def get_affine_matrix2d(
         - ``center`` is ``(x, y)`` in pixels, origin at top-left
         - positive ``angle`` rotates **clockwise** as displayed — this function negates ``angle``
           before delegating to :func:`get_rotation_matrix2d`, whose convention is CCW-positive
+        - ``sx`` and ``sy`` are angles in radians, using :func:`get_shear_matrix2d`'s
+          negative-tangent, x-then-y shear about ``center``, applied before rotation, scale and translation
         - returns :math:`(B, 3, 3)` affine matrix in pixel coordinates
 
     Args:
@@ -954,8 +956,8 @@ def get_affine_matrix2d(
         center: torch.Tensor containing the center vector with shape :math:`(B, 2)`.
         scale: torch.Tensor containing the scale factor with shape :math:`(B, 2)`.
         angle: torch.Tensor of angles in degrees :math:`(B)`.
-        sx: torch.Tensor containing the shear factor in the x-direction with shape :math:`(B)`.
-        sy: torch.Tensor containing the shear factor in the y-direction with shape :math:`(B)`.
+        sx: torch.Tensor containing the shear angle in radians in the x-direction with shape :math:`(B)`.
+        sy: torch.Tensor containing the shear angle in radians in the y-direction with shape :math:`(B)`.
 
     Returns:
         the affine transformation matrix :math:`(B, 3, 3)`.
@@ -1013,14 +1015,19 @@ def get_shear_matrix2d(
             a & ab + 1 \\
         \end{bmatrix}
 
+    Here :math:`a = -\tan(sy)` and :math:`b = -\tan(sx)`.
+
     Convention:
         - ``center`` is ``(x, y)`` in pixels, origin at top-left
+        - ``sx`` and ``sy`` are angles in radians; about ``center = (cx, cy)``, the forward mapping is
+          ``x_out = x - tan(sx) * (y - cy)``, then ``y_out = y - tan(sy) * (x_out - cx)``.
+          Pixel x increases rightward and y downward. This differs from :func:`shear`'s raw factors.
         - returns :math:`(B, 3, 3)` affine matrix in pixel coordinates
 
     Args:
         center: shearing center coordinates of (x, y).
-        sx: shearing angle along x axis in radiants.
-        sy: shearing angle along y axis in radiants
+        sx: shearing angle along x axis in radians.
+        sy: shearing angle along y axis in radians
 
     Returns:
         params to be passed to the affine transformation with shape :math:`(B, 3, 3)`.

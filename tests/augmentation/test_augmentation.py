@@ -3363,6 +3363,10 @@ class TestRandomGrayscale(BaseTester):
 
 
 class TestCenterCrop(BaseTester):
+    def test_invalid_size_type(self):
+        with pytest.raises(TypeError, match="Expected int or tuple\\[int, int\\]"):
+            CenterCrop([4, 6])
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         # slice cropping mode: a static-size centered crop is fullgraph-safe and matches eager.
         input = torch.rand(2, 3, 20, 24, device=device, dtype=dtype)

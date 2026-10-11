@@ -26,6 +26,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_compiling
 
+from .filter import _to_floating
 from .kernels import _check_kernel_size, _unpack_2d_ks, get_gaussian_kernel2d
 from .median import _compute_zero_padding
 
@@ -62,6 +63,11 @@ def _bilateral_blur(
             (guidance.shape[0] == input.shape[0]) and (guidance.shape[-2:] == input.shape[-2:]),
             "guidance and input should have the same batch size and spatial dimensions",
         )
+
+    # integer values are differenced and weighted in float32: in their own dtype uint8 differences wrap (#5155)
+    input = _to_floating(input)
+    if guidance is not None and not guidance.is_floating_point():
+        guidance = guidance.to(input.dtype)
 
     if isinstance(sigma_color, torch.Tensor):
         KORNIA_CHECK_SHAPE(sigma_color, ["B"])
@@ -141,10 +147,8 @@ def bilateral_blur(
         - The border modes are :func:`~kornia.filters.filter2d`'s, but only in lower case; see its Convention block.
         - A floating input keeps its dtype: a tensor ``sigma_color`` or ``sigma_space`` is cast to it and moved to
           its device.
-        - Known defects:
-
-          - an integer input is differenced in its own dtype, so uint8 differences wrap and the filter blends
-            across edges it should keep (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+        - An integer or bool input is differenced and averaged in float32 and the output is float32, as in
+          :func:`~kornia.filters.filter2d`, so uint8 differences do not wrap.
 
     Arguments:
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
@@ -201,9 +205,9 @@ def joint_bilateral_blur(
           ``guidance``, and ``input`` is what gets averaged.
         - ``input`` comes first and ``guidance`` second, the opposite of :func:`~kornia.filters.guided_blur`.
         - ``guidance`` may have its own channel count; its batch size and :math:`(H, W)` must equal ``input``'s.
-        - A floating ``guidance`` is cast to the dtype of a floating ``input``, so the output keeps ``input``'s dtype.
-        - Known defects: those of :func:`~kornia.filters.bilateral_blur`, for an integer ``guidance``
-          (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+        - ``guidance`` is cast to the dtype of a floating ``input``, so the output keeps ``input``'s dtype. An integer
+          ``input`` is filtered in float32, as by :func:`~kornia.filters.bilateral_blur`, and its ``guidance`` is
+          cast to float32.
 
     Arguments:
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.

@@ -191,7 +191,11 @@ def _null_space_lu(A: torch.Tensor) -> torch.Tensor:
         # batch inside while_loop that needs a data-dependent guard. Make that layout check always true,
         # including empty batches; a row-major copy still needs a guard for the empty case.
         square = square.mT.contiguous().mT
-    lower = torch.linalg.solve_triangular(square, lu[:, m:, :m], upper=False, left=False, unitriangular=True)
+    rhs = lu[:, m:, :m]
+    if A.device.type == "mps":
+        # MPS solve_triangular reads strided views wrongly on torch 2.5.1 and 2.9.1.
+        square, rhs = square.contiguous(), rhs.contiguous()
+    lower = torch.linalg.solve_triangular(square, rhs, upper=False, left=False, unitriangular=True)
     eye = torch.eye(n - m, dtype=A.dtype, device=A.device).expand(batch, -1, -1)
     permutation, _, _ = torch.lu_unpack(lu, pivots, unpack_data=False)
     return permutation @ torch.cat([-lower.mT, eye], 1)
