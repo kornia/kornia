@@ -608,4 +608,4 @@ def prob_to_junctions(prob: torch.Tensor, dist: float, prob_thresh: float = 0.01
         junctions = junctions[:k]
 
     # Raster order: the line map, and so the endpoints of each segment, follow the junction indices
-    return junctions[torch.argsort(junctions[:, 0] * prob.shape[-1] + junctions[:, 1])]
+    return junctions[torch.argsort(junctions[:, 0].long() * prob.shape[-1] + junctions[:, 1].long())]

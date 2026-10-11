@@ -91,7 +91,7 @@ class DeDoDe(nn.Module):
 
     Example:
         >>> dedode = DeDoDe.from_pretrained(detector_weights="L-C4-v2", descriptor_weights="B-upright")
-        >>> images = torch.randn(1, 3, 256, 256)
+        >>> images = torch.rand(1, 3, 256, 256)
         >>> keypoints, scores = dedode.detect(images)
         >>> descriptions = dedode.describe(images, keypoints = keypoints)
         >>> keypoints, scores, features = dedode(images) # alternatively do both

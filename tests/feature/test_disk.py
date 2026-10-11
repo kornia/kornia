@@ -134,5 +134,6 @@ class TestDisk(BaseTester):
 
     def test_nms_window_size_must_be_odd_NNNN(self, device, dtype):
         heatmap = torch.zeros(1, 1, 16, 32, device=device, dtype=dtype)
-        with pytest.raises(ValueError, match="odd"):
+        message = "window_size must be odd, because an even window has no centre pixel, got 4"
+        with pytest.raises(ValueError, match=message):
             heatmap_to_keypoints(heatmap, window_size=4)

@@ -38,7 +38,7 @@ def _nms_mask(heatmap: torch.Tensor, window_size: int) -> torch.Tensor:
         Boolean mask of shape :math:`(B, 1, H, W)`.
     """
     if window_size % 2 != 1:
-        raise ValueError(f"window_size has to be odd, got {window_size}")
+        raise ValueError(f"window_size must be odd, because an even window has no centre pixel, got {window_size}")
     _, ixs = F.max_pool2d(heatmap, kernel_size=window_size, stride=1, padding=window_size // 2, return_indices=True)
     h, w = heatmap.shape[-2:]
     coords = torch.arange(h * w, device=heatmap.device).reshape(1, 1, h, w)

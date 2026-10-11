@@ -120,6 +120,9 @@ class DISK(nn.Module):
         Returns:
             A list of length :math:`B` containing the detected features.
 
+        Raises:
+            ValueError: if ``window_size`` is even.
+
         """
         B = images.shape[0]
         if pad_if_not_divisible:

@@ -906,7 +906,8 @@ class ALIKED(nn.Module):
         root-mean-square distance, in pixels, from the keypoint to the positions
         its descriptor head samples (the descriptor's support). ALIKED detects
         at a single image scale: ``s`` describes the descriptor, not a detected
-        keypoint size.
+        keypoint size, and it does not follow a change of image scale (it is not
+        scale-covariant).
 
         All per-image tensors are zero-padded along the keypoint dimension so
         that the outputs are proper batched tensors.

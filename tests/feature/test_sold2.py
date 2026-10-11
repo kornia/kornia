@@ -100,9 +100,11 @@ class TestJunctionsAndSegments(BaseTester):
     def test_junctions_are_in_raster_order_NNNN(self, device, dtype):
         # scores run against the raster order, in an H != W map
         points = [((70, 100), 1.0), ((30, 20), 0.9), ((30, 60), 0.8), ((10, 110), 0.7), ((90, 5), 0.6)]
+        # row 40 ends at a column above row 41's start with a width stride, but not with a height stride
+        points += [((40, 120), 0.55), ((41, 2), 0.5)]
         prob = self._junction_map(points, device, dtype)
         junctions = prob_to_junctions(prob, 8, 0.0153846, 500)
-        expected = [[10.0, 110.0], [30.0, 20.0], [30.0, 60.0], [70.0, 100.0], [90.0, 5.0]]
+        expected = [[10.0, 110.0], [30.0, 20.0], [30.0, 60.0], [40.0, 120.0], [41.0, 2.0], [70.0, 100.0], [90.0, 5.0]]
         assert junctions.tolist() == expected
 
     def test_top_k_selects_by_score_then_raster_order_NNNN(self, device, dtype):
