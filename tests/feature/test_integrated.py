@@ -856,6 +856,28 @@ class TestLocalFeatureMatcher(BaseTester):
 
 
 class TestSIFTPyramidBackend(BaseTester):
+    def test_sift_pyramid_does_not_extract_image_patches(self, device, dtype, monkeypatch):
+        def unexpected_patch(*args, **kwargs):
+            raise AssertionError("The pyramid backend must operate on shared maps without image patches")
+
+        monkeypatch.setattr(kornia.feature.LAFOrienter, "forward", unexpected_patch)
+        monkeypatch.setattr(kornia.feature.LAFDescriptor, "forward", unexpected_patch)
+        original_sample = kornia.feature.SIFTDescriptorFromPyramid._sample
+        sampled_channels = []
+
+        def sample_maps(maps, *args):
+            assert maps.shape[1] != 1, "Sparse sampling must not extract patches from the grayscale image"
+            sampled_channels.append(maps.shape[1])
+            return original_sample(maps, *args)
+
+        monkeypatch.setattr(kornia.feature.SIFTDescriptorFromPyramid, "_sample", staticmethod(sample_maps))
+        image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        feature = SIFTFeature(3, descriptor_backend="pyramid").to(device, dtype).eval()
+        lafs, _, descriptors = feature(image)
+        assert lafs.shape == (1, 3, 2, 3)
+        assert torch.isfinite(descriptors).all()
+        assert set(sampled_channels) == {2, feature.descriptor._descriptor_bins}
+
     @pytest.mark.parametrize("preset", [kornia.feature.SIFTFeature, kornia.feature.SIFTFeatureScaleSpace])
     @pytest.mark.parametrize("upright", [False, True])
     def test_sparse_output_and_real_descriptor(self, device, dtype, preset, upright):
