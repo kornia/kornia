@@ -113,7 +113,7 @@ class TestLoFTR(BaseTester):
     @pytest.mark.slow
     @pytest.mark.skipif(sys.platform == "win32", reason="this test takes so much memory in the CI with Windows")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
-    def test_pretrained_outdoor_images_of_different_sizes_NNNN(self, device, dtype, data):
+    def test_pretrained_outdoor_images_of_different_sizes_5728(self, device, dtype, data):
         # image0 is a 325 x 403 crop of the pair's first image, image1 that crop warped by a known homography (8 degree
         # rotation and 0.9 scale about (200, 160)) into 339 x 401. No side is a multiple of 8 and the two sizes
         # differ, so each image's FPN crops to its own skip sizes.
@@ -133,7 +133,7 @@ class TestLoFTR(BaseTester):
         assert err.median() < 0.3, err
 
     @pytest.mark.parametrize("hw1", [(100, 67), (93, 86)])
-    def test_keypoints0_on_the_8px_grid_for_any_size_NNNN(self, device, dtype, hw1):
+    def test_keypoints0_on_the_8px_grid_for_any_size_5728(self, device, dtype, hw1):
         # Coarse cell (x, y) sits on pixel (8x, 8y) whatever the image size: the backbone's stride-2 stages have
         # centred kernels and the map sizes are rounded up. H0 = 100 has 13 coarse rows, so 100 / 13 = 7.69 is not
         # the stride. hw1 = (100, 67) runs both images through the backbone together, (93, 86) one by one.
@@ -152,7 +152,7 @@ class TestLoFTR(BaseTester):
         assert kpts0[:, 0].max() >= 8 * 5
         assert kpts0[:, 1].max() >= 8 * 9
 
-    def test_mask_is_read_at_the_coarse_cell_pixels_NNNN(self, device, dtype):
+    def test_mask_is_read_at_the_coarse_cell_pixels_5728(self, device, dtype):
         # A coarse cell takes the mask value of the pixel it sits on, (8x, 8y). The masks are 1 only on those pixels
         # (image0: on the ones with y < 64 and x < 40, so coarse rows 0..7 and columns 0..4), so every such cell is
         # valid, while sampling the mask at (x, y) * size / coarse size would hit a 0 everywhere but at (0, 0).
@@ -282,7 +282,7 @@ class TestCoarseMatching(BaseTester):
         assert out["mconf"].numel() == out["b_ids"].shape[0] == self.N_PRED
 
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-    def test_masked_dual_softmax_is_finite_NNNN(self, device, dtype):
+    def test_masked_dual_softmax_is_finite_5728(self, device, dtype):
         # Masked pairs get a similarity of -1e9, which float16 cannot hold, so float16 takes its lowest finite value
         # instead; -inf would make an entirely masked row or column nan. Cell 3 of image0 and cell 5 of image1 are
         # masked, so row 3 and column 5 of the similarity matrix are masked entirely.
@@ -306,7 +306,7 @@ class TestCoarseMatching(BaseTester):
         valid1 = torch.arange(9, device=device) != 5
         assert conf[0, 3, valid1].float().max() < 1e-3
 
-    def test_keypoints_use_the_coarse_stride_NNNN(self, device, dtype):
+    def test_keypoints_use_the_coarse_stride_5728(self, device, dtype):
         # image0 100 x 67 -> 13 x 9 coarse cells, image1 93 x 86 -> 12 x 11: cell (x, y) of either image sits on
         # pixel (8x, 8y). The ratios 100 / 13, 93 / 12, 67 / 9 and 86 / 11 all differ from 8 and from each other.
         h0c, w0c, h1c, w1c = 13, 9, 12, 11
@@ -373,7 +373,7 @@ class TestFineMatching(BaseTester):
         std.sum().backward()
         assert bool(torch.isfinite(feat_f1.grad).all()), feat_f1.grad
 
-    def test_offset_uses_the_fine_stride_NNNN(self, device, dtype):
+    def test_offset_uses_the_fine_stride_5728(self, device, dtype):
         # The fine window of a match is 5 x 5 fine cells, 2 px apart, so a heatmap expectation at normalized
         # (u, v) moves keypoints1 by (W // 2) * 2 * (u, v) = 4 (u, v) px, whatever the image size. image0
         # 99 x 67 has 50 x 34 fine cells; 99 / 50 = 1.98 is not the stride.
@@ -407,7 +407,7 @@ class TestFineMatching(BaseTester):
 
 
 class TestFinePreprocess(BaseTester):
-    def test_windows_centred_on_the_coarse_cells_NNNN(self, device, dtype):
+    def test_windows_centred_on_the_coarse_cells_5728(self, device, dtype):
         # Coarse cell (x, y) sits on fine cell (4x, 4y) for any image size. image0 100 x 67 has 13 x 9 coarse and
         # 50 x 34 fine cells, image1 93 x 86 has 12 x 11 and 47 x 43; 50 // 13 = 3 is not the stride. The fine
         # maps hold their own (row, column) indices, so each window shows where it was cut.
@@ -449,7 +449,7 @@ class TestFinePreprocess(BaseTester):
 
 
 class TestResNetFPN(BaseTester):
-    def test_fpn_upsamples_by_2_then_crops_NNNN(self, device, dtype):
+    def test_fpn_upsamples_by_2_then_crops_5728(self, device, dtype):
         # Each FPN level adds to its lateral map the coarser level upsampled by 2 (align_corners=True), cropped to
         # the lateral size. A 65 x 74 input (1 and 2 mod 8) crops at both levels: the 1/8 map is 9 x 10 and the 1/4
         # map 17 x 19, not 18 x 20; the 1/4 map is 17 x 19 and the 1/2 map 33 x 37, not 34 x 38. Upsampling to the
@@ -485,7 +485,7 @@ class TestResNetFPN(BaseTester):
 
 class TestLinearAttention(BaseTester):
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-    def test_padded_queries_stay_finite_NNNN(self, device, dtype):
+    def test_padded_queries_stay_finite_5728(self, device, dtype):
         # A padded query has a zero feature map, so its normaliser is 1 / eps = 1e6, beyond float16's 65504; the
         # padded rows must come out as 0, not as 0 * inf = nan, and the other rows must not change.
         gen = torch.Generator().manual_seed(0)
