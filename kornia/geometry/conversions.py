@@ -1271,9 +1271,8 @@ def euler_from_quaternion(
           :func:`~kornia.geometry.conversions.quaternion_from_euler` is exact to rounding, and ``q``
           and ``-q`` return the same triple. Gimbal lock is detected as ``cos(pitch) < 2 *
           sqrt(eps)`` for the dtype's ``eps`` (``6.25e-2`` for ``float16``, ``1.77e-1`` for ``bfloat16``,
-              ``6.9e-4`` for ``float32``, ``3.0e-8`` for
-          ``float64``), so a pitch that close to ``±pi/2`` is also snapped to the pole and the
-          returned rotation is off by at most its distance to it
+          ``6.9e-4`` for ``float32``, ``3.0e-8`` for ``float64``), so a pitch that close to ``±pi/2`` is
+          also snapped to the pole and the returned rotation is off by at most its distance to it
         - the input is normalised with
           :func:`~kornia.geometry.conversions.normalize_quaternion` first, so a
           rescaled quaternion returns the same triple

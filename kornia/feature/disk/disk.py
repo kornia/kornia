@@ -56,6 +56,16 @@ class DISK(nn.Module):
               a torch.Tensor of shape
               :math:`(B, \mathrm{desc\_dim} + 1, H, W)`.
 
+    Note:
+        Keypoints are the strict local maxima of the heatmap: :func:`~kornia.geometry.subpix.nms2d` keeps a position
+        only if its score is greater than every other score in its full ``window_size`` window. Tied maxima, and the
+        positions near the border whose window runs off the image (see :func:`~kornia.geometry.subpix.nms2d`), are
+        never keypoints. This departs on purpose from the reference implementation (cvlab-epfl/disk). Its max-pool NMS
+        clips the window at the border, so it judges a border position against part of its window. Of several equal
+        maxima it keeps the one the max-pool reports first, which depends on an order PyTorch does not specify. With
+        the pretrained ``depth`` weights on Oxford graf and boat img1, every keypoint of the reference that kornia
+        leaves out lies in that border strip.
+
     Example:
         >>> disk = DISK.from_pretrained('depth')
         >>> images = torch.rand(1, 3, 256, 256)

@@ -82,7 +82,12 @@ _DECLARING_PACKAGES = ("kornia.color", "kornia.enhance", "kornia.filters", "korn
 
 # A class that keeps ``ONNX_EXPORTABLE = False`` needs a tracking issue: its case is a strict xfail that must
 # fail inside the exporter, so it turns red once the class exports and the marker can go.
-_TRACKING_ISSUES = {"Canny": "#5398: Canny fails Dynamo ONNX export"}
+_TRACKING_ISSUES: dict[str, str] = {}
+
+# Classes whose export contains a ``torch.while_loop``, which the dynamo exporter writes as an ONNX ``Loop`` from
+# torch 2.11 (pytorch/pytorch#162645). The older exporters have no translation for it (2.5.1, 2.6.0 and 2.9.1
+# checked), so the marker is strict and must fail inside the exporter.
+_WHILE_LOOP_EXPORTS = {"Canny"}
 
 # Classes that export from torch 2.9 (2.9.1 and 2.14 checked) but not with the exporter of torch 2.5.1 (RgbToYuv422
 # gives an invalid ``Range`` node, DexiNed fails on batch norm, MotionBlur3D on ``grid_sampler_3d``) or 2.6.0
@@ -173,6 +178,15 @@ def _make_cases():
             # fails the case instead of satisfying the marker.
             reason = _TRACKING_ISSUES.get(cls.__name__, f"{cls.__name__} has no tracking issue")
             marks.append(pytest.mark.xfail(strict=True, raises=torch.onnx.OnnxExporterError, reason=reason))
+        if cls.__name__ in _WHILE_LOOP_EXPORTS:
+            marks.append(
+                pytest.mark.xfail(
+                    torch_version_lt(2, 11, 0),
+                    strict=True,
+                    raises=torch.onnx.OnnxExporterError,
+                    reason="the dynamo exporter of torch < 2.11 cannot export torch.while_loop",
+                )
+            )
         if cls.__name__ in _OLD_EXPORTER_FAILURES:
             marks.append(
                 pytest.mark.xfail(torch_version_lt(2, 9, 0), reason="the dynamo exporter of torch < 2.9", strict=False)
