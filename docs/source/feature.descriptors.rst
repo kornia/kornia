@@ -34,6 +34,12 @@ For detection and description together, use the :ref:`SIFT pipeline guide <sift-
 All three support RootSIFT normalization. They return kornia's angle-major layout;
 :func:`convert_sift_descriptor_layout` reorders bins to OpenCV's layout. Layout
 conversion does not make differently sampled descriptors numerically equivalent.
+The converter expects the descriptor dimension last. For a dense map, move its
+channels last before conversion and restore them afterwards::
+
+    opencv_dense = convert_sift_descriptor_layout(
+        dense.movedim(1, -1), "kornia", "opencv"
+    ).movedim(-1, 1)
 
 :class:`SIFTDescriptorFromPyramid` builds its own pyramid rather than reusing a
 detector's Gaussian layers. It constructs histogram maps only for octaves used by
