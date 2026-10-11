@@ -51,9 +51,9 @@ class Hyperplane(nn.Module):
           ``load_state_dict()`` and ``.to()`` include both tensors. As in
           :class:`~kornia.geometry.line.ParametrizedLine`, a floating-point tensor without autograd history becomes
           an ``nn.Parameter``: a plane built from plain tensors, including the result of :meth:`through` and
-          :func:`fit_plane`, has trainable parameters, and the distances and projections it returns require
-          grad. A caller's ``nn.Parameter`` is kept, a tensor with autograd history keeps that history, and an
-          integer tensor is stored as a buffer.
+          :func:`fit_plane` on points without autograd history, has trainable parameters, and the distances and
+          projections it returns require grad. A caller's ``nn.Parameter`` is kept, a tensor with autograd history
+          keeps that history, and an integer tensor is stored as a buffer.
 
     Args:
         n: The normal vector :math:`n`, a :class:`~kornia.geometry.vector.Vector3`.
