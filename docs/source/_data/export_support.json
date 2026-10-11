@@ -3962,8 +3962,8 @@
       "where": ""
     },
     {
-      "compile": "fail",
-      "compile_detail": "inductor bug in this torch version (KeyError on a tensor storage while lowering the graph)",
+      "compile": "ok",
+      "compile_detail": "",
       "export": "ok",
       "export_detail": "",
       "graph_breaks": 0,
@@ -3996,8 +3996,8 @@
       "where": ""
     },
     {
-      "compile": "fail",
-      "compile_detail": "inductor bug in this torch version (KeyError on a tensor storage while lowering the graph)",
+      "compile": "ok",
+      "compile_detail": "",
       "export": "ok",
       "export_detail": "",
       "graph_breaks": 0,
@@ -4013,8 +4013,8 @@
       "where": ""
     },
     {
-      "compile": "fail",
-      "compile_detail": "inductor bug in this torch version (KeyError on a tensor storage while lowering the graph)",
+      "compile": "ok",
+      "compile_detail": "",
       "export": "ok",
       "export_detail": "",
       "graph_breaks": 0,

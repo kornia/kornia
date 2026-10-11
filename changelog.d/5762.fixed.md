@@ -1,0 +1,1 @@
+`SIFTFeature(descriptor_backend="pyramid")` and `SIFTDescriptorFromPyramid` now estimate orientation from smoothed, densely sampled gradient maps without extracting image patches. Descriptor histograms are independent of orientation resolution, and separable spatial pooling reduces CPU extraction cost.

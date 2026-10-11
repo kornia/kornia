@@ -165,6 +165,13 @@ class TestSpatialSoftArgmax2d(BaseTester):
         m = kornia.geometry.subpix.SpatialSoftArgmax2d()
         assert m(sample).shape == (2, 1, 2)
 
+    @pytest.mark.parametrize("shape", [(0, 3, 4, 5), (2, 0, 4, 5)])
+    def test_empty_batch_or_channels(self, device, dtype, shape):
+        sample = torch.rand(shape, device=device, dtype=dtype)
+        m = kornia.geometry.subpix.SpatialSoftArgmax2d()
+        assert m(sample).shape == (*shape[:2], 2)
+        assert kornia.geometry.subpix.spatial_soft_argmax2d(sample).shape == (*shape[:2], 2)
+
     def test_top_left_normalized(self, device, dtype):
         sample = torch.zeros(1, 1, 2, 3, device=device, dtype=dtype)
         sample[..., 0, 0] = 1e16

@@ -487,6 +487,21 @@ class TestInverse3x3ClosedForm(BaseTester):
 
 
 class TestSvdCast:
+    @pytest.mark.parametrize("shape", [(2, 5, 3), (2, 3, 5), (3, 32, 128)])
+    @pytest.mark.parametrize("full_matrices", [False, True])
+    def test_rectangular_factors(self, device, dtype, shape, full_matrices):
+        a = torch.randn(*shape, device=device, dtype=dtype)
+        # The largest batch also exercises the CPU fallback on MPS (8192 input elements).
+        u, s, v = _torch_svd_cast(a, full_matrices=full_matrices)
+        batch, m, n = shape
+        rank = min(m, n)
+        assert u.shape == (batch, m, m if full_matrices else rank)
+        assert s.shape == (batch, rank)
+        assert v.shape == (batch, n, n if full_matrices else rank)
+        assert all(t.dtype == dtype and t.device == a.device for t in (u, s, v))
+        tol_val = 1e-1 if dtype in (torch.float16, torch.bfloat16) else 1e-3
+        assert_close(a, u[..., :rank] @ torch.diag_embed(s) @ v[..., :rank].mT, atol=tol_val, rtol=tol_val)
+
     def test_smoke(self, device, dtype):
         a = torch.randn(5, 3, 3, device=device, dtype=dtype)
         u, s, v = _torch_svd_cast(a)

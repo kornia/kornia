@@ -729,6 +729,9 @@ class MultiResolutionDetector(nn.Module):
     detector suppresses on the whole response and removes the strip from the suppression output instead;
     see :meth:`detect_features_on_single_level`.
 
+    Detections are maxima of the response. For a signed response whose minima are features as well, such as a
+    difference of Gaussians, pass its magnitude, as :class:`~kornia.feature.SIFTFeature` does.
+
     Args:
         model: response function, such as KeyNet or BlobHessian
         num_features: Number of features to detect. Every pyramid level is searched for this many
