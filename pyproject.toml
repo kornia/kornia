@@ -37,6 +37,7 @@ Issues = "https://github.com/kornia/kornia/issues"
 "Source Code" = "https://github.com/kornia/kornia"
 
 [project.optional-dependencies]
+profiler = ["pandas"]
 dev = [
   "coverage",
   "kornia[onnx]",
