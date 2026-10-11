@@ -119,6 +119,19 @@ class TestSOLD2(BaseTester):
             torch.diag(torch.ones(3, device=device, dtype=dtype)), torch.eye(3, device=device, dtype=dtype)
         )
 
+    def test_match_segment_dtype_differs_from_descriptors_5722(self, device, dtype):
+        # SOLD2.forward returns float32 segments whatever the model dtype, so match must accept segments whose
+        # dtype differs from the descriptor map's, in both directions.
+        sold2 = SOLD2(pretrained=False).to(device, dtype)
+        seg = torch.tensor(
+            [[[10.0, 10.0], [60.0, 90.0]], [[20.0, 70.0], [80.0, 20.0]], [[85.0, 5.0], [85.0, 120.0]]], device=device
+        )
+        desc = torch.randn(1, 128, 24, 32, device=device, dtype=dtype)
+        # identical segments and descriptors in both images: every line matches itself
+        assert sold2.match(seg, seg, desc, desc).tolist() == [0, 1, 2]
+        desc32 = desc.float()
+        assert sold2.match(seg.to(dtype), seg.to(dtype), desc32, desc32).tolist() == [0, 1, 2]
+
 
 class TestWunschLineMatcher(BaseTester):
     def test_needleman_wunsch_keeps_torch_diag_5722(self, device, dtype):
