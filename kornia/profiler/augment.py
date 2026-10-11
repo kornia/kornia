@@ -137,11 +137,10 @@ class AugmentationPipeline:
             combined_name = "+".join([name for name, _ in self.augmentations])
             return {combined_name: self.pipeline(x)}
 
-        elif self.mode == "individual":
+        if self.mode == "individual":
             outputs = {}
             for name, aug in self.augmentations:
                 outputs[name] = aug(x)
             return outputs
 
-        else:
-            raise ValueError(f"Unknown mode: {self.mode}")
+        raise ValueError(f"Unknown mode: {self.mode}")

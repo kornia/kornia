@@ -63,9 +63,10 @@ from kornia.profiler import model_profile_under_input_changes
 model = nn.Sequential(nn.Conv2d(3, 8, 3, padding=1), nn.ReLU()).eval()
 images = torch.rand(16, 3, 32, 32)
 report = model_profile_under_input_changes(
-    model, images, images * 0.8,
-    config={"layers": ["0", "1"], "processing": "none",
-            "metrics": ["linear", "cosine", "l2", "gram"]},
+    model,
+    images,
+    images * 0.8,
+    config={"layers": ["0", "1"], "processing": "none", "metrics": ["linear", "cosine", "l2", "gram"]},
 )
 print(report.results)  # List of dictionaries; does not require pandas.
 # report.save_as_report("report.csv")  # Requires optional pandas dependency.

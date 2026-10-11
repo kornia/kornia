@@ -77,19 +77,17 @@ class FeatureExtractor:
         if self.processing == "none":
             return x
 
-        elif self.processing == "flatten":
+        if self.processing == "flatten":
             return x.reshape(x.size(0), -1)
 
-        elif self.processing == "gap":
+        if self.processing == "gap":
             # apply GAP only if feature map is 4D
             if x.dim() == 4:
                 return F.adaptive_avg_pool2d(x, (1, 1)).reshape(x.size(0), -1)
-            else:
-                # fallback to flatten for non-CNN layers
-                return x.reshape(x.size(0), -1)
+            # fallback to flatten for non-CNN layers
+            return x.reshape(x.size(0), -1)
 
-        else:
-            raise ValueError(f"Unknown processing: {self.processing}")
+        raise ValueError(f"Unknown processing: {self.processing}")
 
     def _hook_fn(self, name):
         r"""Create a forward hook function for a given layer.
