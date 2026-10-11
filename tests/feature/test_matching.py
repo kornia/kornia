@@ -610,7 +610,8 @@ def _adalam_scene(device, H=240, W=320, n_in=400, n_out=200, n_extra2=37, D=32, 
 
 class TestLightGlueMatcherSize(BaseTester):
     def test_swapped_hw_names_hw_5724(self, device):
-        # LightGlueMatcher takes hw as (height, width); a random-weight LightGlue is enough to reach the range check
+        # LightGlueMatcher takes hw as (height, width). Its constructor downloads weights, so the matcher is built
+        # around a random-weight LightGlue, enough to reach the range check; forward reads only these two attributes.
         matcher = LightGlueMatcher.__new__(LightGlueMatcher)
         torch.nn.Module.__init__(matcher)
         matcher.feature_name = "disk"
