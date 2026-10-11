@@ -894,12 +894,13 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     Args:
         input: image torch.Tensor with shape :math:`(*, C, H, W)` to posterize.
         bits: number of high bits. Must be in range [0, 8].
-            If int or one element torch.Tensor, input will be posterized by this bits.
-            If 1-d torch.Tensor, input will be posterized sample-wise, len(bits) == input.shape[0]
-            -- one value per sample in the batch, not per channel; any other length raises
+            If int or one-element torch.Tensor, the same bits value is used across the whole batch.
+            A 1-d tensor with multiple elements specifies one value per sample, not per channel;
+            its length must equal the normalized batch size ``B`` after flattening leading dimensions.
+            Any other length raises
             ``Batch size must be equal between bits and input``.
-            If n-d torch.Tensor, input will be posterized element-channel-wisely,
-            bits.shape == input.shape[:len(bits.shape)]
+            A tensor with multiple dimensions specifies element-channel-wise values; its shape must
+            match the corresponding leading dimensions of the normalized ``(B, C, H, W)`` input.
 
     Returns:
         Image with reduced color channels with shape :math:`(*, C, H, W)`.
@@ -999,8 +1000,10 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
         factor: blend factor between the smoothed copy and the input. ``0`` returns the smoothed image,
             ``1`` returns the input, and a factor above ``1`` sharpens. It is not validated: ``0`` and
             negative factors are accepted and extrapolate past the smoothed image.
-            If float or one element torch.Tensor, input will be sharpened by the same factor across the whole batch.
-            If 1-d torch.Tensor, input will be sharpened element-wisely, len(factor) == len(input).
+            A scalar or 0-d tensor applies the same factor across the whole batch.
+            A 1-d tensor specifies one factor per sample; its length must equal the normalized batch
+            size ``B`` after flattening leading dimensions. A length-one vector does not broadcast
+            when ``B`` is greater than one.
 
     Returns:
         Sharpened image or images with shape :math:`(*, C, H, W)`.
