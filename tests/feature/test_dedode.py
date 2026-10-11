@@ -222,6 +222,10 @@ class TestDeDoDeNoGrad(BaseTester):
         for out in (kpts, scores, descs, model.describe(x)):
             assert not out.is_inference()
             assert not out.requires_grad
+        # `sample_keypoints` has a `no_grad` of its own, so the outputs of `detect` cannot show whether the network
+        # ran with gradients off: check what the networks were fed.
+        assert not model.detector.seen[0].requires_grad
+        assert not model.descriptor.seen[0].requires_grad
 
     def test_dynamo_detect_5737(self, device, dtype, torch_optimizer, cudnn_tf32_follows_option):
         self._skip_half(dtype)
