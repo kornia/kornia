@@ -412,13 +412,15 @@ class TestIntensityValueRangeConventions(BaseTester):
             assert torch.isfinite(out).all()
 
     # Issue #4576: a skipped row must not trigger a value check or contribute a NaN gradient.
-    def test_skipped_p_gate_does_not_evaluate_image_4576(self, device, dtype):
+    def test_convention_p_gate_skipped_sample_has_no_effect_4576(self, device, dtype):
         ramp = torch.linspace(0, 1, 1024).reshape(1, 1, 32, 32)
         image = torch.cat([ramp, ramp * 2.0]).to(device=device, dtype=dtype)
         for cls in (K.RandomEqualize, K.RandomClahe):
             torch.manual_seed(_FORWARD_SEED)
             out = cls(p=0.0)(image)
             assert torch.equal(out, image)
+        volume = image.reshape(2, 1, 4, 16, 16)
+        assert torch.equal(K.RandomEqualize3D(p=0.0)(volume), volume)
         values = torch.tensor([0.0, 0.25, 1.0]).reshape(1, 1, 1, 3).repeat(2, 1, 1, 1)
         values = values.to(device=device, dtype=dtype).requires_grad_()
         torch.manual_seed(_FORWARD_SEED)
@@ -450,7 +452,30 @@ class TestIntensityValueRangeConventions(BaseTester):
         assert torch.equal(out[1], image[1])
         out.sum().backward()
         assert torch.isfinite(image.grad).all()
+        # Exclude x=1, where adjust_gamma's clamp derivative differs across torch releases.
+        self.assert_close(image.grad[0, ..., :2], 0.5 / image[0, ..., :2].detach().sqrt())
         self.assert_close(image.grad[1], torch.ones_like(image.grad[1]))
+
+    @pytest.mark.parametrize(
+        ("factory", "substituted"),
+        [(lambda: K.RandomGamma((0.5, 0.5), p=0.5), True), (lambda: K.RandomBrightness((0.9, 1.1), p=0.5), False)],
+    )
+    def test_p_gate_substitutes_skipped_samples_only_where_needed_4576(self, factory, substituted, device, dtype):
+        image = torch.linspace(0, 1, 384, device=device, dtype=dtype).reshape(2, 3, 8, 8)
+        aug = factory()
+        params = aug.forward_parameters(image.shape)
+        params["batch_prob"] = torch.tensor([1.0, 0.0])
+        seen = []
+        original = aug.apply_transform
+
+        def spy(input, *args, **kwargs):
+            seen.append(input)
+            return original(input, *args, **kwargs)
+
+        aug.apply_transform = spy
+        aug(image, params=params)
+        assert torch.equal(seen[0][0], image[0])
+        assert torch.equal(seen[0][1], torch.full_like(image[1], 0.5) if substituted else image[1])
 
 
 class TestIntensityColourConventions(BaseTester):

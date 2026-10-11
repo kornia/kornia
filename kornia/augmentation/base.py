@@ -368,6 +368,9 @@ class _AugmentationBase(_BasicAugmentationBase):
 
     """
 
+    # Only transforms that reject skipped input values or have unbounded derivatives need substitution.
+    SUBSTITUTE_SKIPPED_SAMPLES = False
+
     def apply_transform(
         self,
         input: torch.Tensor,
@@ -436,11 +439,10 @@ class _AugmentationBase(_BasicAugmentationBase):
             output = self.apply_transform(in_tensor, params, flags, transform=transform)
         else:
             to_apply = torch.atleast_1d(params["batch_prob"] > 0.5)
-            gate = to_apply.view(-1, *([1] * (in_tensor.ndim - 1))).to(in_tensor.device)
-            # A skipped row still passes through apply_transform before the output blend.
-            # Give that branch safe values so it cannot reject the skipped input or leave
-            # undefined gradients in the discarded result.
-            transform_input = torch.where(gate, in_tensor, torch.full_like(in_tensor, 0.5))
+            transform_input = in_tensor
+            if self.SUBSTITUTE_SKIPPED_SAMPLES:
+                gate = to_apply.view(-1, *([1] * (in_tensor.ndim - 1))).to(in_tensor.device)
+                transform_input = torch.where(gate, in_tensor, 0.5)
             output_transformed = self.apply_transform(transform_input, params, flags, transform=transform)
             output_not_transformed = self.apply_non_transform(in_tensor, params, flags, transform=transform)
             output = self._blend_by_prob(output_transformed, output_not_transformed, to_apply)

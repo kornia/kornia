@@ -85,9 +85,9 @@ class AugmentationBase2D(_AugmentationBase):
           (`#4424 <https://github.com/kornia/kornia/issues/4424>`_).
         - this base samples ``p`` per sample and uses ``p_batch`` as a call-wide gate. ``same_on_batch=True``
           shares applicable sampled values across the batch. Concrete constructors need not expose ``p_batch``;
-          see `#4425 <https://github.com/kornia/kornia/issues/4425>`_. Skipped image samples are replaced
-          with safe values during the transform, then returned unchanged by the gate; their gradients follow
-          the identity path.
+          see `#4425 <https://github.com/kornia/kornia/issues/4425>`_. A sample the gate skips comes back
+          with its input values and an identity gradient, and it cannot make the call raise; a class whose
+          transform checks input values or has an unbounded derivative runs it on 0.5 for skipped samples.
         - parameter sampling normally uses CPU defaults independently of the image device. Moving RNG state or
           samplers is incomplete for some generators, and returned parameter placement is a separate concern;
           see `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
