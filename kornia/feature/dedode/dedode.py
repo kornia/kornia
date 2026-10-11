@@ -159,8 +159,13 @@ class DeDoDe(nn.Module):
         """
         _B, _C, H, W = images.shape
         images = self._preprocess(images, apply_imagenet_normalization, pad_if_not_divisible)
-        keypoints, scores = self.detect(images, n=n, apply_imagenet_normalization=False, crop_h=H, crop_w=W)
-        descriptions = self.describe(images, keypoints, apply_imagenet_normalization=False, crop_h=H, crop_w=W)
+        # ``images`` is already normalised and, when asked, padded: the calls below must do neither again.
+        keypoints, scores = self.detect(
+            images, n=n, apply_imagenet_normalization=False, pad_if_not_divisible=False, crop_h=H, crop_w=W
+        )
+        descriptions = self.describe(
+            images, keypoints, apply_imagenet_normalization=False, pad_if_not_divisible=False, crop_h=H, crop_w=W
+        )
         return dedode_denormalize_pixel_coordinates(keypoints, H, W), scores, descriptions
 
     @torch.inference_mode()

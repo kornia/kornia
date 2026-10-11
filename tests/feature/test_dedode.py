@@ -180,11 +180,15 @@ class TestDeDoDePadding(BaseTester):
         for seen in model.detector.seen + model.descriptor.seen:
             self.assert_close(seen, model.normalizer(x))
 
-    def test_pad_can_be_disabled(self, device, dtype):
+    @pytest.mark.parametrize("entry", ["forward", "detect_describe"])
+    def test_pad_can_be_disabled(self, device, dtype, entry):
         model = self._model(device, dtype)
         x = self._image(device, dtype)
-        model.detect(x, n=4, pad_if_not_divisible=False)
-        model.describe(x, pad_if_not_divisible=False)
+        if entry == "forward":
+            model(x, n=4, pad_if_not_divisible=False)
+        else:
+            model.detect(x, n=4, pad_if_not_divisible=False)
+            model.describe(x, pad_if_not_divisible=False)
         assert model.detector.seen[0].shape == (1, 3, 50, 80)
         assert model.descriptor.seen[0].shape == (1, 3, 50, 80)
 
