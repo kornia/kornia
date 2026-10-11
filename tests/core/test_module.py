@@ -150,7 +150,7 @@ class TestImageModuleMixIn:
             getattr(img_module, method)(**kwargs)
             sink.assert_called_once()
             grid = sink.call_args.args[-1]
-            assert grid.shape == (3, 4, 0)
+            assert grid.shape == (3, 0, 4)
 
     def test_to_pil_4d_tensor_returns_list(self, img_module):
         # 4D (B, C, H, W) tensor -> list of PIL Images
