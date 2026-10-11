@@ -1675,6 +1675,10 @@ class TestLAFIsTouchingBoundary(BaseTester):
         expected = kornia.feature.laf_is_inside_image(laf, img, 0)
         op = torch_optimizer(kornia.feature.laf_is_inside_image)
         assert torch.equal(op(laf, img, 0), expected)
+        # The fixture compiles without `fullgraph`, so it would pass on a graph break too, and
+        # `laf_is_inside_image` is meant to trace as one graph -- assert that directly.
+        torch._dynamo.reset()
+        assert torch.equal(torch.compile(kornia.feature.laf_is_inside_image, fullgraph=True)(laf, img, 0), expected)
 
     def test_jit(self, device, dtype):
         w, h = 10, 5
