@@ -37,13 +37,6 @@ from .laf import laf_from_center_scale_ori, laf_is_filled
 from .orientation import PassLAF
 from .responses import BlobHessian
 
-# Max |sin| among the 11 boundary points sampled by laf_to_boundary_points(n_pts=12):
-#   angles = linspace(0, 2π, n_pts - 1) = linspace(0, 2π, 11) → k * 2π/10 for k=0..10
-#   max|sin| at k=2 and k=3: sin(2π/5) ≈ 0.9511;  max|cos| at k=0: cos(0) = 1.0
-# Used to inline the boundary check in _process_octave for isotropic LAFs (rotmat=eye(2)),
-# avoiding the basis allocations and the bmm every octave.
-_MAX_ABS_SIN_12: float = math.sin(2 * 2 * math.pi / 10)  # ≈ 0.9511
-
 
 def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_levels: int) -> torch.Tensor:
     r"""Auxiliary function for ScaleSpaceDetector.
@@ -530,12 +523,8 @@ class ScaleSpaceDetector(nn.Module):
         )
 
         # Inline equivalent of laf_is_inside_image(scale_laf(current_lafs, 0.5), octave[:, 0], 5)
-        # for isotropic LAFs (rotmat = eye(2)).  Avoids: scale_laf (torch.cat), and
-        # laf_to_boundary_points (linspace/sin/cos allocations and their launches, plus a small
-        # host->device copy of the basis).  Since #4217 that op no longer transfers a tensor that
-        # scales with the LAF count, so what is saved here is per-call overhead, not bandwidth.
-        # For the axis-aligned isotropic case the 12-pt boundary check reduces to:
-        #   max x-extent = max|sin| * half_s;  max y-extent = max|cos| * half_s = half_s
+        # for isotropic LAFs (rotmat = eye(2)), without the torch.cat of scale_laf. The half frame
+        # half_s * I is a circle, so it spans exactly cx -+ half_s and cy -+ half_s.
         half_s = current_lafs[:, :, 0, 0] * 0.5
         cx = current_lafs[:, :, 0, 2]
         cy = current_lafs[:, :, 1, 2]
@@ -543,12 +532,7 @@ class ScaleSpaceDetector(nn.Module):
         # Valid pixel coordinates run 0 .. w-1 / 0 .. h-1, so the upper bound is (size - 1) - border.
         x_max = float(w - 1) - 5
         y_max = float(h - 1) - 5
-        good_mask = (
-            (cx - half_s * _MAX_ABS_SIN_12 >= 5)
-            & (cx + half_s * _MAX_ABS_SIN_12 <= x_max)
-            & (cy - half_s >= 5)
-            & (cy + half_s <= y_max)
-        )
+        good_mask = (cx - half_s >= 5) & (cx + half_s <= x_max) & (cy - half_s >= 5) & (cy + half_s <= y_max)
         if oct_keep is not None:
             # The mask was checked at the integer NMS site, and the sub-pixel step has since moved
             # the centre -- across the mask boundary, when the true peak lies just inside the zero
