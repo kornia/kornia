@@ -68,7 +68,7 @@ class SIFTDescriptorFromPyramid(nn.Module):
         num_spatial_bins: Number of descriptor spatial bins per axis.
         spatial_bin_size: Side of the DenseSIFT spatial pooling window, in pixels.
             The default 8 approximately matches the 19-pixel octave support to the patch SIFT
-            descriptor's 16-pixel pooling bins.
+            descriptor's 17-pixel pooling bins at its default 41-pixel patch.
         rootsift: If ``True``, apply RootSIFT after clipping and normalization.
         clipval: Descriptor clipping threshold.
         orientation_bins: Number of bins for dominant-orientation assignment.

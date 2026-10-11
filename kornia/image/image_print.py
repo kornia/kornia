@@ -343,10 +343,7 @@ def rgb2short(rgb: str) -> Tuple[str, str]:
             if s <= part <= b:
                 s1 = abs(s - part)
                 b1 = abs(b - part)
-                if s1 < b1:
-                    closest = s
-                else:
-                    closest = b
+                closest = s if s1 < b1 else b
                 res.append(closest)
                 break
             i += 1
@@ -421,4 +418,4 @@ def print_image(image: Union[str, torch.Tensor], max_width: int = 96) -> None:
         img = image
     else:
         raise RuntimeError(f"Expect image type to be either torch.Tensor or str. Got {type(image)}.")
-    print(image_to_string(img, max_width))
+    print(image_to_string(img, max_width))  # noqa: T201 - print_image prints by design

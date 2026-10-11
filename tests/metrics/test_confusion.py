@@ -17,6 +17,7 @@
 
 import pytest
 import torch
+from torch._dynamo.testing import CompileCounter
 
 import kornia
 from kornia.core._compat import torch_version_lt
@@ -266,6 +267,20 @@ class TestConfusionMatrix(BaseTester):
         exported = torch.export.export(_ConfusionMatrix(), (pred, target), strict=True).module()
         for p, t in ((pred, target), (target, pred.flip(-1))):
             self.assert_close(exported(p, t), kornia.metrics.confusion_matrix(p, t, num_classes=3), rtol=0, atol=0)
+
+    @pytest.mark.skipif(
+        torch_version_lt(2, 14, 0), reason="fullgraph tracing cannot capture the bincount before torch 2.14"
+    )
+    def test_trace_counts_like_eager(self, device, dtype):
+        # The range check reads the data, so any capture has to skip it, not only export (#5037).
+        pred = torch.tensor([[0, 1, 2, 2], [1, 1, 0, 2]], device=device)
+        target = torch.tensor([[0, 2, 2, 1], [1, 0, 0, 2]], device=device)
+        counter = CompileCounter()
+        torch._dynamo.reset()
+        traced = torch.compile(kornia.metrics.confusion_matrix, backend=counter, fullgraph=True)
+        actual = traced(pred, target, num_classes=3)
+        self.assert_close(actual, kornia.metrics.confusion_matrix(pred, target, num_classes=3), rtol=0, atol=0)
+        assert counter.frame_count == 1
 
 
 class TestConventionsConfusionMatrix(BaseTester):

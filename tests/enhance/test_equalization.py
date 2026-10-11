@@ -157,7 +157,7 @@ class TestEqualization(BaseTester):
 
         y = enhance.equalize_clahe(x, 40.0, (1, 1))
 
-        assert y.sum().item() == pytest.approx(32.87843322753906)
+        assert y.sum().item() == pytest.approx(8416 / 255)
         assert y.max().item() == pytest.approx(1.0)
 
     @pytest.mark.parametrize("grid_size", [(1, 1), (1, 2), (2, 1), (2, 2)])
@@ -276,25 +276,25 @@ class TestEqualization(BaseTester):
                 [
                     [
                         [
-                            0.0471,
-                            0.0980,
+                            0.051,
+                            0.102,
                             0.1490,
                             0.2000,
-                            0.2471,
+                            0.251,
                             0.2980,
                             0.3490,
                             0.3490,
-                            0.4471,
-                            0.4471,
+                            0.451,
+                            0.451,
                             0.5490,
                             0.5490,
-                            0.6471,
-                            0.6471,
+                            0.651,
+                            0.651,
                             0.6980,
                             0.7490,
                             0.8000,
-                            0.8471,
-                            0.8980,
+                            0.851,
+                            0.902,
                             1.0000,
                         ]
                     ]
@@ -317,25 +317,25 @@ class TestEqualization(BaseTester):
                 [
                     [
                         [
-                            0.2471,
-                            0.4980,
+                            0.251,
+                            0.502,
                             0.7490,
                             0.6667,
-                            0.4980,
-                            0.4980,
+                            0.5007,
+                            0.502,
                             0.7490,
                             0.4993,
-                            0.4980,
-                            0.2471,
+                            0.5007,
+                            0.251,
                             0.7490,
                             0.4993,
-                            0.4980,
-                            0.2471,
-                            0.4980,
+                            0.5007,
+                            0.251,
+                            0.502,
                             0.4993,
                             0.3333,
-                            0.2471,
-                            0.4980,
+                            0.251,
+                            0.502,
                             1.0000,
                         ]
                     ]
@@ -360,18 +360,18 @@ class TestEqualization(BaseTester):
             [
                 [
                     [
-                        0.1216,
-                        0.1843,
-                        0.3098,
-                        0.2889,
-                        0.3098,
-                        0.3725,
-                        0.4353,
-                        0.4353,
-                        0.4980,
-                        0.4353,
+                        0.1255,
+                        0.1882,
+                        0.3137,
+                        0.2928,
+                        0.3137,
+                        0.3765,
+                        0.4392,
+                        0.4392,
+                        0.5007,
+                        0.4392,
                         0.6235,
-                        0.6235,
+                        0.6248,
                         0.6235,
                         0.6235,
                         0.6863,
@@ -419,27 +419,59 @@ class TestEqualization(BaseTester):
         self.assert_close(res[..., 0, :], expected, low_tolerance=True)
         self.assert_close(res_diff[..., 0, :], exp_diff, low_tolerance=True)
 
+    @pytest.mark.parametrize("count, expected_level", [(100, 100), (128, 128)])
+    @pytest.mark.parametrize("clip_as_tensor", [False, True])
+    def test_clahe_lut_rounding(self, count, expected_level, clip_as_tensor, device, dtype):
+        # With clipping disabled, the first CDF value is count * 255 / 256:
+        # 99.609375 rounds to 100, and the tie 127.5 rounds to 128 (#5659).
+        img = torch.ones(256, device=device, dtype=dtype)
+        img[:count] = 0
+        img = img.view(1, 1, 16, 16)
+        if clip_as_tensor:
+            clip = torch.tensor([0.0], device=device, dtype=dtype)
+            out = enhance.equalization._equalize_clahe(img, clip, (1, 1), False)
+        else:
+            out = enhance.equalize_clahe(img, 0.0, (1, 1))
+        expected = torch.full_like(img, 255).flatten()
+        expected[:count] = expected_level
+        self.assert_close(out, expected.view_as(img).div(255), rtol=0, atol=0)
+        assert out.dtype == dtype
+        assert out.device == device
+
+    def test_clahe_lut_rounding_ties_to_even(self, device, dtype):
+        # Four bins with counts [1, 2, 1, 2] give CDF values [0.5, 1.5, 2, 3].
+        tiles = torch.tensor([0.0, 0.25, 0.25, 0.5, 0.75, 0.75], device=device, dtype=dtype)
+        luts = enhance.equalization._compute_luts(tiles.view(1, 1, 1, 1, 2, 3), num_bins=4, clip=0.0)
+        expected = torch.tensor([0.0, 2.0, 2.0, 3.0], device=device, dtype=dtype)
+        self.assert_close(luts.flatten(), expected, rtol=0, atol=0)
+
+    def test_clahe_differentiable_lut_is_not_rounded(self, device, dtype):
+        tiles = torch.ones(256, device=device, dtype=dtype)
+        tiles[:100] = 0
+        luts = enhance.equalization._compute_luts(tiles.view(1, 1, 1, 1, 16, 16), clip=0.0, diff=True)
+        assert ((luts > luts.floor()) & (luts < luts.ceil())).any()
+
     @pytest.mark.parametrize("clip_as_tensor", [False, True])
     def test_clahe_residual_spread(self, clip_as_tensor, device, dtype):
         # One 2 x 4 tile of 8 pixels, 4 at level 0 and 4 at level 100, clip limit 40: the per-bin limit is
         # max(40 * 8 // 256, 1) = 1, so 6 counts are clipped. OpenCV spreads a residual below the bin count over
         # every (256 // 6) = 42nd bin from bin 0 (bins 0, 42, 84, 126, 168, 210), which leaves 2 counts at or
-        # below bin 0 and 5 at or below bin 100: the levels map to floor(2 * 255 / 8) = 63 and
-        # floor(5 * 255 / 8) = 159. Piling the residual into bins 0..5 instead gave 8 counts at bin 100 and
+        # below bin 0 and 5 at or below bin 100: the levels map to round(2 * 255 / 8) = 64 and
+        # round(5 * 255 / 8) = 159. Piling the residual into bins 0..5 instead gave 8 counts at bin 100 and
         # mapped it to 255.
         img = torch.tensor([[0.0] * 4, [100.0] * 4], device=device, dtype=dtype).div(255.0)[None, None]
         clip = torch.tensor([40.0], device=device, dtype=dtype) if clip_as_tensor else 40.0
         out = enhance.equalization._equalize_clahe(img, clip, (1, 1), False)
-        expected = torch.tensor([[63.0] * 4, [159.0] * 4], device=device, dtype=dtype).div(255.0)[None, None]
-        self.assert_close(out, expected)
+        expected = torch.tensor([[64.0] * 4, [159.0] * 4], device=device, dtype=dtype).div(255.0)[None, None]
+        self.assert_close(out, expected, rtol=0, atol=0)
 
     @pytest.mark.parametrize("clip_as_tensor", [False, True])
     def test_clahe_residual_spread_after_the_whole_share(self, clip_as_tensor, device, dtype):
         # One 32 x 32 tile of 1024 pixels: 342 in bin 0, 341 in bin 100 and 341 in bin 200. Clip limit 40 caps every
         # bin at 40 * 1024 // 256 = 160, so 544 counts are clipped. Every bin takes the whole share 544 // 256 = 2, and
         # the residual 32 goes, as in OpenCV, to every 256 // 32 = 8th bin from bin 0. The LUT is
-        # floor(cumsum * 255 / 1024): bin 100 maps to floor(535 * 255 / 1024) = 133 and bin 200 to
-        # floor(908 * 255 / 1024) = 226, where writing the residual into bins 0..31 gave 137 and 227.
+        # round(cumsum * 255 / 1024): bin 100 maps to round(535 * 255 / 1024) = 133 and bin 200 to
+        # round(908 * 255 / 1024) = 226, where writing the residual into bins 0..31 would give 138 and 228.
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("the cumulative counts of a 1024-pixel tile are not exact below float32")
         values = torch.cat([torch.zeros(342), torch.full((341,), 100 / 256), torch.full((341,), 200 / 256)])
@@ -449,7 +481,7 @@ class TestEqualization(BaseTester):
         hist = torch.full((256,), 2.0, dtype=torch.float64)
         hist[::8] += 1
         hist[[0, 100, 200]] += 160
-        expected = (hist.cumsum(0) * 255 / 1024).floor()
+        expected = (hist.cumsum(0) * 255 / 1024).round()
         assert expected[100] == 133
         assert expected[200] == 226
         self.assert_close(luts.view(256), expected.to(device, dtype))
@@ -460,9 +492,9 @@ class TestEqualization(BaseTester):
         # rational evaluation of CLAHE pixel by pixel, independent of this implementation's tile indexing; the
         # reference is an exact-Fraction restatement of _compute_tiles/_compute_luts/_compute_equalized_tiles
         # (tile size ceil(n/g) rounded up to even, trailing reflect pad, floor(v*256) histogram, clip and
-        # redistribute, floor(cumsum*255/P), axis blend weight (T-1-k)/(T-1)); it is posted in full on #4628, with
-        # the residual of the clipped counts now spread over every (256 // residual)-th bin from bin 0 as OpenCV
-        # does, instead of over the first ``residual`` bins.
+        # redistribute, round(cumsum*255/P), axis blend weight (T-1-k)/(T-1)); the reference posted on #4628 is
+        # evaluated here with round-to-even LUTs and the clipped residual spread over every (256 // residual)-th
+        # bin from bin 0, as OpenCV does.
         codes = torch.tensor(
             [
                 [1, 2, 6, 7, 1, 7, 1, 5, 4, 8, 4, 6],
@@ -480,17 +512,25 @@ class TestEqualization(BaseTester):
         img = levels[codes][None, None]
         expected = torch.tensor(
             [
-                [279, 423, 1431, 1671, 279, 1575, 279, 1239, 903, 2295, 855, 1431],
-                [423, 1719, 1719, 2295, 279, 999, 1575, 567, 1191, 279, 567, 279],
-                [711, 711, 1143, 1191, 1623, 567, 999, 2295, 1191, 1143, 855, 855],
-                [1383, 1143, 327, 999, 1143, 711, 471, 2295, 311, 759, 1719, 1719],
-                [519, 375, 375, 1543, 423, 2295, 2295, 647, 503, 567, 855, 855],
-                [2295, 567, 423, 711, 2295, 711, 1143, 327, 471, 1143, 423, 1719],
-                [2295, 2295, 567, 711, 2295, 1143, 1143, 567, 375, 855, 2295, 855],
-                [567, 1431, 2295, 1479, 951, 1575, 1575, 951, 375, 423, 1431, 423],
+                [288, 432, 1431, 1671, 288, 1575, 288, 1242, 912, 2295, 864, 1431],
+                [432, 1719, 1719, 2295, 288, 1008, 1575, 576, 1197, 288, 576, 288],
+                [720, 720, 1152, 1197, 1623, 576, 1008, 2295, 1197, 1152, 864, 864],
+                [1383, 1152, 336, 1008, 1148, 720, 480, 2295, 320, 768, 1719, 1719],
+                [528, 384, 384, 1543, 432, 2295, 2295, 656, 512, 576, 864, 864],
+                [2295, 576, 432, 720, 2295, 720, 1152, 336, 480, 1152, 432, 1719],
+                [2295, 2295, 576, 720, 2295, 1152, 1152, 576, 384, 864, 2295, 864],
+                [576, 1431, 2295, 1479, 960, 1575, 1575, 960, 384, 432, 1431, 432],
             ],
             dtype=torch.float64,
         )
+        if dtype == torch.float16:
+            # 9 * 255 / 16 = 143.4375 becomes 143.5 in float16, so its LUT entry rounds to 144, not 143.
+            # Propagate that one-level difference through the exact rational interpolation weights.
+            expected[0, 7] += 6
+            expected[1, 8] += 3
+            expected[2, [3, 8]] += 3
+            expected[3, 0] += 3
+            expected[3, 4] += 4
         expected = expected.div(9 * 255).to(dtype).to(device)[None, None]
         # Both orientations: the two border regions are indexed by the grid size of different axes.
         self.assert_close(enhance.equalize_clahe(img, 40.0, (2, 3)), expected)

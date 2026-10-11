@@ -27,6 +27,7 @@ from kornia.feature.siftdesc import (
     get_sift_bin_ksize_stride_pad,
     get_sift_pooling_kernel,
 )
+from kornia.filters import gaussian_blur2d
 
 from testing.base import BaseTester, supports_conv2d, supports_replicate_padding
 
@@ -37,10 +38,62 @@ def test_get_sift_pooling_kernel(ksize):
     assert kernel.shape == (ksize, ksize)
 
 
-@pytest.mark.parametrize("ps,n_bins,ksize,stride,pad", [(41, 3, 20, 13, 5), (32, 4, 12, 8, 3)])
+# Cell centres -pad + (ksize - 1) / 2 + k * stride: (41, 3) 7 / 20 / 33, (32, 4) 3.5 / 11.5 / 19.5 / 27.5,
+# (41, 4) 5 / 15 / 25 / 35 and (11, 4) 2 / 4 / 6 / 8, each grid centred on (ps - 1) / 2. The off-centre helper of
+# #5691 rejected (11, 4): its 4-pixel kernel with pad 1 gave five cells.
+@pytest.mark.parametrize(
+    "ps,n_bins,ksize,stride,pad", [(41, 3, 21, 13, 3), (32, 4, 12, 8, 2), (41, 4, 17, 10, 3), (11, 4, 5, 2, 0)]
+)
 def test_get_sift_bin_ksize_stride_pad(ps, n_bins, ksize, stride, pad):
     out = get_sift_bin_ksize_stride_pad(ps, n_bins)
     assert out == (ksize, stride, pad)
+
+
+@pytest.mark.parametrize("ps,n_bins", [(3, 4), (0, 1)])
+def test_get_sift_bin_ksize_stride_pad_rejects_a_patch_smaller_than_the_bins_5691(ps, n_bins):
+    # A zero cell spacing used to raise ZeroDivisionError from the output-size check.
+    with pytest.raises(ValueError, match="incompatible"):
+        get_sift_bin_ksize_stride_pad(ps, n_bins)
+
+
+# Every (patch_size, num_spatial_bins) the suite builds a SIFTDescriptor with, odd/even pairs (31/32/33, 40/41,
+# 64/65), the 41-pixel default of SIFTFeature and SIFTFeatureScaleSpace, and (11, 4), which the off-centre helper
+# rejected.
+_GRID_SIZES = [
+    (6, 1), (11, 4), (15, 4), (16, 4), (19, 3), (31, 4), (32, 4), (33, 4), (40, 4), (41, 3), (41, 4), (64, 4), (65, 4),
+]  # fmt: skip
+
+
+def _flip_lr(desc: torch.Tensor, num_ang_bins: int, num_spatial_bins: int) -> torch.Tensor:
+    """The descriptor of the left-right mirrored patch, predicted from ``desc``: an angle a becomes pi - a."""
+    d = desc.view(desc.shape[0], num_ang_bins, num_spatial_bins, num_spatial_bins)
+    perm = [(num_ang_bins // 2 - a) % num_ang_bins for a in range(num_ang_bins)]
+    return d[:, perm].flip(-1).reshape(desc.shape)
+
+
+def _flip_ud(desc: torch.Tensor, num_ang_bins: int, num_spatial_bins: int) -> torch.Tensor:
+    """The descriptor of the upside-down mirrored patch, predicted from ``desc``: an angle a becomes -a."""
+    d = desc.view(desc.shape[0], num_ang_bins, num_spatial_bins, num_spatial_bins)
+    perm = [(-a) % num_ang_bins for a in range(num_ang_bins)]
+    return d[:, perm].flip(-2).reshape(desc.shape)
+
+
+def _rot90(desc: torch.Tensor, num_ang_bins: int, num_spatial_bins: int) -> torch.Tensor:
+    """The descriptor of ``torch.rot90(patch, 1, (-2, -1))``, predicted from ``desc``: an angle a becomes a - pi/2."""
+    d = desc.view(desc.shape[0], num_ang_bins, num_spatial_bins, num_spatial_bins)
+    return torch.rot90(d, 1, (-2, -1)).roll(-(num_ang_bins // 4), 1).reshape(desc.shape)
+
+
+@pytest.mark.parametrize("ps,n_bins", _GRID_SIZES)
+def test_get_sift_bin_ksize_stride_pad_centres_the_grid_5691(ps, n_bins):
+    ksize, stride, pad = get_sift_bin_ksize_stride_pad(ps, n_bins)
+    # The pooling triangle is centred at (ksize - 1) / 2 of its window; output k's window starts at k * stride - pad.
+    centres = [-pad + (ksize - 1) / 2 + k * stride for k in range(n_bins)]
+    # Mirror images about the patch centre (ps - 1) / 2, where the Gaussian weighting window is centred. Half-pixel
+    # values are exact in binary floating point.
+    assert [centres[k] + centres[n_bins - 1 - k] for k in range(n_bins)] == [ps - 1.0] * n_bins
+    assert pad >= 0
+    assert (ps + 2 * pad - ksize) // stride + 1 == n_bins
 
 
 class TestSIFTDescriptor(BaseTester):
@@ -91,6 +144,59 @@ class TestSIFTDescriptor(BaseTester):
         assert (descriptors[0, 0] > 0.1).all()
         assert (descriptors[1, 4] > 0.1).all()
 
+    @pytest.mark.parametrize("ps,n_bins", _GRID_SIZES)
+    def test_output_has_num_spatial_bins_cells_5691(self, device, dtype, ps, n_bins):
+        sift = SIFTDescriptor(ps, num_ang_bins=8, num_spatial_bins=n_bins).to(device, dtype)
+        assert sift(torch.rand(2, 1, ps, ps, device=device, dtype=dtype)).shape == (2, 8 * n_bins**2)
+
+    @pytest.mark.parametrize("ps,n_bins", _GRID_SIZES)
+    def test_cell_footprints_mirror_about_the_patch_centre_5691(self, device, ps, n_bins):
+        # What each output cell pools, read off the module's own pooling convolution: the gradient of one cell
+        # with respect to its input map. Mirroring the patch has to map every cell's footprint onto the mirrored cell's.
+        sift = SIFTDescriptor(ps, num_spatial_bins=n_bins).to(device)
+        x = torch.zeros(1, 1, ps, ps, device=device, requires_grad=True)
+        pooled = torch.nn.functional.conv2d(x, sift.pk.weight, None, sift.pk.stride, sift.pk.padding)
+        assert pooled.shape[-2:] == (n_bins, n_bins)
+        footprints = torch.stack(
+            [
+                torch.autograd.grad(pooled[0, 0, i, j], x, retain_graph=True)[0][0, 0]
+                for i in range(n_bins)
+                for j in range(n_bins)
+            ]
+        ).view(n_bins, n_bins, ps, ps)
+        self.assert_close(footprints.flip(-1), footprints.flip(1), rtol=0.0, atol=0.0)
+        self.assert_close(footprints.flip(-2), footprints.flip(0), rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("ps", [32, 41, 65])
+    def test_centred_blob_mirrors_to_a_permutation_5691(self, device, dtype, ps):
+        # An isotropic blob at the patch centre is its own mirror image, so its descriptor must be a fixed point of
+        # the predicted permutation. The off-centre grid of #5691 left a residual of 0.1235 at 41 pixels.
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip(f"no replicate-padding kernel for {dtype} on {device.type}")
+        axis = torch.arange(ps, dtype=torch.float64) - (ps - 1) / 2
+        blob = torch.exp(-(axis.view(-1, 1) ** 2 + axis.view(1, -1) ** 2) / (2 * (ps / 6) ** 2))
+        patch = blob.to(device, dtype)[None, None]
+        desc = SIFTDescriptor(ps, rootsift=False).to(device, dtype)(patch)
+        self.assert_close(_flip_lr(desc, 8, 4), desc)
+        self.assert_close(_flip_ud(desc, 8, 4), desc)
+        self.assert_close(_rot90(desc, 8, 4), desc)
+
+    @pytest.mark.parametrize("ps,n_bins", [(19, 3), (32, 4), (41, 4), (65, 4)])
+    @pytest.mark.parametrize("transform", ["fliplr", "flipud", "rot90"])
+    def test_mirrored_or_rotated_patch_permutes_the_descriptor_5691(self, device, dtype, ps, n_bins, transform):
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip(f"no replicate-padding kernel for {dtype} on {device.type}")
+        torch.manual_seed(0)
+        patches = torch.rand(8, 1, ps, ps, device=device, dtype=dtype)
+        sift = SIFTDescriptor(ps, num_ang_bins=8, num_spatial_bins=n_bins).to(device, dtype)
+        moved, predict = {
+            "fliplr": (patches.flip(-1), _flip_lr),
+            "flipud": (patches.flip(-2), _flip_ud),
+            "rot90": (torch.rot90(patches, 1, (-2, -1)), _rot90),
+        }[transform]
+        # A 90-degree rotation of a random 41-pixel patch matched the permuted descriptor to a mean cosine of 0.989.
+        self.assert_close(sift(moved), predict(sift(patches), 8, n_bins))
+
     @pytest.mark.skip("Compiled functions can't take variable number")
     def test_jit(self, device, dtype):
         B, C, H, W = 1, 1, 32, 32
@@ -116,6 +222,25 @@ class TestSIFTDescriptorKernelBuffer(BaseTester):
     def test_kernel_stays_out_of_state_dict(self, device):
         """Registered non-persistent, so existing checkpoints keep loading with strict=True."""
         assert "gk" not in SIFTDescriptor(32).state_dict()
+
+    @pytest.mark.parametrize("module_dtype", [torch.float32, torch.float16])
+    def test_loads_a_state_dict_saved_before_the_grid_was_centred_5691(self, device, module_dtype):
+        """A checkpoint saved with the former 16-pixel kernel of the 41-pixel patch still loads with strict=True."""
+        mod = SIFTDescriptor(41).to(device, module_dtype)
+        expected = mod.get_pooling_kernel()
+        assert expected.shape == (1, 1, 17, 17)
+        former = get_sift_pooling_kernel(16).reshape(1, 1, 16, 16).to(device, module_dtype)
+        outer = torch.nn.Sequential(mod)
+        outer.load_state_dict({"0.pk.weight": former})
+        assert torch.equal(mod.get_pooling_kernel(), expected)
+        # The untrained kernel is rebuilt, not copied from the destination, whose kernel may have been trained.
+        with torch.no_grad():
+            mod.pk.weight.zero_()
+        outer.load_state_dict({"0.pk.weight": former})
+        assert torch.equal(mod.get_pooling_kernel(), expected)
+        # A kernel of the former shape with other values is a trained one: it still fails on its shape.
+        with pytest.raises(RuntimeError, match="size mismatch"):
+            outer.load_state_dict({"0.pk.weight": 2 * former})
 
     def test_forward_does_not_mutate_the_module(self, device):
         if device.type == "mps":
@@ -305,21 +430,37 @@ class TestDenseSIFTDescriptor(BaseTester):
         inp = torch.rand(1, 1, h, w, device=device, dtype=dtype)
         sift = DenseSIFTDescriptor().to(device, dtype)
         out = sift(inp)
-        assert out.shape == torch.Size([bs, 128, h, w])
+        # (20 + 1 + 2 - 12 - 1) // 1 + 1 and (15 + 1 + 2 - 12 - 1) // 1 + 1
+        assert out.shape == torch.Size([bs, 128, 11, 6])
 
     def test_batch_shape(self, device, dtype):
         bs, h, w = 2, 32, 15
         inp = torch.rand(bs, 1, h, w, device=device, dtype=dtype)
         sift = DenseSIFTDescriptor().to(device, dtype)
         out = sift(inp)
-        assert out.shape == torch.Size([bs, 128, h, w])
+        # (32 + 1 + 2 - 12 - 1) // 1 + 1 and (15 + 1 + 2 - 12 - 1) // 1 + 1
+        assert out.shape == torch.Size([bs, 128, 23, 6])
 
     def test_batch_shape_custom(self, device, dtype):
         bs, h, w = 2, 40, 30
         inp = torch.rand(bs, 1, h, w, device=device, dtype=dtype)
         sift = DenseSIFTDescriptor(5, 3, 3, padding=1, stride=2).to(device, dtype)
         out = sift(inp)
-        assert out.shape == torch.Size([bs, 45, h // 2, w // 2])
+        # (40 + 0 + 2 - 6 - 1) // 2 + 1 and (30 + 0 + 2 - 6 - 1) // 2 + 1
+        assert out.shape == torch.Size([bs, 45, 18, 13])
+
+    @pytest.mark.parametrize(
+        "kwargs,h,w,expected",
+        [
+            ({"padding": 6}, 20, 15, (21, 16)),  # even bin size: one more row and column than the input
+            ({"spatial_bin_size": 5, "padding": 7}, 20, 15, (19, 14)),  # odd bin size: no extra row or column
+            ({"spatial_bin_size": 3, "num_spatial_bins": 3, "padding": 3, "stride": 2}, 40, 30, (20, 15)),
+            ({"padding": 0}, 40, 53, (29, 42)),
+        ],
+    )
+    def test_output_size_rule_5733(self, device, dtype, kwargs, h, w, expected):
+        out = DenseSIFTDescriptor(**kwargs).to(device, dtype)(torch.rand(1, 1, h, w, device=device, dtype=dtype))
+        assert out.shape[-2:] == torch.Size(expected)
 
     def test_print(self, device):
         sift = DenseSIFTDescriptor()
@@ -342,7 +483,7 @@ class TestDenseSIFTDescriptor(BaseTester):
         if device.type != "mps":
             mod = DenseSIFTDescriptor()
             before = (mod.bin_pooling_kernel.weight.dtype, mod.bin_pooling_kernel.weight.device)
-            mod(torch.rand(1, 1, 8, 8, device=device, dtype=torch.float64))
+            mod(torch.rand(1, 1, 16, 16, device=device, dtype=torch.float64))
             kernel = mod.get_pooling_kernel()
             assert (kernel.dtype, kernel.device) == before
             self.assert_close(kernel, mod.bin_pooling_kernel.weight)
@@ -351,7 +492,7 @@ class TestDenseSIFTDescriptor(BaseTester):
         if device.type == "mps":
             pytest.skip("float64 is unavailable on MPS")
         torch.manual_seed(0)
-        img = torch.rand(1, 1, 8, 8, device=device, dtype=torch.float64)
+        img = torch.rand(1, 1, 16, 16, device=device, dtype=torch.float64)
         mod = DenseSIFTDescriptor().to(device)
         ref = DenseSIFTDescriptor().to(device, torch.float64)
         ref.load_state_dict(mod.state_dict())
@@ -375,7 +516,7 @@ class TestDenseSIFTDescriptor(BaseTester):
             pytest.skip("device mismatch requires a non-CPU test device")
         if not (supports_replicate_padding(device, torch.float32) and supports_conv2d(device, torch.float32)):
             pytest.skip(f"no float32 DenseSIFT kernels on {device.type}")
-        img = torch.rand(1, 1, 8, 8, device=device)
+        img = torch.rand(1, 1, 16, 16, device=device)
         mod = DenseSIFTDescriptor()
 
         out = mod(img)
@@ -411,6 +552,49 @@ class TestDenseSIFTDescriptor(BaseTester):
         # and a module built afterwards is still healthy
         c = DenseSIFTDescriptor(num_ang_bins=8, num_spatial_bins=4)
         self.assert_close(c._poolingconv_weight, expected)
+
+    def test_receptive_field_is_the_cell_grid_5733(self, device, dtype):
+        """One output depends on `num_spatial_bins * spatial_bin_size` pixels (plus the gradient stencil)."""
+        torch.manual_seed(0)
+        img = torch.rand(1, 1, 40, 53, device=device, dtype=dtype, requires_grad=True)
+        mod = DenseSIFTDescriptor(padding=0, rootsift=False, clipval=1.0).to(device, dtype)
+        out = mod(img)
+        assert out.shape[-2:] == torch.Size([29, 42])
+        weights = torch.rand(128, device=device, dtype=dtype) + 0.5
+        (out[0, :, 10, 20] * weights).sum().backward()
+        ys, xs = img.grad[0, 0].nonzero(as_tuple=True)
+        # the centre is (10 + 6 - 0.5, 20 + 6 - 0.5); 16 px of cells, one more pixel each side for the gradient
+        assert (int(ys.min()), int(ys.max())) == (7, 24)
+        assert (int(xs.min()), int(xs.max())) == (18 - 1, 33 + 1)
+
+    def test_vertical_edge_lights_one_cell_column_5733(self, device, dtype):
+        """An edge inside a cell's band is seen by that cell column only, not by its neighbours."""
+        h, w, j = 40, 53, 20
+        mod = DenseSIFTDescriptor(padding=0, rootsift=False, clipval=1.0).to(device, dtype)
+        for edge, cell in [(j + 3, 1), (j + 8, 2), (j + 12, 3), (j + 4, 1)]:
+            img = torch.zeros(1, 1, h, w, device=device, dtype=dtype)
+            img[..., edge:] = 1.0
+            out = mod(img)[0, :, 10, j]
+            # (angle, cell row, cell column) -> energy of each cell column
+            per_col = out.view(8, 4, 4).pow(2).sum(dim=(0, 1))
+            expected = torch.zeros(4, device=device, dtype=dtype)
+            expected[cell] = 1.0
+            self.assert_close(per_col / per_col.sum(), expected, atol=1e-3, rtol=1e-3)
+
+    def test_matches_sift_descriptor_cell_layout_5733(self, device, dtype):
+        """The dense descriptor at a pixel is close to `SIFTDescriptor` of the 16 x 16 patch around that pixel."""
+        torch.manual_seed(0)
+        img = gaussian_blur2d(torch.rand(1, 1, 60, 70, device=device, dtype=dtype), (5, 5), (1.5, 1.5))
+        dense = DenseSIFTDescriptor(padding=0).to(device, dtype)(img)[0]
+        patch_desc = SIFTDescriptor(16, 8, 4).to(device, dtype)
+        for y0, x0 in [(5, 7), (20, 30), (33, 11), (10, 45)]:
+            ref = patch_desc(img[:, :, y0 : y0 + 16, x0 : x0 + 16])[0]
+            # the patch centre (y0 + 7.5, x0 + 7.5) is the dense centre of output (y0 + 2, x0 + 2)
+            cos = torch.nn.functional.cosine_similarity(dense[:, y0 + 2, x0 + 2], ref, dim=0)
+            assert float(cos.detach()) > 0.95
+            window = dense[:, y0 : y0 + 5, x0 : x0 + 5]
+            cos_map = torch.nn.functional.cosine_similarity(window, ref[:, None, None], dim=0)
+            assert int(cos_map.detach().argmax()) == 2 * 5 + 2
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 16, 16

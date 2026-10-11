@@ -117,9 +117,18 @@ class AddWeighted(nn.Module):
         self, alpha: Union[float, torch.Tensor], beta: Union[float, torch.Tensor], gamma: Union[float, torch.Tensor]
     ) -> None:
         super().__init__()
-        self.alpha = alpha
-        self.beta = beta
-        self.gamma = gamma
+        if isinstance(alpha, torch.Tensor) and not isinstance(alpha, nn.Parameter):
+            self.register_buffer("alpha", alpha, persistent=False)
+        else:
+            self.alpha = alpha
+        if isinstance(beta, torch.Tensor) and not isinstance(beta, nn.Parameter):
+            self.register_buffer("beta", beta, persistent=False)
+        else:
+            self.beta = beta
+        if isinstance(gamma, torch.Tensor) and not isinstance(gamma, nn.Parameter):
+            self.register_buffer("gamma", gamma, persistent=False)
+        else:
+            self.gamma = gamma
 
     def forward(self, src1: torch.Tensor, src2: torch.Tensor) -> torch.Tensor:
         """Compute a weighted sum of two tensors with a scalar bias term.

@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
@@ -22,6 +24,7 @@ from kornia.core._compat import torch_version_le
 from kornia.feature import matching
 from kornia.feature.integrated import LightGlueMatcher
 from kornia.feature.laf import laf_from_center_scale_ori
+from kornia.feature.lightglue import LightGlue
 from kornia.feature.matching import (
     DescriptorMatcher,
     DescriptorMatcherWithSteerer,
@@ -157,6 +160,61 @@ class TestMatchSNN(BaseTester):
 
 
 class TestMatchSMNN(BaseTester):
+    @pytest.mark.parametrize("mps_fallback", [False, True])
+    def test_mutual_matches_keep_integer_indices(self, device, dtype, monkeypatch, mps_fallback):
+        # Half precision cannot distinguish all descriptor indices: float16 rounds 2049 to
+        # 2048, and bfloat16 rounds 257 to 256. Only the last pair below is mutual.
+        count = 2050 if dtype == torch.float16 else 258 if dtype == torch.bfloat16 else 16
+        desc = torch.zeros(count, 1, device=device, dtype=dtype)
+        dm = torch.full((count, count), 10.0, device=device, dtype=dtype)
+        dm[-2, -2] = 1.0
+        dm[-1, -2] = 0.5
+        dm[-1, -1] = 0.1
+        if mps_fallback:
+            monkeypatch.setattr(matching, "is_mps_tensor_safe", lambda _: True)
+
+        ratios, indices = match_smnn(desc, desc, 0.95, dm)
+
+        expected_indices = torch.tensor([[count - 1, count - 1]], device=device, dtype=torch.long)
+        self.assert_close(indices, expected_indices)
+        self.assert_close(ratios, torch.tensor([[0.2]], device=device, dtype=dtype))
+
+    def test_reverse_ratios_follow_the_matches(self, device, dtype):
+        # Reverse matches arrive in target-index order; forward matches arrive in source-index order.
+        # Reject source 1 in the reverse direction and source 3 in the forward direction.
+        dm = torch.tensor(
+            [[4.0, 10.0, 1.0], [10.0, 1.5, 10.0], [1.0, 10.0, 10.0], [2.0, 2.0, 10.0]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        ratios, indices = match_smnn(dm[:, :1], dm[0, :, None], 0.7, dm)
+        self.assert_close(indices, torch.tensor([[0, 2], [2, 0]], device=device, dtype=torch.long))
+        self.assert_close(ratios, torch.tensor([[0.25], [0.5]], device=device, dtype=dtype))
+        ratios.sum().backward()
+        expected_grad = torch.tensor(
+            [[-0.0625, 0.0, 0.25], [0.0, 0.0, 0.0], [0.5, 0.0, 0.0], [-0.25, 0.0, 0.0]],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(dm.grad, expected_grad)
+
+    def test_nonempty_directional_matches_have_empty_intersection(self, device, dtype):
+        dm = torch.tensor([[1.0, 2.0], [0.5, 0.75]], device=device, dtype=dtype)
+        # The forward ratio test keeps 0 -> 0; the reverse test keeps 0 -> 1 and 1 -> 1.
+        ratios, indices = match_smnn(dm[:, :1], dm[0, :, None], 0.6, dm)
+        assert ratios.shape == (0, 1)
+        assert indices.shape == (0, 2)
+        assert indices.dtype == torch.long
+
+    def test_target_without_reverse_match_is_not_mutual(self, device, dtype):
+        # Sources 0 and 1 both match target 0, which ties between them and has no reverse match. The last reverse
+        # match (target 2 -> source 0) names source 0, and the first (target 1 -> source 1) names source 1.
+        dm = torch.tensor([[1.0, 10.0, 2.0], [1.0, 3.0, 10.0], [10.0, 10.0, 10.0]], device=device, dtype=dtype)
+        ratios, indices = match_smnn(dm[:, :1], dm[0, :, None], 0.7, dm)
+        assert ratios.shape == (0, 1)
+        assert indices.shape == (0, 2)
+
     @pytest.mark.parametrize("num_desc1, num_desc2, dim", [(2, 4, 4), (2, 5, 128), (6, 2, 32)])
     def test_shape(self, num_desc1, num_desc2, dim, device):
         desc1 = torch.rand(num_desc1, dim, device=device)
@@ -524,6 +582,119 @@ class TestAdalam(BaseTester):
         assert dists.shape[0] <= data_dev["descs2"].shape[0]
         expected_idxs = data_dev["expected_idxs"].long()
         self.assert_close(idxs, expected_idxs, rtol=1e-4, atol=1e-4)
+
+
+def _adalam_scene(device, H=240, W=320, n_in=400, n_out=200, n_extra2=37, D=32, seed=0):
+    # n_in affine inliers (a 10 degree rotation, 1.2 scale and a shift) plus n_out outliers, in an H x W image.
+    # The second image has n_extra2 more outliers, so the two keypoint counts differ.
+    g = torch.Generator().manual_seed(seed)
+    xy1 = torch.rand(n_in + n_out, 2, generator=g) * torch.tensor([W - 1.0, H - 1.0])
+    a = math.radians(10.0)
+    R = 1.2 * torch.tensor([[math.cos(a), -math.sin(a)], [math.sin(a), math.cos(a)]])
+    xy2 = torch.cat(
+        [
+            (xy1[:n_in] - torch.tensor([160.0, 120.0])) @ R.T
+            + torch.tensor([165.0, 118.0])
+            + 0.7 * torch.randn(n_in, 2, generator=g),
+            torch.rand(n_out + n_extra2, 2, generator=g) * torch.tensor([W - 1.0, H - 1.0]),
+        ]
+    )
+    d1 = torch.nn.functional.normalize(torch.randn(n_in + n_out, D, generator=g), dim=1)
+    noisy = d1[:n_in] + 0.15 * torch.randn(n_in, D, generator=g)
+    d2 = torch.nn.functional.normalize(torch.cat([noisy, torch.randn(n_out + n_extra2, D, generator=g)]), dim=1)
+    s = torch.full((1, n_in + n_out, 1, 1), 8.0)
+    lafs1 = laf_from_center_scale_ori(xy1[None], s)
+    lafs2 = laf_from_center_scale_ori(xy2[None], 1.2 * torch.full((1, n_in + n_out + n_extra2, 1, 1), 8.0))
+    return d1.to(device), d2.to(device), lafs1.to(device), lafs2.to(device), (H, W)
+
+
+class TestLightGlueMatcherSize(BaseTester):
+    def test_swapped_hw_names_hw_5724(self, device):
+        # LightGlueMatcher takes hw as (height, width). Its constructor downloads weights, so the matcher is built
+        # around a random-weight LightGlue, enough to reach the range check; forward reads only these two attributes.
+        matcher = LightGlueMatcher.__new__(LightGlueMatcher)
+        torch.nn.Module.__init__(matcher)
+        matcher.feature_name = "disk"
+        matcher.matcher = LightGlue(
+            features=None, input_dim=64, descriptor_dim=64, n_layers=2, num_heads=4, flash=False
+        )
+        matcher = matcher.to(device).eval()
+        H, W = 40, 120
+        xy = torch.tensor([[[10.0, 20.0], [100.0, 30.0], [60.0, 5.0]]], device=device)
+        lafs = laf_from_center_scale_ori(xy, torch.full((1, 3, 1, 1), 4.0, device=device))
+        desc = torch.rand(3, 64, device=device)
+        with torch.no_grad():
+            matcher(desc, desc, lafs, lafs, hw1=(H, W), hw2=(H, W))  # (height, width) is accepted
+            with pytest.raises(Exception, match=r"\(height, width\) for the ``hw1``"):
+                matcher(desc, desc, lafs, lafs, hw1=(W, H), hw2=(W, H))
+
+
+class TestAdalamInputs(BaseTester):
+    def test_dm_distances_reproduce_the_default_matches_5724(self, device):
+        d1, d2, l1, l2, hw = _adalam_scene(device)
+        assert len(d1) != len(d2)
+        q0, i0 = match_adalam(d1, d2, l1, l2, hw1=hw, hw2=hw)
+        # dm holds plain distances like the dm of the other matchers; AdaLAM squares them internally
+        q1, i1 = match_adalam(d1, d2, l1, l2, hw1=hw, hw2=hw, dm=torch.cdist(d1, d2))
+        assert len(i0) > 100
+        assert torch.equal(i0.sort(0).values, i1.sort(0).values)
+        self.assert_close(q0.sort(0).values, q1.sort(0).values, low_tolerance=True)
+
+    def test_dm_drives_the_putative_matches_5724(self, device):
+        d1, d2, l1, l2, hw = _adalam_scene(device)
+        _, i0 = match_adalam(d1, d2, l1, l2, hw1=hw, hw2=hw)
+        dm = torch.cdist(d1, d2)
+        dm[:200] = dm[:200].flip(1)
+        _, i1 = match_adalam(d1, d2, l1, l2, hw1=hw, hw2=hw, dm=dm)
+        assert not torch.equal(i0, i1)
+        # for the first 200 rows the flipped distances prefer a mirrored candidate, which is not an inlier
+        assert len(i1) < len(i0)
+        flipped_rows = i1[:, 0] < 200
+        assert (i1[flipped_rows, 1] != i1[flipped_rows, 0]).all()
+
+    def test_dm_ratio_comes_from_dm_5724(self, device):
+        d1, d2, l1, l2, hw = _adalam_scene(device)
+        dm = torch.cdist(d1, d2)
+        _, i0 = match_adalam(d1, d2, l1, l2, hw1=hw, hw2=hw, dm=dm)
+        # a constant added to the squared distances keeps every nearest neighbour and pushes every ratio to 1, so
+        # fewer putative matches pass the ratio test of the seeds
+        _, i1 = match_adalam(d1, d2, l1, l2, hw1=hw, hw2=hw, dm=(dm**2 + 10.0).sqrt())
+        assert len(i1) < len(i0) - 100
+
+    def test_dm_wrong_shape_5724(self, device):
+        d1, d2, l1, l2, hw = _adalam_scene(device)
+        with pytest.raises(Exception, match="dm must have shape"):
+            match_adalam(d1, d2, l1, l2, hw1=hw, hw2=hw, dm=torch.zeros(len(d1), len(d2) - 1, device=device))
+        # also when a single descriptor would end the matching early
+        with pytest.raises(Exception, match="dm must have shape"):
+            match_adalam(d1[:1], d2, l1[:, :1], l2, hw1=hw, hw2=hw, dm=torch.zeros(5, 5, device=device))
+
+    def test_hw_list_equals_tuple_5724(self, device):
+        d1, d2, l1, l2, (H, W) = _adalam_scene(device)
+        # an image much larger than the keypoint spread changes the seed radius, so a list that is ignored differs
+        tuple_out = match_adalam(d1, d2, l1, l2, hw1=(4 * H, 4 * W), hw2=(4 * H, 4 * W))
+        list_out = match_adalam(d1, d2, l1, l2, hw1=[4 * H, 4 * W], hw2=[4 * H, 4 * W])
+        none_out = match_adalam(d1, d2, l1, l2)
+        assert len(tuple_out[1]) != len(none_out[1])
+        assert torch.equal(tuple_out[1], list_out[1])
+
+    @pytest.mark.parametrize("config", [{"ransac_iters": 128}, {}])
+    def test_device_follows_input_with_config_5724(self, device, config):
+        d1, d2, l1, l2, hw = _adalam_scene(device)
+        quality, idxs = match_adalam(d1, d2, l1, l2, config=config, hw1=hw, hw2=hw)
+        assert idxs.device == d1.device
+        assert quality.device == d1.device
+
+    def test_module_device_follows_input_5724(self, device):
+        d1, d2, l1, l2, _ = _adalam_scene(device)
+        quality, idxs = GeometryAwareDescriptorMatcher("adalam")(d1, d2, l1, l2)
+        assert idxs.device == d1.device
+        assert quality.device == d1.device
+
+    def test_explicit_device_is_kept_5724(self, device):
+        d1, d2, l1, l2, hw = _adalam_scene(device)
+        _, idxs = match_adalam(d1, d2, l1, l2, config={"device": torch.device("cpu")}, hw1=hw, hw2=hw)
+        assert idxs.device.type == "cpu"
 
 
 class TestLightGlueDISK(BaseTester):

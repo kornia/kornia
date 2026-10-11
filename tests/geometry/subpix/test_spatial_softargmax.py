@@ -16,6 +16,7 @@
 #
 
 import itertools
+import math
 import warnings
 
 import pytest
@@ -30,6 +31,74 @@ from kornia.geometry.subpix.spatial_soft_argmax import (
 )
 
 from testing.base import BaseTester
+
+
+class TestStridedSubpixel(BaseTester):
+    @pytest.mark.parametrize(
+        "operation", ["conv_soft_argmax2d", "conv_soft_argmax3d", "conv_quad_interp3d", "iterative_quad_interp3d"]
+    )
+    @pytest.mark.parametrize("layout", ["channels_last", "batch_channel_transpose", "spatial_transpose", "slice"])
+    def test_heatmap_layout(self, device, dtype, operation, layout):
+        shape = (2, 3, 5, 7) if operation.endswith("2d") else (2, 3, 5, 6, 7)
+        sample = torch.arange(math.prod(shape), device=device, dtype=torch.float32)
+        sample = sample.sin().reshape(shape).to(dtype)
+        if layout == "channels_last":
+            memory_format = torch.channels_last if len(shape) == 4 else torch.channels_last_3d
+            sample = sample.to(memory_format=memory_format)
+        elif layout == "batch_channel_transpose":
+            sample = sample.transpose(0, 1)
+        elif layout == "spatial_transpose":
+            sample = sample.transpose(-1, -2)
+        else:
+            sample = sample[..., ::2]
+        assert not sample.is_contiguous()
+        function = getattr(kornia.geometry.subpix, operation)
+        kwargs = {"output_value": True} if "soft_argmax" in operation else {}
+
+        expected = function(sample.contiguous(), **kwargs)
+        actual = function(sample, **kwargs)
+
+        for result, reference in zip(actual, expected):
+            self.assert_close(result, reference, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("operation", ["conv_soft_argmax2d", "conv_soft_argmax3d"])
+    def test_channels_last_gradient(self, device, operation):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        shape = (2, 3, 5, 7) if operation.endswith("2d") else (2, 3, 5, 6, 7)
+        sample = torch.arange(math.prod(shape), device=device, dtype=torch.float64).sin().reshape(shape)
+        reference = sample.clone().requires_grad_()
+        memory_format = torch.channels_last if len(shape) == 4 else torch.channels_last_3d
+        strided = sample.to(memory_format=memory_format).requires_grad_()
+        function = getattr(kornia.geometry.subpix, operation)
+
+        expected = function(reference, output_value=True)
+        actual = function(strided, output_value=True)
+        expected_grad = torch.autograd.grad(sum(value.sum() for value in expected), reference)[0]
+        actual_grad = torch.autograd.grad(sum(value.sum() for value in actual), strided)[0]
+
+        self.assert_close(actual_grad, expected_grad)
+
+    @pytest.mark.parametrize("operation", ["conv_quad_interp3d", "iterative_quad_interp3d"])
+    @pytest.mark.parametrize("layout", ["channels_last", "batch_channel_transpose", "spatial_transpose"])
+    def test_precomputed_mask_layout(self, device, dtype, operation, layout):
+        sample = torch.arange(2 * 3 * 5 * 6 * 7, device=device, dtype=torch.float32).sin()
+        sample = sample.reshape(2, 3, 5, 6, 7).to(dtype)
+        mask = kornia.geometry.subpix.nms3d(sample, (3, 3, 3), True)
+        if layout == "channels_last":
+            mask = mask.to(memory_format=torch.channels_last_3d)
+        elif layout == "batch_channel_transpose":
+            mask, sample = mask.transpose(0, 1), sample.transpose(0, 1).contiguous()
+        else:
+            mask, sample = mask.transpose(-1, -2), sample.transpose(-1, -2).contiguous()
+        assert not mask.is_contiguous()
+        function = getattr(kornia.geometry.subpix, operation)
+
+        expected = function(sample, precomputed_nms_mask=mask.contiguous())
+        actual = function(sample, precomputed_nms_mask=mask)
+
+        for result, reference in zip(actual, expected):
+            self.assert_close(result, reference, atol=0, rtol=0)
 
 
 class TestCenterKernel2d(BaseTester):
