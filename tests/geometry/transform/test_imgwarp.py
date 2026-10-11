@@ -367,6 +367,8 @@ class TestGetPerspectiveTransform(BaseTester):
 class TestRotationMatrix2d(BaseTester):
     @pytest.mark.parametrize("argument", ["center", "angle", "scale"])
     def test_dtype_mismatch_message_5662(self, argument, device, dtype):
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
         inputs = {
             "center": torch.zeros(1, 2, device=device, dtype=dtype),
             "angle": torch.zeros(1, device=device, dtype=dtype),
@@ -382,6 +384,8 @@ class TestRotationMatrix2d(BaseTester):
 
     @pytest.mark.parametrize("argument", ["center", "angle", "scale"])
     def test_device_mismatch_message_5662(self, argument, device, dtype):
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
         inputs = {
             "center": torch.zeros(1, 2, device=device, dtype=dtype),
             "angle": torch.zeros(1, device=device, dtype=dtype),
