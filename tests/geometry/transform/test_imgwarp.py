@@ -365,6 +365,41 @@ class TestGetPerspectiveTransform(BaseTester):
 
 
 class TestRotationMatrix2d(BaseTester):
+    @pytest.mark.parametrize("argument", ["center", "angle", "scale"])
+    def test_dtype_mismatch_message_5662(self, argument, device, dtype):
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        inputs = {
+            "center": torch.zeros(1, 2, device=device, dtype=dtype),
+            "angle": torch.zeros(1, device=device, dtype=dtype),
+            "scale": torch.ones(1, 2, device=device, dtype=dtype),
+        }
+        other_dtype = torch.float32 if dtype != torch.float32 else torch.float16
+        inputs[argument] = inputs[argument].to(dtype=other_dtype)
+
+        with pytest.raises(ValueError, match="Inputs must have same dtype") as exc:
+            kornia.geometry.get_rotation_matrix2d(**inputs)
+        for name, value in inputs.items():
+            assert f"{name} {value.dtype}" in str(exc.value)
+
+    @pytest.mark.parametrize("argument", ["center", "angle", "scale"])
+    def test_device_mismatch_message_5662(self, argument, device, dtype):
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        inputs = {
+            "center": torch.zeros(1, 2, device=device, dtype=dtype),
+            "angle": torch.zeros(1, device=device, dtype=dtype),
+            "scale": torch.ones(1, 2, device=device, dtype=dtype),
+        }
+        # Meta tensors exercise the CPU device guard without requiring an accelerator.
+        other_device = torch.device("meta") if device.type == "cpu" else torch.device("cpu")
+        inputs[argument] = inputs[argument].to(device=other_device)
+
+        with pytest.raises(ValueError, match="Inputs must have same device") as exc:
+            kornia.geometry.get_rotation_matrix2d(**inputs)
+        for name, value in inputs.items():
+            assert f"{name} {value.device}" in str(exc.value)
+
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_90deg_rotation(self, batch_size, device, dtype):
         # generate input data
