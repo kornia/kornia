@@ -155,10 +155,7 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
 
         """
         output = self.pre_processor(images)
-        if isinstance(output, (list, tuple)):
-            images = output[0]
-        else:
-            images = output
+        images = output[0] if isinstance(output, (list, tuple)) else output
         if isinstance(images, list):
             out_images = [self.model(image[None])[0] for image in images]
         else:

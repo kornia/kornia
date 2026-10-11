@@ -248,10 +248,7 @@ def KORNIA_CHECK(condition: bool, msg: Optional[str] = None, raises: bool = True
 
     if not condition:
         if raises:
-            if msg is None:
-                error_msg = "Validation condition failed"
-            else:
-                error_msg = msg
+            error_msg = "Validation condition failed" if msg is None else msg
             raise BaseError(error_msg)
         return False
     return True

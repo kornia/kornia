@@ -358,7 +358,7 @@ class ImageRegistrator(nn.Module):
                 prev_loss = current_loss
                 loss.backward()
                 if verbose and (i % 10 == 0):
-                    print(f"Loss = {current_loss:.4f}, iter={i}")
+                    print(f"Loss = {current_loss:.4f}, iter={i}")  # noqa: T201 - only with verbose=True
                 opt.step()
             if output_intermediate_models:
                 aux_models.append(self.model().clone().detach())
