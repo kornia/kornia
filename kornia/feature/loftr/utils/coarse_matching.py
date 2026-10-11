@@ -200,7 +200,7 @@ class CoarseMatching(nn.Module):
         Args:
             conf_matrix (torch.Tensor): [N, L, S]
             data (dict): with keys ['hw0_c', 'hw1_c', 'stride_c'], ``stride_c`` being the pixel stride of the coarse
-                feature maps (8)
+                feature maps (8 by default)
 
         Returns:
             coarse_matches (dict): {
