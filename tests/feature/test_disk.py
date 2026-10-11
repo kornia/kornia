@@ -125,12 +125,17 @@ class TestDisk(BaseTester):
         assert features[0].descriptors.shape == (len(border), 128)
 
     def test_nms_keeps_one_of_equal_maxima_5730(self, device, dtype):
-        """The reference keeps one position of a window holding equal maxima; a strict maximum test kept none."""
+        """The reference keeps the first in raster order of equal maxima in a window; a strict maximum test kept none.
+
+        Along a row the first is the one with the smaller column; across rows, the one on the smaller row, here
+        whatever their columns.
+        """
         heatmap = torch.full((1, 1, 16, 32), -1.0, device=device, dtype=dtype)
         heatmap[0, 0, 8, 10:12] = 1.0
+        heatmap[0, 0, 4, 26] = 1.0
+        heatmap[0, 0, 5, 24] = 1.0
         keypoints = heatmap_to_keypoints(heatmap)
-        assert keypoints[0].xys.shape == (1, 2)
-        assert keypoints[0].xys[0, 1] == 8
+        assert sorted(keypoints[0].xys.tolist()) == [[10, 8], [26, 4]]
 
     def test_nms_window_size_must_be_odd_5730(self, device, dtype):
         heatmap = torch.zeros(1, 1, 16, 32, device=device, dtype=dtype)

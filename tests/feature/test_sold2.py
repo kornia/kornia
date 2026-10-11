@@ -91,6 +91,18 @@ class TestJunctionsAndSegments(BaseTester):
         assert len(junctions) == n_kept
         assert [float(r0), float(c0)] in junctions.tolist()
 
+    @pytest.mark.parametrize(
+        "dist, offset, n_kept",
+        [(8.7, (0, 8), 1), (8.7, (0, 9), 2), (3.6, (0, 3), 1), (3.6, (0, 4), 2), (3.6, (4, 4), 2)],
+    )
+    def test_nms_fractional_distance_5730(self, device, dtype, dist, offset, n_kept):
+        # junction locations are integers, so a junction at most ``dist`` away is at most ``floor(dist)`` away
+        r0, c0 = 40, 30
+        prob = self._junction_map([((r0, c0), 1.0), ((r0 + offset[0], c0 + offset[1]), 0.9)], device, dtype)
+        junctions = prob_to_junctions(prob, dist, 0.0153846, 500)
+        assert len(junctions) == n_kept
+        assert [float(r0), float(c0)] in junctions.tolist()
+
     def test_nms_is_greedy_by_score_5730(self, device, dtype):
         # the strongest junction suppresses both of its 8 px neighbours, which cannot then suppress the one beyond
         prob = self._junction_map([((40, 20), 0.9), ((40, 28), 1.0), ((40, 37), 0.8)], device, dtype)
@@ -113,14 +125,17 @@ class TestJunctionsAndSegments(BaseTester):
         junctions = prob_to_junctions(prob, 8, 0.0153846, 3)
         assert junctions.tolist() == [[30.0, 20.0], [30.0, 60.0], [70.0, 100.0]]
 
+    @pytest.mark.parametrize("end", [(70, 100), (30, 100)], ids=["diagonal", "horizontal"])
     @pytest.mark.parametrize("use_junction_refinement", [False, True])
-    def test_segment_endpoints_are_in_raster_order_5730(self, device, dtype, use_junction_refinement):
-        # a line from (x, y) = (20, 30) to (100, 70), with the bottom-right junction the stronger one
-        prob = self._junction_map([((70, 100), 1.0), ((30, 20), 0.5)], device, dtype)
+    def test_segment_endpoints_are_in_raster_order_5730(self, device, dtype, use_junction_refinement, end):
+        # a line from (row, col) = (30, 20) to ``end``, with the junction at ``end`` the stronger one. Raster order puts
+        # (30, 20) first: by row on the diagonal line, by column on the horizontal one. cvg/SOLD2 b2e49f2 returns these
+        # endpoints in this order in both modes, moved by up to 0.75 px by the junction refinement.
+        prob = self._junction_map([(end, 1.0), ((30, 20), 0.5)], device, dtype)
         heatmap = torch.zeros(96, 128, device=device, dtype=dtype)
         t = torch.linspace(0, 1, 400, device=device)
-        rows = torch.round(30 + (70 - 30) * t).long()
-        cols = torch.round(20 + (100 - 20) * t).long()
+        rows = torch.round(30 + (end[0] - 30) * t).long()
+        cols = torch.round(20 + (end[1] - 20) * t).long()
         heatmap[rows, cols] = 1.0
         cfg = LineDetectorCfg(
             use_heatmap_refinement=False,
@@ -131,8 +146,8 @@ class TestJunctionsAndSegments(BaseTester):
         line_map, junctions, _ = LineSegmentDetectionModule(cfg).detect(junctions, heatmap)
         segments = line_map_to_segments(junctions, line_map)
         assert segments.shape == (1, 2, 2)
-        assert segments[0, 0, 0] < segments[0, 1, 0]
-        expected = torch.tensor([[30.0, 20.0], [70.0, 100.0]], device=device, dtype=segments.dtype)
+        assert segments[0, 0].tolist() < segments[0, 1].tolist()  # lexicographic: row, then column
+        expected = torch.tensor([[30.0, 20.0], [float(end[0]), float(end[1])]], device=device, dtype=segments.dtype)
         self.assert_close(segments[0], expected, atol=1.0, rtol=0)
 
 

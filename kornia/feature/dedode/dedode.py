@@ -81,8 +81,9 @@ class DeDoDe(nn.Module):
 
     See :cite:`edstedt2024dedode` for details.
 
-    .. note:: `forward`, `detect` and `describe` take RGB images in the range :math:`[0, 1]` and apply the ImageNet
-        normalization themselves; pass ``apply_imagenet_normalization=False`` for images that are already normalized.
+    .. note:: :meth:`forward`, :meth:`detect` and :meth:`describe` take RGB images in the range :math:`[0, 1]` and
+        apply the ImageNet normalization themselves; pass ``apply_imagenet_normalization=False`` for images that are
+        already normalized.
 
     Args:
         detector_model: The detector model kind. Available options are: `L`.
@@ -186,8 +187,8 @@ class DeDoDe(nn.Module):
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images. Pass
                 ``False`` if they are already ImageNet-normalized.
             pad_if_not_divisible: Zero-pad the (normalised) image on the bottom and right so that H and W are
-                multiples of 14; the pad is the ImageNet mean colour, as in `forward` and `describe`. The padding is
-                removed from the scoremap, so keypoints are never reported in it.
+                multiples of 14; the pad is the ImageNet mean colour, as in :meth:`forward` and :meth:`describe`. The
+                padding is removed from the scoremap, so keypoints are never reported in it.
             crop_h: The height of the crop to be used for detection. If None, the full image is used.
             crop_w: The width of the crop to be used for detection. If None, the full image is used.
 
@@ -235,9 +236,9 @@ class DeDoDe(nn.Module):
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images. Pass
                 ``False`` if they are already ImageNet-normalized.
             pad_if_not_divisible: Zero-pad the (normalised) image on the bottom and right so that H and W are
-                multiples of 14; the pad is the ImageNet mean colour, as in `forward` and `detect`. Required when
-                using the ``G`` descriptor backed by DINOv2 (patch size 14). The padding is removed from the
-                descriptor map, so the map has the size of the input image.
+                multiples of 14; the pad is the ImageNet mean colour, as in :meth:`forward` and :meth:`detect`.
+                Required when using the ``G`` descriptor backed by DINOv2 (patch size 14). The padding is removed from
+                the descriptor map, so the map has the size of the input image.
             crop_h: The height of the crop to be used for description. If None, the full image is used.
             crop_w: The width of the crop to be used for description. If None, the full image is used.
 

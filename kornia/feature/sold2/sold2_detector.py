@@ -579,7 +579,7 @@ def prob_to_junctions(prob: torch.Tensor, dist: float, prob_thresh: float = 0.01
     The strongest junction is kept first and suppresses every other junction within ``dist`` pixels of it along both
     axes, ``dist`` itself included, like ``super_nms`` of the SOLD2 reference implementation. The ``top_k`` strongest
     survivors are returned in raster order (by row, then by column), so the first endpoint of a line segment built
-    from the junction indices is the one with the smaller row.
+    from the junction indices is the one with the smaller row or, on the same row, the smaller column.
 
     Args:
         prob: junction probability map with shape :math:`(H, W)`.
@@ -595,9 +595,10 @@ def prob_to_junctions(prob: torch.Tensor, dist: float, prob_thresh: float = 0.01
     if len(junctions) == 0:
         return junctions
 
-    # Perform NMS. Boxes of side ``dist + 0.5`` around the integer locations overlap exactly when both coordinates
-    # differ by at most ``dist``; ``nms`` then drops every overlapping box.
-    boxes = torch.cat([junctions - (dist + 0.5) / 2, junctions + (dist + 0.5) / 2], 1)
+    # Perform NMS. Boxes of side ``floor(dist) + 0.5`` around the integer locations overlap exactly when both
+    # coordinates differ by at most ``dist``; ``nms`` then drops every overlapping box.
+    side = math.floor(dist) + 0.5
+    boxes = torch.cat([junctions - side / 2, junctions + side / 2], 1)
     scores = prob[prob >= prob_thresh]
     remainings = nms(boxes, scores, 0.0)
     junctions = junctions[remainings]
