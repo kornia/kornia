@@ -280,6 +280,88 @@ class TestAugmentationSequential:
 
         assert out["mask"].shape == (2, 8, 8)
 
+    def test_dict_output_leaves_unrecognized_keys_alone_5695(self, device, dtype):
+        # A dictionary key that is not a data key holds a pass-through value: converting it like an
+        # image would move a (B, C, H, W) tensor to channels-last, which is not what the caller passed in.
+        image = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
+        aux = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=None)
+
+        out = aug({"image": image, "aux": aux}, output_type="numpy")
+
+        assert out["aux"].shape == (1, 3, 8, 8)
+
+    def test_dict_output_keeps_a_three_dimensional_mask_batch_first_5695(self, device, dtype):
+        # A (B, H, W) mask returned under keepdim=True is batch-first, like the image: it gets its channel axis
+        # back instead of being read as (C, H, W) and permuted to (H, W, B).
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        mask = torch.rand(2, 8, 8, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=None, keepdim=True)
+
+        out = aug({"image": image, "mask": mask}, output_type="numpy")
+
+        assert out["mask"].shape == (2, 8, 8, 1)
+        numpy_dtype = torch.float32 if dtype == torch.bfloat16 else dtype
+        np.testing.assert_array_equal(out["mask"][..., 0], mask.cpu().to(numpy_dtype).numpy())
+
+    def test_positional_output_converts_each_tensor_of_a_mask_list_5695(self, device, dtype):
+        # A mask given as a per-sample list of tensors comes back as a list of arrays for
+        # output_type != "pt", each converted like the image.
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        masks = [
+            torch.rand(1, 1, 8, 8, device=device, dtype=dtype),
+            torch.rand(1, 1, 8, 8, device=device, dtype=dtype),
+        ]
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=["input", "mask"])
+
+        _, out_masks = aug(image, masks, output_type="numpy")
+
+        assert [type(m) for m in out_masks] == [np.ndarray, np.ndarray]
+        assert out_masks[0].shape == (1, 8, 8, 1)
+        assert out_masks[1].shape == (1, 8, 8, 1)
+
+    @pytest.mark.parametrize("batch", [1, 2, 3])
+    def test_mask_output_converts_per_sample_like_the_image_5695(self, batch, device, dtype):
+        # Every sample's mask is its own PIL image, as every sample's image is, and the NumPy mask has the layout
+        # the mask input reads, so feeding it back in gives the same mask.
+        image = torch.rand(batch, 3, 6, 8, device=device, dtype=dtype)
+        mask = (torch.rand(batch, 1, 6, 8, device=device, dtype=dtype) > 0.5).to(dtype)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+
+        pil_image, pil_mask = aug(image, mask, output_type="pil")
+
+        assert len(pil_image) == len(pil_mask) == batch
+        for sample, flipped in zip(pil_mask, mask.flip(-1)):
+            assert sample.mode == "L"
+            np.testing.assert_array_equal(np.asarray(sample), (flipped[0] * 255).to(torch.uint8).cpu().numpy())
+
+        _, np_mask = aug(image, mask, output_type="numpy")
+
+        assert np_mask.shape == (batch, 6, 8, 1)
+        _, fed_back = aug(image.cpu(), np_mask)
+        assert_close(fed_back.to(device=device, dtype=dtype), mask)
+
+    @pytest.mark.parametrize(
+        "image_shape, mask_shape, expected",
+        [
+            ((2, 3, 6, 8), (2, 6, 8), (2, 6, 8, 1)),  # (B, H, W): the leading size is the image batch
+            ((1, 3, 6, 8), (2, 6, 8), (6, 8, 2)),  # one (C, H, W) mask next to a batch of one
+            ((3, 6, 8), (3, 6, 8), (6, 8, 3)),  # one (C, H, W) mask next to an unbatched image
+        ],
+    )
+    def test_keepdim_three_dimensional_mask_reads_like_the_input_5695(
+        self, image_shape, mask_shape, expected, device, dtype
+    ):
+        # A 3D mask is (B, H, W) when its leading size is the batch of a batched image, as on the way in;
+        # otherwise it is one (C, H, W) mask and converts like an unbatched image.
+        image = torch.rand(*image_shape, device=device, dtype=dtype)
+        mask = torch.rand(*mask_shape, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=["input", "mask"], keepdim=True)
+
+        _, out = aug(image, mask, output_type="numpy")
+
+        assert out.shape == expected
+
     def test_single_mask_with_an_unbatched_image_stays_single(self):
         aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
 

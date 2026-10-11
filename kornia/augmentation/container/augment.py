@@ -30,6 +30,7 @@ from kornia.constants import DataKey, Resample
 from kornia.core._compat import torch_version_lt
 from kornia.core.external import PILImage as Image
 from kornia.core.external import numpy as np
+from kornia.core.mixin.image_module import _rebuild_container
 from kornia.core.ops import eye_like
 from kornia.core.utils import _normalize_to_float32_or_float64, is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes, VideoBoxes
@@ -806,6 +807,14 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             # TODO: Some more behaviour for AugmentationSequential needs to be revisited later
             # e.g. We convert only images, etc.
             self._check_output_type(output_type)
+            non_images = [key.name for key in data_keys if key not in _IMG_OPTIONS and key not in _MSK_OPTIONS]
+            if output_type != "pt" and non_images:
+                # a box or keypoint tensor converted like an image (moved to channels-last, or made a PIL image) is
+                # not a box any more, so only images and masks take the conversion
+                raise ValueError(
+                    f"output_type={output_type!r} converts images and masks only, and data_keys also hold "
+                    f"{non_images}. Call with output_type='pt'."
+                )
             # run the forward pass in tensor mode and convert the output to ``output_type`` only after the image
             # has been cached, so ``.show()`` / ``.save()`` never receive a NumPy array or PIL images
             tensor_output = self._call_converted(
@@ -827,13 +836,71 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
             # cache a detached view of the augmented image for ``.show()`` / ``.save()``, which move it to the
             # CPU themselves, so the forward pass pays no device-to-host copy or sync
+            image = self._select_output_image(tensor_output, data_keys, original_keys)
             if not is_exporting():
-                image = self._select_output_image(tensor_output, data_keys, original_keys)
                 self._output_image = image.detach() if isinstance(image, torch.Tensor) else image
-            _output_image = self._convert_output(tensor_output, output_type)
+            _output_image = (
+                self._convert_dict_output(tensor_output, output_type, image)
+                if isinstance(tensor_output, dict)
+                else self._convert_positional_output(tensor_output, output_type, data_keys, image)
+            )
         else:
             _output_image = super(ImageSequential, self).__call__(*inputs, **kwargs)
         return _output_image
+
+    def _convert_positional_output(
+        self, tensor_output: Any, output_type: str, data_keys: List[DataKey], image: Any
+    ) -> Any:
+        """Convert a positional forward output for ``output_type``, one value per data key.
+
+        The outputs align with ``data_keys`` positionally; see :meth:`_convert_output_for_data_key`.
+        """
+        if isinstance(tensor_output, (list, tuple)) and len(tensor_output) == len(data_keys):
+            converted = [
+                self._convert_output_for_data_key(output, output_type, data_key, image)
+                for output, data_key in zip(tensor_output, data_keys)
+            ]
+            return _rebuild_container(tensor_output, converted)
+        return self._convert_output(tensor_output, output_type)
+
+    def _convert_dict_output(self, tensor_output: Dict[str, Any], output_type: str, image: Any) -> Dict[str, Any]:
+        """Convert a dict forward output for ``output_type``, keyed by its data keys.
+
+        Only the values under recognized image or mask keys take the conversion: an unrecognized key holds a
+        pass-through value the caller supplied, and moving it to channels-last (or making it a PIL image) is
+        not what they passed in. See :meth:`_convert_output_for_data_key`.
+        """
+        valid_data_keys, invalid_keys = self._read_datakeys_from_dict(tuple(tensor_output.keys()))
+        key_data_keys = dict(zip([k for k in tensor_output if k not in (invalid_keys or [])], valid_data_keys))
+        return {
+            key: self._convert_output_for_data_key(value, output_type, key_data_keys.get(key), image)
+            for key, value in tensor_output.items()
+        }
+
+    def _convert_output_for_data_key(
+        self, value: Any, output_type: str, data_key: Optional[DataKey], image: Any
+    ) -> Any:
+        """Convert one output value for ``output_type``.
+
+        A mask converts like the image, to the NumPy layout the mask input reads back (:meth:`to_numpy`), or to
+        one PIL image per sample. A 3D mask next to a batched image is read the way the input reads it: as
+        ``(B, H, W)`` when its leading size is the image batch (a mask returned under ``keepdim=True``), so it gets
+        its channel axis back and stays batch-first; any other 3D mask is one ``(C, H, W)`` mask.
+        """
+        if data_key is None:
+            # An unrecognized key holds a pass-through value: there is no data key to convert it by.
+            return value
+        if (
+            data_key in _MSK_OPTIONS
+            and output_type != "pt"
+            and isinstance(value, torch.Tensor)
+            and value.dim() == 3
+            and isinstance(image, torch.Tensor)
+            and image.dim() == 4
+            and value.shape[0] == image.shape[0]
+        ):
+            value = value.unsqueeze(1)
+        return self._convert_output(value, output_type)
 
     def _convert_non_image(self, arg: Any, data_key: DataKey) -> Any:
         if data_key in _IMG_OPTIONS:
