@@ -23,6 +23,7 @@ from torch import nn
 
 import kornia
 from kornia.core._compat import torch_version_le
+from kornia.core.exceptions import BaseError
 from kornia.feature import (
     DescriptorMatcher,
     GFTTAffNetHardNet,
@@ -377,9 +378,11 @@ class TestDoGHardNet(BaseTester):
 
     @staticmethod
     def _image(device, dtype):
-        # Blurred noise has blobs at several scales, so most of the 16 slots below hold a detection.
-        image = torch.rand(1, 1, 48, 64, device=device, dtype=dtype)
-        return kornia.filters.gaussian_blur2d(image, (7, 7), (1.5, 1.5))
+        # Blurred noise has blobs at several scales; at 72 x 96 its DoG detections fill the 16 slots below in every
+        # dtype. The noise is drawn in float32 from a seeded CPU generator, because a draw made in half precision
+        # differs between torch releases, and the blurred image is then cast to the tested device and dtype.
+        noise = torch.rand(1, 1, 72, 96, generator=torch.Generator().manual_seed(0))
+        return kornia.filters.gaussian_blur2d(noise, (7, 7), (1.5, 1.5)).to(device, dtype)
 
     @staticmethod
     def _dog_frames(image, num_features):
@@ -413,13 +416,15 @@ class TestDoGHardNet(BaseTester):
         self.assert_close(get_laf_scale(lafs), 2.0 * get_laf_scale(dog_lafs))
         self.assert_close(descriptors, feature.descriptor(image, lafs))
 
-    def test_upright_frames(self, device, dtype):
+    @pytest.mark.parametrize("preset", ["DoGHardNet", "DoGAffNetHardNet"])
+    def test_upright_frames(self, device, dtype, preset):
         image = self._image(device, dtype)
-        lafs, _, _ = kornia.feature.DoGHardNet(16, upright=True).to(device, dtype)(image)
+        lafs, _, _ = getattr(kornia.feature, preset)(16, upright=True).to(device, dtype)(image)
         dog_lafs, _ = self._dog_frames(image, 16)
         self.assert_close(get_laf_center(lafs), get_laf_center(dog_lafs))
         self.assert_close(get_laf_orientation(lafs), torch.zeros_like(get_laf_orientation(lafs)))
-        self.assert_close(get_laf_scale(lafs), 2.0 * get_laf_scale(dog_lafs))
+        affnet = preset == "DoGAffNetHardNet"
+        self.assert_close(get_laf_scale(lafs), 2.0 * get_laf_scale(dog_lafs), low_tolerance=affnet)
 
     def test_affnet_frames_keep_the_dog_centres_and_scale(self, device, dtype):
         image = self._image(device, dtype)
@@ -437,9 +442,28 @@ class TestDoGHardNet(BaseTester):
         anisotropy = (a[:, 0, 0] - a[:, 1, 1]).abs() + (a[:, 0, 1] + a[:, 1, 0]).abs()
         assert bool((anisotropy > 0.1 * get_laf_scale(lafs)[filled].float().reshape(-1)).all())
 
-    def test_detector_receives_the_module_selection(self):
-        feature = kornia.feature.DoGHardNet(4, compile_modules=["resp"])
-        assert feature.detector._compile_set == {"resp"}
+    @pytest.mark.parametrize(
+        "preset, selection, wrapped_type",
+        [("DoGHardNet", "resp", "BlobDoG"), ("DoGAffNetHardNet", "aff", "LAFAffNetShapeEstimator")],
+    )
+    def test_detector_receives_the_module_selection(self, monkeypatch, preset, selection, wrapped_type):
+        # Records what the detector would wrap instead of compiling it, so the test needs no Dynamo.
+        wrapped = []
+
+        def record(module, **kwargs):
+            wrapped.append(module)
+            return module
+
+        monkeypatch.setattr(torch, "compile", record)
+        feature = getattr(kornia.feature, preset)(4, compile_modules=[selection])
+        assert [type(module).__name__ for module in wrapped] == [wrapped_type]
+        assert wrapped[0] is getattr(feature.detector, selection)
+
+    @pytest.mark.parametrize("preset", ["DoGHardNet", "DoGAffNetHardNet"])
+    def test_color_image_raises(self, device, preset):
+        feature = getattr(kornia.feature, preset)(4, device=device)
+        with pytest.raises(BaseError, match="convert it to grayscale"):
+            feature(torch.rand(1, 3, 40, 56, device=device))
 
     @pytest.mark.parametrize(
         "preset, feature_name", [("DoGHardNet", "doghardnet"), ("DoGAffNetHardNet", "dog_affnet_hardnet")]

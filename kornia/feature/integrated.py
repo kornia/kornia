@@ -498,6 +498,9 @@ class DoGHardNet(LocalFeature):
     :class:`~kornia.feature.LightGlueMatcher` expect: pass the LAFs and descriptors, without the padded slots (see
     :meth:`~kornia.feature.LocalFeature.forward`), to ``LightGlueMatcher("doghardnet")``.
 
+    The image must have one channel, :math:`(B, 1, H, W)`: convert a color image with
+    :func:`~kornia.color.rgb_to_grayscale` first.
+
     Args:
         num_features: the number of features to detect.
         upright: if ``True``, skip the orientation estimation and return upright frames.
@@ -527,7 +530,7 @@ class DoGAffNetHardNet(LocalFeature):
     As :class:`~kornia.feature.DoGHardNet`, with the affine shape of each 6-sigma DoG frame estimated by
     :class:`~kornia.feature.LAFAffNetShapeEstimator` before its orientation. The scale of the returned LAFs, the
     square root of their determinant, is again 12 sigma. Pass the LAFs and descriptors, without the padded slots, to
-    ``LightGlueMatcher("dog_affnet_hardnet")``.
+    ``LightGlueMatcher("dog_affnet_hardnet")``. The image must have one channel, :math:`(B, 1, H, W)`.
 
     Args:
         num_features: the number of features to detect.
