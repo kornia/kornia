@@ -2520,6 +2520,7 @@ class TestConventionsKernels(BaseTester):
             (5, torch.int16),
             (129, torch.int8),
             ((11, 11), torch.int8),
+            ((3, 43), torch.int8),
             ((13, 13), torch.int16),
             ((3, 5), torch.int32),
             (7, torch.int64),
