@@ -19,8 +19,17 @@ import pytest
 import torch
 
 import kornia
+from kornia.core._compat import torch_version_lt
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+
+# The guard these tests pin (#5037) is only exercised where the two capture flags differ: from torch 2.14, Dynamo
+# no longer folds the export flag to True inside torch.compile. On older releases it already did, as on 2.5.1 where
+# kornia's helper falls back to is_compiling().
+_CAPTURE_UNAVAILABLE_REASON = (
+    f"{DYNAMO_UNAVAILABLE_REASON}, and before torch 2.14 the export flag was already True under torch.compile, "
+    "so the guard made no difference there (#5037)"
+)
 
 
 class TestHausdorffLoss(BaseTester):
@@ -178,6 +187,37 @@ class TestHausdorffLoss(BaseTester):
         loss = hd(k=2)
 
         self.gradcheck(loss, (logits, labels), dtypes=[torch.float64, torch.int64])
+
+    @pytest.mark.skipif(not dynamo_is_available() or torch_version_lt(2, 14, 0), reason=_CAPTURE_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize(
+        "hd,shape", [(kornia.losses.HausdorffERLoss, (10, 10)), (kornia.losses.HausdorffERLoss3D, (5, 5, 5))]
+    )
+    def test_trace_labels_like_eager(self, hd, shape, device, dtype):
+        # The range check reads the data, so any capture has to skip it, not only export (#5037).
+        from torch._dynamo.testing import CompileCounter
+
+        num_classes = 3
+        logits = torch.rand(2, num_classes, *shape, device=device, dtype=dtype)
+        labels = (torch.rand(2, 1, *shape, device=device) * (num_classes - 1)).long()
+        counter = CompileCounter()
+        torch._dynamo.reset()
+        traced = torch.compile(hd(), backend=counter, fullgraph=True)
+        self.assert_close(traced(logits, labels), hd()(logits, labels), rtol=0, atol=0)
+        assert counter.frame_count == 1
+
+    @pytest.mark.skipif(not dynamo_is_available() or torch_version_lt(2, 14, 0), reason=_CAPTURE_UNAVAILABLE_REASON)
+    def test_trace_scores_out_of_range_like_export(self, device, dtype):
+        # Export already scored an out-of-range label in no class, and a traced call now does the same instead of
+        # raising; that is the behaviour change #5037 accepts. An eager call keeps raising.
+        num_classes = 3
+        logits = torch.rand(2, num_classes, 10, 10, device=device, dtype=dtype)
+        labels = torch.full((2, 1, 10, 10), num_classes, dtype=torch.long, device=device)
+        with pytest.raises(ValueError, match="Expect long type target value in range"):
+            kornia.losses.HausdorffERLoss()(logits, labels)
+        exported = torch.export.export(kornia.losses.HausdorffERLoss(), (logits, labels)).module()(logits, labels)
+        torch._dynamo.reset()
+        traced = torch.compile(kornia.losses.HausdorffERLoss(), backend="eager", fullgraph=True)(logits, labels)
+        self.assert_close(traced, exported, rtol=0, atol=0)
 
 
 class TestConventionsHausdorffERLoss(BaseTester):
