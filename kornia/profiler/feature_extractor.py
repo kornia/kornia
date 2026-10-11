@@ -119,7 +119,7 @@ class FeatureExtractor:
         if self.layers is None:
             self.layers = [
                 name
-                for name in layer_dict.keys()
+                for name in layer_dict
                 if name != ""  # skip root module
             ]
 

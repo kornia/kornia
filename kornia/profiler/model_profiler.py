@@ -171,9 +171,9 @@ class ModelProfiler:
     def print(self):
         r"""Print the computed results as a DataFrame."""
         if self.results is not None:
-            print(self.df)
+            print(self.df)  # noqa: T201 - ModelProfiler.print prints by design
         else:
-            print("No results computed yet.")
+            print("No results computed yet.")  # noqa: T201 - ModelProfiler.print prints by design
 
     def save_as_report(self, path):
         r"""Save computed results to a file.
