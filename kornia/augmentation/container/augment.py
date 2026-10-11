@@ -153,15 +153,12 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           masks use at least float32 (float64 with a float64 image). Integer labels not exactly representable
           in that working dtype raise ``RuntimeError`` instead of being rounded. On accelerators an asynchronous
           assertion may report at the next synchronization; MPS before torch 2.13 checks on the host.
-        - a ``mask`` argument can be a list of tensors with different channel counts, but its batch handling
-          has limitations. Each list entry uses only ``batch_prob[i]`` as its gate, including for intensity
-          children. Per-sample list tensors are unsupported by warp operations, and full-batch tensors in that
-          list can become desynchronized from the image when the gate differs across samples. A list longer
-          than the batch raises ``IndexError``. Use separate ``mask`` data keys for separate full-batch masks.
-          ``.inverse()`` takes the list the forward pass returned and inverts it element by element with the
-          same per-entry gate. A flip round-trips each entry, subject to the working-dtype requirements above; other
-          warps lose the pixels they move out of the frame and, when they resample, restore the rest only
-          approximately. Tracked in `#4477 <https://github.com/kornia/kornia/issues/4477>`_.
+        - a ``mask`` list contains one tensor per image sample, in sample order. Each entry is
+          ``(H, W)``, ``(C, H, W)`` or ``(1, C, H, W)``, with matching spatial dimensions; channel counts
+          may differ. Each entry uses its sample's gate, transform parameters and matrix, including in
+          nested sequences, replay and inverse. Full-batch mask tensors must use separate ``mask`` data
+          keys; a list with incompatible length or entry shape raises ``ValueError``. Inverse warps can
+          only approximately restore resampled pixels and cannot recover pixels moved out of the frame.
         - the ``mask``, box and ``keypoints`` handlers of a geometric child, or of a custom
           :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` subclass, receive the transform of the
           call's ``params``: the one the child recorded when it last transformed an image with those params, or
@@ -500,6 +497,20 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         return outputs
 
+    @staticmethod
+    def _validate_mask_list(mask: List[torch.Tensor], batch: int, size: Optional[torch.Size]) -> None:
+        """Validate the per-sample mask-list layout before any child runs."""
+        if len(mask) != batch:
+            raise ValueError(f"Mask list must contain one entry per sample ({batch}); got {len(mask)}.")
+        for i, entry in enumerate(mask):
+            if entry.ndim not in (2, 3, 4) or (entry.ndim == 4 and entry.shape[0] != 1):
+                raise ValueError(
+                    f"Mask list entry {i} must be (H, W), (C, H, W) or (1, C, H, W); "
+                    f"got {tuple(entry.shape)}. Use separate mask data keys for full-batch tensors."
+                )
+            if size is not None and entry.shape[-2:] != size:
+                raise ValueError(f"Mask list entry {i} must have spatial size {tuple(size)}; got {tuple(entry.shape)}.")
+
     def _validate_args_datakeys(
         self, *args: DataType, data_keys: List[DataKey], params: Optional[List[ParamItem]] = None
     ) -> None:
@@ -533,6 +544,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         temporal_dim = videos[0]._temporal_channel if videos else 1
         for mask, key in zip(args, data_keys):
             if key not in _MSK_OPTIONS:
+                continue
+            if isinstance(mask, list):
+                self._validate_mask_list(mask, image_batch, image_size)
                 continue
             if not isinstance(mask, torch.Tensor):
                 continue
@@ -978,7 +992,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         # image in the call, ``None`` when there is none.
         working = dtype if dtype is not None else torch.float
         if isinstance(arg, list):
-            # A list keeps its per-entry gate semantics (see the class docstring); it is not broadcast.
+            # A list holds one mask per sample (see the class docstring); it is not broadcast.
             return [self._cast_mask(a, working) for a in arg]
         return self._broadcast_single_mask(self._cast_mask(arg, working), image_batch)
 

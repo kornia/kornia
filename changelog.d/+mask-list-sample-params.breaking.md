@@ -1,0 +1,1 @@
+`AugmentationSequential` mask lists now mean one tensor per image sample. Each sample uses its own gate, crop parameters and transformation matrix in forward, replay, nested sequences and inverse, fixing warp errors and desynchronized masks. Lists with a wrong length or full-batch entries now raise `ValueError`; use separate mask data keys for multiple full-batch masks.
