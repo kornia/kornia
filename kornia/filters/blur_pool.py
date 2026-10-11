@@ -95,7 +95,9 @@ class BlurPool2D(nn.Module):
             on the input size and ``self.stride``.
         """
         kernel = self.kernel.to(device=input.device, dtype=input.dtype)
-        return _blur_pool_by_kernel2d(input, kernel.repeat((input.shape[1], 1, 1, 1)), self.stride)
+        # ONNX requires constant convolution groups and kernel shape, even with dynamic batch or spatial axes.
+        channels = int(input.shape[1]) if torch.jit.is_tracing() else input.shape[1]
+        return _blur_pool_by_kernel2d(input, kernel.repeat((channels, 1, 1, 1)), self.stride)
 
 
 class MaxBlurPool2D(nn.Module):
@@ -177,9 +179,8 @@ class MaxBlurPool2D(nn.Module):
             and ``self.stride``.
         """
         kernel = self.kernel.to(device=input.device, dtype=input.dtype)
-        return _max_blur_pool_by_kernel2d(
-            input, kernel.repeat((input.size(1), 1, 1, 1)), self.stride, self.max_pool_size
-        )
+        channels = int(input.shape[1]) if torch.jit.is_tracing() else input.shape[1]
+        return _max_blur_pool_by_kernel2d(input, kernel.repeat((channels, 1, 1, 1)), self.stride, self.max_pool_size)
 
 
 class EdgeAwareBlurPool2D(nn.Module):
@@ -209,7 +210,7 @@ class EdgeAwareBlurPool2D(nn.Module):
         self.edge_threshold = edge_threshold
         self.edge_dilation_kernel_size = edge_dilation_kernel_size
 
-    def forward(self, input: torch.Tensor, epsilon: float = 1e-6) -> torch.Tensor:
+    def forward(self, input: torch.Tensor, epsilon: float | None = None) -> torch.Tensor:
         """Downsample while adapting the blur near image or feature edges.
 
         Edge-aware blur pooling estimates where strong local changes occur and
@@ -223,12 +224,15 @@ class EdgeAwareBlurPool2D(nn.Module):
                 channels, :math:`H` is the input height, and :math:`W` is the
                 input width.
             epsilon: Small positive value added to the input before the
-                logarithm of the edge test.
+                logarithm of the edge test. ``None`` means ``1e-6``, which keeps the legacy ONNX exporter from
+                turning the default into a graph input.
 
         Returns:
             Edge-aware blurred tensor with the shape of ``input``,
             :math:`(B, C, H, W)`.
         """
+        if epsilon is None:
+            epsilon = 1e-6
         return edge_aware_blur_pool2d(
             input, self.kernel_size, self.edge_threshold, self.edge_dilation_kernel_size, epsilon
         )
@@ -279,8 +283,9 @@ def blur_pool2d(input: torch.Tensor, kernel_size: tuple[int, int] | int, stride:
                   [0.0000, 0.0625, 0.3125]]]])
 
     """
+    channels = int(input.shape[1]) if torch.jit.is_tracing() else input.shape[1]
     kernel = get_pascal_kernel_2d(kernel_size, norm=True, device=input.device, dtype=input.dtype).repeat(
-        (input.size(1), 1, 1, 1)
+        (channels, 1, 1, 1)
     )
     return _blur_pool_by_kernel2d(input, kernel, stride)
 
@@ -325,8 +330,9 @@ def max_blur_pool2d(
     _warn_ceil_mode_deprecated(ceil_mode)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
+    channels = int(input.shape[1]) if torch.jit.is_tracing() else input.shape[1]
     kernel = get_pascal_kernel_2d(kernel_size, norm=True, device=input.device, dtype=input.dtype).repeat(
-        (input.shape[1], 1, 1, 1)
+        (channels, 1, 1, 1)
     )
     return _max_blur_pool_by_kernel2d(input, kernel, stride, max_pool_size)
 
@@ -450,10 +456,10 @@ def edge_aware_blur_pool2d(
     edges_y = log_input[..., 4:, :] - log_input[..., :-4, :]
     edges_x, edges_y = edges_x.mean(dim=-3, keepdim=True), edges_y.mean(dim=-3, keepdim=True)
     edges_x_mask, edges_y_mask = edges_x.abs() > log_thresh.to(edges_x), edges_y.abs() > log_thresh.to(edges_y)
-    edges_xy_mask = (edges_x_mask[..., 2:-2, :] + edges_y_mask[..., :, 2:-2]).type_as(input)
+    edges_xy_mask = (edges_x_mask[..., 2:-2, :] | edges_y_mask[..., :, 2:-2]).type_as(input)
 
     # dilate the content edges to have a soft mask of edges
-    dilated_edges = F.max_pool3d(edges_xy_mask, edge_dilation_kernel_size, 1, edge_dilation_kernel_size // 2)
+    dilated_edges = F.max_pool2d(edges_xy_mask, edge_dilation_kernel_size, 1, edge_dilation_kernel_size // 2)
 
     # slice the padded regions
     blurred_input = blurred_input[..., blur_pad_y:-blur_pad_y, blur_pad_x:-blur_pad_x]
