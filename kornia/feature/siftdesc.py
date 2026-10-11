@@ -454,7 +454,7 @@ class DenseSIFTDescriptor(nn.Module):
         num_ang_bins: Number of angular bins. (8 is default)
         num_spatial_bins: Number of spatial bins per descriptor (4 is default). With an odd
             ``num_spatial_bins`` and an odd ``spatial_bin_size``,
-            ``padding = (num_spatial_bins - 1) * spatial_bin_size / 2`` keeps the feature map size.
+            ``padding = (num_spatial_bins - 1) * spatial_bin_size / 2`` keeps the feature map size at ``stride=1``.
         spatial_bin_size: Size of a spatial bin in pixels, and the distance between neighbouring bins (4 is default)
         clipval: clipping value to reduce single-bin dominance
         rootsift: (bool) if True, RootSIFT (Arandjelović et. al, 2012) is computed
