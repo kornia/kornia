@@ -486,18 +486,26 @@ class TestResNetFPN(BaseTester):
 class TestLinearAttention(BaseTester):
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
     def test_padded_queries_stay_finite_5728(self, device, dtype):
-        # A padded query has a zero feature map, so its normaliser is 1 / eps = 1e6, beyond float16's 65504; the
-        # padded rows must come out as 0, not as 0 * inf = nan, and the other rows must not change.
+        # A padded query has a zero feature map, so its normaliser 1 / eps = 1e6 would exceed float16's 65504. The
+        # padded rows must come out as 0, not as 0 * inf = nan, the gradients must stay finite as well, and the
+        # rest must not change.
         gen = torch.Generator().manual_seed(0)
         q, k, v = (torch.randn(1, n, 2, 4, generator=gen) for n in (6, 5, 5))
         q_mask, kv_mask = torch.ones(1, 6), torch.ones(1, 5)
         q_mask[0, [1, 4]], kv_mask[0, 2] = 0, 0
 
         def attend(dt):
-            args = (t.to(device, dt) for t in (q, k, v, q_mask, kv_mask))
-            return LinearAttention()(*args)
+            q_, k_, v_ = (t.to(device, dt).requires_grad_() for t in (q, k, v))
+            out = LinearAttention()(q_, k_, v_, q_mask.to(device, dt), kv_mask.to(device, dt))
+            out.sum().backward()
+            return out.detach(), q_.grad, k_.grad, v_.grad
 
-        out = attend(dtype)
+        out, *grads = attend(dtype)
+        out32, *grads32 = attend(torch.float32)
         assert bool(torch.isfinite(out).all())
         self.assert_close(out[0, [1, 4]], torch.zeros_like(out[0, [1, 4]]), rtol=0.0, atol=0.0)
-        self.assert_close(out.float(), attend(torch.float32), rtol=0.0, atol=5e-2)
+        self.assert_close(out.float(), out32, rtol=0.0, atol=5e-2)
+        for grad, grad32 in zip(grads, grads32):
+            assert bool(torch.isfinite(grad).all()), grad
+            self.assert_close(grad.float(), grad32, rtol=0.0, atol=5e-2)
+        self.assert_close(grads[0][0, [1, 4]], torch.zeros_like(grads[0][0, [1, 4]]), rtol=0.0, atol=0.0)
