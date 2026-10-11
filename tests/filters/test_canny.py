@@ -399,6 +399,18 @@ class TestCanny(BaseTester):
         self.assert_close(actual_edges, expected_edges)
         self.assert_close(actual_magnitude, expected_magnitude)
 
+    def test_dynamo_hysteresis_adds_no_graph(self, device, dtype, torch_optimizer):
+        # The eager hysteresis loop stays inline in canny. Its condition breaks the graph, and a break inside a called
+        # helper splits canny's frame once more: a fourth graph, ~15% slower compiled on a 256 x 256 CPU image.
+        from torch._dynamo.testing import CompileCounter
+
+        self._require_padding(device, dtype)
+        counter = CompileCounter()
+        compiled = torch_optimizer(Canny(), backend=counter)
+        img = torch.rand(1, 3, 32, 32, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
+        self.assert_close(compiled(img)[1], Canny()(img)[1])
+        assert counter.frame_count <= 3
+
     @staticmethod
     def _require_padding(device, dtype):
         # gaussian_blur2d pads by reflection and spatial_gradient by replication, even with kernel_size=1

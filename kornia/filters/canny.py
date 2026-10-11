@@ -67,7 +67,7 @@ def _hysteresis_step(edges: torch.Tensor, hysteresis_kernels: torch.Tensor) -> t
     weak = (edges == 0.5).to(edges.dtype)
     strong = (edges == 1).to(edges.dtype)
     # The kernels are always 3x3, so the padding is the constant 1. Not read from the kernel's shape: under
-    # torch.jit.trace a shape is a traced value, which torch 2.5.1 turns into an empty padding list.
+    # torch.jit.trace a shape is a traced value, which torch 2.5.1 and 2.9.1 turn into an empty padding list.
     hysteresis_magnitude = F.conv2d(edges, hysteresis_kernels, padding=1)
     hysteresis_magnitude = (hysteresis_magnitude == 1).any(1, keepdim=True).to(edges.dtype)
     hysteresis_magnitude = hysteresis_magnitude * weak + strong
@@ -75,8 +75,9 @@ def _hysteresis_step(edges: torch.Tensor, hysteresis_kernels: torch.Tensor) -> t
 
 
 def _hysteresis_loop(edges: torch.Tensor, hysteresis_kernels: torch.Tensor) -> torch.Tensor:
-    # Repeat the round until nothing changes. Written in the subset of Python that TorchScript compiles;
-    # eager mode runs it as is, and _hysteresis_loop_traced hands a trace a scripted copy.
+    # Repeat the round until nothing changes, for torch.jit.trace: written in the subset of Python that TorchScript
+    # compiles, so _hysteresis_loop_traced can hand a trace a scripted copy. canny keeps its eager loop inline: under
+    # torch.compile the loop condition breaks the graph, and a break inside a called function splits canny once more.
     edges_old = -torch.ones_like(edges)
     while bool((edges_old - edges).abs().ne(0).any()):
         edges_old = edges
@@ -296,7 +297,10 @@ def canny(
         elif torch.jit.is_tracing():
             edges = _hysteresis_loop_traced(edges, hysteresis_kernels)
         else:
-            edges = _hysteresis_loop(edges, hysteresis_kernels)
+            edges_old = -torch.ones_like(edges)
+            while ((edges_old - edges).abs() != 0).any():
+                edges_old = edges
+                edges = _hysteresis_step(edges, hysteresis_kernels)
 
         # The weak pixels left touch no strong pixel.
         edges = (edges == 1).to(dtype)
