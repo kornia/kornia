@@ -228,14 +228,12 @@ All flagships build on the same helpers in [`common.py`](common.py), so their ou
 5. Document the regimes in the module docstring; keep the honest framing.
 
 The filters flagship includes optional scikit-image baselines. To exercise every
-current baseline, install the benchmark-only dependencies with
-`uv pip install --upgrade --prerelease allow scikit-image kornia-rs`; this currently
-selects scikit-image 0.26 and kornia-rs 0.1.15rc5. Its module docstring lists
+current baseline, install the benchmark-only dependency with
+`uv pip install scikit-image`; kornia-rs, a kornia dependency, supplies Gaussian,
+box and median blur, Sobel, and grayscale bilateral. Its module docstring lists
 differences in padding, kernel support, normalization, and clipping; empty cells
 indicate an unavailable dependency or a missing native counterpart.
-The kornia-rs adapters detect APIs individually: stable 0.1.14 supplies Gaussian
-and box blur; 0.1.15rc5 also supplies median, Sobel, and grayscale bilateral.
-The latter has a separate row because its Python API only accepts grayscale.
+The grayscale bilateral has a separate row because its Python API only accepts grayscale.
 See [median parallelism notes](filters/median_parallelism.md) for the CPU/CUDA/MPS
 implementation audit and related PyTorch issues and pull requests.
 
