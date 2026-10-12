@@ -9,7 +9,9 @@ This work builds on navya7821's Kornia PR #3669 (head f69c19ed75f1b8b29733882ced
 - Validate hook registration atomically and clone captured features to protect against in-place operations.
 - Restore per-module training state after profiling, including failures.
 - Integrate package exports and lazy optional pandas support.
-- Add 46 profiler regression tests and usage documentation.
+- Add profiler regression tests and usage documentation.
+- Export JSON without pandas, with actionable installation hints for optional CSV support.
+- Reuse one original feature snapshot across augmentations and document single-image metric selection.
 
 ## Validation performed
 
@@ -17,6 +19,10 @@ Validation was performed on Kornia v0.8.3 with Python 3.12, PyTorch 2.6 and an R
 
 The broader upstream runs recorded 7,724 CPU passes and 7,713 CUDA passes, with zero assertion failures after matching the original release dependency and disabling cuDNN TF32 for the affected tests. Eleven setup errors per run remained because external image fixtures were unavailable; one SAM checkpoint-dependent test was deselected. These are incomplete suite results, not an all-green suite.
 
+## Current-main focused validation
+
+On Python 3.12.13 and PyTorch 2.9.1 (CPU), the original three JSON-export failures were reproduced without pandas. After the fixes, 28 tests passed and 26 were skipped without pandas. With pandas installed, 29 tests passed and 25 were skipped. Skips cover unavailable CUDA and optional dependency cases. The missing-pandas fixture still verifies JSON independence and the CSV installation hint when pandas is installed. All repository pre-commit hooks passed across all files. These local checks do not establish a passing GitHub matrix or MPS support.
+
 ## Review status
 
-This branch is based on main commit 1adb5b93af1f95816b4dec8ee8d11cbce2581728. Existing main package initialization and project metadata were preserved while adding profiler integration. The previous test results do not establish compatibility with current main. Current-main checks, full pre-commit checks, public API typing/documentation review and agreement on the collector/metric architecture remain necessary before an upstream-ready PR. No performance or full architecture-compliance claim is made.
+This branch is based on main commit 1adb5b93af1f95816b4dec8ee8d11cbce2581728. Existing main package initialization and project metadata were preserved while adding profiler integration. The previous test results do not establish compatibility with current main. The GitHub current-main matrix, public API typing/documentation review and agreement on the collector/metric architecture remain necessary before an upstream-ready PR. No performance or full architecture-compliance claim is made.
