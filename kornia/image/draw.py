@@ -99,7 +99,8 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
         (len(image.shape) == 2 and len(color.shape) == 1) or color.shape[0] in (1, image.shape[0]),
         "Color dim must match the channel dims of the provided image",
     )
-    points = _round_to_pixel(points.to(image.device))
+    # round on the points' own device: MPS has no float64, and float64 points from NumPy are common
+    points = _round_to_pixel(points).to(image.device)
     # A single [x, y] vector is a common call shape; zip(*points) iterated 0-d
     # scalars and raised TypeError. An empty (0, 2) set used to fail unpacking;
     # indexing with empty columns now leaves the image unchanged.
@@ -180,8 +181,9 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
         raise ValueError(
             "Input points must be 2D points with shape (2, ) or (B, 2) and must have the same batch sizes."
         )
-    p1 = _round_to_pixel(p1.to(image.device))
-    p2 = _round_to_pixel(p2.to(image.device))
+    # round on the points' own device: MPS has no float64, and float64 points from NumPy are common
+    p1 = _round_to_pixel(p1).to(image.device)
+    p2 = _round_to_pixel(p2).to(image.device)
     for name, p in (("p1", p1), ("p2", p2)):
         if ((p[..., 0] < 0) | (p[..., 0] >= image.shape[-1]) | (p[..., 1] < 0) | (p[..., 1] >= image.shape[-2])).any():
             raise ValueError(f"{name} is out of bounds.")

@@ -185,12 +185,19 @@ class TestDrawPoint(BaseTester):
         draw_point2d(img, points, torch.tensor([1.0], device=device))
         assert img[0, 0].nonzero().flatten().tolist() == [x]
 
-    def test_draw_point2d_just_outside_after_rounding_raises(self, dtype, device):
-        img = torch.zeros(3, 4, dtype=dtype, device=device)
+    @pytest.mark.parametrize("point", [(-0.6, 0.0), (3.5, 0.0), (0.0, -0.6), (0.0, 2.5)])
+    def test_draw_point2d_just_outside_after_rounding_raises(self, point, dtype, device):
+        img = torch.zeros(3, 4, dtype=dtype, device=device)  # H = 3, W = 4: x 3.5 and y 2.5 round to just outside
         with pytest.raises(ValueError, match="inside"):
-            draw_point2d(img, torch.tensor([[-0.6, 0.0]], device=device), torch.tensor([1.0], device=device))
-        with pytest.raises(ValueError, match="inside"):
-            draw_point2d(img, torch.tensor([[3.5, 0.0]], device=device), torch.tensor([1.0], device=device))
+            draw_point2d(img, torch.tensor([point], device=device), torch.tensor([1.0], device=device))
+
+    def test_float64_points_on_the_cpu_draw_on_the_image_device(self, device):
+        # torch.from_numpy gives float64 points on the CPU; MPS has no float64, so they are rounded before they move
+        img = torch.zeros(3, 4, 5, device=device)
+        points = torch.tensor([[1.4, 2.6], [3.0, 0.0]], dtype=torch.float64)
+        draw_point2d(img, points, torch.tensor([1.0, 0.5, 0.25]))
+        assert img[0].nonzero().tolist() == [[0, 3], [3, 1]]  # (row, col): x 1.4 -> 1, y 2.6 -> 3
+        assert img[:, 3, 1].tolist() == [1.0, 0.5, 0.25]
 
 
 class TestDrawLine(BaseTester):
@@ -535,6 +542,14 @@ class TestDrawLine(BaseTester):
         p2 = torch.tensor([1027.0, 1.0], dtype=torch.float16, device=device)
         draw_line(img, p1, p2, torch.tensor([1.0], device=device))
         assert img[0, 1].nonzero().flatten().tolist() == [1025, 1026, 1027]
+
+    def test_float64_endpoints_on_the_cpu_draw_on_the_image_device(self, device):
+        # torch.from_numpy gives float64 points on the CPU; MPS has no float64, so they are rounded before they move
+        img = torch.zeros(1, 4, 6, device=device)
+        p1 = torch.tensor([0.4, 2.6], dtype=torch.float64)
+        p2 = torch.tensor([4.6, 2.6], dtype=torch.float64)
+        draw_line(img, p1, p2, torch.tensor([1.0]))
+        assert img[0].nonzero().tolist() == [[3, 0], [3, 1], [3, 2], [3, 3], [3, 4], [3, 5]]
 
     def test_draw_line_endpoint_rounding_outside_raises(self, dtype, device):
         img = torch.zeros(1, 3, 6, dtype=dtype, device=device)
