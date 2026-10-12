@@ -1020,3 +1020,82 @@ class TestFillConvexPolygon(BaseTester):
         draw_convex_polygon(img, poly, torch.tensor([1.0], device=device, dtype=dtype))
         assert img[0, 0, 2, 2].item() == 1.0
         assert not img.isnan().any()
+
+
+class TestConventionsDraw(BaseTester):
+    """Pins for the (x, y) order, inclusive corners, polygon edge rule and in-place drawing."""
+
+    def test_convention_draw_coordinates_are_x_then_y(self, device, dtype):
+        img = torch.zeros(1, 3, 5, device=device, dtype=dtype)  # H = 3, W = 5
+        draw_point2d(img, torch.tensor([[4, 1]], device=device), torch.tensor([1.0], device=device))
+        assert img[0].nonzero().tolist() == [[1, 4]]  # (row y, column x)
+        transposed = torch.zeros(1, 5, 3, device=device, dtype=dtype)
+        draw_point2d(transposed, torch.tensor([[1, 4]], device=device), torch.tensor([1.0], device=device))
+        self.assert_close(transposed[0], img[0].T)
+
+    def test_convention_rectangle_includes_both_corners(self, device, dtype):
+        img = torch.zeros(1, 1, 5, 7, device=device, dtype=dtype)  # H = 5, W = 7
+        rect = torch.tensor([[[1, 0, 4, 2]]], device=device)  # x1, y1, x2, y2
+        out = draw_rectangle(img, rect, torch.tensor([1.0], device=device), fill=True)
+        assert out[0, 0].nonzero().min(0).values.tolist() == [0, 1]
+        assert out[0, 0].nonzero().max(0).values.tolist() == [2, 4]  # (row y2, column x2) is drawn
+        assert out.sum().item() == 3 * 4  # rows 0..2 x columns 1..4: (y2 - y1 + 1) * (x2 - x1 + 1)
+        outline = draw_rectangle(torch.zeros_like(img), rect, torch.tensor([1.0], device=device))
+        assert outline[0, 0, 2, 4].item() == 1.0
+        assert outline[0, 0, 1, 2].item() == 0.0  # the interior of an outline stays untouched
+        transposed = draw_rectangle(
+            torch.zeros(1, 1, 7, 5, device=device, dtype=dtype),
+            torch.tensor([[[0, 1, 2, 4]]], device=device),
+            torch.tensor([1.0], device=device),
+            fill=True,
+        )
+        self.assert_close(transposed[0, 0], out[0, 0].T)
+
+    def test_convention_polygon_fills_centres_on_or_inside_its_edges(self, device, dtype):
+        # A pixel is filled when its centre is on or inside the polygon: edges at x = 1.5 and 3.5 fill columns 2 and
+        # 3 only; an edge exactly through x = 1 includes column 1.
+        colors = torch.tensor([1.0], device=device, dtype=dtype)
+        img = torch.zeros(1, 1, 4, 6, device=device, dtype=dtype)  # H = 4, W = 6
+        poly = torch.tensor([[[1.5, 0.0], [3.5, 0.0], [3.5, 3.0], [1.5, 3.0]]], device=device, dtype=dtype)
+        out = draw_convex_polygon(img, poly, colors)
+        assert out[0, 0].nonzero()[:, 1].unique().tolist() == [2, 3]
+        assert out[0, 0].nonzero()[:, 0].unique().tolist() == [0, 1, 2, 3]
+        on_edge = torch.tensor([[[1.0, 0.0], [3.5, 0.0], [3.5, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        out = draw_convex_polygon(torch.zeros_like(img), on_edge, colors)
+        assert out[0, 0].nonzero()[:, 1].unique().tolist() == [1, 2, 3]
+        transposed = draw_convex_polygon(torch.zeros(1, 1, 6, 4, device=device, dtype=dtype), poly.flip(-1), colors)
+        self.assert_close(transposed[0, 0], draw_convex_polygon(torch.zeros_like(img), poly, colors)[0, 0].T)
+
+    def test_convention_concave_polygon_fills_each_scanline_span(self, device, dtype):
+        # draw_convex_polygon fills, on each scanline, everything from the leftmost to the rightmost edge crossing, so
+        # a concave "V" notch is filled as well. Rows 0..3 span columns 1..5; the notch columns 2..4 of rows 0..1
+        # are inside the span but outside the polygon.
+        img = torch.zeros(1, 1, 5, 7, device=device, dtype=dtype)  # H = 5, W = 7
+        notched = torch.tensor(
+            [[[1.0, 0.0], [3.0, 2.0], [5.0, 0.0], [5.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype
+        )
+        out = draw_convex_polygon(img, notched, torch.tensor([1.0], device=device, dtype=dtype))
+        expected = torch.zeros(5, 7, device=device, dtype=dtype)
+        expected[0:4, 1:6] = 1.0
+        self.assert_close(out[0, 0], expected)
+
+    @pytest.mark.parametrize("name", ["draw_point2d", "draw_line", "draw_rectangle", "draw_convex_polygon"])
+    def test_convention_draw_functions_draw_in_place(self, device, dtype, name):
+        # Each function writes into the tensor it is given and returns that same object.
+        color = torch.tensor([1.0], device=device, dtype=dtype)
+        batch = torch.zeros(1, 1, 5, 7, device=device, dtype=dtype)  # H = 5, W = 7
+        if name == "draw_point2d":
+            target = batch[0]  # (C, H, W)
+            out = draw_point2d(target, torch.tensor([[3, 1]], device=device), color)
+        elif name == "draw_line":
+            target = batch[0]  # (C, H, W)
+            out = draw_line(target, torch.tensor([0, 0], device=device), torch.tensor([3, 2], device=device), color)
+        elif name == "draw_rectangle":
+            target = batch
+            out = draw_rectangle(target, torch.tensor([[[1, 1, 3, 2]]], device=device), color, fill=True)
+        else:
+            target = batch
+            poly = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0]]], device=device, dtype=dtype)
+            out = draw_convex_polygon(target, poly, color)
+        assert out is target
+        assert batch.sum().item() > 0  # the caller's storage was written

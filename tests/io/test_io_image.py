@@ -1074,3 +1074,119 @@ class TestWiderThanUint8Decodes:
         expected = rf"decoded to torch\.float32, and ImageLoadType\.{load_type.name}"
         with pytest.raises(NotImplementedError, match=expected):
             load_image(path, load_type)
+
+
+class TestConventionsIo:
+    """Pins for the channel, dtype, alpha, orientation and format policies of ``load_image`` and ``write_image``."""
+
+    @staticmethod
+    def _rgb() -> torch.Tensor:
+        return (torch.arange(3 * 4 * 5) * 11 % 256).to(torch.uint8).view(3, 4, 5)  # H = 4, W = 5, asymmetric
+
+    @pytest.mark.parametrize(
+        ("load_type", "channels"),
+        [
+            (ImageLoadType.GRAY8, 1),
+            (ImageLoadType.GRAY32, 1),
+            (ImageLoadType.RGB8, 3),
+            (ImageLoadType.RGB32, 3),
+            (ImageLoadType.RGBA8, 4),
+        ],
+    )
+    @pytest.mark.parametrize("file_channels", [1, 3])
+    def test_convention_load_image_channels_follow_the_load_type(self, tmp_path, load_type, channels, file_channels):
+        # The load type fixes the channel count whatever the file holds; only UNCHANGED keeps the file's own count.
+        path = tmp_path / "image.png"
+        write_image(path, self._rgb()[:file_channels])
+        out = load_image(path, load_type)
+        assert out.shape == (channels, 4, 5)
+        assert load_image(path, ImageLoadType.UNCHANGED).shape == (file_channels, 4, 5)
+
+    def test_convention_load_image_default_is_rgb32_float_in_unit_range_on_cpu(self, tmp_path):
+        pixels = self._rgb().clone()
+        pixels[0, 0, 0], pixels[0, 0, 1] = 0, 255
+        path = tmp_path / "image.png"
+        write_image(path, pixels)
+        out = load_image(path)
+        assert out.dtype == torch.float32
+        assert out.device.type == "cpu"
+        assert out.shape == (3, 4, 5)
+        assert out.min().item() == 0.0
+        assert out.max().item() == 1.0
+        torch.testing.assert_close(out, load_image(path, ImageLoadType.RGB32))
+        torch.testing.assert_close(out, pixels.float() / 255.0)
+
+    def test_convention_load_image_composites_alpha_over_white(self, tmp_path):
+        # A transparent pixel loads as white, an opaque one keeps its colour, and a semi-transparent one is
+        # composited over white and rounded; OpenCV and Pillow drop the alpha channel instead.
+        # Snippet: [round(c * 64 / 255 + 255 * (1 - 64 / 255)) for c in (200, 100, 50)] -> [241, 216, 204]
+        pixels = np.zeros((3, 5, 4), dtype=np.uint8)  # H = 3, W = 5
+        pixels[...] = (10, 20, 30, 255)
+        pixels[0, 0] = (200, 100, 50, 64)
+        pixels[2, 4] = (7, 8, 9, 0)
+        path = tmp_path / "rgba.png"
+        kornia_rs.io.write_image_png_u8(str(path), pixels, mode="rgba")
+        out = load_image(path, ImageLoadType.RGB8)
+        assert out.shape == (3, 3, 5)
+        assert out[:, 0, 0].tolist() == [241, 216, 204]
+        assert out[:, 2, 4].tolist() == [255, 255, 255]
+        assert out[:, 1, 2].tolist() == [10, 20, 30]
+
+    def test_convention_load_image_ignores_exif_orientation(self, tmp_path):
+        # The decoded array is the stored one, (C, H, W) = (3, 4, 8); cv2.imread honours orientation 6 and would give
+        # (8, 4, 3) for this file. The APP1 block below is a TIFF header with one IFD entry: Orientation (0x0112) = 6.
+        plain = tmp_path / "plain.jpg"
+        write_image(plain, (torch.arange(3 * 4 * 8) * 5 % 256).to(torch.uint8).view(3, 4, 8))
+        exif = (
+            b"Exif\x00\x00MM\x00*\x00\x00\x00\x08"  # Exif marker, big-endian TIFF header, IFD at offset 8
+            b"\x00\x01\x01\x12\x00\x03\x00\x00\x00\x01\x00\x06\x00\x00"  # 1 entry: tag 0x0112, SHORT, 1, value 6
+            b"\x00\x00\x00\x00"  # no next IFD
+        )
+        data = plain.read_bytes()
+        tagged = tmp_path / "tagged.jpg"
+        tagged.write_bytes(data[:2] + b"\xff\xe1" + struct.pack(">H", len(exif) + 2) + exif + data[2:])
+        out = load_image(tagged, ImageLoadType.RGB8)
+        assert out.shape == (3, 4, 8)
+        torch.testing.assert_close(out, load_image(plain, ImageLoadType.RGB8))
+
+    def test_convention_write_image_formats_per_dtype(self, tmp_path):
+        # uint8 -> jpg, png, tif; uint16 -> png, tif; float32 -> tif; everything else raises NotImplementedError.
+        image = self._rgb()
+        for ext in ("jpg", "png", "tif"):
+            write_image(tmp_path / f"u8.{ext}", image)
+            assert load_image(tmp_path / f"u8.{ext}", ImageLoadType.UNCHANGED).shape == (3, 4, 5)
+        for ext in ("png", "tif"):
+            write_image(tmp_path / f"u16.{ext}", image.to(torch.uint16) * 200)
+            out = load_image(tmp_path / f"u16.{ext}", ImageLoadType.UNCHANGED)
+            assert out.dtype == torch.uint16
+            assert out.shape == (3, 4, 5)
+        write_image(tmp_path / "f32.tif", image.float() / 255)
+        out = load_image(tmp_path / "f32.tif", ImageLoadType.UNCHANGED)
+        assert out.dtype == torch.float32
+        assert out.shape == (3, 4, 5)
+
+        rejected = [(torch.uint16, "jpg"), (torch.float32, "png"), (torch.float32, "jpg")]
+        rejected += [(torch.float64, ext) for ext in ("jpg", "png", "tif")]
+        for dtype, ext in rejected:
+            with pytest.raises(NotImplementedError):
+                write_image(tmp_path / f"bad.{ext}", image.to(dtype))
+
+    def test_convention_write_image_jpeg_quality_default_is_80(self, tmp_path):
+        image = (torch.arange(3 * 16 * 24) * 37 % 256).to(torch.uint8).view(3, 16, 24)  # H = 16, W = 24
+        written = {}
+        for name, kwargs in (("default", {}), ("q80", {"quality": 80}), ("q95", {"quality": 95})):
+            write_image(tmp_path / f"{name}.jpg", image, **kwargs)
+            written[name] = (tmp_path / f"{name}.jpg").read_bytes()
+        assert written["default"] == written["q80"]
+        assert written["default"] != written["q95"]
+
+    @pytest.mark.parametrize(
+        ("shape", "match"), [((3, 0, 4), "[Zz]ero height|non zero"), ((3, 4, 0), "[Zz]ero width|non zero")]
+    )
+    def test_wart_write_image_zero_size_raises_bare_exception_5770(self, tmp_path, shape, match):
+        # #5770: a zero-height or zero-width image reaches kornia-rs, whose error is a bare ``Exception``. The fix
+        # should raise a kornia error (a ShapeError) before encoding, which flips this pin.
+        for ext in ("png", "jpg"):
+            with pytest.raises(Exception, match=match) as excinfo:
+                write_image(tmp_path / f"zero.{ext}", torch.zeros(*shape, dtype=torch.uint8))
+            assert excinfo.type is Exception

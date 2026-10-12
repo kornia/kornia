@@ -20,6 +20,7 @@ import os
 import pytest
 import torch
 
+from kornia.core.exceptions import ValueCheckError
 from kornia.image import image_print, image_to_string, print_image
 from kornia.io import write_image
 
@@ -173,3 +174,27 @@ class TestNearestXterm:
         out = capsys.readouterr().out
         assert out.count("\x1b[48;5;16m") == 6  # 2 x 3 black pixels
         assert out.count("\x1b[0m\n") == 2
+
+
+class TestConventionsPrint:
+    """Pins for the value ranges and the width defaults of the terminal printers."""
+
+    @pytest.mark.parametrize(
+        "image",
+        [torch.full((3, 2, 4), 1.5), torch.full((3, 2, 4), 256, dtype=torch.int64), torch.full((3, 2, 4), -0.5)],
+        ids=["float-above-1", "int-above-255", "float-below-0"],
+    )
+    def test_convention_image_to_string_value_ranges(self, image):
+        # A float image is read as [0, 1] and an integer one as [0, 255]; anything outside raises.
+        with pytest.raises(ValueCheckError):
+            image_to_string(image)
+
+    def test_convention_print_max_width_defaults(self, capsys):
+        # image_to_string caps the width at 256 columns by default and print_image at 96. Each printed cell is one
+        # "\x1b[48;5;<code>m  " escape, so a 300-column image prints 256 or 96 cells per row.
+        image = torch.zeros(3, 2, 300)
+        string = image_to_string(image)
+        assert string.count("\033[48;5;") == 256 * string.count("\033[0m\n")
+        print_image(image)
+        printed = capsys.readouterr().out
+        assert printed.count("\033[48;5;") == 96 * printed.count("\033[0m\n")
