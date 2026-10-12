@@ -34,7 +34,6 @@ from kornia.augmentation._3d.geometric.affine import RandomAffine3D
 from kornia.augmentation._3d.geometric.horizontal_flip import RandomHorizontalFlip3D
 from kornia.augmentation._3d.intensity.motion_blur import RandomMotionBlur3D
 from kornia.augmentation.base import _BasicAugmentationBase
-from kornia.augmentation.container.params import ParamItem
 from kornia.core import ImageModule
 from kornia.core._compat import torch_version_lt
 from kornia.filters.dissolving import StableDiffusionDissolving, _DissolvingWraper_HF

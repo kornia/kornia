@@ -25,8 +25,6 @@ import torch
 from torch._dynamo.testing import CompileCounter, CompileCounterWithBackend
 
 import kornia.augmentation as K
-from kornia.augmentation.container.params import ParamItem
-from kornia.geometry.keypoints import Keypoints
 
 from testing.base import BaseTester, dynamo_is_available
 
