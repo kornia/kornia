@@ -52,7 +52,8 @@ def download_image(url: str, save_to: str) -> None:
     once the write is complete, removing it if the write fails. An interrupted download therefore never leaves a
     partial file at ``save_to``, and concurrent downloads of the same file each leave a complete copy there. Windows
     cannot replace a file that is open, for example one that a concurrent call has just put there and is reading; the
-    later call then keeps that complete copy and removes its own.
+    later call keeps that copy only if its bytes match the download and removes its own temporary file. A refused
+    replacement with a missing, unreadable, or different destination still raises the replacement error.
 
     Args:
         url: The URL of the image to download.
@@ -71,8 +72,14 @@ def download_image(url: str, save_to: str) -> None:
         try:
             os.replace(part, save_to)
         except PermissionError:
-            # Windows: save_to is open, so another call already put a complete copy there
-            if not os.path.exists(save_to):
+            # Windows may refuse to replace an open file. Only accept an identical completed download.
+            matches = False
+            try:
+                with open(save_to, "rb") as existing:
+                    matches = existing.read(len(data) + 1) == data
+            except OSError:
+                pass  # preserve the replacement error when the destination cannot be verified
+            if not matches:
                 raise
             os.remove(part)
     except BaseException:
