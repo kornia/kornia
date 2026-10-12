@@ -360,7 +360,7 @@ def build_ops(
             else None
         )
         row["scikit-image"] = (
-            (lambda: [skf.median(im, footprint=footprint_5_hwc, mode="constant", cval=0) for im in imgs_f])
+            (lambda: [skf.median(im, footprint=footprint_5_hwc, mode="mirror") for im in imgs_f])
             if skf
             else None
         )
