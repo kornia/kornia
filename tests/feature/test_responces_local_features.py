@@ -548,8 +548,8 @@ class TestConventionsResponses(BaseTester):
     def test_convention_sigmas_multiply_the_response_by_sigma_to_the_fourth(self, device, dtype, response):
         # sigmas[b] multiplies the response of image b by sigmas[b] ** 4 in all three (VLFeat covdet.c's scale
         # normalisation of Harris and of the Hessian determinant; GFTT takes the same power): 2 ** 4 = 16 and
-        # 0.5 ** 4 = 1 / 16. The bound is two ULP per element: the power itself may round (MPS gives 0.5 ** 4 one
-        # float32 ULP below 1 / 16), the product rounds once more.
+        # 0.5 ** 4 = 1 / 16. The bound is 2 * eps relative per element: the power itself may round (MPS gives 0.5 ** 4
+        # one float32 ULP below 1 / 16), the product rounds once more.
         img = _conv_rectangle_and_blob(device, dtype).repeat(2, 1, 1, 1)
         sigmas = torch.tensor([2.0, 0.5], device=device, dtype=dtype)
         expected = response(img) * torch.tensor([16.0, 0.0625], device=device, dtype=dtype).view(-1, 1, 1, 1)
