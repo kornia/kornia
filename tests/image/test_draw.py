@@ -593,6 +593,16 @@ class TestDrawRectangle(BaseTester):
         expected[:, :, 2, 2] = 0
         self.assert_close(image, expected)
 
+    def test_outline_width_wider_than_box_stays_inside(self, dtype, device):
+        image = torch.zeros(1, 1, 8, 10, dtype=dtype, device=device)
+        rectangle = torch.tensor([[[4, 3, 6, 4]]], device=device)
+
+        draw_rectangle(image, rectangle, color=torch.tensor([1.0], device=device), line_width=4)
+
+        expected = torch.zeros_like(image)
+        expected[:, :, 3:5, 4:7] = 1
+        self.assert_close(image, expected)
+
     def test_outline_width_keeps_batch_colors_separate(self, dtype, device):
         image = torch.zeros(2, 3, 6, 6, dtype=dtype, device=device)
         rectangle = torch.tensor([[[1, 1, 4, 4]], [[1, 1, 4, 4]]], device=device)
@@ -626,7 +636,7 @@ class TestDrawRectangle(BaseTester):
         expected[:, :, 2, 2] = 0
         self.assert_close(out, expected)
 
-    @pytest.mark.parametrize("line_width", [0, -1, 1.5])
+    @pytest.mark.parametrize("line_width", [0, -1, 1.5, True])
     def test_outline_width_must_be_positive_integer(self, line_width, device):
         image = torch.zeros(1, 1, 5, 5, device=device)
         rectangle = torch.tensor([[[1, 1, 3, 3]]], device=device)
