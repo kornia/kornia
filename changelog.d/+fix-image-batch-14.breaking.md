@@ -14,11 +14,11 @@ corners drew nothing, raises `ValueError` instead of `AssertionError` when the i
 or the last dimension is not 4, and raises `ShapeError`, still a `ValueError`, naming the expected shape for an image
 that is not `(B, C, H, W)`. `Image` checks its pixel format: `GRAY` needs one channel and `RGB` and `BGR` need three
 (`UNKNOWN` takes any count), and `bit_depth` must be the storage size, `8 * data.element_size()`, where `bit_depth` 9
-to 15 used to pass on `uint8` data and 12 failed on `uint16`; a mismatch raises `BaseError`. Without a colour space,
-`Image.from_numpy` and `Image.from_dlpack` label one channel `GRAY`, three `RGB` and any other count `UNKNOWN`; they
-used to label every image `RGB`. `image_to_string` and `print_image` show each pixel with the nearest of the 240 fixed
-xterm colours (codes 16 to 255, the gray ramp included); they used to pick the nearest of the six colour-cube levels
-in each channel after truncating a float value to a whole level, so printed colours change. `print_image` raises
-`TypeError` instead of `RuntimeError` for an input that is neither a path nor a tensor. `image_to_tensor` raises
-`TypeError` for any input that is not a `numpy.ndarray`, where a list raised `AttributeError`. `make_grid` raises
-`ValueError` for a negative `padding`, which used to crop the images.
+to 15 used to pass on `uint8` data and 12 failed on `uint16`; a mismatch raises `ValueCheckError`, a `ValueError`.
+Without a colour space, `Image.from_numpy` and `Image.from_dlpack` label one channel `GRAY`, three `RGB` and any other
+count `UNKNOWN`; they used to label every image `RGB`. `image_to_string` and `print_image` show each pixel with the
+nearest of the 240 fixed xterm colours (codes 16 to 255, the gray ramp included); they used to pick the nearest of the
+six colour-cube levels in each channel after truncating a float value to a whole level, so printed colours change.
+`print_image` raises `TypeError` instead of `RuntimeError` for an input that is neither a path nor a tensor.
+`image_to_tensor` raises `TypeError` for any input that is not a `numpy.ndarray`, where a list raised
+`AttributeError`. `make_grid` raises `ValueError` for a negative `padding`, which used to crop the images.

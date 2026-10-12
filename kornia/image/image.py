@@ -24,7 +24,8 @@ import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
 
 import kornia.color
-from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import are_checks_enabled
+from kornia.core.exceptions import ValueCheckError
 from kornia.image.base import (
     KORNIA_CHECK_IMAGE_LAYOUT,
     ChannelsOrder,
@@ -102,19 +103,30 @@ class Image:
             pixel_format: the pixel format of the image.
             layout: a dataclass containing the image layout information.
 
+        Raises:
+            ValueCheckError: if ``pixel_format.bit_depth`` is not ``8 * data.element_size()``, or the color space does
+                not match the channel count. It is also a ``ValueError``. Like the other kornia checks, these are
+                skipped after ``kornia.core.check.disable_checks()``.
+
         """
         KORNIA_CHECK_IMAGE_LAYOUT(data, layout)
-        KORNIA_CHECK(
-            pixel_format.bit_depth == 8 * data.element_size(),
-            f"Invalid bit depth: the pixel format says {pixel_format.bit_depth} bits but the data is stored in "
-            f"{8 * data.element_size()} bits ({data.dtype}).",
-        )
-        expected_channels = _CHANNELS_OF_COLOR_SPACE.get(pixel_format.color_space)
-        KORNIA_CHECK(
-            expected_channels is None or layout.channels == expected_channels,
-            f"Invalid color space: {pixel_format.color_space.name} needs {expected_channels} channel(s) but the "
-            f"layout has {layout.channels}. Use ColorSpace.UNKNOWN for other channel counts.",
-        )
+        if are_checks_enabled():
+            storage_bits = 8 * data.element_size()
+            if pixel_format.bit_depth != storage_bits:
+                raise ValueCheckError(
+                    f"Invalid bit depth: the pixel format says {pixel_format.bit_depth} bits but the data is stored "
+                    f"in {storage_bits} bits ({data.dtype}).",
+                    actual_value=pixel_format.bit_depth,
+                    expected_range=(storage_bits, storage_bits),
+                )
+            expected_channels = _CHANNELS_OF_COLOR_SPACE.get(pixel_format.color_space)
+            if expected_channels is not None and layout.channels != expected_channels:
+                raise ValueCheckError(
+                    f"Invalid color space: {pixel_format.color_space.name} needs {expected_channels} channel(s) but "
+                    f"the layout has {layout.channels}. Use ColorSpace.UNKNOWN for other channel counts.",
+                    actual_value=layout.channels,
+                    expected_range=(expected_channels, expected_channels),
+                )
 
         self._data = data
         self._pixel_format = pixel_format

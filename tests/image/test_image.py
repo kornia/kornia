@@ -22,7 +22,7 @@ import pytest
 import torch
 
 from kornia.core._compat import torch_version_le
-from kornia.core.exceptions import BaseError, ShapeError
+from kornia.core.exceptions import ShapeError, ValueCheckError
 from kornia.image import ColorSpace
 from kornia.image.base import KORNIA_CHECK_IMAGE_LAYOUT, ChannelsOrder, ImageLayout, ImageSize, PixelFormat
 from kornia.image.image import Image
@@ -238,7 +238,7 @@ class TestImage(BaseTester):
         ("cs", "channels"), [(ColorSpace.GRAY, 3), (ColorSpace.RGB, 1), (ColorSpace.BGR, 4), (ColorSpace.RGB, 4)]
     )
     def test_color_space_must_match_the_channel_count(self, cs, channels):
-        with pytest.raises(BaseError, match="color space"):
+        with pytest.raises(ValueCheckError, match="color space"):
             make_image(torch.zeros(4, 5, channels, dtype=torch.uint8), cs, ChannelsOrder.CHANNELS_LAST)
 
     def test_unknown_color_space_accepts_any_channel_count(self):
@@ -252,7 +252,7 @@ class TestImage(BaseTester):
         assert Image.from_numpy(np.zeros((4, 5, 4), dtype=np.uint8)).pixel_format.color_space == ColorSpace.UNKNOWN
 
     def test_from_numpy_rejects_a_mismatching_color_space(self):
-        with pytest.raises(BaseError, match="color space"):
+        with pytest.raises(ValueCheckError, match="color space"):
             Image.from_numpy(np.zeros((4, 5, 1), dtype=np.uint8), color_space=ColorSpace.RGB)
 
     def test_from_dlpack_infers_the_color_space(self):
@@ -272,8 +272,19 @@ class TestImage(BaseTester):
         if ok:
             assert Image(data, pf, layout).pixel_format.bit_depth == bits
         else:
-            with pytest.raises(BaseError, match="bit depth"):
+            with pytest.raises(ValueCheckError, match="bit depth"):
                 Image(data, pf, layout)
+
+    def test_pixel_format_checks_follow_disable_checks(self):
+        from kornia.core.check import disable_checks, enable_checks
+
+        layout = ImageLayout(ImageSize(4, 5), 1, ChannelsOrder.CHANNELS_FIRST)
+        disable_checks()
+        try:
+            img = Image(torch.zeros(1, 4, 5, dtype=torch.uint8), PixelFormat(ColorSpace.RGB, 12), layout)
+        finally:
+            enable_checks()
+        assert img.pixel_format.bit_depth == 12
 
     def test_color_space_is_exported(self):
         import kornia.image
@@ -287,7 +298,7 @@ class TestImage(BaseTester):
         chw = (torch.arange(3 * height * 5, device=device).reshape(3, height, 5) * 4).to(torch.uint8)
         data = chw.permute(1, 2, 0).contiguous() if order == ChannelsOrder.CHANNELS_LAST else chw
         make_image(data, ColorSpace.RGB, order).print()
-        assert capsys.readouterr().out == image_to_string(chw) + "\n"
+        assert capsys.readouterr().out == image_to_string(chw.cpu()) + "\n"  # the CPU result
 
 
 def make_image(data: torch.Tensor, cs: ColorSpace, order: ChannelsOrder) -> Image:
