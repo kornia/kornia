@@ -1093,6 +1093,9 @@ class TestPinholeMatrix(BaseTester):
             function(*args)
         assert "not implemented" in str(exc_info.value)
         assert "https://github.com/kornia/kornia/issues/4283" in str(exc_info.value)
+        if function is homography_i_H_ref:
+            assert isinstance(exc_info.value.__cause__, NotImplementedError)
+            assert "get_optical_pose_base" in str(exc_info.value.__cause__)
 
     @pytest.mark.parametrize("shape", [(12,), (1, 11), (1, 1, 12)])
     @pytest.mark.parametrize("function", [get_optical_pose_base, homography_i_H_ref])
