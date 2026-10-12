@@ -839,7 +839,8 @@ class TestConventionsLoFTR(BaseTester):
         assert out["batch_indexes"].tolist() == [0, 0, 1]
         # confidence is the coarse dual-softmax score: similarity 16 * 16 / 256 / 0.1 = 10 against the zero similarity
         # of the 79 other cells of image 1 and the 87 other cells of image 0. The pair of amplitude 4 (similarity
-        # 0.625) scores about 0.015, below thr = 0.2, and is dropped.
+        # 0.625) scores about 5e-4, e**0.625 / (e**0.625 + 79) * e**0.625 / (e**0.625 + 87), below thr = 0.2, and is
+        # dropped.
         confidence = 1.0 / ((1.0 + 79.0 * math.exp(-10.0)) * (1.0 + 87.0 * math.exp(-10.0)))
         self.assert_close(out["confidence"], torch.full((3,), confidence, device=device, dtype=dtype))
         # relabelling: with the images swapped the same cell pairs come out with their roles swapped

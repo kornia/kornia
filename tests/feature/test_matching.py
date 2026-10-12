@@ -1484,18 +1484,21 @@ class TestConventionsMatching(BaseTester):
         d1, d2 = self._descriptors(device, dtype)
         lafs1 = self._lafs([[33.0, 21.0], [91.0, 57.0], [140.0, 70.0]], device, dtype)
         lafs2 = self._lafs([[30.0, 20.0], [90.0, 55.0], [140.0, 12.0], [5.0, 60.0]], device, dtype)
-        empty = d1[:0]
-        # an empty side gives (0, 1) values in the descriptor dtype and (0, 2) int64 indices
-        for match in (match_nn, match_mnn, match_snn, match_smnn):
-            for a, b in ((empty, d2), (d1, empty)):
-                dists, idxs = match(a, b)
+        # an empty side, first or second, gives (0, 1) values in the descriptor dtype and (0, 2) int64 indices
+        # ((0, 3) for match_smnn_batched)
+        for a, b, lafs_a, lafs_b in ((d1[:0], d2, lafs1[:, :0], lafs2), (d1, d2[:0], lafs1, lafs2[:, :0])):
+            outputs = [match(a, b) for match in (match_nn, match_mnn, match_snn, match_smnn)]
+            outputs.append(match_fginn(a, b, lafs_a, lafs_b))
+            for dists, idxs in outputs:
                 assert dists.shape == (0, 1)
                 assert dists.dtype == dtype
                 assert idxs.shape == (0, 2)
                 assert idxs.dtype == torch.long
-        ratios, indices = matching.match_smnn_batched(empty[None], d2[None])
-        assert ratios.shape == (0, 1)
-        assert indices.shape == (0, 3)
+            ratios, indices = matching.match_smnn_batched(a[None], b[None])
+            assert ratios.shape == (0, 1)
+            assert ratios.dtype == dtype
+            assert indices.shape == (0, 3)
+            assert indices.dtype == torch.long
         # one row in desc2: nn and mnn still match, the ratio tests have no second neighbour
         assert match_nn(d1, d2[:1])[1].tolist() == [[0, 0], [1, 0], [2, 0]]
         assert match_mnn(d1, d2[:1])[1].tolist() == [[1, 0]]
@@ -1605,7 +1608,7 @@ class TestConventionsMatching(BaseTester):
         quality, idxs = run((c1, s1, o1), (c2, s2, o2))
         assert len(idxs) > 350
         # Only the changes between the images are read: negating or shifting both orientations, or scaling both
-        # LAF sets, keeps every inlier's 10 degree turn and 1.2 scale ratio.
+        # LAF sets, keeps the inliers' common turn (-10 degrees after negation) and 1.2 scale ratio.
         for frames1, frames2 in (
             ((c1, s1, -o1), (c2, s2, -o2)),
             ((c1, s1, o1 + 37.0), (c2, s2, o2 + 37.0)),

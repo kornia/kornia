@@ -297,6 +297,6 @@ class TestConventionsOnnxLightGlue:
         # y = (30 - 120) / 160, ...; the transposed image swaps the coordinates
         expected = torch.tensor([0.875, -0.5625, -0.875, 0.5625, -0.5625, 0.875, 0.5625, -0.875])
         torch.testing.assert_close(out["scores"], expected)
-        # cpu and cuda only, checked before the model is read
+        # an unsupported device raises ValueError
         with pytest.raises(ValueError, match="Unsupported device"):
             OnnxLightGlue(path, device="meta")

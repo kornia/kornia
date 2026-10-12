@@ -738,26 +738,23 @@ class TestConventionsLightGlue(BaseTester):
         lg = lg.to(device, dtype).eval()
         seen = self._record_positional_encoding_inputs(lg)
         kpts = torch.tensor([[[300.0, 30.0], [20.0, 210.0], [160.0, 120.0]]], device=device, dtype=dtype)
-        desc = torch.rand(1, 3, 8, device=device, dtype=dtype)
-        size = torch.tensor([[320, 240]], device=device)  # (W, H)
-        image = torch.zeros(1, 1, 240, 320, device=device, dtype=dtype)  # the same size as an image
+        desc = torch.rand(2, 3, 8, device=device, dtype=dtype)
+        # image 0: batch item 1 is item 0 transposed, keypoints and (W, H) size alike, so each item needs its own size
+        size = torch.tensor([[320, 240], [240, 320]], device=device)
+        # image 1: an image tensor gives the size (W, H) = (320, 240) from its last two dimensions
+        image = torch.zeros(2, 1, 240, 320, device=device, dtype=dtype)
         with pytest.raises(_PositionalEncodingInputs):
             lg(
                 {
-                    "image0": {"keypoints": kpts, "descriptors": desc, "image_size": size},
-                    "image1": {"keypoints": kpts, "descriptors": desc, "image": image},
+                    "image0": {"keypoints": torch.cat([kpts, kpts.flip(-1)]), "descriptors": desc, "image_size": size},
+                    "image1": {"keypoints": torch.cat([kpts, kpts]), "descriptors": desc, "image": image},
                 }
             )
-        # (k - size / 2) / (max(size) / 2): x = (300 - 160) / 160, y = (30 - 120) / 160, and so on
+        # (k - size / 2) / (max(size) / 2): x = (300 - 160) / 160, y = (30 - 120) / 160, and so on; the transposed item
+        # gives the swapped coordinates
         expected = torch.tensor([[[0.875, -0.5625], [-0.875, 0.5625], [0.0, 0.0]]], device=device, dtype=dtype)
-        self.assert_close(seen[0], expected)
-        self.assert_close(seen[1], expected)
-        # relabelling: transposed keypoints in the transposed image give the swapped coordinates
-        seen.clear()
-        transposed = {"keypoints": kpts.flip(-1), "descriptors": desc, "image_size": size.flip(-1)}
-        with pytest.raises(_PositionalEncodingInputs):
-            lg({"image0": transposed, "image1": transposed})
-        self.assert_close(seen[0], expected.flip(-1))
+        self.assert_close(seen[0], torch.cat([expected, expected.flip(-1)]))
+        self.assert_close(seen[1], torch.cat([expected, expected]))
 
     @pytest.mark.parametrize("feature_name", LightGlueMatcher.known_modes)
     def test_convention_lightglue_matcher_gives_each_feature_type_its_keypoint_convention(
@@ -805,7 +802,8 @@ class TestConventionsLightGlue(BaseTester):
 
             def forward(self, data):
                 calls.append(data)
-                matches0 = torch.tensor([[2, -1, 0, 3]], device=device)
+                # 0 -> 3, 2 -> 0, 3 -> 2: no pair is its own inverse, so swapped columns give other pairs
+                matches0 = torch.tensor([[3, -1, 0, 2]], device=device)
                 scores0 = torch.tensor([[0.9, 0.0, 0.35, 0.6]], device=device, dtype=dtype)
                 return {"matches0": matches0, "matching_scores0": scores0}
 
@@ -821,7 +819,7 @@ class TestConventionsLightGlue(BaseTester):
         scores, idxs = matcher(desc, desc, lafs, lafs1, hw1=(200, 320), hw2=(200, 320))
         # The first value is LightGlue's matching score (higher is better), not a distance; rows are
         # (index in desc1, index in desc2), and unmatched keypoints (-1) are left out.
-        assert idxs.tolist() == [[0, 2], [2, 0], [3, 3]]
+        assert idxs.tolist() == [[0, 3], [2, 0], [3, 2]]
         self.assert_close(scores, torch.tensor([[0.9], [0.35], [0.6]], device=device, dtype=dtype))
         # Padding is not filtered: the zero LAF reaches the network as a keypoint at (0, 0).
         assert calls[0]["image1"]["keypoints"][0, 1].tolist() == [0.0, 0.0]
@@ -830,6 +828,6 @@ class TestConventionsLightGlue(BaseTester):
         assert scores.shape == (0, 1)
         assert idxs.shape == (0, 2)
         assert len(calls) == 1
-        # LightGlue's xfeat model is not one of the matcher's modes.
-        with pytest.raises(NotImplementedError):
-            LightGlueMatcher("xfeat")
+        # A name outside known_modes is rejected.
+        with pytest.raises(NotImplementedError, match="orb is not supported"):
+            LightGlueMatcher("orb")
