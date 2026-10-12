@@ -38,29 +38,33 @@ def _round_to_pixel(coords: Tensor) -> Tensor:
     return coords.to(torch.int64)
 
 
-def _draw_rectangle_bands(
-    image: Tensor, b: int, box: Tuple[int, int, int, int], color: Tensor, line_width: int, fill: bool
-) -> None:
-    """Draw one rectangle with inclusive, ordered corners ``(x1, y1, x2, y2)`` into ``image[b]``, clipped to the image.
+def _rectangle_bands(
+    x1: Tensor, y1: Tensor, x2: Tensor, y2: Tensor, h: int, w: int, line_width: int, fill: bool
+) -> Tensor:
+    """Return the row and column slices ``[r0, r1, c0, c1]`` of each rectangle's bands, clipped to a ``h x w`` image.
 
-    The outline is four bands ``line_width`` pixels thick, inside the box; the part of a band outside the image is not
-    drawn, so a one-pixel side outside the image disappears instead of being moved onto the border.
+    The corners are inclusive and ordered (``x1 <= x2``, ``y1 <= y2``) and share any leading shape. The outline is four
+    bands ``line_width`` pixels thick, inside the box; a fill is one band. Each band is drawn as
+    ``image[..., r0:r1, c0:c1]``. Its bounds are clamped to the image, so the part of a band outside the image is an
+    empty slice: a one-pixel side outside the image disappears instead of being moved onto the border. Clamping instead
+    of testing the bounds in Python keeps every corner a tensor until the one ``tolist`` in ``draw_rectangle``, so the
+    function exports to ONNX.
+
+    Returns:
+        an int64 tensor of shape ``(*, K, 4)``: ``K`` is 1 for a fill and 4 for an outline.
     """
-    h, w = image.shape[-2:]
-    x1, y1, x2, y2 = box
     if fill:
         bands = [(y1, y2, x1, x2)]
     else:
         bands = [
-            (y1, min(y1 + line_width - 1, y2), x1, x2),  # top
-            (max(y2 - line_width + 1, y1), y2, x1, x2),  # bottom
-            (y1, y2, x1, min(x1 + line_width - 1, x2)),  # left
-            (y1, y2, max(x2 - line_width + 1, x1), x2),  # right
+            (y1, torch.minimum(y1 + line_width - 1, y2), x1, x2),  # top
+            (torch.maximum(y2 - line_width + 1, y1), y2, x1, x2),  # bottom
+            (y1, y2, x1, torch.minimum(x1 + line_width - 1, x2)),  # left
+            (y1, y2, torch.maximum(x2 - line_width + 1, x1), x2),  # right
         ]
-    for r0, r1, c0, c1 in bands:
-        r0, r1, c0, c1 = max(r0, 0), min(r1, h - 1), max(c0, 0), min(c1, w - 1)
-        if r0 <= r1 and c0 <= c1:
-            image[b, :, r0 : r1 + 1, c0 : c1 + 1] = color[:, None, None]
+    r0, r1, c0, c1 = (torch.stack(bound, -1) for bound in zip(*bands))
+    # a start clamped to [0, size] and a stop to [0, size] give an empty slice whenever the band misses the image
+    return torch.stack([r0.clamp(0, h), r1.clamp(-1, h - 1) + 1, c0.clamp(0, w), c1.clamp(-1, w - 1) + 1], -1)
 
 
 def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
@@ -266,7 +270,7 @@ def draw_rectangle(
 
     """
     KORNIA_CHECK_SHAPE(image, ["B", "C", "H", "W"])
-    batch, c = image.shape[:2]
+    batch, c, h, w = image.shape
     batch_rect, num_rectangle, num_points = rectangle.shape
     if batch != batch_rect:
         raise ValueError("Image batch and rectangle batch must be equal")
@@ -292,10 +296,12 @@ def draw_rectangle(
     if color_channels == 1 and c == 3:
         color = color.expand(batch, num_rectangle, c)
 
+    # one host read for the bands of every rectangle
+    bands = _rectangle_bands(x1, y1, x2, y2, h, w, 1, fill).tolist()
     for b in range(batch):
         for n in range(num_rectangle):
-            box = (int(x1[b, n]), int(y1[b, n]), int(x2[b, n]), int(y2[b, n]))
-            _draw_rectangle_bands(image, b, box, color[b, n], 1, fill)
+            for r0, r1, c0, c1 in bands[b][n]:
+                image[b, :, r0:r1, c0:c1] = color[b, n, :, None, None]
 
     return image
 

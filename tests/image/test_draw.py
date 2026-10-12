@@ -15,17 +15,20 @@
 # limitations under the License.
 #
 
+import io
 import math
+import warnings
 
 import pytest
 import torch
 
+from kornia.core._compat import torch_version_ge
 from kornia.core.exceptions import BaseError, ShapeError
 from kornia.geometry import create_meshgrid
 from kornia.image import draw_convex_polygon, draw_rectangle
 from kornia.image.draw import draw_line, draw_point2d
 
-from testing.base import BaseTester
+from testing.base import BaseTester, dynamo_is_available
 
 
 class TestDrawPoint(BaseTester):
@@ -765,6 +768,46 @@ class TestDrawRectangle(BaseTester):
         points = torch.tensor([0, 0, width - 1, height - 1]).to(device).expand(batch, 1, 4)
         out = draw_rectangle(black_image, points, color=torch.tensor([1.0]))
         assert out.sum() == batch * 3 * (2 * height + 2 * width - 4)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.skipif(not dynamo_is_available(), reason="torch.export needs Dynamo on this torch/python pair")
+    @pytest.mark.skipif(
+        not torch_version_ge(2, 14),
+        reason="slices with data-dependent bounds export from torch 2.14 (2.9.1 fails to export, 2.6 bakes the input)",
+    )
+    @pytest.mark.parametrize("fill", [False, True])
+    def test_onnx_export_draws_the_rectangles_given_at_run_time(self, fill):
+        pytest.importorskip("onnx")
+        pytest.importorskip("onnxscript")
+        ort = pytest.importorskip("onnxruntime")
+
+        class Draw(torch.nn.Module):
+            def forward(self, image, rectangle, color):
+                return draw_rectangle(image.clone(), rectangle, color, fill=fill)
+
+        model = Draw()
+        image = torch.zeros(1, 3, 6, 9)
+        color = torch.tensor([1.0, 0.5, 0.2])
+        traced_on = torch.tensor([[[1.0, 1.0, 4.0, 3.0], [2.0, 0.0, 7.0, 5.0]]])
+        buffer = io.BytesIO()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            torch.onnx.export(model, (image, traced_on, color), dynamo=True, opset_version=18, verbose=False).save(
+                buffer
+            )
+        session = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"])
+        names = [i.name for i in session.get_inputs()]
+        assert len(names) == 3  # the rectangle stays a graph input, not a constant
+        # rectangles other than the traced ones: reversed and fractional corners, sides and whole boxes outside
+        for rectangle in (
+            traced_on,
+            torch.tensor([[[7.0, 4.0, 2.0, 1.0], [-3.0, 2.4, 3.6, 12.0]]]),
+            torch.tensor([[[20.0, 20.0, 30.0, 30.0], [-5.0, -5.0, 0.4, 0.6]]]),
+            torch.tensor([[[0.0, 0.0, 8.0, 5.0], [8.0, 5.0, 8.0, 5.0]]]),
+        ):
+            feeds = dict(zip(names, (image.numpy(), rectangle.numpy(), color.numpy())))
+            got = torch.from_numpy(session.run(None, feeds)[0])
+            self.assert_close(got, model(image, rectangle, color), rtol=0, atol=0)
 
 
 class TestFillConvexPolygon(BaseTester):
