@@ -398,7 +398,8 @@ def write_image(path_file: str | Path, image: torch.Tensor, quality: int = 80) -
             file.
         NotImplementedError: if the format cannot store the dtype: JPEG takes ``uint8``; PNG ``uint8`` and
             ``uint16``; TIFF ``uint8``, ``uint16`` and ``float32``.
-        Exception: kornia-rs's encoder error for an image it cannot encode, such as one with zero height or width
+        Exception: kornia-rs's error, a bare ``Exception``, when the file cannot be created (for example without
+            write permission) or the image cannot be encoded, such as one with zero height or width
             (`#5770 <https://github.com/kornia/kornia/issues/5770>`_).
     """
     if not isinstance(path_file, Path):
