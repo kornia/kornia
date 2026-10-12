@@ -54,9 +54,9 @@ grayscale internally per its definition; the OpenCV canny loop therefore include
 
 The Laplacian columns are different operators: Kornia uses an L1-normalized all-ones window with
 center ``1 - kernel_area``; OpenCV sums second Sobel derivatives and scikit-image's kernel differs
-as well. Sobel normalization differs across libraries. Median uses zero padding in
-Kornia/scikit-image and replicated borders in OpenCV. The scikit-image Gaussian uses ``mode='mirror'`` (the
-SciPy mode matching PyTorch reflect padding) and ``truncate=2 / 1.5`` for a 5x5 support. Its rank
+as well. Sobel normalization differs across libraries. Median uses mirror borders in Kornia (torch's ``reflect``)
+and scikit-image (``mode='mirror'``), and replicated borders in OpenCV. The scikit-image Gaussian uses
+``mode='mirror'`` (the SciPy mode matching PyTorch reflect padding) and ``truncate=2 / 1.5`` for a 5x5 support. Its rank
 mean is a uint8 footprint-based box filter with truncated boundary footprints. These are
 native-regime throughput comparisons, not output-equivalent comparisons.
 
@@ -360,9 +360,7 @@ def build_ops(
             else None
         )
         row["scikit-image"] = (
-            (lambda: [skf.median(im, footprint=footprint_5_hwc, mode="mirror") for im in imgs_f])
-            if skf
-            else None
+            (lambda: [skf.median(im, footprint=footprint_5_hwc, mode="mirror") for im in imgs_f]) if skf else None
         )
         ops["median_blur"] = row
 
