@@ -20,6 +20,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+import uuid
 from typing import Any, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 from urllib.request import urlopen
@@ -47,8 +48,9 @@ _IMAGE_URLS: List[str] = [
 def download_image(url: str, save_to: str) -> None:
     """Download a file and save its bytes unchanged, so a JPEG is not decoded and re-encoded.
 
-    The bytes are written to ``save_to + ".part"``, which is renamed to ``save_to`` only once the write is complete
-    and removed if the write fails, so an interrupted download never leaves a partial file at ``save_to``.
+    Each call writes the bytes to a temporary file of its own next to ``save_to`` and renames it onto ``save_to`` only
+    once the write is complete, removing it if the write fails. An interrupted download therefore never leaves a
+    partial file at ``save_to``, and concurrent downloads of the same file each replace it with a complete copy.
 
     Args:
         url: The URL of the image to download.
@@ -58,9 +60,11 @@ def download_image(url: str, save_to: str) -> None:
     # get_sample_images only routes http(s) URLs here (default: the https:// literals above).
     with urlopen(url, timeout=30) as resp:  # noqa: S310
         data = resp.read()
-    part = f"{save_to}.part"
+    # a unique name in the destination directory keeps the rename atomic and concurrent calls apart; open() with "x"
+    # creates the file with the usual permissions (tempfile.mkstemp would make the cached image private, 0o600)
+    part = f"{save_to}.{uuid.uuid4().hex}.part"
     try:
-        with open(part, "wb") as f:
+        with open(part, "xb") as f:
             f.write(data)
         os.replace(part, save_to)
     except BaseException:

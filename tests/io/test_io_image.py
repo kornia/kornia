@@ -666,6 +666,42 @@ class TestSampleImages:
             mock_urlopen.assert_not_called()
         assert not cache.exists()
 
+    def test_concurrent_downloads_of_the_same_image_both_succeed(self, tmp_path: Path) -> None:
+        import os
+        import threading
+        from concurrent.futures import ThreadPoolExecutor
+        from unittest import mock
+
+        from kornia.io import get_sample_images
+
+        image = create_random_img8_torch(4, 5, 3)
+        source = tmp_path / "source.png"
+        write_image(source, image)
+        payload = source.read_bytes()
+        cache = tmp_path / "cache"
+        both_written = threading.Barrier(2, timeout=10)
+        real_replace = os.replace
+
+        def replace_after_both_writes(src, dst):
+            both_written.wait()  # both calls have missed the cache and finished writing before either replaces
+            return real_replace(src, dst)
+
+        def fetch():
+            return get_sample_images(paths=["https://example.invalid/x/same.png"], cache_dir=str(cache))[0]
+
+        with (
+            mock.patch("kornia.io.sample.urlopen") as mock_urlopen,
+            mock.patch("kornia.io.sample.os.replace", replace_after_both_writes),
+            ThreadPoolExecutor(max_workers=2) as pool,
+        ):
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = payload
+            results = [future.result() for future in [pool.submit(fetch), pool.submit(fetch)]]
+        expected = image.float() / 255.0
+        for out in results:
+            torch.testing.assert_close(out, expected)
+        assert sorted(p.name for p in cache.iterdir()) == ["same.png"]  # no temporary file is left behind
+        assert (cache / "same.png").read_bytes() == payload
+
     def test_a_download_that_is_not_an_image_is_not_cached(self, tmp_path: Path) -> None:
         from unittest import mock
 
@@ -714,7 +750,7 @@ class TestDownloadImage:
             dst = tmp_path / "panda.jpg"
             download_image(self.URL, str(dst))
         assert dst.read_bytes() == payload
-        assert not (tmp_path / "panda.jpg.part").exists()
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["panda.jpg"]  # no temporary file is left behind
 
     def test_the_destination_appears_only_once_the_write_is_complete(self, tmp_path):
         from unittest import mock
@@ -742,7 +778,12 @@ class TestDownloadImage:
         ):
             mock_urlopen.return_value.__enter__.return_value.read.return_value = payload
             download_image(self.URL, str(dst))
-        assert writes == [(f"{dst}.part", False)]
+        assert len(writes) == 1
+        written, dst_existed = writes[0]
+        assert not dst_existed
+        assert Path(written).parent == tmp_path  # a temporary file next to dst, so the final rename is atomic
+        assert Path(written).name.startswith("panda.jpg.")
+        assert written.endswith(".part")
         assert dst.read_bytes() == payload
 
     def test_an_interrupted_write_leaves_no_file(self, tmp_path):
@@ -769,8 +810,7 @@ class TestDownloadImage:
             mock_urlopen.return_value.__enter__.return_value.read.return_value = b"\xff\xd8" + bytes(100)
             with pytest.raises(OSError, match="No space left"):
                 download_image(self.URL, str(dst))
-        assert not dst.exists()
-        assert not (tmp_path / "panda.jpg.part").exists()
+        assert list(tmp_path.iterdir()) == []  # neither dst nor the temporary file
 
     def test_http_error_propagates(self, tmp_path):
         import urllib.error
