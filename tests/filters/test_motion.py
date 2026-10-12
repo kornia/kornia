@@ -39,6 +39,7 @@ from testing.base import (
     supports_arange,
     supports_bilinear_2d_grid_sample,
     supports_bilinear_3d_grid_sample,
+    supports_empty_motion_kernel_padding,
     supports_nearest_2d_grid_sample,
     supports_nearest_3d_grid_sample,
     supports_reflect_padding,
@@ -67,6 +68,25 @@ def test_default_border_type_matches_the_sibling_filters(op, siblings):
 
 
 class TestMotionBlur(BaseTester):
+    @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
+    def test_empty_kernel_4429(self, mode, device, dtype):
+        if not supports_empty_motion_kernel_padding(device, dtype):
+            pytest.skip("PyTorch constant padding rejects an empty motion-kernel batch")
+        if mode == "bilinear" and not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear grid_sample is unavailable for this device/dtype")
+        image = torch.empty(0, 3, 9, 13, device=device, dtype=dtype, requires_grad=True)
+        angle = torch.empty(0, device=device, dtype=dtype)
+        direction = torch.empty_like(angle)
+        output = motion_blur(image, 3, angle, direction, "constant", mode)
+        module_output = MotionBlur(3, angle, direction, "constant", mode)(image)
+        for result in (output, module_output):
+            assert result.shape == image.shape
+            assert result.dtype == dtype
+            assert result.device == device
+        output.sum().backward()
+        assert image.grad is not None
+        assert image.grad.shape == image.shape
+
     @pytest.mark.parametrize("shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [3, 5])
     @pytest.mark.parametrize("angle", [36.0, 200.0])
@@ -319,6 +339,22 @@ class TestMotionBlur(BaseTester):
 
 
 class TestMotionBlur3D(BaseTester):
+    def test_empty_kernel_4429(self, device, dtype):
+        if not supports_empty_motion_kernel_padding(device, dtype, dimensions=3):
+            pytest.skip("PyTorch constant padding rejects an empty motion-kernel batch")
+        image = torch.empty(0, 3, 5, 9, 13, device=device, dtype=dtype, requires_grad=True)
+        angle = torch.empty(0, 3, device=device, dtype=dtype)
+        direction = torch.empty(0, device=device, dtype=dtype)
+        output = motion_blur3d(image, 3, angle, direction, "constant", "nearest")
+        module_output = MotionBlur3D(3, angle, direction, "constant", "nearest")(image)
+        for result in (output, module_output):
+            assert result.shape == image.shape
+            assert result.dtype == dtype
+            assert result.device == device
+        output.sum().backward()
+        assert image.grad is not None
+        assert image.grad.shape == image.shape
+
     @pytest.mark.parametrize("shape", [(1, 4, 3, 8, 15), (2, 2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [3, 5])
     @pytest.mark.parametrize("angle", [(36.0, 15.0, 200.0), (200.0, 10.0, 150.0)])

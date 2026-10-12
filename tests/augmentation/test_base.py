@@ -40,7 +40,12 @@ from kornia.filters.dissolving import StableDiffusionDissolving, _DissolvingWrap
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
-from testing.base import BaseTester, supports_bilinear_2d_grid_sample_backward, supports_reflect_padding
+from testing.base import (
+    BaseTester,
+    supports_bilinear_2d_grid_sample_backward,
+    supports_empty_motion_kernel_padding,
+    supports_reflect_padding,
+)
 
 
 class TestBasicAugmentationBase(BaseTester):
@@ -1237,13 +1242,25 @@ class TestConventionAugmentationBase2D(BaseTester):
             pytest.param(lambda: K.RandomEqualize(p=1.0), (0, 3, 6, 8), id="RandomEqualize"),
             pytest.param(lambda: K.RandomPosterize(p=1.0), (0, 3, 6, 8), id="RandomPosterize"),
             pytest.param(lambda: K.RandomSharpness(p=1.0), (0, 3, 6, 8), id="RandomSharpness"),
+            pytest.param(
+                lambda: K.RandomGaussianBlur((3, 5), (0.5, 1.5), border_type="constant", p=1.0),
+                (0, 3, 6, 8),
+                id="RandomGaussianBlur",
+            ),
+            pytest.param(lambda: K.RandomMotionBlur(3, 35.0, 0.5, p=1.0), (0, 3, 6, 8), id="RandomMotionBlur-fixed"),
         ],
     )
     def test_convention_zero_batch_is_empty_in_empty_out(self, augmentation, shape, device, dtype):
         # Convention pin (#4429): each listed augmentation preserves an empty batch with its intended
         # output geometry. Other empty-batch configurations remain tracked by the umbrella issue.
         empty = torch.rand(0, 3, 6, 8, device=device, dtype=dtype)
-        assert augmentation()(empty).shape == shape
+        module = augmentation()
+        if isinstance(module, K.RandomMotionBlur):
+            params = module.forward_parameters(empty.shape)
+            direction = params["direction_factor"]
+            if not supports_empty_motion_kernel_padding(direction.device, direction.dtype):
+                pytest.skip("PyTorch constant padding rejects an empty motion-kernel batch")
+        assert module(empty).shape == shape
 
 
 _AUGMENTATIONS = [K.RandomEqualize, K.RandomEqualize3D, K.RandomPosterize, K.RandomSharpness]
@@ -1392,3 +1409,143 @@ class TestEmptyIntensityAugmentation(BaseTester):
         assert output.device == device
         assert output.dtype == dtype
         self.assert_close(output, expected)
+
+
+class TestEmptyFilterAugmentation(BaseTester):
+    @pytest.mark.parametrize("kind", ["gaussian", "motion", "motion3d"])
+    @pytest.mark.parametrize("probability,same_on_batch", [(0.0, False), (0.5, True), (1.0, False)])
+    def test_empty_filter_replay_4429(self, kind, probability, same_on_batch, device, dtype):
+        def make():
+            kwargs = {"p": probability, "same_on_batch": same_on_batch}
+            if kind == "gaussian":
+                return K.RandomGaussianBlur((3, 5), (0.5, 1.5), border_type="constant", **kwargs)
+            cls = K.RandomMotionBlur3D if kind == "motion3d" else K.RandomMotionBlur
+            return cls(3, 35.0, 0.5, border_type="constant", **kwargs)
+
+        shape = (0, 3, 5, 9, 13) if kind == "motion3d" else (0, 3, 9, 13)
+        image = torch.empty(shape, device=device, dtype=dtype, requires_grad=True)
+        module = make()
+        params = module.forward_parameters(image.shape)
+        if kind != "gaussian":
+            direction = params["direction_factor"]
+            dimensions = 3 if kind == "motion3d" else 2
+            if not supports_empty_motion_kernel_padding(direction.device, direction.dtype, dimensions):
+                pytest.skip("PyTorch constant padding rejects an empty motion-kernel batch")
+        snapshot = copy.deepcopy(params)
+        flags = copy.deepcopy(module.flags)
+        # Exercise the filter even when an empty probability gate can bypass it.
+        direct = module.apply_transform(image, params, module.flags)
+        direct.sum().backward()
+        assert image.grad is not None
+        assert image.grad.shape == image.shape
+        later = torch.zeros((2, *shape[1:]), device=device, dtype=dtype)
+        for state in ("same", "after-forward", "fresh"):
+            if state == "after-forward":
+                module(later)
+            elif state == "fresh":
+                module = make()
+            rng = torch.random.get_rng_state().clone()
+            replayed = module(image, params=copy.deepcopy(params) if state != "same" else params)
+            assert replayed.shape == shape
+            assert replayed.dtype == dtype
+            assert replayed.device == device
+            assert torch.equal(torch.random.get_rng_state(), rng)
+            assert module.flags == flags
+            assert params.keys() == snapshot.keys()
+            for key in params:
+                self.assert_close(params[key], snapshot[key], rtol=0, atol=0)
+
+    @pytest.mark.parametrize("container", ["image", "augmentation"])
+    @pytest.mark.parametrize("batch", [0, 2])
+    @pytest.mark.parametrize("with_flip", [False, True])
+    def test_filter_container_inverse_4429(self, container, batch, with_flip, device, dtype):
+        def make():
+            children = [K.RandomHorizontalFlip(p=1.0)] if with_flip else []
+            children.append(K.RandomGaussianBlur((3, 5), (0.7, 0.7), border_type="constant", p=1.0))
+            if container == "image":
+                return K.ImageSequential(*children)
+            return K.AugmentationSequential(*children, data_keys=["input", "mask"])
+
+        image = (torch.arange(3 * 9 * 13, device=device, dtype=dtype) % 19 / 19).reshape(1, 3, 9, 13)
+        image = image.expand(batch, -1, -1, -1).clone()
+        mask = (torch.arange(9 * 13, device=device, dtype=dtype) % 5).reshape(1, 1, 9, 13)
+        mask = mask.expand(batch, -1, -1, -1).clone()
+        inputs = (image,) if container == "image" else (image, mask)
+        sequence = make()
+        output = sequence(*inputs)
+        saved = copy.deepcopy(sequence._params)
+        output_image = output if container == "image" else output[0]
+        expected_image = output_image.flip(-1) if with_flip else output_image
+        if batch:
+            geometric_image = image.flip(-1) if with_flip else image
+            assert not torch.equal(output_image, geometric_image)
+        if container == "augmentation":
+            self.assert_close(output[1], mask.flip(-1) if with_flip else mask, rtol=0, atol=0)
+
+        for fresh in (False, True):
+            if fresh:
+                sequence = make()
+            else:
+                later_image = torch.zeros(1, 3, 9, 13, device=device, dtype=dtype)
+                later_mask = torch.ones(1, 1, 9, 13, device=device, dtype=dtype)
+                later_inputs = (later_image,) if container == "image" else (later_image, later_mask)
+                sequence(*later_inputs)
+            params = copy.deepcopy(saved)
+            rng = torch.random.get_rng_state().clone()
+            cuda_rng = torch.cuda.get_rng_state(device).clone() if device.type == "cuda" else None
+            # Inverse runs before replay, including on the fresh container; no child call prepares its state.
+            inverted = (
+                sequence.inverse(output, params=params)
+                if container == "image"
+                else sequence.inverse(*output, params=params)
+            )
+            for item, original in zip(params, saved):
+                _assert_params_unchanged(item.data, original.data)
+            replayed = sequence(*inputs, params=copy.deepcopy(saved))
+            assert torch.equal(torch.random.get_rng_state(), rng)
+            if cuda_rng is not None:
+                assert torch.equal(torch.cuda.get_rng_state(device), cuda_rng)
+            inverse_image = inverted if container == "image" else inverted[0]
+            replay_image = replayed if container == "image" else replayed[0]
+            for result, expected in ((inverse_image, expected_image), (replay_image, output_image)):
+                assert result.shape == image.shape
+                assert result.dtype == dtype
+                assert result.device == device
+                self.assert_close(result, expected, rtol=0, atol=0)
+            if container == "augmentation":
+                self.assert_close(inverted[1], mask, rtol=0, atol=0)
+                self.assert_close(replayed[1], output[1], rtol=0, atol=0)
+
+    @pytest.mark.parametrize("container", ["image", "augmentation", "patch", "BTCHW", "BCTHW"])
+    def test_empty_gaussian_containers_4429(self, container, device, dtype):
+        def child():
+            return K.RandomGaussianBlur((3, 5), (0.5, 1.5), border_type="constant", p=1.0)
+
+        image = torch.empty(0, 3, 9, 13, device=device, dtype=dtype, requires_grad=True)
+        if container == "image":
+            sequence = K.ImageSequential(child())
+        elif container == "augmentation":
+            sequence = K.AugmentationSequential(child(), data_keys=["input", "mask"])
+        elif container == "patch":
+            sequence = K.PatchSequential(child(), grid_size=(2, 3), padding="same", patchwise_apply=False)
+        else:
+            sequence = K.VideoSequential(child(), data_format=container, same_on_frame=False)
+            shape = (0, 2, 3, 9, 13) if container == "BTCHW" else (0, 3, 2, 9, 13)
+            image = torch.empty(shape, device=device, dtype=dtype, requires_grad=True)
+        inputs = (
+            (image, torch.empty(0, 1, 9, 13, device=device, dtype=dtype)) if container == "augmentation" else (image,)
+        )
+        output = sequence(*inputs)
+        saved = copy.deepcopy(sequence._params)
+        replayed = sequence(*inputs, params=saved)
+        if container == "augmentation":
+            assert output[1].shape == inputs[1].shape
+            self.assert_close(replayed[1], inputs[1])
+            output, replayed = output[0], replayed[0]
+        for result in (output, replayed):
+            assert result.shape == image.shape
+            assert result.dtype == dtype
+            assert result.device == device
+        output.sum().backward()
+        assert image.grad is not None
+        assert image.grad.shape == image.shape
