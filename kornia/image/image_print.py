@@ -305,6 +305,19 @@ _XTERM_CODES = torch.arange(16, 256)
 _XTERM_RGB = torch.tensor(
     [[int(SHORT2RGB_DICT[str(c)][i : i + 2], 16) for i in (0, 2, 4)] for c in range(16, 256)], dtype=torch.float64
 )
+_XTERM_RGB_SQ = (_XTERM_RGB**2).sum(1)
+# pixels per distance computation: the (chunk, 240) float64 matrix stays near 31 MB whatever the image size
+_PIXELS_PER_CHUNK = 16384
+
+
+def _nearest_xterm_codes(rgb: torch.Tensor) -> torch.Tensor:
+    """Return the code (16-255) of the fixed xterm colour nearest to each row of an (N, 3) float64 RGB tensor.
+
+    The distance is the squared RGB distance; ``argmin`` takes the lowest code on a tie.
+    """
+    dist = rgb @ _XTERM_RGB.T
+    dist.mul_(-2).add_(_XTERM_RGB_SQ).add_((rgb**2).sum(1, keepdim=True))
+    return _XTERM_CODES[dist.argmin(1)]
 
 
 def _str2hex(hexstr: str) -> int:
@@ -388,9 +401,8 @@ def image_to_string(image: torch.Tensor, max_width: int = 256) -> str:
 
     H, W = image.shape[-2:]
     flat = image.permute(1, 2, 0).reshape(-1, 3).to(device="cpu", dtype=torch.float64)
-    # squared distance to every fixed colour; argmin takes the lowest code on a tie
-    dist = (flat**2).sum(1, keepdim=True) - 2 * flat @ _XTERM_RGB.T + (_XTERM_RGB**2).sum(1)
-    codes = _XTERM_CODES[dist.argmin(1)].tolist()
+    # nearest fixed colour per pixel, a chunk of pixels at a time so the distance matrix stays small
+    codes = torch.cat([_nearest_xterm_codes(chunk) for chunk in flat.split(_PIXELS_PER_CHUNK)]).tolist()
 
     lines = []
     idx = 0
