@@ -401,9 +401,9 @@ class TestWhitening(BaseTester):
 
     @pytest.mark.parametrize("output_dims", [20, 40, 41, 50])
     def test_pcaws_shrinkage_does_not_depend_on_output_dims(self, device, dtype, output_dims):
-        # pcaws shrinks every kept eigenvalue towards the training spectrum's eigenvalue at index keval=40:
-        # lambda' = (1 - alpha) * lambda + alpha with alpha = eigvals[40]. alpha belongs to the whitening model, so
-        # keeping fewer components only drops columns; output_dims <= 40 used to raise IndexError instead.
+        # pcaws replaces every kept eigenvalue by lambda' = (1 - alpha) * lambda + alpha, a shrinkage towards 1 with
+        # weight alpha = eigvals[keval=40] of the full spectrum. alpha belongs to the whitening model, so keeping
+        # fewer components only drops columns; output_dims <= 40 used to raise IndexError instead.
         in_dims, keval = 50, 40
         eigvals = 1.0 / torch.arange(1, in_dims + 1, dtype=torch.float64)  # decaying, alpha = 1 / 41
         eigvecs = torch.linspace(-1.0, 1.0, in_dims * in_dims, dtype=torch.float64).view(in_dims, in_dims)
@@ -415,12 +415,14 @@ class TestWhitening(BaseTester):
         self.assert_close(wh.evecs.data, expected.to(device, dtype))
         assert wh(torch.rand(3, in_dims, device=device, dtype=dtype)).shape == (3, output_dims)
 
-    def test_pcaws_needs_the_shrinkage_eigenvalue(self, device):
-        # A whitening model with no eigenvalue at index keval has no shrinkage constant: say so instead of IndexError.
+    @pytest.mark.parametrize("keval", [40, -1, -31])
+    def test_pcaws_needs_the_shrinkage_eigenvalue(self, device, keval):
+        # A whitening model with no eigenvalue at index keval has no shrinkage weight: say so instead of IndexError.
+        # A negative keval has no meaning for a spectrum; it used to index the one truncated to output_dims.
         in_dims = 30
         model = {"pca": {"mean": torch.zeros(in_dims), "eigvecs": torch.eye(in_dims), "eigvals": torch.ones(in_dims)}}
-        with pytest.raises(ValueError, match=r"keval=40.*30 eigenvalues"):
-            Whitening(xform="pcaws", whitening_model=model, in_dims=in_dims, output_dims=20)
+        with pytest.raises(ValueError, match=rf"keval={keval} .*30 eigenvalues \(0 <= keval < 30\)"):
+            Whitening(xform="pcaws", whitening_model=model, in_dims=in_dims, output_dims=20, keval=keval)
 
 
 class TestMKDDescriptor(BaseTester):
@@ -545,8 +547,10 @@ class TestMKDDescriptor(BaseTester):
             ((2, 1, 19, 23), "dimension 3: expected 19, got 23"),
             ((2, 1, 32, 32), "dimension 2: expected 19, got 32"),
             ((2, 3, 19, 19), "dimension 1: expected 1, got 3"),
+            ((1, 19, 19), "expected 4 dimensions, got 3"),
+            ((1, 1, 1, 19, 19), "expected 4 dimensions, got 5"),
         ],
-        ids=["height", "width", "both", "channels"],
+        ids=["height", "width", "both", "channels", "rank3", "rank5"],
     )
     def test_patches_must_be_grayscale_and_patch_size(self, device, dtype, shape, message):
         # The spatial encoding is precomputed for patch_size x patch_size grayscale patches. Another size used to fail

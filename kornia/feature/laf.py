@@ -30,9 +30,11 @@ from kornia.geometry.transform import pyrdown
 def _laf_product_dtype(dtype: torch.dtype) -> torch.dtype:
     """Return the dtype to multiply two LAF entries in.
 
-    A product of two entries of an ordinary LAF overflows float16 from a scale of 256 px and rounds to zero below
-    about 1.7e-4, so float16 works in float32, which holds every product of two float16 values exactly. bfloat16 has
-    the exponent range of float32 and is left as it is.
+    A product of two entries of an ordinary LAF can leave the float16 range. It overflows above 65504: the determinant
+    of any LAF of scale 256 px or more, and the square of a 256 px entry of an elongated LAF of a smaller scale (300 x
+    20 px has a scale of 77 px). It rounds to zero for entries below about 1.7e-4. float16 therefore works in float32,
+    which holds every product of two float16 values exactly. bfloat16 has the exponent range of float32 and is left as
+    it is.
     """
     if dtype == torch.float16:
         return torch.float32
@@ -42,8 +44,8 @@ def _laf_product_dtype(dtype: torch.dtype) -> torch.dtype:
 def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
     """Return a scale of the LAFs.
 
-    The determinant of a float16 LAF is formed in float32, so that a LAF of scale 256 px or more does not overflow;
-    the scale is returned in the LAF dtype.
+    The determinant of a float16 LAF is formed in float32, so that a LAF whose entry products leave the float16 range
+    does not overflow; the scale is returned in the LAF dtype.
 
     Args:
         LAF: :math:`(B, N, 2, 3)`
@@ -70,8 +72,8 @@ def laf_is_valid(laf: torch.Tensor) -> torch.Tensor:
     """Check that each LAF is finite and has a finite, nonzero determinant.
 
     The determinant of a float16 LAF is formed in float32, so the LAF is not judged by an intermediate outside the
-    float16 range: one of scale 256 px or more, whose determinant overflows float16, is valid, and so is one whose
-    determinant is too small for float16.
+    float16 range: one whose entry products overflow float16 (for instance any LAF of scale 256 px or more) is valid,
+    and so is one whose determinant is too small for float16.
 
     Args:
         laf: :math:`(B, N, 2, 3)`.
@@ -255,8 +257,8 @@ def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
     """Rectify the affine matrix, so that it becomes upright.
 
     The all-zero LAF that pads an unfilled detector slot (see :func:`laf_is_filled`) is returned unchanged, so the
-    padding stays recognizable. A float16 LAF is rectified in float32, so that a LAF of scale 256 px or more does
-    not overflow; the result is returned in the LAF dtype.
+    padding stays recognizable. A float16 LAF is rectified in float32, so that a LAF whose entry products leave the
+    float16 range does not overflow; the result is returned in the LAF dtype.
 
     Args:
         laf: :math:`(B, N, 2, 3)`

@@ -417,16 +417,17 @@ class Whitening(nn.Module):
         whitening_model: Dictionary with keys 'mean', 'eigvecs', 'eigvals' holding Tensors.
         in_dims: Dimensionality of input descriptors.
         output_dims: (int) Dimensionality reduction.
-        keval: Shrinkage parameter: ``'pcaws'`` shrinks the kept eigenvalues towards the eigenvalue at this index of the
-            whitening model's full spectrum, whatever ``output_dims`` is.
+        keval: Shrinkage parameter: ``'pcaws'`` replaces each kept eigenvalue ``lambda`` by ``(1 - alpha) * lambda +
+            alpha``, a shrinkage towards 1 with weight ``alpha``, the eigenvalue at index ``keval`` (``0 <= keval <
+            len(eigvals)``) of the whitening model's full spectrum, whatever ``output_dims`` is.
         t: Attenuation parameter.
 
     Returns:
         l2-normalized, whitened descriptors.
 
     Shape:
-        - Input: (B, in_dims, fmap_size, fmap_size)
-        - Output: (B, out_dims, fmap_size, fmap_size)
+        - Input: :math:`(N, in_{dims})`.
+        - Output: :math:`(N, output_{dims})`.
 
     Examples:
         >>> descs = torch.rand(23, 238)
@@ -439,7 +440,8 @@ class Whitening(nn.Module):
         ...                       output_dims=128,
         ...                       keval=40,
         ...                       t=0.7)
-        >>> wdescs = whitening(descs) # 23x128
+        >>> whitening(descs).shape
+        torch.Size([23, 128])
 
     """
 
@@ -504,15 +506,17 @@ class Whitening(nn.Module):
         """No modification required."""
 
     def _modify_pcaws(self, eigvals: torch.Tensor) -> None:
-        """Shrink the kept eigenvalues towards the eigenvalue at index ``keval`` of the full spectrum ``eigvals``.
+        """Shrink each kept eigenvalue towards 1: ``(1 - alpha) * lambda + alpha`` with ``alpha = eigvals[keval]``.
 
-        The shrinkage constant is a property of the whitening model, not of how many components are kept, so it is
-        read from the spectrum before truncation to ``output_dims``: keeping fewer components only drops columns.
+        The shrinkage weight ``alpha`` is a property of the whitening model, not of how many components are kept, so it
+        is read from the full spectrum ``eigvals`` before truncation to ``output_dims``: keeping fewer components only
+        drops columns.
         """
-        if self.keval >= eigvals.shape[0]:
+        n = eigvals.shape[0]
+        if not 0 <= self.keval < n:
             raise ValueError(
-                f"pcaws shrinks towards the eigenvalue at index keval={self.keval}, but the whitening model has only "
-                f"{eigvals.shape[0]} eigenvalues."
+                f"pcaws needs the eigenvalue at index keval={self.keval} of the whitening model's spectrum, which has "
+                f"{n} eigenvalues (0 <= keval < {n})."
             )
         alpha = eigvals[self.keval]
         evals = ((1 - alpha) * self.evals) + alpha
@@ -657,8 +661,6 @@ class MKDDescriptor(nn.Module):
         """
         if not isinstance(patches, torch.Tensor):
             raise TypeError(f"Input type is not a torch.Tensor. Got {type(patches)}")
-        if not len(patches.shape) == 4:
-            raise ValueError(f"Invalid input shape, we expect Bx1xHxW. Got: {patches.shape}")
         KORNIA_CHECK_SHAPE(patches, ["B", "1", str(self.patch_size), str(self.patch_size)])
         # Extract gradients.
         g = self.smoothing(patches)

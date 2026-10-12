@@ -264,12 +264,24 @@ class TestMakeUpright(BaseTester):
         self.assert_close(model(img), model_jit(img))
 
     def test_large_laf_does_not_overflow(self, device, dtype):
-        # Squares and products of this LAF's entries overflow float16 (max 65504); the LAF and its upright form do not.
-        # Upright form [[r, 0], [(a22 * a12 + a21 * a11) / r, det / r]] with r = hypot(a11, a12).
-        laf = torch.tensor([[[[300.0, 40.0, 410.0], [-25.0, 280.0, 330.0]]]], device=device, dtype=dtype)
+        # Squares and products of these LAFs' entries overflow float16 (max 65504); the LAFs and their upright forms
+        # do not. Upright form [[r, 0], [(a22 * a12 + a21 * a11) / r, det / r]] with r = hypot(a11, a12). The second
+        # LAF has a scale of only sqrt(300 * 20) = 77 px, but a11**2 = 90000 overflows; it is upright already.
+        laf = torch.tensor(
+            [[[[300.0, 40.0, 410.0], [-25.0, 280.0, 330.0]], [[300.0, 0.0, 10.0], [0.0, 20.0, 12.0]]]],
+            device=device,
+            dtype=dtype,
+        )
         r = math.hypot(300.0, 40.0)
         expected = torch.tensor(
-            [[[[r, 0.0, 410.0], [(280.0 * 40.0 - 25.0 * 300.0) / r, 85000.0 / r, 330.0]]]], device=device, dtype=dtype
+            [
+                [
+                    [[r, 0.0, 410.0], [(280.0 * 40.0 - 25.0 * 300.0) / r, 85000.0 / r, 330.0]],
+                    [[300.0, 0.0, 10.0], [0.0, 20.0, 12.0]],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
         )
         out = kornia.feature.make_upright(laf)
         assert out.dtype == dtype
