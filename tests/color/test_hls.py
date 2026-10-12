@@ -226,12 +226,11 @@ class TestRgbToHls(BaseTester):
         fcn = kornia.color.rgb_to_hls
         self.assert_close(ops(img), fcn(img))
 
-    def test_dynamo_fullgraph(self, device, dtype):
+    def test_dynamo_fullgraph(self, device, dtype, torch_optimizer):
         # Without grad the channels used to be written with `out=` into views of one output tensor, and Dynamo
         # rejects an `out=` tensor that is not contiguous.
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        torch._dynamo.reset()
-        compiled = torch.compile(kornia.color.rgb_to_hls, fullgraph=True, backend="eager")
+        compiled = torch_optimizer(kornia.color.rgb_to_hls, fullgraph=True)
         self.assert_close(compiled(img), kornia.color.rgb_to_hls(img))
 
     @pytest.mark.device_agnostic
