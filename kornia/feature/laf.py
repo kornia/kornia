@@ -103,10 +103,9 @@ def laf_is_filled(laf: torch.Tensor) -> torch.Tensor:
     """Check which slots hold a detection rather than the zero-LAF padding.
 
     Convention:
-        - kornia's LAF detectors return a fixed number of slots and pad the ones no detection filled with an all-zero
-          LAF and a zero response, so that the output shape does not depend on the image. Drop those slots before
-          matching: the padding frames are identical to one another, so a mutual nearest-neighbour test does not
-          reject them and they match each other at zero distance.
+        - kornia's LAF detectors pad the slots no detection filled with an all-zero LAF and a zero response, so that a
+          batch is one tensor. Drop those slots before matching: the padding frames are identical to one another, so a
+          mutual nearest-neighbour test does not reject them and they match each other at zero distance.
         - Only an all-zero frame is padding. Any other frame is filled: a detection at the image origin, which has a
           zero centre but a nonzero shape, and also a singular or non-finite frame, which
           :func:`~kornia.feature.laf_is_valid` screens out.
@@ -272,8 +271,9 @@ def scale_laf(laf: torch.Tensor, scale_coef: Union[float, torch.Tensor]) -> torc
     """Multiplies region part of LAF ([:, :, :2, :2]) by a scale_coefficient.
 
     Convention:
-        - The result is ``[k A | c]`` for ``k = scale_coef``: the centre is kept and the scale is multiplied by
-          ``|k|``. A negative ``k`` also turns the frame by 180 degrees.
+        - The result is ``[k A | c]`` for ``k = scale_coef``, a product taken elementwise: the centre is kept. With one
+          coefficient per LAF, the scale is multiplied by ``|k|``, and a negative ``k`` also turns the frame by 180
+          degrees.
         - ``scale_coef`` is a ``float`` or a tensor that broadcasts against :math:`(B, N, 2, 2)`, such as one
           coefficient per LAF in a :math:`(B, N, 1, 1)` tensor; an ``int`` is rejected.
 
@@ -370,11 +370,13 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
           symmetric inverse square root (the two differ by a rotation). Either one maps the unit circle onto the
           ellipse; the lower-triangular one is what :func:`~kornia.feature.make_upright` returns for any LAF of that
           region.
-        - The conversion does not raise and does not check its input. An ellipse that is degenerate or indefinite
-          (``a``, ``c`` or ``a * c - b * b`` not positive) is not a bounded region; its LAF has ``inf`` or ``nan``
-          entries, or huge finite ones where rounding leaves ``a - b * b / c`` barely positive. Rounding also works
-          the other way: a nearly singular valid ellipse can give ``inf`` or ``nan``. Screen results with
-          :func:`~kornia.feature.laf_is_valid` rather than an ``isnan`` test.
+        - The conversion checks only the shape :math:`(B, N, 5)`; it does not check the ellipse values and does not
+          raise on them. An ellipse that is degenerate or indefinite (``a``, ``c`` or ``a * c - b * b`` not positive)
+          is not a bounded region; its LAF has ``inf`` or ``nan`` entries, or huge finite ones where rounding leaves
+          ``a - b * b / c`` barely positive. Rounding also works the other way: a nearly singular valid ellipse can
+          give ``inf`` or ``nan``. :func:`~kornia.feature.laf_is_valid` screens out the ``inf`` and ``nan`` results,
+          which an ``isnan`` test misses for ``inf``; the huge finite ones pass it, so check the ellipse itself where
+          that matters.
 
     See also https://github.com/vlfeat/vlfeat/blob/master/toolbox/sift/vl_frame2oell.m
 
@@ -783,8 +785,6 @@ def extract_patches_simple(
 ) -> torch.Tensor:
     """Extract patches defined by LAFs from image torch.Tensor.
 
-    No smoothing applied, huge aliasing (better use extract_patches_from_pyramid).
-
     Convention:
         See the Convention block on :func:`~kornia.feature.extract_patches_from_pyramid`. This function samples the
         same positions, always from ``img`` itself: a LAF larger than the patch is not smoothed first, so it aliases.
@@ -851,7 +851,7 @@ def extract_patches_from_pyramid(
           that exist: :func:`~kornia.geometry.transform.pyrdown` builds them while the shorter side stays at least
           ``PS``, so a larger LAF is sampled from the coarsest level that can still provide a full patch. A level
           samples the same image positions as level 0, in its own pixels.
-        - A cell outside the image reads the nearest border pixel.
+        - A cell outside the image reads the nearest border pixel of the level it samples.
         - The patches have the image's dtype. The sampling runs in the promoted dtype of the image and the LAF, and
           in at least ``float32``. A LAF with a non-finite entry gives a zero patch.
 
@@ -1002,8 +1002,8 @@ def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor, border: int = 0
           ``i`` (0 for x, 1 for y) it spans exactly ``c_i - r_i`` to ``c_i + r_i``, where ``r_i`` is the Euclidean
           norm of row ``i`` of ``A``. A LAF is inside when both spans lie in ``border <= x <= w - 1 - border`` and
           ``border <= y <= h - 1 - border``, so a region that touches the last valid pixel coordinate is inside.
-        - The all-zero padding LAF is a point at the origin and counts as inside; combine the mask with
-          :func:`~kornia.feature.laf_is_filled` to drop the padding.
+        - The all-zero padding LAF is a point at the origin, so it counts as inside for ``border <= 0``, the default
+          included; combine the mask with :func:`~kornia.feature.laf_is_filled` to drop the padding.
 
     Args:
         laf:  :math:`(B, N, 2, 3)`.

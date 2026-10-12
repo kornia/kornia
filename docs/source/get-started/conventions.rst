@@ -1123,10 +1123,10 @@ full rules.
 - The region of a LAF is the ellipse ``c + A u`` over the unit vectors ``u``, and a ``PS x PS`` patch covers the
   square ``c + A [-1, 1]^2``: patch row 0 is on the patch's ``-y`` side, the top for an upright LAF, and the columns
   run along the patch's x axis.
-- :func:`~kornia.feature.normalize_laf` divides by ``W - 1`` and ``H - 1``; its Convention block covers moving a
-  LAF to an image of another size.
-- kornia's LAF detectors return a fixed number of slots and pad the unused ones with an all-zero LAF and a zero
-  response. Drop those slots with :func:`~kornia.feature.laf_is_filled` before matching.
+- :func:`~kornia.feature.normalize_laf` divides the centre by ``W - 1`` and ``H - 1`` and ``A`` by
+  ``min(H - 1, W - 1)``; its Convention block covers moving a LAF to an image of another size.
+- kornia's LAF detectors pad the slots that no detection filled with an all-zero LAF and a zero response, so that a
+  batch is one tensor. Drop those slots with :func:`~kornia.feature.laf_is_filled` before matching.
 
 OpenCV keypoints and SIFT descriptors convert as follows:
 
@@ -1149,7 +1149,7 @@ OpenCV keypoints and SIFT descriptors convert as follows:
        :class:`~kornia.feature.SIFTFeatureScaleSpace` have the scale :math:`6 \sigma` for the detection scale
        :math:`\sigma`
      - ``KeyPoint.size``, a diameter, is :math:`2 \sigma` for ``cv2.SIFT``, so ``scale = 3 * size`` gives the frames
-       of ``SIFTFeatureScaleSpace``; other detectors use other multiples of :math:`\sigma`
+       of ``SIFTFeatureScaleSpace``; other detectors define ``size`` differently
    * - SIFT descriptor
      - kornia's bin layout
      - OpenCV's bin layout; :func:`~kornia.feature.convert_sift_descriptor_layout` converts between the two

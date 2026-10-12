@@ -2006,7 +2006,7 @@ class TestConventionsLAF(BaseTester):
         laf = self._lafs(self._SHEARED, device, dtype)
         ori = kornia.feature.get_laf_orientation(laf)
         self.assert_close(ori.flatten(), torch.tensor([30.0], device=device, dtype=dtype))
-        # the range is (-180, 180]: a LAF made with orientation 181 reads -179
+        # the range is [-180, 180]: a LAF made with orientation 181 reads -179
         wrapped = kornia.feature.laf_from_center_scale_ori(
             torch.tensor([[[5.0, 7.0]]], device=device, dtype=dtype),
             None,
@@ -2037,7 +2037,7 @@ class TestConventionsLAF(BaseTester):
         u_rm75 = [[0.7764571353075622, -2.897777478867205, 11.0], [2.3200802202319177, -0.931250649228561, 3.0]]
         reset = kornia.feature.set_laf_orientation(laf, torch.tensor([[[-75.0]]], device=device, dtype=dtype))
         self.assert_close(reset, self._lafs(u_rm75, device, dtype))
-        # and an orientation set outside (-180, 180] reads back wrapped
+        # and an orientation set outside [-180, 180] reads back wrapped
         reset = kornia.feature.set_laf_orientation(laf, torch.tensor([[[200.0]]], device=device, dtype=dtype))
         self.assert_close(
             kornia.feature.get_laf_orientation(reset).flatten(), torch.tensor([-160.0], device=device, dtype=dtype)

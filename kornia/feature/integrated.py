@@ -203,7 +203,8 @@ class LAFDescriptor(nn.Module):
         patch_descriptor_module: patch descriptor module, e.g. :class:`~kornia.feature.SIFTDescriptor`
             or :class:`~kornia.feature.HardNet`. Default: :class:`~kornia.feature.HardNet` with pretrained weights.
         patch_size: patch size in pixels, which descriptor expects.
-        grayscale_descriptor: ``True`` if patch_descriptor expects single-channel image.
+        grayscale_descriptor: ``True`` if patch_descriptor expects single-channel image; a 3-channel image is then
+            converted to grayscale.
 
     """
 
