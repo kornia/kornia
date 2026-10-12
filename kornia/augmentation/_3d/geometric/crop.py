@@ -85,7 +85,9 @@ class RandomCrop3D(GeometricAugmentationBase3D):
           left, top, and front translation from explicit padding and ``pad_if_needed``.
         - its ``p`` is a call-wide gate. Size validation uses the padded input even when the call is skipped: a
           crop larger than the padded volume along any axis, even by one voxel, raises; a crop equal to it is
-          valid. The exception types differ from :class:`CenterCrop3D`'s, and an ``int`` ``size`` is rejected
+          valid. An oversized crop raises ``ValueError`` naming ``size`` and the padded input spatial size.
+          An integer or a sequence with other than three elements raises ``TypeError`` naming ``size``;
+          unlike :class:`CenterCrop3D`, an integer ``size`` remains unsupported
           (`#4417 <https://github.com/kornia/kornia/issues/4417>`_).
           A valid gated-off call returns the input unchanged -- unpadded, at the input shape rather than ``size`` --
           with an identity ``transform_matrix``.
@@ -126,6 +128,8 @@ class RandomCrop3D(GeometricAugmentationBase3D):
     ) -> None:
         # Since PyTorch does not support ragged torch.Tensor. So cropping function happens batch-wisely.
         super().__init__(p=1.0, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
+        if isinstance(size, int) or (isinstance(size, (tuple, list)) and len(size) != 3):
+            raise TypeError(f"`size` must be a three-element (D, H, W) sequence. Got {size!r}.")
         self.flags = {
             "size": size,
             "padding": padding,
