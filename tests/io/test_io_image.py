@@ -1164,10 +1164,15 @@ class TestConventionsIo:
             out = load_image(tmp_path / f"u16.{ext}", ImageLoadType.UNCHANGED)
             assert out.dtype == torch.uint16
             assert out.shape == (3, 4, 5)
-        write_image(tmp_path / "f32.tif", image.float() / 255)
+        # a float32 TIFF is written without clamping: values in [-0.5, 1.5] come back unchanged
+        wide = image.float() / 255 * 2 - 0.5
+        assert wide.min() < 0
+        assert wide.max() > 1
+        write_image(tmp_path / "f32.tif", wide)
         out = load_image(tmp_path / "f32.tif", ImageLoadType.UNCHANGED)
         assert out.dtype == torch.float32
         assert out.shape == (3, 4, 5)
+        torch.testing.assert_close(out, wide, rtol=0.0, atol=0.0)
 
         rejected = [(torch.uint16, "jpg"), (torch.float32, "png"), (torch.float32, "jpg")]
         rejected += [(torch.float64, ext) for ext in ("jpg", "png", "tif")]
@@ -1185,12 +1190,16 @@ class TestConventionsIo:
         assert written["default"] != written["q95"]
 
     @pytest.mark.parametrize(
-        ("shape", "match"), [((3, 0, 4), "[Zz]ero height|non zero"), ((3, 4, 0), "[Zz]ero width|non zero")]
+        ("shape", "match"),
+        [
+            ((3, 0, 4), "[Zz]ero height|non zero|invalid dimensions"),
+            ((3, 4, 0), "[Zz]ero width|non zero|invalid dimensions"),
+        ],
     )
     def test_wart_write_image_zero_size_raises_bare_exception_5770(self, tmp_path, shape, match):
         # #5770: a zero-height or zero-width image reaches kornia-rs, whose error is a bare ``Exception``. The fix
         # should raise a kornia error (a ShapeError) before encoding, which flips this pin.
-        for ext in ("png", "jpg"):
+        for ext in ("png", "jpg", "tif"):
             with pytest.raises(Exception, match=match) as excinfo:
                 write_image(tmp_path / f"zero.{ext}", torch.zeros(*shape, dtype=torch.uint8))
             assert excinfo.type is Exception

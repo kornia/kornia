@@ -200,8 +200,8 @@ class TestConventionsPrint:
         assert image_to_string(torch.full((3, 2, 4), 255, dtype=dtype)) == image_to_string(torch.ones(3, 2, 4))
 
     def test_convention_print_max_width_defaults(self, capsys):
-        # image_to_string caps the width at 256 columns by default and print_image at 96. Each printed cell is one
-        # "\x1b[48;5;<code>m  " escape, so a 300-column image prints 256 or 96 cells per row.
+        # image_to_string caps the width at 256 pixels by default and print_image at 96. Each printed pixel is one
+        # "\x1b[48;5;<code>m  " escape, so a 300-pixel-wide image prints 256 or 96 cells per row.
         image = torch.zeros(3, 2, 300)
         string = image_to_string(image)
         assert string.count("\033[0m\n") == 1  # H = 2 shrinks to max(1, 2 * 256 // 300) = 1 row
