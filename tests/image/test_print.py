@@ -99,7 +99,7 @@ class TestImageToString:
 
 class TestNearestXterm:
     # Expected codes generated with the snippet in TestImageToString.test_value, for the gray v:
-    #   min(rgb, key=lambda c: sum((a - v) ** 2 for a in rgb[c]))  # v = 128 -> 244, v = 48 -> 236
+    #   min(rgb, key=lambda c: sum((a - v) ** 2 for a in rgb[c]))  # v = 128 -> 244, v = 92 -> 59, v = 91 -> 240
 
     def test_gray_uses_the_gray_ramp(self):
         # 128 -> code 244 (#808080, exact); the 6-level cube's nearest was code 102 (#878787)
@@ -108,11 +108,11 @@ class TestNearestXterm:
         assert out.count("\n") == 2
 
     def test_levels_round_instead_of_truncating(self):
-        # float 0.1875 = 47.8 levels -> 48 -> nearest of codes 16-255 is code 236 (#303030, exact); truncation gave
-        # code 16
-        out = image_to_string(torch.full((3, 2, 3), 0.1875))
-        assert out.count("48;5;236m") == 6
-        assert "48;5;16m" not in out
+        # 91.6 / 255 is 91.6 levels: rounded to 92 the nearest code is 59 (#5f5f5f = 95); truncated to 91 it would be
+        # 240 (#585858 = 88). Neither is a tie: 92 is 3 levels from 95 and 4 from 88, and 91 the other way round
+        out = image_to_string(torch.full((3, 2, 3), 91.6 / 255))
+        assert out.count("48;5;59m") == 6
+        assert "48;5;240m" not in out
 
     def test_tall_image_equals_its_two_halves(self):
         # the nearest colours are computed in chunks of pixels; an image taller than one chunk renders exactly like its
