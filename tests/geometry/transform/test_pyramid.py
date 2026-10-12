@@ -51,6 +51,34 @@ class TestPyrDown(BaseTester):
         pyr = kornia.geometry.PyrDown(factor=3.0)
         assert pyr(inp).shape == (1, 2, 3, 3)
 
+    @pytest.mark.parametrize("as_module", [False, True])
+    @pytest.mark.parametrize("align_corners", [False, True])
+    @pytest.mark.parametrize(
+        "height, width, factor, expected_size",
+        [(11, 22, 1.1, (10, 20)), (9, 18, 1.8, (5, 10)), (9, 15, 1.2, (7, 12)), (11, 15, 2.0, (5, 7))],
+    )
+    def test_fractional_factor_axis_symmetry(
+        self, device, dtype, as_module, align_corners, height, width, factor, expected_size
+    ):
+        inp = torch.arange(height * width, device=device, dtype=dtype).reshape(1, 1, height, width)
+        inp = inp / (height * width)
+        if as_module:
+            pyr = kornia.geometry.PyrDown(factor=factor, align_corners=align_corners)
+            out = pyr(inp)
+            transposed = pyr(inp.transpose(-2, -1))
+        else:
+            out = kornia.geometry.pyrdown(inp, factor=factor, align_corners=align_corners)
+            transposed = kornia.geometry.pyrdown(inp.transpose(-2, -1), factor=factor, align_corners=align_corners)
+        assert out.shape == (1, 1, *expected_size)
+        self.assert_close(out, transposed.transpose(-2, -1))
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        inp = torch.rand(1, 1, 11, 22, device=device, dtype=dtype)
+        pyr = kornia.geometry.PyrDown(factor=1.1)
+        actual = torch_optimizer(pyr)(inp)
+        assert actual.shape == (1, 1, 10, 20)
+        self.assert_close(actual, pyr(inp))
+
     def test_shape_batch(self, device, dtype):
         inp = torch.zeros(2, 2, 4, 4, device=device, dtype=dtype)
         pyr = kornia.geometry.PyrDown()
@@ -63,9 +91,10 @@ class TestPyrDown(BaseTester):
         self.assert_close(pyr_out, pyr_out.flip(0))
         self.assert_close(pyr_out, pyr_out.flip(1))
 
-    def test_gradcheck(self, device):
+    @pytest.mark.parametrize("factor", [2.0, 1.1, 1.8])
+    def test_gradcheck(self, device, factor):
         img = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float64)
-        self.gradcheck(kornia.geometry.pyrdown, (img,), nondet_tol=1e-8)
+        self.gradcheck(lambda x: kornia.geometry.pyrdown(x, factor=factor), (img,), nondet_tol=1e-8)
 
     @pytest.mark.parametrize("op, side", [("pyrdown", 5), ("pyrup", 4)])
     def test_convention_align_corners_and_border_type_change_output(self, op, side, device, dtype):
