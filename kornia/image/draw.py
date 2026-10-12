@@ -71,24 +71,28 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
         points: the [x, y] points to be drawn on the image with shape :math`(N, 2)`, a single
             point with shape :math`(2,)`, or an empty tensor with shape :math`(0, 2)`.
         color: the color of the pixel with :math`(C)` where :math`C` is the number of channels of the image.
-            A 0-d scalar is accepted when the image has a single channel or is :math`(H,W)`.
+            A single value, with shape :math`(1)` or 0-d, is written to every channel.
 
     Return:
         The image with points set to the color. This operation modifies image inplace but also
         returns the drawn tensor for convenience. An empty point set leaves the image unchanged.
 
     Raises:
-        ValueError: if a point lies outside the image after rounding.
+        ValueError: if the image is not :math`(C,H,W)` or :math`(H,W)`, or a point lies outside the image after
+            rounding.
 
     Fractional coordinates go to the pixel whose centre is nearest; a coordinate exactly halfway rounds up.
     A point outside the image raises `ValueError`.
 
     """
+    if image.dim() not in (2, 3):
+        raise ValueError("image must have shape (C, H, W) or (H, W).")
     # A 0-d scalar has no channel dimension for the check below to read; treat it as one channel, as draw_line does.
     if color.ndim == 0:
         color = color.unsqueeze(0)
+    # A single value is written to every channel (see the docstring).
     KORNIA_CHECK(
-        (len(image.shape) == 2 and len(color.shape) == 1) or (image.shape[0] == color.shape[0]),
+        (len(image.shape) == 2 and len(color.shape) == 1) or color.shape[0] in (1, image.shape[0]),
         "Color dim must match the channel dims of the provided image",
     )
     points = _round_to_pixel(points.to(image.device))
@@ -113,7 +117,7 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
     if len(image.shape) == 2:
         image[y, x] = color
     else:
-        image[:, y, x] = color
+        image[:, y, x] = color.expand(image.shape[0], -1)
     return image
 
 
@@ -137,16 +141,18 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
     r"""Draw a single line into an image.
 
     Each line is rasterized one pixel per step along its major axis, the one with the larger extent:
-    at step ``t = 0 .. major`` the minor coordinate advances by ``ceil(t * minor / major)``, computed in
-    integers. Both ``p1`` and ``p2`` are therefore always drawn. Fractional coordinates go to the pixel whose
-    centre is nearest; a coordinate exactly halfway rounds up.
+    at step ``t = 0 .. major`` the pixel is the one whose centre is nearest to the ideal segment, a tie
+    rounding up in absolute coordinates, computed in integers. The line is therefore the same for ``p1 -> p2`` and
+    ``p2 -> p1``, and both ``p1`` and ``p2`` are always drawn. Fractional endpoints go to the pixel whose centre is
+    nearest; a coordinate exactly halfway rounds up.
 
     Args:
         image: the input image to where to draw the lines with shape :math`(C,H,W)`.
         p1: the start point [x y] of the line with shape (2, ) or (B, 2).
         p2: the end point [x y] of the line, with the same shape as ``p1``.
         color: the color of the line with shape :math`(C)` where :math`C` is the number of channels
-            of the image. A 0-d scalar is accepted when the image has a single channel.
+            of the image. A single value, with shape :math`(1)` or 0-d, is written to every channel.
+            Porting note: OpenCV's and Pillow's scalar colours fill only the first channel.
 
     Return:
         The image containing the line. This operation modifies image inplace but also returns
@@ -184,7 +190,7 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
     if color.ndim == 0:
         color = color.unsqueeze(0)
 
-    if color.size(0) != image.size(0):
+    if color.size(0) not in (1, image.size(0)):
         raise ValueError("color must have the same number of channels as the image.")
 
     # move color to the same device and dtype as the input image
@@ -199,12 +205,12 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
     dy_sign = torch.sign(dy)
     dx, dy = torch.abs(dx), torch.abs(dy)
 
-    # Every line steps one pixel at a time along its major axis and places the minor coordinate at
-    # ceil(t * minor / major). The (line, t) pairs with t <= major are taken first, so the work is one
-    # entry per drawn pixel rather than a (B, longest line) grid that pads every short line out. The
-    # ceiling is taken in integers: a float step lands just above an exact integer quotient and rounds
-    # it up a pixel. A vertical or horizontal line has minor = 0, and a single point has major = 0,
-    # which the clamp keeps from dividing by 0. An empty batch draws nothing.
+    # Every line steps one pixel at a time along its major axis and places the minor coordinate at the pixel
+    # nearest to m1 + s * t * minor / major, halfway rounding up in absolute coordinates (so p1 <-> p2 gives the
+    # same pixels). The (line, t) pairs with t <= major are taken first, so the work is one entry per drawn
+    # pixel rather than a (B, longest line) grid that pads every short line out. The rounding is taken in
+    # integers: a float step lands just off an exact tie. A vertical or horizontal line has minor = 0, and a
+    # single point has major = 0, which the clamp keeps from dividing by 0. An empty batch draws nothing.
     x_major = dx > dy
     major = torch.where(x_major, dx, dy)
     minor = torch.where(x_major, dy, dx)
@@ -212,14 +218,19 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
     steps = torch.arange(num_steps, device=image.device).unsqueeze(0)
     line, t = (steps <= major).nonzero(as_tuple=True)
     divisor = major[line, 0].clamp_min(1)
-    t_minor = torch.div(t * minor[line, 0] + divisor - 1, divisor, rounding_mode="floor")
     x_maj = x_major[line, 0]
-    x_coords = x1[line, 0] + dx_sign[line, 0] * torch.where(x_maj, t, t_minor)
-    y_coords = y1[line, 0] + dy_sign[line, 0] * torch.where(x_maj, t_minor, t)
+    m1 = torch.where(x_maj, y1[line, 0], x1[line, 0])
+    s_minor = torch.where(x_maj, dy_sign[line, 0], dx_sign[line, 0])
+    # floor((2 * m1 * major + 2 * s * t * minor + major) / (2 * major)) = round-half-up(m1 + s * t * minor / major)
+    m_coords = torch.div(
+        2 * m1 * divisor + 2 * s_minor * t * minor[line, 0] + divisor, 2 * divisor, rounding_mode="floor"
+    )
+    x_coords = torch.where(x_maj, x1[line, 0] + dx_sign[line, 0] * t, m_coords)
+    y_coords = torch.where(x_maj, m_coords, y1[line, 0] + dy_sign[line, 0] * t)
 
     x_coords = torch.clamp(x_coords, min=0, max=image.shape[-1] - 1)
     y_coords = torch.clamp(y_coords, min=0, max=image.shape[-2] - 1)
-    image[:, y_coords, x_coords] = color.view(-1, 1)
+    image[:, y_coords, x_coords] = color.view(-1, 1).expand(image.size(0), -1)
     return image
 
 
@@ -302,7 +313,9 @@ def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
         The left and right edges of the polygon of shape (B,B).
 
     """
-    dtype = polygon.dtype
+    # The edge maths runs in at least float32: half-precision vertices cannot resolve the scanline grid.
+    dtype = torch.promote_types(polygon.dtype, torch.float32)
+    polygon = polygon.to(dtype)
 
     # A single vertex is its own first and last point, so the loop below would leave no edge;
     # draw it as a zero-length edge, like a two-vertex polygon whose vertices coincide.
@@ -323,8 +336,14 @@ def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
     # so its dx is set to 0. An epsilon added to dy instead underflows in float16 (0 / 0 blanks the scanline), and
     # in float64 it shifts a sloped edge enough to drop a pixel centre lying exactly on it.
     dy = y_end - y_start
-    dx = torch.where(dy == 0, 0.0, (x_end - x_start) / dy).clamp(-w, w)
-    xs = (ys[..., :, None] - y_start[..., None, :]) * dx[..., None, :] + x_start[..., None, :]
+    dx = x_end - x_start
+    # Multiply before dividing: dx / dy first rounds the slope, which drops a centre lying exactly on the edge.
+    safe_dy = torch.where(dy == 0, torch.ones_like(dy), dy)
+    xs = torch.where(
+        dy[..., None, :] == 0,
+        x_start[..., None, :],
+        (ys[..., :, None] - y_start[..., None, :]) * dx[..., None, :] / safe_dy[..., None, :] + x_start[..., None, :],
+    )
 
     # Only count edge in their active regions (i.e between the vertices)
     valid_edges = (y_start[..., None, :] <= ys[..., :, None]).logical_and(ys[..., :, None] <= y_end[..., None, :])
@@ -398,7 +417,7 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
         empty_polygons = torch.tensor([len(p) == 0 for p in polygons], dtype=torch.bool, device=device)
         # `[]` has no polygon to take a dtype or device from; an empty (0, 0, 2) batch returns below.
         polygons = _batch_polygons(polygons) if polygons else images.new_zeros(0, 0, 2)
-    b_p, _, xy, device_p, dtype_p = *polygons.shape, polygons.device, polygons.dtype
+    b_p, _, xy, device_p = *polygons.shape, polygons.device
     if len(colors.shape) <= 1:
         colors = colors.expand(b_i, c_i)
     b_c, _, device_c = *colors.shape, colors.device
@@ -410,7 +429,7 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
         return images
 
     x_left, x_right = _get_convex_edges(polygons, h_i, w_i)
-    ws = torch.arange(w_i, device=device, dtype=dtype_p)[None, None, :]
+    ws = torch.arange(w_i, device=device, dtype=x_left.dtype)[None, None, :]
     fill_region = (ws >= x_left[..., :, None]) & (ws <= x_right[..., :, None])
     if empty_polygons is not None:
         fill_region &= ~empty_polygons[:, None, None]

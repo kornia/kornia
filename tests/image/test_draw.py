@@ -61,7 +61,7 @@ class TestDrawPoint(BaseTester):
     def test_draw_point2d_with_mismatched_dims(self, dtype, device):
         """Test that we raise if the len of the color tensor != the # of image channels."""
         points = torch.tensor([(1, 3), (2, 4)], device=device)
-        color = torch.tensor([100], dtype=dtype, device=device)
+        color = torch.tensor([100, 50], dtype=dtype, device=device)
         img = torch.zeros(3, 8, 8, dtype=dtype, device=device)
         with pytest.raises(Exception):
             draw_point2d(img, points, color)
@@ -145,10 +145,17 @@ class TestDrawPoint(BaseTester):
         out = draw_point2d(img, torch.tensor([[1, 1]], device=device), torch.tensor(9, dtype=dtype, device=device))
         assert out[..., 1, 1].flatten().tolist() == [9.0]
 
-    def test_draw_point2d_0d_color_on_multichannel_image_fails_the_channel_check(self, dtype, device):
-        img = torch.zeros(3, 4, 4, dtype=dtype, device=device)
-        with pytest.raises(BaseError, match="Color dim must match"):
-            draw_point2d(img, torch.tensor([[1, 1]], device=device), torch.tensor(9, dtype=dtype, device=device))
+    @pytest.mark.parametrize("color", [torch.tensor([7.0]), torch.tensor(7.0)])
+    def test_draw_point2d_single_value_color_fills_every_channel(self, color, dtype, device):
+        img = torch.zeros(3, 4, 5, dtype=dtype, device=device)
+        out = draw_point2d(img, torch.tensor([[1, 2]], device=device), color.to(device))
+        assert out[:, 2, 1].tolist() == [7.0, 7.0, 7.0]
+        assert int(out.count_nonzero()) == 3
+
+    def test_draw_point2d_rejects_a_batched_image(self, dtype, device):
+        img = torch.zeros(1, 3, 4, 5, dtype=dtype, device=device)
+        with pytest.raises(ValueError, match=r"\(C, H, W\)"):
+            draw_point2d(img, torch.tensor([[1, 2]], device=device), torch.tensor([1.0], device=device))
 
     def test_draw_point2d_negative_coordinate_raises(self, dtype, device):
         img = torch.zeros(1, 3, 4, dtype=dtype, device=device)  # H = 3, W = 4
@@ -244,9 +251,9 @@ class TestDrawLine(BaseTester):
             [
                 [
                     [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 255.0, 0.0],
-                    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 255.0, 0.0],
                     [0.0, 0.0, 0.0, 0.0, 0.0, 255.0, 0.0, 0.0],
                     [0.0, 0.0, 0.0, 0.0, 255.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 255.0, 0.0, 0.0, 0.0, 0.0],
                     [0.0, 0.0, 0.0, 255.0, 0.0, 0.0, 0.0, 0.0],
                     [0.0, 0.0, 255.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                     [0.0, 255.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
@@ -265,10 +272,10 @@ class TestDrawLine(BaseTester):
         img_mask = torch.tensor(
             [
                 [
-                    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 255.0, 255.0],
+                    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 255.0],
+                    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 255.0, 0.0],
                     [0.0, 0.0, 0.0, 0.0, 0.0, 255.0, 0.0, 0.0],
-                    [0.0, 0.0, 0.0, 0.0, 255.0, 0.0, 0.0, 0.0],
-                    [0.0, 0.0, 0.0, 255.0, 0.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 255.0, 255.0, 0.0, 0.0, 0.0],
                     [0.0, 0.0, 255.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                     [0.0, 255.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                     [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
@@ -287,9 +294,9 @@ class TestDrawLine(BaseTester):
         img_mask = torch.tensor(
             [
                 [
-                    [255.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    [0.0, 255.0, 255.0, 255.0, 0.0, 0.0, 0.0, 0.0],
-                    [0.0, 0.0, 0.0, 0.0, 255.0, 255.0, 255.0, 0.0],
+                    [255.0, 255.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 255.0, 255.0, 255.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.0, 0.0, 255.0, 255.0, 0.0],
                     [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                     [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                     [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
@@ -314,7 +321,7 @@ class TestDrawLine(BaseTester):
                     [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                     [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                     [0.0, 255.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    [0.0, 255.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 255.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                     [0.0, 0.0, 255.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                     [0.0, 0.0, 0.0, 255.0, 0.0, 0.0, 0.0, 0.0],
                 ]
@@ -334,13 +341,13 @@ class TestDrawLine(BaseTester):
             [
                 [
                     [255.0, 0.0, 0.0, 0.0, 0.0, 0.0, 255.0, 0.0],
-                    [255.0, 0.0, 0.0, 0.0, 0.0, 0.0, 255.0, 0.0],
                     [255.0, 0.0, 0.0, 0.0, 0.0, 255.0, 0.0, 0.0],
-                    [255.0, 255.0, 0.0, 0.0, 255.0, 0.0, 0.0, 0.0],
-                    [255.0, 0.0, 255.0, 255.0, 0.0, 0.0, 0.0, 0.0],
-                    [255.0, 0.0, 255.0, 255.0, 255.0, 0.0, 0.0, 0.0],
-                    [255.0, 255.0, 0.0, 0.0, 0.0, 255.0, 0.0, 0.0],
-                    [255.0, 0.0, 0.0, 0.0, 0.0, 0.0, 255.0, 255.0],
+                    [255.0, 0.0, 0.0, 0.0, 255.0, 0.0, 0.0, 0.0],
+                    [255.0, 255.0, 255.0, 255.0, 0.0, 0.0, 0.0, 0.0],
+                    [255.0, 0.0, 0.0, 255.0, 0.0, 0.0, 0.0, 0.0],
+                    [255.0, 0.0, 255.0, 0.0, 255.0, 0.0, 0.0, 0.0],
+                    [255.0, 255.0, 0.0, 0.0, 0.0, 255.0, 255.0, 0.0],
+                    [255.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 255.0],
                 ]
             ],
             device=device,
@@ -387,7 +394,9 @@ class TestDrawLine(BaseTester):
 
         assert "image must have 3 dimensions (C,H,W)." == str(excinfo.value)
 
-    @pytest.mark.parametrize("img_size,color", [((1, 8, 8), torch.tensor([23, 53])), ((3, 8, 8), torch.tensor([255]))])
+    @pytest.mark.parametrize(
+        "img_size,color", [((1, 8, 8), torch.tensor([23, 53])), ((3, 8, 8), torch.tensor([23, 53]))]
+    )
     def test_color_image_channel_size(self, img_size, color, dtype, device):
         img = torch.zeros(*img_size, dtype=dtype, device=device)
         with pytest.raises(ValueError) as excinfo:
@@ -463,6 +472,34 @@ class TestDrawLine(BaseTester):
         for a, b in zip(p1, p2):
             expected = draw_line(expected, a, b, color)
         self.assert_close(batched, expected, rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("color", [torch.tensor([7.0]), torch.tensor(7.0)])
+    def test_draw_line_single_value_color_fills_every_channel(self, color, dtype, device):
+        img = torch.zeros(3, 4, 5, dtype=dtype, device=device)
+        out = draw_line(img, torch.tensor([0, 1], device=device), torch.tensor([3, 1], device=device), color.to(device))
+        assert out[:, 1, :4].tolist() == [[7.0] * 4] * 3
+        assert int(out.count_nonzero()) == 12
+
+    def test_draw_line_is_the_same_in_both_directions(self, dtype, device):
+        p, q = torch.tensor([0, 0], device=device), torch.tensor([4, 1], device=device)
+        a = draw_line(torch.zeros(1, 3, 6, dtype=dtype, device=device), p, q, torch.tensor([1.0], device=device))
+        b = draw_line(torch.zeros(1, 3, 6, dtype=dtype, device=device), q, p, torch.tensor([1.0], device=device))
+        self.assert_close(a, b)
+
+    def test_draw_line_pixels_are_nearest_to_the_segment(self, dtype, device):
+        # (0, 0) -> (4, 1) on 3x6: the ideal row is x / 4, so columns 0, 1 -> row 0, columns 3, 4 -> row 1 and the
+        # tie at column 2 (y = 0.5) rounds up to row 1. cv2.line(img, (0, 0), (4, 1), 1, 1, cv2.LINE_8) agrees on
+        # every column but 2 (probe: OpenCV 5.0).
+        img = draw_line(
+            torch.zeros(1, 3, 6, dtype=dtype, device=device),
+            torch.tensor([0, 0], device=device),
+            torch.tensor([4, 1], device=device),
+            torch.tensor([1.0], device=device),
+        )
+        expected = torch.tensor(
+            [[[1, 1, 0, 0, 0, 0], [0, 0, 1, 1, 1, 0], [0, 0, 0, 0, 0, 0]]], dtype=dtype, device=device
+        )
+        self.assert_close(img, expected, rtol=0.0, atol=0.0)
 
     def test_draw_line_accepts_0d_scalar_color(self, dtype, device):
         # torch.tensor(255) is a natural grayscale color; color.size(0) used to IndexError.
@@ -656,17 +693,27 @@ class TestDrawRectangle(BaseTester):
         assert out.count_nonzero() > 0
 
     def test_reversed_corners_draw_the_same_rectangle(self, device):
-        a = draw_rectangle(torch.zeros(1, 1, 5, 6, device=device), torch.tensor([[[1, 1, 3, 2]]], device=device), torch.tensor([1.0]))
-        b = draw_rectangle(torch.zeros(1, 1, 5, 6, device=device), torch.tensor([[[3, 2, 1, 1]]], device=device), torch.tensor([1.0]))
+        a = draw_rectangle(
+            torch.zeros(1, 1, 5, 6, device=device), torch.tensor([[[1, 1, 3, 2]]], device=device), torch.tensor([1.0])
+        )
+        b = draw_rectangle(
+            torch.zeros(1, 1, 5, 6, device=device), torch.tensor([[[3, 2, 1, 1]]], device=device), torch.tensor([1.0])
+        )
         assert a.sum() > 0
         self.assert_close(a, b)
 
     def test_sides_outside_the_image_are_not_drawn(self, device):
-        out = draw_rectangle(torch.zeros(1, 1, 5, 6, device=device), torch.tensor([[[-2, -2, 10, 10]]], device=device), torch.tensor([1.0]))
+        out = draw_rectangle(
+            torch.zeros(1, 1, 5, 6, device=device),
+            torch.tensor([[[-2, -2, 10, 10]]], device=device),
+            torch.tensor([1.0]),
+        )
         assert out.sum() == 0  # every side lies outside the 5x6 image
 
     def test_partly_outside_box_draws_only_its_inside_sides(self, device):
-        out = draw_rectangle(torch.zeros(1, 1, 5, 6, device=device), torch.tensor([[[2, 1, 9, 3]]], device=device), torch.tensor([1.0]))
+        out = draw_rectangle(
+            torch.zeros(1, 1, 5, 6, device=device), torch.tensor([[[2, 1, 9, 3]]], device=device), torch.tensor([1.0])
+        )
         expected = torch.zeros(5, 6, device=device)
         expected[1, 2:] = 1  # top side, clipped at the right border
         expected[3, 2:] = 1  # bottom side
@@ -674,13 +721,23 @@ class TestDrawRectangle(BaseTester):
         self.assert_close(out[0, 0], expected)
 
     def test_fill_is_clipped_to_the_image(self, device):
-        out = draw_rectangle(torch.zeros(1, 1, 5, 6, device=device), torch.tensor([[[-2, 3, 2, 9]]], device=device), torch.tensor([1.0]), fill=True)
+        out = draw_rectangle(
+            torch.zeros(1, 1, 5, 6, device=device),
+            torch.tensor([[[-2, 3, 2, 9]]], device=device),
+            torch.tensor([1.0]),
+            fill=True,
+        )
         expected = torch.zeros(5, 6, device=device)
         expected[3:, :3] = 1
         self.assert_close(out[0, 0], expected)
 
     def test_rectangle_rounds_fractional_corners(self, device):
-        out = draw_rectangle(torch.zeros(1, 1, 5, 6, device=device), torch.tensor([[[0.6, 0.6, 2.4, 2.6]]], device=device), torch.tensor([1.0]), fill=True)
+        out = draw_rectangle(
+            torch.zeros(1, 1, 5, 6, device=device),
+            torch.tensor([[[0.6, 0.6, 2.4, 2.6]]], device=device),
+            torch.tensor([1.0]),
+            fill=True,
+        )
         expected = torch.zeros(5, 6, device=device)
         expected[1:4, 1:3] = 1  # x 0.6..2.4 -> 1..2, y 0.6..2.6 -> 1..3
         self.assert_close(out[0, 0], expected)
@@ -699,6 +756,28 @@ class TestDrawRectangle(BaseTester):
 
 
 class TestFillConvexPolygon(BaseTester):
+    @pytest.mark.parametrize("vertex_dtype", [torch.float32, torch.bfloat16, torch.float16])
+    def test_edge_maths_does_not_depend_on_the_vertex_dtype(self, vertex_dtype, device, dtype):
+        # vertices 260 and 280 are exact in bfloat16; the fill must be columns 260..280 (21 px) in every row
+        poly = torch.tensor([[[260.0, 0.0], [280.0, 0.0], [280.0, 5.0], [260.0, 5.0]]], device=device).to(vertex_dtype)
+        img = draw_convex_polygon(
+            torch.zeros(1, 1, 6, 300, device=device, dtype=dtype), poly, torch.tensor([1.0], device=device, dtype=dtype)
+        )
+        assert img[0, 0, 2].nonzero().flatten()[[0, -1]].tolist() == [260, 280]
+        assert int(img[0, 0, 2].sum()) == 21
+
+    def test_centre_exactly_on_a_sloped_edge_is_filled(self, device, dtype):
+        # audit B-24: hull [[13,18],[48,1],[12,31],[12,22]] on 31x47; (row 26, col 18) lies on edge (48,1)->(12,31)
+        poly = torch.tensor([[[13.0, 18.0], [48.0, 1.0], [12.0, 31.0], [12.0, 22.0]]], device=device)
+        img = draw_convex_polygon(torch.zeros(1, 1, 31, 47, device=device), poly, torch.tensor([1.0], device=device))
+        assert img[0, 0, 26, 18] == 1
+
+    def test_long_shallow_edge_with_vertices_outside_the_image(self, device, dtype):
+        # audit B-25: triangle (-100,0),(100,4),(-100,4) on 5x6 covers 13 pixel centres (rows 2-4)
+        poly = torch.tensor([[[-100.0, 0.0], [100.0, 4.0], [-100.0, 4.0]]], device=device)
+        img = draw_convex_polygon(torch.zeros(1, 1, 5, 6, device=device), poly, torch.tensor([1.0], device=device))
+        assert int(img.sum()) == 13
+
     def test_circle(self, device, dtype):
         b, c, h, w = 1, 3, 500, 500
         n = 5000

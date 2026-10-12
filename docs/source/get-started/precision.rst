@@ -122,8 +122,10 @@ precision, so the table says nothing about those backends.
    * - ``kornia.image``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 4 / 4
-     - ``draw_convex_polygon`` fill accuracy.
+     - 2 / 3
+     - ``draw_convex_polygon`` runs its edge maths in at least float32, so half-precision vertices fill the same
+       pixels as float32 ones; the circle and ellipse tests still miss because their half-precision vertices are
+       themselves rounded. ``tensor_to_image`` raises ``TypeError`` for a bfloat16 tensor.
    * - ``kornia.losses``
      - ⚠️ Partial
      - ⚠️ Partial

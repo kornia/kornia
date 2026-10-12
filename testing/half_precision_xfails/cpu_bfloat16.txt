@@ -404,7 +404,6 @@ call	builtins.AssertionError	tests/geometry/transform/test_imgwarp3d.py::TestGet
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp3d.py::TestPerspectiveTransform3D::test_get_perspective_transform3d_2[cpu-bfloat16-1]
 call	builtins.AssertionError	tests/image/test_draw.py::TestFillConvexPolygon::test_circle[cpu-bfloat16]
 call	builtins.AssertionError	tests/image/test_draw.py::TestFillConvexPolygon::test_ellipse[cpu-bfloat16]
-call	builtins.AssertionError	tests/image/test_draw.py::TestFillConvexPolygon::test_out_of_bounds_rectangle[cpu-bfloat16]
 call	builtins.TypeError	tests/image/test_image_utils.py::test_tensor_to_image_contiguous[cpu-bfloat16]
 call	builtins.AssertionError	tests/integration/test_conversions.py::TestAngleOfRotations::test_axis_angle[cpu-bfloat16--45.0-x]
 call	builtins.AssertionError	tests/integration/test_conversions.py::TestAngleOfRotations::test_axis_angle[cpu-bfloat16--45.0-y]
