@@ -15,13 +15,15 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
 from kornia.core.check import ShapeError
-from kornia.feature import FilterResponseNorm2d, HyNet
+from kornia.feature import TLU, FilterResponseNorm2d, HyNet
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, supports_conv2d
 
 
 class TestHyNet(BaseTester):
@@ -98,3 +100,63 @@ class TestHyNet(BaseTester):
         model = HyNet().to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(model)
         self.assert_close(model(patches), model_jit(patches))
+
+
+class TestConventionsHyNet(BaseTester):
+    """Pins for HyNet's input-range rule and its two normalisation layers, FilterResponseNorm2d and TLU."""
+
+    def test_convention_hynet_is_scale_invariant_but_not_offset_invariant(self, device, dtype):
+        # HyNet's first layer is FilterResponseNorm2d on the raw patch: it divides by the RMS and subtracts no mean, as
+        # in the reference (yuruntian/HyNet model.py, trained on uint8 patches cast to float). So 255x gives x's
+        # descriptor, while x + 1 and the mean-subtracted x - 0.5 do not (best row cosine about 0.9 and 0.7 with random
+        # weights). Feed it non-negative intensities, not standardised patches.
+        if not supports_conv2d(device, dtype):
+            pytest.skip(f"no conv2d kernel for {dtype} on {device.type}")
+        torch.manual_seed(0)
+        model = HyNet().to(device, dtype)
+        patches = torch.rand(4, 1, 32, 32, device=device, dtype=dtype)
+        desc = model(patches)
+        self.assert_close(model(255 * patches), desc)
+        for moved in (patches + 1, patches - 0.5):
+            cos = torch.nn.functional.cosine_similarity(model(moved).float(), desc.float(), dim=1)
+            assert cos.max() < 0.95, cos
+
+    def test_convention_filter_response_norm_divides_each_map_by_its_rms_with_eps_under_the_root(self, device, dtype):
+        # y = weight * x / sqrt(mean_HW(x^2) + |eps|) + bias, per sample and channel (weight 1, bias 0 at init).
+        # eps = 1 makes its place visible: a constant map of 1 gives 1 / sqrt(2), where eps outside the root would give
+        # 1 / (1 + 1) = 0.5; a constant 3 gives 3 / sqrt(10), not 0.75.
+        frn = FilterResponseNorm2d(2, eps=1.0).to(device, dtype)
+        x = torch.tensor(
+            [[[[1.0, 1.0, 1.0, 1.0]], [[3.0, 3.0, 3.0, 3.0]]], [[[0.0, 1.0, 2.0, 3.0]], [[-2.0, 0.0, 0.0, 2.0]]]],
+            device=device,
+            dtype=dtype,
+        )
+        # mean squares 1, 9, 3.5 and 2, each plus eps
+        expected = torch.tensor(
+            [
+                [[[1 / math.sqrt(2)] * 4], [[3 / math.sqrt(10)] * 4]],
+                [
+                    [[0.0, 1 / math.sqrt(4.5), 2 / math.sqrt(4.5), 3 / math.sqrt(4.5)]],
+                    [[-2 / math.sqrt(3), 0, 0, 2 / math.sqrt(3)]],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(frn(x), expected)
+        self.assert_close(frn(x[1:]), expected[1:])  # each sample on its own: no batch statistics
+        self.assert_close(FilterResponseNorm2d(2, eps=-1.0).to(device, dtype)(x), expected)  # |eps|
+
+    def test_convention_tlu_floors_each_channel_at_its_tau_initialised_to_minus_one(self, device, dtype):
+        tlu = TLU(3).to(device, dtype)
+        assert tlu.tau.shape == (1, 3, 1, 1)
+        x = torch.tensor([-3.0, -1.0, -0.5, 2.0], device=device, dtype=dtype).view(1, 1, 1, 4).repeat(2, 3, 1, 1)
+        at_minus_one = torch.tensor([-1.0, -1.0, -0.5, 2.0], device=device, dtype=dtype)
+        self.assert_close(tlu(x), at_minus_one.expand(2, 3, 1, 4))
+        with torch.no_grad():
+            tlu.tau[0, 1] = 0.0
+        # max(x, tau) per channel: only channel 1 now floors at 0
+        at_zero = torch.tensor([0.0, 0.0, 0.0, 2.0], device=device, dtype=dtype)
+        self.assert_close(
+            tlu(x), torch.stack([at_minus_one, at_zero, at_minus_one]).view(1, 3, 1, 4).expand(2, 3, 1, 4)
+        )
