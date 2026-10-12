@@ -794,11 +794,11 @@ class TestDrawRectangle(BaseTester):
 
     @pytest.mark.parametrize("fill", [False, True])
     def test_jit_script_matches_eager(self, device, dtype, fill):
-        # torch.jit.script compiled draw_rectangle before #5813 and must keep doing so; H != W, asymmetric boxes
+        # draw_rectangle compiles under torch.jit.script and matches eager; H != W, the second box has reversed corners
         image = torch.zeros(2, 3, 7, 10, device=device, dtype=dtype)
         rectangle = torch.tensor(
             [[[1.0, 1.0, 6.0, 3.0]], [[8.0, 5.0, 2.0, 0.0]]], device=device, dtype=dtype
-        )  # the second box has reversed corners
+        )  # reversed corners
         color = torch.tensor([[[1.0, 0.5, 0.25]], [[0.25, 0.5, 1.0]]], device=device, dtype=dtype)
         scripted = torch.jit.script(draw_rectangle)
         expected = draw_rectangle(image.clone(), rectangle, color, fill=fill)
