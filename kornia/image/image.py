@@ -54,21 +54,26 @@ def _default_color_space(channels: int) -> ColorSpace:
 class Image:
     r"""Class that holds an Image torch.Tensor representation.
 
-    .. note::
-
-        Disclaimer: This class provides the minimum functionality for image manipulation. However, as soon
-        as you start to experiment with advanced torch.Tensor manipulation, you might expect fancy
-        polymorphic behaviours.
-
     .. warning::
 
         This API is experimental and might suffer changes in the future.
 
+    Convention:
+        - An ``Image`` holds one image, :math:`(C, H, W)` or :math:`(H, W, C)` as ``layout.channels_order`` says,
+          never a batch: a 4-D tensor raises ``ShapeError``. The layout and the pixel format are checked against the
+          data: ``bit_depth`` is the storage size, ``8 * data.element_size()``, and the color space must fit the
+          channel count, 1 for ``GRAY``, 3 for ``RGB`` and ``BGR``, any for ``UNKNOWN``.
+        - :meth:`from_numpy`, :meth:`to_numpy`, :meth:`from_dlpack` and :meth:`to_dlpack` share memory with the
+          array or capsule of a CPU image. :meth:`to_numpy` returns the stored layout, so an image from
+          :meth:`from_file` gives :math:`(C, H, W)`.
+        - :meth:`to_gray`, :meth:`to_rgb` and :meth:`to_bgr` return the image itself when it is already in that color
+          space, an image with new data when it is in another of the three, and raise ``ValueError`` for
+          ``UNKNOWN``. :meth:`to`, :meth:`float` and :meth:`clone` return a new ``Image`` and leave this one
+          unchanged.
+
     Args:
-        data: a torch torch.Tensor containing the image data.
-        pixel_format: the pixel format. ``bit_depth`` is the storage size, ``8 * data.element_size()``, and the color
-            space must match the channel count: ``GRAY`` has 1 channel, ``RGB`` and ``BGR`` have 3, ``UNKNOWN``
-            accepts any count.
+        data: a torch.Tensor containing the image data.
+        pixel_format: the pixel format of the image.
         layout: a dataclass containing the image layout information.
 
     Examples:
@@ -101,7 +106,7 @@ class Image:
         Like the other kornia checks, the pixel-format checks are skipped after ``kornia.core.check.disable_checks()``.
 
         Args:
-            data: a torch torch.Tensor containing the image data.
+            data: a torch.Tensor containing the image data.
             pixel_format: the pixel format of the image.
             layout: a dataclass containing the image layout information.
 
@@ -318,7 +323,7 @@ class Image:
         color_space: Optional[ColorSpace] = None,
         channels_order: ChannelsOrder = ChannelsOrder.CHANNELS_LAST,
     ) -> Image:
-        """Construct an image torch.Tensor from a numpy array.
+        """Construct an ``Image`` from a numpy array, sharing its memory.
 
         Args:
             data: a numpy array containing the image data.
@@ -365,12 +370,12 @@ class Image:
         return cls(torch.from_numpy(data), pixel_format, layout)
 
     def to_numpy(self) -> np_ndarray:
-        """Return a numpy array in cpu from the image torch.Tensor."""
+        """Return the image data as a numpy array on the CPU, in the stored layout."""
         return self.data.cpu().detach().numpy()
 
     @classmethod
     def from_dlpack(cls, data: DLPack) -> Image:
-        """Construct an image torch.Tensor from a DLPack capsule.
+        """Construct an ``Image`` from a DLPack capsule, sharing its memory.
 
         Args:
             data: a DLPack capsule from numpy, tvm or jax. The capsule must hold a ``(C, H, W)`` image; it is
@@ -406,7 +411,10 @@ class Image:
 
     @classmethod
     def from_file(cls, file_path: str | Path) -> Image:
-        """Construct an image torch.Tensor from a file.
+        """Construct an ``Image`` from a file.
+
+        The file is loaded with :func:`~kornia.io.load_image` as ``ImageLoadType.RGB8``: the image is
+        :math:`(3, H, W)` ``uint8``, ``RGB`` and ``CHANNELS_FIRST``, on the CPU.
 
         Args:
             file_path: the path to the file to read the image from.
@@ -450,7 +458,8 @@ class Image:
         """Print the image torch.Tensor to the console.
 
         Args:
-            max_width: the maximum width of the image to print.
+            max_width: the widest image, in pixels, that is printed without resizing; see
+                :func:`~kornia.image.image_to_string`.
 
         A ``BGR`` image is converted to RGB first, so the terminal shows the true colours.
 

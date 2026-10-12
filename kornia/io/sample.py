@@ -111,34 +111,40 @@ def get_sample_images(
     divisible_factor: Optional[int] = None,
     **kwargs: Any,
 ) -> Union[torch.Tensor, List[torch.Tensor]]:
-    """Load multiple images from the given URLs.
+    """Load multiple images from the given paths or URLs.
 
     Optionally download them, resize them if specified, and return them as a batch of tensors or a list of tensors.
 
-    Removed from ``kornia.utils.sample`` in 0.8.3 and restored here as public API — the docs and downstream
-    demos rely on it.
+    Convention:
+        - Each image loads with :func:`~kornia.io.load_image`'s default type, ``RGB32``: :math:`(3, H, W)`
+          ``float32`` in [0, 1].
+        - A path is a URL only when its scheme is ``http`` or ``https``. A URL is cached under ``cache_dir`` with the
+          file name of its path, byte for byte as downloaded, and a cached file is loaded without downloading it
+          again. With ``download=False``, a URL that is not cached logs an error and raises ``FileNotFoundError``.
+        - ``resize`` is ``(height, width)`` and goes to :func:`~kornia.geometry.transform.resize`; ``divisible_factor``
+          is applied after it by :func:`~kornia.geometry.transform.resize_to_be_divisible`, so the final size can
+          differ from ``resize``. ``**kwargs`` reach both.
+        - The result is one :math:`(B, 3, H, W)` tensor when ``resize`` is given and ``as_list`` is not ``True``, and a
+          list of :math:`(3, H, W)` tensors otherwise; ``as_list=False`` without ``resize`` still gives a list.
 
     Args:
         paths: A list of path or URL from which to load or download images.
               Defaults to the pre-defined sample image URLs if not provided.
-        resize: Optional target size for resizing all images as a tuple (height, width).
-            If not provided, the images will not be resized, and their original sizes will be retained.
+        resize: Optional target size ``(height, width)`` for every image. If not provided, the images keep their
+            sizes unless ``divisible_factor`` is given.
         download: Whether to download the images if they are not already cached. Defaults to True.
         cache_dir: The directory where the downloaded images will be cached.
             Defaults to ``<kornia_config.hub_cache_dir>/images``, relative to the working directory unless configured
             otherwise. Created when an image has to be downloaded. A download is loaded from a temporary file of its
             own before it is renamed into the cache, so a download that does not load as an image never reaches the
             cache: its temporary file is removed and the error propagates.
-        as_list: if to keep the output as a list. If None and `resize` is None, the output will be a list.
-            If None and `resize` is not None, the output will be a single tensor.
+        as_list: ``True`` to return a list even when ``resize`` is given.
         divisible_factor:
-            If not None, the images will be resized to the nearest multiple of `divisible_factor`.
-        **kwargs: Additional keyword arguments to pass to `kornia.geometry.resize`.
+            If not None, each side of every image is resized to a multiple of ``divisible_factor``.
+        **kwargs: Additional keyword arguments for both resizes.
 
     Returns:
-        torch.Tensor | list[torch.Tensor]:
-            If `resize` is provided, returns a single stacked tensor with shape (B, C, H, W).
-            Otherwise, returns a list of tensors, each with its original shape (C, H, W).
+        torch.Tensor | list[torch.Tensor]: the images, stacked or as a list.
 
     """
     import kornia.geometry  # local import to avoid a circular dependency at import time

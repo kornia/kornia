@@ -1,0 +1,5 @@
+The `kornia.io` and `kornia.image` API documentation states their conventions: the channels, dtype and range of each
+`load_image` type, the dtypes and channel counts each `write_image` format stores, when the NumPy converters share
+memory, the pixel frame, rounding and clipping of the drawing functions, and the value ranges of the terminal
+printers. The conventions page gains a *Files and arrays* section, with the load types and a table mapping OpenCV's,
+Pillow's and torchvision's readers, writers and converters onto kornia's, and a *Drawing* section.
