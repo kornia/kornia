@@ -55,9 +55,9 @@ precision, so the table says nothing about those backends.
    * - ``kornia.geometry.transform``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 43 / 58
+     - 31 / 32
      - Linalg steps go through ``_torch_inverse_cast`` / ``_torch_solve_cast``, but rotation matrices,
-       affine/perspective warps, the homography warper and 3D crops miss their accuracy checks.
+       affine/perspective warps and the homography warper miss their accuracy checks.
    * - ``kornia.geometry.camera``
      - ⚠️ Partial
      - ⚠️ Partial

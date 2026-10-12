@@ -21,6 +21,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.utils import _torch_grid_sample
 from kornia.filters import filter2d_separable
 from kornia.filters.kernels import get_gaussian_kernel1d
 
@@ -134,6 +135,6 @@ def elastic_transform2d(
     identity = torch.eye(2, 3, device=image.device, dtype=grid_dtype).unsqueeze(0)
     grid = F.affine_grid(identity, [1, 1, h, w], align_corners=align_corners)
     grid = grid.to(image.dtype)
-    return F.grid_sample(
+    return _torch_grid_sample(
         image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode, padding_mode=padding_mode
     )
