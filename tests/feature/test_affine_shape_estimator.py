@@ -638,3 +638,17 @@ class TestConventionsAffineShape(BaseTester):
         self.assert_close(estimator(patch), expected)
         # relabelling: the transposed patch swaps a and c and keeps b
         self.assert_close(estimator(patch.transpose(-1, -2)), expected.flip(-1))
+
+    def test_wart_patch_affine_shape_counts_a_negative_b_as_below_eps_5824(self, device, dtype):
+        # The degeneracy test counts the entries below eps with their sign, so a negative b always counts (#5824). The
+        # ramp 0.25 x + 1e-3 y gives the thin ellipse (1, +0.0039, 1.6e-5) (CPU float64), while its vertical mirror
+        # 0.25 x - 1e-3 y, whose b is negative, gives the circle (1, 0, 1) instead of (1, -0.0039, 1.6e-5).
+        yy, xx = torch.meshgrid(
+            torch.arange(19, dtype=torch.float64), torch.arange(19, dtype=torch.float64), indexing="ij"
+        )
+        estimator = PatchAffineShapeEstimator(19).to(device, dtype)
+        shape = estimator((0.25 * xx + 1e-3 * yy).view(1, 1, 19, 19).to(device, dtype))[0, 0]
+        mirror = estimator((0.25 * xx - 1e-3 * yy).view(1, 1, 19, 19).to(device, dtype))[0, 0]
+        assert shape[1] > 0
+        assert shape[2] < 1e-3
+        self.assert_close(mirror, torch.tensor([1.0, 0.0, 1.0], device=device, dtype=dtype), rtol=0.0, atol=0.0)

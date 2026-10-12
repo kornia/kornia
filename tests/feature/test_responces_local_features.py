@@ -549,7 +549,7 @@ class TestConventionsResponses(BaseTester):
         # sigmas[b] multiplies the response of image b by sigmas[b] ** 4 in all three (VLFeat covdet.c's scale
         # normalisation of Harris and of the Hessian determinant; GFTT takes the same power): 2 ** 4 = 16 and
         # 0.5 ** 4 = 1 / 16. The bound is 2 * eps relative per element: the power itself may round (MPS gives 0.5 ** 4
-        # one float32 ULP below 1 / 16), the product rounds once more.
+        # as 1 / 16 minus 2 ** -27 in float32), the product rounds once more.
         img = _conv_rectangle_and_blob(device, dtype).repeat(2, 1, 1, 1)
         sigmas = torch.tensor([2.0, 0.5], device=device, dtype=dtype)
         expected = response(img) * torch.tensor([16.0, 0.0625], device=device, dtype=dtype).view(-1, 1, 1, 1)
@@ -609,3 +609,16 @@ class TestConventionsResponses(BaseTester):
             expected = kornia.feature.dog_response(img)
         out = module.to(device, dtype)(img, sigmas)
         self.assert_close(out, expected, rtol=0.0, atol=0.0)
+
+    def test_convention_dog_kernel_size_is_eight_sigma_plus_one_rounded_up_to_odd(self, device, dtype):
+        # Each blur of dog_response_single has int(8 * sigma + 1) taps, rounded up to an odd number: sigma 0.875 gives
+        # int(8.0) = 8, so 9 taps reaching 4 pixels (rounding down would give 7, reaching 3), and sigma 0.5 gives 5.
+        # On an impulse at (13, 9) the response is therefore positive 4 pixels away and exactly zero 5 pixels away,
+        # along x and along y.
+        img = torch.zeros(1, 1, 23, 31, device=device, dtype=dtype)
+        img[..., 9, 13] = 1.0
+        out = kornia.feature.dog_response_single(img, 0.5, 0.875)[0, 0]
+        reach_4 = out[[9, 9, 13, 5], [17, 9, 13, 13]]
+        reach_5 = out[[9, 9, 14, 4], [18, 8, 13, 13]]
+        assert bool((reach_4 > 0).all())
+        assert bool((reach_5 == 0).all())

@@ -1455,6 +1455,28 @@ class _TwoMaxima(torch.nn.Module):
         return out
 
 
+class _Extrema(torch.nn.Module):
+    """A scale-space response on a constant background with single-voxel extrema at level 2 of the 64 x 96 octave.
+
+    ``items`` holds ``((u, v), value, box)``: the voxel's value and, unless ``box`` is None, the value of the rest of
+    its 3 x 3 x 3 neighbourhood.
+    """
+
+    def __init__(self, items: list, background: float) -> None:
+        super().__init__()
+        self.items = items
+        self.background = background
+
+    def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
+        out = torch.full_like(x[:, :1], self.background)
+        if x.shape[-1] == 96:  # the first octave only
+            for (u, v), value, box in self.items:
+                if box is not None:
+                    out[:, :, 1:4, v - 1 : v + 2, u - 1 : u + 2] = box
+                out[:, :, 2, v, u] = value
+        return out
+
+
 class _LevelPeaks(torch.nn.Module):
     """A response map with one peak per pyramid level, looked up by the level's ``(H, W)``.
 
@@ -1584,6 +1606,53 @@ class TestConventionsScaleSpaceDetector(BaseTester):
         assert filled[2] == [True, False]
         self.assert_close(lafs[0, 0, :, 2], torch.tensor([30.0, 20.0], device=device, dtype=dtype))
         self.assert_close(resps[0, 0], torch.tensor(-0.5, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize(
+        "sign, minima_are_also_good, centres, values",
+        [
+            (1.0, False, [[40.0, 30.0], [70.0, 45.0]], [0.8, -0.2]),
+            (1.0, True, [[40.0, 30.0], [25.0, 40.0], [70.0, 45.0]], [0.8, 0.7, -0.2]),
+            (-1.0, True, [[40.0, 30.0], [25.0, 40.0], [60.0, 25.0]], [0.8, 0.7, -0.3]),
+        ],
+        ids=["maxima", "minima", "minima-negated-response"],
+    )
+    def test_convention_scale_space_detector_takes_minima_below_zero_only(
+        self, device, dtype, sign, minima_are_also_good, centres, values
+    ):
+        # On a background of 0.5: maxima of 0.8 at (40, 30) and of -0.2 inside a -0.4 box at (70, 45), minima of -0.7
+        # at (25, 40) and of 0.3 at (60, 25). A strict maximum is a candidate whatever its sign; with
+        # minima_are_also_good a strict minimum is one only below zero, and returns its negated response. So the
+        # minimum of 0.3 is not detected, and negating the response detects it (as a maximum of -0.3) instead of the
+        # maximum of -0.2 (now a minimum of 0.2).
+        items = [((40, 30), 0.8, None), ((70, 45), -0.2, -0.4), ((25, 40), -0.7, None), ((60, 25), 0.3, None)]
+        items = [(site, sign * value, None if box is None else sign * box) for site, value, box in items]
+        det = ScaleSpaceDetector(
+            8,
+            resp_module=_Extrema(items, background=sign * 0.5),
+            scale_space_response=True,
+            mr_size=1.0,
+            minima_are_also_good=minima_are_also_good,
+        )
+        lafs, resps = det.to(device, dtype)(torch.zeros(1, 1, 64, 96, device=device, dtype=dtype))
+        n = len(values)
+        assert kornia.feature.laf_is_filled(lafs)[0].tolist() == [True] * n + [False] * (8 - n)
+        self.assert_close(lafs[0, :n, :, 2], torch.tensor(centres, device=device, dtype=dtype))
+        self.assert_close(resps[0, :n], torch.tensor(values, device=device, dtype=dtype))
+
+    def test_convention_scale_space_detector_masks_candidates_before_the_top_k(self, device, dtype):
+        # A mask drops a candidate at its integer site before the octave's top-k; only the check of the refined centre
+        # comes after it (#5741). A, the strongest maximum, at (40, 50) lies in a masked 5 x 5 region, so the only slot
+        # of num_features=1 goes to the weaker B at (30, 20); without the mask it goes to A.
+        img = torch.zeros(1, 1, 64, 96, device=device, dtype=dtype)
+        mask = torch.ones(1, 1, 64, 96, device=device, dtype=torch.bool)
+        mask[..., 48:53, 38:43] = False
+        det = ScaleSpaceDetector(1, resp_module=_TwoMaxima(), scale_space_response=True, mr_size=2.0).to(device, dtype)
+        lafs, resps = det(img, mask)
+        assert kornia.feature.laf_is_filled(lafs)[0].tolist() == [True]
+        self.assert_close(lafs[0, 0, :, 2], torch.tensor([30.0, 20.0], device=device, dtype=dtype))
+        self.assert_close(resps[0, 0], torch.tensor(-0.5, device=device, dtype=dtype))
+        lafs, _ = det(img)
+        self.assert_close(lafs[0, 0, :, 2], torch.tensor([40.0, 50.0], device=device, dtype=dtype))
 
 
 class TestConventionsMultiResolutionDetector(BaseTester):

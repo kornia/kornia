@@ -428,3 +428,12 @@ class TestConventionsOrientation(BaseTester):
         )
         img = torch.zeros(1, 1, 12, 17, device=device, dtype=dtype)
         assert PassLAF()(laf, img) is laf
+
+    def test_convention_dominant_gradient_angle_is_not_wrapped_past_pi(self, device, dtype):
+        # The angle is not wrapped into (-pi, pi]: a peak in the bin at pi refines up to half a bin past it, so the
+        # angle can exceed pi by up to pi / num_angular_bins. With 8 bins of 45 degrees, a ramp whose gradient points
+        # 195 degrees counter-clockwise on screen reads 192.8 degrees (CPU float64; 192.8 to 195.2 in every dtype, CPU
+        # and MPS), not -167.2.
+        patch = _conv_ramp(195.0, 32, 32, 15.5, 15.5).to(device, dtype)
+        angle = PatchDominantGradientOrientation(32, num_angular_bins=8).to(device, dtype)(patch).item()
+        assert math.pi < angle <= math.pi + math.pi / 8
