@@ -98,6 +98,8 @@ class Image:
     def __init__(self, data: torch.Tensor, pixel_format: PixelFormat, layout: ImageLayout) -> None:
         """Image constructor.
 
+        Like the other kornia checks, the pixel-format checks are skipped after ``kornia.core.check.disable_checks()``.
+
         Args:
             data: a torch torch.Tensor containing the image data.
             pixel_format: the pixel format of the image.
@@ -105,9 +107,8 @@ class Image:
 
         Raises:
             ShapeError: if ``data`` does not have the shape ``layout`` describes. It is also a ``ValueError``.
-            ValueCheckError: if ``pixel_format.bit_depth`` is not ``8 * data.element_size()``, or the color space does
-                not match the channel count. It is also a ``ValueError``. Like the other kornia checks, these are
-                skipped after ``kornia.core.check.disable_checks()``.
+            ValueCheckError: if ``pixel_format.bit_depth`` is not ``8 * data.element_size()`` (also a ``ValueError``).
+            ValueCheckError: if the color space does not match the channel count. It is also a ``ValueError``.
 
         """
         KORNIA_CHECK_IMAGE_LAYOUT(data, layout)
@@ -151,8 +152,7 @@ class Image:
             Image: the image on the given device and with the given dtype.
 
         Raises:
-            ValueCheckError: if the color space does not match the channel count, which only an image built while
-                checks were disabled can have. It is also a ``ValueError``.
+            ValueCheckError: if the image was built with checks disabled and its color space does not fit its channels.
 
         """
         if device is not None and isinstance(device, torch.dtype):
@@ -329,8 +329,7 @@ class Image:
 
         Raises:
             ValueError: if ``channels_order`` is neither ``CHANNELS_LAST`` nor ``CHANNELS_FIRST``.
-            ValueCheckError: if an explicit ``color_space`` does not match the channel count. It is also a
-                ``ValueError``.
+            ValueCheckError: if an explicit ``color_space`` does not match the channel count (also a ``ValueError``).
             ShapeError: if ``data`` has more than three dimensions. It is also a ``ValueError``.
             IndexError: if ``data`` has fewer than two dimensions.
 

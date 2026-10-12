@@ -432,8 +432,7 @@ def print_image(image: Union[str, os.PathLike, torch.Tensor], max_width: int = 9
         TypeError: if ``image`` is neither a path nor a tensor.
         ShapeError: if the tensor is not ``(C, H, W)``. It is also a ``ValueError``.
         ImageError: if the tensor has neither 1 nor 3 channels. It is also a ``ValueError``.
-        ValueCheckError: if a float tensor has values outside [0, 1], or an integer one outside [0, 255]. It is also
-            a ``ValueError``.
+        ValueCheckError: if a float tensor has values outside [0, 1], or an integer one outside [0, 255].
         FileNotFoundError: if the path does not exist. Other errors of :func:`kornia.io.load_image` pass through.
 
     Note:
