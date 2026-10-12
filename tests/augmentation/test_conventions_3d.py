@@ -491,6 +491,10 @@ class Test3DAugmentationConventions(BaseTester):
             (K.CenterCrop3D, (2, 2)),
             (K.CenterCrop3D, (2, 2, 2, 2)),
             (K.RandomCrop3D, 2),
+            (K.RandomCrop3D, 2.0),
+            (K.RandomCrop3D, None),
+            (K.RandomCrop3D, "234"),
+            (K.RandomCrop3D, {2, 3, 4}),
             (K.RandomCrop3D, ()),
             (K.RandomCrop3D, (2,)),
             (K.RandomCrop3D, (2, 2)),
@@ -523,13 +527,16 @@ class Test3DAugmentationConventions(BaseTester):
         with pytest.raises(TypeError, match="size"):
             K.RandomCrop3D(2, p=1.0)(volume)
 
-    @pytest.mark.parametrize("augmentation", [K.CenterCrop3D, K.RandomCrop3D])
+    @pytest.mark.parametrize(
+        "augmentation,size",
+        [(K.CenterCrop3D, (4, 5, 6)), (K.RandomCrop3D, (4, 5, 6)), (K.RandomCrop3D, [4, 5, 6])],
+    )
     @pytest.mark.parametrize("batch_size", [1, 2])
-    def test_crop3d_equal_size_is_valid_4417(self, augmentation, batch_size, device, dtype):
+    def test_crop3d_equal_size_is_valid_4417(self, augmentation, batch_size, size, device, dtype):
         if not supports_nearest_3d_grid_sample(device, dtype):
             pytest.skip("3D nearest grid_sample is unavailable for this device/dtype")
         volume = torch.arange(120, device=device, dtype=dtype).reshape(1, 1, 4, 5, 6).repeat(batch_size, 1, 1, 1, 1)
-        self.assert_close(augmentation((4, 5, 6), p=1.0, resample="nearest")(volume), volume, atol=0, rtol=0)
+        self.assert_close(augmentation(size, p=1.0, resample="nearest")(volume), volume, atol=0, rtol=0)
 
     @pytest.mark.parametrize(
         "padding,size,marker",

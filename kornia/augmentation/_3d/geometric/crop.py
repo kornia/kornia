@@ -128,7 +128,7 @@ class RandomCrop3D(GeometricAugmentationBase3D):
     ) -> None:
         # Since PyTorch does not support ragged torch.Tensor. So cropping function happens batch-wisely.
         super().__init__(p=1.0, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
-        if isinstance(size, int) or (isinstance(size, (tuple, list)) and len(size) != 3):
+        if not isinstance(size, (tuple, list)) or len(size) != 3:
             raise TypeError(f"`size` must be a three-element (D, H, W) sequence. Got {size!r}.")
         self.flags = {
             "size": size,
