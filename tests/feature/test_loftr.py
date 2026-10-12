@@ -390,6 +390,82 @@ class TestCoarseMatching(BaseTester):
             # the confidence is asserted)
             assert data["conf_matrix"][0, 3, 4].item() > 0.0
 
+    @pytest.mark.parametrize("masked_side", [0, 1])
+    def test_independently_optional_coarse_masks_5768(self, device, masked_side):
+        cfg = dict(self.CFG)
+        cfg["thr"] = 0.0
+        generator = torch.Generator(device=device).manual_seed(0)
+        feat0 = torch.randn(1, 12, 8, device=device, generator=generator)
+        feat1 = torch.randn(1, 9, 8, device=device, generator=generator)
+        masked = torch.ones(1, 12 if masked_side == 0 else 9, device=device)
+        masked[0, [0, 5, 7, 8, 11] if masked_side == 0 else [0, 3, 5]] = 0
+        all_valid = torch.ones(1, 9 if masked_side == 0 else 12, device=device)
+
+        def run(include_other_mask):
+            masks = (
+                (masked, all_valid if include_other_mask else None)
+                if masked_side == 0
+                else (all_valid if include_other_mask else None, masked)
+            )
+            data = {
+                "hw0_c": (3, 4),
+                "hw1_c": (3, 3),
+                "hw0_i": (24, 32),
+                "hw1_i": (24, 24),
+                "stride_c": 8,
+            }
+            CoarseMatching(cfg).to(device).eval()(feat0, feat1, data, mask_c0=masks[0], mask_c1=masks[1])
+            return data
+
+        one_sided = run(False)
+        explicit_valid = run(True)
+        assert torch.equal(one_sided["conf_matrix"], explicit_valid["conf_matrix"])
+        assert torch.equal(one_sided["i_ids"], explicit_valid["i_ids"])
+        assert torch.equal(one_sided["j_ids"], explicit_valid["j_ids"])
+        selected = one_sided["i_ids"] if masked_side == 0 else one_sided["j_ids"]
+        assert selected.numel() > 0
+        assert bool(masked[0, selected].all())
+
+    @pytest.mark.parametrize("masked_side", [0, 1])
+    def test_sinkhorn_applies_independently_optional_coarse_masks_5768(self, device, masked_side):
+        cfg = dict(self.CFG)
+        cfg["thr"] = 0.0
+        cfg["sparse_spvs"] = False
+        cm = CoarseMatching(cfg).to(device).eval()
+        cm.match_type = "sinkhorn"
+        cm.skh_prefilter = False
+        cm.skh_iters = 1
+        cm.bin_score = torch.nn.Parameter(torch.tensor(1.0, device=device))
+        transport_inputs = []
+
+        def fake_transport(scores, *_):
+            transport_inputs.append(scores.detach().clone())
+            return torch.zeros(scores.shape[0], scores.shape[1] + 1, scores.shape[2] + 1, device=device)
+
+        cm.log_optimal_transport = fake_transport
+        generator = torch.Generator(device=device).manual_seed(0)
+        feat0 = torch.randn(1, 12, 8, device=device, generator=generator)
+        feat1 = torch.randn(1, 9, 8, device=device, generator=generator)
+        masked = torch.ones(1, 12 if masked_side == 0 else 9, device=device)
+        masked[0, [0, 5]] = 0
+        masks = (masked, None) if masked_side == 0 else (None, masked)
+        data = {
+            "hw0_c": (3, 4),
+            "hw1_c": (3, 3),
+            "hw0_i": (24, 32),
+            "hw1_i": (24, 24),
+            "stride_c": 8,
+        }
+
+        cm(feat0, feat1, data, mask_c0=masks[0], mask_c1=masks[1])
+        invalid = ~masked.bool()[..., None] if masked_side == 0 else ~masked.bool()[:, None]
+        invalid = invalid.expand_as(transport_inputs[0])
+        assert bool((transport_inputs[0][invalid] == -1e9).all())
+        assert bool((data["conf_matrix"][invalid] == 0).all())
+        selected = data["i_ids"] if masked_side == 0 else data["j_ids"]
+        assert selected.numel() > 0
+        assert bool(masked[0, selected].all())
+
     def test_eval_path_unaffected(self, device):
         """Eval mode skips the gt-padding branch entirely -- assert that
         directly (gt_mask all False, count == predictions only), not just

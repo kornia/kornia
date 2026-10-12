@@ -157,28 +157,28 @@ class CoarseMatching(nn.Module):
         # F.normalize
         feat_c0, feat_c1 = (feat / feat.shape[-1] ** 0.5 for feat in [feat_c0, feat_c1])
 
+        # Each coarse mask is independently optional; an absent mask means all cells are valid.
+        invalid = None
+        if mask_c0 is not None:
+            invalid = ~mask_c0.bool()[..., None]
+        if mask_c1 is not None:
+            invalid_c1 = ~mask_c1.bool()[:, None]
+            invalid = invalid_c1 if invalid is None else invalid | invalid_c1
+
         if self.match_type == "dual_softmax":
             sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1) / self.temperature
-            if mask_c0 is not None and mask_c1 is not None:
-                invalid = ~(mask_c0[..., None] * mask_c1[:, None]).bool()
+            if invalid is not None:
                 sim_matrix.masked_fill_(invalid, _masked_similarity(sim_matrix.dtype))
-                conf_matrix = F.softmax(sim_matrix, 1) * F.softmax(sim_matrix, 2)
-                # A pair of masked cells gets the confidence 1 / (L * S) from the two softmaxes:
-                # a row or column that is masked entirely is uniform there, and all its other
-                # entries are exactly 0, so the pair is also a mutual nearest neighbour. Whenever
-                # `thr` is below 1 / (L * S), `get_coarse_match` would return it as a match, with
-                # keypoints in the padding of both images (#5740). A masked pair is never a match.
+            conf_matrix = F.softmax(sim_matrix, 1) * F.softmax(sim_matrix, 2)
+            # Fully masked rows/columns can still receive softmax mass; masked cells are never valid matches.
+            if invalid is not None:
                 conf_matrix.masked_fill_(invalid, 0.0)
-            else:
-                conf_matrix = F.softmax(sim_matrix, 1) * F.softmax(sim_matrix, 2)
 
         elif self.match_type == "sinkhorn":
             # sinkhorn, dustbin included
             sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1)
-            if mask_c0 is not None and mask_c1 is not None:
-                sim_matrix[:, :L, :S].masked_fill_(
-                    ~(mask_c0[..., None] * mask_c1[:, None]).bool(), _masked_similarity(sim_matrix.dtype)
-                )
+            if invalid is not None:
+                sim_matrix[:, :L, :S].masked_fill_(invalid, _masked_similarity(sim_matrix.dtype))
 
             # build uniform prior & use sinkhorn
             log_assign_matrix = self.log_optimal_transport(sim_matrix, self.bin_score, self.skh_iters)
@@ -194,6 +194,10 @@ class CoarseMatching(nn.Module):
 
             if self.config["sparse_spvs"]:
                 data.update({"conf_matrix_with_bin": assign_matrix.clone()})
+
+            if invalid is not None:
+                # A transport solver may assign a tiny probability to an invalid cell despite its finite logit.
+                conf_matrix.masked_fill_(invalid, 0.0)
 
         data.update({"conf_matrix": conf_matrix})
 
