@@ -324,17 +324,28 @@ def fit_plane(points: Vector3) -> Hyperplane:
                 "fit_plane requires at least three points that are not identical; the given points are all identical."
             )
 
-    mean = points.mean(-2, True)
-    points_centered = points - mean
+    points_data = _unwrap(points)
+    half = points_data.dtype in (torch.float16, torch.bfloat16)
+    if half:
+        # Scale before centering so finite half inputs cannot overflow the mean, differences,
+        # or singular values. Uniform scaling preserves the fitted normal and relative rank.
+        points_work = points_data.float()
+        scale = points_work.detach().abs().amax(dim=(-2, -1), keepdim=True)
+        scale = torch.where(scale > 0, scale, torch.ones_like(scale))
+        points_work = points_work / scale
+    else:
+        points_work = points_data
+    mean = points_work.mean(-2, True)
+    points_centered = points_work - mean
 
     # With at least three 3D points, reduced SVD retains all right singular vectors while
     # avoiding an unused N-by-N left factor, including when autograd saves it for backward.
-    _, S, V = _torch_svd_cast(_unwrap(points_centered), full_matrices=False)
+    _, S, V = _torch_svd_cast(points_centered, full_matrices=False)
 
     # The plane is determined when the centred points have rank 2: the second singular value
     # must be nonzero relative to the first, a scale-invariant test that keeps a small or thin
-    # valid set working. ``_torch_svd_cast`` also covers float16 and bfloat16.
-    if checks and not bool((S[..., 1] > S[..., 0] * _rank_tolerance(S.dtype)).all()):
+    # valid set working. Keep the input-dtype tolerance even when the fit uses higher precision.
+    if checks and not bool((S[..., 1] > S[..., 0] * _rank_tolerance(points_data.dtype)).all()):
         raise ValueCheckError(
             "fit_plane requires points that are not collinear; the given points do not determine a plane."
         )
@@ -342,5 +353,8 @@ def fit_plane(points: Vector3) -> Hyperplane:
     # the first left eigenvector is the direction on the fited line
     direction = V[..., :, -1]  # BxD
     origin = mean[..., 0, :]  # BxD
+    if half:
+        direction = direction.to(points_data.dtype)
+        origin = (origin * scale[..., 0, :]).to(points_data.dtype)
 
     return Hyperplane.from_vector(Vector3(direction), Vector3(origin))

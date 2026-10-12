@@ -119,6 +119,58 @@ class TestFitPlane(BaseTester):
         assert plane.normal.shape == (3,)
         assert torch.isfinite(plane.normal.unwrap()).all()
 
+    @pytest.mark.parametrize("wrapped", [False, True])
+    @pytest.mark.parametrize("batched", [False, True])
+    @pytest.mark.parametrize("large", [False, True])
+    def test_fit_plane_preserves_plane_at_large_scale(self, device, dtype, wrapped, batched, large):
+        scale = (2e38 if dtype == torch.bfloat16 else 4e4) if large else 1.0
+        # The rectangle lies in z=1 at either scale. Its first singular value is twice its width scale,
+        # which overflows float16 at 4e4; bfloat16's largest scale also overflows centering in float32.
+        points = (
+            torch.tensor(
+                [[-1.0, -0.5, 0.0], [-1.0, 0.5, 0.0], [1.0, -0.5, 0.0], [1.0, 0.5, 0.0]], device=device, dtype=dtype
+            )
+            * scale
+        )
+        points[:, 2] = 1.0
+        expected = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
+        if batched:
+            points = torch.stack([points, points[:, [2, 0, 1]]])
+            expected = torch.stack([expected, expected[[2, 0, 1]]])
+        points.requires_grad_()
+        plane = fit_plane(Vector3(points) if wrapped else points)
+        assert plane.normal.data.dtype == dtype
+        assert plane.normal.data.device == device
+        assert plane.offset.data.dtype == dtype
+        assert plane.offset.data.device == device
+        self.assert_close(plane.normal.data.abs(), expected)
+        self.assert_close(plane.offset.data.abs(), torch.ones(points.shape[:-2], device=device, dtype=dtype))
+        (plane.normal.data.sum() + plane.offset.data.sum()).backward()
+        assert points.grad is not None
+        assert torch.isfinite(points.grad).all()
+
+    def test_fit_plane_rank_tolerance_uses_input_dtype(self, device, dtype):
+        height = 4 * torch.finfo(dtype).eps
+        points = torch.tensor([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, height, 0.0]], device=device, dtype=dtype)
+        with pytest.raises(ValueCheckError, match="not collinear"):
+            fit_plane(points)
+
+    def test_dynamo_large_scale(self, device, dtype, torch_optimizer):
+        scale = 2e38 if dtype == torch.bfloat16 else 4e4
+        points = torch.tensor(
+            [[-1.0, -0.5, 1.0], [-1.0, 0.5, 1.0], [1.0, -0.5, 1.0], [1.0, 0.5, 1.0]], device=device, dtype=dtype
+        )
+        points[:, :2] *= scale
+
+        def op(x):
+            plane = fit_plane(x)
+            return plane.normal.data, plane.offset.data
+
+        actual = torch_optimizer(op)(points)
+        expected = op(points)
+        self.assert_close(actual[0].abs(), expected[0].abs())
+        self.assert_close(actual[1].abs(), expected[1].abs())
+
 
 # TODO: implement the rest of methods
 class TestHyperplane(BaseTester):
