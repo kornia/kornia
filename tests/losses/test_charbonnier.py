@@ -263,7 +263,7 @@ class TestConventionsRobustLosses(BaseTester):
         if dtype not in (torch.float16, torch.bfloat16):
             pytest.skip("only half-precision inputs can be evaluated in another dtype")
         # All four losses evaluate half-precision inputs in float32 and round once; their gradients are pinned in
-        # test_robust.py. This pin runs eagerly and all four return the input dtype.
+        # test_robust.py and test_welcsh.py. This pin runs eagerly and all four return the input dtype.
         residual = torch.linspace(-8.0, 8.0, 641, device=device, dtype=dtype)
         out = loss_fn(residual, torch.zeros_like(residual))
         assert out.dtype == dtype
