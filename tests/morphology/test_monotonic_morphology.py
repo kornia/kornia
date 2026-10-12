@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-import pytest
 import torch
 import torch.nn.functional as F
 

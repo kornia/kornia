@@ -23,6 +23,7 @@ import torch.nn.functional as F
 from kornia.core._compat import torch_version_lt
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import ValueCheckError
+
 from .monotonic import separable_dilation2d, separable_erosion2d
 
 __all__ = ["bottom_hat", "closing", "dilation", "erosion", "gradient", "opening", "reconstruction", "top_hat"]
@@ -451,7 +452,9 @@ def dilation(
         pad_w = origin[1]
         return separable_dilation2d(tensor, kernel_size=(se_h, se_w), padding=(pad_h, pad_w))
     else:
-        raise NotImplementedError(f"engine {engine} is unknown, use 'auto', 'convolution', 'shift', 'monotonic' or 'unfold'")
+        raise NotImplementedError(
+            f"engine {engine} is unknown, use 'auto', 'convolution', 'shift', 'monotonic' or 'unfold'"
+        )
     return output.view_as(tensor)
 
 
@@ -642,7 +645,9 @@ def erosion(
         pad_w = origin[1]
         return separable_erosion2d(tensor, kernel_size=(se_h, se_w), padding=(pad_h, pad_w))
     else:
-        raise NotImplementedError(f"engine {engine} is unknown, use 'auto', 'convolution', 'shift', 'monotonic' or 'unfold'")
+        raise NotImplementedError(
+            f"engine {engine} is unknown, use 'auto', 'convolution', 'shift', 'monotonic' or 'unfold'"
+        )
 
     return output
 

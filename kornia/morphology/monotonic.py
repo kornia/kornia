@@ -20,13 +20,10 @@ from __future__ import annotations
 from typing import Optional, Tuple, Union
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
 
-def dilation1d(
-    input: torch.Tensor, kernel_size: int, stride: int = 1, padding: Optional[int] = None
-) -> torch.Tensor:
+def dilation1d(input: torch.Tensor, kernel_size: int, stride: int = 1, padding: Optional[int] = None) -> torch.Tensor:
     r"""Applies 1D morphological dilation over input tensor.
 
     Args:
@@ -57,9 +54,7 @@ def dilation1d(
     return out.reshape(out_shape)
 
 
-def erosion1d(
-    input: torch.Tensor, kernel_size: int, stride: int = 1, padding: Optional[int] = None
-) -> torch.Tensor:
+def erosion1d(input: torch.Tensor, kernel_size: int, stride: int = 1, padding: Optional[int] = None) -> torch.Tensor:
     r"""Applies 1D morphological erosion over input tensor.
 
     Args:
