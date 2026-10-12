@@ -118,7 +118,8 @@ class TestSolvePnpDlt(BaseTester):
         self.gradcheck(kornia.geometry.solve_pnp_dlt, (world_points, img_points, intrinsics))
 
     def test_backward_storage_scales_with_points(self, device):
-        intrinsics, _, world_points, img_points = self._get_test_data(64, device, torch.float64)
+        dtype = torch.float32 if device.type == "mps" else torch.float64
+        intrinsics, _, world_points, img_points = self._get_test_data(64, device, dtype)
         world_points.requires_grad_()
         saved_sizes = []
 

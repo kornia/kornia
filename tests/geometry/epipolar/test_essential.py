@@ -69,7 +69,8 @@ class TestScaledPolynomialPowers(BaseTester):
 
 class TestFindEssential(BaseTester):
     def test_least_squares_basis_backward_storage_scales_with_points(self, device):
-        design = torch.rand(1, 128, 9, device=device, dtype=torch.float64, requires_grad=True)
+        dtype = torch.float32 if device.type == "mps" else torch.float64
+        design = torch.rand(1, 128, 9, device=device, dtype=dtype, requires_grad=True)
         saved_sizes = []
 
         def pack(tensor):
