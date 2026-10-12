@@ -25,8 +25,8 @@ python -c "import kornia; print(kornia.__file__)"
 ```
 
 The printed path should point into this checkout. The optional `profiler` extra
-installs pandas for DataFrame, CSV and JSON report export. Dictionary results
-and the CKA function do not require pandas. CPU is sufficient for the examples;
+installs pandas for DataFrame and CSV report export. JSON export, dictionary
+results and the CKA function do not require pandas. CPU is sufficient for the examples;
 a CUDA-enabled PyTorch installation and NVIDIA GPU are optional.
 
 ## Call linear CKA directly
@@ -96,22 +96,25 @@ parametrizes CPU and CUDA; unavailable CUDA cases are skipped. Inspect failures
 and skips rather than interpreting every skip as a failure.
 
 The recorded 46-test pass belongs to the v0.8.3 integration environment.
-This current-main branch still needs compatibility checks and full pre-commit
-checks before it is ready to merge. See [the validation notes](../../PROFILER_VALIDATION.md)
+Current-main profiler tests also cover JSON export without pandas, CSV export
+with pandas, single-image metric selection and reuse of original features. See [the validation notes](../../PROFILER_VALIDATION.md)
 for the broader suite results and remaining work.
 
 ## Input and metric semantics
 
 The generic input API accepts a single positional tensor, a positional tuple,
-or a mapping of keyword arguments. The augmentation wrapper accepts images
-and uses Kornia's RandomRotation, RandomGaussianBlur, and RandomBrightness.
+or a mapping of keyword arguments. The augmentation wrapper captures the original features once and compares
+each augmentation against that shared snapshot. It accepts images and uses Kornia's RandomRotation, RandomGaussianBlur, and RandomBrightness.
 For fixed strengths, use equal interval endpoints, for example sigma=(1,1).
 Kornia RandomBrightness adds (brightness_factor - 1) to pixel values and clips
 the output; it is not multiplication by brightness_factor. Transform raw
 images before applying the model's input normalization.
 
 `linear` is biased, sample-centered linear CKA. Inputs must contain at least
-two corresponding samples. Feature dimensions may differ; sample order must
+two corresponding samples. The high-level defaults include `linear`; for a
+single image, explicitly set `config["metrics"] = ["cosine", "l2"]`. The profiler
+raises an error rather than silently dropping an undefined CKA score.
+Feature dimensions may differ; sample order must
 match. Constant centered features have undefined CKA and raise ValueError.
 The implementation uses float64 and N-by-N sample Gram matrices: its memory
 cost grows quadratically in the sample count. Do not average per-batch CKA
