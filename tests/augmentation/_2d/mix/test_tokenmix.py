@@ -64,9 +64,14 @@ class TestTokenMixPublicAPI(BaseTester):
         assert (params_shared["num_mix_tokens"] == params_shared["num_mix_tokens"][0]).all()
         assert (params_shared["lam"] == params_shared["lam"][0]).all()
 
-        # Valid partner permutation (a permutation of 0..B-1)
+        # Valid partner permutation (a permutation of 0..B-1 without self-pairing for B > 1)
         perm = params_shared["batch_perm"]
         assert torch.equal(torch.sort(perm).values, torch.arange(4, device=perm.device))
+        assert not (perm == torch.arange(4, device=perm.device)).any()
+
+        # Shared token mask across batch when same_on_batch=True
+        assert "token_mask" in params_shared
+        assert torch.equal(params_shared["token_mask"], params_shared["token_mask"][0].repeat(4, 1, 1))
 
         # Independent sampling when same_on_batch=False
         torch.manual_seed(42)
@@ -142,8 +147,10 @@ def test_tokenmix_params_keys():
     assert "lam" in params
     assert "num_mix_tokens" in params
     assert "batch_perm" in params
+    assert "token_mask" in params
     assert params["lam"].shape[0] == 4
     assert params["batch_perm"].shape[0] == 4
+    assert params["token_mask"].shape == (4, 4, 4)
 
 
 def test_tokenmix_different_inputs():

@@ -55,8 +55,8 @@ class TokenMix(MixAugmentationBaseV2):
         - ``p`` is a single batch-wide gate.
         - ``same_on_batch=True`` shares the mixing coefficient, token count, and replaced
           token positions across the batch.
-        - Partner selection remains a random batch permutation; self-pairing is allowed,
-          consistent with MixUp.
+        - When ``B > 1``, partner selection ensures each image is paired with a different
+          image in the batch (no self-pairing). For ``B = 1``, self-pairing is preserved.
         - Both ``H`` and ``W`` must be divisible by ``num_tokens``, and ``num_tokens <= min(H, W)``.
         - Only image input is implemented.
 
@@ -109,10 +109,10 @@ class TokenMix(MixAugmentationBaseV2):
         """Generate per-batch mixing parameters.
 
         Samples a Beta-distributed ``lam`` per image (or single shared value when
-        ``same_on_batch=True``), converts it to a token count, and draws a random
-        batch permutation. Partner selection remains a random batch permutation,
-        allowing self-pairing. All values are stored in the returned ``params`` dict
-        so that ``apply_transform`` can use them without re-sampling.
+        ``same_on_batch=True``), converts it to a token count, samples a random token
+        replacement mask, and draws partner indices ensuring different images when B > 1.
+        All values are stored in the returned ``params`` dict so that ``apply_transform``
+        can use them without re-sampling.
 
         Args:
             batch_shape: Shape of the input batch, i.e. ``(B, C, H, W)``.
@@ -121,7 +121,8 @@ class TokenMix(MixAugmentationBaseV2):
             Dict with keys:
                 - ``"lam"``: mixing coefficients, shape ``(B,)``
                 - ``"num_mix_tokens"``: number of tokens to replace per image, shape ``(B,)``
-                - ``"batch_perm"``: random permutation indices, shape ``(B,)``
+                - ``"batch_perm"``: partner permutation indices, shape ``(B,)``
+                - ``"token_mask"``: token replacement mask, shape ``(B, num_tokens, num_tokens)``
 
         """
         B = batch_shape[0]
@@ -130,6 +131,7 @@ class TokenMix(MixAugmentationBaseV2):
                 "lam": torch.empty((0,)),
                 "num_mix_tokens": torch.empty((0,), dtype=torch.long),
                 "batch_perm": torch.empty((0,), dtype=torch.long),
+                "token_mask": torch.empty((0, self.num_tokens, self.num_tokens), dtype=torch.bool),
             }
 
         sample_size = 1 if self.same_on_batch and B > 0 else B
@@ -140,8 +142,34 @@ class TokenMix(MixAugmentationBaseV2):
         total_tokens = self.num_tokens * self.num_tokens
         num_mix_tokens = (lam * total_tokens).round().clamp(min=1.0, max=float(total_tokens)).long()
 
-        batch_perm = torch.randperm(B)
-        return {"lam": lam, "num_mix_tokens": num_mix_tokens, "batch_perm": batch_perm}
+        if B > 1:
+            batch_perm = torch.randperm(B)
+            while (batch_perm == torch.arange(B)).any():
+                batch_perm = torch.randperm(B)
+        else:
+            batch_perm = torch.zeros(1, dtype=torch.long)
+
+        token_mask = torch.zeros(B, self.num_tokens, self.num_tokens, dtype=torch.bool)
+        if self.same_on_batch:
+            k = int(num_mix_tokens[0].item())
+            perm = torch.randperm(total_tokens)
+            mask_1 = torch.zeros(total_tokens, dtype=torch.bool)
+            mask_1[perm[:k]] = True
+            token_mask = mask_1.view(1, self.num_tokens, self.num_tokens).repeat(B, 1, 1)
+        else:
+            for i in range(B):
+                k_i = int(num_mix_tokens[i].item())
+                perm = torch.randperm(total_tokens)
+                mask_i = torch.zeros(total_tokens, dtype=torch.bool)
+                mask_i[perm[:k_i]] = True
+                token_mask[i] = mask_i.view(self.num_tokens, self.num_tokens)
+
+        return {
+            "lam": lam,
+            "num_mix_tokens": num_mix_tokens,
+            "batch_perm": batch_perm,
+            "token_mask": token_mask,
+        }
 
     def apply_transform(
         self,
@@ -168,17 +196,30 @@ class TokenMix(MixAugmentationBaseV2):
         shuffled = input[idx]
         out = input.clone()
 
-        token_idx = 0
-        for ty in range(self.num_tokens):
-            y = ty * token_h
-            for tx in range(self.num_tokens):
-                x = tx * token_w
-                mask = (num_mix_tokens > token_idx).view(B, 1, 1, 1)
-                out[:, :, y : y + token_h, x : x + token_w] = torch.where(
-                    mask,
-                    shuffled[:, :, y : y + token_h, x : x + token_w],
-                    out[:, :, y : y + token_h, x : x + token_w],
-                )
-                token_idx += 1
+        if "token_mask" in params:
+            token_mask = params["token_mask"].to(device=input.device)
+            for ty in range(self.num_tokens):
+                y = ty * token_h
+                for tx in range(self.num_tokens):
+                    x = tx * token_w
+                    mask = token_mask[:, ty, tx].view(B, 1, 1, 1)
+                    out[:, :, y : y + token_h, x : x + token_w] = torch.where(
+                        mask,
+                        shuffled[:, :, y : y + token_h, x : x + token_w],
+                        out[:, :, y : y + token_h, x : x + token_w],
+                    )
+        else:
+            token_idx = 0
+            for ty in range(self.num_tokens):
+                y = ty * token_h
+                for tx in range(self.num_tokens):
+                    x = tx * token_w
+                    mask = (num_mix_tokens > token_idx).view(B, 1, 1, 1)
+                    out[:, :, y : y + token_h, x : x + token_w] = torch.where(
+                        mask,
+                        shuffled[:, :, y : y + token_h, x : x + token_w],
+                        out[:, :, y : y + token_h, x : x + token_w],
+                    )
+                    token_idx += 1
 
         return out
