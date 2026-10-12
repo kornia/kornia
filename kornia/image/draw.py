@@ -265,7 +265,7 @@ def draw_rectangle(
         >>> out = draw_rectangle(img, rect)
 
     """
-    batch, c, h, w = image.shape
+    batch, c = image.shape[:2]
     batch_rect, num_rectangle, num_points = rectangle.shape
     if batch != batch_rect:
         raise ValueError("Image batch and rectangle batch must be equal")

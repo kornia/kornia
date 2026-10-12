@@ -63,7 +63,7 @@ class TestDrawPoint(BaseTester):
         points = torch.tensor([(1, 3), (2, 4)], device=device)
         color = torch.tensor([100, 50], dtype=dtype, device=device)
         img = torch.zeros(3, 8, 8, dtype=dtype, device=device)
-        with pytest.raises(Exception):
+        with pytest.raises(BaseError, match="Color dim must match"):
             draw_point2d(img, points, color)
 
     def test_draw_point2d_with_mismatched_dtype(self, device):
@@ -247,6 +247,7 @@ class TestDrawLine(BaseTester):
         """Test drawing a line with m <= -1."""
         img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
         img = draw_line(img, torch.tensor([0, 7]), torch.tensor([6, 0]), torch.tensor([255]))
+        # Literal = 255 * cv2.line(np.zeros((8, 8), np.uint8), (0, 7), (6, 0), 1, 1, cv2.LINE_8) (OpenCV 5.0).
         img_mask = torch.tensor(
             [
                 [
@@ -269,6 +270,7 @@ class TestDrawLine(BaseTester):
         """Test drawing a line with -1 < m < 0."""
         img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
         img = draw_line(img, torch.tensor([1, 5]), torch.tensor([7, 0]), torch.tensor([255]))
+        # Literal = 255 * cv2.line(np.zeros((8, 8), np.uint8), (1, 5), (7, 0), 1, 1, cv2.LINE_8) (OpenCV 5.0).
         img_mask = torch.tensor(
             [
                 [
@@ -291,6 +293,7 @@ class TestDrawLine(BaseTester):
         """Test drawing a line with 0 < m < 1."""
         img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
         img = draw_line(img, torch.tensor([0, 0]), torch.tensor([6, 2]), torch.tensor([255]))
+        # Literal = 255 * cv2.line(np.zeros((8, 8), np.uint8), (0, 0), (6, 2), 1, 1, cv2.LINE_8) (OpenCV 5.0).
         img_mask = torch.tensor(
             [
                 [
@@ -313,6 +316,7 @@ class TestDrawLine(BaseTester):
         """Test drawing a line with m >= 1."""
         img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
         img = draw_line(img, torch.tensor([3, 7]), torch.tensor([1, 4]), torch.tensor([255]))
+        # Literal = 255 * cv2.line(np.zeros((8, 8), np.uint8), (3, 7), (1, 4), 1, 1, cv2.LINE_8) (OpenCV 5.0).
         img_mask = torch.tensor(
             [
                 [
@@ -337,6 +341,8 @@ class TestDrawLine(BaseTester):
         img = draw_line(
             img, torch.tensor([[0, 7], [0, 7], [0, 2]]), torch.tensor([[6, 0], [0, 0], [7, 7]]), torch.tensor([255])
         )
+        # Lines 1 and 3 equal cv2.line(np.zeros((8, 8), np.uint8), p1, p2, 1, 1, cv2.LINE_8) * 255 (OpenCV 5.0) for
+        # (0, 7)->(6, 0) and (0, 2)->(7, 7); line 2 is the vertical x = 0.
         img_mask = torch.tensor(
             [
                 [
@@ -490,6 +496,8 @@ class TestDrawLine(BaseTester):
         # (0, 0) -> (4, 1) on 3x6: the ideal row is x / 4, so columns 0, 1 -> row 0, columns 3, 4 -> row 1 and the
         # tie at column 2 (y = 0.5) rounds up to row 1. cv2.line(img, (0, 0), (4, 1), 1, 1, cv2.LINE_8) agrees on
         # every column but 2 (probe: OpenCV 5.0).
+        # cv2.line(np.zeros((3, 6), np.uint8), (0, 0), (4, 1), 1, 1, cv2.LINE_8) returns
+        # [[1, 1, 1, 0, 0, 0], [0, 0, 0, 1, 1, 0], [0, 0, 0, 0, 0, 0]]: the tie column 2 is the only difference.
         img = draw_line(
             torch.zeros(1, 3, 6, dtype=dtype, device=device),
             torch.tensor([0, 0], device=device),
