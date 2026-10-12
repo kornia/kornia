@@ -17,6 +17,8 @@
 
 import io
 import re
+import struct
+import zlib
 from pathlib import Path
 
 import kornia_rs
@@ -40,6 +42,28 @@ def write_random_png_u16(path: Path, mode: str) -> None:
     channels = {"mono": 1, "rgba": 4}[mode]
     img_np = np.random.randint(0, 65535, (4, 5, channels)).astype(np.uint16)  # noqa: NPY002
     kornia_rs.io.write_image_png_u16(str(path), img_np, mode=mode)
+
+
+def _png_chunk(kind: bytes, data: bytes) -> bytes:
+    return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+
+def write_indexed_png(path: Path, indices: np.ndarray, palette: list, alpha: bytes | None = None) -> None:
+    """Write an 8-bit palette PNG (colour type 3) byte by byte, so the test needs no image library."""
+    height, width = indices.shape
+    raw = b"".join(b"\x00" + indices[row].astype(np.uint8).tobytes() for row in range(height))
+    chunks = [
+        _png_chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 3, 0, 0, 0)),
+        _png_chunk(b"PLTE", bytes(channel for colour in palette for channel in colour)),
+    ]
+    if alpha is not None:
+        chunks.append(_png_chunk(b"tRNS", alpha))
+    chunks += [_png_chunk(b"IDAT", zlib.compress(raw)), _png_chunk(b"IEND", b"")]
+    path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"".join(chunks))
+
+
+PALETTE = [(255, 255, 0), (0, 255, 0), (255, 0, 0), (0, 0, 255)]
+PALETTE_INDICES = np.array([[2, 1, 0], [3, 0, 1]], dtype=np.uint8)  # H = 2, W = 3
 
 
 @pytest.fixture(scope="session")
@@ -224,6 +248,98 @@ class TestIoImage:
         loaded = load_image(path, ImageLoadType.UNCHANGED)
         assert loaded.shape == shape
         assert torch.equal(loaded, img)
+
+
+class TestIndexedPng:
+    def test_unchanged_keeps_the_palette_indices(self, tmp_path: Path) -> None:
+        path = tmp_path / "indexed.png"
+        write_indexed_png(path, PALETTE_INDICES, PALETTE)
+        out = load_image(path, ImageLoadType.UNCHANGED)
+        assert out.dtype == torch.uint8
+        assert out.tolist() == [PALETTE_INDICES.tolist()]
+
+    @pytest.mark.parametrize("load_type", [ImageLoadType.RGB8, ImageLoadType.RGB32])
+    def test_rgb_types_expand_the_palette(self, tmp_path: Path, load_type) -> None:
+        path = tmp_path / "indexed.png"
+        write_indexed_png(path, PALETTE_INDICES, PALETTE)
+        expected = torch.tensor([PALETTE[i] for i in PALETTE_INDICES.flatten()], dtype=torch.uint8).T.reshape(3, 2, 3)
+        if load_type == ImageLoadType.RGB32:
+            expected = expected.float() / 255.0
+        torch.testing.assert_close(load_image(path, load_type), expected)
+
+    def test_gray8_is_the_gray_of_the_palette_colours(self, tmp_path: Path) -> None:
+        path = tmp_path / "indexed.png"
+        write_indexed_png(path, PALETTE_INDICES, PALETTE)
+        # cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY): red 76, green 150, yellow 226, blue 29
+        expected = torch.tensor([[[76, 150, 226], [29, 226, 150]]], dtype=torch.uint8)
+        torch.testing.assert_close(load_image(path, ImageLoadType.GRAY8), expected)
+
+    def test_rgba8_takes_alpha_from_the_trns_chunk(self, tmp_path: Path) -> None:
+        path = tmp_path / "indexed_trns.png"
+        write_indexed_png(path, PALETTE_INDICES, PALETTE, alpha=bytes([0, 128]))  # entries 2 and 3 stay opaque
+        out = load_image(path, ImageLoadType.RGBA8)
+        assert out.shape == (4, 2, 3)
+        assert out[3].tolist() == [[255, 128, 0], [255, 0, 128]]
+
+    def test_rgb8_composites_transparent_palette_entries_over_white(self, tmp_path: Path) -> None:
+        path = tmp_path / "indexed_trns.png"
+        write_indexed_png(path, PALETTE_INDICES, PALETTE, alpha=bytes([0, 128]))
+        out = load_image(path, ImageLoadType.RGB8)
+        # round(c * a / 255 + 255 * (1 - a / 255)): yellow at alpha 0 -> white, green at alpha 128 -> (127, 255, 127)
+        assert out[:, 0, 2].tolist() == [255, 255, 255]
+        assert out[:, 0, 1].tolist() == [127, 255, 127]
+        assert out[:, 0, 0].tolist() == [255, 0, 0]
+
+    def test_index_beyond_the_palette_raises_naming_the_file(self, tmp_path: Path) -> None:
+        path = tmp_path / "short_palette.png"
+        write_indexed_png(path, PALETTE_INDICES, PALETTE[:2])  # indices 2 and 3 have no colour
+        with pytest.raises(ValueError, match=re.escape(path.name)):
+            load_image(path, ImageLoadType.RGB8)
+
+
+class TestGrayJpeg:
+    @staticmethod
+    def _gray() -> torch.Tensor:
+        return (torch.arange(12 * 20) % 251).to(torch.uint8).view(1, 12, 20)  # H = 12, W = 20
+
+    def test_unchanged_keeps_one_channel(self, tmp_path: Path) -> None:
+        path = tmp_path / "gray.jpg"
+        write_image(path, self._gray(), quality=95)
+        out = load_image(path, ImageLoadType.UNCHANGED)
+        assert out.shape == (1, 12, 20)
+        torch.testing.assert_close(out, load_image(path, ImageLoadType.GRAY8))
+
+    def test_rgb8_repeats_the_gray_channel(self, tmp_path: Path) -> None:
+        path = tmp_path / "gray.jpg"
+        write_image(path, self._gray(), quality=95)
+        gray = load_image(path, ImageLoadType.UNCHANGED)
+        torch.testing.assert_close(load_image(path, ImageLoadType.RGB8), gray.expand(3, -1, -1))
+
+    def test_large_app_segment_before_the_frame_header(self, tmp_path: Path) -> None:
+        plain = tmp_path / "gray.jpg"
+        write_image(plain, self._gray(), quality=95)
+        data = plain.read_bytes()
+        payload = b"Exif\x00\x00" + b"x" * 60000  # a camera-sized APP1 block between SOI and the frame header
+        tagged = tmp_path / "gray_exif.jpg"
+        tagged.write_bytes(data[:2] + b"\xff\xe1" + struct.pack(">H", len(payload) + 2) + payload + data[2:])
+        out = load_image(tagged, ImageLoadType.UNCHANGED)
+        assert out.shape == (1, 12, 20)
+        torch.testing.assert_close(out, load_image(plain, ImageLoadType.UNCHANGED))
+
+    def test_color_jpeg_unchanged_keeps_three_channels(self, tmp_path: Path) -> None:
+        path = tmp_path / "color.jpg"
+        write_image(path, create_random_img8_torch(12, 20, 3))
+        assert load_image(path, ImageLoadType.UNCHANGED).shape == (3, 12, 20)
+
+
+class TestAlphaRounding:
+    def test_semi_transparent_rgba_rounds_after_compositing(self, tmp_path: Path) -> None:
+        path = tmp_path / "rgba.png"
+        pixels = np.zeros((2, 3, 4), dtype=np.uint8)
+        pixels[...] = (200, 100, 50, 64)
+        kornia_rs.io.write_image_png_u8(str(path), pixels, mode="rgba")
+        # round(c * 64 / 255 + 255 * (1 - 64 / 255)) for c = 200, 100, 50 -> 241.2, 216.1, 203.5
+        assert load_image(path, ImageLoadType.RGB8)[:, 0, 0].tolist() == [241, 216, 204]
 
 
 class TestDownloadImage:

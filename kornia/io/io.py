@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import os
 from enum import Enum
 from pathlib import Path
 from typing import Any, Union
@@ -69,9 +70,95 @@ def _read_png_header(path_file: Path) -> tuple[int, int] | None:
 # release decodes it, so ``read_image`` raises for such a file.
 _PNG_COLOR_TYPE_TO_MODE: dict[int, str] = {
     0: "mono",  # Grayscale
-    3: "mono",  # Indexed (palette) — decoded as single channel by kornia_rs
+    3: "mono",  # Indexed (palette): kornia_rs returns the indices; load_image expands them unless UNCHANGED
     6: "rgba",  # RGBA
 }
+
+# Start-of-frame markers (SOF0-SOF15 without DHT 0xC4, JPG 0xC8 and DAC 0xCC); byte 5 of their payload is the number
+# of colour components.
+_JPEG_SOF_MARKERS = frozenset({0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF})
+
+
+def _read_jpeg_components(path_file: Path) -> int | None:
+    """Return the number of colour components in a JPEG frame header, or None if the file has no readable one."""
+    with open(path_file, "rb") as f:
+        if f.read(2) != b"\xff\xd8":
+            return None
+        while True:
+            if f.read(1) != b"\xff":
+                return None
+            code = f.read(1)
+            while code == b"\xff":  # fill bytes may precede a marker
+                code = f.read(1)
+            if not code:
+                return None
+            marker = code[0]
+            if marker == 0x01 or 0xD0 <= marker <= 0xD7:  # markers without a length field
+                continue
+            length = f.read(2)
+            if len(length) < 2:
+                return None
+            if marker in _JPEG_SOF_MARKERS:
+                frame = f.read(6)  # precision, height, width, number of components
+                return frame[5] if len(frame) == 6 else None
+            if marker == 0xDA:  # start of scan before any frame header
+                return None
+            f.seek(int.from_bytes(length, "big") - 2, os.SEEK_CUR)
+
+
+def _read_png_palette(path_file: Path) -> tuple[torch.Tensor, torch.Tensor | None] | None:
+    """Return a PNG's palette as ``(N, 3)`` uint8 colours and, with a tRNS chunk, ``(N,)`` uint8 alphas.
+
+    Returns None when the file has no PLTE chunk. Palette entries that tRNS does not list are opaque.
+    """
+    plte: bytes | None = None
+    trns: bytes | None = None
+    with open(path_file, "rb") as f:
+        if f.read(8) != _PNG_SIGNATURE:
+            return None
+        while True:
+            head = f.read(8)
+            if len(head) < 8 or head[4:8] in (b"IDAT", b"IEND"):  # PLTE and tRNS precede the image data
+                break
+            body = f.read(int.from_bytes(head[:4], "big"))
+            f.seek(4, os.SEEK_CUR)  # CRC
+            if head[4:8] == b"PLTE":
+                plte = body
+            elif head[4:8] == b"tRNS":
+                trns = body
+    if plte is None:
+        return None
+    colors = torch.frombuffer(bytearray(plte), dtype=torch.uint8).view(-1, 3).clone()
+    if trns is None:
+        return colors, None
+    alpha = torch.full((colors.shape[0],), 255, dtype=torch.uint8)
+    listed = torch.frombuffer(bytearray(trns), dtype=torch.uint8)[: colors.shape[0]]
+    alpha[: listed.numel()] = listed
+    return colors, alpha
+
+
+def _expand_png_palette(path_file: Path, image: torch.Tensor) -> torch.Tensor:
+    """Replace the indices of a palette PNG by their colours: ``(3, H, W)``, or ``(4, H, W)`` with a tRNS chunk.
+
+    Any other file is returned unchanged.
+    """
+    if path_file.suffix.lower() != ".png":
+        return image
+    header = _read_png_header(path_file)
+    if header is None or header[1] != 3:
+        return image
+    palette = _read_png_palette(path_file)
+    if palette is None:
+        return image
+    colors, alpha = palette
+    table = colors if alpha is None else torch.cat([colors, alpha[:, None]], dim=1)
+    indices = image[0].long()
+    if indices.numel() and int(indices.max()) >= table.shape[0]:
+        raise ValueError(
+            f"Failed to decode image '{path_file}': a pixel uses palette entry {int(indices.max())}, "
+            f"but the palette has {table.shape[0]} entries."
+        )
+    return table.to(image.device)[indices].permute(2, 0, 1).contiguous()
 
 
 def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None]) -> torch.Tensor:
@@ -84,7 +171,7 @@ def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None
         device: the device where you want to get your image placed.
 
     Return:
-        Image torch.Tensor with shape :math:`(3,H,W)`.
+        Image torch.Tensor with shape :math:`(C, H, W)`, as decoded.
 
     """
     # read image and return as `np.ndarray` with shape HxWxC
@@ -96,6 +183,9 @@ def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None
             pass
         if path_file.suffix.lower() in [".jpg", ".jpeg"]:
             img = _rs_io.read_image_jpegturbo(str(path_file))
+            if _read_jpeg_components(path_file) == 1:
+                # libjpeg-turbo decodes a grayscale JPEG into three equal channels; keep the file's one channel
+                img = img[..., :1]
         elif path_file.suffix.lower() == ".png":
             # None (truncated/invalid header) intentionally falls through to read_image
             bit_depth, color_type = _read_png_header(path_file) or (None, None)
@@ -131,9 +221,9 @@ def _to_float32(image: torch.Tensor) -> torch.Tensor:
 
 
 def _to_uint8(image: torch.Tensor) -> torch.Tensor:
-    """Convert an image torch.Tensor to uint8."""
+    """Convert a float image in [0, 1] to uint8, rounding to the nearest level."""
     KORNIA_CHECK(image.dtype == torch.float32)
-    return image.mul(255.0).byte()
+    return image.mul(255.0).round_().clamp_(0, 255).to(torch.uint8)
 
 
 def _convert_image_type(image: torch.Tensor, desired_type: ImageLoadType) -> torch.Tensor:
@@ -198,7 +288,9 @@ def load_image(
         device: the device where you want to get your image placed.
 
     Return:
-        Image torch.Tensor with shape :math:`(3,H,W)`.
+        Image torch.Tensor with shape :math:`(C, H, W)`: ``C`` is 1 for ``GRAY8`` and ``GRAY32``, 3 for ``RGB8`` and
+        ``RGB32``, 4 for ``RGBA8``, and the file's channel count for ``UNCHANGED``. A palette PNG loads as its
+        palette indices under ``UNCHANGED`` and as its colours under every other type.
 
     Raises:
         ValueError: if the file cannot be decoded, for example a truncated or corrupt image or an unsupported format.
@@ -211,6 +303,9 @@ def load_image(
 
     # read the image using the kornia_rs package
     image: torch.Tensor = _load_image_to_tensor(path_file, device)  # CxHxW
+
+    if desired_type != ImageLoadType.UNCHANGED:
+        image = _expand_png_palette(path_file, image)
 
     return _convert_image_type(image, desired_type)
 
