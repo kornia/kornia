@@ -167,6 +167,14 @@ class TestDrawPoint(BaseTester):
         draw_point2d(img, torch.tensor([[x, 0.0]], device=device), torch.tensor([1.0], device=device))
         assert img[0].nonzero().flatten().tolist() == [pixel]
 
+    @pytest.mark.parametrize("x", [129, 255])
+    def test_half_precision_points_round_in_float32(self, x, device):
+        # bfloat16 cannot represent x + 0.5 for x >= 128: 129 + 0.5 -> 130 and 255 + 0.5 -> 256 (a spurious ValueError)
+        img = torch.zeros(1, 3, 256, device=device)
+        points = torch.tensor([[x, 0]], dtype=torch.bfloat16, device=device)
+        draw_point2d(img, points, torch.tensor([1.0], device=device))
+        assert img[0, 0].nonzero().flatten().tolist() == [x]
+
     def test_draw_point2d_just_outside_after_rounding_raises(self, dtype, device):
         img = torch.zeros(3, 4, dtype=dtype, device=device)
         with pytest.raises(ValueError, match="inside"):
@@ -471,6 +479,14 @@ class TestDrawLine(BaseTester):
             torch.tensor([1.0], device=device),
         )
         assert img[0, 1].tolist() == [0, 1, 1, 1, 0, 0]
+
+    def test_half_precision_endpoints_round_in_float32(self, device):
+        # float16 spacing is 1 above 1024, so 1027 + 0.5 would round to 1028 and 1025 + 0.5 to 1026
+        img = torch.zeros(1, 3, 1030, device=device)
+        p1 = torch.tensor([1025.0, 1.0], dtype=torch.float16, device=device)
+        p2 = torch.tensor([1027.0, 1.0], dtype=torch.float16, device=device)
+        draw_line(img, p1, p2, torch.tensor([1.0], device=device))
+        assert img[0, 1].nonzero().flatten().tolist() == [1025, 1026, 1027]
 
     def test_draw_line_endpoint_rounding_outside_raises(self, dtype, device):
         img = torch.zeros(1, 3, 6, dtype=dtype, device=device)

@@ -32,6 +32,8 @@ def _round_to_pixel(coords: Tensor) -> Tensor:
     Pixel ``i`` covers ``[i - 0.5, i + 0.5)``, so ``-0.5`` lands on pixel 0 and ``2.5`` on pixel 3.
     """
     if coords.is_floating_point():
+        # x + 0.5 is not representable in float16 / bfloat16 for larger integers (bfloat16 129 + 0.5 -> 130)
+        coords = coords.to(torch.promote_types(coords.dtype, torch.float32))
         coords = torch.floor(coords + 0.5)
     return coords.to(torch.int64)
 
