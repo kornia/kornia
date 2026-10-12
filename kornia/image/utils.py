@@ -192,9 +192,9 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False, force_contiguou
         - The channels move last, and a single channel is always dropped: :math:`(1, H, W)` gives :math:`(H, W)` and
           :math:`(B, 1, H, W)` gives :math:`(B, H, W)`. ``keepdim`` keeps only the batch axis of a
           :math:`(1, C, H, W)` input.
-        - The array shares memory with a CPU tensor. A tensor on another device is copied to the CPU, and
-          ``force_contiguous=True`` copies a result that is not contiguous, such as the channels-last view of a
-          contiguous tensor with more than one channel.
+        - The array shares memory with a CPU tensor of any dtype except ``bfloat16``. A ``bfloat16`` tensor and a
+          tensor on another device are copied, and ``force_contiguous=True`` copies a result that is not contiguous,
+          such as the channels-last view of a contiguous tensor with more than one channel.
         - The dtype is kept, except ``bfloat16``, which NumPy lacks: it becomes ``float32``.
 
     Args:
@@ -361,8 +361,8 @@ def perform_keep_shape_image(f: Callable[..., torch.Tensor]) -> Callable[..., to
     Convention:
         - ``f`` always receives a ``(B, C, H, W)`` tensor: an ``(H, W)`` input becomes ``(1, 1, H, W)``, a
           ``(C, H, W)`` input ``(1, C, H, W)``, and the leading dimensions of a longer input are flattened into ``B``.
-          The output gets the input's leading dimensions back around ``f``'s own ``C``, ``H`` and ``W``, so ``f`` must
-          keep the batch size.
+          The output gets the input's leading dimensions back around ``f``'s own ``C``, ``H`` and ``W``, except that an
+          ``(H, W)`` input gets ``f``'s first channel only; ``f`` must keep the batch size.
         - An empty input raises ``ValueError`` before ``f`` is called.
     """
 

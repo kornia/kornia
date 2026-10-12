@@ -2,7 +2,7 @@ kornia.io
 =========
 
 .. meta::
-   :description: The kornia.io package loads and saves images directly as PyTorch tensors. It is backed by kornia-rs, a low-level Rust computer vision library, on Linux, macOS and Windows.
+   :description: The kornia.io package loads and saves images directly as PyTorch tensors. It is backed by kornia-rs, a low-level Rust computer vision library with wheels for Linux, macOS and Windows.
 
 .. currentmodule:: kornia.io
 

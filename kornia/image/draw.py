@@ -72,8 +72,7 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
 
     Convention:
         See the Convention block of :func:`~kornia.image.draw_line` for the coordinates, the rounding, the colour
-        and the in-place drawing. The image is :math:`(C, H, W)` or :math:`(H, W)`, and a point outside it raises
-        ``ValueError``.
+        and the in-place drawing. The image is :math:`(C, H, W)` or :math:`(H, W)`.
 
     Args:
         image: the input image on which to draw the points with shape :math:`(C,H,W)` or :math:`(H,W)`.
@@ -151,9 +150,9 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
         - Points are :math:`(x, y)`, x the column and y the row, with pixel centres at integer coordinates, as in
           :ref:`Coordinates and sizes <coordinate-conventions>`. A fractional endpoint goes to the pixel whose centre
           is nearest, a coordinate exactly halfway rounding up.
-        - A line has one pixel per step along its longer axis: the pixel whose centre is nearest to the segment, a
-          tie going to the larger coordinate. The line is therefore the same from ``p1`` to ``p2`` as from ``p2`` to
-          ``p1``, and both endpoints are drawn.
+        - A line has one pixel per step along its longer axis: the pixel whose centre is nearest to the segment
+          between the two endpoint pixels, a tie going to the larger coordinate. The line is therefore the same from
+          ``p1`` to ``p2`` as from ``p2`` to ``p1``, and both endpoints are drawn.
         - The image is one :math:`(C, H, W)` tensor, and ``(B, 2)`` endpoints draw ``B`` lines into it. An endpoint
           outside the image raises ``ValueError``; nothing is clipped.
         - The colour is cast to the image's dtype without rescaling or a range check, and a single value is written
@@ -263,7 +262,8 @@ def draw_rectangle(
           coordinates rounded as in :func:`~kornia.image.draw_line`. A side that lies outside the image is not drawn
           and a fill is clipped to the image; neither raises.
         - The corners are rounded and the vertices of :func:`~kornia.image.draw_convex_polygon` are not, so a filled
-          rectangle and the same polygon agree only for integer corners.
+          rectangle and the same polygon always agree for integer corners; for fractional ones each side can be one
+          row or column apart, so a polygon thinner than a pixel can fill nothing.
         - The colour and the in-place drawing follow :func:`~kornia.image.draw_line`.
 
     Args:

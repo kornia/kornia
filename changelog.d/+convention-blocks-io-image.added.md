@@ -2,4 +2,7 @@ The `kornia.io` and `kornia.image` API documentation states their conventions: t
 `load_image` type, the dtypes and channel counts each `write_image` format stores, when the NumPy converters share
 memory, the pixel frame, rounding and clipping of the drawing functions, and the value ranges of the terminal
 printers. The conventions page gains a *Files and arrays* section, with the load types and a table mapping OpenCV's,
-Pillow's and torchvision's readers, writers and converters onto kornia's, and a *Drawing* section.
+Pillow's and torchvision's readers, writers and converters onto kornia's, and a *Drawing* section. Two known defects
+are documented: `write_image` raises a bare `Exception` and leaves an empty or truncated file for an image with zero
+height or width (#5770), and an image module given the path of an 8-bit palette PNG reads its palette indices
+instead of its colours (#5807).

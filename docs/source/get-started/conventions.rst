@@ -55,8 +55,8 @@ channels, dtype and range, whatever the file holds:
      - the file's: ``uint8``, ``uint16`` or ``float32``
 
 - Every type except ``UNCHANGED`` loads an 8-bit palette PNG as its colours and raises for a file of more than 8 bits;
-  ``RGBA8`` keeps the alpha, and the other types composite it over white. ``UNCHANGED`` returns a palette PNG's indices
-  and keeps the alpha as stored.
+  ``RGBA8`` keeps the alpha, and the other types composite it over white. ``UNCHANGED`` returns a palette PNG's indices,
+  keeps an alpha channel as stored and ignores a ``tRNS`` chunk.
 - The EXIF orientation is ignored: the pixels come back as stored.
 - :func:`kornia.io.write_image` writes the tensor as it is, channels first, RGB with alpha last, without scaling: JPEG
   takes ``uint8``, PNG ``uint8`` and ``uint16``, and TIFF ``uint8``, ``uint16`` and ``float32``, each with 1 or 3
@@ -81,29 +81,30 @@ The same tasks in OpenCV, Pillow and torchvision:
    * - ``cv2.imread(p, cv2.IMREAD_GRAYSCALE)``
      - ``load_image(p, ImageLoadType.GRAY8)``
      - kornia converts the decoded RGB image as ``cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)`` does; ``IMREAD_GRAYSCALE``
-       converts while decoding and can differ. OpenCV reduces a 16-bit file to 8 bits, where kornia raises: load it
-       with ``UNCHANGED`` and scale it yourself.
+       converts while decoding and can differ. OpenCV's default and ``IMREAD_GRAYSCALE`` reduce a 16-bit file to 8
+       bits, where kornia raises: load it with ``UNCHANGED`` and scale it yourself.
    * - ``cv2.imread(p, cv2.IMREAD_UNCHANGED)``
      - ``load_image(p, ImageLoadType.UNCHANGED)``
      - Both keep 16-bit data and alpha, OpenCV in BGR(A) order. OpenCV expands a palette PNG into colours; kornia
        returns its indices.
    * - ``cv2.imwrite(p, img)``
-     - ``write_image(p, image_to_tensor(img[..., ::-1].copy()))``
-     - OpenCV takes ``(H, W, C)`` BGR. Its JPEG quality defaults to 95, kornia's to 80.
+     - ``write_image(p, image_to_tensor(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)))``
+     - OpenCV takes ``(H, W, C)`` BGR or BGRA, or ``(H, W)`` gray. Convert BGRA with ``cv2.COLOR_BGRA2RGBA`` and
+       pass gray as it is. Its JPEG quality defaults to 95, kornia's to 80.
    * - Pillow ``Image.open(p).convert("RGB")`` or ``.convert("L")``
      - ``load_image(p, ImageLoadType.RGB8)`` or ``ImageLoadType.GRAY8``
      - Pillow drops alpha instead of compositing it, and its gray can differ from kornia's by one level. Neither turns
        the image by its EXIF orientation; ``ImageOps.exif_transpose`` does.
    * - Pillow ``Image.open(p)`` of a palette (``"P"``) PNG
      - ``load_image(p, ImageLoadType.UNCHANGED)``
-     - Both give the palette indices.
+     - Both give the palette indices of an 8-bit palette PNG; kornia raises for 1, 2 or 4 bits per pixel.
    * - Pillow ``Image.save(p)`` as JPEG
      - ``write_image(p, img)``
      - Pillow's JPEG quality defaults to 75, kornia's to 80.
    * - torchvision ``ToTensor()(img)``
-     - ``image_to_tensor(img).float() / 255``
-     - ``ToTensor`` copies a ``uint8`` array into ``float32`` in ``[0, 1]``; ``image_to_tensor`` keeps the dtype and
-       shares the memory.
+     - ``image_to_tensor(img).float() / 255`` for a ``uint8`` ``img``
+     - ``ToTensor`` copies a ``uint8`` array into ``float32`` in ``[0, 1]`` and keeps the values of any other array;
+       ``image_to_tensor`` keeps the dtype and shares the memory.
    * - torchvision ``make_grid(t, nrow=n)``
      - ``make_grid(t, n_row=n)``
      - ``n`` images per row in both. torchvision defaults to 8 per row, pads the outer border too, turns one channel

@@ -333,10 +333,9 @@ def load_image(
         - The pixels come back as stored: the EXIF orientation is ignored.
         - The extension, in any letter case, chooses the decoder; the file content does not. The file is decoded on
           the CPU and the tensor is then moved to ``device``.
-        - kornia-rs cannot decode a PNG with 1, 2 or 4 bits per sample, a gray+alpha PNG or a CMYK JPEG; they raise
-          ``ValueError``, as do a truncated file and, under every type except ``UNCHANGED``, a palette that is
-          malformed or too short for its pixels and a ``PLTE`` or ``tRNS`` chunk that is truncated or fails its CRC
-          check.
+        - kornia-rs cannot decode a PNG with 1, 2 or 4 bits per sample, a gray+alpha PNG, a 4-channel TIFF or a CMYK
+          JPEG; these, a truncated file and, under every type except ``UNCHANGED``, a malformed palette or
+          ``PLTE``/``tRNS`` chunk raise ``ValueError``.
         - :ref:`Files and arrays <image-io-conventions>` maps OpenCV's and Pillow's loaders onto the load types.
 
     Args:
@@ -419,7 +418,7 @@ def write_image(path_file: str | Path, image: torch.Tensor, quality: int = 80) -
           read as the channels.
         - :ref:`Files and arrays <image-io-conventions>` maps ``cv2.imwrite`` onto these arguments.
         - Known defect: an image with zero height or width reaches kornia-rs, which raises a bare ``Exception`` and
-          leaves a truncated file behind (`#5770 <https://github.com/kornia/kornia/issues/5770>`_).
+          leaves an empty or truncated file behind (`#5770 <https://github.com/kornia/kornia/issues/5770>`_).
 
     Args:
         path_file: Path with a .jpg, .jpeg, .png, .tif or .tiff extension, in any letter case.
