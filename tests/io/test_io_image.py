@@ -1098,8 +1098,12 @@ class TestConventionsIo:
         # The load type fixes the channel count whatever the file holds; only UNCHANGED keeps the file's own count.
         path = tmp_path / "image.png"
         write_image(path, self._rgb()[:file_channels])
-        out = load_image(path, load_type)
-        assert out.shape == (channels, 4, 5)
+        assert load_image(path, load_type).shape == (channels, 4, 5)
+
+    @pytest.mark.parametrize("file_channels", [1, 3])
+    def test_convention_load_image_unchanged_keeps_the_file_channels(self, tmp_path, file_channels):
+        path = tmp_path / "image.png"
+        write_image(path, self._rgb()[:file_channels])
         assert load_image(path, ImageLoadType.UNCHANGED).shape == (file_channels, 4, 5)
 
     def test_convention_load_image_default_is_rgb32_float_in_unit_range_on_cpu(self, tmp_path):
@@ -1120,12 +1124,12 @@ class TestConventionsIo:
         # A transparent pixel loads as white, an opaque one keeps its colour, and a semi-transparent one is
         # composited over white and rounded; OpenCV and Pillow drop the alpha channel instead.
         # Snippet: [round(c * 64 / 255 + 255 * (1 - 64 / 255)) for c in (200, 100, 50)] -> [241, 216, 204]
-        pixels = np.zeros((3, 5, 4), dtype=np.uint8)  # H = 3, W = 5
-        pixels[...] = (10, 20, 30, 255)
-        pixels[0, 0] = (200, 100, 50, 64)
-        pixels[2, 4] = (7, 8, 9, 0)
+        pixels = torch.zeros(4, 3, 5, dtype=torch.uint8)  # (C, H, W), H = 3, W = 5
+        pixels[:] = torch.tensor([10, 20, 30, 255], dtype=torch.uint8)[:, None, None]
+        pixels[:, 0, 0] = torch.tensor([200, 100, 50, 64], dtype=torch.uint8)
+        pixels[:, 2, 4] = torch.tensor([7, 8, 9, 0], dtype=torch.uint8)
         path = tmp_path / "rgba.png"
-        kornia_rs.io.write_image_png_u8(str(path), pixels, mode="rgba")
+        write_image(path, pixels)
         out = load_image(path, ImageLoadType.RGB8)
         assert out.shape == (3, 3, 5)
         assert out[:, 0, 0].tolist() == [241, 216, 204]
@@ -1168,7 +1172,7 @@ class TestConventionsIo:
         rejected = [(torch.uint16, "jpg"), (torch.float32, "png"), (torch.float32, "jpg")]
         rejected += [(torch.float64, ext) for ext in ("jpg", "png", "tif")]
         for dtype, ext in rejected:
-            with pytest.raises(NotImplementedError):
+            with pytest.raises(NotImplementedError, match=r"Unsupported (file extension|image dtype)"):
                 write_image(tmp_path / f"bad.{ext}", image.to(dtype))
 
     def test_convention_write_image_jpeg_quality_default_is_80(self, tmp_path):

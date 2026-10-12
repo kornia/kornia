@@ -340,13 +340,13 @@ class TestConventionsImage(BaseTester):
     """Pins for the unbatched layout, same-space conversions and NumPy aliasing of ``Image``."""
 
     def test_convention_image_is_unbatched(self):
-        # Image holds one (H, W, C) or (C, H, W) image; a batched 4-D tensor or array is rejected.
+        # Image holds one (H, W, C) or (C, H, W) image; a batched 4-D tensor is rejected by its dimension count.
+        # Image.from_numpy of a 4-D array also raises, but only because the layout it infers mismatches the data, so
+        # it is not pinned here.
         batched = torch.zeros(2, 4, 5, 3, dtype=torch.uint8)
         layout = ImageLayout(ImageSize(4, 5), 3, ChannelsOrder.CHANNELS_LAST)
-        with pytest.raises(ShapeError):
+        with pytest.raises(ShapeError, match="expected 3 dimensions, got 4"):
             Image(batched, PixelFormat(ColorSpace.RGB, 8), layout)
-        with pytest.raises(ShapeError):
-            Image.from_numpy(batched.numpy())
 
     @pytest.mark.parametrize(
         ("color_space", "channels", "convert"),

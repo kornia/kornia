@@ -1067,17 +1067,40 @@ class TestConventionsDraw(BaseTester):
         self.assert_close(transposed[0, 0], draw_convex_polygon(torch.zeros_like(img), poly, colors)[0, 0].T)
 
     def test_convention_concave_polygon_fills_each_scanline_span(self, device, dtype):
-        # draw_convex_polygon fills, on each scanline, everything from the leftmost to the rightmost edge crossing, so
-        # a concave "V" notch is filled as well. Rows 0..3 span columns 1..5; the notch columns 2..4 of rows 0..1
-        # are inside the span but outside the polygon.
-        img = torch.zeros(1, 1, 5, 7, device=device, dtype=dtype)  # H = 5, W = 7
+        # draw_convex_polygon fills, on each scanline (row), everything from the leftmost to the rightmost edge
+        # crossing, so the notch of a concave "V" is filled. Rows 0..3 span columns 1..5. Outside the polygon are
+        # only row 0 columns 2..4 and row 1 column 3 (columns 2 and 4 of row 1 lie on the notch edges, which count as
+        # inside); they are filled anyway.
+        color = torch.tensor([1.0], device=device, dtype=dtype)
         notched = torch.tensor(
             [[[1.0, 0.0], [3.0, 2.0], [5.0, 0.0], [5.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype
-        )
-        out = draw_convex_polygon(img, notched, torch.tensor([1.0], device=device, dtype=dtype))
+        )  # (x, y)
+        out = draw_convex_polygon(torch.zeros(1, 1, 5, 7, device=device, dtype=dtype), notched, color)  # H = 5, W = 7
         expected = torch.zeros(5, 7, device=device, dtype=dtype)
         expected[0:4, 1:6] = 1.0
         self.assert_close(out[0, 0], expected)
+
+        # The span is per row, not per column: the same polygon with x and y swapped (a "<" opening to the right) is
+        # filled exactly as the polygon, with no notch filled in (the scanlines are still rows).
+        # Snippet: rows y = 1..5 span [min x, max x] over the edges (0,1)-(2,3), (2,3)-(0,5), x = 3 and y = 1 / 5:
+        #   y=1: 0..3, y=2: 1..3, y=3: 2..3, y=4: 1..3, y=5: 0..3
+        swapped = draw_convex_polygon(
+            torch.zeros(1, 1, 7, 5, device=device, dtype=dtype), notched.flip(-1), color
+        )  # H = 7, W = 5
+        expected_swapped = torch.tensor(
+            [
+                [0, 0, 0, 0, 0],
+                [1, 1, 1, 1, 0],
+                [0, 1, 1, 1, 0],
+                [0, 0, 1, 1, 0],
+                [0, 1, 1, 1, 0],
+                [1, 1, 1, 1, 0],
+                [0, 0, 0, 0, 0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(swapped[0, 0], expected_swapped)
 
     @pytest.mark.parametrize("name", ["draw_point2d", "draw_line", "draw_rectangle", "draw_convex_polygon"])
     def test_convention_draw_functions_draw_in_place(self, device, dtype, name):
