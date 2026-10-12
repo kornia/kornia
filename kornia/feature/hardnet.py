@@ -18,18 +18,25 @@
 from typing import Dict
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.core.utils import is_mps_tensor_safe
+from kornia.core.download import hf_url, load_state_dict_from_url
+from kornia.core.utils import _is_tracing_or_exporting, _l2_normalize, is_mps_tensor_safe
 
-urls: Dict[str, str] = {}
-urls["hardnet++"] = "https://github.com/DagnyT/hardnet/raw/master/pretrained/pretrained_all_datasets/HardNet++.pth"
-urls["liberty_aug"] = (
-    "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/checkpoint_liberty_with_aug.pth"
-)
-urls["hardnet8v2"] = "http://cmp.felk.cvut.cz/~mishkdmy/hardnet8v2.pt"
+urls: Dict[str, str | list[str]] = {}
+urls["hardnet++"] = [
+    hf_url("hardnet", "HardNetPP.pth"),
+    "https://github.com/DagnyT/hardnet/raw/master/pretrained/pretrained_all_datasets/HardNet++.pth",
+]
+urls["liberty_aug"] = [
+    hf_url("hardnet", "checkpoint_liberty_with_aug.pth"),
+    "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/checkpoint_liberty_with_aug.pth",
+]
+urls["hardnet8v2"] = [
+    hf_url("hardnet", "hardnet8v2.pt"),
+    "https://cmp.felk.cvut.cz/~mishkdmy/hardnet8v2.pt",
+]
 
 
 class HardNet(nn.Module):
@@ -85,29 +92,44 @@ class HardNet(nn.Module):
 
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls["liberty_aug"], map_location=torch.device("cpu"))
+            pretrained_dict = load_state_dict_from_url(urls["liberty_aug"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict["state_dict"], strict=True)
         self.eval()
 
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
         """Normalize the input by batch."""
-        if not is_mps_tensor_safe(x):
-            sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
-        else:
+        if is_mps_tensor_safe(x) or _is_tracing_or_exporting():
+            # `torch.std_mean` is unsupported on MPS and decomposes to `prims.sum`, which has no ONNX lowering.
             mp = torch.mean(x, dim=(-3, -2, -1), keepdim=True)
             sp = torch.std(x, dim=(-3, -2, -1), keepdim=True)
+        else:
+            sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
         # WARNING: we need to .detach() input, otherwise the gradients produced by
         # the patches extractor with F.grid_sample are very noisy, making the detector
         # training totally unstable.
         return (x - mp.detach()) / (sp.detach() + eps)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Compute HardNet descriptors for normalized 32x32 patches.
+
+        Args:
+            input: Grayscale patch tensor of shape :math:`(B, 1, 32, 32)`.
+
+        Returns:
+            L2-normalized descriptor tensor with shape :math:`(B, 128)`.
+        """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x_norm: torch.Tensor = self._normalize_input(input)
+        # oneDNN's float32 convolutions avoid repeated activation reorders with
+        # channels-last input. Keep CUDA's existing layout, which is faster there.
+        if input.device.type == "cpu" and input.dtype == torch.float32:
+            x_norm = x_norm.to(memory_format=torch.channels_last)
         x_features: torch.Tensor = self.features(x_norm)
         x_out = x_features.view(x_features.size(0), -1)
-        return F.normalize(x_out, dim=1)
+        # A constant patch drives the features to zero; the default `eps` is not representable in
+        # float16, where the normalisation would then return NaN.
+        return _l2_normalize(x_out, dim=1)
 
 
 class HardNet8(nn.Module):
@@ -117,7 +139,8 @@ class HardNet8(nn.Module):
     See :cite:`HardNet2020` for more details.
 
     Args:
-        pretrained: Download and set pretrained weights to the model.
+        pretrained: Download and set pretrained weights to the model. The 512-d features are projected to 128-d by a
+            PCA stored with the weights; without them, the projection keeps the first 128 features.
 
     Returns:
         torch.Tensor: HardNet8 descriptor of the patches.
@@ -164,17 +187,24 @@ class HardNet8(nn.Module):
             nn.BatchNorm2d(512, affine=False),
         )
         self.features.apply(self.weights_init)
-        self.register_buffer("components", torch.ones(512, 128, dtype=torch.float))
+        # Placeholder PCA until a checkpoint replaces it: keep the first 128 of the 512 features. An all-ones
+        # projection would collapse every descriptor to +-(1, ..., 1) / sqrt(128), with a zero gradient.
+        self.register_buffer("components", torch.eye(512, 128, dtype=torch.float))
         self.register_buffer("mean", torch.zeros(512, dtype=torch.float))
 
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls["hardnet8v2"], map_location=torch.device("cpu"))
+            pretrained_dict = load_state_dict_from_url(urls["hardnet8v2"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
     @staticmethod
     def weights_init(m: object) -> None:
+        """Initialize convolutional layers for HardNet8.
+
+        Args:
+            m: Module instance passed by ``nn.Module.apply``.
+        """
         if isinstance(m, nn.Conv2d):
             nn.init.orthogonal_(m.weight.data, gain=0.6)
             if m.bias is not None:
@@ -183,22 +213,32 @@ class HardNet8(nn.Module):
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
         """Normalize the input by batch."""
-        if not is_mps_tensor_safe(x):
-            sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
-        else:
+        if is_mps_tensor_safe(x) or _is_tracing_or_exporting():
+            # `torch.std_mean` is unsupported on MPS and decomposes to `prims.sum`, which has no ONNX lowering.
             mp = torch.mean(x, dim=(-3, -2, -1), keepdim=True)
             sp = torch.std(x, dim=(-3, -2, -1), keepdim=True)
+        else:
+            sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
         # WARNING: we need to .detach() input, otherwise the gradients produced by
         # the patches extractor with F.grid_sample are very noisy, making the detector
         # training totally unstable.
         return (x - mp.detach()) / (sp.detach() + eps)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Compute HardNet8 descriptors with PCA projection.
+
+        Args:
+            input: Grayscale patch tensor of shape :math:`(B, 1, 32, 32)`.
+
+        Returns:
+            L2-normalized descriptor tensor after learned PCA projection.
+        """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x_norm: torch.Tensor = self._normalize_input(input)
         x_features: torch.Tensor = self.features(x_norm)
         mean: torch.Tensor = torch.jit.annotate(torch.Tensor, self.mean)
         components: torch.Tensor = torch.jit.annotate(torch.Tensor, self.components)
-        x_prePCA = F.normalize(x_features.view(x_features.size(0), -1))
+        x_flat = x_features.view(x_features.size(0), -1)
+        x_prePCA = _l2_normalize(x_flat, dim=1)
         pca = torch.mm(x_prePCA - mean, components)
-        return F.normalize(pca, dim=1)
+        return _l2_normalize(pca, dim=1)

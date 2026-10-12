@@ -1,0 +1,18 @@
+{% extends "!layout.html" %}
+
+{# Default to the dark Blueprint theme like the kornia.org homepage (light stays one click away).
+   Runs in <head> before the body paints, so there is no flash; the theme toggle still wins because
+   it writes localStorage, which this only seeds when the visitor has made no choice yet. #}
+{% block extrahead %}
+{{ super() }}
+<script>
+  (function () {
+    try {
+      if (!localStorage.getItem("mode")) {
+        document.documentElement.dataset.mode = "dark";
+        document.documentElement.dataset.theme = "dark";
+      }
+    } catch (e) { /* private mode: fall back to the theme default */ }
+  })();
+</script>
+{% endblock %}

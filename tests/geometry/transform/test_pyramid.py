@@ -19,6 +19,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
 
@@ -66,8 +67,65 @@ class TestPyrDown(BaseTester):
         img = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.pyrdown, (img,), nondet_tol=1e-8)
 
+    @pytest.mark.parametrize("op, side", [("pyrdown", 5), ("pyrup", 4)])
+    def test_convention_align_corners_and_border_type_change_output(self, op, side, device, dtype):
+        # The align_corners (default False) and border_type (default 'reflect') defaults of pyrdown and
+        # pyrup, which are independent implementations, each change the output.
+        fn = getattr(kornia.geometry.transform, op)
+        x = torch.arange(float(side * side), device=device, dtype=dtype).view(1, 1, side, side)
+
+        out_default = fn(x)
+        self.assert_close(out_default, fn(x, align_corners=False), rtol=1e-2, atol=1e-2)
+        assert not torch.allclose(out_default, fn(x, align_corners=True), atol=1e-2, rtol=1e-2)
+        self.assert_close(out_default, fn(x, border_type="reflect"), rtol=1e-2, atol=1e-2)
+        assert not torch.allclose(out_default, fn(x, border_type="constant"), atol=1e-2, rtol=1e-2)
+
+    def test_convention_floor_not_ceil_on_odd_size(self, device, dtype):
+        # pyrdown uses floor(side / factor); OpenCV's pyrDown uses (side + 1) // 2, so an odd side
+        # differs: 5x5 at the default factor=2.0 gives 2x2, not 3x3.
+        x = torch.rand(1, 1, 5, 5, device=device, dtype=dtype)
+        assert kornia.geometry.transform.pyrdown(x).shape == (1, 1, 2, 2)
+
 
 class TestScalePyramid(BaseTester):
+    @pytest.mark.parametrize("sigma, ksize", [(1.6, 13), (0.7, 7), (3.2, 27)])
+    def test_reference_kernel_rounding(self, device, sigma, ksize):
+        # Preserve the original float64 calculation followed by a single float32 rounding.
+        x = torch.arange(ksize, device="cpu", dtype=torch.float64) - ksize // 2
+        reference = torch.exp(-0.5 * x**2 / sigma**2)
+        reference = (reference / reference.sum()).float()
+        with device:
+            kernel = kornia.geometry.ScalePyramid._make_gaussian_kernel1d(sigma, ksize)
+        self.assert_close(kernel.cpu(), reference, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("default_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+    @pytest.mark.parametrize("init_sigma", [0.4, 1.6])
+    @pytest.mark.parametrize("double_image", [False, True])
+    def test_default_device_buffers(self, device, dtype, default_dtype, init_sigma, double_image):
+        with torch.device("cpu"):
+            reference = kornia.geometry.ScalePyramid(init_sigma=init_sigma, double_image=double_image)
+        original_dtype = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(default_dtype)
+            with device:
+                pyramid = kornia.geometry.ScalePyramid(init_sigma=init_sigma, double_image=double_image)
+        finally:
+            torch.set_default_dtype(original_dtype)
+
+        expected_device = torch.empty(0, device=device).device
+        assert pyramid.state_dict().keys() == reference.state_dict().keys()
+        assert (pyramid._gk_init is None) == (init_sigma == 0.4)
+        for name, kernel in pyramid.named_buffers():
+            assert kernel.device == expected_device
+            assert kernel.dtype == torch.float32
+            self.assert_close(kernel.cpu(), reference.get_buffer(name), rtol=0, atol=0)
+
+        pyramid.to(dtype=dtype)
+        for name, kernel in pyramid.named_buffers():
+            assert kernel.device == expected_device
+            assert kernel.dtype == dtype
+            self.assert_close(kernel.cpu(), reference.get_buffer(name).to(dtype), rtol=0, atol=0)
+
     def test_shape_tuple(self, device, dtype):
         inp = torch.zeros(3, 2, 41, 41, device=device, dtype=dtype)
         SP = kornia.geometry.ScalePyramid(n_levels=1, min_size=30)
@@ -128,6 +186,31 @@ class TestScalePyramid(BaseTester):
 
         self.gradcheck(sp_tuple, (img,), nondet_tol=1e-4)
 
+    @pytest.mark.parametrize(("double_image", "input_sigma"), [(False, 0.5), (True, 1.0)])
+    def test_init_sigma_below_input_blur(self, device, dtype, double_image, input_sigma):
+        # An init_sigma below the assumed input blur leaves the first level at the input blur,
+        # so the pyramid and its sigmas must match the one built with init_sigma == input blur
+        # (#4796).
+        inp = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
+        low = kornia.geometry.ScalePyramid(n_levels=1, init_sigma=input_sigma / 2, double_image=double_image)
+        ref = kornia.geometry.ScalePyramid(n_levels=1, init_sigma=input_sigma, double_image=double_image)
+        pyr, sigmas, _ = low.to(device)(inp)
+        ref_pyr, ref_sigmas, _ = ref.to(device)(inp)
+        expected = torch.tensor([1.0, 2.0, 4.0, 8.0], device=device, dtype=dtype) * input_sigma
+        for octave in range(len(sigmas)):
+            self.assert_close(sigmas[octave][0], expected)
+            self.assert_close(sigmas[octave], ref_sigmas[octave])
+            self.assert_close(pyr[octave], ref_pyr[octave])
+
+
+class TestPyramidLevelValidation(BaseTester):
+    @pytest.mark.parametrize("op", ["build_pyramid", "build_laplacian_pyramid"])
+    @pytest.mark.parametrize("max_level", [0, -1, -2, 1.5, -1.5, None, "2", True, False])
+    def test_invalid_max_level_3927(self, op, max_level, device, dtype):
+        image = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
+        with pytest.raises(BaseError, match="Invalid max_level, it must be a positive integer"):
+            getattr(kornia.geometry.transform, op)(image, max_level)
+
 
 class TestBuildPyramid(BaseTester):
     def test_smoke(self, device, dtype):
@@ -136,9 +219,9 @@ class TestBuildPyramid(BaseTester):
         assert len(pyramid) == 1
         assert pyramid[0].shape == (1, 2, 4, 5)
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 3))
-    @pytest.mark.parametrize("channels", (1, 3))
-    @pytest.mark.parametrize("max_level", (2, 3, 4))
+    @pytest.mark.parametrize("batch_size", [1, 2, 3])
+    @pytest.mark.parametrize("channels", [1, 3])
+    @pytest.mark.parametrize("max_level", [2, 3, 4])
     def test_num_levels(self, batch_size, channels, max_level, device, dtype):
         height, width = 16, 20
         sample = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
@@ -164,9 +247,30 @@ class TestBuildLaplacianPyramid(BaseTester):
         assert len(pyramid) == 1
         assert pyramid[0].shape == (1, 2, 4, 5)
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 3))
-    @pytest.mark.parametrize("channels", (1, 3))
-    @pytest.mark.parametrize("max_level", (2, 3, 4))
+    @pytest.mark.parametrize("height,width", [(5, 8), (8, 5)])
+    def test_mixed_power_of_two_size_padding(self, height, width, device, dtype):
+        sample = torch.rand(1, 2, height, width, device=device, dtype=dtype)
+        pyramid = kornia.geometry.transform.build_laplacian_pyramid(sample, max_level=2)
+        assert [img.shape for img in pyramid] == [torch.Size((1, 2, 8, 8)), torch.Size((1, 2, 4, 4))]
+
+    @pytest.mark.parametrize(
+        "height,width,max_level,level_sizes",
+        [
+            (8, 6, 2, ((8, 6), (4, 3))),
+            (12, 8, 2, ((12, 8), (6, 4))),
+            (8, 12, 3, ((8, 12), (4, 6), (2, 3))),
+            (20, 64, 3, ((20, 64), (10, 32), (5, 16))),
+            (20, 64, 4, ((32, 64), (16, 32), (8, 16), (4, 8))),
+        ],
+    )
+    def test_padding_only_when_required_by_level_alignment(self, height, width, max_level, level_sizes, device, dtype):
+        sample = torch.rand(1, 2, height, width, device=device, dtype=dtype)
+        pyramid = kornia.geometry.transform.build_laplacian_pyramid(sample, max_level)
+        assert [img.shape[-2:] for img in pyramid] == list(level_sizes)
+
+    @pytest.mark.parametrize("batch_size", [1, 2, 3])
+    @pytest.mark.parametrize("channels", [1, 3])
+    @pytest.mark.parametrize("max_level", [2, 3, 4])
     def test_num_levels(self, batch_size, channels, max_level, device, dtype):
         height, width = 16, 32
         sample = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)

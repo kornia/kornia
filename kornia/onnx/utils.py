@@ -21,17 +21,19 @@ import json
 import logging
 import os
 import pprint
+import urllib.error
 from typing import Any, Optional
+from urllib.request import urlopen
 
 import kornia
 from kornia.config import kornia_config
 from kornia.core.external import numpy as np
-from kornia.core.external import onnx, requests
+from kornia.core.external import onnx
 from kornia.onnx.download import CachedDownloader
 
 __all__ = ["ONNXLoader", "add_metadata", "io_name_conversion"]
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 class ONNXLoader(CachedDownloader):
@@ -59,8 +61,7 @@ class ONNXLoader(CachedDownloader):
                 **kwargs,
             )
             with open(file_path) as f:
-                json_data = json.load(f)
-                return json_data
+                return json.load(f)
 
         if not download:
             raise RuntimeError(f"File `{url}` not found. You may set `download=True`.")
@@ -89,9 +90,7 @@ class ONNXLoader(CachedDownloader):
         if model_name.startswith("hf://"):
             model_name = model_name[len("hf://") :]
             url = f"https://huggingface.co/kornia/ONNX_models/resolve/main/{model_name}.onnx"
-            cache_dir = kwargs.get("cache_dir", None) or os.path.join(
-                kornia_config.hub_onnx_dir, model_name.split("/")[0]
-            )
+            cache_dir = kwargs.get("cache_dir") or os.path.join(kornia_config.hub_onnx_dir, model_name.split("/")[0])
             kwargs.update({"cache_dir": cache_dir})
             file_path = cls.download_to_cache(
                 url, model_name.split("/")[1], download=download, suffix=".onnx", **kwargs
@@ -103,8 +102,8 @@ class ONNXLoader(CachedDownloader):
                 )
             return onnx.load(file_path)  # type:ignore
 
-        elif model_name.startswith("http://") or model_name.startswith("https://"):
-            cache_dir = kwargs.get("cache_dir", None) or kornia_config.hub_onnx_dir
+        if model_name.startswith(("http://", "https://")):
+            cache_dir = kwargs.get("cache_dir") or kornia_config.hub_onnx_dir
             kwargs.update({"cache_dir": cache_dir})
             file_path = cls.download_to_cache(
                 model_name,
@@ -124,7 +123,7 @@ class ONNXLoader(CachedDownloader):
                 )
             return onnx.load(file_path)  # type:ignore
 
-        elif os.path.exists(model_name):
+        if os.path.exists(model_name):
             return onnx.load(model_name)  # type:ignore
 
         raise ValueError(f"File {model_name} not found")
@@ -139,12 +138,12 @@ class ONNXLoader(CachedDownloader):
         """
         url = f"https://huggingface.co/api/models/kornia/ONNX_models/tree/main/{folder}"
 
-        response = requests.get(url, timeout=10)  # type:ignore
-
-        if response.status_code == 200:
-            return response.json()  # Returns the JSON content of the repo
-        else:
-            raise ValueError(f"Failed to fetch repository contents: {response.status_code}")
+        try:
+            # url is a fixed https:// literal built from a hardcoded Hugging Face API prefix.
+            with urlopen(url, timeout=10) as response:
+                return json.loads(response.read())  # Returns the JSON content of the repo
+        except urllib.error.HTTPError as e:
+            raise ValueError(f"Failed to fetch repository contents: {e.code}") from e
 
     @classmethod
     def list_operators(cls) -> None:
@@ -211,12 +210,16 @@ def add_metadata(
     """Add metadata to an ONNX model.
 
     The metadata includes the source library (set to "kornia"), the version of kornia,
-    and any additional metadata provided as a list of key-value pairs.
+    and any additional metadata provided as a list of key-value pairs. A key that is already
+    present in the model (or earlier in the list) is overwritten rather than repeated, since
+    ``onnx.checker.check_model`` rejects duplicate keys. Duplicate keys already in the model, as
+    earlier kornia versions wrote them, are merged into one entry with the last value, the one
+    onnxruntime reads.
 
     Args:
         onnx_model: The ONNX model to add metadata to.
         additional_metadata: A list of tuples, where each tuple contains a key and a value
-            for the additional metadata to add to the ONNX model.
+            for the additional metadata to add to the ONNX model. Values are stored as strings.
 
     Returns:
         The ONNX model with the added metadata.
@@ -224,14 +227,19 @@ def add_metadata(
     """
     if additional_metadata is None:
         additional_metadata = []
+    # Rebuilt from a mapping, which keeps each key at its first position with its last value.
+    metadata = {metadata_props.key: metadata_props.value for metadata_props in onnx_model.metadata_props}
     for key, value in [
         ("source", "kornia"),
         ("version", kornia.__version__),
         *additional_metadata,
     ]:
+        metadata[key] = str(value)
+    del onnx_model.metadata_props[:]
+    for key, value in metadata.items():
         metadata_props = onnx_model.metadata_props.add()
         metadata_props.key = key
-        metadata_props.value = str(value)
+        metadata_props.value = value
     return onnx_model
 
 

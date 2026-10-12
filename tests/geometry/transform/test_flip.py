@@ -83,6 +83,14 @@ class TestVflip(BaseTester):
         input = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.Vflip(), (input,))
 
+    @pytest.mark.parametrize("op", ["vflip", "rot180"])
+    def test_convention_rank1_raises(self, op, device, dtype):
+        # vflip and rot180 need dim -2, so they require rank >= 2, unlike hflip
+        # (TestHflip.test_convention_rank1_supported).
+        x = torch.tensor([0.0, 1.0, 2.0, 3.0], device=device, dtype=dtype)
+        with pytest.raises((IndexError, RuntimeError)):
+            getattr(kornia.geometry.transform, op)(x)
+
 
 class TestHflip(BaseTester):
     def smoke_test(self, device, dtype):
@@ -145,6 +153,14 @@ class TestHflip(BaseTester):
     def test_gradcheck(self, device):
         input = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.Hflip(), (input,))
+
+    def test_convention_rank1_supported(self, device, dtype):
+        # hflip flips dim -1 and accepts a rank-1 tensor, while vflip/rot180 require rank >= 2
+        # (TestVflip.test_convention_rank1_raises). Rank 0 is outside the contract and unpinned.
+        x = torch.tensor([0.0, 1.0, 2.0, 3.0], device=device, dtype=dtype)
+        # Snippet used to generate expected: x.flip(-1) -> tensor([3., 2., 1., 0.])
+        expected = torch.tensor([3.0, 2.0, 1.0, 0.0], device=device, dtype=dtype)
+        self.assert_close(kornia.geometry.transform.hflip(x), expected)
 
 
 class TestRot180(BaseTester):

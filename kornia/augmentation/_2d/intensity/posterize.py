@@ -29,9 +29,13 @@ class RandomPosterize(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomPosterize.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         p: probability of applying the transformation.
-        bits: Integer that ranged from (0, 8], in which 0 gives black image and 8 gives the original.
+        bits: number of high bits to keep, in ``[0, 8]``, in which 0 gives a black image and 8 gives the
+            original. A non-integral argument is accepted; the drawn factor is rounded to an integer, half to
+            even, so ``2.5`` gives ``2`` and ``3.5`` gives ``4``.
             If int x, bits will be generated from (x, 8) then convert to int.
             If tuple (x, y), bits will be generated from (x, y) then convert to int.
         same_on_batch: apply the same transformation across the batch.
@@ -41,6 +45,21 @@ class RandomPosterize(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - ``bits=(k, k)`` with ``k < 8`` leaves at most ``2 ** k`` distinct values, so ``0`` gives a constant
+          image; the reduction is a ``uint8`` round trip inside :func:`kornia.enhance.posterize`. A sample that
+          draws ``8`` is returned unchanged, without the round trip.
+        - the round trip is a step function: the output still has ``requires_grad=True``, but its gradient with
+          respect to the input is identically ``0`` below ``bits=8``, and the identity at ``8``.
+        - an ``int`` argument is the lower bound of the sampled range ``[x, 8]`` -- the opposite reading
+          from :class:`RandomSharpness`, whose scalar argument is an upper bound.
+
+    .. warning::
+        Outside ``[0, 1]`` the output is the posterized ``uint8`` conversion of the raw float, not of the clamped
+        input, and that conversion of an out-of-range float is undefined. A
+        sample that draws ``bits=8`` skips the conversion and keeps its out-of-range values. Tracked in
+        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.posterize`.

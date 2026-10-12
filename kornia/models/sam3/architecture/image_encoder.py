@@ -73,8 +73,7 @@ class PatchEmbedding(nn.Module):
         )
         x = self.proj(x)  # (B, embed_dim, H//patch_size, W//patch_size)
         x = x.flatten(2).transpose(1, 2)  # (B, H*W, embed_dim)
-        x = self.norm(x)
-        return x
+        return self.norm(x)
 
 
 class ViTBlock(nn.Module):
@@ -109,8 +108,7 @@ class ViTBlock(nn.Module):
             Output tensor of the same shape.
         """
         x = x + self.attn(self.norm1(x))
-        x = x + self.mlp(self.norm2(x))
-        return x
+        return x + self.mlp(self.norm2(x))
 
 
 class ImageEncoderHiera(nn.Module):
@@ -201,9 +199,7 @@ class ImageEncoderHiera(nn.Module):
             x = block(x)
 
         # Final normalization
-        x = self.norm(x)
-
-        return x
+        return self.norm(x)
 
     def get_output_shape(self, input_shape: tuple[int, ...]) -> tuple[int, ...]:
         """Get output shape given input shape.

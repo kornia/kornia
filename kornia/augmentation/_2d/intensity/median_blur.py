@@ -20,7 +20,9 @@ from typing import Any, Dict, Optional, Tuple
 from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils import _check_filter_min_size
 from kornia.filters import median_blur
+from kornia.filters.kernels import _check_kernel_size, _unpack_2d_ks
 
 
 class RandomMedianBlur(IntensityAugmentationBase2D):
@@ -28,12 +30,26 @@ class RandomMedianBlur(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomMedianBlur.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         kernel_size: the blurring kernel size.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+
+    Convention:
+        - ``kernel_size`` is ``(kH, kW)``: rows, then columns, as in :func:`kornia.filters.median_blur`. An
+          even entry is rejected at construction with that function's odd-size error.
+        - the output is not clamped. The window is reflect-padded by :func:`kornia.filters.median_blur` by
+          default under every implementation it selects -- the ``F.conv2d`` window extraction and the selection
+          network it uses instead for a 3x3 or 5x5 inference pass alike.
+        - this class has no ``border_type`` and inherits :func:`kornia.filters.median_blur`'s default
+          ``border_type="reflect"``; like :class:`RandomBoxBlur` and :class:`RandomGaussianBlur`, it raises a
+          ``ValueError`` naming the class and the shape once a spatial axis is no longer than half the kernel's
+          extent along it.
+
     .. note::
         This function internally uses :func:`kornia.filters.median_blur`.
 
@@ -43,10 +59,10 @@ class RandomMedianBlur(IntensityAugmentationBase2D):
         >>> out.shape
         torch.Size([1, 1, 4, 4])
         >>> out
-        tensor([[[[0., 1., 1., 0.],
+        tensor([[[[1., 1., 1., 1.],
                   [1., 1., 1., 1.],
                   [1., 1., 1., 1.],
-                  [0., 1., 1., 0.]]]])
+                  [1., 1., 1., 1.]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.randn(1, 3, 32, 32)
@@ -60,9 +76,11 @@ class RandomMedianBlur(IntensityAugmentationBase2D):
         self, kernel_size: Tuple[int, int] = (3, 3), same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
+        _check_kernel_size(_unpack_2d_ks(kernel_size), 0)
         self.flags = {"kernel_size": kernel_size}
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
+        _check_filter_min_size("RandomMedianBlur", input, flags["kernel_size"], border_type="reflect")
         return median_blur(input, flags["kernel_size"])

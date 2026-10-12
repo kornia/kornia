@@ -37,6 +37,14 @@ class DeDoDeDescriptor(nn.Module):
         self,
         images: torch.Tensor,
     ) -> torch.Tensor:
+        """Run this DeDoDe module forward.
+
+        Args:
+            images: Input image batch with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Dense descriptor map with shape :math:`(B, D, H, W)`.
+        """
         features, sizes = self.encoder(images)
         context = None
         descriptions = None

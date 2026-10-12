@@ -64,6 +64,14 @@ class HourglassBackbone(nn.Module):
         self.net = hg(HourglassConfig(depth, num_stacks, num_blocks, num_classes, input_channel, head=self.head))
 
     def forward(self, input_images: torch.Tensor) -> torch.Tensor:
+        """Run this SOLD2 backbone component forward.
+
+        Args:
+            input_images: Input image batch with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Feature map with shape :math:`(B, 256, H/4, W/4)`.
+        """
         return self.net(input_images)
 
 
@@ -88,6 +96,14 @@ class MultitaskHead(nn.Module):
         self.heads = nn.ModuleList(heads)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run this SOLD2 backbone component forward.
+
+        Args:
+            x: Input feature tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Concatenated predictions from all heads with shape :math:`(B, 5, H, W)`.
+        """
         return torch.cat([head(x) for head in self.heads], dim=1)
 
 
@@ -114,6 +130,14 @@ class Bottleneck2D(nn.Module):
         self.stride = stride
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        r"""Run this SOLD2 backbone component forward.
+
+        Args:
+            x: Input feature tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Residual block output tensor with shape :math:`(B, 2 \times \text{planes}, H', W')`.
+        """
         residual = x
 
         out = self.bn1(x)
@@ -156,7 +180,7 @@ class Hourglass(nn.Module):
 
     def _make_residual(self, block: Type[Bottleneck2D], num_blocks: int, planes: int) -> nn.Module:
         layers = []
-        for _ in range(0, num_blocks):
+        for _ in range(num_blocks):
             layers.append(block(planes * self.expansion, planes))
         return nn.Sequential(*layers)
 
@@ -176,16 +200,20 @@ class Hourglass(nn.Module):
         low1 = F.max_pool2d(x, 2, stride=2)
         low1 = self.hg[n - 1][1](low1)  # type: ignore[index]
 
-        if n > 1:
-            low2 = self._hour_glass_forward(n - 1, low1)
-        else:
-            low2 = self.hg[n - 1][3](low1)  # type: ignore[index]
+        low2 = self._hour_glass_forward(n - 1, low1) if n > 1 else self.hg[n - 1][3](low1)  # type: ignore[index]
         low3 = self.hg[n - 1][2](low2)  # type: ignore[index]
         up2 = F.interpolate(low3, size=up1.shape[2:])
-        out = up1 + up2
-        return out
+        return up1 + up2
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run this SOLD2 backbone component forward.
+
+        Args:
+            x: Input feature tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Hourglass output feature tensor with shape :math:`(B, C, H, W)`.
+        """
         return self._hour_glass_forward(self.depth, x)
 
 
@@ -256,6 +284,14 @@ class HourglassNet(nn.Module):
         return nn.Sequential(conv, bn, self.relu)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run this SOLD2 backbone component forward.
+
+        Args:
+            x: Input image tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Output feature map of the last stack with shape :math:`(B, 256, H/4, W/4)`.
+        """
         out = []
         x = self.conv1(x)
         x = self.bn1(x)
@@ -314,13 +350,20 @@ class SuperpointDecoder(nn.Module):
         self.grid_size = grid_size
 
     def forward(self, input_features: torch.Tensor) -> torch.Tensor:
+        """Run this SOLD2 backbone component forward.
+
+        Args:
+            input_features: Input feature map with shape :math:`(B, C, H/4, W/4)`.
+
+        Returns:
+            Junction heatmap prediction with shape :math:`(B, H, W)`.
+        """
         feat = self.relu(self.convPa(input_features))
         semi = self.convPb(feat)
 
         # Convert from semi-dense to dense heatmap
         junc_prob = softmax(semi, dim=1)
-        junc_pred = pixel_shuffle(junc_prob[:, :-1, :, :], self.grid_size)[:, 0]
-        return junc_pred
+        return pixel_shuffle(junc_prob[:, :-1, :, :], self.grid_size)[:, 0]
 
 
 class PixelShuffleDecoder(nn.Module):
@@ -378,6 +421,14 @@ class PixelShuffleDecoder(nn.Module):
         return [256, 64, 16, 4]
 
     def forward(self, input_features: torch.Tensor) -> torch.Tensor:
+        """Run this SOLD2 backbone component forward.
+
+        Args:
+            input_features: Input feature map with shape :math:`(B, C, H/4, W/4)`.
+
+        Returns:
+            Line heatmap prediction with shape :math:`(B, H, W)`.
+        """
         # Iterate til output block
         out = input_features
         for block in self.conv_block_lst[:-1]:
@@ -386,9 +437,7 @@ class PixelShuffleDecoder(nn.Module):
 
         # Output layer
         out = self.conv_block_lst[-1](out)
-        heatmap = softmax(out, dim=1)[:, 1, :, :]
-
-        return heatmap
+        return softmax(out, dim=1)[:, 1, :, :]
 
 
 class SuperpointDescriptor(nn.Module):
@@ -409,10 +458,16 @@ class SuperpointDescriptor(nn.Module):
         self.convPb = nn.Conv2d(256, 128, kernel_size=1, stride=1, padding=0)
 
     def forward(self, input_features: torch.Tensor) -> torch.Tensor:
-        feat = self.relu(self.convPa(input_features))
-        semi = self.convPb(feat)
+        """Run this SOLD2 backbone component forward.
 
-        return semi
+        Args:
+            input_features: Input feature map with shape :math:`(B, C, H/4, W/4)`.
+
+        Returns:
+            Semi-dense descriptors with shape :math:`(B, 128, H/4, W/4)`.
+        """
+        feat = self.relu(self.convPa(input_features))
+        return self.convPb(feat)
 
 
 # [Combination of all previous models in one]
@@ -451,6 +506,14 @@ class SOLD2Net(nn.Module):
             self.descriptor_decoder = SuperpointDescriptor(feat_channel)
 
     def forward(self, input_images: torch.Tensor) -> Dict[str, torch.Tensor]:
+        """Run this SOLD2 backbone component forward.
+
+        Args:
+            input_images: Input image batch with shape :math:`(B, 1, H, W)`.
+
+        Returns:
+            Dictionary containing predicted junction heatmap, line heatmap, and optional descriptors.
+        """
         # The backbone
         features = self.backbone_net(input_images)
 

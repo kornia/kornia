@@ -1,28 +1,52 @@
-<h1 align="center">Sponsors &amp; Backers</h1>
+# Backers & Sponsors 💛
 
-Kornia is an Apache-licensed open source project, which is supported by these brilliant [backers](https://github.com/kornia/kornia/blob/main/LICENSE/BACKERS.md). If you'd like to join them, please consider:
+Kornia is funded by the people and companies below. Sponsorship pays for maintenance, releases,
+and edge-device support.
 
-- [Become a backer or sponsor on OpenCollective](https://opencollective.com/kornia).
+**[→ Become a sponsor](https://github.com/sponsors/kornia)**
 
-<br><br>
+> This list is seeded from current public sponsors (July 2026). Once
+> [sponsorkit](https://github.com/antfu/sponsorkit) runs, the avatar wall in the README auto-updates;
+> this file can be regenerated from `sponsors.json` (see below) or maintained by hand.
 
-<h2 align="center">Platinum via OpenCollective</h2>
-<!--platinum start-->
-<!--platinum end-->
+---
 
-<h2 align="center">Gold via OpenCollective</h2>
+## 🏆 Infra Partners ($5,000+/mo)
 
-<!--gold start-->
-<!--gold end-->
+_Your logo here — [sponsor at this tier](https://github.com/sponsors/kornia)._
 
-<h2 align="center">Silver via OpenCollective</h2>
-<!--silver start-->
-<!--silver end-->
+## ⚔️ Partners ($1,000+/mo)
 
-<h2 align="center">Bronze via OpenCollective</h2>
-<!--bronze start-->
-<!--bronze end-->
+_Your logo here — [sponsor at this tier](https://github.com/sponsors/kornia)._
 
-<h2 align="center">Backers via OpenCollective</h2>
+## ⭐ Supporters ($500+/mo)
 
-<a href="https://opencollective.com/kornia#backers" target="_blank"><img src="https://opencollective.com/kornia/backers.svg?width=1500"></a>
+_Your logo here — [sponsor at this tier](https://github.com/sponsors/kornia)._
+
+---
+
+## 🙌 Backers
+
+Thank you to everyone funding Kornia:
+
+- [@elgalu](https://github.com/elgalu)
+- [@libertininick](https://github.com/libertininick)
+- [@justanhduc](https://github.com/justanhduc)
+- [@PeizhiYan](https://github.com/PeizhiYan)
+- [@dodobyte](https://github.com/dodobyte)
+- [@yejun688](https://github.com/yejun688)
+- [@singer-yang](https://github.com/singer-yang)
+- [@nusu-github](https://github.com/nusu-github)
+- _+ 1 private sponsor_ 🙏
+
+---
+
+<!--
+  KEEP PRIVACY-SAFE.
+  - Only list PUBLIC sponsors. Private sponsors stay in the "+ N private sponsor(s)" line above.
+  - Preferred: regenerate this list from sponsorkit output so private flags are respected:
+      npx sponsorkit@latest          # writes sponsors.json (public/private already resolved)
+    then map the public entries into the Backers list.
+  - When a company sponsors at Supporter+ , move them into the tier section with their logo:
+      [![Name](./logos/name.svg)](https://their-site.com)
+-->

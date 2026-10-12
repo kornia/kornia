@@ -158,6 +158,17 @@ class TestCenterCrop3D(BaseTester):
         expected = kornia.geometry.transform.center_crop3d(img, (4, 3, 2))
         self.assert_close(actual, expected, rtol=1e-4, atol=1e-4)
 
+    def test_convention_align_corners_default_is_true(self, device, dtype):
+        # center_crop3d's align_corners default is True, not merely a value that every existing
+        # test happens to pass explicitly: omitting the kwarg must equal align_corners=True and
+        # differ from align_corners=False.
+        inp = torch.arange(0.0, 343.0, device=device, dtype=dtype).view(1, 1, 7, 7, 7)
+        out_default = kornia.geometry.transform.center_crop3d(inp, (3, 3, 3))
+        out_true = kornia.geometry.transform.center_crop3d(inp, (3, 3, 3), align_corners=True)
+        out_false = kornia.geometry.transform.center_crop3d(inp, (3, 3, 3), align_corners=False)
+        self.assert_close(out_default, out_true, rtol=1e-2, atol=1e-2)
+        assert not torch.allclose(out_default, out_false, atol=1e-2, rtol=1e-2)
+
 
 class TestCropByBoxes3D(BaseTester):
     def test_crop_by_boxes_no_resizing(self, device, dtype):
@@ -326,6 +337,96 @@ class TestCropByBoxes3D(BaseTester):
         self.gradcheck(
             kornia.geometry.transform.crop_by_boxes3d, (inp, src_box, dst_box), requires_grad=(True, False, False)
         )
+
+    def test_convention_align_corners_default_is_false(self, device, dtype):
+        # crop_by_boxes3d's align_corners default is False -- every other dedicated test in
+        # this class passes align_corners=True explicitly, so the default itself was never
+        # exercised until now. Also pins the docstring's "inclusive coordinates" consequence
+        # with the same fixture: the box extent (1, 1, 1)..(2, 2, 2) reproduces the exact
+        # integer-voxel slice only under align_corners=True -- the align_corners=False
+        # default interpolates instead.
+        vol = torch.arange(64.0, device=device, dtype=dtype).view(1, 1, 4, 4, 4)
+        src_box = torch.tensor(
+            [
+                [
+                    [1.0, 1.0, 1.0],
+                    [2.0, 1.0, 1.0],
+                    [2.0, 2.0, 1.0],
+                    [1.0, 2.0, 1.0],
+                    [1.0, 1.0, 2.0],
+                    [2.0, 1.0, 2.0],
+                    [2.0, 2.0, 2.0],
+                    [1.0, 2.0, 2.0],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        dst_box = torch.tensor(
+            [
+                [
+                    [0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0],
+                    [1.0, 1.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                    [0.0, 0.0, 1.0],
+                    [1.0, 0.0, 1.0],
+                    [1.0, 1.0, 1.0],
+                    [0.0, 1.0, 1.0],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        expected_slice = vol[:, :, 1:3, 1:3, 1:3]
+
+        out_default = kornia.geometry.transform.crop_by_boxes3d(vol, src_box, dst_box)
+        out_true = kornia.geometry.transform.crop_by_boxes3d(vol, src_box, dst_box, align_corners=True)
+        out_false = kornia.geometry.transform.crop_by_boxes3d(vol, src_box, dst_box, align_corners=False)
+
+        self.assert_close(out_default, out_false, rtol=1e-2, atol=1e-2)
+        assert not torch.allclose(out_default, out_true, atol=1e-2, rtol=1e-2)
+        self.assert_close(out_true, expected_slice, rtol=1e-2, atol=1e-2)
+        assert not torch.allclose(out_default, expected_slice, atol=1e-2, rtol=1e-2)
+
+    def test_convention_crop_by_transform_mat3d_direct(self, device, dtype):
+        # crop_by_transform_mat3d has no direct test anywhere in this file -- it is only ever
+        # exercised indirectly through crop_by_boxes3d. Pin it directly: align_corners=True
+        # default, and out_size in (depth, height, width) order.
+        inp = torch.arange(0.0, 64.0, device=device, dtype=dtype).view(1, 1, 4, 4, 4)
+        transform = torch.tensor(
+            [[[1.0, 0.0, 0.0, -1.0], [0.0, 1.0, 0.0, -1.0], [0.0, 0.0, 1.0, -1.0], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        out_default = kornia.geometry.transform.crop_by_transform_mat3d(inp, transform, (2, 2, 2))
+        out_true = kornia.geometry.transform.crop_by_transform_mat3d(inp, transform, (2, 2, 2), align_corners=True)
+        expected = inp[:, :, 1:3, 1:3, 1:3]
+        self.assert_close(out_default, out_true)
+        self.assert_close(out_default, expected, rtol=1e-2, atol=1e-2)
+
+    def test_convention_padding_mode_default_zeros_3d(self, device, dtype):
+        # crop_by_transform_mat3d's padding_mode default is 'zeros': sampling past the volume
+        # bounds fills with 0, not the edge value ('border' would).
+        inp = torch.arange(1.0, 65.0, device=device, dtype=dtype).view(1, 1, 4, 4, 4)
+        transform = torch.tensor(
+            [[[1.0, 0.0, 0.0, 2.0], [0.0, 1.0, 0.0, 2.0], [0.0, 0.0, 1.0, 2.0], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        out_default = kornia.geometry.transform.crop_by_transform_mat3d(inp, transform, (3, 3, 3), align_corners=True)
+        out_zeros = kornia.geometry.transform.crop_by_transform_mat3d(
+            inp, transform, (3, 3, 3), align_corners=True, padding_mode="zeros"
+        )
+        self.assert_close(out_default, out_zeros)
+
+        # Intentionally unguarded on MPS: 3D grid_sample supports padding_mode='border' there;
+        # only 2D grid_sample has the MPS 'border' limitation guarded elsewhere (see
+        # testing/base.py's supports_2d_border_padding).
+        out_border = kornia.geometry.transform.crop_by_transform_mat3d(
+            inp, transform, (3, 3, 3), align_corners=True, padding_mode="border"
+        )
+        assert not torch.allclose(out_default, out_border, atol=1e-2, rtol=1e-2)
 
 
 class TestCrop3DSizeValidation:

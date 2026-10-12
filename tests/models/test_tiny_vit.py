@@ -26,7 +26,10 @@ from testing.base import BaseTester
 
 
 class TestTinyViT(BaseTester):
-    @pytest.mark.parametrize("img_size", [224, 256])
+    # 128 is not a multiple of the 7-pixel attention window at any stage, so it takes the padded
+    # window-attention path; 224 divides evenly and takes the unpadded one. Both belong here: the
+    # only other coverage of the exact-multiple path is marked slow, which PR CI skips.
+    @pytest.mark.parametrize("img_size", [128, 224])
     def test_smoke(self, device, dtype, img_size):
         model = TinyViT(img_size=img_size).to(device=device, dtype=dtype)
         data = torch.randn(1, 3, img_size, img_size, device=device, dtype=dtype)

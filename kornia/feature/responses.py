@@ -51,7 +51,7 @@ def harris_response(
     .. math::
         R = max(0, det(M) - k \cdot trace(M)^2)
 
-    torch.where:
+    where:
 
     .. math::
         M = \sum_{(x,y) \in W}
@@ -84,18 +84,17 @@ def harris_response(
         ...    [0., 1., 1., 1., 1., 1., 0.],
         ...    [0., 0., 0., 0., 0., 0., 0.],
         ... ]]])  # 1x1x7x7
-        >>> # compute the response map
-        harris_response(input, 0.04)
-        tensor([[[[0.0012, 0.0039, 0.0020, 0.0000, 0.0020, 0.0039, 0.0012],
-                  [0.0039, 0.0065, 0.0040, 0.0000, 0.0040, 0.0065, 0.0039],
-                  [0.0020, 0.0040, 0.0029, 0.0000, 0.0029, 0.0040, 0.0020],
-                  [0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-                  [0.0020, 0.0040, 0.0029, 0.0000, 0.0029, 0.0040, 0.0020],
-                  [0.0039, 0.0065, 0.0040, 0.0000, 0.0040, 0.0065, 0.0039],
-                  [0.0012, 0.0039, 0.0020, 0.0000, 0.0020, 0.0039, 0.0012]]]])
+        >>> # compute the response map; rounded for a platform-stable display
+        >>> harris_response(input, 0.04).round(decimals=4) + 0.0
+        tensor([[[[0.0042, 0.0054, 0.0035, 0.0006, 0.0035, 0.0054, 0.0042],
+                  [0.0054, 0.0068, 0.0046, 0.0014, 0.0046, 0.0068, 0.0054],
+                  [0.0035, 0.0046, 0.0034, 0.0014, 0.0034, 0.0046, 0.0035],
+                  [0.0006, 0.0014, 0.0014, 0.0006, 0.0014, 0.0014, 0.0006],
+                  [0.0035, 0.0046, 0.0034, 0.0014, 0.0034, 0.0046, 0.0035],
+                  [0.0054, 0.0068, 0.0046, 0.0014, 0.0046, 0.0068, 0.0054],
+                  [0.0042, 0.0054, 0.0035, 0.0006, 0.0035, 0.0054, 0.0042]]]])
 
     """
-    # TODO: Recompute doctest
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
     if sigmas is not None:
@@ -138,7 +137,7 @@ def gftt_response(
     .. math::
         R = min(eig(M))
 
-    torch.where:
+    where:
 
     .. math::
         M = \sum_{(x,y) \in W}
@@ -167,19 +166,24 @@ def gftt_response(
         ...    [0., 1., 1., 1., 1., 1., 0.],
         ...    [0., 0., 0., 0., 0., 0., 0.],
         ... ]]])  # 1x1x7x7
-        >>> # compute the response map
-        gftt_response(input)
-        tensor([[[[0.0155, 0.0334, 0.0194, 0.0000, 0.0194, 0.0334, 0.0155],
-                  [0.0334, 0.0575, 0.0339, 0.0000, 0.0339, 0.0575, 0.0334],
-                  [0.0194, 0.0339, 0.0497, 0.0000, 0.0497, 0.0339, 0.0194],
-                  [0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-                  [0.0194, 0.0339, 0.0497, 0.0000, 0.0497, 0.0339, 0.0194],
-                  [0.0334, 0.0575, 0.0339, 0.0000, 0.0339, 0.0575, 0.0334],
-                  [0.0155, 0.0334, 0.0194, 0.0000, 0.0194, 0.0334, 0.0155]]]])
+        >>> # compute the response map; rounded for a platform-stable display
+        >>> gftt_response(input).round(decimals=4) + 0.0
+        tensor([[[[0.0379, 0.0456, 0.0283, 0.0121, 0.0283, 0.0456, 0.0379],
+                  [0.0456, 0.0598, 0.0402, 0.0168, 0.0402, 0.0598, 0.0456],
+                  [0.0283, 0.0402, 0.0545, 0.0245, 0.0545, 0.0402, 0.0283],
+                  [0.0121, 0.0168, 0.0245, 0.0276, 0.0245, 0.0168, 0.0121],
+                  [0.0283, 0.0402, 0.0545, 0.0245, 0.0545, 0.0402, 0.0283],
+                  [0.0456, 0.0598, 0.0402, 0.0168, 0.0402, 0.0598, 0.0456],
+                  [0.0379, 0.0456, 0.0283, 0.0121, 0.0283, 0.0456, 0.0379]]]])
 
     """
-    # TODO: Recompute doctest
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
+
+    if sigmas is not None:
+        if not isinstance(sigmas, torch.Tensor):
+            raise TypeError(f"sigmas type is not a torch.Tensor. Got {type(sigmas)}")
+        if (not len(sigmas.shape) == 1) or (sigmas.size(0) != input.size(0)):
+            raise ValueError(f"Invalid sigmas shape, we expect B == input.size(0). Got: {sigmas.shape}")
 
     gradients: torch.Tensor = spatial_gradient(input, grads_mode)
     dx: torch.Tensor = gradients[:, :, 0]
@@ -189,13 +193,15 @@ def gftt_response(
     dy2: torch.Tensor = gaussian_blur2d(dy**2, (7, 7), (1.0, 1.0))
     dxy: torch.Tensor = gaussian_blur2d(dx * dy, (7, 7), (1.0, 1.0))
 
-    det_m: torch.Tensor = dx2 * dy2 - dxy * dxy
     trace_m: torch.Tensor = dx2 + dy2
 
-    e1: torch.Tensor = 0.5 * (trace_m + torch.sqrt((trace_m**2 - 4 * det_m).abs()))
-    e2: torch.Tensor = 0.5 * (trace_m - torch.sqrt((trace_m**2 - 4 * det_m).abs()))
+    # trace^2 - 4 det as a sum of squares: it is never negative, and the sqrt below gets a zero gradient instead
+    # of 0 / 0 = nan where the structure tensor vanishes, which is every flat 9 x 9 patch of the image.
+    disc: torch.Tensor = (dx2 - dy2) ** 2 + 4.0 * dxy * dxy
+    positive = disc > 0
+    root: torch.Tensor = torch.where(positive, torch.where(positive, disc, torch.ones_like(disc)).sqrt(), 0.0)
 
-    scores: torch.Tensor = torch.min(e1, e2)
+    scores: torch.Tensor = 0.5 * (trace_m - root)  # the smaller eigenvalue
 
     if sigmas is not None:
         scores = scores * sigmas.pow(4).view(-1, 1, 1, 1)
@@ -215,7 +221,7 @@ def hessian_response(
     .. math::
         R = det(H)
 
-    torch.where:
+    where:
 
     .. math::
         M = \sum_{(x,y) \in W}
@@ -248,18 +254,17 @@ def hessian_response(
         ...    [0., 1., 1., 1., 1., 1., 0.],
         ...    [0., 0., 0., 0., 0., 0., 0.],
         ... ]]])  # 1x1x7x7
-        >>> # compute the response map
-        hessian_response(input)
-        tensor([[[[0.0155, 0.0334, 0.0194, 0.0000, 0.0194, 0.0334, 0.0155],
-                  [0.0334, 0.0575, 0.0339, 0.0000, 0.0339, 0.0575, 0.0334],
-                  [0.0194, 0.0339, 0.0497, 0.0000, 0.0497, 0.0339, 0.0194],
-                  [0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-                  [0.0194, 0.0339, 0.0497, 0.0000, 0.0497, 0.0339, 0.0194],
-                  [0.0334, 0.0575, 0.0339, 0.0000, 0.0339, 0.0575, 0.0334],
-                  [0.0155, 0.0334, 0.0194, 0.0000, 0.0194, 0.0334, 0.0155]]]])
+        >>> # compute the response map; rounded for a platform-stable display
+        >>> hessian_response(input).round(decimals=4) + 0.0
+        tensor([[[[-0.0137, -0.0332, -0.0205,  0.0000, -0.0205, -0.0332, -0.0137],
+                  [-0.0332,  0.0098,  0.0381,  0.0000,  0.0381,  0.0098, -0.0332],
+                  [-0.0205,  0.0381,  0.0547,  0.0000,  0.0547,  0.0381, -0.0205],
+                  [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000],
+                  [-0.0205,  0.0381,  0.0547,  0.0000,  0.0547,  0.0381, -0.0205],
+                  [-0.0332,  0.0098,  0.0381,  0.0000,  0.0381,  0.0098, -0.0332],
+                  [-0.0137, -0.0332, -0.0205,  0.0000, -0.0205, -0.0332, -0.0137]]]])
 
     """
-    # TODO: Recompute doctest
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
     if sigmas is not None:
@@ -333,6 +338,15 @@ class BlobDoG(nn.Module):
         return self.__class__.__name__
 
     def forward(self, input: torch.Tensor, sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Compute Difference-of-Gaussians response maps.
+
+        Args:
+            input: Input tensor of shape :math:`(B, C, H, W)`.
+            sigmas: Unused in this wrapper; kept for API compatibility.
+
+        Returns:
+            DoG response tensor from :func:`dog_response`.
+        """
         return dog_response(input)
 
 
@@ -353,6 +367,16 @@ class BlobDoGSingle(nn.Module):
         return f"{self.__class__.__name__}, sigma1={self.sigma1}, sigma2={self.sigma2})"
 
     def forward(self, input: torch.Tensor, sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Compute single-scale Difference-of-Gaussians response.
+
+        Args:
+            input: Input tensor of shape :math:`(B, C, H, W)`.
+            sigmas: Unused in this wrapper; kept for API compatibility.
+
+        Returns:
+            Response tensor from :func:`dog_response_single` using stored
+            ``sigma1`` and ``sigma2``.
+        """
         return dog_response_single(input, self.sigma1, self.sigma2)
 
 
@@ -378,6 +402,16 @@ class CornerHarris(nn.Module):
         return f"{self.__class__.__name__}(k={self.k}, grads_mode={self.grads_mode})"
 
     def forward(self, input: torch.Tensor, sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Compute Harris corner response for each input channel.
+
+        Args:
+            input: Input tensor of shape :math:`(B, C, H, W)`.
+            sigmas: Optional Gaussian smoothing values forwarded to
+                :func:`harris_response`.
+
+        Returns:
+            Harris response map tensor.
+        """
         return harris_response(input, self.k, self.grads_mode, sigmas)
 
 
@@ -397,6 +431,15 @@ class CornerGFTT(nn.Module):
         return f"{self.__class__.__name__}(grads_mode={self.grads_mode})"
 
     def forward(self, input: torch.Tensor, sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Compute Shi-Tomasi (GFTT) corner response maps.
+
+        Args:
+            input: Input tensor of shape :math:`(B, C, H, W)`.
+            sigmas: Optional smoothing sigmas for multi-scale workflows.
+
+        Returns:
+            GFTT response map tensor from :func:`gftt_response`.
+        """
         return gftt_response(input, self.grads_mode, sigmas)
 
 
@@ -416,4 +459,14 @@ class BlobHessian(nn.Module):
         return f"{self.__class__.__name__}(grads_mode={self.grads_mode})"
 
     def forward(self, input: torch.Tensor, sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Compute Hessian determinant-like blob responses.
+
+        Args:
+            input: Input tensor of shape :math:`(B, C, H, W)`.
+            sigmas: Optional smoothing values passed to
+                :func:`hessian_response`.
+
+        Returns:
+            Hessian response map tensor.
+        """
         return hessian_response(input, self.grads_mode, sigmas)

@@ -36,8 +36,8 @@ class TestVideoSequential:
     @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
     def test_exception(self, shape, data_format, device, dtype):
         aug_list = K.VideoSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1), data_format=data_format, same_on_frame=True)
+        img = torch.randn(*shape, device=device, dtype=dtype)
         with pytest.raises(AssertionError):
-            img = torch.randn(*shape, device=device, dtype=dtype)
             aug_list(img)
 
     @pytest.mark.parametrize(
@@ -114,6 +114,8 @@ class TestVideoSequential:
             [K.RandomCrop((2, 2), padding=2)],
             [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)],
             [K.RandomAffine(360, p=0.0), K.ImageSequential(K.RandomAffine(360, p=0.0))],
+            [K.ImageSequential(K.RandomAffine(360, p=1.0))],
+            [K.RandomAffine(360, p=1.0), K.ImageSequential(K.RandomAffine(360, p=0.5))],
         ],
     )
     @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
@@ -141,7 +143,6 @@ class TestVideoSequential:
             output_2 = output_2.transpose(1, 2)
         assert_close(output_1, output_2)
 
-    @pytest.mark.jit()
     @pytest.mark.skip(reason="turn off due to Union Type")
     def test_jit(self, device, dtype):
         B, C, D, H, W = 2, 3, 5, 4, 4

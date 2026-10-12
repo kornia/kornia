@@ -28,6 +28,8 @@ from .disk import DISK, DISKFeatures
 from .hardnet import HardNet, HardNet8
 from .hynet import TLU, FilterResponseNorm2d, HyNet
 from .integrated import (
+    DoGAffNetHardNet,
+    DoGHardNet,
     GFTTAffNetHardNet,
     HesAffNetHardNet,
     KeyNetAffNetHardNet,
@@ -52,7 +54,9 @@ from .laf import (
     get_laf_scale,
     laf_from_center_scale_ori,
     laf_from_three_points,
+    laf_is_filled,
     laf_is_inside_image,
+    laf_is_valid,
     laf_to_boundary_points,
     laf_to_three_points,
     make_upright,
@@ -73,6 +77,7 @@ from .matching import (
     match_mnn,
     match_nn,
     match_smnn,
+    match_smnn_batched,
     match_snn,
 )
 from .mkd import MKDDescriptor
@@ -90,7 +95,8 @@ from .responses import (
     hessian_response,
 )
 from .scale_space_detector import MultiResolutionDetector, PassLAF, ScaleSpaceDetector
-from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor
+from .sift import SIFTDescriptorFromPyramid
+from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor, convert_sift_descriptor_layout
 from .sold2 import SOLD2, SOLD2_detector
 from .sosnet import SOSNet
 from .tfeat import TFeat
@@ -113,9 +119,9 @@ __all__ = [
     "DeFMO",
     "DenseSIFTDescriptor",
     "DescriptorMatcher",
-    "DescriptorMatcher",
+    "DoGAffNetHardNet",
+    "DoGHardNet",
     "FilterResponseNorm2d",
-    "GFTTAffNetHardNet",
     "GFTTAffNetHardNet",
     "GeometryAwareDescriptorMatcher",
     "HardNet",
@@ -124,21 +130,17 @@ __all__ = [
     "HyNet",
     "InterpolateSparse2d",
     "KeyNet",
-    "KeyNet",
     "KeyNetAffNetHardNet",
     "KeyNetDetector",
     "KeyNetHardNet",
     "LAFAffNetShapeEstimator",
     "LAFAffineShapeEstimator",
     "LAFDescriptor",
-    "LAFDescriptor",
     "LAFOrienter",
     "LightGlue",
     "LightGlueMatcher",
     "LoFTR",
     "LocalFeature",
-    "LocalFeature",
-    "LocalFeatureMatcher",
     "LocalFeatureMatcher",
     "MKDDescriptor",
     "MultiResolutionDetector",
@@ -148,7 +150,7 @@ __all__ = [
     "PatchAffineShapeEstimator",
     "PatchDominantGradientOrientation",
     "SIFTDescriptor",
-    "SIFTFeature",
+    "SIFTDescriptorFromPyramid",
     "SIFTFeature",
     "SIFTFeatureScaleSpace",
     "SOLD2_detector",
@@ -157,6 +159,7 @@ __all__ = [
     "TFeat",
     "XFeat",
     "XFeatModel",
+    "convert_sift_descriptor_layout",
     "denormalize_laf",
     "dog_response",
     "dog_response_single",
@@ -165,7 +168,6 @@ __all__ = [
     "extract_patches_simple",
     "get_laf_center",
     "get_laf_descriptors",
-    "get_laf_descriptors",
     "get_laf_orientation",
     "get_laf_scale",
     "gftt_response",
@@ -173,19 +175,18 @@ __all__ = [
     "hessian_response",
     "laf_from_center_scale_ori",
     "laf_from_three_points",
+    "laf_is_filled",
     "laf_is_inside_image",
+    "laf_is_valid",
     "laf_to_boundary_points",
     "laf_to_three_points",
     "make_upright",
     "match_adalam",
     "match_fginn",
     "match_mnn",
-    "match_mnn",
-    "match_nn",
     "match_nn",
     "match_smnn",
-    "match_smnn",
-    "match_snn",
+    "match_smnn_batched",
     "match_snn",
     "normalize_laf",
     "perspective_transform_lafs",

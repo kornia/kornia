@@ -29,6 +29,7 @@ from .essential import (
     find_essential,
     motion_from_essential,
     motion_from_essential_choose_solution,
+    project_to_essential,
     relative_camera_motion,
 )
 from .fundamental import (
@@ -76,6 +77,7 @@ __all__ = [
     "motion_from_essential_choose_solution",
     "normalize_points",
     "normalize_transformation",
+    "project_to_essential",
     "projection_from_KRt",
     "projections_from_fundamental",
     "random_intrinsics",

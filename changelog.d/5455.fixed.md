@@ -1,0 +1,1 @@
+`RandomMotionBlur3D` now raises a `ValueError` naming the class, the drawn kernel, the border type, the axis and the input shape when a volume is too small for `border_type="reflect"` or `"circular"` along depth, height or width, as `RandomMotionBlur` does for an image, instead of letting a raw torch padding error out. The sizes it accepts are unchanged.

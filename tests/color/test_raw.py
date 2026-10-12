@@ -43,26 +43,26 @@ class TestRawToRgb(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.color.raw_to_rgb([0.0], kornia.color.CFA.BG)
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.raw_to_rgb(img, kornia.color.CFA.GB)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.raw_to_rgb(img, kornia.color.CFA.RG)
 
+        img = torch.ones(1, 3, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 3, 1, 1, device=device, dtype=dtype)
             assert kornia.color.raw_to_rgb(img, kornia.color.CFA.GR)
 
         # dimensionality test
+        img = torch.ones(3, 2, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(3, 2, 1, device=device, dtype=dtype)
             assert kornia.color.raw_to_rgb(img, kornia.color.CFA.GR)
 
         # dimensionality test
+        img = torch.ones(3, 1, 2, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(3, 1, 2, device=device, dtype=dtype)
             assert kornia.color.raw_to_rgb(img, kornia.color.CFA.GR)
 
     # With he current implementations we should get back an identical raw representation when doing raw -> rgb -> raw
@@ -136,13 +136,11 @@ class TestRawToRgb(BaseTester):
         assert_close(bgres[:, :, 1:5, 1:5], grres[:, :, 2:6, 1:5])
         assert_close(bgres[:, :, 1:5, 1:5], rgres[:, :, 2:6, 2:6])
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.raw_to_rgb, (img, kornia.color.raw.CFA.BG), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -173,19 +171,21 @@ class TestRgbToRaw(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.color.rgb_to_raw([0.0], kornia.color.raw.CFA.RG)
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_raw(img, kornia.color.raw.CFA.BG)
+
+        img = torch.rand(1, 3, 2, 3, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Unsupported CFA value"):
+            kornia.color.rgb_to_raw(img, "bad")
 
         # Reverse test in rawtorgb is sufficient functional test
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_raw, (img, kornia.color.raw.CFA.BG), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -227,29 +227,29 @@ class TestRawToRgb2x2Downscaled(BaseTester):
             kornia.color.raw_to_rgb_2x2_downscaled([0.0], kornia.color.CFA.BG)
         assert "Input type is not a torch.Tensor" in str(errinf.value)
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ShapeError) as errinf:
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.GB)
         assert "Shape dimension mismatch" in str(errinf.value) or "Expected shape" in str(errinf.value)
 
+        img = torch.ones(2, 2, 2, device=device, dtype=dtype)
         with pytest.raises(ShapeError) as errinf:
-            img = torch.ones(2, 2, 2, device=device, dtype=dtype)
             kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.RG)
         assert "Shape dimension mismatch" in str(errinf.value) or "Expected shape" in str(errinf.value)
 
+        img = torch.ones(1, 3, 2, device=device, dtype=dtype)
         with pytest.raises(Exception) as errinf:
-            img = torch.ones(1, 3, 2, device=device, dtype=dtype)
             kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.GR)
-        assert "Input H&W must be evenly disible by 2. Got" in str(errinf)
+        assert "Input H&W must be evenly divisible by 2. Got" in str(errinf)
 
+        img = torch.ones(1, 2, 3, device=device, dtype=dtype)
         with pytest.raises(Exception) as errinf:
-            img = torch.ones(1, 2, 3, device=device, dtype=dtype)
             kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.GR)
-        assert "Input H&W must be evenly disible by 2. Got" in str(errinf)
+        assert "Input H&W must be evenly divisible by 2. Got" in str(errinf)
 
+        img = torch.ones(1, 4, 8, device=device, dtype=dtype)
+        nonexistent_cfa = 195162495283
         with pytest.raises(ValueError) as errinf:
-            img = torch.ones(1, 4, 8, device=device, dtype=dtype)
-            nonexistent_cfa = 195162495283
             kornia.color.raw_to_rgb_2x2_downscaled(img, nonexistent_cfa)
         assert "Unsupported CFA Got" in str(errinf)
 

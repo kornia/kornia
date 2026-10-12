@@ -19,6 +19,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import torch
 
+from kornia.augmentation._2d.base import _input_metadata_only
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.geometry.transform import vflip
 
@@ -37,6 +38,11 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        A selected flip maps ``(x, y)`` to ``(x, H - 1 - y)`` with the exact discrete
+        :func:`~kornia.geometry.transform.vflip`, without resampling; see
+        :class:`~kornia.augmentation.GeometricAugmentationBase2D` for the shared contract.
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.vflip`.
@@ -64,13 +70,24 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
 
     """
 
+    # apply_transform is a pure flip that ignores the transform matrix, so defer building
+    # it until `.transform_matrix` is read (see RigidAffineAugmentationBase2D).
+    _compute_matrix_lazily = True
+
+    @_input_metadata_only
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        h: int = int(params["forward_input_shape"][-2])
+        # Build the 3x3 flip matrix as a constant literal plus the (tensor) height, rather than
+        # `int(h)`. `int(tensor)` lowers to `.item()`, which breaks torch.compile fullgraph on
+        # some torch versions; a Python-float literal is fine (constant-folded) and adding the
+        # height tensor into entry [1, 2] gives `h - 1` — numerically identical to
+        # `[[1, 0, 0], [0, -1, h - 1], [0, 0, 1]]`, and ~1.8x cheaper than stacking 9 scalars.
+        h = params["forward_input_shape"][-2].to(device=input.device, dtype=input.dtype)
         flip_mat: torch.Tensor = torch.tensor(
-            [[1, 0, 0], [0, -1, h - 1], [0, 0, 1]], device=input.device, dtype=input.dtype
+            [[1.0, 0.0, 0.0], [0.0, -1.0, -1.0], [0.0, 0.0, 1.0]], device=input.device, dtype=input.dtype
         )
+        flip_mat[1, 2] = flip_mat[1, 2] + h
 
         return flip_mat.expand(input.shape[0], 3, 3)
 

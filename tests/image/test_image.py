@@ -22,9 +22,12 @@ import pytest
 import torch
 
 from kornia.core._compat import torch_version_le
-from kornia.core.exceptions import ShapeError
-from kornia.image.base import KORNIA_CHECK_IMAGE_LAYOUT, ChannelsOrder, ColorSpace, ImageLayout, ImageSize, PixelFormat
+from kornia.core.exceptions import ShapeError, ValueCheckError
+from kornia.image import ColorSpace
+from kornia.image.base import KORNIA_CHECK_IMAGE_LAYOUT, ChannelsOrder, ImageLayout, ImageSize, PixelFormat
 from kornia.image.image import Image
+from kornia.image.image_print import image_to_string
+from kornia.io import ImageLoadType, load_image
 
 from testing.base import BaseTester
 
@@ -192,6 +195,110 @@ class TestImage(BaseTester):
         data = np.ones((4, 5, 3), dtype=np.uint8)
         img = Image.from_numpy(data, color_space=ColorSpace.RGB, channels_order=ChannelsOrder.CHANNELS_LAST)
         img.write(tmp_path / "image.jpg")
+
+    def test_to_returns_a_new_image_and_leaves_the_original(self, device):
+        img = Image.from_numpy(np.zeros((4, 5, 3), dtype=np.uint8))
+        out = img.to(device, torch.float32)
+        assert out is not img
+        assert img.dtype == torch.uint8
+        assert img.pixel_format.bit_depth == 8
+        assert out.dtype == torch.float32
+        assert out.device == device
+        assert out.pixel_format.bit_depth == 32
+        assert out.clone().pixel_format.bit_depth == 32  # bit_depth follows the dtype, so clone() passes the check
+
+    def test_float_leaves_the_original(self):
+        img = Image.from_numpy(np.zeros((4, 5, 3), dtype=np.uint8))
+        out = img.float()
+        assert img.dtype == torch.uint8
+        assert out.dtype == torch.float32
+        assert out.pixel_format.bit_depth == 32
+
+    @pytest.mark.parametrize("order", [ChannelsOrder.CHANNELS_LAST, ChannelsOrder.CHANNELS_FIRST])
+    def test_from_numpy_accepts_a_2d_gray_array(self, order):
+        data = np.arange(20, dtype=np.uint8).reshape(4, 5)  # H = 4, W = 5
+        img = Image.from_numpy(data, color_space=ColorSpace.GRAY, channels_order=order)
+        assert (img.channels, img.height, img.width) == (1, 4, 5)
+        data[0, 1] = 99
+        assert int(img.data.flatten()[1]) == 99  # shares memory, like a 3-D array
+
+    def test_write_stores_true_colours_for_a_bgr_image(self, tmp_path):
+        bgr = np.zeros((4, 5, 3), dtype=np.uint8)
+        bgr[..., 0], bgr[..., 1], bgr[..., 2] = 2, 1, 0  # B, G, R -> true RGB (0, 1, 2)
+        Image.from_numpy(bgr, color_space=ColorSpace.BGR).write(str(tmp_path / "bgr.png"))
+        assert load_image(tmp_path / "bgr.png", ImageLoadType.RGB8)[:, 0, 0].tolist() == [0, 1, 2]
+
+    def test_print_shows_true_colours_for_a_bgr_image(self, capsys):
+        rgb = torch.zeros(3, 2, 3, dtype=torch.uint8)
+        rgb[0] = 255  # red
+        make_image(rgb.flip(0).permute(1, 2, 0).contiguous(), ColorSpace.BGR, ChannelsOrder.CHANNELS_LAST).print()
+        assert capsys.readouterr().out == image_to_string(rgb) + "\n"
+
+    @pytest.mark.parametrize(
+        ("cs", "channels"), [(ColorSpace.GRAY, 3), (ColorSpace.RGB, 1), (ColorSpace.BGR, 4), (ColorSpace.RGB, 4)]
+    )
+    def test_color_space_must_match_the_channel_count(self, cs, channels):
+        with pytest.raises(ValueCheckError, match="color space"):
+            make_image(torch.zeros(4, 5, channels, dtype=torch.uint8), cs, ChannelsOrder.CHANNELS_LAST)
+
+    def test_unknown_color_space_accepts_any_channel_count(self):
+        img = make_image(torch.zeros(4, 5, 4, dtype=torch.uint8), ColorSpace.UNKNOWN, ChannelsOrder.CHANNELS_LAST)
+        assert img.channels == 4
+
+    def test_from_numpy_infers_the_color_space(self):
+        assert Image.from_numpy(np.zeros((4, 5, 1), dtype=np.uint8)).pixel_format.color_space == ColorSpace.GRAY
+        assert Image.from_numpy(np.zeros((4, 5), dtype=np.uint8)).pixel_format.color_space == ColorSpace.GRAY
+        assert Image.from_numpy(np.zeros((4, 5, 3), dtype=np.uint8)).pixel_format.color_space == ColorSpace.RGB
+        assert Image.from_numpy(np.zeros((4, 5, 4), dtype=np.uint8)).pixel_format.color_space == ColorSpace.UNKNOWN
+
+    def test_from_numpy_rejects_a_mismatching_color_space(self):
+        with pytest.raises(ValueCheckError, match="color space"):
+            Image.from_numpy(np.zeros((4, 5, 1), dtype=np.uint8), color_space=ColorSpace.RGB)
+
+    def test_from_dlpack_infers_the_color_space(self):
+        gray = Image.from_dlpack(np.zeros((1, 4, 5), dtype=np.uint8).__dlpack__())
+        assert gray.pixel_format.color_space == ColorSpace.GRAY
+        multi = Image.from_dlpack(np.zeros((4, 4, 5), dtype=np.uint8).__dlpack__())
+        assert multi.pixel_format.color_space == ColorSpace.UNKNOWN
+
+    @pytest.mark.parametrize(
+        ("dtype", "bits", "ok"),
+        [(torch.uint8, 8, True), (torch.uint8, 12, False), (torch.uint16, 16, True), (torch.uint16, 12, False)],
+    )
+    def test_bit_depth_is_the_storage_bits(self, dtype, bits, ok):
+        data = torch.zeros(3, 4, 5, dtype=dtype)
+        pf = PixelFormat(color_space=ColorSpace.RGB, bit_depth=bits)
+        layout = ImageLayout(ImageSize(4, 5), 3, ChannelsOrder.CHANNELS_FIRST)
+        if ok:
+            assert Image(data, pf, layout).pixel_format.bit_depth == bits
+        else:
+            with pytest.raises(ValueCheckError, match="bit depth"):
+                Image(data, pf, layout)
+
+    def test_pixel_format_checks_follow_disable_checks(self):
+        from kornia.core.check import disable_checks, enable_checks
+
+        layout = ImageLayout(ImageSize(4, 5), 1, ChannelsOrder.CHANNELS_FIRST)
+        disable_checks()
+        try:
+            img = Image(torch.zeros(1, 4, 5, dtype=torch.uint8), PixelFormat(ColorSpace.RGB, 12), layout)
+        finally:
+            enable_checks()
+        assert img.pixel_format.bit_depth == 12
+
+    def test_color_space_is_exported(self):
+        import kornia.image
+
+        assert kornia.image.ColorSpace is ColorSpace
+        assert "ColorSpace" in kornia.image.__all__
+
+    @pytest.mark.parametrize("order", [ChannelsOrder.CHANNELS_LAST, ChannelsOrder.CHANNELS_FIRST])
+    @pytest.mark.parametrize("height", [4, 3])
+    def test_print_renders_the_channels_first_image(self, device, order, height, capsys) -> None:
+        chw = (torch.arange(3 * height * 5, device=device).reshape(3, height, 5) * 4).to(torch.uint8)
+        data = chw.permute(1, 2, 0).contiguous() if order == ChannelsOrder.CHANNELS_LAST else chw
+        make_image(data, ColorSpace.RGB, order).print()
+        assert capsys.readouterr().out == image_to_string(chw.cpu()) + "\n"  # the CPU result
 
 
 def make_image(data: torch.Tensor, cs: ColorSpace, order: ChannelsOrder) -> Image:

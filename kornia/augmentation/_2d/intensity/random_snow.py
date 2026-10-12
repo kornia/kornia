@@ -28,10 +28,12 @@ from kornia.core.check import KORNIA_CHECK
 class RandomSnow(IntensityAugmentationBase2D):
     r"""Generates snow effect on given torch.Tensor image or a batch torch.Tensor images.
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         snow_coefficient: A tuple of floats (lower and upper bound) between 0 and 1 that control
         the amount of snow to add to the image, the larger value corresponds to the more snow.
-        brightness: A tuple of floats (lower and upper bound) greater than 1 that controls the
+        brightness: A tuple of floats (lower and upper bound) of ``1`` or greater that controls the
         brightness of the snow.
         same_on_batch: If True, apply the same transformation to each image in a batch. Default: False.
         p: Probability of applying the transformation. Default: 0.5.
@@ -40,6 +42,22 @@ class RandomSnow(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - the input must have three channels: the effect is computed in HLS, and any other channel count
+          raises on the forward pass.
+        - ``snow_coefficient`` is checked against ``[0, 1]`` at construction, where ``brightness`` must be
+          ``1`` or greater.
+        - the output as a whole is not clamped. Only a snow-covered pixel -- one whose lightness is below the
+          drawn ``snow_coefficient`` -- has its lightness scaled by ``brightness`` and clamped into ``[0, 1]``, so
+          it comes back white once its scaled lightness reaches ``1``. A pixel the snow misses goes through the
+          HLS round trip unclamped, except where the HLS saturation is undefined: a lightness of exactly ``1``
+          with a channel above ``1``, such as ``(1.5, 0.5, 0.5)``, comes back white.
+
+    .. warning::
+        An input whose values are all negative comes back as an all-zero image, and any pixel whose lightness is
+        zero or negative, such as ``(2.0, -2.0, -2.0)``, comes back black. Tracked in
+        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     Examples:
         >>> inputs = torch.rand(2, 3, 4, 4)
@@ -60,7 +78,7 @@ class RandomSnow(IntensityAugmentationBase2D):
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         KORNIA_CHECK(all(0 <= el <= 1 for el in snow_coefficient), "Snow coefficient values must be between 0 and 1.")
-        KORNIA_CHECK(all(1 <= el for el in brightness), "Brightness values must be greater than 1.")
+        KORNIA_CHECK(all(1 <= el for el in brightness), "Brightness values must be 1 or greater.")
 
         self._param_generator = rg.PlainUniformGenerator(
             (snow_coefficient, "snow_coefficient", 0.5, (0.0, 1.0)), (brightness, "brightness", None, None)
@@ -93,5 +111,4 @@ class RandomSnow(IntensityAugmentationBase2D):
         new_light = (input_HLS * mask * brightness).clamp(min=0.0, max=1.0)
         input_HLS = input_HLS * (1 - mask) + new_light
 
-        output = hls_to_rgb(input_HLS)
-        return output
+        return hls_to_rgb(input_HLS)

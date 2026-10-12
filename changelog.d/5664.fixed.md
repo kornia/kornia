@@ -1,0 +1,1 @@
+Move constructor tensor weights and coefficients with `.to()` in DiceLoss, FocalLoss, BinaryFocalLossWithLogits, LovaszSoftmaxLoss, RgbToRgba, BgrToRgba and AddWeighted, preserving explicit Parameters and checkpoint keys.

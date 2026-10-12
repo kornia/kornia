@@ -70,13 +70,13 @@ class TestSam(BaseTester):
 
         from kornia.core.exceptions import ShapeError
 
+        data = torch.rand(3, 1, 2)
         with pytest.raises(ShapeError) as errinfo:
-            data = torch.rand(3, 1, 2)
             model(data, [], False)
         assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
+        data = torch.rand(2, 3, 1, 2)
         with pytest.raises(Exception) as errinfo:
-            data = torch.rand(2, 3, 1, 2)
             model(data, [{}], False)
         assert "The number of images (`B`) should match with the length of prompts!" in str(errinfo)
 

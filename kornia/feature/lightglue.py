@@ -26,17 +26,9 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.download import hf_url, load_state_dict_from_url
+from kornia.core.utils import is_exporting
 from kornia.feature.laf import laf_to_three_points, scale_laf
-
-try:
-    from flash_attn.modules.mha import FlashCrossAttention
-except ModuleNotFoundError:
-    FlashCrossAttention = None
-
-if FlashCrossAttention or hasattr(F, "scaled_dot_product_attention"):
-    FLASH_AVAILABLE = True
-else:
-    FLASH_AVAILABLE = False
 
 
 def math_clamp(x, min_, max_):  # type: ignore
@@ -44,22 +36,25 @@ def math_clamp(x, min_, max_):  # type: ignore
     return min(max(x, min_), max_)
 
 
-AMP_CUSTOM_FWD_F32 = (
-    torch.amp.custom_fwd(cast_inputs=torch.float32, device_type="cuda")
-    if hasattr(torch, "amp") and hasattr(torch.amp, "custom_fwd")
-    else torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
-)
-
-
-@AMP_CUSTOM_FWD_F32
 def normalize_keypoints(kpts: torch.Tensor, size: torch.Tensor) -> torch.Tensor:
     """Normalize torch.Tensor of keypoints."""
     if isinstance(size, torch.Size):
         size = torch.tensor(size)[None]
+    # Under an active autocast, cast fp16/bf16 inputs to fp32 so the normalisation
+    # arithmetic runs at full precision regardless of the accelerator.
+    # Deriving the autocast device from the input tensor itself is correct for any
+    # backend (CUDA, NPU, XPU, MPS) and on CPU-only builds where
+    # ``torch.accelerator.current_accelerator()`` would be ``None``.
+    device_type = kpts.device.type
+    if (
+        kpts.is_floating_point()
+        and kpts.dtype in (torch.float16, torch.bfloat16)
+        and torch.is_autocast_enabled(device_type)
+    ):
+        kpts = kpts.to(torch.float32)
     shift = size.float().to(kpts) / 2
     scale = size.max(1).values.float().to(kpts) / 2
-    kpts = (kpts - shift[:, None]) / scale[:, None, None]
-    return kpts
+    return (kpts - shift[:, None]) / scale[:, None, None]
 
 
 def pad_to_length(x: torch.Tensor, length: int) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -143,43 +138,35 @@ class Attention(nn.Module):
 
     def __init__(self, allow_flash: bool) -> None:
         super().__init__()
-        if allow_flash and not FLASH_AVAILABLE:
-            warnings.warn(
-                "FlashAttention is not available. For optimal speed, consider installing torch >= 2.0 or flash-attn.",
-                stacklevel=2,
-            )
-        self.enable_flash = allow_flash and FLASH_AVAILABLE
-        self.has_sdp = hasattr(F, "scaled_dot_product_attention")
-        if allow_flash and FlashCrossAttention:
-            self.flash_ = FlashCrossAttention()
-        if self.has_sdp:
-            torch.backends.cuda.enable_flash_sdp(allow_flash)
+        self.allow_flash = allow_flash
+        torch.backends.cuda.enable_flash_sdp(allow_flash)
 
     def forward(
         self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        if self.enable_flash and q.device.type == "cuda":
+        """Apply multi-head attention to query, key, and value tensors.
+
+        Args:
+            q: Query tensor with shape :math:`(B, H, N_q, D_h)`, where ``B`` is batch size,
+                ``H`` is the number of attention heads, ``N_q`` is the number of query tokens,
+                and ``D_h`` is the per-head descriptor dimension.
+            k: Key tensor with shape :math:`(B, H, N_k, D_h)`, where ``N_k`` is the number
+                of key tokens.
+            v: Value tensor with shape :math:`(B, H, N_k, D_h)`.
+            mask: Optional boolean attention mask. ``True`` entries mark token pairs that
+                are allowed to attend to each other.
+
+        Returns:
+            Attention output with shape :math:`(B, H, N_q, D_h)`.
+        """
+        if self.allow_flash and q.device.type == "cuda":
             # use torch 2.0 scaled_dot_product_attention with flash
-            if self.has_sdp:
-                args = [x.half().contiguous() for x in [q, k, v]]
-                v = F.scaled_dot_product_attention(*args, attn_mask=mask).to(q.dtype)  # type: ignore
-                return v if mask is None else v.nan_to_num()
-            else:
-                KORNIA_CHECK(mask is None)
-                q, k, v = (x.transpose(-2, -3).contiguous() for x in [q, k, v])
-                m = self.flash_(q.half(), torch.stack([k, v], 2).half())
-                return m.transpose(-2, -3).to(q.dtype).clone()
-        elif self.has_sdp:
-            args = [x.contiguous() for x in [q, k, v]]
-            v = F.scaled_dot_product_attention(*args, attn_mask=mask)  # type: ignore
+            args = [x.half().contiguous() for x in [q, k, v]]
+            v = F.scaled_dot_product_attention(*args, attn_mask=mask).to(q.dtype)  # type: ignore
             return v if mask is None else v.nan_to_num()
-        else:
-            s = q.shape[-1] ** -0.5
-            sim = torch.einsum("...id,...jd->...ij", q, k) * s
-            if mask is not None:
-                sim.masked_fill(~mask, -float("inf"))
-            attn = F.softmax(sim, -1)
-            return torch.einsum("...ij,...jd->...id", attn, v)
+        args = [x.contiguous() for x in [q, k, v]]
+        v = F.scaled_dot_product_attention(*args, attn_mask=mask)  # type: ignore
+        return v if mask is None else v.nan_to_num()
 
 
 class SelfBlock(nn.Module):
@@ -214,6 +201,18 @@ class SelfBlock(nn.Module):
         encoding: torch.Tensor,
         mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        """Update descriptors from one image using self-attention.
+
+        Args:
+            x: Descriptor tensor with shape :math:`(B, N, D)`, where ``B`` is batch size,
+                ``N`` is the number of local features, and ``D`` is descriptor dimension.
+            encoding: Positional encoding tensor aligned with ``x`` and used for rotary
+                position embedding inside attention.
+            mask: Optional boolean mask limiting which descriptors may attend to each other.
+
+        Returns:
+            Updated descriptor tensor with the same shape as ``x``.
+        """
         qkv = self.Wqkv(x)
         qkv = qkv.unflatten(-1, (self.num_heads, -1, 3)).transpose(1, 2)
         q, k, v = qkv[..., 0], qkv[..., 1], qkv[..., 2]
@@ -249,17 +248,40 @@ class CrossBlock(nn.Module):
             nn.GELU(),
             nn.Linear(2 * embed_dim, embed_dim),
         )
-        if flash and FLASH_AVAILABLE:
+        if flash:
             self.flash = Attention(True)
         else:
             self.flash = None  # type: ignore
 
     def map_(self, func: Callable, x0: torch.Tensor, x1: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
+        """Apply the same function to descriptor tensors from both images.
+
+        Args:
+            func: Callable applied independently to ``x0`` and ``x1``.
+            x0: Descriptor tensor for the first image.
+            x1: Descriptor tensor for the second image.
+
+        Returns:
+            A tuple containing ``func(x0)`` and ``func(x1)``.
+        """
         return func(x0), func(x1)
 
     def forward(
         self, x0: torch.Tensor, x1: torch.Tensor, mask: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Exchange information between two images using cross-attention.
+
+        Args:
+            x0: Descriptor tensor from the first image with shape :math:`(B, M, D)`,
+                where ``M`` is the number of local features in image 0.
+            x1: Descriptor tensor from the second image with shape :math:`(B, N, D)`,
+                where ``N`` is the number of local features in image 1.
+            mask: Optional boolean mask with shape :math:`(B, H, M, N)` or a broadcastable
+                equivalent, marking valid descriptor pairs.
+
+        Returns:
+            A tuple ``(x0_out, x1_out)`` with updated descriptors for both images.
+        """
         qk0, qk1 = self.map_(self.to_qk, x0, x1)
         v0, v1 = self.map_(self.to_v, x0, x1)
         qk0, qk1, v0, v1 = (t.unflatten(-1, (self.heads, -1)).transpose(1, 2) for t in (qk0, qk1, v0, v1))
@@ -305,12 +327,24 @@ class TransformerLayer(nn.Module):
         mask0: Optional[torch.Tensor] = None,
         mask1: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        """Run one LightGlue transformer layer over two descriptor sets.
+
+        Args:
+            desc0: Descriptor tensor from image 0 with shape :math:`(B, M, D)`.
+            desc1: Descriptor tensor from image 1 with shape :math:`(B, N, D)`.
+            encoding0: Positional encoding for ``desc0``.
+            encoding1: Positional encoding for ``desc1``.
+            mask0: Optional validity mask for descriptors in image 0.
+            mask1: Optional validity mask for descriptors in image 1.
+
+        Returns:
+            A tuple containing updated descriptor tensors for image 0 and image 1.
+        """
         if mask0 is not None and mask1 is not None:
             return self.masked_forward(desc0, desc1, encoding0, encoding1, mask0, mask1)
-        else:
-            desc0 = self.self_attn(desc0, encoding0)
-            desc1 = self.self_attn(desc1, encoding1)
-            return self.cross_attn(desc0, desc1)
+        desc0 = self.self_attn(desc0, encoding0)
+        desc1 = self.self_attn(desc1, encoding1)
+        return self.cross_attn(desc0, desc1)
 
     # This part is compiled and allows padding inputs
     def masked_forward(
@@ -322,6 +356,19 @@ class TransformerLayer(nn.Module):
         mask0: torch.Tensor,
         mask1: torch.Tensor,
     ) -> torch.Tensor:
+        """Run the transformer layer with explicit descriptor validity masks.
+
+        Args:
+            desc0: Descriptor tensor from image 0 with shape :math:`(B, M, D)`.
+            desc1: Descriptor tensor from image 1 with shape :math:`(B, N, D)`.
+            encoding0: Positional encoding for image 0 descriptors.
+            encoding1: Positional encoding for image 1 descriptors.
+            mask0: Boolean mask for valid image 0 descriptors.
+            mask1: Boolean mask for valid image 1 descriptors.
+
+        Returns:
+            A tuple with masked self-attention and cross-attention updates for both images.
+        """
         mask = mask0 & mask1.transpose(-1, -2)
         mask0 = mask0 & mask0.transpose(-1, -2)
         mask1 = mask1 & mask1.transpose(-1, -2)
@@ -368,6 +415,15 @@ class MatchAssignment(nn.Module):
         return scores, sim
 
     def get_matchability(self, desc: torch.Tensor) -> torch.Tensor:
+        """Estimate how likely each descriptor is to obtain a valid match.
+
+        Args:
+            desc: Descriptor tensor with shape :math:`(B, N, D)`, where ``N`` is the
+                number of local features.
+
+        Returns:
+            Matchability probabilities with shape :math:`(B, N)`.
+        """
         return torch.sigmoid(self.matchability(desc)).squeeze(-1)
 
 
@@ -388,6 +444,20 @@ def filter_matches(scores: torch.Tensor, th: float) -> Tuple[torch.Tensor, torch
     m0 = torch.where(valid0, m0, -1)
     m1 = torch.where(valid1, m1, -1)
     return m0, m1, mscores0, mscores1
+
+
+_KEYPOINT_RANGE_MSG = (
+    "Keypoints must lie inside the image: normalized by the image size they have to be in [-1, 1]. The keypoints are "
+    "(x, y) pixel coordinates. The image size is (width, height) for the ``image_size`` of LightGlue and "
+    "OnnxLightGlue, and (height, width) for the ``hw1`` / ``hw2`` of LightGlueMatcher; the wrong order, or keypoints "
+    "detected on a differently sized image, put them out of range."
+)
+
+
+def _check_keypoints_normalized(kpts: torch.Tensor) -> None:
+    """Check that keypoints lie in [-1, 1]; skipped under export, where reading the data is not possible."""
+    if not is_exporting():
+        KORNIA_CHECK(torch.all(kpts >= -1).item() and torch.all(kpts <= 1).item(), _KEYPOINT_RANGE_MSG)  # type: ignore
 
 
 class LightGlue(nn.Module):
@@ -531,24 +601,39 @@ class LightGlue(nn.Module):
             if features == "dog_affnet_hardnet":
                 features = "doghardnet"  # new dog model is better for affnet as well
             if features in ["keynet_affnet_hardnet"]:
-                fname = "keynet_affnet_hardnet_lightlue.pth"
-                url = "http://cmp.felk.cvut.cz/~mishkdmy/models/keynet_affnet_hardnet_lightlue.pth"
+                fname = "keynet_affnet_hardnet_lightglue.pth"
+                url = [
+                    hf_url("lightglue", "keynet_affnet_hardnet_lightglue.pth"),
+                    "https://cmp.felk.cvut.cz/~mishkdmy/models/keynet_affnet_hardnet_lightlue.pth",
+                ]
             elif features in ["dedodeb"]:
                 fname = "dedodeb_lightglue.pth"
-                url = "http://cmp.felk.cvut.cz/~mishkdmy/models/dedodeb_lightglue.pth"
+                url = [
+                    hf_url("lightglue", "dedodeb_lightglue.pth"),
+                    "https://cmp.felk.cvut.cz/~mishkdmy/models/dedodeb_lightglue.pth",
+                ]
             elif features in ["dedodeg"]:
                 fname = "dedodeg_lightglue.pth"
-                url = "http://cmp.felk.cvut.cz/~mishkdmy/models/dedodeg_lightglue.pth"
+                url = [
+                    hf_url("lightglue", "dedodeg_lightglue.pth"),
+                    "https://cmp.felk.cvut.cz/~mishkdmy/models/dedodeg_lightglue.pth",
+                ]
             elif features == "xfeat":
                 fname = "xfeat-lighterglue.pt"
-                url = "https://github.com/verlab/accelerated_features/raw/main/weights/xfeat-lighterglue.pt"
+                url = [
+                    hf_url("lightglue", "xfeat-lighterglue.pt"),
+                    "https://github.com/verlab/accelerated_features/raw/main/weights/xfeat-lighterglue.pt",
+                ]
             else:
-                url = self.url.format(self.version, features.replace("-", "_"))
-            state_dict = torch.hub.load_state_dict_from_url(url, file_name=fname)
+                url = [
+                    hf_url("lightglue", f"{features.replace('-', '_')}_lightglue.pth"),
+                    self.url.format(self.version, features.replace("-", "_")),
+                ]
+            state_dict = load_state_dict_from_url(url, file_name=fname)
         elif conf.weights is not None:
             path = Path(__file__).parent
             path = path / f"weights/{self.conf.weights}.pth"
-            state_dict = torch.load(str(path), map_location="cpu")
+            state_dict = torch.load(str(path), map_location="cpu", weights_only=True)
         if state_dict:
             # xfeat-lighterglue weights are nested under a 'matcher.' prefix
             prefix = "matcher."
@@ -560,13 +645,19 @@ class LightGlue(nn.Module):
                 pattern = f"cross_attn.{i}", f"transformers.{i}.cross_attn"
                 state_dict = {k.replace(*pattern): v for k, v in state_dict.items()}
             self.load_state_dict(state_dict, strict=False)
-        print("Loaded LightGlue model")
         # static lengths LightGlue is compiled for (only used with torch.compile)
         self.static_lengths = None
 
     def compile(
         self, mode: str = "reduce-overhead", static_lengths: Sequence[int] = (256, 512, 768, 1024, 1280, 1536)
     ) -> None:
+        """Compile masked transformer layers with ``torch.compile``.
+
+        Args:
+            mode: Compilation mode forwarded to ``torch.compile``.
+            static_lengths: Descriptor sequence lengths prepared for compiled execution.
+                These lengths represent possible numbers of local features.
+        """
         if self.conf.width_confidence != -1:
             warnings.warn(
                 "Point pruning is partially disabled for compiled forward.",
@@ -606,7 +697,8 @@ class LightGlue(nn.Module):
             matching_scores1: [B x N]
             matches: List[[Si x 2]], scores: List[[Si]]
         """
-        with torch.autocast(enabled=self.conf.mp, device_type="cuda"):
+        device_type = data["image0"]["keypoints"].device.type
+        with torch.autocast(enabled=self.conf.mp, device_type=device_type):
             return self._forward(data)
 
     def _forward(self, data: dict) -> dict:  # type: ignore
@@ -623,8 +715,8 @@ class LightGlue(nn.Module):
 
         kpts0 = normalize_keypoints(kpts0, size0).clone()
         kpts1 = normalize_keypoints(kpts1, size1).clone()
-        KORNIA_CHECK(torch.all(kpts0 >= -1).item() and torch.all(kpts0 <= 1).item(), "")  # type: ignore
-        KORNIA_CHECK(torch.all(kpts1 >= -1).item() and torch.all(kpts1 <= 1).item(), "")  # type: ignore
+        _check_keypoints_normalized(kpts0)
+        _check_keypoints_normalized(kpts1)
         if self.conf.add_scale_ori:
             kpts0 = torch.cat([kpts0] + [data0[k].unsqueeze(-1) for k in ("scales", "oris")], -1)
             if self.conf.scale_coef != 1.0:
@@ -680,7 +772,8 @@ class LightGlue(nn.Module):
         KORNIA_CHECK(desc0.shape[-1] == self.conf.input_dim, "Descriptor dimension does not match input dim in config")
         KORNIA_CHECK(desc1.shape[-1] == self.conf.input_dim, "Descriptor dimension does not match input dim in config")
 
-        if torch.is_autocast_enabled():
+        device_type = desc0.device.type
+        if device_type != "cpu" and torch.is_autocast_enabled(device_type):
             desc0 = desc0.half()
             desc1 = desc1.half()
 
@@ -788,7 +881,7 @@ class LightGlue(nn.Module):
             prune0 = torch.ones_like(mscores0) * self.conf.n_layers
             prune1 = torch.ones_like(mscores1) * self.conf.n_layers
 
-        pred = {
+        return {
             "log_assignment": scores,
             "matches0": m0,
             "matches1": m1,
@@ -800,8 +893,6 @@ class LightGlue(nn.Module):
             "prune0": prune0,
             "prune1": prune1,
         }
-
-        return pred
 
     def confidence_threshold(self, layer_index: int) -> float:
         """Scaled confidence threshold."""
@@ -829,7 +920,15 @@ class LightGlue(nn.Module):
         return ratio_confident > self.conf.depth_confidence
 
     def pruning_min_kpts(self, device: torch.device) -> int:
-        if self.conf.flash and FLASH_AVAILABLE and device.type == "cuda":
+        """Return the minimum keypoint count needed before pruning is enabled.
+
+        Args:
+            device: Torch device on which descriptors are processed.
+
+        Returns:
+            Minimum number of keypoints required for width pruning on that device.
+            A negative value disables pruning for the device.
+        """
+        if self.conf.flash and device.type == "cuda":
             return self.pruning_keypoint_thresholds["flash"]
-        else:
-            return self.pruning_keypoint_thresholds[device.type]
+        return self.pruning_keypoint_thresholds[device.type]

@@ -141,6 +141,20 @@ class EfficientViTBackbone(nn.Module):
         act_func: str,
         fewer_norm: bool = False,
     ) -> nn.Module:
+        """Build the local convolution block used between EfficientViT stages.
+
+        Args:
+            in_channels: Number of input feature channels.
+            out_channels: Number of output feature channels.
+            stride: Spatial stride for the block.
+            expand_ratio: Expansion ratio used by MBConv-style blocks.
+            norm: Normalization layer name.
+            act_func: Activation function name.
+            fewer_norm: If ``True``, omit selected normalization layers.
+
+        Returns:
+            Depthwise-separable or inverted-bottleneck convolution block.
+        """
         if expand_ratio == 1:
             block = DSConv(
                 in_channels=in_channels,
@@ -163,6 +177,15 @@ class EfficientViTBackbone(nn.Module):
         return block
 
     def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Run the EfficientViT backbone and collect stage outputs.
+
+        Args:
+            x: Image tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Dictionary containing the input, each stage output, and
+            ``"stage_final"`` for the final feature map.
+        """
         output_dict = {"input": x}
         output_dict["stage0"] = x = self.input_stem(x)
         for stage_id, stage in enumerate(self.stages, 1):
@@ -173,46 +196,42 @@ class EfficientViTBackbone(nn.Module):
 
 def efficientvit_backbone_b0(**kwargs: dict[str, Any]) -> EfficientViTBackbone:
     """Create EfficientViT B0."""
-    backbone = EfficientViTBackbone(
+    return EfficientViTBackbone(
         width_list=[8, 16, 32, 64, 128],
         depth_list=[1, 2, 2, 2, 2],
         dim=16,
         **build_kwargs_from_config(kwargs, EfficientViTBackbone),
     )
-    return backbone
 
 
 def efficientvit_backbone_b1(**kwargs: dict[str, Any]) -> EfficientViTBackbone:
     """Create EfficientViT B1."""
-    backbone = EfficientViTBackbone(
+    return EfficientViTBackbone(
         width_list=[16, 32, 64, 128, 256],
         depth_list=[1, 2, 3, 3, 4],
         dim=16,
         **build_kwargs_from_config(kwargs, EfficientViTBackbone),
     )
-    return backbone
 
 
 def efficientvit_backbone_b2(**kwargs: dict[str, Any]) -> EfficientViTBackbone:
     """Create EfficientViT B2."""
-    backbone = EfficientViTBackbone(
+    return EfficientViTBackbone(
         width_list=[24, 48, 96, 192, 384],
         depth_list=[1, 3, 4, 4, 6],
         dim=32,
         **build_kwargs_from_config(kwargs, EfficientViTBackbone),
     )
-    return backbone
 
 
 def efficientvit_backbone_b3(**kwargs: dict[str, Any]) -> EfficientViTBackbone:
     """Create EfficientViT B3."""
-    backbone = EfficientViTBackbone(
+    return EfficientViTBackbone(
         width_list=[32, 64, 128, 256, 512],
         depth_list=[1, 4, 6, 6, 9],
         dim=32,
         **build_kwargs_from_config(kwargs, EfficientViTBackbone),
     )
-    return backbone
 
 
 class EfficientViTLargeBackbone(nn.Module):
@@ -323,6 +342,21 @@ class EfficientViTLargeBackbone(nn.Module):
         act_func: str,
         fewer_norm: bool = False,
     ) -> nn.Module:
+        """Build a local block for an EfficientViT large stage.
+
+        Args:
+            stage_id: Index of the stage being constructed.
+            in_channels: Number of input feature channels.
+            out_channels: Number of output feature channels.
+            stride: Spatial stride for the block.
+            expand_ratio: Expansion ratio controlling intermediate channels.
+            norm: Normalization layer name.
+            act_func: Activation function name.
+            fewer_norm: If ``True``, use the reduced-normalization variant.
+
+        Returns:
+            Residual, fused-MBConv, or MBConv block chosen for the stage.
+        """
         if expand_ratio == 1:
             block = ResBlock(
                 in_channels=in_channels,
@@ -355,6 +389,15 @@ class EfficientViTLargeBackbone(nn.Module):
         return block
 
     def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Run the EfficientViT large backbone and collect stage outputs.
+
+        Args:
+            x: Image tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Dictionary with entries for each stage and ``"stage_final"`` for
+            the final feature map.
+        """
         output_dict = {"input": x}
         for stage_id, stage in enumerate(self.stages):
             output_dict[f"stage{stage_id}"] = x = stage(x)
@@ -364,39 +407,35 @@ class EfficientViTLargeBackbone(nn.Module):
 
 def efficientvit_backbone_l0(**kwargs: dict[str, Any]) -> EfficientViTLargeBackbone:
     """Create EfficientViT L0."""
-    backbone = EfficientViTLargeBackbone(
+    return EfficientViTLargeBackbone(
         width_list=[32, 64, 128, 256, 512],
         depth_list=[1, 1, 1, 4, 4],
         **build_kwargs_from_config(kwargs, EfficientViTLargeBackbone),
     )
-    return backbone
 
 
 def efficientvit_backbone_l1(**kwargs: dict[str, Any]) -> EfficientViTLargeBackbone:
     """Create EfficientViT L."""
-    backbone = EfficientViTLargeBackbone(
+    return EfficientViTLargeBackbone(
         width_list=[32, 64, 128, 256, 512],
         depth_list=[1, 1, 1, 6, 6],
         **build_kwargs_from_config(kwargs, EfficientViTLargeBackbone),
     )
-    return backbone
 
 
 def efficientvit_backbone_l2(**kwargs: dict[str, Any]) -> EfficientViTLargeBackbone:
     """Create EfficientViT L2."""
-    backbone = EfficientViTLargeBackbone(
+    return EfficientViTLargeBackbone(
         width_list=[32, 64, 128, 256, 512],
         depth_list=[1, 2, 2, 8, 8],
         **build_kwargs_from_config(kwargs, EfficientViTLargeBackbone),
     )
-    return backbone
 
 
 def efficientvit_backbone_l3(**kwargs: dict[str, Any]) -> EfficientViTLargeBackbone:
     """Create EfficientViT L3."""
-    backbone = EfficientViTLargeBackbone(
+    return EfficientViTLargeBackbone(
         width_list=[64, 128, 256, 512, 1024],
         depth_list=[1, 2, 2, 8, 8],
         **build_kwargs_from_config(kwargs, EfficientViTLargeBackbone),
     )
-    return backbone

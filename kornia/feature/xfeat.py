@@ -38,6 +38,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.download import load_state_dict_from_url
 from kornia.geometry.subpix import nms2d
 
 
@@ -74,6 +75,14 @@ class BasicLayer(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        r"""Run the module forward pass.
+
+        Args:
+            x: Input feature map with shape :math:`(B, C_{\text{in}}, H, W)`.
+
+        Returns:
+            Output feature map with shape :math:`(B, C_{\text{out}}, H', W')`.
+        """
         return self.layer(x)
 
 
@@ -273,6 +282,16 @@ class XFeat(nn.Module):
         top_k: maximum number of keypoints to keep per image. Default: ``4096``.
         detection_threshold: minimum keypoint score. Default: ``0.05``.
 
+    Note:
+        Keypoints are the strict local maxima of the keypoint heatmap: :func:`~kornia.geometry.subpix.nms2d` keeps a
+        position only if its score is greater than every other score in its full 5x5 window. Tied maxima, and the
+        positions within 2 pixels of the border whose window runs off the image, are never keypoints. This departs
+        on purpose from the reference implementation (verlab/accelerated_features). Its NMS keeps every position
+        equal to the maximum of its window: all positions of a plateau survive, and whether a near-tie survives
+        depends on rounding-level differences of the scores. Its window is also clipped at the border, so it judges
+        a border position against part of its window. With the pretrained weights on Oxford graf and boat img1,
+        every candidate of the reference that kornia leaves out lies in that border strip.
+
     Example:
         >>> model = XFeat()
         >>> img = torch.rand(1, 3, 256, 256)
@@ -304,7 +323,7 @@ class XFeat(nn.Module):
             XFeat model with pretrained weights loaded, set to eval mode.
         """
         model = cls(top_k=top_k, detection_threshold=detection_threshold)
-        state_dict = torch.hub.load_state_dict_from_url(cls.weights_url, file_name="xfeat.pt")
+        state_dict = load_state_dict_from_url(cls.weights_url, file_name="xfeat.pt")
         model.net.load_state_dict(state_dict)
         model.eval()
         return model

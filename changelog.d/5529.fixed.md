@@ -1,0 +1,1 @@
+`median_blur` now returns NaN for every window of more than one pixel that holds a NaN or an infinity on every backend, as documented. Windows of 7x7 and larger, and inputs that require grad, no longer depend on how the backend's convolution handles `0 * NaN` and `0 * Inf` (CPU bfloat16 on x86 returned finite values there).

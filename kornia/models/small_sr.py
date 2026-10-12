@@ -51,20 +51,38 @@ class SmallSRNet(nn.Module):
                 weight_init(self)
 
     def load_from_file(self, path_file: str) -> None:
+        """Load pretrained super-resolution weights from the model cache.
+
+        Args:
+            path_file: Checkpoint URL or path passed to the cached downloader.
+                The downloaded state dictionary is loaded strictly and the
+                module is switched to evaluation mode.
+        """
         # use torch.hub to load pretrained model
         model_path = CachedDownloader.download_to_cache(
             path_file, "small_sr.pth", download=True, suffix=".pth", cache_dir=kornia_config.hub_onnx_dir
         )
-        pretrained_dict = torch.load(model_path, map_location=torch.device("cpu"))
+        pretrained_dict = torch.load(model_path, map_location=torch.device("cpu"), weights_only=True)
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Super-resolve a single-channel image tensor.
+
+        Args:
+            x: Luminance image tensor with shape :math:`(B, 1, H, W)`, where
+                :math:`B` is batch size, :math:`H` is height, and :math:`W` is
+                width.
+
+        Returns:
+            Upscaled luminance tensor with shape
+            :math:`(B, 1, H * r, W * r)`, where ``r`` is the configured
+            upscale factor.
+        """
         x = self.relu(self.conv1(x))
         x = self.relu(self.conv2(x))
         x = self.relu(self.conv3(x))
-        x = self.pixel_shuffle(self.conv4(x))
-        return x
+        return self.pixel_shuffle(self.conv4(x))
 
 
 def weight_init(module: nn.Module) -> None:
@@ -94,6 +112,17 @@ class SmallSRNetWrapper(nn.Module):
         self.upscale_factor = upscale_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Apply RGB super-resolution through a luminance-only SR model.
+
+        Args:
+            input: RGB image tensor with shape :math:`(B, 3, H, W)`.
+
+        Returns:
+            RGB tensor upscaled by ``self.upscale_factor``. The Y channel is
+            predicted by the super-resolution model, while Cb and Cr channels
+            are resized with bicubic interpolation before conversion back to
+            RGB.
+        """
         ycbcr = self.rgb_to_ycbcr(input)
         y, cb, cr = ycbcr.split(1, dim=1)
         out_y = self.model(y)

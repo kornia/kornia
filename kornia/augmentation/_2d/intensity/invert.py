@@ -29,6 +29,8 @@ class RandomInvert(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomInvert.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         max_val: The expected maximum value in the input tensor. The shape has to
           according to the input tensor shape, or at least has to work with broadcasting.
@@ -36,6 +38,12 @@ class RandomInvert(IntensityAugmentationBase2D):
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+
+    Convention:
+        - the output is ``max_val - input``, with no clamp, so an input outside ``[0, max_val]`` comes
+          back outside it rather than clipped. ``max_val`` describes the input's maximum, so it has to be
+          set to match an input that is not in ``[0, 1]``.
+
     .. note::
         This function internally uses :func:`kornia.enhance.invert`.
 

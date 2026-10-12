@@ -21,5 +21,6 @@ This package provides image input/output utilities, including image loading and 
 """
 
 from .io import ImageLoadType, load_image, write_image
+from .sample import get_sample_images
 
-__all__ = ["ImageLoadType", "load_image", "write_image"]
+__all__ = ["ImageLoadType", "get_sample_images", "load_image", "write_image"]

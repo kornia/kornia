@@ -57,25 +57,26 @@ class SwiGLUFFN(nn.Module):
         self.w3 = nn.Linear(hidden_features, out_features, bias=bias)
 
     def forward(self, x: Tensor) -> Tensor:
+        r"""Run this DeDoDe module forward.
+
+        Args:
+            x: Input token tensor with shape :math:`(B, N, C_{\text{in}})`.
+
+        Returns:
+            Output tensor with shape :math:`(B, N, C_{\text{out}})` after applying
+            the SwiGLU feed-forward transformation.
+        """
         x12 = self.w12(x)
         x1, x2 = x12.chunk(2, dim=-1)
         hidden = F.silu(x1) * x2
         return self.w3(hidden)
 
 
-try:
-    from xformers.ops import SwiGLU
+class SwiGLUFFNFused(SwiGLUFFN):
+    """Implement :class:`SwiGLUFFN` with the DINOv2 hidden-dimension rounding.
 
-    XFORMERS_AVAILABLE = True
-except ImportError:
-    SwiGLU = SwiGLUFFN
-    XFORMERS_AVAILABLE = False
-
-
-class SwiGLUFFNFused(SwiGLU):
-    """Implement the fused SwiGLU activation and Feed-Forward Network.
-
-    This implementation is optimized for training speed and memory usage.
+    The hidden dimension is scaled by ``2 / 3`` and rounded up to a multiple of 8, which is the
+    shape the pretrained DINOv2 checkpoints were saved with.
     """
 
     def __init__(

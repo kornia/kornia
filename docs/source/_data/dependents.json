@@ -1,0 +1,2463 @@
+{
+  "generated_at": "2026-09-02",
+  "packages": {
+    "complete": true,
+    "count": 321,
+    "items": [
+      {
+        "forks": 7640,
+        "name": "fastai/fastai",
+        "stars": 28130
+      },
+      {
+        "forks": 2968,
+        "name": "invoke-ai/InvokeAI",
+        "stars": 28113
+      },
+      {
+        "forks": 3603,
+        "name": "NVIDIA-NeMo/Speech",
+        "stars": 18376
+      },
+      {
+        "forks": 1070,
+        "name": "lucidrains/DALLE2-pytorch",
+        "stars": 11302
+      },
+      {
+        "forks": 2854,
+        "name": "open-mmlab/mmsegmentation",
+        "stars": 9939
+      },
+      {
+        "forks": 1150,
+        "name": "roboflow/rf-detr",
+        "stars": 9140
+      },
+      {
+        "forks": 962,
+        "name": "modelscope/modelscope",
+        "stars": 9121
+      },
+      {
+        "forks": 795,
+        "name": "lucidrains/imagen-pytorch",
+        "stars": 8425
+      },
+      {
+        "forks": 471,
+        "name": "brycedrennan/imaginAIry",
+        "stars": 8179
+      },
+      {
+        "forks": 1010,
+        "name": "kyegomez/swarms",
+        "stars": 7117
+      },
+      {
+        "forks": 1340,
+        "name": "Trusted-AI/adversarial-robustness-toolbox",
+        "stars": 6213
+      },
+      {
+        "forks": 977,
+        "name": "open-edge-platform/anomalib",
+        "stars": 6110
+      },
+      {
+        "forks": 582,
+        "name": "torchgeo/torchgeo",
+        "stars": 4166
+      },
+      {
+        "forks": 225,
+        "name": "TencentARC/T2I-Adapter",
+        "stars": 3801
+      },
+      {
+        "forks": 582,
+        "name": "lucidrains/stylegan2-pytorch",
+        "stars": 3783
+      },
+      {
+        "forks": 397,
+        "name": "catalyst-team/catalyst",
+        "stars": 3382
+      },
+      {
+        "forks": 297,
+        "name": "henrywoo/pyllama",
+        "stars": 2778
+      },
+      {
+        "forks": 260,
+        "name": "georgia-tech-db/evadb",
+        "stars": 2672
+      },
+      {
+        "forks": 400,
+        "name": "crowsonkb/k-diffusion",
+        "stars": 2600
+      },
+      {
+        "forks": 518,
+        "name": "Lightning-AI/torchmetrics",
+        "stars": 2465
+      },
+      {
+        "forks": 248,
+        "name": "lucidrains/byol-pytorch",
+        "stars": 1902
+      },
+      {
+        "forks": 211,
+        "name": "Lightning-Universe/lightning-flash",
+        "stars": 1722
+      },
+      {
+        "forks": 267,
+        "name": "takuseno/d3rlpy",
+        "stars": 1684
+      },
+      {
+        "forks": 219,
+        "name": "lucidrains/lightweight-gan",
+        "stars": 1682
+      },
+      {
+        "forks": 221,
+        "name": "WecoAI/aideml",
+        "stars": 1498
+      },
+      {
+        "forks": 166,
+        "name": "gradslam/gradslam",
+        "stars": 1423
+      },
+      {
+        "forks": 142,
+        "name": "huggingface/finetrainers",
+        "stars": 1359
+      },
+      {
+        "forks": 477,
+        "name": "open-edge-platform/geti",
+        "stars": 1325
+      },
+      {
+        "forks": 128,
+        "name": "Vincentqyw/image-matching-webui",
+        "stars": 1301
+      },
+      {
+        "forks": 119,
+        "name": "plemeri/transparent-background",
+        "stars": 1287
+      },
+      {
+        "forks": 208,
+        "name": "qualcomm/ai-hub-models",
+        "stars": 1195
+      },
+      {
+        "forks": 80,
+        "name": "gmberton/vismatch",
+        "stars": 910
+      },
+      {
+        "forks": 212,
+        "name": "deepinv/deepinv",
+        "stars": 799
+      },
+      {
+        "forks": 262,
+        "name": "weecology/DeepForest",
+        "stars": 769
+      },
+      {
+        "forks": 110,
+        "name": "computational-cell-analytics/micro-sam",
+        "stars": 716
+      },
+      {
+        "forks": 197,
+        "name": "kornia/kornia-rs",
+        "stars": 699
+      },
+      {
+        "forks": 34,
+        "name": "lucidrains/magvit2-pytorch",
+        "stars": 668
+      },
+      {
+        "forks": 95,
+        "name": "greentfrapp/lucent",
+        "stars": 664
+      },
+      {
+        "forks": 77,
+        "name": "3DOM-FBK/deep-image-matching",
+        "stars": 546
+      },
+      {
+        "forks": 36,
+        "name": "JalaliLabUCLA/phycv",
+        "stars": 526
+      },
+      {
+        "forks": 76,
+        "name": "nodetool-ai/nodetool",
+        "stars": 509
+      },
+      {
+        "forks": 24,
+        "name": "KohakuBlueleaf/PixelOE",
+        "stars": 489
+      },
+      {
+        "forks": 69,
+        "name": "NVlabs/trajdata",
+        "stars": 456
+      },
+      {
+        "forks": 88,
+        "name": "argoverse/av2-api",
+        "stars": 414
+      },
+      {
+        "forks": 28,
+        "name": "Auto1111SDK/Auto1111SDK",
+        "stars": 414
+      },
+      {
+        "forks": 95,
+        "name": "cosanlab/py-feat",
+        "stars": 385
+      },
+      {
+        "forks": 43,
+        "name": "aristoteleo/spateo-release",
+        "stars": 343
+      },
+      {
+        "forks": 55,
+        "name": "paninski-lab/lightning-pose",
+        "stars": 319
+      },
+      {
+        "forks": 58,
+        "name": "galilai-group/stable-pretraining",
+        "stars": 306
+      },
+      {
+        "forks": 50,
+        "name": "eigenvivek/DiffDRR",
+        "stars": 289
+      },
+      {
+        "forks": 27,
+        "name": "lucidrains/pixel-level-contrastive-learning",
+        "stars": 267
+      },
+      {
+        "forks": 39,
+        "name": "instanseg/instanseg",
+        "stars": 237
+      },
+      {
+        "forks": 67,
+        "name": "MathOnco/valis",
+        "stars": 236
+      },
+      {
+        "forks": 24,
+        "name": "lightning-uq-box/lightning-uq-box",
+        "stars": 229
+      },
+      {
+        "forks": 10,
+        "name": "ethanweber/toon3d",
+        "stars": 225
+      },
+      {
+        "forks": 114,
+        "name": "DeepWok/mase",
+        "stars": 204
+      },
+      {
+        "forks": 38,
+        "name": "PyTomography/PyTomography",
+        "stars": 172
+      },
+      {
+        "forks": 35,
+        "name": "fieldsoftheworld/ftw-baselines",
+        "stars": 159
+      },
+      {
+        "forks": 11,
+        "name": "strath-ai/SatelliteCloudGenerator",
+        "stars": 156
+      },
+      {
+        "forks": 15,
+        "name": "lucidrains/transganformer",
+        "stars": 155
+      },
+      {
+        "forks": 16,
+        "name": "lucidrains/ETSformer-pytorch",
+        "stars": 154
+      },
+      {
+        "forks": 13,
+        "name": "lucidrains/contrastive-learner",
+        "stars": 153
+      },
+      {
+        "forks": 11,
+        "name": "apple/ml-pointersect",
+        "stars": 140
+      },
+      {
+        "forks": 34,
+        "name": "adobe/trustmark",
+        "stars": 138
+      },
+      {
+        "forks": 19,
+        "name": "nmichlo/disent",
+        "stars": 136
+      },
+      {
+        "forks": 8,
+        "name": "cnulab/HiAD",
+        "stars": 135
+      },
+      {
+        "forks": 31,
+        "name": "constantinpape/torch-em",
+        "stars": 128
+      },
+      {
+        "forks": 4,
+        "name": "3db/3db",
+        "stars": 126
+      },
+      {
+        "forks": 38,
+        "name": "jbohnslav/deepethogram",
+        "stars": 126
+      },
+      {
+        "forks": 4,
+        "name": "anguelos/tormentor",
+        "stars": 117
+      },
+      {
+        "forks": 21,
+        "name": "rajewsky-lab/openst",
+        "stars": 116
+      },
+      {
+        "forks": 13,
+        "name": "mehta-lab/VisCy",
+        "stars": 102
+      },
+      {
+        "forks": 12,
+        "name": "isaaccorley/pytorch-enhance",
+        "stars": 87
+      },
+      {
+        "forks": 15,
+        "name": "Unity-Technologies/datasetinsights",
+        "stars": 86
+      },
+      {
+        "forks": 20,
+        "name": "WildlifeDatasets/wildlife-tools",
+        "stars": 78
+      },
+      {
+        "forks": 7,
+        "name": "warner-benjamin/fastxtend",
+        "stars": 74
+      },
+      {
+        "forks": 6,
+        "name": "spencerwooo/torchattack",
+        "stars": 72
+      },
+      {
+        "forks": 20,
+        "name": "Haidra-Org/hordelib",
+        "stars": 70
+      },
+      {
+        "forks": 6,
+        "name": "facebookresearch/textseal",
+        "stars": 68
+      },
+      {
+        "forks": 1,
+        "name": "Knowledgator/LiqFit",
+        "stars": 68
+      },
+      {
+        "forks": 7,
+        "name": "kyegomez/StarlightVision",
+        "stars": 64
+      },
+      {
+        "forks": 5,
+        "name": "arnab39/equiadapt",
+        "stars": 61
+      },
+      {
+        "forks": 9,
+        "name": "Helmholtz-AI-Energy/HyDe",
+        "stars": 60
+      },
+      {
+        "forks": 6,
+        "name": "moverseai/moai",
+        "stars": 57
+      },
+      {
+        "forks": 3,
+        "name": "orobix/quadra",
+        "stars": 51
+      },
+      {
+        "forks": 14,
+        "name": "MICS-Lab/thunder",
+        "stars": 50
+      },
+      {
+        "forks": 6,
+        "name": "crp94/textile",
+        "stars": 49
+      },
+      {
+        "forks": 13,
+        "name": "IMSY-DKFZ/htc",
+        "stars": 49
+      },
+      {
+        "forks": 7,
+        "name": "graphbookai/graphbook",
+        "stars": 48
+      },
+      {
+        "forks": 0,
+        "name": "adam-mehdi/MuarAugment",
+        "stars": 47
+      },
+      {
+        "forks": 11,
+        "name": "predict-idlab/landmarker",
+        "stars": 47
+      },
+      {
+        "forks": 5,
+        "name": "CielAl/torch-staintools",
+        "stars": 46
+      },
+      {
+        "forks": 9,
+        "name": "angelolab/Nimbus-Inference",
+        "stars": 45
+      },
+      {
+        "forks": 5,
+        "name": "Qiyuan-Ge/PaintMind",
+        "stars": 41
+      },
+      {
+        "forks": 13,
+        "name": "RichieHakim/ROICaT",
+        "stars": 40
+      },
+      {
+        "forks": 1,
+        "name": "ducha-aiki/kornia_moons",
+        "stars": 37
+      },
+      {
+        "forks": 11,
+        "name": "bnnr-team/bnnr",
+        "stars": 35
+      },
+      {
+        "forks": 9,
+        "name": "lygitdata/GarmentIQ",
+        "stars": 34
+      },
+      {
+        "forks": 5,
+        "name": "easydiffusion/stable-diffusion",
+        "stars": 29
+      },
+      {
+        "forks": 15,
+        "name": "DeepTrackAI/deeplay",
+        "stars": 28
+      },
+      {
+        "forks": 7,
+        "name": "kornia/limbus",
+        "stars": 28
+      },
+      {
+        "forks": 2,
+        "name": "facebookresearch/distseal",
+        "stars": 27
+      },
+      {
+        "forks": 2,
+        "name": "novitalabs/litelama",
+        "stars": 26
+      },
+      {
+        "forks": 4,
+        "name": "bkntr/brainways",
+        "stars": 24
+      },
+      {
+        "forks": 5,
+        "name": "franioli/icepy4d",
+        "stars": 24
+      },
+      {
+        "forks": 5,
+        "name": "WanluLiuLab/SpatialMETA",
+        "stars": 24
+      },
+      {
+        "forks": 2,
+        "name": "dsgoficial/pytorch_segmentation_models_trainer",
+        "stars": 21
+      },
+      {
+        "forks": 0,
+        "name": "lgvaz/faststyle",
+        "stars": 21
+      },
+      {
+        "forks": 10,
+        "name": "talmolab/sleap-nn",
+        "stars": 21
+      },
+      {
+        "forks": 2,
+        "name": "chanzuckerberg/saber",
+        "stars": 19
+      },
+      {
+        "forks": 3,
+        "name": "core-ml/coreml",
+        "stars": 19
+      },
+      {
+        "forks": 6,
+        "name": "radionets-project/radionets",
+        "stars": 19
+      },
+      {
+        "forks": 0,
+        "name": "thegeniverse/geniverse",
+        "stars": 18
+      },
+      {
+        "forks": 3,
+        "name": "ducha-aiki/pixelstitch",
+        "stars": 17
+      },
+      {
+        "forks": 0,
+        "name": "chenoly/CRMark",
+        "stars": 16
+      },
+      {
+        "forks": 5,
+        "name": "IBM/heart-library",
+        "stars": 15
+      },
+      {
+        "forks": 7,
+        "name": "plstcharles/thelper",
+        "stars": 15
+      },
+      {
+        "forks": 1,
+        "name": "neggles/neurosis",
+        "stars": 14
+      },
+      {
+        "forks": 3,
+        "name": "QTIM-Lab/EyeLiner",
+        "stars": 14
+      },
+      {
+        "forks": 33,
+        "name": "db0/nataili",
+        "stars": 13
+      },
+      {
+        "forks": 3,
+        "name": "dell-research-harvard/efficient_ocr",
+        "stars": 12
+      },
+      {
+        "forks": 0,
+        "name": "DIYer22/calibdiff",
+        "stars": 12
+      },
+      {
+        "forks": 0,
+        "name": "Haidra-Org/hordelib_old",
+        "stars": 11
+      },
+      {
+        "forks": 0,
+        "name": "RViMLab/endoscopy",
+        "stars": 9
+      },
+      {
+        "forks": 1,
+        "name": "tum-pbs/ReViT",
+        "stars": 9
+      },
+      {
+        "forks": 1,
+        "name": "andesdatacube/satalign",
+        "stars": 8
+      },
+      {
+        "forks": 2,
+        "name": "arubique/STAI-tuned",
+        "stars": 8
+      },
+      {
+        "forks": 0,
+        "name": "Kitware/geowatch",
+        "stars": 8
+      },
+      {
+        "forks": 3,
+        "name": "BenjaminDev/courtvision",
+        "stars": 7
+      },
+      {
+        "forks": 2,
+        "name": "chfc-cmi/misas",
+        "stars": 7
+      },
+      {
+        "forks": 4,
+        "name": "convml/convml-tt",
+        "stars": 7
+      },
+      {
+        "forks": 1,
+        "name": "dkackman/diffusers-workflow",
+        "stars": 7
+      },
+      {
+        "forks": 1,
+        "name": "emaballarin/foveatorch",
+        "stars": 7
+      },
+      {
+        "forks": 1,
+        "name": "indzhykulianlab/hcat",
+        "stars": 7
+      },
+      {
+        "forks": 0,
+        "name": "RamailoTech/msu_unlearningalgorithm",
+        "stars": 7
+      },
+      {
+        "forks": 6,
+        "name": "RichieHakim/basic_neural_processing_modules",
+        "stars": 7
+      },
+      {
+        "forks": 0,
+        "name": "TeamEpochGithub/epochlib",
+        "stars": 7
+      },
+      {
+        "forks": 1,
+        "name": "chenoly/watermarklab",
+        "stars": 6
+      },
+      {
+        "forks": 0,
+        "name": "chrishamblin7/faccent",
+        "stars": 6
+      },
+      {
+        "forks": 1,
+        "name": "ducha-aiki/local_feature_tutorial",
+        "stars": 6
+      },
+      {
+        "forks": 1,
+        "name": "nathandecaux/labelprop",
+        "stars": 6
+      },
+      {
+        "forks": 2,
+        "name": "rotarzen/ToonCrafterSimple",
+        "stars": 5
+      },
+      {
+        "forks": 1,
+        "name": "samedii/perceptor",
+        "stars": 5
+      },
+      {
+        "forks": 2,
+        "name": "sign/image-to-human-avatar",
+        "stars": 5
+      },
+      {
+        "forks": 0,
+        "name": "simon-schaefer/torram",
+        "stars": 5
+      },
+      {
+        "forks": 1,
+        "name": "TidalPaladin/combustion",
+        "stars": 5
+      },
+      {
+        "forks": 0,
+        "name": "uni-medical/BioMaker",
+        "stars": 5
+      },
+      {
+        "forks": 0,
+        "name": "birdortyedi/grayness-index-python",
+        "stars": 4
+      },
+      {
+        "forks": 0,
+        "name": "bkntr/brainways-reg-model",
+        "stars": 4
+      },
+      {
+        "forks": 3,
+        "name": "kornia/limbus-components",
+        "stars": 4
+      },
+      {
+        "forks": 0,
+        "name": "cozy-creator/ostris-ai-toolkit",
+        "stars": 3
+      },
+      {
+        "forks": 1,
+        "name": "danieledema/synaesthesia",
+        "stars": 3
+      },
+      {
+        "forks": 0,
+        "name": "gorkaerana/meddle",
+        "stars": 3
+      },
+      {
+        "forks": 1,
+        "name": "IMSY-DKFZ/mml",
+        "stars": 3
+      },
+      {
+        "forks": 0,
+        "name": "justincdavis/oakutils",
+        "stars": 3
+      },
+      {
+        "forks": 0,
+        "name": "LEE-pyt/fhailib",
+        "stars": 3
+      },
+      {
+        "forks": 2,
+        "name": "Voyles-Group/ElectronCounting",
+        "stars": 3
+      },
+      {
+        "forks": 3,
+        "name": "xubiker/petroscope",
+        "stars": 3
+      },
+      {
+        "forks": 0,
+        "name": "Advanced-Vision-and-Learning-Lab/SARIAD",
+        "stars": 2
+      },
+      {
+        "forks": 0,
+        "name": "manbehindthemadness/modern-craft",
+        "stars": 2
+      },
+      {
+        "forks": 1,
+        "name": "RaphaelHaddad/3D_reconstruction_Tsinghua_2023",
+        "stars": 2
+      },
+      {
+        "forks": 1,
+        "name": "tnfru/unsupervised-on-policy",
+        "stars": 2
+      },
+      {
+        "forks": 0,
+        "name": "alexanderbrodko/sprite-pipeline",
+        "stars": 1
+      },
+      {
+        "forks": 3,
+        "name": "carbonscott/speckleNN",
+        "stars": 1
+      },
+      {
+        "forks": 1,
+        "name": "DeltaMod/DMU",
+        "stars": 1
+      },
+      {
+        "forks": 0,
+        "name": "EsdenRun/DIRAC",
+        "stars": 1
+      },
+      {
+        "forks": 6,
+        "name": "jlevy44/PathPretrain",
+        "stars": 1
+      },
+      {
+        "forks": 0,
+        "name": "kangig94/ffhq-align",
+        "stars": 1
+      },
+      {
+        "forks": 0,
+        "name": "m-pektas/IdentitySimilarity",
+        "stars": 1
+      },
+      {
+        "forks": 0,
+        "name": "PeterCalifano/pyTorchAutoForge",
+        "stars": 1
+      },
+      {
+        "forks": 0,
+        "name": "3db/threedboard",
+        "stars": 0
+      },
+      {
+        "forks": 0,
+        "name": "ayasyrev/imgread_benchmark",
+        "stars": 0
+      },
+      {
+        "forks": 0,
+        "name": "binarycode11/visidex",
+        "stars": 0
+      },
+      {
+        "forks": 0,
+        "name": "bthek1/FastAI_course",
+        "stars": 0
+      },
+      {
+        "forks": 1,
+        "name": "cwza/deep_t2i",
+        "stars": 0
+      },
+      {
+        "forks": 0,
+        "name": "jshirota/glidergun",
+        "stars": 0
+      },
+      {
+        "forks": 0,
+        "name": "kamilisjon/self-supervised",
+        "stars": 0
+      },
+      {
+        "forks": 0,
+        "name": "khanhduy1407/kdpy-imagen",
+        "stars": 0
+      },
+      {
+        "forks": 0,
+        "name": "M-106/Image-to-Image",
+        "stars": 0
+      },
+      {
+        "forks": 0,
+        "name": "mrfitzpa/emicroml",
+        "stars": 0
+      },
+      {
+        "forks": 0,
+        "name": "Murkyy/mmsegmentation-building",
+        "stars": 0
+      },
+      {
+        "forks": 1,
+        "name": "NKI-AI/ahcore-old",
+        "stars": 0
+      },
+      {
+        "forks": 0,
+        "name": "peterrenshaw/tw",
+        "stars": 0
+      },
+      {
+        "forks": 0,
+        "name": "shalusingh-tech/lightweight-gan",
+        "stars": 0
+      },
+      {
+        "forks": 0,
+        "name": "sharosoo/comfyui",
+        "stars": 0
+      },
+      {
+        "forks": 1,
+        "name": "tamchamchi/pysvgenius",
+        "stars": 0
+      },
+      {
+        "forks": 0,
+        "name": "tanimutomo/watermark-distortions",
+        "stars": 0
+      },
+      {
+        "forks": 0,
+        "name": "VTCSML/mrftools",
+        "stars": 0
+      },
+      {
+        "forks": 0,
+        "name": "wamitw/torch-hog",
+        "stars": 0
+      }
+    ],
+    "listed": 197
+  },
+  "repositories": {
+    "complete": true,
+    "count": 17565,
+    "items": [
+      {
+        "forks": 30560,
+        "name": "AUTOMATIC1111/stable-diffusion-webui",
+        "stars": 164769
+      },
+      {
+        "forks": 15447,
+        "name": "Comfy-Org/ComfyUI",
+        "stars": 131156
+      },
+      {
+        "forks": 21590,
+        "name": "vllm-project/vllm",
+        "stars": 90765
+      },
+      {
+        "forks": 8466,
+        "name": "google-research/google-research",
+        "stars": 38678
+      },
+      {
+        "forks": 3199,
+        "name": "chenfei-wu/TaskMatrix",
+        "stars": 33994
+      },
+      {
+        "forks": 2968,
+        "name": "invoke-ai/InvokeAI",
+        "stars": 28113
+      },
+      {
+        "forks": 3106,
+        "name": "Stability-AI/generative-models",
+        "stars": 27279
+      },
+      {
+        "forks": 11667,
+        "name": "spmallick/learnopencv",
+        "stars": 23114
+      },
+      {
+        "forks": 3603,
+        "name": "NVIDIA-NeMo/Speech",
+        "stars": 18376
+      },
+      {
+        "forks": 1525,
+        "name": "Tencent-Hunyuan/Hunyuan3D-2",
+        "stars": 14723
+      },
+      {
+        "forks": 5455,
+        "name": "unifyai/ivy",
+        "stars": 14170
+      },
+      {
+        "forks": 2692,
+        "name": "OpenTalker/SadTalker",
+        "stars": 14060
+      },
+      {
+        "forks": 5364,
+        "name": "github-linguist/linguist",
+        "stars": 13672
+      },
+      {
+        "forks": 1339,
+        "name": "zai-org/CogVideo",
+        "stars": 12993
+      },
+      {
+        "forks": 1610,
+        "name": "YaoFANGUK/video-subtitle-remover",
+        "stars": 12677
+      },
+      {
+        "forks": 1510,
+        "name": "ostris/ai-toolkit",
+        "stars": 11879
+      },
+      {
+        "forks": 1070,
+        "name": "lucidrains/DALLE2-pytorch",
+        "stars": 11302
+      },
+      {
+        "forks": 6959,
+        "name": "aws/amazon-sagemaker-examples",
+        "stars": 10983
+      },
+      {
+        "forks": 621,
+        "name": "Acly/krita-ai-diffusion",
+        "stars": 10534
+      },
+      {
+        "forks": 1060,
+        "name": "zyddnys/manga-image-translator",
+        "stars": 10382
+      },
+      {
+        "forks": 1080,
+        "name": "advimman/lama",
+        "stars": 10238
+      },
+      {
+        "forks": 850,
+        "name": "AIGC-Audio/AudioGPT",
+        "stars": 10168
+      },
+      {
+        "forks": 2854,
+        "name": "open-mmlab/mmsegmentation",
+        "stars": 9939
+      },
+      {
+        "forks": 962,
+        "name": "modelscope/modelscope",
+        "stars": 9121
+      },
+      {
+        "forks": 770,
+        "name": "ashawkey/stable-dreamfusion",
+        "stars": 8853
+      },
+      {
+        "forks": 795,
+        "name": "lucidrains/imagen-pytorch",
+        "stars": 8425
+      },
+      {
+        "forks": 471,
+        "name": "brycedrennan/imaginAIry",
+        "stars": 8179
+      },
+      {
+        "forks": 857,
+        "name": "Sygil-Dev/sygil-webui",
+        "stars": 7868
+      },
+      {
+        "forks": 660,
+        "name": "geekyutao/Inpaint-Anything",
+        "stars": 7704
+      },
+      {
+        "forks": 2758,
+        "name": "rocketride-org/rocketride-server",
+        "stars": 7631
+      },
+      {
+        "forks": 1052,
+        "name": "OpenTalker/video-retalking",
+        "stars": 7285
+      },
+      {
+        "forks": 554,
+        "name": "threestudio-project/threestudio",
+        "stars": 7062
+      },
+      {
+        "forks": 1720,
+        "name": "openMVG/openMVG",
+        "stars": 6549
+      },
+      {
+        "forks": 509,
+        "name": "Stability-AI/StableCascade",
+        "stars": 6537
+      },
+      {
+        "forks": 1340,
+        "name": "Trusted-AI/adversarial-robustness-toolbox",
+        "stars": 6213
+      },
+      {
+        "forks": 977,
+        "name": "open-edge-platform/anomalib",
+        "stars": 6109
+      },
+      {
+        "forks": 978,
+        "name": "bytedance/LatentSync",
+        "stars": 6046
+      },
+      {
+        "forks": 528,
+        "name": "Doubiiu/ToonCrafter",
+        "stars": 6008
+      },
+      {
+        "forks": 1472,
+        "name": "open-mmlab/OpenPCDet",
+        "stars": 5697
+      },
+      {
+        "forks": 475,
+        "name": "Fanghua-Yu/SUPIR",
+        "stars": 5649
+      },
+      {
+        "forks": 321,
+        "name": "facebookresearch/sapiens",
+        "stars": 5421
+      },
+      {
+        "forks": 535,
+        "name": "philz1337x/clarity-upscaler",
+        "stars": 5122
+      },
+      {
+        "forks": 413,
+        "name": "AILab-CVC/VideoCrafter",
+        "stars": 5073
+      },
+      {
+        "forks": 382,
+        "name": "robbyant-research/CoDeF",
+        "stars": 4846
+      },
+      {
+        "forks": 449,
+        "name": "UX-Decoder/Segment-Everything-Everywhere-All-At-Once",
+        "stars": 4794
+      },
+      {
+        "forks": 587,
+        "name": "ParisNeo/lollms-webui",
+        "stars": 4785
+      },
+      {
+        "forks": 562,
+        "name": "cvg/LightGlue",
+        "stars": 4750
+      },
+      {
+        "forks": 404,
+        "name": "NVlabs/neuralangelo",
+        "stars": 4616
+      },
+      {
+        "forks": 480,
+        "name": "sensity-ai/dot",
+        "stars": 4585
+      },
+      {
+        "forks": 363,
+        "name": "Tencent-Hunyuan/HunyuanDiT",
+        "stars": 4292
+      },
+      {
+        "forks": 388,
+        "name": "Picsart-AI-Research/Text2Video-Zero",
+        "stars": 4243
+      },
+      {
+        "forks": 582,
+        "name": "torchgeo/torchgeo",
+        "stars": 4166
+      },
+      {
+        "forks": 321,
+        "name": "ZhengPeng7/BiRefNet",
+        "stars": 4129
+      },
+      {
+        "forks": 131,
+        "name": "edenaion/EZ-CorridorKey",
+        "stars": 4126
+      },
+      {
+        "forks": 494,
+        "name": "Lightricks/ComfyUI-LTXVideo",
+        "stars": 4112
+      },
+      {
+        "forks": 385,
+        "name": "hustvl/4DGaussians",
+        "stars": 3908
+      },
+      {
+        "forks": 374,
+        "name": "MrForExample/ComfyUI-3D-Pack",
+        "stars": 3855
+      },
+      {
+        "forks": 225,
+        "name": "TencentARC/T2I-Adapter",
+        "stars": 3801
+      },
+      {
+        "forks": 582,
+        "name": "lucidrains/stylegan2-pytorch",
+        "stars": 3783
+      },
+      {
+        "forks": 576,
+        "name": "NVIDIA/Model-Optimizer",
+        "stars": 3688
+      },
+      {
+        "forks": 458,
+        "name": "ml-tooling/ml-workspace",
+        "stars": 3543
+      },
+      {
+        "forks": 129,
+        "name": "MashiroSaber03/Saber-Translator",
+        "stars": 3542
+      },
+      {
+        "forks": 526,
+        "name": "NVlabs/FoundationPose",
+        "stars": 3531
+      },
+      {
+        "forks": 534,
+        "name": "Kedreamix/Linly-Talker",
+        "stars": 3443
+      },
+      {
+        "forks": 202,
+        "name": "sail-sg/EditAnything",
+        "stars": 3422
+      },
+      {
+        "forks": 543,
+        "name": "luigifreda/pyslam",
+        "stars": 3404
+      },
+      {
+        "forks": 397,
+        "name": "catalyst-team/catalyst",
+        "stars": 3382
+      },
+      {
+        "forks": 371,
+        "name": "cocktailpeanut/fluxgym",
+        "stars": 3250
+      },
+      {
+        "forks": 526,
+        "name": "JoePenna/Dreambooth-Stable-Diffusion",
+        "stars": 3212
+      },
+      {
+        "forks": 233,
+        "name": "OpenGVLab/InternGPT",
+        "stars": 3205
+      },
+      {
+        "forks": 204,
+        "name": "chflame163/ComfyUI_LayerStyle",
+        "stars": 3149
+      },
+      {
+        "forks": 221,
+        "name": "cvlab-columbia/zero123",
+        "stars": 3058
+      },
+      {
+        "forks": 558,
+        "name": "TradeMaster-NTU/TradeMaster",
+        "stars": 3056
+      },
+      {
+        "forks": 357,
+        "name": "deepseek-ai/DreamCraft3D",
+        "stars": 3023
+      },
+      {
+        "forks": 242,
+        "name": "Doubiiu/DynamiCrafter",
+        "stars": 3007
+      },
+      {
+        "forks": 421,
+        "name": "zju3dv/LoFTR",
+        "stars": 2952
+      },
+      {
+        "forks": 407,
+        "name": "deforum/sd-webui-deforum",
+        "stars": 2859
+      },
+      {
+        "forks": 145,
+        "name": "UX-Decoder/Semantic-SAM",
+        "stars": 2854
+      },
+      {
+        "forks": 303,
+        "name": "TMElyralab/MuseV",
+        "stars": 2848
+      },
+      {
+        "forks": 206,
+        "name": "jina-ai/dalle-flow",
+        "stars": 2829
+      },
+      {
+        "forks": 458,
+        "name": "kwea123/nerf_pl",
+        "stars": 2804
+      },
+      {
+        "forks": 1015,
+        "name": "Kaggle/docker-python",
+        "stars": 2733
+      },
+      {
+        "forks": 129,
+        "name": "hgmzhn/manga-translator-ui",
+        "stars": 2709
+      },
+      {
+        "forks": 170,
+        "name": "IceClear/StableSR",
+        "stars": 2669
+      },
+      {
+        "forks": 213,
+        "name": "aigc3d/LHM",
+        "stars": 2664
+      },
+      {
+        "forks": 291,
+        "name": "yerfor/GeneFace",
+        "stars": 2659
+      },
+      {
+        "forks": 416,
+        "name": "nerdyrodent/VQGAN-CLIP",
+        "stars": 2647
+      },
+      {
+        "forks": 400,
+        "name": "crowsonkb/k-diffusion",
+        "stars": 2600
+      },
+      {
+        "forks": 216,
+        "name": "Tencent-Hunyuan/HY-World-2.0",
+        "stars": 2594
+      },
+      {
+        "forks": 497,
+        "name": "yfeng95/DECA",
+        "stars": 2518
+      },
+      {
+        "forks": 149,
+        "name": "bilibili/Index-anisora",
+        "stars": 2504
+      },
+      {
+        "forks": 518,
+        "name": "Lightning-AI/torchmetrics",
+        "stars": 2465
+      },
+      {
+        "forks": 280,
+        "name": "nv-tlabs/3dgrut",
+        "stars": 2406
+      },
+      {
+        "forks": 124,
+        "name": "kijai/ComfyUI-SUPIR",
+        "stars": 2308
+      },
+      {
+        "forks": 252,
+        "name": "spla-tam/SplaTAM",
+        "stars": 2188
+      },
+      {
+        "forks": 172,
+        "name": "Mukosame/Anime2Sketch",
+        "stars": 2129
+      },
+      {
+        "forks": 360,
+        "name": "visomaster/VisoMaster",
+        "stars": 2062
+      },
+      {
+        "forks": 481,
+        "name": "shanglianlm0525/PyTorch-Networks",
+        "stars": 2055
+      },
+      {
+        "forks": 343,
+        "name": "Zz-ww/SadTalker-Video-Lip-Sync",
+        "stars": 2010
+      },
+      {
+        "forks": 94,
+        "name": "showlab/Show-o",
+        "stars": 1975
+      },
+      {
+        "forks": 106,
+        "name": "lucidrains/gigagan-pytorch",
+        "stars": 1942
+      },
+      {
+        "forks": 155,
+        "name": "starik222/BooruDatasetTagManager",
+        "stars": 1937
+      },
+      {
+        "forks": 272,
+        "name": "d8ahazard/sd_dreambooth_extension",
+        "stars": 1887
+      },
+      {
+        "forks": 100,
+        "name": "YangLing0818/RPG-DiffusionMaster",
+        "stars": 1844
+      },
+      {
+        "forks": 252,
+        "name": "yerfor/GeneFacePlusPlus",
+        "stars": 1810
+      },
+      {
+        "forks": 78,
+        "name": "zju3dv/4K4D",
+        "stars": 1806
+      },
+      {
+        "forks": 258,
+        "name": "openai/mle-bench",
+        "stars": 1729
+      },
+      {
+        "forks": 211,
+        "name": "Lightning-Universe/lightning-flash",
+        "stars": 1722
+      },
+      {
+        "forks": 233,
+        "name": "verlab/accelerated_features",
+        "stars": 1721
+      },
+      {
+        "forks": 103,
+        "name": "One-2-3-45/One-2-3-45",
+        "stars": 1718
+      },
+      {
+        "forks": 131,
+        "name": "cvlab-columbia/viper",
+        "stars": 1716
+      },
+      {
+        "forks": 143,
+        "name": "omerbt/TokenFlow",
+        "stars": 1707
+      },
+      {
+        "forks": 267,
+        "name": "takuseno/d3rlpy",
+        "stars": 1684
+      },
+      {
+        "forks": 221,
+        "name": "YuliangXiu/ICON",
+        "stars": 1675
+      },
+      {
+        "forks": 127,
+        "name": "Stability-AI/stable-virtual-camera",
+        "stars": 1656
+      },
+      {
+        "forks": 96,
+        "name": "mhamilton723/FeatUp",
+        "stars": 1655
+      },
+      {
+        "forks": 80,
+        "name": "JIA-Lab-research/ControlNeXt",
+        "stars": 1647
+      },
+      {
+        "forks": 157,
+        "name": "Picsart-AI-Research/StreamingT2V",
+        "stars": 1629
+      },
+      {
+        "forks": 99,
+        "name": "guochengqian/Magic123",
+        "stars": 1622
+      },
+      {
+        "forks": 56,
+        "name": "Drexubery/ViewCrafter",
+        "stars": 1587
+      },
+      {
+        "forks": 93,
+        "name": "FoundationVision/Infinity",
+        "stars": 1587
+      },
+      {
+        "forks": 100,
+        "name": "zju3dv/EasyVolcap",
+        "stars": 1587
+      },
+      {
+        "forks": 308,
+        "name": "ai-forever/ghost",
+        "stars": 1582
+      },
+      {
+        "forks": 43,
+        "name": "thu-ml/prolificdreamer",
+        "stars": 1562
+      },
+      {
+        "forks": 154,
+        "name": "tin2tin/Pallaidium",
+        "stars": 1523
+      },
+      {
+        "forks": 84,
+        "name": "TencentARC/MotionCtrl",
+        "stars": 1500
+      },
+      {
+        "forks": 221,
+        "name": "WecoAI/aideml",
+        "stars": 1498
+      },
+      {
+        "forks": 73,
+        "name": "buaacyw/GaussianEditor",
+        "stars": 1457
+      },
+      {
+        "forks": 166,
+        "name": "gradslam/gradslam",
+        "stars": 1423
+      },
+      {
+        "forks": 169,
+        "name": "NVlabs/BundleSDF",
+        "stars": 1411
+      },
+      {
+        "forks": 108,
+        "name": "zju3dv/street_gaussians",
+        "stars": 1389
+      },
+      {
+        "forks": 142,
+        "name": "huggingface/finetrainers",
+        "stars": 1359
+      },
+      {
+        "forks": 55,
+        "name": "lxtGH/OMG-Seg",
+        "stars": 1354
+      },
+      {
+        "forks": 161,
+        "name": "microsoft/X-Decoder",
+        "stars": 1345
+      },
+      {
+        "forks": 77,
+        "name": "wenqsun/DimensionX",
+        "stars": 1333
+      },
+      {
+        "forks": 477,
+        "name": "open-edge-platform/geti",
+        "stars": 1325
+      },
+      {
+        "forks": 111,
+        "name": "sjtuytc/UnboundedNeRFPytorch",
+        "stars": 1323
+      },
+      {
+        "forks": 128,
+        "name": "Vincentqyw/image-matching-webui",
+        "stars": 1301
+      },
+      {
+        "forks": 138,
+        "name": "Parskatt/RoMa",
+        "stars": 1295
+      },
+      {
+        "forks": 96,
+        "name": "huanngzh/MV-Adapter",
+        "stars": 1289
+      },
+      {
+        "forks": 119,
+        "name": "plemeri/transparent-background",
+        "stars": 1287
+      },
+      {
+        "forks": 150,
+        "name": "kwea123/ngp_pl",
+        "stars": 1286
+      },
+      {
+        "forks": 92,
+        "name": "Stable-X/Stable3DGen",
+        "stars": 1275
+      },
+      {
+        "forks": 157,
+        "name": "ziyc/drivestudio",
+        "stars": 1256
+      },
+      {
+        "forks": 110,
+        "name": "Linketic/CityGaussian",
+        "stars": 1251
+      },
+      {
+        "forks": 61,
+        "name": "alibaba/Tora",
+        "stars": 1241
+      },
+      {
+        "forks": 116,
+        "name": "YuliangXiu/ECON",
+        "stars": 1207
+      },
+      {
+        "forks": 208,
+        "name": "qualcomm/ai-hub-models",
+        "stars": 1195
+      },
+      {
+        "forks": 62,
+        "name": "ali-vilab/UniAnimate",
+        "stars": 1189
+      },
+      {
+        "forks": 157,
+        "name": "visual-openllm/visual-openllm",
+        "stars": 1186
+      },
+      {
+        "forks": 61,
+        "name": "chongzhou96/EdgeSAM",
+        "stars": 1173
+      },
+      {
+        "forks": 116,
+        "name": "wladradchenko/wunjo.wladradchenko.ru",
+        "stars": 1170
+      },
+      {
+        "forks": 149,
+        "name": "mchong6/GANsNRoses",
+        "stars": 1148
+      },
+      {
+        "forks": 157,
+        "name": "cvg/glue-factory",
+        "stars": 1143
+      },
+      {
+        "forks": 70,
+        "name": "Kiteretsu77/APISR",
+        "stars": 1136
+      },
+      {
+        "forks": 144,
+        "name": "CASIA-LMC-Lab/AnomalyGPT",
+        "stars": 1132
+      },
+      {
+        "forks": 70,
+        "name": "yu-takagi/StableDiffusionReconstruction",
+        "stars": 1127
+      },
+      {
+        "forks": 127,
+        "name": "FutureUniant/Tailor",
+        "stars": 1117
+      },
+      {
+        "forks": 71,
+        "name": "HITsz-TMG/Uni-MoE",
+        "stars": 1116
+      },
+      {
+        "forks": 131,
+        "name": "yerfor/Real3DPortrait",
+        "stars": 1091
+      },
+      {
+        "forks": 50,
+        "name": "comet-ml/kangas",
+        "stars": 1077
+      },
+      {
+        "forks": 101,
+        "name": "Wangt-CN/DisCo",
+        "stars": 1072
+      },
+      {
+        "forks": 134,
+        "name": "Fannovel16/ComfyUI-Frame-Interpolation",
+        "stars": 1069
+      },
+      {
+        "forks": 60,
+        "name": "yeates/PromptFix",
+        "stars": 1069
+      },
+      {
+        "forks": 105,
+        "name": "aigc3d/LAM",
+        "stars": 1050
+      },
+      {
+        "forks": 50,
+        "name": "liuyuan-pal/SyncDreamer",
+        "stars": 1045
+      },
+      {
+        "forks": 113,
+        "name": "zju3dv/EfficientLoFTR",
+        "stars": 1044
+      },
+      {
+        "forks": 73,
+        "name": "lkeab/gaussian-grouping",
+        "stars": 1042
+      },
+      {
+        "forks": 128,
+        "name": "pixray/pixray",
+        "stars": 1042
+      },
+      {
+        "forks": 342,
+        "name": "pytorch/benchmark",
+        "stars": 1041
+      },
+      {
+        "forks": 85,
+        "name": "zju3dv/OnePose",
+        "stars": 1010
+      },
+      {
+        "forks": 47,
+        "name": "banodoco/Steerable-Motion",
+        "stars": 975
+      },
+      {
+        "forks": 82,
+        "name": "patientx/ComfyUI-Zluda",
+        "stars": 971
+      },
+      {
+        "forks": 395,
+        "name": "luxonis/oak-examples",
+        "stars": 970
+      },
+      {
+        "forks": 128,
+        "name": "intel/AI-Playground",
+        "stars": 969
+      },
+      {
+        "forks": 149,
+        "name": "tum-vision/tandem",
+        "stars": 955
+      },
+      {
+        "forks": 142,
+        "name": "YeWR/EfficientZero",
+        "stars": 944
+      },
+      {
+        "forks": 91,
+        "name": "baal-org/baal",
+        "stars": 934
+      },
+      {
+        "forks": 80,
+        "name": "gmberton/vismatch",
+        "stars": 910
+      },
+      {
+        "forks": 64,
+        "name": "cvg/GeoCalib",
+        "stars": 907
+      },
+      {
+        "forks": 61,
+        "name": "OpenDriveLab/Vista",
+        "stars": 895
+      },
+      {
+        "forks": 61,
+        "name": "stepfun-ai/Step1X-3D",
+        "stars": 886
+      },
+      {
+        "forks": 52,
+        "name": "OpenDCAI/OpenWorldLib",
+        "stars": 864
+      },
+      {
+        "forks": 53,
+        "name": "IrisRainbowNeko/DreamArtist-stable-diffusion",
+        "stars": 863
+      },
+      {
+        "forks": 28,
+        "name": "ZiyuGuo99/Image-Generation-CoT",
+        "stars": 862
+      },
+      {
+        "forks": 99,
+        "name": "vimalabs/VIMA",
+        "stars": 858
+      },
+      {
+        "forks": 60,
+        "name": "gojasper/LBM",
+        "stars": 854
+      },
+      {
+        "forks": 49,
+        "name": "gsgen3d/gsgen",
+        "stars": 845
+      },
+      {
+        "forks": 76,
+        "name": "SkyTNT/anime-segmentation",
+        "stars": 837
+      },
+      {
+        "forks": 108,
+        "name": "yerfor/MimicTalk",
+        "stars": 831
+      },
+      {
+        "forks": 49,
+        "name": "hustvl/GaussianDreamer",
+        "stars": 830
+      },
+      {
+        "forks": 55,
+        "name": "taichi-dev/taichi-nerfs",
+        "stars": 828
+      },
+      {
+        "forks": 100,
+        "name": "Shilin-LU/TF-ICON",
+        "stars": 814
+      },
+      {
+        "forks": 41,
+        "name": "CodeGoat24/UnifiedReward",
+        "stars": 808
+      },
+      {
+        "forks": 102,
+        "name": "eps696/aphantasia",
+        "stars": 789
+      },
+      {
+        "forks": 87,
+        "name": "NVlabs/CF-3DGS",
+        "stars": 789
+      },
+      {
+        "forks": 88,
+        "name": "plemeri/InSPyReNet",
+        "stars": 783
+      },
+      {
+        "forks": 55,
+        "name": "AILab-CVC/GPT4Tools",
+        "stars": 772
+      },
+      {
+        "forks": 198,
+        "name": "replicate/cog-comfyui",
+        "stars": 770
+      },
+      {
+        "forks": 49,
+        "name": "KovenYu/WonderJourney",
+        "stars": 769
+      },
+      {
+        "forks": 262,
+        "name": "weecology/DeepForest",
+        "stars": 769
+      },
+      {
+        "forks": 51,
+        "name": "MyNiuuu/MOFA-Video",
+        "stars": 766
+      },
+      {
+        "forks": 46,
+        "name": "IDEA-Research/OpenSeeD",
+        "stars": 764
+      },
+      {
+        "forks": 53,
+        "name": "zju3dv/DetectorFreeSfM",
+        "stars": 761
+      },
+      {
+        "forks": 59,
+        "name": "ali-vilab/MangaNinjia",
+        "stars": 740
+      },
+      {
+        "forks": 39,
+        "name": "cvlab-kaist/3DFuse",
+        "stars": 735
+      },
+      {
+        "forks": 77,
+        "name": "KoljaB/LocalAIVoiceChat",
+        "stars": 732
+      },
+      {
+        "forks": 76,
+        "name": "AkshitIreddy/Interactive-LLM-Powered-NPCs",
+        "stars": 719
+      },
+      {
+        "forks": 55,
+        "name": "zsyOAOA/DifFace",
+        "stars": 709
+      },
+      {
+        "forks": 82,
+        "name": "chflame163/ComfyUI_LayerStyle_Advance",
+        "stars": 708
+      },
+      {
+        "forks": 38,
+        "name": "GRVYDEV/S.A.T.U.R.D.A.Y",
+        "stars": 705
+      },
+      {
+        "forks": 34,
+        "name": "zju3dv/NeuralRecon-W",
+        "stars": 703
+      },
+      {
+        "forks": 106,
+        "name": "microsoft/BiomedParse",
+        "stars": 699
+      },
+      {
+        "forks": 87,
+        "name": "bes-dev/MobileStyleGAN.pytorch",
+        "stars": 697
+      },
+      {
+        "forks": 33,
+        "name": "kijai/ComfyUI-DynamiCrafterWrapper",
+        "stars": 680
+      },
+      {
+        "forks": 66,
+        "name": "facebookresearch/silk",
+        "stars": 679
+      },
+      {
+        "forks": 57,
+        "name": "LSXI7/MINIMA",
+        "stars": 672
+      },
+      {
+        "forks": 34,
+        "name": "lucidrains/magvit2-pytorch",
+        "stars": 668
+      },
+      {
+        "forks": 40,
+        "name": "theialab/radfoam",
+        "stars": 665
+      },
+      {
+        "forks": 95,
+        "name": "greentfrapp/lucent",
+        "stars": 664
+      },
+      {
+        "forks": 68,
+        "name": "LordLiang/DrawingSpinUp",
+        "stars": 659
+      },
+      {
+        "forks": 84,
+        "name": "OpenTalker/StyleHEAT",
+        "stars": 656
+      },
+      {
+        "forks": 48,
+        "name": "facebookresearch/pippo",
+        "stars": 650
+      },
+      {
+        "forks": 80,
+        "name": "GradientSpaces/WildGS-SLAM",
+        "stars": 648
+      },
+      {
+        "forks": 88,
+        "name": "cvg/DeepLSD",
+        "stars": 646
+      },
+      {
+        "forks": 32,
+        "name": "pengHTYX/Era3D",
+        "stars": 645
+      },
+      {
+        "forks": 31,
+        "name": "youquanl/Segment-Any-Point-Cloud",
+        "stars": 637
+      },
+      {
+        "forks": 59,
+        "name": "filliptm/ComfyUI_Fill-Nodes",
+        "stars": 634
+      },
+      {
+        "forks": 57,
+        "name": "Zhaozixiang1228/MMIF-CDDFuse",
+        "stars": 634
+      },
+      {
+        "forks": 73,
+        "name": "ivcylc/OpenMusic",
+        "stars": 631
+      },
+      {
+        "forks": 43,
+        "name": "VectorSpaceLab/Video-XL",
+        "stars": 627
+      },
+      {
+        "forks": 37,
+        "name": "jiawei-ren/dreamgaussian4d",
+        "stars": 620
+      },
+      {
+        "forks": 29,
+        "name": "catcathh/UltraPixel",
+        "stars": 617
+      },
+      {
+        "forks": 66,
+        "name": "liuzhao1225/YouDub",
+        "stars": 616
+      },
+      {
+        "forks": 32,
+        "name": "frank-xwang/InstanceDiffusion",
+        "stars": 615
+      },
+      {
+        "forks": 30,
+        "name": "Arlo0o/UniScene-Unified-Occupancy-centric-Driving-Scene-Generation",
+        "stars": 611
+      },
+      {
+        "forks": 55,
+        "name": "jina-ai/agentchain",
+        "stars": 611
+      },
+      {
+        "forks": 28,
+        "name": "Zj-BinXia/DiffIR",
+        "stars": 611
+      },
+      {
+        "forks": 79,
+        "name": "3dlg-hcvc/plan2scene",
+        "stars": 610
+      },
+      {
+        "forks": 112,
+        "name": "YanWenKun/ComfyUI-Windows-Portable",
+        "stars": 598
+      },
+      {
+        "forks": 62,
+        "name": "mv-lab/AISP",
+        "stars": 595
+      },
+      {
+        "forks": 79,
+        "name": "cvg/SOLD2",
+        "stars": 593
+      },
+      {
+        "forks": 34,
+        "name": "SkyworkAI/Vitron",
+        "stars": 576
+      },
+      {
+        "forks": 98,
+        "name": "lhoyer/DAFormer",
+        "stars": 574
+      },
+      {
+        "forks": 30,
+        "name": "alibaba-damo-academy/Uni3C",
+        "stars": 568
+      },
+      {
+        "forks": 53,
+        "name": "AssafSinger94/dino-tracker",
+        "stars": 568
+      },
+      {
+        "forks": 37,
+        "name": "TQTQliu/MVSGaussian",
+        "stars": 565
+      },
+      {
+        "forks": 58,
+        "name": "yeungchenwa/FontDiffuser",
+        "stars": 557
+      },
+      {
+        "forks": 30,
+        "name": "VideoVerses/VideoTuna",
+        "stars": 553
+      },
+      {
+        "forks": 97,
+        "name": "cliport/cliport",
+        "stars": 549
+      },
+      {
+        "forks": 29,
+        "name": "liming-ai/ControlNet_Plus_Plus",
+        "stars": 547
+      },
+      {
+        "forks": 77,
+        "name": "3DOM-FBK/deep-image-matching",
+        "stars": 546
+      },
+      {
+        "forks": 26,
+        "name": "UX-Decoder/DINOv",
+        "stars": 544
+      },
+      {
+        "forks": 55,
+        "name": "youngLBW/HRN",
+        "stars": 544
+      },
+      {
+        "forks": 51,
+        "name": "bytedance/X-Portrait",
+        "stars": 541
+      },
+      {
+        "forks": 35,
+        "name": "maitrix-org/Pandora",
+        "stars": 538
+      },
+      {
+        "forks": 62,
+        "name": "Xiaojiu-z/Stable-Hair",
+        "stars": 537
+      },
+      {
+        "forks": 32,
+        "name": "kylesargent/ZeroNVS",
+        "stars": 535
+      },
+      {
+        "forks": 69,
+        "name": "microsoft/causica",
+        "stars": 534
+      },
+      {
+        "forks": 14,
+        "name": "FoundationVision/UniTok",
+        "stars": 530
+      },
+      {
+        "forks": 59,
+        "name": "instantX-research/InstantIR",
+        "stars": 530
+      },
+      {
+        "forks": 47,
+        "name": "torch-uncertainty/torch-uncertainty",
+        "stars": 527
+      },
+      {
+        "forks": 36,
+        "name": "JalaliLabUCLA/phycv",
+        "stars": 526
+      },
+      {
+        "forks": 69,
+        "name": "facebookresearch/stable_signature",
+        "stars": 525
+      },
+      {
+        "forks": 14,
+        "name": "pals-ttic/sjc",
+        "stars": 523
+      },
+      {
+        "forks": 34,
+        "name": "Visionary-Laboratory/visionary",
+        "stars": 523
+      },
+      {
+        "forks": 19,
+        "name": "heheyas/V3D",
+        "stars": 521
+      },
+      {
+        "forks": 63,
+        "name": "borglab/gtsfm",
+        "stars": 516
+      },
+      {
+        "forks": 107,
+        "name": "apocas/restai",
+        "stars": 512
+      },
+      {
+        "forks": 66,
+        "name": "microsoft/robustlearn",
+        "stars": 509
+      },
+      {
+        "forks": 10,
+        "name": "baaivision/GeoDream",
+        "stars": 499
+      },
+      {
+        "forks": 54,
+        "name": "EPFL-VILAB/omnidata",
+        "stars": 493
+      },
+      {
+        "forks": 51,
+        "name": "ximinng/PyTorch-SVGRender",
+        "stars": 493
+      },
+      {
+        "forks": 44,
+        "name": "alvinliu0/HumanGaussian",
+        "stars": 492
+      },
+      {
+        "forks": 18,
+        "name": "zc-alexfan/hold",
+        "stars": 492
+      },
+      {
+        "forks": 109,
+        "name": "Holasyb918/HeyGem-Linux-Python-Hack",
+        "stars": 491
+      },
+      {
+        "forks": 74,
+        "name": "JiawangBian/sc_depth_pl",
+        "stars": 489
+      },
+      {
+        "forks": 24,
+        "name": "KohakuBlueleaf/PixelOE",
+        "stars": 489
+      },
+      {
+        "forks": 36,
+        "name": "jjihwan/FIFO-Diffusion_public",
+        "stars": 486
+      },
+      {
+        "forks": 12,
+        "name": "facebookresearch/4DGT",
+        "stars": 482
+      },
+      {
+        "forks": 41,
+        "name": "InternLandMark/LandMark",
+        "stars": 482
+      },
+      {
+        "forks": 41,
+        "name": "Parskatt/DKM",
+        "stars": 482
+      },
+      {
+        "forks": 23,
+        "name": "modelscope/richdreamer",
+        "stars": 478
+      },
+      {
+        "forks": 47,
+        "name": "huanngzh/ComfyUI-MVAdapter",
+        "stars": 475
+      },
+      {
+        "forks": 55,
+        "name": "baidu-baige/LoongFlow",
+        "stars": 474
+      },
+      {
+        "forks": 14,
+        "name": "vislearn/ControlNet-XS",
+        "stars": 472
+      },
+      {
+        "forks": 83,
+        "name": "zhangchuheng123/Reinforcement-Implementation",
+        "stars": 472
+      },
+      {
+        "forks": 37,
+        "name": "PJLab-ADG/DriveArena",
+        "stars": 470
+      },
+      {
+        "forks": 41,
+        "name": "jinyeying/night-enhancement",
+        "stars": 465
+      },
+      {
+        "forks": 7,
+        "name": "RunpeiDong/DreamLLM",
+        "stars": 462
+      },
+      {
+        "forks": 56,
+        "name": "SamKhoze/ComfyUI-DeepFuze",
+        "stars": 461
+      },
+      {
+        "forks": 33,
+        "name": "pengHTYX/PSHuman",
+        "stars": 460
+      },
+      {
+        "forks": 60,
+        "name": "afiaka87/clip-guided-diffusion",
+        "stars": 459
+      },
+      {
+        "forks": 53,
+        "name": "zju3dv/OnePose_Plus_Plus",
+        "stars": 458
+      },
+      {
+        "forks": 69,
+        "name": "NVlabs/trajdata",
+        "stars": 456
+      },
+      {
+        "forks": 14,
+        "name": "wbhu/Tri-MipRF",
+        "stars": 456
+      },
+      {
+        "forks": 54,
+        "name": "jjw-DL/OpenPCDet-Noted",
+        "stars": 454
+      },
+      {
+        "forks": 51,
+        "name": "OpenTalker/DPE",
+        "stars": 453
+      },
+      {
+        "forks": 77,
+        "name": "XiSHEN0220/RANSAC-Flow",
+        "stars": 451
+      },
+      {
+        "forks": 99,
+        "name": "SoccerNet/sn-gamestate",
+        "stars": 447
+      }
+    ],
+    "listed": 9669
+  },
+  "source": "https://github.com/kornia/kornia/network/dependents"
+}

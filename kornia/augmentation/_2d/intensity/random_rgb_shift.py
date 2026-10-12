@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
@@ -24,23 +24,43 @@ from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.enhance import shift_rgb
 
 
+def _shift_bounds(limit: Union[torch.Tensor, float, Tuple[float, float], List[float]]) -> Tuple[Any, Any]:
+    # A number (or 0-d tensor) is a half-width, bounded by itself; a (low, high) pair -- a tuple, a list or a 1-D
+    # tensor -- is the range and only needs to be finite and ordered.
+    if isinstance(limit, (tuple, list)) or (isinstance(limit, torch.Tensor) and limit.dim() > 0):
+        return (-float("inf"), float("inf"))
+    return (-limit, limit)
+
+
 class RandomRGBShift(IntensityAugmentationBase2D):
     """Randomly shift each channel of an image.
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
-        r_shift_limit: maximum value up to which the shift value can be generated for red channel;
-          recommended interval - [0, 1], should always be positive
-        g_shift_limit: maximum value up to which the shift value can be generated for green channel;
-          recommended interval - [0, 1], should always be positive
-        b_shift_limit: maximum value up to which the shift value can be generated for blue channel;
-          recommended interval - [0, 1], should always be positive
+        r_shift_limit: shift range for the red channel. A non-negative number ``limit`` samples from
+          ``[-limit, limit]``; a ``(low, high)`` pair samples from ``[low, high]``.
+        g_shift_limit: shift range for the green channel, in the same form as ``r_shift_limit``.
+        b_shift_limit: shift range for the blue channel, in the same form as ``r_shift_limit``.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
 
-    Note:
-        Input torch.Tensor must be float and normalized into [0, 1].
+    Convention:
+        - the input must have exactly three channels, which :func:`kornia.enhance.shift_rgb` checks; any
+          other channel count raises an ``ImageError``. The class draws three named shifts per sample --
+          ``_params["r_shift"]``, ``["g_shift"]`` and ``["b_shift"]``, each of shape ``(B,)`` -- adds each to
+          its channel, and the sum is clamped into ``[0, 1]`` by :func:`kornia.enhance.shift_rgb`.
+        - a number ``*_shift_limit`` is a non-negative half-width: that channel's shift is sampled from
+          ``[-limit, limit]``, so a limit of ``0`` adds nothing to the channel, though the clamp still applies. A
+          negative limit raises a ``ValueError`` at construction.
+        - a ``(low, high)`` pair, as in ``albumentations.RGBShift``, is the sampling range itself. It must be
+          finite with ``low <= high``, otherwise it raises a ``ValueError`` at construction.
+
+    .. warning::
+        Because the sum is clamped, an input whose values are all at or below ``-limit`` comes back as an
+        all-zero image on every draw. Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     Examples:
         >>> import torch
@@ -94,18 +114,18 @@ class RandomRGBShift(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        r_shift_limit: float = 0.5,
-        g_shift_limit: float = 0.5,
-        b_shift_limit: float = 0.5,
+        r_shift_limit: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.5,
+        g_shift_limit: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.5,
+        b_shift_limit: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.5,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = rg.PlainUniformGenerator(
-            (r_shift_limit, "r_shift", 0, (-r_shift_limit, r_shift_limit)),
-            (g_shift_limit, "g_shift", 0, (-g_shift_limit, g_shift_limit)),
-            (b_shift_limit, "b_shift", 0, (-b_shift_limit, b_shift_limit)),
+            (r_shift_limit, "r_shift", 0, _shift_bounds(r_shift_limit)),
+            (g_shift_limit, "g_shift", 0, _shift_bounds(g_shift_limit)),
+            (b_shift_limit, "b_shift", 0, _shift_bounds(b_shift_limit)),
         )
 
     def apply_transform(

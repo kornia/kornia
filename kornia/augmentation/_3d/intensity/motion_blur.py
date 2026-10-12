@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.intensity.base import IntensityAugmentationBase3D
+from kornia.augmentation.utils import _check_filter_min_size
 from kornia.constants import BorderType, Resample
 from kornia.filters import motion_blur3d
 
@@ -30,7 +31,7 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
 
     Args:
         p: probability of applying the transformation.
-        kernel_size: motion kernel size (odd and positive).
+        kernel_size: motion kernel size (odd and at least 3).
             If int, the kernel will have a fixed size.
             If Tuple[int, int], it will randomly generate the value from the range batch-wisely.
         angle: Range of degrees to select from.
@@ -53,13 +54,34 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
         - Output: :math:`(B, C, D, H, W)`
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation torch.Tensor and returned.
+
+    Convention:
+        See :class:`~kornia.augmentation.IntensityAugmentationBase3D` for the shared 3D intensity contract.
+
+        - each sampled ``angle`` triple ``(yaw, pitch, roll) = (rx, ry, rz)`` is **one axis-angle vector**
+          in degrees and is converted into a single Rodrigues rotation, not composed as per-axis Euler
+          rotations; see :class:`RandomRotation3D` for the convention.
+        - A positive roll turns the blur kernel clockwise as displayed, as
+          :class:`RandomRotation3D` does and opposite to the 2D
+          :class:`~kornia.augmentation.RandomMotionBlur`
+          (`#4408 <https://github.com/kornia/kornia/issues/4408>`_). Its default resampling is
+          nearest-neighbour, unlike the geometric 3D defaults.
+        - an integer ``kernel_size`` is one odd scalar applied to all three spatial axes. A tuple ``kernel_size``
+          is drawn once per call and shared across the batch, and each odd size inside the range is equally
+          likely, bounds included, so ``(3, 5)`` draws ``3`` and ``5`` and ``(3, 20)`` draws ``3, 5, ..., 19``.
+          A range holding no odd size is rounded **up** out of the requested range instead, so ``(4, 4)`` draws
+          ``5``; a reversed pair such as ``(20, 3)`` raises a ``ValueError`` at construction.
+        - a volume smaller than the kernel is accepted, down to ``1 x 1 x 1``, at the default
+          ``border_type="constant"`` and at ``"replicate"``. ``"reflect"`` needs each of depth, height and width
+          longer than the kernel radius, and ``"circular"`` at least that long; below that both raise a
+          ``ValueError`` naming the class, the drawn kernel, the axis and the input shape, as
+          :class:`~kornia.augmentation.RandomMotionBlur` does for an image.
+        - this class fixes ``p_batch=1``; its ``p`` remains the per-sample gate.
 
     Examples:
         >>> import torch
@@ -112,6 +134,7 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.flags = {"border_type": BorderType.get(border_type), "resample": Resample.get(resample)}
         self._param_generator = rg.MotionBlurGenerator3D(kernel_size, angle, direction)
+        self._fixed_kernel_size: Optional[int] = kernel_size if isinstance(kernel_size, int) else None
 
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
@@ -125,14 +148,21 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        kernel_size = int(params["ksize_factor"].unique().item())
+        kernel_size: int
+        if self._fixed_kernel_size is not None:
+            # Fixed kernel size: static value, no device-to-host read -> stays capturable by graph export.
+            kernel_size = self._fixed_kernel_size
+        else:
+            kernel_size = int(params["ksize_factor"].unique().item())
         angle = params["angle_factor"]
         direction = params["direction_factor"]
+        border_type = self.flags["border_type"].name.lower()
+        _check_filter_min_size("RandomMotionBlur3D", input, kernel_size, border_type=border_type, spatial_dims=3)
         return motion_blur3d(
             input,
             kernel_size,
             angle,
             direction,
-            self.flags["border_type"].name.lower(),
+            border_type,
             self.flags["resample"].name.lower(),
         )

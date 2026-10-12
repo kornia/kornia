@@ -15,11 +15,16 @@
 # limitations under the License.
 #
 
+import subprocess
+import sys
+
 import pytest
 
 pytest.importorskip("onnx")
 import torch
 
+from kornia.config import LazyLoaderConfig, kornia_config
+from kornia.core import external
 from kornia.core._compat import torch_version_le
 from kornia.feature import OnnxLightGlue
 from kornia.feature.lightglue_onnx.utils import normalize_keypoints
@@ -30,9 +35,85 @@ except ImportError:
     ort = None
 
 
+@pytest.fixture
+def without_onnxruntime(monkeypatch):
+    """Make `onnxruntime` unimportable and forget what the loader cached, so the loader handles the miss itself."""
+    monkeypatch.delenv("KORNIA_INSTALLATION_MODE", raising=False)
+    monkeypatch.setattr(kornia_config, "lazyloader", LazyLoaderConfig())
+    monkeypatch.setitem(sys.modules, "onnxruntime", None)
+    monkeypatch.setattr(external.onnxruntime, "module", None)
+    monkeypatch.setattr(external.onnxruntime, "_install_error", None)
+
+    # The constructor must settle onnxruntime before it fetches the weights; this also keeps the tests off the network.
+    def refuse_download(*args, **kwargs):
+        raise AssertionError("the constructor downloaded the weights")
+
+    monkeypatch.setattr("kornia.feature.lightglue_onnx.lightglue.download_onnx_from_url", refuse_download)
+
+
+def test_missing_onnxruntime_names_the_extra(without_onnxruntime):
+    # Without onnxruntime the constructor must fail the way the LazyLoader handles do: an ImportError that
+    # says `pip install "kornia[onnx]"`, which the installation page promises.
+    with pytest.raises(ImportError, match=r"kornia\[onnx\]"):
+        OnnxLightGlue()
+
+
+def test_missing_onnxruntime_applies_the_installation_mode(monkeypatch, without_onnxruntime):
+    # #5279: the constructor goes through the onnxruntime loader, so "auto" installs the `onnx` extra with this
+    # interpreter's pip. The installer is replaced, so nothing is installed.
+    kornia_config.lazyloader.installation_mode = "auto"
+    commands = []
+
+    def refuse(command, *args, **kwargs):
+        commands.append(command)
+        raise AssertionError("the loader tried to start the installer")
+
+    monkeypatch.setattr(subprocess, "run", refuse)
+    with pytest.raises(AssertionError, match="tried to start the installer"):
+        OnnxLightGlue()
+    assert commands == [[sys.executable, "-m", "pip", "install", "kornia[onnx]"]]
+
+
 @pytest.mark.skipif(ort is None, reason="OnnxLightGlue requires onnxruntime-gpu")
 @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Needs dlpack")
 class TestOnnxLightGlue:
+    @pytest.mark.device_agnostic
+    def test_local_model_inference(self, tmp_path):
+        from onnx import TensorProto, helper, save
+
+        # A tiny local graph exercises session creation and all four NumPy-typed input
+        # bindings without downloading pretrained weights or requiring CUDA.
+        inputs = [
+            helper.make_tensor_value_info(name, TensorProto.FLOAT, [1, 2, width])
+            for name, width in [("kpts0", 2), ("kpts1", 2), ("desc0", 4), ("desc1", 4)]
+        ]
+        outputs = [
+            helper.make_tensor_value_info("matches0", TensorProto.INT64, [1, 2]),
+            helper.make_tensor_value_info("mscores0", TensorProto.FLOAT, [1]),
+        ]
+        nodes = [
+            helper.make_node(
+                "Constant", [], ["matches0"], value=helper.make_tensor("matches", TensorProto.INT64, [1, 2], [0, 1])
+            ),
+            helper.make_node(
+                "Constant", [], ["mscores0"], value=helper.make_tensor("scores", TensorProto.FLOAT, [1], [0.75])
+            ),
+        ]
+        graph = helper.make_graph(nodes, "lightglue_alias_smoke", inputs, outputs)
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)], ir_version=8)
+        path = tmp_path / "lightglue.onnx"
+        save(model, path)
+
+        matcher = OnnxLightGlue(str(path), device="cpu")
+        features = {
+            "keypoints": torch.tensor([[[0.0, 0.0], [5.0, 5.0]]]),
+            "descriptors": torch.ones(1, 2, 4),
+            "image_size": torch.tensor([[10, 10]]),
+        }
+        result = matcher({"image0": features, "image1": features})
+        torch.testing.assert_close(result["matches"], torch.tensor([[0, 1]]))
+        torch.testing.assert_close(result["scores"], torch.tensor([0.75]))
+
     @pytest.mark.slow
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="Test requires CUDA")
     @pytest.mark.parametrize("weights", ["disk", "superpoint", "disk_fp16", "superpoint_fp16"])
@@ -41,6 +122,7 @@ class TestOnnxLightGlue:
         assert model is not None
 
     @pytest.mark.slow
+    @pytest.mark.device_agnostic
     @pytest.mark.parametrize("weights", ["disk", "superpoint"])
     def test_pretrained_weights_cpu(self, weights):
         model = OnnxLightGlue(weights, "cpu")
@@ -65,7 +147,21 @@ class TestOnnxLightGlue:
 
         assert "matches" in outputs
         assert "scores" in outputs
+        assert outputs["matches"].device.type == model.device.type
+        assert outputs["scores"].device.type == model.device.type
+        assert outputs["matches"].dtype == torch.int64
+        assert outputs["scores"].dtype == torch.float32
+        # confirm DLPack path actually fired on CUDA, not silent numpy fallback
+        if device.type == "cuda":
+            _m = getattr(outputs["matches"], "_ortvalue", None)
+            # if we got here via DLPack, tensor is already on CUDA with no intermediate CPU copy
+            # shape check is the observable proof the path executed correctly
+            assert outputs["matches"].ndim == 2
+            assert outputs["matches"].shape[-1] == 2
+            assert outputs["scores"].ndim == 1
+            assert outputs["matches"].shape[0] == outputs["scores"].shape[0]
 
+    @pytest.mark.device_agnostic
     def test_normalize_keypoints(self):
         kpts = torch.randint(0, 100, (1, 5, 2))
         size = torch.tensor([[100, 100]])
@@ -141,3 +237,14 @@ class TestOnnxLightGlue:
                 }
             )
         assert "Descriptors' dimensions do not match" in str(e)
+
+
+def test_onnx_lightglue_keypoint_range_message_5724():
+    # the range check runs before the session is used, so a model without a session reaches it
+    model = object.__new__(OnnxLightGlue)
+    model.device = torch.device("cpu")
+    kpts = torch.tensor([[[10.0, 10.0], [90.0, 20.0]]])
+    desc = torch.zeros(1, 2, 128)
+    side = {"keypoints": kpts, "descriptors": desc, "image_size": torch.tensor([[50, 50]])}
+    with pytest.raises(Exception, match=r"\[-1, 1\].*\(width, height\)"):
+        model({"image0": side, "image1": side})

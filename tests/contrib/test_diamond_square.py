@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import pytest
 import torch
 
 import kornia
@@ -46,3 +47,18 @@ class TestDiamondSquare(BaseTester):
         )
         self.assert_close(out.min(), expected_min)
         self.assert_close(out.max(), expected_max)
+
+    @pytest.mark.parametrize("spatial_size", [(1, 1), (2, 2), (2, 3), (3, 2), (1, 5), (2, 17)])
+    def test_spatial_sizes_below_three(self, spatial_size, device, dtype):
+        # Sides under 3 px used to fail with `math domain error` or a float in the `rand` size
+        # (kornia#4472).
+        torch.manual_seed(0)
+        output_size = (2, 3, *spatial_size)
+        out = kornia.contrib.diamond_square(output_size, device=device, dtype=dtype)
+        assert out.shape == output_size
+        assert torch.isfinite(out).all()
+
+    def test_plasma_augmentation_on_a_two_pixel_image(self, device, dtype):
+        img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
+        out = kornia.augmentation.RandomPlasmaBrightness(p=1.0)(img)
+        assert out.shape == img.shape

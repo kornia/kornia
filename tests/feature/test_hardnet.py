@@ -20,7 +20,7 @@ import torch
 
 from kornia.feature import HardNet, HardNet8
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_conv2d
 
 
 class TestHardNet(BaseTester):
@@ -34,17 +34,16 @@ class TestHardNet(BaseTester):
 
     @pytest.mark.slow
     def test_shape_batch(self, device):
-        inp = torch.ones(16, 1, 32, 32, device=device)
+        inp = torch.ones(4, 1, 32, 32, device=device)
         hardnet = HardNet().to(device)
         out = hardnet(inp)
-        assert out.shape == (16, 128)
+        assert out.shape == (4, 128)
 
     def test_gradcheck(self, device):
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float64)
         hardnet = HardNet().to(patches.device, patches.dtype)
         self.gradcheck(hardnet, (patches,), eps=1e-4, atol=1e-4, nondet_tol=1e-8)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 32, 32
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -62,10 +61,10 @@ class TestHardNet8(BaseTester):
         assert out.shape == (1, 128)
 
     def test_shape_batch(self, device):
-        inp = torch.ones(16, 1, 32, 32, device=device)
+        inp = torch.ones(4, 1, 32, 32, device=device)
         hardnet = HardNet8().to(device)
         out = hardnet(inp)
-        assert out.shape == (16, 128)
+        assert out.shape == (4, 128)
 
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
@@ -73,10 +72,74 @@ class TestHardNet8(BaseTester):
         hardnet = HardNet8().to(patches.device, patches.dtype)
         self.gradcheck(hardnet, (patches,), eps=1e-4, atol=1e-4)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 32, 32
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
         model = HardNet8().to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(HardNet8().to(patches.device, patches.dtype).eval())
         self.assert_close(model(patches), model_jit(patches))
+
+    def test_untrained_descriptors_are_distinct_5692(self, device, dtype):
+        # An all-ones PCA placeholder mapped every patch to +-(1, ..., 1) / sqrt(128).
+        if not supports_conv2d(device, dtype):
+            pytest.skip(f"no conv2d kernel for {dtype} on {device.type}")
+        torch.manual_seed(0)
+        patches = torch.rand(8, 1, 32, 32, device=device, dtype=dtype)
+        out = HardNet8().to(device, dtype)(patches)
+        assert out.shape == (8, 128)
+        self.assert_close(out.norm(dim=1), torch.ones(8, device=device, dtype=dtype))
+        cos = out @ out.T
+        off_diagonal = cos[~torch.eye(8, dtype=torch.bool, device=device)]
+        assert off_diagonal.abs().max() < 0.99
+
+    def test_untrained_model_keeps_the_first_features_5692(self, device, dtype):
+        if not supports_conv2d(device, dtype):
+            pytest.skip(f"no conv2d kernel for {dtype} on {device.type}")
+        torch.manual_seed(0)
+        patches = torch.rand(4, 1, 32, 32, device=device, dtype=dtype)
+        model = HardNet8().to(device, dtype)
+        features = model.features(model._normalize_input(patches)).view(4, -1)
+        expected = torch.nn.functional.normalize(torch.nn.functional.normalize(features, dim=1)[:, :128], dim=1)
+        self.assert_close(model(patches), expected)
+
+    def test_untrained_model_is_trainable_5692(self, device, dtype):
+        # The all-ones placeholder made the normalised output constant, so the gradient was zero (~1e-15).
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("half-precision rounding leaves a noise gradient on the degenerate placeholder as well")
+        torch.manual_seed(0)
+        patches = torch.rand(4, 1, 32, 32, device=device, dtype=dtype)
+        model = HardNet8().to(device, dtype)
+        target = torch.randn(4, 128, device=device, dtype=dtype)
+        (model(patches) * target).sum().backward()
+        grad = model.features[0].weight.grad
+        assert grad is not None
+        assert grad.abs().max() > 1e-3
+
+    def test_checkpoint_layout_is_unchanged_5692(self, device):
+        # The pretrained checkpoint loads with strict=True, so the buffer names and shapes must stay.
+        model = HardNet8().to(device)
+        state = model.state_dict()
+        assert state["components"].shape == (512, 128)
+        assert state["mean"].shape == (512,)
+        loaded = torch.rand(512, 128, device=device)
+        state["components"] = loaded
+        model.load_state_dict(state, strict=True)
+        self.assert_close(model.components, loaded)
+
+
+class TestHardNetConstantPatchIsFinite(BaseTester):
+    """A constant patch drives the features to zero; the L2 normalisation must not give NaN.
+
+    `F.normalize`'s default eps of 1e-12 rounds to zero in float16, so `0 / 0` reached the
+    descriptor. A detector that pads a short result feeds exactly this patch through a zero LAF.
+    """
+
+    @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16, torch.float32])
+    @pytest.mark.parametrize("model", [HardNet, HardNet8])
+    def test_constant_patch(self, device, desc_dtype, model):
+        if not supports_conv2d(device, desc_dtype):
+            # The descriptor is a stack of convolutions; torch 2.1.2 has no float16 CPU kernel.
+            pytest.skip(f"no conv2d kernel for {desc_dtype} on {device.type}")
+        patches = torch.zeros(2, 1, 32, 32, device=device, dtype=desc_dtype)
+        out = model().to(device, desc_dtype)(patches)
+        assert torch.isfinite(out).all()

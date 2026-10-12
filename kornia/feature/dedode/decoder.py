@@ -40,6 +40,17 @@ class Decoder(nn.Module):
     def forward(
         self, features: torch.Tensor, context: Optional[torch.Tensor] = None, scale: Optional[int] = None
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        r"""Run this DeDoDe module forward.
+
+        Args:
+            features: Encoded feature map with shape :math:`(B, C, H, W)`, or concatenated with context.
+            context: Optional context feature map from previous scale, shape
+                :math:`(B, C_{\text{ctx}}, H, W)`, or ``None``.
+            scale: String key selecting the decoder layer for this scale (e.g. ``"8"``, ``"4"``, ``"2"``, ``"1"``).
+
+        Returns:
+            Tuple of ``(logits, context)`` tensors, each with shape :math:`(B, C_{\text{out}}, H, W)`.
+        """
         if context is not None:
             features = torch.cat((features, context), dim=1)
         stuff = self.layers[scale](features)
@@ -106,10 +117,22 @@ class ConvRefiner(nn.Module):
         bias=True,
         norm_type=nn.BatchNorm2d,
     ):
+        """Create one decoder block for the requested scale.
+
+        Args:
+            in_dim: Number of input channels.
+            out_dim: Number of output channels. Must be divisible by ``in_dim`` when ``dw=True``.
+            dw: Whether to use depthwise convolution.
+            kernel_size: Convolution kernel size.
+            bias: Whether to include bias in the convolution.
+            norm_type: Normalization layer class to apply after the first conv.
+
+        Returns:
+            Decoder block (``nn.Sequential``) configured for the requested channels.
+        """
         num_groups = 1 if not dw else in_dim
-        if dw:
-            if out_dim % in_dim != 0:
-                raise Exception("outdim must be divisible by indim for depthwise")
+        if dw and out_dim % in_dim != 0:
+            raise ValueError("out_dim must be divisible by in_dim for depthwise convolution")
         conv1 = nn.Conv2d(
             in_dim,
             out_dim,
@@ -125,14 +148,19 @@ class ConvRefiner(nn.Module):
         return nn.Sequential(conv1, norm, relu, conv2)
 
     def forward(self, feats: torch.Tensor) -> torch.Tensor:
+        r"""Run this DeDoDe module forward.
+
+        Args:
+            feats: Input feature map with shape :math:`(B, C_{\text{in}}, H, W)`.
+
+        Returns:
+            Refined feature map with shape :math:`(B, C_{\text{out}}, H, W)`.
+        """
         _b, _c, _hs, _ws = feats.shape
-        # AMP is intentionally scoped to "cuda" only: float16 autocast on CPU is not
-        # supported by PyTorch and a no-op on MPS. Use amp_dtype=torch.float32 on
-        # non-CUDA devices to disable AMP entirely.
-        with torch.autocast("cuda", enabled=self.amp, dtype=self.amp_dtype):
+        # AMP runs only for CUDA tensors.
+        with torch.autocast("cuda", enabled=self.amp and feats.is_cuda, dtype=self.amp_dtype):
             x0 = self.block1(feats)
             x = self.hidden_blocks(x0)
             if self.residual:
                 x = (x + x0) / 1.4
-            x = self.out_conv(x)
-            return x
+            return self.out_conv(x)

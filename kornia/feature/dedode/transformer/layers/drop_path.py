@@ -41,8 +41,7 @@ def drop_path(x: torch.Tensor, drop_prob: Optional[float] = 0.0, training: bool 
     random_tensor = x.new_empty(shape).bernoulli_(keep_prob)
     if keep_prob > 0.0:
         random_tensor.div_(keep_prob)
-    output = x * random_tensor
-    return output
+    return x * random_tensor
 
 
 class DropPath(nn.Module):
@@ -53,4 +52,14 @@ class DropPath(nn.Module):
         self.drop_prob = drop_prob
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run this DeDoDe module forward.
+
+        Args:
+            x: Input tensor of any shape. Channels are retained; only full samples are dropped.
+
+        Returns:
+            Output tensor with the same shape as ``x``. During training some samples are
+            randomly zeroed with probability ``drop_prob``; at eval time the tensor is
+            returned unchanged.
+        """
         return drop_path(x, self.drop_prob, self.training)

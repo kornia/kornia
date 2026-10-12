@@ -18,7 +18,6 @@
 from __future__ import annotations
 
 import torch
-from torch.distributions import Normal
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _common_param_check
@@ -54,9 +53,7 @@ class GaussianNoiseGenerator(RandomGeneratorBase):
         return f"mean={self.mean}, std={self.std}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        """Store device and dtype for the Normal distribution (created on demand in forward)."""
-        # Normal is created fresh in forward() so device/dtype are always consistent.
-        # No persistent sampler is needed beyond what the base class tracks.
+        """No persistent sampler needed; noise is drawn directly in forward from the tracked device/dtype."""
 
     def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, torch.Tensor]:
         """Generate a Gaussian noise tensor matching the input batch shape.
@@ -76,13 +73,11 @@ class GaussianNoiseGenerator(RandomGeneratorBase):
         device = self.device if self.device is not None else torch.device("cpu")
         dtype = self.dtype if self.dtype is not None else torch.get_default_dtype()
 
-        dist = Normal(
-            torch.tensor(self.mean, device=device, dtype=dtype),
-            torch.tensor(self.std, device=device, dtype=dtype),
-        )
-
         # When same_on_batch, generate a single (1, C, H, W) map — apply_transform will expand it.
         sample_B = 1 if same_on_batch else batch_size
-        gaussian_noise = dist.rsample((sample_B, C, H, W))
+        # Equivalent to ``Normal(mean, std).rsample(...)`` (which computes ``mean + eps * std``
+        # from a standard-normal ``eps``), but skips constructing a Normal and two scalar tensors
+        # on every forward. Byte-identical: the underlying ``randn`` draw is the same.
+        gaussian_noise = self.mean + torch.randn((sample_B, C, H, W), device=device, dtype=dtype) * self.std
 
         return {"gaussian_noise": gaussian_noise}

@@ -95,6 +95,14 @@ class ConvLayer(nn.Module):
         self.act = build_act(act_func)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply dropout, convolution, optional normalization, and activation.
+
+        Args:
+            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Feature map after the configured convolutional layer stack.
+        """
         if self.dropout is not None:
             x = self.dropout(x)
         x = self.conv(x)
@@ -109,6 +117,7 @@ class IdentityLayer(nn.Module):
     """Implement a placeholder layer that returns the input as-is."""
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Return the input tensor unchanged."""
         return x
 
 
@@ -164,9 +173,17 @@ class DSConv(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply depthwise then pointwise convolution.
+
+        Args:
+            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Feature map with ``out_channels`` produced by the pointwise
+            projection.
+        """
         x = self.depth_conv(x)
-        x = self.point_conv(x)
-        return x
+        return self.point_conv(x)
 
 
 class MBConv(nn.Module):
@@ -229,10 +246,17 @@ class MBConv(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply an inverted bottleneck convolution block.
+
+        Args:
+            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Feature map after expansion, depthwise convolution, and projection.
+        """
         x = self.inverted_conv(x)
         x = self.depth_conv(x)
-        x = self.point_conv(x)
-        return x
+        return self.point_conv(x)
 
 
 class FusedMBConv(nn.Module):
@@ -294,9 +318,17 @@ class FusedMBConv(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply a fused mobile inverted bottleneck convolution.
+
+        Args:
+            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Feature map after fused spatial convolution and pointwise
+            projection.
+        """
         x = self.spatial_conv(x)
-        x = self.point_conv(x)
-        return x
+        return self.point_conv(x)
 
 
 class ResBlock(nn.Module):
@@ -348,9 +380,16 @@ class ResBlock(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply the two-convolution residual-block main branch.
+
+        Args:
+            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Feature map after the block's convolutional transformations.
+        """
         x = self.conv1(x)
-        x = self.conv2(x)
-        return x
+        return self.conv2(x)
 
 
 class LiteMLA(nn.Module):
@@ -433,6 +472,8 @@ class LiteMLA(nn.Module):
     def relu_linear_att(self, qkv: torch.Tensor) -> torch.Tensor:
         B, _, H, W = list(qkv.size())
 
+        dtype = qkv.dtype
+
         if qkv.dtype == torch.float16:
             qkv = qkv.float()
 
@@ -453,10 +494,18 @@ class LiteMLA(nn.Module):
         out = out[..., :-1] / (out[..., -1:] + self.eps)
 
         out = torch.transpose(out, -1, -2)
-        out = torch.reshape(out, (B, -1, H, W))
-        return out
+        return torch.reshape(out, (B, -1, H, W)).to(dtype)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply lightweight multi-scale linear attention.
+
+        Args:
+            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Feature map after multi-scale query/key/value aggregation, linear
+            attention, and output projection.
+        """
         # generate multi-scale q, k, v
         qkv = self.qkv(x)
         multi_scale_qkv = [qkv]
@@ -465,9 +514,7 @@ class LiteMLA(nn.Module):
         multi_scale_qkv = torch.cat(multi_scale_qkv, dim=1)
 
         out = self.relu_linear_att(multi_scale_qkv)
-        out = self.proj(out)
-
-        return out
+        return self.proj(out)
 
 
 class EfficientViTBlock(nn.Module):
@@ -515,9 +562,17 @@ class EfficientViTBlock(nn.Module):
         self.local_module = ResidualBlock(local_module, IdentityLayer())
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply an EfficientViT attention-plus-local block.
+
+        Args:
+            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Feature map with the same shape after the context module and local
+            MBConv module.
+        """
         x = self.context_module(x)
-        x = self.local_module(x)
-        return x
+        return self.local_module(x)
 
 
 #################################################################################
@@ -550,12 +605,29 @@ class ResidualBlock(nn.Module):
         self.post_act = build_act(post_act)
 
     def forward_main(self, x: torch.Tensor) -> torch.Tensor:
+        """Run the main branch, applying pre-normalization when configured.
+
+        Args:
+            x: Input tensor for the residual block.
+
+        Returns:
+            Output from ``self.main`` with optional ``self.pre_norm`` applied
+            first.
+        """
         if self.pre_norm is None:
             return self.main(x)
-        else:
-            return self.main(self.pre_norm(x))
+        return self.main(self.pre_norm(x))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply the residual wrapper to an input tensor.
+
+        Args:
+            x: Input tensor passed to the main and shortcut branches.
+
+        Returns:
+            Tensor from the main branch, optionally added to the shortcut and
+            passed through ``self.post_act``.
+        """
         if self.main is None:
             res = x
         elif self.shortcut is None:
@@ -588,6 +660,14 @@ class OpSequential(nn.Module):
         self.op_list = nn.ModuleList(valid_op_list)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply each non-empty operation in sequence.
+
+        Args:
+            x: Input tensor for the first operation.
+
+        Returns:
+            Tensor after all stored operations have been applied.
+        """
         for op in self.op_list:
             x = op(x)
         return x

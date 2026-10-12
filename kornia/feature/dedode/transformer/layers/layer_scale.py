@@ -49,4 +49,12 @@ class LayerScale(nn.Module):
         self.gamma = nn.Parameter(init_values * torch.ones(dim))
 
     def forward(self, x: Tensor) -> Tensor:
+        """Run this DeDoDe module forward.
+
+        Args:
+            x: Input token tensor with shape :math:`(B, N, C)`.
+
+        Returns:
+            Tensor with the same shape :math:`(B, N, C)` scaled element-wise by the learnable ``gamma`` parameter.
+        """
         return x.mul_(self.gamma) if self.inplace else x * self.gamma

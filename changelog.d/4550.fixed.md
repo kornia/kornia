@@ -1,0 +1,1 @@
+`RandomMosaic` places bounding boxes on the tile that holds their image on non-square inputs: the x and y tile offsets of the box composition were swapped, which only agreed with the composed image when height equals width.

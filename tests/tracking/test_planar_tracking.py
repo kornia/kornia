@@ -186,12 +186,6 @@ class TestHomographyTrackerUnit:
         assert tracker.previous_homography is None  # reset_tracking was called
 
 
-@pytest.fixture()
-def data_url():
-    url = "https://github.com/kornia/data_test/blob/main/loftr_outdoor_and_homography_data.pt?raw=true"
-    return url
-
-
 class TestHomographyTracker(BaseTester):
     @pytest.mark.slow
     def test_smoke(self, device):
@@ -199,15 +193,14 @@ class TestHomographyTracker(BaseTester):
         assert tracker is not None
 
     @pytest.mark.slow
-    def test_nomatch(self, device, dtype, data_url):
-        data = torch.hub.load_state_dict_from_url(data_url)
+    @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
+    def test_nomatch(self, device, dtype, data):
+        # The fixture is session-scoped and shared; cast into a copy rather than in place.
+        data = {k: v.to(device, dtype) if isinstance(v, torch.Tensor) else v for k, v in data.items()}
 
         # This is not unit test, but that is quite good integration test
         matcher = LocalFeatureMatcher(SIFTFeature(100), DescriptorMatcher("smnn", 0.95)).to(device, dtype)
         tracker = HomographyTracker(matcher, matcher, minimum_inliers_num=100)
-        for k in data.keys():
-            if isinstance(data[k], torch.Tensor):
-                data[k] = data[k].to(device, dtype)
         tracker.set_target(data["image0"])
         torch.random.manual_seed(0)
         _, success = tracker(torch.zeros_like(data["image0"]))
@@ -215,12 +208,11 @@ class TestHomographyTracker(BaseTester):
 
     @pytest.mark.slow
     @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Fails for bached torch.linalg.solve")
-    def test_real(self, device, dtype, data_url):
-        data = torch.hub.load_state_dict_from_url(data_url)
+    @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
+    def test_real(self, device, dtype, data):
+        # The fixture is session-scoped and shared; cast into a copy rather than in place.
+        data = {k: v.to(device, dtype) if isinstance(v, torch.Tensor) else v for k, v in data.items()}
         # This is not unit test, but that is quite good integration test
-        for k in data.keys():
-            if isinstance(data[k], torch.Tensor):
-                data[k] = data[k].to(device, dtype)
 
         data["image0"] = rescale(data["image0"], 0.5, interpolation="bilinear", align_corners=False)
         data["image1"] = rescale(data["image1"], 0.5, interpolation="bilinear", align_corners=False)

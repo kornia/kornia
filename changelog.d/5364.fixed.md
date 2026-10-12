@@ -1,0 +1,1 @@
+`MotionBlur` and `MotionBlur3D` now honor `mode="bilinear"` instead of silently using nearest interpolation, and show the selected mode in their representation. `MotionBlur3D` accepts tensor and integer angles and rejects sequences whose length is not three at construction. Nearest-mode outputs and border defaults stay unchanged.

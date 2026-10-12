@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import os
 from collections import OrderedDict
 from typing import ClassVar, Optional
 
@@ -27,11 +28,15 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.core.mixin.onnx import ONNXExportMixin
 
 __all__ = ["DexiNed"]
 
-url: str = "http://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth"
+_url: str | list[str] = [
+    hf_url("dexined", "DexiNed_BIPED_10.pth"),
+    "https://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth",
+]
 
 
 def weight_init(m: nn.Module) -> None:
@@ -144,8 +149,7 @@ class UpConvBlock(nn.Module):
 
     def forward(self, x: torch.Tensor, out_shape: list[int]) -> torch.Tensor:
         out = self.features(x)
-        out = F.interpolate(out, out_shape, mode="bilinear")
-        return out
+        return F.interpolate(out, out_shape, mode="bilinear")
 
 
 class SingleConvBlock(nn.Module):
@@ -237,17 +241,42 @@ class DexiNed(ONNXExportMixin, nn.Module):
         # self.block_cat = CoFusion(6,6)# cats fusion method
 
         if pretrained:
-            self.load_from_file(url)
+            self.load_from_file(_url)
         else:
             self.apply(weight_init)
 
-    def load_from_file(self, path_file: str) -> None:
-        # use torch.hub to load pretrained model
-        pretrained_dict = torch.hub.load_state_dict_from_url(path_file, map_location=torch.device("cpu"))
+    def load_from_file(self, path_file: str | list[str]) -> None:
+        """Load pretrained DexiNed weights and switch the module to evaluation mode.
+
+        Args:
+            path_file: path of a local checkpoint file, a URL accepted by
+                :func:`kornia.core.download.load_state_dict_from_url`, or a list
+                of candidate URLs tried in order (HF-first fallback). A string
+                naming an existing file (a leading ``~`` is expanded) is read with
+                :func:`torch.load` and ``weights_only=True``; anything else goes
+                through the hub cache, which is keyed by base name.
+        """
+        local = os.path.expanduser(path_file) if isinstance(path_file, str) else None
+        if local is not None and os.path.isfile(local):
+            with open(local, "rb") as f:
+                pretrained_dict = torch.load(f, map_location=torch.device("cpu"), weights_only=True)
+        else:
+            pretrained_dict = load_state_dict_from_url(path_file, map_location=torch.device("cpu"))
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
     def get_features(self, x: torch.Tensor) -> list[torch.Tensor]:
+        """Compute the six multi-scale DexiNed side-output edge maps.
+
+        Args:
+            x: Input RGB image tensor with shape :math:`(B, 3, H, W)`, where
+                :math:`B` is batch size, :math:`H` is height, and :math:`W` is
+                width.
+
+        Returns:
+            List of six tensors aligned to the input spatial size. Each tensor
+            is a side-output edge response used by the final fusion block.
+        """
         # Block 1
         block_1 = self.block_1(x)
         block_1_side = self.side_1(block_1)
@@ -290,14 +319,20 @@ class DexiNed(ONNXExportMixin, nn.Module):
         out_4 = self.up_block_4(block_4, out_shape)
         out_5 = self.up_block_5(block_5, out_shape)
         out_6 = self.up_block_6(block_6, out_shape)
-        results = [out_1, out_2, out_3, out_4, out_5, out_6]
-        return results
+        return [out_1, out_2, out_3, out_4, out_5, out_6]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Predict a fused edge map from an RGB image batch.
+
+        Args:
+            x: Input RGB image tensor with shape :math:`(B, 3, H, W)`.
+
+        Returns:
+            Tensor with shape :math:`(B, 1, H, W)` containing the fused DexiNed
+            edge response.
+        """
         features = self.get_features(x)
 
         # concatenate multiscale outputs
         block_cat = torch.cat(features, dim=1)  # Bx6xHxW
-        block_cat = self.block_cat(block_cat)  # Bx1xHxW
-
-        return block_cat
+        return self.block_cat(block_cat)  # Bx1xHxW

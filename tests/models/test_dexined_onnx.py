@@ -19,7 +19,11 @@ import pytest
 
 from kornia.models.dexined import DexiNed
 
+# Every test in this module must stay device-free: the mark deselects the whole file on non-CPU devices.
+pytestmark = pytest.mark.device_agnostic
 
+
+@pytest.mark.timeout(120)
 def test_dexined_to_onnx(tmp_path):
     """Ensure `DexiNed.to_onnx` exports a valid ONNX model and saves the file."""
     onnx = pytest.importorskip("onnx")

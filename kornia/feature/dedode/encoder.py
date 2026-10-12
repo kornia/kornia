@@ -20,7 +20,16 @@ from typing import Any, Optional, Tuple
 import torch
 from torch import nn
 
+from kornia.core.download import load_state_dict_from_url
+
 from .vgg import vgg19_bn
+
+# Module level, like every other weight registry in kornia, so the CI weights
+# cache can enumerate it -- see tests/core/test_weights_prefetch.py. The DeDoDe
+# G descriptor pulls this backbone in, so CI needs it cached.
+urls: dict[str, str] = {
+    "dinov2_vitl14": "https://dl.fbaipublicfiles.com/dinov2/dinov2_vitl14/dinov2_vitl14_pretrain.pth"
+}
 
 
 class VGG19(nn.Module):
@@ -39,10 +48,19 @@ class VGG19(nn.Module):
         self.amp_dtype = amp_dtype
 
     def forward(self, x: torch.Tensor, **kwargs):  # type: ignore[no-untyped-def]
-        # AMP is intentionally scoped to "cuda" only: float16 autocast on CPU is not
-        # supported by PyTorch and a no-op on MPS. Use amp_dtype=torch.float32 on
-        # non-CUDA devices to disable AMP entirely.
-        with torch.autocast("cuda", enabled=self.amp, dtype=self.amp_dtype):
+        """Run this DeDoDe module forward.
+
+        Args:
+            x: Input image tensor with shape :math:`(B, 3, H, W)` (BGR or RGB).
+            **kwargs: Additional keyword arguments accepted for compatibility with the shared encoder interface. They
+                are not used by this VGG19 batch-normalized backbone wrapper.
+
+        Returns:
+            Tuple of ``(features, sizes)`` where ``features`` is a list of intermediate feature maps
+            captured before each max-pool, and ``sizes`` is a list of their spatial dimensions.
+        """
+        # AMP runs only for CUDA tensors.
+        with torch.autocast("cuda", enabled=self.amp and x.is_cuda, dtype=self.amp_dtype):
             feats = []
             sizes = []
             for layer in self.layers:
@@ -59,9 +77,7 @@ class FrozenDINOv2(nn.Module):
     def __init__(self, amp: bool = True, amp_dtype: torch.dtype = torch.float16, dinov2_weights: Optional[Any] = None):
         super().__init__()
         if dinov2_weights is None:
-            dinov2_weights = torch.hub.load_state_dict_from_url(
-                "https://dl.fbaipublicfiles.com/dinov2/dinov2_vitl14/dinov2_vitl14_pretrain.pth", map_location="cpu"
-            )
+            dinov2_weights = load_state_dict_from_url(urls["dinov2_vitl14"], map_location="cpu")
         from .transformer import vit_large
 
         vit_kwargs = dict(
@@ -80,6 +96,15 @@ class FrozenDINOv2(nn.Module):
         self.dinov2_vitl14 = [dinov2_vitl14]  # ugly hack to not show parameters to DDP
 
     def forward(self, x: torch.Tensor):  # type: ignore[no-untyped-def]
+        """Run this DeDoDe module forward.
+
+        Args:
+            x: Input image tensor with shape :math:`(B, 3, H, W)`. Converted to ``amp_dtype`` internally.
+
+        Returns:
+            Tuple of ``([features_16], [(H//14, W//14)])`` where ``features_16`` has shape
+            :math:`(B, 1024, H/14, W/14)`.
+        """
         B, _C, H, W = x.shape
         if self.dinov2_vitl14[0].device != x.device:
             self.dinov2_vitl14[0] = self.dinov2_vitl14[0].to(x.device).to(self.amp_dtype)
@@ -100,6 +125,14 @@ class VGG_DINOv2(nn.Module):
         self.frozen_dinov2 = FrozenDINOv2(**dinov2_kwargs)
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, Tuple[int, int]]:
+        """Run this DeDoDe module forward.
+
+        Args:
+            x: Input image tensor with shape :math:`(B, 3, H, W)`.
+
+        Returns:
+            Tuple of combined ``(features, sizes)`` lists from the VGG19 and DINOv2 encoders.
+        """
         feats_vgg, sizes_vgg = self.vgg(x)
         feat_dinov2, size_dinov2 = self.frozen_dinov2(x)
         return feats_vgg + feat_dinov2, sizes_vgg + size_dinov2

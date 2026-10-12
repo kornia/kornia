@@ -13,14 +13,17 @@ jobs:
   stale:
     name: Stale Pull Requests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/stale@v10
+      - uses: actions/stale@v11
         with:
-          stale-pr-message: "This pull request has been automatically marked as stale because it has not had recent activity. It will be closed if no further activity occurs within 7 days. Thank you for your contributions!"
-          close-pr-message: "This pull request has been automatically closed due to inactivity. Feel free to reopen it if you would like to continue working on it."
+          stale-pr-message: "This pull request has been quiet for 15 days, so we're marking it stale to keep the queue readable. **Nothing happens automatically — kornia does not close pull requests for inactivity.** The label is a triage signal, and it clears itself as soon as you comment or push. Maintainers can add the `pinned` label to exempt a pull request from the sweep entirely."
           days-before-pr-stale: 15
-          days-before-pr-close: 7
+          # Never close a pull request for inactivity. A quiet pull request is a pull request
+          # waiting on us at least as often as one waiting on its author, and closing it loses the
+          # review history that made it cheap to pick back up. -1 disables closing entirely.
+          days-before-pr-close: -1
           stale-pr-label: "stale"
-          exempt-pr-labels: "pinned,work-in-progress,on-hold"
+          exempt-pr-labels: "pinned"
           days-before-issue-stale: -1
           days-before-issue-close: -1

@@ -92,6 +92,16 @@ class MLP(nn.Module):
         self.sigmoid_output = sigmoid_output
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply the configured MLP to the last tensor dimension.
+
+        Args:
+            x: Input tensor whose last dimension equals ``input_dim``.
+
+        Returns:
+            Tensor with the same leading dimensions as ``x`` and final
+            dimension ``output_dim``. If ``sigmoid_output`` is enabled, the
+            final values are passed through a sigmoid.
+        """
         for i, layer in enumerate(self.layers):
             x = F.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
         if self.sigmoid_output:
@@ -110,6 +120,17 @@ class DropPath(nn.Module):
         self.scale_by_keep = scale_by_keep
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply stochastic depth to a residual branch.
+
+        Args:
+            x: Residual-branch tensor with arbitrary shape. The first dimension
+                is treated as the batch dimension.
+
+        Returns:
+            Tensor with the same shape as ``x``. During training, complete
+            samples may be dropped and optionally scaled by the keep
+            probability; during evaluation the input is returned unchanged.
+        """
         if self.drop_prob == 0.0 or not self.training:
             return x
         keep_prob = 1 - self.drop_prob
@@ -121,7 +142,7 @@ class DropPath(nn.Module):
 
 
 # From https://github.com/facebookresearch/detectron2/blob/main/detectron2/layers/batch_norm.py
-# Itself from https://github.com/facebookresearch/ConvNeXt/blob/d1fa8f6fef0a165b27399986cc2bdacc92777e40/models/convnext.py#L119  # noqa
+# Itself from https://github.com/facebookresearch/ConvNeXt/blob/d1fa8f6fef0a165b27399986cc2bdacc92777e40/models/convnext.py#L119  # noqa: E501
 class LayerNorm2d(nn.Module):
     """Apply Layer Normalization over a 4D input tensor (NCHW)."""
 
@@ -132,11 +153,21 @@ class LayerNorm2d(nn.Module):
         self.eps = eps
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply channel-wise layer normalization to an NCHW tensor.
+
+        Args:
+            x: Tensor with shape :math:`(B, C, H, W)`, where :math:`B` is batch
+                size, :math:`C` is channel count, :math:`H` is height, and
+                :math:`W` is width.
+
+        Returns:
+            Tensor with the same shape as ``x`` after normalizing across the
+            channel dimension and applying learned affine parameters.
+        """
         u = x.mean(1, keepdim=True)
         s = (x - u).pow(2).mean(1, keepdim=True)
         x = (x - u) / (s + self.eps).sqrt()
-        x = self.weight[:, None, None] * x + self.bias[:, None, None]
-        return x
+        return self.weight[:, None, None] * x + self.bias[:, None, None]
 
 
 def window_partition(x: torch.Tensor, window_size: int) -> tuple[torch.Tensor, tuple[int, int]]:

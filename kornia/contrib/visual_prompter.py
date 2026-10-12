@@ -95,9 +95,9 @@ class VisualPrompter:
 
         self.device = device
         self.dtype = dtype
-        self._original_image_size: None | tuple[int, int] = None
-        self._input_image_size: None | tuple[int, int] = None
-        self._input_encoder_size: None | tuple[int, int] = None
+        self._original_image_size: tuple[int, int] | None = None
+        self._input_image_size: tuple[int, int] | None = None
+        self._input_encoder_size: tuple[int, int] | None = None
         self.reset_image()
 
     def preprocess_image(
@@ -129,9 +129,8 @@ class VisualPrompter:
         encoder_im_size = self.model.image_encoder.img_size
         pad_h = encoder_im_size - x.shape[-2]
         pad_w = encoder_im_size - x.shape[-1]
-        x = F.pad(x, (0, pad_w, 0, pad_h))
 
-        return x
+        return F.pad(x, (0, pad_w, 0, pad_h))
 
     @torch.no_grad()
     def set_image(
@@ -191,12 +190,7 @@ class VisualPrompter:
 
             boxes = Boxes.from_tensor(boxes, mode="xyxy")
 
-        if boxes.mode == "xyxy":
-            boxes_xyxy = boxes
-        else:
-            boxes_xyxy = Boxes.from_tensor(boxes.to_tensor(mode="xyxy"), mode="xyxy")
-
-        return boxes_xyxy
+        return boxes if boxes.mode == "xyxy" else Boxes.from_tensor(boxes.to_tensor(mode="xyxy"), mode="xyxy")
 
     def _valid_masks(self, masks: torch.Tensor) -> torch.Tensor:
         """Validate the input masks shape."""
@@ -239,7 +233,9 @@ class VisualPrompter:
         if isinstance(masks, torch.Tensor):
             self._valid_masks(masks)
 
-        data = self._transform_prompts(*to_transform, data_keys=data_keys)
+        # No prompt at all is a valid query (SAM then predicts from the image embedding alone); the
+        # augmentation container cannot be called with nothing to transform.
+        data = self._transform_prompts(*to_transform, data_keys=data_keys) if to_transform else {}
 
         if "keypoints" in data and isinstance(data["keypoints"], Keypoints):
             kpts_tensor = data["keypoints"].to_tensor()
@@ -369,7 +365,7 @@ class VisualPrompter:
 
         Example:
             >>> # prompter = VisualPrompter()
-            >>> # prompter.compile() # You should have torch >= 2.0.0 installed
+            >>> # prompter.compile()
             >>> # Use the prompter methods ...
 
         """

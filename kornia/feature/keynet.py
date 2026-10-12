@@ -15,13 +15,13 @@
 # limitations under the License.
 #
 
-from typing import List, Optional
+from typing import List, Optional, TypedDict
 
 import torch
 import torch.nn.functional as F
 from torch import nn
-from typing_extensions import TypedDict
 
+from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.filters import SpatialGradient
 from kornia.geometry.transform import pyrdown
 
@@ -51,7 +51,10 @@ keynet_default_config: KeyNet_conf = {
     "Detector_conf": get_default_detector_config(),
 }
 
-KeyNet_URL = "https://github.com/axelBarroso/Key.Net-Pytorch/raw/main/model/weights/keynet_pytorch.pth"
+KeyNet_URL = [
+    hf_url("keynet", "keynet_pytorch.pth"),
+    "https://github.com/axelBarroso/Key.Net-Pytorch/raw/main/model/weights/keynet_pytorch.pth",
+]
 
 
 class _FeatureExtractor(nn.Module):
@@ -68,8 +71,7 @@ class _FeatureExtractor(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x_hc = self.hc_block(x)
-        x_lb = self.lb_block(x_hc)
-        return x_lb
+        return self.lb_block(x_hc)
 
 
 class _HandcraftedBlock(nn.Module):
@@ -89,9 +91,7 @@ class _HandcraftedBlock(nn.Module):
         # Only dyy is used from sobel_dy; dyx is discarded.
         dyy = self.spatial_gradient(dy)[:, :, 1, :, :]
 
-        hc_feats = torch.cat([dx, dy, dx.square(), dy.square(), dx * dy, dxy, dxy.square(), dxx, dyy, dxx * dyy], 1)
-
-        return hc_feats
+        return torch.cat([dx, dy, dx.square(), dy.square(), dx * dy, dxy, dxy.square(), dxx, dyy, dxx * dyy], 1)
 
 
 class _LearnableBlock(nn.Sequential):
@@ -108,8 +108,12 @@ class _LearnableBlock(nn.Sequential):
         self.conv2 = _KeyNetConvBlock()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.conv2(self.conv1(self.conv0(x)))
-        return x
+        # These narrow convolutions benefit from channel-contiguous activations on
+        # CPU and CUDA. Convert once at the block boundary, without changing the
+        # parameter layout or the pretrained state-dict contract.
+        if x.dtype == torch.float32 and x.device.type in ("cpu", "cuda"):
+            x = x.to(memory_format=torch.channels_last)
+        return self.conv2(self.conv1(self.conv0(x)))
 
 
 def _KeyNetConvBlock(
@@ -172,7 +176,7 @@ class KeyNet(nn.Module):
         )
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(KeyNet_URL, map_location=torch.device("cpu"))
+            pretrained_dict = load_state_dict_from_url(KeyNet_URL, map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict["state_dict"], strict=True)
         self.eval()
 
@@ -185,8 +189,7 @@ class KeyNet(nn.Module):
             feats_i = self.feature_extractor(x)
             feats_i = F.interpolate(feats_i, size=(h, w), mode="bilinear", align_corners=False)
             feats.append(feats_i)
-        scores = self.last_conv(torch.cat(feats, 1))
-        return scores
+        return self.last_conv(torch.cat(feats, 1))
 
 
 class KeyNetDetector(MultiResolutionDetector):
@@ -206,6 +209,10 @@ class KeyNetDetector(MultiResolutionDetector):
            which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
         aff_module: for local feature affine shape estimation. Default: :class:`~kornia.feature.PassLAF`,
             which does nothing. See :class:`~kornia.feature.LAFAffineShapeEstimator` for details.
+        compile_model: wrap the response function and the non-maxima suppression with :func:`torch.compile`.
+        score_threshold: minimum response for a position to count as a detection. Must be non-negative:
+            non-maxima suppression writes an exact zero at every suppressed position, so a negative
+            threshold would admit all of them.
 
     """
 

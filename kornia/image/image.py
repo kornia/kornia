@@ -18,13 +18,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Union
+from typing import Any, Optional, Union
 
 import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
 
 import kornia.color
-from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import are_checks_enabled
+from kornia.core.exceptions import ValueCheckError
 from kornia.image.base import (
     KORNIA_CHECK_IMAGE_LAYOUT,
     ChannelsOrder,
@@ -39,6 +40,15 @@ from kornia.io.io import ImageLoadType, load_image, write_image
 # placeholder for numpy
 np_ndarray = Any
 DLPack = Any
+
+
+# the channel count each colour space implies; UNKNOWN accepts any count
+_CHANNELS_OF_COLOR_SPACE = {ColorSpace.GRAY: 1, ColorSpace.RGB: 3, ColorSpace.BGR: 3}
+
+
+def _default_color_space(channels: int) -> ColorSpace:
+    """Label an image by its channel count: 1 is GRAY, 3 is RGB, anything else is UNKNOWN."""
+    return {1: ColorSpace.GRAY, 3: ColorSpace.RGB}.get(channels, ColorSpace.UNKNOWN)
 
 
 class Image:
@@ -56,6 +66,9 @@ class Image:
 
     Args:
         data: a torch torch.Tensor containing the image data.
+        pixel_format: the pixel format. ``bit_depth`` is the storage size, ``8 * data.element_size()``, and the color
+            space must match the channel count: ``GRAY`` has 1 channel, ``RGB`` and ``BGR`` have 3, ``UNKNOWN``
+            accepts any count.
         layout: a dataclass containing the image layout information.
 
     Examples:
@@ -85,14 +98,37 @@ class Image:
     def __init__(self, data: torch.Tensor, pixel_format: PixelFormat, layout: ImageLayout) -> None:
         """Image constructor.
 
+        Like the other kornia checks, the pixel-format checks are skipped after ``kornia.core.check.disable_checks()``.
+
         Args:
             data: a torch torch.Tensor containing the image data.
             pixel_format: the pixel format of the image.
             layout: a dataclass containing the image layout information.
 
+        Raises:
+            ShapeError: if ``data`` does not have the shape ``layout`` describes. It is also a ``ValueError``.
+            ValueCheckError: if ``pixel_format.bit_depth`` is not ``8 * data.element_size()`` (also a ``ValueError``).
+            ValueCheckError: if the color space does not match the channel count. It is also a ``ValueError``.
+
         """
         KORNIA_CHECK_IMAGE_LAYOUT(data, layout)
-        KORNIA_CHECK(data.element_size() == pixel_format.bit_depth // 8, "Invalid bit depth.")
+        if are_checks_enabled():
+            storage_bits = 8 * data.element_size()
+            if pixel_format.bit_depth != storage_bits:
+                raise ValueCheckError(
+                    f"Invalid bit depth: the pixel format says {pixel_format.bit_depth} bits but the data is stored "
+                    f"in {storage_bits} bits ({data.dtype}).",
+                    actual_value=pixel_format.bit_depth,
+                    expected_range=(storage_bits, storage_bits),
+                )
+            expected_channels = _CHANNELS_OF_COLOR_SPACE.get(pixel_format.color_space)
+            if expected_channels is not None and layout.channels != expected_channels:
+                raise ValueCheckError(
+                    f"Invalid color space: {pixel_format.color_space.name} needs {expected_channels} channel(s) but "
+                    f"the layout has {layout.channels}. Use ColorSpace.UNKNOWN for other channel counts.",
+                    actual_value=layout.channels,
+                    expected_range=(expected_channels, expected_channels),
+                )
 
         self._data = data
         self._pixel_format = pixel_format
@@ -103,21 +139,27 @@ class Image:
 
     # TODO: explore use TensorWrapper
     def to(self, device: Union[str, torch.device, None] = None, dtype: Union[torch.dtype, None] = None) -> Image:
-        """Move the image to the given device and dtype.
+        """Return the image on ``device`` and with ``dtype``, like :meth:`torch.Tensor.to`.
+
+        The image itself is not changed; assign the result (``img = img.to(...)``). The pixel format's ``bit_depth``
+        follows the new dtype.
 
         Args:
             device: the device to move the image to.
             dtype: the data type to cast the image to.
 
         Returns:
-            Image: the image moved to the given device and dtype.
+            Image: the image on the given device and with the given dtype.
+
+        Raises:
+            ValueCheckError: if the image was built with checks disabled and its color space does not fit its channels.
 
         """
         if device is not None and isinstance(device, torch.dtype):
             dtype, device = device, None
-        # put the data to the device and dtype
-        self._data = self.data.to(device, dtype)
-        return self
+        data = self.data.to(device, dtype)
+        pixel_format = PixelFormat(color_space=self.pixel_format.color_space, bit_depth=data.element_size() * 8)
+        return Image(data, pixel_format, self.layout)
 
     # TODO: explore use TensorWrapper
     def clone(self) -> Image:
@@ -166,12 +208,12 @@ class Image:
 
     @property
     def height(self) -> int:
-        """Return the image height (columns)."""
+        """Return the image height (number of rows)."""
         return int(self.layout.image_size.height)
 
     @property
     def width(self) -> int:
-        """Return the image width (rows)."""
+        """Return the image width (number of columns)."""
         return int(self.layout.image_size.width)
 
     @property
@@ -181,9 +223,8 @@ class Image:
 
     # TODO: figure out a better way map this function
     def float(self) -> Image:
-        """Return the image as float."""
-        self._data = self.data.float()
-        return self
+        """Return the image as float32; the image itself is not changed."""
+        return self.to(dtype=torch.float32)
 
     def to_gray(self) -> Image:
         """Convert the image to grayscale."""
@@ -274,16 +315,23 @@ class Image:
     def from_numpy(
         cls,
         data: np_ndarray,
-        color_space: ColorSpace = ColorSpace.RGB,
+        color_space: Optional[ColorSpace] = None,
         channels_order: ChannelsOrder = ChannelsOrder.CHANNELS_LAST,
     ) -> Image:
         """Construct an image torch.Tensor from a numpy array.
 
         Args:
             data: a numpy array containing the image data.
-            color_space: the color space of the image.
-            pixel_format: the pixel format of the image.
+            color_space: the color space of the image. If ``None``, a 1-channel array is ``GRAY``, a 3-channel
+                array is ``RGB`` and any other channel count is ``UNKNOWN``. An explicit color space that does not
+                match the channel count raises.
             channels_order: what dimension the channels are in the image torch.Tensor.
+
+        Raises:
+            ValueError: if ``channels_order`` is neither ``CHANNELS_LAST`` nor ``CHANNELS_FIRST``.
+            ValueCheckError: if an explicit ``color_space`` does not match the channel count (also a ``ValueError``).
+            ShapeError: if ``data`` has more than three dimensions. It is also a ``ValueError``.
+            IndexError: if ``data`` has fewer than two dimensions.
 
         Example:
             >>> data = np.ones((4, 5, 3), dtype=np.uint8)  # HxWxC
@@ -293,6 +341,9 @@ class Image:
             >>> assert img.height == 4
 
         """
+        if data.ndim == 2:
+            # a single-channel image without a channel axis
+            data = data[..., None] if channels_order == ChannelsOrder.CHANNELS_LAST else data[None]
         if channels_order == ChannelsOrder.CHANNELS_LAST:
             image_size = ImageSize(height=data.shape[0], width=data.shape[1])
             channels = data.shape[2]
@@ -302,6 +353,8 @@ class Image:
         else:
             raise ValueError("channels_order must be either `CHANNELS_LAST` or `CHANNELS_FIRST`")
 
+        if color_space is None:
+            color_space = _default_color_space(channels)
         # create the pixel format based on the input data
         pixel_format = PixelFormat(color_space=color_space, bit_depth=data.itemsize * 8)
 
@@ -320,16 +373,23 @@ class Image:
         """Construct an image torch.Tensor from a DLPack capsule.
 
         Args:
-            data: a DLPack capsule from numpy, tvm or jax.
+            data: a DLPack capsule from numpy, tvm or jax. The capsule must hold a ``(C, H, W)`` image; it is
+                labelled ``GRAY`` for 1 channel, ``RGB`` for 3 and ``UNKNOWN`` otherwise.
+
+        Raises:
+            ShapeError: if the capsule has more than three dimensions. It is also a ``ValueError``.
+            IndexError: if the capsule has fewer than three dimensions.
 
         Example:
-            >>> x = np.ones((4, 5, 3))
+            >>> x = np.ones((3, 4, 5))  # (C, H, W)
             >>> img = Image.from_dlpack(x.__dlpack__())
+            >>> img.channels, img.height, img.width
+            (3, 4, 5)
 
         """
         _data: torch.Tensor = from_dlpack(data)
 
-        pixel_format = PixelFormat(color_space=ColorSpace.RGB, bit_depth=_data.element_size() * 8)
+        pixel_format = PixelFormat(color_space=_default_color_space(_data.shape[0]), bit_depth=_data.element_size() * 8)
 
         # create the image layout based on the input data
         layout = ImageLayout(
@@ -367,7 +427,8 @@ class Image:
     def write(self, file_path: str | Path) -> None:
         """Write the image to a file.
 
-        For now, only support writing to JPEG format.
+        The format follows the file extension; see :func:`kornia.io.write_image` for the supported formats. A ``BGR``
+        image is converted to RGB first, so the file holds the true colours.
 
         Args:
             file_path: the path to the file to write the image to.
@@ -375,10 +436,12 @@ class Image:
         Example:
             >>> data = np.ones((4, 5, 3), dtype=np.uint8)  # HxWxC
             >>> img = Image.from_numpy(data)
-            >>> img.write("test.jpg")
+            >>> import tempfile, os
+            >>> with tempfile.TemporaryDirectory() as tmp:
+            ...     img.write(os.path.join(tmp, "test.jpg"))
 
         """
-        data = self.data
+        data = self.to_rgb().data if self.pixel_format.color_space == ColorSpace.BGR else self.data
         if self.channels_order == ChannelsOrder.CHANNELS_LAST:
             data = data.permute(2, 0, 1)
         write_image(file_path, data)
@@ -389,6 +452,8 @@ class Image:
         Args:
             max_width: the maximum width of the image to print.
 
+        A ``BGR`` image is converted to RGB first, so the terminal shows the true colours.
+
         .. code-block:: python
 
             img = Image.from_file("panda.png")
@@ -397,4 +462,7 @@ class Image:
         .. image:: https://github.com/kornia/data/blob/main/print_image.png?raw=true
 
         """
-        print(image_to_string(self.data, max_width))
+        data = self.to_rgb().data if self.pixel_format.color_space == ColorSpace.BGR else self.data
+        if self.channels_order == ChannelsOrder.CHANNELS_LAST:
+            data = data.permute(2, 0, 1)
+        print(image_to_string(data, max_width))  # noqa: T201 - Image.print prints by design

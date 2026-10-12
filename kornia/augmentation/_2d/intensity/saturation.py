@@ -28,9 +28,13 @@ from kornia.enhance.adjust import adjust_saturation
 class RandomSaturation(IntensityAugmentationBase2D):
     r"""Apply a random transformation to the saturation of a torch.Tensor image.
 
-    This implementation aligns PIL. Hence, the output is close to TorchVision.
+    The factor scales the HSV saturation. torchvision's and PIL's saturation blends the image with its
+    grayscale instead (``factor * input + (1 - factor) * gray``); :class:`ColorJitter`'s saturation step is
+    that formula.
 
     .. image:: _static/img/RandomSaturation.png
+
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
         p: probability of applying the transformation.
@@ -41,6 +45,15 @@ class RandomSaturation(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - the input must have three channels: the scaling is defined on the HSV saturation, and any other
+          channel count raises a ``ValueError`` on the forward pass.
+        - the drawn factor reaches :func:`kornia.enhance.adjust_saturation` unchanged, and ``1.0`` is the
+          identity, up to rounding, for a pixel with no negative channel.
+        - there is no final RGB clamp, but the HSV saturation is clamped into ``[0, 1]``: at a factor of
+          ``1.0`` a pixel above ``1`` with no negative channel comes back unchanged, while ``(-0.1, 0.5, 0.5)``
+          becomes ``(0.0, 0.5, 0.5)`` and an all-negative pixel becomes gray at its largest channel.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_saturation`

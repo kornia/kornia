@@ -58,8 +58,24 @@ class FinePreprocess(nn.Module):
         feat_c1: torch.Tensor,
         data: Dict[str, Any],
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Run this LoFTR component forward.
+
+        Args:
+            feat_f0: Fine feature map of the first image with shape :math:`(B, C_f, H_f, W_f)`.
+            feat_f1: Fine feature map of the second image with shape :math:`(B, C_f, H_f, W_f)`.
+            feat_c0: Coarse feature map or transformed tokens of the first image with shape
+                :math:`(B, C_c, H_c, W_c)` or :math:`(N_c, C_c)`.
+            feat_c1: Coarse feature map or transformed tokens of the second image with shape
+                :math:`(B, C_c, H_c, W_c)` or :math:`(N_c, C_c)`.
+            data: Dictionary containing coarse match metadata and indices, and the pixel strides ``stride_c`` and
+                ``stride_f`` of the coarse and the fine feature maps.
+
+        Returns:
+            Tuple of local cropped fine feature patches ``(feat0, feat1)`` each with shape :math:`(N_m, W^2, C)`.
+        """
         W = self.W
-        stride = data["hw0_f"][0] // data["hw0_c"][0]
+        # fine cells per coarse cell (4): the window of coarse cell i is centred on fine cell stride * i
+        stride = data["stride_c"] // data["stride_f"]
 
         data.update({"W": W})
         if data["b_ids"].shape[0] == 0:

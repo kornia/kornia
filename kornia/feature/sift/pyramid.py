@@ -1,0 +1,492 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+"""Pyramid-based SIFT extraction at sparse local affine frames."""
+
+from __future__ import annotations
+
+import math
+from typing import Tuple
+
+import torch
+import torch.nn.functional as F
+from torch import nn
+
+from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
+from kornia.core.utils import _l2_normalize
+from kornia.feature.laf import (
+    _grid_sample_patches,
+    _promoted_grid_dtype,
+    laf_is_valid,
+    rotate_laf,
+)
+from kornia.feature.siftdesc import (
+    _dense_sift_histograms_from_gradients,
+    _gradient_magnitude_orientation,
+    _rootsift,
+    get_sift_pooling_kernel,
+)
+from kornia.filters import gaussian_blur2d, get_gaussian_discrete_kernel1d, get_gaussian_kernel2d, spatial_gradient
+from kornia.geometry.transform import pyrdown
+
+
+class SIFTDescriptorFromPyramid(nn.Module):
+    """Extract sparse SIFT descriptors from a shared image-gradient pyramid.
+
+    This module does not detect keypoints or return a dense descriptor map.
+    ``forward(image, lafs)`` describes the supplied, already oriented LAFs.
+    :meth:`orient_and_describe` additionally assigns their orientation while
+    sharing one pyramid between orientation assignment and description. The
+    pyramid belongs to this descriptor; it is not reused from the detector.
+
+    Automatic orientation was repaired in
+    `#5762 <https://github.com/kornia/kornia/pull/5762>`_. The remaining
+    performance and accuracy acceptance criteria are tracked in
+    `#5748 <https://github.com/kornia/kornia/issues/5748>`_. The descriptor-only
+    ``forward(image, lafs)`` uses supplied oriented frames without estimating
+    their orientation. See
+    :ref:`sift-descriptor-interfaces` for the distinct patch, dense-map and
+    supplied-frame descriptor contracts.
+
+    The module combines the shared histogram maps of `VLFeat DSIFT
+    <https://www.vlfeat.org/api/dsift.html>`_ with orientation-relative spatial and
+    angular binning as in OpenCV's `SIFT implementation
+    <https://github.com/opencv/opencv/blob/4.x/modules/features2d/src/sift.simd.hpp>`_:
+    descriptor gradients are binned once at each pyramid octave. Orientation uses
+    a separate gradient field, smoothed with a one-pixel Gaussian at each octave,
+    and integrates 19x19 gradient samples with a Gaussian of sigma one third of
+    the LAF scale. Gradients are transformed into the frame before orientation
+    histogramming, avoiding interpolation of already quantized angular bins.
+    Unlike patch-wise SIFT, no image patch is resampled before either stage.
+
+    For a general affine LAF the global angular bins are remapped through the
+    LAF's ``A.T`` gradient pullback, including its direction-dependent magnitude.
+    This makes affine frames useful without extracting patches, but is an
+    approximation: a histogram bin represents every gradient in its angular
+    interval by its centre direction, and spatial pooling is performed in the
+    image pyramid before the affine footprint is sampled.
+
+    Args:
+        num_ang_bins: Number of descriptor angular bins.
+        num_spatial_bins: Number of descriptor spatial bins per axis.
+        spatial_bin_size: Side of the DenseSIFT spatial pooling window, in pixels.
+            The default 8 approximately matches the 19-pixel octave support to the patch SIFT
+            descriptor's 17-pixel pooling bins at its default 41-pixel patch.
+        rootsift: If ``True``, apply RootSIFT after clipping and normalization.
+        clipval: Descriptor clipping threshold.
+        orientation_bins: Number of bins for dominant-orientation assignment.
+            Independent of the descriptor's global histogram resolution (at least 36
+            bins), which is remapped to ``num_ang_bins`` in each local frame.
+
+    Shape:
+        - image: :math:`(B, 1, H, W)`
+        - lafs: :math:`(B, N, 2, 3)` in image pixel coordinates
+        - descriptors: :math:`(B, N, num_ang_bins * num_spatial_bins^2)`
+
+    The descriptors are in kornia's angle-major SIFT layout, as :class:`~kornia.feature.SIFTDescriptor`'s are;
+    :func:`~kornia.feature.convert_sift_descriptor_layout` reorders them to OpenCV's.
+    """
+
+    def __init__(
+        self,
+        num_ang_bins: int = 8,
+        num_spatial_bins: int = 4,
+        spatial_bin_size: int = 8,
+        rootsift: bool = True,
+        clipval: float = 0.2,
+        orientation_bins: int = 36,
+    ) -> None:
+        super().__init__()
+        if num_ang_bins < 2 or orientation_bins < 2 or num_spatial_bins < 1 or spatial_bin_size < 1:
+            raise ValueError(
+                "SIFT bin counts and spatial_bin_size must be positive (angular bin counts need at least 2)"
+            )
+        self.num_ang_bins = num_ang_bins
+        self.num_spatial_bins = num_spatial_bins
+        self.spatial_bin_size = spatial_bin_size
+        self.rootsift = rootsift
+        self.clipval = clipval
+        self.orientation_bins = orientation_bins
+        self._descriptor_bins = max(36, num_ang_bins)
+        self.eps = 1e-10
+        pooling = get_sift_pooling_kernel(spatial_bin_size).reshape(1, 1, spatial_bin_size, spatial_bin_size)
+        self.register_buffer("descriptor_pooling_kernel", pooling)
+        # Match the patch orienter's Gaussian support while integrating gradients
+        # before angular binning, without extracting image patches.
+        weighting = get_gaussian_kernel2d((19, 19), (19.0 / 6.0, 19.0 / 6.0), True)
+        self.register_buffer("orientation_weighting", weighting.reshape(1, 1, 19, 19), persistent=False)
+        self.register_buffer(
+            "orientation_smoothing", get_gaussian_discrete_kernel1d(5, 1.6).reshape(1, 1, 5), persistent=False
+        )
+
+    @staticmethod
+    def _num_pyramid_levels(image: torch.Tensor) -> int:
+        """Return the number of octaves ``_pyramid`` would construct for ``image``."""
+        height, width = image.shape[-2:]
+        levels = 1
+        while min(height, width) >= 38:
+            height, width = height // 2, width // 2
+            levels += 1
+        return levels
+
+    def _pyramid(self, image: torch.Tensor, num_levels: int | None = None) -> list[torch.Tensor]:
+        """Build at most ``num_levels`` octaves of the image pyramid."""
+        levels = [image]
+        while min(levels[-1].shape[-2:]) >= 38 and (num_levels is None or len(levels) < num_levels):
+            levels.append(pyrdown(levels[-1]))
+        return levels
+
+    @staticmethod
+    def _sample(maps: torch.Tensor, level_image: torch.Tensor, lafs: torch.Tensor, patch_size: int) -> torch.Tensor:
+        b, n = lafs.shape[:2]
+        if n == 0:
+            return maps.new_zeros(b, 0, maps.shape[1], patch_size * patch_size)
+        coordinates = (2.0 * torch.arange(patch_size, device=lafs.device, dtype=lafs.dtype) + 1.0) / patch_size - 1.0
+        yy, xx = torch.meshgrid(coordinates, coordinates, indexing="ij")
+        local = torch.stack([xx, yy], dim=-1).reshape(1, 1, patch_size, patch_size, 2)
+        points = torch.einsum("bnij,xyj->bnxyi", lafs[..., :2, :2], local[0, 0]) + lafs[..., :2, 2].view(b, n, 1, 1, 2)
+        h, w = level_image.shape[-2:]
+        grid = 2.0 * (points + 0.5) / points.new_tensor([w, h]) - 1.0
+        grid = grid.reshape(b, n * patch_size, patch_size, 2)
+        grid_dtype = _promoted_grid_dtype(maps.dtype, grid.dtype)
+        sample_maps = maps.to(grid_dtype) if maps.dtype != grid_dtype else maps
+        grid = grid.to(grid_dtype) if grid.dtype != grid_dtype else grid
+        sampled = _grid_sample_patches(sample_maps, grid, level_image.shape[-2], level_image.shape[-1]).to(maps.dtype)
+        return sampled.reshape(b, maps.shape[1], n, patch_size * patch_size).permute(0, 2, 1, 3)
+
+    @staticmethod
+    def _remap_angles(histograms: torch.Tensor, affine: torch.Tensor, output_bins: int) -> torch.Tensor:
+        """Move globally binned gradients into each LAF's local coordinates."""
+        b, n, source_bins, samples = histograms.shape
+        output_dtype = histograms.dtype
+        working_dtype = _promoted_grid_dtype(histograms.dtype, affine.dtype)
+        histograms = histograms.to(working_dtype)
+        affine = affine.to(working_dtype)
+        angles = torch.arange(source_bins, dtype=histograms.dtype, device=histograms.device)
+        angles = 2.0 * math.pi * angles / float(source_bins)
+        directions = torch.stack([torch.cos(angles), torch.sin(angles)], dim=-1)
+        transformed = torch.einsum("bnji,kj->bnki", affine, directions)
+        magnitude = torch.linalg.vector_norm(transformed, dim=-1)
+        local_angle = torch.atan2(transformed[..., 1], transformed[..., 0])
+        position = (local_angle % (2.0 * math.pi)) * float(output_bins) / (2.0 * math.pi)
+        lower = torch.floor(position).long() % output_bins
+        upper = (lower + 1) % output_bins
+        upper_weight = position - torch.floor(position)
+        values = histograms * magnitude.unsqueeze(-1)
+        output = histograms.new_zeros(b, n, output_bins, samples)
+        output.scatter_add_(
+            2, lower.unsqueeze(-1).expand(-1, -1, -1, samples), values * (1.0 - upper_weight).unsqueeze(-1)
+        )
+        output.scatter_add_(2, upper.unsqueeze(-1).expand(-1, -1, -1, samples), values * upper_weight.unsqueeze(-1))
+        return output.to(output_dtype)
+
+    @staticmethod
+    def _level_occupancy(levels: torch.Tensor, num_levels: int) -> list[bool]:
+        """Report which octaves at least one valid LAF selects.
+
+        ``levels`` holds ``-1`` for invalid frames. A single host transfer
+        answers both which octaves carry work and how high the pyramid reaches.
+        """
+        occupancy = torch.zeros(num_levels, dtype=torch.long, device=levels.device)
+        occupancy.scatter_add_(0, levels.clamp_min(0).reshape(-1), (levels >= 0).long().reshape(-1))
+        return [count > 0 for count in occupancy.tolist()]
+
+    def _select_levels(self, lafs: torch.Tensor, num_levels: int) -> torch.Tensor:
+        affine = lafs[..., :2, :2]
+        det = (affine[..., 0, 0] * affine[..., 1, 1] - affine[..., 0, 1] * affine[..., 1, 0]).abs().sqrt()
+        # At an octave the 19-pixel orientation window covers approximately one LAF diameter.
+        return (det / 9.5).clamp_min(self.eps).log2().floor().clamp(0, num_levels - 1).long()
+
+    @staticmethod
+    def _laf_at_level(lafs: torch.Tensor, pyramid: list[torch.Tensor], level: int) -> torch.Tensor:
+        """Map pixel-coordinate LAFs through ``pyrdown``'s align-corners-false grid."""
+        if level == 0:
+            return lafs
+        # One clone is enough: every subsequent level transforms this private
+        # tensor in place.  The previous form cloned the complete selected LAF
+        # set once per octave.
+        output = lafs.clone()
+        for index in range(level):
+            source_h, source_w = pyramid[index].shape[-2:]
+            target_h, target_w = pyramid[index + 1].shape[-2:]
+            scale = output.new_tensor([float(target_w) / source_w, float(target_h) / source_h])
+            output[..., :2, :2] *= scale.view(1, 1, 2, 1)
+            output[..., :, 2] = (output[..., :, 2] + 0.5) * scale - 0.5
+        return output
+
+    def _orientation(
+        self,
+        pyramid: list[torch.Tensor],
+        gradients: list[torch.Tensor | None],
+        lafs: torch.Tensor,
+        levels: torch.Tensor,
+    ) -> torch.Tensor:
+        b, n = lafs.shape[:2]
+        result = lafs.new_zeros(b, n, self.orientation_bins)
+        for level_index, (image, grad) in enumerate(zip(pyramid, gradients)):
+            if grad is None:
+                # No valid LAF selected this octave, so it carries no gradient map.
+                continue
+            weighting = self.orientation_weighting.to(lafs).reshape(1, 1, -1)
+            for batch_index in range(b):
+                selected = (levels[batch_index] == level_index).nonzero().flatten()
+                if selected.numel() == 0:
+                    continue
+                current_lafs = lafs[batch_index : batch_index + 1, selected]
+                level_lafs = self._laf_at_level(current_lafs, pyramid, level_index)
+                sampled = self._sample(
+                    grad[batch_index : batch_index + 1], image[batch_index : batch_index + 1], level_lafs, 19
+                )
+                # Pull gradients back through the actual affine frame before
+                # binning. Quantized global directions lose cancellation under
+                # interpolation and need not represent the local gradient.
+                local = torch.einsum("bnji,bnjs->bnis", level_lafs[..., :2, :2], sampled.to(level_lafs.dtype))
+                magnitude, angle = _gradient_magnitude_orientation(local[:, :, 0], local[:, :, 1], self.eps)
+                position = (angle % (2.0 * math.pi)) * self.orientation_bins / (2.0 * math.pi)
+                lower = position.floor().long() % self.orientation_bins
+                upper_weight = position - position.floor()
+                magnitude = magnitude * weighting
+                histogram = magnitude.new_zeros(1, selected.numel(), self.orientation_bins)
+                histogram.scatter_add_(-1, lower, magnitude * (1.0 - upper_weight))
+                histogram.scatter_add_(-1, (lower + 1) % self.orientation_bins, magnitude * upper_weight)
+                result[batch_index, selected] = histogram[0].to(result.dtype)
+        smoothed = F.conv1d(
+            F.pad(result.reshape(b * n, 1, -1), (2, 2), mode="circular"),
+            self.orientation_smoothing.to(result),
+        )
+        smoothed = smoothed.squeeze(1)
+        index = smoothed.argmax(dim=1)
+        left = smoothed.gather(1, ((index - 1) % self.orientation_bins).unsqueeze(-1)).squeeze(-1)
+        center = smoothed.gather(1, index.unsqueeze(-1)).squeeze(-1)
+        right = smoothed.gather(1, ((index + 1) % self.orientation_bins).unsqueeze(-1)).squeeze(-1)
+        denominator = left + right - 2.0 * center
+        safe_denominator = torch.where(denominator != 0, denominator, torch.ones_like(denominator))
+        offset = torch.where(denominator != 0, 0.5 * (left - right) / safe_denominator, torch.zeros_like(denominator))
+        angle = index.to(lafs.dtype).reshape(b, n) + offset.reshape(b, n)
+        return 2.0 * math.pi * angle / float(self.orientation_bins)
+
+    def _pool_histograms(self, hist: torch.Tensor) -> torch.Tensor:
+        """Pool spatial cells without allocating a two-dimensional convolution workspace."""
+        if (
+            hist.device.type == "cpu"
+            and not torch.is_grad_enabled()
+            and not torch.compiler.is_compiling()
+            and self.spatial_bin_size % 2 == 0
+        ):
+            return self._pool_histograms_cpu_inference(hist)
+        kernel = self.descriptor_pooling_kernel.to(dtype=hist.dtype, device=hist.device)
+        # The tent kernel is separable. Two one-dimensional convolutions
+        # avoid a full-resolution ksize**2 im2col workspace on CPU.
+        center = self.spatial_bin_size // 2
+        horizontal = kernel[:, :, center : center + 1, :]
+        vertical = kernel[:, :, :, center : center + 1] / kernel[:, :, center : center + 1, center : center + 1]
+        pooled = F.conv2d(hist.reshape(-1, 1, hist.shape[-2], hist.shape[-1]), horizontal, padding=(0, center))
+        pooled = F.conv2d(pooled, vertical, padding=(center, 0)).reshape(
+            hist.shape[0],
+            hist.shape[1],
+            hist.shape[-2] + (self.spatial_bin_size % 2 == 0),
+            hist.shape[-1] + (self.spatial_bin_size % 2 == 0),
+        )
+        if self.spatial_bin_size % 2 == 0:
+            # An even pooling kernel is centred between pixel centres.  Average
+            # its four neighbours so map index (y, x) stays registered to image
+            # pixel (y, x), which is the LAF/grid-sampling convention.
+            hist = 0.25 * (
+                pooled[:, :, :-1, :-1] + pooled[:, :, 1:, :-1] + pooled[:, :, :-1, 1:] + pooled[:, :, 1:, 1:]
+            )
+        else:
+            hist = pooled
+        return hist
+
+    def _pool_histograms_cpu_inference(self, hist: torch.Tensor) -> torch.Tensor:
+        """CPU inference tent pooling with reusable accumulation maps.
+
+        The differentiable convolution path above remains the fallback.  ``add_``
+        with a scalar coefficient avoids allocating a product and sum map for
+        every separable-kernel tap.
+        """
+        size = self.spatial_bin_size
+        center = size // 2
+        weight = self.descriptor_pooling_kernel.to(hist)[0, 0, center]
+        height, width = hist.shape[-2:]
+        padded = F.pad(hist, (center, center, 0, 0))
+        horizontal = hist.new_empty(*hist.shape[:-1], width + 1)
+        # Row tiles keep the 36-bin source and output working sets within the
+        # CPU cache instead of streaming the complete map once per tent tap.
+        weights = weight.tolist()
+        tile_rows = 32
+        for row_start in range(0, height, tile_rows):
+            row_end = min(row_start + tile_rows, height)
+            output = horizontal[..., row_start:row_end, :]
+            torch.mul(padded[..., row_start:row_end, : width + 1], weights[0], out=output)
+            for index, value in enumerate(weights[1:], 1):
+                output.add_(padded[..., row_start:row_end, index : index + width + 1], alpha=value)
+        padded = F.pad(horizontal, (0, 0, center, center))
+        normalizer = weight[center]
+        weights = (weight / normalizer).tolist()
+        output = hist.new_empty(*hist.shape)
+        for row_start in range(0, height, tile_rows):
+            row_end = min(row_start + tile_rows, height)
+            # One extra vertical row supplies the lower neighbours for the
+            # registered 2x2 average, so no full (B, C, H+1, W+1) map exists.
+            vertical = hist.new_empty(*hist.shape[:-2], row_end - row_start + 1, width + 1)
+            torch.mul(padded[..., row_start : row_end + 1, :], weights[0], out=vertical)
+            for index, value in enumerate(weights[1:], 1):
+                vertical.add_(padded[..., row_start + index : row_end + index + 1, :], alpha=value)
+            registered = output[..., row_start:row_end, :]
+            torch.add(vertical[..., :-1, :-1], vertical[..., 1:, :-1], out=registered)
+            registered.add_(vertical[..., :-1, 1:]).add_(vertical[..., 1:, 1:]).mul_(0.25)
+        return output
+
+    def _descriptors(
+        self,
+        pyramid: list[torch.Tensor],
+        histograms: list[torch.Tensor | None],
+        lafs: torch.Tensor,
+        levels: torch.Tensor,
+    ) -> torch.Tensor:
+        b, n = lafs.shape[:2]
+        result = lafs.new_zeros(b, n, self.num_ang_bins, self.num_spatial_bins * self.num_spatial_bins)
+        for level_index, (image, hist) in enumerate(zip(pyramid, histograms)):
+            if hist is None:
+                # Skip before pooling: an unused octave's (B, bins, H, W) map is
+                # both the largest allocation here and the most expensive conv2d.
+                continue
+            hist = self._pool_histograms(hist)
+            for batch_index in range(b):
+                selected = (levels[batch_index] == level_index).nonzero().flatten()
+                if selected.numel() == 0:
+                    continue
+                current_lafs = lafs[batch_index : batch_index + 1, selected]
+                level_lafs = self._laf_at_level(current_lafs, pyramid, level_index)
+                sampled = self._sample(
+                    hist[batch_index : batch_index + 1],
+                    image[batch_index : batch_index + 1],
+                    level_lafs,
+                    self.num_spatial_bins,
+                )
+                mapped = self._remap_angles(sampled, level_lafs[..., :2, :2], self.num_ang_bins)
+                result[batch_index, selected] = mapped[0].to(result.dtype)
+        desc = result.flatten(2)
+        desc = _l2_normalize(desc, dim=-1).clamp(0.0, self.clipval)
+        desc = _l2_normalize(desc, dim=-1)
+        if self.rootsift:
+            return _rootsift(desc.reshape(-1, desc.shape[-1]), self.eps).reshape_as(desc)
+        return desc
+
+    def forward(self, image: torch.Tensor, lafs: torch.Tensor) -> torch.Tensor:
+        """Describe supplied oriented frames without detecting or reorienting them.
+
+        Args:
+            image: Grayscale floating-point image of shape ``(B, 1, H, W)``.
+            lafs: Already oriented pixel-coordinate frames of shape ``(B, N, 2, 3)``.
+
+        Returns:
+            Sparse descriptors of shape ``(B, N, num_ang_bins * num_spatial_bins**2)``,
+            with the image dtype and device. Invalid frames receive zero descriptors.
+        """
+        return self.orient_and_describe(image, lafs, upright=True)[1]
+
+    def orient_and_describe(
+        self, image: torch.Tensor, lafs: torch.Tensor, upright: bool = False
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Orient and describe sparse frames, building the extraction pyramid once.
+
+        Args:
+            image: Grayscale floating-point image of shape ``(B, 1, H, W)``.
+            lafs: Pixel-coordinate frames of shape ``(B, N, 2, 3)``.
+            upright: Preserve the supplied frame orientations rather than estimating them.
+
+        Returns:
+            Oriented frames in the input LAF dtype and descriptors in the image
+            dtype, both on the image device. Invalid frames are preserved and
+            receive zero descriptors. Empty frame sets are supported.
+        """
+        KORNIA_CHECK_SHAPE(image, ["B", "1", "H", "W"])
+        KORNIA_CHECK_LAF(lafs)
+        if image.shape[0] != lafs.shape[0]:
+            raise ValueError(f"image and lafs must have the same batch size. Got {image.shape[0]} and {lafs.shape[0]}")
+        image_dtype, laf_dtype = image.dtype, lafs.dtype
+        lafs = lafs.to(device=image.device)
+        if image.shape[0] == 0 or lafs.shape[1] == 0:
+            # Keep empty outputs differentiably connected to both inputs, just
+            # as the all-invalid path below does.
+            zero = image[..., :0, :0].sum() + lafs[..., :0].sum()
+            descriptors = (
+                image.new_zeros(image.shape[0], lafs.shape[1], self.num_ang_bins * self.num_spatial_bins**2) + zero
+            )
+            return lafs, descriptors.to(image_dtype)
+        # Promote before constructing coordinates: upcasting an already rounded
+        # half-precision grid cannot recover subpixel geometry on large images.
+        working_dtype = _promoted_grid_dtype(image.dtype, lafs.dtype)
+        lafs = lafs.to(working_dtype)
+        if image.dtype in (torch.float16, torch.bfloat16):
+            image = image.float()
+        valid = laf_is_valid(lafs)
+        identity = torch.eye(2, 3, device=lafs.device, dtype=lafs.dtype).view(1, 1, 2, 3)
+        # Padded detector slots and invalid training frames must never reach
+        # grid_sample/atan2.  Their public output remains the zero descriptor.
+        safe_lafs = torch.where(valid.view(*valid.shape, 1, 1), lafs, identity)
+        num_levels = self._num_pyramid_levels(image)
+        levels = self._select_levels(safe_lafs, num_levels).masked_fill(~valid, -1)
+        # Select before pyramid construction.  The octave count depends only on
+        # image shape, so octaves that no valid LAF selects need neither a
+        # pyrdown result nor a histogram map.
+        level_used = self._level_occupancy(levels, num_levels)
+        max_level = max((index for index, used in enumerate(level_used) if used), default=-1)
+        if max_level < 0:
+            # Keep the zero result connected to the inputs: callers can backpropagate
+            # through an all-invalid batch and receive finite zero gradients.
+            zero = image[..., :0, :0].sum() + safe_lafs[..., :0].sum()
+            descriptors = (
+                image.new_zeros(image.shape[0], lafs.shape[1], self.num_ang_bins * self.num_spatial_bins**2) + zero
+            )
+            return lafs.to(laf_dtype), descriptors.to(image_dtype)
+        pyramid = self._pyramid(image, max_level + 1)
+        histograms: list[torch.Tensor | None] = []
+        orientation_gradients: list[torch.Tensor | None] = []
+        for level_index, level_image in enumerate(pyramid):
+            # An intermediate octave still has to be resampled to reach the ones
+            # above it, but binning its gradients is pure waste when no LAF
+            # samples it: the map is (B, descriptor_bins, H, W) at full octave
+            # resolution and is pooled again per descriptor level.
+            if not level_used[level_index]:
+                histograms.append(None)
+                orientation_gradients.append(None)
+                continue
+            gradients = spatial_gradient(level_image, "diff")
+            histograms.append(
+                _dense_sift_histograms_from_gradients(
+                    gradients[:, :, 0], gradients[:, :, 1], self._descriptor_bins, self.eps
+                )
+            )
+            if not upright:
+                # Suppress pixel noise before sampling the shared gradient field.
+                # No image patches or per-LAF image gradients are constructed.
+                smoothed = gaussian_blur2d(level_image, (7, 7), (1.0, 1.0), border_type="replicate")
+                orientation_gradients.append(spatial_gradient(smoothed, "diff")[:, 0])
+        if upright:
+            oriented_lafs = safe_lafs
+        else:
+            angles = self._orientation(pyramid, orientation_gradients, safe_lafs, levels)
+            # Kornia's LAF rotation is clockwise in image coordinates.  Rotate the
+            # frame against its dominant local gradient so it becomes horizontal.
+            oriented_lafs = rotate_laf(safe_lafs, -torch.rad2deg(angles).unsqueeze(-1))
+        descriptors = self._descriptors(pyramid, histograms, oriented_lafs, levels)
+        oriented_lafs = torch.where(valid.view(*valid.shape, 1, 1), oriented_lafs, lafs)
+        descriptors = descriptors.masked_fill(~valid.unsqueeze(-1), 0.0)
+        return oriented_lafs.to(laf_dtype), descriptors.to(image_dtype)

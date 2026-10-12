@@ -15,11 +15,31 @@
 # limitations under the License.
 #
 
+import pytest
 import torch
 
 import kornia
 
 from testing.base import BaseTester
+
+
+def _response_atol(expected: torch.Tensor, dtype: torch.dtype) -> float:
+    r"""Absolute bound for a response map compared against hard-coded expected values.
+
+    A response is a difference of quantities of order 1 -- the blurred image and its derivatives --
+    so its absolute error is set by one ULP at 1.0 (9.8e-4 float16, 3.9e-3 bfloat16) and *not* by the
+    response's own magnitude, which is 0.007-0.28 across these tests. The historical ``atol=1e-4``
+    sits below that floor, so in half precision no implementation can meet it; four of these eight
+    half-precision nodes were manifest entries for exactly that reason.
+
+    Two ULP is that floor with a 2x margin -- the same bound, and the same reasoning, as
+    ``TestALIKED::test_descriptor_normalized``. It is then capped at a twentieth of the largest
+    expected value so that the assertion still discriminates: ``harris_response``'s expected map peaks
+    at 6.9e-3, *below* bfloat16's own two-ULP floor, and an uncapped bound there would be satisfied by
+    an all-zero response. The cap never binds in float32 or float64, and 1e-4 is far above their two
+    ULP, so both keep the original bound exactly.
+    """
+    return min(max(1e-4, 2 * torch.finfo(dtype).eps), expected.abs().max().item() / 20.0)
 
 
 class TestCornerHarris(BaseTester):
@@ -126,7 +146,7 @@ class TestCornerHarris(BaseTester):
             / 10.0
         )
         scores = kornia.feature.harris_response(inp, k=0.04)
-        self.assert_close(scores, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(scores, expected, atol=_response_atol(expected, dtype), rtol=1e-4)
 
     def test_gradcheck(self, device):
         k = 0.04
@@ -136,6 +156,30 @@ class TestCornerHarris(BaseTester):
 
 
 class TestCornerGFTT(BaseTester):
+    def test_sigmas_wrong_length_is_rejected_5724(self, device):
+        # B = 1 with three sigmas used to broadcast silently to a (3, C, H, W) response
+        inp = torch.rand(1, 1, 8, 8, device=device)
+        with pytest.raises(ValueError, match="Invalid sigmas shape"):
+            kornia.feature.gftt_response(inp, sigmas=torch.ones(3, device=device))
+
+    def test_sigmas_wrong_ndim_is_rejected_5724(self, device):
+        inp = torch.rand(2, 1, 8, 8, device=device)
+        with pytest.raises(ValueError, match="Invalid sigmas shape"):
+            kornia.feature.gftt_response(inp, sigmas=torch.ones(2, 1, device=device))
+
+    def test_sigmas_wrong_type_is_rejected_5724(self, device):
+        inp = torch.rand(2, 1, 8, 8, device=device)
+        with pytest.raises(TypeError, match=r"sigmas type is not a torch\.Tensor"):
+            kornia.feature.gftt_response(inp, sigmas=[1.0, 2.0])  # type: ignore[arg-type]
+
+    def test_sigmas_scale_the_response_5724(self, device):
+        inp = torch.rand(2, 1, 8, 8, device=device)
+        sigmas = torch.tensor([1.0, 2.0], device=device)
+        plain = kornia.feature.gftt_response(inp)
+        scaled = kornia.feature.gftt_response(inp, sigmas=sigmas)
+        assert scaled.shape == plain.shape
+        self.assert_close(scaled, plain * sigmas.pow(4).view(-1, 1, 1, 1))
+
     def test_shape(self, device):
         inp = torch.ones(1, 3, 4, 4, device=device)
         shi_tomasi = kornia.feature.CornerGFTT().to(device)
@@ -237,12 +281,38 @@ class TestCornerGFTT(BaseTester):
         ).repeat(2, 1, 1, 1)
         shi_tomasi = kornia.feature.CornerGFTT().to(device)
         scores = shi_tomasi(inp)
-        self.assert_close(scores, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(scores, expected, atol=_response_atol(expected, dtype), rtol=1e-4)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.gftt_response, (img), nondet_tol=1e-4)
+
+    def test_flat_patch_gradient(self, device, dtype):
+        # the structure tensor is exactly zero inside a flat 12 x 12 patch, where the old sqrt(abs(trace^2 - 4 det))
+        # backward was 0 * inf = nan for the whole image
+        img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
+        img[..., 8:20, 8:20] = 0.5
+        img.requires_grad_(True)
+        # anomaly mode also sees a nan that a ``torch.where`` masks out of the result, i.e. a sqrt evaluated at 0
+        with torch.autograd.detect_anomaly():
+            scores = kornia.feature.gftt_response(img)
+            (grad,) = torch.autograd.grad(scores.sum(), img)
+        assert torch.isfinite(scores).all()
+        assert torch.isfinite(grad).all()
+        self.assert_close(scores[..., 14, 14], torch.zeros_like(scores[..., 14, 14]))
+        self.assert_close(grad[..., 14, 14], torch.zeros_like(grad[..., 14, 14]))
+
+    def test_smaller_eigenvalue(self, device, dtype):
+        img = torch.rand(2, 3, 24, 20, device=device, dtype=dtype)
+        gradients = kornia.filters.spatial_gradient(img)
+        dx, dy = gradients[:, :, 0], gradients[:, :, 1]
+        dx2 = kornia.filters.gaussian_blur2d(dx**2, (7, 7), (1.0, 1.0))
+        dy2 = kornia.filters.gaussian_blur2d(dy**2, (7, 7), (1.0, 1.0))
+        dxy = kornia.filters.gaussian_blur2d(dx * dy, (7, 7), (1.0, 1.0))
+        structure = torch.stack((torch.stack((dx2, dxy), -1), torch.stack((dxy, dy2), -1)), -2)
+        expected = torch.linalg.eigvalsh(structure.cpu().double())[..., 0].to(device, dtype)
+        self.assert_close(kornia.feature.gftt_response(img), expected)
 
 
 class TestBlobHessian(BaseTester):
@@ -284,22 +354,22 @@ class TestBlobHessian(BaseTester):
         expected = torch.tensor(
             [
                 [
-                    [-0.0564, -0.0759, -0.0342, -0.0759, -0.0564, -0.0057, 0.0000],
-                    [-0.0759, -0.0330, 0.0752, -0.0330, -0.0759, -0.0096, 0.0000],
+                    [-0.0137, -0.0332, -0.0342, -0.0332, -0.0137, -0.0010, 0.0000],
+                    [-0.0332, 0.0098, 0.0752, 0.0098, -0.0332, -0.0049, 0.0000],
                     [-0.0342, 0.0752, 0.1914, 0.0752, -0.0342, -0.0068, 0.0000],
-                    [-0.0759, -0.0330, 0.0752, -0.0330, -0.0759, -0.0096, 0.0000],
-                    [-0.0564, -0.0759, -0.0342, -0.0759, -0.0564, -0.0057, 0.0000],
-                    [-0.0057, -0.0096, -0.0068, -0.0096, -0.0057, -0.0005, 0.0000],
+                    [-0.0332, 0.0098, 0.0752, 0.0098, -0.0332, -0.0049, 0.0000],
+                    [-0.0137, -0.0332, -0.0342, -0.0332, -0.0137, -0.0010, 0.0000],
+                    [-0.0010, -0.0049, -0.0068, -0.0049, -0.0010, 0.0000, 0.0000],
                     [0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
                 ],
                 [
-                    [-0.0564, -0.0522, -0.0522, -0.0564, -0.0057, 0.0000, 0.0000],
-                    [-0.0522, 0.0688, 0.0688, -0.0123, 0.0033, -0.0057, -0.0005],
-                    [-0.0522, 0.0688, -0.0755, -0.1111, -0.0123, -0.0564, -0.0057],
-                    [-0.0564, -0.0123, -0.1111, -0.0755, 0.0688, -0.0522, -0.0080],
-                    [-0.0057, 0.0033, -0.0123, 0.0688, 0.0688, -0.0522, -0.0080],
-                    [0.0000, -0.0057, -0.0564, -0.0522, -0.0522, -0.0564, -0.0057],
-                    [0.0000, -0.0005, -0.0057, -0.0080, -0.0080, -0.0057, -0.0005],
+                    [-0.0137, -0.0332, -0.0332, -0.0137, -0.0010, 0.0000, 0.0000],
+                    [-0.0332, 0.0820, 0.0693, -0.0039, 0.0117, -0.0010, 0.0000],
+                    [-0.0332, 0.0693, 0.0137, -0.0352, -0.0039, -0.0137, -0.0010],
+                    [-0.0137, -0.0039, -0.0352, 0.0137, 0.0693, -0.0332, -0.0059],
+                    [-0.0010, 0.0117, -0.0039, 0.0693, 0.0820, -0.0332, -0.0059],
+                    [0.0000, -0.0010, -0.0137, -0.0332, -0.0332, -0.0137, -0.0010],
+                    [0.0000, 0.0000, -0.0010, -0.0059, -0.0059, -0.0010, 0.0000],
                 ],
             ],
             device=device,
@@ -307,7 +377,7 @@ class TestBlobHessian(BaseTester):
         ).repeat(2, 1, 1, 1)
         shi_tomasi = kornia.feature.BlobHessian().to(device)
         scores = shi_tomasi(inp)
-        self.assert_close(scores, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(scores, expected, atol=_response_atol(expected, dtype), rtol=1e-4)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 5, 4
@@ -379,7 +449,7 @@ class TestBlobDoGSingle(BaseTester):
         ).expand(2, 2, 7, 7)
         det = kornia.feature.BlobDoGSingle(1.0, 1.6).to(device)
         scores = det(inp)
-        self.assert_close(scores, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(scores, expected, atol=_response_atol(expected, dtype), rtol=1e-4)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 9, 11

@@ -223,8 +223,7 @@ def create_four_cameras(device: Union[str, torch.device, None], dtype: torch.dty
     intrinsics = create_intrinsics(fx, fy, cx, cy, device=device, dtype=dtype)
     extrinsics = create_extrinsics_with_rotation(alpha, beta, gamma, tx, ty, tz, device=device, dtype=dtype)
 
-    cameras = PinholeCamera(intrinsics, extrinsics, height, width)
-    return cameras
+    return PinholeCamera(intrinsics, extrinsics, height, width)
 
 
 def create_random_images_for_cameras(cameras: PinholeCamera) -> list[torch.Tensor]:
