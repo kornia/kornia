@@ -62,7 +62,11 @@ def _rectangle_bands(
             (y1, y2, x1, torch.minimum(x1 + line_width - 1, x2)),  # left
             (y1, y2, torch.maximum(x2 - line_width + 1, x1), x2),  # right
         ]
-    r0, r1, c0, c1 = (torch.stack(bound, -1) for bound in zip(*bands))
+    # one stack per bound: torch.jit.script cannot compile zip(*bands)
+    r0 = torch.stack([band[0] for band in bands], -1)
+    r1 = torch.stack([band[1] for band in bands], -1)
+    c0 = torch.stack([band[2] for band in bands], -1)
+    c1 = torch.stack([band[3] for band in bands], -1)
     # a start clamped to [0, size] and a stop to [0, size] give an empty slice whenever the band misses the image
     return torch.stack([r0.clamp(0, h), r1.clamp(-1, h - 1) + 1, c0.clamp(0, w), c1.clamp(-1, w - 1) + 1], -1)
 
@@ -262,17 +266,18 @@ def draw_rectangle(
         color: a 0-d, size 1, size 3, BxNx1, or BxNx3 tensor.
             If C is 3, and color is 1 channel it will be broadcasted.
         fill: is a flag used to fill the boxes with color if True.
-        line_width: thickness of the rectangle outline in pixels, drawn inward from each edge.
-            Must be a positive integer. Has no effect on the filled result when ``fill=True``.
-            Defaults to 1 pixel.
+        line_width: thickness of the outline in pixels, a positive integer. The outline grows inward from each
+            edge, so it stays inside the rectangle: a side thicker than the rectangle covers it. Ignored when
+            ``fill=True``. Defaults to 1 pixel.
 
     Corners may come in either order. Coordinates are rounded to the nearest pixel centre (a coordinate exactly
-    halfway rounds up), and the rectangle includes both corners. A side outside the image is not drawn and a fill is
-    clipped to the image.
+    halfway rounds up), and the rectangle includes both corners. Every side and a fill are clipped to the image, so a
+    side outside the image is not drawn.
 
     Raises:
         ShapeError: if the image is not ``(B, C, H, W)``. It is also a ``ValueError``.
         ValueError: if ``rectangle`` is not ``(B, N, 4)``, or its batch size differs from the image's.
+        ValueError: if ``line_width`` is not a positive ``int``.
 
     Returns:
         This operation modifies image inplace but also returns the drawn tensor for
@@ -316,11 +321,11 @@ def draw_rectangle(
         color = color.expand(batch, num_rectangle, c)
 
     # one host read for the bands of every rectangle
-    bands = _rectangle_bands(x1, y1, x2, y2, h, w, line_width, fill).tolist()
+    bands: List[List[List[List[int]]]] = _rectangle_bands(x1, y1, x2, y2, h, w, line_width, fill).tolist()
     for b in range(batch):
         for n in range(num_rectangle):
-            for r0, r1, c0, c1 in bands[b][n]:
-                image[b, :, r0:r1, c0:c1] = color[b, n, :, None, None]
+            for band in bands[b][n]:
+                image[b, :, band[0] : band[1], band[2] : band[3]] = color[b, n, :, None, None]
 
     return image
 

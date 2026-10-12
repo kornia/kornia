@@ -588,10 +588,28 @@ class TestDrawRectangle(BaseTester):
 
         draw_rectangle(image, rectangle, color=torch.tensor([1.0], device=device), line_width=2)
 
+        # the top (rows -2..-1) and left (columns -2..-1) bands lie outside the image and are not drawn;
+        # the bottom and right bands keep their parts inside it
         expected = torch.zeros_like(image)
-        expected[:, :, :5, :5] = 1
-        expected[:, :, 2, 2] = 0
+        expected[:, :, 3:5, :5] = 1
+        expected[:, :, :5, 3:5] = 1
         self.assert_close(image, expected)
+
+    def test_outline_width_reversed_and_fractional_corners(self, dtype, device):
+        expected = draw_rectangle(
+            torch.zeros(1, 1, 8, 10, dtype=dtype, device=device),
+            torch.tensor([[[1, 1, 8, 6]]], device=device),
+            color=torch.tensor([1.0], device=device),
+            line_width=3,
+        )
+        for corners in ([8, 6, 1, 1], [1, 6, 8, 1], [8.4, 0.6, 0.5, 5.6]):
+            out = draw_rectangle(
+                torch.zeros(1, 1, 8, 10, dtype=dtype, device=device),
+                torch.tensor([[corners]], device=device),
+                color=torch.tensor([1.0], device=device),
+                line_width=3,
+            )
+            self.assert_close(out, expected)
 
     def test_outline_width_wider_than_box_stays_inside(self, dtype, device):
         image = torch.zeros(1, 1, 8, 10, dtype=dtype, device=device)
@@ -866,15 +884,15 @@ class TestDrawRectangle(BaseTester):
         not torch_version_ge(2, 14),
         reason="slices with data-dependent bounds export from torch 2.14 (2.9.1 fails to export, 2.6 bakes the input)",
     )
-    @pytest.mark.parametrize("fill", [False, True])
-    def test_onnx_export_draws_the_rectangles_given_at_run_time(self, fill):
+    @pytest.mark.parametrize(("fill", "line_width"), [(False, 1), (True, 1), (False, 3)])
+    def test_onnx_export_draws_the_rectangles_given_at_run_time(self, fill, line_width):
         pytest.importorskip("onnx")
         pytest.importorskip("onnxscript")
         ort = pytest.importorskip("onnxruntime")
 
         class Draw(torch.nn.Module):
             def forward(self, image, rectangle, color):
-                return draw_rectangle(image.clone(), rectangle, color, fill=fill)
+                return draw_rectangle(image.clone(), rectangle, color, fill=fill, line_width=line_width)
 
         model = Draw()
         image = torch.zeros(1, 3, 6, 9)
