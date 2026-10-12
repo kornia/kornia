@@ -197,9 +197,8 @@ class TestConventionsPatchDescriptors(BaseTester):
         # HardNet and HardNet8 standardise each patch, SOSNet and TFeat start with InstanceNorm2d, MKD and SIFT use
         # gradients and an L2 normalisation, so a [0, 1] patch, 2x + 1 and 255x give one descriptor. SOSNet and TFeat
         # are invariant only up to the InstanceNorm eps (1e-5 on the variance): it moves TFeat by ~1e-5 here, and with
-        # pretrained weights a low-contrast patch moves both (SOSNet at 0.01x: cosine 0.28); random weights hide this
-        # for SOSNet, whose bias-free layers are positively homogeneous. HyNet is the exception (scale only):
-        # test_hynet.py::TestConventionsHyNet.
+        # pretrained weights a low-contrast patch moves both; random weights hide this for SOSNet, whose bias-free
+        # layers are positively homogeneous. HyNet is the exception (scale only): test_hynet.py::TestConventionsHyNet.
         model, patch_size, _ = self._model(name, device, dtype)
         patches = torch.rand(4, 1, patch_size, patch_size, device=device, dtype=dtype)
         desc = model(patches)
