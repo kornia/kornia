@@ -503,6 +503,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if len(mask) != batch:
             raise ValueError(f"Mask list must contain one entry per sample ({batch}); got {len(mask)}.")
         for i, entry in enumerate(mask):
+            if not isinstance(entry, torch.Tensor):
+                raise ValueError(f"Mask list entry {i} must be a torch.Tensor; got {type(entry).__name__}.")
             if entry.ndim not in (2, 3, 4) or (entry.ndim == 4 and entry.shape[0] != 1):
                 raise ValueError(
                     f"Mask list entry {i} must be (H, W), (C, H, W) or (1, C, H, W); "

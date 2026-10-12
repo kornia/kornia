@@ -468,7 +468,7 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         # A batched call has one gate per sample, so ``batch_prob`` gives the batch size as a Python int. The shape
         # helpers read it from the ``forward_input_shape`` tensor, a data-dependent branch that breaks
-        # ``torch.compile(fullgraph=True)`` for a ``(B, H, W)`` mask (#5598). A list entry (0-d gate) keeps them.
+        # ``torch.compile(fullgraph=True)`` for a ``(B, H, W)`` mask (#5598). Scalar gates keep the shape helpers.
         channel_dim: Optional[int] = None
         if input.dim() == 3 and batch_prob.dim() == 1:
             channel_dim = 1 if input.shape[0] == batch_prob.shape[0] else 0

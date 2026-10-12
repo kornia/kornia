@@ -757,15 +757,16 @@ class TestConventionAugmentationBase2D(BaseTester):
             with pytest.raises(NotImplementedError):
                 K.AugmentationSequential(aug, data_keys=["input", key])(image, data)
 
-    def test_convention_bhw_mask_list_entry_follows_the_image_5598(self, device, dtype):
-        # A batched (B, H, W) mask takes its batch size from ``batch_prob`` (#5598). A list entry has a 0-d gate and
-        # still reads a first dimension equal to the image batch as that batch, so each row gets its own crop window.
-        # The meaning of a mask list is tracked in #4477.
+    def test_convention_bhw_mask_uses_tensor_not_list_5598(self, device, dtype):
+        # A batched (B, H, W) mask takes its batch size from ``batch_prob`` (#5598). A mask list instead holds
+        # one tensor per image sample (#4477); wrapping the full batch in a one-element list is invalid.
         image = torch.arange(2 * 64, device=device).to(dtype).reshape(2, 1, 8, 8)
         sequence = K.AugmentationSequential(K.RandomCrop((4, 4), p=1.0), data_keys=["input", "mask"])
-        output_image, output_masks = sequence(image, [image[:, 0]])
-        assert output_masks[0].shape == (2, 1, 4, 4)
-        self.assert_close(output_masks[0], output_image, rtol=0, atol=0)
+        output_image, output_mask = sequence(image, image[:, 0])
+        assert output_mask.shape == (2, 1, 4, 4)
+        self.assert_close(output_mask, output_image, rtol=0, atol=0)
+        with pytest.raises(ValueError, match="one entry per sample"):
+            sequence(image, [image[:, 0]])
 
     @pytest.mark.parametrize("first_dim", [2, 3])
     def test_convention_3d_mask_keepdim_returns_its_rank_5598(self, device, dtype, first_dim):

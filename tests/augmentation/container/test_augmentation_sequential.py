@@ -1555,6 +1555,13 @@ class TestConventionAugmentationSequential(BaseTester):
         with pytest.raises(ValueError, match="Mask list"):
             seq(image, entries)
 
+    @pytest.mark.parametrize("entry", [None, 1, "mask", [1]])
+    def test_invalid_mask_list_entry_type_4477(self, entry, device, dtype):
+        image = torch.rand(2, 1, 4, 6, device=device, dtype=dtype)
+        seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+        with pytest.raises(ValueError, match=r"Mask list entry 1 must be a torch\.Tensor"):
+            seq(image, [image[:1].clone(), entry])
+
     def test_mix_augmentation_inverse_raises_4693(self, device, dtype):
         image = torch.stack([torch.full((2, 4, 6), float(i + 1), device=device, dtype=dtype) for i in range(3)])
         mask = torch.zeros(3, 4, 6, device=device, dtype=torch.long)
