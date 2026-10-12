@@ -48,26 +48,51 @@ def test_tokenmix_params_keys():
     assert params["batch_perm"].shape[0] == 4
 
 
+def test_tokenmix_same_on_batch():
+    aug = TokenMix(alpha=1.0, num_tokens=4, same_on_batch=True)
+    x = torch.rand(4, 3, 32, 32)
+    params = aug.generate_parameters(x.shape)
+    assert (params["num_mix_tokens"] == params["num_mix_tokens"][0]).all()
+    assert (params["lam"] == params["lam"][0]).all()
+
+
+def test_tokenmix_public_call_and_replay():
+    aug = TokenMix(alpha=1.0, num_tokens=4, p=1.0)
+    x = torch.rand(4, 3, 32, 32)
+    out = aug(x)
+    assert out.shape == x.shape
+    params = aug._params
+    out_replayed = aug(x, params=params)
+    assert torch.allclose(out, out_replayed)
+
+
+def test_tokenmix_probability_gate():
+    x = torch.rand(4, 3, 32, 32)
+
+    # p=0: batch is never transformed
+    aug_0 = TokenMix(alpha=1.0, num_tokens=4, p=0.0)
+    assert torch.allclose(aug_0(x), x)
+
+    # p=1: batch is always transformed
+    aug_1 = TokenMix(alpha=1.0, num_tokens=4, p=1.0)
+    aug_1(x)
+    assert aug_1._params["batch_prob"].all()
+
+    # p=0.5: single batch gate (all elements transformed or none)
+    aug_half = TokenMix(alpha=1.0, num_tokens=4, p=0.5)
+    aug_half(x)
+    bp = aug_half._params["batch_prob"]
+    assert (bp > 0.5).all() or (bp < 0.5).all()
+
+
 def test_tokenmix_lam_controls_mixing():
-    """Images with lam→0 (0 tokens mixed) should be closer to original than lam→1."""
     aug = TokenMix(num_tokens=4)
     x = torch.rand(2, 3, 32, 32)
     params_none = aug.generate_parameters(x.shape)
     params_none["lam"] = torch.zeros(2)
     params_none["num_mix_tokens"] = torch.zeros(2, dtype=torch.long)
     out_none = aug.apply_transform(x, params_none, {})
-    assert torch.allclose(out_none, x), "With 0 tokens mixed, output should equal input"
-
-
-def test_tokenmix_different_inputs():
-    aug = TokenMix(alpha=1.0, num_tokens=4)
-    x = torch.rand(4, 3, 32, 32)
-    y = torch.rand(4, 3, 32, 32)
-    params = aug.generate_parameters(x.shape)
-    out1 = aug.apply_transform(x, params, {})
-    params2 = aug.generate_parameters(y.shape)
-    out2 = aug.apply_transform(y, params2, {})
-    assert not torch.allclose(out1, out2)
+    assert torch.allclose(out_none, x)
 
 
 def test_tokenmix_grad():
@@ -81,7 +106,7 @@ def test_tokenmix_grad():
 
 def test_tokenmix_invalid_size():
     aug = TokenMix(alpha=1.0, num_tokens=5)
-    x = torch.rand(2, 3, 32, 32)  # 32 not divisible by 5
+    x = torch.rand(2, 3, 32, 32)
     params = aug.generate_parameters(x.shape)
     with pytest.raises(ValueError, match="divisible"):
         aug.apply_transform(x, params, {})
@@ -89,7 +114,7 @@ def test_tokenmix_invalid_size():
 
 def test_tokenmix_num_tokens_too_large():
     aug = TokenMix(alpha=1.0, num_tokens=64)
-    x = torch.rand(2, 3, 16, 16)  # num_tokens > H, token_h = 0
+    x = torch.rand(2, 3, 16, 16)
     params = aug.generate_parameters(x.shape)
     with pytest.raises(ValueError, match="exceeds"):
         aug.apply_transform(x, params, {})

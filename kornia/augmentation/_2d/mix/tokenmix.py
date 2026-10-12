@@ -15,11 +15,12 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 
-from .base import MixAugmentationBaseV2
+from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
+from kornia.constants import DataKey
 
 
 class TokenMix(MixAugmentationBaseV2):
@@ -46,6 +47,14 @@ class TokenMix(MixAugmentationBaseV2):
         p: probability of applying the augmentation to the batch.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input.
+        data_keys: the input types for applying augmentations.
+
+    Convention:
+        - ``p`` is a batch-wide gate.
+        - ``same_on_batch=True`` shares the mixing strength (``lam`` and ``num_mix_tokens``)
+          across the batch, while the partner permutation (``batch_perm``) is drawn per batch.
+        - Both ``H`` and ``W`` must be divisible by ``num_tokens``, and ``num_tokens <= min(H, W)``.
+        - Only image input is implemented.
 
     Inputs:
         - Input image tensors, shape of :math:`(B, C, H, W)`.
@@ -69,28 +78,14 @@ class TokenMix(MixAugmentationBaseV2):
         p: float = 1.0,
         same_on_batch: bool = False,
         keepdim: bool = False,
+        data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> None:
-        """Initialise TokenMix augmentation.
-
-        Args:
-            alpha: Beta distribution concentration parameter. Default: ``1.0``.
-            num_tokens: Number of token rows/columns per spatial axis. Default: ``8``.
-            p: Batch-level application probability. Default: ``1.0``.
-            same_on_batch: Apply identical transform to every item in the batch. Default: ``False``.
-            keepdim: Keep spatial shape of the output. Default: ``False``.
-
-        """
-        super().__init__(p=p, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
         self.alpha = alpha
         self.num_tokens = num_tokens
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         """Generate per-batch mixing parameters.
-
-        Samples a Beta-distributed ``lam`` per image, converts it to a token
-        count, and draws a random batch permutation. All values are stored in
-        the returned ``params`` dict so that ``apply_transform`` can use them
-        without re-sampling.
 
         Args:
             batch_shape: Shape of the input batch, i.e. ``(B, C, H, W)``.
@@ -103,9 +98,18 @@ class TokenMix(MixAugmentationBaseV2):
 
         """
         B = batch_shape[0]
-        lam = torch.distributions.Beta(self.alpha, self.alpha).sample((B,))
+        if B == 0:
+            return {
+                "lam": torch.empty((0,)),
+                "num_mix_tokens": torch.empty((0,), dtype=torch.long),
+                "batch_perm": torch.empty((0,), dtype=torch.long),
+            }
 
-        # Map lam in [0, 1] to a per-sample token count in [1, num_tokens^2].
+        if self.same_on_batch:
+            lam = torch.distributions.Beta(self.alpha, self.alpha).sample((1,)).repeat(B)
+        else:
+            lam = torch.distributions.Beta(self.alpha, self.alpha).sample((B,))
+
         total_tokens = self.num_tokens * self.num_tokens
         num_mix_tokens = (lam * total_tokens).round().clamp(min=1.0, max=float(total_tokens)).long()
 
@@ -118,28 +122,7 @@ class TokenMix(MixAugmentationBaseV2):
         params: Dict[str, torch.Tensor],
         maybe_flags: Optional[Dict[str, Any]] = None,
     ) -> torch.Tensor:
-        """Replace token-grid patches with patches from a permuted image.
-
-        Divides each image into a ``num_tokens x num_tokens`` non-overlapping
-        grid of patches and replaces the first ``num_mix_tokens[i]`` patches
-        (in raster order) of image *i* with the corresponding patches from the
-        permuted image. The batch dimension is processed with vectorised
-        indexing; only the token loop is a Python-level iteration.
-
-        Args:
-            input: Batch of images, shape ``(B, C, H, W)``.
-            params: Dict produced by :meth:`generate_parameters`. Must contain
-                ``"num_mix_tokens"`` and ``"batch_perm"``.
-            maybe_flags: Unused augmentation flags (kept for API compatibility).
-
-        Returns:
-            torch.Tensor: Augmented batch, shape ``(B, C, H, W)``.
-
-        Raises:
-            ValueError: If ``H`` or ``W`` are not divisible by ``num_tokens``,
-                or if ``num_tokens`` is larger than ``min(H, W)``.
-
-        """
+        """Replace token-grid patches with patches from a permuted image."""
         B, _C, H, W = input.shape
         token_h = H // self.num_tokens
         token_w = W // self.num_tokens
@@ -153,20 +136,16 @@ class TokenMix(MixAugmentationBaseV2):
             raise ValueError(f"TokenMix: input size (H={H}, W={W}) must be divisible by num_tokens={self.num_tokens}.")
 
         idx = params["batch_perm"].to(input.device)
-        num_mix_tokens = params["num_mix_tokens"].to(input.device)  # (B,)
+        num_mix_tokens = params["num_mix_tokens"].to(input.device)
 
-        # Pre-fetch the permuted images once — no outer Python loop over batch.
-        shuffled = input[idx]  # (B, C, H, W)
+        shuffled = input[idx]
         out = input.clone()
 
-        # Replace tokens in raster order up to the per-sample count.
-        # The inner loop is over at most num_tokens^2 iterations (typically small).
         token_idx = 0
         for ty in range(self.num_tokens):
             y = ty * token_h
             for tx in range(self.num_tokens):
                 x = tx * token_w
-                # Boolean mask: which images in the batch should get this token replaced.
                 mask = (num_mix_tokens > token_idx).view(B, 1, 1, 1)
                 out[:, :, y : y + token_h, x : x + token_w] = torch.where(
                     mask,
