@@ -124,6 +124,14 @@ class TestNearestXterm:
         top, bottom = image[:, : height // 2], image[:, height // 2 :]
         assert image_to_string(image) == image_to_string(top) + image_to_string(bottom)
 
+    def test_an_image_on_the_device_prints_like_its_cpu_copy(self, device):
+        # the distances run on the CPU in float64; MPS cannot hold float64, and a combined .to("cpu", float64) gives
+        # zeros there on torch 2.14 (every pixel black) and raises TypeError on torch 2.5.1
+        image = torch.randint(0, 256, (3, 4, 5), generator=torch.Generator().manual_seed(0), dtype=torch.uint8)
+        out = image_to_string(image.to(device))
+        assert out == image_to_string(image)
+        assert out.count("48;5;16m") < 20  # not every pixel black
+
     def test_distances_are_computed_in_bounded_chunks(self, monkeypatch):
         # a 1500x256 image used to build one (N, 240) float64 distance matrix (about 1.7 GB peak)
         sizes = []

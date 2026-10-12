@@ -400,7 +400,8 @@ def image_to_string(image: torch.Tensor, max_width: int = 256) -> str:
         image = image.expand(3, -1, -1)
 
     H, W = image.shape[-2:]
-    flat = image.permute(1, 2, 0).reshape(-1, 3).to(device="cpu", dtype=torch.float64)
+    # to the CPU first, then float64: MPS has no float64, and one combined .to() returns zeros there on recent torch
+    flat = image.permute(1, 2, 0).reshape(-1, 3).cpu().to(torch.float64)
     # nearest fixed colour per pixel, a chunk of pixels at a time so the distance matrix stays small
     codes = torch.cat([_nearest_xterm_codes(chunk) for chunk in flat.split(_PIXELS_PER_CHUNK)]).tolist()
 
