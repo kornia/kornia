@@ -275,3 +275,10 @@ def test_make_grid_valid(device, dtype, n_row):
     assert actual.dtype == tensor.dtype
     assert actual.device == tensor.device
     assert_close(actual, expected)
+
+
+def test_tensor_to_image_bfloat16_becomes_float32():
+    out = kornia.image.tensor_to_image(torch.full((3, 4, 5), 0.5, dtype=torch.bfloat16))
+    assert out.dtype == np.float32
+    assert out.shape == (4, 5, 3)
+    assert (out == 0.5).all()

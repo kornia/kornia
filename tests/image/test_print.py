@@ -76,7 +76,7 @@ class TestImageToString:
             image_to_string(img)
         assert "Value range mismatch" in str(errinfo.value) or "Invalid image value range" in str(errinfo.value)
 
-        with pytest.raises(RuntimeError):
+        with pytest.raises(TypeError):
             print_image([img])  # Do not accept list
 
     def test_rejects_a_tensor_that_is_not_a_color_or_gray_image(self):

@@ -23,7 +23,8 @@ import torch
 
 from kornia.core._compat import torch_version_le
 from kornia.core.exceptions import ShapeError
-from kornia.image.base import KORNIA_CHECK_IMAGE_LAYOUT, ChannelsOrder, ColorSpace, ImageLayout, ImageSize, PixelFormat
+from kornia.image import ColorSpace
+from kornia.image.base import KORNIA_CHECK_IMAGE_LAYOUT, ChannelsOrder, ImageLayout, ImageSize, PixelFormat
 from kornia.image.image import Image
 from kornia.image.image_print import image_to_string
 
@@ -193,6 +194,38 @@ class TestImage(BaseTester):
         data = np.ones((4, 5, 3), dtype=np.uint8)
         img = Image.from_numpy(data, color_space=ColorSpace.RGB, channels_order=ChannelsOrder.CHANNELS_LAST)
         img.write(tmp_path / "image.jpg")
+
+    def test_to_returns_a_new_image_and_leaves_the_original(self, device):
+        img = Image.from_numpy(np.zeros((4, 5, 3), dtype=np.uint8))
+        out = img.to(device, torch.float32)
+        assert out is not img
+        assert img.dtype == torch.uint8
+        assert img.pixel_format.bit_depth == 8
+        assert out.dtype == torch.float32
+        assert out.device == device
+        assert out.pixel_format.bit_depth == 32
+        assert out.clone().pixel_format.bit_depth == 32  # clone() used to raise "Invalid bit depth"
+
+    def test_float_leaves_the_original(self):
+        img = Image.from_numpy(np.zeros((4, 5, 3), dtype=np.uint8))
+        out = img.float()
+        assert img.dtype == torch.uint8
+        assert out.dtype == torch.float32
+        assert out.pixel_format.bit_depth == 32
+
+    @pytest.mark.parametrize("order", [ChannelsOrder.CHANNELS_LAST, ChannelsOrder.CHANNELS_FIRST])
+    def test_from_numpy_accepts_a_2d_gray_array(self, order):
+        data = np.arange(20, dtype=np.uint8).reshape(4, 5)  # H = 4, W = 5
+        img = Image.from_numpy(data, color_space=ColorSpace.GRAY, channels_order=order)
+        assert (img.channels, img.height, img.width) == (1, 4, 5)
+        data[0, 1] = 99
+        assert int(img.data.flatten()[1]) == 99  # shares memory, like a 3-D array
+
+    def test_color_space_is_exported(self):
+        import kornia.image
+
+        assert kornia.image.ColorSpace is ColorSpace
+        assert "ColorSpace" in kornia.image.__all__
 
     @pytest.mark.parametrize("order", [ChannelsOrder.CHANNELS_LAST, ChannelsOrder.CHANNELS_FIRST])
     @pytest.mark.parametrize("height", [4, 3])

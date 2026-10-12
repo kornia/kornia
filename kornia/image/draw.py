@@ -265,6 +265,7 @@ def draw_rectangle(
         >>> out = draw_rectangle(img, rect)
 
     """
+    KORNIA_CHECK_SHAPE(image, ["B", "C", "H", "W"])
     batch, c = image.shape[:2]
     batch_rect, num_rectangle, num_points = rectangle.shape
     if batch != batch_rect:
@@ -392,7 +393,7 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
         polygons: represents polygons as points, either BxNx2 or List of variable length polygons.
             N is the number of points.
             2 is (x, y).
-        colors: a B x 3 tensor, 3 tensor, or 0-d scalar with color to fill in.
+        colors: a ``B x C`` tensor, a ``C`` tensor, or a 0-d scalar with the fill colour.
 
     Returns:
         This operation modifies image inplace but also returns the drawn tensor for

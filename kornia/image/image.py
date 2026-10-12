@@ -103,21 +103,24 @@ class Image:
 
     # TODO: explore use TensorWrapper
     def to(self, device: Union[str, torch.device, None] = None, dtype: Union[torch.dtype, None] = None) -> Image:
-        """Move the image to the given device and dtype.
+        """Return the image on ``device`` and with ``dtype``, like :meth:`torch.Tensor.to`.
+
+        The image itself is not changed; assign the result (``img = img.to(...)``). The pixel format's ``bit_depth``
+        follows the new dtype.
 
         Args:
             device: the device to move the image to.
             dtype: the data type to cast the image to.
 
         Returns:
-            Image: the image moved to the given device and dtype.
+            Image: the image on the given device and with the given dtype.
 
         """
         if device is not None and isinstance(device, torch.dtype):
             dtype, device = device, None
-        # put the data to the device and dtype
-        self._data = self.data.to(device, dtype)
-        return self
+        data = self.data.to(device, dtype)
+        pixel_format = PixelFormat(color_space=self.pixel_format.color_space, bit_depth=data.element_size() * 8)
+        return Image(data, pixel_format, self.layout)
 
     # TODO: explore use TensorWrapper
     def clone(self) -> Image:
@@ -166,12 +169,12 @@ class Image:
 
     @property
     def height(self) -> int:
-        """Return the image height (columns)."""
+        """Return the image height (number of rows)."""
         return int(self.layout.image_size.height)
 
     @property
     def width(self) -> int:
-        """Return the image width (rows)."""
+        """Return the image width (number of columns)."""
         return int(self.layout.image_size.width)
 
     @property
@@ -181,9 +184,8 @@ class Image:
 
     # TODO: figure out a better way map this function
     def float(self) -> Image:
-        """Return the image as float."""
-        self._data = self.data.float()
-        return self
+        """Return the image as float32; the image itself is not changed."""
+        return self.to(dtype=torch.float32)
 
     def to_gray(self) -> Image:
         """Convert the image to grayscale."""
@@ -292,6 +294,9 @@ class Image:
             >>> assert img.height == 4
 
         """
+        if data.ndim == 2:
+            # a single-channel image without a channel axis
+            data = data[..., None] if channels_order == ChannelsOrder.CHANNELS_LAST else data[None]
         if channels_order == ChannelsOrder.CHANNELS_LAST:
             image_size = ImageSize(height=data.shape[0], width=data.shape[1])
             channels = data.shape[2]
@@ -319,11 +324,14 @@ class Image:
         """Construct an image torch.Tensor from a DLPack capsule.
 
         Args:
-            data: a DLPack capsule from numpy, tvm or jax.
+            data: a DLPack capsule from numpy, tvm or jax. The capsule must hold a ``(C, H, W)`` image; it is
+                labelled RGB.
 
         Example:
-            >>> x = np.ones((4, 5, 3))
+            >>> x = np.ones((3, 4, 5))  # (C, H, W)
             >>> img = Image.from_dlpack(x.__dlpack__())
+            >>> img.channels, img.height, img.width
+            (3, 4, 5)
 
         """
         _data: torch.Tensor = from_dlpack(data)
@@ -366,7 +374,7 @@ class Image:
     def write(self, file_path: str | Path) -> None:
         """Write the image to a file.
 
-        For now, only support writing to JPEG format.
+        The format follows the file extension; see :func:`kornia.io.write_image` for the supported formats.
 
         Args:
             file_path: the path to the file to write the image to.
@@ -374,7 +382,9 @@ class Image:
         Example:
             >>> data = np.ones((4, 5, 3), dtype=np.uint8)  # HxWxC
             >>> img = Image.from_numpy(data)
-            >>> img.write("test.jpg")
+            >>> import tempfile, os
+            >>> with tempfile.TemporaryDirectory() as tmp:
+            ...     img.write(os.path.join(tmp, "test.jpg"))
 
         """
         data = self.data

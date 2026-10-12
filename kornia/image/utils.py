@@ -25,13 +25,12 @@ from torch.nn import functional as F
 
 
 def image_to_tensor(image: Any, keepdim: bool = True) -> torch.Tensor:
-    """Convert a numpy image to a PyTorch 4d tensor image.
+    """Convert a NumPy image to a PyTorch tensor image.
 
     Args:
         image: image of the form :math:`(H, W, C)`, :math:`(H, W)` or
             :math:`(B, H, W, C)`.
-        keepdim: If ``False`` unsqueeze the input image to match the shape
-            :math:`(B, H, W, C)`.
+        keepdim: If ``False``, add a batch dimension: the output is :math:`(1, C, H, W)`.
 
     Returns:
         tensor of the form :math:`(B, C, H, W)` if keepdim is ``False``,
@@ -174,10 +173,11 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False, force_contiguou
             :math:`(B, C, H, W)`.
         keepdim: If ``False`` squeeze the input image to match the shape
             :math:`(H, W, C)` or :math:`(H, W)`.
-        force_contiguous: If ``True`` call `contiguous` to the tensor before
+        force_contiguous: If ``True``, call ``contiguous`` on the result before converting it to NumPy.
 
     Returns:
-        image of the form :math:`(H, W)`, :math:`(H, W, C)` or :math:`(B, H, W, C)`.
+        image of the form :math:`(H, W)`, :math:`(H, W, C)` or :math:`(B, H, W, C)`. A ``bfloat16`` tensor is
+        returned as ``float32``.
 
     Example:
         >>> img = torch.ones(1, 3, 3)
@@ -197,6 +197,8 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False, force_contiguou
 
     input_shape = tensor.shape
     image = tensor.cpu().detach()
+    if image.dtype == torch.bfloat16:
+        image = image.float()  # NumPy has no bfloat16
 
     if len(input_shape) == 2:
         # (H, W) -> (H, W)

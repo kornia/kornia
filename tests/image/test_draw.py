@@ -20,7 +20,7 @@ import math
 import pytest
 import torch
 
-from kornia.core.exceptions import BaseError
+from kornia.core.exceptions import BaseError, ShapeError
 from kornia.geometry import create_meshgrid
 from kornia.image import draw_convex_polygon, draw_rectangle
 from kornia.image.draw import draw_line, draw_point2d
@@ -545,6 +545,10 @@ class TestDrawLine(BaseTester):
 
 
 class TestDrawRectangle(BaseTester):
+    def test_rejects_an_image_without_a_batch_axis(self, device):
+        with pytest.raises(ShapeError):
+            draw_rectangle(torch.zeros(3, 6, 5, device=device), torch.tensor([[[0, 0, 2, 2]]], device=device))
+
     @pytest.mark.parametrize("batch", [4, 17])
     @pytest.mark.parametrize("color", [torch.Tensor([1.0]), torch.Tensor([0.5])])
     def test_smoke(self, device, batch, color):
