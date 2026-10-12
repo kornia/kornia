@@ -496,7 +496,14 @@ class TestCoarseMatching(BaseTester):
         one_sided = run(False)
         assert one_sided["mconf"].numel() > 0
         assert one_sided["mkpts0_c"].shape[0] == one_sided["mconf"].shape[0]
-        if not training:
+        if training:
+            # The valid coarse areas are 12 and 9 cells, respectively.
+            # With a 50% sampling rate and one predicted match, the sampler
+            # must use 6 / 4 candidates rather than the unpadded grid sizes.
+            expected_total = 6 if masked_side == 0 else 4
+            assert one_sided["b_ids"].numel() == expected_total
+            assert one_sided["gt_mask"].sum().item() == expected_total - 1
+        else:
             both = run(True)
             for key in ("i_ids", "j_ids", "mconf"):
                 assert torch.equal(one_sided[key], both[key])
