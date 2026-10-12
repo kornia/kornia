@@ -503,6 +503,38 @@ class TestCoarseMatching(BaseTester):
         assert bool(torch.isfinite(feat0.grad).all())
         assert bool(torch.isfinite(feat1.grad).all())
 
+    @pytest.mark.parametrize("masked_side", [0, 1])
+    def test_one_sided_mask_is_applied_per_sample_5768(self, device, masked_side):
+        """Each sample of a batch keeps its own mask, and the dual softmax runs over that sample's valid cells only:
+        the confidences of the valid cells equal the dual softmax of the unmasked submatrix, all others are 0."""
+        cfg = dict(self.CFG)
+        cfg["thr"] = 0.0
+        generator = torch.Generator(device=device).manual_seed(0)
+        feat0 = torch.randn(2, 12, 8, device=device, generator=generator)
+        feat1 = torch.randn(2, 9, 8, device=device, generator=generator)
+        masked = torch.ones(2, 12 if masked_side == 0 else 9, device=device)
+        masked[0, [0, 5, 7]] = 0
+        masked[1, [1, 2, 8]] = 0
+        data = {
+            "hw0_c": (3, 4),
+            "hw1_c": (3, 3),
+            "hw0_i": (24, 32),
+            "hw1_i": (24, 24),
+            "stride_c": 8,
+        }
+        masks = (masked, None) if masked_side == 0 else (None, masked)
+        CoarseMatching(cfg).to(device).eval()(feat0, feat1, data, mask_c0=masks[0], mask_c1=masks[1])
+
+        sim = torch.einsum("nlc,nsc->nls", feat0 / 8**0.5, feat1 / 8**0.5) / cfg["dsmax_temperature"]
+        for b in range(2):
+            valid = masked[b].bool()
+            expected = torch.zeros_like(sim[b])
+            if masked_side == 0:
+                expected[valid] = sim[b][valid].softmax(0) * sim[b][valid].softmax(1)
+            else:
+                expected[:, valid] = sim[b][:, valid].softmax(0) * sim[b][:, valid].softmax(1)
+            self.assert_close(data["conf_matrix"][b], expected)
+
     def test_eval_path_unaffected(self, device):
         """Eval mode skips the gt-padding branch entirely -- assert that
         directly (gt_mask all False, count == predictions only), not just
