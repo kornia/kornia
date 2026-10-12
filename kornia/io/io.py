@@ -20,6 +20,7 @@ from __future__ import annotations
 import errno
 import numbers
 import os
+import zlib
 from enum import Enum
 from pathlib import Path
 from typing import Any, Union
@@ -113,7 +114,11 @@ def _read_jpeg_components(path_file: Path) -> int | None:
 
 
 def _read_png_chunks(path_file: Path) -> tuple[bytes | None, bytes | None]:
-    """Return the raw bodies of a PNG's PLTE and tRNS chunks, None for a chunk the file does not have."""
+    """Return the raw bodies of a PNG's PLTE and tRNS chunks, None for a chunk the file does not have.
+
+    Both chunks are checked as a PNG decoder checks them: a truncated body or a stored CRC that does not match the
+    chunk raises ``ValueError`` naming the file. Every other chunk is skipped unread.
+    """
     plte: bytes | None = None
     trns: bytes | None = None
     with open(path_file, "rb") as f:
@@ -121,13 +126,23 @@ def _read_png_chunks(path_file: Path) -> tuple[bytes | None, bytes | None]:
             return None, None
         while True:
             head = f.read(8)
-            if len(head) < 8 or head[4:8] in (b"IDAT", b"IEND"):  # PLTE and tRNS precede the image data
+            kind = head[4:8]
+            if len(head) < 8 or kind in (b"IDAT", b"IEND"):  # PLTE and tRNS precede the image data
                 break
-            body = f.read(int.from_bytes(head[:4], "big"))
-            f.seek(4, os.SEEK_CUR)  # CRC
-            if head[4:8] == b"PLTE":
+            size = int.from_bytes(head[:4], "big")
+            if kind not in (b"PLTE", b"tRNS"):
+                f.seek(size + 4, os.SEEK_CUR)  # body and CRC
+                continue
+            body = f.read(size)
+            crc = f.read(4)
+            name = kind.decode("ascii")
+            if len(body) < size or len(crc) < 4:
+                raise ValueError(f"Failed to decode image '{path_file}': its {name} chunk is truncated.")
+            if int.from_bytes(crc, "big") != zlib.crc32(kind + body):
+                raise ValueError(f"Failed to decode image '{path_file}': its {name} chunk fails its CRC check.")
+            if kind == b"PLTE":
                 plte = body
-            elif head[4:8] == b"tRNS":
+            else:
                 trns = body
     return plte, trns
 
@@ -317,9 +332,10 @@ def load_image(
         TypeCheckError: if ``desired_type`` is not an :class:`ImageLoadType`. It is also a ``TypeError``.
         OSError: if the file cannot be read, for example ``FileNotFoundError`` when it does not exist.
         ValueError: if the file cannot be decoded: a truncated or corrupt image, an unsupported format, a PNG with 1,
-            2 or 4 bits per sample (palette PNGs included), a gray+alpha PNG, or a palette PNG whose palette is
-            malformed or too short for its pixels. The message names the file; when the decoder fails, its exception
-            is the ``__cause__``.
+            2 or 4 bits per sample (palette PNGs included), a gray+alpha PNG, a palette PNG whose palette is malformed
+            or too short for its pixels, or, under every type except ``UNCHANGED``, a PNG whose PLTE or tRNS chunk is
+            truncated or fails its CRC check. The message names the file; when the decoder fails, its exception is the
+            ``__cause__``.
         NotImplementedError: if a type other than ``UNCHANGED`` is requested for a file that decodes to more than 8
             bits, such as a 16-bit PNG or TIFF or a float TIFF.
 

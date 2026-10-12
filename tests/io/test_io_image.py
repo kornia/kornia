@@ -28,7 +28,7 @@ import torch
 
 from kornia.core.exceptions import ShapeError, TypeCheckError, ValueCheckError
 from kornia.io import ImageLoadType, load_image, write_image
-from kornia.io.io import _read_jpeg_components
+from kornia.io.io import _read_jpeg_components, _read_png_chunks
 
 
 def create_random_img8(height: int, width: int, channels: int) -> np.ndarray:
@@ -73,6 +73,15 @@ def write_png_with_trns(path: Path, pixels: np.ndarray, colour_type: int, trns: 
         chunks.append(_png_chunk(b"tRNS", trns))
     chunks += [_png_chunk(b"IDAT", zlib.compress(raw)), _png_chunk(b"IEND", b"")]
     path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"".join(chunks))
+
+
+def corrupt_chunk_crc(path: Path, kind: bytes) -> None:
+    """Add 1 to the stored CRC of the first ``kind`` chunk, leaving its length and body intact."""
+    data = bytearray(path.read_bytes())
+    start = data.index(kind) - 4  # the 4-byte length precedes the chunk type
+    crc_at = start + 8 + int.from_bytes(data[start : start + 4], "big")
+    data[crc_at : crc_at + 4] = ((int.from_bytes(data[crc_at : crc_at + 4], "big") + 1) & 0xFFFFFFFF).to_bytes(4, "big")
+    path.write_bytes(bytes(data))
 
 
 PALETTE = [(255, 255, 0), (0, 255, 0), (255, 0, 0), (0, 0, 255)]
@@ -324,6 +333,55 @@ class TestIndexedPng:
         write_indexed_png(path, PALETTE_INDICES, [*PALETTE, (7,)])  # a 13-byte PLTE chunk
         with pytest.raises(ValueError, match=re.escape(path.name)):
             load_image(path, ImageLoadType.RGB8)
+
+
+class TestCorruptPngChunks:
+    # load_image reads PLTE and tRNS itself, so it checks their CRC and length like a PNG decoder; kornia-rs 0.2.0
+    # accepts a tRNS chunk with a bad CRC, which Pillow 12.3 rejects ("cannot identify image file")
+    @pytest.mark.parametrize("load_type", [ImageLoadType.RGBA8, ImageLoadType.RGB8])
+    def test_palette_trns_with_a_bad_crc_raises_naming_the_file(self, tmp_path: Path, load_type) -> None:
+        path = tmp_path / "bad_trns.png"
+        write_indexed_png(path, PALETTE_INDICES, PALETTE, alpha=bytes([0, 128]))
+        corrupt_chunk_crc(path, b"tRNS")
+        with pytest.raises(ValueError, match=re.escape(path.name) + ".*tRNS"):
+            load_image(path, load_type)
+
+    @pytest.mark.parametrize("load_type", [ImageLoadType.RGBA8, ImageLoadType.GRAY8])
+    def test_colour_key_with_a_bad_crc_raises_naming_the_file(self, tmp_path: Path, load_type) -> None:
+        path = tmp_path / "bad_key.png"
+        write_png_with_trns(
+            path, np.array([[10, 20, 10], [20, 10, 20]], dtype=np.uint8), colour_type=0, trns=struct.pack(">H", 10)
+        )
+        corrupt_chunk_crc(path, b"tRNS")
+        with pytest.raises(ValueError, match=re.escape(path.name) + ".*tRNS"):
+            load_image(path, load_type)
+
+    def test_unchanged_does_not_read_the_trns_chunk(self, tmp_path: Path) -> None:
+        # UNCHANGED returns what kornia-rs decodes, the indices, and never looks at tRNS, so its CRC is not checked
+        path = tmp_path / "bad_trns.png"
+        write_indexed_png(path, PALETTE_INDICES, PALETTE, alpha=bytes([0, 128]))
+        corrupt_chunk_crc(path, b"tRNS")
+        assert load_image(path, ImageLoadType.UNCHANGED).tolist() == [PALETTE_INDICES.tolist()]
+
+    def test_plte_with_a_bad_crc_raises_naming_the_file(self, tmp_path: Path) -> None:
+        path = tmp_path / "bad_plte.png"
+        write_indexed_png(path, PALETTE_INDICES, PALETTE)
+        corrupt_chunk_crc(path, b"PLTE")
+        with pytest.raises(ValueError, match=re.escape(path.name) + ".*PLTE"):
+            _read_png_chunks(path)
+        with pytest.raises(ValueError, match=re.escape(path.name)):  # kornia-rs rejects a bad PLTE CRC itself
+            load_image(path, ImageLoadType.RGB8)
+
+    def test_truncated_plte_body_raises_naming_the_file(self, tmp_path: Path) -> None:
+        path = tmp_path / "truncated.png"
+        write_indexed_png(path, PALETTE_INDICES, PALETTE)
+        data = path.read_bytes()
+        path.write_bytes(data[: data.index(b"PLTE") + 4 + 6])  # 6 of the 12 palette bytes, then end of file
+        with pytest.raises(ValueError, match=re.escape(path.name) + ".*PLTE.*truncated"):
+            _read_png_chunks(path)
+        with pytest.raises(ValueError, match=re.escape(path.name)) as error:
+            load_image(path, ImageLoadType.RGB8)
+        assert "palette entry" not in str(error.value)
 
 
 class TestGrayJpeg:
@@ -626,6 +684,63 @@ class TestDownloadImage:
             dst = tmp_path / "panda.jpg"
             download_image(self.URL, str(dst))
         assert dst.read_bytes() == payload
+        assert not (tmp_path / "panda.jpg.part").exists()
+
+    def test_the_destination_appears_only_once_the_write_is_complete(self, tmp_path):
+        from unittest import mock
+
+        from kornia.io.sample import download_image
+
+        dst = tmp_path / "panda.jpg"
+        writes = []
+
+        def watching_open(path, mode="r", *args, **kwargs):
+            handle = open(path, mode, *args, **kwargs)  # noqa: SIM115 - returned to the code under test
+            real_write = handle.write
+
+            def write(data):
+                writes.append((str(path), dst.exists()))  # a process killed here must not leave a partial dst
+                return real_write(data)
+
+            handle.write = write
+            return handle
+
+        payload = b"\xff\xd8" + bytes(100)
+        with (
+            mock.patch("kornia.io.sample.urlopen") as mock_urlopen,
+            mock.patch("kornia.io.sample.open", watching_open, create=True),
+        ):
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = payload
+            download_image(self.URL, str(dst))
+        assert writes == [(f"{dst}.part", False)]
+        assert dst.read_bytes() == payload
+
+    def test_an_interrupted_write_leaves_no_file(self, tmp_path):
+        from unittest import mock
+
+        from kornia.io.sample import download_image
+
+        def failing_open(path, mode="r", *args, **kwargs):
+            handle = open(path, mode, *args, **kwargs)  # noqa: SIM115 - returned to the code under test
+            real_write = handle.write
+
+            def write(data):
+                real_write(data[:5])  # part of the body reaches the disk, then the device fills up
+                raise OSError(28, "No space left on device")
+
+            handle.write = write
+            return handle
+
+        dst = tmp_path / "panda.jpg"
+        with (
+            mock.patch("kornia.io.sample.urlopen") as mock_urlopen,
+            mock.patch("kornia.io.sample.open", failing_open, create=True),
+        ):
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = b"\xff\xd8" + bytes(100)
+            with pytest.raises(OSError, match="No space left"):
+                download_image(self.URL, str(dst))
+        assert not dst.exists()
+        assert not (tmp_path / "panda.jpg.part").exists()
 
     def test_http_error_propagates(self, tmp_path):
         import urllib.error

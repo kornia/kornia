@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 from typing import Any, List, Optional, Tuple, Union
@@ -46,6 +47,9 @@ _IMAGE_URLS: List[str] = [
 def download_image(url: str, save_to: str) -> None:
     """Download a file and save its bytes unchanged, so a JPEG is not decoded and re-encoded.
 
+    The bytes are written to ``save_to + ".part"``, which is renamed to ``save_to`` only once the write is complete
+    and removed if the write fails, so an interrupted download never leaves a partial file at ``save_to``.
+
     Args:
         url: The URL of the image to download.
         save_to: The file path where the downloaded image will be saved.
@@ -54,8 +58,15 @@ def download_image(url: str, save_to: str) -> None:
     # get_sample_images only routes http(s) URLs here (default: the https:// literals above).
     with urlopen(url, timeout=30) as resp:  # noqa: S310
         data = resp.read()
-    with open(save_to, "wb") as f:
-        f.write(data)
+    part = f"{save_to}.part"
+    try:
+        with open(part, "wb") as f:
+            f.write(data)
+        os.replace(part, save_to)
+    except BaseException:
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(part)
+        raise
 
 
 def get_sample_images(
