@@ -17,6 +17,7 @@
 
 import gc
 import json
+import sys
 
 import pytest
 import torch
@@ -29,6 +30,7 @@ from kornia.profiler import (
     model_profile_under_augmentation,
     model_profile_under_input_changes,
 )
+from kornia.profiler import model_profiler as profiler_module
 from kornia.profiler.augment import AugmentationPipeline
 from kornia.profiler.metrics.gram import gram_similarity
 from kornia.profiler.metrics.linear import linear_cka
@@ -36,13 +38,23 @@ from kornia.profiler.metrics.linear import linear_cka
 
 @pytest.fixture(params=["cpu", "cuda"])
 def device(request):
+    """Exercise the supported CPU and CUDA profiler backends when available."""
     if request.param == "cuda" and not torch.cuda.is_available():
         pytest.skip("CUDA unavailable")
     return torch.device(request.param)
 
 
+@pytest.fixture
+def missing_pandas(monkeypatch):
+    """Simulate an unavailable optional pandas dependency without installing it."""
+    monkeypatch.setitem(sys.modules, "pandas", None)
+    monkeypatch.setattr(profiler_module.pandas, "module", None)
+    monkeypatch.setenv("KORNIA_INSTALLATION_MODE", "raise")
+
+
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_cka_reference_and_invariances(device, dtype):
+    """Compare CKA with a feature-space reference and its mathematical invariances."""
     torch.manual_seed(1729)
     x = torch.randn(19, 5, device=device, dtype=dtype)
     y = torch.randn(19, 7, device=device, dtype=dtype)
@@ -59,6 +71,7 @@ def test_cka_reference_and_invariances(device, dtype):
 
 @pytest.mark.parametrize("kind", ["constant", "singleton", "samples", "rank", "empty", "nan", "integer"])
 def test_cka_invalid_inputs(device, kind):
+    """Reject degenerate, incompatible and nonfinite CKA inputs."""
     x = torch.randn(8, 4, device=device)
     y = x.clone()
     if kind == "constant":
@@ -80,6 +93,7 @@ def test_cka_invalid_inputs(device, kind):
 
 
 def test_gram_all_layers_and_nonspatial(device):
+    """Return every spatial layer's Gram score while ignoring vector features."""
     maps = {
         "first": torch.randn(4, 3, 8, 8, device=device),
         "second": torch.randn(4, 5, 4, 4, device=device),
@@ -96,11 +110,13 @@ def test_gram_all_layers_and_nonspatial(device):
 
 
 def hook_count(model):
+    """Count live forward hooks across the model and its submodules."""
     return sum(len(m._forward_hooks) for m in model.modules())
 
 
 @pytest.mark.parametrize("kwargs", [{"layers": ["0", "missing"]}, {"layers": ["0"], "processing": "bad"}])
 def test_constructor_failure_is_atomic(kwargs):
+    """Leave no hooks behind when layer or processing validation fails."""
     model = nn.Sequential(nn.Linear(3, 4), nn.ReLU())
     with pytest.raises(ValueError):
         FeatureExtractor(model, **kwargs)
@@ -108,9 +124,11 @@ def test_constructor_failure_is_atomic(kwargs):
 
 
 def test_registration_exception_cleans_up(monkeypatch):
+    """Remove earlier hooks if a later hook registration raises."""
     model = nn.Sequential(nn.Linear(3, 4), nn.ReLU())
 
     def fail(*args, **kwargs):
+        """Simulate a hook-registration failure after an earlier successful hook."""
         raise RuntimeError("registration failed")
 
     monkeypatch.setattr(model[1], "register_forward_hook", fail)
@@ -120,6 +138,7 @@ def test_registration_exception_cleans_up(monkeypatch):
 
 
 def test_inplace_snapshot_and_forward_independence(device):
+    """Keep captured features unchanged by in-place layers and later forwards."""
     model = nn.Sequential(nn.Identity(), nn.ReLU(inplace=True)).to(device)
     collector = FeatureExtractor(model, ["0"])
     try:
@@ -136,6 +155,7 @@ def test_inplace_snapshot_and_forward_independence(device):
 
 @pytest.mark.parametrize("processing", ["none", "flatten", "gap"])
 def test_feature_shapes_and_no_grad(device, processing):
+    """Check each processing mode's output shape and detached feature snapshots."""
     model = nn.Sequential(nn.Conv2d(3, 4, 3, padding=1)).to(device)
     extractor = FeatureExtractor(model, ["0"], processing)
     try:
@@ -149,6 +169,7 @@ def test_feature_shapes_and_no_grad(device, processing):
 
 @pytest.mark.parametrize("raise_inside", [False, True])
 def test_context_cleanup_restores_mixed_modes(device, raise_inside):
+    """Restore every module's training flag and hooks on normal and error exits."""
     model = nn.Sequential(nn.Linear(3, 4), nn.Dropout()).to(device).train()
     model[1].eval()
     states = [m.training for m in model.modules()]
@@ -168,16 +189,21 @@ def test_context_cleanup_restores_mixed_modes(device, raise_inside):
 
 
 class KeywordModel(nn.Module):
+    """Provide a model with multiple positional or keyword inputs for API tests."""
+
     def __init__(self):
+        """Create the linear feature layer used by the test model."""
         super().__init__()
         self.layer = nn.Linear(3, 4)
 
     def forward(self, pixels, scale):
+        """Project input pixels and scale the model output."""
         return self.layer(pixels) * scale
 
 
 @pytest.mark.parametrize("input_kind", ["tensor", "tuple", "mapping"])
-def test_public_api_and_json_report(device, tmp_path, input_kind):
+def test_public_api_and_json_report(device, tmp_path, input_kind, missing_pandas):
+    """Profile each input structure and export JSON even when pandas is absent."""
     x = torch.randn(8, 3, device=device)
     if input_kind == "tensor":
         model = nn.Sequential(nn.Linear(3, 4)).to(device)
@@ -197,6 +223,7 @@ def test_public_api_and_json_report(device, tmp_path, input_kind):
 
 @pytest.mark.parametrize("kind", ["blur", "brightness"])
 def test_actual_kornia_augmentation_and_wrapper(device, kind):
+    """Verify deterministic augmentations and every selected layer's report values."""
     x = torch.rand(8, 3, 16, 16, device=device)
     params = {"kernel_size": (5, 5), "sigma": (1.0, 1.0)} if kind == "blur" else {"brightness": (0.8, 0.8)}
     config = [{"name": kind, "params": params}]
@@ -222,7 +249,93 @@ def test_actual_kornia_augmentation_and_wrapper(device, kind):
     assert hook_count(model) == 0
 
 
+def test_multiple_augmentations_reuse_original(device):
+    """Capture the original once and retain independently verified results for every augmentation."""
+    model = nn.Sequential(nn.Identity()).to(device)
+    inputs = torch.linspace(0.25, 0.75, 2 * 3 * 8 * 8, device=device).reshape(2, 3, 8, 8)
+    calls = []
+
+    def count_forward(module, args, output):
+        """Record one marker for each model forward without retaining tensors."""
+        calls.append(None)
+
+    handle = model.register_forward_hook(count_forward)
+    try:
+        report = model_profile_under_augmentation(
+            model,
+            {
+                "input": inputs,
+                "layers": ["0"],
+                "metrics": ["cosine", "l2"],
+                "augmentations": [
+                    {"name": "rotation", "params": {"degrees": (0.0, 0.0)}},
+                    {"name": "brightness", "params": {"brightness": (0.8, 0.8)}},
+                ],
+            },
+        )
+    finally:
+        handle.remove()
+    assert len(calls) == 3  # One original plus two augmented model forwards.
+    assert [row["tag"] for row in report.results] == ["rotation", "brightness"]
+    assert report.results[0]["l2_0"] == pytest.approx(0, abs=1e-6)
+    reference = (
+        (
+            torch.linalg.vector_norm(torch.full_like(inputs.flatten(1), 0.2), dim=1)
+            / (torch.linalg.vector_norm(inputs.flatten(1), dim=1) + 1e-8)
+        )
+        .mean()
+        .item()
+    )
+    assert report.results[1]["l2_0"] == pytest.approx(reference, rel=1e-5)
+    # All comparisons refer to the same detached snapshot, with no duplicate tensor allocation.
+    assert report.storage["group_a"][0] is report.storage["group_a"][1]
+    assert hook_count(model) == 0
+
+
+@pytest.mark.parametrize("api", ["inputs", "augmentation"])
+def test_single_image_metric_selection(device, api):
+    """Require explicit non-CKA metrics for singleton batches and restore model state on failure."""
+    model = nn.Sequential(nn.Identity()).to(device).train()
+    inputs = torch.rand(1, 3, 8, 8, device=device)
+    config = {"input": inputs, "layers": ["0"], "augmentations": [{"name": "brightness"}]}
+
+    def profile():
+        """Invoke the selected high-level API with the current metric configuration."""
+        if api == "inputs":
+            return model_profile_under_input_changes(model, inputs, inputs * 0.8, config)
+        return model_profile_under_augmentation(model, config)
+
+    with pytest.raises(ValueError, match=r"at least two samples.*cosine.*l2"):
+        profile()
+    assert model.training
+    assert hook_count(model) == 0
+    config["metrics"] = ["cosine", "l2"]
+    report = profile()
+    assert set(report.results[0]) == {"tag", "cosine_0", "l2_0"}
+
+
+def test_pandas_report_install_hint(tmp_path, missing_pandas):
+    """Name the profiler extra when a CSV report needs an unavailable pandas installation."""
+    model = nn.Sequential(nn.Identity())
+    inputs = torch.ones(2, 3)
+    report = model_profile_under_input_changes(model, inputs, inputs, {"layers": ["0"], "metrics": ["cosine"]})
+    with pytest.raises(ImportError, match=r"kornia\[profiler\]"):
+        report.save_as_report(tmp_path / "report.csv")
+
+
+def test_csv_report_with_pandas(tmp_path):
+    """Round-trip a CSV report when the optional profiler extra is installed."""
+    pd = pytest.importorskip("pandas")
+    model = nn.Sequential(nn.Identity())
+    inputs = torch.ones(2, 3)
+    report = model_profile_under_input_changes(model, inputs, inputs, {"layers": ["0"], "metrics": ["cosine"]})
+    path = tmp_path / "report.csv"
+    report.save_as_report(path)
+    assert pd.read_csv(path).to_dict(orient="records") == report.results
+
+
 def test_repeated_cuda_forward_has_bounded_retained_memory():
+    """Ensure replaced feature snapshots do not retain unbounded CUDA memory."""
     if not torch.cuda.is_available():
         pytest.skip("CUDA unavailable")
     model = nn.Sequential(nn.Conv2d(3, 8, 3, padding=1)).cuda()
