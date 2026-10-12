@@ -17,7 +17,6 @@
 
 import copy
 import pickle
-import re
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -35,6 +34,7 @@ from kornia.augmentation._3d.geometric.affine import RandomAffine3D
 from kornia.augmentation._3d.geometric.horizontal_flip import RandomHorizontalFlip3D
 from kornia.augmentation._3d.intensity.motion_blur import RandomMotionBlur3D
 from kornia.augmentation.base import _BasicAugmentationBase
+from kornia.augmentation.container.params import ParamItem
 from kornia.core import ImageModule
 from kornia.core._compat import torch_version_lt
 from kornia.filters.dissolving import StableDiffusionDissolving, _DissolvingWraper_HF
@@ -758,6 +758,40 @@ class TestConventionAugmentationBase2D(BaseTester):
             with pytest.raises(NotImplementedError):
                 K.AugmentationSequential(aug, data_keys=["input", key])(image, data)
 
+    def test_convention_bhw_mask_list_entry_follows_the_image_5598(self, device, dtype):
+        # A batched (B, H, W) mask takes its batch size from ``batch_prob`` (#5598). A list entry has a 0-d gate and
+        # still reads a first dimension equal to the image batch as that batch, so each row gets its own crop window.
+        # The meaning of a mask list is tracked in #4477.
+        image = torch.arange(2 * 64, device=device).to(dtype).reshape(2, 1, 8, 8)
+        sequence = K.AugmentationSequential(K.RandomCrop((4, 4), p=1.0), data_keys=["input", "mask"])
+        output_image, output_masks = sequence(image, [image[:, 0]])
+        assert output_masks[0].shape == (2, 1, 4, 4)
+        self.assert_close(output_masks[0], output_image, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("first_dim", [2, 3])
+    def test_convention_3d_mask_keepdim_returns_its_rank_5598(self, device, dtype, first_dim):
+        # Under keepdim a 3-D mask whose first dimension is the image batch stays (B, H, W); otherwise it is a
+        # single (C, H, W) mask that is broadcast across the image batch.
+        image = torch.zeros(2, 1, 8, 8, device=device, dtype=dtype)
+        mask = torch.arange(first_dim * 64, device=device).to(dtype).reshape(first_dim, 8, 8)
+        sequence = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"], keepdim=True)
+        _, output_mask = sequence(image, mask)
+        expected = (
+            mask.flip(-1)
+            if first_dim == image.shape[0]
+            else mask.flip(-1).unsqueeze(0).expand(image.shape[0], -1, -1, -1)
+        )
+        self.assert_close(output_mask, expected, rtol=0, atol=0)
+
+    def test_convention_video_bthw_mask_follows_the_clip_5598(self, device, dtype):
+        # VideoSequential flattens a (B, T, H, W) mask to (B * T, H, W). With same_on_frame=True the child draws for B
+        # and its gates are broadcast to B * T, which is the batch the mask has; the drawn shape says B (#5598).
+        clip = torch.arange(2 * 3 * 64, device=device).to(dtype).reshape(2, 3, 1, 8, 8)
+        video = K.VideoSequential(K.RandomHorizontalFlip(p=1.0))
+        sequence = K.AugmentationSequential(video, data_keys=["input", "mask"])
+        output_clip, output_mask = sequence(clip, clip[:, :, 0])
+        self.assert_close(output_mask, output_clip, rtol=0, atol=0)
+
     def test_convention_direct_geometric_mask_handler_rejects_bool(self, device, dtype):
         # The container casts bool masks around geometric dispatch. Calling the geometric handler directly
         # instead takes the image dtype guard, so float masks work while bool masks raise TypeError.
@@ -1158,11 +1192,34 @@ class TestConventionAugmentationBase2D(BaseTester):
         container = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input"])
         assert container(empty).shape == (0, 3, 6, 8)
 
-    def test_wart_zero_batch_raises_a_validation_error_4429(self, device, dtype):
-        # Wart pin (#4429): `B = 0` is not uniformly "empty in, empty out". RandomAutoContrast raises its
-        # deliberate validation error; the int-size resizes are pinned in the convention test below.
-        with pytest.raises(ValueError, match=re.escape("Invalid input tensor, it is empty.")):
-            K.RandomAutoContrast(p=1.0)(torch.rand(0, 3, 6, 8, device=device, dtype=dtype))
+    @pytest.mark.parametrize("augmentation", [K.RandomGaussianIllumination, K.RandomLinearCornerIllumination])
+    @pytest.mark.parametrize("probability", [0.0, 0.5, 1.0])
+    def test_minmax_illumination_empty_batch_4429(self, augmentation, probability, device, dtype):
+        data = torch.empty(0, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
+        output = augmentation(p=probability)(data)
+        assert output.shape == data.shape
+        assert output.dtype == dtype
+        assert output.device == device
+        output.sum().backward()
+        assert data.grad is not None
+        assert data.grad.shape == data.shape
+
+    @pytest.mark.parametrize("probability", [0.0, 0.5, 1.0])
+    @pytest.mark.parametrize("clip_output", [False, True])
+    def test_autocontrast_empty_batch_4429(self, probability, clip_output, device, dtype):
+        data = torch.empty(0, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
+        augmentation = K.RandomAutoContrast(p=probability, clip_output=clip_output)
+        output = augmentation(data)
+        replay = augmentation(data, params=augmentation._params)
+        for actual in (output, replay):
+            assert actual.shape == data.shape
+            assert actual.dtype == dtype
+            assert actual.device == device
+        output.sum().backward()
+        assert data.grad is not None
+        assert data.grad.shape == data.shape
+        sequence = K.AugmentationSequential(augmentation, data_keys=["input"])
+        assert sequence(data).shape == data.shape
 
     @pytest.mark.parametrize(
         ("augmentation", "shape"),
@@ -1177,12 +1234,338 @@ class TestConventionAugmentationBase2D(BaseTester):
             pytest.param(
                 lambda: K.RandomAutoContrast(p=1.0),
                 (0, 3, 6, 8),
-                marks=pytest.mark.xfail(strict=True, raises=ValueError, reason="Tracked in #4429"),
             ),
+            pytest.param(lambda: K.RandomEqualize(p=1.0), (0, 3, 6, 8), id="RandomEqualize"),
+            pytest.param(lambda: K.RandomPosterize(p=1.0), (0, 3, 6, 8), id="RandomPosterize"),
+            pytest.param(lambda: K.RandomSharpness(p=1.0), (0, 3, 6, 8), id="RandomSharpness"),
         ],
     )
     def test_convention_zero_batch_is_empty_in_empty_out(self, augmentation, shape, device, dtype):
-        # Strict xfail (#4429): each listed augmentation must preserve an empty batch with its intended
-        # output geometry. Per-class markers turn an unrelated repair into a failure rather than an XFAIL.
+        # Convention pin (#4429): each listed augmentation preserves an empty batch with its intended
+        # output geometry. Other empty-batch configurations remain tracked by the umbrella issue.
         empty = torch.rand(0, 3, 6, 8, device=device, dtype=dtype)
         assert augmentation()(empty).shape == shape
+
+
+_AUGMENTATIONS = [K.RandomEqualize, K.RandomEqualize3D, K.RandomPosterize, K.RandomSharpness]
+
+
+def _shape(augmentation, batch=0):
+    return (batch, 2, 3, 5, 7) if augmentation is K.RandomEqualize3D else (batch, 3, 6, 8)
+
+
+def _assert_params_unchanged(actual, snapshot):
+    assert actual.keys() == snapshot.keys()
+    for name in actual:
+        assert torch.equal(actual[name], snapshot[name]), name
+
+
+class TestEmptyIntensityAugmentation(BaseTester):
+    @pytest.mark.parametrize("augmentation", _AUGMENTATIONS)
+    @pytest.mark.parametrize("probability", [0.0, 0.5, 1.0])
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_direct_callers_4429(self, augmentation, probability, same_on_batch, device, dtype):
+        image = torch.empty(_shape(augmentation), device=device, dtype=dtype, requires_grad=True)
+        aug = augmentation(p=probability, same_on_batch=same_on_batch).to(device=device, dtype=dtype)
+        params = aug.forward_parameters(image.shape)
+        # Exercise the function itself even when a container or the gate could bypass it.
+        transformed = aug.apply_transform(image, params, aug.flags)
+        assert transformed.shape == image.shape
+        assert transformed.device == device
+        assert transformed.dtype == dtype
+        transformed.sum().backward()
+        assert image.grad is not None
+        assert image.grad.shape == image.shape
+        image.grad = None
+        output = aug(image, params=params)
+        assert output.shape == image.shape
+        assert output.device == device
+        assert output.dtype == dtype
+        assert params["forward_input_shape"].tolist() == list(image.shape)
+        output.sum().backward()
+        assert image.grad is not None
+        assert image.grad.shape == image.shape
+
+    @pytest.mark.parametrize("augmentation", _AUGMENTATIONS)
+    @pytest.mark.parametrize("state", ["copied", "after_forward", "fresh"])
+    def test_saved_parameters_replay_4429(self, augmentation, state, device, dtype):
+        image = torch.empty(_shape(augmentation), device=device, dtype=dtype, requires_grad=True)
+        aug = augmentation(p=1).to(device=device, dtype=dtype)
+        output = aug(image)
+        params = copy.deepcopy(aug._params)
+        snapshot = copy.deepcopy(params)
+        if state == "after_forward":
+            later_shape = (*_shape(augmentation, 2)[:-2], 9, 11)
+            aug(torch.rand(later_shape).to(device=device, dtype=dtype))
+        elif state == "fresh":
+            aug = augmentation(p=1).to(device=device, dtype=dtype)
+        cpu_rng = torch.random.get_rng_state().clone()
+        replayed = aug(image, params=params)
+        assert replayed.shape == image.shape
+        assert replayed.dtype == dtype
+        assert replayed.device == device
+        self.assert_close(replayed, output, rtol=0, atol=0)
+        assert torch.equal(cpu_rng, torch.random.get_rng_state())
+        _assert_params_unchanged(params, snapshot)
+        replayed.sum().backward()
+        assert image.grad is not None
+        assert image.grad.shape == image.shape
+
+    @pytest.mark.parametrize("container", ["image", "augmentation", "patch_same", "patch_valid"])
+    def test_2d_container_replay_4429(self, container, device, dtype):
+        children = [K.RandomEqualize(p=1), K.RandomPosterize(p=1), K.RandomSharpness(p=1)]
+        if container == "image":
+            sequence = K.ImageSequential(*children)
+        elif container == "augmentation":
+            sequence = K.AugmentationSequential(*children, data_keys=["input", "mask"])
+        else:
+            sequence = K.PatchSequential(
+                *children, grid_size=(1, 3), padding=container.split("_")[1], patchwise_apply=True, random_apply=False
+            )
+        sequence = sequence.to(device=device, dtype=dtype)
+        image = torch.empty(0, 3, 9, 13, device=device, dtype=dtype, requires_grad=True)
+        if container == "augmentation":
+            mask = torch.empty(0, 1, 9, 13, device=device, dtype=dtype)
+            output, output_mask = sequence(image, mask)
+            assert output_mask.shape == mask.shape
+            replayed, replayed_mask = sequence(image, mask, params=copy.deepcopy(sequence._params))
+            assert replayed_mask.shape == mask.shape
+        else:
+            output = sequence(image)
+            replayed = sequence(image, params=copy.deepcopy(sequence._params))
+        expected_shape = (0, 3, 9, 12 if container == "patch_valid" else 13)
+        assert output.shape == replayed.shape == expected_shape
+        assert output.device == device
+        assert output.dtype == dtype
+        output.sum().backward()
+        assert image.grad is not None
+        assert image.grad.shape == image.shape
+
+    @pytest.mark.parametrize("layout", ["BTCHW", "BCTHW"])
+    @pytest.mark.parametrize("same_on_frame", [False, True])
+    def test_video_replay_4429(self, layout, same_on_frame, device, dtype):
+        shape = (0, 2, 3, 6, 8) if layout == "BTCHW" else (0, 3, 2, 6, 8)
+        video = torch.empty(shape, device=device, dtype=dtype, requires_grad=True)
+        sequence = K.VideoSequential(
+            K.RandomEqualize(p=1),
+            K.RandomPosterize(p=1),
+            K.RandomSharpness(p=1),
+            data_format=layout,
+            same_on_frame=same_on_frame,
+        ).to(device=device, dtype=dtype)
+        output = sequence(video)
+        params = copy.deepcopy(sequence._params)
+        replayed = sequence(video, params=params)
+        assert output.shape == replayed.shape == video.shape
+        assert output.device == device
+        assert output.dtype == dtype
+        for item in params:
+            assert item.data["forward_input_shape"][-2:].tolist() == [6, 8]
+        replayed.sum().backward()
+        assert video.grad is not None
+        assert video.grad.shape == video.shape
+
+    def test_3d_container_replay_4429(self, device, dtype):
+        image = torch.empty(0, 2, 3, 5, 7, device=device, dtype=dtype, requires_grad=True)
+        sequence = K.AugmentationSequential(K.RandomEqualize3D(p=1), data_keys=["input"]).to(device=device, dtype=dtype)
+        output = sequence(image)
+        replayed = sequence(image, params=copy.deepcopy(sequence._params))
+        assert output.shape == replayed.shape == image.shape
+        assert output.device == device
+        assert output.dtype == dtype
+        replayed.sum().backward()
+        assert image.grad is not None
+        assert image.grad.shape == image.shape
+
+    @pytest.mark.parametrize("augmentation", _AUGMENTATIONS)
+    def test_dynamo_direct_transform_4429(self, augmentation, device, dtype, torch_optimizer):
+        image = torch.empty(_shape(augmentation), device=device, dtype=dtype)
+        aug = augmentation(p=1).to(device=device, dtype=dtype)
+        params = aug.forward_parameters(image.shape)
+
+        def run(input):
+            return aug.apply_transform(input, params, aug.flags)
+
+        expected = run(image)
+        compiled = torch_optimizer(run)
+        output = compiled(image)
+        assert output.shape == image.shape
+        assert output.device == device
+        assert output.dtype == dtype
+        self.assert_close(output, expected)
+
+
+class TestHandMadeBatchProbIsIgnoredAtStaticP(BaseTester):
+    """At static ``p=1.0, p_batch=1.0`` a ``batch_prob`` put into ``params`` is not consulted by any path (#5585).
+
+    The image and the matrix take a fast path that skips the gate. The label handlers and ``inverse`` read it, so a
+    sample the gate skipped was transformed in ``forward`` but left alone by ``inverse``. They now decide as the image
+    does, statically, so eager and compiled runs agree and no handler synchronizes with the device. Skipping samples
+    by hand needs ``p < 1``, which keeps honoring the gate.
+    """
+
+    GATE = (0.0, 1.0, 0.0)
+    KEYS = ("input", "mask", "bbox", "keypoints")
+
+    @staticmethod
+    def _inputs(device, dtype):
+        torch.manual_seed(0)
+        x = torch.rand(3, 1, 8, 12, device=device, dtype=dtype)
+        mask = (torch.rand(3, 1, 8, 12, device=device, dtype=dtype) > 0.5).to(dtype)
+        points = torch.tensor([[[2.0, 3.0]]] * 3, device=device, dtype=dtype)
+        quads = torch.tensor([[[[2.0, 3.0], [6.0, 3.0], [6.0, 5.0], [2.0, 5.0]]]] * 3, device=device, dtype=dtype)
+        return x, mask, points, quads
+
+    def _run(self, module, params, gate, device, dtype):
+        """Forward then inverse a sequential holding ``module`` with ``params`` and the given gate."""
+        x, mask, points, quads = self._inputs(device, dtype)
+        aug = K.AugmentationSequential(module, data_keys=list(self.KEYS))
+        params = copy.deepcopy(params)
+        if gate is not None:
+            params["batch_prob"] = torch.tensor(gate)
+        items = [ParamItem(f"{type(module).__name__}_0", params)]
+        out = aug(x, mask.clone(), Boxes(quads.clone()), Keypoints(points.clone()), params=items)
+        back = aug.inverse(*out, params=items)
+        flat = [t.data if isinstance(t, (Boxes, Keypoints)) else t for t in (*out, *back)]
+        return flat, module.transform_matrix.clone()
+
+    @pytest.mark.parametrize(
+        ("augmentation_cls", "kwargs"),
+        [
+            pytest.param(K.RandomHorizontalFlip, {}, id="RandomHorizontalFlip"),
+            pytest.param(K.RandomAffine, {"degrees": 30.0}, id="RandomAffine"),
+            pytest.param(K.RandomRotation, {"degrees": 45.0}, id="RandomRotation"),
+            pytest.param(K.RandomPerspective, {"distortion_scale": 0.5}, id="RandomPerspective"),
+            # `inverse` needs the resample cropping mode, which is also what reaches RandomCrop.inverse_inputs
+            pytest.param(
+                K.RandomCrop,
+                {"size": (8, 12), "padding": (1, 2, 3, 0), "cropping_mode": "resample", "resample": "nearest"},
+                id="RandomCrop-equal-size-padded",
+            ),
+        ],
+    )
+    def test_a_mixed_gate_changes_no_path(self, augmentation_cls, kwargs, device, dtype):
+        # The image, mask, boxes and keypoints, their inverses and the matrix all equal the all-ones run. Every
+        # swapped site is covered: reverting one makes a path follow the gate and breaks the equality.
+        module = augmentation_cls(p=1.0, **kwargs)
+        params = module.forward_parameters(self._inputs(device, dtype)[0].shape)
+        if isinstance(module, K.RandomCrop):
+            # Pin the crop to the top-left of the padded canvas: a sampled offset can equal the unshifted image.
+            params["src"] = torch.tensor([[[0.0, 0.0], [11.0, 0.0], [11.0, 7.0], [0.0, 7.0]]]).expand(3, -1, -1).clone()
+
+        mixed, mixed_matrix = self._run(module, params, self.GATE, device, dtype)
+        ones, ones_matrix = self._run(module, params, None, device, dtype)
+
+        for actual, expected in zip(mixed, ones):
+            self.assert_close(actual, expected)
+        self.assert_close(mixed_matrix, ones_matrix)
+
+        # Not vacuous: the row the gate deselects is transformed in all four outputs and in the matrix.
+        x, _mask, points, quads = self._inputs(device, dtype)
+        assert not torch.equal(mixed[0][0], x[0])
+        assert not torch.equal(mixed[2][0], quads[0])
+        assert not torch.equal(mixed[3][0], points[0])
+        assert not torch.allclose(mixed_matrix[0], torch.eye(3, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("augmentation_cls", [K.RandomHorizontalFlip, K.RandomVerticalFlip])
+    def test_flips_round_trip_exactly(self, augmentation_cls, device, dtype):
+        x = torch.rand(3, 3, 8, 12, device=device, dtype=dtype)
+        aug = augmentation_cls(p=1.0)
+        params = aug.forward_parameters(x.shape)
+        params["batch_prob"] = torch.tensor(self.GATE)
+
+        out = aug(x, params=copy.deepcopy(params))
+        self.assert_close(aug.inverse(out, params=copy.deepcopy(params)), x)
+
+    def test_issue_5585_inverse_follows_forward(self, device, dtype):
+        img = torch.rand(2, 1, 6, 10, device=device, dtype=dtype)
+        aug = K.RandomAffine(90, p=1.0)
+        params = aug.forward_parameters(img.shape)
+        params["batch_prob"] = torch.tensor([0.0, 1.0])
+        ones = copy.deepcopy(params)
+        ones["batch_prob"] = torch.ones(2)
+
+        out = aug(img, params=copy.deepcopy(params))
+        inv = aug.inverse(out, params=copy.deepcopy(params))
+
+        # Forward transforms row 0 and so does inverse, as for the all-ones gate: the round trip is consistent.
+        assert not torch.equal(out[0], img[0])
+        self.assert_close(out, aug(img, params=copy.deepcopy(ones)))
+        self.assert_close(inv, aug.inverse(out, params=copy.deepcopy(ones)))
+        assert not torch.equal(inv[0], out[0])
+
+    @pytest.mark.parametrize(
+        ("augmentation_cls", "kwargs"),
+        [
+            pytest.param(K.Resize, {"size": (4, 6)}, id="Resize"),
+            pytest.param(K.RandomCrop, {"size": (4, 6)}, id="RandomCrop"),
+        ],
+    )
+    def test_shape_changing_augmentation_has_no_mixed_gate_error(self, augmentation_cls, kwargs, device, dtype):
+        # A mixed gate used to raise on `p < 1` and be ignored here by the image; it is ignored by all paths now.
+        x = torch.rand(3, 3, 8, 12, device=device, dtype=dtype)
+        aug = augmentation_cls(p=1.0, **kwargs)
+        params = aug.forward_parameters(x.shape)
+        mixed = copy.deepcopy(params)
+        mixed["batch_prob"] = torch.tensor(self.GATE)
+
+        out = aug(x, params=mixed)
+
+        self.assert_close(out, aug(x, params=copy.deepcopy(params)))
+        assert out.shape[-2:] == (4, 6)
+
+    @pytest.mark.parametrize("p, p_batch", [(0.999, 1.0), (1.0, 0.999)])
+    def test_below_static_p_the_gate_still_skips_samples(self, p, p_batch, device, dtype):
+        # `p < 1` keeps honoring a hand-made gate on every path: skip samples by hand with it.
+        module = K.RandomHorizontalFlip(p=p, p_batch=p_batch)
+        x, _, points, quads = self._inputs(device, dtype)
+        params = module.forward_parameters(x.shape)
+
+        flat, matrix = self._run(module, params, self.GATE, device, dtype)
+
+        skipped = torch.tensor(self.GATE) == 0
+        x_out, _mask_out, quads_out, points_out = flat[:4]
+        assert torch.equal(x_out[skipped], x[skipped])
+        assert torch.equal(points_out[skipped], points[skipped])
+        assert torch.equal(quads_out[skipped], quads[skipped])
+        self.assert_close(matrix[skipped], torch.eye(3, device=device, dtype=dtype).expand(2, -1, -1))
+        assert not torch.equal(x_out[~skipped], x[~skipped])
+        # inverse leaves the skipped samples alone as well
+        assert torch.equal(flat[4][skipped], x_out[skipped])
+
+    def test_3d_matrix_ignores_the_gate_at_static_p(self, device, dtype):
+        vol = torch.rand(3, 1, 4, 6, 6, device=device, dtype=dtype)
+        static = K.RandomAffine3D(degrees=(30.0, 30.0, 30.0), p=1.0)
+        params = static.forward_parameters(vol.shape)
+        mixed = copy.deepcopy(params)
+        mixed["batch_prob"] = torch.tensor(self.GATE)
+
+        static(vol, params=mixed)
+        mixed_matrix = static.transform_matrix.clone()
+        static(vol, params=copy.deepcopy(params))
+        self.assert_close(mixed_matrix, static.transform_matrix)
+
+        # below static p the matrix keeps the identity on the rows the gate skips
+        general = K.RandomAffine3D(degrees=(30.0, 30.0, 30.0), p=0.999)
+        general(vol, params=copy.deepcopy(mixed))
+        eye = torch.eye(4, device=device, dtype=dtype).expand(2, -1, -1)
+        self.assert_close(general.transform_matrix[torch.tensor(self.GATE) == 0], eye)
+
+    def test_gate_helper_does_not_read_the_gate_at_static_p(self):
+        # A meta tensor has no data: reading it (`bool`, `.item()`, `.all()` into Python) raises. The static
+        # decision must not need the values, which is what keeps eager and compiled runs on one path.
+        aug = K.RandomHorizontalFlip(p=1.0)
+        gate = aug._gate({"batch_prob": torch.zeros(3, device="meta")})
+        assert gate.device.type == "meta"
+        assert gate.dtype == torch.bool
+        assert gate.shape == (3,)
+
+        # with real data the all-ones answer ignores a deselecting gate and a 0-d gate stays a 1-d mask
+        assert aug._gate({"batch_prob": torch.tensor(self.GATE)}).tolist() == [True, True, True]
+        assert aug._gate({"batch_prob": torch.tensor(0.0)}).tolist() == [True]
+
+    @pytest.mark.parametrize("p, p_batch", [(0.5, 1.0), (1.0, 0.5), (0.0, 1.0)])
+    def test_gate_helper_thresholds_the_gate_below_static_p(self, p, p_batch):
+        aug = K.RandomHorizontalFlip(p=p, p_batch=p_batch)
+        assert aug._gate({"batch_prob": torch.tensor([0.0, 0.3, 0.7, 1.0])}).tolist() == [False, False, True, True]
+        assert aug._gate({"batch_prob": torch.tensor(1.0)}).tolist() == [True]

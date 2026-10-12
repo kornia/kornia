@@ -25,7 +25,7 @@ from torch import float16, float32, float64
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input, _transform_input_by_shape, _validate_input_dtype
 from kornia.core.ops import eye_like
-from kornia.core.utils import is_autocast_enabled
+from kornia.core.utils import is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -99,6 +99,10 @@ class AugmentationBase2D(_AugmentationBase):
           caller's dict by reference and, if ``batch_prob`` is absent, inserts an all-true gate into it. Replaying
           parameters reproduces the output, except for :class:`RandomDissolving`, whose VAE latents are drawn
           during application and are not stored.
+        - with static ``p=1.0, p_batch=1.0`` every sample is transformed: a ``batch_prob`` put into ``params`` is not
+          consulted by the image, the transformation matrix, the labels or ``inverse``, in eager and compiled runs
+          alike (`#5585 <https://github.com/kornia/kornia/issues/5585>`_). Pass ``p < 1`` to skip samples by hand,
+          which every one of those paths honors.
         - some ``_param_generator.*`` range buffers in ``state_dict()`` do not update the samplers when loaded
           (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
         - an empty batch gives an empty output, except on a minority of classes that raise on ``B = 0``
@@ -168,6 +172,7 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
     # ``apply_func`` defers the matrix and ``transform_matrix`` computes it on first access.
     _compute_matrix_lazily: bool = False
     _lazy_matrix_args: Optional[_LazyMatrixArgs] = None
+    _transform_matrix_params: Optional[Dict[str, Any]] = None
 
     @property
     def transform_matrix(self) -> Optional[torch.Tensor]:
@@ -278,6 +283,10 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
     ) -> torch.Tensor:
         if flags is None:
             flags = self.flags
+        # ``forward`` committed the caller's params dict as ``_params`` before overriding a copy for this call (and
+        # ``transform_inputs`` commits that copy). Pair the caller's dict with the matrix, so the container's annotation
+        # handlers can tell a replay of this draw from another one by identity.
+        matrix_params = self._params
 
         if self._compute_matrix_lazily:
             # apply_transform ignores the matrix for these ops, so don't build it here; defer to
@@ -298,10 +307,14 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
                 # PyTorch 2.5 snapshots torch.Size as a tuple during non-strict export.
                 matrix_input = _InputMetadata(tuple(in_tensor.shape), in_tensor.dtype, in_tensor.device)
             self._commit_state(transform_matrix=None, lazy_matrix_args=(matrix_input, params, flags))
+            if not is_exporting():
+                self._transform_matrix_params = matrix_params
             return self.transform_inputs(in_tensor, params, flags, None)
 
         trans_matrix = self.generate_transformation_matrix(in_tensor, params, flags)
         output = self.transform_inputs(in_tensor, params, flags, trans_matrix)
         self._commit_state(transform_matrix=trans_matrix, lazy_matrix_args=None)
+        if not is_exporting():
+            self._transform_matrix_params = matrix_params
 
         return output

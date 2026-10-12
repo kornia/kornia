@@ -25,8 +25,10 @@ import torch
 from torch._dynamo.testing import CompileCounter, CompileCounterWithBackend
 
 import kornia.augmentation as K
+from kornia.augmentation.container.params import ParamItem
+from kornia.geometry.keypoints import Keypoints
 
-from testing.base import BaseTester
+from testing.base import BaseTester, dynamo_is_available
 
 
 class TestAugmentationCompile(BaseTester):
@@ -59,6 +61,76 @@ class TestAugmentationCompile(BaseTester):
         input = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
         aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0))
         self.assert_close(torch_optimizer(aug, fullgraph=True)(input), input.flip(-1))
+
+    def test_dynamo_sequential_mask_does_not_import_pil(self, device, dtype, torch_optimizer, monkeypatch):
+        # Converting a PIL mask must not load PIL through the lazy loader for a tensor mask, for the same reason.
+        from kornia.core.external import PILImage as lazy_pil
+
+        monkeypatch.setattr(lazy_pil, "module", None)
+        input = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        mask = torch.rand(2, 1, 8, 8, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+        out_input, out_mask = torch_optimizer(aug, fullgraph=True)(input, mask)
+        self.assert_close(out_input, input.flip(-1))
+        self.assert_close(out_mask, mask.flip(-1))
+
+    @pytest.mark.parametrize("keepdim", [None, True])
+    def test_dynamo_sequential_bhw_mask_5598(self, device, dtype, torch_optimizer, keepdim):
+        # A (B, H, W) mask takes its batch size from ``batch_prob``; reading it from the ``forward_input_shape``
+        # tensor was a data-dependent branch, on the way in and, under keepdim, on the way out.
+        input = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        mask = torch.rand(2, 8, 8, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(
+            K.RandomHorizontalFlip(p=1.0),
+            data_keys=["input", "mask"],
+            keepdim=keepdim,
+        )
+        out_input, out_mask = torch_optimizer(aug, fullgraph=True)(input, mask)
+        self.assert_close(out_input, input.flip(-1))
+        self.assert_close(out_mask, mask.flip(-1) if keepdim else mask.flip(-1).unsqueeze(1))
+
+    def test_compile_hand_made_batch_prob_matches_eager_at_static_p(self, device, dtype, torch_optimizer):
+        # At static `p=1.0, p_batch=1.0` no path consults a `batch_prob` put into `params` (#5585), so the compiled
+        # and the eager run take the same path: the image, `inverse` and the labels agree for a deselecting gate.
+        input = torch.rand(2, 1, 6, 10, device=device, dtype=dtype)
+        points = torch.tensor([[[2.0, 3.0]], [[2.0, 3.0]]], device=device, dtype=dtype)
+        gate = torch.tensor([0.0, 1.0])
+
+        module = K.RandomAffine(90.0, p=1.0)
+        params = module.forward_parameters(input.shape)
+        params["batch_prob"] = gate.clone()
+        expected = module(input, params=params)
+        compiled = torch_optimizer(lambda t: module(t, params=params), fullgraph=True)(input)
+        self.assert_close(compiled, expected)
+        assert not torch.equal(compiled[0], input[0])  # the row the gate deselects is transformed in both
+        # The #5585 round trip through a compiled forward: `inverse` itself is not fullgraph-compilable, so it runs
+        # eagerly on the compiled output and must agree with the eager round trip.
+        self.assert_close(module.inverse(compiled, params=params), module.inverse(expected, params=params))
+
+        sequential = K.AugmentationSequential(module, data_keys=["input", "keypoints"])
+        items = [ParamItem("RandomAffine_0", params)]
+        eager_image, eager_points = sequential(input, Keypoints(points.clone()), params=items)
+
+        def run(t, k):
+            image, keypoints = sequential(t, Keypoints(k), params=items)
+            return image, keypoints.data
+
+        compiled_image, compiled_points = torch_optimizer(run, fullgraph=True)(input, points.clone())
+        self.assert_close(compiled_image, eager_image)
+        self.assert_close(compiled_points, eager_points.data)
+        assert not torch.equal(compiled_points[0], points[0])
+
+    def test_dynamo_sequential_bbox(self, device, dtype, torch_optimizer):
+        # The 'bbox' key imports through Boxes.from_tensor('vertices_plus'), whose finiteness check is
+        # asynchronous, so the box path compiles with fullgraph=True (#4177).
+        input = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        bbox = torch.tensor([[[1.0, 1.0], [4.0, 1.0], [4.0, 5.0], [1.0, 5.0]]], device=device, dtype=dtype)
+        bbox = bbox.expand(2, 1, 4, 2).contiguous()
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "bbox"])
+        expected = aug(input, bbox)
+        actual = torch_optimizer(aug, fullgraph=True)(input, bbox)
+        self.assert_close(actual[0], expected[0])
+        self.assert_close(actual[1], expected[1])
 
     def test_compile_distinct_classes(self, device, dtype, torch_optimizer):
         # More classes than Dynamo's default per-code-object cache limit (#4658).
@@ -281,6 +353,17 @@ class TestAugmentationCompile(BaseTester):
         input = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         self.assert_close(InheritedFlip()(input), input + 1)
 
+    @pytest.mark.parametrize("nested_first", [False, True])
+    def test_compile_nested_container_matrix(self, device, dtype, torch_optimizer, nested_first):
+        # A nested container records its matrix inside the compiled outer forward (#4476).
+        nested = K.AugmentationSequential(K.RandomVerticalFlip(p=1.0))
+        horizontal = K.RandomHorizontalFlip(p=1.0)
+        aug = K.AugmentationSequential(*([nested, horizontal] if nested_first else [horizontal, nested]))
+        input = torch.rand(1, 1, 4, 6, device=device, dtype=dtype)
+        self.assert_close(torch_optimizer(aug, fullgraph=True)(input), input.flip((-2, -1)))
+        expected = torch.tensor([[[-1.0, 0.0, 5.0], [0.0, -1.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        self.assert_close(aug.transform_matrix, expected)
+
 
 class TestRandomCropCompile(BaseTester):
     @pytest.mark.parametrize("padding_mode", ["constant", "reflect", "replicate"])
@@ -381,3 +464,50 @@ class TestRandomCropCompile(BaseTester):
             [[[0, 0], [size - 1, 0], [size - 1, size - 1], [0, size - 1]]], device=device, dtype=dtype
         )
         self.assert_close(torch_optimizer(aug, fullgraph=True)(input, params=params), input, atol=0, rtol=0)
+
+
+class TestContainerCompile(BaseTester):
+    # Named without "compile" or "dynamo" so the ordinary jobs collect it: the CompileCounter backend needs no
+    # optimizer, and those jobs are the only ones that run torch 2.5.1 with Dynamo (Python 3.11 and 3.12).
+    @pytest.mark.skipif(not dynamo_is_available(), reason="no Dynamo on this torch/python pair")
+    @pytest.mark.parametrize("disable_features", [True, False])
+    @pytest.mark.parametrize(
+        "container,data_keys",
+        [
+            (K.ImageSequential, None),
+            (K.AugmentationSequential, ["input"]),
+            (K.AugmentationSequential, ["input", "mask"]),
+        ],
+    )
+    def test_eager_backend_traces_container_in_one_graph(self, device, dtype, container, data_keys, disable_features):
+        # Dynamo on torch 2.5.1 cannot trace isinstance() against a PEP 604 union (#5223).
+        torch._dynamo.reset()
+        kwargs = {} if data_keys is None else {"data_keys": data_keys}
+        aug = container(K.RandomHorizontalFlip(p=1.0), **kwargs)
+        aug.disable_features = disable_features
+        input = torch.rand(1, 3, 4, 6, device=device, dtype=dtype)
+        args = (input,) * len(data_keys or ["input"])
+        counter = CompileCounter()
+        fn = torch.compile(aug, backend=counter, fullgraph=True)
+        actual, expected = fn(*args), aug(*args)
+        if len(args) == 1:
+            actual, expected = [actual], [expected]
+        assert len(actual) == len(args)
+        for out, ref in zip(actual, expected, strict=True):
+            self.assert_close(out, ref)
+            self.assert_close(out, input.flip(-1))
+        assert counter.frame_count == 1
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason="no Dynamo on this torch/python pair")
+    @pytest.mark.parametrize("mask_batch", [1, 2])
+    def test_eager_backend_traces_video_container_with_mask_in_one_graph(self, device, dtype, mask_batch):
+        # The video mask checks (#5624) run on every call; Dynamo on torch 2.5.1 cannot trace next() with a default.
+        torch._dynamo.reset()
+        aug = K.AugmentationSequential(K.VideoSequential(K.RandomHorizontalFlip(p=1.0)), data_keys=["input", "mask"])
+        video = torch.rand(2, 4, 3, 4, 6, device=device, dtype=dtype)
+        mask = torch.rand(mask_batch, 4, 1, 4, 6, device=device, dtype=dtype)
+        counter = CompileCounter()
+        out_video, out_mask = torch.compile(aug, backend=counter, fullgraph=True)(video, mask)
+        self.assert_close(out_video, video.flip(-1))
+        self.assert_close(out_mask, mask.expand(2, -1, -1, -1, -1).flip(-1))
+        assert counter.frame_count == 1

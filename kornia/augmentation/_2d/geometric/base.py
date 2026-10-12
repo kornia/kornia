@@ -20,6 +20,8 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
+from kornia.augmentation.base import _mixed_gate_shape_error
+from kornia.augmentation.utils import _transform_output_shape
 from kornia.constants import Resample
 from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry.boxes import Boxes
@@ -55,9 +57,10 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
           call depends on its implementation and configuration: slice-mode crops, for example, do not support it.
           Inverse resampling cannot recover image or mask information lost through cropping, padding, or
           interpolation. Tensor-form boxes may lose rotated corners through axis-aligned enclosure.
-        - container mask processing has dtype- and operator-specific limitations; see
-          `#4478 <https://github.com/kornia/kornia/issues/4478>`_. Direct ``transform_masks`` calls use the
-          image dtype guard and therefore reject ``bool`` masks.
+          For an empty batch, image and mask inverse restore the spatial dimensions recorded in the parameters.
+        - containers process integer masks in at least float32 and reject labels that cannot be represented
+          exactly in the working dtype. Direct ``transform_masks`` calls use the image dtype guard and therefore
+          reject ``bool`` masks.
         - a subclass supplies its own :meth:`inverse_transform` -- the base raises ``NotImplementedError`` --
           while :meth:`compute_inverse_transformation` defaults to inverting the sampled matrix.
         - a scalar magnitude ``x`` means ``center ± x``, as it does for the intensity classes: its lower end
@@ -227,10 +230,14 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
         **kwargs: Any,
     ) -> torch.Tensor:
+        """Inverse image inputs.
+
+        For an empty batch with recorded input-shape metadata, image and mask inverses
+        restore the recorded spatial size while preserving the inverse input's channel count.
+        """
         in_tensor = self.transform_tensor(input)
         output = in_tensor.clone()
-        batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs
@@ -242,13 +249,18 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             _size = params["forward_input_shape"].tolist()
             size = (_size[-2], _size[-1])
 
+        # An empty batch has no applied rows, but still needs its recorded spatial shape restored.
+        if in_tensor.shape[0] == 0 and size is not None:
+            output = in_tensor.reshape(*in_tensor.shape[:-2], *size)
         # if no augmentation needed
-        if not to_apply.any():
+        elif not to_apply.any():
             output = in_tensor
         # if all data needs to be augmented
         elif to_apply.all():
             output = self.inverse_transform(in_tensor, flags=flags, transform=transform, size=size)
         else:
+            if size is not None and tuple(in_tensor.shape[-2:]) != size:
+                raise _mixed_gate_shape_error(in_tensor.shape[1:], (*in_tensor.shape[1:-2], *size), inverse=True)
             output[to_apply] = self.inverse_transform(
                 in_tensor[to_apply],
                 transform=transform[to_apply] if transform is not None else transform,
@@ -282,7 +294,11 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
                 kwargs["align_corners"] = normalized_align_corners
             else:
                 flags["align_corners"] = kwargs["align_corners"]
-        return self.inverse_inputs(input, params, flags, transform, **kwargs)
+        # Interpret mask batches as in transform_masks, rather than treating every 3-D mask as CHW.
+        shape = params.get("forward_input_shape")
+        in_tensor = self.transform_tensor(input, shape=shape, match_channel=False)
+        output = self.inverse_inputs(in_tensor, params, flags, transform, **kwargs)
+        return _transform_output_shape(output, input.shape, reference_shape=shape) if self.keepdim else output
 
     def inverse_boxes(
         self,
@@ -293,8 +309,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         **kwargs: Any,
     ) -> Boxes:
         output = input.clone()
-        batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
 
         if transform is None:
             raise RuntimeError("`transform` has to be a torch.Tensor. Got None.")
@@ -333,8 +348,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
 
         """
         output = input.clone()
-        batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
 
         if transform is None:
             raise RuntimeError("`transform` has to be a torch.Tensor. Got None.")

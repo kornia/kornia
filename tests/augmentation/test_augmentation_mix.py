@@ -24,6 +24,7 @@ from kornia.augmentation import (
     AugmentationSequential,
     PatchMix,
     RandomCutMixV2,
+    RandomHorizontalFlip,
     RandomJigsaw,
     RandomMixUpV2,
     RandomMosaic,
@@ -663,6 +664,79 @@ class TestRandomMosaic(BaseTester):
         torch.testing.assert_close(output[0], boxes[0])
         torch.testing.assert_close(output[2], boxes[2])
 
+    @pytest.mark.parametrize("sequential", [False, True])
+    @pytest.mark.parametrize("data_key", ["bbox_xyxy", "bbox_xywh", "bbox"])
+    def test_mosaic_filtered_exports_4714(self, sequential, data_key, device, dtype):
+        image = torch.zeros(2, 1, 6, 8, device=device, dtype=dtype)
+        xyxy = image.new_tensor([[[1.0, 1.0, 2.0, 2.0]], [[1.0, 1.0, 4.0, 4.0]]])
+        mode = {"bbox_xyxy": "xyxy", "bbox_xywh": "xywh", "bbox": "vertices_plus"}[data_key]
+        if data_key == "bbox" and not sequential:
+            mode = "vertices"
+        boxes = Boxes.from_tensor(xyxy).to_tensor(mode)
+        mosaic = RandomMosaic(p=1.0, min_bbox_size=99.0)
+        aug = AugmentationSequential(mosaic, data_keys=["input", data_key]) if sequential else mosaic
+        if sequential:
+            aug(image, boxes)
+            params = aug._params
+            params[0].data["batch_prob"] = image.new_tensor([0.0, 1.0])
+            _, output = aug(image, boxes, params=params)
+        else:
+            params = mosaic.forward_parameters(image.shape)
+            params["batch_prob"] = image.new_tensor([0.0, 1.0])
+            _, output = aug(image, boxes, params=params, data_keys=["input", data_key])
+        self.assert_close(output[0, :1], boxes[0], atol=0.0, rtol=0.0)
+        assert output[0, 1:].count_nonzero() == 0
+        assert output[1].count_nonzero() == 0
+
+    def test_annotation_filter_validity_follows_gate_4714(self, device, dtype):
+        class FilterBoxes(RandomHorizontalFlip):
+            def apply_transform_box(self, input, params, flags, transform=None):
+                return input.filter_boxes_by_area(2.0)
+
+        image = torch.zeros(2, 1, 6, 8, device=device, dtype=dtype)
+        xyxy = image.new_tensor([[[1.0, 1.0, 2.0, 2.0]], [[1.0, 1.0, 2.0, 2.0]]])
+        boxes = Boxes.from_tensor(xyxy)
+        # A hand-made gate is honored below static p=1.0; at static p=1.0 no handler consults it (#5585).
+        aug = FilterBoxes(p=0.5)
+        params = aug.forward_parameters(image.shape)
+        params["batch_prob"] = image.new_tensor([0.0, 1.0])
+        output = aug.transform_boxes(boxes, params, aug.flags)
+        self.assert_close(output.to_tensor("xyxy")[0], xyxy[0])
+        assert output.to_tensor("xyxy")[1].count_nonzero() == 0
+        self.assert_close(boxes.to_tensor("xyxy"), xyxy)
+
+    def test_annotation_filter_validity_ignores_gate_at_static_p_5585(self, device, dtype):
+        class FilterBoxes(RandomHorizontalFlip):
+            def apply_transform_box(self, input, params, flags, transform=None):
+                return input.filter_boxes_by_area(2.0)
+
+        image = torch.zeros(2, 1, 6, 8, device=device, dtype=dtype)
+        xyxy = image.new_tensor([[[1.0, 1.0, 2.0, 2.0]], [[1.0, 1.0, 2.0, 2.0]]])
+        boxes = Boxes.from_tensor(xyxy)
+        aug = FilterBoxes(p=1.0)
+        params = aug.forward_parameters(image.shape)
+        params["batch_prob"] = image.new_tensor([0.0, 1.0])
+        output = aug.transform_boxes(boxes, params, aug.flags).to_tensor("xyxy")
+        # The gate deselects row 0, but every sample is transformed at static p=1.0, so both rows are filtered.
+        assert output[0].count_nonzero() == 0
+        assert output[1].count_nonzero() == 0
+        self.assert_close(boxes.to_tensor("xyxy"), xyxy)
+
+    def test_mosaic_permutates_filtered_validity_4714(self, device, dtype):
+        image = torch.zeros(2, 1, 6, 8, device=device, dtype=dtype)
+        boxes = Boxes.from_tensor(
+            image.new_tensor([[[1.0, 1.0, 2.0, 2.0]], [[1.0, 1.0, 4.0, 4.0]]])
+        ).filter_boxes_by_area(2.0)
+        aug = RandomMosaic(p=1.0, output_size=(12, 16), start_ratio_range=(0.0, 0.0))
+        params = aug.forward_parameters(image.shape)
+        params["permutation"] = torch.tensor([[0, 1, 0, 1], [1, 0, 1, 0]], device=device)
+        output = aug.apply_transform_boxes(boxes, params, aug.flags).to_tensor("xyxy")
+        invalid = params["permutation"] == 0
+        assert output[invalid].count_nonzero() == 0
+        # Select whole boxes before slicing coordinates; mixed mask/slice indexing differs across torch versions.
+        valid_boxes = output[~invalid]
+        assert (valid_boxes[:, 2:] > valid_boxes[:, :2]).all()
+
     def test_partial_batch_preserves_unselected_filtered_boxes_4679(self, device, dtype):
         input = torch.rand(4, 1, 6, 8, device=device, dtype=dtype)
         boxes = torch.tensor(
@@ -733,7 +807,8 @@ class TestRandomMosaic(BaseTester):
             params["batch_prob"] = params["batch_prob"].new_tensor(gate)
         _, out = aug(image, boxes, params=params)
 
-        assert isinstance(out, list) and len(out) == 4
+        assert isinstance(out, list)
+        assert len(out) == 4
         for b, selected in enumerate(gate):
             if not selected:
                 self.assert_close(out[b], boxes[b])
@@ -830,27 +905,29 @@ class TestRandomMosaic(BaseTester):
             dtype=dtype,
         )
 
+        # The start corner is floored to the integer the slice crop uses (issue #5464), so boxes are
+        # translated by whole pixels and land on integer coordinates.
         expected_box = torch.tensor(
             [
                 [
-                    [0.7074, 0.7099, 2.7074, 2.7099],
+                    [1.0000, 1.0000, 3.0000, 3.0000],
                     [0.0000, 0.0000, 1.0000, 1.0000],
-                    [0.0000, 5.7099, 2.7074, 8.0000],
-                    [0.0000, 2.7099, 1.0000, 4.7099],
-                    [7.0000, 0.7099, 8.0000, 2.7099],
-                    [5.7074, 0.0000, 7.7074, 1.0000],
+                    [0.0000, 6.0000, 3.0000, 8.0000],
+                    [0.0000, 3.0000, 1.0000, 5.0000],
+                    [7.0000, 1.0000, 8.0000, 3.0000],
+                    [6.0000, 0.0000, 8.0000, 1.0000],
                     [7.0000, 7.0000, 8.0000, 8.0000],
-                    [5.7074, 5.7099, 7.7074, 7.7099],
+                    [6.0000, 6.0000, 8.0000, 8.0000],
                 ],
                 [
-                    [0.0000, 0.0000, 1.0000, 2.8313],
+                    [0.0000, 0.0000, 1.0000, 3.0000],
                     [0.0000, 0.0000, 1.0000, 1.0000],
                     [0.0000, 7.0000, 1.0000, 8.0000],
-                    [0.0000, 6.8313, 1.0000, 8.0000],
-                    [4.5036, 0.0000, 8.0000, 2.8313],
-                    [1.5036, 0.0000, 3.5036, 1.0000],
-                    [4.5036, 6.8313, 8.0000, 8.0000],
-                    [1.5036, 3.8313, 3.5036, 5.8313],
+                    [0.0000, 7.0000, 1.0000, 8.0000],
+                    [5.0000, 0.0000, 8.0000, 3.0000],
+                    [2.0000, 0.0000, 4.0000, 1.0000],
+                    [5.0000, 7.0000, 8.0000, 8.0000],
+                    [2.0000, 4.0000, 4.0000, 6.0000],
                 ],
             ],
             device=device,
@@ -1161,7 +1238,11 @@ class TestRandomTransplantation(BaseTester):
         image_out2, mask_out2 = AugmentationSequential(f)(image, mask, data_keys=["image", "mask"])
 
         self.assert_close(image_out, image_out2)
-        self.assert_close(mask_out, mask_out2)
+        if n_spatial == 2:
+            assert mask_out2.shape == (mask.shape[0], 1, *mask.shape[1:])
+            self.assert_close(mask_out, mask_out2[:, 0])
+        else:
+            self.assert_close(mask_out, mask_out2)
 
     @pytest.mark.parametrize(
         "input_shape_image, input_shape_mask, target_shape_image",
@@ -1218,7 +1299,7 @@ class TestRandomTransplantation(BaseTester):
         with pytest.raises(Exception, match="There cannot be more selected labels"):
             f(image, mask, params=params_copy)
 
-        with pytest.raises(Exception, match="Every image input must have one additional dimension"):
+        with pytest.raises(Exception, match="Every segmentation mask must have one fewer dimension"):
             f(image.unsqueeze(dim=-1), mask)
 
         image = torch.rand(1, 3, 2, 5, device=device, dtype=torch.float64)
