@@ -198,8 +198,9 @@ class ModelProfiler:
         if path.endswith(".csv"):
             self.df.to_csv(path, index=False)
         elif path.endswith(".json"):
+            payload = json.dumps(self.results, indent=2, allow_nan=False)
             with open(path, "w", encoding="utf-8") as file:
-                json.dump(self.results, file, indent=2, allow_nan=False)
+                file.write(payload)
         else:
             raise ValueError("Unsupported format. Use .csv or .json")
 
