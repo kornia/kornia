@@ -23,6 +23,7 @@ Nice long listing of all 256 colors and their codes.
 Taken from https://gist.github.com/klange/1687427
 """
 
+import os
 import re
 from typing import Tuple, Union
 
@@ -299,6 +300,12 @@ CLUT = [
 SHORT2RGB_DICT = dict(CLUT)
 RGB2SHORT_DICT = {v: k for k, v in SHORT2RGB_DICT.items()}
 
+# codes 16-255 (codes 0-15 are defined by the terminal, not fixed): (240, 3) RGB values
+_XTERM_CODES = torch.arange(16, 256)
+_XTERM_RGB = torch.tensor(
+    [[int(SHORT2RGB_DICT[str(c)][i : i + 2], 16) for i in (0, 2, 4)] for c in range(16, 256)], dtype=torch.float64
+)
+
 
 def _str2hex(hexstr: str) -> int:
     return int(hexstr, 16)
@@ -355,7 +362,9 @@ def rgb2short(rgb: str) -> Tuple[str, str]:
 def image_to_string(image: torch.Tensor, max_width: int = 256) -> str:
     """Obtain the closest xterm-256 approximation string from an image torch.Tensor.
 
-    The torch.Tensor shall be either 0~1 float type or 0~255 long type.
+    The torch.Tensor shall be either 0~1 float type or 0~255 long type. Each pixel is shown with the nearest of the
+    240 fixed xterm-256 colours (codes 16-255, the 6x6x6 cube and the gray ramp) by RGB distance; codes 0-15 are
+    defined by the terminal and are not used.
 
     Args:
         image: an RGB image with shape :math:`3HW` or a grayscale image with shape :math:`1HW`.
@@ -371,25 +380,24 @@ def image_to_string(image: torch.Tensor, max_width: int = 256) -> str:
         new_h = max(1, image.size(-2) * max_width // image.size(-1))
         image = kornia.geometry.resize(image, (new_h, max_width))
 
-    image = (image * 255).clamp(0, 255).long()
+    image = (image * 255).round().clamp(0, 255)
 
     if image.shape[0] == 1:
         # a grey value is the same colour in each of the three terminal components
         image = image.expand(3, -1, -1)
 
     H, W = image.shape[-2:]
-    flat = image.permute(1, 2, 0).reshape(-1, 3)
+    flat = image.permute(1, 2, 0).reshape(-1, 3).to(device="cpu", dtype=torch.float64)
+    # squared distance to every fixed colour; argmin takes the lowest code on a tie
+    dist = (flat**2).sum(1, keepdim=True) - 2 * flat @ _XTERM_RGB.T + (_XTERM_RGB**2).sum(1)
+    codes = _XTERM_CODES[dist.argmin(1)].tolist()
 
-    rgb2short_fn = rgb2short
     lines = []
     idx = 0
     for _ in range(H):
         row_parts = []
         for _ in range(W):
-            r, g, b = flat[idx].tolist()
-            h = f"{r:02x}{g:02x}{b:02x}"
-            short, _ = rgb2short_fn(h)
-            row_parts.append(f"\033[48;5;{short}m  ")
+            row_parts.append(f"\033[48;5;{codes[idx]}m  ")
             idx += 1
         row_parts.append("\033[0m\n")
         lines.append("".join(row_parts))
@@ -397,25 +405,25 @@ def image_to_string(image: torch.Tensor, max_width: int = 256) -> str:
     return "".join(lines)
 
 
-def print_image(image: Union[str, torch.Tensor], max_width: int = 96) -> None:
+def print_image(image: Union[str, os.PathLike, torch.Tensor], max_width: int = 96) -> None:
     """Print an image to the terminal.
 
     .. image:: https://github.com/kornia/data/blob/main/print_image.png?raw=true
 
     Args:
-        image: path to a valid image file or a torch.Tensor.
+        image: path (``str`` or ``os.PathLike``) to a valid image file, or a torch.Tensor.
         max_width: maximum width to print to terminal.
 
     Note:
         Need to use `print_image(...)`.
 
     """
-    if isinstance(image, str):
+    if isinstance(image, (str, os.PathLike)):
         from kornia.io import ImageLoadType  # pylint: disable=C0415
 
         img = kornia.io.load_image(image, ImageLoadType.RGB8)
     elif isinstance(image, torch.Tensor):
         img = image
     else:
-        raise TypeError(f"Expect image type to be either torch.Tensor or str. Got {type(image)}.")
+        raise TypeError(f"Expect image type to be either torch.Tensor, str or os.PathLike. Got {type(image)}.")
     print(image_to_string(img, max_width))  # noqa: T201 - print_image prints by design

@@ -19,6 +19,7 @@
 from functools import wraps
 from typing import Any, Callable, List, Optional
 
+import numpy as np
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -36,6 +37,10 @@ def image_to_tensor(image: Any, keepdim: bool = True) -> torch.Tensor:
         tensor of the form :math:`(B, C, H, W)` if keepdim is ``False``,
             :math:`(C, H, W)` otherwise.
 
+    Raises:
+        TypeError: if ``image`` is not a ``numpy.ndarray``.
+        ValueError: if ``image`` is not two, three or four dimensional.
+
     Example:
         >>> img = np.ones((3, 3))
         >>> image_to_tensor(img).shape
@@ -50,6 +55,9 @@ def image_to_tensor(image: Any, keepdim: bool = True) -> torch.Tensor:
         torch.Size([1, 3, 4, 4])
 
     """
+    if not isinstance(image, np.ndarray):
+        raise TypeError(f"Input type is not a numpy.ndarray. Got {type(image)}")
+
     if len(image.shape) > 4 or len(image.shape) < 2:
         raise ValueError("Input size must be a two, three or four dimensional array")
 
@@ -261,14 +269,19 @@ def make_grid(tensor: torch.Tensor, n_row: Optional[int] = None, padding: int = 
         tensor: A batched tensor of shape (B, C, H, W).
         n_row: Number of images displayed in each row of the grid. If ``None``, use the square root
             of the batch size rounded up. Images are placed in batch order, filling each row before the next.
-        padding: The amount of padding to add between images.
+        padding: The amount of padding to add between images; must be non-negative.
 
     Returns:
         torch.Tensor: The combined image grid.
 
+    Raises:
+        ValueError: if ``n_row`` is not positive or ``padding`` is negative.
+
     """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input tensor must be a PyTorch tensor.")
+    if padding < 0:
+        raise ValueError("padding must be non-negative.")
 
     B, C, H, W = tensor.shape
     if n_row is None:

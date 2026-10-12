@@ -19,6 +19,7 @@ import pytest
 import torch
 
 from kornia.image import image_to_string, print_image
+from kornia.io import write_image
 
 
 class TestImageToString:
@@ -34,11 +35,14 @@ class TestImageToString:
         image = torch.arange(16).reshape(1, 4, 4).repeat(3, 1, 1).long() * 16
         out = image_to_string(image)
 
+        # nearest of the 240 fixed colours for the grays 0, 16, ..., 240 (code 59 = #5f5f5f and 145 = #afafaf are
+        # cube colours that are nearer than any ramp gray); generated with
+        # min(range(16, 256), key=lambda c: sum((a - v) ** 2 for a in rgb_of(c))) over the CLUT, v = 16 * i
         expected = (
-            "\033[48;5;16m  \033[48;5;16m  \033[48;5;16m  \033[48;5;59m  \033[0m\n"
-            "\033[48;5;59m  \033[48;5;59m  \033[48;5;59m  \033[48;5;59m  \033[0m\n"
-            "\033[48;5;102m  \033[48;5;102m  \033[48;5;145m  \033[48;5;145m  \033[0m\n"
-            "\033[48;5;145m  \033[48;5;188m  \033[48;5;188m  \033[48;5;231m  \033[0m\n"
+            "\033[48;5;16m  \033[48;5;233m  \033[48;5;234m  \033[48;5;236m  \033[0m\n"
+            "\033[48;5;238m  \033[48;5;239m  \033[48;5;59m  \033[48;5;242m  \033[0m\n"
+            "\033[48;5;244m  \033[48;5;246m  \033[48;5;247m  \033[48;5;145m  \033[0m\n"
+            "\033[48;5;250m  \033[48;5;252m  \033[48;5;254m  \033[48;5;255m  \033[0m\n"
         )
         assert out == expected
 
@@ -88,3 +92,21 @@ class TestImageToString:
     def test_print_smoke(self):
         img = torch.rand(3, 15, 15)
         print_image(img)
+
+
+class TestNearestXterm:
+    def test_gray_uses_the_gray_ramp(self):
+        # 128 -> code 244 (#808080, exact); the 6-level cube's nearest was code 102 (#878787)
+        assert "48;5;244m" in image_to_string(torch.full((3, 1, 1), 128, dtype=torch.uint8))
+
+    def test_levels_round_instead_of_truncating(self):
+        # float 0.1875 = 47.8 levels -> 48 -> nearest of codes 16-255 is code 236 (#303030, exact); truncation gave
+        # code 16. Snippet: min(range(16, 256), key=lambda c: dist(int(CLUT_RGB[c]), (48, 48, 48))) -> 236
+        out = image_to_string(torch.full((3, 1, 1), 0.1875))
+        assert "48;5;236m" in out
+        assert "48;5;16m" not in out
+
+    def test_print_image_accepts_a_path(self, tmp_path, capsys):
+        write_image(tmp_path / "p.png", torch.zeros(3, 2, 3, dtype=torch.uint8))
+        print_image(tmp_path / "p.png")
+        assert "\x1b[48;5;" in capsys.readouterr().out
