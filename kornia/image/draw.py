@@ -82,8 +82,9 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
         returns the drawn tensor for convenience. An empty point set leaves the image unchanged.
 
     Raises:
-        ValueError: if the image is not :math`(C,H,W)` or :math`(H,W)`, or a point lies outside the image after
-            rounding.
+        ValueError: if the image is not ``(C, H, W)`` or ``(H, W)``, or a point lies outside the image after rounding.
+        BaseError: if ``color`` has neither 1 nor ``C`` values on a ``(C, H, W)`` image, or ``points`` is not
+            ``(2,)`` or ``(N, 2)``.
 
     Fractional coordinates go to the pixel whose centre is nearest; a coordinate exactly halfway rounds up.
     A point outside the image raises `ValueError`.
@@ -162,6 +163,10 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
     Return:
         The image containing the line. This operation modifies image inplace but also returns
         the drawn tensor for convenience.
+
+    Raises:
+        ValueError: if ``p1`` and ``p2`` differ in shape or their last dimension is not 2, an endpoint lies outside the
+            image after rounding, the image is not ``(C, H, W)``, or ``color`` has neither 1 nor ``C`` values.
 
     Examples:
         >>> image = torch.zeros(1, 8, 8)
@@ -259,7 +264,8 @@ def draw_rectangle(
     clipped to the image.
 
     Raises:
-        ValueError: if the image and rectangle batch sizes differ, or the last dimension of ``rectangle`` is not 4.
+        ShapeError: if the image is not ``(B, C, H, W)``. It is also a ``ValueError``.
+        ValueError: if ``rectangle`` is not ``(B, N, 4)``, or its batch size differs from the image's.
 
     Returns:
         This operation modifies image inplace but also returns the drawn tensor for
@@ -406,6 +412,12 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
     Returns:
         This operation modifies image inplace but also returns the drawn tensor for
         convenience with same shape the of the input BxCxHxW.
+
+    Raises:
+        ShapeError: if the images are not ``(B, C, H, W)``. It is also a ``ValueError``.
+        ValueError: if ``polygons`` is a tensor that is not three dimensional.
+        BaseError: if the vertices are not ``(x, y)`` points, or the images, polygons and colors differ in batch size
+            or device.
 
     Note:
         This function assumes a coordinate system (0, h - 1), (0, w - 1) in the image, with (0, 0) being the center

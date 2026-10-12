@@ -205,7 +205,7 @@ class TestImage(BaseTester):
         assert out.dtype == torch.float32
         assert out.device == device
         assert out.pixel_format.bit_depth == 32
-        assert out.clone().pixel_format.bit_depth == 32  # clone() used to raise "Invalid bit depth"
+        assert out.clone().pixel_format.bit_depth == 32  # bit_depth follows the dtype, so clone() passes the check
 
     def test_float_leaves_the_original(self):
         img = Image.from_numpy(np.zeros((4, 5, 3), dtype=np.uint8))

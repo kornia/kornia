@@ -292,4 +292,4 @@ def test_image_to_tensor_rejects_a_non_ndarray(bad):
 
 def test_make_grid_rejects_negative_padding():
     with pytest.raises(ValueError, match="padding"):
-        kornia.image.make_grid(torch.zeros(4, 1, 3, 3), padding=-1)
+        kornia.image.make_grid(torch.zeros(4, 1, 3, 5), padding=-1)

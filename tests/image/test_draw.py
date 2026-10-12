@@ -504,10 +504,9 @@ class TestDrawLine(BaseTester):
 
     def test_draw_line_pixels_are_nearest_to_the_segment(self, dtype, device):
         # (0, 0) -> (4, 1) on 3x6: the ideal row is x / 4, so columns 0, 1 -> row 0, columns 3, 4 -> row 1 and the
-        # tie at column 2 (y = 0.5) rounds up to row 1. cv2.line(img, (0, 0), (4, 1), 1, 1, cv2.LINE_8) agrees on
-        # every column but 2 (probe: OpenCV 5.0).
+        # tie at column 2 (y = 0.5) rounds up to row 1. OpenCV 5.0 rounds that tie down:
         # cv2.line(np.zeros((3, 6), np.uint8), (0, 0), (4, 1), 1, 1, cv2.LINE_8) returns
-        # [[1, 1, 1, 0, 0, 0], [0, 0, 0, 1, 1, 0], [0, 0, 0, 0, 0, 0]]: the tie column 2 is the only difference.
+        # [[1, 1, 1, 0, 0, 0], [0, 0, 0, 1, 1, 0], [0, 0, 0, 0, 0, 0]].
         img = draw_line(
             torch.zeros(1, 3, 6, dtype=dtype, device=device),
             torch.tensor([0, 0], device=device),
@@ -837,13 +836,13 @@ class TestFillConvexPolygon(BaseTester):
         assert int(img[0, 0, 2].sum()) == 21
 
     def test_centre_exactly_on_a_sloped_edge_is_filled(self, device, dtype):
-        # audit B-24: hull [[13,18],[48,1],[12,31],[12,22]] on 31x47; (row 26, col 18) lies on edge (48,1)->(12,31)
+        # hull [[13,18],[48,1],[12,31],[12,22]] on 31x47: (row 26, col 18) lies on edge (48,1)->(12,31)
         poly = torch.tensor([[[13.0, 18.0], [48.0, 1.0], [12.0, 31.0], [12.0, 22.0]]], device=device)
         img = draw_convex_polygon(torch.zeros(1, 1, 31, 47, device=device), poly, torch.tensor([1.0], device=device))
         assert img[0, 0, 26, 18] == 1
 
     def test_long_shallow_edge_with_vertices_outside_the_image(self, device, dtype):
-        # audit B-25: triangle (-100,0),(100,4),(-100,4) on 5x6 covers 13 pixel centres (rows 2-4)
+        # triangle (-100,0),(100,4),(-100,4) on 5x6 covers 13 pixel centres (rows 2-4)
         poly = torch.tensor([[[-100.0, 0.0], [100.0, 4.0], [-100.0, 4.0]]], device=device)
         img = draw_convex_polygon(torch.zeros(1, 1, 5, 6, device=device), poly, torch.tensor([1.0], device=device))
         assert int(img.sum()) == 13

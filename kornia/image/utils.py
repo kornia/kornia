@@ -188,6 +188,10 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False, force_contiguou
         image of the form :math:`(H, W)`, :math:`(H, W, C)` or :math:`(B, H, W, C)`. A ``bfloat16`` tensor is
         returned as ``float32``.
 
+    Raises:
+        TypeError: if ``tensor`` is not a ``torch.Tensor``.
+        ValueError: if ``tensor`` is not two, three or four dimensional.
+
     Example:
         >>> img = torch.ones(1, 3, 3)
         >>> tensor_to_image(img).shape
@@ -277,7 +281,8 @@ def make_grid(tensor: torch.Tensor, n_row: Optional[int] = None, padding: int = 
         torch.Tensor: The combined image grid.
 
     Raises:
-        ValueError: if ``n_row`` is not positive or ``padding`` is negative.
+        TypeError: if ``tensor`` is not a ``torch.Tensor``.
+        ValueError: if ``tensor`` is not four dimensional, ``n_row`` is not positive or ``padding`` is negative.
 
     """
     if not isinstance(tensor, torch.Tensor):

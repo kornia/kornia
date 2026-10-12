@@ -104,6 +104,7 @@ class Image:
             layout: a dataclass containing the image layout information.
 
         Raises:
+            ShapeError: if ``data`` does not have the shape ``layout`` describes. It is also a ``ValueError``.
             ValueCheckError: if ``pixel_format.bit_depth`` is not ``8 * data.element_size()``, or the color space does
                 not match the channel count. It is also a ``ValueError``. Like the other kornia checks, these are
                 skipped after ``kornia.core.check.disable_checks()``.
@@ -148,6 +149,10 @@ class Image:
 
         Returns:
             Image: the image on the given device and with the given dtype.
+
+        Raises:
+            ValueCheckError: if the color space does not match the channel count, which only an image built while
+                checks were disabled can have. It is also a ``ValueError``.
 
         """
         if device is not None and isinstance(device, torch.dtype):
@@ -322,6 +327,13 @@ class Image:
                 match the channel count raises.
             channels_order: what dimension the channels are in the image torch.Tensor.
 
+        Raises:
+            ValueError: if ``channels_order`` is neither ``CHANNELS_LAST`` nor ``CHANNELS_FIRST``.
+            ValueCheckError: if an explicit ``color_space`` does not match the channel count. It is also a
+                ``ValueError``.
+            ShapeError: if ``data`` has more than three dimensions. It is also a ``ValueError``.
+            IndexError: if ``data`` has fewer than two dimensions.
+
         Example:
             >>> data = np.ones((4, 5, 3), dtype=np.uint8)  # HxWxC
             >>> img = Image.from_numpy(data, color_space=ColorSpace.RGB)
@@ -364,6 +376,10 @@ class Image:
         Args:
             data: a DLPack capsule from numpy, tvm or jax. The capsule must hold a ``(C, H, W)`` image; it is
                 labelled ``GRAY`` for 1 channel, ``RGB`` for 3 and ``UNKNOWN`` otherwise.
+
+        Raises:
+            ShapeError: if the capsule has more than three dimensions. It is also a ``ValueError``.
+            IndexError: if the capsule has fewer than three dimensions.
 
         Example:
             >>> x = np.ones((3, 4, 5))  # (C, H, W)

@@ -102,7 +102,7 @@ class TestNearestXterm:
     #   min(rgb, key=lambda c: sum((a - v) ** 2 for a in rgb[c]))  # v = 128 -> 244, v = 92 -> 59, v = 91 -> 240
 
     def test_gray_uses_the_gray_ramp(self):
-        # 128 -> code 244 (#808080, exact); the 6-level cube's nearest was code 102 (#878787)
+        # 128 -> code 244 (#808080, exact) in the gray ramp; the nearest cube colour is code 102 (#878787)
         out = image_to_string(torch.full((3, 2, 3), 128, dtype=torch.uint8))
         assert out.count("48;5;244m") == 6
         assert out.count("\n") == 2
@@ -125,15 +125,14 @@ class TestNearestXterm:
         assert image_to_string(image) == image_to_string(top) + image_to_string(bottom)
 
     def test_an_image_on_the_device_prints_like_its_cpu_copy(self, device):
-        # the distances run on the CPU in float64; MPS cannot hold float64, and a combined .to("cpu", float64) gives
-        # zeros there on torch 2.14 (every pixel black) and raises TypeError on torch 2.5.1
+        # the distances run on the CPU in float64, which MPS cannot hold: the pixels move to the CPU before the cast
         image = torch.randint(0, 256, (3, 4, 5), generator=torch.Generator().manual_seed(0), dtype=torch.uint8)
         out = image_to_string(image.to(device))
         assert out == image_to_string(image)
         assert out.count("48;5;16m") < 20  # not every pixel black
 
     def test_distances_are_computed_in_bounded_chunks(self, monkeypatch):
-        # a 1500x256 image used to build one (N, 240) float64 distance matrix (about 1.7 GB peak)
+        # no (pixels, 240) distance matrix has more rows than _PIXELS_PER_CHUNK, whatever the image size
         sizes = []
         nearest = image_print._nearest_xterm_codes
 
