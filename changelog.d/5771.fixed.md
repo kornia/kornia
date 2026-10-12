@@ -1,0 +1,1 @@
+`js_div_loss_2d` evaluates float16 and bfloat16 inputs in float32 before forming the mixture, avoiding infinite loss and non-finite gradients for small positive probabilities while preserving the output dtype.

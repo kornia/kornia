@@ -322,28 +322,37 @@ class _SIFTFeature(LocalFeature):
 
 
 class SIFTFeature(_SIFTFeature):
-    """Convenience module, which implements DoG detector + (Root)SIFT descriptor.
+    """Multiresolution DoG detection followed by a (Root)SIFT descriptor.
+
+    :class:`~kornia.feature.MultiResolutionDetector` applies a single-scale DoG response
+    independently at each image resolution and uses 2-D non-maximum suppression. It does
+    not select extrema across scale or refine positions and scales to subpixel precision.
+    It does not apply classical SIFT's contrast or Hessian edge rejection and assigns one
+    orientation per detection unless ``upright=True``. For new scale-space SIFT pipelines,
+    start with :class:`SIFTFeatureScaleSpace` and explicitly select
+    ``descriptor_backend="pyramid"``; see :ref:`sift-pipelines`.
 
     ``descriptor_backend="pyramid"`` uses :class:`SIFTDescriptorFromPyramid` for
     orientation and description at the detector's sparse LAFs. Detection and the
-    feature budget are unchanged. The default ``"patch"`` backend retains the
+    feature budget are unchanged. Its orientation integrates smoothed image
+    gradients before angular binning without extracting image patches. The
+    remaining performance and accuracy acceptance criteria are tracked in
+    `#5748 <https://github.com/kornia/kornia/issues/5748>`_. No deprecation warning
+    or removal version is set.
+    The standalone descriptor-only ``SIFTDescriptorFromPyramid.forward`` interface
+    remains useful for supplied oriented LAFs. The default ``"patch"`` backend retains the
     existing patch-wise pipeline. Both return descriptors in kornia's SIFT layout by
     default; ``descriptor_layout="opencv"`` returns them in OpenCV's, which
     :class:`~kornia.feature.LightGlueMatcher` expects with ``"sift"``.
     :func:`~kornia.feature.convert_sift_descriptor_layout` converts between the two.
 
-    The detector is :class:`~kornia.feature.MultiResolutionDetector` on the magnitude of a single-scale
-    :class:`~kornia.feature.BlobDoGSingle` response. Like the DoG detectors of Lowe, OpenCV and VLFeat, it keeps
-    both signs of DoG extremum: the maxima (dark blobs) and the minima (bright blobs). A keypoint is a strict
-    maximum of the magnitude over its ``config["nms_size"]`` window (15 px by default) on its pyramid level, so a
-    stronger response of the other sign in that window suppresses a weaker extremum, be it the ring of opposite
-    sign around a blob or a nearby blob of the other polarity. Those detectors instead test a maximum against its
-    3x3x3 scale-space neighbours and a minimum likewise, so an extremum of one sign never suppresses one of the
-    other. ``responses`` holds the magnitude.
-
-    Using `kornia.feature.MultiResolutionDetector` without blur pyramid Still not as good as OpenCV/VLFeat because of
-    https://github.com/kornia/kornia/pull/884,
-    but we are working on it
+    The detector applies :class:`~kornia.feature.MultiResolutionDetector` to the
+    magnitude of a single-scale :class:`~kornia.feature.BlobDoGSingle` response.
+    It retains extrema of both polarity: dark blobs are DoG maxima and bright
+    blobs are DoG minima. On each image-pyramid level, a keypoint is a strict
+    maximum of response magnitude in its ``config["nms_size"]`` window (15 pixels
+    by default); a stronger extremum of either polarity in that window suppresses
+    a weaker one. ``responses`` contains the magnitude.
     """
 
     def __init__(
@@ -388,21 +397,27 @@ class SIFTFeature(_SIFTFeature):
 
 
 class SIFTFeatureScaleSpace(LocalFeature):
-    """Convenience module, which implements DoG detector + (Root)SIFT descriptor.
+    """DoG scale-space detection, position/scale refinement and (Root)SIFT description.
 
-    The default patch backend uses `kornia.feature.ScaleSpaceDetector`. Select
-    ``descriptor_backend="pyramid"`` for a specialized SIFT pipeline that reuses
+    For new scale-space SIFT pipelines, explicitly select ``descriptor_backend="pyramid"``;
+    see :ref:`sift-pipelines`. The constructor default remains ``"patch"`` and uses
+    :class:`~kornia.feature.ScaleSpaceDetector`. The pyramid backend is a specialized SIFT pipeline that reuses
     the detector's Gaussian images and each detection's octave and layer. Image
     gradients are computed once per used layer and sampled for sparse orientation
     and descriptor integration. A dedicated DoG detector refines only sparse
     extrema and ranks all valid candidates by response, without contrast or edge
-    rejection. The feature budget is unchanged; detections may differ.
+    rejection. Both backends search 3-D DoG extrema and refine position and scale;
+    neither applies classical SIFT's contrast or Hessian edge rejection, and each
+    assigns only one orientation per detection unless ``upright=True``. The backend
+    selects a different detector implementation as well as different orientation and
+    description stages. The feature budget is unchanged; detections may differ.
     The default ``"patch"`` backend retains patch-wise orientation and description.
     Both return descriptors in kornia's SIFT layout by default; ``descriptor_layout="opencv"``
     returns them in OpenCV's, which :class:`~kornia.feature.LightGlueMatcher` expects with
     ``"sift"``. :func:`~kornia.feature.convert_sift_descriptor_layout` converts between the two.
 
-    Still not as good as OpenCV/VLFeat because of https://github.com/kornia/kornia/pull/884, but we are working on it
+    Pyramid extraction is not guaranteed to be faster on every device or workload.
+    Patch extraction remains available for existing pipelines and measured performance needs.
     """
 
     def __init__(
