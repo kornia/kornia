@@ -156,11 +156,12 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         - a ``mask`` list contains one tensor per image sample, in sample order. Each entry is
           ``(H, W)``, ``(C, H, W)`` or ``(1, C, H, W)``, with matching spatial dimensions; channel counts
           may differ. Each entry uses its sample's gate, transform parameters and matrix, including in
-          nested sequences, replay and inverse. 3D augmentations and auto operations, including nested
-          children, do not support mask lists and raise ``NotImplementedError``. Full-batch mask tensors
-          must use separate ``mask`` data
-          keys; a list with incompatible length or entry shape raises ``ValueError``. Inverse warps can
-          only approximately restore resampled pixels and cannot recover pixels moved out of the frame.
+          nested sequences, auto-augment policies, replay and inverse. Full-batch mask tensors must use
+          separate ``mask`` data keys; a list with incompatible length or entry shape raises ``ValueError``,
+          also in an inverse without an image. Video, mix and 3D children, and a geometric
+          :class:`~kornia.augmentation.PatchSequential`, do not support mask lists and raise
+          ``NotImplementedError``. Inverse warps can only approximately restore resampled pixels and
+          cannot recover pixels moved out of the frame.
         - the ``mask``, box and ``keypoints`` handlers of a geometric child, or of a custom
           :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` subclass, receive the transform of the
           call's ``params``: the one the child recorded when it last transformed an image with those params, or
@@ -532,7 +533,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         # Set once at construction from this container's children; distinguishes a video from a 5D
         # ``(B, C, D, H, W)`` 3D image, which this function leaves untouched, as before.
         is_video = self.contains_video_sequential
-        if isinstance(image, torch.Tensor) and (image.ndim in (3, 4) or (image.ndim == 5 and is_video)):
+        if isinstance(image, torch.Tensor) and (image.ndim in (2, 3, 4) or (image.ndim == 5 and is_video)):
             image_batch: Optional[int] = image.shape[0] if image.ndim in (4, 5) else 1
             image_size = image.shape[-2:]
         elif image is None and params is not None and not self.contains_3d_augmentation:
@@ -748,8 +749,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             for param in params:
                 module = self.get_submodule(param.name)
                 outputs = self.transform_op.transform(*outputs, module=module, param=param, extra_args=self.extra_args)
-                if not isinstance(outputs, (list, tuple)):
-                    # Make sure we are unpacking a list whilst post-proc
+                if len(self.transform_op.data_keys) == 1 or not isinstance(outputs, (list, tuple)):
+                    # One data key can itself hold a mask list; keep it as one argument for the next child.
                     outputs = [outputs]
                 self._update_transform_matrix_by_module(module)
 

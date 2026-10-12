@@ -546,12 +546,18 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
             extra_args = {}
         if isinstance(module, K.GeometricAugmentationBase3D):
             raise NotImplementedError("3D mask lists are not supported.")
+        if isinstance(module, (K.VideoSequential, K.MixAugmentationBaseV2)):
+            raise NotImplementedError(f"{type(module).__name__} does not support mask lists.")
+        if isinstance(module, K.PatchSequential):
+            # Its own handler: masks pass through an intensity-only pipeline, a geometric one raises.
+            seq_params = cls.get_sequential_module_param(param)
+            return [module.transform_masks(inp, params=seq_params, extra_args=extra_args) for inp in input]
         if isinstance(module, K.container.ImageSequentialBase):
             for child_param in cls.get_sequential_module_param(param):
                 input = cls.transform_list(input, module.get_submodule(child_param.name), child_param, extra_args)
             return input
         if isinstance(module, K.auto.operations.OperationBase):
-            raise NotImplementedError("List masks under auto operations are not supported.")
+            return cls.transform_list(input, module.op, param, extra_args)
         if isinstance(module, _AugmentationBase):
             params = cls.get_instance_module_param(param)
             transform = None
@@ -560,7 +566,7 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
             ):
                 extra_args = cls._mask_extra_args(module, extra_args)
                 transform = cls.get_transform_matrix(module, param, input)
-            return [
+            output = [
                 module.transform_masks(
                     inp,
                     params=cls._sample_params(params, i),
@@ -570,6 +576,9 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
                 )
                 for i, inp in enumerate(input)
             ]
+            # Each call recorded one sample's slice; keep the batch draw as the child's params, as a tensor mask does.
+            module._commit_state(params=params)
+            return output
         return input
 
     @classmethod
@@ -631,7 +640,7 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
         if isinstance(module, K.GeometricAugmentationBase2D):
             transform = module.compute_inverse_transformation(cls.get_transform_matrix(module, param, input))
             params = cls.get_instance_module_param(param)
-            return [
+            output = [
                 module.inverse_masks(
                     inp,
                     params=cls._sample_params(params, i),
@@ -641,14 +650,21 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
                 )
                 for i, inp in enumerate(input)
             ]
+            module._commit_state(params=params)
+            return output
         if isinstance(module, K.GeometricAugmentationBase3D):
             raise NotImplementedError("3D mask lists are not supported.")
+        if isinstance(module, (K.VideoSequential, K.MixAugmentationBaseV2)):
+            raise NotImplementedError(f"{type(module).__name__} does not support mask lists.")
+        if isinstance(module, K.PatchSequential):
+            seq_params = cls.get_sequential_module_param(param)
+            return [module.inverse_masks(inp, params=seq_params, extra_args=extra_args) for inp in input]
         if isinstance(module, K.container.ImageSequentialBase):
             for child_param in reversed(cls.get_sequential_module_param(param)):
                 input = cls.inverse_list(input, module.get_submodule(child_param.name), child_param, extra_args)
             return input
         if isinstance(module, K.auto.operations.OperationBase):
-            raise NotImplementedError("List masks under auto operations are not supported.")
+            return cls.inverse_list(input, module.op, param, extra_args)
         return input
 
 
