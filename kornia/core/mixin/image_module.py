@@ -449,7 +449,7 @@ class ImageModuleMixIn:
             from kornia.image.utils import make_grid  # pylint: disable=C0415
 
             if n_row is None:
-                n_row = math.ceil(output_image.shape[0] ** 0.5)
+                n_row = max(1, math.ceil(output_image.shape[0] ** 0.5))
             out_image = make_grid(output_image, n_row, padding=2)
 
         if backend == "pil" and display:
@@ -477,7 +477,7 @@ class ImageModuleMixIn:
             from kornia.image.utils import make_grid  # pylint: disable=C0415
 
             if n_row is None:
-                n_row = math.ceil(output_image.shape[0] ** 0.5)
+                n_row = max(1, math.ceil(output_image.shape[0] ** 0.5))
             out_image = make_grid(output_image, n_row, padding=2)
         from kornia.io import write_image  # pylint: disable=C0415
 

@@ -747,6 +747,20 @@ class TestConventionsSpatialGradient(BaseTester):
         with pytest.raises(NotImplementedError):
             SpatialGradient3d(mode="sobel")
 
+    @pytest.mark.parametrize("order", [1, 2])
+    @pytest.mark.parametrize("int_dtype", [torch.uint8, torch.int16])
+    def test_convention_spatial_gradient3d_integer_input_is_differentiated_in_float32_5155(
+        self, int_dtype, order, device
+    ):
+        """#5155: an integer volume is differentiated in float32, so uint8 differences do not wrap and the mixed
+        second derivatives keep their quarter taps."""
+        self._require_replicate_padding(device, torch.float32, three_d=True)
+        values = torch.randint(0, 256, (1, 2, 5, 6, 7), generator=torch.Generator().manual_seed(0))
+        volume = values.to(device=device, dtype=int_dtype)
+        actual = spatial_gradient3d(volume, order=order)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, spatial_gradient3d(volume.float(), order=order), rtol=0, atol=0)
+
     def test_convention_sobel_magnitude_of_normalized_gradient_eps_inside_root(self, device, dtype):
         self._require_replicate_padding(device, dtype)
         # sobel = sqrt(gx^2 + gy^2 + eps) of the normalized gradient: slope (3, 2) -> sqrt(13), not 8 * sqrt(13)

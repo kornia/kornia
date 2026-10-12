@@ -289,7 +289,6 @@ call	builtins.AssertionError	tests/geometry/liegroup/test_so3.py::TestSo3::test_
 call	builtins.AssertionError	tests/geometry/subpix/test_dsnt.py::TestRenderGaussian2d::test_normalized_coordinates[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/subpix/test_dsnt.py::TestRenderGaussian2d::test_pixel_coordinates[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/subpix/test_spatial_softargmax.py::TestConvQuadInterp3dModule::test_diag[cpu-bfloat16]
-call	builtins.AssertionError	tests/geometry/subpix/test_spatial_softargmax.py::TestSpatialSoftArgmax2d::test_end_to_end[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/test_bbox.py::TestTransformBoxes2D::test_transform_boxes[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/test_bbox.py::TestTransformBoxes2D::test_transform_boxes_wh[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/test_bbox.py::TestTransformBoxes2D::test_transform_multiple_boxes[cpu-bfloat16]
