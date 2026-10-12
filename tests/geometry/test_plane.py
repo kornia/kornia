@@ -179,7 +179,12 @@ class TestFitPlane(BaseTester):
         plane = fit_plane(Vector3(points) if wrapped else points)
         sign = (plane.normal.data * expected_normal).sum(-1).sign()
         self.assert_close(plane.normal.data * sign[..., None], expected_normal)
-        self.assert_close(plane.offset.data * sign, expected_offset)
+        if device.type == "mps" and dtype == torch.float32:
+            # The offset cancels large coordinates; allow one input-scale float32 epsilon on MPS.
+            atol = torch.finfo(dtype).eps * points.detach().abs().amax().item()
+            self.assert_close(plane.offset.data * sign, expected_offset, rtol=1e-4, atol=atol)
+        else:
+            self.assert_close(plane.offset.data * sign, expected_offset)
         plane.offset.data.sum().backward()
         assert points.grad is not None
         assert torch.isfinite(points.grad).all()
