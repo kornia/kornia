@@ -24,6 +24,15 @@ from torch import nn
 INF = 1e9
 
 
+def _masked_similarity(dtype: torch.dtype) -> float:
+    """Similarity given to masked pairs: ``-INF``, or the lowest finite value of ``dtype`` when ``INF`` overflows it.
+
+    float16 holds at most 65504. The value stays finite, so a row or column that is masked entirely still gets a
+    uniform softmax, where ``-inf`` would give ``-inf - (-inf) = nan``.
+    """
+    return -min(INF, torch.finfo(dtype).max)
+
+
 def mask_border(m: torch.Tensor, b: int, v: Union[torch.Tensor, float, bool]) -> None:
     """Mask borders with value.
 
@@ -151,14 +160,25 @@ class CoarseMatching(nn.Module):
         if self.match_type == "dual_softmax":
             sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1) / self.temperature
             if mask_c0 is not None and mask_c1 is not None:
-                sim_matrix.masked_fill_(~(mask_c0[..., None] * mask_c1[:, None]).bool(), -INF)
-            conf_matrix = F.softmax(sim_matrix, 1) * F.softmax(sim_matrix, 2)
+                invalid = ~(mask_c0[..., None] * mask_c1[:, None]).bool()
+                sim_matrix.masked_fill_(invalid, _masked_similarity(sim_matrix.dtype))
+                conf_matrix = F.softmax(sim_matrix, 1) * F.softmax(sim_matrix, 2)
+                # A pair of masked cells gets the confidence 1 / (L * S) from the two softmaxes:
+                # a row or column that is masked entirely is uniform there, and all its other
+                # entries are exactly 0, so the pair is also a mutual nearest neighbour. Whenever
+                # `thr` is below 1 / (L * S), `get_coarse_match` would return it as a match, with
+                # keypoints in the padding of both images (#5740). A masked pair is never a match.
+                conf_matrix.masked_fill_(invalid, 0.0)
+            else:
+                conf_matrix = F.softmax(sim_matrix, 1) * F.softmax(sim_matrix, 2)
 
         elif self.match_type == "sinkhorn":
             # sinkhorn, dustbin included
             sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1)
             if mask_c0 is not None and mask_c1 is not None:
-                sim_matrix[:, :L, :S].masked_fill_(~(mask_c0[..., None] * mask_c1[:, None]).bool(), -INF)
+                sim_matrix[:, :L, :S].masked_fill_(
+                    ~(mask_c0[..., None] * mask_c1[:, None]).bool(), _masked_similarity(sim_matrix.dtype)
+                )
 
             # build uniform prior & use sinkhorn
             log_assign_matrix = self.log_optimal_transport(sim_matrix, self.bin_score, self.skh_iters)
@@ -186,7 +206,8 @@ class CoarseMatching(nn.Module):
 
         Args:
             conf_matrix (torch.Tensor): [N, L, S]
-            data (dict): with keys ['hw0_i', 'hw1_i', 'hw0_c', 'hw1_c']
+            data (dict): with keys ['hw0_c', 'hw1_c', 'stride_c'], ``stride_c`` being the pixel stride of the coarse
+                feature maps (8 by default)
 
         Returns:
             coarse_matches (dict): {
@@ -207,8 +228,9 @@ class CoarseMatching(nn.Module):
             "w1c": data["hw1_c"][1],
         }
         _device = conf_matrix.device
-        # 1. confidence thresholding
-        mask = conf_matrix > self.thr
+        # 1. confidence thresholding. A zero confidence is never a match, even for a negative `thr`: `mconf == 0` marks
+        # the training ground-truth pads below and is dropped from the keypoints, but not from `b_ids`.
+        mask = conf_matrix > max(self.thr, 0.0)
         N = conf_matrix.shape[0]
         mask = mask.reshape(N, axes_lengths["h0c"], axes_lengths["w0c"], axes_lengths["h1c"], axes_lengths["w1c"])
         # mask = rearrange(mask, 'b (h0c w0c) (h1c w1c) -> b h0c w0c h1c w1c',
@@ -282,8 +304,9 @@ class CoarseMatching(nn.Module):
         # These matches select patches that feed into fine-level network
         coarse_matches = {"b_ids": b_ids, "i_ids": i_ids, "j_ids": j_ids}
 
-        # 4. Update with matches in original image resolution
-        scale = data["hw0_i"][0] / data["hw0_c"][0]
+        # 4. Update with matches in original image resolution: coarse cell (x, y) of either image sits on pixel
+        # (stride_c * x, stride_c * y) for any image size
+        scale = data["stride_c"]
         scale0 = scale * data["scale0"][b_ids] if "scale0" in data else scale
         scale1 = scale * data["scale1"][b_ids] if "scale1" in data else scale
         mkpts0_c = torch.stack([i_ids % data["hw0_c"][1], i_ids // data["hw0_c"][1]], dim=1) * scale0

@@ -16,6 +16,8 @@
 #
 
 
+from fractions import Fraction
+
 import pytest
 import torch
 import torch.nn.functional as F
@@ -33,6 +35,7 @@ from kornia.filters import (
     filter2d_separable,
     filter3d,
     gaussian,
+    gaussian_blur2d,
     get_binary_kernel2d,
     get_box_kernel1d,
     get_box_kernel2d,
@@ -51,8 +54,12 @@ from kornia.filters import (
     get_sobel_kernel2d,
     get_spatial_gradient_kernel2d,
     get_spatial_gradient_kernel3d,
+    laplacian,
     laplacian_1d,
+    spatial_gradient,
+    spatial_gradient3d,
 )
+from kornia.filters.blur import _box_blur_pool
 
 from testing.base import (
     BaseTester,
@@ -60,6 +67,7 @@ from testing.base import (
     _supports_kernel_probe,
     supports_nearest_3d_grid_sample,
     supports_reflect_padding,
+    supports_replicate_padding,
 )
 
 
@@ -160,6 +168,11 @@ class TestFilter2D(BaseTester):
         with pytest.raises(Exception) as errinfo:
             filter2d(data, k, padding="a")
         assert "Invalid padding mode, a. Ex" in str(errinfo)
+
+        # a bad behaviour is named as such, not as a bad padding mode (#5157)
+        with pytest.raises(Exception) as errinfo:
+            filter2d(data, k, behaviour="a")
+        assert "Invalid behaviour mode, a. Ex" in str(errinfo)
 
     @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_mean_filter(self, padding, device, dtype):
@@ -491,7 +504,11 @@ class TestFilter3D(BaseTester):
 
         with pytest.raises(Exception) as errinfo:
             filter3d(data, k, border_type="a")
-        assert "Invalid border, gotcha a. Ex" in str(errinfo)
+        assert "Invalid border, got a. Ex" in str(errinfo)
+
+        with pytest.raises(Exception) as errinfo:
+            filter3d(data, k, behaviour="a")
+        assert "Invalid behaviour mode, got a. Ex" in str(errinfo)
 
     def test_mean_filter(self, device, dtype):
         kernel = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
@@ -1679,49 +1696,136 @@ class TestConventionsFilter2d(BaseTester):
         assert counter.frame_count == 1
 
     @pytest.mark.parametrize("name", ["filter2d", "filter2d_separable", "filter3d", "fft_conv"])
-    def test_wart_integer_input_truncates_a_fractional_kernel_to_zero_5155(self, name, device, dtype):
-        """An integer input casts the kernel to its dtype: a 1/9 box kernel turns a constant 100 image to 0 (#5155)."""
-        if name != "fft_conv" and device.type != "cpu":
-            pytest.skip("integer convolution raises on this device, so there is no truncated result to pin (#5155)")
+    def test_convention_integer_input_is_filtered_in_float32_5155(self, name, device, dtype):
+        """An integer input is filtered in float32 with a floating kernel and returns float32 (#5155)."""
         spatial = (3, 5, 7) if name == "filter3d" else (5, 7)
         image = torch.full((1, 1, *spatial), 100, dtype=torch.uint8, device=device)
-        if name == "filter2d_separable":
-            third = torch.full((1, 3), 1 / 3, device=device, dtype=dtype)
-            out = filter2d_separable(image, third, third, "constant")
-        elif name == "filter3d":
-            out = filter3d(image, torch.full((1, 3, 3, 3), 1 / 27, device=device, dtype=dtype), "constant")
-        else:
-            out = _FILTER2D_FNS[name](image, torch.full((1, 3, 3), 1 / 9, device=device, dtype=dtype), "constant")
-        # the interior of a box-filtered constant image is 100 in floating point
-        assert out[..., 2, 3].flatten()[0].item() == 0
+
+        def run(x):
+            if name == "filter2d_separable":
+                third = torch.full((1, 3), 1 / 3, device=device, dtype=dtype)
+                return filter2d_separable(x, third, third, "constant")
+            if name == "filter3d":
+                return filter3d(x, torch.full((1, 3, 3, 3), 1 / 27, device=device, dtype=dtype), "constant")
+            return _FILTER2D_FNS[name](x, torch.full((1, 3, 3), 1 / 9, device=device, dtype=dtype), "constant")
+
+        out = run(image)
+        assert out.dtype == torch.float32
+        self.assert_close(out, run(image.float()), rtol=1e-4, atol=1e-4)
+        # the interior of a box-filtered constant image is 100, no longer truncated to 0; a half-precision kernel
+        # rounds its 1 / 9 taps, which moves the sum by up to 0.4
+        interior = out[0, 0, 1, 2, 3] if name == "filter3d" else out[0, 0, 2, 3]
+        self.assert_close(interior, torch.tensor(100.0, device=device), rtol=0.0, atol=0.5)
+
+    def test_convention_integer_sums_do_not_wrap_5155(self, device):
+        """A box of ones over a uint8 100 sums to 900 in float32 instead of wrapping to 132 (#5155)."""
+        image = torch.full((1, 1, 5, 7), 100, dtype=torch.uint8, device=device)
+        out = filter2d(image, torch.ones(1, 3, 3))
+        assert out.dtype == torch.float32
+        assert out[0, 0, 2, 3].item() == 900
+        out3d = filter3d(image[:, :, None].expand(-1, -1, 3, -1, -1), torch.ones(1, 3, 3, 3))
+        assert out3d[0, 0, 1, 2, 3].item() == 2700
+        # normalized=True used to raise a dtype error on an integer input
+        self.assert_close(filter2d(image, torch.ones(1, 3, 3), normalized=True), image.float())
 
     @pytest.mark.parametrize("name", ["filter2d", "fft_conv"])
-    def test_wart_uppercase_padding_returns_the_valid_size_5156(self, name, device, dtype):
-        """padding='SAME' passes the case-insensitive check but misses the 'same' branch: valid size (#5156)."""
+    def test_convention_padding_and_behaviour_are_case_insensitive_5156(self, name, device, dtype):
+        """padding='SAME' pads as 'same' does and 'Valid' crops as 'valid', in filter2d and fft_conv (#5156)."""
         _fft_guard(name, device, dtype)
+        fn = _FILTER2D_FNS[name]
         image = _rand(1, 1, 5, 7, device=device, dtype=dtype)
         kernel = _rand(1, 3, 3, device=device, dtype=dtype, seed=1)
-        assert _FILTER2D_FNS[name](image, kernel, "constant", padding="SAME").shape == (1, 1, 3, 5)
+        same = fn(image, kernel, "constant", padding="SAME")
+        assert same.shape == (1, 1, 5, 7)
+        assert torch.equal(same, fn(image, kernel, "constant", padding="same"))
+        valid = fn(image, kernel, "constant", padding="Valid")
+        assert valid.shape == (1, 1, 3, 5)
+        assert torch.equal(valid, fn(image, kernel, "constant", padding="valid"))
+        conv = fn(image, kernel, "constant", behaviour="CONV")
+        assert torch.equal(conv, fn(image, kernel, "constant", behaviour="conv"))
+        # a spelling outside the set is still rejected by kornia, and the message keeps it as given
+        with pytest.raises(BaseError, match="Invalid padding mode, Full"):
+            fn(image, kernel, "constant", padding="Full")
 
     @pytest.mark.parametrize(
         "case",
-        ["filter2d_border_type", "fft_conv_border_type", "filter3d_border_type", "kernel2d_mode", "kernel3d_mode"],
+        [
+            "filter2d",
+            "filter2d_separable",
+            "fft_conv",
+            "filter3d",
+            "box_blur_pool",
+            "laplacian",
+            "gaussian_blur2d",
+            "kernel2d_mode",
+            "kernel3d_mode",
+            "spatial_gradient_order1",
+            "spatial_gradient_order2",
+            "spatial_gradient3d_order1",
+            "spatial_gradient3d_order2",
+        ],
     )
-    def test_wart_uppercase_border_type_or_mode_passes_validation_then_raises_5156(self, case, device, dtype):
-        """'REFLECT', 'Replicate', 'Sobel' and 'Diff' pass the case-insensitive check, then fail to dispatch (#5156)."""
-        image = _rand(1, 1, 5, 7, device=device, dtype=dtype)
+    def test_convention_border_type_and_mode_are_case_insensitive_5156(self, case, device, dtype):
+        """'REFLECT', 'Replicate', 'CIRCULAR', 'Sobel' and 'Diff' give their lower-case spelling's result (#5156).
+
+        The ``order=1`` gradients and the large ``gaussian_blur2d`` image take the fast paths, which dispatch on the
+        spelling themselves, so the upper-case call must take the same path and not fall through to the generic one.
+        """
+        _fft_guard(case, device, dtype)
+        if "gradient" in case and not supports_replicate_padding(device, dtype):
+            pytest.skip("spatial_gradient pads with mode='replicate', which this device lacks for this dtype")
+        image = _rand(1, 2, 5, 7, device=device, dtype=dtype)
+        volume = _rand(1, 1, 3, 5, 7, device=device, dtype=dtype)
         kernel = _rand(1, 3, 3, device=device, dtype=dtype, seed=1)
+        # 256x256 with 2 channels is the smallest image the CPU fast path of gaussian_blur2d accepts
+        large = _rand(1, 2, 256, 256, device=device, dtype=dtype) if case == "gaussian_blur2d" else image
         calls = {
-            "filter2d_border_type": lambda: filter2d(image, kernel, border_type="REFLECT"),
-            "fft_conv_border_type": lambda: fft_conv(image, kernel, border_type="REFLECT"),
-            "filter3d_border_type": lambda: filter3d(image[:, :, None], kernel[:, None], border_type="Replicate"),
-            "kernel2d_mode": lambda: get_spatial_gradient_kernel2d("Sobel", 1, device=device, dtype=dtype),
-            "kernel3d_mode": lambda: get_spatial_gradient_kernel3d("Diff", 1, device=device, dtype=dtype),
+            "filter2d": lambda spelling: filter2d(image, kernel, border_type=spelling),
+            "filter2d_separable": lambda spelling: filter2d_separable(image, kernel[:, 0], kernel[:, 1], spelling),
+            "fft_conv": lambda spelling: fft_conv(image, kernel, border_type=spelling),
+            "filter3d": lambda spelling: filter3d(volume, kernel[:, None].expand(-1, 3, -1, -1), spelling),
+            "box_blur_pool": lambda spelling: _box_blur_pool(image, (3, 3), spelling, True),
+            "laplacian": lambda spelling: laplacian(image, 3, border_type=spelling),
+            "gaussian_blur2d": lambda spelling: gaussian_blur2d(large, (3, 3), (1.0, 1.0), border_type=spelling),
+            "kernel2d_mode": lambda spelling: get_spatial_gradient_kernel2d(spelling, 1, device=device, dtype=dtype),
+            "kernel3d_mode": lambda spelling: get_spatial_gradient_kernel3d(spelling, 2, device=device, dtype=dtype),
+            "spatial_gradient_order1": lambda spelling: spatial_gradient(image, mode=spelling, order=1),
+            "spatial_gradient_order2": lambda spelling: spatial_gradient(image, mode=spelling, order=2),
+            "spatial_gradient3d_order1": lambda spelling: spatial_gradient3d(volume, mode=spelling, order=1),
+            "spatial_gradient3d_order2": lambda spelling: spatial_gradient3d(volume, mode=spelling, order=2),
         }
-        # the error comes from past the check (torch's F.pad or the kernel dispatch), not from kornia's validation
-        with pytest.raises(Exception) as error:
-            calls[case]()
-        assert not isinstance(error.value, BaseError)
+        spellings = {
+            "kernel2d_mode": [("Sobel", "sobel"), ("DIFF", "diff")],
+            "kernel3d_mode": [("Diff", "diff")],
+            "spatial_gradient_order1": [("Sobel", "sobel"), ("DIFF", "diff")],
+            "spatial_gradient_order2": [("Sobel", "sobel"), ("DIFF", "diff")],
+            "spatial_gradient3d_order1": [("Diff", "diff")],
+            "spatial_gradient3d_order2": [("Diff", "diff")],
+        }.get(case, [("REFLECT", "reflect"), ("Replicate", "replicate"), ("CIRCULAR", "circular")])
+        for upper, lower in spellings:
+            if lower == "reflect" and not supports_reflect_padding(device, dtype):
+                continue
+            assert torch.equal(calls[case](upper), calls[case](lower))
+        if case == "spatial_gradient3d_order1":
+            # the slicing fast path differences a +-60000 step to inf in float16 while conv3d accumulates it to 60000,
+            # so the two spellings only agree when both take the same path
+            step = torch.full_like(volume, -60000.0)
+            step[..., 4:] = 60000.0
+            assert torch.equal(spatial_gradient3d(step, mode="Diff"), spatial_gradient3d(step, mode="diff"))
+        # a spelling outside the set is still rejected by kornia, and the message keeps it as given
+        bad = "Scharr" if "mode" in case or "gradient" in case else "Mirror"
+        with pytest.raises(BaseError, match=bad):
+            calls[case](bad)
+
+    def test_convention_filter3d_behaviour_is_case_insensitive_5156(self, device, dtype):
+        """filter3d(behaviour='CONV') flips the kernel as 'conv' does, and 'Corr' correlates as 'corr' does (#5156)."""
+        volume = _rand(1, 2, 3, 5, 7, device=device, dtype=dtype)
+        kernel = _rand(1, 3, 3, 3, device=device, dtype=dtype, seed=1)
+        conv = filter3d(volume, kernel, behaviour="conv")
+        corr = filter3d(volume, kernel, behaviour="corr")
+        assert not torch.equal(conv, corr)
+        assert torch.equal(filter3d(volume, kernel, behaviour="CONV"), conv)
+        assert torch.equal(filter3d(volume, kernel, behaviour="Corr"), corr)
 
     @pytest.mark.parametrize("behaviour", ["corr", "conv"])
     def test_convention_filter3d_normalized_accepts_a_non_contiguous_kernel_5159(self, behaviour, device, dtype):
@@ -1912,6 +2016,13 @@ def _grid(*sizes: int, centre: tuple[int, ...], device, dtype) -> tuple[torch.Te
     """Integer coordinate grids (ij order) shifted so that ``centre`` is the origin."""
     axes = [torch.arange(n) - c for n, c in zip(sizes, centre)]
     return tuple(g.to(device=device, dtype=dtype) for g in torch.meshgrid(*axes, indexing="ij"))
+
+
+def _erf_kernel_reference(size: int, sigma: float) -> torch.Tensor:
+    """The Gaussian integrated over each of ``size`` unit pixels centred on ``(size - 1) / 2``, in float64."""
+    offsets = torch.arange(size, dtype=torch.float64) - (size - 1) / 2
+    weights = torch.special.ndtr((offsets + 0.5) / sigma) - torch.special.ndtr((offsets - 0.5) / sigma)
+    return (weights / weights.sum())[None]
 
 
 def _correlate_at(kernel: torch.Tensor, field: torch.Tensor, centre: tuple[int, ...]) -> torch.Tensor:
@@ -2180,18 +2291,124 @@ class TestConventionsKernels(BaseTester):
         expected[3, 1, 2] = 1 / 2
         self.assert_close(kernel((90.0, 90.0, 0.0)), expected)
 
-    def test_wart_gaussian_discrete_kernel1d_tap_count_is_not_kernel_size_5158(self, device, dtype):
-        """get_gaussian_discrete_kernel1d gives 3 taps for kernel_size=1 and k + 1 for an even force_even k (#5158)."""
-        assert get_gaussian_discrete_kernel1d(1, 1.0, device=device, dtype=dtype).shape == (1, 3)
-        even = get_gaussian_discrete_kernel1d(4, 1.0, force_even=True, device=device, dtype=dtype)
-        assert even.shape == (1, 5)
+    @pytest.mark.parametrize("kernel_size", [3, 5, 7])
+    def test_convention_motion_kernel3d_tie_goes_half_to_even_5510(self, kernel_size, device, dtype):
+        """A source between two taps is an exact tie, broken half to even as grid_sample does (#5510)."""
+        # cos and sin of the multiples of 30 degrees as a + b * sqrt(3), with exact fractions
+        half, root = Fraction(1, 2), (Fraction(0), Fraction(1, 2))
+        cos_sin = {
+            30: (root, (half, 0)),
+            60: ((half, 0), root),
+            120: ((-half, 0), root),
+            150: ((0, -root[1]), (half, 0)),
+        }
+        cos_sin.update({a + 180: ((-c[0], -c[1]), (-s[0], -s[1])) for a, (c, s) in list(cos_sin.items())})
+        center, line = kernel_size // 2, [0.85 - 0.7 * col / (kernel_size - 1) for col in range(kernel_size)]
 
-    def test_wart_gaussian_erf_kernel1d_even_kernel_peaks_at_k_half_5158(self, device, dtype):
-        """get_gaussian_erf_kernel1d(force_even=True) samples about k // 2, so an even kernel is off-centre (#5158)."""
-        kernel = get_gaussian_erf_kernel1d(4, 1.0, force_even=True, device=device, dtype=dtype)[0]
-        # the sampled get_gaussian_kernel1d with the same arguments is symmetric about (k - 1) / 2 = 1.5
-        assert int(kernel.float().argmax()) == 2
-        assert kernel[2] > kernel[1]
+        def nearest(a, b):
+            # the absolute source coordinate center + a + b * sqrt(3): exact ties only when b == 0
+            return round(center + a) if b == 0 else round(center + float(a) + float(b) * 3**0.5)
+
+        for axis in (1, 2):
+            for angle, ((ca, cb), (sa, sb)) in sorted(cos_sin.items()):
+                expected = torch.zeros(kernel_size, kernel_size, kernel_size, dtype=torch.float64)
+                for z in range(kernel_size):
+                    for y in range(kernel_size):
+                        for x in range(kernel_size):
+                            u, v, w = x - center, y - center, z - center
+                            # the source of a voxel is R^T (p - c) + c: a pitch turns the x-z plane, a roll the x-y
+                            if axis == 1:
+                                col, row, slab = (
+                                    nearest(ca * u - sa * w, cb * u - sb * w),
+                                    y,
+                                    nearest(sa * u + ca * w, sb * u + cb * w),
+                                )
+                            else:
+                                col, row, slab = (
+                                    nearest(ca * u + sa * v, cb * u + sb * v),
+                                    nearest(-sa * u + ca * v, -sb * u + cb * v),
+                                    z,
+                                )
+                            if row == center and slab == center and 0 <= col < kernel_size:
+                                expected[z, y, x] = line[col]
+                vector = [0.0, 0.0, 0.0]
+                vector[axis] = float(angle)
+                kernel = get_motion_kernel3d(kernel_size, torch.tensor([vector], device=device, dtype=dtype), 0.7)
+                self.assert_close(kernel[0].cpu().double(), expected / expected.sum(), rtol=0, atol=1e-2)
+
+    def test_convention_motion_kernel3d_same_taps_for_every_dtype_5510(self, device, dtype):
+        """Every dtype and device picks the taps of the float64 CPU kernel, at the tie angles too (#5510)."""
+        values = torch.tensor([0.0, 30.0, 45.0, 60.0, 90.0, 120.0, 150.0, 210.0, 240.0, 300.0], dtype=torch.float64)
+        angles = torch.stack(torch.meshgrid(values, values, values, indexing="ij"), -1).reshape(-1, 3)
+        direction = torch.full((angles.shape[0],), 0.3, dtype=torch.float64)
+        reference = get_motion_kernel3d(5, angles, direction)
+        kernel = get_motion_kernel3d(5, angles.to(device=device, dtype=dtype), direction.to(device=device, dtype=dtype))
+        self.assert_close(kernel.cpu().double(), reference, rtol=0, atol=1e-2)
+
+    def test_motion_kernel3d_nearest_angle_gradient_is_zero(self, device, dtype):
+        """Nearest sampling keeps the angle in the graph with a zero gradient, as grid_sample gives."""
+        angle = torch.tensor([[0.0, 30.0, 0.0], [10.0, 20.0, 37.0]], device=device, dtype=dtype, requires_grad=True)
+        get_motion_kernel3d(5, angle, torch.tensor([0.3, -0.3], device=device, dtype=dtype)).sum().backward()
+        self.assert_close(angle.grad, torch.zeros_like(angle))
+
+    @pytest.mark.parametrize("kernel_size", [3, 5, 7])
+    def test_convention_motion_kernel3d_nearest_next_to_a_tie_is_rotate3d_5510(self, kernel_size, device, dtype):
+        """1e-4 degrees from a tie, the taps are rotate3d()'s: only an exact tie is snapped (#5510)."""
+        from kornia.geometry.transform import rotate3d
+
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("an angle 1e-4 degrees from a tie is not representable in half precision")
+        ties = torch.tensor([30.0, 60.0, 120.0, 150.0, 210.0, 240.0, 300.0, 330.0], dtype=torch.float64)
+        near = torch.cat([ties - 1e-4, ties + 1e-4])
+        zero = torch.zeros_like(near)
+        # a pitch alone and a roll alone, where the ties are
+        angle = torch.cat([torch.stack([zero, near, zero], -1), torch.stack([zero, zero, near], -1)])
+        angle = angle.to(device=device, dtype=dtype)
+        # 1e-4 degrees moves a source more than 1e-6 px off the half: rotate3d() in float64 resolves it, and so must
+        # the snap, which only merges sources closer than 2**-21 (4.8e-7) px to a tie
+        center = kernel_size // 2
+        line = torch.zeros(angle.shape[0], 1, kernel_size, kernel_size, kernel_size, dtype=torch.float64)
+        line[:, 0, center, center] = torch.linspace(0.65, 0.35, kernel_size, dtype=torch.float64)
+        expected = rotate3d(line, *angle.cpu().double().unbind(-1), mode="nearest", align_corners=True)[:, 0]
+        kernel = get_motion_kernel3d(kernel_size, angle, torch.full((angle.shape[0],), 0.3, device=device, dtype=dtype))
+        self.assert_close(kernel.cpu().double(), expected / expected.sum((1, 2, 3), keepdim=True), rtol=0, atol=1e-5)
+
+    def test_convention_gaussian_discrete_kernel1d_has_kernel_size_taps_5158(self, device, dtype):
+        """get_gaussian_discrete_kernel1d gives kernel_size taps, [1.0] for size 1, and rejects an even size (#5158)."""
+        self.assert_close(
+            get_gaussian_discrete_kernel1d(1, 1.0, device=device, dtype=dtype),
+            torch.ones(1, 1, device=device, dtype=dtype),
+        )
+        sigma = torch.tensor([[0.0], [1.5], [20.0]], device=device, dtype=dtype)
+        self.assert_close(get_gaussian_discrete_kernel1d(1, sigma), torch.ones(3, 1, device=device, dtype=dtype))
+        for size in (3, 5, 7):
+            assert get_gaussian_discrete_kernel1d(size, 1.0, device=device, dtype=dtype).shape == (1, size)
+        # force_even changes nothing for an odd size and does not admit an even one: the discrete Gaussian is
+        # defined at integer offsets from the centre tap, so there is no even window
+        odd = get_gaussian_discrete_kernel1d(5, 1.0, device=device, dtype=dtype)
+        assert torch.equal(get_gaussian_discrete_kernel1d(5, 1.0, force_even=True, device=device, dtype=dtype), odd)
+        for size in (2, 4, 6):
+            with pytest.raises(BaseError, match=f"needs an odd window. Got {size}"):
+                get_gaussian_discrete_kernel1d(size, 1.0, force_even=True, device=device, dtype=dtype)
+
+    def test_convention_gaussian_erf_kernel1d_even_kernel_is_symmetric_5158(self, device, dtype):
+        """get_gaussian_erf_kernel1d(force_even=True) centres an even kernel on the middle of the window (#5158)."""
+        for size in (2, 4, 6):
+            kernel = get_gaussian_erf_kernel1d(size, 1.0, force_even=True, device=device, dtype=dtype)
+            assert kernel.shape == (1, size)
+            self.assert_close(kernel, kernel.flip(-1))
+            # the two middle taps weigh the same and the most, as in the sampled kernel of the same size
+            self.assert_close(kernel[0, size // 2 - 1], kernel[0, size // 2])
+            assert int(kernel[0].float().argmax()) in (size // 2 - 1, size // 2)
+        # the pixel-integrated Gaussian about (size - 1) / 2
+        for size, sigma in ((4, 0.7), (6, 1.0), (8, 2.5)):
+            kernel = get_gaussian_erf_kernel1d(size, sigma, force_even=True, device=device, dtype=dtype)
+            self.assert_close(kernel, _erf_kernel_reference(size, sigma).to(device=device, dtype=dtype))
+        # an odd size is centred on its middle tap as before
+        self.assert_close(
+            get_gaussian_erf_kernel1d(5, 1.5, device=device, dtype=dtype),
+            _erf_kernel_reference(5, 1.5).to(device=device, dtype=dtype),
+        )
 
     @pytest.mark.parametrize(
         "sigma, expected",
@@ -2223,55 +2440,197 @@ class TestConventionsKernels(BaseTester):
     @pytest.mark.parametrize(
         "builder", [get_gaussian_kernel1d, get_gaussian_erf_kernel1d, get_gaussian_discrete_kernel1d]
     )
-    def test_wart_gaussian_kernel1d_rejects_a_python_int_sigma_5157(self, builder, device, dtype):
-        """The 1d Gaussian builders raise for sigma=1, where the 2d builder accepts sigma=(1, 1) (#5157)."""
-        with pytest.raises((BaseError, AttributeError)):
-            builder(5, 1, device=device, dtype=dtype)
-        assert builder(5, 1.0, device=device, dtype=dtype).shape == (1, 5)
+    def test_convention_gaussian_kernel1d_accepts_a_python_int_sigma_5157(self, builder, device, dtype):
+        """The 1d Gaussian builders accept integer sigma just like the 2d builder (#5157)."""
+        actual = builder(5, 1, device=device, dtype=dtype)
+        expected = builder(5, 1.0, device=device, dtype=dtype)
+        assert actual.shape == (1, 5)
+        self.assert_close(actual, expected)
         assert get_gaussian_kernel2d((5, 5), (1, 1), device=device, dtype=dtype).shape == (1, 5, 5)
 
-    @pytest.mark.parametrize("case", ["box_int32", "gaussian_uint8", "laplacian_uint8", "gradient3d_int32"])
-    def test_wart_kernel_builders_truncate_or_wrap_in_an_integer_dtype_5155(self, case, device):
-        """An integer dtype truncates fractional taps to 0, and uint8 wraps the negative ones (#5155)."""
-        if case == "box_int32":
-            assert bool((get_box_kernel1d(3, device=device, dtype=torch.int32) == 0).all())
-        elif case == "gaussian_uint8":
-            # the offsets -2 and -1 wrap to 254 and 255, so the taps before the centre vanish
-            kernel = get_gaussian_kernel1d(5, 1.5, device=device, dtype=torch.uint8)[0]
-            assert kernel[:2].tolist() == [0, 0]
-            assert bool((kernel[2:] > 0).all())
-        elif case == "laplacian_uint8":
-            assert get_laplacian_kernel1d(5, device=device, dtype=torch.uint8).tolist() == [1, 1, 252, 1, 1]
-        else:
-            # the first-order taps are +-0.5
-            assert bool((get_spatial_gradient_kernel3d("diff", 1, device=device, dtype=torch.int32) == 0).all())
+    @pytest.mark.parametrize(
+        ("build", "message"),
+        [
+            (lambda: get_gaussian_kernel1d(4, 1.0), "Got 4 on (4,)"),
+            (lambda: get_motion_kernel2d(1, 0.0), "Got 1 on (1,)"),
+        ],
+        ids=["kernel_size", "motion_kernel_size"],
+    )
+    def test_a_bad_kernel_size_message_reads_got(self, build, message):
+        """The size checks said "Gotcha" for "Got" (#5157)."""
+        with pytest.raises(BaseError) as errinfo:
+            build()
+        assert message in str(errinfo.value)
+        assert "Gotcha" not in str(errinfo.value)
 
-    def test_wart_motion_kernel2d_nearest_ties_change_with_a_full_turn_5181(self):
-        """At a sampling-tie angle roundoff picks the tap: 30 and -330 degrees build other kernels (#5181)."""
+    @pytest.mark.parametrize("int_dtype", [torch.uint8, torch.int8, torch.int32, torch.int64, torch.bool])
+    @pytest.mark.parametrize(
+        "build",
+        [
+            lambda device, dtype: get_box_kernel1d(3, device=device, dtype=dtype),
+            lambda device, dtype: get_box_kernel2d((3, 5), device=device, dtype=dtype),
+            lambda device, dtype: get_gaussian_kernel1d(5, 1.5, device=device, dtype=dtype),
+            lambda device, dtype: get_gaussian_kernel1d(5, 2, device=device, dtype=dtype),
+            lambda device, dtype: get_gaussian_erf_kernel1d(5, 1.5, device=device, dtype=dtype),
+            lambda device, dtype: get_gaussian_discrete_kernel1d(5, 1.5, device=device, dtype=dtype),
+            lambda device, dtype: get_gaussian_kernel2d((5, 3), (1.5, 1.0), device=device, dtype=dtype),
+            lambda device, dtype: get_gaussian_kernel3d((3, 3, 3), (1.5, 1.5, 1.5), device=device, dtype=dtype),
+            lambda device, dtype: get_spatial_gradient_kernel3d("diff", 1, device=device, dtype=dtype),
+            lambda device, dtype: get_spatial_gradient_kernel3d("diff", 2, device=device, dtype=dtype),
+        ],
+        ids=[
+            "box1d",
+            "box2d",
+            "gaussian1d",
+            "gaussian1d_int_sigma",
+            "erf1d",
+            "discrete1d",
+            "gaussian2d",
+            "gaussian3d",
+            "gradient3d_order1",
+            "gradient3d_order2",
+        ],
+    )
+    def test_convention_fractional_kernel_builders_reject_an_integer_dtype_5155(self, build, int_dtype, device):
+        """A kernel with fractional taps raises for an integer or bool dtype instead of truncating them (#5155)."""
+        with pytest.raises(BaseError, match="fractional taps"):
+            build(device, int_dtype)
+
+    @pytest.mark.parametrize("sigma_dtype", [torch.int64, torch.uint8])
+    @pytest.mark.parametrize(
+        "build", [get_gaussian_kernel1d, get_gaussian_erf_kernel1d, get_gaussian_discrete_kernel1d]
+    )
+    def test_convention_gaussian_of_an_integer_sigma_tensor_is_floating_5155(self, build, sigma_dtype, device):
+        """An integer sigma tensor gives the floating kernel of its float value, not taps truncated to 0 (#5155)."""
+        # in uint8 the offsets below the centre and 20 * 20 would wrap
+        actual = build(5, torch.tensor([[20]], device=device, dtype=sigma_dtype))
+        assert actual.dtype == torch.get_default_dtype()
+        self.assert_close(actual, build(5, torch.tensor([[20.0]], device=device)))
+
+    @pytest.mark.parametrize("build", [get_gaussian_kernel1d, get_gaussian_discrete_kernel1d])
+    def test_gaussian_of_a_complex_sigma_tensor_is_not_cast_to_real(self, build):
+        # only an integer sigma is promoted to floating point; a complex one must not lose its imaginary part
+        with pytest.raises(RuntimeError, match="not implemented for 'ComplexFloat'"):
+            build(5, torch.tensor([[1.0 + 1.0j]]))
+
+    @pytest.mark.parametrize(
+        ("kernel_size", "int_dtype"),
+        [
+            (3, torch.int8),
+            (5, torch.int16),
+            (129, torch.int8),
+            ((11, 11), torch.int8),
+            ((3, 43), torch.int8),
+            ((13, 13), torch.int16),
+            ((3, 5), torch.int32),
+            (7, torch.int64),
+        ],
+    )
+    def test_convention_laplacian_kernel_in_a_signed_integer_dtype_that_holds_it_is_exact_5155(
+        self, kernel_size, int_dtype, device
+    ):
+        """A signed integer dtype wide enough for the centre tap gives the floating kernel's integers (#5155)."""
+        build = get_laplacian_kernel1d if isinstance(kernel_size, int) else get_laplacian_kernel2d
+        actual = build(kernel_size, device=device, dtype=int_dtype)
+        assert actual.dtype == int_dtype
+        # float32 holds every tap here exactly, and unlike float64 it runs on MPS.
+        expected = build(kernel_size, device=device, dtype=torch.float32)
+        assert torch.equal(actual.to(torch.float32), expected)
+
+    @pytest.mark.parametrize(
+        ("kernel_size", "int_dtype"),
+        [(3, torch.uint8), (5, torch.bool), (131, torch.int8), ((3, 3), torch.uint8), ((13, 13), torch.int8)],
+    )
+    def test_convention_laplacian_kernel_rejects_a_dtype_that_cannot_hold_it_5155(self, kernel_size, int_dtype, device):
+        """uint8 and bool cannot hold the negative centre, nor int8 one below -128, so they raise (#5155)."""
+        build = get_laplacian_kernel1d if isinstance(kernel_size, int) else get_laplacian_kernel2d
+        with pytest.raises(BaseError, match="cannot hold"):
+            build(kernel_size, device=device, dtype=int_dtype)
+
+    @pytest.mark.parametrize("kernel_size", [5, 7])
+    def test_convention_motion_kernel2d_nearest_ties_ignore_a_full_turn_5181(self, kernel_size):
+        """At a sampling-tie angle the tap is picked from the angle modulo 360: 30 and -330 degrees agree (#5181)."""
         # a float angle builds the kernel on the CPU in float32, whatever the test device
-        difference = get_motion_kernel2d(5, 30.0, 1.0) - get_motion_kernel2d(5, -330.0, 1.0)
-        assert float(difference.abs().max()) > 0.1
-
-    def test_wart_motion_kernel2d_on_mps_differs_from_cpu_for_some_angles_5181(self, device, dtype):
-        """A tensor angle builds get_motion_kernel2d on its own device, and MPS gives other kernels (#5181)."""
-        if device.type != "mps":
-            pytest.skip("#5181 compares the kernel built on MPS with the one built on the CPU")
-        _kernel_guard("get_motion_kernel2d", torch.device("cpu"), dtype)
-        # every whole degree, including 120 and 210
-        angles = torch.arange(0.0, 360.0, 1.0, dtype=dtype)
+        self.assert_close(get_motion_kernel2d(5, 30.0, 1.0), get_motion_kernel2d(5, -330.0, 1.0), rtol=0, atol=0)
+        # every whole degree, which includes the ties at 60, 120, 210, 240 and 300 degrees
+        angles = torch.arange(0.0, 360.0, 1.0)
         directions = torch.full_like(angles, 0.3)
-        on_cpu = get_motion_kernel2d(7, angles, directions)
-        on_mps = get_motion_kernel2d(7, angles.to(device), directions.to(device)).cpu()
-        # a sampling tie rounded the other way moves a tap weight (about 0.18), far beyond half-precision roundoff
-        differing = (on_mps.float() - on_cpu.float()).abs().flatten(1).amax(1) > 0.05
-        if not bool(differing.any()):
-            pytest.skip("this MPS backend rounds the sampling ties like the CPU (#5181)")
-        # a Python-float angle builds the kernel on the CPU in float32, equal to the CPU tensor-angle kernel
-        on_cpu_f32 = get_motion_kernel2d(7, angles.float(), directions.float())
-        for index in differing.nonzero().flatten().tolist():
-            from_float = get_motion_kernel2d(7, float(angles[index]), float(directions[index]))
-            assert from_float.device.type == "cpu"
-            self.assert_close(from_float[0], on_cpu_f32[index])
+        for turns in (-2, -1, 1):
+            self.assert_close(
+                get_motion_kernel2d(kernel_size, angles + 360.0 * turns, directions),
+                get_motion_kernel2d(kernel_size, angles, directions),
+                rtol=0,
+                atol=0,
+            )
+
+    @pytest.mark.parametrize("kernel_size", [3, 5, 7])
+    def test_convention_motion_kernel2d_tie_goes_half_to_even_5181(self, kernel_size, device, dtype):
+        """A source between two taps is an exact tie, broken half to even as grid_sample does (#5181)."""
+        _kernel_guard("get_motion_kernel2d", device, dtype)
+        # cos and sin of the multiples of 30 degrees as a + b * sqrt(3), with exact fractions
+        half, root = Fraction(1, 2), (Fraction(0), Fraction(1, 2))
+        cos_sin = {
+            30: (root, (half, 0)),
+            60: ((half, 0), root),
+            120: ((-half, 0), root),
+            150: ((0, -root[1]), (half, 0)),
+        }
+        cos_sin.update({a + 180: ((-c[0], -c[1]), (-s[0], -s[1])) for a, (c, s) in list(cos_sin.items())})
+        center, line = kernel_size // 2, [0.85 - 0.7 * col / (kernel_size - 1) for col in range(kernel_size)]
+
+        def nearest(a, b):
+            # the absolute source coordinate center + a + b * sqrt(3): exact ties only when b == 0
+            return round(center + a) if b == 0 else round(center + float(a) + float(b) * 3**0.5)
+
+        for angle, ((ca, cb), (sa, sb)) in sorted(cos_sin.items()):
+            expected = torch.zeros(kernel_size, kernel_size, dtype=torch.float64)
+            for y in range(kernel_size):
+                for x in range(kernel_size):
+                    u, v = x - center, y - center
+                    col = nearest(ca * u - sa * v, cb * u - sb * v)
+                    row = nearest(sa * u + ca * v, sb * u + cb * v)
+                    if row == center and 0 <= col < kernel_size:
+                        expected[y, x] = line[col]
+            kernel = get_motion_kernel2d(kernel_size, torch.tensor([float(angle)], device=device, dtype=dtype), 0.7)
+            self.assert_close(kernel[0].cpu().double(), expected / expected.sum(), rtol=0, atol=1e-2)
+
+    def test_motion_kernel2d_nearest_angle_gradient_is_zero(self, device, dtype):
+        """Nearest sampling keeps the angle in the graph with a zero gradient, as grid_sample gives."""
+        _kernel_guard("get_motion_kernel2d", device, dtype)
+        angle = torch.tensor([30.0, 37.0], device=device, dtype=dtype, requires_grad=True)
+        get_motion_kernel2d(5, angle, torch.tensor([0.3, -0.3], device=device, dtype=dtype)).sum().backward()
+        self.assert_close(angle.grad, torch.zeros_like(angle))
+
+    @pytest.mark.parametrize("kernel_size", [3, 5, 7])
+    def test_convention_motion_kernel2d_nearest_next_to_a_tie_is_rotate_5181(self, kernel_size, device, dtype):
+        """1e-4 degrees from a tie, the taps are rotate()'s: only an exact tie is snapped (#5181)."""
+        from kornia.geometry.transform import rotate
+
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("an angle 1e-4 degrees from a tie is not representable in half precision")
+        ties = torch.tensor([30.0, 60.0, 120.0, 150.0, 210.0, 240.0, 300.0, 330.0], dtype=torch.float64)
+        angle = torch.cat([ties - 1e-4, ties + 1e-4]).to(device=device, dtype=dtype)
+        # 1e-4 degrees moves a source more than 1e-6 px off the half: rotate() in float64 resolves it, and so must
+        # the snap, which only merges sources closer than 2**-21 (4.8e-7) px to a tie
+        line = torch.zeros(angle.shape[0], 1, kernel_size, kernel_size, dtype=torch.float64)
+        line[:, 0, kernel_size // 2] = torch.linspace(0.65, 0.35, kernel_size, dtype=torch.float64)
+        expected = rotate(line, angle.cpu().double(), mode="nearest", align_corners=True)[:, 0]
+        kernel = get_motion_kernel2d(kernel_size, angle, torch.full_like(angle, 0.3))
+        self.assert_close(kernel.cpu().double(), expected / expected.sum((1, 2), keepdim=True), rtol=0, atol=1e-5)
+
+    def test_convention_motion_kernel2d_same_taps_for_every_device_and_dtype_5181(self, device, dtype):
+        """A tensor angle on any device and in any dtype picks the taps of the float64 CPU kernel (#5181)."""
+        _kernel_guard("get_motion_kernel2d", device, dtype)
+        # every whole degree, which includes the ties at 120, 150, 210 and 300 degrees; the reference takes the
+        # angles as this dtype holds them (bfloat16 rounds the degrees above 256)
+        angles = torch.arange(0.0, 360.0, 1.0, device=device, dtype=dtype)
+        directions = torch.full_like(angles, 0.3)
+        reference = get_motion_kernel2d(7, angles.cpu().double(), directions.cpu().double())
+        kernel = get_motion_kernel2d(7, angles, directions)
+        assert kernel.device == device
+        assert kernel.dtype == dtype
+        # a tie broken the other way moves a tap weight by about 0.18, far beyond half-precision roundoff
+        self.assert_close(kernel.cpu().double(), reference, rtol=0, atol=1e-2)
 
     @pytest.mark.parametrize("ndim", [1, 2])
     def test_convention_box_kernel_is_a_contiguous_tensor_5160(self, ndim, device, dtype):

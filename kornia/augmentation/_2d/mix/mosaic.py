@@ -82,8 +82,8 @@ class RandomMosaic(MixAugmentationBaseV2):
         - ``output_size`` and the default output shape are ordered ``(height, width)``. With ``output_size=None``
           the output preserves the input's ``(H, W)`` even when they differ, in both ``cropping_mode="slice"`` and
           ``cropping_mode="resample"``. ``start_ratio_range`` draws a pair used as ``(x / W, y / H)`` for the crop's
-          top-left corner. These are the repaired axis conventions from
-          `#4438 <https://github.com/kornia/kornia/issues/4438>`_.
+          top-left corner, which is floored to a whole pixel that both cropping modes and the boxes share. These are
+          the repaired axis conventions from `#4438 <https://github.com/kornia/kornia/issues/4438>`_.
         - ``p`` is per sample and this class fixes ``same_on_batch=False``. It composes ``mosaic_grid[0]`` tiles
           along width and ``mosaic_grid[1]`` tiles along height, then crops each result. It supports
           ``"bbox"``, ``"bbox_xyxy"``, and ``"bbox_xywh"`` in addition to image inputs; it does not support
@@ -103,11 +103,8 @@ class RandomMosaic(MixAugmentationBaseV2):
           unselected sample's tensor is its own boxes unchanged, with no padding rows. A selected sample's tensor
           holds the boxes of each tile's source image, with no padding rows.
         - In either form, a selected sample's box that falls below ``min_bbox_size`` is zeroed by
-          :meth:`~kornia.geometry.boxes.Boxes.filter_boxes_by_area`. A direct call exports it as ``[0, 0, 1, 1]``
-          in ``"bbox_xyxy"`` and ``"bbox_xywh"``, not as zero-area padding
-          (`#4714 <https://github.com/kornia/kornia/issues/4714>`_); inside
-          :class:`~kornia.augmentation.container.AugmentationSequential` it is ``[0, 0, 1, 1]`` in ``"bbox_xywh"``
-          and ``[0, 0, 0, 0]`` in ``"bbox_xyxy"``.
+          :meth:`~kornia.geometry.boxes.Boxes.filter_boxes_by_area`. It exports as exact zeros in every box
+          format, from a direct call and from :class:`~kornia.augmentation.container.AugmentationSequential`.
 
     """
 
@@ -171,7 +168,7 @@ class RandomMosaic(MixAugmentationBaseV2):
                 _offset[idx, 1] = batch_shapes_idx[:, -2] * j - src_box_idx[:, 0, 1]
                 _box = input.clone()
                 _idx = i * flags["mosaic_grid"][1] + j
-                _box._data[params["permutation"][:, 0]] = _box._data[params["permutation"][:, _idx]]
+                _box[params["permutation"][:, 0]] = input[params["permutation"][:, _idx]]
                 if input._N is not None:
                     # A list input pads each sample to the longest one; the tile keeps its source's padding count.
                     _box._N = list(input._N)
@@ -190,6 +187,7 @@ class RandomMosaic(MixAugmentationBaseV2):
             # An unselected sample keeps its own boxes unchanged, followed by padding up to the mosaic box count.
             # The padding is recorded in ``_N`` and exported as all-zero (zero-area) rows.
             out_boxes._data[~to_apply, :num_boxes] = input._data[~to_apply]
+            out_boxes._valid[~to_apply, :num_boxes] = input._valid[~to_apply]
             out_boxes._data[~to_apply, num_boxes:] = 0.0
             padding = out_boxes._data.shape[1] - num_boxes
             merged_padding = out_boxes._N if out_boxes._N is not None else [0] * len(to_apply)
@@ -240,7 +238,7 @@ class RandomMosaic(MixAugmentationBaseV2):
         flags = self.flags if flags is None else flags
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
             if not isinstance(transform, torch.Tensor):
-                raise TypeError(f"Expected the transform to be a torch.Tensor. Gotcha {type(transform)}")
+                raise TypeError(f"Expected the transform to be a torch.Tensor. Got {type(transform)}")
 
             # Fit the arg to F.F.pad
             if flags["padding_mode"] == "constant":

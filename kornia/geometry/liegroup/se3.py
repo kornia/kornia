@@ -45,17 +45,16 @@ class Se3(nn.Module):
           (:ref:`Rotations and rigid motions <rotation-conventions>` maps it onto Sophus and GTSAM): ``exp`` rotates by
           ``So3.exp(omega)`` and translates by :math:`V(\omega) \upsilon`, ``hat`` is
           :math:`[[\hat\omega, \upsilon], [0, 0]]`, and ``log`` is principal, with :math:`|\omega| \le \pi`.
-        - ``matrix()`` is the 4x4 :math:`[[R, t], [0, 1]]`. When both rotations are unit, ``a * b`` is
-          ``a.matrix() @ b.matrix()``, so ``b`` acts first, and ``g * p`` is :math:`R p + t`. ``adjoint()`` is
-          :math:`[[R, \hat t R], [0, R]]`.
+        - ``matrix()`` is the 4x4 :math:`[[R, t], [0, 1]]`. ``a * b`` is ``a.matrix() @ b.matrix()``, so ``b`` acts
+          first, and ``g * p`` is :math:`R p + t`. ``adjoint()`` is :math:`[[R, \hat t R], [0, R]]`.
         - The rotation is an :class:`~kornia.geometry.liegroup.So3`, whose storage and point-shape conventions
-          apply, including its non-unit quaternion defect (`#4942 <https://github.com/kornia/kornia/issues/4942>`_).
-          ``from_matrix`` ignores the bottom row.
+          apply: a non-unit quaternion stands for the rotation of its direction. ``from_matrix`` ignores the bottom
+          row.
         - ``t`` is always a tensor registered as module state, whichever constructor built the pose; a ``Vector3``
           passed to the constructor is unwrapped. ``g * p`` returns a ``Vector3`` only when ``p`` is one.
-        - Known defect: ``state_dict`` and ``.to()`` skip the rotation unless its quaternion is an ``nn.Parameter``, so
-          ``load_state_dict`` can restore one pose's translation next to another pose's rotation
-          (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
+        - ``state_dict()``, ``load_state_dict()`` and module device/dtype conversions include both the rotation
+          and translation. Rotation state follows :class:`~kornia.geometry.quaternion.Quaternion`'s
+          buffer/parameter convention.
 
     Example:
         >>> q = Quaternion.identity()
@@ -74,8 +73,8 @@ class Se3(nn.Module):
         Internally represented by an So3 rotation and a translation 3-vector.
 
         Args:
-            rotation: So3 group encompassing a rotation, or a Quaternion to wrap in one; it is not normalised
-                (`#4942 <https://github.com/kornia/kornia/issues/4942>`_).
+            rotation: So3 group encompassing a rotation, or a Quaternion to wrap in one; it is stored as given, and
+                a non-unit quaternion stands for the rotation of its direction.
             translation: translation torch.Tensor with the shape of :math:`(B, 3)`, or a Vector3 wrapping one; the
                 tensor is what gets stored.
 
@@ -364,7 +363,7 @@ class Se3(nn.Module):
 
         Args:
             qxyz: torch.Tensor of shape :math:`(B, 7)` laid out as ``[qw, qx, qy, qz, x, y, z]``, scalar first; the
-                quaternion is not normalised (`#4942 <https://github.com/kornia/kornia/issues/4942>`_).
+                quaternion is stored as given, and a non-unit one stands for the rotation of its direction.
 
         Example:
             >>> qxyz = torch.tensor([0., 0., 0., 1., 0., 0., 1.])

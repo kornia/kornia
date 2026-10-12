@@ -218,7 +218,7 @@ class ZCAWhitening(nn.Module):
             raise RuntimeError("Did not compute inverse ZCA. Please set compute_inv to True")
 
         if self.transform_inv is None:
-            raise TypeError("The transform inverse should be a torch.Tensor. Gotcha None.")
+            raise TypeError("The transform inverse should be a torch.Tensor. Got None.")
 
         mean_inv: torch.Tensor = -self.mean_vector.mm(self.transform_matrix)
 
@@ -232,6 +232,8 @@ def zca_mean(
 
     Convention:
         See :class:`ZCAWhitening`: dim selects samples and all other axes form features.
+        Fitting runs with autocast disabled (not under TorchScript). Float16 and bfloat16 fitting uses float32
+        arithmetic; the mean and transforms keep the input dtype.
 
     The output can be used with :func:`linear_transform`. See :class:`ZCAWhitening` for details.
 
@@ -311,18 +313,47 @@ def zca_mean(
     if N < 1:
         raise ValueError("Covariance requires at least one sample, got 0.")
 
+    if torch.jit.is_scripting():
+        # A scripted autocast block does not leave an enclosing autocast region, so none is entered here.
+        T, mean, T_inv = _zca_mean(inp_permute, num_features, unbiased, eps, return_inverse)
+    elif inp.device.type == "meta":
+        # Meta tensors have no autocast backend and carry only shape information.
+        T, mean, T_inv = _zca_mean(inp_permute, num_features, unbiased, eps, return_inverse)
+    else:
+        # Autocast would run the scatter in float16 again, for float32 inputs too, and overflow it.
+        with torch.autocast(device_type=inp.device.type, enabled=False):
+            T, mean, T_inv = _zca_mean(inp_permute, num_features, unbiased, eps, return_inverse)
+
+    dtype = inp.dtype
+    if dtype in (torch.float16, torch.bfloat16):
+        # The unnormalised scatter can overflow half precision even when the covariance and transform fit.
+        return T.to(dtype), mean.to(dtype), T_inv.to(dtype) if T_inv is not None else None
+    return T, mean, T_inv
+
+
+def _zca_mean(
+    inp_permute: torch.Tensor, num_features: int, unbiased: bool, eps: float, return_inverse: bool
+) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+    """Fit ZCA in the working dtype after validating and moving the sample axis."""
+    N = inp_permute.shape[0]
+    half_input = inp_permute.dtype in (torch.float16, torch.bfloat16)
+    if half_input:
+        inp_permute = inp_permute.float()
+
     mean: torch.Tensor = torch.mean(inp_permute, dim=0, keepdim=True)
 
     mean = mean.reshape((1, num_features))
 
     inp_center_flat: torch.Tensor = inp_permute.reshape((N, num_features)) - mean
 
+    divisor = float(N - 1 if unbiased else N)
+    if half_input:
+        # Bfloat16 shares float32's exponent range, so divide before the scatter can overflow.
+        inp_center_flat = inp_center_flat / divisor**0.5
     cov = inp_center_flat.t().mm(inp_center_flat)
 
-    if unbiased:
-        cov = cov / float(N - 1)
-    else:
-        cov = cov / float(N)
+    if not half_input:
+        cov = cov / divisor
 
     U, S, _ = _torch_svd_cast(cov)
 

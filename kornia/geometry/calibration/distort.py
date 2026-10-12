@@ -20,8 +20,6 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 
-from kornia.core.utils import is_compiling, is_exporting
-
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/distortion_model.hpp#L75
 def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool = False) -> torch.Tensor:
@@ -161,6 +159,7 @@ def distort_points(
     if dist.shape[-1] not in [4, 5, 8, 12, 14]:
         raise ValueError(f"Invalid number of distortion coefficients. Got {dist.shape[-1]}")
 
+    has_tilt = dist.shape[-1] == 14
     # Adding torch.zeros to obtain vector with 14 coeffs.
     if dist.shape[-1] < 14:
         dist = F.pad(dist, [0, 14 - dist.shape[-1]])
@@ -198,12 +197,9 @@ def distort_points(
         + dist[..., 11:12] * r4
     )
 
-    # Graph capture cannot read the coefficient values on the host. Apply the tilt unconditionally
-    # while compiling or exporting; zero angles give the identity. Keep eager and scripted behavior.
-    capture = is_exporting()
-    if not torch.jit.is_scripting():
-        capture = capture or is_compiling()
-    if capture or torch.any(dist[..., 12] != 0) or torch.any(dist[..., 13] != 0):
+    # Zero tilt is the identity but has nonzero angle derivatives. Branch on the model's
+    # coefficient count, not its values, so calibration can learn tilt from a zero initialization.
+    if has_tilt:
         tilt = tilt_projection(dist[..., 12:13], dist[..., 13:14])
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])

@@ -21,7 +21,7 @@ import torch
 from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.core.exceptions import BaseError, ValueCheckError
 from kornia.geometry.plane import Hyperplane, fit_plane
-from kornia.geometry.vector import Vector3
+from kornia.geometry.vector import Scalar, Vector3
 
 from testing.base import BaseTester
 
@@ -56,9 +56,37 @@ class TestFitPlane(BaseTester):
     def test_module(self, device, dtype):
         pass
 
-    @pytest.mark.skip(reason="not implemented yet")
     def test_gradcheck(self, device):
-        pass
+        t = torch.linspace(-1.0, 1.0, 6, device=device, dtype=torch.float64)
+        points = torch.stack([t, t**2, 0.2 * t**3], dim=-1)
+
+        def project(x):
+            return fit_plane(x).projection(Vector3(x)).data
+
+        self.gradcheck(project, (points,))
+
+    @pytest.mark.parametrize("n", [64, 256])
+    @pytest.mark.parametrize("batch", [False, True])
+    def test_backward_storage_scales_with_points(self, device, dtype, n, batch):
+        # Fitting an N-by-3 cloud must not retain an unused N-by-N singular-vector matrix.
+        t = torch.linspace(-1.0, 1.0, n, device=device, dtype=dtype)
+        points = torch.stack([t, t**2, 0.2 * t**3], dim=-1)
+        if batch:
+            points = torch.stack([points, points + 1.0])
+        points.requires_grad_()
+        saved_sizes = []
+
+        def pack(tensor):
+            saved_sizes.append(tensor.numel())
+            return tensor
+
+        with torch.autograd.graph.saved_tensors_hooks(pack, lambda tensor: tensor):
+            projection = fit_plane(points).projection(Vector3(points[..., 0, :])).data
+            projection.square().mean().backward()
+
+        assert points.grad is not None
+        assert torch.isfinite(points.grad).all()
+        assert max(saved_sizes) <= 4 * points.numel()
 
     def test_fit_plane_degenerate_raises_5041(self, device, dtype):
         # #5041: fewer than three points, collinear points or identical points used to
@@ -113,6 +141,96 @@ class TestHyperplane(BaseTester):
 
         loaded_plane = torch.load(file_path, weights_only=False)
         self.assert_close(plane.normal.unwrap(), loaded_plane.normal.unwrap())
+
+    @pytest.mark.parametrize("integer", [False, True])
+    def test_legacy_serialization(self, device, dtype, tmp_path, integer):
+        # Recreate the pre-registration object layout without calling the current constructor.
+        legacy = Hyperplane.__new__(Hyperplane)
+        torch.nn.Module.__init__(legacy)
+        coefficient_dtype = torch.int64 if integer else torch.float32
+        legacy._n = Vector3(torch.tensor([0, 0, 1], dtype=coefficient_dtype))
+        legacy._d = Scalar(torch.tensor(-2, dtype=coefficient_dtype))
+        legacy.description = "retained attribute"
+        legacy.eval()
+        path = tmp_path / "legacy_plane.pt"
+        torch.save(legacy, path)
+
+        loaded = torch.load(path, weights_only=False)
+        assert isinstance(loaded.normal.data, torch.Tensor)
+        assert isinstance(loaded.offset.data, torch.Tensor)
+        assert set(loaded.state_dict()) == {"_n", "_d"}
+        # Migrated like a freshly built plane: floating coefficients become parameters, integer ones buffers.
+        assert {name for name, _ in loaded.named_parameters()} == (set() if integer else {"_n", "_d"})
+        assert loaded.description == legacy.description
+        assert not loaded.training
+        loaded.to(device=device, dtype=dtype)
+        coefficient_dtype = torch.int64 if integer else dtype
+        assert loaded.normal.data.device == torch.device(device)
+        assert loaded.offset.data.device == torch.device(device)
+        assert loaded.normal.data.dtype == coefficient_dtype
+        assert loaded.offset.data.dtype == coefficient_dtype
+        point = Vector3(torch.tensor([4, 5, 3], device=device, dtype=coefficient_dtype))
+        assert loaded.signed_distance(point).data.item() == 1
+
+    @pytest.mark.parametrize("constructor", ["direct", "from_vector", "through", "fit_plane"])
+    def test_module_state_round_trip(self, device, dtype, tmp_path, constructor):
+        points = torch.tensor([[0.0, 0.0, 2.0], [2.0, 0.0, 2.0], [0.0, 1.0, 2.0]])
+        normal = Vector3(torch.tensor([0.0, 0.0, -1.0]))
+        if constructor == "direct":
+            plane = Hyperplane(normal, Scalar(torch.tensor(2.0)))
+        elif constructor == "from_vector":
+            plane = Hyperplane.from_vector(normal, Vector3(points[0]))
+        elif constructor == "through":
+            plane = Hyperplane.through(*points.unbind())
+        else:
+            plane = fit_plane(points)
+
+        source = torch.nn.Module()
+        source.plane = plane
+        source.to(device=device, dtype=dtype)
+        assert source.plane.normal.data.device == torch.device(device)
+        assert source.plane.normal.data.dtype == dtype
+        assert source.plane.offset.data.device == torch.device(device)
+        assert source.plane.offset.data.dtype == dtype
+
+        target = torch.nn.Module()
+        target.plane = Hyperplane(
+            Vector3(torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)),
+            Scalar(torch.tensor(-1.0, device=device, dtype=dtype)),
+        )
+        path = tmp_path / "plane_state.pt"
+        torch.save(source.state_dict(), path)
+        target.load_state_dict(torch.load(path, weights_only=True))
+        probe = Vector3(torch.tensor([[1.0, 3.0, 5.0], [2.0, 4.0, 6.0]], device=device, dtype=dtype))
+        self.assert_close(target.plane.signed_distance(probe).data, source.plane.signed_distance(probe).data)
+        self.assert_close(target.plane.projection(probe).data, source.plane.projection(probe).data)
+
+    @pytest.mark.parametrize("derived", [False, True])
+    def test_module_state_preserves_gradients(self, device, dtype, derived):
+        n = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype, requires_grad=True)
+        d = torch.tensor(2.0, device=device, dtype=dtype, requires_grad=True)
+        plane = Hyperplane(Vector3(n * 2 if derived else n), Scalar(d * 2 if derived else d))
+        point = Vector3(torch.tensor([1.0, 3.0, 5.0], device=device, dtype=dtype))
+        plane.signed_distance(point).data.backward()
+        scale = 2 if derived else 1
+        self.assert_close(n.grad, point.data * scale)
+        self.assert_close(d.grad, torch.ones_like(d) * scale)
+
+    def test_module_state_keeps_parameters(self, device, dtype):
+        normal = torch.nn.Parameter(torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype))
+        offset = torch.nn.Parameter(torch.tensor(2.0, device=device, dtype=dtype))
+        plane = Hyperplane(Vector3(normal), Scalar(offset))
+        parameters = dict(plane.named_parameters())
+        assert parameters["_n"] is normal
+        assert parameters["_d"] is offset
+
+    def test_integer_module_state(self, device):
+        plane = Hyperplane(Vector3(torch.tensor([0, 0, 1])), Scalar(torch.tensor(-2))).to(device)
+        restored = Hyperplane(Vector3(torch.tensor([1, 0, 0])), Scalar(torch.tensor(0))).to(device)
+        restored.load_state_dict(plane.state_dict())
+        assert not list(plane.parameters())
+        point = Vector3(torch.tensor([4, 5, 3], device=device))
+        assert restored.signed_distance(point).data.item() == 1
 
     @pytest.mark.parametrize("shape", [(2,), (1, 2), (3,), (1, 3)])
     def test_through_two_points_raises(self, device, dtype, shape):
@@ -279,13 +397,17 @@ class TestHyperplane(BaseTester):
         pl0 = Hyperplane.from_vector(n0, p0)
         pl1 = Hyperplane.from_vector(n1, p1)
 
+        # Each distance is a dot product of values in [0, 1) minus another, so its half-precision error reaches a few
+        # ulps of 1 (1.95e-2 in bfloat16, 3.4e-3 in float16 over 5000 seeds), above the default tolerances. There the
+        # square-root tolerances hold for every seed; float32 and float64 keep the default ones (#5583).
+        half = dtype in (torch.float16, torch.bfloat16)
         expected = torch.ones(shape or (), device=device, dtype=dtype)
-        self.assert_close(pl1.signed_distance(p1 + n1 * s0[..., None]), s0)
+        self.assert_close(pl1.signed_distance(p1 + n1 * s0[..., None]), s0, low_tolerance=half)
         assert (pl0.abs_distance(p0) < expected).all()
         projected_distance = pl1.signed_distance(pl1.projection(p0)).data
         assert projected_distance.shape == (shape or ())
-        self.assert_close(projected_distance, torch.zeros_like(projected_distance))
-        assert (pl1.abs_distance(p1 + pl1.normal * s1) < expected).all()
+        self.assert_close(projected_distance, torch.zeros_like(projected_distance), low_tolerance=half)
+        self.assert_close(pl1.abs_distance(p1 + pl1.normal * s1[..., None]), s1, low_tolerance=half)
 
     def test_projection(self, device, dtype):
         v0 = Vector3.from_coords(0.0, 0.0, 0.0, device=device, dtype=dtype)
@@ -490,19 +612,16 @@ class TestConventionsHyperplane(BaseTester):
                 plane.signed_distance(p).data / torch.linalg.vector_norm(plane.normal.data), torch.zeros_like(one)
             )
 
-    def test_wart_hyperplane_state_not_registered_4923(self, device, dtype):
-        # Hyperplane keeps its normal and offset as Vector3 / Scalar wrappers outside the module state (#4923), so
-        # state_dict() is empty and .to() leaves both in the original dtype. Registering them, as ParametrizedLine
-        # does, flips both assertions.
+    def test_convention_hyperplane_state_registered_4923(self, device, dtype):
         normal = torch.tensor([2.0, 1.0, -2.0], device=device, dtype=dtype) / 3
         e = torch.tensor([1.0, 2.0, 0.5], device=device, dtype=dtype)
         plane = Hyperplane.from_vector(Vector3(normal), Vector3(e))
-        assert list(plane.state_dict()) == []
+        assert set(plane.state_dict()) == {"_n", "_d"}
 
         other = torch.float16 if dtype == torch.float32 else torch.float32  # float64 is unavailable on MPS
         moved = plane.to(other)
-        assert moved.normal.data.dtype == dtype
-        assert moved.offset.data.dtype == dtype
+        assert moved.normal.data.dtype == other
+        assert moved.offset.data.dtype == other
 
 
 class TestConventionsFitPlane(BaseTester):

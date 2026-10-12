@@ -26,7 +26,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_autocast_enabled, is_compiling
 
-from .filter import filter2d, filter2d_separable
+from .filter import _to_floating, filter2d, filter2d_separable
 from .kernels import _unpack_2d_ks, get_box_kernel1d, get_box_kernel2d
 
 _HAS_MKLDNN = torch.backends.mkldnn.is_available()
@@ -88,6 +88,8 @@ def _box_blur_pool(
         str(border_type).lower() in {"constant", "reflect", "replicate", "circular"},
         f"Invalid border, {border_type}. Expected one of constant, reflect, replicate, circular",
     )
+    # the check is case-insensitive, so pad with the lower-case spelling as well
+    border_type = str(border_type).lower()
 
     # A one-dimensional window needs only one pass, even in separable mode.
     windows = ((1, kx), (ky, 1)) if separable and ky > 1 and kx > 1 else ((ky, kx),)
@@ -122,18 +124,22 @@ def box_blur(
             1 & 1 & 1 & \cdots & 1 & 1 \\
         \end{bmatrix}
 
+    Convention:
+        - ``kernel_size`` is ``(kH, kW)``. An even extent is anchored at ``(k - 1) // 2`` and the output keeps the
+          input's size; see the Convention block on :func:`~kornia.filters.filter2d` for the anchor and the border
+          modes.
+        - An integer or bool input is blurred in float32 and the output is float32, as in
+          :func:`~kornia.filters.filter2d`.
+
     Args:
         input: the image to blur with shape :math:`(B,C,H,W)`.
         kernel_size: the blurring kernel size.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
+          Default: ``'reflect'``.
         separable: use two one-dimensional passes (the default), reducing work
-          for larger kernels. Floating inputs use average pooling outside autocast
-          where it is faster (on CPUs with oneDNN, only for large inputs or small
-          compiled windows); complex inputs and autocast use convolution. The dense implementation
-          may differ by floating-point roundoff. Ordinary eager CPU execution
-          falls back to convolution for extreme input ranges; captured graphs
-          and function transforms retain native pooling arithmetic.
+          for larger kernels. The two implementations agree to floating-point roundoff while the sum of a window's
+          absolute values stays below the dtype's largest finite value; beyond it the result can be ``inf`` or NaN.
 
     Returns:
         the blurred torch.Tensor with shape :math:`(B,C,H,W)`.
@@ -149,6 +155,8 @@ def box_blur(
 
     """
     KORNIA_CHECK_IS_TENSOR(input)
+    # the box kernel is built in the input's dtype, where an integer dtype truncates its 1 / k taps (#5155)
+    input = _to_floating(input)
 
     if _box_blur_pool_eligible(input, kernel_size, separable):
         ky, kx = _unpack_2d_ks(kernel_size)
@@ -182,18 +190,17 @@ class BoxBlur(nn.Module):
             1 & 1 & 1 & \cdots & 1 & 1 \\
         \end{bmatrix}
 
+    Convention:
+        See the Convention block on :func:`~kornia.filters.box_blur`.
+
     Args:
         kernel_size: the blurring kernel size.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         separable: use two one-dimensional passes (the default), reducing work
-          for larger kernels. Floating inputs use average pooling outside autocast
-          where it is faster (on CPUs with oneDNN, only for large inputs or small
-          compiled windows); complex inputs and autocast use convolution. The dense implementation
-          may differ by floating-point roundoff. Ordinary eager CPU execution
-          falls back to convolution for extreme input ranges; captured graphs
-          and function transforms retain native pooling arithmetic.
+          for larger kernels. The two implementations agree to floating-point roundoff while the sum of a window's
+          absolute values stays below the dtype's largest finite value; beyond it the result can be ``inf`` or NaN.
 
     Returns:
         the blurred input torch.Tensor.

@@ -27,10 +27,13 @@ from testing.base import BaseTester
 
 
 class TestSequential:
-    @pytest.mark.parametrize("random_apply_weights", [None, [0.8, 0.9]])
-    def test_exception(self, random_apply_weights, device, dtype):
+    @pytest.mark.parametrize(
+        "random_apply_weights,match",
+        [(None, r"No parameters available for inversing"), ([0.8, 0.9], r"length of `random_apply_weights`")],
+    )
+    def test_exception(self, random_apply_weights, match, device, dtype):
         inp = torch.randn(1, 3, 30, 30, device=device, dtype=dtype)
-        with pytest.raises(Exception):  # AssertError and NotImplementedError
+        with pytest.raises(ValueError, match=match):
             K.ImageSequential(
                 K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), random_apply_weights=random_apply_weights
             ).inverse(inp)
@@ -115,9 +118,12 @@ class TestConventionImageSequential(BaseTester):
         output = aug(image, output_type=output_type)
 
         if output_type == "numpy":
-            assert output.shape == (2, 6, 8, 3) and not isinstance(output, torch.Tensor)  # channels-last (#5207)
+            # channels-last (#5207)
+            assert output.shape == (2, 6, 8, 3)
+            assert not isinstance(output, torch.Tensor)
         else:
-            assert len(output) == 2 and all(isinstance(out, PILImage.Image) for out in output)
+            assert len(output) == 2
+            assert all(isinstance(out, PILImage.Image) for out in output)
         cached = aug._output_image
         assert isinstance(cached, torch.Tensor)
         assert not cached.requires_grad
@@ -154,7 +160,8 @@ class TestConventionImageSequential(BaseTester):
         seq(image)
         current = seq.get_transformation_matrix(image, old_params)
         recomputed = seq.get_transformation_matrix(image, old_params, recompute=True)
-        assert current is not None and recomputed is not None
+        assert current is not None
+        assert recomputed is not None
         assert not torch.equal(current, recomputed)
 
     def test_convention_if_unsupported_ops_raise_raises_not_implemented(self, device, dtype):
@@ -252,10 +259,10 @@ class TestConventionImageSequential(BaseTester):
         skips = K.VideoSequential(K.RandomHorizontalFlip(p=1.0), blur, if_unsupported_ops="skip")
         out = skips(x)
         self.assert_close(skips.inverse(out), out.flip(-1))
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"if_unsupported_ops.*must be either"):
             K.VideoSequential(K.RandomHorizontalFlip(p=1.0), if_unsupported_ops="bogus")
 
     def test_convention_if_unsupported_ops_rejects_invalid_value(self):
         # #4423: construction accepts only "raise" and "skip".
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"if_unsupported_ops.*must be either"):
             K.ImageSequential(K.RandomHorizontalFlip(p=1.0), if_unsupported_ops="bogus")

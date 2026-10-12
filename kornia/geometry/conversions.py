@@ -296,7 +296,9 @@ def convert_points_to_homogeneous(points: torch.Tensor) -> torch.Tensor:
     if len(points.shape) < 2:
         raise ValueError(f"Input must be at least a 2D tensor. Got {points.shape}")
 
-    return F.pad(points, [0, 1], "constant", 1.0)
+    # Concatenate rather than ``F.pad(points, [0, 1], value=1.0)``: on MPS (seen on torch 2.5.1 and 2.14) a constant
+    # pad with a non-zero value returns garbage once the third-from-last dimension reaches 2**16.
+    return torch.cat([points, torch.ones_like(points[..., :1])], dim=-1)
 
 
 def _convert_affinematrix_to_homography_impl(A: torch.Tensor) -> torch.Tensor:
@@ -795,11 +797,10 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
           matrix by the working dtype's rounding, as long as the norm of the
           rescaled quaternion neither overflows nor falls below the
           normalisation floor ``eps = 1e-12`` (see that function's warning)
-        - :func:`~kornia.geometry.conversions.quaternion_to_axis_angle` is
-          scale-safe too;
-          :func:`~kornia.geometry.conversions.quaternion_exp_to_log` and
+        - :func:`~kornia.geometry.conversions.quaternion_to_axis_angle`,
+          :func:`~kornia.geometry.conversions.quaternion_exp_to_log`, and
           :func:`~kornia.geometry.conversions.euler_from_quaternion` are
-          **not** (see their warnings)
+          scale-safe too
         - applied on the left to a column vector, ``+theta`` about ``+z`` maps
           ``x_hat`` to ``y_hat`` (right-hand rule)
         - the output dtype follows the input at every shape
@@ -1081,7 +1082,8 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
           :func:`~kornia.geometry.conversions.quaternion_log_to_exp` takes
         - for a **unit** ``q`` on the ``w >= 0`` half of the double cover the
           result is ``quaternion_to_axis_angle(q) / 2``. On the ``w < 0`` half the two
-          part company: this function applies ``acos(w)`` as given, while
+          part company: this function keeps the sign of ``w``, with the angle
+          ``atan2(||v||, w)`` in ``[0, pi]``, while
           :func:`~kornia.geometry.conversions.quaternion_to_axis_angle`
           collapses the double cover. For the ``q`` whose log is ``v``,
           ``quaternion_exp_to_log(-q)`` is ``-(pi - ||v||) * v / ||v||``
@@ -1094,15 +1096,8 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
         - ``float16``/``bfloat16`` are computed in ``float32``, so the identity
           returns ``[0., 0., 0.]`` at every dtype, and the gradient is finite
           at ``w = +-1``, the identity included
-
-    .. warning::
-        The input is **not** normalised, so a non-unit quaternion is silently
-        given a wrong log: ``[0.5, 0.5, 0., 0.]`` returns
-        ``[1.0471975511965976, 0., 0.]``, 33 % larger than the
-        ``[0.7853981633974484, 0., 0.]`` of the same rotation normalised, and
-        ``[2., 0., 0., 0.]`` returns the origin because ``w`` is clamped to
-        ``1``. Tracked in
-        `#3953 <https://github.com/kornia/kornia/issues/3953>`_.
+        - the map is scale-invariant: a non-unit quaternion produces the same
+          log as its normalisation
 
     Args:
         quaternion: a tensor containing a quaternion to be converted.
@@ -1131,25 +1126,18 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
     quaternion_scalar = work[..., 0:1]
     quaternion_vector = work[..., 1:4]
 
-    norm_q: torch.Tensor = torch.norm(quaternion_vector, p=2, dim=-1, keepdim=True).clamp(min=eps)
+    norm_v: torch.Tensor = torch.norm(quaternion_vector, p=2, dim=-1, keepdim=True)
+    norm_q: torch.Tensor = norm_v.clamp(min=eps)
 
-    # d(acos)/dw = -1/sqrt(1-w^2) is unbounded at w = +-1, and torch returns exactly -inf there
-    # on every supported version -- that has not changed. At w = +-1 the vector part need not be
-    # zero (a non-unit quaternion), so this is not always multiplied away -- w = 1 at the identity
-    # quaternion is the common case where it is, and 0 * inf = nan there, killing every gradient
-    # through this function from its most ordinary input. torch 2.14 masks that: its clamp
-    # backward returns 0 at the closed boundary instead of the pass-through 1.0 of earlier
-    # versions, killing the -inf before it can multiply anything. That is clamp's behaviour
-    # changing, not acos's, and nothing here may depend on it. Route the boundary through .acos()
-    # on a *detached* copy for the value (identical to the unguarded call: acos is continuous at
-    # +-1, only its derivative diverges) and through .acos() on a substituted safe argument for
-    # the gradient, so autograd never differentiates acos at +-1 at all.
-    w_clamped = torch.clamp(quaternion_scalar, min=-1.0, max=1.0)
-    at_boundary = w_clamped.abs() >= 1.0
-    safe_w = torch.where(at_boundary, torch.zeros_like(w_clamped), w_clamped)
-    acos_w = torch.where(at_boundary, w_clamped.detach().acos(), safe_w.acos())
+    # atan2(||v||, w) is scale-invariant, needs no clamp, and has a bounded derivative at w = +-1.
+    # Its derivative is 0/0 at the zero quaternion, where torch 2.5.1 returns nan and 2.14 returns 0:
+    # differentiate there at w = 1 instead. The value atan2(0, 1) = 0 multiplies a zero vector part,
+    # so the returned log is the same origin either way.
+    at_origin = (norm_v == 0) & (quaternion_scalar == 0)
+    safe_scalar = torch.where(at_origin, torch.ones_like(quaternion_scalar), quaternion_scalar)
+    theta = torch.atan2(norm_v, safe_scalar)
 
-    quaternion_log: torch.Tensor = (quaternion_vector * acos_w / norm_q).to(orig_dtype)
+    quaternion_log: torch.Tensor = (quaternion_vector * theta / norm_q).to(orig_dtype)
 
     return quaternion_log
 
@@ -1275,40 +1263,26 @@ def euler_from_quaternion(
           ``2.2e-16``, while ``(0.2, 2.5, 0.3)`` comes back as
           ``(-2.9416, 0.6416, -2.8416)`` — a different triple for the same
           rotation, to ``1.1e-16``
-
-    .. warning::
-        At ``pitch = ±pi/2`` the returned triple usually does not represent the
-        input rotation, and no gimbal-lock branch exists to say so. ``roll`` and
-        ``yaw`` come from ``atan2`` of two quantities that cancel to nothing
-        there, so the triple that comes back is decided by rounding: it varies
-        between dtypes, between PyTorch versions, and under a one-ulp change of
-        the input pitch, and no specific triple is quoted here for that reason.
-        What is stable is that ``pitch`` lands within about ``sqrt(eps)`` of
-        ``±pi/2`` — the ``asin`` argument rounds to within an ulp of ``1``, and
-        ``asin(1 - d)`` is ``pi/2 - sqrt(2d)`` — and that the reconstructed
-        rotation is far from the input. Whether ``±pi/2`` is reached exactly
-        depends on dtype and build: at ``float64`` it is exact here, while the
-        ``float32`` round trip of ``(0.1, pi/2, 0.2)`` returns pitch
-        ``1.570451``, ``3.45e-4`` *below* ``float32``'s ``pi/2`` — an exact
-        ``pitch == pi/2`` check never fires there. Random ``(roll, yaw)``
-        at ``pitch = +pi/2`` fail this way, while ``|pitch| < pi/4`` round trips
-        to rounding. The rotation does survive on the diagonal
-        ``roll = yaw`` at ``+pi/2`` (and ``roll = -yaw`` at ``-pi/2``), where
-        random draws round trip to within a few parts in ``1e8``, though
-        ``roll`` and ``yaw`` are still not returned individually. Tracked in
-        `#3950 <https://github.com/kornia/kornia/issues/3950>`_.
-
-    .. warning::
-        The input is **not** normalised, so a non-unit quaternion silently gives
-        a wrong triple: for the ``q`` of ``(0.3, 0.7, 1.1)``, passing ``2 * q``
-        returns ``[1.6560585860248003, 1.5707963267948966,
-        2.1048169977173687]``. The middle value is exactly ``pi/2`` — the
-        over-scaled input saturates the ``asin`` and is reported as
-        gimbal-locked. Tracked in
-        `#3953 <https://github.com/kornia/kornia/issues/3953>`_.
+        - at ``|pitch| = pi/2`` (gimbal lock) ``roll`` and ``yaw`` are not individually
+          determined, only ``yaw - roll`` at ``+pi/2`` and ``yaw + roll`` at ``-pi/2`` are, so the
+          input triple cannot be recovered. It returns ``pitch`` exactly ``±pi/2``, ``roll`` exactly
+          ``0`` and that one combination in ``yaw``, wrapped into ``[-pi, pi]``, which reproduces
+          the rotation: the round trip through
+          :func:`~kornia.geometry.conversions.quaternion_from_euler` is exact to rounding, and ``q``
+          and ``-q`` return the same triple. Gimbal lock is detected as ``cos(pitch) < 2 *
+          sqrt(eps)`` for the dtype's ``eps`` (``6.25e-2`` for ``float16``, ``1.77e-1`` for ``bfloat16``,
+          ``6.9e-4`` for ``float32``, ``3.0e-8`` for ``float64``), so a pitch that close to ``±pi/2`` is
+          also snapped to the pole and the returned rotation is off by at most its distance to it
+        - the input is normalised with
+          :func:`~kornia.geometry.conversions.normalize_quaternion` first, so a
+          rescaled quaternion returns the same triple
 
     .. note::
-        ``pitch``'s gradient is finite at gimbal lock, including exactly at ``pitch = +-pi/2``.
+        The gradient is finite everywhere, including exactly at gimbal lock. There ``roll`` and ``pitch``
+        are constants, so their gradient is exactly ``0`` and all of it is in ``yaw``: for the quaternion of
+        ``(roll, pitch, yaw) = (0.1, pi/2, 0.2)`` the gradient of ``roll + pitch + yaw`` with respect to
+        ``(w, x, y, z)`` is ``(-0.141, -2.82, 0, 0)``. Within ``2 * sqrt(eps)`` of the pole it is the gradient
+        of that constant-pitch triple, not of the plain formulas.
 
     Args:
         w: quaternion :math:`q_w` coefficient.
@@ -1324,28 +1298,70 @@ def euler_from_quaternion(
     KORNIA_CHECK(x.shape == y.shape)
     KORNIA_CHECK(y.shape == z.shape)
 
+    quaternion = torch.stack((w, x, y, z), dim=-1)
+    quaternion = normalize_quaternion(quaternion)
+    w, x, y, z = quaternion.unbind(-1)
+
     yy = y * y
 
     sinr_cosp = 2.0 * (w * x + y * z)
     cosr_cosp = 1.0 - 2.0 * (x * x + yy)
-    roll = sinr_cosp.atan2(cosr_cosp)
+    siny_cosp = 2.0 * (w * z + x * y)
+    cosy_cosp = 1.0 - 2.0 * (yy + z * z)
 
     sinp = 2.0 * (w * y - z * x)
     sinp = sinp.clamp(min=-1.0, max=1.0)
+
+    # Gimbal lock (kornia#3950). At |pitch| = pi/2 the factor cos(pitch) shared by the roll and yaw atan2
+    # arguments vanishes, so both are atan2(0, 0) and say nothing about the rotation. Only one combination of
+    # roll and yaw is determined there -- yaw - roll at +pi/2, yaw + roll at -pi/2 -- so the branch returns
+    # roll = 0 and puts that combination in yaw, which reproduces the input rotation.
+    #
+    # cos(pitch)**2 is measured as sinr_cosp**2 + cosr_cosp**2, not as 1 - sinp**2: both arguments are
+    # proportional to cos(pitch), so their sum of squares reads it directly. The sinp form cancels an
+    # already-rounded sinp against itself, so at a true pole it reads k * eps for a k that depends on how the
+    # inputs round and sits within a few ulps of any fixed threshold; it measurably misses ~0.3% of randomly
+    # rescaled poles. The sum of squares reads ~eps**2 at a pole, 7 (float32) to 15 (float64) orders of
+    # magnitude below the threshold. It is compared as a square, 4 * eps = (2 * sqrt(eps))**2, instead of through
+    # torch.hypot, which the ONNX exporter cannot translate (prims.hypot, torch 2.14).
+    #
+    # The threshold is a compromise: a pitch inside it is snapped to the pole and so is off by its distance to
+    # it, at most 2 * sqrt(eps) in cos(pitch) (6.9e-4 in float32, 3.0e-8 in float64). Replacing the 2 by
+    # anything from about 1.0 to 2.8 passes the tests that pin both sides; larger factors snap pitches the plain
+    # formulas still resolve better than the snap does (float32 pitch = pi/2 - 1e-3 is 3x worse at 4.0), and
+    # smaller ones leave pitches near the pole unsnapped.
+    cos_pitch_sq = sinr_cosp * sinr_cosp + cosr_cosp * cosr_cosp
+    gimbal = cos_pitch_sq < 4.0 * torch.finfo(w.dtype).eps
+    up = sinp > 0.0
+    zero = torch.zeros_like(w)
+    one = torch.ones_like(w)
+
+    # Every atan2 below gets arguments that are never (0, 0): the pole arguments are replaced inside the branch,
+    # and outside it cos(pitch) > 0. A torch.where around a plain atan2(0, 0) would still differentiate it, and
+    # its derivative is nan on torch < 2.14 even under a zero cotangent (see AGENTS.md on safe arguments).
+    # roll = atan2(0, 1) = 0 at the pole.
+    roll = torch.where(gimbal, zero, sinr_cosp).atan2(torch.where(gimbal, one, cosr_cosp))
+
+    # At the pole yaw = -+2 * atan2(x, w), written as atan2(2 * x * w, w * w - x * x) -- the same angle wrapped
+    # into [-pi, pi], unchanged by q -> -q, and defined everywhere there because w * w + x * x = 1/2.
+    double_sin = 2.0 * x * w
+    yaw_num = torch.where(gimbal, torch.where(up, -double_sin, double_sin), siny_cosp)
+    yaw_den = torch.where(gimbal, w * w - x * x, cosy_cosp)
+    yaw = yaw_num.atan2(yaw_den)
+
     # d(asin)/dx = 1/sqrt(1-x^2) is unbounded at x = +-1 (gimbal lock), returning inf there on
     # every supported torch version; the clamp above bounds the value only, and passes the
     # gradient through on torch < 2.14 (2.14 zeroes it at the boundary, masking the defect).
-    # Guard the gradient the same way quaternion_exp_to_log guards its own acos boundary
-    # (delivered in kornia#4228) -- differentiate asin on a substituted safe argument, but take the
+    # Guard the gradient (kornia#4228) -- differentiate asin on a substituted safe argument, but take the
     # value from a detached copy at the real (possibly +-1) argument, so the returned pitch is
     # unchanged and only the gradient is finite.
     at_boundary = sinp.abs() >= 1.0
     safe_sinp = torch.where(at_boundary, torch.zeros_like(sinp), sinp)
     pitch = torch.where(at_boundary, sinp.detach().asin(), safe_sinp.asin())
-
-    siny_cosp = 2.0 * (w * z + x * y)
-    cosy_cosp = 1.0 - 2.0 * (yy + z * z)
-    yaw = siny_cosp.atan2(cosy_cosp)
+    # Snap pitch to exactly +-pi/2 in the branch: asin of an argument that rounds just below 1 is off by
+    # O(sqrt(eps)), which alone would leave the round trip that far from the input.
+    half_pi = torch.full_like(pitch, math.pi / 2)
+    pitch = torch.where(gimbal, torch.where(up, half_pi, -half_pi), pitch)
 
     return roll, pitch, yaw
 
@@ -2771,7 +2787,7 @@ def _check_Rt_same_batch(R: torch.Tensor, t: torch.Tensor, fn_name: str) -> None
     # sizes, so a mismatched (R, t) pair raises here with both shapes in the message. Like the
     # KORNIA_CHECK helpers it follows disable_checks(): read the flag at call time, not a copy
     # bound at import.
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not are_checks_enabled():
             return
 

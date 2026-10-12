@@ -743,7 +743,13 @@ def fundamental_from_essential(E_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
     if not len(E_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2]):
         raise AssertionError
 
-    return (safe_inverse_with_mask(K2)[0]).transpose(-2, -1) @ E_mat @ (safe_inverse_with_mask(K1)[0])
+    K1_inv, valid1 = safe_inverse_with_mask(K1)
+    K2_inv, valid2 = safe_inverse_with_mask(K2)
+    F_mat = K2_inv.transpose(-2, -1) @ E_mat @ K1_inv
+    # A singular camera matrix has no fundamental matrix: keep it NaN rather than using the identity
+    # that ``safe_inverse_with_mask`` substitutes for the inverse.
+    valid = (valid1 & valid2)[..., None, None]
+    return torch.where(valid, F_mat, torch.full_like(F_mat, float("nan")))
 
 
 # adapted from:

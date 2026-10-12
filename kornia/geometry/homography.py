@@ -297,8 +297,10 @@ def line_segment_transfer_error_one_way(
     # fix its error reads as zero, and the callers that need infinity guard on the segment length themselves.
     scale = ln2[..., :, :2].norm(dim=-1, keepdim=True)
     ln2 = ln2 / torch.where(scale > 0, scale, torch.ones_like(scale))
-    ps1_in2 = convert_points_to_homogeneous(transform_points(H, ps1))
-    pe1_in2 = convert_points_to_homogeneous(transform_points(H, pe1))
+    # Pass (B, N, 2) points so transform_points applies each H once; (B, N, 1, 2) points are flattened to
+    # (B*N, 1, 2) and every H is repeated N times.
+    ps1_in2 = convert_points_to_homogeneous(transform_points(H, ps1.squeeze(-2))).unsqueeze(-2)
+    pe1_in2 = convert_points_to_homogeneous(transform_points(H, pe1.squeeze(-2))).unsqueeze(-2)
     er_st1 = (ln2 @ ps1_in2.transpose(-2, -1)).view(B, N).abs()
     er_end1 = (ln2 @ pe1_in2.transpose(-2, -1)).view(B, N).abs()
     error = 0.5 * (er_st1 + er_end1)
@@ -450,13 +452,10 @@ def _refine_homography_lm(
         tangent = (eye9 - 2 * v[:, :, None] * v[:, None, :])[:, :, :8]  # (K, 9, 8)
         stacked = torch.cat([h[:, :, None], tangent], 2).mT.reshape(K, 27, 3)  # rows of H, then of each direction
         P = (stacked @ x1.T).reshape(K, 9, 3, -1)  # (K, 9, 3, N): P = H x1, then its directional derivatives
-        if mask is None:
-            iz = 1.0 / P[:, 0, 2]
-        else:
-            # A zero mask excludes the correspondence. Guarding its projective divisor keeps the residual and
-            # Jacobian of a finite row finite, so the zero weight below removes it exactly; masking the whole
-            # derivative stack as well costs the compiled CUDA program about 10% of a homography call.
-            iz = 1.0 / torch.where(mask != 0, P[:, 0, 2], torch.ones_like(P[:, 0, 2]))
+        # When a mask is given, a zero mask excludes the correspondence. Guarding its projective divisor keeps the
+        # residual and Jacobian of a finite row finite, so the zero weight below removes it exactly; masking the whole
+        # derivative stack as well costs the compiled CUDA program about 10% of a homography call.
+        iz = 1.0 / (P[:, 0, 2] if mask is None else torch.where(mask != 0, P[:, 0, 2], torch.ones_like(P[:, 0, 2])))
         uv = P[:, 0, :2] * iz[:, None]  # (K, 2, N)
         r = (uv - x2.T).flatten(1)  # (K, 2N): u residuals, then v residuals
         J = ((P[:, 1:, :2] - uv[:, None] * P[:, 1:, 2:3]) * iz[:, None, None]).flatten(2)  # (K, 8, 2N)
@@ -526,8 +525,18 @@ def find_homography_dlt(
     device, dtype = _extract_device_dtype([points1, points2])
     A, transform1, transform2 = _homography_dlt_system(points1, points2, weights)
     return _homography_from_dlt_system(
-        A, weights, transform1, safe_inverse_with_mask(transform2)[0], solver, device, dtype
+        A, weights, transform1, _inverse_normalization(transform2), solver, device, dtype
     )
+
+
+def _inverse_normalization(transform: torch.Tensor) -> torch.Tensor:
+    """Invert a Hartley normalization, NaN where it is singular.
+
+    A point set whose mean radius overflows gets a zero scale and a singular normalization. Its homography
+    is undefined, so it is NaN rather than built from the identity ``safe_inverse_with_mask`` substitutes.
+    """
+    inverse, valid = safe_inverse_with_mask(transform)
+    return torch.where(valid[..., None, None], inverse, torch.full_like(inverse, float("nan")))
 
 
 def _homography_dlt_system(
@@ -548,6 +557,35 @@ def _homography_dlt_system(
 
     A = _homography_design_rows(points1_norm, points2_norm)
     return A, transform1, transform2
+
+
+def _rank8_null_vector(normal: torch.Tensor) -> torch.Tensor:
+    """Null vector of a ``(B, 9, 9)`` DLT normal matrix whose LU has only its last pivot zero, else NaN.
+
+    Only the last pivot being zero means the first eight columns are independent, so the null vector has
+    ``h[8] != 0`` and, the matrix being symmetric, its leading 8x8 block is non-singular: fixing ``h[8] = 1``
+    leaves that block's system, solved with ``normal`` itself so the result stays differentiable. Roundoff
+    can leave a degenerate matrix with tiny non-zero pivots instead, so the first eight must also be above
+    ``sqrt(eps)`` relative to the largest. On the integer keypoints of the tests (exact identities, shifts
+    and 90-degree rotations) the smallest stayed above ``4e-2``; on coincident or collinear points it was
+    below ``1e-6``. Non-finite matrices are factorized as zeros (see #4770) and give NaN.
+    """
+    work_dtype = torch.float64 if normal.dtype == torch.float64 else torch.float32
+    normal = normal.to(work_dtype)
+    finite = normal.isfinite().flatten(1).all(-1)
+    normal = torch.where(finite[:, None, None], normal, torch.zeros_like(normal))
+    lu, _, info = torch.linalg.lu_factor_ex(normal.detach())
+    diagonal = lu.diagonal(dim1=-2, dim2=-1).abs()
+    tiny = torch.finfo(work_dtype).tiny
+    leading = diagonal[:, :8].amin(-1) > diagonal.amax(-1).clamp_min(tiny) * torch.finfo(work_dtype).eps ** 0.5
+    rank8 = finite & (info == normal.shape[-1]) & leading
+    # Rows that are not rank 8 solve the identity against zero, so their (discarded) values and gradients
+    # stay finite and cannot leak NaN into parameters shared with the rest of the batch.
+    block = torch.where(rank8[:, None, None], normal[:, :8, :8], torch.eye(8, device=normal.device, dtype=work_dtype))
+    rhs = torch.where(rank8[:, None], -normal[:, :8, 8], torch.zeros_like(normal[:, :8, 8]))
+    head = torch.linalg.solve_ex(block, rhs)[0]
+    null = torch.cat([head, torch.ones_like(head[:, :1])], -1)
+    return torch.where(rank8[:, None], null, torch.full_like(null, float("nan")))
 
 
 def _homography_from_dlt_system(
@@ -591,7 +629,15 @@ def _homography_from_dlt_system(
     elif solver == "lu":
         if not minimal_lu:
             B = torch.ones(A.shape[0], A.shape[1], device=device, dtype=dtype)
-            sol, _, _ = safe_solve_with_mask(B, A)
+            sol, _, valid = safe_solve_with_mask(B, A)
+            # Exact correspondences leave the normal matrix singular, and its null vector is the homography.
+            # Roundoff usually keeps the LU pivots non-zero and the solve above lands on that vector, but an
+            # exactly zero last pivot (identical point sets after Hartley normalization, an integer shift)
+            # makes the solve fail. With only that pivot zero the rank is 8, so the homography is unique and
+            # the leading 8x8 block determines it with h[8] = 1. Any other singular system (an earlier zero
+            # pivot, as for coincident points) has no unique homography: report it as NaN rather than the
+            # identity system's solution that ``safe_solve_with_mask`` leaves in its place.
+            sol = torch.where(valid[:, None, None], sol, _rank8_null_vector(A).to(sol.dtype)[..., None])
         else:
             # A four-point sample gives eight equations for nine unknowns, so the normal matrix
             # is singular and LU-factoring it is what produced all-NaN homographies. Work from
@@ -666,13 +712,13 @@ def find_homography_dlt_iterated(
     device, dtype = _extract_device_dtype([points1, points2])
     # Weighted Hartley normalization changes with each set of IRLS weights.
     A, transform1, transform2 = _homography_dlt_system(points1, points2, weights)
-    transform2_inv = safe_inverse_with_mask(transform2)[0]
+    transform2_inv = _inverse_normalization(transform2)
     H: torch.Tensor = _homography_from_dlt_system(A, weights, transform1, transform2_inv, "lu", device, dtype)
     for _ in range(n_iter - 1):
         squared_errors: torch.Tensor = symmetric_transfer_error(points1, points2, H, True)
         weights_new: torch.Tensor = torch.exp(-squared_errors / (2.0 * (soft_inl_th**2)))
         A, transform1, transform2 = _homography_dlt_system(points1, points2, weights_new)
-        transform2_inv = safe_inverse_with_mask(transform2)[0]
+        transform2_inv = _inverse_normalization(transform2)
         H = _homography_from_dlt_system(A, weights_new, transform1, transform2_inv, "lu", device, dtype)
     return H
 
@@ -795,8 +841,10 @@ def find_homography_lines_dlt(
         # We should use provided weights
         if not ((len(weights.shape) == 2) and (weights.shape == ls1.shape[:2])):
             raise AssertionError(weights.shape)
-        w_diag = torch.diag_embed(weights.unsqueeze(dim=-1).repeat(1, 1, 2).reshape(weights.shape[0], -1))
-        A = A.transpose(-2, -1) @ w_diag @ A
+        # Scale each segment's two design rows by its weight instead of materializing the
+        # (B, 2N, 2N) diagonal weight matrix, whose storage grows quadratically with N.
+        w_full = weights.repeat_interleave(2, dim=1).unsqueeze(1)
+        A = (A.transpose(-2, -1) * w_full) @ A
 
     try:
         _, _, V = _torch_svd_cast(A)
@@ -805,7 +853,7 @@ def find_homography_lines_dlt(
         return torch.empty((points1_norm.size(0), 3, 3), device=device, dtype=dtype)
 
     H = V[..., -1].view(-1, 3, 3)
-    H = safe_inverse_with_mask(transform2)[0] @ (H @ transform1)
+    H = _inverse_normalization(transform2) @ (H @ transform1)
     return normalize_transformation(H, eps)
 
 

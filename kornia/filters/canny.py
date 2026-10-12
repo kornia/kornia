@@ -18,6 +18,9 @@
 from __future__ import annotations
 
 import math
+import warnings
+from collections.abc import Callable
+from functools import lru_cache
 
 import torch
 import torch.nn.functional as F
@@ -30,7 +33,9 @@ from kornia.core.check import (
     KORNIA_CHECK_IS_TENSOR,
     KORNIA_CHECK_SHAPE,
 )
+from kornia.core.utils import is_exporting
 
+from .filter import _to_floating
 from .gaussian import gaussian_blur2d
 from .kernels import get_hysteresis_kernel
 from .sobel import spatial_gradient
@@ -57,6 +62,58 @@ def _beats(magnitude: torch.Tensor, neighbour: torch.Tensor, direction: torch.Te
     return (magnitude > neighbour) | (accepts_tie & (magnitude == neighbour))
 
 
+def _hysteresis_step(edges: torch.Tensor, hysteresis_kernels: torch.Tensor) -> torch.Tensor:
+    # One round of edge tracking: a weak pixel (0.5) with a strong (1) 8-neighbour becomes strong.
+    weak = (edges == 0.5).to(edges.dtype)
+    strong = (edges == 1).to(edges.dtype)
+    # The kernels are always 3x3, so the padding is the constant 1. Not read from the kernel's shape: under
+    # torch.jit.trace a shape is a traced value, which torch 2.5.1 and 2.9.1 turn into an empty padding list.
+    hysteresis_magnitude = F.conv2d(edges, hysteresis_kernels, padding=1)
+    hysteresis_magnitude = (hysteresis_magnitude == 1).any(1, keepdim=True).to(edges.dtype)
+    hysteresis_magnitude = hysteresis_magnitude * weak + strong
+    return hysteresis_magnitude + (hysteresis_magnitude == 0) * weak * 0.5
+
+
+def _hysteresis_loop(edges: torch.Tensor, hysteresis_kernels: torch.Tensor) -> torch.Tensor:
+    # Repeat the round until nothing changes, for torch.jit.trace: written in the subset of Python that TorchScript
+    # compiles, so _hysteresis_loop_traced can hand a trace a scripted copy. canny keeps its eager loop inline: under
+    # torch.compile the loop condition breaks the graph, and a break inside a called function splits canny once more.
+    edges_old = -torch.ones_like(edges)
+    while bool((edges_old - edges).abs().ne(0).any()):
+        edges_old = edges
+        edges = _hysteresis_step(edges, hysteresis_kernels)
+    return edges
+
+
+@lru_cache(maxsize=1)
+def _scripted_hysteresis_loop() -> Callable[[torch.Tensor, torch.Tensor], torch.Tensor]:
+    # Compiled on the first trace, not at import, so only a trace pays for TorchScript.
+    with warnings.catch_warnings():
+        # torch 2.14 emits a FutureWarning that torch.jit.script is deprecated. The caller never called it
+        # and torch.jit.trace already warns for them, so this would be noise.
+        warnings.simplefilter("ignore", DeprecationWarning)
+        warnings.simplefilter("ignore", FutureWarning)
+        return torch.jit.script(_hysteresis_loop)
+
+
+def _hysteresis_loop_traced(edges: torch.Tensor, hysteresis_kernels: torch.Tensor) -> torch.Tensor:
+    # torch.jit.trace unrolls a data-dependent loop to the rounds the traced image needed. A scripted
+    # function called from a trace keeps its control flow (and becomes an ONNX Loop).
+    try:
+        scripted_loop = _scripted_hysteresis_loop()
+    except Exception as error:  # noqa: BLE001 - TorchScript may be absent, or unable to read the source
+        warnings.warn(
+            "canny with hysteresis=True could not compile its hysteresis loop with TorchScript, so the traced "
+            "graph repeats the hysteresis round as many times as the traced input needed, on every input: a "
+            "longer edge chain is cut short without an error. Export with torch.export or the dynamo ONNX "
+            f"exporter instead. torch.jit.script raised {type(error).__name__}: {error}",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+        return _hysteresis_loop(edges, hysteresis_kernels)
+    return scripted_loop(edges, hysteresis_kernels)
+
+
 def canny(
     input: torch.Tensor,
     low_threshold: float = 0.1,
@@ -70,19 +127,41 @@ def canny(
 
     .. image:: _static/img/canny.png
 
-    The thresholds are compared with the magnitude :math:`\sqrt{g_x^2 + g_y^2 + \epsilon}` of the **unnormalised**
-    Sobel gradient of the blurred grayscale image, ``sobel(blurred, normalized=False, eps=eps)``. That is eight times
-    what :func:`~kornia.filters.sobel` returns with its default ``normalized=True``, up to the ``eps`` inside the square
-    root, so on an image in :math:`[0, 1]` it is not bounded by 1: a unit step reaches 4 without the blur
-    (``kernel_size=1``) and about 2.59 with the default one.
-    In float16 the squared gradient overflows past 65504, which a step of 64 already reaches without the blur, so
-    keep a float16 image in :math:`[0, 1]` rather than scaling it and the thresholds up.
-
-    Non-maximum suppression compares each pixel with its two neighbours along the gradient direction, rounded to a
-    multiple of 45 degrees. As in OpenCV's ``cv2.Canny``, along a horizontal (vertical) gradient a pixel must be
-    strictly greater than its left (upper) neighbour and greater than or equal to its right (lower) one, so of two
-    pixels of equal magnitude across a step edge the left (upper) one is kept. Along a diagonal it must be strictly
-    greater than both. A pixel with zero gradient is never kept.
+    Convention:
+        - A 3-channel input is converted with :func:`~kornia.color.rgb_to_grayscale`, which reads channel 0 as
+          red. Both outputs are :math:`(B, 1, H, W)`, in the input's dtype for a floating input and in float32 for
+          an integer one, which is processed in float32 on its own scale.
+        - The image is blurred with ``gaussian_blur2d(input, kernel_size, sigma)``; the Convention block on
+          :func:`~kornia.filters.gaussian_blur2d` gives the order of both pairs, and ``kernel_size=1`` skips the
+          blur. The magnitude is :math:`\sqrt{g_x^2 + g_y^2 + \epsilon}` of the **unnormalised** Sobel gradient
+          ``spatial_gradient(blurred, normalized=False)``: an axis-aligned ramp of signed slope ``s`` gives
+          :math:`\sqrt{(8 s)^2 + \epsilon}` at an interior pixel, about ``8 * abs(s)``. This is about eight times
+          what :func:`~kornia.filters.sobel` returns by default, up to the ``eps`` inside the square root. On an
+          image in :math:`[0, 1]` it is not bounded by 1: a unit step reaches 4 without the blur and about 2.59 with
+          the default one. In float16 the squared gradient overflows past 65504, which a step of 64 already reaches
+          without the blur, so keep a float16 image in :math:`[0, 1]` rather than scaling it and the thresholds up.
+        - The thresholds compare against that magnitude and are strict: a pixel is weak above ``low_threshold`` and
+          strong above ``high_threshold``. :ref:`Filtering <filtering-conventions>` maps them onto OpenCV and
+          scikit-image.
+        - Non-maximum suppression compares each pixel with its two neighbours along the gradient direction,
+          rounded to a multiple of 45 degrees. As in OpenCV's ``cv2.Canny``, along a horizontal (vertical) gradient
+          a pixel must be strictly greater than its left (upper) neighbour and greater than or equal to its right
+          (lower) one, so of two pixels of equal magnitude across a step edge the left (upper) one is kept. Along a
+          diagonal it must be strictly greater than both. A pixel with zero gradient is never kept. The returned
+          magnitude is taken after this step, so it is zero off the edge ridges; it is differentiable with respect
+          to the input, and the edge map is not.
+        - Hysteresis keeps a weak pixel connected to a strong one through any of its 8 neighbours, repeated until
+          nothing changes, and returns edges of 0 and 1. Under ``torch.export`` the loop is a ``torch.while_loop``,
+          so the exported graph also repeats until nothing changes, for any input; the dynamo ONNX exporter writes
+          it as an ONNX ``Loop`` from torch 2.11 and cannot export it before.
+          Under ``torch.jit.trace``, and so the legacy TorchScript ONNX exporter (``torch.onnx.export(...,
+          dynamo=False)``), the loop is a scripted function that the trace calls, so the traced graph also repeats
+          until nothing changes, for any input, and the exporter writes it as an ONNX ``Loop``. A trace cannot
+          record a loop whose condition depends on the data on its own: if TorchScript cannot compile the function,
+          a ``RuntimeWarning`` says so and the traced graph repeats the rounds the traced image needed on every input,
+          which cuts a longer edge chain short without an error.
+        - An integer image is promoted to float32 before the grayscale conversion, so a 3-channel integer image
+          is converted with the floating weights rather than rounded to an integer grey.
 
     Args:
         input: input image torch.Tensor with shape :math:`(B,C,H,W)`, with :math:`C` equal to 1, or to 3 for an RGB
@@ -97,7 +176,7 @@ def canny(
         eps: regularization number to avoid NaN during backprop.
 
     Returns:
-        - the canny edge magnitudes map, shape of :math:`(B,1,H,W)`.
+        - the gradient magnitude after non-maximum suppression, shape of :math:`(B,1,H,W)`.
         - the canny edge detection filtered by thresholds and hysteresis, shape of :math:`(B,1,H,W)`.
 
     .. note::
@@ -117,12 +196,16 @@ def canny(
     KORNIA_CHECK_IS_COLOR_OR_GRAY(input, f"canny expects 1 or 3 channels. Got: {input.shape[1]}")
     _check_thresholds(low_threshold, high_threshold)
 
-    device = input.device
-    dtype = input.dtype
+    # an integer image is processed in float32, so both outputs are float32 (#5155); promoting before the grayscale
+    # conversion keeps the fractional grey a uint8 conversion would round away
+    input = _to_floating(input)
 
     # To Grayscale
     if input.shape[1] == 3:
         input = rgb_to_grayscale(input)
+
+    device = input.device
+    dtype = input.dtype
 
     # Gaussian filter
     blurred: torch.Tensor = gaussian_blur2d(input, kernel_size, sigma)
@@ -164,7 +247,9 @@ def canny(
     negative_idx: torch.Tensor = (angle_45 + 4) % 8
     negative_idx = negative_idx.long()
 
-    # The two neighbours along the gradient direction, read with one gather per channel
+    # The two neighbours along the gradient direction, read with one gather per channel. Inductor on MPS miscompiles
+    # two separate gathers when the pixel is read from the padded magnitude rather than from the window: the second
+    # comparison recomputes the pixel's magnitude from gx alone (pytorch/pytorch#199642)
     neighbour_both: torch.Tensor = torch.gather(window, 2, torch.stack([positive_idx, negative_idx], 2))
     neighbour_positive: torch.Tensor = neighbour_both[:, :, 0]
     neighbour_negative: torch.Tensor = neighbour_both[:, :, 1]
@@ -189,28 +274,36 @@ def canny(
     low: torch.Tensor = magnitude > low_threshold
     high: torch.Tensor = magnitude > high_threshold
 
-    edges = low * 0.5 + high * 0.5
-    edges = edges.to(dtype)
+    # Cast before scaling: a boolean times a Python float exports as aten.mul.Scalar, which onnxscript < 0.7.2 cannot
+    # translate. The result is 0, 0.5 or 1, exact in every floating dtype; the last cast keeps an integer input's dtype.
+    edges = ((low.to(dtype) + high.to(dtype)) * 0.5).to(dtype)
 
     # Hysteresis
     if hysteresis:
-        edges_old: torch.Tensor = -torch.ones(edges.shape, device=edges.device, dtype=dtype)
         hysteresis_kernels: torch.Tensor = get_hysteresis_kernel(device, dtype)
 
-        while ((edges_old - edges).abs() != 0).any():
-            weak: torch.Tensor = (edges == 0.5).to(dtype)
-            strong: torch.Tensor = (edges == 1).to(dtype)
+        if is_exporting():
+            edges_old: torch.Tensor = -torch.ones(edges.shape, device=edges.device, dtype=dtype)
 
-            hysteresis_magnitude: torch.Tensor = F.conv2d(
-                edges, hysteresis_kernels, padding=hysteresis_kernels.shape[-1] // 2
-            )
-            hysteresis_magnitude = (hysteresis_magnitude == 1).any(1, keepdim=True).to(dtype)
-            hysteresis_magnitude = hysteresis_magnitude * weak + strong
+            # Graph capture cannot branch on the data, so the loop is a while_loop, which the dynamo ONNX exporter
+            # writes as a Loop node from torch 2.11. The body must not return its input, hence the clone.
+            def _changed(old: torch.Tensor, new: torch.Tensor) -> torch.Tensor:
+                return ((old - new).abs() != 0).any()
 
-            edges_old = edges.clone()
-            edges = hysteresis_magnitude + (hysteresis_magnitude == 0) * weak * 0.5
+            def _step(old: torch.Tensor, new: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+                return new.clone(), _hysteresis_step(new, hysteresis_kernels)
 
-        edges = hysteresis_magnitude
+            _, edges = torch.while_loop(_changed, _step, (edges_old, edges))
+        elif torch.jit.is_tracing():
+            edges = _hysteresis_loop_traced(edges, hysteresis_kernels)
+        else:
+            edges_old = -torch.ones_like(edges)
+            while ((edges_old - edges).abs() != 0).any():
+                edges_old = edges
+                edges = _hysteresis_step(edges, hysteresis_kernels)
+
+        # The weak pixels left touch no strong pixel.
+        edges = (edges == 1).to(dtype)
 
     return magnitude, edges
 
@@ -218,7 +311,8 @@ def canny(
 class Canny(nn.Module):
     r"""nn.Module that finds edges of the input image and filters them using the Canny algorithm.
 
-    See :func:`~kornia.filters.canny` for the units of the thresholds and the non-maximum suppression.
+    Convention:
+        See the Convention block on :func:`~kornia.filters.canny`. The thresholds are validated at construction.
 
     Args:
         low_threshold: lower threshold for the hysteresis procedure, in the units of the unnormalised Sobel
@@ -231,7 +325,7 @@ class Canny(nn.Module):
         eps: regularization number to avoid NaN during backprop.
 
     Returns:
-        - the canny edge magnitudes map, shape of :math:`(B,1,H,W)`.
+        - the gradient magnitude after non-maximum suppression, shape of :math:`(B,1,H,W)`.
         - the canny edge detection filtered by thresholds and hysteresis, shape of :math:`(B,1,H,W)`.
 
     Example:
@@ -244,8 +338,8 @@ class Canny(nn.Module):
 
     """
 
-    # TODO: Handle multiple inputs and outputs models later
-    ONNX_EXPORTABLE = False
+    # The dynamo ONNX exporter writes the hysteresis loop as an ONNX Loop from torch 2.11.
+    ONNX_EXPORTABLE = True
 
     def __init__(
         self,
@@ -302,7 +396,7 @@ class Canny(nn.Module):
 
         Returns:
             Tuple ``(magnitude, edges)``. ``magnitude`` contains the gradient
-            magnitude response for each pixel, and ``edges`` contains the final
+            magnitude after non-maximum suppression, and ``edges`` contains the final
             thresholded edge map. Both tensors follow the layout returned by
             :func:`canny` and keep the same batch and spatial dimensions as the
             input.

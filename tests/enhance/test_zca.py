@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
@@ -24,6 +26,131 @@ from testing.base import BaseTester
 
 
 class TestZCA(BaseTester):
+    @pytest.mark.parametrize("dim", [0, -1])
+    @pytest.mark.parametrize("unbiased", [True, False])
+    @pytest.mark.parametrize("scale,repeats", [(127.5, 2), (0.5, 65536)])
+    def test_covariance_accumulation(self, device, dtype, dim, unbiased, scale, repeats):
+        data = torch.tensor([[-1.0, -0.5], [-1.0, 0.5], [1.0, -0.5], [1.0, 0.5]], device=device, dtype=dtype)
+        mean = torch.tensor([[scale, scale / 2]], device=device, dtype=dtype)
+        data = data.repeat(repeats, 1) * scale + mean
+        sample_count = data.shape[0]
+        divisor = sample_count - 1 if unbiased else sample_count
+        # The two features have zero cross covariance and variances N * scale**2 / divisor and a quarter of it.
+        std = [math.sqrt(sample_count * s**2 / divisor + 1e-6) for s in (scale, scale / 2)]
+        expected_transform = torch.diag(torch.tensor([1 / s for s in std], device=device, dtype=dtype))
+        expected_inverse = torch.diag(torch.tensor(std, device=device, dtype=dtype))
+        expected = (data - mean) * torch.tensor([1 / s for s in std], device=device, dtype=dtype)
+        if dim != 0:
+            data, expected = data.t(), expected.t()
+
+        transform, actual_mean, inverse = kornia.enhance.zca_mean(data, dim=dim, unbiased=unbiased, return_inverse=True)
+        self.assert_close(transform, expected_transform)
+        self.assert_close(actual_mean, mean)
+        self.assert_close(inverse, expected_inverse)
+        self.assert_close(kornia.enhance.zca_whiten(data, dim=dim, unbiased=unbiased), expected)
+        model = kornia.enhance.ZCAWhitening(dim=dim, unbiased=unbiased)
+        self.assert_close(model(data, include_fit=True), expected)
+
+    @pytest.mark.parametrize("unbiased", [True, False])
+    def test_covariance_accumulation_gradient(self, device, dtype, unbiased):
+        data = torch.tensor([[0.0], [255.0]], device=device, dtype=dtype).repeat(4, 1).requires_grad_()
+        transform, _, _ = kornia.enhance.zca_mean(data, unbiased=unbiased)
+        gradient = torch.autograd.grad(1000 * transform.sum(), data)[0]
+        divisor = data.shape[0] - 1 if unbiased else data.shape[0]
+        variance = data.shape[0] * 127.5**2 / divisor
+        # Differentiate (variance + eps)**(-1/2), with d(variance)/dx = 2 * (x - mean) / divisor.
+        expected = (data.detach() - 127.5) * (-1000 / (divisor * (variance + 1e-6) ** 1.5))
+        self.assert_close(gradient, expected)
+
+    def test_dynamo_covariance_accumulation(self, device, dtype, torch_optimizer):
+        data = torch.tensor([[0.0, 0.0], [0.0, 127.5], [255.0, 0.0], [255.0, 127.5]], device=device, dtype=dtype)
+        data = data.repeat(2, 1)
+        op = kornia.enhance.zca_whiten
+        self.assert_close(torch_optimizer(op)(data), op(data))
+
+    @pytest.mark.parametrize("unbiased", [True, False])
+    def test_covariance_beyond_half_range(self, device, dtype, unbiased):
+        """A covariance above 65504 overflows float16, while the transform and its inverse fit."""
+        data = torch.tensor([[-300.0], [300.0]], device=device, dtype=dtype).repeat(2, 1)
+        std = math.sqrt(4 * 300.0**2 / (3 if unbiased else 4) + 1e-6)
+        transform, mean, inverse = kornia.enhance.zca_mean(data, unbiased=unbiased, return_inverse=True)
+        assert transform.dtype == mean.dtype == inverse.dtype == dtype
+        # Compare dimensionless values so an absolute tolerance cannot accept a zero transform.
+        self.assert_close(transform * std, torch.ones_like(transform))
+        self.assert_close(mean, torch.zeros_like(mean))
+        self.assert_close(inverse / std, torch.ones_like(inverse))
+
+    @pytest.mark.parametrize("unbiased", [True, False])
+    def test_covariance_accumulation_amp(self, device, dtype, unbiased):
+        """Fitting leaves float16 autocast, whose matrix products would overflow a covariance above 65504."""
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU/CUDA/MPS mixed-precision coverage")
+        # The MPS job runs float32 only, so it fits a float16 input here as well.
+        input_dtypes = [dtype, torch.float16] if device.type == "mps" and dtype != torch.float16 else [dtype]
+        std = math.sqrt(4 * 300.0**2 / (3 if unbiased else 4) + 1e-6)
+        for input_dtype in input_dtypes:
+            data = torch.tensor([[-300.0], [300.0]], device=device, dtype=input_dtype).repeat(2, 1)
+            with torch.autocast(device_type=device.type, dtype=torch.float16):
+                transform, mean, inverse = kornia.enhance.zca_mean(data, unbiased=unbiased, return_inverse=True)
+                assert torch.is_autocast_enabled(device.type)
+            assert transform.dtype == mean.dtype == inverse.dtype == input_dtype
+            self.assert_close(transform * std, torch.ones_like(transform))
+            self.assert_close(mean, torch.zeros_like(mean))
+            self.assert_close(inverse / std, torch.ones_like(inverse))
+
+    @pytest.mark.device_agnostic
+    def test_xpu_covariance_accumulation_amp(self):
+        """XPU autocast must not downcast a finite float32 covariance to float16."""
+        if not torch.xpu.is_available():
+            pytest.skip("XPU is unavailable")
+        data = torch.tensor([[-255.0], [255.0]], device="xpu", dtype=torch.float16).repeat(2, 1)
+        std = math.sqrt(4 * 255.0**2 / 3 + 1e-6)
+        with torch.autocast(device_type="xpu", dtype=torch.float16):
+            transform, mean, inverse = kornia.enhance.zca_mean(data, return_inverse=True)
+            assert torch.is_autocast_enabled("xpu")
+            self.assert_close(transform, torch.full_like(transform, 1 / std))
+            self.assert_close(mean, torch.zeros_like(mean))
+            self.assert_close(inverse, torch.full_like(inverse, std))
+            self.assert_close(kornia.enhance.zca_whiten(data), data / std)
+
+    def test_covariance_accumulation_jit(self, device, dtype):
+        """Scripted fitting matches eager fitting outside autocast."""
+        data = torch.tensor([[-127.5], [127.5]], device=device, dtype=dtype).repeat(4, 1)
+        scripted = torch.jit.script(kornia.enhance.zca_mean)
+        actual = scripted(data, return_inverse=True)
+        expected = kornia.enhance.zca_mean(data, return_inverse=True)
+        for actual_tensor, expected_tensor in zip(actual, expected):
+            self.assert_close(actual_tensor, expected_tensor)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_covariance_accumulation_meta(self, half_dtype):
+        """Shape-only fitting works on devices without an autocast context."""
+        data = torch.empty(4, 2, device="meta", dtype=half_dtype)
+        transform, mean, inverse = kornia.enhance.zca_mean(data, return_inverse=True)
+        assert transform.shape == inverse.shape == (2, 2)
+        assert mean.shape == (1, 2)
+        assert transform.device == mean.device == inverse.device == data.device
+        assert transform.dtype == mean.dtype == inverse.dtype == half_dtype
+
+    @pytest.mark.parametrize("unbiased", [True, False])
+    def test_covariance_accumulation_bfloat16_range(self, device, dtype, unbiased):
+        """A finite covariance must not overflow its unnormalized scatter."""
+        if dtype != torch.bfloat16:
+            pytest.skip("Bfloat16 exponent-range regression")
+        data = torch.tensor([[-1e19], [1e19]], device=device, dtype=dtype).repeat(2, 1)
+        scale = data[1, 0]
+        divisor = data.shape[0] - 1 if unbiased else data.shape[0]
+        normalized_std = math.sqrt(data.shape[0] / divisor)
+        transform, mean, inverse = kornia.enhance.zca_mean(data, unbiased=unbiased, return_inverse=True)
+        assert transform.dtype == mean.dtype == inverse.dtype == dtype
+        assert transform.device == mean.device == inverse.device == device
+        # Compare dimensionless values so an absolute tolerance cannot accept a zero transform.
+        self.assert_close(transform * scale, torch.full_like(transform, 1 / normalized_std))
+        self.assert_close(mean, torch.zeros_like(mean))
+        self.assert_close(inverse / scale, torch.full_like(inverse, normalized_std))
+        self.assert_close(kornia.enhance.zca_whiten(data, unbiased=unbiased), data.sign() / normalized_std)
+
     @pytest.mark.parametrize("dim", [0, 1, -1])
     @pytest.mark.parametrize("sample_count", [0, 1])
     def test_unbiased_sample_count(self, device, dtype, dim, sample_count):
@@ -81,10 +208,7 @@ class TestZCA(BaseTester):
     def test_zca_unbiased(self, unbiased, device, dtype):
         data = torch.tensor([[0, 1], [1, 0], [-1, 0], [0, -1]], device=device, dtype=dtype)
 
-        if unbiased:
-            unbiased_val = 1.5
-        else:
-            unbiased_val = 2.0
+        unbiased_val = 1.5 if unbiased else 2.0
 
         expected = torch.sqrt(unbiased_val * torch.abs(data)) * torch.sign(data)
 
@@ -307,10 +431,7 @@ class TestZCA(BaseTester):
     def test_zca_whiten_func_unbiased(self, unbiased, device, dtype):
         data = torch.tensor([[0, 1], [1, 0], [-1, 0], [0, -1]], device=device, dtype=dtype)
 
-        if unbiased:
-            unbiased_val = 1.5
-        else:
-            unbiased_val = 2.0
+        unbiased_val = 1.5 if unbiased else 2.0
 
         expected = torch.sqrt(unbiased_val * torch.abs(data)) * torch.sign(data)
 

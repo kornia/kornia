@@ -152,6 +152,10 @@ jobs:
       pytorch-version: '["2.9.1"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
       known-failure-profile: cpu-${{ matrix.pytorch-dtype }}
+      # A whole leg takes ~6m, so no single test comes near these limits. A native float16 kernel
+      # can hang on some Intel runners (#5493): faulthandler prints the stack even while the hung
+      # call holds the GIL, and pytest-timeout ends the run once the GIL is free.
+      pytest-extra: --timeout=600 --timeout-method=thread -o faulthandler_timeout=300
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
       cache-restore-keys: |

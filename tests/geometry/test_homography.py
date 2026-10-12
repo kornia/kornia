@@ -27,7 +27,9 @@ from kornia.geometry.epipolar import normalize_points
 from kornia.geometry.homography import (
     _four_point_homography,
     _homography_design_rows,
+    _homography_from_dlt_system,
     _oneway_transfer_error_shared_impl_,
+    _rank8_null_vector,
     _transfer_basis,
     _transfer_errors,
     _transfer_from_basis,
@@ -148,6 +150,21 @@ class TestLineSegmentOneWayError(BaseTester):
         self.assert_close(error, torch.tensor([[0.0, 1.0]], device=device, dtype=dtype))
         error.sum().backward()
         assert torch.isfinite(ls2.grad).all()
+
+    @pytest.mark.parametrize("batch_size, num_segments", [(256, 256), (1, 2**16)])
+    def test_2_pow_16_segments(self, batch_size, num_segments, device, dtype):
+        # RANSAC scores a (B, N) batch of segments; with B * N or N reaching 2**16, MPS (torch 2.5.1 and 2.14) made
+        # the endpoints homogeneous through a constant F.pad that returns garbage there and picked a wrong model
+        # (#5443). Image-1 segment (0, a)-(1, a) maps by the x-shift to (1, a)-(2, a), d px from the image-2 line
+        # y = a + d.
+        idx = torch.arange(batch_size * num_segments, device=device).reshape(batch_size, num_segments)
+        a, d = (idx % 7).to(dtype), (idx % 3).to(dtype)
+        zero, one = torch.zeros_like(a), torch.ones_like(a)
+        ls1 = torch.stack([torch.stack([zero, a], -1), torch.stack([one, a], -1)], dim=2)
+        ls2 = torch.stack([torch.stack([zero, a + d], -1), torch.stack([2 * one, a + d], -1)], dim=2)
+        H = torch.tensor([[1.0, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        H = H.expand(batch_size, 3, 3)
+        self.assert_close(line_segment_transfer_error_one_way(ls1, ls2, H), d, atol=0.0, rtol=0.0)
 
 
 class TestSymmetricTransferError(BaseTester):
@@ -364,7 +381,8 @@ class TestSampsonHomographyDistance(BaseTester):
         H = torch.eye(3, device=device, dtype=dtype)[None]
         for squared in (True, False):
             distances = sampson_homography_distance(pts, pts + 0.1, H, squared=squared)
-            assert bool(torch.isnan(distances[0, 1])) and bool(torch.isfinite(distances[0, [0, 2]]).all())
+            assert bool(torch.isnan(distances[0, 1]))
+            assert bool(torch.isfinite(distances[0, [0, 2]]).all())
         nan_homography = torch.full((1, 3, 3), float("nan"), device=device, dtype=dtype)
         assert bool(torch.isnan(sampson_homography_distance(pts[:, :1], pts[:, :1], nan_homography)).all())
 
@@ -406,7 +424,8 @@ class TestSampsonHomographyDistance(BaseTester):
         pts1 = torch.tensor([[[0, 0]]], device=device)
         pts2 = torch.tensor([[[1, 0]]], device=device)
         distance = sampson_homography_distance(pts1, pts2, torch.eye(3, dtype=torch.long, device=device)[None])
-        assert distance.dtype == torch.float32 and distance.tolist() == [[0.5]]
+        assert distance.dtype == torch.float32
+        assert distance.tolist() == [[0.5]]
 
     def test_singular_jacobian_is_inf(self, device, dtype):
         # The zero matrix makes both residual rows and the Jacobian vanish: no finite correction exists.
@@ -513,6 +532,102 @@ class TestFindHomographyDLT(BaseTester):
         H = find_homography_dlt(points1, points2, weights, "lu")
         assert H.shape == (1, 3, 3)
         assert H.isnan().all().item()
+
+    def test_degenerate_points_lu_give_nan(self, device, dtype):
+        # Coincident points make the normal equations singular: no homography, so NaN rather than the
+        # identity system's solution that safe_solve_with_mask leaves for an invalid system (kornia#5194).
+        points = torch.zeros(1, 6, 2, device=device, dtype=dtype)
+        H = find_homography_dlt(points, points, solver="lu")
+        assert H.isnan().all().item()
+
+    @pytest.mark.parametrize(
+        ("points", "linear", "shift"),
+        [
+            # identical point sets: the Hartley-normalized systems are bitwise equal
+            ([[140, 30], [130, 40], [0, 120], [150, 110], [120, 180], [20, 40]], [[1, 0], [0, 1]], [0, 0]),
+            ([[140, 30], [130, 40], [0, 120], [150, 110], [120, 180], [20, 40]], [[1, 0], [0, 1]], [3, -5]),
+            ([[122, 119], [0, 180], [173, 155], [105, 57], [180, 19], [14, 118]], [[0, -1], [1, 0]], [0, 0]),
+        ],
+    )
+    def test_exact_correspondences_lu(self, points, linear, shift, device, dtype):
+        # On these exact correspondences the last LU pivot of the normal matrix is exactly zero with some BLAS
+        # and LAPACK builds (float32 and float64 on Windows x86), not with others (macOS arm64), so they pin the
+        # fix only where it shows; test_exact_rank8_system_lu_gives_the_homography_5644 pins it on every backend.
+        # The homography is still unique (rank 8), so the LU solver has to return it, as the
+        # SVD solver and cv2.findHomography(points1, points2, 0) do, rather than NaN. Six points in general
+        # position determine it, so it is checked through the points it maps (MPS float32 gets the pixel-unit
+        # translation of the 90-degree rotation to about 2e-4).
+        _skip_half(dtype, _HALF_DLT)
+        points1 = torch.tensor([points], device=device, dtype=dtype)
+        linear_part = torch.tensor(linear, device=device, dtype=dtype)
+        points2 = points1 @ linear_part.T + torch.tensor(shift, device=device, dtype=dtype)
+        weights = torch.ones(1, 6, device=device, dtype=dtype)
+        for H in (
+            find_homography_dlt(points1, points2, solver="lu"),
+            find_homography_dlt_iterated(points1, points2, weights),
+        ):
+            assert H.isfinite().all().item()
+            self.assert_close(kornia.geometry.transform_points(H, points1), points2, rtol=1e-4, atol=1e-3)
+
+    def test_collinear_points_lu_give_nan(self, device, dtype):
+        # Roundoff can leave the normal matrix of collinear points with tiny non-zero leading pivots and a
+        # zero last one, which must not be taken for the unique homography of exact correspondences.
+        points = torch.tensor(
+            [[[0.0, 0.0], [1.0, 1.0], [2.0, 2.0], [3.0, 3.0], [4.0, 4.0]]], device=device, dtype=dtype
+        )
+        assert find_homography_dlt(points, points, solver="lu").isnan().all().item()
+
+    @pytest.mark.parametrize("weights", [None, [1.0, 3.0, 2.0, 0.5, 3.0, 1.0, 2.0, 3.5]])
+    def test_exact_rank8_system_lu_gives_the_homography_5644(self, weights, device, dtype):
+        # Whether the normal matrix of real correspondences gets an exactly zero last LU pivot depends on the
+        # rounding of the BLAS and LAPACK in use. This design matrix has entries -1, 0 and 1 (the corners of the
+        # normalized square, each twice, turned by 90 degrees), so its normal matrix is integer and its pivoted LU
+        # is exact on every backend: pivots 8 (16 with these weights, which give every corner the same total)
+        # and a last one of 0. The rank is 8, so the homography is unique, and the LU solver must return it.
+        _skip_half(dtype, _HALF_DLT)
+        corners = torch.tensor([[1.0, 1.0], [-1.0, 1.0], [-1.0, -1.0], [1.0, -1.0]] * 2, device=device, dtype=dtype)
+        rotation = torch.tensor([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        A = _homography_design_rows(corners[None], (corners @ rotation[:2, :2].T)[None])
+        w = None if weights is None else torch.tensor([weights], device=device, dtype=dtype)
+        eye = torch.eye(3, device=device, dtype=dtype)[None]
+        H = _homography_from_dlt_system(A, w, eye, eye, "lu", torch.device(device), dtype)
+        assert torch.equal(H, rotation[None])
+
+    def test_rank8_fallback_needs_leading_pivots_above_sqrt_eps_5644(self, device, dtype):
+        # Roundoff can give a degenerate normal matrix an exactly zero last pivot and tiny non-zero leading ones, so
+        # the fallback takes a zero last pivot for rank 8 only when the other pivots are above ``sqrt(eps)`` of the
+        # largest. ``L diag(1, ..., 1, tau, 0) L^T`` with ``L[8, :8] = 1/2`` has an exact LU with exactly those
+        # pivots and the null vector ``(-1/2, ..., -1/2, 1)``: returned for ``tau`` just above the bound, NaN just
+        # below it, where ``eps`` itself would still accept it.
+        _skip_half(dtype, _HALF_DLT)
+        bound = 26 if dtype == torch.float64 else 11  # sqrt(eps) is 2 ** -26 (float64) or 2 ** -11.5 (float32)
+        null = torch.tensor([-0.5] * 8 + [1.0], device=device, dtype=dtype)
+        normals = []
+        for tau in (2.0 ** -(bound - 2), 2.0 ** -(bound + 2)):
+            L = torch.eye(9, device=device, dtype=dtype)
+            L[8, :8] = 0.5
+            d = torch.tensor([1.0] * 7 + [tau, 0.0], device=device, dtype=dtype)
+            normals.append(L @ torch.diag(d) @ L.T)
+        result = _rank8_null_vector(torch.stack(normals))
+        assert torch.equal(result[0], null)
+        assert result[1].isnan().all()
+
+    @pytest.mark.parametrize("solver", ["svd", "lu"])
+    def test_singular_normalization_gives_nan(self, device, dtype, solver):
+        # A spread whose squared radius overflows gives points2 a zero Hartley scale and a singular
+        # normalization: NaN rather than a homography built from the identity that safe_inverse_with_mask
+        # substitutes for its inverse (kornia#5194).
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the half-precision norm accumulates in float32 and does not overflow")
+        points1 = torch.tensor(
+            [[[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [0.5, 0.2], [0.3, 0.7]]], device=device, dtype=dtype
+        )
+        points2 = points1 * (torch.finfo(dtype).max / 4)
+        assert find_homography_dlt(points1, points2, solver=solver).isnan().all().item()
+        weights = torch.ones(1, 6, device=device, dtype=dtype)
+        assert find_homography_dlt_iterated(points1, points2, weights, n_iter=1).isnan().all().item()
+        # the segment endpoints share the normalization
+        assert find_homography_lines_dlt(points1.view(1, 3, 2, 2), points2.view(1, 3, 2, 2)).isnan().all().item()
 
     @pytest.mark.timeout(120, method="thread")
     def test_nonfinite_sample_leaves_batch_intact(self, device, dtype):
@@ -866,6 +981,80 @@ class TestFindHomographyFromLinesDLT(BaseTester):
 
         self.gradcheck(find_homography_lines_dlt, (ls1, ls2, weights), rtol=1e-6, atol=1e-6)
 
+    def test_weighted_lines_save_linear_storage(self, device, dtype):
+        # The weighted branch used to build a (B, 2N, 2N) diagonal weight matrix, which the backward
+        # pass saved whole. Scaling the design rows keeps every saved tensor proportional to the
+        # number of segments instead of its square.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("the weighted SVD backward is only defined in float32 and float64")
+
+        ls1 = torch.rand(2, 64, 2, 2, device=device, dtype=dtype, requires_grad=True)
+        ls2 = torch.rand(2, 64, 2, 2, device=device, dtype=dtype, requires_grad=True)
+        weights = torch.rand(2, 64, device=device, dtype=dtype, requires_grad=True)
+        saved_sizes = []
+
+        def pack(tensor):
+            saved_sizes.append(tensor.numel())
+            return tensor
+
+        with torch.autograd.graph.saved_tensors_hooks(pack, lambda tensor: tensor):
+            find_homography_lines_dlt(ls1, ls2, weights).square().sum().backward()
+
+        inputs = ls1.numel() + ls2.numel() + weights.numel()
+        # The diagonal weight matrix alone holds 2 * (2N) * (2N) = 32768 entries against 1152 input entries.
+        assert max(saved_sizes) <= 8 * inputs
+        assert torch.isfinite(ls1.grad).all()
+        assert torch.isfinite(weights.grad).all()
+
+    def test_gradcheck_weighted_lines(self, device):
+        # Gradcheck with a weight per segment exercises the weighted normal equations end to end.
+        ls1 = torch.rand(1, 6, 2, 2, device=device, dtype=torch.float64, requires_grad=True)
+        ls2 = torch.rand(1, 6, 2, 2, device=device, dtype=torch.float64, requires_grad=True)
+        weights = torch.rand(1, 6, device=device, dtype=torch.float64, requires_grad=True)
+
+        self.gradcheck(find_homography_lines_dlt, (ls1, ls2, weights), rtol=1e-6, atol=1e-6)
+
+    def test_weighted_lines_pin_explicit_normal_equations(self, device, dtype):
+        # Value pin from the explicit weighted normal equations A^T diag(w) A, solved by the same SVD.
+        # The perturbed correspondences are inconsistent, so the weights move the estimate and a
+        # weight applied on the wrong design-matrix axis cannot land on these numbers.
+        #
+        #   import torch
+        #   from kornia.geometry.homography import find_homography_lines_dlt, transform_points
+        #   h_true = torch.tensor([[1.0, 0.12, 3.0], [0.05, 0.98, -2.0], [7e-4, 9e-4, 1.0]], dtype=torch.float64)
+        #   seg1 = torch.tensor(SEG1, dtype=torch.float64)
+        #   noise = (torch.arange(20, dtype=torch.float64).reshape(1, 10, 2) % 7) * 0.3 - 0.9
+        #   seg2 = (transform_points(h_true[None], seg1.reshape(1, -1, 2)) + noise).reshape(1, 5, 2, 2)
+        #   weights = torch.tensor([[0.5, 2.0, 1.0, 3.0, 0.25]], dtype=torch.float64)
+        #   find_homography_lines_dlt(seg1[None], seg2, weights)
+        if dtype != torch.float64 or device.type == "mps":
+            pytest.skip("The pinned values are float64 results")
+        seg1 = torch.tensor(
+            [
+                [[0.0, 0.0], [40.0, 6.0]],
+                [[30.0, -12.0], [8.0, 44.0]],
+                [[-18.0, 25.0], [55.0, 30.0]],
+                [[62.0, 5.0], [22.0, -28.0]],
+                [[12.0, 14.0], [44.0, 60.0]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        h_true = torch.tensor([[1.0, 0.12, 3.0], [0.05, 0.98, -2.0], [7e-4, 9e-4, 1.0]], device=device, dtype=dtype)
+        noise = (torch.arange(20, device=device, dtype=dtype).reshape(1, 10, 2) % 7) * 0.3 - 0.9
+        seg2 = (transform_points(h_true[None], seg1.reshape(1, -1, 2)) + noise).reshape(1, 5, 2, 2)
+        weights = torch.tensor([[0.5, 2.0, 1.0, 3.0, 0.25]], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [
+                [0.9947263297391988, 0.11088599621453082, 3.665932747316061],
+                [0.05927747696363576, 0.9754523942043515, -2.1305310188897137],
+                [0.0008137869276654468, 0.0005046981728602953, 1.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(find_homography_lines_dlt(seg1[None], seg2, weights)[0], expected, rtol=0.0, atol=1e-9)
+
 
 class TestHomographyNormalization(BaseTester):
     @pytest.mark.parametrize("solver", ["lu", "svd", "lines"])
@@ -1183,7 +1372,8 @@ class TestConventionHomography(BaseTester):
         self.assert_close(default, there_and_back)
         unsquared = symmetric_transfer_error(p1, p2_off, H, squared=False)
         self.assert_close(unsquared[0, 5], default[0, 5].sqrt())
-        assert default[0, 5] > 50.0 and default[0, others].max() < 1e-6
+        assert default[0, 5] > 50.0
+        assert default[0, others].max() < 1e-6
         assert symmetric_transfer_error(p2_off, p1, H).min() > 1e3
 
     def test_convention_sample_is_valid_for_homography_rejects_reflection(self, device, dtype):
@@ -1210,7 +1400,8 @@ class TestConventionHomography(BaseTester):
         mask = sample_is_valid_for_homography(
             torch.tensor([view1] * 3, device=device, dtype=dtype), torch.tensor([view2] * 3, device=device, dtype=dtype)
         )
-        assert mask.dtype == torch.bool and mask.shape == (3,)
+        assert mask.dtype == torch.bool
+        assert mask.shape == (3,)
 
     @pytest.mark.parametrize("model", ["points", "lines"])
     def test_convention_find_homography_dlt_iterated_n_iter_counts_solves(self, model, device, dtype, monkeypatch):
@@ -1387,7 +1578,8 @@ class TestConventionHomography(BaseTester):
         ):
             for squared in (True, False):
                 out = fn(p1, p2, H, squared=squared)
-                assert bool(out[0, 0].isposinf()) and out[0, 1] == 0, out
+                assert bool(out[0, 0].isposinf()), out
+                assert out[0, 1] == 0, out
                 (grad,) = torch.autograd.grad(out.sum(), p1)
                 assert torch.isfinite(grad).all(), grad
 
@@ -1436,6 +1628,27 @@ class TestConventionHomography(BaseTester):
 
 
 class TestHomographySharedKernels(BaseTester):
+    @pytest.mark.parametrize("batch_size", [1, 32])
+    def test_four_point_homography_mps_matches_cpu(self, device, dtype, batch_size):
+        if device.type != "mps" or dtype != torch.float32:
+            pytest.skip("MPS float32 regression")
+        generator = torch.Generator().manual_seed(0)
+        corners = torch.tensor([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]], dtype=dtype)
+        src = corners + 0.1 * torch.randn(batch_size, 4, 2, generator=generator, dtype=dtype)
+        H = torch.eye(3, dtype=dtype) + 0.1 * torch.randn(batch_size, 3, 3, generator=generator, dtype=dtype)
+        dst = transform_points(H, src)
+        n1, _ = normalize_points(src)
+        n2, _ = normalize_points(dst)
+        expected = _four_point_homography(_hom(n1), n2)
+        actual = _four_point_homography(_hom(n1).to(device), n2.to(device))
+        assert actual.device == device
+        assert actual.dtype == dtype
+        actual = actual.cpu()
+        # Unit-norm homographies are defined up to sign.
+        sign = (actual * expected).sum(dim=(-2, -1)).sign()
+        self.assert_close(actual * sign[:, None, None], expected, atol=1e-5, rtol=1e-5)
+        self.assert_close(transform_points(actual, n1), n2, atol=1e-5, rtol=1e-5)
+
     def test_design_rows_vanish_on_exact_matches(self, device, dtype):
         _skip_half(dtype, _HALF_DLT)
         src, dst, H = _planar(device, dtype)

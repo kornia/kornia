@@ -244,7 +244,10 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     KORNIA_CHECK_IS_TENSOR(points_1)
     if trans_01.ndim == 2:
         trans_01 = trans_01.unsqueeze(0)
-    if not trans_01.shape[0] == points_1.shape[0] and trans_01.shape[0] != 1:
+    # A 2-D ``points_1`` is (N, D) with no batch axis, so N equal to a transform batch B > 1 is a
+    # coincidence, not a match: it used to reach ``bmm`` with an empty batch (kornia#4969).
+    unbatched_points = points_1.ndim == 2 and trans_01.shape[0] > 1
+    if (not trans_01.shape[0] == points_1.shape[0] or unbatched_points) and trans_01.shape[0] != 1:
         raise ValueError(
             f"Input batch size must be the same for both tensors or 1. Got {trans_01.shape} and {points_1.shape}"
         )

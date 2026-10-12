@@ -295,7 +295,9 @@ class TestConventionProjection(BaseTester):
             return
         K_true, R_true, t_true = two_view["K2"], two_view["R"], two_view["t"]
         K, R, t = epi.KRt_from_projection(two_view["P2"])
-        assert K.shape == (1, 3, 3) and R.shape == (1, 3, 3) and t.shape == (1, 3, 1)
+        assert K.shape == (1, 3, 3)
+        assert R.shape == (1, 3, 3)
+        assert t.shape == (1, 3, 1)
         # K is upper triangular with a positive diagonal; R is a rotation.
         assert torch.tril(K, diagonal=-1).abs().max() <= 1e-6 * K.abs().max()
         assert (K.diagonal(dim1=-2, dim2=-1) > 0).all()
@@ -382,7 +384,8 @@ class TestConventionProjection(BaseTester):
         image = torch.zeros(2, 3, 4, 6, device=device, dtype=dtype)  # H = 4, W = 6
         K = epi.intrinsics_like(500.0, image)
         assert K.shape == (2, 3, 3)
-        assert K.dtype == dtype and K.device == image.device
+        assert K.dtype == dtype
+        assert K.device == image.device
         # fx = fy = focal, no skew, K[2] = [0, 0, 1].
         self.assert_close(K[:, [0, 1], [0, 1]], torch.full((2, 2), 500.0, device=device, dtype=dtype))
         zeros = torch.zeros(2, device=device, dtype=dtype)

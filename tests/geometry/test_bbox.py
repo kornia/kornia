@@ -108,6 +108,10 @@ class TestBbox2D(BaseTester):
         trapezoid = torch.tensor([[[[0.0, 0.0], [10.0, 0.0], [10.0, 5.0], [3.0, 5.0]]]], device=device, dtype=dtype)
         assert validate_bbox(trapezoid) is False
 
+        # The edge vectors share their x component and differ only in y, so only the second comparison rejects it.
+        tilted_bottom = torch.tensor([[[[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 1.0]]]], device=device, dtype=dtype)
+        assert validate_bbox(tilted_bottom) is False
+
     def test_convention_validate_bbox_accepts_noncontiguous_rank4_layout_4174(self, device, dtype):
         # kornia#4174: a rank-4 input whose leading dimensions cannot be merged by view returns a boolean.
         boxes = torch.zeros(2, 3, 4, 2, device=device, dtype=dtype).transpose(0, 1)

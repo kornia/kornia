@@ -168,6 +168,20 @@ def _cases():
             ),
             id="fit_line_2d_vertical",
         ),
+        pytest.param(
+            # Exactly 0 and 180 degrees, and a zero vector: the exported atan2 returns -pi for atan2(+0, negative) and
+            # maps NaN to 0, where eager returns +pi and NaN (#5500).
+            _Fn(
+                lambda R1, R2, v1, v2: (kornia.metrics.angle_error_mat(R1, R2), kornia.metrics.angle_error_vec(v1, v2))
+            ),
+            (
+                torch.stack([torch.eye(3), torch.eye(3)]),
+                torch.stack([torch.eye(3), torch.diag(torch.tensor([1.0, -1.0, -1.0]))]),
+                torch.tensor([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 0.0]]),
+                torch.tensor([[1.0, 0.0, 0.0], [-1.0, 0.0, 0.0], [1.0, 0.0, 0.0]]),
+            ),
+            id="angle_error_kinks",
+        ),
     ]
 
 

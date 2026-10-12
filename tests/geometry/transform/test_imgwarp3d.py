@@ -40,8 +40,10 @@ def test_empty_destination_is_autograd_connected(op_name, dsize, align_corners, 
     assert out.shape == (1, 2, *dsize)
     assert out.numel() == 0
     out.sum().backward()
-    assert src.grad is not None and torch.count_nonzero(src.grad) == 0
-    assert transform.grad is not None and torch.count_nonzero(transform.grad) == 0
+    assert src.grad is not None
+    assert torch.count_nonzero(src.grad) == 0
+    assert transform.grad is not None
+    assert torch.count_nonzero(transform.grad) == 0
 
 
 @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
@@ -57,7 +59,8 @@ def test_empty_source_policy(op_name, device, dtype):
     empty = op(src, transform, (0, 4, 5))
     assert empty.shape == (1, 2, 0, 4, 5)
     empty.sum().backward()
-    assert src.grad is not None and transform.grad is not None
+    assert src.grad is not None
+    assert transform.grad is not None
 
     with pytest.raises(ValueError, match="must be positive"):
         op(src, transform, (3, 4, 5))

@@ -129,8 +129,8 @@ Rotations and rigid motions
 :class:`~kornia.geometry.liegroup.Se3`, :class:`~kornia.geometry.liegroup.So2` and
 :class:`~kornia.geometry.liegroup.Se2` compose the same way and act on a point as ``R p + t``, with ``R`` the
 ``matrix()`` of the rotation part. ``So2`` and ``Se2`` do so for any complex number, and a non-unit one also scales by
-its modulus; ``So3`` and ``Se3`` need a unit quaternion
-(`#4942 <https://github.com/kornia/kornia/issues/4942>`_). The tangent vectors of ``Se3`` and ``Se2`` put the
+its modulus; ``So3`` and ``Se3`` rotate by the direction :math:`q / |q|` of a non-unit quaternion, without scaling,
+like ``Quaternion.matrix()``. The tangent vectors of ``Se3`` and ``Se2`` put the
 rotation part, in radians, last: ``[υ, ω]`` and ``[vx, vy, θ]``. ``log`` is principal: its rotation angle is at most
 :math:`\pi` in magnitude. The Jacobians of ``So3`` satisfy
 :math:`\exp(\omega + \delta) \approx \exp(\omega) \exp(J_r \delta) = \exp(J_l \delta) \exp(\omega)`. A transform
@@ -364,9 +364,7 @@ Enhancement
   operate on HSV data.
 - :func:`kornia.enhance.normalize` and :func:`kornia.enhance.denormalize` use channel axis 1
   in ``(B, C, ...)``. :func:`kornia.enhance.normalize_min_max` takes ``(*, C, H, W)`` and rescales
-  each ``H x W`` plane independently. Outside rank 4, ``denormalize`` checks ``(C,)`` statistics
-  against the wrong axis; pass ``(1, C)``
-  (`#5318 <https://github.com/kornia/kornia/issues/5318>`_).
+  each ``H x W`` plane independently.
 - :func:`kornia.enhance.integral_image` sums inclusively over the last two axes. The returned
   image has the input shape, without an extra zero border.
 - :class:`kornia.enhance.ZCAWhitening` uses ``dim`` as the sample axis and flattens all other
@@ -399,12 +397,14 @@ Augmentations
   the image.
 - Geometric children normally resample masks with nearest interpolation, so
   labels are not blended, but padding can introduce its fill value. The container
-  processes a mask in the dtype of the image it is working on (the most recent
+  processes a floating mask in the dtype of the image it is working on (the most recent
   image argument before the mask, or the call's first image when the mask
-  comes first) and returns it in the mask's own dtype, so
-  integer labels outside that dtype's exact range change even through a flip:
-  ``2049`` becomes ``2048`` in ``float16``
-  (`#4478 <https://github.com/kornia/kornia/issues/4478>`_). A direct
+  comes first) and returns it in the mask's own dtype. Integer masks use at least
+  float32, or float64 with a float64 image, so half-precision images do not round
+  their class labels. Labels not exactly representable in that working dtype raise
+  ``RuntimeError``; remap them to smaller integers or use a float64 image where
+  supported. On accelerators the asynchronous assertion may report at the next
+  synchronization; MPS before torch 2.13 checks on the host. A direct
   geometric ``transform_masks`` call requires a floating tensor.
 - A list of masks is not a substitute for separate full-batch tensors: list
   index ``i`` selects sample ``i``'s gate, so full-batch entries desynchronize
@@ -414,8 +414,9 @@ Augmentations
 - Boxes use the inclusive ``xyxy_plus`` convention of
   :class:`kornia.geometry.boxes.Boxes` (see *Bounding boxes* above). Flips use
   integer pixel centres: ``x' = W - 1 - x``.
-- The outer ``.transform_matrix`` of a nested container can be missing or
-  stale, even with only rigid children
+- Nested ``AugmentationSequential`` children contribute matrices from the
+  current call. A plain ``ImageSequential`` child is still omitted from an
+  outer ``AugmentationSequential`` matrix
   (`#4476 <https://github.com/kornia/kornia/issues/4476>`_).
 - Dictionary keys match a data-key name exactly or before an ``_``/``-``
   suffix, the longest match winning. Unrecognized keys are returned unchanged
@@ -508,11 +509,11 @@ Serializing an augmentation
   ``_param_generator.*`` buffers that loading does not feed back into the
   samplers (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
 - ``pickle`` and ``copy.deepcopy`` keep the configuration and the recorded
-  ``_params``, which replay on the same input. The default
-  ``kornia.augmentation.auto`` policies cannot be pickled (a policy can be
-  pickled only when every operation wrapper in it can), though they deep-copy
-  (`#4469 <https://github.com/kornia/kornia/issues/4469>`_). What lazily
-  computed matrices retain is described in :doc:`/augmentation.base`.
+  ``_params``, which replay on the same input. This includes the
+  ``kornia.augmentation.auto`` policies: a policy pickles when every operation
+  wrapper in it does, and a wrapper does when its magnitude mapping is
+  picklable (the built-in mappings are). What lazily computed matrices retain
+  is described in :doc:`/augmentation.base`.
 
 Morphology
 ----------
@@ -587,7 +588,7 @@ is a ``[row, col]`` index and ``border_type`` takes torch's pad names. Below, ``
      - ``circular``
      - ``wrap``
      - ``wrap``
-     - rejected (``BORDER_WRAP``)
+     - no equivalent: ``BORDER_WRAP`` raises, except on uint8, where the result is not a wrap
 
 The equivalences cover empty ``geodesic`` windows too: scipy, scikit-image and kornia all return ``-inf`` from
 such a window in a dilation and ``+inf`` in an erosion, whatever the data range.
@@ -600,7 +601,18 @@ Filtering
 :doc:`kornia.filters </filters>` follows torch's vocabulary: its kernels are correlated by default, ``border_type``
 takes the :func:`torch.nn.functional.pad` mode names, and an even kernel is anchored where
 ``F.conv2d(padding='same')`` anchors it. The correlation matches ``cv2.filter2D`` and ``scipy.ndimage.correlate``; the
-border names and the even-kernel anchor do not.
+border names and the even-kernel anchor do not. :func:`~kornia.filters.filter2d`,
+:func:`~kornia.filters.filter2d_separable`, :func:`~kornia.filters.filter3d`, :func:`~kornia.filters.fft_conv`,
+:func:`~kornia.filters.box_blur`, :func:`~kornia.filters.gaussian_blur2d`, :func:`~kornia.filters.laplacian`,
+:func:`~kornia.filters.motion_blur`, :func:`~kornia.filters.bilateral_blur`,
+:func:`~kornia.filters.joint_bilateral_blur`, :func:`~kornia.filters.canny`,
+:func:`~kornia.filters.spatial_gradient3d` and their modules filter an integer or bool image in float32 and return
+float32 on its own scale, neither rescaled to :math:`[0, 1]` nor rounded and clamped to its dtype, where
+``cv2.filter2D(img, -1, k)``, ``cv2.GaussianBlur`` and ``cv2.blur`` return a uint8 image rounded and saturated to
+uint8; a floating image keeps its dtype. :func:`~kornia.filters.median_blur`,
+:func:`~kornia.filters.unsharp_mask`, :func:`~kornia.filters.spatial_gradient`, :func:`~kornia.filters.sobel`,
+:func:`~kornia.filters.guided_blur` and the blur pools do not follow this yet: most of them raise on an integer image
+(`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
 - :func:`~kornia.filters.filter2d`, :func:`~kornia.filters.filter3d` and :func:`~kornia.filters.fft_conv`
   **correlate** by default, as ``cv2.filter2D`` and ``scipy.ndimage.correlate`` do; ``behaviour='conv'`` flips the
@@ -669,6 +681,352 @@ The kernel builders against their references:
 - :func:`~kornia.filters.get_laplacian_kernel2d` of size 3 is the 8-neighbour stencil and estimates :math:`3 \nabla^2`,
   where ``scipy.ndimage.laplace`` and ``cv2.Laplacian(ksize=1)`` return :math:`\nabla^2`, ``cv2.Laplacian(ksize=3)``
   :math:`4 \nabla^2` and ``skimage.filters.laplace`` :math:`-\nabla^2`.
+- A builder raises for an integer or bool ``dtype`` that cannot hold its taps instead of truncating or wrapping them.
+  The box, Gaussian and 3-D difference kernels have fractional taps, so they raise for every integer ``dtype``, as
+  ``cv2.getGaussianKernel`` accepts only ``CV_32F`` and ``CV_64F``. The Laplacian kernels accept a signed integer
+  ``dtype`` wide enough for their negative centre, and raise for uint8, bool and a narrower one
+  (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+
+The derivative filters apply those kernels at different scales, and :func:`~kornia.filters.canny` thresholds the raw
+one:
+
+- :func:`~kornia.filters.spatial_gradient` and :func:`~kornia.filters.sobel` use normalized first-order gradients
+  by default: an interior axis-aligned unit slope gives 1 in the corresponding ``spatial_gradient`` channel, and
+  ``sobel`` returns :math:`\sqrt{1 + \epsilon}`. ``normalized=False`` returns the raw Sobel response above.
+  :func:`~kornia.filters.spatial_gradient` always replicates the border, so
+  ``cv2.Sobel(x, cv2.CV_64F, 1, 0, borderType=cv2.BORDER_REPLICATE)`` and
+  ``scipy.ndimage.sobel(x, axis=-1, mode='nearest')`` equal channel 0 of ``spatial_gradient(x, normalized=False)``;
+  OpenCV's default ``BORDER_REFLECT_101`` differs on the outermost rows and columns.
+  ``skimage.filters.sobel(x, mode='nearest')`` equals ``sqrt(2) * sobel(x, eps=0)``.
+- :func:`~kornia.filters.laplacian` is normalized by default too, but by the stencil's absolute sum, 16 for size 3:
+  ``laplacian(x, 3)`` estimates :math:`3 \nabla^2 / 16`, and ``normalized=False`` the :math:`3 \nabla^2` above.
+- :func:`~kornia.filters.canny` compares its thresholds with the **unnormalized** Sobel magnitude of the blurred
+  image, about eight times what :func:`~kornia.filters.sobel` returns by default, up to the ``eps`` inside the square
+  root. For a **single-channel grayscale** uint8 image ``img``, ``cv2.Canny(img, t1, t2, L2gradient=True)`` corresponds
+  to ``canny(x, t1 / 255, t2 / 255, kernel_size=1, eps=0)`` for edge-map comparison, with ``x`` the float32 or float64
+  tensor ``img / 255``: the thresholds scale with the image and ``kernel_size=1`` skips the Gaussian blur that
+  OpenCV does not apply. OpenCV's default L1 magnitude :math:`|g_x| + |g_y|` has no kornia counterpart.
+  :func:`~kornia.filters.canny` resolves ties along the gradient as OpenCV does, but floating-point rounding of
+  ``img / 255``, the gradient and threshold comparisons can still change a near-tie or near-threshold decision.
+  With the default ``eps=1e-6``, the square root raises the magnitude above its ``eps=0`` value, when retained by
+  the dtype's precision: it can promote a pixel even when the threshold is slightly above the raw magnitude,
+  without an exact tie. Color images need separate preprocessing: Kornia converts RGB to grayscale, while
+  OpenCV's color Canny selects the channel with the strongest gradient, so this correspondence does not apply
+  directly to a 3-channel image.
+- ``skimage.feature.canny`` thresholds the same unnormalized magnitude of a floating-point image and has the same
+  defaults, 0.1 and 0.2, so thresholds carry over; its Gaussian blur and its interpolating suppression differ from
+  :func:`~kornia.filters.canny`'s, so the edge maps do not match.
+
+The blurs give sizes and standard deviations rows first, as torch orders ``(H, W)``: ``kernel_size`` is
+``(kh, kw)`` and ``sigma`` is :math:`(\sigma_y, \sigma_x)` in :func:`~kornia.filters.gaussian_blur2d`,
+:func:`~kornia.filters.box_blur`, :func:`~kornia.filters.median_blur` and the filters built on them. OpenCV passes
+both pairs x first, so swap them when porting; scipy uses kornia's order. For odd ``kh`` and ``kw``, with the border
+mapped by the table above (OpenCV accepts ``BORDER_WRAP`` in these calls only for some dtypes and sizes):
+
+- ``gaussian_blur2d(x, (kh, kw), (sy, sx))`` equals ``cv2.GaussianBlur(x, (kw, kh), sigmaX=sx, sigmaY=sy)`` and
+  ``scipy.ndimage.gaussian_filter(x, sigma=(sy, sx), radius=(kh // 2, kw // 2))``.
+- ``box_blur(x, (kh, kw))`` equals ``cv2.blur(x, (kw, kh))`` and ``scipy.ndimage.uniform_filter(x, size=(kh, kw))``.
+
+The edge-preserving filters, the sharpening and the blur pools against their references:
+
+- :func:`~kornia.filters.bilateral_blur` with ``'l1'`` uses the colour distance of ``cv2.bilateralFilter``, but
+  weighs the whole ``kernel_size`` rectangle where OpenCV weighs only the disc of radius ``d // 2``, so the two differ
+  even for ``kernel_size=(d, d)``.
+- ``guided_blur(guide, src, 2 * r + 1, eps)`` equals ``cv2.ximgproc.guidedFilter(guide, src, r, eps)`` away from the
+  border: ``eps`` is the same quantity, but OpenCV pads with ``BORDER_REFLECT``, which has no kornia mode.
+  :func:`~kornia.filters.joint_bilateral_blur` takes its guide second, where
+  ``cv2.ximgproc.jointBilateralFilter(joint, src, ...)`` takes it first.
+- ``unsharp_mask(x, (k, k), (r, r))`` with ``k = 2 * int(4 * r + 0.5) + 1``, the window scikit-image truncates its
+  Gaussian to, equals ``skimage.filters.unsharp_mask(x, radius=r, amount=1, preserve_range=True)`` away from the
+  border. scikit-image pads with scipy's ``reflect``, which has no kornia mode, and with its default
+  ``preserve_range=False`` it clips the result, which :func:`~kornia.filters.unsharp_mask` never does.
+- ``blur_pool2d(x, k, s)`` equals the antialiased-cnns ``BlurPool(channels, pad_type='zero', filt_size=k, stride=s)``,
+  which defines ``filt_size`` up to 7. The reference's default ``pad_type='reflect'`` keeps a constant map constant
+  where :func:`~kornia.filters.blur_pool2d` zero-pads and darkens its border.
+- ``blur_pool2d(x, 5, 2)`` blurs with the 5 x 5 binomial kernel of :func:`~kornia.geometry.transform.pyrdown` but
+  samples differently: it zero-pads and keeps every second pixel from index 0, :math:`\lceil H / 2 \rceil` rows,
+  where ``pyrdown`` reflects the border and interpolates between pixels, :math:`\lfloor H / 2 \rfloor` rows.
+
+.. _losses-metrics-conventions:
+
+Losses and metrics
+------------------
+
+:doc:`kornia.losses </losses>` and :doc:`kornia.metrics </metrics>` take the prediction first and the target second,
+as torch's losses do. The order does not change the value of the symmetric functions, among them SSIM, MS-SSIM, PSNR,
+the robust losses and the Jensen-Shannon divergence, but it does for others: :func:`~kornia.losses.kl_div_loss_2d` takes
+``pred`` first and returns :math:`\mathrm{KL}(\text{target} \,\|\, \text{pred})`, and
+:func:`~kornia.losses.inverse_depth_smoothness_loss` takes the inverse depth it penalises first and the image that
+weights it second.
+
+What the families take:
+
+- :func:`~kornia.metrics.ssim`, :func:`~kornia.metrics.ssim3d`, :func:`~kornia.metrics.psnr`, the SSIM losses and
+  :class:`~kornia.losses.MS_SSIMLoss` compare images with values in ``[0, L]``, where ``L`` is the data range:
+  ``max_val`` everywhere except in :class:`~kornia.losses.MS_SSIMLoss`, which calls it ``data_range`` as scikit-image,
+  pytorch-msssim and torchmetrics do. ``L`` sets the SSIM constants :math:`C_1 = (0.01 L)^2` and
+  :math:`C_2 = (0.03 L)^2` and the PSNR peak :math:`\text{MAX}_I`. Pixel values are never rescaled, so images in
+  ``[0, 255]`` need ``max_val=255.0`` or ``data_range=255.0``. The default is ``1.0`` (``psnr``, ``psnr_loss`` and
+  ``PSNRLoss`` have none), where pytorch-msssim defaults to 255.
+- The robust losses take two tensors of the same, arbitrary shape; the residual is in the units of the data.
+- :func:`~kornia.losses.total_variation` takes one image ``(*, H, W)``.
+- :func:`~kornia.losses.kl_div_loss_2d` and :func:`~kornia.losses.js_div_loss_2d` take probabilities: every
+  ``(b, n)`` slice of a ``(B, N, H, W)`` input is a distribution over ``H x W``.
+- The losses on the segmentation page take raw logits (see `Dense-prediction losses`_) and
+  :class:`~kornia.losses.HausdorffERLoss` takes probabilities; the mutual-information losses take intensities of any
+  range, which they normalise per signal: per channel of each sample for an image batch.
+
+Where a function takes ``reduction``, the names are torch's: ``'none'``, ``'mean'`` and ``'sum'``. What is averaged or
+added and the default differ between families, so each Convention block states both; the table lists the defaults. A
+string outside a function's vocabulary raises, ``BaseError`` from the robust losses and
+:func:`~kornia.losses.total_variation` and ``NotImplementedError`` from the others.
+
+.. list-table::
+   :header-rows: 1
+
+   * - functions
+     - default ``reduction``
+     - default output
+   * - :func:`~kornia.losses.charbonnier_loss`, :func:`~kornia.losses.cauchy_loss`,
+       :func:`~kornia.losses.geman_mcclure_loss`, :func:`~kornia.losses.welsch_loss`,
+       :func:`~kornia.losses.focal_loss`, :func:`~kornia.losses.binary_focal_loss_with_logits`
+     - ``'none'``
+     - one value per element, in the shape of the prediction
+   * - :func:`~kornia.losses.ssim_loss`, :func:`~kornia.losses.ssim3d_loss`, :class:`~kornia.losses.MS_SSIMLoss`,
+       :func:`~kornia.losses.kl_div_loss_2d`, :func:`~kornia.losses.js_div_loss_2d`,
+       :class:`~kornia.losses.HausdorffERLoss`, :class:`~kornia.losses.HausdorffERLoss3D`,
+       :func:`~kornia.metrics.aepe`, :func:`~kornia.metrics.mean_absolute_disparity_error` and the other disparity
+       metrics
+     - ``'mean'``
+     - a scalar
+   * - :func:`~kornia.losses.total_variation`
+     - ``'sum'``, with ``'mean'`` the only alternative
+     - one value per leading index, ``(*,)``: ``(B, C)`` for an image batch
+   * - :func:`~kornia.losses.dice_loss`, :func:`~kornia.losses.tversky_loss`, :func:`~kornia.losses.lovasz_hinge_loss`,
+       :func:`~kornia.losses.lovasz_softmax_loss`, :func:`~kornia.metrics.psnr`, :func:`~kornia.losses.psnr_loss`,
+       :func:`~kornia.losses.inverse_depth_smoothness_loss`
+     - no ``reduction``
+     - a scalar
+   * - :func:`~kornia.losses.mutual_information_loss` and the other mutual-information losses
+     - no ``reduction``
+     - one value per signal: ``(B, C)`` for an image batch in the 2-D and 3-D variants
+   * - :func:`~kornia.metrics.ssim`, :func:`~kornia.metrics.ssim3d` and the other metrics
+     - no ``reduction``
+     - stated by each function
+
+The modules take the ``reduction`` of their functions, except :class:`~kornia.losses.TotalVariation`, which has none
+and always sums.
+
+Porting from other libraries:
+
+- ``ssim(x, y, 11, max_val=L, eps=0.0, padding='valid').mean()`` for one image matches scikit-image's
+  ``structural_similarity(x, y, gaussian_weights=True, sigma=1.5, use_sample_covariance=False, data_range=L,
+  channel_axis=-1)`` on the ``(H, W, C)`` arrays up to floating-point differences, and over a batch it matches
+  pytorch-msssim's ``ssim(x, y, data_range=L)``. Set ``eps=0.0`` to remove Kornia's added denominator term when
+  matching these implementations. The default ``eps=1e-12`` can matter: identical black images score about
+  ``0.99998889`` at ``L=1.0``, ``0.9`` at ``L=0.1`` and ``0.00089919`` at ``L=0.01``, where the references give 1.
+  scikit-image's defaults, a 7 x 7 uniform window with the sample covariance, give another value. torchmetrics'
+  ``structural_similarity_index_measure(x, y, data_range=L)`` averages over a reflected ``'same'`` map instead;
+  it has no added denominator epsilon and clamps negative variance estimates from roundoff to zero.
+- :func:`~kornia.losses.ssim_loss` is the structural dissimilarity ``(1 - SSIM) / 2``, clamped to ``[0, 1]``. The
+  ``1 - SSIM`` loss is twice that: ``1 - ssim(x, y, w).mean()`` equals ``2 * ssim_loss(x, y, w)`` wherever the clamp
+  does not act. :func:`~kornia.losses.ssim3d_loss` uses the same clamped DSSIM formula for volumes.
+- :class:`~kornia.losses.MS_SSIMLoss` filters with one Gaussian per entry of ``sigmas`` at full resolution, the
+  approximation of Zhao et al.; pytorch-msssim's ``ms_ssim`` and torchmetrics'
+  ``multiscale_structural_similarity_index_measure`` downsample through a dyadic pyramid, so ``1 - ms_ssim(x, y)`` is
+  not ``MS_SSIMLoss(alpha=1.0, compensation=1.0)(x, y)``.
+- :func:`~kornia.metrics.psnr` of a batch pools one MSE over all its images: it equals scikit-image's
+  ``peak_signal_noise_ratio(x, y, data_range=L)`` on the whole batch array and torchmetrics'
+  ``peak_signal_noise_ratio(x, y, data_range=L)`` at its default ``dim=None``. The mean of per-image PSNRs is
+  scikit-image's value averaged over the images, or torchmetrics' with ``dim=(1, 2, 3)``.
+- ``general.lossfun(x - y, alpha, scale)`` of Barron's ``robust_loss_pytorch`` equals the kornia robust loss of
+  ``x / scale`` and ``y / scale`` with the same ``alpha``: 1 for :func:`~kornia.losses.charbonnier_loss`, 0 for
+  :func:`~kornia.losses.cauchy_loss`, -2 for :func:`~kornia.losses.geman_mcclure_loss` and ``-inf`` for
+  :func:`~kornia.losses.welsch_loss`.
+- torchmetrics' ``total_variation(img, reduction='none')`` equals ``total_variation(img).sum(-1)`` for a
+  ``(B, C, H, W)`` batch. Its ``'mean'`` averages those per-image sums over the batch, where the ``'mean'`` of
+  :func:`~kornia.losses.total_variation` averages each difference term over its own count.
+- For strictly positive probabilities, ``kl_div_loss_2d(pred, target)`` equals
+  ``F.kl_div(pred.log(), target, reduction='batchmean')`` on the ``(B * N, H * W)`` reshape; torch's
+  ``reduction='mean'`` divides by every element instead. Kornia defines zero-target cells with finite nonnegative
+  predictions as contributing zero, including shared zero cells, where the raw PyTorch recipe returns NaN. Replace
+  both arguments with 1 in these cells before taking the logarithm to reproduce Kornia's handling. torchmetrics'
+  ``kl_divergence(target, pred)`` on the reshape matches Kornia's value, including shared zeros. For scipy, reshape
+  ``pred`` and ``target`` to NumPy arrays ``p`` and ``q`` of shape ``(B, N, H * W)``. Then
+  ``scipy.stats.entropy(q, p, axis=-1).mean()`` matches the default KL loss, and
+  ``(scipy.spatial.distance.jensenshannon(p, q, axis=-1) ** 2).mean()`` matches
+  :func:`~kornia.losses.js_div_loss_2d`, using scipy's default natural logarithm. Without the final ``mean()``, each
+  returns ``(B, N)``, matching ``reduction='none'``. SciPy normalises its inputs, so these mappings require each
+  spatial slice to sum to one.
+- :func:`~kornia.losses.inverse_depth_smoothness_loss` does not normalise the inverse depth, where Monodepth2 divides
+  the disparity by its mean plus ``1e-7`` before its smoothness term: pass
+  ``idepth / (idepth.mean((2, 3), keepdim=True) + 1e-7)`` to port it, keeping zero inverse depth finite.
+
+Dense-prediction losses
+^^^^^^^^^^^^^^^^^^^^^^^
+
+The losses on the :doc:`segmentation page </losses.segmentation>` take raw logits, not probabilities;
+:func:`~kornia.losses.focal_loss` documents the multi-class input, with the classes on axis 1 and an integer label map
+as the target.
+
+**Class 0 is the background** wherever a loss or a metric singles one class out:
+:func:`~kornia.losses.focal_loss` weights class 0 by ``1 - alpha`` and classes ``1`` to ``C - 1`` by ``alpha``, and
+:func:`~kornia.metrics.mean_average_precision` never scores class 0, which its ``n_classes`` still counts. Keep the
+background at label 0 when porting a label map: moving it changes both results. ``focal_loss`` with ``alpha=None``,
+:func:`~kornia.losses.dice_loss`, :func:`~kornia.losses.tversky_loss`, :func:`~kornia.losses.lovasz_softmax_loss` and
+:class:`~kornia.losses.HausdorffERLoss` treat class 0 like every other class.
+
+With ``alpha=None`` and ``gamma=0``, the target slice of :func:`~kornia.losses.focal_loss` is the cross entropy, but
+its ``'mean'`` is not that of :func:`~torch.nn.functional.cross_entropy`. It divides the sum by every element of the
+``(B, C, *)`` output, ``C`` times the pixel count, ignored pixels included, and it does not normalise ``weight``, where
+``cross_entropy`` divides by the summed weights of the target classes of the non-ignored pixels. To port
+``F.cross_entropy(pred, target, weight=w, ignore_index=i)``, divide
+``focal_loss(pred, target, alpha=None, gamma=0.0, reduction='sum', weight=w, ignore_index=i)`` by
+``w[target[target != i]].sum()``, or by the number of non-ignored pixels when there is no ``w``.
+
+The other dense-prediction losses against their references:
+
+- :func:`~kornia.losses.binary_focal_loss_with_logits` with its defaults, ``alpha=0.25`` on the positive term,
+  ``gamma=2`` and ``reduction='none'``, equals ``torchvision.ops.sigmoid_focal_loss`` on targets of 0 and 1. On a
+  fractional target ``t`` they differ: kornia weights its positive and negative focal terms by ``t`` and ``1 - t``,
+  torchvision applies ``alpha_t * (1 - p_t) ** gamma`` to the whole binary cross entropy. Its ``pos_weight`` of shape
+  ``(C,)`` runs along dim 1: ``binary_focal_loss_with_logits(pred, target, alpha=None, gamma=0.0, pos_weight=pw)``
+  equals ``F.binary_cross_entropy_with_logits(pred, target, pos_weight=pw.view(C, 1, 1), reduction='none')`` on
+  ``(B, C, H, W)``, where torch broadcasts a ``(C,)`` ``pos_weight`` along the last axis.
+- The Lovász losses score each image on its own, as the reference implementation of Berman et al.
+  (``bermanmaxim/LovaszSoftmax``) does with ``per_image=True``: :func:`~kornia.losses.lovasz_hinge_loss` is its
+  ``lovasz_hinge(pred[:, 0], target, per_image=True)``, the reference default, and
+  :func:`~kornia.losses.lovasz_softmax_loss` is ``lovasz_softmax(pred.softmax(1), target, classes='all',
+  per_image=True)``. The ``lovasz_softmax`` defaults, ``classes='present'`` and ``per_image=False``, score only the
+  classes present and flatten the batch into one image, which gives another value.
+
+A class absent from the target has no overlap to score, and the per-class functions treat it differently:
+
+- :func:`~kornia.metrics.mean_iou` returns IoU 1 for a class absent from both the target and the prediction, through
+  its ``eps``, and leaves the averaging over classes to the caller: drop the classes that occur in neither map before
+  averaging its ``(B, K)`` output. scikit-learn's ``jaccard_score`` leaves such a class out unless ``labels`` names it,
+  and then scores it 0, or 1 with ``zero_division=1.0``.
+- ``dice_loss(average='macro')`` and :func:`~kornia.losses.tversky_loss` leave it out of the sample's mean, whether
+  it is predicted or not.
+- :func:`~kornia.metrics.mean_average_precision` pools the images and leaves out a class without a ground-truth object
+  in any of them, detected or not; its entry in the per-class dictionary is ``-1``.
+
+Task metrics
+^^^^^^^^^^^^
+
+:func:`~kornia.metrics.confusion_matrix` puts the target class on the rows and the predicted class on the columns, and
+:func:`~kornia.metrics.mean_iou` reads its per-class IoU from that matrix.
+
+The task metrics differ in what they return, in what they pool and in their scale: percent, fraction, pixels or
+degrees. Each Convention block states its own, and the table collects them. For the background class 0 and for a
+class absent from a sample, see `Dense-prediction losses`_.
+
+.. list-table::
+   :header-rows: 1
+
+   * - functions
+     - output
+     - pooled over
+     - scale
+   * - :func:`~kornia.metrics.accuracy`
+     - a list of 0-d tensors, one per entry of ``topk``
+     - the batch
+     - percent, ``[0, 100]``
+   * - :func:`~kornia.metrics.confusion_matrix`
+     - ``(B, K, K)``, rows the target and columns the prediction
+     - nothing: one matrix per sample
+     - counts
+   * - :func:`~kornia.metrics.mean_iou`
+     - ``(B, K)``
+     - nothing: one IoU per sample and class
+     - fraction, ``[0, 1]``
+   * - :func:`~kornia.metrics.mean_iou_bbox`
+     - ``(B1, B2)``
+     - nothing: one IoU per pair of boxes
+     - fraction, ``[0, 1]``
+   * - :func:`~kornia.metrics.mean_average_precision`
+     - a 0-d tensor and a ``{class id: AP}`` dict
+     - the detections of all images, per class, then a mean over the classes with objects
+     - fraction, ``[0, 1]``; ``-1`` for a class without objects, and for the mAP when no image has a foreground
+       object
+   * - :func:`~kornia.metrics.aepe`, :func:`~kornia.metrics.average_endpoint_error`, :class:`~kornia.metrics.AEPE`
+     - 0-d, or ``(*)`` for ``reduction='none'``
+     - every position of every sample
+     - the units of the flow
+   * - :func:`~kornia.metrics.mean_absolute_disparity_error`,
+       :func:`~kornia.metrics.root_mean_squared_disparity_error`
+     - 0-d, or ``(*)`` for ``reduction='none'``
+     - every valid pixel of every image
+     - pixels
+   * - :func:`~kornia.metrics.mean_bad_pixel_error`, :func:`~kornia.metrics.kitti_d1_error`
+     - 0-d, or ``(*)`` for ``reduction='none'``
+     - every valid pixel of every image
+     - fraction, ``[0, 1]``
+   * - :func:`~kornia.metrics.angle_error_mat`, :func:`~kornia.metrics.angle_error_vec`
+     - ``(*)``, 0-d for one pair
+     - nothing: one angle per pair
+     - degrees
+   * - :func:`~kornia.metrics.pose_errors`
+     - a dict of ``(B,)`` tensors, ``(1,)`` for one pose
+     - nothing: one error per pose
+     - degrees
+   * - :func:`~kornia.metrics.translation_ate`
+     - ``(*)``, ``(1,)`` for one translation
+     - nothing: one distance per sample
+     - the units of the translations
+   * - :func:`~kornia.metrics.auc_from_errors`
+     - a ``{threshold: AUC}`` dict of Python floats
+     - all errors
+     - percent, ``[0, 100]``
+   * - :class:`~kornia.metrics.AverageMeter`
+     - ``avg``, a Python float
+     - every update, weighted by its ``n``
+     - the scale of the values passed
+
+Porting the task metrics from other libraries:
+
+- scikit-learn takes the target first and kornia the prediction; both put the target on the rows:
+  ``confusion_matrix(pred, target, K)[b]`` equals
+  ``sklearn.metrics.confusion_matrix(target[b].ravel(), pred[b].ravel(), labels=range(K))``. ``normalized=True`` is
+  ``normalize='true'`` up to the ``1e-6`` added to every row sum, not the per-prediction ``normalize='pred'``. Without
+  tied scores, ``accuracy(pred, target, topk=(k,))[0]`` is 100 times
+  ``top_k_accuracy_score(target, pred, k=k, labels=range(C))`` for more than two classes, and 100 times
+  ``accuracy_score(target, pred.argmax(1))`` for ``k=1``.
+- The IoU of a whole batch or dataset, which
+  ``jaccard_score(target.ravel(), pred.ravel(), labels=range(K), average=None)`` and torchmetrics'
+  ``MulticlassJaccardIndex(num_classes=K, average='none')`` report, is the IoU of the summed matrix
+  ``confusion_matrix(pred, target, K).sum(0)``, not the mean of :func:`~kornia.metrics.mean_iou` over the batch.
+- :func:`~kornia.metrics.mean_average_precision` matches a detection to an object only when their IoU is strictly
+  greater than ``threshold``, as ``voc_eval`` of py-faster-rcnn does, and computes that IoU on exclusive boxes, as
+  :func:`~kornia.metrics.mean_iou_bbox` does, where py-faster-rcnn and the PASCAL VOC devkit add 1 to every box width
+  and height. The devkit (``VOCevaldet.m``) matches at ``IoU >= 0.5``, so a detection whose IoU equals the threshold
+  is a false positive in kornia and a true positive there.
+- COCO's evaluation, run as torchmetrics' ``MeanAveragePrecision(iou_thresholds=[0.5],
+  rec_thresholds=[i / 10 for i in range(11)], backend='pycocotools')``, pools the detections of all images,
+  interpolates at kornia's 11 recall levels and leaves a class without objects out of the mean, with AP ``-1`` where it
+  lists one, as kornia does. It reproduces kornia's AP except in five cases: it matches at ``IoU >= 0.5``; it gives a
+  detection whose best object is already matched to the best object still free; it scores class 0 like every other
+  class; it scores only the 100 highest-scoring detections of a class in each image; and it ranks detections of equal
+  score by image, then in input order, where kornia leaves their order to ``torch.sort``.
+- torchvision's RAFT models return a list of ``(B, 2, H, W)`` flows, channel first, where
+  :func:`~kornia.metrics.aepe` takes ``(B, H, W, 2)``. The endpoint error of RAFT's training code,
+  ``((pred - gt) ** 2).sum(1).sqrt()`` on channel-first flows (``sum(0)`` on one flow in its evaluation code), equals
+  ``aepe(pred.permute(0, 2, 3, 1), gt.permute(0, 2, 3, 1), reduction='none')``. Its mean is the default ``'mean'``
+  where every pixel is valid, as in RAFT's Chairs and Sintel evaluation; RAFT's training metrics and its KITTI
+  evaluation average only the valid pixels, KITTI image by image, so take those means of the ``'none'`` map.
+- :func:`~kornia.metrics.kitti_d1_error` applies the outlier rule of the KITTI 2015 devkit (``evaluate_scene_flow.cpp``)
+  and pools like it: the devkit adds up outliers and valid pixels over all images before dividing, so its value is not
+  the mean of per-image D1. The devkit also reads a ground-truth disparity of 0 as invalid and scores its own
+  interpolated version of the estimate: pass a dense prediction and ``valid_mask=target > 0`` to reproduce its
+  number.
+- SuperGlue's ``pose_auc`` and the ``cal_error_auc`` of glue-factory, the evaluation code of LightGlue, return the pose
+  AUC as a fraction, glue-factory's rounded to four decimals. Both equal :func:`~kornia.metrics.auc_from_errors`
+  divided by 100 for errors without NaN: the references count a NaN as a failure, kornia propagates it. SuperGlue's
+  ``match_pairs.py`` prints 100 times that fraction, a percentage like kornia's; glue-factory reports the fraction
+  itself. glue-factory's pose error, the larger of the rotation angle and the folded translation angle, is the
+  ``"max_err"`` of :func:`~kornia.metrics.pose_errors` with the default ``fold_translation=True``. For a zero
+  ground-truth translation glue-factory reads a translation error of 90 degrees, where
+  :func:`~kornia.metrics.pose_errors` returns NaN.
 
 .. _two-view-conventions:
 
@@ -705,8 +1063,8 @@ normalised camera coordinates, and :func:`~kornia.geometry.homography.find_homog
    * - pose from ``E``
      - ``decompose_essential_matrix`` returns ``R1``, ``R2`` and a unit ``t``; which candidate is the true pose is
        not fixed.
-       ``motion_from_essential_choose_solution`` selects it by cheirality from pixel coordinates, and returns
-       candidate 0 when no point passes (`#4879 <https://github.com/kornia/kornia/issues/4879>`_)
+       ``motion_from_essential_choose_solution`` selects it by cheirality from pixel coordinates and also returns
+       the number of points that passed; ``0`` means none did
      - ``decomposeEssentialMat`` returns the same candidate set, whose labels are not fixed either and differ from
        kornia's, so a candidate index does not port; ``recoverPose`` selects the same pose and also returns the
        inlier count
@@ -732,8 +1090,9 @@ normalised camera coordinates, and :func:`~kornia.geometry.homography.find_homog
      - ``ransacReprojThreshold`` of ``findHomography``, the same unit for points
    * - polynomial roots
      - ``solve_quadratic``, ``solve_cubic`` and ``solve_quartic`` take coefficients highest degree first and
-       return only the real roots, a missing root padded with ``0.0``; ``solve_quartic``'s order is unspecified;
-       a zero leading coefficient lowers the degree
+       return only the real roots, a missing root padded with ``0.0``; ``solve_quartic`` returns its roots in
+       descending order before the padding, and its lower-degree rows keep ``solve_cubic``'s order; a zero
+       leading coefficient lowers the degree
      - ``numpy.roots`` takes the same coefficient order, returns the complex roots too and drops leading zeros
 
 Pitfall checklist

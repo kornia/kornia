@@ -89,37 +89,6 @@ class TestAugmentationCompile(BaseTester):
         self.assert_close(out_input, input.flip(-1))
         self.assert_close(out_mask, mask.flip(-1) if keepdim else mask.flip(-1).unsqueeze(1))
 
-    def test_compile_hand_made_batch_prob_matches_eager_at_static_p(self, device, dtype, torch_optimizer):
-        # At static `p=1.0, p_batch=1.0` no path consults a `batch_prob` put into `params` (#5585), so the compiled
-        # and the eager run take the same path: the image, `inverse` and the labels agree for a deselecting gate.
-        input = torch.rand(2, 1, 6, 10, device=device, dtype=dtype)
-        points = torch.tensor([[[2.0, 3.0]], [[2.0, 3.0]]], device=device, dtype=dtype)
-        gate = torch.tensor([0.0, 1.0])
-
-        module = K.RandomAffine(90.0, p=1.0)
-        params = module.forward_parameters(input.shape)
-        params["batch_prob"] = gate.clone()
-        expected = module(input, params=params)
-        compiled = torch_optimizer(lambda t: module(t, params=params), fullgraph=True)(input)
-        self.assert_close(compiled, expected)
-        assert not torch.equal(compiled[0], input[0])  # the row the gate deselects is transformed in both
-        # The #5585 round trip through a compiled forward: `inverse` itself is not fullgraph-compilable, so it runs
-        # eagerly on the compiled output and must agree with the eager round trip.
-        self.assert_close(module.inverse(compiled, params=params), module.inverse(expected, params=params))
-
-        sequential = K.AugmentationSequential(module, data_keys=["input", "keypoints"])
-        items = [ParamItem("RandomAffine_0", params)]
-        eager_image, eager_points = sequential(input, Keypoints(points.clone()), params=items)
-
-        def run(t, k):
-            image, keypoints = sequential(t, Keypoints(k), params=items)
-            return image, keypoints.data
-
-        compiled_image, compiled_points = torch_optimizer(run, fullgraph=True)(input, points.clone())
-        self.assert_close(compiled_image, eager_image)
-        self.assert_close(compiled_points, eager_points.data)
-        assert not torch.equal(compiled_points[0], points[0])
-
     def test_dynamo_sequential_bbox(self, device, dtype, torch_optimizer):
         # The 'bbox' key imports through Boxes.from_tensor('vertices_plus'), whose finiteness check is
         # asynchronous, so the box path compiles with fullgraph=True (#4177).

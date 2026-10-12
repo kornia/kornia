@@ -203,11 +203,9 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False, force_contiguou
         pass
     elif len(input_shape) == 3:
         # (C, H, W) -> (H, W, C)
-        if input_shape[0] == 1:
-            # Grayscale for proper plt.imshow needs to be (H,W)
-            image = image.squeeze()
-        else:
-            image = image.permute(1, 2, 0)
+        # Grayscale for proper plt.imshow needs to be (H,W); squeeze only the channel axis so that a unit H or W
+        # of a 1-row or 1-column image survives.
+        image = image.squeeze(0) if input_shape[0] == 1 else image.permute(1, 2, 0)
     elif len(input_shape) == 4:
         # (B, C, H, W) -> (B, H, W, C)
         image = image.permute(0, 2, 3, 1)
@@ -259,7 +257,8 @@ def make_grid(tensor: torch.Tensor, n_row: Optional[int] = None, padding: int = 
 
     Args:
         tensor: A batched tensor of shape (B, C, H, W).
-        n_row: Number of images displayed in each row of the grid.
+        n_row: Number of images displayed in each row of the grid. If ``None``, use the square root
+            of the batch size rounded up. Images are placed in batch order, filling each row before the next.
         padding: The amount of padding to add between images.
 
     Returns:
@@ -271,8 +270,11 @@ def make_grid(tensor: torch.Tensor, n_row: Optional[int] = None, padding: int = 
 
     B, C, H, W = tensor.shape
     if n_row is None:
-        n_row = int(torch.sqrt(torch.tensor(B, dtype=torch.float32)).ceil().item())
-    n_col = (B + n_row - 1) // n_row
+        n_row = max(1, int(torch.sqrt(torch.tensor(B, dtype=torch.float32)).ceil().item()))
+    elif n_row < 1:
+        raise ValueError("n_row must be positive.")
+    n_col = n_row
+    n_row = (B + n_col - 1) // n_col
 
     padded_H = H + padding
     padded_W = W + padding

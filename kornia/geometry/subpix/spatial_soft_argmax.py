@@ -319,8 +319,9 @@ def _unfold3d(padded: torch.Tensor, kernel_size: tuple[int, int, int], stride: t
     kz, ky, kx = kernel_size
     sz, sy, sx = stride
     columns = F.unfold(padded.reshape(n * d_p, 1, h_p, w_p), (ky, kx), stride=(sy, sx))
-    columns = columns.view(n, d_p, ky * kx, -1).unfold(1, kz, sz)  # (N, D_out, ky * kx, L, kz)
-    return columns.permute(0, 1, 4, 2, 3).reshape(n, columns.shape[1], kz * ky * kx, -1)
+    num_windows = columns.shape[-1]
+    columns = columns.view(n, d_p, ky * kx, num_windows).unfold(1, kz, sz)  # (N, D_out, ky * kx, L, kz)
+    return columns.permute(0, 1, 4, 2, 3).reshape(n, columns.shape[1], kz * ky * kx, num_windows)
 
 
 def conv_soft_argmax2d(
@@ -400,7 +401,7 @@ def conv_soft_argmax2d(
     py, px = (padding, padding) if isinstance(padding, int) else padding
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
-    input = input.view(b * c, 1, h, w)
+    input = input.reshape(b * c, 1, h, w)
 
     center_kernel: torch.Tensor = _get_center_kernel2d(ky, kx, device).to(dtype)
     window_kernel: torch.Tensor = _get_window_grid_kernel2d(ky, kx, device).to(dtype)
@@ -536,7 +537,7 @@ def conv_soft_argmax3d(
     pz, py, px = (padding, padding, padding) if isinstance(padding, int) else padding
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
-    input = input.view(b * c, 1, d, h, w)
+    input = input.reshape(b * c, 1, d, h, w)
 
     center_kernel: torch.Tensor = _get_center_kernel3d(kz, ky, kx, device).to(dtype)
     window_kernel: torch.Tensor = _get_window_grid_kernel3d(kz, ky, kx, device).to(dtype)
@@ -903,7 +904,7 @@ def conv_quad_interp3d(
 
     # ── Step 1: NMS maxima ────────────────────────────────────────────────────
     nms_mask = precomputed_nms_mask if precomputed_nms_mask is not None else nms3d(input, (3, 3, 3), True)
-    bc_idx, d_idx, h_idx, w_idx = torch.where(nms_mask.view(BC, D, H, W))
+    bc_idx, d_idx, h_idx, w_idx = torch.where(nms_mask.reshape(BC, D, H, W))
     N = bc_idx.shape[0]
     # Note: no early-return for N==0 — empty tensors flow through all ops as no-ops.
 
@@ -942,7 +943,7 @@ def conv_quad_interp3d(
     #     quadratic system), so last-write-wins in the LUT is correct.
 
     # ── Step 3: gather 3x3x3 neighbourhood for all kept dilated positions ────
-    inp_flat = input.view(-1)
+    inp_flat = input.reshape(-1)
     patch_offsets = _PATCH_DD.to(device) * HW + _PATCH_DH.to(device) * W + _PATCH_DW.to(device)  # (27,)
     center_flat = bc_u * DHW + d_u * HW + h_u * W + w_u
     patch = inp_flat[center_flat.unsqueeze(1) + patch_offsets.unsqueeze(0)]  # (NU, 27)
@@ -1077,7 +1078,7 @@ def conv_quad_interp3d(
     d_cur = torch.where(valid, d_cur, d_idx)
     h_cur = torch.where(valid, h_cur, h_idx)
     w_cur = torch.where(valid, w_cur, w_idx)
-    val_center = input.view(BC, D, H, W)[bc_idx, d_cur, h_cur, w_cur]
+    val_center = inp_flat.view(BC, D, H, W)[bc_idx, d_cur, h_cur, w_cur]
     y_max[b_idx, c_idx, d_idx, h_idx, w_idx] = val_center + val_correction
 
     return coords_max, y_max
@@ -1247,7 +1248,7 @@ def iterative_quad_interp3d(
     DHW = D * H * W
     HW = H * W
 
-    nms_flat = (precomputed_nms_mask if precomputed_nms_mask is not None else nms3d(input, (3, 3, 3), True)).view(
+    nms_flat = (precomputed_nms_mask if precomputed_nms_mask is not None else nms3d(input, (3, 3, 3), True)).reshape(
         B * C, D, H, W
     )
 

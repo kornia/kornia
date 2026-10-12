@@ -136,6 +136,15 @@ def _sanitize_laf(laf: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     return torch.where(invalid[..., None, None], replacement, laf), invalid
 
 
+def _compose_with_frame(shape_laf: torch.Tensor, frame: torch.Tensor) -> torch.Tensor:
+    # A shape estimated on a patch sampled through `frame` is expressed in the patch coordinates; the image
+    # frame of that region is `frame @ shape`. Dividing the frame by its scale first turns the upright frame of an
+    # isotropic input into an identity factor up to rounding, so such an input gets the estimated shape itself; the
+    # caller rescales the result to the input's scale.
+    frame_shape = frame[..., :2] / get_laf_scale(frame)
+    return torch.cat([frame_shape @ shape_laf[..., :2], shape_laf[..., 2:]], dim=-1)
+
+
 def _finalize_laf(
     laf_out: torch.Tensor,
     laf: torch.Tensor,
@@ -171,9 +180,13 @@ class LAFAffineShapeEstimator(nn.Module):
 
     Then runs :class:`~kornia.feature.PatchAffineShapeEstimator` on patches to estimate LAFs shape.
 
-    Then original LAF shape is replaced with estimated one. The original LAF orientation is not preserved,
-    so it is recommended to first run LAFAffineShapeEstimator and then LAFOrienter,
-
+    Each patch is sampled through the upright form of its LAF (:func:`~kornia.feature.make_upright`), so the shape
+    is estimated in the coordinates of that frame, and the output region is the frame composed with the estimated
+    shape. For an isotropic input LAF (a circle), that is the estimated shape itself. An input whose shape already
+    matches the local structure gives a nearly isotropic patch, so its shape changes little: one call is one step of
+    the iterative shape adaptation of :cite:`baumberg2000`. The centre and the scale of the input LAF are kept. With
+    ``preserve_orientation=True`` its orientation is kept too; otherwise the output is upright, and an orientation
+    estimator such as :class:`~kornia.feature.LAFOrienter` can be run after this module.
 
     Args:
         patch_size: the input image patch size.
@@ -214,9 +227,8 @@ class LAFAffineShapeEstimator(nn.Module):
         B, N = laf.shape[:2]
         PS: int = self.patch_size
         safe_input, _ = _sanitize_laf(laf)
-        patches: torch.Tensor = extract_patches_from_pyramid(img, make_upright(safe_input), PS, True).view(
-            -1, 1, PS, PS
-        )
+        frame = make_upright(safe_input)
+        patches: torch.Tensor = extract_patches_from_pyramid(img, frame, PS, True).view(-1, 1, PS, PS)
         ellipse_shape: torch.Tensor = self.affine_shape_detector(patches)
         ellipse_det = ellipse_shape[..., 0] * ellipse_shape[..., 2] - ellipse_shape[..., 1].square()
         # ellipse_to_laf takes the square root of a - (b / sqrt(c))^2, formed as below. For a nearly singular
@@ -234,7 +246,7 @@ class LAFAffineShapeEstimator(nn.Module):
         circular_shape = ellipse_shape.new_tensor([1.0, 0.0, 1.0])
         safe_ellipse_shape = torch.where(bad_shape[..., None], circular_shape, ellipse_shape)
         ellipses = torch.cat([laf.view(-1, 2, 3)[..., 2].unsqueeze(1), safe_ellipse_shape], dim=2).view(B, N, 5)
-        laf_out = ellipse_to_laf(ellipses)
+        laf_out = _compose_with_frame(ellipse_to_laf(ellipses), frame)
         bad = bad_shape.view(B, N) | ~laf_is_valid(laf_out)
         return _finalize_laf(laf_out, laf, self.preserve_orientation, bad)
 
@@ -246,11 +258,15 @@ class LAFAffNetShapeEstimator(nn.Module):
     "Repeatability Is Not Enough: Learning Discriminative Affine Regions via Discriminability"".
     See :cite:`AffNet2018` for more details.
 
-    Then original LAF shape is replaced with estimated one. The original LAF orientation is not preserved,
-    so it is recommended to first run LAFAffineShapeEstimator and then LAFOrienter.
+    Each patch is sampled through the upright form of its LAF (:func:`~kornia.feature.make_upright`), so AffNet
+    predicts the shape in the coordinates of that frame, and the output region is the frame composed with the
+    prediction. For an isotropic input LAF (a circle), that is the predicted shape itself. The centre and the scale of
+    the input LAF are kept. With ``preserve_orientation=True`` its orientation is kept too; otherwise the output is
+    upright, and an orientation estimator such as :class:`~kornia.feature.LAFOrienter` can be run after this module.
 
     Args:
         pretrained: Download and set pretrained weights to the model.
+        preserve_orientation: if True, the original orientation is preserved.
 
     """
 
@@ -315,13 +331,12 @@ class LAFAffNetShapeEstimator(nn.Module):
         B, N = laf.shape[:2]
         PS: int = self.patch_size
         safe_input, _ = _sanitize_laf(laf)
-        patches: torch.Tensor = extract_patches_from_pyramid(img, make_upright(safe_input), PS, True).view(
-            -1, 1, PS, PS
-        )
+        frame = make_upright(safe_input)
+        patches: torch.Tensor = extract_patches_from_pyramid(img, frame, PS, True).view(-1, 1, PS, PS)
         xy = self.features(self._normalize_input(patches)).view(-1, 3)
         a1 = torch.cat([1.0 + xy[:, 0].reshape(-1, 1, 1), 0 * xy[:, 0].reshape(-1, 1, 1)], dim=2)
         a2 = torch.cat([xy[:, 1].reshape(-1, 1, 1), 1.0 + xy[:, 2].reshape(-1, 1, 1)], dim=2)
         new_laf_no_center = torch.cat([a1, a2], dim=1).reshape(B, N, 2, 2)
-        new_laf = torch.cat([new_laf_no_center, laf[:, :, :, 2:3]], dim=3)
+        new_laf = _compose_with_frame(torch.cat([new_laf_no_center, laf[:, :, :, 2:3]], dim=3), frame)
         bad = ~laf_is_valid(new_laf)
         return _finalize_laf(new_laf, laf, self.preserve_orientation, bad, make_candidate_upright=True)

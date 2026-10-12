@@ -30,32 +30,51 @@ from torch import nn
 class MS_SSIMLoss(nn.Module):
     r"""Creates a criterion that computes MSSIM + L1 loss.
 
-    According to [1], we compute the MS_SSIM + L1 loss as follows:
+    We compute the MS_SSIM + L1 loss of [1] as follows:
 
     .. math::
-        \text{loss}(x, y) = \alpha \cdot \mathcal{L_{MSSIM}}(x,y)+(1 - \alpha) \cdot G_\alpha \cdot \mathcal{L_1}(x,y)
+        \text{loss}(x, y) = c \cdot \left(\alpha \cdot \mathcal{L_{MSSIM}}(x,y)
+        + (1 - \alpha) \cdot G_{\sigma_M} * \mathcal{L_1}(x,y) / L\right)
 
     Where:
-        - :math:`\alpha` is the weight parameter.
+        - :math:`\alpha` is the weight parameter ``alpha``, :math:`c` is ``compensation`` and :math:`L` is
+          ``data_range``.
         - :math:`x` and :math:`y` are the reconstructed and true reference images.
         - :math:`\mathcal{L_{MSSIM}}` is the MS-SSIM loss.
-        - :math:`G_\alpha` is the sigma values for computing multi-scale SSIM.
+        - :math:`G_{\sigma_M}` is the Gaussian of the last entry :math:`\sigma_M` of ``sigmas``, the coarsest scale.
         - :math:`\mathcal{L_1}` is the L1 loss.
 
     Each channel is filtered at every scale. The MS-SSIM of a channel is its luminance at the coarsest scale times its
     contrast-structure at every scale, and :math:`\mathcal{L_{MSSIM}}` is one minus the mean of the per-channel
-    MS-SSIM, as in the reference implementation [2] of [1]. The L1 term is filtered at the coarsest scale and averaged
-    over the channels.
+    MS-SSIM: the formula of the reference implementation [2] of [1]. [2] evaluates it once per patch, at its centre;
+    this loss evaluates it at every pixel. The L1 term is filtered at the coarsest scale and averaged over the channels.
+
+    Convention:
+        - "Multi-scale" means one Gaussian per entry of ``sigmas``, all at full resolution, as in [1], not the dyadic
+          pyramid of Wang et al.; :ref:`Losses and metrics <losses-metrics-conventions>` compares it with pytorch-msssim
+          and torchmetrics.
+        - The last entry of ``sigmas`` is the coarsest scale, so the order matters: it sets the window,
+          ``2 * int(2 * sigmas[-1]) + 1`` taps wide, the luminance term and the Gaussian of the L1 term.
+        - The images are zero-padded by ``int(2 * sigmas[-1])`` pixels, 16 at the default, where
+          :func:`~kornia.metrics.ssim` reflects, so the loss is biased in a band that wide along every border: the
+          zeros attenuate the L1 term there but can raise the MS-SSIM term, so the band scores lower on the whole than
+          reflect padding would at the default ``alpha`` and can score higher at a large ``alpha``.
+        - ``data_range`` is the ``max_val`` of :func:`~kornia.metrics.ssim`: it sets :math:`C_1` and :math:`C_2` and
+          divides the L1 term; pixel values are not rescaled.
+        - The defaults follow [3]: ``alpha=0.025``, as in [2], and ``compensation=200``, which neither [1] nor [2]
+          applies; [1] sets :math:`\alpha = 0.84`. The default ``reduction='mean'`` averages the :math:`(B, H, W)`
+          map, whose channels are already averaged.
 
     Reference:
         [1]: https://research.nvidia.com/sites/default/files/pubs/2017-03_Loss-Functions-for/NN_ImgProc.pdf#page11
         [2]: https://github.com/NVlabs/PL4NN/blob/master/src/loss.py (``MSSSIML1``)
+        [3]: https://github.com/psyrocloud/MS-SSIM_L1_LOSS
 
     Args:
-        sigmas: gaussian sigma values.
+        sigmas: the Gaussian sigma of each scale; the last entry is taken as the coarsest.
         data_range: the range of the images.
-        K: k values.
-        alpha : specifies the alpha value
+        K: the constants :math:`(k_1, k_2)` of :math:`C_1 = (k_1 L)^2` and :math:`C_2 = (k_2 L)^2`.
+        alpha: the weight of the MS-SSIM term; the L1 term gets :math:`1 - \alpha`.
         compensation: specifies the scaling coefficient.
         reduction : Specifies the reduction to apply to the
          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
@@ -71,8 +90,10 @@ class MS_SSIMLoss(nn.Module):
         - Output: :math:`(N, H, W)` or scalar if reduction is set to ``'mean'`` or ``'sum'``.
 
     Note:
-        Integer and bool images are converted to the dtype of the Gaussian masks before filtering, float32 unless the
-        module was moved to another floating dtype, so the loss is returned in that dtype. Pixel values are not
+        Integer and bool images count as the dtype of the Gaussian masks: float32, unless the module was moved to
+        another floating dtype. The images are filtered in the promoted dtype of the two images and the masks, with
+        float16 and bfloat16 raised to float32 and autocast disabled on CPU, CUDA and MPS. The loss is returned in the
+        promoted dtype of the two images, so two integer images give a loss in the mask dtype. Pixel values are not
         rescaled: pass ``data_range=255.0`` for 8-bit images, which gives the loss of the images divided by 255 at the
         default ``data_range=1.0``.
 
@@ -189,17 +210,51 @@ class MS_SSIMLoss(nn.Module):
         if not len(img1.shape) == len(img2.shape):
             raise ValueError(f"Input shapes should be same. Got {type(img1)} and {type(img2)}.")
 
+        mask_dtype = self._g_masks.dtype
+        if img1.is_complex() or img2.is_complex():
+            output_dtype = torch.promote_types(img1.dtype, img2.dtype)
+            compute_dtype = output_dtype
+            g_masks = self._g_masks
+        else:
+            # The masks carry fractional weights, so integer and bool images count as the mask dtype.
+            dtype1 = img1.dtype if img1.is_floating_point() else mask_dtype
+            dtype2 = img2.dtype if img2.is_floating_point() else mask_dtype
+            output_dtype = torch.promote_types(dtype1, dtype2)
+            # Half-precision moments overflow (local means above about 181 in float16) and cancel, so they are
+            # computed in float32.
+            compute_dtype = torch.promote_types(output_dtype, mask_dtype)
+            if compute_dtype in (torch.float16, torch.bfloat16):
+                compute_dtype = torch.float32
+            g_masks = self._g_masks.to(compute_dtype)
+            if mask_dtype in (torch.float16, torch.bfloat16):
+                # Rounded to half precision, the masks no longer sum to one (in bfloat16 only to within 2.4e-3),
+                # which shifts every variance by about (1 - sum) * mu^2: renormalise the float32 copy.
+                g_masks = g_masks / g_masks.sum(dim=(-2, -1), keepdim=True)
+
+        img1 = img1.to(compute_dtype)
+        img2 = img2.to(compute_dtype)
+
         CH: int = img1.shape[-3]
-        S: int = self.num_scales
         # A grouped convolution gives each input channel a contiguous block of output channels, so the masks are
         # repeated channel-major: output ``c * S + s`` is channel ``c`` filtered at scale ``s``.
-        g_masks: torch.Tensor = torch.jit.annotate(torch.Tensor, self._g_masks).repeat(CH, 1, 1, 1)
+        g_masks = torch.jit.annotate(torch.Tensor, g_masks).repeat(CH, 1, 1, 1)
 
-        # The masks carry fractional weights, so integer and bool images are filtered in the mask dtype.
-        if not img1.is_floating_point() and not img1.is_complex():
-            img1 = img1.to(g_masks.dtype)
-        if not img2.is_floating_point() and not img2.is_complex():
-            img2 = img2.to(g_masks.dtype)
+        if img1.device.type == "cpu":
+            with torch.autocast(device_type="cpu", enabled=False):
+                loss = self._compute_loss(img1, img2, g_masks)
+        elif img1.device.type == "cuda":
+            with torch.autocast(device_type="cuda", enabled=False):
+                loss = self._compute_loss(img1, img2, g_masks)
+        elif img1.device.type == "mps":
+            with torch.autocast(device_type="mps", enabled=False):
+                loss = self._compute_loss(img1, img2, g_masks)
+        else:
+            loss = self._compute_loss(img1, img2, g_masks)
+        return loss.to(output_dtype)
+
+    def _compute_loss(self, img1: torch.Tensor, img2: torch.Tensor, g_masks: torch.Tensor) -> torch.Tensor:
+        CH: int = img1.shape[-3]
+        S: int = self.num_scales
 
         mux = F.conv2d(img1, g_masks, groups=CH, padding=self.pad)
         muy = F.conv2d(img2, g_masks, groups=CH, padding=self.pad)

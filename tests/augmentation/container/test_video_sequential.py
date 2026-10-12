@@ -114,6 +114,8 @@ class TestVideoSequential:
             [K.RandomCrop((2, 2), padding=2)],
             [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)],
             [K.RandomAffine(360, p=0.0), K.ImageSequential(K.RandomAffine(360, p=0.0))],
+            [K.ImageSequential(K.RandomAffine(360, p=1.0))],
+            [K.RandomAffine(360, p=1.0), K.ImageSequential(K.RandomAffine(360, p=0.5))],
         ],
     )
     @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])

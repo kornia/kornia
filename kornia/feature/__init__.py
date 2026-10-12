@@ -28,6 +28,8 @@ from .disk import DISK, DISKFeatures
 from .hardnet import HardNet, HardNet8
 from .hynet import TLU, FilterResponseNorm2d, HyNet
 from .integrated import (
+    DoGAffNetHardNet,
+    DoGHardNet,
     GFTTAffNetHardNet,
     HesAffNetHardNet,
     KeyNetAffNetHardNet,
@@ -75,6 +77,7 @@ from .matching import (
     match_mnn,
     match_nn,
     match_smnn,
+    match_smnn_batched,
     match_snn,
 )
 from .mkd import MKDDescriptor
@@ -116,6 +119,8 @@ __all__ = [
     "DeFMO",
     "DenseSIFTDescriptor",
     "DescriptorMatcher",
+    "DoGAffNetHardNet",
+    "DoGHardNet",
     "FilterResponseNorm2d",
     "GFTTAffNetHardNet",
     "GeometryAwareDescriptorMatcher",
@@ -181,6 +186,7 @@ __all__ = [
     "match_mnn",
     "match_nn",
     "match_smnn",
+    "match_smnn_batched",
     "match_snn",
     "normalize_laf",
     "perspective_transform_lafs",

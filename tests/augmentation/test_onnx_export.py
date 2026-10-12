@@ -180,7 +180,8 @@ EXPORTABLE_OPS: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
 # Currently no augmentations are blocked at export time. Augmentations that export
 # but produce numerically different results from eager are tracked separately in
 # ``ONNX_NUMERICAL_KNOWN_DRIFT`` below.
-XFAIL_OPS: list[Tuple[str, Callable[[], torch.nn.Module], str]] = []
+# Future entries must record the actual exception type and message pattern as well as the reason.
+XFAIL_OPS: list[Tuple[str, Callable[[], torch.nn.Module], str, type[Exception], str]] = []
 
 
 def _legacy_onnx_export(module: torch.nn.Module, x: torch.Tensor, buf: io.BytesIO) -> None:
@@ -215,13 +216,15 @@ def test_onnx_export_exportable(name: str, factory: Callable[[], torch.nn.Module
     assert size > 0, f"{name}: ONNX graph was empty"
 
 
-@pytest.mark.parametrize("name,factory,reason", XFAIL_OPS, ids=[n for n, _, _ in XFAIL_OPS])
+@pytest.mark.parametrize("name,factory,reason,error_type,match", XFAIL_OPS, ids=[n for n, *_ in XFAIL_OPS])
 @pytest.mark.device_agnostic
-def test_onnx_export_known_blocked(name: str, factory: Callable[[], torch.nn.Module], reason: str) -> None:
+def test_onnx_export_known_blocked(
+    name: str, factory: Callable[[], torch.nn.Module], reason: str, error_type: type[Exception], match: str
+) -> None:
     """Augmentation cannot export today; pinned so we notice if it starts working."""
     torch.manual_seed(0)
     x = torch.randn(2, 3, 32, 32)
-    with pytest.raises(Exception):
+    with pytest.raises(error_type, match=match):
         _try_export(factory(), x)
 
 
@@ -356,3 +359,14 @@ def test_onnx_export_numerically_matches_eager(name: str, factory: Callable[[], 
     assert eager.shape == onnx_out.shape, f"{name}: shape mismatch {eager.shape} vs {onnx_out.shape}"
     max_diff = float(np.abs(eager - onnx_out).max())
     assert max_diff < 1e-3, f"{name}: max abs diff {max_diff:.4f} exceeds 1e-3"
+
+
+@pytest.mark.parametrize("size", [(9, 21), (5, 7)])
+@pytest.mark.device_agnostic
+def test_onnx_nearest_resize_exports_through_the_legacy_tracer(size: Tuple[int, int]) -> None:
+    """Nearest ``Resize`` samples ``nearest-exact``, which the legacy tracer cannot lower; export gathers instead."""
+    image = torch.arange(3 * 7 * 12, dtype=torch.float32).reshape(1, 3, 7, 12)
+    aug = K.Resize(size, resample="nearest").eval()
+    eager = aug(image).numpy()
+    onnx_out = _run_onnx(aug, image)
+    assert np.array_equal(onnx_out, eager)

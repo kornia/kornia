@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import copy
 from typing import Any, Dict, Optional, Tuple, cast
 
 import torch
@@ -43,8 +44,9 @@ class SOLD2(nn.Module):
     Occlusion-aware Line Detector and Descriptor". See :cite:`SOLD22021` for more details.
 
     Args:
-        config: Dict specifying parameters. None will load the default parameters,
-            which are tuned for images in the range 400~800 px.
+        config: :class:`~kornia.feature.sold2.structures.DetectorCfg`, or a dict of its fields, specifying
+            parameters. None will load the default parameters, which are tuned for images in the range 400~800 px.
+            The model works on a copy with ``use_descriptor`` set to True; the object passed in is not modified.
         pretrained: If True, download and set pretrained weights to the model.
 
     Returns:
@@ -68,7 +70,8 @@ class SOLD2(nn.Module):
             config = dict_to_dataclass(cast(Dict[str, Any], config), DetectorCfg)
         super().__init__()
         # Initialize some parameters
-        self.config = config if config is not None else DetectorCfg()
+        # Copy so the descriptor head flag never leaks into the caller's object.
+        self.config = copy.deepcopy(config) if config is not None else DetectorCfg()
         self.config.use_descriptor = True  # Only difference to SOLD2_detector DetectorCfg
         self.grid_size = self.config.grid_size
         self.junc_detect_thresh = self.config.detection_thresh
@@ -128,6 +131,8 @@ class SOLD2(nn.Module):
     ) -> torch.Tensor:
         """Find the best matches between two sets of line segments and their corresponding descriptors.
 
+        Each descriptor map is sampled in its own dtype, so the segments may be in another floating-point dtype.
+
         Args:
             line_seg1: list of line segments in image 1, with shape [num_lines, 2, 2].
             line_seg2: list of line segments in image 2, with shape [num_lines, 2, 2].
@@ -135,7 +140,7 @@ class SOLD2(nn.Module):
             desc2: semi-dense descriptor map of image 2, with shape [1, 128, H/4, W/4].
 
         Returns:
-            A np.array of size [num_lines1] indicating the index in line_seg2 of the matched line,
+            An integer tensor of size [num_lines1] indicating the index in line_seg2 of the matched line,
             for each line in line_seg1. -1 means that the line is not matched.
 
         """
@@ -203,9 +208,10 @@ class WunschLineMatcher(nn.Module):
         line_points1 = line_points1.reshape(-1, 2)
         line_points2 = line_points2.reshape(-1, 2)
 
-        # Extract the descriptors for each point
-        grid1 = keypoints_to_grid(line_points1, img_size1)
-        grid2 = keypoints_to_grid(line_points2, img_size2)
+        # Extract the descriptors for each point. F.grid_sample needs the grid in the dtype of the map it samples,
+        # and the segments need not share it (SOLD2.forward returns float32 segments whatever the model dtype).
+        grid1 = keypoints_to_grid(line_points1, img_size1).to(desc1.dtype)
+        grid2 = keypoints_to_grid(line_points2, img_size2).to(desc2.dtype)
         desc1 = F.normalize(F.grid_sample(desc1, grid1, align_corners=False)[0, :, :, 0], dim=0)
         desc2 = F.normalize(F.grid_sample(desc2, grid2, align_corners=False)[0, :, :, 0], dim=0)
 
@@ -312,7 +318,7 @@ class WunschLineMatcher(nn.Module):
         # Recalibrate the scores to get a gap score of 0
         gap = 0.1
         B, N, M = scores.shape
-        dp = torch.zeros(B, N + 1, M + 1, device=scores.device)
+        dp = torch.zeros(B, N + 1, M + 1, device=scores.device, dtype=scores.dtype)
         S = scores - gap
         for k in range(2, N + M + 1):
             i_min = max(1, k - M)
@@ -321,8 +327,8 @@ class WunschLineMatcher(nn.Module):
             j = k - i
             up = dp[:, i - 1, j]
             left = dp[:, i, j - 1]
-            torch.diag = dp[:, i - 1, j - 1] + S[:, i - 1, j - 1]
-            dp[:, i, j] = torch.max(torch.max(up, left), torch.diag)
+            diag = dp[:, i - 1, j - 1] + S[:, i - 1, j - 1]
+            dp[:, i, j] = torch.max(torch.max(up, left), diag)
         return dp[:, -1, -1]
 
 

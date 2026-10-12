@@ -399,15 +399,31 @@ class TestTensorWrapperProtocol(BaseTester):
             (lambda t: TensorWrapper(t).unwrap(), True),
             (lambda t: (TensorWrapper(t) + 1).unwrap(), True),
             (_build_and_update, True),
+            (lambda t: TensorWrapper(t).sum().unwrap(), True),
+            # A forwarded method on a wrapper built from an intermediate tensor (#5241).
+            (lambda t: TensorWrapper(t.clone()).sum().unwrap(), True),
+            (lambda t: TensorWrapper(t * 2).mean(dim=-1).unwrap(), True),
+            (lambda t: TensorWrapper(t + 1).reshape(-1).unwrap(), True),
             # torch 2.5.1's Dynamo breaks the graph here, cleanly: it does not send unary ``-`` or ``~``, a
             # comparison, ``@`` or a binary or in-place operator with a tensor operand to a user class, and it cannot
-            # trace a torch function on a wrapper, ``__getitem__`` or a forwarded method.
+            # trace a torch function on a wrapper or ``__getitem__``.
             (lambda t: torch.add(TensorWrapper(t), 1).unwrap(), False),
             (lambda t: TensorWrapper(t)[0].unwrap(), False),
-            (lambda t: TensorWrapper(t).sum(), False),
             (lambda t: (TensorWrapper(t) @ TensorWrapper(t.T)).unwrap(), False),
         ],
-        ids=["data", "unwrap", "add", "inplace_and_reflected", "torch_add", "getitem", "method", "matmul"],
+        ids=[
+            "data",
+            "unwrap",
+            "add",
+            "inplace_and_reflected",
+            "method",
+            "sum_intermediate",
+            "mean_intermediate",
+            "reshape_intermediate",
+            "torch_add",
+            "getitem",
+            "matmul",
+        ],
     )
     def test_eager_backend_traces_a_function_that_builds_a_wrapper(self, device, dtype, fn, fullgraph):
         # The eager backend keeps this in the ordinary jobs; test_dynamo covers the optimizer backends.
@@ -479,8 +495,10 @@ class TestTensorWrapperProtocol(BaseTester):
         for exponent in (np.array(2.0), np.array([[2.0, 0.5, 3.0]])):
             expected = data**exponent
             out = TensorWrapper(data.clone()) ** exponent
-            assert type(out) is type(expected)
-            self.assert_close(out, expected, rtol=0, atol=0)
+            # NumPy hands the result back through the forwarded ``__array_wrap__``, so it is wrapped like the
+            # result of any other operator.
+            assert type(out) is TensorWrapper
+            self.assert_close(out.data, expected, rtol=0, atol=0)
 
     def test_result_class_with_a_wrapper_subclass_on_the_right(self, device, dtype):
         # Arithmetic takes the left wrapper's class; a comparison takes the right operand's subclass, because Python

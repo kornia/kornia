@@ -239,6 +239,56 @@ class TestDistortionKannalaBrandt(BaseTester):
         )
         self.assert_close(dx_distort_points_kannala_brandt(points, params), expected)
 
+    @pytest.mark.parametrize("radius", [2e-4, 1e-3, 3e-3, 4e-3])
+    @pytest.mark.parametrize("shared_params", [True, False])
+    def test_small_radius_gradients(self, device, dtype, radius, shared_params) -> None:
+        points = torch.tensor([[radius, 0.0], [0.0, radius], [-radius, radius]], device=device, dtype=dtype)
+        params = torch.tensor([600.0, 500.0, 320.0, 240.0, 0.1, -0.05, 0.01, -0.001], device=device, dtype=dtype)
+        if not shared_params:
+            params = params.repeat(3, 1)
+        points.requires_grad_()
+        params.requires_grad_()
+
+        output = distort_points_kannala_brandt(points, params)
+        point_grad, params_grad = torch.autograd.grad(output.sum(), (points, params))
+
+        reference_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        reference_points = points.detach().to(reference_dtype).requires_grad_()
+        reference_params = params.detach().to(reference_dtype).requires_grad_()
+        reference_output = distort_points_kannala_brandt(reference_points, reference_params)
+        _, expected_params_grad = torch.autograd.grad(reference_output.sum(), (reference_points, reference_params))
+        expected_point_grad = dx_distort_points_kannala_brandt(
+            reference_points.detach(), reference_params.detach()
+        ).sum(-2)
+
+        assert output.dtype == dtype
+        assert output.device == device
+        assert torch.isfinite(point_grad).all()
+        assert torch.isfinite(params_grad).all()
+        self.assert_close(output, reference_output.to(dtype))
+        self.assert_close(point_grad, expected_point_grad.to(dtype))
+        self.assert_close(params_grad, expected_params_grad.to(dtype))
+
+    def test_small_radius_gradients_dynamo(self, device, dtype, torch_optimizer) -> None:
+        points = torch.tensor([[1e-3, 0.0], [0.0, 1e-3]], device=device, dtype=dtype, requires_grad=True)
+        params = torch.tensor([600.0, 500.0, 320.0, 240.0, 0.1, -0.05, 0.01, -0.001], device=device, dtype=dtype)
+        compiled = torch_optimizer(distort_points_kannala_brandt)
+        point_grad = torch.autograd.grad(compiled(points, params).sum(), points)[0]
+        self.assert_close(point_grad, params[:2].expand_as(points))
+
+    def test_shared_calibration_gradient(self, device, dtype) -> None:
+        points = torch.tensor([0.25, -0.4], device=device, dtype=dtype).expand(2, 3, 2)
+        params = torch.tensor(
+            [600.0, 500.0, 320.0, 240.0, 0.1, -0.05, 0.01, -0.001], device=device, dtype=dtype, requires_grad=True
+        )
+        actual = torch.autograd.grad(distort_points_kannala_brandt(points, params).sum(), params)[0]
+        reference_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        reference_params = params.detach().to(reference_dtype).requires_grad_()
+        reference_output = distort_points_kannala_brandt(points.to(reference_dtype), reference_params)
+        expected = torch.autograd.grad(reference_output.sum(), reference_params)[0]
+        # The small k1 derivative exposes extra rounding during accumulation.
+        self.assert_close(actual[5], expected[5].to(dtype))
+
     def test_exception(self, device, dtype) -> None:
         from kornia.core.exceptions import ShapeError
 
@@ -246,6 +296,54 @@ class TestDistortionKannalaBrandt(BaseTester):
         params = torch.tensor([600.0, 600.0, 319.5], device=device, dtype=dtype)
         with pytest.raises(ShapeError):
             distort_points_kannala_brandt(points, params)
+
+    @pytest.mark.parametrize("point", [(0.0, 0.0), (1e-5, -2e-5)])
+    @pytest.mark.parametrize(
+        "calibration",
+        [
+            (100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001),
+            (60000.0, 30000.0, 4.0, 3.0, 10.0, 0.0, 0.0, 0.0),
+            (65504.0, 65504.0, 4.0, 3.0, 65504.0, 65504.0, 65504.0, 65504.0),
+        ],
+    )
+    def test_distort_affine_branch_gradients(self, device, dtype, point, calibration) -> None:
+        points = torch.tensor(point, device=device, dtype=dtype)
+        params = torch.tensor(calibration, device=device, dtype=dtype)
+        point_jacobian = torch.autograd.functional.jacobian(lambda p: distort_points_kannala_brandt(p, params), points)
+        params_jacobian = torch.autograd.functional.jacobian(lambda p: distort_points_kannala_brandt(points, p), params)
+
+        expected_points = torch.diag(params[:2])
+        expected_params = torch.zeros(2, 8, device=device, dtype=dtype)
+        expected_params[0, 0] = points[0]
+        expected_params[1, 1] = points[1]
+        expected_params[0, 2] = 1.0
+        expected_params[1, 3] = 1.0
+        self.assert_close(point_jacobian, expected_points, atol=0.0, rtol=0.0)
+        self.assert_close(params_jacobian, expected_params, atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("shared_params", [True, False])
+    def test_gradcheck_distort_mixed_optical_axis_batch(self, device, shared_params) -> None:
+        points = torch.tensor([[0.0, 0.0], [1e-5, -2e-5], [0.5, 0.25]], device=device, dtype=torch.float64)
+        params = torch.tensor([[100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001]], device=device, dtype=torch.float64)
+        if not shared_params:
+            params = params.repeat(3, 1)
+        self.gradcheck(distort_points_kannala_brandt, (points, params))
+
+    def test_dynamo_optical_axis_gradients(self, device, dtype, torch_optimizer) -> None:
+        points = torch.zeros(2, device=device, dtype=dtype, requires_grad=True)
+        params = torch.tensor(
+            [100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        output = torch_optimizer(distort_points_kannala_brandt)(points, params)
+        point_grad, params_grad = torch.autograd.grad(output.sum(), (points, params))
+        self.assert_close(output, params[2:4])
+        self.assert_close(point_grad, params[:2])
+        self.assert_close(
+            params_grad, torch.tensor([0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
+        )
 
     def _test_gradcheck_distort(self, device):
         points = torch.tensor([1.0, 2.0], device=device, dtype=torch.float64)

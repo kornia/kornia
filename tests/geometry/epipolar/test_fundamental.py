@@ -452,6 +452,20 @@ class TestFundamentlFromEssential(BaseTester):
         F_mat = epi.fundamental_from_essential(E_mat, K1, K2)
         assert F_mat.shape == (1, 2, 3, 3)
 
+    def test_singular_camera_gives_nan(self, device, dtype):
+        # kornia#5194: safe_inverse_with_mask returns the identity for a singular matrix, which must not
+        # turn a singular camera into a finite fundamental matrix.
+        E_mat = torch.rand(2, 3, 3, device=device, dtype=dtype)
+        K = torch.stack([torch.eye(3), torch.zeros(3, 3)]).to(device, dtype)
+        F_mat = epi.fundamental_from_essential(E_mat, K, K)
+        self.assert_close(F_mat[0], E_mat[0])
+        assert F_mat[1].isnan().all()
+        # a singular K2 alone is enough
+        eye = torch.eye(3, device=device, dtype=dtype).expand(2, 3, 3)
+        F_mat = epi.fundamental_from_essential(E_mat, eye, K)
+        self.assert_close(F_mat[0], E_mat[0])
+        assert F_mat[1].isnan().all()
+
     def test_from_to_essential(self, device, dtype):
         scene = generate_two_view_random_scene(device, dtype)
 
@@ -726,7 +740,8 @@ class TestConventionFundamental(BaseTester):
         F_sw_unit = F_sw / F_sw.norm()
         assert _epipolar_residual(F_sw_unit, x1, x2).max() > 1e3 * _epipolar_residual(F_unit, x1, x2).max()
         # Not normalised: neither F[2, 2] = 1 nor unit Frobenius norm.
-        assert (F[..., 2, 2] - 1.0).abs().max() > 1.0 and (F.norm() - 1.0).abs() > 1.0
+        assert (F[..., 2, 2] - 1.0).abs().max() > 1.0
+        assert (F.norm() - 1.0).abs() > 1.0
         # For P1 = [I | 0], P2 = [R | t] it is the negative of essential_from_Rt for the same motion, at its scale.
         R, t = two_view["R"], two_view["t"]
         eye = torch.eye(3, device=device, dtype=dtype)[None]
@@ -777,7 +792,8 @@ class TestConventionFundamental(BaseTester):
         self.assert_close(mean_dist, torch.full_like(mean_dist, 2.0**0.5))
         self.assert_close((_hom(points) @ T.transpose(-2, -1))[..., :2], points_norm, low_tolerance=True)
         assert T[0, 0, 0] == T[0, 1, 1]
-        assert T[0, 0, 1] == 0 and T[0, 1, 0] == 0
+        assert T[0, 0, 1] == 0
+        assert T[0, 1, 0] == 0
 
     def test_convention_normalize_transformation_keeps_zero_last_entry(self, device, dtype):
         # The F[2, 2] = 1 scaling skips a last entry within eps of zero, such as the F of an exactly rectified pair
@@ -871,7 +887,9 @@ class TestConventionFundamental(BaseTester):
         F = epi.fundamental_from_projections(P1, P2)
         assert F.dtype == torch.float16
         F_ref = epi.fundamental_from_projections(P1.cpu().double(), P2.cpu().double())
-        assert F_ref[:2].abs().amax() > 1e9 and F_ref[1].abs().amax() < 1 and (F_ref[2] == 0).all()
+        assert F_ref[:2].abs().amax() > 1e9
+        assert F_ref[1].abs().amax() < 1
+        assert (F_ref[2] == 0).all()
         F_ref[:2] = F_ref[:2] / F_ref[:2].abs().amax(dim=(-2, -1), keepdim=True)
         self.assert_close(F.cpu().double(), F_ref, rtol=0.0, atol=1e-3)
 

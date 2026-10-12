@@ -696,30 +696,12 @@ class TestRandomMosaic(BaseTester):
         image = torch.zeros(2, 1, 6, 8, device=device, dtype=dtype)
         xyxy = image.new_tensor([[[1.0, 1.0, 2.0, 2.0]], [[1.0, 1.0, 2.0, 2.0]]])
         boxes = Boxes.from_tensor(xyxy)
-        # A hand-made gate is honored below static p=1.0; at static p=1.0 no handler consults it (#5585).
-        aug = FilterBoxes(p=0.5)
+        aug = FilterBoxes(p=1.0)
         params = aug.forward_parameters(image.shape)
         params["batch_prob"] = image.new_tensor([0.0, 1.0])
         output = aug.transform_boxes(boxes, params, aug.flags)
         self.assert_close(output.to_tensor("xyxy")[0], xyxy[0])
         assert output.to_tensor("xyxy")[1].count_nonzero() == 0
-        self.assert_close(boxes.to_tensor("xyxy"), xyxy)
-
-    def test_annotation_filter_validity_ignores_gate_at_static_p_5585(self, device, dtype):
-        class FilterBoxes(RandomHorizontalFlip):
-            def apply_transform_box(self, input, params, flags, transform=None):
-                return input.filter_boxes_by_area(2.0)
-
-        image = torch.zeros(2, 1, 6, 8, device=device, dtype=dtype)
-        xyxy = image.new_tensor([[[1.0, 1.0, 2.0, 2.0]], [[1.0, 1.0, 2.0, 2.0]]])
-        boxes = Boxes.from_tensor(xyxy)
-        aug = FilterBoxes(p=1.0)
-        params = aug.forward_parameters(image.shape)
-        params["batch_prob"] = image.new_tensor([0.0, 1.0])
-        output = aug.transform_boxes(boxes, params, aug.flags).to_tensor("xyxy")
-        # The gate deselects row 0, but every sample is transformed at static p=1.0, so both rows are filtered.
-        assert output[0].count_nonzero() == 0
-        assert output[1].count_nonzero() == 0
         self.assert_close(boxes.to_tensor("xyxy"), xyxy)
 
     def test_mosaic_permutates_filtered_validity_4714(self, device, dtype):

@@ -46,9 +46,12 @@ def normalize_keypoints(kpts: torch.Tensor, size: torch.Tensor) -> torch.Tensor:
     # backend (CUDA, NPU, XPU, MPS) and on CPU-only builds where
     # ``torch.accelerator.current_accelerator()`` would be ``None``.
     device_type = kpts.device.type
-    if kpts.is_floating_point() and kpts.dtype in (torch.float16, torch.bfloat16):
-        if torch.is_autocast_enabled(device_type):
-            kpts = kpts.to(torch.float32)
+    if (
+        kpts.is_floating_point()
+        and kpts.dtype in (torch.float16, torch.bfloat16)
+        and torch.is_autocast_enabled(device_type)
+    ):
+        kpts = kpts.to(torch.float32)
     shift = size.float().to(kpts) / 2
     scale = size.max(1).values.float().to(kpts) / 2
     return (kpts - shift[:, None]) / scale[:, None, None]
@@ -443,10 +446,18 @@ def filter_matches(scores: torch.Tensor, th: float) -> Tuple[torch.Tensor, torch
     return m0, m1, mscores0, mscores1
 
 
+_KEYPOINT_RANGE_MSG = (
+    "Keypoints must lie inside the image: normalized by the image size they have to be in [-1, 1]. The keypoints are "
+    "(x, y) pixel coordinates. The image size is (width, height) for the ``image_size`` of LightGlue and "
+    "OnnxLightGlue, and (height, width) for the ``hw1`` / ``hw2`` of LightGlueMatcher; the wrong order, or keypoints "
+    "detected on a differently sized image, put them out of range."
+)
+
+
 def _check_keypoints_normalized(kpts: torch.Tensor) -> None:
     """Check that keypoints lie in [-1, 1]; skipped under export, where reading the data is not possible."""
     if not is_exporting():
-        KORNIA_CHECK(torch.all(kpts >= -1).item() and torch.all(kpts <= 1).item(), "")  # type: ignore
+        KORNIA_CHECK(torch.all(kpts >= -1).item() and torch.all(kpts <= 1).item(), _KEYPOINT_RANGE_MSG)  # type: ignore
 
 
 class LightGlue(nn.Module):
@@ -634,7 +645,6 @@ class LightGlue(nn.Module):
                 pattern = f"cross_attn.{i}", f"transformers.{i}.cross_attn"
                 state_dict = {k.replace(*pattern): v for k, v in state_dict.items()}
             self.load_state_dict(state_dict, strict=False)
-        print("Loaded LightGlue model")
         # static lengths LightGlue is compiled for (only used with torch.compile)
         self.static_lengths = None
 
@@ -762,7 +772,8 @@ class LightGlue(nn.Module):
         KORNIA_CHECK(desc0.shape[-1] == self.conf.input_dim, "Descriptor dimension does not match input dim in config")
         KORNIA_CHECK(desc1.shape[-1] == self.conf.input_dim, "Descriptor dimension does not match input dim in config")
 
-        if torch.is_autocast_enabled():
+        device_type = desc0.device.type
+        if device_type != "cpu" and torch.is_autocast_enabled(device_type):
             desc0 = desc0.half()
             desc1 = desc1.half()
 

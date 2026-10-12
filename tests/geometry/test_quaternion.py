@@ -24,7 +24,7 @@ from torch.nn import Parameter
 
 from kornia.geometry.quaternion import Quaternion, average_quaternions
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 
 class TestQuaternion(BaseTester):
@@ -564,6 +564,96 @@ def _align_sign(q: torch.Tensor, ref: torch.Tensor) -> torch.Tensor:
     return q
 
 
+class TestQuaternionState(BaseTester):
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_plain_tensor_is_persistent_buffer(self, device, dtype, requires_grad):
+        data = torch.tensor([[0.5, 0.5, 0.5, 0.5]], device=device, dtype=dtype, requires_grad=requires_grad)
+        q = Quaternion(data)
+        assert q.data is data
+        assert q.data.requires_grad == requires_grad
+        assert not isinstance(q.data, Parameter)
+        assert list(q.named_parameters()) == []
+        assert dict(q.named_buffers())["_data"] is data
+        assert q.state_dict(keep_vars=True)["_data"] is data
+
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_explicit_parameter_keeps_identity(self, device, dtype, requires_grad):
+        data = Parameter(torch.tensor([[0.5, 0.5, 0.5, 0.5]], device=device, dtype=dtype), requires_grad)
+        q = Quaternion(data)
+        assert q.data is data
+        assert q.data.requires_grad == requires_grad
+        assert dict(q.named_parameters())["_data"] is data
+        assert list(q.named_buffers()) == []
+        assert q.state_dict(keep_vars=True)["_data"] is data
+
+    def test_parameter_optimizer_updates_callers_tensor(self, device, dtype):
+        data = Parameter(torch.tensor([[0.5, 0.5, 0.5, 0.5]], device=device, dtype=dtype))
+        q = Quaternion(data)
+        optimizer = torch.optim.SGD(q.parameters(), lr=0.25)
+        q.norm().sum().backward()
+        self.assert_close(data.grad, torch.full_like(data, 0.5))
+        optimizer.step()
+        assert q.data is data
+        self.assert_close(data, torch.full_like(data, 0.375))
+
+    @pytest.mark.parametrize("non_leaf", [False, True])
+    def test_tensor_keeps_autograd_connection(self, device, dtype, non_leaf):
+        leaf = torch.tensor([[0.5, 0.5, 0.5, 0.5]], device=device, dtype=dtype, requires_grad=True)
+        data = -leaf if non_leaf else leaf  # Both signs represent the same unit rotation.
+        q = Quaternion(data)
+        assert q.data is data
+        assert q.data.is_leaf == (not non_leaf)
+        assert q.data.grad_fn is data.grad_fn
+        assert not isinstance(q.data, Parameter)
+        q.norm().sum().backward()
+        self.assert_close(leaf.grad, leaf.detach())
+
+    @pytest.mark.parametrize("as_parameter", [False, True])
+    def test_state_dict_round_trip(self, device, dtype, as_parameter):
+        saved = torch.tensor([[0.0, 0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        stale = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
+        source = Quaternion(Parameter(saved) if as_parameter else saved)
+        target = Quaternion(Parameter(stale.clone()) if as_parameter else stale.clone())
+        target_data = target.data
+        target.load_state_dict(source.state_dict())
+        assert target.data is target_data
+        self.assert_close(target.data, saved)
+        self.assert_close(target.matrix(), source.matrix())
+        expected = torch.diag(torch.tensor([-1.0, -1.0, 1.0], device=device, dtype=dtype))[None]
+        self.assert_close(target.matrix(), expected)
+
+    @pytest.mark.parametrize("as_parameter", [False, True])
+    def test_to_returns_new_quaternion(self, device, dtype, as_parameter):
+        data = torch.tensor([[0.5, 0.5, 0.5, 0.5]], device=device, dtype=dtype)
+        q = Quaternion(Parameter(data) if as_parameter else data)
+        same_dtype = q.to(dtype=dtype)
+        assert same_dtype is not q
+        assert same_dtype.data is q.data
+        other = torch.float16 if dtype == torch.float32 else torch.float32
+        converted = q.to(dtype=other)
+        assert converted is not q
+        assert converted.data.dtype == other
+        assert q.data.dtype == dtype
+        self.assert_close(converted.data, data.to(other))
+
+    def test_old_checkpoint_missing_rotation_4923(self, device, dtype):
+        q = Quaternion.identity(1, device, dtype)
+        with pytest.raises(RuntimeError, match=r'Missing key.*"_data"'):
+            q.load_state_dict({}, strict=True)
+        result = q.load_state_dict({}, strict=False)
+        assert result.missing_keys == ["_data"]
+        assert result.unexpected_keys == []
+        self.assert_close(q.data, torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype))
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        def matrix(data):
+            return Quaternion(data).matrix()
+
+        data = torch.tensor([[0.5, 0.5, 0.5, 0.5]], device=device, dtype=dtype)
+        self.assert_close(torch_optimizer(matrix, fullgraph=True)(data), matrix(data))
+
+
 class TestQuaternionAverage(BaseTester):
     @pytest.mark.parametrize("M", [1, 2, 5, 10])
     def test_average_identity(self, device, dtype, M):
@@ -702,7 +792,7 @@ class TestQuaternionConventions(BaseTester):
         q = Quaternion(data)
         # precondition: |q| = sqrt(4.56) = 2.14, far from unit
         assert (q.norm() - 1.0).abs().max() > 1.0
-        # matrix() is the rotation of q / |q|, a proper rotation (So3.matrix() is not, #4942)
+        # matrix() is the rotation of q / |q|, a proper rotation, as So3.matrix() is (#4942)
         rotation = q.matrix()
         self.assert_close(rotation, q.normalize().matrix())
         eye = torch.eye(3, device=device, dtype=dtype)[None]

@@ -715,7 +715,7 @@ def _load_pretrained(model: TinyViT, url: str | list[str]) -> TinyViT:
 
     # https://github.com/microsoft/Cream/blob/8dc38822b99fff8c262c585a32a4f09ac504d693/TinyViT/utils.py#L163
     # bicubic interpolate attention biases
-    ab_keys = [k for k in state_dict.keys() if "attention_biases" in k]
+    ab_keys = [k for k in state_dict if "attention_biases" in k]
     for k in ab_keys:
         n_heads1, L1 = state_dict[k].shape
         n_heads2, L2 = model_state_dict[k].shape

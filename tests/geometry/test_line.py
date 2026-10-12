@@ -259,6 +259,65 @@ class TestParametrizedLine(BaseTester):
         self.assert_close(lmbda, torch.tensor(0.0, device=device, dtype=dtype))
         self.assert_close(point, p0)
 
+    @pytest.mark.parametrize("parallel_dot", [0.0, 5e-7, -5e-7])
+    @pytest.mark.parametrize("parallel_offset", [-1.0, 0.0])
+    def test_intersect_plane_parallel_gradients(self, device, dtype, parallel_dot, parallel_offset):
+        # The parallel fallback is locally (lambda, point) = (0, origin), so its Jacobian is zero except for
+        # d point / d origin = I. An unselected division by zero used to poison all four input gradients.
+        origin = torch.tensor([[0.0, 4.0, 0.0], [2.0, 3.0, 4.0]], device=device, dtype=dtype, requires_grad=True)
+        direction = torch.tensor(
+            [[1.0, 0.0, parallel_dot], [0.0, 0.0, -2.0]], device=device, dtype=dtype, requires_grad=True
+        )
+        normal = torch.tensor([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype, requires_grad=True)
+        offset = torch.tensor([parallel_offset, -2.0], device=device, dtype=dtype, requires_grad=True)
+        plane = Hyperplane(Vector3(normal), Scalar(offset))
+
+        lmbda, point = ParametrizedLine(origin, direction).intersect(plane)
+
+        self.assert_close(lmbda, torch.tensor([0.0, 1.0], device=device, dtype=dtype))
+        self.assert_close(point, torch.tensor([[0.0, 4.0, 0.0], [2.0, 3.0, 2.0]], device=device, dtype=dtype))
+        (lmbda.sum() + point.sum()).backward()
+        expected = (
+            [[1.0, 1.0, 1.0], [1.0, 1.0, 0.5]],
+            [[0.0, 0.0, 0.0], [1.0, 1.0, 0.5]],
+            [[0.0, 0.0, 0.0], [-1.0, -1.5, -1.0]],
+            [0.0, -0.5],
+        )
+        for tensor, gradient in zip((origin, direction, normal, offset), expected):
+            self.assert_close(tensor.grad, torch.tensor(gradient, device=device, dtype=dtype))
+
+    def test_intersect_plane_parallel_gradcheck(self, device):
+        origin = torch.tensor([[0.0, 4.0, 0.0], [2.0, 3.0, 4.0]], device=device, dtype=torch.float64)
+        direction = torch.tensor([[1.0, 0.0, 0.0], [0.0, 0.0, -2.0]], device=device, dtype=torch.float64)
+        normal = torch.tensor([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]], device=device, dtype=torch.float64)
+        offset = torch.tensor([-1.0, -2.0], device=device, dtype=torch.float64)
+
+        def intersect(origin, direction, normal, offset):
+            plane = Hyperplane(Vector3(normal), Scalar(offset))
+            # Keep numerical perturbations inside the parallel branch, away from its threshold.
+            return ParametrizedLine(origin, direction).intersect(plane, eps=1e-3)
+
+        self.gradcheck(intersect, (origin, direction, normal, offset))
+
+    def test_dynamo_intersect_plane_parallel_gradients(self, device, dtype, torch_optimizer):
+        origin = torch.tensor([[0.0, 4.0, 0.0], [2.0, 3.0, 4.0]], device=device, dtype=dtype, requires_grad=True)
+        direction = torch.tensor([[1.0, 0.0, 0.0], [0.0, 0.0, -2.0]], device=device, dtype=dtype, requires_grad=True)
+        normal = torch.tensor([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype, requires_grad=True)
+        offset = torch.tensor([-1.0, -2.0], device=device, dtype=dtype, requires_grad=True)
+        inputs = (origin, direction, normal, offset)
+
+        def intersect(origin, direction, normal, offset):
+            return ParametrizedLine(origin, direction).intersect(Hyperplane(Vector3(normal), Scalar(offset)))
+
+        expected_lambda, expected_point = intersect(*inputs)
+        expected_gradients = torch.autograd.grad(expected_lambda.sum() + expected_point.sum(), inputs)
+        actual_lambda, actual_point = torch_optimizer(intersect)(*inputs)
+        actual_gradients = torch.autograd.grad(actual_lambda.sum() + actual_point.sum(), inputs)
+        self.assert_close(actual_lambda, expected_lambda)
+        self.assert_close(actual_point, expected_point)
+        for actual, expected in zip(actual_gradients, expected_gradients):
+            self.assert_close(actual, expected)
+
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
         pass
@@ -291,7 +350,8 @@ class TestParametrizedLine(BaseTester):
         self.assert_close(restored.direction, line.direction.detach())
         other = torch.float16 if dtype == torch.float32 else torch.float32  # float64 is unavailable on MPS
         moved = line.to(other)
-        assert moved.origin.dtype == other and moved.direction.dtype == other
+        assert moved.origin.dtype == other
+        assert moved.direction.dtype == other
         assert moved.direction.grad_fn is not None
         moved.direction.sum().backward()
         assert p1.grad is not None
@@ -301,11 +361,13 @@ class TestParametrizedLine(BaseTester):
         origin = torch.tensor([0.5, 1.0], device=device, dtype=dtype, requires_grad=True)
         direction = torch.tensor([0.6, 0.8], device=device, dtype=dtype, requires_grad=True)
         line = ParametrizedLine(origin, direction)
-        assert line.origin is origin and line.direction is direction
+        assert line.origin is origin
+        assert line.direction is direction
         assert [name for name, _ in line.named_buffers()] == ["_origin", "_direction"]
         assert list(line.state_dict()) == ["_origin", "_direction"]
         line.point_at(2.0).sum().backward()
-        assert origin.grad is not None and direction.grad is not None
+        assert origin.grad is not None
+        assert direction.grad is not None
         self.assert_close(origin.grad, torch.ones_like(origin))
         self.assert_close(direction.grad, torch.full_like(direction, 2.0))
         # a tensor that does not require grad still becomes an optimizable parameter
@@ -515,6 +577,95 @@ class TestFitLine(BaseTester):
         self.assert_close(line.direction, expected_direction)
         self.assert_close(line.origin, torch.stack([x_mean, y_mean])[None])
 
+    def test_fit_line_2d_weight_scale_invariance(self, device, dtype):
+        # Scaling all weights in a row changes neither its centroid nor the TLS direction.
+        points = torch.tensor([[[2.0, 4.0], [4.0, 8.0], [6.0, 12.0]]], device=device, dtype=dtype)
+        weights = torch.tensor([[1.0, 2.0, 1.0]], device=device, dtype=dtype)
+        # The largest weight is 2**(e - 1), so the weight sum 2**e overflows the dtype: normalising by the sum would not
+        # help, normalising by the largest weight does.
+        exponent = math.frexp(torch.finfo(dtype).max)[1] - 2
+        scales = torch.tensor([2.0**exponent, 2.0**-exponent], device=device, dtype=dtype)[:, None]
+
+        line = fit_line(points.expand(2, 3, 2), weights * scales)
+
+        expected_origin = torch.tensor([[4.0, 8.0]], device=device, dtype=dtype).expand(2, 2)
+        expected_direction = torch.tensor([[1.0 / math.sqrt(5), 2.0 / math.sqrt(5)]], device=device, dtype=dtype)
+        self.assert_close(line.origin, expected_origin)
+        self.assert_close(line.direction, expected_direction.expand(2, 2))
+        assert line.origin.dtype == line.direction.dtype == dtype
+
+    def test_fit_line_weighted_2d_float16_centroid(self, device):
+        # Unit weights still overflow sum(w * offsets) for 256 float16 points in pixel coordinates.
+        t = torch.arange(256, device=device, dtype=torch.float16)
+        points = torch.stack([1000.0 + 4.0 * t, -500.0 + 2.0 * t], -1)[None]
+        line = fit_line(points, torch.ones(1, 256, device=device, dtype=torch.float16))
+
+        self.assert_close(line.origin, torch.tensor([[1510.0, -245.0]], device=device, dtype=torch.float16))
+        direction = torch.tensor([[2.0 / math.sqrt(5), 1.0 / math.sqrt(5)]], device=device, dtype=torch.float16)
+        self.assert_close(line.direction, direction)
+        assert line.origin.dtype == line.direction.dtype == torch.float16
+
+    def test_fit_line_2d_large_offsets(self, device, dtype):
+        # All coordinates fit in float16, but subtracting the first point does not.
+        points = torch.tensor([[[-40000.0, -20000.0], [0.0, 0.0], [40000.0, 20000.0]]], device=device, dtype=dtype)
+        points.requires_grad_(True)
+        line = fit_line(points)
+
+        self.assert_close(line.origin, torch.zeros(1, 2, device=device, dtype=dtype))
+        expected = torch.tensor([[2.0 / math.sqrt(5), 1.0 / math.sqrt(5)]], device=device, dtype=dtype)
+        self.assert_close(line.direction, expected)
+        assert line.origin.dtype == line.direction.dtype == dtype
+        (line.origin.sum() + line.direction.sum()).backward()
+        assert torch.isfinite(points.grad).all()
+
+    def test_fit_line_2d_repeated_points(self, device, dtype):
+        # Repeating the same two points cannot change their line. The scaled x second moment is
+        # 65536 here, which overflows float16 and used to turn this into a horizontal direction.
+        points = torch.tensor([[[-2.0, -1.0], [2.0, 1.0]]], device=device, dtype=dtype).repeat(1, 32768, 1)
+        line = fit_line(points)
+
+        self.assert_close(line.origin, torch.zeros(1, 2, device=device, dtype=dtype))
+        expected = torch.tensor([[2.0 / math.sqrt(5), 1.0 / math.sqrt(5)]], device=device, dtype=dtype)
+        self.assert_close(line.direction, expected)
+        assert line.origin.dtype == line.direction.dtype == dtype
+
+    def test_dynamo_fit_line_2d_large_offsets(self, device, dtype, torch_optimizer):
+        points = torch.tensor([[[-40000.0, -20000.0], [0.0, 0.0], [40000.0, 20000.0]]], device=device, dtype=dtype)
+
+        def op(points):
+            line = fit_line(points)
+            return line.origin, line.direction
+
+        origin, direction = torch_optimizer(op)(points)
+        self.assert_close(origin, torch.zeros(1, 2, device=device, dtype=dtype))
+        expected = torch.tensor([[2.0 / math.sqrt(5), 1.0 / math.sqrt(5)]], device=device, dtype=dtype)
+        self.assert_close(direction, expected)
+
+    def test_fit_line_weighted_2d_gradcheck(self, device):
+        points = torch.tensor([[[0.0, 0.1], [1.0, 0.4], [2.0, 0.9], [3.0, 1.2]]], device=device)
+        weights = torch.tensor([[1.0, 2.0, 1.0, 3.0]], device=device)
+
+        def op(points, weights):
+            return fit_line(points, weights).projection(points[:, 0])
+
+        self.gradcheck(op, (points, weights), requires_grad=(True, True))
+
+    @pytest.mark.parametrize("scale", [2.0**100, 2.0**-100], ids=["2**100", "2**-100"])
+    def test_fit_line_weighted_2d_gradient_weight_scale_invariance(self, device, scale):
+        # Scaling the weights changes neither the fit nor its gradient. Unnormalised float32 weights at these scales
+        # gave a finite direction whose gradient with respect to the points was exactly zero.
+        points = torch.tensor([[[0.0, 0.1], [1.0, 0.4], [2.0, 0.9], [3.0, 1.2]]], device=device)
+        weights = torch.tensor([[1.0, 2.0, 1.0, 3.0]], device=device)
+
+        def direction_grad(weights):
+            points_ = points.clone().requires_grad_(True)
+            fit_line(points_, weights).direction.sum().backward()
+            return points_.grad
+
+        expected = direction_grad(weights)
+        assert expected.abs().amax() > 0.1
+        self.assert_close(direction_grad(weights * scale), expected)
+
     @pytest.mark.parametrize("weighted", [False, True])
     def test_fit_line_2d_exactly_vertical_is_0_1_5040(self, device, dtype, weighted):
         # #5040: the direction of an exactly vertical line is (0, 1). Rounding in the mean used to leave a tiny
@@ -564,6 +715,80 @@ class TestFitLine(BaseTester):
             self.assert_close(scaled.direction, line.direction.expand(2, 2))
             self.assert_close(scaled.origin / scales[..., 0], line.origin.expand(2, 2))
 
+    @pytest.mark.parametrize("weighted", [False, True])
+    @pytest.mark.parametrize(
+        "dtype,scales", [(torch.float16, (256.0, 1.0 / 256.0)), (torch.float32, (2.0**64, 2.0**-64))]
+    )
+    def test_fit_line_3d_scale_invariance(self, device, weighted, dtype, scales):
+        points = torch.tensor(
+            [[[10.0, -5.0, 2.0], [11.0, -3.0, 5.0], [12.0, -0.5, 8.0], [13.0, 1.0, 11.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        weights = torch.tensor([[1.0, 2.0, 1.0, 3.0]], device=device, dtype=points.dtype) if weighted else None
+        expected = fit_line(points.float(), None if weights is None else weights.float())
+
+        for scale in scales:
+            actual = fit_line(points * scale, weights)
+            self.assert_close(actual.direction.abs().float(), expected.direction.abs(), atol=1e-3, rtol=1e-3)
+            self.assert_close(actual.origin.float() / scale, expected.origin, atol=1e-3, rtol=1e-3)
+
+        if weighted and dtype == torch.float32:
+            # 2**124 * 13 overflows float32 in sum(w p) unless the weights are normalised first.
+            actual = fit_line(points, weights * 2.0**124)
+            self.assert_close(actual.direction.abs(), expected.direction.abs())
+            self.assert_close(actual.origin, expected.origin)
+
+    def test_fit_line_3d_rows_rescaled_on_their_own(self, device):
+        # Two rows of one batch, at coordinate scales 2**64 and 2**-64 and weight scales 2**100 and 2**-100: a scale
+        # shared by the batch would underflow the second row's scatter matrix, or its weights to a zero sum.
+        points = torch.tensor(
+            [[10.0, -5.0, 2.0], [11.0, -3.0, 5.0], [12.0, -0.5, 8.0], [13.0, 1.0, 11.0]], device=device
+        )
+        weights = torch.tensor([1.0, 2.0, 1.0, 3.0], device=device)
+        expected = fit_line(points[None], weights[None])
+        s = torch.tensor([2.0**64, 2.0**-64], device=device)[:, None, None]
+        ws = torch.tensor([2.0**100, 2.0**-100], device=device)[:, None]
+        actual = fit_line(points * s, weights * ws)
+        self.assert_close(actual.direction.abs(), expected.direction.abs().expand(2, 3))
+        self.assert_close(actual.origin / s[..., 0], expected.origin.expand(2, 3))
+
+    def test_fit_line_3d_weighted_float16_centroid_in_float32(self, device):
+        # 128 float16 points near x = 1000: sum(w p) is 1.3e5, past the float16 maximum 65504, so the weighted
+        # centroid is accumulated in float32. The output stays float16.
+        # The float64 oracle is fitted on the CPU (MPS has no float64) from the float16-rounded points.
+        t = torch.linspace(-1.0, 1.0, 128, dtype=torch.float64)
+        points = torch.stack([1000.0 + 8.0 * t, 4.0 * t, -2.0 * t], -1)[None].half()
+        expected = fit_line(points.double(), torch.ones(1, 128, dtype=torch.float64))
+        actual = fit_line(points.to(device), torch.ones(1, 128, device=device, dtype=torch.float16))
+        assert actual.origin.dtype == actual.direction.dtype == torch.float16
+        self.assert_close(actual.direction.abs().cpu().double(), expected.direction.abs(), atol=1e-3, rtol=1e-3)
+        self.assert_close(actual.origin.cpu().double(), expected.origin, atol=0.5, rtol=1e-3)
+
+    def test_fit_line_3d_float16_centred_in_float32(self, device):
+        # Unweighted float16 points near 1500, where the float16 spacing is 1: their centroid rounded to float16 is
+        # about 0.45 off, which tilts the direction by about 6e-3. The centroid and the offsets are formed in float32.
+        # The float64 oracle is fitted on the CPU (MPS has no float64) from the float16-rounded points.
+        t = torch.linspace(-0.7, 1.0, 64, dtype=torch.float64)
+        points = torch.stack([1500.0 + 6.0 * t, 1500.0 - 3.0 * t, 1500.0 + 2.0 * t], -1)[None].half()
+        expected = fit_line(points.double())
+        actual = fit_line(points.to(device))
+        assert actual.direction.dtype == torch.float16
+        self.assert_close(actual.direction.abs().cpu().double(), expected.direction.abs(), atol=1e-3, rtol=1e-3)
+
+    def test_fit_line_3d_keeps_promoted_dtype(self, device):
+        # Like the D = 2 branch, the line is returned in the promoted dtype of points and weights.
+        points = torch.tensor(
+            [[[0.0, 0.1, 0.3], [1.0, 0.4, 0.2], [2.0, 0.9, 0.1], [3.0, 1.6, 0.4], [4.0, 1.7, 0.3]]], device=device
+        )
+        f16, f32 = torch.float16, torch.float32
+        for pdt, wdt in ((f16, f32), (f32, f16), (f16, f16)):
+            weights = torch.ones(1, 5, device=device, dtype=wdt)
+            line = fit_line(points.to(pdt), weights)
+            expected = torch.promote_types(pdt, wdt)
+            assert line.origin.dtype == line.direction.dtype == expected
+            assert fit_line(points[..., :2].to(pdt), weights).origin.dtype == expected
+
     def test_fit_line_2d_degenerate_row_with_checks_disabled(self, device, dtype):
         # With checks disabled, as under torch.compile, identical 2-D points are not rejected: their scatter is 0,
         # and they get the direction (1, 0) rather than NaN, without touching the other rows.
@@ -578,6 +803,26 @@ class TestFitLine(BaseTester):
                 self.assert_close(line.direction[:1], expected.direction)
                 self.assert_close(line.direction[1], torch.tensor([1.0, 0.0], device=device, dtype=dtype))
                 self.assert_close(line.origin[1], points[1, 0])
+        finally:
+            if checks_were_enabled:
+                enable_checks()
+
+    def test_fit_line_3d_degenerate_row_with_checks_disabled(self, device, dtype):
+        # With checks disabled, as under torch.compile, a row of identical 3-D points has a zero scatter matrix: it
+        # is not divided by its zero scale, whose NaN would make the batched SVD raise for every row.
+        points = torch.tensor(
+            [[[0.0, 0.0, 0.0], [1.0, 3.0, 2.0], [2.0, 5.0, 3.0]], [[1.0, 2.0, 3.0]] * 3], device=device, dtype=dtype
+        )
+        weights = torch.tensor([[1.0, 2.0, 1.0], [1.0, 1.0, 1.0]], device=device, dtype=dtype)
+        checks_were_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            for w in (None, weights):
+                line = fit_line(points, w)
+                expected = fit_line(points[:1], None if w is None else w[:1])
+                self.assert_close(line.direction[:1].abs(), expected.direction.abs())
+                self.assert_close(line.origin[1], points[1, 0])
+                assert torch.isfinite(line.direction[1]).all()
         finally:
             if checks_were_enabled:
                 enable_checks()
@@ -727,7 +972,65 @@ class TestFitLine(BaseTester):
 
         pts = torch.rand(2, 5, dim, device=device)
         weights = torch.rand(2, 5, device=device)
-        self.gradcheck(proxy_func, (pts, weights), requires_grad=(True, False))
+        self.gradcheck(proxy_func, (pts, weights), requires_grad=(True, True))
+
+    @pytest.mark.parametrize("dim", [3, 4])
+    def test_weighted_fit_saves_linear_storage(self, device, dtype, dim):
+        # A differentiable fit needs storage proportional to the points, not an N-by-N weight matrix.
+        points = torch.rand(2, 128, dim, device=device, dtype=dtype, requires_grad=True)
+        weights = torch.rand(2, 128, device=device, dtype=dtype, requires_grad=True)
+        saved_sizes = []
+
+        def pack(tensor):
+            saved_sizes.append(tensor.numel())
+            return tensor
+
+        with torch.autograd.graph.saved_tensors_hooks(pack, lambda tensor: tensor):
+            line = fit_line(points, weights)
+            loss = line.projection(points[:, 0]).square().sum()
+            loss.backward()
+
+        assert max(saved_sizes) <= 8 * points.numel()
+        assert torch.isfinite(points.grad).all()
+        assert torch.isfinite(weights.grad).all()
+
+    def test_dynamo_weighted_fit_3d(self, device, dtype, torch_optimizer):
+        points = torch.rand(2, 32, 3, device=device, dtype=dtype)
+        weights = torch.rand(2, 32, device=device, dtype=dtype)
+
+        def op(points, weights):
+            line = fit_line(points, weights)
+            return line.projection(points[:, 0])
+
+        self.assert_close(torch_optimizer(op)(points, weights), op(points, weights))
+
+    @pytest.mark.parametrize("dim", [3, 4])
+    def test_fit_line_weighted_principal_axis_of_weighted_scatter(self, device, dtype, dim):
+        # For D >= 3 the direction is the principal axis of sum_i w_i (p_i - c)(p_i - c)^T about the weighted
+        # centroid c. The weights are uneven, so a scatter weighted by w**2, sqrt(w) or 1 tilts the axis by 0.08 or
+        # more in some component. The float64 oracle is computed on the CPU (MPS has no float64) from the
+        # dtype-rounded inputs; the sign of a D >= 3 direction is unspecified.
+        points = torch.tensor(
+            [
+                [0.0, 0.0, 0.3, 1.0],
+                [1.0, 0.4, -0.2, 0.5],
+                [2.5, 0.9, 0.1, -0.4],
+                [3.0, 1.6, 0.4, 0.2],
+                [4.2, 1.7, -0.3, 0.9],
+                [0.5, 2.0, 1.0, -1.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )[None, :, :dim]
+        weights = torch.tensor([[0.25, 1.0, 1.0, 1.0, 0.25, 8.0]], device=device, dtype=dtype)
+
+        p, w = points[0].cpu().double(), weights[0].cpu().double()
+        centred = p - (w[:, None] * p).sum(0) / w.sum()
+        axis = torch.linalg.eigh((w[:, None] * centred).T @ centred).eigenvectors[:, -1]
+
+        direction = fit_line(points, weights).direction[0]
+        axis = axis * torch.sign(direction.cpu().double() @ axis)
+        self.assert_close(direction, axis.to(device=device, dtype=dtype))
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
