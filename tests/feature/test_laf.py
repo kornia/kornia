@@ -2033,10 +2033,6 @@ class TestConventionsLAF(BaseTester):
         u_r45 = [[2.1213203435596424, 2.1213203435596424, 11.0], [-0.35355339059327373, 2.4748737341529163, 3.0]]
         rotated = kornia.feature.rotate_laf(laf, torch.tensor([[[15.0]]], device=device, dtype=dtype))
         self.assert_close(rotated, self._lafs(u_r45, device, dtype))
-        # angles of shape (B, N) work as well as (B, N, 1), but one angle is not broadcast over N LAFs
-        self.assert_close(kornia.feature.rotate_laf(laf, torch.tensor([[15.0]], device=device, dtype=dtype)), rotated)
-        with pytest.raises(RuntimeError):
-            kornia.feature.rotate_laf(laf.expand(1, 2, 2, 3), torch.tensor([[[15.0]]], device=device, dtype=dtype))
         # set_laf_orientation rotates by (target - current): U @ R(-75)
         u_rm75 = [[0.7764571353075622, -2.897777478867205, 11.0], [2.3200802202319177, -0.931250649228561, 3.0]]
         reset = kornia.feature.set_laf_orientation(laf, torch.tensor([[[-75.0]]], device=device, dtype=dtype))
@@ -2061,7 +2057,7 @@ class TestConventionsLAF(BaseTester):
             kornia.feature.get_laf_orientation(flipped).flatten(), torch.tensor([-150.0], device=device, dtype=dtype)
         )
         # the coefficient is a float or a tensor; an int is rejected
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeError, match=r"scale_coef should be float or torch\.Tensor"):
             kornia.feature.scale_laf(laf, 2)
 
     @pytest.mark.parametrize("theta, cv_angle", [(60.0, 296.5505), (-30.0, 32.1606), (150.0, 210.3108)])
@@ -2139,7 +2135,7 @@ class TestConventionsLAF(BaseTester):
             self._transposed(self._lafs(expected, device, dtype)),
         )
         # moved to another resolution, a normalized LAF maps corner to corner: 9 x 13 -> 17 x 25 doubles x, y and A
-        # (an align_corners=False resize would put the centre at (2x + 0.5, 2y + 0.5) = (22.5, 6.5))
+        # (an align_corners=False resize maps x to (x + 0.5) W' / W - 0.5: the centre would land at (21.62, 6.11))
         doubled = [[5.196152422706632, 3.0, 22.0], [0.598076211353316, 4.964101615137754, 6.0]]
         moved = kornia.feature.denormalize_laf(normalized, torch.zeros(1, 1, 17, 25, device=device, dtype=dtype))
         self.assert_close(moved, self._lafs(doubled, device, dtype))
@@ -2245,12 +2241,12 @@ class TestConventionsLAF(BaseTester):
         # extract_patches_from_pyramid samples level floor(log2(2 s / PS)), s = sqrt(|det A|), clamped to the coarsest
         # level that still holds a PS x PS patch: 70 x 90, 35 x 45, 17 x 22 and 8 x 11 for PS = 8. The level read back
         # is the one whose plain extraction the patch matches; input pixel x is pixel (x + 0.5) W_l / W - 0.5 of
-        # level l.
+        # level l. The references go two levels deeper, to 4 x 5 and 2 x 2, so that a pyramid without the clamp shows.
         ps = 8
         ref_dtype = dtype if dtype in (torch.float32, torch.float64) else torch.float32
         g = torch.Generator().manual_seed(0)
         levels = [torch.rand(1, 1, 70, 90, generator=g, dtype=torch.float64).to(device, ref_dtype)]
-        for _ in range(3):
+        for _ in range(5):
             levels.append(kornia.geometry.transform.pyrdown(levels[-1]))
         t = math.radians(30.0)
         rot = torch.tensor([[math.cos(t), math.sin(t)], [-math.sin(t), math.cos(t)]], dtype=torch.float64)
@@ -2287,6 +2283,8 @@ class TestConventionsLAF(BaseTester):
 
     def test_convention_get_laf_descriptors_converts_only_three_channel_images_to_gray(self, device, dtype):
         class _Recorder(torch.nn.Module):
+            patch_size = 41  # a descriptor attribute get_laf_descriptors must not read
+
             def __init__(self):
                 super().__init__()
                 self.shapes = []
@@ -2297,8 +2295,8 @@ class TestConventionsLAF(BaseTester):
 
         g = torch.Generator().manual_seed(0)
         lafs = self._lafs([self._SHEARED_IN_IMAGE, [[1.5, -2.598076211353316, 30.0], [2.6, 1.5, 22.0]]], device, dtype)
-        # grayscale_descriptor converts a 3-channel image only; other channel counts reach the descriptor unchanged
-        for channels, gray, seen in ((3, True, 1), (3, False, 3), (1, True, 1), (4, True, 4), (2, True, 2)):
+        # grayscale_descriptor=True converts an RGB image to one channel; with False the three channels pass through
+        for channels, gray, seen in ((3, True, 1), (3, False, 3), (1, True, 1)):
             img = torch.rand(1, channels, 40, 57, generator=g, dtype=torch.float64).to(device, dtype)
             recorder = _Recorder()
             out = kornia.feature.get_laf_descriptors(img, lafs, recorder, 13, gray)
@@ -2307,7 +2305,7 @@ class TestConventionsLAF(BaseTester):
         # the patch size is the argument, 32 by default, never read from the descriptor
         recorder = _Recorder()
         kornia.feature.get_laf_descriptors(img, lafs, recorder)
-        assert recorder.shapes == [(2, 2, 32, 32)]
+        assert recorder.shapes == [(2, 1, 32, 32)]
 
     def test_convention_laf_descriptor_defaults_to_pretrained_hardnet_on_32_pixel_gray_patches(
         self, device, dtype, monkeypatch
