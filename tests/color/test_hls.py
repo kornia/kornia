@@ -15,7 +15,9 @@
 # limitations under the License.
 #
 
+import io
 import math
+import warnings
 
 import pytest
 import torch
@@ -223,6 +225,41 @@ class TestRgbToHls(BaseTester):
         ops = kornia.color.RgbToHls().to(device, dtype)
         fcn = kornia.color.rgb_to_hls
         self.assert_close(ops(img), fcn(img))
+
+    def test_dynamo_fullgraph(self, device, dtype, torch_optimizer):
+        # Without grad the channels used to be written with `out=` into views of one output tensor, and Dynamo
+        # rejects an `out=` tensor that is not contiguous.
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        compiled = torch_optimizer(kornia.color.rgb_to_hls, fullgraph=True)
+        self.assert_close(compiled(img), kornia.color.rgb_to_hls(img))
+
+    @pytest.mark.device_agnostic
+    def test_onnx_export_legacy_matches_eager(self, dtype):
+        # The TorchScript exporter (the torch.onnx.export default before torch 2.9) did not trace the `out=` writes
+        # into views of the output, so the exported graph ignored its input and returned zeros.
+        if dtype != torch.float32:
+            pytest.skip("the exported graph is checked once, in float32")
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+
+        traced = torch.rand(1, 3, 4, 5, dtype=dtype)
+        image = torch.rand(2, 3, 6, 7, dtype=dtype)
+        buffer = io.BytesIO()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            torch.onnx.export(
+                kornia.color.RgbToHls(),
+                (traced,),
+                buffer,
+                input_names=["image"],
+                output_names=["hls"],
+                dynamic_axes={"image": {0: "B", 2: "H", 3: "W"}, "hls": {0: "B", 2: "H", 3: "W"}},
+                opset_version=17,
+                dynamo=False,
+            )
+        session = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"])
+        exported = torch.from_numpy(session.run(None, {"image": image.numpy()})[0])
+        self.assert_close(exported, kornia.color.rgb_to_hls(image))
 
 
 class TestHlsToRgb(BaseTester):
