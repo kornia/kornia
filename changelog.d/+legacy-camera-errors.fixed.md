@@ -1,0 +1,1 @@
+The legacy camera functions `get_optical_pose_base` and `homography_i_H_ref` now explain why they raise `NotImplementedError` and link to the tracking issue. These functions remain unimplemented; input shape validation is unchanged.

@@ -750,11 +750,18 @@ def get_optical_pose_base(pinholes: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor of extrinsic transformation matrices of size (N, 4, 4).
 
+    Raises:
+        AssertionError: If ``pinholes`` does not have shape :math:`(N, 12)`.
+        NotImplementedError: For valid inputs, with the function name, missing helper and tracking issue.
+
     """
     if not (len(pinholes.shape) == 2 and pinholes.shape[1] == 12):
         raise AssertionError(pinholes.shape)
     # TODO: where is rtvec_to_pose?
-    raise NotImplementedError
+    raise NotImplementedError(
+        "get_optical_pose_base is not implemented: the rtvec_to_pose helper for legacy (N, 12) pinhole vectors "
+        "is unavailable. See https://github.com/kornia/kornia/issues/4283."
+    )
     # TODO: We have rtvec_to_pose in torchgeometry
     # https://github.com/whh14/torchgeometry/blob/master/torchgeometry/conversions.py#L240
     # But it relies on axis_angle_to_rotation_matrix
@@ -794,6 +801,10 @@ def homography_i_H_ref(pinhole_i: torch.Tensor, pinhole_ref: torch.Tensor) -> to
     Returns:
         tensors that convert depth points (u, v, d) from pinhole_ref to pinhole_i.
 
+    Raises:
+        AssertionError: If ``pinhole_i`` does not have shape :math:`(N, 12)` or ``pinhole_ref`` has a different shape.
+        NotImplementedError: For valid inputs, with the function name, unimplemented dependency and tracking issue.
+
     Shape:
         - Input: :math:`(N, 12)` and :math:`(N, 12)`
         - Output: :math:`(N, 4, 4)`
@@ -809,8 +820,14 @@ def homography_i_H_ref(pinhole_i: torch.Tensor, pinhole_ref: torch.Tensor) -> to
         raise AssertionError(pinhole_i.shape)
     if pinhole_i.shape != pinhole_ref.shape:
         raise AssertionError(pinhole_ref.shape)
-    i_pose_base = get_optical_pose_base(pinhole_i)
-    ref_pose_base = get_optical_pose_base(pinhole_ref)
+    try:
+        i_pose_base = get_optical_pose_base(pinhole_i)
+        ref_pose_base = get_optical_pose_base(pinhole_ref)
+    except NotImplementedError as exc:
+        raise NotImplementedError(
+            "homography_i_H_ref is not implemented: it requires get_optical_pose_base for legacy (N, 12) "
+            "pinhole vectors. See https://github.com/kornia/kornia/issues/4283."
+        ) from exc
     i_pose_ref = torch.matmul(i_pose_base, inverse_transformation(ref_pose_base))
     return torch.matmul(pinhole_matrix(pinhole_i), torch.matmul(i_pose_ref, inverse_pinhole_matrix(pinhole_ref)))
 

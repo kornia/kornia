@@ -1082,11 +1082,30 @@ class TestPinholeMatrix(BaseTester):
         with pytest.raises(AssertionError):
             inverse_pinhole_matrix(torch.eye(4, device=device, dtype=dtype)[None])
 
-    def test_wart_dead_legacy_functions_always_raise_4283(self, device, dtype):
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.parametrize("function", [get_optical_pose_base, homography_i_H_ref])
+    def test_wart_dead_legacy_functions_always_raise_4283(self, batch_size, function, device, dtype):
         # Wart pin for #4283: get_optical_pose_base and homography_i_H_ref are documented but always raise
-        # NotImplementedError. Delete when #4283 is repaired.
-        vec = self._vec12(device, dtype)
-        with pytest.raises(NotImplementedError):
-            get_optical_pose_base(vec)
-        with pytest.raises(NotImplementedError):
-            homography_i_H_ref(vec, vec)
+        # NotImplementedError. Replace with numerical tests when implemented; until then, require useful diagnostics.
+        vec = self._vec12(device, dtype).repeat(batch_size, 1)
+        args = (vec,) if function is get_optical_pose_base else (vec, vec)
+        with pytest.raises(NotImplementedError, match=function.__name__) as exc_info:
+            function(*args)
+        assert "not implemented" in str(exc_info.value)
+        assert "https://github.com/kornia/kornia/issues/4283" in str(exc_info.value)
+
+    @pytest.mark.parametrize("shape", [(12,), (1, 11), (1, 1, 12)])
+    @pytest.mark.parametrize("function", [get_optical_pose_base, homography_i_H_ref])
+    def test_legacy_input_shape_validation(self, shape, function, device, dtype):
+        invalid = torch.zeros(shape, device=device, dtype=dtype)
+        args = (invalid,) if function is get_optical_pose_base else (invalid, self._vec12(device, dtype))
+        with pytest.raises(AssertionError) as exc_info:
+            function(*args)
+        assert exc_info.value.args == (invalid.shape,)
+
+    @pytest.mark.parametrize("shape", [(12,), (1, 11), (2, 12)])
+    def test_legacy_homography_reference_shape_validation(self, shape, device, dtype):
+        invalid_ref = torch.zeros(shape, device=device, dtype=dtype)
+        with pytest.raises(AssertionError) as exc_info:
+            homography_i_H_ref(self._vec12(device, dtype), invalid_ref)
+        assert exc_info.value.args == (invalid_ref.shape,)
