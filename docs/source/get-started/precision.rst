@@ -122,8 +122,10 @@ precision, so the table says nothing about those backends.
    * - ``kornia.image``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 4 / 4
-     - ``draw_convex_polygon`` fill accuracy.
+     - 2 / 2
+     - ``draw_convex_polygon`` runs its edge maths in at least float32, so it adds no half-precision error of its
+       own; the vertices are used as given, already rounded to half precision. The circle and ellipse tests still
+       miss because they compute their vertices and their reference mask in half precision.
    * - ``kornia.losses``
      - ⚠️ Partial
      - ⚠️ Partial
