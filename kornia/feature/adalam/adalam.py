@@ -62,13 +62,24 @@ def match_adalam(
 
     See :cite:`AdaLAM2020` for more details.
 
-    The putative matches are the nearest neighbours in the distance matrix ``dm``, scored by the ratio of the two
-    smallest distances; with ``force_seed_mnn`` only mutual nearest neighbours can be seeds. ``dm`` holds plain
-    distances, like the ``dm`` of :func:`~kornia.feature.match_nn` and the other matchers: AdaLAM squares it
-    internally (its thresholds are tuned for squared distances), so ``dm=torch.cdist(desc1, desc2)`` gives the
-    matches of ``dm=None``, where the squared L2 distances between the descriptors are used.
-
-    The computation runs on the device of ``desc1`` unless ``config`` sets ``"device"``.
+    Convention:
+        - See the Convention block on :func:`~kornia.feature.match_nn`. ``dists`` is the inverse of the confidence
+          of the local RANSAC that accepted the match, in float32 whatever the descriptor dtype, so at most
+          ``1 / min_confidence`` (``1 / 200`` by default). If no seed survives, for example with very few keypoints,
+          the matches of a ratio test on squared distances, ``ratio <= 0.95``, are returned with that ratio instead.
+        - The putative matches are the nearest neighbours in the distance matrix ``dm``, scored by the ratio of the
+          two smallest distances; with ``force_seed_mnn`` only mutual nearest neighbours can be seeds. ``dm`` holds
+          plain distances, like the ``dm`` of :func:`~kornia.feature.match_nn` and the other matchers: AdaLAM
+          squares it internally (its thresholds are tuned for squared distances), so ``dm=torch.cdist(desc1, desc2)``
+          gives the matches of ``dm=None``, where the squared L2 distances between the descriptors are used.
+        - The LAFs give each keypoint's centre, orientation in degrees and scale. Orientations and scales are read
+          only through their change between the two images: adding the same angle to the orientations of both
+          images, negating both, or scaling the LAFs of both alike changes nothing.
+        - ``hw1`` and ``hw2`` enter only through the image area, which sets the seed radius, so ``(H, W)`` and
+          ``(W, H)`` give the same matches. Without them, the extent of each image's keypoints is used.
+        - ``config`` is merged into the defaults of ``kornia.feature.adalam.get_adalam_default_config()``; an
+          unknown key warns and is ignored. The computation runs on the device of ``desc1`` unless ``config`` sets
+          ``"device"``.
 
     Args:
         desc1: Batch of descriptors of a shape :math:`(B1, D)`.
@@ -78,12 +89,12 @@ def match_adalam(
         config: dict with AdaLAM config
         dm: torch.Tensor containing the non-negative distances (not squared) from each descriptor in desc1
           to each descriptor in desc2, shape of :math:`(B1, B2)`. Smaller is better.
-        hw1: Height/width of image.
-        hw2: Height/width of image.
+        hw1: size of the first image, ``(H, W)`` or ``(W, H)``.
+        hw2: size of the second image, ``(H, W)`` or ``(W, H)``.
 
 
     Return:
-        - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
+        - Inverse local RANSAC confidence of each match, float32, see the Convention block, shape of :math:`(B3, 1)`.
         - Long torch.Tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
           where 0 <= B3 <= B1.
 

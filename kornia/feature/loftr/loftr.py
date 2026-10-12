@@ -83,15 +83,21 @@ class LoFTR(nn.Module):
     This is based on the original code from paper "LoFTR: Detector-Free Local
     Feature Matching with Transformers". See :cite:`LoFTR2021` for more details.
 
-    With the default ``config``, whose ``resolution`` (8, 2) every pretrained model uses, the two images can differ in
-    size, and their heights and widths do not need to be multiples of 8 (the reference implementation expects
-    multiples of 8). ``keypoints0`` lie on the grid of the 1/8-resolution coarse feature map, at ``8 * (column, row)``
-    of a coarse cell, and ``keypoints1`` are refined to sub-pixel positions. Both are :math:`(x, y)` in the frame where
-    the centre of pixel :math:`(x, y)` is at :math:`(x + 0.5, y + 0.5)`, as in the reference implementation: subtract
-    0.5 to get kornia's frame, in which pixel centres have integer coordinates. With ``resolution`` (16, 4) in
-    ``config``, ``keypoints0`` lie on a 16-pixel grid, and most sizes that are not multiples of 16 raise an error.
-
-    If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
+    Convention:
+        - ``image0`` and ``image1`` are grayscale :math:`(N, 1, H, W)` images in :math:`[0, 1]`, the input of the
+          pretrained models. With the default ``config``, whose ``resolution`` (8, 2) every pretrained model uses,
+          the two images can differ in size, and their heights and widths do not need to be multiples of 8 (the
+          reference implementation expects multiples of 8).
+        - ``keypoints0`` lie on the grid of the 1/8-resolution coarse feature map, at ``8 * (column, row)`` of a
+          coarse cell, and ``keypoints1`` at ``8 * (column, row)`` of the matching cell of image1 plus the offset
+          found by the fine stage, at most 4 pixels along each axis. Both are :math:`(x, y)` in the frame of the
+          reference implementation, in which the pretrained models put the centre of pixel :math:`(x, y)` at
+          :math:`(x + 0.5, y + 0.5)`: subtract 0.5 to get kornia's frame
+          (:func:`~kornia.feature.laf_from_center_scale_ori`), in which pixel centres have integer coordinates.
+        - ``confidence`` is the coarse dual-softmax score of the match; only matches above the ``thr`` of
+          ``config["match_coarse"]``, 0.2 by default, are returned.
+        - With ``resolution`` (16, 4) in ``config``, ``keypoints0`` lie on a 16-pixel grid, and most sizes that are
+          not multiples of 16 raise an error.
 
     Args:
         config: Dict with initialization parameters. Do not pass it, unless you know what you are doing.
@@ -99,7 +105,8 @@ class LoFTR(nn.Module):
         pretrained: Download and set pretrained weights to the model. Options: 'outdoor', 'indoor', 'indoor_new'.
                     'outdoor' is trained on the MegaDepth dataset and 'indoor' and 'indoor_new'
                     on the ScanNet. 'indoor_new' also switches the positional encoding of the copy
-                    to ``temp_bug_fix=True``, which is what its checkpoint was trained with.
+                    to ``temp_bug_fix=True``, which is what its checkpoint was trained with. ``None`` loads no
+                    weights.
 
     Returns:
         Dictionary with image correspondences and confidence scores.
@@ -155,8 +162,8 @@ class LoFTR(nn.Module):
         Returns:
             - ``keypoints0``, matching keypoints from image0 :math:`(NC, 2)`.
             - ``keypoints1``, matching keypoints from image1 :math:`(NC, 2)`.
-            - ``confidence``, confidence score [0, 1] :math:`(NC)`.
-            - ``batch_indexes``, batch indexes for the keypoints and lafs :math:`(NC)`.
+            - ``confidence``, the coarse matching score, see the Convention block :math:`(NC)`.
+            - ``batch_indexes``, batch index of each match :math:`(NC)`.
 
         """
         # Pixel strides of the coarse and the fine feature map, (8, 2) by default. Every stride-2 stage of the backbone
