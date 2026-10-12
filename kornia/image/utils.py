@@ -257,7 +257,8 @@ def make_grid(tensor: torch.Tensor, n_row: Optional[int] = None, padding: int = 
 
     Args:
         tensor: A batched tensor of shape (B, C, H, W).
-        n_row: Number of images displayed in each row of the grid.
+        n_row: Number of images displayed in each row of the grid. If ``None``, use the square root
+            of the batch size rounded up. Images are placed in batch order, filling each row before the next.
         padding: The amount of padding to add between images.
 
     Returns:
@@ -269,8 +270,11 @@ def make_grid(tensor: torch.Tensor, n_row: Optional[int] = None, padding: int = 
 
     B, C, H, W = tensor.shape
     if n_row is None:
-        n_row = int(torch.sqrt(torch.tensor(B, dtype=torch.float32)).ceil().item())
-    n_col = (B + n_row - 1) // n_row
+        n_row = max(1, int(torch.sqrt(torch.tensor(B, dtype=torch.float32)).ceil().item()))
+    elif n_row < 1:
+        raise ValueError("n_row must be positive.")
+    n_col = n_row
+    n_row = (B + n_col - 1) // n_col
 
     padded_H = H + padding
     padded_W = W + padding

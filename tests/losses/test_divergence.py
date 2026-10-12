@@ -27,6 +27,25 @@ from testing.base import BaseTester
 
 
 class TestDivergenceLoss(BaseTester):
+    def test_js_div_loss_2d_small_probability(self, device, dtype):
+        # The mixture must not round a positive half-precision probability down to zero.
+        tiny = torch.finfo(dtype).tiny * torch.finfo(dtype).eps if dtype == torch.bfloat16 else 2.0**-24
+        pred = torch.tensor([[[[tiny, 0.0, 0.25, 0.75]]]], device=device, dtype=dtype, requires_grad=True)
+        target = torch.tensor([[[[0.0, tiny, 0.75, 0.25]]]], device=device, dtype=dtype, requires_grad=True)
+
+        loss = kornia.losses.js_div_loss_2d(pred, target)
+        expected = 0.25 * math.log(0.5) + 0.75 * math.log(1.5) + tiny * math.log(2.0)
+        self.assert_close(loss, torch.tensor(expected, device=device, dtype=dtype))
+        assert loss.dtype == dtype
+
+        loss.backward()
+        assert torch.isfinite(pred.grad).all()
+        assert torch.isfinite(target.grad).all()
+        # On positive cells, dJSD/dp = log(2p / (p + q)) / 2.
+        expected_grad = torch.tensor([math.log(2.0), math.log(0.5), math.log(1.5)], device=device, dtype=dtype) / 2
+        self.assert_close(pred.grad[0, 0, 0, [0, 2, 3]], expected_grad)
+        self.assert_close(target.grad[0, 0, 0, [1, 3, 2]], expected_grad)
+
     @pytest.mark.parametrize(
         "pred,target,expected",
         [

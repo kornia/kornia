@@ -145,10 +145,10 @@ precision, so the table says nothing about those backends.
      - 0 / 1
      - bfloat16: ``ssim3d`` accuracy.
    * - ``kornia.models``
+     - ✅ Yes
      - ⚠️ Partial
-     - ⚠️ Partial
-     - 9 / 1
-     - float16: EfficientViT raises dtype-mismatch errors. bfloat16: RT-DETR RepVGG deployment fusion misses
+     - 0 / 1
+     - bfloat16: RT-DETR RepVGG deployment fusion misses
        accuracy.
    * - ``contrib``, ``core``, ``io``, ``onnx``, ``sensors``, ``tracking``, ``utils``
      - ✅ Yes

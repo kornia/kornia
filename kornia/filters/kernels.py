@@ -50,6 +50,23 @@ def _check_laplacian_kernel_size(kernel_size: tuple[int, ...] | int) -> None:
     )
 
 
+def _check_kernel_dtype(dtype: Optional[torch.dtype], name: str, taps: Optional[tuple[int, int]] = None) -> None:
+    # An integer or bool dtype truncates fractional taps and wraps the ones outside its range (#5155). ``taps`` is
+    # the (lowest, highest) tap of a kernel whose taps are all integers; without it the kernel has fractional taps.
+    if dtype is None or dtype.is_floating_point or dtype.is_complex:
+        return
+    KORNIA_CHECK(
+        taps is not None,
+        f"{name} has fractional taps, which an integer dtype cannot hold. Got dtype={dtype}; use a floating dtype.",
+    )
+    low, high = (0, 1) if dtype == torch.bool else (torch.iinfo(dtype).min, torch.iinfo(dtype).max)
+    KORNIA_CHECK(
+        low <= taps[0] and taps[1] <= high,
+        f"{name} has taps from {taps[0]} to {taps[1]}, which dtype={dtype} cannot hold. Use a signed integer dtype "
+        "wide enough for them, or a floating one.",
+    )
+
+
 def _unpack_2d_ks(kernel_size: tuple[int, int] | int) -> tuple[int, int]:
     if isinstance(kernel_size, int):
         ky = kx = kernel_size
@@ -143,10 +160,14 @@ def gaussian(
 
     """
     if isinstance(sigma, (int, float)):
+        _check_kernel_dtype(dtype, "A Gaussian kernel")
         sigma = torch.tensor([[float(sigma)]], device=device, dtype=dtype)
 
     KORNIA_CHECK_IS_TENSOR(sigma)
     KORNIA_CHECK_SHAPE(sigma, ["B", "1"])
+    if not (sigma.dtype.is_floating_point or sigma.dtype.is_complex):
+        # as in `gaussian_discrete`: in a uint8 sigma's dtype the offsets below the mean would wrap (#5155)
+        sigma = sigma.to(torch.get_default_dtype())
     batch_size = sigma.shape[0]
 
     mean = float(window_size // 2) if mean is None else mean
@@ -205,6 +226,7 @@ def gaussian_discrete_erf(
 
     """
     if isinstance(sigma, (int, float)):
+        _check_kernel_dtype(dtype, "A Gaussian kernel")
         sigma = torch.tensor([[float(sigma)]], device=device, dtype=dtype)
 
     KORNIA_CHECK_SHAPE(sigma, ["B", "1"])
@@ -351,6 +373,7 @@ def gaussian_discrete(
 
     """
     if isinstance(sigma, (int, float)):
+        _check_kernel_dtype(dtype, "A Gaussian kernel")
         sigma = torch.tensor([[float(sigma)]], device=device, dtype=dtype)
 
     KORNIA_CHECK_SHAPE(sigma, ["B", "1"])
@@ -359,7 +382,12 @@ def gaussian_discrete(
     KORNIA_CHECK(window_size % 2 == 1, f"The discrete Gaussian kernel needs an odd window. Got {window_size}")
 
     output_dtype = sigma.dtype
-    if sigma.dtype in (torch.float16, torch.bfloat16):
+    if not (sigma.dtype.is_floating_point or sigma.dtype.is_complex):
+        # An integer sigma tensor gives a floating kernel, as it does in `gaussian` and `gaussian_discrete_erf`;
+        # casting the normalized taps back to its dtype would truncate them all to 0 (#5155).
+        output_dtype = torch.get_default_dtype()
+        sigma = sigma.to(output_dtype)
+    elif sigma.dtype in (torch.float16, torch.bfloat16):
         sigma = sigma.float()
     sigma2 = sigma * sigma
     tail = int(window_size // 2) + 1
@@ -393,6 +421,7 @@ def laplacian_1d(
 
     """
     # TODO: add default dtype as None when kornia relies on torch > 1.12
+    _check_kernel_dtype(dtype, "The Laplacian kernel", (1 - window_size, 1))
     filter_1d = torch.ones(window_size, device=device, dtype=dtype)
     middle = window_size // 2
     filter_1d[middle] = 1 - window_size
@@ -407,10 +436,8 @@ def get_box_kernel1d(
     Convention:
         - For a floating ``dtype`` every tap is ``1 / kernel_size``; an even ``kernel_size`` is accepted.
         - The kernel is a contiguous tensor, so an in-place edit changes only the taps it addresses.
-        - Known defects:
-
-          - an integer ``dtype`` truncates ``1 / kernel_size``, so every tap is 0 once ``kernel_size`` is above 1
-            (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+        - An integer or bool ``dtype`` raises: it would truncate ``1 / kernel_size`` to 0
+          (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Args:
         kernel_size: the size of the kernel.
@@ -422,6 +449,7 @@ def get_box_kernel1d(
         :math:`\frac{1}{\text{kernel\_size}}` for a floating ``dtype``.
 
     """
+    _check_kernel_dtype(dtype, "The box kernel")
     return torch.full((1, kernel_size), 1.0 / kernel_size, device=device, dtype=dtype)
 
 
@@ -445,6 +473,7 @@ def get_box_kernel2d(
 
     """
     ky, kx = _unpack_2d_ks(kernel_size)
+    _check_kernel_dtype(dtype, "The box kernel")
     return torch.full((1, ky, kx), 1.0 / (kx * ky), device=device, dtype=dtype)
 
 
@@ -527,6 +556,7 @@ def get_diff_kernel_3x3(*, device: Optional[torch.device] = None, dtype: Optiona
 
 def get_diff_kernel3d(device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> torch.Tensor:
     """Return a first order derivative kernel of 3x3x3."""
+    _check_kernel_dtype(dtype, "The 3d first-order difference kernel")
     kernel = torch.tensor(
         [
             [
@@ -555,6 +585,7 @@ def get_diff_kernel3d_2nd_order(
     device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
 ) -> torch.Tensor:
     """Return second order derivative kernels of 3x3x3 for ``(dxx, dyy, dzz, dxy, dyz, dxz)``."""
+    _check_kernel_dtype(dtype, "The 3d second-order difference kernel")
     kernel = torch.tensor(
         [
             [
@@ -704,8 +735,8 @@ def get_spatial_gradient_kernel3d(
         - In a floating ``dtype`` every channel is in derivative units: it answers 1 to a unit slope or a unit
           second derivative, unlike the raw 2d stencils.
         - ``mode`` is case-insensitive: ``'Diff'`` is ``'diff'``.
-        - Known defect: a signed integer ``dtype`` truncates the half and quarter taps to 0, so the first-order
-          channels and the mixed second-order ones are all zero
+        - An integer or bool ``dtype`` raises: it would truncate the half and quarter taps to 0, leaving the
+          first-order channels and the mixed second-order ones all zero
           (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Args:
@@ -754,8 +785,8 @@ def get_gaussian_kernel1d(
         - A tensor ``sigma`` of shape :math:`(B, 1)` gives one kernel per row.
         - A Python integer ``sigma`` is treated as its floating-point equivalent. With ``dtype=None``, both use
           the default floating-point dtype.
-        - Known defect: an integer ``dtype`` truncates a fractional ``sigma``, and uint8 also wraps the negative
-          offsets, so the taps before the centre are wrong (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+        - An integer or bool ``dtype`` raises: the taps are fractional, and an integer ``dtype`` would also
+          truncate a fractional ``sigma`` (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Args:
         kernel_size: filter size. It should be odd and positive.
@@ -931,6 +962,7 @@ def get_gaussian_kernel2d(
 
     """
     if isinstance(sigma, tuple):
+        _check_kernel_dtype(dtype, "A Gaussian kernel")
         sigma = torch.tensor([sigma], device=device, dtype=dtype)
 
     KORNIA_CHECK_IS_TENSOR(sigma)
@@ -996,6 +1028,7 @@ def get_gaussian_kernel3d(
 
     """
     if isinstance(sigma, tuple):
+        _check_kernel_dtype(dtype, "A Gaussian kernel")
         sigma = torch.tensor([sigma], device=device, dtype=dtype)
 
     KORNIA_CHECK_IS_TENSOR(sigma)
@@ -1022,7 +1055,8 @@ def get_laplacian_kernel1d(
           ``[1, -2, 1]``; a larger size is not a wider second difference, and size 5 answers 5 to a unit second
           derivative.
         - The negative centre makes the response positive where the values curve upwards.
-        - Known defect: uint8 wraps the negative centre, to 252 for size 5
+        - An integer or bool ``dtype`` that cannot hold ``1 - kernel_size`` raises, so uint8 and bool always do,
+          rather than wrap the centre (to 252 for size 5 in uint8)
           (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Args:
@@ -1100,6 +1134,7 @@ def get_laplacian_kernel2d(
     ky, kx = _unpack_2d_ks(kernel_size)
     _check_kernel_size((ky, kx))
     _check_laplacian_kernel_size((ky, kx))
+    _check_kernel_dtype(dtype, "The Laplacian kernel", (1 - ky * kx, 1))
 
     kernel = torch.ones((ky, kx), device=device, dtype=dtype)
     mid_x = kx // 2

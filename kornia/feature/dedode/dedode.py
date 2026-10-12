@@ -168,7 +168,7 @@ class DeDoDe(nn.Module):
         )
         return dedode_denormalize_pixel_coordinates(keypoints, H, W), scores, descriptions
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def detect(
         self,
         images: torch.Tensor,
@@ -217,7 +217,7 @@ class DeDoDe(nn.Module):
         keypoints, confidence = sample_keypoints(scoremap, num_samples=n)
         return keypoints, confidence
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def describe(
         self,
         images: torch.Tensor,

@@ -77,6 +77,43 @@ def test_missing_onnxruntime_applies_the_installation_mode(monkeypatch, without_
 @pytest.mark.skipif(ort is None, reason="OnnxLightGlue requires onnxruntime-gpu")
 @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Needs dlpack")
 class TestOnnxLightGlue:
+    @pytest.mark.device_agnostic
+    def test_local_model_inference(self, tmp_path):
+        from onnx import TensorProto, helper, save
+
+        # A tiny local graph exercises session creation and all four NumPy-typed input
+        # bindings without downloading pretrained weights or requiring CUDA.
+        inputs = [
+            helper.make_tensor_value_info(name, TensorProto.FLOAT, [1, 2, width])
+            for name, width in [("kpts0", 2), ("kpts1", 2), ("desc0", 4), ("desc1", 4)]
+        ]
+        outputs = [
+            helper.make_tensor_value_info("matches0", TensorProto.INT64, [1, 2]),
+            helper.make_tensor_value_info("mscores0", TensorProto.FLOAT, [1]),
+        ]
+        nodes = [
+            helper.make_node(
+                "Constant", [], ["matches0"], value=helper.make_tensor("matches", TensorProto.INT64, [1, 2], [0, 1])
+            ),
+            helper.make_node(
+                "Constant", [], ["mscores0"], value=helper.make_tensor("scores", TensorProto.FLOAT, [1], [0.75])
+            ),
+        ]
+        graph = helper.make_graph(nodes, "lightglue_alias_smoke", inputs, outputs)
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)], ir_version=8)
+        path = tmp_path / "lightglue.onnx"
+        save(model, path)
+
+        matcher = OnnxLightGlue(str(path), device="cpu")
+        features = {
+            "keypoints": torch.tensor([[[0.0, 0.0], [5.0, 5.0]]]),
+            "descriptors": torch.ones(1, 2, 4),
+            "image_size": torch.tensor([[10, 10]]),
+        }
+        result = matcher({"image0": features, "image1": features})
+        torch.testing.assert_close(result["matches"], torch.tensor([[0, 1]]))
+        torch.testing.assert_close(result["scores"], torch.tensor([0.75]))
+
     @pytest.mark.slow
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="Test requires CUDA")
     @pytest.mark.parametrize("weights", ["disk", "superpoint", "disk_fp16", "superpoint_fp16"])

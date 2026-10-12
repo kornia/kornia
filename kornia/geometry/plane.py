@@ -18,7 +18,7 @@
 # kornia.geometry.plane module inspired by Eigen::geometry::Hyperplane
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h
 
-from typing import Optional
+from typing import Any, Optional
 
 import torch
 from torch import nn
@@ -26,7 +26,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE, are_checks_enabled
 from kornia.core.exceptions import BaseError, ValueCheckError
 from kornia.core.tensor_wrapper import _unwrap, _wrap
-from kornia.core.utils import _torch_linalg_svdvals, _torch_svd_cast, is_compiling
+from kornia.core.utils import _torch_linalg_svdvals, _torch_svd_cast, is_compiling, register_module_state
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.vector import Scalar, Vector3
 
@@ -47,8 +47,13 @@ class Hyperplane(nn.Module):
         - :meth:`through` points the normal along :math:`(p_2 - p_0) \times (p_1 - p_0)`, as Eigen's
           ``Hyperplane::Through`` does: the opposite of the right-hand normal of the loop
           :math:`p_0 \to p_1 \to p_2`. Swapping two points flips it.
-        - Known defect: ``normal`` and ``offset`` are not registered module state, so ``state_dict()`` is empty and
-          ``.to()`` neither moves nor casts them (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
+        - The normal and offset are registered module state under the keys ``_n`` and ``_d``, so ``state_dict()``,
+          ``load_state_dict()`` and ``.to()`` include both tensors. As in
+          :class:`~kornia.geometry.line.ParametrizedLine`, a floating-point tensor without autograd history becomes
+          an ``nn.Parameter``: a plane built from plain tensors, including the result of :meth:`through` and
+          :func:`fit_plane` on points without autograd history, has trainable parameters, and the distances and
+          projections it returns require grad. A caller's ``nn.Parameter`` is kept, a tensor with autograd history
+          keeps that history, and an integer tensor is stored as a buffer.
 
     Args:
         n: The normal vector :math:`n`, a :class:`~kornia.geometry.vector.Vector3`.
@@ -62,8 +67,26 @@ class Hyperplane(nn.Module):
         # TODO: fix checkers
         # KORNIA_CHECK_SHAPE(n, ["B", "*"])
         # KORNIA_CHECK_SHAPE(d, ["B"])
-        self._n = n
-        self._d = d
+        for name, value in (("_n", n.data), ("_d", d.data)):
+            if value.is_floating_point() or value.is_complex():
+                register_module_state(self, name, value)
+            else:
+                # Integer plane coefficients cannot be trainable parameters.
+                self.register_buffer(name, value)
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        super().__setstate__(state)
+        # Whole-object checkpoints predating registered state still hold the tensor wrappers.
+        # Restore the module first so its hooks, training flag and other attributes survive.
+        for name in ("_n", "_d"):
+            value = self.__dict__.get(name)
+            if isinstance(value, (Vector3, Scalar)):
+                delattr(self, name)
+                tensor = value.data
+                if tensor.is_floating_point() or tensor.is_complex():
+                    register_module_state(self, name, tensor)
+                else:
+                    self.register_buffer(name, tensor)
 
     def __str__(self) -> str:
         return f"Normal: {self.normal}\nOffset: {self.offset}"
@@ -80,7 +103,7 @@ class Hyperplane(nn.Module):
             direction. For a 3D plane this is the vector :math:`n` in
             :math:`n^T x + d = 0`.
         """
-        return self._n
+        return Vector3(self._n)
 
     @property
     def offset(self) -> Scalar:
@@ -91,7 +114,7 @@ class Hyperplane(nn.Module):
             in :math:`n^T x + d = 0`. The value controls where the plane sits
             relative to the origin for the stored normal direction.
         """
-        return self._d
+        return Scalar(self._d)
 
     def abs_distance(self, p: Vector3) -> Scalar:
         """Compute unsigned distances from points to the hyperplane.
@@ -304,8 +327,9 @@ def fit_plane(points: Vector3) -> Hyperplane:
     mean = points.mean(-2, True)
     points_centered = points - mean
 
-    # NOTE: not optimal for 2d points, but for now works for other dimensions
-    _, S, V = _torch_svd_cast(_unwrap(points_centered))
+    # With at least three 3D points, reduced SVD retains all right singular vectors while
+    # avoiding an unused N-by-N left factor, including when autograd saves it for backward.
+    _, S, V = _torch_svd_cast(_unwrap(points_centered), full_matrices=False)
 
     # The plane is determined when the centred points have rank 2: the second singular value
     # must be nonzero relative to the first, a scale-invariant test that keeps a small or thin

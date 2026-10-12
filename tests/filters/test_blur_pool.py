@@ -15,8 +15,10 @@
 # limitations under the License.
 #
 
+import io
 import math
 import warnings
+from collections.abc import Callable
 
 import numpy as np
 import pytest
@@ -33,7 +35,84 @@ from kornia.filters import (
     max_blur_pool2d,
 )
 
-from testing.base import BaseTester, supports_reflect_padding
+from testing.base import BaseTester, dynamic_export_is_available, supports_reflect_padding
+
+
+class _FunctionalBlurPool(torch.nn.Module):
+    def __init__(self, function: Callable, kernel_size: int) -> None:
+        super().__init__()
+        self.function = function
+        self.kernel_size = kernel_size
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return self.function(input, self.kernel_size)
+
+
+class TestBlurPoolLegacyONNX(BaseTester):
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("pool", ["blur", "max", "edge"])
+    @pytest.mark.parametrize("as_module", [True, False])
+    @pytest.mark.parametrize("dynamic", [True, False])
+    @pytest.mark.parametrize("kernel_size", [3, 4])
+    def test_export_matches_eager(self, dtype, pool, as_module, dynamic, kernel_size):
+        """Pin legacy export and runtime behavior for every blur-pool caller (#5753)."""
+        if dtype != torch.float32:
+            pytest.skip("the exported graph is checked once, in float32")
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+        module, function = {
+            "blur": (BlurPool2D, blur_pool2d),
+            "max": (MaxBlurPool2D, max_blur_pool2d),
+            "edge": (EdgeAwareBlurPool2D, edge_aware_blur_pool2d),
+        }[pool]
+        # Export the module itself, as users do: a wrapper would hide forward's extra arguments from the exporter.
+        model = module(kernel_size) if as_module else _FunctionalBlurPool(function, kernel_size)
+        sample = torch.arange(240, dtype=dtype).reshape(1, 3, 8, 10) / 240 + 0.1
+        axes = {"input": {0: "batch", 2: "height", 3: "width"}, "output": {0: "batch", 2: "height", 3: "width"}}
+        buf = io.BytesIO()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            torch.onnx.export(
+                model,
+                (sample,),
+                buf,  # ty: ignore[invalid-argument-type]  # The legacy exporter accepts BytesIO.
+                input_names=["input"],
+                output_names=["output"],
+                opset_version=17,
+                dynamic_axes=axes if dynamic else None,
+                dynamo=False,
+            )
+        session = ort.InferenceSession(buf.getvalue(), providers=["CPUExecutionProvider"])
+        assert [graph_input.name for graph_input in session.get_inputs()] == ["input"]
+        images = [sample]
+        if dynamic:
+            images.append(torch.arange(2 * 3 * 11 * 13, dtype=dtype).reshape(2, 3, 11, 13) / 858 + 0.1)
+        for image in images:
+            actual = torch.from_numpy(session.run(None, {"input": image.numpy()})[0])
+            self.assert_close(actual, model(image))
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("pool", ["blur", "max", "edge"])
+    @pytest.mark.parametrize("as_module", [True, False])
+    def test_torch_export_dynamic_channels(self, dtype, pool, as_module):
+        """The tracing-only channel conversion preserves symbolic channels in torch.export."""
+        if dtype != torch.float32:
+            pytest.skip("the exported graph is checked once, in float32")
+        if not dynamic_export_is_available():
+            pytest.skip("named dynamic export is unavailable on this Torch/Python pair")
+        module, function = {
+            "blur": (BlurPool2D, blur_pool2d),
+            "max": (MaxBlurPool2D, max_blur_pool2d),
+            "edge": (EdgeAwareBlurPool2D, edge_aware_blur_pool2d),
+        }[pool]
+        model = module(3) if as_module else _FunctionalBlurPool(function, 3)
+        sample = torch.arange(3 * 8 * 10, dtype=dtype).reshape(1, 3, 8, 10) / 240 + 0.1
+        exported = torch.export.export(
+            model, (sample,), dynamic_shapes=({1: torch.export.Dim("channels", min=1, max=16)},)
+        ).module()
+        for channels in (1, 3, 5):
+            image = torch.ones(1, channels, 8, 10, dtype=dtype)
+            self.assert_close(exported(image), model(image))
 
 
 def _zero_padded_reference(x: torch.Tensor, k: int, s: int) -> torch.Tensor:
@@ -55,6 +134,87 @@ def _zero_padded_reference(x: torch.Tensor, k: int, s: int) -> torch.Tensor:
         for j in range(w_out):
             out[..., i, j] = (padded[..., i * s : i * s + k, j * s : j * s + k] * kernel).sum(dim=(-2, -1))
     return out
+
+
+@pytest.mark.parametrize("module_cls", [BlurPool2D, MaxBlurPool2D])
+class TestBlurPoolKernelState(BaseTester):
+    def test_forward_preserves_kernel(self, module_cls, device, dtype):
+        module = module_cls(3)
+        kernel = module.kernel.clone()
+        image = torch.arange(1, 65, device=device, dtype=dtype).reshape(1, 1, 8, 8)
+
+        module(image)
+
+        assert module.kernel.dtype == kernel.dtype
+        assert module.kernel.device == kernel.device
+        self.assert_close(module.kernel, kernel, rtol=0, atol=0)
+
+    def test_integer_call_preserves_kernel_5699(self, module_cls, device):
+        module = module_cls(3).to(device=device)
+        stored_kernel = module.kernel
+        kernel = stored_kernel.clone()
+        image = torch.arange(1, 65, device=device).to(torch.uint8).reshape(1, 1, 8, 8)
+
+        self._integer_call(module, image)
+
+        assert module.kernel is stored_kernel
+        assert module.kernel.dtype == kernel.dtype
+        assert module.kernel.device == kernel.device
+        self.assert_close(module.kernel, kernel, rtol=0, atol=0)
+        self.assert_close(module(image.float()), module_cls(3).to(device=device)(image.float()))
+
+    @staticmethod
+    def _integer_call(module, image):
+        # Integer output semantics remain a follow-up to #5669; even a failed call must preserve state.
+        if image.device.type == "mps":
+            with pytest.raises(RuntimeError, match="Convolution is supported only for Floating types"):
+                module(image)
+        else:
+            try:
+                module(image)
+            except RuntimeError as error:
+                # Other backends may lack Byte convolution/pooling kernels.
+                if "not implemented" not in str(error) or "Byte" not in str(error):
+                    raise
+
+    def test_dtype_call_order_5699(self, module_cls, device, dtype):
+        module = module_cls(3).to(device=device)
+        stored_kernel = module.kernel
+        kernel = stored_kernel.clone()
+        image = torch.arange(1, 65, device=device, dtype=dtype).reshape(1, 1, 8, 8)
+        expected = module_cls(3).to(device=device)(image)
+        assert expected.abs().sum() > 0
+        self.assert_close(module(image), expected)
+
+        for _ in range(2):
+            self._integer_call(module, image.to(torch.uint8))
+            assert module.kernel is stored_kernel
+            assert module.kernel.dtype == kernel.dtype
+            assert module.kernel.device == kernel.device
+            self.assert_close(module.kernel, kernel, rtol=0, atol=0)
+            self.assert_close(module(image), expected)
+            self.assert_close(module(image.float()), module_cls(3).to(device=device)(image.float()))
+            self.assert_close(module(image), expected)
+
+    def test_to_moves_nonpersistent_kernel_5699(self, module_cls, device, dtype):
+        module = module_cls(3).to(device=device, dtype=dtype)
+        image = torch.arange(1, 65, device=device, dtype=dtype).reshape(1, 1, 8, 8)
+        assert module.kernel.dtype == dtype
+        assert module.kernel.device == image.device
+        assert dict(module.named_buffers())["kernel"] is module.kernel
+        assert "kernel" not in dict(module.named_parameters())
+        assert module.state_dict() == {}
+        module.load_state_dict({}, strict=True)
+
+        stored_kernel = module.kernel
+        kernel = stored_kernel.clone()
+        # Matching input dtype/device needs no new tensor or host-to-device copy.
+        assert stored_kernel.to(device=image.device, dtype=image.dtype) is stored_kernel
+        self.assert_close(module(image), module_cls(3).to(device=device, dtype=dtype)(image))
+        assert module.kernel is stored_kernel
+        self.assert_close(module.kernel, kernel, rtol=0, atol=0)
+        assert module.state_dict() == {}
+        module_cls(3).load_state_dict(module.state_dict(), strict=True)
 
 
 class TestMaxBlurPool(BaseTester):
