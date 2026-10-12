@@ -6,7 +6,7 @@ Adds a regression test for the reported large residual and updates the existing 
 
 ## What did you check?
 
-- `tests/losses/test_welcsh.py` and `tests/losses/test_robust.py` on CPU with float16, bfloat16, float32, and float64 using PyTorch 2.5.1: 165 passed, 15 skipped.
-- The same tests on CPU using PyTorch 2.14.0: 165 passed, 15 skipped.
+- `tests/losses/test_charbonnier.py`, `tests/losses/test_welcsh.py`, and `tests/losses/test_robust.py` on CPU with float16, bfloat16, float32, and float64 using PyTorch 2.5.1: 285 passed, 23 skipped.
+- The same tests on CPU using PyTorch 2.14.0: 285 passed, 23 skipped.
 - Pre-commit checks passed.
 - Wheel build completed successfully.
