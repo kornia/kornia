@@ -404,8 +404,10 @@ class TestCoarseMatching(BaseTester):
         other = torch.ones(1, 9 if masked_side == 0 else 12, device=device)
 
         def run(other_is_none):
-            masks = (masked, None if other_is_none else other) if masked_side == 0 else (
-                None if other_is_none else other, masked
+            masks = (
+                (masked, None if other_is_none else other)
+                if masked_side == 0
+                else (None if other_is_none else other, masked)
             )
             data = {"hw0_c": (3, 4), "hw1_c": (3, 3), "stride_c": 8}
             CoarseMatching(cfg).to(device).eval()(feat0, feat1, data, mask_c0=masks[0], mask_c1=masks[1])
