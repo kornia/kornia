@@ -196,8 +196,9 @@ class CoarseMatching(nn.Module):
                 data.update({"conf_matrix_with_bin": assign_matrix.clone()})
 
             if invalid is not None:
-                # A transport solver may assign a tiny probability to an invalid cell despite its finite logit.
-                conf_matrix.masked_fill_(invalid, 0.0)
+                # A transport solver may assign a tiny probability to an invalid cell despite its finite logit. Out of
+                # place: `conf_matrix` is a view of the `exp` output, which autograd saves for the backward pass.
+                conf_matrix = conf_matrix.masked_fill(invalid, 0.0)
 
         data.update({"conf_matrix": conf_matrix})
 

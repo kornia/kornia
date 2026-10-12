@@ -466,6 +466,43 @@ class TestCoarseMatching(BaseTester):
         assert selected.numel() > 0
         assert bool(masked[0, selected].all())
 
+    @pytest.mark.parametrize(("mask0_on", "mask1_on"), [(True, False), (False, True), (True, True)])
+    def test_masked_sinkhorn_training_backward_5768(self, device, mask0_on, mask1_on):
+        """The zero fill after the transport must not write into the ``exp`` output, which autograd saves: an in-place
+        fill made ``backward`` raise for every masked Sinkhorn training step."""
+        cfg = dict(self.CFG)
+        cfg["thr"] = 0.0
+        cfg["sparse_spvs"] = False
+        cm = CoarseMatching(cfg).to(device).train()
+        cm.match_type = "sinkhorn"
+        cm.skh_prefilter = False
+        cm.skh_iters = 1
+        cm.bin_score = torch.nn.Parameter(torch.tensor(1.0, device=device))
+        # A differentiable stand-in for SuperGlue's log_optimal_transport (not shipped), with a dustbin row and column.
+        cm.log_optimal_transport = lambda scores, *_: F.log_softmax(F.pad(scores, (0, 1, 0, 1)), dim=-1)
+        generator = torch.Generator(device=device).manual_seed(0)
+        feat0 = torch.randn(1, 12, 8, device=device, generator=generator, requires_grad=True)
+        feat1 = torch.randn(1, 9, 8, device=device, generator=generator, requires_grad=True)
+        mask0 = torch.ones(1, 12, device=device)
+        mask0[0, [0, 5]] = 0
+        mask1 = torch.ones(1, 9, device=device)
+        mask1[0, 3] = 0
+        data = {
+            "hw0_c": (3, 4),
+            "hw1_c": (3, 3),
+            "hw0_i": (24, 32),
+            "hw1_i": (24, 24),
+            "stride_c": 8,
+            "spv_b_ids": torch.zeros(2, dtype=torch.long, device=device),
+            "spv_i_ids": torch.tensor([1, 2], device=device),
+            "spv_j_ids": torch.tensor([1, 2], device=device),
+        }
+
+        cm(feat0, feat1, data, mask_c0=mask0 if mask0_on else None, mask_c1=mask1 if mask1_on else None)
+        data["conf_matrix"].sum().backward()
+        assert bool(torch.isfinite(feat0.grad).all())
+        assert bool(torch.isfinite(feat1.grad).all())
+
     def test_eval_path_unaffected(self, device):
         """Eval mode skips the gt-padding branch entirely -- assert that
         directly (gt_mask all False, count == predictions only), not just
