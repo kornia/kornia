@@ -156,7 +156,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         - a ``mask`` list contains one tensor per image sample, in sample order. Each entry is
           ``(H, W)``, ``(C, H, W)`` or ``(1, C, H, W)``, with matching spatial dimensions; channel counts
           may differ. Each entry uses its sample's gate, transform parameters and matrix, including in
-          nested sequences, replay and inverse. Full-batch mask tensors must use separate ``mask`` data
+          nested sequences, replay and inverse. 3D augmentations and auto operations, including nested
+          children, do not support mask lists and raise ``NotImplementedError``. Full-batch mask tensors
+          must use separate ``mask`` data
           keys; a list with incompatible length or entry shape raises ``ValueError``. Inverse warps can
           only approximately restore resampled pixels and cannot recover pixels moved out of the frame.
         - the ``mask``, box and ``keypoints`` handlers of a geometric child, or of a custom

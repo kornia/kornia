@@ -409,6 +409,8 @@ Augmentations
 - A mask list has one tensor per image sample, in sample order. Entries may
   have different channel counts and use their sample's gate, parameters and
   matrix in forward, replay and inverse, including nested image sequences.
+  3D augmentations and auto operations, including nested children, do not support
+  mask lists and raise ``NotImplementedError``.
   Each entry is ``(H, W)``, ``(C, H, W)`` or ``(1, C, H, W)`` with the image's
   spatial size. Invalid lengths or shapes raise ``ValueError``. Use separate
   ``mask`` keys for multiple full-batch masks.
