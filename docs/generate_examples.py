@@ -240,7 +240,7 @@ def main():
         torch.manual_seed(seed)
         # apply the augmentation to the image and concat
         # TokenMix returns (B, C, H, W); index [0] to get (C, H, W) for cat
-        if aug_name == "TokenMix" or aug_name == "PatchMix":
+        if aug_name in {"TokenMix", "PatchMix"}:
             img_aug = aug(img_in)[0]
         else:
             img_aug, _ = aug(img_in, torch.tensor([0, 1]))

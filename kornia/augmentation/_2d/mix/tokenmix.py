@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+from __future__ import annotations
+
 from typing import Any, Dict, List, Optional, Union
 
 import torch
@@ -50,9 +52,11 @@ class TokenMix(MixAugmentationBaseV2):
         data_keys: the input types for applying augmentations.
 
     Convention:
-        - ``p`` is a batch-wide gate.
-        - ``same_on_batch=True`` shares the mixing strength (``lam`` and ``num_mix_tokens``)
-          across the batch, while the partner permutation (``batch_perm``) is drawn per batch.
+        - ``p`` is a single batch-wide gate.
+        - ``same_on_batch=True`` shares the mixing coefficient, token count, and replaced
+          token positions across the batch.
+        - Partner selection remains a random batch permutation; self-pairing is allowed,
+          consistent with MixUp.
         - Both ``H`` and ``W`` must be divisible by ``num_tokens``, and ``num_tokens <= min(H, W)``.
         - Only image input is implemented.
 
@@ -80,12 +84,35 @@ class TokenMix(MixAugmentationBaseV2):
         keepdim: bool = False,
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> None:
-        super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
+        """Initialise TokenMix augmentation.
+
+        Args:
+            alpha: Beta distribution concentration parameter. Default: ``1.0``.
+            num_tokens: Number of token rows/columns per spatial axis. Default: ``8``.
+            p: Batch-level application probability. Default: ``1.0``.
+            same_on_batch: Apply identical transform across the batch. Default: ``False``.
+            keepdim: Keep spatial shape of the output. Default: ``False``.
+            data_keys: List of target data types. Default: ``None``.
+
+        """
+        super().__init__(
+            p=1.0,
+            p_batch=p,
+            same_on_batch=same_on_batch,
+            keepdim=keepdim,
+            data_keys=data_keys,
+        )
         self.alpha = alpha
         self.num_tokens = num_tokens
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         """Generate per-batch mixing parameters.
+
+        Samples a Beta-distributed ``lam`` per image (or single shared value when
+        ``same_on_batch=True``), converts it to a token count, and draws a random
+        batch permutation. Partner selection remains a random batch permutation,
+        allowing self-pairing. All values are stored in the returned ``params`` dict
+        so that ``apply_transform`` can use them without re-sampling.
 
         Args:
             batch_shape: Shape of the input batch, i.e. ``(B, C, H, W)``.
@@ -105,10 +132,10 @@ class TokenMix(MixAugmentationBaseV2):
                 "batch_perm": torch.empty((0,), dtype=torch.long),
             }
 
+        sample_size = 1 if self.same_on_batch and B > 0 else B
+        lam = torch.distributions.Beta(self.alpha, self.alpha).sample((sample_size,))
         if self.same_on_batch:
-            lam = torch.distributions.Beta(self.alpha, self.alpha).sample((1,)).repeat(B)
-        else:
-            lam = torch.distributions.Beta(self.alpha, self.alpha).sample((B,))
+            lam = lam.repeat(B)
 
         total_tokens = self.num_tokens * self.num_tokens
         num_mix_tokens = (lam * total_tokens).round().clamp(min=1.0, max=float(total_tokens)).long()
