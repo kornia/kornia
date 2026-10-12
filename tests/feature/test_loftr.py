@@ -774,3 +774,79 @@ class TestLinearAttention(BaseTester):
             assert bool(torch.isfinite(grad).all()), grad
             self.assert_close(grad.float(), grad32, rtol=0.0, atol=5e-2)
         self.assert_close(grads[0][0, [1, 4]], torch.zeros_like(grads[0][0, [1, 4]]), rtol=0.0, atol=0.0)
+
+
+class TestConventionsLoFTR(BaseTester):
+    # Per batch item: a coarse cell (row, column) of image 0 (59 x 85 pixels, 8 x 11 coarse cells), its partner in
+    # image 1 (64 x 74 pixels, 8 x 10 cells), the feature amplitude, and the peak (x, y) of the fine heatmap in the
+    # 5 x 5 window of image 1, whose centre is (2, 2). The cells keep border_rm = 2 cells from the edges.
+    _PAIRS = {
+        0: [((3, 7), (5, 3), 16.0, (3, 1)), ((5, 2), (2, 6), 16.0, (0, 4)), ((4, 4), (3, 4), 4.0, (2, 2))],
+        1: [((2, 3), (4, 7), 16.0, (4, 2))],
+    }
+
+    def _hooked_loftr(self, device, dtype, swap):
+        """Return a random-weight LoFTR whose coarse and fine matching inputs are replaced by designed features."""
+        pairs = {
+            b: [((p1, p0, a, peak) if swap else (p0, p1, a, peak)) for p0, p1, a, peak in items]
+            for b, items in self._PAIRS.items()
+        }
+
+        def coarse_features(module, args):
+            # one-hot features: each designed cell is similar to its partner only
+            feat0, feat1, data = args
+            feat0, feat1 = torch.zeros_like(feat0), torch.zeros_like(feat1)
+            w0, w1 = data["hw0_c"][1], data["hw1_c"][1]
+            channel = 0
+            for b, items in pairs.items():
+                for (r0, c0), (r1, c1), amplitude, _ in items:
+                    feat0[b, r0 * w0 + c0, channel] = amplitude
+                    feat1[b, r1 * w1 + c1, channel] = amplitude
+                    channel += 1
+            return feat0, feat1, data
+
+        def fine_features(module, args):
+            # a fine heatmap peaked on the designed cell of each match's window
+            feat0, feat1, data = args
+            feat0, feat1 = torch.zeros_like(feat0), torch.zeros_like(feat1)
+            feat0[:, feat0.shape[1] // 2, 0] = 30.0
+            w0 = data["hw0_c"][1]
+            peaks = {(b, r0 * w0 + c0): peak for b, items in pairs.items() for (r0, c0), _, _, peak in items}
+            for m, (b, i) in enumerate(zip(data["b_ids"].tolist(), data["i_ids"].tolist())):
+                x, y = peaks[(b, i)]
+                feat1[m, y * 5 + x, 0] = 30.0
+            return feat0, feat1, data
+
+        torch.manual_seed(0)
+        model = LoFTR(pretrained=None).to(device, dtype)
+        model.coarse_matching.register_forward_pre_hook(coarse_features)
+        model.fine_matching.register_forward_pre_hook(fine_features)
+        return model
+
+    def test_convention_loftr_keypoints_are_eight_times_the_coarse_cell_plus_the_fine_offset(self, device, dtype):
+        image0 = torch.rand(2, 1, 59, 85, device=device, dtype=dtype)
+        image1 = torch.rand(2, 1, 64, 74, device=device, dtype=dtype)
+        with torch.no_grad():
+            out = self._hooked_loftr(device, dtype, swap=False)({"image0": image0, "image1": image1})
+        # keypoints0 = 8 * (column, row) of the coarse cell. keypoints1 = 8 * (column, row) of the partner plus the
+        # fine offset, 2 px per fine cell: the peaks (3, 1), (0, 4), (4, 2) are (+1, -1), (-2, +2), (+2, 0) cells
+        # from the window centre. kornia converts neither: both stay in the reference implementation's frame, in which
+        # the pretrained models put pixel centres at +0.5 (subtract 0.5 for kornia's frame).
+        expected0 = [[56.0, 24.0], [16.0, 40.0], [24.0, 16.0]]
+        expected1 = [[24.0 + 2.0, 40.0 - 2.0], [48.0 - 4.0, 16.0 + 4.0], [56.0 + 4.0, 32.0]]
+        self.assert_close(out["keypoints0"], torch.tensor(expected0, device=device, dtype=dtype))
+        self.assert_close(out["keypoints1"], torch.tensor(expected1, device=device, dtype=dtype))
+        assert out["batch_indexes"].tolist() == [0, 0, 1]
+        # confidence is the coarse dual-softmax score: similarity 16 * 16 / 256 / 0.1 = 10 against the zero similarity
+        # of the 79 other cells of image 1 and the 87 other cells of image 0. The pair of amplitude 4 (similarity
+        # 0.625) scores about 0.015, below thr = 0.2, and is dropped.
+        confidence = 1.0 / ((1.0 + 79.0 * math.exp(-10.0)) * (1.0 + 87.0 * math.exp(-10.0)))
+        self.assert_close(out["confidence"], torch.full((3,), confidence, device=device, dtype=dtype))
+        # relabelling: with the images swapped the same cell pairs come out with their roles swapped
+        with torch.no_grad():
+            swapped = self._hooked_loftr(device, dtype, swap=True)({"image0": image1, "image1": image0})
+        expected0 = [[48.0, 16.0], [24.0, 40.0], [56.0, 32.0]]
+        expected1 = [[16.0 - 4.0, 40.0 + 4.0], [56.0 + 2.0, 24.0 - 2.0], [24.0 + 4.0, 16.0]]
+        self.assert_close(swapped["keypoints0"], torch.tensor(expected0, device=device, dtype=dtype))
+        self.assert_close(swapped["keypoints1"], torch.tensor(expected1, device=device, dtype=dtype))
+        assert swapped["batch_indexes"].tolist() == [0, 0, 1]

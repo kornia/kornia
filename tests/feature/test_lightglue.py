@@ -20,6 +20,8 @@ import unittest.mock
 import pytest
 import torch
 
+from kornia.feature.integrated import LightGlueMatcher
+from kornia.feature.laf import laf_from_center_scale_ori
 from kornia.feature.lightglue import (
     Attention,
     LearnableFourierPositionalEncoding,
@@ -667,3 +669,167 @@ class TestLightGluePruningDtype(BaseTester):
             assert (out[key] == 0).all()
         assert out["scores"][0].dtype == score_dtype
         assert out["scores"][0].shape == (0,)
+
+
+class _PositionalEncodingInputs(Exception):
+    """Ends a forward pass once both images' keypoint encodings have been recorded."""
+
+
+class TestConventionsLightGlue(BaseTester):
+    # The positional-encoding inputs of image 0 and image 1 for the frames of `_matcher_lafs`, generated in float64
+    # from x' = (x - W / 2) / (max(H, W) / 2), y' = (y - H / 2) / (max(H, W) / 2), scale = sqrt(|det A|),
+    # orientation = atan2(a01, a00) (radians), and the normalised points c + A[:, 0] and c + A[:, 1] for keynet.
+    _XY = {
+        (200, 320): [[-0.625, -0.475], [0.5625, 0.4375], [-0.36875, -0.41875]],
+        (240, 300): [[-0.6, -0.64], [0.666667, 0.333333], [-0.326667, -0.58]],
+    }
+    _SIXTH_OF_SCALE = [2.0, 1.25, 1.683251]
+    _NEGATED_ORI = [-0.785398, 2.094395, -0.380506]  # in (-pi, pi]
+    _ORI = [0.785398, 4.188790, 0.380506]  # in [0, 2 pi)
+    _AXIS_POINTS = {
+        (200, 320): [
+            [-0.571967, -0.528033, -0.571967, -0.421967],
+            [0.539062, 0.478095, 0.521905, 0.414062],
+            [-0.30625, -0.4375, -0.34375, -0.3625],
+        ],
+        (240, 300): [
+            [-0.543431, -0.696569, -0.543431, -0.583431],
+            [0.641667, 0.376635, 0.623365, 0.308333],
+            [-0.26, -0.6, -0.3, -0.52],
+        ],
+    }
+
+    @staticmethod
+    def _record_positional_encoding_inputs(lightglue):
+        seen = []
+
+        def hook(module, args):
+            seen.append(args[0].detach().clone())
+            if len(seen) == 2:
+                raise _PositionalEncodingInputs
+
+        lightglue.posenc.register_forward_pre_hook(hook)
+        return seen
+
+    @staticmethod
+    def _matcher_lafs(device, dtype):
+        # two rotated frames (scale 12 at 45 degrees, 7.5 at -120 degrees) and a sheared one (a01 != a10), centres
+        # off the diagonal
+        rotated = laf_from_center_scale_ori(
+            torch.tensor([[[60.0, 24.0], [250.0, 170.0]]]),
+            torch.tensor([12.0, 7.5]).view(1, 2, 1, 1),
+            torch.tensor([45.0, -120.0]).view(1, 2, 1),
+        )
+        sheared = torch.tensor([[[[10.0, 4.0, 101.0], [-3.0, 9.0, 33.0]]]])
+        return torch.cat([rotated, sheared], 1).to(device, dtype)
+
+    def _expected_encoding_input(self, feature_name, hw, device, dtype):
+        columns = [torch.tensor(self._XY[hw])]
+        if feature_name == "sift":
+            columns += [torch.tensor(self._SIXTH_OF_SCALE)[:, None], torch.tensor(self._NEGATED_ORI)[:, None]]
+        elif feature_name in ("doghardnet", "dog_affnet_hardnet"):
+            columns += [torch.tensor(self._SIXTH_OF_SCALE)[:, None], torch.tensor(self._ORI)[:, None]]
+        elif feature_name == "keynet_affnet_hardnet":
+            columns += [torch.tensor(self._AXIS_POINTS[hw])]
+        return torch.cat(columns, 1)[None].to(device, dtype)
+
+    def test_convention_lightglue_image_size_is_width_height(self, device, dtype):
+        lg = LightGlue(None, input_dim=8, descriptor_dim=8, n_layers=1, num_heads=1, flash=False)
+        lg = lg.to(device, dtype).eval()
+        seen = self._record_positional_encoding_inputs(lg)
+        kpts = torch.tensor([[[300.0, 30.0], [20.0, 210.0], [160.0, 120.0]]], device=device, dtype=dtype)
+        desc = torch.rand(1, 3, 8, device=device, dtype=dtype)
+        size = torch.tensor([[320, 240]], device=device)  # (W, H)
+        image = torch.zeros(1, 1, 240, 320, device=device, dtype=dtype)  # the same size as an image
+        with pytest.raises(_PositionalEncodingInputs):
+            lg(
+                {
+                    "image0": {"keypoints": kpts, "descriptors": desc, "image_size": size},
+                    "image1": {"keypoints": kpts, "descriptors": desc, "image": image},
+                }
+            )
+        # (k - size / 2) / (max(size) / 2): x = (300 - 160) / 160, y = (30 - 120) / 160, and so on
+        expected = torch.tensor([[[0.875, -0.5625], [-0.875, 0.5625], [0.0, 0.0]]], device=device, dtype=dtype)
+        self.assert_close(seen[0], expected)
+        self.assert_close(seen[1], expected)
+        # relabelling: transposed keypoints in the transposed image give the swapped coordinates
+        seen.clear()
+        transposed = {"keypoints": kpts.flip(-1), "descriptors": desc, "image_size": size.flip(-1)}
+        with pytest.raises(_PositionalEncodingInputs):
+            lg({"image0": transposed, "image1": transposed})
+        self.assert_close(seen[0], expected.flip(-1))
+
+    @pytest.mark.parametrize("feature_name", LightGlueMatcher.known_modes)
+    def test_convention_lightglue_matcher_gives_each_feature_type_its_keypoint_convention(
+        self, device, dtype, feature_name, monkeypatch
+    ):
+        # A random-weight LightGlue with the feature type's configuration: the weights are not downloaded.
+        monkeypatch.setattr("kornia.feature.lightglue.load_state_dict_from_url", lambda *args, **kwargs: {})
+        matcher = LightGlueMatcher(feature_name, {"n_layers": 1}).to(device, dtype).eval()
+        seen = self._record_positional_encoding_inputs(matcher.matcher)
+        lafs = self._matcher_lafs(device, dtype)
+        perm = [2, 0, 1]
+        desc = torch.rand(3, matcher.matcher.conf.input_dim, device=device, dtype=dtype)
+        # hw1 and hw2 are (H, W) and apply to their own image; image 1 holds the frames in another order
+        with pytest.raises(_PositionalEncodingInputs):
+            matcher(desc, desc[perm], lafs, lafs[:, perm], hw1=(200, 320), hw2=(240, 300))
+        # Every type gets the normalised centres. sift adds sigma of a 6-sigma frame (LAF scale / 6) and the negated
+        # LAF orientation in (-pi, pi]; doghardnet and dog_affnet_hardnet add LAF scale / 6 and the LAF orientation
+        # in [0, 2 pi); keynet_affnet_hardnet adds the normalised ends of the LAF axes.
+        self.assert_close(seen[0], self._expected_encoding_input(feature_name, (200, 320), device, dtype))
+        self.assert_close(seen[1], self._expected_encoding_input(feature_name, (240, 300), device, dtype)[:, perm])
+
+    def test_convention_lightglue_matcher_without_hw_takes_the_largest_keypoint_coordinates(
+        self, device, dtype, monkeypatch
+    ):
+        monkeypatch.setattr("kornia.feature.lightglue.load_state_dict_from_url", lambda *args, **kwargs: {})
+        matcher = LightGlueMatcher("disk", {"n_layers": 1}).to(device, dtype).eval()
+        seen = self._record_positional_encoding_inputs(matcher.matcher)
+        lafs = self._matcher_lafs(device, dtype)
+        desc = torch.rand(3, 128, device=device, dtype=dtype)
+        with pytest.raises(_PositionalEncodingInputs):
+            matcher(desc, desc[[0, 2]], lafs, lafs[:, [0, 2]])
+        # The image size is (max x, max y) of each image's keypoints: (250, 170), then (101, 33).
+        expected0 = torch.tensor([[[-0.52, -0.488], [1.0, 0.68], [-0.192, -0.416]]], device=device, dtype=dtype)
+        expected1 = torch.tensor([[[0.188119, 0.148515], [1.0, 0.326733]]], device=device, dtype=dtype)
+        self.assert_close(seen[0], expected0)
+        self.assert_close(seen[1], expected1)
+
+    def test_convention_lightglue_matcher_returns_the_matching_score_and_index_pairs(self, device, dtype, monkeypatch):
+        calls = []
+
+        class _FixedLightGlue(torch.nn.Module):
+            # Stands in for the network: a fixed assignment from image 0 to image 1 and its matching scores.
+            def __init__(self, *args, **kwargs):
+                super().__init__()
+
+            def forward(self, data):
+                calls.append(data)
+                matches0 = torch.tensor([[2, -1, 0, 3]], device=device)
+                scores0 = torch.tensor([[0.9, 0.0, 0.35, 0.6]], device=device, dtype=dtype)
+                return {"matches0": matches0, "matching_scores0": scores0}
+
+        monkeypatch.setattr("kornia.feature.integrated.LightGlue", _FixedLightGlue)
+        matcher = LightGlueMatcher("DISK")
+        assert matcher.feature_name == "disk"  # modes are case-insensitive
+        lafs = laf_from_center_scale_ori(
+            torch.tensor([[[60.0, 24.0], [250.0, 170.0], [101.0, 33.0], [7.0, 140.0]]], device=device, dtype=dtype)
+        )
+        lafs1 = lafs.clone()
+        lafs1[:, 1] = 0.0  # a padding slot
+        desc = torch.rand(4, 128, device=device, dtype=dtype)
+        scores, idxs = matcher(desc, desc, lafs, lafs1, hw1=(200, 320), hw2=(200, 320))
+        # The first value is LightGlue's matching score (higher is better), not a distance; rows are
+        # (index in desc1, index in desc2), and unmatched keypoints (-1) are left out.
+        assert idxs.tolist() == [[0, 2], [2, 0], [3, 3]]
+        self.assert_close(scores, torch.tensor([[0.9], [0.35], [0.6]], device=device, dtype=dtype))
+        # Padding is not filtered: the zero LAF reaches the network as a keypoint at (0, 0).
+        assert calls[0]["image1"]["keypoints"][0, 1].tolist() == [0.0, 0.0]
+        # Fewer than two descriptors on a side give no match without running the network.
+        scores, idxs = matcher(desc[:1], desc, lafs[:, :1], lafs1)
+        assert scores.shape == (0, 1)
+        assert idxs.shape == (0, 2)
+        assert len(calls) == 1
+        # LightGlue's xfeat model is not one of the matcher's modes.
+        with pytest.raises(NotImplementedError):
+            LightGlueMatcher("xfeat")

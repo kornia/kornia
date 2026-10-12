@@ -248,3 +248,55 @@ def test_onnx_lightglue_keypoint_range_message_5724():
     side = {"keypoints": kpts, "descriptors": desc, "image_size": torch.tensor([[50, 50]])}
     with pytest.raises(Exception, match=r"\[-1, 1\].*\(width, height\)"):
         model({"image0": side, "image1": side})
+
+
+@pytest.mark.skipif(ort is None, reason="OnnxLightGlue requires onnxruntime")
+class TestConventionsOnnxLightGlue:
+    @staticmethod
+    def _echo_model(tmp_path):
+        """Write a graph whose scores are the normalised keypoints it receives, flattened, image 0 first."""
+        from onnx import TensorProto, helper, save
+
+        inputs = [
+            helper.make_tensor_value_info(name, TensorProto.FLOAT, [1, count, width])
+            for name, count, width in [("kpts0", "M", 2), ("kpts1", "N", 2), ("desc0", "M", 4), ("desc1", "N", 4)]
+        ]
+        outputs = [
+            helper.make_tensor_value_info("matches0", TensorProto.INT64, [1, 2]),
+            helper.make_tensor_value_info("mscores0", TensorProto.FLOAT, ["S"]),
+        ]
+        nodes = [
+            helper.make_node("Constant", [], ["flat"], value=helper.make_tensor("flat", TensorProto.INT64, [1], [-1])),
+            helper.make_node("Reshape", ["kpts0", "flat"], ["flat0"]),
+            helper.make_node("Reshape", ["kpts1", "flat"], ["flat1"]),
+            helper.make_node("Concat", ["flat0", "flat1"], ["mscores0"], axis=0),
+            helper.make_node(
+                "Constant", [], ["matches0"], value=helper.make_tensor("matches", TensorProto.INT64, [1, 2], [0, 0])
+            ),
+        ]
+        graph = helper.make_graph(nodes, "lightglue_keypoint_echo", inputs, outputs)
+        path = tmp_path / "echo.onnx"
+        save(helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)], ir_version=8), path)
+        return str(path)
+
+    @pytest.mark.device_agnostic
+    def test_convention_onnx_lightglue_normalises_keypoints_like_lightglue(self, tmp_path, dtype):
+        path = self._echo_model(tmp_path)
+        matcher = OnnxLightGlue(path, device="cpu")
+        kpts = torch.tensor([[[300.0, 30.0], [20.0, 210.0]]], dtype=dtype)
+        desc = torch.zeros(1, 2, 4, dtype=dtype)
+        image0 = {"keypoints": kpts, "descriptors": desc, "image_size": torch.tensor([[320, 240]])}
+        # image 1 is image 0 transposed, given as an image: (W, H) comes from its last two dimensions
+        image1 = {"keypoints": kpts.flip(-1), "descriptors": desc, "image": torch.zeros(1, 3, 320, 240)}
+        if dtype != torch.float32:
+            with pytest.raises(Exception, match="Wrong dtype"):  # float32 only
+                matcher({"image0": image0, "image1": image1})
+            return
+        out = matcher({"image0": image0, "image1": image1})
+        # LightGlue's normalisation, (k - size / 2) / (max(size) / 2) with size = (W, H): x = (300 - 160) / 160,
+        # y = (30 - 120) / 160, ...; the transposed image swaps the coordinates
+        expected = torch.tensor([0.875, -0.5625, -0.875, 0.5625, -0.5625, 0.875, 0.5625, -0.875])
+        torch.testing.assert_close(out["scores"], expected)
+        # cpu and cuda only, checked before the model is read
+        with pytest.raises(ValueError, match="Unsupported device"):
+            OnnxLightGlue(path, device="meta")
