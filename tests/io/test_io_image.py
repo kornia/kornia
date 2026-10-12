@@ -636,6 +636,21 @@ class TestSampleImages:
             get_sample_images(paths=["https://example.invalid/sample.png"])
         assert (tmp_path / "hub" / "images" / "sample.png").exists()
 
+    @pytest.mark.parametrize("suffix", ["?token=abc", "#section"])
+    def test_a_url_query_or_fragment_is_not_part_of_the_cache_name(self, tmp_path: Path, suffix) -> None:
+        from unittest import mock
+
+        from kornia.io import get_sample_images
+
+        source = tmp_path / "source.png"
+        write_indexed_png(source, PALETTE_INDICES, PALETTE)
+        cache = tmp_path / "cache"
+        with mock.patch("kornia.io.sample.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = source.read_bytes()
+            out = get_sample_images(paths=[f"https://example.invalid/x/palette.png{suffix}"], cache_dir=str(cache))
+        assert sorted(p.name for p in cache.iterdir()) == ["palette.png"]
+        assert (out[0][:, 0, 0] * 255).round().tolist() == [255.0, 0.0, 0.0]  # index 2 is red: the palette applies
+
     def test_a_download_that_is_not_an_image_is_not_cached(self, tmp_path: Path) -> None:
         from unittest import mock
 
