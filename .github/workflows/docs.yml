@@ -55,7 +55,6 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
 
       # On direct pull_request runs (empty inputs) fall back to a prefix restore of the
       # model-weights caches saved by the test workflows. A dozen doctests build
