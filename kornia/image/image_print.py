@@ -442,7 +442,8 @@ def print_image(image: Union[str, os.PathLike, torch.Tensor], max_width: int = 9
     if isinstance(image, (str, os.PathLike)):
         from kornia.io import ImageLoadType  # pylint: disable=C0415
 
-        img = kornia.io.load_image(image, ImageLoadType.RGB8)
+        # os.fsdecode: a path-like object may return bytes from __fspath__, which load_image's Path() rejects
+        img = kornia.io.load_image(os.fsdecode(image), ImageLoadType.RGB8)
     elif isinstance(image, torch.Tensor):
         img = image
     else:

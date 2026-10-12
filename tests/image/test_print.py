@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import os
+
 import pytest
 import torch
 
@@ -158,3 +160,16 @@ class TestNearestXterm:
         write_image(tmp_path / "p.png", torch.zeros(3, 2, 3, dtype=torch.uint8))
         print_image(tmp_path / "p.png")
         assert "\x1b[48;5;" in capsys.readouterr().out
+
+    def test_print_image_accepts_a_path_like_returning_bytes(self, tmp_path, capsys):
+        path = tmp_path / "p.png"
+        write_image(path, torch.zeros(3, 2, 3, dtype=torch.uint8))
+
+        class BytesPath(os.PathLike):
+            def __fspath__(self):
+                return os.fsencode(path)
+
+        print_image(BytesPath())
+        out = capsys.readouterr().out
+        assert out.count("\x1b[48;5;16m") == 6  # 2 x 3 black pixels
+        assert out.count("\x1b[0m\n") == 2
