@@ -29,10 +29,12 @@ import kornia
 from kornia.core.check import KORNIA_CHECK
 from kornia.image.utils import image_to_tensor, tensor_to_image
 
+_WRITE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
+
 
 def _color_mode(img_np: Any) -> str:
-    """Return the kornia_rs colour mode of an HxWxC array: ``"mono"`` for one channel, ``"rgb"`` otherwise."""
-    return "mono" if img_np.shape[-1] == 1 else "rgb"
+    """Return the kornia_rs colour mode of an HxWxC array with 1, 3 or 4 channels."""
+    return {1: "mono", 3: "rgb", 4: "rgba"}[img_np.shape[-1]]
 
 
 class ImageLoadType(Enum):
@@ -167,7 +169,7 @@ def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None
     The decoded image is returned as numpy array with shape HxWxC.
 
     Args:
-        path_file: Path to a valid image file.
+        path_file: Path with a .jpg, .jpeg, .png, .tif or .tiff extension, in any letter case.
         device: the device where you want to get your image placed.
 
     Return:
@@ -283,7 +285,7 @@ def load_image(
     """Read an image file and decode using the Kornia Rust backend.
 
     Args:
-        path_file: Path to a valid image file.
+        path_file: Path with a .jpg, .jpeg, .png, .tif or .tiff extension, in any letter case.
         desired_type: the desired image type, defined by color space and dtype.
         device: the device where you want to get your image placed.
 
@@ -317,7 +319,7 @@ def _write_uint8_image(path_file: Path, img_np: Any, quality: int) -> None:
         _rs_io.write_image_jpeg(str(path_file), img_np, mode=mode, quality=quality)
     elif path_file.suffix.lower() == ".png":
         _rs_io.write_image_png_u8(str(path_file), img_np, mode=mode)
-    elif path_file.suffix.lower() == ".tiff":
+    elif path_file.suffix.lower() in (".tif", ".tiff"):
         _rs_io.write_image_tiff_u8(str(path_file), img_np, mode=mode)
     else:
         raise NotImplementedError(f"Unsupported file extension: {path_file.suffix} for uint8 image")
@@ -328,7 +330,7 @@ def _write_uint16_image(path_file: Path, img_np: Any) -> None:
     mode = _color_mode(img_np)
     if path_file.suffix.lower() == ".png":
         _rs_io.write_image_png_u16(str(path_file), img_np, mode=mode)
-    elif path_file.suffix.lower() == ".tiff":
+    elif path_file.suffix.lower() in (".tif", ".tiff"):
         _rs_io.write_image_tiff_u16(str(path_file), img_np, mode=mode)
     else:
         raise NotImplementedError(f"Unsupported file extension: {path_file.suffix} for uint16 image")
@@ -337,7 +339,7 @@ def _write_uint16_image(path_file: Path, img_np: Any) -> None:
 def _write_float32_image(path_file: Path, img_np: Any) -> None:
     """Write float32 image to file."""
     mode = _color_mode(img_np)
-    if path_file.suffix.lower() == ".tiff":
+    if path_file.suffix.lower() in (".tif", ".tiff"):
         _rs_io.write_image_tiff_f32(str(path_file), img_np, mode=mode)
     else:
         raise NotImplementedError(f"Unsupported file extension: {path_file.suffix} for float32 image")
@@ -347,8 +349,8 @@ def write_image(path_file: str | Path, image: torch.Tensor, quality: int = 80) -
     """Save an image file using the Kornia Rust backend.
 
     Args:
-        path_file: Path to a valid image file.
-        image: Image torch.Tensor with shape :math:`(3,H,W)`, `(1,H,W)` and `(H,W)`.
+        path_file: Path with a .jpg, .jpeg, .png, .tif or .tiff extension, in any letter case.
+        image: Image torch.Tensor with shape :math:`(C, H, W)` or :math:`(H, W)`; ``C`` is 1 or 3, or 4 for PNG.
         quality: The quality of the JPEG encoding. If the file extension is .png or .tiff, the quality is ignored.
 
     Return:
@@ -357,16 +359,22 @@ def write_image(path_file: str | Path, image: torch.Tensor, quality: int = 80) -
     if not isinstance(path_file, Path):
         path_file = Path(path_file)
 
+    suffix = path_file.suffix.lower()
     KORNIA_CHECK(
-        path_file.suffix in [".jpg", ".jpeg", ".png", ".tiff"],
-        f"Invalid file extension: {path_file}, only .jpg, .jpeg, .png and .tiff are supported.",
+        suffix in _WRITE_EXTENSIONS,
+        f"Invalid file extension: {path_file}, only .jpg, .jpeg, .png, .tif and .tiff are supported.",
     )
-
-    KORNIA_CHECK(image.dim() >= 2, f"Invalid image shape: {image.shape}. Must be at least 2D.")
+    KORNIA_CHECK(image.dim() in (2, 3), f"Invalid image shape: {image.shape}. Expected (C, H, W) or (H, W).")
 
     img_np = tensor_to_image(image, keepdim=True, force_contiguous=True)  # HxWxC
     if img_np.ndim == 2:
         img_np = img_np[..., None]  # ensures channel dimension
+    channels = img_np.shape[-1]
+    supported = (1, 3, 4) if suffix == ".png" else (1, 3)
+    KORNIA_CHECK(
+        channels in supported,
+        f"Cannot write a {channels}-channel image to {suffix}; the supported channel counts are {supported}.",
+    )
     if image.dtype == torch.uint8:
         _write_uint8_image(path_file, img_np, quality)
     elif image.dtype == torch.uint16:

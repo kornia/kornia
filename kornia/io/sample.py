@@ -17,15 +17,12 @@
 
 from __future__ import annotations
 
-import io
 import logging
 import os
 from typing import Any, List, Optional, Tuple, Union
 from urllib.request import urlopen
 
 import torch
-
-from kornia.core.external import PILImage as Image
 
 from .io import load_image
 
@@ -44,7 +41,7 @@ _IMAGE_URLS: List[str] = [
 
 
 def download_image(url: str, save_to: str) -> None:
-    """Download an image from a given URL and save it to a specified file path.
+    """Download a file and save its bytes unchanged, so a JPEG is not decoded and re-encoded.
 
     Args:
         url: The URL of the image to download.
@@ -53,8 +50,9 @@ def download_image(url: str, save_to: str) -> None:
     """
     # get_sample_images only routes paths that start with "http" here (default: the https:// literals above).
     with urlopen(url, timeout=30) as resp:  # noqa: S310
-        im = Image.open(io.BytesIO(resp.read()))
-    im.save(save_to)
+        data = resp.read()
+    with open(save_to, "wb") as f:
+        f.write(data)
 
 
 def get_sample_images(

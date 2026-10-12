@@ -26,6 +26,7 @@ import numpy as np
 import pytest
 import torch
 
+from kornia.core.exceptions import BaseError
 from kornia.io import ImageLoadType, load_image, write_image
 
 
@@ -342,6 +343,50 @@ class TestAlphaRounding:
         assert load_image(path, ImageLoadType.RGB8)[:, 0, 0].tolist() == [241, 216, 204]
 
 
+class TestWriteImageValidation:
+    def test_rgba_png_round_trips(self, tmp_path: Path) -> None:
+        rgba = create_random_img8_torch(4, 5, 4)
+        path = tmp_path / "rgba.png"
+        write_image(path, rgba)
+        assert torch.equal(load_image(path, ImageLoadType.UNCHANGED), rgba)
+
+    def test_rgba_16_bit_png_round_trips(self, tmp_path: Path) -> None:
+        rgba = torch.randint(0, 65535, (4, 4, 5), dtype=torch.int32).to(torch.uint16)
+        path = tmp_path / "rgba16.png"
+        write_image(path, rgba)
+        assert torch.equal(load_image(path, ImageLoadType.UNCHANGED), rgba)
+
+    @pytest.mark.parametrize("ext", [".jpg", ".tiff"])
+    def test_rgba_to_a_format_without_alpha_raises_and_writes_nothing(self, tmp_path: Path, ext) -> None:
+        path = tmp_path / f"rgba{ext}"
+        with pytest.raises(BaseError, match="4-channel"):
+            write_image(path, create_random_img8_torch(4, 5, 4))
+        assert not path.exists()
+
+    @pytest.mark.parametrize("ext", [".png", ".jpg", ".tiff"])
+    def test_two_channels_raise_and_write_nothing(self, tmp_path: Path, ext) -> None:
+        path = tmp_path / f"two{ext}"
+        with pytest.raises(BaseError, match="2-channel"):
+            write_image(path, create_random_img8_torch(4, 5, 2))
+        assert not path.exists()
+
+    @pytest.mark.parametrize("name", ["upper.JPG", "upper.PNG", "short.tif", "mixed.TiFf"])
+    def test_extension_case_and_tif(self, tmp_path: Path, name) -> None:
+        rgb = create_random_img8_torch(4, 5, 3)
+        path = tmp_path / name
+        write_image(path, rgb)
+        loaded = load_image(path, ImageLoadType.UNCHANGED)
+        assert loaded.shape == (3, 4, 5)
+        if not name.lower().endswith(".jpg"):
+            assert torch.equal(loaded, rgb)  # lossless formats round-trip exactly
+
+    def test_batched_tensor_raises_and_writes_nothing(self, tmp_path: Path) -> None:
+        path = tmp_path / "batched.png"
+        with pytest.raises(BaseError, match=re.escape("(C, H, W)")):
+            write_image(path, create_random_img8_torch(4, 5, 3)[None])
+        assert not path.exists()
+
+
 class TestDownloadImage:
     """Offline pins for ``kornia.io.sample.download_image``; ``urlopen`` is mocked, no network is touched."""
 
@@ -365,6 +410,18 @@ class TestDownloadImage:
         with PILImage.open(dst) as saved:
             assert saved.size == (4, 3)
             assert saved.getpixel((0, 0)) == (10, 20, 30)
+
+    def test_writes_the_downloaded_bytes_without_decoding(self, tmp_path):
+        from unittest import mock
+
+        from kornia.io.sample import download_image
+
+        payload = b"\xff\xd8 bytes that no image decoder accepts"
+        with mock.patch("kornia.io.sample.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = payload
+            dst = tmp_path / "panda.jpg"
+            download_image(self.URL, str(dst))
+        assert dst.read_bytes() == payload
 
     def test_http_error_propagates(self, tmp_path):
         import urllib.error
