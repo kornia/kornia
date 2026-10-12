@@ -1004,6 +1004,15 @@ class TestFillConvexPolygon(BaseTester):
         self.assert_close(out, expected)
         assert out.count_nonzero() > 0
 
+    def test_uint8_image_takes_a_float_colour(self, device):
+        img = torch.full((1, 3, 5, 7), 9, dtype=torch.uint8, device=device)
+        poly = torch.tensor([[[1.0, 1.0], [5.0, 1.0], [5.0, 3.0], [1.0, 3.0]]], device=device)
+        draw_convex_polygon(img, poly, torch.tensor([[200.0, 100.0, 50.0]], device=device))
+        assert img.dtype == torch.uint8
+        assert img[0, :, 2, 3].tolist() == [200, 100, 50]  # inside: the colour, cast to uint8
+        assert img[0, :, 4, 6].tolist() == [9, 9, 9]  # outside: unchanged
+        assert int((img[0, 0] == 200).sum()) == 15  # rows 1-3, columns 1-5
+
     def test_nan_pixel_inside_the_polygon_is_overwritten(self, device, dtype):
         img = torch.zeros(1, 1, 5, 6, device=device, dtype=dtype)
         img[0, 0, 2, 2] = float("nan")
