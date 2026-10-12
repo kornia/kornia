@@ -69,7 +69,7 @@ notebook, whose kernel's stdin is not a terminal (use ``"auto"`` there). The def
      - What it enables
      - Install command
    * - ``image``
-     - Pillow-backed PIL input/output and display helpers, plus remote image decoding in :func:`kornia.io.get_sample_images`
+     - Pillow-backed PIL input/output and display helpers
      - ``pip install "kornia[image]"``
    * - ``onnx``
      - :doc:`kornia.onnx </onnx>`, ONNX export of Kornia modules, and :class:`~kornia.feature.OnnxLightGlue`
