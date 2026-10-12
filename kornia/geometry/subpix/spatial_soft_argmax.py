@@ -321,9 +321,10 @@ def _unfold3d(padded: torch.Tensor, kernel_size: tuple[int, int, int], stride: t
     columns = F.unfold(padded.reshape(n * d_p, 1, h_p, w_p), (ky, kx), stride=(sy, sx))
     num_windows = columns.shape[-1]
     columns = columns.view(n, d_p, ky * kx, num_windows)
+    # Strided depth slices rather than Tensor.unfold, which the legacy TorchScript ONNX exporter cannot lower here.
     last = sz * ((d_p - kz) // sz)
-    columns = torch.stack([columns[:, i : i + last + 1 : sz] for i in range(kz)], dim=-1)  # (N, D_out, ky * kx, L, kz)
-    return columns.permute(0, 1, 4, 2, 3).reshape(n, columns.shape[1], kz * ky * kx, num_windows)
+    columns = torch.stack([columns[:, i : i + last + 1 : sz] for i in range(kz)], dim=2)  # (N, D_out, kz, ky * kx, L)
+    return columns.reshape(n, columns.shape[1], kz * ky * kx, num_windows)
 
 
 def conv_soft_argmax2d(
