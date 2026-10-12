@@ -27,6 +27,31 @@ from testing.base import BaseTester
 
 
 class TestResize(BaseTester):
+    @pytest.mark.parametrize(
+        "shape, divisible_factor, expected",
+        [
+            ((10, 14), 24, (24, 24)),
+            ((1, 3, 10, 14), 32, (1, 3, 32, 32)),
+            ((3, 10, 14), 4, (3, 8, 16)),
+            ((3, 10, 14), 24, (3, 24, 24)),
+            ((1, 3, 10, 14), 24, (1, 3, 24, 24)),
+            ((2, 1, 3, 10, 14), 24, (2, 1, 3, 24, 24)),
+        ],
+    )
+    def test_resize_to_be_divisible_short_sides(self, shape, divisible_factor, expected, device, dtype):
+        inp = torch.rand(*shape, device=device, dtype=dtype)
+        out = kornia.geometry.transform.resize_to_be_divisible(inp, divisible_factor)
+        assert out.shape == expected
+
+    def test_resize_to_be_divisible_rejects_invalid_inputs(self, device, dtype):
+        resize_to_be_divisible = kornia.geometry.transform.resize_to_be_divisible
+        with pytest.raises(ValueError, match="at least two dimensions"):
+            resize_to_be_divisible(torch.rand(4, device=device, dtype=dtype), 4)
+        inp = torch.rand(4, 4, device=device, dtype=dtype)
+        for divisible_factor in (0, -1, 2.5):
+            with pytest.raises(ValueError, match="positive integer"):
+                resize_to_be_divisible(inp, divisible_factor)
+
     def test_smoke(self, device, dtype):
         inp = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
         out = kornia.geometry.transform.resize(inp, (3, 4), align_corners=False)
