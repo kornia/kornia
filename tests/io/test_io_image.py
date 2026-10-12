@@ -772,6 +772,55 @@ class TestDownloadImage:
                 download_image(self.URL, str(tmp_path / "panda.jpg"))
         assert list(tmp_path.iterdir()) == []  # neither the destination nor the temporary file
 
+    @pytest.mark.parametrize("existing", [b"payload", b"different", b"payload-extra", b"pay"])
+    def test_a_refused_replace_only_accepts_matching_bytes(self, tmp_path, existing):
+        from unittest import mock
+
+        from kornia.io.sample import download_image
+
+        dst = tmp_path / "panda.jpg"
+        dst.write_bytes(existing)
+        error = PermissionError(13, "Access is denied")
+        with (
+            mock.patch("kornia.io.sample.urlopen") as mock_urlopen,
+            mock.patch("kornia.io.sample.os.replace", side_effect=error),
+        ):
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = b"payload"
+            if existing == b"payload":
+                download_image(self.URL, str(dst))
+            else:
+                with pytest.raises(PermissionError) as exc:
+                    download_image(self.URL, str(dst))
+                assert exc.value is error
+        assert dst.read_bytes() == existing
+        assert list(tmp_path.iterdir()) == [dst]
+
+    def test_a_refused_replace_with_an_unreadable_copy_preserves_the_replace_error(self, tmp_path):
+        from unittest import mock
+
+        from kornia.io.sample import download_image
+
+        dst = tmp_path / "panda.jpg"
+        dst.write_bytes(b"payload")
+        error = PermissionError(13, "Replace refused")
+
+        def refusing_read(path, mode="r", *args, **kwargs):
+            if mode == "rb":
+                raise PermissionError(13, "Read refused")
+            return open(path, mode, *args, **kwargs)
+
+        with (
+            mock.patch("kornia.io.sample.urlopen") as mock_urlopen,
+            mock.patch("kornia.io.sample.os.replace", side_effect=error),
+            mock.patch("kornia.io.sample.open", refusing_read, create=True),
+        ):
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = b"payload"
+            with pytest.raises(PermissionError) as exc:
+                download_image(self.URL, str(dst))
+            assert exc.value is error
+        assert dst.read_bytes() == b"payload"
+        assert list(tmp_path.iterdir()) == [dst]
+
     def test_the_destination_appears_only_once_the_write_is_complete(self, tmp_path):
         from unittest import mock
 
