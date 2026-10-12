@@ -775,6 +775,10 @@ class TestConventionsSIFTDescriptors(BaseTester):
                 desc = SIFTDescriptorFromPyramid(rootsift=rootsift).to(device, dtype)(image, lafs)[0]
                 assert torch.equal(desc[1], torch.zeros_like(desc[1]))
                 assert bool((desc[0] > 0).all()) == rootsift  # the valid slot of the flat image: 1e-5 or 0
+                oriented, _ = (
+                    SIFTDescriptorFromPyramid(rootsift=rootsift).to(device, dtype).orient_and_describe(image, lafs)
+                )
+                assert torch.equal(oriented[0, 1], lafs[0, 1])  # the padding frame comes back unchanged
 
     def test_convention_dense_sift_channels_are_angle_major_like_sift_descriptor(self, device, dtype):
         # Channel a * 16 + cy * 4 + cx, as SIFTDescriptor's entries. With the defaults output (i, j) is centred on

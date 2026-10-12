@@ -208,3 +208,8 @@ class TestConventionsPatchDescriptors(BaseTester):
         scale = 16.0 if dtype == torch.float16 and name in ("SOSNet", "TFeat") else 255.0
         self.assert_close(model(2 * patches + 1), desc, **tol)
         self.assert_close(model(scale * patches), desc, **tol)
+        if dtype in (torch.float32, torch.float64):
+            # each patch is normalised on its own: a different a x + b per patch still gives each patch its descriptor
+            a = torch.tensor([1.0, 16.0, 0.5, 3.0], device=device, dtype=dtype).view(4, 1, 1, 1)
+            b = torch.tensor([0.0, 0.0, -2.0, 1.0], device=device, dtype=dtype).view(4, 1, 1, 1)
+            self.assert_close(model(a * patches + b), desc, **tol)
