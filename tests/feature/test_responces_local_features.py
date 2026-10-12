@@ -541,15 +541,19 @@ class TestConventionsResponses(BaseTester):
         self.assert_close(response, expected, rtol=rtol, atol=1e-7)
 
     @pytest.mark.parametrize(
-        "response", [kornia.feature.harris_response, kornia.feature.hessian_response], ids=["harris", "hessian"]
+        "response",
+        [kornia.feature.harris_response, kornia.feature.gftt_response, kornia.feature.hessian_response],
+        ids=["harris", "gftt", "hessian"],
     )
     def test_convention_sigmas_multiply_the_response_by_sigma_to_the_fourth(self, device, dtype, response):
-        # sigmas[b] multiplies the response of image b by sigmas[b] ** 4 (VLFeat covdet.c's scale normalisation of
-        # Harris and of the Hessian determinant): 2 ** 4 = 16 and 0.5 ** 4 = 1 / 16.
+        # sigmas[b] multiplies the response of image b by sigmas[b] ** 4 in all three (VLFeat covdet.c's scale
+        # normalisation of Harris and of the Hessian determinant; GFTT takes the same power): 2 ** 4 = 16 and
+        # 0.5 ** 4 = 1 / 16. The bound is two ULP per element: the power itself may round (MPS gives 0.5 ** 4 one
+        # float32 ULP below 1 / 16), the product rounds once more.
         img = _conv_rectangle_and_blob(device, dtype).repeat(2, 1, 1, 1)
         sigmas = torch.tensor([2.0, 0.5], device=device, dtype=dtype)
         expected = response(img) * torch.tensor([16.0, 0.0625], device=device, dtype=dtype).view(-1, 1, 1, 1)
-        self.assert_close(response(img, sigmas=sigmas), expected, rtol=0.0, atol=1e-3 * expected.abs().max().item())
+        self.assert_close(response(img, sigmas=sigmas), expected, rtol=2 * torch.finfo(dtype).eps, atol=0.0)
 
     def test_convention_dog_response_is_each_level_minus_the_previous_one(self, device, dtype):
         # The level axis of (B, C, D, H, W) is dim 2, and output level i is L[i + 1] - L[i]: D - 1 levels.

@@ -374,8 +374,10 @@ class TestConventionsOrientation(BaseTester):
         # The output orientation is the input orientation plus the patch angle, which turns the LAF's x axis onto the
         # dominant gradient: content turned +30 degrees counter-clockwise on screen reads +30, the sign of
         # laf_from_center_scale_ori, whatever the input orientation (0, 40 or -75). Centre and scale are kept.
-        # Measured on CPU float32: at most 0.005 degrees off. Half precision quantises the 10-degree histogram bins.
-        tol = {torch.float16: 1.0, torch.bfloat16: 6.0}.get(dtype, 0.05)
+        # Measured on CPU float32: at most 0.005 degrees off. Half precision rounds the ramp, its gradients, which vote
+        # into the 10-degree histogram and set the parabolic peak refinement, and the returned angle (bfloat16 spaces
+        # angles near 120 degrees by 0.5); the bound is one histogram bin in bfloat16, 2 degrees in float16.
+        tol = {torch.float16: 2.0, torch.bfloat16: 10.0}.get(dtype, 0.05)
         orienter = LAFOrienter(32).to(device, dtype)
         img = _conv_ramp(content_angle, 61, 83, 47.0, 26.0).to(device, dtype)
         centre = torch.tensor([[[47.0, 26.0]]], device=device, dtype=dtype)
@@ -413,7 +415,8 @@ class TestConventionsOrientation(BaseTester):
             model = OriNet()
         patches = torch.rand(3, 1, 32, 32, generator=torch.Generator().manual_seed(1)).to(device, dtype)
         model = model.to(device, dtype)
-        atol = 2e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-5  # bfloat16 spaces angles near 2 by 1 / 64
+        # half precision rounds the returned angle: bfloat16 spaces the angles here (-1.78 to -1.94 rad) by 1 / 128
+        atol = 2e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-5
         self.assert_close(model(3 * patches + 2), model(patches), rtol=0.0, atol=atol)
 
     def test_convention_pass_laf_returns_its_input_object(self, device, dtype):

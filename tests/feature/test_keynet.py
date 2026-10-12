@@ -48,8 +48,8 @@ class TestKeyNet(BaseTester):
 
 class TestConventionsKeyNet(BaseTester):
     def test_convention_keynet_response_is_non_negative_at_the_input_size(self, device, dtype):
-        # KeyNet ends in a ReLU and resamples every pyramid level's features back to the input size, so the response is
-        # a non-negative (B, 1, H, W) map aligned with the input, also for an odd, non-square size. With the random
+        # KeyNet ends in a ReLU and resamples every pyramid level's features, so the response is a non-negative
+        # (B, 1, H, W) map at the input size, also for an odd, non-square size. With the random
         # weights of seed 0 and the last bias set to -0.01, the last pre-activation spans [-0.014, 0.013] (CPU float64),
         # so the ReLU clips about a tenth of the map and the bound below is not met by an all-zero map.
         with torch.random.fork_rng(devices=[]):

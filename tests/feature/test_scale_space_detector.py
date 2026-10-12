@@ -1456,11 +1456,17 @@ class _TwoMaxima(torch.nn.Module):
 
 
 class _LevelPeaks(torch.nn.Module):
-    """A response map with one peak per pyramid level, looked up by the level's ``(H, W)``."""
+    """A response map with one peak per pyramid level, looked up by the level's ``(H, W)``.
 
-    def __init__(self, peaks: dict) -> None:
+    Each peak has one lower neighbour, ``0.9`` of it, at the offset ``(du, dv)`` = ``neighbour``. Non-maxima
+    suppression removes the neighbour, but it makes the peak asymmetric, so any sub-pixel step would move the peak
+    towards it (a parabolic fit by 0.41 pixel).
+    """
+
+    def __init__(self, peaks: dict, neighbour: tuple[int, int]) -> None:
         super().__init__()
         self.peaks = peaks
+        self.neighbour = neighbour
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         out = torch.zeros_like(x[:, :1])
@@ -1468,6 +1474,7 @@ class _LevelPeaks(torch.nn.Module):
         if peak is not None:
             (u, v), value = peak
             out[..., v, u] = value
+            out[..., v + self.neighbour[1], u + self.neighbour[0]] = 0.9 * value
         return out
 
 
@@ -1528,7 +1535,9 @@ class TestConventionsScaleSpaceDetector(BaseTester):
         # maximum at bright and dark blobs alike; DoG (coarser minus finer blur) is a maximum at a dark blob and a
         # minimum at a bright one, which is detected only with minima_are_also_good, and a minimum's slot carries the
         # negated response, so it is positive.
-        if response == "dog" and minima_are_also_good and dtype == torch.bfloat16:
+        if response == "dog" and polarity == "bright" and dtype == torch.bfloat16:
+            # The same tie would hide the maximum that a reversed DoG makes of the bright blob, so the maxima-only case
+            # could not fail either.
             pytest.skip("bfloat16 rounds the DoG minimum into a tie with a neighbour, and the 3x3x3 NMS is strict")
         blob = _conv_blob(25.4, 18.6, 2.5, 48, 72, device, dtype)
         img = blob if polarity == "bright" else 1.0 - blob
@@ -1586,22 +1595,24 @@ class TestConventionsMultiResolutionDetector(BaseTester):
         # s_mult * mean(W / W_l, H / H_l), s_mult = 22 by default; there is no sub-pixel step, and (u, v) is not mapped
         # to its pixel centre (u + 0.5) * W / W_l - 0.5 (the Key.Net reference maps it the same way). Level 1 of
         # 69 x 128 at factor 2 is 34 x 64: pixel (20, 17) -> (40.0, 17 * 69 / 34 = 34.5), scale 22 * (2 + 69 / 34) / 2.
+        # Each peak's lower neighbour on its +x side (+y when transposed) would pull a sub-pixel step off the pixel.
         cfg = get_default_detector_config()
         cfg.update(pyramid_levels=1, up_levels=0, scale_factor_levels=2.0)
         tol = 0.15 if dtype == torch.bfloat16 else 1e-3  # bfloat16 spaces values in [32, 64) by 0.25
         for transposed in (False, True):
             if transposed:  # relabelling: the transposed image reports swapped coordinates
                 size, peaks = (128, 69), {(128, 69): ((31, 45), 1.0), (64, 34): ((17, 20), 0.5)}
-                centres = [[31.0, 45.0], [34.5, 40.0]]
+                centres, neighbour = [[31.0, 45.0], [34.5, 40.0]], (0, 1)
             else:
                 size, peaks = (69, 128), {(69, 128): ((45, 31), 1.0), (34, 64): ((20, 17), 0.5)}
-                centres = [[45.0, 31.0], [40.0, 34.5]]
+                centres, neighbour = [[45.0, 31.0], [40.0, 34.5]], (1, 0)
+            response = _LevelPeaks(peaks, neighbour)
             if detector == "MultiResolutionDetector":
-                det = MultiResolutionDetector(_LevelPeaks(peaks), num_features=4, config=cfg)
+                det = MultiResolutionDetector(response, num_features=4, config=cfg)
             else:  # the KeyNet response is replaced by the same peaks through a forward hook
                 conf = {**kornia.feature.keynet.keynet_default_config, "Detector_conf": cfg}
                 det = kornia.feature.KeyNetDetector(False, num_features=4, keynet_conf=conf)
-                det.model.register_forward_hook(lambda module, args, output, peaks=peaks: _LevelPeaks(peaks)(args[0]))
+                det.model.register_forward_hook(lambda module, args, output, response=response: response(args[0]))
             lafs, resps = det.to(device, dtype)(torch.zeros(1, 1, *size, device=device, dtype=dtype))
             self.assert_close(resps, torch.tensor([[1.0, 0.5, 0.0, 0.0]], device=device, dtype=dtype))
             expected = kornia.feature.laf_from_center_scale_ori(
