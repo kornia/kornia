@@ -604,6 +604,7 @@
   ],
   "kornia.image": [
     "ChannelsOrder",
+    "ColorSpace",
     "Image",
     "ImageLayout",
     "ImageSize",
