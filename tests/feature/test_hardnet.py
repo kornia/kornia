@@ -173,10 +173,10 @@ class TestConventionsPatchDescriptors(BaseTester):
         torch.manual_seed(0)  # random-init weights: no pin downloads
         return factory().to(device, dtype), patch_size, dim
 
-    @pytest.mark.parametrize("name", ["HardNet", "HardNet8", "SOSNet", "TFeat"])
+    @pytest.mark.parametrize("name", ["HardNet", "HardNet8", "HyNet", "SOSNet", "TFeat"])
     def test_convention_learned_descriptors_take_one_channel_32x32_patches(self, device, dtype, name):
-        # The input is validated: another size or channel count raises instead of returning another width. HyNet's
-        # identical check is pinned by test_hynet.py::TestHyNet::test_wrong_patch_shape_is_rejected_5724.
+        # The input is validated: another size or channel count raises instead of returning another width (HyNet's
+        # rejection is also pinned by test_hynet.py::TestHyNet::test_wrong_patch_shape_is_rejected_5724).
         model, _, _ = self._model(name, device, dtype)
         assert type(model).patch_size == 32
         assert model(torch.rand(3, 1, 32, 32, device=device, dtype=dtype)).shape == (3, 128)
@@ -195,15 +195,17 @@ class TestConventionsPatchDescriptors(BaseTester):
     @pytest.mark.parametrize("name", ["HardNet", "HardNet8", "SOSNet", "TFeat", "MKDDescriptor", "SIFTDescriptor"])
     def test_convention_patch_descriptors_ignore_an_affine_intensity_change(self, device, dtype, name):
         # HardNet and HardNet8 standardise each patch, SOSNet and TFeat start with InstanceNorm2d, MKD and SIFT use
-        # gradients and an L2 normalisation, so a [0, 1] patch, 2x + 1 and 255x give one descriptor. TFeat keeps the
-        # InstanceNorm eps (1e-5 on the variance) in its biased tanh layers, which moves it by ~1e-5 here.
-        # HyNet is the exception (scale only): test_hynet.py::TestConventionsHyNet.
+        # gradients and an L2 normalisation, so a [0, 1] patch, 2x + 1 and 255x give one descriptor. SOSNet and TFeat
+        # are invariant only up to the InstanceNorm eps (1e-5 on the variance): it moves TFeat by ~1e-5 here, and with
+        # pretrained weights a low-contrast patch moves both (SOSNet at 0.01x: cosine 0.28); random weights hide this
+        # for SOSNet, whose bias-free layers are positively homogeneous. HyNet is the exception (scale only):
+        # test_hynet.py::TestConventionsHyNet.
         model, patch_size, _ = self._model(name, device, dtype)
         patches = torch.rand(4, 1, patch_size, patch_size, device=device, dtype=dtype)
         desc = model(patches)
         tol = {"rtol": 0.0, "atol": 1e-4} if dtype in (torch.float32, torch.float64) else {}
         # A float16 InstanceNorm that accumulates the squares of a [0, 255] patch in float16 overflows (torch 2.5.1 on
-        # CPU does), so the float16 leg scales by 16 instead.
-        scale = 16.0 if dtype == torch.float16 else 255.0
+        # CPU does), so that leg scales by 16 instead.
+        scale = 16.0 if dtype == torch.float16 and name in ("SOSNet", "TFeat") else 255.0
         self.assert_close(model(2 * patches + 1), desc, **tol)
         self.assert_close(model(scale * patches), desc, **tol)

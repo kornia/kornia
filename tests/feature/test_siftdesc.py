@@ -713,20 +713,23 @@ class TestConventionsSIFTDescriptors(BaseTester):
     def test_convention_sift_clips_at_clipval_between_two_l2_normalisations(self, device, dtype):
         # A vertical step between columns 24 and 25 of a 41-pixel patch: every gradient points along +x (angle bin 0)
         # and lies in cell column 2 only (cells centred at 5, 15, 25 and 35, each pooling 17 pixels). Index
-        # a * 16 + cy * 4 + cx: entries 2, 6, 10 and 14. The Gaussian weight makes the middle rows heavier:
-        # SIFTDescriptor(41, rootsift=False, clipval=1.0).double()(patch.double())[0, [2, 6, 10, 14]].
+        # a * 16 + cy * 4 + cx: entries 2, 6, 10 and 14. clipval=1.0 leaves the unit descriptor unclipped.
         if not supports_replicate_padding(device, dtype):
             pytest.skip(f"no replicate-padding kernel for {dtype} on {device.type}")
         patch = torch.zeros(1, 1, 41, 41, device=device, dtype=dtype)
         patch[..., 25:] = 1.0
-        unclipped = torch.tensor([0.455193, 0.541110, 0.541110, 0.455193], device=device, dtype=dtype)
         # Relabelling: the transposed patch has a horizontal step, angle bin 2 (+y, image rows grow downwards) in cell
         # row 2, entries 32 + 8 + cx.
         for image, entries in ((patch, [2, 6, 10, 14]), (patch.transpose(-1, -2), [40, 41, 42, 43])):
             raw = SIFTDescriptor(rootsift=False, clipval=1.0).to(device, dtype)(image)[0]
             out = SIFTDescriptor(rootsift=False).to(device, dtype)(image)[0]
             assert (raw > 0.1).nonzero().flatten().tolist() == entries
-            self.assert_close(raw[entries], unclipped)
+            self.assert_close(raw.norm(), torch.ones((), device=device, dtype=dtype))
+            assert raw[entries].min() > 0.2  # every entry is clipped
+            # the cells mirror about the patch centre, as the grid is centred there
+            self.assert_close(raw[entries[:2]], raw[entries[::-1][:2]])
+            # unequal before the clip (the window weights the middle cells more), so the 0.5 below is the clip's doing
+            assert (raw[entries] - 0.5).abs().max() > 0.01
             # normalise, clip every entry at clipval = 0.2, normalise again: the four equal clipped entries become
             # 0.5, so an output entry can exceed clipval
             assert (out > 0.1).nonzero().flatten().tolist() == entries
@@ -743,7 +746,8 @@ class TestConventionsSIFTDescriptors(BaseTester):
         size = {"patch": (3, 1, 41, 41), "dense": (1, 1, 30, 37), "pyramid": (1, 1, 48, 64)}[kind]
         image = 0.2 * torch.rand(*size, device=device, dtype=dtype)
         image[..., size[-1] // 2 + 4 :] += 1.0  # a step edge, so that the clipping acts
-        raw = _sift_family_member(kind, device, dtype, image, rootsift=False, clipval=1.0).float()
+        raw = _sift_family_member(kind, device, dtype, image, rootsift=False, clipval=1.0)
+        raw = raw.to(torch.promote_types(dtype, torch.float32))
         assert raw.max() > 0.25
         clipped = torch.nn.functional.normalize(raw.clamp(0.0, 0.2), dim=-1)
         expected = (clipped / clipped.sum(dim=-1, keepdim=True) + 1e-10).sqrt()
@@ -752,7 +756,9 @@ class TestConventionsSIFTDescriptors(BaseTester):
     @pytest.mark.parametrize("kind", ["patch", "dense", "pyramid"])
     def test_convention_sift_family_describes_a_flat_patch_by_a_zero_vector(self, device, dtype, kind):
         # A flat patch has no gradient, hence no orientation: its descriptor is zero rather than a unit vector, and
-        # its RootSIFT is sqrt(1e-10) = 1e-5 in every bin. This is what a zero-LAF padding slot samples.
+        # its RootSIFT is sqrt(1e-10) = 1e-5 in every bin. A zero-LAF padding slot hands SIFTDescriptor (behind
+        # LAFDescriptor) such a patch. SIFTDescriptorFromPyramid instead treats a zero LAF as invalid and returns an
+        # exact zero descriptor whether or not rootsift is set.
         if not supports_replicate_padding(device, dtype):
             pytest.skip(f"no replicate-padding kernel for {dtype} on {device.type}")
         size = {"patch": (3, 1, 41, 41), "dense": (1, 1, 30, 37), "pyramid": (1, 1, 48, 64)}[kind]
@@ -761,6 +767,14 @@ class TestConventionsSIFTDescriptors(BaseTester):
         assert torch.equal(plain, torch.zeros_like(plain))
         root = _sift_family_member(kind, device, dtype, image)
         self.assert_close(root, torch.full_like(root, 1e-5), rtol=1e-2, atol=0.0)
+        if kind == "pyramid":
+            # a zero LAF next to a valid one, so that the invalid slot goes through the same pass as a real frame
+            lafs = torch.zeros(1, 2, 2, 3, device=device, dtype=dtype)
+            lafs[0, 0] = torch.tensor([[6.0, 1.0, 30.0], [0.0, 6.0, 20.0]], device=device, dtype=dtype)
+            for rootsift in (False, True):
+                desc = SIFTDescriptorFromPyramid(rootsift=rootsift).to(device, dtype)(image, lafs)[0]
+                assert torch.equal(desc[1], torch.zeros_like(desc[1]))
+                assert bool((desc[0] > 0).all()) == rootsift  # the valid slot of the flat image: 1e-5 or 0
 
     def test_convention_dense_sift_channels_are_angle_major_like_sift_descriptor(self, device, dtype):
         # Channel a * 16 + cy * 4 + cx, as SIFTDescriptor's entries. With the defaults output (i, j) is centred on

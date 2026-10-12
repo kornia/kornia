@@ -387,8 +387,8 @@ class TestConventionsSIFTDescriptorFromPyramid(BaseTester):
     def test_convention_orient_and_describe_turns_the_laf_x_axis_onto_the_dominant_gradient(self, device, dtype):
         # The assigned orientation is minus the gradient's angle (measured from +x towards +y, image rows growing
         # downwards), whatever orientation the input LAF had, so the oriented frame's x axis lies along the gradient and
-        # the descriptor's dominant angle bin is 0. LAFOrienter assigns the same orientation, so SIFTFeature's patch and
-        # pyramid descriptor backends agree.
+        # the descriptor's dominant angle bin is 0. LAFOrienter, which orients SIFTFeature's patch backend, assigns the
+        # same orientation.
         ys, xs = torch.arange(60.0).view(-1, 1), torch.arange(75.0).view(1, -1)
         lafs = laf_from_center_scale_ori(
             torch.tensor([[[41.0, 22.0], [30.0, 35.0], [52.0, 30.0]]], device=device, dtype=dtype),
