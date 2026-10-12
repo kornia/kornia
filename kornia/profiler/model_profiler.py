@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import json
 import warnings
 from collections import defaultdict
 
@@ -30,7 +31,7 @@ from kornia.profiler.metrics.gram import gram_similarity
 from kornia.profiler.metrics.l2 import l2_normalized
 from kornia.profiler.metrics.linear import linear_similarity
 
-pandas = LazyLoader("pandas")
+pandas = LazyLoader("pandas", extra="profiler")
 
 METRIC_REGISTRY = {
     "cosine": cosine_similarity,
@@ -178,14 +179,17 @@ class ModelProfiler:
     def save_as_report(self, path):
         r"""Save computed results to a file.
 
-        Supported formats include CSV and JSON.
+        JSON exports the result records without optional dependencies. CSV
+        and :attr:`df` require the ``profiler`` extra (pandas).
 
         Args:
             path: File path where the report will be saved.
 
         Raises:
             RuntimeError: If results have not been computed.
-            ValueError: If the file format is unsupported.
+            ValueError: If the file format is unsupported or JSON results
+                contain nonfinite numbers.
+            ImportError: If CSV export is requested without pandas installed.
         """
         if self.results is None:
             raise RuntimeError("Run compute() before saving report.")
@@ -194,7 +198,8 @@ class ModelProfiler:
         if path.endswith(".csv"):
             self.df.to_csv(path, index=False)
         elif path.endswith(".json"):
-            self.df.to_json(path, orient="records", indent=2)
+            with open(path, "w", encoding="utf-8") as file:
+                json.dump(self.results, file, indent=2, allow_nan=False)
         else:
             raise ValueError("Unsupported format. Use .csv or .json")
 

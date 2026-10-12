@@ -71,7 +71,9 @@ def model_profile_under_input_changes(
 
     This function compares intermediate representations of a model when
     evaluated on two inputs. The comparison is performed layer-wise using
-    the specified metrics.
+    the specified metrics. The default metrics are ``["cosine", "linear"]``.
+    Linear CKA requires at least two corresponding samples in each capture;
+    for a single image, set ``config["metrics"] = ["cosine", "l2"]``.
 
     Args:
         model: PyTorch model to be profiled.
@@ -85,6 +87,10 @@ def model_profile_under_input_changes(
 
     Returns:
         ModelProfiler instance containing computed results.
+
+    Raises:
+        ValueError: If linear CKA is requested with fewer than two samples
+            or with constant centered features.
     """
     config = _load_config(config)
 
@@ -116,7 +122,10 @@ def model_profile_under_augmentation(
 
     This function applies a set of augmentations to an input and compares
     the resulting representations against the original input using the
-    specified similarity metrics.
+    specified similarity metrics. The original representation is captured
+    once and reused for every augmentation. The default metrics are
+    ``["cosine", "linear"]``; linear CKA requires at least two samples.
+    For a single image, set ``config["metrics"] = ["cosine", "l2"]``.
 
     Args:
         model: PyTorch model to be profiled.
@@ -131,6 +140,10 @@ def model_profile_under_augmentation(
 
     Returns:
         ModelProfiler instance containing computed results.
+
+    Raises:
+        ValueError: If linear CKA is requested with fewer than two samples
+            or with constant centered features.
     """
     config = _load_config(config)
 
@@ -146,10 +159,13 @@ def model_profile_under_augmentation(
     aug_outputs = augmenter(input_a)
 
     with ModelProfiler(model, layers=layers, processing=processing) as p:
+        _capture(p, input_a, group="group_a", tag="original")
         for aug_name, input_b in aug_outputs.items():
-            _capture(p, input_a, group="group_a", tag="original")
             _capture(p, input_b, group="group_b", tag=aug_name)
 
+        # Pair every augmented capture with the same detached feature snapshot.
+        # Repeating the entry references does not copy its feature tensors.
+        p.storage["group_a"] *= len(aug_outputs)
         p.compute(metrics=metrics, groups=["group_a", "group_b"])
 
         if output:

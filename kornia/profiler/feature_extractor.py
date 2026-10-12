@@ -100,6 +100,7 @@ class FeatureExtractor:
         """
 
         def hook(module, input, output):
+            """Store a detached tensor snapshot for the selected layer."""
             if isinstance(output, torch.Tensor):
                 self.features[name] = self._process(output.detach().clone())
 
