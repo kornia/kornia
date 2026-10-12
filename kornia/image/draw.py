@@ -26,6 +26,41 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 # TODO: implement width of the line
 
 
+def _round_to_pixel(coords: Tensor) -> Tensor:
+    """Return the int64 pixel whose centre is nearest to each coordinate; a coordinate exactly halfway rounds up.
+
+    Pixel ``i`` covers ``[i - 0.5, i + 0.5)``, so ``-0.5`` lands on pixel 0 and ``2.5`` on pixel 3.
+    """
+    if coords.is_floating_point():
+        coords = torch.floor(coords + 0.5)
+    return coords.to(torch.int64)
+
+
+def _draw_rectangle_bands(
+    image: Tensor, b: int, box: Tuple[int, int, int, int], color: Tensor, line_width: int, fill: bool
+) -> None:
+    """Draw one rectangle with inclusive, ordered corners ``(x1, y1, x2, y2)`` into ``image[b]``, clipped to the image.
+
+    The outline is four bands ``line_width`` pixels thick, inside the box; the part of a band outside the image is not
+    drawn, so a one-pixel side outside the image disappears instead of being moved onto the border.
+    """
+    h, w = image.shape[-2:]
+    x1, y1, x2, y2 = box
+    if fill:
+        bands = [(y1, y2, x1, x2)]
+    else:
+        bands = [
+            (y1, min(y1 + line_width - 1, y2), x1, x2),  # top
+            (max(y2 - line_width + 1, y1), y2, x1, x2),  # bottom
+            (y1, y2, x1, min(x1 + line_width - 1, x2)),  # left
+            (y1, y2, max(x2 - line_width + 1, x1), x2),  # right
+        ]
+    for r0, r1, c0, c1 in bands:
+        r0, r1, c0, c1 = max(r0, 0), min(r1, h - 1), max(c0, 0), min(c1, w - 1)
+        if r0 <= r1 and c0 <= c1:
+            image[b, :, r0 : r1 + 1, c0 : c1 + 1] = color[:, None, None]
+
+
 def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
     r"""Set one or more coordinates in a Tensor to a color.
 
@@ -40,6 +75,12 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
         The image with points set to the color. This operation modifies image inplace but also
         returns the drawn tensor for convenience. An empty point set leaves the image unchanged.
 
+    Raises:
+        ValueError: if a point lies outside the image after rounding.
+
+    Fractional coordinates go to the pixel whose centre is nearest; a coordinate exactly halfway rounds up.
+    A point outside the image raises `ValueError`.
+
     """
     # A 0-d scalar has no channel dimension for the check below to read; treat it as one channel, as draw_line does.
     if color.ndim == 0:
@@ -48,7 +89,7 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
         (len(image.shape) == 2 and len(color.shape) == 1) or (image.shape[0] == color.shape[0]),
         "Color dim must match the channel dims of the provided image",
     )
-    points = points.to(dtype=torch.int64, device=image.device)
+    points = _round_to_pixel(points.to(image.device))
     # A single [x, y] vector is a common call shape; zip(*points) iterated 0-d
     # scalars and raised TypeError. An empty (0, 2) set used to fail unpacking;
     # indexing with empty columns now leaves the image unchanged.
@@ -58,6 +99,12 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
     KORNIA_CHECK(points.ndim == 2 and points.shape[-1] == 2, "points must have shape (N, 2)")
     x = points[:, 0]
     y = points[:, 1]
+    height, width = image.shape[-2:]
+    if ((x < 0) | (x >= width) | (y < 0) | (y >= height)).any():
+        raise ValueError(
+            f"points must lie inside the {height}x{width} image after rounding to the nearest pixel centre: "
+            f"x in [0, {width - 1}], y in [0, {height - 1}]."
+        )
     if len(color.shape) == 1:
         color = torch.unsqueeze(color, dim=1)
     color = color.to(dtype=image.dtype, device=image.device)
@@ -89,7 +136,8 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
 
     Each line is rasterized one pixel per step along its major axis, the one with the larger extent:
     at step ``t = 0 .. major`` the minor coordinate advances by ``ceil(t * minor / major)``, computed in
-    integers. Both ``p1`` and ``p2`` are therefore always drawn.
+    integers. Both ``p1`` and ``p2`` are therefore always drawn. Fractional coordinates go to the pixel whose
+    centre is nearest; a coordinate exactly halfway rounds up.
 
     Args:
         image: the input image to where to draw the lines with shape :math`(C,H,W)`.
@@ -120,20 +168,11 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
         raise ValueError(
             "Input points must be 2D points with shape (2, ) or (B, 2) and must have the same batch sizes."
         )
-    if (
-        (p1[..., 0] < 0).any()
-        or (p1[..., 0] >= image.shape[-1]).any()
-        or (p1[..., 1] < 0).any()
-        or (p1[..., 1] >= image.shape[-2]).any()
-    ):
-        raise ValueError("p1 is out of bounds.")
-    if (
-        (p2[..., 0] < 0).any()
-        or (p2[..., 0] >= image.shape[-1]).any()
-        or (p2[..., 1] < 0).any()
-        or (p2[..., 1] >= image.shape[-2]).any()
-    ):
-        raise ValueError("p2 is out of bounds.")
+    p1 = _round_to_pixel(p1.to(image.device))
+    p2 = _round_to_pixel(p2.to(image.device))
+    for name, p in (("p1", p1), ("p2", p2)):
+        if ((p[..., 0] < 0) | (p[..., 0] >= image.shape[-1]) | (p[..., 1] < 0) | (p[..., 1] >= image.shape[-2])).any():
+            raise ValueError(f"{name} is out of bounds.")
 
     if len(image.size()) != 3:
         raise ValueError("image must have 3 dimensions (C,H,W).")
@@ -146,10 +185,7 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
     if color.size(0) != image.size(0):
         raise ValueError("color must have the same number of channels as the image.")
 
-    # move p1 and p2 to the same device as the input image
     # move color to the same device and dtype as the input image
-    p1 = p1.to(image.device).to(torch.int64)
-    p2 = p2.to(image.device).to(torch.int64)
     color = color.to(image)
 
     p1 = p1.reshape(-1, 2)
@@ -199,6 +235,13 @@ def draw_rectangle(
             If C is 3, and color is 1 channel it will be broadcasted.
         fill: is a flag used to fill the boxes with color if True.
 
+    Corners may come in either order. Coordinates are rounded to the nearest pixel centre (a coordinate exactly
+    halfway rounds up), and the rectangle includes both corners. A side outside the image is not drawn and a fill is
+    clipped to the image.
+
+    Raises:
+        ValueError: if the image and rectangle batch sizes differ, or the last dimension of ``rectangle`` is not 4.
+
     Returns:
         This operation modifies image inplace but also returns the drawn tensor for
         convenience with same shape the of the input BxCxHxW.
@@ -212,16 +255,15 @@ def draw_rectangle(
     batch, c, h, w = image.shape
     batch_rect, num_rectangle, num_points = rectangle.shape
     if batch != batch_rect:
-        raise AssertionError("Image batch and rectangle batch must be equal")
+        raise ValueError("Image batch and rectangle batch must be equal")
     if num_points != 4:
-        raise AssertionError("Number of points in rectangle must be 4")
+        raise ValueError("Number of points in rectangle must be 4")
 
-    # clone rectangle, in case it's been expanded assignment from clipping causes problems
-    rectangle = rectangle.long().clone()
-
-    # clip rectangle to hxw bounds
-    rectangle[:, :, 1::2] = torch.clamp(rectangle[:, :, 1::2], 0, h - 1)
-    rectangle[:, :, ::2] = torch.clamp(rectangle[:, :, ::2], 0, w - 1)
+    rect = _round_to_pixel(rectangle)
+    x1 = torch.minimum(rect[..., 0], rect[..., 2])
+    x2 = torch.maximum(rect[..., 0], rect[..., 2])
+    y1 = torch.minimum(rect[..., 1], rect[..., 3])
+    y2 = torch.maximum(rect[..., 1], rect[..., 3])
 
     if color is None:
         color = torch.tensor([0.0] * c).expand(batch, num_rectangle, c)
@@ -238,26 +280,8 @@ def draw_rectangle(
 
     for b in range(batch):
         for n in range(num_rectangle):
-            if fill:
-                image[
-                    b,
-                    :,
-                    int(rectangle[b, n, 1]) : int(rectangle[b, n, 3] + 1),
-                    int(rectangle[b, n, 0]) : int(rectangle[b, n, 2] + 1),
-                ] = color[b, n, :, None, None]
-            else:
-                image[b, :, int(rectangle[b, n, 1]) : int(rectangle[b, n, 3] + 1), rectangle[b, n, 0]] = color[
-                    b, n, :, None
-                ]
-                image[b, :, int(rectangle[b, n, 1]) : int(rectangle[b, n, 3] + 1), rectangle[b, n, 2]] = color[
-                    b, n, :, None
-                ]
-                image[b, :, rectangle[b, n, 1], int(rectangle[b, n, 0]) : int(rectangle[b, n, 2] + 1)] = color[
-                    b, n, :, None
-                ]
-                image[b, :, rectangle[b, n, 3], int(rectangle[b, n, 0]) : int(rectangle[b, n, 2] + 1)] = color[
-                    b, n, :, None
-                ]
+            box = (int(x1[b, n]), int(y1[b, n]), int(x2[b, n]), int(y2[b, n]))
+            _draw_rectangle_bands(image, b, box, color[b, n], 1, fill)
 
     return image
 
@@ -388,5 +412,6 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
     fill_region = (ws >= x_left[..., :, None]) & (ws <= x_right[..., :, None])
     if empty_polygons is not None:
         fill_region &= ~empty_polygons[:, None, None]
-    images.mul_(~fill_region[:, None]).add_(fill_region[:, None] * colors[..., None, None])
+    fill = fill_region[:, None]
+    images.copy_(torch.where(fill, colors[..., None, None].to(images.dtype), images))
     return images

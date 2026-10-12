@@ -150,6 +150,30 @@ class TestDrawPoint(BaseTester):
         with pytest.raises(BaseError, match="Color dim must match"):
             draw_point2d(img, torch.tensor([[1, 1]], device=device), torch.tensor(9, dtype=dtype, device=device))
 
+    def test_draw_point2d_negative_coordinate_raises(self, dtype, device):
+        img = torch.zeros(1, 3, 4, dtype=dtype, device=device)  # H = 3, W = 4
+        with pytest.raises(ValueError, match="inside"):
+            draw_point2d(img, torch.tensor([[-1, 0]], device=device), torch.tensor([1.0], device=device))
+        assert img.sum() == 0  # nothing drawn, in particular not in the last column
+
+    def test_draw_point2d_rounds_to_the_nearest_pixel_centre(self, dtype, device):
+        img = torch.zeros(3, 4, dtype=dtype, device=device)
+        draw_point2d(img, torch.tensor([[2.7, 1.6]], device=device), torch.tensor([1.0], device=device))
+        assert img.nonzero().tolist() == [[2, 3]]  # (y, x): x 2.7 -> 3, y 1.6 -> 2
+
+    @pytest.mark.parametrize(("x", "pixel"), [(-0.4, 0), (-0.5, 0), (0.5, 1), (1.5, 2), (2.5, 3)])
+    def test_halfway_and_slightly_negative_coordinates(self, x, pixel, dtype, device):
+        img = torch.zeros(3, 4, dtype=dtype, device=device)
+        draw_point2d(img, torch.tensor([[x, 0.0]], device=device), torch.tensor([1.0], device=device))
+        assert img[0].nonzero().flatten().tolist() == [pixel]
+
+    def test_draw_point2d_just_outside_after_rounding_raises(self, dtype, device):
+        img = torch.zeros(3, 4, dtype=dtype, device=device)
+        with pytest.raises(ValueError, match="inside"):
+            draw_point2d(img, torch.tensor([[-0.6, 0.0]], device=device), torch.tensor([1.0], device=device))
+        with pytest.raises(ValueError, match="inside"):
+            draw_point2d(img, torch.tensor([[3.5, 0.0]], device=device), torch.tensor([1.0], device=device))
+
 
 class TestDrawLine(BaseTester):
     def test_draw_line_vertical(self, dtype, device):
@@ -438,6 +462,26 @@ class TestDrawLine(BaseTester):
         out = draw_line(img, torch.tensor([1, 4]), torch.tensor([6, 4]), torch.tensor(255, dtype=dtype, device=device))
         assert out[0, 4, 1:7].tolist() == [255.0] * 6
 
+    def test_draw_line_rounds_fractional_endpoints(self, dtype, device):
+        img = torch.zeros(1, 3, 6, dtype=dtype, device=device)
+        draw_line(
+            img,
+            torch.tensor([0.6, 1.0], device=device),
+            torch.tensor([3.4, 1.0], device=device),
+            torch.tensor([1.0], device=device),
+        )
+        assert img[0, 1].tolist() == [0, 1, 1, 1, 0, 0]
+
+    def test_draw_line_endpoint_rounding_outside_raises(self, dtype, device):
+        img = torch.zeros(1, 3, 6, dtype=dtype, device=device)
+        with pytest.raises(ValueError, match="p2 is out of bounds"):
+            draw_line(
+                img,
+                torch.tensor([0.0, 1.0], device=device),
+                torch.tensor([5.5, 1.0], device=device),
+                torch.tensor([1.0], device=device),
+            )
+
 
 class TestDrawRectangle(BaseTester):
     @pytest.mark.parametrize("batch", [4, 17])
@@ -468,8 +512,8 @@ class TestDrawRectangle(BaseTester):
         if fill:
             assert image_w_rectangle.sum() == batch * 3 * height * width
         else:
-            # corners are double counted
-            assert image_w_rectangle.sum() == batch * 3 * (2 * height + 2 * width - 4)
+            # the right side (x = width) and bottom side (y = height) lie outside the image and are not drawn
+            assert image_w_rectangle.sum() == batch * 3 * (height + width - 1)
 
     @pytest.mark.parametrize("batch", [4, 6])
     @pytest.mark.parametrize("N", [5, 12])
@@ -594,6 +638,48 @@ class TestDrawRectangle(BaseTester):
         )
         self.assert_close(out, expected)
         assert out.count_nonzero() > 0
+
+    def test_reversed_corners_draw_the_same_rectangle(self, device):
+        a = draw_rectangle(torch.zeros(1, 1, 5, 6, device=device), torch.tensor([[[1, 1, 3, 2]]], device=device), torch.tensor([1.0]))
+        b = draw_rectangle(torch.zeros(1, 1, 5, 6, device=device), torch.tensor([[[3, 2, 1, 1]]], device=device), torch.tensor([1.0]))
+        assert a.sum() > 0
+        self.assert_close(a, b)
+
+    def test_sides_outside_the_image_are_not_drawn(self, device):
+        out = draw_rectangle(torch.zeros(1, 1, 5, 6, device=device), torch.tensor([[[-2, -2, 10, 10]]], device=device), torch.tensor([1.0]))
+        assert out.sum() == 0  # every side lies outside the 5x6 image
+
+    def test_partly_outside_box_draws_only_its_inside_sides(self, device):
+        out = draw_rectangle(torch.zeros(1, 1, 5, 6, device=device), torch.tensor([[[2, 1, 9, 3]]], device=device), torch.tensor([1.0]))
+        expected = torch.zeros(5, 6, device=device)
+        expected[1, 2:] = 1  # top side, clipped at the right border
+        expected[3, 2:] = 1  # bottom side
+        expected[1:4, 2] = 1  # left side; the right side (x = 9) is outside and not drawn
+        self.assert_close(out[0, 0], expected)
+
+    def test_fill_is_clipped_to_the_image(self, device):
+        out = draw_rectangle(torch.zeros(1, 1, 5, 6, device=device), torch.tensor([[[-2, 3, 2, 9]]], device=device), torch.tensor([1.0]), fill=True)
+        expected = torch.zeros(5, 6, device=device)
+        expected[3:, :3] = 1
+        self.assert_close(out[0, 0], expected)
+
+    def test_rectangle_rounds_fractional_corners(self, device):
+        out = draw_rectangle(torch.zeros(1, 1, 5, 6, device=device), torch.tensor([[[0.6, 0.6, 2.4, 2.6]]], device=device), torch.tensor([1.0]), fill=True)
+        expected = torch.zeros(5, 6, device=device)
+        expected[1:4, 1:3] = 1  # x 0.6..2.4 -> 1..2, y 0.6..2.6 -> 1..3
+        self.assert_close(out[0, 0], expected)
+
+    @pytest.mark.parametrize(("rectangle", "match"), [(torch.zeros(2, 1, 4), "batch"), (torch.zeros(1, 1, 3), "4")])
+    def test_invalid_rectangle_raises_value_error(self, rectangle, match, device):
+        with pytest.raises(ValueError, match=match):
+            draw_rectangle(torch.zeros(1, 1, 5, 6, device=device), rectangle.to(device))
+
+    def test_full_frame_inside_the_image(self, device):
+        batch, height, width = 2, 7, 9
+        black_image = torch.zeros(batch, 3, height, width, device=device)
+        points = torch.tensor([0, 0, width - 1, height - 1]).to(device).expand(batch, 1, 4)
+        out = draw_rectangle(black_image, points, color=torch.tensor([1.0]))
+        assert out.sum() == batch * 3 * (2 * height + 2 * width - 4)
 
 
 class TestFillConvexPolygon(BaseTester):
@@ -753,3 +839,11 @@ class TestFillConvexPolygon(BaseTester):
         expected = draw_convex_polygon(im.clone(), square, torch.tensor([9.0], device=device, dtype=dtype))
         self.assert_close(out, expected)
         assert out.count_nonzero() > 0
+
+    def test_nan_pixel_inside_the_polygon_is_overwritten(self, device, dtype):
+        img = torch.zeros(1, 1, 5, 6, device=device, dtype=dtype)
+        img[0, 0, 2, 2] = float("nan")
+        poly = torch.tensor([[[1.0, 1.0], [4.0, 1.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        draw_convex_polygon(img, poly, torch.tensor([1.0], device=device, dtype=dtype))
+        assert img[0, 0, 2, 2].item() == 1.0
+        assert not img.isnan().any()
