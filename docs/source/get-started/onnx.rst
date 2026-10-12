@@ -15,10 +15,10 @@ runs it with ONNX Runtime. It is useful when you have pre-exported operators or 
 - **Execution providers**: run on CPU, CUDA, TensorRT or OpenVINO through ONNX Runtime, with control over the
   session options.
 
-Most of the library exports: |count-onnx-share| of Kornia's public operators (|count-onnx-exportable| of the
-|count-onnx-operators| surveyed) go through ``torch.onnx.export`` and run under ONNX Runtime. The
-:ref:`ONNX, torch.compile and torch.export support <export-support>` page lists the outcome for every operator,
-model and augmentation, with the cause of each failure.
+The :ref:`ONNX, torch.compile and torch.export survey <export-support>` records whether each operator, model
+and augmentation exported in one dated measurement, with the cause of each failure. It is a snapshot, not a
+support guarantee, and Kornia's tests check only part of it: export your own pipeline and compare it with eager
+before relying on it.
 
 Quickstart
 ----------
@@ -161,8 +161,9 @@ Use the ``io_maps`` argument to say which output feeds which input.
 Yes, pass your own session options to the ``create_session`` method.
 
 **Which operators export?**
-The :ref:`ONNX, torch.compile and torch.export support <export-support>` page lists every surveyed operator with
-its ONNX export, ``torch.export`` and ``torch.compile`` outcome, searchable by name and filterable by result.
+The :ref:`ONNX, torch.compile and torch.export survey <export-support>` lists every surveyed operator with
+its ONNX export, ``torch.export`` and ``torch.compile`` outcome in one dated measurement, searchable by name and
+filterable by result. Treat an entry as a starting point, not a guarantee.
 
 **Where are the pre-exported Kornia operators?**
 In the `kornia/ONNX_models <https://huggingface.co/kornia/ONNX_models>`_ Hugging Face repository; load them with
