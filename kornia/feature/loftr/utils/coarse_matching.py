@@ -233,13 +233,19 @@ class CoarseMatching(nn.Module):
         # the training ground-truth pads below and is dropped from the keypoints, but not from `b_ids`.
         mask = conf_matrix > max(self.thr, 0.0)
         N = conf_matrix.shape[0]
+        # The padding-aware border and training sampler also accept a single mask.
+        p_m0, p_m1 = data.get("mask0"), data.get("mask1")
+        if p_m0 is None and p_m1 is not None:
+            p_m0 = torch.ones((N, axes_lengths["h0c"], axes_lengths["w0c"]), device=_device, dtype=torch.bool)
+        elif p_m1 is None and p_m0 is not None:
+            p_m1 = torch.ones((N, axes_lengths["h1c"], axes_lengths["w1c"]), device=_device, dtype=torch.bool)
         mask = mask.reshape(N, axes_lengths["h0c"], axes_lengths["w0c"], axes_lengths["h1c"], axes_lengths["w1c"])
         # mask = rearrange(mask, 'b (h0c w0c) (h1c w1c) -> b h0c w0c h1c w1c',
         #                 **axes_lengths)
-        if "mask0" not in data:
+        if p_m0 is None:
             mask_border(mask, self.border_rm, False)
         else:
-            mask_border_with_padding(mask, self.border_rm, False, data["mask0"], data["mask1"])
+            mask_border_with_padding(mask, self.border_rm, False, p_m0, p_m1)
         mask = mask.reshape(N, axes_lengths["h0c"] * axes_lengths["w0c"], axes_lengths["h1c"] * axes_lengths["w1c"])
         # rearrange(mask, 'b h0c w0c h1c w1c -> b (h0c w0c) (h1c w1c)',
         #                 **axes_lengths)
@@ -264,10 +270,10 @@ class CoarseMatching(nn.Module):
             # NOTE:
             # The sampling is performed across all pairs in a batch without manually balancing
             # #samples for fine-level increases w.r.t. batch_size
-            if "mask0" not in data:
+            if p_m0 is None:
                 num_candidates_max = mask.size(0) * max(mask.size(1), mask.size(2))
             else:
-                num_candidates_max = compute_max_candidates(data["mask0"], data["mask1"])
+                num_candidates_max = compute_max_candidates(p_m0, p_m1)
             num_matches_train = num_candidates_max * self.train_coarse_percent
             num_matches_train = int(num_matches_train)
             num_matches_pred = len(b_ids)

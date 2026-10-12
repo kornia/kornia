@@ -422,6 +422,85 @@ class TestCoarseMatching(BaseTester):
         assert matched.numel() > 0
         assert bool(masked[0, matched].all())
 
+    @pytest.mark.parametrize("masked_side", [0, 1])
+    def test_sinkhorn_receives_independent_masks_5768(self, device, masked_side):
+        """Check Sinkhorn masking with a stub transport: the optional SuperGlue module is not shipped."""
+        cfg = dict(self.CFG)
+        cfg["sparse_spvs"] = False
+        cfg["thr"] = 0.0
+        cm = CoarseMatching(cfg).to(device).eval()
+        cm.match_type = "sinkhorn"
+        cm.skh_prefilter = False
+        cm.skh_iters = 1
+        cm.bin_score = torch.nn.Parameter(torch.tensor(1.0, device=device))
+        transport_inputs = []
+
+        def fake_transport(scores, *_):
+            transport_inputs.append(scores.detach().clone())
+            # Include a dustbin, so masked rows and columns cannot create matches.
+            return F.log_softmax(F.pad(scores, (0, 1, 0, 1)), dim=-1)
+
+        cm.log_optimal_transport = fake_transport
+        gen = torch.Generator().manual_seed(0)
+        feat0 = torch.randn(1, 12, 8, generator=gen).to(device)
+        feat1 = torch.randn(1, 9, 8, generator=gen).to(device)
+        masked = torch.ones(1, 12 if masked_side == 0 else 9, device=device)
+        masked[0, [3, 5]] = 0
+        other = torch.ones(1, 9 if masked_side == 0 else 12, device=device)
+
+        def run(include_other):
+            masks = (
+                (masked, other if include_other else None)
+                if masked_side == 0
+                else (other if include_other else None, masked)
+            )
+            data = {"hw0_c": (3, 4), "hw1_c": (3, 3), "stride_c": 8}
+            cm(feat0, feat1, data, mask_c0=masks[0], mask_c1=masks[1])
+            return data
+
+        single = run(False)
+        explicit = run(True)
+        assert torch.equal(transport_inputs[0], transport_inputs[1])
+        if masked_side == 0:
+            assert bool((transport_inputs[0][:, masked[0] == 0, :] < -1e8).all())
+        else:
+            assert bool((transport_inputs[0][:, :, masked[0] == 0] < -1e8).all())
+        assert torch.equal(single["conf_matrix"], explicit["conf_matrix"])
+        matched = single["i_ids"] if masked_side == 0 else single["j_ids"]
+        assert matched.numel() > 0
+        assert bool(masked[0, matched].all())
+
+    @pytest.mark.parametrize("training", [False, True])
+    @pytest.mark.parametrize("masked_side", [0, 1])
+    def test_one_sided_data_masks_with_padding_5768(self, device, masked_side, training):
+        """Handle a single data mask in border removal and training candidate counting."""
+        cfg = dict(self.CFG)
+        cfg["border_rm"] = 1
+        cm = CoarseMatching(cfg).to(device)
+        cm.train(training)
+        conf = torch.zeros(1, 16, 12, device=device)
+        conf[0, 5, 5] = 0.8
+        conf[0, 6, 6] = 0.9
+        shape = (self.H0C, self.W0C) if masked_side == 0 else (self.H1C, self.W1C)
+        masked = torch.ones((1, *shape), device=device)
+        masked[:, :, -1] = 0
+        other_shape = (self.H1C, self.W1C) if masked_side == 0 else (self.H0C, self.W0C)
+
+        def run(include_other):
+            data = self._data(device)
+            data[f"mask{masked_side}"] = masked
+            if include_other:
+                data[f"mask{1 - masked_side}"] = torch.ones((1, *other_shape), device=device)
+            return cm.get_coarse_match(conf, data)
+
+        one_sided = run(False)
+        assert one_sided["mconf"].numel() > 0
+        assert one_sided["mkpts0_c"].shape[0] == one_sided["mconf"].shape[0]
+        if not training:
+            both = run(True)
+            for key in ("i_ids", "j_ids", "mconf"):
+                assert torch.equal(one_sided[key], both[key])
+
     def test_eval_path_unaffected(self, device):
         """Eval mode skips the gt-padding branch entirely -- assert that
         directly (gt_mask all False, count == predictions only), not just
