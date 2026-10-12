@@ -1080,8 +1080,8 @@ class TestConventionsDraw(BaseTester):
         expected[0:4, 1:6] = 1.0
         self.assert_close(out[0, 0], expected)
 
-        # The span is per row, not per column: the same polygon with x and y swapped (a "<" opening to the right) is
-        # filled exactly as the polygon, with no notch filled in (the scanlines are still rows).
+        # The span is per row, not per column: the same polygon with x and y swapped (a ">" whose notch opens to the
+        # left) is filled exactly as the polygon, with no notch filled in (the scanlines are still rows).
         # Snippet: rows y = 1..5 span [min x, max x] over the edges (0,1)-(2,3), (2,3)-(0,5), x = 3 and y = 1 / 5:
         #   y=1: 0..3, y=2: 1..3, y=3: 2..3, y=4: 1..3, y=5: 0..3
         swapped = draw_convex_polygon(
