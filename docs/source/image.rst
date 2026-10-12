@@ -13,7 +13,7 @@ between tensors and NumPy arrays, and terminal rendering.
    :widths: 30 70
 
    * - :doc:`image.container`
-     - :class:`Image`, :class:`ImageSize`, :class:`PixelFormat`, :class:`ChannelsOrder` and :class:`ImageLayout`.
+     - :class:`Image`, :class:`ImageSize`, :class:`PixelFormat`, :class:`ColorSpace`, :class:`ChannelsOrder` and :class:`ImageLayout`.
    * - :doc:`image.drawing`
      - Draw lines, rectangles, convex polygons and points on image tensors.
    * - :doc:`image.conversion`
