@@ -192,9 +192,10 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False, force_contiguou
         - The channels move last, and a single channel is always dropped: :math:`(1, H, W)` gives :math:`(H, W)` and
           :math:`(B, 1, H, W)` gives :math:`(B, H, W)`. ``keepdim`` keeps only the batch axis of a
           :math:`(1, C, H, W)` input.
-        - The array shares memory with a CPU tensor of any dtype except ``bfloat16``. A ``bfloat16`` tensor and a
-          tensor on another device are copied, and ``force_contiguous=True`` copies a result that is not contiguous,
-          such as the channels-last view of a contiguous tensor with more than one channel.
+        - The array shares memory with a CPU tensor whose dtype NumPy supports. A ``bfloat16`` tensor is returned as a
+          ``float32`` copy, a dtype NumPy cannot represent, such as ``float8_e4m3fn``, raises ``TypeError``, a tensor
+          on another device is copied, and ``force_contiguous=True`` copies a result that is not contiguous, such as
+          the channels-last view of a contiguous tensor with more than one channel.
         - The dtype is kept, except ``bfloat16``, which NumPy lacks: it becomes ``float32``.
 
     Args:
