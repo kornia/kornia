@@ -15,9 +15,12 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
+import kornia
 from kornia.feature.orientation import LAFOrienter, OriNet, PassLAF, PatchDominantGradientOrientation
 from kornia.geometry.conversions import rad2deg
 
@@ -349,3 +352,76 @@ class TestLAFOrienter(BaseTester):
         laf[:, :, 0, 1] = 0
         laf[:, :, 1, 0] = 0
         self.gradcheck(LAFOrienter(8).to(device), (laf, patches), rtol=1e-3, atol=1e-3, nondet_tol=1e-3)
+
+
+def _conv_ramp(angle: float, height: int, width: int, x0: float, y0: float) -> torch.Tensor:
+    """Float64 CPU ramp through ``(x0, y0)`` whose gradient is ``angle`` degrees counter-clockwise from +x on screen.
+
+    With y pointing down that direction is ``(cos angle, -sin angle)`` in pixel coordinates.
+    """
+    yy, xx = torch.meshgrid(
+        torch.arange(height, dtype=torch.float64), torch.arange(width, dtype=torch.float64), indexing="ij"
+    )
+    t = math.radians(angle)
+    return (0.05 * (math.cos(t) * (xx - x0) - math.sin(t) * (yy - y0))).view(1, 1, height, width)
+
+
+class TestConventionsOrientation(BaseTester):
+    @pytest.mark.parametrize("content_angle", [0.0, 30.0])
+    def test_convention_laf_orienter_turns_the_frame_counter_clockwise_with_the_content(
+        self, device, dtype, content_angle
+    ):
+        # The output orientation is the input orientation plus the patch angle, which turns the LAF's x axis onto the
+        # dominant gradient: content turned +30 degrees counter-clockwise on screen reads +30, the sign of
+        # laf_from_center_scale_ori, whatever the input orientation (0, 40 or -75). Centre and scale are kept.
+        # Measured on CPU float32: at most 0.005 degrees off. Half precision quantises the 10-degree histogram bins.
+        tol = {torch.float16: 1.0, torch.bfloat16: 6.0}.get(dtype, 0.05)
+        orienter = LAFOrienter(32).to(device, dtype)
+        img = _conv_ramp(content_angle, 61, 83, 47.0, 26.0).to(device, dtype)
+        centre = torch.tensor([[[47.0, 26.0]]], device=device, dtype=dtype)
+        scale = torch.full((1, 1, 1, 1), 12.0, device=device, dtype=dtype)
+        for input_angle in (0.0, 40.0, -75.0):
+            laf = kornia.feature.laf_from_center_scale_ori(
+                centre, scale, torch.tensor([[[input_angle]]], device=device, dtype=dtype)
+            )
+            out = orienter(laf, img)
+            self.assert_close(
+                kornia.feature.get_laf_orientation(out).flatten(),
+                torch.tensor([content_angle], device=device, dtype=dtype),
+                rtol=0.0,
+                atol=tol,
+            )
+            self.assert_close(out[..., 2], laf[..., 2], rtol=0.0, atol=0.0)
+            self.assert_close(kornia.feature.get_laf_scale(out), scale)
+        # relabelling: transposing the image mirrors the gradient direction a onto -90 - a
+        img_t = _conv_ramp(content_angle, 61, 83, 47.0, 26.0).transpose(-1, -2).contiguous().to(device, dtype)
+        laf_t = kornia.feature.laf_from_center_scale_ori(
+            centre.flip(-1), scale, torch.tensor([[[40.0]]], device=device, dtype=dtype)
+        )
+        self.assert_close(
+            kornia.feature.get_laf_orientation(orienter(laf_t, img_t)).flatten(),
+            torch.tensor([-90.0 - content_angle], device=device, dtype=dtype),
+            rtol=0.0,
+            atol=tol,
+        )
+
+    def test_convention_orinet_is_invariant_to_an_affine_intensity_change(self, device, dtype):
+        # OriNet normalises each patch to zero mean and unit standard deviation before its layers, so x and 3 x + 2 get
+        # the same angle; no pretrained weights are needed for that. Measured: 4.1e-7 rad apart in CPU float64.
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(0)
+            model = OriNet()
+        patches = torch.rand(3, 1, 32, 32, generator=torch.Generator().manual_seed(1)).to(device, dtype)
+        model = model.to(device, dtype)
+        atol = 2e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-5  # bfloat16 spaces angles near 2 by 1 / 64
+        self.assert_close(model(3 * patches + 2), model(patches), rtol=0.0, atol=atol)
+
+    def test_convention_pass_laf_returns_its_input_object(self, device, dtype):
+        # PassLAF returns the very tensor it was given, not a copy: an in-place edit of the output edits the input.
+        laf = kornia.feature.laf_from_center_scale_ori(
+            torch.tensor([[[5.0, 7.0]]], device=device, dtype=dtype),
+            torch.full((1, 1, 1, 1), 2.0, device=device, dtype=dtype),
+            torch.tensor([[[30.0]]], device=device, dtype=dtype),
+        )
+        img = torch.zeros(1, 1, 12, 17, device=device, dtype=dtype)
+        assert PassLAF()(laf, img) is laf

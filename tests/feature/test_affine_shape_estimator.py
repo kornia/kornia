@@ -622,3 +622,19 @@ class TestLAFAffNetShapeEstimator(BaseTester):
         self.assert_close(out[..., 2], laf[..., 2])
         actual_scale, expected_scale = get_laf_scale(out.cpu().double()), get_laf_scale(laf.cpu().double())
         self.assert_close(actual_scale, expected_scale, rtol=_SCALE_RTOL[dtype], atol=0.0)
+
+class TestConventionsAffineShape(BaseTester):
+    def test_convention_patch_affine_shape_is_the_normalised_gradient_second_moment(self, device, dtype):
+        # The output (a, b, c) is (<gx^2>, <gx gy>, <gy^2>) of the Gaussian-weighted patch gradients (x right, y down),
+        # divided by its largest entry. On the ramp I = x / 4 - y / 8 the gradient is (1/4, -1/8), so (a, b, c) is
+        # (1, -1/2, 1/4) up to the replicate-padded border rows and columns: (1.0, -0.4903902, 0.25), CPU float64.
+        # The ramp is exact in every dtype.
+        yy, xx = torch.meshgrid(
+            torch.arange(19, dtype=torch.float64), torch.arange(19, dtype=torch.float64), indexing="ij"
+        )
+        patch = (0.25 * xx - 0.125 * yy).view(1, 1, 19, 19).to(device, dtype)
+        estimator = PatchAffineShapeEstimator(19).to(device, dtype)
+        expected = torch.tensor([[[1.0, -0.4903902, 0.25]]], device=device, dtype=dtype)
+        self.assert_close(estimator(patch), expected)
+        # relabelling: the transposed patch swaps a and c and keeps b
+        self.assert_close(estimator(patch.transpose(-1, -2)), expected.flip(-1))

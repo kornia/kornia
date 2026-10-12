@@ -455,3 +455,153 @@ class TestBlobDoGSingle(BaseTester):
         batch_size, channels, height, width = 1, 2, 9, 11
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.dog_response_single, (img), nondet_tol=1e-4)
+
+
+def _conv_grid(height: int, width: int) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return the float64 CPU ``(y, x)`` pixel-centre grids of a ``height x width`` image."""
+    return torch.meshgrid(
+        torch.arange(height, dtype=torch.float64), torch.arange(width, dtype=torch.float64), indexing="ij"
+    )
+
+
+def _conv_rectangle_and_blob(device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    """48 x 64 image: a bright rectangle (rows 10-25, columns 14-41) and a 0.5-high blob of sigma 3 at (52, 36)."""
+    yy, xx = _conv_grid(48, 64)
+    img = torch.zeros(48, 64, dtype=torch.float64)
+    img[10:26, 14:42] = 1.0
+    img = img + 0.5 * torch.exp(-((xx - 52.0) ** 2 + (yy - 36.0) ** 2) / 18.0)
+    return img.view(1, 1, 48, 64).to(device, dtype)
+
+
+def _conv_blob(x0: float, y0: float, sigma: float) -> torch.Tensor:
+    """Float64 CPU Gaussian blob of ``sigma`` centred at pixel ``(x0, y0)`` of a 48 x 64 image, ``(1, 1, 48, 64)``."""
+    yy, xx = _conv_grid(48, 64)
+    return torch.exp(-((xx - x0) ** 2 + (yy - y0) ** 2) / (2 * sigma**2)).view(1, 1, 48, 64)
+
+
+class TestConventionsResponses(BaseTester):
+    @pytest.mark.parametrize(
+        "response, factor",
+        [
+            (kornia.feature.harris_response, 16.0),
+            (kornia.feature.gftt_response, 4.0),
+            (kornia.feature.hessian_response, 4.0),
+        ],
+        ids=["harris", "gftt", "hessian"],
+    )
+    def test_convention_response_scales_with_image_intensity(self, device, dtype, response, factor):
+        # Harris is quartic in the gradients, the smaller structure-tensor eigenvalue and the Hessian determinant are
+        # quadratic, and none of them sees an offset: f(2 x + 1) = factor * f(x), so a threshold tuned on images in
+        # [0, 1] keeps nothing or everything on images in [0, 255]. Factors: response(2 * x) / response(x), CPU float64.
+        img = _conv_rectangle_and_blob(device, dtype)
+        expected = factor * response(img)
+        # half precision rounds the offset image; the bound is relative to the peak response
+        scale = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-6
+        self.assert_close(response(2 * img + 1), expected, rtol=0.0, atol=scale * expected.abs().max().item())
+
+    def test_convention_harris_response_is_negative_on_an_edge_and_positive_at_a_corner(self, device, dtype):
+        # R = det(M) - k trace(M) ** 2 is not clamped: positive at a corner, negative along an edge.
+        # harris_response(img)[0, 0, 10, [14, 28]] on CPU float64: the rectangle's top-left corner and its top edge.
+        img = _conv_rectangle_and_blob(device, dtype)
+        response = kornia.feature.harris_response(img)
+        expected = torch.tensor([5.2460662e-03, -1.0274798e-03], device=device, dtype=dtype)
+        rtol = {torch.float16: 2e-3, torch.bfloat16: 2e-2}.get(dtype, 1e-5)
+        self.assert_close(response[0, 0, 10, [14, 28]], expected, rtol=rtol, atol=0.0)
+        # relabelling: the response of the transposed image is the transposed response, to a rounding of the peak
+        scale = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-5
+        transposed = kornia.feature.harris_response(img.transpose(-1, -2))
+        self.assert_close(transposed, response.transpose(-1, -2), rtol=0.0, atol=scale * response.abs().max().item())
+
+    @pytest.mark.parametrize("grads_mode", ["sobel", "diff"])
+    def test_convention_harris_response_on_a_ramp_is_minus_k_times_the_gradient_norm_to_the_fourth(
+        self, device, dtype, grads_mode
+    ):
+        # Both gradient modes return intensity per pixel and the 7 x 7 window is a weighted mean, so on the ramp
+        # I = x / 4 + y / 8 the structure tensor is the outer product of (1/4, 1/8): det = 0 and
+        # R = -k (1/16 + 1/64) ** 2 = -2.44140625e-4 for k = 0.04. The ramp is exact in every dtype; the outer four
+        # rows and columns see the replicate-padded Sobel border.
+        yy, xx = _conv_grid(48, 64)
+        ramp = (0.25 * xx + 0.125 * yy).view(1, 1, 48, 64).to(device, dtype)
+        interior = kornia.feature.harris_response(ramp, 0.04, grads_mode)[..., 4:-4, 4:-4]
+        self.assert_close(interior, torch.full_like(interior, -2.44140625e-4), rtol=1e-3, atol=0.0)
+
+    def test_convention_hessian_response_is_positive_at_bright_and_dark_blobs_and_negative_at_a_saddle(
+        self, device, dtype
+    ):
+        # The signed determinant Ixx Iyy - Ixy ** 2: a blob of either polarity is a positive maximum, a saddle negative.
+        # hessian_response(...)[:, 0, 20, 30] on CPU float64: blob of sigma 3 at (30, 20), bright and dark,
+        # 8.9222449e-03 each; saddle (x - 30)(y - 20) / 100, -(1 / 100) ** 2.
+        blob = _conv_blob(30.0, 20.0, 3.0)
+        yy, xx = _conv_grid(48, 64)
+        saddle = ((xx - 30.0) * (yy - 20.0) / 100.0).view(1, 1, 48, 64)
+        imgs = torch.cat([blob, 1.0 - blob, saddle]).to(device, dtype)
+        response = kornia.feature.hessian_response(imgs)[:, 0, 20, 30]
+        expected = torch.tensor([8.9222449e-03, 8.9222449e-03, -1.0e-04], device=device, dtype=dtype)
+        rtol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-5
+        self.assert_close(response, expected, rtol=rtol, atol=1e-7)
+
+    @pytest.mark.parametrize(
+        "response", [kornia.feature.harris_response, kornia.feature.hessian_response], ids=["harris", "hessian"]
+    )
+    def test_convention_sigmas_multiply_the_response_by_sigma_to_the_fourth(self, device, dtype, response):
+        # sigmas[b] multiplies the response of image b by sigmas[b] ** 4 (VLFeat covdet.c's scale normalisation of
+        # Harris and of the Hessian determinant): 2 ** 4 = 16 and 0.5 ** 4 = 1 / 16.
+        img = _conv_rectangle_and_blob(device, dtype).repeat(2, 1, 1, 1)
+        sigmas = torch.tensor([2.0, 0.5], device=device, dtype=dtype)
+        expected = response(img) * torch.tensor([16.0, 0.0625], device=device, dtype=dtype).view(-1, 1, 1, 1)
+        self.assert_close(response(img, sigmas=sigmas), expected, rtol=0.0, atol=1e-3 * expected.abs().max().item())
+
+    def test_convention_dog_response_is_each_level_minus_the_previous_one(self, device, dtype):
+        # The level axis of (B, C, D, H, W) is dim 2, and output level i is L[i + 1] - L[i]: D - 1 levels.
+        # Level d holds d ** 2 (plus 10 in channel 1), so the differences are 1, 3, 5 in both channels.
+        levels = torch.arange(4, dtype=torch.float64) ** 2
+        stack = levels.view(1, 1, 4, 1, 1) + torch.tensor([0.0, 10.0], dtype=torch.float64).view(1, 2, 1, 1, 1)
+        out = kornia.feature.dog_response(stack.expand(1, 2, 4, 5, 7).to(device, dtype))
+        assert out.shape == (1, 2, 3, 5, 7)
+        expected = torch.tensor([1.0, 3.0, 5.0], device=device, dtype=dtype).view(1, 1, 3, 1, 1).expand(1, 2, 3, 5, 7)
+        self.assert_close(out, expected)
+
+    def test_convention_dog_is_negative_at_a_bright_blob(self, device, dtype):
+        # Both DoG functions subtract the finer blur from the coarser (Lowe's D = L(k sigma) - L(sigma)), so a bright
+        # blob is a minimum and a dark one a maximum. dog_response_single(img, 1.0, 1.6)[:, 0, 20, 30] at a blob of
+        # sigma 3 centred at (30, 20), CPU float64: -0.1214043 (bright), +0.1214043 (dark).
+        blob = _conv_blob(30.0, 20.0, 3.0)
+        imgs = torch.cat([blob, 1.0 - blob]).to(device, dtype)
+        single = kornia.feature.dog_response_single(imgs, 1.0, 1.6)
+        expected = torch.tensor([-0.1214043, 0.1214043], device=device, dtype=dtype)
+        rtol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-5
+        self.assert_close(single[:, 0, 20, 30], expected, rtol=rtol, atol=0.0)
+        # The stack form agrees: the same two blurs (kernel int(8 sigma + 1), made odd: 9 and 13) as levels 0 and 1.
+        stack = torch.stack(
+            [
+                kornia.filters.gaussian_blur2d(imgs, (9, 9), (1.0, 1.0)),
+                kornia.filters.gaussian_blur2d(imgs, (13, 13), (1.6, 1.6)),
+            ],
+            dim=2,
+        )
+        self.assert_close(kornia.feature.dog_response(stack)[:, :, 0], single)
+
+    @pytest.mark.parametrize("name", ["harris", "gftt", "hessian", "dog_single", "dog"])
+    def test_convention_response_modules_return_their_functions(self, device, dtype, name):
+        # Each module is its function with the constructor arguments bound; BlobDoG and BlobDoGSingle ignore `sigmas`.
+        img = torch.rand(2, 1, 24, 30, generator=torch.Generator().manual_seed(0), dtype=torch.float64)
+        img = img.to(device, dtype)
+        sigmas = torch.tensor([2.0, 0.5], device=device, dtype=dtype)
+        if name == "harris":  # k = 1 / 16 is exact in every dtype, so the buffer cast does not round it
+            module = kornia.feature.CornerHarris(0.0625, grads_mode="diff")
+            expected = kornia.feature.harris_response(img, 0.0625, "diff", sigmas)
+        elif name == "gftt":
+            module = kornia.feature.CornerGFTT(grads_mode="diff")
+            expected = kornia.feature.gftt_response(img, "diff", sigmas)
+        elif name == "hessian":
+            module = kornia.feature.BlobHessian(grads_mode="diff")
+            expected = kornia.feature.hessian_response(img, "diff", sigmas)
+        elif name == "dog_single":
+            module = kornia.feature.BlobDoGSingle(1.2, 2.0)
+            expected = kornia.feature.dog_response_single(img, 1.2, 2.0)
+        else:  # BlobDoG takes the (B, C, D, H, W) scale stack
+            img = img.view(1, 1, 2, 24, 30)
+            module = kornia.feature.BlobDoG()
+            expected = kornia.feature.dog_response(img)
+        out = module.to(device, dtype)(img, sigmas)
+        self.assert_close(out, expected, rtol=0.0, atol=0.0)

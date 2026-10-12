@@ -1424,3 +1424,189 @@ class TestMultiResolutionDetector(BaseTester):
         lafs, resps = det(inp)
         assert lafs.shape == torch.Size([1, 5, 2, 3])
         assert resps.abs().max().item() > 0
+
+
+def _conv_blob(x0: float, y0: float, sigma: float, height: int, width: int, device, dtype) -> torch.Tensor:
+    """Gaussian blob of ``sigma`` centred at pixel ``(x0, y0)`` (pixel centres at integers), ``(1, 1, H, W)``."""
+    yy, xx = torch.meshgrid(
+        torch.arange(height, dtype=torch.float64), torch.arange(width, dtype=torch.float64), indexing="ij"
+    )
+    blob = torch.exp(-((xx - x0) ** 2 + (yy - y0) ** 2) / (2 * sigma**2))
+    return blob.view(1, 1, height, width).to(device, dtype)
+
+
+class _TwoMaxima(torch.nn.Module):
+    """A scale-space response with two maxima at level 2 of the 64 x 96 octave: A at (40, 50), a weaker B at (30, 20).
+
+    ``pull`` sets A's right neighbour (41, 50) so that the sub-pixel step moves A's centre towards x = 41.
+    """
+
+    def __init__(self, pull: float | None = None) -> None:
+        super().__init__()
+        self.pull = pull
+
+    def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
+        out = -torch.ones_like(x)
+        if x.shape[-1] == 96:  # the first octave only
+            out[:, :, 2, 50, 40] = 0.0
+            if self.pull is not None:
+                out[:, :, 2, 50, 41] = self.pull
+            out[:, :, 2, 20, 30] = -0.5
+        return out
+
+
+class _LevelPeaks(torch.nn.Module):
+    """A response map with one peak per pyramid level, looked up by the level's ``(H, W)``."""
+
+    def __init__(self, peaks: dict) -> None:
+        super().__init__()
+        self.peaks = peaks
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out = torch.zeros_like(x[:, :1])
+        peak = self.peaks.get(tuple(x.shape[-2:]))
+        if peak is not None:
+            (u, v), value = peak
+            out[..., v, u] = value
+        return out
+
+
+class TestConventionsScaleSpaceDetector(BaseTester):
+    def test_convention_scale_space_detector_centre_is_sub_pixel_in_the_laf_frame(self, device, dtype):
+        # A blob of sigma 2.5 centred at x = 25.4, y = 18.6 (pixel centres at integers, LAF frame) on a 48 x 72 image is
+        # found at its centre to sub-pixel accuracy, and the other 15 slots are padding: zero LAF, zero response.
+        # Measured on CPU: (25.4001, 18.5999) in float32 and float64. bfloat16 spaces values in [16, 32) by 0.125.
+        tol = 0.15 if dtype == torch.bfloat16 else 0.05
+        img = _conv_blob(25.4, 18.6, 2.5, 48, 72, device, dtype)
+        det = ScaleSpaceDetector(16).to(device, dtype)
+        # relabelling: the transposed image swaps the centre's coordinates
+        for image, centre in ((img, (25.4, 18.6)), (img.transpose(-1, -2).contiguous(), (18.6, 25.4))):
+            lafs, resps = det(image)
+            expected = torch.tensor(centre, device=device, dtype=dtype)
+            self.assert_close(lafs[0, 0, :, 2], expected, rtol=0.0, atol=tol)
+            assert resps[0, 0] > 0
+            assert bool((lafs[0, 1:] == 0).all())
+            assert bool((resps[0, 1:] == 0).all())
+
+    @pytest.mark.parametrize(
+        "sigma, centre, size",
+        [(2.5, (25.4, 18.6), (48, 72)), (6.0, (70.4, 52.6), (96, 128))],
+        ids=["octave0", "octave1"],
+    )
+    def test_convention_scale_space_detector_laf_scale_is_mr_size_times_the_detection_sigma(
+        self, device, dtype, sigma, centre, size
+    ):
+        # The LAF scale is mr_size times the scale the blob is detected at, in input pixels, also from octave 1. The
+        # detection scale of a blob of sigma s lies within [0.95 s, 1.15 s] (1.035 s and 1.042 s here, CPU float32),
+        # so the default mr_size = 6 gives a frame of about 6 s; OpenCV's KeyPoint.size is 2 s.
+        img = _conv_blob(*centre, sigma, *size, device, dtype)
+        scales = {}
+        for mr_size in (6.0, 1.0):
+            lafs, _ = ScaleSpaceDetector(16, mr_size=mr_size).to(device, dtype)(img)
+            assert int(kornia.feature.laf_is_filled(lafs)[0].sum()) == 1
+            frame = lafs[0, 0, :, :2]
+            assert frame[0, 1] == 0
+            assert frame[1, 0] == 0
+            scales[mr_size] = kornia.feature.get_laf_scale(lafs)[0, 0, 0, 0]
+        self.assert_close(scales[6.0], 6.0 * scales[1.0])
+        assert 0.95 <= scales[1.0].item() / sigma <= 1.15
+
+    @pytest.mark.parametrize(
+        "response, polarity, minima_are_also_good, found",
+        [
+            ("hessian", "bright", False, True),
+            ("hessian", "dark", False, True),
+            ("dog", "dark", False, True),
+            ("dog", "bright", False, False),
+            ("dog", "bright", True, True),
+        ],
+    )
+    def test_convention_scale_space_detector_polarity_follows_the_response(
+        self, device, dtype, response, polarity, minima_are_also_good, found
+    ):
+        # The detector keeps response maxima, and minima only with minima_are_also_good. The Hessian determinant is a
+        # maximum at bright and dark blobs alike; DoG (coarser minus finer blur) is a maximum at a dark blob and a
+        # minimum at a bright one, which is detected only with minima_are_also_good, and a minimum's slot carries the
+        # negated response, so it is positive.
+        if response == "dog" and minima_are_also_good and dtype == torch.bfloat16:
+            pytest.skip("bfloat16 rounds the DoG minimum into a tie with a neighbour, and the 3x3x3 NMS is strict")
+        blob = _conv_blob(25.4, 18.6, 2.5, 48, 72, device, dtype)
+        img = blob if polarity == "bright" else 1.0 - blob
+        if response == "hessian":
+            det = ScaleSpaceDetector(8, minima_are_also_good=minima_are_also_good)
+        else:
+            det = ScaleSpaceDetector(
+                8,
+                resp_module=kornia.feature.BlobDoG(),
+                scale_space_response=True,
+                minima_are_also_good=minima_are_also_good,
+            )
+        lafs, resps = det.to(device, dtype)(img)
+        target = torch.tensor([25.4, 18.6], device=device, dtype=dtype)
+        near = kornia.feature.laf_is_filled(lafs)[0] & ((lafs[0, :, :, 2] - target).norm(dim=-1) < 1.0)
+        assert bool(near.any()) == found
+        if found:  # the strongest detection, with a positive response
+            assert bool(near[0])
+            assert resps[0, 0] > 0
+
+    @pytest.mark.parametrize("rejection", ["border", "mask"])
+    def test_wart_scale_space_detector_tests_border_and_mask_after_the_octave_top_k_5741(
+        self, device, dtype, rejection
+    ):
+        # An octave hands only its `num_features` strongest candidates to the border and mask test, so a rejected
+        # candidate's slot stays empty while a weaker valid one exists (#5741). A is rejected -- its half frame of
+        # radius 10.3 overhangs the border y = 63 - 5, or its refined centre x = 40.17 touches the masked pixel
+        # (41, 50) -- and B at (30, 20) is valid: num_features=1 returns an empty slot, num_features=2 returns B.
+        sigma = 1.6 * 2 ** (2 / 3)  # the scale of level 2 of the first octave
+        img = torch.zeros(1, 1, 64, 96, device=device, dtype=dtype)
+        mask = None
+        if rejection == "border":
+            response, radius = _TwoMaxima(), 10.3
+        else:
+            response, radius = _TwoMaxima(pull=-0.5), 5.0
+            mask = torch.ones(1, 1, 64, 96, device=device, dtype=torch.bool)
+            mask[..., 50, 41] = False
+        filled = {}
+        for n in (1, 2):
+            det = ScaleSpaceDetector(n, resp_module=response, scale_space_response=True, mr_size=2 * radius / sigma)
+            lafs, resps = det.to(device, dtype)(img, mask)
+            filled[n] = kornia.feature.laf_is_filled(lafs)[0].tolist()
+        assert filled[1] == [False]
+        assert filled[2] == [True, False]
+        self.assert_close(lafs[0, 0, :, 2], torch.tensor([30.0, 20.0], device=device, dtype=dtype))
+        self.assert_close(resps[0, 0], torch.tensor(-0.5, device=device, dtype=dtype))
+
+
+class TestConventionsMultiResolutionDetector(BaseTester):
+    @pytest.mark.parametrize("detector", ["MultiResolutionDetector", "KeyNetDetector"])
+    def test_convention_multi_resolution_detector_reports_the_level_pixel_times_the_level_factor(
+        self, device, dtype, detector
+    ):
+        # A detection is an integer level pixel (u, v), reported at (u * W / W_l, v * H / H_l) with scale
+        # s_mult * mean(W / W_l, H / H_l), s_mult = 22 by default; there is no sub-pixel step, and (u, v) is not mapped
+        # to its pixel centre (u + 0.5) * W / W_l - 0.5 (the Key.Net reference maps it the same way). Level 1 of
+        # 69 x 128 at factor 2 is 34 x 64: pixel (20, 17) -> (40.0, 17 * 69 / 34 = 34.5), scale 22 * (2 + 69 / 34) / 2.
+        cfg = get_default_detector_config()
+        cfg.update(pyramid_levels=1, up_levels=0, scale_factor_levels=2.0)
+        tol = 0.15 if dtype == torch.bfloat16 else 1e-3  # bfloat16 spaces values in [32, 64) by 0.25
+        for transposed in (False, True):
+            if transposed:  # relabelling: the transposed image reports swapped coordinates
+                size, peaks = (128, 69), {(128, 69): ((31, 45), 1.0), (64, 34): ((17, 20), 0.5)}
+                centres = [[31.0, 45.0], [34.5, 40.0]]
+            else:
+                size, peaks = (69, 128), {(69, 128): ((45, 31), 1.0), (34, 64): ((20, 17), 0.5)}
+                centres = [[45.0, 31.0], [40.0, 34.5]]
+            if detector == "MultiResolutionDetector":
+                det = MultiResolutionDetector(_LevelPeaks(peaks), num_features=4, config=cfg)
+            else:  # the KeyNet response is replaced by the same peaks through a forward hook
+                conf = {**kornia.feature.keynet.keynet_default_config, "Detector_conf": cfg}
+                det = kornia.feature.KeyNetDetector(False, num_features=4, keynet_conf=conf)
+                det.model.register_forward_hook(lambda module, args, output, peaks=peaks: _LevelPeaks(peaks)(args[0]))
+            lafs, resps = det.to(device, dtype)(torch.zeros(1, 1, *size, device=device, dtype=dtype))
+            self.assert_close(resps, torch.tensor([[1.0, 0.5, 0.0, 0.0]], device=device, dtype=dtype))
+            expected = kornia.feature.laf_from_center_scale_ori(
+                torch.tensor([centres], device=device, dtype=dtype),
+                torch.tensor([22.0, 44.3235294], device=device, dtype=dtype).view(1, 2, 1, 1),
+            )
+            self.assert_close(lafs[:, :2], expected, rtol=0.0, atol=tol)
+            assert bool((lafs[0, 2:] == 0).all())
