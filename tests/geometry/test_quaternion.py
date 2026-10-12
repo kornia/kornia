@@ -665,7 +665,6 @@ class TestQuaternionAverage(BaseTester):
         expected = average(data)
         self.assert_close(actual, expected, rtol=1e-5, atol=1e-5)
 
-
     @pytest.mark.parametrize("M", [1, 2, 5, 10])
     def test_average_identity(self, device, dtype, M):
         """All identity quaternions → should return identity"""
