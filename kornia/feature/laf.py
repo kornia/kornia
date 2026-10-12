@@ -27,8 +27,23 @@ from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import pyrdown
 
 
+def _laf_product_dtype(dtype: torch.dtype) -> torch.dtype:
+    """Return the dtype to multiply two LAF entries in.
+
+    A product of two entries of an ordinary LAF overflows float16 from a scale of 256 px and rounds to zero below
+    about 1.7e-4, so float16 works in float32, which holds every product of two float16 values exactly. bfloat16 has
+    the exponent range of float32 and is left as it is.
+    """
+    if dtype == torch.float16:
+        return torch.float32
+    return dtype
+
+
 def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
     """Return a scale of the LAFs.
+
+    The determinant of a float16 LAF is formed in float32, so that a LAF of scale 256 px or more does not overflow;
+    the scale is returned in the LAF dtype.
 
     Args:
         LAF: :math:`(B, N, 2, 3)`
@@ -43,12 +58,20 @@ def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
     """
     KORNIA_CHECK_LAF(LAF)
     eps = 1e-10
-    out = LAF[..., 0:1, 0:1] * LAF[..., 1:2, 1:2] - LAF[..., 1:2, 0:1] * LAF[..., 0:1, 1:2] + eps
-    return out.abs().sqrt()
+    work = LAF.to(_laf_product_dtype(LAF.dtype))
+    out = work[..., 0:1, 0:1] * work[..., 1:2, 1:2] - work[..., 1:2, 0:1] * work[..., 0:1, 1:2] + eps
+    scale = out.abs().sqrt()
+    if work.dtype != LAF.dtype:
+        scale = scale.to(LAF.dtype)
+    return scale
 
 
 def laf_is_valid(laf: torch.Tensor) -> torch.Tensor:
     """Check that each LAF is finite and has a finite, nonzero determinant.
+
+    The determinant of a float16 LAF is formed in float32, so the LAF is not judged by an intermediate outside the
+    float16 range: one of scale 256 px or more, whose determinant overflows float16, is valid, and so is one whose
+    determinant is too small for float16.
 
     Args:
         laf: :math:`(B, N, 2, 3)`.
@@ -63,6 +86,7 @@ def laf_is_valid(laf: torch.Tensor) -> torch.Tensor:
 
     """
     KORNIA_CHECK_LAF(laf)
+    laf = laf.to(_laf_product_dtype(laf.dtype))
     det = laf[..., 0, 0] * laf[..., 1, 1] - laf[..., 1, 0] * laf[..., 0, 1]
     return laf.isfinite().all(dim=-1).all(dim=-1) & det.isfinite() & (det != 0)
 
@@ -231,7 +255,8 @@ def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
     """Rectify the affine matrix, so that it becomes upright.
 
     The all-zero LAF that pads an unfilled detector slot (see :func:`laf_is_filled`) is returned unchanged, so the
-    padding stays recognizable.
+    padding stays recognizable. A float16 LAF is rectified in float32, so that a LAF of scale 256 px or more does
+    not overflow; the result is returned in the LAF dtype.
 
     Args:
         laf: :math:`(B, N, 2, 3)`
@@ -246,6 +271,8 @@ def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
 
     """
     KORNIA_CHECK_LAF(laf)
+    dtype = laf.dtype
+    laf = laf.to(_laf_product_dtype(dtype))
     # Differentiate through an identity frame in place of the zero padding: sqrt at exactly zero has an infinite
     # derivative, which torch.where below would turn into nan rather than mask.
     filled = laf_is_filled(laf)[..., None, None]
@@ -268,7 +295,10 @@ def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
     laf_unit_scale = torch.cat([torch.cat([laf1_ell, laf2_ell], dim=2), laf[..., :, 2:3]], dim=3)
     upright = scale_laf(laf_unit_scale, scale)
     # The padding LAF would otherwise come back as a tiny nonzero frame (the determinant and the division carry eps).
-    return torch.where(filled, upright, padding)
+    out = torch.where(filled, upright, padding)
+    if laf.dtype != dtype:
+        out = out.to(dtype)
+    return out
 
 
 def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:

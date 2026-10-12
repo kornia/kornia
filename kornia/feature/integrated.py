@@ -155,7 +155,7 @@ def get_laf_descriptors(
         warnings.warn(f"LAF contains no keypoints {lafs.shape}, returning empty torch.Tensor", stacklevel=1)
         # Probe the descriptor for its output width instead of assuming 128, so the empty result
         # has the same trailing dimension and dtype as a non-empty one. The non-empty path ends in
-        # `.view(B, N, -1)`, which flattens everything the descriptor produced per patch, so the
+        # `.reshape(B, N, -1)`, which flattens everything the descriptor produced per patch, so the
         # matching width is the whole probe -- `probe.shape[-1]` would only agree for descriptors
         # whose output is 2-D. The probe has a batch of one, so its numel is that width.
         with torch.no_grad():
@@ -169,7 +169,8 @@ def get_laf_descriptors(
     # Descriptor accepts standard torch.Tensor [B, CH, H, W], while patches are [B, N, CH, H, W] shape
     # So we need to reshape a bit :)
     B, N, CH, H, W = patches.size()
-    return _run_descriptor(patch_descriptor, patches.view(B * N, CH, H, W)).view(B, N, -1)
+    # `reshape`, not `view`: a descriptor may return a non-contiguous output, e.g. a channels-last convolution.
+    return _run_descriptor(patch_descriptor, patches.view(B * N, CH, H, W)).reshape(B, N, -1)
 
 
 class LAFDescriptor(nn.Module):

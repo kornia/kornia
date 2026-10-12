@@ -82,6 +82,13 @@ class TestGetLAFScale(BaseTester):
         model_jit = torch.jit.script(kornia.feature.get_laf_scale)
         self.assert_close(model(img), model_jit(img))
 
+    def test_large_laf_does_not_overflow(self, device, dtype):
+        # The determinant of this LAF, 300 * 280 + 40 * 25 = 85000, overflows float16 (max 65504); its scale does not.
+        laf = torch.tensor([[[[300.0, 40.0, 410.0], [-25.0, 280.0, 330.0]]]], device=device, dtype=dtype)
+        scale = kornia.feature.get_laf_scale(laf)
+        assert scale.dtype == dtype
+        self.assert_close(scale, torch.full((1, 1, 1, 1), math.sqrt(85000.0), device=device, dtype=dtype))
+
 
 class TestGetLAFCenter(BaseTester):
     def test_shape(self, device):
@@ -255,6 +262,18 @@ class TestMakeUpright(BaseTester):
         model = kornia.feature.make_upright
         model_jit = torch.jit.script(kornia.feature.make_upright)
         self.assert_close(model(img), model_jit(img))
+
+    def test_large_laf_does_not_overflow(self, device, dtype):
+        # Squares and products of this LAF's entries overflow float16 (max 65504); the LAF and its upright form do not.
+        # Upright form [[r, 0], [(a22 * a12 + a21 * a11) / r, det / r]] with r = hypot(a11, a12).
+        laf = torch.tensor([[[[300.0, 40.0, 410.0], [-25.0, 280.0, 330.0]]]], device=device, dtype=dtype)
+        r = math.hypot(300.0, 40.0)
+        expected = torch.tensor(
+            [[[[r, 0.0, 410.0], [(280.0 * 40.0 - 25.0 * 300.0) / r, 85000.0 / r, 330.0]]]], device=device, dtype=dtype
+        )
+        out = kornia.feature.make_upright(laf)
+        assert out.dtype == dtype
+        self.assert_close(out, expected)
 
 
 class TestELL2LAF(BaseTester):
@@ -475,6 +494,26 @@ class TestLAFIsValid(BaseTester):
         torch._dynamo.reset()
         compiled = torch.compile(kornia.feature.laf_is_valid, fullgraph=True)
         assert torch.equal(compiled(laf), expected)
+
+    def test_validity_does_not_depend_on_float16_range(self, device, dtype):
+        # Products of two entries of an ordinary LAF leave the float16 range: the determinant of the first LAF is
+        # 300 * 280 + 40 * 25 = 85000 > 65504, and every product in the third rounds to zero (2**-26 and below).
+        # Neither makes the LAF invalid. The second LAF is singular (300 * 300 - 600 * 150 = 0) and stays invalid.
+        tiny = 2.0**-13
+        laf = torch.tensor(
+            [
+                [
+                    [[300.0, 40.0, 410.0], [-25.0, 280.0, 330.0]],
+                    [[300.0, 600.0, 410.0], [150.0, 300.0, 330.0]],
+                    [[tiny, tiny / 2, 7.0], [-tiny / 4, tiny, 3.0]],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        valid = kornia.feature.laf_is_valid(laf)
+        assert valid.dtype == torch.bool
+        assert torch.equal(valid, torch.tensor([[True, False, True]], device=device))
 
 
 class TestLAFIsFilled(BaseTester):
