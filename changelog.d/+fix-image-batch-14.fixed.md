@@ -7,7 +7,7 @@ exactly on a sloped edge is filled, and a long, shallow edge whose vertices lie 
 accepts a 2-D gray array, which raised `IndexError`. `Image.to` and `Image.float` set `bit_depth` from the new dtype,
 so `clone()` of a converted image no longer raises `BaseError`. `Image.write` and `Image.print` convert a `BGR` image
 to RGB first, so the file and the terminal show the true colours instead of red and blue swapped. `print_image`
-accepts any `os.PathLike` path, such as a `pathlib.Path`. Docstrings: the `Image.from_dlpack` example passes a
-`(C, H, W)` array, `Image.height` and `Image.width` name rows and columns the right way round, `Image.write` no longer
-says it writes only JPEG, and the `image_to_tensor`, `tensor_to_image` and `draw_convex_polygon` argument descriptions
-are corrected.
+accepts any `os.PathLike` path, such as a `pathlib.Path`. Docstrings: the `Image.from_dlpack` example passes a `(C, H,
+W)` array, `Image.height` and `Image.width` name rows and columns the right way round, `Image.write` no longer says it
+writes only JPEG, and the `image_to_tensor`, `tensor_to_image` and `draw_convex_polygon` argument descriptions are
+corrected.
