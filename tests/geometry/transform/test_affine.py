@@ -17,6 +17,7 @@
 
 import math
 
+import numpy as np
 import pytest
 import torch
 
@@ -33,6 +34,7 @@ class TestResize(BaseTester):
             ((10, 14), 24, (24, 24)),
             ((1, 3, 10, 14), 32, (1, 3, 32, 32)),
             ((3, 10, 14), 4, (3, 8, 16)),
+            ((3, 14, 10), 4, (3, 16, 8)),
             ((3, 10, 14), 24, (3, 24, 24)),
             ((1, 3, 10, 14), 24, (1, 3, 24, 24)),
             ((2, 1, 3, 10, 14), 24, (2, 1, 3, 24, 24)),
@@ -43,8 +45,19 @@ class TestResize(BaseTester):
         out = kornia.geometry.transform.resize_to_be_divisible(inp, divisible_factor)
         assert out.shape == expected
 
+    def test_resize_to_be_divisible_numpy_factor_and_empty_side(self, device, dtype):
+        resize_to_be_divisible = kornia.geometry.transform.resize_to_be_divisible
+        inp = torch.rand(1, 3, 10, 14, device=device, dtype=dtype)
+        assert resize_to_be_divisible(inp, np.int64(4)).shape == (1, 3, 8, 16)
+        # An empty side is already divisible and stays empty, as in resize.
+        empty = torch.zeros(1, 3, 0, 14, device=device, dtype=dtype)
+        assert resize_to_be_divisible(empty, 4).shape == (1, 3, 0, 16)
+        assert resize_to_be_divisible(empty.transpose(-1, -2), 4).shape == (1, 3, 16, 0)
+
     def test_resize_to_be_divisible_rejects_invalid_inputs(self, device, dtype):
         resize_to_be_divisible = kornia.geometry.transform.resize_to_be_divisible
+        with pytest.raises(TypeError, match="is not a torch"):
+            resize_to_be_divisible([[0.0, 1.0]], 4)
         with pytest.raises(ValueError, match="at least two dimensions"):
             resize_to_be_divisible(torch.rand(4, device=device, dtype=dtype), 4)
         inp = torch.rand(4, 4, device=device, dtype=dtype)
