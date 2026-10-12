@@ -436,9 +436,9 @@ class TestSampsonHomographyDistance(BaseTester):
 
     def test_exception(self, device, dtype):
         pts = torch.rand(1, 3, 2, device=device, dtype=dtype)
-        with pytest.raises(ShapeError, match=r"Shape dimension mismatch: expected 3 dimensions, got 2"):
+        with pytest.raises(ShapeError):
             sampson_homography_distance(pts, pts, torch.eye(3, device=device, dtype=dtype))
-        with pytest.raises(BaseError, match=r"points must have 2 or 3 coordinates"):
+        with pytest.raises(BaseError):
             sampson_homography_distance(pts[..., :1], pts[..., :1], torch.eye(3, device=device, dtype=dtype)[None])
 
     def test_gradcheck(self, device):

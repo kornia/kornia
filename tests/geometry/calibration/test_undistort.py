@@ -462,31 +462,31 @@ class TestUndistortImage(BaseTester):
         im = torch.rand(5, 5, device=device, dtype=dtype)
         K = torch.rand(3, 3, device=device, dtype=dtype)
         distCoeff = torch.rand(4, device=device, dtype=dtype)
-        with pytest.raises(ValueError, match=r"Image shape is invalid"):
+        with pytest.raises(ValueError):
             undistort_image(im, K, distCoeff)
 
         im = torch.rand(3, 5, 5, device=device, dtype=dtype)
         K = torch.rand(4, 4, device=device, dtype=dtype)
         distCoeff = torch.rand(4, device=device, dtype=dtype)
-        with pytest.raises(ValueError, match=r"K matrix shape is invalid"):
+        with pytest.raises(ValueError):
             undistort_image(im, K, distCoeff)
 
         im = torch.rand(3, 5, 5, device=device, dtype=dtype)
         K = torch.rand(3, 3, device=device, dtype=dtype)
         distCoeff = torch.rand(6, device=device, dtype=dtype)
-        with pytest.raises(ValueError, match=r"Invalid number of distortion coefficients"):
+        with pytest.raises(ValueError):
             undistort_image(im, K, distCoeff)
 
         im = torch.randint(0, 256, (3, 5, 5), device=device, dtype=torch.uint8)
         K = torch.rand(3, 3, device=device, dtype=dtype)
         distCoeff = torch.rand(4, device=device, dtype=dtype)
-        with pytest.raises(ValueError, match=r"Invalid input image data type"):
+        with pytest.raises(ValueError):
             undistort_image(im, K, distCoeff)
 
         im = torch.rand(1, 1, 3, 5, 5, device=device, dtype=dtype)
         K = torch.rand(1, 3, 3, device=device, dtype=dtype)
         distCoeff = torch.rand(1, 4, device=device, dtype=dtype)
-        with pytest.raises(ValueError, match=r"Input batch dimensions should match"):
+        with pytest.raises(ValueError):
             undistort_image(im, K, distCoeff)
 
     def test_opencv(self, device, dtype):

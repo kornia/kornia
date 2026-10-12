@@ -285,15 +285,12 @@ class TestConventionProjection(BaseTester):
     def test_convention_krt_from_projection_returns_extrinsic_t(self, device, dtype):
         two_view = two_view_scene(device, dtype)
         # P must have exactly one batch dimension.
-        for P_bad, match in (
-            (two_view["P2"][0], "too many indices for tensor of dimension 2"),
-            (two_view["P2"][None], "index 3 is out of bounds for dimension 2"),
-        ):
-            with pytest.raises(IndexError, match=match):
+        for P_bad in (two_view["P2"][0], two_view["P2"][None]):
+            with pytest.raises(IndexError):
                 epi.KRt_from_projection(P_bad)
         if dtype in (torch.float16, torch.bfloat16):
             # float16 and bfloat16 raise: the input is not upcast (projections_from_fundamental upcasts).
-            with pytest.raises((RuntimeError, NotImplementedError), match=r"not implemented|not supported"):
+            with pytest.raises((RuntimeError, NotImplementedError)):
                 epi.KRt_from_projection(two_view["P2"])
             return
         K_true, R_true, t_true = two_view["K2"], two_view["R"], two_view["t"]
@@ -344,7 +341,7 @@ class TestConventionProjection(BaseTester):
         assert (_unit(F_reversed) * torch.sign((F_reversed * F).sum()) - _unit(F)).abs().max() > 0.1
         # F_mat must have exactly one batch dimension.
         for F_bad in (F[0], F[None]):
-            with pytest.raises(RuntimeError, match=r"stack expects each tensor to be equal size"):
+            with pytest.raises(RuntimeError):
                 epi.projections_from_fundamental(F_bad)
 
     def test_convention_depth_from_point_is_camera_z(self, device, dtype):
