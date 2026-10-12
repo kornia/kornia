@@ -117,7 +117,7 @@ class RandomCrop3D(GeometricAugmentationBase3D):
 
     def __init__(
         self,
-        size: Tuple[int, int, int],
+        size: Union[Tuple[int, int, int], List[int]],
         padding: Optional[Union[int, Tuple[int, int, int], Tuple[int, int, int, int, int, int]]] = None,
         pad_if_needed: Optional[bool] = False,
         fill: Union[float, Sequence[float]] = 0,
