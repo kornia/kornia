@@ -43,8 +43,14 @@ def _kl_div_2d(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
 
 def _js_div_2d(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
     # JSD(P || Q)
+    output_dtype = torch.promote_types(p.dtype, q.dtype)
+    # Halving a positive subnormal in the input dtype can make the mixture zero.
+    if p.dtype in (torch.float16, torch.bfloat16):
+        p = p.float()
+    if q.dtype in (torch.float16, torch.bfloat16):
+        q = q.float()
     m = 0.5 * (p + q)
-    return 0.5 * _kl_div_2d(p, m) + 0.5 * _kl_div_2d(q, m)
+    return (0.5 * _kl_div_2d(p, m) + 0.5 * _kl_div_2d(q, m)).to(output_dtype)
 
 
 # TODO: add this to the main module
@@ -74,6 +80,8 @@ def js_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "m
           inputs and the reductions are those of :func:`~kornia.losses.kl_div_loss_2d`; see its Convention block.
         - A cell that is zero in both inputs contributes zero, including to the gradients. Both inputs must have
           the same shape; unsupported reductions raise ``NotImplementedError``.
+        - Float16 and bfloat16 inputs are evaluated in float32 to avoid underflow of the mixture probabilities.
+          The returned loss retains the promoted input dtype.
 
     Args:
         pred: the input torch.Tensor with shape :math:`(B, N, H, W)`.
