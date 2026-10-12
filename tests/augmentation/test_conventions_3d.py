@@ -720,14 +720,14 @@ class Test3DAugmentationConventions(BaseTester):
             K.RandomMotionBlur3D(1, 35.0, 0.5, p=1.0)(torch.rand(1, 1, 5, 5, 5))
 
     @pytest.mark.device_agnostic
-    def test_convention_identity_warp_is_roundoff_exact_only_in_full_precision(self):
-        # In half precision the sampling grid is itself rounded, so a large volume moves far beyond roundoff.
+    def test_convention_identity_warp_is_roundoff_exact_on_cpu_5751(self):
+        # A CPU half-precision warp runs in float32 (#5751), so a large volume comes back up to the output rounding.
         large = torch.rand(1, 1, 32, 48, 96)
         assert float((K.RandomRotation3D(0.0, p=1.0)(large) - large).abs().max()) < 1e-3
-        if supports_bilinear_3d_grid_sample(torch.device("cpu"), torch.bfloat16):
-            half = large.to(torch.bfloat16)
+        for dtype in (torch.float16, torch.bfloat16):
+            half = large.to(dtype)
             for aug in (K.RandomRotation3D(0.0, p=1.0), K.RandomAffine3D(0.0, p=1.0)):
-                assert float((aug(half) - half).abs().max()) > 0.1
+                assert float((aug(half) - half).abs().max()) < torch.finfo(dtype).eps
 
     @pytest.mark.device_agnostic
     def test_convention_center_crop3d_centres_each_axis_with_its_own_offset(self):
