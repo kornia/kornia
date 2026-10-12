@@ -26,8 +26,9 @@ import numpy as np
 import pytest
 import torch
 
-from kornia.core.exceptions import BaseError
+from kornia.core.exceptions import ShapeError, TypeCheckError, ValueCheckError
 from kornia.io import ImageLoadType, load_image, write_image
+from kornia.io.io import _read_jpeg_components
 
 
 def create_random_img8(height: int, width: int, channels: int) -> np.ndarray:
@@ -39,7 +40,7 @@ def create_random_img8_torch(height: int, width: int, channels: int, device=None
 
 
 def write_random_png_u16(path: Path, mode: str) -> None:
-    """Write a random 16-bit PNG, ``"mono"`` (grayscale) or ``"rgba"``; ``write_image`` cannot write RGBA."""
+    """Write a random 16-bit PNG, ``"mono"`` (grayscale) or ``"rgba"``, with kornia-rs directly."""
     channels = {"mono": 1, "rgba": 4}[mode]
     img_np = np.random.randint(0, 65535, (4, 5, channels)).astype(np.uint16)  # noqa: NPY002
     kornia_rs.io.write_image_png_u16(str(path), img_np, mode=mode)
@@ -312,6 +313,18 @@ class TestIndexedPng:
         with pytest.raises(ValueError, match=re.escape(path.name)):
             load_image(path, ImageLoadType.RGB8)
 
+    def test_index_equal_to_the_palette_length_raises_naming_the_file(self, tmp_path: Path, device) -> None:
+        path = tmp_path / "three_entries.png"
+        write_indexed_png(path, PALETTE_INDICES, PALETTE[:3])  # entries 0..2; the pixel with index 3 has no colour
+        with pytest.raises(ValueError, match=re.escape(path.name)):
+            load_image(path, ImageLoadType.RGB8, device=str(device))
+
+    def test_a_palette_that_is_not_whole_rgb_entries_raises_naming_the_file(self, tmp_path: Path) -> None:
+        path = tmp_path / "bad_plte.png"
+        write_indexed_png(path, PALETTE_INDICES, [*PALETTE, (7,)])  # a 13-byte PLTE chunk
+        with pytest.raises(ValueError, match=re.escape(path.name)):
+            load_image(path, ImageLoadType.RGB8)
+
 
 class TestGrayJpeg:
     @staticmethod
@@ -324,6 +337,14 @@ class TestGrayJpeg:
         out = load_image(path, ImageLoadType.UNCHANGED)
         assert out.shape == (1, 12, 20)
         torch.testing.assert_close(out, load_image(path, ImageLoadType.GRAY8))
+
+    @pytest.mark.parametrize("load_type", [ImageLoadType.UNCHANGED, ImageLoadType.GRAY8])
+    def test_one_channel_owns_a_contiguous_buffer(self, tmp_path: Path, load_type) -> None:
+        path = tmp_path / "gray.jpg"
+        write_image(path, self._gray(), quality=95)
+        out = load_image(path, load_type)
+        assert out.is_contiguous()
+        assert out.untyped_storage().nbytes() == 12 * 20  # not the three-channel decode buffer
 
     def test_rgb8_repeats_the_gray_channel(self, tmp_path: Path) -> None:
         path = tmp_path / "gray.jpg"
@@ -341,6 +362,21 @@ class TestGrayJpeg:
         out = load_image(tagged, ImageLoadType.UNCHANGED)
         assert out.shape == (1, 12, 20)
         torch.testing.assert_close(out, load_image(plain, ImageLoadType.UNCHANGED))
+
+    @pytest.mark.parametrize(
+        ("marker", "fill", "components"),
+        [(0xC0, b"", 1), (0xC2, b"", 1), (0xC2, b"\xff\xff", 1), (0xC2, b"", 3), (0xC9, b"", 1)],
+        ids=["baseline", "progressive", "progressive-after-fill-bytes", "progressive-3-components", "arithmetic"],
+    )
+    def test_frame_header_component_count(self, tmp_path: Path, marker, fill, components) -> None:
+        # SOI, an APP0 segment, optional fill bytes, then a baseline (C0), progressive (C2) or arithmetic (C9) frame
+        # header: precision 8, height 12, width 20, the component count and 3 bytes per component
+        app0 = b"\xff\xe0" + struct.pack(">H", 16) + b"JFIF\x00" + bytes(9)
+        sof = struct.pack(">BHHB", 8, 12, 20, components) + bytes(3 * components)
+        header = b"\xff\xd8" + app0 + fill + bytes([0xFF, marker]) + struct.pack(">H", len(sof) + 2) + sof
+        path = tmp_path / "header.jpg"
+        path.write_bytes(header)
+        assert _read_jpeg_components(path) == components
 
     def test_color_jpeg_unchanged_keeps_three_channels(self, tmp_path: Path) -> None:
         path = tmp_path / "color.jpg"
@@ -374,16 +410,29 @@ class TestWriteImageValidation:
     @pytest.mark.parametrize("ext", [".jpg", ".tiff"])
     def test_rgba_to_a_format_without_alpha_raises_and_writes_nothing(self, tmp_path: Path, ext) -> None:
         path = tmp_path / f"rgba{ext}"
-        with pytest.raises(BaseError, match="4-channel"):
+        with pytest.raises(ShapeError, match="4-channel"):
             write_image(path, create_random_img8_torch(4, 5, 4))
         assert not path.exists()
 
     @pytest.mark.parametrize("ext", [".png", ".jpg", ".tiff"])
     def test_two_channels_raise_and_write_nothing(self, tmp_path: Path, ext) -> None:
         path = tmp_path / f"two{ext}"
-        with pytest.raises(BaseError, match="2-channel"):
+        with pytest.raises(ShapeError, match="2-channel"):
             write_image(path, create_random_img8_torch(4, 5, 2))
         assert not path.exists()
+
+    def test_an_unsupported_channel_count_is_still_a_value_error(self, tmp_path: Path) -> None:
+        # kornia-rs raised ValueError for these before write_image checked them; ShapeError keeps that catchable
+        with pytest.raises(ValueError, match="5-channel"):
+            write_image(tmp_path / "five.png", create_random_img8_torch(4, 5, 5))
+
+    @pytest.mark.parametrize("dtype", [torch.uint8, torch.uint16, torch.float32])
+    def test_tif_round_trips_every_tiff_dtype(self, tmp_path: Path, dtype) -> None:
+        image = torch.arange(3 * 4 * 5).view(3, 4, 5)
+        image = image.to(dtype) / 60 if dtype == torch.float32 else image.to(dtype)
+        path = tmp_path / "short.tif"
+        write_image(path, image)
+        assert torch.equal(load_image(path, ImageLoadType.UNCHANGED), image)
 
     @pytest.mark.parametrize("name", ["upper.JPG", "upper.PNG", "short.tif", "mixed.TiFf"])
     def test_extension_case_and_tif(self, tmp_path: Path, name) -> None:
@@ -397,7 +446,7 @@ class TestWriteImageValidation:
 
     def test_batched_tensor_raises_and_writes_nothing(self, tmp_path: Path) -> None:
         path = tmp_path / "batched.png"
-        with pytest.raises(BaseError, match=re.escape("(C, H, W)")):
+        with pytest.raises(ShapeError, match=re.escape("(C, H, W)")):
             write_image(path, create_random_img8_torch(4, 5, 3)[None])
         assert not path.exists()
 
@@ -430,6 +479,14 @@ class TestColourKeyPng:
         assert out[:, 0, 0].tolist() == [255, 255, 255]
         assert out[:, 1, 2].tolist() == [0, 0, 0]
 
+    def test_rgb_key_needs_every_sample_to_match(self, tmp_path: Path) -> None:
+        pixels = np.zeros((2, 3, 3), dtype=np.uint8)
+        pixels[0] = [(1, 2, 3), (1, 2, 0), (1, 0, 0)]  # the key, then two pixels sharing some of its samples
+        path = tmp_path / "rgb_key_partial.png"
+        write_png_with_trns(path, pixels, colour_type=2, trns=struct.pack(">HHH", 1, 2, 3))
+        # Pillow 12.3 Image.open(path).convert("RGBA") alpha: [[0, 255, 255], [255, 255, 255]]
+        assert load_image(path, ImageLoadType.RGBA8)[3].tolist() == [[0, 255, 255], [255, 255, 255]]
+
     def test_unchanged_ignores_the_key(self, tmp_path: Path) -> None:
         path = tmp_path / "gray_key.png"
         write_png_with_trns(
@@ -449,6 +506,12 @@ class TestIoArgumentChecks:
         with pytest.raises(FileNotFoundError, match="missing"):
             write_image(path, create_random_img8_torch(4, 5, 3))
 
+    def test_write_into_a_file_as_directory_raises_not_a_directory(self, tmp_path: Path) -> None:
+        parent = tmp_path / "plain_file"
+        parent.write_bytes(b"")
+        with pytest.raises(NotADirectoryError, match="plain_file"):
+            write_image(parent / "x.png", create_random_img8_torch(4, 5, 3))
+
     def test_write_into_the_current_directory_with_a_bare_filename(self, tmp_path: Path, monkeypatch) -> None:
         monkeypatch.chdir(tmp_path)
         write_image("bare.png", create_random_img8_torch(4, 5, 3))
@@ -456,13 +519,22 @@ class TestIoArgumentChecks:
 
     @pytest.mark.parametrize("desired_type", ["RGB8", 2])
     def test_load_image_rejects_a_load_type_that_is_not_an_image_load_type(self, png_image, desired_type) -> None:
-        with pytest.raises(BaseError, match="ImageLoadType"):
+        with pytest.raises(TypeCheckError, match="ImageLoadType"):
             load_image(png_image, desired_type)
 
-    @pytest.mark.parametrize("quality", [-1, 101, 80.5, True, np.int64(101)])
+    @pytest.mark.parametrize("quality", [-1, 101, np.int64(101)])
     def test_write_image_rejects_quality_outside_0_100(self, tmp_path: Path, quality) -> None:
-        with pytest.raises(BaseError, match="quality"):
+        with pytest.raises(ValueCheckError, match="quality"):
             write_image(tmp_path / "q.jpg", create_random_img8_torch(4, 5, 3), quality=quality)
+
+    @pytest.mark.parametrize("quality", [80.5, True, "80"])
+    def test_write_image_rejects_a_quality_that_is_not_an_integer(self, tmp_path: Path, quality) -> None:
+        with pytest.raises(TypeCheckError, match="quality"):
+            write_image(tmp_path / "q.jpg", create_random_img8_torch(4, 5, 3), quality=quality)
+
+    def test_quality_is_validated_for_png_too(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueCheckError, match="quality"):
+            write_image(tmp_path / "q.png", create_random_img8_torch(4, 5, 3), quality=101)
 
     @pytest.mark.parametrize("quality", [0, 100, np.int64(90)])
     def test_write_image_accepts_any_integer_quality_in_0_100(self, tmp_path: Path, quality) -> None:
@@ -471,7 +543,7 @@ class TestIoArgumentChecks:
         assert load_image(path, ImageLoadType.RGB8).shape == (3, 4, 5)
 
     def test_write_image_rejects_a_non_tensor(self, tmp_path: Path) -> None:
-        with pytest.raises(BaseError):
+        with pytest.raises(TypeCheckError):
             write_image(tmp_path / "n.png", np.zeros((3, 4, 5), dtype=np.uint8))
 
 
@@ -505,6 +577,18 @@ class TestSampleImages:
             mock_urlopen.return_value.__enter__.return_value.read.return_value = payload.read_bytes()
             get_sample_images(paths=["https://example.invalid/sample.png"])
         assert (tmp_path / "hub" / "images" / "sample.png").exists()
+
+    def test_a_download_that_is_not_an_image_is_not_cached(self, tmp_path: Path) -> None:
+        from unittest import mock
+
+        from kornia.io import get_sample_images
+
+        cache = tmp_path / "cache"
+        with mock.patch("kornia.io.sample.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = b"<html>not found</html>"
+            with pytest.raises(ValueError, match=re.escape("sample.png")):
+                get_sample_images(paths=["https://example.invalid/sample.png"], cache_dir=str(cache))
+        assert not (cache / "sample.png").exists()
 
 
 class TestDownloadImage:

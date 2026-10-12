@@ -82,7 +82,8 @@ def get_sample_images(
         download: Whether to download the images if they are not already cached. Defaults to True.
         cache_dir: The directory where the downloaded images will be cached.
             Defaults to ``<kornia_config.hub_cache_dir>/images``, relative to the working directory unless configured
-            otherwise. Created only when an image is downloaded.
+            otherwise. Created when an image has to be downloaded. A downloaded file that does not load as an image is
+            deleted before the error propagates, so it is not cached.
         as_list: if to keep the output as a list. If None and `resize` is None, the output will be a list.
             If None and `resize` is not None, the output will be a single tensor.
         divisible_factor:
@@ -101,6 +102,7 @@ def get_sample_images(
         cache_dir = os.path.join(kornia_config.hub_cache_dir, "images")
     tensors = []
     for path in paths:
+        downloaded = False
         if urlparse(path).scheme in ("http", "https"):
             name = os.path.basename(path)
             fname = os.path.join(cache_dir, name)
@@ -108,13 +110,19 @@ def get_sample_images(
                 os.makedirs(cache_dir, exist_ok=True)
                 logging.info(f"Downloading `{path}` to `{fname}`.")
                 download_image(path, fname)
+                downloaded = True
             elif not os.path.exists(fname) and not download:
                 logging.error(
                     f"Image `{path}` not found at `{fname}`. You may want to set `download=True` to download it."
                 )
         else:
             fname = path
-        img_tensor = load_image(fname)
+        try:
+            img_tensor = load_image(fname)
+        except Exception:
+            if downloaded:
+                os.remove(fname)  # a body that is not an image must not stay in the cache
+            raise
         if resize is not None:
             img_tensor = kornia.geometry.resize(img_tensor, resize, **kwargs)
         if divisible_factor is not None:

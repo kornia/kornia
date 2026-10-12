@@ -24,11 +24,13 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Union
 
+import numpy as np
 import torch
 from kornia_rs import io as _rs_io
 
 import kornia
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
+from kornia.core.exceptions import ShapeError, TypeCheckError, ValueCheckError
 from kornia.image.utils import image_to_tensor, tensor_to_image
 
 _WRITE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
@@ -133,9 +135,9 @@ def _read_png_chunks(path_file: Path) -> tuple[bytes | None, bytes | None]:
 def _apply_png_palette_and_transparency(path_file: Path, image: torch.Tensor) -> torch.Tensor:
     """Apply a PNG's palette and tRNS chunk to the decoded pixels; any other file is returned unchanged.
 
-    A palette PNG (colour type 3) becomes ``(3, H, W)`` colours, or ``(4, H, W)`` with a tRNS chunk, whose per-entry
-    alphas leave unlisted entries opaque. An 8-bit gray or RGB PNG (colour types 0 and 2) with a tRNS colour key
-    becomes ``(4, H, W)`` RGBA, with alpha 0 where every sample equals the key and 255 elsewhere.
+    An 8-bit palette PNG (colour type 3) becomes ``(3, H, W)`` colours, or ``(4, H, W)`` with a tRNS chunk, whose
+    per-entry alphas leave unlisted entries opaque. An 8-bit gray or RGB PNG (colour types 0 and 2) with a tRNS colour
+    key becomes ``(4, H, W)`` RGBA, with alpha 0 where every sample equals the key and 255 elsewhere.
     """
     if path_file.suffix.lower() != ".png":
         return image
@@ -147,6 +149,11 @@ def _apply_png_palette_and_transparency(path_file: Path, image: torch.Tensor) ->
     if color_type == 3:
         if plte is None:
             return image
+        if len(plte) % 3:
+            raise ValueError(
+                f"Failed to decode image '{path_file}': its PLTE chunk has {len(plte)} bytes, not a whole number of "
+                "RGB entries."
+            )
         colors = torch.frombuffer(bytearray(plte), dtype=torch.uint8).view(-1, 3)
         table = colors
         if trns is not None:
@@ -178,7 +185,7 @@ def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None
     The decoded image is returned as numpy array with shape HxWxC.
 
     Args:
-        path_file: Path with a .jpg, .jpeg, .png, .tif or .tiff extension, in any letter case.
+        path_file: Path to an image file in a format kornia-rs decodes; the extension may be in any letter case.
         device: the device where you want to get your image placed.
 
     Return:
@@ -196,7 +203,8 @@ def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None
             img = _rs_io.read_image_jpegturbo(str(path_file))
             if _read_jpeg_components(path_file) == 1:
                 # libjpeg-turbo decodes a grayscale JPEG into three equal channels; keep the file's one channel
-                img = img[..., :1]
+                # in its own buffer, so the three-channel decode is released
+                img = np.ascontiguousarray(img[..., :1])
         elif path_file.suffix.lower() == ".png":
             # None (truncated/invalid header) intentionally falls through to read_image
             bit_depth, color_type = _read_png_header(path_file) or (None, None)
@@ -294,25 +302,34 @@ def load_image(
     """Read an image file and decode using the Kornia Rust backend.
 
     Args:
-        path_file: Path with a .jpg, .jpeg, .png, .tif or .tiff extension, in any letter case.
+        path_file: Path to an image file in a format kornia-rs decodes, such as JPEG, PNG, TIFF or WebP; the
+            extension may be in any letter case.
         desired_type: the desired image type, defined by color space and dtype.
         device: the device where you want to get your image placed.
 
     Return:
         Image torch.Tensor with shape :math:`(C, H, W)`: ``C`` is 1 for ``GRAY8`` and ``GRAY32``, 3 for ``RGB8`` and
-        ``RGB32``, 4 for ``RGBA8``, and the file's channel count for ``UNCHANGED``. A palette PNG loads as its
-        palette indices under ``UNCHANGED`` and as its colours under every other type. A gray or RGB PNG with a tRNS
-        colour key loads its key colour as transparent under every other type.
+        ``RGB32``, 4 for ``RGBA8``, and the file's channel count for ``UNCHANGED``. An 8-bit palette PNG loads as its
+        palette indices under ``UNCHANGED`` and as its colours under every other type. An 8-bit gray or RGB PNG with
+        a tRNS colour key loads its key colour as transparent under every other type.
 
     Raises:
-        ValueError: if the file cannot be decoded, for example a truncated or corrupt image or an unsupported format.
-            The message names the file and keeps the decoder's reason; the decoder's exception is the ``__cause__``.
+        TypeCheckError: if ``desired_type`` is not an :class:`ImageLoadType`. It is also a ``TypeError``.
         OSError: if the file cannot be read, for example ``FileNotFoundError`` when it does not exist.
+        ValueError: if the file cannot be decoded: a truncated or corrupt image, an unsupported format, a PNG with 1,
+            2 or 4 bits per sample (palette PNGs included), a gray+alpha PNG, or a palette PNG whose palette is
+            malformed or too short for its pixels. The message names the file; when the decoder fails, its exception
+            is the ``__cause__``.
+        NotImplementedError: if a type other than ``UNCHANGED`` is requested for a file that decodes to more than 8
+            bits, such as a 16-bit PNG or TIFF or a float TIFF.
 
     """
-    KORNIA_CHECK(
-        isinstance(desired_type, ImageLoadType), f"desired_type must be an ImageLoadType, got {desired_type!r}."
-    )
+    if not isinstance(desired_type, ImageLoadType):
+        raise TypeCheckError(
+            f"desired_type must be an ImageLoadType, got {desired_type!r}.",
+            actual_type=type(desired_type),
+            expected_type=ImageLoadType,
+        )
     if not isinstance(path_file, Path):
         path_file = Path(path_file)
 
@@ -364,41 +381,68 @@ def write_image(path_file: str | Path, image: torch.Tensor, quality: int = 80) -
     Args:
         path_file: Path with a .jpg, .jpeg, .png, .tif or .tiff extension, in any letter case.
         image: Image torch.Tensor with shape :math:`(C, H, W)` or :math:`(H, W)`; ``C`` is 1 or 3, or 4 for PNG.
-        quality: The quality of the JPEG encoding, an integer in [0, 100]. If the file extension is .png, .tif or
-            .tiff, the quality is ignored.
+        quality: The quality of the JPEG encoding, an integer in [0, 100]. It is validated for every format and used
+            only for JPEG.
 
     Return:
         None.
+
+    Raises:
+        TypeCheckError: if ``image`` is not a tensor, or ``quality`` is not an integer (a ``bool`` is not accepted).
+            It is also a ``TypeError``.
+        ValueCheckError: if ``quality`` is outside [0, 100]. It is also a ``ValueError``.
+        BaseError: if the extension is not one of the five above.
+        ShapeError: if ``image`` is not :math:`(C, H, W)` or :math:`(H, W)`, or has a channel count the format cannot
+            store. It is also a ``ValueError``.
+        FileNotFoundError: if the directory to write into does not exist; ``NotADirectoryError`` if that path is a
+            file.
+        NotImplementedError: if the format cannot store the dtype: JPEG takes ``uint8``; PNG ``uint8`` and
+            ``uint16``; TIFF ``uint8``, ``uint16`` and ``float32``.
+        Exception: kornia-rs's encoder error for an image it cannot encode, such as one with zero height or width
+            (`#5770 <https://github.com/kornia/kornia/issues/5770>`_).
     """
     if not isinstance(path_file, Path):
         path_file = Path(path_file)
 
     KORNIA_CHECK_IS_TENSOR(image)
-    KORNIA_CHECK(
-        isinstance(quality, numbers.Integral) and not isinstance(quality, bool) and 0 <= quality <= 100,
-        f"quality must be an integer in [0, 100], got {quality!r}.",
-    )
+    if not isinstance(quality, numbers.Integral) or isinstance(quality, bool):
+        raise TypeCheckError(
+            f"quality must be an integer in [0, 100], got {quality!r}.",
+            actual_type=type(quality),
+            expected_type=numbers.Integral,
+        )
+    if not 0 <= quality <= 100:
+        raise ValueCheckError(
+            f"quality must be an integer in [0, 100], got {quality!r}.", actual_value=quality, expected_range=(0, 100)
+        )
     suffix = path_file.suffix.lower()
     KORNIA_CHECK(
         suffix in _WRITE_EXTENSIONS,
         f"Invalid file extension: {path_file}, only .jpg, .jpeg, .png, .tif and .tiff are supported.",
     )
-    KORNIA_CHECK(image.dim() in (2, 3), f"Invalid image shape: {image.shape}. Expected (C, H, W) or (H, W).")
-
-    if not path_file.parent.is_dir():
-        raise FileNotFoundError(
-            errno.ENOENT, f"No such directory to write {path_file.name} into", str(path_file.parent)
+    if image.dim() not in (2, 3):
+        raise ShapeError(
+            f"Invalid image shape: {tuple(image.shape)}. Expected (C, H, W) or (H, W).",
+            actual_shape=tuple(image.shape),
+            expected_shape=["C", "H", "W"],
         )
+
+    parent = path_file.parent
+    if not parent.is_dir():
+        if parent.exists():
+            raise NotADirectoryError(errno.ENOTDIR, f"Cannot write {path_file.name} into a file", str(parent))
+        raise FileNotFoundError(errno.ENOENT, f"No such directory to write {path_file.name} into", str(parent))
 
     img_np = tensor_to_image(image, keepdim=True, force_contiguous=True)  # HxWxC
     if img_np.ndim == 2:
         img_np = img_np[..., None]  # ensures channel dimension
     channels = img_np.shape[-1]
     supported = (1, 3, 4) if suffix == ".png" else (1, 3)
-    KORNIA_CHECK(
-        channels in supported,
-        f"Cannot write a {channels}-channel image to {suffix}; the supported channel counts are {supported}.",
-    )
+    if channels not in supported:
+        raise ShapeError(
+            f"Cannot write a {channels}-channel image to {suffix}; the supported channel counts are {supported}.",
+            actual_shape=tuple(image.shape),
+        )
     if image.dtype == torch.uint8:
         _write_uint8_image(path_file, img_np, quality)
     elif image.dtype == torch.uint16:
