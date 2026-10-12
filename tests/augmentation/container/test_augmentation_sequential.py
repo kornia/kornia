@@ -1562,6 +1562,47 @@ class TestConventionAugmentationSequential(BaseTester):
         with pytest.raises(ValueError, match=r"Mask list entry 1 must be a torch\.Tensor"):
             seq(image, [image[:1].clone(), entry])
 
+    @pytest.mark.parametrize("use_cached_params", [False, True])
+    @pytest.mark.parametrize("nested", [False, True])
+    @pytest.mark.parametrize("layout", ["short", "long", "full_batch", "non_tensor"])
+    def test_invalid_mask_list_image_less_inverse_4477(self, layout, nested, use_cached_params, device, dtype):
+        image = torch.arange(48, device=device, dtype=dtype).reshape(2, 1, 4, 6)
+        flip = K.RandomHorizontalFlip(p=1.0)
+        seq = K.AugmentationSequential(K.ImageSequential(flip) if nested else flip, data_keys=["input", "mask"])
+        _, masks = seq(image, [image[:1].clone(), image[1:].clone()])
+        params = seq._params
+        if layout == "short":
+            masks = masks[:1]
+        elif layout == "long":
+            masks.append(masks[0].clone())
+        elif layout == "full_batch":
+            masks = [image.clone(), image.clone()]
+        else:
+            masks[1] = None
+        with pytest.raises(ValueError, match="Mask list"):
+            seq.inverse(masks, params=None if use_cached_params else params, data_keys=["mask"])
+        assert seq.transform_op.data_keys == seq.data_keys
+
+    @pytest.mark.parametrize("use_cached_params", [False, True])
+    @pytest.mark.parametrize("nested", [False, True])
+    @pytest.mark.parametrize("batch_size", [0, 2])
+    def test_mask_list_image_less_inverse_4477(self, batch_size, nested, use_cached_params, device, dtype):
+        image = torch.arange(batch_size * 24, device=device, dtype=dtype).reshape(batch_size, 1, 4, 6)
+        entries = [image[i : i + 1].expand(-1, i + 1, -1, -1).clone() for i in range(batch_size)]
+        flip = K.RandomHorizontalFlip(p=1.0)
+        seq = K.AugmentationSequential(
+            K.ImageSequential(flip) if nested else flip, K.RandomVerticalFlip(p=1.0), data_keys=["input", "mask"]
+        )
+        _, masks = seq(image, entries)
+        params = seq._params
+        if not use_cached_params:
+            # Explicit parameters must win over the metadata of a later call with another batch size.
+            seq(torch.zeros(3, 1, 4, 6, device=device, dtype=dtype), data_keys=["input"])
+        restored = seq.inverse(masks, params=None if use_cached_params else params, data_keys=["mask"])
+        assert len(restored) == batch_size
+        for actual, expected in zip(restored, entries):
+            self.assert_close(actual, expected, rtol=0, atol=0)
+
     def test_mix_augmentation_inverse_raises_4693(self, device, dtype):
         image = torch.stack([torch.full((2, 4, 6), float(i + 1), device=device, dtype=dtype) for i in range(3)])
         mask = torch.zeros(3, 4, 6, device=device, dtype=torch.long)

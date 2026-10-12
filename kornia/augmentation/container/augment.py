@@ -462,17 +462,17 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         self.transform_op.data_keys = self.transform_op.preproc_datakeys(data_keys)
 
         try:
-            self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys)  # type: ignore
+            if params is None:
+                params = self._params
+            self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys, params=params)  # type: ignore
 
             in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)  # type: ignore
 
             if params is None:
-                if self._params is None:
-                    raise ValueError(
-                        "No parameters available for inversing, please run a forward pass first "
-                        "or passing valid params into this function."
-                    )
-                params = self._params
+                raise ValueError(
+                    "No parameters available for inversing, please run a forward pass first "
+                    "or passing valid params into this function."
+                )
 
             outputs: List[DataType] = in_args
             for param in params[::-1]:
@@ -480,8 +480,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 outputs = self.transform_op.inverse(  # type: ignore
                     *outputs, module=module, param=param, extra_args=self.extra_args
                 )
-                if not isinstance(outputs, (list, tuple)):
-                    # Make sure we are unpacking a list whilst post-proc
+                if len(self.transform_op.data_keys) == 1 or not isinstance(outputs, (list, tuple)):
+                    # One data key can itself hold a mask list; keep it as one argument for the next child.
                     outputs = [outputs]
 
             outputs = self._arguments_postproc(args, outputs, data_keys=self.transform_op.data_keys)  # type: ignore
