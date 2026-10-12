@@ -23,6 +23,7 @@ import torch.nn.functional as F
 from kornia.core._compat import torch_version_lt
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import ValueCheckError
+from .monotonic import separable_dilation2d, separable_erosion2d
 
 __all__ = ["bottom_hat", "closing", "dilation", "erosion", "gradient", "opening", "reconstruction", "top_hat"]
 
@@ -445,7 +446,6 @@ def dilation(
     elif engine == "monotonic":
         if structuring_element is not None or not bool(torch.all(kernel == 1)):
             raise ValueError("The 'monotonic' engine requires flat rectangular structuring elements.")
-        from .monotonic import separable_dilation2d
 
         pad_h = origin[0]
         pad_w = origin[1]
@@ -637,7 +637,6 @@ def erosion(
     elif engine == "monotonic":
         if structuring_element is not None or not bool(torch.all(kernel == 1)):
             raise ValueError("The 'monotonic' engine requires flat rectangular structuring elements.")
-        from .monotonic import separable_erosion2d
 
         pad_h = origin[0]
         pad_w = origin[1]
