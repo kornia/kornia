@@ -12,4 +12,5 @@ where kornia-rs raised a `TypeError`. Writing into a directory that does not exi
 the directory, and writing under a path that is a file raises `NotADirectoryError`; both used to raise a bare
 `Exception`. `get_sample_images` caches downloads under `<kornia_config.hub_cache_dir>/images` by default instead of
 a hard-coded `.kornia_hub/images`; the two are the same path unless `hub_cache_dir` is changed. A download that is not
-an image raises `ValueError` naming the cached file, which is deleted, where it raised `PIL.UnidentifiedImageError`.
+an image raises `ValueError` naming the cached file, which is deleted, where it raised `PIL.UnidentifiedImageError`, an
+`OSError`, so an `except OSError` clause no longer catches it.
