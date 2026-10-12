@@ -21,6 +21,7 @@ import math
 import os
 import sys
 from functools import wraps
+from pathlib import Path
 from typing import Any, Callable, List, Literal, Optional, Tuple, Union
 
 import torch
@@ -269,12 +270,12 @@ class ImageModuleMixIn:
         Supports image path, numpy array, PIL image, and raw tensor. A NumPy array of shape :math:`(H, W)`,
         :math:`(H, W, C)` or :math:`(B, H, W, C)` becomes :math:`(C, H, W)` or :math:`(B, C, H, W)`, with one channel
         for :math:`(H, W)`; a PIL image converts like its NumPy array, except that a palette image (mode ``P`` or
-        ``PA``) is converted to RGB, or RGBA when it has transparency, first. An integer image is divided by the maximum
-        of its dtype (``uint8`` by 255, ``uint16`` by 65535, a PIL mode ``I`` image by the ``int32`` maximum); a signed
-        image maps to ``[iinfo.min / iinfo.max, 1]``, so its negative values stay negative. A ``bool`` image becomes 0
-        and 1, and a floating image keeps its values; integer and ``bool`` images become the default floating dtype.
-        When this mixin belongs to a stateful :class:`torch.nn.Module`, the converted image is moved to the module's
-        device and first floating parameter or buffer dtype. A tensor is returned unchanged.
+        ``PA``), and a palette PNG path, is converted to RGB, or RGBA when it has transparency, first. An integer image
+        is divided by the maximum of its dtype (``uint8`` by 255, ``uint16`` by 65535, a PIL mode ``I`` image by the
+        ``int32`` maximum); a signed image maps to ``[iinfo.min / iinfo.max, 1]``, so its negative values stay negative.
+        A ``bool`` image becomes 0 and 1, and a floating image keeps its values; integer and ``bool`` images become the
+        default floating dtype. When this mixin belongs to a stateful :class:`torch.nn.Module`, the converted image is
+        moved to the module's device and first floating parameter or buffer dtype. A tensor is returned unchanged.
 
         Args:
             x: The input to convert.
@@ -285,8 +286,16 @@ class ImageModuleMixIn:
         """
         if isinstance(x, str):
             from kornia.io import ImageLoadType, load_image  # pylint: disable=C0415
+            from kornia.io.io import (  # pylint: disable=C0415
+                _apply_png_palette_and_transparency,
+                _read_png_header,
+            )
 
-            image = _image_to_float(load_image(x, ImageLoadType.UNCHANGED))
+            path = Path(x)
+            image = load_image(path, ImageLoadType.UNCHANGED)
+            if path.suffix.lower() == ".png" and (_read_png_header(path) or (None, None))[1] == 3:
+                image = _apply_png_palette_and_transparency(path, image)
+            image = _image_to_float(image)
         elif isinstance(x, torch.Tensor):
             return x
         elif isinstance(x, np.ndarray):  # type: ignore

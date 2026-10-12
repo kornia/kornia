@@ -626,6 +626,52 @@ class TestImageModuleConversions(BaseTester):
         out = _Identity().to_tensor(str(path))
         self.assert_close(out, torch.tensor([1.0, 0.2, 0.0]).view(3, 1, 1).expand(3, 4, 6))
 
+    @pytest.mark.parametrize("transparency", [None, bytes([255, 128])], ids=["rgb", "rgba"])
+    def test_to_tensor_palette_png_path_matches_pil_5807(self, tmp_path, transparency):
+        path = tmp_path / "palette.png"
+        image = PILImage.new("P", (2, 1))
+        image.putdata([0, 1])
+        image.putpalette([255, 0, 0, 0, 255, 0] + [0] * (256 * 3 - 6))
+        if transparency is not None:
+            image.info["transparency"] = transparency
+        image.save(path)
+
+        module = _Identity()
+        from_path = module.to_tensor(str(path))
+        with PILImage.open(path) as from_pil:
+            expected = module.to_tensor(from_pil)
+
+        expected_channels = 3 if transparency is None else 4
+        assert from_path.shape == (expected_channels, 1, 2)
+        self.assert_close(from_path, expected, rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize(
+        "factory",
+        [
+            pytest.param(lambda: ImageSequential(torch.nn.Identity()), id="core-image-sequential"),
+            pytest.param(lambda: AugmentationImageSequential(torch.nn.Identity()), id="augmentation-image-sequential"),
+            pytest.param(lambda: AugmentationSequential(RandomHorizontalFlip(p=0.0)), id="augmentation-sequential"),
+        ],
+    )
+    @pytest.mark.parametrize("transparency", [None, bytes([255, 128])], ids=["rgb", "rgba"])
+    def test_sequential_palette_png_path_matches_pil_5807(self, tmp_path, factory, transparency):
+        path = tmp_path / "palette.png"
+        image = PILImage.new("P", (2, 1))
+        image.putdata([0, 1])
+        image.putpalette([255, 0, 0, 0, 255, 0] + [0] * (256 * 3 - 6))
+        if transparency is not None:
+            image.info["transparency"] = transparency
+        image.save(path)
+
+        module = factory()
+        from_path = module(str(path))
+        with PILImage.open(path) as from_pil:
+            expected = module(from_pil)
+
+        expected_channels = 3 if transparency is None else 4
+        assert from_path.shape[-3:] == (expected_channels, 1, 2)
+        self.assert_close(from_path, expected, rtol=0.0, atol=0.0)
+
     def test_to_tensor_16_bit_path_5207(self, tmp_path):
         path = tmp_path / "rgb16.png"
         write_image(str(path), torch.tensor([65535, 13107, 0], dtype=torch.uint16).view(3, 1, 1).expand(3, 4, 6))
