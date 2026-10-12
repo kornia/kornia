@@ -57,8 +57,8 @@ class HardNet(nn.Module):
           ``1e-5`` to the variance, so for SOSNet and TFeat a low-contrast patch in ``[0, 1]`` can already give a
           different descriptor than the same patch in ``[0, 255]``. HyNet is invariant to a scale only; see its
           Convention block.
-        - The descriptors have unit L2 norm, except TFeat's (see its Convention block); a flat patch can give an
-          all-zero descriptor.
+        - The descriptors have unit L2 norm, except TFeat's (see its Convention block); with ``pretrained=False``,
+          HardNet and HardNet8 map a flat patch to an all-zero descriptor.
         - ``pretrained=False``, the default, leaves the weights randomly initialised.
 
     Args:

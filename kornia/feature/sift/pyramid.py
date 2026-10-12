@@ -83,10 +83,10 @@ class SIFTDescriptorFromPyramid(nn.Module):
           ``num_spatial_bins`` grid is centred at ``c + A (u_j, u_i)`` with ``u_k = (2 k + 1) / num_spatial_bins - 1``,
           at whichever octave the LAF selects: the cell centres of a ``num_spatial_bins``-pixel patch from
           :func:`~kornia.feature.extract_patches_from_pyramid`, row 0 on the frame's :math:`-y` side.
-        - :meth:`orient_and_describe` rotates each valid frame so that its dominant gradient, measured in the frame's
-          own coordinates, points along the frame's :math:`+x` axis, whatever orientation the frame had. This is the
-          orientation convention of :class:`~kornia.feature.LAFOrienter`, and it puts that gradient direction in the
-          descriptor's angle bin 0.
+        - :meth:`orient_and_describe`, unless ``upright=True``, rotates each valid frame so that its dominant
+          gradient, measured in the frame's own coordinates, points along the frame's :math:`+x` axis, whatever
+          orientation the frame had. This is the orientation convention of :class:`~kornia.feature.LAFOrienter`, and it
+          puts that gradient direction in the descriptor's angle bin 0.
         - A frame that :func:`~kornia.feature.laf_is_valid` rejects, such as the all-zero padding LAF, gets an all-zero
           descriptor, with or without RootSIFT, and :meth:`orient_and_describe` returns the frame unchanged.
           :class:`~kornia.feature.SIFTDescriptor` instead describes the flat patch that a zero LAF extracts by ``1e-5``

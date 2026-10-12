@@ -165,15 +165,15 @@ class SIFTDescriptor(nn.Module):
           LAF oriented by :class:`~kornia.feature.LAFOrienter`, the dominant gradient direction it found points along
           :math:`+x`, the centre of angle bin 0.
         - The ``num_spatial_bins`` x ``num_spatial_bins`` grid of spatial cells and the Gaussian weighting window are
-          both centred on the patch centre :math:`(\text{patch\_size} - 1) / 2`; :func:`get_sift_bin_ksize_stride_pad`
+          both centred on the patch centre :math:`(\text{patch\_size} - 1) / 2`; ``get_sift_bin_ksize_stride_pad``
           gives the cell spacing and pooling kernel. A patch mirrored upside down therefore has a descriptor that is a
           permutation of the original's; so does a patch mirrored left to right when ``num_ang_bins`` is even, and a
           ``torch.rot90``-rotated one when ``num_ang_bins`` is a multiple of four, as the default 8 is.
         - The descriptor is L2-normalised, clipped at ``clipval`` and L2-normalised again, so an output entry can
           exceed ``clipval``. With ``rootsift=True``, the default, it is then L1-normalised and square-rooted
-          (RootSIFT); OpenCV's ``cv2.SIFT`` returns plain SIFT, as ``rootsift=False`` does. Either way a row has unit
-          L2 norm, except for a flat patch: it has no gradient and gives an all-zero descriptor, or ``1e-5`` in every
-          entry with RootSIFT.
+          (RootSIFT). Either way a row has unit L2 norm, except for a flat patch: it has no gradient and gives an
+          all-zero descriptor, or ``1e-5`` in every entry with RootSIFT. OpenCV's ``cv2.SIFT`` returns the
+          ``rootsift=False`` descriptor scaled to an L2 norm of about 512 and rounded to integers.
         - An intensity change :math:`a x + b` with :math:`a > 0` gives the same descriptor unless it leaves the patch
           nearly flat, so a patch in ``[0, 1]`` and the same patch in ``[0, 255]`` give one descriptor.
 
@@ -465,7 +465,7 @@ class DenseSIFTDescriptor(nn.Module):
     Convention:
         - Every output pixel is a SIFT descriptor of the image around the input position given below. Its
           ``num_spatial_bins`` x ``num_spatial_bins`` cells are ``spatial_bin_size`` pixels apart, each cell pooling a
-          triangular window of ``spatial_bin_size`` pixels (see :func:`get_sift_pooling_kernel`), so the cells tile an
+          triangular window of ``spatial_bin_size`` pixels (see ``get_sift_pooling_kernel``), so the cells tile an
           extent of ``num_spatial_bins * spatial_bin_size`` pixels. The cell spacing is that of
           :class:`SIFTDescriptor` and of the VLFeat ``vl_dsift`` grid.
         - Output pixel ``(i, j)`` describes the neighbourhood centred on the input position

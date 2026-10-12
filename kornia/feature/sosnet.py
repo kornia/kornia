@@ -42,7 +42,9 @@ class SOSNet(nn.Module):
     "SOSNet:Second Order Similarity Regularization for Local Descriptor Learning".
 
     Convention:
-        See the Convention block on :class:`~kornia.feature.HardNet`.
+        - See the Convention block on :class:`~kornia.feature.HardNet`.
+        - Known defects: with pretrained weights, ``float16`` gives wrong descriptors, because the running variance of
+          the last ``BatchNorm2d`` exceeds the float16 range (`#5828 <https://github.com/kornia/kornia/issues/5828>`_).
 
     Args:
         pretrained: Download and set pretrained weights to the model.
