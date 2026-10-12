@@ -33,26 +33,43 @@ Quickstart
 
    Any kornia operator or ``nn.Sequential`` of operators is a regular ``nn.Module``, so
    ``torch.onnx.export`` turns it into an ONNX file that :class:`~kornia.onnx.sequential.ONNXSequential`
-   can load, chain and re-export. Use the legacy exporter at opset 17 (``dynamo=False``) so the IR
-   version matches the pre-exported Hub operators:
+   can load, chain and re-export. Use the ``torch.export``-based exporter (``dynamo=True``). It is the
+   default of ``torch.onnx.export`` from PyTorch 2.9, which deprecates the TorchScript-based one, and it is
+   the exporter the :ref:`support page <export-support>` measures. Passing ``dynamo=True`` explicitly makes
+   the same call work on PyTorch 2.5 to 2.8, where the TorchScript-based exporter is still the default:
 
    .. code-block:: python
 
       import torch
       import kornia
 
+      batch, height, width = torch.export.Dim("B"), torch.export.Dim("H"), torch.export.Dim("W")
       torch.onnx.export(
           kornia.color.RgbToGrayscale(),
-          torch.rand(1, 3, 256, 512),
+          (torch.rand(2, 3, 256, 512),),
           "gray.onnx",
           input_names=["input"],
           output_names=["output"],
-          dynamic_axes={"input": {0: "B", 2: "H", 3: "W"}, "output": {0: "B", 2: "H", 3: "W"}},
-          opset_version=17,
-          dynamo=False,
+          dynamic_shapes=({0: batch, 2: height, 3: width},),
+          dynamo=True,
       )
 
-   The file plugs into a sequence like any other model: ``ONNXSequential("gray.onnx", ...)``.
+   ``dynamic_shapes`` keeps the batch, height and width dynamic in the exported graph. Give the example
+   input a batch of at least 2: PyTorch 2.5 fixes a dimension of size 1 to that size.
+
+   The file plugs into a sequence like any other model. A fresh export has a newer ONNX IR version and
+   opset than the pre-exported Hub operators, so pass ``auto_ir_version_conversion=True`` to bring every
+   graph to one version before they are merged; without it, the merge fails with ``IR version mismatch``:
+
+   .. code-block:: python
+
+      from kornia.onnx import ONNXSequential
+
+      onnx_seq = ONNXSequential(
+          "gray.onnx",
+          "hf://operators/kornia.geometry.transform.affwarp.Resize_512x512",
+          auto_ir_version_conversion=True,
+      )
 
 3. **Combine ONNX models**
 
@@ -152,7 +169,8 @@ Frequently asked questions
 
 **Can I chain models from different sources?**
 Yes. Models can come from ONNX files, ``onnx.ModelProto`` objects or ``hf://`` references;
-:class:`~kornia.onnx.sequential.ONNXSequential` merges their graphs.
+:class:`~kornia.onnx.sequential.ONNXSequential` merges their graphs. When their ONNX IR versions or opsets
+differ, as a fresh export and a Hub operator do, pass ``auto_ir_version_conversion=True``.
 
 **What if the input/output names of two models do not match?**
 Use the ``io_maps`` argument to say which output feeds which input.
