@@ -48,7 +48,8 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         p: probability of applying the transformation for the whole batch.
             When skipped, the input is returned without padding or cropping.
         size: Desired output size (out_d, out_h, out_w) of the crop.
-            Must be Tuple[int, int, int], then out_d = size[0], out_h = size[1], out_w = size[2].
+            Must be a three-element tuple or list of integers, then
+            out_d = size[0], out_h = size[1], out_w = size[2].
         padding: Optional padding on each border of the image.
             Default is None, i.e no padding. If a sequence of length 6 is provided, it is passed to F.pad as
             left, right, top, bottom, front, back borders respectively.
@@ -86,7 +87,8 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         - its ``p`` is a call-wide gate. Size validation uses the padded input even when the call is skipped: a
           crop larger than the padded volume along any axis, even by one voxel, raises; a crop equal to it is
           valid. An oversized crop raises ``ValueError`` naming ``size`` and the padded input spatial size.
-          An integer or a sequence with other than three elements raises ``TypeError`` naming ``size``;
+          Unsupported size types, sequences with other than three elements, or non-integer elements
+          raise ``TypeError`` naming ``size`` and the required integer ``(D, H, W)`` values;
           unlike :class:`CenterCrop3D`, an integer ``size`` remains unsupported
           (`#4417 <https://github.com/kornia/kornia/issues/4417>`_).
           A valid gated-off call returns the input unchanged -- unpadded, at the input shape rather than ``size`` --
@@ -128,8 +130,8 @@ class RandomCrop3D(GeometricAugmentationBase3D):
     ) -> None:
         # Since PyTorch does not support ragged torch.Tensor. So cropping function happens batch-wisely.
         super().__init__(p=1.0, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
-        if not isinstance(size, (tuple, list)) or len(size) != 3:
-            raise TypeError(f"`size` must be a three-element (D, H, W) sequence. Got {size!r}.")
+        if not isinstance(size, (tuple, list)) or len(size) != 3 or not all(isinstance(value, int) for value in size):
+            raise TypeError(f"`size` must be a three-element (D, H, W) sequence of integers. Got {size!r}.")
         self.flags = {
             "size": size,
             "padding": padding,

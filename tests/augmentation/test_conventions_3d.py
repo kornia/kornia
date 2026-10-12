@@ -506,6 +506,18 @@ class Test3DAugmentationConventions(BaseTester):
             augmentation(size)
         assert repr(size) in str(exc_info.value)
 
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("container", [tuple, list])
+    @pytest.mark.parametrize("axis", [0, 1, 2])
+    @pytest.mark.parametrize("value", [2.0, 2.5, "2", None])
+    def test_random_crop3d_size_elements_must_be_integers_4417(self, container, axis, value):
+        size = [2, 2, 2]
+        size[axis] = value
+        size = container(size)
+        with pytest.raises(TypeError, match=r"size.*\(D, H, W\).*integers") as exc_info:
+            K.RandomCrop3D(size)
+        assert repr(size) in str(exc_info.value)
+
     @pytest.mark.parametrize("augmentation", [K.CenterCrop3D, K.RandomCrop3D])
     @pytest.mark.parametrize("size", [(5, 5, 6), (4, 6, 6), (4, 5, 7)])
     @pytest.mark.parametrize("p", [0.0, 1.0])
