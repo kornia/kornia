@@ -149,6 +149,8 @@ def get_laf_descriptors(
           parameters, every submodule is switched to eval for the call and gets its train/eval mode back afterwards,
           and gradients reach the module's parameters.
         - An empty LAF set gives a :math:`(B, 0, D)` result, ``D`` as wide as a non-empty result, and a warning.
+          That result does not require grad, so no gradient reaches ``img`` or the descriptor's parameters through
+          it.
 
     Args:
         img: image features with shape :math:`(B,C,H,W)`.

@@ -232,11 +232,12 @@ def laf_from_center_scale_ori(
         - This function returns ``A = scale * R``, with ``R = [[cos, sin], [-sin, cos]]`` of ``ori`` in degrees, the
           matrix of :func:`~kornia.geometry.conversions.angle_to_rotation_matrix`. A positive ``ori`` turns the
           patch's x axis counter-clockwise on screen, with image y pointing down.
-        - For any LAF, the scale is :math:`\sqrt{|\det A|}` (:func:`~kornia.feature.get_laf_scale`) and the
-          orientation is ``atan2(a12, a11)`` in degrees (:func:`~kornia.feature.get_laf_orientation`), within
-          ``[-180, 180]``: a LAF made with ``ori = 181`` reads back ``-179``. For :math:`\det A > 0`, ``A = U R``
-          with ``U`` the upright ``A`` that :func:`~kornia.feature.make_upright` returns and ``R`` the rotation
-          matrix of that orientation.
+        - For any LAF, the scale is :math:`\sqrt{|\det A|}` (:func:`~kornia.feature.get_laf_scale`, which adds
+          ``1e-10`` to the determinant) and the orientation is ``atan2(a12, a11)`` in degrees
+          (:func:`~kornia.feature.get_laf_orientation`), within ``[-180, 180]``: a LAF made with ``ori = 181`` reads
+          back ``-179``. For :math:`\det A > 0`, ``A = U R`` with ``U`` the upright ``A`` that
+          :func:`~kornia.feature.make_upright` returns, up to its stabilizers, and ``R`` the rotation matrix of that
+          orientation.
 
     Args:
         xy: :math:`(B, N, 2)`.
@@ -310,6 +311,10 @@ def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
         - For :math:`\det A > 0`, ``A = U R`` with ``R`` the rotation matrix of the LAF's orientation, as in
           :func:`~kornia.feature.laf_from_center_scale_ori`. For :math:`\det A < 0` the reflection is dropped too:
           ``U`` has the determinant :math:`|\det A|`.
+        - The equalities above hold up to two stabilizers: ``U`` is built from the norm of the first row of ``A``
+          plus ``eps``, and from the scale of :func:`~kornia.feature.get_laf_scale`, which adds ``1e-10`` to the
+          determinant. Both are negligible for a LAF in pixels, but a tiny frame such as ``A = diag(1e-12, 1)`` keeps
+          neither its region nor its scale. The centre and the zero orientation are exact.
         - The all-zero LAF that pads an unfilled detector slot (see :func:`~kornia.feature.laf_is_filled`) is
           returned unchanged, so the padding stays recognizable.
         - A float16 LAF is rectified in float32, so that a LAF whose entry products leave the float16 range does not
@@ -368,8 +373,8 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
         - ``A`` is the lower-triangular matrix with a positive diagonal and ``A @ A.T == inverse([[a, b], [b, c]])``:
           the Cholesky factor of the inverse ellipse matrix, as VLFeat's ``vl_frame2oell.m`` builds it, not the
           symmetric inverse square root (the two differ by a rotation). Either one maps the unit circle onto the
-          ellipse; the lower-triangular one is what :func:`~kornia.feature.make_upright` returns for any LAF of that
-          region.
+          ellipse; the lower-triangular one is what :func:`~kornia.feature.make_upright` returns, up to its
+          stabilizers, for any LAF of that region.
         - The conversion checks only the shape :math:`(B, N, 5)`; it does not check the ellipse values and does not
           raise on them. An ellipse that is degenerate or indefinite (``a``, ``c`` or ``a * c - b * b`` not positive)
           is not a bounded region; its LAF has ``inf`` or ``nan`` entries, or huge finite ones where rounding leaves
@@ -535,12 +540,13 @@ def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     the conversion stays finite instead of dividing by zero.
 
     Convention:
-        - The centre becomes ``(x / (W - 1), y / (H - 1))``, which lies in ``[0, 1]`` for a centre inside the image.
-          ``A`` is divided by ``min(H - 1, W - 1)`` as a whole, not per axis, and can exceed 1.
-        - Taken to an image of another size with :func:`~kornia.feature.denormalize_laf`, a normalized LAF maps
-          corner to corner: ``x`` becomes ``x (W' - 1) / (W - 1)``. A resize with ``align_corners=False``, the
-          default of :func:`~kornia.geometry.transform.resize` in bilinear mode, maps pixel ``x`` to
-          ``(x + 0.5) W' / W - 0.5`` instead, so the two disagree away from the image centre.
+        - The centre becomes ``(x / max(W - 1, 1), y / max(H - 1, 1))``, which lies in ``[0, 1]`` for
+          ``0 <= x <= W - 1`` and ``0 <= y <= H - 1``. ``A`` is divided by the smaller of the two denominators as a
+          whole, not per axis, and can exceed 1.
+        - Taken to an image of another size with :func:`~kornia.feature.denormalize_laf`, ``x`` becomes
+          ``x max(W' - 1, 1) / max(W - 1, 1)``, which maps corner to corner when neither width is 1. A resize with
+          ``align_corners=False``, the default of :func:`~kornia.geometry.transform.resize` in bilinear mode, maps
+          pixel ``x`` to ``(x + 0.5) W' / W - 0.5`` instead, so the two disagree away from the image centre.
 
     Args:
         LAF: :math:`(B, N, 2, 3)`
@@ -849,8 +855,9 @@ def extract_patches_from_pyramid(
           returns the image crop around that pixel.
         - The pyramid level is ``floor(log2(2 s / PS))`` for the scale ``s = sqrt(|det A|)``, clamped to the levels
           that exist: :func:`~kornia.geometry.transform.pyrdown` builds them while the shorter side stays at least
-          ``PS``, so a larger LAF is sampled from the coarsest level that can still provide a full patch. A level
-          samples the same image positions as level 0, in its own pixels.
+          ``PS``, so a larger LAF is sampled from the coarsest level that can still provide a full patch. Level 0,
+          the image itself, always exists: an image whose shorter side is below ``PS`` has only that level, so even a
+          large LAF is sampled from it. A level samples the same image positions as level 0, in its own pixels.
         - A cell outside the image reads the nearest border pixel of the level it samples.
         - The patches have the image's dtype. The sampling runs in the promoted dtype of the image and the LAF, and
           in at least ``float32``. A LAF with a non-finite entry gives a zero patch.

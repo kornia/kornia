@@ -1123,8 +1123,8 @@ full rules.
 - The region of a LAF is the ellipse ``c + A u`` over the unit vectors ``u``, and a ``PS x PS`` patch covers the
   square ``c + A [-1, 1]^2``: patch row 0 is on the patch's ``-y`` side, the top for an upright LAF, and the columns
   run along the patch's x axis.
-- :func:`~kornia.feature.normalize_laf` divides the centre by ``W - 1`` and ``H - 1`` and ``A`` by
-  ``min(H - 1, W - 1)``; its Convention block covers moving a LAF to an image of another size.
+- :func:`~kornia.feature.normalize_laf` divides the centre by ``max(W - 1, 1)`` and ``max(H - 1, 1)`` and ``A`` by
+  the smaller of the two; its Convention block covers moving a LAF to an image of another size.
 - kornia's LAF detectors pad the slots that no detection filled with an all-zero LAF and a zero response, so that a
   batch is one tensor. Drop those slots with :func:`~kornia.feature.laf_is_filled` before matching.
 
