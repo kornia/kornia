@@ -31,11 +31,12 @@ def image_to_tensor(image: Any, keepdim: bool = True) -> torch.Tensor:
     Args:
         image: image of the form :math:`(H, W, C)`, :math:`(H, W)` or
             :math:`(B, H, W, C)`.
-        keepdim: If ``False``, add a batch dimension: the output is :math:`(1, C, H, W)`.
+        keepdim: If ``False``, a 2-D or 3-D input gets a leading batch axis, :math:`(1, C, H, W)`. A 4-D input is
+            always :math:`(B, C, H, W)`.
 
     Returns:
-        tensor of the form :math:`(B, C, H, W)` if keepdim is ``False``,
-            :math:`(C, H, W)` otherwise.
+        tensor of the form :math:`(C, H, W)` for a 2-D or 3-D input with ``keepdim=True`` (a 2-D input has
+        :math:`C = 1`), and :math:`(B, C, H, W)` otherwise.
 
     Raises:
         TypeError: if ``image`` is not a ``numpy.ndarray``.
@@ -234,10 +235,11 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False, force_contiguou
 
 
 class ImageToTensor(nn.Module):
-    """Converts a numpy image to a PyTorch 4d tensor image.
+    """Convert a NumPy image to a PyTorch tensor image with :func:`image_to_tensor`.
 
     Args:
-        keepdim: If ``False`` unsqueeze the input image to match the shape :math:`(B, H, W, C)`.
+        keepdim: If ``False``, a 2-D or 3-D input gets a leading batch axis, :math:`(1, C, H, W)`. A 4-D input is
+            always :math:`(B, C, H, W)`.
 
     """
 
