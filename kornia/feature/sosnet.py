@@ -41,6 +41,9 @@ class SOSNet(nn.Module):
     This is based on the original code from paper
     "SOSNet:Second Order Similarity Regularization for Local Descriptor Learning".
 
+    Convention:
+        See the Convention block on :class:`~kornia.feature.HardNet`.
+
     Args:
         pretrained: Download and set pretrained weights to the model.
 

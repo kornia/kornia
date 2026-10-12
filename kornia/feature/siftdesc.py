@@ -156,6 +156,27 @@ def get_sift_bin_ksize_stride_pad(patch_size: int, num_spatial_bins: int) -> Tup
 class SIFTDescriptor(nn.Module):
     r"""nn.Module which computes SIFT descriptors of given patches.
 
+    Convention:
+        - The input is a stack of grayscale patches, ``patch_size`` pixels square (41 by default; another size
+          raises), with rows along :math:`+y` and columns along :math:`+x`, as
+          :func:`~kornia.feature.extract_patches_from_pyramid` samples them from LAFs.
+        - The output is in kornia's angle-major SIFT layout, which
+          :func:`~kornia.feature.convert_sift_descriptor_layout` defines and reorders to OpenCV's. In the patch of a
+          LAF oriented by :class:`~kornia.feature.LAFOrienter`, the dominant gradient direction it found points along
+          :math:`+x`, the centre of angle bin 0.
+        - The ``num_spatial_bins`` x ``num_spatial_bins`` grid of spatial cells and the Gaussian weighting window are
+          both centred on the patch centre :math:`(\text{patch\_size} - 1) / 2`; :func:`get_sift_bin_ksize_stride_pad`
+          gives the cell spacing and pooling kernel. A patch mirrored upside down therefore has a descriptor that is a
+          permutation of the original's; so does a patch mirrored left to right when ``num_ang_bins`` is even, and a
+          ``torch.rot90``-rotated one when ``num_ang_bins`` is a multiple of four, as the default 8 is.
+        - The descriptor is L2-normalised, clipped at ``clipval`` and L2-normalised again, so an output entry can
+          exceed ``clipval``. With ``rootsift=True``, the default, it is then L1-normalised and square-rooted
+          (RootSIFT); OpenCV's ``cv2.SIFT`` returns plain SIFT, as ``rootsift=False`` does. Either way a row has unit
+          L2 norm, except for a flat patch: it has no gradient and gives an all-zero descriptor, or ``1e-5`` in every
+          entry with RootSIFT.
+        - An intensity change :math:`a x + b` with :math:`a > 0` gives the same descriptor unless it leaves the patch
+          nearly flat, so a patch in ``[0, 1]`` and the same patch in ``[0, 255]`` give one descriptor.
+
     Args:
         patch_size: Input patch size in pixels.
         num_ang_bins: Number of angular bins.
@@ -169,15 +190,6 @@ class SIFTDescriptor(nn.Module):
     Shape:
         - Input: :math:`(B, 1, \text{patch_size}, \text{patch_size})`
         - Output: :math:`(B, \text{num_ang_bins * num_spatial_bins ** 2})`
-
-    The output is in kornia's angle-major SIFT layout; :func:`~kornia.feature.convert_sift_descriptor_layout` reorders
-    it to OpenCV's.
-
-    The ``num_spatial_bins`` x ``num_spatial_bins`` grid of spatial cells and the Gaussian weighting window are both
-    centred on the patch centre :math:`(\text{patch\_size} - 1) / 2`; :func:`get_sift_bin_ksize_stride_pad` gives the
-    cell spacing and pooling kernel. A patch mirrored upside down therefore has a descriptor that is a permutation of
-    the original's; so does a patch mirrored left to right when ``num_ang_bins`` is even, and a ``torch.rot90``-rotated
-    one when ``num_ang_bins`` is a multiple of four, as the default 8 is.
 
     Example:
         >>> input = torch.rand(23, 1, 32, 32)
@@ -376,8 +388,9 @@ def convert_sift_descriptor_layout(
     of the frame, with :math:`A` = ``num_ang_bins`` and :math:`S` = ``num_spatial_bins``:
 
     - ``"kornia"``, the layout of every kornia SIFT descriptor (:class:`~kornia.feature.SIFTDescriptor`,
-      :class:`~kornia.feature.SIFTDescriptorFromPyramid`, and :class:`~kornia.feature.SIFTFeature` and
-      :class:`~kornia.feature.SIFTFeatureScaleSpace` with either ``descriptor_backend``): angle-major, value
+      :class:`~kornia.feature.SIFTDescriptorFromPyramid`, the channels of :class:`~kornia.feature.DenseSIFTDescriptor`,
+      and :class:`~kornia.feature.SIFTFeature` and :class:`~kornia.feature.SIFTFeatureScaleSpace` with either
+      ``descriptor_backend``): angle-major, value
       :math:`(a, y, x)` at index :math:`a S^2 + y S + x`. Bin :math:`a` is centred on the direction
       :math:`2 \pi a / A`, measured from :math:`+x` towards :math:`+y`, with :math:`y` growing downwards as image
       rows do.
@@ -449,11 +462,23 @@ def sift_describe(
 class DenseSIFTDescriptor(nn.Module):
     """nn.Module, which computes SIFT descriptor densely over the image.
 
-    Every output pixel is a SIFT descriptor of the image around the input position given below. Its
-    ``num_spatial_bins`` x ``num_spatial_bins`` cells are ``spatial_bin_size`` pixels apart, each cell pooling a
-    triangular window of ``spatial_bin_size`` pixels (see :func:`get_sift_pooling_kernel`), so the cells tile an
-    extent of ``num_spatial_bins * spatial_bin_size`` pixels. The cell spacing is that of :class:`SIFTDescriptor` and
-    of the VLFeat ``vl_dsift`` grid.
+    Convention:
+        - Every output pixel is a SIFT descriptor of the image around the input position given below. Its
+          ``num_spatial_bins`` x ``num_spatial_bins`` cells are ``spatial_bin_size`` pixels apart, each cell pooling a
+          triangular window of ``spatial_bin_size`` pixels (see :func:`get_sift_pooling_kernel`), so the cells tile an
+          extent of ``num_spatial_bins * spatial_bin_size`` pixels. The cell spacing is that of
+          :class:`SIFTDescriptor` and of the VLFeat ``vl_dsift`` grid.
+        - Output pixel ``(i, j)`` describes the neighbourhood centred on the input position
+          ``x = j * stride - padding + (num_spatial_bins - 1) * spatial_bin_size / 2 - e / 2`` (``y`` likewise from
+          ``i``), in pixel-centre coordinates where the first input pixel is at 0, with ``e`` 1 for an even
+          ``spatial_bin_size`` and 0 for an odd one. The centre lies on a pixel when
+          ``(num_spatial_bins - 1) * spatial_bin_size`` and ``e`` have the same parity, and half way between two
+          pixels otherwise.
+        - The channels are in kornia's angle-major SIFT layout, channel
+          ``a * num_spatial_bins**2 + cy * num_spatial_bins + cx`` for angle bin ``a`` and cell ``(cy, cx)``, the entry
+          order of :class:`SIFTDescriptor`; move them last before :func:`convert_sift_descriptor_layout`. Clipping,
+          RootSIFT (the default) and the output for a flat neighbourhood are those of :class:`SIFTDescriptor` (see its
+          Convention block), but the cells are not weighted by a Gaussian window.
 
     Args:
         num_ang_bins: Number of angular bins. (8 is default)
@@ -474,12 +499,6 @@ class DenseSIFTDescriptor(nn.Module):
         - Output: (B, num_ang_bins * num_spatial_bins ** 2, H_out, W_out), with
           ``H_out = (H + e + 2 * padding - (num_spatial_bins - 1) * spatial_bin_size - 1) // stride + 1`` and
           ``W_out`` likewise, where ``e`` is 1 for an even ``spatial_bin_size`` and 0 for an odd one.
-
-    Output pixel ``(i, j)`` describes the neighbourhood centred on the input position
-    ``x = j * stride - padding + (num_spatial_bins - 1) * spatial_bin_size / 2 - e / 2`` (``y`` likewise from
-    ``i``), in pixel-centre coordinates where the first input pixel is at 0. The centre lies on a pixel when
-    ``(num_spatial_bins - 1) * spatial_bin_size`` and ``e`` have the same parity, and half way between two pixels
-    otherwise.
 
     Examples::
         >>> input =  torch.rand(2, 1, 200, 300)
