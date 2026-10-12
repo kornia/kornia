@@ -68,6 +68,21 @@ class TestScaledPolynomialPowers(BaseTester):
 
 
 class TestFindEssential(BaseTester):
+    def test_least_squares_basis_backward_storage_scales_with_points(self, device):
+        design = torch.rand(1, 128, 9, device=device, dtype=torch.float64, requires_grad=True)
+        saved_sizes = []
+
+        def pack(tensor):
+            saved_sizes.append(tensor.numel())
+            return tensor
+
+        with torch.autograd.graph.saved_tensors_hooks(pack, lambda tensor: tensor):
+            basis = epi.essential._least_squares_basis(design)
+            basis.square().sum().backward()
+
+        assert torch.isfinite(design.grad).all()
+        assert max(saved_sizes) <= 4 * design.numel()
+
     def test_smoke(self, device, dtype):
         points1 = torch.rand(1, 5, 2, device=device, dtype=dtype)
         points2 = torch.rand(1, 5, 2, device=device, dtype=dtype)

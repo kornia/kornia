@@ -117,6 +117,22 @@ class TestSolvePnpDlt(BaseTester):
         intrinsics, _, world_points, img_points = self._get_test_data(num_points, device, torch.float64)
         self.gradcheck(kornia.geometry.solve_pnp_dlt, (world_points, img_points, intrinsics))
 
+    def test_backward_storage_scales_with_points(self, device):
+        intrinsics, _, world_points, img_points = self._get_test_data(64, device, torch.float64)
+        world_points.requires_grad_()
+        saved_sizes = []
+
+        def pack(tensor):
+            saved_sizes.append(tensor.numel())
+            return tensor
+
+        with torch.autograd.graph.saved_tensors_hooks(pack, lambda tensor: tensor):
+            pose = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics)
+            pose.square().sum().backward()
+
+        assert torch.isfinite(world_points.grad).all()
+        assert max(saved_sizes) <= 16 * world_points.numel()
+
     @pytest.mark.parametrize("num_points", [8])
     def test_gradcheck_weights(self, num_points, device):
         intrinsics, _, world_points, img_points = self._get_test_data(num_points, device, torch.float64)
