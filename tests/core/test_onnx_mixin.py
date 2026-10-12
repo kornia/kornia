@@ -235,6 +235,16 @@ class TestONNXRuntimeMixin(BaseTester):
         x = torch.rand(1, 3, 4, 5)
         self.assert_close(torch.from_numpy(ONNXSequential(op, session_options=_options())(x.numpy())[0]), x.sigmoid())
 
+    def test_runtime_rejects_wrong_input_count(self, op):
+        from kornia.onnx import ONNXSequential
+
+        runtime = ONNXSequential(op)
+        x = torch.rand(1, 3, 4, 5).numpy()
+        with pytest.raises(ValueError, match="Expected 1 ONNX inputs, got 0"):
+            runtime()
+        with pytest.raises(ValueError, match="Expected 1 ONNX inputs, got 2"):
+            runtime(x, x)
+
     def test_add_metadata_overwrites_existing_keys(self, op):
         keys = [prop.key for prop in op.metadata_props]
         assert sorted(keys) == ["source", "version"]
