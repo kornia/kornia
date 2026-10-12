@@ -412,6 +412,15 @@ class TestColourKeyPng:
         # Pillow 12.3 Image.open(path).convert("RGBA") alpha: [[0, 255, 0], [255, 0, 255]]
         assert load_image(path, ImageLoadType.RGBA8)[3].tolist() == [[0, 255, 0], [255, 0, 255]]
 
+    def test_gray_key_composites_over_white_in_gray8(self, tmp_path: Path) -> None:
+        path = tmp_path / "gray_key.png"
+        write_png_with_trns(
+            path, np.array([[10, 20, 10], [20, 10, 20]], dtype=np.uint8), colour_type=0, trns=struct.pack(">H", 10)
+        )
+        # the keyed 10s composite over white to 255; the opaque 20s keep their value. Pillow 12.3:
+        # Image.alpha_composite(Image.new("RGBA", (3, 2), "white"), Image.open(path).convert("RGBA")).convert("L")
+        assert load_image(path, ImageLoadType.GRAY8)[0].tolist() == [[255, 20, 255], [20, 255, 20]]
+
     def test_rgb_key_composites_over_white_in_rgb8(self, tmp_path: Path) -> None:
         pixels = np.zeros((2, 3, 3), dtype=np.uint8)
         pixels[0, 0] = (1, 2, 3)
@@ -450,10 +459,16 @@ class TestIoArgumentChecks:
         with pytest.raises(BaseError, match="ImageLoadType"):
             load_image(png_image, desired_type)
 
-    @pytest.mark.parametrize("quality", [-1, 101, 80.5])
+    @pytest.mark.parametrize("quality", [-1, 101, 80.5, True, np.int64(101)])
     def test_write_image_rejects_quality_outside_0_100(self, tmp_path: Path, quality) -> None:
         with pytest.raises(BaseError, match="quality"):
             write_image(tmp_path / "q.jpg", create_random_img8_torch(4, 5, 3), quality=quality)
+
+    @pytest.mark.parametrize("quality", [0, 100, np.int64(90)])
+    def test_write_image_accepts_any_integer_quality_in_0_100(self, tmp_path: Path, quality) -> None:
+        path = tmp_path / "q.jpg"
+        write_image(path, create_random_img8_torch(4, 5, 3), quality=quality)
+        assert load_image(path, ImageLoadType.RGB8).shape == (3, 4, 5)
 
     def test_write_image_rejects_a_non_tensor(self, tmp_path: Path) -> None:
         with pytest.raises(BaseError):

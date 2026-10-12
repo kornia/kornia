@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import errno
+import numbers
 import os
 from enum import Enum
 from pathlib import Path
@@ -363,7 +364,8 @@ def write_image(path_file: str | Path, image: torch.Tensor, quality: int = 80) -
     Args:
         path_file: Path with a .jpg, .jpeg, .png, .tif or .tiff extension, in any letter case.
         image: Image torch.Tensor with shape :math:`(C, H, W)` or :math:`(H, W)`; ``C`` is 1 or 3, or 4 for PNG.
-        quality: The quality of the JPEG encoding. If the file extension is .png, .tif or .tiff, the quality is ignored.
+        quality: The quality of the JPEG encoding, an integer in [0, 100]. If the file extension is .png, .tif or
+            .tiff, the quality is ignored.
 
     Return:
         None.
@@ -373,7 +375,7 @@ def write_image(path_file: str | Path, image: torch.Tensor, quality: int = 80) -
 
     KORNIA_CHECK_IS_TENSOR(image)
     KORNIA_CHECK(
-        isinstance(quality, int) and not isinstance(quality, bool) and 0 <= quality <= 100,
+        isinstance(quality, numbers.Integral) and not isinstance(quality, bool) and 0 <= quality <= 100,
         f"quality must be an integer in [0, 100], got {quality!r}.",
     )
     suffix = path_file.suffix.lower()
