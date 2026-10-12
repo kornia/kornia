@@ -24,12 +24,14 @@ import torch
 import torch.nn.functional as F
 
 from kornia.augmentation import RandomAffine
+from kornia.core.utils import _torch_grid_sample
 from kornia.geometry import DepthWarper, PinholeCamera, warp_frame_depth
 from kornia.geometry.grid import create_meshgrid
 from kornia.geometry.transform import (
     HomographyWarper,
     elastic_transform2d,
     homography_warp,
+    homography_warp3d,
     remap,
     rotate,
     warp_affine,
@@ -38,6 +40,7 @@ from kornia.geometry.transform import (
     warp_perspective,
     warp_perspective3d,
 )
+from kornia.geometry.transform.imgwarp import _runs_in_float32
 
 from testing.base import BaseTester
 
@@ -168,15 +171,32 @@ class TestCPUHalfSampling(BaseTester):
             return warp_perspective3d(
                 volume, matrix.to(param_dtype).to(image), (64, 32, 32), align_corners=align_corners
             )
+        if operation == "homography3d":
+            volume = image[:, :1].reshape(batch, 1, 64, 32, 32)
+            matrix = torch.eye(4, dtype=torch.float64)[None]
+            matrix[:, :3, :3] = torch.tensor([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]], dtype=torch.float64)
+            matrix[:, :3, 3] = torch.tensor([0.1, -0.05, 0.02], dtype=torch.float64)
+            return homography_warp3d(
+                volume, matrix.to(param_dtype).to(image), (64, 32, 32), align_corners=align_corners
+            )
         raise AssertionError(operation)
 
     @pytest.mark.parametrize(
         "operation",
-        ["affine", "affine_fill", "perspective", "homography_pixel", "remap_pixel", "affine3d", "perspective3d"],
+        [
+            "affine",
+            "affine_fill",
+            "perspective",
+            "homography_pixel",
+            "remap_pixel",
+            "affine3d",
+            "perspective3d",
+            "homography3d",
+        ],
     )
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_cpu_half_warp_matches_float64(self, device, dtype, operation, align_corners):
-        # torch's CPU half grid_sample is corrupt from about 128 px, and a half grid is off by up to half a
+        # torch's CPU half grid_sample is corrupt from about 128 px, and a half grid is off by more than half a
         # pixel at 256 px in bfloat16 (#5751): the matrix warps and remap run in float32, so they agree with a
         # float64 run of the same half inputs to the output rounding.
         if device.type != "cpu" or dtype not in (torch.float16, torch.bfloat16):
@@ -254,3 +274,20 @@ class TestCPUHalfSampling(BaseTester):
             warp_affine(image, matrix[:, :2], (4, 4))
         with pytest.raises(RuntimeError, match=r"(dtype|scalar type|grid_sampler_2d_cpu not implemented)"):
             warp_perspective(image, matrix, (4, 4))
+
+    @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16], ids=["float16", "bfloat16"])
+    def test_non_cpu_half_keeps_its_own_dtype(self, half):
+        # Only CPU half warps move to float32 (#5751); other devices keep their own half kernels. The meta
+        # device stands in for them, so every CI leg checks the device gate.
+        image = torch.zeros(1, 1, 4, 4, device="meta", dtype=half)
+        grid = torch.zeros(1, 4, 4, 2, device="meta", dtype=half)
+        assert not _runs_in_float32(image, image[:, 0])
+        seen = []
+
+        def record(src, *args, **kwargs):
+            seen.append(src.dtype)
+            return src
+
+        with patch.object(F, "grid_sample", side_effect=record):
+            _torch_grid_sample(image, grid)
+        assert seen == [half]

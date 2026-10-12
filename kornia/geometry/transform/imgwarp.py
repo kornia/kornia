@@ -100,8 +100,8 @@ def _runs_in_float32(src: torch.Tensor, other: torch.Tensor) -> bool:
 
     torch's CPU float16/bfloat16 ``grid_sample`` returns wrong values, NaN and up to 3.4e38 once
     the source is about 128 px or larger (torch 2.9.1 and 2.14), and torch 2.5.1 has no such kernel
-    at all; a half-precision sampling grid is also off by up to half a pixel at 256 px in bfloat16
-    (#5751). A CPU half warp therefore runs in float32 and returns the input dtype, as the LAF
+    at all; a half-precision sampling grid is also off by more than half a pixel at 256 px in
+    bfloat16 (#5751). A CPU half warp therefore runs in float32 and returns the input dtype, as the LAF
     patch extractors already do. A mismatched ``other`` (transform or map) keeps the half path, so
     it is rejected exactly as before. Other devices and dtypes are unaffected.
     """
