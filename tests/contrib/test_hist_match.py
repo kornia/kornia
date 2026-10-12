@@ -53,6 +53,21 @@ class TestHistMatch(BaseTester):
         assert exp.shape == out.shape
         self.assert_close(out, exp, rtol=1e-4, atol=1e-4)
 
+    def test_histmatch_stays_in_template_range(self, device, dtype):
+        # The lowest source quantile (1/4) is below the template's (3/4): it maps to the template minimum, as np.interp
+        # does in the referenced implementation, instead of being extrapolated below it.
+        src = torch.tensor([0.0, 1.0, 2.0, 3.0], device=device, dtype=dtype)
+        dst = torch.tensor([10.0, 10.0, 10.0, 20.0], device=device, dtype=dtype)
+        out = kornia.contrib.histogram_matching(src, dst)
+        exp = torch.tensor([10.0, 10.0, 10.0, 20.0], device=device, dtype=dtype)
+        self.assert_close(out, exp)
+
+    def test_histmatch_constant_template(self, device, dtype):
+        src = torch.tensor([0.0, 1.0, 2.0, 3.0], device=device, dtype=dtype)
+        dst = torch.full((5,), 7.0, device=device, dtype=dtype)
+        out = kornia.contrib.histogram_matching(src, dst)
+        self.assert_close(out, torch.full_like(src, 7.0))
+
     @pytest.mark.skip(reason="not differentiable now.")
     def test_grad(self, device):
         B, C, H, W = 1, 3, 32, 32
