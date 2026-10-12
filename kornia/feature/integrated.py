@@ -138,11 +138,17 @@ def get_laf_descriptors(
 ) -> torch.Tensor:
     r"""Get local descriptors, corresponding to LAFs (keypoints).
 
-    The descriptor runs in eval mode, with its floating-point parameters and buffers cast to the device and dtype of
-    ``img`` for the call (a TorchScript module is called on a cast copy). The module keeps its device, dtype and
-    parameters, every submodule is switched to eval for the call and gets its train/eval mode back afterwards, and
-    gradients reach the module's parameters.
-    SOSNet and HyNet retain their final BatchNorm statistics in float32 for float16 images.
+    Convention:
+        - The descriptor sees the patches of :func:`~kornia.feature.extract_patches_from_pyramid` at ``patch_size``;
+          see its Convention block for how they are sampled. ``patch_size`` is this argument, 32 by default, and is
+          not read from the descriptor, so it has to be a size the descriptor accepts.
+        - With ``grayscale_descriptor=True``, a 3-channel image is converted to grayscale first.
+        - The descriptor runs in eval mode, with its floating-point parameters and buffers cast to the device and
+          dtype of ``img`` for the call (a TorchScript module is called on a cast copy). SOSNet and HyNet retain their
+          final BatchNorm statistics in float32 for float16 images. The module keeps its device, dtype and
+          parameters, every submodule is switched to eval for the call and gets its train/eval mode back afterwards,
+          and gradients reach the module's parameters.
+        - An empty LAF set gives a :math:`(B, 0, D)` result, ``D`` as wide as a non-empty result, and a warning.
 
     Args:
         img: image features with shape :math:`(B,C,H,W)`.
@@ -150,7 +156,8 @@ def get_laf_descriptors(
         patch_descriptor: patch descriptor module, e.g. :class:`~kornia.feature.SIFTDescriptor`
             or :class:`~kornia.feature.HardNet`.
         patch_size: patch size in pixels, which descriptor expects.
-        grayscale_descriptor: True if ``patch_descriptor`` expects single-channel image.
+        grayscale_descriptor: True if ``patch_descriptor`` expects single-channel image; a 3-channel ``img`` is
+            then converted to grayscale.
 
     Returns:
         Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
@@ -186,9 +193,11 @@ def get_laf_descriptors(
 class LAFDescriptor(nn.Module):
     r"""nn.Module to get local descriptors, corresponding to LAFs (keypoints).
 
-    Internally uses :func:`~kornia.feature.get_laf_descriptors`: the descriptor runs in eval mode with its parameters
-    cast to the image's device and dtype for the call; the module keeps its device, dtype and parameters, and its
-    train/eval modes are restored after the call.
+    Convention:
+        See the Convention block on :func:`~kornia.feature.get_laf_descriptors`, which ``forward`` calls with this
+        module's ``patch_size`` and ``grayscale_descriptor``. The default descriptor is a pretrained
+        :class:`~kornia.feature.HardNet` on ``32 x 32`` grayscale patches; :class:`~kornia.feature.SIFTDescriptor`
+        defaults to 41-pixel patches, so pass ``patch_size=41`` with it.
 
     Args:
         patch_descriptor_module: patch descriptor module, e.g. :class:`~kornia.feature.SIFTDescriptor`
@@ -220,10 +229,7 @@ class LAFDescriptor(nn.Module):
         )
 
     def forward(self, img: torch.Tensor, lafs: torch.Tensor) -> torch.Tensor:
-        r"""Three stage local feature detection.
-
-        First the location and scale of interest points are determined by
-        detect function. Then affine shape and orientation.
+        r"""Describe the given LAFs with :func:`~kornia.feature.get_laf_descriptors`.
 
         Args:
             img: image features with shape :math:`(B,C,H,W)`.
