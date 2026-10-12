@@ -35,7 +35,7 @@ Quickstart
    ``torch.onnx.export`` turns it into an ONNX file that :class:`~kornia.onnx.sequential.ONNXSequential`
    can load, chain and re-export. Use the ``torch.export``-based exporter (``dynamo=True``). It is the
    default of ``torch.onnx.export`` from PyTorch 2.9, which deprecates the TorchScript-based one, and it is
-   the exporter the :ref:`support page <export-support>` measures. Passing ``dynamo=True`` explicitly makes
+   the exporter the :ref:`export survey <export-support>` measures. Passing ``dynamo=True`` explicitly makes
    the same call work on PyTorch 2.5 to 2.8, where the TorchScript-based exporter is still the default:
 
    .. code-block:: python
