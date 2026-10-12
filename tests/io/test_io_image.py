@@ -666,7 +666,8 @@ class TestSampleImages:
             mock_urlopen.assert_not_called()
         assert not cache.exists()
 
-    def test_concurrent_downloads_of_the_same_image_both_succeed(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize("refuse_replacing_a_file", [False, True], ids=["posix_replace", "windows_replace"])
+    def test_concurrent_downloads_of_the_same_image_both_succeed(self, tmp_path: Path, refuse_replacing_a_file) -> None:
         import os
         import threading
         from concurrent.futures import ThreadPoolExecutor
@@ -680,11 +681,16 @@ class TestSampleImages:
         payload = source.read_bytes()
         cache = tmp_path / "cache"
         both_written = threading.Barrier(2, timeout=10)
+        one_replace_at_a_time = threading.Lock()
         real_replace = os.replace
 
         def replace_after_both_writes(src, dst):
             both_written.wait()  # both calls have missed the cache and finished writing before either replaces
-            return real_replace(src, dst)
+            with one_replace_at_a_time:
+                if refuse_replacing_a_file and os.path.exists(dst):
+                    # Windows refuses to replace a file that the call which put it there is reading
+                    raise PermissionError(13, "Access is denied", dst)
+                return real_replace(src, dst)
 
         def fetch():
             return get_sample_images(paths=["https://example.invalid/x/same.png"], cache_dir=str(cache))[0]
@@ -751,6 +757,20 @@ class TestDownloadImage:
             download_image(self.URL, str(dst))
         assert dst.read_bytes() == payload
         assert sorted(p.name for p in tmp_path.iterdir()) == ["panda.jpg"]  # no temporary file is left behind
+
+    def test_a_refused_replace_without_a_copy_raises_and_leaves_no_file(self, tmp_path):
+        from unittest import mock
+
+        from kornia.io.sample import download_image
+
+        with (
+            mock.patch("kornia.io.sample.urlopen") as mock_urlopen,
+            mock.patch("kornia.io.sample.os.replace", side_effect=PermissionError(13, "Access is denied")),
+        ):
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = b"payload"
+            with pytest.raises(PermissionError):
+                download_image(self.URL, str(tmp_path / "panda.jpg"))
+        assert list(tmp_path.iterdir()) == []  # neither the destination nor the temporary file
 
     def test_the_destination_appears_only_once_the_write_is_complete(self, tmp_path):
         from unittest import mock
