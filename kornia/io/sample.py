@@ -117,6 +117,8 @@ def get_sample_images(
         url = urlparse(path)
         if url.scheme in ("http", "https"):
             name = os.path.basename(url.path)  # the cache file is named without the URL's query or fragment
+            if not name:
+                raise ValueError(f"Cannot derive a cache file name from URL `{path}`: its path names no file.")
             fname = os.path.join(cache_dir, name)
             if not os.path.exists(fname) and download:
                 os.makedirs(cache_dir, exist_ok=True)

@@ -651,6 +651,21 @@ class TestSampleImages:
         assert sorted(p.name for p in cache.iterdir()) == ["palette.png"]
         assert (out[0][:, 0, 0] * 255).round().tolist() == [255.0, 0.0, 0.0]  # index 2 is red: the palette applies
 
+    @pytest.mark.parametrize(
+        "url", ["https://example.invalid", "https://example.invalid/", "https://example.invalid/dir/"]
+    )
+    def test_a_url_without_a_file_name_raises_before_downloading(self, tmp_path: Path, url) -> None:
+        from unittest import mock
+
+        from kornia.io import get_sample_images
+
+        cache = tmp_path / "cache"
+        with mock.patch("kornia.io.sample.urlopen") as mock_urlopen:
+            with pytest.raises(ValueError, match=re.escape(url)):
+                get_sample_images(paths=[url], cache_dir=str(cache))
+            mock_urlopen.assert_not_called()
+        assert not cache.exists()
+
     def test_a_download_that_is_not_an_image_is_not_cached(self, tmp_path: Path) -> None:
         from unittest import mock
 
