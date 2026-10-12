@@ -57,8 +57,12 @@ class PatchAffineShapeEstimator(nn.Module):
         - The output :math:`(a, b, c)` is :math:`(\langle g_x^2 \rangle, \langle g_x g_y \rangle,
           \langle g_y^2 \rangle)`, the means over the patch of the products of its Sobel gradients, x right and
           y down, each gradient weighted by a Gaussian centred on the patch. It is divided by its largest entry, which
-          is therefore 1. A flat patch gives :math:`(1, 0, 1)`, a circle.
+          is therefore 1. When two of the three entries are below ``eps`` before that division -- a flat or
+          low-contrast patch, or one whose gradient lies along an image axis -- the output is :math:`(1, 0, 1)`, a
+          circle.
         - The patch must be ``patch_size`` pixels square.
+        - Known defects: a negative :math:`b` counts as below ``eps``, so a patch and its mirror image can get a thin
+          ellipse and a circle (`#5824 <https://github.com/kornia/kornia/issues/5824>`_).
 
     Args:
         patch_size: the input image patch size.

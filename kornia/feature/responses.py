@@ -69,10 +69,9 @@ def harris_response(
           in intensity per pixel for both modes, and :math:`W` is a :math:`7 \times 7` Gaussian window of
           :math:`\sigma = 1` whose weights sum to one. A linear ramp of gradient :math:`g` therefore gives
           :math:`R = -k \|g\|^4` away from the border.
-        - Apart from ``sigmas``, the response is in the units of the image: multiplying the image by ``c`` multiplies
-          the response by ``c ** 4``, and an offset does not change it, so a threshold tuned on images in ``[0, 1]``
-          does not carry over to ``[0, 255]``. :func:`~kornia.feature.gftt_response` and
-          :func:`~kornia.feature.hessian_response` scale by ``c ** 2``.
+        - Apart from ``sigmas``, the response depends on the image's intensity scale: multiplying the image by ``c``
+          multiplies the response by ``c ** 4``, and an offset does not change it, so a threshold tuned on images in
+          ``[0, 1]`` does not carry over to ``[0, 255]``.
         - ``k`` is not validated.
 
     Args:
@@ -157,9 +156,8 @@ def gftt_response(
         - :math:`R` is not negative, up to roundoff. It is large at a corner and near zero along an edge, where the
           Harris response is negative.
         - Multiplying the image by ``c`` multiplies the response by ``c ** 2``, and an offset does not change it.
-        - ``sigmas`` multiplies the response by ``sigmas ** 4``, the normalisation of Harris, whose corner criterion
-          the smaller eigenvalue states exactly, and not by the ``sigmas ** 2`` that the eigenvalue's degree in the
-          gradients alone would give.
+        - ``sigmas`` multiplies the response by ``sigmas ** 4``, Harris's normalisation, because the smaller eigenvalue
+          states Harris's corner criterion exactly; its degree in the gradients alone would give ``sigmas ** 2``.
 
     Args:
         input: input image with shape :math:`(B, C, H, W)`.
@@ -255,8 +253,7 @@ def hessian_response(
         input: input image with shape :math:`(B, C, H, W)`.
         grads_mode: can be ``'sobel'`` for standalone use or ``'diff'`` for use on Gaussian pyramid.
         sigmas: per-image scales with shape :math:`(B)`. The response of image ``b`` is multiplied by
-          ``sigmas[b] ** 4``, so that non-maxima suppression can compare the levels of a scale pyramid, as in
-          `vlfeat <https://github.com/vlfeat/vlfeat/blob/master/vl/covdet.c>`_.
+          ``sigmas[b] ** 4``, so that non-maxima suppression can compare the levels of a scale pyramid.
 
     Return:
         the response map per channel with shape :math:`(B, C, H, W)`.

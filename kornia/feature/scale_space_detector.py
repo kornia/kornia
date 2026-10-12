@@ -202,9 +202,6 @@ def _subpix_dispatch(module: nn.Module) -> Tuple[bool, bool]:
 class ScaleSpaceDetector(nn.Module):
     r"""nn.Module for differentiable local feature detection.
 
-    As close as possible to classical local feature detectors
-    like Harris, Hessian-Affine or SIFT (DoG).
-
     It has 5 modules inside: scale pyramid generator, response ("cornerness") function,
     sub-pixel localization, affine shape estimator and patch orientation estimator.
     Each of those modules could be replaced with a learned custom one, as long as
@@ -212,9 +209,10 @@ class ScaleSpaceDetector(nn.Module):
 
     Convention:
         - The candidates are the strict :math:`3 \times 3 \times 3` maxima of the response over level, row and column
-          (:func:`~kornia.geometry.subpix.nms3d_minmax`), and with ``minima_are_also_good`` its strict minima too, on
-          the levels given under ``scale_pyr_module``. There is no response threshold. The ``num_features``
-          strongest candidates of all octaves are kept; a minimum is ranked and returned with its response negated.
+          (:func:`~kornia.geometry.subpix.nms3d_minmax`), and with ``minima_are_also_good`` its strict minima below zero
+          too, on the levels given under ``scale_pyr_module``: a minimum above zero is not a candidate, while a maximum
+          below zero is. There is no response threshold. The ``num_features`` strongest candidates of all octaves are
+          kept; a minimum is ranked and returned with its response negated.
         - The default Hessian response is a maximum at bright and dark blobs alike. A DoG response
           (:class:`~kornia.feature.BlobDoG`) is a maximum at a dark blob and a minimum at a bright one, which only
           ``minima_are_also_good=True`` detects.
@@ -226,9 +224,9 @@ class ScaleSpaceDetector(nn.Module):
           centres; the whole frame can reach outside the image.
         - The output has ``num_features`` slots: the detections by decreasing response, then the unfilled slots, which
           hold a zero response and a zero LAF.
-        - Known defects: an octave passes only its ``num_features`` strongest candidates to the border and mask
-          tests, so the slot of a rejected candidate stays empty even when a weaker valid candidate exists
-          (`#5741 <https://github.com/kornia/kornia/issues/5741>`_).
+        - Known defects: an octave passes only its ``num_features`` strongest candidates to the border test and to the
+          mask check of their refined centres, so the slot of a candidate rejected there stays empty even when a
+          weaker valid candidate exists (`#5741 <https://github.com/kornia/kornia/issues/5741>`_).
 
     Args:
         num_features: Number of features to detect. In order to keep everything batchable,
@@ -259,13 +257,14 @@ class ScaleSpaceDetector(nn.Module):
             three coordinate maps are materialised for ``2B`` images at once.
         scale_space_response: if True, ``resp_module`` gets each whole octave :math:`(B, C, L, H, W)` with its
             sigmas :math:`(B \cdot L)` and returns a :math:`(B, 1, L', H, W)` scale-space response, as
-            :class:`~kornia.feature.BlobDoG` does. If False (the default), it gets the octave's levels as
-            :math:`(B \cdot L, C, H, W)` images with their sigmas and returns :math:`(B \cdot L, 1, H, W)`.
+            :class:`~kornia.feature.BlobDoG` does. If False (the default), it gets the octave's levels
+            ``0 .. n_levels + 1`` as :math:`(B \cdot L, C, H, W)` images, :math:`L = n_{levels} + 2`, with their sigmas
+            and returns :math:`(B \cdot L, 1, H, W)`.
         compile_modules: selects which sub-modules to wrap with :func:`torch.compile`.
             Pass ``True`` to compile every sub-module, ``False`` (default) for none, or a list
             containing any subset of ``["scale_pyr", "resp", "subpix", "ori", "aff"]``.
-            Compiling ``subpix`` gives ~5x GPU speedup for the default
-            :class:`~kornia.geometry.subpix.ConvQuadInterp3d` backend by fusing its iteration loop.
+            Compiling ``subpix`` fuses the iteration loop of :func:`~kornia.geometry.subpix.conv_quad_interp3d`, which
+            the default :class:`~kornia.geometry.subpix.AdaptiveQuadInterp3d` runs on CUDA.
             The first call incurs a one-time compilation cost; subsequent calls are fast.
 
     """
@@ -743,7 +742,7 @@ def get_default_detector_config() -> Detector_config:
 
 
 class MultiResolutionDetector(nn.Module):
-    """Multi-scale feature detector, based on code from KeyNet. Can be used with any response function.
+    """Multi-scale feature detector, based on KeyNet, for a response function that returns one map of its input's size.
 
     This is based on the original code from paper
     "Key.Net: Keypoint Detection by Handcrafted and Learned CNN Filters".
@@ -966,8 +965,7 @@ class MultiResolutionDetector(nn.Module):
             response, descending. The shape holds even when the image yields fewer above-threshold maxima
             than requested: those slots carry a zero response and a zero LAF, and sort after every real detection.
             LAF centres are pixel coordinates cast to the image dtype, so a half-precision image gives centres at
-            that dtype's integer resolution: exact up to 256 in bfloat16 and up to 2048 in float16, and coarser
-            beyond.
+            that dtype's integer resolution.
         """
         KORNIA_CHECK_SHAPE(img, ["1", "C", "H", "W"])
         if mask is not None:
