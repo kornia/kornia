@@ -376,8 +376,8 @@ def image_to_string(image: torch.Tensor, max_width: int = 256) -> str:
     """Obtain the closest xterm-256 approximation string from an image torch.Tensor.
 
     The torch.Tensor shall be either 0~1 float type or 0~255 long type. Each pixel is shown with the nearest of the
-    240 fixed xterm-256 colours (codes 16-255, the 6x6x6 cube and the gray ramp) by RGB distance; codes 0-15 are
-    defined by the terminal and are not used.
+    240 fixed xterm-256 colours (codes 16-255, the 6x6x6 cube and the gray ramp) by RGB distance, measured from its
+    unrounded 0-255 value; codes 0-15 are defined by the terminal and are not used.
 
     Args:
         image: an RGB image with shape :math:`3HW` or a grayscale image with shape :math:`1HW`.
@@ -393,7 +393,8 @@ def image_to_string(image: torch.Tensor, max_width: int = 256) -> str:
         new_h = max(1, image.size(-2) * max_width // image.size(-1))
         image = kornia.geometry.resize(image, (new_h, max_width))
 
-    image = (image * 255).round().clamp(0, 255)
+    # the 0-255 value, unrounded: a float pixel is matched at its own value (an integer input stays exact)
+    image = (image * 255).clamp(0, 255)
 
     if image.shape[0] == 1:
         # a grey value is the same colour in each of the three terminal components

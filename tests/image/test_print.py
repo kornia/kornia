@@ -98,8 +98,9 @@ class TestImageToString:
 
 
 class TestNearestXterm:
-    # Expected codes generated with the snippet in TestImageToString.test_value, for the gray v:
-    #   min(rgb, key=lambda c: sum((a - v) ** 2 for a in rgb[c]))  # v = 128 -> 244, v = 92 -> 59, v = 91 -> 240
+    # Expected codes generated with the snippet in TestImageToString.test_value, for the 0-255 pixel value p:
+    #   min(rgb, key=lambda c: sum((a - b) ** 2 for a, b in zip(rgb[c], p)))
+    # p = (128,) * 3 -> 244, (91.6,) * 3 -> 59, (91,) * 3 -> 240, (4.49, 4.49, 3.1) -> 232, (4, 4, 3) -> 16
 
     def test_gray_uses_the_gray_ramp(self):
         # 128 -> code 244 (#808080, exact) in the gray ramp; the nearest cube colour is code 102 (#878787)
@@ -107,12 +108,19 @@ class TestNearestXterm:
         assert out.count("48;5;244m") == 6
         assert out.count("\n") == 2
 
-    def test_levels_round_instead_of_truncating(self):
-        # 91.6 / 255 is 91.6 levels: rounded to 92 the nearest code is 59 (#5f5f5f = 95); truncated to 91 it would be
-        # 240 (#585858 = 88). Neither is a tie: 92 is 3 levels from 95 and 4 from 88, and 91 the other way round
+    def test_a_float_level_is_not_truncated(self):
+        # 91.6 levels: the nearest code is 59 (#5f5f5f = 95, 3.4 away), not 240 (#585858 = 88, 3.6 away), which a
+        # level truncated to 91 would pick
         out = image_to_string(torch.full((3, 2, 3), 91.6 / 255))
         assert out.count("48;5;59m") == 6
         assert "48;5;240m" not in out
+
+    def test_a_float_pixel_is_compared_at_its_unrounded_value(self):
+        # (4.49, 4.49, 3.1) levels: code 232 (#080808) is nearer than code 16 (#000000), squared distance 48.65
+        # against 49.93; the pixel rounded to (4, 4, 3) would pick code 16
+        image = (torch.tensor([4.49, 4.49, 3.1]) / 255)[:, None, None].expand(3, 2, 3)
+        out = image_to_string(image)
+        assert out.count("48;5;232m") == 6
 
     def test_tall_image_equals_its_two_halves(self):
         # the nearest colours are computed in chunks of pixels; an image taller than one chunk renders exactly like its
