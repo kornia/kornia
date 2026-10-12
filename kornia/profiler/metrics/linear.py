@@ -58,7 +58,16 @@ def linear_cka(x: Tensor, y: Tensor) -> float:
 
 
 def linear_similarity(f1: Dict[str, Tensor], f2: Dict[str, Tensor]) -> Dict[str, float]:
-    """Compute linear CKA for every matching layer, flattening features per sample."""
+    """Compute linear CKA per matching layer, requiring at least two samples.
+
+    For single-image comparisons, select the ``cosine`` or ``l2`` metrics
+    instead. A singleton batch has no nonzero centered sample Gram matrix.
+    """
     if f1.keys() != f2.keys():
         raise ValueError("Feature dictionaries must have same layers")
+    if any(feature.ndim < 2 or feature.shape[0] < 2 for features in (f1, f2) for feature in features.values()):
+        raise ValueError(
+            "The 'linear' metric (CKA) requires at least two samples per capture. "
+            "For a single image, set metrics=['cosine', 'l2']."
+        )
     return {layer: linear_cka(f1[layer].flatten(1), f2[layer].flatten(1)) for layer in f1}
