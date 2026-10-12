@@ -155,6 +155,35 @@ class TestFitPlane(BaseTester):
         with pytest.raises(ValueCheckError, match="not collinear"):
             fit_plane(points)
 
+    @pytest.mark.parametrize("wrapped", [False, True])
+    @pytest.mark.parametrize("batched", [False, True])
+    def test_fit_plane_oblique_offset(self, device, dtype, wrapped, batched):
+        # These representable corners satisfy x + y - z = 32. Bfloat16 rounds z so the constant becomes zero.
+        points = torch.tensor(
+            [
+                [25600.0, 27648.0, 53216.0],
+                [27648.0, 25600.0, 53216.0],
+                [29696.0, 31744.0, 61408.0],
+                [31744.0, 29696.0, 61408.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        expected_normal = points.new_tensor([1.0, 1.0, -1.0]) / 3**0.5
+        expected_offset = points.new_tensor(-(0.0 if dtype == torch.bfloat16 else 32.0) / 3**0.5)
+        if batched:
+            points = torch.stack([points, points[:, [2, 0, 1]]])
+            expected_normal = torch.stack([expected_normal, expected_normal[[2, 0, 1]]])
+            expected_offset = expected_offset.expand(2)
+        points.requires_grad_()
+        plane = fit_plane(Vector3(points) if wrapped else points)
+        sign = (plane.normal.data * expected_normal).sum(-1).sign()
+        self.assert_close(plane.normal.data * sign[..., None], expected_normal)
+        self.assert_close(plane.offset.data * sign, expected_offset)
+        plane.offset.data.sum().backward()
+        assert points.grad is not None
+        assert torch.isfinite(points.grad).all()
+
     def test_dynamo_large_scale(self, device, dtype, torch_optimizer):
         scale = 2e38 if dtype == torch.bfloat16 else 4e4
         points = torch.tensor(

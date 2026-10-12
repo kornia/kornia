@@ -354,7 +354,8 @@ def fit_plane(points: Vector3) -> Hyperplane:
     direction = V[..., :, -1]  # BxD
     origin = mean[..., 0, :]  # BxD
     if half:
-        direction = direction.to(points_data.dtype)
-        origin = (origin * scale[..., 0, :]).to(points_data.dtype)
+        # Compute the offset in scaled working precision before restoring its units and output dtype.
+        offset = (-batched_dot_product(origin, direction) * scale[..., 0, 0]).to(points_data.dtype)
+        return Hyperplane(Vector3(direction.to(points_data.dtype)), Scalar(offset))
 
     return Hyperplane.from_vector(Vector3(direction), Vector3(origin))
