@@ -47,7 +47,7 @@ def _write_png_batch(path_stem: str, image: torch.Tensor) -> None:
     ``ImageModule`` hands a tensor to PIL: clamped, scaled and rounded. A
     ``uint8`` or ``uint16`` visualization is written as-is.
 
-    ``write_image`` takes ``(3, H, W)``, ``(1, H, W)`` or ``(H, W)``, but the
+    ``write_image`` takes ``(3, H, W)``, ``(1, H, W)``, ``(H, W)`` or, for PNG only, 4-channel ``(4, H, W)``, but the
     containers document their inputs as ``(B, 3, H, W)`` and passed the batch
     straight through. The backend then rejects the rank with an error that
     names neither -- ``TypeError: argument 'image': 'ndarray' object is not an

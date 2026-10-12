@@ -63,6 +63,17 @@ def write_indexed_png(path: Path, indices: np.ndarray, palette: list, alpha: byt
     path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"".join(chunks))
 
 
+def write_png_with_trns(path: Path, pixels: np.ndarray, colour_type: int, trns: bytes | None = None) -> None:
+    """Write an 8-bit gray (colour type 0) or RGB (2) PNG with an optional tRNS colour key, byte by byte."""
+    height, width = pixels.shape[:2]
+    raw = b"".join(b"\x00" + pixels[row].astype(np.uint8).tobytes() for row in range(height))
+    chunks = [_png_chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, colour_type, 0, 0, 0))]
+    if trns is not None:
+        chunks.append(_png_chunk(b"tRNS", trns))
+    chunks += [_png_chunk(b"IDAT", zlib.compress(raw)), _png_chunk(b"IEND", b"")]
+    path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"".join(chunks))
+
+
 PALETTE = [(255, 255, 0), (0, 255, 0), (255, 0, 0), (0, 0, 255)]
 PALETTE_INDICES = np.array([[2, 1, 0], [3, 0, 1]], dtype=np.uint8)  # H = 2, W = 3
 
@@ -260,13 +271,16 @@ class TestIndexedPng:
         assert out.tolist() == [PALETTE_INDICES.tolist()]
 
     @pytest.mark.parametrize("load_type", [ImageLoadType.RGB8, ImageLoadType.RGB32])
-    def test_rgb_types_expand_the_palette(self, tmp_path: Path, load_type) -> None:
+    def test_rgb_types_expand_the_palette(self, tmp_path: Path, device, load_type) -> None:
         path = tmp_path / "indexed.png"
         write_indexed_png(path, PALETTE_INDICES, PALETTE)
-        expected = torch.tensor([PALETTE[i] for i in PALETTE_INDICES.flatten()], dtype=torch.uint8).T.reshape(3, 2, 3)
+        expected = torch.tensor([PALETTE[i] for i in PALETTE_INDICES.flatten()], dtype=torch.uint8, device=device)
+        expected = expected.T.reshape(3, 2, 3)
         if load_type == ImageLoadType.RGB32:
             expected = expected.float() / 255.0
-        torch.testing.assert_close(load_image(path, load_type), expected)
+        out = load_image(path, load_type, device=str(device))
+        assert out.device.type == torch.device(device).type
+        torch.testing.assert_close(out, expected)
 
     def test_gray8_is_the_gray_of_the_palette_colours(self, tmp_path: Path) -> None:
         path = tmp_path / "indexed.png"
@@ -275,10 +289,11 @@ class TestIndexedPng:
         expected = torch.tensor([[[76, 150, 226], [29, 226, 150]]], dtype=torch.uint8)
         torch.testing.assert_close(load_image(path, ImageLoadType.GRAY8), expected)
 
-    def test_rgba8_takes_alpha_from_the_trns_chunk(self, tmp_path: Path) -> None:
+    def test_rgba8_takes_alpha_from_the_trns_chunk(self, tmp_path: Path, device) -> None:
         path = tmp_path / "indexed_trns.png"
         write_indexed_png(path, PALETTE_INDICES, PALETTE, alpha=bytes([0, 128]))  # entries 2 and 3 stay opaque
-        out = load_image(path, ImageLoadType.RGBA8)
+        out = load_image(path, ImageLoadType.RGBA8, device=str(device))
+        assert out.device.type == torch.device(device).type
         assert out.shape == (4, 2, 3)
         assert out[3].tolist() == [[255, 128, 0], [255, 0, 128]]
 
@@ -385,6 +400,96 @@ class TestWriteImageValidation:
         with pytest.raises(BaseError, match=re.escape("(C, H, W)")):
             write_image(path, create_random_img8_torch(4, 5, 3)[None])
         assert not path.exists()
+
+
+class TestColourKeyPng:
+    # colour type 0 (gray) and 2 (RGB) PNGs carry a tRNS colour key: pixels equal to it are transparent
+    def test_gray_key_becomes_transparent_in_rgba8(self, tmp_path: Path) -> None:
+        path = tmp_path / "gray_key.png"
+        write_png_with_trns(
+            path, np.array([[10, 20, 10], [20, 10, 20]], dtype=np.uint8), colour_type=0, trns=struct.pack(">H", 10)
+        )
+        # Pillow 12.3 Image.open(path).convert("RGBA") alpha: [[0, 255, 0], [255, 0, 255]]
+        assert load_image(path, ImageLoadType.RGBA8)[3].tolist() == [[0, 255, 0], [255, 0, 255]]
+
+    def test_rgb_key_composites_over_white_in_rgb8(self, tmp_path: Path) -> None:
+        pixels = np.zeros((2, 3, 3), dtype=np.uint8)
+        pixels[0, 0] = (1, 2, 3)
+        path = tmp_path / "rgb_key.png"
+        write_png_with_trns(path, pixels, colour_type=2, trns=struct.pack(">HHH", 1, 2, 3))
+        out = load_image(path, ImageLoadType.RGB8)
+        assert out[:, 0, 0].tolist() == [255, 255, 255]
+        assert out[:, 1, 2].tolist() == [0, 0, 0]
+
+    def test_unchanged_ignores_the_key(self, tmp_path: Path) -> None:
+        path = tmp_path / "gray_key.png"
+        write_png_with_trns(
+            path, np.array([[10, 20, 10], [20, 10, 20]], dtype=np.uint8), colour_type=0, trns=struct.pack(">H", 10)
+        )
+        assert load_image(path, ImageLoadType.UNCHANGED).shape == (1, 2, 3)
+
+    def test_png_without_a_key_stays_opaque(self, tmp_path: Path) -> None:
+        path = tmp_path / "gray_nokey.png"
+        write_png_with_trns(path, np.array([[10, 20, 10], [20, 10, 20]], dtype=np.uint8), colour_type=0)
+        assert load_image(path, ImageLoadType.RGBA8)[3].tolist() == [[255] * 3] * 2
+
+
+class TestIoArgumentChecks:
+    def test_write_into_a_missing_directory_raises_file_not_found(self, tmp_path: Path) -> None:
+        path = tmp_path / "missing" / "x.png"
+        with pytest.raises(FileNotFoundError, match="missing"):
+            write_image(path, create_random_img8_torch(4, 5, 3))
+
+    def test_write_into_the_current_directory_with_a_bare_filename(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        write_image("bare.png", create_random_img8_torch(4, 5, 3))
+        assert (tmp_path / "bare.png").exists()
+
+    @pytest.mark.parametrize("desired_type", ["RGB8", 2])
+    def test_load_image_rejects_a_load_type_that_is_not_an_image_load_type(self, png_image, desired_type) -> None:
+        with pytest.raises(BaseError, match="ImageLoadType"):
+            load_image(png_image, desired_type)
+
+    @pytest.mark.parametrize("quality", [-1, 101, 80.5])
+    def test_write_image_rejects_quality_outside_0_100(self, tmp_path: Path, quality) -> None:
+        with pytest.raises(BaseError, match="quality"):
+            write_image(tmp_path / "q.jpg", create_random_img8_torch(4, 5, 3), quality=quality)
+
+    def test_write_image_rejects_a_non_tensor(self, tmp_path: Path) -> None:
+        with pytest.raises(BaseError):
+            write_image(tmp_path / "n.png", np.zeros((3, 4, 5), dtype=np.uint8))
+
+
+class TestSampleImages:
+    def test_local_paths_create_no_cache_directory(self, tmp_path: Path) -> None:
+        from kornia.io import get_sample_images
+
+        path = tmp_path / "local.png"
+        write_image(path, create_random_img8_torch(4, 5, 3))
+        get_sample_images(paths=[str(path)], cache_dir=str(tmp_path / "cache"))
+        assert not (tmp_path / "cache").exists()
+
+    def test_a_relative_path_starting_with_http_is_a_local_file(self, tmp_path: Path, monkeypatch) -> None:
+        from kornia.io import get_sample_images
+
+        monkeypatch.chdir(tmp_path)
+        write_image(tmp_path / "http_local.png", create_random_img8_torch(4, 5, 3))
+        out = get_sample_images(paths=["http_local.png"], cache_dir=str(tmp_path / "cache"))
+        assert out[0].shape == (3, 4, 5)
+
+    def test_default_cache_dir_follows_the_hub_config(self, tmp_path: Path, monkeypatch) -> None:
+        from unittest import mock
+
+        from kornia.config import kornia_config
+        from kornia.io import get_sample_images
+
+        monkeypatch.setattr(kornia_config, "hub_cache_dir", str(tmp_path / "hub"))
+        payload = tmp_path / "src.png"
+        write_image(payload, create_random_img8_torch(4, 5, 3))
+        with mock.patch("kornia.io.sample.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = payload.read_bytes()
+            get_sample_images(paths=["https://example.invalid/sample.png"])
+        assert (tmp_path / "hub" / "images" / "sample.png").exists()
 
 
 class TestDownloadImage:

@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import errno
 import os
 from enum import Enum
 from pathlib import Path
@@ -26,7 +27,7 @@ import torch
 from kornia_rs import io as _rs_io
 
 import kornia
-from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 from kornia.image.utils import image_to_tensor, tensor_to_image
 
 _WRITE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
@@ -108,16 +109,13 @@ def _read_jpeg_components(path_file: Path) -> int | None:
             f.seek(int.from_bytes(length, "big") - 2, os.SEEK_CUR)
 
 
-def _read_png_palette(path_file: Path) -> tuple[torch.Tensor, torch.Tensor | None] | None:
-    """Return a PNG's palette as ``(N, 3)`` uint8 colours and, with a tRNS chunk, ``(N,)`` uint8 alphas.
-
-    Returns None when the file has no PLTE chunk. Palette entries that tRNS does not list are opaque.
-    """
+def _read_png_chunks(path_file: Path) -> tuple[bytes | None, bytes | None]:
+    """Return the raw bodies of a PNG's PLTE and tRNS chunks, None for a chunk the file does not have."""
     plte: bytes | None = None
     trns: bytes | None = None
     with open(path_file, "rb") as f:
         if f.read(8) != _PNG_SIGNATURE:
-            return None
+            return None, None
         while True:
             head = f.read(8)
             if len(head) < 8 or head[4:8] in (b"IDAT", b"IEND"):  # PLTE and tRNS precede the image data
@@ -128,39 +126,49 @@ def _read_png_palette(path_file: Path) -> tuple[torch.Tensor, torch.Tensor | Non
                 plte = body
             elif head[4:8] == b"tRNS":
                 trns = body
-    if plte is None:
-        return None
-    colors = torch.frombuffer(bytearray(plte), dtype=torch.uint8).view(-1, 3).clone()
-    if trns is None:
-        return colors, None
-    alpha = torch.full((colors.shape[0],), 255, dtype=torch.uint8)
-    listed = torch.frombuffer(bytearray(trns), dtype=torch.uint8)[: colors.shape[0]]
-    alpha[: listed.numel()] = listed
-    return colors, alpha
+    return plte, trns
 
 
-def _expand_png_palette(path_file: Path, image: torch.Tensor) -> torch.Tensor:
-    """Replace the indices of a palette PNG by their colours: ``(3, H, W)``, or ``(4, H, W)`` with a tRNS chunk.
+def _apply_png_palette_and_transparency(path_file: Path, image: torch.Tensor) -> torch.Tensor:
+    """Apply a PNG's palette and tRNS chunk to the decoded pixels; any other file is returned unchanged.
 
-    Any other file is returned unchanged.
+    A palette PNG (colour type 3) becomes ``(3, H, W)`` colours, or ``(4, H, W)`` with a tRNS chunk, whose per-entry
+    alphas leave unlisted entries opaque. An 8-bit gray or RGB PNG (colour types 0 and 2) with a tRNS colour key
+    becomes ``(4, H, W)`` RGBA, with alpha 0 where every sample equals the key and 255 elsewhere.
     """
     if path_file.suffix.lower() != ".png":
         return image
     header = _read_png_header(path_file)
-    if header is None or header[1] != 3:
+    if header is None or header[1] not in (0, 2, 3):
         return image
-    palette = _read_png_palette(path_file)
-    if palette is None:
+    bit_depth, color_type = header
+    plte, trns = _read_png_chunks(path_file)
+    if color_type == 3:
+        if plte is None:
+            return image
+        colors = torch.frombuffer(bytearray(plte), dtype=torch.uint8).view(-1, 3)
+        table = colors
+        if trns is not None:
+            alpha = torch.full((colors.shape[0],), 255, dtype=torch.uint8)
+            listed = torch.frombuffer(bytearray(trns), dtype=torch.uint8)[: colors.shape[0]]
+            alpha[: listed.numel()] = listed
+            table = torch.cat([colors, alpha[:, None]], dim=1)
+        indices = image[0].long()
+        if indices.numel() and int(indices.max()) >= table.shape[0]:
+            raise ValueError(
+                f"Failed to decode image '{path_file}': a pixel uses palette entry {int(indices.max())}, "
+                f"but the palette has {table.shape[0]} entries."
+            )
+        return table.to(image.device)[indices].permute(2, 0, 1).contiguous()
+
+    # colour key: one (gray) or three (RGB) big-endian 16-bit samples; an 8-bit image uses their low bytes
+    n_samples = 1 if color_type == 0 else 3
+    if bit_depth != 8 or trns is None or len(trns) < 2 * n_samples:
         return image
-    colors, alpha = palette
-    table = colors if alpha is None else torch.cat([colors, alpha[:, None]], dim=1)
-    indices = image[0].long()
-    if indices.numel() and int(indices.max()) >= table.shape[0]:
-        raise ValueError(
-            f"Failed to decode image '{path_file}': a pixel uses palette entry {int(indices.max())}, "
-            f"but the palette has {table.shape[0]} entries."
-        )
-    return table.to(image.device)[indices].permute(2, 0, 1).contiguous()
+    key = torch.tensor([trns[2 * i + 1] for i in range(n_samples)], dtype=torch.uint8, device=image.device)
+    transparent = (image == key[:, None, None]).all(dim=0, keepdim=True)
+    alpha = torch.where(transparent, 0, 255).to(torch.uint8)
+    return torch.cat([image.expand(3, -1, -1), alpha], dim=0)
 
 
 def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None]) -> torch.Tensor:
@@ -292,7 +300,8 @@ def load_image(
     Return:
         Image torch.Tensor with shape :math:`(C, H, W)`: ``C`` is 1 for ``GRAY8`` and ``GRAY32``, 3 for ``RGB8`` and
         ``RGB32``, 4 for ``RGBA8``, and the file's channel count for ``UNCHANGED``. A palette PNG loads as its
-        palette indices under ``UNCHANGED`` and as its colours under every other type.
+        palette indices under ``UNCHANGED`` and as its colours under every other type. A gray or RGB PNG with a tRNS
+        colour key loads its key colour as transparent under every other type.
 
     Raises:
         ValueError: if the file cannot be decoded, for example a truncated or corrupt image or an unsupported format.
@@ -300,6 +309,9 @@ def load_image(
         OSError: if the file cannot be read, for example ``FileNotFoundError`` when it does not exist.
 
     """
+    KORNIA_CHECK(
+        isinstance(desired_type, ImageLoadType), f"desired_type must be an ImageLoadType, got {desired_type!r}."
+    )
     if not isinstance(path_file, Path):
         path_file = Path(path_file)
 
@@ -307,7 +319,7 @@ def load_image(
     image: torch.Tensor = _load_image_to_tensor(path_file, device)  # CxHxW
 
     if desired_type != ImageLoadType.UNCHANGED:
-        image = _expand_png_palette(path_file, image)
+        image = _apply_png_palette_and_transparency(path_file, image)
 
     return _convert_image_type(image, desired_type)
 
@@ -351,7 +363,7 @@ def write_image(path_file: str | Path, image: torch.Tensor, quality: int = 80) -
     Args:
         path_file: Path with a .jpg, .jpeg, .png, .tif or .tiff extension, in any letter case.
         image: Image torch.Tensor with shape :math:`(C, H, W)` or :math:`(H, W)`; ``C`` is 1 or 3, or 4 for PNG.
-        quality: The quality of the JPEG encoding. If the file extension is .png or .tiff, the quality is ignored.
+        quality: The quality of the JPEG encoding. If the file extension is .png, .tif or .tiff, the quality is ignored.
 
     Return:
         None.
@@ -359,12 +371,22 @@ def write_image(path_file: str | Path, image: torch.Tensor, quality: int = 80) -
     if not isinstance(path_file, Path):
         path_file = Path(path_file)
 
+    KORNIA_CHECK_IS_TENSOR(image)
+    KORNIA_CHECK(
+        isinstance(quality, int) and not isinstance(quality, bool) and 0 <= quality <= 100,
+        f"quality must be an integer in [0, 100], got {quality!r}.",
+    )
     suffix = path_file.suffix.lower()
     KORNIA_CHECK(
         suffix in _WRITE_EXTENSIONS,
         f"Invalid file extension: {path_file}, only .jpg, .jpeg, .png, .tif and .tiff are supported.",
     )
     KORNIA_CHECK(image.dim() in (2, 3), f"Invalid image shape: {image.shape}. Expected (C, H, W) or (H, W).")
+
+    if not path_file.parent.is_dir():
+        raise FileNotFoundError(
+            errno.ENOENT, f"No such directory to write {path_file.name} into", str(path_file.parent)
+        )
 
     img_np = tensor_to_image(image, keepdim=True, force_contiguous=True)  # HxWxC
     if img_np.ndim == 2:

@@ -20,9 +20,12 @@ from __future__ import annotations
 import logging
 import os
 from typing import Any, List, Optional, Tuple, Union
+from urllib.parse import urlparse
 from urllib.request import urlopen
 
 import torch
+
+from kornia.config import kornia_config
 
 from .io import load_image
 
@@ -48,7 +51,7 @@ def download_image(url: str, save_to: str) -> None:
         save_to: The file path where the downloaded image will be saved.
 
     """
-    # get_sample_images only routes paths that start with "http" here (default: the https:// literals above).
+    # get_sample_images only routes http(s) URLs here (default: the https:// literals above).
     with urlopen(url, timeout=30) as resp:  # noqa: S310
         data = resp.read()
     with open(save_to, "wb") as f:
@@ -78,7 +81,8 @@ def get_sample_images(
             If not provided, the images will not be resized, and their original sizes will be retained.
         download: Whether to download the images if they are not already cached. Defaults to True.
         cache_dir: The directory where the downloaded images will be cached.
-            Defaults to ".kornia_hub/images".
+            Defaults to ``<kornia_config.hub_cache_dir>/images``, relative to the working directory unless configured
+            otherwise. Created only when an image is downloaded.
         as_list: if to keep the output as a list. If None and `resize` is None, the output will be a list.
             If None and `resize` is not None, the output will be a single tensor.
         divisible_factor:
@@ -94,14 +98,14 @@ def get_sample_images(
     import kornia.geometry  # local import to avoid a circular dependency at import time
 
     if cache_dir is None:
-        cache_dir = ".kornia_hub/images"
-    os.makedirs(cache_dir, exist_ok=True)
+        cache_dir = os.path.join(kornia_config.hub_cache_dir, "images")
     tensors = []
     for path in paths:
-        if path.startswith("http"):
+        if urlparse(path).scheme in ("http", "https"):
             name = os.path.basename(path)
             fname = os.path.join(cache_dir, name)
             if not os.path.exists(fname) and download:
+                os.makedirs(cache_dir, exist_ok=True)
                 logging.info(f"Downloading `{path}` to `{fname}`.")
                 download_image(path, fname)
             elif not os.path.exists(fname) and not download:
