@@ -40,6 +40,25 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK
 from kornia.core.exceptions import DeviceError, TypeCheckError
 
 
+def _torch_grid_sample(
+    input: torch.Tensor,
+    grid: torch.Tensor,
+    mode: str = "bilinear",
+    padding_mode: str = "zeros",
+    align_corners: Optional[bool] = None,
+) -> torch.Tensor:
+    """Run :func:`torch.nn.functional.grid_sample` on 4-D or 5-D input, CPU float16/bfloat16 in float32.
+
+    torch's CPU half ``grid_sample`` returns corrupt values on sources of about 128 px and more, and
+    torch 2.5.1 has no such kernel (#5751). Other devices and dtypes call ``grid_sample`` unchanged.
+    """
+    if input.device.type == "cpu" and input.dtype in (torch.float16, torch.bfloat16) and grid.dtype == input.dtype:
+        return F.grid_sample(
+            input.float(), grid.float(), mode=mode, padding_mode=padding_mode, align_corners=align_corners
+        ).to(input.dtype)
+    return F.grid_sample(input, grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
+
+
 def xla_is_available() -> bool:
     """Return whether `torch_xla` is available in the system."""
     return importlib.util.find_spec("torch_xla") is not None
@@ -362,7 +381,7 @@ def _torch_histc_cast(input: torch.Tensor, bins: int, min: Union[float, bool], m
     return torch.histc(input.to(dtype), bins, min, max)
 
 
-def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def _torch_svd_cast(input: torch.Tensor, full_matrices: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Make torch.svd work with other than fp32/64.
 
     The function torch.svd is only implemented for fp32/64 which makes
@@ -375,6 +394,7 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
 
     An MPS input past the shader-compilation ceiling is decomposed on the CPU and moved back, which
     is what keeps the batched minimal solvers behind ``RANSAC`` working on Apple silicon.
+    ``full_matrices`` selects full or reduced factors, as in ``torch.linalg.svd``.
     """
     if is_mps_tensor_safe(input):
         dtype = torch.float32
@@ -393,10 +413,10 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
     if is_mps_tensor_safe(x) and x.numel() >= 8192:
         # SVD is per-matrix, so decomposing the whole batch on the CPU gives the same result; the
         # casts back to the MPS device keep the autograd graph intact.
-        U, S, Vh = torch.linalg.svd(x.cpu())
+        U, S, Vh = torch.linalg.svd(x.cpu(), full_matrices=full_matrices)
         out1, out2, out3H = U.to(x.device), S.to(x.device), Vh.to(x.device)
     else:
-        out1, out2, out3H = torch.linalg.svd(x)
+        out1, out2, out3H = torch.linalg.svd(x, full_matrices=full_matrices)
     # Since kornia requires torch>=2.5.1, we can always use .mH
     out3 = out3H.mH
     return (out1.to(input.dtype), out2.to(input.dtype), out3.to(input.dtype))

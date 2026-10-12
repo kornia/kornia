@@ -27,10 +27,12 @@ from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmenta
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor
 from kornia.constants import DataKey, Resample
+from kornia.core._compat import torch_version_lt
 from kornia.core.external import PILImage as Image
 from kornia.core.external import numpy as np
+from kornia.core.mixin.image_module import _rebuild_container
 from kornia.core.ops import eye_like
-from kornia.core.utils import is_autocast_enabled, is_exporting
+from kornia.core.utils import _normalize_to_float32_or_float64, is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 from kornia.image.utils import image_to_tensor
@@ -147,15 +149,17 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           ``x' = W - 1 - x`` and ``y' = H - 1 - y`` for every key, as :func:`~kornia.geometry.transform.hflip`
           does. Labels pass through geometric steps untouched.
         - masks are resampled with nearest interpolation by default (see ``extra_args``; padding can still add the
-          fill value) in the image's working dtype and come back in their own dtype; integer labels that the
-          working dtype cannot represent are rounded (`#4478 <https://github.com/kornia/kornia/issues/4478>`_).
+          fill value) and come back in their own dtype. Floating masks use the image's working dtype; integer
+          masks use at least float32 (float64 with a float64 image). Integer labels not exactly representable
+          in that working dtype raise ``RuntimeError`` instead of being rounded. On accelerators an asynchronous
+          assertion may report at the next synchronization; MPS before torch 2.13 checks on the host.
         - a ``mask`` argument can be a list of tensors with different channel counts, but its batch handling
           has limitations. Each list entry uses only ``batch_prob[i]`` as its gate, including for intensity
           children. Per-sample list tensors are unsupported by warp operations, and full-batch tensors in that
           list can become desynchronized from the image when the gate differs across samples. A list longer
           than the batch raises ``IndexError``. Use separate ``mask`` data keys for separate full-batch masks.
           ``.inverse()`` takes the list the forward pass returned and inverts it element by element with the
-          same per-entry gate. A flip round-trips each entry, subject to the working-dtype rounding above; other
+          same per-entry gate. A flip round-trips each entry, subject to the working-dtype requirements above; other
           warps lose the pixels they move out of the frame and, when they resample, restore the rest only
           approximately. Tracked in `#4477 <https://github.com/kornia/kornia/issues/4477>`_.
         - the ``mask``, box and ``keypoints`` handlers of a geometric child, or of a custom
@@ -803,6 +807,14 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             # TODO: Some more behaviour for AugmentationSequential needs to be revisited later
             # e.g. We convert only images, etc.
             self._check_output_type(output_type)
+            non_images = [key.name for key in data_keys if key not in _IMG_OPTIONS and key not in _MSK_OPTIONS]
+            if output_type != "pt" and non_images:
+                # a box or keypoint tensor converted like an image (moved to channels-last, or made a PIL image) is
+                # not a box any more, so only images and masks take the conversion
+                raise ValueError(
+                    f"output_type={output_type!r} converts images and masks only, and data_keys also hold "
+                    f"{non_images}. Call with output_type='pt'."
+                )
             # run the forward pass in tensor mode and convert the output to ``output_type`` only after the image
             # has been cached, so ``.show()`` / ``.save()`` never receive a NumPy array or PIL images
             tensor_output = self._call_converted(
@@ -824,13 +836,71 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
             # cache a detached view of the augmented image for ``.show()`` / ``.save()``, which move it to the
             # CPU themselves, so the forward pass pays no device-to-host copy or sync
+            image = self._select_output_image(tensor_output, data_keys, original_keys)
             if not is_exporting():
-                image = self._select_output_image(tensor_output, data_keys, original_keys)
                 self._output_image = image.detach() if isinstance(image, torch.Tensor) else image
-            _output_image = self._convert_output(tensor_output, output_type)
+            _output_image = (
+                self._convert_dict_output(tensor_output, output_type, image)
+                if isinstance(tensor_output, dict)
+                else self._convert_positional_output(tensor_output, output_type, data_keys, image)
+            )
         else:
             _output_image = super(ImageSequential, self).__call__(*inputs, **kwargs)
         return _output_image
+
+    def _convert_positional_output(
+        self, tensor_output: Any, output_type: str, data_keys: List[DataKey], image: Any
+    ) -> Any:
+        """Convert a positional forward output for ``output_type``, one value per data key.
+
+        The outputs align with ``data_keys`` positionally; see :meth:`_convert_output_for_data_key`.
+        """
+        if isinstance(tensor_output, (list, tuple)) and len(tensor_output) == len(data_keys):
+            converted = [
+                self._convert_output_for_data_key(output, output_type, data_key, image)
+                for output, data_key in zip(tensor_output, data_keys)
+            ]
+            return _rebuild_container(tensor_output, converted)
+        return self._convert_output(tensor_output, output_type)
+
+    def _convert_dict_output(self, tensor_output: Dict[str, Any], output_type: str, image: Any) -> Dict[str, Any]:
+        """Convert a dict forward output for ``output_type``, keyed by its data keys.
+
+        Only the values under recognized image or mask keys take the conversion: an unrecognized key holds a
+        pass-through value the caller supplied, and moving it to channels-last (or making it a PIL image) is
+        not what they passed in. See :meth:`_convert_output_for_data_key`.
+        """
+        valid_data_keys, invalid_keys = self._read_datakeys_from_dict(tuple(tensor_output.keys()))
+        key_data_keys = dict(zip([k for k in tensor_output if k not in (invalid_keys or [])], valid_data_keys))
+        return {
+            key: self._convert_output_for_data_key(value, output_type, key_data_keys.get(key), image)
+            for key, value in tensor_output.items()
+        }
+
+    def _convert_output_for_data_key(
+        self, value: Any, output_type: str, data_key: Optional[DataKey], image: Any
+    ) -> Any:
+        """Convert one output value for ``output_type``.
+
+        A mask converts like the image, to the NumPy layout the mask input reads back (:meth:`to_numpy`), or to
+        one PIL image per sample. A 3D mask next to a batched image is read the way the input reads it: as
+        ``(B, H, W)`` when its leading size is the image batch (a mask returned under ``keepdim=True``), so it gets
+        its channel axis back and stays batch-first; any other 3D mask is one ``(C, H, W)`` mask.
+        """
+        if data_key is None:
+            # An unrecognized key holds a pass-through value: there is no data key to convert it by.
+            return value
+        if (
+            data_key in _MSK_OPTIONS
+            and output_type != "pt"
+            and isinstance(value, torch.Tensor)
+            and value.dim() == 3
+            and isinstance(image, torch.Tensor)
+            and image.dim() == 4
+            and value.shape[0] == image.shape[0]
+        ):
+            value = value.unsqueeze(1)
+        return self._convert_output(value, output_type)
 
     def _convert_non_image(self, arg: Any, data_key: DataKey) -> Any:
         if data_key in _IMG_OPTIONS:
@@ -909,8 +979,36 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         working = dtype if dtype is not None else torch.float
         if isinstance(arg, list):
             # A list keeps its per-entry gate semantics (see the class docstring); it is not broadcast.
-            return [a.to(working) for a in arg]
-        return self._broadcast_single_mask(arg.to(working), image_batch)
+            return [self._cast_mask(a, working) for a in arg]
+        return self._broadcast_single_mask(self._cast_mask(arg, working), image_batch)
+
+    @staticmethod
+    def _cast_mask(mask: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
+        """Convert masks without silently rounding integer class labels."""
+        if not mask.is_floating_point():
+            dtype = _normalize_to_float32_or_float64(dtype)
+        converted = mask.to(dtype)
+        # Smaller integer types (and bool) are exactly representable in float32. For wider types, even float64
+        # cannot represent every int64 label, so check the actual round trip instead of a conservative bound.
+        if mask.dtype in (torch.int32, torch.int64, torch.uint32, torch.uint64):
+            limits = torch.iinfo(mask.dtype)
+            # The exclusive upper bound is an exact power of two. limits.max itself can round up to that bound.
+            # The minimum is exact too, so integer-to-float conversion cannot round below it. Replace overflow
+            # with zero before casting back: an overflowing positive label cannot equal zero, and casting an
+            # out-of-range float to an integer has undefined behavior even when it happens to match the input.
+            safe = torch.where(converted < float(limits.max + 1), converted, 0.0)
+            exact = (safe.to(mask.dtype) == mask).all()
+            message = (
+                f"Integer mask labels must be exactly representable in {dtype}. "
+                "Use a float64 image where supported or remap labels to smaller integers."
+            )
+            if mask.device.type == "mps" and torch_version_lt(2, 13, 0):
+                # Older MPS has no asynchronous assertion kernel. Do not skip a correctness check there.
+                if not bool(exact):
+                    raise RuntimeError(message)
+            else:
+                torch._assert_async(exact, message)
+        return converted
 
     @staticmethod
     def _broadcast_single_mask(mask: torch.Tensor, image_batch: Optional[int]) -> torch.Tensor:

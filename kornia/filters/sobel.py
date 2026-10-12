@@ -25,6 +25,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
+from .filter import _to_floating
 from .kernels import (
     _normalize_kernel2d_2nd_order,
     get_spatial_gradient_kernel2d,
@@ -123,6 +124,8 @@ def spatial_gradient3d(input: torch.Tensor, mode: str = "diff", order: int = 1) 
           new axis 2; see its Convention block for their order and units. There is no ``normalized`` argument: a
           floating input gives derivative units.
         - The border is always replicated, as in :func:`~kornia.filters.spatial_gradient`.
+        - An integer or bool input is differentiated in float32 and the output is float32, on the input's scale,
+          as :func:`~kornia.filters.filter3d` does (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Args:
         input: input features torch.Tensor with shape :math:`(B, C, D, H, W)`.
@@ -143,6 +146,8 @@ def spatial_gradient3d(input: torch.Tensor, mode: str = "diff", order: int = 1) 
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "D", "H", "W"])
+    # in its own dtype, uint8 wraps the differences and an integer kernel truncates the half and quarter taps (#5155)
+    input = _to_floating(input)
 
     b, c, d, h, w = input.shape
     dev = input.device

@@ -228,14 +228,12 @@ All flagships build on the same helpers in [`common.py`](common.py), so their ou
 5. Document the regimes in the module docstring; keep the honest framing.
 
 The filters flagship includes optional scikit-image baselines. To exercise every
-current baseline, install the benchmark-only dependencies with
-`uv pip install --upgrade --prerelease allow scikit-image kornia-rs`; this currently
-selects scikit-image 0.26 and kornia-rs 0.1.15rc5. Its module docstring lists
+current baseline, install the benchmark-only dependency with
+`uv pip install scikit-image`; kornia-rs, a kornia dependency, supplies Gaussian,
+box and median blur, Sobel, and grayscale bilateral. Its module docstring lists
 differences in padding, kernel support, normalization, and clipping; empty cells
 indicate an unavailable dependency or a missing native counterpart.
-The kornia-rs adapters detect APIs individually: stable 0.1.14 supplies Gaussian
-and box blur; 0.1.15rc5 also supplies median, Sobel, and grayscale bilateral.
-The latter has a separate row because its Python API only accepts grayscale.
+The grayscale bilateral has a separate row because its Python API only accepts grayscale.
 See [median parallelism notes](filters/median_parallelism.md) for the CPU/CUDA/MPS
 implementation audit and related PyTorch issues and pull requests.
 
@@ -440,7 +438,8 @@ The honest reading:
   patch extractors, ~25× below `ellipse_to_laf`, and the least moved by `torch.compile` there
   (1.26×, against up to 9.1× elsewhere). On CPU it was ~9× slower than the similar-sized
   `make_upright`. #4217 removed the cause; see the last bullet for what it actually was. The
-  tables above predate that change, as do their `laf_is_inside_image` rows, which share it.
+  tables above predate that change, as do their `laf_is_inside_image` rows, measured when that
+  op still called `laf_to_boundary_points`.
 - **Small N on CUDA is launch-latency bound, not work bound:** at B=1 N=2000 the three cheapest
   ops all land within 8.2–14.2M LAFs/s regardless of what they compute, ~8.5–11× below their own
   B=1 N=20000 figures. Read the N=20000 rows for kernel cost and the N=2000 rows for per-call
@@ -472,8 +471,8 @@ The honest reading:
   for 1.5× the arithmetic, identically at 1, 4 and 8 threads (M=1 0.33 ms, M=2 0.65, M=3 14.87,
   M=4 16.26). #4217 multiplies by the `(2, 3)` LAF directly. Quiet back-to-back A/B on the M1
   (torch 2.14.0, 4 threads, B=1 N=20000): `laf_to_boundary_points` 1.07M → 29.6M LAFs/s eager on
-  CPU and 1.77M → 4.27M on MPS; `laf_is_inside_image`, which calls it with `n_pts=12` on every
-  detector forward, 9.75M → 29.0M on CPU and 2.70M → 8.53M on MPS. **The lesson is the method:**
+  CPU and 1.77M → 4.27M on MPS; `laf_is_inside_image`, which then called it with `n_pts=12`,
+  9.75M → 29.0M on CPU and 2.70M → 8.53M on MPS. **The lesson is the method:**
   the transfer was visible by reading the source and the cliff was only visible by timing the
   components, so the readable diagnosis got written up first and would have shipped a 1.00× fix.
 

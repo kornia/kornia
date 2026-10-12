@@ -9,6 +9,9 @@ kornia.feature
 Local feature detection, description and matching, from classical operators to pretrained models, all as
 differentiable PyTorch modules. For guidance on which model to pick, see the
 :doc:`image matching guide </applications/image_matching>`.
+For classical SIFT, start with the explicit scale-space pyramid recipe in the
+:ref:`SIFT pipeline guide <sift-pipelines>`. For supplied patches or frames, see
+the :ref:`SIFT descriptor interfaces <sift-descriptor-interfaces>`.
 
 .. list-table::
    :widths: 30 70
@@ -16,9 +19,11 @@ differentiable PyTorch modules. For guidance on which model to pick, see the
    * - :doc:`feature.detectors`
      - Keypoint detectors: Harris, GFTT, Hessian, DoG responses and the KeyNet, scale-space and multi-resolution detectors.
    * - :doc:`feature.descriptors`
-     - Patch descriptors: SIFT, MKD, HardNet, HardNet8, HyNet, TFeat, SOSNet, and the SOLD2 line descriptor.
+     - Patch, dense and supplied-frame SIFT descriptors; MKD, HardNet, HardNet8, HyNet, TFeat, SOSNet,
+       and the SOLD2 line descriptor.
    * - :doc:`feature.local_features`
-     - Detector + descriptor pipelines: DISK, ALIKED, DeDoDe, XFeat, SIFTFeature, KeyNetAffNetHardNet and friends.
+     - Detector + descriptor pipelines: DISK, ALIKED, DeDoDe, XFeat, SIFTFeatureScaleSpace,
+       SIFTFeature, KeyNetAffNetHardNet and friends.
    * - :doc:`feature.matching`
      - Nearest-neighbour, mutual, ratio-test, FGINN and AdaLAM matching; LightGlue and LoFTR.
    * - :doc:`feature.laf`

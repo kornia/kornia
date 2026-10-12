@@ -20,7 +20,7 @@
 The JSON is a committed snapshot of the graph-capture survey in ``docs/export_support/``: every public
 operator, model and augmentation probed with the dynamo ONNX exporter, ``torch.export`` and
 ``torch.compile``. Refresh it with ``python docs/export_support/run.py`` (see that package's README)
-and commit the result; this module turns it into the support page at docs-build time, the same way
+and commit the result; this module turns it into the survey page at docs-build time, the same way
 ``generate_adoption.py`` renders the Adoption page.
 """
 
@@ -282,8 +282,9 @@ def render_page(data: dict) -> str:
     )
     ops = _operator_counts(cases)
     description = (
-        f"Which Kornia operators export to ONNX, capture with torch.export and run under torch.compile: "
-        f"{len(cases)} probed configurations across {len(packages)} packages, with the reason for every failure."
+        f"A dated survey of which Kornia operators exported to ONNX, captured with torch.export and ran under "
+        f"torch.compile: {len(cases)} probed configurations across {len(packages)} packages, with the reason for "
+        f"every failure. A measurement, not a support guarantee."
     )
 
     sections = []
@@ -297,7 +298,7 @@ def render_page(data: dict) -> str:
                     n_fail[key] += 1
         lead = (
             f"{len(cs)} probed configurations. ONNX {_ratio(n['onnx'])}, torch.export {_ratio(n['export'])}, "
-            f"torch.compile {_ratio(n['compile'])} (supported / probed)."
+            f"torch.compile {_ratio(n['compile'])} (passed / probed)."
         )
         block = [f".. _export-support-{_slug(pkg)}:", "", pkg, "-" * len(pkg), "", lead, ""]
         parts = _package_sections(cs)
@@ -323,8 +324,8 @@ def render_page(data: dict) -> str:
 
 .. _export-support:
 
-ONNX, torch.compile and torch.export support
-============================================
+ONNX, torch.compile and torch.export survey
+===========================================
 
 .. meta::
    :description: {description}
@@ -333,6 +334,13 @@ Every public operator, model and augmentation in kornia was run through the thre
 paths PyTorch offers, and this page lists the result for each one, package by package, with the
 cause of every failure. Use the search box to find an operator, or the summary table to jump to a
 package.
+
+.. note::
+
+   This page records one measurement, not a support guarantee. It was taken on {data.get("generated_at", "")}
+   with torch {data.get("torch", "")}, and Kornia's test suite checks only part of what it lists as working, so
+   an entry may no longer hold for the current release. Export or compile your own pipeline and compare it with
+   eager before relying on it.
 
 .. grid:: 1 3 3 3
    :gutter: 3
@@ -366,7 +374,7 @@ package.
 
       ``torch.compile`` with the default inductor backend, compared with eager; graph breaks counted
 
-Each figure is *supported / probed*; {n_ok_all} of the {len(cases)} probed configurations pass
+Each figure is *passed / probed*; {n_ok_all} of the {len(cases)} probed configurations pass
 all three paths; the configurations cover {ops["operators"]} distinct operators, of which
 {ops["onnx_operators"]} export to ONNX in at least one configuration. Every operator is captured
 with concrete input shapes, so a failure is never about an unknown input size: the causes in the
@@ -383,8 +391,8 @@ in brackets after the operator. Augmentations are probed twice: with their sampl
 in as graph inputs (a deterministic graph) and with the sampling inside the graph (``[random]``).
 Registry entries that are not tensor graphs at all (file I/O, enums, Python containers, stubs) are
 not listed.
-The survey lives in ``docs/export_support/`` and this page is rendered from its committed result,
-so the figures follow the library rather than a hand-maintained list.
+The survey lives in ``docs/export_support/`` and this page is rendered from its committed result;
+nothing refreshes that result automatically.
 
 Legend
 ------
@@ -396,8 +404,8 @@ Legend
 
 {_legend(cases)}
 
-A failure on this page is a fact about a specific torch, exporter and kornia version, not a
-promise: most *no* entries are missing ONNX lowerings upstream (``torch.linalg.svd``, ``solve``,
+Every entry on this page, a pass as much as a failure, is a fact about a specific torch, exporter and
+kornia version, not a promise: most *no* entries are missing ONNX lowerings upstream (``torch.linalg.svd``, ``solve``,
 ``lu_factor``, ``eigh``, ``qr``, ``histc``), data-dependent output sizes (matchers that return a
 variable number of pairs, detectors that keep the top-k responses above a threshold, NMS), or
 Python control flow that reads tensor values. See :doc:`onnx` for how to chain exported graphs and

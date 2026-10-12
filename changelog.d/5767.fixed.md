@@ -1,0 +1,1 @@
+`get_rotation_matrix2d` reports mismatched input dtypes separately from mismatched devices, instead of describing both as a device mismatch. Both checks retain `ValueError` and identify the values for `center`, `angle` and `scale`.

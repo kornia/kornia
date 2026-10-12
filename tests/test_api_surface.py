@@ -90,6 +90,20 @@ def test_no_public_name_removed(module_name):
     )
 
 
+@pytest.mark.parametrize("alias", ["np", "ort"])
+def test_lightglue_onnx_dependencies_are_private(alias):
+    # #4026 Group 2: lazy imports must not reintroduce accidental public globals.
+    from kornia.core import external
+    from kornia.feature import OnnxLightGlue
+    from kornia.feature.lightglue_onnx import lightglue
+
+    assert lightglue.__all__ == ["OnnxLightGlue"]
+    assert lightglue.OnnxLightGlue is OnnxLightGlue
+    assert not hasattr(lightglue, alias)
+    dependency = {"np": external.numpy, "ort": external.onnxruntime}[alias]
+    assert getattr(lightglue, f"_{alias}") is dependency
+
+
 def _foreign_names(module_name: str) -> set:
     """Public names of ``module_name`` bound to an import rather than to its own API.
 

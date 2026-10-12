@@ -57,5 +57,5 @@ class DeDoDeDetector(nn.Module):
             if idx < len(scales) - 1:
                 size = sizes[-(idx + 2)]
                 logits = F.interpolate(logits, size=size, mode="bicubic", align_corners=False)
-                context = F.interpolate(context.float(), size=size, mode="bilinear", align_corners=False)
+                context = F.interpolate(context.float(), size=size, mode="bilinear", align_corners=False).to(dtype)
         return logits.to(dtype)  # type: ignore
