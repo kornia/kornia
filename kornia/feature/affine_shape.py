@@ -119,7 +119,7 @@ class PatchAffineShapeEstimator(nn.Module):
         )
 
         # Now lets detect degenerate cases: when 2 or 3 elements are close to zero (e.g. if patch is completely black
-        bad_mask = (ellipse_shape < self.eps).sum(dim=2, keepdim=True) >= 2
+        bad_mask = (ellipse_shape.abs() < self.eps).sum(dim=2, keepdim=True) >= 2
         # We will replace degenerate shape with circular shapes.
         circular_shape = ellipse_shape.new_tensor([1.0, 0.0, 1.0]).view(1, 1, 3)
         ellipse_shape = torch.where(bad_mask, circular_shape, ellipse_shape)

@@ -123,6 +123,15 @@ class TestPatchAffineShapeEstimator(BaseTester):
         expected = torch.tensor([[[1.0, 0.0, 1.0]]], device=device, dtype=dtype)
         self.assert_close(out, expected)
 
+    def test_mirrored_patch_mirrors_shape(self, device):
+        y, x = torch.meshgrid(torch.arange(19.0), torch.arange(19.0), indexing="ij")
+        patch = (x / 19 + 1e-3 * y).view(1, 1, 19, 19).to(device)
+        est = PatchAffineShapeEstimator(19).to(device)
+        out = est(patch)
+        out_mirror = est(patch.flip(-1))
+        assert out[0, 0, 2] < 0.1  # thin ellipse, not the circular fallback
+        self.assert_close(out_mirror, out * out.new_tensor([1.0, -1.0, 1.0]))
+
     def test_half_precision_retains_anisotropic_shape(self, device, dtype):
         if dtype not in (torch.float16, torch.bfloat16):
             pytest.skip("half-precision regression test")
