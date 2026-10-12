@@ -126,6 +126,51 @@ class TestCombineTensorPatches(BaseTester):
         assert recomb.shape == img.shape
         self.assert_close(img, recomb)
 
+    @pytest.mark.parametrize(
+        "shape,window,stride,padding",
+        [
+            ((4, 6), (8, 8), (2, 2), (2, 2, 1, 1)),
+            ((4, 6), (9, 9), (2, 2), (2, 3, 1, 2)),
+            ((12, 6), (8, 8), (2, 2), (0, 0, 1, 1)),
+            ((6, 12), (8, 8), (2, 2), (1, 1, 0, 0)),
+            ((4, 15), (9, 8), (4, 3), (2, 3, 1, 1)),
+        ],
+    )
+    def test_image_smaller_than_window(self, device, dtype, shape, window, stride, padding):
+        image = torch.rand(2, 3, *shape, device=device, dtype=dtype)
+        assert kornia.contrib.compute_padding(shape, window, stride) == padding
+        patches = kornia.contrib.extract_tensor_patches(image, window, stride, allow_auto_padding=True)
+        top, bottom, left, right = padding
+        padded = torch.nn.functional.pad(image, (left, right, top, bottom))
+        expected = torch.stack(
+            [
+                padded[..., y : y + window[0], x : x + window[1]]
+                for y in range(0, padded.shape[-2] - window[0] + 1, stride[0])
+                for x in range(0, padded.shape[-1] - window[1] + 1, stride[1])
+            ],
+            dim=1,
+        )
+        self.assert_close(patches, expected)
+        restored = kornia.contrib.combine_tensor_patches(patches, shape, window, stride, allow_auto_unpadding=True)
+        self.assert_close(restored, image)
+
+    def test_small_image_gradcheck(self, device):
+        image = torch.rand(1, 1, 2, 3, device=device, dtype=torch.float64, requires_grad=True)
+
+        def roundtrip(x):
+            patches = kornia.contrib.extract_tensor_patches(x, (4, 5), 2, allow_auto_padding=True)
+            return kornia.contrib.combine_tensor_patches(patches, (2, 3), (4, 5), 2, allow_auto_unpadding=True)
+
+        self.gradcheck(roundtrip, (image,))
+
+    def test_small_image_dynamo(self, device, dtype, torch_optimizer):
+        image = torch.rand(2, 3, 4, 6, device=device, dtype=dtype)
+        op = torch.nn.Sequential(
+            kornia.contrib.ExtractTensorPatches((8, 8), stride=2, allow_auto_padding=True),
+            kornia.contrib.CombineTensorPatches((4, 6), (8, 8), stride=2, allow_auto_unpadding=True),
+        )
+        self.assert_close(torch_optimizer(op)(image), op(image))
+
     def test_gradcheck(self, device):
         patches = kornia.contrib.extract_tensor_patches(
             torch.arange(16.0, device=device, dtype=torch.float64).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2)
