@@ -84,7 +84,9 @@ def match_adalam(
           ``"device"``.
         - Known defects: with fewer than two descriptors on either side, or with no seed and no ratio-test match, the
           two outputs come back swapped, the :math:`(0, 2)` int64 indices first
-          (`#5848 <https://github.com/kornia/kornia/issues/5848>`_).
+          (`#5848 <https://github.com/kornia/kornia/issues/5848>`_). Exact correspondences are rejected, because the
+          local RANSACs give residuals at or near zero no inlier weight: an image matched against itself gets no
+          match (`#5866 <https://github.com/kornia/kornia/issues/5866>`_).
 
     Args:
         desc1: Batch of descriptors of a shape :math:`(B1, D)`.
