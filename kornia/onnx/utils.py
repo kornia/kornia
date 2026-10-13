@@ -77,6 +77,16 @@ def _url_cache_name(url: str) -> str:
     return "/".join([*components, file_name])
 
 
+def _check_keywords(method: str, kwargs: dict[str, Any]) -> None:
+    """Raise Python's ``TypeError`` for any keyword of ``method`` but ``cache_dir``, whichever branch it takes.
+
+    A local model, or a config URL that is not HTTP(S), never reaches ``download_to_cache``, which would raise it.
+    """
+    for key in kwargs:
+        if key != "cache_dir":
+            raise TypeError(f"{method}() got an unexpected keyword argument {key!r}")
+
+
 def _onnx_data_name(name: str) -> str:
     """Return the name of the ``.onnx_data`` weights stored beside the model ``name``, with or without ``.onnx``."""
     return (name[: -len(".onnx")] if name.endswith(".onnx") else name) + ".onnx_data"
@@ -95,12 +105,14 @@ class ONNXLoader(CachedDownloader):
             kwargs: Keyword arguments of ``CachedDownloader.download_to_cache``. Only ``cache_dir`` applies: the root
                 the config is stored under, at ``<scheme>/<host>/<directories of the URL's path>/<file name>``, with a
                 ``q-<hash>`` directory before the file name when the URL has a query, as for ``load_model``. ``None``
-                or ``""`` means ``kornia_config.hub_cache_dir``. Any other keyword raises ``TypeError``.
+                or ``""`` means ``kornia_config.hub_cache_dir``. Any other keyword raises ``TypeError``, whatever
+                ``url`` is.
 
         Returns:
             dict[str, Any]: The loaded preprocessor config.
 
         """
+        _check_keywords("ONNXLoader.load_config", kwargs)
         if url.startswith(("http:", "https:")):
             kwargs["cache_dir"] = kwargs.get("cache_dir") or None  # "" is the default directory, as for load_model
             file_path = cls.download_to_cache(url, _url_cache_name(url), download=download, suffix=".json", **kwargs)
@@ -135,13 +147,13 @@ class ONNXLoader(CachedDownloader):
                 neither can a directory with a reserved name (``con``); on a case-insensitive file system, URLs that
                 differ only in letter case share a file.
             with_data: If True, the model will be loaded with its `.onnx_data` weights, stored beside the model.
-            **kwargs: Keyword arguments of ``CachedDownloader.download_to_cache``; only ``cache_dir`` applies, and
-                any other keyword raises ``TypeError``.
+            **kwargs: Only ``cache_dir``; any other keyword raises ``TypeError``, whatever ``model_name`` is.
 
         Returns:
             onnx.ModelProto: The loaded ONNX model.
 
         """
+        _check_keywords("ONNXLoader.load_model", kwargs)
         if model_name.startswith("hf://"):
             model_name = model_name[len("hf://") :]
             url = f"https://huggingface.co/kornia/ONNX_models/resolve/main/{model_name}.onnx"

@@ -164,6 +164,23 @@ class TestCachedDownloader:
         transfer.assert_not_called()
         assert list(tmp_path.iterdir()) == []
 
+    @pytest.mark.parametrize("suffix", ["/../../../escape", "/x", "/"])
+    def test_suffix_that_leaves_the_file_name_raises(self, suffix, monkeypatch, tmp_path):
+        # the suffix is appended after the name is checked, so it is checked on its own: "model" + "/../../../escape"
+        # would put the file three levels above cache_dir
+        monkeypatch.chdir(tmp_path)
+
+        with (
+            mock.patch("kornia.core.download._download_url_to_file") as transfer,
+            pytest.raises(ValueError, match="suffix"),
+        ):
+            CachedDownloader.download_to_cache(
+                "http://127.0.0.1:9/model", "model", cache_dir="cache/a/b", suffix=suffix
+            )
+
+        transfer.assert_not_called()
+        assert list(tmp_path.iterdir()) == []
+
     def test_short_transfer_is_not_cached(self, download_server, monkeypatch, tmp_path):
         monkeypatch.chdir(tmp_path)
         responses, base_url, hits = download_server

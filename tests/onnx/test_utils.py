@@ -377,6 +377,22 @@ class TestONNXLoader:
             ONNXLoader.load_model("hf://operators/some_model", cachedir="mine")
         mock_download.assert_not_called()
 
+    def test_unknown_keyword_raises_for_every_kind_of_name(self, tmp_path):
+        # a local model or a config URL that is not http(s) never reaches download_to_cache, so the keywords are
+        # checked on entry: a misspelt cache_dir must not pass silently on one branch only
+        from unittest import mock
+
+        local = tmp_path / "local.onnx"
+        local.write_bytes(b"")
+        with mock.patch("onnx.load") as mock_onnx_load:
+            with pytest.raises(TypeError, match="cachedir"):
+                ONNXLoader.load_model(str(local), cachedir="mine")
+            with pytest.raises(TypeError, match="cachedir"):
+                ONNXLoader.load_model("https://example.invalid/m.onnx", download=False, cachedir="mine")
+        mock_onnx_load.assert_not_called()
+        with pytest.raises(TypeError, match="cachedir"):
+            ONNXLoader.load_config(str(tmp_path / "cfg.json"), cachedir="mine")
+
     def test_load_model_not_found(self):
         model_name = "non_existent_model.onnx"
         with pytest.raises(ValueError, match=f"File {model_name} not found"):

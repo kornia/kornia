@@ -49,7 +49,8 @@ class CachedDownloader:
 
         Raises:
             ValueError: If ``model_name`` is absolute, has a drive (on Windows) or has an empty, ``.`` or ``..``
-                component, which would put the file outside ``cache_dir`` or name no file.
+                component, which would put the file outside ``cache_dir`` or name no file, or if ``suffix`` adds a
+                directory or a drive to the file name.
 
         """
         # the component test of kornia.core.download._check_cache_file_name; os.path.basename also catches a Windows
@@ -70,6 +71,9 @@ class CachedDownloader:
         file_name = components[-1]
         if suffix is not None and not file_name.endswith(suffix):
             file_name = f"{file_name}{suffix}"
+            # the suffix joins the name after the check above, so it must not add a directory or a drive either
+            if os.path.basename(file_name) != file_name:
+                raise ValueError(f"suffix must not add a directory or a drive to the file name; got {suffix!r}.")
 
         return os.path.join(cache_dir, *components[:-1], file_name)
 
@@ -102,9 +106,10 @@ class CachedDownloader:
             Local filesystem path to the cached file.
 
         Raises:
-            ValueError: If ``url`` is not an HTTP or HTTPS URL, if ``name`` is absolute or has an empty, ``.`` or
-                ``..`` component, if download is disabled and the file is missing, if the server answers with an
-                HTTP error, or if ``KORNIA_DOWNLOAD_TIMEOUT`` is set to anything but a positive number of seconds.
+            ValueError: If ``url`` is not an HTTP or HTTPS URL, if ``name`` is absolute or has a drive or an empty,
+                ``.`` or ``..`` component, if ``suffix`` adds a directory to the file name, if download is disabled
+                and the file is missing, if the server answers with an HTTP error, or if ``KORNIA_DOWNLOAD_TIMEOUT``
+                is set to anything but a positive number of seconds.
             TimeoutError: If the server goes ``KORNIA_DOWNLOAD_TIMEOUT`` seconds without answering (see ``download``).
             urllib.error.URLError: If the server cannot be reached, or ``urllib.error.ContentTooShortError``
                 if the body is shorter than its ``Content-Length`` (see ``download``).
