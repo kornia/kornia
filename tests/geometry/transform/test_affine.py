@@ -240,6 +240,25 @@ class TestResize(BaseTester):
         assert not torch.allclose(actual, unfiltered)
 
     @pytest.mark.parametrize("transpose", [False, True])
+    @pytest.mark.parametrize("rows", [2, 3])
+    def test_antialias_blurs_a_two_or_three_pixel_axis(self, rows, transpose, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+        # Only a singleton axis skips the Gaussian. Two or three rows shrunk to one are blurred with sigma
+        # (rows - 1) / 2 over taps -(rows - 1) .. rows - 1, reflected at the border; the columns keep their size, so
+        # their kernel is the identity. Nearest keeps row 0 of the blurred rows, and row i is row 0 + 8 i.
+        image = torch.arange(rows * 8, device=device, dtype=dtype).reshape(1, 1, rows, 8)
+        taps = torch.arange(1 - rows, rows, dtype=torch.float64)
+        weights = torch.exp(-(taps**2) / (2 * ((rows - 1) / 2) ** 2))
+        offset = 8 * float((weights * taps.abs()).sum() / weights.sum())
+        expected = torch.arange(8, dtype=torch.float64).add(offset).reshape(1, 1, 1, 8)
+        size = (1, 8)
+        if transpose:
+            image, expected, size = image.transpose(-1, -2), expected.transpose(-1, -2), size[::-1]
+        actual = kornia.geometry.transform.resize(image, size, interpolation="nearest", antialias=True)
+        self.assert_close(actual, expected.to(device, dtype))
+
+    @pytest.mark.parametrize("transpose", [False, True])
     def test_antialias_singleton_wrappers(self, transpose, device, dtype):
         if not supports_reflect_padding(device, dtype):
             pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
