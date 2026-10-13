@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""Regenerate the snapshot behind the ONNX / torch.compile / torch.export support page.
+"""Regenerate the snapshot behind the ONNX / torch.compile / torch.export survey page.
 
 Usage (from the repository root, with the docs built once so cross-references resolve):
 

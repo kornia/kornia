@@ -16,7 +16,7 @@
 #
 
 """Shared harness of the library-wide graph-capture survey behind the ONNX / torch.compile / torch.export
-support page (docs/source/get-started/export-support.rst, rendered by docs/generate_export_support.py).
+survey page (docs/source/get-started/export-support.rst, rendered by docs/generate_export_support.py).
 
 A *case* is one public kornia callable (function or nn.Module instance) plus a concrete set of
 tensor inputs. Every tensor input becomes an ONNX graph input; Python-only kwargs are baked into

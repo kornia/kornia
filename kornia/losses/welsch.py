@@ -78,7 +78,9 @@ def welsch_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
     # 1 - exp(-s) cancels for small s = r^2 / 2. There it equals 2 t / (1 + t) with t = tanh(s / 2), which does not
     # cancel; torch.expm1 has only the precision of exp(x) - 1 on MPS (pytorch/pytorch#198708) and in ONNX export.
     # The exp form is kept for r^2 >= 1, where it is accurate and keeps the gradient of the saturating loss.
-    squared = (img1 - img2) ** 2
+    output_dtype = torch.promote_types(img1.dtype, img2.dtype)
+    diff = img1.float() - img2.float() if output_dtype in (torch.float16, torch.bfloat16) else img1 - img2
+    squared = diff**2
     t = torch.tanh(0.25 * squared)
     loss = torch.where(squared < 1.0, 2.0 * t / (1.0 + t), 1.0 - (-0.5 * squared).exp())
 
@@ -92,7 +94,7 @@ def welsch_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
     else:
         raise NotImplementedError("Invalid reduction option.")
 
-    return loss
+    return loss.to(output_dtype) if output_dtype in (torch.float16, torch.bfloat16) else loss
 
 
 class WelschLoss(nn.Module):

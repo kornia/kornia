@@ -472,6 +472,8 @@ class LiteMLA(nn.Module):
     def relu_linear_att(self, qkv: torch.Tensor) -> torch.Tensor:
         B, _, H, W = list(qkv.size())
 
+        dtype = qkv.dtype
+
         if qkv.dtype == torch.float16:
             qkv = qkv.float()
 
@@ -492,7 +494,7 @@ class LiteMLA(nn.Module):
         out = out[..., :-1] / (out[..., -1:] + self.eps)
 
         out = torch.transpose(out, -1, -2)
-        return torch.reshape(out, (B, -1, H, W))
+        return torch.reshape(out, (B, -1, H, W)).to(dtype)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply lightweight multi-scale linear attention.
