@@ -663,9 +663,8 @@ class TestSe2(BaseTester):
             Se2.random(1, device, dtype),
             Se2(So2.identity(1, device, dtype), Vector2(p)),
             from_exp * identity,
+            identity.inverse(),
         ]
-        if dtype != torch.float16:  # So2.inverse divides a ComplexHalf z, which the CPU does not implement
-            poses.append(identity.inverse())
         for pose in poses:
             assert isinstance(pose.t, torch.Tensor)
             assert pose.t.shape == (1, 2)

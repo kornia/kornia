@@ -89,10 +89,10 @@ precision, so the table says nothing about those backends.
    * - ``kornia.geometry.liegroup``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 36 / 130
-     - ``So2`` and ``Se2`` use complex tensors: float16 hits missing ``ComplexHalf`` kernels, and most
-       bfloat16 ``So2`` / ``Se2`` tests raise because the complex path does not accept bfloat16 (119 entries).
-       ``So3`` and ``Se3`` nearly all pass.
+     - 4 / 130
+     - ``So2`` and ``Se2`` store complex tensors; float16 inverses are computed in complex64. PyTorch has no
+       complex bfloat16 dtype, so most bfloat16 ``So2`` / ``Se2`` tests raise (119 entries). ``So3`` and ``Se3``
+       miss a few composition, point-transform and orthogonality accuracy checks.
    * - ``kornia.geometry.solvers``
      - ⚠️ Partial
      - ⚠️ Partial
