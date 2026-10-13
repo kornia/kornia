@@ -99,7 +99,7 @@ class TestHistMatch(BaseTester):
         src = torch.rand(64, 64, generator=g).to(device=device, dtype=dtype)
         dst = torch.rand(64, 64, generator=g).to(device=device, dtype=dtype)
         out = kornia.contrib.histogram_matching(src, dst)
-        exp = kornia.contrib.histogram_matching(src.double(), dst.double()).to(dtype)
+        exp = kornia.contrib.histogram_matching(src.cpu().double(), dst.cpu().double()).to(device=device, dtype=dtype)
         assert out.dtype == dtype
         assert out.isfinite().all()
         self.assert_close(out, exp)
