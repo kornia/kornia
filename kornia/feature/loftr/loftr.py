@@ -234,9 +234,6 @@ class LoFTR(nn.Module):
             "stride_c": stride_c,
             "stride_f": stride_f,
         }
-        for side in (0, 1):
-            if f"image{side}" in data:
-                _data[f"hw{side}_i"] = data[f"image{side}"].shape[2:]
 
         _data.update(
             {
