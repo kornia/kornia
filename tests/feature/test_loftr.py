@@ -196,6 +196,60 @@ class TestLoFTR(BaseTester):
         assert kpts0[:, 1].max() <= 56
         assert kpts0[:, 1].max() >= 8 * 4
 
+    @pytest.mark.parametrize("masked", [False, True])
+    def test_precomputed_features_give_the_same_matches(self, device, dtype, masked):
+        # Images of different sizes run through the backbone one by one either way, so matching precomputed
+        # features gives bitwise the same output, on either side and on both.
+        model = _loftr_matching_every_cell(device, dtype)
+        gen = torch.Generator().manual_seed(3)
+        image0 = torch.rand(1, 1, 100, 67, generator=gen).to(device, dtype)
+        image1 = torch.rand(1, 1, 93, 86, generator=gen).to(device, dtype)
+        masks = {}
+        if masked:
+            masks = {
+                "mask0": torch.ones(1, 100, 67, device=device, dtype=dtype),
+                "mask1": torch.ones(1, 93, 86, device=device, dtype=dtype),
+            }
+            masks["mask0"][:, 72:], masks["mask1"][:, :, 64:] = 0, 0
+        with torch.no_grad():
+            expected = model({"image0": image0, "image1": image1, **masks})
+            features0, features1 = model.extract_features(image0), model.extract_features(image1)
+            outputs = [
+                model({"features0": features0, "features1": features1, **masks}),
+                model({"features0": features0, "image1": image1, **masks}),
+                model({"image0": image0, "features1": features1, **masks}),
+            ]
+        assert expected["keypoints0"].shape[0] >= 5  # the masks leave 10
+        for out in outputs:
+            assert out.keys() == expected.keys()
+            for key, value in expected.items():
+                self.assert_close(out[key], value, rtol=0.0, atol=0.0)
+
+    def test_extract_features_shapes_and_batching(self, device, dtype):
+        model = _loftr_matching_every_cell(device, dtype)
+        images = torch.rand(2, 1, 100, 67).to(device, dtype)
+        # cuDNN's default TF32 convolutions round differently for each batch size (up to ~1e-3), so compare in fp32
+        with torch.no_grad(), torch.backends.cudnn.flags(enabled=torch.backends.cudnn.enabled, allow_tf32=False):
+            batched = model.extract_features(images)
+            single = model.extract_features(images[1:])
+        assert batched["coarse"].shape == (2, 256, 13, 9)
+        assert batched["fine"].shape == (2, 128, 50, 34)
+        # a batch of images gives each image's features (up to the backend's choice of kernel for the batch size)
+        self.assert_close(batched["coarse"][1:], single["coarse"])
+        self.assert_close(batched["fine"][1:], single["fine"])
+
+    def test_inputs_are_validated(self, device, dtype):
+        model = _loftr_matching_every_cell(device, dtype)
+        image = torch.rand(1, 1, 64, 64).to(device, dtype)
+        with torch.no_grad():
+            features = model.extract_features(image)
+            with pytest.raises(ValueError, match="exactly one of `image0` and `features0`"):
+                model({"image0": image, "features0": features, "image1": image})
+            with pytest.raises(ValueError, match="exactly one of `image1` and `features1`"):
+                model({"image0": image})
+            with pytest.raises(ValueError, match="same batch size"):
+                model({"features0": model.extract_features(image.repeat(2, 1, 1, 1)), "features1": features})
+
     @pytest.mark.slow
     def test_gradcheck(self, device):
         patches = torch.rand(1, 1, 32, 32, device=device, dtype=torch.float64)

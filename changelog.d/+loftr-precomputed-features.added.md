@@ -1,0 +1,5 @@
+`LoFTR.extract_features(image)` returns the features of an image that do not depend on the image it is matched with
+(the backbone's coarse and fine maps, the coarse one position-encoded), and `LoFTR.forward` accepts them as
+`features0` / `features1` instead of `image0` / `image1`, on either side or both. Matching one image against many no
+longer runs the backbone for every pair. For images of different sizes the matches are bitwise the same as when
+passing the images; `forward` still runs two images of the same size through the backbone together.

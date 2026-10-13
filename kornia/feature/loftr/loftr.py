@@ -110,6 +110,9 @@ class LoFTR(nn.Module):
     Returns:
         Dictionary with image correspondences and confidence scores.
 
+    The backbone features of an image do not depend on the image it is matched with. To match one image against
+    many, compute them once with :meth:`extract_features` and pass them as ``features0`` / ``features1``.
+
     Example:
         >>> img1 = torch.rand(1, 1, 320, 200)
         >>> img2 = torch.rand(1, 1, 128, 128)
@@ -146,7 +149,55 @@ class LoFTR(nn.Module):
             self.load_state_dict(pretrained_dict["state_dict"])
         self.eval()
 
-    def forward(self, data: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    def extract_features(self, image: torch.Tensor) -> dict[str, torch.Tensor]:
+        r"""Compute the features of images that do not depend on the image they are matched with.
+
+        These are the backbone's coarse and fine feature maps, the coarse one with its positional encoding. Pass the
+        returned dict to :meth:`forward` as ``features0`` or ``features1`` instead of ``image0`` or ``image1`` to
+        match an image against many others without running the backbone again for every pair.
+
+        Args:
+            image: grayscale images with shape :math:`(N, 1, H, W)`.
+
+        Returns:
+            - ``coarse``, position-encoded 1/8-resolution features
+              :math:`(N, C_c, \lceil H/8 \rceil, \lceil W/8 \rceil)`.
+            - ``fine``, 1/2-resolution features :math:`(N, C_f, \lceil H/2 \rceil, \lceil W/2 \rceil)`. With the
+              default config this is 128 channels, about 96 MB in float32 for a 1024 x 736 image.
+
+        Example:
+            >>> loftr = LoFTR(None)
+            >>> images = [torch.rand(1, 1, 64, 80), torch.rand(1, 1, 72, 64), torch.rand(1, 1, 64, 64)]
+            >>> features = [loftr.extract_features(image) for image in images]
+            >>> out = loftr({"features0": features[0], "features1": features[1]})
+            >>> out = loftr({"features0": features[0], "image1": images[2]})
+
+        """
+        feat_c, feat_f = self.backbone(image)
+        return {"coarse": self.pos_encoding(feat_c), "fine": feat_f}
+
+    def _pair_features(self, data: dict[str, Any]) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]:
+        """Features of both sides of the pair: given, or extracted from the images."""
+        for side in (0, 1):
+            if (f"image{side}" in data) == (f"features{side}" in data):
+                raise ValueError(f"Pass exactly one of `image{side}` and `features{side}`.")
+        if "image0" in data and "image1" in data and data["image0"].shape[2:] == data["image1"].shape[2:]:
+            # one backbone pass for both images: faster & better BN convergence
+            n = data["image0"].size(0)
+            both = self.extract_features(torch.cat([data["image0"], data["image1"]], dim=0))
+            return {k: v[:n] for k, v in both.items()}, {k: v[n:] for k, v in both.items()}
+        features = []
+        for side in (0, 1):
+            given = data.get(f"features{side}")
+            features.append(given if given is not None else self.extract_features(data[f"image{side}"]))
+        if features[0]["coarse"].size(0) != features[1]["coarse"].size(0):
+            raise ValueError(
+                f"Both sides need the same batch size. Got {features[0]['coarse'].size(0)} and "
+                f"{features[1]['coarse'].size(0)}."
+            )
+        return features[0], features[1]
+
+    def forward(self, data: dict[str, Any]) -> dict[str, torch.Tensor]:
         """Run forward.
 
         Args:
@@ -155,6 +206,8 @@ class LoFTR(nn.Module):
         Keyword Args:
             image0: left image with shape :math:`(N, 1, H1, W1)`.
             image1: right image with shape :math:`(N, 1, H2, W2)`.
+            features0 (optional): instead of ``image0``, its :meth:`extract_features` output.
+            features1 (optional): instead of ``image1``, its :meth:`extract_features` output.
             mask0 (optional): left image mask. '0' indicates a padded position :math:`(N, H1, W1)`.
             mask1 (optional): right image mask. '0' indicates a padded position :math:`(N, H2, W2)`.
 
@@ -171,20 +224,18 @@ class LoFTR(nn.Module):
         # stride.
         stride_c, stride_f = self.config["resolution"]
 
-        # 1. Local Feature CNN
+        # 1. Local Feature CNN (and the positional encoding), unless the caller passes them
+        features0, features1 = self._pair_features(data)
+        feat_c0, feat_f0 = features0["coarse"], features0["fine"]
+        feat_c1, feat_f1 = features1["coarse"], features1["fine"]
         _data: dict[str, torch.Tensor | int | torch.Size] = {
-            "bs": data["image0"].size(0),
-            "hw0_i": data["image0"].shape[2:],
-            "hw1_i": data["image1"].shape[2:],
+            "bs": feat_c0.size(0),
             "stride_c": stride_c,
             "stride_f": stride_f,
         }
-
-        if _data["hw0_i"] == _data["hw1_i"]:  # faster & better BN convergence
-            feats_c, feats_f = self.backbone(torch.cat([data["image0"], data["image1"]], dim=0))
-            (feat_c0, feat_c1), (feat_f0, feat_f1) = feats_c.split(_data["bs"]), feats_f.split(_data["bs"])
-        else:  # handle different input shapes
-            (feat_c0, feat_f0), (feat_c1, feat_f1) = self.backbone(data["image0"]), self.backbone(data["image1"])
+        for side in (0, 1):
+            if f"image{side}" in data:
+                _data[f"hw{side}_i"] = data[f"image{side}"].shape[2:]
 
         _data.update(
             {
@@ -196,17 +247,17 @@ class LoFTR(nn.Module):
         )
 
         # 2. coarse-level loftr module
-        # add featmap with positional encoding, then flatten it to sequence [N, HW, C]
+        # flatten the position-encoded featmap to sequence [N, HW, C]
 
-        # feat_c0 = rearrange(self.pos_encoding(feat_c0), 'n c h w -> n (h w) c')
-        # feat_c1 = rearrange(self.pos_encoding(feat_c1), 'n c h w -> n (h w) c')
+        # feat_c0 = rearrange(feat_c0, 'n c h w -> n (h w) c')
+        # feat_c1 = rearrange(feat_c1, 'n c h w -> n (h w) c')
         # Token-major copies: the reshape of the permuted maps is a channel-strided view, and every transformer GEMM
         # on it would run on the transposed layout.
-        feat_c0 = self.pos_encoding(feat_c0).permute(0, 2, 3, 1)
+        feat_c0 = feat_c0.permute(0, 2, 3, 1)
         n, _h, _w, c = feat_c0.shape
         feat_c0 = feat_c0.reshape(n, -1, c).contiguous()
 
-        feat_c1 = self.pos_encoding(feat_c1).permute(0, 2, 3, 1)
+        feat_c1 = feat_c1.permute(0, 2, 3, 1)
         n1, _h1, _w1, c1 = feat_c1.shape
         feat_c1 = feat_c1.reshape(n1, -1, c1).contiguous()
 
