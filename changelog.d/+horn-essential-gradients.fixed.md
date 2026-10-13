@@ -1,0 +1,1 @@
+`decompose_essential_matrix_no_svd` now gives finite gradients for valid axis-aligned camera poses, including identity rotation. It selects the largest column cross product before normalizing, so unused zero cross products no longer introduce NaN gradients.

@@ -732,6 +732,73 @@ class TestDecomposeEssentialMatrixNoSVD(BaseTester):
         self.gradcheck(eval_rot2, (E_mat,))
         self.gradcheck(eval_vec, (E_mat,))
 
+    @pytest.mark.parametrize("axis", [0, 1, 2])
+    @pytest.mark.parametrize("angle", [0.0, 0.3])
+    def test_axis_aligned_pose_gradients_5867(self, axis, angle, device, dtype):
+        # E(theta) = [t]_x R_t(theta), with t a coordinate axis. One cross product is nonzero;
+        # the other two vanish. Rodrigues gives R, dR/dtheta, and the second candidate R_pi R.
+        generators = torch.tensor(
+            [
+                [[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]],
+                [[0.0, 0.0, 1.0], [0.0, 0.0, 0.0], [-1.0, 0.0, 0.0]],
+                [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        generator = generators[axis]
+        squared = generator @ generator
+        identity = torch.eye(3, device=device, dtype=dtype)
+        translation = identity[axis]
+        half_turn = 2 * translation[:, None] * translation[None, :] - identity
+        theta = torch.tensor(angle, device=device, dtype=dtype, requires_grad=True)
+
+        def pose(theta):
+            rotation = identity + theta.sin() * generator + (1 - theta.cos()) * squared
+            return epi.decompose_essential_matrix_no_svd(generator @ rotation)
+
+        rotation = identity + theta.sin() * generator + (1 - theta.cos()) * squared
+        derivative = theta.cos() * generator + theta.sin() * squared
+        expected = (rotation[None], (half_turn @ rotation)[None], translation.reshape(1, 3, 1))
+        expected_jacobians = (derivative[None], (half_turn @ derivative)[None], torch.zeros_like(expected[2]))
+        for actual, reference in zip(pose(theta), expected):
+            self.assert_close(actual, reference)
+        # Check every scalar derivative, including the entries that should remain zero.
+        for actual, reference in zip(torch.autograd.functional.jacobian(pose, theta), expected_jacobians):
+            assert torch.isfinite(actual).all()
+            self.assert_close(actual, reference)
+
+    def test_gradcheck_axis_aligned_5867(self, device):
+        # Different rows select different cross products; none should differentiate an unused 0/0.
+        E_mat = torch.tensor(
+            [
+                [[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]],
+                [[0.0, 0.0, 1.0], [0.0, 0.0, 0.0], [-1.0, 0.0, 0.0]],
+                [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+            ],
+            device=device,
+            dtype=torch.float64,
+            requires_grad=True,
+        )
+        self.gradcheck(epi.decompose_essential_matrix_no_svd, (E_mat,))
+
+    def test_dynamo_axis_aligned_5867(self, device, dtype, torch_optimizer):
+        E_mat = torch.tensor(
+            [[[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        op = epi.decompose_essential_matrix_no_svd
+        compiled = torch_optimizer(op, fullgraph=True)
+        expected, actual = op(E_mat), compiled(E_mat)
+        for result, reference in zip(actual, expected):
+            self.assert_close(result, reference)
+        eager_gradient = torch.autograd.grad(sum(value.sum() for value in expected), E_mat)[0]
+        compiled_gradient = torch.autograd.grad(sum(value.sum() for value in actual), E_mat)[0]
+        assert torch.isfinite(compiled_gradient).all()
+        self.assert_close(compiled_gradient, eager_gradient)
+
     def test_correct_decompose(self):
         E_mat = torch.tensor([[[0.2057, -3.8266, 3.1615], [4.5417, -1.0707, -2.2023], [-1.0975, 1.6386, -0.6590]]])
         R1, R2, t = epi.decompose_essential_matrix(E_mat)
