@@ -52,8 +52,6 @@ class OnnxLightGlue:
           with ``image_size`` in the order ``(W, H)``, and the same range check applies. Unlike
           :class:`~kornia.feature.LightGlue`, it takes float32 inputs with a batch of one and no scales, orientations
           or LAFs, and it runs on CPU or CUDA only.
-        - Known defects: ``device=None`` raises a ``TypeError``, although the signature allows ``None``
-          (`#5850 <https://github.com/kornia/kornia/issues/5850>`_).
 
     Args:
         weights: Pretrained weights, or a path to your own exported ONNX model. Available pretrained weights
