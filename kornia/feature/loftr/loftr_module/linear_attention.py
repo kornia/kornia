@@ -21,7 +21,7 @@ Modified from: https://github.com/idiap/fast-
 transformers/blob/master/fast_transformers/attention/linear_attention.py.
 """
 
-from typing import Optional
+from typing import Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -32,6 +32,17 @@ from torch.nn import Dropout
 def elu_feature_map(x: torch.Tensor) -> torch.Tensor:
     """Apply elu activation."""
     return torch.nn.functional.elu(x) + 1
+
+
+def _head_blocks(
+    heads: int, dim: int, dim_v: int, device: torch.device, dtype: torch.dtype
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Masks of the per-head blocks: ``(H D, H V)`` block diagonal and the ``(H D, H)`` head of each channel."""
+    head_d = torch.arange(heads * dim, device=device) // dim
+    head_v = torch.arange(heads * dim_v, device=device) // dim_v
+    block = (head_d[:, None] == head_v[None, :]).to(dtype)
+    head_of = (head_d[:, None] == torch.arange(heads, device=device)[None, :]).to(dtype)
+    return block, head_of
 
 
 class LinearAttention(nn.Module):
@@ -81,14 +92,30 @@ class LinearAttention(nn.Module):
 
         v_length = values.size(1)
         values = values / v_length  # prevent fp16 overflow
-        KV = torch.einsum("nshd,nshv->nhdv", K, values)  # (S,D)' @ S,V
-        denominator = torch.einsum("nlhd,nhd->nlh", Q, K.sum(dim=1)) + self.eps
+        n, length, heads, dim = Q.shape
+        dim_v = values.size(3)
+        if v_length > heads * dim:
+            # Long sequences (LoFTR's coarse level: ~10^4 tokens, 8 x 32 channels). The per-head reductions over the
+            # sequence are the diagonal blocks of dense (H D) x (H D) products, which run as single GEMMs instead of
+            # an einsum's batched GEMMs with tiny outputs; the off-diagonal blocks are zeroed, not read.
+            block, head_of = _head_blocks(heads, dim, dim_v, Q.device, Q.dtype)
+            Q = Q.reshape(n, length, heads * dim)
+            K = K.reshape(n, v_length, heads * dim)
+            KV = (K.transpose(1, 2) @ values.reshape(n, v_length, heads * dim_v)) * block  # (N, H D, H V)
+            denominator = Q @ (K.sum(dim=1)[:, :, None] * head_of) + self.eps  # (N, L, H)
+        else:
+            KV = torch.einsum("nshd,nshv->nhdv", K, values)  # (S,D)' @ S,V
+            denominator = torch.einsum("nlhd,nhd->nlh", Q, K.sum(dim=1)) + self.eps
         if q_mask is not None:
             # A padded query has Q = 0, so it gives 0 whatever its normaliser. Its 1 / eps overflows float16, and
             # 0 * inf would be nan in the output and in the gradient, so it divides by 1 instead.
             denominator = torch.where(q_mask[:, :, None] > 0, denominator, torch.ones_like(denominator))
         Z = 1 / denominator
-        queried_values = torch.einsum("nlhd,nhdv,nlh->nlhv", Q, KV, Z) * v_length
+        if v_length > heads * dim:
+            queried_values = (Q @ KV).view(n, length, heads, dim_v) * (Z[..., None] * v_length)
+        else:
+            # two operands: a three-operand einsum searches for a contraction path on every call
+            queried_values = torch.einsum("nlhd,nhdv->nlhv", Q, KV) * (Z[..., None] * v_length)
 
         return queried_values.contiguous()
 

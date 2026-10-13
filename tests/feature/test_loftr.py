@@ -806,7 +806,6 @@ class TestFinePreprocess(BaseTester):
         # the window spans +-2 fine cells: its last element is two cells down and right of the centre
         self.assert_close(win0[1:3, 24], (centre0[1:3] + 2).to(dtype), rtol=0.0, atol=0.0)
 
-
     @pytest.mark.parametrize("fine_hw", [((50, 34), (47, 43)), ((33, 37), (29, 41))])
     def test_gathered_windows_equal_the_unfolded_ones(self, device, dtype, fine_hw):
         # FinePreprocess cuts only the windows of the matched cells; they must be exactly the windows of
@@ -875,13 +874,14 @@ class TestResNetFPN(BaseTester):
 
 class TestLinearAttention(BaseTester):
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-    def test_padded_queries_stay_finite_5728(self, device, dtype):
+    @pytest.mark.parametrize("kv_len", [5, 40])  # 40 > heads * dim = 8: the dense block-diagonal GEMM path
+    def test_padded_queries_stay_finite_5728(self, device, dtype, kv_len):
         # A padded query has a zero feature map, so its normaliser 1 / eps = 1e6 would exceed float16's 65504. The
         # padded rows must come out as 0, not as 0 * inf = nan, the gradients must stay finite as well, and the
         # rest must not change.
         gen = torch.Generator().manual_seed(0)
-        q, k, v = (torch.randn(1, n, 2, 4, generator=gen) for n in (6, 5, 5))
-        q_mask, kv_mask = torch.ones(1, 6), torch.ones(1, 5)
+        q, k, v = (torch.randn(1, n, 2, 4, generator=gen) for n in (6, kv_len, kv_len))
+        q_mask, kv_mask = torch.ones(1, 6), torch.ones(1, kv_len)
         q_mask[0, [1, 4]], kv_mask[0, 2] = 0, 0
 
         def attend(dt):
@@ -899,6 +899,43 @@ class TestLinearAttention(BaseTester):
             assert bool(torch.isfinite(grad).all()), grad
             self.assert_close(grad.float(), grad32, rtol=0.0, atol=5e-2)
         self.assert_close(grads[0][0, [1, 4]], torch.zeros_like(grads[0][0, [1, 4]]), rtol=0.0, atol=0.0)
+
+    @staticmethod
+    def _reference(queries, keys, values, q_mask=None, kv_mask=None, eps=1e-6):
+        """LinearAttention's per-head einsum formulation."""
+        Q, K = F.elu(queries) + 1, F.elu(keys) + 1
+        if q_mask is not None:
+            Q = Q * q_mask[:, :, None, None]
+        if kv_mask is not None:
+            K = K * kv_mask[:, :, None, None]
+            values = values * kv_mask[:, :, None, None]
+        KV = torch.einsum("nshd,nshv->nhdv", K, values)
+        denominator = torch.einsum("nlhd,nhd->nlh", Q, K.sum(dim=1)) + eps
+        if q_mask is not None:
+            denominator = torch.where(q_mask[:, :, None] > 0, denominator, torch.ones_like(denominator))
+        return torch.einsum("nlhd,nhdv,nlh->nlhv", Q, KV, 1 / denominator)
+
+    @pytest.mark.parametrize("kv_len", [5, 40])
+    @pytest.mark.parametrize("masked", [False, True])
+    @pytest.mark.parametrize("dim_v", [4, 3])
+    def test_matches_the_per_head_einsums(self, device, kv_len, masked, dim_v):
+        # Sequences longer than heads * dim run as dense GEMMs over the per-head blocks; both paths compute the
+        # per-head linear attention, also when the values are narrower than the queries and keys.
+        gen = torch.Generator().manual_seed(1)
+        q, k = (torch.randn(2, n, 2, 4, generator=gen, dtype=torch.float64).to(device) for n in (7, kv_len))
+        v = torch.randn(2, kv_len, 2, dim_v, generator=gen, dtype=torch.float64).to(device)
+        q_mask = kv_mask = None
+        if masked:
+            q_mask = torch.ones(2, 7, dtype=torch.float64, device=device)
+            kv_mask = torch.ones(2, kv_len, dtype=torch.float64, device=device)
+            q_mask[1, 3], kv_mask[0, 1:3] = 0, 0
+        out = LinearAttention()(q, k, v, q_mask, kv_mask)
+        self.assert_close(out, self._reference(q, k, v, q_mask, kv_mask), rtol=1e-10, atol=1e-12)
+
+    def test_gradcheck_long_sequence(self, device):
+        gen = torch.Generator().manual_seed(2)
+        q, k, v = (torch.randn(1, n, 2, 4, generator=gen, dtype=torch.float64).to(device) for n in (6, 20, 20))
+        self.gradcheck(LinearAttention(), (q, k, v), requires_grad=(True, True, True))
 
 
 class TestConventionsLoFTR(BaseTester):
