@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -24,7 +25,7 @@ import posixpath
 import pprint
 import urllib.error
 from typing import Any, Optional
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import quote, urlsplit, urlunsplit
 from urllib.request import urlopen
 
 import kornia
@@ -38,13 +39,24 @@ __all__ = ["ONNXLoader", "add_metadata", "io_name_conversion"]
 _logger = logging.getLogger(__name__)
 
 
-def _url_cache_name(url: str, cache_dir: Optional[str]) -> str:
+# Characters a cache directory keeps besides letters, digits and "_.-~"; quote() percent-encodes every other one, "%"
+# included, so no directory is refused on Windows (``:``, ``*``, ``|``, ...) and two different URL directories never
+# become one cache directory
+_SAFE_DIRECTORY_CHARACTERS = "!$&'()+,;=@[]~"
+
+
+def _url_cache_name(url: str) -> str:
     """Return the name, relative to the cache directory, that :class:`ONNXLoader` caches ``url`` under.
 
-    A ``cache_dir`` the caller chose is the directory the file is stored in, so the name is the file name of the URL's
-    path. Without one, the name also carries the URL's host (and port) and the directories of its path, so that two
-    URLs never share a file in the default directory. The query and the fragment are not part of the file's name, and
-    ``?`` cannot be in a file name on Windows. ``.`` and ``..`` directories are resolved as a server resolves them.
+    The name is ``<scheme>/<host>[_<port>]/<directories of the URL's path>[/q-<hash>]/<file name>``, under an explicit
+    ``cache_dir`` as under the default directory. Two URLs share a file only when they differ in nothing but
+    credentials, the fragment, ``.``, ``..`` or empty directories (resolved as RFC 3986 resolves them, which most
+    servers follow), or a ``.onnx`` / ``.json`` extension that one of them lacks. The scheme keeps a file fetched over
+    ``http`` from being served for ``https``, and keeps URLs apart from the ``hf://`` folders in the same directory. A
+    query can name the file (``?id=...``, ``?ref=...``), so a URL with one is stored in a directory named after the
+    query's hash; the query itself is not part of any name, since ``?`` cannot be in a file name on Windows. The
+    directories are percent-encoded (see ``_SAFE_DIRECTORY_CHARACTERS``); the file name is kept as it is, because a
+    model refers to its ``.onnx_data`` weights by name.
 
     Raises:
         ValueError: If the URL's path does not end in a file name.
@@ -53,15 +65,15 @@ def _url_cache_name(url: str, cache_dir: Optional[str]) -> str:
     *directories, file_name = parts.path.split("/")
     if file_name in ("", ".", ".."):
         raise ValueError(f"{url!r} does not end in a file name to cache it under.")
-    if cache_dir is not None:
-        return file_name
     host = parts.hostname or ""  # lower-cased, without any user name or password
     if parts.port is not None:
         host = f"{host}_{parts.port}"
     # the leading "/" makes the path absolute, so normpath drops every ".." that would climb above it
     directory = posixpath.normpath("/" + "/".join(directories))
-    components = [host.replace(":", "_")] if host else []  # an IPv6 address carries ":"
-    components += [c for c in directory.split("/") if c]
+    components = [parts.scheme] + ([host.replace(":", "_")] if host else [])  # an IPv6 address carries ":"
+    components += [quote(c, safe=_SAFE_DIRECTORY_CHARACTERS) for c in directory.split("/") if c]
+    if parts.query:
+        components.append("q-" + hashlib.sha256(parts.query.encode()).hexdigest()[:16])
     return "/".join([*components, file_name])
 
 
@@ -80,23 +92,18 @@ class ONNXLoader(CachedDownloader):
         Args:
             url: The URL of the preprocessor config to load.
             download: If True, the config will be downloaded if it's not already in the local cache.
-            kwargs: Keyword arguments of ``CachedDownloader.download_to_cache``. Only ``cache_dir`` applies: the
-                directory the config is stored in, under the file name of the URL. Without it, the config goes to
-                ``<hub_cache_dir>/<host>/<directories of the URL's path>/``, so that two URLs never share a file. The
-                URL's query is not part of the file name. Any other keyword raises ``TypeError``.
+            kwargs: Keyword arguments of ``CachedDownloader.download_to_cache``. Only ``cache_dir`` applies: the root
+                the config is stored under, at ``<scheme>/<host>/<directories of the URL's path>/<file name>``, with a
+                ``q-<hash>`` directory before the file name when the URL has a query, as for ``load_model``. ``None``
+                or ``""`` means ``kornia_config.hub_cache_dir``. Any other keyword raises ``TypeError``.
 
         Returns:
             dict[str, Any]: The loaded preprocessor config.
 
         """
         if url.startswith(("http:", "https:")):
-            file_path = cls.download_to_cache(
-                url,
-                _url_cache_name(url, kwargs.get("cache_dir")),
-                download=download,
-                suffix=".json",
-                **kwargs,
-            )
+            kwargs["cache_dir"] = kwargs.get("cache_dir") or None  # "" is the default directory, as for load_model
+            file_path = cls.download_to_cache(url, _url_cache_name(url), download=download, suffix=".json", **kwargs)
             with open(file_path) as f:
                 return json.load(f)
 
@@ -115,11 +122,18 @@ class ONNXLoader(CachedDownloader):
                 https://huggingface.co/kornia/ONNX_models.
                 Or a URL to the ONNX model.
             download: If True, the model will be downloaded from Hugging Face if it's not already in the local cache.
-            cache_dir: The directory where the model should be cached, under the path of an ``hf://`` name after its
-                folder (``a/b.onnx`` for ``hf://models/a/b``), or under the file name of a URL.
-                Defaults to None: an ``hf://`` model goes to ``<kornia_config.hub_onnx_dir>/<folder>/``, and a URL to
-                ``<kornia_config.hub_onnx_dir>/<host>/<directories of the URL's path>/``, so that two URLs never
-                share a file. The URL's query is not part of the file name.
+            cache_dir: The root of the cache. An ``hf://`` model is stored under it at the path of its name after
+                the folder (``<cache_dir>/a/b.onnx`` for ``hf://models/a/b``): the kornia/ONNX_models names are fully
+                qualified (``kornia.color.gray.RgbToGrayscale``), so the folders never share a name. A URL is stored at
+                ``<cache_dir>/<scheme>/<host>/<directories of the URL's path>/<file name>``, with a ``q-<hash>``
+                directory before the file name when the URL has a query, so that two URLs share a file only when they
+                differ in nothing but credentials, the fragment, ``.``, ``..`` or empty directories, or an ``.onnx``
+                extension that one of them lacks. Defaults to None (``""`` too): an ``hf://`` model goes to
+                ``<kornia_config.hub_onnx_dir>/<folder>/``, and a URL under ``kornia_config.hub_onnx_dir``.
+                Limitations: on Windows, a URL whose file name is not a valid file name there, or whose cache path
+                is longer than ``MAX_PATH`` (260 characters) while long paths are disabled, cannot be cached, and
+                neither can a directory with a reserved name (``con``); on a case-insensitive file system, URLs that
+                differ only in letter case share a file.
             with_data: If True, the model will be loaded with its `.onnx_data` weights, stored beside the model.
             **kwargs: Keyword arguments of ``CachedDownloader.download_to_cache``; only ``cache_dir`` applies, and
                 any other keyword raises ``TypeError``.
@@ -131,9 +145,11 @@ class ONNXLoader(CachedDownloader):
         if model_name.startswith("hf://"):
             model_name = model_name[len("hf://") :]
             url = f"https://huggingface.co/kornia/ONNX_models/resolve/main/{model_name}.onnx"
-            folder, _, name = model_name.partition("/")
-            cache_dir = kwargs.get("cache_dir") or os.path.join(kornia_config.hub_onnx_dir, folder)
-            kwargs.update({"cache_dir": cache_dir})
+            if kwargs.get("cache_dir"):
+                name = model_name.partition("/")[2]  # under an explicit cache_dir, the path after the folder
+            else:
+                kwargs["cache_dir"] = kornia_config.hub_onnx_dir
+                name = model_name  # "<folder>/<a>/<b>": the folder is checked as the other components are
             file_path = cls.download_to_cache(url, name, download=download, suffix=".onnx", **kwargs)
             if with_data:
                 url_data = f"https://huggingface.co/kornia/ONNX_models/resolve/main/{model_name}.onnx_data"
@@ -141,9 +157,8 @@ class ONNXLoader(CachedDownloader):
             return onnx.load(file_path)  # type:ignore
 
         if model_name.startswith(("http://", "https://")):
-            cache_dir = kwargs.get("cache_dir") or None  # an empty one means the default, as for hf:// names
-            name = _url_cache_name(model_name, cache_dir)
-            kwargs.update({"cache_dir": cache_dir or kornia_config.hub_onnx_dir})
+            name = _url_cache_name(model_name)
+            kwargs["cache_dir"] = kwargs.get("cache_dir") or kornia_config.hub_onnx_dir  # "" is the default too
             file_path = cls.download_to_cache(model_name, name, download=download, suffix=".onnx", **kwargs)
             if with_data:
                 parts = urlsplit(model_name)

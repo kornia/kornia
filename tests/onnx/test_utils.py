@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import hashlib
 import os
 import urllib
 from pathlib import Path
@@ -28,6 +29,9 @@ onnx = pytest.importorskip("onnx")
 
 from kornia.onnx.utils import ONNXLoader  # noqa: E402
 
+# the directory that a URL whose query is "download=1" is cached in
+_Q_DOWNLOAD_1 = "q-" + hashlib.sha256(b"download=1").hexdigest()[:16]
+
 
 class TestONNXLoader:
     def test_get_file_path(self):
@@ -36,12 +40,28 @@ class TestONNXLoader:
         expected_path = os.path.join(".kornia_hub", "some_model.onnx")
         assert ONNXLoader._get_file_path(model_name, None, suffix=".onnx") == expected_path
 
-    @pytest.mark.parametrize("sep", ["/", "\\"])
-    def test_get_file_path_splits_forward_slashes_on_every_platform(self, sep, monkeypatch):
-        # hf:// names and URL paths use "/", which splitting on os.sep alone misses on Windows ("\\" stands in for it)
-        expected = os.path.join("cache", "a", "b.onnx")
-        monkeypatch.setattr(os, "sep", sep)
-        assert ONNXLoader._get_file_path("a/b", "cache", suffix=".onnx") == expected
+    @pytest.mark.parametrize("name", ["a/b", "a\\b"])
+    def test_get_file_path_on_windows_splits_on_both_separators(self, name, monkeypatch):
+        # hf:// names and URL paths use "/", and a name built with os.path.join uses "\\" on Windows: both split
+        import ntpath
+        from types import SimpleNamespace
+
+        import kornia.onnx.download
+
+        monkeypatch.setattr(kornia.onnx.download, "os", SimpleNamespace(sep="\\", path=ntpath))
+        assert ONNXLoader._get_file_path(name, "cache", suffix=".onnx") == ntpath.join("cache", "a", "b.onnx")
+
+    @pytest.mark.parametrize("name", ["C:x", "C:\\abs\\x", "d:/x", "a/C:", "\\\\server\\share\\x"])
+    def test_get_file_path_on_windows_rejects_a_drive(self, name, monkeypatch):
+        # os.path.join("cache", "C:x") is "C:x", a path on drive C:, not a name inside cache
+        import ntpath
+        from types import SimpleNamespace
+
+        import kornia.onnx.download
+
+        monkeypatch.setattr(kornia.onnx.download, "os", SimpleNamespace(sep="\\", path=ntpath))
+        with pytest.raises(ValueError, match="relative path inside the cache directory, without a drive"):
+            ONNXLoader._get_file_path(name, "cache", suffix=".onnx")
 
     def test_load_model_local(self):
         from unittest import mock
@@ -129,9 +149,10 @@ class TestONNXLoader:
             os.path.join(cache_dir, "a", "c.onnx"),
         ]
 
-    def test_load_model_url_cache_path_follows_the_url_without_its_query(self, monkeypatch, tmp_path):
+    def test_load_model_url_cache_path_follows_the_url(self, monkeypatch, tmp_path):
         # #5902: a URL was cached under its last component only, query included (m.onnx?download=1.onnx), so URLs
-        # that end in the same file name shared one entry. Without cache_dir the entry follows the host and the path.
+        # that end in the same file name shared one entry. The entry follows the scheme, the host and the path; a query
+        # gets a directory named after its hash, shared by the model and its weights.
         from unittest import mock
 
         from kornia.config import kornia_config
@@ -149,35 +170,66 @@ class TestONNXLoader:
             for url in urls[1:]:
                 ONNXLoader.load_model(url)
 
+        q = _Q_DOWNLOAD_1
         assert mock_download.call_args_list == [
-            mock.call(urls[0], os.path.join(hub_dir, "example.invalid", "x", "m.onnx"), download_if_not_exists=True),
             mock.call(
-                "https://example.invalid/x/m.onnx_data?download=1",
-                os.path.join(hub_dir, "example.invalid", "x", "m.onnx_data"),
+                urls[0],
+                os.path.join(hub_dir, "https", "example.invalid", "x", q, "m.onnx"),
                 download_if_not_exists=True,
             ),
-            mock.call(urls[1], os.path.join(hub_dir, "example.invalid", "y", "m.onnx"), download_if_not_exists=True),
-            mock.call(urls[2], os.path.join(hub_dir, "other.invalid", "x", "m.onnx"), download_if_not_exists=True),
+            mock.call(
+                "https://example.invalid/x/m.onnx_data?download=1",
+                os.path.join(hub_dir, "https", "example.invalid", "x", q, "m.onnx_data"),
+                download_if_not_exists=True,
+            ),
+            mock.call(
+                urls[1], os.path.join(hub_dir, "https", "example.invalid", "y", "m.onnx"), download_if_not_exists=True
+            ),
+            mock.call(
+                urls[2], os.path.join(hub_dir, "https", "other.invalid", "x", "m.onnx"), download_if_not_exists=True
+            ),
+        ]
+
+    def test_load_model_url_without_onnx_extension_fetches_its_weights_beside_it(self, monkeypatch, tmp_path):
+        from unittest import mock
+
+        from kornia.config import kornia_config
+
+        hub_dir = str(tmp_path / "onnx_models")
+        monkeypatch.setattr(kornia_config, "hub_onnx_dir", hub_dir)
+        with mock.patch.object(ONNXLoader, "download") as mock_download, mock.patch("onnx.load"):
+            ONNXLoader.load_model("https://example.invalid/x/model", with_data=True)
+        directory = os.path.join(hub_dir, "https", "example.invalid", "x")
+        assert [c.args[:2] for c in mock_download.call_args_list] == [
+            ("https://example.invalid/x/model", os.path.join(directory, "model.onnx")),
+            ("https://example.invalid/x/model.onnx_data", os.path.join(directory, "model.onnx_data")),
         ]
 
     @pytest.mark.parametrize(
         ("url", "expected"),
         [
-            ("https://example.invalid/x/m.onnx#part", "example.invalid/x/m.onnx"),
-            ("https://Example.INVALID/X/m.onnx", "example.invalid/X/m.onnx"),
-            ("https://user:secret@example.invalid/m.onnx", "example.invalid/m.onnx"),
-            ("http://127.0.0.1:8000/m.onnx", "127.0.0.1_8000/m.onnx"),
-            ("http://[::1]:8000/m.onnx", "__1_8000/m.onnx"),
-            ("https://example.invalid/a/../b/./m.onnx", "example.invalid/b/m.onnx"),
-            ("https://example.invalid/../../m.onnx", "example.invalid/m.onnx"),
-            ("https://example.invalid//x//m.onnx", "example.invalid/x/m.onnx"),
-            ("https://example.invalid/x/model", "example.invalid/x/model.onnx"),
+            ("https://example.invalid/x/m.onnx#part", "https/example.invalid/x/m.onnx"),
+            ("https://Example.INVALID/X/m.onnx", "https/example.invalid/X/m.onnx"),
+            ("https://user:secret@example.invalid/m.onnx", "https/example.invalid/m.onnx"),
+            ("http://127.0.0.1:8000/m.onnx", "http/127.0.0.1_8000/m.onnx"),
+            ("http://[::1]:8000/m.onnx", "http/__1_8000/m.onnx"),
+            ("https://example.invalid/a/../b/./m.onnx", "https/example.invalid/b/m.onnx"),
+            ("https://example.invalid/../../m.onnx", "https/example.invalid/m.onnx"),
+            ("https://example.invalid//x//m.onnx", "https/example.invalid/x/m.onnx"),
+            ("https://example.invalid/x/model", "https/example.invalid/x/model.onnx"),
+            ("https://example.invalid/x/m.onnx?download=1", f"https/example.invalid/x/{_Q_DOWNLOAD_1}/m.onnx"),
+            # a directory keeps no character that Windows refuses (":" would also make "C:" a drive), and "%" is
+            # encoded too, so that "x:y" and "x%3Ay" stay two directories
+            ("https://example.invalid/x:y/a b/m.onnx", "https/example.invalid/x%3Ay/a%20b/m.onnx"),
+            ("https://example.invalid/x%3Ay/m.onnx", "https/example.invalid/x%253Ay/m.onnx"),
+            ("https://example.invalid/C:/m.onnx", "https/example.invalid/C%3A/m.onnx"),
+            ('https://example.invalid/<a>|"*\\/m.onnx', "https/example.invalid/%3Ca%3E%7C%22%2A%5C/m.onnx"),
         ],
     )
     @pytest.mark.parametrize("cache_dir", ["absent", None, ""])
     def test_load_model_url_default_cache_path(self, url, expected, cache_dir, monkeypatch, tmp_path):
-        # the default entry stays inside the hub directory: no credentials, ":" or ".." reach the path; an empty
-        # cache_dir means the default directory, as it does for hf:// names
+        # the entry stays inside the hub directory: no credentials, ":" or ".." reach the path; an empty cache_dir
+        # means the default directory, as it does for hf:// names
         from unittest import mock
 
         from kornia.config import kornia_config
@@ -192,17 +244,68 @@ class TestONNXLoader:
             url, os.path.join(hub_dir, *expected.split("/")), download_if_not_exists=True
         )
 
-    def test_load_model_url_with_cache_dir_is_stored_in_that_directory(self, tmp_path):
-        # an explicit cache_dir is the directory the model is stored in, under the URL's file name without its query
+    def test_load_model_url_with_cache_dir_follows_the_url_below_it(self, tmp_path):
+        # an explicit cache_dir is the root the URL's entry is stored under, as the default directory is: every
+        # onnx-community repository names its model onnx/model.onnx, and two of them must not share one file
         from unittest import mock
 
         cache_dir = str(tmp_path / "mine")
+        urls = [f"https://huggingface.co/onnx-community/{m}/resolve/main/onnx/model.onnx" for m in ("small", "large")]
         with mock.patch.object(ONNXLoader, "download") as mock_download, mock.patch("onnx.load"):
-            ONNXLoader.load_model("https://example.invalid/x/m.onnx?download=1", with_data=True, cache_dir=cache_dir)
+            for url in urls:
+                ONNXLoader.load_model(url, with_data=True, cache_dir=cache_dir)
 
+        repo = os.path.join(cache_dir, "https", "huggingface.co", "onnx-community")
         assert [c.args[1] for c in mock_download.call_args_list] == [
-            os.path.join(cache_dir, "m.onnx"),
-            os.path.join(cache_dir, "m.onnx_data"),
+            os.path.join(repo, "small", "resolve", "main", "onnx", "model.onnx"),
+            os.path.join(repo, "small", "resolve", "main", "onnx", "model.onnx_data"),
+            os.path.join(repo, "large", "resolve", "main", "onnx", "model.onnx"),
+            os.path.join(repo, "large", "resolve", "main", "onnx", "model.onnx_data"),
+        ]
+
+    @pytest.mark.parametrize("cache_dir", [None, "mine"])
+    def test_urls_that_differ_in_their_query_or_scheme_are_cached_apart(self, cache_dir, monkeypatch, tmp_path):
+        # a query can name the file (?id=, ?ref=), and a file fetched over http must never be served for https
+        import json
+        from unittest import mock
+
+        from kornia.config import kornia_config
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(kornia_config, "hub_cache_dir", str(tmp_path / "hub"))
+        urls = [
+            "https://a.invalid/uc?export=download&id=AAA",
+            "https://a.invalid/uc?export=download&id=BBB",
+            "http://a.invalid/uc?export=download&id=AAA",
+            "https://a.invalid/uc",
+        ]
+
+        def serve(url, dst, **kwargs):
+            Path(dst).write_text(json.dumps({"url": url}))
+
+        kwargs = {} if cache_dir is None else {"cache_dir": cache_dir}
+        with mock.patch("kornia.core.download._download_url_to_file", side_effect=serve):
+            assert [ONNXLoader.load_config(url, **kwargs)["url"] for url in urls] == urls
+            assert [ONNXLoader.load_config(url, **kwargs)["url"] for url in urls] == urls  # served from the cache
+
+    def test_load_config_with_an_empty_cache_dir_uses_the_default_directory(self, monkeypatch, tmp_path):
+        # as for load_model: "" is the default directory, not the working directory
+        import json
+        from unittest import mock
+
+        from kornia.config import kornia_config
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(kornia_config, "hub_cache_dir", str(tmp_path / "hub"))
+
+        def serve(url, dst, **kwargs):
+            Path(dst).write_text(json.dumps({"url": url}))
+
+        with mock.patch("kornia.core.download._download_url_to_file", side_effect=serve):
+            ONNXLoader.load_config("https://a.invalid/x/cfg.json", cache_dir="")
+
+        assert [p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*.json")] == [
+            "hub/https/a.invalid/x/cfg.json"
         ]
 
     def test_load_config_caches_each_url_separately(self, monkeypatch, tmp_path):
@@ -229,11 +332,12 @@ class TestONNXLoader:
             assert [ONNXLoader.load_config(url)["url"] for url in urls] == urls
             assert [ONNXLoader.load_config(url)["url"] for url in urls] == urls  # served from the cache
 
+        q = "q-" + hashlib.sha256(b"x=1").hexdigest()[:16]
         assert sorted(p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*.json")) == [
-            "hub/a.invalid/other/preprocessor_config.json",
-            "hub/a.invalid/preprocessor_config.json",
-            "hub/b.invalid/cfg.json",
-            "hub/b.invalid/preprocessor_config.json",
+            "hub/https/a.invalid/other/preprocessor_config.json",
+            "hub/https/a.invalid/preprocessor_config.json",
+            "hub/https/b.invalid/preprocessor_config.json",
+            f"hub/https/b.invalid/{q}/cfg.json",
         ]
 
     @pytest.mark.parametrize(
@@ -249,6 +353,15 @@ class TestONNXLoader:
             pytest.raises(ValueError, match="file name"),
         ):
             ONNXLoader.load_model(url)
+        mock_download.assert_not_called()
+
+    def test_load_model_hf_name_outside_the_hub_directory_raises(self, monkeypatch, tmp_path):
+        # the folder of an hf:// name is joined into the default directory, so it is checked as the rest is
+        from unittest import mock
+
+        monkeypatch.chdir(tmp_path)
+        with mock.patch.object(ONNXLoader, "download") as mock_download, pytest.raises(ValueError, match="relative"):
+            ONNXLoader.load_model("hf://../x")
         mock_download.assert_not_called()
 
     def test_load_model_rejects_an_unknown_keyword(self, monkeypatch, tmp_path):

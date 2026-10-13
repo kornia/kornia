@@ -97,10 +97,8 @@ def test_each_repository_preprocessing_config_is_cached_beside_its_model(monkeyp
         }
         Path(dst).write_text(json.dumps(config))
 
-    loaders = {
-        "depth-anything-v2-small": HFONNXComunnityModelLoader("depth-anything-v2-small", cache_dir=str(tmp_path / "a")),
-        "depth-anything-v2-large": HFONNXComunnityModelLoader("depth-anything-v2-large", cache_dir=str(tmp_path / "b")),
-    }
+    # one root, as DepthAnythingBuilder.build(cache_dir=None) uses for every repository
+    loaders = {name: HFONNXComunnityModelLoader(name, cache_dir=str(tmp_path / "hub")) for name in sizes}
     image = torch.rand(1, 3, 7, 9)
     with mock.patch("kornia.core.download._download_url_to_file", side_effect=serve):
         for name, loader in loaders.items():
@@ -108,6 +106,27 @@ def test_each_repository_preprocessing_config_is_cached_beside_its_model(monkeyp
             assert preprocessing(image).shape[-2:] == (sizes[name], sizes[name]), name
 
     assert sorted(p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*.json")) == [
-        "a/depth-anything-v2-small/preprocessor_config.json",
-        "b/depth-anything-v2-large/preprocessor_config.json",
+        "hub/depth-anything-v2-large/preprocessor_config.json",
+        "hub/depth-anything-v2-small/preprocessor_config.json",
     ]
+
+
+@pytest.mark.parametrize("with_data", [False, True])
+def test_loader_keeps_the_model_cache_paths_of_earlier_releases(with_data, tmp_path):
+    # <cache_dir>/<model_name>/<model_type>.onnx(_data): a model of up to 1.3 GB that is already cached there must not
+    # be downloaded again
+    from unittest import mock
+
+    from kornia.models._hf_models import HFONNXComunnityModelLoader
+    from kornia.onnx.utils import ONNXLoader
+
+    loader = HFONNXComunnityModelLoader(
+        "depth-anything-v2-large", "model_fp16", cache_dir=str(tmp_path), with_data=with_data
+    )
+    with mock.patch.object(ONNXLoader, "download") as mock_download, mock.patch("onnx.load"):
+        loader.load_model()
+    url = "https://huggingface.co/onnx-community/depth-anything-v2-large/resolve/main/onnx/model_fp16.onnx"
+    expected = [(url, str(tmp_path / "depth-anything-v2-large" / "model_fp16.onnx"))]
+    if with_data:
+        expected.append((url + "_data", str(tmp_path / "depth-anything-v2-large" / "model_fp16.onnx_data")))
+    assert [c.args[:2] for c in mock_download.call_args_list] == expected

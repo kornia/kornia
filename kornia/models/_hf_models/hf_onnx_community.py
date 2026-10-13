@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any, Optional
 
@@ -75,15 +76,27 @@ class HFONNXComunnityModelLoader:
                 output names after loading. This is useful when composing the model
                 with Kornia pre-processing or post-processing graphs that expect
                 specific tensor names.
-            kwargs: Additional keyword arguments forwarded to :class:`ONNXLoader`.
+            kwargs: Not used; any keyword raises ``TypeError``. Kept for compatibility.
 
         Returns:
             The loaded ONNX model graph. If ``io_name_mapping`` is provided, the graph
             is returned after its input and output names have been converted.
         """
-        onnx_model = ONNXLoader.load_model(
-            self.model_url, download=download, with_data=self.with_data, cache_dir=self.cache_dir, **kwargs
+        # <cache_dir>/<model_name>/<model_type>.onnx: the repository's own directory, where earlier releases cached
+        # these models too, so they are not downloaded again
+        file_path = ONNXLoader.download_to_cache(
+            self.model_url, self.model_type, download, cache_dir=self.cache_dir, suffix=".onnx", **kwargs
         )
+        if self.with_data:  # beside the model, under the name the model refers to
+            ONNXLoader.download_to_cache(
+                f"{self.model_url}_data",
+                self.model_type,
+                download,
+                cache_dir=self.cache_dir,
+                suffix=".onnx_data",
+                **kwargs,
+            )
+        onnx_model = onnx.load(file_path)  # type:ignore
 
         if io_name_mapping is not None:
             onnx_model = io_name_conversion(onnx_model, io_name_mapping)
@@ -104,8 +117,10 @@ class HFONNXComunnityModelLoader:
             Sequential Kornia image preprocessing module built from the repository
             configuration.
         """
-        json_req = ONNXLoader.load_config(self.config_url, cache_dir=self.cache_dir)
-        return PreprocessingLoader.from_json(json_req)
+        # <cache_dir>/<model_name>/preprocessor_config.json, beside the repository's model
+        file_path = ONNXLoader.download_to_cache(self.config_url, "preprocessor_config.json", cache_dir=self.cache_dir)
+        with open(file_path) as f:
+            return PreprocessingLoader.from_json(json.load(f))
 
 
 class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):

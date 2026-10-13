@@ -48,8 +48,8 @@ class CachedDownloader:
             str: The full local path where the model should be stored or loaded from.
 
         Raises:
-            ValueError: If ``model_name`` is absolute or has an empty, ``.`` or ``..`` component, which would put the
-                file outside ``cache_dir`` or name no file.
+            ValueError: If ``model_name`` is absolute, has a drive (on Windows) or has an empty, ``.`` or ``..``
+                component, which would put the file outside ``cache_dir`` or name no file.
 
         """
         # the component test of kornia.core.download._check_cache_file_name; os.path.basename also catches a Windows
@@ -57,8 +57,8 @@ class CachedDownloader:
         components = model_name.replace(os.sep, "/").split("/")
         if any(c in _core_download._NOT_A_FILE_NAME or os.path.basename(c) != c for c in components):
             raise ValueError(
-                "name must be a relative path inside the cache directory, without empty, '.' or '..' components; "
-                f"got {model_name!r}."
+                "name must be a relative path inside the cache directory, without a drive or an empty, '.' or '..' "
+                f"component; got {model_name!r}."
             )
 
         # Determine the local file path
