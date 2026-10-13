@@ -22,8 +22,9 @@ import torch
 
 from kornia.core._compat import torch_version_le
 from kornia.feature import matching
+from kornia.feature.adalam import AdalamFilter, get_adalam_default_config
 from kornia.feature.integrated import LightGlueMatcher
-from kornia.feature.laf import laf_from_center_scale_ori
+from kornia.feature.laf import get_laf_center, get_laf_orientation, get_laf_scale, laf_from_center_scale_ori
 from kornia.feature.lightglue import LightGlue
 from kornia.feature.matching import (
     DescriptorMatcher,
@@ -1196,3 +1197,162 @@ class TestMatchSMNNBatched(BaseTester):
         a = torch.rand(2, 3, 4, device=device, dtype=torch.float64)
         b = torch.rand(2, 4, 4, device=device, dtype=torch.float64)
         self.gradcheck(matching.match_smnn_batched, (a, b, 1.0))
+
+
+class TestMatchAdalamNoMatch(BaseTester):
+    """The paths of AdaLAM that find nothing to match return ``(dists, idxs)`` like the others (#5848)."""
+
+    HW = (180, 320)
+
+    def _scene(self, device, dtype):
+        # One-hot descriptors: every distance between the two sets is sqrt(2), so every ratio is 1 > 0.95, no seed
+        # survives and no ratio-test match remains.
+        d1 = torch.eye(12, device=device, dtype=dtype)[:6]
+        d2 = torch.eye(12, device=device, dtype=dtype)[6:]
+        g = torch.Generator().manual_seed(4)
+        size = torch.tensor([self.HW[1] - 10.0, self.HW[0] - 10.0])
+        lafs1, lafs2 = (
+            laf_from_center_scale_ori(torch.rand(1, 6, 2, generator=g) * size + 5.0).to(device, dtype) for _ in range(2)
+        )
+        return d1, d2, lafs1, lafs2
+
+    def _case(self, case, device, dtype):
+        d1, d2, lafs1, lafs2 = self._scene(device, dtype)
+        if case == "empty desc1":
+            return d1[:0], d2, lafs1[:, :0], lafs2
+        if case == "empty desc2":
+            return d1, d2[:0], lafs1, lafs2[:, :0]
+        if case == "one row in desc1":
+            return d1[:1], d2, lafs1[:, :1], lafs2
+        if case == "one row in desc2":
+            return d1, d2[:1], lafs1, lafs2[:, :1]
+        return d1, d2, lafs1, lafs2
+
+    def _assert_no_match(self, dists, idxs, device):
+        # AdaLAM computes in float32 whatever the descriptor dtype, and so does its output when something matches
+        assert dists.shape == (0, 1)
+        assert dists.dtype == torch.float32
+        assert idxs.shape == (0, 2)
+        assert idxs.dtype == torch.long
+        assert dists.device.type == idxs.device.type == device.type
+
+    CASES = ("empty desc1", "empty desc2", "one row in desc1", "one row in desc2", "no seed and no ratio-test match")
+
+    @pytest.mark.parametrize("case", CASES)
+    def test_match_adalam(self, device, dtype, case):
+        d1, d2, lafs1, lafs2 = self._case(case, device, dtype)
+        dists, idxs = match_adalam(d1, d2, lafs1, lafs2, hw1=self.HW, hw2=self.HW)
+        self._assert_no_match(dists, idxs, device)
+
+    @pytest.mark.parametrize("case", CASES)
+    def test_geometry_aware_descriptor_matcher(self, device, dtype, case):
+        d1, d2, lafs1, lafs2 = self._case(case, device, dtype)
+        dists, idxs = GeometryAwareDescriptorMatcher("adalam")(d1, d2, lafs1, lafs2)
+        self._assert_no_match(dists, idxs, device)
+
+    @pytest.mark.parametrize("case", CASES)
+    def test_adalam_filter_match_and_filter(self, device, dtype, case):
+        d1, d2, lafs1, lafs2 = self._case(case, device, dtype)
+        config = get_adalam_default_config()
+        config["device"] = device
+        args = (
+            get_laf_center(lafs1).reshape(-1, 2),
+            get_laf_center(lafs2).reshape(-1, 2),
+            d1,
+            d2,
+            self.HW,
+            self.HW,
+            get_laf_orientation(lafs1).reshape(-1),
+            get_laf_orientation(lafs2).reshape(-1),
+            get_laf_scale(lafs1).reshape(-1),
+            get_laf_scale(lafs2).reshape(-1),
+        )
+        # AdalamFilter returns the indices first
+        idxs, dists = AdalamFilter(config).match_and_filter(*args, return_dist=True)
+        self._assert_no_match(dists, idxs, device)
+        idxs = AdalamFilter(config).match_and_filter(*args, return_dist=False)
+        assert idxs.shape == (0, 2)
+        assert idxs.dtype == torch.long
+
+    def test_no_match_follows_the_output_of_a_match(self, device, dtype):
+        # An exact copy of desc1[0] in desc2 gives one ratio-test match (ratio 0) on the no-seed path: the empty output
+        # has its dtypes and device.
+        d1, d2, lafs1, lafs2 = self._scene(device, dtype)
+        d2 = torch.cat([d1[:1], d2[1:]])
+        dists, idxs = match_adalam(d1, d2, lafs1, lafs2, hw1=self.HW, hw2=self.HW)
+        assert idxs.tolist() == [[0, 0]]
+        assert dists.tolist() == [[0.0]]
+        empty_dists, empty_idxs = match_adalam(d1[:1], d2, lafs1[:, :1], lafs2, hw1=self.HW, hw2=self.HW)
+        assert (empty_dists.dtype, empty_dists.device) == (dists.dtype, dists.device)
+        assert (empty_idxs.dtype, empty_idxs.device) == (idxs.dtype, idxs.device)
+
+
+class TestMatchFGINNSecondNeighbour(BaseTester):
+    """The second neighbour of FGINN is the nearest candidate at least ``spatial_th`` from the nearest one (#5849)."""
+
+    @staticmethod
+    def _lafs(xy, device, dtype):
+        centers = torch.tensor([xy], device=device, dtype=dtype)
+        return laf_from_center_scale_ori(centers, torch.full((1, len(xy), 1, 1), 4.0, device=device, dtype=dtype))
+
+    @staticmethod
+    def _scales(dtype):
+        # Powers of two keep dm exact in every dtype. Float16 cannot hold distances of order 1e6.
+        big = 2.0**20 if torch.finfo(dtype).max > 1e7 else 2.0**13
+        return (1.0 / big, 1.0, big)
+
+    def _match(self, dm, xy2, device, dtype, **kwargs):
+        lafs1 = self._lafs([[10.0, 10.0]], device, dtype)
+        lafs2 = self._lafs(xy2, device, dtype)
+        desc1 = torch.zeros(1, 2, device=device, dtype=dtype)
+        desc2 = torch.zeros(len(xy2), 2, device=device, dtype=dtype)
+        return match_fginn(desc1, desc2, lafs1, lafs2, th=0.8, spatial_th=10.0, dm=dm, **kwargs)
+
+    # desc2 index 0 is the nearest neighbour, index 1 lies 2 px from it, index 2 lies 90 px from it
+    NEAR_AND_FAR = [[10.0, 10.0], [12.0, 10.0], [100.0, 10.0]]
+    # every candidate lies within spatial_th = 10 of the nearest neighbour
+    ALL_NEAR = [[10.0, 10.0], [12.0, 10.0], [13.0, 11.0]]
+
+    def test_a_candidate_near_the_nearest_neighbour_is_never_the_second_at_any_scale(self, device, dtype):
+        for scale in self._scales(dtype):
+            dm = torch.tensor([[2.0, 2.5, 5.0]], device=device, dtype=dtype) * scale
+            dists, idxs = self._match(dm, self.NEAR_AND_FAR, device, dtype)
+            assert idxs.tolist() == [[0, 0]]
+            # 2 / 5, not 2 / 2.5: the ratio does not depend on the scale of dm
+            self.assert_close(dists, torch.tensor([[0.4]], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("mutual", [False, True])
+    def test_all_candidates_near_the_nearest_neighbour_give_ratio_zero_at_any_scale(self, device, dtype, mutual):
+        for scale in self._scales(dtype):
+            dm = torch.tensor([[0.5, 0.75, 1.0]], device=device, dtype=dtype) * scale
+            dists, idxs = self._match(dm, self.ALL_NEAR, device, dtype, mutual=mutual)
+            assert idxs.tolist() == [[0, 0]]
+            # there is no second neighbour: the match is accepted with ratio 0, never nan
+            assert dists.tolist() == [[0.0]]
+
+    def test_gradients_are_finite(self, device, dtype):
+        for xy2, expected in ((self.NEAR_AND_FAR, [[0.2, 0.0, -0.08]]), (self.ALL_NEAR, [[0.0, 0.0, 0.0]])):
+            dm = torch.tensor([[2.0, 2.5, 5.0]], device=device, dtype=dtype, requires_grad=True)
+            dists, _ = self._match(dm, xy2, device, dtype)
+            dists.sum().backward()
+            # d(dm[0] / dm[2]) / d dm = (1 / dm[2], 0, -dm[0] / dm[2] ** 2)
+            self.assert_close(dm.grad, torch.tensor(expected, device=device, dtype=dtype))
+
+    def test_gradcheck(self, device):
+        lafs1 = self._lafs([[10.0, 10.0]], device, torch.float64)
+        lafs2 = self._lafs(self.NEAR_AND_FAR, device, torch.float64)
+        desc = torch.zeros(3, 2, device=device, dtype=torch.float64)
+        dm = torch.tensor([[2.0, 2.5, 5.0]], device=device, dtype=torch.float64)
+        self.gradcheck(lambda dm: match_fginn(desc[:1], desc, lafs1, lafs2, 0.8, 10.0, dm=dm)[0], (dm,))
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        lafs1 = self._lafs([[10.0, 10.0]], device, dtype)
+        desc = torch.zeros(3, 2, device=device, dtype=dtype)
+        op = torch_optimizer(match_fginn)
+        for xy2 in (self.NEAR_AND_FAR, self.ALL_NEAR):
+            lafs2 = self._lafs(xy2, device, dtype)
+            dm = torch.tensor([[2.0, 2.5, 5.0], [2.5, 2.0, 5.0]], device=device, dtype=dtype)
+            expected = match_fginn(desc[:2], desc, lafs1.expand(1, 2, 2, 3), lafs2, 0.8, 10.0, dm=dm)
+            actual = op(desc[:2], desc, lafs1.expand(1, 2, 2, 3), lafs2, 0.8, 10.0, dm=dm)
+            self.assert_close(actual[0], expected[0])
+            self.assert_close(actual[1], expected[1])
