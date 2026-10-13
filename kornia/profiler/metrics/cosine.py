@@ -15,38 +15,33 @@
 # limitations under the License.
 #
 
-from typing import Dict
-
-import torch
 import torch.nn.functional as F
+from torch import Tensor
+
+from kornia.profiler.metrics.base import Metric
 
 
-def cosine_similarity(
-    f1: Dict[str, torch.Tensor],
-    f2: Dict[str, torch.Tensor],
-) -> Dict[str, float]:
-    """Compute layer-wise cosine similarity between feature dictionaries.
+class CosineSimilarity(Metric):
+    """Compute cosine similarity between two representation tensors.
 
-    Each dictionary maps layer names to feature tensors. The features are
-    flattened and cosine similarity is computed independently for each layer.
-
-    Args:
-        f1: Dictionary mapping layer names to tensors of shape (B, ...).
-        f2: Dictionary mapping layer names to tensors of shape (B, ...).
-
-    Returns:
-        Dictionary mapping layer names to mean cosine similarity across batch.
+    The input tensors are flattened across all dimensions except the batch
+    dimension before their cosine similarity is computed.
     """
-    if f1.keys() != f2.keys():
-        raise ValueError("Feature dictionaries must have same layers")
 
-    results = {}
+    def forward(self, x: Tensor, y: Tensor) -> Tensor:
+        """Compute the mean cosine similarity across the batch.
 
-    for layer, x in f1.items():
+        Args:
+            x: First representation tensor with shape ``(B, ...)``, where
+                ``B`` is the batch size.
+            y: Second representation tensor with shape ``(B, ...)``,
+                matching ``x`` in batch size and flattened feature dimension.
+
+        Returns:
+            A scalar tensor containing the mean cosine similarity across
+            the batch.
+        """
         x = x.reshape(x.size(0), -1)
-        y = f2[layer].reshape(f2[layer].size(0), -1)
+        y = y.reshape(y.size(0), -1)
 
-        sim = F.cosine_similarity(x, y, dim=1).mean().item()
-        results[layer] = sim
-
-    return results
+        return F.cosine_similarity(x, y, dim=1).mean()

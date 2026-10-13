@@ -16,21 +16,26 @@
 #
 
 import torch.nn.functional as F
+from torch import Tensor
+
+from kornia.profiler.metrics.base import Metric
 
 
-def linear_cka(x, y):
-    r"""Compute linear CKA similarity between two tensors.
+def linear_cka(x: Tensor, y: Tensor) -> Tensor:
+    r"""Compute the linear similarity between two representation tensors.
 
-    The inputs are first centered along the feature dimension and then
-    L2-normalized. The similarity is computed as the mean cosine similarity
-    between corresponding samples.
+    Each input is centered along its feature dimension and L2-normalized
+    before the element-wise product is summed across features. The resulting
+    similarity scores are averaged across the batch.
 
     Args:
-        x: Input tensor of shape :math:`(B, D)`.
-        y: Input tensor of shape :math:`(B, D)`.
+        x: First representation tensor of shape ``(B, D)``, where ``B`` is
+            the batch size and ``D`` is the feature dimension.
+        y: Second representation tensor of shape ``(B, D)``, matching ``x``
+            in shape.
 
     Returns:
-        Scalar similarity score (float), averaged over the batch.
+        A scalar tensor containing the mean similarity across the batch.
     """
     x = x - x.mean(dim=1, keepdim=True)
     y = y - y.mean(dim=1, keepdim=True)
@@ -38,34 +43,29 @@ def linear_cka(x, y):
     x = F.normalize(x, dim=1)
     y = F.normalize(y, dim=1)
 
-    return (x * y).sum(dim=1).mean().item()
+    return (x * y).sum(dim=1).mean()
 
 
-def linear_similarity(f1, f2):
-    r"""Apply linear CKA similarity layer-wise between feature dictionaries.
+class LinearSimilarity(Metric):
+    r"""Compute linear similarity between two representation tensors.
 
-    For each matching layer, feature tensors are flattened into 2D tensors
-    of shape :math:`(B, D)` and compared using ``linear_cka``.
-
-    Args:
-        f1: Dictionary mapping layer names to feature tensors.
-        f2: Dictionary mapping layer names to feature tensors.
-
-    Returns:
-        Dictionary mapping each layer name to its similarity score (float).
-
-    Raises:
-        ValueError: If the input dictionaries do not have identical keys.
+    Inputs are flattened across all dimensions except the batch dimension
+    before the similarity calculation is performed.
     """
-    if f1.keys() != f2.keys():
-        raise ValueError("Feature dictionaries must have same layers")
 
-    results = {}
+    def forward(self, x: Tensor, y: Tensor) -> Tensor:
+        r"""Compute the mean linear similarity across the batch.
 
-    for layer in f1:
-        x = f1[layer].reshape(f1[layer].size(0), -1)
-        y = f2[layer].reshape(f2[layer].size(0), -1)
+        Args:
+            x: First representation tensor with shape ``(B, ...)``, where
+                ``B`` is the batch size.
+            y: Second representation tensor with shape ``(B, ...)``, matching
+                ``x`` in batch size and flattened feature dimension.
 
-        results[layer] = linear_cka(x, y)
+        Returns:
+            A scalar tensor containing the mean similarity across the batch.
+        """
+        x = x.reshape(x.size(0), -1)
+        y = y.reshape(y.size(0), -1)
 
-    return results
+        return linear_cka(x, y)
