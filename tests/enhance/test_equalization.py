@@ -205,8 +205,8 @@ class TestEqualization(BaseTester):
         [((4, 10), (8, 6), (5, 4)), ((10, 3), (5, 6), (3, 4))],
     )
     def test_compute_tiles_odd_tiles_names_its_own_limit_4783(self, size, grid, smallest):
-        # equalize_clahe always asks for even tiles; with odd ones an axis only has to exceed half its
-        # grid size, and the limit the message names must be accepted.
+        # equalize_clahe rejects an axis no larger than its grid before it tiles; _compute_tiles called with odd
+        # tiles only needs an axis above half its grid size, and the limit the message names must be accepted.
         with pytest.raises(ValueError) as errinfo:
             _compute_tiles(torch.rand(1, 1, *size), grid, even_tile_size=False)
         assert f"smallest image this grid admits is {smallest}" in str(errinfo.value)
@@ -420,6 +420,26 @@ class TestEqualization(BaseTester):
         expected_diff = expected_diff[..., : img.shape[-2], : img.shape[-1]]
         self.assert_close(res_diff, expected_diff)
 
+        # The references above take their lookup tables from _compute_luts, so they cannot see a wrong table: pin
+        # the first row as well. Each 3 x 3 tile holds 3 columns of one value each, so with the clip limit of 1
+        # count per bin the 6 clipped counts are spread over every 42nd bin, as in OpenCV, and the gradient keeps
+        # its range; piling them into the first 6 bins mapped every pixel but the first above 0.77. No other test
+        # pins the values of the differentiable path's soft histogram.
+        expected_row = torch.tensor(
+            [0.2235, 0.3333, 0.332, 0.2967, 0.4431, 0.4458, 0.4078, 0.4431, 0.5556, 0.4444]
+            + [0.6667, 0.5922, 0.6301, 0.6667, 0.7033, 0.668, 0.7765, 0.8523, 0.851, 1.0],
+            dtype=res.dtype,
+            device=res.device,
+        )
+        expected_row_diff = torch.tensor(
+            [0.2222, 0.3335, 0.2841, 0.3087, 0.3545, 0.4586, 0.388, 0.4, 0.6001, 0.479]
+            + [0.6712, 0.6155, 0.6411, 0.6371, 0.7207, 0.7493, 0.6889, 0.8889, 0.8387, 1.0],
+            dtype=res.dtype,
+            device=res.device,
+        )
+        self.assert_close(res[0, 0, 0], expected_row, low_tolerance=True)
+        self.assert_close(res_diff[0, 0, 0], expected_row_diff, low_tolerance=True)
+
     @pytest.mark.parametrize("count, expected_level", [(100, 100), (128, 128)])
     @pytest.mark.parametrize("clip_as_tensor", [False, True])
     def test_clahe_lut_rounding(self, count, expected_level, clip_as_tensor, device, dtype):
@@ -595,6 +615,47 @@ class TestEqualization(BaseTester):
             slow_and_differentiable=slow_and_differentiable,
         ).transpose(-2, -1)
         self.assert_close(out, out_t)
+
+    @pytest.mark.parametrize("slow_and_differentiable", [False, True])
+    @pytest.mark.parametrize(
+        ("size", "grid", "tile"),
+        [
+            ((36, 44), (4, 4), (9, 11)),
+            ((27, 40), (3, 4), (9, 10)),
+            ((13, 15), (2, 3), (7, 5)),
+            ((25, 23), (2, 2), (13, 12)),
+            ((16, 25), (2, 4), (8, 7)),
+        ],
+    )
+    def test_clahe_tiles_are_ceil_n_over_g_5812(self, size, grid, tile, slow_and_differentiable, device, dtype):
+        # Tiles are ceil(n / g) pixels, odd or even, on each axis: odd, mixed, and three grids that do not divide
+        # the image and pad it, two of them along one axis only, where OpenCV would also pad the axis the grid
+        # divides. Two samples and two channels, each blended from its own lookup tables.
+        torch.manual_seed(5812)
+        img = torch.rand(2, 2, *size, device=device, dtype=dtype)
+        tiles, padded = _compute_tiles(img, grid)
+        assert tuple(tiles.shape[-2:]) == tile
+        luts = enhance.equalization._compute_luts(tiles, clip=2.0, diff=slow_and_differentiable)
+        expected = _clahe_interpolation_reference(padded, luts, tile)[..., : size[0], : size[1]]
+        out = enhance.equalize_clahe(img, 2.0, grid, slow_and_differentiable)
+        assert out.dtype == dtype
+        self.assert_close(out, expected)
+
+    @pytest.mark.parametrize("dim", [-1, -2])
+    @pytest.mark.parametrize("slow_and_differentiable", [False, True])
+    def test_clahe_flip_symmetry_odd_tiles_5812(self, dim, slow_and_differentiable, device, dtype):
+        # A grid that divides the image does not pad it, so odd tiles keep the flip symmetry of even ones.
+        y = torch.arange(15, device=device, dtype=dtype)[:, None]
+        x = torch.arange(27, device=device, dtype=dtype)[None, :]
+        img = ((2 * y + x) / 64)[None, None]
+        out = enhance.equalize_clahe(img, 2.0, (3, 3), slow_and_differentiable)
+        flipped = enhance.equalize_clahe(img.flip(dim), 2.0, (3, 3), slow_and_differentiable)
+        self.assert_close(flipped, out.flip(dim))
+
+    def test_clahe_odd_tiles_gradcheck_5812(self, device):
+        torch.manual_seed(4)
+        img = torch.rand(1, 1, 9, 15, device=device, dtype=torch.float64)
+        self.gradcheck(enhance.equalize_clahe, (img, 40.0, (3, 3), True), nondet_tol=1e-4)
 
     def test_clahe_transpose_equivariance_4632(self):
         torch.manual_seed(28)
