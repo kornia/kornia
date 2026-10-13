@@ -4494,6 +4494,13 @@ class TestRt2Extrinsics(BaseTester):
             Rt_to_matrix4x4(rotation, translation)
         assert str(excinfo.value).endswith(f"Got {requested_dtype}.")
 
+    def test_Rt_names_the_promoted_dtype_3959(self, device):
+        # uint8 and int8 promote to int16, the dtype of neither input, so the message must name the promoted dtype.
+        rotation = torch.eye(3, device=device).to(torch.uint8)[None]
+        translation = torch.ones(1, 3, 1, device=device, dtype=torch.int8)
+        with pytest.raises(ValueError, match=r"Got torch\.int16\.$"):
+            Rt_to_matrix4x4(rotation, translation)
+
     @pytest.mark.parametrize(
         "rotation_dtype,translation_dtype",
         [
@@ -4508,6 +4515,10 @@ class TestRt2Extrinsics(BaseTester):
     def test_Rt_preserves_promoted_dtype_3959(self, device, rotation_dtype, translation_dtype):
         _skip_if_dtype_unavailable(device, rotation_dtype)
         _skip_if_dtype_unavailable(device, translation_dtype)
+        try:  # MPS (torch 2.14, macOS 26.5) has no kernel to cat complex with real tensors
+            torch.cat([torch.zeros(1, device=device, dtype=d) for d in (rotation_dtype, translation_dtype)])
+        except RuntimeError as err:
+            pytest.skip(f"torch.cat cannot mix {rotation_dtype} and {translation_dtype} on {device}: {err}")
         rotation = torch.eye(3, device=device, dtype=rotation_dtype)[None]
         translation = torch.ones(1, 3, 1, device=device, dtype=translation_dtype)
         expected_dtype = torch.promote_types(rotation_dtype, translation_dtype)
