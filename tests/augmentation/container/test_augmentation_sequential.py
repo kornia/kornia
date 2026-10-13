@@ -1905,6 +1905,13 @@ class TestConventionAugmentationSequential(BaseTester):
 
         assert torch.equal(dictionary["input"], positional)
 
+    @pytest.mark.parametrize("key", ["input", "image"])
+    def test_dictionary_image_missing_path_raises_5852(self, key, tmp_path):
+        # The key marks the string as an image path, so a missing file is reported as such.
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=None)
+        with pytest.raises(FileNotFoundError):
+            aug({key: str(tmp_path / "missing.png")})
+
     @pytest.mark.parametrize("mask_dtypes", [(torch.int64, torch.bool), (torch.bool, torch.int64)])
     def test_convention_each_mask_keeps_its_own_dtype_4478(self, mask_dtypes, device, dtype):
         # Convention pin for kornia#4478: each mask output comes back in the dtype of its own argument, so labels
