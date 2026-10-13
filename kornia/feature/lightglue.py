@@ -466,9 +466,29 @@ class LightGlue(nn.Module):
     LightGlue is a deep network that matches local features across image pairs
     using a series of transformer layers and an adaptive pruning mechanism.
 
+    Convention:
+        - The ``keypoints`` of each image are ``(x, y)`` pixels and ``image_size`` is ``(W, H)``; an ``image``
+          tensor gives the size from its last two dimensions instead. ``forward`` normalises the keypoints to
+          ``(k - size / 2) / (max(size) / 2)``, as the reference implementation does, and raises for a keypoint
+          outside :math:`[-1, 1]` after that.
+        - The ``"sift"``, ``"doghardnet"`` and ``"dog_affnet_hardnet"`` configurations, which set ``add_scale_ori``,
+          also read ``scales`` and ``oris`` (radians) of each image; the last two multiply ``scales`` by their
+          ``scale_coef`` of 1/6 first, so they take the LAF scale. ``"keynet_affnet_hardnet"``, which sets ``add_laf``,
+          reads ``lafs``. :class:`~kornia.feature.LightGlueMatcher` builds them from LAFs.
+        - The matching scores, ``matching_scores0``, ``matching_scores1`` and ``scores``, are in the dtype of the
+          descriptors. With ``mp=True``, float32 descriptors give scores in the dtype autocast computes them in
+          instead: bfloat16 on CPU, float32 on CUDA and MPS. An image without descriptors runs no layer, and its zero
+          scores keep the descriptor dtype, also with ``mp=True``.
+        - Known defects: with ``mp=True`` on CPU, a configuration whose ``input_dim`` equals ``descriptor_dim``, such
+          as ``"superpoint"``, ``"dedodeb"`` and ``"dedodeg"``, gives float32 zero scores when point pruning removes
+          every point, and bfloat16 scores otherwise (`#5877 <https://github.com/kornia/kornia/issues/5877>`_).
+
     Args:
-        features: The type of local features to match (e.g., 'superpoint', 'disk').
-        conf: A configuration dictionary to override default parameters.
+        features: The type of local features to match (e.g., 'superpoint', 'disk'), whose configuration and
+            pretrained weights are loaded. ``None`` builds the model from ``default_conf`` and the keyword arguments
+            and downloads no weights.
+        **conf: keyword arguments that override entries of ``default_conf``, such as ``filter_threshold``; the
+            configuration of ``features`` is applied after them and wins where both set a key.
     """
 
     default_conf: ClassVar[Dict[str, Any]] = {
@@ -685,10 +705,14 @@ class LightGlue(nn.Module):
                 keypoints: [B x M x 2]
                 descriptors: [B x M x D]
                 image: [B x C x H x W] or image_size: [B x 2]
+                scales, oris: [B x M], with add_scale_ori
+                lafs: [B x M x 2 x 3], with add_laf
             image1: dict
                 keypoints: [B x N x 2]
                 descriptors: [B x N x D]
                 image: [B x C x H x W] or image_size: [B x 2]
+                scales, oris: [B x N], with add_scale_ori
+                lafs: [B x N x 2 x 3], with add_laf
         Output (dict):
             log_assignment: [B x M+1 x N+1]
             matches0: [B x M]
@@ -696,6 +720,7 @@ class LightGlue(nn.Module):
             matches1: [B x N]
             matching_scores1: [B x N]
             matches: List[[Si x 2]], scores: List[[Si]]
+            stop, prune0, prune1: diagnostics of early stopping and point pruning
         """
         device_type = data["image0"]["keypoints"].device.type
         with torch.autocast(enabled=self.conf.mp, device_type=device_type):
@@ -931,8 +956,8 @@ class LightGlue(nn.Module):
             device: Torch device on which descriptors are processed.
 
         Returns:
-            Minimum number of keypoints required for width pruning on that device.
-            A negative value disables pruning for the device.
+            With point pruning enabled, it runs on an image while the image has more keypoints than this number,
+            so ``-1`` means always.
         """
         if self.conf.flash and device.type == "cuda":
             return self.pruning_keypoint_thresholds["flash"]

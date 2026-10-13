@@ -716,6 +716,17 @@ class KeyNetAffNetHardNet(LocalFeature):
 class LocalFeatureMatcher(nn.Module):
     r"""nn.Module, which finds correspondences between two images based on local features.
 
+    Convention:
+        - ``keypoints0`` and ``keypoints1`` are the centres ``(x, y)`` of the matched LAFs, which ``lafs0`` and
+          ``lafs1`` return; see :func:`~kornia.feature.laf_from_center_scale_ori` for the LAF frame.
+          ``confidence`` is ``1 - dists`` of the matcher (see :func:`~kornia.feature.match_nn`).
+        - All-zero LAFs, the padding slots of kornia's detectors (see :func:`~kornia.feature.laf_is_filled`), are
+          dropped before matching.
+        - ``matcher`` is called as ``matcher(descriptors0, descriptors1)`` for each image pair, so it has to be a
+          descriptor-only matcher such as :class:`~kornia.feature.DescriptorMatcher`;
+          :class:`~kornia.feature.GeometryAwareDescriptorMatcher` and :class:`~kornia.feature.LightGlueMatcher`
+          need LAFs and do not fit.
+
     Args:
         local_feature: Local feature detector. See :class:`~kornia.feature.GFTTAffNetHardNet`.
         matcher: Descriptor matcher, see :class:`~kornia.feature.DescriptorMatcher`.
@@ -780,6 +791,11 @@ class LocalFeatureMatcher(nn.Module):
                 :math:`(N, H1, W1)` or :math:`(N, 1, H1, W1)`.
             mask1 (optional): right image mask. '0' suppresses detection, with shape
                 :math:`(N, H2, W2)` or :math:`(N, 1, H2, W2)`.
+            lafs0 (optional): pre-extracted LAFs of image0, :math:`(N, M0, 2, 3)`. When ``lafs0`` and
+                ``descriptors0`` are both given, they are matched and ``local_feature`` does not run on image0.
+            descriptors0 (optional): pre-extracted descriptors of image0, :math:`(N, M0, D)`.
+            lafs1 (optional): pre-extracted LAFs of image1, :math:`(N, M1, 2, 3)`; with ``descriptors1``, as for image0.
+            descriptors1 (optional): pre-extracted descriptors of image1, :math:`(N, M1, D)`.
 
         Returns:
             - ``keypoints0``, matching keypoints from image0 :math:`(NC, 2)`.
@@ -898,28 +914,39 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
     This is based on the original code from paper "LightGlue: Local Feature Matching at Light Speed".
     See :cite:`LightGlue2023` for more details.
 
+    Convention:
+        - ``lafs1`` and ``lafs2`` are LAFs in the pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`,
+          and their centres go to LightGlue unchanged as the keypoints. ``hw1`` and ``hw2`` are the ``(H, W)`` of
+          each image, which become LightGlue's ``image_size`` ``(W, H)``; without them, the image size is taken as
+          the largest keypoint coordinates of that image, ``(max x, max y)``.
+        - What the network gets besides the keypoints depends on ``feature_name`` (case-insensitive):
+
+          - ``"aliked"``, ``"dedodeb"``, ``"dedodeg"``, ``"disk"``, ``"superpoint"``: nothing else.
+          - ``"sift"``: the scale and orientation of the COLMAP keypoints the weights were trained on: the negated
+            LAF orientation in :math:`(-\pi, \pi]`, and a sixth of the LAF scale, which is the detection sigma for
+            6-sigma DoG frames such as :class:`~kornia.feature.SIFTFeatureScaleSpace`'s. The descriptors must be in
+            OpenCV's SIFT layout, which these weights expect, while kornia's SIFT descriptors use another order of the
+            same values: create the feature with ``descriptor_layout="opencv"``, or convert the descriptors with
+            ``convert_sift_descriptor_layout(descs, "kornia", "opencv")``
+            (:func:`~kornia.feature.convert_sift_descriptor_layout`).
+          - ``"doghardnet"``, ``"dog_affnet_hardnet"``: pass the LAFs the HardNet descriptors were computed on, at
+            the scale the weights were trained with: 12 sigma, six times OpenCV's ``KeyPoint.size`` and twice the
+            6-sigma DoG frames of :class:`~kornia.feature.SIFTFeatureScaleSpace`. :class:`~kornia.feature.DoGHardNet`
+            and :class:`~kornia.feature.DoGAffNetHardNet` return such LAFs and their descriptors; with another
+            6-sigma DoG detector, apply :func:`~kornia.feature.scale_laf` with ``2.0`` to its LAFs before describing
+            them. The network takes a sixth of the LAF scale, which is ``KeyPoint.size`` for these frames, and the
+            LAF orientation in :math:`[0, 2\pi)`.
+          - ``"keynet_affnet_hardnet"``: the ends of the two LAF axes, ``c + A[:, 0]`` and ``c + A[:, 1]``,
+            normalised like the keypoints.
+        - The first returned value is LightGlue's matching score, not a distance: higher is better, and only matches
+          scoring above ``filter_threshold`` (0.1 by default) are returned. The index rows are ``(index in desc1,
+          index in desc2)``. Fewer than two descriptors on either side give no match.
+        - All-zero padding LAFs are not filtered out: such a slot reaches the network as a keypoint at ``(0, 0)``.
+          Drop them with :func:`~kornia.feature.laf_is_filled` first.
+
     Args:
         feature_name: type of feature for matching, one of ``known_modes``.
-        params: LightGlue params.
-
-    With ``"sift"``, the descriptors must be in OpenCV's SIFT layout, which LightGlue's SIFT weights expect. kornia's
-    SIFT descriptors use another order of the same values: create the feature with ``descriptor_layout="opencv"``,
-    or convert them first with :func:`~kornia.feature.convert_sift_descriptor_layout`::
-
-        descs = convert_sift_descriptor_layout(descs, "kornia", "opencv")
-
-    The keypoint scale and orientation taken from the LAFs are converted to the convention of the COLMAP keypoints
-    the ``"sift"`` weights were trained on: the orientation is the negated LAF orientation in :math:`(-\pi, \pi]`,
-    and the scale is a sixth of the LAF scale, which is the detection sigma for 6-sigma DoG frames such as
-    :class:`~kornia.feature.SIFTFeatureScaleSpace`'s.
-
-    With ``"doghardnet"`` and ``"dog_affnet_hardnet"``, pass the LAFs the HardNet descriptors were computed on, at the
-    scale the weights were trained with: 12 sigma, six times OpenCV's ``KeyPoint.size`` and twice the 6-sigma DoG
-    frames of :class:`~kornia.feature.SIFTFeatureScaleSpace`. :class:`~kornia.feature.DoGHardNet` and
-    :class:`~kornia.feature.DoGAffNetHardNet` return such LAFs and their descriptors; with another 6-sigma DoG
-    detector, apply :func:`~kornia.feature.scale_laf` with ``2.0`` to its LAFs before describing them. The network
-    takes a sixth of the LAF scale, which is ``KeyPoint.size`` for these frames, and the LAF orientation in
-    :math:`[0, 2\pi)`.
+        params: keyword arguments of :class:`~kornia.feature.LightGlue`, such as ``filter_threshold``.
 
     """
 
@@ -960,11 +987,11 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
             desc2: Batch of descriptors of a shape :math:`(B2, D)`.
             lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
             lafs2: LAFs of a shape :math:`(1, B2, 2, 3)`.
-            hw1: Height/width of image.
-            hw2: Height/width of image.
+            hw1: ``(H, W)`` of the first image; see the Convention block.
+            hw2: ``(H, W)`` of the second image; see the Convention block.
 
         Return:
-            - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
+            - LightGlue's matching score of each match, higher is better, shape of :math:`(B3, 1)`.
             - Long torch.Tensor indexes of matching descriptors in desc1 and desc2,
                 shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
 
