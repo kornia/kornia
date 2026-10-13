@@ -45,6 +45,12 @@ class TFeat(nn.Module):
     with triplets and shallow convolutional neural networks".
     See :cite:`TFeat2016` for more details
 
+    Convention:
+        - It takes the patches of :class:`~kornia.feature.HardNet`, with the intensity rule of HardNet's Convention
+          block, but returns the final ``tanh`` layer of the reference implementation without L2 normalisation: each
+          entry lies in ``[-1, 1]`` and the rows are not unit vectors. Normalise them where a distance threshold
+          assumes unit descriptors.
+
     Args:
         pretrained: Download and set pretrained weights to the model.
 

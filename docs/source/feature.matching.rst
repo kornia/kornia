@@ -36,4 +36,4 @@ Learned matchers
    :members: forward
 
 .. autoclass:: LoFTR
-   :members: forward
+   :members: forward, extract_features

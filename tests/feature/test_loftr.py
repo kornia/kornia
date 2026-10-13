@@ -196,6 +196,73 @@ class TestLoFTR(BaseTester):
         assert kpts0[:, 1].max() <= 56
         assert kpts0[:, 1].max() >= 8 * 4
 
+    @pytest.mark.parametrize("masked", [False, True])
+    def test_precomputed_features_give_the_same_matches(self, device, dtype, masked):
+        # Images of different sizes run through the backbone one by one either way, so matching precomputed
+        # features gives bitwise the same output, on either side and on both.
+        model = _loftr_matching_every_cell(device, dtype)
+        gen = torch.Generator().manual_seed(3)
+        image0 = torch.rand(1, 1, 100, 67, generator=gen).to(device, dtype)
+        image1 = torch.rand(1, 1, 93, 86, generator=gen).to(device, dtype)
+        masks = {}
+        if masked:
+            masks = {
+                "mask0": torch.ones(1, 100, 67, device=device, dtype=dtype),
+                "mask1": torch.ones(1, 93, 86, device=device, dtype=dtype),
+            }
+            masks["mask0"][:, 72:], masks["mask1"][:, :, 64:] = 0, 0
+        with torch.no_grad():
+            expected = model({"image0": image0, "image1": image1, **masks})
+            features0, features1 = model.extract_features(image0), model.extract_features(image1)
+            outputs = [
+                model({"features0": features0, "features1": features1, **masks}),
+                model({"features0": features0, "image1": image1, **masks}),
+                model({"image0": image0, "features1": features1, **masks}),
+            ]
+        assert expected["keypoints0"].shape[0] >= 5  # the masks leave 10
+        for out in outputs:
+            assert out.keys() == expected.keys()
+            for key, value in expected.items():
+                self.assert_close(out[key], value, rtol=0.0, atol=0.0)
+
+    def test_extract_features_shapes_and_batching(self, device, dtype):
+        model = _loftr_matching_every_cell(device, dtype)
+        images = torch.rand(2, 1, 100, 67).to(device, dtype)
+        # cuDNN's default TF32 convolutions round differently for each batch size (up to ~1e-3), so compare in fp32
+        with torch.no_grad(), torch.backends.cudnn.flags(enabled=torch.backends.cudnn.enabled, allow_tf32=False):
+            batched = model.extract_features(images)
+            single = model.extract_features(images[1:])
+        assert batched["coarse"].shape == (2, 256, 13, 9)
+        assert batched["fine"].shape == (2, 128, 50, 34)
+        # a batch of images gives each image's features (up to the backend's choice of kernel for the batch size)
+        self.assert_close(batched["coarse"][1:], single["coarse"])
+        self.assert_close(batched["fine"][1:], single["fine"])
+
+    def test_inputs_are_validated(self, device, dtype):
+        model = _loftr_matching_every_cell(device, dtype)
+        image = torch.rand(1, 1, 64, 64).to(device, dtype)
+        with torch.no_grad():
+            features = model.extract_features(image)
+            with pytest.raises(ValueError, match="exactly one of `image0` and `features0`"):
+                model({"image0": image, "features0": features, "image1": image})
+            with pytest.raises(ValueError, match="exactly one of `image1` and `features1`"):
+                model({"image0": image})
+
+    @pytest.mark.parametrize("batch_sizes", [(1, 2), (2, 1)])
+    @pytest.mark.parametrize(
+        "input_keys",
+        [("image0", "image1"), ("features0", "features1"), ("image0", "features1"), ("features0", "image1")],
+    )
+    def test_mismatched_batch_sizes(self, device, dtype, batch_sizes, input_keys):
+        model = _loftr_matching_every_cell(device, dtype)
+        with torch.no_grad():
+            data = {}
+            for key, batch_size in zip(input_keys, batch_sizes):
+                image = torch.rand(batch_size, 1, 64, 64, device=device, dtype=dtype)
+                data[key] = model.extract_features(image) if key.startswith("features") else image
+            with pytest.raises(ValueError, match="same batch size"):
+                model(data)
+
     @pytest.mark.slow
     def test_gradcheck(self, device):
         patches = torch.rand(1, 1, 32, 32, device=device, dtype=torch.float64)
@@ -589,6 +656,161 @@ class TestCoarseMatching(BaseTester):
         self.assert_close(out["mkpts1_c"], expected1, rtol=0.0, atol=0.0)
 
 
+class TestCoarseMatchingSelection(BaseTester):
+    """The row max / column max selection and the dual softmax against their reference formulations."""
+
+    CFG = {**TestCoarseMatching.CFG, "train_pad_num_gt_min": 200}
+
+    @staticmethod
+    def _reference_selection(cm, conf_matrix, data):
+        """The boolean-mask selection of get_coarse_match before the row max / column max rewrite (eval mode)."""
+        from kornia.feature.loftr.utils.coarse_matching import mask_border, mask_border_with_padding
+
+        (h0, w0), (h1, w1), n = data["hw0_c"], data["hw1_c"], conf_matrix.shape[0]
+        mask = (conf_matrix > max(cm.thr, 0.0)).reshape(n, h0, w0, h1, w1)
+        if "mask0" not in data:
+            mask_border(mask, cm.border_rm, False)
+        else:
+            mask_border_with_padding(mask, cm.border_rm, False, data["mask0"], data["mask1"])
+        mask = mask.reshape(n, h0 * w0, h1 * w1)
+        mask = (
+            mask
+            * (conf_matrix == conf_matrix.max(dim=2, keepdim=True)[0])
+            * (conf_matrix == conf_matrix.max(dim=1, keepdim=True)[0])
+        )
+        mask_v, all_j_ids = mask.max(dim=2)
+        b_ids, i_ids = torch.where(mask_v)
+        j_ids = all_j_ids[b_ids, i_ids]
+        return b_ids, i_ids, j_ids, conf_matrix[b_ids, i_ids, j_ids]
+
+    @staticmethod
+    def _features(device, dtype, n, length, size, channels=16, seed=0, scale=4.0):
+        # image-1 cells are noisy copies of image-0 cells, so most rows have a clear, untied mutual maximum
+        gen = torch.Generator().manual_seed(seed)
+        feat_c1 = torch.randn(n, size, channels, generator=gen) * scale
+        rows = torch.randint(0, size, (n, length), generator=gen)
+        feat_c0 = torch.gather(feat_c1, 1, rows[..., None].expand(-1, -1, channels))
+        feat_c0 = feat_c0 + torch.randn(n, length, channels, generator=gen) * (scale / 2)
+        return feat_c0.to(device, dtype), feat_c1.to(device, dtype)
+
+    @pytest.mark.parametrize("thr", [0.0, 0.2])
+    @pytest.mark.parametrize("border_rm", [0, 1, 2])
+    @pytest.mark.parametrize("padded", [False, True])
+    def test_selection_matches_the_boolean_mask_reference(self, device, dtype, thr, border_rm, padded):
+        cm = CoarseMatching({**self.CFG, "thr": thr, "border_rm": border_rm}).to(device).eval()
+        (h0, w0), (h1, w1) = (10, 12), (11, 9)
+        feat_c0, feat_c1 = self._features(device, dtype, 2, h0 * w0, h1 * w1)
+        data = {"hw0_c": (h0, w0), "hw1_c": (h1, w1), "stride_c": 8}
+        if padded:
+            # per-sample valid extents, as mask_border_with_padding reads them
+            mask0 = torch.zeros(2, h0, w0, device=device)
+            mask1 = torch.zeros(2, h1, w1, device=device)
+            mask0[0, :9, :10], mask0[1] = 1, 1
+            mask1[0], mask1[1, :10, :8] = 1, 1
+            data.update(mask0=mask0, mask1=mask1)
+        with torch.no_grad():
+            cm(feat_c0, feat_c1, data)
+        expected = self._reference_selection(cm, data["conf_matrix"], data)
+        assert len(expected[0]) >= 5  # border 2 on the padded samples leaves 10
+        for name, value in zip(("b_ids", "i_ids", "j_ids", "mconf"), expected):
+            self.assert_close(data[name], value, rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    @pytest.mark.parametrize("masked", [False, True])
+    def test_dual_softmax_is_the_product_of_both_softmaxes(self, device, dtype, requires_grad, masked):
+        # Without autograd the confidence is computed in place, with it out of place; both are the product of the
+        # softmaxes over either dim of the masked similarity matrix, here against that product in float64.
+        cm = CoarseMatching(self.CFG).to(device).eval()
+        feat_c0, feat_c1 = self._features(device, dtype, 2, 30, 24, scale=1.0)
+        feat_c0.requires_grad_(requires_grad)
+        mask_c0 = mask_c1 = None
+        if masked:
+            mask_c0 = torch.ones(2, 30, device=device)
+            mask_c1 = torch.ones(2, 24, device=device)
+            mask_c0[0, 25:], mask_c1[1, :4] = 0, 0
+        data = {"hw0_c": (5, 6), "hw1_c": (4, 6), "stride_c": 8}
+        # Keep the high-precision reference on CPU: MPS cannot hold float64 tensors.
+        reference_c0 = feat_c0.detach().cpu().double().requires_grad_(requires_grad)
+        with torch.set_grad_enabled(requires_grad):
+            cm(feat_c0, feat_c1, data, mask_c0=mask_c0, mask_c1=mask_c1)
+            c = feat_c0.shape[-1] ** 0.5
+            sim = torch.einsum("nlc,nsc->nls", reference_c0 / c, feat_c1.cpu().double() / c)
+            sim = sim / self.CFG["dsmax_temperature"]
+            invalid = None
+            if masked:
+                invalid = ~mask_c0.cpu().bool()[..., None] | ~mask_c1.cpu().bool()[:, None]
+                sim = sim.masked_fill(invalid, -1e9)
+            expected = F.softmax(sim, 1) * F.softmax(sim, 2)
+            if masked:
+                expected = expected.masked_fill(invalid, 0.0)
+        # confidences are in [0, 1]: absolute tolerances of the input precision
+        tol = {torch.float16: 5e-3, torch.bfloat16: 3e-2, torch.float32: 1e-5, torch.float64: 1e-10}[dtype]
+        self.assert_close(data["conf_matrix"].cpu().double(), expected, rtol=0.0, atol=tol)
+        if requires_grad:
+            (grad,) = torch.autograd.grad((data["conf_matrix"] ** 2).sum(), feat_c0)
+            (grad_expected,) = torch.autograd.grad((expected**2).sum(), reference_c0)
+            self.assert_close(grad.cpu().double(), grad_expected, rtol=0.0, atol=50 * tol)
+
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_temperature_scaling_keeps_finite_dot_products(self, device, dtype, requires_grad):
+        # Scaling the second feature first overflows fp16, although every similarity is finite.
+        cm = CoarseMatching({**self.CFG, "border_rm": 0}).to(device).eval()
+        feat0 = torch.zeros(1, 1, 1, device=device, dtype=dtype, requires_grad=requires_grad)
+        feat1 = torch.full((1, 1, 1), 10000.0, device=device, dtype=dtype, requires_grad=requires_grad)
+        data = {"hw0_c": (1, 1), "hw1_c": (1, 1), "stride_c": 8}
+        cm(feat0, feat1, data)
+        self.assert_close(data["conf_matrix"], torch.ones_like(data["conf_matrix"]), rtol=0.0, atol=0.0)
+        if requires_grad:
+            for grad in torch.autograd.grad(data["conf_matrix"].sum(), (feat0, feat1)):
+                self.assert_close(grad, torch.zeros_like(grad), rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_long_column_softmax_stays_normalized(self, device, dtype, requires_grad):
+        # The sum of 65536 exponentials equal to one cannot be represented in fp16.
+        length = 65536
+        cm = CoarseMatching(self.CFG).to(device).eval()
+        feat0 = torch.zeros(1, length, 1, device=device, dtype=dtype, requires_grad=requires_grad)
+        feat1 = torch.ones(1, 1, 1, device=device, dtype=dtype)
+        data = {"hw0_c": (256, 256), "hw1_c": (1, 1), "stride_c": 8}
+        cm(feat0, feat1, data)
+        expected = torch.full_like(data["conf_matrix"], 1.0 / length)
+        self.assert_close(data["conf_matrix"], expected, rtol=0.0, atol=0.0)
+        if requires_grad:
+            (grad,) = torch.autograd.grad(data["conf_matrix"][0, 0, 0], feat0)
+            assert bool(torch.isfinite(grad).all())
+            # The selected probability has a positive derivative; the other logits have negative derivatives.
+            reference = torch.zeros_like(feat0, device="cpu", dtype=torch.float64, requires_grad=True)
+            prob = (reference / self.CFG["dsmax_temperature"]).softmax(1)[0, 0, 0]
+            (grad_expected,) = torch.autograd.grad(prob, reference)
+            self.assert_close(grad, grad_expected.to(device=device, dtype=dtype), rtol=1e-2, atol=1e-7)
+
+    def test_long_column_softmax_autocast(self, device):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("float16 autocast regression runs on CPU and CUDA")
+        # Float32 features can still produce float16 similarities under autocast.
+        cm = CoarseMatching(self.CFG).to(device).eval()
+        feat0 = torch.zeros(1, 65536, 2, device=device, dtype=torch.float32)
+        feat1 = torch.zeros(1, 1, 2, device=device, dtype=torch.float32)
+        data = {"hw0_c": (256, 256), "hw1_c": (1, 1), "stride_c": 8}
+        with torch.autocast(device.type, dtype=torch.float16):
+            cm(feat0, feat1, data)
+        expected = torch.full((1, 65536, 1), 1 / 65536, device=device, dtype=torch.float16)
+        self.assert_close(data["conf_matrix"], expected, rtol=0.0, atol=0.0)
+
+    def test_temperature_scaling_autocast(self, device):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("float16 autocast regression runs on CPU and CUDA")
+        cm = CoarseMatching(self.CFG).to(device).eval()
+        feat0 = torch.zeros(1, 1, 2, device=device, dtype=torch.float32, requires_grad=True)
+        feat1 = torch.full((1, 1, 2), 10000.0, device=device, dtype=torch.float32, requires_grad=True)
+        data = {"hw0_c": (1, 1), "hw1_c": (1, 1), "stride_c": 8}
+        with torch.autocast(device.type, dtype=torch.float16):
+            cm(feat0, feat1, data)
+        self.assert_close(data["conf_matrix"], torch.ones(1, 1, 1, device=device, dtype=torch.float16))
+        for grad in torch.autograd.grad(data["conf_matrix"].sum(), (feat0, feat1)):
+            self.assert_close(grad, torch.zeros_like(grad), rtol=0.0, atol=0.0)
+
+
 class TestFineMatching(BaseTester):
     @staticmethod
     def _run(device, dtype, peaked):
@@ -712,6 +934,36 @@ class TestFinePreprocess(BaseTester):
         # the window spans +-2 fine cells: its last element is two cells down and right of the centre
         self.assert_close(win0[1:3, 24], (centre0[1:3] + 2).to(dtype), rtol=0.0, atol=0.0)
 
+    @pytest.mark.parametrize("fine_hw", [((50, 34), (47, 43)), ((33, 37), (29, 41))])
+    def test_gathered_windows_equal_the_unfolded_ones(self, device, dtype, fine_hw):
+        # FinePreprocess cuts only the windows of the matched cells; they must be exactly the windows of
+        # F.unfold(feat, 5, stride=4, padding=2) indexed by the cell ids, for both images of a batch of two.
+        cfg = {
+            "fine_concat_coarse_feat": False,
+            "fine_window_size": 5,
+            "coarse": {"d_model": 4},
+            "fine": {"d_model": 3},
+        }
+        gen = torch.Generator().manual_seed(0)
+        (hf0, wf0), (hf1, wf1) = fine_hw
+        feat_f0 = torch.randn(2, 3, hf0, wf0, generator=gen).to(device, dtype)
+        feat_f1 = torch.randn(2, 3, hf1, wf1, generator=gen).to(device, dtype)
+
+        def unfolded(feat):
+            out = F.unfold(feat, kernel_size=(5, 5), stride=4, padding=2)
+            return out.reshape(out.shape[0], feat.shape[1], 25, -1).permute(0, 3, 2, 1)
+
+        ref0, ref1 = unfolded(feat_f0), unfolded(feat_f1)
+        b_ids = torch.tensor([0, 1, 1, 0, 1], device=device)
+        i_ids = torch.tensor([0, 5, ref0.shape[1] - 1, 17, 30], device=device)
+        j_ids = torch.tensor([ref1.shape[1] - 1, 0, 9, 41, 2], device=device)
+        data = {"stride_c": 8, "stride_f": 2, "b_ids": b_ids, "i_ids": i_ids, "j_ids": j_ids}
+        feat_c = torch.zeros(2, 1, 4, device=device, dtype=dtype)
+        with torch.no_grad():
+            win0, win1 = FinePreprocess(cfg).to(device, dtype)(feat_f0, feat_f1, feat_c, feat_c, data)
+        self.assert_close(win0, ref0[b_ids, i_ids], rtol=0.0, atol=0.0)
+        self.assert_close(win1, ref1[b_ids, j_ids], rtol=0.0, atol=0.0)
+
 
 class TestResNetFPN(BaseTester):
     def test_fpn_upsamples_by_2_then_crops_5728(self, device, dtype):
@@ -750,13 +1002,14 @@ class TestResNetFPN(BaseTester):
 
 class TestLinearAttention(BaseTester):
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-    def test_padded_queries_stay_finite_5728(self, device, dtype):
+    @pytest.mark.parametrize("kv_len", [5, 40])  # 40 > heads * dim = 8: the dense block-diagonal GEMM path
+    def test_padded_queries_stay_finite_5728(self, device, dtype, kv_len):
         # A padded query has a zero feature map, so its normaliser 1 / eps = 1e6 would exceed float16's 65504. The
         # padded rows must come out as 0, not as 0 * inf = nan, the gradients must stay finite as well, and the
         # rest must not change.
         gen = torch.Generator().manual_seed(0)
-        q, k, v = (torch.randn(1, n, 2, 4, generator=gen) for n in (6, 5, 5))
-        q_mask, kv_mask = torch.ones(1, 6), torch.ones(1, 5)
+        q, k, v = (torch.randn(1, n, 2, 4, generator=gen) for n in (6, kv_len, kv_len))
+        q_mask, kv_mask = torch.ones(1, 6), torch.ones(1, kv_len)
         q_mask[0, [1, 4]], kv_mask[0, 2] = 0, 0
 
         def attend(dt):
@@ -774,6 +1027,82 @@ class TestLinearAttention(BaseTester):
             assert bool(torch.isfinite(grad).all()), grad
             self.assert_close(grad.float(), grad32, rtol=0.0, atol=5e-2)
         self.assert_close(grads[0][0, [1, 4]], torch.zeros_like(grads[0][0, [1, 4]]), rtol=0.0, atol=0.0)
+
+    @staticmethod
+    def _reference(queries, keys, values, q_mask=None, kv_mask=None, eps=1e-6):
+        """LinearAttention's per-head einsum formulation."""
+        Q, K = F.elu(queries) + 1, F.elu(keys) + 1
+        if q_mask is not None:
+            Q = Q * q_mask[:, :, None, None]
+        if kv_mask is not None:
+            K = K * kv_mask[:, :, None, None]
+            values = values * kv_mask[:, :, None, None]
+        KV = torch.einsum("nshd,nshv->nhdv", K, values)
+        denominator = torch.einsum("nlhd,nhd->nlh", Q, K.sum(dim=1)) + eps
+        if q_mask is not None:
+            denominator = torch.where(q_mask[:, :, None] > 0, denominator, torch.ones_like(denominator))
+        return torch.einsum("nlhd,nhdv,nlh->nlhv", Q, KV, 1 / denominator)
+
+    @pytest.mark.parametrize("kv_len", [5, 40])
+    @pytest.mark.parametrize("masked", [False, True])
+    @pytest.mark.parametrize("dim_v", [4, 3])
+    def test_matches_the_per_head_einsums(self, device, dtype, kv_len, masked, dim_v):
+        # Sequences longer than heads * dim run as dense GEMMs over the per-head blocks; both paths compute the
+        # per-head linear attention, also when the values are narrower than the queries and keys.
+        gen = torch.Generator().manual_seed(1)
+        q, k = (torch.randn(2, n, 2, 4, generator=gen).to(device, dtype) for n in (7, kv_len))
+        v = torch.randn(2, kv_len, 2, dim_v, generator=gen).to(device, dtype)
+        q_mask = kv_mask = None
+        if masked:
+            q_mask = torch.ones(2, 7, dtype=dtype, device=device)
+            kv_mask = torch.ones(2, kv_len, dtype=dtype, device=device)
+            q_mask[1, 3], kv_mask[0, 1:3] = 0, 0
+        out = LinearAttention()(q, k, v, q_mask, kv_mask)
+        q_ref, k_ref, v_ref = (x.cpu().double() for x in (q, k, v))
+        qm_ref, km_ref = (None if x is None else x.cpu().double() for x in (q_mask, kv_mask))
+        expected = self._reference(q_ref, k_ref, v_ref, qm_ref, km_ref)
+        if dtype == torch.float64:
+            self.assert_close(out, expected.to(device), rtol=1e-10, atol=1e-12)
+        else:
+            self.assert_close(out, expected.to(device=device, dtype=dtype))
+
+    def test_off_head_overflow_does_not_contaminate_attention(self, device, dtype):
+        q = torch.zeros(1, 1, 2, 1, device=device, dtype=dtype, requires_grad=True)
+        k = torch.tensor([1.0, -math.log(10.0)], device=device, dtype=dtype).view(1, 1, 2, 1)
+        k = k.repeat(1, 3, 1, 1).requires_grad_()
+        v = torch.tensor([0.0, 40000.0], device=device, dtype=dtype).view(1, 1, 2, 1)
+        v = v.repeat(1, 3, 1, 1).requires_grad_()
+        out = LinearAttention()(q, k, v)
+        refs = tuple(x.detach().cpu().double().requires_grad_() for x in (q, k, v))
+        expected = self._reference(*refs)
+        self.assert_close(out, expected.to(device=device, dtype=dtype))
+        grads = torch.autograd.grad((out / 40000).sum(), (q, k, v))
+        refs_grad = torch.autograd.grad((expected / 40000).sum(), refs)
+        for grad, ref in zip(grads, refs_grad):
+            assert bool(torch.isfinite(grad).all())
+            self.assert_close(grad, ref.to(device=device, dtype=dtype))
+
+    def test_long_padded_query_stays_zero(self, device, dtype):
+        # With Z=1 for a padded query, forming Z * length first overflows fp16.
+        q = torch.zeros(1, 1, 1, 1, device=device, dtype=dtype)
+        k = torch.zeros(1, 65536, 1, 1, device=device, dtype=dtype)
+        v = torch.zeros_like(k)
+        q_mask = torch.zeros(1, 1, device=device, dtype=torch.bool)
+        out = LinearAttention()(q, k, v, q_mask=q_mask)
+        self.assert_close(out, torch.zeros_like(out), rtol=0.0, atol=0.0)
+
+    def test_gradcheck_long_sequence(self, device):
+        gen = torch.Generator().manual_seed(2)
+        q, k, v = (torch.randn(1, n, 2, 4, generator=gen, dtype=torch.float64).to(device) for n in (6, 20, 20))
+        self.gradcheck(LinearAttention(), (q, k, v), requires_grad=(True, True, True))
+
+    @pytest.mark.parametrize("kv_len", [5, 40])
+    def test_dynamo(self, device, dtype, torch_optimizer, kv_len):
+        q, k, v = (torch.rand(1, n, 2, 4, device=device, dtype=dtype) for n in (6, kv_len, kv_len))
+        q_mask = torch.ones(1, 6, device=device, dtype=torch.bool)
+        q_mask[:, 0] = False
+        op = LinearAttention()
+        self.assert_close(torch_optimizer(op)(q, k, v, q_mask), op(q, k, v, q_mask))
 
 
 class TestConventionsLoFTR(BaseTester):
