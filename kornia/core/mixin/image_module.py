@@ -270,7 +270,9 @@ class ImageModuleMixIn:
         Supports image path, numpy array, PIL image, and raw tensor. A NumPy array of shape :math:`(H, W)`,
         :math:`(H, W, C)` or :math:`(B, H, W, C)` becomes :math:`(C, H, W)` or :math:`(B, C, H, W)`, with one channel
         for :math:`(H, W)`; a PIL image converts like its NumPy array, except that a palette image (mode ``P`` or
-        ``PA``), and a palette PNG path, is converted to RGB, or RGBA when it has transparency, first. An integer image
+        ``PA``) is converted to RGB, or RGBA when it has transparency, first. A path is loaded with
+        :func:`kornia.io.load_image` as ``ImageLoadType.UNCHANGED``, which keeps 16-bit data and alpha, except that
+        an 8-bit palette PNG converts like its PIL image, to RGB, or RGBA when it has a ``tRNS`` chunk. An integer image
         is divided by the maximum of its dtype (``uint8`` by 255, ``uint16`` by 65535, a PIL mode ``I`` image by the
         ``int32`` maximum); a signed image maps to ``[iinfo.min / iinfo.max, 1]``, so its negative values stay negative.
         A ``bool`` image becomes 0 and 1, and a floating image keeps its values; integer and ``bool`` images become the
