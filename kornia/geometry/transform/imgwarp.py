@@ -1341,9 +1341,9 @@ def warp_affine3d(
     B, C, D, H, W = src.size()
     if dsize[0] < 0 or dsize[1] < 0 or dsize[2] < 0:
         raise ValueError(f"Output size must be non-negative. Got {dsize}.")
-    if dsize[0] == 0 or dsize[1] == 0 or dsize[2] == 0:
-        return _empty_warp_output_3d(src, M, dsize, flags, padding_mode, align_corners)
-    if B == 0 and (D == 0 or H == 0 or W == 0):
+    # affine_grid rejects a zero batch: an empty batch takes the empty-output path, which keeps the
+    # sampling-option, dtype, device and batch checks and the autograd links to both inputs.
+    if B == 0 or dsize[0] == 0 or dsize[1] == 0 or dsize[2] == 0:
         return _empty_warp_output_3d(src, M, dsize, flags, padding_mode, align_corners)
     out_dtype = src.dtype
     if _runs_in_float32(src, M):
@@ -1362,12 +1362,7 @@ def warp_affine3d(
 
     # compute meshgrid and apply to input
     dsize_out: list[int] = [B, C, *list(size_out)]
-    if B == 0:
-        # affine_grid rejects a zero batch. Reuse the empty coefficients to keep the
-        # transform's autograd connection; grid_sample still validates sampling options.
-        grid = P_norm.reshape(B, 1, 1, 1, 12)[..., :3].expand(B, *size_out, 3)
-    else:
-        grid = F.affine_grid(P_norm, dsize_out, align_corners=align_corners)
+    grid = F.affine_grid(P_norm, dsize_out, align_corners=align_corners)
     return _torch_grid_sample(src, grid, align_corners=align_corners, mode=flags, padding_mode=padding_mode).to(
         out_dtype
     )

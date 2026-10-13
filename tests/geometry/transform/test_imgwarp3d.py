@@ -56,6 +56,10 @@ class TestWarpAffine3dEmptyBatch(BaseTester):
             proj.warp_affine3d(src, matrix, (3, 4, 5), padding_mode="invalid")
         with pytest.raises(RuntimeError):
             proj.warp_affine3d(src, torch.eye(3, 4, device=device, dtype=dtype)[None], (3, 4, 5))
+        # A non-empty batch rejects a matrix of another dtype, so an empty one must too.
+        other = torch.float16 if dtype != torch.float16 else torch.float32
+        with pytest.raises(RuntimeError, match="same dtype"):
+            proj.warp_affine3d(src, matrix.to(other), (3, 4, 5))
 
     @pytest.mark.parametrize("spatial", [(0, 4, 5), (3, 0, 5), (3, 4, 0)])
     @pytest.mark.parametrize("align_corners", [True, False])
