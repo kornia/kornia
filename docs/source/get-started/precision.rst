@@ -90,10 +90,9 @@ precision, so the table says nothing about those backends.
      - ⚠️ Partial
      - ⚠️ Partial
      - 4 / 130
-     - ``So2.inverse()`` promotes complex-half state to complex64 and returns the original dtype, also fixing
-       ``Se2`` inverse and composition. bfloat16 ``So2`` / ``Se2`` construction remains unsupported because
-       PyTorch has no complex bfloat16 dtype (119 entries). float16 misses rotation/composition accuracy
-       checks in ``So3`` / ``Se3``.
+     - ``So2`` and ``Se2`` store complex tensors; float16 inverses are computed in complex64. PyTorch has no
+       complex bfloat16 dtype, so most bfloat16 ``So2`` / ``Se2`` tests raise (119 entries). ``So3`` and ``Se3``
+       miss a few composition, point-transform and orthogonality accuracy checks.
    * - ``kornia.geometry.solvers``
      - ⚠️ Partial
      - ⚠️ Partial
