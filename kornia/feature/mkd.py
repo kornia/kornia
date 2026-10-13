@@ -558,8 +558,8 @@ class MKDDescriptor(nn.Module):
     See :cite:`mukundan2019understanding` for more details.
 
     Convention:
-        - Patches are ``(B, 1, patch_size, patch_size)``: ``patch_size`` must be the input's size. The kernels are
-          centred on the patch centre :math:`(\text{patch\_size} - 1) / 2`.
+        - Patches are ``(B, 1, patch_size, patch_size)``: ``patch_size`` must be the input's size, and another size
+          raises ``ShapeError``. The kernels are centred on the patch centre :math:`(\text{patch\_size} - 1) / 2`.
         - The descriptor has unit L2 norm, and an intensity change :math:`a x + b` with :math:`a > 0` gives the same
           descriptor unless it leaves the patch nearly flat.
         - With whitening the descriptor is :math:`\min(\text{output\_dims}, E)` wide, where :math:`E` is the width of
