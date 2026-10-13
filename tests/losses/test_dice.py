@@ -305,16 +305,20 @@ class TestDiceLoss(BaseTester):
 
         labels = torch.zeros(1, 4, 1, device=device, dtype=torch.int64)
 
-        exp_1_0 = torch.exp(torch.tensor([1.0], device=device, dtype=dtype))
-        exp_10_0 = torch.exp(torch.tensor([10.0], device=device, dtype=dtype))
+        # In float16, 3 * exp(10) overflows before the ratio is formed (#4153).
+        reference_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        exp_1_0 = torch.exp(torch.tensor([1.0], device=device, dtype=reference_dtype))
+        exp_10_0 = torch.exp(torch.tensor([10.0], device=device, dtype=reference_dtype))
 
         expected_intersection = (3.0 * exp_10_0 + 1.0 * exp_1_0) / (exp_1_0 + exp_10_0)
         expected_cardinality = 8.0  # for micro averaging cardinality is equal 2 * H * W
         expected_loss = 1.0 - 2.0 * expected_intersection / (expected_cardinality + eps)
-        expected_loss = expected_loss.squeeze()
+        expected_loss = expected_loss.squeeze().to(dtype)
 
         criterion = kornia.losses.DiceLoss(average="micro", eps=eps)
         loss = criterion(logits, labels)
+        assert torch.isfinite(expected_loss)
+        assert torch.isfinite(loss)
         self.assert_close(loss, expected_loss, rtol=1e-3, atol=1e-3)
 
     @pytest.mark.parametrize("avg", ["micro", "macro"])
@@ -429,21 +433,22 @@ class TestDiceLoss(BaseTester):
 
         labels = torch.zeros(1, 1, 4, device=device, dtype=torch.int64)
 
-        exp_1_0 = torch.exp(torch.tensor([1.0], device=device, dtype=dtype))
-        exp_10_0 = torch.exp(torch.tensor([10.0], device=device, dtype=dtype))
+        # Promote before forming the intersection/cardinality; casting an overflow later cannot repair it.
+        reference_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        exp_1_0 = torch.exp(torch.tensor([1.0], device=device, dtype=reference_dtype))
+        exp_10_0 = torch.exp(torch.tensor([10.0], device=device, dtype=reference_dtype))
 
         expected_intersection_1 = (3.0 * exp_10_0 + exp_1_0) / (exp_1_0 + exp_10_0)
         expected_cardinality_1 = 4.0 + (3.0 * exp_10_0 + 1.0 * exp_1_0) / (exp_1_0 + exp_10_0)
 
-        reduction_dtype = torch.float64 if dtype == torch.float64 else torch.float32
-        expected_loss_1 = 1.0 - 2.0 * expected_intersection_1.to(reduction_dtype) / (
-            expected_cardinality_1.to(reduction_dtype) + eps
-        )
+        expected_loss_1 = 1.0 - 2.0 * expected_intersection_1 / (expected_cardinality_1 + eps)
         # Class 1 is absent from the target, so only class 0 contributes to the macro mean.
         expected_loss = expected_loss_1.squeeze().to(dtype)
 
         criterion = kornia.losses.DiceLoss(average="macro", eps=eps)
         loss = criterion(logits, labels)
+        assert torch.isfinite(expected_loss)
+        assert torch.isfinite(loss)
         self.assert_close(loss, expected_loss, rtol=1e-3, atol=1e-3)
 
     @pytest.mark.parametrize("ignore_index", [-100, 255])
