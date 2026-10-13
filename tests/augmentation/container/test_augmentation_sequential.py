@@ -1254,6 +1254,24 @@ class TestConventionAugmentationSequential(BaseTester):
         _, restored = aug.inverse(out_image, out_boxes)
         self.assert_close(restored, boxes)
 
+    def test_video_boxes_inverse_with_partial_gate_5871(self, device, dtype):
+        torch.manual_seed(0)
+        corners = torch.tensor([[1.0, 1.0], [3.0, 1.0], [3.0, 4.0], [1.0, 4.0]], device=device, dtype=dtype)
+        boxes = corners.expand(4, 3, 2, 4, 2).clone()
+        aug = K.AugmentationSequential(
+            K.VideoSequential(K.RandomHorizontalFlip(p=0.5), data_format="BTCHW"),
+            data_keys=["input", "bbox"],
+        )
+
+        image, out_boxes = aug(torch.rand(4, 3, 1, 6, 6, device=device, dtype=dtype), boxes)
+        # The gate must mix applied and skipped frames, otherwise the round-trip proves nothing.
+        flipped = (out_boxes.data.view(4, 3, 2, 4, 2) - boxes).abs().sum(dim=(-1, -2, -3)) > 0
+        assert bool(flipped.any()), flipped.tolist()
+        assert not bool(flipped.all()), flipped.tolist()
+
+        _, restored = aug.inverse(image, out_boxes)
+        self.assert_close(restored, boxes)
+
     @pytest.mark.parametrize("batch_size", [2, 3])
     @pytest.mark.parametrize("keepdim,child_keepdim", [(True, False), (None, True), (False, True)])
     @pytest.mark.parametrize("mask_layout", ["BHW", "BCHW"])

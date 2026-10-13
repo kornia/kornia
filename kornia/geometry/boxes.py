@@ -1155,8 +1155,10 @@ class VideoBoxes(Boxes):
     def __setitem__(self, key: slice | int | torch.Tensor, value: Boxes) -> VideoBoxes:
         r"""Write whole videos, selected by ``key`` on the video-batch axis as in :meth:`__getitem__`."""
         size = self.temporal_channel_size
-        self._data.view(-1, size, *self._data.shape[1:])[key] = value.data.view(-1, size, *value.data.shape[1:])
-        self._valid.view(-1, size, self._valid.shape[-1])[key] = value._valid.view(-1, size, value._valid.shape[-1])
+        # Explicit video counts: a clip with no boxes has 0 elements, so a -1 in the view would be ambiguous.
+        n, m = self._data.shape[0] // size, value.data.shape[0] // size
+        self._data.view(n, size, *self._data.shape[1:])[key] = value.data.view(m, size, *value.data.shape[1:])
+        self._valid.view(n, size, self._valid.shape[-1])[key] = value._valid.view(m, size, value._valid.shape[-1])
         return self
 
     def to_tensor(

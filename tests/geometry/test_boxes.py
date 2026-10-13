@@ -2333,6 +2333,15 @@ class TestVideoBoxes(BaseTester):
         expected[videos] = boxes[videos]
         self.assert_close(target.to_tensor(), expected, atol=0.0, rtol=0.0)
 
+    def test_index_assignment_without_boxes_5871(self, device, dtype):
+        # A clip with no boxes stores (B * T, 0, 4, 2): the write still lands in place.
+        target = VideoBoxes.from_tensor(torch.zeros(3, 2, 0, 4, 2, device=device, dtype=dtype))
+        storage = target.data
+        target[1] = VideoBoxes.from_tensor(torch.zeros(1, 2, 0, 4, 2, device=device, dtype=dtype))
+        assert target.data is storage
+        assert target.data.shape == (6, 0, 4, 2)
+        assert target._valid.shape == (6, 0)
+
     def test_convention_inherited_methods_split_copies_from_in_place_updates(self, device, dtype):
         # Convention pin: transform_boxes, translate, clamp, filter_boxes_by_area and merge copy through
         # clone, so they return a new VideoBoxes carrying the temporal size and leave the source
