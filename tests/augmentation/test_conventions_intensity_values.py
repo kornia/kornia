@@ -1367,20 +1367,20 @@ class TestIntensityColourConventions(BaseTester):
             with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
                 _sync(K.RandomClahe(p=1.0)(image).device)
 
-    # Issue #2531: each axis of `grid_size` is tiled on its own and padded up to a whole number of tiles,
-    # CLAHE pads non-divisible image dimensions to whole tiles. When both dimensions
-    # divide evenly by the grid, odd natural tile sizes are preserved instead of
-    # being rounded up to even. In those cases, processing a pre-padded image can
-    # use different tile sizes and is not expected to reproduce the original output.
+    # Issue #2531: each axis of `grid_size` is tiled on its own, with tiles of ceil(size / grid) pixels, odd or
+    # even (#5812), so a grid works whether or not it divides the image, and only an axis the grid does not
+    # divide is padded.  The padding is reflect at the end of each axis, so the pre-padded image cropped back
+    # reproduces the output bitwise.
     @pytest.mark.parametrize(
         ("grid_size", "size", "pad"),
         [
             ((3, 3), 10, (2, 2)),
-            ((4, 4), 20, (4, 4)),
+            ((4, 4), 18, (2, 2)),
+            ((4, 4), 20, (0, 0)),
             ((5, 5), 20, (0, 0)),
-            ((4, 5), 20, (4, 0)),
+            ((4, 5), 18, (2, 2)),
             ((3, 5), 30, (0, 0)),
-            ((1, 2), 10, (0, 2)),
+            ((1, 2), 11, (0, 1)),
         ],
     )
     def test_convention_random_clahe_grid_pads_each_axis_to_whole_tiles_2531(self, device, dtype, grid_size, size, pad):
@@ -1393,16 +1393,7 @@ class TestIntensityColourConventions(BaseTester):
         assert out.shape == image.shape
         assert bool(out.isfinite().all())
         assert not torch.equal(out, image)
-        natural_tile_h = size // grid_size[0]
-        natural_tile_w = size // grid_size[1]
-        uses_odd_tile_path = (
-            size % grid_size[0] == 0
-            and size % grid_size[1] == 0
-            and natural_tile_h > 1
-            and natural_tile_w > 1
-            and (natural_tile_h % 2 == 1 or natural_tile_w % 2 == 1)
-        )
-        if (pad_rows or pad_cols) and not uses_odd_tile_path:
+        if pad_rows or pad_cols:
             padded = torch.nn.functional.pad(image, [0, pad_cols, 0, pad_rows], mode="reflect")
             torch.manual_seed(_FORWARD_SEED)
             reference = K.RandomClahe(grid_size=grid_size, p=1.0)(padded)[..., :size, :size]
