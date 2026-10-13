@@ -82,6 +82,32 @@ class TestHistMatch(BaseTester):
         assert out.min() == 0
         assert int((out == 0).sum()) == 60
 
+    def test_histmatch_large_image(self, device, dtype):
+        # 64x64 is past the exact-integer range of float16 (2048) and bfloat16 (256), where summing the counts in the
+        # input dtype repeated quantiles and gave NaN. The result must match the float64 computation on the same values.
+        # Seed 5 is one of the pairs that gave NaN in both float16 and bfloat16.
+        g = torch.Generator().manual_seed(5)
+        src = torch.rand(64, 64, generator=g).to(device=device, dtype=dtype)
+        dst = torch.rand(64, 64, generator=g).to(device=device, dtype=dtype)
+        out = kornia.contrib.histogram_matching(src, dst)
+        exp = kornia.contrib.histogram_matching(src.double(), dst.double()).to(dtype)
+        assert out.dtype == dtype
+        assert out.isfinite().all()
+        self.assert_close(out, exp)
+
+    @pytest.mark.parametrize("size", [50, 64])
+    def test_histmatch_uint8(self, device, size):
+        # A uint8 count sum wraps past 255: 50x50 mapped to values up to 266, and 64x64 (4096 = 0 mod 256) to NaN.
+        g = torch.Generator().manual_seed(0)
+        src = (torch.rand(size, size, generator=g) * 255).round().to(device=device, dtype=torch.uint8)
+        dst = (torch.rand(size, size, generator=g) * 255).round().to(device=device, dtype=torch.uint8)
+        out = kornia.contrib.histogram_matching(src, dst)
+        assert out.dtype == torch.float32
+        assert out.isfinite().all()
+        assert out.min() >= dst.min()
+        assert out.max() <= dst.max()
+        self.assert_close(out, kornia.contrib.histogram_matching(src.float(), dst.float()))
+
     @pytest.mark.skip(reason="not differentiable now.")
     def test_grad(self, device):
         B, C, H, W = 1, 3, 32, 32
