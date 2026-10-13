@@ -39,7 +39,8 @@ class HFONNXComunnityModelLoader:
     Args:
         model_name: The name of the model to load.
         model_type: The type of the model to load.
-        cache_dir: The directory where models are cached locally.
+        cache_dir: The directory where models are cached locally. The model, its weights and its preprocessing
+            config are stored in ``<cache_dir>/<model_name>/``.
             Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
         with_data: Whether to download the model weights such as `model.onnx_data`.
 
@@ -103,7 +104,7 @@ class HFONNXComunnityModelLoader:
             Sequential Kornia image preprocessing module built from the repository
             configuration.
         """
-        json_req = ONNXLoader.load_config(self.config_url)
+        json_req = ONNXLoader.load_config(self.config_url, cache_dir=self.cache_dir)
         return PreprocessingLoader.from_json(json_req)
 
 

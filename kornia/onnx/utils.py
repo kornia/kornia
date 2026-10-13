@@ -20,9 +20,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import posixpath
 import pprint
 import urllib.error
 from typing import Any, Optional
+from urllib.parse import urlsplit, urlunsplit
 from urllib.request import urlopen
 
 import kornia
@@ -36,6 +38,38 @@ __all__ = ["ONNXLoader", "add_metadata", "io_name_conversion"]
 _logger = logging.getLogger(__name__)
 
 
+def _url_cache_name(url: str, cache_dir: Optional[str]) -> str:
+    """Return the name, relative to the cache directory, that :class:`ONNXLoader` caches ``url`` under.
+
+    A ``cache_dir`` the caller chose is the directory the file is stored in, so the name is the file name of the URL's
+    path. Without one, the name also carries the URL's host (and port) and the directories of its path, so that two
+    URLs never share a file in the default directory. The query and the fragment are not part of the file's name, and
+    ``?`` cannot be in a file name on Windows. ``.`` and ``..`` directories are resolved as a server resolves them.
+
+    Raises:
+        ValueError: If the URL's path does not end in a file name.
+    """
+    parts = urlsplit(url)
+    *directories, file_name = parts.path.split("/")
+    if file_name in ("", ".", ".."):
+        raise ValueError(f"{url!r} does not end in a file name to cache it under.")
+    if cache_dir is not None:
+        return file_name
+    host = parts.hostname or ""  # lower-cased, without any user name or password
+    if parts.port is not None:
+        host = f"{host}_{parts.port}"
+    # the leading "/" makes the path absolute, so normpath drops every ".." that would climb above it
+    directory = posixpath.normpath("/" + "/".join(directories))
+    components = [host.replace(":", "_")] if host else []  # an IPv6 address carries ":"
+    components += [c for c in directory.split("/") if c]
+    return "/".join([*components, file_name])
+
+
+def _onnx_data_name(name: str) -> str:
+    """Return the name of the ``.onnx_data`` weights stored beside the model ``name``, with or without ``.onnx``."""
+    return (name[: -len(".onnx")] if name.endswith(".onnx") else name) + ".onnx_data"
+
+
 class ONNXLoader(CachedDownloader):
     """Manages ONNX models, handling local caching, downloading from Hugging Face, and loading models."""
 
@@ -46,7 +80,10 @@ class ONNXLoader(CachedDownloader):
         Args:
             url: The URL of the preprocessor config to load.
             download: If True, the config will be downloaded if it's not already in the local cache.
-            kwargs: Additional download arguments.
+            kwargs: Keyword arguments of ``CachedDownloader.download_to_cache``. Only ``cache_dir`` applies: the
+                directory the config is stored in, under the file name of the URL. Without it, the config goes to
+                ``<hub_cache_dir>/<host>/<directories of the URL's path>/``, so that two URLs never share a file. The
+                URL's query is not part of the file name. Any other keyword raises ``TypeError``.
 
         Returns:
             dict[str, Any]: The loaded preprocessor config.
@@ -55,7 +92,7 @@ class ONNXLoader(CachedDownloader):
         if url.startswith(("http:", "https:")):
             file_path = cls.download_to_cache(
                 url,
-                os.path.split(url)[-1],
+                _url_cache_name(url, kwargs.get("cache_dir")),
                 download=download,
                 suffix=".json",
                 **kwargs,
@@ -78,10 +115,14 @@ class ONNXLoader(CachedDownloader):
                 https://huggingface.co/kornia/ONNX_models.
                 Or a URL to the ONNX model.
             download: If True, the model will be downloaded from Hugging Face if it's not already in the local cache.
-            cache_dir: The directory where the model should be cached.
-                Defaults to None, which will use a default `{kornia_config.hub_onnx_dir}` directory.
-            with_data: If True, the model will be loaded with its `.onnx_data` weights.
-            **kwargs: Additional arguments to pass to the download method, if needed.
+            cache_dir: The directory where the model should be cached, under the path of an ``hf://`` name after its
+                folder (``a/b.onnx`` for ``hf://models/a/b``), or under the file name of a URL.
+                Defaults to None: an ``hf://`` model goes to ``<kornia_config.hub_onnx_dir>/<folder>/``, and a URL to
+                ``<kornia_config.hub_onnx_dir>/<host>/<directories of the URL's path>/``, so that two URLs never
+                share a file. The URL's query is not part of the file name.
+            with_data: If True, the model will be loaded with its `.onnx_data` weights, stored beside the model.
+            **kwargs: Keyword arguments of ``CachedDownloader.download_to_cache``; only ``cache_dir`` applies, and
+                any other keyword raises ``TypeError``.
 
         Returns:
             onnx.ModelProto: The loaded ONNX model.
@@ -90,37 +131,24 @@ class ONNXLoader(CachedDownloader):
         if model_name.startswith("hf://"):
             model_name = model_name[len("hf://") :]
             url = f"https://huggingface.co/kornia/ONNX_models/resolve/main/{model_name}.onnx"
-            cache_dir = kwargs.get("cache_dir") or os.path.join(kornia_config.hub_onnx_dir, model_name.split("/")[0])
+            folder, _, name = model_name.partition("/")
+            cache_dir = kwargs.get("cache_dir") or os.path.join(kornia_config.hub_onnx_dir, folder)
             kwargs.update({"cache_dir": cache_dir})
-            file_path = cls.download_to_cache(
-                url, model_name.split("/")[1], download=download, suffix=".onnx", **kwargs
-            )
+            file_path = cls.download_to_cache(url, name, download=download, suffix=".onnx", **kwargs)
             if with_data:
                 url_data = f"https://huggingface.co/kornia/ONNX_models/resolve/main/{model_name}.onnx_data"
-                cls.download_to_cache(
-                    url_data, model_name.split("/")[1], download=download, suffix=".onnx_data", **kwargs
-                )
+                cls.download_to_cache(url_data, name, download=download, suffix=".onnx_data", **kwargs)
             return onnx.load(file_path)  # type:ignore
 
         if model_name.startswith(("http://", "https://")):
-            cache_dir = kwargs.get("cache_dir") or kornia_config.hub_onnx_dir
-            kwargs.update({"cache_dir": cache_dir})
-            file_path = cls.download_to_cache(
-                model_name,
-                os.path.split(model_name)[-1],
-                download=download,
-                suffix=".onnx",
-                **kwargs,
-            )
+            cache_dir = kwargs.get("cache_dir") or None  # an empty one means the default, as for hf:// names
+            name = _url_cache_name(model_name, cache_dir)
+            kwargs.update({"cache_dir": cache_dir or kornia_config.hub_onnx_dir})
+            file_path = cls.download_to_cache(model_name, name, download=download, suffix=".onnx", **kwargs)
             if with_data:
-                url_data = model_name[:-5] + ".onnx_data"
-                cls.download_to_cache(
-                    url_data,
-                    os.path.split(model_name)[-1][:-5] + ".onnx_data",
-                    download=download,
-                    suffix=".onnx_data",
-                    **kwargs,
-                )
+                parts = urlsplit(model_name)
+                url_data = urlunsplit(parts._replace(path=_onnx_data_name(parts.path)))
+                cls.download_to_cache(url_data, _onnx_data_name(name), download=download, suffix=".onnx_data", **kwargs)
             return onnx.load(file_path)  # type:ignore
 
         if os.path.exists(model_name):
