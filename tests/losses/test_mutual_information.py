@@ -207,15 +207,17 @@ class TestMutualInformationLoss(BaseTester):
             low_tolerance=True,
         )
 
+    @pytest.mark.parametrize("batch_shape", [(), (2,)])
     @pytest.mark.parametrize("side", [184, 256])
-    def test_joint_histogram_matches_cpu_at_large_sample_counts(self, device, side):
+    def test_joint_histogram_matches_cpu_at_large_sample_counts(self, device, side, batch_shape):
         # MPS ``bmm`` with a transposed operand sums past the operands for K >= 32767 on some chips
         # (pytorch/pytorch#195163), which corrupted the histogram for 33k-70k samples (a 184x184 image).
         # The CPU result is the oracle; 184*184 sits inside the bad band and 256*256 outside it.
+        # A leading batch dimension exercises the batched matmul from the issue; () is the plain 2-D one.
         generator = torch.Generator().manual_seed(0)
-        n = side * side
-        ref = torch.rand(n, generator=generator)
-        other = (ref**0.8 + 0.05 * torch.randn(n, generator=generator)).float()
+        shape = (*batch_shape, side * side)
+        ref = torch.rand(shape, generator=generator)
+        other = (ref**0.8 + 0.05 * torch.randn(shape, generator=generator)).float()
 
         expected_module = MILossFromRef(ref)
         expected = expected_module._compute_joint_histogram(other, expected_module.eps)
