@@ -666,8 +666,12 @@ class TestSampleImages:
             mock_urlopen.assert_not_called()
         assert not cache.exists()
 
-    @pytest.mark.parametrize("refuse_replacing_a_file", [False, True], ids=["posix_replace", "windows_replace"])
-    def test_concurrent_downloads_of_the_same_image_both_succeed(self, tmp_path: Path, refuse_replacing_a_file) -> None:
+    @pytest.mark.parametrize(
+        "windows",
+        [None, "refuses_replacing_an_open_file", "refuses_reading_a_file_being_replaced"],
+        ids=["posix_replace", "windows_replace", "windows_read_during_replace"],
+    )
+    def test_concurrent_downloads_of_the_same_image_both_succeed(self, tmp_path: Path, windows) -> None:
         import os
         import threading
         from concurrent.futures import ThreadPoolExecutor
@@ -682,22 +686,46 @@ class TestSampleImages:
         cache = tmp_path / "cache"
         both_written = threading.Barrier(2, timeout=10)
         one_replace_at_a_time = threading.Lock()
+        replacing = set()  # the threads whose os.replace has been called and has not returned yet
+        a_call_moved_on = threading.Event()  # a call has returned or raised, or a read of the cache file was refused
         real_replace = os.replace
+        real_open = open
 
         def replace_after_both_writes(src, dst):
-            both_written.wait()  # both calls have missed the cache and finished writing before either replaces
-            with one_replace_at_a_time:
-                if refuse_replacing_a_file and os.path.exists(dst):
-                    # Windows refuses to replace a file that the call which put it there is reading
-                    raise PermissionError(13, "Access is denied", dst)
-                return real_replace(src, dst)
+            replacing.add(threading.get_ident())
+            try:
+                both_written.wait()  # both calls have missed the cache and finished writing before either replaces
+                with one_replace_at_a_time:
+                    if windows == "refuses_replacing_an_open_file" and os.path.exists(dst):
+                        # Windows refuses to replace a file that another call has open
+                        raise PermissionError(13, "Access is denied", dst)
+                    if windows == "refuses_reading_a_file_being_replaced" and os.path.exists(dst):
+                        a_call_moved_on.wait(timeout=10)  # this replace is still in flight while the other call goes on
+                    return real_replace(src, dst)
+            finally:
+                replacing.discard(threading.get_ident())
+
+        def open_refused_while_another_call_replaces(path, mode="r", *args, **kwargs):
+            if (
+                windows == "refuses_reading_a_file_being_replaced"
+                and Path(path) == cache / "same.png"
+                and replacing - {threading.get_ident()}
+            ):
+                a_call_moved_on.set()
+                # Windows: opening a file that another call is replacing fails with access denied
+                raise PermissionError(13, "Permission denied", str(path))
+            return real_open(path, mode, *args, **kwargs)
 
         def fetch():
-            return get_sample_images(paths=["https://example.invalid/x/same.png"], cache_dir=str(cache))[0]
+            try:
+                return get_sample_images(paths=["https://example.invalid/x/same.png"], cache_dir=str(cache))[0]
+            finally:
+                a_call_moved_on.set()
 
         with (
             mock.patch("kornia.io.sample.urlopen") as mock_urlopen,
             mock.patch("kornia.io.sample.os.replace", replace_after_both_writes),
+            mock.patch("kornia.io.io.open", open_refused_while_another_call_replaces, create=True),
             ThreadPoolExecutor(max_workers=2) as pool,
         ):
             mock_urlopen.return_value.__enter__.return_value.read.return_value = payload
@@ -718,7 +746,28 @@ class TestSampleImages:
             mock_urlopen.return_value.__enter__.return_value.read.return_value = b"<html>not found</html>"
             with pytest.raises(ValueError, match=re.escape("sample.png")):
                 get_sample_images(paths=["https://example.invalid/sample.png"], cache_dir=str(cache))
-        assert not (cache / "sample.png").exists()
+        assert list(cache.iterdir()) == []  # neither the cache file nor the temporary file
+
+    def test_a_download_that_is_not_an_image_leaves_another_calls_copy_in_place(self, tmp_path: Path) -> None:
+        from unittest import mock
+
+        from kornia.io import get_sample_images
+
+        image = create_random_img8_torch(4, 5, 3)
+        source = tmp_path / "source.png"
+        write_image(source, image)
+        cache = tmp_path / "cache"
+
+        def body_read_while_another_call_publishes():
+            (cache / "same.png").write_bytes(source.read_bytes())  # a call that also missed the cache publishes first
+            return b"<html>not found</html>"
+
+        with mock.patch("kornia.io.sample.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.side_effect = body_read_while_another_call_publishes
+            with pytest.raises(ValueError, match=re.escape("same.png")):
+                get_sample_images(paths=["https://example.invalid/x/same.png"], cache_dir=str(cache))
+        assert sorted(p.name for p in cache.iterdir()) == ["same.png"]  # no temporary file is left behind
+        assert (cache / "same.png").read_bytes() == source.read_bytes()
 
 
 class TestDownloadImage:
