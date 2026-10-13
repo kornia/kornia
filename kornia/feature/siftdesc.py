@@ -159,7 +159,8 @@ class SIFTDescriptor(nn.Module):
     Convention:
         - The input is a stack of grayscale patches, ``patch_size`` pixels square (41 by default; another size
           raises), with rows along :math:`+y` and columns along :math:`+x`, as
-          :func:`~kornia.feature.extract_patches_from_pyramid` samples them from LAFs.
+          :func:`~kornia.feature.extract_patches_from_pyramid` samples them from LAFs
+          (see :ref:`Local features <local-features-conventions>`).
         - The output is in kornia's angle-major SIFT layout, which
           :func:`~kornia.feature.convert_sift_descriptor_layout` defines and reorders to OpenCV's. In the patch of a
           LAF oriented by :class:`~kornia.feature.LAFOrienter`, the dominant gradient direction it found points along

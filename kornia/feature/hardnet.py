@@ -48,7 +48,8 @@ class HardNet(nn.Module):
     Convention:
         - Patches are ``(B, 1, 32, 32)``, one grayscale channel, and another shape raises; ``patch_size`` is a class
           attribute. :func:`~kornia.feature.get_laf_descriptors` extracts such patches from LAFs at its default
-          ``patch_size``, sampled as :func:`~kornia.feature.extract_patches_from_pyramid` describes.
+          ``patch_size``, sampled as :func:`~kornia.feature.extract_patches_from_pyramid` describes
+          (see :ref:`Local features <local-features-conventions>`).
           :class:`~kornia.feature.HardNet8`, :class:`~kornia.feature.SOSNet`, :class:`~kornia.feature.TFeat` and
           :class:`~kornia.feature.HyNet` take the same patches.
         - The intensity range does not matter: HardNet and HardNet8 standardise each patch to zero mean and unit

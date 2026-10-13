@@ -79,10 +79,11 @@ class SIFTDescriptorFromPyramid(nn.Module):
 
     Convention:
         - ``lafs`` are in the pixel frame of ``image``, with the layout of
-          :func:`~kornia.feature.laf_from_center_scale_ori`. Cell ``(i, j)`` of the ``num_spatial_bins`` x
-          ``num_spatial_bins`` grid is centred at ``c + A (u_j, u_i)`` with ``u_k = (2 k + 1) / num_spatial_bins - 1``,
-          at whichever octave the LAF selects: the cell centres of a ``num_spatial_bins``-pixel patch from
-          :func:`~kornia.feature.extract_patches_from_pyramid`, row 0 on the frame's :math:`-y` side.
+          :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`).
+          Cell ``(i, j)`` of the ``num_spatial_bins`` x ``num_spatial_bins`` grid is centred at ``c + A (u_j, u_i)``
+          with ``u_k = (2 k + 1) / num_spatial_bins - 1``, at whichever octave the LAF selects: the cell centres of a
+          ``num_spatial_bins``-pixel patch from :func:`~kornia.feature.extract_patches_from_pyramid`, row 0 on the
+          frame's :math:`-y` side.
         - :meth:`orient_and_describe`, unless ``upright=True``, rotates each valid frame so that its dominant
           gradient, measured in the frame's own coordinates, points along the frame's :math:`+x` axis, whatever
           orientation the frame had. This is the orientation convention of :class:`~kornia.feature.LAFOrienter`, and it
