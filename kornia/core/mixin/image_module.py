@@ -279,10 +279,6 @@ class ImageModuleMixIn:
         default floating dtype. When this mixin belongs to a stateful :class:`torch.nn.Module`, the converted image is
         moved to the module's device and first floating parameter or buffer dtype. A tensor is returned unchanged.
 
-        Known defect: a path is loaded with ``ImageLoadType.UNCHANGED``, so an 8-bit palette PNG given as a path becomes
-        one channel of palette indices divided by 255 instead of its colours
-        (`#5807 <https://github.com/kornia/kornia/issues/5807>`_).
-
         Args:
             x: The input to convert.
 

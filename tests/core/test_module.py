@@ -707,11 +707,11 @@ class TestImageModuleConversions(BaseTester):
         out = _Identity().to_tensor(str(path))
         self.assert_close(out, torch.tensor([1.0, 0.2, 0.0]).view(3, 1, 1).expand(3, 4, 6))
 
-    def test_wart_to_tensor_reads_a_palette_png_path_as_indices_5807(self, tmp_path, device, dtype):
-        # #5807: a path is loaded with ImageLoadType.UNCHANGED, which returns an 8-bit palette PNG's indices, so the
-        # image becomes one channel of index / 255 instead of its colours; a PIL image of the same file converts to
-        # RGB. The fix gives the (3, 2, 3) palette colours (yellow, green, red, blue below), which flips this pin.
-        # Snippet: torch.tensor([[[2, 1, 0], [3, 0, 1]]]) / 255, the indices written below.
+    def test_convention_to_tensor_reads_a_palette_png_path_as_its_colours(self, tmp_path, device, dtype):
+        # An 8-bit palette PNG path converts to its colours, as a PIL image of the same file does, not to one channel
+        # of index / 255. The file is written byte by byte, so no decoder is the oracle. Palette yellow, green, red,
+        # blue; the indices are not in raster order and repeat, so each pixel must be looked up by its index. The
+        # expected planes are the R, G and B of [[red, green, yellow], [blue, yellow, green]].
         def chunk(kind, body):
             return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body))
 
@@ -727,8 +727,13 @@ class TestImageModuleConversions(BaseTester):
         module = _Identity()
         module.register_buffer("reference", torch.empty((), device=device, dtype=dtype))  # output device and dtype
         out = module.to_tensor(str(path))
-        assert out.shape == (1, 2, 3)
-        self.assert_close(out, torch.tensor([indices], device=device, dtype=dtype) / 255)
+        expected = [
+            [[255, 0, 255], [0, 255, 0]],  # R
+            [[0, 255, 255], [0, 255, 255]],  # G
+            [[0, 0, 0], [255, 0, 0]],  # B
+        ]
+        assert out.shape == (3, 2, 3)
+        self.assert_close(out, torch.tensor(expected, device=device, dtype=dtype) / 255)
 
     def test_numpy_output_round_trips_through_numpy_input_5207(self):
         module = _Identity()
