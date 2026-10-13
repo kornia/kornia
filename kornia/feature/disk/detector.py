@@ -31,9 +31,10 @@ def heatmap_to_keypoints(
 
     Args:
         heatmap: detection logits of shape :math:`(B, 1, H, W)`.
-        n: the maximum number of keypoints per image. An image with ``n`` maxima or fewer keeps all of them; with more,
-            the maxima scoring strictly above its ``(n + 1)``-th strongest, so maxima tied across that cut are all
-            left out and fewer than ``n`` can be returned. ``None`` keeps every maximum.
+        n: the maximum number of keypoints per image, counted among the maxima above ``score_threshold``. An image
+            with ``n`` such maxima or fewer keeps all of them; with more, its ``n`` strongest, where maxima tied at the
+            ``n``-th score are taken in raster order (row by row, then column by column) until ``n`` are kept.
+            ``None`` keeps every maximum.
         window_size: the size of the non-maxima suppression window.
         score_threshold: a maximum is kept only if its score is strictly above it.
 
@@ -52,11 +53,16 @@ def heatmap_to_keypoints(
         xy = yx.flip((1,))
 
         if n is not None and detection_logp.numel() > n:
-            # Keep the scores strictly above the (n + 1)-th largest, which torch.kthvalue gives as the (n + 1)-th
-            # smallest of -logp. Equal scores are kept or dropped together, so the result does not depend on the
-            # raster order of the pixels.
-            minus_threshold, _indices = torch.kthvalue(-detection_logp, n + 1)
-            mask = detection_logp > -minus_threshold
+            # The n strongest: every score above the n-th largest (torch.kthvalue gives it as the n-th smallest of
+            # -logp), then the maxima equal to it in raster order until n are kept. The keypoints stay in raster order.
+            if n > 0:
+                minus_threshold, _indices = torch.kthvalue(-detection_logp, n)
+                threshold = -minus_threshold
+                above = detection_logp > threshold
+                tied = detection_logp == threshold
+                mask = above | (tied & (torch.cumsum(tied, 0) <= n - above.sum()))
+            else:
+                mask = torch.zeros_like(detection_logp, dtype=torch.bool)
 
             xy = xy[mask]
             detection_logp = detection_logp[mask]

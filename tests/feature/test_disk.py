@@ -175,16 +175,37 @@ class TestDiskKeypointSelection(BaseTester):
             [],
         ]
 
-    def test_n_keeps_the_scores_above_the_n_plus_first_so_a_tie_at_the_cut_is_dropped_5864(self, device, dtype):
-        # With more maxima than n, the keypoints are the maxima scoring strictly above the (n + 1)-th strongest. The
-        # maxima tied at 2.0, (50, 9) and (20, 33), straddle the cut at n = 2, so neither is kept: picking one would
-        # depend on the raster order of the pixels, which the transposed heatmap reverses. n = 0 keeps nothing, and
-        # n = 4, the number of maxima, keeps all of them.
+    def test_n_counts_the_maxima_above_score_threshold_5864(self, device, dtype):
+        # n counts the maxima above score_threshold: of five maxima, three are strictly above 1.0, so n = 3, 4 and 10
+        # keep those three, and n = 2 the two strongest of them.
+        peaks = [(0, 13, 21, 2.0), (0, 50, 9, 1.5), (0, 60, 33, 1.0), (0, 27, 40, 0.5), (0, 70, 14, 3.0)]
+        heatmaps = self._heatmaps(peaks)
+        scores = {}
+        for n in (None, 2, 3, 4, 10):
+            (kept,), _ = self._features(heatmaps, device, dtype, n=n, score_threshold=1.0)
+            scores[n] = sorted(s for _, _, s in kept)
+        three = [1.5, 2.0, 3.0]
+        assert scores == {None: three, 2: [2.0, 3.0], 3: three, 4: three, 10: three}
+
+    def test_n_takes_maxima_tied_at_the_cut_in_raster_order_5864(self, device, dtype):
+        # With more maxima than n, the n strongest are kept, and maxima tied at the n-th score are taken in raster
+        # order (row by row) until there are n. The maxima (50, 9) and (20, 33) tie at 2.0 across the cut at n = 2:
+        # (50, 9) comes first in raster order and is kept. Transposing the heatmap swaps their raster order, so the
+        # transposed (20, 33) is kept instead. n = 0 keeps nothing.
         peaks = [(0, 13, 21, 3.0), (0, 50, 9, 2.0), (0, 20, 33, 2.0), (0, 60, 40, 1.0)]
         peaks_t = [(b, y, x, s) for b, x, y, s in peaks]
-        for heatmaps in (self._heatmaps(peaks), self._heatmaps(peaks_t, h=80, w=48)):
-            scores = {}
-            for n in (0, 1, 2, 3, 4):
-                (kept,), _ = self._features(heatmaps, device, dtype, n=n)
-                scores[n] = sorted(s for _, _, s in kept)
-            assert scores == {0: [], 1: [3.0], 2: [3.0], 3: [2.0, 2.0, 3.0], 4: [1.0, 2.0, 2.0, 3.0]}
+        expected = {
+            0: [],
+            1: [(13.0, 21.0, 3.0)],
+            2: [(13.0, 21.0, 3.0), (50.0, 9.0, 2.0)],
+            3: [(13.0, 21.0, 3.0), (20.0, 33.0, 2.0), (50.0, 9.0, 2.0)],
+            4: [(13.0, 21.0, 3.0), (20.0, 33.0, 2.0), (50.0, 9.0, 2.0), (60.0, 40.0, 1.0)],
+        }
+        expected_t = {n: sorted((y, x, s) for x, y, s in kept) for n, kept in expected.items()}
+        expected_t[2] = [(21.0, 13.0, 3.0), (33.0, 20.0, 2.0)]
+        for heatmaps, expected_i in (
+            (self._heatmaps(peaks), expected),
+            (self._heatmaps(peaks_t, h=80, w=48), expected_t),
+        ):
+            kept = {n: self._features(heatmaps, device, dtype, n=n)[0][0] for n in expected_i}
+            assert kept == expected_i

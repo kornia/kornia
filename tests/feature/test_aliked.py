@@ -544,6 +544,30 @@ class TestALIKEDKeypointSelection(BaseTester):
                 assert feats.n == 3, (h, w, k, feats.n)
                 self.assert_close(feats.keypoints, maxima_i, rtol=0.0, atol=self._tol(dtype))
 
+    def test_top_k_above_the_pixel_count_returns_the_maxima_5862(self, device, dtype):
+        # k larger than the number of pixels does not raise. A 3 x 5 image has no position 2 px inside its border, so
+        # no keypoint; a 5 x 7 image with one maximum at (3, 2) and k = 40 gets that maximum. extract_dense_map pads
+        # the image around its centre to 32 x 32 and crops the score map back, so the hook places the small map at
+        # that offset of the 32 x 32 score-head output.
+        for h, w, peaks, expected in ((3, 5, [], []), (5, 7, [(0, 3, 2, 0.9)], [[3.0, 2.0]])):
+            small = self._score_map(peaks, device, dtype, h=h, w=w)
+            padded = torch.full((1, 1, 32, 32), 0.01, device=device, dtype=dtype)
+            top, left = (32 - h) // 2, (32 - w) // 2
+            padded[..., top : top + h, left : left + w] = small
+            aliked = self._top_k(w * h + 5, device, dtype)
+            hook = aliked.score_head.register_forward_hook(lambda m, i, o, p=padded: torch.logit(p))
+            try:
+                with torch.no_grad():
+                    (feats,) = aliked(torch.rand(1, 3, h, w, device=device, dtype=dtype))
+                    lafs, _, _ = aliked.forward_laf(torch.rand(1, 3, h, w, device=device, dtype=dtype))
+            finally:
+                hook.remove()
+            assert feats.n == len(expected)
+            assert lafs.shape == (1, len(expected), 2, 3)
+            if expected:
+                expected_t = torch.tensor(expected, device=device, dtype=dtype)
+                self.assert_close(feats.keypoints, expected_t, rtol=0.0, atol=self._tol(dtype))
+
     def test_top_k_keeps_no_keypoint_in_the_border_or_the_padding_5862(self, device, dtype):
         # A batch padded to 64 x 96: image 0 is valid on (W, H) = (80, 50), image 1 on the whole slot. The peaks at
         # (88, 30) and (30, 58) lie in image 0's padding, so with k = 6 image 0 keeps its two maxima and image 1 its
