@@ -477,11 +477,9 @@ class LightGlue(nn.Module):
           reads ``lafs``. :class:`~kornia.feature.LightGlueMatcher` builds them from LAFs.
         - The matching scores, ``matching_scores0``, ``matching_scores1`` and ``scores``, are in the dtype of the
           descriptors. With ``mp=True``, float32 descriptors give scores in the dtype autocast computes them in
-          instead: bfloat16 on CPU, float32 on CUDA and MPS. An image without descriptors runs no layer, and its zero
-          scores keep the descriptor dtype, also with ``mp=True``.
-        - Known defects: with ``mp=True`` on CPU, a configuration whose ``input_dim`` equals ``descriptor_dim``, such
-          as ``"superpoint"``, ``"dedodeb"`` and ``"dedodeg"``, gives float32 zero scores when point pruning removes
-          every point, and bfloat16 scores otherwise (`#5877 <https://github.com/kornia/kornia/issues/5877>`_).
+          instead: bfloat16 on CPU, float32 on CUDA and MPS, for every configuration and also when point pruning
+          removes every point. An image without descriptors runs no layer, and its zero scores keep the descriptor
+          dtype, also with ``mp=True``.
 
     Args:
         features: The type of local features to match (e.g., 'superpoint', 'disk'), whose configuration and
@@ -861,9 +859,11 @@ class LightGlue(nn.Module):
         # If adaptive width pruning removed all keypoints from either side,
         # return empty matches instead of crashing in filter_matches (see #3564).
         if desc0.shape[-2] == 0 or desc1.shape[-2] == 0:
-            # The other paths' scores are the exp of the log assignment. Autocast runs that exp in float32 on CUDA and
-            # MPS and leaves it in the computed dtype on CPU (bfloat16), so take the dtype from the same op.
-            dtype = desc0.new_zeros(()).exp().dtype
+            # The other paths' scores are the exp of the log assignment, and autocast picks the dtype of both ops: the
+            # log assignment is bfloat16 on CPU even where the descriptors stay float32 (input_dim == descriptor_dim),
+            # and the exp is float32 on CUDA and MPS. So take the dtype from the same ops, on these descriptors.
+            log_assignment, _ = self.log_assignment[i](desc0, desc1)
+            dtype = log_assignment.new_zeros(()).exp().dtype
             matches = [torch.zeros((0, 2), dtype=torch.long, device=device) for _ in range(b)]
             mscores = [torch.zeros(0, device=device, dtype=dtype) for _ in range(b)]
             m0_ = torch.full((b, m), -1, device=device, dtype=torch.long)
