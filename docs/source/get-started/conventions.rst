@@ -495,10 +495,16 @@ Randomness in augmentations
   child's setting, and ``True`` or ``False`` overwrites it.
 - Whether a constructor's ``p`` sets the per-sample or the whole-batch gate,
   and whether it exposes ``p_batch``, depends on the concrete class
-  (`#4425 <https://github.com/kornia/kornia/issues/4425>`_). The gate selects
-  after the transform has run on the whole batch, so a skipped sample can still
-  raise or carry a NaN gradient
-  (`#4576 <https://github.com/kornia/kornia/issues/4576>`_).
+  (`#4425 <https://github.com/kornia/kornia/issues/4425>`_). A sample the gate
+  skips comes back with its input values, its values cannot make the call
+  raise, and where they are finite its gradient is the identity. Below ``p=1``
+  the transform still runs on the whole batch before the gate selects; classes
+  whose transform checks input values or has an unbounded derivative
+  (``RandomEqualize``, ``RandomEqualize3D``, ``RandomClahe``, ``RandomGamma``)
+  run it on the value 0.5 for skipped samples. An augmentation that changes the
+  sample shape, such as ``RandomCrop`` or ``Resize``, still raises
+  ``ValueError`` when the gate mixes applied and skipped samples
+  (`#4497 <https://github.com/kornia/kornia/issues/4497>`_).
 
 Serializing an augmentation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
