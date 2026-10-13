@@ -717,15 +717,19 @@ class TestDecomposeEssentialMatrixNoSVD(BaseTester):
         assert t.shape == batch_shape[:-1] + (1,)
 
     def test_gradcheck(self, device):
+        """Check both rotation candidates and the translation against finite differences."""
         E_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
 
         def eval_rot1(input):
+            """Return the first rotation candidate for its gradient check."""
             return epi.decompose_essential_matrix_no_svd(input)[0]
 
         def eval_rot2(input):
+            """Return the second rotation candidate for its gradient check."""
             return epi.decompose_essential_matrix_no_svd(input)[1]
 
         def eval_vec(input):
+            """Return the unit translation candidate for its gradient check."""
             return epi.decompose_essential_matrix_no_svd(input)[2]
 
         self.gradcheck(eval_rot1, (E_mat,))
@@ -735,6 +739,7 @@ class TestDecomposeEssentialMatrixNoSVD(BaseTester):
     @pytest.mark.parametrize("axis", [0, 1, 2])
     @pytest.mark.parametrize("angle", [0.0, 0.3])
     def test_axis_aligned_pose_gradients_5867(self, axis, angle, device, dtype):
+        """Compare sparse-pose outputs and all angular derivatives with Rodrigues' formula."""
         # E(theta) = [t]_x R_t(theta), with t a coordinate axis. One cross product is nonzero;
         # the other two vanish. Rodrigues gives R, dR/dtheta, and the second candidate R_pi R.
         generators = torch.tensor(
@@ -754,6 +759,7 @@ class TestDecomposeEssentialMatrixNoSVD(BaseTester):
         theta = torch.tensor(angle, device=device, dtype=dtype, requires_grad=True)
 
         def pose(theta):
+            """Decompose the essential matrix of a rotation about the translation axis."""
             rotation = identity + theta.sin() * generator + (1 - theta.cos()) * squared
             return epi.decompose_essential_matrix_no_svd(generator @ rotation)
 
@@ -769,6 +775,7 @@ class TestDecomposeEssentialMatrixNoSVD(BaseTester):
             self.assert_close(actual, reference)
 
     def test_gradcheck_axis_aligned_5867(self, device):
+        """Check a sparse batch whose rows select different column cross products."""
         # Different rows select different cross products; none should differentiate an unused 0/0.
         E_mat = torch.tensor(
             [
@@ -783,6 +790,7 @@ class TestDecomposeEssentialMatrixNoSVD(BaseTester):
         self.gradcheck(epi.decompose_essential_matrix_no_svd, (E_mat,))
 
     def test_dynamo_axis_aligned_5867(self, device, dtype, torch_optimizer):
+        """Compare fullgraph outputs and finite backward gradients with eager execution."""
         E_mat = torch.tensor(
             [[[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]],
             device=device,
