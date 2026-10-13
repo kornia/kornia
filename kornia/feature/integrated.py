@@ -718,7 +718,8 @@ class LocalFeatureMatcher(nn.Module):
 
     Convention:
         - ``keypoints0`` and ``keypoints1`` are the centres ``(x, y)`` of the matched LAFs, which ``lafs0`` and
-          ``lafs1`` return; see :func:`~kornia.feature.laf_from_center_scale_ori` for the LAF frame.
+          ``lafs1`` return; see :func:`~kornia.feature.laf_from_center_scale_ori` and
+          :ref:`Local features <local-features-conventions>` for the LAF frame.
           ``confidence`` is ``1 - dists`` of the matcher (see :func:`~kornia.feature.match_nn`).
         - All-zero LAFs, the padding slots of kornia's detectors (see :func:`~kornia.feature.laf_is_filled`), are
           dropped before matching.
@@ -915,10 +916,11 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
     See :cite:`LightGlue2023` for more details.
 
     Convention:
-        - ``lafs1`` and ``lafs2`` are LAFs in the pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`,
-          and their centres go to LightGlue unchanged as the keypoints. ``hw1`` and ``hw2`` are the ``(H, W)`` of
-          each image, which become LightGlue's ``image_size`` ``(W, H)``; without them, the image size is taken as
-          the largest keypoint coordinates of that image, ``(max x, max y)``.
+        - ``lafs1`` and ``lafs2`` are LAFs in the pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
+          (see :ref:`Local features <local-features-conventions>`), and their centres go to LightGlue unchanged as
+          the keypoints. ``hw1`` and ``hw2`` are the ``(H, W)`` of each image, which become LightGlue's
+          ``image_size`` ``(W, H)``; without them, the image size is taken as the largest keypoint coordinates of
+          that image, ``(max x, max y)``.
         - What the network gets besides the keypoints depends on ``feature_name`` (case-insensitive):
 
           - ``"aliked"``, ``"dedodeb"``, ``"dedodeg"``, ``"disk"``, ``"superpoint"``: nothing else.

@@ -93,7 +93,7 @@ class LoFTR(nn.Module):
           image1 plus the offset found by the fine stage, at most 4 pixels along each axis. Both are :math:`(x, y)` in
           the frame of the reference implementation, in which the pretrained models put the centre of pixel
           :math:`(x, y)` at :math:`(x + 0.5, y + 0.5)`: subtract 0.5 to get kornia's frame
-          (:func:`~kornia.feature.laf_from_center_scale_ori`), in which pixel centres have integer coordinates.
+          (:ref:`Local features <local-features-conventions>`), in which pixel centres have integer coordinates.
         - ``confidence`` is the coarse matching score of the match, a dual-softmax score with the default
           ``match_type``; only matches above ``max(thr, 0)`` are returned, with the ``thr`` of
           ``config["match_coarse"]``, 0.2 by default.
