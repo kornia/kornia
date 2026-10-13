@@ -14,3 +14,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+
+"""Profiling utilities for model representation analysis."""
+
+from kornia.profiler.collectors import Collector, LayerCollector
+from kornia.profiler.metrics import (
+    CosineSimilarity,
+    GramSimilarity,
+    L2Normalized,
+    LinearSimilarity,
+    Metric,
+)
+from kornia.profiler.profiler import Profiler
+
+__all__ = [
+    "Profiler",
+    "Collector",
+    "LayerCollector",
+    "Metric",
+    "CosineSimilarity",
+    "GramSimilarity",
+    "L2Normalized",
+    "LinearSimilarity",
+]

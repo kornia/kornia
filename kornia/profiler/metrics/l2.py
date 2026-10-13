@@ -15,46 +15,41 @@
 # limitations under the License.
 #
 
-from typing import Dict
-
 import torch
 from torch import Tensor
 
+from kornia.profiler.metrics.base import Metric
 
-def l2_normalized(
-    f1: Dict[str, Tensor],
-    f2: Dict[str, Tensor],
-) -> Dict[str, float]:
-    r"""Compute normalized L2 distance between feature dictionaries.
 
-    For each matching layer, computes the L2 distance between flattened
-    feature tensors and normalizes it by the L2 norm of the reference tensor.
+class L2Normalized(Metric):
+    r"""Compute the normalized L2 distance between two representation tensors.
 
-    The normalization is performed per sample and then averaged across the batch.
+    The L2 distance is computed independently for each sample and normalized
+    by the L2 norm of the reference tensor. The normalized distances are then
+    averaged across the batch.
 
-    Args:
-        f1: Dictionary mapping layer names to feature tensors.
-        f2: Dictionary mapping layer names to feature tensors.
-
-    Returns:
-        Dictionary mapping layer names to normalized L2 distance (float).
-
-    Raises:
-        ValueError: If the dictionaries do not have identical keys.
+    The normalization includes a small constant to avoid division by zero
+    when the reference tensor has a zero norm.
     """
-    if f1.keys() != f2.keys():
-        raise ValueError("Feature dictionaries must have same layers")
 
-    results: Dict[str, float] = {}
+    def forward(self, x: Tensor, y: Tensor) -> Tensor:
+        r"""Compute the mean normalized L2 distance.
 
-    for layer, x in f1.items():
+        Args:
+            x: Reference tensor with shape ``(B, ...)``, where ``B`` is the
+                batch size.
+            y: Comparison tensor with shape ``(B, ...)``, with the same batch
+                size and flattened feature dimension as ``x``.
+
+        Returns:
+            A scalar tensor containing the mean normalized L2 distance
+            across the batch.
+        """
         x = x.reshape(x.size(0), -1)
-        y = f2[layer].reshape(f2[layer].size(0), -1)
+        y = y.reshape(y.size(0), -1)
 
         l2 = torch.norm(x - y, p=2, dim=1)
         norm = torch.norm(x, p=2, dim=1)
 
         normalized = l2 / (norm + 1e-8)
-        results[layer] = normalized.mean().item()
-
-    return results
+        return normalized.mean()

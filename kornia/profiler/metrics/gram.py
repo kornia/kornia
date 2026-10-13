@@ -15,78 +15,73 @@
 # limitations under the License.
 #
 
-from typing import Dict, Optional
-
 import torch
 import torch.nn.functional as F
 from torch import Tensor
 
+from kornia.profiler.metrics.base import Metric
+
 
 def gram_matrix(fmap: Tensor) -> Tensor:
-    r"""Compute the Gram matrix for a feature map.
+    r"""Compute the normalized Gram matrix of a feature map.
 
-    The Gram matrix captures correlations between feature channels and is
-    commonly used in style-based similarity metrics.
+    The feature map is flattened across its spatial dimensions, and the Gram
+    matrix is computed as the batch-wise product of the flattened features
+    and their transpose. The result is normalized by the number of elements
+    in each channel's spatial feature map.
 
     Args:
-        fmap: Input feature map of shape :math:`(B, C, H, W)`.
+        fmap: Input feature map with shape ``(B, C, H, W)``, where ``B`` is
+            the batch size, ``C`` is the number of channels, and ``H`` and
+            ``W`` are the spatial dimensions.
 
     Returns:
-        Gram matrix of shape :math:`(B, C, C)`.
+        A tensor of shape ``(B, C, C)`` containing the normalized Gram
+        matrix for each sample in the batch.
 
     Raises:
-        ValueError: If the input tensor is not 4-dimensional.
+        ValueError: If ``fmap`` is not a four-dimensional tensor.
     """
     if fmap.dim() != 4:
         raise ValueError(f"Expected 4D tensor (B, C, H, W), got {fmap.shape}")
 
-    B, C, H, W = fmap.shape
-    fmap = fmap.reshape(B, C, -1)
-    G = torch.bmm(fmap, fmap.transpose(1, 2))
-    return G / (C * H * W)
+    batch_size, channels, height, width = fmap.shape
+    fmap = fmap.reshape(batch_size, channels, -1)
+    gram = torch.bmm(fmap, fmap.transpose(1, 2))
+
+    return gram / (channels * height * width)
 
 
-def gram_similarity(
-    f1: Dict[str, Tensor],
-    f2: Dict[str, Tensor],
-) -> Dict[str, Optional[float]]:
-    r"""Compute Gram-based similarity between two feature dictionaries.
+class GramSimilarity(Metric):
+    r"""Compute Gram-based similarity between two feature-map tensors.
 
-    For each matching layer, computes the cosine similarity between the
-    flattened Gram matrices of the corresponding feature maps.
-
-    Only 4D feature maps are considered. Non-4D entries will return ``None``.
-
-    Args:
-        f1: Dictionary mapping layer names to feature tensors.
-        f2: Dictionary mapping layer names to feature tensors.
-
-    Returns:
-        Dictionary mapping layer names to similarity scores (float). If a layer
-        does not contain valid 4D tensors, the value is ``None``.
-
-    Raises:
-        ValueError: If the dictionaries do not have identical keys.
+    Both inputs must have shape ``(B, C, H, W)``. Their normalized Gram
+    matrices are flattened per sample, and cosine similarity is computed
+    between the resulting representations. The final score is the mean
+    cosine similarity across the batch.
     """
-    if f1.keys() != f2.keys():
-        raise ValueError("Feature dictionaries must have same layers")
 
-    results: Dict[str, Optional[float]] = {}
+    def forward(self, x: Tensor, y: Tensor) -> Tensor:
+        """Compute the mean cosine similarity between two Gram matrices.
 
-    for layer, x in f1.items():
-        y = f2[layer]
+        Args:
+            x: First feature-map tensor with shape ``(B, C, H, W)``.
+            y: Second feature-map tensor with shape ``(B, C, H, W)``.
 
+        Returns:
+            A scalar tensor containing the mean cosine similarity across
+            the batch.
+
+        Raises:
+            ValueError: If either input is not a four-dimensional tensor.
+        """
         if x.dim() != 4 or y.dim() != 4:
-            results[layer] = None
-            continue
+            raise ValueError("GramSimilarity expects 4D tensors (B, C, H, W).")
 
-        G1 = gram_matrix(x)
-        G2 = gram_matrix(y)
+        gram_x = gram_matrix(x)
+        gram_y = gram_matrix(y)
 
-        G1_flat = G1.reshape(G1.size(0), -1)
-        G2_flat = G2.reshape(G2.size(0), -1)
+        gram_x = gram_x.reshape(gram_x.size(0), -1)
+        gram_y = gram_y.reshape(gram_y.size(0), -1)
 
-        sim = F.cosine_similarity(G1_flat, G2_flat, dim=1).mean().item()
-        results[layer] = sim
-
-        return results
+        return F.cosine_similarity(gram_x, gram_y, dim=1).mean()
