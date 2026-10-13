@@ -26,6 +26,7 @@ from torch.nn.functional import interpolate
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 
 from .blur import box_blur
+from .filter import _to_floating
 from .kernels import _unpack_2d_ks
 
 
@@ -194,6 +195,7 @@ def guided_blur(
         - ``eps`` is added to the local variance of ``guidance``, so it is in squared guidance units: guidance and
           input scaled by ``s``, filtered with ``eps * s**2``, give the result scaled by ``s``.
           :ref:`Filtering <filtering-conventions>` maps the arguments onto OpenCV's ``guidedFilter``.
+        - Integer and bool tensors are converted to float32 before the covariance products, on their original scale.
 
     Arguments:
         guidance: the guidance torch.Tensor with shape :math:`(B,C_g,H,W)`.
@@ -242,6 +244,10 @@ def guided_blur(
             (guidance.shape[0] == input.shape[0]) and (guidance.shape[-2:] == input.shape[-2:]),
             "guidance and input should have the same batch size and spatial dimensions",
         )
+
+    input_is_guidance = input is guidance
+    guidance = _to_floating(guidance)
+    input = guidance if input_is_guidance else _to_floating(input)
 
     if guidance.shape[1] == 1:
         return _guided_blur_grayscale_guidance(
