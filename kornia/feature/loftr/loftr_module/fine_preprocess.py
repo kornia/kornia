@@ -22,6 +22,23 @@ import torch.nn.functional as F
 from torch import nn
 
 
+def _unfold_at(feat: torch.Tensor, b_ids: torch.Tensor, ids: torch.Tensor, window: int, stride: int) -> torch.Tensor:
+    """Windows ``ids`` of ``F.unfold(feat, window, stride=stride, padding=window // 2)``, as ``(M, window**2, C)``.
+
+    Gathers only the windows of the matched cells, with the same values and layout as unfolding the whole map and
+    indexing it; the unfolded map is ``window**2`` times larger than ``feat``.
+    """
+    pad = window // 2
+    padded = F.pad(feat, (pad, pad, pad, pad))
+    # cell ids index the unfolded grid row-major
+    w_out = (feat.shape[3] + 2 * pad - window) // stride + 1
+    offsets = torch.arange(window, device=ids.device)
+    rows = ((ids // w_out) * stride)[:, None] + offsets
+    cols = ((ids % w_out) * stride)[:, None] + offsets
+    windows = padded[b_ids[:, None, None], :, rows[:, :, None], cols[:, None, :]]  # (M, window, window, C)
+    return windows.reshape(ids.shape[0], window * window, feat.shape[1])
+
+
 class FinePreprocess(nn.Module):
     """Preprocess feature maps for fine-level matching in LoFTR.
 
@@ -83,23 +100,9 @@ class FinePreprocess(nn.Module):
             feat1 = torch.empty(0, self.W**2, self.d_model_f, device=feat_f0.device)
             return feat0, feat1
 
-        # 1. unfold(crop) all local windows
-        feat_f0_unfold = F.unfold(feat_f0, kernel_size=(W, W), stride=stride, padding=W // 2)
-
-        # feat_f0_unfold = rearrange(feat_f0_unfold, 'n (c ww) l -> n l ww c', ww=W**2)
-        n0, cww0, l0 = feat_f0_unfold.shape
-        c0 = cww0 // (W * W)
-        feat_f0_unfold = feat_f0_unfold.reshape(n0, c0, -1, l0).permute(0, 3, 2, 1)
-
-        feat_f1_unfold = F.unfold(feat_f1, kernel_size=(W, W), stride=stride, padding=W // 2)
-        # feat_f1_unfold = rearrange(feat_f1_unfold, 'n (c ww) l -> n l ww c', ww=W**2)
-        n1, cww1, l1 = feat_f1_unfold.shape
-        c1 = cww1 // (W * W)
-        feat_f1_unfold = feat_f1_unfold.reshape(n1, c1, -1, l1).permute(0, 3, 2, 1)
-
-        # 2. select only the predicted matches
-        feat_f0_unfold = feat_f0_unfold[data["b_ids"], data["i_ids"]]  # [n, ww, cf]
-        feat_f1_unfold = feat_f1_unfold[data["b_ids"], data["j_ids"]]
+        # 1. crop the local windows of the predicted matches
+        feat_f0_unfold = _unfold_at(feat_f0, data["b_ids"], data["i_ids"], W, stride)  # [n, ww, cf]
+        feat_f1_unfold = _unfold_at(feat_f1, data["b_ids"], data["j_ids"], W, stride)
 
         # option: use coarse-level loftr feature as context: concat and linear
         if self.cat_c_feat:
