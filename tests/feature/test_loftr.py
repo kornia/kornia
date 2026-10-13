@@ -589,6 +589,66 @@ class TestCoarseMatching(BaseTester):
         self.assert_close(out["mkpts1_c"], expected1, rtol=0.0, atol=0.0)
 
 
+class TestCoarseMatchingSelection(BaseTester):
+    """The row max / column max selection and the dual softmax against their reference formulations."""
+
+    CFG = {**TestCoarseMatching.CFG, "train_pad_num_gt_min": 200}
+
+    @staticmethod
+    def _reference_selection(cm, conf_matrix, data):
+        """The boolean-mask selection of get_coarse_match before the row max / column max rewrite (eval mode)."""
+        from kornia.feature.loftr.utils.coarse_matching import mask_border, mask_border_with_padding
+
+        (h0, w0), (h1, w1), n = data["hw0_c"], data["hw1_c"], conf_matrix.shape[0]
+        mask = (conf_matrix > max(cm.thr, 0.0)).reshape(n, h0, w0, h1, w1)
+        if "mask0" not in data:
+            mask_border(mask, cm.border_rm, False)
+        else:
+            mask_border_with_padding(mask, cm.border_rm, False, data["mask0"], data["mask1"])
+        mask = mask.reshape(n, h0 * w0, h1 * w1)
+        mask = (
+            mask
+            * (conf_matrix == conf_matrix.max(dim=2, keepdim=True)[0])
+            * (conf_matrix == conf_matrix.max(dim=1, keepdim=True)[0])
+        )
+        mask_v, all_j_ids = mask.max(dim=2)
+        b_ids, i_ids = torch.where(mask_v)
+        j_ids = all_j_ids[b_ids, i_ids]
+        return b_ids, i_ids, j_ids, conf_matrix[b_ids, i_ids, j_ids]
+
+    @staticmethod
+    def _features(device, dtype, n, length, size, channels=16, seed=0, scale=4.0):
+        # image-1 cells are noisy copies of image-0 cells, so most rows have a clear, untied mutual maximum
+        gen = torch.Generator().manual_seed(seed)
+        feat_c1 = torch.randn(n, size, channels, generator=gen) * scale
+        rows = torch.randint(0, size, (n, length), generator=gen)
+        feat_c0 = torch.gather(feat_c1, 1, rows[..., None].expand(-1, -1, channels))
+        feat_c0 = feat_c0 + torch.randn(n, length, channels, generator=gen) * (scale / 2)
+        return feat_c0.to(device, dtype), feat_c1.to(device, dtype)
+
+    @pytest.mark.parametrize("thr", [0.0, 0.2])
+    @pytest.mark.parametrize("border_rm", [0, 1, 2])
+    @pytest.mark.parametrize("padded", [False, True])
+    def test_selection_matches_the_boolean_mask_reference(self, device, dtype, thr, border_rm, padded):
+        cm = CoarseMatching({**self.CFG, "thr": thr, "border_rm": border_rm}).to(device).eval()
+        (h0, w0), (h1, w1) = (10, 12), (11, 9)
+        feat_c0, feat_c1 = self._features(device, dtype, 2, h0 * w0, h1 * w1)
+        data = {"hw0_c": (h0, w0), "hw1_c": (h1, w1), "stride_c": 8}
+        if padded:
+            # per-sample valid extents, as mask_border_with_padding reads them
+            mask0 = torch.zeros(2, h0, w0, device=device)
+            mask1 = torch.zeros(2, h1, w1, device=device)
+            mask0[0, :9, :10], mask0[1] = 1, 1
+            mask1[0], mask1[1, :10, :8] = 1, 1
+            data.update(mask0=mask0, mask1=mask1)
+        with torch.no_grad():
+            cm(feat_c0, feat_c1, data)
+        expected = self._reference_selection(cm, data["conf_matrix"], data)
+        assert len(expected[0]) >= 5  # border 2 on the padded samples leaves 10
+        for name, value in zip(("b_ids", "i_ids", "j_ids", "mconf"), expected):
+            self.assert_close(data[name], value, rtol=0.0, atol=0.0)
+
+
 class TestFineMatching(BaseTester):
     @staticmethod
     def _run(device, dtype, peaked):
