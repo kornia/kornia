@@ -103,12 +103,12 @@ def match_nn(
     r"""Find nearest neighbors in desc2 for each vector in desc1.
 
     Convention:
-        - Every ``match_*`` function returns ``(dists, idxs)``, one row per match; :func:`match_adalam` swaps the two
-          in some cases that give no match (`#5848 <https://github.com/kornia/kornia/issues/5848>`_). ``idxs`` is
-          an int64 :math:`(M, 2)` tensor of ``(index in desc1, index in desc2)`` rows (:func:`match_smnn_batched`
-          adds the batch index as a first column). ``dists`` is :math:`(M, 1)`, in the dtype of ``dm`` when it is
-          given and in the descriptor dtype otherwise, except that :func:`match_adalam` returns float32. Lower values
-          are better, and what they are depends on the function:
+        - Every ``match_*`` function returns ``(dists, idxs)``, one row per match; :func:`match_adalam` returns them the
+          other way round in some cases that give no match (`#5848 <https://github.com/kornia/kornia/issues/5848>`_).
+          ``idxs`` is an int64 :math:`(M, 2)` tensor of ``(index in desc1, index in desc2)`` rows
+          (:func:`match_smnn_batched` adds the batch index as a first column). ``dists`` is :math:`(M, 1)`, in the dtype
+          of ``dm`` when it is given and in the descriptor dtype otherwise, except that :func:`match_adalam` returns
+          float32. Lower values are better, and what they are depends on the function:
 
           - :func:`match_nn`, :func:`match_mnn`: the distance, the entry of ``dm`` when it is given.
           - :func:`match_snn`: the ratio of the nearest to the second-nearest distance, not a distance.
