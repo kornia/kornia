@@ -1104,6 +1104,69 @@ normalised camera coordinates, and :func:`~kornia.geometry.homography.find_homog
        leading coefficient lowers the degree
      - ``numpy.roots`` takes the same coefficient order, returns the complex roots too and drops leading zeros
 
+.. _local-features-conventions:
+
+Local features
+--------------
+
+A local affine frame (LAF) describes a keypoint by a ``2 x 3`` matrix ``[A | c]``, and a set of them is a
+``(B, N, 2, 3)`` tensor. The centre ``c = (x, y)`` is in the pixel frame of
+:ref:`Coordinates and sizes <coordinate-conventions>`, with pixel centres at integers: the centre of a 5-pixel axis is
+``2``, not ``2.5``. ``A`` maps the patch frame onto the image, in pixels: its first column is the image of the patch's
+x axis and its second column that of the patch's y axis. The Convention blocks of
+:func:`~kornia.feature.laf_from_center_scale_ori` and :func:`~kornia.feature.extract_patches_from_pyramid` give the
+full rules.
+
+- The scale is :math:`\sqrt{|\det A|}` and the orientation is ``atan2(a12, a11)`` in degrees. A positive orientation
+  turns the patch's x axis counter-clockwise on screen, with image y pointing down: with an orientation of ``90``, the
+  ``+x`` side of the patch shows what lies above the centre.
+- The region of a LAF is the ellipse ``c + A u`` over the unit vectors ``u``, and a ``PS x PS`` patch covers the
+  square ``c + A [-1, 1]^2``: patch row 0 is on the patch's ``-y`` side, the top for an upright LAF, and the columns
+  run along the patch's x axis.
+- :func:`~kornia.feature.normalize_laf` divides the centre by ``max(W - 1, 1)`` and ``max(H - 1, 1)`` and ``A`` by
+  the smaller of the two; its Convention block covers moving a LAF to an image of another size.
+- kornia's LAF detectors pad the slots that no detection filled with an all-zero LAF and a zero response, so that a
+  batch is one tensor. Drop those slots with :func:`~kornia.feature.laf_is_filled` before matching.
+
+OpenCV keypoints and SIFT descriptors convert as follows:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Topic
+     - kornia
+     - OpenCV
+   * - centre
+     - ``c``, read by :func:`~kornia.feature.get_laf_center`
+     - ``KeyPoint.pt``, in the same pixel frame: copy it unchanged. The default upscaling of ``cv2.SIFT`` biases
+       ``pt`` by a fraction of a pixel; ``enable_precise_upscale=True`` removes the bias
+   * - orientation
+     - degrees, counter-clockwise on screen, read by :func:`~kornia.feature.get_laf_orientation`
+     - ``KeyPoint.angle``, degrees clockwise on screen: ``angle = (-orientation) mod 360`` and
+       ``orientation = -angle``
+   * - scale
+     - :math:`\sqrt{|\det A|}`, read by :func:`~kornia.feature.get_laf_scale`; the frames of
+       :class:`~kornia.feature.SIFTFeatureScaleSpace` have the scale :math:`6 \sigma` for the detection scale
+       :math:`\sigma`
+     - ``KeyPoint.size``, a diameter, is :math:`2 \sigma` for ``cv2.SIFT``, so ``scale = 3 * size`` gives the frames
+       of ``SIFTFeatureScaleSpace``; other detectors define ``size`` differently
+   * - SIFT descriptor
+     - kornia's bin layout
+     - OpenCV's bin layout; :func:`~kornia.feature.convert_sift_descriptor_layout` converts between the two
+
+For example, from the ``pt``, ``size`` and ``angle`` of ``cv2.SIFT`` keypoints:
+
+.. code-block:: python
+
+    import torch
+    import kornia.feature as KF
+
+    pt = torch.tensor([[70.0, 40.0], [21.5, 13.0]])  # KeyPoint.pt
+    size = torch.tensor([5.3, 7.1])  # KeyPoint.size
+    angle = torch.tensor([296.5, 32.2])  # KeyPoint.angle
+    lafs = KF.laf_from_center_scale_ori(pt[None], 3.0 * size.view(1, -1, 1, 1), -angle.view(1, -1, 1))
+    assert torch.allclose(-KF.get_laf_orientation(lafs).flatten() % 360.0, angle)
+
 Pitfall checklist
 -----------------
 
