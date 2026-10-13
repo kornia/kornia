@@ -306,6 +306,25 @@ ignore = [
   "D107",  # TODO: Undocumented public init
 ]
 
+[tool.ruff.lint.flake8-import-conventions.aliases]
+# Pinned to ruff 0.16's defaults, so a ruff update cannot require new aliases (0.17 added `datetime as dt`).
+altair = "alt"
+holoviews = "hv"
+matplotlib = "mpl"
+"matplotlib.pyplot" = "plt"
+networkx = "nx"
+numpy = "np"
+"numpy.typing" = "npt"
+pandas = "pd"
+panel = "pn"
+"plotly.express" = "px"
+polars = "pl"
+pyarrow = "pa"
+seaborn = "sns"
+tensorflow = "tf"
+tkinter = "tk"
+"xml.etree.ElementTree" = "ET"
+
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 

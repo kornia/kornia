@@ -73,6 +73,8 @@ class RandomEqualize3D(IntensityAugmentationBase3D):
 
     """
 
+    SUBSTITUTE_SKIPPED_SAMPLES = True
+
     def __init__(self, p: float = 0.5, same_on_batch: bool = False, keepdim: bool = False) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
 
