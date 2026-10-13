@@ -181,6 +181,8 @@ class TestAugmentationSequential:
             ((3, 8, 9), (1, 1, 8, 10), 1),
             ((2, 3, 8, 9), (9, 9), 2),
             ((3, 8, 9), (8, 10), 1),
+            ((8, 9), (1, 1, 8, 10), 1),
+            ((8, 9), (2, 1, 8, 9), 1),
         ],
     )
     def test_mask_with_incompatible_shape_raises(self, image_shape, mask_shape, batch):
