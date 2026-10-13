@@ -672,6 +672,33 @@ class TestImageModuleConversions(BaseTester):
         assert from_path.shape[-3:] == (expected_channels, 1, 2)
         self.assert_close(from_path, expected, rtol=0.0, atol=0.0)
 
+    @pytest.mark.parametrize(
+        "name, mode, pixels, transparency, channels",
+        [
+            ("palette.PNG", "P", [0, 1], bytes([255, 128]), 4),  # the suffix matches in any letter case
+            ("gray_key.png", "L", [7, 200], 7, 1),  # a tRNS colour key is not a palette: PIL keeps mode L
+            ("rgb_key.png", "RGB", [(255, 0, 0), (0, 0, 255)], (255, 0, 0), 3),  # and mode RGB
+        ],
+        ids=["palette-upper-case-suffix", "gray-colour-key", "rgb-colour-key"],
+    )
+    def test_to_tensor_png_path_expands_palettes_only_5807(self, tmp_path, name, mode, pixels, transparency, channels):
+        path = tmp_path / name
+        image = PILImage.new(mode, (2, 1))
+        image.putdata(pixels)
+        if mode == "P":
+            image.putpalette([255, 0, 0, 0, 255, 0] + [0] * (256 * 3 - 6))
+        image.info["transparency"] = transparency
+        image.save(path, format="PNG")
+
+        module = _Identity()
+        from_path = module.to_tensor(str(path))
+        with PILImage.open(path) as from_pil:
+            assert "transparency" in from_pil.info
+            expected = module.to_tensor(from_pil)
+
+        assert from_path.shape == (channels, 1, 2)
+        self.assert_close(from_path, expected, rtol=0.0, atol=0.0)
+
     def test_to_tensor_16_bit_path_5207(self, tmp_path):
         path = tmp_path / "rgb16.png"
         write_image(str(path), torch.tensor([65535, 13107, 0], dtype=torch.uint16).view(3, 1, 1).expand(3, 4, 6))
