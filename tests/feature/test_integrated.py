@@ -1088,3 +1088,37 @@ class TestSIFTDescriptorLayoutArgument(BaseTester):
     def test_invalid_layout(self, preset):
         with pytest.raises(ValueError, match="layout"):
             preset(descriptor_layout="vlfeat")
+
+
+class TestConventionsSIFTScaleSpaceKeypointSize(BaseTester):
+    @pytest.mark.parametrize("backend, backend_rtol", [("pyramid", 1e-3), ("patch", 2e-2)])
+    def test_convention_sift_scale_space_frames_are_three_times_the_opencv_keypoint_size(
+        self, device, dtype, backend, backend_rtol
+    ):
+        from testing.base import supports_reflect_padding
+
+        if backend == "patch" and not supports_reflect_padding(device, dtype):
+            pytest.skip("the patch backend's scale pyramid needs a reflection-padding kernel for this dtype")
+        # Four Gaussian blobs (sigma 2.5, 3.5, 5 and 4.2 px) at non-integer centres x != y of a 150 x 230 uint8 image.
+        # OpenCV 5.0.0 finds one keypoint on the sigma-5 blob, of size 2 sigma for its detection scale sigma:
+        #   cv2.SIFT_create(enable_precise_upscale=True).detect(img_u8, None) -> size 8.871075630187988
+        # (the same image built with numpy; pixel sum 97820). SIFTFeatureScaleSpace frames have scale 6 sigma, so its
+        # frame on that blob has scale 3 * size. The sigma-5 blob is the one both backends find in every dtype.
+        h, w, cx, cy = 150, 230, 186.25, 101.4
+        blobs = [(41.3, 37.6, 2.5), (118.7, 44.2, 3.5), (cx, cy, 5.0), (60.5, 110.8, 4.2)]
+        yy, xx = torch.meshgrid(
+            torch.arange(h, dtype=torch.float64), torch.arange(w, dtype=torch.float64), indexing="ij"
+        )
+        img = sum(torch.exp(-((xx - bx) ** 2 + (yy - by) ** 2) / (2.0 * s * s)) for bx, by, s in blobs)
+        img = (torch.round(img.clamp(0.0, 1.0) * 255.0) / 255.0)[None, None].to(device, dtype)
+        feature = kornia.feature.SIFTFeatureScaleSpace(64, descriptor_backend=backend).to(device, dtype).eval()
+        with torch.no_grad():
+            lafs, _, _ = feature(img)
+        centres = kornia.feature.get_laf_center(lafs)[0].cpu().double()
+        distance = (centres - torch.tensor([cx, cy], dtype=torch.float64)).norm(dim=-1)
+        nearest = int(distance.argmin())
+        assert distance[nearest] < 1.0
+        scale = kornia.feature.get_laf_scale(lafs)[0, nearest, 0, 0].cpu().double()
+        # the frame's own rounding on top of the backend's detection error
+        rtol = backend_rtol + 2.0 * torch.finfo(dtype).eps
+        self.assert_close(scale, torch.tensor(3.0 * 8.871075630187988, dtype=torch.float64), rtol=rtol, atol=0.0)

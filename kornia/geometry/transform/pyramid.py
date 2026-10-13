@@ -446,7 +446,7 @@ def pyrdown(
     # downsample.
     out: torch.Tensor = F.interpolate(
         x_blur,
-        size=(int(float(height) / factor), int(float(width) // factor)),
+        size=(int(float(height) / factor), int(float(width) / factor)),
         mode="bilinear",
         align_corners=align_corners,
     )
