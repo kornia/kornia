@@ -33,6 +33,7 @@ Additions are fine and do not fail the test; run this file with
 import ast
 import contextlib
 import importlib
+import importlib.util
 import json
 import pkgutil
 import sys
@@ -104,13 +105,27 @@ def _inventory_modules(recorded: dict) -> list[str]:
     return sorted(set(recorded) | roots | discovered)
 
 
+def _is_removed_module(module_name: str, recorded: dict) -> bool:
+    """Whether the inventory records a completed module removal: an empty row for a module that is gone.
+
+    The Import Surface check fails when a key is dropped, so a deliberate module deletion (after its
+    deprecation window) empties the row instead, and the empty row stays behind as the record.
+    """
+    if recorded.get(module_name) != []:
+        return False
+    try:
+        return importlib.util.find_spec(module_name) is None
+    except ModuleNotFoundError:
+        return True
+
+
 def regenerate() -> None:
     """Add live public exports to the inventory; deliberate removals must be edited explicitly."""
     recorded = json.loads(INVENTORY.read_text())
     surface = {
-        name: sorted(
-            set(recorded.get(name, [])) | {item for item in _current_surface(name) if not item.startswith("_")}
-        )
+        name: []
+        if _is_removed_module(name, recorded)
+        else sorted(set(recorded.get(name, [])) | {item for item in _current_surface(name) if not item.startswith("_")})
         for name in _inventory_modules(recorded)
     }
     INVENTORY.write_text(json.dumps(surface, indent=2, sort_keys=True) + "\n")
@@ -211,6 +226,23 @@ def test_regenerate_import_failure_preserves_inventory(monkeypatch, tmp_path):
     assert inventory.read_bytes() == original
 
 
+@pytest.mark.parametrize("row,removed", [([], True), (["Gone"], False)])
+def test_an_empty_row_records_a_deleted_module(monkeypatch, tmp_path, row, removed):
+    module = sys.modules[__name__]
+    inventory = tmp_path / "api_surface.json"
+    inventory.write_text(json.dumps({"kornia.geometry.no_such_module": row}))
+    monkeypatch.setattr(module, "INVENTORY", inventory)
+    assert _is_removed_module("kornia.geometry.no_such_module", {"kornia.geometry.no_such_module": row}) is removed
+    if removed:
+        test_no_public_name_removed("kornia.geometry.no_such_module")
+        test_no_foreign_name_leaks_into_the_surface("kornia.geometry.no_such_module")
+    else:
+        with pytest.raises(ModuleNotFoundError):
+            test_no_public_name_removed("kornia.geometry.no_such_module")
+    # An emptied row for a module that still exists is an ordinary row.
+    assert _is_removed_module("kornia.geometry.boxes", {"kornia.geometry.boxes": []}) is False
+
+
 def test_inventory_is_a_mapping_of_module_to_public_names():
     """Guard the inventory's shape, so the removal test below cannot pass vacuously.
 
@@ -231,6 +263,8 @@ def test_inventory_is_a_mapping_of_module_to_public_names():
 
 @pytest.mark.parametrize("module_name", sorted(json.loads(INVENTORY.read_text())))
 def test_no_public_name_removed(module_name):
+    if _is_removed_module(module_name, json.loads(INVENTORY.read_text())):
+        return
     recorded = set(json.loads(INVENTORY.read_text())[module_name])
     current = _current_surface(module_name)
     removed = sorted(recorded - current)
@@ -295,7 +329,10 @@ def test_no_foreign_name_leaks_into_the_surface(module_name):
     record a leaked ``sys`` as a guarded public name. Names already in the inventory are
     exempt: removing one is a deliberate API change, not something this test should force.
     """
-    recorded = set(json.loads(INVENTORY.read_text())[module_name])
+    inventory = json.loads(INVENTORY.read_text())
+    if _is_removed_module(module_name, inventory):
+        return
+    recorded = set(inventory[module_name])
     leaked = sorted(_foreign_names(module_name) - recorded)
     assert not leaked, (
         f"{module_name} exposes {leaked}, which are imports rather than kornia API. Give the "
