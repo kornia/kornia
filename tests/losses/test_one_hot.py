@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 import torch.nn.functional as F
@@ -74,6 +76,23 @@ class TestOneHot:
 
         with pytest.raises(BaseError, match="floating point dtype"):
             one_hot(labels, 2, device, torch.int64, eps=1e-6)
+
+    @pytest.mark.parametrize("eps", [0.0, 0.125])
+    def test_jit_script(self, device, dtype, eps):
+        # The replacement of ``kornia.utils.one_hot``, which scripted in 0.8.2, has to script too (#5901).
+        labels = torch.tensor([[[0, 2, 1], [1, 0, 0]]], device=device)
+        scripted = torch.jit.script(one_hot)
+        for shape in [(2, 3), (2,), (1, 2, 3)]:
+            lbl = labels.flatten()[: math.prod(shape)].reshape(shape)
+            got, expected = scripted(lbl, 3, device, dtype, eps), one_hot(lbl, 3, device, dtype, eps)
+            assert (got.dtype, got.shape) == (expected.dtype, expected.shape)
+            assert torch.equal(got, expected)
+
+    def test_jit_script_integer_dtype(self, device):
+        labels = torch.tensor([[0, 2], [1, 0]], device=device)
+        assert torch.equal(
+            torch.jit.script(one_hot)(labels, 3, device, torch.uint8), one_hot(labels, 3, device, torch.uint8)
+        )
 
 
 class TestConventionsOneHot(BaseTester):
