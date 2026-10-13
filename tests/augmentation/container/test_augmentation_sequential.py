@@ -1890,6 +1890,21 @@ class TestConventionAugmentationSequential(BaseTester):
         assert torch.equal(early_output, expected)
         assert torch.equal(image_first({"image": image, "mask": mask})["mask"], expected)
 
+    @pytest.mark.parametrize("input_kind", ["pil", "path", "numpy"])
+    def test_dictionary_image_accepts_pil_path_and_numpy_5852(self, input_kind, tmp_path):
+        import numpy as np
+        from PIL import Image as PILImage
+
+        image = PILImage.new("RGB", (5, 4), color=(200, 100, 25))
+        path = tmp_path / "image.png"
+        image.save(path)
+        value = {"pil": image, "path": str(path), "numpy": np.array(image)}[input_kind]
+
+        positional = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=["input"])(value)
+        dictionary = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=None)({"input": value})
+
+        assert torch.equal(dictionary["input"], positional)
+
     @pytest.mark.parametrize("mask_dtypes", [(torch.int64, torch.bool), (torch.bool, torch.int64)])
     def test_convention_each_mask_keeps_its_own_dtype_4478(self, mask_dtypes, device, dtype):
         # Convention pin for kornia#4478: each mask output comes back in the dtype of its own argument, so labels

@@ -812,7 +812,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 keys, data_keys, args, _ = self._preproc_dict_data(inputs[0])
                 converted_dict = dict(inputs[0])
                 for key, arg, data_key in zip(keys, args, data_keys):
-                    if data_key in _IMG_OPTIONS and _is_numpy_array(arg):
+                    if data_key in _IMG_OPTIONS and self._is_valid_arg(arg):
                         converted_dict[key] = self.to_tensor(arg)
                     else:
                         converted_dict[key] = self._convert_non_image(arg, data_key)
