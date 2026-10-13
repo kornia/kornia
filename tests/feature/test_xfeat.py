@@ -547,6 +547,27 @@ class TestConventionsXFeat(BaseTester):
             # the descriptors are the dense features of those cells, (j, i, 1, 0, ...), not normalised
             assert out["descriptors"][0, :, :3].tolist() == [[float(j0), float(i0), 1.0], [float(j1), float(i1), 1.0]]
 
+    def test_convention_xfeat_dense_multiscale_runs_the_extraction_at_0_6_and_1_3_and_divides_by_the_factor(
+        self, device, dtype
+    ):
+        # multiscale=True (the default) is the multiscale=False extraction of the image rescaled by 0.6 and by 1.3, with
+        # int(0.2 * top_k) and int(0.8 * top_k) cells, each keypoint divided by its factor; scales is 1 / factor.
+        torch.manual_seed(0)
+        xfeat = XFeat().to(device).eval()
+        image = torch.rand(1, 3, 160, 224, device=device, dtype=dtype)
+        out = xfeat.detectAndComputeDense(image, 100)
+        parts = []
+        for factor, k in ((0.6, 20), (1.3, 80)):
+            scaled = torch.nn.functional.interpolate(image, scale_factor=factor, mode="bilinear", align_corners=False)
+            parts.append((xfeat.detectAndComputeDense(scaled, k, False), factor, k))
+        assert out["keypoints"].shape == (1, 100, 2)
+        start = 0
+        for single, factor, k in parts:
+            self.assert_close(out["keypoints"][:, start : start + k], single["keypoints"] / factor)
+            self.assert_close(out["descriptors"][:, start : start + k], single["descriptors"])
+            assert (out["scales"][:, start : start + k] == 1 / factor).all()
+            start += k
+
     def test_convention_xfeat_model_reads_the_channel_mean_through_an_instance_norm(self, device, dtype):
         # XFeatModel averages the channels and instance-normalises the result (model.py of verlab/accelerated_features
         # e92685f), so any channel count is accepted and an affine change a x + b of the intensities with a > 0 leaves

@@ -300,8 +300,8 @@ class XFeat(nn.Module):
 
     Convention:
         - XFeat defines no ``forward``: call :meth:`detectAndCompute` or :meth:`detectAndComputeDense`.
-        - The image is :math:`(B, C, H, W)` with any channel count. It is resized bilinearly to :math:`(H', W')`:
-          ``H`` and ``W`` rounded down to multiples of 32, with a minimum of 32. :class:`XFeatModel` then averages the
+        - The image is :math:`(B, C, H, W)` with any channel count. Each extraction resizes the image it gets
+          bilinearly to :math:`(H', W')`: ``H`` and ``W`` rounded down to multiples of 32, with a minimum of 32. :class:`XFeatModel` then averages the
           channels and instance-normalises the result, so an affine change of the intensities with a positive gain
           changes its maps only through the norm's ``eps``. Every output is float32.
         - :meth:`detectAndCompute` keypoints are integer pixels ``i`` of the resized image, strict maxima of the
@@ -313,8 +313,10 @@ class XFeat(nn.Module):
           reliability map, and the ``top_k`` best keypoints come sorted by it. Each descriptor is 64-D, sampled
           bicubically from the dense map at the keypoint by :class:`InterpolateSparse2d`, and L2-normalised.
         - With ``multiscale=False``, :meth:`detectAndComputeDense` reports cell ``(j, i)`` of the 1/8-resolution map
-          at ``8 * (j, i)``, times the same ratio: the top-left pixel of the cell, not its centre. Its descriptors are
-          not normalised.
+          at ``8 * (j, i)``, times the same ratio: the top-left pixel of the cell, not its centre. With the default
+          ``multiscale=True``, it rescales the image bilinearly by 0.6 and by 1.3, runs that extraction on each, with
+          ``int(0.2 * top_k)`` and ``int(0.8 * top_k)`` cells, and divides each keypoint by its factor; ``scales`` is
+          ``1 / 0.6`` or ``1 / 1.3`` for each keypoint. Its descriptors are not normalised.
 
     Args:
         top_k: maximum number of keypoints to keep per image. Default: ``4096``.
