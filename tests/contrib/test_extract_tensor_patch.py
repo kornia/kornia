@@ -153,7 +153,7 @@ class TestExtractTensorPatches(BaseTester):
         # 5 patches vertical, 6 2/3 = 7 horizontal = 35 patches
         assert patches.shape == (1, 35, 1, *window_size)
 
-    @pytest.mark.parametrize("img_shape, fits", [((4, 4), True), ((5, 4), False), ((4, 5), False)])
+    @pytest.mark.parametrize("img_shape, fits", [((4, 4), True), ((5, 4), False), ((4, 5), False), ((2, 2), True)])
     def test_warns_when_the_window_does_not_fit(self, device, dtype, img_shape, fits):
         # With window 2 and stride 2, a remainder along either axis alone leaves pixels uncovered.
         img = torch.zeros(1, 1, *img_shape, device=device, dtype=dtype)
