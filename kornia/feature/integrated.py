@@ -88,20 +88,29 @@ def _run_descriptor(module: nn.Module, patches: torch.Tensor) -> torch.Tensor:
     module, which that API refuses, in the slots of a copy of the module. The cast is differentiable, so gradients
     reach the module's own parameters. Eager calls, ``torch.compile`` and ``torch.export`` take the same path. Every
     submodule is switched to eval for the call and its ``training`` flag is restored afterwards.
+    Descriptor statistics marked for float32 computation retain that precision for float16 patches.
     """
     modes = [m.training for m in module.modules()]
     module.eval()
     try:
         tensors = list(itertools.chain(module.named_parameters(), module.named_buffers()))
-        needs_cast = any(
-            t.device != patches.device or (t.is_floating_point() and t.dtype != patches.dtype) for _, t in tensors
-        )
+        float32_statistics: set[str] = set()
+        if patches.dtype == torch.float16:
+            for prefix, child in module.named_modules():
+                if getattr(child, "_descriptor_float32_statistics", False):
+                    float32_statistics.update(
+                        f"{prefix}.{name}" if prefix else name for name in ("running_mean", "running_var")
+                    )
+
+        def target_dtype(name: str, tensor: torch.Tensor) -> torch.dtype:
+            if name in float32_statistics:
+                return torch.float32
+            return patches.dtype if tensor.is_floating_point() else tensor.dtype
+
+        needs_cast = any(t.device != patches.device or t.dtype != target_dtype(name, t) for name, t in tensors)
         if not needs_cast:
             return module(patches)
-        state = {
-            name: t.to(device=patches.device, dtype=patches.dtype) if t.is_floating_point() else t.to(patches.device)
-            for name, t in tensors
-        }
+        state = {name: t.to(device=patches.device, dtype=target_dtype(name, t)) for name, t in tensors}
         if not isinstance(module, torch.jit.ScriptModule):
             return torch.func.functional_call(module, state, (patches,))
         # functional_call refuses a TorchScript module, so the cast tensors go into the slots of a copy instead; they
@@ -133,6 +142,7 @@ def get_laf_descriptors(
     ``img`` for the call (a TorchScript module is called on a cast copy). The module keeps its device, dtype and
     parameters, every submodule is switched to eval for the call and gets its train/eval mode back afterwards, and
     gradients reach the module's parameters.
+    SOSNet and HyNet retain their final BatchNorm statistics in float32 for float16 images.
 
     Args:
         img: image features with shape :math:`(B,C,H,W)`.

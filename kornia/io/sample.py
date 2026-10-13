@@ -21,7 +21,7 @@ import contextlib
 import logging
 import os
 import uuid
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Callable, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
@@ -50,27 +50,56 @@ def download_image(url: str, save_to: str) -> None:
 
     Each call writes the bytes to a temporary file of its own next to ``save_to`` and renames it onto ``save_to`` only
     once the write is complete, removing it if the write fails. An interrupted download therefore never leaves a
-    partial file at ``save_to``, and concurrent downloads of the same file each replace it with a complete copy.
+    partial file at ``save_to``, and concurrent downloads of the same file each leave a complete copy there. Windows
+    cannot replace a file that is open, for example one that another call is reading; a call whose replacement is
+    refused keeps the copy already there only if its bytes match the download, and removes its own temporary file. A
+    refused replacement with a missing, unreadable, or different destination still raises the replacement error.
 
     Args:
         url: The URL of the image to download.
         save_to: The file path where the downloaded image will be saved.
 
     """
+    _download(url, save_to)
+
+
+def _download(url: str, save_to: str, load: Optional[Callable[[str], torch.Tensor]] = None) -> Optional[torch.Tensor]:
+    """Download ``url`` to ``save_to`` as :func:`download_image` does; return ``load`` of the download, or ``None``.
+
+    ``load`` reads the call's own temporary file before it is renamed onto ``save_to``, so the call does not load
+    ``save_to``, which a concurrent call may be replacing (Windows refuses to open a file while it is replaced). A body
+    that ``load`` rejects never reaches ``save_to``: the temporary file is removed and the error propagates.
+    """
     # get_sample_images only routes http(s) URLs here (default: the https:// literals above).
     with urlopen(url, timeout=30) as resp:  # noqa: S310
         data = resp.read()
     # a unique name in the destination directory keeps the rename atomic and concurrent calls apart; open() with "x"
-    # creates the file with the usual permissions (tempfile.mkstemp would make the cached image private, 0o600)
-    part = f"{save_to}.{uuid.uuid4().hex}.part"
+    # creates the file with the usual permissions (tempfile.mkstemp would make the cached image private, 0o600).
+    # A file to load ends with the destination's extension, which load_image picks its decoder by.
+    suffix = os.path.splitext(save_to)[1] if load is not None else ""
+    part = f"{save_to}.{uuid.uuid4().hex}.part{suffix}"
     try:
         with open(part, "xb") as f:
             f.write(data)
-        os.replace(part, save_to)
+        image = None if load is None else load(part)
+        try:
+            os.replace(part, save_to)
+        except PermissionError:
+            # Windows may refuse to replace an open file. Only accept an identical completed download.
+            matches = False
+            try:
+                with open(save_to, "rb") as existing:
+                    matches = existing.read(len(data) + 1) == data
+            except OSError:
+                pass  # preserve the replacement error when the destination cannot be verified
+            if not matches:
+                raise
+            os.remove(part)
     except BaseException:
         with contextlib.suppress(FileNotFoundError):
             os.remove(part)
         raise
+    return image
 
 
 def get_sample_images(
@@ -97,8 +126,9 @@ def get_sample_images(
         download: Whether to download the images if they are not already cached. Defaults to True.
         cache_dir: The directory where the downloaded images will be cached.
             Defaults to ``<kornia_config.hub_cache_dir>/images``, relative to the working directory unless configured
-            otherwise. Created when an image has to be downloaded. A downloaded file that does not load as an image is
-            deleted before the error propagates, so it is not cached.
+            otherwise. Created when an image has to be downloaded. A download is loaded from a temporary file of its
+            own before it is renamed into the cache, so a download that does not load as an image never reaches the
+            cache: its temporary file is removed and the error propagates.
         as_list: if to keep the output as a list. If None and `resize` is None, the output will be a list.
             If None and `resize` is not None, the output will be a single tensor.
         divisible_factor:
@@ -117,7 +147,7 @@ def get_sample_images(
         cache_dir = os.path.join(kornia_config.hub_cache_dir, "images")
     tensors = []
     for path in paths:
-        downloaded = False
+        img_tensor: Optional[torch.Tensor] = None
         url = urlparse(path)
         if url.scheme in ("http", "https"):
             name = os.path.basename(url.path)  # the cache file is named without the URL's query or fragment
@@ -127,20 +157,15 @@ def get_sample_images(
             if not os.path.exists(fname) and download:
                 os.makedirs(cache_dir, exist_ok=True)
                 logging.info(f"Downloading `{path}` to `{fname}`.")
-                download_image(path, fname)
-                downloaded = True
+                img_tensor = _download(path, fname, load_image)
             elif not os.path.exists(fname) and not download:
                 logging.error(
                     f"Image `{path}` not found at `{fname}`. You may want to set `download=True` to download it."
                 )
         else:
             fname = path
-        try:
-            img_tensor = load_image(fname)
-        except Exception:
-            if downloaded:
-                os.remove(fname)  # a body that is not an image must not stay in the cache
-            raise
+        if img_tensor is None:
+            img_tensor = load_image(fname)  # a local file or a cached copy; a failure here deletes nothing
         if resize is not None:
             img_tensor = kornia.geometry.resize(img_tensor, resize, **kwargs)
         if divisible_factor is not None:

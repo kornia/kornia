@@ -75,9 +75,9 @@ Interpreting the report
   including with ``padding`` or ``pad_if_needed`` (#4473). Manually supplied
   parameters that apply a shape-changing operation to only some rows raise
   ``ValueError``, as the ordinary forward call does, because the skipped rows
-  cannot keep their shape (#4497). With ``p=1.0``, an overridden ``batch_prob``
-  still gates the labels while every image row is cropped; the round-trip error
-  records that inconsistency.
+  cannot keep their shape (#4497). With ``p=1.0, p_batch=1.0``, an overridden
+  ``batch_prob`` is not consulted: every image row is cropped and the labels move
+  with it (#5585). Pass ``p < 1`` to skip rows by hand.
 * Non-rigid and unknown operations are explicitly unsupported for matrix
   composition. A transformation-matrix identity fallback is not treated as proof
   of correspondence. Supported neighboring operations remain in the provenance.

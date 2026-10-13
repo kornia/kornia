@@ -49,7 +49,7 @@ class TestRobustResidual(BaseTester):
         self.assert_close(pred.grad, expected_grad.to(pred))
         self.assert_close(target.grad, -expected_grad.to(pred))
 
-    @pytest.mark.parametrize("loss_name", ["cauchy_loss", "charbonnier_loss", "geman_mcclure_loss"])
+    @pytest.mark.parametrize("loss_name", ["cauchy_loss", "charbonnier_loss", "geman_mcclure_loss", "welsch_loss"])
     def test_integer_inputs_keep_a_floating_loss(self, device, loss_name):
         # Only half-precision losses are cast back to the input dtype; an integer residual gives a float loss.
         delta = torch.tensor([1.0, 3.0], dtype=torch.float64)
@@ -57,9 +57,21 @@ class TestRobustResidual(BaseTester):
             "cauchy_loss": torch.log1p(delta.square() / 2),
             "charbonnier_loss": torch.hypot(delta, torch.ones_like(delta)) - 1,
             "geman_mcclure_loss": 2 / (1 + 4 / delta.square()),
+            "welsch_loss": -torch.expm1(-delta.square() / 2),
         }[loss_name]
         loss = getattr(kornia.losses, loss_name)(
             torch.tensor([1, 3], device=device), torch.tensor([0, 0], device=device)
         )
         assert loss.dtype.is_floating_point
         self.assert_close(loss.cpu().double(), expected, rtol=1e-6, atol=1e-6)
+
+    @pytest.mark.parametrize("loss_name", ["cauchy_loss", "charbonnier_loss", "geman_mcclure_loss", "welsch_loss"])
+    def test_half_with_float32_returns_float32(self, device, loss_name):
+        # A half-precision operand with a float32 one promotes to float32, in either order, as torch does.
+        half = torch.tensor([40000.0, 1.0], device=device, dtype=torch.float16)
+        single = torch.tensor([-40000.0, 0.5], device=device, dtype=torch.float32)
+        loss_fn = getattr(kornia.losses, loss_name)
+        expected = loss_fn(half.float(), single)
+        for actual in (loss_fn(half, single), loss_fn(single, half)):
+            assert actual.dtype == torch.float32
+            self.assert_close(actual, expected, rtol=0, atol=0)

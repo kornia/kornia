@@ -22,6 +22,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
+from kornia.feature._normalization import _DescriptorSequential
 
 urls: Dict[str, str | list[str]] = {}
 urls["lib"] = [
@@ -47,6 +48,10 @@ class SOSNet(nn.Module):
         - Input: :math:`(B, 1, 32, 32)`
         - Output: :math:`(B, 128)`
 
+    Note:
+        With float16 weights, the final BatchNorm keeps its running statistics in float32.
+        Convert the model to float16 before calling ``torch.jit.script``.
+
     Examples:
         >>> input = torch.rand(8, 1, 32, 32)
         >>> sosnet = SOSNet()
@@ -58,7 +63,7 @@ class SOSNet(nn.Module):
 
     def __init__(self, pretrained: bool = False) -> None:
         super().__init__()
-        self.layers = nn.Sequential(
+        self.layers = _DescriptorSequential(
             nn.InstanceNorm2d(1, affine=False),
             nn.Conv2d(1, 32, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(32, affine=False),
