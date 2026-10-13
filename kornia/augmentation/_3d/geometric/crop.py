@@ -87,8 +87,9 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         - its ``p`` is a call-wide gate. Size validation uses the padded input even when the call is skipped: a
           crop larger than the padded volume along any axis, even by one voxel, raises; a crop equal to it is
           valid. An oversized crop raises ``ValueError`` naming ``size`` and the padded input spatial size.
-          Unsupported size types, sequences with other than three elements, or non-integer elements
-          raise ``TypeError`` naming ``size`` and the required integer ``(D, H, W)`` values;
+          Unsupported size types, sequences with other than three elements, or Python or NumPy float elements
+          raise ``TypeError`` naming ``size`` and the required integer ``(D, H, W)`` values (NumPy integers and
+          0-d integer tensors are accepted);
           unlike :class:`CenterCrop3D`, an integer ``size`` remains unsupported
           (`#4417 <https://github.com/kornia/kornia/issues/4417>`_).
           A valid gated-off call returns the input unchanged -- unpadded, at the input shape rather than ``size`` --

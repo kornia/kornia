@@ -52,8 +52,9 @@ class CenterCrop3D(GeometricAugmentationBase3D):
         - ``size`` is ``(D, H, W)``. The crop is shared across the batch; its ``p`` is the call-wide gate, so a
           valid ``p=0`` request returns the un-cropped input and ``p=1`` returns the requested crop. Size validation
           still runs when the call is skipped, so an oversized crop raises ``ValueError`` even at ``p=0``,
-          naming ``size`` and the input spatial size. A tuple with other than three elements or non-integer
-          elements raises ``TypeError`` naming the supplied value.
+          naming ``size`` and the input spatial size. A tuple with other than three elements, or with a Python or
+          NumPy float element, raises ``TypeError`` naming the supplied value; NumPy integers and 0-d integer
+          tensors are accepted.
           An integer ``size`` is supported here but not by :class:`RandomCrop3D`
           (`#4417 <https://github.com/kornia/kornia/issues/4417>`_).
         - defaults are bilinear resampling and ``align_corners=True``.
