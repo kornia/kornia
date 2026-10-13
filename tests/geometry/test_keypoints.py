@@ -261,6 +261,29 @@ class TestKeypoints(BaseTester):
 
 
 class TestVideoKeypoints(BaseTester):
+    @pytest.mark.parametrize("layout", ["transposed", "expanded", "strided"])
+    def test_noncontiguous_roundtrip(self, layout, device, dtype):
+        data = torch.arange(48, device=device, dtype=dtype).reshape(2, 3, 4, 2)
+        if layout == "transposed":
+            data = data.transpose(0, 1)
+        elif layout == "expanded":
+            data = data[:1].expand(2, -1, -1, -1)
+        else:
+            data = data[:, ::2]
+        assert not data.is_contiguous()
+
+        keypoints = VideoKeypoints.from_tensor(data)
+        self.assert_close(keypoints.data, data.reshape(-1, 4, 2))
+        self.assert_close(keypoints.to_tensor(), data)
+
+    @pytest.mark.parametrize("shape", [(2, 3, 0, 2), (0, 3, 4, 2)])
+    def test_empty_roundtrip(self, shape, device, dtype):
+        data = torch.empty(shape, device=device, dtype=dtype)
+        keypoints = VideoKeypoints.from_tensor(data)
+        assert keypoints.data.shape == (shape[0] * shape[1], shape[2], 2)
+        assert keypoints.clone().to_tensor().shape == data.shape
+        self.assert_close(keypoints.to_tensor(), data)
+
     def test_smoke(self, device, dtype):
         data = torch.rand(2, 5, 10, 2, device=device, dtype=dtype)
         vkp = VideoKeypoints.from_tensor(data)
@@ -305,10 +328,21 @@ class TestVideoKeypoints(BaseTester):
             VideoKeypoints.from_tensor(torch.rand(2, 5, 10, 3, device=device, dtype=dtype))
 
     def test_gradcheck(self, device):
-        pass  # VideoKeypoints ops not differentiable through from_tensor reshape
+        data = torch.rand(3, 2, 2, 2, device=device, dtype=torch.float64)
+        matrix = torch.eye(3, device=device, dtype=torch.float64)[None]
+
+        def transform(x):
+            return VideoKeypoints.from_tensor(x.transpose(0, 1)).transform_keypoints(matrix).to_tensor()
+
+        self.gradcheck(transform, (data,))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
-        pass  # VideoKeypoints uses reshape; not straightforward to dynamo
+        data = torch.rand(3, 2, 4, 2, device=device, dtype=dtype)
+
+        def roundtrip(x):
+            return VideoKeypoints.from_tensor(x.transpose(0, 1)).to_tensor()
+
+        self.assert_close(torch_optimizer(roundtrip, fullgraph=True)(data), data.transpose(0, 1))
 
     def test_smoke_jit(self, device, dtype):
         pass

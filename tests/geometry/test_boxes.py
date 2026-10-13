@@ -2202,6 +2202,17 @@ class TestVideoBoxes(BaseTester):
         assert isinstance(out, torch.Tensor)
         assert out.shape == boxes.shape
 
+    @pytest.mark.parametrize("shape", [(3, 2, 2), (2, 3, 0), (0, 3, 2)])
+    def test_noncontiguous_and_empty_roundtrip(self, shape, device, dtype):
+        # (3, 2, 2) is built time-major and transposed into a non-contiguous (2, 3, 2, 4, 2) video.
+        boxes = self._sample_video_boxes(device, dtype, batch=shape[0], time=shape[1], n_boxes=shape[2])
+        if shape == (3, 2, 2):
+            boxes = (boxes + torch.arange(6, device=device, dtype=dtype).view(3, 2, 1, 1, 1)).transpose(0, 1)
+        video_boxes = VideoBoxes.from_tensor(boxes)
+        assert video_boxes.data.shape == (boxes.size(0) * boxes.size(1), boxes.size(2), 4, 2)
+        self.assert_close(video_boxes.to_tensor(), boxes, atol=0.0, rtol=0.0)
+        assert video_boxes.to_tensor("xyxy").shape == (*boxes.shape[:3], 4)
+
     def test_roundtrip_and_clone(self, device, dtype):
         boxes = self._sample_video_boxes(device, dtype)
         video_boxes = VideoBoxes.from_tensor(boxes)
