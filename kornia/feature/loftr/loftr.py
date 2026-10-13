@@ -185,11 +185,12 @@ class LoFTR(nn.Module):
             # one backbone pass for both images: faster & better BN convergence
             n = data["image0"].size(0)
             both = self.extract_features(torch.cat([data["image0"], data["image1"]], dim=0))
-            return {k: v[:n] for k, v in both.items()}, {k: v[n:] for k, v in both.items()}
-        features = []
-        for side in (0, 1):
-            given = data.get(f"features{side}")
-            features.append(given if given is not None else self.extract_features(data[f"image{side}"]))
+            features = [{k: v[:n] for k, v in both.items()}, {k: v[n:] for k, v in both.items()}]
+        else:
+            features = []
+            for side in (0, 1):
+                given = data.get(f"features{side}")
+                features.append(given if given is not None else self.extract_features(data[f"image{side}"]))
         if features[0]["coarse"].size(0) != features[1]["coarse"].size(0):
             raise ValueError(
                 f"Both sides need the same batch size. Got {features[0]['coarse'].size(0)} and "

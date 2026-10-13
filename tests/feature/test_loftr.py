@@ -247,8 +247,21 @@ class TestLoFTR(BaseTester):
                 model({"image0": image, "features0": features, "image1": image})
             with pytest.raises(ValueError, match="exactly one of `image1` and `features1`"):
                 model({"image0": image})
+
+    @pytest.mark.parametrize("batch_sizes", [(1, 2), (2, 1)])
+    @pytest.mark.parametrize(
+        "input_keys",
+        [("image0", "image1"), ("features0", "features1"), ("image0", "features1"), ("features0", "image1")],
+    )
+    def test_mismatched_batch_sizes(self, device, dtype, batch_sizes, input_keys):
+        model = _loftr_matching_every_cell(device, dtype)
+        with torch.no_grad():
+            data = {}
+            for key, batch_size in zip(input_keys, batch_sizes):
+                image = torch.rand(batch_size, 1, 64, 64, device=device, dtype=dtype)
+                data[key] = model.extract_features(image) if key.startswith("features") else image
             with pytest.raises(ValueError, match="same batch size"):
-                model({"features0": model.extract_features(image.repeat(2, 1, 1, 1)), "features1": features})
+                model(data)
 
     @pytest.mark.slow
     def test_gradcheck(self, device):
