@@ -987,7 +987,7 @@ class TestConventionsMutualInformation(BaseTester):
     @pytest.mark.parametrize("kernel", list(MIKernel))
     @pytest.mark.parametrize("loss_fn", [mutual_information_loss_2d, normalized_mutual_information_loss_2d])
     @pytest.mark.parametrize("masked", [False, True])
-    def test_half_precision_losses_are_finite_and_match_float32_4153(
+    def test_convention_mi_losses_half_precision_match_float32_4153(
         self, device, dtype, shape, kernel, loss_fn, masked
     ):
         if dtype not in (torch.float16, torch.bfloat16):
@@ -1025,7 +1025,7 @@ class TestConventionsMutualInformation(BaseTester):
     @pytest.mark.parametrize(
         "loss_fn,expected", [(mutual_information_loss, -math.log(2)), (normalized_mutual_information_loss, -2.0)]
     )
-    def test_half_histogram_counts_do_not_overflow_under_autocast_4153(self, dtype, loss_fn, expected):
+    def test_convention_mi_losses_count_half_histograms_in_float32_under_autocast_4153(self, dtype, loss_fn, expected):
         # Two equally likely binary levels have MI=ln(2) and NMI=2. Their count sum (70000) overflows float16;
         # CPU autocast would also demote a float32 einsum back to bfloat16 and round the two marginal counts.
         signal = (torch.arange(70000) % 2).to(dtype)
