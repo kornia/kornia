@@ -1,0 +1,1 @@
+`So2.inverse()` now computes complex-half reciprocals in complex64 and returns the original dtype, fixing CPU float16 inverse and composition in `So2` and `Se2` while preserving non-unit inputs and gradients.

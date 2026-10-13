@@ -338,13 +338,19 @@ class So2(nn.Module):
     def inverse(self) -> So2:
         """Return the inverse transformation.
 
+        Complex-half state is inverted in complex64 and returned in its original dtype.
+
         Example:
             >>> s = So2.identity()
             >>> s.inverse().z
             tensor(1.+0.j, grad_fn=<MulBackward0>)
 
         """
-        return So2(1 / self.z)
+        z = self.z
+        # CPU reciprocal has no ComplexHalf kernel. Promotion also preserves the inverse of non-unit z.
+        if z.dtype == torch.complex32:
+            return So2((1 / z.to(torch.complex64)).to(z.dtype))
+        return So2(1 / z)
 
     @classmethod
     def random(
