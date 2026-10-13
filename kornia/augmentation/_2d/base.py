@@ -173,6 +173,19 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
     _compute_matrix_lazily: bool = False
     _lazy_matrix_args: Optional[_LazyMatrixArgs] = None
     _transform_matrix_params: Optional[Dict[str, Any]] = None
+    _transform_matrix_params_signature: Optional[Tuple[Tuple[str, int, int], ...]] = None
+
+    @staticmethod
+    def _params_signature(params: Dict[str, Any]) -> Optional[Tuple[Tuple[str, int, int], ...]]:
+        """Return a cheap signature that changes when a tensor param is replaced or mutated."""
+        signature = []
+        for key, value in params.items():
+            try:
+                version = value._version if isinstance(value, torch.Tensor) else 0
+            except RuntimeError:  # Inference tensors have no version counter.
+                return None
+            signature.append((key, id(value), version))
+        return tuple(signature)
 
     @property
     def transform_matrix(self) -> Optional[torch.Tensor]:
@@ -309,6 +322,7 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
             self._commit_state(transform_matrix=None, lazy_matrix_args=(matrix_input, params, flags))
             if not is_exporting():
                 self._transform_matrix_params = matrix_params
+                self._transform_matrix_params_signature = self._params_signature(matrix_params)
             return self.transform_inputs(in_tensor, params, flags, None)
 
         trans_matrix = self.generate_transformation_matrix(in_tensor, params, flags)
@@ -316,5 +330,6 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
         self._commit_state(transform_matrix=trans_matrix, lazy_matrix_args=None)
         if not is_exporting():
             self._transform_matrix_params = matrix_params
+            self._transform_matrix_params_signature = self._params_signature(matrix_params)
 
         return output

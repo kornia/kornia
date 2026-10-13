@@ -2455,6 +2455,41 @@ class TestConventionAugmentationSequential(BaseTester):
 
 
 class TestAugmentationSequentialReplay:
+    @pytest.mark.parametrize("edit_in_place", [False, True])
+    def test_annotation_replay_uses_edited_params(self, device, dtype, edit_in_place):
+        with torch.random.fork_rng(devices=[device] if device.type == "cuda" else []):
+            torch.manual_seed(0)
+            image = torch.rand(2, 1, 16, 16, device=device, dtype=dtype)
+            keypoints = torch.tensor([[[3.0, 4.0]], [[3.0, 4.0]]], device=device, dtype=dtype)
+            aug = K.AugmentationSequential(K.RandomAffine(30.0, p=0.5), data_keys=["input", "keypoints"])
+            params = aug.forward_parameters(image.shape)
+            first_gate = torch.tensor([True, False], device=device)
+            second_gate = torch.tensor([False, True], device=device)
+            params[0].data["batch_prob"] = first_gate.clone()
+            aug(image, keypoints, params=params)
+
+            if edit_in_place:
+                params[0].data["batch_prob"][:] = second_gate
+            else:
+                params[0].data["batch_prob"] = second_gate
+
+            replayed = aug(keypoints, params=params, data_keys=["keypoints"])
+            moved = [(replayed[i] - keypoints[i]).abs().max() > 1e-4 for i in range(2)]
+            assert [bool(value) for value in moved] == [False, True]
+
+    def test_annotation_replay_with_inference_tensors(self):
+        with torch.inference_mode():
+            image = torch.rand(2, 1, 16, 16)
+            keypoints = torch.tensor([[[3.0, 4.0]], [[3.0, 4.0]]])
+            aug = K.AugmentationSequential(K.RandomAffine(30.0, p=0.5), data_keys=["input", "keypoints"])
+            params = aug.forward_parameters(image.shape)
+            params[0].data["batch_prob"] = torch.tensor([True, False])
+            aug(image, keypoints, params=params)
+            params[0].data["batch_prob"][:] = torch.tensor([False, True])
+            replayed = aug(keypoints, params=params, data_keys=["keypoints"])
+            moved = [(replayed[i] - keypoints[i]).abs().max() > 1e-4 for i in range(2)]
+            assert [bool(value) for value in moved] == [False, True]
+
     def test_annotation_replay_uses_matrices_from_params(self, device, dtype):
         with torch.random.fork_rng(devices=[device] if device.type == "cuda" else []):
             torch.manual_seed(0)
