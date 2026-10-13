@@ -120,6 +120,9 @@ def _guided_blur_multichannel_guidance(
 ) -> torch.Tensor:
     guidance_sub, input_sub, kernel_size = _preprocess_fast_guided_blur(guidance, input, kernel_size, subsample)
     B, C, H, W = guidance_sub.shape
+    # The input channel count is spelled out instead of inferred with ``-1``: an empty batch has no elements, so
+    # ``reshape``/``view`` cannot infer that size and raise (#4429).
+    C_in = input.shape[1]
 
     mean_I = box_blur(guidance_sub, kernel_size, border_type, separable=separable).permute(0, 2, 3, 1)
     II = (guidance_sub.unsqueeze(1) * guidance_sub.unsqueeze(2)).flatten(1, 2)
@@ -134,7 +137,7 @@ def _guided_blur_multichannel_guidance(
         mean_p = box_blur(input_sub, kernel_size, border_type, separable=separable).permute(0, 2, 3, 1)
         Ip = (input_sub.unsqueeze(1) * guidance_sub.unsqueeze(2)).flatten(1, 2)
         corr_Ip = box_blur(Ip, kernel_size, border_type, separable=separable).permute(0, 2, 3, 1)
-        cov_Ip = torch.addcmul(corr_Ip.reshape(B, H, W, C, -1), mean_p.unsqueeze(-2), mean_I.unsqueeze(-1), value=-1)
+        cov_Ip = torch.addcmul(corr_Ip.reshape(B, H, W, C, C_in), mean_p.unsqueeze(-2), mean_I.unsqueeze(-1), value=-1)
 
     if isinstance(eps, torch.Tensor):
         _eps = torch.eye(C, device=guidance.device, dtype=guidance.dtype).view(1, 1, 1, C, C) * eps.view(-1, 1, 1, 1, 1)
@@ -163,7 +166,7 @@ def _guided_blur_multichannel_guidance(
     if subsample > 1:
         mean_a = interpolate(mean_a, size=guidance.shape[-2:], mode="bilinear")
         mean_b = interpolate(mean_b, size=guidance.shape[-2:], mode="bilinear")
-    mean_a = mean_a.view(B, C, -1, *guidance.shape[-2:])
+    mean_a = mean_a.view(B, C, C_in, *guidance.shape[-2:])
 
     # torch.einsum might not be contiguous, thus mean_b is the first argument
     return mean_b + torch.einsum("BCHW,BCcHW->BcHW", guidance, mean_a)
