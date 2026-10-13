@@ -25,6 +25,66 @@ from kornia.core.utils import _torch_inverse_cast
 from testing.base import BaseTester
 
 
+class TestWarpAffine3dEmptyBatch(BaseTester):
+    """Empty volume batches retain affine-warp geometry and gradient connections."""
+
+    @pytest.mark.parametrize("dsize", [(3, 4, 5), (2, 6, 7)])
+    @pytest.mark.parametrize("align_corners", [True, False])
+    @pytest.mark.parametrize("mode,padding", [("bilinear", "zeros"), ("nearest", "reflection")])
+    def test_empty_batch_4429(self, dsize, align_corners, mode, padding, device, dtype):
+        """Keep the requested canvas, dtype, device and gradients for both empty operands."""
+        src = torch.empty(0, 2, 3, 4, 5, device=device, dtype=dtype, requires_grad=True)
+        matrix = torch.empty(0, 3, 4, device=device, dtype=dtype, requires_grad=True)
+        out = proj.warp_affine3d(src, matrix, dsize, mode, padding, align_corners)
+        assert out.shape == (0, 2, *dsize)
+        assert out.dtype == dtype
+        assert out.device == device
+        out.sum().backward()
+        assert src.grad is not None
+        assert src.grad.shape == src.shape
+        assert matrix.grad is not None
+        assert matrix.grad.shape == matrix.shape
+
+    def test_empty_batch_validation_4429(self, device, dtype):
+        """An empty batch still rejects invalid sampling options and incompatible matrices."""
+        src = torch.empty(0, 2, 3, 4, 5, device=device, dtype=dtype)
+        matrix = torch.empty(0, 3, 4, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="expected mode"):
+            proj.warp_affine3d(src, matrix, (3, 4, 5), flags="invalid")
+        with pytest.raises(ValueError, match="expected padding_mode"):
+            proj.warp_affine3d(src, matrix, (3, 4, 5), padding_mode="invalid")
+        with pytest.raises(RuntimeError):
+            proj.warp_affine3d(src, torch.eye(3, 4, device=device, dtype=dtype)[None], (3, 4, 5))
+
+    @pytest.mark.parametrize("augmentation", ["RandomAffine3D", "RandomRotation3D"])
+    @pytest.mark.parametrize("container", [False, True])
+    def test_empty_augmentation_4429(self, augmentation, container, device, dtype):
+        """Both direct and sequential 3D augmentations retain empty image batches."""
+        op = getattr(kornia.augmentation, augmentation)(20.0, p=1.0)
+        if container:
+            op = kornia.augmentation.AugmentationSequential(op, data_keys=["input"])
+        image = torch.empty(0, 2, 3, 4, 5, device=device, dtype=dtype, requires_grad=True)
+        out = op(image)
+        assert out.shape == image.shape
+        assert out.dtype == dtype
+        assert out.device == device
+        assert op.transform_matrix.shape == (0, 4, 4)
+        out.sum().backward()
+        assert image.grad is not None
+        assert image.grad.shape == image.shape
+
+    def test_dynamo_empty_batch_4429(self, device, dtype, torch_optimizer):
+        """Fullgraph capture keeps the empty affine warp and its backward pass."""
+        src = torch.empty(0, 2, 3, 4, 5, device=device, dtype=dtype, requires_grad=True)
+        matrix = torch.empty(0, 3, 4, device=device, dtype=dtype, requires_grad=True)
+        compiled = torch_optimizer(proj.warp_affine3d, fullgraph=True)
+        out = compiled(src, matrix, (2, 6, 7))
+        assert out.shape == (0, 2, 2, 6, 7)
+        out.sum().backward()
+        assert src.grad is not None
+        assert matrix.grad is not None
+
+
 @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
 @pytest.mark.parametrize("dsize", [(0, 4, 5), (3, 0, 5), (3, 4, 0)])
 @pytest.mark.parametrize("align_corners", [True, False])

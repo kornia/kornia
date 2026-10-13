@@ -1308,6 +1308,7 @@ def warp_affine3d(
         - ``M`` is the source→destination **pixel** affine matrix :math:`(B, 3, 4)`
         - align_corners: ``True`` by default
         - padding_mode: ``'zeros'`` by default
+        - an empty batch returns shape :math:`(0, C, d, h, w)` with gradients connected to both inputs
         - a zero output dimension returns an autograd-connected empty tensor;
           negative output dimensions raise ``ValueError``
 
@@ -1357,7 +1358,12 @@ def warp_affine3d(
 
     # compute meshgrid and apply to input
     dsize_out: list[int] = [B, C, *list(size_out)]
-    grid = F.affine_grid(P_norm, dsize_out, align_corners=align_corners)
+    if B == 0:
+        # affine_grid rejects a zero batch. Reuse the empty coefficients to keep the
+        # transform's autograd connection; grid_sample still validates sampling options.
+        grid = P_norm.reshape(B, 1, 1, 1, 12)[..., :3].expand(B, *size_out, 3)
+    else:
+        grid = F.affine_grid(P_norm, dsize_out, align_corners=align_corners)
     return _torch_grid_sample(src, grid, align_corners=align_corners, mode=flags, padding_mode=padding_mode).to(
         out_dtype
     )

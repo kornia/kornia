@@ -1,0 +1,1 @@
+`warp_affine3d`, `RandomAffine3D` and `RandomRotation3D` now accept empty volume batches instead of raising an output-size error. The output keeps the requested spatial size and remains connected to the inputs for backward propagation.
