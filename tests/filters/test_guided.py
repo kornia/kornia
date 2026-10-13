@@ -806,3 +806,24 @@ class TestConventionsGuidedBlur(BaseTester):
         assert out.shape == image.shape
         assert out.isfinite().all()
         self.assert_close(GuidedBlur(5, 0.01, subsample=2)(guidance, image), out)
+
+    @pytest.mark.parametrize(
+        ("input_dtype", "guidance_dtype", "expected"),
+        [
+            (torch.float16, torch.uint8, torch.float32),
+            (torch.uint8, torch.float16, torch.float32),
+            (torch.float64, torch.uint8, torch.float64),
+            (torch.uint8, torch.uint8, torch.float32),
+        ],
+    )
+    def test_convention_guided_blur_mixed_dtypes_promote_5155(self, input_dtype, guidance_dtype, expected, device):
+        """An integer guidance or input counts as float32, and the result has the promoted dtype of the two."""
+        if expected == torch.float64 and device.type == "mps":
+            pytest.skip("MPS has no float64")
+        generator = torch.Generator().manual_seed(0)
+        guidance = torch.randint(256, (2, 1, 9, 13), generator=generator).to(guidance_dtype)
+        image = torch.randint(256, (2, 2, 9, 13), generator=generator).to(input_dtype)
+        out = guided_blur(guidance.to(device), image.to(device), 5, 100.0)
+        assert out.dtype == expected
+        reference = guided_blur(guidance.double(), image.double(), 5, 100.0)  # on the CPU: MPS has no float64
+        self.assert_close(out.cpu().double(), reference, rtol=1e-2, atol=1e-1)
