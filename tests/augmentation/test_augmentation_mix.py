@@ -572,6 +572,16 @@ class TestRandomMosaic(BaseTester):
 
         torch.testing.assert_close(top_left, expected)
 
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    def test_padding_mode_rejected_at_construction_5914(self, cropping_mode):
+        # `slice` never reads padding_mode, so a typo used to pass silently until the first
+        # forward call failed inside grid_sample with torch's own message.
+        for padding_mode in ("constant", "reflect", "replicate"):
+            RandomMosaic((8, 8), p=1.0, padding_mode=padding_mode, cropping_mode=cropping_mode)
+
+        with pytest.raises(ValueError, match="must be one of"):
+            RandomMosaic((8, 8), p=1.0, padding_mode="bogus", cropping_mode=cropping_mode)
+
     def test_boxes_follow_output_size_4652(self, device, dtype):
         torch.manual_seed(2)
 

@@ -31,6 +31,8 @@ from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, ge
 
 __all__ = ["RandomMosaic"]
 
+_PADDING_MODES = ("constant", "reflect", "replicate")
+
 
 class RandomMosaic(MixAugmentationBaseV2):
     r"""Mosaic augmentation.
@@ -59,7 +61,8 @@ class RandomMosaic(MixAugmentationBaseV2):
         p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
             to the batch form ``False``.
-        padding_mode: Type of padding. Should be: constant, reflect, replicate.
+        padding_mode: Type of padding: ``constant``, ``reflect`` or ``replicate``. Only consulted by
+            ``cropping_mode="resample"``, ignored by ``"slice"``, and validated in both cases.
         resample: the interpolation mode.
         align_corners: interpolation flag.
         cropping_mode: The used algorithm to crop. ``slice`` will use advanced slicing to extract the torch.Tensor based
@@ -128,6 +131,10 @@ class RandomMosaic(MixAugmentationBaseV2):
         cropping_mode: str = "slice",
     ) -> None:
         super().__init__(p=p, p_batch=1.0, same_on_batch=False, keepdim=keepdim, data_keys=data_keys)
+
+        if padding_mode not in _PADDING_MODES:
+            raise ValueError(f"`padding_mode` must be one of {_PADDING_MODES}. Got '{padding_mode}'")
+
         self.start_ratio_range = start_ratio_range
         self._param_generator = rg.MosaicGenerator(output_size, mosaic_grid, start_ratio_range)
 
