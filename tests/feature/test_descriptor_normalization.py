@@ -143,7 +143,7 @@ class TestDescriptorNormalization(BaseTester):
         if is_eps_learnable:
             self.assert_close(layer.eps.grad, reference.eps.grad.to(dtype))
 
-    @pytest.mark.parametrize("half", [torch.float16])
+    @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16], ids=["float16", "bfloat16"])
     def test_frn_scale_and_bias_cancel_in_float32(self, device, half):
         # Pretrained HyNet's first FilterResponseNorm2d has weight 3.70 and bias -3.40, so on a nearly flat patch
         # `weight * x + bias` cancels most of its leading bits. Only the final rounding to the half dtype may remain.

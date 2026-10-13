@@ -117,8 +117,10 @@ class FilterResponseNorm2d(nn.Module):
             Normalized tensor with the same shape as the input.
         """
         input_dtype = x.dtype
-        if input_dtype == torch.float16:
-            # Pretrained HyNet produces activations whose squares exceed the float16 range.
+        half = input_dtype in (torch.float16, torch.bfloat16)
+        if half:
+            # Pretrained HyNet produces activations whose squares exceed the float16 range, and its scale and bias
+            # cancel too many bits for either half dtype.
             x = x.float()
         # Compute the mean norm of activations per channel.
         nu2 = x.pow(2).mean(dim=[2, 3], keepdim=True)
@@ -131,7 +133,7 @@ class FilterResponseNorm2d(nn.Module):
             x = self.weight * x
         if self.is_bias:
             x = x + self.bias
-        if input_dtype == torch.float16:
+        if half:
             # Scale and bias stay in float32 too: in pretrained HyNet they cancel (weight 3.70, bias -3.40 in the
             # first layer), so rounding before them loses several bits.
             x = x.to(torch.promote_types(input_dtype, self.eps.dtype))
