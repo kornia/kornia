@@ -156,11 +156,10 @@ def gftt_response(
         - :math:`R` is not negative, up to roundoff. It is large at a corner and near zero along an edge, where the
           Harris response is negative.
         - Multiplying the image by ``c`` multiplies the response by ``c ** 2``, and an offset does not change it.
-        - ``sigmas`` multiplies the response by ``sigmas ** 4``, the power of :func:`~kornia.feature.harris_response`,
-          not the ``sigmas ** 2`` of the smaller eigenvalue's degree in the gradients. That degree holds for a window
-          that grows with the blur :math:`\sigma`; :math:`W` keeps its size, so at a corner the smaller eigenvalue
-          falls faster than :math:`\sigma^{-3}` over the blurs of a :class:`~kornia.geometry.ScalePyramid` octave
-          (1.6 to 4 pixels), and ``sigmas ** 4`` is the closer correction.
+        - ``sigmas`` multiplies the response by ``sigmas ** 4``, the same power used by
+          :func:`~kornia.feature.harris_response`. This is the function's scale-weighting convention, not a guarantee
+          of scale invariance. The integration window :math:`W` stays fixed as the image blur changes; the response's
+          decay with blur depends on the image structure, including the corner geometry.
 
     Args:
         input: input image with shape :math:`(B, C, H, W)`.

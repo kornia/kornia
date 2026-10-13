@@ -293,8 +293,9 @@ class LAFOrienter(nn.Module):
 
     Convention:
         - Each LAF's patch (:func:`~kornia.feature.extract_patches_from_pyramid`) gives an angle, measured in the
-          patch, and the output orientation is the input orientation plus that angle, converted to degrees. The
-          centre, the scale and the upright shape (:func:`~kornia.feature.make_upright`) of the LAF are kept.
+          patch, and the output orientation is the input orientation plus that angle, converted to degrees, modulo
+          360 degrees. :func:`~kornia.feature.get_laf_orientation` reads it back in ``[-180, 180]``. The centre, the
+          scale and the upright shape (:func:`~kornia.feature.make_upright`) of the LAF are kept.
         - For an isotropic LAF, the default angle detector therefore turns the LAF's x axis onto the dominant
           gradient, whatever the input orientation: content turned 30 degrees counter-clockwise on screen turns the
           output orientation by +30, the sign of :func:`~kornia.feature.laf_from_center_scale_ori`
