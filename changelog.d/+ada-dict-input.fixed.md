@@ -1,0 +1,4 @@
+`AdaptiveDiscriminatorAugmentation` accepts the dictionary input its signature allows. Every dictionary call raised
+before any augmentation ran: a plain call or `forward(..., data_keys=...)` raised `ValueError` because the preset always
+sets `data_keys`, and a preset built with `data_keys` raised `KeyError: 'IMAGE'`. The dictionary's keys now name the
+data, the same samples are augmented in every entry, and an entry that names no data key is returned unchanged.
