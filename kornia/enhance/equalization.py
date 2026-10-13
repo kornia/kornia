@@ -408,21 +408,15 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
     return tiles_equalized.div(255.0)
 
 
-def _equalize_clahe_odd_tiles(
-    imgs: torch.Tensor, luts: torch.Tensor, tile_size: Tuple[int, int]
-) -> torch.Tensor:
+def _equalize_clahe_odd_tiles(imgs: torch.Tensor, luts: torch.Tensor, tile_size: Tuple[int, int]) -> torch.Tensor:
     """Equalize odd-sized CLAHE tiles by interpolating LUTs at tile centres."""
     batch_size, channels, height, width = imgs.shape
     grid_h, grid_w = luts.shape[1:3]
     tile_h, tile_w = tile_size
 
     coord_dtype = torch.float64 if imgs.dtype == torch.float64 else torch.float32
-    y = (
-        torch.arange(height, device=imgs.device, dtype=coord_dtype) - (tile_h - 1) / 2
-    ) / tile_h
-    x = (
-        torch.arange(width, device=imgs.device, dtype=coord_dtype) - (tile_w - 1) / 2
-    ) / tile_w
+    y = (torch.arange(height, device=imgs.device, dtype=coord_dtype) - (tile_h - 1) / 2) / tile_h
+    x = (torch.arange(width, device=imgs.device, dtype=coord_dtype) - (tile_w - 1) / 2) / tile_w
 
     y_floor = y.floor()
     x_floor = x.floor()
@@ -559,9 +553,7 @@ def _equalize_clahe(
 
     hist_tiles, img_padded = _compute_tiles(imgs, grid_size, not use_odd_tiles)
     tile_size: Tuple[int, int] = (hist_tiles.shape[-2], hist_tiles.shape[-1])
-    luts: torch.Tensor = _compute_luts(
-        hist_tiles, clip=clip_limit, diff=slow_and_differentiable
-    )
+    luts: torch.Tensor = _compute_luts(hist_tiles, clip=clip_limit, diff=slow_and_differentiable)
 
     if use_odd_tiles:
         eq_imgs = _equalize_clahe_odd_tiles(img_padded, luts, tile_size)

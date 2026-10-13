@@ -635,12 +635,7 @@ class TestEqualization(BaseTester):
     def test_clahe_odd_tile_sizes(self, slow_and_differentiable, device):
         # Regression test: odd 9 x 11 tiles must not be expanded to 10 x 12.
         torch.manual_seed(5812)
-        img = (
-            torch.randint(0, 256, (1, 1, 72, 88), dtype=torch.uint8)
-            .float()
-            .div(255.0)
-            .to(device)
-        )
+        img = torch.randint(0, 256, (1, 1, 72, 88), dtype=torch.uint8).float().div(255.0).to(device)
 
         out = enhance.equalize_clahe(
             img,
