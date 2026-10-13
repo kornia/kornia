@@ -751,20 +751,22 @@ class LightGlue(nn.Module):
 
         # Guard against empty-descriptors after pruning
         if desc0.shape[1] == 0 or desc1.shape[1] == 0:
+            # No layer runs here, so the outputs keep the input dtype, also under mp=True.
+            dtype = desc0.dtype
             empty_m0 = torch.full((b, m), -1, device=device, dtype=torch.long)
             empty_m1 = torch.full((b, n), -1, device=device, dtype=torch.long)
-            empty_s0 = torch.zeros((b, m), device=device)
-            empty_s1 = torch.zeros((b, n), device=device)
+            empty_s0 = torch.zeros((b, m), device=device, dtype=dtype)
+            empty_s1 = torch.zeros((b, n), device=device, dtype=dtype)
 
             return {
-                "log_assignment": torch.empty((b, 1, 1), device=device),
+                "log_assignment": torch.empty((b, 1, 1), device=device, dtype=dtype),
                 "matches0": empty_m0,
                 "matches1": empty_m1,
                 "matching_scores0": empty_s0,
                 "matching_scores1": empty_s1,
                 "stop": 0,
                 "matches": [torch.empty((0, 2), device=device, dtype=torch.long) for _ in range(b)],
-                "scores": [torch.empty((0,), device=device) for _ in range(b)],
+                "scores": [torch.empty((0,), device=device, dtype=dtype) for _ in range(b)],
                 "prune0": torch.ones_like(empty_s0) * self.conf.n_layers,
                 "prune1": torch.ones_like(empty_s1) * self.conf.n_layers,
             }
@@ -834,12 +836,15 @@ class LightGlue(nn.Module):
         # If adaptive width pruning removed all keypoints from either side,
         # return empty matches instead of crashing in filter_matches (see #3564).
         if desc0.shape[-2] == 0 or desc1.shape[-2] == 0:
+            # The other paths' scores are the exp of the log assignment. Autocast runs that exp in float32 on CUDA and
+            # MPS and leaves it in the computed dtype on CPU (bfloat16), so take the dtype from the same op.
+            dtype = desc0.new_zeros(()).exp().dtype
             matches = [torch.zeros((0, 2), dtype=torch.long, device=device) for _ in range(b)]
-            mscores = [torch.zeros(0, device=device) for _ in range(b)]
+            mscores = [torch.zeros(0, device=device, dtype=dtype) for _ in range(b)]
             m0_ = torch.full((b, m), -1, device=device, dtype=torch.long)
             m1_ = torch.full((b, n), -1, device=device, dtype=torch.long)
-            mscores0_ = torch.zeros((b, m), device=device)
-            mscores1_ = torch.zeros((b, n), device=device)
+            mscores0_ = torch.zeros((b, m), device=device, dtype=dtype)
+            mscores1_ = torch.zeros((b, n), device=device, dtype=dtype)
             return {
                 "matches": matches,
                 "scores": mscores,
@@ -872,8 +877,8 @@ class LightGlue(nn.Module):
             m1_ = torch.full((b, n), -1, device=m1.device, dtype=m1.dtype)
             m0_[:, ind0] = torch.where(m0 == -1, -1, ind1.gather(1, m0.clamp(min=0)))
             m1_[:, ind1] = torch.where(m1 == -1, -1, ind0.gather(1, m1.clamp(min=0)))
-            mscores0_ = torch.zeros((b, m), device=mscores0.device)
-            mscores1_ = torch.zeros((b, n), device=mscores1.device)
+            mscores0_ = torch.zeros((b, m), device=mscores0.device, dtype=mscores0.dtype)
+            mscores1_ = torch.zeros((b, n), device=mscores1.device, dtype=mscores1.dtype)
             mscores0_[:, ind0] = mscores0
             mscores1_[:, ind1] = mscores1
             m0, m1, mscores0, mscores1 = m0_, m1_, mscores0_, mscores1_
