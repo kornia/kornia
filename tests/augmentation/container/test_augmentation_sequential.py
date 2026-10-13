@@ -1765,6 +1765,22 @@ class TestConventionAugmentationSequential(BaseTester):
         with pytest.raises(NotImplementedError):
             seq.inverse(entries, data_keys=["mask"])
 
+    @pytest.mark.parametrize("mask_only", [False, True])
+    def test_mask_list_transplantation_rejected_before_parameter_calculation_4477(self, mask_only, device, dtype):
+        image = torch.arange(2 * 16, device=device, dtype=dtype).reshape(2, 1, 4, 4)
+        mask = torch.zeros(2, 1, 4, 4, device=device, dtype=torch.long)
+        mask[:, :, :2, :2] = 1
+        seq = K.AugmentationSequential(K.RandomTransplantation(p=1.0), data_keys=["input", "mask"])
+        # Tensor masks remain supported, and provide a saved draw for mask-only replay.
+        output, tensor_mask = seq(image.clone(), mask.clone())
+        assert output.shape == image.shape
+        assert tensor_mask.shape == mask.shape
+        entries = [mask[:1].clone(), mask[1:].clone()]
+        args = (entries,) if mask_only else (image, entries)
+        kwargs = {"params": seq._params, "data_keys": ["mask"]} if mask_only else {}
+        with pytest.raises(NotImplementedError, match="RandomTransplantation does not support mask lists"):
+            seq(*args, **kwargs)
+
     def test_mask_list_passes_through_intensity_patch_sequential_4477(self, device, dtype):
         image = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
         entries = [torch.rand(1, 1, 4, 4, device=device, dtype=dtype) for _ in range(2)]

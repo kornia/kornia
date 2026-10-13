@@ -225,6 +225,10 @@ class AugmentationSequentialOps:
         _data_keys = self.preproc_datakeys(data_keys)
 
         if isinstance(module, K.RandomTransplantation):
+            # This child reads the mask while drawing params, before the list-mask handler can reject it.
+            for inp, dcate in zip(arg, _data_keys):
+                if dcate == DataKey.MASK and isinstance(inp, list):
+                    raise NotImplementedError(f"{type(module).__name__} does not support mask lists.")
             # For transforms which require the full input to calculate the parameters (e.g. RandomTransplantation)
             param = ParamItem(
                 name=param.name,
