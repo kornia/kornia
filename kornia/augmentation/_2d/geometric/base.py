@@ -237,8 +237,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         """
         in_tensor = self.transform_tensor(input)
         output = in_tensor.clone()
-        batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs
@@ -310,8 +309,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         **kwargs: Any,
     ) -> Boxes:
         output = input.clone()
-        batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
 
         if transform is None:
             raise RuntimeError("`transform` has to be a torch.Tensor. Got None.")
@@ -350,8 +348,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
 
         """
         output = input.clone()
-        batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
 
         if transform is None:
             raise RuntimeError("`transform` has to be a torch.Tensor. Got None.")
