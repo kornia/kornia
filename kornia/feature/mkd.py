@@ -557,19 +557,32 @@ class MKDDescriptor(nn.Module):
     This is based on the paper "Understanding and Improving Kernel Local Descriptors".
     See :cite:`mukundan2019understanding` for more details.
 
+    Convention:
+        - Patches are ``(B, 1, patch_size, patch_size)``: ``patch_size`` must be the input's size, and another size
+          raises ``ShapeError``. The kernels are centred on the patch centre :math:`(\text{patch\_size} - 1) / 2`.
+        - The descriptor has unit L2 norm, and an intensity change :math:`a x + b` with :math:`a > 0` gives the same
+          descriptor unless it leaves the patch nearly flat. The exception is a flat float16 patch with
+          ``whitening=None``: the ``1e-8`` added to the gradient magnitudes underflows in float16, and the descriptor
+          is all zero.
+        - With whitening the descriptor is :math:`\min(\text{output\_dims}, E)` wide, where :math:`E` is the width of
+          the kernel embedding: 238 for ``'concat'``, 175 for ``'polar'`` and 63 for ``'cart'``. With
+          ``whitening=None`` it is that embedding, :math:`E` wide whatever ``output_dims`` says. Constructing a whitened
+          descriptor loads its whitening model, and downloads it then if it is not cached yet; ``whitening=None``
+          needs no download.
+
     Args:
         patch_size: Input patch size in pixels.
         kernel_type: Parametrization of kernel ``'concat'``, ``'cart'``, ``'polar'``.
         whitening: Whitening transform to apply ``None``, ``'lw'``, ``'pca'``, ``'pcawt'``, ``'pcaws'``.
         training_set: Set that model was trained on ``'liberty'``, ``'notredame'``, ``'yosemite'``.
-        output_dims: Dimensionality reduction.
+        output_dims: Width of the whitened descriptor, at most the embedding width; ignored with ``whitening=None``.
 
     Returns:
-        Explicit cartesian or polar embedding.
+        Descriptors of the patches, of unit norm except as stated in the Convention block.
 
     Shape:
-        - Input: :math:`(B, 1, P, P)` with :math:`P` = ``patch_size``; the spatial encoding is precomputed for it.
-        - Output: :math:`(B, out_{dims})`.
+        - Input: :math:`(B, 1, \text{patch\_size}, \text{patch\_size})`.
+        - Output: :math:`(B, D)`, with :math:`D` as in the Convention block.
 
     Examples:
         >>> patches = torch.rand(23, 1, 32, 32)
@@ -649,15 +662,13 @@ class MKDDescriptor(nn.Module):
         """Compute Multiple Kernel Descriptor (MKD) vectors for image patches.
 
         Args:
-            patches: Grayscale patch tensor with shape :math:`(B, 1, P, P)`, where ``B`` is the number of patches
-                and :math:`P` is ``patch_size``.
+            patches: Grayscale patch tensor with shape ``(B, 1, patch_size, patch_size)``.
 
         Returns:
-            Descriptor tensor with shape :math:`(B, D)`, where ``D`` is the configured
-            output descriptor dimension after optional whitening.
+            Descriptor tensor with shape :math:`(B, D)`, with ``D`` as in the class's Convention block.
 
         Raises:
-            ShapeError: if ``patches`` is not :math:`(B, 1, P, P)`.
+            ShapeError: if ``patches`` is not ``(B, 1, patch_size, patch_size)``.
         """
         if not isinstance(patches, torch.Tensor):
             raise TypeError(f"Input type is not a torch.Tensor. Got {type(patches)}")
