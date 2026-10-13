@@ -137,7 +137,7 @@ API reference
    :members: forward, from_pretrained, heatmap_and_dense_descriptors
 
 .. autoclass:: XFeat
-   :members: forward, from_pretrained, detectAndCompute, detectAndComputeDense, match_xfeat, match_xfeat_star
+   :members: from_pretrained, detectAndCompute, detectAndComputeDense, match_xfeat, match_xfeat_star
 
 .. autoclass:: XFeatModel
    :members: forward

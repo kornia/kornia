@@ -736,8 +736,8 @@ class TestConventionsALIKED(BaseTester):
     def test_convention_aliked_counts_by_threshold_or_top_k(self, device, dtype):
         # detection_threshold > 0: keep the maxima strictly above it, at most max_num_keypoints of them (-1: at most
         # 20000); detection_threshold <= 0 with max_num_keypoints > 0: the max_num_keypoints strongest maxima (this map
-        # has more; with fewer maxima top-k mode pads with non-maxima, #5862); both off: the maxima above the mean of
-        # the score map. An image alone with no maximum above the threshold falls back to the maxima above its mean.
+        # has more); both off: the maxima above the mean of the score map. An image with no maximum above the
+        # threshold falls back to the maxima above its own mean.
         # Maxima 0.9, 0.8, 0.5 on row 20 (x = 20, 40, 60), 0.2, 0.15 on row 45 (x = 20, 40) and 0.013 at (80, 40); a
         # 16 x 26 plateau of 0.1, which has no strict maximum, lifts the map mean to 0.0165, above the 0.013 maximum.
         maxima = [(0, 20, 20, 0.9), (0, 40, 20, 0.8), (0, 60, 20, 0.5), (0, 20, 45, 0.2), (0, 40, 45, 0.15)]
@@ -779,45 +779,6 @@ class TestConventionsALIKED(BaseTester):
         finally:
             hook.remove()
         assert sorted((round(x), round(y)) for x, y in feats.keypoints.float().tolist()) == [(20, 20), (60, 40)]
-
-    def test_wart_aliked_threshold_fallback_is_decided_for_the_whole_batch_5865(self, device, dtype):
-        # Defect #5865: in threshold mode DKD falls back to the maxima above each image's mean only when no maximum in
-        # the whole batch is above detection_threshold, so an image's keypoints depend on the rest of the batch. The
-        # image whose best score, 0.15, is below 0.2 keeps its two maxima alone and loses them next to an image with a
-        # 0.9 maximum.
-        weak = [(0, 20, 20, 0.15), (0, 60, 40, 0.12)]
-        counts = []
-        for batch, peaks in ((1, weak), (2, [*weak, (1, 50, 30, 0.9)])):
-            aliked = ALIKED(model_name="aliked-t16").to(device, dtype).eval()
-            hook = self._hooked(aliked, self._score_map(peaks, device, dtype, batch=batch))
-            try:
-                with torch.no_grad():
-                    counts.append([f.n for f in aliked(torch.rand(batch, 3, 64, 96, device=device, dtype=dtype))])
-            finally:
-                hook.remove()
-        assert counts == [[2], [0, 1]]
-
-    def test_wart_aliked_top_k_fills_with_non_maxima_5862(self, device, dtype):
-        # Top-k mode (detection_threshold <= 0, max_num_keypoints = k) returns k keypoints even when the score map has
-        # fewer local maxima: DKD runs torch.topk over the suppressed map, where every non-maximum is 0, so the
-        # remaining slots are non-maxima in topk's tie order (#5862). Three maxima with k = 5: the maxima come first,
-        # by score, and two non-maxima follow. Where those land depends on the tie order, so only their count is
-        # checked.
-        peaks = [(0, 21, 13, 0.9), (0, 60, 40, 0.8), (0, 35, 50, 0.7)]
-        maxima = torch.tensor([[21.0, 13.0], [60.0, 40.0], [35.0, 50.0]], dtype=torch.float64)
-        aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=5, detection_threshold=0.0).to(device, dtype).eval()
-        # relabelling: the transposed map gives the transposed maxima, again followed by two non-maxima
-        peaks_t = [(b, y, x, s) for b, x, y, s in peaks]
-        for h, w, peaks_i, maxima_i in ((64, 96, peaks, maxima), (96, 64, peaks_t, maxima.flip(-1))):
-            hook = self._hooked(aliked, self._score_map(peaks_i, device, dtype, h=h, w=w))
-            try:
-                with torch.no_grad():
-                    (feats,) = aliked(torch.rand(1, 3, h, w, device=device, dtype=dtype))
-            finally:
-                hook.remove()
-            assert feats.n == 5
-            found = feats.keypoints[:3].cpu().double()
-            self.assert_close(found, maxima_i, rtol=0.0, atol=self._peak_tol(dtype))
 
     def test_convention_aliked_image_size_is_the_valid_width_and_height_of_each_image(self, device, dtype):
         # image_size holds (W, H) per image of a batch padded at the bottom and right to a common size: maxima within

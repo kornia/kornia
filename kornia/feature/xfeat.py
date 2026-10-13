@@ -101,7 +101,8 @@ class XFeatModel(nn.Module):
 
     Convention:
         - The channels are averaged and the result is instance-normalised, so any channel count is accepted and an
-          affine change of the intensity range leaves the outputs unchanged, up to the norm's ``eps``.
+          affine change ``a x + b`` of the intensities with ``a > 0`` leaves the outputs unchanged, up to the norm's
+          ``eps``.
         - ``H`` and ``W`` must be multiples of 8; other sizes raise an error or give maps of mismatched sizes.
           :class:`XFeat` resizes its input to multiples of 32.
         - ``keypoints`` holds 65 logits per 8 x 8 cell: channel ``(y % 8) * 8 + x % 8`` of cell ``(y // 8, x // 8)``
@@ -304,7 +305,8 @@ class XFeat(nn.Module):
           float32.
         - :meth:`detectAndCompute` keypoints are integer pixels ``i`` of the resized image, strict maxima of the
           keypoint heatmap in their 5 x 5 window (see the note), reported at ``i * (W / W', H / H')``. That is the
-          pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori` when ``H`` and ``W`` are multiples of 32;
+          pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
+          (see :ref:`Local features <local-features-conventions>`) when ``H`` and ``W`` are multiples of 32;
           otherwise the centre of the resized pixel is at ``(i + 0.5) * (W / W', H / H') - 0.5``.
         - The heatmap value must be strictly above ``detection_threshold``. ``scores`` is that value times the
           reliability map, and the ``top_k`` best keypoints come sorted by it. Each descriptor is 64-D, sampled
@@ -353,7 +355,7 @@ class XFeat(nn.Module):
 
         Args:
             top_k: maximum number of keypoints to keep. Default: ``4096``.
-            detection_threshold: minimum keypoint score. Default: ``0.05``.
+            detection_threshold: the keypoint heatmap value a keypoint must exceed. Default: ``0.05``.
 
         Returns:
             XFeat model with pretrained weights loaded, set to eval mode.

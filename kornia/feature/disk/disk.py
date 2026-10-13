@@ -49,18 +49,20 @@ class DISK(nn.Module):
     .. image:: _static/img/disk_outdoor_depth.jpg
 
     Convention:
-        - ``images`` are RGB, :math:`(B, 3, H, W)`, which the U-Net sees as given, without normalisation. ``H`` and
-          ``W`` must be multiples of 16, unless ``pad_if_not_divisible=True`` zero-pads the bottom and right, in which
-          case the maps are cropped back to the image before the suppression and no keypoint lies in the padding.
+        - ``images`` are RGB, :math:`(B, 3, H, W)`, which the U-Net sees as given, without normalisation. With the
+          default U-Net, a common positive scale of the input, such as :math:`[0, 255]` instead of :math:`[0, 1]`,
+          leaves the keypoints and descriptors unchanged up to the instance norms' ``eps``. ``H`` and ``W`` must be
+          multiples of 16, unless ``pad_if_not_divisible=True`` zero-pads the bottom and right, in which case the maps
+          are cropped back to the image before the suppression and no keypoint lies in the padding.
         - Each image gives a :class:`DISKFeatures`. Keypoints are the integer ``(x, y)`` pixels of the strict heatmap
-          maxima (see the note), in the pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`, listed in
-          raster order rather than by score, in the dtype of the network's output. ``detection_scores`` are the
+          maxima (see the note), in the pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
+          (see :ref:`Local features <local-features-conventions>`), listed in raster order (row by row, then column
+          by column) rather than by score, in the dtype of the network's output. ``detection_scores`` are the
           heatmap values there, and each descriptor is the dense descriptor at the keypoint's pixel, L2-normalised;
           :meth:`heatmap_and_dense_descriptors` returns the dense descriptors without normalisation.
-        - ``score_threshold`` keeps the scores strictly above it, and ``n`` the ``n`` strongest of an image with more
-          than ``n`` maxima.
-        - Known defects: when an image has ``n`` maxima or fewer, ``n`` drops the weakest real maximum as well, so it
-          returns fewer keypoints than ``n=None`` (`#5864 <https://github.com/kornia/kornia/issues/5864>`_).
+        - ``score_threshold`` keeps the scores strictly above it. ``n`` is an upper bound on the maxima above
+          ``score_threshold`` in each image; the ``n`` argument of :meth:`forward` says which of them are kept when
+          there are more.
 
     Args:
         desc_dim: The dimension of the descriptor.
@@ -78,7 +80,10 @@ class DISK(nn.Module):
         clips the window at the border, so it judges a border position against part of its window. Of several equal
         maxima it keeps the one the max-pool reports first, which depends on an order PyTorch does not specify. With
         the pretrained ``depth`` weights on Oxford graf and boat img1, every keypoint of the reference that kornia
-        leaves out lies in that border strip.
+        leaves out lies in that border strip. The reference's ``n`` keeps the scores strictly above the
+        ``(n + 1)``-th largest, which drops the weakest maximum of an image with ``n`` maxima or fewer and every
+        maximum tied across the cut. kornia's ``n`` is an upper bound, so such an image keeps every maximum, and a
+        tie at the cut is filled in raster order.
 
     Example:
         >>> disk = DISK.from_pretrained('depth')

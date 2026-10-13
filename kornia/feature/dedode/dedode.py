@@ -87,10 +87,10 @@ class DeDoDe(nn.Module):
           already normalized. ``pad_if_not_divisible`` zero-pads the normalized image at the bottom and right to
           multiples of 14, so the padding is the ImageNet mean colour, and removes it from the maps again.
         - :meth:`forward` returns pixel ``i`` as ``i + 0.5``: subtract 0.5 for the pixel frame of
-          :func:`~kornia.feature.laf_from_center_scale_ori`. :meth:`detect` returns it normalized, as
-          ``(2 i + 1) / W - 1`` in :math:`[-1, 1]` (``align_corners=False``), the form :meth:`describe` takes;
-          ``(k + 1) W / 2 - 0.5`` converts such a ``k`` to kornia's frame. A description is read at the centre of
-          pixel ``i``.
+          :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`).
+          :meth:`detect` returns it normalized, as ``(2 i + 1) / W - 1`` in :math:`[-1, 1]` (``align_corners=False``),
+          the form :meth:`describe` takes; ``(k + 1) W / 2 - 0.5`` converts such a ``k`` to kornia's frame. A
+          description is read at the centre of pixel ``i``.
         - Each image gives its ``n`` best keypoints by score, in descending order: :math:`N = \min(n, H W)`, with no
           threshold and no padding. Keypoints and descriptions are float32, and descriptions are not normalized.
 

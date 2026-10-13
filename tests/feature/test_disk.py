@@ -258,6 +258,9 @@ class TestConventionsDISK(BaseTester):
         named = torch.cat([expected, torch.ones_like(expected[:, :1])], dim=-1)
         self.assert_close(feats.descriptors[:, :3], torch.nn.functional.normalize(named, dim=-1), low_tolerance=True)
         assert feats.descriptors[:, 3:].abs().max() == 0
+        # heatmap_and_dense_descriptors returns the dense descriptors as the network outputs them, not normalised
+        _heatmaps, dense = self._disk(peaks, device, dtype).heatmap_and_dense_descriptors(image)
+        self.assert_close(dense[0, :3, 21, 13], torch.tensor([13.0, 21.0, 1.0], device=device, dtype=dtype))
         # relabelling: the transposed heatmap gives the transposed keypoints, again in raster order
         disk_t = self._disk([(y, x, s) for x, y, s in peaks], device, dtype, h=80, w=48)
         (feats_t,) = disk_t(image.transpose(-1, -2))
@@ -279,33 +282,49 @@ class TestConventionsDISK(BaseTester):
         assert seen[..., :, 75:].abs().max() == 0
         assert feats.keypoints.tolist() == [[13.0, 21.0], [72.0, 30.0]]
 
+    def test_convention_disk_default_unet_ignores_a_common_positive_scale_of_the_input(self, device, dtype):
+        # The default U-Net instance-normalises every channel before each convolution but the first, which removes a
+        # common positive scale of the input together with the first convolution's bias, so [0, 255] gives the maps,
+        # keypoints and descriptors of [0, 1] up to the norms' eps (random weights). An offset is not removed: the
+        # first convolution's zero padding does not move with it.
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(0)
+            disk = DISK().eval()
+            image = torch.rand(1, 3, 48, 80)
+        disk, image = disk.to(device, dtype), image.to(device, dtype)
+        tol = {torch.float16: 2e-2, torch.bfloat16: 1e-1}.get(dtype, 3e-3)  # the maps span about 3
+        # torch 2.5.1's CPU float16 instance norm overflows on a [0, 255] image, so float16 scales by 16 instead
+        scale = 16.0 if dtype == torch.float16 else 255.0
+        with torch.no_grad():
+            heatmap, dense = disk.heatmap_and_dense_descriptors(image)
+            heatmap_s, dense_s = disk.heatmap_and_dense_descriptors(scale * image)
+            self.assert_close(heatmap_s, heatmap, rtol=0.0, atol=tol)
+            self.assert_close(dense_s, dense, rtol=0.0, atol=tol)
+            if dtype in (torch.float32, torch.float64):  # half-precision rounding can swap near-tied maxima
+                (feats,), (feats_s,) = disk(image), disk(scale * image)
+                assert feats.n > 10
+                assert torch.equal(feats_s.keypoints, feats.keypoints)
+                self.assert_close(feats_s.descriptors, feats.descriptors, rtol=0.0, atol=tol)
+            assert (disk.heatmap_and_dense_descriptors(image + 0.3)[0] - heatmap).abs().max() > 0.2
+
     def test_convention_disk_n_keeps_the_strongest_and_score_threshold_is_strict(self, device, dtype):
-        # With more maxima than n, forward keeps the n strongest; score_threshold keeps the scores strictly above it.
+        # n is an upper bound on the maxima above score_threshold: with more maxima than n, forward keeps the n
+        # strongest, and with n of them it keeps all; score_threshold keeps the scores strictly above it. The keypoints
+        # stay in raster order. TestDiskKeypointSelection pins the count above score_threshold and the ties at the cut.
         disk = self._disk([(13, 21, 2.0), (50, 9, 1.5), (60, 33, 1.0)], device, dtype)
         image = torch.rand(1, 3, 48, 80, device=device, dtype=dtype)
         kept = {}
-        for kwargs in ({}, {"n": 1}, {"n": 2}, {"score_threshold": 1.0}, {"score_threshold": 1.5}):
+        for kwargs in ({}, {"n": 1}, {"n": 2}, {"n": 3}, {"score_threshold": 1.0}, {"score_threshold": 1.5}):
             (feats,) = disk(image, **kwargs)
             kept[str(kwargs)] = feats.detection_scores.tolist()
         assert kept == {
             "{}": [1.5, 2.0, 1.0],
             "{'n': 1}": [2.0],
             "{'n': 2}": [1.5, 2.0],
+            "{'n': 3}": [1.5, 2.0, 1.0],
             "{'score_threshold': 1.0}": [1.5, 2.0],
             "{'score_threshold': 1.5}": [2.0],
         }
-
-    def test_wart_disk_n_drops_a_real_maximum_when_the_image_has_n_maxima_or_fewer_5864(self, device, dtype):
-        # Defect #5864: forward keeps the scores strictly above the (n + 1)-th largest, and when the image has n maxima
-        # or fewer that cut-off is clamped to the weakest maximum, so the weakest real maximum is dropped too. With
-        # three maxima, n = 3 and n = 100 return two keypoints where n = None returns three.
-        disk = self._disk([(13, 21, 2.0), (50, 9, 1.5), (60, 33, 1.0)], device, dtype)
-        image = torch.rand(1, 3, 48, 80, device=device, dtype=dtype)
-        kept = {}
-        for n in (None, 3, 100):
-            (feats,) = disk(image, n=n)
-            kept[n] = feats.detection_scores.tolist()
-        assert kept == {None: [1.5, 2.0, 1.0], 3: [1.5, 2.0], 100: [1.5, 2.0]}
 
     @pytest.mark.parametrize("model", ["DISK", "ALIKED", "XFeat"])
     def test_convention_learned_detectors_keep_strict_maxima_whose_window_fits_in_the_image(self, device, dtype, model):

@@ -772,34 +772,31 @@ class ALIKED(nn.Module):
           image is replicate-padded around its centre to multiples of 32 and the maps are cropped back, so the padding
           does not move the keypoints.
         - :meth:`forward` returns one :class:`ALIKEDFeatures` per image. Its keypoints are sub-pixel ``(x, y)`` in the
-          pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`, in the image's dtype: a strict maximum of
-          the score map in its ``2 * nms_radius + 1`` window (see the note), at least ``nms_radius`` pixels from the
+          pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
+          (see :ref:`Local features <local-features-conventions>`), in the image's dtype: a strict maximum of the
+          score map in its ``2 * nms_radius + 1`` window (see the note), at least ``nms_radius`` pixels from the
           border, moved by a soft-argmax over that window. Its score is the score map read bilinearly there, and the
           descriptors are L2-normalised.
         - With ``detection_threshold > 0`` (threshold mode), the maxima strictly above it are kept, at most
-          ``max_num_keypoints`` of them, and at most 20000 for a non-positive ``max_num_keypoints``. An image alone
-          with no maximum above the threshold keeps the maxima above its mean score instead; in a batch, see the
-          known defects. With ``detection_threshold <= 0`` and ``max_num_keypoints > 0`` (top-k mode), the
-          ``max_num_keypoints`` strongest maxima are kept; with both ``<= 0``, the maxima above the image's mean
-          score.
+          ``max_num_keypoints`` of them, and at most 20000 for a non-positive ``max_num_keypoints``. An image with no
+          maximum above the threshold keeps the maxima above its own mean score instead, whatever the rest of the
+          batch. With ``detection_threshold <= 0`` and ``max_num_keypoints > 0`` (top-k mode), the
+          ``max_num_keypoints`` strongest maxima are kept, or all of them when there are fewer; with both ``<= 0``,
+          the maxima above the image's mean score.
         - ``image_size`` holds the valid ``(W, H)`` of each image of a batch padded at the bottom and right to a
           common size: maxima closer than ``nms_radius`` pixels to that image's last valid row or column are dropped.
         - :meth:`forward_laf` returns padded tensors like :class:`~kornia.feature.LocalFeature`, but ``N`` is the
           largest keypoint count in the batch and the responses are :math:`(B, N, 1)`. Its ``mask`` multiplies the
           score map, and it takes no ``image_size``.
-        - Known defects: in top-k mode, ``max_num_keypoints`` keypoints come back even when the score map has fewer
-          maxima; the rest are non-maxima placed where :func:`torch.topk` breaks ties, and no score tells them apart
-          (`#5862 <https://github.com/kornia/kornia/issues/5862>`_). In threshold mode, the fallback to the mean
-          applies only when no image of the batch has a maximum above the threshold, so an image's keypoints depend on
-          the rest of the batch (`#5865 <https://github.com/kornia/kornia/issues/5865>`_). On CPU, float16 and
-          bfloat16 scores and descriptors are sampled with torch's half-precision ``grid_sample``, which can return
-          wrong values, NaN or overflow (`#5810 <https://github.com/kornia/kornia/issues/5810>`_).
+        - Known defects: on CPU, float16 and bfloat16 scores and descriptors are sampled with torch's half-precision
+          ``grid_sample``, which can return wrong values, NaN or overflow
+          (`#5810 <https://github.com/kornia/kornia/issues/5810>`_).
 
     Args:
         model_name: backbone configuration, one of
             ``'aliked-t16'``, ``'aliked-n16'``, ``'aliked-n16rot'``, ``'aliked-n32'``.
-        max_num_keypoints: the keypoint budget: a cap in threshold mode, the count in top-k mode; see the
-            Convention block.
+        max_num_keypoints: the keypoint budget, a cap on the number of maxima kept in threshold mode and in top-k
+            mode; see the Convention block.
         detection_threshold: a positive value selects threshold mode and is the score a maximum must exceed; zero or
             a negative value selects top-k mode when ``max_num_keypoints`` is positive. See the Convention block.
         nms_radius: NMS radius (kernel size ``= 2 * nms_radius + 1``). The suppression keeps strict local maxima
@@ -812,9 +809,12 @@ class ALIKED(nn.Module):
         ``simple_nms`` also keeps tied maxima, and in two further rounds it adds the positions that become the
         maximum of their window once the windows around the maxima already kept are zeroed. Those positions lie on
         the flank of a stronger peak and are not local maxima of the score map. kornia therefore returns a subset
-        of the reference keypoints. With the pretrained ``aliked-n16`` it returns 1363 of the reference's 1514 on
-        Oxford graf img1, and each of the 151 left out has a higher score in its window. The single pass is also
-        faster on CPU than the reference's three rounds.
+        of the reference keypoints. With the pretrained ``aliked-n16`` it returns up to 10 % fewer keypoints than the
+        reference on the Oxford img1 images, and each one left out has a higher score in its window. The keypoint
+        count departs from both as well: their top-k mode fills ``top_k`` slots with positions that are not maxima
+        when the score map has fewer maxima, and their threshold mode falls back to the mean score only when no image
+        of the batch has a maximum above the threshold. kornia returns maxima only and decides the fallback for each
+        image, so an image's keypoints do not depend on the rest of the batch.
 
     Example:
         >>> aliked = ALIKED.from_pretrained('aliked-n16')  # doctest: +SKIP
@@ -983,9 +983,8 @@ class ALIKED(nn.Module):
         covariance, so the axes of the frame are its principal axes, and
         ``det A > 0`` (the frame is never mirrored). The frame describes how
         sharply the score map peaks, not an image structure. Its scale
-        (:func:`~kornia.feature.get_laf_scale`) is about a pixel or less: 0.14
-        to 1.25 px, median 0.62 px, on Oxford graf img1 with the pretrained
-        ``aliked-n16``. That is much smaller than the region the descriptor
+        (:func:`~kornia.feature.get_laf_scale`) is about a pixel or less with
+        the pretrained ``aliked-n16``. That is much smaller than the region the descriptor
         samples, so rescale the frames, for example with
         :func:`~kornia.feature.scale_laf`, before using them as a region size.
 

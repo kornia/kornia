@@ -252,11 +252,13 @@ class LocalFeature(nn.Module):
         - ``forward`` runs the detector, multiplies the shape ``A`` of every LAF by ``scaling_coef``
           (:func:`~kornia.feature.scale_laf`) and describes the scaled LAFs. It returns ``(lafs, responses, descs)``
           with shapes :math:`(B, N, 2, 3)`, :math:`(B, N)` and :math:`(B, N, D)`: the scaled LAFs, in the frame of
-          :func:`~kornia.feature.laf_from_center_scale_ori`, the detector's responses and one descriptor per LAF.
-          ``scaling_coef`` leaves the centres and the responses unchanged.
-        - ``N`` comes from the detector. :class:`~kornia.feature.ScaleSpaceDetector`,
-          :class:`~kornia.feature.MultiResolutionDetector` and :class:`~kornia.feature.KeyNetDetector`, the detectors
-          of every preset, return ``num_features`` slots for every image, not the largest count in the batch.
+          :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`),
+          the detector's responses and one descriptor per LAF. ``scaling_coef`` leaves the centres and the responses
+          unchanged.
+        - ``N`` comes from the detector. The detectors of every preset (:class:`~kornia.feature.ScaleSpaceDetector`,
+          :class:`~kornia.feature.MultiResolutionDetector`, :class:`~kornia.feature.KeyNetDetector` and the dedicated
+          detector of ``SIFTFeatureScaleSpace(descriptor_backend="pyramid")``) return ``num_features`` slots for every
+          image, not the largest count in the batch.
         - A slot that the detector did not fill holds a zero LAF and a zero response, and all such slots of an image
           share one descriptor: with :class:`~kornia.feature.LAFDescriptor`, that of a patch sampled at the origin.
           :class:`LocalFeatureMatcher` drops these slots before matching. Drop them yourself before any other
@@ -264,10 +266,10 @@ class LocalFeature(nn.Module):
           :func:`~kornia.feature.match_fginn`, :func:`~kornia.feature.match_adalam` and
           :class:`~kornia.feature.LightGlueMatcher`, since identical descriptors match each other at zero distance and
           a mutual test does not reject a pair of them: keep the slots where :func:`~kornia.feature.laf_is_filled` is
-          true, ``descs[b][laf_is_filled(lafs)[b]]`` for image ``b``. Test the LAF, not the response: a signed
-          response can legitimately peak at exactly zero. Only the ratio tests in :func:`~kornia.feature.match_snn`
-          and :func:`~kornia.feature.match_smnn` reject padded slots on their own, because the second-nearest padded
-          descriptor is at the same zero distance.
+          true, ``descs[b][laf_is_filled(lafs)[b]]`` for image ``b``, rather than testing the response (see its
+          Convention block). The ratio tests of :func:`~kornia.feature.match_snn` and
+          :func:`~kornia.feature.match_smnn` do not replace this filtering: when the other image has exactly one
+          padded slot, the padded slots of the two images can match each other at zero distance.
 
     Args:
         detector: the detection module.
@@ -376,7 +378,7 @@ class SIFTFeature(_SIFTFeature):
           :class:`~kornia.feature.LightGlueMatcher` expects with ``"sift"``.
           :func:`~kornia.feature.convert_sift_descriptor_layout` converts between the two.
         - Known defects: ``descriptor_backend="pyramid"`` is less accurate than the patch backend on Oxford
-          homographies at 2048 features and slower on CPU at 1024 features
+          homographies at 2048 features, and not faster on CPU at 1024 features
           (`#5748 <https://github.com/kornia/kornia/issues/5748>`_).
     """
 
@@ -438,10 +440,11 @@ class SIFTFeatureScaleSpace(LocalFeature):
         - Both backends search 3-D DoG extrema and refine position and scale. Neither applies classical SIFT's contrast
           or Hessian edge rejection, and each assigns one orientation per detection unless ``upright=True``. The
           backend selects a different detector as well as different orientation and description stages, so the
-          detections differ between the backends as well as the descriptors; the feature budget is the same.
+          backends can return different detections as well as different descriptors; the feature budget is the same.
         - On both backends the LAF scale is 6 times the detection sigma, and ``responses`` is the absolute DoG, the
           same for a bright blob as for a dark one. The LAF centres are in the frame of
-          :func:`~kornia.feature.laf_from_center_scale_ori` on every octave.
+          :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`) on
+          every octave.
         - Descriptors come in kornia's SIFT layout; ``descriptor_layout="opencv"`` returns them in OpenCV's, which
           :class:`~kornia.feature.LightGlueMatcher` expects with ``"sift"``.
           :func:`~kornia.feature.convert_sift_descriptor_layout` converts between the two.

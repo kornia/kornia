@@ -541,11 +541,13 @@ class TestConventionsXFeat(BaseTester):
                 handle.remove()
             assert out["keypoints"].tolist() == [expected]
             assert out["descriptors"].shape == (1, 2, 64)
+            # the descriptors are the dense features of those cells, (j, i, 1, 0, ...), not normalised
+            assert out["descriptors"][0, :, :3].tolist() == [[float(j0), float(i0), 1.0], [float(j1), float(i1), 1.0]]
 
     def test_convention_xfeat_model_reads_the_channel_mean_through_an_instance_norm(self, device, dtype):
         # XFeatModel averages the channels and instance-normalises the result (model.py of verlab/accelerated_features
-        # e92685f), so any channel count is accepted and an affine change of the intensity range leaves the outputs
-        # unchanged, up to the norm's eps.
+        # e92685f), so any channel count is accepted and an affine change a x + b of the intensities with a > 0 leaves
+        # the outputs unchanged, up to the norm's eps.
         tol = {torch.float16: 2e-3, torch.bfloat16: 6e-3}.get(dtype, 1e-4)
         with torch.random.fork_rng(devices=[]):
             torch.manual_seed(0)

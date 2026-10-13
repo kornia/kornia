@@ -405,13 +405,18 @@ class TestConventionsSOLD2(BaseTester):
         # The detection threshold is raised above any probability, so that the line detector, which this pin does not
         # read, has no junctions of the random network to connect.
         model = SOLD2(pretrained=False, config=DetectorCfg(detection_thresh=2.0)).to(device, dtype)
+        image = torch.rand(2, 1, 64, 96, device=device, dtype=dtype)
         with torch.no_grad():
-            out = model(torch.rand(2, 1, 64, 96, device=device, dtype=dtype))
+            out = model(image)
+            raw = model.model(image)["descriptors"]
             with pytest.raises(ShapeError):
                 model(torch.rand(1, 3, 64, 96, device=device, dtype=dtype))
         assert out["junction_heatmap"].shape == (2, 64, 96)
         assert out["line_heatmap"].shape == (2, 64, 96)
         assert out["dense_desc"].shape == (2, 128, 16, 24)
+        # dense_desc is the descriptor head's output as it is, not normalised per position
+        assert torch.equal(out["dense_desc"], raw)
+        assert (raw.float().norm(dim=1) - 1.0).abs().max() > 0.1
         segments1 = torch.tensor([[[10.0, 10.0], [50.0, 90.0]], [[20.0, 70.0], [55.0, 20.0]]], device=device)
         segments2 = torch.cat([segments1 + 1.0, torch.tensor([[[5.0, 5.0], [5.0, 60.0]]], device=device)])
         maps = torch.rand(2, 1, 128, 16, 24, device=device)  # float32: torch 2.5.1 has no CPU half grid_sample
