@@ -40,10 +40,20 @@ class SOLD2_detector(nn.Module):
     This is based on the original code from the paper "SOLD²: Self-supervised
     Occlusion-aware Line Detector and Descriptor". See :cite:`SOLD22021` for more details.
 
+    Convention:
+        - The input is a grayscale image :math:`(B, 1, H, W)`, in :math:`[0, 1]` for the pretrained weights, with
+          ``H`` and ``W`` multiples of 8; other sizes raise an error or give heatmaps of another size.
+          ``junction_heatmap`` and ``line_heatmap`` are :math:`(B, H, W)`.
+        - ``line_segments`` holds one :math:`(N, 2, 2)` tensor per image: the two endpoints of each segment as
+          ``(row, col)`` in the pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`, so ``flip(-1)`` gives
+          ``(x, y)``. The endpoints of a segment, and the segments by their first endpoint, are in raster order: the
+          smaller row first or, on the same row, the smaller column, whichever junction scores higher.
+        - The endpoints are junction pixels. The default junction refinement (``use_junction_refinement`` of
+          ``LineDetectorCfg``) moves each of them by at most 1 pixel per axis, in 0.25 pixel steps.
+
     Args:
         config (DetectorCfg): Configuration object containing all parameters. None will load the default parameters,
-            which are tuned for images in the range 400~800 px. Using a dataclass ensures type safety and clearer
-            parameter management.
+            which are tuned for images in the range 400~800 px.
         pretrained (bool): If True, download and set pretrained weights to the model.
 
     Returns:

@@ -81,6 +81,10 @@ class ALIKEDFeatures:
     Since ALIKED detects a varying number of keypoints per image,
     ``ALIKEDFeatures`` is not batched.
 
+    Convention:
+        The keypoints, descriptors and scores that :class:`~kornia.feature.ALIKED` returns for one image; its
+        Convention block gives their frame and how many there are.
+
     Args:
         keypoints: pixel coordinates ``(N, 2)`` as ``[x, y]``.
         descriptors: L2-normalised descriptors ``(N, D)``.
@@ -762,12 +766,42 @@ class ALIKED(nn.Module):
 
     .. image:: _static/img/ALIKED.png
 
+    Convention:
+        - ``images`` are RGB in :math:`[0, 1]`, the range of the pretrained weights, and the network applies no
+          normalisation; a :math:`(B, 1, H, W)` image is repeated to three channels. Any ``H`` and ``W`` work: the
+          image is replicate-padded around its centre to multiples of 32 and the maps are cropped back, so the padding
+          does not move the keypoints.
+        - :meth:`forward` returns one :class:`ALIKEDFeatures` per image. Its keypoints are sub-pixel ``(x, y)`` in the
+          pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`, in the image's dtype: a strict maximum of
+          the score map in its ``2 * nms_radius + 1`` window (see the note), at least ``nms_radius`` pixels from the
+          border, moved by a soft-argmax over that window. Its score is the score map read bilinearly there, and the
+          descriptors are L2-normalised.
+        - With ``detection_threshold > 0`` (threshold mode), the maxima strictly above it are kept, at most
+          ``max_num_keypoints`` of them, and at most 20000 for a non-positive ``max_num_keypoints``. An image alone
+          with no maximum above the threshold keeps the maxima above its mean score instead; in a batch, see the
+          known defects. With ``detection_threshold <= 0`` and ``max_num_keypoints > 0`` (top-k mode), the
+          ``max_num_keypoints`` strongest maxima are kept; with both ``<= 0``, the maxima above the image's mean
+          score.
+        - ``image_size`` holds the valid ``(W, H)`` of each image of a batch padded at the bottom and right to a
+          common size: maxima closer than ``nms_radius`` pixels to that image's last valid row or column are dropped.
+        - :meth:`forward_laf` returns padded tensors like :class:`~kornia.feature.LocalFeature`, but ``N`` is the
+          largest keypoint count in the batch and the responses are :math:`(B, N, 1)`. Its ``mask`` multiplies the
+          score map, and it takes no ``image_size``.
+        - Known defects: in top-k mode, ``max_num_keypoints`` keypoints come back even when the score map has fewer
+          maxima; the rest are non-maxima placed where :func:`torch.topk` breaks ties, and no score tells them apart
+          (`#5862 <https://github.com/kornia/kornia/issues/5862>`_). In threshold mode, the fallback to the mean
+          applies only when no image of the batch has a maximum above the threshold, so an image's keypoints depend on
+          the rest of the batch (`#5865 <https://github.com/kornia/kornia/issues/5865>`_). On CPU, float16 and
+          bfloat16 scores and descriptors are sampled with torch's half-precision ``grid_sample``, which can return
+          wrong values, NaN or overflow (`#5810 <https://github.com/kornia/kornia/issues/5810>`_).
+
     Args:
         model_name: backbone configuration, one of
             ``'aliked-t16'``, ``'aliked-n16'``, ``'aliked-n16rot'``, ``'aliked-n32'``.
-        max_num_keypoints: maximum number of keypoints to detect.
-            ``-1`` means no limit (threshold-based mode).
-        detection_threshold: minimum detection score in threshold mode.
+        max_num_keypoints: the keypoint budget: a cap in threshold mode, the count in top-k mode; see the
+            Convention block.
+        detection_threshold: a positive value selects threshold mode and is the score a maximum must exceed; zero or
+            a negative value selects top-k mode when ``max_num_keypoints`` is positive. See the Convention block.
         nms_radius: NMS radius (kernel size ``= 2 * nms_radius + 1``). The suppression keeps strict local maxima
             only; see the note below.
 

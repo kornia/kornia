@@ -280,3 +280,88 @@ class TestDeDoDe:
         assert keypoints.shape == (shape[0], n, 2)
         assert scores.shape == (shape[0], n)
         assert descriptions.shape == (shape[0], n, 256)
+
+
+class _FixedMap(torch.nn.Module):
+    """A DeDoDe network stand-in that returns ``fn(images)`` and records its input."""
+
+    def __init__(self, fn):
+        super().__init__()
+        self.fn = fn
+        self.seen = []
+
+    def forward(self, images):
+        self.seen.append(images)
+        return self.fn(images)
+
+
+class TestConventionsDeDoDe(BaseTester):
+    @staticmethod
+    def _model(monkeypatch, peaks):
+        # DeDoDe with its networks replaced (no VGG is built, nothing is downloaded): the detector returns logits -20
+        # with the given peaks (x, y, logit), the descriptor a two-channel map (column, row), so a description names
+        # the pixel it was read at.
+        def detector(images):
+            b, _, h, w = images.shape
+            logits = torch.full((b, 1, h, w), -20.0, device=images.device, dtype=images.dtype)
+            for x, y, logit in peaks:
+                if y < h and x < w:
+                    logits[:, 0, y, x] = logit
+            return logits
+
+        def descriptor(images):
+            b, _, h, w = images.shape
+            yy, xx = torch.meshgrid(
+                torch.arange(h, device=images.device), torch.arange(w, device=images.device), indexing="ij"
+            )
+            return torch.stack([xx, yy])[None].expand(b, 2, h, w).to(images.dtype)
+
+        monkeypatch.setattr("kornia.feature.dedode.dedode.get_detector", lambda *a, **k: _FixedMap(detector))
+        monkeypatch.setattr("kornia.feature.dedode.dedode.get_descriptor", lambda *a, **k: _FixedMap(descriptor))
+        return DeDoDe(detector_model="L", descriptor_model="B")
+
+    def test_convention_dedode_forward_returns_edge_aligned_pixels_and_detect_normalised_ones(
+        self, device, dtype, monkeypatch
+    ):
+        # Logit peaks at pixels (60, 40) and (21, 13) of a 56 x 84 image. forward returns pixel i as i + 0.5 (subtract
+        # 0.5 for kornia's frame), detect returns (2 i + 1) / W - 1 in [-1, 1], and the description is read at pixel i
+        # itself; keypoints come sorted by score, N = min(n, H W) with no threshold or padding. The grid and its pixel
+        # conversion are the formulas of Parskatt/DeDoDe 6d15618 (utils.get_grid, to_pixel_coords).
+        peaks = [(21, 13, 18.0), (60, 40, 20.0)]
+        pixels = torch.tensor([[[60.0, 40.0], [21.0, 13.0]]], device=device)
+        for h, w, peaks_i, image_pixels in (
+            (56, 84, peaks, pixels),
+            (84, 56, [(y, x, v) for x, y, v in peaks], pixels.flip(-1)),  # relabelling: transpose
+        ):
+            model = self._model(monkeypatch, peaks_i).to(device, dtype)
+            image = torch.rand(1, 3, h, w, device=device, dtype=dtype)
+            keypoints, scores, descriptions = model(image, n=2)
+            normalised, _ = model.detect(image, n=2)
+            self.assert_close(keypoints.float(), image_pixels + 0.5)
+            size = torch.tensor([w, h], device=device)
+            self.assert_close(normalised.float(), (2.0 * image_pixels + 1.0) / size - 1.0)
+            self.assert_close(descriptions.float(), image_pixels)
+            assert scores[0, 0] > scores[0, 1]
+        keypoints, scores, descriptions = model(torch.rand(2, 3, 14, 28, device=device, dtype=dtype), n=1000)
+        assert keypoints.shape == (2, 392, 2)
+        assert scores.shape == (2, 392)
+        assert descriptions.shape == (2, 392, 2)
+
+    def test_convention_dedode_takes_rgb_in_the_unit_range_and_imagenet_normalises_it(self, device, dtype, monkeypatch):
+        # forward, detect and describe feed the networks (x - mean) / std with ImageNet's mean (0.485, 0.456, 0.406) and
+        # std (0.229, 0.224, 0.225), the normalisation the pretrained weights expect (Parskatt/DeDoDe's image loader);
+        # apply_imagenet_normalization=False feeds the input as given.
+        model = self._model(monkeypatch, [(21, 13, 18.0), (60, 40, 20.0)]).to(device, dtype)
+        image = torch.rand(1, 3, 56, 84, device=device, dtype=dtype)
+        mean = torch.tensor([0.485, 0.456, 0.406], device=device, dtype=dtype).view(1, 3, 1, 1)
+        std = torch.tensor([0.229, 0.224, 0.225], device=device, dtype=dtype).view(1, 3, 1, 1)
+        model(image, n=2)
+        model.detect(image, n=2)
+        model.describe(image)
+        model(image, n=2, apply_imagenet_normalization=False)
+        seen = model.detector.seen + model.descriptor.seen
+        assert len(seen) == 6
+        for net in (model.detector, model.descriptor):
+            for normalised in net.seen[:2]:
+                self.assert_close(normalised, (image - mean) / std)
+            self.assert_close(net.seen[2], image, rtol=0.0, atol=0.0)

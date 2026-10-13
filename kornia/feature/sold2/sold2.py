@@ -43,6 +43,17 @@ class SOLD2(nn.Module):
     This is based on the original code from the paper "SOLD²: Self-supervised
     Occlusion-aware Line Detector and Descriptor". See :cite:`SOLD22021` for more details.
 
+    Convention:
+        - :meth:`forward` takes the input and returns the heatmaps and the ``(row, col)`` line segments of
+          :class:`~kornia.feature.SOLD2_detector`, whose Convention block gives their frame and order, and also
+          ``dense_desc``, :math:`(B, 128, H / 4, W / 4)`, which is not normalized.
+        - ``match`` takes segments as :meth:`forward` returns them and the descriptor map of one image each. It
+          returns an int64 tensor :math:`(N_1,)`: for each segment of ``line_seg1``, the index of its match in
+          ``line_seg2``, or ``-1``.
+        - Known defects: on CPU, ``match`` samples float16 and bfloat16 descriptor maps with torch's
+          half-precision ``grid_sample``, which can return wrong values, NaN or overflow
+          (`#5810 <https://github.com/kornia/kornia/issues/5810>`_).
+
     Args:
         config: :class:`~kornia.feature.sold2.structures.DetectorCfg`, or a dict of its fields, specifying
             parameters. None will load the default parameters, which are tuned for images in the range 400~800 px.

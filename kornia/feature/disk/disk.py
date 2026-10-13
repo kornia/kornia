@@ -42,11 +42,25 @@ urls: dict[str, list[str]] = {
 
 
 class DISK(nn.Module):
-    r"""nn.Module which detects and described local features in an image using the DISK method.
+    r"""nn.Module which detects and describes local features in an image using the DISK method.
 
     See :cite:`tyszkiewicz2020disk` for details.
 
     .. image:: _static/img/disk_outdoor_depth.jpg
+
+    Convention:
+        - ``images`` are RGB, :math:`(B, 3, H, W)`, which the U-Net sees as given, without normalisation. ``H`` and
+          ``W`` must be multiples of 16, unless ``pad_if_not_divisible=True`` zero-pads the bottom and right, in which
+          case the maps are cropped back to the image before the suppression and no keypoint lies in the padding.
+        - Each image gives a :class:`DISKFeatures`. Keypoints are the integer ``(x, y)`` pixels of the strict heatmap
+          maxima (see the note), in the pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`, listed in
+          raster order rather than by score, in the dtype of the network's output. ``detection_scores`` are the
+          heatmap values there, and each descriptor is the dense descriptor at the keypoint's pixel, L2-normalised;
+          :meth:`heatmap_and_dense_descriptors` returns the dense descriptors without normalisation.
+        - ``score_threshold`` keeps the scores strictly above it, and ``n`` the ``n`` strongest of an image with more
+          than ``n`` maxima.
+        - Known defects: when an image has ``n`` maxima or fewer, ``n`` drops the weakest real maximum as well, so it
+          returns fewer keypoints than ``n=None`` (`#5864 <https://github.com/kornia/kornia/issues/5864>`_).
 
     Args:
         desc_dim: The dimension of the descriptor.
@@ -124,9 +138,10 @@ class DISK(nn.Module):
                image with ``n`` such maxima or fewer keeps all of them; with more, its ``n`` strongest, where maxima
                tied at the ``n``-th score are taken in raster order. If None, all keypoints are returned.
             window_size: The size of the non-maxima suppression window used to filter detections.
-            score_threshold: The minimum score a detection must have to be returned.
+            score_threshold: Detections must score strictly above it to be returned.
                              See :py:class:`DISKFeatures` for details.
-            pad_if_not_divisible: if True, the non-16 divisible input is zero-padded to the closest 16-multiply
+            pad_if_not_divisible: if True, an input whose height or width is not a multiple of 16 is zero-padded at
+                the bottom and right to the next multiple of 16.
 
         Returns:
             A list of length :math:`B` containing the detected features.

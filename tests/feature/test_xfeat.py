@@ -15,13 +15,21 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
 from kornia.feature.lightglue import LightGlue
 from kornia.feature.xfeat import InterpolateSparse2d, XFeat, XFeatModel
 
-from testing.base import BaseTester, supports_bicubic_2d_grid_sample, supports_bilinear_2d_grid_sample
+from testing.base import (
+    BaseTester,
+    supports_bicubic_2d_grid_sample,
+    supports_bilinear_2d_grid_sample,
+    supports_nearest_2d_grid_sample,
+    supports_replicate_padding,
+)
 
 # ---------------------------------------------------------------------------
 # XFeatModel backbone tests
@@ -445,3 +453,183 @@ def test_lighterglue_reference_matches(device, data):
     # NN matching in joint (x0,y0,x1,y1) space with max L2 distance 2.0
     frac = _nn_match_fraction(ref_pairs, comp_pairs, max_dist=2.0)
     assert frac > 0.95, f"Only {frac:.1%} of reference matches reproduced within joint distance 2.0 px"
+
+
+class TestConventionsXFeat(BaseTester):
+    @staticmethod
+    def _net_outputs(peaks, h, w, reliability=0.5):
+        # What XFeatModel returns for an h x w (resized) image, replaced through a forward hook: keypoint logits with
+        # the dustbin (channel 64) at 10 and the given peaks (x, y, logit) in channel (y % 8) * 8 + x % 8 of cell
+        # (y // 8, x // 8), a constant reliability map, and dense features (column, row, 1, 0, ...) per cell.
+        logits = torch.zeros(1, 65, h // 8, w // 8)
+        logits[0, 64] = 10.0
+        for x, y, logit in peaks:
+            logits[0, (y % 8) * 8 + x % 8, y // 8, x // 8] = logit
+        yy, xx = torch.meshgrid(torch.arange(h // 8.0), torch.arange(w // 8.0), indexing="ij")
+        feats = torch.zeros(1, 64, h // 8, w // 8)
+        feats[0, 0], feats[0, 1], feats[0, 2] = xx, yy, torch.ones_like(xx)
+        return feats, logits, torch.full((1, 1, h // 8, w // 8), reliability)
+
+    def _detect(self, image, outputs, **kwargs):
+        # detectAndCompute samples the descriptors bicubically, in float32 whatever the input dtype
+        if not supports_bicubic_2d_grid_sample(image.device, torch.float32):
+            pytest.skip("This device does not support bicubic interpolation for 2D grid_sample")
+        xfeat = XFeat(**kwargs).to(image.device).eval()
+        seen = []
+
+        def hook(module, inputs, output):
+            seen.append(inputs[0])
+            return tuple(t.to(image.device) for t in outputs)
+
+        handle = xfeat.net.register_forward_hook(hook)
+        try:
+            (out,) = xfeat.detectAndCompute(image)
+        finally:
+            handle.remove()
+        return out, seen[0]
+
+    def test_convention_xfeat_keypoints_are_pixels_of_the_resized_grid_times_the_resize_ratio(self, device, dtype):
+        # detectAndCompute resizes to (32 floor(H / 32), 32 floor(W / 32)), takes integer heatmap pixels i there and
+        # reports i * (W / W', H / H') (the formula of verlab/accelerated_features e92685f): kornia's pixel frame when H
+        # and W are multiples of 32. The score is the keypoint heatmap value times the reliability, keypoints come
+        # sorted by it, and outputs are float32 whatever the input dtype. Heatmap value of a peak with logit v:
+        # exp(v) / (exp(v) + exp(10) + 63), the softmax over the 65 channels.
+        peaks = [(22, 13, 11.0), (70, 41, 12.0)]  # in-cell offsets (6, 5) and (6, 1): x % 8 != y % 8
+        heat = [math.exp(v) / (math.exp(v) + math.exp(10.0) + 63.0) for _, _, v in peaks]
+        expected_scores = torch.tensor([0.5 * heat[1], 0.5 * heat[0]], device=device)  # the stronger, later in raster
+        for h, w, peaks_i, expected in (
+            (64, 96, peaks, [[70.0, 41.0], [22.0, 13.0]]),
+            (96, 64, [(y, x, v) for x, y, v in peaks], [[41.0, 70.0], [13.0, 22.0]]),  # relabelling: transpose
+        ):
+            image = torch.rand(1, 3, h, w, device=device, dtype=dtype)
+            out, seen = self._detect(image, self._net_outputs(peaks_i, h, w))
+            assert seen.shape == (1, 3, h, w)
+            assert out["keypoints"].dtype == out["scores"].dtype == out["descriptors"].dtype == torch.float32
+            assert out["keypoints"].tolist() == expected
+            self.assert_close(out["scores"], expected_scores)
+            self.assert_close(out["descriptors"].norm(dim=-1), torch.ones(2, device=device))
+        # detection_threshold bounds the heatmap value (0.8805 and 0.7305 here), not the score (half of it)
+        image = torch.rand(1, 3, 64, 96, device=device, dtype=dtype)
+        for threshold, expected in ((0.5, [[70.0, 41.0], [22.0, 13.0]]), (0.8, [[70.0, 41.0]])):
+            out, _ = self._detect(image, self._net_outputs(peaks, 64, 96), detection_threshold=threshold)
+            assert out["keypoints"].tolist() == expected
+        # 100 x 150 is resized to 96 x 128: resized pixel (22, 13) is reported at (22 * 150 / 128, 13 * 100 / 96); its
+        # centre in the input's pixel frame would be (22.5 * 150 / 128 - 0.5, 13.5 * 100 / 96 - 0.5).
+        image = torch.rand(1, 3, 100, 150, device=device, dtype=dtype)
+        out, seen = self._detect(image, self._net_outputs([(22, 13, 12.0)], 96, 128))
+        assert seen.shape == (1, 3, 96, 128)
+        expected = torch.tensor([[22 * 150 / 128, 13 * 100 / 96]], device=device)
+        self.assert_close(out["keypoints"], expected)
+
+    def test_convention_xfeat_dense_keypoints_are_the_top_left_pixels_of_their_8_pixel_cells(self, device, dtype):
+        # detectAndComputeDense keeps the cells of highest reliability and reports cell (j, i) at (8 j, 8 i) times the
+        # resize ratio: the cell's top-left pixel, not its centre (8 j + 3.5, 8 i + 3.5); the formula is create_xy * 8
+        # of verlab/accelerated_features e92685f. Cells (2, 1) and (8, 5) of a 64 x 96 image.
+        xfeat = XFeat().to(device).eval()
+        for h, w, cells, expected in (
+            (64, 96, [(2, 1), (8, 5)], [[16.0, 8.0], [64.0, 40.0]]),
+            (96, 64, [(1, 2), (5, 8)], [[8.0, 16.0], [40.0, 64.0]]),  # relabelling: transpose
+        ):
+            feats, logits, reliability = self._net_outputs([], h, w, reliability=0.1)
+            (j0, i0), (j1, i1) = cells
+            reliability[0, 0, i0, j0], reliability[0, 0, i1, j1] = 0.9, 0.8
+            outputs = tuple(t.to(device) for t in (feats, logits, reliability))
+            handle = xfeat.net.register_forward_hook(lambda m, i, o, outputs=outputs: outputs)
+            try:
+                out = xfeat.detectAndComputeDense(torch.rand(1, 3, h, w, device=device, dtype=dtype), 2, False)
+            finally:
+                handle.remove()
+            assert out["keypoints"].tolist() == [expected]
+            assert out["descriptors"].shape == (1, 2, 64)
+
+    def test_convention_xfeat_model_reads_the_channel_mean_through_an_instance_norm(self, device, dtype):
+        # XFeatModel averages the channels and instance-normalises the result (model.py of verlab/accelerated_features
+        # e92685f), so any channel count is accepted and an affine change of the intensity range leaves the outputs
+        # unchanged, up to the norm's eps.
+        tol = {torch.float16: 2e-3, torch.bfloat16: 6e-3}.get(dtype, 1e-4)
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(0)
+            model = XFeatModel().eval()
+            rgb = torch.rand(1, 3, 72, 104)
+        model = model.to(device, dtype)
+        rgb = rgb.to(device, dtype)
+        gray = rgb.mean(dim=1, keepdim=True)
+        with torch.no_grad():
+            reference = model(rgb)
+            for variant in (gray, gray.expand(1, 5, 72, 104), rgb.flip(1)):
+                for out, ref in zip(model(variant), reference):
+                    self.assert_close(out, ref, rtol=0.0, atol=1e-6 if tol == 1e-4 else tol)
+            # torch 2.5.1's CPU float16 instance norm overflows on a [0, 255] image, so float16 scales by 16 instead
+            scale = 16.0 if dtype == torch.float16 else 255.0
+            for variant in (2.0 * rgb + 1.0, scale * rgb):
+                for out, ref in zip(model(variant), reference):
+                    self.assert_close(out, ref, rtol=0.0, atol=tol)
+            # not every change is invisible: squaring the image moves the keypoint logits
+            assert (model(rgb**2)[1] - reference[1]).abs().max() > 0.02
+
+    @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
+    def test_convention_interpolate_sparse2d_reads_position_p_at_map_coordinate_p_times_map_size_over_size_minus_one(
+        self, device, dtype, mode
+    ):
+        # pos (x, y) on an H x W image reads the h x w map at (x * w / (W - 1) - 0.5, y * h / (H - 1) - 0.5) in the
+        # map's pixel frame: normgrid's 2 p / (W - 1) - 1 sampled with align_corners=False (the formula of
+        # verlab/accelerated_features e92685f, InterpolateSparse2d). align_corners is stored and not used. A ramp map
+        # reads back that coordinate bilinearly, and its nearest pixel with mode="nearest"; the default bicubic kernel
+        # does not reproduce a ramp exactly, but reads at the same coordinate. Half precision is checked to one unit in
+        # the last place at the largest value read (below 8).
+        if mode == "bilinear" and not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("This device does not support bilinear interpolation for 2D grid_sample")
+        if mode == "nearest" and not supports_nearest_2d_grid_sample(device, dtype):
+            pytest.skip("This device does not support nearest interpolation for 2D grid_sample")
+        h, w, H, W = 8, 12, 64, 96
+        yy, xx = torch.meshgrid(
+            torch.arange(h, dtype=torch.float64), torch.arange(w, dtype=torch.float64), indexing="ij"
+        )
+        ramp = torch.stack([xx, yy])[None]  # channel 0: column, channel 1: row
+        pos = torch.tensor([[[22.0, 13.0], [60.0, 41.0], [33.25, 20.75]]], dtype=torch.float64)
+        read = pos * torch.tensor([w / (W - 1), h / (H - 1)], dtype=torch.float64) - 0.5
+        # read[0] = [[2.278947, 1.150794], [7.078947, 4.706349], [3.7, 2.134921]]
+        expected = read if mode == "bilinear" else read.round()
+        tol = {torch.float16: 2.0**-8, torch.bfloat16: 2.0**-5}.get(dtype, 1e-4)
+        for align_corners in (False, True):
+            interp = InterpolateSparse2d(mode, align_corners=align_corners)
+            out = interp(ramp.to(device, dtype), pos.to(device, dtype), H, W)
+            self.assert_close(out.cpu().double(), expected, rtol=0.0, atol=tol)
+            # relabelling: the transposed map and swapped positions read the swapped coordinates
+            out_t = interp(ramp.flip(1).transpose(-1, -2).to(device, dtype), pos.flip(-1).to(device, dtype), W, H)
+            self.assert_close(out_t.cpu().double(), expected.flip(-1), rtol=0.0, atol=tol)
+
+    @pytest.mark.parametrize("sampler", ["InterpolateSparse2d", "ALIKED", "SOLD2"])
+    def test_wart_samplers_send_cpu_half_maps_to_the_half_grid_sample_5810(self, device, dtype, sampler, monkeypatch):
+        # torch's CPU float16 / bfloat16 grid_sample returns wrong values, NaN and overflow on sparse grids into larger
+        # maps (#5810), and torch 2.5.1 has no such kernel. XFeat's InterpolateSparse2d, ALIKED (DKD scores and SDDH
+        # descriptors) and SOLD2.match call it with the half map and grid directly;
+        # kornia.core.utils._torch_grid_sample, which the warps use, samples CPU half in float32 instead. The recorder
+        # below computes in float32 so that the pipeline runs on every torch.
+        if device.type != "cpu" or dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("the defect is in the CPU float16 / bfloat16 path")
+        if sampler == "ALIKED" and not supports_replicate_padding(device, dtype):
+            pytest.skip("ALIKED pads with replication, absent for this dtype")
+        from kornia.feature import ALIKED, SOLD2
+
+        grid_sample = torch.nn.functional.grid_sample
+        calls = []
+
+        def recorder(input, grid, *args, **kwargs):
+            calls.append((input.dtype, grid.dtype))
+            return grid_sample(input.float(), grid.float(), *args, **kwargs).to(input.dtype)
+
+        monkeypatch.setattr(torch.nn.functional, "grid_sample", recorder)
+        with torch.no_grad():
+            if sampler == "InterpolateSparse2d":
+                InterpolateSparse2d()(
+                    torch.rand(1, 8, 8, 12, dtype=dtype), torch.tensor([[[22.0, 13.0]]], dtype=dtype), 64, 96
+                )
+            elif sampler == "ALIKED":
+                ALIKED(model_name="aliked-t16").to(dtype=dtype).eval()(torch.rand(1, 3, 64, 96, dtype=dtype))
+            else:
+                segments = torch.tensor([[[10.0, 10.0], [50.0, 90.0]], [[20.0, 70.0], [55.0, 20.0]]])
+                maps = torch.rand(2, 1, 128, 24, 32, dtype=dtype)
+                SOLD2(pretrained=False).match(segments, segments + 1.0, maps[0], maps[1])
+        assert calls
+        assert set(calls) == {(dtype, dtype)}
