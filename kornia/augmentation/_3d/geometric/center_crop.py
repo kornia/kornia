@@ -102,7 +102,7 @@ class CenterCrop3D(GeometricAugmentationBase3D):
         elif isinstance(size, int):
             self.size = (size, size, size)
         else:
-            raise Exception(f"Invalid size type. Expected (int, tuple(int, int int). Got: {size}.")
+            raise TypeError(f"Invalid size type. Expected int or tuple[int, int, int]. Got: {type(size)}.")
         self.flags = {"align_corners": align_corners, "resample": Resample.get(resample)}
 
     def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:

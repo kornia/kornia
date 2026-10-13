@@ -100,10 +100,7 @@ class RandAugment(PolicyAugmentBase):
         if m <= 0 or m >= 30:
             raise ValueError(f"Expect `m` in (0, 30). Got {m}.")
 
-        if policy is None:
-            _policy = default_policy
-        else:
-            _policy = policy
+        _policy = default_policy if policy is None else policy
 
         # `rand_selector` samples without replacement, so more operations than there are
         # sub-policies cannot be honoured, and `n <= 0` silently applies nothing at all.

@@ -508,7 +508,10 @@ class RgbToRgba(nn.Module):
 
     def __init__(self, alpha_val: Union[float, torch.Tensor]) -> None:
         super().__init__()
-        self.alpha_val = alpha_val
+        if isinstance(alpha_val, torch.Tensor) and not isinstance(alpha_val, nn.Parameter):
+            self.register_buffer("alpha_val", alpha_val, persistent=False)
+        else:
+            self.alpha_val = alpha_val
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         """Convert an RGB tensor to RGBA.
@@ -556,7 +559,10 @@ class BgrToRgba(nn.Module):
 
     def __init__(self, alpha_val: Union[float, torch.Tensor]) -> None:
         super().__init__()
-        self.alpha_val = alpha_val
+        if isinstance(alpha_val, torch.Tensor) and not isinstance(alpha_val, nn.Parameter):
+            self.register_buffer("alpha_val", alpha_val, persistent=False)
+        else:
+            self.alpha_val = alpha_val
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         """Append this module's alpha channel to the input tensor.

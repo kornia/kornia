@@ -36,7 +36,9 @@ class AffineGenerator3D(RandomGeneratorBase):
     See the Convention block on :class:`~kornia.augmentation.RandomAffine3D`.
 
     Args:
-        degrees: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
+        degrees: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from. The three
+            slots are sampled independently and form one axis-angle vector, not per-axis Euler
+            rotations; see the Convention block on :class:`~kornia.augmentation.RandomAffine3D`.
             If degrees is a number, then yaw, pitch, roll will be generated from the range of (-degrees, +degrees).
             If degrees is a tuple of (min, max), then yaw, pitch, roll will be generated from the range of (min, max).
             If degrees is a list of floats [a, b, c], then yaw, pitch, roll will be generated from (-a, a), (-b, b)

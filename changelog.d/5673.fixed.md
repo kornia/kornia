@@ -1,0 +1,1 @@
+Accept channels-last and other strided heatmaps in convolutional soft-argmax and quadratic subpixel refinement, including strided precomputed NMS masks. Coordinates and responses match contiguous copies.

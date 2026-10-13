@@ -110,8 +110,8 @@ spec = importlib.util.spec_from_file_location("generate_export_support", "../gen
 generate_export_support = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(generate_export_support)
 
-# Pre-generate the ONNX / torch.compile / torch.export support page from the committed survey snapshot
-_export_support = generate_export_support.main()
+# Pre-generate the ONNX / torch.compile / torch.export survey page from the committed snapshot
+generate_export_support.main()
 
 
 def _public_operator_count() -> int:
@@ -169,8 +169,7 @@ def _landing_page_counts() -> dict[str, str]:
     package and from the model pages under ``docs/source/models/``. Each count names exactly the
     module the card it appears on links to. ``operators-floor`` is the library-wide total from
     :func:`_public_operator_count`, floored to the hundred below it so the page can say "1,000+"
-    and stay true between releases. The ``onnx-*`` entries come from the export-support survey
-    snapshot, counted per operator (supported when at least one probed configuration exports).
+    and stay true between releases.
     """
     with open("../../tests/api_surface.json", encoding="utf-8") as handle:
         surface = {name: len(names) for name, names in json.load(handle).items()}
@@ -189,13 +188,10 @@ def _landing_page_counts() -> dict[str, str]:
         "operators-floor": f"{operators // 100 * 100:,}",
         "dependents": f"{_adoption['repositories']:,}",
         "dependent-packages": f"{_adoption['packages']:,}",
-        "onnx-operators": str(_export_support["operators"]),
-        "onnx-exportable": str(_export_support["onnx_operators"]),
-        "onnx-share": f"{round(100 * _export_support['onnx_operators'] / _export_support['operators'])}%",
     }
 
 
-# Substitutions such as |count-geometry| and |count-onnx-share| for the landing and ONNX pages.
+# Substitutions such as |count-geometry| and |count-operators-floor| for the landing page.
 rst_epilog = "\n".join(f".. |count-{key}| replace:: {value}" for key, value in _landing_page_counts().items())
 
 # If extensions (or modules to document with autodoc) are in another directory,
@@ -302,10 +298,7 @@ html_baseurl = "https://kornia.readthedocs.io/en/latest/"
 
 # Git ref that the "view/edit source" links and the ``linkcode`` extension point at.
 rtd_version = os.environ.get("READTHEDOCS_VERSION")
-if rtd_version and rtd_version not in {"latest", "stable"}:
-    code_ref = rtd_version
-else:
-    code_ref = "main"
+code_ref = rtd_version if rtd_version and rtd_version not in {"latest", "stable"} else "main"
 
 # Changing sidebar title to Kornia
 html_title = "Kornia"

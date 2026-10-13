@@ -200,10 +200,7 @@ class Hourglass(nn.Module):
         low1 = F.max_pool2d(x, 2, stride=2)
         low1 = self.hg[n - 1][1](low1)  # type: ignore[index]
 
-        if n > 1:
-            low2 = self._hour_glass_forward(n - 1, low1)
-        else:
-            low2 = self.hg[n - 1][3](low1)  # type: ignore[index]
+        low2 = self._hour_glass_forward(n - 1, low1) if n > 1 else self.hg[n - 1][3](low1)  # type: ignore[index]
         low3 = self.hg[n - 1][2](low2)  # type: ignore[index]
         up2 = F.interpolate(low3, size=up1.shape[2:])
         return up1 + up2

@@ -126,7 +126,8 @@ def differences(actual: tuple[torch.Tensor, ...], reference: tuple[torch.Tensor,
     assert len(actual) == len(reference)
     stats = []
     for current, baseline in zip(actual, reference):
-        assert current.shape == baseline.shape and current.dtype == baseline.dtype
+        assert current.shape == baseline.shape
+        assert current.dtype == baseline.dtype
         delta = (current.double() - baseline.double()).abs()
         scale = baseline.double().abs().max().item()
         norm = baseline.double().norm().item()

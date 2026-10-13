@@ -179,3 +179,52 @@ class TestLovaszHingeLoss(BaseTester):
         op_module = kornia.losses.LovaszHingeLoss()
 
         self.assert_close(op(logits, labels), op_module(logits, labels))
+
+
+class TestConventionsLovaszHingeLoss(BaseTester):
+    """Pins for the batch reduction, value and target handling of :func:`lovasz_hinge_loss`."""
+
+    @staticmethod
+    def _logits_and_labels(device, dtype):
+        g = torch.Generator().manual_seed(0)
+        logits = torch.randn(2, 1, 4, 6, generator=g).to(device=device, dtype=dtype)
+        labels = torch.zeros(2, 4, 6, dtype=torch.long, device=device)
+        labels[0, 1:3, 1:3] = 1  # 4 foreground pixels in image 0, 15 in image 1
+        labels[1, 1:, 1:] = 1
+        return logits, labels
+
+    def test_convention_lovasz_hinge_loss_averages_per_image(self, device, dtype):
+        # One Lovász hinge per image, averaged over the batch (Berman's lovasz_hinge(per_image=True)); the batch
+        # flattened into one image (per_image=False) gives another value
+        logits, labels = self._logits_and_labels(device, dtype)
+        loss = kornia.losses.lovasz_hinge_loss
+        per_image = (loss(logits[:1], labels[:1]) + loss(logits[1:], labels[1:])) / 2
+        self.assert_close(loss(logits, labels), per_image)
+        flattened = loss(torch.cat([logits[0], logits[1]], -1)[None], torch.cat([labels[0], labels[1]], -1)[None])
+        assert (flattened - per_image).abs() > 0.02
+
+    def test_convention_lovasz_hinge_loss_unit_margin_logits_give_twice_the_jaccard_loss(self, device, dtype):
+        # The loss is the Lovász extension of the Jaccard loss at the hinge errors relu(1 - z (2t - 1)), not 1 - IoU:
+        # with logits of magnitude 1 every wrong pixel has error 2, so the loss is 2 (1 - IoU); confidently correct
+        # logits give 0
+        labels = torch.zeros(1, 4, 6, dtype=torch.long, device=device)
+        labels[0, 1:3, 1:5] = 1  # 8 foreground pixels
+        predicted = labels.clone()
+        predicted[0, 1, 1] = 0  # one false negative
+        predicted[0, 3, 4:] = 1  # two false positives
+        iou = (predicted & labels).sum() / (predicted | labels).sum()  # 7 / 10
+        logits = (2.0 * predicted - 1.0)[:, None].to(dtype)
+        loss = kornia.losses.lovasz_hinge_loss(logits, labels)
+        self.assert_close(loss, (2 * (1 - iou)).to(dtype))
+        confident = (10.0 * (2 * labels - 1))[:, None].to(dtype)
+        self.assert_close(kornia.losses.lovasz_hinge_loss(confident, labels), torch.zeros_like(loss))
+
+    def test_convention_lovasz_hinge_loss_does_not_validate_the_target(self, device, dtype):
+        # The target is not checked to be binary and there is no ignore_index: a label of 2 or -100 is accepted, and
+        # -100 (the siblings' ignore_index) enters the hinge as a large negative sign that can make the loss negative,
+        # as it does on this fixture
+        logits, labels = self._logits_and_labels(device, dtype)
+        labels[:, 0, :2] = 2
+        assert kornia.losses.lovasz_hinge_loss(logits, labels).isfinite()
+        labels[:, 0, :2] = -100
+        assert kornia.losses.lovasz_hinge_loss(logits, labels) < 0

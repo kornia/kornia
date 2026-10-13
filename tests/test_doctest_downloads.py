@@ -115,17 +115,18 @@ class TestPrimitivesStillExist:
         assert callable(getattr(module, attribute))
 
     def test_guard_covers_lightglue_downloader(self, monkeypatch, tmp_path) -> None:
-        # lightglue_onnx binds download_url_to_file at import time, so patching
-        # torch.hub alone would leave this path downloading.
+        # LightGlue calls the shared Kornia downloader, whose low-level transfer
+        # primitive is covered by the same guard as other pretrained weights.
         from kornia.feature.lightglue_onnx.utils.download import download_onnx_from_url
 
         seen: list[str] = []
         with monkeypatch.context() as m:
             install_download_guard(m.setattr, _record_and_raise(seen))
-            with pytest.raises(_Blocked):
+            with pytest.raises(RuntimeError) as exc_info:
                 download_onnx_from_url("http://example.com/model.onnx", model_dir=str(tmp_path))
 
         assert seen == ["http://example.com/model.onnx"]
+        assert isinstance(exc_info.value.__cause__, _Blocked)
 
     def test_guard_covers_kornia_core_downloader(self, monkeypatch, tmp_path) -> None:
         # kornia.core.download runs its own transfer rather than torch.hub's, so

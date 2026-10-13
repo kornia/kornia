@@ -16,6 +16,7 @@
 #
 
 import datetime
+import inspect
 import math
 import os
 import sys
@@ -61,6 +62,18 @@ def _array_to_float_image(array: Any) -> torch.Tensor:
 _PIL_ONE_CHANNEL_DTYPES = (torch.bool, torch.int8, torch.int16, torch.uint16, torch.int32, torch.uint32)
 
 
+def _rebuild_container(source: Any, items: List[Any]) -> Any:
+    """Rebuild a tuple or list output from converted elements.
+
+    A namedtuple takes its elements as separate arguments, so a plain ``type(source)(items)``
+    call would raise a ``TypeError`` for want of one argument per field: it is rebuilt with its
+    field-aware ``_make``. A plain tuple or list takes an iterable.
+    """
+    if hasattr(type(source), "_make"):
+        return type(source)._make(items)  # type: ignore[attr-defined]
+    return type(source)(items)
+
+
 def _to_uint8_image(image: torch.Tensor) -> torch.Tensor:
     """Convert a floating image in ``[0, 1]`` to ``uint8`` for display or an 8-bit file.
 
@@ -86,9 +99,13 @@ class ImageModuleMixIn:
     or :math:`(B, H, W, C)`, a PIL image or an image path becomes a :math:`(C, H, W)` or :math:`(B, C, H, W)` tensor.
     An integer image is scaled by the maximum of its dtype (``uint8`` by 255, ``uint16`` by 65535; a signed image keeps
     its negative values), a ``bool`` image becomes 0 and 1, and a floating image keeps its values. Tensors pass through
-    unchanged. ``output_type="numpy"`` returns channels-last arrays with the values of the output tensor, so a floating
-    output fed back in converts to the same tensor. ``output_type="pil"``, :meth:`show` and :meth:`save` clamp a
-    floating image to ``[0, 1]`` and round it to 8 bits on the CPU, and pass a ``uint8`` image through with its values.
+    unchanged. For an :class:`torch.nn.Module` with state, converted inputs use the device of its first parameter (or
+    first buffer when it has no parameters) and the dtype of its first floating parameter or buffer, falling back to
+    the default floating dtype when none exists. A module without state and a standalone mixin keep the CPU and
+    default floating dtype. ``output_type="numpy"`` returns
+    channels-last arrays with the values of the output tensor, so a floating output fed back in converts to the same
+    tensor. ``output_type="pil"``, :meth:`show` and :meth:`save` clamp a floating image to ``[0, 1]`` and round it to
+    8 bits on the CPU, and pass a ``uint8`` image through with its values.
     """
 
     _output_image: Any
@@ -103,7 +120,8 @@ class ImageModuleMixIn:
         """Convert input and output types for a function.
 
         Args:
-            input_names_to_handle: List of input names to convert.
+            input_names_to_handle: List of parameter names to convert. Module calls use the ``forward``
+                signature; a variadic parameter name selects all its values.
                 If None, convert every tensor, NumPy array and PIL image argument, and load a string as an image
                 path only if it is the first positional argument.
             output_type: Desired output type ('pt', 'numpy', or 'pil').
@@ -135,6 +153,8 @@ class ImageModuleMixIn:
         kwargs: dict[str, Any],
         input_names_to_handle: Optional[List[Any]],
         output_type: Literal["pt", "numpy", "pil"],
+        *,
+        signature_source: Optional[Callable[..., Any]] = None,
     ) -> Union[Any, List[Any]]:
         if input_names_to_handle is None:
             args = tuple(
@@ -146,13 +166,39 @@ class ImageModuleMixIn:
                 for k, v in kwargs.items()
             }
         else:
-            args = list(args)
-            for i, (arg, name) in enumerate(zip(args, func.__code__.co_varnames)):  # ty: ignore[unresolved-attribute]
-                if name in input_names_to_handle:
-                    args[i] = self.to_tensor(arg)  # type:ignore
-            for name, value in kwargs.items():
-                if name in input_names_to_handle:
-                    kwargs[name] = self.to_tensor(value)
+            signature = inspect.signature(func if signature_source is None else signature_source)
+            try:
+                bound = signature.bind(*args, **kwargs)
+            except TypeError:
+                # the arguments do not fit the signature: let the call raise its own error, which names the function
+                return func(*args, **kwargs)
+            for name, value in bound.arguments.items():
+                kind = signature.parameters[name].kind
+                if kind == inspect.Parameter.VAR_KEYWORD:
+                    bound.arguments[name] = {
+                        key: self.to_tensor(item)
+                        if name in input_names_to_handle or key in input_names_to_handle
+                        else item
+                        for key, item in value.items()
+                    }
+                elif name in input_names_to_handle:
+                    if kind == inspect.Parameter.VAR_POSITIONAL:
+                        bound.arguments[name] = tuple(self.to_tensor(item) for item in value)
+                    else:
+                        bound.arguments[name] = self.to_tensor(value)
+            # pass the converted values the way the caller did, positional or keyword, so hooks registered with
+            # ``with_kwargs=True`` see the same split as without ``input_names_to_handle``
+            var_keyword = next(
+                (p.name for p in signature.parameters.values() if p.kind == inspect.Parameter.VAR_KEYWORD), None
+            )
+            named = (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+            converted_kwargs: dict[str, Any] = {}
+            for key in kwargs:
+                if key in signature.parameters and signature.parameters[key].kind in named:
+                    converted_kwargs[key] = bound.arguments[key]
+                else:
+                    converted_kwargs[key] = bound.arguments[var_keyword][key]
+            args, kwargs = bound.args[: len(args)], converted_kwargs
 
         return func(*args, **kwargs)
 
@@ -164,29 +210,37 @@ class ImageModuleMixIn:
     def _convert_output(self, tensor_outputs: Any, output_type: str) -> Any:
         """Convert a forward output to ``output_type`` the way :meth:`convert_input_output` does.
 
+        A tuple or a list is converted element by element and keeps its container type, so a
+        one-element tuple stays a tuple. An output that is not a tensor, a tuple or a list (a dict,
+        ``None``, a Python scalar) is returned as is: the mixin's contract covers a single image
+        tensor, so there is nothing to convert (#5210).
+
         Args:
-            tensor_outputs: The forward output: a tensor, or a tuple whose elements are converted one by one.
+            tensor_outputs: The forward output: a tensor, or a tuple or list whose elements are
+                converted one by one.
             output_type: Desired output type ('pt', 'numpy', or 'pil').
 
         Returns:
-            The converted output, or a list of converted outputs for a tuple of several.
+            The converted output, or a container of converted outputs of the same type.
 
         """
-        if not isinstance(tensor_outputs, tuple):
-            tensor_outputs = (tensor_outputs,)
+        if not isinstance(tensor_outputs, (list, tuple)):
+            return self._convert_single_output(tensor_outputs, output_type)
 
-        outputs = []
-        for output in tensor_outputs:
-            if output_type == "pt":
-                outputs.append(output)
-            elif output_type == "numpy":
-                outputs.append(self.to_numpy(output))
-            elif output_type == "pil":
-                outputs.append(self.to_pil(output))
-            else:
-                raise ValueError("Output type not supported. Choose from 'pt', 'numpy', or 'pil'.")
+        converted = [self._convert_single_output(output, output_type) for output in tensor_outputs]
+        return _rebuild_container(tensor_outputs, converted)
 
-        return outputs if len(outputs) > 1 else outputs[0]
+    def _convert_single_output(self, output: Any, output_type: str) -> Any:
+        """Convert one forward output, passing containers and non-tensors through unchanged."""
+        if not isinstance(output, torch.Tensor):
+            return output
+        if output_type == "pt":
+            return output
+        if output_type == "numpy":
+            return self.to_numpy(output)
+        if output_type == "pil":
+            return self.to_pil(output)
+        raise ValueError("Output type not supported. Choose from 'pt', 'numpy', or 'pil'.")
 
     def _is_valid_arg(self, arg: Any) -> bool:
         """Check if the argument is a valid type for conversion.
@@ -207,9 +261,7 @@ class ImageModuleMixIn:
         # A PIL image exists only once PIL is imported: look the module up instead of importing it through the lazy
         # loader, which would raise on an install without the "image" extra for every non-image argument.
         pil_image = sys.modules.get("PIL.Image")
-        if pil_image is not None and isinstance(arg, pil_image.Image):
-            return True
-        return False
+        return pil_image is not None and isinstance(arg, pil_image.Image)
 
     def to_tensor(self, x: Any) -> torch.Tensor:
         """Convert input to tensor.
@@ -220,8 +272,9 @@ class ImageModuleMixIn:
         ``PA``) is converted to RGB, or RGBA when it has transparency, first. An integer image is divided by the maximum
         of its dtype (``uint8`` by 255, ``uint16`` by 65535, a PIL mode ``I`` image by the ``int32`` maximum); a signed
         image maps to ``[iinfo.min / iinfo.max, 1]``, so its negative values stay negative. A ``bool`` image becomes 0
-        and 1, and a floating image keeps its values; integer and ``bool`` images become the default floating dtype. A
-        tensor is returned unchanged.
+        and 1, and a floating image keeps its values; integer and ``bool`` images become the default floating dtype.
+        When this mixin belongs to a stateful :class:`torch.nn.Module`, the converted image is moved to the module's
+        device and first floating parameter or buffer dtype. A tensor is returned unchanged.
 
         Args:
             x: The input to convert.
@@ -233,16 +286,43 @@ class ImageModuleMixIn:
         if isinstance(x, str):
             from kornia.io import ImageLoadType, load_image  # pylint: disable=C0415
 
-            return _image_to_float(load_image(x, ImageLoadType.UNCHANGED))
-        if isinstance(x, torch.Tensor):
+            image = _image_to_float(load_image(x, ImageLoadType.UNCHANGED))
+        elif isinstance(x, torch.Tensor):
             return x
-        if isinstance(x, np.ndarray):  # type: ignore
-            return _array_to_float_image(x)
-        if isinstance(x, Image.Image):  # type: ignore
+        elif isinstance(x, np.ndarray):  # type: ignore
+            image = _array_to_float_image(x)
+        elif isinstance(x, Image.Image):  # type: ignore
             if x.mode in ("P", "PA"):  # palette indices are not intensities
                 x = x.convert("RGBA" if x.mode == "PA" or "transparency" in x.info else "RGB")
-            return _array_to_float_image(np.array(x))  # type: ignore
-        raise TypeError("Input type not supported")
+            image = _array_to_float_image(np.array(x))  # type: ignore
+        else:
+            raise TypeError("Input type not supported")
+        return self._to_module_device_dtype(image)
+
+    def _module_state_reference(self) -> Optional[torch.Tensor]:
+        """Return the module's first parameter, else its first buffer, or None for a stateless module or a mixin."""
+        if not isinstance(self, torch.nn.Module):
+            return None
+        first_parameter = next(self.parameters(), None)
+        return first_parameter if first_parameter is not None else next(self.buffers(), None)
+
+    def _to_module_device(self, data: torch.Tensor) -> torch.Tensor:
+        """Move a tensor converted from a non-tensor input to the module's device, keeping its dtype."""
+        reference = self._module_state_reference()
+        return data if reference is None else data.to(reference.device)
+
+    def _to_module_device_dtype(self, image: torch.Tensor) -> torch.Tensor:
+        reference = self._module_state_reference()
+        if reference is None or not isinstance(self, torch.nn.Module):
+            return image
+        floating_dtype = next(
+            (parameter.dtype for parameter in self.parameters() if parameter.is_floating_point()), None
+        )
+        if floating_dtype is None:
+            floating_dtype = next((buffer.dtype for buffer in self.buffers() if buffer.is_floating_point()), None)
+        if floating_dtype is None:
+            floating_dtype = torch.get_default_dtype()
+        return image.to(device=reference.device, dtype=floating_dtype)
 
     def to_numpy(self, x: Any) -> "np.array":  # type: ignore
         """Convert input to numpy array.
@@ -251,8 +331,9 @@ class ImageModuleMixIn:
         :math:`(B, H, W, C)` array with the same values, the layout :meth:`to_tensor` accepts, so a floating array
         converts back to the same tensor. A tensor of any other rank keeps its shape. Every 3-D or 4-D tensor is taken
         to be an image, so a non-image element of a tuple output, such as a :math:`(B, N, 4)` box tensor, is moved to
-        channels-last too; modules with several outputs are tracked in
-        `#5210 <https://github.com/kornia/kornia/issues/5210>`_.
+        channels-last too. :class:`~kornia.augmentation.container.AugmentationSequential` knows its outputs: it
+        converts its images and masks only, and rejects ``output_type="numpy"`` / ``"pil"`` when its data keys hold
+        boxes, keypoints or labels. A ``bfloat16`` tensor becomes a ``float32`` array, since NumPy has no ``bfloat16``.
 
         Args:
             x: The input to convert.
@@ -263,6 +344,8 @@ class ImageModuleMixIn:
         """
         if isinstance(x, torch.Tensor):
             x = x.detach().cpu()
+            if x.dtype == torch.bfloat16:
+                x = x.float()
             if x.dim() == 3:
                 x = x.permute(1, 2, 0)
             elif x.dim() == 4:
@@ -315,13 +398,16 @@ class ImageModuleMixIn:
         return Image.fromarray(image.permute(1, 2, 0).numpy())  # type: ignore
 
     def _detach_tensor(
-        self, output_image: Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]
-    ) -> Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]:
+        self, output_image: Union[torch.Tensor, List[Any], Tuple[Any, ...]]
+    ) -> Union[torch.Tensor, List[Any], Tuple[Any, ...]]:
         if isinstance(output_image, torch.Tensor):
             return output_image.detach()
-        if isinstance(output_image, list | tuple):
-            return type(output_image)([self._detach_tensor(out) for out in output_image])  # type: ignore
-        raise RuntimeError(f"Unexpected object {output_image} with a type of `{type(output_image)}`")
+        if isinstance(output_image, (list, tuple)):
+            return _rebuild_container(output_image, [self._detach_tensor(out) for out in output_image])
+        if isinstance(output_image, dict):
+            return {key: self._detach_tensor(value) for key, value in output_image.items()}
+        # ``None`` or a Python scalar: nothing to detach
+        return output_image
 
     def _store_output_image(self, output_image: Any, output_type: str) -> None:
         """Cache detached outputs on their device; ``.show()`` / ``.save()`` move them to CPU on use.
@@ -333,6 +419,19 @@ class ImageModuleMixIn:
             return
         self._output_image = self._detach_tensor(output_image) if output_type == "pt" else output_image
 
+    def _get_output_image(self) -> torch.Tensor:
+        output_image: Any = getattr(self, "_output_image", None)
+        if isinstance(output_image, tuple) and len(output_image) == 1 and isinstance(output_image[0], torch.Tensor):
+            # a one-element tuple output keeps its container (#5210): ``show()`` / ``save()`` render
+            # its sole tensor, the same image the call returned before the container was preserved
+            output_image = output_image[0]
+        if output_image is None:
+            raise ValueError("No pre-computed images found. Needs to execute first.")
+        if not isinstance(output_image, torch.Tensor) or output_image.ndim not in (3, 4):
+            shape = tuple(output_image.shape) if isinstance(output_image, torch.Tensor) else type(output_image).__name__
+            raise ValueError(f"Expected a 3D or 4D image tensor, got {shape}.")
+        return output_image
+
     def show(self, n_row: Optional[int] = None, backend: str = "pil", display: bool = True) -> Optional[Any]:
         """Return PIL images.
 
@@ -342,28 +441,22 @@ class ImageModuleMixIn:
             display: Whether or not to show the image.
 
         """
-        if self._output_image is None:
-            raise ValueError("No pre-computed images found. Needs to execute first.")
-        output_image = self._output_image
-        if isinstance(output_image, torch.Tensor):
-            output_image = output_image.detach().cpu()
+        output_image = self._get_output_image().detach().cpu()
 
         if len(output_image.shape) == 3:
             out_image = output_image
-        elif len(output_image.shape) == 4:
+        else:
             from kornia.image.utils import make_grid  # pylint: disable=C0415
 
             if n_row is None:
-                n_row = math.ceil(output_image.shape[0] ** 0.5)
+                n_row = max(1, math.ceil(output_image.shape[0] ** 0.5))
             out_image = make_grid(output_image, n_row, padding=2)
-        else:
-            raise ValueError
 
         if backend == "pil" and display:
-            Image.fromarray(_to_uint8_image(out_image).permute(1, 2, 0).squeeze().numpy()).show()  # type: ignore
+            self.to_pil(out_image).show()
             return None
         if backend == "pil":
-            return Image.fromarray(_to_uint8_image(out_image).permute(1, 2, 0).squeeze().numpy())  # type: ignore
+            return self.to_pil(out_image)
         raise ValueError(f"Unsupported backend `{backend}`.")
 
     def save(self, name: Optional[str] = None, n_row: Optional[int] = None) -> None:
@@ -374,21 +467,18 @@ class ImageModuleMixIn:
             n_row: Number of images displayed in each row of the grid.
 
         """
-        from kornia.image.utils import make_grid  # pylint: disable=C0415
-        from kornia.io import write_image  # pylint: disable=C0415
-
-        if self._output_image is None:
-            raise ValueError("No pre-computed images found. Needs to execute first.")
-        output_image = self._output_image
-        if isinstance(output_image, torch.Tensor):
-            output_image = output_image.detach().cpu()
+        output_image = self._get_output_image().detach().cpu()
 
         if name is None:
             name = f"Kornia-{datetime.datetime.now(tz=datetime.UTC).strftime('%Y%m%d%H%M%S')!s}.jpg"
         if len(output_image.shape) == 3:
             out_image = output_image
-        if len(output_image.shape) == 4:
+        else:
+            from kornia.image.utils import make_grid  # pylint: disable=C0415
+
             if n_row is None:
-                n_row = math.ceil(output_image.shape[0] ** 0.5)
+                n_row = max(1, math.ceil(output_image.shape[0] ** 0.5))
             out_image = make_grid(output_image, n_row, padding=2)
+        from kornia.io import write_image  # pylint: disable=C0415
+
         write_image(name, _to_uint8_image(out_image))

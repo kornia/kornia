@@ -19,6 +19,7 @@ import pytest
 import torch
 
 from kornia.feature.aliked import ALIKED, ALIKEDFeatures
+from kornia.feature.aliked.aliked import _affine_from_cov
 from kornia.feature.aliked.deform_conv2d import deform_conv2d
 
 from testing.base import BaseTester
@@ -437,3 +438,55 @@ class TestALIKEDForwardLAF(BaseTester):
             # det(A) should be non-zero (non-degenerate)
             dets = torch.det(A)
             assert (dets.abs() > 1e-6).all()
+
+    def test_affine_from_cov_is_not_mirrored_5730(self, device, dtype):
+        """The frame keeps the covariance ellipse (``A @ A.T == cov``) and is not mirrored (``det A > 0``).
+
+        ``torch.linalg.eigh`` returned an eigenvector matrix with determinant -1 for every one of these, on CPU and
+        MPS: the ascending eigenvalue order alone swaps the axes of ``diag(0.3, 0.1)``.
+        """
+        cov = torch.tensor(
+            [
+                [[2.0, 1.0], [1.0, 2.0]],
+                [[1.0, -0.5], [-0.5, 3.0]],
+                [[0.3, 0.0], [0.0, 0.1]],
+                [[0.5, 0.2], [0.2, 0.1]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        A = _affine_from_cov(cov)
+        self.assert_close(A @ A.transpose(-1, -2), cov)
+        det_a = A[:, 0, 0] * A[:, 1, 1] - A[:, 0, 1] * A[:, 1, 0]
+        det_cov = cov[:, 0, 0] * cov[:, 1, 1] - cov[:, 0, 1] * cov[:, 1, 0]
+        self.assert_close(det_a, det_cov.sqrt())
+
+    def test_frames_are_not_mirrored_5730(self, device, dtype):
+        """forward_laf frames are not mirrored and keep the sub-pixel ellipse of the soft-argmax weights.
+
+        Three peaks, each with a weaker neighbour to its right, below it, or diagonally. The expected ellipse
+        ``A @ A.T`` of the right-neighbour peak is ``main``'s before the fix, whose frame was
+        ``[[0, 0.45736], [0.11605, 0]]`` with determinant -0.05308; the one with the neighbour below is its
+        transpose.
+        """
+        s = torch.full((1, 1, 64, 96), 0.01, device=device, dtype=dtype)
+        s[0, 0, 40, 60], s[0, 0, 40, 61] = 0.8, 0.7
+        s[0, 0, 20, 30], s[0, 0, 21, 30] = 0.8, 0.7
+        s[0, 0, 20, 80], s[0, 0, 21, 81] = 0.8, 0.7
+        aliked = ALIKED(model_name="aliked-t16").to(device, dtype).eval()
+        hook = aliked.score_head.register_forward_hook(lambda m, i, o: torch.logit(s))
+        try:
+            with torch.no_grad():
+                lafs, _, _ = aliked.forward_laf(torch.rand(1, 3, 64, 96, device=device, dtype=dtype))
+        finally:
+            hook.remove()
+        assert lafs.shape == (1, 3, 2, 3)
+        order = torch.argsort(lafs[0, :, 0, 2] * 100 + lafs[0, :, 1, 2])  # by x, then y
+        A = lafs[0, order, :, :2]  # peaks at x = 30 (neighbour below), 60 (right), 80 (diagonal)
+        det = A[:, 0, 0] * A[:, 1, 1] - A[:, 0, 1] * A[:, 1, 0]
+        assert (det > 0).all(), det
+        ellipse_right = torch.tensor([[0.45736**2, 0.0], [0.0, 0.11605**2]], device=device, dtype=dtype)
+        self.assert_close(A[1] @ A[1].T, ellipse_right, low_tolerance=True)
+        self.assert_close(A[0] @ A[0].T, ellipse_right.flip(0, 1), low_tolerance=True)
+        self.assert_close(det[:2], torch.full_like(det[:2], 0.45736 * 0.11605), low_tolerance=True)
+        assert (det.sqrt() < 1.0).all()  # the documented scale: the spread of the weights, about a pixel or less

@@ -68,7 +68,7 @@ class TestRandomPerspectiveGen3D(RandomGeneratorBaseTests):
         ],
     )
     def test_invalid_param_combinations(self, depth, height, width, distortion_scale, device, dtype):
-        with pytest.raises(Exception):
+        with pytest.raises(AssertionError):
             PerspectiveGenerator3D(distortion_scale=distortion_scale.to(device=device, dtype=dtype))(
                 batch_shape=torch.Size((2, depth, height, width))
             )
@@ -299,7 +299,10 @@ class TestRandomAffineGen3D(RandomGeneratorBaseTests):
         if isinstance(shear, torch.Tensor):
             shear.to(dtype=dtype, device=device)
 
-        with pytest.raises(Exception):
+        with pytest.raises(
+            (AssertionError, TypeError, ValueError),
+            match=r"depth|height|width|[Dd]egrees|translate|scale",
+        ):
             AffineGenerator3D(degrees=degrees, translate=translate, scale=scale, shears=shear)(
                 batch_shape=torch.Size((2, depth, height, width))
             )
@@ -398,7 +401,7 @@ class TestRandomRotationGen3D(RandomGeneratorBaseTests):
         [(torch.tensor(-10)), (torch.tensor([-10])), (torch.tensor([[0, 30]])), (torch.tensor([[0, 30], [0, 30]]))],
     )
     def test_invalid_param_combinations(self, degrees, device, dtype):
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError, match=r"must be a positive number|Degrees must be"):
             RotationGenerator3D(degrees=degrees.to(device=device, dtype=dtype))(torch.Size((2,)))
 
     def test_random_gen(self, device, dtype):
@@ -457,7 +460,7 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
         ],
     )
     def test_invalid_param_combinations(self, input_size, size, resize_to, device, dtype):
-        with pytest.raises(Exception):
+        with pytest.raises((AssertionError, ValueError), match=r"batch_shape|size|resize_to"):
             CropGenerator3D(
                 size=size.to(device=device, dtype=dtype) if isinstance(size, torch.Tensor) else size,
                 resize_to=resize_to,
@@ -613,7 +616,7 @@ class TestCenterCropGen3D(RandomGeneratorBaseTests):
         ],
     )
     def test_invalid_param_combinations(self, depth, height, width, size, device, dtype):
-        with pytest.raises(Exception):
+        with pytest.raises((AssertionError, ValueError), match=r"depth|height|width|size"):
             center_crop_generator3d(batch_size=2, depth=depth, height=height, width=width, size=size)
 
     def test_random_gen(self, device, dtype):
@@ -689,7 +692,7 @@ class TestRandomMotionBlur3D(RandomGeneratorBaseTests):
         ],
     )
     def test_invalid_param_combinations(self, kernel_size, angle, direction, device, dtype):
-        with pytest.raises(Exception):
+        with pytest.raises((AssertionError, ValueError), match=r"kernel_size|direction out of bounds"):
             MotionBlurGenerator3D(
                 kernel_size=kernel_size,
                 angle=angle.to(device=device, dtype=dtype),

@@ -19,6 +19,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
 
@@ -87,6 +88,44 @@ class TestPyrDown(BaseTester):
 
 
 class TestScalePyramid(BaseTester):
+    @pytest.mark.parametrize("sigma, ksize", [(1.6, 13), (0.7, 7), (3.2, 27)])
+    def test_reference_kernel_rounding(self, device, sigma, ksize):
+        # Preserve the original float64 calculation followed by a single float32 rounding.
+        x = torch.arange(ksize, device="cpu", dtype=torch.float64) - ksize // 2
+        reference = torch.exp(-0.5 * x**2 / sigma**2)
+        reference = (reference / reference.sum()).float()
+        with device:
+            kernel = kornia.geometry.ScalePyramid._make_gaussian_kernel1d(sigma, ksize)
+        self.assert_close(kernel.cpu(), reference, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("default_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+    @pytest.mark.parametrize("init_sigma", [0.4, 1.6])
+    @pytest.mark.parametrize("double_image", [False, True])
+    def test_default_device_buffers(self, device, dtype, default_dtype, init_sigma, double_image):
+        with torch.device("cpu"):
+            reference = kornia.geometry.ScalePyramid(init_sigma=init_sigma, double_image=double_image)
+        original_dtype = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(default_dtype)
+            with device:
+                pyramid = kornia.geometry.ScalePyramid(init_sigma=init_sigma, double_image=double_image)
+        finally:
+            torch.set_default_dtype(original_dtype)
+
+        expected_device = torch.empty(0, device=device).device
+        assert pyramid.state_dict().keys() == reference.state_dict().keys()
+        assert (pyramid._gk_init is None) == (init_sigma == 0.4)
+        for name, kernel in pyramid.named_buffers():
+            assert kernel.device == expected_device
+            assert kernel.dtype == torch.float32
+            self.assert_close(kernel.cpu(), reference.get_buffer(name), rtol=0, atol=0)
+
+        pyramid.to(dtype=dtype)
+        for name, kernel in pyramid.named_buffers():
+            assert kernel.device == expected_device
+            assert kernel.dtype == dtype
+            self.assert_close(kernel.cpu(), reference.get_buffer(name).to(dtype), rtol=0, atol=0)
+
     def test_shape_tuple(self, device, dtype):
         inp = torch.zeros(3, 2, 41, 41, device=device, dtype=dtype)
         SP = kornia.geometry.ScalePyramid(n_levels=1, min_size=30)
@@ -162,6 +201,15 @@ class TestScalePyramid(BaseTester):
             self.assert_close(sigmas[octave][0], expected)
             self.assert_close(sigmas[octave], ref_sigmas[octave])
             self.assert_close(pyr[octave], ref_pyr[octave])
+
+
+class TestPyramidLevelValidation(BaseTester):
+    @pytest.mark.parametrize("op", ["build_pyramid", "build_laplacian_pyramid"])
+    @pytest.mark.parametrize("max_level", [0, -1, -2, 1.5, -1.5, None, "2", True, False])
+    def test_invalid_max_level_3927(self, op, max_level, device, dtype):
+        image = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
+        with pytest.raises(BaseError, match="Invalid max_level, it must be a positive integer"):
+            getattr(kornia.geometry.transform, op)(image, max_level)
 
 
 class TestBuildPyramid(BaseTester):

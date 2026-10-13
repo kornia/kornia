@@ -15,12 +15,16 @@
 # limitations under the License.
 #
 
+import pickle
+
 import pytest
 import torch
 
+from kornia.filters.dexined import DexiNed as FilterDexiNed
 from kornia.models.dexined import DexiNed
 
 from testing.base import BaseTester
+from testing.pickle_payload import CreatesMarkerOnLoad, load_without_running_payload
 
 
 class TestDexiNed(BaseTester):
@@ -54,3 +58,69 @@ class TestDexiNed(BaseTester):
 
     @pytest.mark.skip(reason="DexiNed do not compile with dynamo.")
     def test_dynamo(self, device, dtype, torch_optimizer): ...
+
+
+@pytest.mark.parametrize("cls", [FilterDexiNed, DexiNed], ids=["filters", "models"])
+class TestDexiNedLoadFromFile:
+    """``load_from_file`` reads a local file itself; the hub cache is keyed by base name (#5477)."""
+
+    @staticmethod
+    def _hub_with_a_cached_decoy(tmp_path, monkeypatch, name):
+        hub = tmp_path / "hub"
+        monkeypatch.setattr(torch.hub, "get_dir", lambda: str(hub))
+        (hub / "checkpoints").mkdir(parents=True)
+        torch.save({"w": torch.zeros(3)}, hub / "checkpoints" / name)
+
+    @staticmethod
+    def _record_load_state_dict(model, monkeypatch):
+        loaded = []
+        monkeypatch.setattr(
+            model, "load_state_dict", lambda state_dict, strict=True: loaded.append((state_dict, strict))
+        )
+        return loaded
+
+    @pytest.mark.parametrize("spelling", ["absolute", "home"])
+    def test_a_local_file_is_loaded_even_when_the_cache_holds_its_name(self, cls, spelling, tmp_path, monkeypatch):
+        self._hub_with_a_cached_decoy(tmp_path, monkeypatch, "dexined.pth")
+        local = tmp_path / "weights" / "dexined.pth"
+        local.parent.mkdir()
+        torch.save({"w": torch.ones(3)}, local)
+        if spelling == "home":
+            monkeypatch.setenv("HOME", str(tmp_path))
+            monkeypatch.setenv("USERPROFILE", str(tmp_path))
+            path_file = "~/weights/dexined.pth"
+        else:
+            path_file = str(local)
+        model = cls(pretrained=False).train()
+        loaded = self._record_load_state_dict(model, monkeypatch)
+
+        model.load_from_file(path_file)
+
+        assert len(loaded) == 1
+        state_dict, strict = loaded[0]
+        assert strict is True
+        assert torch.equal(state_dict["w"], torch.ones(3))
+        assert not model.training
+
+    def test_a_string_that_names_no_file_is_still_treated_as_a_url(self, cls, tmp_path, monkeypatch):
+        self._hub_with_a_cached_decoy(tmp_path, monkeypatch, "dexined.pth")
+        model = cls(pretrained=False)
+        loaded = self._record_load_state_dict(model, monkeypatch)
+
+        with pytest.raises(ValueError, match="scheme"):
+            model.load_from_file(str(tmp_path / "missing" / "dexined.pth"))
+
+        assert loaded == []
+
+    def test_a_pickled_callable_in_a_local_file_is_refused_and_never_run(self, cls, tmp_path, monkeypatch):
+        # The local branch loads with ``weights_only=True``, as the hub branch does.
+        marker = tmp_path / "marker"
+        path = tmp_path / "dexined.pth"
+        torch.save({"w": torch.ones(3), "extra": CreatesMarkerOnLoad(marker)}, path)
+        model = cls(pretrained=False)
+        loaded = self._record_load_state_dict(model, monkeypatch)
+
+        with pytest.raises(pickle.UnpicklingError):
+            load_without_running_payload(marker, lambda: model.load_from_file(str(path)))
+
+        assert loaded == []

@@ -19,23 +19,28 @@
 from functools import wraps
 from typing import Any, Callable, List, Optional
 
+import numpy as np
 import torch
 from torch import nn
 from torch.nn import functional as F
 
 
 def image_to_tensor(image: Any, keepdim: bool = True) -> torch.Tensor:
-    """Convert a numpy image to a PyTorch 4d tensor image.
+    """Convert a NumPy image to a PyTorch tensor image.
 
     Args:
         image: image of the form :math:`(H, W, C)`, :math:`(H, W)` or
             :math:`(B, H, W, C)`.
-        keepdim: If ``False`` unsqueeze the input image to match the shape
-            :math:`(B, H, W, C)`.
+        keepdim: If ``False``, a 2-D or 3-D input gets a leading batch axis, :math:`(1, C, H, W)`. A 4-D input is
+            always :math:`(B, C, H, W)`.
 
     Returns:
-        tensor of the form :math:`(B, C, H, W)` if keepdim is ``False``,
-            :math:`(C, H, W)` otherwise.
+        tensor of the form :math:`(C, H, W)` for a 2-D or 3-D input with ``keepdim=True`` (a 2-D input has
+        :math:`C = 1`), and :math:`(B, C, H, W)` otherwise.
+
+    Raises:
+        TypeError: if ``image`` is not a ``numpy.ndarray``.
+        ValueError: if ``image`` is not two, three or four dimensional.
 
     Example:
         >>> img = np.ones((3, 3))
@@ -51,6 +56,9 @@ def image_to_tensor(image: Any, keepdim: bool = True) -> torch.Tensor:
         torch.Size([1, 3, 4, 4])
 
     """
+    if not isinstance(image, np.ndarray):
+        raise TypeError(f"Input type is not a numpy.ndarray. Got {type(image)}")
+
     if len(image.shape) > 4 or len(image.shape) < 2:
         raise ValueError("Input size must be a two, three or four dimensional array")
 
@@ -174,10 +182,15 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False, force_contiguou
             :math:`(B, C, H, W)`.
         keepdim: If ``False`` squeeze the input image to match the shape
             :math:`(H, W, C)` or :math:`(H, W)`.
-        force_contiguous: If ``True`` call `contiguous` to the tensor before
+        force_contiguous: If ``True``, call ``contiguous`` on the result before converting it to NumPy.
 
     Returns:
-        image of the form :math:`(H, W)`, :math:`(H, W, C)` or :math:`(B, H, W, C)`.
+        image of the form :math:`(H, W)`, :math:`(H, W, C)` or :math:`(B, H, W, C)`. A ``bfloat16`` tensor is
+        returned as ``float32``.
+
+    Raises:
+        TypeError: if ``tensor`` is not a ``torch.Tensor``.
+        ValueError: if ``tensor`` is not two, three or four dimensional.
 
     Example:
         >>> img = torch.ones(1, 3, 3)
@@ -197,17 +210,17 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False, force_contiguou
 
     input_shape = tensor.shape
     image = tensor.cpu().detach()
+    if image.dtype == torch.bfloat16:
+        image = image.float()  # NumPy has no bfloat16
 
     if len(input_shape) == 2:
         # (H, W) -> (H, W)
         pass
     elif len(input_shape) == 3:
         # (C, H, W) -> (H, W, C)
-        if input_shape[0] == 1:
-            # Grayscale for proper plt.imshow needs to be (H,W)
-            image = image.squeeze()
-        else:
-            image = image.permute(1, 2, 0)
+        # Grayscale for proper plt.imshow needs to be (H,W); squeeze only the channel axis so that a unit H or W
+        # of a 1-row or 1-column image survives.
+        image = image.squeeze(0) if input_shape[0] == 1 else image.permute(1, 2, 0)
     elif len(input_shape) == 4:
         # (B, C, H, W) -> (B, H, W, C)
         image = image.permute(0, 2, 3, 1)
@@ -226,10 +239,11 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False, force_contiguou
 
 
 class ImageToTensor(nn.Module):
-    """Converts a numpy image to a PyTorch 4d tensor image.
+    """Convert a NumPy image to a PyTorch tensor image with :func:`image_to_tensor`.
 
     Args:
-        keepdim: If ``False`` unsqueeze the input image to match the shape :math:`(B, H, W, C)`.
+        keepdim: If ``False``, a 2-D or 3-D input gets a leading batch axis, :math:`(1, C, H, W)`. A 4-D input is
+            always :math:`(B, C, H, W)`.
 
     """
 
@@ -259,20 +273,30 @@ def make_grid(tensor: torch.Tensor, n_row: Optional[int] = None, padding: int = 
 
     Args:
         tensor: A batched tensor of shape (B, C, H, W).
-        n_row: Number of images displayed in each row of the grid.
-        padding: The amount of padding to add between images.
+        n_row: Number of images displayed in each row of the grid. If ``None``, use the square root
+            of the batch size rounded up. Images are placed in batch order, filling each row before the next.
+        padding: The amount of padding to add between images; must be non-negative.
 
     Returns:
         torch.Tensor: The combined image grid.
 
+    Raises:
+        TypeError: if ``tensor`` is not a ``torch.Tensor``.
+        ValueError: if ``tensor`` is not four dimensional, ``n_row`` is not positive or ``padding`` is negative.
+
     """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input tensor must be a PyTorch tensor.")
+    if padding < 0:
+        raise ValueError("padding must be non-negative.")
 
     B, C, H, W = tensor.shape
     if n_row is None:
-        n_row = int(torch.sqrt(torch.tensor(B, dtype=torch.float32)).ceil().item())
-    n_col = (B + n_row - 1) // n_row
+        n_row = max(1, int(torch.sqrt(torch.tensor(B, dtype=torch.float32)).ceil().item()))
+    elif n_row < 1:
+        raise ValueError("n_row must be positive.")
+    n_col = n_row
+    n_row = (B + n_col - 1) // n_col
 
     padded_H = H + padding
     padded_W = W + padding

@@ -163,7 +163,10 @@ class ScalePyramid(nn.Module):
         - an ``init_sigma`` below the assumed input blur (``0.5``, or ``1.0`` with
           ``double_image=True``) leaves the first level at that blur, and the octave is built and
           labelled from it, as if ``init_sigma`` were the assumed input blur
-        - the internal resizes use ``align_corners=True``; there is no ``align_corners`` parameter
+        - the internal resizes use ``align_corners=True``; there is no ``align_corners`` parameter. They keep the
+          first and last pixel centres, so pixel :math:`(u, v)` of octave ``o`` is input pixel
+          :math:`(u (W - 1) / (W_o - 1), v (H - 1) / (H_o - 1))`; ``pixel_dists`` is the nominal spacing
+          :math:`2^o` (:math:`2^{o - 1}` with ``double_image=True``), not this map
 
     Args:
         n_levels: number of the levels in octave.
@@ -174,7 +177,7 @@ class ScalePyramid(nn.Module):
     Returns:
         1st output: images
         2nd output: sigmas (coefficients for scale conversion)
-        3rd output: pixelDists (coefficients for coordinate conversion)
+        3rd output: pixelDists (nominal pixel spacing of each level relative to the input)
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -225,9 +228,10 @@ class ScalePyramid(nn.Module):
     @staticmethod
     def _make_gaussian_kernel1d(sigma: float, ksize: int) -> torch.Tensor:
         """Normalized 1D Gaussian kernel as a float32 tensor."""
-        x = torch.arange(ksize, dtype=torch.float64) - ksize // 2
+        # MPS has no float64: compute on CPU, then move the rounded kernel to the default device.
+        x = torch.arange(ksize, device="cpu", dtype=torch.float64) - ksize // 2
         kernel = torch.exp(-0.5 * x**2 / sigma**2)
-        return (kernel / kernel.sum()).float()
+        return (kernel / kernel.sum()).float().to(torch.empty(0, dtype=torch.float32).device)
 
     def _precompute_gauss_kernels(
         self, n_levels: int, extra_levels: int, init_sigma: float, double_image: bool
@@ -299,8 +303,9 @@ class ScalePyramid(nn.Module):
         Returns:
             Tuple ``(cur_level, cur_sigma, pixel_distance)``. ``cur_level`` is
             the first image level, ``cur_sigma`` is its effective blur sigma,
-            and ``pixel_distance`` tells how one pixel in this level maps back
-            to the original input image.
+            and ``pixel_distance`` is the level's nominal pixel spacing in input
+            pixels (``0.5`` when doubled). It is not the coordinate map: see the
+            class Convention for where a level pixel lies in the input.
         """
         pixel_distance = 1.0
         cur_sigma = 0.5
@@ -343,8 +348,9 @@ class ScalePyramid(nn.Module):
             image levels, ``sigmas`` contains the octave-relative nominal blur
             sigma for each level (multiply by the matching ``pixel_dists``
             entry for the nominal absolute blur in original-image pixels), and
-            ``pixel_dists`` contains the pixel spacing of each level relative
-            to the original image.
+            ``pixel_dists`` contains the nominal pixel spacing of each level
+            relative to the original image. It is not the coordinate map: see
+            the class Convention for where an octave pixel lies in the input.
         """
         bs, _, _, _ = x.size()
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
@@ -509,15 +515,9 @@ def build_pyramid(
         - each subsequent level is produced by :func:`pyrdown` (``floor(side / 2)``
           per dimension)
 
-    .. warning::
-        The ``max_level`` bounds check does not currently reject non-positive
-        **integer** values: passing an integer ``max_level <= 0`` returns the
-        same single-element list as ``max_level=1`` instead of raising. Tracked in
-        `#3927 <https://github.com/kornia/kornia/issues/3927>`_.
-
     Args:
         input : the torch.Tensor to be used to construct the pyramid.
-        max_level: the number of pyramid levels to return, including the
+        max_level: a positive integer giving the number of pyramid levels to return, including the
           unchanged original image as level 0.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
@@ -531,7 +531,7 @@ def build_pyramid(
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     KORNIA_CHECK(
-        isinstance(max_level, int) or max_level < 0,
+        isinstance(max_level, int) and not isinstance(max_level, bool) and max_level > 0,
         f"Invalid max_level, it must be a positive integer. Got: {max_level}",
     )
 
@@ -586,15 +586,9 @@ def build_laplacian_pyramid(
         - border_type: ``'reflect'`` by default
         - align_corners: ``False`` by default
 
-    .. warning::
-        The ``max_level`` bounds check does not currently reject non-positive
-        **integer** values: passing an integer ``max_level <= 0`` returns the
-        same single-element list as ``max_level=1`` instead of raising. Tracked
-        in `#3927 <https://github.com/kornia/kornia/issues/3927>`_.
-
     Args:
         input : the torch.Tensor to be used to construct the pyramid with shape :math:`(B, C, H, W)`.
-        max_level: the number of pyramid levels to return (see Convention
+        max_level: a positive integer giving the number of pyramid levels to return (see Convention
           above for what each level contains).
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
@@ -609,7 +603,7 @@ def build_laplacian_pyramid(
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     KORNIA_CHECK(
-        isinstance(max_level, int) or max_level < 0,
+        isinstance(max_level, int) and not isinstance(max_level, bool) and max_level > 0,
         f"Invalid max_level, it must be a positive integer. Got: {max_level}",
     )
 

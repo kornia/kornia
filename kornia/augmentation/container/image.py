@@ -27,9 +27,10 @@ from kornia.core import ImageModule
 from kornia.core.mixin.image_module import ImageModuleMixIn
 from kornia.core.ops import eye_like
 from kornia.core.utils import is_exporting
+from kornia.geometry.transform.affwarp import _side_to_image_size
 
 from .base import ImageSequentialBase
-from .params import ParamItem
+from .params import ParamItem, PatchParamItem
 
 __all__ = ["ImageSequential"]
 
@@ -44,6 +45,8 @@ class ImageModuleForSequentialMixIn(ImageModuleMixIn):
     @disable_features.setter
     def disable_features(self, value: bool = True) -> None:
         self._disable_features = value
+        if value:
+            self._output_image = None
 
     def disable_item_features(self, *args: nn.Module) -> None:
         for arg in args:
@@ -94,6 +97,10 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
     .. note::
         Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.
         Those transformations in ``kornia.geometry`` will not be taken into account.
+
+    Note:
+        The output cache retains a detached reference to the last tensor output and is omitted when pickled.
+        Setting ``disable_features = True`` clears it.
 
     Examples:
         >>> _ = torch.manual_seed(77)
@@ -163,6 +170,12 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             )
         self.random_apply_weights = torch.as_tensor(random_apply_weights or torch.ones((len(self),)))
         self.if_unsupported_ops = if_unsupported_ops
+        self._output_image = None
+
+    def __getstate__(self) -> dict[str, Any]:
+        state = super().__getstate__()
+        state.pop("_output_image", None)
+        return state
 
     def _read_random_apply(
         self, random_apply: Union[int, bool, Tuple[int, int]], max_length: int
@@ -207,7 +220,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         if isinstance(self.random_apply, tuple):
             num_samples = int(torch.randint(*self.random_apply, (1,)).item())
         else:
-            raise TypeError(f"random apply should be a tuple. Gotcha {type(self.random_apply)}")
+            raise TypeError(f"random apply should be a tuple. Got {type(self.random_apply)}")
 
         multinomial_weights = self.random_apply_weights.clone()
         # Mix augmentation can only be applied once per forward
@@ -226,16 +239,19 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             )
 
         mix_added = False
-        if with_mix and len(mix_indices) != 0:
-            # Make the selection fair.
-            if (torch.rand(1) < ((len(mix_indices) + len(indices)) / len(self))).item():
-                mix_idx = torch.multinomial((~multinomial_weights.bool()).float(), 1)
-                if len(indices) == 0:
-                    indices = mix_idx
-                else:
-                    indices[-1] = mix_idx
-                indices = indices[torch.randperm(len(indices))]
-                mix_added = True
+        # Make the selection fair.
+        if (
+            with_mix
+            and len(mix_indices) != 0
+            and (torch.rand(1) < ((len(mix_indices) + len(indices)) / len(self))).item()
+        ):
+            mix_idx = torch.multinomial((~multinomial_weights.bool()).float(), 1)
+            if len(indices) == 0:
+                indices = mix_idx
+            else:
+                indices[-1] = mix_idx
+            indices = indices[torch.randperm(len(indices))]
+            mix_added = True
 
         return self.get_children_by_indices(indices), mix_added
 
@@ -292,7 +308,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         params: List[ParamItem] = []
         mod_param: Union[Dict[str, torch.Tensor], List[ParamItem]]
         for name, module in named_modules:
-            if isinstance(module, (_AugmentationBase | K.MixAugmentationBaseV2 | ImageSequentialBase)):
+            if isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2, ImageSequentialBase)):
                 mod_param = module.forward_parameters(batch_shape)
                 param = ParamItem(name, mod_param)
             else:
@@ -332,10 +348,11 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         for (_, module), param in zip(named_modules, params if params is not None else []):
             if isinstance(module, K.GeometricAugmentationBase2D) and isinstance(param.data, dict):
                 ori_shape = input.shape
-                try:
+                # Ignore error for 5-dim video. Keep try/except: Dynamo on torch 2.5.1 cannot trace
+                # contextlib.suppress, so it would break the graph under torch.compile.
+                try:  # noqa: SIM105
                     input = module.transform_tensor(input)
                 except ValueError:
-                    # Ignore error for 5-dim video
                     pass
                 # Standardize shape
                 if recompute:
@@ -352,13 +369,15 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             elif isinstance(module, ImageSequentialBase):
                 # If not augmentationSequential
                 if isinstance(module, K.AugmentationSequential) and not recompute:
-                    mat = torch.as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
+                    _mat = module.transform_matrix
+                    if _mat is not None:
+                        _mat = torch.as_tensor(_mat, device=input.device, dtype=input.dtype)
                 else:
                     maybe_param_data = cast(Optional[List[ParamItem]], param.data)
                     _mat = module.get_transformation_matrix(
                         input, maybe_param_data, recompute=recompute, extra_args=extra_args
                     )
-                    mat = module.identity_matrix(input) if _mat is None else _mat
+                mat = module.identity_matrix(input) if _mat is None else _mat
                 res_mat = mat if res_mat is None else mat @ res_mat
         return res_mat
 
@@ -404,13 +423,10 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
 
         """
         for arg in self.children():
-            if isinstance(arg, ImageSequential) and not arg.is_intensity_only(strict):
-                return False
             if isinstance(arg, ImageSequential):
-                pass
-            elif isinstance(arg, K.IntensityAugmentationBase2D):
-                pass
-            elif strict:
+                if not arg.is_intensity_only(strict):
+                    return False
+            elif strict and not isinstance(arg, K.IntensityAugmentationBase2D):
                 # disallow non-registered ops if in strict mode
                 # TODO: add an ops register module
                 return False
@@ -442,7 +458,9 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             self._check_output_type(output_type)
             # run the forward pass in tensor mode, cache that tensor for ``.show()`` / ``.save()``, and convert the
             # output to ``output_type`` only afterwards, so the helpers never receive a NumPy array or PIL images
-            tensor_output = self._call_converted(super().__call__, inputs, kwargs, input_names_to_handle, "pt")
+            tensor_output = self._call_converted(
+                super().__call__, inputs, kwargs, input_names_to_handle, "pt", signature_source=self.forward
+            )
             self._store_output_image(self._convert_output(tensor_output, "pt"), "pt")
             _output_image = self._convert_output(tensor_output, output_type)
         else:
@@ -455,17 +473,52 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
 
     Note:
        Augmentations that change the image size must provide the parameter `output_size`.
+       Empty RandomCrop, CenterCrop, RandomResizedCrop and Resize batches have no sampled
+       output-size rows, so their configured size is used only when the image forward path
+       always applies the transform. Other probability branches retain the current empty-gate
+       fallback tracked in #4429.
 
     """
     data = param.data
     if data is None:
         return batch_shape
 
+    # PatchSequential changes the image shape through its own padding/cropping, including when it is empty.
+    # Its parameters describe operations on individual patches and cannot encode this image-level change.
+    if module is not None:
+        from .patch import PatchSequential
+
+        if isinstance(module, PatchSequential):
+            if module.padding == "valid":
+                # Crop the last two dimensions to a multiple of the grid; video containers track 5-D shapes.
+                rows, columns = module.grid_size
+                new_batch_shape = list(batch_shape)
+                new_batch_shape[-2] -= new_batch_shape[-2] % rows
+                new_batch_shape[-1] -= new_batch_shape[-1] % columns
+                return torch.Size(new_batch_shape)
+            return batch_shape
+
     # If data is a list, process all subitems (exit early if all subitems are None)
     if isinstance(data, list):
+        if data and isinstance(data[0], PatchParamItem):
+            # Patch children transform patches in place; their output_size does not change the image size.
+            return batch_shape
+        children = dict(module.named_children()) if module is not None else {}
         for p in data:
-            batch_shape = _get_new_batch_shape(p, batch_shape)
+            batch_shape = _get_new_batch_shape(p, batch_shape, children.get(p.name))
         return batch_shape
+
+    if batch_shape[0] == 0 and isinstance(module, (K.RandomCrop, K.CenterCrop, K.RandomResizedCrop, K.Resize)):
+        # Match the image forward's unconditional path. An empty gate selects the original
+        # canvas in the other probability branches, including Resize's p_batch setting (#4429).
+        if module.p != 1.0 or module.p_batch != 1.0:
+            return batch_shape
+        size = module.flags["size"]
+        if isinstance(module, K.Resize) and isinstance(size, int):
+            size = _side_to_image_size(size, batch_shape[-1] / batch_shape[-2], module.flags["side"])
+        new_batch_shape = list(batch_shape)
+        new_batch_shape[-2:] = size
+        return torch.Size(new_batch_shape)
 
     # Carefully avoid evaluating expression multiple times; batch_prob is often a 1-element torch.Tensor
     if "output_size" in data:

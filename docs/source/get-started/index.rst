@@ -71,4 +71,4 @@ Looking for a specific function instead? The :doc:`API reference </api>` documen
    :hidden:
 
    Tutorials <https://www.kornia.org/tutorials/>
-   ONNX, torch.compile & torch.export support <export-support>
+   ONNX, torch.compile & torch.export survey <export-support>

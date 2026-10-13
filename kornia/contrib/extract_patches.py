@@ -90,15 +90,9 @@ def compute_padding(
     # it might be best to apply padding only to the far edges (right, bottom), so
     # that fewer patches are affected by the padding.
     # For now, just use the default padding
-    if remainder_vertical != 0:
-        vertical_padding = stride[0] - remainder_vertical
-    else:
-        vertical_padding = 0
+    vertical_padding = stride[0] - remainder_vertical if remainder_vertical != 0 else 0
 
-    if remainder_horizontal != 0:
-        horizontal_padding = stride[1] - remainder_horizontal
-    else:
-        horizontal_padding = 0
+    horizontal_padding = stride[1] - remainder_horizontal if remainder_horizontal != 0 else 0
 
     if vertical_padding % 2 == 0:
         top_padding = bottom_padding = vertical_padding // 2
@@ -129,6 +123,9 @@ class ExtractTensorPatches(nn.Module):
       - :math:`H_{out}`, :math:`W_{out}` denote to denote to the patch size
         defined in the function signature.
         left-right and top-bottom order.
+
+    An empty batch (:math:`B = 0`) gives an empty output with the same :math:`N`, :math:`C`, :math:`H_{out}` and
+    :math:`W_{out}` as a non-empty one. :math:`C` must be non-zero and the window sizes positive.
 
     * :attr:`window_size` is the size of the sliding window and controls the
       shape of the output torch.Tensor and defines the shape of the output patch.
@@ -231,6 +228,7 @@ class CombineTensorPatches(nn.Module):
         defined in the function signature.
         left-right and top-bottom order.
 
+    An empty batch (:math:`B = 0`) is reconstructed with the same spatial size and unpadding as a non-empty one.
 
     * :attr:`original_size` is the size of the original image prior to
       extracting torch.Tensor patches and defines the shape of the output patch.
@@ -329,11 +327,8 @@ def _check_patch_fit(original_size: Tuple[int, int], window_size: Tuple[int, int
     # the remainder takes into account half a window on each side,
     # the rest of the image is divided based on the stride, not the window
     # size
-    if (remainder_horizontal != 0) or (remainder_vertical != 0):
-        # needs padding to fit
-        return False
-    # we can fit a full number of patches in, based on the stride
-    return True
+    # we can fit a full number of patches in, based on the stride, only if nothing remains
+    return remainder_horizontal == 0 and remainder_vertical == 0
 
 
 def combine_tensor_patches(
@@ -386,23 +381,22 @@ def combine_tensor_patches(
             f"Stride={stride} should be less than or equal to Window size={window_size}, information is missing"
         )
 
-    if not unpadding:
-        # if padding is specified, we leave it up to the user to ensure it fits
-        # otherwise we check here if it will fit and offer to calculate padding
-        if not _check_patch_fit(original_size, window_size, stride):
-            if not allow_auto_unpadding:
-                warn(
-                    f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\n"
-                    f"Image size: {original_size}\n"
-                    "This means we probably cannot correctly recombine patches. By enabling `allow_auto_unpadding`, "
-                    "the input will be unpadded to fit the window and stride.\n"
-                    "If the patches have been obtained through `extract_tensor_patches` with the correct padding or "
-                    "the argument `allow_auto_padding`, this will result in a correct reconstruction.",
-                    stacklevel=1,
-                )
-            else:
-                unpadding = compute_padding(original_size=original_size, window_size=window_size, stride=stride)
-                # TODO: Can't we just do actual size minus original size to get padding?
+    # if padding is specified, we leave it up to the user to ensure it fits
+    # otherwise we check here if it will fit and offer to calculate padding
+    if not unpadding and not _check_patch_fit(original_size, window_size, stride):
+        if not allow_auto_unpadding:
+            warn(
+                f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\n"
+                f"Image size: {original_size}\n"
+                "This means we probably cannot correctly recombine patches. By enabling `allow_auto_unpadding`, "
+                "the input will be unpadded to fit the window and stride.\n"
+                "If the patches have been obtained through `extract_tensor_patches` with the correct padding or "
+                "the argument `allow_auto_padding`, this will result in a correct reconstruction.",
+                stacklevel=1,
+            )
+        else:
+            unpadding = compute_padding(original_size=original_size, window_size=window_size, stride=stride)
+            # TODO: Can't we just do actual size minus original size to get padding?
 
     if unpadding:
         unpadding = create_padding_tuple(unpadding)
@@ -421,7 +415,7 @@ def combine_tensor_patches(
     restored_size = ones_tensor.shape[2:]
 
     patches = patches.permute(0, 2, 3, 4, 1)
-    patches = patches.reshape(patches.shape[0], -1, patches.shape[-1])
+    patches = patches.flatten(1, 3)
     int_flag = 0
     if not torch.is_floating_point(patches):
         int_flag = 1
@@ -450,12 +444,11 @@ def combine_tensor_patches(
 def _extract_tensor_patchesnd(
     input: torch.Tensor, window_sizes: Tuple[int, ...], strides: Tuple[int, ...]
 ) -> torch.Tensor:
-    batch_size, num_channels = input.size()[:2]
     dims = range(2, input.dim())
     for dim, patch_size, stride in zip(dims, window_sizes, strides):
         input = input.unfold(dim, patch_size, stride)
     input = input.permute(0, *dims, 1, *(dim + len(dims) for dim in dims)).contiguous()
-    return input.view(batch_size, -1, num_channels, *window_sizes)
+    return input.flatten(1, len(dims))
 
 
 def extract_tensor_patches(
@@ -501,22 +494,25 @@ def extract_tensor_patches(
     # torch's unfold drops the final patches that don't fit
     window_size = cast(Tuple[int, int], _pair(window_size))
     stride = cast(Tuple[int, int], _pair(stride))
+    if input.shape[1] == 0:
+        raise ValueError("extract_tensor_patches requires a non-empty channel dimension.")
+    if any(size <= 0 for size in window_size):
+        raise ValueError(f"window_size must contain positive values. Got {window_size}.")
     original_size = (input.shape[-2], input.shape[-1])
 
-    if not padding:
-        # if padding is specified, we leave it up to the user to ensure it fits
-        # otherwise we check here if it will fit and offer to calculate padding
-        if not _check_patch_fit(original_size, window_size, stride):
-            if not allow_auto_padding:
-                warn(
-                    f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\n"
-                    f"Image size: {original_size}\n"
-                    "This means that the final incomplete patches will be dropped. By enabling `allow_auto_padding`, "
-                    "the input will be padded to fit the window and stride.",
-                    stacklevel=1,
-                )
-            else:
-                padding = compute_padding(original_size=original_size, window_size=window_size, stride=stride)
+    # if padding is specified, we leave it up to the user to ensure it fits
+    # otherwise we check here if it will fit and offer to calculate padding
+    if not padding and not _check_patch_fit(original_size, window_size, stride):
+        if not allow_auto_padding:
+            warn(
+                f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\n"
+                f"Image size: {original_size}\n"
+                "This means that the final incomplete patches will be dropped. By enabling `allow_auto_padding`, "
+                "the input will be padded to fit the window and stride.",
+                stacklevel=1,
+            )
+        else:
+            padding = compute_padding(original_size=original_size, window_size=window_size, stride=stride)
 
     if padding:
         padding = create_padding_tuple(padding)

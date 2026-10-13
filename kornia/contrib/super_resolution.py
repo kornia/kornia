@@ -155,10 +155,7 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
 
         """
         output = self.pre_processor(images)
-        if isinstance(output, list | tuple):
-            images = output[0]
-        else:
-            images = output
+        images = output[0] if isinstance(output, (list, tuple)) else output
         if isinstance(images, list):
             out_images = [self.model(image[None])[0] for image in images]
         else:
@@ -283,9 +280,7 @@ class RRDBNetBuilder:
         Raises:
             ValueError: If ``model_name`` is not one of the supported variants.
         """
-        if model_name == "RealESRGAN_x4plus":
-            model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
-        elif model_name == "RealESRNet_x4plus":
+        if model_name in ("RealESRGAN_x4plus", "RealESRNet_x4plus"):
             model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
         elif model_name == "RealESRGAN_x4plus_anime_6B":
             model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=6, num_grow_ch=32, scale=4)

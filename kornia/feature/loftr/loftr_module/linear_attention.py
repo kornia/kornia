@@ -82,7 +82,12 @@ class LinearAttention(nn.Module):
         v_length = values.size(1)
         values = values / v_length  # prevent fp16 overflow
         KV = torch.einsum("nshd,nshv->nhdv", K, values)  # (S,D)' @ S,V
-        Z = 1 / (torch.einsum("nlhd,nhd->nlh", Q, K.sum(dim=1)) + self.eps)
+        denominator = torch.einsum("nlhd,nhd->nlh", Q, K.sum(dim=1)) + self.eps
+        if q_mask is not None:
+            # A padded query has Q = 0, so it gives 0 whatever its normaliser. Its 1 / eps overflows float16, and
+            # 0 * inf would be nan in the output and in the gradient, so it divides by 1 instead.
+            denominator = torch.where(q_mask[:, :, None] > 0, denominator, torch.ones_like(denominator))
+        Z = 1 / denominator
         queried_values = torch.einsum("nlhd,nhdv,nlh->nlhv", Q, KV, Z) * v_length
 
         return queried_values.contiguous()

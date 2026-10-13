@@ -45,7 +45,9 @@ class TestConventionScene(BaseTester):
         K_again = epi.random_intrinsics(low, high)
         torch.manual_seed(0)
         draws = torch.distributions.Uniform(low, high).sample((4,))
-        assert K.shape == (1, 3, 3) and K.dtype == dtype and K.device == low.device
+        assert K.shape == (1, 3, 3)
+        assert K.dtype == dtype
+        assert K.device == low.device
         assert torch.equal(K, K_again)
         assert not torch.equal(K, K_next)
         self.assert_close(K[0, [0, 1, 0, 1], [0, 1, 2, 2]], draws)

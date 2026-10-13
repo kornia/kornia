@@ -16,7 +16,7 @@
 #
 
 import math
-from typing import Tuple
+from typing import Any, Dict, List, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -88,7 +88,12 @@ def _dense_sift_histograms_from_gradients(
     bo1 = (bo0 + 1) % num_ang_bins
     w0 = (1.0 - w1) * mag
     w1 = w1 * mag
-    return torch.cat([(bo0 == i).to(gx.dtype) * w0 + (bo1 == i).to(gx.dtype) * w1 for i in range(num_ang_bins)], 1)
+    # Each gradient votes into only two bins. Scatter those votes directly,
+    # avoiding a full-image equality mask and temporary for every angular bin.
+    histograms = gx.new_zeros(gx.shape[0], num_ang_bins, gx.shape[-2], gx.shape[-1])
+    histograms.scatter_add_(1, bo0.long() % num_ang_bins, w0)
+    histograms.scatter_add_(1, bo1.long() % num_ang_bins, w1)
+    return histograms
 
 
 def _dense_sift_histograms(input: torch.Tensor, num_ang_bins: int, eps: float) -> torch.Tensor:
@@ -112,7 +117,16 @@ def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
 
 
 def get_sift_bin_ksize_stride_pad(patch_size: int, num_spatial_bins: int) -> Tuple[int, int, int]:
-    r"""Return a tuple with SIFT parameters.
+    r"""Return the spatial pooling parameters of :class:`SIFTDescriptor`.
+
+    The pooling is a convolution with :func:`get_sift_pooling_kernel` of size ``ksize``, stride ``stride`` and zero
+    padding ``pad`` on every side. Its ``num_spatial_bins`` cells per side are ``stride`` pixels apart and the grid
+    is centred on the patch centre :math:`(\text{patch\_size} - 1) / 2`, where the descriptor's Gaussian weighting
+    window is centred: cell :math:`k` is centred at
+    :math:`(\text{patch\_size} - 1) / 2 + (k - (\text{num\_spatial\_bins} - 1) / 2) \cdot \text{stride}`.
+
+    ``ksize`` is :math:`2 \lfloor \text{patch\_size} / (\text{num\_spatial\_bins} + 1) \rfloor`, plus one when a
+    centred grid needs a kernel centred on a pixel rather than between two, as at the default patch size 41.
 
     Args:
         patch_size: the given patch size.
@@ -122,11 +136,15 @@ def get_sift_bin_ksize_stride_pad(patch_size: int, num_spatial_bins: int) -> Tup
         ksize, stride, pad.
 
     """
-    ksize: int = 2 * int(patch_size / (num_spatial_bins + 1))
     stride: int = patch_size // num_spatial_bins
-    pad: int = ksize // 4
-    out_size: int = (patch_size + 2 * pad - (ksize - 1) - 1) // stride + 1
-    if out_size != num_spatial_bins:
+    ksize: int = 2 * int(patch_size / (num_spatial_bins + 1))
+    # The first cell is centred at -pad + (ksize - 1) / 2 and the grid at that plus (num_spatial_bins - 1) * stride / 2.
+    # Setting the grid centre to (patch_size - 1) / 2 gives 2 * pad below, so ksize takes its parity.
+    if (ksize - patch_size + (num_spatial_bins - 1) * stride) % 2 != 0:
+        ksize += 1
+    pad: int = (ksize - patch_size + (num_spatial_bins - 1) * stride) // 2
+    out_size: int = (patch_size + 2 * pad - (ksize - 1) - 1) // stride + 1 if stride > 0 else 0
+    if pad < 0 or out_size != num_spatial_bins:
         raise ValueError(
             f"Patch size {patch_size} is incompatible with the requested number of spatial bins "
             f"{num_spatial_bins} for SIFT descriptor. Usually it happens when patch size is too small "
@@ -154,6 +172,12 @@ class SIFTDescriptor(nn.Module):
 
     The output is in kornia's angle-major SIFT layout; :func:`~kornia.feature.convert_sift_descriptor_layout` reorders
     it to OpenCV's.
+
+    The ``num_spatial_bins`` x ``num_spatial_bins`` grid of spatial cells and the Gaussian weighting window are both
+    centred on the patch centre :math:`(\text{patch\_size} - 1) / 2`; :func:`get_sift_bin_ksize_stride_pad` gives the
+    cell spacing and pooling kernel. A patch mirrored upside down therefore has a descriptor that is a permutation of
+    the original's; so does a patch mirrored left to right when ``num_ang_bins`` is even, and a ``torch.rot90``-rotated
+    one when ``num_ang_bins`` is a multiple of four, as the default 8 is.
 
     Example:
         >>> input = torch.rand(23, 1, 32, 32)
@@ -206,6 +230,33 @@ class SIFTDescriptor(nn.Module):
             bias=False,
         )
         self.pk.weight.data.copy_(nw.reshape(1, 1, nw.size(0), nw.size(1)))
+
+    def _load_from_state_dict(
+        self,
+        state_dict: Dict[str, Any],
+        prefix: str,
+        local_metadata: Dict[str, Any],
+        strict: bool,
+        missing_keys: List[str],
+        unexpected_keys: List[str],
+        error_msgs: List[str],
+    ) -> None:
+        # The pooling kernel used to be 2 * int(patch_size / (num_spatial_bins + 1)) wide at every patch size; the
+        # centred grid widens it by one pixel at some, 41 among them. A state dict saved with the narrower kernel
+        # holds an untrained kernel that `patch_size` fully determines, so it is replaced by the untrained kernel of
+        # the current width instead of failing a strict load on its shape -- rebuilt here, not copied from `self.pk`,
+        # which may have been trained since construction. A kernel with any other values still fails.
+        key = prefix + "pk.weight"
+        weight = state_dict.get(key)
+        if isinstance(weight, torch.Tensor) and weight.shape != self.pk.weight.shape:
+            former = get_sift_pooling_kernel(2 * int(self.patch_size / (self.num_spatial_bins + 1)))
+            former = former.to(weight.dtype).reshape(1, 1, *former.shape)
+            if weight.shape == former.shape and torch.equal(weight.cpu(), former):
+                current = get_sift_pooling_kernel(self.bin_ksize).float()
+                state_dict[key] = current.reshape(1, 1, *current.shape).to(weight.device, weight.dtype)
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+        )
 
     def get_pooling_kernel(self) -> torch.Tensor:
         """Return the spatial pooling kernel used for histogram accumulation.
@@ -398,27 +449,42 @@ def sift_describe(
 class DenseSIFTDescriptor(nn.Module):
     """nn.Module, which computes SIFT descriptor densely over the image.
 
+    Every output pixel is a SIFT descriptor of the image around the input position given below. Its
+    ``num_spatial_bins`` x ``num_spatial_bins`` cells are ``spatial_bin_size`` pixels apart, each cell pooling a
+    triangular window of ``spatial_bin_size`` pixels (see :func:`get_sift_pooling_kernel`), so the cells tile an
+    extent of ``num_spatial_bins * spatial_bin_size`` pixels. The cell spacing is that of :class:`SIFTDescriptor` and
+    of the VLFeat ``vl_dsift`` grid.
+
     Args:
         num_ang_bins: Number of angular bins. (8 is default)
-        num_spatial_bins: Number of spatial bins per descriptor (4 is default). You might want to set an odd
-            number and relevant padding to keep the feature map size.
-        spatial_bin_size: Size of a spatial bin in pixels (4 is default)
+        num_spatial_bins: Number of spatial bins per descriptor (4 is default). With an odd
+            ``num_spatial_bins`` and an odd ``spatial_bin_size``,
+            ``padding = (num_spatial_bins - 1) * spatial_bin_size / 2`` keeps the feature map size at ``stride=1``.
+        spatial_bin_size: Size of a spatial bin in pixels, and the distance between neighbouring bins (4 is default)
         clipval: clipping value to reduce single-bin dominance
         rootsift: (bool) if True, RootSIFT (Arandjelović et. al, 2012) is computed
-        stride: default 1
-        padding: default 0
+        stride: step between neighbouring outputs in pixels (1 is default)
+        padding: zero padding of the pooled bin maps in pixels, on every side (1 is default)
 
     Returns:
         torch.Tensor: DenseSIFT descriptor of the image
 
     Shape:
         - Input: (B, 1, H, W)
-        - Output: (B, num_ang_bins * num_spatial_bins ** 2, (H+padding)/stride, (W+padding)/stride)
+        - Output: (B, num_ang_bins * num_spatial_bins ** 2, H_out, W_out), with
+          ``H_out = (H + e + 2 * padding - (num_spatial_bins - 1) * spatial_bin_size - 1) // stride + 1`` and
+          ``W_out`` likewise, where ``e`` is 1 for an even ``spatial_bin_size`` and 0 for an odd one.
+
+    Output pixel ``(i, j)`` describes the neighbourhood centred on the input position
+    ``x = j * stride - padding + (num_spatial_bins - 1) * spatial_bin_size / 2 - e / 2`` (``y`` likewise from
+    ``i``), in pixel-centre coordinates where the first input pixel is at 0. The centre lies on a pixel when
+    ``(num_spatial_bins - 1) * spatial_bin_size`` and ``e`` have the same parity, and half way between two pixels
+    otherwise.
 
     Examples::
         >>> input =  torch.rand(2, 1, 200, 300)
         >>> SIFT = DenseSIFTDescriptor()
-        >>> descs = SIFT(input) # 2x128x194x294
+        >>> descs = SIFT(input) # 2x128x191x291
 
     """
 
@@ -476,6 +542,7 @@ class DenseSIFTDescriptor(nn.Module):
             stride=(self.stride, self.stride),
             bias=False,
             padding=(self.pad, self.pad),
+            dilation=(self.spatial_bin_size, self.spatial_bin_size),
         )
         PoolingConv.weight.data.copy_(self._poolingconv_weight)
         self.PoolingConv = PoolingConv

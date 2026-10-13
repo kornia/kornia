@@ -25,6 +25,7 @@ from kornia.feature.lightglue import (
     LearnableFourierPositionalEncoding,
     LightGlue,
     TokenConfidence,
+    _check_keypoints_normalized,
     apply_cached_rotary_emb,
     normalize_keypoints,
     pad_to_length,
@@ -263,8 +264,10 @@ class TestTokenConfidence(BaseTester):
         d0 = torch.rand(1, 20, 32, device=device, dtype=dtype)
         d1 = torch.rand(1, 20, 32, device=device, dtype=dtype)
         s0, s1 = tc(d0, d1)
-        assert (s0 >= 0).all() and (s0 <= 1).all()
-        assert (s1 >= 0).all() and (s1 <= 1).all()
+        assert (s0 >= 0).all()
+        assert (s0 <= 1).all()
+        assert (s1 >= 0).all()
+        assert (s1 <= 1).all()
 
     def test_gradcheck(self, device):
         pass  # TokenConfidence uses detach() on inputs; not differentiable w.r.t. inputs
@@ -449,9 +452,8 @@ class TestLightGlue(BaseTester):
             seen["device_type"] = kwargs.get("device_type", "")
             return real_ac(*args, **kwargs)
 
-        with unittest.mock.patch("kornia.feature.lightglue.torch.autocast", side_effect=_spy):
-            with torch.no_grad():
-                out = lg(data)
+        with unittest.mock.patch("kornia.feature.lightglue.torch.autocast", side_effect=_spy), torch.no_grad():
+            out = lg(data)
 
         assert seen["device_type"] == data["image0"]["keypoints"].device.type
         assert "matches0" in out
@@ -465,3 +467,39 @@ class TestLightGlue(BaseTester):
         with torch.no_grad():
             out = lg(data)
         assert "matches0" in out
+
+
+@pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS is not available")
+@pytest.mark.parametrize(
+    ("model_device", "autocast_device", "autocast_dtype"),
+    [("cpu", "mps", torch.float16), ("mps", "cpu", torch.bfloat16)],
+    # Ids must not start with "mps": conftest skips every "[mps" node whose name mentions autocast.
+    ids=["model_cpu-autocast_mps", "model_mps-autocast_cpu"],
+)
+def test_autocast_of_another_device_type_leaves_descriptors_alone(model_device, autocast_device, autocast_dtype):
+    """An autocast region of another device type must not cast the descriptors to half (#5198).
+
+    The no-argument ``torch.is_autocast_enabled()`` reports MPS autocast on torch 2.14, so the half cast hit CPU
+    descriptors and the CPU float32 projection raised a dtype mismatch.
+    """
+    lg = _make_lightglue(model_device, torch.float32)
+    data = _make_data(model_device, torch.float32)
+    with torch.no_grad(), torch.autocast(autocast_device, dtype=autocast_dtype):
+        out = lg(data)
+    assert out["log_assignment"].dtype == torch.float32
+
+
+class TestKeypointRangeMessage:
+    def test_check_names_the_range_and_the_size_order_5724(self):
+        with pytest.raises(Exception, match=r"\[-1, 1\].*\(width, height\)"):
+            _check_keypoints_normalized(torch.tensor([[[0.0, 2.0]]]))
+
+    def test_check_accepts_normalized_keypoints_5724(self):
+        _check_keypoints_normalized(torch.tensor([[[-1.0, 1.0], [0.0, 0.5]]]))
+
+    def test_forward_with_a_too_small_image_size_5724(self, device):
+        lg = _make_lightglue(device, torch.float32)
+        data = _make_data(device, torch.float32)
+        data["image0"]["image_size"] = torch.tensor([[8.0, 8.0]], device=device)  # keypoints reach 64
+        with pytest.raises(Exception, match="Keypoints must lie inside the image"):
+            lg(data)

@@ -34,6 +34,24 @@ from kornia.core.utils import is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
+
+def _mixed_gate_shape_error(
+    input_shape: Tuple[int, ...], output_shape: Tuple[int, ...], inverse: bool = False
+) -> ValueError:
+    """Build the error for a per-row gate on an augmentation that changes the sample shape.
+
+    A batch can only hold one sample shape, so the rows the gate skips cannot keep their own shape next to the
+    rows it applies to. ``inverse`` names the inverse call, which maps the output shape back to the input shape.
+    See `#4497 <https://github.com/kornia/kornia/issues/4497>`_.
+    """
+    subject = "the inverse of this augmentation" if inverse else "this augmentation"
+    return ValueError(
+        f"`batch_prob` mixes applied and skipped rows, but {subject} changes the sample shape from "
+        f"{tuple(input_shape)} to {tuple(output_shape)}, so the skipped rows cannot keep their shape. "
+        "Pass a `batch_prob` that is all ones or all zeros."
+    )
+
+
 TensorWithTransformMat = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 
 # Sentinel for ``_commit_state`` fields: distinguishes "not provided" from an explicit ``None``.
@@ -271,7 +289,7 @@ class _BasicAugmentationBase(nn.Module):
         **kwargs: Any,
     ) -> Tuple[Dict[str, torch.Tensor], Dict[str, Any]]:
         # NOTE: determine how to save self._params
-        save_kwargs = kwargs["save_kwargs"] if "save_kwargs" in kwargs else False
+        save_kwargs = kwargs.get("save_kwargs", False)
 
         params = self._params if params is None else params
         flags = self.flags if flags is None else flags
@@ -380,12 +398,28 @@ class _AugmentationBase(_BasicAugmentationBase):
         When the two branches share a shape this is a ``torch.where`` blend (onnx- and
         fullgraph-friendly). Shape-changing augmentations (e.g. crop/resize) whose branches
         differ in spatial size fall back to a Python branch on ``to_apply.any()``, which is
-        not onnx-exportable.
+        not onnx-exportable. Such a fallback cannot select rows, so a ``to_apply`` that mixes applied and skipped
+        rows raises ``ValueError`` instead of transforming the skipped rows too.
         """
         if transformed.shape == not_transformed.shape and transformed.shape[0] == to_apply.shape[0]:
             to_apply_expanded = to_apply.view(-1, *([1] * (len(transformed.shape) - 1))).to(transformed.device)
             return torch.where(to_apply_expanded, transformed, not_transformed)
-        return transformed if bool(to_apply.any()) else not_transformed
+        apply_any = bool(to_apply.any())
+        if apply_any and not bool(to_apply.all()) and transformed.shape[1:] != not_transformed.shape[1:]:
+            raise _mixed_gate_shape_error(not_transformed.shape[1:], transformed.shape[1:])
+        return transformed if apply_any else not_transformed
+
+    def _gate(self, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        """Return the per-sample ``to_apply`` mask that the label and ``inverse`` handlers blend with.
+
+        With static ``p == 1`` and ``p_batch == 1`` every sample is transformed, as on the image and matrix fast
+        paths, so a ``batch_prob`` in ``params`` is not consulted (#5585). The decision is static: eager and compiled
+        runs agree, and no handler synchronizes with the device. Skip samples by hand with ``p < 1``.
+        """
+        to_apply = torch.atleast_1d(params["batch_prob"] > 0.5)
+        if self.p == 1.0 and self.p_batch == 1.0:
+            return torch.ones_like(to_apply)
+        return to_apply
 
     def transform_inputs(
         self,
@@ -439,10 +473,19 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
         ori_shape = input.shape
 
         shape = params["forward_input_shape"]
+
+        # A batched call has one gate per sample, so ``batch_prob`` gives the batch size as a Python int. The shape
+        # helpers read it from the ``forward_input_shape`` tensor, a data-dependent branch that breaks
+        # ``torch.compile(fullgraph=True)`` for a ``(B, H, W)`` mask (#5598). Scalar gates keep the shape helpers.
+        channel_dim: Optional[int] = None
+        if input.dim() == 3 and batch_prob.dim() == 1:
+            channel_dim = 1 if input.shape[0] == batch_prob.shape[0] else 0
+            input = input.unsqueeze(channel_dim)
+
         in_tensor = self.transform_tensor(input, shape=shape, match_channel=False)
 
         self.validate_tensor(in_tensor)
@@ -450,9 +493,18 @@ class _AugmentationBase(_BasicAugmentationBase):
         output_transformed = self.apply_transform_mask(in_tensor, params, flags, transform=transform)
         output_not_transformed = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
 
-        output = self._blend_by_prob(output_transformed, output_not_transformed, to_apply)
+        # With an empty, statically always-applied batch, the image path takes the transformed shape.
+        # An empty gate has no rows to blend, so keep the mask on that same canvas (#4429).
+        if self.p == 1.0 and self.p_batch == 1.0 and batch_prob.numel() == 0:
+            output = output_transformed
+        else:
+            output = self._blend_by_prob(output_transformed, output_not_transformed, to_apply)
 
-        return _transform_output_shape(output, ori_shape, reference_shape=shape) if self.keepdim else output
+        if not self.keepdim:
+            return output
+        if channel_dim is not None:
+            return output.squeeze(channel_dim)
+        return _transform_output_shape(output, ori_shape, reference_shape=shape)
 
     def transform_boxes(
         self,
@@ -469,8 +521,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             self._params if params is None else params, flags, **kwargs
         )
 
-        batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
 
         output_transformed = self.apply_transform_box(input, params, flags, transform=transform)
         output_not_transformed = self.apply_non_transform_box(input, params, flags, transform=transform)
@@ -488,6 +539,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         # and swap in the blended data, same effect as the index_put on .data.
         output = output_not_transformed.clone()
         output._data = blended_data
+        output._valid = self._blend_by_prob(output_transformed._valid, output_not_transformed._valid, to_apply)
         return output
 
     def transform_keypoints(
@@ -505,8 +557,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             self._params if params is None else params, flags, **kwargs
         )
 
-        batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
 
         output_transformed = self.apply_transform_keypoint(input, params, flags, transform=transform)
         output_not_transformed = self.apply_non_transform_keypoint(input, params, flags, transform=transform)
@@ -536,8 +587,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             self._params if params is None else params, flags, **kwargs
         )
 
-        batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
 
         output_transformed = self.apply_transform_class(input, params, flags, transform=transform)
         output_not_transformed = self.apply_non_transform_class(input, params, flags, transform=transform)

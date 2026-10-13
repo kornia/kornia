@@ -15,7 +15,9 @@
 # limitations under the License.
 #
 
+import io
 import itertools
+import math
 import warnings
 
 import pytest
@@ -30,6 +32,74 @@ from kornia.geometry.subpix.spatial_soft_argmax import (
 )
 
 from testing.base import BaseTester
+
+
+class TestStridedSubpixel(BaseTester):
+    @pytest.mark.parametrize(
+        "operation", ["conv_soft_argmax2d", "conv_soft_argmax3d", "conv_quad_interp3d", "iterative_quad_interp3d"]
+    )
+    @pytest.mark.parametrize("layout", ["channels_last", "batch_channel_transpose", "spatial_transpose", "slice"])
+    def test_heatmap_layout(self, device, dtype, operation, layout):
+        shape = (2, 3, 5, 7) if operation.endswith("2d") else (2, 3, 5, 6, 7)
+        sample = torch.arange(math.prod(shape), device=device, dtype=torch.float32)
+        sample = sample.sin().reshape(shape).to(dtype)
+        if layout == "channels_last":
+            memory_format = torch.channels_last if len(shape) == 4 else torch.channels_last_3d
+            sample = sample.to(memory_format=memory_format)
+        elif layout == "batch_channel_transpose":
+            sample = sample.transpose(0, 1)
+        elif layout == "spatial_transpose":
+            sample = sample.transpose(-1, -2)
+        else:
+            sample = sample[..., ::2]
+        assert not sample.is_contiguous()
+        function = getattr(kornia.geometry.subpix, operation)
+        kwargs = {"output_value": True} if "soft_argmax" in operation else {}
+
+        expected = function(sample.contiguous(), **kwargs)
+        actual = function(sample, **kwargs)
+
+        for result, reference in zip(actual, expected):
+            self.assert_close(result, reference, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("operation", ["conv_soft_argmax2d", "conv_soft_argmax3d"])
+    def test_channels_last_gradient(self, device, operation):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        shape = (2, 3, 5, 7) if operation.endswith("2d") else (2, 3, 5, 6, 7)
+        sample = torch.arange(math.prod(shape), device=device, dtype=torch.float64).sin().reshape(shape)
+        reference = sample.clone().requires_grad_()
+        memory_format = torch.channels_last if len(shape) == 4 else torch.channels_last_3d
+        strided = sample.to(memory_format=memory_format).requires_grad_()
+        function = getattr(kornia.geometry.subpix, operation)
+
+        expected = function(reference, output_value=True)
+        actual = function(strided, output_value=True)
+        expected_grad = torch.autograd.grad(sum(value.sum() for value in expected), reference)[0]
+        actual_grad = torch.autograd.grad(sum(value.sum() for value in actual), strided)[0]
+
+        self.assert_close(actual_grad, expected_grad)
+
+    @pytest.mark.parametrize("operation", ["conv_quad_interp3d", "iterative_quad_interp3d"])
+    @pytest.mark.parametrize("layout", ["channels_last", "batch_channel_transpose", "spatial_transpose"])
+    def test_precomputed_mask_layout(self, device, dtype, operation, layout):
+        sample = torch.arange(2 * 3 * 5 * 6 * 7, device=device, dtype=torch.float32).sin()
+        sample = sample.reshape(2, 3, 5, 6, 7).to(dtype)
+        mask = kornia.geometry.subpix.nms3d(sample, (3, 3, 3), True)
+        if layout == "channels_last":
+            mask = mask.to(memory_format=torch.channels_last_3d)
+        elif layout == "batch_channel_transpose":
+            mask, sample = mask.transpose(0, 1), sample.transpose(0, 1).contiguous()
+        else:
+            mask, sample = mask.transpose(-1, -2), sample.transpose(-1, -2).contiguous()
+        assert not mask.is_contiguous()
+        function = getattr(kornia.geometry.subpix, operation)
+
+        expected = function(sample, precomputed_nms_mask=mask.contiguous())
+        actual = function(sample, precomputed_nms_mask=mask)
+
+        for result, reference in zip(actual, expected):
+            self.assert_close(result, reference, atol=0, rtol=0)
 
 
 class TestCenterKernel2d(BaseTester):
@@ -95,6 +165,13 @@ class TestSpatialSoftArgmax2d(BaseTester):
         sample = torch.zeros(2, 1, 2, 3, device=device, dtype=dtype)
         m = kornia.geometry.subpix.SpatialSoftArgmax2d()
         assert m(sample).shape == (2, 1, 2)
+
+    @pytest.mark.parametrize("shape", [(0, 3, 4, 5), (2, 0, 4, 5)])
+    def test_empty_batch_or_channels(self, device, dtype, shape):
+        sample = torch.rand(shape, device=device, dtype=dtype)
+        m = kornia.geometry.subpix.SpatialSoftArgmax2d()
+        assert m(sample).shape == (*shape[:2], 2)
+        assert kornia.geometry.subpix.spatial_soft_argmax2d(sample).shape == (*shape[:2], 2)
 
     def test_top_left_normalized(self, device, dtype):
         sample = torch.zeros(1, 1, 2, 3, device=device, dtype=dtype)
@@ -464,6 +541,90 @@ class TestConvSoftArgmax2d(BaseTester):
 
 
 class TestConvSoftArgmax3d(BaseTester):
+    @pytest.mark.parametrize("batch_size,channels", [(0, 2), (2, 0)])
+    @pytest.mark.parametrize("output_value", [True, False])
+    @pytest.mark.parametrize("as_module", [True, False])
+    @pytest.mark.parametrize("normalized_coordinates", [True, False])
+    def test_empty_batch_or_channel(
+        self, device, dtype, batch_size, channels, output_value, as_module, normalized_coordinates
+    ):
+        """Empty batch and channel axes preserve output shapes and gradients (gh-5754)."""
+        data = torch.empty(batch_size, channels, 3, 8, 8, device=device, dtype=dtype, requires_grad=True)
+        if as_module:
+            result = kornia.geometry.subpix.ConvSoftArgmax3d(
+                (3, 3, 5),
+                (1, 2, 3),
+                (1, 0, 1),
+                output_value=output_value,
+                normalized_coordinates=normalized_coordinates,
+            )(data)
+        else:
+            result = kornia.geometry.subpix.conv_soft_argmax3d(
+                data,
+                (3, 3, 5),
+                (1, 2, 3),
+                (1, 0, 1),
+                output_value=output_value,
+                normalized_coordinates=normalized_coordinates,
+            )
+        outputs = result if isinstance(result, tuple) else (result,)
+        assert len(outputs) == (2 if output_value else 1)
+        expected_shapes = [(batch_size, channels, 3, 3, 3, 2), (batch_size, channels, 3, 3, 2)]
+        for output, expected_shape in zip(outputs, expected_shapes):
+            assert output.shape == expected_shape
+            assert output.device == device
+            assert output.dtype == dtype
+        gradient = torch.autograd.grad([output.sum() for output in outputs], data)[0]
+        assert gradient.shape == data.shape
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("op_name", ["function", "module"])
+    @pytest.mark.parametrize("dynamic", [False, True], ids=["static", "dynamic"])
+    def test_legacy_onnx_export_matches_eager(self, dtype, op_name, dynamic):
+        if dtype != torch.float32:
+            pytest.skip("The ONNX export is checked once, in float32")
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+
+        if op_name == "function":
+
+            class FunctionalWrapper(torch.nn.Module):
+                def forward(self, x):
+                    return kornia.geometry.subpix.conv_soft_argmax3d(x)
+
+            model = FunctionalWrapper()
+        else:
+            model = kornia.geometry.subpix.ConvSoftArgmax3d()
+        sample = torch.rand(1, 2, 5, 8, 9, dtype=dtype)
+        buffer = io.BytesIO()
+        export_kwargs = {
+            "input_names": ["input"],
+            "output_names": ["coords", "values"],
+            "opset_version": 17,
+            "dynamo": False,
+        }
+        if dynamic:
+            export_kwargs["dynamic_axes"] = {
+                "input": {0: "batch", 2: "depth", 3: "height", 4: "width"},
+                "coords": {0: "batch", 3: "depth_out", 4: "height_out", 5: "width_out"},
+                "values": {0: "batch", 2: "depth_out", 3: "height_out", 4: "width_out"},
+            }
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            torch.onnx.export(model, (sample,), buffer, **export_kwargs)
+
+        session = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"])
+        inputs = [sample]
+        if dynamic:
+            inputs.append(torch.rand(2, 2, 7, 9, 11, dtype=dtype))
+        for image in inputs:
+            actual = [torch.from_numpy(value) for value in session.run(None, {"input": image.numpy()})]
+            expected = model(image)
+            assert isinstance(expected, tuple)
+            assert len(actual) == len(expected) == 2
+            for got, want in zip(actual, expected):
+                self.assert_close(got, want, atol=1e-6, rtol=1e-6)
+
     def test_smoke(self, device, dtype):
         sample = torch.zeros(1, 1, 3, 3, 3, device=device, dtype=dtype)
         m = kornia.geometry.subpix.ConvSoftArgmax3d((3, 3, 3), output_value=False)

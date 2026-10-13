@@ -27,10 +27,12 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import ShapeError
+from kornia.core.utils import _torch_grid_sample
 from kornia.filters.sobel import spatial_gradient
 from kornia.geometry.grid import create_meshgrid
 
 from .camera import PinholeCamera, cam2pixel, pixel2cam, project_points, unproject_points
+from .camera.pinhole import _embed_intrinsics
 from .conversions import normalize_pixel_coordinates, normalize_points_with_intrinsics
 from .linalg import convert_points_to_homogeneous, transform_points
 
@@ -432,7 +434,7 @@ def warp_frame_depth(
     height, width = depth_dst.shape[-2:]
     points_2d_src_norm: torch.Tensor = normalize_pixel_coordinates(points_2d_src, height, width)  # BxHxWx2
 
-    return F.grid_sample(image_src, points_2d_src_norm, align_corners=True)
+    return _torch_grid_sample(image_src, points_2d_src_norm, align_corners=True)
 
 
 class DepthWarper(nn.Module):
@@ -454,6 +456,8 @@ class DepthWarper(nn.Module):
         - :meth:`compute_projection_matrix` stores ``K_dst @ (E_dst @ inverse(E_src))``, the matrix above, from
           the constructor's ``pinhole_dst`` and that method's ``pinhole_src`` (both
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`, world-to-camera extrinsics).
+          Both cameras use only the top-left 3x3 block of their intrinsics, embedded in
+          homogeneous 4x4 form; the stored fourth row and column are ignored.
         - the ``grid`` attribute is the homogeneous integer-centre pixel grid (pixel ``(0, 0)`` is
           ``(0, 0, 1)``); :meth:`warp_grid` returns sampling positions in ``grid_sample``'s
           ``align_corners=True`` normalized coordinates of the **destination** image.
@@ -553,8 +557,7 @@ class DepthWarper(nn.Module):
         dst_trans_src[..., :3, :3] = composed_rmat
         dst_trans_src[..., :3, 3:] = composed_tvec
 
-        # intrinsics (Nx3x3) @ extrinsics (Nx4x4)
-        dst_proj_src = torch.matmul(self._pinhole_dst.intrinsics, dst_trans_src)
+        dst_proj_src = torch.matmul(_embed_intrinsics(self._pinhole_dst.camera_matrix), dst_trans_src)
 
         self._pinhole_src = pinhole_src
         self._dst_proj_src = dst_proj_src
@@ -681,7 +684,7 @@ class DepthWarper(nn.Module):
             >>> image_src = warper(depth_src, image_dst)  # NxCxHxW
 
         """
-        return F.grid_sample(
+        return _torch_grid_sample(
             patch_dst,
             self.warp_grid(depth_src),
             mode=self.mode,

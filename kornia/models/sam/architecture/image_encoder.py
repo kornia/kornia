@@ -33,7 +33,7 @@ from kornia.models.common import LayerNorm2d, window_partition, window_unpartiti
 from kornia.models.sam.architecture.common import MLPBlock
 
 
-# This class and its supporting functions below lightly adapted from the ViTDet backbone available at: https://github.com/facebookresearch/detectron2/blob/main/detectron2/modeling/backbone/vit.py # noqa
+# This class and its supporting functions below lightly adapted from the ViTDet backbone available at: https://github.com/facebookresearch/detectron2/blob/main/detectron2/modeling/backbone/vit.py # noqa: E501
 class ImageEncoderViT(nn.Module):
     """Implement the Vision Transformer (ViT) based image encoder for SAM.
 

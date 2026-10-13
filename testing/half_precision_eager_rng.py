@@ -149,7 +149,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
         (
             *_audited(
                 "tests/augmentation/container/test_augmentation_sequential.py",
-                71,
+                79,
                 "torch.randn",
                 2,
                 (
@@ -188,7 +188,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
             ),
             *_audited(
                 "tests/geometry/subpix/test_dsnt.py",
-                149,
+                151,
                 "torch.randn",
                 1,
                 (
@@ -199,7 +199,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
             ),
             *_audited(
                 "tests/image/test_draw.py",
-                366,
+                423,
                 "torch.rand",
                 4,
                 ("tests/image/test_draw.py::TestDrawLine::test_point_size",),
@@ -207,7 +207,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
             ),
             *_audited(
                 "tests/losses/test_total_variation.py",
-                127,
+                149,
                 "torch.rand",
                 3,
                 ("tests/losses/test_total_variation.py::TestTotalVariation::test_tv_shapes",),

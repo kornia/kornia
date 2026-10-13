@@ -114,9 +114,13 @@ class ParametrizedLine(nn.Module):
 
         """
         direction = p1 - p0
-        if not torch.jit.is_scripting() and are_checks_enabled() and not is_compiling():
-            if not bool((direction.abs().amax(dim=-1) > 0).all()):
-                raise ValueCheckError("ParametrizedLine.through requires two distinct points; p0 and p1 coincide.")
+        if (
+            not torch.jit.is_scripting()
+            and are_checks_enabled()
+            and not is_compiling()
+            and not bool((direction.abs().amax(dim=-1) > 0).all())
+        ):
+            raise ValueCheckError("ParametrizedLine.through requires two distinct points; p0 and p1 coincide.")
         return ParametrizedLine(p0, _normalize_last_dim(direction, 1e-12))
 
     def point_at(self, t: Union[float, torch.Tensor, Scalar]) -> torch.Tensor:
@@ -194,15 +198,18 @@ class ParametrizedLine(nn.Module):
         Note:
             If the line is parallel to the plane (``|normal . direction| < eps``) there is no unique
             intersection; the function returns lambda ``0`` and the line origin as the point.
+            Within this fallback branch, lambda has zero derivatives and the point differentiates as the origin.
 
         """
         dot_prod = batched_dot_product(plane.normal.data, self.direction)
         dot_prod_mask = dot_prod.abs() >= eps
 
-        # TODO: add check for dot product
+        # torch.where differentiates both branches: dividing by zero in a parallel row gives NaN gradients
+        # even though its selected lambda is zero. Substitute a safe denominator before the division.
+        dot_prod_safe = torch.where(dot_prod_mask, dot_prod, torch.ones_like(dot_prod))
         res_lambda = torch.where(
             dot_prod_mask,
-            -(plane.offset.data + batched_dot_product(plane.normal.data, self.origin)) / dot_prod,
+            -(plane.offset.data + batched_dot_product(plane.normal.data, self.origin)) / dot_prod_safe,
             torch.zeros_like(dot_prod),
         )
 
@@ -250,6 +257,11 @@ def _fit_line_tls_2d(points: torch.Tensor) -> ParametrizedLine:
     after centring, whatever the rounding of the mean. An exactly vertical set then has ``sxy = +0`` and gets the
     direction ``(0, 1)``; the float32 rounding of ``pi / 2`` can leave an x component of 1.2e-7.
     """
+    dtype = points.dtype
+    # Promote before subtracting or accumulating: finite half coordinates can have an overflowing difference,
+    # and even unit-scale second moments overflow float16 for a sufficiently large point set.
+    if dtype in (torch.float16, torch.bfloat16):
+        points = points.float()
     x0 = points[..., :1, 0]  # (B, 1)
     y0 = points[..., :1, 1]  # (B, 1)
     x = points[..., 0] - x0  # (B, N)
@@ -259,7 +271,7 @@ def _fit_line_tls_2d(points: torch.Tensor) -> ParametrizedLine:
 
     direction = _tls_direction_2d(x - x_mean, y - y_mean, None)
     origin = torch.cat([x0 + x_mean, y0 + y_mean], dim=-1)
-    return ParametrizedLine(origin, direction)
+    return ParametrizedLine(origin.to(dtype), direction.to(dtype))
 
 
 def _fit_line_weighted_tls_2d(points: torch.Tensor, weights: torch.Tensor) -> ParametrizedLine:
@@ -267,6 +279,14 @@ def _fit_line_weighted_tls_2d(points: torch.Tensor, weights: torch.Tensor) -> Pa
 
     Centred relative to the first point, like :func:`_fit_line_tls_2d`.
     """
+    out_dtype = torch.promote_types(points.dtype, weights.dtype)
+    compute_dtype = torch.float32 if out_dtype in (torch.float16, torch.bfloat16) else out_dtype
+    points, weights = points.to(compute_dtype), weights.to(compute_dtype)
+    # Uniform weight scaling preserves the centroid and direction. Normalise before the sums,
+    # and accumulate half-precision inputs in float32, as in the D >= 3 branch.
+    weight_scale = weights.abs().amax(dim=-1, keepdim=True)
+    weights = weights / torch.where(weight_scale > 0, weight_scale, torch.ones_like(weight_scale))
+
     x0 = points[..., :1, 0]  # (B, 1)
     y0 = points[..., :1, 1]  # (B, 1)
     x = points[..., 0] - x0  # (B, N)
@@ -277,7 +297,7 @@ def _fit_line_weighted_tls_2d(points: torch.Tensor, weights: torch.Tensor) -> Pa
 
     direction = _tls_direction_2d(x - x_mean, y - y_mean, weights)
     origin = torch.cat([x0 + x_mean, y0 + y_mean], dim=-1)
-    return ParametrizedLine(origin, direction)
+    return ParametrizedLine(origin.to(out_dtype), direction.to(out_dtype))
 
 
 def _reject_degenerate_line(points: torch.Tensor, weights: Optional[torch.Tensor]) -> None:
@@ -370,31 +390,46 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
             return _fit_line_weighted_tls_2d(points, weights)
         return _fit_line_tls_2d(points)
 
+    # The scatter matrix is quadratic in the coordinates. Form it from centred, unit-scale
+    # offsets in a compute dtype before SVD; casting an already-overflowed half matrix cannot recover it.
     if weights is not None:
         KORNIA_CHECK_IS_TENSOR(weights, "weights must be a tensor")
         KORNIA_CHECK_SHAPE(weights, ["B", "N"])
         KORNIA_CHECK(points.shape[0] == weights.shape[0])
+    # The output keeps the promoted dtype of points and weights, as in the D = 2 branch.
+    out_dtype = points.dtype if weights is None else torch.promote_types(points.dtype, weights.dtype)
+    compute_dtype = torch.float32 if out_dtype in (torch.float16, torch.bfloat16) else out_dtype
+    work_points = points.to(compute_dtype)
+
+    if weights is not None:
+        work_weights = weights.to(compute_dtype)
+        weight_scale = work_weights.abs().amax(dim=-1, keepdim=True)
+        work_weights = work_weights / torch.where(weight_scale > 0, weight_scale, torch.ones_like(weight_scale))
         # Weighted total least squares: centre on the weighted centroid, as the D = 2 branch does. A row whose
         # weights sum to 0 keeps the unweighted mean instead of 0 / 0, whose NaN would make the SVD raise.
-        w_sum = weights.sum(-1)[..., None, None]
+        w_sum = work_weights.sum(-1)[..., None, None]
         has_weight = w_sum != 0
         w_sum = torch.where(has_weight, w_sum, torch.ones_like(w_sum))
         mean = torch.where(
-            has_weight, (weights[..., None] * points).sum(-2, keepdim=True) / w_sum, points.mean(-2, True)
+            has_weight,
+            (work_weights[..., None] * work_points).sum(-2, keepdim=True) / w_sum,
+            work_points.mean(-2, True),
         )
-        A = points - mean
-        A = A.transpose(-2, -1) @ torch.diag_embed(weights) @ A
     else:
-        mean = points.mean(-2, True)
-        A = points - mean
-        A = A.transpose(-2, -1) @ A
+        mean = work_points.mean(-2, True)
+
+    A = work_points - mean
+    scale = A.abs().amax(dim=(-2, -1), keepdim=True)
+    A = A / torch.where(scale > 0, scale, torch.ones_like(scale))
+    # When weighted, scale the columns directly instead of allocating an N-by-N diagonal weight matrix.
+    A = (A.transpose(-2, -1) * work_weights[..., None, :]) @ A if weights is not None else A.transpose(-2, -1) @ A
 
     # NOTE: not optimal for 2d points, but for now works for other dimensions
     _, _, V = _torch_svd_cast(A)
     V = V.transpose(-2, -1)
 
     # the first left eigenvector is the direction on the fitted line
-    direction = V[..., 0, :]  # BxD
-    origin = mean[..., 0, :]  # BxD
+    direction = V[..., 0, :].to(out_dtype)  # BxD
+    origin = mean[..., 0, :].to(out_dtype)  # BxD
 
     return ParametrizedLine(origin, direction)

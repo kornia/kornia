@@ -47,11 +47,10 @@ def _write_png_batch(path_stem: str, image: torch.Tensor) -> None:
     ``ImageModule`` hands a tensor to PIL: clamped, scaled and rounded. A
     ``uint8`` or ``uint16`` visualization is written as-is.
 
-    ``write_image`` takes ``(3, H, W)``, ``(1, H, W)`` or ``(H, W)``, but the
-    containers document their inputs as ``(B, 3, H, W)`` and passed the batch
-    straight through. The backend then rejects the rank with an error that
-    names neither -- ``TypeError: argument 'image': 'ndarray' object is not an
-    instance of 'ndarray'`` -- so a batch has to be split here.
+    ``write_image`` takes one image, ``(3, H, W)``, ``(1, H, W)``, ``(H, W)`` or,
+    for PNG only, ``(4, H, W)``, and rejects a batched tensor; the containers
+    document their inputs as ``(B, 3, H, W)``, so a batch is written as one file
+    per item.
 
     A batch of one still gets an index suffix, so a caller does not have to
     guess whether a file will be ``name.png`` or ``name_0.png``.
@@ -152,8 +151,9 @@ class ModelBase(ABC, nn.Module, ModelBaseMixin, Generic[ModelConfig]):
             device: The desired device to load the weights and move the model
 
         """
-        if isinstance(checkpoint, str) and os.path.isfile(checkpoint):
-            with open(checkpoint, "rb") as f:
+        local = os.path.expanduser(checkpoint) if isinstance(checkpoint, str) else None
+        if local is not None and os.path.isfile(local):
+            with open(local, "rb") as f:
                 state_dict = torch.load(f, map_location=device, weights_only=True)
         else:
             state_dict = load_state_dict_from_url(checkpoint, map_location=device)

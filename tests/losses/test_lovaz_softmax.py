@@ -280,3 +280,49 @@ class TestLovaszSoftmaxLoss(BaseTester):
         op_module = kornia.losses.LovaszSoftmaxLoss()
 
         self.assert_close(op(logits, labels), op_module(logits, labels))
+
+
+class TestConventionsLovaszSoftmaxLoss(BaseTester):
+    """Pins for the batch, class and weight reduction of :func:`lovasz_softmax_loss`."""
+
+    @staticmethod
+    def _logits_and_labels(device, dtype):
+        g = torch.Generator().manual_seed(0)
+        logits = torch.randn(2, 4, 4, 6, generator=g)
+        labels = torch.randint(0, 3, (2, 4, 6), generator=g)
+        labels[1, 1:3, 2:5] = 3  # class 3 is absent from image 0
+        logits = logits + 3.0 * (labels[:, None] == torch.arange(4)[:, None, None])
+        logits[0, 3, 0, :2] += 6.0  # image 0 predicts the absent class 3 on two pixels
+        return logits.to(device=device, dtype=dtype), labels.to(device)
+
+    def test_convention_lovasz_softmax_loss_averages_all_classes_per_image(self, device, dtype):
+        # Berman's lovasz_softmax(softmax(pred), classes='all', per_image=True): each image is scored on its own (the
+        # batch flattened into one image, per_image=False, gives another value), and a class absent from an image
+        # still enters that image's mean over the C classes, with the image's largest probability for it (Berman's
+        # default classes='present' skips it)
+        logits, labels = self._logits_and_labels(device, dtype)
+        loss = kornia.losses.lovasz_softmax_loss
+        per_image = (loss(logits[:1], labels[:1]) + loss(logits[1:], labels[1:])) / 2
+        self.assert_close(loss(logits, labels), per_image)
+        flattened = loss(torch.cat([logits[0], logits[1]], -1)[None], torch.cat([labels[0], labels[1]], -1)[None])
+        assert (flattened - per_image).abs() > 0.02
+        image_0 = logits[:1].cpu(), labels[:1].cpu()
+        without_class_3 = _lovasz_softmax_reference(*image_0, torch.tensor([1.0, 1.0, 1.0, 0.0]))
+        largest_p_3 = image_0[0].double().softmax(1)[:, 3].max()
+        expected = without_class_3 + largest_p_3 / 4
+        self.assert_close(loss(logits[:1], labels[:1]), expected.to(device=device, dtype=dtype))
+        assert largest_p_3 / 4 - without_class_3 / 3 > 0.1  # the mean over the present classes would differ
+
+    def test_convention_lovasz_softmax_loss_weight_is_not_normalised(self, device, dtype):
+        # weight scales each class's term and the mean over classes still divides by C, not by sum(weight): a uniform
+        # weight of 2 doubles the loss, where dice_loss 'macro' divides by sum(weight)
+        logits, labels = self._logits_and_labels(device, dtype)
+        loss = kornia.losses.lovasz_softmax_loss
+        self.assert_close(
+            loss(logits, labels, torch.full((4,), 2.0, device=device, dtype=dtype)), 2 * loss(logits, labels)
+        )
+        weight = torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype)
+        one_class = torch.eye(4, device=device, dtype=dtype)
+        self.assert_close(
+            loss(logits, labels, weight), sum(w * loss(logits, labels, e) for w, e in zip(weight, one_class))
+        )

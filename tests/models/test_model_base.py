@@ -137,8 +137,8 @@ class TestModelBaseMixinSaveWritesRealFiles:
     shipped: the mock accepts any dtype and any rank, so nothing checked that
     what the containers hand it is something it can actually write. `visualize`
     returns float images and the containers document batched input, and
-    `write_image` accepts neither -- PNG is uint8/uint16 only, and the rank has
-    to be (3, H, W), (1, H, W) or (H, W).
+    `write_image` accepts neither -- PNG is uint8/uint16 only, and it takes one
+    image: (3, H, W), (1, H, W), (H, W) or, for PNG, (4, H, W).
     """
 
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.float16])
@@ -235,6 +235,18 @@ class TestModelBaseLoadCheckpoint(BaseTester):
         model = _TinyModel()
         with pytest.raises(pickle.UnpicklingError):
             load_without_running_payload(marker, lambda: model.load_checkpoint(str(path)))
+
+    def test_a_home_relative_path_loads_the_local_file(self, tmp_path, monkeypatch, dtype) -> None:
+        source = _TinyModel().to(dtype)
+        torch.save(source.state_dict(), tmp_path / "x.pt")
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+
+        model = _TinyModel().to(dtype)
+        model.load_checkpoint("~/x.pt")
+
+        self.assert_close(model.linear.weight, source.linear.weight)
+        self.assert_close(model.linear.bias, source.linear.bias)
 
     def test_a_local_state_dict_loads(self, tmp_path, dtype) -> None:
         source = _TinyModel().to(dtype)

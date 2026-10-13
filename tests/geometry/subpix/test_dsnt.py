@@ -90,8 +90,10 @@ class TestRenderGaussian2d(BaseTester):
         self.assert_close(heatmap[0, :, 0], y_profile.to(device=device, dtype=dtype))
         self.assert_close(heatmap[..., 1:], torch.zeros_like(heatmap[..., 1:]))
         (heatmap * torch.arange(25, device=device, dtype=dtype).view(1, 5, 5)).sum().backward()
-        assert mean.grad is not None and std.grad is not None
-        assert torch.isfinite(mean.grad).all() and torch.isfinite(std.grad).all()
+        assert mean.grad is not None
+        assert std.grad is not None
+        assert torch.isfinite(mean.grad).all()
+        assert torch.isfinite(std.grad).all()
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         mean = torch.tensor([0.0, 0.0], dtype=dtype, device=device)
@@ -165,6 +167,13 @@ class TestSpatialSoftmax2d(BaseTester):
 
         self.assert_close(actual, expected)
 
+    @pytest.mark.parametrize("shape", [(0, 3, 4, 5), (2, 0, 4, 5)])
+    def test_empty_batch_or_channels(self, device, dtype, shape):
+        input = torch.rand(shape, device=device, dtype=dtype)
+        actual = kornia.geometry.subpix.spatial_softmax2d(input)
+        assert actual.shape == shape
+        assert actual.dtype == dtype
+
     def test_dynamo(self, input, torch_optimizer):
         op = kornia.geometry.subpix.spatial_softmax2d
         op_optimized = torch_optimizer(op)
@@ -229,6 +238,14 @@ class TestSpatialExpectation2d(BaseTester):
         actual = kornia.geometry.subpix.spatial_expectation2d(input)
 
         self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("normalized_coordinates", [True, False])
+    @pytest.mark.parametrize("shape", [(0, 3, 4, 5), (2, 0, 4, 5)])
+    def test_empty_batch_or_channels(self, device, dtype, shape, normalized_coordinates):
+        input = torch.rand(shape, device=device, dtype=dtype)
+        actual = kornia.geometry.subpix.spatial_expectation2d(input, normalized_coordinates)
+        assert actual.shape == (*shape[:2], 2)
+        assert actual.dtype == dtype
 
     def test_float64_normalized_grid_is_exact_5019(self, device):
         if device.type == "mps":

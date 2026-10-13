@@ -506,6 +506,11 @@ def crop_by_indices(
         # bicubic) and cannot gather from an empty batch; ``interpolate`` rejects ``align_corners`` for nearest.
         return _compiled_slice_resize(input_tensor, src_box, size, interpolation, align_corners)
 
+    # ``RandomCrop`` passes its ``size`` through as given, and a list never compares equal to a ``torch.Size``:
+    # every slice would look mismatched and be resized to its own size.
+    if size is not None:
+        size = (size[0], size[1])
+
     # Move the four coordinate columns to Python in a single device sync (one ``tolist`` over a
     # stacked tensor) instead of a ``unique`` per column plus a device-to-host ``int(...)`` inside
     # every loop iteration — the coordinates index Python-level slicing, so they must be host ints.
@@ -541,13 +546,29 @@ def crop_by_indices(
                 "Please pass `size` explicitly when box dimensions vary across the batch."
             )
         size = (int(h[0].item()), int(w[0].item())) if B > 0 else (0, 0)
-    out = torch.empty(B, C, *size, device=input_tensor.device, dtype=input_tensor.dtype)
-    # Find out the cropped shapes that need to be resized.
-    for i in range(B):
-        _out = input_tensor[i : i + 1, :, y1l[i] : y2l[i], x1l[i] : x2l[i]]
+    # Unbind only when batch-slice gradients would allocate a full input buffer for every crop. On that
+    # path the rows are also joined with one ``cat``: writing them into ``out`` row by row would make the
+    # backward clone the gradient of the whole output once per row.
+    rows = input_tensor.unbind(0) if B > 1 and input_tensor.requires_grad and torch.is_grad_enabled() else None
+    slices = [
+        input_tensor[i : i + 1, :, y1l[i] : y2l[i], x1l[i] : x2l[i]]
+        if rows is None
+        else rows[i][None, :, y1l[i] : y2l[i], x1l[i] : x2l[i]]
+        for i in range(B)
+    ]
+    # When every row's slice already has the requested size (always the case for RandomCrop), join the
+    # views with one ``cat``: one copy kernel for the batch instead of a ``copy_`` per row (#4531).
+    # ``contiguous`` keeps the result in the default memory format, as the ``torch.empty`` below does,
+    # when the input is channels-last. MPS keeps the per-row copies: on an M1 the ``cat`` of strided
+    # views ran at 0.75-0.96x their speed without gradients (B = 4-64, 256² -> 128², #4987).
+    if B > 0 and input_tensor.device.type != "mps" and all(crop.shape[-2:] == size for crop in slices):
+        return torch.cat(slices).contiguous()
+    out = torch.empty(B, C, *size, device=input_tensor.device, dtype=input_tensor.dtype) if rows is None else None
+    crops: list[torch.Tensor] = []
+    for i, _out in enumerate(slices):
         if _out.shape[-2:] != size:
             if shape_compensation == "resize":
-                out[i] = resize(
+                _out = resize(
                     _out,
                     size,
                     interpolation=interpolation,
@@ -556,9 +577,13 @@ def crop_by_indices(
                     antialias=antialias,
                 )
             else:
-                out[i] = F.pad(_out, [0, size[1] - _out.shape[-1], 0, size[0] - _out.shape[-2]])
+                _out = F.pad(_out, [0, size[1] - _out.shape[-1], 0, size[0] - _out.shape[-2]])
+        if out is None:
+            crops.append(_out)
         else:
             out[i] = _out
+    if out is None:
+        return torch.cat(crops).contiguous()
     return out
 
 
@@ -619,7 +644,7 @@ class CenterCrop2D(nn.Module):
         elif isinstance(size, int):
             self.size = (size, size)
         else:
-            raise Exception(f"Invalid size type. Expected (int, tuple(int, int). Got: {type(size)}.")
+            raise TypeError(f"Invalid size type. Expected int or tuple[int, int]. Got: {type(size)}.")
 
         dst_h, dst_w = self.size
         points_dst = torch.tensor([[[0, 0], [dst_w - 1, 0], [dst_w - 1, dst_h - 1], [0, dst_h - 1]]], dtype=torch.long)
