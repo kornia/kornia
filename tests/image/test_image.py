@@ -357,9 +357,17 @@ class TestConventionsImage(BaseTester):
             (ColorSpace.BGR, 3, "to_bgr"),
         ],
     )
-    def test_convention_color_conversion_to_the_same_space_returns_self(self, color_space, channels, convert):
-        image = Image.from_numpy(np.zeros((4, 5, channels), dtype=np.uint8), color_space=color_space)
+    @pytest.mark.parametrize("array_dtype", [np.uint8, np.uint16])
+    def test_convention_color_conversion_to_the_same_space_returns_self(
+        self, color_space, channels, convert, array_dtype
+    ):
+        image = Image.from_numpy(np.zeros((4, 5, channels), dtype=array_dtype), color_space=color_space)
         assert getattr(image, convert)() is image
+
+    def test_convention_uint16_rgb_to_gray_is_unsupported(self):
+        image = Image.from_numpy(np.ones((2, 3, 3), dtype=np.uint16))
+        with pytest.raises(TypeError, match=r"Unknown data type: torch\.uint16"):
+            image.to_gray()
 
     def test_convention_from_numpy_shares_memory(self):
         array = np.zeros((4, 5, 3), dtype=np.uint8)  # H = 4, W = 5

@@ -68,8 +68,10 @@ class Image:
           :meth:`from_file` gives :math:`(C, H, W)`.
         - :meth:`to_gray`, :meth:`to_rgb` and :meth:`to_bgr` return the image itself when it is already in that color
           space, an image with new data when it is in another of the three, and raise ``ValueError`` for
-          ``UNKNOWN``. :meth:`to`, :meth:`float` and :meth:`clone` return a new ``Image`` and leave this one
-          unchanged.
+          ``UNKNOWN``. Converting RGB or BGR to gray requires ``uint8`` or a floating dtype supported by
+          :func:`~kornia.color.rgb_to_grayscale`; other integer dtypes, such as ``uint16``, are unsupported even
+          though ``Image`` can hold them. An already-gray image is returned unchanged regardless of dtype.
+          :meth:`to`, :meth:`float` and :meth:`clone` return a new ``Image`` and leave this one unchanged.
 
     Args:
         data: a torch.Tensor containing the image data.
