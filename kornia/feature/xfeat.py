@@ -301,9 +301,9 @@ class XFeat(nn.Module):
     Convention:
         - XFeat defines no ``forward``: call :meth:`detectAndCompute` or :meth:`detectAndComputeDense`.
         - The image is :math:`(B, C, H, W)` with any channel count. Each extraction resizes the image it gets
-          bilinearly to :math:`(H', W')`: ``H`` and ``W`` rounded down to multiples of 32, with a minimum of 32. :class:`XFeatModel` then averages the
-          channels and instance-normalises the result, so an affine change of the intensities with a positive gain
-          changes its maps only through the norm's ``eps``. Every output is float32.
+          bilinearly to :math:`(H', W')`: ``H`` and ``W`` rounded down to multiples of 32, with a minimum of 32.
+          :class:`XFeatModel` then averages the channels and instance-normalises the result, so an affine change of the
+          intensities with a positive gain changes its maps only through the norm's ``eps``. Every output is float32.
         - :meth:`detectAndCompute` keypoints are integer pixels ``i`` of the resized image, strict maxima of the
           keypoint heatmap in their 5 x 5 window (see the note), reported at ``i * (W / W', H / H')``. That is the
           pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
