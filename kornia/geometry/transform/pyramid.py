@@ -24,6 +24,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.utils import is_exporting
 from kornia.filters import filter2d, gaussian_blur2d
 from kornia.filters.gaussian import _gaussian_blur2d_cpu, _gaussian_blur2d_cpu_eligible
 
@@ -438,18 +439,27 @@ def pyrdown(
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
     kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
-    _, _, height, width = input.shape
     # blur image
     x_blur: torch.Tensor = filter2d(input, kernel, border_type)
 
-    # TODO: use kornia.geometry.resize/rescale
-    # downsample.
-    out: torch.Tensor = F.interpolate(
-        x_blur,
-        size=(int(float(height) / factor), int(float(width) / factor)),
-        mode="bilinear",
-        align_corners=align_corners,
-    )
+    if is_exporting() or torch.onnx.is_in_onnx_export():
+        # Keep the scale in the graph: deriving ``size`` from ``input.shape`` is
+        # frozen by the TorchScript ONNX exporter when H/W are dynamic.
+        out: torch.Tensor = F.interpolate(
+            x_blur,
+            scale_factor=1.0 / factor,
+            recompute_scale_factor=True,
+            mode="bilinear",
+            align_corners=align_corners,
+        )
+    else:
+        _, _, height, width = input.shape
+        out = F.interpolate(
+            x_blur,
+            size=(int(float(height) / factor), int(float(width) / factor)),
+            mode="bilinear",
+            align_corners=align_corners,
+        )
     return out
 
 

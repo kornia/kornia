@@ -22,7 +22,7 @@ import torch
 from torch import nn
 
 from kornia.core.ops import eye_like
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, is_exporting
 from kornia.filters import gaussian_blur2d
 
 from .imgwarp import get_affine_matrix2d, get_projective_transform, get_rotation_matrix2d, warp_affine, warp_affine3d
@@ -809,6 +809,22 @@ def rescale(
         factor_vert = factor_horz = factor
     else:
         factor_vert, factor_horz = factor
+
+    if (
+        (is_exporting() or torch.onnx.is_in_onnx_export())
+        and not antialias
+        and interpolation != "nearest-exact"
+        and factor_vert > 0
+        and factor_horz > 0
+        and input.ndim == 4
+    ):
+        return torch.nn.functional.interpolate(
+            input,
+            scale_factor=(factor_vert, factor_horz),
+            mode=interpolation,
+            align_corners=align_corners,
+            recompute_scale_factor=True,
+        )
 
     height, width = input.size()[-2:]
     size = (int(height * factor_vert), int(width * factor_horz))

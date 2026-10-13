@@ -41,6 +41,51 @@ class TestPyrUp(BaseTester):
 
 
 class TestPyrDown(BaseTester):
+    @pytest.mark.parametrize("dynamo", [False, True])
+    @pytest.mark.parametrize("operation", ["pyrdown", "build_pyramid", "rescale"])
+    def test_onnx_dynamic_spatial_shape(self, operation, dynamo):
+        import io
+
+        import numpy as np
+
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+        if dynamo:
+            pytest.importorskip("onnxscript")
+
+        class Wrapper(torch.nn.Module):
+            def forward(self, x):
+                if operation == "pyrdown":
+                    return kornia.geometry.transform.pyrdown(x)
+                if operation == "build_pyramid":
+                    return kornia.geometry.transform.build_pyramid(x, 3)[-1]
+                return kornia.geometry.transform.rescale(x, 0.5)
+
+        model = Wrapper().eval()
+        buffer = io.BytesIO()
+        export_kwargs = {
+            "input_names": ["x"],
+            "output_names": ["y"],
+            "opset_version": 18,
+            "dynamo": dynamo,
+        }
+        if dynamo:
+            export_kwargs["dynamic_shapes"] = (
+                {0: torch.export.Dim("batch"), 2: torch.export.Dim("height"), 3: torch.export.Dim("width")},
+            )
+        else:
+            export_kwargs["dynamic_axes"] = {
+                "x": {0: "batch", 2: "height", 3: "width"},
+                "y": {0: "out_batch", 2: "out_height", 3: "out_width"},
+            }
+        torch.onnx.export(model, (torch.rand(2, 1, 22, 44),), buffer, **export_kwargs)
+
+        x = torch.rand(3, 1, 33, 64)
+        actual = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"]).run(
+            None, {"x": x.numpy()}
+        )[0]
+        np.testing.assert_allclose(actual, model(x).numpy(), rtol=1e-5, atol=1e-6)
+
     def test_shape(self, device, dtype):
         inp = torch.zeros(1, 2, 4, 4, device=device, dtype=dtype)
         pyr = kornia.geometry.PyrDown()
