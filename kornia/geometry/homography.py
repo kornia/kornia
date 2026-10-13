@@ -326,7 +326,7 @@ def _homography_rows(p1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
     Two rows per correspondence, ``[0, -p1, y2 p1]`` and ``[p1, 0, -x2 p1]``, so that ``row . vec(H) = 0`` for
     ``points2 ~ H p1`` with ``H`` row-major; only the first two coordinates of ``points2`` are read.
     """
-    # DIAPO 11: https://www.uio.no/studier/emner/matnat/its/nedlagte-emner/UNIK4690/v16/forelesninger/lecture_4_3-estimating-homographies-from-feature-correspondences.pdf  # noqa: E501
+    # DIAPO 11: https://www.uio.no/studier/emner/matnat/its/nedlagte-emner/UNIK4690/v16/forelesninger/lecture_4_3-estimating-homographies-from-feature-correspondences.pdf
     zeros = torch.zeros_like(p1)
     ax = torch.cat([zeros, -p1, points2[..., 1:2] * p1], dim=-1)
     ay = torch.cat([p1, zeros, -points2[..., 0:1] * p1], dim=-1)

@@ -144,9 +144,15 @@ class KeyNet(nn.Module):
 
     .. image:: _static/img/KeyNet.png
 
+    Convention:
+        - The input is a grayscale image, and the pretrained weights expect it in ``[0, 1]``, as the Key.Net
+          reference scales its images. The response is not proportional to the intensity, so an image in
+          ``[0, 255]`` gives other detections.
+        - The response is a non-negative map of the input's size.
+
     Args:
         pretrained: Download and set pretrained weights to the model.
-        keynet_conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing`.
+        keynet_conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing.
 
     Returns:
         KeyNet response score.
@@ -201,10 +207,14 @@ class KeyNetDetector(MultiResolutionDetector):
 
     .. image:: _static/img/keynet.jpg
 
+    Convention:
+        A :class:`~kornia.feature.MultiResolutionDetector` with :class:`~kornia.feature.KeyNet` as its response; see
+        their Convention blocks for the frame of the detections and for the input range.
+
     Args:
         pretrained: Download and set pretrained weights to the model.
         num_features: Number of features to detect.
-        keynet_conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing`.
+        keynet_conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing.
         ori_module: for local feature orientation estimation. Default: :class:`~kornia.feature.PassLAF`,
            which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
         aff_module: for local feature affine shape estimation. Default: :class:`~kornia.feature.PassLAF`,

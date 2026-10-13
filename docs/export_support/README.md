@@ -1,6 +1,6 @@
-# Graph-capture survey behind the support page
+# Graph-capture survey behind the survey page
 
-The [ONNX, torch.compile and torch.export support](../source/get-started/index.rst) page of the
+The [ONNX, torch.compile and torch.export survey](../source/get-started/index.rst) page of the
 documentation is rendered from `docs/source/_data/export_support.json`, a committed snapshot of
 what this directory measures. The page itself is generated at docs build time by
 `docs/generate_export_support.py`; nothing here runs during a docs build.
