@@ -22,6 +22,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
+from kornia.feature._fp32 import Float32BatchNorm2d
 
 urls: Dict[str, str | list[str]] = {}
 urls["lib"] = [
@@ -80,7 +81,7 @@ class SOSNet(nn.Module):
             nn.ReLU(),
             nn.Dropout(0.1),
             nn.Conv2d(128, 128, kernel_size=8, bias=False),
-            nn.BatchNorm2d(128, affine=False),
+            Float32BatchNorm2d(128, affine=False),
         )
         self.desc_norm = nn.Sequential(nn.LocalResponseNorm(256, alpha=256.0, beta=0.5, k=0.0))
         # load pretrained model

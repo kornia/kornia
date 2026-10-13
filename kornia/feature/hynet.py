@@ -22,6 +22,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
+from kornia.feature._fp32 import Float32BatchNorm2d
 
 urls: Dict[str, str | list[str]] = {}
 urls["liberty"] = [
@@ -116,6 +117,9 @@ class FilterResponseNorm2d(nn.Module):
             Normalized tensor with the same shape as the input.
         """
         # Compute the mean norm of activations per channel.
+        half = x.dtype == torch.float16
+        if half:
+            x = x.float()
         nu2 = x.pow(2).mean(dim=[2, 3], keepdim=True)
 
         # Perform FRN.
@@ -126,6 +130,8 @@ class FilterResponseNorm2d(nn.Module):
             x = self.weight * x
         if self.is_bias:
             x = x + self.bias
+        if half:
+            x = x.to(torch.float16)
         return x
 
 
@@ -268,7 +274,7 @@ class HyNet(nn.Module):
         self.layer7 = nn.Sequential(
             nn.Dropout(self.drop_rate),
             nn.Conv2d(128, self.dim_desc, kernel_size=8, bias=False),
-            nn.BatchNorm2d(self.dim_desc, affine=False),
+            Float32BatchNorm2d(self.dim_desc, affine=False),
         )
 
         self.desc_norm = nn.LocalResponseNorm(2 * self.dim_desc, 2.0 * self.dim_desc, 0.5, 0.0)

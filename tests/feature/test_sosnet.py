@@ -43,6 +43,19 @@ class TestSOSNet(BaseTester):
         sosnet = SOSNet(pretrained=False).to(patches.device, patches.dtype)
         self.gradcheck(sosnet, (patches,), eps=1e-4, atol=1e-4)
 
+    def test_float16_large_running_variance_matches_float32(self, device):
+        model = SOSNet().to(device).eval()
+        model.layers[-1].running_var.fill_(1.2e5)
+        patches = torch.rand(8, 1, 32, 32, device=device)
+        expected = model(patches)
+        assert expected.std(dim=1).min() > 1e-2
+
+        model = model.to(dtype=torch.float16)
+        actual = model(patches.to(torch.float16)).float()
+        assert model.layers[-1].running_var.dtype == torch.float32
+        min_cosine = torch.nn.functional.cosine_similarity(actual, expected).min()
+        self.assert_close(min_cosine, torch.tensor(1.0, device=device), atol=1e-3, rtol=1e-3)
+
     @pytest.mark.parametrize("patch_value", [0.0, 0.5])
     def test_degenerate_patch_gives_finite_descriptors(self, device, dtype, patch_value):
         # `forward`'s `eps` is what keeps `desc_norm`'s division defined for a patch the network maps
