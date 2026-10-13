@@ -1,0 +1,1 @@
+`RandomMosaic` now rejects a `padding_mode` other than `constant`, `reflect` or `replicate` at construction with a `ValueError` listing the valid names, in both cropping modes, instead of ignoring it with `cropping_mode="slice"` or failing inside `grid_sample` on the first forward with `cropping_mode="resample"`.

@@ -59,7 +59,8 @@ class RandomMosaic(MixAugmentationBaseV2):
         p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
             to the batch form ``False``.
-        padding_mode: Type of padding. Should be: constant, reflect, replicate.
+        padding_mode: Type of padding, used only with ``cropping_mode="resample"``.
+            Should be: constant, reflect, replicate.
         resample: the interpolation mode.
         align_corners: interpolation flag.
         cropping_mode: The used algorithm to crop. ``slice`` will use advanced slicing to extract the torch.Tensor based
@@ -127,6 +128,10 @@ class RandomMosaic(MixAugmentationBaseV2):
         align_corners: bool = True,
         cropping_mode: str = "slice",
     ) -> None:
+        if padding_mode not in ("constant", "reflect", "replicate"):
+            raise ValueError(
+                f"{padding_mode!r} is not a valid padding_mode. Expected one of 'constant', 'reflect', 'replicate'."
+            )
         super().__init__(p=p, p_batch=1.0, same_on_batch=False, keepdim=keepdim, data_keys=data_keys)
         self.start_ratio_range = start_ratio_range
         self._param_generator = rg.MosaicGenerator(output_size, mosaic_grid, start_ratio_range)
