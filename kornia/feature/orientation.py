@@ -297,7 +297,8 @@ class LAFOrienter(nn.Module):
           centre, the scale and the upright shape (:func:`~kornia.feature.make_upright`) of the LAF are kept.
         - For an isotropic LAF, the default angle detector therefore turns the LAF's x axis onto the dominant
           gradient, whatever the input orientation: content turned 30 degrees counter-clockwise on screen turns the
-          output orientation by +30, the sign of :func:`~kornia.feature.laf_from_center_scale_ori`.
+          output orientation by +30, the sign of :func:`~kornia.feature.laf_from_center_scale_ori`
+          (see :ref:`Local features <local-features-conventions>`).
 
     Args:
         patch_size: side of the square patch sampled for each LAF.
