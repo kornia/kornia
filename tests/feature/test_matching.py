@@ -1776,3 +1776,15 @@ class TestConventionsMatching(BaseTester):
         smaller1 = match_adalam(d1, d2, lafs1, lafs2, hw1=(h // 3, w // 3), hw2=(h, w))[1]
         assert 0 < len(smaller1) < 0.9 * len(idxs)
         assert torch.equal(match_adalam(d1, d2, lafs1, lafs2, hw1=(w // 3, h // 3), hw2=(h, w))[1], smaller1)
+
+    def test_wart_match_adalam_rejects_exact_correspondences_5866(self, device, dtype):
+        d1, _, (c1, s1, o1), _, _, hw = self._oriented_adalam_scene()
+        desc = d1.to(device, dtype)
+        lafs = laf_from_center_scale_ori(c1, s1, o1).to(device, dtype)
+        # #5866: the local RANSACs give residuals at or near zero no inlier weight, so an image matched against itself
+        # keeps no match, while the same keypoints moved by about 0.1 px in the second image keep nearly all of them
+        exact = match_adalam(desc, desc, lafs, lafs, hw1=hw, hw2=hw)[1]
+        assert len(exact) == 0
+        shift = torch.randn(c1.shape, generator=torch.Generator().manual_seed(11)) * 0.1
+        moved = laf_from_center_scale_ori(c1 + shift, s1, o1).to(device, dtype)
+        assert len(match_adalam(desc, desc, lafs, moved, hw1=hw, hw2=hw)[1]) > 0.95 * len(desc)
