@@ -294,6 +294,7 @@ class TestDiceLoss(BaseTester):
             kornia.losses.DiceLoss()(torch.rand(1, 3, 4, 6), torch.randint(0, 3, (1, 1, 4, 6)))
 
     def test_averaging_micro(self, device, dtype):
+        "Keep the analytical micro-averaging reference finite in half precision."
         num_classes = 2
         eps = 1e-8
 
@@ -422,6 +423,7 @@ class TestDiceLoss(BaseTester):
         assert 0.0 <= loss.item() <= 1.0
 
     def test_averaging_macro(self, device, dtype):
+        "Keep the analytical macro-averaging reference finite in half precision."
         num_classes = 2
         eps = 1e-8
 

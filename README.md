@@ -109,7 +109,7 @@ covers CUDA or MPS half precision.
 | `kornia.geometry.ransac` | ⚠️ | ⚠️ | 4 / 4 | The essential and fundamental models raise through the epipolar solvers |
 | `kornia.geometry` (other) | ⚠️ | ⚠️ | 8 / 17 | Accuracy in boxes, depth and line utilities; bfloat16 `NamedPose` construction raises |
 | `kornia.image` | ⚠️ | ⚠️ | 4 / 4 | `draw_convex_polygon` fill accuracy |
-| `kornia.losses` | ⚠️ | ⚠️ | 1 / 3 | Mutual information range check in both dtypes; bfloat16 total variation accuracy. Dice averaging passes after correcting its overflowing float16 test references |
+| `kornia.losses` | ✅ | ⚠️ | 0 / 2 | Mutual information and Dice averaging pass; bfloat16 total variation accuracy |
 | `kornia.feature` | ✅ | ✅ | 0 / 0 | Matching uses a manual `cdist` fallback for half dtypes; LightGlue's float16 tests are skipped, so that path is unmeasured |
 | `kornia.metrics` | ✅ | ⚠️ | 0 / 1 | bfloat16: `ssim3d` accuracy |
 | `kornia.models` | ✅ | ⚠️ | 0 / 1 | bfloat16 RT-DETR RepVGG fusion accuracy |

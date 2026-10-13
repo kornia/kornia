@@ -210,11 +210,11 @@ class DKD(nn.Module):
     Args:
         radius: soft detection radius; NMS kernel size is ``2 * radius + 1``. The NMS keeps strict local maxima
             only, unlike the reference's ``simple_nms``; the note of :class:`ALIKED` explains the difference.
-        top_k: if ``> 0`` return exactly the ``top_k`` highest-scoring
-            keypoints; otherwise threshold mode is used.
+        top_k: if ``> 0`` return at most ``top_k`` keypoints per image: its ``top_k`` highest-scoring local maxima,
+            or all of them when it has fewer; otherwise threshold mode is used.
         scores_th: score threshold when ``top_k <= 0``.
-            If ``> 0`` keep keypoints with ``score > scores_th``;
-            otherwise keep keypoints above the per-image mean score.
+            If ``> 0`` keep keypoints with ``score > scores_th``, and in an image with none above it, the keypoints
+            above that image's mean score; otherwise keep keypoints above the per-image mean score.
         n_limit: maximum number of keypoints returned in threshold mode.
     """
 
@@ -263,32 +263,34 @@ class DKD(nn.Module):
         """
         b, _c, h, w = scores_map.shape
         scores_nograd = scores_map.detach()
-        nms_scores = nms2d(scores_nograd, (self.kernel_size, self.kernel_size))
+        # the candidates: the strict local maxima outside the border (and outside each image's padding)
+        is_max = nms2d(scores_nograd, (self.kernel_size, self.kernel_size), mask_only=True)
 
         # remove border
-        nms_scores[:, :, : self.radius, :] = 0
-        nms_scores[:, :, :, : self.radius] = 0
+        is_max[:, :, : self.radius, :] = False
+        is_max[:, :, :, : self.radius] = False
         if image_size is not None:
             for i in range(b):
                 iw, ih = image_size[i].long()
-                nms_scores[i, :, ih.item() - self.radius :, :] = 0
-                nms_scores[i, :, :, iw.item() - self.radius :] = 0
+                is_max[i, :, ih.item() - self.radius :, :] = False
+                is_max[i, :, :, iw.item() - self.radius :] = False
         else:
-            nms_scores[:, :, -self.radius :, :] = 0
-            nms_scores[:, :, :, -self.radius :] = 0
+            is_max[:, :, -self.radius :, :] = False
+            is_max[:, :, :, -self.radius :] = False
 
         if self.top_k > 0:
-            topk = torch.topk(nms_scores.view(b, -1), self.top_k)
-            indices_keypoints = [topk.indices[i] for i in range(b)]
+            # at most top_k of the maxima: a non-maximum scores -inf here and is dropped, not used to fill up to top_k
+            candidate_scores = scores_nograd.masked_fill(~is_max, float("-inf")).reshape(b, -1)
+            topk = torch.topk(candidate_scores, min(self.top_k, h * w))
+            indices_keypoints = [topk.indices[i][topk.values[i] > float("-inf")] for i in range(b)]
         else:
+            # the per-image mean score: the threshold when scores_th <= 0, and the fallback of an image whose maxima
+            # are all at or below scores_th, decided for each image alone
+            mean = scores_nograd.reshape(b, -1).mean(dim=1).reshape(b, 1, 1, 1)
+            masks = is_max & (scores_nograd > mean)
             if self.scores_th > 0:
-                masks = nms_scores > self.scores_th
-                if masks.sum() == 0:
-                    th = scores_nograd.reshape(b, -1).mean(dim=1)
-                    masks = nms_scores > th.reshape(b, 1, 1, 1)
-            else:
-                th = scores_nograd.reshape(b, -1).mean(dim=1)
-                masks = nms_scores > th.reshape(b, 1, 1, 1)
+                above = is_max & (scores_nograd > self.scores_th)
+                masks = torch.where(above.reshape(b, -1).any(dim=1).reshape(b, 1, 1, 1), above, masks)
             masks = masks.reshape(b, -1)
 
             indices_keypoints = []
@@ -953,8 +955,9 @@ class ALIKED(nn.Module):
         samples, so rescale the frames, for example with
         :func:`~kornia.feature.scale_laf`, before using them as a region size.
 
-        All per-image tensors are zero-padded along the keypoint dimension so
-        that the outputs are proper batched tensors.
+        All per-image tensors are zero-padded along the keypoint dimension to
+        the largest keypoint count in the batch, so that the outputs are proper
+        batched tensors.
 
         Args:
             img: image to extract features with shape :math:`(B,C,H,W)`.

@@ -43,7 +43,11 @@ def _color_mode(img_np: Any) -> str:
 
 
 class ImageLoadType(Enum):
-    r"""Enum to specify the desired image type."""
+    r"""Enum to specify the desired image type.
+
+    Convention:
+        See the Convention block of :func:`~kornia.io.load_image` for the channels, dtype and range of each member.
+    """
 
     UNCHANGED = 0
     GRAY8 = 1
@@ -173,8 +177,9 @@ def _apply_png_palette_and_transparency(path_file: Path, image: torch.Tensor) ->
         table = colors
         if trns is not None:
             alpha = torch.full((colors.shape[0],), 255, dtype=torch.uint8)
-            listed = torch.frombuffer(bytearray(trns), dtype=torch.uint8)[: colors.shape[0]]
-            alpha[: listed.numel()] = listed
+            if trns:
+                listed = torch.frombuffer(bytearray(trns), dtype=torch.uint8)[: colors.shape[0]]
+                alpha[: listed.numel()] = listed
             table = torch.cat([colors, alpha[:, None]], dim=1)
         indices = image[0].long()
         if indices.numel() and int(indices.max()) >= table.shape[0]:
@@ -316,6 +321,25 @@ def load_image(
 ) -> torch.Tensor:
     """Read an image file and decode using the Kornia Rust backend.
 
+    Convention:
+        - ``desired_type`` fixes the channels, the dtype and the range, whatever the file holds: ``GRAY8``, ``RGB8``
+          and ``RGBA8`` give 1, 3 and 4 ``uint8`` channels in [0, 255], and ``GRAY32`` and ``RGB32`` (the default)
+          1 and 3 ``float32`` channels in [0, 1]. ``UNCHANGED`` keeps the file's channels and dtype, so a 16-bit PNG
+          or TIFF loads as ``uint16`` and a float TIFF as ``float32``; the other types raise for such a file.
+        - Channels are in RGB order, with alpha last. Under every type except ``UNCHANGED``, an 8-bit palette PNG
+          loads as its colours and a PNG ``tRNS`` chunk counts as alpha; palette entries the chunk does not list, all
+          of them for an empty chunk, are opaque. ``RGBA8`` keeps the alpha (255 for an opaque file), and the other
+          types composite it over white, rounded to the nearest level. ``UNCHANGED`` returns a palette PNG's indices
+          and keeps an alpha channel as stored.
+        - ``GRAY8`` and ``GRAY32`` convert a colour file with :func:`~kornia.color.rgb_to_grayscale`.
+        - The pixels come back as stored: the EXIF orientation is ignored.
+        - The extension, in any letter case, chooses the decoder; the file content does not. The file is decoded on
+          the CPU and the tensor is then moved to ``device``.
+        - kornia-rs cannot decode a PNG with 1, 2 or 4 bits per sample, a gray+alpha PNG, a 4-channel TIFF or a CMYK
+          JPEG; these, a truncated file and, under every type except ``UNCHANGED``, a malformed palette or
+          ``PLTE``/``tRNS`` chunk raise ``ValueError``.
+        - :ref:`Files and arrays <image-io-conventions>` maps OpenCV's and Pillow's loaders onto the load types.
+
     Args:
         path_file: Path to an image file in a format kornia-rs decodes, such as JPEG, PNG, TIFF or WebP; the
             extension may be in any letter case.
@@ -323,21 +347,13 @@ def load_image(
         device: the device where you want to get your image placed.
 
     Return:
-        Image torch.Tensor with shape :math:`(C, H, W)`: ``C`` is 1 for ``GRAY8`` and ``GRAY32``, 3 for ``RGB8`` and
-        ``RGB32``, 4 for ``RGBA8``, and the file's channel count for ``UNCHANGED``. An 8-bit palette PNG loads as its
-        palette indices under ``UNCHANGED`` and as its colours under every other type. An 8-bit gray or RGB PNG with
-        a tRNS colour key loads its key colour as transparent under every other type.
+        Image torch.Tensor with shape :math:`(C, H, W)`.
 
     Raises:
-        TypeCheckError: if ``desired_type`` is not an :class:`ImageLoadType`. It is also a ``TypeError``.
+        TypeCheckError: if ``desired_type`` is not an :class:`ImageLoadType` (also a ``TypeError``).
         OSError: if the file cannot be read, for example ``FileNotFoundError`` when it does not exist.
-        ValueError: if the file cannot be decoded: a truncated or corrupt image, an unsupported format, a PNG with 1,
-            2 or 4 bits per sample (palette PNGs included), a gray+alpha PNG, a palette PNG whose palette is malformed
-            or too short for its pixels, or, under every type except ``UNCHANGED``, a PNG whose PLTE or tRNS chunk is
-            truncated or fails its CRC check. The message names the file; when the decoder fails, its exception is the
-            ``__cause__``.
-        NotImplementedError: if a type other than ``UNCHANGED`` is requested for a file that decodes to more than 8
-            bits, such as a 16-bit PNG or TIFF or a float TIFF.
+        ValueError: if the file cannot be decoded; the message names the file.
+        NotImplementedError: if a type other than ``UNCHANGED`` is requested for a file wider than 8 bits.
 
     """
     if not isinstance(desired_type, ImageLoadType):
@@ -394,29 +410,35 @@ def _write_float32_image(path_file: Path, img_np: Any) -> None:
 def write_image(path_file: str | Path, image: torch.Tensor, quality: int = 80) -> None:
     """Save an image file using the Kornia Rust backend.
 
+    Convention:
+        - The extension chooses the format, and the format limits the dtype and the channels: JPEG stores ``uint8``,
+          PNG ``uint8`` and ``uint16``, and TIFF ``uint8``, ``uint16`` and ``float32``; each stores 1 or 3 channels,
+          and PNG also 4. Any other dtype or channel count raises.
+        - The tensor is written as it is, in RGB order with alpha last, without conversion, scaling or clamping: a
+          ``float32`` TIFF keeps values outside [0, 1].
+        - ``image`` is channels first. A channels-last :math:`(H, W, C)` tensor is not detected: its first axis is
+          read as the channels.
+        - :ref:`Files and arrays <image-io-conventions>` maps ``cv2.imwrite`` onto these arguments.
+        - Known defect: an image with zero height or width reaches kornia-rs, which raises a bare ``Exception`` and
+          leaves an empty or truncated file behind (`#5770 <https://github.com/kornia/kornia/issues/5770>`_).
+
     Args:
         path_file: Path with a .jpg, .jpeg, .png, .tif or .tiff extension, in any letter case.
-        image: Image torch.Tensor with shape :math:`(C, H, W)` or :math:`(H, W)`; ``C`` is 1 or 3, or 4 for PNG.
-        quality: The quality of the JPEG encoding, an integer in [0, 100]. It is validated for every format and used
-            only for JPEG.
+        image: Image torch.Tensor with shape :math:`(C, H, W)` or :math:`(H, W)`.
+        quality: The quality of the JPEG encoding, an integer in [0, 100] and not a ``bool``. It is validated for
+            every format and used only for JPEG.
 
     Return:
         None.
 
     Raises:
-        TypeCheckError: if ``image`` is not a tensor, or ``quality`` is not an integer (a ``bool`` is not accepted).
-            It is also a ``TypeError``.
-        ValueCheckError: if ``quality`` is outside [0, 100]. It is also a ``ValueError``.
+        TypeCheckError: if ``image`` is not a tensor or ``quality`` is not an integer (also a ``TypeError``).
+        ValueCheckError: if ``quality`` is outside [0, 100] (also a ``ValueError``).
         BaseError: if the extension is not one of the five above.
-        ShapeError: if ``image`` is not :math:`(C, H, W)` or :math:`(H, W)`, or has a channel count the format cannot
-            store. It is also a ``ValueError``.
-        FileNotFoundError: if the directory to write into does not exist; ``NotADirectoryError`` if that path is a
-            file.
-        NotImplementedError: if the format cannot store the dtype: JPEG takes ``uint8``; PNG ``uint8`` and
-            ``uint16``; TIFF ``uint8``, ``uint16`` and ``float32``.
-        Exception: kornia-rs's error, a bare ``Exception``, when the file cannot be created (for example without
-            write permission) or the image cannot be encoded, such as one with zero height or width
-            (`#5770 <https://github.com/kornia/kornia/issues/5770>`_).
+        ShapeError: if ``image`` is not 2-D or 3-D, or the format cannot store its channels (also a ``ValueError``).
+        FileNotFoundError: if the directory to write into does not exist (``NotADirectoryError`` if it is a file).
+        NotImplementedError: if the format cannot store the dtype.
+        Exception: kornia-rs's bare ``Exception`` when the file cannot be created or the image cannot be encoded.
     """
     if not isinstance(path_file, Path):
         path_file = Path(path_file)

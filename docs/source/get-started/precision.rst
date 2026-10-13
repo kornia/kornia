@@ -129,10 +129,9 @@ precision, so the table says nothing about those backends.
    * - ``kornia.losses``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 1 / 3
-     - The mutual-information range check fails in both dtypes; bfloat16 total variation misses accuracy.
-       Dice averaging passes after correcting its overflowing float16 test references.
-       Hausdorff and the photometric losses pass.
+     - 0 / 2
+     - Mutual information, Dice averaging, Hausdorff and the photometric losses pass.
+       bfloat16 total variation misses accuracy.
    * - ``kornia.feature``
      - ✅ Yes
      - ✅ Yes
