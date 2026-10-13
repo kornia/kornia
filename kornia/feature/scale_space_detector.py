@@ -209,10 +209,13 @@ class ScaleSpaceDetector(nn.Module):
 
     Convention:
         - The candidates are the strict :math:`3 \times 3 \times 3` maxima of the response over level, row and column
-          (:func:`~kornia.geometry.subpix.nms3d_minmax`), and with ``minima_are_also_good`` its strict minima below zero
-          too, on the levels given under ``scale_pyr_module``: a minimum above zero is not a candidate, while a maximum
-          below zero is. There is no response threshold. The ``num_features`` strongest candidates of all octaves are
-          kept; a minimum is ranked and returned with its response negated.
+          (:func:`~kornia.geometry.subpix.nms3d_minmax`) on the levels given under ``scale_pyr_module``, whatever their
+          sign. With ``minima_are_also_good`` a strict minimum is a candidate too when its negated response after
+          sub-pixel refinement exceeds the response the maxima pass reports at that voxel, which the built-in refiners
+          leave at its sampled value: in effect every minimum below zero, and a minimum above zero only when the
+          refinement extrapolates it below minus its sampled value. There is no response threshold. The
+          ``num_features`` strongest candidates of all octaves are kept; a minimum is ranked and returned with its
+          refined response negated.
         - The default Hessian response is a maximum at bright and dark blobs alike. A DoG response
           (:class:`~kornia.feature.BlobDoG`) is a maximum at a dark blob and a minimum at a bright one, which only
           ``minima_are_also_good=True`` detects.

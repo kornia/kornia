@@ -1477,6 +1477,23 @@ class _Extrema(torch.nn.Module):
         return out
 
 
+class _QuadraticMinimum(torch.nn.Module):
+    """A scale-space response ``(d - 2.375)^2 + (y - 30.375)^2 + (x - 20.375)^2 - 0.3`` on the 64 x 96 octave, 1 elsewhere.
+
+    Its minimum, -0.3 at level 2.375 and pixel (20.375, 30.375), lies between samples: every sampled value is at least
+    3 * 0.375^2 - 0.3 = 0.121875, at the strict minimum voxel (2, 30, 20). The offsets are exact in bfloat16.
+    """
+
+    def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
+        out = torch.ones_like(x[:, :1])
+        if x.shape[-1] == 96:  # the first octave only
+            d, y, xx = torch.meshgrid(
+                *(torch.arange(n, device=x.device, dtype=x.dtype) for n in out.shape[-3:]), indexing="ij"
+            )
+            out[:] = (d - 2.375) ** 2 + (y - 30.375) ** 2 + (xx - 20.375) ** 2 - 0.3
+        return out
+
+
 class _LevelPeaks(torch.nn.Module):
     """A response map with one peak per pyramid level, looked up by the level's ``(H, W)``.
 
@@ -1616,14 +1633,15 @@ class TestConventionsScaleSpaceDetector(BaseTester):
         ],
         ids=["maxima", "minima", "minima-negated-response"],
     )
-    def test_convention_scale_space_detector_takes_minima_below_zero_only(
+    def test_convention_scale_space_detector_takes_single_voxel_minima_below_zero_only(
         self, device, dtype, sign, minima_are_also_good, centres, values
     ):
         # On a background of 0.5: maxima of 0.8 at (40, 30) and of -0.2 inside a -0.4 box at (70, 45), minima of -0.7
         # at (25, 40) and of 0.3 at (60, 25). A strict maximum is a candidate whatever its sign; with
-        # minima_are_also_good a strict minimum is one only below zero, and returns its negated response. So the
-        # minimum of 0.3 is not detected, and negating the response detects it (as a maximum of -0.3) instead of the
-        # maximum of -0.2 (now a minimum of 0.2).
+        # minima_are_also_good a strict minimum is one when its refined negated response exceeds the response sampled
+        # there. Refinement leaves a single-voxel extremum at its sampled value, so such a minimum is one only below
+        # zero, and returns its negated response. So the minimum of 0.3 is not detected, and negating the response
+        # detects it (as a maximum of -0.3) instead of the maximum of -0.2 (now a minimum of 0.2).
         items = [((40, 30), 0.8, None), ((70, 45), -0.2, -0.4), ((25, 40), -0.7, None), ((60, 25), 0.3, None)]
         items = [(site, sign * value, None if box is None else sign * box) for site, value, box in items]
         det = ScaleSpaceDetector(
@@ -1638,6 +1656,29 @@ class TestConventionsScaleSpaceDetector(BaseTester):
         assert kornia.feature.laf_is_filled(lafs)[0].tolist() == [True] * n + [False] * (8 - n)
         self.assert_close(lafs[0, :n, :, 2], torch.tensor(centres, device=device, dtype=dtype))
         self.assert_close(resps[0, :n], torch.tensor(values, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("minima_are_also_good", [False, True])
+    def test_convention_scale_space_detector_compares_a_refined_minimum_with_the_sampled_response(
+        self, device, dtype, minima_are_also_good
+    ):
+        # The selection compares a minimum after refinement: its refined negated response, 0.3, exceeds the 0.121875
+        # sampled at its voxel, so the minimum is a candidate although no sampled response is below zero. It is
+        # reported at its refined centre (20.375, 30.375) with response 0.3. The response has no strict maximum, so
+        # without minima_are_also_good there is no detection.
+        det = ScaleSpaceDetector(
+            2,
+            resp_module=_QuadraticMinimum(),
+            scale_space_response=True,
+            mr_size=1.0,
+            minima_are_also_good=minima_are_also_good,
+        )
+        lafs, resps = det.to(device, dtype)(torch.zeros(1, 1, 64, 96, device=device, dtype=dtype))
+        if not minima_are_also_good:
+            assert kornia.feature.laf_is_filled(lafs)[0].tolist() == [False, False]
+            return
+        assert kornia.feature.laf_is_filled(lafs)[0].tolist() == [True, False]
+        self.assert_close(lafs[0, 0, :, 2], torch.tensor([20.375, 30.375], device=device, dtype=dtype))
+        self.assert_close(resps[0, 0], torch.tensor(0.3, device=device, dtype=dtype))
 
     def test_convention_scale_space_detector_masks_candidates_before_the_top_k(self, device, dtype):
         # A mask drops a candidate at its integer site before the octave's top-k; only the check of the refined centre

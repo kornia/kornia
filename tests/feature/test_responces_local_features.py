@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
@@ -554,6 +556,21 @@ class TestConventionsResponses(BaseTester):
         sigmas = torch.tensor([2.0, 0.5], device=device, dtype=dtype)
         expected = response(img) * torch.tensor([16.0, 0.0625], device=device, dtype=dtype).view(-1, 1, 1, 1)
         self.assert_close(response(img, sigmas=sigmas), expected, rtol=2 * torch.finfo(dtype).eps, atol=0.0)
+
+    def test_convention_gftt_at_a_corner_falls_faster_than_sigma_cubed_with_the_blur(self, device, dtype):
+        # The 7 x 7 window keeps its size, so the smaller eigenvalue at a corner falls faster than sigma ** -3 over the
+        # blurs of a ScalePyramid octave, 1.6 to 4: sigmas ** 4 corrects it more closely than sigmas ** 2. With a
+        # window growing with sigma the exponent would be 2. A 90-degree corner gives 3.32, CPU float64.
+        n = 97
+        img = torch.zeros(1, 1, n, n, device=device, dtype=dtype)
+        img[..., n // 2 :, n // 2 :] = 1.0
+        peaks = []
+        for sigma, ksize in ((1.6, 15), (4.0, 33)):
+            blurred = kornia.filters.gaussian_blur2d(img, (ksize, ksize), (sigma, sigma))
+            response = kornia.feature.gftt_response(blurred)[..., n // 2 - 16 : n // 2 + 17, n // 2 - 16 : n // 2 + 17]
+            peaks.append(response.max().double())
+        exponent = (torch.log(peaks[0] / peaks[1]) / math.log(4.0 / 1.6)).item()
+        assert 3.0 < exponent < 4.0
 
     def test_convention_dog_response_is_each_level_minus_the_previous_one(self, device, dtype):
         # The level axis of (B, C, D, H, W) is dim 2, and output level i is L[i + 1] - L[i]: D - 1 levels.
