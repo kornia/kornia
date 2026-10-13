@@ -68,6 +68,20 @@ class TestHistMatch(BaseTester):
         out = kornia.contrib.histogram_matching(src, dst)
         self.assert_close(out, torch.full_like(src, 7.0))
 
+    def test_histmatch_clipped_black_template(self, device, dtype):
+        # An 8-bit template with crushed shadows: 60 of its 256 pixels are 0. The darkest source pixels map to 0, as in
+        # skimage.exposure.match_histograms (60 zeros); they used to be extrapolated below it (57 negative outputs).
+        yy, xx = torch.meshgrid(
+            torch.linspace(0, 1, 16, device=device, dtype=dtype),
+            torch.linspace(0, 1, 16, device=device, dtype=dtype),
+            indexing="ij",
+        )
+        src = ((0.1 + 0.5 * xx + 0.3 * yy) * 255).round() / 255
+        dst = ((1.2 * xx + 0.3 * yy - 0.4).clamp(0, 1) * 255).round() / 255
+        out = kornia.contrib.histogram_matching(src, dst)
+        assert out.min() == 0
+        assert int((out == 0).sum()) == 60
+
     @pytest.mark.skip(reason="not differentiable now.")
     def test_grad(self, device):
         B, C, H, W = 1, 3, 32, 32
