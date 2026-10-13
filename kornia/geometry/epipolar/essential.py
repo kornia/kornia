@@ -241,7 +241,8 @@ def _least_squares_basis(design: torch.Tensor) -> torch.Tensor:
     if design.shape[-2] < 9:
         return _NullSpaceBasis.apply(design)[0]
     # every right singular vector has a gradient in torch.linalg.svd itself
-    _, _, V = _torch_svd_cast(design)
+    # N >= 9 here, so reduced SVD still returns all 9 right singular vectors. The full U is unused.
+    _, _, V = _torch_svd_cast(design, full_matrices=False)
     return V[:, :, -4:]
 
 
