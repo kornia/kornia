@@ -121,7 +121,7 @@ class TestOnnxLightGlue:
 
     @pytest.mark.device_agnostic
     def test_device_none_means_cpu(self, monkeypatch, tmp_path):
-        # The signature allows ``device=None``; it used to raise torch's ``TypeError`` from ``torch.device(None)``.
+        # The signature allows ``device=None``, which means CPU.
         path = _write_local_model(tmp_path)
         urls = []
 
@@ -131,7 +131,9 @@ class TestOnnxLightGlue:
 
         monkeypatch.setattr("kornia.feature.lightglue_onnx.lightglue.download_onnx_from_url", fake_download)
 
-        matcher = OnnxLightGlue(device=None)
+        # ``None`` means CPU, not torch's current default device.
+        with torch.device("meta"):
+            matcher = OnnxLightGlue(device=None)
         assert matcher.device == torch.device("cpu")
         # ``weights=None`` resolves from the device: the CPU build of ``disk``, as for ``device="cpu"``.
         assert urls == [OnnxLightGlue.MODEL_URLS["disk"].replace(".onnx", "_cpu.onnx")]
