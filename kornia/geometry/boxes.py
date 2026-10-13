@@ -1125,7 +1125,7 @@ class VideoBoxes(Boxes):
         temporal_channel_size = boxes.size(1)
 
         quadrilaterals = _boxes_to_quadrilaterals(
-            boxes.view(boxes.size(0) * boxes.size(1), -1, boxes.size(3), boxes.size(4)),
+            boxes.reshape(boxes.size(0) * boxes.size(1), boxes.size(2), boxes.size(3), boxes.size(4)),
             mode="vertices_plus",
             validate_boxes=validate_boxes,
         )
@@ -1179,8 +1179,9 @@ class VideoBoxes(Boxes):
             :attr:`temporal_channel_size`.
         """
         out = super().to_tensor(mode, as_padded_sequence=as_padded_sequence)
+        batch_size = self._data.shape[0] // self.temporal_channel_size
         if isinstance(out, torch.Tensor):
-            return out.view(-1, self.temporal_channel_size, *out.shape[1:])
+            return out.reshape(batch_size, self.temporal_channel_size, *out.shape[1:])
         # If returns a list of boxes.
         return [_out.view(-1, self.temporal_channel_size, *_out.shape[1:]) for _out in out]
 
