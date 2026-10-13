@@ -52,8 +52,7 @@ always faster.
    * - ``SIFTFeature(..., descriptor_backend="pyramid")``
      - The same multiresolution detector; a separate image pyramid supplies smoothed
        gradients for orientation and pooled histogram maps for description.
-     - Its automatic orientation was repaired in #5762. Use it for measured
-       multiresolution workloads; #5748 remains open for the validation below.
+     - Measured multiresolution workloads; see the validation below.
 
 The two feature classes have different detector algorithms. :class:`SIFTFeature`
 applies a single-scale DoG response independently at each image resolution, with
@@ -98,23 +97,22 @@ combination at the intended feature budget.
 Validation and possible deprecation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-`#5762 <https://github.com/kornia/kornia/pull/5762>`_ repaired the automatic
-orientation used by ``SIFTFeature(descriptor_backend="pyramid")``. It integrates
-a 19x19 support of smoothed image gradients before angular binning, without
-extracting image patches. The issue tracked in
-`#5748 <https://github.com/kornia/kornia/issues/5748>`_ remains open: its
-acceptance criteria include performance at 1024 features and Oxford accuracy at
-2048 features. Promotion of this convenience combination requires recovered
-accuracy and a demonstrated runtime or memory advantage on a stated workload.
+The automatic orientation used by ``SIFTFeature(descriptor_backend="pyramid")``
+integrates a 19x19 support of smoothed image gradients before angular binning,
+without extracting image patches. Its acceptance criteria, tracked in
+`#5748 <https://github.com/kornia/kornia/issues/5748>`_, include performance at
+1024 features and Oxford accuracy at 2048 features. Promotion of this convenience
+combination requires accuracy matching the patch backend and a demonstrated
+runtime or memory advantage on a stated workload.
 Validation should compare with the patch backend at 1024 and 2048 features on
 IMC PhotoTourism pose estimation and Oxford homography estimation, reporting
 matcher settings, device and timing methodology.
 
-If repair does not establish those benefits, the plan is to deprecate this
+If validation does not establish those benefits, the plan is to deprecate this
 convenience combination and remove it only after the :doc:`API stability policy
 </get-started/stability>` window: at least one minor release of warnings and a
-documented replacement. No formal deprecation warning or removal version is
-introduced here. This plan concerns the combination, not the standalone
+documented replacement. No deprecation warning or removal version is set.
+This plan concerns the combination, not the standalone
 :class:`SIFTDescriptorFromPyramid` descriptor-only interface; see
 :ref:`sift-descriptor-interfaces`.
 

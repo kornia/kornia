@@ -49,12 +49,11 @@ in a few octaves. See the recorded
 General affine frames use an approximate angular remapping and spatial pooling;
 this is not numerically identical to patch extraction.
 
-Its ``orient_and_describe(image, lafs)`` method additionally estimates orientation.
-The automatic orientation used by ``SIFTFeature(descriptor_backend="pyramid")``
-was repaired in `#5762 <https://github.com/kornia/kornia/pull/5762>`_ by integrating
-smoothed gradients before angular binning. `#5748 <https://github.com/kornia/kornia/issues/5748>`_
-remains open for its performance and accuracy acceptance criteria. That validation
-does not invalidate the descriptor-only ``forward`` use on supplied oriented LAFs.
+Its ``orient_and_describe(image, lafs)`` method additionally estimates orientation,
+integrating smoothed gradients before angular binning; this is the orientation
+used by ``SIFTFeature(descriptor_backend="pyramid")``. Its performance and accuracy
+acceptance criteria are tracked in `#5748 <https://github.com/kornia/kornia/issues/5748>`_;
+they do not concern the descriptor-only ``forward`` use on supplied oriented LAFs.
 The :ref:`validation and possible deprecation plan <sift-pipelines>` retains all
 three standalone descriptor interfaces.
 

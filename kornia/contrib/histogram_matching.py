@@ -55,7 +55,11 @@ def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Te
     t_quantiles = t_quantiles / t_quantiles[-1]
 
     # interpolate linearly to find the pixel values in the template image
-    # that correspond most closely to the quantiles in the source image
+    # that correspond most closely to the quantiles in the source image.
+    # Anchor the template CDF at quantile 0 so a source quantile below the template's lowest one maps to the
+    # template minimum (as np.interp does) instead of being extrapolated below it.
+    t_quantiles = torch.cat([t_quantiles.new_zeros(1), t_quantiles])
+    t_values = torch.cat([t_values[:1], t_values])
     interp_t_values = interp(s_quantiles, t_quantiles, t_values)
 
     return interp_t_values[bin_idx].reshape(oldshape)

@@ -21,13 +21,7 @@ import pytest
 import torch
 
 import kornia
-from kornia.geometry.camera.pinhole import (
-    PinholeCamerasList,
-    get_optical_pose_base,
-    homography_i_H_ref,
-    inverse_pinhole_matrix,
-    pinhole_matrix,
-)
+from kornia.geometry.camera.pinhole import PinholeCamerasList
 
 from testing.base import BaseTester
 
@@ -1049,44 +1043,12 @@ class TestPinholeCamera(BaseTester):
         )
 
 
-class TestPinholeMatrix(BaseTester):
-    """Pins for the legacy 12-vector pinhole API in ``kornia.geometry.camera.pinhole``.
+class TestLegacyPinholeVectorApiRemoved:
+    """The legacy 12-vector pinhole helpers are removed; ``PinholeCamera`` replaces them (#4268, #4283)."""
 
-    None of these names is in ``kornia.geometry.camera.__all__`` or reachable as ``kornia.geometry.camera.X``,
-    so they are imported from the module directly.
-    """
-
-    def _vec12(self, device, dtype):
-        # (fx, fy, cx, cy, height, width, rx, ry, rz, tx, ty, tz); cx != cy and height != width so a swapped
-        # reading of the vector changes the matrix.
-        return torch.tensor(
-            [[100.0, 100.0, 4.0, 3.0, 6.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype
-        )
-
-    def test_wart_pinhole_matrix_perturbs_every_entry_4268(self, device, dtype):
-        # Wart pin for #4268: pinhole_matrix adds its default eps = 1e-06 to the whole identity, so every entry is
-        # perturbed ([0, 0, 1] = 1e-06, [0, 3, 3] = 1.000001); eps=0.0 gives the exact matrix. The legacy pair is
-        # therefore never an exact inverse, and a (1, 4, 4) input raises a bare AssertionError, not a ShapeError.
-        # Delete when #4268 is repaired.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("half precision cannot hold 1 + 1e-06")
-        vec = self._vec12(device, dtype)
-        matrix = pinhole_matrix(vec)
-        self.assert_close(matrix[0, 0, 1], torch.tensor(1e-06, device=device, dtype=dtype), atol=0.0, rtol=0.0)
-        self.assert_close(matrix[0, 3, 3], torch.tensor(1.000001, device=device, dtype=dtype), atol=0.0, rtol=0.0)
-        exact = pinhole_matrix(vec, eps=0.0)
-        assert exact[0, 0, 1].item() == 0.0
-        assert exact[0, 3, 3].item() == 1.0
-        residual = (inverse_pinhole_matrix(vec) @ matrix - torch.eye(4, device=device, dtype=dtype)).abs().max()
-        assert residual.item() > 0.0
-        with pytest.raises(AssertionError):
-            inverse_pinhole_matrix(torch.eye(4, device=device, dtype=dtype)[None])
-
-    def test_wart_dead_legacy_functions_always_raise_4283(self, device, dtype):
-        # Wart pin for #4283: get_optical_pose_base and homography_i_H_ref are documented but always raise
-        # NotImplementedError. Delete when #4283 is repaired.
-        vec = self._vec12(device, dtype)
-        with pytest.raises(NotImplementedError):
-            get_optical_pose_base(vec)
-        with pytest.raises(NotImplementedError):
-            homography_i_H_ref(vec, vec)
+    @pytest.mark.parametrize(
+        "name",
+        ["pinhole_matrix", "inverse_pinhole_matrix", "scale_pinhole", "get_optical_pose_base", "homography_i_H_ref"],
+    )
+    def test_legacy_name_is_gone(self, name):
+        assert not hasattr(kornia.geometry.camera.pinhole, name)
