@@ -831,3 +831,11 @@ class TestConventionsLightGlue(BaseTester):
         # A name outside known_modes is rejected.
         with pytest.raises(NotImplementedError, match="orb is not supported"):
             LightGlueMatcher("orb")
+
+    def test_convention_lightglue_features_configuration_wins_over_keyword_arguments(self, device, dtype, monkeypatch):
+        # "disk" sets input_dim, so the keyword argument loses; filter_threshold is not in its configuration, so the
+        # keyword argument stays
+        monkeypatch.setattr("kornia.feature.lightglue.load_state_dict_from_url", lambda *args, **kwargs: {})
+        lg = LightGlue("disk", input_dim=64, filter_threshold=0.3, n_layers=1)
+        assert lg.conf.input_dim == 128
+        assert lg.conf.filter_threshold == 0.3

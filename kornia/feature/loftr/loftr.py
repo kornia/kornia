@@ -96,8 +96,6 @@ class LoFTR(nn.Module):
           (:func:`~kornia.feature.laf_from_center_scale_ori`), in which pixel centres have integer coordinates.
         - ``confidence`` is the coarse dual-softmax score of the match; only matches above the ``thr`` of
           ``config["match_coarse"]``, 0.2 by default, are returned.
-        - With ``resolution`` (16, 4) in ``config``, ``keypoints0`` lie on a 16-pixel grid, and most sizes that are
-          not multiples of 16 raise an error.
 
     Args:
         config: Dict with initialization parameters. Do not pass it, unless you know what you are doing.

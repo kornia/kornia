@@ -48,10 +48,12 @@ class OnnxLightGlue:
     for how to export the model to ONNX and optimize it.
 
     Convention:
-        See the Convention block on :class:`~kornia.feature.LightGlue`: the keypoints are normalised the same way,
-        with ``image_size`` in the order ``(W, H)``, and the same range check applies. Unlike
-        :class:`~kornia.feature.LightGlue`, it takes float32 inputs with a batch of one and no scales, orientations
-        or LAFs, and it runs on CPU or CUDA only.
+        - See the Convention block on :class:`~kornia.feature.LightGlue`: the keypoints are normalised the same way,
+          with ``image_size`` in the order ``(W, H)``, and the same range check applies. Unlike
+          :class:`~kornia.feature.LightGlue`, it takes float32 inputs with a batch of one and no scales, orientations
+          or LAFs, and it runs on CPU or CUDA only.
+        - Known defects: ``device=None`` raises a ``TypeError``, although the signature allows ``None``
+          (`#5850 <https://github.com/kornia/kornia/issues/5850>`_).
 
     Args:
         weights: Pretrained weights, or a path to your own exported ONNX model. Available pretrained weights

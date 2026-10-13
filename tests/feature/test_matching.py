@@ -1686,3 +1686,93 @@ class TestConventionsMatching(BaseTester):
         assert out["batch_indexes"].tolist() == [0, 0, 1, 1]
         self.assert_close(out["lafs0"][0], lafs_a[[1, 2, 2, 1]])
         self.assert_close(out["lafs1"][0], lafs_b[[0, 0, 0, 0]])
+
+    def test_convention_matchers_return_dists_in_the_dtype_of_a_given_dm(self, device, dtype):
+        d1, d2 = self._descriptors(device, dtype)
+        other = torch.float16 if dtype == torch.float32 else torch.float32
+        # torch.cdist(d1, d2) ** 2, exact in every dtype, in a dtype other than that of the descriptors
+        dm = torch.tensor(
+            [[85.0, 20.0, 40.0, 17.0], [13.0, 122.0, 130.0, 113.0], [40.0, 137.0, 85.0, 80.0]],
+            device=device,
+            dtype=other,
+        )
+        for match in (match_nn, match_mnn, match_snn, match_smnn):
+            dists, idxs = match(d1, d2, dm=dm)
+            assert len(idxs) > 0
+            assert dists.dtype == other
+
+    def test_convention_match_adalam_without_seeds_returns_the_squared_ratio_test(self, device, dtype):
+        # 8 keypoints leave no AdaLAM seed, so the matches are those of a ratio test on squared distances,
+        # ratio <= 0.95, and the first value is that ratio (float32), not an inverse confidence
+        g = torch.Generator().manual_seed(9)
+        d1 = torch.nn.functional.normalize(torch.randn(8, 24, generator=g), dim=1)
+        noisy = d1 + 0.6 * torch.randn(8, 24, generator=g)
+        d2 = torch.nn.functional.normalize(noisy, dim=1)[torch.randperm(8, generator=g)]
+        frames = [
+            laf_from_center_scale_ori(
+                torch.rand(1, 8, 2, generator=g) * torch.tensor([300.0, 170.0]) + 5.0,
+                torch.full((1, 8, 1, 1), 5.0),
+                torch.rand(1, 8, 1, generator=g) * 90.0,
+            )
+            for _ in range(2)
+        ]
+        d1, d2 = d1.to(device, dtype), d2.to(device, dtype)
+        lafs1, lafs2 = (f.to(device, dtype) for f in frames)
+        quality, idxs = match_adalam(d1, d2, lafs1, lafs2, hw1=(180, 310), hw2=(180, 310))
+        vals, nearest = (torch.cdist(d1.float(), d2.float()) ** 2).topk(2, dim=1, largest=False)
+        ratio = vals[:, 0] / vals[:, 1]
+        keep = ratio <= 0.95
+        assert 0 < int(keep.sum()) < 8
+        assert idxs.tolist() == torch.stack([torch.where(keep)[0], nearest[keep, 0]], 1).tolist()
+        assert quality.dtype == torch.float32
+        self.assert_close(quality.flatten(), ratio[keep], rtol=1e-5, atol=1e-5)
+
+    def test_convention_match_adalam_ignores_a_common_rotation_or_scaling_of_one_image(self, device, dtype):
+        d1, d2, (c1, s1, o1), (c2, s2, o2), _, hw = self._oriented_adalam_scene()
+        d1, d2 = d1.to(device, dtype), d2.to(device, dtype)
+
+        def run(frames1, frames2):
+            lafs1 = laf_from_center_scale_ori(*frames1).to(device, dtype)
+            lafs2 = laf_from_center_scale_ori(*frames2).to(device, dtype)
+            return match_adalam(d1, d2, lafs1, lafs2, hw1=hw, hw2=hw)
+
+        quality, idxs = run((c1, s1, o1), (c2, s2, o2))
+        assert len(idxs) > 350
+        # Turning or scaling the LAFs of one image alike changes the orientation change or the scale ratio of every
+        # match by the same amount, so the inliers stay consistent with each other although their common turn of
+        # 10 degrees becomes -113 or -90 degrees and their scale ratio of 1.2 becomes 0.48 or 0.4.
+        for frames1, frames2 in (
+            ((c1, s1, o1), (c2, 0.4 * s2, o2 - 123.0)),
+            ((c1, 3.0 * s1, o1 + 100.0), (c2, s2, o2)),
+        ):
+            other_quality, other_idxs = run(frames1, frames2)
+            assert torch.equal(other_idxs, idxs)
+            self.assert_close(other_quality, quality)
+
+    def test_convention_match_adalam_warns_about_an_unknown_config_key_and_ignores_it(self, device, dtype):
+        d1, d2, frames1, frames2, _, hw = self._oriented_adalam_scene()
+        d1, d2 = d1.to(device, dtype), d2.to(device, dtype)
+        lafs1 = laf_from_center_scale_ori(*frames1).to(device, dtype)
+        lafs2 = laf_from_center_scale_ori(*frames2).to(device, dtype)
+        quality, idxs = match_adalam(d1, d2, lafs1, lafs2, hw1=hw, hw2=hw)
+        # "mnn" is not read from the configuration either
+        for key in ("foo", "mnn"):
+            with pytest.warns(UserWarning, match=rf"not recognized \({key}\)"):
+                other_quality, other_idxs = match_adalam(d1, d2, lafs1, lafs2, config={key: 1}, hw1=hw, hw2=hw)
+            assert torch.equal(other_idxs, idxs)
+            self.assert_close(other_quality, quality)
+
+    def test_convention_match_adalam_reads_each_image_size_for_its_own_image(self, device, dtype):
+        d1, d2, frames1, frames2, _, (h, w) = self._oriented_adalam_scene()
+        d1, d2 = d1.to(device, dtype), d2.to(device, dtype)
+        lafs1 = laf_from_center_scale_ori(*frames1).to(device, dtype)
+        lafs2 = laf_from_center_scale_ori(*frames2).to(device, dtype)
+        idxs = match_adalam(d1, d2, lafs1, lafs2, hw1=(h, w), hw2=(h, w))[1]
+        # The area of each image sets the neighbourhood radius in that image: a smaller second image alone, or a
+        # smaller first image alone, changes the matches, and (H, W) and (W, H) of that size agree.
+        smaller2 = match_adalam(d1, d2, lafs1, lafs2, hw1=(h, w), hw2=(h // 2, w // 2))[1]
+        assert 0 < len(smaller2) < 0.9 * len(idxs)
+        assert torch.equal(match_adalam(d1, d2, lafs1, lafs2, hw1=(h, w), hw2=(w // 2, h // 2))[1], smaller2)
+        smaller1 = match_adalam(d1, d2, lafs1, lafs2, hw1=(h // 3, w // 3), hw2=(h, w))[1]
+        assert 0 < len(smaller1) < 0.9 * len(idxs)
+        assert torch.equal(match_adalam(d1, d2, lafs1, lafs2, hw1=(w // 3, h // 3), hw2=(h, w))[1], smaller1)

@@ -73,13 +73,18 @@ def match_adalam(
           squares it internally (its thresholds are tuned for squared distances), so ``dm=torch.cdist(desc1, desc2)``
           gives the matches of ``dm=None``, where the squared L2 distances between the descriptors are used.
         - The LAFs give each keypoint's centre, orientation in degrees and scale. Orientations and scales are read
-          only through their change between the two images: adding the same angle to the orientations of both
-          images, negating both, or scaling the LAFs of both alike changes nothing.
-        - ``hw1`` and ``hw2`` enter only through the image area, which sets the seed radius, so ``(H, W)`` and
-          ``(W, H)`` give the same matches. Without them, the extent of each image's keypoints is used.
+          only through how their change between the two images varies from match to match: adding an angle to the
+          orientations of one image or both, negating both, or scaling the LAFs of one image or both alike changes
+          nothing.
+        - ``hw1`` and ``hw2`` enter only through the area of their image, which sets the neighbourhood radius in that
+          image, so ``(H, W)`` and ``(W, H)`` give the same matches. Without them, the extent of each image's
+          keypoints is used.
         - ``config`` is merged into the defaults of ``kornia.feature.adalam.get_adalam_default_config()``; an
           unknown key warns and is ignored. The computation runs on the device of ``desc1`` unless ``config`` sets
           ``"device"``.
+        - Known defects: with fewer than two descriptors on either side, or with no seed and no ratio-test match, the
+          two outputs come back swapped, the :math:`(0, 2)` int64 indices first
+          (`#5848 <https://github.com/kornia/kornia/issues/5848>`_).
 
     Args:
         desc1: Batch of descriptors of a shape :math:`(B1, D)`.
@@ -94,7 +99,8 @@ def match_adalam(
 
 
     Return:
-        - Inverse local RANSAC confidence of each match, float32, see the Convention block, shape of :math:`(B3, 1)`.
+        - Inverse local RANSAC confidence of each match, float32, shape of :math:`(B3, 1)`; see the Convention block
+          and its Known defects.
         - Long torch.Tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
           where 0 <= B3 <= B1.
 

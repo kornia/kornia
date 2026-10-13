@@ -851,3 +851,19 @@ class TestConventionsLoFTR(BaseTester):
         self.assert_close(swapped["keypoints0"], torch.tensor(expected0, device=device, dtype=dtype))
         self.assert_close(swapped["keypoints1"], torch.tensor(expected1, device=device, dtype=dtype))
         assert swapped["batch_indexes"].tolist() == [0, 0, 1]
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
+    def test_convention_pretrained_loftr_puts_pixel_centres_at_one_half(self, device, dtype, data):
+        # A 2x bilinear upsampling (align_corners=False) maps x to 2x in the frame where pixel centres sit at i + 0.5,
+        # and to 2x + 0.5 in kornia's frame; the pretrained matches follow the first.
+        loftr = LoFTR("outdoor").to(device, dtype)
+        image0 = data["image0"][..., 60:263, 100:417].to(device, dtype)  # 203 x 317, off-centre
+        image1 = F.interpolate(image0, scale_factor=2.0, mode="bilinear", align_corners=False)
+        with torch.no_grad():
+            out = loftr({"image0": image0, "image1": image1})
+        residual = out["keypoints1"].cpu().double() - 2 * out["keypoints0"].cpu().double()
+        inliers = residual.norm(dim=-1) < 3
+        assert inliers.double().mean() > 0.9
+        median = residual[inliers].median(0).values
+        assert median.abs().max() < 0.25, median

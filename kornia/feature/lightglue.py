@@ -472,10 +472,12 @@ class LightGlue(nn.Module):
           ``(k - size / 2) / (max(size) / 2)``, as the reference implementation does, and raises for a keypoint
           outside :math:`[-1, 1]` after that.
         - The ``"sift"``, ``"doghardnet"`` and ``"dog_affnet_hardnet"`` configurations, which set ``add_scale_ori``,
-          also read ``scales`` and ``oris`` (radians) of each image, and ``"keynet_affnet_hardnet"``, which sets
-          ``add_laf``, reads ``lafs``. :class:`~kornia.feature.LightGlueMatcher` builds them from LAFs.
-        - Known defects: float64, float16 and bfloat16 inputs raise once point pruning runs, which
-          ``width_confidence > 0`` (0.99 by default) enables (`#5837 <https://github.com/kornia/kornia/issues/5837>`_).
+          also read ``scales`` and ``oris`` (radians) of each image; the last two multiply ``scales`` by their
+          ``scale_coef`` of 1/6 first, so they take the LAF scale. ``"keynet_affnet_hardnet"``, which sets ``add_laf``,
+          reads ``lafs``. :class:`~kornia.feature.LightGlueMatcher` builds them from LAFs.
+        - Known defects: with point pruning enabled, by ``width_confidence > 0`` (0.99 by default), float64, float16 and
+          bfloat16 inputs raise at any number of keypoints, and so do float32 inputs with ``mp=True`` on CPU
+          (`#5837 <https://github.com/kornia/kornia/issues/5837>`_).
 
     Args:
         features: The type of local features to match (e.g., 'superpoint', 'disk'), whose configuration and
