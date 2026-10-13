@@ -372,8 +372,8 @@ class TestConventionsSOLD2(BaseTester):
     def test_convention_sold2_segments_are_row_col_endpoints_in_raster_order(self, device, dtype, model_cls):
         # A line from (x, y) = (100, 30) to (20, 70) on a 96 x 128 image. Segments are (N, 2, 2) endpoints (row, col) in
         # kornia's pixel frame (flip(-1) gives (x, y)), and the first endpoint is the one with the smaller row, here the
-        # one with the larger column, whichever junction scores higher. Without junction refinement the endpoints are
-        # the junction pixels. The default refinement (JunctionRefineCfg: 9 perturbations 0.25 px apart) moves each
+        # one with the larger column, whatever the junction scores. Without junction refinement the endpoints are the
+        # junction pixels. The default refinement (JunctionRefineCfg: 9 perturbations 0.25 px apart) moves each
         # endpoint by at most 1 px per axis, in 0.25 px steps, and does not depend on the junction scores.
         image = torch.rand(1, 1, 96, 128, device=device, dtype=dtype)
         unrefined = DetectorCfg(line_detector_cfg=LineDetectorCfg(use_junction_refinement=False))
@@ -424,3 +424,22 @@ class TestConventionsSOLD2(BaseTester):
         assert matches.dtype == torch.int64
         assert matches.shape == (2,)
         assert ((matches >= -1) & (matches < 3)).all()
+
+    def test_wart_sold2_match_returns_int32_when_a_set_of_segments_is_empty_5915(self, device, dtype):
+        # SOLD2.match returns an int64 index per segment of line_seg1, but int32 when either set of segments is empty
+        # (#5915): an empty tensor when image 1 has no segments, -1 per segment when image 2 has none.
+        model = SOLD2(pretrained=False)
+        segments = torch.tensor([[[10.0, 10.0], [50.0, 90.0]], [[20.0, 70.0], [55.0, 20.0]]], device=device)
+        maps = torch.rand(2, 1, 128, 16, 24, device=device, dtype=dtype)
+        for line_seg1, line_seg2, expected in (
+            (segments[:0], segments, []),
+            (segments, segments[:0], [-1, -1]),
+            (segments[:0], segments[:0], []),
+        ):
+            matches = model.match(line_seg1, line_seg2, maps[0], maps[1])
+            assert matches.dtype == torch.int32
+            assert matches.device == maps.device
+            assert matches.tolist() == expected
+        # two non-empty sets give int64 (float32 maps: torch 2.5.1 has no CPU half grid_sample)
+        matches = model.match(segments, segments, maps[0].float(), maps[1].float())
+        assert matches.dtype == torch.int64

@@ -48,7 +48,7 @@ class SOLD2_detector(nn.Module):
           ``(row, col)`` in the pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
           (see :ref:`Local features <local-features-conventions>`), so ``flip(-1)`` gives ``(x, y)``. The endpoints
           of a segment, and the segments by their first endpoint, are in raster order: the smaller row first or, on
-          the same row, the smaller column, whichever junction scores higher.
+          the same row, the smaller column, whatever the junction scores.
         - The endpoints are junction pixels. The default junction refinement (``use_junction_refinement`` of
           ``LineDetectorCfg``) moves each of them by at most 1 pixel per axis, in 0.25 pixel steps.
 

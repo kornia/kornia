@@ -50,8 +50,10 @@ class SOLD2(nn.Module):
         - ``match`` takes segments as :meth:`forward` returns them and the descriptor map of one image each. It
           returns an int64 tensor :math:`(N_1,)`: for each segment of ``line_seg1``, the index of its match in
           ``line_seg2``, or ``-1``.
-        - Known defects: on CPU, ``match`` samples float16 and bfloat16 descriptor maps with torch's
-          half-precision ``grid_sample``, which can return wrong values, NaN or overflow
+        - Known defects: ``match`` returns int32 when either set of segments is empty
+          (`#5915 <https://github.com/kornia/kornia/issues/5915>`_). On CPU, it passes float16 and bfloat16
+          descriptor maps to torch's ``grid_sample`` without an upcast: the half-precision kernel can return wrong
+          values, NaN or overflow, and where torch has none the call raises
           (`#5810 <https://github.com/kornia/kornia/issues/5810>`_).
 
     Args:

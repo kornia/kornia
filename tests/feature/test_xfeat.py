@@ -19,6 +19,7 @@ import math
 
 import pytest
 import torch
+from torch.overrides import TorchFunctionMode
 
 from kornia.feature.lightglue import LightGlue
 from kornia.feature.xfeat import InterpolateSparse2d, XFeat, XFeatModel
@@ -489,11 +490,11 @@ class TestConventionsXFeat(BaseTester):
         return out, seen[0]
 
     def test_convention_xfeat_keypoints_are_pixels_of_the_resized_grid_times_the_resize_ratio(self, device, dtype):
-        # detectAndCompute resizes to (32 floor(H / 32), 32 floor(W / 32)), takes integer heatmap pixels i there and
-        # reports i * (W / W', H / H') (the formula of verlab/accelerated_features e92685f): kornia's pixel frame when H
-        # and W are multiples of 32. The score is the keypoint heatmap value times the reliability, keypoints come
-        # sorted by it, and outputs are float32 whatever the input dtype. Heatmap value of a peak with logit v:
-        # exp(v) / (exp(v) + exp(10) + 63), the softmax over the 65 channels.
+        # detectAndCompute resizes to (max(32, 32 floor(H / 32)), max(32, 32 floor(W / 32))), takes integer heatmap
+        # pixels i there and reports i * (W / W', H / H') (the formula of verlab/accelerated_features e92685f): kornia's
+        # pixel frame when H and W are multiples of 32. The score is the keypoint heatmap value times the reliability,
+        # keypoints come sorted by it, and outputs are float32 whatever the input dtype. Heatmap value of a peak with
+        # logit v: exp(v) / (exp(v) + exp(10) + 63), the softmax over the 65 channels.
         peaks = [(22, 13, 11.0), (70, 41, 12.0)]  # in-cell offsets (6, 5) and (6, 1): x % 8 != y % 8
         heat = [math.exp(v) / (math.exp(v) + math.exp(10.0) + 63.0) for _, _, v in peaks]
         expected_scores = torch.tensor([0.5 * heat[1], 0.5 * heat[0]], device=device)  # the stronger, later in raster
@@ -514,12 +515,14 @@ class TestConventionsXFeat(BaseTester):
             out, _ = self._detect(image, self._net_outputs(peaks, 64, 96), detection_threshold=threshold)
             assert out["keypoints"].tolist() == expected
         # 100 x 150 is resized to 96 x 128: resized pixel (22, 13) is reported at (22 * 150 / 128, 13 * 100 / 96); its
-        # centre in the input's pixel frame would be (22.5 * 150 / 128 - 0.5, 13.5 * 100 / 96 - 0.5).
-        image = torch.rand(1, 3, 100, 150, device=device, dtype=dtype)
-        out, seen = self._detect(image, self._net_outputs([(22, 13, 12.0)], 96, 128))
-        assert seen.shape == (1, 3, 96, 128)
-        expected = torch.tensor([[22 * 150 / 128, 13 * 100 / 96]], device=device)
-        self.assert_close(out["keypoints"], expected)
+        # centre in the input's pixel frame would be (22.5 * 150 / 128 - 0.5, 13.5 * 100 / 96 - 0.5). A side below 32
+        # is enlarged to 32: 20 x 150 is resized to 32 x 128.
+        for h, w, h_resized in ((100, 150, 96), (20, 150, 32)):
+            image = torch.rand(1, 3, h, w, device=device, dtype=dtype)
+            out, seen = self._detect(image, self._net_outputs([(22, 13, 12.0)], h_resized, 128))
+            assert seen.shape == (1, 3, h_resized, 128)
+            expected = torch.tensor([[22 * w / 128, 13 * h / h_resized]], device=device)
+            self.assert_close(out["keypoints"], expected)
 
     def test_convention_xfeat_dense_keypoints_are_the_top_left_pixels_of_their_8_pixel_cells(self, device, dtype):
         # detectAndComputeDense keeps the cells of highest reliability and reports cell (j, i) at (8 j, 8 i) times the
@@ -602,27 +605,33 @@ class TestConventionsXFeat(BaseTester):
             self.assert_close(out_t.cpu().double(), expected.flip(-1), rtol=0.0, atol=tol)
 
     @pytest.mark.parametrize("sampler", ["InterpolateSparse2d", "ALIKED", "SOLD2"])
-    def test_wart_samplers_send_cpu_half_maps_to_the_half_grid_sample_5810(self, device, dtype, sampler, monkeypatch):
+    def test_wart_samplers_send_cpu_half_maps_to_the_half_grid_sample_5810(self, device, dtype, sampler):
         # torch's CPU float16 / bfloat16 grid_sample returns wrong values, NaN and overflow on sparse grids into larger
         # maps (#5810), and torch 2.5.1 has no such kernel. XFeat's InterpolateSparse2d, ALIKED (DKD scores and SDDH
         # descriptors) and SOLD2.match call it with the half map and grid directly;
-        # kornia.core.utils._torch_grid_sample, which the warps use, samples CPU half in float32 instead. The recorder
-        # below computes in float32 so that the pipeline runs on every torch.
+        # kornia.core.utils._torch_grid_sample, which the warps use, samples CPU half in float32 instead.
         if device.type != "cpu" or dtype not in (torch.float16, torch.bfloat16):
             pytest.skip("the defect is in the CPU float16 / bfloat16 path")
         if sampler == "ALIKED" and not supports_replicate_padding(device, dtype):
             pytest.skip("ALIKED pads with replication, absent for this dtype")
         from kornia.feature import ALIKED, SOLD2
 
-        grid_sample = torch.nn.functional.grid_sample
         calls = []
 
-        def recorder(input, grid, *args, **kwargs):
-            calls.append((input.dtype, grid.dtype))
-            return grid_sample(input.float(), grid.float(), *args, **kwargs).to(input.dtype)
+        class GridSampleRecorder(TorchFunctionMode):
+            # Records the dtypes that reach grid_sample and samples in float32, so that the pipeline runs on every
+            # torch. It is a mode rather than a monkeypatch of torch.nn.functional.grid_sample: while another function
+            # mode is active, grid_sample re-dispatches through its module attribute, so a patched recorder would also
+            # see its own float32 call.
+            def __torch_function__(self, func, types, args=(), kwargs=None):
+                kwargs = kwargs or {}
+                if func is not torch.nn.functional.grid_sample:
+                    return func(*args, **kwargs)
+                source, grid, *rest = args
+                calls.append((source.dtype, grid.dtype))
+                return func(source.float(), grid.float(), *rest, **kwargs).to(source.dtype)
 
-        monkeypatch.setattr(torch.nn.functional, "grid_sample", recorder)
-        with torch.no_grad():
+        with torch.no_grad(), GridSampleRecorder():
             if sampler == "InterpolateSparse2d":
                 InterpolateSparse2d()(
                     torch.rand(1, 8, 8, 12, dtype=dtype), torch.tensor([[[22.0, 13.0]]], dtype=dtype), 64, 96

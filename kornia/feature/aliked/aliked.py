@@ -788,9 +788,9 @@ class ALIKED(nn.Module):
         - :meth:`forward_laf` returns padded tensors like :class:`~kornia.feature.LocalFeature`, but ``N`` is the
           largest keypoint count in the batch and the responses are :math:`(B, N, 1)`. Its ``mask`` multiplies the
           score map, and it takes no ``image_size``.
-        - Known defects: on CPU, float16 and bfloat16 scores and descriptors are sampled with torch's half-precision
-          ``grid_sample``, which can return wrong values, NaN or overflow
-          (`#5810 <https://github.com/kornia/kornia/issues/5810>`_).
+        - Known defects: on CPU, float16 and bfloat16 score and feature maps go to torch's ``grid_sample`` without
+          an upcast: the half-precision kernel can return wrong values, NaN or overflow, and where torch has none the
+          call raises (`#5810 <https://github.com/kornia/kornia/issues/5810>`_).
 
     Args:
         model_name: backbone configuration, one of

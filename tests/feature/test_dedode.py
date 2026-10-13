@@ -324,9 +324,10 @@ class TestConventionsDeDoDe(BaseTester):
         self, device, dtype, monkeypatch
     ):
         # Logit peaks at pixels (60, 40) and (21, 13) of a 56 x 84 image. forward returns pixel i as i + 0.5 (subtract
-        # 0.5 for kornia's frame), detect returns (2 i + 1) / W - 1 in [-1, 1], and the description is read at pixel i
-        # itself; keypoints come sorted by score, N = min(n, H W) with no threshold or padding. The grid and its pixel
-        # conversion are the formulas of Parskatt/DeDoDe 6d15618 (utils.get_grid, to_pixel_coords).
+        # 0.5 for kornia's frame), detect returns (2 i + 1) / (W, H) - 1 in [-1, 1], and the description is read at
+        # pixel i itself; keypoints and descriptions are float32 whatever the model dtype, keypoints come sorted by
+        # score, N = min(n, H W) with no threshold or padding. The grid and its pixel conversion are the formulas of
+        # Parskatt/DeDoDe 6d15618 (utils.get_grid, to_pixel_coords).
         peaks = [(21, 13, 18.0), (60, 40, 20.0)]
         pixels = torch.tensor([[[60.0, 40.0], [21.0, 13.0]]], device=device)
         for h, w, peaks_i, image_pixels in (
@@ -337,10 +338,11 @@ class TestConventionsDeDoDe(BaseTester):
             image = torch.rand(1, 3, h, w, device=device, dtype=dtype)
             keypoints, scores, descriptions = model(image, n=2)
             normalised, _ = model.detect(image, n=2)
-            self.assert_close(keypoints.float(), image_pixels + 0.5)
+            assert keypoints.dtype == normalised.dtype == descriptions.dtype == torch.float32
+            self.assert_close(keypoints, image_pixels + 0.5)
             size = torch.tensor([w, h], device=device)
-            self.assert_close(normalised.float(), (2.0 * image_pixels + 1.0) / size - 1.0)
-            self.assert_close(descriptions.float(), image_pixels)
+            self.assert_close(normalised, (2.0 * image_pixels + 1.0) / size - 1.0)
+            self.assert_close(descriptions, image_pixels)
             assert scores[0, 0] > scores[0, 1]
         keypoints, scores, descriptions = model(torch.rand(2, 3, 14, 28, device=device, dtype=dtype), n=1000)
         assert keypoints.shape == (2, 392, 2)

@@ -235,8 +235,9 @@ class InterpolateSparse2d(nn.Module):
           ``py * h / (H - 1) - 0.5`` in the map's pixel frame: ``normgrid``'s ``2 p / (W - 1) - 1`` sampled with
           ``align_corners=False``, the convention the pretrained XFeat weights use. So a map of the image's own size is
           not read at ``p`` itself.
-        - Known defects: on CPU, float16 and bfloat16 maps are sampled with torch's half-precision ``grid_sample``,
-          which can return wrong values, NaN or overflow (`#5810 <https://github.com/kornia/kornia/issues/5810>`_).
+        - Known defects: on CPU, float16 and bfloat16 maps go to torch's ``grid_sample`` without an upcast: the
+          half-precision kernel can return wrong values, NaN or overflow, and where torch has none the call raises
+          (`#5810 <https://github.com/kornia/kornia/issues/5810>`_).
 
     Args:
         mode: interpolation mode for :func:`torch.nn.functional.grid_sample`.
@@ -299,10 +300,10 @@ class XFeat(nn.Module):
 
     Convention:
         - XFeat defines no ``forward``: call :meth:`detectAndCompute` or :meth:`detectAndComputeDense`.
-        - The image is :math:`(B, C, H, W)` with any channel count; :class:`XFeatModel` averages the channels and
-          instance-normalises the result, so the intensity range does not matter. It is resized bilinearly to
-          :math:`(H', W')`, the multiples of 32 at or below ``H`` and ``W`` and at least 32, and every output is
-          float32.
+        - The image is :math:`(B, C, H, W)` with any channel count. It is resized bilinearly to :math:`(H', W')`:
+          ``H`` and ``W`` rounded down to multiples of 32, with a minimum of 32. :class:`XFeatModel` then averages the
+          channels and instance-normalises the result, so an affine change of the intensities with a positive gain
+          changes its maps only through the norm's ``eps``. Every output is float32.
         - :meth:`detectAndCompute` keypoints are integer pixels ``i`` of the resized image, strict maxima of the
           keypoint heatmap in their 5 x 5 window (see the note), reported at ``i * (W / W', H / H')``. That is the
           pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
