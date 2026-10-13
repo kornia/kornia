@@ -1,5 +1,4 @@
 import pytest
-import torch
 from torch import Tensor, nn
 
 from kornia.profiler.collectors.layer import LayerCollector
