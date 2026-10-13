@@ -622,3 +622,34 @@ class TestLAFAffNetShapeEstimator(BaseTester):
         self.assert_close(out[..., 2], laf[..., 2])
         actual_scale, expected_scale = get_laf_scale(out.cpu().double()), get_laf_scale(laf.cpu().double())
         self.assert_close(actual_scale, expected_scale, rtol=_SCALE_RTOL[dtype], atol=0.0)
+
+
+class TestConventionsAffineShape(BaseTester):
+    def test_convention_patch_affine_shape_is_the_normalised_gradient_second_moment(self, device, dtype):
+        # The output (a, b, c) is (<gx^2>, <gx gy>, <gy^2>) of the Gaussian-weighted patch gradients (x right, y down),
+        # divided by its largest entry. On the ramp I = x / 4 - y / 8 the gradient is (1/4, -1/8), so (a, b, c) is
+        # (1, -1/2, 1/4) up to the replicate-padded border rows and columns: (1.0, -0.4903902, 0.25), CPU float64.
+        # The ramp is exact in every dtype.
+        yy, xx = torch.meshgrid(
+            torch.arange(19, dtype=torch.float64), torch.arange(19, dtype=torch.float64), indexing="ij"
+        )
+        patch = (0.25 * xx - 0.125 * yy).view(1, 1, 19, 19).to(device, dtype)
+        estimator = PatchAffineShapeEstimator(19).to(device, dtype)
+        expected = torch.tensor([[[1.0, -0.4903902, 0.25]]], device=device, dtype=dtype)
+        self.assert_close(estimator(patch), expected)
+        # relabelling: the transposed patch swaps a and c and keeps b
+        self.assert_close(estimator(patch.transpose(-1, -2)), expected.flip(-1))
+
+    def test_wart_patch_affine_shape_counts_a_negative_b_as_below_eps_5824(self, device, dtype):
+        # The degeneracy test counts the entries below eps with their sign, so a negative b always counts (#5824). The
+        # ramp 0.25 x + 1e-3 y gives the thin ellipse (1, +0.0039, 1.6e-5) (CPU float64), while its vertical mirror
+        # 0.25 x - 1e-3 y, whose b is negative, gives the circle (1, 0, 1) instead of (1, -0.0039, 1.6e-5).
+        yy, xx = torch.meshgrid(
+            torch.arange(19, dtype=torch.float64), torch.arange(19, dtype=torch.float64), indexing="ij"
+        )
+        estimator = PatchAffineShapeEstimator(19).to(device, dtype)
+        shape = estimator((0.25 * xx + 1e-3 * yy).view(1, 1, 19, 19).to(device, dtype))[0, 0]
+        mirror = estimator((0.25 * xx - 1e-3 * yy).view(1, 1, 19, 19).to(device, dtype))[0, 0]
+        assert shape[1] > 0
+        assert shape[2] < 1e-3
+        self.assert_close(mirror, torch.tensor([1.0, 0.0, 1.0], device=device, dtype=dtype), rtol=0.0, atol=0.0)
