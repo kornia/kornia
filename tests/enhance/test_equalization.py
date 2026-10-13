@@ -631,6 +631,34 @@ class TestEqualization(BaseTester):
         out_t = enhance.equalize_clahe(img.transpose(-2, -1), 40.0, grid_size[::-1], slow_and_differentiable)
         self.assert_close(out_t, out.transpose(-2, -1))
 
+    @pytest.mark.parametrize("slow_and_differentiable", [False, True])
+    def test_clahe_odd_tile_sizes(self, slow_and_differentiable, device):
+        # Regression test: odd 9 x 11 tiles must not be expanded to 10 x 12.
+        torch.manual_seed(5812)
+        img = (
+            torch.randint(0, 256, (1, 1, 72, 88), dtype=torch.uint8)
+            .float()
+            .div(255.0)
+            .to(device)
+        )
+
+        out = enhance.equalize_clahe(
+            img,
+            clip_limit=2.0,
+            grid_size=(8, 8),
+            slow_and_differentiable=slow_and_differentiable,
+        )
+        expected = torch.tensor(63.09 / 255.0, device=device)
+        self.assert_close(out[0, 0, 22, 72], expected, atol=0.002, rtol=0.0)
+
+        out_t = enhance.equalize_clahe(
+            img.transpose(-2, -1),
+            clip_limit=2.0,
+            grid_size=(8, 8),
+            slow_and_differentiable=slow_and_differentiable,
+        ).transpose(-2, -1)
+        self.assert_close(out, out_t)
+
     def test_clahe_transpose_equivariance_4632(self):
         torch.manual_seed(28)
         img = torch.rand(1, 1, 12, 12, dtype=torch.float32)
