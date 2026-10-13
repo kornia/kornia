@@ -90,7 +90,9 @@ class TestDescriptorNormalization(BaseTester):
         assert all(p.grad is None or torch.isfinite(p.grad).all() for p in model.parameters())
         for parameter, ref_parameter in zip(model.parameters(), reference.parameters()):
             if parameter.grad is not None:
-                self.assert_close(parameter.grad, ref_parameter.grad.to(parameter.dtype))
+                # Both gradients are computed in float16, so compare them at float16 tolerance even when the model
+                # keeps float32 parameters.
+                self.assert_close(parameter.grad.to(ref_parameter.grad.dtype), ref_parameter.grad)
         with pytest.warns(UserWarning, match="LAF contains no keypoints"):
             empty = get_laf_descriptors(img, lafs[:, :0], model)
         assert empty.shape == (1, 0, 128)
