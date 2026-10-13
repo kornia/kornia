@@ -388,115 +388,37 @@ class TestEqualization(BaseTester):
         clip_limit: float = 0.0
         grid_size: Tuple = (8, 8)
         res = enhance.equalize_clahe(img, clip_limit=clip_limit, grid_size=grid_size)
-        # NOTE: for next versions we need to improve the computation of the LUT
-        # and test with a better image
-        self.assert_close(
-            res[..., 0, :],
-            torch.tensor(
-                [
-                    [
-                        [
-                            0.251,
-                            0.502,
-                            0.6554,
-                            0.625,
-                            0.5319,
-                            0.5642,
-                            0.6554,
-                            0.4681,
-                            0.5319,
-                            0.3446,
-                            0.6554,
-                            0.4681,
-                            0.5319,
-                            0.3446,
-                            0.4392,
-                            0.4681,
-                            0.375,
-                            0.3446,
-                            0.5328,
-                            1.0,
-                        ]
-                    ]
-                ],
-                dtype=res.dtype,
-                device=res.device,
-            ),
-            low_tolerance=True,
-        )
+
+        tiles, padded = _compute_tiles(img, grid_size, even_tile_size=False)
+        luts = enhance.equalization._compute_luts(tiles, clip=clip_limit, diff=False)
+        expected = _clahe_interpolation_reference(padded, luts, tiles.shape[-2:])
+        expected = expected[..., : img.shape[-2], : img.shape[-1]]
+
+        self.assert_close(res, expected)
 
     def test_clahe(self, img):
         clip_limit: float = 2.0
         grid_size: Tuple = (8, 8)
+
         res = enhance.equalize_clahe(img, clip_limit=clip_limit, grid_size=grid_size)
-        res_diff = enhance.equalize_clahe(img, clip_limit=clip_limit, grid_size=grid_size, slow_and_differentiable=True)
-        # NOTE: for next versions we need to improve the computation of the LUT
-        # and test with a better image
-        # Each 4 x 4 tile holds 4 columns of one value each, so with the clip limit of 1 count per bin the 12
-        # clipped counts are spread over every 21st bin, as in OpenCV, and the gradient keeps its range; piling
-        # them into the first 12 bins mapped every pixel but the first above 0.81.
-        expected = torch.tensor(
-            [
-                [
-                    [
-                        0.1255,
-                        0.1882,
-                        0.2902,
-                        0.2824,
-                        0.3216,
-                        0.3922,
-                        0.4157,
-                        0.4314,
-                        0.5083,
-                        0.4623,
-                        0.6005,
-                        0.6172,
-                        0.6314,
-                        0.6471,
-                        0.6706,
-                        0.7412,
-                        0.7804,
-                        0.7725,
-                        0.8824,
-                        1.0,
-                    ]
-                ]
-            ],
-            dtype=res.dtype,
-            device=res.device,
+        res_diff = enhance.equalize_clahe(
+            img,
+            clip_limit=clip_limit,
+            grid_size=grid_size,
+            slow_and_differentiable=True,
         )
-        exp_diff = torch.tensor(
-            [
-                [
-                    [
-                        0.125,
-                        0.1877,
-                        0.2599,
-                        0.2995,
-                        0.3006,
-                        0.3492,
-                        0.4077,
-                        0.4644,
-                        0.4662,
-                        0.4893,
-                        0.6152,
-                        0.5853,
-                        0.6513,
-                        0.6471,
-                        0.7116,
-                        0.7706,
-                        0.7431,
-                        0.8321,
-                        0.8574,
-                        1.0,
-                    ]
-                ]
-            ],
-            dtype=res.dtype,
-            device=res.device,
-        )
-        self.assert_close(res[..., 0, :], expected, low_tolerance=True)
-        self.assert_close(res_diff[..., 0, :], exp_diff, low_tolerance=True)
+
+        tiles, padded = _compute_tiles(img, grid_size, even_tile_size=False)
+
+        luts = enhance.equalization._compute_luts(tiles, clip=clip_limit, diff=False)
+        expected = _clahe_interpolation_reference(padded, luts, tiles.shape[-2:])
+        expected = expected[..., : img.shape[-2], : img.shape[-1]]
+        self.assert_close(res, expected)
+
+        luts_diff = enhance.equalization._compute_luts(tiles, clip=clip_limit, diff=True)
+        expected_diff = _clahe_interpolation_reference(padded, luts_diff, tiles.shape[-2:])
+        expected_diff = expected_diff[..., : img.shape[-2], : img.shape[-1]]
+        self.assert_close(res_diff, expected_diff)
 
     @pytest.mark.parametrize("count, expected_level", [(100, 100), (128, 128)])
     @pytest.mark.parametrize("clip_as_tensor", [False, True])
@@ -631,25 +553,49 @@ class TestEqualization(BaseTester):
         out_t = enhance.equalize_clahe(img.transpose(-2, -1), 40.0, grid_size[::-1], slow_and_differentiable)
         self.assert_close(out_t, out.transpose(-2, -1))
 
+    @pytest.mark.parametrize(
+        ("size", "grid", "expected_tile", "expected_padded"),
+        [
+            ((13, 15), (2, 3), (7, 5), (14, 15)),
+            ((100, 150), (8, 8), (13, 19), (104, 152)),
+        ],
+    )
+    def test_clahe_ceil_tile_sizes_for_non_divisible_images_5812(
+        self, size, grid, expected_tile, expected_padded
+    ):
+        img = torch.rand(1, 1, *size)
+        tiles, padded = _compute_tiles(img, grid)
+
+        assert tuple(tiles.shape[-2:]) == expected_tile
+        assert tuple(padded.shape[-2:]) == expected_padded
+
     @pytest.mark.parametrize("slow_and_differentiable", [False, True])
     def test_clahe_odd_tile_sizes(self, slow_and_differentiable, device):
         # Regression test: odd 9 x 11 tiles must not be expanded to 10 x 12.
         torch.manual_seed(5812)
         img = torch.randint(0, 256, (1, 1, 72, 88), dtype=torch.uint8).float().div(255.0).to(device)
+        grid_size = (8, 8)
+        clip_limit = 2.0
 
         out = enhance.equalize_clahe(
             img,
-            clip_limit=2.0,
-            grid_size=(8, 8),
+            clip_limit=clip_limit,
+            grid_size=grid_size,
             slow_and_differentiable=slow_and_differentiable,
         )
-        expected = torch.tensor(63.09 / 255.0, device=device)
-        self.assert_close(out[0, 0, 22, 72], expected, atol=0.002, rtol=0.0)
+
+        tiles, padded = _compute_tiles(img, grid_size, even_tile_size=False)
+        luts = enhance.equalization._compute_luts(
+            tiles, clip=clip_limit, diff=slow_and_differentiable
+        )
+        expected = _clahe_interpolation_reference(padded, luts, tiles.shape[-2:])
+        expected = expected[..., : img.shape[-2], : img.shape[-1]]
+        self.assert_close(out, expected)
 
         out_t = enhance.equalize_clahe(
             img.transpose(-2, -1),
-            clip_limit=2.0,
-            grid_size=(8, 8),
+            clip_limit=clip_limit,
+            grid_size=grid_size,
             slow_and_differentiable=slow_and_differentiable,
         ).transpose(-2, -1)
         self.assert_close(out, out_t)

@@ -52,6 +52,13 @@ def _compute_tiles(
 
     # compute stride and kernel size
     h, w = batch.shape[-2:]
+    if even_tile_size and (h <= grid_size[0] or w <= grid_size[1]):
+        raise ValueError(
+            "Cannot compute tiles on the image according to the given grid size. "
+            f"Got image size ({h}, {w}) and grid size {tuple(grid_size)}. "
+            f"The smallest image this grid admits is ({grid_size[0] + 1}, {grid_size[1] + 1})."
+        )
+
     kernel_vert: int = math.ceil(h / grid_size[0])
     kernel_horz: int = math.ceil(w / grid_size[1])
 
@@ -430,6 +437,7 @@ def _equalize_clahe_odd_tiles(imgs: torch.Tensor, luts: torch.Tensor, tile_size:
     wy = torch.where((y < 0) | (y > grid_h - 1), 0, wy).to(imgs.dtype)
     wx = torch.where((x < 0) | (x > grid_w - 1), 0, wx).to(imgs.dtype)
 
+    luts = luts.to(imgs.dtype)
     pixel_bins = (imgs * 255).long()
     batch_idx = torch.arange(batch_size, device=imgs.device).view(batch_size, 1, 1, 1)
     channel_idx = torch.arange(channels, device=imgs.device).view(1, channels, 1, 1)
@@ -466,12 +474,11 @@ def equalize_clahe(
     .. image:: _static/img/equalize_clahe.png
 
     NOTE: The fast path uses OpenCV-style LUT calculation and round-to-nearest quantization.
-    Both paths blend LUTs with weight steps of ``1 / tile_size``, anchored at each tile's actual centre,
-    with border LUTs clamped. This is half a pixel before OpenCV/scikit-image's historical phase:
-    Kornia intentionally uses ``(p + 0.5) / tile_size - 0.5`` to preserve flip symmetry on unpadded grids.
-    For the same tiles and LUTs, the phase difference is at most half an interpolation step per axis;
-    exact ``cv2.createCLAHE`` parity is not the contract. Tiles are rounded up to even sizes and reflect-padded,
-    which can differ from OpenCV's tile/padding convention, and output values are not rounded to 8-bit integers.
+    Tiles use the natural size ``ceil(image_size / grid_size)`` along each axis, whether odd or even.
+    The image is reflect-padded only as needed to fill the requested grid. Both paths blend LUTs with
+    weight steps of ``1 / tile_size``, anchored at each tile's actual centre, with border LUTs clamped.
+    Kornia uses ``(p + 0.5) / tile_size - 0.5`` to preserve flip symmetry on unpadded grids; exact
+    ``cv2.createCLAHE`` parity is not the contract, and output values are not rounded to 8-bit integers.
 
     Args:
         input: images tensor to equalize with values in the range [0, 1] and shape :math:`(*, C, H, W)`.
@@ -541,15 +548,16 @@ def _equalize_clahe(
 
     height, width = imgs.shape[-2:]
     grid_h, grid_w = grid_size
-    natural_tile_h = height // grid_h
-    natural_tile_w = width // grid_w
-    use_odd_tiles = (
-        height % grid_h == 0
-        and width % grid_w == 0
-        and natural_tile_h > 1
-        and natural_tile_w > 1
-        and (natural_tile_h % 2 == 1 or natural_tile_w % 2 == 1)
-    )
+    if height <= grid_h or width <= grid_w:
+        raise ValueError(
+            "Cannot compute tiles on the image according to the given grid size. "
+            f"Got image size ({height}, {width}) and grid size {tuple(grid_size)}. "
+            f"The smallest image this grid admits is ({grid_h + 1}, {grid_w + 1})."
+        )
+
+    natural_tile_h = -(-height // grid_h)
+    natural_tile_w = -(-width // grid_w)
+    use_odd_tiles = natural_tile_h % 2 == 1 or natural_tile_w % 2 == 1
 
     hist_tiles, img_padded = _compute_tiles(imgs, grid_size, not use_odd_tiles)
     tile_size: Tuple[int, int] = (hist_tiles.shape[-2], hist_tiles.shape[-1])
