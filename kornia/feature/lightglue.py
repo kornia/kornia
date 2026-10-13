@@ -476,13 +476,16 @@ class LightGlue(nn.Module):
           ``scale_coef`` of 1/6 first, so they take the LAF scale. ``"keynet_affnet_hardnet"``, which sets ``add_laf``,
           reads ``lafs``. :class:`~kornia.feature.LightGlueMatcher` builds them from LAFs.
         - The matching scores, ``matching_scores0``, ``matching_scores1`` and ``scores``, are in the dtype of the
-          descriptors. With ``mp=True``, float32 descriptors give scores in the dtype autocast computes them in
-          instead: bfloat16 on CPU, float32 on CUDA and MPS, for every configuration and also when point pruning
-          removes every point. On MPS, float16 and bfloat16 descriptors also give float32 scores with ``mp=True``.
-          An image without descriptors runs no layer, and its zero scores keep the descriptor dtype, also with
-          ``mp=True``.
-        - Known defects: with ``mp=True`` on CPU, a float16 model raises a ``RuntimeError`` in its first layer
-          (`#5897 <https://github.com/kornia/kornia/issues/5897>`_).
+          descriptors with ``mp=False``. With ``mp=True``, autocast sets it, for every configuration and also when
+          point pruning removes every point: on CPU, float32 descriptors give bfloat16 scores, and float64 and
+          bfloat16 ones keep their dtype; on MPS, float32, float16 and bfloat16 descriptors give float32 scores; on
+          CUDA, float32 descriptors give float32 scores. An image without descriptors runs no layer, and its zero
+          scores keep the descriptor dtype, also with ``mp=True``.
+        - Known defects: with ``mp=True`` on CPU, a float16 model raises a ``RuntimeError`` in its first layer, and
+          with the ``"keynet_affnet_hardnet"`` configuration already when it reads the ``lafs``, also for an image
+          without descriptors (`#5897 <https://github.com/kornia/kornia/issues/5897>`_). A batch of more than one
+          pair raises an ``IndexError`` when point pruning runs and keeps a point
+          (`#5898 <https://github.com/kornia/kornia/issues/5898>`_).
 
     Args:
         features: The type of local features to match (e.g., 'superpoint', 'disk'), whose configuration and
@@ -862,10 +865,11 @@ class LightGlue(nn.Module):
         # If adaptive width pruning removed all keypoints from either side,
         # return empty matches instead of crashing in filter_matches (see #3564).
         if desc0.shape[-2] == 0 or desc1.shape[-2] == 0:
-            # The other paths' scores are the exp of the log assignment, and autocast picks the dtype of both ops: the
-            # log assignment is bfloat16 on CPU even where the descriptors stay float32 (input_dim == descriptor_dim),
-            # and the exp is float32 on CUDA and MPS. So take the dtype from the same ops, on these descriptors.
-            log_assignment, _ = self.log_assignment[i](desc0, desc1)
+            # A pass that keeps points takes its scores from the exp of the log assignment, and autocast picks the
+            # dtype of both ops: the log assignment is bfloat16 on CPU even where the descriptors stay float32
+            # (input_dim == descriptor_dim), and the exp is float32 on CUDA and MPS. So take the dtype from the same
+            # ops. Autocast picks it by op and input dtype, not by size, so empty slices give it at no cost.
+            log_assignment, _ = self.log_assignment[i](desc0[:, :0], desc1[:, :0])
             dtype = log_assignment.new_zeros(()).exp().dtype
             matches = [torch.zeros((0, 2), dtype=torch.long, device=device) for _ in range(b)]
             mscores = [torch.zeros(0, device=device, dtype=dtype) for _ in range(b)]

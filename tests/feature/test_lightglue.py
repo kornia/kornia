@@ -915,12 +915,56 @@ class TestLightGlueAllPrunedScoreDtype(BaseTester):
         self.assert_close(pruned["matching_scores1"], torch.zeros(1, 6, device=device, dtype=score_dtype))
         assert pruned["scores"][0].shape == (0,)
 
+    @pytest.mark.parametrize("mp", [False, True], ids=["mp_off", "mp_on"])
+    def test_no_descriptors_keeps_the_input_dtype_5877(self, device, dtype, mp):
+        # No layer runs, so autocast does not reach these zero scores: on MPS, a float16 or bfloat16 model with mp=True
+        # keeps its dtype here, while the scores of kept points are float32.
+        empty = {
+            "keypoints": torch.empty(1, 0, 2, device=device, dtype=dtype),
+            "descriptors": torch.empty(1, 0, self._DIM, device=device, dtype=dtype),
+            "image_size": torch.tensor([[100, 100]], device=device),
+        }
+        model = self._model(device, dtype, self._DIM, mp)
+        out = TestLightGluePruningDtype._forward(model, {"image0": empty, "image1": dict(empty)})
+        assert TestLightGluePruningDtype._floating_dtypes(out) == {dtype}
+
     def test_wart_lightglue_mixed_precision_cpu_float16_model_raises_5897(self, device, dtype):
         if device.type != "cpu" or dtype != torch.float16:
             pytest.skip("CPU autocast to bfloat16 meets a float16 model only on CPU")
-        # #5897: the first layer's FFN mixes autocast's bfloat16 outputs with float16 tensors, for both input_proj
-        # kinds.
-        for input_dim in (self._DIM, 8):
+        # #5897: in the first layer, autocast's bfloat16 outputs meet float16 tensors: in the torch.cat that feeds the
+        # self-attention FFN when input_proj is an identity, and in that FFN's LayerNorm when it is a linear layer.
+        for input_dim, message in ((self._DIM, "prioritize"), (8, "mixed dtype")):
             model = self._model(device, dtype, input_dim, mp=True)
-            with pytest.raises(RuntimeError):
+            with pytest.raises(RuntimeError, match=message):
                 self._forward(model, True, device, dtype)
+        # "keynet_affnet_hardnet" raises before the layers, in scale_laf, also for an image without descriptors.
+        with unittest.mock.patch("kornia.feature.lightglue.load_state_dict_from_url", return_value={}):
+            keynet = LightGlue("keynet_affnet_hardnet", n_layers=1, mp=True).to(device, dtype).eval()
+        empty = {
+            "keypoints": torch.empty(1, 0, 2, device=device, dtype=dtype),
+            "descriptors": torch.empty(1, 0, 128, device=device, dtype=dtype),
+            "image_size": torch.tensor([[100, 100]], device=device),
+            "lafs": torch.empty(1, 0, 2, 3, device=device, dtype=dtype),
+        }
+        with pytest.raises(RuntimeError, match="prioritize"):
+            TestLightGluePruningDtype._forward(keynet, {"image0": empty, "image1": dict(empty)})
+
+    def test_wart_lightglue_batch_with_point_pruning_raises_5898(self, device, dtype):
+        if device.type == "cuda":
+            pytest.skip("on CUDA, point pruning starts only above 1024 keypoints")
+        # #5898: the pruning bookkeeping keeps one index row for the whole batch, so once pruning has run and kept
+        # points, the second pair raises. The same model matches each pair on its own.
+        model = self._model(device, dtype, self._DIM, mp=False)
+        g = torch.Generator().manual_seed(1)
+        desc = torch.randn(2, 6, self._DIM, generator=g)
+        desc[..., 0] = 30.0  # layer 0 keeps every point
+        batch = {
+            "keypoints": (torch.rand(2, 6, 2, generator=g) * 100).to(device, dtype),
+            "descriptors": desc.to(device, dtype),
+            "image_size": torch.tensor([[100, 100], [100, 100]], device=device),
+        }
+        for k in range(2):
+            pair = {key: value[k : k + 1] for key, value in batch.items()}
+            TestLightGluePruningDtype._forward(model, {"image0": pair, "image1": dict(pair)})
+        with pytest.raises(IndexError):
+            TestLightGluePruningDtype._forward(model, {"image0": batch, "image1": dict(batch)})
