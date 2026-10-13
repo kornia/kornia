@@ -92,10 +92,8 @@ class TestWarpAffine3dEmptyBatch(BaseTester):
         assert image.grad.shape == image.shape
 
     @pytest.mark.parametrize("spatial", [(3, 4, 5), (0, 4, 5), (3, 0, 5), (3, 4, 0)])
-    def test_dynamo_empty_batch_4429(self, spatial, device, dtype, torch_optimizer, optimizer_backend):
+    def test_dynamo_empty_batch_4429(self, spatial, device, dtype, torch_optimizer):
         """Fullgraph capture keeps the empty affine warp and its backward pass."""
-        if not optimizer_backend or optimizer_backend == "jit":
-            pytest.skip("fullgraph requires a torch.compile backend")
         src = torch.empty(0, 2, *spatial, device=device, dtype=dtype, requires_grad=True)
         matrix = torch.empty(0, 3, 4, device=device, dtype=dtype, requires_grad=True)
         compiled = torch_optimizer(proj.warp_affine3d, fullgraph=True)
