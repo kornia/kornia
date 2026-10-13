@@ -213,3 +213,37 @@ class TestVideoSequential:
         assert same_batch == same_on_batch
 
         reproducibility_test(x, aug)
+
+    def test_tensor_annotation_methods_preserve_video_shape_and_accept_empty_or_noncontiguous(self, device, dtype):
+        video = torch.rand(2, 3, 1, 6, 6, device=device, dtype=dtype)
+        aug = K.VideoSequential(K.RandomHorizontalFlip(p=1.0), data_format="BTCHW")
+        aug(video)
+        params = aug._params
+
+        keypoints = torch.rand(2, 3, 4, 2, device=device, dtype=dtype) * 5
+        transformed = aug.transform_keypoints(keypoints, params)
+        assert transformed.shape == keypoints.shape
+        assert_close(aug.inverse_keypoints(transformed, params), keypoints)
+
+        noncontiguous_keypoints = keypoints.transpose(0, 1).contiguous().transpose(0, 1)
+        assert not noncontiguous_keypoints.is_contiguous()
+        assert aug.transform_keypoints(noncontiguous_keypoints, params).shape == keypoints.shape
+        assert aug.inverse_keypoints(noncontiguous_keypoints, params).shape == keypoints.shape
+
+        empty_keypoints = keypoints[:, :, :0]
+        assert aug.transform_keypoints(empty_keypoints, params).shape == empty_keypoints.shape
+        assert aug.inverse_keypoints(empty_keypoints, params).shape == empty_keypoints.shape
+
+        boxes = torch.rand(2, 3, 2, 4, 2, device=device, dtype=dtype) * 5
+        transformed_boxes = aug.transform_boxes(boxes, params)
+        assert transformed_boxes.shape == boxes.shape
+        assert aug.inverse_boxes(transformed_boxes, params).shape == boxes.shape
+
+        noncontiguous_boxes = boxes.transpose(0, 1).contiguous().transpose(0, 1)
+        assert not noncontiguous_boxes.is_contiguous()
+        assert aug.transform_boxes(noncontiguous_boxes, params).shape == boxes.shape
+        assert aug.inverse_boxes(noncontiguous_boxes, params).shape == boxes.shape
+
+        empty_boxes = boxes[:, :, :0]
+        assert aug.transform_boxes(empty_boxes, params).shape == empty_boxes.shape
+        assert aug.inverse_boxes(empty_boxes, params).shape == empty_boxes.shape
