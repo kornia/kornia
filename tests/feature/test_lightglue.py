@@ -503,3 +503,167 @@ class TestKeypointRangeMessage:
         data["image0"]["image_size"] = torch.tensor([[8.0, 8.0]], device=device)  # keypoints reach 64
         with pytest.raises(Exception, match="Keypoints must lie inside the image"):
             lg(data)
+
+
+class TestLightGluePruningDtype(BaseTester):
+    """``LightGlue`` prunes points in the input dtype (#5837).
+
+    ``LightGlue("disk")`` keeps the preset's pruning (``width_confidence=0.99``, ``depth_confidence=0.95``), with random
+    weights in place of the download, two layers, and pruning at any number of keypoints on every device. Layer 0 is
+    wired so that each pruning decision has a wide margin in every dtype: the descriptors enter unchanged, the
+    matchability reads dimension 0 and the token confidence dimension 1, both +-20. A point of matchability -20 is
+    pruned unless its confidence is -20 too, which keeps it as a low-confidence point. Image 1 is image 0 permuted, and
+    the last layer's matchability is a constant 10, so a point kept in both images is a mutual match with its copy and
+    scores ``sigmoid(10) ** 2``.
+    """
+
+    _M = 16
+    # Sign of descriptor dimension 0 (matchability) and dimension 1 (token confidence) of each point.
+    _MATCHABLE = (1, -1) * 8
+    _CONFIDENT = (1, -1, 1, 1, 1, 1, 1, 1, 1, -1, 1, 1, 1, 1, 1, 1)
+
+    @staticmethod
+    def _model(device, dtype, **conf):
+        torch.manual_seed(0)
+        with unittest.mock.patch("kornia.feature.lightglue.load_state_dict_from_url", return_value={}):
+            lg = LightGlue("disk", n_layers=2, **conf)
+        with torch.no_grad():
+            lg.input_proj.weight.zero_()
+            lg.input_proj.bias.zero_()
+            lg.input_proj.weight[:128].copy_(torch.eye(128))
+            for linear in (lg.log_assignment[0].matchability, lg.token_confidence[0].token[0]):
+                linear.weight.zero_()
+                linear.bias.zero_()
+            lg.log_assignment[0].matchability.weight[0, 0] = 1.0
+            lg.token_confidence[0].token[0].weight[0, 1] = 1.0
+            lg.log_assignment[1].matchability.weight.zero_()
+            lg.log_assignment[1].matchability.bias.fill_(10.0)
+        return lg.to(device, dtype).eval()
+
+    def _scene(self, device, dtype, matchable=_MATCHABLE):
+        g = torch.Generator().manual_seed(0)
+        desc = 3 * torch.randn(1, self._M, 128, generator=g)
+        desc[0, :, 0] = 20 * torch.tensor(matchable, dtype=torch.float32)
+        desc[0, :, 1] = 20 * torch.tensor(self._CONFIDENT, dtype=torch.float32)
+        kpts = torch.rand(1, self._M, 2, generator=g) * torch.tensor([320.0, 240.0])
+        perm = torch.randperm(self._M, generator=g)
+        size = torch.tensor([[320, 240]], device=device)
+        data = {
+            "image0": {"keypoints": kpts.to(device, dtype), "descriptors": desc.to(device, dtype), "image_size": size},
+            "image1": {
+                "keypoints": kpts[:, perm].to(device, dtype),
+                "descriptors": desc[:, perm].to(device, dtype),
+                "image_size": size,
+            },
+        }
+        return data, perm
+
+    @staticmethod
+    def _forward(model, data):
+        thresholds = dict.fromkeys(LightGlue.pruning_keypoint_thresholds, -1)  # prune at any number of keypoints
+        with torch.no_grad(), unittest.mock.patch.dict(LightGlue.pruning_keypoint_thresholds, thresholds):
+            return model(data)
+
+    @staticmethod
+    def _floating_dtypes(out):
+        tensors = [v for v in out.values() if torch.is_tensor(v)]
+        tensors += [t for v in out.values() if isinstance(v, list) for t in v]
+        return {t.dtype for t in tensors if t.is_floating_point()}
+
+    def test_pruning_runs_in_the_input_dtype_5837(self, device, dtype):
+        data, perm = self._scene(device, dtype)
+        out = self._forward(self._model(device, dtype), data)
+        ref = self._forward(self._model(device, torch.float32), self._scene(device, torch.float32)[0])
+
+        pruned = (torch.tensor(self._MATCHABLE) < 0) & (torch.tensor(self._CONFIDENT) > 0)
+        inv = torch.argsort(perm)
+        kept_score = torch.tensor(10.0, dtype=torch.float64).sigmoid().item() ** 2
+        self.assert_close(out["prune0"], torch.where(pruned, 1, 2)[None].to(device))
+        self.assert_close(out["prune1"], torch.where(pruned[perm], 1, 2)[None].to(device))
+        self.assert_close(out["matches0"], torch.where(pruned, -1, inv)[None].to(device))
+        self.assert_close(out["matches1"], torch.where(pruned[perm], -1, perm)[None].to(device))
+        expected_scores0 = torch.where(pruned, 0.0, kept_score)[None].to(device, dtype)
+        self.assert_close(out["matching_scores0"], expected_scores0)
+        self.assert_close(out["matching_scores1"], expected_scores0[:, perm])
+        self.assert_close(out["scores"][0], expected_scores0[0, ~pruned.to(device)])
+        assert self._floating_dtypes(out) == {dtype}
+        # The same model and scene in float32, within the tolerance of the dtype.
+        for key in ("matches0", "matches1", "prune0", "prune1"):
+            self.assert_close(out[key], ref[key])
+        for key in ("matching_scores0", "matching_scores1"):
+            self.assert_close(out[key], ref[key].to(dtype))
+
+    def test_no_descriptors_returns_the_input_dtype_5837(self, device, dtype):
+        empty = {
+            "keypoints": torch.empty(1, 0, 2, device=device, dtype=dtype),
+            "descriptors": torch.empty(1, 0, 128, device=device, dtype=dtype),
+            "image_size": torch.tensor([[320, 240]], device=device),
+        }
+        out = self._forward(self._model(device, dtype), {"image0": empty, "image1": empty})
+        assert out["matching_scores0"].shape == (1, 0)
+        assert self._floating_dtypes(out) == {dtype}
+
+    @staticmethod
+    def _skip_without_empty_attention(device, dtype):
+        # The layers after the one that pruned every point still run, on empty sequences (#3564).
+        qkv = torch.empty(1, 1, 0, 8, device=device, dtype=dtype)
+        try:
+            torch.nn.functional.scaled_dot_product_attention(qkv, qkv, qkv)
+        except RuntimeError:
+            pytest.skip("torch rejects attention over empty sequences on this device (MPS on torch 2.5.1)")
+
+    def test_all_points_pruned_returns_the_input_dtype_5837(self, device, dtype):
+        self._skip_without_empty_attention(device, dtype)
+        # No low-confidence rescue without depth confidence, and every matchability -20.
+        data, _ = self._scene(device, dtype, matchable=(-1,) * self._M)
+        out = self._forward(self._model(device, dtype, depth_confidence=-1), data)
+        self.assert_close(out["prune0"], torch.ones(1, self._M, device=device, dtype=torch.long))
+        self.assert_close(out["matches0"], torch.full((1, self._M), -1, device=device))
+        self.assert_close(out["matching_scores0"], torch.zeros(1, self._M, device=device, dtype=dtype))
+        assert out["scores"][0].shape == (0,)
+        assert self._floating_dtypes(out) == {dtype}
+
+    def _mixed_precision_score_dtype(self, device, dtype):
+        # With mp=True, autocast sets the dtype the scores are computed in: CPU computes the log assignment and its exp
+        # in bfloat16, MPS runs that exp in float32. The model without pruning gives the reference.
+        if dtype != torch.float32:
+            pytest.skip("mp=True autocasts a float32 model")
+        plain = self._forward(self._model(device, dtype, mp=True, width_confidence=-1), self._scene(device, dtype)[0])
+        score_dtype = plain["matching_scores0"].dtype
+        if device.type in ("cpu", "mps"):
+            assert score_dtype == (torch.bfloat16 if device.type == "cpu" else torch.float32)
+        return score_dtype
+
+    def test_mixed_precision_prunes_in_the_score_dtype_5837(self, device, dtype):
+        score_dtype = self._mixed_precision_score_dtype(device, dtype)
+        data = self._scene(device, dtype)[0]
+        out = self._forward(self._model(device, dtype, mp=True), data)
+        ref = self._forward(self._model(device, dtype), data)
+        for key in ("matches0", "matches1", "prune0", "prune1"):
+            self.assert_close(out[key], ref[key])
+        assert (out["prune0"] == 1).any()
+        for key in ("matching_scores0", "matching_scores1"):
+            assert out[key].dtype == score_dtype
+            self.assert_close(out[key].to(dtype), ref[key], rtol=0.0, atol=1e-2)
+        assert out["scores"][0].dtype == score_dtype
+        # The early return for an image without descriptors runs no layer, and returns the input dtype.
+        empty = {
+            "keypoints": torch.empty(1, 0, 2, device=device, dtype=dtype),
+            "descriptors": torch.empty(1, 0, 128, device=device, dtype=dtype),
+            "image_size": torch.tensor([[320, 240]], device=device),
+        }
+        out = self._forward(self._model(device, dtype, mp=True), {"image0": empty, "image1": empty})
+        assert self._floating_dtypes(out) == {dtype}
+
+    def test_mixed_precision_all_points_pruned_returns_the_score_dtype_5837(self, device, dtype):
+        score_dtype = self._mixed_precision_score_dtype(device, dtype)
+        self._skip_without_empty_attention(device, dtype)
+        data, _ = self._scene(device, dtype, matchable=(-1,) * self._M)
+        out = self._forward(self._model(device, dtype, mp=True, depth_confidence=-1), data)
+        self.assert_close(out["prune0"], torch.ones(1, self._M, device=device, dtype=torch.long))
+        self.assert_close(out["matches0"], torch.full((1, self._M), -1, device=device))
+        for key in ("matching_scores0", "matching_scores1"):
+            assert out[key].dtype == score_dtype
+            assert (out[key] == 0).all()
+        assert out["scores"][0].dtype == score_dtype
+        assert out["scores"][0].shape == (0,)

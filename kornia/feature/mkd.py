@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Tuple, Union
 import torch
 from torch import nn
 
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import load_state_dict_from_url
 from kornia.core.utils import _l2_normalize
 from kornia.filters import GaussianBlur2d, SpatialGradient
@@ -416,15 +417,17 @@ class Whitening(nn.Module):
         whitening_model: Dictionary with keys 'mean', 'eigvecs', 'eigvals' holding Tensors.
         in_dims: Dimensionality of input descriptors.
         output_dims: (int) Dimensionality reduction.
-        keval: Shrinkage parameter.
+        keval: Shrinkage parameter: ``'pcaws'`` replaces each kept eigenvalue ``lambda`` by ``(1 - alpha) * lambda +
+            alpha``, a shrinkage towards 1 with weight ``alpha``, the eigenvalue at index ``keval`` (``0 <= keval <
+            len(eigvals)``) of the whitening model's full spectrum, whatever ``output_dims`` is.
         t: Attenuation parameter.
 
     Returns:
         l2-normalized, whitened descriptors.
 
     Shape:
-        - Input: (B, in_dims, fmap_size, fmap_size)
-        - Output: (B, out_dims, fmap_size, fmap_size)
+        - Input: :math:`(N, in_{dims})`.
+        - Output: :math:`(N, output_{dims})`.
 
     Examples:
         >>> descs = torch.rand(23, 238)
@@ -437,7 +440,8 @@ class Whitening(nn.Module):
         ...                       output_dims=128,
         ...                       keval=40,
         ...                       t=0.7)
-        >>> wdescs = whitening(descs) # 23x128
+        >>> whitening(descs).shape
+        torch.Size([23, 128])
 
     """
 
@@ -487,7 +491,7 @@ class Whitening(nn.Module):
         modifications = {
             "pca": self._modify_pca,
             "lw": self._modify_lw,
-            "pcaws": self._modify_pcaws,
+            "pcaws": lambda: self._modify_pcaws(wh_model["eigvals"]),
             "pcawt": self._modify_pcawt,
         }
 
@@ -501,9 +505,20 @@ class Whitening(nn.Module):
     def _modify_lw(self) -> None:
         """No modification required."""
 
-    def _modify_pcaws(self) -> None:
-        """Shrinkage for eigenvalues."""
-        alpha = self.evals[self.keval]
+    def _modify_pcaws(self, eigvals: torch.Tensor) -> None:
+        """Shrink each kept eigenvalue towards 1: ``(1 - alpha) * lambda + alpha`` with ``alpha = eigvals[keval]``.
+
+        The shrinkage weight ``alpha`` is a property of the whitening model, not of how many components are kept, so it
+        is read from the full spectrum ``eigvals`` before truncation to ``output_dims``: keeping fewer components only
+        drops columns.
+        """
+        n = eigvals.shape[0]
+        if not 0 <= self.keval < n:
+            raise ValueError(
+                f"pcaws needs the eigenvalue at index keval={self.keval} of the whitening model's spectrum, which has "
+                f"{n} eigenvalues (0 <= keval < {n})."
+            )
+        alpha = eigvals[self.keval]
         evals = ((1 - alpha) * self.evals) + alpha
         self.evecs.data = self.evecs @ torch.diag(torch.pow(evals, -0.5))
 
@@ -553,8 +568,8 @@ class MKDDescriptor(nn.Module):
         Explicit cartesian or polar embedding.
 
     Shape:
-        - Input: :math:`(B, in_{dims}, fmap_{size}, fmap_{size})`.
-        - Output: :math:`(B, out_{dims}, fmap_{size}, fmap_{size})`,
+        - Input: :math:`(B, 1, P, P)` with :math:`P` = ``patch_size``; the spatial encoding is precomputed for it.
+        - Output: :math:`(B, out_{dims})`.
 
     Examples:
         >>> patches = torch.rand(23, 1, 32, 32)
@@ -634,17 +649,19 @@ class MKDDescriptor(nn.Module):
         """Compute Multiple Kernel Descriptor (MKD) vectors for image patches.
 
         Args:
-            patches: Grayscale patch tensor with shape :math:`(B, 1, H, W)`, where
-                ``B`` is the number of patches and ``H``/``W`` are patch dimensions.
+            patches: Grayscale patch tensor with shape :math:`(B, 1, P, P)`, where ``B`` is the number of patches
+                and :math:`P` is ``patch_size``.
 
         Returns:
             Descriptor tensor with shape :math:`(B, D)`, where ``D`` is the configured
             output descriptor dimension after optional whitening.
+
+        Raises:
+            ShapeError: if ``patches`` is not :math:`(B, 1, P, P)`.
         """
         if not isinstance(patches, torch.Tensor):
             raise TypeError(f"Input type is not a torch.Tensor. Got {type(patches)}")
-        if not len(patches.shape) == 4:
-            raise ValueError(f"Invalid input shape, we expect Bx1xHxW. Got: {patches.shape}")
+        KORNIA_CHECK_SHAPE(patches, ["B", "1", str(self.patch_size), str(self.patch_size)])
         # Extract gradients.
         g = self.smoothing(patches)
         g = self.gradients(g)

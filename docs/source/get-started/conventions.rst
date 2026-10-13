@@ -406,11 +406,14 @@ Augmentations
   supported. On accelerators the asynchronous assertion may report at the next
   synchronization; MPS before torch 2.13 checks on the host. A direct
   geometric ``transform_masks`` call requires a floating tensor.
-- A list of masks is not a substitute for separate full-batch tensors: list
-  index ``i`` selects sample ``i``'s gate, so full-batch entries desynchronize
-  under mixed gates and per-sample entries can fail in warps or reuse the wrong
-  crop window. Pass separate ``mask`` keys instead
-  (`#4477 <https://github.com/kornia/kornia/issues/4477>`_).
+- A mask list has one tensor per image sample, in sample order. Entries may
+  have different channel counts and use their sample's gate, parameters and
+  matrix in forward, replay and inverse, including nested image sequences and
+  auto-augment policies. Video, mix and 3D children, and a geometric
+  ``PatchSequential``, do not support mask lists and raise ``NotImplementedError``.
+  Each entry is ``(H, W)``, ``(C, H, W)`` or ``(1, C, H, W)`` with the image's
+  spatial size. Invalid lengths or shapes raise ``ValueError``. Use separate
+  ``mask`` keys for multiple full-batch masks.
 - Boxes use the inclusive ``xyxy_plus`` convention of
   :class:`kornia.geometry.boxes.Boxes` (see *Bounding boxes* above). Flips use
   integer pixel centres: ``x' = W - 1 - x``.
@@ -492,10 +495,16 @@ Randomness in augmentations
   child's setting, and ``True`` or ``False`` overwrites it.
 - Whether a constructor's ``p`` sets the per-sample or the whole-batch gate,
   and whether it exposes ``p_batch``, depends on the concrete class
-  (`#4425 <https://github.com/kornia/kornia/issues/4425>`_). The gate selects
-  after the transform has run on the whole batch, so a skipped sample can still
-  raise or carry a NaN gradient
-  (`#4576 <https://github.com/kornia/kornia/issues/4576>`_).
+  (`#4425 <https://github.com/kornia/kornia/issues/4425>`_). A sample the gate
+  skips comes back with its input values, its values cannot make the call
+  raise, and where they are finite its gradient is the identity. Below ``p=1``
+  the transform still runs on the whole batch before the gate selects; classes
+  whose transform checks input values or has an unbounded derivative
+  (``RandomEqualize``, ``RandomEqualize3D``, ``RandomClahe``, ``RandomGamma``)
+  run it on the value 0.5 for skipped samples. An augmentation that changes the
+  sample shape, such as ``RandomCrop`` or ``Resize``, still raises
+  ``ValueError`` when the gate mixes applied and skipped samples
+  (`#4497 <https://github.com/kornia/kornia/issues/4497>`_).
 
 Serializing an augmentation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -396,11 +396,11 @@ def match_fginn(
     If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
 
     .. note::
-        The geometric check looks at the ``min(10, B2)`` nearest candidates and penalizes every one of them
+        The geometric check looks at the ``min(10, B2)`` nearest candidates and excludes every one of them
         that lies within ``spatial_th`` pixels of the query's own 1st nearest neighbor. When *all* of them do --
-        a dense cluster of detections on one structure -- the effective 2nd nearest neighbor distance saturates,
-        the ratio collapses towards zero and the match is **accepted**. That is the intended reading: no distinct
-        competing structure among the candidates means the 1st nearest neighbor is unambiguous.
+        a dense cluster of detections on one structure -- no candidate is left to be the 2nd nearest neighbor, the
+        ratio is 0 and the match is **accepted**. That is the intended reading: no distinct competing structure among
+        the candidates means the 1st nearest neighbor is unambiguous.
 
     Args:
         desc1: Batch of descriptors of a shape :math:`(B1, D)`.
@@ -423,10 +423,8 @@ def match_fginn(
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
-    BIG_NUMBER = 1000000.0
 
     distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
-    dtype = distance_matrix.dtype
 
     if desc2.shape[0] < 2:  # We cannot perform snn check, so output empty matches
         return _no_match(distance_matrix)
@@ -439,7 +437,10 @@ def match_fginn(
     # Distance from every candidate to the 1st nearest neighbour *of the same query*.
     # Indexing dim 0 here would take query 0's candidate list and broadcast it over all queries.
     kdist = torch.norm(candidates_xy - candidates_xy[:, 0:1], p=2, dim=2)
-    fginn_vals = vals_cand[:, 1:] + (kdist[:, 1:] < spatial_th).to(dtype) * BIG_NUMBER
+    # Candidates closer than spatial_th to the 1st nearest neighbour are masked out, whatever the scale of the
+    # distances. When none is left, the 2nd nearest neighbour distance is inf and the ratio is 0. torch.where also
+    # promotes an integer dm to the default floating dtype, which can hold inf.
+    fginn_vals = torch.where(kdist[:, 1:] < spatial_th, float("inf"), vals_cand[:, 1:])
     vals_2nd, _ = fginn_vals.min(dim=1)
     idxs_in_2 = idxs_in_2[:, 0]
 
