@@ -88,14 +88,15 @@ class LoFTR(nn.Module):
           pretrained models. With the default ``config``, whose ``resolution`` (8, 2) every pretrained model uses,
           the two images can differ in size, and their heights and widths do not need to be multiples of 8 (the
           reference implementation expects multiples of 8).
-        - ``keypoints0`` lie on the grid of the 1/8-resolution coarse feature map, at ``8 * (column, row)`` of a
-          coarse cell, and ``keypoints1`` at ``8 * (column, row)`` of the matching cell of image1 plus the offset
-          found by the fine stage, at most 4 pixels along each axis. Both are :math:`(x, y)` in the frame of the
-          reference implementation, in which the pretrained models put the centre of pixel :math:`(x, y)` at
-          :math:`(x + 0.5, y + 0.5)`: subtract 0.5 to get kornia's frame
+        - With that ``resolution``, ``keypoints0`` lie on the grid of the 1/8-resolution coarse feature map, at
+          ``8 * (column, row)`` of a coarse cell, and ``keypoints1`` at ``8 * (column, row)`` of the matching cell of
+          image1 plus the offset found by the fine stage, at most 4 pixels along each axis. Both are :math:`(x, y)` in
+          the frame of the reference implementation, in which the pretrained models put the centre of pixel
+          :math:`(x, y)` at :math:`(x + 0.5, y + 0.5)`: subtract 0.5 to get kornia's frame
           (:func:`~kornia.feature.laf_from_center_scale_ori`), in which pixel centres have integer coordinates.
-        - ``confidence`` is the coarse dual-softmax score of the match; only matches above the ``thr`` of
-          ``config["match_coarse"]``, 0.2 by default, are returned.
+        - ``confidence`` is the coarse matching score of the match, a dual-softmax score with the default
+          ``match_type``; only matches above ``max(thr, 0)`` are returned, with the ``thr`` of
+          ``config["match_coarse"]``, 0.2 by default.
 
     Args:
         config: Dict with initialization parameters. Do not pass it, unless you know what you are doing.
