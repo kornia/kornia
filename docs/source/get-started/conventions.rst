@@ -717,9 +717,10 @@ border names and the even-kernel anchor do not. :func:`~kornia.filters.filter2d`
 :func:`~kornia.filters.spatial_gradient3d` and their modules filter an integer or bool image in float32 and return
 float32 on its own scale, neither rescaled to :math:`[0, 1]` nor rounded and clamped to its dtype, where
 ``cv2.filter2D(img, -1, k)``, ``cv2.GaussianBlur`` and ``cv2.blur`` return a uint8 image rounded and saturated to
-uint8; a floating image keeps its dtype. :func:`~kornia.filters.median_blur`,
-:func:`~kornia.filters.unsharp_mask`, :func:`~kornia.filters.spatial_gradient`, :func:`~kornia.filters.sobel`,
-and the blur pools do not follow this yet: most of them raise on an integer image
+uint8; a floating image keeps its dtype. :func:`~kornia.filters.guided_blur` returns the promoted dtype of its
+``guidance`` and ``input``, an integer one counting as float32. :func:`~kornia.filters.median_blur`,
+:func:`~kornia.filters.unsharp_mask`, :func:`~kornia.filters.spatial_gradient`, :func:`~kornia.filters.sobel` and
+the blur pools do not follow this yet: most of them raise on an integer image
 (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
 - :func:`~kornia.filters.filter2d`, :func:`~kornia.filters.filter3d` and :func:`~kornia.filters.fft_conv`
