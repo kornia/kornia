@@ -648,6 +648,40 @@ class TestCoarseMatchingSelection(BaseTester):
         for name, value in zip(("b_ids", "i_ids", "j_ids", "mconf"), expected):
             self.assert_close(data[name], value, rtol=0.0, atol=0.0)
 
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    @pytest.mark.parametrize("masked", [False, True])
+    def test_dual_softmax_is_the_product_of_both_softmaxes(self, device, dtype, requires_grad, masked):
+        # Without autograd the confidence is computed in place, with it out of place; both are the product of the
+        # softmaxes over either dim of the masked similarity matrix, here against that product in float64.
+        cm = CoarseMatching(self.CFG).to(device).eval()
+        feat_c0, feat_c1 = self._features(device, dtype, 2, 30, 24, scale=1.0)
+        feat_c0.requires_grad_(requires_grad)
+        mask_c0 = mask_c1 = None
+        if masked:
+            mask_c0 = torch.ones(2, 30, device=device)
+            mask_c1 = torch.ones(2, 24, device=device)
+            mask_c0[0, 25:], mask_c1[1, :4] = 0, 0
+        data = {"hw0_c": (5, 6), "hw1_c": (4, 6), "stride_c": 8}
+        reference_c0 = feat_c0.detach().double().requires_grad_(requires_grad)
+        with torch.set_grad_enabled(requires_grad):
+            cm(feat_c0, feat_c1, data, mask_c0=mask_c0, mask_c1=mask_c1)
+            c = feat_c0.shape[-1] ** 0.5
+            sim = torch.einsum("nlc,nsc->nls", reference_c0 / c, feat_c1.double() / c) / self.CFG["dsmax_temperature"]
+            invalid = None
+            if masked:
+                invalid = ~mask_c0.bool()[..., None] | ~mask_c1.bool()[:, None]
+                sim = sim.masked_fill(invalid, -1e9)
+            expected = F.softmax(sim, 1) * F.softmax(sim, 2)
+            if masked:
+                expected = expected.masked_fill(invalid, 0.0)
+        # confidences are in [0, 1]: absolute tolerances of the input precision
+        tol = {torch.float16: 5e-3, torch.bfloat16: 3e-2, torch.float32: 1e-5, torch.float64: 1e-10}[dtype]
+        self.assert_close(data["conf_matrix"].double(), expected, rtol=0.0, atol=tol)
+        if requires_grad:
+            (grad,) = torch.autograd.grad((data["conf_matrix"] ** 2).sum(), feat_c0)
+            (grad_expected,) = torch.autograd.grad((expected**2).sum(), reference_c0)
+            self.assert_close(grad.double(), grad_expected, rtol=0.0, atol=50 * tol)
+
 
 class TestFineMatching(BaseTester):
     @staticmethod
