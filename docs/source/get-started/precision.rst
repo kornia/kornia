@@ -127,11 +127,11 @@ precision, so the table says nothing about those backends.
        own; the vertices are used as given, already rounded to half precision. The circle and ellipse tests still
        miss because they compute their vertices and their reference mask in half precision.
    * - ``kornia.losses``
+     - ✅ Yes
      - ⚠️ Partial
-     - ⚠️ Partial
-     - 2 / 2
-     - Dice averaging overflows to inf/NaN in float16; bfloat16 total variation misses accuracy.
-       Mutual information, Hausdorff and the photometric losses pass.
+     - 0 / 2
+     - Mutual information, Dice averaging, Hausdorff and the photometric losses pass.
+       bfloat16 total variation misses accuracy.
    * - ``kornia.feature``
      - ✅ Yes
      - ✅ Yes
