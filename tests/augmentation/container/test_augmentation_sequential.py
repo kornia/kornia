@@ -1215,6 +1215,45 @@ class TestAugmentationSequential:
 class TestConventionAugmentationSequential(BaseTester):
     """Convention checks and pins for documented `AugmentationSequential` limitations."""
 
+    @pytest.mark.parametrize("num_points", [0, 2])
+    def test_video_keypoints_noncontiguous_and_empty(self, num_points, device, dtype):
+        image = torch.arange(36, device=device, dtype=dtype).reshape(1, 1, 1, 6, 6).expand(2, 3, -1, -1, -1)
+        points = torch.arange(3 * 2 * num_points * 2, device=device, dtype=dtype).reshape(3, 2, num_points, 2)
+        points = (points % 6).transpose(0, 1)
+        expected = points.clone()
+        expected[..., 0] = 5 - expected[..., 0]
+        aug = K.AugmentationSequential(
+            K.VideoSequential(K.RandomHorizontalFlip(p=1.0), data_format="BTCHW"),
+            data_keys=["input", "keypoints"],
+        )
+
+        out_image, out_points = aug(image, points)
+        self.assert_close(out_image, image.flip(-1))
+        assert out_points.shape == points.shape
+        self.assert_close(out_points, expected)
+        _, restored = aug.inverse(out_image, out_points)
+        self.assert_close(restored, points)
+
+    @pytest.mark.parametrize("num_boxes", [0, 2])
+    def test_video_boxes_noncontiguous_and_empty(self, num_boxes, device, dtype):
+        image = torch.arange(36, device=device, dtype=dtype).reshape(1, 1, 1, 6, 6).expand(2, 3, -1, -1, -1)
+        corners = torch.tensor([[1.0, 1.0], [3.0, 1.0], [3.0, 4.0], [1.0, 4.0]], device=device, dtype=dtype)
+        shift = torch.arange(6, device=device, dtype=dtype).reshape(3, 2, 1, 1, 1) * 0.25
+        boxes = (corners + shift).expand(3, 2, num_boxes, 4, 2).transpose(0, 1)
+        expected = boxes.clone()
+        expected[..., 0] = 5 - expected[..., 0]
+        expected = expected[..., [1, 0, 3, 2], :]
+        aug = K.AugmentationSequential(
+            K.VideoSequential(K.RandomHorizontalFlip(p=1.0), data_format="BTCHW"),
+            data_keys=["input", "bbox"],
+        )
+
+        out_image, out_boxes = aug(image, boxes)
+        assert out_boxes.shape == boxes.shape
+        self.assert_close(out_boxes, expected)
+        _, restored = aug.inverse(out_image, out_boxes)
+        self.assert_close(restored, boxes)
+
     @pytest.mark.parametrize("batch_size", [2, 3])
     @pytest.mark.parametrize("keepdim,child_keepdim", [(True, False), (None, True), (False, True)])
     @pytest.mark.parametrize("mask_layout", ["BHW", "BCHW"])
@@ -1889,6 +1928,28 @@ class TestConventionAugmentationSequential(BaseTester):
         assert early_output.dtype == torch.float64
         assert torch.equal(early_output, expected)
         assert torch.equal(image_first({"image": image, "mask": mask})["mask"], expected)
+
+    @pytest.mark.parametrize("input_kind", ["pil", "path", "numpy"])
+    def test_dictionary_image_accepts_pil_path_and_numpy_5852(self, input_kind, tmp_path):
+        import numpy as np
+        from PIL import Image as PILImage
+
+        image = PILImage.new("RGB", (5, 4), color=(200, 100, 25))
+        path = tmp_path / "image.png"
+        image.save(path)
+        value = {"pil": image, "path": str(path), "numpy": np.array(image)}[input_kind]
+
+        positional = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=["input"])(value)
+        dictionary = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=None)({"input": value})
+
+        assert torch.equal(dictionary["input"], positional)
+
+    @pytest.mark.parametrize("key", ["input", "image"])
+    def test_dictionary_image_missing_path_raises_5852(self, key, tmp_path):
+        # The key marks the string as an image path, so a missing file is reported as such.
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=None)
+        with pytest.raises(FileNotFoundError):
+            aug({key: str(tmp_path / "missing.png")})
 
     @pytest.mark.parametrize("mask_dtypes", [(torch.int64, torch.bool), (torch.bool, torch.int64)])
     def test_convention_each_mask_keeps_its_own_dtype_4478(self, mask_dtypes, device, dtype):

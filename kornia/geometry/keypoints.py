@@ -293,6 +293,12 @@ class Keypoints:
 
 
 class VideoKeypoints(Keypoints):
+    """Video keypoints shaped ``(B, T, N, 2)``, stored internally as ``(B * T, N, 2)``.
+
+    Non-contiguous inputs are copied only when flattening requires it. Empty batches and point sets
+    retain their shape on conversion back to a tensor; the temporal dimension must be nonzero.
+    """
+
     temporal_channel_size: int
 
     @classmethod
@@ -306,14 +312,15 @@ class VideoKeypoints(Keypoints):
 
         # Due to some torch.jit.script bug (at least <= 1.9), you need to pass all arguments to __init__ when
         # constructing the class from inside of a method.
-        out = cls(boxes.view(boxes.size(0) * boxes.size(1), -1, boxes.size(3)))
+        out = cls(boxes.reshape(boxes.size(0) * boxes.size(1), boxes.size(2), boxes.size(3)))
         out.temporal_channel_size = temporal_channel_size
         return out
 
     def to_tensor(self) -> torch.torch.Tensor:  # type: ignore[override]
         out = super().to_tensor(as_padded_sequence=False)
         out = cast(torch.torch.Tensor, out)
-        return out.view(-1, self.temporal_channel_size, *out.shape[1:])
+        batch_size = out.shape[0] // self.temporal_channel_size
+        return out.reshape(batch_size, self.temporal_channel_size, *out.shape[1:])
 
     def transform_keypoints(self, M: torch.torch.Tensor, inplace: bool = False) -> "VideoKeypoints":
         out = super().transform_keypoints(M, inplace=inplace)

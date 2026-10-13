@@ -84,6 +84,8 @@ class RandomGamma(IntensityAugmentationBase2D):
 
     """
 
+    SUBSTITUTE_SKIPPED_SAMPLES = True
+
     def __init__(
         self,
         gamma: Tuple[float, float] = (1.0, 1.0),

@@ -466,9 +466,29 @@ class LightGlue(nn.Module):
     LightGlue is a deep network that matches local features across image pairs
     using a series of transformer layers and an adaptive pruning mechanism.
 
+    Convention:
+        - The ``keypoints`` of each image are ``(x, y)`` pixels and ``image_size`` is ``(W, H)``; an ``image``
+          tensor gives the size from its last two dimensions instead. ``forward`` normalises the keypoints to
+          ``(k - size / 2) / (max(size) / 2)``, as the reference implementation does, and raises for a keypoint
+          outside :math:`[-1, 1]` after that.
+        - The ``"sift"``, ``"doghardnet"`` and ``"dog_affnet_hardnet"`` configurations, which set ``add_scale_ori``,
+          also read ``scales`` and ``oris`` (radians) of each image; the last two multiply ``scales`` by their
+          ``scale_coef`` of 1/6 first, so they take the LAF scale. ``"keynet_affnet_hardnet"``, which sets ``add_laf``,
+          reads ``lafs``. :class:`~kornia.feature.LightGlueMatcher` builds them from LAFs.
+        - The matching scores, ``matching_scores0``, ``matching_scores1`` and ``scores``, are in the dtype of the
+          descriptors. With ``mp=True``, float32 descriptors give scores in the dtype autocast computes them in
+          instead: bfloat16 on CPU, float32 on CUDA and MPS. An image without descriptors runs no layer, and its zero
+          scores keep the descriptor dtype, also with ``mp=True``.
+        - Known defects: with ``mp=True`` on CPU, a configuration whose ``input_dim`` equals ``descriptor_dim``, such
+          as ``"superpoint"``, ``"dedodeb"`` and ``"dedodeg"``, gives float32 zero scores when point pruning removes
+          every point, and bfloat16 scores otherwise (`#5877 <https://github.com/kornia/kornia/issues/5877>`_).
+
     Args:
-        features: The type of local features to match (e.g., 'superpoint', 'disk').
-        conf: A configuration dictionary to override default parameters.
+        features: The type of local features to match (e.g., 'superpoint', 'disk'), whose configuration and
+            pretrained weights are loaded. ``None`` builds the model from ``default_conf`` and the keyword arguments
+            and downloads no weights.
+        **conf: keyword arguments that override entries of ``default_conf``, such as ``filter_threshold``; the
+            configuration of ``features`` is applied after them and wins where both set a key.
     """
 
     default_conf: ClassVar[Dict[str, Any]] = {
@@ -685,10 +705,14 @@ class LightGlue(nn.Module):
                 keypoints: [B x M x 2]
                 descriptors: [B x M x D]
                 image: [B x C x H x W] or image_size: [B x 2]
+                scales, oris: [B x M], with add_scale_ori
+                lafs: [B x M x 2 x 3], with add_laf
             image1: dict
                 keypoints: [B x N x 2]
                 descriptors: [B x N x D]
                 image: [B x C x H x W] or image_size: [B x 2]
+                scales, oris: [B x N], with add_scale_ori
+                lafs: [B x N x 2 x 3], with add_laf
         Output (dict):
             log_assignment: [B x M+1 x N+1]
             matches0: [B x M]
@@ -696,6 +720,7 @@ class LightGlue(nn.Module):
             matches1: [B x N]
             matching_scores1: [B x N]
             matches: List[[Si x 2]], scores: List[[Si]]
+            stop, prune0, prune1: diagnostics of early stopping and point pruning
         """
         device_type = data["image0"]["keypoints"].device.type
         with torch.autocast(enabled=self.conf.mp, device_type=device_type):
@@ -751,20 +776,22 @@ class LightGlue(nn.Module):
 
         # Guard against empty-descriptors after pruning
         if desc0.shape[1] == 0 or desc1.shape[1] == 0:
+            # No layer runs here, so the outputs keep the input dtype, also under mp=True.
+            dtype = desc0.dtype
             empty_m0 = torch.full((b, m), -1, device=device, dtype=torch.long)
             empty_m1 = torch.full((b, n), -1, device=device, dtype=torch.long)
-            empty_s0 = torch.zeros((b, m), device=device)
-            empty_s1 = torch.zeros((b, n), device=device)
+            empty_s0 = torch.zeros((b, m), device=device, dtype=dtype)
+            empty_s1 = torch.zeros((b, n), device=device, dtype=dtype)
 
             return {
-                "log_assignment": torch.empty((b, 1, 1), device=device),
+                "log_assignment": torch.empty((b, 1, 1), device=device, dtype=dtype),
                 "matches0": empty_m0,
                 "matches1": empty_m1,
                 "matching_scores0": empty_s0,
                 "matching_scores1": empty_s1,
                 "stop": 0,
                 "matches": [torch.empty((0, 2), device=device, dtype=torch.long) for _ in range(b)],
-                "scores": [torch.empty((0,), device=device) for _ in range(b)],
+                "scores": [torch.empty((0,), device=device, dtype=dtype) for _ in range(b)],
                 "prune0": torch.ones_like(empty_s0) * self.conf.n_layers,
                 "prune1": torch.ones_like(empty_s1) * self.conf.n_layers,
             }
@@ -834,12 +861,15 @@ class LightGlue(nn.Module):
         # If adaptive width pruning removed all keypoints from either side,
         # return empty matches instead of crashing in filter_matches (see #3564).
         if desc0.shape[-2] == 0 or desc1.shape[-2] == 0:
+            # The other paths' scores are the exp of the log assignment. Autocast runs that exp in float32 on CUDA and
+            # MPS and leaves it in the computed dtype on CPU (bfloat16), so take the dtype from the same op.
+            dtype = desc0.new_zeros(()).exp().dtype
             matches = [torch.zeros((0, 2), dtype=torch.long, device=device) for _ in range(b)]
-            mscores = [torch.zeros(0, device=device) for _ in range(b)]
+            mscores = [torch.zeros(0, device=device, dtype=dtype) for _ in range(b)]
             m0_ = torch.full((b, m), -1, device=device, dtype=torch.long)
             m1_ = torch.full((b, n), -1, device=device, dtype=torch.long)
-            mscores0_ = torch.zeros((b, m), device=device)
-            mscores1_ = torch.zeros((b, n), device=device)
+            mscores0_ = torch.zeros((b, m), device=device, dtype=dtype)
+            mscores1_ = torch.zeros((b, n), device=device, dtype=dtype)
             return {
                 "matches": matches,
                 "scores": mscores,
@@ -872,8 +902,8 @@ class LightGlue(nn.Module):
             m1_ = torch.full((b, n), -1, device=m1.device, dtype=m1.dtype)
             m0_[:, ind0] = torch.where(m0 == -1, -1, ind1.gather(1, m0.clamp(min=0)))
             m1_[:, ind1] = torch.where(m1 == -1, -1, ind0.gather(1, m1.clamp(min=0)))
-            mscores0_ = torch.zeros((b, m), device=mscores0.device)
-            mscores1_ = torch.zeros((b, n), device=mscores1.device)
+            mscores0_ = torch.zeros((b, m), device=mscores0.device, dtype=mscores0.dtype)
+            mscores1_ = torch.zeros((b, n), device=mscores1.device, dtype=mscores1.dtype)
             mscores0_[:, ind0] = mscores0
             mscores1_[:, ind1] = mscores1
             m0, m1, mscores0, mscores1 = m0_, m1_, mscores0_, mscores1_
@@ -926,8 +956,8 @@ class LightGlue(nn.Module):
             device: Torch device on which descriptors are processed.
 
         Returns:
-            Minimum number of keypoints required for width pruning on that device.
-            A negative value disables pruning for the device.
+            With point pruning enabled, it runs on an image while the image has more keypoints than this number,
+            so ``-1`` means always.
         """
         if self.conf.flash and device.type == "cuda":
             return self.pruning_keypoint_thresholds["flash"]

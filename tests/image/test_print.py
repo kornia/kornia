@@ -16,10 +16,12 @@
 #
 
 import os
+import re
 
 import pytest
 import torch
 
+from kornia.core.exceptions import ValueCheckError
 from kornia.image import image_print, image_to_string, print_image
 from kornia.io import write_image
 
@@ -173,3 +175,38 @@ class TestNearestXterm:
         out = capsys.readouterr().out
         assert out.count("\x1b[48;5;16m") == 6  # 2 x 3 black pixels
         assert out.count("\x1b[0m\n") == 2
+
+
+class TestConventionsPrint:
+    """Pins for the value ranges and the width defaults of the terminal printers."""
+
+    @pytest.mark.parametrize(
+        ("image", "expected_range"),
+        [
+            (torch.full((3, 2, 4), 1.5), "expected [0, 1]"),
+            (torch.full((3, 2, 4), -0.5), "expected [0, 1]"),
+            (torch.full((3, 2, 4), 256, dtype=torch.int64), "expected [0, 255]"),
+        ],
+        ids=["float-above-1", "float-below-0", "int-above-255"],
+    )
+    def test_convention_image_to_string_value_ranges(self, image, expected_range):
+        # A float image is read as [0, 1] and an integer one as [0, 255]; anything outside raises.
+        with pytest.raises(ValueCheckError, match=re.escape(expected_range)):
+            image_to_string(image)
+
+    @pytest.mark.parametrize("dtype", [torch.uint8, torch.int64])
+    def test_convention_image_to_string_integer_255_is_float_1(self, dtype):
+        # The accepted boundaries: integer 255 is the same colour as float 1.0, so integers are not read as [0, 1].
+        assert image_to_string(torch.full((3, 2, 4), 255, dtype=dtype)) == image_to_string(torch.ones(3, 2, 4))
+
+    def test_convention_print_max_width_defaults(self, capsys):
+        # image_to_string caps the width at 256 pixels by default and print_image at 96. Each printed pixel is one
+        # "\x1b[48;5;<code>m  " escape, so a 300-pixel-wide image prints 256 or 96 cells per row.
+        image = torch.zeros(3, 2, 300)
+        string = image_to_string(image)
+        assert string.count("\033[0m\n") == 1  # H = 2 shrinks to max(1, 2 * 256 // 300) = 1 row
+        assert string.count("\033[48;5;") == 256
+        print_image(image)
+        printed = capsys.readouterr().out
+        assert printed.count("\033[0m\n") == 1  # max(1, 2 * 96 // 300) = 1 row
+        assert printed.count("\033[48;5;") == 96

@@ -46,7 +46,8 @@ class AdalamConfig(TypedDict):
     force_seed_mnn: Whether to consider only MNN for the purpose of selecting seeds. Generally improves accuracy
         at the cost of runtime
     device: Union[str, torch.device, None] to be used for running AdaLAM. Use GPU if available.
-    mnn: Default None. You can provide a MNN mask in input to skip MNN computation and still get the improvement.
+    mnn: not read from the configuration: :func:`~kornia.feature.match_adalam` warns about this key and ignores it.
+        A mutual-nearest-neighbour mask goes to ``AdalamFilter.filter_matches`` as its ``mnn`` argument.
 
     """
 
@@ -384,7 +385,7 @@ def adalam_core(
             out_scores = scores1[score_mask].reshape(-1, 1)
             idxs = torch.stack([absolute_im1idx, absolute_im2idx], dim=1)
         else:
-            idxs, out_scores = _no_match(scores1)
+            out_scores, idxs = _no_match(scores1)
         if return_dist:
             return idxs, out_scores
         return idxs
