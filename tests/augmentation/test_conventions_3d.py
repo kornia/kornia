@@ -472,6 +472,7 @@ class Test3DAugmentationConventions(BaseTester):
     @pytest.mark.device_agnostic
     def test_convention_crop3d_validates_size_before_a_disabled_gate(self):
         # #4417: validation still precedes the probability gate and sees the padded spatial size.
+        """Validate an oversized crop even when the probability gate disables the transform."""
         volume = torch.rand(1, 1, 4, 5, 6)
         with pytest.raises(ValueError, match="size"):
             K.CenterCrop3D((5, 6, 7), p=0.0)(volume)
@@ -502,6 +503,7 @@ class Test3DAugmentationConventions(BaseTester):
         ],
     )
     def test_crop3d_size_format_errors_4417(self, augmentation, size):
+        """Report malformed crop sizes consistently across 3D crop entry points."""
         with pytest.raises(TypeError, match=r"size.*\(D, H, W\)") as exc_info:
             augmentation(size)
         assert repr(size) in str(exc_info.value)
@@ -511,6 +513,7 @@ class Test3DAugmentationConventions(BaseTester):
     @pytest.mark.parametrize("axis", [0, 1, 2])
     @pytest.mark.parametrize("value", [2.0, 2.5, "2", None])
     def test_random_crop3d_size_elements_must_be_integers_4417(self, container, axis, value):
+        """Reject non-integer crop dimensions before generating random boxes."""
         size = [2, 2, 2]
         size[axis] = value
         size = container(size)
@@ -523,6 +526,7 @@ class Test3DAugmentationConventions(BaseTester):
     @pytest.mark.parametrize("p", [0.0, 1.0])
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_crop3d_oversized_errors_4417(self, augmentation, size, p, batch_size, device, dtype):
+        """Include the input and requested sizes when a crop exceeds the volume."""
         volume = torch.zeros(batch_size, 1, 4, 5, 6, device=device, dtype=dtype)
         with pytest.raises(ValueError, match=r"size.*must not exceed.*input") as exc_info:
             augmentation(size, p=p)(volume)
@@ -534,6 +538,7 @@ class Test3DAugmentationConventions(BaseTester):
     @pytest.mark.device_agnostic
     def test_crop3d_integer_size_support_4417(self):
         # Accepting an int in RandomCrop3D is still the separate compatibility-window decision.
+        """Accept integer dimensions provided as a tuple, list or tensor."""
         volume = torch.rand(1, 1, 4, 5, 6)
         assert K.CenterCrop3D(2, p=1.0)(volume).shape == (1, 1, 2, 2, 2)
         with pytest.raises(TypeError, match="size"):
@@ -545,6 +550,7 @@ class Test3DAugmentationConventions(BaseTester):
     )
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_crop3d_equal_size_is_valid_4417(self, augmentation, batch_size, size, device, dtype):
+        """Allow a crop matching all three input dimensions."""
         if not supports_nearest_3d_grid_sample(device, dtype):
             pytest.skip("3D nearest grid_sample is unavailable for this device/dtype")
         volume = torch.arange(120, device=device, dtype=dtype).reshape(1, 1, 4, 5, 6).repeat(batch_size, 1, 1, 1, 1)

@@ -77,6 +77,7 @@ class CropGenerator3D(RandomGeneratorBase):
         )
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+        """Generate crop boxes after checking that the requested size fits the input volume."""
         batch_size, _, depth, height, width = batch_shape
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.size if isinstance(self.size, torch.Tensor) else None])

@@ -97,6 +97,7 @@ class CenterCrop3D(GeometricAugmentationBase3D):
     ) -> None:
         # same_on_batch is always True for CenterCrop
         # Since PyTorch does not support ragged torch.Tensor. So cropping function happens batch-wisely.
+        """Validate the three integer crop dimensions before initializing the augmentation."""
         super().__init__(p=1.0, same_on_batch=True, p_batch=p, keepdim=keepdim)
         if isinstance(size, tuple):
             if len(size) != 3:
