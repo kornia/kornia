@@ -15,9 +15,10 @@
 # limitations under the License.
 #
 
+import logging
 import warnings
 from collections import defaultdict
-from typing import Any, Callable, DefaultDict, Dict, List, Optional, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, DefaultDict, Dict, List, Optional, Union
 
 import torch
 from torch import Tensor, nn
@@ -32,6 +33,8 @@ from kornia.profiler.metrics import (
     Metric,
 )
 from kornia.profiler.transforms import Transform
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -85,14 +88,10 @@ class Profiler:
         self.model: nn.Module = model
         self.model.eval()
         self.collector: Collector = collector
-        self.pre_metric_transform: Optional[Callable[[Tensor], Tensor]] = (
-            self._build_transform(pre_metric_transform)
-        )
+        self.pre_metric_transform: Optional[Callable[[Tensor], Tensor]] = self._build_transform(pre_metric_transform)
 
         # Validate metrics before attaching hooks to the model.
-        self.metrics: Dict[str, Metric] = self._build_metrics(
-            metrics if metrics is not None else ["cosine", "linear"]
-        )
+        self.metrics: Dict[str, Metric] = self._build_metrics(metrics if metrics is not None else ["cosine", "linear"])
 
         try:
             self.collector.attach(model)
@@ -102,7 +101,7 @@ class Profiler:
 
         self.storage: DefaultDict[str, List[Dict[str, Any]]] = defaultdict(list)
         self.results: Optional[List[Dict[str, Any]]] = None
-        self._df: Optional["pd.DataFrame"] = None
+        self._df: Optional[pd.DataFrame] = None
 
     @staticmethod
     def _build_transform(
@@ -136,9 +135,7 @@ class Profiler:
         if callable(transform):
             return transform
 
-        raise TypeError(
-            "pre_metric_transform must be callable, 'flatten', or None."
-        )
+        raise TypeError("pre_metric_transform must be callable, 'flatten', or None.")
 
     @staticmethod
     def _build_metrics(metrics: List[MetricType]) -> Dict[str, Metric]:
@@ -166,9 +163,7 @@ class Profiler:
             elif isinstance(metric, Metric):
                 built_metrics[metric.__class__.__name__] = metric
             else:
-                raise TypeError(
-                    "Each metric must be a Metric instance or a registered name."
-                )
+                raise TypeError("Each metric must be a Metric instance or a registered name.")
 
         return built_metrics
 
@@ -271,11 +266,11 @@ class Profiler:
         self._df = pandas.DataFrame(results)
 
     def print(self) -> None:
-        """Print the computed results, or indicate that none are available."""
+        """Log the computed results, or indicate that none are available."""
         if self._df is not None:
-            print(self._df)
+            logger.info("\n%s", self._df)
         else:
-            print("No results computed yet.")
+            logger.info("No results computed yet.")
 
     def save_as_report(self, path: str) -> None:
         """Save computed results as a CSV or JSON report.

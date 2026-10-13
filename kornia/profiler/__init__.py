@@ -28,12 +28,12 @@ from kornia.profiler.metrics import (
 from kornia.profiler.profiler import Profiler
 
 __all__ = [
-    "Profiler",
     "Collector",
-    "LayerCollector",
-    "Metric",
     "CosineSimilarity",
     "GramSimilarity",
     "L2Normalized",
+    "LayerCollector",
     "LinearSimilarity",
+    "Metric",
+    "Profiler",
 ]

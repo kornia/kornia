@@ -64,9 +64,7 @@ def test_profiler_reports_expected_cosine_similarity() -> None:
             metrics=["cosine"],
         )
 
-        x = torch.tensor(
-            [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]]
-        )
+        x = torch.tensor([[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]])
 
         profiler(group="original", x=x)
         profiler(group="comparison", x=x.clone())

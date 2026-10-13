@@ -24,9 +24,9 @@ from kornia.profiler.metrics.l2 import L2Normalized
 from kornia.profiler.metrics.linear import LinearSimilarity
 
 __all__ = [
-    "Metric",
     "CosineSimilarity",
     "GramSimilarity",
     "L2Normalized",
     "LinearSimilarity",
+    "Metric",
 ]

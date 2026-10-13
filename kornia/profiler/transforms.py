@@ -20,7 +20,6 @@ from typing import Callable, Union
 import torch
 from torch import Tensor, nn
 
-
 TransformType = Union[nn.Module, Callable[[Tensor], Tensor], str]
 
 

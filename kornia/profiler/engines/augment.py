@@ -19,9 +19,9 @@ import inspect
 from typing import Any, Dict, List, Optional, Tuple
 
 import torch
-import kornia.augmentation as K
 from torch import Tensor
 
+import kornia.augmentation as K
 
 # Compatibility aliases for the names accepted by the previous configuration API.
 # These map names to augmentation classes; they do not construct augmentations.
@@ -75,9 +75,7 @@ def _build_augmentation(config: Dict[str, Any]) -> Tuple[str, torch.nn.Module]:
     if augmentation_cls is None or not inspect.isclass(augmentation_cls):
         raise ValueError(f"Unknown Kornia augmentation: {configured_name}")
     if not issubclass(augmentation_cls, torch.nn.Module):
-        raise TypeError(
-            f"Kornia augmentation {name!r} is not a torch.nn.Module class."
-        )
+        raise TypeError(f"Kornia augmentation {name!r} is not a torch.nn.Module class.")
 
     if "params" in config:
         params = config["params"]
@@ -87,8 +85,7 @@ def _build_augmentation(config: Dict[str, Any]) -> Tuple[str, torch.nn.Module]:
         extra_params = set(config) - {"name", "params"}
         if extra_params:
             raise ValueError(
-                "Do not mix the legacy 'params' field with top-level "
-                f"constructor arguments: {sorted(extra_params)}"
+                f"Do not mix the legacy 'params' field with top-level constructor arguments: {sorted(extra_params)}"
             )
 
         params = dict(params)
@@ -104,18 +101,14 @@ def _build_augmentation(config: Dict[str, Any]) -> Tuple[str, torch.nn.Module]:
     # Keep the previous brightness configuration key working.
     if configured_name == "brightness" and "brightness_factor" in params:
         if "brightness" in params:
-            raise ValueError(
-                "Specify only one of 'brightness_factor' and 'brightness'."
-            )
+            raise ValueError("Specify only one of 'brightness_factor' and 'brightness'.")
         params["brightness"] = params.pop("brightness_factor")
 
     try:
         signature = inspect.signature(augmentation_cls)
         signature.bind(**params)
     except (TypeError, ValueError) as exc:
-        raise TypeError(
-            f"Invalid arguments for Kornia augmentation {name!r}: {exc}"
-        ) from exc
+        raise TypeError(f"Invalid arguments for Kornia augmentation {name!r}: {exc}") from exc
 
     module = augmentation_cls(**params)
     return configured_name, module

@@ -116,9 +116,7 @@ class LayerCollector(Collector):
 
         raise ValueError(f"Unknown processing: {self.processing}")
 
-    def _hook_fn(
-        self, name: str
-    ) -> Callable[[nn.Module, Tuple[Any, ...], Any], None]:
+    def _hook_fn(self, name: str) -> Callable[[nn.Module, Tuple[Any, ...], Any], None]:
         """Create a forward hook that stores a module's tensor output.
 
         Args:
@@ -168,9 +166,7 @@ class LayerCollector(Collector):
             RuntimeError: If no model is currently attached.
         """
         if self.model is None:
-            raise RuntimeError(
-                "Collector is not attached to a model. Call attach(model) first."
-            )
+            raise RuntimeError("Collector is not attached to a model. Call attach(model) first.")
 
         self.clear()
         with torch.no_grad():
