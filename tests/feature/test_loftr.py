@@ -111,6 +111,29 @@ class TestLoFTR(BaseTester):
             out = loftr(sample)
         assert out is not None
 
+    def test_masked_cells_do_not_match_5740(self, device):
+        """The whole-module view of #5740: with the same coarse cells masked on both sides,
+        no returned keypoint may sit in the masked region, for any ``thr``."""
+        cfg = copy.deepcopy(default_cfg)
+        cfg["match_coarse"]["thr"] = 0.0
+        cfg["match_coarse"]["border_rm"] = 0
+        gen = torch.Generator(device=device).manual_seed(3)
+        patches = torch.rand(1, 1, 64, 64, device=device, generator=gen)
+        loftr = LoFTR(pretrained=None, config=cfg).to(device)
+        mask = torch.ones(1, 64, 64, device=device)
+        mask[..., :16] = 0  # the left quarter of both images is padding
+        with torch.no_grad():
+            out = loftr({"image0": patches, "image1": patches, "mask0": mask, "mask1": mask})
+        kp0, kp1 = out["keypoints0"], out["keypoints1"]
+        assert len(kp0) > 0
+        # The masked cells are the coarse columns 0 and 1 (pixel x < 16, centers 0 and 8). Before
+        # the fix, masked-cell pairs put keypoints at those centers, and the fine level refined
+        # them to x in [0, 4] or below 0. A fine refinement of a valid coarse cell (column 2,
+        # center 16) can legitimately move a few pixels into the masked band, so the assertion
+        # covers the masked cell centres with the fine half-window to spare.
+        assert (kp0[:, 0] < 12).sum().item() == 0
+        assert (kp1[:, 0] < 12).sum().item() == 0
+
     @pytest.mark.slow
     @pytest.mark.skipif(sys.platform == "win32", reason="this test takes so much memory in the CI with Windows")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
@@ -314,6 +337,203 @@ class TestCoarseMatching(BaseTester):
         assert out["mconf"].numel() == self.N_PRED
         assert out["mconf"].dtype == dtype
         assert out["mkpts0_c"].shape == (self.N_PRED, 2)
+
+    @pytest.mark.parametrize("thr", [0.0, -1.0])
+    @pytest.mark.parametrize("mask0_on", [False, True])
+    @pytest.mark.parametrize("mask1_on", [False, True])
+    def test_masked_cell_pair_is_never_a_match_5740(self, device, mask0_on, mask1_on, thr):
+        """A pair of masked coarse cells has the confidence 1 / (L * S): the row and the
+        column of a fully masked cell are uniform under the two softmaxes, and all other
+        entries are exactly 0, so the pair is also a mutual nearest neighbour. With ``thr``
+        below 1 / (L * S) it was returned as a match, with keypoints in the padding of both
+        images. One-sided masking is covered too: the confidence of any pair that involves a
+        masked cell is 0. A negative ``thr`` must not admit those zero confidences either:
+        ``get_coarse_match`` drops ``mconf == 0`` from the keypoints but not from ``b_ids``."""
+        cfg = {
+            "thr": thr,
+            "border_rm": 0,
+            "train_coarse_percent": 0.5,
+            "train_pad_num_gt_min": 2,
+            "match_type": "dual_softmax",
+            "dsmax_temperature": 0.1,
+        }
+        gen = torch.Generator(device=device).manual_seed(0)
+        feat0 = torch.randn(1, 12, 8, device=device, generator=gen)
+        feat1 = torch.randn(1, 9, 8, device=device, generator=gen)
+        mask0, mask1 = torch.ones(1, 12, device=device), torch.ones(1, 9, device=device)
+        if mask0_on:
+            mask0[0, 3] = 0
+        if mask1_on:
+            mask1[0, 4] = 0
+        data = {
+            "hw0_c": (3, 4),
+            "hw1_c": (3, 3),
+            "hw0_i": (24, 32),
+            "hw1_i": (24, 24),
+            "stride_c": 8,
+        }
+        cm = CoarseMatching(cfg).to(device)
+        cm.eval()
+        cm(feat0, feat1, data, mask_c0=mask0, mask_c1=mask1)
+        pairs = set(zip(data["i_ids"].tolist(), data["j_ids"].tolist()))
+        assert len(data["b_ids"]) == len(data["mconf"]) == len(data["mkpts0_c"])
+        if mask0_on or mask1_on:
+            # any pair that involves a masked cell has the confidence 0: one-sided masking
+            # already achieved that through the -1e9 similarity fill (the softmax over the
+            # masked row or column gives it no weight), both-sided masking is what needed the
+            # explicit zero fill after the softmaxes
+            assert (3, 4) not in pairs
+            assert data["conf_matrix"][0, 3, 4].item() == 0.0
+        else:
+            # control: without any mask the pair keeps its normal confidence, the fix must not
+            # suppress it (whether it is a mutual nearest neighbour depends on the RNG, so only
+            # the confidence is asserted)
+            assert data["conf_matrix"][0, 3, 4].item() > 0.0
+
+    @pytest.mark.parametrize("masked_side", [0, 1])
+    def test_independently_optional_coarse_masks_5768(self, device, masked_side):
+        cfg = dict(self.CFG)
+        cfg["thr"] = 0.0
+        generator = torch.Generator(device=device).manual_seed(0)
+        feat0 = torch.randn(1, 12, 8, device=device, generator=generator)
+        feat1 = torch.randn(1, 9, 8, device=device, generator=generator)
+        masked = torch.ones(1, 12 if masked_side == 0 else 9, device=device)
+        masked[0, [0, 5, 7, 8, 11] if masked_side == 0 else [0, 3, 5]] = 0
+        all_valid = torch.ones(1, 9 if masked_side == 0 else 12, device=device)
+
+        def run(include_other_mask):
+            masks = (
+                (masked, all_valid if include_other_mask else None)
+                if masked_side == 0
+                else (all_valid if include_other_mask else None, masked)
+            )
+            data = {
+                "hw0_c": (3, 4),
+                "hw1_c": (3, 3),
+                "hw0_i": (24, 32),
+                "hw1_i": (24, 24),
+                "stride_c": 8,
+            }
+            CoarseMatching(cfg).to(device).eval()(feat0, feat1, data, mask_c0=masks[0], mask_c1=masks[1])
+            return data
+
+        one_sided = run(False)
+        explicit_valid = run(True)
+        assert torch.equal(one_sided["conf_matrix"], explicit_valid["conf_matrix"])
+        assert torch.equal(one_sided["i_ids"], explicit_valid["i_ids"])
+        assert torch.equal(one_sided["j_ids"], explicit_valid["j_ids"])
+        selected = one_sided["i_ids"] if masked_side == 0 else one_sided["j_ids"]
+        assert selected.numel() > 0
+        assert bool(masked[0, selected].all())
+
+    @pytest.mark.parametrize("masked_side", [0, 1])
+    def test_sinkhorn_applies_independently_optional_coarse_masks_5768(self, device, masked_side):
+        cfg = dict(self.CFG)
+        cfg["thr"] = 0.0
+        cfg["sparse_spvs"] = False
+        cm = CoarseMatching(cfg).to(device).eval()
+        cm.match_type = "sinkhorn"
+        cm.skh_prefilter = False
+        cm.skh_iters = 1
+        cm.bin_score = torch.nn.Parameter(torch.tensor(1.0, device=device))
+        transport_inputs = []
+
+        def fake_transport(scores, *_):
+            transport_inputs.append(scores.detach().clone())
+            return torch.zeros(scores.shape[0], scores.shape[1] + 1, scores.shape[2] + 1, device=device)
+
+        cm.log_optimal_transport = fake_transport
+        generator = torch.Generator(device=device).manual_seed(0)
+        feat0 = torch.randn(1, 12, 8, device=device, generator=generator)
+        feat1 = torch.randn(1, 9, 8, device=device, generator=generator)
+        masked = torch.ones(1, 12 if masked_side == 0 else 9, device=device)
+        masked[0, [0, 5]] = 0
+        masks = (masked, None) if masked_side == 0 else (None, masked)
+        data = {
+            "hw0_c": (3, 4),
+            "hw1_c": (3, 3),
+            "hw0_i": (24, 32),
+            "hw1_i": (24, 24),
+            "stride_c": 8,
+        }
+
+        cm(feat0, feat1, data, mask_c0=masks[0], mask_c1=masks[1])
+        invalid = ~masked.bool()[..., None] if masked_side == 0 else ~masked.bool()[:, None]
+        invalid = invalid.expand_as(transport_inputs[0])
+        assert bool((transport_inputs[0][invalid] == -1e9).all())
+        assert bool((data["conf_matrix"][invalid] == 0).all())
+        selected = data["i_ids"] if masked_side == 0 else data["j_ids"]
+        assert selected.numel() > 0
+        assert bool(masked[0, selected].all())
+
+    @pytest.mark.parametrize(("mask0_on", "mask1_on"), [(True, False), (False, True), (True, True)])
+    def test_masked_sinkhorn_training_backward_5768(self, device, mask0_on, mask1_on):
+        """The zero fill after the transport must not write into the ``exp`` output, which autograd saves: an in-place
+        fill made ``backward`` raise for every masked Sinkhorn training step."""
+        cfg = dict(self.CFG)
+        cfg["thr"] = 0.0
+        cfg["sparse_spvs"] = False
+        cm = CoarseMatching(cfg).to(device).train()
+        cm.match_type = "sinkhorn"
+        cm.skh_prefilter = False
+        cm.skh_iters = 1
+        cm.bin_score = torch.nn.Parameter(torch.tensor(1.0, device=device))
+        # A differentiable stand-in for SuperGlue's log_optimal_transport (not shipped), with a dustbin row and column.
+        cm.log_optimal_transport = lambda scores, *_: F.log_softmax(F.pad(scores, (0, 1, 0, 1)), dim=-1)
+        generator = torch.Generator(device=device).manual_seed(0)
+        feat0 = torch.randn(1, 12, 8, device=device, generator=generator, requires_grad=True)
+        feat1 = torch.randn(1, 9, 8, device=device, generator=generator, requires_grad=True)
+        mask0 = torch.ones(1, 12, device=device)
+        mask0[0, [0, 5]] = 0
+        mask1 = torch.ones(1, 9, device=device)
+        mask1[0, 3] = 0
+        data = {
+            "hw0_c": (3, 4),
+            "hw1_c": (3, 3),
+            "hw0_i": (24, 32),
+            "hw1_i": (24, 24),
+            "stride_c": 8,
+            "spv_b_ids": torch.zeros(2, dtype=torch.long, device=device),
+            "spv_i_ids": torch.tensor([1, 2], device=device),
+            "spv_j_ids": torch.tensor([1, 2], device=device),
+        }
+
+        cm(feat0, feat1, data, mask_c0=mask0 if mask0_on else None, mask_c1=mask1 if mask1_on else None)
+        data["conf_matrix"].sum().backward()
+        assert bool(torch.isfinite(feat0.grad).all())
+        assert bool(torch.isfinite(feat1.grad).all())
+
+    @pytest.mark.parametrize("masked_side", [0, 1])
+    def test_one_sided_mask_is_applied_per_sample_5768(self, device, masked_side):
+        """Each sample of a batch keeps its own mask, and the dual softmax runs over that sample's valid cells only:
+        the confidences of the valid cells equal the dual softmax of the unmasked submatrix, all others are 0."""
+        cfg = dict(self.CFG)
+        cfg["thr"] = 0.0
+        generator = torch.Generator(device=device).manual_seed(0)
+        feat0 = torch.randn(2, 12, 8, device=device, generator=generator)
+        feat1 = torch.randn(2, 9, 8, device=device, generator=generator)
+        masked = torch.ones(2, 12 if masked_side == 0 else 9, device=device)
+        masked[0, [0, 5, 7]] = 0
+        masked[1, [1, 2, 8]] = 0
+        data = {
+            "hw0_c": (3, 4),
+            "hw1_c": (3, 3),
+            "hw0_i": (24, 32),
+            "hw1_i": (24, 24),
+            "stride_c": 8,
+        }
+        masks = (masked, None) if masked_side == 0 else (None, masked)
+        CoarseMatching(cfg).to(device).eval()(feat0, feat1, data, mask_c0=masks[0], mask_c1=masks[1])
+
+        sim = torch.einsum("nlc,nsc->nls", feat0 / 8**0.5, feat1 / 8**0.5) / cfg["dsmax_temperature"]
+        for b in range(2):
+            valid = masked[b].bool()
+            expected = torch.zeros_like(sim[b])
+            if masked_side == 0:
+                expected[valid] = sim[b][valid].softmax(0) * sim[b][valid].softmax(1)
+            else:
+                expected[:, valid] = sim[b][:, valid].softmax(0) * sim[b][:, valid].softmax(1)
+            self.assert_close(data["conf_matrix"][b], expected)
 
     def test_eval_path_unaffected(self, device):
         """Eval mode skips the gt-padding branch entirely -- assert that

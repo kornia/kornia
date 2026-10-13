@@ -58,9 +58,9 @@ def charbonnier_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "n
         - The losses are symmetric in ``img1`` and ``img2``, which must have the same shape, without broadcasting,
           and the same device. The default ``reduction='none'`` returns the loss of every element, in the shape of
           the inputs.
-        - This loss, :func:`~kornia.losses.cauchy_loss` and :func:`~kornia.losses.geman_mcclure_loss` evaluate
-          float16 and bfloat16 inputs in float32, gradients included, and return the input dtype;
-          :func:`~kornia.losses.welsch_loss` does not upcast them.
+        - This loss, :func:`~kornia.losses.cauchy_loss`, :func:`~kornia.losses.geman_mcclure_loss` and
+          :func:`~kornia.losses.welsch_loss` evaluate float16 and bfloat16 inputs in float32, gradients included, and
+          return the input dtype.
 
     Args:
         img1: the predicted torch.Tensor with shape :math:`(*)`.
@@ -94,8 +94,8 @@ def charbonnier_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "n
     )
 
     # Keep the square and its backward in float32 for half-precision residuals.
-    diff = img1 - img2
-    compute_diff = diff.float() if diff.dtype in (torch.float16, torch.bfloat16) else diff
+    output_dtype = torch.promote_types(img1.dtype, img2.dtype)
+    compute_diff = img1.float() - img2.float() if output_dtype in (torch.float16, torch.bfloat16) else img1 - img2
     # Rationalize small residuals to avoid subtracting two nearly equal numbers.
     # Keep the original large-residual branch, including its behavior when the square overflows.
     squared = compute_diff**2
@@ -117,7 +117,7 @@ def charbonnier_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "n
     else:
         raise NotImplementedError("Invalid reduction option.")
 
-    return loss.to(diff.dtype) if diff.dtype in (torch.float16, torch.bfloat16) else loss
+    return loss.to(output_dtype) if output_dtype in (torch.float16, torch.bfloat16) else loss
 
 
 class CharbonnierLoss(nn.Module):

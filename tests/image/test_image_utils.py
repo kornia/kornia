@@ -238,3 +238,58 @@ class TestMakeGrid(BaseTester):
     def test_gradcheck(self, device):
         tensor = torch.rand(3, 1, 2, 2, device=device, dtype=torch.float64)
         self.gradcheck(kornia.image.make_grid, (tensor, 2, 1))
+
+
+@pytest.mark.parametrize("channels", [1, 3])
+@pytest.mark.parametrize("n_row", [None, 1, 2])
+def test_make_grid_empty(device, dtype, channels, n_row):
+    tensor = torch.empty(0, channels, 4, 4, device=device, dtype=dtype)
+
+    actual = kornia.image.make_grid(tensor, n_row=n_row)
+    reference = kornia.image.make_grid(tensor, n_row=1 if n_row is None else n_row)
+
+    assert actual.ndim == 3
+    assert actual.shape[0] == channels
+    assert actual.numel() == 0
+    assert sorted(actual.shape[1:]) == [0, (1 if n_row is None else n_row) * 6 - 2]
+    assert actual.shape == reference.shape
+    assert actual.dtype == tensor.dtype
+    assert actual.device == tensor.device
+
+
+@pytest.mark.parametrize("batch_size", [0, 3])
+@pytest.mark.parametrize("n_row", [0, -1, -2])
+def test_make_grid_invalid_n_row(device, dtype, batch_size, n_row):
+    tensor = torch.empty(batch_size, 3, 4, 4, device=device, dtype=dtype)
+    with pytest.raises(ValueError, match="n_row"):
+        kornia.image.make_grid(tensor, n_row=n_row)
+
+
+@pytest.mark.parametrize("n_row", [None, 2])
+def test_make_grid_valid(device, dtype, n_row):
+    tensor = torch.arange(3, device=device, dtype=dtype).reshape(3, 1, 1, 1)
+    expected = tensor.new_tensor([[[0, 1], [2, 0]]])
+
+    actual = kornia.image.make_grid(tensor, n_row=n_row, padding=0)
+
+    assert actual.dtype == tensor.dtype
+    assert actual.device == tensor.device
+    assert_close(actual, expected)
+
+
+def test_tensor_to_image_bfloat16_becomes_float32():
+    out = kornia.image.tensor_to_image(torch.full((3, 4, 5), 0.5, dtype=torch.bfloat16))
+    assert out.dtype == np.float32
+    assert out.shape == (4, 5, 3)
+    assert (out == 0.5).all()
+
+
+@pytest.mark.parametrize("bad", [torch.zeros(4, 5, 3), [[0, 1], [2, 3]]])
+def test_image_to_tensor_rejects_a_non_ndarray(bad):
+    with pytest.raises(TypeError, match="numpy"):
+        kornia.image.image_to_tensor(bad)
+
+
+def test_make_grid_rejects_negative_padding():
+    with pytest.raises(ValueError, match="padding"):
+        kornia.image.make_grid(torch.zeros(4, 1, 3, 5), padding=-1)

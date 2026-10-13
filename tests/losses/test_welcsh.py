@@ -98,7 +98,8 @@ class TestWelschLoss(BaseTester):
         self.assert_close(actual, kornia.losses.welsch_loss(img2, img1, reduction), rtol=0, atol=0)
 
         grad1, grad2 = torch.autograd.grad(actual.sum(), (img1, img2))
-        expected_grad = img1.detach() * (-0.5 * img1.detach().square()).exp()
+        grad_input = img1.detach().float() if dtype in (torch.float16, torch.bfloat16) else img1.detach()
+        expected_grad = (grad_input * (-0.5 * grad_input.square()).exp()).to(dtype)
         if reduction == "mean":
             expected_grad = expected_grad / img1.numel()
         assert torch.isfinite(grad1).all()
@@ -129,11 +130,29 @@ class TestWelschLoss(BaseTester):
         self.assert_close(actual, expected, rtol=4 * torch.finfo(dtype).eps, atol=0)
         self.assert_close(actual, kornia.losses.welsch_loss(img2, img1), rtol=0, atol=0)
         grad1, grad2 = torch.autograd.grad(actual.sum(), (img1, img2))
-        expected_grad = img1.detach() * (-0.5 * img1.detach().square()).exp()
+        grad_input = img1.detach().float() if dtype in (torch.float16, torch.bfloat16) else img1.detach()
+        expected_grad = (grad_input * (-0.5 * grad_input.square()).exp()).to(dtype)
         assert torch.isfinite(grad1).all()
         assert torch.isfinite(grad2).all()
         self.assert_close(grad1, expected_grad, rtol=4 * torch.finfo(dtype).eps, atol=0)
         self.assert_close(grad2, -expected_grad, rtol=4 * torch.finfo(dtype).eps, atol=0)
+
+    def test_opposite_large_inputs(self, device, dtype):
+        pred = torch.tensor([40000.0, 1.0], device=device, dtype=dtype, requires_grad=True)
+        target = torch.tensor([-40000.0, 0.5], device=device, dtype=dtype, requires_grad=True)
+        residual = pred.detach().cpu().double() - target.detach().cpu().double()
+        expected = -torch.expm1(-0.5 * residual.square())
+        expected_grad = residual * (-0.5 * residual.square()).exp()
+
+        actual = kornia.losses.welsch_loss(pred, target)
+        assert actual.dtype == dtype
+        assert actual.device == device
+        self.assert_close(actual, expected.to(device=device, dtype=dtype))
+        grad_pred, grad_target = torch.autograd.grad(actual.sum(), (pred, target))
+        assert torch.isfinite(grad_pred).all()
+        assert torch.isfinite(grad_target).all()
+        self.assert_close(grad_pred, expected_grad.to(device=device, dtype=dtype))
+        self.assert_close(grad_target, -expected_grad.to(device=device, dtype=dtype))
 
     @pytest.mark.parametrize("reduction", ["mean", "sum"])
     @pytest.mark.parametrize("shape", [(1, 2, 9, 9), (2, 4, 3, 6)])

@@ -412,6 +412,18 @@ class _AugmentationBase(_BasicAugmentationBase):
             raise _mixed_gate_shape_error(not_transformed.shape[1:], transformed.shape[1:])
         return transformed if apply_any else not_transformed
 
+    def _gate(self, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        """Return the per-sample ``to_apply`` mask that the label and ``inverse`` handlers blend with.
+
+        With static ``p == 1`` and ``p_batch == 1`` every sample is transformed, as on the image and matrix fast
+        paths, so a ``batch_prob`` in ``params`` is not consulted (#5585). The decision is static: eager and compiled
+        runs agree, and no handler synchronizes with the device. Skip samples by hand with ``p < 1``.
+        """
+        to_apply = torch.atleast_1d(params["batch_prob"] > 0.5)
+        if self.p == 1.0 and self.p_batch == 1.0:
+            return torch.ones_like(to_apply)
+        return to_apply
+
     def transform_inputs(
         self,
         input: torch.Tensor,
@@ -467,7 +479,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
         ori_shape = input.shape
 
         shape = params["forward_input_shape"]
@@ -515,8 +527,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             self._params if params is None else params, flags, **kwargs
         )
 
-        batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
 
         output_transformed = self.apply_transform_box(input, params, flags, transform=transform)
         output_not_transformed = self.apply_non_transform_box(input, params, flags, transform=transform)
@@ -552,8 +563,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             self._params if params is None else params, flags, **kwargs
         )
 
-        batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
 
         output_transformed = self.apply_transform_keypoint(input, params, flags, transform=transform)
         output_not_transformed = self.apply_non_transform_keypoint(input, params, flags, transform=transform)
@@ -583,8 +593,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             self._params if params is None else params, flags, **kwargs
         )
 
-        batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
 
         output_transformed = self.apply_transform_class(input, params, flags, transform=transform)
         output_not_transformed = self.apply_non_transform_class(input, params, flags, transform=transform)

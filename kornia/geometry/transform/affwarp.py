@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import numbers
 from typing import Optional, Tuple, Union
 
 import torch
@@ -738,7 +739,8 @@ def resize_to_be_divisible(
     Convention:
         - see the convention block of :func:`resize`
         - rounds ``height``/``width`` to the nearest multiple of ``divisible_factor`` before
-          delegating to :func:`resize`
+          delegating to :func:`resize`; a positive side becomes at least ``divisible_factor``, and an empty side
+          stays empty
 
     Args:
         input (torch.Tensor): Input tensor to be resized.
@@ -754,13 +756,16 @@ def resize_to_be_divisible(
         torch.Tensor: The resized tensor.
 
     """
-    if isinstance(input, torch.Tensor) and len(input.shape) == 4:
-        height, width = input.shape[2], input.shape[3]
-    if isinstance(input, torch.Tensor) and len(input.shape) == 3:
-        height, width = input.shape[1], input.shape[2]
+    if not isinstance(input, torch.Tensor):
+        raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(input)}")
+    if input.ndim < 2:
+        raise ValueError(f"Input tensor must have at least two dimensions. Got {input.ndim}")
+    if not isinstance(divisible_factor, numbers.Integral) or divisible_factor <= 0:
+        raise ValueError(f"divisible_factor must be a positive integer. Got {divisible_factor}")
 
-    height = round(height / divisible_factor) * divisible_factor
-    width = round(width / divisible_factor) * divisible_factor
+    height, width = input.shape[-2:]
+    height = max(1, round(height / divisible_factor)) * divisible_factor if height > 0 else 0
+    width = max(1, round(width / divisible_factor)) * divisible_factor if width > 0 else 0
     return resize(input, (height, width), interpolation, align_corners, side, antialias)
 
 

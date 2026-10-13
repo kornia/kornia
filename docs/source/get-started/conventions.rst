@@ -611,10 +611,11 @@ border names and the even-kernel anchor do not. :func:`~kornia.filters.filter2d`
 :func:`~kornia.filters.filter2d_separable`, :func:`~kornia.filters.filter3d`, :func:`~kornia.filters.fft_conv`,
 :func:`~kornia.filters.box_blur`, :func:`~kornia.filters.gaussian_blur2d`, :func:`~kornia.filters.laplacian`,
 :func:`~kornia.filters.motion_blur`, :func:`~kornia.filters.bilateral_blur`,
-:func:`~kornia.filters.joint_bilateral_blur`, :func:`~kornia.filters.canny` and their modules filter an integer or
-bool image in float32 and return float32 on its own scale, neither rescaled to :math:`[0, 1]` nor rounded and clamped
-to its dtype, where ``cv2.filter2D(img, -1, k)``, ``cv2.GaussianBlur`` and ``cv2.blur`` return a uint8 image rounded
-and saturated to uint8; a floating image keeps its dtype. :func:`~kornia.filters.median_blur`,
+:func:`~kornia.filters.joint_bilateral_blur`, :func:`~kornia.filters.canny`,
+:func:`~kornia.filters.spatial_gradient3d` and their modules filter an integer or bool image in float32 and return
+float32 on its own scale, neither rescaled to :math:`[0, 1]` nor rounded and clamped to its dtype, where
+``cv2.filter2D(img, -1, k)``, ``cv2.GaussianBlur`` and ``cv2.blur`` return a uint8 image rounded and saturated to
+uint8; a floating image keeps its dtype. :func:`~kornia.filters.median_blur`,
 :func:`~kornia.filters.unsharp_mask`, :func:`~kornia.filters.spatial_gradient`, :func:`~kornia.filters.sobel`,
 :func:`~kornia.filters.guided_blur` and the blur pools do not follow this yet: most of them raise on an integer image
 (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
@@ -686,6 +687,11 @@ The kernel builders against their references:
 - :func:`~kornia.filters.get_laplacian_kernel2d` of size 3 is the 8-neighbour stencil and estimates :math:`3 \nabla^2`,
   where ``scipy.ndimage.laplace`` and ``cv2.Laplacian(ksize=1)`` return :math:`\nabla^2`, ``cv2.Laplacian(ksize=3)``
   :math:`4 \nabla^2` and ``skimage.filters.laplace`` :math:`-\nabla^2`.
+- A builder raises for an integer or bool ``dtype`` that cannot hold its taps instead of truncating or wrapping them.
+  The box, Gaussian and 3-D difference kernels have fractional taps, so they raise for every integer ``dtype``, as
+  ``cv2.getGaussianKernel`` accepts only ``CV_32F`` and ``CV_64F``. The Laplacian kernels accept a signed integer
+  ``dtype`` wide enough for their negative centre, and raise for uint8, bool and a narrower one
+  (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
 The derivative filters apply those kernels at different scales, and :func:`~kornia.filters.canny` thresholds the raw
 one:

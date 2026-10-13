@@ -19,6 +19,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
 
@@ -200,6 +201,15 @@ class TestScalePyramid(BaseTester):
             self.assert_close(sigmas[octave][0], expected)
             self.assert_close(sigmas[octave], ref_sigmas[octave])
             self.assert_close(pyr[octave], ref_pyr[octave])
+
+
+class TestPyramidLevelValidation(BaseTester):
+    @pytest.mark.parametrize("op", ["build_pyramid", "build_laplacian_pyramid"])
+    @pytest.mark.parametrize("max_level", [0, -1, -2, 1.5, -1.5, None, "2", True, False])
+    def test_invalid_max_level_3927(self, op, max_level, device, dtype):
+        image = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
+        with pytest.raises(BaseError, match="Invalid max_level, it must be a positive integer"):
+            getattr(kornia.geometry.transform, op)(image, max_level)
 
 
 class TestBuildPyramid(BaseTester):
