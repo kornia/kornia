@@ -623,6 +623,7 @@ class TestLAFAffNetShapeEstimator(BaseTester):
         actual_scale, expected_scale = get_laf_scale(out.cpu().double()), get_laf_scale(laf.cpu().double())
         self.assert_close(actual_scale, expected_scale, rtol=_SCALE_RTOL[dtype], atol=0.0)
 
+
 class TestConventionsAffineShape(BaseTester):
     def test_convention_patch_affine_shape_is_the_normalised_gradient_second_moment(self, device, dtype):
         # The output (a, b, c) is (<gx^2>, <gx gy>, <gy^2>) of the Gaussian-weighted patch gradients (x right, y down),

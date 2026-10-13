@@ -568,7 +568,7 @@ class TestConventionsResponses(BaseTester):
         for sigma, ksize in ((1.6, 15), (4.0, 33)):
             blurred = kornia.filters.gaussian_blur2d(img, (ksize, ksize), (sigma, sigma))
             response = kornia.feature.gftt_response(blurred)[..., n // 2 - 16 : n // 2 + 17, n // 2 - 16 : n // 2 + 17]
-            peaks.append(response.max().double())
+            peaks.append(response.max().cpu().double())
         exponent = (torch.log(peaks[0] / peaks[1]) / math.log(4.0 / 1.6)).item()
         assert 3.0 < exponent < 4.0
 

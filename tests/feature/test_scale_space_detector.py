@@ -1478,10 +1478,11 @@ class _Extrema(torch.nn.Module):
 
 
 class _QuadraticMinimum(torch.nn.Module):
-    """A scale-space response ``(d - 2.375)^2 + (y - 30.375)^2 + (x - 20.375)^2 - 0.3`` on the 64 x 96 octave, 1 elsewhere.
+    """A scale-space response ``(d - 2.375)^2 + (y - 30.375)^2 + (x - 20.375)^2 - 0.3`` on the 64 x 96 octave.
 
-    Its minimum, -0.3 at level 2.375 and pixel (20.375, 30.375), lies between samples: every sampled value is at least
-    3 * 0.375^2 - 0.3 = 0.121875, at the strict minimum voxel (2, 30, 20). The offsets are exact in bfloat16.
+    Every other octave is 1. Its minimum, -0.3 at level 2.375 and pixel (20.375, 30.375), lies between samples: every
+    sampled value is at least 3 * 0.375^2 - 0.3 = 0.121875, at the strict minimum voxel (2, 30, 20). The offsets are
+    exact in bfloat16.
     """
 
     def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
