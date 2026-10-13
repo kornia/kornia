@@ -93,4 +93,10 @@ def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.Tensor:
     """
     i = torch.clip(torch.searchsorted(xp, x, right=True), 1, len(xp) - 1)
 
-    return (fp[i - 1] * (xp[i] - x) + fp[i] * (x - xp[i - 1])) / (xp[i] - xp[i - 1])
+    # A zero-width segment (repeated xp) is only selected at the clipped upper end, x >= xp[-1]. Dividing by its width
+    # gave NaN, e.g. when float32 rounds the last cumulative counts of a 2**24-pixel template to the same quantile.
+    # Divide by a safe width there and return the right endpoint, as np.interp does for x >= xp[-1].
+    dx = xp[i] - xp[i - 1]
+    zero_width = dx == 0
+    out = (fp[i - 1] * (xp[i] - x) + fp[i] * (x - xp[i - 1])) / torch.where(zero_width, torch.ones_like(dx), dx)
+    return torch.where(zero_width, fp[i], out)

@@ -32,6 +32,15 @@ class TestHistMatch(BaseTester):
         x_hat = kornia.contrib.interp(x, xp, fp)
         self.assert_close(x_hat_expected, x_hat)
 
+    def test_interp_zero_width_last_segment(self, device, dtype):
+        # A 2**24 + 1 pixel template with one pixel in its last bin has its last two float32 quantiles both round to 1.
+        # A source quantile of 1 selects that zero-width segment, which divided by zero and gave NaN.
+        xp = torch.tensor([0.0, 1.0, 1.0], device=device, dtype=dtype)
+        fp = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
+        x = torch.tensor([0.5, 1.0], device=device, dtype=dtype)
+        x_hat = kornia.contrib.interp(x, xp, fp)
+        self.assert_close(x_hat, torch.tensor([0.0, 1.0], device=device, dtype=dtype))
+
     def test_histmatch(self, device, dtype):
         torch.manual_seed(44)
         # generate random value by CPU.
