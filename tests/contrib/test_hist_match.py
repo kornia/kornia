@@ -41,6 +41,15 @@ class TestHistMatch(BaseTester):
         x_hat = kornia.contrib.interp(x, xp, fp)
         self.assert_close(x_hat, torch.tensor([0.0, 1.0], device=device, dtype=dtype))
 
+    def test_interp_zero_width_last_segment_gradient(self, device, dtype):
+        # torch.where differentiates the discarded quotient too: dividing by the raw zero width gave NaN gradients.
+        xp = torch.tensor([0.0, 1.0, 1.0], device=device, dtype=dtype)
+        fp = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype, requires_grad=True)
+        x = torch.tensor([0.5, 1.0], device=device, dtype=dtype, requires_grad=True)
+        kornia.contrib.interp(x, xp, fp).sum().backward()
+        self.assert_close(fp.grad, torch.tensor([0.5, 0.5, 1.0], device=device, dtype=dtype))
+        self.assert_close(x.grad, torch.zeros(2, device=device, dtype=dtype))
+
     def test_histmatch(self, device, dtype):
         torch.manual_seed(44)
         # generate random value by CPU.
@@ -103,6 +112,14 @@ class TestHistMatch(BaseTester):
         assert out.dtype == dtype
         assert out.isfinite().all()
         self.assert_close(out, exp)
+
+    def test_histmatch_float64_keeps_template_values(self, device, dtype):
+        # A float64 source is matched in float64: float32 would round the template value 1 + 2**-40 to 1.
+        if dtype != torch.float64:
+            pytest.skip("float64 only")
+        src = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
+        dst = torch.tensor([1.0, 1.0 + 2**-40], device=device, dtype=dtype)
+        assert torch.equal(kornia.contrib.histogram_matching(src, dst), dst)
 
     @pytest.mark.parametrize("size", [50, 64])
     def test_histmatch_uint8(self, device, size):
