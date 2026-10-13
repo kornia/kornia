@@ -751,6 +751,7 @@ class LightGlue(nn.Module):
 
         # Guard against empty-descriptors after pruning
         if desc0.shape[1] == 0 or desc1.shape[1] == 0:
+            # No layer runs here, so the outputs keep the input dtype, also under mp=True.
             dtype = desc0.dtype
             empty_m0 = torch.full((b, m), -1, device=device, dtype=torch.long)
             empty_m1 = torch.full((b, n), -1, device=device, dtype=torch.long)
@@ -835,7 +836,9 @@ class LightGlue(nn.Module):
         # If adaptive width pruning removed all keypoints from either side,
         # return empty matches instead of crashing in filter_matches (see #3564).
         if desc0.shape[-2] == 0 or desc1.shape[-2] == 0:
-            dtype = desc0.dtype
+            # The other paths' scores are the exp of the log assignment. Autocast runs that exp in float32 on CUDA and
+            # MPS and leaves it in the computed dtype on CPU (bfloat16), so take the dtype from the same op.
+            dtype = desc0.new_zeros(()).exp().dtype
             matches = [torch.zeros((0, 2), dtype=torch.long, device=device) for _ in range(b)]
             mscores = [torch.zeros(0, device=device, dtype=dtype) for _ in range(b)]
             m0_ = torch.full((b, m), -1, device=device, dtype=torch.long)

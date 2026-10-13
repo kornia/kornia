@@ -603,13 +603,17 @@ class TestLightGluePruningDtype(BaseTester):
         assert out["matching_scores0"].shape == (1, 0)
         assert self._floating_dtypes(out) == {dtype}
 
-    def test_all_points_pruned_returns_the_input_dtype_5837(self, device, dtype):
+    @staticmethod
+    def _skip_without_empty_attention(device, dtype):
         # The layers after the one that pruned every point still run, on empty sequences (#3564).
         qkv = torch.empty(1, 1, 0, 8, device=device, dtype=dtype)
         try:
             torch.nn.functional.scaled_dot_product_attention(qkv, qkv, qkv)
         except RuntimeError:
             pytest.skip("torch rejects attention over empty sequences on this device (MPS on torch 2.5.1)")
+
+    def test_all_points_pruned_returns_the_input_dtype_5837(self, device, dtype):
+        self._skip_without_empty_attention(device, dtype)
         # No low-confidence rescue without depth confidence, and every matchability -20.
         data, _ = self._scene(device, dtype, matchable=(-1,) * self._M)
         out = self._forward(self._model(device, dtype, depth_confidence=-1), data)
@@ -618,3 +622,48 @@ class TestLightGluePruningDtype(BaseTester):
         self.assert_close(out["matching_scores0"], torch.zeros(1, self._M, device=device, dtype=dtype))
         assert out["scores"][0].shape == (0,)
         assert self._floating_dtypes(out) == {dtype}
+
+    def _mixed_precision_score_dtype(self, device, dtype):
+        # With mp=True, autocast sets the dtype the scores are computed in: CPU computes the log assignment and its exp
+        # in bfloat16, MPS runs that exp in float32. The model without pruning gives the reference.
+        if dtype != torch.float32:
+            pytest.skip("mp=True autocasts a float32 model")
+        plain = self._forward(self._model(device, dtype, mp=True, width_confidence=-1), self._scene(device, dtype)[0])
+        score_dtype = plain["matching_scores0"].dtype
+        if device.type in ("cpu", "mps"):
+            assert score_dtype == (torch.bfloat16 if device.type == "cpu" else torch.float32)
+        return score_dtype
+
+    def test_mixed_precision_prunes_in_the_score_dtype_5837(self, device, dtype):
+        score_dtype = self._mixed_precision_score_dtype(device, dtype)
+        data = self._scene(device, dtype)[0]
+        out = self._forward(self._model(device, dtype, mp=True), data)
+        ref = self._forward(self._model(device, dtype), data)
+        for key in ("matches0", "matches1", "prune0", "prune1"):
+            self.assert_close(out[key], ref[key])
+        assert (out["prune0"] == 1).any()
+        for key in ("matching_scores0", "matching_scores1"):
+            assert out[key].dtype == score_dtype
+            self.assert_close(out[key].to(dtype), ref[key], rtol=0.0, atol=1e-2)
+        assert out["scores"][0].dtype == score_dtype
+        # The early return for an image without descriptors runs no layer, and returns the input dtype.
+        empty = {
+            "keypoints": torch.empty(1, 0, 2, device=device, dtype=dtype),
+            "descriptors": torch.empty(1, 0, 128, device=device, dtype=dtype),
+            "image_size": torch.tensor([[320, 240]], device=device),
+        }
+        out = self._forward(self._model(device, dtype, mp=True), {"image0": empty, "image1": empty})
+        assert self._floating_dtypes(out) == {dtype}
+
+    def test_mixed_precision_all_points_pruned_returns_the_score_dtype_5837(self, device, dtype):
+        score_dtype = self._mixed_precision_score_dtype(device, dtype)
+        self._skip_without_empty_attention(device, dtype)
+        data, _ = self._scene(device, dtype, matchable=(-1,) * self._M)
+        out = self._forward(self._model(device, dtype, mp=True, depth_confidence=-1), data)
+        self.assert_close(out["prune0"], torch.ones(1, self._M, device=device, dtype=torch.long))
+        self.assert_close(out["matches0"], torch.full((1, self._M), -1, device=device))
+        for key in ("matching_scores0", "matching_scores1"):
+            assert out[key].dtype == score_dtype
+            assert (out[key] == 0).all()
+        assert out["scores"][0].dtype == score_dtype
+        assert out["scores"][0].shape == (0,)
