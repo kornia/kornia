@@ -565,7 +565,8 @@ class MKDDescriptor(nn.Module):
         - With whitening the descriptor is :math:`\min(\text{output\_dims}, E)` wide, where :math:`E` is the width of
           the kernel embedding: 238 for ``'concat'``, 175 for ``'polar'`` and 63 for ``'cart'``. With
           ``whitening=None`` it is that embedding, :math:`E` wide whatever ``output_dims`` says. Constructing a whitened
-          descriptor downloads its whitening model on first use; ``whitening=None`` needs no download.
+          descriptor loads its whitening model, and downloads it then if it is not cached yet; ``whitening=None``
+          needs no download.
 
     Args:
         patch_size: Input patch size in pixels.
