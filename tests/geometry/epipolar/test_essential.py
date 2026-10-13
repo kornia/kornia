@@ -789,8 +789,10 @@ class TestDecomposeEssentialMatrixNoSVD(BaseTester):
         )
         self.gradcheck(epi.decompose_essential_matrix_no_svd, (E_mat,))
 
-    def test_dynamo_axis_aligned_5867(self, device, dtype, torch_optimizer):
+    def test_dynamo_axis_aligned_5867(self, device, dtype, torch_optimizer, optimizer_backend):
         """Compare fullgraph outputs and finite backward gradients with eager execution."""
+        if not optimizer_backend or optimizer_backend == "jit":
+            pytest.skip("fullgraph requires a torch.compile backend")
         E_mat = torch.tensor(
             [[[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]],
             device=device,
