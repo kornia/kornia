@@ -337,6 +337,9 @@ def load_image(
           JPEG; these, a truncated file and, under every type except ``UNCHANGED``, a malformed palette or
           ``PLTE``/``tRNS`` chunk raise ``ValueError``.
         - :ref:`Files and arrays <image-io-conventions>` maps OpenCV's and Pillow's loaders onto the load types.
+        - Known defect: under every type except ``UNCHANGED``, an 8-bit palette PNG with an empty ``tRNS`` chunk
+          raises the ``ValueError`` of ``torch.frombuffer``, whose message does not name the file, instead of loading
+          as its colours (`#5851 <https://github.com/kornia/kornia/issues/5851>`_).
 
     Args:
         path_file: Path to an image file in a format kornia-rs decodes, such as JPEG, PNG, TIFF or WebP; the
