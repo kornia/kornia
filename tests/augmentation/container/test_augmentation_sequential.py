@@ -1988,7 +1988,7 @@ class TestConventionAugmentationSequential(BaseTester):
         labels = [0, 1, 2] if mask_dtype in (torch.bool, torch.uint8) else [257, -2049, 26001]
         mask = torch.tensor(labels, device=device, dtype=mask_dtype).reshape(1, 1, 1, 3).repeat(2, 1, 2, 1)
         image = torch.ones(2, 1, 2, 3, device=device, dtype=dtype)
-        seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+        seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.5), data_keys=["input", "mask"])
         seq(image, mask)
         params = seq._params
         params[0].data["batch_prob"] = torch.tensor([1.0, 0.0], device=device, dtype=dtype)
