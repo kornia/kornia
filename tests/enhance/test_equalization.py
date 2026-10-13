@@ -560,9 +560,7 @@ class TestEqualization(BaseTester):
             ((100, 150), (8, 8), (13, 19), (104, 152)),
         ],
     )
-    def test_clahe_ceil_tile_sizes_for_non_divisible_images_5812(
-        self, size, grid, expected_tile, expected_padded
-    ):
+    def test_clahe_ceil_tile_sizes_for_non_divisible_images_5812(self, size, grid, expected_tile, expected_padded):
         img = torch.rand(1, 1, *size)
         tiles, padded = _compute_tiles(img, grid)
 
@@ -585,9 +583,7 @@ class TestEqualization(BaseTester):
         )
 
         tiles, padded = _compute_tiles(img, grid_size, even_tile_size=False)
-        luts = enhance.equalization._compute_luts(
-            tiles, clip=clip_limit, diff=slow_and_differentiable
-        )
+        luts = enhance.equalization._compute_luts(tiles, clip=clip_limit, diff=slow_and_differentiable)
         expected = _clahe_interpolation_reference(padded, luts, tiles.shape[-2:])
         expected = expected[..., : img.shape[-2], : img.shape[-1]]
         self.assert_close(out, expected)
