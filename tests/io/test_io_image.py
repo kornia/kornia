@@ -26,6 +26,7 @@ import numpy as np
 import pytest
 import torch
 
+from kornia.color import rgb_to_grayscale
 from kornia.core.exceptions import ShapeError, TypeCheckError, ValueCheckError
 from kornia.io import ImageLoadType, load_image, write_image
 from kornia.io.io import _read_jpeg_components, _read_png_chunks
@@ -306,6 +307,38 @@ class TestIndexedPng:
         assert out.device.type == torch.device(device).type
         assert out.shape == (4, 2, 3)
         assert out[3].tolist() == [[255, 128, 0], [255, 0, 128]]
+
+    @pytest.mark.parametrize(
+        "load_type",
+        [ImageLoadType.GRAY8, ImageLoadType.RGB8, ImageLoadType.RGBA8, ImageLoadType.GRAY32, ImageLoadType.RGB32],
+    )
+    def test_empty_trns_chunk_keeps_palette_entries_opaque(self, tmp_path: Path, load_type) -> None:
+        path = tmp_path / "empty_trns.png"
+        write_indexed_png(path, PALETTE_INDICES, PALETTE, alpha=b"")
+
+        out = load_image(path, load_type)
+
+        expected_rgb = torch.tensor([PALETTE[i] for i in PALETTE_INDICES.flatten()], dtype=torch.uint8).T.reshape(
+            3, 2, 3
+        )
+        if load_type == ImageLoadType.RGBA8:
+            assert out.shape == (4, 2, 3)
+            assert out[3].tolist() == [[255, 255, 255], [255, 255, 255]]
+            torch.testing.assert_close(out[:3], expected_rgb)
+        elif load_type == ImageLoadType.RGB8:
+            assert out.shape == (3, 2, 3)
+            torch.testing.assert_close(out, expected_rgb)
+        elif load_type == ImageLoadType.RGB32:
+            assert out.shape == (3, 2, 3)
+            expected = expected_rgb.float() / 255.0
+            torch.testing.assert_close(out, expected)
+        elif load_type == ImageLoadType.GRAY8:
+            assert out.shape == (1, 2, 3)
+            torch.testing.assert_close(out, torch.tensor([[[76, 150, 226], [29, 226, 150]]], dtype=torch.uint8))
+        else:
+            assert out.shape == (1, 2, 3)
+            expected = rgb_to_grayscale(expected_rgb.float() / 255.0)
+            torch.testing.assert_close(out, expected)
 
     def test_rgb8_composites_transparent_palette_entries_over_white(self, tmp_path: Path) -> None:
         path = tmp_path / "indexed_trns.png"

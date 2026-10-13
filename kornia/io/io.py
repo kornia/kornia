@@ -173,8 +173,9 @@ def _apply_png_palette_and_transparency(path_file: Path, image: torch.Tensor) ->
         table = colors
         if trns is not None:
             alpha = torch.full((colors.shape[0],), 255, dtype=torch.uint8)
-            listed = torch.frombuffer(bytearray(trns), dtype=torch.uint8)[: colors.shape[0]]
-            alpha[: listed.numel()] = listed
+            if trns:
+                listed = torch.frombuffer(bytearray(trns), dtype=torch.uint8)[: colors.shape[0]]
+                alpha[: listed.numel()] = listed
             table = torch.cat([colors, alpha[:, None]], dim=1)
         indices = image[0].long()
         if indices.numel() and int(indices.max()) >= table.shape[0]:
