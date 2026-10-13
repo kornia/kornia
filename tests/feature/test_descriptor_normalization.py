@@ -143,6 +143,21 @@ class TestDescriptorNormalization(BaseTester):
         if is_eps_learnable:
             self.assert_close(layer.eps.grad, reference.eps.grad.to(dtype))
 
+    @pytest.mark.parametrize("half", [torch.float16])
+    def test_frn_scale_and_bias_cancel_in_float32(self, device, half):
+        # Pretrained HyNet's first FilterResponseNorm2d has weight 3.70 and bias -3.40, so on a nearly flat patch
+        # `weight * x + bias` cancels most of its leading bits. Only the final rounding to the half dtype may remain.
+        layer = FilterResponseNorm2d(1).to(device)
+        with torch.no_grad():
+            layer.weight.fill_(3.7035257816314697)
+            layer.bias.fill_(-3.4002184867858887)
+        layer = layer.to(half)
+        x = torch.linspace(0.9, 1.0, 64, device=device).reshape(1, 1, 8, 8).to(half)
+        expected = copy.deepcopy(layer).cpu().double()(x.cpu().double())
+        actual = layer(x)
+        assert actual.dtype == half
+        self.assert_close(actual.cpu().double(), expected, rtol=torch.finfo(half).eps, atol=0.0)
+
     @pytest.mark.parametrize("is_scale,is_bias", [(False, False), (False, True), (True, False), (True, True)])
     def test_frn_mixed_dtype(self, device, dtype, is_scale, is_bias):
         layer = FilterResponseNorm2d(2, is_scale=is_scale, is_bias=is_bias).to(device, dtype)

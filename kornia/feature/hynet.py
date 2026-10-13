@@ -125,14 +125,16 @@ class FilterResponseNorm2d(nn.Module):
 
         # Perform FRN.
         x = x * torch.rsqrt(nu2 + self.eps.abs())
-        if input_dtype == torch.float16:
-            x = x.to(torch.promote_types(input_dtype, self.eps.dtype))
 
         # Scale and Bias
         if self.is_scale:
             x = self.weight * x
         if self.is_bias:
             x = x + self.bias
+        if input_dtype == torch.float16:
+            # Scale and bias stay in float32 too: in pretrained HyNet they cancel (weight 3.70, bias -3.40 in the
+            # first layer), so rounding before them loses several bits.
+            x = x.to(torch.promote_types(input_dtype, self.eps.dtype))
         return x
 
 
