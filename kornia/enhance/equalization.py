@@ -360,10 +360,12 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
     tiles_equalized: torch.Tensor = torch.zeros_like(interp_tiles)
 
     # compute the interpolation weights (shapes are 2 x TH x TW because they must be applied to 2 interp tiles)
-    # Each pair starts at a tile centre: for offset k the left/top weight is 1 - k / tile_size,
-    # matching OpenCV's pixel coordinate p / tile_size - 0.5. The last weight is 1 / tile_size, not 0.
+    # A tile's centre is at (tile_size - 1) / 2 relative to its first pixel. Each half-tile pair
+    # starts half a pixel past a centre, so the left/top weight is 1 - (k + 0.5) / tile_size.
+    # This keeps the 1 / tile_size step and, unlike OpenCV's half-pixel-later phase, preserves flip symmetry.
     ih = (
         torch.arange(2 * th, 0, -1, dtype=interp_tiles.dtype, device=interp_tiles.device)
+        .sub(0.5)
         .div(2.0 * th)[None]
         .transpose(-2, -1)
         .expand(2 * th, tw)
@@ -371,6 +373,7 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
     ih = ih.unfold(0, th, th).unfold(1, tw, tw)  # 2 x 1 x TH x TW
     iw = (
         torch.arange(2 * tw, 0, -1, dtype=interp_tiles.dtype, device=interp_tiles.device)
+        .sub(0.5)
         .div(2.0 * tw)
         .expand(th, 2 * tw)
     )
@@ -422,8 +425,11 @@ def equalize_clahe(
     .. image:: _static/img/equalize_clahe.png
 
     NOTE: The fast path uses OpenCV-style LUT calculation and round-to-nearest quantization.
-    Both paths blend LUTs using pixel coordinates divided by tile size, with border LUTs clamped.
-    Full OpenCV output parity is not guaranteed: tiles are rounded up to even sizes and reflect-padded,
+    Both paths blend LUTs with weight steps of ``1 / tile_size``, anchored at each tile's actual centre,
+    with border LUTs clamped. This is half a pixel before OpenCV/scikit-image's historical phase:
+    Kornia intentionally uses ``(p + 0.5) / tile_size - 0.5`` to preserve flip symmetry on unpadded grids.
+    For the same tiles and LUTs, the phase difference is at most half an interpolation step per axis;
+    exact ``cv2.createCLAHE`` parity is not the contract. Tiles are rounded up to even sizes and reflect-padded,
     which can differ from OpenCV's tile/padding convention, and output values are not rounded to 8-bit integers.
 
     Args:

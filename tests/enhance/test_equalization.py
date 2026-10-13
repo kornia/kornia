@@ -30,18 +30,18 @@ from testing.base import BaseTester
 
 
 def _clahe_interpolation_reference(img, luts, tile_size):
-    # OpenCV CLAHE_Interpolation_Body coordinates, evaluated pixel by pixel without half-tile indexing:
-    # https://github.com/opencv/opencv/blob/4.x/modules/imgproc/src/clahe.cpp
+    # A tile spans i*T .. i*T+T-1, so its centre is i*T+(T-1)/2. Evaluate the blend between
+    # these centres pixel by pixel, independently of production's half-tile indexing.
     values = img.detach().cpu().double()
     tables = luts.detach().cpu().double()
     expected = torch.zeros_like(values)
     gh, gw = tables.shape[1:3]
     for y in range(values.shape[-2]):
-        fy = y / tile_size[0] - 0.5
+        fy = (y + 0.5) / tile_size[0] - 0.5
         y0 = math.floor(fy)
         ay = fy - y0
         for x in range(values.shape[-1]):
-            fx = x / tile_size[1] - 0.5
+            fx = (x + 0.5) / tile_size[1] - 0.5
             x0 = math.floor(fx)
             ax = fx - x0
             # Preserve the input dtype's lookup quantization; this reference tests only interpolation.
@@ -76,10 +76,26 @@ class TestEqualization(BaseTester):
         self.assert_close(out, _clahe_interpolation_reference(img, luts, (4, 8)))
         if gh > 1:
             expected = torch.full_like(out[..., 2:6, 0], 96 / (4 * 255))
+            expected[..., -1] /= 2  # The last interval reaches the clamped border halfway through.
             self.assert_close(out[..., 3:7, 0] - out[..., 2:6, 0], expected)
         if gw > 1:
-            expected = torch.full_like(out[..., 0, 4:12], 48 / (8 * 255))
-            self.assert_close(out[..., 0, 5:13] - out[..., 0, 4:12], expected)
+            start = (gw - 2) * 8 + 4
+            expected = torch.full_like(out[..., 0, start : start + 8], 48 / (8 * 255))
+            expected[..., -1] /= 2
+            self.assert_close(out[..., 0, start + 1 : start + 9] - out[..., 0, start : start + 8], expected)
+
+    @pytest.mark.parametrize("dim", [-1, -2])
+    @pytest.mark.parametrize("slow_and_differentiable", [False, True])
+    @pytest.mark.parametrize("clip", [2.0, 40.0])
+    def test_clahe_flip_symmetry_5698(self, dim, slow_and_differentiable, clip, device, dtype):
+        # Unequal even tile sizes, without padding: reflection must reflect the tile centres and LUTs too.
+        # Dyadic values are exact in every dtype and avoid changing bins through input rounding.
+        y = torch.arange(12, device=device, dtype=dtype)[:, None]
+        x = torch.arange(24, device=device, dtype=dtype)[None, :]
+        img = ((2 * y + x) / 64)[None, None]
+        out = enhance.equalize_clahe(img, clip, (3, 3), slow_and_differentiable)
+        flipped = enhance.equalize_clahe(img.flip(dim), clip, (3, 3), slow_and_differentiable)
+        self.assert_close(flipped, out.flip(dim))
 
     @pytest.mark.parametrize("slow_and_differentiable", [False, True])
     @pytest.mark.parametrize("size", [(12, 24), (11, 23)])
@@ -382,23 +398,23 @@ class TestEqualization(BaseTester):
                         [
                             0.251,
                             0.502,
-                            0.749,
-                            0.75,
-                            0.6255,
-                            0.6265,
-                            0.749,
-                            0.5618,
-                            0.6255,
-                            0.4382,
-                            0.749,
-                            0.5618,
-                            0.6255,
-                            0.4382,
-                            0.502,
-                            0.5618,
-                            0.5,
-                            0.4382,
-                            0.502,
+                            0.6554,
+                            0.625,
+                            0.5319,
+                            0.5642,
+                            0.6554,
+                            0.4681,
+                            0.5319,
+                            0.3446,
+                            0.6554,
+                            0.4681,
+                            0.5319,
+                            0.3446,
+                            0.4392,
+                            0.4681,
+                            0.375,
+                            0.3446,
+                            0.5328,
                             1.0,
                         ]
                     ]
@@ -425,23 +441,23 @@ class TestEqualization(BaseTester):
                     [
                         0.1255,
                         0.1882,
-                        0.3137,
-                        0.3137,
-                        0.3451,
-                        0.4078,
-                        0.4392,
-                        0.4549,
-                        0.5314,
-                        0.4853,
-                        0.6235,
-                        0.6402,
-                        0.6549,
+                        0.2902,
+                        0.2824,
+                        0.3216,
+                        0.3922,
+                        0.4157,
+                        0.4314,
+                        0.5083,
+                        0.4623,
+                        0.6005,
+                        0.6172,
+                        0.6314,
+                        0.6471,
                         0.6706,
-                        0.6863,
-                        0.7647,
-                        0.8118,
-                        0.7961,
-                        0.8745,
+                        0.7412,
+                        0.7804,
+                        0.7725,
+                        0.8824,
                         1.0,
                     ]
                 ]
@@ -455,23 +471,23 @@ class TestEqualization(BaseTester):
                     [
                         0.125,
                         0.1877,
-                        0.2792,
-                        0.3344,
-                        0.335,
-                        0.3757,
-                        0.4302,
-                        0.4948,
-                        0.4966,
-                        0.5167,
-                        0.6495,
-                        0.6149,
-                        0.6808,
-                        0.6689,
-                        0.7329,
-                        0.7997,
-                        0.7806,
-                        0.8462,
-                        0.8471,
+                        0.2599,
+                        0.2995,
+                        0.3006,
+                        0.3492,
+                        0.4077,
+                        0.4644,
+                        0.4662,
+                        0.4893,
+                        0.6152,
+                        0.5853,
+                        0.6513,
+                        0.6471,
+                        0.7116,
+                        0.7706,
+                        0.7431,
+                        0.8321,
+                        0.8574,
                         1.0,
                     ]
                 ]
@@ -551,11 +567,11 @@ class TestEqualization(BaseTester):
 
     def test_clahe_non_square_grid(self, device, dtype):
         # Pixel values are 0 and powers of two, exact in every dtype. With 4 x 4 tiles every interpolation weight
-        # is a multiple of 1/4, so 16 * 255 * output is an integer. The expected integers come from an exact
+        # is a multiple of 1/8, so 64 * 255 * output is an integer. The expected integers come from an exact
         # rational evaluation of CLAHE pixel by pixel, independent of this implementation's tile indexing; the
         # reference is an exact-Fraction restatement of _compute_tiles/_compute_luts/_compute_equalized_tiles
         # (tile size ceil(n/g) rounded up to even, trailing reflect pad, floor(v*256) histogram, clip and
-        # redistribute, round(cumsum*255/P), axis blend weight (T-k)/T); the reference posted on #4628 is
+        # redistribute, round(cumsum*255/P), axis blend weight (T-k-0.5)/T); the reference posted on #4628 is
         # evaluated here with round-to-even LUTs and the clipped residual spread over every (256 // residual)-th
         # bin from bin 0, as OpenCV does.
         codes = torch.tensor(
@@ -575,30 +591,31 @@ class TestEqualization(BaseTester):
         img = levels[codes][None, None]
         expected = torch.tensor(
             [
-                [512, 768, 2544, 2992, 512, 2864, 512, 2228, 1664, 4080, 1536, 2544],
-                [768, 3056, 3056, 4080, 512, 1792, 2800, 1024, 2168, 512, 1024, 512],
-                [1280, 1280, 2048, 2108, 2928, 960, 1792, 4080, 2168, 2108, 1536, 1536],
-                [2480, 2048, 576, 1808, 2074, 1344, 896, 4080, 544, 1344, 3056, 3056],
-                [896, 640, 640, 2800, 832, 4080, 4080, 1216, 896, 960, 1536, 1536],
-                [4080, 960, 704, 1344, 4080, 1552, 2236, 560, 832, 1967, 704, 3056],
-                [4080, 4080, 1024, 1344, 4080, 2108, 2048, 960, 640, 1472, 4080, 1536],
-                [1024, 2544, 4080, 2608, 1792, 2736, 2800, 1664, 640, 704, 2544, 768],
+                [2048, 3072, 10304, 11840, 2048, 11328, 2048, 8792, 6528, 16320, 6144, 10176],
+                [3072, 12224, 12096, 16320, 2048, 7168, 11328, 4096, 8552, 2048, 4096, 2048],
+                [5248, 5248, 8265, 8411, 11488, 3760, 6816, 16320, 8411, 8265, 6144, 6144],
+                [9792, 8192, 2384, 7120, 8087, 5056, 3424, 16320, 2288, 5440, 12224, 12224],
+                [3712, 2688, 2608, 11040, 3152, 16320, 16320, 4800, 3616, 3936, 6144, 6144],
+                [16320, 3968, 2832, 5056, 16320, 5712, 8769, 2384, 3424, 7983, 2944, 12224],
+                [16320, 16320, 3840, 4992, 16320, 8312, 8440, 4224, 2688, 6016, 16320, 6144],
+                [4096, 10176, 16320, 10560, 6912, 11072, 11328, 6912, 2688, 2944, 10176, 3072],
             ],
             dtype=torch.float64,
         )
         if dtype == torch.float16:
-            # 9 * 255 / 16 = 143.4375 becomes 143.5 in float16, so its LUT entry rounds to 144, not 143.
-            # Propagate that one-level difference through the exact rational interpolation weights.
-            expected[0, 7] += 12
-            expected[1, 8] += 8
-            expected[2, 3] += 4
-            expected[2, 8] += 8
-            expected[2, 9] += 4
-            expected[3, 0] += 4
-            expected[3, 4] += 6
+            # LUT values at 143.4375 round to 144 in float16, instead of 143.
+            # Propagate that one-level difference through the centre-anchored weights.
+            expected[0, 7] += 40
+            expected[1, 8] += 24
+            expected[2, 2] += 7
+            expected[2, 3] += 21
+            expected[2, 8] += 21
+            expected[2, 9] += 7
+            expected[3, 0] += 24
+            expected[3, 4] += 25
             expected[5, 9] += 1
-            expected[6, 5] += 4
-        expected = expected.div(16 * 255).to(dtype).to(device)[None, None]
+            expected[6, 5] += 8
+        expected = expected.div(64 * 255).to(dtype).to(device)[None, None]
         # Both orientations: the two border regions are indexed by the grid size of different axes.
         self.assert_close(enhance.equalize_clahe(img, 40.0, (2, 3)), expected)
         self.assert_close(enhance.equalize_clahe(img.transpose(-2, -1), 40.0, (3, 2)), expected.transpose(-2, -1))
