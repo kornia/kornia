@@ -384,7 +384,7 @@ def adalam_core(
             out_scores = scores1[score_mask].reshape(-1, 1)
             idxs = torch.stack([absolute_im1idx, absolute_im2idx], dim=1)
         else:
-            idxs, out_scores = _no_match(scores1)
+            out_scores, idxs = _no_match(scores1)
         if return_dist:
             return idxs, out_scores
         return idxs

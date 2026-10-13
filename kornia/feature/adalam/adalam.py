@@ -309,7 +309,7 @@ class AdalamFilter:
             )
 
         if (len(_d2) <= 1) or (len(_d1) <= 1):
-            idxs, dists = _no_match(_d1)
+            dists, idxs = _no_match(_d1)
             if return_dist:
                 return idxs, dists
             return idxs
