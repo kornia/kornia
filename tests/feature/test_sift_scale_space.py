@@ -459,6 +459,32 @@ class TestSharedSIFTScaleSpace(BaseTester):
         assert lafs.shape == (1, 8, 2, 3)
         assert responses.dtype == descriptors.dtype == lafs.dtype == dtype
 
+    def test_large_frame_is_described_in_half_precision(self, device, dtype):
+        # Products of two entries of the first LAF overflow float16 (det 300 * 280 + 40 * 25 = 85000 > 65504).
+        # laf_is_valid used to call it invalid in float16, so it got the zero descriptor of a padded slot. A half
+        # precision input is described in float32, so it must get the float32 descriptor of the same rounded input.
+        work_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        yy, xx = torch.meshgrid(torch.arange(96.0), torch.arange(128.0), indexing="ij")
+        image = (0.5 + 0.3 * torch.sin(xx / 7.0) * torch.cos(yy / 11.0) + 0.002 * xx)[None, None]
+        pyramid = [
+            level.to(dtype) for level in _SIFTScalePyramid().to(device, work_dtype)(image.to(device, work_dtype))
+        ]
+        lafs = torch.tensor(
+            [[[[300.0, 40.0, 70.0], [-25.0, 280.0, 41.0]], [[12.0, 3.0, 50.0], [-2.0, 10.0, 60.0]]]],
+            device=device,
+            dtype=dtype,
+        )
+        octaves = torch.tensor([[2, 0]], device=device)
+        levels = torch.tensor([[3, 2]], device=device)
+        describe = _SIFTScaleSpaceDescriptor()
+        _, actual = describe(pyramid, lafs, octaves, levels, upright=True)
+        _, expected = describe(
+            [level.to(work_dtype) for level in pyramid], lafs.to(work_dtype), octaves, levels, upright=True
+        )
+        assert actual.dtype == dtype
+        assert bool(expected.abs().sum(dim=-1).gt(0).all())
+        self.assert_close(actual, expected.to(dtype))
+
 
 class TestSIFTScalePyramid(BaseTester):
     def test_precise_double_grid(self, device, dtype):
