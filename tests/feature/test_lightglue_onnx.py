@@ -74,35 +74,40 @@ def test_missing_onnxruntime_applies_the_installation_mode(monkeypatch, without_
     assert commands == [[sys.executable, "-m", "pip", "install", "kornia[onnx]"]]
 
 
+def _write_local_model(tmp_path):
+    """Write a tiny local graph that stands in for a LightGlue model, so no pretrained weights are downloaded."""
+    from onnx import TensorProto, helper, save
+
+    # It exercises session creation and all four NumPy-typed input bindings without requiring CUDA.
+    inputs = [
+        helper.make_tensor_value_info(name, TensorProto.FLOAT, [1, 2, width])
+        for name, width in [("kpts0", 2), ("kpts1", 2), ("desc0", 4), ("desc1", 4)]
+    ]
+    outputs = [
+        helper.make_tensor_value_info("matches0", TensorProto.INT64, [1, 2]),
+        helper.make_tensor_value_info("mscores0", TensorProto.FLOAT, [1]),
+    ]
+    nodes = [
+        helper.make_node(
+            "Constant", [], ["matches0"], value=helper.make_tensor("matches", TensorProto.INT64, [1, 2], [0, 1])
+        ),
+        helper.make_node(
+            "Constant", [], ["mscores0"], value=helper.make_tensor("scores", TensorProto.FLOAT, [1], [0.75])
+        ),
+    ]
+    graph = helper.make_graph(nodes, "lightglue_alias_smoke", inputs, outputs)
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)], ir_version=8)
+    path = tmp_path / "lightglue.onnx"
+    save(model, path)
+    return path
+
+
 @pytest.mark.skipif(ort is None, reason="OnnxLightGlue requires onnxruntime-gpu")
 @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Needs dlpack")
 class TestOnnxLightGlue:
     @pytest.mark.device_agnostic
     def test_local_model_inference(self, tmp_path):
-        from onnx import TensorProto, helper, save
-
-        # A tiny local graph exercises session creation and all four NumPy-typed input
-        # bindings without downloading pretrained weights or requiring CUDA.
-        inputs = [
-            helper.make_tensor_value_info(name, TensorProto.FLOAT, [1, 2, width])
-            for name, width in [("kpts0", 2), ("kpts1", 2), ("desc0", 4), ("desc1", 4)]
-        ]
-        outputs = [
-            helper.make_tensor_value_info("matches0", TensorProto.INT64, [1, 2]),
-            helper.make_tensor_value_info("mscores0", TensorProto.FLOAT, [1]),
-        ]
-        nodes = [
-            helper.make_node(
-                "Constant", [], ["matches0"], value=helper.make_tensor("matches", TensorProto.INT64, [1, 2], [0, 1])
-            ),
-            helper.make_node(
-                "Constant", [], ["mscores0"], value=helper.make_tensor("scores", TensorProto.FLOAT, [1], [0.75])
-            ),
-        ]
-        graph = helper.make_graph(nodes, "lightglue_alias_smoke", inputs, outputs)
-        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)], ir_version=8)
-        path = tmp_path / "lightglue.onnx"
-        save(model, path)
+        path = _write_local_model(tmp_path)
 
         matcher = OnnxLightGlue(str(path), device="cpu")
         features = {
@@ -113,6 +118,32 @@ class TestOnnxLightGlue:
         result = matcher({"image0": features, "image1": features})
         torch.testing.assert_close(result["matches"], torch.tensor([[0, 1]]))
         torch.testing.assert_close(result["scores"], torch.tensor([0.75]))
+
+    @pytest.mark.device_agnostic
+    def test_device_none_means_cpu(self, monkeypatch, tmp_path):
+        # The signature allows ``device=None``; it used to raise torch's ``TypeError`` from ``torch.device(None)``.
+        path = _write_local_model(tmp_path)
+        urls = []
+
+        def fake_download(url):
+            urls.append(url)
+            return str(path)
+
+        monkeypatch.setattr("kornia.feature.lightglue_onnx.lightglue.download_onnx_from_url", fake_download)
+
+        matcher = OnnxLightGlue(device=None)
+        assert matcher.device == torch.device("cpu")
+        # ``weights=None`` resolves from the device: the CPU build of ``disk``, as for ``device="cpu"``.
+        assert urls == [OnnxLightGlue.MODEL_URLS["disk"].replace(".onnx", "_cpu.onnx")]
+
+        features = {
+            "keypoints": torch.tensor([[[0.0, 0.0], [5.0, 5.0]]]),
+            "descriptors": torch.ones(1, 2, 4),
+            "image_size": torch.tensor([[10, 10]]),
+        }
+        result = matcher({"image0": features, "image1": features})
+        assert result["matches"].device.type == "cpu"
+        torch.testing.assert_close(result["matches"], torch.tensor([[0, 1]]))
 
     @pytest.mark.slow
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="Test requires CUDA")

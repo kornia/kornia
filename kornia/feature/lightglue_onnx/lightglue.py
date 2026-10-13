@@ -51,7 +51,8 @@ class OnnxLightGlue:
         weights: Pretrained weights, or a path to your own exported ONNX model. Available pretrained weights
           are ``'disk'``, ``'superpoint'``, ``'disk_fp16'``, and ``'superpoint_fp16'``. `Note that FP16 requires CUDA.`
           Defaults to ``'disk_fp16'`` if ``device`` is CUDA, and ``'disk'`` if CPU.
-        device: Union[str, torch.device, None] to run inference on.
+        device: Device to run inference on, e.g. ``'cpu'`` or ``'cuda'``. ``None`` is treated as ``'cpu'``,
+          as in the other kornia feature constructors.
 
     """
 
@@ -71,7 +72,7 @@ class OnnxLightGlue:
         _ = _ort.__version__
         KORNIA_CHECK(importlib.util.find_spec("numpy") is not None, "numpy is not installed.")
 
-        device = torch.device(device)  # type: ignore
+        device = torch.device("cpu") if device is None else torch.device(device)
         self.device = device
 
         if device.type == "cpu":
