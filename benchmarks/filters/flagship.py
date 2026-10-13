@@ -54,20 +54,20 @@ grayscale internally per its definition; the OpenCV canny loop therefore include
 
 The Laplacian columns are different operators: Kornia uses an L1-normalized all-ones window with
 center ``1 - kernel_area``; OpenCV sums second Sobel derivatives and scikit-image's kernel differs
-as well. Sobel normalization differs across libraries. Median uses zero padding in
-Kornia/scikit-image and replicated borders in OpenCV. The scikit-image Gaussian uses ``mode='mirror'`` (the
-SciPy mode matching PyTorch reflect padding) and ``truncate=2 / 1.5`` for a 5x5 support. Its rank
+as well. Sobel normalization differs across libraries. Median uses mirror borders in Kornia (torch's ``reflect``)
+and scikit-image (``mode='mirror'``), and replicated borders in OpenCV. The scikit-image Gaussian uses
+``mode='mirror'`` (the SciPy mode matching PyTorch reflect padding) and ``truncate=2 / 1.5`` for a 5x5 support. Its rank
 mean is a uint8 footprint-based box filter with truncated boundary footprints. These are
 native-regime throughput comparisons, not output-equivalent comparisons.
 
-kornia-rs 0.1.14 exposes Gaussian and box blur; 0.1.15rc5 adds median
-blur and Sobel to the Python API. The median operator accepts only 3x3 or 5x5 uint8 images and
-uses replicated borders. Its Sobel is f32 magnitude; its normalization and borders can differ
-from Kornia. kornia-rs also exposes a bilateral filter only for single-channel uint8 images. The
-grayscale bilateral row converts the common RGB image to precomputed mean grayscale before timing:
-Kornia and scikit-image use normalized float, while kornia-rs receives the rounded uint8 value and
-uses ``sigma_color=25.5`` to represent 0.1 in that domain. kornia-rs matches OpenCV's circular
-diameter-5 neighborhood; Kornia's 5x5 filter has square support.
+kornia-rs exposes Gaussian, box and median blur and Sobel in its Python API. The median operator
+accepts only 3x3 or 5x5 uint8 images and uses replicated borders. Its Sobel is f32 magnitude; its
+normalization and borders can differ from Kornia. kornia-rs also exposes a bilateral filter only for
+single-channel uint8 images. The grayscale bilateral row converts the common RGB image to
+precomputed mean grayscale before timing: Kornia and scikit-image use normalized float, while
+kornia-rs receives the rounded uint8 value and uses ``sigma_color=25.5`` to represent 0.1 in that
+domain. kornia-rs matches OpenCV's circular diameter-5 neighborhood; Kornia's 5x5 filter has square
+support.
 
 Albumentations ``UnsharpMask`` is an unsharp-mask algorithm but is not Kornia-equivalent: it clips
 and blends through a blurred threshold mask, while Kornia is exactly ``2 * input - gaussian_blur``.
@@ -360,9 +360,7 @@ def build_ops(
             else None
         )
         row["scikit-image"] = (
-            (lambda: [skf.median(im, footprint=footprint_5_hwc, mode="constant", cval=0) for im in imgs_f])
-            if skf
-            else None
+            (lambda: [skf.median(im, footprint=footprint_5_hwc, mode="mirror") for im in imgs_f]) if skf else None
         )
         ops["median_blur"] = row
 

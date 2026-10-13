@@ -153,15 +153,15 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           masks use at least float32 (float64 with a float64 image). Integer labels not exactly representable
           in that working dtype raise ``RuntimeError`` instead of being rounded. On accelerators an asynchronous
           assertion may report at the next synchronization; MPS before torch 2.13 checks on the host.
-        - a ``mask`` argument can be a list of tensors with different channel counts, but its batch handling
-          has limitations. Each list entry uses only ``batch_prob[i]`` as its gate, including for intensity
-          children. Per-sample list tensors are unsupported by warp operations, and full-batch tensors in that
-          list can become desynchronized from the image when the gate differs across samples. A list longer
-          than the batch raises ``IndexError``. Use separate ``mask`` data keys for separate full-batch masks.
-          ``.inverse()`` takes the list the forward pass returned and inverts it element by element with the
-          same per-entry gate. A flip round-trips each entry, subject to the working-dtype requirements above; other
-          warps lose the pixels they move out of the frame and, when they resample, restore the rest only
-          approximately. Tracked in `#4477 <https://github.com/kornia/kornia/issues/4477>`_.
+        - a ``mask`` list contains one tensor per image sample, in sample order. Each entry is
+          ``(H, W)``, ``(C, H, W)`` or ``(1, C, H, W)``, with matching spatial dimensions; channel counts
+          may differ. Each entry uses its sample's gate, transform parameters and matrix, including in
+          nested sequences, auto-augment policies, replay and inverse. Full-batch mask tensors must use
+          separate ``mask`` data keys; a list with incompatible length or entry shape raises ``ValueError``,
+          also in an inverse without an image. Video, mix and 3D children, and a geometric
+          :class:`~kornia.augmentation.PatchSequential`, do not support mask lists and raise
+          ``NotImplementedError``. Inverse warps can only approximately restore resampled pixels and
+          cannot recover pixels moved out of the frame.
         - the ``mask``, box and ``keypoints`` handlers of a geometric child, or of a custom
           :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` subclass, receive the transform of the
           call's ``params``: the one the child recorded when it last transformed an image with those params, or
@@ -463,17 +463,17 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         self.transform_op.data_keys = self.transform_op.preproc_datakeys(data_keys)
 
         try:
-            self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys)  # type: ignore
+            if params is None:
+                params = self._params
+            self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys, params=params)  # type: ignore
 
             in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)  # type: ignore
 
             if params is None:
-                if self._params is None:
-                    raise ValueError(
-                        "No parameters available for inversing, please run a forward pass first "
-                        "or passing valid params into this function."
-                    )
-                params = self._params
+                raise ValueError(
+                    "No parameters available for inversing, please run a forward pass first "
+                    "or passing valid params into this function."
+                )
 
             outputs: List[DataType] = in_args
             for param in params[::-1]:
@@ -481,8 +481,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 outputs = self.transform_op.inverse(  # type: ignore
                     *outputs, module=module, param=param, extra_args=self.extra_args
                 )
-                if not isinstance(outputs, (list, tuple)):
-                    # Make sure we are unpacking a list whilst post-proc
+                if len(self.transform_op.data_keys) == 1 or not isinstance(outputs, (list, tuple)):
+                    # One data key can itself hold a mask list; keep it as one argument for the next child.
                     outputs = [outputs]
 
             outputs = self._arguments_postproc(args, outputs, data_keys=self.transform_op.data_keys)  # type: ignore
@@ -499,6 +499,22 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             return outputs[0]
 
         return outputs
+
+    @staticmethod
+    def _validate_mask_list(mask: List[torch.Tensor], batch: int, size: Optional[torch.Size]) -> None:
+        """Validate the per-sample mask-list layout before any child runs."""
+        if len(mask) != batch:
+            raise ValueError(f"Mask list must contain one entry per sample ({batch}); got {len(mask)}.")
+        for i, entry in enumerate(mask):
+            if not isinstance(entry, torch.Tensor):
+                raise ValueError(f"Mask list entry {i} must be a torch.Tensor; got {type(entry).__name__}.")
+            if entry.ndim not in (2, 3, 4) or (entry.ndim == 4 and entry.shape[0] != 1):
+                raise ValueError(
+                    f"Mask list entry {i} must be (H, W), (C, H, W) or (1, C, H, W); "
+                    f"got {tuple(entry.shape)}. Use separate mask data keys for full-batch tensors."
+                )
+            if size is not None and entry.shape[-2:] != size:
+                raise ValueError(f"Mask list entry {i} must have spatial size {tuple(size)}; got {tuple(entry.shape)}.")
 
     def _validate_args_datakeys(
         self, *args: DataType, data_keys: List[DataKey], params: Optional[List[ParamItem]] = None
@@ -517,7 +533,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         # Set once at construction from this container's children; distinguishes a video from a 5D
         # ``(B, C, D, H, W)`` 3D image, which this function leaves untouched, as before.
         is_video = self.contains_video_sequential
-        if isinstance(image, torch.Tensor) and (image.ndim in (3, 4) or (image.ndim == 5 and is_video)):
+        if isinstance(image, torch.Tensor) and (image.ndim in (2, 3, 4) or (image.ndim == 5 and is_video)):
             image_batch: Optional[int] = image.shape[0] if image.ndim in (4, 5) else 1
             image_size = image.shape[-2:]
         elif image is None and params is not None and not self.contains_3d_augmentation:
@@ -533,6 +549,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         temporal_dim = videos[0]._temporal_channel if videos else 1
         for mask, key in zip(args, data_keys):
             if key not in _MSK_OPTIONS:
+                continue
+            if isinstance(mask, list):
+                self._validate_mask_list(mask, image_batch, image_size)
                 continue
             if not isinstance(mask, torch.Tensor):
                 continue
@@ -730,8 +749,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             for param in params:
                 module = self.get_submodule(param.name)
                 outputs = self.transform_op.transform(*outputs, module=module, param=param, extra_args=self.extra_args)
-                if not isinstance(outputs, (list, tuple)):
-                    # Make sure we are unpacking a list whilst post-proc
+                if len(self.transform_op.data_keys) == 1 or not isinstance(outputs, (list, tuple)):
+                    # One data key can itself hold a mask list; keep it as one argument for the next child.
                     outputs = [outputs]
                 self._update_transform_matrix_by_module(module)
 
@@ -978,7 +997,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         # image in the call, ``None`` when there is none.
         working = dtype if dtype is not None else torch.float
         if isinstance(arg, list):
-            # A list keeps its per-entry gate semantics (see the class docstring); it is not broadcast.
+            # A list holds one mask per sample (see the class docstring); it is not broadcast.
             return [self._cast_mask(a, working) for a in arg]
         return self._broadcast_single_mask(self._cast_mask(arg, working), image_batch)
 

@@ -81,6 +81,8 @@ class RandomClahe(IntensityAugmentationBase2D):
 
     """
 
+    SUBSTITUTE_SKIPPED_SAMPLES = True
+
     def __init__(
         self,
         clip_limit: tuple[float, float] = (40.0, 40.0),

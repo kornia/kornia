@@ -64,25 +64,11 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     imax = _img_max[1]
     minc: torch.Tensor = image.min(-3)[0]
 
-    if image.requires_grad:
-        l_ = maxc + minc
-        s = maxc - minc
-        # weird behaviour with undefined vars in JIT...
-        # scripting requires image_hls be defined even if it is not used :S
-        h = l_  # assign to any torch.Tensor...
-        image_hls = l_  # assign to any torch.Tensor...
-    else:
-        # define the resulting image to avoid the torch.stack([h, l, s])
-        # so, h, l and s require inplace operations
-        # NOTE: torch.stack() increases in a 10% the cost in colab
-        image_hls = torch.empty_like(image)
-        h, l_, s = (
-            image_hls[..., 0, :, :],
-            image_hls[..., 1, :, :],
-            image_hls[..., 2, :, :],
-        )
-        torch.add(maxc, minc, out=l_)  # l = max + min
-        torch.sub(maxc, minc, out=s)  # s = max - min
+    # Compute the channels as separate tensors and stack them. Writing them with `out=` into channel views of a
+    # preallocated output is not traced by the TorchScript ONNX exporter, which then exports a graph that ignores
+    # the input, and torch.compile(fullgraph=True) rejects an `out=` tensor that is not contiguous.
+    l_ = maxc + minc
+    s = maxc - minc
 
     # Use unit divisors when chroma or the lightness denominator is zero.
     # Preserve the epsilon-adjusted calculation for nonzero denominators.
@@ -102,23 +88,14 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     # h[imax == 1] = (((b - r) / (max - min)) + 2)[imax == 1]
     # h[imax == 2] = (((r - g) / (max - min)) + 4)[imax == 2]
     cond = imax[..., None, :, :] == _RGB2HSL_IDX
-    if image.requires_grad:
-        h = ((g - b) % 6) * cond[..., 0, :, :]
-    else:
-        # replacing `torch.mul` with `out=h` with python * operator gives wrong results
-        torch.mul((g - b) % 6, cond[..., 0, :, :], out=h)
+    h = ((g - b) % 6) * cond[..., 0, :, :]
     h += (b - r + 2) * cond[..., 1, :, :]
     h += (r - g + 4) * cond[..., 2, :, :]
     # h = 2.0 * math.pi * (60.0 * h) / 360.0
     h *= math.pi / 3.0  # hue [0, 2*pi]
-    if image.requires_grad:
-        h = h.masked_fill(h >= 2.0 * math.pi, 0.0)
-    else:
-        h.masked_fill_(h >= 2.0 * math.pi, 0.0)
+    h = h.masked_fill(h >= 2.0 * math.pi, 0.0)
 
-    if image.requires_grad:
-        return torch.stack([h, l_, s], -3)
-    return image_hls
+    return torch.stack([h, l_, s], -3)
 
 
 def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
