@@ -101,7 +101,8 @@ class CenterCrop3D(GeometricAugmentationBase3D):
         """Initialize the crop and validate its three integer dimensions."""
         super().__init__(p=1.0, same_on_batch=True, p_batch=p, keepdim=keepdim)
         if isinstance(size, tuple):
-            if len(size) != 3 or not all(isinstance(value, int) for value in size):
+            # As in RandomCrop3D: NumPy integers and 0-d integer tensors pass, a Python or NumPy float does not.
+            if len(size) != 3 or not all(hasattr(v, "__index__") for v in size):
                 raise TypeError(f"`size` must be an int or a three-element (D, H, W) tuple of integers. Got {size!r}.")
             self.size = (size[0], size[1], size[2])
         elif isinstance(size, int):

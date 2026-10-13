@@ -20,6 +20,7 @@ from __future__ import annotations
 import math
 import warnings
 
+import numpy as np
 import pytest
 import torch
 
@@ -491,6 +492,8 @@ class Test3DAugmentationConventions(BaseTester):
             (K.CenterCrop3D, (2,)),
             (K.CenterCrop3D, (2, 2)),
             (K.CenterCrop3D, (2, 2, 2, 2)),
+            (K.CenterCrop3D, 2.0),
+            (K.CenterCrop3D, None),
             (K.RandomCrop3D, 2),
             (K.RandomCrop3D, 2.0),
             (K.RandomCrop3D, None),
@@ -532,6 +535,17 @@ class Test3DAugmentationConventions(BaseTester):
         with pytest.raises(TypeError, match=r"size.*\(D, H, W\).*integers") as exc_info:
             K.CenterCrop3D(size)
         assert repr(size) in str(exc_info.value)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("augmentation", [K.CenterCrop3D, K.RandomCrop3D])
+    def test_crop3d_integer_like_size_elements_4417(self, augmentation):
+        # NumPy integers and 0-d integer tensors index like ints, so the element checks keep them working.
+        volume = torch.arange(240.0).reshape(2, 1, 4, 5, 6)
+        torch.manual_seed(0)
+        expected = augmentation((2, 3, 4))(volume)
+        for size in ((np.int64(2), np.int32(3), np.int64(4)), (torch.tensor(2), 3, 4)):
+            torch.manual_seed(0)
+            self.assert_close(augmentation(size)(volume), expected, rtol=0, atol=0)
 
     @pytest.mark.parametrize("augmentation", [K.CenterCrop3D, K.RandomCrop3D])
     @pytest.mark.parametrize("size", [(5, 5, 6), (4, 6, 6), (4, 5, 7)])
