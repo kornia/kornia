@@ -25,9 +25,11 @@ inventory, and removing a public name fails here until the inventory is
 edited explicitly in the same PR — which is exactly the deliberate review moment the
 stability policy (docs/source/get-started/stability.rst) requires.
 
-Additions are fine and do not fail the test; run this file with
-``--update-api-surface`` semantics by regenerating the JSON (see
-``regenerate()`` below) whenever new public API lands.
+A new name in a tracked module does not fail. A new module that declares ``__all__`` under one of
+the recorded package roots does, until its row is added: run
+``python -c "from tests.test_api_surface import regenerate; regenerate()"`` from the repository root
+and commit the regenerated JSON. Deleting a whole tracked module, after its deprecation window,
+empties its row rather than dropping it; the empty row stays behind as the record of the removal.
 """
 
 import ast
@@ -134,7 +136,10 @@ def regenerate() -> None:
 def test_inventory_includes_public_modules_declaring_all():
     recorded = json.loads(INVENTORY.read_text())
     missing = sorted(set(_inventory_modules(recorded)) - set(recorded))
-    assert not missing, f"Public modules absent from the inventory: {missing}. Run tests.test_api_surface.regenerate()."
+    assert not missing, (
+        f"Public modules absent from the inventory: {missing}. From the repository root, run "
+        '`python -c "from tests.test_api_surface import regenerate; regenerate()"` and commit tests/api_surface.json.'
+    )
 
 
 def test_inventory_module_discovery_preserves_scope(monkeypatch):
@@ -304,6 +309,7 @@ def _foreign_names(module_name: str) -> set:
     found = set()
     for name in _current_surface(module_name):
         if name.startswith("_"):
+            # regenerate() never records an underscore name, so it could not resolve a failure here.
             continue
         obj = getattr(mod, name, None)
         if isinstance(obj, types.ModuleType):
