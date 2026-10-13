@@ -273,4 +273,3 @@ call	builtins.AssertionError	tests/integration/test_conversions.py::TestQuaterni
 call	builtins.AssertionError	tests/integration/test_conversions.py::TestQuaternionToRotationMatrixToAngleAxis::test_triplet_qma[cpu-float16-2]
 call	builtins.AssertionError	tests/losses/test_dice.py::TestDiceLoss::test_averaging_macro[cpu-float16]
 call	builtins.AssertionError	tests/losses/test_dice.py::TestDiceLoss::test_averaging_micro[cpu-float16]
-call	builtins.AssertionError	tests/losses/test_mutual_information.py::TestMutualInformationLoss::test_value_ranges[cpu-float16]

@@ -814,6 +814,11 @@ def KORNIA_CHECK_DM_DESC(desc1: torch.Tensor, desc2: torch.Tensor, dm: torch.Ten
 def KORNIA_CHECK_LAF(laf: torch.Tensor, raises: bool = True) -> bool:
     """Check whether a Local Affine Frame (laf) has a valid shape.
 
+    Convention:
+        - Only the shape :math:`(B, N, 2, 3)` is checked: any dtype and any values pass, ``N = 0`` included. Use
+          :func:`~kornia.feature.laf_is_valid` to check the values.
+        - With ``raises=False``, a wrong shape returns ``False`` instead of raising.
+
     Args:
         laf: local affine frame tensor to evaluate.
         raises: bool indicating whether an exception should be raised upon failure.

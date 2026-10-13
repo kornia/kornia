@@ -53,6 +53,17 @@ class PatchAffineShapeEstimator(nn.Module):
     in float32.
     The output keeps the input dtype.
 
+    Convention:
+        - The output :math:`(a, b, c)` is :math:`(\langle g_x^2 \rangle, \langle g_x g_y \rangle,
+          \langle g_y^2 \rangle)`, the means over the patch of the products of its Sobel gradients, x right and
+          y down, each gradient weighted by a Gaussian centred on the patch. It is divided by its largest entry, which
+          is therefore 1. When two of the three entries are below ``eps`` before that division -- a flat or
+          low-contrast patch, or one whose gradient lies along an image axis -- the output is :math:`(1, 0, 1)`, a
+          circle.
+        - The patch must be ``patch_size`` pixels square.
+        - Known defects: a negative :math:`b` counts as below ``eps``, so a patch and its mirror image can get a thin
+          ellipse and a circle (`#5824 <https://github.com/kornia/kornia/issues/5824>`_).
+
     Args:
         patch_size: the input image patch size.
         eps: for safe division.
@@ -176,17 +187,21 @@ def _finalize_laf(
 
 
 class LAFAffineShapeEstimator(nn.Module):
-    """Module, which extracts patches using input images and local affine frames (LAFs).
+    r"""Module, which extracts patches using input images and local affine frames (LAFs).
 
     Then runs :class:`~kornia.feature.PatchAffineShapeEstimator` on patches to estimate LAFs shape.
 
-    Each patch is sampled through the upright form of its LAF (:func:`~kornia.feature.make_upright`), so the shape
-    is estimated in the coordinates of that frame, and the output region is the frame composed with the estimated
-    shape. For an isotropic input LAF (a circle), that is the estimated shape itself. An input whose shape already
-    matches the local structure gives a nearly isotropic patch, so its shape changes little: one call is one step of
-    the iterative shape adaptation of :cite:`baumberg2000`. The centre and the scale of the input LAF are kept. With
-    ``preserve_orientation=True`` its orientation is kept too; otherwise the output is upright, and an orientation
-    estimator such as :class:`~kornia.feature.LAFOrienter` can be run after this module.
+    Convention:
+        - Each patch is sampled through the upright form of its LAF (:func:`~kornia.feature.make_upright`), so the
+          shape is estimated in the coordinates of that frame, and the output region is the frame composed with the
+          estimated shape. The estimated shape's ellipse :math:`A A^\top` is proportional to the inverse of the second
+          moment matrix that ``affine_shape_detector`` returns. For an isotropic input LAF (a circle), the output shape
+          is the estimated shape itself. An input whose shape already matches the local structure gives a nearly
+          isotropic patch, so its shape changes little: one call is one step of the iterative shape adaptation of
+          :cite:`baumberg2000`.
+        - The centre and the scale of the input LAF are kept. With ``preserve_orientation=True`` (the default) its
+          orientation is kept too; otherwise the output is upright, and an orientation estimator such as
+          :class:`~kornia.feature.LAFOrienter` can be run after this module.
 
     Args:
         patch_size: the input image patch size.
@@ -258,11 +273,10 @@ class LAFAffNetShapeEstimator(nn.Module):
     "Repeatability Is Not Enough: Learning Discriminative Affine Regions via Discriminability"".
     See :cite:`AffNet2018` for more details.
 
-    Each patch is sampled through the upright form of its LAF (:func:`~kornia.feature.make_upright`), so AffNet
-    predicts the shape in the coordinates of that frame, and the output region is the frame composed with the
-    prediction. For an isotropic input LAF (a circle), that is the predicted shape itself. The centre and the scale of
-    the input LAF are kept. With ``preserve_orientation=True`` its orientation is kept too; otherwise the output is
-    upright, and an orientation estimator such as :class:`~kornia.feature.LAFOrienter` can be run after this module.
+    Convention:
+        As :class:`~kornia.feature.LAFAffineShapeEstimator`, with AffNet's prediction on a 32 x 32 patch in place of
+        the second moment estimate; see its Convention block for the frame the patch is sampled through and for what
+        the output keeps of the input LAF.
 
     Args:
         pretrained: Download and set pretrained weights to the model.

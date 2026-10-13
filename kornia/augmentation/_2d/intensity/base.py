@@ -76,11 +76,10 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           :doc:`/get-started/conventions`. The base does not validate it; each class page states what the class
           does outside that range, and a class whose page is silent does not clamp.
         - what this block and the class pages say about an output describes the samples the ``p`` gate
-          transforms; every other sample comes back with its input values. Below ``p=1`` the transform is
-          still computed for every sample and the gate then selects, so a skipped sample that fails a value
-          check still makes the call raise -- :class:`RandomEqualize` and :class:`RandomClahe` raise for an
-          out-of-range image even at ``p=0.0`` -- and a skipped sample's gradient can be NaN where the
-          transform's derivative is infinite (`#4576 <https://github.com/kornia/kornia/issues/4576>`_).
+          transforms; every other sample comes back with its input values and, where they are finite, an
+          identity gradient. Below ``p=1`` :class:`RandomEqualize`, :class:`RandomClahe` and :class:`RandomGamma`
+          run their transform on 0.5 for the skipped samples, so an out-of-range skipped image does not make them
+          raise.
         - the scalar factors a concrete class draws are per sample -- one value, or one per channel
           per sample where the class's own docstring says so -- and ``same_on_batch=True`` shares one draw.
           :class:`RandomMotionBlur` draws one kernel size for the whole batch; :class:`Normalize`,

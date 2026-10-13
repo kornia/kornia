@@ -217,11 +217,16 @@ class EntropyBasedLossBase(torch.nn.Module):
         self._ref_mask_is_full = _mask_is_full(mask)
         mask = self.fix_mask(mask, reference_signal)
         eps = torch.finfo(reference_signal.dtype).eps
+        # The normalized cache may use float32; retain the caller's dtype for the range threshold and result.
+        # This empty, non-persistent buffer follows Module.to without adding a state_dict key.
+        self.register_buffer("_reference_dtype", reference_signal.new_empty(0), persistent=False)
         self.initial_shape = reference_signal.shape
         signal = reference_signal[..., mask]
         # Without a mask the gather keeps every sample: checking its size would guard on a data-dependent size
         # and break ``fullgraph`` capture.
         KORNIA_CHECK(self._ref_mask_is_full or signal.shape[-1] > 0, "mask must select at least one sample.")
+        if signal.dtype in (torch.float16, torch.bfloat16):
+            signal = signal.float()
         self.register_buffer("signal", _normalize_signal(signal, num_bins, eps))
         # Keep the mask consistent with the cached reference if the caller edits its tensor.
         self.register_buffer("mask", mask.clone())
@@ -233,8 +238,8 @@ class EntropyBasedLossBase(torch.nn.Module):
 
     @property
     def eps(self) -> float:
-        """Machine epsilon of the cached reference signal, so that it follows ``Module.to(dtype)``."""
-        return torch.finfo(self.signal.dtype).eps
+        """Machine epsilon of the reference dtype, so that it follows ``Module.to(dtype)``."""
+        return torch.finfo(self._reference_dtype.dtype).eps
 
     @staticmethod
     def fix_mask(mask: torch.Tensor, masked_guy: torch.Tensor) -> torch.Tensor:
@@ -306,6 +311,8 @@ class EntropyBasedLossBase(torch.nn.Module):
                 f"The two signals have incompatible shapes: {other_signal.shape} and {self.initial_shape}."
             )
         _validate_mask(other_mask, other_signal.shape[-1:])
+        if other_signal.dtype in (torch.float16, torch.bfloat16):
+            other_signal = other_signal.float()
         if self._ref_mask_is_full and _mask_is_full(other_mask):
             # No roi on either side: skip the boolean-mask gathers, whose output sizes depend on the
             # mask values and therefore cannot be captured by ``torch.export``/ONNX.
@@ -322,13 +329,20 @@ class EntropyBasedLossBase(torch.nn.Module):
             other_signal = self.trace_in_ref_mask(other_signal, other_mask)
             other_signal = other_signal[..., common_mask]
 
+        # Evaluate kernels and accumulate counts in float32 for half inputs. A half-precision histogram can
+        # overflow before its probabilities are formed, even if every kernel weight is representable.
+        if ref_signal.dtype in (torch.float16, torch.bfloat16):
+            ref_signal = ref_signal.float()
+            other_signal = other_signal.float()
         diff_1 = self.bin_centers.unsqueeze(-1) - ref_signal.unsqueeze(-2)
         diff_2 = self.bin_centers.unsqueeze(-1) - other_signal.unsqueeze(-2)
 
         vals_1 = self.kernel_function(diff_1)
         vals_2 = self.kernel_function(diff_2)
 
-        return torch.einsum("...in,...jn->...ij", vals_1, vals_2)
+        # Autocast would undo the promotion at this matrix multiplication.
+        with torch.autocast(device_type=other_signal.device.type, enabled=False):
+            return torch.einsum("...in,...jn->...ij", vals_1, vals_2)
 
     def entropies(
         self, other_signal: torch.Tensor, other_mask: torch.Tensor | None = None
@@ -349,14 +363,15 @@ class EntropyBasedLossBase(torch.nn.Module):
                 - Marginal entropy of the reference signal
                 - Joint entropy
 
-            All tensors have the same batch dimensions as the input signals.
+            All tensors have the same batch dimensions as the input signals. Half-precision inputs produce
+            float32 entropies; the loss subclasses cast their final result back to the reference dtype.
 
         Note:
             Subclasses should implement specific loss functions based on these entropy
             measures (e.g., mutual information).
         """
         joint_histogram = self._compute_joint_histogram(other_signal, self.eps, other_mask)
-        return _joint_histogram_to_entropies(joint_histogram, eps=self.eps)
+        return _joint_histogram_to_entropies(joint_histogram, eps=torch.finfo(joint_histogram.dtype).eps)
 
 
 class MILossFromRef(EntropyBasedLossBase):
@@ -375,6 +390,9 @@ class MILossFromRef(EntropyBasedLossBase):
           tensor or to the mask tensor are not seen. The cache is not detached: a reference that requires grad
           receives a gradient from the first backward pass, and a second backward pass through the same module
           raises.
+          Half-precision references are normalised and cached in float32. The final loss and constant-signal
+          threshold follow the original reference dtype, including after ``.to(dtype)``; converting the cache
+          itself to a lower precision can round its stored bin positions.
     """
 
     def forward(self, other_signal: torch.Tensor, other_mask: torch.Tensor | None = None) -> torch.Tensor:
@@ -396,7 +414,7 @@ class MILossFromRef(EntropyBasedLossBase):
         H_x, H_y, H_xy = self.entropies(other_signal, other_mask)
         mi = H_x + H_y - H_xy
 
-        return -mi
+        return (-mi).to(self._reference_dtype.dtype)
 
 
 class NMILossFromRef(EntropyBasedLossBase):
@@ -430,7 +448,7 @@ class NMILossFromRef(EntropyBasedLossBase):
         H_x, H_y, H_xy = self.entropies(other_signal, other_mask)
         nmi = (H_x + H_y) / H_xy
 
-        return -nmi
+        return (-nmi).to(self._reference_dtype.dtype)
 
 
 class MILossFromRef2D(MILossFromRef):
@@ -819,11 +837,10 @@ def mutual_information_loss(
           positions inside both masks, while each signal is normalised over its own mask: a value inside one mask
           only is not counted, but it changes the loss when it is that signal's minimum or maximum. Values outside
           both masks have no effect. Masks of another shape, or with no position in common, raise an error.
-        - Known defect: in float16 and bfloat16 the empty bins are floored at ``torch.finfo(dtype).eps`` counts
-          before the histogram is normalised: both dtypes bias the loss of small images, and float16 returns NaN for
-          large ones, from about ``2**15 / window_radius**2`` pixels with the default ``MIKernel.xu``, from a
-          quarter of that with ``MIKernel.rectangular`` and from about ``2**16`` pixels, whatever the radius, with
-          ``MIKernel.truncated_gaussian`` (`#4153 <https://github.com/kornia/kornia/issues/4153>`_).
+        - For float16 and bfloat16 inputs, min-max normalisation, kernel evaluation, histogram accumulation and
+          entropy arithmetic use float32, including under autocast, and the final loss is cast back to the input
+          dtype. The empty-bin floor uses the histogram's computation dtype rather than the input dtype.
+          The constant-signal threshold remains ``torch.finfo(input dtype).eps``.
 
     Args:
         input (torch.Tensor): Batch of flat tensors shape (B,N) where B

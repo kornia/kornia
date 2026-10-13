@@ -696,7 +696,7 @@ class TestRandomMosaic(BaseTester):
         image = torch.zeros(2, 1, 6, 8, device=device, dtype=dtype)
         xyxy = image.new_tensor([[[1.0, 1.0, 2.0, 2.0]], [[1.0, 1.0, 2.0, 2.0]]])
         boxes = Boxes.from_tensor(xyxy)
-        aug = FilterBoxes(p=1.0)
+        aug = FilterBoxes(p=0.5)
         params = aug.forward_parameters(image.shape)
         params["batch_prob"] = image.new_tensor([0.0, 1.0])
         output = aug.transform_boxes(boxes, params, aug.flags)
