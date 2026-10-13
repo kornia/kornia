@@ -377,20 +377,15 @@ class TestParametrizedLine(BaseTester):
         self.assert_close(plain.origin.grad, torch.ones_like(origin))
         self.assert_close(plain.direction.grad, torch.full_like(direction, 2.0))
 
-    def test_integer_module_state(self, device):
-        # An integer origin and direction cannot require grad: they are buffers that keep their dtype, as in
-        # Hyperplane, instead of failing with torch's autograd error (#5201).
-        origin = torch.tensor([0, 0], device=device)
-        direction = torch.tensor([1, 0], device=device)
-        line = ParametrizedLine(origin, direction)
-        assert line.origin is origin
-        assert line.direction is direction
-        assert not list(line.parameters())
-        assert [name for name, _ in line.named_buffers()] == ["_origin", "_direction"]
-        assert line.point_at(3).tolist() == [3, 0]
-        restored = ParametrizedLine(torch.tensor([5, 5], device=device), torch.tensor([0, 1], device=device))
-        restored.load_state_dict(line.state_dict())
-        assert restored.point_at(2).tolist() == [2, 0]
+    def test_integer_input_raises(self, device):
+        # An integer origin or direction cannot be optimizable state: the constructor names the dtype instead of
+        # raising torch's autograd error (#5201). Cast it to a floating-point dtype first.
+        integer = torch.tensor([0, 0], device=device)
+        floating = torch.tensor([1.0, 0.0], device=device)
+        with pytest.raises(TypeCheckError, match=r"ParametrizedLine stores 'origin'.*torch.int64"):
+            ParametrizedLine(integer, floating)
+        with pytest.raises(TypeCheckError, match=r"ParametrizedLine stores 'direction'.*torch.int64"):
+            ParametrizedLine(floating, integer)
 
 
 def _near_vertical_points_5040(device, dtype) -> torch.Tensor:

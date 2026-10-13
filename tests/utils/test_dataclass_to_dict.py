@@ -19,7 +19,7 @@
 import importlib.util
 import sys
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
+from typing import Annotated, Any, Dict, List, NamedTuple, Optional, Tuple, Union
 
 import pytest
 import torch
@@ -106,6 +106,8 @@ class Holder:
     quoted_optional: "Optional[Inner]" = None
     plain: Any = None
     ambiguous: Union[Inner, dict] = None
+    fwd_many: List["Inner"] = field(default_factory=list)
+    annotated: Annotated[Inner, "meta"] = field(default_factory=lambda: Inner(0))
 
 
 def test_dict_to_dataclass_converts_optional_list_and_string_annotations():
@@ -164,10 +166,22 @@ def test_dict_to_dataclass_follows_a_union_only_when_one_member_fits():
 
 
 def test_dict_to_dataclass_rejects_other_values_for_a_dataclass_field():
-    with pytest.raises(TypeCheckError):
-        dict_to_dataclass({"inner": 5}, Holder)
-    with pytest.raises(TypeCheckError):
-        dict_to_dataclass({"many": [5]}, Holder)
+    # A position annotated with a dataclass takes a dict or an instance, whatever the annotation style or container.
+    for value in ({"inner": 5}, {"many": [5]}, {"fixed": ["x", 2]}, {"mapping": {"a": 5}}, {"quoted": None}):
+        with pytest.raises(TypeCheckError):
+            dict_to_dataclass(value, Holder)
+
+
+def test_dict_to_dataclass_resolves_nested_forward_refs_and_annotated():
+    got = dict_to_dataclass({"fwd_many": [{"v": 1}], "annotated": {"v": 2}}, Holder)
+    assert got.fwd_many == [Inner(1)]
+    assert got.annotated == Inner(2)
+
+
+def test_dict_to_dataclass_keeps_a_namedtuple_value_whole():
+    # only a plain list or tuple is rebuilt: a namedtuple's constructor takes one argument per field
+    assert dict_to_dataclass({"fixed": Pair({"v": 1}, 2)}, Holder).fixed == Pair({"v": 1}, 2)
+    assert dict_to_dataclass({"variadic": Point(1, 2)}, Holder).variadic == Point(1, 2)
 
 
 def test_dict_to_dataclass_round_trips_dataclass_to_dict():
@@ -203,19 +217,37 @@ class Tree:
     leaf: Leaf = field(default_factory=Leaf)
     maybe: Optional[Leaf] = None
     leaves: list[Leaf] = field(default_factory=list)
+
+
+@dataclass
+class NoneDefault:
+    sub: Leaf = None
 """
 
 
-def test_dict_to_dataclass_resolves_postponed_annotations(tmp_path, monkeypatch):
-    # With ``from __future__ import annotations`` every annotation is a string, including a plain ``Leaf``.
+def _load_postponed_module(tmp_path, monkeypatch):
     path = tmp_path / "_kornia_test_postponed_dataclasses.py"
     path.write_text(_POSTPONED_SOURCE)
     spec = importlib.util.spec_from_file_location(path.stem, path)
     module = importlib.util.module_from_spec(spec)
     monkeypatch.setitem(sys.modules, path.stem, module)
     spec.loader.exec_module(module)
+    return module
+
+
+def test_dict_to_dataclass_resolves_postponed_annotations(tmp_path, monkeypatch):
+    # With ``from __future__ import annotations`` every annotation is a string, including a plain ``Leaf``.
+    module = _load_postponed_module(tmp_path, monkeypatch)
     tree = dict_to_dataclass({"leaf": {"v": 1}, "maybe": {"v": 2}, "leaves": [{"v": 3}]}, module.Tree)
     assert tree == module.Tree(module.Leaf(1), module.Leaf(2), [module.Leaf(3)])
+
+
+def test_dict_to_dataclass_postponed_none_for_a_dataclass_field_raises(tmp_path, monkeypatch):
+    # ``sub: Leaf = None`` resolves to ``Leaf``, which takes a dict or an instance: None used to pass through while
+    # the annotation stayed a string, and now raises like it does for a field annotated with the class itself.
+    module = _load_postponed_module(tmp_path, monkeypatch)
+    with pytest.raises(TypeCheckError):
+        dict_to_dataclass(dataclass_to_dict(module.NoneDefault()), module.NoneDefault)
 
 
 def test_dict_to_dataclass_unresolvable_annotation_is_used_as_written():

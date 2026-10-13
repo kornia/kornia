@@ -689,21 +689,30 @@ def is_exporting() -> bool:
 def register_module_state(module: torch.nn.Module, name: str, x: torch.Tensor) -> None:
     """Store tensor ``x`` on ``module`` as ``name`` so it is optimizable, movable and serializable.
 
-    An existing ``nn.Parameter`` is kept, and a floating-point or complex tensor that takes no part
-    in autograd (no ``grad_fn`` and ``requires_grad=False``) becomes an ``nn.Parameter``, so the
-    module is optimizable. ``nn.Parameter(x)`` would re-root any other such tensor as a new leaf: a
-    group built from ``Se3.exp(v)`` would stop propagating gradients to ``v``, and a group built
-    from the caller's own leaf that requires grad would take its gradient away from that leaf. Such
-    a tensor is registered as a buffer instead, which keeps it and its history while ``.to()``,
-    ``state_dict()`` and ``load_state_dict()`` still reach it under the same key. An integer or
-    bool tensor cannot require grad, so it is a buffer too, kept with its dtype. Under graph
-    capture (``torch.jit.trace``, ``torch.compile``, ``torch.export`` and the dynamo ONNX
-    exporter) neither a parameter nor a buffer can be created inside the traced region, so the
-    tensor is kept as a plain attribute of the module being built.
+    ``x`` must be a floating-point or complex tensor, or an existing ``nn.Parameter``: an integer or bool tensor can
+    neither require grad nor follow the module's dtype conversions, so it raises ``TypeCheckError`` naming its dtype.
+    An existing ``nn.Parameter`` is kept, and a tensor that takes no part in autograd (no ``grad_fn`` and
+    ``requires_grad=False``) becomes an ``nn.Parameter``, so the module is optimizable. ``nn.Parameter(x)`` would
+    re-root any other tensor as a new leaf: a group built from ``Se3.exp(v)`` would stop propagating gradients to
+    ``v``, and a group built from the caller's own leaf that requires grad would take its gradient away from that
+    leaf. Such a tensor is registered as a buffer instead, which keeps it and its history while ``.to()``,
+    ``state_dict()`` and ``load_state_dict()`` still reach it under the same key. Under graph capture
+    (``torch.jit.trace``, ``torch.compile``, ``torch.export`` and the dynamo ONNX exporter) neither a parameter nor a
+    buffer can be created inside the traced region, so the tensor is kept as a plain attribute of the module being
+    built.
+
+    Raises:
+        TypeCheckError: if ``x`` is neither a floating-point nor a complex tensor, nor an ``nn.Parameter``.
+
     """
+    if not (isinstance(x, torch.nn.Parameter) or x.is_floating_point() or x.is_complex()):
+        raise TypeCheckError(
+            f"{type(module).__name__} stores {name.lstrip('_')!r} as module state, which needs a floating-point or "
+            f"complex tensor; got {x.dtype}. Cast it first, for example with `.float()`.",
+            actual_type=x.dtype,
+        )
     if isinstance(x, torch.nn.Parameter) or not (torch.jit.is_tracing() or is_compiling() or is_exporting()):
-        can_require_grad = x.is_floating_point() or x.is_complex()
-        if isinstance(x, torch.nn.Parameter) or (can_require_grad and x.grad_fn is None and not x.requires_grad):
+        if isinstance(x, torch.nn.Parameter) or (x.grad_fn is None and not x.requires_grad):
             x = x if isinstance(x, torch.nn.Parameter) else torch.nn.Parameter(x)
         else:
             module.register_buffer(name, x)
@@ -779,8 +788,9 @@ def dict_to_dataclass(dict_obj: Dict[str, Any], dataclass_type: Type[T]) -> T:
     """Recursively convert dictionaries to dataclass instances.
 
     A field annotated with a dataclass gets its dict value converted to that dataclass, and so does a
-    dataclass inside the field's ``Optional[...]`` or other union, the elements of a ``list`` or ``tuple``
-    annotation, or the values of a ``dict`` annotation. String annotations, including every annotation
+    dataclass inside the field's ``Optional[...]`` or other union, the elements of a plain ``list`` or ``tuple``
+    value under a sequence annotation, or the values of a plain ``dict`` value under a mapping annotation (a
+    namedtuple or a ``dict`` subclass is kept whole). String annotations, including every annotation
     in a module with ``from __future__ import annotations``, are resolved with :func:`typing.get_type_hints`.
     A value that is already an instance of the annotated dataclass is kept as it is, and values of other
     fields are passed on unchanged.
