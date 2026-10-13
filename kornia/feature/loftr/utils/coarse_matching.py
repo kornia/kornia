@@ -181,21 +181,27 @@ class CoarseMatching(nn.Module):
             invalid = invalid_c1 if invalid is None else invalid | invalid_c1
 
         if self.match_type == "dual_softmax":
-            # the temperature scales the (S, C) features instead of the (L, S) similarities
-            sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1 / self.temperature)
+            # Scale after contraction: scaling an operand can overflow float16, including when autocast converts
+            # float32 features for the einsum. In-place division avoids another similarity-sized allocation.
+            sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1).div_(self.temperature)
             if invalid is not None:
                 sim_matrix.masked_fill_(invalid, _masked_similarity(sim_matrix.dtype))
-            # softmax(dim=1) as exp(sim - column max) / column sum: PyTorch's dim-1 softmax kernel is several times
-            # slower on (L, S) similarity matrices than these contiguous passes.
-            conf_matrix = F.softmax(sim_matrix, 2)
-            if sim_matrix.requires_grad:
-                col_exp = torch.exp(sim_matrix - sim_matrix.amax(dim=1, keepdim=True))
-                conf_matrix = col_exp / col_exp.sum(dim=1, keepdim=True) * conf_matrix
+            if sim_matrix.dtype == torch.float16:
+                # Native softmax normalizes without returning the column sum in float16, where long columns can
+                # overflow. Check the similarity dtype as autocast can produce float16 from float32 features.
+                conf_matrix = F.softmax(sim_matrix, 1) * F.softmax(sim_matrix, 2)
             else:
-                # Without autograd, in place: two (L, S) matrices alive instead of four, which also keeps the CUDA
-                # caching allocator from re-reserving them for every new pair of image sizes.
-                col_exp = sim_matrix.sub_(sim_matrix.amax(dim=1, keepdim=True)).exp_()
-                conf_matrix.mul_(col_exp.div_(col_exp.sum(dim=1, keepdim=True)))
+                # softmax(dim=1) as exp(sim - column max) / column sum: PyTorch's dim-1 softmax kernel is several
+                # times slower on (L, S) similarity matrices than these contiguous passes.
+                conf_matrix = F.softmax(sim_matrix, 2)
+                if sim_matrix.requires_grad:
+                    col_exp = torch.exp(sim_matrix - sim_matrix.amax(dim=1, keepdim=True))
+                    conf_matrix = col_exp / col_exp.sum(dim=1, keepdim=True) * conf_matrix
+                else:
+                    # Without autograd, in place: two (L, S) matrices alive instead of four, which also keeps the
+                    # CUDA caching allocator from re-reserving them for every new pair of image sizes.
+                    col_exp = sim_matrix.sub_(sim_matrix.amax(dim=1, keepdim=True)).exp_()
+                    conf_matrix.mul_(col_exp.div_(col_exp.sum(dim=1, keepdim=True)))
             # Fully masked rows/columns can still receive softmax mass; masked cells are never valid matches.
             if invalid is not None:
                 conf_matrix.masked_fill_(invalid, 0.0)

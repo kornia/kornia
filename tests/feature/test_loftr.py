@@ -662,25 +662,86 @@ class TestCoarseMatchingSelection(BaseTester):
             mask_c1 = torch.ones(2, 24, device=device)
             mask_c0[0, 25:], mask_c1[1, :4] = 0, 0
         data = {"hw0_c": (5, 6), "hw1_c": (4, 6), "stride_c": 8}
-        reference_c0 = feat_c0.detach().double().requires_grad_(requires_grad)
+        # Keep the high-precision reference on CPU: MPS cannot hold float64 tensors.
+        reference_c0 = feat_c0.detach().cpu().double().requires_grad_(requires_grad)
         with torch.set_grad_enabled(requires_grad):
             cm(feat_c0, feat_c1, data, mask_c0=mask_c0, mask_c1=mask_c1)
             c = feat_c0.shape[-1] ** 0.5
-            sim = torch.einsum("nlc,nsc->nls", reference_c0 / c, feat_c1.double() / c) / self.CFG["dsmax_temperature"]
+            sim = torch.einsum("nlc,nsc->nls", reference_c0 / c, feat_c1.cpu().double() / c)
+            sim = sim / self.CFG["dsmax_temperature"]
             invalid = None
             if masked:
-                invalid = ~mask_c0.bool()[..., None] | ~mask_c1.bool()[:, None]
+                invalid = ~mask_c0.cpu().bool()[..., None] | ~mask_c1.cpu().bool()[:, None]
                 sim = sim.masked_fill(invalid, -1e9)
             expected = F.softmax(sim, 1) * F.softmax(sim, 2)
             if masked:
                 expected = expected.masked_fill(invalid, 0.0)
         # confidences are in [0, 1]: absolute tolerances of the input precision
         tol = {torch.float16: 5e-3, torch.bfloat16: 3e-2, torch.float32: 1e-5, torch.float64: 1e-10}[dtype]
-        self.assert_close(data["conf_matrix"].double(), expected, rtol=0.0, atol=tol)
+        self.assert_close(data["conf_matrix"].cpu().double(), expected, rtol=0.0, atol=tol)
         if requires_grad:
             (grad,) = torch.autograd.grad((data["conf_matrix"] ** 2).sum(), feat_c0)
             (grad_expected,) = torch.autograd.grad((expected**2).sum(), reference_c0)
-            self.assert_close(grad.double(), grad_expected, rtol=0.0, atol=50 * tol)
+            self.assert_close(grad.cpu().double(), grad_expected, rtol=0.0, atol=50 * tol)
+
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_temperature_scaling_keeps_finite_dot_products(self, device, dtype, requires_grad):
+        # Scaling the second feature first overflows fp16, although every similarity is finite.
+        cm = CoarseMatching({**self.CFG, "border_rm": 0}).to(device).eval()
+        feat0 = torch.zeros(1, 1, 1, device=device, dtype=dtype, requires_grad=requires_grad)
+        feat1 = torch.full((1, 1, 1), 10000.0, device=device, dtype=dtype, requires_grad=requires_grad)
+        data = {"hw0_c": (1, 1), "hw1_c": (1, 1), "stride_c": 8}
+        cm(feat0, feat1, data)
+        self.assert_close(data["conf_matrix"], torch.ones_like(data["conf_matrix"]), rtol=0.0, atol=0.0)
+        if requires_grad:
+            for grad in torch.autograd.grad(data["conf_matrix"].sum(), (feat0, feat1)):
+                self.assert_close(grad, torch.zeros_like(grad), rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_long_column_softmax_stays_normalized(self, device, dtype, requires_grad):
+        # The sum of 65536 exponentials equal to one cannot be represented in fp16.
+        length = 65536
+        cm = CoarseMatching(self.CFG).to(device).eval()
+        feat0 = torch.zeros(1, length, 1, device=device, dtype=dtype, requires_grad=requires_grad)
+        feat1 = torch.ones(1, 1, 1, device=device, dtype=dtype)
+        data = {"hw0_c": (256, 256), "hw1_c": (1, 1), "stride_c": 8}
+        cm(feat0, feat1, data)
+        expected = torch.full_like(data["conf_matrix"], 1.0 / length)
+        self.assert_close(data["conf_matrix"], expected, rtol=0.0, atol=0.0)
+        if requires_grad:
+            (grad,) = torch.autograd.grad(data["conf_matrix"][0, 0, 0], feat0)
+            assert bool(torch.isfinite(grad).all())
+            # The selected probability has a positive derivative; the other logits have negative derivatives.
+            reference = torch.zeros_like(feat0, device="cpu", dtype=torch.float64, requires_grad=True)
+            prob = (reference / self.CFG["dsmax_temperature"]).softmax(1)[0, 0, 0]
+            (grad_expected,) = torch.autograd.grad(prob, reference)
+            self.assert_close(grad, grad_expected.to(device=device, dtype=dtype), rtol=1e-2, atol=1e-7)
+
+    def test_long_column_softmax_autocast(self, device):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("float16 autocast regression runs on CPU and CUDA")
+        # Float32 features can still produce float16 similarities under autocast.
+        cm = CoarseMatching(self.CFG).to(device).eval()
+        feat0 = torch.zeros(1, 65536, 2, device=device, dtype=torch.float32)
+        feat1 = torch.zeros(1, 1, 2, device=device, dtype=torch.float32)
+        data = {"hw0_c": (256, 256), "hw1_c": (1, 1), "stride_c": 8}
+        with torch.autocast(device.type, dtype=torch.float16):
+            cm(feat0, feat1, data)
+        expected = torch.full((1, 65536, 1), 1 / 65536, device=device, dtype=torch.float16)
+        self.assert_close(data["conf_matrix"], expected, rtol=0.0, atol=0.0)
+
+    def test_temperature_scaling_autocast(self, device):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("float16 autocast regression runs on CPU and CUDA")
+        cm = CoarseMatching(self.CFG).to(device).eval()
+        feat0 = torch.zeros(1, 1, 2, device=device, dtype=torch.float32, requires_grad=True)
+        feat1 = torch.full((1, 1, 2), 10000.0, device=device, dtype=torch.float32, requires_grad=True)
+        data = {"hw0_c": (1, 1), "hw1_c": (1, 1), "stride_c": 8}
+        with torch.autocast(device.type, dtype=torch.float16):
+            cm(feat0, feat1, data)
+        self.assert_close(data["conf_matrix"], torch.ones(1, 1, 1, device=device, dtype=torch.float16))
+        for grad in torch.autograd.grad(data["conf_matrix"].sum(), (feat0, feat1)):
+            self.assert_close(grad, torch.zeros_like(grad), rtol=0.0, atol=0.0)
 
 
 class TestFineMatching(BaseTester):
@@ -918,24 +979,63 @@ class TestLinearAttention(BaseTester):
     @pytest.mark.parametrize("kv_len", [5, 40])
     @pytest.mark.parametrize("masked", [False, True])
     @pytest.mark.parametrize("dim_v", [4, 3])
-    def test_matches_the_per_head_einsums(self, device, kv_len, masked, dim_v):
+    def test_matches_the_per_head_einsums(self, device, dtype, kv_len, masked, dim_v):
         # Sequences longer than heads * dim run as dense GEMMs over the per-head blocks; both paths compute the
         # per-head linear attention, also when the values are narrower than the queries and keys.
         gen = torch.Generator().manual_seed(1)
-        q, k = (torch.randn(2, n, 2, 4, generator=gen, dtype=torch.float64).to(device) for n in (7, kv_len))
-        v = torch.randn(2, kv_len, 2, dim_v, generator=gen, dtype=torch.float64).to(device)
+        q, k = (torch.randn(2, n, 2, 4, generator=gen).to(device, dtype) for n in (7, kv_len))
+        v = torch.randn(2, kv_len, 2, dim_v, generator=gen).to(device, dtype)
         q_mask = kv_mask = None
         if masked:
-            q_mask = torch.ones(2, 7, dtype=torch.float64, device=device)
-            kv_mask = torch.ones(2, kv_len, dtype=torch.float64, device=device)
+            q_mask = torch.ones(2, 7, dtype=dtype, device=device)
+            kv_mask = torch.ones(2, kv_len, dtype=dtype, device=device)
             q_mask[1, 3], kv_mask[0, 1:3] = 0, 0
         out = LinearAttention()(q, k, v, q_mask, kv_mask)
-        self.assert_close(out, self._reference(q, k, v, q_mask, kv_mask), rtol=1e-10, atol=1e-12)
+        q_ref, k_ref, v_ref = (x.cpu().double() for x in (q, k, v))
+        qm_ref, km_ref = (None if x is None else x.cpu().double() for x in (q_mask, kv_mask))
+        expected = self._reference(q_ref, k_ref, v_ref, qm_ref, km_ref)
+        if dtype == torch.float64:
+            self.assert_close(out, expected.to(device), rtol=1e-10, atol=1e-12)
+        else:
+            self.assert_close(out, expected.to(device=device, dtype=dtype))
+
+    def test_off_head_overflow_does_not_contaminate_attention(self, device, dtype):
+        q = torch.zeros(1, 1, 2, 1, device=device, dtype=dtype, requires_grad=True)
+        k = torch.tensor([1.0, -math.log(10.0)], device=device, dtype=dtype).view(1, 1, 2, 1)
+        k = k.repeat(1, 3, 1, 1).requires_grad_()
+        v = torch.tensor([0.0, 40000.0], device=device, dtype=dtype).view(1, 1, 2, 1)
+        v = v.repeat(1, 3, 1, 1).requires_grad_()
+        out = LinearAttention()(q, k, v)
+        refs = tuple(x.detach().cpu().double().requires_grad_() for x in (q, k, v))
+        expected = self._reference(*refs)
+        self.assert_close(out, expected.to(device=device, dtype=dtype))
+        grads = torch.autograd.grad((out / 40000).sum(), (q, k, v))
+        refs_grad = torch.autograd.grad((expected / 40000).sum(), refs)
+        for grad, ref in zip(grads, refs_grad):
+            assert bool(torch.isfinite(grad).all())
+            self.assert_close(grad, ref.to(device=device, dtype=dtype))
+
+    def test_long_padded_query_stays_zero(self, device, dtype):
+        # With Z=1 for a padded query, forming Z * length first overflows fp16.
+        q = torch.zeros(1, 1, 1, 1, device=device, dtype=dtype)
+        k = torch.zeros(1, 65536, 1, 1, device=device, dtype=dtype)
+        v = torch.zeros_like(k)
+        q_mask = torch.zeros(1, 1, device=device, dtype=torch.bool)
+        out = LinearAttention()(q, k, v, q_mask=q_mask)
+        self.assert_close(out, torch.zeros_like(out), rtol=0.0, atol=0.0)
 
     def test_gradcheck_long_sequence(self, device):
         gen = torch.Generator().manual_seed(2)
         q, k, v = (torch.randn(1, n, 2, 4, generator=gen, dtype=torch.float64).to(device) for n in (6, 20, 20))
         self.gradcheck(LinearAttention(), (q, k, v), requires_grad=(True, True, True))
+
+    @pytest.mark.parametrize("kv_len", [5, 40])
+    def test_dynamo(self, device, dtype, torch_optimizer, kv_len):
+        q, k, v = (torch.rand(1, n, 2, 4, device=device, dtype=dtype) for n in (6, kv_len, kv_len))
+        q_mask = torch.ones(1, 6, device=device, dtype=torch.bool)
+        q_mask[:, 0] = False
+        op = LinearAttention()
+        self.assert_close(torch_optimizer(op)(q, k, v, q_mask), op(q, k, v, q_mask))
 
 
 class TestConventionsLoFTR(BaseTester):
