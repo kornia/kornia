@@ -199,6 +199,15 @@ class TestDrawPoint(BaseTester):
         assert img[0].nonzero().tolist() == [[0, 3], [3, 1]]  # (row, col): x 1.4 -> 1, y 2.6 -> 3
         assert img[:, 3, 1].tolist() == [1.0, 0.5, 0.25]
 
+    def test_jit_script_matches_eager(self, device, dtype):
+        img = torch.zeros(3, 4, 5, device=device, dtype=dtype)
+        points = torch.tensor([[1, 2], [3, 0]], device=device)
+        color = torch.tensor([1.0, 0.5, 0.25], device=device, dtype=dtype)
+        scripted = torch.jit.script(draw_point2d)
+        expected = draw_point2d(img.clone(), points, color)
+        assert expected.abs().sum() > 0
+        self.assert_close(scripted(img.clone(), points, color), expected, rtol=0, atol=0)
+
 
 class TestDrawLine(BaseTester):
     def test_draw_line_vertical(self, dtype, device):
@@ -782,6 +791,19 @@ class TestDrawRectangle(BaseTester):
         points = torch.tensor([0, 0, width - 1, height - 1]).to(device).expand(batch, 1, 4)
         out = draw_rectangle(black_image, points, color=torch.tensor([1.0]))
         assert out.sum() == batch * 3 * (2 * height + 2 * width - 4)
+
+    @pytest.mark.parametrize("fill", [False, True])
+    def test_jit_script_matches_eager(self, device, dtype, fill):
+        # draw_rectangle compiles under torch.jit.script and matches eager; H != W, the second box has reversed corners
+        image = torch.zeros(2, 3, 7, 10, device=device, dtype=dtype)
+        rectangle = torch.tensor(
+            [[[1.0, 1.0, 6.0, 3.0]], [[8.0, 5.0, 2.0, 0.0]]], device=device, dtype=dtype
+        )  # reversed corners
+        color = torch.tensor([[[1.0, 0.5, 0.25]], [[0.25, 0.5, 1.0]]], device=device, dtype=dtype)
+        scripted = torch.jit.script(draw_rectangle)
+        expected = draw_rectangle(image.clone(), rectangle, color, fill=fill)
+        assert expected.abs().sum() > 0
+        self.assert_close(scripted(image.clone(), rectangle, color, fill=fill), expected, rtol=0, atol=0)
 
     @pytest.mark.device_agnostic
     @pytest.mark.skipif(not dynamo_is_available(), reason="torch.export needs Dynamo on this torch/python pair")
