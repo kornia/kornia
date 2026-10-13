@@ -474,11 +474,15 @@ def equalize_clahe(
     .. image:: _static/img/equalize_clahe.png
 
     NOTE: The fast path uses OpenCV-style LUT calculation and round-to-nearest quantization.
-    Tiles use the natural size ``ceil(image_size / grid_size)`` along each axis, whether odd or even.
-    The image is reflect-padded only as needed to fill the requested grid. Both paths blend LUTs with
-    weight steps of ``1 / tile_size``, anchored at each tile's actual centre, with border LUTs clamped.
-    Kornia uses ``(p + 0.5) / tile_size - 0.5`` to preserve flip symmetry on unpadded grids; exact
-    ``cv2.createCLAHE`` parity is not the contract, and output values are not rounded to 8-bit integers.
+    Tiles are ``ceil(H / grid_size[0])`` by ``ceil(W / grid_size[1])`` pixels, odd or even, and the image is
+    reflect-padded at its end only along an axis the grid does not divide. OpenCV uses the same tiles when the
+    grid divides both axes or neither. When it divides only one, OpenCV pads that axis too, by one pixel per
+    tile; Kornia tiles each axis on its own and does not. Both paths blend LUTs with weight steps of
+    ``1 / tile_size``, anchored at each tile's actual centre, with border LUTs clamped. This is half a pixel
+    before OpenCV/scikit-image's historical phase: Kornia intentionally uses ``(p + 0.5) / tile_size - 0.5``
+    to preserve flip symmetry on unpadded grids. For the same tiles and LUTs, the phase difference is at most
+    half an interpolation step per axis; exact ``cv2.createCLAHE`` parity is not the contract, and output
+    values are not rounded to 8-bit integers.
 
     Args:
         input: images tensor to equalize with values in the range [0, 1] and shape :math:`(*, C, H, W)`.
