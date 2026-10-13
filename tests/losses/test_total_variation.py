@@ -25,6 +25,47 @@ from testing.base import BaseTester
 
 
 class TestTotalVariation(BaseTester):
+    @pytest.mark.parametrize("shape", [(1, 1), (1, 4), (4, 1), (2, 3, 1, 4), (2, 3, 4, 1)])
+    @pytest.mark.parametrize("reduction", ["sum", "mean"])
+    def test_singleton_spatial_axis(self, device, dtype, shape, reduction):
+        height, width = shape[-2:]
+        image = torch.arange(height * width, device=device, dtype=dtype).reshape(height, width).expand(shape)
+        expected_value = 0.0 if height == width == 1 else 1.0 if reduction == "mean" else 3.0
+        expected = torch.full(shape[:-2], expected_value, device=device, dtype=dtype)
+
+        self.assert_close(kornia.losses.total_variation(image, reduction), expected)
+
+    @pytest.mark.parametrize("shape", [(1, 1), (1, 4), (4, 1)])
+    @pytest.mark.parametrize("input_dtype", [torch.uint8, torch.int8, torch.int16, torch.int32])
+    def test_singleton_spatial_axis_integer(self, device, input_dtype, shape):
+        height, width = shape
+        image = torch.arange(height * width, device=device, dtype=input_dtype).reshape(shape)
+        expected = torch.tensor(0.0 if height == width == 1 else 1.0, device=device)
+
+        self.assert_close(kornia.losses.total_variation(image, reduction="mean"), expected)
+
+    @pytest.mark.parametrize("shape", [(1, 1), (1, 4), (4, 1)])
+    def test_singleton_spatial_axis_gradient(self, device, dtype, shape):
+        height, width = shape
+        image = torch.arange(height * width, device=device, dtype=dtype).reshape(shape).requires_grad_()
+        loss = kornia.losses.total_variation(image, reduction="mean")
+        loss.backward()
+        expected = torch.zeros_like(image).flatten()
+        if height * width > 1:
+            expected[0], expected[-1] = -1 / 3, 1 / 3
+
+        self.assert_close(loss, image.new_tensor(0.0 if height == width == 1 else 1.0))
+        self.assert_close(image.grad, expected.reshape(shape))
+
+    @pytest.mark.parametrize("shape", [(1, 1), (1, 4), (4, 1)])
+    def test_dynamo_singleton_spatial_axis(self, device, dtype, shape, torch_optimizer):
+        height, width = shape
+        image = torch.arange(height * width, device=device, dtype=dtype).reshape(shape)
+        expected = image.new_tensor(0.0 if height == width == 1 else 1.0)
+        op_optimized = torch_optimizer(kornia.losses.total_variation)
+
+        self.assert_close(op_optimized(image, reduction="mean"), expected)
+
     # Total variation of constant vectors is 0
     @pytest.mark.parametrize(
         "pred, expected",
