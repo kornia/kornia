@@ -230,10 +230,13 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         keys, dict_data_keys, _, _ = self._preproc_dict_data(cast(Dict[str, DataType], inputs))
         if not keys:
             raise ValueError(f"No key of the dictionary input names a data key. Got {list(inputs)}.")
-        if data_keys is not None and [DataKey.get(k) for k in data_keys] != dict_data_keys:
+        # The dictionary sets the order, so only the data keys themselves have to agree.
+        if data_keys is not None and sorted(DataKey.get(k).value for k in data_keys) != sorted(
+            k.value for k in dict_data_keys
+        ):
             raise ValueError(
-                f"A dictionary input names its own data keys, so `data_keys` must match them or be None. "
-                f"Got {data_keys} for the keys {list(keys)}."
+                f"A dictionary input names its own data keys, so `data_keys` must match them, in any order, or be "
+                f"None. Got {data_keys} for the keys {list(keys)}."
             )
         order = sorted(range(len(keys)), key=lambda i: dict_data_keys[i] != DataKey.INPUT)
         return [keys[i] for i in order]
@@ -297,8 +300,9 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         Non-augmented samples retain their original values, and the output matches the input structure.
 
         A dictionary input names its own data keys, as with :class:`~kornia.augmentation.AugmentationSequential`,
-        whatever ``data_keys`` the preset was built with; ``data_keys`` passed here must match them or be None. The
-        same samples are augmented in every entry, and an entry whose key names no data key is returned unchanged.
+        whatever ``data_keys`` the preset was built with; ``data_keys`` passed here must match them, in any order, or
+        be None. The same samples are augmented in every entry, and an entry whose key names no data key is returned
+        unchanged.
 
         `real_acc` is the Discriminator's accuracy on real images; for example,
         `(real_logits > 0).float().mean().item()` if using logits andn assuming real labels are positive.

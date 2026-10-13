@@ -138,5 +138,14 @@ class TestAdaptiveDiscriminatorAugmentation(PresetTests):
     def test_dict_input_data_keys_mismatch(self, device, dtype):
         ada = AdaptiveDiscriminatorAugmentation(RandomHorizontalFlip(p=1.0), initial_p=0.5)
         x = torch.rand(4, 1, 4, 4, device=device, dtype=dtype)
-        with pytest.raises(ValueError, match="must match them or be None"):
+        with pytest.raises(ValueError, match="must match them, in any order"):
             ada.forward({"input": x, "mask": x}, data_keys=["input"])
+
+    def test_dict_input_data_keys_any_order(self, device, dtype):
+        # The dictionary sets the order, so `data_keys` naming the same keys in another order are accepted.
+        ada = AdaptiveDiscriminatorAugmentation(RandomHorizontalFlip(p=1.0), initial_p=1.0, max_p=1.0)
+        x = torch.rand(4, 1, 4, 4, device=device, dtype=dtype)
+        m = (x > 0.5).to(dtype)
+        out = ada.forward({"mask": m, "input": x}, data_keys=["input", "mask"])
+        self.assert_close(out["input"], x.flip(-1))
+        self.assert_close(out["mask"], m.flip(-1))
