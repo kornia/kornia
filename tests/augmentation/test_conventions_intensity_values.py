@@ -1367,19 +1367,20 @@ class TestIntensityColourConventions(BaseTester):
             with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
                 _sync(K.RandomClahe(p=1.0)(image).device)
 
-    # Issue #2531: each axis of `grid_size` is tiled on its own and padded up to a whole number of tiles,
-    # so a grid works whether or not it divides the image, and an exactly dividing grid can still pad (the
-    # tile is rounded up to an even size).  The padding is reflect at the end of each axis, so the
-    # pre-padded image cropped back reproduces the output bitwise.
+    # Issue #2531: each axis of `grid_size` is tiled on its own, with tiles of ceil(size / grid) pixels, odd or
+    # even (#5812), so a grid works whether or not it divides the image, and only an axis the grid does not
+    # divide is padded.  The padding is reflect at the end of each axis, so the pre-padded image cropped back
+    # reproduces the output bitwise.
     @pytest.mark.parametrize(
         ("grid_size", "size", "pad"),
         [
             ((3, 3), 10, (2, 2)),
-            ((4, 4), 20, (4, 4)),
+            ((4, 4), 18, (2, 2)),
+            ((4, 4), 20, (0, 0)),
             ((5, 5), 20, (0, 0)),
-            ((4, 5), 20, (4, 0)),
+            ((4, 5), 18, (2, 2)),
             ((3, 5), 30, (0, 0)),
-            ((1, 2), 10, (0, 2)),
+            ((1, 2), 11, (0, 1)),
         ],
     )
     def test_convention_random_clahe_grid_pads_each_axis_to_whole_tiles_2531(self, device, dtype, grid_size, size, pad):

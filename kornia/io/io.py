@@ -177,8 +177,9 @@ def _apply_png_palette_and_transparency(path_file: Path, image: torch.Tensor) ->
         table = colors
         if trns is not None:
             alpha = torch.full((colors.shape[0],), 255, dtype=torch.uint8)
-            listed = torch.frombuffer(bytearray(trns), dtype=torch.uint8)[: colors.shape[0]]
-            alpha[: listed.numel()] = listed
+            if trns:
+                listed = torch.frombuffer(bytearray(trns), dtype=torch.uint8)[: colors.shape[0]]
+                alpha[: listed.numel()] = listed
             table = torch.cat([colors, alpha[:, None]], dim=1)
         indices = image[0].long()
         if indices.numel() and int(indices.max()) >= table.shape[0]:
@@ -326,9 +327,10 @@ def load_image(
           1 and 3 ``float32`` channels in [0, 1]. ``UNCHANGED`` keeps the file's channels and dtype, so a 16-bit PNG
           or TIFF loads as ``uint16`` and a float TIFF as ``float32``; the other types raise for such a file.
         - Channels are in RGB order, with alpha last. Under every type except ``UNCHANGED``, an 8-bit palette PNG
-          loads as its colours and a PNG ``tRNS`` chunk counts as alpha; ``RGBA8`` keeps the alpha (255 for an
-          opaque file), and the other types composite it over white, rounded to the nearest level. ``UNCHANGED``
-          returns a palette PNG's indices and keeps an alpha channel as stored.
+          loads as its colours and a PNG ``tRNS`` chunk counts as alpha; palette entries the chunk does not list, all
+          of them for an empty chunk, are opaque. ``RGBA8`` keeps the alpha (255 for an opaque file), and the other
+          types composite it over white, rounded to the nearest level. ``UNCHANGED`` returns a palette PNG's indices
+          and keeps an alpha channel as stored.
         - ``GRAY8`` and ``GRAY32`` convert a colour file with :func:`~kornia.color.rgb_to_grayscale`.
         - The pixels come back as stored: the EXIF orientation is ignored.
         - The extension, in any letter case, chooses the decoder; the file content does not. The file is decoded on
@@ -337,9 +339,6 @@ def load_image(
           JPEG; these, a truncated file and, under every type except ``UNCHANGED``, a malformed palette or
           ``PLTE``/``tRNS`` chunk raise ``ValueError``.
         - :ref:`Files and arrays <image-io-conventions>` maps OpenCV's and Pillow's loaders onto the load types.
-        - Known defect: under every type except ``UNCHANGED``, an 8-bit palette PNG with an empty ``tRNS`` chunk
-          raises the ``ValueError`` of ``torch.frombuffer``, whose message does not name the file, instead of loading
-          as its colours (`#5851 <https://github.com/kornia/kornia/issues/5851>`_).
 
     Args:
         path_file: Path to an image file in a format kornia-rs decodes, such as JPEG, PNG, TIFF or WebP; the
