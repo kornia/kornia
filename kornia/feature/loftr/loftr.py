@@ -200,13 +200,15 @@ class LoFTR(nn.Module):
 
         # feat_c0 = rearrange(self.pos_encoding(feat_c0), 'n c h w -> n (h w) c')
         # feat_c1 = rearrange(self.pos_encoding(feat_c1), 'n c h w -> n (h w) c')
+        # Token-major copies: the reshape of the permuted maps is a channel-strided view, and every transformer GEMM
+        # on it would run on the transposed layout.
         feat_c0 = self.pos_encoding(feat_c0).permute(0, 2, 3, 1)
         n, _h, _w, c = feat_c0.shape
-        feat_c0 = feat_c0.reshape(n, -1, c)
+        feat_c0 = feat_c0.reshape(n, -1, c).contiguous()
 
         feat_c1 = self.pos_encoding(feat_c1).permute(0, 2, 3, 1)
         n1, _h1, _w1, c1 = feat_c1.shape
-        feat_c1 = feat_c1.reshape(n1, -1, c1)
+        feat_c1 = feat_c1.reshape(n1, -1, c1).contiguous()
 
         mask_c0 = mask_c1 = None  # mask is useful in training
         # a coarse cell takes the mask value of the pixel it sits on
