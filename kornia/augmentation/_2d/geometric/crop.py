@@ -394,7 +394,7 @@ class RandomCrop(GeometricAugmentationBase2D):
             # onto forward_input_shape (the padded canvas), then removes its border below.
             transform = transform.clone()
             transform[:, :2, 2] += params["padding_size"][:, ::2].to(transform)
-        to_apply = torch.atleast_1d(params["batch_prob"] > 0.5)
+        to_apply = self._gate(params)
         if not to_apply.any():
             return super().inverse_inputs(input, params, flags, transform, **kwargs)
         padding_size = params["padding_size"].unique(dim=0).cpu().squeeze().tolist()

@@ -406,11 +406,14 @@ Augmentations
   supported. On accelerators the asynchronous assertion may report at the next
   synchronization; MPS before torch 2.13 checks on the host. A direct
   geometric ``transform_masks`` call requires a floating tensor.
-- A list of masks is not a substitute for separate full-batch tensors: list
-  index ``i`` selects sample ``i``'s gate, so full-batch entries desynchronize
-  under mixed gates and per-sample entries can fail in warps or reuse the wrong
-  crop window. Pass separate ``mask`` keys instead
-  (`#4477 <https://github.com/kornia/kornia/issues/4477>`_).
+- A mask list has one tensor per image sample, in sample order. Entries may
+  have different channel counts and use their sample's gate, parameters and
+  matrix in forward, replay and inverse, including nested image sequences and
+  auto-augment policies. Video, mix and 3D children, and a geometric
+  ``PatchSequential``, do not support mask lists and raise ``NotImplementedError``.
+  Each entry is ``(H, W)``, ``(C, H, W)`` or ``(1, C, H, W)`` with the image's
+  spatial size. Invalid lengths or shapes raise ``ValueError``. Use separate
+  ``mask`` keys for multiple full-batch masks.
 - Boxes use the inclusive ``xyxy_plus`` convention of
   :class:`kornia.geometry.boxes.Boxes` (see *Bounding boxes* above). Flips use
   integer pixel centres: ``x' = W - 1 - x``.
