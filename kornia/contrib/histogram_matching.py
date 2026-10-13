@@ -32,8 +32,9 @@ def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Te
 
     Returns:
         The transformed output image as the same shape as the source image. A floating source keeps its dtype; an
-        integer source returns ``float32`` on its own value scale. The quantiles are computed in ``float32``
-        (``float64`` for a ``float64`` source), so ``uint8``, ``float16`` and ``bfloat16`` images of any size work.
+        integer source returns ``float32``. The values come from the template, on its scale. The quantiles are
+        computed in ``float32`` (``float64`` for a ``float64`` source), so ``uint8``, ``float16`` and ``bfloat16``
+        images of any size work.
 
     Note:
         This function does not matches histograms element-wisely if input a batched tensor.
@@ -67,7 +68,7 @@ def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Te
     t_values = torch.cat([t_values[:1], t_values])
     interp_t_values = interp(s_quantiles, t_quantiles, t_values)
 
-    # A floating source keeps its dtype; an integer source returns float32 on its own scale.
+    # A floating source keeps its dtype; an integer source returns float32.
     out_dtype = source.dtype if source.is_floating_point() else compute_dtype
     return interp_t_values[bin_idx].reshape(oldshape).to(out_dtype)
 
@@ -93,9 +94,10 @@ def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.Tensor:
     """
     i = torch.clip(torch.searchsorted(xp, x, right=True), 1, len(xp) - 1)
 
-    # A zero-width segment (repeated xp) is only selected at the clipped upper end, x >= xp[-1]. Dividing by its width
-    # gave NaN, e.g. when float32 rounds the last cumulative counts of a 2**24-pixel template to the same quantile.
-    # Divide by a safe width there and return the right endpoint, as np.interp does for x >= xp[-1].
+    # A zero-width segment (repeated xp) is selected only at a clipped end: x >= xp[-1] when the last xp repeats, or
+    # x < xp[0] when the first one does. Dividing by its width gave NaN, e.g. when float32 rounds the last cumulative
+    # counts of a 2**24-pixel template to the same quantile. Divide by a safe width there and return fp[i], which at
+    # the upper end is fp[-1], as np.interp gives for x >= xp[-1].
     dx = xp[i] - xp[i - 1]
     zero_width = dx == 0
     out = (fp[i - 1] * (xp[i] - x) + fp[i] * (x - xp[i - 1])) / torch.where(zero_width, torch.ones_like(dx), dx)
