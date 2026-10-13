@@ -2161,7 +2161,7 @@ class TestConventionsLAF(BaseTester):
 
     @staticmethod
     def _degenerate_lafs(device, dtype):
-        big = 2.0 * math.sqrt(torch.finfo(dtype).max)  # finite entries whose determinant overflows
+        big = 2.0 * math.sqrt(torch.finfo(dtype).max)  # finite entries whose product overflows this dtype
         nan = float("nan")
         rows = [
             [[2.0, 1.0, 5.0], [0.5, 3.0, 7.0]],  # det 5.5
@@ -2169,14 +2169,17 @@ class TestConventionsLAF(BaseTester):
             [[1.0, 2.0, 5.0], [2.0, 4.0, 7.0]],  # rank 1: det 0
             [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],  # the padding of an unfilled detector slot
             [[2.0, 1.0, nan], [0.5, 3.0, 7.0]],  # NaN centre
-            [[big, 0.0, 5.0], [0.0, big, 7.0]],  # det overflows to inf
+            [[big, 0.0, 5.0], [0.0, big, 7.0]],  # det 4 * max: overflows to inf in this dtype
             [[0.0, 0.0, 3.0], [0.0, 0.0, 4.0]],  # zero A, non-zero centre
         ]
         return torch.tensor([rows], device=device, dtype=dtype)
 
     def test_convention_laf_is_valid_needs_finite_entries_and_a_finite_non_zero_determinant(self, device, dtype):
         laf = self._degenerate_lafs(device, dtype)
-        expected = torch.tensor([[True, True, False, False, False, False, False]], device=device)
+        # A float16 LAF's determinant is formed in float32, which holds the product of any two float16 entries, so
+        # the big frame is invalid in every other dtype and valid in float16.
+        big_is_valid = dtype == torch.float16
+        expected = torch.tensor([[True, True, False, False, False, big_is_valid, False]], device=device)
         assert torch.equal(kornia.feature.laf_is_valid(laf), expected)
 
     def test_convention_laf_is_filled_treats_only_the_all_zero_frame_as_padding(self, device, dtype):
