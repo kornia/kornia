@@ -797,7 +797,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             inputs: Inputs to operate on.
             input_names_to_handle: List of input names to convert.
                 If None, convert every tensor, NumPy array and PIL image argument, and load a string as an image
-                path only if it is the first positional argument.
+                path only if it is the first positional argument, or the value of an ``input`` or ``image`` key
+                (``image_0`` too) in a dictionary input.
             output_type: Desired output type ('pt', 'numpy', or 'pil').
             kwargs: Additional arguments.
 
