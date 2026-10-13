@@ -713,6 +713,37 @@ class TestFinePreprocess(BaseTester):
         self.assert_close(win0[1:3, 24], (centre0[1:3] + 2).to(dtype), rtol=0.0, atol=0.0)
 
 
+    @pytest.mark.parametrize("fine_hw", [((50, 34), (47, 43)), ((33, 37), (29, 41))])
+    def test_gathered_windows_equal_the_unfolded_ones(self, device, dtype, fine_hw):
+        # FinePreprocess cuts only the windows of the matched cells; they must be exactly the windows of
+        # F.unfold(feat, 5, stride=4, padding=2) indexed by the cell ids, for both images of a batch of two.
+        cfg = {
+            "fine_concat_coarse_feat": False,
+            "fine_window_size": 5,
+            "coarse": {"d_model": 4},
+            "fine": {"d_model": 3},
+        }
+        gen = torch.Generator().manual_seed(0)
+        (hf0, wf0), (hf1, wf1) = fine_hw
+        feat_f0 = torch.randn(2, 3, hf0, wf0, generator=gen).to(device, dtype)
+        feat_f1 = torch.randn(2, 3, hf1, wf1, generator=gen).to(device, dtype)
+
+        def unfolded(feat):
+            out = F.unfold(feat, kernel_size=(5, 5), stride=4, padding=2)
+            return out.reshape(out.shape[0], feat.shape[1], 25, -1).permute(0, 3, 2, 1)
+
+        ref0, ref1 = unfolded(feat_f0), unfolded(feat_f1)
+        b_ids = torch.tensor([0, 1, 1, 0, 1], device=device)
+        i_ids = torch.tensor([0, 5, ref0.shape[1] - 1, 17, 30], device=device)
+        j_ids = torch.tensor([ref1.shape[1] - 1, 0, 9, 41, 2], device=device)
+        data = {"stride_c": 8, "stride_f": 2, "b_ids": b_ids, "i_ids": i_ids, "j_ids": j_ids}
+        feat_c = torch.zeros(2, 1, 4, device=device, dtype=dtype)
+        with torch.no_grad():
+            win0, win1 = FinePreprocess(cfg).to(device, dtype)(feat_f0, feat_f1, feat_c, feat_c, data)
+        self.assert_close(win0, ref0[b_ids, i_ids], rtol=0.0, atol=0.0)
+        self.assert_close(win1, ref1[b_ids, j_ids], rtol=0.0, atol=0.0)
+
+
 class TestResNetFPN(BaseTester):
     def test_fpn_upsamples_by_2_then_crops_5728(self, device, dtype):
         # Each FPN level adds to its lateral map the coarser level upsampled by 2 (align_corners=True), cropped to
