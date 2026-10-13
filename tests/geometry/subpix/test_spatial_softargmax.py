@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import io
 import itertools
 import math
 import warnings
@@ -575,6 +576,54 @@ class TestConvSoftArgmax3d(BaseTester):
             assert output.dtype == dtype
         gradient = torch.autograd.grad([output.sum() for output in outputs], data)[0]
         assert gradient.shape == data.shape
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("op_name", ["function", "module"])
+    @pytest.mark.parametrize("dynamic", [False, True], ids=["static", "dynamic"])
+    def test_legacy_onnx_export_matches_eager(self, dtype, op_name, dynamic):
+        if dtype != torch.float32:
+            pytest.skip("The ONNX export is checked once, in float32")
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+
+        if op_name == "function":
+
+            class FunctionalWrapper(torch.nn.Module):
+                def forward(self, x):
+                    return kornia.geometry.subpix.conv_soft_argmax3d(x)
+
+            model = FunctionalWrapper()
+        else:
+            model = kornia.geometry.subpix.ConvSoftArgmax3d()
+        sample = torch.rand(1, 2, 5, 8, 9, dtype=dtype)
+        buffer = io.BytesIO()
+        export_kwargs = {
+            "input_names": ["input"],
+            "output_names": ["coords", "values"],
+            "opset_version": 17,
+            "dynamo": False,
+        }
+        if dynamic:
+            export_kwargs["dynamic_axes"] = {
+                "input": {0: "batch", 2: "depth", 3: "height", 4: "width"},
+                "coords": {0: "batch", 3: "depth_out", 4: "height_out", 5: "width_out"},
+                "values": {0: "batch", 2: "depth_out", 3: "height_out", 4: "width_out"},
+            }
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            torch.onnx.export(model, (sample,), buffer, **export_kwargs)
+
+        session = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"])
+        inputs = [sample]
+        if dynamic:
+            inputs.append(torch.rand(2, 2, 7, 9, 11, dtype=dtype))
+        for image in inputs:
+            actual = [torch.from_numpy(value) for value in session.run(None, {"input": image.numpy()})]
+            expected = model(image)
+            assert isinstance(expected, tuple)
+            assert len(actual) == len(expected) == 2
+            for got, want in zip(actual, expected):
+                self.assert_close(got, want, atol=1e-6, rtol=1e-6)
 
     def test_smoke(self, device, dtype):
         sample = torch.zeros(1, 1, 3, 3, 3, device=device, dtype=dtype)

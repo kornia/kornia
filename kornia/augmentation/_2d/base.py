@@ -85,9 +85,11 @@ class AugmentationBase2D(_AugmentationBase):
           (`#4424 <https://github.com/kornia/kornia/issues/4424>`_).
         - this base samples ``p`` per sample and uses ``p_batch`` as a call-wide gate. ``same_on_batch=True``
           shares applicable sampled values across the batch. Concrete constructors need not expose ``p_batch``;
-          see `#4425 <https://github.com/kornia/kornia/issues/4425>`_. The gate selects after the transform
-          has been computed for the whole batch, so a sample it skips can still raise or carry a NaN gradient
-          (`#4576 <https://github.com/kornia/kornia/issues/4576>`_).
+          see `#4425 <https://github.com/kornia/kornia/issues/4425>`_. A sample the gate skips comes back
+          with its input values, its values cannot make the call raise, and where they are finite its gradient
+          is the identity; a class whose transform checks input values or has an unbounded derivative runs it
+          on 0.5 for skipped samples. An augmentation that changes the sample shape still raises ``ValueError``
+          when the gate mixes applied and skipped samples (`#4497 <https://github.com/kornia/kornia/issues/4497>`_).
         - parameter sampling normally uses CPU defaults independently of the image device. Moving RNG state or
           samplers is incomplete for some generators, and returned parameter placement is a separate concern;
           see `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
@@ -99,6 +101,10 @@ class AugmentationBase2D(_AugmentationBase):
           caller's dict by reference and, if ``batch_prob`` is absent, inserts an all-true gate into it. Replaying
           parameters reproduces the output, except for :class:`RandomDissolving`, whose VAE latents are drawn
           during application and are not stored.
+        - with static ``p=1.0, p_batch=1.0`` every sample is transformed: a ``batch_prob`` put into ``params`` is not
+          consulted by the image, the transformation matrix, the labels or ``inverse``, in eager and compiled runs
+          alike (`#5585 <https://github.com/kornia/kornia/issues/5585>`_). Pass ``p < 1`` to skip samples by hand,
+          which every one of those paths honors.
         - some ``_param_generator.*`` range buffers in ``state_dict()`` do not update the samplers when loaded
           (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
         - an empty batch gives an empty output, except on a minority of classes that raise on ``B = 0``
