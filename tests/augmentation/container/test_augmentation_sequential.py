@@ -60,10 +60,10 @@ class TestAugmentationSequential:
     @pytest.mark.parametrize(
         "data_keys,error_type,match",
         [
-            ("input", KeyError, "I"),
-            ("image", KeyError, "I"),
+            ("input", KeyError, "'i' is not a valid DataKey"),
+            ("image", KeyError, "'i' is not a valid DataKey"),
             (["mask", "input"], NotImplementedError, "first input must be DataKey.IMAGE"),
-            (["input", "bbox_yxyx"], KeyError, "BBOX_YXYX"),
+            (["input", "bbox_yxyx"], KeyError, "'bbox_yxyx' is not a valid DataKey"),
             ([0, 10], ValueError, "10 is not a valid DataKey"),
             ([BorderType.REFLECT], TypeError, "DataKey"),
         ],
