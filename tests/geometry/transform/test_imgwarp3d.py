@@ -45,9 +45,10 @@ class TestWarpAffine3dEmptyBatch(BaseTester):
         assert matrix.grad is not None
         assert matrix.grad.shape == matrix.shape
 
-    def test_empty_batch_validation_4429(self, device, dtype):
+    @pytest.mark.parametrize("spatial", [(3, 4, 5), (0, 4, 5), (3, 0, 5), (3, 4, 0)])
+    def test_empty_batch_validation_4429(self, spatial, device, dtype):
         """An empty batch still rejects invalid sampling options and incompatible matrices."""
-        src = torch.empty(0, 2, 3, 4, 5, device=device, dtype=dtype)
+        src = torch.empty(0, 2, *spatial, device=device, dtype=dtype)
         matrix = torch.empty(0, 3, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError, match="expected mode"):
             proj.warp_affine3d(src, matrix, (3, 4, 5), flags="invalid")
@@ -55,6 +56,23 @@ class TestWarpAffine3dEmptyBatch(BaseTester):
             proj.warp_affine3d(src, matrix, (3, 4, 5), padding_mode="invalid")
         with pytest.raises(RuntimeError):
             proj.warp_affine3d(src, torch.eye(3, 4, device=device, dtype=dtype)[None], (3, 4, 5))
+
+    @pytest.mark.parametrize("spatial", [(0, 4, 5), (3, 0, 5), (3, 4, 0)])
+    @pytest.mark.parametrize("align_corners", [True, False])
+    @pytest.mark.parametrize("mode,padding", [("bilinear", "zeros"), ("nearest", "reflection")])
+    def test_empty_spatial_batch_4429(self, spatial, align_corners, mode, padding, device, dtype):
+        """An empty batch needs no source voxels to retain its output shape and gradients."""
+        src = torch.empty(0, 2, *spatial, device=device, dtype=dtype, requires_grad=True)
+        matrix = torch.empty(0, 3, 4, device=device, dtype=dtype, requires_grad=True)
+        out = proj.warp_affine3d(src, matrix, (2, 6, 7), mode, padding, align_corners)
+        assert out.shape == (0, 2, 2, 6, 7)
+        assert out.dtype == dtype
+        assert out.device == device
+        out.sum().backward()
+        assert src.grad is not None
+        assert src.grad.shape == src.shape
+        assert matrix.grad is not None
+        assert matrix.grad.shape == matrix.shape
 
     @pytest.mark.parametrize("augmentation", ["RandomAffine3D", "RandomRotation3D"])
     @pytest.mark.parametrize("container", [False, True])
@@ -73,9 +91,12 @@ class TestWarpAffine3dEmptyBatch(BaseTester):
         assert image.grad is not None
         assert image.grad.shape == image.shape
 
-    def test_dynamo_empty_batch_4429(self, device, dtype, torch_optimizer):
+    @pytest.mark.parametrize("spatial", [(3, 4, 5), (0, 4, 5), (3, 0, 5), (3, 4, 0)])
+    def test_dynamo_empty_batch_4429(self, spatial, device, dtype, torch_optimizer, optimizer_backend):
         """Fullgraph capture keeps the empty affine warp and its backward pass."""
-        src = torch.empty(0, 2, 3, 4, 5, device=device, dtype=dtype, requires_grad=True)
+        if not optimizer_backend or optimizer_backend == "jit":
+            pytest.skip("fullgraph requires a torch.compile backend")
+        src = torch.empty(0, 2, *spatial, device=device, dtype=dtype, requires_grad=True)
         matrix = torch.empty(0, 3, 4, device=device, dtype=dtype, requires_grad=True)
         compiled = torch_optimizer(proj.warp_affine3d, fullgraph=True)
         out = compiled(src, matrix, (2, 6, 7))
@@ -107,8 +128,10 @@ def test_empty_destination_is_autograd_connected(op_name, dsize, align_corners, 
 
 
 @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
-def test_empty_source_policy(op_name, device, dtype):
-    src = torch.empty(1, 2, 0, 4, 5, device=device, dtype=dtype, requires_grad=True)
+@pytest.mark.parametrize("spatial", [(0, 4, 5), (3, 0, 5), (3, 4, 0)])
+def test_empty_source_policy(op_name, spatial, device, dtype):
+    """A nonempty batch with no source voxels only permits an empty destination."""
+    src = torch.empty(1, 2, *spatial, device=device, dtype=dtype, requires_grad=True)
     if op_name == "warp_affine3d":
         transform = torch.eye(3, 4, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
         op = proj.warp_affine3d
@@ -116,8 +139,8 @@ def test_empty_source_policy(op_name, device, dtype):
         transform = torch.eye(4, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
         op = proj.warp_perspective3d
 
-    empty = op(src, transform, (0, 4, 5))
-    assert empty.shape == (1, 2, 0, 4, 5)
+    empty = op(src, transform, spatial)
+    assert empty.shape == (1, 2, *spatial)
     empty.sum().backward()
     assert src.grad is not None
     assert transform.grad is not None

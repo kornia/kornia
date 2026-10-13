@@ -1309,8 +1309,10 @@ def warp_affine3d(
         - align_corners: ``True`` by default
         - padding_mode: ``'zeros'`` by default
         - an empty batch returns shape :math:`(0, C, d, h, w)` with gradients connected to both inputs
+          even when a source spatial dimension is zero
         - a zero output dimension returns an autograd-connected empty tensor;
           negative output dimensions raise ``ValueError``
+        - a nonempty batch requires positive source spatial dimensions for a nonempty output
 
     Args:
         src : input torch.Tensor of shape :math:`(B, C, D, H, W)`.
@@ -1340,6 +1342,8 @@ def warp_affine3d(
     if dsize[0] < 0 or dsize[1] < 0 or dsize[2] < 0:
         raise ValueError(f"Output size must be non-negative. Got {dsize}.")
     if dsize[0] == 0 or dsize[1] == 0 or dsize[2] == 0:
+        return _empty_warp_output_3d(src, M, dsize, flags, padding_mode, align_corners)
+    if B == 0 and (D == 0 or H == 0 or W == 0):
         return _empty_warp_output_3d(src, M, dsize, flags, padding_mode, align_corners)
     out_dtype = src.dtype
     if _runs_in_float32(src, M):
