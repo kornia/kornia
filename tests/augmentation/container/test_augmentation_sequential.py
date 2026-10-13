@@ -2924,6 +2924,9 @@ class TestAugmentationSequentialReplay:
                 assert_close(actual, expected)
 
     def test_annotations_reuse_the_matrix_of_the_image_call(self, device, dtype, monkeypatch):
+        # Within one call the image records its matrix next to the params dict it was given, and the mask, box and
+        # keypoint handlers reuse it instead of recomputing one matrix each. The inverse recomputes the image's matrix
+        # once, as an image-only inverse does, and its annotation handlers reuse the recorded one.
         calls = []
         generate = K.RandomAffine.generate_transformation_matrix
 

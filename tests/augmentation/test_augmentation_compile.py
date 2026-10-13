@@ -504,3 +504,19 @@ class TestContainerCompile(BaseTester):
         assert out_image.shape == image.shape
         assert out_mask.shape == (2, 1, 8, 8)
         assert out_keypoints.shape == keypoints.shape
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason="no Dynamo on this torch/python pair")
+    def test_traced_replay_of_another_draw_after_a_traced_image_call(self, device, dtype):
+        # A traced image call records its params dict without a snapshot. A traced replay of another draw still has to
+        # see that its dict is not the recorded one and recompute, instead of reusing the image call's matrix.
+        torch._dynamo.reset()
+        image = torch.rand(2, 1, 16, 16, device=device, dtype=dtype)
+        keypoints = torch.tensor([[[3.0, 4.0]], [[9.0, 12.0]]], device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomAffine(30.0, p=1.0), data_keys=["input", "keypoints"])
+        params = aug.forward_parameters(image.shape)
+        other = aug.forward_parameters(image.shape)
+        traced = torch.compile(aug, backend=CompileCounter())
+        traced(image, keypoints, params=params)
+        replayed = traced(keypoints, params=other, data_keys=["keypoints"])
+        _, expected = aug(image, keypoints, params=other)
+        self.assert_close(replayed, expected)
