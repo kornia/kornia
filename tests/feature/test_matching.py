@@ -1330,6 +1330,17 @@ class TestMatchFGINNSecondNeighbour(BaseTester):
             # there is no second neighbour: the match is accepted with ratio 0, never nan
             assert dists.tolist() == [[0.0]]
 
+    @pytest.mark.parametrize("int_dtype", [torch.int32, torch.int64])
+    def test_integer_distance_matrix(self, device, int_dtype):
+        # an integer dm, such as Hamming distances between binary descriptors
+        for xy2, expected in ((self.NEAR_AND_FAR, 0.4), (self.ALL_NEAR, 0.0)):
+            dm = torch.tensor([[2, 3, 5]], device=device, dtype=int_dtype)
+            dists, idxs = self._match(dm, xy2, device, torch.float32)
+            assert idxs.tolist() == [[0, 0]]
+            # promoted to the default floating dtype
+            assert dists.dtype == torch.get_default_dtype()
+            self.assert_close(dists, torch.tensor([[expected]], device=device))
+
     def test_gradients_are_finite(self, device, dtype):
         for xy2, expected in ((self.NEAR_AND_FAR, [[0.2, 0.0, -0.08]]), (self.ALL_NEAR, [[0.0, 0.0, 0.0]])):
             dm = torch.tensor([[2.0, 2.5, 5.0]], device=device, dtype=dtype, requires_grad=True)
