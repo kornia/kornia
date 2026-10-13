@@ -16,6 +16,8 @@ The rest of this guide contains practical and technical guidance so nobody has t
 ## Practical guidelines
 
 - Search existing issues and pull requests before starting. Focused fixes and documentation improvements are welcome as pull requests. For a new public API, a behavior change, or a large piece of work, an early issue or discussion can save everyone time. A conversation helps us align; it is not a promise that somebody will review or merge the result.
+- Some issues say they are reserved for a maintainer implementation, and some already have an open pull request. Please comment on the issue or on that pull request instead of opening another one.
+- Open an issue with a reproducer before fixing a numerical edge case that realistic inputs do not reach, such as half-precision overflow at magnitudes far beyond image or coordinate ranges, or a matrix scaled by `1e15`. Each such fix costs a full review across dtypes and devices and adds a promotion path to maintain, so we decide first whether it is worth that cost. One issue can list several cases. Wrong results on realistic inputs are welcome directly as pull requests.
 - Check the part you changed and tell us what you ran. A bug fix is easier to trust when it includes a test that fails without the fix. Numerical work is easier to review when expected values come from a reference implementation, a paper, or a mathematical invariant.
 - Look for an existing `kornia` utility before adding another implementation. Keep changes focused, follow nearby code, and update the documentation when public behavior changes.
 - Read your own contribution and stay part of the conversation about it. You do not need perfect English or an immediate answer; we care that questions and technical concerns are treated seriously.
@@ -408,7 +410,7 @@ See [the fragment guide](changelog.d/README.md) for examples and release instruc
 
 ## Pull Request
 
-Fill in the [pull request template](.github/pull_request_template.md) with enough context for another person to understand the change. Link related issues or discussions when they exist, say what you checked, and tell us how AI helped if you used it.
+Fill in the [pull request template](.github/pull_request_template.md) with enough context for another person to understand the change. Link related issues or discussions when they exist, say what you checked, and tell us how AI helped if you used it. The description goes in the pull request itself; do not commit it to the repository as a file such as `PR.md`.
 
 For bug fixes, a regression test that fails before the fix is especially helpful. For numerical or geometry changes, say where the expected behavior comes from. For new public APIs or behavior changes, an issue or discussion before a large implementation can uncover compatibility and design concerns early.
 

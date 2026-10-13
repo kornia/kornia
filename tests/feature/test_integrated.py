@@ -100,6 +100,48 @@ class TestGetLAFDescriptors(BaseTester):
             nondet_tol=1e-3,
         )
 
+    @pytest.mark.parametrize("layout", ["transposed", "channels_last"])
+    def test_non_contiguous_descriptor_output(self, device, dtype, layout):
+        # The per-patch output is flattened into (B, N, D). A `view` there refused an output whose trailing dimensions
+        # cannot be merged without a copy, such as a transposed block or a channels-last convolution.
+        B, N, PS = 2, 3, 16
+        img = torch.rand(B, 1, 48, 64, device=device, dtype=dtype)
+        lafs = torch.tensor(
+            [
+                [
+                    [[6.0, 2.0, 20.0], [-1.0, 5.0, 30.0]],
+                    [[4.0, -1.5, 41.0], [0.5, 7.0, 17.0]],
+                    [[8.0, 1.0, 33.0], [-3.0, 6.0, 25.0]],
+                ],
+                [
+                    [[5.0, 1.0, 12.0], [-2.0, 4.0, 36.0]],
+                    [[7.0, 2.5, 50.0], [1.5, 6.0, 22.0]],
+                    [[3.0, -0.5, 27.0], [1.0, 9.0, 14.0]],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        patches = extract_patches_from_pyramid(img, lafs, PS).view(B * N, 1, PS, PS)
+        if layout == "transposed":
+
+            class _TransposedBlock(nn.Module):
+                def forward(self, x):
+                    return x[..., :3, :5].transpose(-1, -2)
+
+            desc = _TransposedBlock()
+            expected = patches[..., :3, :5].transpose(-1, -2).reshape(B, N, 15)
+        else:
+
+            class _ChannelsLast(nn.Module):
+                def forward(self, x):
+                    return x.contiguous(memory_format=torch.channels_last)
+
+            conv = nn.Conv2d(1, 4, 5, stride=4).to(device, dtype)
+            desc = nn.Sequential(conv, _ChannelsLast())
+            expected = conv(patches).reshape(B, N, -1)
+        self.assert_close(get_laf_descriptors(img, lafs, desc, PS), expected)
+
 
 class TestGetLAFDescriptorsEmptyPath(BaseTester):
     """The empty-LAF result must agree with the non-empty one (see #4065)."""
@@ -124,7 +166,7 @@ class TestGetLAFDescriptorsEmptyPath(BaseTester):
 
     @pytest.mark.parametrize("descriptor", ["four_dim", "dense_sift"])
     def test_empty_matches_a_non_2d_descriptor(self, device, dtype, descriptor):
-        """The width must be what `.view(B, N, -1)` produces, not the probe's last dimension.
+        """The width must be what `.reshape(B, N, -1)` produces, not the probe's last dimension.
 
         The non-empty path flattens *everything* the descriptor produced per patch, so taking
         `probe.shape[-1]` agreed only for descriptors whose output is 2-D. `patch_descriptor` is
@@ -1046,3 +1088,37 @@ class TestSIFTDescriptorLayoutArgument(BaseTester):
     def test_invalid_layout(self, preset):
         with pytest.raises(ValueError, match="layout"):
             preset(descriptor_layout="vlfeat")
+
+
+class TestConventionsSIFTScaleSpaceKeypointSize(BaseTester):
+    @pytest.mark.parametrize("backend, backend_rtol", [("pyramid", 1e-3), ("patch", 2e-2)])
+    def test_convention_sift_scale_space_frames_are_three_times_the_opencv_keypoint_size(
+        self, device, dtype, backend, backend_rtol
+    ):
+        from testing.base import supports_reflect_padding
+
+        if backend == "patch" and not supports_reflect_padding(device, dtype):
+            pytest.skip("the patch backend's scale pyramid needs a reflection-padding kernel for this dtype")
+        # Four Gaussian blobs (sigma 2.5, 3.5, 5 and 4.2 px) at non-integer centres x != y of a 150 x 230 uint8 image.
+        # OpenCV 5.0.0 finds one keypoint on the sigma-5 blob, of size 2 sigma for its detection scale sigma:
+        #   cv2.SIFT_create(enable_precise_upscale=True).detect(img_u8, None) -> size 8.871075630187988
+        # (the same image built with numpy; pixel sum 97820). SIFTFeatureScaleSpace frames have scale 6 sigma, so its
+        # frame on that blob has scale 3 * size. The sigma-5 blob is the one both backends find in every dtype.
+        h, w, cx, cy = 150, 230, 186.25, 101.4
+        blobs = [(41.3, 37.6, 2.5), (118.7, 44.2, 3.5), (cx, cy, 5.0), (60.5, 110.8, 4.2)]
+        yy, xx = torch.meshgrid(
+            torch.arange(h, dtype=torch.float64), torch.arange(w, dtype=torch.float64), indexing="ij"
+        )
+        img = sum(torch.exp(-((xx - bx) ** 2 + (yy - by) ** 2) / (2.0 * s * s)) for bx, by, s in blobs)
+        img = (torch.round(img.clamp(0.0, 1.0) * 255.0) / 255.0)[None, None].to(device, dtype)
+        feature = kornia.feature.SIFTFeatureScaleSpace(64, descriptor_backend=backend).to(device, dtype).eval()
+        with torch.no_grad():
+            lafs, _, _ = feature(img)
+        centres = kornia.feature.get_laf_center(lafs)[0].cpu().double()
+        distance = (centres - torch.tensor([cx, cy], dtype=torch.float64)).norm(dim=-1)
+        nearest = int(distance.argmin())
+        assert distance[nearest] < 1.0
+        scale = kornia.feature.get_laf_scale(lafs)[0, nearest, 0, 0].cpu().double()
+        # the frame's own rounding on top of the backend's detection error
+        rtol = backend_rtol + 2.0 * torch.finfo(dtype).eps
+        self.assert_close(scale, torch.tensor(3.0 * 8.871075630187988, dtype=torch.float64), rtol=rtol, atol=0.0)
