@@ -17,15 +17,56 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 import torch
 
-from kornia.feature import SIFTDescriptorFromPyramid, get_laf_orientation, laf_from_center_scale_ori
+from kornia.feature import LAFOrienter, SIFTDescriptorFromPyramid, get_laf_orientation, laf_from_center_scale_ori
+from kornia.filters import gaussian_blur2d
 
-from testing.base import BaseTester, supports_reflect_padding
+from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
 
 
 class TestSIFTDescriptorFromPyramid(BaseTester):
+    def test_orientation_rejects_pixel_oscillation_5748(self, device, dtype):
+        # A horizontal ramp with a four-pixel vertical oscillation. Integrating
+        # smoothed gradients preserves the ramp; the former sparse histogram
+        # sampling aliases the oscillation into an orientation about -51 degrees.
+        axis = torch.arange(65, device=device, dtype=torch.float32)
+        image = (0.2 * axis[None, :] + 0.25 * torch.sin(torch.pi / 2 * (axis[:, None] - 32)))[None, None]
+        image = image.to(dtype)
+        lafs = torch.tensor([[[[8.0, 0.0, 32.0], [0.0, 8.0, 32.0]]]], device=device, dtype=dtype)
+        oriented, _ = SIFTDescriptorFromPyramid().to(device, dtype).orient_and_describe(image, lafs)
+        self.assert_close(
+            get_laf_orientation(oriented), torch.zeros(1, 1, 1, device=device, dtype=dtype), rtol=0.0, atol=5.0
+        )
+
+    @pytest.mark.parametrize("size", [1, 3, 4, 8, 9])
+    @pytest.mark.parametrize("inference", [False, True])
+    def test_separable_pooling_matches_full_kernel(self, device, dtype, size, inference):
+        feature = SIFTDescriptorFromPyramid(spatial_bin_size=size).to(device, dtype)
+        # Cross the CPU pooling tile boundary and leave a partial final tile.
+        hist = torch.rand(2, 36, 37, 19, device=device, dtype=dtype)
+        # The public descriptor promotes reduced-precision images before pooling.
+        if dtype in (torch.float16, torch.bfloat16):
+            hist = hist.float()
+        pooled = torch.nn.functional.conv2d(
+            hist.reshape(-1, 1, 37, 19), feature.descriptor_pooling_kernel.to(hist), padding=size // 2
+        )
+        if size % 2 == 0:
+            pooled = torch.nn.functional.avg_pool2d(pooled, 2, stride=1)
+        with torch.set_grad_enabled(not inference):
+            actual = feature._pool_histograms(hist)
+        self.assert_close(actual.to(dtype), pooled.reshape_as(hist).to(dtype))
+
+    def test_orientation_bins_do_not_change_supplied_frame_descriptors(self, device, dtype):
+        image = torch.rand(1, 1, 48, 48, device=device, dtype=dtype)
+        lafs = torch.tensor([[[[8.0, 2.0, 24.0], [-2.0, 8.0, 24.0]]]], device=device, dtype=dtype)
+        coarse = SIFTDescriptorFromPyramid(orientation_bins=18).to(device, dtype)
+        fine = SIFTDescriptorFromPyramid(orientation_bins=72).to(device, dtype)
+        self.assert_close(coarse(image, lafs), fine(image, lafs))
+
     def test_shape_norm_and_empty(self, device, dtype):
         image = torch.rand(2, 1, 64, 80, device=device, dtype=dtype)
         xy = torch.tensor([[[24.0, 24.0], [48.0, 40.0]], [[20.0, 30.0], [52.0, 36.0]]], device=device, dtype=dtype)
@@ -162,7 +203,8 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
 
         monkeypatch.setattr(implementation, "spatial_gradient", gradient)
         oriented, descriptors = feature.orient_and_describe(image, lafs)
-        assert shapes == [(40, 40)]
+        # Description and orientation use distinct gradient maps at the used octave.
+        assert shapes == [(40, 40), (40, 40)]
 
         # Skipping the unused octaves must not change a single output value.
         # Only CPU can be held to bitwise equality: the histogram scatter uses
@@ -241,11 +283,23 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
         assert torch.isfinite(image.grad).all()
         assert torch.isfinite(lafs.grad).all()
 
-    def test_gradcheck(self, device):
+    @pytest.mark.parametrize("upright", [False, True])
+    def test_gradcheck(self, device, upright):
         image = torch.rand(1, 1, 8, 8, device=device, dtype=torch.float64)
         lafs = torch.tensor([[[[2.0, 0.0, 3.0], [0.0, 2.0, 3.0]]]], device=device, dtype=torch.float64)
         feature = SIFTDescriptorFromPyramid(spatial_bin_size=3).to(device, torch.float64)
-        self.gradcheck(lambda image: feature(image, lafs), (image,))
+        self.gradcheck(lambda image: feature.orient_and_describe(image, lafs, upright=upright)[1], (image,))
+
+    @pytest.mark.parametrize("inference", [False, True])
+    def test_dynamo(self, device, dtype, torch_optimizer, inference):
+        image = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
+        lafs = torch.tensor([[[[6.0, 0.0, 16.0], [0.0, 6.0, 16.0]]]], device=device, dtype=dtype)
+        feature = SIFTDescriptorFromPyramid().to(device, dtype)
+        with torch.set_grad_enabled(not inference):
+            expected_lafs, expected_descriptors = feature.orient_and_describe(image, lafs)
+            actual_lafs, actual_descriptors = torch_optimizer(feature.orient_and_describe)(image, lafs)
+        self.assert_close(actual_lafs, expected_lafs)
+        self.assert_close(actual_descriptors, expected_descriptors)
 
     def test_empty_batch(self, device, dtype):
         image = torch.empty(0, 1, 40, 40, device=device, dtype=dtype)
@@ -291,3 +345,65 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
         monkeypatch.setattr(descriptor, "_pyramid", counted_pyramid)
         descriptor.orient_and_describe(image, lafs)
         assert len(calls) == 1
+
+
+class TestConventionsSIFTDescriptorFromPyramid(BaseTester):
+    """Pins for the frame in which SIFTDescriptorFromPyramid reads LAFs and the orientation it assigns."""
+
+    @staticmethod
+    def _flip_lr(desc: torch.Tensor) -> torch.Tensor:
+        """The descriptor of the left-right mirrored neighbourhood: angle bin a becomes 4 - a, cell column cx 3 - cx."""
+        d = desc.reshape(-1, 8, 4, 4)
+        return d[:, [(4 - a) % 8 for a in range(8)]].flip(-1).reshape(desc.shape)
+
+    @staticmethod
+    def _transpose(desc: torch.Tensor) -> torch.Tensor:
+        """The descriptor of the transposed neighbourhood: angle bin a becomes 2 - a, cells (cy, cx) become (cx, cy)."""
+        d = desc.reshape(-1, 8, 4, 4)
+        return d[:, [(2 - a) % 8 for a in range(8)]].transpose(-1, -2).reshape(desc.shape)
+
+    def test_convention_pyramid_sift_reads_lafs_in_pixel_coordinates(self, device, dtype):
+        # A LAF centre (x, y) is the pixel centre of column x and row y, as everywhere in kornia.feature. A Gaussian
+        # blob centred on pixel (41, 22) of a 60 x 75 image, described by an axis-aligned LAF at that pixel, is its own
+        # mirror image, so its descriptor is a fixed point of the mirror permutation; the same LAF half a pixel to the
+        # right is not (the residual is 0.058).
+        ys, xs = torch.arange(60.0).view(-1, 1), torch.arange(75.0).view(1, -1)
+        blob = torch.exp(-((xs - 41) ** 2 + (ys - 22) ** 2) / (2 * 4.0**2))[None, None].to(device, dtype)
+        lafs = torch.tensor(
+            [[[[6.0, 0.0, 41.0], [0.0, 6.0, 22.0]], [[6.0, 0.0, 41.5], [0.0, 6.0, 22.0]]]], device=device, dtype=dtype
+        )
+        desc = SIFTDescriptorFromPyramid(rootsift=False).to(device, dtype)(blob, lafs)[0]
+        self.assert_close(self._flip_lr(desc[0]), desc[0])
+        assert (self._flip_lr(desc[1]) - desc[1]).abs().max() > 0.04
+        # Relabelling: transposing the image and the frame (A -> T A T, centre (x, y) -> (y, x)) transposes the
+        # described neighbourhood, so the descriptor permutes; a sheared frame on a smooth random image.
+        torch.manual_seed(0)
+        image = gaussian_blur2d(torch.rand(1, 1, 60, 75, device=device), (7, 7), (1.5, 1.5)).to(dtype)
+        laf = torch.tensor([[[[5.0, 1.5, 41.0], [-0.8, 6.0, 22.0]]]], device=device, dtype=dtype)
+        laf_t = torch.tensor([[[[6.0, -0.8, 22.0], [1.5, 5.0, 41.0]]]], device=device, dtype=dtype)
+        sift = SIFTDescriptorFromPyramid(rootsift=False).to(device, dtype)
+        self.assert_close(sift(image.transpose(-1, -2), laf_t)[0], self._transpose(sift(image, laf)[0]))
+
+    def test_convention_orient_and_describe_turns_the_laf_x_axis_onto_the_dominant_gradient(self, device, dtype):
+        # The assigned orientation is minus the gradient's angle (measured from +x towards +y, image rows growing
+        # downwards), whatever orientation the input LAF had, so the oriented frame's x axis lies along the gradient and
+        # the descriptor's dominant angle bin is 0. LAFOrienter, which orients SIFTFeature's patch backend, assigns the
+        # same orientation.
+        ys, xs = torch.arange(60.0).view(-1, 1), torch.arange(75.0).view(1, -1)
+        lafs = laf_from_center_scale_ori(
+            torch.tensor([[[41.0, 22.0], [30.0, 35.0], [52.0, 30.0]]], device=device, dtype=dtype),
+            torch.full((1, 3, 1, 1), 6.0, device=device, dtype=dtype),
+            torch.tensor([[[0.0], [50.0], [-120.0]]], device=device, dtype=dtype),
+        )
+        atol = 0.05 if dtype in (torch.float32, torch.float64) else 1.0  # degrees; bfloat16 reads 135 to a degree
+        sift = SIFTDescriptorFromPyramid(rootsift=False).to(device, dtype)
+        for gradient_angle in (30.0, -60.0, 135.0):
+            g = math.radians(gradient_angle)
+            ramp = (0.01 * (math.cos(g) * xs + math.sin(g) * ys))[None, None].to(device, dtype)
+            oriented, desc = sift.orient_and_describe(ramp, lafs)
+            expected = torch.full((1, 3, 1), -gradient_angle, device=device, dtype=dtype)
+            self.assert_close(get_laf_orientation(oriented), expected, rtol=0.0, atol=atol)
+            assert desc.reshape(3, 8, 16).sum(-1).argmax(-1).tolist() == [0, 0, 0]
+            if supports_replicate_padding(device, dtype):  # LAFOrienter's patch gradients pad with mode="replicate"
+                orienter = LAFOrienter(19).to(device, dtype)
+                self.assert_close(get_laf_orientation(orienter(lafs, ramp)), expected, rtol=0.0, atol=2 * atol)

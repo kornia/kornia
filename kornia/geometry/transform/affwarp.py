@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import numbers
 from typing import Optional, Tuple, Union
 
 import torch
@@ -45,6 +46,16 @@ __all__ = [
     "shear",
     "translate",
 ]
+
+
+def _register_transform_tensor(module: nn.Module, name: str, value: Optional[torch.Tensor]) -> None:
+    # Preserve trainable constructor parameters; ordinary tensors follow Module.to
+    # without adding new entries to existing checkpoints.
+    if isinstance(value, nn.Parameter):
+        module.register_parameter(name, value)
+    else:
+        module.register_buffer(name, value, persistent=False)
+
 
 # utilities to compute affine matrices
 
@@ -533,14 +544,18 @@ def shear(
     .. image:: _static/img/shear.png
 
     Convention:
-        - ``shear`` is ``(shx, shy)``
+        - ``shear`` is a pair of raw factors ``(shx, shy)`` about pixel ``(0, 0)``:
+          ``x_out = x + shx * y``, ``y_out = y + shy * x`` (x right, y down).
+        - Known defect: :class:`Affine` reads its ``shear`` as angles in radians about the image centre and shears
+          by their negative tangent, so the same tensor shears the other way there while its values stay below
+          ``pi / 2`` in magnitude (`#5661 <https://github.com/kornia/kornia/issues/5661>`_).
         - align_corners: ``False`` by default (differs from the other 2D affine warps and from
           :class:`Shear`, which default to ``True``)
 
     Args:
         tensor: The image tensor to be skewed with shape of :math:`(B, C, H, W)`.
-        shear: tensor containing the angle to shear
-          in the x and y direction. The tensor must have a shape of
+        shear: tensor containing raw shear factors
+          in the x and y direction about pixel (0, 0). The tensor must have a shape of
           (B, 2), where B is batch size, last dimension contains shx shy.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
@@ -724,7 +739,8 @@ def resize_to_be_divisible(
     Convention:
         - see the convention block of :func:`resize`
         - rounds ``height``/``width`` to the nearest multiple of ``divisible_factor`` before
-          delegating to :func:`resize`
+          delegating to :func:`resize`; a positive side becomes at least ``divisible_factor``, and an empty side
+          stays empty
 
     Args:
         input (torch.Tensor): Input tensor to be resized.
@@ -740,13 +756,16 @@ def resize_to_be_divisible(
         torch.Tensor: The resized tensor.
 
     """
-    if isinstance(input, torch.Tensor) and len(input.shape) == 4:
-        height, width = input.shape[2], input.shape[3]
-    if isinstance(input, torch.Tensor) and len(input.shape) == 3:
-        height, width = input.shape[1], input.shape[2]
+    if not isinstance(input, torch.Tensor):
+        raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(input)}")
+    if input.ndim < 2:
+        raise ValueError(f"Input tensor must have at least two dimensions. Got {input.ndim}")
+    if not isinstance(divisible_factor, numbers.Integral) or divisible_factor <= 0:
+        raise ValueError(f"divisible_factor must be a positive integer. Got {divisible_factor}")
 
-    height = round(height / divisible_factor) * divisible_factor
-    width = round(width / divisible_factor) * divisible_factor
+    height, width = input.shape[-2:]
+    height = max(1, round(height / divisible_factor)) * divisible_factor if height > 0 else 0
+    width = max(1, round(width / divisible_factor)) * divisible_factor if width > 0 else 0
     return resize(input, (height, width), interpolation, align_corners, side, antialias)
 
 
@@ -873,7 +892,12 @@ class Affine(nn.Module):
     r"""Apply multiple elementary affine transforms simultaneously.
 
     Convention:
-        - See the convention block of :func:`affine`.
+        - ``shear`` contains angles in radians, using the negative-tangent, x-then-y convention
+          of :func:`get_shear_matrix2d` about ``center`` (by default ``((W - 1) / 2, (H - 1) / 2)``).
+        - Known defect: :func:`shear` and :class:`Shear` read their ``shear`` as raw factors about pixel ``(0, 0)``,
+          without the negative tangent, so the same tensor shears the other way there while its values stay below
+          ``pi / 2`` in magnitude (`#5661 <https://github.com/kornia/kornia/issues/5661>`_).
+        - ``align_corners`` defaults to ``True``. See the convention block of :func:`affine`.
 
     Args:
         angle: Angle in degrees for counter-clockwise rotation around the center. The tensor
@@ -882,7 +906,7 @@ class Affine(nn.Module):
             have a shape of (B, 2), where B is the batch size and the last dimension contains dx and dy.
         scale_factor: Factor for scaling. The tensor must have a shape of (B,2), where B is the
             batch size and the last dimension contains scale factors for x and y direction.
-        shear: Factor for shearing in x- and y-direction around the center. The
+        shear: Angles in radians for shearing in x- and y-direction around the center. The
             tensor must have a shape of (B, 2), where B is the batch size and the last dimension
             contains sx and sy.
         center: Transformation center in pixels. The tensor must have a shape of (B, 2), where
@@ -896,6 +920,9 @@ class Affine(nn.Module):
 
     Raises:
         RuntimeError: If not one of ``angle``, ``translation``, ``scale_factor``, or ``shear`` is set.
+        DeviceError: If ``angle``, ``translation``, ``scale_factor`` and ``shear`` are not all on one device.
+        TypeCheckError: If they are on one device but do not all have one dtype. The ones not given are
+            created on that device and in that dtype.
 
     Returns:
         The transformed tensor with same shape as input.
@@ -935,22 +962,22 @@ class Affine(nn.Module):
         self._batch_size = batch_size
 
         super().__init__()
-        device, dtype = _extract_device_dtype([angle, translation, scale_factor])
+        device, dtype = _extract_device_dtype([angle, translation, scale_factor, shear])
 
         if angle is None:
             angle = torch.zeros(batch_size, device=device, dtype=dtype)
-        self.angle = angle
+        _register_transform_tensor(self, "angle", angle)
 
         if translation is None:
             translation = torch.zeros(batch_size, 2, device=device, dtype=dtype)
-        self.translation = translation
+        _register_transform_tensor(self, "translation", translation)
 
         if scale_factor is None:
             scale_factor = torch.ones(batch_size, 2, device=device, dtype=dtype)
-        self.scale_factor = scale_factor
+        _register_transform_tensor(self, "scale_factor", scale_factor)
 
-        self.shear = shear
-        self.center = center
+        _register_transform_tensor(self, "shear", shear)
+        _register_transform_tensor(self, "center", center)
         self.mode = mode
         self.padding_mode = padding_mode
         self.align_corners = align_corners
@@ -1079,8 +1106,8 @@ class Rotate(nn.Module):
         align_corners: bool = True,
     ) -> None:
         super().__init__()
-        self.angle: torch.Tensor = angle
-        self.center: Union[torch.Tensor, None] = center
+        _register_transform_tensor(self, "angle", angle)
+        _register_transform_tensor(self, "center", center)
         self.mode: str = mode
         self.padding_mode: str = padding_mode
         self.align_corners: bool = align_corners
@@ -1137,7 +1164,7 @@ class Translate(nn.Module):
         align_corners: bool = True,
     ) -> None:
         super().__init__()
-        self.translation: torch.Tensor = translation
+        _register_transform_tensor(self, "translation", translation)
         self.mode: str = mode
         self.padding_mode: str = padding_mode
         self.align_corners: bool = align_corners
@@ -1198,8 +1225,8 @@ class Scale(nn.Module):
         align_corners: bool = True,
     ) -> None:
         super().__init__()
-        self.scale_factor: torch.Tensor = scale_factor
-        self.center: Union[torch.Tensor, None] = center
+        _register_transform_tensor(self, "scale_factor", scale_factor)
+        _register_transform_tensor(self, "center", center)
         self.mode: str = mode
         self.padding_mode: str = padding_mode
         self.align_corners: bool = align_corners
@@ -1228,8 +1255,8 @@ class Shear(nn.Module):
         - See the convention block of :func:`shear`.
 
     Args:
-        shear: tensor containing the angle to shear
-          in the x and y direction. The tensor must have a shape of
+        shear: tensor containing raw shear factors
+          in the x and y direction about pixel (0, 0). The tensor must have a shape of
           (B, 2), where B is batch size, last dimension contains shx shy.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
@@ -1253,7 +1280,7 @@ class Shear(nn.Module):
         self, shear: torch.Tensor, mode: str = "bilinear", padding_mode: str = "zeros", align_corners: bool = True
     ) -> None:
         super().__init__()
-        self.shear: torch.Tensor = shear
+        _register_transform_tensor(self, "shear", shear)
         self.mode: str = mode
         self.padding_mode: str = padding_mode
         self.align_corners: bool = align_corners

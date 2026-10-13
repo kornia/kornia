@@ -397,12 +397,11 @@ class TestConventionsBoxBlur(BaseTester):
             assert lit[:, 1].unique().tolist() == cols
             self.assert_close(out[out != 0], torch.full((8,), 1 / 8, device=device, dtype=dtype))
 
-    def test_wart_box_blur_integer_image_blurs_to_zero_5155(self, device):
-        """box_blur builds its kernel in an integer input's dtype, so a uint8 image blurs to zero (#5155)."""
-        if device.type != "cpu":
-            pytest.skip("#5155 is pinned on the CPU; MPS raises for an integer convolution instead")
+    def test_convention_box_blur_integer_image_is_blurred_in_float32_5155(self, device):
+        """An integer image is blurred in float32 and returns float32: a constant uint8 image stays constant (#5155)."""
         image = torch.full((1, 1, 5, 7), 100, device=device, dtype=torch.uint8)
         for separable in (True, False):
-            assert box_blur(image, (3, 3), separable=separable).eq(0).all()
-        # the same blur of the same values in floating point keeps the constant image
-        self.assert_close(box_blur(image.float(), (3, 3)), image.float())
+            out = box_blur(image, (3, 3), separable=separable)
+            assert out.dtype == torch.float32
+            self.assert_close(out, box_blur(image.float(), (3, 3), separable=separable))
+            self.assert_close(out, image.float())

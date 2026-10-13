@@ -21,6 +21,7 @@ from unittest.mock import patch
 import pytest
 import torch
 
+from kornia.core.exceptions import ShapeError
 from kornia.feature.mkd import (
     COEFFS,
     EmbedGradients,
@@ -35,7 +36,7 @@ from kornia.feature.mkd import (
     spatial_kernel_embedding,
 )
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_replicate_padding
 
 
 @pytest.fixture(autouse=True)
@@ -398,6 +399,31 @@ class TestWhitening(BaseTester):
         )
         self.assert_close(model(patches), model_jit(patches))
 
+    @pytest.mark.parametrize("output_dims", [20, 40, 41, 50])
+    def test_pcaws_shrinkage_does_not_depend_on_output_dims(self, device, dtype, output_dims):
+        # pcaws replaces every kept eigenvalue by lambda' = (1 - alpha) * lambda + alpha, a shrinkage towards 1 with
+        # weight alpha = eigvals[keval=40] of the full spectrum. alpha belongs to the whitening model, so keeping
+        # fewer components only drops columns; output_dims <= 40 used to raise IndexError instead.
+        in_dims, keval = 50, 40
+        eigvals = 1.0 / torch.arange(1, in_dims + 1, dtype=torch.float64)  # decaying, alpha = 1 / 41
+        eigvecs = torch.linspace(-1.0, 1.0, in_dims * in_dims, dtype=torch.float64).view(in_dims, in_dims)
+        model = {"pca": {"mean": torch.zeros(in_dims), "eigvecs": eigvecs.float(), "eigvals": eigvals.float()}}
+        wh = Whitening(xform="pcaws", whitening_model=model, in_dims=in_dims, output_dims=output_dims, keval=keval)
+        wh = wh.to(device, dtype)
+        alpha = eigvals[keval]
+        expected = eigvecs[:, :output_dims] * ((1 - alpha) * eigvals[:output_dims] + alpha).pow(-0.5)
+        self.assert_close(wh.evecs.data, expected.to(device, dtype))
+        assert wh(torch.rand(3, in_dims, device=device, dtype=dtype)).shape == (3, output_dims)
+
+    @pytest.mark.parametrize("keval", [40, -1, -31])
+    def test_pcaws_needs_the_shrinkage_eigenvalue(self, device, keval):
+        # A whitening model with no eigenvalue at index keval has no shrinkage weight: say so instead of IndexError.
+        # A negative keval has no meaning for a spectrum; it used to index the one truncated to output_dims.
+        in_dims = 30
+        model = {"pca": {"mean": torch.zeros(in_dims), "eigvecs": torch.eye(in_dims), "eigvals": torch.ones(in_dims)}}
+        with pytest.raises(ValueError, match=rf"keval={keval} .*30 eigenvalues \(0 <= keval < 30\)"):
+            Whitening(xform="pcaws", whitening_model=model, in_dims=in_dims, output_dims=20, keval=keval)
+
 
 class TestMKDDescriptor(BaseTester):
     dims = {"cart": 63, "polar": 175, "concat": 238}
@@ -504,6 +530,37 @@ class TestMKDDescriptor(BaseTester):
         )
         self.assert_close(model(patches), model_jit(patches))
 
+    @pytest.mark.parametrize("output_dims", [20, 40])
+    def test_pcaws_with_at_most_40_output_dims(self, device, dtype, output_dims):
+        # pcaws used to index the eigenvalue at keval=40 after truncating the spectrum to output_dims (IndexError).
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip(f"no replicate-padding kernel for {dtype} on this device")
+        mkd = MKDDescriptor(patch_size=19, kernel_type="concat", whitening="pcaws", output_dims=output_dims)
+        out = mkd.to(device, dtype)(torch.rand(2, 1, 19, 19, device=device, dtype=dtype))
+        assert out.shape == (2, output_dims)
+        assert out.dtype == dtype
+
+    @pytest.mark.parametrize(
+        ("shape", "message"),
+        [
+            ((2, 1, 23, 19), "dimension 2: expected 19, got 23"),
+            ((2, 1, 19, 23), "dimension 3: expected 19, got 23"),
+            ((2, 1, 32, 32), "dimension 2: expected 19, got 32"),
+            ((2, 3, 19, 19), "dimension 1: expected 1, got 3"),
+            ((1, 19, 19), "expected 4 dimensions, got 3"),
+            ((1, 1, 1, 19, 19), "expected 4 dimensions, got 5"),
+        ],
+        ids=["height", "width", "both", "channels", "rank3", "rank5"],
+    )
+    def test_patches_must_be_grayscale_and_patch_size(self, device, dtype, shape, message):
+        # The spatial encoding is precomputed for patch_size x patch_size grayscale patches. Another size used to fail
+        # deep inside with torch's broadcast RuntimeError, and three channels with a message about five.
+        mkd = MKDDescriptor(patch_size=19, kernel_type="concat", whitening=None).to(device, dtype)
+        with pytest.raises(ShapeError, match=message):
+            mkd(torch.rand(*shape, device=device, dtype=dtype))
+        if supports_replicate_padding(device, dtype):
+            assert mkd(torch.rand(0, 1, 19, 19, device=device, dtype=dtype)).shape == (0, 238)
+
 
 class TestSimpleKD(BaseTester):
     dims = {"cart": 63, "polar": 175}
@@ -536,3 +593,38 @@ class TestSimpleKD(BaseTester):
             return skd(patches.double())
 
         self.gradcheck(skd_describe, (patches, ps), nondet_tol=1e-4)
+
+
+class TestConventionsMKDDescriptor(BaseTester):
+    """Pin for the frame of MKD's kernels within the patch."""
+
+    @pytest.mark.parametrize("kernel_type", ["concat", "polar", "cart"])
+    def test_convention_mkd_kernels_are_centred_on_the_patch_centre(self, device, dtype, kernel_type):
+        # The kernel grid spans [-1, 1] across the patch_size pixels, so its origin is pixel (patch_size - 1) / 2, as in
+        # manyids2/mkd_pytorch (between two pixels at the even 32). Mirroring a patch about that centre maps the grid
+        # onto itself and flips only the signs of the odd harmonics, so every entry keeps its magnitude; a grid half a
+        # pixel off the centre does not. whitening=None needs no download and keeps the raw entries.
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip(f"no replicate-padding kernel for {dtype} on {device.type}")
+        torch.manual_seed(0)
+        patches = torch.rand(4, 1, 32, 32, device=device, dtype=dtype)
+        mkd = MKDDescriptor(patch_size=32, kernel_type=kernel_type, whitening=None).to(device, dtype)
+        desc = mkd(patches)
+        for mirrored in (patches.flip(-1), patches.flip(-2)):
+            out = mkd(mirrored)
+            self.assert_close(out.abs(), desc.abs())
+            assert (out - desc).abs().max() > 0.02  # a mirrored random patch changes signs: the pin is not vacuous
+
+    @pytest.mark.parametrize("kernel_type", ["concat", "polar", "cart"])
+    def test_convention_mkd_flat_patch_is_unit_norm_except_in_float16_without_whitening(
+        self, device, dtype, kernel_type
+    ):
+        # A flat patch has zero gradients, so its magnitudes are the sqrt of the 1e-8 added to them. In float16 the
+        # 1e-8 underflows to 0 and, with whitening=None, the descriptor is all zero; in the other dtypes it is a unit
+        # vector. whitening=None needs no download.
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip(f"no replicate-padding kernel for {dtype} on {device.type}")
+        mkd = MKDDescriptor(patch_size=19, kernel_type=kernel_type, whitening=None).to(device, dtype)
+        out = mkd(torch.full((2, 1, 19, 19), 0.5, device=device, dtype=dtype))
+        expected = 0.0 if dtype == torch.float16 else 1.0
+        self.assert_close(out.norm(dim=1), torch.full((2,), expected, device=device, dtype=dtype))

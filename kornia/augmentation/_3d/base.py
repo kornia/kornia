@@ -115,8 +115,7 @@ class RigidAffineAugmentationBase3D(AugmentationBase3D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
         """Generate transformation matrices with the given input and param settings."""
-        batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
 
         in_tensor = self.transform_tensor(input)
 

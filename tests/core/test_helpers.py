@@ -33,6 +33,7 @@ from kornia.core.utils import (
     _torch_svd_cast,
     batched_forward,
     is_autocast_enabled,
+    is_compiling,
     is_exporting,
     is_mps_tensor_safe,
     register_module_state,
@@ -40,7 +41,7 @@ from kornia.core.utils import (
     safe_solve_with_mask,
 )
 
-from testing.base import BaseTester, assert_close
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, assert_close, dynamo_is_available
 
 
 def _issue_5476_batch(device, dtype):
@@ -338,9 +339,9 @@ class TestExportHelpers:
         assert torch.jit.script(is_exporting)() is False
 
     def test_is_exporting_falls_back_to_is_compiling(self, monkeypatch):
-        # torch < 2.6 has no ``torch.compiler.is_exporting``; inside a Dynamo trace the guard must
-        # still be true, as it is on newer torch where Dynamo folds the flag to True for
-        # ``torch.compile`` as well.
+        # torch < 2.6 has no ``torch.compiler.is_exporting``, so inside a Dynamo trace the guard falls
+        # back to ``is_compiling`` and is true under ``torch.compile`` too. Newer torch answers with its
+        # own flag, whose value under ``torch.compile`` depends on the release (#5037).
         from kornia.core import utils
 
         monkeypatch.setattr(utils, "_torch_is_exporting", None)
@@ -356,6 +357,33 @@ class TestExportHelpers:
         except RuntimeError as e:  # e.g. "Dynamo is not supported on Python 3.13+" on torch 2.5
             pytest.skip(f"no Dynamo here: {e}")
         assert seen == [True]
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_is_compiling_covers_capture_and_export(self):
+        # Whether ``is_exporting`` is also true inside a compiled trace depends on the Torch release
+        # (#5037), so the promise that holds across versions is on ``is_compiling``: both capture
+        # modes are reported, which is what a guard that only means "do not branch on data" needs.
+        x = torch.zeros(2)
+        seen = []
+
+        def fn(v):
+            seen.append(is_compiling())
+            return v + 1
+
+        torch.compile(fn, backend="eager")(x)
+        assert seen == [True]
+
+        exported = []
+
+        class Mod(torch.nn.Module):
+            def forward(self, v):
+                exported.append(is_compiling())
+                return v + 1
+
+        torch.export.export(Mod(), (x,))
+        assert exported
+        assert all(exported)
+        assert is_compiling() is False
 
     def test_register_module_state_wraps_leaf(self, device, dtype):
         m = torch.nn.Module()
@@ -459,6 +487,21 @@ class TestInverse3x3ClosedForm(BaseTester):
 
 
 class TestSvdCast:
+    @pytest.mark.parametrize("shape", [(2, 5, 3), (2, 3, 5), (3, 32, 128)])
+    @pytest.mark.parametrize("full_matrices", [False, True])
+    def test_rectangular_factors(self, device, dtype, shape, full_matrices):
+        a = torch.randn(*shape, device=device, dtype=dtype)
+        # The largest batch also exercises the CPU fallback on MPS (8192 input elements).
+        u, s, v = _torch_svd_cast(a, full_matrices=full_matrices)
+        batch, m, n = shape
+        rank = min(m, n)
+        assert u.shape == (batch, m, m if full_matrices else rank)
+        assert s.shape == (batch, rank)
+        assert v.shape == (batch, n, n if full_matrices else rank)
+        assert all(t.dtype == dtype and t.device == a.device for t in (u, s, v))
+        tol_val = 1e-1 if dtype in (torch.float16, torch.bfloat16) else 1e-3
+        assert_close(a, u[..., :rank] @ torch.diag_embed(s) @ v[..., :rank].mT, atol=tol_val, rtol=tol_val)
+
     def test_smoke(self, device, dtype):
         a = torch.randn(5, 3, 3, device=device, dtype=dtype)
         u, s, v = _torch_svd_cast(a)

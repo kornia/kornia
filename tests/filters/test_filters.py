@@ -1696,21 +1696,37 @@ class TestConventionsFilter2d(BaseTester):
         assert counter.frame_count == 1
 
     @pytest.mark.parametrize("name", ["filter2d", "filter2d_separable", "filter3d", "fft_conv"])
-    def test_wart_integer_input_truncates_a_fractional_kernel_to_zero_5155(self, name, device, dtype):
-        """An integer input casts the kernel to its dtype: a 1/9 box kernel turns a constant 100 image to 0 (#5155)."""
-        if name != "fft_conv" and device.type != "cpu":
-            pytest.skip("integer convolution raises on this device, so there is no truncated result to pin (#5155)")
+    def test_convention_integer_input_is_filtered_in_float32_5155(self, name, device, dtype):
+        """An integer input is filtered in float32 with a floating kernel and returns float32 (#5155)."""
         spatial = (3, 5, 7) if name == "filter3d" else (5, 7)
         image = torch.full((1, 1, *spatial), 100, dtype=torch.uint8, device=device)
-        if name == "filter2d_separable":
-            third = torch.full((1, 3), 1 / 3, device=device, dtype=dtype)
-            out = filter2d_separable(image, third, third, "constant")
-        elif name == "filter3d":
-            out = filter3d(image, torch.full((1, 3, 3, 3), 1 / 27, device=device, dtype=dtype), "constant")
-        else:
-            out = _FILTER2D_FNS[name](image, torch.full((1, 3, 3), 1 / 9, device=device, dtype=dtype), "constant")
-        # the interior of a box-filtered constant image is 100 in floating point
-        assert out[..., 2, 3].flatten()[0].item() == 0
+
+        def run(x):
+            if name == "filter2d_separable":
+                third = torch.full((1, 3), 1 / 3, device=device, dtype=dtype)
+                return filter2d_separable(x, third, third, "constant")
+            if name == "filter3d":
+                return filter3d(x, torch.full((1, 3, 3, 3), 1 / 27, device=device, dtype=dtype), "constant")
+            return _FILTER2D_FNS[name](x, torch.full((1, 3, 3), 1 / 9, device=device, dtype=dtype), "constant")
+
+        out = run(image)
+        assert out.dtype == torch.float32
+        self.assert_close(out, run(image.float()), rtol=1e-4, atol=1e-4)
+        # the interior of a box-filtered constant image is 100, no longer truncated to 0; a half-precision kernel
+        # rounds its 1 / 9 taps, which moves the sum by up to 0.4
+        interior = out[0, 0, 1, 2, 3] if name == "filter3d" else out[0, 0, 2, 3]
+        self.assert_close(interior, torch.tensor(100.0, device=device), rtol=0.0, atol=0.5)
+
+    def test_convention_integer_sums_do_not_wrap_5155(self, device):
+        """A box of ones over a uint8 100 sums to 900 in float32 instead of wrapping to 132 (#5155)."""
+        image = torch.full((1, 1, 5, 7), 100, dtype=torch.uint8, device=device)
+        out = filter2d(image, torch.ones(1, 3, 3))
+        assert out.dtype == torch.float32
+        assert out[0, 0, 2, 3].item() == 900
+        out3d = filter3d(image[:, :, None].expand(-1, -1, 3, -1, -1), torch.ones(1, 3, 3, 3))
+        assert out3d[0, 0, 1, 2, 3].item() == 2700
+        # normalized=True used to raise a dtype error on an integer input
+        self.assert_close(filter2d(image, torch.ones(1, 3, 3), normalized=True), image.float())
 
     @pytest.mark.parametrize("name", ["filter2d", "fft_conv"])
     def test_convention_padding_and_behaviour_are_case_insensitive_5156(self, name, device, dtype):
@@ -2447,21 +2463,89 @@ class TestConventionsKernels(BaseTester):
         assert message in str(errinfo.value)
         assert "Gotcha" not in str(errinfo.value)
 
-    @pytest.mark.parametrize("case", ["box_int32", "gaussian_uint8", "laplacian_uint8", "gradient3d_int32"])
-    def test_wart_kernel_builders_truncate_or_wrap_in_an_integer_dtype_5155(self, case, device):
-        """An integer dtype truncates fractional taps to 0, and uint8 wraps the negative ones (#5155)."""
-        if case == "box_int32":
-            assert bool((get_box_kernel1d(3, device=device, dtype=torch.int32) == 0).all())
-        elif case == "gaussian_uint8":
-            # the offsets -2 and -1 wrap to 254 and 255, so the taps before the centre vanish
-            kernel = get_gaussian_kernel1d(5, 1.5, device=device, dtype=torch.uint8)[0]
-            assert kernel[:2].tolist() == [0, 0]
-            assert bool((kernel[2:] > 0).all())
-        elif case == "laplacian_uint8":
-            assert get_laplacian_kernel1d(5, device=device, dtype=torch.uint8).tolist() == [1, 1, 252, 1, 1]
-        else:
-            # the first-order taps are +-0.5
-            assert bool((get_spatial_gradient_kernel3d("diff", 1, device=device, dtype=torch.int32) == 0).all())
+    @pytest.mark.parametrize("int_dtype", [torch.uint8, torch.int8, torch.int32, torch.int64, torch.bool])
+    @pytest.mark.parametrize(
+        "build",
+        [
+            lambda device, dtype: get_box_kernel1d(3, device=device, dtype=dtype),
+            lambda device, dtype: get_box_kernel2d((3, 5), device=device, dtype=dtype),
+            lambda device, dtype: get_gaussian_kernel1d(5, 1.5, device=device, dtype=dtype),
+            lambda device, dtype: get_gaussian_kernel1d(5, 2, device=device, dtype=dtype),
+            lambda device, dtype: get_gaussian_erf_kernel1d(5, 1.5, device=device, dtype=dtype),
+            lambda device, dtype: get_gaussian_discrete_kernel1d(5, 1.5, device=device, dtype=dtype),
+            lambda device, dtype: get_gaussian_kernel2d((5, 3), (1.5, 1.0), device=device, dtype=dtype),
+            lambda device, dtype: get_gaussian_kernel3d((3, 3, 3), (1.5, 1.5, 1.5), device=device, dtype=dtype),
+            lambda device, dtype: get_spatial_gradient_kernel3d("diff", 1, device=device, dtype=dtype),
+            lambda device, dtype: get_spatial_gradient_kernel3d("diff", 2, device=device, dtype=dtype),
+        ],
+        ids=[
+            "box1d",
+            "box2d",
+            "gaussian1d",
+            "gaussian1d_int_sigma",
+            "erf1d",
+            "discrete1d",
+            "gaussian2d",
+            "gaussian3d",
+            "gradient3d_order1",
+            "gradient3d_order2",
+        ],
+    )
+    def test_convention_fractional_kernel_builders_reject_an_integer_dtype_5155(self, build, int_dtype, device):
+        """A kernel with fractional taps raises for an integer or bool dtype instead of truncating them (#5155)."""
+        with pytest.raises(BaseError, match="fractional taps"):
+            build(device, int_dtype)
+
+    @pytest.mark.parametrize("sigma_dtype", [torch.int64, torch.uint8])
+    @pytest.mark.parametrize(
+        "build", [get_gaussian_kernel1d, get_gaussian_erf_kernel1d, get_gaussian_discrete_kernel1d]
+    )
+    def test_convention_gaussian_of_an_integer_sigma_tensor_is_floating_5155(self, build, sigma_dtype, device):
+        """An integer sigma tensor gives the floating kernel of its float value, not taps truncated to 0 (#5155)."""
+        # in uint8 the offsets below the centre and 20 * 20 would wrap
+        actual = build(5, torch.tensor([[20]], device=device, dtype=sigma_dtype))
+        assert actual.dtype == torch.get_default_dtype()
+        self.assert_close(actual, build(5, torch.tensor([[20.0]], device=device)))
+
+    @pytest.mark.parametrize("build", [get_gaussian_kernel1d, get_gaussian_discrete_kernel1d])
+    def test_gaussian_of_a_complex_sigma_tensor_is_not_cast_to_real(self, build):
+        # only an integer sigma is promoted to floating point; a complex one must not lose its imaginary part
+        with pytest.raises(RuntimeError, match="not implemented for 'ComplexFloat'"):
+            build(5, torch.tensor([[1.0 + 1.0j]]))
+
+    @pytest.mark.parametrize(
+        ("kernel_size", "int_dtype"),
+        [
+            (3, torch.int8),
+            (5, torch.int16),
+            (129, torch.int8),
+            ((11, 11), torch.int8),
+            ((3, 43), torch.int8),
+            ((13, 13), torch.int16),
+            ((3, 5), torch.int32),
+            (7, torch.int64),
+        ],
+    )
+    def test_convention_laplacian_kernel_in_a_signed_integer_dtype_that_holds_it_is_exact_5155(
+        self, kernel_size, int_dtype, device
+    ):
+        """A signed integer dtype wide enough for the centre tap gives the floating kernel's integers (#5155)."""
+        build = get_laplacian_kernel1d if isinstance(kernel_size, int) else get_laplacian_kernel2d
+        actual = build(kernel_size, device=device, dtype=int_dtype)
+        assert actual.dtype == int_dtype
+        # float32 holds every tap here exactly, and unlike float64 it runs on MPS.
+        expected = build(kernel_size, device=device, dtype=torch.float32)
+        assert torch.equal(actual.to(torch.float32), expected)
+
+    @pytest.mark.parametrize(
+        ("kernel_size", "int_dtype"),
+        [(3, torch.uint8), (5, torch.bool), (131, torch.int8), ((3, 3), torch.uint8), ((13, 13), torch.int8)],
+    )
+    def test_convention_laplacian_kernel_rejects_a_dtype_that_cannot_hold_it_5155(self, kernel_size, int_dtype, device):
+        """uint8 and bool cannot hold the negative centre, nor int8 one below -128, so they raise (#5155)."""
+        build = get_laplacian_kernel1d if isinstance(kernel_size, int) else get_laplacian_kernel2d
+        with pytest.raises(BaseError, match="cannot hold"):
+            build(kernel_size, device=device, dtype=int_dtype)
 
     @pytest.mark.parametrize("kernel_size", [5, 7])
     def test_convention_motion_kernel2d_nearest_ties_ignore_a_full_turn_5181(self, kernel_size):

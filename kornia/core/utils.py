@@ -40,6 +40,25 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK
 from kornia.core.exceptions import DeviceError, TypeCheckError
 
 
+def _torch_grid_sample(
+    input: torch.Tensor,
+    grid: torch.Tensor,
+    mode: str = "bilinear",
+    padding_mode: str = "zeros",
+    align_corners: Optional[bool] = None,
+) -> torch.Tensor:
+    """Run :func:`torch.nn.functional.grid_sample` on 4-D or 5-D input, CPU float16/bfloat16 in float32.
+
+    torch's CPU half ``grid_sample`` returns corrupt values on sources of about 128 px and more, and
+    torch 2.5.1 has no such kernel (#5751). Other devices and dtypes call ``grid_sample`` unchanged.
+    """
+    if input.device.type == "cpu" and input.dtype in (torch.float16, torch.bfloat16) and grid.dtype == input.dtype:
+        return F.grid_sample(
+            input.float(), grid.float(), mode=mode, padding_mode=padding_mode, align_corners=align_corners
+        ).to(input.dtype)
+    return F.grid_sample(input, grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
+
+
 def xla_is_available() -> bool:
     """Return whether `torch_xla` is available in the system."""
     return importlib.util.find_spec("torch_xla") is not None
@@ -199,7 +218,7 @@ def _inverse_3x3_closed_form(input: torch.Tensor) -> torch.Tensor:
     """
     half = input.dtype in (torch.float16, torch.bfloat16)
     x = input.float() if half else input
-    if not _is_tracing_or_exporting():
+    if not _is_tracing_or_exporting():  # noqa: SIM108 - each branch documents its own capture path
         # Eager: three fused ``cross`` ops beat nine scalar cofactor expressions and four
         # stacks, because kernel launches dominate on matrices this small.
         out = _inverse_3x3_cross(x)
@@ -362,7 +381,7 @@ def _torch_histc_cast(input: torch.Tensor, bins: int, min: Union[float, bool], m
     return torch.histc(input.to(dtype), bins, min, max)
 
 
-def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def _torch_svd_cast(input: torch.Tensor, full_matrices: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Make torch.svd work with other than fp32/64.
 
     The function torch.svd is only implemented for fp32/64 which makes
@@ -375,6 +394,7 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
 
     An MPS input past the shader-compilation ceiling is decomposed on the CPU and moved back, which
     is what keeps the batched minimal solvers behind ``RANSAC`` working on Apple silicon.
+    ``full_matrices`` selects full or reduced factors, as in ``torch.linalg.svd``.
     """
     if is_mps_tensor_safe(input):
         dtype = torch.float32
@@ -393,10 +413,10 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
     if is_mps_tensor_safe(x) and x.numel() >= 8192:
         # SVD is per-matrix, so decomposing the whole batch on the CPU gives the same result; the
         # casts back to the MPS device keep the autograd graph intact.
-        U, S, Vh = torch.linalg.svd(x.cpu())
+        U, S, Vh = torch.linalg.svd(x.cpu(), full_matrices=full_matrices)
         out1, out2, out3H = U.to(x.device), S.to(x.device), Vh.to(x.device)
     else:
-        out1, out2, out3H = torch.linalg.svd(x)
+        out1, out2, out3H = torch.linalg.svd(x, full_matrices=full_matrices)
     # Since kornia requires torch>=2.5.1, we can always use .mH
     out3 = out3H.mH
     return (out1.to(input.dtype), out2.to(input.dtype), out3.to(input.dtype))
@@ -441,10 +461,7 @@ def _torch_solve_cast(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
     """
     KORNIA_CHECK_IS_TENSOR(A, "A must be torch.Tensor")
     KORNIA_CHECK_IS_TENSOR(B, "B must be torch.Tensor")
-    if is_mps_tensor_safe(A):
-        dtype = torch.float32
-    else:
-        dtype = torch.float64
+    dtype = torch.float32 if is_mps_tensor_safe(A) else torch.float64
 
     out = torch.linalg.solve(A.to(dtype), B.to(dtype))
 
@@ -636,9 +653,10 @@ def is_compiling() -> bool:
 def _is_exporting_eager() -> bool:
     if _torch_is_exporting is not None:
         return bool(_torch_is_exporting())
-    # torch < 2.6 has no export flag. Inside a Dynamo trace the newer releases constant-fold
-    # ``torch.compiler.is_exporting`` to ``True`` for ``torch.compile`` as well as for
-    # ``torch.export``, so ``is_compiling`` is the fallback with the same semantics.
+    # torch < 2.6 has no export flag, so ``is_compiling`` is the fallback: it is true under
+    # ``torch.compile`` and ``torch.export`` alike. Newer releases differ - ``torch.compile`` can
+    # report ``False`` for the export flag - which is why call sites must pick the predicate they
+    # actually mean.
     return is_compiling()
 
 
@@ -647,11 +665,19 @@ def is_exporting() -> bool:
 
     Used to switch to export-safe arithmetic (closed-form inverses, ``sort``-based medians, ...) and
     to skip in-``forward`` side effects (e.g. stashing per-call state on ``self``) that
-    ``torch.export`` rejects, without changing the captured output. Inside a Dynamo trace torch
-    folds its own flag to ``True`` for ``torch.compile`` too, so the export-safe paths are also
-    what a compiled graph contains; on torch < 2.6, which has no export flag, ``is_compiling`` is
-    used for the same reason. Always ``False`` inside TorchScript, so the guard is safe to call
-    from scripted functions.
+    ``torch.export`` rejects, without changing the captured output. Always ``False`` inside
+    TorchScript, so the guard is safe to call from scripted functions.
+
+    The flag is meant to be export-specific, not capture-specific, but whether it is also true inside
+    a ``torch.compile`` trace depends on the Torch release, so a compiled call can take different
+    paths across versions (#5037). It is false under ``torch.jit.trace`` and the legacy ONNX
+    exporter. Where the intent is "inside any Dynamo capture" - skipping a data-dependent check that
+    breaks ``fullgraph`` - use :func:`is_compiling`, which covers ``torch.compile`` and
+    ``torch.export`` alike on every supported release. Keep this predicate for what only an export
+    needs: :func:`crop_by_indices` routing to its dedicated export implementation, where letting a
+    compiled call take that route changes the sampling the eager and compiled paths agree on, and
+    skipping per-call state on ``self`` that ``torch.export`` rejects but a compiled call records and
+    a caller reads back afterwards, such as the ``transform_matrix`` of an augmentation.
     """
     if torch.jit.is_scripting():
         return False

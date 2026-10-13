@@ -17,7 +17,10 @@
 
 import io
 import os
+import struct
 import sys
+import zlib
+from typing import NamedTuple
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -109,15 +112,17 @@ class TestImageModuleMixIn:
         assert decorated.__doc__ == dummy_func.__doc__
         assert decorated.__wrapped__ is dummy_func
 
-    def test_convert_input_output_caches_single_output_tuple_as_tensor(self, img_module, sample_tensor):
-        # A one-element tuple is returned as its element; the cache must hold the same tensor for ``show()``.
+    def test_convert_input_output_caches_single_output_tuple_as_tuple(self, img_module, sample_tensor):
+        # A one-element tuple keeps its type on the way out; the cache holds the detached tensor for ``show()``
+        # (#5210: with features on, a module returns the same container type as with features off)
         decorated = img_module.convert_input_output(cache_output=True)(lambda tensor: (tensor,))
 
         output = decorated(sample_tensor)
 
-        assert isinstance(output, torch.Tensor)
-        assert isinstance(img_module._output_image, torch.Tensor)
-        assert torch.equal(img_module._output_image, sample_tensor)
+        assert isinstance(output, tuple)
+        assert len(output) == 1
+        assert isinstance(img_module._output_image, tuple)
+        assert torch.equal(img_module._output_image[0], sample_tensor)
 
     def test_show(self, img_module, sample_tensor):
         img_module._output_image = sample_tensor
@@ -129,6 +134,28 @@ class TestImageModuleMixIn:
         save_path = tmpdir.join("test_image.jpg")
         img_module.save(name=save_path)
         assert os.path.exists(save_path)
+
+    @pytest.mark.parametrize("method", ["show", "save"])
+    @pytest.mark.parametrize("n_row", [None, 0, -1])
+    def test_show_save_empty_batch_n_row(self, img_module, monkeypatch, method, n_row):
+        img_module._output_image = torch.empty(0, 3, 4, 4)
+        sink = MagicMock()
+        if method == "show":
+            monkeypatch.setattr(img_module, "to_pil", sink)
+            kwargs = {"display": False}
+        else:
+            monkeypatch.setattr("kornia.io.write_image", sink)
+            kwargs = {"name": "empty.png"}
+
+        if n_row is not None:
+            with pytest.raises(ValueError, match="n_row"):
+                getattr(img_module, method)(n_row=n_row, **kwargs)
+            sink.assert_not_called()
+        else:
+            getattr(img_module, method)(**kwargs)
+            sink.assert_called_once()
+            grid = sink.call_args.args[-1]
+            assert grid.shape == (3, 0, 4)
 
     def test_to_pil_4d_tensor_returns_list(self, img_module):
         # 4D (B, C, H, W) tensor -> list of PIL Images
@@ -601,11 +628,116 @@ class TestImageModuleConversions(BaseTester):
         out = _Identity().to_tensor(str(path))
         self.assert_close(out, torch.tensor([1.0, 0.2, 0.0]).view(3, 1, 1).expand(3, 4, 6))
 
+    @pytest.mark.parametrize(
+        "transparency",
+        [None, bytes([255, 128]), bytes([0]), b""],  # PIL writes the last two as a 1-byte and an empty tRNS chunk
+        ids=["rgb", "rgba", "rgba-one-entry", "rgba-empty-trns-5851"],
+    )
+    def test_to_tensor_palette_png_path_matches_pil_5807(self, tmp_path, transparency):
+        path = tmp_path / "palette.png"
+        image = PILImage.new("P", (2, 1))
+        image.putdata([0, 1])
+        image.putpalette([255, 0, 0, 0, 255, 0] + [0] * (256 * 3 - 6))
+        if transparency is not None:
+            image.info["transparency"] = transparency
+        image.save(path)
+
+        module = _Identity()
+        from_path = module.to_tensor(str(path))
+        with PILImage.open(path) as from_pil:
+            expected = module.to_tensor(from_pil)
+
+        expected_channels = 3 if transparency is None else 4
+        assert from_path.shape == (expected_channels, 1, 2)
+        self.assert_close(from_path, expected, rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize(
+        "factory",
+        [
+            pytest.param(lambda: ImageSequential(torch.nn.Identity()), id="core-image-sequential"),
+            pytest.param(lambda: AugmentationImageSequential(torch.nn.Identity()), id="augmentation-image-sequential"),
+            pytest.param(lambda: AugmentationSequential(RandomHorizontalFlip(p=0.0)), id="augmentation-sequential"),
+        ],
+    )
+    @pytest.mark.parametrize("transparency", [None, bytes([255, 128])], ids=["rgb", "rgba"])
+    def test_sequential_palette_png_path_matches_pil_5807(self, tmp_path, factory, transparency):
+        path = tmp_path / "palette.png"
+        image = PILImage.new("P", (2, 1))
+        image.putdata([0, 1])
+        image.putpalette([255, 0, 0, 0, 255, 0] + [0] * (256 * 3 - 6))
+        if transparency is not None:
+            image.info["transparency"] = transparency
+        image.save(path)
+
+        module = factory()
+        from_path = module(str(path))
+        with PILImage.open(path) as from_pil:
+            expected = module(from_pil)
+
+        expected_channels = 3 if transparency is None else 4
+        assert from_path.shape[-3:] == (expected_channels, 1, 2)
+        self.assert_close(from_path, expected, rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize(
+        "name, mode, pixels, transparency, channels",
+        [
+            ("palette.PNG", "P", [0, 1], bytes([255, 128]), 4),  # the suffix matches in any letter case
+            ("gray_key.png", "L", [7, 200], 7, 1),  # a tRNS colour key is not a palette: PIL keeps mode L
+            ("rgb_key.png", "RGB", [(255, 0, 0), (0, 0, 255)], (255, 0, 0), 3),  # and mode RGB
+        ],
+        ids=["palette-upper-case-suffix", "gray-colour-key", "rgb-colour-key"],
+    )
+    def test_to_tensor_png_path_expands_palettes_only_5807(self, tmp_path, name, mode, pixels, transparency, channels):
+        path = tmp_path / name
+        image = PILImage.new(mode, (2, 1))
+        image.putdata(pixels)
+        if mode == "P":
+            image.putpalette([255, 0, 0, 0, 255, 0] + [0] * (256 * 3 - 6))
+        image.info["transparency"] = transparency
+        image.save(path, format="PNG")
+
+        module = _Identity()
+        from_path = module.to_tensor(str(path))
+        with PILImage.open(path) as from_pil:
+            assert "transparency" in from_pil.info
+            expected = module.to_tensor(from_pil)
+
+        assert from_path.shape == (channels, 1, 2)
+        self.assert_close(from_path, expected, rtol=0.0, atol=0.0)
+
     def test_to_tensor_16_bit_path_5207(self, tmp_path):
         path = tmp_path / "rgb16.png"
         write_image(str(path), torch.tensor([65535, 13107, 0], dtype=torch.uint16).view(3, 1, 1).expand(3, 4, 6))
         out = _Identity().to_tensor(str(path))
         self.assert_close(out, torch.tensor([1.0, 0.2, 0.0]).view(3, 1, 1).expand(3, 4, 6))
+
+    def test_convention_to_tensor_reads_a_palette_png_path_as_its_colours(self, tmp_path, device, dtype):
+        # An 8-bit palette PNG path converts to its colours, as a PIL image of the same file does, not to one channel
+        # of index / 255. The file is written byte by byte, so no decoder is the oracle. Palette yellow, green, red,
+        # blue; the indices are not in raster order and repeat, so each pixel must be looked up by its index. The
+        # expected planes are the R, G and B of [[red, green, yellow], [blue, yellow, green]].
+        def chunk(kind, body):
+            return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body))
+
+        indices = [[2, 1, 0], [3, 0, 1]]  # H = 2, W = 3
+        path = tmp_path / "palette.png"
+        path.write_bytes(
+            b"\x89PNG\r\n\x1a\n"
+            + chunk(b"IHDR", struct.pack(">IIBBBBB", 3, 2, 8, 3, 0, 0, 0))  # width, height, 8 bits, colour type 3
+            + chunk(b"PLTE", bytes([255, 255, 0, 0, 255, 0, 255, 0, 0, 0, 0, 255]))
+            + chunk(b"IDAT", zlib.compress(b"".join(b"\x00" + bytes(row) for row in indices)))
+            + chunk(b"IEND", b"")
+        )
+        module = _Identity()
+        module.register_buffer("reference", torch.empty((), device=device, dtype=dtype))  # output device and dtype
+        out = module.to_tensor(str(path))
+        expected = [
+            [[255, 0, 255], [0, 255, 0]],  # R
+            [[0, 255, 255], [0, 255, 255]],  # G
+            [[0, 0, 0], [255, 0, 0]],  # B
+        ]
+        assert out.shape == (3, 2, 3)
+        self.assert_close(out, torch.tensor(expected, device=device, dtype=dtype) / 255)
 
     def test_numpy_output_round_trips_through_numpy_input_5207(self):
         module = _Identity()
@@ -756,11 +888,9 @@ class TestTupleOutputCache(BaseTester):
         image = torch.rand(3, 6, 8, device=device, dtype=dtype, requires_grad=True)
         result = module(image, output_type=output_type)
         cached = module._output_image
-        if count == 1:
-            result, cached = [result], [cached]
-        else:
-            assert isinstance(result, list)
-            assert isinstance(cached, list)
+        # a tuple stays a tuple, whatever its length (#5210)
+        assert isinstance(result, tuple)
+        assert isinstance(cached, tuple)
         assert len(result) == len(cached) == count
         expected = image.sigmoid().detach()
         for output, tensor in zip(result, cached):
@@ -779,6 +909,149 @@ class TestTupleOutputCache(BaseTester):
                 working = expected.cpu().to(torch.promote_types(dtype, torch.float32))
                 rendered = (working.clamp(0.0, 1.0) * 255).round().to(torch.uint8).permute(1, 2, 0).numpy()
                 np.testing.assert_array_equal(np.asarray(output), rendered)
+
+
+class TestNonTensorOutputPassthrough(BaseTester):
+    """#5210: outputs outside the one-tensor contract pass through, and the container type is kept."""
+
+    @pytest.mark.parametrize("container", [ImageModule, ImageSequential])
+    @pytest.mark.parametrize("output_type", ["pt", "numpy", "pil"])
+    def test_non_tensor_outputs_pass_through_with_features_on(self, container, output_type, device, dtype):
+        class PassthroughModule(container):
+            def forward(self, x):
+                return {"image": x, "count": float(x.mean())}
+
+        module = PassthroughModule()
+        image = torch.rand(3, 6, 8, device=device, dtype=dtype)
+        result = module(image, output_type=output_type)
+
+        # a dict is outside the one-tensor contract: ImageModule / ImageSequential pass it through
+        # untouched, whatever the output_type
+        assert isinstance(result, dict)
+        assert set(result) == {"image", "count"}
+        assert isinstance(result["count"], float)
+        self.assert_close(result["image"], image)
+
+    @pytest.mark.parametrize("container", [ImageModule, ImageSequential])
+    @pytest.mark.parametrize("forward_output", [None, 0.5, {"image": 1}])
+    def test_non_container_outputs_match_features_disabled(self, container, forward_output, device, dtype):
+        class FixedModule(container):
+            def forward(self, x):
+                return forward_output
+
+        image = torch.rand(3, 6, 8, device=device, dtype=dtype)
+        enabled, disabled = FixedModule(), FixedModule()
+        disabled.disable_features = True
+
+        assert enabled(image) == disabled(image)
+
+    @pytest.mark.parametrize("container", [ImageModule, ImageSequential])
+    def test_features_flag_does_not_change_container_type(self, container, device, dtype):
+        class TupleModule(container):
+            def forward(self, x):
+                return (x, x[:1])
+
+        image = torch.rand(3, 6, 8, device=device, dtype=dtype)
+        enabled, disabled = TupleModule(), TupleModule()
+        disabled.disable_features = True
+
+        assert type(enabled(image)) is type(disabled(image))
+        assert isinstance(enabled(image), tuple)
+        assert len(enabled(image)) == 2
+
+        class OneTupleModule(container):
+            def forward(self, x):
+                return (x,)
+
+        one_enabled, one_disabled = OneTupleModule(), OneTupleModule()
+        one_disabled.disable_features = True
+
+        assert isinstance(one_enabled(image), tuple)
+        assert len(one_enabled(image)) == 1
+
+    @pytest.mark.parametrize("container", [ImageModule, ImageSequential])
+    def test_list_output_converts_elements_for_numpy(self, container, device, dtype):
+        class ListModule(container):
+            def forward(self, x):
+                return [x, x[:1]]
+
+        module = ListModule()
+        image = torch.rand(3, 6, 8, device=device, dtype=dtype)
+
+        result = module(image, output_type="numpy")
+
+        assert isinstance(result, list)
+        assert len(result) == 2
+        numpy_dtype = torch.float32 if dtype == torch.bfloat16 else dtype
+        np.testing.assert_array_equal(result[0], image.cpu().to(numpy_dtype).permute(1, 2, 0).numpy())
+        np.testing.assert_array_equal(result[1], image[:1].cpu().to(numpy_dtype).permute(1, 2, 0).numpy())
+
+    @pytest.mark.parametrize("container", [ImageModule, ImageSequential])
+    def test_mixed_tuple_output_converts_tensors_only(self, container, device, dtype):
+        class MixedModule(container):
+            def forward(self, x):
+                return (x, "label")
+
+        module = MixedModule()
+        image = torch.rand(3, 6, 8, device=device, dtype=dtype)
+
+        result = module(image, output_type="numpy")
+
+        assert isinstance(result, tuple)
+        numpy_dtype = torch.float32 if dtype == torch.bfloat16 else dtype
+        np.testing.assert_array_equal(result[0], image.cpu().to(numpy_dtype).permute(1, 2, 0).numpy())
+        assert result[1] == "label"
+
+
+class TestNamedtupleAndSingletonTupleOutput(BaseTester):
+    """A namedtuple output keeps its fields, and a one-element tuple stays renderable (#5210)."""
+
+    @pytest.mark.parametrize("container", [ImageModule, ImageSequential])
+    @pytest.mark.parametrize("output_type", ["pt", "numpy"])
+    def test_namedtuple_output_keeps_its_fields(self, container, output_type, device, dtype):
+        class Pair(NamedTuple):
+            image: torch.Tensor
+            mask: torch.Tensor
+
+        class NamedModule(container):
+            def forward(self, x):
+                return Pair(x, x[:1])
+
+        module = NamedModule()
+        image = torch.rand(3, 6, 8, device=device, dtype=dtype)
+
+        result = module(image, output_type=output_type)
+
+        assert isinstance(result, Pair)
+        if output_type == "pt":
+            self.assert_close(result.image, image)
+            self.assert_close(result.mask, image[:1])
+        else:
+            numpy_dtype = torch.float32 if dtype == torch.bfloat16 else dtype
+            np.testing.assert_array_equal(result.image, image.cpu().to(numpy_dtype).permute(1, 2, 0).numpy())
+            np.testing.assert_array_equal(result.mask, image[:1].cpu().to(numpy_dtype).permute(1, 2, 0).numpy())
+        cached = module._output_image
+        assert isinstance(cached, Pair)
+        assert isinstance(cached.image, torch.Tensor)
+        assert not cached.image.requires_grad
+
+    @pytest.mark.parametrize("container", [ImageModule, ImageSequential])
+    def test_one_element_tuple_stays_renderable(self, container, device, dtype, tmp_path):
+        class OneTupleModule(container):
+            def forward(self, x):
+                return (x,)
+
+        module = OneTupleModule()
+        image = torch.rand(3, 6, 8, device=device, dtype=dtype)
+        result = module(image)
+        assert isinstance(result, tuple)
+
+        saved = str(tmp_path / "one.png")
+        module.save(saved)
+        loaded = PILImage.open(saved)
+        working = image.cpu().to(torch.promote_types(dtype, torch.float32))
+        rendered = (working.clamp(0.0, 1.0) * 255).round().to(torch.uint8).permute(1, 2, 0).numpy()
+        np.testing.assert_array_equal(np.asarray(loaded), rendered)
 
 
 class TestNamedInputConversion(BaseTester):
@@ -897,3 +1170,57 @@ class TestNamedInputConversion(BaseTester):
         image, option = select(np.full((4, 6, 3), 255, dtype=np.uint8), image=np.zeros((4, 6, 3), dtype=np.uint8))
         self.assert_close(image, torch.ones(3, 4, 6))
         self.assert_close(option, torch.zeros(3, 4, 6))
+
+
+def _cached_tensors(cache):
+    if isinstance(cache, torch.Tensor):
+        return [cache]
+    if isinstance(cache, (list, tuple)):
+        return [t for item in cache for t in _cached_tensors(item)]
+    if isinstance(cache, dict):
+        return [t for item in cache.values() for t in _cached_tensors(item)]
+    return []
+
+
+class TestKeyedAndNestedOutputs(BaseTester):
+    @pytest.mark.parametrize(
+        "make",
+        [
+            lambda x: ((x * 2, x * 3), x * 4),
+            lambda x: [[x * 2], x * 3],
+            lambda x: {"image": x * 2},
+            lambda x: ({"a": x * 2}, x),
+        ],
+    )
+    def test_cache_holds_no_autograd_graph(self, make, device, dtype):
+        # the cache keeps a detached copy of every tensor, also inside a nested container or a dict
+        class Make(ImageModule):
+            def forward(self, x):
+                return make(x)
+
+        module = Make()
+        module(torch.rand(3, 6, 8, device=device, dtype=dtype, requires_grad=True))
+        cached = _cached_tensors(module._output_image)
+        assert cached
+        assert all(t.grad_fn is None and not t.requires_grad for t in cached)
+
+    @pytest.mark.parametrize("output_type", ["numpy", "pil"])
+    @pytest.mark.parametrize("key", ["bbox_xyxy", "keypoints"])
+    def test_augmentation_sequential_rejects_converting_non_images(self, key, output_type, device, dtype):
+        # a box or keypoint tensor converted like an image is not a box any more
+        image = torch.rand(2, 3, 16, 20, device=device, dtype=dtype)
+        other = torch.tensor([[[1.0, 2.0, 8.0, 9.0]], [[3.0, 3.0, 10.0, 12.0]]], device=device, dtype=dtype)
+        other = other if key == "bbox_xyxy" else other[..., :2]
+        aug = AugmentationSequential(RandomHorizontalFlip(p=1.0), data_keys=["input", key])
+        with pytest.raises(ValueError, match="images and masks only"):
+            aug(image, other, output_type=output_type)
+        assert isinstance(aug(image, other)[1], torch.Tensor)
+
+    def test_augmentation_sequential_converts_dict_values(self, device, dtype):
+        image = torch.rand(2, 3, 16, 20, device=device, dtype=dtype)
+        mask = torch.rand(2, 1, 16, 20, device=device, dtype=dtype)
+        aug = AugmentationSequential(RandomHorizontalFlip(p=1.0), data_keys=None)
+        out = aug({"input": image, "mask": mask}, output_type="numpy")
+        assert set(out) == {"input", "mask"}
+        assert out["input"].shape == (2, 16, 20, 3)
+        assert out["mask"].shape == (2, 16, 20, 1)

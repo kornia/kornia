@@ -18,7 +18,9 @@
 import pytest
 import torch
 
+from kornia.feature import laf_is_filled
 from kornia.feature.aliked import ALIKED, ALIKEDFeatures
+from kornia.feature.aliked.aliked import _affine_from_cov
 from kornia.feature.aliked.deform_conv2d import deform_conv2d
 
 from testing.base import BaseTester
@@ -437,3 +439,195 @@ class TestALIKEDForwardLAF(BaseTester):
             # det(A) should be non-zero (non-degenerate)
             dets = torch.det(A)
             assert (dets.abs() > 1e-6).all()
+
+    def test_affine_from_cov_is_not_mirrored_5730(self, device, dtype):
+        """The frame keeps the covariance ellipse (``A @ A.T == cov``) and is not mirrored (``det A > 0``).
+
+        ``torch.linalg.eigh`` returned an eigenvector matrix with determinant -1 for every one of these, on CPU and
+        MPS: the ascending eigenvalue order alone swaps the axes of ``diag(0.3, 0.1)``.
+        """
+        cov = torch.tensor(
+            [
+                [[2.0, 1.0], [1.0, 2.0]],
+                [[1.0, -0.5], [-0.5, 3.0]],
+                [[0.3, 0.0], [0.0, 0.1]],
+                [[0.5, 0.2], [0.2, 0.1]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        A = _affine_from_cov(cov)
+        self.assert_close(A @ A.transpose(-1, -2), cov)
+        det_a = A[:, 0, 0] * A[:, 1, 1] - A[:, 0, 1] * A[:, 1, 0]
+        det_cov = cov[:, 0, 0] * cov[:, 1, 1] - cov[:, 0, 1] * cov[:, 1, 0]
+        self.assert_close(det_a, det_cov.sqrt())
+
+    def test_frames_are_not_mirrored_5730(self, device, dtype):
+        """forward_laf frames are not mirrored and keep the sub-pixel ellipse of the soft-argmax weights.
+
+        Three peaks, each with a weaker neighbour to its right, below it, or diagonally. The expected ellipse
+        ``A @ A.T`` of the right-neighbour peak is ``main``'s before the fix, whose frame was
+        ``[[0, 0.45736], [0.11605, 0]]`` with determinant -0.05308; the one with the neighbour below is its
+        transpose.
+        """
+        s = torch.full((1, 1, 64, 96), 0.01, device=device, dtype=dtype)
+        s[0, 0, 40, 60], s[0, 0, 40, 61] = 0.8, 0.7
+        s[0, 0, 20, 30], s[0, 0, 21, 30] = 0.8, 0.7
+        s[0, 0, 20, 80], s[0, 0, 21, 81] = 0.8, 0.7
+        aliked = ALIKED(model_name="aliked-t16").to(device, dtype).eval()
+        hook = aliked.score_head.register_forward_hook(lambda m, i, o: torch.logit(s))
+        try:
+            with torch.no_grad():
+                lafs, _, _ = aliked.forward_laf(torch.rand(1, 3, 64, 96, device=device, dtype=dtype))
+        finally:
+            hook.remove()
+        assert lafs.shape == (1, 3, 2, 3)
+        order = torch.argsort(lafs[0, :, 0, 2] * 100 + lafs[0, :, 1, 2])  # by x, then y
+        A = lafs[0, order, :, :2]  # peaks at x = 30 (neighbour below), 60 (right), 80 (diagonal)
+        det = A[:, 0, 0] * A[:, 1, 1] - A[:, 0, 1] * A[:, 1, 0]
+        assert (det > 0).all(), det
+        ellipse_right = torch.tensor([[0.45736**2, 0.0], [0.0, 0.11605**2]], device=device, dtype=dtype)
+        self.assert_close(A[1] @ A[1].T, ellipse_right, low_tolerance=True)
+        self.assert_close(A[0] @ A[0].T, ellipse_right.flip(0, 1), low_tolerance=True)
+        self.assert_close(det[:2], torch.full_like(det[:2], 0.45736 * 0.11605), low_tolerance=True)
+        assert (det.sqrt() < 1.0).all()  # the documented scale: the spread of the weights, about a pixel or less
+
+
+# ---------------------------------------------------------------------------
+# keypoint selection: top-k and threshold modes
+# ---------------------------------------------------------------------------
+
+
+class TestALIKEDKeypointSelection(BaseTester):
+    """Top-k mode keeps at most ``k`` strict maxima (#5862); the threshold fallback is decided per image (#5865)."""
+
+    @staticmethod
+    def _score_map(peaks, device, dtype, batch=1, h=64, w=96):
+        # a score map (after the sigmoid) of 0.01 with the given peaks (image, x, y, score)
+        s = torch.full((batch, 1, h, w), 0.01, dtype=torch.float64)
+        for b, x, y, score in peaks:
+            s[b, 0, y, x] = score
+        return s.to(device, dtype)
+
+    @staticmethod
+    def _run(aliked, score_map, method="forward", **kwargs):
+        # the score head returns the logit of score_map, so the sigmoid after it gives score_map back
+        hook = aliked.score_head.register_forward_hook(lambda m, i, o: torch.logit(score_map))
+        b, _, h, w = score_map.shape
+        try:
+            with torch.no_grad():
+                image = torch.rand(b, 3, h, w, device=score_map.device, dtype=score_map.dtype)
+                return getattr(aliked, method)(image, **kwargs)
+        finally:
+            hook.remove()
+
+    @staticmethod
+    def _tol(dtype):
+        # an isolated peak lands on its pixel; in half precision DKD computes in the map's dtype, so 0.25 px
+        return 0.25 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+
+    @staticmethod
+    def _top_k(k, device, dtype):
+        return ALIKED(model_name="aliked-t16", max_num_keypoints=k, detection_threshold=0.0).to(device, dtype).eval()
+
+    def test_top_k_returns_only_the_maxima_when_the_map_has_fewer_than_k_5862(self, device, dtype):
+        # Three maxima, returned by score: k = 3 returns them; k = 5 and k = 10000 (more than the 64 * 96 pixels)
+        # return the same three, never a non-maximum.
+        peaks = [(0, 60, 40, 0.8), (0, 21, 13, 0.9), (0, 35, 50, 0.7)]
+        maxima = torch.tensor([[21.0, 13.0], [60.0, 40.0], [35.0, 50.0]], device=device, dtype=dtype)
+        # relabelling: the transposed map gives the transposed maxima
+        peaks_t = [(b, y, x, s) for b, x, y, s in peaks]
+        for h, w, peaks_i, maxima_i in ((64, 96, peaks, maxima), (96, 64, peaks_t, maxima.flip(-1))):
+            score_map = self._score_map(peaks_i, device, dtype, h=h, w=w)
+            for k in (3, 5, 10000):
+                (feats,) = self._run(self._top_k(k, device, dtype), score_map)
+                assert feats.n == 3, (h, w, k, feats.n)
+                self.assert_close(feats.keypoints, maxima_i, rtol=0.0, atol=self._tol(dtype))
+
+    def test_top_k_above_the_pixel_count_returns_the_maxima_5862(self, device, dtype):
+        # k larger than the number of pixels does not raise. A 3 x 5 image has no position 2 px inside its border, so
+        # no keypoint; a 5 x 7 image with one maximum at (3, 2) and k = 40 gets that maximum. extract_dense_map pads
+        # the image around its centre to 32 x 32 and crops the score map back, so the hook places the small map at
+        # that offset of the 32 x 32 score-head output.
+        for h, w, peaks, expected in ((3, 5, [], []), (5, 7, [(0, 3, 2, 0.9)], [[3.0, 2.0]])):
+            small = self._score_map(peaks, device, dtype, h=h, w=w)
+            padded = torch.full((1, 1, 32, 32), 0.01, device=device, dtype=dtype)
+            top, left = (32 - h) // 2, (32 - w) // 2
+            padded[..., top : top + h, left : left + w] = small
+            aliked = self._top_k(w * h + 5, device, dtype)
+            hook = aliked.score_head.register_forward_hook(lambda m, i, o, p=padded: torch.logit(p))
+            try:
+                with torch.no_grad():
+                    (feats,) = aliked(torch.rand(1, 3, h, w, device=device, dtype=dtype))
+                    lafs, _, _ = aliked.forward_laf(torch.rand(1, 3, h, w, device=device, dtype=dtype))
+            finally:
+                hook.remove()
+            assert feats.n == len(expected)
+            assert lafs.shape == (1, len(expected), 2, 3)
+            if expected:
+                expected_t = torch.tensor(expected, device=device, dtype=dtype)
+                self.assert_close(feats.keypoints, expected_t, rtol=0.0, atol=self._tol(dtype))
+
+    def test_top_k_keeps_no_keypoint_in_the_border_or_the_padding_5862(self, device, dtype):
+        # A batch padded to 64 x 96: image 0 is valid on (W, H) = (80, 50), image 1 on the whole slot. The peaks at
+        # (88, 30) and (30, 58) lie in image 0's padding, so with k = 6 image 0 keeps its two maxima and image 1 its
+        # one, and every keypoint lies at least nms_radius = 2 px inside its image.
+        peaks = [(0, 21, 13, 0.9), (0, 60, 40, 0.8), (0, 88, 30, 0.95), (0, 30, 58, 0.95), (1, 47, 10, 0.9)]
+        image_size = torch.tensor([[80, 50], [96, 64]], device=device)
+        expected = [[[21.0, 13.0], [60.0, 40.0]], [[47.0, 10.0]]]
+        feats = self._run(
+            self._top_k(6, device, dtype), self._score_map(peaks, device, dtype, batch=2), image_size=image_size
+        )
+        assert [f.n for f in feats] == [2, 1]
+        for f, (w, h), expected_i in zip(feats, image_size.tolist(), expected):
+            self.assert_close(
+                f.keypoints, torch.tensor(expected_i, device=device, dtype=dtype), rtol=0.0, atol=self._tol(dtype)
+            )
+            assert (f.keypoints >= 2).all()
+            assert (f.keypoints[:, 0] <= w - 3).all()
+            assert (f.keypoints[:, 1] <= h - 3).all()
+
+    def test_forward_laf_top_k_pads_per_image_and_keeps_the_mask_5862(self, device, dtype):
+        # forward_laf pads every image to the largest count of the batch with zero frames, zero responses and zero
+        # descriptors. Image 0 has three maxima and image 1 one, with k = 5: three slots, two of them padding in
+        # image 1. A mask that keeps x < 48 leaves two maxima in image 0 and the one in image 1.
+        peaks = [(0, 21, 13, 0.9), (0, 60, 40, 0.8), (0, 35, 50, 0.7), (1, 40, 10, 0.9)]
+        score_map = self._score_map(peaks, device, dtype, batch=2)
+        aliked = self._top_k(5, device, dtype)
+        mask = torch.zeros(2, 1, 64, 96, device=device, dtype=dtype)
+        mask[..., :48] = 1.0
+        for kwargs, expected in (
+            ({}, [[[21.0, 13.0], [60.0, 40.0], [35.0, 50.0]], [[40.0, 10.0]]]),
+            ({"mask": mask}, [[[21.0, 13.0], [35.0, 50.0]], [[40.0, 10.0]]]),
+        ):
+            lafs, responses, descs = self._run(aliked, score_map, "forward_laf", compute_affine=False, **kwargs)
+            n = len(expected[0])
+            assert lafs.shape == (2, n, 2, 3)
+            assert responses.shape == (2, n, 1)
+            assert descs.shape[:2] == (2, n)
+            filled = laf_is_filled(lafs)
+            assert filled.tolist() == [[True] * n, [True] + [False] * (n - 1)]
+            for i, expected_i in enumerate(expected):
+                centres = lafs[i, filled[i], :, 2]
+                self.assert_close(
+                    centres, torch.tensor(expected_i, device=device, dtype=dtype), rtol=0.0, atol=self._tol(dtype)
+                )
+            assert lafs[1, 1:].abs().max() == 0
+            assert responses[1, 1:].abs().max() == 0
+            assert descs[1, 1:].abs().max() == 0
+
+    def test_threshold_fallback_is_decided_per_image_5865(self, device, dtype):
+        # The weak image's maxima, 0.15 and 0.12, are below detection_threshold = 0.2, so it keeps the maxima above
+        # its mean score; the strong image keeps its maxima above 0.2. Each image gets the same keypoints alone and in
+        # a batch, in either order.
+        strong = [(0, 21, 13, 0.9), (0, 60, 40, 0.5), (0, 35, 50, 0.1)]
+        weak = [(0, 30, 20, 0.15), (0, 70, 45, 0.12)]
+        aliked = ALIKED(model_name="aliked-t16").to(device, dtype).eval()
+        alone = [self._run(aliked, self._score_map(p, device, dtype))[0] for p in (strong, weak)]
+        assert [f.n for f in alone] == [2, 2]
+        for order in ((0, 1), (1, 0)):
+            peaks = [(i, x, y, s) for i, j in enumerate(order) for _, x, y, s in (strong, weak)[j]]
+            batched = self._run(aliked, self._score_map(peaks, device, dtype, batch=2))
+            for i, j in enumerate(order):
+                self.assert_close(batched[i].keypoints, alone[j].keypoints, rtol=0.0, atol=0.0)
+                self.assert_close(batched[i].keypoint_scores, alone[j].keypoint_scores, rtol=0.0, atol=0.0)

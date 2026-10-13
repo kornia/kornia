@@ -58,9 +58,9 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
           Inverse resampling cannot recover image or mask information lost through cropping, padding, or
           interpolation. Tensor-form boxes may lose rotated corners through axis-aligned enclosure.
           For an empty batch, image and mask inverse restore the spatial dimensions recorded in the parameters.
-        - container mask processing has dtype- and operator-specific limitations; see
-          `#4478 <https://github.com/kornia/kornia/issues/4478>`_. Direct ``transform_masks`` calls use the
-          image dtype guard and therefore reject ``bool`` masks.
+        - containers process integer masks in at least float32 and reject labels that cannot be represented
+          exactly in the working dtype. Direct ``transform_masks`` calls use the image dtype guard and therefore
+          reject ``bool`` masks.
         - a subclass supplies its own :meth:`inverse_transform` -- the base raises ``NotImplementedError`` --
           while :meth:`compute_inverse_transformation` defaults to inverting the sampled matrix.
         - a scalar magnitude ``x`` means ``center ± x``, as it does for the intensity classes: its lower end
@@ -237,8 +237,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         """
         in_tensor = self.transform_tensor(input)
         output = in_tensor.clone()
-        batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs
@@ -310,8 +309,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         **kwargs: Any,
     ) -> Boxes:
         output = input.clone()
-        batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
 
         if transform is None:
             raise RuntimeError("`transform` has to be a torch.Tensor. Got None.")
@@ -350,8 +348,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
 
         """
         output = input.clone()
-        batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
 
         if transform is None:
             raise RuntimeError("`transform` has to be a torch.Tensor. Got None.")

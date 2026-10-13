@@ -56,6 +56,16 @@ class DISK(nn.Module):
               a torch.Tensor of shape
               :math:`(B, \mathrm{desc\_dim} + 1, H, W)`.
 
+    Note:
+        Keypoints are the strict local maxima of the heatmap: :func:`~kornia.geometry.subpix.nms2d` keeps a position
+        only if its score is greater than every other score in its full ``window_size`` window. Tied maxima, and the
+        positions near the border whose window runs off the image (see :func:`~kornia.geometry.subpix.nms2d`), are
+        never keypoints. This departs on purpose from the reference implementation (cvlab-epfl/disk). Its max-pool NMS
+        clips the window at the border, so it judges a border position against part of its window. Of several equal
+        maxima it keeps the one the max-pool reports first, which depends on an order PyTorch does not specify. With
+        the pretrained ``depth`` weights on Oxford graf and boat img1, every keypoint of the reference that kornia
+        leaves out lies in that border strip.
+
     Example:
         >>> disk = DISK.from_pretrained('depth')
         >>> images = torch.rand(1, 3, 256, 256)
@@ -110,7 +120,9 @@ class DISK(nn.Module):
 
         Args:
             images: The image to detect features in. Shape :math:`(B, 3, H, W)`.
-            n: The maximum number of keypoints to detect. If None, all keypoints are returned.
+            n: The maximum number of keypoints per image, counted among the maxima above ``score_threshold``. An
+               image with ``n`` such maxima or fewer keeps all of them; with more, its ``n`` strongest, where maxima
+               tied at the ``n``-th score are taken in raster order. If None, all keypoints are returned.
             window_size: The size of the non-maxima suppression window used to filter detections.
             score_threshold: The minimum score a detection must have to be returned.
                              See :py:class:`DISKFeatures` for details.

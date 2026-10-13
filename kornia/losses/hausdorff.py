@@ -22,7 +22,7 @@ from typing import Callable
 import torch
 from torch import nn
 
-from kornia.core.utils import is_exporting
+from kornia.core.utils import is_compiling
 
 
 class _HausdorffERLossBase(nn.Module):
@@ -115,8 +115,9 @@ class _HausdorffERLossBase(nn.Module):
 
         if target.dtype != torch.long:
             raise ValueError(f"Expect long type target value in range [0, {pred.size(1)}). Got {target.dtype}.")
-        # The range check reads the data, which graph capture cannot do; skip it under export.
-        if not is_exporting() and not (target.max() < pred.size(1) and target.min() >= 0):
+        # The range check reads the data, which graph capture cannot do; skip it under any capture.
+        # Neither Hausdorff loss scripts on main (its ``super().forward``), so no TorchScript guard is needed.
+        if not is_compiling() and not (target.max() < pred.size(1) and target.min() >= 0):
             raise ValueError(
                 f"Expect long type target value in range [0, {pred.size(1)}). ({target.min()}, {target.max()})"
             )
@@ -173,6 +174,9 @@ class HausdorffERLoss(_HausdorffERLossBase):
         - ``pred`` holds per-class probabilities ``(B, C, H, W)`` and nothing is applied to it, unlike the logits of
           :func:`~kornia.losses.focal_loss`: pass a softmax. ``target`` holds int64 labels ``(B, 1, H, W)`` in
           ``[0, C)``. Channel ``c`` is compared with ``target == c``, class 0 included.
+        - The ``[0, C)`` check reads the data, so it is skipped wherever the call captures a graph
+          (``torch.compile`` or ``torch.export``). A captured call whose target holds an out-of-range label scores
+          those voxels in no class and returns a finite loss instead of raising; an eager call still raises.
         - ``reduction='none'`` returns ``(C, B, 1, H, W)``, class axis first; the default ``'mean'`` is the plain
           mean of that tensor.
         - Each of the ``k`` erosions is min-max normalised per image and class and weighted by

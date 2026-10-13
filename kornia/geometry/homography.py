@@ -326,7 +326,7 @@ def _homography_rows(p1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
     Two rows per correspondence, ``[0, -p1, y2 p1]`` and ``[p1, 0, -x2 p1]``, so that ``row . vec(H) = 0`` for
     ``points2 ~ H p1`` with ``H`` row-major; only the first two coordinates of ``points2`` are read.
     """
-    # DIAPO 11: https://www.uio.no/studier/emner/matnat/its/nedlagte-emner/UNIK4690/v16/forelesninger/lecture_4_3-estimating-homographies-from-feature-correspondences.pdf  # noqa: E501
+    # DIAPO 11: https://www.uio.no/studier/emner/matnat/its/nedlagte-emner/UNIK4690/v16/forelesninger/lecture_4_3-estimating-homographies-from-feature-correspondences.pdf
     zeros = torch.zeros_like(p1)
     ax = torch.cat([zeros, -p1, points2[..., 1:2] * p1], dim=-1)
     ay = torch.cat([p1, zeros, -points2[..., 0:1] * p1], dim=-1)
@@ -841,8 +841,10 @@ def find_homography_lines_dlt(
         # We should use provided weights
         if not ((len(weights.shape) == 2) and (weights.shape == ls1.shape[:2])):
             raise AssertionError(weights.shape)
-        w_diag = torch.diag_embed(weights.unsqueeze(dim=-1).repeat(1, 1, 2).reshape(weights.shape[0], -1))
-        A = A.transpose(-2, -1) @ w_diag @ A
+        # Scale each segment's two design rows by its weight instead of materializing the
+        # (B, 2N, 2N) diagonal weight matrix, whose storage grows quadratically with N.
+        w_full = weights.repeat_interleave(2, dim=1).unsqueeze(1)
+        A = (A.transpose(-2, -1) * w_full) @ A
 
     try:
         _, _, V = _torch_svd_cast(A)

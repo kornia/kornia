@@ -158,7 +158,7 @@ def solve_pnp_dlt(
     # References:
     # ============
     # 1. https://team.inria.fr/lagadic/camera_localization/tutorial-pose-dlt-opencv.html
-    # 2. https://github.com/opencv/opencv/blob/68d15fc62edad980f1ffa15ee478438335f39cc3/modules/calib3d/src/calibration.cpp # noqa: E501
+    # 2. https://github.com/opencv/opencv/blob/68d15fc62edad980f1ffa15ee478438335f39cc3/modules/calib3d/src/calibration.cpp
     # 3. http://rpg.ifi.uzh.ch/docs/teaching/2020/03_camera_calibration.pdf
     # 4. http://www.cs.cmu.edu/~16385/s17/Slides/11.3_Pose_Estimation.pdf
     # 5. https://www.ece.mcmaster.ca/~shirani/vision/hartley_ch7.pdf
@@ -241,7 +241,8 @@ def solve_pnp_dlt(
         system = weights_expanded * system
 
     # Getting the solution vectors.
-    _, _, v = _torch_svd_cast(system)
+    # Only the right singular vectors are used; reduced SVD avoids saving the unused (2N, 2N) U.
+    _, _, v = _torch_svd_cast(system, full_matrices=False)
     solution = v[..., -1]
 
     # Reshaping the solution vectors to the correct shape.

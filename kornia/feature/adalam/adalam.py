@@ -19,11 +19,12 @@
 # https://github.com/cavalli1234/AdaLAM
 # Copyright (c) 2020, Luca Cavalli
 
-from typing import Optional, Tuple, Union
+import warnings
+from typing import Optional, Sequence, Tuple, Union
 
 import torch
 
-from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.feature.laf import get_laf_center, get_laf_orientation, get_laf_scale
 
 from .core import AdalamConfig, _no_match, adalam_core
@@ -53,15 +54,38 @@ def match_adalam(
     lafs1: torch.Tensor,
     lafs2: torch.Tensor,
     config: Optional[AdalamConfig] = None,
-    hw1: Optional[Tuple[int, int]] = None,
-    hw2: Optional[Tuple[int, int]] = None,
+    hw1: Optional[Sequence[int]] = None,
+    hw2: Optional[Sequence[int]] = None,
     dm: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Perform descriptor matching, followed by AdaLAM filtering.
 
     See :cite:`AdaLAM2020` for more details.
 
-    If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
+    Convention:
+        - See the Convention block on :func:`~kornia.feature.match_nn`. ``dists`` is the inverse of the confidence
+          of the local RANSAC that accepted the match, in float32 whatever the descriptor dtype, so at most
+          ``1 / min_confidence`` (``1 / 200`` by default). If no seed survives, for example with very few keypoints,
+          the matches of a ratio test on squared distances, ``ratio <= 0.95``, are returned with that ratio instead.
+        - The putative matches are the nearest neighbours in the distance matrix ``dm``, scored by the ratio of the
+          two smallest distances; with ``force_seed_mnn`` only mutual nearest neighbours can be seeds. ``dm`` holds
+          plain distances, like the ``dm`` of :func:`~kornia.feature.match_nn` and the other matchers: AdaLAM
+          squares it internally (its thresholds are tuned for squared distances), so ``dm=torch.cdist(desc1, desc2)``
+          gives the matches of ``dm=None``, where the squared L2 distances between the descriptors are used.
+        - The LAFs give each keypoint's centre, orientation in degrees and scale. Orientations and scales are read
+          only through how their change between the two images varies from match to match: adding an angle to the
+          orientations of one image or both, negating both, or scaling the LAFs of one image or both alike changes
+          nothing.
+        - ``hw1`` and ``hw2`` enter only through the area of their image, which sets the neighbourhood radius in that
+          image, so ``(H, W)`` and ``(W, H)`` give the same matches. Without them, the extent of each image's
+          keypoints is used.
+        - ``config`` is merged into the defaults of ``kornia.feature.adalam.get_adalam_default_config()``; an
+          unknown key warns and is ignored. The computation runs on the device of ``desc1`` unless ``config`` sets
+          ``"device"``.
+        - Known defects: exact correspondences are rejected, because the local RANSACs give residuals at or near zero
+          no inlier weight. An image matched against itself gets no match whenever a seed survives; when none does,
+          as with very few keypoints, the ratio-test fallback above returns the identity matches instead
+          (`#5866 <https://github.com/kornia/kornia/issues/5866>`_).
 
     Args:
         desc1: Batch of descriptors of a shape :math:`(B1, D)`.
@@ -69,14 +93,15 @@ def match_adalam(
         lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
         lafs2: LAFs of a shape :math:`(1, B2, 2, 3)`.
         config: dict with AdaLAM config
-        dm: torch.Tensor containing the distances from each descriptor in desc1
-          to each descriptor in desc2, shape of :math:`(B1, B2)`.
-        hw1: Height/width of image.
-        hw2: Height/width of image.
+        dm: torch.Tensor containing the non-negative distances (not squared) from each descriptor in desc1
+          to each descriptor in desc2, shape of :math:`(B1, B2)`. Smaller is better.
+        hw1: size of the first image, ``(H, W)`` or ``(W, H)``.
+        hw2: size of the second image, ``(H, W)`` or ``(W, H)``.
 
 
     Return:
-        - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
+        - Inverse local RANSAC confidence of each match, float32, shape of :math:`(B3, 1)`; see the Convention
+          block.
         - Long torch.Tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
           where 0 <= B3 <= B1.
 
@@ -86,15 +111,14 @@ def match_adalam(
     KORNIA_CHECK_LAF(lafs1)
     KORNIA_CHECK_LAF(lafs2)
     config_ = get_adalam_default_config()
-    if config is None:
-        config_["device"] = desc1.device
-    else:
-        config_ = get_adalam_default_config()
+    config_["device"] = desc1.device
+    if config is not None:
         for key, val in config.items():
             if key not in config_:
-                print(
-                    f"WARNING: custom configuration contains a key which is not recognized ({key}). "
-                    f"Known configurations are {list(config_.keys())}."
+                warnings.warn(
+                    f"Custom configuration contains a key which is not recognized ({key}). "
+                    f"Known configurations are {list(config_.keys())}.",
+                    stacklevel=2,
                 )
                 continue
             # TypedDict does not support variable names. https://stackoverflow.com/a/59583427/1983544
@@ -112,6 +136,7 @@ def match_adalam(
         get_laf_scale(lafs1).reshape(-1),
         get_laf_scale(lafs2).reshape(-1),
         return_dist=True,
+        dm=dm,
     )
     return quality, idxs
 
@@ -145,8 +170,8 @@ class AdalamFilter:
         putative_matches: torch.Tensor,
         scores: torch.Tensor,
         mnn: Optional[torch.Tensor] = None,
-        im1shape: Optional[Tuple[int, int]] = None,
-        im2shape: Optional[Tuple[int, int]] = None,
+        im1shape: Optional[Sequence[int]] = None,
+        im2shape: Optional[Sequence[int]] = None,
         o1: Optional[torch.Tensor] = None,
         o2: Optional[torch.Tensor] = None,
         s1: Optional[torch.Tensor] = None,
@@ -173,11 +198,11 @@ class AdalamFilter:
                  'force_seed_mnn' in the DEFAULT_CONFIG. If None, it disables the mutual nearest neighbor filtering on
                  seed point selection. Expected a bool torch.Tensor with shape (num_keypoints_in_source_image,)
             im1shape: Shape of the source image. If None, it is inferred from keypoints max and min, at the cost of
-                      wasted runtime. So please provide it. Expected a tuple with (width, height) or (height, width)
-                      of source image
+                      wasted runtime. So please provide it. Expected a tuple or list with (width, height) or
+                      (height, width) of source image
             im2shape: Shape of the destination image. If None, it is inferred from keypoints max and min, at the cost
-                      of wasted runtime. So please provide it. Expected a tuple with (width, height) or (height, width)
-                      of destination image
+                      of wasted runtime. So please provide it. Expected a tuple or list with (width, height) or
+                      (height, width) of destination image
             o1: keypoint orientations in degrees. They can be None if 'orientation_difference_threshold' in config
                    is set to None. See documentation on 'orientation_difference_threshold' in the DEFAULT_CONFIG.
                    Expected a float32 torch.Tensor with shape (num_keypoints_in_source/destination_image,)
@@ -217,13 +242,14 @@ class AdalamFilter:
         k2: torch.Tensor,
         d1: torch.Tensor,
         d2: torch.Tensor,
-        im1shape: Optional[Tuple[int, int]] = None,
-        im2shape: Optional[Tuple[int, int]] = None,
+        im1shape: Optional[Sequence[int]] = None,
+        im2shape: Optional[Sequence[int]] = None,
         o1: Optional[torch.Tensor] = None,
         o2: Optional[torch.Tensor] = None,
         s1: Optional[torch.Tensor] = None,
         s2: Optional[torch.Tensor] = None,
         return_dist: bool = False,
+        dm: Optional[torch.Tensor] = None,
     ) -> Union[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
         """Match and filter with AdaLAM.
 
@@ -245,11 +271,11 @@ class AdalamFilter:
             d2: descriptors in the destination image.
                 Expected an array with shape (num_keypoints_in_destination_image, descriptor_size).
             im1shape: Shape of the source image. If None, it is inferred from keypoints max and min, at the cost of
-                      wasted runtime. So please provide it. Expected a tuple with (width, height) or (height, width)
-                      of source image
+                      wasted runtime. So please provide it. Expected a tuple or list with (width, height) or
+                      (height, width) of source image
             im2shape: Shape of the destination image. If None, it is inferred from keypoints max and min, at the cost
-                      of wasted runtime. So please provide it. Expected a tuple with (width, height) or (height, width)
-                      of destination image
+                      of wasted runtime. So please provide it. Expected a tuple or list with (width, height) or
+                      (height, width) of destination image
             o1: keypoint orientations in degrees. They can be None if 'orientation_difference_threshold' in config
                    is set to None. See documentation on 'orientation_difference_threshold' in the DEFAULT_CONFIG.
                    Expected an array with shape (num_keypoints_in_source/destination_image,)
@@ -259,6 +285,9 @@ class AdalamFilter:
                    Expected an array with shape (num_keypoints_in_source/destination_image,)
             s2: Same as s1 for destination.
             return_dist: if True, inverse confidence value is also outputted.
+            dm: non-negative distances (not squared) from each descriptor in d1 to each descriptor in d2, shape
+                (num_keypoints_in_source_image, num_keypoints_in_destination_image); smaller is better. They are
+                squared internally, like the L2 distances used when dm is None.
 
         Returns:
             Filtered putative matches.
@@ -291,13 +320,22 @@ class AdalamFilter:
         else:
             _s1, _s2 = s1, s2
 
+        if dm is not None:
+            KORNIA_CHECK(
+                tuple(dm.shape) == (len(_d1), len(_d2)),
+                f"dm must have shape {(len(_d1), len(_d2))}, got {tuple(dm.shape)}",
+            )
+
         if (len(_d2) <= 1) or (len(_d1) <= 1):
-            idxs, dists = _no_match(_d1)
+            dists, idxs = _no_match(_d1)
             if return_dist:
                 return idxs, dists
             return idxs
 
-        distmat = dist_matrix(_d1, _d2, is_normalized=False)
+        if dm is None:
+            distmat = dist_matrix(_d1, _d2, is_normalized=False)
+        else:
+            distmat = torch.as_tensor(dm, device=self.config["device"], dtype=torch.float32).pow(2)
         dd12, nn12 = torch.topk(distmat, k=2, dim=1, largest=False)  # (n1, 2)
 
         putative_matches = nn12[:, 0]

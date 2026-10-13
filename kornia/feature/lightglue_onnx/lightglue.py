@@ -23,10 +23,17 @@ from typing import ClassVar, Union
 import torch
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
-from kornia.core.external import numpy as np
-from kornia.core.external import onnxruntime as ort
+from kornia.core.external import numpy as _np
+from kornia.core.external import onnxruntime as _ort
 
 from .utils import download_onnx_from_url, normalize_keypoints
+
+_KEYPOINT_RANGE_MSG = (
+    "Keypoints must lie inside the image: normalized by the image size they have to be in [-1, 1]. The keypoints are "
+    "(x, y) pixel coordinates. The image size is (width, height) for the ``image_size`` of LightGlue and "
+    "OnnxLightGlue, and (height, width) for the ``hw1`` / ``hw2`` of LightGlueMatcher; the wrong order, or keypoints "
+    "detected on a differently sized image, put them out of range."
+)
 
 __all__ = ["OnnxLightGlue"]
 
@@ -40,11 +47,18 @@ class OnnxLightGlue:
     If you have trained your own LightGlue model, see https://github.com/fabio-sim/LightGlue-ONNX
     for how to export the model to ONNX and optimize it.
 
+    Convention:
+        - See the Convention block on :class:`~kornia.feature.LightGlue`: the keypoints are normalised the same way,
+          with ``image_size`` in the order ``(W, H)``, and the same range check applies. Unlike
+          :class:`~kornia.feature.LightGlue`, it takes float32 inputs with a batch of one and no scales, orientations
+          or LAFs, and it runs on CPU or CUDA only.
+
     Args:
         weights: Pretrained weights, or a path to your own exported ONNX model. Available pretrained weights
           are ``'disk'``, ``'superpoint'``, ``'disk_fp16'``, and ``'superpoint_fp16'``. `Note that FP16 requires CUDA.`
           Defaults to ``'disk_fp16'`` if ``device`` is CUDA, and ``'disk'`` if CPU.
-        device: Union[str, torch.device, None] to run inference on.
+        device: ``'cpu'`` or ``'cuda'`` to run inference on; another device raises ``ValueError``. ``None`` means
+          ``'cpu'``, as in the other kornia feature constructors, not torch's current default device.
 
     """
 
@@ -61,10 +75,10 @@ class OnnxLightGlue:
         # Import onnxruntime through the lazy loader, not an `importlib.util.find_spec` probe, so that
         # `kornia_config.lazyloader.installation_mode` handles a missing module before the weights are downloaded.
         # `__version__` is module metadata, which the loader imports the module for; `__doc__` would not import it.
-        _ = ort.__version__
+        _ = _ort.__version__
         KORNIA_CHECK(importlib.util.find_spec("numpy") is not None, "numpy is not installed.")
 
-        device = torch.device(device)  # type: ignore
+        device = torch.device("cpu") if device is None else torch.device(device)
         self.device = device
 
         if device.type == "cpu":
@@ -87,7 +101,7 @@ class OnnxLightGlue:
 
             weights = download_onnx_from_url(url)
 
-        self.session = ort.InferenceSession(weights, providers=providers)
+        self.session = _ort.InferenceSession(weights, providers=providers)
 
     def __call__(self, data: dict[str, dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
         """Run the ONNX LightGlue matcher.
@@ -159,8 +173,8 @@ class OnnxLightGlue:
         kpts0 = normalize_keypoints(kpts0_, size=size0)  # type: ignore
         kpts1 = normalize_keypoints(kpts1_, size=size1)  # type: ignore
 
-        KORNIA_CHECK(torch.all(kpts0 >= -1).item() and torch.all(kpts0 <= 1).item(), "")  # type: ignore
-        KORNIA_CHECK(torch.all(kpts1 >= -1).item() and torch.all(kpts1 <= 1).item(), "")  # type: ignore
+        KORNIA_CHECK(torch.all(kpts0 >= -1).item() and torch.all(kpts0 <= 1).item(), _KEYPOINT_RANGE_MSG)  # type: ignore
+        KORNIA_CHECK(torch.all(kpts1 >= -1).item() and torch.all(kpts1 <= 1).item(), _KEYPOINT_RANGE_MSG)  # type: ignore
 
         # Inference.
         lightglue_inputs = {"kpts0": kpts0, "kpts1": kpts1, "desc0": desc0, "desc1": desc1}
@@ -172,7 +186,7 @@ class OnnxLightGlue:
                 name,
                 device_type=self.device.type,
                 device_id=0,
-                element_type=np.float32,
+                element_type=_np.float32,
                 shape=tuple(tensor.shape),
                 buffer_ptr=tensor.data_ptr(),
             )

@@ -3363,6 +3363,10 @@ class TestRandomGrayscale(BaseTester):
 
 
 class TestCenterCrop(BaseTester):
+    def test_invalid_size_type(self):
+        with pytest.raises(TypeError, match="Expected int or tuple\\[int, int\\]"):
+            CenterCrop([4, 6])
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         # slice cropping mode: a static-size centered crop is fullgraph-safe and matches eager.
         input = torch.rand(2, 3, 20, 24, device=device, dtype=dtype)
@@ -4537,7 +4541,8 @@ class TestRandomChannelShuffle(BaseTester):
 class TestRandomClahe(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.arange(36, device=device, dtype=dtype).reshape(2, 2, 3, 3) / 36
-        expected = torch.tensor(22.4588, device=device, dtype=dtype)
+        # Centre-anchored blending of the 2 x 2 tile LUTs, evaluated with the per-pixel reference.
+        expected = torch.tensor(86173 / (16 * 255), device=device, dtype=dtype)
         self.assert_close(RandomClahe(p=1.0, grid_size=(2, 2))(img).sum(), expected)
 
     @pytest.mark.parametrize("batch_shape", [(1, 3, 5, 7), (3, 1, 5, 7)])
@@ -4578,10 +4583,12 @@ class TestRandomClahe(BaseTester):
         self.assert_close(actual, expected)
         if slow_and_differentiable:
             weights = torch.rand_like(actual)
-            self.assert_close(
-                torch.autograd.grad(actual, input_data, weights)[0],
-                torch.autograd.grad(expected, input_data, weights)[0],
-            )
+            grad_actual = torch.autograd.grad(actual, input_data, weights)[0]
+            grad_expected = torch.autograd.grad(expected, input_data, weights)[0]
+            # The gradients reach a few hundred, so rounding leaves absolute noise above the float32 atol on
+            # entries near zero; compare relative to the largest entry.
+            scale = grad_expected.abs().max()
+            self.assert_close(grad_actual / scale, grad_expected / scale)
 
     def test_clip_limit_on_the_input_device(self, device, dtype):
         # The per-sample thresholds are computed in float64, on the CPU for an MPS clip tensor. A single

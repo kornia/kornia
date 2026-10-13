@@ -82,6 +82,13 @@ class TestGetLAFScale(BaseTester):
         model_jit = torch.jit.script(kornia.feature.get_laf_scale)
         self.assert_close(model(img), model_jit(img))
 
+    def test_large_laf_does_not_overflow(self, device, dtype):
+        # The determinant of this LAF, 300 * 280 + 40 * 25 = 85000, overflows float16 (max 65504); its scale does not.
+        laf = torch.tensor([[[[300.0, 40.0, 410.0], [-25.0, 280.0, 330.0]]]], device=device, dtype=dtype)
+        scale = kornia.feature.get_laf_scale(laf)
+        assert scale.dtype == dtype
+        self.assert_close(scale, torch.full((1, 1, 1, 1), math.sqrt(85000.0), device=device, dtype=dtype))
+
 
 class TestGetLAFCenter(BaseTester):
     def test_shape(self, device):
@@ -232,6 +239,22 @@ class TestMakeUpright(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.make_upright, (img,))
 
+    def test_zero_padding_laf_stays_zero_5724(self, device, dtype):
+        laf = torch.zeros(2, 3, 2, 3, device=device, dtype=dtype)
+        laf[0, 0] = torch.tensor([[2.0, 1.0, 5.0], [0.5, 3.0, 7.0]])
+        laf[1, 2] = torch.tensor([[1.0, 0.0, 9.0], [0.0, 4.0, 2.0]])
+        out = kornia.feature.make_upright(laf)
+        expected_filled = torch.tensor([[True, False, False], [False, False, True]], device=device)
+        assert torch.equal(kornia.feature.laf_is_filled(out), expected_filled)
+        assert torch.equal(out[~expected_filled], torch.zeros(4, 2, 3, device=device, dtype=dtype))
+
+    def test_zero_padding_laf_keeps_gradients_finite_5724(self, device):
+        laf = torch.zeros(1, 2, 2, 3, device=device)
+        laf[0, 1] = torch.tensor([[2.0, 1.0, 5.0], [0.5, 3.0, 7.0]])
+        laf.requires_grad_(True)
+        kornia.feature.make_upright(laf).sum().backward()
+        assert torch.isfinite(laf.grad).all()
+
     @pytest.mark.skip("Union")
     def test_jit(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 2, 3
@@ -239,6 +262,30 @@ class TestMakeUpright(BaseTester):
         model = kornia.feature.make_upright
         model_jit = torch.jit.script(kornia.feature.make_upright)
         self.assert_close(model(img), model_jit(img))
+
+    def test_large_laf_does_not_overflow(self, device, dtype):
+        # Squares and products of these LAFs' entries overflow float16 (max 65504); the LAFs and their upright forms
+        # do not. Upright form [[r, 0], [(a22 * a12 + a21 * a11) / r, det / r]] with r = hypot(a11, a12). The second
+        # LAF has a scale of only sqrt(300 * 20) = 77 px, but a11**2 = 90000 overflows; it is upright already.
+        laf = torch.tensor(
+            [[[[300.0, 40.0, 410.0], [-25.0, 280.0, 330.0]], [[300.0, 0.0, 10.0], [0.0, 20.0, 12.0]]]],
+            device=device,
+            dtype=dtype,
+        )
+        r = math.hypot(300.0, 40.0)
+        expected = torch.tensor(
+            [
+                [
+                    [[r, 0.0, 410.0], [(280.0 * 40.0 - 25.0 * 300.0) / r, 85000.0 / r, 330.0]],
+                    [[300.0, 0.0, 10.0], [0.0, 20.0, 12.0]],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        out = kornia.feature.make_upright(laf)
+        assert out.dtype == dtype
+        self.assert_close(out, expected)
 
 
 class TestELL2LAF(BaseTester):
@@ -460,6 +507,26 @@ class TestLAFIsValid(BaseTester):
         compiled = torch.compile(kornia.feature.laf_is_valid, fullgraph=True)
         assert torch.equal(compiled(laf), expected)
 
+    def test_validity_does_not_depend_on_float16_range(self, device, dtype):
+        # Products of two entries of an ordinary LAF leave the float16 range: the determinant of the first LAF is
+        # 300 * 280 + 40 * 25 = 85000 > 65504, and every product in the third rounds to zero (2**-26 and below).
+        # Neither makes the LAF invalid. The second LAF is singular (300 * 300 - 600 * 150 = 0) and stays invalid.
+        tiny = 2.0**-13
+        laf = torch.tensor(
+            [
+                [
+                    [[300.0, 40.0, 410.0], [-25.0, 280.0, 330.0]],
+                    [[300.0, 600.0, 410.0], [150.0, 300.0, 330.0]],
+                    [[tiny, tiny / 2, 7.0], [-tiny / 4, tiny, 3.0]],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        valid = kornia.feature.laf_is_valid(laf)
+        assert valid.dtype == torch.bool
+        assert torch.equal(valid, torch.tensor([[True, False, True]], device=device))
+
 
 class TestLAFIsFilled(BaseTester):
     def _mixed(self, device, dtype):
@@ -588,6 +655,23 @@ class TestLAF2pts(BaseTester):
         batch_size, channels, height, width = 3, 2, 2, 3
         laf = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.laf_to_boundary_points, (laf))
+
+    def test_circle_is_built_in_the_laf_dtype_5724(self, device):
+        if torch.device(device).type == "mps":
+            pytest.skip("MPS does not support float64")
+        n_pts = 7
+        laf = torch.tensor([[[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]]], device=device, dtype=torch.float64)
+        pts = kornia.feature.laf_to_boundary_points(laf, n_pts)
+        angles = torch.linspace(0, 2 * math.pi, n_pts - 1, dtype=torch.float64, device=device)
+        expected = torch.cat(
+            [
+                torch.zeros(1, 2, device=device, dtype=torch.float64),
+                torch.stack([torch.sin(angles), torch.cos(angles)], 1),
+            ]
+        )
+        assert pts.dtype == torch.float64
+        # a float32 circle cast to float64 is off by ~1e-8 here
+        self.assert_close(pts[0, 0], expected, rtol=0, atol=1e-14)
 
     def test_matches_explicit_affine_reference(self, device, dtype):
         """The boundary points are the LAF affine map applied to the origin + unit-circle basis.
@@ -876,14 +960,16 @@ class TestExtractPatchesSimple(BaseTester):
 
     def test_same_odd(self, device, dtype):
         img = torch.arange(5)[None].repeat(5, 1)[None, None].to(device, dtype)
-        laf = torch.tensor([[2.0, 0, 2.0], [0, 2.0, 2.0]]).reshape(1, 1, 2, 3).to(device, dtype)
+        # The whole image spans pixels -0.5 .. 4.5: centre 2, scale PS / 2.
+        laf = torch.tensor([[2.5, 0, 2.0], [0, 2.5, 2.0]]).reshape(1, 1, 2, 3).to(device, dtype)
 
         patch = kornia.feature.extract_patches_simple(img, laf, 5, 1.0)
         self.assert_close(img, patch[0])
 
     def test_same_even(self, device, dtype):
         img = torch.arange(4)[None].repeat(4, 1)[None, None].to(device, dtype)
-        laf = torch.tensor([[1.5, 0, 1.5], [0, 1.5, 1.5]]).reshape(1, 1, 2, 3).to(device, dtype)
+        # The whole image spans pixels -0.5 .. 3.5: centre 1.5, scale PS / 2.
+        laf = torch.tensor([[2.0, 0, 1.5], [0, 2.0, 1.5]]).reshape(1, 1, 2, 3).to(device, dtype)
 
         patch = kornia.feature.extract_patches_simple(img, laf, 4, 1.0)
         self.assert_close(img, patch[0])
@@ -1020,14 +1106,16 @@ class TestExtractPatchesPyr(BaseTester):
 
     def test_same_odd(self, device, dtype):
         img = torch.arange(5)[None].repeat(5, 1)[None, None].to(device, dtype)
-        laf = torch.tensor([[2.0, 0, 2.0], [0, 2.0, 2.0]]).reshape(1, 1, 2, 3).to(device, dtype)
+        # The whole image spans pixels -0.5 .. 4.5: centre 2, scale PS / 2.
+        laf = torch.tensor([[2.5, 0, 2.0], [0, 2.5, 2.0]]).reshape(1, 1, 2, 3).to(device, dtype)
 
         patch = kornia.feature.extract_patches_from_pyramid(img, laf, 5, 1.0)
         self.assert_close(img, patch[0])
 
     def test_same_even(self, device, dtype):
         img = torch.arange(4)[None].repeat(4, 1)[None, None].to(device, dtype)
-        laf = torch.tensor([[1.5, 0, 1.5], [0, 1.5, 1.5]]).reshape(1, 1, 2, 3).to(device, dtype)
+        # The whole image spans pixels -0.5 .. 3.5: centre 1.5, scale PS / 2.
+        laf = torch.tensor([[2.0, 0, 1.5], [0, 2.0, 1.5]]).reshape(1, 1, 2, 3).to(device, dtype)
 
         patch = kornia.feature.extract_patches_from_pyramid(img, laf, 4, 1.0)
         self.assert_close(img, patch[0])
@@ -1092,14 +1180,14 @@ class TestExtractPatchesPyr(BaseTester):
 
     def test_one_pixel_axis_preserves_non_singleton_extent(self, device, dtype):
         # A singleton axis must collapse only itself. The other axis still has spatial extent, so
-        # a full-image LAF over a 1x5 or 5x1 ramp must retain that ramp instead of degenerating to
-        # the center pixel in both directions.
+        # a full-image LAF (scale W / 2 and H / 2) over a 1x5 or 5x1 ramp must retain that ramp
+        # instead of degenerating to the center pixel in both directions.
         for h, w in ((1, 5), (5, 1)):
             img = torch.arange(5, device=device, dtype=dtype).reshape(1, 1, h, w)
             pixel_laf = torch.tensor(
                 [
-                    [float(max(w - 1, 1)) / 2.0, 0.0, float(w - 1) / 2.0],
-                    [0.0, float(max(h - 1, 1)) / 2.0, float(h - 1) / 2.0],
+                    [float(w) / 2.0, 0.0, float(w - 1) / 2.0],
+                    [0.0, float(h) / 2.0, float(h - 1) / 2.0],
                 ],
                 device=device,
                 dtype=dtype,
@@ -1218,10 +1306,10 @@ class TestExtractPatchesPyr(BaseTester):
             monkeypatch.setattr(laf_module, "_pyramid_atlas_fits", lambda *args: limit > 0)
             img = torch.zeros(1, 1, size, size, device=device, dtype=dtype)
             img[:, :, :, -1] = 1.0
-            # A quarter pixel OUTSIDE the outermost pixel center, so the clamp engages strictly on
-            # every backend: probing exactly at the center can round onto the clamp bound, where
-            # the subgradient convention differs between CPU and MPS.
-            center_x = 1.0 - 1.0 / (4.0 * size)
+            # A quarter pixel OUTSIDE the outermost pixel center (pixel size - 1, normalized 1), so
+            # the clamp engages strictly on every backend: probing exactly at the center can round
+            # onto the clamp bound, where the subgradient convention differs between CPU and MPS.
+            center_x = 1.0 + 0.25 / (size - 1)
             nlaf = torch.tensor(
                 [[[[0.0, 0.0, center_x], [0.0, 0.0, 0.5]]]], device=device, dtype=dtype, requires_grad=True
             )
@@ -1503,6 +1591,74 @@ def test_nonfinite_laf_backward_does_not_crash_the_interpreter():
     )
 
 
+_EXTRACTORS = [kornia.feature.extract_patches_simple, kornia.feature.extract_patches_from_pyramid]
+
+
+class TestPatchSamplingFrame(BaseTester):
+    # A LAF lives in the image's pixel frame: pixel centres at integers, as `normalize_laf` and
+    # `get_laf_center` use. Sampling it with corner-aligned grid coordinates read pixel x * W / (W - 1) - 0.5 instead.
+
+    @pytest.mark.parametrize("extract", _EXTRACTORS)
+    def test_pure_crop_laf_returns_the_image_crop_5678(self, extract, device, dtype):
+        # Axis-aligned LAF of scale PS / 2 with an odd PS: one patch pixel per image pixel, centred on an integer pixel
+        # away from the image centre, where the corner-aligned grid was exact.
+        g = torch.Generator().manual_seed(0)
+        img = torch.rand(1, 1, 60, 75, generator=g).to(device=device, dtype=dtype)
+        x, y, ps = 30, 22, 41
+        laf = kornia.feature.laf_from_center_scale_ori(
+            torch.tensor([[[float(x), float(y)]]], device=device, dtype=dtype),
+            torch.full((1, 1, 1, 1), ps / 2.0, device=device, dtype=dtype),
+        )
+        patch = extract(img, laf, ps)[0, 0, 0]
+        self.assert_close(patch, img[0, 0, y - 20 : y + 21, x - 20 : x + 21])
+        self.assert_close(patch[20, 20], img[0, 0, y, x])
+
+    @pytest.mark.parametrize("extract", _EXTRACTORS)
+    def test_laf_centre_is_sampled_at_itself_with_unit_steps_5678(self, extract, device, dtype):
+        H, W = 9, 13
+        xs = torch.arange(W, device=device, dtype=dtype).view(1, 1, 1, W).expand(1, 1, H, W).contiguous()
+        ys = torch.arange(H, device=device, dtype=dtype).view(1, 1, H, 1).expand(1, 1, H, W).contiguous()
+        for x, y in [(3.0, 2.0), (9.0, 6.0), (10.0, 3.0)]:
+            laf = kornia.feature.laf_from_center_scale_ori(
+                torch.tensor([[[x, y]]], device=device, dtype=dtype),
+                torch.full((1, 1, 1, 1), 1.5, device=device, dtype=dtype),
+            )
+            px, py = extract(xs, laf, 3)[0, 0, 0], extract(ys, laf, 3)[0, 0, 0]
+            self.assert_close(px[1], torch.tensor([x - 1.0, x, x + 1.0], device=device, dtype=dtype))
+            self.assert_close(py[:, 1], torch.tensor([y - 1.0, y, y + 1.0], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("atlas", [True, False])
+    @pytest.mark.parametrize("level", [1, 2])
+    def test_pyramid_level_samples_the_same_pixels_5678(self, level, atlas, device, dtype, monkeypatch):
+        # `pyrdown` resizes to floor(side / 2) with align_corners=False, so input pixel x is pixel
+        # (x + 0.5) * W_l / W - 0.5 of level l, per axis. A patch taken from level l has to equal the plain
+        # extraction from that level at the LAF mapped there; odd sizes make W_l / W differ from 2 ** -l.
+        import kornia.feature.laf as laf_module
+
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("pyrdown in half precision differs from the pyramid's float32 levels")
+        monkeypatch.setattr(laf_module, "_pyramid_atlas_fits", lambda *args: atlas)
+        g = torch.Generator().manual_seed(0)
+        img = torch.rand(1, 1, 61, 75, generator=g).to(device=device, dtype=dtype)
+        ps = 8
+        laf = kornia.feature.laf_from_center_scale_ori(
+            torch.tensor([[[37.3, 30.6]]], device=device, dtype=dtype),
+            torch.full((1, 1, 1, 1), 4.0 * 2**level + 0.5, device=device, dtype=dtype),
+            torch.full((1, 1, 1), 30.0, device=device, dtype=dtype),
+        )
+        level_img = img
+        for _ in range(level):
+            level_img = kornia.geometry.transform.pyrdown(level_img)
+        sx, sy = level_img.shape[-1] / img.shape[-1], level_img.shape[-2] / img.shape[-2]
+        level_laf = laf.clone()
+        level_laf[..., 0, :2] *= sx
+        level_laf[..., 1, :2] *= sy
+        level_laf[..., 0, 2] = (laf[..., 0, 2] + 0.5) * sx - 0.5
+        level_laf[..., 1, 2] = (laf[..., 1, 2] + 0.5) * sy - 0.5
+        expected = kornia.feature.extract_patches_simple(level_img, level_laf, ps)
+        self.assert_close(kornia.feature.extract_patches_from_pyramid(img, laf, ps), expected)
+
+
 class TestLAFIsTouchingBoundary(BaseTester):
     def test_shape(self, device):
         inp = torch.rand(5, 3, 2, 3, device=device)
@@ -1569,6 +1725,44 @@ class TestLAFIsTouchingBoundary(BaseTester):
         assert not bool(
             kornia.feature.laf_is_inside_image(self._radius_laf(26.5, 16.0, r, device, dtype), img, 3)[0, 0]
         )
+
+    @pytest.mark.parametrize("border", [0, 5])
+    def test_region_crossing_the_edge_between_boundary_samples_is_outside_5733(self, device, dtype, border):
+        # A radius-16 circle reaches c_x - 16 and c_x + 16. Ten points sampled 36 degrees apart on it reach only
+        # c_x -+ 16 sin(72 deg) = c_x -+ 15.22, so a circle overhanging an x edge by 0.5 px passed a sampled test.
+        # The values are exact in bfloat16, and the 0.5 px overhang is two bfloat16 steps at x = 59.
+        img = torch.zeros(1, 1, 48, 60, device=device, dtype=dtype)  # valid x 0 .. 59, y 0 .. 47
+        b = float(border)
+        xy = torch.tensor(
+            [[[43.5 - b, 24.0], [15.5 + b, 24.0], [43.0 - b, 24.0], [16.0 + b, 24.0]]], device=device, dtype=dtype
+        )
+        laf = kornia.feature.laf_from_center_scale_ori(xy, torch.full((1, 4, 1, 1), 16.0, device=device, dtype=dtype))
+        expected = torch.tensor([[False, False, True, True]], device=device)
+        assert torch.equal(kornia.feature.laf_is_inside_image(laf, img, border), expected)
+
+    def test_anisotropic_region_uses_the_extent_of_each_row_5733(self, device, dtype):
+        # The region c + A u, |u| = 1 spans c_y -+ |A[1, :]| = c_y -+ 20 along y, and the second row points 18 deg
+        # from the y axis, halfway between two boundary samples: sampled points reach only c_y + 19.02. The columns
+        # of A have other norms (9.34 and 19.13), so a test that read them instead of the rows accepts the region too.
+        img = torch.zeros(1, 1, 48, 64, device=device, dtype=dtype)  # valid x 0 .. 63, y 0 .. 47
+        row1 = [20.0 * math.sin(math.radians(18.0)), 20.0 * math.cos(math.radians(18.0))]
+        laf = torch.tensor(
+            [[[[7.0, -2.0, 30.0], [*row1, 27.5]], [[7.0, -2.0, 30.0], [*row1, 26.875]]]], device=device, dtype=dtype
+        )
+        expected = torch.tensor([[False, True]], device=device)  # bottom edge at 47.5 and at 46.875
+        assert torch.equal(kornia.feature.laf_is_inside_image(laf, img), expected)
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        img = torch.zeros(2, 1, 40, 60, device=device, dtype=dtype)
+        xy = torch.tensor([[[43.5, 20.0], [43.0, 20.0]], [[15.5, 20.0], [16.0, 20.0]]], device=device, dtype=dtype)
+        laf = kornia.feature.laf_from_center_scale_ori(xy, torch.full((2, 2, 1, 1), 16.0, device=device, dtype=dtype))
+        expected = kornia.feature.laf_is_inside_image(laf, img, 0)
+        op = torch_optimizer(kornia.feature.laf_is_inside_image)
+        assert torch.equal(op(laf, img, 0), expected)
+        # The fixture compiles without `fullgraph`, so it would pass on a graph break too, and
+        # `laf_is_inside_image` is meant to trace as one graph -- assert that directly.
+        torch._dynamo.reset()
+        assert torch.equal(torch.compile(kornia.feature.laf_is_inside_image, fullgraph=True)(laf, img, 0), expected)
 
     def test_jit(self, device, dtype):
         w, h = 10, 5
@@ -1663,6 +1857,11 @@ class TestGetLAF3pts(BaseTester):
 
 
 class TestGetLAFFrom3pts(BaseTester):
+    @pytest.mark.parametrize("shape", [(1, 3, 3, 3), (1, 3, 2, 2), (3, 2, 3), (1, 1, 3, 2, 3)])
+    def test_wrong_shape_is_rejected_5724(self, device, shape):
+        with pytest.raises(ShapeError):
+            kornia.feature.laf_from_three_points(torch.ones(*shape, device=device))
+
     def test_shape(self, device):
         inp = torch.ones(1, 3, 2, 3, device=device)
         out = kornia.feature.laf_from_three_points(inp)
@@ -1760,3 +1959,380 @@ class TestTransformLAFs(BaseTester):
         dst_homo_src = create_random_homography(points_src, eye_size)
         # evaluate function gradient
         self.gradcheck(kornia.feature.perspective_transform_lafs, (dst_homo_src, points_src))
+
+
+class TestConventionsLAF(BaseTester):
+    """Conventions of the LAF geometry, patch-extraction and LAF-descriptor helpers.
+
+    Most pins share one sheared LAF ``[A | c]`` with ``A = U @ R(30)``, the upright factor ``U = [[3, 0], [1.5, 2]]``,
+    ``R(t) = [[cos t, sin t], [-sin t, cos t]]`` and the centre ``c = (11, 3)``: ``a12 != a21``, a non-zero orientation
+    and ``x != y``.
+    """
+
+    # [[3 cos 30, 3 sin 30, 11], [1.5 cos 30 - 2 sin 30, 1.5 sin 30 + 2 cos 30, 3]], in float64
+    _SHEARED = [[2.598076211353316, 1.5, 11.0], [0.299038105676658, 2.482050807568877, 3.0]]
+    # the same A centred at (21, 13.5), off the centre row and column of the 40 x 57 images below
+    _SHEARED_IN_IMAGE = [[2.598076211353316, 1.5, 21.0], [0.299038105676658, 2.482050807568877, 13.5]]
+
+    @staticmethod
+    def _lafs(rows, device, dtype):
+        return torch.tensor(rows, device=device, dtype=dtype).view(1, -1, 2, 3)
+
+    @staticmethod
+    def _transposed(laf):
+        # the LAF of the transposed image: [[a22, a21, y], [a12, a11, x]]
+        return laf[..., [1, 0], :][..., [1, 0, 2]]
+
+    def test_convention_laf_orientation_turns_the_patch_x_axis_counter_clockwise_on_screen(self, device, dtype):
+        laf = kornia.feature.laf_from_center_scale_ori(
+            torch.tensor([[[5.0, 7.0]]], device=device, dtype=dtype),
+            torch.full((1, 1, 1, 1), 2.0, device=device, dtype=dtype),
+            torch.tensor([[[30.0]]], device=device, dtype=dtype),
+        )
+        # [A | c] with A = s * [[cos, sin], [-sin, cos]]. Column 0 of A is the patch x axis, s * (cos 30, -sin 30): with
+        # image y pointing down it points up-right, so a positive orientation turns it counter-clockwise on screen.
+        a11 = 2.0 * math.cos(math.pi / 6)
+        self.assert_close(laf[0, 0], torch.tensor([[a11, 1.0, 5.0], [-1.0, a11, 7.0]], device=device, dtype=dtype))
+
+    def test_convention_laf_scale_is_the_square_root_of_the_absolute_determinant(self, device, dtype):
+        laf = self._lafs(self._SHEARED, device, dtype)
+        # negating the patch y axis mirrors the frame: det A = 6 becomes -6
+        mirrored = laf * torch.tensor([[1.0, -1.0, 1.0], [1.0, -1.0, 1.0]], device=device, dtype=dtype)
+        scale = kornia.feature.get_laf_scale(torch.cat([laf, mirrored], dim=1))
+        self.assert_close(scale.flatten(), torch.full((2,), math.sqrt(6.0), device=device, dtype=dtype))
+
+    def test_convention_laf_orientation_is_atan2_of_a12_and_a11_in_degrees(self, device, dtype):
+        # atan2(a12, a11) = 30, the rotation the sheared LAF was built with; atan2(a21, a11) would read 6.57
+        laf = self._lafs(self._SHEARED, device, dtype)
+        ori = kornia.feature.get_laf_orientation(laf)
+        self.assert_close(ori.flatten(), torch.tensor([30.0], device=device, dtype=dtype))
+        # the range is [-180, 180]: a LAF made with orientation 181 reads -179
+        wrapped = kornia.feature.laf_from_center_scale_ori(
+            torch.tensor([[[5.0, 7.0]]], device=device, dtype=dtype),
+            None,
+            torch.tensor([[[181.0]]], device=device, dtype=dtype),
+        )
+        ori = kornia.feature.get_laf_orientation(wrapped)
+        self.assert_close(ori.flatten(), torch.tensor([-179.0], device=device, dtype=dtype))
+
+    def test_convention_make_upright_keeps_the_lower_triangular_factor_and_drops_rotation_and_reflection(
+        self, device, dtype
+    ):
+        laf = self._lafs(self._SHEARED, device, dtype)
+        mirrored = laf * torch.tensor([[1.0, -1.0, 1.0], [1.0, -1.0, 1.0]], device=device, dtype=dtype)
+        # U @ R(30) (det 6) and its mirror image U @ R(30) @ diag(1, -1) (det -6) both come back as U, centre kept
+        expected = torch.tensor([[3.0, 0.0, 11.0], [1.5, 2.0, 3.0]], device=device, dtype=dtype).expand(1, 2, 2, 3)
+        self.assert_close(kornia.feature.make_upright(torch.cat([laf, mirrored], dim=1)), expected)
+
+    def test_convention_rotate_laf_right_multiplies_a_and_set_laf_orientation_rotates_by_the_difference(
+        self, device, dtype
+    ):
+        laf = self._lafs(self._SHEARED, device, dtype)
+        # rotate_laf(laf, t) = [A @ R(t) | c]: U @ R(30) becomes U @ R(45), so the upright factor U is kept;
+        # [[3 cos 45, 3 sin 45, 11], [1.5 cos 45 - 2 sin 45, 1.5 sin 45 + 2 cos 45, 3]]
+        u_r45 = [[2.1213203435596424, 2.1213203435596424, 11.0], [-0.35355339059327373, 2.4748737341529163, 3.0]]
+        rotated = kornia.feature.rotate_laf(laf, torch.tensor([[[15.0]]], device=device, dtype=dtype))
+        self.assert_close(rotated, self._lafs(u_r45, device, dtype))
+        # set_laf_orientation rotates by (target - current): U @ R(-75)
+        u_rm75 = [[0.7764571353075622, -2.897777478867205, 11.0], [2.3200802202319177, -0.931250649228561, 3.0]]
+        reset = kornia.feature.set_laf_orientation(laf, torch.tensor([[[-75.0]]], device=device, dtype=dtype))
+        self.assert_close(reset, self._lafs(u_rm75, device, dtype))
+        # and an orientation set outside [-180, 180] reads back wrapped
+        reset = kornia.feature.set_laf_orientation(laf, torch.tensor([[[200.0]]], device=device, dtype=dtype))
+        self.assert_close(
+            kornia.feature.get_laf_orientation(reset).flatten(), torch.tensor([-160.0], device=device, dtype=dtype)
+        )
+
+    def test_convention_scale_laf_multiplies_a_and_keeps_the_centre(self, device, dtype):
+        laf = self._lafs(self._SHEARED, device, dtype)
+        scaled = [[6.49519052838329, 3.75, 11.0], [0.747595264191645, 6.2051270189221925, 3.0]]  # 2.5 * A
+        self.assert_close(kornia.feature.scale_laf(laf, 2.5), self._lafs(scaled, device, dtype))
+        # a (B, N, 1, 1) tensor scales each LAF by its own coefficient
+        per_laf = torch.tensor([2.0, 3.0], device=device, dtype=dtype).view(1, 2, 1, 1)
+        scales = kornia.feature.get_laf_scale(kornia.feature.scale_laf(laf.expand(1, 2, 2, 3), per_laf))
+        self.assert_close(scales.flatten(), math.sqrt(6.0) * per_laf.flatten())
+        # a negative coefficient turns the frame by 180 degrees: orientation 30 reads -150
+        flipped = kornia.feature.scale_laf(laf, -1.0)
+        self.assert_close(
+            kornia.feature.get_laf_orientation(flipped).flatten(), torch.tensor([-150.0], device=device, dtype=dtype)
+        )
+        # the coefficient is a float or a tensor; an int is rejected
+        with pytest.raises(TypeError, match=r"scale_coef should be float or torch\.Tensor"):
+            kornia.feature.scale_laf(laf, 2)
+
+    @pytest.mark.parametrize("theta, cv_angle", [(60.0, 296.5505), (-30.0, 32.1606), (150.0, 210.3108)])
+    def test_convention_opencv_keypoint_angle_is_the_negated_laf_orientation(self, device, dtype, theta, cv_angle):
+        # A Gaussian blob (sigma 5) at (70, 40) of a 96 x 128 uint8 image, bright on its half towards the on-screen
+        # counter-clockwise angle theta. OpenCV 5.0.0 SIFT finds one KeyPoint on it whose `angle` is cv_angle, close to
+        # (-theta) mod 360, because KeyPoint.angle turns clockwise on screen:
+        #   cv2.SIFT_create().detect(img_uint8, None)[0].angle  (the same image built with numpy; pixel sum 19982)
+        # A kornia LAF with orientation -cv_angle has to put the bright half on its patch +x axis. The LAF sits on the
+        # blob centre, where the bright half's centroid points along theta by symmetry.
+        h, w, cx, cy = 96, 128, 70.0, 40.0
+        yy, xx = torch.meshgrid(
+            torch.arange(h, dtype=torch.float64), torch.arange(w, dtype=torch.float64), indexing="ij"
+        )
+        t = math.radians(theta)
+        side = (xx - cx) * math.cos(t) - (yy - cy) * math.sin(t)
+        blob = torch.exp(-((xx - cx) ** 2 + (yy - cy) ** 2) / 50.0) * (1.0 + torch.tanh(side / 2.0)) / 2.0
+        img = (torch.round(blob * 255.0) / 255.0)[None, None].to(device, dtype)
+        laf = kornia.feature.laf_from_center_scale_ori(
+            torch.tensor([[[cx, cy]]], device=device, dtype=dtype),
+            torch.full((1, 1, 1, 1), 12.0, device=device, dtype=dtype),
+            torch.tensor([[[-cv_angle]]], device=device, dtype=dtype),
+        )
+        patch = kornia.feature.extract_patches_from_pyramid(img, laf, 32)[0, 0, 0].cpu().double()
+        u = (2.0 * torch.arange(32, dtype=torch.float64) + 1.0) / 32.0 - 1.0
+        bright = math.degrees(math.atan2((patch * u[:, None]).sum().item(), (patch * u[None, :]).sum().item()))
+        # within OpenCV's own orientation error (3.4, -2.2, -0.3 degrees); orientation +cv_angle reads -123, 63, 61
+        assert abs(bright) < 10.0, bright
+
+    def test_convention_three_points_are_the_images_of_patch_points_1_0_then_0_1_then_0_0(self, device, dtype):
+        laf = self._lafs(self._SHEARED, device, dtype)
+        # columns c + A[:, 0], c + A[:, 1], c. OpenCV 5.0.0 maps the patch points (1, 0), (0, 1), (0, 0) onto them with
+        # [A | c]: cv2.getAffineTransform(np.float32([[1, 0], [0, 1], [0, 0]]), np.float32(points.T)) == [A | c]
+        points = [[13.598076211353316, 12.5, 11.0], [3.299038105676658, 5.482050807568877, 3.0]]
+        self.assert_close(kornia.feature.laf_to_three_points(laf), self._lafs(points, device, dtype))
+        # back from points near x = 13, which half precision rounds to one ULP of 8 eps
+        half = dtype in (torch.float16, torch.bfloat16)
+        tol = {"rtol": 0.0, "atol": 8.0 * torch.finfo(dtype).eps} if half else {}
+        self.assert_close(kornia.feature.laf_from_three_points(self._lafs(points, device, dtype)), laf, **tol)
+
+    def test_convention_ellipse_to_laf_returns_the_lower_triangular_factor_of_the_inverse_ellipse(self, device, dtype):
+        # Oxford [x, y, a, b, c] for a x^2 + 2 b x y + c y^2 = 1. Expected: VLFeat's mapFromS (vl_frame2oell.m, 1b9075f)
+        # of S = inv([[a, b], [b, c]]), A = [[sqrt(S11), 0], [S12 / sqrt(S11), sqrt(S22 - S12^2 / S11)]], with (x, y)
+        # passed through. Row 0 is the region of the sheared LAF: its symmetric root [[2.873, 0.862], [0.862, 2.347]] is
+        # not what comes back. Row 2 is row 0 transposed, (y, x, c, b, a): it gives make_upright of the transposed LAF,
+        # not the transposed U = [[2, 1.5], [0, 3]].
+        ells = torch.tensor(
+            [
+                [
+                    [11.0, 3.0, 25.0 / 144.0, -0.125, 0.25],
+                    [20.0, 10.0, 0.04, 0.01, 0.0625],
+                    [3.0, 11.0, 0.25, -0.125, 25.0 / 144.0],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        expected = [
+            [[3.0, 0.0, 11.0], [1.5, 2.0, 3.0]],
+            [[5.103103630798288, 0.0, 20.0], [-0.816496580927726, 4.0, 10.0]],
+            [[2.5, 0.0, 3.0], [1.8, 2.4, 11.0]],
+        ]
+        self.assert_close(kornia.feature.ellipse_to_laf(ells), self._lafs(expected, device, dtype))
+
+    def test_convention_normalize_laf_divides_by_the_last_pixel_index(self, device, dtype):
+        img = torch.zeros(1, 1, 9, 13, device=device, dtype=dtype)  # x in 0 .. 12, y in 0 .. 8
+        laf = self._lafs(self._SHEARED, device, dtype)
+        # centre (x / (W - 1), y / (H - 1)) = (11 / 12, 3 / 8); A / min(H - 1, W - 1) = A / 8
+        expected = [[0.3247595264191645, 0.1875, 11.0 / 12.0], [0.03737976320958225, 0.31025635094610963, 0.375]]
+        normalized = kornia.feature.normalize_laf(laf, img)
+        self.assert_close(normalized, self._lafs(expected, device, dtype))
+        # relabelling: the transposed LAF in the transposed image normalizes to the transposed result
+        self.assert_close(
+            kornia.feature.normalize_laf(self._transposed(laf), img.transpose(-1, -2)),
+            self._transposed(self._lafs(expected, device, dtype)),
+        )
+        # moved to another resolution, a normalized LAF maps corner to corner: 9 x 13 -> 17 x 25 doubles x, y and A
+        # (an align_corners=False resize maps x to (x + 0.5) W' / W - 0.5: the centre would land at (21.62, 6.11))
+        doubled = [[5.196152422706632, 3.0, 22.0], [0.598076211353316, 4.964101615137754, 6.0]]
+        moved = kornia.feature.denormalize_laf(normalized, torch.zeros(1, 1, 17, 25, device=device, dtype=dtype))
+        self.assert_close(moved, self._lafs(doubled, device, dtype))
+        # a singleton axis counts as one pixel: on a 1 x 13 image y and A are divided by 1
+        row = [[2.598076211353316, 1.5, 11.0 / 12.0], [0.299038105676658, 2.482050807568877, 3.0]]
+        single = kornia.feature.normalize_laf(laf, torch.zeros(1, 1, 1, 13, device=device, dtype=dtype))
+        self.assert_close(single, self._lafs(row, device, dtype))
+
+    def test_convention_laf_is_inside_image_is_a_closed_box_of_pixel_indices(self, device, dtype):
+        img = torch.zeros(1, 1, 40, 57, device=device, dtype=dtype)  # x in 0 .. 56, y in 0 .. 39
+        # The rows of A = [[3, 4], [-1.5, 2]] (orientation 53.13) have norms 5 and 2.5, so the region spans c_x -+ 5 and
+        # c_y -+ 2.5. The first LAF touches x = 56 and y = 39, the fourth x = 0 and y = 0; the others pass an edge by
+        # 0.25 px.
+        centres = [(51.0, 36.5), (51.25, 36.5), (51.0, 36.75), (5.0, 2.5), (4.75, 2.5), (5.0, 2.25)]
+        rows = [[[3.0, 4.0, x], [-1.5, 2.0, y]] for x, y in centres]
+        # the all-zero padding LAF counts as inside; a 0.25-px LAF centred on the last column does not
+        rows += [[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], [[0.25, 0.0, 56.0], [0.0, 0.25, 20.0]]]
+        laf = self._lafs(rows, device, dtype)
+        expected = torch.tensor([[True, False, False, True, False, False, True, False]], device=device)
+        assert torch.equal(kornia.feature.laf_is_inside_image(laf, img), expected)
+        # relabelling: the transposed LAFs in the transposed image get the same verdicts
+        assert torch.equal(kornia.feature.laf_is_inside_image(self._transposed(laf), img.transpose(-1, -2)), expected)
+
+    @staticmethod
+    def _degenerate_lafs(device, dtype):
+        big = 2.0 * math.sqrt(torch.finfo(dtype).max)  # finite entries whose product overflows this dtype
+        nan = float("nan")
+        rows = [
+            [[2.0, 1.0, 5.0], [0.5, 3.0, 7.0]],  # det 5.5
+            [[2.0, 1.0, 5.0], [0.5, -3.0, 7.0]],  # det -6.5: mirrored
+            [[1.0, 2.0, 5.0], [2.0, 4.0, 7.0]],  # rank 1: det 0
+            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],  # the padding of an unfilled detector slot
+            [[2.0, 1.0, nan], [0.5, 3.0, 7.0]],  # NaN centre
+            [[big, 0.0, 5.0], [0.0, big, 7.0]],  # det 4 * max: overflows to inf in this dtype
+            [[0.0, 0.0, 3.0], [0.0, 0.0, 4.0]],  # zero A, non-zero centre
+        ]
+        return torch.tensor([rows], device=device, dtype=dtype)
+
+    def test_convention_laf_is_valid_needs_finite_entries_and_a_finite_non_zero_determinant(self, device, dtype):
+        laf = self._degenerate_lafs(device, dtype)
+        # A float16 LAF's determinant is formed in float32, which holds the product of any two float16 entries, so
+        # the big frame is invalid in every other dtype and valid in float16.
+        big_is_valid = dtype == torch.float16
+        expected = torch.tensor([[True, True, False, False, False, big_is_valid, False]], device=device)
+        assert torch.equal(kornia.feature.laf_is_valid(laf), expected)
+
+    def test_convention_laf_is_filled_treats_only_the_all_zero_frame_as_padding(self, device, dtype):
+        # every frame with a non-zero entry is filled, including the singular, non-finite and overflowing ones
+        laf = self._degenerate_lafs(device, dtype)
+        expected = torch.tensor([[True, True, True, False, True, True, True]], device=device)
+        assert torch.equal(kornia.feature.laf_is_filled(laf), expected)
+
+    def test_convention_kornia_check_laf_checks_the_shape_only(self, device, dtype):
+        check = kornia.core.check.KORNIA_CHECK_LAF
+        # any (B, N, 2, 3) tensor passes, whatever its values and dtype, including N = 0
+        assert check(torch.full((1, 1, 2, 3), float("nan"), device=device, dtype=dtype)) is True
+        assert check(torch.ones(1, 1, 2, 3, device=device, dtype=torch.int64)) is True
+        assert check(torch.zeros(2, 0, 2, 3, device=device, dtype=dtype)) is True
+        # a 3 x 3 homogeneous frame is not a LAF
+        homogeneous = torch.eye(3, device=device, dtype=dtype).view(1, 1, 3, 3)
+        with pytest.raises(ShapeError):
+            check(homogeneous)
+        assert check(homogeneous, raises=False) is False
+
+    @pytest.mark.parametrize("extract", _EXTRACTORS)
+    def test_convention_patch_cell_samples_the_laf_image_of_its_centre(self, extract, device, dtype):
+        # Cell (i, j) of a PS x PS patch samples the image at c + A @ (u_j, u_i) with u_k = (2k + 1) / PS - 1: row 0 is
+        # the patch's -y side (the top for an upright LAF), columns run along the patch x axis, and the cells tile the
+        # square [-1, 1]^2 of the patch frame. On the x and y ramps a bilinear sample is that coordinate itself.
+        h, w, ps = 40, 57, 7
+        xs = torch.arange(w, dtype=torch.float64).expand(h, w)
+        ys = torch.arange(h, dtype=torch.float64)[:, None].expand(h, w)
+        img = torch.stack([xs, ys])[None].to(device, dtype)
+        laf = self._lafs(self._SHEARED_IN_IMAGE, device, dtype)
+        a = laf[0, 0].cpu().double()  # the LAF as rounded to dtype
+        u = (2.0 * torch.arange(ps, dtype=torch.float64) + 1.0) / ps - 1.0
+        expected = torch.stack(
+            [a[k, 2] + a[k, 0] * u[None, :] + a[k, 1] * u[:, None] for k in range(2)]
+        )  # (x, y) of every cell
+        patch = extract(img, laf, ps)[0, 0]
+        self.assert_close(patch, expected.to(device, dtype))
+        # relabelling: transposing the image (and so swapping the ramps) and the LAF transposes the patch
+        patch_t = extract(img.transpose(-1, -2).flip(1), self._transposed(laf), ps)[0, 0]
+        self.assert_close(patch_t.flip(0).transpose(-1, -2), patch)
+
+    @pytest.mark.parametrize("extract", _EXTRACTORS)
+    def test_convention_patch_cells_outside_the_image_read_the_nearest_border_pixel(self, extract, device, dtype):
+        # Ramps offset by 10, so that zero padding or a reflection would show: a cell sampling (x, y) reads
+        # 10 + clamp(x, 0, W - 1) and 10 + clamp(y, 0, H - 1). The two LAFs straddle the top-left and the bottom-right
+        # corner.
+        h, w, ps = 40, 57, 9
+        xs = torch.arange(w, dtype=torch.float64).expand(h, w)
+        ys = torch.arange(h, dtype=torch.float64)[:, None].expand(h, w)
+        img = (torch.stack([xs, ys])[None] + 10.0).to(device, dtype)
+        a = self._SHEARED[0][:2], self._SHEARED[1][:2]
+        lafs = self._lafs([[[*a[0], 1.0], [*a[1], 2.0]], [[*a[0], 54.5], [*a[1], 37.0]]], device, dtype)
+        u = (2.0 * torch.arange(ps, dtype=torch.float64) + 1.0) / ps - 1.0
+        patches = extract(img, lafs, ps)[0]
+        for n in range(2):
+            m = lafs[0, n].cpu().double()
+            x = (m[0, 2] + m[0, 0] * u[None, :] + m[0, 1] * u[:, None]).clamp(0.0, w - 1.0)
+            y = (m[1, 2] + m[1, 0] * u[None, :] + m[1, 1] * u[:, None]).clamp(0.0, h - 1.0)
+            self.assert_close(patches[n], (torch.stack([x, y]) + 10.0).to(device, dtype))
+
+    def test_convention_pyramid_level_is_the_floor_of_log2_of_twice_the_scale_over_ps(self, device, dtype):
+        # extract_patches_from_pyramid samples level floor(log2(2 s / PS)), s = sqrt(|det A|), clamped to the coarsest
+        # level that still holds a PS x PS patch: 70 x 90, 35 x 45, 17 x 22 and 8 x 11 for PS = 8. The level read back
+        # is the one whose plain extraction the patch matches; input pixel x is pixel (x + 0.5) W_l / W - 0.5 of
+        # level l. The references go two levels deeper, to 4 x 5 and 2 x 2, so that a pyramid without the clamp shows.
+        ps = 8
+        ref_dtype = dtype if dtype in (torch.float32, torch.float64) else torch.float32
+        g = torch.Generator().manual_seed(0)
+        levels = [torch.rand(1, 1, 70, 90, generator=g, dtype=torch.float64).to(device, ref_dtype)]
+        for _ in range(5):
+            levels.append(kornia.geometry.transform.pyrdown(levels[-1]))
+        t = math.radians(30.0)
+        rot = torch.tensor([[math.cos(t), math.sin(t)], [-math.sin(t), math.cos(t)]], dtype=torch.float64)
+        ratios = (1.9, 2.1, 3.9, 4.1, 8.4, 40.0)  # 2 s / PS
+        a = [r * ps / 2.0 * rot for r in ratios]
+        # sqrt(det) gives 2 s / PS = 2.1 (level 1), while its axes alone, 33.6 and 2.1, would give levels 3 and 0
+        a.append(torch.diag(torch.tensor([33.6, 2.1], dtype=torch.float64)) @ rot)
+        centre = torch.tensor([[37.3], [30.6]], dtype=torch.float64)
+        laf = torch.stack([torch.cat([m, centre], dim=1) for m in a])[None].to(device, ref_dtype)
+        patches = kornia.feature.extract_patches_from_pyramid(levels[0].to(dtype), laf.to(dtype), ps).to(ref_dtype)
+        misses = []
+        for level in levels:
+            sx, sy = level.shape[-1] / 90.0, level.shape[-2] / 70.0
+            level_laf = laf.clone()
+            level_laf[..., 0, :] *= sx
+            level_laf[..., 1, :] *= sy
+            level_laf[..., 0, 2] += 0.5 * sx - 0.5
+            level_laf[..., 1, 2] += 0.5 * sy - 0.5
+            plain = kornia.feature.extract_patches_simple(level, level_laf, ps)
+            misses.append((patches - plain).abs().amax(dim=(-3, -2, -1)).flatten())
+        assert torch.stack(misses).argmin(dim=0).tolist() == [0, 1, 1, 2, 3, 3, 1]
+
+    @pytest.mark.parametrize("extract", _EXTRACTORS)
+    def test_convention_unnormalized_extraction_takes_the_laf_in_normalize_laf_frame(self, extract, device, dtype):
+        g = torch.Generator().manual_seed(0)
+        img = torch.rand(1, 1, 40, 57, generator=g, dtype=torch.float64).to(device, dtype)
+        laf = kornia.feature.scale_laf(self._lafs(self._SHEARED_IN_IMAGE, device, dtype), 4.0)
+        expected = extract(img, laf, 16)
+        # normalized in float32 for a half LAF, as the default path does, so that both read the same coordinates
+        wide = laf.float() if dtype in (torch.float16, torch.bfloat16) else laf
+        self.assert_close(extract(img, kornia.feature.normalize_laf(wide, img), 16, False), expected)
+        # a pixel LAF passed with False is read as a normalized one and samples elsewhere
+        assert (extract(img, laf, 16, False) - expected).abs().max().item() > 0.1
+
+    def test_convention_get_laf_descriptors_converts_only_three_channel_images_to_gray(self, device, dtype):
+        class _Recorder(torch.nn.Module):
+            patch_size = 41  # a descriptor attribute get_laf_descriptors must not read
+
+            def __init__(self):
+                super().__init__()
+                self.shapes = []
+
+            def forward(self, patches):
+                self.shapes.append(tuple(patches.shape))
+                return patches.flatten(1)
+
+        g = torch.Generator().manual_seed(0)
+        lafs = self._lafs([self._SHEARED_IN_IMAGE, [[1.5, -2.598076211353316, 30.0], [2.6, 1.5, 22.0]]], device, dtype)
+        # grayscale_descriptor=True converts an RGB image to one channel; with False the three channels pass through
+        for channels, gray, seen in ((3, True, 1), (3, False, 3), (1, True, 1)):
+            img = torch.rand(1, channels, 40, 57, generator=g, dtype=torch.float64).to(device, dtype)
+            recorder = _Recorder()
+            out = kornia.feature.get_laf_descriptors(img, lafs, recorder, 13, gray)
+            assert recorder.shapes == [(2, seen, 13, 13)]
+            assert out.shape == (1, 2, seen * 13 * 13)
+        # the patch size is the argument, 32 by default, never read from the descriptor
+        recorder = _Recorder()
+        kornia.feature.get_laf_descriptors(img, lafs, recorder)
+        assert recorder.shapes == [(2, 1, 32, 32)]
+
+    def test_convention_laf_descriptor_defaults_to_pretrained_hardnet_on_32_pixel_gray_patches(
+        self, device, dtype, monkeypatch
+    ):
+        # A stand-in records the arguments, so that no weights are loaded.
+        made = []
+
+        class _HardNetStub(torch.nn.Module):
+            def __init__(self, pretrained: bool = False):
+                super().__init__()
+                made.append(pretrained)
+                self.shapes = []
+
+            def forward(self, patches):
+                self.shapes.append(tuple(patches.shape))
+                return patches.flatten(1)[:, :128]
+
+        monkeypatch.setattr(kornia.feature.integrated, "HardNet", _HardNetStub)
+        descriptor = kornia.feature.LAFDescriptor()
+        assert made == [True]
+        assert descriptor.patch_size == 32
+        assert descriptor.grayscale_descriptor is True
+        g = torch.Generator().manual_seed(0)
+        img = torch.rand(1, 3, 40, 57, generator=g, dtype=torch.float64).to(device, dtype)
+        laf = self._lafs(self._SHEARED_IN_IMAGE, device, dtype)
+        assert descriptor(img, laf).shape == (1, 1, 128)
+        assert descriptor.descriptor.shapes == [(1, 1, 32, 32)]
