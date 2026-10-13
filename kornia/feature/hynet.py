@@ -217,9 +217,6 @@ class HyNet(nn.Module):
           :math:`a > 0` therefore gives the same descriptor unless it brings the patch's mean square near that layer's
           ``eps``, while an offset :math:`x + b` changes it: feed non-negative intensities such as ``[0, 1]`` or
           ``[0, 255]``, not mean-subtracted or standardised patches.
-        - Known defects: with pretrained weights, ``float16`` gives wrong descriptors, because the squared
-          activations inside the :class:`~kornia.feature.FilterResponseNorm2d` layers and the running variance of the
-          last ``BatchNorm2d`` exceed the float16 range (`#5828 <https://github.com/kornia/kornia/issues/5828>`_).
 
     Args:
         pretrained: Download and set pretrained weights to the model.
