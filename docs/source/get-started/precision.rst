@@ -127,7 +127,7 @@ precision, so the table says nothing about those backends.
        own; the vertices are used as given, already rounded to half precision. The circle and ellipse tests still
        miss because they compute their vertices and their reference mask in half precision.
    * - ``kornia.losses``
-     - ⚠️ Partial
+     - ✅ Yes
      - ⚠️ Partial
      - 0 / 2
      - Mutual information, Dice averaging, Hausdorff and the photometric losses pass.
