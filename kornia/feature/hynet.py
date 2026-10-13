@@ -40,19 +40,23 @@ urls["yosemite"] = [
 
 
 class FilterResponseNorm2d(nn.Module):
-    r"""Feature Response Normalization layer from 'Filter Response Normalization Layer: Eliminating Batch Dependence
+    r"""Filter Response Normalization layer from 'Filter Response Normalization Layer: Eliminating Batch Dependence
     in the Training of Deep Neural Networks', see :cite:`FRN2019` for more details.
 
     .. math::
-        y =  \gamma \times \frac{x}{\sqrt{\mathrm{E}[x^2]} + |\epsilon|} + \beta
+        y = \gamma \frac{x}{\sqrt{\nu^2 + |\epsilon|}} + \beta
 
+    Convention:
+        - :math:`\nu^2` is the mean of :math:`x^2` over the ``H x W`` map of each sample and channel, so the output
+          does not depend on the rest of the batch; no mean is subtracted. :math:`\gamma` (``weight``) and
+          :math:`\beta` (``bias``) are per-channel parameters initialised to 1 and 0, applied only when ``is_scale``
+          and ``is_bias`` are set.
 
     Args:
         num_features: number of channels
         eps: normalization constant
         is_bias: use bias
         is_scale: use scale
-        drop_rate: dropout rate,
         is_eps_leanable: if eps is learnable
 
     Returns:
@@ -142,10 +146,14 @@ class FilterResponseNorm2d(nn.Module):
 
 class TLU(nn.Module):
     r"""TLU layer from 'Filter Response Normalization Layer: Eliminating Batch Dependence in the Training of Deep
-    Neural Networks, see :cite:`FRN2019` for more details. :math:`{\tau}` is learnable per channel.
+    Neural Networks', see :cite:`FRN2019` for more details. :math:`{\tau}` is learnable per channel.
 
     .. math::
         y = \max(x, {\tau})
+
+    Convention:
+        - :math:`\tau` (``tau``) is a ``(1, num_features, 1, 1)`` parameter, one threshold per channel, initialised
+          to -1.
 
     Args:
         num_features: number of channels
@@ -202,9 +210,17 @@ class HyNet(nn.Module):
     "HyNet: Learning Local Descriptor with Hybrid Similarity Measure and Triplet Loss".
     See :cite:`hynet2020` for more details.
 
+    Convention:
+        - It takes the ``(B, 1, 32, 32)`` patches of :class:`~kornia.feature.HardNet` and returns unit-norm rows, but
+          its first layer is a :class:`~kornia.feature.FilterResponseNorm2d` on the raw patch, which divides by the root
+          mean square and subtracts no mean, as in the reference implementation. A scale :math:`a x` with
+          :math:`a > 0` therefore gives the same descriptor as long as the mean squares of the patch and of its scaled
+          copy are both large compared with that layer's ``eps``, while an offset :math:`x + b` changes it: feed
+          non-negative intensities such as ``[0, 1]`` or ``[0, 255]``, not mean-subtracted or standardised patches.
+
     Args:
         pretrained: Download and set pretrained weights to the model.
-        is_bias: use bias in TLU layers
+        is_bias: use bias in the convolution layers (the final 8 x 8 convolution has none either way)
         is_bias_FRN:  use bias in FRN layers
         dim_desc: descriptor dimensionality,
         drop_rate: dropout rate,
@@ -215,7 +231,7 @@ class HyNet(nn.Module):
 
     Shape:
         - Input: :math:`(B, 1, 32, 32)`
-        - Output: :math:`(B, 128)`
+        - Output: :math:`(B, \text{dim\_desc})`
 
     Note:
         With float16 weights, the final BatchNorm keeps its running statistics in float32.

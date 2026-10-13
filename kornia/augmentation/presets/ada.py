@@ -324,7 +324,12 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
 
         batch_size, device = self._get_inputs_metadata(inputs, data_keys=data_keys)
 
-        p_tensor = torch.bernoulli(torch.full((batch_size,), self.p, dtype=torch.float32, device=device)).bool()
+        sample_size = min(batch_size, 1) if self.same_on_batch else batch_size
+        p_tensor = (
+            torch.bernoulli(torch.full((sample_size,), self.p, dtype=torch.float32, device=device))
+            .bool()
+            .expand(batch_size)
+        )
 
         if not p_tensor.any():
             return inputs

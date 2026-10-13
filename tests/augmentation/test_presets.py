@@ -31,6 +31,39 @@ class PresetTests(BaseTester):
 
 @pytest.mark.usefixtures("device", "dtype")
 class TestAdaptiveDiscriminatorAugmentation(PresetTests):
+    @pytest.mark.parametrize("seed", [0, 2])
+    @pytest.mark.parametrize("direct_forward", [False, True])
+    def test_shared_batch_gate(self, device, dtype, seed, direct_forward):
+        inputs = torch.arange(4, device=device, dtype=dtype).reshape(1, 1, 1, 4).expand(8, 1, 1, 4).clone()
+        expected_inputs = inputs.clone()
+        ada = AdaptiveDiscriminatorAugmentation(RandomHorizontalFlip(p=1.0), initial_p=0.5, same_on_batch=True)
+        torch.manual_seed(seed)
+        actual = ada.forward(inputs) if direct_forward else ada(inputs)
+        self.assert_close(actual, actual[:1].expand_as(actual), atol=0, rtol=0)
+        assert torch.equal(actual, inputs) or torch.equal(actual, inputs.flip(-1))
+        self.assert_close(inputs[0, 0, 0], torch.arange(4, device=device, dtype=dtype), atol=0, rtol=0)
+        self.assert_close(inputs, expected_inputs, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("same_on_batch", [False, None])
+    def test_independent_batch_gate(self, device, dtype, same_on_batch):
+        inputs = torch.arange(4, device=device, dtype=dtype).reshape(1, 1, 1, 4).expand(8, 1, 1, 4).clone()
+        ada = AdaptiveDiscriminatorAugmentation(RandomHorizontalFlip(p=1.0), initial_p=0.5, same_on_batch=same_on_batch)
+        torch.manual_seed(0)
+        selected = torch.bernoulli(torch.full((8,), 0.5, device=device)).bool()
+        expected = torch.where(selected[:, None, None, None], inputs.flip(-1), inputs)
+        torch.manual_seed(0)
+        self.assert_close(ada(inputs), expected, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("same_on_batch", [True, False])
+    def test_empty_batch_gate_consumes_no_draws(self, device, dtype, same_on_batch):
+        inputs = torch.zeros(0, 1, 1, 4, device=device, dtype=dtype)
+        ada = AdaptiveDiscriminatorAugmentation(RandomHorizontalFlip(p=1.0), initial_p=0.5, same_on_batch=same_on_batch)
+        torch.manual_seed(0)
+        expected = torch.rand(4, device=device)
+        torch.manual_seed(0)
+        self.assert_close(ada(inputs), inputs, atol=0, rtol=0)
+        self.assert_close(torch.rand(4, device=device), expected, atol=0, rtol=0)
+
     def test_initial_hyper_params(self):
         ada_preset = AdaptiveDiscriminatorAugmentation()
         assert ada_preset.adjustment_speed > 0
