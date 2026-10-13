@@ -717,8 +717,8 @@ class LocalFeatureMatcher(nn.Module):
     r"""nn.Module, which finds correspondences between two images based on local features.
 
     Convention:
-        - ``keypoints0`` and ``keypoints1`` are the centres ``(x, y)`` of the matched LAFs, which ``lafs0`` and
-          ``lafs1`` return; see :func:`~kornia.feature.laf_from_center_scale_ori` and
+        - ``keypoints0`` and ``keypoints1`` are the centres ``(x, y)`` of the returned LAF tensors ``lafs0`` and
+          ``lafs1``, respectively; see :func:`~kornia.feature.laf_from_center_scale_ori` and
           :ref:`Local features <local-features-conventions>` for the LAF frame.
           ``confidence`` is ``1 - dists`` of the matcher (see :func:`~kornia.feature.match_nn`).
         - All-zero LAFs, the padding slots of kornia's detectors (see :func:`~kornia.feature.laf_is_filled`), are
