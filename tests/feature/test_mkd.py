@@ -593,3 +593,38 @@ class TestSimpleKD(BaseTester):
             return skd(patches.double())
 
         self.gradcheck(skd_describe, (patches, ps), nondet_tol=1e-4)
+
+
+class TestConventionsMKDDescriptor(BaseTester):
+    """Pin for the frame of MKD's kernels within the patch."""
+
+    @pytest.mark.parametrize("kernel_type", ["concat", "polar", "cart"])
+    def test_convention_mkd_kernels_are_centred_on_the_patch_centre(self, device, dtype, kernel_type):
+        # The kernel grid spans [-1, 1] across the patch_size pixels, so its origin is pixel (patch_size - 1) / 2, as in
+        # manyids2/mkd_pytorch (between two pixels at the even 32). Mirroring a patch about that centre maps the grid
+        # onto itself and flips only the signs of the odd harmonics, so every entry keeps its magnitude; a grid half a
+        # pixel off the centre does not. whitening=None needs no download and keeps the raw entries.
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip(f"no replicate-padding kernel for {dtype} on {device.type}")
+        torch.manual_seed(0)
+        patches = torch.rand(4, 1, 32, 32, device=device, dtype=dtype)
+        mkd = MKDDescriptor(patch_size=32, kernel_type=kernel_type, whitening=None).to(device, dtype)
+        desc = mkd(patches)
+        for mirrored in (patches.flip(-1), patches.flip(-2)):
+            out = mkd(mirrored)
+            self.assert_close(out.abs(), desc.abs())
+            assert (out - desc).abs().max() > 0.02  # a mirrored random patch changes signs: the pin is not vacuous
+
+    @pytest.mark.parametrize("kernel_type", ["concat", "polar", "cart"])
+    def test_convention_mkd_flat_patch_is_unit_norm_except_in_float16_without_whitening(
+        self, device, dtype, kernel_type
+    ):
+        # A flat patch has zero gradients, so its magnitudes are the sqrt of the 1e-8 added to them. In float16 the
+        # 1e-8 underflows to 0 and, with whitening=None, the descriptor is all zero; in the other dtypes it is a unit
+        # vector. whitening=None needs no download.
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip(f"no replicate-padding kernel for {dtype} on {device.type}")
+        mkd = MKDDescriptor(patch_size=19, kernel_type=kernel_type, whitening=None).to(device, dtype)
+        out = mkd(torch.full((2, 1, 19, 19), 0.5, device=device, dtype=dtype))
+        expected = 0.0 if dtype == torch.float16 else 1.0
+        self.assert_close(out.norm(dim=1), torch.full((2,), expected, device=device, dtype=dtype))
