@@ -891,18 +891,21 @@ class TestLightGlueAllPrunedScoreDtype(BaseTester):
     @pytest.mark.parametrize("input_dim", [16, 8], ids=["input_dim_eq_descriptor_dim", "input_dim_ne_descriptor_dim"])
     @pytest.mark.parametrize("mp", [False, True], ids=["mp_off", "mp_on"])
     def test_all_points_pruned_gives_the_score_dtype_of_kept_points_5877(self, device, dtype, input_dim, mp):
-        if mp and dtype != torch.float32:
-            pytest.skip("mp=True autocasts a float32 model")
+        if mp and device.type == "cpu" and dtype == torch.float16:
+            pytest.skip("a float16 model with mp=True on CPU raises (#5897)")
         TestLightGluePruningDtype._skip_without_empty_attention(device, dtype)
         model = self._model(device, dtype, input_dim, mp)
         kept = self._forward(model, True, device, dtype)
         pruned = self._forward(model, False, device, dtype)
         score_dtype = kept["matching_scores0"].dtype
-        # The input dtype; with mp=True the dtype autocast computes the scores in: bfloat16 on CPU, float32 on MPS.
-        if not mp:
+        # The input dtype; with mp=True float32 gives the dtype autocast computes the scores in, bfloat16 on CPU and
+        # float32 on MPS, and on MPS float16 and bfloat16 give float32 too.
+        if not mp or (device.type == "cpu" and dtype != torch.float32):
             assert score_dtype == dtype
-        elif device.type in ("cpu", "mps"):
-            assert score_dtype == (torch.bfloat16 if device.type == "cpu" else torch.float32)
+        elif device.type == "cpu":
+            assert score_dtype == torch.bfloat16
+        elif device.type == "mps":
+            assert score_dtype == torch.float32
         for out in (kept, pruned):
             for key in ("matching_scores0", "matching_scores1"):
                 assert out[key].dtype == score_dtype
@@ -911,3 +914,13 @@ class TestLightGlueAllPrunedScoreDtype(BaseTester):
         self.assert_close(pruned["matching_scores0"], torch.zeros(1, 6, device=device, dtype=score_dtype))
         self.assert_close(pruned["matching_scores1"], torch.zeros(1, 6, device=device, dtype=score_dtype))
         assert pruned["scores"][0].shape == (0,)
+
+    def test_wart_lightglue_mixed_precision_cpu_float16_model_raises_5897(self, device, dtype):
+        if device.type != "cpu" or dtype != torch.float16:
+            pytest.skip("CPU autocast to bfloat16 meets a float16 model only on CPU")
+        # #5897: the first layer's FFN mixes autocast's bfloat16 outputs with float16 tensors, for both input_proj
+        # kinds.
+        for input_dim in (self._DIM, 8):
+            model = self._model(device, dtype, input_dim, mp=True)
+            with pytest.raises(RuntimeError):
+                self._forward(model, True, device, dtype)

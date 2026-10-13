@@ -478,8 +478,11 @@ class LightGlue(nn.Module):
         - The matching scores, ``matching_scores0``, ``matching_scores1`` and ``scores``, are in the dtype of the
           descriptors. With ``mp=True``, float32 descriptors give scores in the dtype autocast computes them in
           instead: bfloat16 on CPU, float32 on CUDA and MPS, for every configuration and also when point pruning
-          removes every point. An image without descriptors runs no layer, and its zero scores keep the descriptor
-          dtype, also with ``mp=True``.
+          removes every point. On MPS, float16 and bfloat16 descriptors also give float32 scores with ``mp=True``.
+          An image without descriptors runs no layer, and its zero scores keep the descriptor dtype, also with
+          ``mp=True``.
+        - Known defects: with ``mp=True`` on CPU, a float16 model raises a ``RuntimeError`` in its first layer
+          (`#5897 <https://github.com/kornia/kornia/issues/5897>`_).
 
     Args:
         features: The type of local features to match (e.g., 'superpoint', 'disk'), whose configuration and
