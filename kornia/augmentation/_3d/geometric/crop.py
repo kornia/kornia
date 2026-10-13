@@ -129,7 +129,7 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         keepdim: bool = False,
     ) -> None:
         # Since PyTorch does not support ragged torch.Tensor. So cropping function happens batch-wisely.
-        """Validate the three integer crop dimensions before initializing the augmentation."""
+        """Initialize the crop and validate its three integer dimensions."""
         super().__init__(p=1.0, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
         if not isinstance(size, (tuple, list)) or len(size) != 3 or not all(isinstance(value, int) for value in size):
             raise TypeError(f"`size` must be a three-element (D, H, W) sequence of integers. Got {size!r}.")

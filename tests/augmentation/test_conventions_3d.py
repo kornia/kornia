@@ -521,6 +521,18 @@ class Test3DAugmentationConventions(BaseTester):
             K.RandomCrop3D(size)
         assert repr(size) in str(exc_info.value)
 
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("axis", [0, 1, 2])
+    @pytest.mark.parametrize("value", [2.0, 2.5, "2", None])
+    def test_center_crop3d_size_elements_must_be_integers_4417(self, axis, value):
+        """Reject non-integer dimensions on each axis before storing a center-crop size."""
+        size = [2, 2, 2]
+        size[axis] = value
+        size = tuple(size)
+        with pytest.raises(TypeError, match=r"size.*\(D, H, W\).*integers") as exc_info:
+            K.CenterCrop3D(size)
+        assert repr(size) in str(exc_info.value)
+
     @pytest.mark.parametrize("augmentation", [K.CenterCrop3D, K.RandomCrop3D])
     @pytest.mark.parametrize("size", [(5, 5, 6), (4, 6, 6), (4, 5, 7)])
     @pytest.mark.parametrize("p", [0.0, 1.0])
@@ -538,7 +550,7 @@ class Test3DAugmentationConventions(BaseTester):
     @pytest.mark.device_agnostic
     def test_crop3d_integer_size_support_4417(self):
         # Accepting an int in RandomCrop3D is still the separate compatibility-window decision.
-        """Accept integer dimensions provided as a tuple, list or tensor."""
+        """Keep scalar integer sizes supported by center crops and unsupported by random crops."""
         volume = torch.rand(1, 1, 4, 5, 6)
         assert K.CenterCrop3D(2, p=1.0)(volume).shape == (1, 1, 2, 2, 2)
         with pytest.raises(TypeError, match="size"):

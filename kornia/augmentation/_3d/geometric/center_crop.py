@@ -52,7 +52,8 @@ class CenterCrop3D(GeometricAugmentationBase3D):
         - ``size`` is ``(D, H, W)``. The crop is shared across the batch; its ``p`` is the call-wide gate, so a
           valid ``p=0`` request returns the un-cropped input and ``p=1`` returns the requested crop. Size validation
           still runs when the call is skipped, so an oversized crop raises ``ValueError`` even at ``p=0``,
-          naming ``size`` and the input spatial size. A tuple with other than three elements raises ``TypeError``.
+          naming ``size`` and the input spatial size. A tuple with other than three elements or non-integer
+          elements raises ``TypeError`` naming the supplied value.
           An integer ``size`` is supported here but not by :class:`RandomCrop3D`
           (`#4417 <https://github.com/kornia/kornia/issues/4417>`_).
         - defaults are bilinear resampling and ``align_corners=True``.
@@ -97,11 +98,11 @@ class CenterCrop3D(GeometricAugmentationBase3D):
     ) -> None:
         # same_on_batch is always True for CenterCrop
         # Since PyTorch does not support ragged torch.Tensor. So cropping function happens batch-wisely.
-        """Validate the three integer crop dimensions before initializing the augmentation."""
+        """Initialize the crop and validate its three integer dimensions."""
         super().__init__(p=1.0, same_on_batch=True, p_batch=p, keepdim=keepdim)
         if isinstance(size, tuple):
-            if len(size) != 3:
-                raise TypeError(f"`size` must be an int or a three-element (D, H, W) tuple. Got {size!r}.")
+            if len(size) != 3 or not all(isinstance(value, int) for value in size):
+                raise TypeError(f"`size` must be an int or a three-element (D, H, W) tuple of integers. Got {size!r}.")
             self.size = (size[0], size[1], size[2])
         elif isinstance(size, int):
             self.size = (size, size, size)
