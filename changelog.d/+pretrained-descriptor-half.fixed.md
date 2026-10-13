@@ -1,0 +1,1 @@
+Keep pretrained `SOSNet` and `HyNet` float16 descriptors accurate by preserving final BatchNorm statistics and avoiding overflow in filter response normalization. Convert models to float16 before scripting them.

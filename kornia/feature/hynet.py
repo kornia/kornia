@@ -22,6 +22,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
+from kornia.feature._normalization import _DescriptorSequential
 
 urls: Dict[str, str | list[str]] = {}
 urls["liberty"] = [
@@ -115,11 +116,17 @@ class FilterResponseNorm2d(nn.Module):
         Returns:
             Normalized tensor with the same shape as the input.
         """
+        input_dtype = x.dtype
+        if input_dtype == torch.float16:
+            # Pretrained HyNet produces activations whose squares exceed the float16 range.
+            x = x.float()
         # Compute the mean norm of activations per channel.
         nu2 = x.pow(2).mean(dim=[2, 3], keepdim=True)
 
         # Perform FRN.
         x = x * torch.rsqrt(nu2 + self.eps.abs())
+        if input_dtype == torch.float16:
+            x = x.to(torch.promote_types(input_dtype, self.eps.dtype))
 
         # Scale and Bias
         if self.is_scale:
@@ -206,6 +213,10 @@ class HyNet(nn.Module):
         - Input: :math:`(B, 1, 32, 32)`
         - Output: :math:`(B, 128)`
 
+    Note:
+        With float16 weights, the final BatchNorm keeps its running statistics in float32.
+        Convert the model to float16 before calling ``torch.jit.script``.
+
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
         >>> hynet = HyNet()
@@ -265,7 +276,7 @@ class HyNet(nn.Module):
             TLU(128),
         )
 
-        self.layer7 = nn.Sequential(
+        self.layer7 = _DescriptorSequential(
             nn.Dropout(self.drop_rate),
             nn.Conv2d(128, self.dim_desc, kernel_size=8, bias=False),
             nn.BatchNorm2d(self.dim_desc, affine=False),
