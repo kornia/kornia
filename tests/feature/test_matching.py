@@ -1484,14 +1484,15 @@ class TestConventionsMatching(BaseTester):
         d1, d2 = self._descriptors(device, dtype)
         lafs1 = self._lafs([[33.0, 21.0], [91.0, 57.0], [140.0, 70.0]], device, dtype)
         lafs2 = self._lafs([[30.0, 20.0], [90.0, 55.0], [140.0, 12.0], [5.0, 60.0]], device, dtype)
-        # an empty side, first or second, gives (0, 1) values in the descriptor dtype and (0, 2) int64 indices
-        # ((0, 3) for match_smnn_batched)
+        # an empty side, first or second, gives (0, 1) values in the descriptor dtype (float32 for match_adalam) and
+        # (0, 2) int64 indices ((0, 3) for match_smnn_batched)
         for a, b, lafs_a, lafs_b in ((d1[:0], d2, lafs1[:, :0], lafs2), (d1, d2[:0], lafs1, lafs2[:, :0])):
-            outputs = [match(a, b) for match in (match_nn, match_mnn, match_snn, match_smnn)]
-            outputs.append(match_fginn(a, b, lafs_a, lafs_b))
-            for dists, idxs in outputs:
+            outputs = [(match(a, b), dtype) for match in (match_nn, match_mnn, match_snn, match_smnn)]
+            outputs.append((match_fginn(a, b, lafs_a, lafs_b), dtype))
+            outputs.append((match_adalam(a, b, lafs_a, lafs_b), torch.float32))
+            for (dists, idxs), dists_dtype in outputs:
                 assert dists.shape == (0, 1)
-                assert dists.dtype == dtype
+                assert dists.dtype == dists_dtype
                 assert idxs.shape == (0, 2)
                 assert idxs.dtype == torch.long
             ratios, indices = matching.match_smnn_batched(a[None], b[None])
@@ -1504,11 +1505,13 @@ class TestConventionsMatching(BaseTester):
         assert match_mnn(d1, d2[:1])[1].tolist() == [[1, 0]]
         assert match_snn(d1, d2[:1], 0.95)[1].shape == (0, 2)
         assert match_fginn(d1, d2[:1], lafs1, lafs2[:, :1], 0.95)[1].shape == (0, 2)
-        # one row in desc1: match_snn keeps its match (ratio sqrt(17 / 20) = 0.92), the symmetric tests need two
-        # rows on both sides
+        assert match_adalam(d1, d2[:1], lafs1, lafs2[:, :1])[1].shape == (0, 2)
+        # one row in desc1: match_snn keeps its match (ratio sqrt(17 / 20) = 0.92), the symmetric tests and AdaLAM
+        # need two rows on both sides
         assert match_snn(d1[:1], d2, 0.95)[1].tolist() == [[0, 3]]
         assert match_smnn(d1[:1], d2, 0.95)[1].shape == (0, 2)
         assert matching.match_smnn_batched(d1[None, :1], d2[None], 0.95)[1].shape == (0, 3)
+        assert match_adalam(d1[:1], d2, lafs1[:, :1], lafs2)[1].shape == (0, 2)
 
     def test_convention_matchers_read_a_given_distance_matrix_as_it_is(self, device, dtype):
         d1, d2 = self._descriptors(device, dtype)
@@ -1574,6 +1577,27 @@ class TestConventionsMatching(BaseTester):
             perm_dists, perm_idxs = match_fginn(d1, d2[perm], lafs1, lafs2[:, perm], 0.8, 10.0 * unit)
             assert perm_idxs.tolist() == [[0, 2], [1, 0]]
             self.assert_close(perm_dists, dists)
+
+    def test_convention_match_fginn_takes_the_second_neighbour_among_the_10_nearest(self, device, dtype):
+        # desc2 has 12 rows at distances 1 to 12 from the query. The 10 nearest lie within spatial_th = 10 of the
+        # nearest one's centre, the other two far from it.
+        centres2 = [[100.0 + 0.4 * i, 100.0] for i in range(10)] + [[400.0, 300.0], [10.0, 20.0]]
+        scale = torch.full((1, 12, 1, 1), 4.0, device=device, dtype=dtype)
+        lafs2 = laf_from_center_scale_ori(torch.tensor([centres2], device=device, dtype=dtype), scale)
+        lafs1 = self._lafs([[33.0, 21.0]], device, dtype)
+        desc1 = torch.zeros(1, 2, device=device, dtype=dtype)
+        desc2 = torch.zeros(12, 2, device=device, dtype=dtype)
+        dm = torch.arange(1.0, 13.0, device=device, dtype=dtype)[None]
+        # every candidate is excluded, and the two far rows are not candidates: the ratio is 0 and the match is kept
+        dists, idxs = match_fginn(desc1, desc2, lafs1, lafs2, 0.8, 10.0, dm=dm)
+        assert idxs.tolist() == [[0, 0]]
+        assert dists.tolist() == [[0.0]]
+        # a far row among the 10 nearest (distance 10) is the second neighbour: ratio 1 / 10
+        dm_far = dm.clone()
+        dm_far[0, 9], dm_far[0, 10] = 11.0, 10.0
+        dists, idxs = match_fginn(desc1, desc2, lafs1, lafs2, 0.8, 10.0, dm=dm_far)
+        assert idxs.tolist() == [[0, 0]]
+        self.assert_close(dists, torch.tensor([[0.1]], device=device, dtype=dtype))
 
     @staticmethod
     def _oriented_adalam_scene():
@@ -1782,9 +1806,13 @@ class TestConventionsMatching(BaseTester):
         desc = d1.to(device, dtype)
         lafs = laf_from_center_scale_ori(c1, s1, o1).to(device, dtype)
         # #5866: the local RANSACs give residuals at or near zero no inlier weight, so an image matched against itself
-        # keeps no match, while the same keypoints moved by about 0.1 px in the second image keep nearly all of them
+        # keeps no match whenever a seed survives, while the same keypoints moved by about 0.1 px in the second image
+        # keep nearly all of them
         exact = match_adalam(desc, desc, lafs, lafs, hw1=hw, hw2=hw)[1]
         assert len(exact) == 0
         shift = torch.randn(c1.shape, generator=torch.Generator().manual_seed(11)) * 0.1
         moved = laf_from_center_scale_ori(c1 + shift, s1, o1).to(device, dtype)
         assert len(match_adalam(desc, desc, lafs, moved, hw1=hw, hw2=hw)[1]) > 0.95 * len(desc)
+        # With 8 keypoints no seed survives, so the ratio-test fallback runs and matches each keypoint to itself.
+        few = match_adalam(desc[:8], desc[:8], lafs[:, :8], lafs[:, :8], hw1=hw, hw2=hw)[1]
+        assert few.tolist() == [[i, i] for i in range(8)]

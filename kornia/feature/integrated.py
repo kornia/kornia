@@ -934,9 +934,6 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
           index in desc2)``. Fewer than two descriptors on either side give no match.
         - All-zero padding LAFs are not filtered out: such a slot reaches the network as a keypoint at ``(0, 0)``.
           Drop them with :func:`~kornia.feature.laf_is_filled` first.
-        - Known defects: ``"aliked"``, ``"dedodeb"``, ``"dedodeg"``, ``"disk"``, ``"sift"`` and ``"superpoint"`` enable
-          point pruning, and with it float64, float16 and bfloat16 inputs raise at any number of keypoints
-          (`#5837 <https://github.com/kornia/kornia/issues/5837>`_).
 
     Args:
         feature_name: type of feature for matching, one of ``known_modes``.

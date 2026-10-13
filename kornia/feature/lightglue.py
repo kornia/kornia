@@ -475,9 +475,13 @@ class LightGlue(nn.Module):
           also read ``scales`` and ``oris`` (radians) of each image; the last two multiply ``scales`` by their
           ``scale_coef`` of 1/6 first, so they take the LAF scale. ``"keynet_affnet_hardnet"``, which sets ``add_laf``,
           reads ``lafs``. :class:`~kornia.feature.LightGlueMatcher` builds them from LAFs.
-        - Known defects: with point pruning enabled, by ``width_confidence > 0`` (0.99 by default), float64, float16 and
-          bfloat16 inputs raise at any number of keypoints, and so do float32 inputs with ``mp=True`` on CPU
-          (`#5837 <https://github.com/kornia/kornia/issues/5837>`_).
+        - The matching scores, ``matching_scores0``, ``matching_scores1`` and ``scores``, are in the dtype of the
+          descriptors. With ``mp=True``, float32 descriptors give scores in the dtype autocast computes them in
+          instead: bfloat16 on CPU, float32 on CUDA and MPS. An image without descriptors runs no layer, and its zero
+          scores keep the descriptor dtype, also with ``mp=True``.
+        - Known defects: with ``mp=True`` on CPU, a configuration whose ``input_dim`` equals ``descriptor_dim``, such
+          as ``"superpoint"``, ``"dedodeb"`` and ``"dedodeg"``, gives float32 zero scores when point pruning removes
+          every point, and bfloat16 scores otherwise (`#5877 <https://github.com/kornia/kornia/issues/5877>`_).
 
     Args:
         features: The type of local features to match (e.g., 'superpoint', 'disk'), whose configuration and

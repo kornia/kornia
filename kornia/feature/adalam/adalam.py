@@ -82,11 +82,10 @@ def match_adalam(
         - ``config`` is merged into the defaults of ``kornia.feature.adalam.get_adalam_default_config()``; an
           unknown key warns and is ignored. The computation runs on the device of ``desc1`` unless ``config`` sets
           ``"device"``.
-        - Known defects: with fewer than two descriptors on either side, or with no seed and no ratio-test match, the
-          two outputs come back swapped, the :math:`(0, 2)` int64 indices first
-          (`#5848 <https://github.com/kornia/kornia/issues/5848>`_). Exact correspondences are rejected, because the
-          local RANSACs give residuals at or near zero no inlier weight: an image matched against itself gets no
-          match (`#5866 <https://github.com/kornia/kornia/issues/5866>`_).
+        - Known defects: exact correspondences are rejected, because the local RANSACs give residuals at or near zero
+          no inlier weight. An image matched against itself gets no match whenever a seed survives; when none does,
+          as with very few keypoints, the ratio-test fallback above returns the identity matches instead
+          (`#5866 <https://github.com/kornia/kornia/issues/5866>`_).
 
     Args:
         desc1: Batch of descriptors of a shape :math:`(B1, D)`.
@@ -101,8 +100,8 @@ def match_adalam(
 
 
     Return:
-        - Inverse local RANSAC confidence of each match, float32, shape of :math:`(B3, 1)`; see the Convention block
-          and its Known defects.
+        - Inverse local RANSAC confidence of each match, float32, shape of :math:`(B3, 1)`; see the Convention
+          block.
         - Long torch.Tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
           where 0 <= B3 <= B1.
 

@@ -103,18 +103,18 @@ def match_nn(
     r"""Find nearest neighbors in desc2 for each vector in desc1.
 
     Convention:
-        - Every ``match_*`` function returns ``(dists, idxs)``, one row per match; :func:`match_adalam` returns them the
-          other way round in some cases that give no match (`#5848 <https://github.com/kornia/kornia/issues/5848>`_).
-          ``idxs`` is an int64 :math:`(M, 2)` tensor of ``(index in desc1, index in desc2)`` rows
-          (:func:`match_smnn_batched` adds the batch index as a first column). ``dists`` is :math:`(M, 1)`, in the dtype
-          of ``dm`` when it is given and in the descriptor dtype otherwise, except that :func:`match_adalam` returns
-          float32. Lower values are better, and what they are depends on the function:
+        - Every ``match_*`` function returns ``(dists, idxs)``, one row per match. ``idxs`` is an int64
+          :math:`(M, 2)` tensor of ``(index in desc1, index in desc2)`` rows (:func:`match_smnn_batched` adds the
+          batch index as a first column). ``dists`` is :math:`(M, 1)`, in the dtype of ``dm`` when it is given and in
+          the descriptor dtype otherwise, except that :func:`match_adalam` returns float32. Lower values are better,
+          and what they are depends on the function:
 
           - :func:`match_nn`, :func:`match_mnn`: the distance, the entry of ``dm`` when it is given.
           - :func:`match_snn`: the ratio of the nearest to the second-nearest distance, not a distance.
           - :func:`match_smnn`, :func:`match_smnn_batched`: the larger of the two ratios, desc1 to desc2 and back.
-          - :func:`match_fginn`: the ratio of the nearest distance to that of a second neighbour whose ``lafs2``
-            centre lies at least ``spatial_th`` from the nearest one's; see its Convention block.
+          - :func:`match_fginn`: the ratio of the nearest distance to that of a second neighbour, taken among the 10
+            nearest, whose ``lafs2`` centre lies at least ``spatial_th`` from the nearest one's, and 0 without one;
+            see its Convention block.
           - :func:`match_adalam`: the inverse of the local RANSAC confidence; see its Convention block.
 
           :class:`~kornia.feature.LightGlueMatcher` returns LightGlue's matching score in the place of ``dists``,
@@ -128,8 +128,9 @@ def match_nn(
           distances need ``th ** 2``.
         - An empty desc1 or desc2 gives a :math:`(0, 1)` and a :math:`(0, 2)` tensor (:math:`(0, 3)` for
           :func:`match_smnn_batched`). The ratio tests need a second neighbour: :func:`match_snn` and
-          :func:`match_fginn` return no match unless desc2 has two rows, and :func:`match_smnn` and
-          :func:`match_smnn_batched` need two rows in both.
+          :func:`match_fginn` return no match unless desc2 has two rows, and :func:`match_smnn`,
+          :func:`match_smnn_batched` and :func:`match_adalam`, which scores its putative matches by the same ratio,
+          need two rows in both.
 
     Args:
         desc1: Batch of descriptors of a shape :math:`(B1, D)`.
@@ -437,13 +438,12 @@ def match_fginn(
         - See the Convention block on :func:`match_nn`. ``dists`` is a ratio: the nearest distance over the distance
           of the second neighbour, which is the nearest of the ``min(10, B2)`` nearest candidates, the first one
           excluded, whose ``lafs2`` centre lies at least ``spatial_th`` from the centre of the first one. Candidates
-          closer than that count as the same structure, not as competitors. When all of them are -- a dense cluster
-          of detections on one structure -- the ratio collapses towards zero and the match is **accepted**: no
-          distinct competing structure among the candidates means the nearest neighbour is unambiguous.
+          closer than that count as the same structure, not as competitors, whatever their descriptor distance. When
+          all of them are -- a dense cluster of detections on one structure -- the ratio is 0 and the match is
+          **accepted**: no distinct competing structure among the candidates means the nearest neighbour is
+          unambiguous. A descriptor beyond the ``min(10, B2)`` nearest is never the second neighbour, even when every
+          candidate is excluded.
         - Only the centres of ``lafs2`` are read, and ``spatial_th`` is in their units: pixels for LAFs in pixels.
-        - Known defects: closer candidates are skipped by adding :math:`10^6` to their distance, not masked out, so
-          with distances of order :math:`10^6` one of them can still be the second neighbour
-          (`#5849 <https://github.com/kornia/kornia/issues/5849>`_).
 
     Args:
         desc1: Batch of descriptors of a shape :math:`(B1, D)`.

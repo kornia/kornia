@@ -839,3 +839,43 @@ class TestConventionsLightGlue(BaseTester):
         lg = LightGlue("disk", input_dim=64, filter_threshold=0.3, n_layers=1)
         assert lg.conf.input_dim == 128
         assert lg.conf.filter_threshold == 0.3
+
+    def test_wart_lightglue_mixed_precision_cpu_all_pruned_scores_are_float32_5877(self, device, dtype):
+        if device.type != "cpu" or dtype != torch.float32:
+            pytest.skip("mp=True on CPU autocasts a float32 model to bfloat16")
+
+        def score_dtypes(input_dim, matchability):
+            # A constant matchability of +-30 keeps every point or prunes every point at layer 0; no early stop.
+            torch.manual_seed(0)
+            lg = LightGlue(
+                None,
+                input_dim=input_dim,
+                descriptor_dim=16,
+                n_layers=2,
+                num_heads=1,
+                flash=False,
+                mp=True,
+                depth_confidence=-1,
+            )
+            with torch.no_grad():
+                for layer in lg.log_assignment:
+                    layer.matchability.weight.zero_()
+                    layer.matchability.bias.fill_(matchability)
+            g = torch.Generator().manual_seed(1)
+            data = {
+                "keypoints": torch.rand(1, 6, 2, generator=g) * 100,
+                "descriptors": torch.randn(1, 6, input_dim, generator=g),
+                "image_size": torch.tensor([[100, 100]]),
+            }
+            with torch.no_grad():
+                out = lg.eval()({"image0": data, "image1": dict(data)})
+            # the early return for every point pruned has no log assignment
+            assert ("log_assignment" in out) == (matchability > 0)
+            return {out["matching_scores0"].dtype, out["matching_scores1"].dtype, out["scores"][0].dtype}
+
+        # #5877: with input_dim == descriptor_dim, input_proj is an identity, the descriptors stay float32 through the
+        # layers, and the early return for every point pruned takes float32 from them, while the scores of a pass
+        # that keeps the points are bfloat16. With input_dim != descriptor_dim both paths give bfloat16.
+        assert score_dtypes(16, 30.0) == {torch.bfloat16}
+        assert score_dtypes(16, -30.0) == {torch.float32}
+        assert score_dtypes(8, 30.0) == score_dtypes(8, -30.0) == {torch.bfloat16}
