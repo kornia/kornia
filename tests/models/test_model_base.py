@@ -137,8 +137,8 @@ class TestModelBaseMixinSaveWritesRealFiles:
     shipped: the mock accepts any dtype and any rank, so nothing checked that
     what the containers hand it is something it can actually write. `visualize`
     returns float images and the containers document batched input, and
-    `write_image` accepts neither -- PNG is uint8/uint16 only, and the rank has
-    to be (3, H, W), (1, H, W) or (H, W).
+    `write_image` accepts neither -- PNG is uint8/uint16 only, and it takes one
+    image: (3, H, W), (1, H, W), (H, W) or, for PNG, (4, H, W).
     """
 
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.float16])

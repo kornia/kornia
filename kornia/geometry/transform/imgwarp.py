@@ -27,6 +27,7 @@ from kornia.core.ops import eye_like
 from kornia.core.utils import (
     _inverse_3x3_closed_form,
     _normalize_to_float32_or_float64,
+    _torch_grid_sample,
     _torch_inverse_cast,
     _torch_solve_cast,
 )
@@ -92,6 +93,19 @@ def _remap_grid_dtype(map_xy: torch.Tensor, normalized_coordinates: bool) -> tor
     # Read the default floating dtype off a zero-element promotion rather than
     # ``torch.get_default_dtype()``, which TorchScript does not expose.
     return (map_xy.reshape(-1)[:0] * 1.0).dtype
+
+
+def _runs_in_float32(src: torch.Tensor, other: torch.Tensor) -> bool:
+    """Return whether a warp of ``src`` builds its sampling grid and samples in float32.
+
+    torch's CPU float16/bfloat16 ``grid_sample`` returns wrong values, NaN and up to 3.4e38 once
+    the source is about 128 px or larger (torch 2.9.1 and 2.14), and torch 2.5.1 has no such kernel
+    at all; a half-precision sampling grid is also off by more than half a pixel at 256 px in
+    bfloat16 (#5751). A CPU half warp therefore runs in float32 and returns the input dtype, as the LAF
+    patch extractors already do. A mismatched ``other`` (transform or map) keeps the half path, so
+    it is rejected exactly as before. Other devices and dtypes are unaffected.
+    """
+    return src.device.type == "cpu" and src.dtype in (torch.float16, torch.bfloat16) and other.dtype == src.dtype
 
 
 def _empty_warp_output_2d(
@@ -170,7 +184,9 @@ def _empty_warp_output_2d(
             fill_value = torch.zeros(sample_channels, device=src.device, dtype=src.dtype)
         sampled = _fill_and_warp(sample_src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
     else:
-        sampled = F.grid_sample(sample_src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
+        sampled = _torch_grid_sample(
+            sample_src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode
+        )
     out_zero = sampled.reshape(-1)[:1].sum() * 0.0
     return out_zero.reshape(1, 1, 1, 1).expand(src_batch, src.shape[1], dsize[0], dsize[1])
 
@@ -199,7 +215,7 @@ def _empty_warp_output_3d(
     if src.shape[-3] == 0 or src.shape[-2] == 0 or src.shape[-1] == 0:
         src_zero = src.reshape(-1)[:1].sum() * 0.0
         sample_src = src_zero.reshape(1, 1, 1, 1, 1).expand(src.shape[0], src.shape[1], 1, 1, 1)
-    return F.grid_sample(sample_src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
+    return _torch_grid_sample(sample_src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
 
 
 def warp_perspective(
@@ -288,6 +304,9 @@ def warp_perspective(
         return _empty_warp_output_2d(
             src, M, dsize, mode, padding_mode, align_corners, _matrix_warp_grid_dtype(src, M), fill_value
         )
+    out_dtype = src.dtype
+    if _runs_in_float32(src, M):
+        src, M = src.float(), M.float()
 
     # H and s*H represent the same projective map. Remove that arbitrary scale before
     # the coordinate change and inverse: the cubic determinant can overflow/underflow
@@ -332,8 +351,10 @@ def warp_perspective(
         grid = torch.stack([gx, gy], dim=-1)  # (B, H, W, 2)
 
     if padding_mode == "fill":
-        return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
-    return F.grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
+        return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value).to(out_dtype)
+    return _torch_grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode).to(
+        out_dtype
+    )
 
 
 def warp_affine(
@@ -423,6 +444,9 @@ def warp_affine(
             fill_value,
             transform_batch_broadcast="src_when_larger",
         )
+    out_dtype = src.dtype
+    if _runs_in_float32(src, M):
+        src, M = src.float(), M.float()
 
     M_3x3: torch.Tensor = convert_affinematrix_to_homography(M)
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography(M_3x3, (H, W), dsize, align_corners=align_corners)
@@ -471,9 +495,11 @@ def warp_affine(
     if padding_mode == "fill":
         if fill_value is None:
             fill_value = torch.zeros(src.shape[1], device=src.device, dtype=src.dtype)
-        return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
+        return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value).to(out_dtype)
 
-    return F.grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
+    return _torch_grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode).to(
+        out_dtype
+    )
 
 
 def _fill_and_warp(
@@ -499,11 +525,13 @@ def _fill_and_warp(
     elif fill_value.ndim == 1:
         fill_value = fill_value.view(1, -1, 1, 1)
 
-    inv_ones_mask = 1 - F.grid_sample(ones_mask, grid, align_corners=align_corners, mode=mode, padding_mode="zeros")
+    inv_ones_mask = 1 - _torch_grid_sample(
+        ones_mask, grid, align_corners=align_corners, mode=mode, padding_mode="zeros"
+    )
 
     inv_color_mask = inv_ones_mask * fill_value
 
-    return F.grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode="zeros") + inv_color_mask
+    return _torch_grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode="zeros") + inv_color_mask
 
 
 def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
@@ -902,6 +930,9 @@ def remap(
             allow_fill=False,
             operand="map",
         )
+    out_dtype = image.dtype
+    if _runs_in_float32(image, map_xy):
+        image, map_xy = image.float(), map_xy.float()
 
     # F.normalize coordinates if not already normalized
     if not normalized_coordinates:
@@ -911,7 +942,9 @@ def remap(
     map_xy = map_xy.expand(batch_size, -1, -1, -1)
 
     # warp the image tensor and return
-    return F.grid_sample(image, map_xy, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
+    return _torch_grid_sample(image, map_xy, mode=mode, padding_mode=padding_mode, align_corners=align_corners).to(
+        out_dtype
+    )
 
 
 def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
@@ -1307,6 +1340,9 @@ def warp_affine3d(
         raise ValueError(f"Output size must be non-negative. Got {dsize}.")
     if dsize[0] == 0 or dsize[1] == 0 or dsize[2] == 0:
         return _empty_warp_output_3d(src, M, dsize, flags, padding_mode, align_corners)
+    out_dtype = src.dtype
+    if _runs_in_float32(src, M):
+        src, M = src.float(), M.float()
 
     size_src: tuple[int, int, int] = (D, H, W)
     size_out: tuple[int, int, int] = dsize
@@ -1322,7 +1358,9 @@ def warp_affine3d(
     # compute meshgrid and apply to input
     dsize_out: list[int] = [B, C, *list(size_out)]
     grid = F.affine_grid(P_norm, dsize_out, align_corners=align_corners)
-    return F.grid_sample(src, grid, align_corners=align_corners, mode=flags, padding_mode=padding_mode)
+    return _torch_grid_sample(src, grid, align_corners=align_corners, mode=flags, padding_mode=padding_mode).to(
+        out_dtype
+    )
 
 
 def projection_from_Rt(rmat: torch.Tensor, tvec: torch.Tensor) -> torch.Tensor:
@@ -1700,10 +1738,13 @@ def warp_perspective3d(
         raise ValueError(f"Output size must be non-negative. Got {dsize}.")
     if dsize[0] == 0 or dsize[1] == 0 or dsize[2] == 0:
         return _empty_warp_output_3d(src, M, dsize, flags, border_mode, align_corners)
+    out_dtype = src.dtype
+    if _runs_in_float32(src, M):
+        src, M = src.float(), M.float()
 
     # launches the warper
     d, h, w = src.shape[-3:]
-    return _transform_warp_impl3d(src, M, (d, h, w), dsize, flags, border_mode, align_corners)
+    return _transform_warp_impl3d(src, M, (d, h, w), dsize, flags, border_mode, align_corners).to(out_dtype)
 
 
 def homography_warp(
@@ -1784,7 +1825,9 @@ def homography_warp(
         )
         warped_grid = warp_grid(grid, src_homo_dst)
 
-        return F.grid_sample(patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
+        return _torch_grid_sample(
+            patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners
+        )
     return warp_perspective(
         patch_src, src_homo_dst, dsize, mode=mode, padding_mode=padding_mode, align_corners=align_corners
     )
@@ -1858,6 +1901,9 @@ def homography_warp3d(
             f"src_H_dst.device: {src_homo_dst.device}."
         )
 
+    out_dtype = patch_src.dtype
+    if _runs_in_float32(patch_src, src_homo_dst):
+        patch_src, src_homo_dst = patch_src.float(), src_homo_dst.float()
     depth, height, width = dsize
     grid = create_meshgrid3d(
         depth,
@@ -1873,4 +1919,6 @@ def homography_warp3d(
     grid = grid[..., [1, 2, 0]]
     warped_grid = warp_grid3d(grid, src_homo_dst)
 
-    return F.grid_sample(patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
+    return _torch_grid_sample(
+        patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners
+    ).to(out_dtype)

@@ -40,6 +40,25 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK
 from kornia.core.exceptions import DeviceError, TypeCheckError
 
 
+def _torch_grid_sample(
+    input: torch.Tensor,
+    grid: torch.Tensor,
+    mode: str = "bilinear",
+    padding_mode: str = "zeros",
+    align_corners: Optional[bool] = None,
+) -> torch.Tensor:
+    """Run :func:`torch.nn.functional.grid_sample` on 4-D or 5-D input, CPU float16/bfloat16 in float32.
+
+    torch's CPU half ``grid_sample`` returns corrupt values on sources of about 128 px and more, and
+    torch 2.5.1 has no such kernel (#5751). Other devices and dtypes call ``grid_sample`` unchanged.
+    """
+    if input.device.type == "cpu" and input.dtype in (torch.float16, torch.bfloat16) and grid.dtype == input.dtype:
+        return F.grid_sample(
+            input.float(), grid.float(), mode=mode, padding_mode=padding_mode, align_corners=align_corners
+        ).to(input.dtype)
+    return F.grid_sample(input, grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
+
+
 def xla_is_available() -> bool:
     """Return whether `torch_xla` is available in the system."""
     return importlib.util.find_spec("torch_xla") is not None
