@@ -484,7 +484,6 @@ class TestCenterCropAlternative(CommonTests):
             params={"size": (2, 3), "align_corners": True},
         )
 
-    @pytest.mark.xfail(reason="size=(1,2) results in RuntimeError: solve_cpu: For batch 0: U(3,3) is zero, singular U.")
     def test_random_p_1(self):
         torch.manual_seed(42)
 
