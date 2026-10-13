@@ -275,3 +275,21 @@ def test_make_grid_valid(device, dtype, n_row):
     assert actual.dtype == tensor.dtype
     assert actual.device == tensor.device
     assert_close(actual, expected)
+
+
+def test_tensor_to_image_bfloat16_becomes_float32():
+    out = kornia.image.tensor_to_image(torch.full((3, 4, 5), 0.5, dtype=torch.bfloat16))
+    assert out.dtype == np.float32
+    assert out.shape == (4, 5, 3)
+    assert (out == 0.5).all()
+
+
+@pytest.mark.parametrize("bad", [torch.zeros(4, 5, 3), [[0, 1], [2, 3]]])
+def test_image_to_tensor_rejects_a_non_ndarray(bad):
+    with pytest.raises(TypeError, match="numpy"):
+        kornia.image.image_to_tensor(bad)
+
+
+def test_make_grid_rejects_negative_padding():
+    with pytest.raises(ValueError, match="padding"):
+        kornia.image.make_grid(torch.zeros(4, 1, 3, 5), padding=-1)

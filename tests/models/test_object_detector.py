@@ -29,6 +29,20 @@ from testing.base import BaseTester
 
 
 class TestObjectDetector(BaseTester):
+    def test_visualize_keeps_a_border_box_four_sided(self, device):
+        detector = kornia.contrib.object_detection.ObjectDetector(
+            torch.nn.Identity(), torch.nn.Identity(), torch.nn.Identity()
+        )
+        h, w = 6, 9
+        # (class, score, x, y, w, h): a detection covering the whole image, so x + w = W and y + h = H
+        detection = torch.tensor([[0.0, 0.9, 0.0, 0.0, float(w), float(h)]], device=device)
+        out = detector.visualize(torch.ones(1, 3, h, w, device=device), [detection])[0]
+        # visualize draws in the default colour, black, on the white image
+        assert (out[:, 0] == 0).all()
+        assert (out[:, h - 1] == 0).all()
+        assert (out[:, :, 0] == 0).all()
+        assert (out[:, :, w - 1] == 0).all()
+
     def test_smoke(self, device, dtype):
         batch_size = 2
         confidence = 0.3
