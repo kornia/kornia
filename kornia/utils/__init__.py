@@ -23,11 +23,10 @@ Import from the new locations instead (e.g., `kornia.image.draw_line` instead of
 
 Each shim takes the signature of the function it forwards to (``torch_meshgrid`` and ``map_location_to_cpu`` keep their
 0.8.2 signatures) and warns only outside TorchScript and outside ``torch.compile``/``torch.export`` graph capture, so
-code written against 0.8.2 still scripts and compiles.
+code written against 0.8.2 scripts and compiles wherever the function the shim forwards to does.
 """
 
 import importlib
-import inspect
 import os
 import sys
 from types import FrameType
@@ -360,36 +359,24 @@ def torch_meshgrid(tensors: List[torch.Tensor], indexing: str):  # the 0.8.2 sig
     return torch.meshgrid(tensors, indexing=indexing)
 
 
-# Set in the locals of the outermost torch frame of a ``torch.load`` call once that call has warned.
-_MAP_LOCATION_WARNED = "__kornia_map_location_to_cpu_warned__"
-
-
 def _in_torch_or_kornia(frame: FrameType) -> bool:
     return str(frame.f_globals.get("__name__", "")).split(".", 1)[0] in ("torch", "kornia")
 
 
 def _warn_map_location_to_cpu() -> None:
-    """Warn once per ``torch.load`` call, at the line that called ``torch.load``.
+    """Warn at the line that called ``torch.load``.
 
     ``torch.load`` calls the hook from inside torch, once for every storage it restores. A fixed ``stacklevel`` names
     a torch frame, and the default filters hide a ``DeprecationWarning`` that is not attributed to ``__main__``, so the
-    warning goes to the first frame outside torch and kornia instead. The outermost torch frame of the call, the
-    ``torch.load`` frame, is marked once it has warned, so that its other storages stay quiet while the next call,
-    which runs in a new frame, warns again.
+    warning goes to the first frame outside torch and kornia instead. Every storage of a call then warns at the same
+    line, so the warnings registry shows it once there under the default filters, as for any repeated warning.
     """
     level = 4  # counted from _emit_deprecation_warning: this function, map_location_to_cpu, then the hook's caller
-    outermost: Optional[FrameType] = None
     frame: Optional[FrameType] = sys._getframe(2)
     while frame is not None and _in_torch_or_kornia(frame):
-        outermost, frame, level = frame, frame.f_back, level + 1
+        frame, level = frame.f_back, level + 1
     if frame is None:  # nothing outside torch and kornia: name the hook's caller
-        outermost, level = None, 4
-    # Only a function frame has locals of its own; a module frame's locals are the module's globals.
-    if outermost is not None and outermost.f_code.co_flags & inspect.CO_OPTIMIZED:
-        marks = outermost.f_locals
-        if _MAP_LOCATION_WARNED in marks:
-            return
-        marks[_MAP_LOCATION_WARNED] = True
+        level = 4
     _emit_deprecation_warning(
         "map_location_to_cpu",
         'torch.load(..., map_location="cpu")',
@@ -441,8 +428,9 @@ def xla_is_available() -> bool:
 
 
 def __getattr__(name: str) -> Any:
-    # A class cannot warn when it is looked up the way the functions above warn when called, so the deprecated
-    # name resolves here, on access. ``kornia.utils.sample`` is the v0.8.2 submodule path of `get_sample_images`.
+    # ``CachedDownloader`` is used through its classmethods without being constructed, so it cannot warn from
+    # ``__init__`` the way ``ImageToTensor`` does: it resolves here instead, and warns on access.
+    # ``kornia.utils.sample`` is the v0.8.2 submodule path of ``get_sample_images``.
     if name == "CachedDownloader":
         from kornia.onnx.download import CachedDownloader as _CachedDownloader
 

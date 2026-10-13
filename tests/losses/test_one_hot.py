@@ -94,6 +94,12 @@ class TestOneHot:
             torch.jit.script(one_hot)(labels, 3, device, torch.uint8), one_hot(labels, 3, device, torch.uint8)
         )
 
+    def test_jit_script_rejects_eps_with_an_integer_dtype(self, device):
+        # the scripted path checks the dtype through a tensor, since TorchScript has no ``dtype.is_floating_point``
+        labels = torch.tensor([[0, 2], [1, 0]], device=device)
+        with pytest.raises(torch.jit.Error, match="A non-zero eps needs a floating point dtype"):
+            torch.jit.script(one_hot)(labels, 3, device, torch.int64, 0.125)
+
 
 class TestConventionsOneHot(BaseTester):
     """Pins for the layout of :func:`kornia.losses.one_hot`."""

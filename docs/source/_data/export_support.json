@@ -19500,11 +19500,11 @@
       "where": ""
     },
     {
-      "compile": "ok-breaks",
-      "compile_detail": "2 graph breaks",
+      "compile": "ok",
+      "compile_detail": "",
       "export": "ok",
       "export_detail": "",
-      "graph_breaks": 2,
+      "graph_breaks": 0,
       "name": "utils.torch_meshgrid",
       "note": "thin wrapper over torch.meshgrid (kornia.utils shim)",
       "onnx": "ok",

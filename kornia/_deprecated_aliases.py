@@ -19,9 +19,9 @@
 """Deprecated top-level aliases such as ``kornia.create_meshgrid``; ``kornia/__init__.py`` binds them.
 
 Each alias takes the signature of the function it forwards to and warns only outside TorchScript and outside
-``torch.compile``/``torch.export`` graph capture, so code written against 0.8.2 still scripts and compiles. They live
-in their own module so that the names their annotations need (``torch``, ``os``, ``typing``) do not become
-attributes of ``kornia``.
+``torch.compile``/``torch.export`` graph capture, so code written against 0.8.2 scripts and compiles wherever the
+function the alias forwards to does. They live in their own module so that the names their annotations need
+(``torch``, ``os``, ``typing``) do not become attributes of ``kornia``.
 """
 
 import os

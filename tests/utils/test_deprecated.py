@@ -25,6 +25,7 @@ import os
 import subprocess
 import sys
 import textwrap
+import types
 import warnings
 from pathlib import Path
 from typing import Any, Callable
@@ -836,26 +837,50 @@ def _map_location_warnings(caught: list[warnings.WarningMessage]) -> list[tuple[
 
 
 class TestMapLocationToCpuUnderTorchLoad:
-    """``torch.load`` calls the hook once per storage, from inside torch (#5905)."""
+    """``torch.load`` calls the hook once per storage, from inside torch (#5905).
+
+    Every storage warns at the line that called ``torch.load``, so the default filters show that line once.
+    """
 
     @pytest.mark.parametrize("weights_only", [True, False])
-    def test_one_warning_per_torch_load_at_the_callers_line(self, weights_only):
+    def test_every_storage_warns_at_the_callers_line(self, weights_only):
         buf = _checkpoint()
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             state = torch.load(buf, map_location=utils.map_location_to_cpu, weights_only=weights_only)
             line = sys._getframe().f_lineno - 1
         assert len(state) == 6
-        assert _map_location_warnings(caught) == [(__file__, line)]
+        assert _map_location_warnings(caught) == [(__file__, line)] * 6
 
-    def test_each_torch_load_warns(self):
+    def test_default_action_shows_the_callers_line_once(self):
         buf = _checkpoint()
         with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
+            warnings.simplefilter("default")
             for _ in range(3):
                 buf.seek(0)
                 torch.load(buf, map_location=utils.map_location_to_cpu, weights_only=True)
-        assert len(_map_location_warnings(caught)) == 3
+            line = sys._getframe().f_lineno - 1
+        assert _map_location_warnings(caught) == [(__file__, line)]
+
+    @pytest.mark.parametrize("weights_only", [True, False])
+    def test_error_filter_raises_out_of_torch_load(self, weights_only):
+        buf = _checkpoint()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            with pytest.raises(DeprecationWarning, match="`map_location_to_cpu`"):
+                torch.load(buf, map_location=utils.map_location_to_cpu, weights_only=weights_only)
+
+    def test_kornia_frames_between_the_caller_and_torch_load_are_skipped(self):
+        # kornia.core.download.load_state_dict_from_url, for one, forwards map_location to torch.load
+        loader = types.ModuleType("kornia._map_location_probe")
+        source = "import torch\ndef load(buf, ml):\n    return torch.load(buf, map_location=ml, weights_only=True)\n"
+        exec(source, vars(loader))  # noqa: S102  a fixed literal
+        buf = _checkpoint()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            loader.load(buf, utils.map_location_to_cpu)
+            line = sys._getframe().f_lineno - 1
+        assert _map_location_warnings(caught) == [(__file__, line)] * 6
 
     def test_shown_under_the_default_filters(self):
         result = _run_fresh(
