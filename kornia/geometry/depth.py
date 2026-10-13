@@ -27,6 +27,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import ShapeError
+from kornia.core.utils import _torch_grid_sample
 from kornia.filters.sobel import spatial_gradient
 from kornia.geometry.grid import create_meshgrid
 
@@ -433,7 +434,7 @@ def warp_frame_depth(
     height, width = depth_dst.shape[-2:]
     points_2d_src_norm: torch.Tensor = normalize_pixel_coordinates(points_2d_src, height, width)  # BxHxWx2
 
-    return F.grid_sample(image_src, points_2d_src_norm, align_corners=True)
+    return _torch_grid_sample(image_src, points_2d_src_norm, align_corners=True)
 
 
 class DepthWarper(nn.Module):
@@ -683,7 +684,7 @@ class DepthWarper(nn.Module):
             >>> image_src = warper(depth_src, image_dst)  # NxCxHxW
 
         """
-        return F.grid_sample(
+        return _torch_grid_sample(
             patch_dst,
             self.warp_grid(depth_src),
             mode=self.mode,
