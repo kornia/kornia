@@ -24,7 +24,14 @@ import kornia
 from kornia.feature.orientation import LAFOrienter, OriNet, PassLAF, PatchDominantGradientOrientation
 from kornia.geometry.conversions import rad2deg
 
-from testing.base import BaseTester, supports_replicate_padding
+from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
+
+
+def _skip_without_half_padding(device: torch.device, dtype: torch.dtype) -> None:
+    # torch 2.5.1 has no float16 CPU reflection_pad2d or replication_pad2d; these pins blur (reflect) and take
+    # gradients (replicate).
+    if not (supports_reflect_padding(device, dtype) and supports_replicate_padding(device, dtype)):
+        pytest.skip(f"no reflection or replication padding kernel for {dtype} on {device.type}")
 
 
 class TestPassLAF(BaseTester):
@@ -377,6 +384,7 @@ class TestConventionsOrientation(BaseTester):
         # Measured on CPU float32: at most 0.005 degrees off. Half precision rounds the ramp, its gradients, which vote
         # into the 10-degree histogram and set the parabolic peak refinement, and the returned angle (bfloat16 spaces
         # angles near 120 degrees by 0.5); the bound is one histogram bin in bfloat16, 2 degrees in float16.
+        _skip_without_half_padding(device, dtype)
         tol = {torch.float16: 2.0, torch.bfloat16: 10.0}.get(dtype, 0.05)
         orienter = LAFOrienter(32).to(device, dtype)
         img = _conv_ramp(content_angle, 61, 83, 47.0, 26.0).to(device, dtype)
@@ -445,6 +453,7 @@ class TestConventionsOrientation(BaseTester):
         # angle can exceed pi by up to pi / num_angular_bins. With 8 bins of 45 degrees, a ramp whose gradient points
         # 195 degrees counter-clockwise on screen reads 192.8 degrees (CPU float64; 192.8 to 195.2 in every dtype, CPU
         # and MPS), not -167.2.
+        _skip_without_half_padding(device, dtype)
         patch = _conv_ramp(195.0, 32, 32, 15.5, 15.5).to(device, dtype)
         angle = PatchDominantGradientOrientation(32, num_angular_bins=8).to(device, dtype)(patch).item()
         assert math.pi < angle <= math.pi + math.pi / 8

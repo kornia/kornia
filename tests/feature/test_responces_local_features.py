@@ -22,7 +22,14 @@ import torch
 
 import kornia
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
+
+
+def _skip_without_half_padding(device: torch.device, dtype: torch.dtype) -> None:
+    # torch 2.5.1 has no float16 CPU reflection_pad2d or replication_pad2d; these pins blur (reflect) and take
+    # gradients (replicate).
+    if not (supports_reflect_padding(device, dtype) and supports_replicate_padding(device, dtype)):
+        pytest.skip(f"no reflection or replication padding kernel for {dtype} on {device.type}")
 
 
 def _response_atol(expected: torch.Tensor, dtype: torch.dtype) -> float:
@@ -495,6 +502,7 @@ class TestConventionsResponses(BaseTester):
         # Harris is quartic in the gradients, the smaller structure-tensor eigenvalue and the Hessian determinant are
         # quadratic, and none of them sees an offset: f(2 x + 1) = factor * f(x), so a threshold tuned on images in
         # [0, 1] keeps nothing or everything on images in [0, 255]. Factors: response(2 * x) / response(x), CPU float64.
+        _skip_without_half_padding(device, dtype)
         img = _conv_rectangle_and_blob(device, dtype)
         expected = factor * response(img)
         # half precision rounds the offset image; the bound is relative to the peak response
@@ -504,6 +512,7 @@ class TestConventionsResponses(BaseTester):
     def test_convention_harris_response_is_negative_on_an_edge_and_positive_at_a_corner(self, device, dtype):
         # R = det(M) - k trace(M) ** 2 is not clamped: positive at a corner, negative along an edge.
         # harris_response(img)[0, 0, 10, [14, 28]] on CPU float64: the rectangle's top-left corner and its top edge.
+        _skip_without_half_padding(device, dtype)
         img = _conv_rectangle_and_blob(device, dtype)
         response = kornia.feature.harris_response(img)
         expected = torch.tensor([5.2460662e-03, -1.0274798e-03], device=device, dtype=dtype)
@@ -522,6 +531,7 @@ class TestConventionsResponses(BaseTester):
         # I = x / 4 + y / 8 the structure tensor is the outer product of (1/4, 1/8): det = 0 and
         # R = -k (1/16 + 1/64) ** 2 = -2.44140625e-4 for k = 0.04. The ramp is exact in every dtype; the outer four
         # rows and columns see the replicate-padded Sobel border.
+        _skip_without_half_padding(device, dtype)
         yy, xx = _conv_grid(48, 64)
         ramp = (0.25 * xx + 0.125 * yy).view(1, 1, 48, 64).to(device, dtype)
         interior = kornia.feature.harris_response(ramp, 0.04, grads_mode)[..., 4:-4, 4:-4]
@@ -533,6 +543,7 @@ class TestConventionsResponses(BaseTester):
         # The signed determinant Ixx Iyy - Ixy ** 2: a blob of either polarity is a positive maximum, a saddle negative.
         # hessian_response(...)[:, 0, 20, 30] on CPU float64: blob of sigma 3 at (30, 20), bright and dark,
         # 8.9222449e-03 each; saddle (x - 30)(y - 20) / 100, -(1 / 100) ** 2.
+        _skip_without_half_padding(device, dtype)
         blob = _conv_blob(30.0, 20.0, 3.0)
         yy, xx = _conv_grid(48, 64)
         saddle = ((xx - 30.0) * (yy - 20.0) / 100.0).view(1, 1, 48, 64)
@@ -552,6 +563,7 @@ class TestConventionsResponses(BaseTester):
         # normalisation of Harris and of the Hessian determinant; GFTT takes the same power): 2 ** 4 = 16 and
         # 0.5 ** 4 = 1 / 16. The bound is 2 * eps relative per element: the power itself may round (MPS gives 0.5 ** 4
         # as 1 / 16 minus 2 ** -27 in float32), the product rounds once more.
+        _skip_without_half_padding(device, dtype)
         img = _conv_rectangle_and_blob(device, dtype).repeat(2, 1, 1, 1)
         sigmas = torch.tensor([2.0, 0.5], device=device, dtype=dtype)
         expected = response(img) * torch.tensor([16.0, 0.0625], device=device, dtype=dtype).view(-1, 1, 1, 1)
@@ -561,6 +573,7 @@ class TestConventionsResponses(BaseTester):
         # The 7 x 7 window keeps its size, so the smaller eigenvalue at a corner falls faster than sigma ** -3 over the
         # blurs of a ScalePyramid octave, 1.6 to 4: sigmas ** 4 corrects it more closely than sigmas ** 2. With a
         # window growing with sigma the exponent would be 2. A 90-degree corner gives 3.32, CPU float64.
+        _skip_without_half_padding(device, dtype)
         n = 97
         img = torch.zeros(1, 1, n, n, device=device, dtype=dtype)
         img[..., n // 2 :, n // 2 :] = 1.0
@@ -586,6 +599,7 @@ class TestConventionsResponses(BaseTester):
         # Both DoG functions subtract the finer blur from the coarser (Lowe's D = L(k sigma) - L(sigma)), so a bright
         # blob is a minimum and a dark one a maximum. dog_response_single(img, 1.0, 1.6)[:, 0, 20, 30] at a blob of
         # sigma 3 centred at (30, 20), CPU float64: -0.1214043 (bright), +0.1214043 (dark).
+        _skip_without_half_padding(device, dtype)
         blob = _conv_blob(30.0, 20.0, 3.0)
         imgs = torch.cat([blob, 1.0 - blob]).to(device, dtype)
         single = kornia.feature.dog_response_single(imgs, 1.0, 1.6)
@@ -605,6 +619,7 @@ class TestConventionsResponses(BaseTester):
     @pytest.mark.parametrize("name", ["harris", "gftt", "hessian", "dog_single", "dog"])
     def test_convention_response_modules_return_their_functions(self, device, dtype, name):
         # Each module is its function with the constructor arguments bound; BlobDoG and BlobDoGSingle ignore `sigmas`.
+        _skip_without_half_padding(device, dtype)
         img = torch.rand(2, 1, 24, 30, generator=torch.Generator().manual_seed(0), dtype=torch.float64)
         img = img.to(device, dtype)
         sigmas = torch.tensor([2.0, 0.5], device=device, dtype=dtype)
@@ -632,6 +647,7 @@ class TestConventionsResponses(BaseTester):
         # int(8.0) = 8, so 9 taps reaching 4 pixels (rounding down would give 7, reaching 3), and sigma 0.5 gives 5.
         # On an impulse at (13, 9) the response is therefore positive 4 pixels away and exactly zero 5 pixels away,
         # along x and along y.
+        _skip_without_half_padding(device, dtype)
         img = torch.zeros(1, 1, 23, 31, device=device, dtype=dtype)
         img[..., 9, 13] = 1.0
         out = kornia.feature.dog_response_single(img, 0.5, 0.875)[0, 0]

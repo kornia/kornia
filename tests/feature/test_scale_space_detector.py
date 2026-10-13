@@ -35,9 +35,17 @@ from testing.base import (
     BaseTester,
     dynamo_is_available,
     supports_conv2d,
+    supports_reflect_padding,
     supports_replicate_padding,
     supports_topk,
 )
+
+
+def _skip_without_half_padding(device: torch.device, dtype: torch.dtype) -> None:
+    # torch 2.5.1 has no float16 CPU reflection_pad2d or replication_pad2d; these pins blur (reflect) and take
+    # gradients (replicate).
+    if not (supports_reflect_padding(device, dtype) and supports_replicate_padding(device, dtype)):
+        pytest.skip(f"no reflection or replication padding kernel for {dtype} on {device.type}")
 
 
 def _require_affine_orientation_kernels(device: torch.device, dtype: torch.dtype) -> None:
@@ -1523,6 +1531,7 @@ class TestConventionsScaleSpaceDetector(BaseTester):
         # A blob of sigma 2.5 centred at x = 25.4, y = 18.6 (pixel centres at integers, LAF frame) on a 48 x 72 image is
         # found at its centre to sub-pixel accuracy, and the other 15 slots are padding: zero LAF, zero response.
         # Measured on CPU: (25.4001, 18.5999) in float32 and float64. bfloat16 spaces values in [16, 32) by 0.125.
+        _skip_without_half_padding(device, dtype)
         tol = 0.15 if dtype == torch.bfloat16 else 0.05
         img = _conv_blob(25.4, 18.6, 2.5, 48, 72, device, dtype)
         det = ScaleSpaceDetector(16).to(device, dtype)
@@ -1546,6 +1555,7 @@ class TestConventionsScaleSpaceDetector(BaseTester):
         # The LAF scale is mr_size times the scale the blob is detected at, in input pixels, also from octave 1. The
         # detection scale of a blob of sigma s lies within [0.95 s, 1.15 s] (1.035 s and 1.042 s here, CPU float32),
         # so the default mr_size = 6 gives a frame of about 6 s; OpenCV's KeyPoint.size is 2 s.
+        _skip_without_half_padding(device, dtype)
         img = _conv_blob(*centre, sigma, *size, device, dtype)
         scales = {}
         for mr_size in (6.0, 1.0):
@@ -1575,6 +1585,7 @@ class TestConventionsScaleSpaceDetector(BaseTester):
         # maximum at bright and dark blobs alike; DoG (coarser minus finer blur) is a maximum at a dark blob and a
         # minimum at a bright one, which is detected only with minima_are_also_good, and a minimum's slot carries the
         # negated response, so it is positive.
+        _skip_without_half_padding(device, dtype)
         if response == "dog" and polarity == "bright" and dtype == torch.bfloat16:
             # The same tie would hide the maximum that a reversed DoG makes of the bright blob, so the maxima-only case
             # could not fail either.
@@ -1606,6 +1617,7 @@ class TestConventionsScaleSpaceDetector(BaseTester):
         # candidate's slot stays empty while a weaker valid one exists (#5741). A is rejected -- its half frame of
         # radius 10.3 overhangs the border y = 63 - 5, or its refined centre x = 40.17 touches the masked pixel
         # (41, 50) -- and B at (30, 20) is valid: num_features=1 returns an empty slot, num_features=2 returns B.
+        _skip_without_half_padding(device, dtype)
         sigma = 1.6 * 2 ** (2 / 3)  # the scale of level 2 of the first octave
         img = torch.zeros(1, 1, 64, 96, device=device, dtype=dtype)
         mask = None
@@ -1643,6 +1655,7 @@ class TestConventionsScaleSpaceDetector(BaseTester):
         # there. Refinement leaves a single-voxel extremum at its sampled value, so such a minimum is one only below
         # zero, and returns its negated response. So the minimum of 0.3 is not detected, and negating the response
         # detects it (as a maximum of -0.3) instead of the maximum of -0.2 (now a minimum of 0.2).
+        _skip_without_half_padding(device, dtype)
         items = [((40, 30), 0.8, None), ((70, 45), -0.2, -0.4), ((25, 40), -0.7, None), ((60, 25), 0.3, None)]
         items = [(site, sign * value, None if box is None else sign * box) for site, value, box in items]
         det = ScaleSpaceDetector(
@@ -1666,6 +1679,7 @@ class TestConventionsScaleSpaceDetector(BaseTester):
         # sampled at its voxel, so the minimum is a candidate although no sampled response is below zero. It is
         # reported at its refined centre (20.375, 30.375) with response 0.3. The response has no strict maximum, so
         # without minima_are_also_good there is no detection.
+        _skip_without_half_padding(device, dtype)
         det = ScaleSpaceDetector(
             2,
             resp_module=_QuadraticMinimum(),
@@ -1685,6 +1699,7 @@ class TestConventionsScaleSpaceDetector(BaseTester):
         # A mask drops a candidate at its integer site before the octave's top-k; only the check of the refined centre
         # comes after it (#5741). A, the strongest maximum, at (40, 50) lies in a masked 5 x 5 region, so the only slot
         # of num_features=1 goes to the weaker B at (30, 20); without the mask it goes to A.
+        _skip_without_half_padding(device, dtype)
         img = torch.zeros(1, 1, 64, 96, device=device, dtype=dtype)
         mask = torch.ones(1, 1, 64, 96, device=device, dtype=torch.bool)
         mask[..., 48:53, 38:43] = False
@@ -1707,6 +1722,7 @@ class TestConventionsMultiResolutionDetector(BaseTester):
         # to its pixel centre (u + 0.5) * W / W_l - 0.5 (the Key.Net reference maps it the same way). Level 1 of
         # 69 x 128 at factor 2 is 34 x 64: pixel (20, 17) -> (40.0, 17 * 69 / 34 = 34.5), scale 22 * (2 + 69 / 34) / 2.
         # Each peak's lower neighbour on its +x side (+y when transposed) would pull a sub-pixel step off the pixel.
+        _skip_without_half_padding(device, dtype)
         cfg = get_default_detector_config()
         cfg.update(pyramid_levels=1, up_levels=0, scale_factor_levels=2.0)
         tol = 0.15 if dtype == torch.bfloat16 else 1e-3  # bfloat16 spaces values in [32, 64) by 0.25

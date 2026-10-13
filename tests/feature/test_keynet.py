@@ -15,11 +15,19 @@
 # limitations under the License.
 #
 
+import pytest
 import torch
 
 from kornia.feature import KeyNet
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
+
+
+def _skip_without_half_padding(device: torch.device, dtype: torch.dtype) -> None:
+    # torch 2.5.1 has no float16 CPU reflection_pad2d or replication_pad2d; these pins blur (reflect) and take
+    # gradients (replicate).
+    if not (supports_reflect_padding(device, dtype) and supports_replicate_padding(device, dtype)):
+        pytest.skip(f"no reflection or replication padding kernel for {dtype} on {device.type}")
 
 
 class TestKeyNet(BaseTester):
@@ -52,6 +60,7 @@ class TestConventionsKeyNet(BaseTester):
         # (B, 1, H, W) map at the input size, also for an odd, non-square size. With the random
         # weights of seed 0 and the last bias set to -0.01, the last pre-activation spans [-0.014, 0.013] (CPU float64),
         # so the ReLU clips about a tenth of the map and the bound below is not met by an all-zero map.
+        _skip_without_half_padding(device, dtype)
         with torch.random.fork_rng(devices=[]):
             torch.manual_seed(0)
             model = KeyNet()
