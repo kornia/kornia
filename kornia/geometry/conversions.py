@@ -2664,7 +2664,7 @@ def camtoworld_graphics_to_vision_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[
           function and splits the result again, so the two paths agree bitwise.
           Only the lines below differ
         - the shapes are strictly :math:`(B, 3, 3)` and :math:`(B, 3, 1)` in and
-          out, with the same-batch-size rule and the integer-input warning of
+          out, with the same-batch-size rule and the integer-input ``ValueError`` of
           :func:`~kornia.geometry.conversions.Rt_to_matrix4x4`
         - ``t`` is returned unchanged; only ``R`` has its second and third
           columns negated
