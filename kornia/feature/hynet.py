@@ -214,9 +214,9 @@ class HyNet(nn.Module):
         - It takes the ``(B, 1, 32, 32)`` patches of :class:`~kornia.feature.HardNet` and returns unit-norm rows, but
           its first layer is a :class:`~kornia.feature.FilterResponseNorm2d` on the raw patch, which divides by the root
           mean square and subtracts no mean, as in the reference implementation. A scale :math:`a x` with
-          :math:`a > 0` therefore gives the same descriptor unless it brings the patch's mean square near that layer's
-          ``eps``, while an offset :math:`x + b` changes it: feed non-negative intensities such as ``[0, 1]`` or
-          ``[0, 255]``, not mean-subtracted or standardised patches.
+          :math:`a > 0` therefore gives the same descriptor as long as the mean squares of the patch and of its scaled
+          copy are both large compared with that layer's ``eps``, while an offset :math:`x + b` changes it: feed
+          non-negative intensities such as ``[0, 1]`` or ``[0, 255]``, not mean-subtracted or standardised patches.
 
     Args:
         pretrained: Download and set pretrained weights to the model.
