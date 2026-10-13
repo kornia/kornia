@@ -52,6 +52,16 @@ class TestAdaptiveDiscriminatorAugmentation(PresetTests):
         torch.manual_seed(0)
         self.assert_close(ada(inputs), expected, atol=0, rtol=0)
 
+    @pytest.mark.parametrize("same_on_batch", [True, False])
+    def test_empty_batch_gate_consumes_no_draws(self, device, dtype, same_on_batch):
+        inputs = torch.zeros(0, 1, 1, 4, device=device, dtype=dtype)
+        ada = AdaptiveDiscriminatorAugmentation(RandomHorizontalFlip(p=1.0), initial_p=0.5, same_on_batch=same_on_batch)
+        torch.manual_seed(0)
+        expected = torch.rand(4, device=device)
+        torch.manual_seed(0)
+        self.assert_close(ada(inputs), inputs, atol=0, rtol=0)
+        self.assert_close(torch.rand(4, device=device), expected, atol=0, rtol=0)
+
     def test_initial_hyper_params(self):
         ada_preset = AdaptiveDiscriminatorAugmentation()
         assert ada_preset.adjustment_speed > 0
