@@ -53,6 +53,13 @@ class TestEnumGet(BaseTester):
         for name in enum.__members__:
             assert repr(name.lower()) in message
 
+    def test_unknown_name_traceback_shows_one_error_5907(self):
+        with pytest.raises(ValueError) as excinfo:
+            Resample.get("bogus")
+        # raised ``from None``: no "During handling of the above exception" with the lookup's bare KeyError('BOGUS')
+        assert excinfo.value.__cause__ is None
+        assert excinfo.value.__suppress_context__
+
     def test_out_of_range_int_is_a_value_error(self):
         with pytest.raises(ValueError, match="7 is not a valid Resample"):
             Resample.get(7)

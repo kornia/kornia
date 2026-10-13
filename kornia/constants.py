@@ -61,6 +61,8 @@ class _UnknownNameError(KeyError, ValueError):
 
 
 def _get_by_name(cls: Type[_T], name: str, value: object) -> _T:
+    # try/except, not ``name in cls.__members__``: dynamo on torch 2.5.1 cannot trace ``in`` on the members mapping,
+    # and augmentations look names up inside ``forward`` (a per-call ``border_type``, ``data_keys``).
     try:
         return cls[name.upper()]
     except KeyError:
