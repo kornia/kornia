@@ -422,6 +422,17 @@ class TestSe3(BaseTester):
         plain = Se3(So3.identity(1, device, dtype), torch.zeros(1, 3, device=device, dtype=dtype))
         assert [name for name, _ in plain.named_parameters()] == ["_translation"]
 
+    def test_integer_translation_is_a_buffer(self, device):
+        # An integer translation cannot require grad: it is a buffer that keeps its dtype, as in Hyperplane,
+        # instead of failing with torch's autograd error (#5201).
+        t = torch.tensor([[1, 2, 3]], device=device)
+        s = Se3(Quaternion.identity(1, device), t)
+        assert s.t is t
+        assert not list(s.parameters())
+        assert [name for name, _ in s.named_buffers()] == ["_translation", "_rotation._q._data"]
+        point = s * torch.tensor([[1.0, 1.0, 1.0]], device=device)
+        self.assert_close(point, torch.tensor([[2.0, 3.0, 4.0]], device=device))
+
     def test_derived_state_moves_and_serializes(self, device, dtype):
         v = torch.rand(2, 6, device=device, dtype=dtype, requires_grad=True)
         s = Se3.exp(v)

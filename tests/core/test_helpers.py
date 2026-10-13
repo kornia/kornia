@@ -410,6 +410,28 @@ class TestExportHelpers:
         moved.y.sum().backward()
         assert_close(v.grad, torch.full_like(v, 2.0))
 
+    @pytest.mark.parametrize("state_dtype", [torch.int64, torch.int32, torch.uint8, torch.bool])
+    def test_register_module_state_non_floating_is_buffer(self, device, state_dtype):
+        # Only floating-point and complex tensors can require grad, so any other tensor is a buffer, kept as given,
+        # rather than an nn.Parameter that torch refuses to create (#5201).
+        m = torch.nn.Module()
+        x = torch.tensor([1, 0, 1], device=device).to(state_dtype)
+        register_module_state(m, "x", x)
+        assert m.x is x
+        assert not list(m.parameters())
+        assert dict(m.named_buffers()).keys() == {"x"}
+        restored = torch.nn.Module()
+        register_module_state(restored, "x", torch.zeros_like(x))
+        restored.load_state_dict(m.state_dict())
+        assert restored.x.dtype == state_dtype
+        assert torch.equal(restored.x, x)
+
+    def test_register_module_state_complex_leaf_is_parameter(self, device):
+        m = torch.nn.Module()
+        register_module_state(m, "z", torch.tensor([0.6 + 0.8j], device=device))
+        assert isinstance(m.z, torch.nn.Parameter)
+        assert m.z.dtype == torch.complex64
+
 
 class TestHistcCast(BaseTester):
     def test_smoke(self, device, dtype):
