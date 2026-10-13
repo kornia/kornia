@@ -628,7 +628,11 @@ class TestImageModuleConversions(BaseTester):
         out = _Identity().to_tensor(str(path))
         self.assert_close(out, torch.tensor([1.0, 0.2, 0.0]).view(3, 1, 1).expand(3, 4, 6))
 
-    @pytest.mark.parametrize("transparency", [None, bytes([255, 128])], ids=["rgb", "rgba"])
+    @pytest.mark.parametrize(
+        "transparency",
+        [None, bytes([255, 128]), bytes([0]), b""],  # PIL writes the last two as a 1-byte and an empty tRNS chunk
+        ids=["rgb", "rgba", "rgba-one-entry", "rgba-empty-trns-5851"],
+    )
     def test_to_tensor_palette_png_path_matches_pil_5807(self, tmp_path, transparency):
         path = tmp_path / "palette.png"
         image = PILImage.new("P", (2, 1))

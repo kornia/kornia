@@ -1226,6 +1226,11 @@ full rules.
   the smaller of the two; its Convention block covers moving a LAF to an image of another size.
 - kornia's LAF detectors pad the slots that no detection filled with an all-zero LAF and a zero response, so that a
   batch is one tensor. Drop those slots with :func:`~kornia.feature.laf_is_filled` before matching.
+- The ``match_*`` functions return ``(dists, idxs)``, one row per match; a lower ``dists`` is a better match.
+  See the Convention block of :func:`~kornia.feature.match_nn` for each matcher's distance definition.
+- ``idxs`` holds ``(index in desc1, index in desc2)`` for unbatched matchers. :func:`~kornia.feature.match_smnn_batched`
+  prepends the batch index: ``(batch_index, index in desc1, index in desc2)``.
+- :class:`~kornia.feature.LightGlueMatcher` returns a score in place of ``dists``; a higher score is a better match.
 
 OpenCV keypoints and SIFT descriptors convert as follows:
 

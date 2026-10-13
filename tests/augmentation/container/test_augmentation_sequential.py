@@ -1254,6 +1254,24 @@ class TestConventionAugmentationSequential(BaseTester):
         _, restored = aug.inverse(out_image, out_boxes)
         self.assert_close(restored, boxes)
 
+    def test_video_boxes_inverse_with_partial_gate_5871(self, device, dtype):
+        torch.manual_seed(0)
+        corners = torch.tensor([[1.0, 1.0], [3.0, 1.0], [3.0, 4.0], [1.0, 4.0]], device=device, dtype=dtype)
+        boxes = corners.expand(4, 3, 2, 4, 2).clone()
+        aug = K.AugmentationSequential(
+            K.VideoSequential(K.RandomHorizontalFlip(p=0.5), data_format="BTCHW"),
+            data_keys=["input", "bbox"],
+        )
+
+        image, out_boxes = aug(torch.rand(4, 3, 1, 6, 6, device=device, dtype=dtype), boxes)
+        # The gate must mix applied and skipped frames, otherwise the round-trip proves nothing.
+        flipped = (out_boxes.data.view(4, 3, 2, 4, 2) - boxes).abs().sum(dim=(-1, -2, -3)) > 0
+        assert bool(flipped.any()), flipped.tolist()
+        assert not bool(flipped.all()), flipped.tolist()
+
+        _, restored = aug.inverse(image, out_boxes)
+        self.assert_close(restored, boxes)
+
     @pytest.mark.parametrize("batch_size", [2, 3])
     @pytest.mark.parametrize("keepdim,child_keepdim", [(True, False), (None, True), (False, True)])
     @pytest.mark.parametrize("mask_layout", ["BHW", "BCHW"])
@@ -2829,6 +2847,69 @@ class TestConventionAugmentationSequential(BaseTester):
 
 
 class TestAugmentationSequentialReplay:
+    @pytest.mark.parametrize("edit_in_place", [False, True])
+    def test_annotation_replay_uses_edited_params(self, device, dtype, edit_in_place):
+        with torch.random.fork_rng(devices=[device] if device.type == "cuda" else []):
+            torch.manual_seed(0)
+            image = torch.rand(2, 1, 16, 16, device=device, dtype=dtype)
+            keypoints = torch.tensor([[[3.0, 4.0]], [[3.0, 4.0]]], device=device, dtype=dtype)
+            aug = K.AugmentationSequential(K.RandomAffine(30.0, p=0.5), data_keys=["input", "keypoints"])
+            params = aug.forward_parameters(image.shape)
+            first_gate = torch.tensor([True, False], device=device)
+            second_gate = torch.tensor([False, True], device=device)
+            params[0].data["batch_prob"] = first_gate.clone()
+            aug(image, keypoints, params=params)
+
+            if edit_in_place:
+                params[0].data["batch_prob"][:] = second_gate
+            else:
+                params[0].data["batch_prob"] = second_gate
+
+            replayed = aug(keypoints, params=params, data_keys=["keypoints"])
+            moved = [(replayed[i] - keypoints[i]).abs().max() > 1e-4 for i in range(2)]
+            assert [bool(value) for value in moved] == [False, True]
+
+    def test_annotation_replay_after_repeated_replacements(self, device, dtype):
+        # Each replacement frees the previous tensor, and the next one can take its address, so a cache keyed by
+        # ``id()`` would see the tensor recorded by the image call again. Repeat to make an address reuse likely.
+        image = torch.rand(2, 1, 16, 16, device=device, dtype=dtype)
+        keypoints = torch.tensor([[[3.0, 4.0]], [[9.0, 12.0]]], device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomAffine(30.0, p=1.0), data_keys=["input", "keypoints"])
+        for _ in range(10):
+            params = aug.forward_parameters(image.shape)
+            aug(image, keypoints, params=params)
+            params[0].data["angle"] = params[0].data["angle"] * 0
+            params[0].data["angle"] = params[0].data["angle"] + 10.0
+            replayed = aug(keypoints, params=params, data_keys=["keypoints"])
+            _, expected = aug(image, keypoints, params=params)
+            assert_close(replayed, expected)
+
+    def test_annotation_replay_with_inference_tensors(self, monkeypatch):
+        # Inference tensors have no version counter: a replaced value is still seen, and the annotations of one call
+        # still share the image's matrix instead of recomputing one each.
+        calls = []
+        generate = K.RandomAffine.generate_transformation_matrix
+
+        def counted(self, *args, **kwargs):
+            calls.append(None)
+            return generate(self, *args, **kwargs)
+
+        monkeypatch.setattr(K.RandomAffine, "generate_transformation_matrix", counted)
+        with torch.inference_mode():
+            image = torch.rand(2, 1, 16, 16)
+            keypoints = torch.tensor([[[3.0, 4.0]], [[3.0, 4.0]]])
+            boxes = torch.tensor([[[2.0, 4.0, 6.0, 8.0]]]).expand(2, -1, -1)
+            data_keys = ["input", "mask", "bbox_xyxy", "keypoints"]
+            aug = K.AugmentationSequential(K.RandomAffine(30.0, p=0.5), data_keys=data_keys)
+            params = aug.forward_parameters(image.shape)
+            params[0].data["batch_prob"] = torch.tensor([True, False])
+            aug(image, image, boxes, keypoints, params=params)
+            assert len(calls) == 1
+            params[0].data["batch_prob"] = torch.tensor([False, True])
+            replayed = aug(keypoints, params=params, data_keys=["keypoints"])
+            moved = [(replayed[i] - keypoints[i]).abs().max() > 1e-4 for i in range(2)]
+            assert [bool(value) for value in moved] == [False, True]
+
     def test_annotation_replay_uses_matrices_from_params(self, device, dtype):
         with torch.random.fork_rng(devices=[device] if device.type == "cuda" else []):
             torch.manual_seed(0)
