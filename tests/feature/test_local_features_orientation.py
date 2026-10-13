@@ -407,9 +407,11 @@ class TestConventionsOrientation(BaseTester):
             atol=tol,
         )
 
-    def test_convention_orinet_is_invariant_to_an_affine_intensity_change(self, device, dtype):
-        # OriNet normalises each patch to zero mean and unit standard deviation before its layers, so x and 3 x + 2 get
-        # the same angle; no pretrained weights are needed for that. Measured: 4.1e-7 rad apart in CPU float64.
+    def test_convention_orinet_offset_cancels_and_gain_acts_through_eps(self, device, dtype):
+        # OriNet subtracts each patch's mean and divides by its standard deviation plus 1e-6 before its layers, so an
+        # offset does not change the angle and a positive gain changes it only through that 1e-6; no pretrained
+        # weights are needed for that. With a standard deviation of 0.29, x and 3 x + 2 are 3.5e-7 rad apart in CPU
+        # float64.
         with torch.random.fork_rng(devices=[]):
             torch.manual_seed(0)
             model = OriNet()
@@ -418,6 +420,15 @@ class TestConventionsOrientation(BaseTester):
         # half precision rounds the returned angle: bfloat16 spaces the angles here (-1.78 to -1.94 rad) by 1 / 128
         atol = 2e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-5
         self.assert_close(model(3 * patches + 2), model(patches), rtol=0.0, atol=atol)
+        if dtype not in (torch.float32, torch.float64):
+            return
+        # At a standard deviation of 1e-6 the 1e-6 halves the normalised contrast, and a gain of 3 raises that factor
+        # to 3 / 4: each angle moves by 1.65e-2 to 3.44e-2 rad (CPU and MPS float32, CPU float64).
+        low = 1e-6 * (patches - patches.mean(dim=(1, 2, 3), keepdim=True)) / patches.std(dim=(1, 2, 3), keepdim=True)
+        assert ((model(3 * low) - model(low)).abs() > 5e-3).all()
+        if dtype == torch.float64:
+            # The offset still cancels at that contrast (2.7e-12 rad); in float32, rounding 2 + low already changes it.
+            self.assert_close(model(low + 2), model(low), rtol=0.0, atol=1e-9)
 
     def test_convention_pass_laf_returns_its_input_object(self, device, dtype):
         # PassLAF returns the very tensor it was given, not a copy: an in-place edit of the output edits the input.

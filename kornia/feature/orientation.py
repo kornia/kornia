@@ -204,8 +204,12 @@ class OriNet(nn.Module):
         - With the pretrained weights, the angle turns with the patch content, in the sense of
           :class:`~kornia.feature.PatchDominantGradientOrientation`: content turned counter-clockwise on screen
           increases the angle. See :class:`~kornia.feature.LAFOrienter` for its use.
-        - Each patch is normalised to zero mean and unit standard deviation first, so a positive gain and an offset of
-          its intensity do not change the angle; an inverted patch does.
+        - Each patch is normalised first: its mean is subtracted and the result is divided by its standard deviation
+          plus ``1e-6``. An offset of its intensity therefore does not change the angle, and a positive gain changes it
+          only through that ``1e-6``. With the pretrained weights, on natural-image patches and gains from 0.1 to 10,
+          the angle moves by less than ``1e-6 / std`` rad while ``std``, the smaller standard deviation of the patch
+          before and after the gain, is at least ``5e-6``: by less than ``1e-3`` rad from ``std = 1e-3`` up. A
+          flatter patch can turn by up to ``pi`` rad. An inverted patch generally gets a different angle.
 
     Args:
         pretrained: Download and set pretrained weights to the model.
