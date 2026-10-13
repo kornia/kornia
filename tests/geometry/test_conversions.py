@@ -185,8 +185,8 @@ def _raised_by_a_kornia_guard(err: BaseException) -> bool:
     # semantic -- it would miss `raise(RuntimeError(...))`, whose missing space before the
     # parenthesis is not a semantic difference.
     # Both directions are exercised: test_guard_classifier_reads_the_raising_instruction below
-    # covers the classifier itself, the #3960 convention pin asserts this is True (in any guard
-    # style), and the #3959 warts assert it is False.
+    # covers the classifier itself, the #3960 convention pin and the Rt side of the int64 Rt wart
+    # (#3959) assert this is True (in any guard style), and every other #3959 wart asserts it is False.
     # The instruction DECIDES; the type tuple is only the fallback for a frame whose instruction
     # cannot be read. ORing the two instead of falling back would make the instruction check
     # unreachable for exactly the types kornia's guards raise, so it would score any downstream
@@ -4526,9 +4526,12 @@ class TestRt2Extrinsics(BaseTester):
         expected[:, :3, 3:] = translation.to(expected_dtype)
         self.assert_close(Rt_to_matrix4x4(rotation, translation), expected, atol=0.0, rtol=0.0)
 
-    def test_integer_Rt_guard_preserves_integer_safe_forms_3959(self, device):
+    def test_wart_int64_Rt_raises_while_4x4_and_pose_forms_accept_3959(self, device):
         _skip_if_dtype_unavailable(device, torch.int64)
-        # Only the Rt packing paths reject integer data; integer-safe frame operations stay unchanged.
+        # Wart pin for kornia#3959: Rt_to_matrix4x4 and the two frame functions built on it reject an int64
+        # pose in a kornia guard, while the _4x4 forms of the same map and the pose pair return int64 wherever
+        # the backend has integer batched matmul, and fail inside torch elsewhere. Both sides are classified by
+        # _raised_by_a_kornia_guard, so the pin flips when the _4x4 side gains a guard or integers are promoted.
         rotation = torch.eye(3, device=device, dtype=torch.int64)[None]
         translation = torch.ones(1, 3, 1, device=device, dtype=torch.int64)
         extrinsics = torch.eye(4, device=device, dtype=torch.int64)[None]
