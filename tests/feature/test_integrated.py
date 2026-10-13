@@ -1255,3 +1255,32 @@ class TestConventionsLocalFeature(BaseTester):
         # the KeyNet presets' scale_laf is LocalFeature's scaling_coef; every other preset keeps the detector frames
         assert feature.scaling_coef == (2.0 if extra else 1.0)
         assert type(cls(upright=True).detector.ori).__name__ == "PassLAF"
+
+    def test_convention_local_feature_ratio_tests_keep_a_single_padded_pair(self, device, dtype):
+        # A detector that filled num_features - 1 slots leaves one padded slot: a zero LAF with the descriptor of the
+        # origin patch. Image 0 has 4 real slots and 1 padded one, image 1 has 3 real and 1 padded. The padded pair is
+        # at distance 0 and each padded descriptor's second-nearest is a real one, so the ratio is 0: match_snn and
+        # match_smnn both report the pair, and filtering with laf_is_filled removes it.
+        gen = torch.Generator().manual_seed(3)
+        real = torch.nn.functional.normalize(torch.rand(7, 8, generator=gen, dtype=torch.float64), dim=-1)
+        pad = torch.nn.functional.normalize(
+            torch.tensor([[0.9, 0.1, 0.4, 0.2, 0.7, 0.3, 0.5, 0.6]], dtype=torch.float64), dim=-1
+        )
+        desc0 = torch.cat([real[:4], pad]).to(device, dtype)
+        desc1 = torch.cat([real[4:], pad]).to(device, dtype)
+        centres = torch.tensor([[[23.0, 11.0], [61.0, 17.0], [9.0, 40.0], [75.0, 33.0]]])
+        scales, oris = torch.full((1, 4, 1, 1), 6.0), torch.full((1, 4, 1), 17.0)
+        lafs = kornia.feature.laf_from_center_scale_ori(centres, scales, oris)
+        lafs0 = torch.cat([lafs, torch.zeros(1, 1, 2, 3)], dim=1).to(device, dtype)
+        lafs1 = torch.cat([lafs[:, :3], torch.zeros(1, 1, 2, 3)], dim=1).to(device, dtype)
+        filled0, filled1 = laf_is_filled(lafs0)[0], laf_is_filled(lafs1)[0]
+        assert filled0.tolist() == [True, True, True, True, False]
+        assert filled1.tolist() == [True, True, True, False]
+        for matcher, th in ((kornia.feature.match_snn, 0.8), (kornia.feature.match_smnn, 0.95)):
+            dists, idxs = matcher(desc0, desc1, th)
+            pairs = [tuple(pair) for pair in idxs.tolist()]
+            assert (4, 3) in pairs
+            assert dists[pairs.index((4, 3))].item() == 0.0
+            _, idxs_filled = matcher(desc0[filled0], desc1[filled1], th)
+            assert (idxs_filled[:, 0] < 4).all()
+            assert (idxs_filled[:, 1] < 3).all()

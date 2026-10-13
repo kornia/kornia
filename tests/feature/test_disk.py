@@ -282,7 +282,7 @@ class TestConventionsDISK(BaseTester):
         assert seen[..., :, 75:].abs().max() == 0
         assert feats.keypoints.tolist() == [[13.0, 21.0], [72.0, 30.0]]
 
-    def test_convention_disk_default_unet_ignores_a_common_positive_scale_of_the_input(self, device, dtype):
+    def test_convention_disk_default_unet_ignores_a_common_scale_of_at_least_one(self, device, dtype):
         # The default U-Net instance-normalises every channel before each convolution but the first, which removes a
         # common positive scale of the input together with the first convolution's bias, so [0, 255] gives the maps,
         # keypoints and descriptors of [0, 1] up to the norms' eps (random weights). An offset is not removed: the

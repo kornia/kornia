@@ -808,13 +808,15 @@ class ALIKED(nn.Module):
         departs on purpose from the reference implementations (Shiaoming/ALIKED and LightGlue's port). Their
         ``simple_nms`` also keeps tied maxima, and in two further rounds it adds the positions that become the
         maximum of their window once the windows around the maxima already kept are zeroed. Those positions lie on
-        the flank of a stronger peak and are not local maxima of the score map. kornia therefore returns a subset
-        of the reference keypoints. With the pretrained ``aliked-n16`` it returns up to 10 % fewer keypoints than the
-        reference on the Oxford img1 images, and each one left out has a higher score in its window. The keypoint
-        count departs from both as well: their top-k mode fills ``top_k`` slots with positions that are not maxima
-        when the score map has fewer maxima, and their threshold mode falls back to the mean score only when no image
-        of the batch has a maximum above the threshold. kornia returns maxima only and decides the fallback for each
-        image, so an image's keypoints do not depend on the rest of the batch.
+        the flank of a stronger peak and are not local maxima of the score map. In threshold mode, when neither the
+        keypoint budget nor the fallback below decides the count, kornia therefore returns a subset of the reference
+        keypoints: with the pretrained ``aliked-n16`` and the default threshold it returns up to 10 % fewer keypoints
+        than the reference on the Oxford img1 images, and each one left out has a higher score in its window.
+        Otherwise the two keypoint sets need not be nested, because the reference ranks those extra positions with
+        the maxima: in top-k mode, where it also fills ``top_k`` slots with positions that are not maxima when the
+        score map has fewer maxima, and when the budget cuts the count in threshold mode. The reference falls back to
+        the mean score only when no image of the batch has a maximum above the threshold; kornia returns maxima only
+        and decides the fallback for each image, so an image's keypoints do not depend on the rest of the batch.
 
     Example:
         >>> aliked = ALIKED.from_pretrained('aliked-n16')  # doctest: +SKIP

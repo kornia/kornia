@@ -266,10 +266,11 @@ class LocalFeature(nn.Module):
           :func:`~kornia.feature.match_fginn`, :func:`~kornia.feature.match_adalam` and
           :class:`~kornia.feature.LightGlueMatcher`, since identical descriptors match each other at zero distance and
           a mutual test does not reject a pair of them: keep the slots where :func:`~kornia.feature.laf_is_filled` is
-          true, ``descs[b][laf_is_filled(lafs)[b]]`` for image ``b``, rather than testing the response (see its
-          Convention block). The ratio tests of :func:`~kornia.feature.match_snn` and
-          :func:`~kornia.feature.match_smnn` do not replace this filtering: when the other image has exactly one
-          padded slot, the padded slots of the two images can match each other at zero distance.
+          true, ``descs[b][laf_is_filled(lafs)[b]]`` for image ``b``, rather than testing the response (see the
+          Convention block of :func:`~kornia.feature.laf_is_filled`). The ratio tests of
+          :func:`~kornia.feature.match_snn` and :func:`~kornia.feature.match_smnn` do not replace this filtering: when
+          the other image has exactly one padded slot, the padded slots of the two images can match each other at zero
+          distance.
 
     Args:
         detector: the detection module.

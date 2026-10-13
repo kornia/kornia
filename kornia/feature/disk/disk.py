@@ -50,8 +50,9 @@ class DISK(nn.Module):
 
     Convention:
         - ``images`` are RGB, :math:`(B, 3, H, W)`, which the U-Net sees as given, without normalisation. With the
-          default U-Net, a common positive scale of the input, such as :math:`[0, 255]` instead of :math:`[0, 1]`,
-          leaves the keypoints and descriptors unchanged up to the instance norms' ``eps``. ``H`` and ``W`` must be
+          default U-Net, a common scale of the input of at least 1, such as :math:`[0, 255]` instead of
+          :math:`[0, 1]`, leaves the keypoints and descriptors unchanged up to the instance norms' ``eps``; a much
+          smaller scale does not, because ``eps`` then weighs against the variance. ``H`` and ``W`` must be
           multiples of 16, unless ``pad_if_not_divisible=True`` zero-pads the bottom and right, in which case the maps
           are cropped back to the image before the suppression and no keypoint lies in the padding.
         - Each image gives a :class:`DISKFeatures`. Keypoints are the integer ``(x, y)`` pixels of the strict heatmap
@@ -81,9 +82,9 @@ class DISK(nn.Module):
         maxima it keeps the one the max-pool reports first, which depends on an order PyTorch does not specify. With
         the pretrained ``depth`` weights on Oxford graf and boat img1, every keypoint of the reference that kornia
         leaves out lies in that border strip. The reference's ``n`` keeps the scores strictly above the
-        ``(n + 1)``-th largest, which drops the weakest maximum of an image with ``n`` maxima or fewer and every
-        maximum tied across the cut. kornia's ``n`` is an upper bound, so such an image keeps every maximum, and a
-        tie at the cut is filled in raster order.
+        ``(n + 1)``-th largest, which drops the weakest maximum, with every maximum tied with it, of an image with
+        ``n`` maxima or fewer, and every maximum tied across the cut. kornia's ``n`` is an upper bound, so such an
+        image keeps every maximum, and a tie at the cut is filled in raster order.
 
     Example:
         >>> disk = DISK.from_pretrained('depth')
