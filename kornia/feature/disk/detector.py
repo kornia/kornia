@@ -27,7 +27,20 @@ from .structs import Keypoints
 def heatmap_to_keypoints(
     heatmap: torch.Tensor, n: int | None = None, window_size: int = 5, score_threshold: float = 0.0
 ) -> list[Keypoints]:
-    """Inference-time nms-based detection protocol."""
+    """Detect keypoints as the strict local maxima of a heatmap, in raster order.
+
+    Args:
+        heatmap: detection logits of shape :math:`(B, 1, H, W)`.
+        n: the maximum number of keypoints per image. An image with ``n`` maxima or fewer keeps all of them; with more,
+            the maxima scoring strictly above its ``(n + 1)``-th strongest, so maxima tied across that cut are all
+            left out and fewer than ``n`` can be returned. ``None`` keeps every maximum.
+        window_size: the size of the non-maxima suppression window.
+        score_threshold: a maximum is kept only if its score is strictly above it.
+
+    Returns:
+        A list of length :math:`B` with the keypoints of each image.
+
+    """
     heatmap = heatmap.squeeze(1)
     nms_mask = nms2d(heatmap.unsqueeze(1), (window_size, window_size), mask_only=True).squeeze(1)
     nmsed = nms_mask & (heatmap > score_threshold)
@@ -38,21 +51,15 @@ def heatmap_to_keypoints(
         detection_logp = heatmap[b][nmsed[b]]
         xy = yx.flip((1,))
 
-        if n is not None:
-            n_ = min(n + 1, detection_logp.numel())
-            # torch.kthvalue picks in ascending order and we want to pick in
-            # descending order, so we pick n-th smallest among -logp to get
-            # -threshold
-            minus_threshold, _indices = torch.kthvalue(-detection_logp, n_)
+        if n is not None and detection_logp.numel() > n:
+            # Keep the scores strictly above the (n + 1)-th largest, which torch.kthvalue gives as the (n + 1)-th
+            # smallest of -logp. Equal scores are kept or dropped together, so the result does not depend on the
+            # raster order of the pixels.
+            minus_threshold, _indices = torch.kthvalue(-detection_logp, n + 1)
             mask = detection_logp > -minus_threshold
 
             xy = xy[mask]
             detection_logp = detection_logp[mask]
-
-            # it may be that due to numerical saturation on the threshold we have
-            # more than n keypoints, so we need to clip them
-            xy = xy[:n]
-            detection_logp = detection_logp[:n]
 
         keypoints.append(Keypoints(xy, detection_logp))
 

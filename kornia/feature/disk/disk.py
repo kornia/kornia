@@ -120,7 +120,9 @@ class DISK(nn.Module):
 
         Args:
             images: The image to detect features in. Shape :math:`(B, 3, H, W)`.
-            n: The maximum number of keypoints to detect. If None, all keypoints are returned.
+            n: The maximum number of keypoints per image. An image with ``n`` maxima or fewer keeps all of them; with
+               more, the maxima scoring strictly above its ``(n + 1)``-th strongest, so maxima tied across that cut
+               are all left out. If None, all keypoints are returned.
             window_size: The size of the non-maxima suppression window used to filter detections.
             score_threshold: The minimum score a detection must have to be returned.
                              See :py:class:`DISKFeatures` for details.
