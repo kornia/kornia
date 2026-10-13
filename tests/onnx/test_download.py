@@ -132,37 +132,36 @@ class TestCachedDownloader:
         assert (tmp_path / "m.pth").read_bytes() == b"weights"
         assert hits == ["/model", "/model"]
 
-    def test_unknown_keyword_raises(self, download_server, monkeypatch, tmp_path):
+    def test_unknown_keyword_raises(self, monkeypatch, tmp_path):
         # #5903: a misspelt keyword was dropped, and the file was cached in the default directory under another name
         monkeypatch.chdir(tmp_path)
-        responses, base_url, hits = download_server
-        responses["/model"] = (b"weights", 7)
+        url = "http://127.0.0.1:9/model"
 
-        with pytest.raises(TypeError, match="cachedir"):
-            CachedDownloader.download_to_cache(f"{base_url}/model", "k", cachedir="mine", suffix=".pth")
-        with pytest.raises(TypeError, match="suffx"):
-            CachedDownloader.download_to_cache(f"{base_url}/model", "k", cache_dir="mine", suffx=".pth")
+        with mock.patch("kornia.core.download._download_url_to_file") as transfer:
+            with pytest.raises(TypeError, match="cachedir"):
+                CachedDownloader.download_to_cache(url, "k", cachedir="mine", suffix=".pth")
+            with pytest.raises(TypeError, match="suffx"):
+                CachedDownloader.download_to_cache(url, "k", cache_dir="mine", suffx=".pth")
 
-        assert hits == []
+        transfer.assert_not_called()
         assert list(tmp_path.iterdir()) == []
 
     @pytest.mark.parametrize(
         "name",
         ["../../escape", "a/../../../escape", "/abs/escape", os.path.abspath("escape"), "", ".", "dir/", "a//b"],
     )
-    def test_name_that_is_not_a_relative_path_inside_the_cache_raises(
-        self, name, download_server, monkeypatch, tmp_path
-    ):
+    def test_name_that_is_not_a_relative_path_inside_the_cache_raises(self, name, monkeypatch, tmp_path):
         # #5903: "../../escape" was written two levels above cache_dir, although the name's directory components are
         # documented to stay under the cache directory
         monkeypatch.chdir(tmp_path)
-        responses, base_url, hits = download_server
-        responses["/model"] = (b"weights", 7)
 
-        with pytest.raises(ValueError, match="relative path inside the cache directory"):
-            CachedDownloader.download_to_cache(f"{base_url}/model", name, cache_dir="cache/a/b", suffix=".pth")
+        with (
+            mock.patch("kornia.core.download._download_url_to_file") as transfer,
+            pytest.raises(ValueError, match="relative path inside the cache directory"),
+        ):
+            CachedDownloader.download_to_cache("http://127.0.0.1:9/model", name, cache_dir="cache/a/b", suffix=".pth")
 
-        assert hits == []
+        transfer.assert_not_called()
         assert list(tmp_path.iterdir()) == []
 
     def test_short_transfer_is_not_cached(self, download_server, monkeypatch, tmp_path):
