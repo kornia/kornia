@@ -1,0 +1,1 @@
+`AugmentationSequential` called with a dict and `data_keys=None` now converts a PIL image or an image file path under an image key (`"input"` or `"image"`) like the same value given positionally, instead of failing with `AttributeError: ... object has no attribute 'dtype'`. A path that does not exist raises `FileNotFoundError`.

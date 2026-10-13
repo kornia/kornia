@@ -135,6 +135,69 @@ class TestAugmentationSequential:
         assert out_mask.dtype == torch.uint8
         assert set(out_mask.unique().tolist()) == {0, 3}
 
+    @pytest.mark.parametrize("image_key", ["input", "image"])
+    @pytest.mark.parametrize("kind", ["numpy", "pil", "path"])
+    def test_dict_image_converts_like_the_positional_image_5852(self, tmp_path, kind, image_key):
+        Image = pytest.importorskip("PIL.Image")
+        array = np.random.RandomState(0).randint(0, 256, (4, 5, 3), dtype=np.uint8)
+        source = {"numpy": array, "pil": Image.fromarray(array)}.get(kind)
+        if kind == "path":
+            source = tmp_path / "image.png"
+            Image.fromarray(array).save(source)
+            source = str(source)
+        # a flip that always applies makes a skipped conversion or a skipped augmentation visible in the values
+        expected = torch.from_numpy(array).permute(2, 0, 1)[None].float().div(255).flip(-1)
+
+        positional = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input"])(source)
+        from_dict = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)({image_key: source})
+
+        assert isinstance(from_dict[image_key], torch.Tensor)
+        assert_close(from_dict[image_key], expected)
+        assert_close(from_dict[image_key], positional)
+
+    @pytest.mark.parametrize("as_path", [False, True])
+    def test_dict_image_and_mask_from_pil_and_path_5852(self, tmp_path, as_path):
+        Image = pytest.importorskip("PIL.Image")
+        image = Image.fromarray(np.random.RandomState(0).randint(0, 256, (8, 9, 3), dtype=np.uint8))
+        labels = np.zeros((8, 9), dtype=np.uint8)
+        labels[2:5, 1:3] = 3
+        mask = Image.fromarray(labels)
+        if as_path:
+            image_path, mask_path = tmp_path / "image.png", tmp_path / "mask.png"
+            image.save(image_path)
+            mask.save(mask_path)
+            image, mask = str(image_path), str(mask_path)
+
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)
+        output = aug({"image": image, "mask": mask})
+
+        assert output["image"].shape == (1, 3, 8, 9)
+        assert output["mask"].shape == (1, 1, 8, 9)
+        assert output["mask"].dtype == torch.uint8
+        assert torch.equal(output["mask"][0, 0], torch.from_numpy(labels).flip(-1))
+
+    def test_dict_image_path_that_does_not_exist_raises_a_file_error_5852(self, tmp_path):
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=None)
+
+        with pytest.raises(FileNotFoundError):
+            aug({"input": str(tmp_path / "missing.png")})
+
+    def test_dict_of_tensors_does_not_need_pillow_5852(self, monkeypatch):
+        # Pillow is optional: a dict of tensors must reach ``forward`` without importing it.
+        import sys
+
+        from kornia.core.external import PILImage as lazy_pil
+
+        monkeypatch.setattr(lazy_pil, "module", None)
+        monkeypatch.setitem(sys.modules, "PIL.Image", None)
+        image, mask = torch.rand(2, 3, 8, 9), torch.rand(2, 1, 8, 9)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)
+
+        output = aug({"input": image, "mask": mask})
+
+        assert torch.equal(output["input"], image.flip(-1))
+        assert torch.equal(output["mask"], mask.flip(-1))
+
     def test_numpy_mask_with_incompatible_shape_raises(self):
         image = np.zeros((2, 8, 9, 3), dtype=np.uint8)
         mask = np.zeros((2, 8, 9), dtype=np.uint8)

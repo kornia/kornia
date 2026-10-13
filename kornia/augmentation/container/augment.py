@@ -71,6 +71,12 @@ def _is_pil_image(arg: Any) -> bool:
     return pil_module is not None and isinstance(arg, pil_module.Image)
 
 
+def _is_image_source(arg: Any) -> bool:
+    # What an image key of a dict input converts to a tensor: a NumPy array, a PIL image, or a string, which the key
+    # already marks as an image file path.
+    return isinstance(arg, str) or _is_numpy_array(arg) or _is_pil_image(arg)
+
+
 class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     r"""AugmentationSequential for handling multiple input types like inputs, masks, keypoints at once.
 
@@ -797,7 +803,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             inputs: Inputs to operate on.
             input_names_to_handle: List of input names to convert.
                 If None, convert every tensor, NumPy array and PIL image argument, and load a string as an image
-                path only if it is the first positional argument.
+                path only if it is the first positional argument. A dict input converts by key instead: the value
+                of an image key (``"input"`` or ``"image"``) may be a NumPy array, a PIL image or an image file path.
             output_type: Desired output type ('pt', 'numpy', or 'pil').
             kwargs: Additional arguments.
 
@@ -812,7 +819,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 keys, data_keys, args, _ = self._preproc_dict_data(inputs[0])
                 converted_dict = dict(inputs[0])
                 for key, arg, data_key in zip(keys, args, data_keys):
-                    if data_key in _IMG_OPTIONS and _is_numpy_array(arg):
+                    # A string under an image key loads as an image path, so a missing file raises
+                    # ``FileNotFoundError`` instead of reaching ``forward`` as a string.
+                    if data_key in _IMG_OPTIONS and _is_image_source(arg):
                         converted_dict[key] = self.to_tensor(arg)
                     else:
                         converted_dict[key] = self._convert_non_image(arg, data_key)
