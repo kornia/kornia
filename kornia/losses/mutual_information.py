@@ -342,7 +342,11 @@ class EntropyBasedLossBase(torch.nn.Module):
 
         # Autocast would undo the promotion at this matrix multiplication.
         with torch.autocast(device_type=other_signal.device.type, enabled=False):
-            return torch.einsum("...in,...jn->...ij", vals_1, vals_2)
+            # Equivalent to ``einsum("...in,...jn->...ij")``. The transposed operand is made contiguous on
+            # purpose: MPS ``bmm`` with a non-contiguous transposed operand returns wrong sums for
+            # K >= 32767 (about 33k-70k samples, e.g. a 184x184 image) on M1/M2, see
+            # https://github.com/pytorch/pytorch/issues/195163. Drop the copy once that fix is in a release.
+            return vals_1 @ vals_2.transpose(-1, -2).contiguous()
 
     def entropies(
         self, other_signal: torch.Tensor, other_mask: torch.Tensor | None = None

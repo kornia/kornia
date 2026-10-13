@@ -207,6 +207,25 @@ class TestMutualInformationLoss(BaseTester):
             low_tolerance=True,
         )
 
+    @pytest.mark.parametrize("side", [184, 256])
+    def test_joint_histogram_matches_cpu_at_large_sample_counts(self, device, side):
+        # MPS ``bmm`` with a transposed operand sums past the operands for K >= 32767 on some chips
+        # (pytorch/pytorch#195163), which corrupted the histogram for 33k-70k samples (a 184x184 image).
+        # The CPU result is the oracle; 184*184 sits inside the bad band and 256*256 outside it.
+        generator = torch.Generator().manual_seed(0)
+        n = side * side
+        ref = torch.rand(n, generator=generator)
+        other = (ref**0.8 + 0.05 * torch.randn(n, generator=generator)).float()
+
+        expected_module = MILossFromRef(ref)
+        expected = expected_module._compute_joint_histogram(other, expected_module.eps)
+
+        module = MILossFromRef(ref.to(device))
+        actual = module._compute_joint_histogram(other.to(device), module.eps).cpu()
+
+        relative_error = (actual - expected).abs().max() / expected.abs().max()
+        assert relative_error < 1e-4
+
     def test_binary_mask_mutual_information_is_its_entropy(self, device, dtype):
         generator = torch.Generator().manual_seed(0)
         # the float64 oracle is computed on the CPU: MPS has no float64
