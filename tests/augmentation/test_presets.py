@@ -35,12 +35,14 @@ class TestAdaptiveDiscriminatorAugmentation(PresetTests):
     @pytest.mark.parametrize("direct_forward", [False, True])
     def test_shared_batch_gate(self, device, dtype, seed, direct_forward):
         inputs = torch.arange(4, device=device, dtype=dtype).reshape(1, 1, 1, 4).expand(8, 1, 1, 4).clone()
+        expected_inputs = inputs.clone()
         ada = AdaptiveDiscriminatorAugmentation(RandomHorizontalFlip(p=1.0), initial_p=0.5, same_on_batch=True)
         torch.manual_seed(seed)
         actual = ada.forward(inputs) if direct_forward else ada(inputs)
         self.assert_close(actual, actual[:1].expand_as(actual), atol=0, rtol=0)
         assert torch.equal(actual, inputs) or torch.equal(actual, inputs.flip(-1))
         self.assert_close(inputs[0, 0, 0], torch.arange(4, device=device, dtype=dtype), atol=0, rtol=0)
+        self.assert_close(inputs, expected_inputs, atol=0, rtol=0)
 
     @pytest.mark.parametrize("same_on_batch", [False, None])
     def test_independent_batch_gate(self, device, dtype, same_on_batch):
