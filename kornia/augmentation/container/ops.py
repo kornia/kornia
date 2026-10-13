@@ -64,6 +64,15 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
     def get_transform_matrix(cls, module: nn.Module, param: ParamItem, input: Any) -> torch.Tensor:
         """Get the matrix recorded by these params, not by the module's most recent image call."""
         params = cls.get_instance_module_param(param)
+        # The image call records the params dict it was given, and its values and their versions, next to the matrix
+        # it computed. The matrix is reused while the dict holds the same values unedited: the annotations of the same
+        # draw share it, and a replay after a caller replaced or edited a value is recomputed from the values.
+        matches = getattr(module, "_matrix_matches_params", None)
+        if not is_exporting() and matches is not None and matches(params):
+            transform = getattr(module, "transform_matrix", None)
+            if transform is not None:
+                return transform
+
         forward_input_shape = params.get("forward_input_shape")
         if forward_input_shape is None:
             raise ValueError("`forward_input_shape` is required to replay geometric annotations without an image.")

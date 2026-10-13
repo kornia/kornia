@@ -478,3 +478,29 @@ class TestContainerCompile(BaseTester):
         self.assert_close(out_video, video.flip(-1))
         self.assert_close(out_mask, mask.expand(2, -1, -1, -1, -1).flip(-1))
         assert counter.frame_count == 1
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason="no Dynamo on this torch/python pair")
+    def test_eager_replay_after_a_traced_image_call_follows_edited_params(self, device, dtype):
+        # A traced image call cannot snapshot its params, so an eager replay recomputes from the edited dict.
+        torch._dynamo.reset()
+        image = torch.rand(2, 1, 16, 16, device=device, dtype=dtype)
+        keypoints = torch.tensor([[[3.0, 4.0]], [[9.0, 12.0]]], device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomAffine(30.0, p=1.0), data_keys=["input", "keypoints"])
+        params = aug.forward_parameters(image.shape)
+        torch.compile(aug, backend=CompileCounter())(image, keypoints, params=params)
+        params[0].data["angle"][:] = torch.tensor([0.0, 25.0], device=device, dtype=dtype)
+        replayed = aug(keypoints, params=params, data_keys=["keypoints"])
+        _, expected = aug(image, keypoints, params=params)
+        self.assert_close(replayed, expected)
+
+    def test_dynamo_sequential_annotations_share_the_image_matrix(self, device, dtype, torch_optimizer):
+        # Recomputing from ``forward_input_shape`` makes the matrix batch size data-dependent inside fullgraph capture.
+        aug = K.AugmentationSequential(
+            K.RandomAffine(30.0, p=1.0), K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask", "keypoints"]
+        )
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        keypoints = torch.tensor([[[1.0, 2.0], [5.0, 6.0]]], device=device, dtype=dtype).expand(2, -1, -1)
+        out_image, out_mask, out_keypoints = torch_optimizer(aug, fullgraph=True)(image, image[:, :1], keypoints)
+        assert out_image.shape == image.shape
+        assert out_mask.shape == (2, 1, 8, 8)
+        assert out_keypoints.shape == keypoints.shape

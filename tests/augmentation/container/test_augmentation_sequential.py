@@ -2812,15 +2812,43 @@ class TestAugmentationSequentialReplay:
             moved = [(replayed[i] - keypoints[i]).abs().max() > 1e-4 for i in range(2)]
             assert [bool(value) for value in moved] == [False, True]
 
-    def test_annotation_replay_with_inference_tensors(self):
+    def test_annotation_replay_after_repeated_replacements(self, device, dtype):
+        # Each replacement frees the previous tensor, and the next one can take its address, so a cache keyed by
+        # ``id()`` would see the tensor recorded by the image call again. Repeat to make an address reuse likely.
+        image = torch.rand(2, 1, 16, 16, device=device, dtype=dtype)
+        keypoints = torch.tensor([[[3.0, 4.0]], [[9.0, 12.0]]], device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomAffine(30.0, p=1.0), data_keys=["input", "keypoints"])
+        for _ in range(10):
+            params = aug.forward_parameters(image.shape)
+            aug(image, keypoints, params=params)
+            params[0].data["angle"] = params[0].data["angle"] * 0
+            params[0].data["angle"] = params[0].data["angle"] + 10.0
+            replayed = aug(keypoints, params=params, data_keys=["keypoints"])
+            _, expected = aug(image, keypoints, params=params)
+            assert_close(replayed, expected)
+
+    def test_annotation_replay_with_inference_tensors(self, monkeypatch):
+        # Inference tensors have no version counter: a replaced value is still seen, and the annotations of one call
+        # still share the image's matrix instead of recomputing one each.
+        calls = []
+        generate = K.RandomAffine.generate_transformation_matrix
+
+        def counted(self, *args, **kwargs):
+            calls.append(None)
+            return generate(self, *args, **kwargs)
+
+        monkeypatch.setattr(K.RandomAffine, "generate_transformation_matrix", counted)
         with torch.inference_mode():
             image = torch.rand(2, 1, 16, 16)
             keypoints = torch.tensor([[[3.0, 4.0]], [[3.0, 4.0]]])
-            aug = K.AugmentationSequential(K.RandomAffine(30.0, p=0.5), data_keys=["input", "keypoints"])
+            boxes = torch.tensor([[[2.0, 4.0, 6.0, 8.0]]]).expand(2, -1, -1)
+            data_keys = ["input", "mask", "bbox_xyxy", "keypoints"]
+            aug = K.AugmentationSequential(K.RandomAffine(30.0, p=0.5), data_keys=data_keys)
             params = aug.forward_parameters(image.shape)
             params[0].data["batch_prob"] = torch.tensor([True, False])
-            aug(image, keypoints, params=params)
-            params[0].data["batch_prob"][:] = torch.tensor([False, True])
+            aug(image, image, boxes, keypoints, params=params)
+            assert len(calls) == 1
+            params[0].data["batch_prob"] = torch.tensor([False, True])
             replayed = aug(keypoints, params=params, data_keys=["keypoints"])
             moved = [(replayed[i] - keypoints[i]).abs().max() > 1e-4 for i in range(2)]
             assert [bool(value) for value in moved] == [False, True]
@@ -2855,6 +2883,26 @@ class TestAugmentationSequentialReplay:
             actual_inverse = aug.inverse(*first, params=params)
             for actual, expected in zip(actual_inverse, expected_inverse):
                 assert_close(actual, expected)
+
+    def test_annotations_reuse_the_matrix_of_the_image_call(self, device, dtype, monkeypatch):
+        calls = []
+        generate = K.RandomAffine.generate_transformation_matrix
+
+        def counted(self, *args, **kwargs):
+            calls.append(None)
+            return generate(self, *args, **kwargs)
+
+        monkeypatch.setattr(K.RandomAffine, "generate_transformation_matrix", counted)
+        image = torch.zeros(2, 1, 16, 16, device=device, dtype=dtype)
+        boxes = torch.tensor([[[2.0, 4.0, 6.0, 8.0]]], device=device, dtype=dtype).expand(2, -1, -1)
+        keypoints = torch.tensor([[[3.0, 5.0]]], device=device, dtype=dtype).expand(2, -1, -1)
+        aug = K.AugmentationSequential(
+            K.RandomAffine(45.0, p=1.0), data_keys=["input", "mask", "bbox_xyxy", "keypoints"]
+        )
+        out = aug(image, image, boxes, keypoints)
+        assert len(calls) == 1
+        aug.inverse(*out)
+        assert len(calls) == 2
 
     def test_annotation_replay_after_a_direct_leaf_call(self, device, dtype):
         # A child called on its own between the container call and the replay records another draw; the replay
