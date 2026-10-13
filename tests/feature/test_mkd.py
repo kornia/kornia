@@ -614,3 +614,17 @@ class TestConventionsMKDDescriptor(BaseTester):
             out = mkd(mirrored)
             self.assert_close(out.abs(), desc.abs())
             assert (out - desc).abs().max() > 0.02  # a mirrored random patch changes signs: the pin is not vacuous
+
+    @pytest.mark.parametrize("kernel_type", ["concat", "polar", "cart"])
+    def test_convention_mkd_flat_patch_is_unit_norm_except_in_float16_without_whitening(
+        self, device, dtype, kernel_type
+    ):
+        # A flat patch has zero gradients, so its magnitudes are the sqrt of the 1e-8 added to them. In float16 the
+        # 1e-8 underflows to 0 and, with whitening=None, the descriptor is all zero; in the other dtypes it is a unit
+        # vector. whitening=None needs no download.
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip(f"no replicate-padding kernel for {dtype} on {device.type}")
+        mkd = MKDDescriptor(patch_size=19, kernel_type=kernel_type, whitening=None).to(device, dtype)
+        out = mkd(torch.full((2, 1, 19, 19), 0.5, device=device, dtype=dtype))
+        expected = 0.0 if dtype == torch.float16 else 1.0
+        self.assert_close(out.norm(dim=1), torch.full((2,), expected, device=device, dtype=dtype))

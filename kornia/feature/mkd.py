@@ -561,7 +561,9 @@ class MKDDescriptor(nn.Module):
         - Patches are ``(B, 1, patch_size, patch_size)``: ``patch_size`` must be the input's size, and another size
           raises ``ShapeError``. The kernels are centred on the patch centre :math:`(\text{patch\_size} - 1) / 2`.
         - The descriptor has unit L2 norm, and an intensity change :math:`a x + b` with :math:`a > 0` gives the same
-          descriptor unless it leaves the patch nearly flat.
+          descriptor unless it leaves the patch nearly flat. The exception is a flat float16 patch with
+          ``whitening=None``: the ``1e-8`` added to the gradient magnitudes underflows in float16, and the descriptor
+          is all zero.
         - With whitening the descriptor is :math:`\min(\text{output\_dims}, E)` wide, where :math:`E` is the width of
           the kernel embedding: 238 for ``'concat'``, 175 for ``'polar'`` and 63 for ``'cart'``. With
           ``whitening=None`` it is that embedding, :math:`E` wide whatever ``output_dims`` says. Constructing a whitened
@@ -576,7 +578,7 @@ class MKDDescriptor(nn.Module):
         output_dims: Width of the whitened descriptor, at most the embedding width; ignored with ``whitening=None``.
 
     Returns:
-        Unit-norm descriptors of the patches.
+        Descriptors of the patches, of unit norm except as stated in the Convention block.
 
     Shape:
         - Input: :math:`(B, 1, \text{patch\_size}, \text{patch\_size})`.
