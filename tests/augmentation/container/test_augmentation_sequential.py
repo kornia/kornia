@@ -1213,6 +1213,25 @@ class TestAugmentationSequential:
 class TestConventionAugmentationSequential(BaseTester):
     """Convention checks and pins for documented `AugmentationSequential` limitations."""
 
+    @pytest.mark.parametrize("num_points", [0, 2])
+    def test_video_keypoints_noncontiguous_and_empty(self, num_points, device, dtype):
+        image = torch.arange(36, device=device, dtype=dtype).reshape(1, 1, 1, 6, 6).expand(2, 3, -1, -1, -1)
+        points = torch.arange(3 * 2 * num_points * 2, device=device, dtype=dtype).reshape(3, 2, num_points, 2)
+        points = (points % 6).transpose(0, 1)
+        expected = points.clone()
+        expected[..., 0] = 5 - expected[..., 0]
+        aug = K.AugmentationSequential(
+            K.VideoSequential(K.RandomHorizontalFlip(p=1.0), data_format="BTCHW"),
+            data_keys=["input", "keypoints"],
+        )
+
+        out_image, out_points = aug(image, points)
+        self.assert_close(out_image, image.flip(-1))
+        assert out_points.shape == points.shape
+        self.assert_close(out_points, expected)
+        _, restored = aug.inverse(out_image, out_points)
+        self.assert_close(restored, points)
+
     @pytest.mark.parametrize("batch_size", [2, 3])
     @pytest.mark.parametrize("keepdim,child_keepdim", [(True, False), (None, True), (False, True)])
     @pytest.mark.parametrize("mask_layout", ["BHW", "BCHW"])
