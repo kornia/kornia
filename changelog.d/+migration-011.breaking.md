@@ -5,7 +5,8 @@ to lazily transpile the library to TensorFlow, JAX or NumPy through the third-pa
 integration unreliable across all three targets — a checkout-path crash in Ivy's module walker, a
 torch/triton segfault when `transformers` is also installed, an undocumented `flax` requirement for
 JAX, and a `jaxlib`/`numpy` API-compatibility break — against Ivy's latest release (1.0.0.5, June
-2025), with the upstream project showing little ongoing maintenance. Reaching for any of the three
-functions, at the top level or under `kornia.transpiler`, now raises an `AttributeError` that says
-what was removed and links the page below, rather than a bare "has no attribute". See
+2025), with the upstream project showing little ongoing maintenance. Calling any of the three
+functions, at the top level or under `kornia.transpiler`, now raises a `RuntimeError` that says
+what was removed and links the page below; the names still import, so `from kornia import to_jax`
+does not fail with a bare `ImportError` that drops the explanation. See
 `get-started/multi-framework-support` for what was tested and why. (#4196)
