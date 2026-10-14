@@ -235,6 +235,64 @@ class TestHistMatch(BaseTester):
             torch.tensor([0.0, nan], device=device, dtype=dtype),
         )
         assert out.isnan().all()
+        # A NaN query stays NaN on a flat segment and on a repeated last knot too: np.interp([nan], [0, 1], [5, 5])
+        # and np.interp([nan], [0, 1, 1], [5, 6, 7]) are both nan (they gave 5.0 and 7.0).
+        for xp_values, fp_values in (([0.0, 1.0], [5.0, 5.0]), ([0.0, 1.0, 1.0], [5.0, 6.0, 7.0])):
+            out = kornia.contrib.interp(
+                torch.tensor([nan], device=device, dtype=dtype),
+                torch.tensor(xp_values, device=device, dtype=dtype),
+                torch.tensor(fp_values, device=device, dtype=dtype),
+            )
+            assert out.isnan().all()
+
+    def test_interp_flat_segment_with_an_infinite_knot_keeps_its_value(self, device, dtype):
+        # Only a NaN query is excluded from the flat-segment value: here the weight is inf / inf = nan, but the
+        # segment is flat, and np.interp([-0.5], [-inf, 0, 1], [5, 5, 6]) == [5.0].
+        out = kornia.contrib.interp(
+            torch.tensor([-0.5], device=device, dtype=dtype),
+            torch.tensor([-inf, 0.0, 1.0], device=device, dtype=dtype),
+            torch.tensor([5.0, 5.0, 6.0], device=device, dtype=dtype),
+        )
+        assert out.tolist() == [5.0]
+
+    def test_interp_integer_coordinates_above_2_24_are_exact(self, device):
+        # Integer coordinates are compared and subtracted as integers: as float32, 16777217 rounds to 16777216.
+        # np.interp([16777217], [16777216, 16777218], [0, 2]) == [1.0]; the float32 cast gave [0.0].
+        out = kornia.contrib.interp(
+            torch.tensor([16777217], device=device),
+            torch.tensor([16777216, 16777218], device=device),
+            torch.tensor([0, 2], device=device),
+        )
+        assert out.tolist() == [1.0]
+        # A knot whose right neighbour rounds onto it in float32: np.interp([16777216], [0, 16777216, 16777217],
+        # [0, 5, 1]) == [5.0]; the float32 cast saw a zero-width segment and gave [1.0].
+        out = kornia.contrib.interp(
+            torch.tensor([16777216], device=device),
+            torch.tensor([0, 16777216, 16777217], device=device),
+            torch.tensor([0, 5, 1], device=device),
+        )
+        assert out.tolist() == [5.0]
+        # uint8 coordinates are widened before they are subtracted: 0 - 1 does not wrap to 255.
+        out = kornia.contrib.interp(
+            torch.tensor([0, 3], dtype=torch.uint8, device=device),
+            torch.tensor([1, 2], dtype=torch.uint8, device=device),
+            torch.tensor([10.0, 20.0], device=device),
+        )
+        assert out.tolist() == [0.0, 30.0]
+
+    @pytest.mark.parametrize("complex_dtype", [torch.complex64, torch.complex128])
+    def test_interp_complex_fp(self, complex_dtype, device):
+        # The real and imaginary parts are interpolated separately, as np.interp does:
+        # np.interp([0, 0.5, 1, 1.5], [0, 1], [1+2j, 3+4j]) gives [1+2j, 2+3j, 3+4j, 3+4j]; kornia extrapolates the
+        # last point to 4+5j.
+        if device.type == "mps" and complex_dtype == torch.complex128:
+            pytest.skip("MPS has no float64")
+        real_dtype = torch.float32 if complex_dtype == torch.complex64 else torch.float64
+        x = torch.tensor([0.0, 0.5, 1.0, 1.5], device=device, dtype=real_dtype)
+        xp = torch.tensor([0.0, 1.0], device=device, dtype=real_dtype)
+        out = kornia.contrib.interp(x, xp, torch.tensor([1 + 2j, 3 + 4j], device=device, dtype=complex_dtype))
+        assert out.dtype == complex_dtype
+        assert out.tolist() == [1 + 2j, 2 + 3j, 3 + 4j, 4 + 5j]
 
     def test_interp_half_x_with_float32_fp_keeps_float32_precision(self, device):
         # np.interp([0.3, 0.77, 1.4], [0, 1, 2], [10, 20.001, 45.123456]) in float64 with the half x rounded first:
@@ -269,6 +327,22 @@ class TestHistMatch(BaseTester):
         out = kornia.contrib.interp(x, xp, torch.tensor([-big, big], device=device, dtype=float_dtype))
         expected = torch.tensor([-big, -big / 2, 0.0, big / 2, big], device=device, dtype=float_dtype)
         self.assert_close(out, expected)
+
+    @pytest.mark.parametrize(
+        ("float_dtype", "big"), [(torch.float64, 1e308), (torch.float32, 3e38), (torch.float16, 40000.0)]
+    )
+    def test_interp_gradient_is_the_slope_when_the_difference_overflows(self, float_dtype, big, device):
+        # f1 - f0 = 2 * big overflows, but the slope 2 * big / 4 = big / 2 is representable, at the knots too. The
+        # formulas the overflow branch replaces used to multiply their zero gradient by the infinite difference: nan.
+        if device.type == "mps" and float_dtype == torch.float64:
+            pytest.skip("MPS has no float64")
+        x = torch.tensor([0.0, 1.0, 2.0, 3.0, 4.0], device=device, dtype=float_dtype, requires_grad=True)
+        xp = torch.tensor([0.0, 4.0], device=device, dtype=float_dtype)
+        out = kornia.contrib.interp(x, xp, torch.tensor([-big, big], device=device, dtype=float_dtype))
+        out.sum().backward()
+        expected = torch.tensor([-big, -big / 2, 0.0, big / 2, big], device=device, dtype=float_dtype)
+        self.assert_close(out.detach(), expected)
+        assert torch.equal(x.grad, torch.full_like(x, big) / 2)
 
     def test_interp_extrapolation_that_overflows_stays_infinite(self, device):
         out = kornia.contrib.interp(

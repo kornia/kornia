@@ -486,20 +486,29 @@ def _combine_integer_patches(
     patches: torch.Tensor, target: Tuple[torch.Tensor, Tuple[int, int, int, int], Tuple[int, int]]
 ) -> torch.Tensor:
     # F.fold has no integer kernel ("col2im_out_cpu" not implemented for 'Long'), and a float sum rounds above 2**24
-    # (float32) or 2**53 (float64). Scatter-add into int64 instead: exact while an overlap sum fits int64. The overlap
-    # mean truncates toward zero, as a float mean cast back to an integer dtype does.
-    flat_index, (pad_l, pad_r, pad_t, pad_b), (Hr, Wr) = target
+    # (float32) or 2**53 (float64). Scatter-add in int64 instead. The overlap mean truncates toward zero, as a float
+    # mean cast back to an integer dtype does.
+    flat_index, pads, (Hr, Wr) = target
     B, C = patches.shape[0], patches.shape[2]
     values = patches.to(torch.int64).permute(0, 2, 1, 3, 4).flatten(2)
-    sums = torch.zeros(B, C, Hr * Wr, dtype=torch.int64, device=patches.device).index_add_(-1, flat_index, values)
+    zeros = torch.zeros(B, C, Hr * Wr, dtype=torch.int64, device=patches.device)
     if patches.dtype == torch.bool:
         # Bool patches are True wherever any covering patch is True.
-        out = (sums != 0).view(B, C, Hr, Wr)
+        out = zeros.index_add(-1, flat_index, values) != 0
     else:
+        # An overlap sum of int64 values can leave int64, so each value v is split by the overlap count c of its pixel
+        # as v = q * c + r (q truncated, |r| < c). The q sum to at most max |v| in magnitude and the r to less than
+        # c**2, so the mean sum(q) + sum(r) / c is exact for every int64 input.
         counts = torch.zeros(Hr * Wr, dtype=torch.int64, device=patches.device)
-        counts = counts.index_add_(0, flat_index, torch.ones_like(flat_index))
-        out = torch.div(sums, counts.clamp_min(1), rounding_mode="trunc").view(B, C, Hr, Wr)
-    out = out[..., pad_t : Hr - pad_b, pad_l : Wr - pad_r]
+        counts = counts.index_add_(0, flat_index, torch.ones_like(flat_index)).clamp_min(1)
+        count = counts[flat_index]
+        q = torch.div(values, count, rounding_mode="trunc")
+        sum_r = zeros.index_add(-1, flat_index, values - q * count)
+        out = zeros.index_add(-1, flat_index, q) + torch.div(sum_r, counts, rounding_mode="floor")
+        # The floor of the mean, moved toward zero where the mean is negative and not an integer.
+        out = out + ((out < 0) & (torch.remainder(sum_r, counts) != 0)).to(torch.int64)
+    # Negative unpadding pads the result with zeros, as the float path's inverse F.pad does.
+    out = F.pad(out.view(B, C, Hr, Wr), [-p for p in pads])
     return out.to(patches.dtype)
 
 

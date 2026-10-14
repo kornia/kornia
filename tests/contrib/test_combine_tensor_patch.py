@@ -331,6 +331,47 @@ class TestCombineTensorPatches(BaseTester):
         out_f = kornia.contrib.combine_tensor_patches(patches.float(), (5, 7), 3, 2, unpadding=(0, 2, 1, 3))
         assert torch.equal(out, out_f.long())
 
+    @pytest.mark.parametrize("patch_dtype", [torch.int64, torch.int32, torch.bool, torch.float32])
+    def test_negative_unpadding_restores_a_zero_border(self, patch_dtype, device):
+        # padding=-1 crops a 4 x 6 image to its 2 x 4 interior; unpadding=-1 pads the recombined interior back to
+        # 4 x 6 with zeros (False for bool), on the integer path as on the float one. Slicing gave a 1 x 1 tensor.
+        img = (torch.arange(1, 25, device=device).view(1, 1, 4, 6) % 3 + 1).to(patch_dtype)
+        patches = kornia.contrib.extract_tensor_patches(img, 2, 2, padding=-1)
+        out = kornia.contrib.combine_tensor_patches(patches, (4, 6), 2, 2, unpadding=-1)
+        expected = torch.zeros_like(img)
+        expected[..., 1:-1, 1:-1] = img[..., 1:-1, 1:-1]
+        assert out.dtype == patch_dtype
+        assert torch.equal(out, expected)
+
+    def test_int64_overlap_mean_is_exact_at_the_int64_limits(self, device):
+        # Overlapping copies of 2**63 - 1 or -2**63 overflowed the int64 sum (they came back as -1 and 0). The mean is
+        # built from per-element quotients and remainders by the overlap count, so no partial sum leaves int64.
+        if device.type == "mps" and torch_version_lt(2, 9, 0):
+            pytest.skip("MPS index_add_ has no int64 source before torch 2.9: the float32 fold is exact only to 2**24")
+        for value in (2**63 - 1, -(2**63)):
+            img = torch.full((1, 2, 3, 5), value, dtype=torch.int64, device=device)
+            out = kornia.contrib.combine_tensor_patches(kornia.contrib.extract_tensor_patches(img, 2, 1), (3, 5), 2, 1)
+            assert torch.equal(out, img)
+        # Two patches over one pixel with opposite extremes: (2**63 - 1 - 2**63) / 2 = -0.5 truncates to 0.
+        patches = torch.zeros(1, 8, 1, 2, 2, dtype=torch.int64, device=device)  # 3 x 5 image, 2 x 2 windows, stride 1
+        patches[0, 0, 0, 0, 1] = 2**63 - 1
+        patches[0, 1, 0, 0, 0] = -(2**63)
+        assert kornia.contrib.combine_tensor_patches(patches, (3, 5), 2, 1)[0, 0, 0, 1].item() == 0
+        # Random values over the whole int64 range, against the exact truncated mean in Python integers.
+        g = torch.Generator().manual_seed(0)
+        patches = torch.randint(-(2**63), 2**63 - 1, (2, 8, 2, 2, 2), generator=g, dtype=torch.int64)
+        target = kornia.contrib.extract_tensor_patches(torch.arange(15).view(1, 1, 3, 5), 2, 1)[0, :, 0].flatten()
+        expected = []
+        for b in range(2):
+            for c in range(2):
+                covering = [[] for _ in range(15)]
+                for value, pixel in zip(patches[b, :, c].flatten().tolist(), target.tolist()):
+                    covering[pixel].append(value)
+                means = [abs(sum(v)) // len(v) * (1 if sum(v) >= 0 else -1) for v in covering]
+                expected.append(means)
+        out = kornia.contrib.combine_tensor_patches(patches.to(device), (3, 5), 2, 1)
+        assert out.flatten(2).flatten(0, 1).tolist() == expected
+
     @pytest.mark.parametrize("int_dtype", [torch.int64, torch.bool])
     def test_integer_patch_count_mismatch_raises(self, int_dtype, device):
         patches = torch.zeros(1, 5, 1, 2, 2, dtype=int_dtype, device=device)  # a 4 x 6 image at stride 2 needs 6
