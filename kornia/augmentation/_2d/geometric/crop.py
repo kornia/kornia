@@ -25,6 +25,7 @@ from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.augmentation.base import _mixed_gate_shape_error
 from kornia.augmentation.utils.helpers import _constant_tensor, _pad_with_fill
+from kornia.augmentation.utils.random import _with_generator
 from kornia.constants import Resample
 from kornia.core.utils import is_compiling, is_exporting
 from kornia.geometry.boxes import Boxes
@@ -446,7 +447,10 @@ class RandomCrop(GeometricAugmentationBase2D):
         return super().inverse_keypoints(input, params, flags, transform, **kwargs)
 
     # Override parameters for precrop
-    def forward_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward_parameters(
+        self, batch_shape: Tuple[int, ...], *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         input_pad = self.compute_padding(batch_shape)
         batch_shape_new = torch.Size(
             (

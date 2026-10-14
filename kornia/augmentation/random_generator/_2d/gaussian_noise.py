@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _common_param_check
+from kornia.augmentation.utils.random import _with_generator
 
 __all__ = ["GaussianNoiseGenerator"]
 
@@ -55,7 +56,10 @@ class GaussianNoiseGenerator(RandomGeneratorBase):
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         """No persistent sampler needed; noise is drawn directly in forward from the tracked device/dtype."""
 
-    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> dict[str, torch.Tensor]:
         """Generate a Gaussian noise tensor matching the input batch shape.
 
         Args:
@@ -63,6 +67,7 @@ class GaussianNoiseGenerator(RandomGeneratorBase):
             same_on_batch: If ``True``, generate a single noise map ``(1, C, H, W)`` shared
                 across all batch items. The augmentation's ``apply_transform`` is responsible
                 for expanding it to the full batch size.
+            generator: Optional call-local stream; otherwise use the configured or global stream.
 
         Returns:
             Dictionary with key ``"gaussian_noise"`` containing the noise tensor.
@@ -78,6 +83,9 @@ class GaussianNoiseGenerator(RandomGeneratorBase):
         # Equivalent to ``Normal(mean, std).rsample(...)`` (which computes ``mean + eps * std``
         # from a standard-normal ``eps``), but skips constructing a Normal and two scalar tensors
         # on every forward. Byte-identical: the underlying ``randn`` draw is the same.
-        gaussian_noise = self.mean + torch.randn((sample_B, C, H, W), device=device, dtype=dtype) * self.std
+        gaussian_noise = (
+            self.mean
+            + torch.randn((sample_B, C, H, W), device=device, dtype=dtype, generator=self._generator) * self.std
+        )
 
         return {"gaussian_noise": gaussian_noise}

@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
+from kornia.augmentation.utils.random import _with_generator
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["MotionBlurGenerator"]
@@ -103,16 +104,23 @@ class MotionBlurGenerator(RandomGeneratorBase):
         self.angle_sampler = UniformDistribution(angle[0], angle[1], validate_args=False)
         self.direction_sampler = UniformDistribution(direction[0], direction[1], validate_args=False)
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         # self.ksize_factor.expand((batch_size, -1))
         _device, _dtype = _extract_device_dtype([self.angle, self.direction])
-        angle_factor = _adapted_rsampling((batch_size,), self.angle_sampler, same_on_batch)
-        direction_factor = _adapted_rsampling((batch_size,), self.direction_sampler, same_on_batch)
+        angle_factor = _adapted_rsampling((batch_size,), self.angle_sampler, same_on_batch, generator=self._generator)
+        direction_factor = _adapted_rsampling(
+            (batch_size,), self.direction_sampler, same_on_batch, generator=self._generator
+        )
         # A ranged kernel size is shared by the batch; angle and direction can still vary per sample.
         ksize_same_on_batch = same_on_batch or isinstance(self.kernel_size, (tuple, list))
-        ksize_half = _adapted_rsampling((batch_size,), self.ksize_sampler, ksize_same_on_batch).floor()
+        ksize_half = _adapted_rsampling(
+            (batch_size,), self.ksize_sampler, ksize_same_on_batch, generator=self._generator
+        ).floor()
         # A float32 draw can round up onto the open upper end, hi + 1; keep it inside the closed range.
         ksize_factor = ksize_half.clamp_max(self._ksize_half_max).int() * 2 + 1
 

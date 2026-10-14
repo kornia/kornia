@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _adapted_uniform, _common_param_check, _range_bound
+from kornia.augmentation.utils.random import _with_generator
 from kornia.core.utils import _extract_device_dtype
 
 
@@ -73,25 +74,28 @@ class SaltAndPepperGenerator(RandomGeneratorBase):
         self.amount_sampler = UniformDistribution(amount[0], amount[1], validate_args=False)
         self.salt_and_pepper_sampler = UniformDistribution(salt_and_pepper[0], salt_and_pepper[1], validate_args=False)
 
-    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> dict[str, torch.Tensor]:
         r"""Generate Salt and Pepper noise masks for a batch of images."""
         batch_size, C, H, W = batch_shape
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.amount, self.salt_and_pepper])
 
-        amount_factor = _adapted_rsampling((batch_size,), self.amount_sampler, same_on_batch).to(
-            device=_device, dtype=_dtype
-        )
-        salt_and_pepper_factor = _adapted_rsampling((batch_size,), self.salt_and_pepper_sampler, same_on_batch).to(
-            device=_device, dtype=_dtype
-        )
+        amount_factor = _adapted_rsampling(
+            (batch_size,), self.amount_sampler, same_on_batch, generator=self._generator
+        ).to(device=_device, dtype=_dtype)
+        salt_and_pepper_factor = _adapted_rsampling(
+            (batch_size,), self.salt_and_pepper_sampler, same_on_batch, generator=self._generator
+        ).to(device=_device, dtype=_dtype)
 
         ## Generate noise masks.
         mask_noise = _adapted_uniform(
-            (batch_size, 1, H, W), low=0.0, high=1.0, same_on_batch=same_on_batch
+            (batch_size, 1, H, W), low=0.0, high=1.0, same_on_batch=same_on_batch, generator=self._generator
         ) < amount_factor.view(batch_size, 1, 1, 1)
         mask_salt = _adapted_uniform(
-            (batch_size, 1, H, W), low=0.0, high=1.0, same_on_batch=same_on_batch
+            (batch_size, 1, H, W), low=0.0, high=1.0, same_on_batch=same_on_batch, generator=self._generator
         ) < salt_and_pepper_factor.view(batch_size, 1, 1, 1)
 
         # If the number of channels is greater than one (3), replicate the generated mask for each channel.

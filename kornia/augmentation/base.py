@@ -30,6 +30,7 @@ from kornia.augmentation.utils import (
     override_parameters,
 )
 from kornia.augmentation.utils.helpers import _constant_tensor
+from kornia.augmentation.utils.random import _GeneratorMixin, _with_generator
 from kornia.core.utils import is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
@@ -70,7 +71,7 @@ def _apply_transform_unimplemented(self: nn.Module, *input: Any) -> torch.Tensor
     raise NotImplementedError(f'nn.Module [{type(self).__name__}] is missing the required "apply_tranform" function')
 
 
-class _BasicAugmentationBase(nn.Module):
+class _BasicAugmentationBase(_GeneratorMixin, nn.Module):
     r"""_BasicAugmentationBase base class for customized augmentation implementations.
 
     Plain augmentation base class without the functionality of transformation matrix calculations.
@@ -234,7 +235,7 @@ class _BasicAugmentationBase(nn.Module):
         elif p_batch == 0:
             batch_prob = torch.zeros(1, device=self.device, dtype=self.dtype)
         else:
-            batch_prob = (torch.rand(1, device=self.device) < p_batch).to(self.dtype)
+            batch_prob = (torch.rand(1, device=self.device, generator=self._generator) < p_batch).to(self.dtype)
 
         # Per-sample gate. `p` and `same_on_batch` are Python values, so these branches are
         # resolved at trace time (no graph break).
@@ -244,9 +245,11 @@ class _BasicAugmentationBase(nn.Module):
         elif p == 0:
             elem_prob = torch.zeros(batch_shape[0], device=self.device, dtype=self.dtype)
         elif same_on_batch:
-            elem_prob = (torch.rand(1, device=self.device) < p).to(self.dtype).expand(batch_shape[0])
+            elem_prob = (
+                (torch.rand(1, device=self.device, generator=self._generator) < p).to(self.dtype).expand(batch_shape[0])
+            )
         else:
-            elem_prob = (torch.rand(batch_shape[0], device=self.device) < p).to(self.dtype)
+            elem_prob = (torch.rand(batch_shape[0], device=self.device, generator=self._generator) < p).to(self.dtype)
 
         # Branchless combine (replaces the data-dependent `if batch_prob.sum() == 1`).
         # batch_prob is (1,) in {0, 1}: a selected batch yields elem_prob, a deselected one
@@ -304,7 +307,10 @@ class _BasicAugmentationBase(nn.Module):
         flags = override_parameters(flags, kwargs, in_place=False)
         return params, flags
 
-    def forward_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward_parameters(
+        self, batch_shape: Tuple[int, ...], *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         batch_prob = self.__batch_prob_generator__(batch_shape, self.p, self.p_batch, self.same_on_batch)
         _params = self.generate_parameters(batch_shape)
         if _params is None:
@@ -319,8 +325,14 @@ class _BasicAugmentationBase(nn.Module):
     def apply_func(self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]) -> torch.Tensor:
         return self.apply_transform(input, params, flags)
 
+    @_with_generator
     def forward(
-        self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None, **kwargs: Any
+        self,
+        input: torch.Tensor,
+        params: Optional[Dict[str, torch.Tensor]] = None,
+        *,
+        generator: torch.Generator | None = None,
+        **kwargs: Any,
     ) -> torch.Tensor:
         """Perform forward operations.
 
@@ -329,6 +341,7 @@ class _BasicAugmentationBase(nn.Module):
             params: the corresponding parameters for an operation.
                 If None, a new parameter suite will be generated.
             **kwargs: key-value pairs to override the parameters and flags.
+            generator: Optional call-local stream; otherwise use the configured or global stream.
 
         Note:
             By default, all the overwriting parameters in kwargs will not be recorded

@@ -23,6 +23,7 @@ import torch
 
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.augmentation.utils import _validate_input_dtype
+from kornia.augmentation.utils.random import _with_generator
 from kornia.constants import DataKey
 from kornia.core.check import KORNIA_CHECK
 
@@ -335,7 +336,15 @@ class RandomTransplantation(MixAugmentationBaseV2):
                     labels = labels[(labels.view(1, -1) != self.excluded_labels.view(-1, 1)).all(dim=0)]
 
                 if len(labels) > 0:
-                    donor_labels.append(labels[torch.randperm(len(labels))[0]])
+                    donor_labels.append(
+                        labels[
+                            torch.randperm(
+                                len(labels),
+                                generator=self._generator,
+                                device=self._generator.device if self._generator is not None else None,
+                            )[0]
+                        ]
+                    )
                     eligible.append(d)
 
             if len(eligible) < len(params["donor_indices"]):
@@ -383,11 +392,13 @@ class RandomTransplantation(MixAugmentationBaseV2):
 
         return params
 
+    @_with_generator
     def forward(  # type: ignore[override]
         self,
         *input: torch.Tensor,
         params: Optional[dict[str, torch.Tensor]] = None,
         data_keys: Optional[list[str | int | DataKey]] = None,
+        generator: torch.Generator | None = None,
         **kwargs: dict[str, Any],
     ) -> torch.Tensor | list[torch.Tensor]:
         keys: list[DataKey]

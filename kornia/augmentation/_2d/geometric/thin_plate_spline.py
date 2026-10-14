@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.augmentation.utils.helpers import _constant_tensor
+from kornia.augmentation.utils.random import _sample_distribution
 from kornia.constants import SamplePadding
 from kornia.geometry.transform import get_tps_transform, warp_image_tps
 
@@ -100,10 +101,14 @@ class RandomThinPlateSpline(AugmentationBase2D):
         if self.dist is None:
             noise = torch.zeros_like(src)
         elif self.same_on_batch:
-            noise = self.dist.rsample((1, 5, 2)).to(device=device, dtype=dtype)
+            noise = _sample_distribution(self.dist, torch.Size((1, 5, 2)), self._generator, True).to(
+                device=device, dtype=dtype
+            )
             noise = noise.expand(B, 5, 2)
         else:
-            noise = self.dist.rsample((B, 5, 2)).to(device=device, dtype=dtype)
+            noise = _sample_distribution(self.dist, torch.Size((B, 5, 2)), self._generator, True).to(
+                device=device, dtype=dtype
+            )
 
         dst = src + noise
 

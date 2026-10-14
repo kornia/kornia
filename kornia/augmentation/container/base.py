@@ -24,6 +24,7 @@ from torch import nn
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.utils.random import _GeneratorMixin, _with_generator
 from kornia.core.utils import is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
@@ -34,7 +35,7 @@ from .params import ParamItem
 __all__ = ["BasicSequentialBase", "ImageSequentialBase", "SequentialBase"]
 
 
-class BasicSequentialBase(nn.Sequential):
+class BasicSequentialBase(_GeneratorMixin, nn.Sequential):
     r"""BasicSequential for creating kornia modulized processing pipeline.
 
     Args:
@@ -97,11 +98,15 @@ class BasicSequentialBase(nn.Sequential):
         self._params = None
 
     # TODO: Implement this for all submodules.
-    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+    @_with_generator
+    def forward_parameters(
+        self, batch_shape: torch.Size, *, generator: torch.Generator | None = None
+    ) -> List[ParamItem]:
         """Generate parameters for a forward pass.
 
         Args:
             batch_shape: Input batch shape.
+            generator: Optional call-local stream; otherwise use the configured or global stream.
 
         Returns:
             Per-module parameters in execution order.
@@ -250,11 +255,15 @@ class ImageSequentialBase(SequentialBase):
         """
         raise NotImplementedError
 
-    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+    @_with_generator
+    def forward_parameters(
+        self, batch_shape: torch.Size, *, generator: torch.Generator | None = None
+    ) -> List[ParamItem]:
         """Generate parameters for child modules.
 
         Args:
             batch_shape: Input batch shape.
+            generator: Optional call-local stream; otherwise use the configured or global stream.
 
         Returns:
             Per-module parameter list.
@@ -425,8 +434,14 @@ class ImageSequentialBase(SequentialBase):
 
         return self.inverse_inputs(input, params, extra_args=extra_args)
 
+    @_with_generator
     def forward(
-        self, input: torch.Tensor, params: Optional[List[ParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None
+        self,
+        input: torch.Tensor,
+        params: Optional[List[ParamItem]] = None,
+        extra_args: Optional[Dict[str, Any]] = None,
+        *,
+        generator: torch.Generator | None = None,
     ) -> torch.Tensor:
         """Run the sequential augmentation pipeline.
 
@@ -435,6 +450,7 @@ class ImageSequentialBase(SequentialBase):
             params: Optional precomputed parameters. If omitted, parameters are
                 sampled from ``input``.
             extra_args: Optional per-input-type overrides.
+            generator: Optional call-local stream; otherwise use the configured or global stream.
 
         Returns:
             Augmented tensor.

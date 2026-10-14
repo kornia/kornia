@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check
+from kornia.augmentation.utils.random import _with_generator
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["PosterizeGenerator"]
@@ -62,9 +63,12 @@ class PosterizeGenerator(RandomGeneratorBase):
         _joint_range_check(bits, "bits", (0, 8))
         self.bit_sampler = UniformDistribution(bits[0], bits[1], validate_args=False)
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _ = _extract_device_dtype([self.bits_factor if isinstance(self.bits_factor, torch.Tensor) else None])
-        bits_factor = _adapted_rsampling((batch_size,), self.bit_sampler, same_on_batch)
+        bits_factor = _adapted_rsampling((batch_size,), self.bit_sampler, same_on_batch, generator=self._generator)
         return {"bits_factor": bits_factor.round().to(device=_device, dtype=torch.int32)}

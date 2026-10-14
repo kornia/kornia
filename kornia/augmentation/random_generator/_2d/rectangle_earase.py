@@ -27,6 +27,7 @@ from kornia.augmentation.utils import (
     _joint_range_check,
 )
 from kornia.augmentation.utils.helpers import _constant_tensor
+from kornia.augmentation.utils.random import _with_generator
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["RectangleEraseGenerator"]
@@ -97,7 +98,10 @@ class RectangleEraseGenerator(RandomGeneratorBase):
             validate_args=False,
         )
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
@@ -108,22 +112,34 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         _device, _dtype = _extract_device_dtype([self.ratio, self.scale])
         images_area = height * width
         target_areas = (
-            _adapted_rsampling((batch_size,), self.scale_sampler, same_on_batch).to(device=_device, dtype=_dtype)
+            _adapted_rsampling((batch_size,), self.scale_sampler, same_on_batch, generator=self._generator).to(
+                device=_device, dtype=_dtype
+            )
             * images_area
         )
 
         if self.ratio[0] < 1.0 and self.ratio[1] > 1.0:
-            aspect_ratios1 = _adapted_rsampling((batch_size,), self.ratio_sampler1, same_on_batch)
-            aspect_ratios2 = _adapted_rsampling((batch_size,), self.ratio_sampler2, same_on_batch)
+            aspect_ratios1 = _adapted_rsampling(
+                (batch_size,), self.ratio_sampler1, same_on_batch, generator=self._generator
+            )
+            aspect_ratios2 = _adapted_rsampling(
+                (batch_size,), self.ratio_sampler2, same_on_batch, generator=self._generator
+            )
             if same_on_batch:
                 rand_idxs = (
-                    torch.round(_adapted_rsampling((1,), self.index_sampler, same_on_batch)).repeat(batch_size).bool()
+                    torch.round(_adapted_rsampling((1,), self.index_sampler, same_on_batch, generator=self._generator))
+                    .repeat(batch_size)
+                    .bool()
                 )
             else:
-                rand_idxs = torch.round(_adapted_rsampling((batch_size,), self.index_sampler, same_on_batch)).bool()
+                rand_idxs = torch.round(
+                    _adapted_rsampling((batch_size,), self.index_sampler, same_on_batch, generator=self._generator)
+                ).bool()
             aspect_ratios = torch.where(rand_idxs, aspect_ratios1, aspect_ratios2)
         else:
-            aspect_ratios = _adapted_rsampling((batch_size,), self.ratio_sampler, same_on_batch)
+            aspect_ratios = _adapted_rsampling(
+                (batch_size,), self.ratio_sampler, same_on_batch, generator=self._generator
+            )
 
         aspect_ratios = aspect_ratios.to(device=_device, dtype=_dtype)
 
@@ -134,10 +150,10 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         position_dtype = torch.promote_types(self.uniform_sampler.low.dtype, _dtype)
         if position_dtype in (torch.float16, torch.bfloat16):
             position_dtype = torch.float32
-        xs_ratio = _adapted_rsampling((batch_size,), self.uniform_sampler, same_on_batch).to(
+        xs_ratio = _adapted_rsampling((batch_size,), self.uniform_sampler, same_on_batch, generator=self._generator).to(
             device=_device, dtype=position_dtype
         )
-        ys_ratio = _adapted_rsampling((batch_size,), self.uniform_sampler, same_on_batch).to(
+        ys_ratio = _adapted_rsampling((batch_size,), self.uniform_sampler, same_on_batch, generator=self._generator).to(
             device=_device, dtype=position_dtype
         )
 
