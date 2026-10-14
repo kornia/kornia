@@ -446,7 +446,8 @@ class SIFTFeatureScaleSpace(LocalFeature):
         - On both backends the LAF scale is 6 times the detection sigma, and ``responses`` is the absolute DoG, the
           same for a bright blob as for a dark one. The LAF centres are in the frame of
           :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`) on
-          every octave.
+          every octave. For a float16 or bfloat16 image the LAFs are float32 on both backends, and the responses and
+          descriptors keep the image dtype.
         - Descriptors come in kornia's SIFT layout; ``descriptor_layout="opencv"`` returns them in OpenCV's, which
           :class:`~kornia.feature.LightGlueMatcher` expects with ``"sift"``.
           :func:`~kornia.feature.convert_sift_descriptor_layout` converts between the two.

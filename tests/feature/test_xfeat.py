@@ -180,7 +180,9 @@ class TestXFeat(BaseTester):
         # Known defect #5957: _preprocess_tensor calls x.float(), so half-precision weights meet float32 input.
         # CPU: "expected scalar type Float but found Half"; MPS: "Input type (MPSFloatType) and weight type ...".
         model = XFeat().to(device, half)
-        with pytest.raises(RuntimeError):
+        with pytest.raises(
+            RuntimeError, match=r"expected scalar type Float but found|Input type \(MPSFloatType\) and weight type"
+        ):
             model.detectAndCompute(torch.rand(1, 3, 96, 128, device=device, dtype=half), top_k=50)
 
     def test_gradcheck(self, device):

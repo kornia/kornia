@@ -177,7 +177,9 @@ class ImageStitcher(nn.Module):
         out_shape = (images_left.shape[-2], images_left.shape[-1] + images_right.shape[-1])
         correspondences = self.on_matcher(input_dict)
         homo = self.estimate_transform(**correspondences)
-        src_img = warp_perspective(images_right, homo, out_shape)
+        # A float16 or bfloat16 matcher gives float32 keypoints, hence a float32 homography: warp in the wider dtype.
+        wide = torch.promote_types(images_right.dtype, homo.dtype)
+        src_img = warp_perspective(images_right.to(wide), homo, out_shape).to(images_right.dtype)
         dst_img = torch.cat([images_left, torch.zeros_like(images_right)], -1)
 
         # Compute the transformed masks
@@ -186,7 +188,8 @@ class ImageStitcher(nn.Module):
         if mask_right is None:
             mask_right = torch.ones_like(images_right)
         # 'nearest' to ensure no floating points in the mask
-        src_mask = warp_perspective(mask_right, homo, out_shape, mode="nearest")
+        mask_wide = torch.promote_types(mask_right.dtype, homo.dtype)
+        src_mask = warp_perspective(mask_right.to(mask_wide), homo, out_shape, mode="nearest").to(mask_right.dtype)
         dst_mask = torch.cat([mask_left, torch.zeros_like(mask_right)], -1)
         return self.blend_image(src_img, dst_img, src_mask), (dst_mask + src_mask).bool().to(src_mask.dtype)
 

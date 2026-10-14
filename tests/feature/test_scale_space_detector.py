@@ -854,8 +854,9 @@ class TestScaleSpaceDetector(BaseTester):
     def test_half_image_refines_coordinates_in_float32(self, refiner, device, dtype):
         # R4 / plan review P2: the refiners write absolute coordinates into a tensor of the response's dtype, and
         # bfloat16 holds no odd integer above 256 (torch.arange(257, 263, dtype=bfloat16) == [256, 258, 260, 260,
-        # 260, 262]). On main, all 74 of 74 centres past x = 256 were even (300 x 420), whatever happened to the
-        # LAFs afterwards.
+        # 260, 262]); float16 holds only multiples of 0.25 in [256, 512). The refiner sees a float32 response, so the
+        # refined centres past x = 256 lie off that grid; a centre rounded through the half dtype at any point after
+        # the refinement lies on it, whatever the LAF dtype.
         if dtype not in (torch.float16, torch.bfloat16):
             pytest.skip("half-precision rule")
         refiners = {
@@ -874,17 +875,10 @@ class TestScaleSpaceDetector(BaseTester):
         assert set(seen) == {torch.float32}
         assert lafs.dtype == torch.float32
         assert responses.dtype == dtype
-        # Reference: the float32 detector on the same half-rounded image. The responses differ by the half arithmetic,
-        # so compare each centre past x = 256 with its nearest reference centre.
-        ref = ScaleSpaceDetector(200, subpix_module=refiners[refiner]()).to(device)
-        with torch.no_grad():
-            ref_lafs, _ = ref(img.float())
-        centres, ref_centres = lafs[0, :, :, 2], ref_lafs[0, :, :, 2]
-        far = centres[centres[:, 0] > 256]
-        assert far.shape[0] > 20
-        # 0.75 px lies between the bfloat16 medians with half-precision coordinates (about 1 px) and with float32
-        # ones (at most 0.5 px, the bfloat16 response itself). float16 is decided by the dtype checks above.
-        assert torch.cdist(far, ref_centres).min(1).values.median() < 0.75
+        x = lafs[0, :, 0, 2]
+        far = x[x > 256]
+        assert far.numel() > 20
+        assert (far != far.to(dtype).float()).float().mean() > 0.5
 
 
 class TestMultiResolutionDetector(BaseTester):

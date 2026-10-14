@@ -133,6 +133,31 @@ class TestImageStitcher(BaseTester):
             assert out.shape[:-1] == torch.Size([1, 3, 6])
             assert out.shape[-1] <= 12
 
+    @pytest.mark.parametrize("estimator", ["ransac", "vanilla"])
+    def test_real_matcher_in_the_image_dtype(self, estimator, device, dtype):
+        # A real matcher, not keypoints mocked in the test dtype: a float16 or bfloat16 SIFT matcher returns float32
+        # keypoints and so a float32 homography, which the stitcher must warp the half-precision image with. The right
+        # crop overlaps the left one by 64 px of a 96 x 224 scene, so the panorama is about 224 px wide.
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS has no float64")
+        g = torch.Generator().manual_seed(0)
+        scene = torch.nn.functional.avg_pool2d(torch.rand(1, 1, 96, 224, generator=g), 5, 1, 2).expand(-1, 3, -1, -1)
+        left, right = scene[..., :144].to(device, dtype), scene[..., 80:].to(device, dtype)
+        matcher = kornia.feature.LocalFeatureMatcher(
+            kornia.feature.SIFTFeature(200), kornia.feature.DescriptorMatcher("snn", 0.8)
+        ).to(device, dtype)
+        stitcher = kornia.contrib.ImageStitcher(matcher, estimator=estimator)
+        torch.manual_seed(0)  # RANSAC sampling
+        with torch.no_grad():
+            pano = stitcher(left, right)
+            _, mask = stitcher.stitch_pair(left, right)
+        assert pano.dtype == mask.dtype == dtype
+        assert pano.shape[:3] == (1, 3, 96)
+        assert 220 <= pano.shape[-1] <= 236
+        assert bool(torch.isfinite(pano).all())
+        width = min(pano.shape[-1], 224)
+        assert (pano[..., :width].cpu().double() - scene[..., :width].double()).abs().median() < 0.05
+
     @pytest.mark.slow
     def test_exception(self, device, dtype):
         B, C, H, W = 1, 3, 224, 224
