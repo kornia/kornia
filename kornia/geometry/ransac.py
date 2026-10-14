@@ -88,14 +88,16 @@ def _affine_transfer_error(pts1: torch.Tensor, pts2: torch.Tensor, models: torch
     projective division and ``w' = 0`` guard, which an affine model's ``[0, 0, 1]`` bottom row makes unnecessary; like
     that function, it computes in at least float32.
     """
-    num_points = pts1.shape[-2]
-    dtype = torch.promote_types(torch.promote_types(pts1.dtype, pts2.dtype), models.dtype)
-    work = torch.promote_types(dtype, torch.float32)
-    x1 = pts1.reshape(num_points, 2).to(work)
-    x2 = pts2.reshape(num_points, 2).to(work)
-    linear = models[:, :2, :2].to(work).reshape(-1, 2)
-    projected = (linear @ x1.T).view(-1, 2, num_points) + models[:, :2, 2:].to(work)
-    return ((projected[:, 0] - x2[:, 0]).square() + (projected[:, 1] - x2[:, 1]).square()).to(dtype)
+    # Scoring needs the same precision as fitting, including inside mixed-precision pipelines.
+    with torch.autocast(device_type=pts1.device.type, enabled=False):
+        num_points = pts1.shape[-2]
+        dtype = torch.promote_types(torch.promote_types(pts1.dtype, pts2.dtype), models.dtype)
+        work = torch.promote_types(dtype, torch.float32)
+        x1 = pts1.reshape(num_points, 2).to(work)
+        x2 = pts2.reshape(num_points, 2).to(work)
+        linear = models[:, :2, :2].to(work).reshape(-1, 2)
+        projected = (linear @ x1.T).view(-1, 2, num_points) + models[:, :2, 2:].to(work)
+        return ((projected[:, 0] - x2[:, 0]).square() + (projected[:, 1] - x2[:, 1]).square()).to(dtype)
 
 
 @lru_cache(maxsize=32)

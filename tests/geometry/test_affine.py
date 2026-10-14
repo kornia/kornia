@@ -125,6 +125,43 @@ class TestFindAffine(BaseTester):
         tol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 2e-4
         self.assert_close(actual, expected, rtol=tol, atol=tol)
 
+    def test_autocast_preserves_float32_solver_precision(self, device):
+        """Float32 inputs must not let ambient AMP narrow the affine matrix products."""
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU/CUDA/MPS mixed-precision coverage")
+        autocast_dtype = torch.bfloat16 if device.type == "cpu" else torch.float16
+        u = torch.linspace(-500.0, 500.0, 64, device=device)
+        v = 100.0 * torch.tensor([1.0, -1.0], device=device).repeat(32)
+        theta = torch.tensor(45.0, device=device).deg2rad()
+        points = torch.stack(
+            (700.0 + u * theta.cos() - v * theta.sin(), 500.0 + u * theta.sin() + v * theta.cos()), dim=-1
+        )[None]
+        expected = torch.tensor([[1.5, -0.25, 4.0], [0.5, -2.0, -3.0], [0.0, 0.0, 1.0]], device=device)[None]
+        target = points @ expected[:, :2, :2].transpose(-1, -2) + expected[:, None, :2, 2]
+        weights = torch.linspace(0.1, 2.0, points.shape[1], device=device)[None]
+
+        reference = find_affine(points, target, weights)
+        reference_refit = _find_affine_linear(points - points[:, :1], target - target[:, :1])
+        reference_pair = _find_affine_linear_pair(points[:, 1:3] - points[:, :1], target[:, 1:3] - target[:, :1])
+        reference_triplet = _find_affine_triplet(points[:, :3], target[:, :3])
+
+        with torch.autocast(device.type, dtype=autocast_dtype):
+            actual = find_affine(points, target, weights)
+            refit = _find_affine_linear(points - points[:, :1], target - target[:, :1])
+            pair = _find_affine_linear_pair(points[:, 1:3] - points[:, :1], target[:, 1:3] - target[:, :1])
+            triplet = _find_affine_triplet(points[:, :3], target[:, :3])
+            assert torch.is_autocast_enabled(device.type)
+
+        assert actual.dtype == refit.dtype == pair.dtype == triplet.dtype == points.dtype
+        self.assert_close(actual, reference, rtol=0, atol=0)
+        self.assert_close(refit, reference_refit, rtol=0, atol=0)
+        self.assert_close(pair, reference_pair, rtol=0, atol=0)
+        self.assert_close(triplet, reference_triplet, rtol=0, atol=0)
+        self.assert_close(actual, expected, rtol=0, atol=3e-4)
+        self.assert_close(refit, expected[:, :2, :2], rtol=0, atol=1e-5)
+        self.assert_close(pair, expected[:, :2, :2], rtol=0, atol=1e-5)
+        self.assert_close(triplet, expected, rtol=0, atol=2e-4)
+
     def test_invalid_batches_are_nan(self, device, dtype):
         good, target, _ = self._points(device, dtype)
         bad = torch.tensor([[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]], device=device, dtype=dtype)[None]
@@ -285,7 +322,9 @@ class TestFindAffine(BaseTester):
         points, target, _ = self._points(device, dtype)
         weights = torch.tensor([[0.5, 1.0, 1.5, 2.0]], device=device, dtype=dtype)
         torch._dynamo.reset()
-        actual = torch.compile(find_affine, backend="eager", fullgraph=True)(points, target, weights)
+        autocast_dtype = torch.bfloat16 if device.type == "cpu" else torch.float16
+        with torch.autocast(device.type, dtype=autocast_dtype):
+            actual = torch.compile(find_affine, backend="eager", fullgraph=True)(points, target, weights)
         self.assert_close(actual, find_affine(points, target, weights))
 
     def test_weighted_fit_without_host_sync(self, device, dtype):

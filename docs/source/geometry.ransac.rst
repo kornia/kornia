@@ -14,7 +14,9 @@ Affine transforms
 ``model_type="affine"`` estimates a full 2D affine transform, including translation,
 from three non-collinear source points. It returns a source-to-target ``(3, 3)``
 matrix with bottom row ``[0, 0, 1]`` and a boolean ``(N,)`` inlier mask.
-``inl_th`` is a Euclidean distance in the target points' units. At least four
+``inl_th`` is a Euclidean distance in the target points' units.
+Affine fitting and residual scoring compute in at least float32, even inside an
+autocast context, and the returned matrix retains the input dtype. At least four
 inliers are required to accept a model; otherwise the result is the all-zero
 failure matrix and an all-false mask.
 
