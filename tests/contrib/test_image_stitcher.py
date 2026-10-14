@@ -80,7 +80,7 @@ class TestImageStitcher(BaseTester):
         assert out.shape[-1] == int(shift) + 56
         truth = _render(0, out.shape[-1]).to(device)
         # bilinear resampling of the smooth texture, no black mixed in and no covered pixel dropped: a dark or dropped
-        # pixel is off by 0.3 or more, so the bound is the final rounding to the image dtype
+        # pixel is off by 0.3 or more for these shifts; the bound is interpolation error plus the bf16 keypoint rounding
         tol = {torch.float32: 0.02, torch.float16: 0.02, torch.bfloat16: 0.04}[img_dtype]
         assert (out.float() - truth).abs().max().item() < tol
 
@@ -95,10 +95,11 @@ class TestImageStitcher(BaseTester):
         tol = {torch.float16: 0.02, torch.bfloat16: 0.04}[img_dtype]
         assert (out.float() - _render(0, out.shape[-1]).to(device)).abs().max().item() < tol
 
-    def test_image_and_mask_share_one_warp(self, device):
+    @pytest.mark.parametrize("img_dtype", [torch.float32, torch.float16])
+    def test_image_and_mask_share_one_warp(self, img_dtype, device):
         # I2: on MPS a half image is sampled on a half grid; a mask warped in a separate (float32) call lands on another
         # grid and marks pixels the image samples outside of as covered. One call keeps both on the same grid.
-        left, right = _render(0, 64).to(device), _render(40.5, 56).to(device)
+        left, right = _render(0, 64).to(device, img_dtype), _render(40.5, 56).to(device, img_dtype)
         stitcher = kornia.contrib.ImageStitcher(_ShiftMatcher([40.5]))
         with (
             patch(
@@ -109,7 +110,7 @@ class TestImageStitcher(BaseTester):
             stitcher.stitch_pair(left, right)
         assert w.call_count == 1
         assert w.call_args.args[0].shape[1] == 6  # three image channels and three mask channels
-        assert w.call_args.args[0].dtype == torch.float32
+        assert w.call_args.args[0].dtype == torch.float32  # also for a half image
 
     def test_batch_of_two_equals_each_sample_alone(self, device):
         left = torch.cat([_render(0, 64), _render(3, 64)]).to(device)
