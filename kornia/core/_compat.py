@@ -23,6 +23,8 @@ from typing import Any, Callable, Optional, Tuple, cast
 
 import torch
 
+from kornia.core.utils import is_compiling
+
 
 def torch_version() -> str:
     """Parse the PyTorch version string and remove build metadata.
@@ -129,12 +131,19 @@ def torch_version_ge(major: int, minor: int, patch: Optional[int] = None) -> boo
 
 
 def _emit_deprecation_warning(
-    name: str, replace_with: Optional[str], version: Optional[str], extra_reason: Optional[str]
+    name: str, replace_with: Optional[str], version: Optional[str], extra_reason: Optional[str], stacklevel: int = 3
 ) -> None:
     """Emit a deprecation warning with the given parameters.
 
     ``extra_reason`` is joined to the sentence with exactly one space, whatever whitespace it starts or ends with.
+    ``stacklevel`` counts from this function, so the default 3 names the line that called its caller.
+
+    Nothing is emitted while ``torch.compile`` or ``torch.export`` captures a graph: dynamo cannot trace
+    ``warnings.warn``, so warning there would break ``fullgraph=True`` for any code that calls a deprecated name.
+    Eager calls still warn on every call.
     """
+    if is_compiling():
+        return
     beginning = f"Since kornia {version} the " if version is not None else ""
     extra_reason = extra_reason.strip() if extra_reason else ""
     extra = f" {extra_reason}" if extra_reason else ""
@@ -146,7 +155,7 @@ def _emit_deprecation_warning(
     warnings.warn(
         msg,
         category=DeprecationWarning,
-        stacklevel=3,
+        stacklevel=stacklevel,
     )
 
 

@@ -12,6 +12,17 @@ kornia.core
 
 .. autofunction:: kornia.core.utils.batched_forward
 
+Device and autocast helpers
+---------------------------
+
+.. autofunction:: kornia.core.utils.get_cuda_device_if_available
+
+.. autofunction:: kornia.core.utils.get_mps_device_if_available
+
+.. autofunction:: kornia.core.utils.get_cuda_or_mps_device_if_available
+
+.. autofunction:: kornia.core.utils.is_autocast_enabled
+
 Weights
 -------
 

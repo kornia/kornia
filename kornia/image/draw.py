@@ -257,14 +257,20 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
 
 
 def draw_rectangle(
-    image: torch.Tensor, rectangle: torch.Tensor, color: Optional[torch.Tensor] = None, fill: Optional[bool] = None
+    image: torch.Tensor,
+    rectangle: torch.Tensor,
+    color: Optional[torch.Tensor] = None,
+    fill: Optional[bool] = None,
+    line_width: int = 1,
 ) -> torch.Tensor:
     r"""Draw N rectangles on a batch of image tensors.
 
     Convention:
         - A rectangle is ``[x1, y1, x2, y2]``, its two corners in either order and both included, with the
-          coordinates rounded as in :func:`~kornia.image.draw_line`. A side that lies outside the image is not drawn
-          and a fill is clipped to the image; neither raises.
+          coordinates rounded as in :func:`~kornia.image.draw_line`. Each side of the outline is ``line_width`` pixels
+          thick and grows inward, so the outline stays inside the rectangle; a side thicker than the rectangle covers
+          it. The outline and a fill are clipped to the image: the part of a side that lies outside the image is not
+          drawn, and neither raises.
         - The corners are rounded and the vertices of :func:`~kornia.image.draw_convex_polygon` are not, so a filled
           rectangle and the same polygon always agree for integer corners; for fractional ones each side can be one
           row or column apart, so a polygon thinner than a pixel can fill nothing.
@@ -276,10 +282,13 @@ def draw_rectangle(
         color: the colour, :math:`(C)` or :math:`(B, N, C)`, or a single value (0-d, :math:`(1)` or
             :math:`(B, N, 1)`). Black by default.
         fill: whether to fill the rectangles instead of drawing their outlines.
+        line_width: the thickness of each side of the outline in pixels, a positive integer. Ignored when
+            ``fill=True``.
 
     Raises:
         ShapeError: if the image is not ``(B, C, H, W)``. It is also a ``ValueError``.
         ValueError: if ``rectangle`` is not ``(B, N, 4)``, or its batch size differs from the image's.
+        ValueError: if ``line_width`` is not a positive ``int``.
 
     Returns:
         This operation modifies image inplace but also returns the drawn tensor for
@@ -289,8 +298,12 @@ def draw_rectangle(
         >>> img = torch.rand(2, 3, 10, 12)
         >>> rect = torch.tensor([[[0, 0, 4, 4]], [[4, 4, 11, 9]]])
         >>> out = draw_rectangle(img, rect)
+        >>> thick_out = draw_rectangle(img.clone(), rect, line_width=2)
 
     """
+    if not isinstance(line_width, int) or isinstance(line_width, bool) or line_width < 1:
+        raise ValueError("line_width must be a positive integer")
+
     KORNIA_CHECK_SHAPE(image, ["B", "C", "H", "W"])
     batch, c, h, w = image.shape
     batch_rect, num_rectangle, num_points = rectangle.shape
@@ -319,7 +332,7 @@ def draw_rectangle(
         color = color.expand(batch, num_rectangle, c)
 
     # one host read for the bands of every rectangle
-    bands: List[List[List[List[int]]]] = _rectangle_bands(x1, y1, x2, y2, h, w, 1, fill).tolist()
+    bands: List[List[List[List[int]]]] = _rectangle_bands(x1, y1, x2, y2, h, w, line_width, fill).tolist()
     for b in range(batch):
         for n in range(num_rectangle):
             for band in bands[b][n]:

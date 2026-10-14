@@ -20,7 +20,7 @@ import math
 import pytest
 import torch
 
-from kornia.core.exceptions import BaseError
+from kornia.core.exceptions import BaseError, TypeCheckError
 from kornia.geometry.liegroup import Se2, So2
 from kornia.geometry.vector import Vector2
 
@@ -406,6 +406,12 @@ class TestSe2(BaseTester):
         self.assert_close(t.grad, torch.ones_like(t))
         assert "_translation" in s.state_dict()
 
+    def test_integer_translation_raises(self, device):
+        # An integer translation cannot be optimizable state: a kornia error names its dtype instead of torch's
+        # autograd error (#5201). Cast it to a floating-point dtype first.
+        with pytest.raises(TypeCheckError, match=r"Se2 stores 'translation'.*torch.int64"):
+            Se2(So2.identity(1, device), torch.tensor([[1, 2]], device=device))
+
     def test_derived_state_moves_and_serializes(self, device, dtype):
         # A group built from a tensor with autograd history keeps that history; its state must
         # still be registered so ``state_dict`` and ``.to()`` / ``.double()`` reach it.
@@ -664,9 +670,8 @@ class TestSe2(BaseTester):
             Se2.random(1, device, dtype),
             Se2(So2.identity(1, device, dtype), Vector2(p)),
             from_exp * identity,
+            identity.inverse(),
         ]
-        if dtype != torch.float16:  # So2.inverse divides a ComplexHalf z, which the CPU does not implement
-            poses.append(identity.inverse())
         for pose in poses:
             assert isinstance(pose.t, torch.Tensor)
             assert pose.t.shape == (1, 2)

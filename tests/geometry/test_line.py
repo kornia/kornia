@@ -373,6 +373,19 @@ class TestParametrizedLine(BaseTester):
         # a tensor that does not require grad still becomes an optimizable parameter
         plain = ParametrizedLine(origin.detach().clone(), direction.detach().clone())
         assert [name for name, _ in plain.named_parameters()] == ["_origin", "_direction"]
+        plain.point_at(2.0).sum().backward()
+        self.assert_close(plain.origin.grad, torch.ones_like(origin))
+        self.assert_close(plain.direction.grad, torch.full_like(direction, 2.0))
+
+    def test_integer_input_raises(self, device):
+        # An integer origin or direction cannot be optimizable state: the constructor names the dtype instead of
+        # raising torch's autograd error (#5201). Cast it to a floating-point dtype first.
+        integer = torch.tensor([0, 0], device=device)
+        floating = torch.tensor([1.0, 0.0], device=device)
+        with pytest.raises(TypeCheckError, match=r"ParametrizedLine stores 'origin'.*torch.int64"):
+            ParametrizedLine(integer, floating)
+        with pytest.raises(TypeCheckError, match=r"ParametrizedLine stores 'direction'.*torch.int64"):
+            ParametrizedLine(floating, integer)
 
 
 def _near_vertical_points_5040(device, dtype) -> torch.Tensor:

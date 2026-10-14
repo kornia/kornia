@@ -91,8 +91,11 @@ def compute_padding(
     # that fewer patches are affected by the padding.
     # For now, just use the default padding
     vertical_padding = stride[0] - remainder_vertical if remainder_vertical != 0 else 0
+    # Stride alignment alone can leave the padded image smaller than one window.
+    vertical_padding = max(vertical_padding, window_size[0] - original_size[0])
 
     horizontal_padding = stride[1] - remainder_horizontal if remainder_horizontal != 0 else 0
+    horizontal_padding = max(horizontal_padding, window_size[1] - original_size[1])
 
     if vertical_padding % 2 == 0:
         top_padding = bottom_padding = vertical_padding // 2
@@ -328,7 +331,12 @@ def _check_patch_fit(original_size: Tuple[int, int], window_size: Tuple[int, int
     # the rest of the image is divided based on the stride, not the window
     # size
     # we can fit a full number of patches in, based on the stride, only if nothing remains
-    return remainder_horizontal == 0 and remainder_vertical == 0
+    return (
+        original_size[0] >= window_size[0]
+        and original_size[1] >= window_size[1]
+        and remainder_horizontal == 0
+        and remainder_vertical == 0
+    )
 
 
 def combine_tensor_patches(

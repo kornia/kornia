@@ -213,3 +213,51 @@ class TestVideoSequential:
         assert same_batch == same_on_batch
 
         reproducibility_test(x, aug)
+
+    def test_tensor_annotation_methods_preserve_video_shape_and_accept_empty_or_noncontiguous(self, device, dtype):
+        video = torch.rand(2, 3, 1, 6, 6, device=device, dtype=dtype)
+        aug = K.VideoSequential(K.RandomHorizontalFlip(p=1.0), data_format="BTCHW")
+        aug(video)
+        params = aug._params
+
+        # Integer coordinates keep the flip and its inverse exact in float16 and bfloat16.
+        keypoints = torch.randint(0, 6, (2, 3, 4, 2), device=device).to(dtype)
+        transformed = aug.transform_keypoints(keypoints, params)
+        assert transformed.shape == keypoints.shape
+        assert_close(aug.inverse_keypoints(transformed, params), keypoints)
+
+        noncontiguous_keypoints = keypoints.transpose(0, 1).contiguous().transpose(0, 1)
+        assert not noncontiguous_keypoints.is_contiguous()
+        assert_close(aug.transform_keypoints(noncontiguous_keypoints, params), transformed)
+        assert_close(aug.inverse_keypoints(noncontiguous_keypoints, params), aug.inverse_keypoints(keypoints, params))
+
+        empty_keypoints = keypoints[:, :, :0]
+        assert aug.transform_keypoints(empty_keypoints, params).shape == empty_keypoints.shape
+        assert aug.inverse_keypoints(empty_keypoints, params).shape == empty_keypoints.shape
+
+        boxes = torch.randint(0, 6, (2, 3, 2, 4, 2), device=device).to(dtype)
+        transformed_boxes = aug.transform_boxes(boxes, params)
+        assert transformed_boxes.shape == boxes.shape
+        assert_close(aug.inverse_boxes(transformed_boxes, params), boxes)
+
+        noncontiguous_boxes = boxes.transpose(0, 1).contiguous().transpose(0, 1)
+        assert not noncontiguous_boxes.is_contiguous()
+        assert_close(aug.transform_boxes(noncontiguous_boxes, params), transformed_boxes)
+        assert_close(aug.inverse_boxes(noncontiguous_boxes, params), aug.inverse_boxes(boxes, params))
+
+        empty_boxes = boxes[:, :, :0]
+        assert aug.transform_boxes(empty_boxes, params).shape == empty_boxes.shape
+        assert aug.inverse_boxes(empty_boxes, params).shape == empty_boxes.shape
+
+    def test_tensor_annotation_methods_accept_an_empty_video_batch(self, device, dtype):
+        aug = K.VideoSequential(K.RandomHorizontalFlip(p=1.0), data_format="BTCHW")
+        aug(torch.rand(0, 3, 1, 6, 6, device=device, dtype=dtype))
+        params = aug._params
+
+        keypoints = torch.rand(0, 3, 4, 2, device=device, dtype=dtype)
+        assert aug.transform_keypoints(keypoints, params).shape == keypoints.shape
+        assert aug.inverse_keypoints(keypoints, params).shape == keypoints.shape
+
+        boxes = torch.rand(0, 3, 2, 4, 2, device=device, dtype=dtype)
+        assert aug.transform_boxes(boxes, params).shape == boxes.shape
+        assert aug.inverse_boxes(boxes, params).shape == boxes.shape

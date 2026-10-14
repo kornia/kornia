@@ -399,9 +399,11 @@ class VideoSequential(ImageSequential):
         """
         if isinstance(input, torch.Tensor):
             batchsize, frame_num = input.size(0), input.size(1)
-            input = Boxes.from_tensor(input.view(-1, input.size(2), input.size(3), input.size(4)), mode="vertices_plus")
+            input = Boxes.from_tensor(
+                input.reshape(batchsize * frame_num, input.size(2), input.size(3), input.size(4)), mode="vertices_plus"
+            )
             input = super().transform_boxes(input, params, extra_args=extra_args)
-            input = input.data.view(batchsize, frame_num, -1, 4, 2)
+            input = input.data.reshape(batchsize, frame_num, input.data.size(1), 4, 2)
         else:
             input = super().transform_boxes(input, params, extra_args=extra_args)
         return input
@@ -419,9 +421,11 @@ class VideoSequential(ImageSequential):
         """
         if isinstance(input, torch.Tensor):
             batchsize, frame_num = input.size(0), input.size(1)
-            input = Boxes.from_tensor(input.view(-1, input.size(2), input.size(3), input.size(4)), mode="vertices_plus")
+            input = Boxes.from_tensor(
+                input.reshape(batchsize * frame_num, input.size(2), input.size(3), input.size(4)), mode="vertices_plus"
+            )
             input = super().inverse_boxes(input, params, extra_args=extra_args)
-            input = input.data.view(batchsize, frame_num, -1, 4, 2)
+            input = input.data.reshape(batchsize, frame_num, input.data.size(1), 4, 2)
         else:
             input = super().inverse_boxes(input, params, extra_args=extra_args)
         return input
@@ -442,9 +446,9 @@ class VideoSequential(ImageSequential):
         """
         if isinstance(input, torch.Tensor):
             batchsize, frame_num = input.size(0), input.size(1)
-            input = Keypoints(input.view(-1, input.size(2), input.size(3)))
+            input = Keypoints(input.reshape(batchsize * frame_num, input.size(2), input.size(3)))
             input = super().transform_keypoints(input, params, extra_args=extra_args)
-            input = input.data.view(batchsize, frame_num, -1, 2)
+            input = input.data.reshape(batchsize, frame_num, input.data.size(1), 2)
         else:
             input = super().transform_keypoints(input, params, extra_args=extra_args)
         return input
@@ -464,10 +468,10 @@ class VideoSequential(ImageSequential):
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
         if isinstance(input, torch.Tensor):
-            frame_num, batchsize = input.size(0), input.size(1)
-            input = Keypoints(input.view(-1, input.size(2), input.size(3)))
+            batchsize, frame_num = input.size(0), input.size(1)
+            input = Keypoints(input.reshape(batchsize * frame_num, input.size(2), input.size(3)))
             input = super().inverse_keypoints(input, params, extra_args=extra_args)
-            input = input.data.view(batchsize, frame_num, -1, 2)
+            input = input.data.reshape(batchsize, frame_num, input.data.size(1), 2)
         else:
             input = super().inverse_keypoints(input, params, extra_args=extra_args)
         return input
