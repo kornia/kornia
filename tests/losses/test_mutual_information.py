@@ -1020,6 +1020,25 @@ class TestConventionsMutualInformation(BaseTester):
                 if masked:
                     self.assert_close(grad[~mask], torch.zeros_like(grad[~mask]), rtol=0, atol=0)
 
+    def test_large_k_matches_cpu_5873(self, device, dtype):
+        """A batched 184 x 184 pair (K = 33856) matches the CPU MI and NMI (#5873)."""
+        # K is inside the band where MPS summed past a non-contiguous matmul operand. The leading 1
+        # keeps that K and makes the contraction a batched matmul. No mask: one that drops K to
+        # 32768 or below misses the bug.
+        g = torch.Generator().manual_seed(8)
+        u = torch.rand(1, 184, 184, generator=g)
+        v = u**2 + 0.05 * torch.rand(1, 184, 184, generator=g)
+        x, y = u.to(device, dtype), v.to(device, dtype)
+        cpu_x, cpu_y = u.to(dtype), v.to(dtype)
+        for loss_fn in (mutual_information_loss_2d, normalized_mutual_information_loss_2d):
+            actual = loss_fn(x, y)
+            expected = loss_fn(cpu_x, cpu_y)
+            assert actual.dtype == dtype
+            assert actual.device == device
+            assert actual.isfinite().all()
+            assert expected.isfinite().all()
+            self.assert_close(actual.cpu(), expected)
+
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
     @pytest.mark.parametrize(

@@ -1,0 +1,1 @@
+`mutual_information_loss`, `normalized_mutual_information_loss`, their `_2d` and `_3d` forms and the `MILossFromRef` and `NMILossFromRef` modules now match the CPU results on MPS for about 33k-70k samples, such as a 184x184 image, while CPU results stay the same (#5873).

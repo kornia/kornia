@@ -341,8 +341,10 @@ class EntropyBasedLossBase(torch.nn.Module):
         vals_2 = self.kernel_function(diff_2)
 
         # Autocast would undo the promotion at this matrix multiplication.
+        # Copy the transposed K on every device. MPS sums past a non-contiguous one for about
+        # 33k-70k samples (pytorch/pytorch#195163, kornia#5873).
         with torch.autocast(device_type=other_signal.device.type, enabled=False):
-            return torch.einsum("...in,...jn->...ij", vals_1, vals_2)
+            return vals_1 @ vals_2.transpose(-1, -2).contiguous()
 
     def entropies(
         self, other_signal: torch.Tensor, other_mask: torch.Tensor | None = None
