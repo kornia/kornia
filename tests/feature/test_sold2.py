@@ -425,9 +425,9 @@ class TestConventionsSOLD2(BaseTester):
         assert matches.shape == (2,)
         assert ((matches >= -1) & (matches < 3)).all()
 
-    def test_wart_sold2_match_returns_int32_when_a_set_of_segments_is_empty_5915(self, device, dtype):
-        # SOLD2.match returns an int64 index per segment of line_seg1, but int32 when either set of segments is empty
-        # (#5915): an empty tensor when image 1 has no segments, -1 per segment when image 2 has none.
+    def test_convention_sold2_match_returns_int64_when_a_set_of_segments_is_empty(self, device, dtype):
+        # SOLD2.match returns an int64 index per segment of line_seg1, also when either set of segments is empty:
+        # an empty tensor when image 1 has no segments, -1 per segment when image 2 has none (#5915).
         model = SOLD2(pretrained=False)
         segments = torch.tensor([[[10.0, 10.0], [50.0, 90.0]], [[20.0, 70.0], [55.0, 20.0]]], device=device)
         maps = torch.rand(2, 1, 128, 16, 24, device=device, dtype=dtype)
@@ -437,9 +437,9 @@ class TestConventionsSOLD2(BaseTester):
             (segments[:0], segments[:0], []),
         ):
             matches = model.match(line_seg1, line_seg2, maps[0], maps[1])
-            assert matches.dtype == torch.int32
+            assert matches.dtype == torch.int64
             assert matches.device == maps.device
             assert matches.tolist() == expected
-        # two non-empty sets give int64 (float32 maps: torch 2.5.1 has no CPU half grid_sample)
+        # two non-empty sets give int64 as well (float32 maps: torch 2.5.1 has no CPU half grid_sample)
         matches = model.match(segments, segments, maps[0].float(), maps[1].float())
         assert matches.dtype == torch.int64
