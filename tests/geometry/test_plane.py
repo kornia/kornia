@@ -123,9 +123,9 @@ class TestFitPlane(BaseTester):
     @pytest.mark.parametrize("batched", [False, True])
     @pytest.mark.parametrize("large", [False, True])
     def test_fit_plane_preserves_plane_at_large_scale(self, device, dtype, wrapped, batched, large):
-        scale = (2e38 if dtype == torch.bfloat16 else 4e4) if large else 1.0
-        # The rectangle lies in z=1 at either scale. Its first singular value is twice its width scale,
-        # which overflows float16 at 4e4; bfloat16's largest scale also overflows centering in float32.
+        scale = 4e4 if large else 1.0
+        # The rectangle lies in z=1 at either scale. Its first singular value is twice its width scale, which
+        # overflowed float16 at 4e4 once cast back (#5821); the other dtypes are controls.
         points = (
             torch.tensor(
                 [[-1.0, -0.5, 0.0], [-1.0, 0.5, 0.0], [1.0, -0.5, 0.0], [1.0, 0.5, 0.0]], device=device, dtype=dtype
@@ -158,19 +158,15 @@ class TestFitPlane(BaseTester):
     @pytest.mark.parametrize("wrapped", [False, True])
     @pytest.mark.parametrize("batched", [False, True])
     def test_fit_plane_oblique_offset(self, device, dtype, wrapped, batched):
-        # These representable corners satisfy x + y - z = 32. Bfloat16 rounds z so the constant becomes zero.
+        # The corners satisfy x + y - z = 32 exactly in every dtype. Half-precision products of the offset
+        # cancel: float16 returned -18.5 and bfloat16 -18.0 instead of -32 / sqrt(3) = -18.475.
         points = torch.tensor(
-            [
-                [25600.0, 27648.0, 53216.0],
-                [27648.0, 25600.0, 53216.0],
-                [29696.0, 31744.0, 61408.0],
-                [31744.0, 29696.0, 61408.0],
-            ],
+            [[256.0, 256.0, 480.0], [256.0, 512.0, 736.0], [512.0, 256.0, 736.0], [512.0, 512.0, 992.0]],
             device=device,
             dtype=dtype,
         )
         expected_normal = points.new_tensor([1.0, 1.0, -1.0]) / 3**0.5
-        expected_offset = points.new_tensor(-(0.0 if dtype == torch.bfloat16 else 32.0) / 3**0.5)
+        expected_offset = points.new_tensor(-32.0 / 3**0.5)
         if batched:
             points = torch.stack([points, points[:, [2, 0, 1]]])
             expected_normal = torch.stack([expected_normal, expected_normal[[2, 0, 1]]])
@@ -179,18 +175,13 @@ class TestFitPlane(BaseTester):
         plane = fit_plane(Vector3(points) if wrapped else points)
         sign = (plane.normal.data * expected_normal).sum(-1).sign()
         self.assert_close(plane.normal.data * sign[..., None], expected_normal)
-        if device.type == "mps" and dtype == torch.float32:
-            # The offset cancels large coordinates; allow one input-scale float32 epsilon on MPS.
-            atol = torch.finfo(dtype).eps * points.detach().abs().amax().item()
-            self.assert_close(plane.offset.data * sign, expected_offset, rtol=1e-4, atol=atol)
-        else:
-            self.assert_close(plane.offset.data * sign, expected_offset)
+        self.assert_close(plane.offset.data * sign, expected_offset)
         plane.offset.data.sum().backward()
         assert points.grad is not None
         assert torch.isfinite(points.grad).all()
 
     def test_dynamo_large_scale(self, device, dtype, torch_optimizer):
-        scale = 2e38 if dtype == torch.bfloat16 else 4e4
+        scale = 4e4
         points = torch.tensor(
             [[-1.0, -0.5, 1.0], [-1.0, 0.5, 1.0], [1.0, -0.5, 1.0], [1.0, 0.5, 1.0]], device=device, dtype=dtype
         )

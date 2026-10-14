@@ -325,16 +325,11 @@ def fit_plane(points: Vector3) -> Hyperplane:
             )
 
     points_data = _unwrap(points)
+    # Half inputs are fitted in float32, which holds every half-precision value exactly, and only the plane is
+    # cast back. The first singular value grows with the square root of the number of points times their spread,
+    # so it overflows float16 for a point cloud in millimetres, and the offset's products cancel in half precision.
     half = points_data.dtype in (torch.float16, torch.bfloat16)
-    if half:
-        # Scale before centering so finite half inputs cannot overflow the mean, differences,
-        # or singular values. Uniform scaling preserves the fitted normal and relative rank.
-        points_work = points_data.float()
-        scale = points_work.detach().abs().amax(dim=(-2, -1), keepdim=True)
-        scale = torch.where(scale > 0, scale, torch.ones_like(scale))
-        points_work = points_work / scale
-    else:
-        points_work = points_data
+    points_work = points_data.float() if half else points_data
     mean = points_work.mean(-2, True)
     points_centered = points_work - mean
 
@@ -354,8 +349,7 @@ def fit_plane(points: Vector3) -> Hyperplane:
     direction = V[..., :, -1]  # BxD
     origin = mean[..., 0, :]  # BxD
     if half:
-        # Compute the offset in scaled working precision before restoring its units and output dtype.
-        offset = (-batched_dot_product(origin, direction) * scale[..., 0, 0]).to(points_data.dtype)
-        return Hyperplane(Vector3(direction.to(points_data.dtype)), Scalar(offset))
+        offset = -batched_dot_product(direction, origin)
+        return Hyperplane(Vector3(direction.to(points_data.dtype)), Scalar(offset.to(points_data.dtype)))
 
     return Hyperplane.from_vector(Vector3(direction), Vector3(origin))
