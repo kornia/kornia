@@ -360,6 +360,19 @@ class TestHomographyWarper(BaseTester):
         self.assert_close(actual, reference)
         self.assert_close(actual_grad * scale, reference_grad)
 
+    def test_warp_grid_keeps_a_gradient_for_an_all_zero_matrix(self, device, dtype):
+        # A zero matrix has no nonzero magnitude to scale by. The gauge must fall back to 1 instead of
+        # dividing by the infinite "smallest magnitude", which would collapse every grid gradient to 0.
+        grid = kornia.geometry.create_meshgrid(3, 3, normalized_coordinates=True, device=device, dtype=dtype)
+        matrix = torch.zeros(1, 3, 3, device=device, dtype=dtype).requires_grad_(True)
+
+        warped = kornia.geometry.transform.warp_grid(grid, matrix)
+        grad = torch.autograd.grad(warped.sum(), matrix)[0]
+
+        assert torch.isfinite(warped).all()
+        assert torch.isfinite(grad).all()
+        assert grad.abs().sum() > 0
+
     @pytest.mark.parametrize("batch_shape", [(1, 1, 7, 5), (2, 3, 8, 5), (1, 1, 7, 16)])
     def test_gradcheck(self, batch_shape, device):
         dtype = torch.float64

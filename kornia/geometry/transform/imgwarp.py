@@ -124,7 +124,10 @@ def _unit_projective_scale(matrix: torch.Tensor) -> torch.Tensor:
     largest = magnitude.amax(dim=(-2, -1), keepdim=True)
     smallest = magnitude.masked_fill(magnitude == 0, float("inf")).amin(dim=(-2, -1), keepdim=True)
     scale = torch.minimum(largest, torch.ones_like(largest)).clamp_min(smallest)
-    return torch.where(scale > 0, scale, torch.ones_like(scale))
+    # An all-zero matrix leaves `smallest` infinite, and dividing by infinity would collapse the
+    # warp's gradient to zero. Anything that is not a finite positive scale is left alone.
+    usable = (scale > 0) & torch.isfinite(scale)
+    return torch.where(usable, scale, torch.ones_like(scale))
 
 
 def _empty_warp_output_2d(
