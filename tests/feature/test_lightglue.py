@@ -891,8 +891,6 @@ class TestLightGlueAllPrunedScoreDtype(BaseTester):
     @pytest.mark.parametrize("input_dim", [16, 8], ids=["input_dim_eq_descriptor_dim", "input_dim_ne_descriptor_dim"])
     @pytest.mark.parametrize("mp", [False, True], ids=["mp_off", "mp_on"])
     def test_all_points_pruned_gives_the_score_dtype_of_kept_points_5877(self, device, dtype, input_dim, mp):
-        if mp and device.type == "cpu" and dtype == torch.float16:
-            pytest.skip("a float16 model with mp=True on CPU raises (#5897)")
         TestLightGluePruningDtype._skip_without_empty_attention(device, dtype)
         model = self._model(device, dtype, input_dim, mp)
         kept = self._forward(model, True, device, dtype)
@@ -928,26 +926,85 @@ class TestLightGlueAllPrunedScoreDtype(BaseTester):
         out = TestLightGluePruningDtype._forward(model, {"image0": empty, "image1": dict(empty)})
         assert TestLightGluePruningDtype._floating_dtypes(out) == {dtype}
 
-    def test_wart_lightglue_mixed_precision_cpu_float16_model_raises_5897(self, device, dtype):
-        if device.type != "cpu" or dtype != torch.float16:
-            pytest.skip("CPU autocast to bfloat16 meets a float16 model only on CPU")
-        # #5897: in the first layer, autocast's bfloat16 outputs meet float16 tensors: in the torch.cat that feeds the
-        # self-attention FFN when input_proj is an identity, and in that FFN's LayerNorm when it is a linear layer.
-        for input_dim, message in ((self._DIM, "prioritize"), (8, "mixed dtype")):
-            model = self._model(device, dtype, input_dim, mp=True)
-            with pytest.raises(RuntimeError, match=message):
-                self._forward(model, True, device, dtype)
-        # "keynet_affnet_hardnet" raises before the layers, in scale_laf, also for an image without descriptors.
-        with unittest.mock.patch("kornia.feature.lightglue.load_state_dict_from_url", return_value={}):
-            keynet = LightGlue("keynet_affnet_hardnet", n_layers=1, mp=True).to(device, dtype).eval()
-        empty = {
-            "keypoints": torch.empty(1, 0, 2, device=device, dtype=dtype),
-            "descriptors": torch.empty(1, 0, 128, device=device, dtype=dtype),
+    @staticmethod
+    def _record_autocast(model, device_type):
+        # The autocast state the first layer runs under.
+        seen = []
+
+        def hook(module, args):
+            seen.append((torch.is_autocast_enabled(device_type), torch.get_autocast_dtype(device_type)))
+
+        model.transformers[0].register_forward_pre_hook(hook)
+        return seen
+
+    @pytest.mark.parametrize("input_dim", [16, 8], ids=["input_dim_eq_descriptor_dim", "input_dim_ne_descriptor_dim"])
+    def test_convention_lightglue_mixed_precision_cpu_float16_model_autocasts_to_float16_5897(self, device, input_dim):
+        if device.type != "cpu":
+            pytest.skip("the rule is CPU's: MPS and CUDA autocast to float16 for every model")
+        # With mp=True on CPU, a float16 model autocasts to float16, and any other model to bfloat16, CPU autocast's
+        # default. Autocast's bfloat16 outputs meeting the float16 tensors of a float16 model raised in the first layer.
+        model = self._model(device, torch.float16, input_dim, mp=True)
+        seen = self._record_autocast(model, device.type)
+        out = self._forward(model, True, device, torch.float16)
+        assert seen == [(True, torch.float16)]
+        ref = self._forward(self._model(device, torch.float16, input_dim, mp=False), True, device, torch.float16)
+        assert TestLightGluePruningDtype._floating_dtypes(out) == {torch.float16}
+        assert (ref["matches0"] > -1).any()
+        for key in ("matches0", "matches1"):
+            self.assert_close(out[key], ref[key])
+        # Autocast normalises the keypoints in float32 and promotes concatenations with float32 tensors, so the scores
+        # round differently from the plain float16 pass, within two float16 steps at 1.
+        for key in ("matching_scores0", "matching_scores1"):
+            assert out[key].isfinite().all()
+            self.assert_close(out[key], ref[key], rtol=0.0, atol=2e-3)
+        float32 = self._model(device, torch.float32, input_dim, mp=True)
+        seen = self._record_autocast(float32, device.type)
+        self._forward(float32, True, device, torch.float32)
+        assert seen == [(True, torch.bfloat16)]
+
+    def test_convention_lightglue_mixed_precision_cpu_float16_model_reads_lafs_5897(self, device):
+        if device.type != "cpu":
+            pytest.skip("the rule is CPU's: MPS and CUDA autocast to float16 for every model")
+        # "keynet_affnet_hardnet" reads the LAFs before the layers, where bfloat16 autocast raised for a float16 model,
+        # also for an image without descriptors.
+
+        def keynet(mp):
+            torch.manual_seed(0)
+            with unittest.mock.patch("kornia.feature.lightglue.load_state_dict_from_url", return_value={}):
+                return LightGlue("keynet_affnet_hardnet", n_layers=2, mp=mp).to(device, torch.float16).eval()
+
+        g = torch.Generator().manual_seed(1)
+        kpts = torch.rand(1, 6, 2, generator=g) * 80 + 10
+        lafs = laf_from_center_scale_ori(
+            kpts, torch.rand(1, 6, 1, 1, generator=g) * 5 + 1, torch.rand(1, 6, 1, generator=g) * 360
+        )
+        image = {
+            "keypoints": kpts.to(device, torch.float16),
+            "descriptors": torch.randn(1, 6, 128, generator=g).to(device, torch.float16),
             "image_size": torch.tensor([[100, 100]], device=device),
-            "lafs": torch.empty(1, 0, 2, 3, device=device, dtype=dtype),
+            "lafs": lafs.to(device, torch.float16),
         }
-        with pytest.raises(RuntimeError, match="prioritize"):
-            TestLightGluePruningDtype._forward(keynet, {"image0": empty, "image1": dict(empty)})
+        model = keynet(True)
+        seen = self._record_autocast(model, device.type)
+        out = TestLightGluePruningDtype._forward(model, {"image0": image, "image1": dict(image)})
+        assert seen == [(True, torch.float16)]
+        ref = TestLightGluePruningDtype._forward(keynet(False), {"image0": image, "image1": dict(image)})
+        assert TestLightGluePruningDtype._floating_dtypes(out) == {torch.float16}
+        assert (ref["matches0"] > -1).any()
+        for key in ("matches0", "matches1"):
+            self.assert_close(out[key], ref[key])
+        for key in ("matching_scores0", "matching_scores1"):  # tolerance as for the other configurations
+            assert out[key].isfinite().all()
+            self.assert_close(out[key], ref[key], rtol=0.0, atol=2e-3)
+        empty = {
+            "keypoints": torch.empty(1, 0, 2, device=device, dtype=torch.float16),
+            "descriptors": torch.empty(1, 0, 128, device=device, dtype=torch.float16),
+            "image_size": torch.tensor([[100, 100]], device=device),
+            "lafs": torch.empty(1, 0, 2, 3, device=device, dtype=torch.float16),
+        }
+        out = TestLightGluePruningDtype._forward(keynet(True), {"image0": empty, "image1": dict(empty)})
+        assert out["matching_scores0"].shape == (1, 0)
+        assert TestLightGluePruningDtype._floating_dtypes(out) == {torch.float16}
 
     def test_wart_lightglue_batch_with_point_pruning_raises_5898(self, device, dtype):
         if device.type == "cuda":

@@ -477,15 +477,13 @@ class LightGlue(nn.Module):
           reads ``lafs``. :class:`~kornia.feature.LightGlueMatcher` builds them from LAFs.
         - The matching scores, ``matching_scores0``, ``matching_scores1`` and ``scores``, are in the dtype of the
           descriptors with ``mp=False``. With ``mp=True``, autocast sets it, for every configuration and also when
-          point pruning removes every point: on CPU, float32 descriptors give bfloat16 scores, and float64 and
-          bfloat16 ones keep their dtype; on MPS, float32, float16 and bfloat16 descriptors give float32 scores; on
-          CUDA, float32 descriptors give float32 scores. An image without descriptors runs no layer, and its zero
-          scores keep the descriptor dtype, also with ``mp=True``.
-        - Known defects: with ``mp=True`` on CPU, a float16 model raises a ``RuntimeError`` in its first layer, and
-          with the ``"keynet_affnet_hardnet"`` configuration already when it reads the ``lafs``, also for an image
-          without descriptors (`#5897 <https://github.com/kornia/kornia/issues/5897>`_). A batch of more than one
-          pair raises an ``IndexError`` when point pruning runs and keeps a point
-          (`#5898 <https://github.com/kornia/kornia/issues/5898>`_).
+          point pruning removes every point. On CPU, autocast runs in float16 for a float16 model and in bfloat16,
+          CPU autocast's default, for any other model: float32 descriptors give bfloat16 scores, and float64,
+          float16 and bfloat16 ones keep their dtype. On MPS, float32, float16 and bfloat16 descriptors give float32
+          scores; on CUDA, float32 descriptors give float32 scores. An image without descriptors runs no layer, and
+          its zero scores keep the descriptor dtype, also with ``mp=True``.
+        - Known defects: a batch of more than one pair raises an ``IndexError`` when point pruning runs and keeps a
+          point (`#5898 <https://github.com/kornia/kornia/issues/5898>`_).
 
     Args:
         features: The type of local features to match (e.g., 'superpoint', 'disk'), whose configuration and
@@ -727,7 +725,10 @@ class LightGlue(nn.Module):
             stop, prune0, prune1: diagnostics of early stopping and point pruning
         """
         device_type = data["image0"]["keypoints"].device.type
-        with torch.autocast(enabled=self.conf.mp, device_type=device_type):
+        # CPU autocast defaults to bfloat16, whose outputs cannot meet the float16 tensors of a float16 model, so such a
+        # model autocasts to float16 there.
+        dtype = torch.float16 if device_type == "cpu" and self.posenc.Wr.weight.dtype == torch.float16 else None
+        with torch.autocast(enabled=self.conf.mp, device_type=device_type, dtype=dtype):
             return self._forward(data)
 
     def _forward(self, data: dict) -> dict:  # type: ignore
