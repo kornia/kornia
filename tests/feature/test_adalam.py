@@ -65,7 +65,8 @@ class TestAdalamExact(BaseTester):
     def test_public_matchers_5866(self, device, dtype, api, translated):
         g = torch.Generator().manual_seed(4)
         n = 200
-        xy = torch.randint(0, 400, (1, n, 2), generator=g).to(device, dtype)
+        # Even coordinates below 512 stay exact in bfloat16 after the +16 shift; odd values in [240, 256) do not.
+        xy = (2 * torch.randint(0, 200, (1, n, 2), generator=g)).to(device, dtype)
         desc = torch.randn(n, 32, generator=g).to(device, dtype)
         lafs = laf_from_center_scale_ori(xy, torch.full((1, n, 1, 1), 10.0, device=device, dtype=dtype))
         moved = lafs.clone()
