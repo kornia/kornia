@@ -1206,5 +1206,8 @@
     "torch_meshgrid",
     "vec_like",
     "xla_is_available"
+  ],
+  "kornia.utils.sample": [
+    "get_sample_images"
   ]
 }
