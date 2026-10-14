@@ -191,7 +191,7 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
 
         Needs to be more fancy later.
         """
-        dets = detections or self.forward(images)
+        dets = self.forward(images) if detections is None else detections
         output = []
         for image, detection in zip(images, dets):
             out_img = image[None].clone()
