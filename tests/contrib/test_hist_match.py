@@ -22,6 +22,8 @@ import kornia
 
 from testing.base import BaseTester
 
+inf = float("inf")
+
 
 class TestHistMatch(BaseTester):
     def test_interp(self, device, dtype):
@@ -189,3 +191,58 @@ class TestHistMatch(BaseTester):
             kornia.contrib.histogram_matching(
                 torch.rand(1, 3, 4, 5, device=device, dtype=dtype), torch.zeros(0, 3, 4, 5, device=device, dtype=dtype)
             )
+
+    def test_interp_integer_inputs_return_floats(self, device):
+        # Main returned float32 [1.5, 3.0, 13.5] here; lerp has no integer kernel.
+        x = torch.tensor([4, 5, 6], device=device)
+        xp = torch.tensor([1, 2, 3], device=device)
+        fp = torch.tensor([4, 2, 0], device=device)
+        out = kornia.contrib.interp(x, xp, fp)
+        assert out.dtype == torch.get_default_dtype()
+        assert out.tolist() == [-2.0, -4.0, -6.0]
+
+    @pytest.mark.parametrize(
+        ("fp", "x", "expected"),
+        [
+            # np.interp(x, [0, 1, 2, 3], fp) for each case
+            ([3.0, 4.0, inf, inf], [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0], [3.0, 3.5, 4.0, inf, inf, inf, inf]),
+            ([-inf, 2.0, 3.0, 4.0], [0.0, 0.25, 0.5, 1.0, 1.5, 2.0, 3.0], [-inf, -inf, -inf, 2.0, 2.5, 3.0, 4.0]),
+            ([3.0, 4.0, 5.0, 5.0], [0.5, 1.5, 2.5, 3.0], [3.5, 4.5, 5.0, 5.0]),
+        ],
+    )
+    def test_interp_non_finite_fp_matches_numpy(self, fp, x, expected, device, dtype):
+        xp = torch.tensor([0.0, 1.0, 2.0, 3.0], device=device, dtype=dtype)
+        out = kornia.contrib.interp(
+            torch.tensor(x, device=device, dtype=dtype), xp, torch.tensor(fp, device=device, dtype=dtype)
+        )
+        assert out.tolist() == expected
+
+    def test_template_with_minus_inf_maps_the_lowest_value_to_minus_inf(self, device):
+        src = torch.tensor([0.0, 1.0, 2.0, 3.0], device=device)
+        tpl = torch.tensor([-inf, 2.0, 3.0, 4.0], device=device)
+        out = kornia.contrib.histogram_matching(src, tpl)
+        assert out.tolist() == [-inf, 2.0, 3.0, 4.0]
+
+    def test_interp_propagates_nan(self, device, dtype):
+        xp = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
+        nan = float("nan")
+        out = kornia.contrib.interp(torch.tensor([nan, 0.5], device=device, dtype=dtype), xp, xp)
+        assert out[0].isnan()
+        assert out[1] == 0.5
+        out = kornia.contrib.interp(
+            torch.tensor([0.5, 1.0], device=device, dtype=dtype),
+            xp,
+            torch.tensor([0.0, nan], device=device, dtype=dtype),
+        )
+        assert out.isnan().all()
+
+    def test_interp_half_x_with_float32_fp_keeps_float32_precision(self, device):
+        # np.interp([0.3, 0.77, 1.4], [0, 1, 2], [10, 20.001, 45.123456]) in float64 with the half x rounded first:
+        # [13.000788165, 17.700964891, 30.059795149]. Computing the weight in half precision was off by 2e-3.
+        x = torch.tensor([0.3, 0.77, 1.4], device=device, dtype=torch.float16)
+        xp = torch.tensor([0.0, 1.0, 2.0], device=device, dtype=torch.float16)
+        fp = torch.tensor([10.0, 20.001, 45.123456], device=device)
+        out = kornia.contrib.interp(x, xp, fp)
+        expected = torch.tensor([13.000788165, 17.700964891, 30.059795149], device=device)
+        assert out.dtype == torch.float32
+        assert (out - expected).abs().max() < 1e-5

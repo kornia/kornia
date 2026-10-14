@@ -981,7 +981,7 @@ A(
         K.contrib.combine_tensor_patches,
         [_patches_o],
         {"original_size": (32, 48), "window_size": (8, 12), "stride": (4, 6), "unpadding": (2, 3)},
-        note="overlapping windows: divides by ones-fold count (eps=1e-8)",
+        note="overlapping windows: divides by the exact ones-fold overlap count",
     )
 )
 _patches_a = K.contrib.extract_tensor_patches(_x, window_size=10, stride=7, allow_auto_padding=True)

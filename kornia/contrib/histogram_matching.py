@@ -96,15 +96,24 @@ def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.Tensor:
         the interpolated values, same size as `x`.
 
     """
+    dtype = torch.promote_types(torch.promote_types(x.dtype, xp.dtype), fp.dtype)
+    if not dtype.is_floating_point:
+        dtype = torch.get_default_dtype()  # lerp has no integer kernel; main returned a float here
+    x, xp, fp = x.to(dtype), xp.to(dtype), fp.to(dtype)
     i = torch.clip(torch.searchsorted(xp, x, right=True), 1, len(xp) - 1)
     x0, x1, f0, f1 = xp[i - 1], xp[i], fp[i - 1], fp[i]
     dx = x1 - x0
     zero_width = dx == 0
-    dtype = torch.promote_types(torch.promote_types(x.dtype, xp.dtype), fp.dtype)
-    w = ((x - x0) / torch.where(zero_width, torch.ones_like(dx), dx)).to(dtype)
+    w = (x - x0) / torch.where(zero_width, torch.ones_like(dx), dx)
     # lerp is exact at w = 0 and w = 1, so a point on a knot returns fp at that knot; outside [xp[0], xp[-1]] it
     # extrapolates the end segment, as before.
-    out = torch.lerp(f0.to(dtype), f1.to(dtype), w)
+    out = torch.lerp(f0, f1, w)
+    # lerp's two halves meet an infinite end as inf - inf; try each half in turn, as np.interp does
+    out = torch.where(torch.isnan(out), f0 + w * (f1 - f0), out)
+    out = torch.where(torch.isnan(out), f1 - (f1 - f0) * (1 - w), out)
+    out = torch.where(torch.isnan(out) & (f0 == f1), f0, out)
+    # a point on a knot returns fp there even when the neighbouring fp is infinite (np.interp)
+    out = torch.where(x == x0, f0, torch.where(x == x1, f1, out))
     # A zero-width (repeated) segment is reached only at a clipped end: below a repeated first knot the value is
     # fp[0], at or above a repeated last knot fp[-1].
-    return torch.where(zero_width, torch.where(x < x0, f0, f1).to(dtype), out)
+    return torch.where(zero_width, torch.where(x < x0, f0, f1), out)
