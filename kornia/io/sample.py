@@ -28,6 +28,7 @@ from urllib.request import urlopen
 import torch
 
 from kornia.config import kornia_config
+from kornia.core.download import _resolve_timeout
 
 from .io import load_image
 
@@ -55,9 +56,15 @@ def download_image(url: str, save_to: str) -> None:
     refused keeps the copy already there only if its bytes match the download, and removes its own temporary file. A
     refused replacement with a missing, unreadable, or different destination still raises the replacement error.
 
+    The download fails once the server goes ``KORNIA_DOWNLOAD_TIMEOUT`` seconds (30 s when it is unset) without
+    answering, as kornia's other downloads do.
+
     Args:
         url: The URL of the image to download.
         save_to: The file path where the downloaded image will be saved.
+
+    Raises:
+        ValueError: If ``KORNIA_DOWNLOAD_TIMEOUT`` is set to anything but a positive number of seconds.
 
     """
     _download(url, save_to)
@@ -70,8 +77,9 @@ def _download(url: str, save_to: str, load: Optional[Callable[[str], torch.Tenso
     ``save_to``, which a concurrent call may be replacing (Windows refuses to open a file while it is replaced). A body
     that ``load`` rejects never reaches ``save_to``: the temporary file is removed and the error propagates.
     """
-    # get_sample_images only routes http(s) URLs here (default: the https:// literals above).
-    with urlopen(url, timeout=30) as resp:  # noqa: S310
+    # get_sample_images only routes http(s) URLs here (default: the https:// literals above). The timeout is the one
+    # kornia's other downloads use: KORNIA_DOWNLOAD_TIMEOUT, or 30 s when it is unset.
+    with urlopen(url, timeout=_resolve_timeout(None)) as resp:  # noqa: S310
         data = resp.read()
     # a unique name in the destination directory keeps the rename atomic and concurrent calls apart; open() with "x"
     # creates the file with the usual permissions (tempfile.mkstemp would make the cached image private, 0o600).
@@ -121,6 +129,8 @@ def get_sample_images(
         - A path is a URL only when its scheme is ``http`` or ``https``. A URL is cached under ``cache_dir`` with the
           file name of its path, byte for byte as downloaded, and a cached file is loaded without downloading it
           again. With ``download=False``, a URL that is not cached logs an error and raises ``FileNotFoundError``.
+          A download fails once the server goes ``KORNIA_DOWNLOAD_TIMEOUT`` seconds (30 s when it is unset) without
+          answering, and an unusable value of that variable raises ``ValueError``.
         - ``resize`` is ``(height, width)`` and goes to :func:`~kornia.geometry.transform.resize`; ``divisible_factor``
           is applied after it by :func:`~kornia.geometry.transform.resize_to_be_divisible`, so the final size can
           differ from ``resize``. ``**kwargs`` reach both.

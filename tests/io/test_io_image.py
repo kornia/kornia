@@ -684,6 +684,50 @@ class TestSampleImages:
         assert sorted(p.name for p in cache.iterdir()) == ["palette.png"]
         assert (out[0][:, 0, 0] * 255).round().tolist() == [255.0, 0.0, 0.0]  # index 2 is red: the palette applies
 
+    @pytest.mark.parametrize("entry_point", ["get_sample_images", "download_image"])
+    @pytest.mark.parametrize(("variable", "timeout"), [(None, 30.0), ("5", 5.0), (" 0.5 ", 0.5)])
+    def test_downloads_take_their_timeout_from_kornia_download_timeout(
+        self, tmp_path: Path, monkeypatch, entry_point, variable, timeout
+    ) -> None:
+        # #5904: the fetch always used timeout=30, whatever KORNIA_DOWNLOAD_TIMEOUT said
+        from unittest import mock
+
+        from kornia.io.sample import download_image, get_sample_images
+
+        if variable is None:
+            monkeypatch.delenv("KORNIA_DOWNLOAD_TIMEOUT", raising=False)
+        else:
+            monkeypatch.setenv("KORNIA_DOWNLOAD_TIMEOUT", variable)
+        source = tmp_path / "source.png"
+        write_image(source, create_random_img8_torch(4, 5, 3))
+        url = "https://example.invalid/sample.png"
+        with mock.patch("kornia.io.sample.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = source.read_bytes()
+            if entry_point == "get_sample_images":
+                get_sample_images(paths=[url], cache_dir=str(tmp_path / "cache"))
+            else:
+                download_image(url, str(tmp_path / "saved.png"))
+        assert mock_urlopen.call_args.kwargs["timeout"] == timeout
+
+    @pytest.mark.parametrize("variable", ["abc", "0", "-1"])
+    def test_an_unusable_kornia_download_timeout_raises_before_downloading(
+        self, tmp_path: Path, monkeypatch, variable
+    ) -> None:
+        from unittest import mock
+
+        from kornia.io import get_sample_images
+
+        monkeypatch.setenv("KORNIA_DOWNLOAD_TIMEOUT", variable)
+        source = tmp_path / "source.png"
+        write_image(source, create_random_img8_torch(4, 5, 3))
+        cache = tmp_path / "cache"
+        with mock.patch("kornia.io.sample.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = source.read_bytes()
+            with pytest.raises(ValueError, match="KORNIA_DOWNLOAD_TIMEOUT"):
+                get_sample_images(paths=["https://example.invalid/sample.png"], cache_dir=str(cache))
+            mock_urlopen.assert_not_called()
+        assert not cache.exists() or list(cache.iterdir()) == []
+
     @pytest.mark.parametrize(
         "url", ["https://example.invalid", "https://example.invalid/", "https://example.invalid/dir/"]
     )
