@@ -296,9 +296,16 @@ class TestDeDoDeDefaultAmpDtype5934(BaseTester):
             pytest.skip("requires CUDA")
         _tiny_dinov2(monkeypatch)
         model = DeDoDe().to(device).eval()
-        out = model.describe(self._image(device))
-        assert out.dtype == torch.float32
-        assert torch.isfinite(out).all()
+        image = self._image(device)
+        keypoints = torch.zeros(1, 4, 2, device=device)
+        # The sparse path casts the map to float32 for `grid_sample`; the dense map comes out of the decoders'
+        # float16 autocast and nothing casts it back.
+        sparse = model.describe(image, keypoints)
+        assert sparse.dtype == torch.float32
+        assert torch.isfinite(sparse).all()
+        dense = model.describe(image)
+        assert dense.dtype == torch.float16
+        assert torch.isfinite(dense).all()
         assert model.descriptor.encoder.frozen_dinov2.dinov2_vitl14[0].cls_token.dtype == torch.float16
 
 

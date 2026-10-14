@@ -92,7 +92,8 @@ class DeDoDe(nn.Module):
           (``align_corners=False``), the form :meth:`describe` takes; ``(k + 1) * (W, H) / 2 - 0.5`` converts such a
           ``k`` to kornia's frame. A description is read at the centre of pixel ``i``.
         - Each image gives its ``n`` best keypoints by score, in descending order: :math:`N = \min(n, H W)`, with no
-          threshold and no padding. Keypoints and descriptions are float32, and descriptions are not normalized.
+          threshold and no padding. Keypoints and descriptions are float32, and descriptions are not normalized; on
+          CUDA the dense map of :meth:`describe` without keypoints stays in ``amp_dtype``.
         - ``amp_dtype`` is CUDA mixed precision in every component: on CUDA tensors the networks run under
           ``torch.autocast`` in ``amp_dtype`` (and the DINOv2 backbone of the ``G`` descriptor is cast to it). On CPU
           and MPS it has no effect, so the default argument runs there with float32 weights and images.
