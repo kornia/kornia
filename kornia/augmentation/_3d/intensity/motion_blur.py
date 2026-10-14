@@ -153,6 +153,9 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
             # Fixed kernel size: static value, no device-to-host read -> stays capturable by graph export.
             kernel_size = self._fixed_kernel_size
         else:
+            if params["ksize_factor"].numel() == 0:
+                # An empty batch draws no kernel size and has nothing to blur; motion blur keeps the shape (#4429).
+                return input.clone()
             kernel_size = int(params["ksize_factor"].unique().item())
         angle = params["angle_factor"]
         direction = params["direction_factor"]

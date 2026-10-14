@@ -110,6 +110,19 @@ class TestRandomMotionBlur(BaseTester):
         expected = motion_blur(image, 5, params["angle_factor"], params["direction_factor"], border_type=border_type)
         self.assert_close(aug(image, params=params), expected)
 
+    @pytest.mark.parametrize("p", [1.0, 0.5])
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_empty_batch_ranged_kernel_size(self, p, same_on_batch, device, dtype):
+        # #4429: a ranged kernel_size picks the batch's size from the sampled list, which an empty batch leaves
+        # empty (IndexError). A fixed kernel_size takes the filter path instead.
+        image = torch.rand(0, 3, 8, 10, device=device, dtype=dtype, requires_grad=True)
+        output = RandomMotionBlur((3, 7), 35.0, 0.5, same_on_batch=same_on_batch, p=p)(image)
+        assert output.shape == image.shape
+        assert output.dtype == dtype
+        output.sum().backward()
+        assert image.grad is not None
+        assert image.grad.shape == image.shape
+
     @pytest.mark.slow
     def test_gradcheck(self, device):
         torch.manual_seed(0)  # for random reproductibility
@@ -205,6 +218,19 @@ class TestRandomMotionBlur3D(BaseTester):
             output = RandomMotionBlur3D((3, 7), 35.0, 0.5, p=1.0)(input)
 
             assert output.shape == input.shape
+
+    @pytest.mark.parametrize("resample", ["nearest", "bilinear"])
+    @pytest.mark.parametrize("p", [1.0, 0.5])
+    def test_empty_batch_ranged_kernel_size(self, resample, p, device, dtype):
+        # #4429: a ranged kernel_size reads the batch's size with ``unique().item()``, which has no element for an
+        # empty batch (RuntimeError). A fixed kernel_size takes the filter path instead.
+        volume = torch.rand(0, 3, 4, 8, 10, device=device, dtype=dtype, requires_grad=True)
+        output = RandomMotionBlur3D((3, 5), 35.0, 0.5, resample=resample, p=p)(volume)
+        assert output.shape == volume.shape
+        assert output.dtype == dtype
+        output.sum().backward()
+        assert volume.grad is not None
+        assert volume.grad.shape == volume.shape
 
     # The class zero-pads by its own default, although ``motion_blur3d`` now defaults to "replicate".
     # Snippet used to generate expected:
