@@ -39,6 +39,7 @@ from kornia.geometry.ransac import _normalize_correspondences
 
 from testing.base import BaseTester, dynamo_is_available
 from testing.casts import dict_to
+from testing.default_device import default_device
 from testing.geometry.create import create_dominant_plane_scene
 
 # RANSAC's batched minimal solvers take the Metal shader compiler down on the paravirtualized GPU
@@ -2410,14 +2411,8 @@ class TestRANSACCompiled(BaseTester):
 
         monkeypatch.setattr(_ransac_program, "load_program", load)
         points = torch.rand(8, 2)
-        original = torch.get_default_device()
-        try:
-            torch.set_default_device("meta")
+        with default_device("meta"):
             RANSAC("homography", compile=True, seed=0)(points, points)
-        finally:
-            # With no override, ``original`` reads ``cpu``, and ``set_default_device("cpu")`` would leave a
-            # DeviceContext mode on for the rest of the session instead of clearing the override (#5508).
-            torch.set_default_device(None if original.type == "cpu" else original)
         assert captured[0][0][-1] == "meta"
         assert all(control.device.type == "cpu" for control in captured[0][1][2:])
 
