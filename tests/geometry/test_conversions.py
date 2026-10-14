@@ -186,8 +186,8 @@ def _raised_by_a_kornia_guard(err: BaseException) -> bool:
     # semantic -- it would miss `raise(RuntimeError(...))`, whose missing space before the
     # parenthesis is not a semantic difference.
     # Both directions are exercised: test_guard_classifier_reads_the_raising_instruction below
-    # covers the classifier itself, the #3960 convention pin asserts this is True (in any guard
-    # style), and the #3959 warts assert it is False.
+    # covers the classifier itself, the #3960 convention pin and the Rt side of the int64 Rt wart
+    # (#3959) assert this is True (in any guard style), and every other #3959 wart asserts it is False.
     # The instruction DECIDES; the type tuple is only the fallback for a frame whose instruction
     # cannot be read. ORing the two instead of falling back would make the instruction check
     # unreachable for exactly the types kornia's guards raise, so it would score any downstream
@@ -4578,28 +4578,65 @@ class TestRt2Extrinsics(BaseTester):
 
         self.assert_close(extrinsics[0, :3, 3], torch.zeros(3, device=device, dtype=torch.float32), atol=0.0, rtol=0.0)
 
+    @pytest.mark.parametrize(
+        "requested_dtype", [torch.bool, torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64]
+    )
+    def test_Rt_rejects_nonfloating_dtype_3959(self, device, requested_dtype):
+        _skip_if_dtype_unavailable(device, requested_dtype)
+        rotation = torch.eye(3, device=device).to(requested_dtype)[None]
+        translation = torch.ones(1, 3, 1, device=device, dtype=requested_dtype)
+        with pytest.raises(ValueError, match="R and t must promote to a floating point or complex dtype") as excinfo:
+            Rt_to_matrix4x4(rotation, translation)
+        assert str(excinfo.value).endswith(f"Got {requested_dtype}.")
+
+    def test_Rt_names_the_promoted_dtype_3959(self, device):
+        # uint8 and int8 promote to int16, the dtype of neither input, so the message must name the promoted dtype.
+        rotation = torch.eye(3, device=device).to(torch.uint8)[None]
+        translation = torch.ones(1, 3, 1, device=device, dtype=torch.int8)
+        with pytest.raises(ValueError, match=r"Got torch\.int16\.$"):
+            Rt_to_matrix4x4(rotation, translation)
+
+    @pytest.mark.parametrize(
+        "rotation_dtype,translation_dtype",
+        [
+            (torch.int64, torch.float32),
+            (torch.bool, torch.float32),
+            (torch.float32, torch.int64),
+            (torch.float32, torch.float64),
+            (torch.complex64, torch.float32),
+            (torch.float32, torch.complex64),
+        ],
+    )
+    def test_Rt_preserves_promoted_dtype_3959(self, device, rotation_dtype, translation_dtype):
+        _skip_if_dtype_unavailable(device, rotation_dtype)
+        _skip_if_dtype_unavailable(device, translation_dtype)
+        try:  # MPS (torch 2.14, macOS 26.5) has no kernel to cat complex with real tensors
+            torch.cat([torch.zeros(1, device=device, dtype=d) for d in (rotation_dtype, translation_dtype)])
+        except RuntimeError as err:
+            pytest.skip(f"torch.cat cannot mix {rotation_dtype} and {translation_dtype} on {device}: {err}")
+        rotation = torch.eye(3, device=device, dtype=rotation_dtype)[None]
+        translation = torch.ones(1, 3, 1, device=device, dtype=translation_dtype)
+        expected_dtype = torch.promote_types(rotation_dtype, translation_dtype)
+        expected = torch.eye(4, device=device, dtype=expected_dtype)[None]
+        expected[:, :3, 3:] = translation.to(expected_dtype)
+        self.assert_close(Rt_to_matrix4x4(rotation, translation), expected, atol=0.0, rtol=0.0)
+
     def test_wart_int64_Rt_raises_while_4x4_and_pose_forms_accept_3959(self, device):
-        # Wart pin for kornia#3959: no function in this family guards against an int64 pose.
-        # Rt_to_matrix4x4 and the two frame functions built on it fail inside torch (the appended
-        # float row cannot be cast to Long), while the _4x4 forms and the pose pair return int64
-        # wherever the backend has integer batched matmul, and fail inside torch elsewhere. Every
-        # failure is classified by _raised_by_a_kornia_guard rather than by its type or message, so
-        # the pin flips when a guard is added to either side or when integers are promoted.
-        # Snippet used to generate expected (torch only, executed on cpu):
-        #   Rt_to_matrix4x4(eye(3, int64)[None], ones(1, 3, 1, int64)) -> RuntimeError
-        #   camtoworld_graphics_to_vision_4x4(eye(4, int64)[None]).dtype -> torch.int64
-        #   camtoworld_to_worldtocam_Rt(eye(3, int64)[None], ones(1, 3, 1, int64)) -> (int64, int64)
+        _skip_if_dtype_unavailable(device, torch.int64)
+        # Wart pin for kornia#3959: Rt_to_matrix4x4 and the two frame functions built on it reject an int64
+        # pose in a kornia guard, while the _4x4 forms of the same map and the pose pair return int64 wherever
+        # the backend has integer batched matmul, and fail inside torch elsewhere. Both sides are classified by
+        # _raised_by_a_kornia_guard, so the pin flips when the _4x4 side gains a guard or integers are promoted.
         rotation = torch.eye(3, device=device, dtype=torch.int64)[None]
         translation = torch.ones(1, 3, 1, device=device, dtype=torch.int64)
         extrinsics = torch.eye(4, device=device, dtype=torch.int64)[None]
 
-        # These calls fail inside torch with RuntimeError; the classifier still rejects a new Kornia guard.
         for op in (Rt_to_matrix4x4, camtoworld_graphics_to_vision_Rt, camtoworld_vision_to_graphics_Rt):
-            with pytest.raises(RuntimeError) as excinfo:
+            with pytest.raises(
+                ValueError, match="R and t must promote to a floating point or complex dtype"
+            ) as excinfo:
                 op(rotation, translation)
-            assert not _raised_by_a_kornia_guard(excinfo.value), (
-                f"kornia#3959: {op.__name__} now rejects int64 (R, t) in a guard of its own -- update the warning"
-            )
+            assert _raised_by_a_kornia_guard(excinfo.value)
 
         accepting = [
             (camtoworld_graphics_to_vision_4x4, (extrinsics,)),

@@ -2575,12 +2575,12 @@ def Rt_to_matrix4x4(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
           only when the bottom row is already ``[0, 0, 0, 1]``, because
           :func:`~kornia.geometry.conversions.matrix4x4_to_Rt` drops it
 
-    .. warning::
-        Integer input is not guarded: an ``int64`` ``(R, t)`` raises from inside
-        torch here and in the two ``camtoworld_*_Rt`` frame functions built on
-        it, while the ``_4x4`` frame functions and the
-        ``camtoworld_to_worldtocam_Rt`` pair return ``int64`` (on backends with
-        integer batched matmul). Tracked in
+    Note:
+        ``R`` and ``t`` must promote to a floating point or complex dtype;
+        an integer or boolean pair raises ``ValueError`` naming its dtype.
+        Mixed integer/floating inputs keep torch's promotion. The integer-safe
+        ``_4x4`` frame functions and ``camtoworld_to_worldtocam_Rt`` keep their
+        existing behavior; the broader dtype consistency question is tracked in
         `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
 
     Args:
@@ -2603,6 +2603,8 @@ def Rt_to_matrix4x4(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
     _check_Rt_same_batch(R, t, "Rt_to_matrix4x4")
     Rt = torch.cat([R, t], dim=2)
+    if not Rt.is_floating_point() and not Rt.is_complex():
+        raise ValueError(f"R and t must promote to a floating point or complex dtype. Got {Rt.dtype}.")
     return convert_affinematrix_to_homography3d(Rt)
 
 
@@ -2691,7 +2693,7 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torc
         Integer input is not guarded: this function returns ``int64`` for an
         ``int64`` matrix (on backends with integer batched matmul), while
         :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_Rt`
-        raises from inside torch. Tracked in
+        raises ``ValueError`` naming the unsupported dtype. Tracked in
         `#3959 <https://github.com/kornia/kornia/issues/3959>`_; see
         :func:`~kornia.geometry.conversions.Rt_to_matrix4x4`.
 
@@ -2737,7 +2739,7 @@ def camtoworld_graphics_to_vision_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[
           function and splits the result again, so the two paths agree bitwise.
           Only the lines below differ
         - the shapes are strictly :math:`(B, 3, 3)` and :math:`(B, 3, 1)` in and
-          out, with the same-batch-size rule and the integer-input warning of
+          out, with the same-batch-size rule and the integer-input ``ValueError`` of
           :func:`~kornia.geometry.conversions.Rt_to_matrix4x4`
         - ``t`` is returned unchanged; only ``R`` has its second and third
           columns negated

@@ -46,6 +46,24 @@ class TestSe3(BaseTester):
         shape = [] if batch_size is None else [batch_size]
         return torch.rand([*shape, dims], device=device, dtype=dtype)
 
+    def _assert_chains_agree(self, actual, expected, p, t1, t2):
+        """Compare two chains of point transforms through poses with translations t1 and t2 that meet at one point."""
+        if actual.dtype not in (torch.float16, torch.bfloat16):
+            self.assert_close(actual, expected)
+            return
+        # Every Se3 operation computes in float32 and rounds once (TestSe3HalfPrecision pins that). A rounded point or
+        # translation v moves the end of its chain by at most u |v| (u = eps / 2), since only rotations and sums follow
+        # it, and the rounded quaternion of s12 = s1^-1 * s2 turns each vector it rotates by at most 2 u |v|. For the
+        # longer pair, pt_in_s2 against s12^-1 * pt_in_s1, the roundings cost: s2^-1.t, u |t2|; pt_in_s2,
+        # u (|p| + |t2|); s1^-1.t, computed for pt_in_s1 and for s12, 2 u |t1|; pt_in_s1, u (|p| + |t1|); s12.t and
+        # s12^-1.t, u (|t1| + |t2|) each; the result, u (|p| + |t2|); and s12's quaternion, applied to pt_in_s1 and
+        # s12.t, 2 u (|p| + 2 |t1| + |t2|). That sums to u (5 |p| + 9 |t1| + 7 |t2|) <= 9 u S with
+        # S = |p| + |t1| + |t2|; the other pair sums to u (5 |p| + 5 |t1| + 5 |t2|). The default half tolerance, about
+        # 2 u, does not cover either.
+        u = torch.finfo(actual.dtype).eps / 2
+        s = sum(x.detach().cpu().double().norm(dim=-1) for x in (p, t1, t2)).max().item()
+        self.assert_close(actual.detach().cpu().double(), expected.detach().cpu().double(), rtol=0.0, atol=9 * u * s)
+
     def test_smoke(self, device, dtype):
         q = Quaternion.from_coeffs(1.0, 0.0, 0.0, 0.0)
         q = q.to(device, dtype)
@@ -161,8 +179,9 @@ class TestSe3(BaseTester):
         pt_in_s2 = world_pose_s2.inverse() * pt_in_world
         pt_in_s1_in_s2 = s1_pose_s2.inverse() * pt_in_s1
         pt_in_s2_in_s1 = s1_pose_s2 * pt_in_s2
-        self.assert_close(pt_in_s1, pt_in_s2_in_s1)
-        self.assert_close(pt_in_s2, pt_in_s1_in_s2)
+        translations = (world_pose_s1.t, world_pose_s2.t)
+        self._assert_chains_agree(pt_in_s1, pt_in_s2_in_s1, pt_in_world, *translations)
+        self._assert_chains_agree(pt_in_s2, pt_in_s1_in_s2, pt_in_world, *translations)
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_mul_vector(self, device, dtype, batch_size):
@@ -183,8 +202,9 @@ class TestSe3(BaseTester):
         if batch_size is not None:
             zeros_vec = zeros_vec.repeat(batch_size, 1)
         so3_expected = So3.identity(batch_size, device, dtype)
-        self.assert_close(pt_in_s1, pt_in_s2_in_s1)
-        self.assert_close(pt_in_s2, pt_in_s1_in_s2)
+        translations = (world_pose_s1.t, world_pose_s2.t)
+        self._assert_chains_agree(pt_in_s1, pt_in_s2_in_s1, pt_in_world, *translations)
+        self._assert_chains_agree(pt_in_s2, pt_in_s1_in_s2, pt_in_world, *translations)
         self.assert_close(s3s4.r.q.data, s4.r.q.data)
         self.assert_close(s3s4.t, s4.t)
         self.assert_close(s4s4inv.r.q.data, so3_expected.q.data)
@@ -692,3 +712,81 @@ class TestSe3(BaseTester):
         assert t.min() >= 0, (t.min(), t.max())
         assert t.max() <= 1, (t.min(), t.max())
         assert 0.45 < t.mean() < 0.55, t.mean()
+
+
+class TestSe3HalfPrecision(BaseTester):
+    # g * p and a * b compute in float32 for float16/bfloat16 inputs and round once to the input dtype, and the
+    # rotation follows So3 (TestSo3HalfPrecision). Evaluated in half precision, the chains of test_mul, test_mul_point
+    # and test_mul_vector drifted past their 1-2 unit tolerances.
+
+    @staticmethod
+    def _poses(device, dtype, n):
+        # translations in [-0.5, 0.5): every output below stays under 2 in magnitude
+        a = Se3(So3.random(n, device, dtype), torch.rand(n, 3, device=device, dtype=dtype) - 0.5)
+        b = Se3(So3.random(n, device, dtype), torch.rand(n, 3, device=device, dtype=dtype) - 0.5)
+        return a, b, torch.rand(n, 3, device=device, dtype=dtype) - 0.5
+
+    @staticmethod
+    def _cast(s, dtype):
+        """The same pose in ``dtype``; a float64 copy goes to the CPU, since MPS has no float64."""
+        q, t = s.r.q.data, s.t
+        if dtype == torch.float64:
+            q, t = q.cpu(), t.cpu()
+        return Se3(So3(Quaternion(q.to(dtype))), t.to(dtype))
+
+    def test_float32_and_float64_are_evaluated_in_their_own_dtype(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("float16 and bfloat16 are computed in float32 (test_half_precision_rounds_float32_once)")
+        a, b, p = self._poses(device, dtype, 5)
+        # bit for bit the group formulas in the input dtype, with no detour through another dtype
+        assert torch.equal(a * p, a.r * p + a.t)
+        assert torch.equal((a * Vector3(p)).data, a.r * p + a.t)
+        assert torch.equal((a * b).t, a.t + a.r * b.t)
+        assert torch.equal((a * b).r.q.data, (a.r * b.r).q.data)
+        assert torch.equal(a.inverse().t, a.r.inverse() * (-1 * a.t))
+        assert torch.equal(a.matrix()[..., :3, :3], a.r.matrix())
+
+    def test_half_precision_rounds_float32_once(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("only float16 and bfloat16 inputs are computed in float32")
+        a, b, p = self._poses(device, dtype, 5)
+        a32, b32 = self._cast(a, torch.float32), self._cast(b, torch.float32)
+        for actual, wide in (
+            (a * p, a32 * p.float()),
+            ((a * Vector3(p)).data, a32 * p.float()),
+            ((a * b).t, (a32 * b32).t),
+            ((a * b).r.q.data, (a32 * b32).r.q.data),
+            (a.inverse().t, a32.inverse().t),
+            (a.matrix(), a32.matrix()),
+        ):
+            assert actual.dtype == dtype
+            assert torch.equal(actual, wide.to(dtype))
+
+    def test_half_precision_matches_float64_within_one_rounding(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("float32 and float64 are evaluated in their own dtype")
+        # The reference is float64 from the same rounded inputs. Every output is below 2 in magnitude, where one
+        # rounding costs at most eps / 2 (plus a float32 error far below it); evaluated in half precision, g * p
+        # rounded the rotated point and then the sum.
+        eps = torch.finfo(dtype).eps
+        a, b, p = self._poses(device, dtype, 1000)
+        a64, b64, p64 = self._cast(a, torch.float64), self._cast(b, torch.float64), p.cpu().double()
+        self.assert_close((a * p).cpu().double(), a64 * p64, rtol=0.0, atol=eps)
+        self.assert_close((a * b).t.cpu().double(), (a64 * b64).t, rtol=0.0, atol=eps)
+        self.assert_close(a.inverse().t.cpu().double(), a64.inverse().t, rtol=0.0, atol=eps)
+
+    def test_half_precision_backward(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("float32 and float64 gradients are covered by test_gradcheck")
+        a, b, p = self._poses(device, dtype, 4)
+        leaves = [a.r.q.data.detach(), a.t.detach(), b.t.detach(), p.detach()]
+        leaves = [x.requires_grad_(True) for x in leaves]
+        leaves32 = [x.detach().float().requires_grad_(True) for x in leaves]
+        for q, t, t_b, x in (leaves, leaves32):
+            s = Se3(So3(Quaternion(q)), t)
+            s_b = Se3(Quaternion(b.r.q.data.to(q.dtype)), t_b)
+            ((s * x).sum() + (s * s_b).t.sum() + s.inverse().t.sum() + s.matrix().sum()).backward()
+        for grad, grad32 in zip((x.grad for x in leaves), (x.grad for x in leaves32)):
+            assert grad.dtype == dtype
+            assert bool(torch.isfinite(grad).all())
+            self.assert_close(grad, grad32.to(dtype), low_tolerance=True)

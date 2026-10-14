@@ -728,3 +728,83 @@ class TestSo3Conventions(BaseTester):
         assert result.missing_keys == ["_q._data"]
         assert result.unexpected_keys == []
         self.assert_close(rotation.q.data, torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype))
+
+
+def _quaternion_rotate(q: Quaternion, p: torch.Tensor) -> torch.Tensor:
+    """q p q* for the unit direction of q, evaluated in the input dtype."""
+    q = q.normalize()
+    return (q * Quaternion(torch.cat((torch.zeros_like(p[..., :1]), p), -1)) * q.conj()).vec
+
+
+def _quaternion_matrix(q: Quaternion) -> torch.Tensor:
+    """The rotation matrix of So3.matrix's docstring for the unit direction of q, evaluated in the input dtype."""
+    q = q.normalize()
+    w, x, y, z = q.w[..., None], q.x[..., None], q.y[..., None], q.z[..., None]
+    row0 = torch.cat((1 - 2 * y**2 - 2 * z**2, 2 * x * y - 2 * z * w, 2 * x * z + 2 * y * w), -1)
+    row1 = torch.cat((2 * x * y + 2 * z * w, 1 - 2 * x**2 - 2 * z**2, 2 * y * z - 2 * x * w), -1)
+    row2 = torch.cat((2 * x * z - 2 * y * w, 2 * y * z + 2 * x * w, 1 - 2 * x**2 - 2 * y**2), -1)
+    return torch.stack((row0, row1, row2), -2)
+
+
+class TestSo3HalfPrecision(BaseTester):
+    # matrix() and s * x compute in float32 for float16/bfloat16 inputs and round once to the input dtype. Evaluated
+    # in half precision, their ~10 roundings drifted 3-6 units of roundoff from the exact result, and chains of them
+    # missed the 1-2 unit tolerances of test_ortho and Se3's test_mul* tests.
+
+    def test_float32_and_float64_are_evaluated_in_their_own_dtype(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("float16 and bfloat16 are computed in float32 (test_half_precision_rounds_float32_once)")
+        a, b = So3.random(5, device, dtype), So3.random(5, device, dtype)
+        p = torch.rand(5, 3, device=device, dtype=dtype)
+        # bit for bit the quaternion formulas in the input dtype, with no detour through another dtype
+        assert torch.equal(a.matrix(), _quaternion_matrix(a.q))
+        assert torch.equal((a * b).q.data, (a.q * b.q).data)
+        assert torch.equal(a * p, _quaternion_rotate(a.q, p))
+        assert torch.equal((a * Vector3(p)).data, _quaternion_rotate(a.q, p))
+
+    def test_half_precision_rounds_float32_once(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("only float16 and bfloat16 inputs are computed in float32")
+        a, b = So3.random(5, device, dtype), So3.random(5, device, dtype)
+        p = torch.rand(5, 3, device=device, dtype=dtype)
+        a32, b32 = So3(Quaternion(a.q.data.float())), So3(Quaternion(b.q.data.float()))
+        for actual, wide in (
+            (a.matrix(), a32.matrix()),
+            (a.adjoint(), a32.adjoint()),
+            ((a * b).q.data, (a32 * b32).q.data),
+            (a * p, a32 * p.float()),
+            ((a * Vector3(p)).data, a32 * p.float()),
+        ):
+            assert actual.dtype == dtype
+            assert torch.equal(actual, wide.to(dtype))
+
+    def test_half_precision_matches_float64_within_one_rounding(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("float32 and float64 are evaluated in their own dtype")
+        # The reference is float64 from the same rounded inputs. Every output is below 2 in magnitude, where one
+        # rounding costs at most eps / 2 (plus a float32 error far below it); evaluated in half precision, matrix() and
+        # s * p reached 3 eps.
+        eps = torch.finfo(dtype).eps
+        a, b = So3.random(1000, device, dtype), So3.random(1000, device, dtype)
+        p = 2 * torch.rand(1000, 3, device=device, dtype=dtype) - 1
+        a64 = So3(Quaternion(a.q.data.cpu().double()))
+        b64 = So3(Quaternion(b.q.data.cpu().double()))
+        p64 = p.cpu().double()
+        self.assert_close(a.matrix().cpu().double(), a64.matrix(), rtol=0.0, atol=eps)
+        self.assert_close((a * b).q.data.cpu().double(), (a64 * b64).q.data, rtol=0.0, atol=eps)
+        self.assert_close((a * p).cpu().double(), a64 * p64, rtol=0.0, atol=eps)
+
+    def test_half_precision_backward(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("float32 and float64 gradients are covered by test_gradcheck")
+        data = So3.random(4, device, dtype).q.data.detach().requires_grad_(True)
+        p = torch.rand(4, 3, device=device, dtype=dtype, requires_grad=True)
+        data32 = data.detach().float().requires_grad_(True)
+        p32 = p.detach().float().requires_grad_(True)
+        for q, x in ((data, p), (data32, p32)):
+            s = So3(Quaternion(q))
+            ((s * x).sum() + s.matrix().sum() + (s * s).q.data.sum()).backward()
+        for grad, grad32 in ((data.grad, data32.grad), (p.grad, p32.grad)):
+            assert grad.dtype == dtype
+            assert bool(torch.isfinite(grad).all())
+            self.assert_close(grad, grad32.to(dtype), low_tolerance=True)
