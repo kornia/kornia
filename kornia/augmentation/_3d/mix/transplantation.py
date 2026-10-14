@@ -21,7 +21,7 @@ from kornia.augmentation._3d.base import AugmentationBase3D
 __all__ = ["RandomTransplantation3D"]
 
 
-class RandomTransplantation3D(RandomTransplantation, AugmentationBase3D):  # type: ignore
+class RandomTransplantation3D(RandomTransplantation, AugmentationBase3D):
     """RandomTransplantation3D augmentation.
 
     3D version of the :class:`kornia.augmentation.RandomTransplantation` augmentation intended to be used with

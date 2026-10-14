@@ -783,7 +783,7 @@ class GeometryAwareDescriptorMatcher(nn.Module):
             params.update(self.params)
             out = match_fginn(desc1, desc2, lafs1, lafs2, params["th"], params["spatial_th"], params["mutual"])
         elif self.match_mode == "adalam":
-            out = match_adalam(desc1, desc2, lafs1, lafs2, config=self.params)  # type: ignore[arg-type]
+            out = match_adalam(desc1, desc2, lafs1, lafs2, config=self.params)
         else:
             raise NotImplementedError
         return out

@@ -185,7 +185,7 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         images: Union[torch.Tensor, list[torch.Tensor]],
         detections: Optional[torch.Tensor] = None,
         output_type: str = "torch",
-    ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:  # type: ignore
+    ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:
         """Very simple drawing.
 
         Needs to be more fancy later.
@@ -221,7 +221,7 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         outputs = self.visualize(images, detections)
         self._save_outputs(outputs, directory)
 
-    def to_onnx(  # type: ignore[override]
+    def to_onnx(
         self,
         onnx_name: Optional[str] = None,
         image_size: Optional[int] = 640,
@@ -229,7 +229,7 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         save: bool = True,
         additional_metadata: Optional[list[tuple[str, str]]] = None,
         **kwargs: Any,
-    ) -> onnx.ModelProto:  # type: ignore
+    ) -> onnx.ModelProto:
         """Export an RT-DETR object detection model to ONNX format.
 
         Either `model_name` or `config` must be provided. If neither is provided,
@@ -278,7 +278,7 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         disable: bool = False,
     ) -> None:
         """Compile the internal object detection model with :py:func:`torch.compile()`."""
-        self.model = torch.compile(  # type: ignore
+        self.model = torch.compile(
             self.model,
             fullgraph=fullgraph,
             dynamic=dynamic,

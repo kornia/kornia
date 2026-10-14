@@ -64,7 +64,7 @@ class HFONNXComunnityModelLoader:
 
     def load_model(
         self, download: bool = True, io_name_mapping: Optional[dict[str, str]] = None, **kwargs: Any
-    ) -> onnx.ModelProto:  # type:ignore
+    ) -> onnx.ModelProto:
         """Load the ONNX model file from the configured onnx-community repository.
 
         Args:
@@ -130,9 +130,9 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
 
     def __init__(
         self,
-        model: onnx.ModelProto,  # type: ignore
-        pre_processor: Optional[onnx.ModelProto] = None,  # type: ignore
-        post_processor: Optional[onnx.ModelProto] = None,  # type: ignore
+        model: onnx.ModelProto,
+        pre_processor: Optional[onnx.ModelProto] = None,
+        post_processor: Optional[onnx.ModelProto] = None,
         name: Optional[str] = None,
         auto_ir_version_conversion: bool = True,
         io_maps: Optional[list[tuple[str, str]]] = None,
@@ -170,7 +170,7 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         save: bool = True,
         additional_metadata: Optional[list[tuple[str, str]]] = None,
         **kwargs: Any,
-    ) -> onnx.ModelProto:  # type:ignore
+    ) -> onnx.ModelProto:
         """Export a depth estimation model to ONNX format.
 
         Args:

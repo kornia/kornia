@@ -45,9 +45,9 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
 
     def __init__(
         self,
-        op: Union[onnx.ModelProto, str],  # type:ignore
+        op: Union[onnx.ModelProto, str],
         providers: Optional[list[str]] = None,
-        session_options: Optional[ort.SessionOptions] = None,  # type:ignore
+        session_options: Optional[ort.SessionOptions] = None,
         cache_dir: Optional[str] = None,
         target_ir_version: Optional[int] = None,
         target_opset_version: Optional[int] = None,
@@ -62,7 +62,7 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
 
     def create_session(
         self, providers: list[str] | None = None, session_options: Any | None = None
-    ) -> ort.InferenceSession:  # type: ignore
+    ) -> ort.InferenceSession:
         """Create an ONNX Runtime session for the wrapped model graph.
 
         Args:
@@ -90,7 +90,7 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
         """
         return super()._export(self.op, file_path, **kwargs)
 
-    def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:  # type:ignore
+    def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:
         """Attach metadata entries to the wrapped ONNX model graph.
 
         Args:
@@ -103,7 +103,7 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
         return super()._add_metadata(self.op, additional_metadata)
 
 
-def load(model_name: Union[onnx.ModelProto, str]) -> ONNXModule:  # type:ignore
+def load(model_name: Union[onnx.ModelProto, str]) -> ONNXModule:
     """Load an ONNX model from either a file path or HuggingFace.
 
     The loaded model is an ONNXModule object, of which you may run the model with

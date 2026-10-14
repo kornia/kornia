@@ -293,7 +293,7 @@ class LoFTR(nn.Module):
                 raise TypeError(f"Expected torch.Tensor for item `{k}`. Got {type(_d)}")
         return out
 
-    def load_state_dict(self, state_dict: dict[str, Any], *args: Any, **kwargs: Any) -> Any:  # type: ignore[override]
+    def load_state_dict(self, state_dict: dict[str, Any], *args: Any, **kwargs: Any) -> Any:
         """Load a checkpoint state dictionary into the module.
 
         Args:

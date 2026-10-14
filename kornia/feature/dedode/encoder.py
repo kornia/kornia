@@ -42,12 +42,12 @@ class VGG19(nn.Module):
 
     def __init__(self, amp: bool = False, amp_dtype: torch.dtype = torch.float16) -> None:
         super().__init__()
-        self.layers = nn.ModuleList(vgg19_bn().features[:40])  # type: ignore
+        self.layers = nn.ModuleList(vgg19_bn().features[:40])
         # Maxpool layers: 6, 13, 26, 39
         self.amp = amp
         self.amp_dtype = amp_dtype
 
-    def forward(self, x: torch.Tensor, **kwargs):  # type: ignore[no-untyped-def]
+    def forward(self, x: torch.Tensor, **kwargs):
         """Run this DeDoDe module forward.
 
         Args:
@@ -95,7 +95,7 @@ class FrozenDINOv2(nn.Module):
             dinov2_vitl14 = dinov2_vitl14.to(self.amp_dtype)
         self.dinov2_vitl14 = [dinov2_vitl14]  # ugly hack to not show parameters to DDP
 
-    def forward(self, x: torch.Tensor):  # type: ignore[no-untyped-def]
+    def forward(self, x: torch.Tensor):
         """Run this DeDoDe module forward.
 
         Args:
@@ -117,7 +117,7 @@ class FrozenDINOv2(nn.Module):
 class VGG_DINOv2(nn.Module):
     """Implement a hybrid encoder combining VGG and DINOv2 features."""
 
-    def __init__(self, vgg_kwargs=None, dinov2_kwargs=None):  # type: ignore[no-untyped-def]
+    def __init__(self, vgg_kwargs=None, dinov2_kwargs=None):
         if (vgg_kwargs is None) or (dinov2_kwargs is None):
             raise ValueError("Input kwargs please")
         super().__init__()

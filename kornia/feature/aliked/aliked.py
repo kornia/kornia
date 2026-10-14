@@ -324,11 +324,11 @@ class DKD(nn.Module):
                 x_exp = ((patch_scores - max_v) / self.temperature).exp()
                 x_sum = x_exp.sum(dim=1, keepdim=True)
 
-                xy_residual = x_exp @ self.hw_grid / x_sum  # type: ignore[operator]
+                xy_residual = x_exp @ self.hw_grid / x_sum
 
                 hw_grid_dist2 = (
                     torch.norm(
-                        (self.hw_grid[None, :, :] - xy_residual[:, None, :]) / self.radius,  # type: ignore[index]
+                        (self.hw_grid[None, :, :] - xy_residual[:, None, :]) / self.radius,
                         dim=-1,
                     )
                     ** 2
@@ -354,7 +354,7 @@ class DKD(nn.Module):
                     # w_i = x_exp_i / sum(x_exp), mu = xy_residual (already computed).
                     # cov = sum_i w_i (g_i - mu)(g_i - mu)^T  ->  (N, 2, 2)
                     W = x_exp / x_sum  # (N, K²) normalised weights
-                    delta = self.hw_grid[None] - xy_residual[:, None]  # type: ignore[index]  # (N, K², 2)
+                    delta = self.hw_grid[None] - xy_residual[:, None]  # (N, K², 2)
                     cov = torch.einsum("ni,nij,nik->njk", W, delta, delta)  # (N, 2, 2)
                     local_affines.append(_affine_from_cov(cov))
         else:
@@ -991,9 +991,9 @@ class ALIKED(nn.Module):
 
         dkd_out = self.dkd(score_map, return_affine=compute_affine)
         if compute_affine:
-            keypoints, kptscores, _scoredispersitys, local_affines = dkd_out  # type: ignore[misc]
+            keypoints, kptscores, _scoredispersitys, local_affines = dkd_out
         else:
-            keypoints, kptscores, _scoredispersitys = dkd_out  # type: ignore[misc]
+            keypoints, kptscores, _scoredispersitys = dkd_out
             local_affines = None
         descriptors, _offsets = self.desc_head(feature_map, keypoints)
 

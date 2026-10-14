@@ -69,7 +69,7 @@ class ONNXLoader(CachedDownloader):
         raise RuntimeError(f"File `{url}` not found.")
 
     @classmethod
-    def load_model(cls, model_name: str, download: bool = True, with_data: bool = False, **kwargs) -> onnx.ModelProto:  # type:ignore
+    def load_model(cls, model_name: str, download: bool = True, with_data: bool = False, **kwargs) -> onnx.ModelProto:
         """Load an ONNX model from the local cache or downloads it from Hugging Face if necessary.
 
         Args:
@@ -100,7 +100,7 @@ class ONNXLoader(CachedDownloader):
                 cls.download_to_cache(
                     url_data, model_name.split("/")[1], download=download, suffix=".onnx_data", **kwargs
                 )
-            return onnx.load(file_path)  # type:ignore
+            return onnx.load(file_path)
 
         if model_name.startswith(("http://", "https://")):
             cache_dir = kwargs.get("cache_dir") or kornia_config.hub_onnx_dir
@@ -121,10 +121,10 @@ class ONNXLoader(CachedDownloader):
                     suffix=".onnx_data",
                     **kwargs,
                 )
-            return onnx.load(file_path)  # type:ignore
+            return onnx.load(file_path)
 
         if os.path.exists(model_name):
-            return onnx.load(model_name)  # type:ignore
+            return onnx.load(model_name)
 
         raise ValueError(f"File {model_name} not found")
 
@@ -167,9 +167,9 @@ class ONNXLoader(CachedDownloader):
 
 
 def io_name_conversion(
-    onnx_model: onnx.ModelProto,  # type:ignore
+    onnx_model: onnx.ModelProto,
     io_name_mapping: dict[str, str],
-) -> onnx.ModelProto:  # type:ignore
+) -> onnx.ModelProto:
     """Convert the input and output names of an ONNX model to 'input' and 'output'.
 
     Args:
@@ -204,9 +204,9 @@ def io_name_conversion(
 
 
 def add_metadata(
-    onnx_model: onnx.ModelProto,  # type: ignore
+    onnx_model: onnx.ModelProto,
     additional_metadata: Optional[list[tuple[str, str]]] = None,
-) -> onnx.ModelProto:  # type: ignore
+) -> onnx.ModelProto:
     """Add metadata to an ONNX model.
 
     The metadata includes the source library (set to "kornia"), the version of kornia,

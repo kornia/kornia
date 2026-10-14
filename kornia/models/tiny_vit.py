@@ -628,7 +628,7 @@ class TinyViT(nn.Module):
         if self.mobile_sam:
             # MobileSAM
             x = x.unflatten(1, (self.feat_size, self.feat_size)).permute(0, 3, 1, 2)
-            x = self.neck(x)  # type: ignore
+            x = self.neck(x)
         else:
             # classification
             x = x.mean(1)
