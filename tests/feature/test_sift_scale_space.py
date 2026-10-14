@@ -887,3 +887,31 @@ class TestSIFTScaleSpaceDetector(BaseTester):
         lafs, responses = detector(torch.zeros(1, 1, 32, 32, device=device))
         (lafs.sum() + responses.sum()).backward()
         assert torch.isfinite(dog.grad).all()
+
+
+class TestConventionsSIFTFeatureScaleSpace(BaseTester):
+    def test_convention_pyramid_backend_centres_are_pixel_centres_at_every_octave(self, device, dtype):
+        # Three bright blobs (x, y, sigma) at non-integer centres of a 120 x 176 image, detected on octaves 0, 1 and 2.
+        # The pyramid backend maps every octave's pixel back to the image's pixel-centre frame, so each centre is
+        # within 0.1 px of its blob. Half-precision input is detected in float32 and the LAFs are cast to the dtype at
+        # the end, which adds half a unit in the last place at coordinates below 128: 0.25 px in bfloat16, 1 / 32 px
+        # in float16.
+        tol = 0.1 + {torch.bfloat16: 0.25, torch.float16: 1.0 / 32}.get(dtype, 0.0)
+        blobs = [(37.3, 41.6, 1.5), (112.7, 38.2, 3.5), (71.4, 84.3, 8.0)]
+        yy, xx = torch.meshgrid(
+            torch.arange(120, dtype=torch.float64), torch.arange(176, dtype=torch.float64), indexing="ij"
+        )
+        img = sum(torch.exp(-((xx - x0) ** 2 + (yy - y0) ** 2) / (2.0 * s * s)) for x0, y0, s in blobs)[None, None]
+        expected = torch.tensor([[x0, y0] for x0, y0, _ in blobs], dtype=torch.float64)
+        feature = SIFTFeatureScaleSpace(32, upright=True, descriptor_backend="pyramid").to(device, dtype)
+        for image, centres in ((img, expected), (img.transpose(-1, -2), expected.flip(-1))):  # relabelling: transpose
+            image = image.contiguous().to(device, dtype)
+            with torch.no_grad():
+                lafs, _, _ = feature(image)
+                _, _, filled_d, _, octaves, _ = feature.detector._detect_with_pyramid(image, 32)
+            filled = laf_is_filled(lafs)[0]
+            assert torch.equal(filled, filled_d[0])
+            found = get_laf_center(lafs)[0, filled].cpu().double()
+            nearest = (found[None] - centres[:, None]).norm(dim=-1).argmin(dim=1)
+            assert octaves[0, filled][nearest.to(device)].tolist() == [0, 1, 2]
+            self.assert_close(found[nearest], centres, rtol=0.0, atol=tol)

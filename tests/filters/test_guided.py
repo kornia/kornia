@@ -237,6 +237,61 @@ class TestGuidedBlur(BaseTester):
         actual = guided_blur(guide, inp, kernel_size, 0.1)
         assert actual.shape == shape
 
+    @pytest.mark.parametrize("input_dtype", [torch.uint8, torch.int16, torch.bool])
+    @pytest.mark.parametrize("guide_dim", [1, 3])
+    @pytest.mark.parametrize("self_guided", [False, True])
+    @pytest.mark.parametrize("subsample", [1, 2])
+    @pytest.mark.parametrize("separable", [False, True])
+    def test_integer_inputs_match_float32_5155(
+        self,
+        input_dtype: torch.dtype,
+        guide_dim: int,
+        self_guided: bool,
+        subsample: int,
+        separable: bool,
+        device: torch.device,
+    ) -> None:
+        # Integer products must be promoted before computing the covariance, on the original image scale.
+        generator = torch.Generator().manual_seed(0)
+        low = -128 if input_dtype == torch.int16 else 0
+        high = 2 if input_dtype == torch.bool else 256
+        guide = torch.randint(low, high, (2, guide_dim, 9, 13), generator=generator).to(device, input_dtype)
+        inp = (
+            guide
+            if self_guided
+            else torch.randint(low, high, (2, 2, 9, 13), generator=generator).to(device, input_dtype)
+        )
+        float_guide = guide.float()
+        float_input = float_guide if self_guided else inp.float()
+        op = GuidedBlur(5, 100.0, subsample=subsample, separable=separable)
+
+        expected = op(float_guide, float_input)
+        actual = guided_blur(guide, inp, 5, 100.0, subsample=subsample, separable=separable)
+
+        assert actual.shape == inp.shape
+        assert actual.dtype == torch.float32
+        assert actual.device == inp.device
+        assert actual.isfinite().all()
+        self.assert_close(actual, expected)
+        self.assert_close(op(guide, inp), expected)
+
+    @pytest.mark.parametrize("integer_guidance", [False, True])
+    @pytest.mark.parametrize("guide_dim", [1, 3])
+    @pytest.mark.parametrize("subsample", [1, 2])
+    def test_mixed_integer_float32_inputs_5155(
+        self, integer_guidance: bool, guide_dim: int, subsample: int, device: torch.device
+    ) -> None:
+        generator = torch.Generator().manual_seed(0)
+        guide = torch.randint(256, (2, guide_dim, 9, 13), generator=generator).to(device, torch.uint8)
+        inp = torch.randint(256, (2, 2, 9, 13), generator=generator).to(device, torch.uint8)
+        expected = guided_blur(guide.float(), inp.float(), 5, 100.0, subsample=subsample)
+        guide, inp = (guide, inp.float()) if integer_guidance else (guide.float(), inp)
+
+        actual = guided_blur(guide, inp, 5, 100.0, subsample=subsample)
+
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected)
+
     def test_exception(self):
         from kornia.core.exceptions import BaseError, TypeCheckError
 
@@ -751,3 +806,27 @@ class TestConventionsGuidedBlur(BaseTester):
         assert out.shape == image.shape
         assert out.isfinite().all()
         self.assert_close(GuidedBlur(5, 0.01, subsample=2)(guidance, image), out)
+
+    @pytest.mark.parametrize(
+        ("input_dtype", "guidance_dtype", "expected"),
+        [
+            (torch.float16, torch.uint8, torch.float32),
+            (torch.uint8, torch.float16, torch.float32),
+            (torch.float64, torch.uint8, torch.float64),
+            (torch.uint8, torch.uint8, torch.float32),
+        ],
+    )
+    def test_convention_guided_blur_mixed_dtypes_promote_5155(self, input_dtype, guidance_dtype, expected, device):
+        """An integer guidance or input counts as float32, and the result has the promoted dtype of the two."""
+        if expected == torch.float64 and device.type == "mps":
+            pytest.skip("MPS has no float64")
+        generator = torch.Generator().manual_seed(0)
+        guidance = torch.randint(256, (2, 1, 9, 13), generator=generator).to(guidance_dtype)
+        image = torch.randint(256, (2, 2, 9, 13), generator=generator).to(input_dtype)
+        # torch 2.5.1 has no CPU float16 reflection-padding kernel.
+        out = guided_blur(guidance.to(device), image.to(device), 5, 100.0, border_type="constant")
+        assert out.dtype == expected
+        reference = guided_blur(
+            guidance.double(), image.double(), 5, 100.0, border_type="constant"
+        )  # CPU: MPS has no float64
+        self.assert_close(out.cpu().double(), reference, rtol=1e-2, atol=1e-1)
