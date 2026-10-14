@@ -22,6 +22,7 @@ import torch
 
 from kornia.geometry import RANSAC, transform_points
 from kornia.geometry.homography import oneway_transfer_error
+from kornia.geometry.ransac import _affine_transfer_error
 
 from testing.base import BaseTester
 
@@ -81,10 +82,30 @@ class TestRANSACAffine(BaseTester):
         self.assert_close(inliers, torch.tensor([True, True, True, True, False], device=device))
         assert count == 4
 
+    def test_transfer_error_matches_oneway(self, device, dtype):
+        generator = torch.Generator().manual_seed(11)
+        source = (1000 * torch.rand(1, 50, 2, generator=generator)).to(device=device, dtype=dtype)
+        target = (1000 * torch.rand(1, 50, 2, generator=generator)).to(device=device, dtype=dtype)
+        models = torch.eye(3).repeat(6, 1, 1)
+        models[:, :2] += 0.1 * torch.randn(6, 2, 3, generator=generator) + torch.tensor([0.0, 0.0, 20.0])
+        models = models.to(device=device, dtype=dtype)
+        actual = _affine_transfer_error(source, target, models)
+        assert actual.shape == (6, 50)
+        assert actual.dtype == dtype
+        self.assert_close(actual, oneway_transfer_error(source, target, models))
+
     @pytest.mark.parametrize("kwargs", [{"local_optimization": "lm"}, {"compile": True}, {"degensac": True}])
     def test_unsupported_refinement(self, kwargs):
         with pytest.raises(ValueError):
             RANSAC("affine", **kwargs)
+
+    def test_auto_batch_size(self):
+        # Three-point samples: the epipolar models' CPU batches, the homographies' accelerator batches.
+        estimator = RANSAC("affine")
+        assert estimator.resolve_batch_size(2000, torch.device("cpu")) == 128
+        assert estimator.resolve_batch_size(500, torch.device("cpu")) == 262
+        assert estimator.resolve_batch_size(2000, torch.device("cuda")) == 8192
+        assert estimator.resolve_batch_size(50000, torch.device("cuda")) == 2684
 
     def test_too_few_correspondences(self, device, dtype):
         points = torch.zeros(2, 2, device=device, dtype=dtype)

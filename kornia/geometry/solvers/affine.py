@@ -57,7 +57,7 @@ def _prepare_weights(weights: Optional[torch.Tensor], points: torch.Tensor, batc
 
 
 def _fit_affine_components(
-    points1: torch.Tensor, points2: torch.Tensor, weights: torch.Tensor, center: bool
+    points1: torch.Tensor, points2: torch.Tensor, weights: torch.Tensor
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Fit ``points2 = A @ points1 + t`` using a guarded weighted normal equation."""
     work_dtype = torch.float32 if points1.dtype in (torch.float16, torch.bfloat16) else points1.dtype
@@ -73,12 +73,8 @@ def _fit_affine_components(
     w = normalized_weights.to(work_dtype)
     support = w.sum(dim=-1, keepdim=True)
     safe_support = torch.where(support > 0, support, torch.ones_like(support))
-    if center:
-        x_mean = (x * w[..., None]).sum(dim=-2) / safe_support
-        y_mean = (y * w[..., None]).sum(dim=-2) / safe_support
-    else:
-        x_mean = torch.zeros_like(x[..., 0, :])
-        y_mean = torch.zeros_like(y[..., 0, :])
+    x_mean = (x * w[..., None]).sum(dim=-2) / safe_support
+    y_mean = (y * w[..., None]).sum(dim=-2) / safe_support
 
     xc, yc = x - x_mean[..., None, :], y - y_mean[..., None, :]
     # Scaling makes the rank criterion relative to the data and keeps normal equations conditioned.
@@ -94,13 +90,13 @@ def _fit_affine_components(
     # other direction, det = a * d - b * c cancels, and its relative error, about aspect**2 * eps, scales the
     # whole linear map. The fit is invariant to this rotation, so the detached angle loses no gradient and
     # atan2(0, 0) of an isotropic scatter is never differentiated.
-    scatter = torch.einsum("...n,...ni,...nj->...ij", w, xn, xn).detach()
+    scatter = ((xn * w[..., None]).transpose(-1, -2) @ xn).detach()
     angle = 0.5 * torch.atan2(2 * scatter[..., 0, 1], scatter[..., 0, 0] - scatter[..., 1, 1])
     rotation = torch.stack((angle.cos(), angle.sin(), -angle.sin(), angle.cos()), dim=-1).reshape_as(scatter)
     xn = xn @ rotation.transpose(-1, -2)
 
-    normal = torch.einsum("...n,...ni,...nj->...ij", w, xn, xn)
-    cross = torch.einsum("...n,...ni,...nj->...ij", w, yn, xn)
+    normal = (xn * w[..., None]).transpose(-1, -2) @ xn
+    cross = (yn * w[..., None]).transpose(-1, -2) @ xn
     a, b, c, d = normal[..., 0, 0], normal[..., 0, 1], normal[..., 1, 0], normal[..., 1, 1]
     det = a * d - b * c
     trace = a + d
@@ -118,29 +114,35 @@ def _fit_affine_components(
     )
 
 
-def _find_affine_linear(
-    points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None
-) -> torch.Tensor:
-    """Estimate origin-fixed 2D linear maps from batched point correspondences.
+def _find_affine_linear(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
+    """Estimate origin-fixed 2D linear maps ``points2 = points1 @ A^T`` by least squares.
 
-    This internal primitive supports arbitrary leading batch dimensions and at least two
-    non-collinear correspondences. AdaLAM refits its local affinities with it, where the seed
-    correspondence fixes the translation; its two-point hypotheses use :func:`_find_affine_linear_pair`.
+    Solves the 2x2 normal equation ``A (X^T X) = Y^T X`` directly for points of shape ``(..., N, 2)``. Unlike
+    :func:`find_affine`, it neither centers, scales nor rotates the points, so it suits well-scaled, well-spread
+    points: AdaLAM refits its local affinities with it, on coordinates relative to the seed correspondence and
+    normalized by the neighborhood radius, where zero padding rows contribute nothing. Rank-deficient fits are
+    NaN under the relative criterion ``det(X^T X) <= eps * trace(X^T X)**2``.
     """
     _check_points(points1, points2, 1, batched=False)
-    weights = _prepare_weights(weights, points1, points1.shape[:-2])
-    linear, _ = _fit_affine_components(points1, points2, weights, center=False)
-    return linear.to(points1.dtype)
+    work_dtype = torch.float32 if points1.dtype in (torch.float16, torch.bfloat16) else points1.dtype
+    x, y = points1.to(work_dtype), points2.to(work_dtype)
+    normal = x.transpose(-1, -2) @ x
+    a, b, c, d = normal[..., 0, 0], normal[..., 0, 1], normal[..., 1, 0], normal[..., 1, 1]
+    det = a * d - b * c
+    valid = det > torch.finfo(work_dtype).eps * (a + d).square()
+    safe_det = torch.where(valid, det, torch.ones_like(det))
+    inverse = torch.stack((d, -b, -c, a), dim=-1).reshape_as(normal) / safe_det[..., None, None]
+    linear = (y.transpose(-1, -2) @ x) @ inverse
+    return torch.where(valid[..., None, None], linear, torch.full_like(linear, float("nan"))).to(points1.dtype)
 
 
 def _find_affine_linear_pair(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
     """Solve origin-fixed 2D linear maps exactly from two correspondences.
 
     The minimal case of :func:`_find_affine_linear` for points of shape ``(..., 2, 2)``: two correspondences
-    determine the map, so the 2x2 system is solved directly instead of through the normal equation, whose
-    centering, scaling and rotation only condition least-squares fits. Rank-deficient samples are NaN under
-    the same relative criterion, ``det(X^T X) <= eps * trace(X^T X)**2``, written without squaring as
-    ``|det X| <= sqrt(eps) * ||X||_F**2``.
+    determine the map, so the 2x2 system is solved directly rather than through the normal equation, which
+    squares its condition number. Rank-deficient samples are NaN under the same relative criterion,
+    ``det(X^T X) <= eps * trace(X^T X)**2``, written without squaring as ``|det X| <= sqrt(eps) * ||X||_F**2``.
     """
     _check_points(points1, points2, 2, batched=False)
     if points1.shape[-2] != 2:
@@ -155,6 +157,28 @@ def _find_affine_linear_pair(points1: torch.Tensor, points2: torch.Tensor) -> to
     adjugate = torch.stack((d, -b, -c, a), dim=-1).reshape_as(x)
     linear = (adjugate @ y).transpose(-1, -2) / safe_det[..., None, None]
     return torch.where(valid[..., None, None], linear, torch.full_like(linear, float("nan"))).to(points1.dtype)
+
+
+def _find_affine_triplet(
+    points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None
+) -> torch.Tensor:
+    """Solve 2D affine transformations exactly from three correspondences, RANSAC's minimal samples.
+
+    Points have shape ``(B, 3, 2)`` and the result is homogeneous ``(B, 3, 3)``, like :func:`find_affine`. The linear
+    part maps the differences to the first correspondence, by :func:`_find_affine_linear_pair`, and the translation
+    follows from the first correspondence; collinear samples are NaN under that function's rank criterion. Positive
+    weights do not change an exact fit, so ``weights``, part of RANSAC's solver interface, are not used.
+    """
+    _check_points(points1, points2, 3, batched=True)
+    if points1.shape[-2] != 3:
+        raise ValueError(f"Exactly 3 correspondences are required. Got {points1.shape[-2]}.")
+    work_dtype = torch.float32 if points1.dtype in (torch.float16, torch.bfloat16) else points1.dtype
+    x, y = points1.to(work_dtype), points2.to(work_dtype)
+    origin1, origin2 = x[:, :1], y[:, :1]
+    linear = _find_affine_linear_pair(x[:, 1:] - origin1, y[:, 1:] - origin2)
+    translation = origin2.transpose(-1, -2) - linear @ origin1.transpose(-1, -2)
+    bottom = torch.tensor([0.0, 0.0, 1.0], device=x.device, dtype=work_dtype).expand(x.shape[0], 1, 3)
+    return torch.cat((torch.cat((linear, translation), dim=-1), bottom), dim=-2).to(points1.dtype)
 
 
 def find_affine(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -178,7 +202,7 @@ def find_affine(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[
     """
     _check_points(points1, points2, 3, batched=True)
     weights = _prepare_weights(weights, points1, points1.shape[:-2])
-    linear, translation = _fit_affine_components(points1, points2, weights, center=True)
+    linear, translation = _fit_affine_components(points1, points2, weights)
     result = torch.zeros((*points1.shape[:-2], 3, 3), device=points1.device, dtype=linear.dtype)
     result[..., :2, :2] = linear
     result[..., :2, 2] = translation

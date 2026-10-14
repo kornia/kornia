@@ -18,7 +18,12 @@
 import pytest
 import torch
 
-from kornia.geometry.solvers.affine import _find_affine_linear, _find_affine_linear_pair, find_affine
+from kornia.geometry.solvers.affine import (
+    _find_affine_linear,
+    _find_affine_linear_pair,
+    _find_affine_triplet,
+    find_affine,
+)
 
 from testing.base import BaseTester
 
@@ -156,16 +161,20 @@ class TestFindAffine(BaseTester):
         padded = _find_affine_linear(points[:1], target[:1])
         assert torch.isnan(padded).all()
 
-    def test_origin_fixed_prefix_and_padding(self, device, dtype):
-        matrix = torch.tensor([[2.0, -1.0], [0.5, 3.0]], device=device, dtype=dtype)
-        points = torch.tensor([[1.0, 0.0], [0.0, 2.0]], device=device, dtype=dtype)
-        target = points @ matrix.T
-        padded_points = torch.cat((points, torch.zeros(2, 2, device=device, dtype=dtype)))[None, None]
-        padded_target = torch.cat((target, torch.zeros(2, 2, device=device, dtype=dtype)))[None, None]
-        weights = torch.tensor([[[1.0, 1.0, 0.0, 0.0]]], device=device, dtype=dtype)
-        actual = _find_affine_linear(padded_points, padded_target, weights)
-        tol = 2e-3 if dtype in (torch.float16, torch.bfloat16) else 1e-5
-        self.assert_close(actual, matrix[None, None], rtol=tol, atol=tol)
+    def test_origin_fixed_least_squares_with_zero_padding(self, device, dtype):
+        generator = torch.Generator().manual_seed(5)
+        points = torch.rand(2, 10, 2, generator=generator, dtype=torch.float64) - 0.5
+        matrix = torch.tensor([[1.1, -0.2], [0.1, 0.9]], dtype=torch.float64)
+        target = points @ matrix.T + 0.01 * torch.randn(2, 10, 2, generator=generator, dtype=torch.float64)
+        # Origin-fixed least squares, as AdaLAM refits relative to its seed: no intercept column.
+        expected = torch.linalg.lstsq(points, target).solution.transpose(-1, -2)
+        # Zero rows, AdaLAM's padding of neighborhoods with fewer inliers, contribute nothing.
+        padded_points = torch.cat((points, torch.zeros(2, 4, 2, dtype=torch.float64)), dim=1)
+        padded_target = torch.cat((target, torch.zeros(2, 4, 2, dtype=torch.float64)), dim=1)
+        actual = _find_affine_linear(padded_points.to(device, dtype), padded_target.to(device, dtype))
+        assert actual.dtype == dtype
+        tol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-5
+        self.assert_close(actual, expected.to(device, dtype), rtol=tol, atol=tol)
 
     def test_origin_fixed_pair(self, device, dtype):
         matrix = torch.tensor([[2.0, -1.0], [0.5, 3.0]], device=device, dtype=dtype)
@@ -211,6 +220,37 @@ class TestFindAffine(BaseTester):
         # The normal equation squares the condition number; the direct solve does not.
         self.assert_close(actual[valid], expected[valid], rtol=1e-3, atol=1e-3)
 
+    def test_triplet(self, device, dtype):
+        points, target, expected = self._points(device, dtype)
+        # Move the first point off the origin: the translation follows from it. The shifted targets stay
+        # integers or quarters below 256, exact in bfloat16.
+        offset = torch.tensor([30.0, -20.0], device=device, dtype=dtype)
+        points, target = points[:, :3] + offset, target[:, :3] + offset @ expected[0, :2, :2].T
+        actual = _find_affine_triplet(points.expand(4, -1, -1), target.expand(4, -1, -1), torch.ones(4, 3))
+        assert actual.shape == (4, 3, 3)
+        assert actual.dtype == dtype
+        self.assert_close(actual[:, 2], expected[:, 2].expand(4, -1), atol=0, rtol=0)
+        tol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        self.assert_close(actual, expected.expand(4, -1, -1), rtol=tol, atol=tol)
+
+    def test_triplet_matches_find_affine(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("Compares two float32 solvers on the same half-rounded inputs.")
+        generator = torch.Generator().manual_seed(7)
+        points = (1000 * torch.rand(64, 3, 2, generator=generator)).to(device=device, dtype=dtype)
+        target = (1000 * torch.rand(64, 3, 2, generator=generator)).to(device=device, dtype=dtype)
+        points[0, 2] = 2 * points[0, 1] - points[0, 0]  # collinear
+        points[1, 1] = points[1, 0]  # repeated
+        expected = find_affine(points, target)
+        actual = _find_affine_triplet(points, target)
+        self.assert_close(torch.isnan(actual), torch.isnan(expected), atol=0, rtol=0)
+        assert torch.isnan(actual[:2, :2]).all()
+        # Both are exact fits: each maps its own three source points onto their targets.
+        valid = ~torch.isnan(actual).any(dim=(-2, -1))
+        transferred = points[valid] @ actual[valid, :2, :2].transpose(-1, -2) + actual[valid, None, :2, 2]
+        tol = 1e-2 if dtype == torch.float32 else 1e-8
+        self.assert_close(transferred, target[valid], rtol=0, atol=tol)
+
     def test_origin_fixed_pair_errors(self, device, dtype):
         points = torch.zeros(4, 3, 2, device=device, dtype=dtype)
         with pytest.raises(ValueError, match="Exactly 2"):
@@ -219,6 +259,9 @@ class TestFindAffine(BaseTester):
             _find_affine_linear_pair(points[:, :1], points[:, :1])
         with pytest.raises(ValueError, match="same shape"):
             _find_affine_linear_pair(points[:, :2], points[:2, :2])
+        quadruples = torch.zeros(4, 4, 2, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Exactly 3"):
+            _find_affine_triplet(quadruples, quadruples)
 
     def test_gradcheck(self, device):
         points, target, _ = self._points(device, torch.float64)
