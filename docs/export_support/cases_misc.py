@@ -1141,7 +1141,7 @@ add(
     g,
     None,
     [],
-    skip="deprecated alias of kornia.losses.one_hot (kornia.utils is a deprecation shim, not an attribute of kornia)",
+    skip="deprecated alias of kornia.losses.one_hot; measured as losses.one_hot",
 )
 add(
     "utils.draw_line",

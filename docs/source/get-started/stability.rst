@@ -63,11 +63,11 @@ The promises (stable core)
 
 1. **Deprecation before removal.** A public symbol is never removed or given
    an incompatible signature in a single step. It first spends at least one
-   minor release wrapped in ``kornia.core._compat.deprecated``, which
+   minor release as a deprecated alias -- ``kornia.core._compat.deprecated``, or a shim
+   with the old signature where the old function scripted with TorchScript -- which
    keeps the old call working while emitting a :class:`DeprecationWarning`
    that names the replacement and the version that introduced the
-   deprecation (this is the mechanism the 0.8.3 ``kornia.utils`` →
-   ``kornia.image`` migration used).
+   deprecation.
 2. **No silent semantic changes.** Changing a default that alters numerical
    output (interpolation flags, ``align_corners``, padding modes, coordinate
    conventions) counts as a breaking change and gets the same

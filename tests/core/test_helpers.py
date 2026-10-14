@@ -410,6 +410,30 @@ class TestExportHelpers:
         moved.y.sum().backward()
         assert_close(v.grad, torch.full_like(v, 2.0))
 
+    @pytest.mark.parametrize("state_dtype", [torch.int64, torch.int32, torch.uint8, torch.bool])
+    def test_register_module_state_rejects_non_floating(self, device, state_dtype):
+        # Only a floating-point or complex tensor can be optimizable state: any other dtype raises a kornia error
+        # that names it, instead of torch's autograd RuntimeError (#5201).
+        m = torch.nn.Module()
+        x = torch.tensor([1, 0, 1], device=device).to(state_dtype)
+        with pytest.raises(TypeCheckError, match=f"got {state_dtype}") as err:
+            register_module_state(m, "_x", x)
+        assert err.value.actual_type == state_dtype
+        assert not hasattr(m, "_x")
+
+    def test_register_module_state_keeps_an_integer_parameter(self, device):
+        # A caller's own nn.Parameter is kept whatever its dtype, as before the dtype check.
+        m = torch.nn.Module()
+        p = torch.nn.Parameter(torch.tensor([1, 2], device=device), requires_grad=False)
+        register_module_state(m, "p", p)
+        assert m.p is p
+
+    def test_register_module_state_complex_leaf_is_parameter(self, device):
+        m = torch.nn.Module()
+        register_module_state(m, "z", torch.tensor([0.6 + 0.8j], device=device))
+        assert isinstance(m.z, torch.nn.Parameter)
+        assert m.z.dtype == torch.complex64
+
 
 class TestHistcCast(BaseTester):
     def test_smoke(self, device, dtype):

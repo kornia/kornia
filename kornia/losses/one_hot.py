@@ -60,7 +60,13 @@ def one_hot(
     KORNIA_CHECK_IS_TENSOR(labels, "Input labels must be a torch.Tensor")
     KORNIA_CHECK(labels.dtype == torch.int64, f"labels must be of dtype torch.int64. Got: {labels.dtype}")
     KORNIA_CHECK(num_classes >= 1, f"The number of classes must be >= 1. Got: {num_classes}")
-    KORNIA_CHECK(eps == 0 or dtype.is_floating_point, f"A non-zero eps needs a floating point dtype. Got: {dtype}")
+    if eps != 0:
+        # TorchScript represents a ``torch.dtype`` as an int, which has no ``is_floating_point``.
+        if torch.jit.is_scripting():
+            is_floating = torch.empty(0, dtype=dtype).is_floating_point()
+        else:
+            is_floating = dtype.is_floating_point
+        KORNIA_CHECK(is_floating, f"A non-zero eps needs a floating point dtype. Got: {dtype}")
 
     # Use PyTorch's built-in one_hot function
     one_hot_tensor = F.one_hot(labels, num_classes=num_classes)
@@ -70,7 +76,7 @@ def one_hot(
     # Permute: move the last dimension (num_classes) to position 1
     ndim = labels.ndim
     permute_dims = [0] + [ndim] + list(range(1, ndim))
-    one_hot_tensor = one_hot_tensor.permute(*permute_dims)
+    one_hot_tensor = one_hot_tensor.permute(permute_dims)
 
     one_hot_tensor = one_hot_tensor.to(dtype=dtype, device=device)
     if eps == 0:
