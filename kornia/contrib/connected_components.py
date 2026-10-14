@@ -71,7 +71,7 @@ def connected_components(image: torch.Tensor, num_iterations: int = 100) -> torc
         if image.device.type == "mps":
             raise ValueError(
                 f"connected_components labels {num_ids} pixels in one image; on MPS (no float64) the limit is 2**24 "
-                "pixels per image. Split the image, or use connected_components_union_find."
+                "pixels per image. Run it on the CPU instead."
             )
         id_dtype = torch.float64
 
@@ -86,7 +86,8 @@ def connected_components(image: torch.Tensor, num_iterations: int = 100) -> torc
 
     labels = out.to(torch.int64)
     offset = torch.arange(B, device=image.device, dtype=torch.int64).view(-1, 1, 1, 1) * num_ids
-    return torch.where(labels > 0, labels + offset, labels).view(image.shape)
+    # Shift the foreground labels by the plane offset in place; the mask zeroes the background again.
+    return labels.add_(offset).mul_(mask).view(image.shape)
 
 
 def connected_components_union_find(image: torch.Tensor) -> torch.Tensor:

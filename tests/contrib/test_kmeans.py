@@ -312,11 +312,12 @@ class TestKMeans(BaseTester):
         got = km.predict(Xf.to(pixel_dtype).to(device)).cpu()
         assert torch.equal(got, expected)
 
-    def test_predict_uint8_does_not_wrap_the_centres(self, device):
-        # uint8(300.0) wraps to 44, which made cluster 1 the nearest centre of the pixel (250, 250).
-        c = torch.tensor([[300.0, 300.0], [100.0, 100.0]], device=device)
-        p = torch.tensor([[250, 250]], dtype=torch.uint8, device=device)
-        assert kornia.contrib.KMeans(2, c, tolerance=None, max_iterations=1).predict(p).tolist() == [0]
+    @pytest.mark.parametrize("pixel_dtype", [torch.uint8, torch.int64])
+    def test_predict_does_not_truncate_the_float_centres(self, device, pixel_dtype):
+        # Casting the centres to the pixel dtype truncates 0.9 to 0 and ties the two centres (argmin keeps index 0).
+        c = torch.tensor([[0.0, 0.0], [0.9, 0.9]], device=device)
+        p = torch.tensor([[1, 1]], dtype=pixel_dtype, device=device)
+        assert kornia.contrib.KMeans(2, c, tolerance=None, max_iterations=1).predict(p).tolist() == [1]
 
     def test_uint8_centres_and_points_are_compared_in_float(self, device):
         # uint8 differences and squares wrap: in uint8 the pixel (40, 40) looks nearest to (200, 200), but (0, 0) is.
@@ -330,6 +331,14 @@ class TestKMeans(BaseTester):
         km = kornia.contrib.KMeans(2, c, tolerance=None, max_iterations=1)
         km.fit(p)
         assert km.cluster_centers.tolist() == [[250, 250], [90, 90]]
+
+    def test_fit_sums_uint8_points_in_float(self, device):
+        # uint8 sums wrap: the mean of 200 and 210 came out as 77. Two empty-cluster-free clusters, one update.
+        c = torch.tensor([[205.0, 205.0], [5.0, 5.0]], device=device)
+        p = torch.tensor([[200, 200], [210, 210], [4, 4]], dtype=torch.uint8, device=device)
+        km = kornia.contrib.KMeans(2, c, tolerance=None, max_iterations=1)
+        km.fit(p)
+        assert km.cluster_centers.tolist() == [[205, 205], [4, 4]]
 
     def test_negative_max_iterations_raises(self):
         with pytest.raises(BaseError, match="max_iterations must be >= 0"):

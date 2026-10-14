@@ -163,11 +163,12 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
         kernel_size: size of the convolution kernel. Must be an odd number.
         h: value that influences the approximation of the min function. The cascade's kernel taps are
             ``exp(-dist/h)``. Accepted: ``h`` large enough that the corner tap (distance
-            ``sqrt(ndim) * (kernel_size // 2)``) stays above the smallest normal number of the working precision, and
-            small enough that the off-centre taps sum to less than 1 (2-D: below 0.5626 at ``kernel_size`` 3, about
-            0.50 at larger kernels; 3-D: below 0.4071 at 3, about 0.382 at larger kernels). Any other ``h`` raises:
-            a smaller one returned wrong distances, a larger one returned 0 at background pixels whose window was
-            full of reached pixels. ``float16`` and ``bfloat16`` inputs run the cascade in ``float32`` and cast the
+            ``sqrt(ndim) * (kernel_size // 2)``) stays at or above the smallest normal number of the working
+            precision, and small enough that the off-centre taps sum to less than 1 (2-D: below 0.5626 at
+            ``kernel_size`` 3, about 0.50 at larger kernels; 3-D: below 0.4071 at 3, about 0.382 at larger kernels).
+            Any other ``h`` raises:
+            a smaller one would give wrong distances, a larger one would give 0 at background pixels whose window
+            is full of reached pixels. ``float16`` and ``bfloat16`` inputs run the cascade in ``float32`` and cast the
             result back, which widens the safe ``h`` range for those dtypes to match ``float32``.
 
     Returns:
