@@ -382,6 +382,9 @@ class ONNXRuntimeMixin:
         Returns:
             list: The outputs from the ONNX model inference.
 
+        Raises:
+            ValueError: If the number of inputs differs from the length of ``get_session().get_inputs()``.
+
         """
         ort_inputs = self._session.get_inputs()
         if len(inputs) != len(ort_inputs):
