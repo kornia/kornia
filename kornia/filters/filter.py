@@ -102,6 +102,8 @@ def filter2d(
         - A :math:`(1, kH, kW)` kernel is shared by the whole batch, and a :math:`(B, kH, kW)` kernel gives each
           sample its own, shared by the sample's channels; there are no per-channel kernels. Any other kernel batch
           raises.
+          An empty batch accepts either a shared kernel or an empty per-sample kernel and retains the usual output
+          spatial size, dtype promotion and gradient connections to both input and kernel.
         - ``normalized=True`` divides each kernel by the sum of its absolute values, so a zero-sum derivative kernel
           keeps its sign.
         - ``border_type``, ``padding`` and ``behaviour`` are case-insensitive: ``'REFLECT'``, ``'SAME'`` and
@@ -191,6 +193,11 @@ def filter2d(
     if padding == "same":
         padding_shape: list[int] = _compute_padding([height, width])
         input = F.pad(input, padding_shape, mode=border_type)
+
+    # An empty per-sample kernel needs one structural row for nonzero convolution groups. Reduce after
+    # normalization to avoid normalizing a zero kernel, while keeping the original kernel in the autograd graph.
+    if tmp_kernel.shape[0] == 0:
+        tmp_kernel = tmp_kernel.sum(dim=0, keepdim=True)
 
     # kernel and input tensor reshape to align element-wise or batch-wise params
     tmp_kernel = tmp_kernel.reshape(-1, 1, height, width)
@@ -374,6 +381,10 @@ def filter3d(
     depth, height, width = tmp_kernel.shape[-3:]
     padding_shape: list[int] = _compute_padding([depth, height, width])
     input_pad = F.pad(input, padding_shape, mode=border_type)
+
+    # As in filter2d, preserve the empty kernel's gradient connection without using zero convolution groups.
+    if tmp_kernel.shape[0] == 0:
+        tmp_kernel = tmp_kernel.sum(dim=0, keepdim=True)
 
     # kernel and input tensor reshape to align element-wise or batch-wise params
     tmp_kernel = tmp_kernel.reshape(-1, 1, depth, height, width)

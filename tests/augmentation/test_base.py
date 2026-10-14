@@ -1238,6 +1238,12 @@ class TestConventionAugmentationBase2D(BaseTester):
             pytest.param(lambda: K.RandomEqualize(p=1.0), (0, 3, 6, 8), id="RandomEqualize"),
             pytest.param(lambda: K.RandomPosterize(p=1.0), (0, 3, 6, 8), id="RandomPosterize"),
             pytest.param(lambda: K.RandomSharpness(p=1.0), (0, 3, 6, 8), id="RandomSharpness"),
+            pytest.param(
+                lambda: K.RandomGaussianBlur((3, 5), (0.5, 1.5), "constant", p=1.0),
+                (0, 3, 6, 8),
+                id="RandomGaussianBlur",
+            ),
+            pytest.param(lambda: K.RandomMotionBlur(3, 35.0, 0.5, p=1.0), (0, 3, 6, 8), id="RandomMotionBlur"),
         ],
     )
     def test_convention_zero_batch_is_empty_in_empty_out(self, augmentation, shape, device, dtype):
