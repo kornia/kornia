@@ -61,8 +61,8 @@ class TestSe3(BaseTester):
         # S = |p| + |t1| + |t2|; the other pair sums to u (5 |p| + 5 |t1| + 5 |t2|). The default half tolerance, about
         # 2 u, does not cover either.
         u = torch.finfo(actual.dtype).eps / 2
-        s = sum(x.data.cpu().double().norm(dim=-1) for x in (p, t1, t2)).max().item()
-        self.assert_close(actual.data.cpu().double(), expected.data.cpu().double(), rtol=0.0, atol=9 * u * s)
+        s = sum(x.detach().cpu().double().norm(dim=-1) for x in (p, t1, t2)).max().item()
+        self.assert_close(actual.detach().cpu().double(), expected.detach().cpu().double(), rtol=0.0, atol=9 * u * s)
 
     def test_smoke(self, device, dtype):
         q = Quaternion.from_coeffs(1.0, 0.0, 0.0, 0.0)

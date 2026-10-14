@@ -37,9 +37,9 @@ def _complex_rotation(real: torch.Tensor, imag: torch.Tensor) -> torch.Tensor:
     if torch.bfloat16 in (real.dtype, imag.dtype):
         # torch.complex would raise a RuntimeError that names neither So2 nor a way out
         raise TypeCheckError(
-            "So2 stores its rotation as a complex tensor, and PyTorch has no complex bfloat16 dtype; got bfloat16 "
-            "real and imaginary parts. Build the rotation in float16, float32 or float64; `.bfloat16()` on a built "
-            "So2 or Se2 keeps the rotation's complex precision.",
+            "So2 stores its rotation as a complex tensor, and PyTorch has no complex bfloat16 dtype; got a bfloat16 "
+            "real or imaginary part. Build the rotation in float16, float32 or float64; `.bfloat16()` on a built So2 "
+            "or Se2 keeps the rotation's complex precision.",
             actual_type=torch.bfloat16,
         )
     return torch.complex(real, imag)

@@ -19,7 +19,7 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py
 from __future__ import annotations
 
-from typing import Optional, Union
+from typing import Optional, Union, overload
 
 import torch
 import torch.nn.functional as F
@@ -159,7 +159,16 @@ class Se3(nn.Module):
         _t = (self.t + _so3_rotate(self.r.q, right.t)).to(torch.promote_types(self.t.dtype, right.t.dtype))
         return Se3(_r, _t)
 
-    def __mul__(self, right: Se3) -> Se3 | Vector3 | torch.Tensor:
+    @overload
+    def __mul__(self, right: Se3) -> Se3: ...
+
+    @overload
+    def __mul__(self, right: Vector3) -> Vector3: ...
+
+    @overload
+    def __mul__(self, right: torch.Tensor) -> torch.Tensor: ...
+
+    def __mul__(self, right: Se3 | Vector3 | torch.Tensor) -> Se3 | Vector3 | torch.Tensor:
         """Compose two Se3 transformations, or transform points.
 
         Both compute in float32 for float16/bfloat16 inputs and return the input dtype.

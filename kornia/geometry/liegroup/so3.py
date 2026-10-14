@@ -19,7 +19,7 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py
 from __future__ import annotations
 
-from typing import Optional, Union
+from typing import Optional, Union, overload
 
 import torch
 from torch import nn
@@ -159,7 +159,16 @@ class So3(nn.Module):
     def __getitem__(self, idx: int | slice) -> So3:
         return So3(self._q[idx])
 
-    def __mul__(self, right: So3) -> So3:
+    @overload
+    def __mul__(self, right: So3) -> So3: ...
+
+    @overload
+    def __mul__(self, right: Vector3) -> Vector3: ...
+
+    @overload
+    def __mul__(self, right: torch.Tensor) -> torch.Tensor: ...
+
+    def __mul__(self, right: So3 | Vector3 | torch.Tensor) -> So3 | Vector3 | torch.Tensor:
         """Compose two So3 transformations, or rotate points.
 
         Both compute in float32 for float16/bfloat16 inputs and return the input dtype.
