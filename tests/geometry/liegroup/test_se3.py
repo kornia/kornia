@@ -20,6 +20,7 @@ import math
 import pytest
 import torch
 
+from kornia.core.exceptions import TypeCheckError
 from kornia.geometry.conversions import euler_from_quaternion, rotation_matrix_to_quaternion
 from kornia.geometry.liegroup import Se3, So3
 from kornia.geometry.quaternion import Quaternion
@@ -421,6 +422,10 @@ class TestSe3(BaseTester):
         # a tensor that does not require grad still becomes an optimizable parameter
         plain = Se3(So3.identity(1, device, dtype), torch.zeros(1, 3, device=device, dtype=dtype))
         assert [name for name, _ in plain.named_parameters()] == ["_translation"]
+
+    def test_integer_translation_raises(self, device):
+        with pytest.raises(TypeCheckError, match=r"Se3 stores 'translation'.*torch.int64"):
+            Se3(Quaternion.identity(1, device), torch.tensor([[1, 2, 3]], device=device))
 
     def test_derived_state_moves_and_serializes(self, device, dtype):
         v = torch.rand(2, 6, device=device, dtype=dtype, requires_grad=True)

@@ -132,9 +132,9 @@ The following example only illustrates the method signatures, not an invertible 
    import torch
    from torch import Tensor
 
-   import kornia as K
    from kornia.augmentation import GeometricAugmentationBase2D
    from kornia.augmentation import random_generator as rg
+   from kornia.core.ops import eye_like
 
    class MyRandomTransform(GeometricAugmentationBase2D):
 
@@ -151,7 +151,7 @@ The following example only illustrates the method signatures, not an invertible 
       def compute_transformation(self, input, params, flags):
          # return the (B, 3, 3) transform matrix for this augmentation
          # identity shown only to illustrate the required matrix shape
-         return K.eye_like(3, input)
+         return eye_like(3, input)
 
       def apply_transform(
          self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None

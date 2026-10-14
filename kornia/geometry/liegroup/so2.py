@@ -74,6 +74,9 @@ class So2(nn.Module):
         Args:
             z: Complex number with the shape of :math:`(B,)` or :math:`()`; :math:`(B, 1)` is read as :math:`(B,)`.
 
+        Raises:
+            TypeCheckError: if ``z`` is an integer or bool tensor.
+
         Example:
             >>> real = torch.tensor(0.6)
             >>> imag = torch.tensor(0.8)
