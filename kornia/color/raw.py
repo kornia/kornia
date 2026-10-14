@@ -87,7 +87,7 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
 
     imagesize = image.size()
 
-    image = image.view(-1, 1, image.shape[-2], image.shape[-1])
+    image = image.reshape(-1, 1, image.shape[-2], image.shape[-1])
 
     # BG is defined as pel 1,1 being blue, that is the top left is actually green. This matches
     # opencv naming so makes sense to keep

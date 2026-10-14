@@ -112,12 +112,16 @@ The import-surface check verifies that recorded names leave the export surface
 in that change. An inventory edit acknowledges an ``__all__`` removal only for
 the exact same module and name; it does not authorize submodule removals.
 
-For a submodule API recorded only under an ancestor package, or an API absent
-from the inventory, record the exact module and removed ``__all__`` name in
+Each module that declares ``__all__`` under a recorded package root has its own row.
+To delete such a module, keep its key with an empty list: an empty row for a module
+that no longer exists records the deletion, and stays in the inventory.
+
+For an ``__all__`` name of a module that has no row of its own, such as a module
+outside the recorded package roots, record the exact module and removed name in
 ``tests/api_surface_removals.json``. For example::
 
     {
-      "kornia.geometry.boxes": ["Boxes"]
+      "kornia.feature.dedode": ["DeDoDe"]
     }
 
 Only module/name pairs newly added relative to the pull request's merge base

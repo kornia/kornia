@@ -1215,6 +1215,63 @@ class TestAugmentationSequential:
 class TestConventionAugmentationSequential(BaseTester):
     """Convention checks and pins for documented `AugmentationSequential` limitations."""
 
+    @pytest.mark.parametrize("num_points", [0, 2])
+    def test_video_keypoints_noncontiguous_and_empty(self, num_points, device, dtype):
+        image = torch.arange(36, device=device, dtype=dtype).reshape(1, 1, 1, 6, 6).expand(2, 3, -1, -1, -1)
+        points = torch.arange(3 * 2 * num_points * 2, device=device, dtype=dtype).reshape(3, 2, num_points, 2)
+        points = (points % 6).transpose(0, 1)
+        expected = points.clone()
+        expected[..., 0] = 5 - expected[..., 0]
+        aug = K.AugmentationSequential(
+            K.VideoSequential(K.RandomHorizontalFlip(p=1.0), data_format="BTCHW"),
+            data_keys=["input", "keypoints"],
+        )
+
+        out_image, out_points = aug(image, points)
+        self.assert_close(out_image, image.flip(-1))
+        assert out_points.shape == points.shape
+        self.assert_close(out_points, expected)
+        _, restored = aug.inverse(out_image, out_points)
+        self.assert_close(restored, points)
+
+    @pytest.mark.parametrize("num_boxes", [0, 2])
+    def test_video_boxes_noncontiguous_and_empty(self, num_boxes, device, dtype):
+        image = torch.arange(36, device=device, dtype=dtype).reshape(1, 1, 1, 6, 6).expand(2, 3, -1, -1, -1)
+        corners = torch.tensor([[1.0, 1.0], [3.0, 1.0], [3.0, 4.0], [1.0, 4.0]], device=device, dtype=dtype)
+        shift = torch.arange(6, device=device, dtype=dtype).reshape(3, 2, 1, 1, 1) * 0.25
+        boxes = (corners + shift).expand(3, 2, num_boxes, 4, 2).transpose(0, 1)
+        expected = boxes.clone()
+        expected[..., 0] = 5 - expected[..., 0]
+        expected = expected[..., [1, 0, 3, 2], :]
+        aug = K.AugmentationSequential(
+            K.VideoSequential(K.RandomHorizontalFlip(p=1.0), data_format="BTCHW"),
+            data_keys=["input", "bbox"],
+        )
+
+        out_image, out_boxes = aug(image, boxes)
+        assert out_boxes.shape == boxes.shape
+        self.assert_close(out_boxes, expected)
+        _, restored = aug.inverse(out_image, out_boxes)
+        self.assert_close(restored, boxes)
+
+    def test_video_boxes_inverse_with_partial_gate_5871(self, device, dtype):
+        torch.manual_seed(0)
+        corners = torch.tensor([[1.0, 1.0], [3.0, 1.0], [3.0, 4.0], [1.0, 4.0]], device=device, dtype=dtype)
+        boxes = corners.expand(4, 3, 2, 4, 2).clone()
+        aug = K.AugmentationSequential(
+            K.VideoSequential(K.RandomHorizontalFlip(p=0.5), data_format="BTCHW"),
+            data_keys=["input", "bbox"],
+        )
+
+        image, out_boxes = aug(torch.rand(4, 3, 1, 6, 6, device=device, dtype=dtype), boxes)
+        # The gate must mix applied and skipped frames, otherwise the round-trip proves nothing.
+        flipped = (out_boxes.data.view(4, 3, 2, 4, 2) - boxes).abs().sum(dim=(-1, -2, -3)) > 0
+        assert bool(flipped.any()), flipped.tolist()
+        assert not bool(flipped.all()), flipped.tolist()
+
+        _, restored = aug.inverse(image, out_boxes)
+        self.assert_close(restored, boxes)
+
     @pytest.mark.parametrize("batch_size", [2, 3])
     @pytest.mark.parametrize("keepdim,child_keepdim", [(True, False), (None, True), (False, True)])
     @pytest.mark.parametrize("mask_layout", ["BHW", "BCHW"])
@@ -1889,6 +1946,28 @@ class TestConventionAugmentationSequential(BaseTester):
         assert early_output.dtype == torch.float64
         assert torch.equal(early_output, expected)
         assert torch.equal(image_first({"image": image, "mask": mask})["mask"], expected)
+
+    @pytest.mark.parametrize("input_kind", ["pil", "path", "numpy"])
+    def test_dictionary_image_accepts_pil_path_and_numpy_5852(self, input_kind, tmp_path):
+        import numpy as np
+        from PIL import Image as PILImage
+
+        image = PILImage.new("RGB", (5, 4), color=(200, 100, 25))
+        path = tmp_path / "image.png"
+        image.save(path)
+        value = {"pil": image, "path": str(path), "numpy": np.array(image)}[input_kind]
+
+        positional = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=["input"])(value)
+        dictionary = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=None)({"input": value})
+
+        assert torch.equal(dictionary["input"], positional)
+
+    @pytest.mark.parametrize("key", ["input", "image"])
+    def test_dictionary_image_missing_path_raises_5852(self, key, tmp_path):
+        # The key marks the string as an image path, so a missing file is reported as such.
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=None)
+        with pytest.raises(FileNotFoundError):
+            aug({key: str(tmp_path / "missing.png")})
 
     @pytest.mark.parametrize("mask_dtypes", [(torch.int64, torch.bool), (torch.bool, torch.int64)])
     def test_convention_each_mask_keeps_its_own_dtype_4478(self, mask_dtypes, device, dtype):
@@ -2768,6 +2847,69 @@ class TestConventionAugmentationSequential(BaseTester):
 
 
 class TestAugmentationSequentialReplay:
+    @pytest.mark.parametrize("edit_in_place", [False, True])
+    def test_annotation_replay_uses_edited_params(self, device, dtype, edit_in_place):
+        with torch.random.fork_rng(devices=[device] if device.type == "cuda" else []):
+            torch.manual_seed(0)
+            image = torch.rand(2, 1, 16, 16, device=device, dtype=dtype)
+            keypoints = torch.tensor([[[3.0, 4.0]], [[3.0, 4.0]]], device=device, dtype=dtype)
+            aug = K.AugmentationSequential(K.RandomAffine(30.0, p=0.5), data_keys=["input", "keypoints"])
+            params = aug.forward_parameters(image.shape)
+            first_gate = torch.tensor([True, False], device=device)
+            second_gate = torch.tensor([False, True], device=device)
+            params[0].data["batch_prob"] = first_gate.clone()
+            aug(image, keypoints, params=params)
+
+            if edit_in_place:
+                params[0].data["batch_prob"][:] = second_gate
+            else:
+                params[0].data["batch_prob"] = second_gate
+
+            replayed = aug(keypoints, params=params, data_keys=["keypoints"])
+            moved = [(replayed[i] - keypoints[i]).abs().max() > 1e-4 for i in range(2)]
+            assert [bool(value) for value in moved] == [False, True]
+
+    def test_annotation_replay_after_repeated_replacements(self, device, dtype):
+        # Each replacement frees the previous tensor, and the next one can take its address, so a cache keyed by
+        # ``id()`` would see the tensor recorded by the image call again. Repeat to make an address reuse likely.
+        image = torch.rand(2, 1, 16, 16, device=device, dtype=dtype)
+        keypoints = torch.tensor([[[3.0, 4.0]], [[9.0, 12.0]]], device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomAffine(30.0, p=1.0), data_keys=["input", "keypoints"])
+        for _ in range(10):
+            params = aug.forward_parameters(image.shape)
+            aug(image, keypoints, params=params)
+            params[0].data["angle"] = params[0].data["angle"] * 0
+            params[0].data["angle"] = params[0].data["angle"] + 10.0
+            replayed = aug(keypoints, params=params, data_keys=["keypoints"])
+            _, expected = aug(image, keypoints, params=params)
+            assert_close(replayed, expected)
+
+    def test_annotation_replay_with_inference_tensors(self, monkeypatch):
+        # Inference tensors have no version counter: a replaced value is still seen, and the annotations of one call
+        # still share the image's matrix instead of recomputing one each.
+        calls = []
+        generate = K.RandomAffine.generate_transformation_matrix
+
+        def counted(self, *args, **kwargs):
+            calls.append(None)
+            return generate(self, *args, **kwargs)
+
+        monkeypatch.setattr(K.RandomAffine, "generate_transformation_matrix", counted)
+        with torch.inference_mode():
+            image = torch.rand(2, 1, 16, 16)
+            keypoints = torch.tensor([[[3.0, 4.0]], [[3.0, 4.0]]])
+            boxes = torch.tensor([[[2.0, 4.0, 6.0, 8.0]]]).expand(2, -1, -1)
+            data_keys = ["input", "mask", "bbox_xyxy", "keypoints"]
+            aug = K.AugmentationSequential(K.RandomAffine(30.0, p=0.5), data_keys=data_keys)
+            params = aug.forward_parameters(image.shape)
+            params[0].data["batch_prob"] = torch.tensor([True, False])
+            aug(image, image, boxes, keypoints, params=params)
+            assert len(calls) == 1
+            params[0].data["batch_prob"] = torch.tensor([False, True])
+            replayed = aug(keypoints, params=params, data_keys=["keypoints"])
+            moved = [(replayed[i] - keypoints[i]).abs().max() > 1e-4 for i in range(2)]
+            assert [bool(value) for value in moved] == [False, True]
+
     def test_annotation_replay_uses_matrices_from_params(self, device, dtype):
         with torch.random.fork_rng(devices=[device] if device.type == "cuda" else []):
             torch.manual_seed(0)

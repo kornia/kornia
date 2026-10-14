@@ -164,8 +164,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           cannot recover pixels moved out of the frame.
         - the ``mask``, box and ``keypoints`` handlers of a geometric child, or of a custom
           :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` subclass, receive the transform of the
-          call's ``params``: the one the child recorded when it last transformed an image with those params, or
-          else one recomputed from them, so a replay without the image or after a newer draw follows ``params``.
+          call's ``params``: the one the child recorded when it last transformed an image with those params, while no
+          value in them has been replaced or edited in place, or else one recomputed from them, so a replay without
+          the image, after a newer draw or after an edit follows ``params``. Inference tensors have no version
+          counter, so an in-place edit made inside ``torch.inference_mode`` is not seen; replace the value instead.
           The mask limitations above apply; a handler the subclass does not implement raises
           ``NotImplementedError``. A non-rigid warp child has no matrix, so the coordinate keys are left unchanged;
           see the warning below.
@@ -797,7 +799,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             inputs: Inputs to operate on.
             input_names_to_handle: List of input names to convert.
                 If None, convert every tensor, NumPy array and PIL image argument, and load a string as an image
-                path only if it is the first positional argument.
+                path only if it is the first positional argument, or the value of an ``input`` or ``image`` key
+                (``image_0`` too) in a dictionary input.
             output_type: Desired output type ('pt', 'numpy', or 'pil').
             kwargs: Additional arguments.
 
@@ -812,7 +815,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 keys, data_keys, args, _ = self._preproc_dict_data(inputs[0])
                 converted_dict = dict(inputs[0])
                 for key, arg, data_key in zip(keys, args, data_keys):
-                    if data_key in _IMG_OPTIONS and _is_numpy_array(arg):
+                    # The key marks a string as an image path, so a missing file raises instead of passing through.
+                    if data_key in _IMG_OPTIONS and (isinstance(arg, str) or self._is_valid_arg(arg)):
                         converted_dict[key] = self.to_tensor(arg)
                     else:
                         converted_dict[key] = self._convert_non_image(arg, data_key)

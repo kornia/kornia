@@ -102,14 +102,14 @@ covers CUDA or MPS half precision.
 | `kornia.geometry.calibration` | ⚠️ | ⚠️ | 13 / 12 | `solve_pnp_dlt` rejects half inputs (float32/float64 only); `undistort_points` misses its OpenCV reference values |
 | `kornia.geometry.epipolar` | ⚠️ | ⚠️ | 58 / 56 | `find_fundamental`, `find_essential`, `decompose_essential_matrix`, `motion_from_essential*` and `KRt_from_projection` raise `NotImplementedError`: CPU `lu`, `eigh` and QR have no half kernels |
 | `kornia.geometry.homography` | ⚠️ | ⚠️ | 11 / 16 | The DLT solvers run (SVD is cast to float32) but miss the clean-point accuracy checks |
-| `kornia.geometry.liegroup` | ⚠️ | ⚠️ | 35 / 129 | `So2`/`Se2` use complex tensors: float16 hits missing `ComplexHalf` kernels, and most bfloat16 `So2`/`Se2` tests raise (119 entries); `So3`/`Se3` nearly all pass |
+| `kornia.geometry.liegroup` | ⚠️ | ⚠️ | 4 / 130 | `So2`/`Se2` store complex tensors; float16 inverses are computed in complex64. PyTorch has no complex bfloat16 dtype, so most bfloat16 `So2`/`Se2` tests raise (119 entries); `So3`/`Se3` miss a few composition, point-transform and orthogonality accuracy checks |
 | `kornia.geometry.solvers` | ⚠️ | ⚠️ | 1 / 1 | `solve_quartic` accuracy on random quartics |
 | `kornia.geometry.subpix` | ⚠️ | ⚠️ | 14 / 12 | `ConvSoftArgmax3d` raises (CPU `avg_pool3d` has no half kernel); the rest are accuracy |
 | `kornia.geometry.conversions` | ⚠️ | ⚠️ | 72 / 60 | Angle-axis, quaternion and rotation-matrix round trips lose accuracy |
 | `kornia.geometry.ransac` | ⚠️ | ⚠️ | 4 / 4 | The essential and fundamental models raise through the epipolar solvers |
 | `kornia.geometry` (other) | ⚠️ | ⚠️ | 8 / 17 | Accuracy in boxes, depth and line utilities; bfloat16 `NamedPose` construction raises |
 | `kornia.image` | ⚠️ | ⚠️ | 4 / 4 | `draw_convex_polygon` fill accuracy |
-| `kornia.losses` | ⚠️ | ⚠️ | 3 / 4 | Dice averaging overflows to inf/NaN in float16; mutual information range check; bfloat16 Dice weighting and total variation |
+| `kornia.losses` | ✅ | ⚠️ | 0 / 2 | Mutual information and Dice averaging pass; bfloat16 total variation accuracy |
 | `kornia.feature` | ✅ | ✅ | 0 / 0 | Matching uses a manual `cdist` fallback for half dtypes; LightGlue's float16 tests are skipped, so that path is unmeasured |
 | `kornia.metrics` | ✅ | ⚠️ | 0 / 1 | bfloat16: `ssim3d` accuracy |
 | `kornia.models` | ✅ | ⚠️ | 0 / 1 | bfloat16 RT-DETR RepVGG fusion accuracy |

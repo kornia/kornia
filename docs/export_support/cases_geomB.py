@@ -458,37 +458,6 @@ CASES = [
         [cam2.intrinsics, cam2.extrinsics],
     ),
     _cam(
-        "pinhole.pinhole_matrix",
-        K.geometry.camera.pinhole.pinhole_matrix,
-        [torch.tensor([[50.0, 50.0, 20.0, 16.0, 32.0, 40.0, 0.1, 0.2, 0.3, 0.0, 0.0, 0.0]])],
-        note="legacy 12-vector pinhole",
-    ),
-    _cam(
-        "pinhole.inverse_pinhole_matrix",
-        K.geometry.camera.pinhole.inverse_pinhole_matrix,
-        [torch.tensor([[50.0, 50.0, 20.0, 16.0, 32.0, 40.0, 0.1, 0.2, 0.3, 0.0, 0.0, 0.0]])],
-    ),
-    _cam(
-        "pinhole.scale_pinhole",
-        K.geometry.camera.pinhole.scale_pinhole,
-        [torch.tensor([[50.0, 50.0, 20.0, 16.0, 32.0, 40.0, 0.1, 0.2, 0.3, 0.0, 0.0, 0.0]]), torch.tensor([0.5])],
-    ),
-    _cam(
-        "pinhole.get_optical_pose_base",
-        K.geometry.camera.pinhole.get_optical_pose_base,
-        [torch.tensor([[50.0, 50.0, 20.0, 16.0, 32.0, 40.0, 0.1, 0.2, 0.3, 0.1, -0.1, 0.05]])],
-        note="KORNIA BUG: function body is `raise NotImplementedError` (pinhole.py:628)",
-    ),
-    _cam(
-        "pinhole.homography_i_H_ref",
-        K.geometry.camera.pinhole.homography_i_H_ref,
-        [
-            torch.tensor([[50.0, 50.0, 20.0, 16.0, 32.0, 40.0, 0.1, 0.2, 0.3, 0.1, -0.1, 0.05]]),
-            torch.tensor([[50.0, 50.0, 20.0, 16.0, 32.0, 40.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]),
-        ],
-        note="KORNIA BUG: calls get_optical_pose_base which is a NotImplementedError stub",
-    ),
-    _cam(
         "StereoCamera.reproject_disparity_to_3D",
         lambda l, r, d: StereoCamera(l, r).reproject_disparity_to_3D(d),
         [left34, right34, disparity],

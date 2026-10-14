@@ -32,6 +32,24 @@ class TestHistMatch(BaseTester):
         x_hat = kornia.contrib.interp(x, xp, fp)
         self.assert_close(x_hat_expected, x_hat)
 
+    def test_interp_zero_width_last_segment(self, device, dtype):
+        # A 2**24 + 1 pixel template with one pixel in its last bin has its last two float32 quantiles both round to 1.
+        # A source quantile of 1 selects that zero-width segment, which divided by zero and gave NaN.
+        xp = torch.tensor([0.0, 1.0, 1.0], device=device, dtype=dtype)
+        fp = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
+        x = torch.tensor([0.5, 1.0], device=device, dtype=dtype)
+        x_hat = kornia.contrib.interp(x, xp, fp)
+        self.assert_close(x_hat, torch.tensor([0.0, 1.0], device=device, dtype=dtype))
+
+    def test_interp_zero_width_last_segment_gradient(self, device, dtype):
+        # torch.where differentiates the discarded quotient too: dividing by the raw zero width gave NaN gradients.
+        xp = torch.tensor([0.0, 1.0, 1.0], device=device, dtype=dtype)
+        fp = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype, requires_grad=True)
+        x = torch.tensor([0.5, 1.0], device=device, dtype=dtype, requires_grad=True)
+        kornia.contrib.interp(x, xp, fp).sum().backward()
+        self.assert_close(fp.grad, torch.tensor([0.5, 0.5, 1.0], device=device, dtype=dtype))
+        self.assert_close(x.grad, torch.zeros(2, device=device, dtype=dtype))
+
     def test_histmatch(self, device, dtype):
         torch.manual_seed(44)
         # generate random value by CPU.
@@ -52,6 +70,69 @@ class TestHistMatch(BaseTester):
         )
         assert exp.shape == out.shape
         self.assert_close(out, exp, rtol=1e-4, atol=1e-4)
+
+    def test_histmatch_stays_in_template_range(self, device, dtype):
+        # The lowest source quantile (1/4) is below the template's (3/4): it maps to the template minimum, as np.interp
+        # does in the referenced implementation, instead of being extrapolated below it.
+        src = torch.tensor([0.0, 1.0, 2.0, 3.0], device=device, dtype=dtype)
+        dst = torch.tensor([10.0, 10.0, 10.0, 20.0], device=device, dtype=dtype)
+        out = kornia.contrib.histogram_matching(src, dst)
+        exp = torch.tensor([10.0, 10.0, 10.0, 20.0], device=device, dtype=dtype)
+        self.assert_close(out, exp)
+
+    def test_histmatch_constant_template(self, device, dtype):
+        src = torch.tensor([0.0, 1.0, 2.0, 3.0], device=device, dtype=dtype)
+        dst = torch.full((5,), 7.0, device=device, dtype=dtype)
+        out = kornia.contrib.histogram_matching(src, dst)
+        self.assert_close(out, torch.full_like(src, 7.0))
+
+    def test_histmatch_clipped_black_template(self, device, dtype):
+        # An 8-bit template with crushed shadows: 60 of its 256 pixels are 0. The darkest source pixels map to 0, as in
+        # skimage.exposure.match_histograms (60 zeros); they used to be extrapolated below it (57 negative outputs).
+        yy, xx = torch.meshgrid(
+            torch.linspace(0, 1, 16, device=device, dtype=dtype),
+            torch.linspace(0, 1, 16, device=device, dtype=dtype),
+            indexing="ij",
+        )
+        src = ((0.1 + 0.5 * xx + 0.3 * yy) * 255).round() / 255
+        dst = ((1.2 * xx + 0.3 * yy - 0.4).clamp(0, 1) * 255).round() / 255
+        out = kornia.contrib.histogram_matching(src, dst)
+        assert out.min() == 0
+        assert int((out == 0).sum()) == 60
+
+    def test_histmatch_large_image(self, device, dtype):
+        # 64x64 is past the exact-integer range of float16 (2048) and bfloat16 (256), where summing the counts in the
+        # input dtype repeated quantiles and gave NaN. The result must match the float64 computation on the same values.
+        # Seed 5 is one of the pairs that gave NaN in both float16 and bfloat16.
+        g = torch.Generator().manual_seed(5)
+        src = torch.rand(64, 64, generator=g).to(device=device, dtype=dtype)
+        dst = torch.rand(64, 64, generator=g).to(device=device, dtype=dtype)
+        out = kornia.contrib.histogram_matching(src, dst)
+        exp = kornia.contrib.histogram_matching(src.cpu().double(), dst.cpu().double()).to(device=device, dtype=dtype)
+        assert out.dtype == dtype
+        assert out.isfinite().all()
+        self.assert_close(out, exp)
+
+    def test_histmatch_float64_keeps_template_values(self, device, dtype):
+        # A float64 source is matched in float64: float32 would round the template value 1 + 2**-40 to 1.
+        if dtype != torch.float64:
+            pytest.skip("float64 only")
+        src = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
+        dst = torch.tensor([1.0, 1.0 + 2**-40], device=device, dtype=dtype)
+        assert torch.equal(kornia.contrib.histogram_matching(src, dst), dst)
+
+    @pytest.mark.parametrize("size", [50, 64])
+    def test_histmatch_uint8(self, device, size):
+        # A uint8 count sum wraps past 255: 50x50 mapped to values up to 266, and 64x64 (4096 = 0 mod 256) to NaN.
+        g = torch.Generator().manual_seed(0)
+        src = (torch.rand(size, size, generator=g) * 255).round().to(device=device, dtype=torch.uint8)
+        dst = (torch.rand(size, size, generator=g) * 255).round().to(device=device, dtype=torch.uint8)
+        out = kornia.contrib.histogram_matching(src, dst)
+        assert out.dtype == torch.float32
+        assert out.isfinite().all()
+        assert out.min() >= dst.min()
+        assert out.max() <= dst.max()
+        self.assert_close(out, kornia.contrib.histogram_matching(src.float(), dst.float()))
 
     @pytest.mark.skip(reason="not differentiable now.")
     def test_grad(self, device):

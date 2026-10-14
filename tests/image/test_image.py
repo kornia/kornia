@@ -334,3 +334,46 @@ class TestCheckImageLayout(BaseTester):
         data = torch.rand(3, 4, 5, device=device)
         layout = ImageLayout(ImageSize(10, 10), 3, ChannelsOrder.CHANNELS_FIRST)
         assert not KORNIA_CHECK_IMAGE_LAYOUT(data, layout, raises=False)
+
+
+class TestConventionsImage(BaseTester):
+    """Pins for the unbatched layout, same-space conversions and NumPy aliasing of ``Image``."""
+
+    def test_convention_image_is_unbatched(self):
+        # Image holds one (H, W, C) or (C, H, W) image; a batched 4-D tensor is rejected by its dimension count.
+        # Image.from_numpy of a 4-D array raises the same ShapeError.
+        batched = torch.zeros(2, 4, 5, 3, dtype=torch.uint8)
+        layout = ImageLayout(ImageSize(4, 5), 3, ChannelsOrder.CHANNELS_LAST)
+        with pytest.raises(ShapeError, match="expected 3 dimensions, got 4"):
+            Image(batched, PixelFormat(ColorSpace.RGB, 8), layout)
+        with pytest.raises(ShapeError, match="expected 3 dimensions, got 4"):
+            Image.from_numpy(np.zeros((2, 4, 5, 3), np.uint8))
+
+    @pytest.mark.parametrize(
+        ("color_space", "channels", "convert"),
+        [
+            (ColorSpace.GRAY, 1, "to_gray"),
+            (ColorSpace.RGB, 3, "to_rgb"),
+            (ColorSpace.BGR, 3, "to_bgr"),
+        ],
+    )
+    @pytest.mark.parametrize("array_dtype", [np.uint8, np.uint16])
+    def test_convention_color_conversion_to_the_same_space_returns_self(
+        self, color_space, channels, convert, array_dtype
+    ):
+        image = Image.from_numpy(np.zeros((4, 5, channels), dtype=array_dtype), color_space=color_space)
+        assert getattr(image, convert)() is image
+
+    def test_convention_uint16_rgb_to_gray_is_unsupported(self):
+        image = Image.from_numpy(np.ones((2, 3, 3), dtype=np.uint16))
+        with pytest.raises(TypeError, match=r"Unknown data type: torch\.uint16"):
+            image.to_gray()
+
+    def test_convention_from_numpy_shares_memory(self):
+        array = np.zeros((4, 5, 3), dtype=np.uint8)  # H = 4, W = 5
+        image = Image.from_numpy(array)
+        assert (image.height, image.width, image.channels) == (4, 5, 3)
+        array[3, 4, 2] = 9
+        assert image.data[3, 4, 2].item() == 9
+        image.data[0, 1, 0] = 5
+        assert array[0, 1, 0] == 5
