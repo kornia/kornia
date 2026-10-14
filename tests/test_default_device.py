@@ -61,6 +61,8 @@ class TestDefaultDevice:
         assert not _device_contexts()
         assert torch.get_default_device() == torch.device("cpu")
         assert torch.empty(1).device.type == "cpu"
+        # Exact pre-block state: no thread-local attribute (a ``None`` there breaks get_default_device on torch <= 2.9).
+        assert not hasattr(torch._GLOBAL_DEVICE_CONTEXT, "device_context")
 
     def test_restores_after_an_exception(self, clean_device_state):
         with pytest.raises(RuntimeError, match="boom"), default_device("meta"):
@@ -88,3 +90,15 @@ class TestDefaultDevice:
             assert len(_device_contexts()) == 1
         assert not _device_contexts()
         assert torch.get_default_device() == torch.device("cpu")
+
+    def test_invalid_device_with_a_prior_default_leaves_state_intact(self, clean_device_state):
+        torch.set_default_device("meta")
+        try:
+            with pytest.raises((RuntimeError, ValueError)), default_device("not-a-device"):
+                pass  # pragma: no cover
+            assert torch.get_default_device().type == "meta"
+            assert len(_device_contexts()) == 1
+            assert torch.empty(1).device.type == "meta"
+        finally:
+            torch.set_default_device(None)
+        assert not _device_contexts()

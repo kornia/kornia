@@ -30,12 +30,16 @@ def default_device(device: str | torch.device) -> Iterator[None]:
     """Run a block under ``torch.set_default_device(device)`` and restore the exact prior state afterwards.
 
     ``torch.set_default_device`` pushes a ``DeviceContext`` torch-function mode that nothing pops. The obvious
-    restore, ``torch.set_default_device(torch.get_default_device())``, pushes a second one when no default was set,
-    and it stays on for the rest of the pytest process (#5508, #5916). ``torch.set_default_device(None)`` pops it, but
+    restore, ``torch.set_default_device(torch.get_default_device())``, puts one ``DeviceContext(cpu)`` in place of none
+    when no default was set, and it stays on for the rest of the pytest process (#5508, #5916). ``torch.set_default_device(None)`` pops it, but
     on torch 2.5 to 2.9 it also stores ``None`` where ``torch.get_default_device()`` expects a context, so every later
     call raises ``AttributeError``. This manager pops the context it pushed, then puts the thread-local back to what it
     held before: no attribute at all, ``None``, or a context for the same device.
+
+    Do not use it inside ``with torch.device(...)`` on torch 2.9.1 or older: ``DeviceContext.__exit__`` there asserts
+    on the mode it finds on top of the stack, which corrupts the state. torch 2.14 handles that nesting.
     """
+    device = torch.device(device)  # validate first: torch pops the prior context before it checks the new device
     store = torch._GLOBAL_DEVICE_CONTEXT
     prior = getattr(store, "device_context", _MISSING)
     prior_device = None if prior is _MISSING or prior is None else prior.device
