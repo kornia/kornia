@@ -446,15 +446,17 @@ def combine_tensor_patches(
     norm_map = F.fold(input=unfold_ones, output_size=restored_size, kernel_size=window_size, stride=stride)
     fold_kwargs = {"output_size": restored_size, "kernel_size": window_size, "stride": stride}
     if patches.is_complex():
-        saturated = torch.complex(F.fold(input=patches.real, **fold_kwargs), F.fold(input=patches.imag, **fold_kwargs))
+        folded = [F.fold(input=part, **fold_kwargs) for part in (patches.real, patches.imag)]
     else:
-        saturated = F.fold(input=patches.to(work_dtype), **fold_kwargs)
+        folded = [F.fold(input=patches.to(work_dtype), **fold_kwargs)]
     if has_unpadding:
         norm_map = F.pad(norm_map, [-i for i in unpadding_tuple])
-        saturated = F.pad(saturated, [-i for i in unpadding_tuple])
+        folded = [F.pad(part, [-i for i in unpadding_tuple]) for part in folded]
     # A covered pixel has an integer overlap count >= 1 and is divided by it exactly. A pixel no patch covers (patches
-    # that do not fit, the warned path) has count 0 and sum 0, and stays 0.
-    restored = saturated / torch.where(norm_map == 0, torch.ones_like(norm_map), norm_map)
+    # that do not fit, the warned path) has count 0 and sum 0, and stays 0. Complex parts are divided separately: a
+    # complex division by the real count rounds on some torch versions.
+    count = torch.where(norm_map == 0, torch.ones_like(norm_map), norm_map)
+    restored = torch.complex(folded[0] / count, folded[1] / count) if patches.is_complex() else folded[0] / count
     return restored.to(out_dtype)
 
 
