@@ -297,23 +297,6 @@ def supports_unit_size_3d_affine_grid(device: torch.device, dtype: torch.dtype) 
     return _supports_kernel_probe(_unit_size_3d_affine_grid_op, device.type, dtype)
 
 
-@cache
-def supports_empty_motion_kernel_padding(device: torch.device, dtype: torch.dtype, dimensions: int = 2) -> bool:
-    """Whether the actual 2D/3D motion-kernel padding accepts an empty batch on this device/dtype."""
-    if dimensions not in (2, 3):
-        raise ValueError(f"Expected 2 or 3 dimensions, got {dimensions}")
-    try:
-        kernel = _probe_zeros(str(device), dtype, 0, *([1] * (dimensions - 1)), 3)
-        F.pad(kernel, (0, 0, *([1, 1] * (dimensions - 1)), 0, 0))
-    except _UnsupportedProbeDtype:
-        return False
-    except RuntimeError as error:
-        if "negative output size" in str(error):
-            return False
-        raise
-    return True
-
-
 def _reflect_padding_op(device_type: str, dtype: torch.dtype) -> None:
     F.pad(_probe_zeros(device_type, dtype, 1, 1, 2, 2), (1, 1, 1, 1), mode="reflect")
 

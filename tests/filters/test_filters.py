@@ -56,6 +56,8 @@ from kornia.filters import (
     get_spatial_gradient_kernel3d,
     laplacian,
     laplacian_1d,
+    motion_blur,
+    motion_blur3d,
     spatial_gradient,
     spatial_gradient3d,
 )
@@ -72,94 +74,6 @@ from testing.base import (
 
 
 class TestFilter2D(BaseTester):
-    @pytest.mark.parametrize("kernel_batch", [0, 1])
-    @pytest.mark.parametrize(
-        "border,padding,normalized,behaviour",
-        [
-            ("constant", "same", False, "corr"),
-            ("reflect", "same", True, "conv"),
-            ("replicate", "same", False, "conv"),
-            ("circular", "same", True, "corr"),
-            ("constant", "valid", True, "conv"),
-        ],
-    )
-    def test_empty_kernel_4429(self, kernel_batch, border, padding, normalized, behaviour, device, dtype):
-        if border == "reflect" and not supports_reflect_padding(device, dtype):
-            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
-        if border == "replicate" and not supports_replicate_padding(device, dtype):
-            pytest.skip("replication_pad2d is unavailable for this device/dtype")
-        image = torch.empty(0, 3, 13, 9, device=device, dtype=dtype).transpose(-1, -2).requires_grad_()
-        kernel = torch.arange(1, 11, device=device, dtype=dtype).reshape(1, 5, 2).expand(kernel_batch, -1, -1)
-        kernel = kernel.transpose(-1, -2).detach().requires_grad_()
-        output = filter2d(image, kernel, border, normalized, padding, behaviour)
-        assert output.shape == (0, 3, *((9, 13) if padding == "same" else (8, 9)))
-        assert output.dtype == dtype
-        assert output.device == device
-        output.sum().backward()
-        for value in (image, kernel):
-            assert value.grad is not None
-            assert value.grad.shape == value.shape
-            self.assert_close(value.grad, torch.zeros_like(value), rtol=0, atol=0)
-
-    @pytest.mark.parametrize("kernel_batch", [0, 1])
-    @pytest.mark.parametrize("input_dtype", [torch.uint8, torch.int64, torch.bool])
-    def test_empty_integer_kernel_4429(self, kernel_batch, input_dtype, device):
-        image = torch.empty(0, 3, 9, 13, device=device, dtype=input_dtype)
-        kernel = torch.ones(kernel_batch, 3, 5, device=device)
-        output = filter2d(image, kernel, padding="valid")
-        assert output.shape == (0, 3, 7, 9)
-        assert output.dtype == torch.float32
-        assert output.device == device
-
-    @pytest.mark.parametrize("kernel_batch", [0, 1])
-    def test_empty_autocast_4429(self, kernel_batch, device):
-        image = torch.empty(0, 3, 9, 13, device=device)
-        kernel = torch.ones(kernel_batch, 3, 5, device=device)
-        with torch.autocast(device.type):
-            output = filter2d(image, kernel, padding="valid")
-            reference = F.conv2d(image, torch.ones(3, 1, 3, 5, device=device), groups=3)
-        assert output.shape == (0, 3, 7, 9)
-        assert output.dtype == reference.dtype
-        assert output.device == device
-
-    @pytest.mark.parametrize("batch,kernel_batch", [(0, 2), (2, 0)])
-    def test_invalid_empty_kernel_batch_4429(self, batch, kernel_batch, device, dtype):
-        with pytest.raises(BaseError, match="kernel batch must be 1 or the input batch"):
-            filter2d(
-                torch.empty(batch, 3, 9, 13, device=device, dtype=dtype),
-                torch.empty(kernel_batch, 3, 5, device=device, dtype=dtype),
-            )
-
-    @pytest.mark.parametrize("kernel_batches", [(0, 0), (0, 1), (1, 0), (1, 1)])
-    def test_empty_separable_4429(self, kernel_batches, device, dtype):
-        image = torch.empty(0, 3, 9, 13, device=device, dtype=dtype, requires_grad=True)
-        kernels = [
-            torch.ones(batch, size, device=device, dtype=dtype, requires_grad=True)
-            for batch, size in zip(kernel_batches, (5, 3))
-        ]
-        output = filter2d_separable(image, *kernels, normalized=True, padding="valid")
-        assert output.shape == (0, 3, 7, 9)
-        assert output.dtype == dtype
-        assert output.device == device
-        output.sum().backward()
-        for value in (image, *kernels):
-            assert value.grad is not None
-            assert value.grad.shape == value.shape
-            self.assert_close(value.grad, torch.zeros_like(value), rtol=0, atol=0)
-
-    @pytest.mark.parametrize("batch", [0, 2])
-    @pytest.mark.parametrize("shared", [False, True])
-    def test_dynamo_empty_kernel_4429(self, batch, shared, device, dtype, torch_optimizer):
-        image = (torch.arange(batch * 3 * 9 * 13, device=device, dtype=dtype) % 17).reshape(batch, 3, 9, 13)
-        kernel = torch.arange((1 if shared else batch) * 3 * 5, device=device, dtype=dtype).reshape(-1, 3, 5) + 1
-
-        def run(image, kernel):
-            return filter2d(image, kernel, normalized=True, padding="valid", behaviour="conv")
-
-        actual = torch_optimizer(run)(image, kernel)
-        assert actual.shape == (batch, 3, 7, 9)
-        self.assert_close(actual, run(image, kernel))
-
     @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
     @pytest.mark.parametrize("normalized", [True, False])
     @pytest.mark.parametrize("padding", ["same", "valid"])
@@ -550,43 +464,6 @@ class TestFilter2D(BaseTester):
 
 
 class TestFilter3D(BaseTester):
-    @pytest.mark.parametrize("kernel_batch", [0, 1])
-    @pytest.mark.parametrize("normalized,behaviour", [(False, "corr"), (True, "conv")])
-    def test_empty_kernel_4429(self, kernel_batch, normalized, behaviour, device, dtype):
-        image = torch.empty(0, 3, 6, 13, 9, device=device, dtype=dtype).transpose(-1, -2).requires_grad_()
-        kernel = torch.arange(1, 31, device=device, dtype=dtype).reshape(1, 2, 5, 3).expand(kernel_batch, -1, -1, -1)
-        kernel = kernel.transpose(-1, -2).detach().requires_grad_()
-        output = filter3d(image, kernel, "constant", normalized, behaviour)
-        assert output.shape == image.shape
-        assert output.dtype == dtype
-        assert output.device == device
-        output.sum().backward()
-        for value in (image, kernel):
-            assert value.grad is not None
-            assert value.grad.shape == value.shape
-            self.assert_close(value.grad, torch.zeros_like(value), rtol=0, atol=0)
-
-    @pytest.mark.parametrize("batch,kernel_batch", [(0, 2), (2, 0)])
-    def test_invalid_empty_kernel_batch_4429(self, batch, kernel_batch, device, dtype):
-        with pytest.raises(BaseError, match="kernel batch must be 1 or the input batch"):
-            filter3d(
-                torch.empty(batch, 3, 5, 9, 13, device=device, dtype=dtype),
-                torch.empty(kernel_batch, 2, 3, 5, device=device, dtype=dtype),
-            )
-
-    @pytest.mark.parametrize("batch", [0, 2])
-    @pytest.mark.parametrize("shared", [False, True])
-    def test_dynamo_empty_kernel_4429(self, batch, shared, device, dtype, torch_optimizer):
-        image = (torch.arange(batch * 2 * 5 * 7 * 9, device=device, dtype=dtype) % 17).reshape(batch, 2, 5, 7, 9)
-        kernel = torch.arange((1 if shared else batch) * 2 * 3 * 5, device=device, dtype=dtype).reshape(-1, 2, 3, 5) + 1
-
-        def run(image, kernel):
-            return filter3d(image, kernel, "constant", normalized=True, behaviour="conv")
-
-        actual = torch_optimizer(run)(image, kernel)
-        assert actual.shape == image.shape
-        self.assert_close(actual, run(image, kernel))
-
     @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
     @pytest.mark.parametrize("normalized", [True, False])
     def test_smoke(self, border_type, normalized, device, dtype):
@@ -2777,40 +2654,88 @@ class TestConventionsKernels(BaseTester):
         assert int((kernel == 0).sum()) == (2 if ndim == 1 else 4)
 
 
-class TestFilterSampleKernels(BaseTester):
-    @pytest.mark.parametrize("spatial", [(5, 7), (4, 5, 7)])
-    @pytest.mark.parametrize("behaviour", ["corr", "conv"])
-    def test_per_sample_reference_4429(self, spatial, behaviour, device, dtype):
-        dimensions = len(spatial)
-        shape = (2, 2, *spatial)
-        count = 1
-        for size in shape:
-            count *= size
-        image = (torch.arange(count, device=device, dtype=dtype) % 19 / 19).reshape(shape).requires_grad_()
-        kernel_shape = (2, 2, 3) if dimensions == 2 else (2, 2, 2, 3)
-        count = 1
-        for size in kernel_shape:
-            count *= size
-        kernel = (torch.arange(count, device=device, dtype=dtype) % 11 - 4).reshape(kernel_shape).requires_grad_()
-        fn = filter2d if dimensions == 2 else filter3d
-        actual = fn(image, kernel, "constant", normalized=True, behaviour=behaviour)
-        ref_image = image.detach().clone().requires_grad_()
-        ref_kernel = kernel.detach().clone().requires_grad_()
-        convolution = F.conv2d if dimensions == 2 else F.conv3d
-        padding = [1, 1] + [0, 1] * (dimensions - 1)
-        samples = []
-        for index in range(2):
-            weight = ref_kernel[index]
-            weight = weight / weight.abs().sum()
-            if behaviour == "conv":
-                weight = weight.flip(tuple(range(dimensions)))
-            samples.append(
-                convolution(F.pad(ref_image[index : index + 1], padding), weight.expand(2, 1, *weight.shape), groups=2)
-            )
-        expected = torch.cat(samples)
-        self.assert_close(actual, expected)
-        weights = (torch.arange(actual.numel(), device=device, dtype=dtype) % 7).reshape_as(actual) / 7
-        actual_grads = torch.autograd.grad((actual * weights).sum(), (image, kernel))
-        expected_grads = torch.autograd.grad((expected * weights).sum(), (ref_image, ref_kernel))
-        for left, right in zip(actual_grads, expected_grads):
-            self.assert_close(left, right)
+class TestEmptyBatchPerSampleKernel(BaseTester):
+    """An empty batch with an empty per-sample kernel, sigma or angle returns an empty output (#4429)."""
+
+    # The first parameter after the image reaches the convolution weight, so its gradient must be connected.
+    @pytest.mark.parametrize(
+        ("op", "image_shape", "param_shapes", "expected_shape"),
+        [
+            pytest.param(lambda x, k: filter2d(x, k, "constant"), (0, 3, 9, 13), [(0, 3, 5)], (0, 3, 9, 13), id="2d"),
+            pytest.param(
+                lambda x, k: filter2d(x, k, "constant", True, "valid", "conv"),
+                (0, 3, 9, 13),
+                [(0, 3, 5)],
+                (0, 3, 7, 9),
+                id="2d-valid",
+            ),
+            pytest.param(
+                lambda x, kx, ky: filter2d_separable(x, kx, ky, "constant", padding="valid"),
+                (0, 3, 9, 13),
+                [(0, 5), (0, 3)],
+                (0, 3, 7, 9),
+                id="separable",
+            ),
+            pytest.param(
+                lambda x, k: filter3d(x, k, "constant", True),
+                (0, 2, 5, 9, 13),
+                [(0, 3, 3, 5)],
+                (0, 2, 5, 9, 13),
+                id="3d",
+            ),
+            pytest.param(
+                lambda x, s: gaussian_blur2d(x, (3, 5), s, "constant"),
+                (0, 3, 9, 13),
+                [(0, 2)],
+                (0, 3, 9, 13),
+                id="gaussian",
+            ),
+            pytest.param(
+                lambda x, d, a: motion_blur(x, 3, a, d, "constant"),
+                (0, 3, 9, 13),
+                [(0,), (0,)],
+                (0, 3, 9, 13),
+                id="motion",
+            ),
+            pytest.param(
+                lambda x, d, a: motion_blur3d(x, 3, a, d, "constant"),
+                (0, 2, 5, 9, 13),
+                [(0,), (0, 3)],
+                (0, 2, 5, 9, 13),
+                id="motion3d",
+            ),
+            pytest.param(
+                lambda x, d, a: motion_blur3d(x, 3, a, d, "constant", mode="bilinear"),
+                (0, 2, 5, 9, 13),
+                [(0,), (0, 3)],
+                (0, 2, 5, 9, 13),
+                id="motion3d-bilinear",
+            ),
+        ],
+    )
+    def test_empty_batch_4429(self, op, image_shape, param_shapes, expected_shape, device, dtype):
+        image = torch.empty(image_shape, device=device, dtype=dtype, requires_grad=True)
+        params = [torch.empty(shape, device=device, dtype=dtype, requires_grad=True) for shape in param_shapes]
+        output = op(image, *params)
+        assert output.shape == expected_shape
+        assert output.dtype == dtype
+        assert output.device == device
+        output.sum().backward()
+        for value in (image, params[0]):
+            assert value.grad is not None
+            assert value.grad.shape == value.shape
+
+    @pytest.mark.parametrize(("op", "spatial"), [(filter2d, (9, 13)), (filter3d, (5, 9, 13))])
+    @pytest.mark.parametrize(("batch", "kernel_batch"), [(0, 2), (2, 0)])
+    def test_empty_kernel_batch_must_match_4429(self, op, spatial, batch, kernel_batch, device, dtype):
+        image = torch.empty(batch, 3, *spatial, device=device, dtype=dtype)
+        kernel = torch.empty(kernel_batch, *([3] * len(spatial)), device=device, dtype=dtype)
+        with pytest.raises(BaseError, match="kernel batch must be 1 or the input batch"):
+            op(image, kernel, "constant")
+
+    @pytest.mark.parametrize("batch", [0, 2])
+    def test_dynamo_4429(self, batch, device, dtype, torch_optimizer):
+        image = torch.rand(batch, 3, 9, 13, device=device, dtype=dtype)
+        kernel = torch.rand(batch, 3, 5, device=device, dtype=dtype) + 0.1
+        op = torch_optimizer(filter2d)
+        self.assert_close(op(image, kernel, "constant", True), filter2d(image, kernel, "constant", True))

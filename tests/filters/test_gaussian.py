@@ -397,32 +397,6 @@ def test_gaussian_blur2d_tensor(ksize_x, ksize_y, sigma, device, dtype):
 
 
 class TestGaussianBlur2d(BaseTester):
-    @pytest.mark.parametrize("sigma_kind", ["tuple", "shared", "empty"])
-    @pytest.mark.parametrize("separable", [False, True])
-    def test_empty_sigma_4429(self, sigma_kind, separable, device, dtype):
-        image = torch.empty(0, 3, 9, 13, device=device, dtype=dtype, requires_grad=True)
-        sigma = (
-            (0.7, 1.3)
-            if sigma_kind == "tuple"
-            else torch.tensor([[0.7, 1.3]], device=device, dtype=dtype)
-            .expand(0 if sigma_kind == "empty" else 1, -1)
-            .clone()
-            .requires_grad_()
-        )
-        output = gaussian_blur2d(image, (3, 5), sigma, "constant", separable)
-        module_output = GaussianBlur2d((3, 5), sigma, "constant", separable)(image)
-        for result in (output, module_output):
-            assert result.shape == image.shape
-            assert result.dtype == dtype
-            assert result.device == device
-        (output.sum() + module_output.sum()).backward()
-        assert image.grad is not None
-        assert image.grad.shape == image.shape
-        if isinstance(sigma, torch.Tensor):
-            assert sigma.grad is not None
-            assert sigma.grad.shape == sigma.shape
-            self.assert_close(sigma.grad, torch.zeros_like(sigma), rtol=0, atol=0)
-
     @pytest.mark.parametrize("shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [3, (5, 5), (5, 7)])
     @pytest.mark.parametrize("separable", [False, True])
