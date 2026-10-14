@@ -282,11 +282,12 @@ class TestConventionsDISK(BaseTester):
         assert seen[..., :, 75:].abs().max() == 0
         assert feats.keypoints.tolist() == [[13.0, 21.0], [72.0, 30.0]]
 
-    def test_convention_disk_default_unet_ignores_a_common_scale_of_at_least_one(self, device, dtype):
+    def test_convention_disk_default_unet_sees_a_common_gain_only_through_the_norms_eps(self, device, dtype):
         # The default U-Net instance-normalises every channel before each convolution but the first, which removes a
-        # common positive scale of the input together with the first convolution's bias, so [0, 255] gives the maps,
-        # keypoints and descriptors of [0, 1] up to the norms' eps (random weights). An offset is not removed: the
-        # first convolution's zero padding does not move with it.
+        # common positive gain of the input together with the first convolution's bias, so [0, 255] gives the maps,
+        # keypoints and descriptors of [0, 1] up to the norms' eps (random weights) at ordinary contrast. At low
+        # contrast eps weighs against the variance and the gain shows. An offset is not removed: the first
+        # convolution's zero padding does not move with it.
         with torch.random.fork_rng(devices=[]):
             torch.manual_seed(0)
             disk = DISK().eval()
@@ -306,6 +307,9 @@ class TestConventionsDISK(BaseTester):
                 assert torch.equal(feats_s.keypoints, feats.keypoints)
                 self.assert_close(feats_s.descriptors, feats.descriptors, rtol=0.0, atol=tol)
             assert (disk.heatmap_and_dense_descriptors(image + 0.3)[0] - heatmap).abs().max() > 0.2
+            low = 0.01 * image  # intensities spread over 0.01: the same gain moves the heatmap by about 0.5
+            heatmap_low = disk.heatmap_and_dense_descriptors(low)[0]
+            assert (disk.heatmap_and_dense_descriptors(scale * low)[0] - heatmap_low).abs().max() > 0.2
 
     def test_convention_disk_n_keeps_the_strongest_and_score_threshold_is_strict(self, device, dtype):
         # n is an upper bound on the maxima above score_threshold: with more maxima than n, forward keeps the n

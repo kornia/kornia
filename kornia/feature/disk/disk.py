@@ -50,11 +50,15 @@ class DISK(nn.Module):
 
     Convention:
         - ``images`` are RGB, :math:`(B, 3, H, W)`, which the U-Net sees as given, without normalisation. With the
-          default U-Net, a common scale of the input of at least 1, such as :math:`[0, 255]` instead of
-          :math:`[0, 1]`, leaves the keypoints and descriptors unchanged up to the instance norms' ``eps``; a much
-          smaller scale does not, because ``eps`` then weighs against the variance. ``H`` and ``W`` must be
-          multiples of 16, unless ``pad_if_not_divisible=True`` zero-pads the bottom and right, in which case the maps
-          are cropped back to the image before the suppression and no keypoint lies in the padding.
+          default U-Net, a common positive gain of the input, such as :math:`[0, 255]` instead of :math:`[0, 1]`,
+          changes the outputs only through the instance norms' ``eps``, which weighs more the lower the image's
+          contrast. At ordinary contrast the maps barely change, though a keypoint can still swap where scores nearly
+          tie or at the ``n`` cut; at low contrast the keypoints and descriptors change substantially. With the
+          ``depth`` weights and ``n=2048``, the :math:`[0, 1]` and :math:`[0, 255]` versions of Oxford graf, wall and
+          bark ``img1`` differ in 0 to 2 keypoints, in 2 to 6 % of them with the intensities multiplied by 0.1, and
+          in about 30 % multiplied by 0.01. ``H`` and ``W`` must be multiples of 16, unless
+          ``pad_if_not_divisible=True`` zero-pads the bottom and right, in which case the maps are cropped back to the
+          image before the suppression and no keypoint lies in the padding.
         - Each image gives a :class:`DISKFeatures`. Keypoints are the integer ``(x, y)`` pixels of the strict heatmap
           maxima (see the note), in the pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
           (see :ref:`Local features <local-features-conventions>`), listed in raster order (row by row, then column

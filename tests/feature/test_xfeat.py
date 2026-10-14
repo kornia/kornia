@@ -568,10 +568,31 @@ class TestConventionsXFeat(BaseTester):
             assert (out["scales"][:, start : start + k] == 1 / factor).all()
             start += k
 
+    def test_convention_xfeat_dense_keeps_the_top_k_cells_capped_by_the_cells_of_each_scale(self, device, dtype):
+        # each extraction keeps its top_k cells, or every cell when there are fewer or top_k < 1; multiscale=True gives
+        # the 0.6 and 1.3 extractions int(0.2 * top_k) and int(0.8 * top_k). A 64 x 64 image has 16 cells at 0.6
+        # (resized to 32 x 32) and 64 at 1.3 (64 x 64), so a share above them is capped, and 9 gives 1 + 7 = 8.
+        torch.manual_seed(0)
+        xfeat = XFeat().to(device).eval()
+        image = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
+        counts = {k: xfeat.detectAndComputeDense(image, k)["keypoints"].shape[1] for k in (0, 5, 9, 10, 20, 100, 4096)}
+        assert counts == {0: 80, 5: 5, 9: 8, 10: 10, 20: 20, 100: 80, 4096: 80}
+        single = {k: xfeat.detectAndComputeDense(image, k, False)["keypoints"].shape[1] for k in (-1, 0, 1, 7, 100)}
+        assert single == {-1: 64, 0: 64, 1: 1, 7: 7, 100: 64}
+
+    def test_wart_xfeat_dense_multiscale_keeps_every_cell_of_a_zero_share_5924(self, device, dtype):
+        # a share int(0.2 * top_k) or int(0.8 * top_k) that rounds down to 0 reaches the "top_k < 1 keeps every cell"
+        # rule, so a top_k from 1 to 4 returns all 16 cells of the 0.6 extraction, and 1 those of both scales
+        torch.manual_seed(0)
+        xfeat = XFeat().to(device).eval()
+        image = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
+        counts = {k: xfeat.detectAndComputeDense(image, k)["keypoints"].shape[1] for k in (1, 2, 4)}
+        assert counts == {1: 16 + 64, 2: 16 + 1, 4: 16 + 3}
+
     def test_convention_xfeat_model_reads_the_channel_mean_through_an_instance_norm(self, device, dtype):
         # XFeatModel averages the channels and instance-normalises the result (model.py of verlab/accelerated_features
         # e92685f), so any channel count is accepted and an affine change a x + b of the intensities with a > 0 leaves
-        # the outputs unchanged, up to the norm's eps.
+        # the outputs unchanged, up to the norm's eps, unless the image's variance is close to eps.
         tol = {torch.float16: 2e-3, torch.bfloat16: 6e-3}.get(dtype, 1e-4)
         with torch.random.fork_rng(devices=[]):
             torch.manual_seed(0)
@@ -592,6 +613,9 @@ class TestConventionsXFeat(BaseTester):
                     self.assert_close(out, ref, rtol=0.0, atol=tol)
             # not every change is invisible: squaring the image moves the keypoint logits
             assert (model(rgb**2)[1] - reference[1]).abs().max() > 0.02
+            # nor is the gain at low contrast, where the variance of the channel mean (about 3e-7 here) is below eps
+            low = 0.003 * rgb
+            assert (model(scale * low)[1] - model(low)[1]).abs().max() > 0.02
 
     @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
     def test_convention_interpolate_sparse2d_reads_position_p_at_map_coordinate_p_times_map_size_over_size_minus_one(

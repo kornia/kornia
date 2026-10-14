@@ -373,8 +373,9 @@ class SIFTFeature(_SIFTFeature):
           window (15 pixels by default), so a stronger extremum of either polarity suppresses a weaker one.
           ``responses`` holds the magnitude.
         - The frames are those of :class:`~kornia.feature.MultiResolutionDetector`: a pixel of a pyramid level, with a
-          scale of 22 times that level's pixel size whatever the size of the blob. Unlike the 6-sigma frames of
-          :class:`SIFTFeatureScaleSpace`, their scale is not a fixed multiple of the detection sigma.
+          scale of ``config["s_mult"]`` (22 by default) times that level's pixel size whatever the size of the blob.
+          Unlike the 6-sigma frames of :class:`SIFTFeatureScaleSpace`, their scale is not a fixed multiple of the
+          detection sigma.
         - Descriptors come in kornia's SIFT layout; ``descriptor_layout="opencv"`` returns them in OpenCV's, which
           :class:`~kornia.feature.LightGlueMatcher` expects with ``"sift"``.
           :func:`~kornia.feature.convert_sift_descriptor_layout` converts between the two.
