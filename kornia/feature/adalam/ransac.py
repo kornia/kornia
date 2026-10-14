@@ -19,7 +19,9 @@ from typing import Any, Dict, Tuple, Union
 
 import torch
 
-from .utils import arange_sequence, batch_2x2_ellipse, batch_2x2_inv, draw_first_k_couples, piecewise_arange
+from kornia.geometry.solvers.affine import _find_affine_linear, _find_affine_linear_pair
+
+from .utils import arange_sequence, batch_2x2_ellipse, draw_first_k_couples, piecewise_arange
 
 
 def stable_sort_residuals(residuals: torch.Tensor, ransidx: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -241,6 +243,30 @@ def sample_padded_inliers(
     return padded_inlier_x, padded_inlier_y
 
 
+def _reset_large_scale_changes(
+    affinities: torch.Tensor, scale_rate_threshold: float
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Replace affinities whose scale change exceeds the threshold by the identity, as AdaLAM does.
+
+    Returns the affinities and the mask of those that pass. Rank-deficient (NaN) affinities fail the test but stay
+    NaN, so that :func:`_finite_residuals` gives them no support instead of the identity's.
+    """
+    eigenvals, _eigenvecs = batch_2x2_ellipse(affinities)
+    valid = (eigenvals[..., 1] >= 1 / scale_rate_threshold**2) & (eigenvals[..., 0] <= scale_rate_threshold**2)
+    reset = ~valid & ~eigenvals[..., 0].isnan()
+    identity = torch.eye(2, device=affinities.device, dtype=affinities.dtype)
+    return torch.where(reset[..., None, None], identity, affinities), valid
+
+
+def _finite_residuals(y_pred: torch.Tensor, ysamples: torch.Tensor) -> torch.Tensor:
+    """Residuals for the confidence sorter, which needs finite values.
+
+    A rank-deficient (NaN) fit gets residual 2: outside both normalized unit neighborhoods, it cannot provide
+    support at min_confidence > 1.
+    """
+    return torch.norm(y_pred - ysamples, dim=-1).nan_to_num(nan=2.0)
+
+
 def ransac(
     xsamples: torch.Tensor,
     ysamples: torch.Tensor,
@@ -264,16 +290,14 @@ def ransac(
     )  # (niters, 2, numransacs, 2) -> (niters, numransacs, 2, 2)
     sampled_y = torch.transpose(ysamples[rand_samples_abs], dim0=1, dim1=2)
 
-    # minimal fit for sampled_x @ A^T = sampled_y
-    affinities_fit = torch.transpose(batch_2x2_inv(sampled_x, check_dets=True) @ sampled_y, -1, -2)
+    # minimal fit for sampled_x @ A^T = sampled_y; rank-deficient pairs are NaN
+    affinities_fit = _find_affine_linear_pair(sampled_x, sampled_y)
     valid_affinities = None
     if not refit:
-        eigenvals, _eigenvecs = batch_2x2_ellipse(affinities_fit)
-        valid_affinities = (eigenvals[..., 1] >= 1 / DET_THR**2) & (eigenvals[..., 0] <= DET_THR**2)
-        affinities_fit[~valid_affinities] = torch.eye(2, device=dv, dtype=affinities_fit.dtype)
+        affinities_fit, valid_affinities = _reset_large_scale_changes(affinities_fit, DET_THR)
     y_pred = (affinities_fit[:, ransidx] @ xsamples.unsqueeze(-1)).squeeze(-1)
 
-    residuals = torch.norm(y_pred - ysamples, dim=-1)  # (niters, numsamples)
+    residuals = _finite_residuals(y_pred, ysamples)  # (niters, numsamples)
 
     inl_ransidx, inl_sampleidx, inl_counts, inl_iters, inl_confidence = _select_inliers(
         residuals, xsamples, ysamples, ransidx, rdims, idxoffsets, affinities_fit, config, valid_affinities
@@ -297,21 +321,12 @@ def ransac(
         xsamples, ysamples, inl_counts, inl_ransidx, inl_sampleidx, numransacs, dv
     )
 
-    # A @ pad_x.T = pad_y.T
-    # A = pad_y.T @ pad_x @ (pad_x.T @ pad_x)^-1
-    refit_affinity = (
-        padded_inlier_y.transpose(-2, -1)
-        @ padded_inlier_x
-        @ batch_2x2_inv(padded_inlier_x.transpose(-2, -1) @ padded_inlier_x, check_dets=True)
-    )
-
-    # Filter out degenerate affinities with large scale changes
-    eigenvals, _eigenvecs = batch_2x2_ellipse(refit_affinity)
-    bad_ones = (eigenvals[..., 1] < 1 / DET_THR**2) | (eigenvals[..., 0] > DET_THR**2)
-    refit_affinity[bad_ones] = torch.eye(2, device=dv, dtype=refit_affinity.dtype)
+    # Keep translation anchored at the seed; zero padding contributes no evidence.
+    refit_affinity = _find_affine_linear(padded_inlier_x, padded_inlier_y)
+    refit_affinity, valid_refits = _reset_large_scale_changes(refit_affinity, DET_THR)
     y_pred = (refit_affinity[ransidx] @ xsamples.unsqueeze(-1)).squeeze(-1)
 
-    residuals = torch.norm(y_pred - ysamples, dim=-1)
+    residuals = _finite_residuals(y_pred, ysamples)
 
     inl_ransidx, inl_sampleidx, inl_counts, inl_iters, inl_confidence = _select_inliers(
         residuals.unsqueeze(0),
@@ -322,6 +337,6 @@ def ransac(
         idxoffsets,
         refit_affinity.unsqueeze(0),
         config,
-        ~bad_ones.unsqueeze(0),
+        valid_refits.unsqueeze(0),
     )
     return inl_sampleidx, refit_affinity, inl_confidence, inl_counts
