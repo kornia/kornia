@@ -100,7 +100,8 @@ class KMeans:
         Returns:
             A 1D tensor with shape :math:`(N,)`, where ``N`` is the number of
             samples given to :meth:`fit`. Each value is the cluster index
-            assigned to the corresponding sample.
+            nearest to the corresponding sample in the final centers, matching
+            :meth:`predict` on the training data even when fitting stops early.
 
         Raises:
             TypeError: If ``fit`` has not been run yet.
@@ -212,8 +213,9 @@ class KMeans:
             if self.max_iterations != 0 and iteration >= self.max_iterations:
                 break
 
-        self._final_cluster_assignments = cluster_assignment
         self._final_cluster_centers = current_centers
+        # The loop's assignments precede its last center update. Reassign once so labels use the returned centers.
+        self._final_cluster_assignments = self.predict(X)
 
     def predict(self, x: torch.Tensor) -> torch.Tensor:
         """Find the cluster center closest to each point in x.
