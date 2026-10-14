@@ -24,6 +24,33 @@ from testing.base import BaseTester
 
 
 class TestRenderGaussian2d(BaseTester):
+    @pytest.mark.parametrize("normalized", [False, True])
+    @pytest.mark.parametrize("sigma", [1e-3, 1e-4])
+    @pytest.mark.parametrize("axis", [0, 1])
+    def test_narrow_gaussian(self, device, dtype, normalized, sigma, axis):
+        center = 0.0 if normalized else 2.0
+        mean = torch.tensor([[center, center]], device=device, dtype=dtype, requires_grad=True)
+        std_xy = [0.25, 0.25]
+        std_xy[axis] = sigma
+        std = torch.tensor([std_xy], device=device, dtype=dtype, requires_grad=True)
+
+        actual = kornia.geometry.subpix.render_gaussian2d(mean, std, (5, 5), normalized)
+        # Direct Gaussian PDF on CPU in float64, using the same representable parameters.
+        coords = torch.linspace(-1.0, 1.0, 5, dtype=torch.float64) if normalized else torch.arange(5).double()
+        vectors = torch.exp(-0.5 * ((coords[:, None] - center) / std.detach().cpu().double()) ** 2)
+        expected = vectors[:, 1, None] * vectors[:, 0]
+        expected = (expected / expected.sum()).unsqueeze(0).to(device=device, dtype=dtype)
+
+        assert actual.dtype == dtype
+        assert torch.isfinite(actual).all()
+        self.assert_close(actual, expected)
+        self.assert_close(actual.sum(), actual.new_tensor(1.0))
+        (actual * torch.arange(25, device=device, dtype=dtype).view(1, 5, 5)).sum().backward()
+        assert mean.grad is not None
+        assert std.grad is not None
+        assert torch.isfinite(mean.grad).all()
+        assert torch.isfinite(std.grad).all()
+
     @pytest.fixture
     def gaussian(self, device, dtype):
         # For a standard gaussian on 5 points [-1, -0.5, 0, 0.5, 1] with std=0.25
@@ -95,9 +122,10 @@ class TestRenderGaussian2d(BaseTester):
         assert torch.isfinite(mean.grad).all()
         assert torch.isfinite(std.grad).all()
 
-    def test_dynamo(self, device, dtype, torch_optimizer):
+    @pytest.mark.parametrize("sigma", [0.25, 1e-3])
+    def test_dynamo(self, device, dtype, torch_optimizer, sigma):
         mean = torch.tensor([0.0, 0.0], dtype=dtype, device=device)
-        std = torch.tensor([0.25, 0.25], dtype=dtype, device=device)
+        std = torch.tensor([sigma, sigma], dtype=dtype, device=device)
 
         op = kornia.geometry.subpix.render_gaussian2d
         op_optimized = torch_optimizer(op)
