@@ -25,6 +25,51 @@ from testing.base import BaseTester
 
 class TestKMeans(BaseTester):
     @pytest.mark.parametrize(
+        ("tolerance", "max_iterations", "expected_centers", "expected_assignments"),
+        [
+            (None, 1, [[0.0], [6.0]], [0, 0, 1, 1, 1]),
+            (100.0, 100, [[0.0], [6.0]], [0, 0, 1, 1, 1]),
+            (1e-4, 100, [[2.0], [9.0]], [0, 0, 0, 1, 1]),
+        ],
+    )
+    def test_final_assignments_match_centers(
+        self, device, dtype, tolerance, max_iterations, expected_centers, expected_assignments
+    ):
+        x = torch.tensor([[0.0], [2.0], [4.0], [8.0], [10.0]], device=device, dtype=dtype)
+        centers = torch.tensor([[0.0], [3.0]], device=device, dtype=dtype)
+        kmeans = kornia.contrib.KMeans(2, centers, tolerance=tolerance, max_iterations=max_iterations)
+
+        kmeans.fit(x)
+
+        self.assert_close(kmeans.cluster_centers, x.new_tensor(expected_centers))
+        expected = torch.tensor(expected_assignments, device=device, dtype=torch.long)
+        self.assert_close(kmeans.cluster_assignments, expected)
+        self.assert_close(kmeans.cluster_assignments, kmeans.predict(x))
+
+    def test_final_assignments_after_refit(self, device, dtype):
+        x = torch.tensor([[0.0], [2.0], [4.0], [8.0], [10.0]], device=device, dtype=dtype)
+        centers = torch.tensor([[0.0], [3.0]], device=device, dtype=dtype)
+        kmeans = kornia.contrib.KMeans(2, centers, tolerance=None, max_iterations=1)
+        kmeans.fit(x)
+
+        kmeans.fit(2 * x)
+
+        self.assert_close(kmeans.cluster_centers, x.new_tensor([[0.0], [12.0]]))
+        expected = torch.tensor([0, 0, 1, 1, 1], device=device, dtype=torch.long)
+        self.assert_close(kmeans.cluster_assignments, expected)
+        self.assert_close(kmeans.cluster_assignments, kmeans.predict(2 * x))
+
+    def test_dynamo_final_assignments(self, device, dtype, torch_optimizer):
+        x = torch.tensor([[0.0], [2.0], [4.0], [8.0], [10.0]], device=device, dtype=dtype)
+        centers = torch.tensor([[0.0], [3.0]], device=device, dtype=dtype)
+        kmeans = kornia.contrib.KMeans(2, centers, tolerance=None, max_iterations=1)
+        torch_optimizer(kmeans.fit)(x)
+
+        expected = torch.tensor([0, 0, 1, 1, 1], device=device, dtype=torch.long)
+        self.assert_close(kmeans.cluster_assignments, expected)
+        self.assert_close(kmeans.cluster_assignments, kmeans.predict(x))
+
+    @pytest.mark.parametrize(
         ("num_clusters", "tolerance", "max_iterations"),
         [(3, 1e-4, 3), (10, 1e-3, 1000), (1, 1.0, 10)],
     )
