@@ -91,12 +91,21 @@ class ImageStitcher(nn.Module):
             **kwargs: the matcher output, with ``keypoints0``, ``keypoints1`` and ``batch_indexes``.
 
         Raises:
-            RuntimeError: if there are no matches, or a sample has fewer than 4 (the error names the sample).
+            RuntimeError: if a sample has fewer than 4 matches (the error names the sample), if a batch index is outside
+                the batch (the error names the index), or if there are no matches and ``batch_size`` is not given.
         """
         kp1, kp2, idx = kwargs["keypoints0"], kwargs["keypoints1"], kwargs["batch_indexes"]
-        if idx.numel() == 0:
-            raise RuntimeError("Compute homography failed. No matched keypoints found.")
-        n = batch_size if batch_size is not None else int(idx.max().item()) + 1
+        if batch_size is None:
+            if idx.numel() == 0:
+                raise RuntimeError("Compute homography failed. No matched keypoints found.")
+            n = int(idx.max().item()) + 1
+        else:
+            n = batch_size
+        outside = idx[(idx < 0) | (idx >= n)]
+        if outside.numel() > 0:
+            raise RuntimeError(
+                f"Compute homography failed: batch index {int(outside[0].item())} is outside the batch of {n} samples."
+            )
         selections = [idx == i for i in range(n)]
         for i, sel in enumerate(selections):
             n_i = int(sel.sum().item())
@@ -208,7 +217,13 @@ class ImageStitcher(nn.Module):
         work = torch.promote_types(images_right.dtype, torch.float32)
         warped = warp_perspective(torch.cat([images_right.to(work), mask_right.to(work)], 1), homo.to(work), out_shape)
         src_img = warped[:, :n_ch].to(images_right.dtype)
-        src_mask = (warped[:, n_ch:] >= 1.0 - 1e-4).to(images_right.dtype)
+        # Round-off in the warp's sampling positions grows with the coordinates. Measured for integer shifts, it puts a
+        # completely covered border pixel up to 1.5 * eps * max(H_out, W_out) px past the border, so its coverage reads
+        # that much below 1 (0.99854 on the last row and column of a 4096 x 4096 image shifted by 2048). The tolerance
+        # scales the same way, with a margin, and stays far below a genuinely partial coverage: in float32 it reaches
+        # 0.3 only past 600 000 px.
+        tol = max(1e-4, 4.0 * torch.finfo(work).eps * max(out_shape))
+        src_mask = (warped[:, n_ch:] >= 1.0 - tol).to(images_right.dtype)
         dst_mask = torch.cat([mask_left, torch.zeros_like(mask_right)], -1)
         return self.blend_image(src_img, dst_img, src_mask), (dst_mask + src_mask).bool().to(src_mask.dtype)
 

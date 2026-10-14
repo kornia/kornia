@@ -38,20 +38,23 @@ def _render(x0: float, w: int, h: int = 48, dtype: torch.dtype = torch.float32) 
 
 
 class _ShiftMatcher(LocalFeatureMatcher):
-    """Exact correspondences: right pixel p is left pixel p + (shift_b, 0); samples in `empty` get none."""
+    """Exact correspondences: right pixel p is left pixel p + (shift_b, 0); samples in `empty` get none.
 
-    def __init__(self, shifts, empty=(), float32_keypoints=False):
+    The right image is sampled every 5 px along x and every `ystep` px along y.
+    """
+
+    def __init__(self, shifts, empty=(), float32_keypoints=False, ystep=5.0):
         nn.Module.__init__(self)
-        self.shifts, self.empty, self.float32_keypoints = shifts, set(empty), float32_keypoints
+        self.shifts, self.empty, self.float32_keypoints, self.ystep = shifts, set(empty), float32_keypoints, ystep
 
     def forward(self, data):
         im0, im1 = data["image0"], data["image1"]
-        kp0, kp1, idx = [], [], []
+        kp0, kp1, idx = [torch.empty(0, 2)], [torch.empty(0, 2)], [torch.empty(0, dtype=torch.long)]
         for b in range(im1.shape[0]):
             if b in self.empty:
                 continue
             ys, xs = torch.meshgrid(
-                torch.arange(2, im1.shape[-2] - 2, 5.0), torch.arange(2, im1.shape[-1] - 2, 5.0), indexing="ij"
+                torch.arange(2, im1.shape[-2] - 2, self.ystep), torch.arange(2, im1.shape[-1] - 2, 5.0), indexing="ij"
             )
             p1 = torch.stack([xs.flatten(), ys.flatten()], -1)
             p0 = p1 + torch.tensor([self.shifts[b], 0.0])
@@ -138,6 +141,57 @@ class TestImageStitcher(BaseTester):
         right = torch.cat([_render(40, 56), _render(30, 56)]).to(device)
         with pytest.raises(RuntimeError, match="sample 1"):
             kornia.contrib.ImageStitcher(_ShiftMatcher([40.0, 30.0], empty=(1,)))(left, right)
+
+    def test_every_sample_unmatched_names_sample_0(self, device):
+        # With the batch size known, an all-empty match set is reported per sample, like a single unmatched one.
+        left = torch.cat([_render(0, 64)] * 2).to(device)
+        right = torch.cat([_render(40, 56), _render(30, 56)]).to(device)
+        with pytest.raises(RuntimeError, match="sample 0: 0 matches"):
+            kornia.contrib.ImageStitcher(_ShiftMatcher([40.0, 30.0], empty=(0, 1)))(left, right)
+
+    def test_no_matches_without_batch_size(self):
+        # Without a batch size there is no sample to name.
+        stitcher = kornia.contrib.ImageStitcher(_ShiftMatcher([0.0]))
+        empty = torch.empty(0, 2)
+        with pytest.raises(RuntimeError, match="No matched keypoints found"):
+            stitcher.estimate_transform(keypoints0=empty, keypoints1=empty, batch_indexes=torch.empty(0).long())
+
+    @pytest.mark.parametrize("bad", [2, -1])
+    def test_batch_index_outside_the_batch_is_named(self, bad):
+        # Matches of a batch index outside [0, batch_size) were silently left out.
+        stitcher = kornia.contrib.ImageStitcher(_ShiftMatcher([0.0]))
+        kp = torch.rand(12, 2) * 50
+        idx = torch.tensor([0] * 4 + [1] * 4 + [bad] * 4)
+        with pytest.raises(RuntimeError, match=f"batch index {bad}"):
+            stitcher.estimate_transform(batch_size=2, keypoints0=kp, keypoints1=kp, batch_indexes=idx)
+
+    def test_integer_shift_at_large_coordinates_keeps_the_border(self, device):
+        # The warp's float32 sampling positions are off by up to ~1.5 * eps * max(H_out, W_out) px, so the coverage of
+        # a completely covered border pixel reads below 1 - 1e-4 on a wide panorama. Here 8 x 4096 images shifted by 3
+        # px: the right image's last column read 0.99951 and was dropped (the panorama was one column short).
+        left, right = _render(0, 4096, h=8).to(device), _render(3, 4096, h=8).to(device)
+        with torch.no_grad():
+            out = kornia.contrib.ImageStitcher(_ShiftMatcher([3.0], ystep=1.0))(left, right)
+        assert out.shape[-1] == 3 + 4096
+        assert (out - _render(0, 3 + 4096, h=8).to(device)).abs().max().item() < 0.02
+
+    def test_coverage_tolerance_scales_with_the_panorama(self, device):
+        # The tolerance sits between the warp's round-off and a genuinely partial pixel. On this 8 x 8192 panorama a
+        # coverage 1.5 * eps * 8192 below 1 is kept (the worst round-off measured, on a 4096 x 4096 image shifted by
+        # 2048, too large for a test) and a coverage of 0.99 is dropped.
+        left, right = _render(0, 4096, h=8).to(device), _render(3, 4096, h=8).to(device)
+        real_warp = kornia.geometry.transform.warp_perspective
+
+        def warp(*args, **kwargs):
+            out = real_warp(*args, **kwargs)
+            out[:, 3:, 0, 3 + 4095] = 1 - 1.5 * torch.finfo(torch.float32).eps * 8192
+            out[:, 3:, 1, 3 + 4095] = 0.99
+            return out
+
+        with patch("kornia.contrib.image_stitching.warp_perspective", warp), torch.no_grad():
+            _, mask = kornia.contrib.ImageStitcher(_ShiftMatcher([3.0], ystep=1.0)).stitch_pair(left, right)
+        assert mask[0, 0, 0, 3 + 4095].item() == 1
+        assert mask[0, 0, 1, 3 + 4095].item() == 0
 
     @pytest.mark.parametrize("estimator", ["ransac", "vanilla"])
     def test_smoke(self, estimator, device, dtype):
