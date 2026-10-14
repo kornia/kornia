@@ -20,7 +20,7 @@ import math
 import pytest
 import torch
 
-from kornia.core.exceptions import TypeCheckError
+from kornia.core.exceptions import BaseError, TypeCheckError
 from kornia.geometry.liegroup import Se2, So2
 from kornia.geometry.vector import Vector2
 
@@ -85,13 +85,13 @@ class TestSe2(BaseTester):
         theta = torch.rand((batch_size, 2), dtype=dtype, device=device)
         with pytest.raises(ValueError):
             Se2.hat(theta)
-        with pytest.raises(Exception):
+        with pytest.raises(BaseError):
             Se2.identity(batch_size=0)
-        with pytest.raises(Exception):
+        with pytest.raises(BaseError):
             Se2.random(batch_size=0)
         x = torch.rand(5, dtype=dtype, device=device)
         y = torch.rand(3, dtype=dtype, device=device)
-        with pytest.raises(Exception):
+        with pytest.raises(BaseError):
             Se2.trans(x, y)
 
     def test_gradcheck(self, device):
