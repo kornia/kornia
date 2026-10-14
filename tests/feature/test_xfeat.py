@@ -551,7 +551,7 @@ class TestConventionsXFeat(BaseTester):
         self, device, dtype
     ):
         # multiscale=True (the default) is the multiscale=False extraction of the image rescaled by 0.6 and by 1.3, with
-        # int(0.2 * top_k) and int(0.8 * top_k) cells, each keypoint divided by its factor; scales is 1 / factor.
+        # int(0.2 * top_k) and the remaining cells, each keypoint divided by its factor; scales is 1 / factor.
         torch.manual_seed(0)
         xfeat = XFeat().to(device).eval()
         image = torch.rand(1, 3, 160, 224, device=device, dtype=dtype)
@@ -570,24 +570,148 @@ class TestConventionsXFeat(BaseTester):
 
     def test_convention_xfeat_dense_keeps_the_top_k_cells_capped_by_the_cells_of_each_scale(self, device, dtype):
         # each extraction keeps its top_k cells, or every cell when there are fewer or top_k < 1; multiscale=True gives
-        # the 0.6 and 1.3 extractions int(0.2 * top_k) and int(0.8 * top_k). A 64 x 64 image has 16 cells at 0.6
-        # (resized to 32 x 32) and 64 at 1.3 (64 x 64), so a share above them is capped, and 9 gives 1 + 7 = 8.
+        # the 0.6 and 1.3 extractions int(0.2 * top_k) and the rest. A 64 x 64 image has 16 cells at 0.6
+        # (resized to 32 x 32) and 64 at 1.3 (64 x 64), so a share above them is capped, and 9 gives 1 + 8 = 9.
         torch.manual_seed(0)
         xfeat = XFeat().to(device).eval()
         image = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
         counts = {k: xfeat.detectAndComputeDense(image, k)["keypoints"].shape[1] for k in (0, 5, 9, 10, 20, 100, 4096)}
-        assert counts == {0: 80, 5: 5, 9: 8, 10: 10, 20: 20, 100: 80, 4096: 80}
+        assert counts == {0: 80, 5: 5, 9: 9, 10: 10, 20: 20, 100: 80, 4096: 80}
         single = {k: xfeat.detectAndComputeDense(image, k, False)["keypoints"].shape[1] for k in (-1, 0, 1, 7, 100)}
         assert single == {-1: 64, 0: 64, 1: 1, 7: 7, 100: 64}
 
-    def test_wart_xfeat_dense_multiscale_keeps_every_cell_of_a_zero_share_5924(self, device, dtype):
-        # a share int(0.2 * top_k) or int(0.8 * top_k) that rounds down to 0 reaches the "top_k < 1 keeps every cell"
-        # rule, so a top_k from 1 to 4 returns all 16 cells of the 0.6 extraction, and 1 those of both scales
+    def test_convention_xfeat_dense_multiscale_never_exceeds_a_small_positive_top_k(self, device, dtype):
+        # the budget is split int(0.2 * top_k) for the 0.6 extraction and the rest for the 1.3 one, and a share of 0
+        # yields no cell (#5924). A 64 x 64 image has 16 cells at 0.6 and 64 at 1.3, so every top_k below 80 is met.
         torch.manual_seed(0)
         xfeat = XFeat().to(device).eval()
         image = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
-        counts = {k: xfeat.detectAndComputeDense(image, k)["keypoints"].shape[1] for k in (1, 2, 4)}
-        assert counts == {1: 16 + 64, 2: 16 + 1, 4: 16 + 3}
+        for k in (1, 2, 4, 5, 9, 10):
+            out = xfeat.detectAndComputeDense(image, k)
+            assert out["keypoints"].shape == (1, k, 2)
+            assert out["descriptors"].shape == (1, k, 64)
+            assert out["scales"].shape == (1, k)
+            k1 = int(0.2 * k)
+            assert (out["scales"][0, :k1] == 1 / 0.6).all()
+            assert (out["scales"][0, k1:] == 1 / 1.3).all()
+        # top_k <= 0 keeps every cell of both scales
+        for k in (0, -3):
+            assert xfeat.detectAndComputeDense(image, k)["keypoints"].shape == (1, 80, 2)
+
+    def test_convention_xfeat_dense_multiscale_budgets_sum_to_top_k_and_zero_means_every_cell(self, device, dtype):
+        # the default top_k of 4096 splits into 819 + 3277; main gave 819 + 3276 and dropped one keypoint
+        xfeat = XFeat().to(device).eval()
+        image = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
+        seen = []
+        real = xfeat._extract_dense
+        xfeat._extract_dense = lambda x, top_k=8000: (seen.append(top_k), real(x, top_k))[1]
+        for k in (None, 4096, 9, 0):
+            seen.clear()
+            xfeat.detectAndComputeDense(image, k)
+            # the 1.3 scale is extracted first, then the 0.6 one
+            assert seen == {None: [3277, 819], 4096: [3277, 819], 9: [8, 1], 0: [None, None]}[k]
+        # multiscale=False resolves top_k < 1 the same way
+        seen.clear()
+        xfeat.detectAndComputeDense(image, -1, False)
+        assert seen == [None]
+
+    def test_smoke_xfeat_star_matching_runs_with_a_scale_of_zero_budget(self, device, dtype):
+        torch.manual_seed(0)
+        xfeat = XFeat().to(device).eval()
+        image = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
+        for k in (1, 4):
+            mkpts0, mkpts1 = xfeat.match_xfeat_star(image, image, top_k=k)
+            assert mkpts0.shape == mkpts1.shape
+            assert mkpts0.shape[0] <= k
+
+    def test_convention_xfeat_refines_matches_over_a_scale_of_zero_budget(self, device, dtype):
+        # fine_conf=-1 keeps every match, so the refinement of real matches over an empty 0.6 scale is exercised
+        torch.manual_seed(0)
+        xfeat = XFeat().to(device).eval()
+        image = torch.rand(2, 3, 64, 64, device=device, dtype=dtype)
+        out = xfeat.detectAndComputeDense(image, 4)
+        assert out["keypoints"].shape == (2, 4, 2)
+        idxs = xfeat._batch_match(out["descriptors"], out["descriptors"])
+        for b in range(2):
+            refined = xfeat._refine_matches(out, out, idxs, b, fine_conf=-1.0)
+            assert refined.shape[0] >= 1
+            assert refined.shape[1] == 4
+            assert torch.isfinite(refined).all()
+
+    def test_convention_xfeat_dense_multiscale_accepts_a_float_top_k_and_keeps_float_keypoints(self, device, dtype):
+        torch.manual_seed(0)
+        xfeat = XFeat().to(device).eval()
+        image = torch.rand(2, 3, 64, 64, device=device, dtype=dtype)
+        out = xfeat.detectAndComputeDense(image, 10.0)
+        assert out["keypoints"].shape == (2, 10, 2)
+        empty = xfeat._extract_dense(image, 0)
+        full = xfeat._extract_dense(image, 3)
+        assert empty[0].dtype == full[0].dtype
+        assert empty[1].dtype == full[1].dtype
+        assert empty[0].device == full[0].device
+
+    def test_convention_xfeat_dense_multiscale_skips_the_backbone_pass_of_a_scale_with_no_budget(self, device, dtype):
+        torch.manual_seed(0)
+        xfeat = XFeat().to(device).eval()
+        image = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
+        sizes = []
+        xfeat.net.register_forward_hook(lambda module, inputs, output: sizes.append(tuple(inputs[0].shape[-2:])))
+        xfeat.detectAndComputeDense(image, 4)
+        assert sizes == [(64, 64)]  # only the 1.3 scale (resized to 64 x 64 here) is run
+        sizes.clear()
+        xfeat.detectAndComputeDense(image, 5)
+        assert len(sizes) == 2
+
+    def test_convention_xfeat_default_constructor_is_in_eval_mode_and_inference_does_not_touch_batchnorm_stats(
+        self, device, dtype
+    ):
+        # XFeat() starts in eval mode like XFeat.from_pretrained and the reference: BatchNorm would otherwise use batch
+        # statistics (each keypoint depends on the rest of the batch), update its running statistics on every
+        # inference call, and raise on a single match.
+        torch.manual_seed(0)
+        xfeat = XFeat()
+        assert not xfeat.training
+        xfeat = xfeat.to(device)
+        image = torch.rand(2, 3, 64, 64, device=device)
+        before = {k: v.clone() for k, v in xfeat.state_dict().items()}
+        xfeat.detectAndCompute(image)
+        xfeat.detectAndComputeDense(image, 10)
+        xfeat.match_xfeat_star(image, image, top_k=1)
+        for k, v in xfeat.state_dict().items():
+            assert torch.equal(v, before[k]), k
+        assert xfeat.train().training  # .train() stays the explicit opt-in
+
+    def test_smoke_xfeat_star_default_constructor_top_k_1_batched(self, device, dtype):
+        torch.manual_seed(0)
+        xfeat = XFeat().to(device)
+        image = torch.rand(2, 3, 64, 64, device=device)
+        matches = xfeat.match_xfeat_star(image, image, top_k=1)
+        assert len(matches) == 2
+        for m in matches:
+            assert m.shape[0] <= 1
+
+    def test_convention_xfeat_dense_multiscale_descriptor_dtype_is_the_same_on_both_sides_of_a_zero_share(self, device):
+        # under autocast the backbone's output dtype is not the parameters' dtype; the empty scale must not change it
+        if torch.device(device).type != "cpu":
+            pytest.skip("CPU autocast")
+        torch.manual_seed(0)
+        xfeat = XFeat().to(device)
+        image = torch.rand(2, 3, 64, 64, device=device)
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            small = xfeat.detectAndComputeDense(image, 4)
+            large = xfeat.detectAndComputeDense(image, 5)
+        assert small["descriptors"].dtype == large["descriptors"].dtype
+        assert small["keypoints"].dtype == large["keypoints"].dtype
+
+    def test_convention_xfeat_dense_multiscale_with_an_empty_scale_matches_the_other_scale_alone(self, device, dtype):
+        torch.manual_seed(0)
+        xfeat = XFeat().to(device).eval()
+        image = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
+        out = xfeat.detectAndComputeDense(image, 3)
+        scaled = torch.nn.functional.interpolate(image, scale_factor=1.3, mode="bilinear", align_corners=False)
+        single = xfeat.detectAndComputeDense(scaled, 3, False)
+        self.assert_close(out["keypoints"], single["keypoints"] / 1.3)
+        self.assert_close(out["descriptors"], single["descriptors"])
 
     def test_convention_xfeat_model_reads_the_channel_mean_through_an_instance_norm(self, device, dtype):
         # XFeatModel averages the channels and instance-normalises the result (model.py of verlab/accelerated_features

@@ -292,6 +292,22 @@ class TestGuidedBlur(BaseTester):
         assert actual.dtype == torch.float32
         self.assert_close(actual, expected)
 
+    @pytest.mark.parametrize("guide_dim", [1, 3])
+    @pytest.mark.parametrize("input_dim", [None, 2])
+    @pytest.mark.parametrize("subsample", [1, 2])
+    @pytest.mark.parametrize("separable", [False, True])
+    def test_empty_batch(self, guide_dim, input_dim, subsample, separable, device, dtype):
+        # #4429: multichannel guidance inferred the input channel count with ``-1``, which ``view``/``reshape``
+        # cannot do for an empty batch. ``input_dim=None`` passes the guidance itself as the input.
+        guide = torch.rand(0, guide_dim, 8, 10, device=device, dtype=dtype, requires_grad=True)
+        inp = guide if input_dim is None else torch.rand(0, input_dim, 8, 10, device=device, dtype=dtype)
+        actual = guided_blur(guide, inp, 3, 0.1, subsample=subsample, separable=separable)
+        assert actual.shape == inp.shape
+        assert actual.dtype == dtype
+        actual.sum().backward()
+        assert guide.grad is not None
+        assert guide.grad.shape == guide.shape
+
     def test_exception(self):
         from kornia.core.exceptions import BaseError, TypeCheckError
 

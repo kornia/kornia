@@ -301,6 +301,11 @@ class XFeat(nn.Module):
 
     Convention:
         - XFeat defines no ``forward``: call :meth:`detectAndCompute` or :meth:`detectAndComputeDense`.
+        - ``XFeat()`` starts in evaluation mode, like :meth:`from_pretrained` and the reference implementation. The
+          inference methods are run under ``torch.inference_mode``; in training mode BatchNorm would normalise with
+          the statistics of the batch, so a keypoint or match would depend on the rest of the batch, update its
+          running statistics on every call, and raise on a single match. Call ``.train()`` to opt in explicitly; the
+          methods then behave as torch's training-mode BatchNorm does.
         - The image is :math:`(B, C, H, W)` with any channel count. Each extraction resizes the image it gets
           bilinearly to :math:`(H', W')`: ``H`` and ``W`` rounded down to multiples of 32, with a minimum of 32.
           :class:`XFeatModel` then averages the channels and instance-normalises the result, so an affine change of the
@@ -320,13 +325,13 @@ class XFeat(nn.Module):
           at ``8 * (j, i)``, times the same ratio: the top-left pixel of the cell, not its centre. It keeps the
           ``top_k`` cells of highest reliability, or every cell when there are fewer or ``top_k`` is below 1. With
           the default ``multiscale=True``, it rescales the image bilinearly by 0.6 and by 1.3, runs that extraction
-          on each with ``top_k`` set to ``int(0.2 * top_k)`` and ``int(0.8 * top_k)``, and divides each keypoint by
-          its factor; ``scales`` is ``1 / 0.6`` or ``1 / 1.3`` for each keypoint. A scale with fewer cells than its
-          share returns all of them, and the truncation can lose one, so there can be fewer than ``top_k`` keypoints.
-          Its descriptors are not normalised.
-        - Known defects: with ``multiscale=True``, a share that rounds down to 0 keeps every cell of its scale, so a
-          ``top_k`` from 1 to 4 returns all the cells of the 0.6 extraction, and ``top_k=1`` those of both
-          (`#5924 <https://github.com/kornia/kornia/issues/5924>`_).
+          on each with ``int(0.2 * top_k)`` and the remaining ``top_k - int(0.2 * top_k)`` cells, and divides each
+          keypoint by its factor; ``scales`` is ``1 / 0.6`` or ``1 / 1.3`` for each keypoint. A share of 0 yields no
+          cell from its scale, and a scale with fewer cells than its share returns all of them, so there are never
+          more than ``top_k`` keypoints, and exactly ``top_k`` when both scales have enough cells. A ``top_k`` below
+          1 keeps every cell of both scales. Its descriptors are not normalised. The reference implementation gives
+          the 1.3 scale ``int(0.8 * top_k)`` and reads a share of 0 as "every cell"; kornia does not, because that
+          returns more keypoints than ``top_k`` asks for.
 
     Args:
         top_k: maximum number of keypoints to keep per image. Default: ``4096``.
@@ -361,6 +366,8 @@ class XFeat(nn.Module):
         self.interpolator = InterpolateSparse2d("bicubic")
         self._nearest = InterpolateSparse2d("nearest")
         self._bilinear = InterpolateSparse2d("bilinear")
+        # like :meth:`from_pretrained` and the reference: the inference methods must not run BatchNorm in training mode
+        self.eval()
 
     @classmethod
     def from_pretrained(cls, top_k: int = 4096, detection_threshold: float = 0.05) -> XFeat:
@@ -480,16 +487,21 @@ class XFeat(nn.Module):
             batched_matches.append((idx0_b, idx1_b))
         return batched_matches
 
-    def _extract_dense(self, x: torch.Tensor, top_k: int = 8000) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Extract coarse descriptors from an FPN feature map, top-k by reliability."""
-        if top_k < 1:
-            top_k = 100_000_000
+    def _extract_dense(self, x: torch.Tensor, top_k: Optional[int] = 8000) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Extract coarse descriptors from an FPN feature map, top-k by reliability.
+
+        ``top_k=None`` keeps every cell; ``top_k=0`` keeps none.
+        """
         x, rh1, rw1 = self._preprocess_tensor(x)
         M1, _K1, H1 = self.net(x)
         B, C, _H1, _W1 = M1.shape
+        if top_k is None:
+            top_k = _H1 * _W1
         xy1 = (self._create_xy(_H1, _W1, M1.device) * 8).expand(B, -1, -1)
         M1 = M1.permute(0, 2, 3, 1).reshape(B, -1, C)
         H1 = H1.permute(0, 2, 3, 1).reshape(B, -1)
+        if top_k < 1:
+            return torch.zeros(B, 0, 2, device=M1.device), M1.new_zeros(B, 0, C)
         _, top_k_idx = torch.topk(H1, k=min(H1.shape[1], top_k), dim=-1)
         feats = torch.gather(M1, 1, top_k_idx[..., None].expand(-1, -1, C))
         mkpts = torch.gather(xy1, 1, top_k_idx[..., None].expand(-1, -1, 2))
@@ -497,13 +509,28 @@ class XFeat(nn.Module):
         return mkpts, feats
 
     def _extract_dualscale(
-        self, x: torch.Tensor, top_k: int, s1: float = 0.6, s2: float = 1.3
+        self, x: torch.Tensor, top_k: Optional[int], s1: float = 0.6, s2: float = 1.3
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Extract dense features at two scales and merge."""
-        x1 = F.interpolate(x, scale_factor=s1, align_corners=False, mode="bilinear")
+        """Extract dense features at two scales and merge.
+
+        ``top_k`` is split into ``int(0.2 * top_k)`` for the first scale and the rest for the second;
+        ``None`` keeps every cell of both. A zero share yields no cell from its scale.
+        """
+        if top_k is None:
+            k1 = k2 = None
+        else:
+            k1 = int(top_k * 0.20)
+            k2 = int(top_k) - k1
         x2 = F.interpolate(x, scale_factor=s2, align_corners=False, mode="bilinear")
-        mkpts_1, feats_1 = self._extract_dense(x1, int(top_k * 0.20))
-        mkpts_2, feats_2 = self._extract_dense(x2, int(top_k * 0.80))
+        mkpts_2, feats_2 = self._extract_dense(x2, k2)
+        if k1 == 0:
+            # no cell is asked of the first scale: skip its resize and backbone pass; the empty outputs take the
+            # dtype and device of the computed scale, so the concatenation does not change the output dtype
+            mkpts_1 = mkpts_2.new_empty((mkpts_2.shape[0], 0, 2))
+            feats_1 = feats_2.new_empty((feats_2.shape[0], 0, feats_2.shape[-1]))
+        else:
+            x1 = F.interpolate(x, scale_factor=s1, align_corners=False, mode="bilinear")
+            mkpts_1, feats_1 = self._extract_dense(x1, k1)
         mkpts = torch.cat([mkpts_1 / s1, mkpts_2 / s2], dim=1)
         sc1 = torch.ones(mkpts_1.shape[:2], device=mkpts_1.device) * (1 / s1)
         sc2 = torch.ones(mkpts_2.shape[:2], device=mkpts_2.device) * (1 / s2)
@@ -604,7 +631,11 @@ class XFeat(nn.Module):
 
         Args:
             x: image tensor of shape :math:`(B, C, H, W)`.
-            top_k: number of features to keep (overrides ``self.top_k``).
+            top_k: number of features to keep (overrides ``self.top_k``). A value below 1 keeps every cell. With
+                ``multiscale=True`` the budget is split between the scales, ``int(0.2 * top_k)`` for the 0.6x
+                extraction and the rest for the 1.3x one, so the result never exceeds a positive ``top_k``; a scale
+                with a budget of 0 contributes nothing. This departs from the reference implementation, which
+                gives the 1.3x scale ``int(0.8 * top_k)`` and reads a budget that rounds down to 0 as "every cell".
             multiscale: use dual-scale (0.6x and 1.3x) extraction. Default: ``True``.
 
         Returns:
@@ -616,10 +647,12 @@ class XFeat(nn.Module):
         """
         if top_k is None:
             top_k = self.top_k
+        # a top_k below 1 means every cell; resolve it once, before the budget is split between the scales
+        budget = top_k if top_k >= 1 else None
         if multiscale:
-            mkpts, sc, feats = self._extract_dualscale(x, top_k)
+            mkpts, sc, feats = self._extract_dualscale(x, budget)
         else:
-            mkpts, feats = self._extract_dense(x, top_k)
+            mkpts, feats = self._extract_dense(x, budget)
             sc = torch.ones(mkpts.shape[:2], device=mkpts.device)
         return {"keypoints": mkpts, "descriptors": feats, "scales": sc}
 
