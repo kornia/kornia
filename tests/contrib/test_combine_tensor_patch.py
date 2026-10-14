@@ -277,8 +277,8 @@ class TestCombineTensorPatches(BaseTester):
     @pytest.mark.parametrize("int_dtype", [torch.uint8, torch.int32, torch.int64])
     def test_integer_round_trip_is_exact(self, stride, int_dtype, device):
         # A-10: integers went through float32, so 16777217 came back as 16777216. Plan review P4: float64 would still
-        # round 2**53 + 1. Integer patches are summed in int64, exactly, on MPS too (no skip). At stride 1 a pixel
-        # is covered up to 4 times, so 4 * (2**60 + 1) still fits int64.
+        # round 2**53 + 1. Integer patches are summed in int64, exactly (on MPS from torch 2.9; older torch keeps the
+        # float32 fold). At stride 1 a pixel is covered up to 4 times, so 4 * (2**60 + 1) still fits int64.
         if int_dtype != torch.uint8 and device.type == "mps" and torch_version_lt(2, 9, 0):
             pytest.skip("MPS index_add_ has no int64 source before torch 2.9: the float32 fold is exact only to 2**24")
         big = {torch.uint8: 255, torch.int32: 2**31 - 1, torch.int64: 2**60 + 1}[int_dtype]
@@ -341,14 +341,15 @@ class TestCombineTensorPatches(BaseTester):
             kornia.contrib.combine_tensor_patches(patches, (4, 6), 2, 2)
 
     def test_complex_round_trip(self, device):
-        # Complex patches are not integers: main cast them to float and discarded the imaginary part.
-        if device.type == "mps":
-            pytest.skip("MPS has no complex col2im kernel")
+        # Complex patches are not integers: main cast them to float and discarded the imaginary part. They are folded
+        # as two real tensors, since MPS has no complex col2im kernel.
+        if device.type == "mps" and torch_version_lt(2, 9, 0):
+            pytest.skip("complex MPS tensors abort the process in unfold on torch 2.5.1")
         g = torch.Generator().manual_seed(0)
         img = torch.randn(1, 2, 4, 6, generator=g, dtype=torch.complex64).to(device)
         out = kornia.contrib.combine_tensor_patches(kornia.contrib.extract_tensor_patches(img, 2, 1), (4, 6), 2, 1)
         assert out.dtype == torch.complex64
-        assert torch.allclose(out, img)
+        self.assert_close(out, img)
 
     def test_eps_is_deprecated_and_has_no_effect(self, device, dtype):
         # Plan review P7: eps was added to every divisor (A-9), and clamp_min(eps) would still have turned a singly

@@ -11,4 +11,4 @@
 - `interp` returns `fp` exactly at a knot, and `np.interp`'s `5.0` instead of `6.0` left of a repeated first knot (`interp([-1, 0, 0.5], [0, 0, 1], [5, 6, 7])`).
 - Matching an image to itself is the identity (132 of 5328 `float32` and 178 of 5328 `float64` pixels used to change), `[3, 1, 2]` matched onto `[10, 20, 30]` gives `[30, 10, 20]` instead of `[29.999998, 10, 20]` (which became `29` as `uint8`), and a `float32` result no longer leaves the template's range by one ulp.
 - An empty source returns an empty tensor of the same shape instead of raising `IndexError`.
-- `interp` keeps non-finite `fp` values as `np.interp` does (`fp=[3, 4, inf]` gives `[3, 4, inf, inf]`), and returns a float tensor for all-integer inputs.
+- `interp` keeps non-finite `fp` values as `np.interp` does: `interp([0.5, 1, 1.5, 2], [0, 1, 2], [3, 4, inf])` gives `[3.5, 4, inf, inf]`, where it used to give `[3.5, nan, inf, inf]`.

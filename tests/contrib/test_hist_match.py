@@ -156,7 +156,7 @@ class TestHistMatch(BaseTester):
         assert kornia.contrib.interp(x, xp, fp).tolist() == [5.0, 6.0, 6.5]
 
     def test_matching_an_image_to_itself_is_the_identity(self, device, dtype):
-        # A-21: 209 (float32) / 283 (float64) of 5328 pixels changed.
+        # A-21: 132 (float32) / 178 (float64) of 5328 pixels changed.
         g = torch.Generator().manual_seed(0)
         x = (torch.rand(2, 3, 24, 37, generator=g) * 255).round().to(device, dtype)
         assert torch.equal(kornia.contrib.histogram_matching(x, x), x)
@@ -193,7 +193,7 @@ class TestHistMatch(BaseTester):
             )
 
     def test_interp_integer_inputs_return_floats(self, device):
-        # Main returned float32 [1.5, 3.0, 13.5] here; lerp has no integer kernel.
+        # All-integer inputs interpolate in the default float dtype: lerp has no integer kernel.
         x = torch.tensor([4, 5, 6], device=device)
         xp = torch.tensor([1, 2, 3], device=device)
         fp = torch.tensor([4, 2, 0], device=device)
@@ -246,3 +246,29 @@ class TestHistMatch(BaseTester):
         expected = torch.tensor([13.000788165, 17.700964891, 30.059795149], device=device)
         assert out.dtype == torch.float32
         assert (out - expected).abs().max() < 1e-5
+
+    def test_interp_gradient_at_knots_is_the_segment_slope(self, device):
+        x = torch.tensor([1.0, 2.0, 2.5, 4.0], device=device, requires_grad=True)
+        xp = torch.arange(5.0, device=device)
+        kornia.contrib.interp(x, xp, 3 * xp).sum().backward()
+        assert x.grad.tolist() == [3.0, 3.0, 3.0, 3.0]
+
+    def test_interp_gradcheck(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        xp = torch.tensor([0.0, 1.0, 2.0, 3.0], device=device, dtype=torch.float64)
+        x = torch.tensor([0.3, 1.7, 2.2, 3.4], device=device, dtype=torch.float64, requires_grad=True)
+        fp = torch.tensor([1.0, -2.0, 5.0, 4.0], device=device, dtype=torch.float64, requires_grad=True)
+        assert torch.autograd.gradcheck(lambda a, c: kornia.contrib.interp(a, xp, c), (x, fp))
+
+    @pytest.mark.parametrize(("half", "big"), [(torch.float32, 3e38), (torch.float16, 40000.0)])
+    def test_interp_finite_ends_give_finite_values_when_their_difference_overflows(self, half, big, device):
+        # f1 - f0 overflows (6e38 > float32 max, 8e4 > float16 max) but every interpolated value is finite.
+        x = torch.tensor([0.0, 0.25, 0.5, 0.75, 1.0], device=device, dtype=half)
+        xp = torch.tensor([0.0, 1.0], device=device, dtype=half)
+        fp = torch.tensor([-big, big], device=device, dtype=half)
+        out = kornia.contrib.interp(x, xp, fp)
+        assert torch.isfinite(out).all()
+        self.assert_close(out[2], torch.tensor(0.0, device=device, dtype=half))
+        assert out[0] == fp[0]
+        assert out[4] == fp[1]
