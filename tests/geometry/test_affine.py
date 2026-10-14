@@ -18,7 +18,7 @@
 import pytest
 import torch
 
-from kornia.geometry.solvers.affine import _find_affine_linear, find_affine
+from kornia.geometry.solvers.affine import _find_affine_linear, _find_affine_linear_pair, find_affine
 
 from testing.base import BaseTester
 
@@ -166,6 +166,59 @@ class TestFindAffine(BaseTester):
         actual = _find_affine_linear(padded_points, padded_target, weights)
         tol = 2e-3 if dtype in (torch.float16, torch.bfloat16) else 1e-5
         self.assert_close(actual, matrix[None, None], rtol=tol, atol=tol)
+
+    def test_origin_fixed_pair(self, device, dtype):
+        matrix = torch.tensor([[2.0, -1.0], [0.5, 3.0]], device=device, dtype=dtype)
+        points = torch.tensor(
+            [[[1.0, 0.0], [0.0, 2.0]], [[0.5, -0.25], [0.25, 0.75]], [[-1.0, 1.0], [1.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+        )[None].expand(2, -1, -1, -1)
+        target = points @ matrix.T
+        actual = _find_affine_linear_pair(points, target)
+        assert actual.shape == (2, 3, 2, 2)
+        assert actual.dtype == dtype
+        tol = 2e-3 if dtype in (torch.float16, torch.bfloat16) else 1e-5
+        self.assert_close(actual, matrix.expand_as(actual), rtol=tol, atol=tol)
+
+    def test_origin_fixed_pair_rank_deficient(self, device, dtype):
+        # Collinear with the origin, a repeated point, a point at the origin, and a near-collinear pair whose
+        # |det X| / ||X||_F**2 = 1e-5 lies below sqrt(eps) of float32.
+        points = torch.tensor(
+            [[[1.0, 2.0], [-2.0, -4.0]], [[1.0, 2.0], [1.0, 2.0]], [[0.0, 0.0], [1.0, 2.0]], [[1.0, 0.0], [1.0, 2e-5]]],
+            device=device,
+            dtype=dtype,
+        )
+        actual = _find_affine_linear_pair(points, points + 1)
+        assert torch.isnan(actual[:3]).all()
+        if dtype != torch.float64:
+            assert torch.isnan(actual[3]).all()
+
+    def test_origin_fixed_pair_matches_least_squares(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("Compares two float32 solvers on the same half-rounded inputs.")
+        generator = torch.Generator().manual_seed(3)
+        points = (torch.rand(64, 2, 2, generator=generator) - 0.5).to(device=device, dtype=dtype)
+        target = (torch.rand(64, 2, 2, generator=generator) - 0.5).to(device=device, dtype=dtype)
+        # Two exactly singular pairs: collinear with the origin, and one point at the origin.
+        points[0, 1] = -3 * points[0, 0]
+        points[1, 0] = 0
+        expected = _find_affine_linear(points, target)
+        actual = _find_affine_linear_pair(points, target)
+        self.assert_close(torch.isnan(actual), torch.isnan(expected), atol=0, rtol=0)
+        assert torch.isnan(actual[:2]).all()
+        valid = ~torch.isnan(expected)
+        # The normal equation squares the condition number; the direct solve does not.
+        self.assert_close(actual[valid], expected[valid], rtol=1e-3, atol=1e-3)
+
+    def test_origin_fixed_pair_errors(self, device, dtype):
+        points = torch.zeros(4, 3, 2, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Exactly 2"):
+            _find_affine_linear_pair(points, points)
+        with pytest.raises(ValueError, match="At least 2"):
+            _find_affine_linear_pair(points[:, :1], points[:, :1])
+        with pytest.raises(ValueError, match="same shape"):
+            _find_affine_linear_pair(points[:, :2], points[:2, :2])
 
     def test_gradcheck(self, device):
         points, target, _ = self._points(device, torch.float64)

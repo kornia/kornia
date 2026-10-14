@@ -19,7 +19,7 @@ from typing import Any, Dict, Tuple, Union
 
 import torch
 
-from kornia.geometry.solvers.affine import _find_affine_linear
+from kornia.geometry.solvers.affine import _find_affine_linear, _find_affine_linear_pair
 
 from .utils import arange_sequence, batch_2x2_ellipse, draw_first_k_couples, piecewise_arange
 
@@ -267,7 +267,7 @@ def ransac(
     sampled_y = torch.transpose(ysamples[rand_samples_abs], dim0=1, dim1=2)
 
     # minimal fit for sampled_x @ A^T = sampled_y
-    affinities_fit = _find_affine_linear(sampled_x, sampled_y)
+    affinities_fit = _find_affine_linear_pair(sampled_x, sampled_y)
     finite_fits = torch.isfinite(affinities_fit).all(dim=-1).all(dim=-1)
     affinities_fit = torch.where(
         finite_fits[..., None, None], affinities_fit, torch.eye(2, device=dv, dtype=affinities_fit.dtype)

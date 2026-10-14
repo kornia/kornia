@@ -124,13 +124,37 @@ def _find_affine_linear(
     """Estimate origin-fixed 2D linear maps from batched point correspondences.
 
     This internal primitive supports arbitrary leading batch dimensions and at least two
-    non-collinear correspondences. It is used by AdaLAM, where the seed correspondence
-    fixes the translation before fitting the local affinity.
+    non-collinear correspondences. AdaLAM refits its local affinities with it, where the seed
+    correspondence fixes the translation; its two-point hypotheses use :func:`_find_affine_linear_pair`.
     """
     _check_points(points1, points2, 1, batched=False)
     weights = _prepare_weights(weights, points1, points1.shape[:-2])
     linear, _ = _fit_affine_components(points1, points2, weights, center=False)
     return linear.to(points1.dtype)
+
+
+def _find_affine_linear_pair(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
+    """Solve origin-fixed 2D linear maps exactly from two correspondences.
+
+    The minimal case of :func:`_find_affine_linear` for points of shape ``(..., 2, 2)``: two correspondences
+    determine the map, so the 2x2 system is solved directly instead of through the normal equation, whose
+    centering, scaling and rotation only condition least-squares fits. Rank-deficient samples are NaN under
+    the same relative criterion, ``det(X^T X) <= eps * trace(X^T X)**2``, written without squaring as
+    ``|det X| <= sqrt(eps) * ||X||_F**2``.
+    """
+    _check_points(points1, points2, 2, batched=False)
+    if points1.shape[-2] != 2:
+        raise ValueError(f"Exactly 2 correspondences are required. Got {points1.shape[-2]}.")
+    work_dtype = torch.float32 if points1.dtype in (torch.float16, torch.bfloat16) else points1.dtype
+    x, y = points1.to(work_dtype), points2.to(work_dtype)
+    a, b, c, d = x[..., 0, 0], x[..., 0, 1], x[..., 1, 0], x[..., 1, 1]
+    det = a * d - b * c
+    valid = det.abs() > torch.finfo(work_dtype).eps ** 0.5 * x.square().sum(dim=(-2, -1))
+    safe_det = torch.where(valid, det, torch.ones_like(det))
+    # x @ A^T = y, so A^T = adj(x) @ y / det(x).
+    adjugate = torch.stack((d, -b, -c, a), dim=-1).reshape_as(x)
+    linear = (adjugate @ y).transpose(-1, -2) / safe_det[..., None, None]
+    return torch.where(valid[..., None, None], linear, torch.full_like(linear, float("nan"))).to(points1.dtype)
 
 
 def find_affine(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None) -> torch.Tensor:
