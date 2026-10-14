@@ -460,6 +460,14 @@ def _check_keypoints_normalized(kpts: torch.Tensor) -> None:
         KORNIA_CHECK(torch.all(kpts >= -1).item() and torch.all(kpts <= 1).item(), _KEYPOINT_RANGE_MSG)  # type: ignore
 
 
+def _select_pair(image: Dict[str, Any], k: int, b: int) -> Dict[str, Any]:
+    """Take pair ``k`` of the ``b`` pairs from the inputs of one image, keeping entries shared by the batch."""
+    return {
+        key: value[k : k + 1] if torch.is_tensor(value) and value.ndim > 0 and value.shape[0] == b else value
+        for key, value in image.items()
+    }
+
+
 class LightGlue(nn.Module):
     """Implement the LightGlue matcher for sparse local features.
 
@@ -482,8 +490,15 @@ class LightGlue(nn.Module):
           float16 and bfloat16 ones keep their dtype. On MPS, float32, float16 and bfloat16 descriptors give float32
           scores; on CUDA, float32 descriptors give float32 scores. An image without descriptors runs no layer, and
           its zero scores keep the descriptor dtype, also with ``mp=True``.
-        - Known defects: a batch of more than one pair raises an ``IndexError`` when point pruning runs and keeps a
-          point (`#5898 <https://github.com/kornia/kornia/issues/5898>`_).
+        - Each pair of a batch gives the matches and scores it gives on its own when point pruning can run, that is
+          with ``width_confidence > 0``, no padding to the static lengths of :meth:`compile`, and an image with more
+          keypoints than :meth:`pruning_min_kpts` of the device. Pruning keeps a different number of points in each
+          pair, so then the pairs run one at a time: ``matches0``, ``matches1``, ``matching_scores0``,
+          ``matching_scores1``, ``prune0`` and ``prune1`` stack the rows of the pairs, ``matches`` and ``scores`` list
+          them, ``stop`` is the largest number of layers that a pair ran, and there is no ``log_assignment``.
+          Otherwise a batch runs as one, and early stopping (``depth_confidence``) ends it at a layer only when every
+          pair meets its own criterion. A pair can therefore run more layers in a batch than on its own, and its
+          matches can differ.
 
     Args:
         features: The type of local features to match (e.g., 'superpoint', 'disk'), whose configuration and
@@ -716,7 +731,7 @@ class LightGlue(nn.Module):
                 scales, oris: [B x N], with add_scale_ori
                 lafs: [B x N x 2 x 3], with add_laf
         Output (dict):
-            log_assignment: [B x M+1 x N+1]
+            log_assignment: [B x M+1 x N+1], not for a batch that prunes points (see the Convention block)
             matches0: [B x M]
             matching_scores0: [B x M]
             matches1: [B x N]
@@ -724,6 +739,8 @@ class LightGlue(nn.Module):
             matches: List[[Si x 2]], scores: List[[Si]]
             stop, prune0, prune1: diagnostics of early stopping and point pruning
         """
+        for key in self.required_data_keys:
+            KORNIA_CHECK(key in data, f"Missing key {key} in data")
         device_type = data["image0"]["keypoints"].device.type
         # CPU autocast defaults to bfloat16, whose outputs cannot meet the float16 tensors of a float16 model, so such a
         # model autocasts to float16 there.
@@ -732,13 +749,18 @@ class LightGlue(nn.Module):
             return self._forward(data)
 
     def _forward(self, data: dict) -> dict:  # type: ignore
-        for key in self.required_data_keys:
-            KORNIA_CHECK(key in data, f"Missing key {key} in data")
         data0, data1 = data["image0"], data["image1"]
         kpts0, kpts1 = data0["keypoints"], data1["keypoints"]
         b, m, _ = kpts0.shape
         b, n, _ = kpts1.shape
         device = kpts0.device
+        c = max(m, n)
+        do_compile = self.static_lengths and c <= max(self.static_lengths)
+        do_point_pruning = self.conf.width_confidence > 0 and not do_compile
+        pruning_th = self.pruning_min_kpts(device)
+        if b > 1 and min(m, n) > 0 and do_point_pruning and c > pruning_th:
+            # Point pruning keeps a different number of points in each pair, so the pairs run one at a time.
+            return self._forward_pairs(data0, data1, b)
         size0, size1 = data0.get("image_size"), data1.get("image_size")
         size0 = size0 if size0 is not None else data0["image"].shape[-2:][::-1]
         size1 = size1 if size1 is not None else data1["image"].shape[-2:][::-1]
@@ -810,8 +832,6 @@ class LightGlue(nn.Module):
             desc1 = desc1.half()
 
         mask0, mask1 = None, None
-        c = max(m, n)
-        do_compile = self.static_lengths and c <= max(self.static_lengths)
         if do_compile:
             kn = min([k for k in self.static_lengths if k >= c])
             desc0, mask0 = pad_to_length(desc0, kn)
@@ -826,11 +846,9 @@ class LightGlue(nn.Module):
 
         # GNN + final_proj + assignment
         do_early_stop = self.conf.depth_confidence > 0
-        do_point_pruning = self.conf.width_confidence > 0 and not do_compile
-        pruning_th = self.pruning_min_kpts(device)
         if do_point_pruning:
-            ind0 = torch.arange(0, m, device=device)[None]
-            ind1 = torch.arange(0, n, device=device)[None]
+            ind0 = torch.arange(0, m, device=device)[None].expand(b, -1)
+            ind1 = torch.arange(0, n, device=device)[None].expand(b, -1)
             # We store the index of the layer at which pruning is detected.
             prune0 = torch.ones_like(ind0)
             prune1 = torch.ones_like(ind1)
@@ -842,8 +860,9 @@ class LightGlue(nn.Module):
 
             if do_early_stop:
                 token0, token1 = self.token_confidence[i](desc0, desc1)
-                if self.check_if_stop(token0[..., :m, :], token1[..., :n, :], i, m + n):
+                if self.check_if_stop(token0, token1, i, m + n):
                     break
+            # Pruning runs here for a single pair only: a batch that would prune runs its pairs one at a time.
             if do_point_pruning and desc0.shape[-2] > pruning_th:
                 scores0 = self.log_assignment[i].get_matchability(desc0)
                 prunemask0 = self.get_pruning_mask(token0, scores0, i)  # type: ignore
@@ -908,12 +927,12 @@ class LightGlue(nn.Module):
         if do_point_pruning:
             m0_ = torch.full((b, m), -1, device=m0.device, dtype=m0.dtype)
             m1_ = torch.full((b, n), -1, device=m1.device, dtype=m1.dtype)
-            m0_[:, ind0] = torch.where(m0 == -1, -1, ind1.gather(1, m0.clamp(min=0)))
-            m1_[:, ind1] = torch.where(m1 == -1, -1, ind0.gather(1, m1.clamp(min=0)))
+            m0_.scatter_(1, ind0, torch.where(m0 == -1, -1, ind1.gather(1, m0.clamp(min=0))))
+            m1_.scatter_(1, ind1, torch.where(m1 == -1, -1, ind0.gather(1, m1.clamp(min=0))))
             mscores0_ = torch.zeros((b, m), device=mscores0.device, dtype=mscores0.dtype)
             mscores1_ = torch.zeros((b, n), device=mscores1.device, dtype=mscores1.dtype)
-            mscores0_[:, ind0] = mscores0
-            mscores1_[:, ind1] = mscores1
+            mscores0_.scatter_(1, ind0, mscores0)
+            mscores1_.scatter_(1, ind1, mscores1)
             m0, m1, mscores0, mscores1 = m0_, m1_, mscores0_, mscores1_
         else:
             prune0 = torch.ones_like(mscores0) * self.conf.n_layers
@@ -931,6 +950,22 @@ class LightGlue(nn.Module):
             "prune0": prune0,
             "prune1": prune1,
         }
+
+    def _forward_pairs(self, data0: dict, data1: dict, b: int) -> dict:  # type: ignore
+        """Match the ``b`` pairs of a batch one at a time and stack their outputs.
+
+        The pairs have no common ``log_assignment``, since each covers the points its pair kept, and ``stop`` is the
+        largest number of layers a pair ran.
+        """
+        outs = [
+            self._forward({"image0": _select_pair(data0, k, b), "image1": _select_pair(data1, k, b)}) for k in range(b)
+        ]
+        stacked = ("matches0", "matches1", "matching_scores0", "matching_scores1", "prune0", "prune1")
+        out: Dict[str, Any] = {key: torch.cat([o[key] for o in outs]) for key in stacked}
+        out["matches"] = [o["matches"][0] for o in outs]
+        out["scores"] = [o["scores"][0] for o in outs]
+        out["stop"] = max(o["stop"] for o in outs)
+        return out
 
     def confidence_threshold(self, layer_index: int) -> float:
         """Scaled confidence threshold."""
@@ -951,11 +986,22 @@ class LightGlue(nn.Module):
         layer_index: int,
         num_points: int,
     ) -> torch.Tensor:
-        """Evaluate stopping condition."""
+        """Evaluate the early-stopping condition of every pair in a batch.
+
+        Args:
+            confidences0: Token confidences of image 0, shape :math:`(B, M)`.
+            confidences1: Token confidences of image 1, shape :math:`(B, N)`.
+            layer_index: Index of the layer that computed the confidences.
+            num_points: Number of keypoints of one pair that the unconfident points are counted against.
+
+        Returns:
+            Whether every pair has a ratio of confident points above ``depth_confidence``: each pair counts its own
+            points below the confidence threshold of the layer.
+        """
         confidences = torch.cat([confidences0, confidences1], -1)
         threshold = self.confidence_thresholds[layer_index]
-        ratio_confident = 1.0 - (confidences < threshold).float().sum() / num_points
-        return ratio_confident > self.conf.depth_confidence
+        ratio_confident = 1.0 - (confidences < threshold).float().sum(-1) / num_points
+        return (ratio_confident > self.conf.depth_confidence).all()
 
     def pruning_min_kpts(self, device: torch.device) -> int:
         """Return the minimum keypoint count needed before pruning is enabled.

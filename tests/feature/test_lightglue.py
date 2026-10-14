@@ -734,7 +734,8 @@ class TestConventionsLightGlue(BaseTester):
         return torch.cat(columns, 1)[None].to(device, dtype)
 
     def test_convention_lightglue_image_size_is_width_height(self, device, dtype):
-        lg = LightGlue(None, input_dim=8, descriptor_dim=8, n_layers=1, num_heads=1, flash=False)
+        # Without point pruning, the batch of two pairs runs as one, and the hook sees both items of each image.
+        lg = LightGlue(None, input_dim=8, descriptor_dim=8, n_layers=1, num_heads=1, flash=False, width_confidence=-1)
         lg = lg.to(device, dtype).eval()
         seen = self._record_positional_encoding_inputs(lg)
         kpts = torch.tensor([[[300.0, 30.0], [20.0, 210.0], [160.0, 120.0]]], device=device, dtype=dtype)
@@ -1006,22 +1007,150 @@ class TestLightGlueAllPrunedScoreDtype(BaseTester):
         assert out["matching_scores0"].shape == (1, 0)
         assert TestLightGluePruningDtype._floating_dtypes(out) == {torch.float16}
 
-    def test_wart_lightglue_batch_with_point_pruning_raises_5898(self, device, dtype):
-        if device.type == "cuda":
-            pytest.skip("on CUDA, point pruning starts only above 1024 keypoints")
-        # #5898: the pruning bookkeeping keeps one index row for the whole batch, so once pruning has run and kept
-        # points, the second pair raises. The same model matches each pair on its own.
-        model = self._model(device, dtype, self._DIM, mp=False)
-        g = torch.Generator().manual_seed(1)
-        desc = torch.randn(2, 6, self._DIM, generator=g)
-        desc[..., 0] = 30.0  # layer 0 keeps every point
-        batch = {
-            "keypoints": (torch.rand(2, 6, 2, generator=g) * 100).to(device, dtype),
-            "descriptors": desc.to(device, dtype),
-            "image_size": torch.tensor([[100, 100], [100, 100]], device=device),
+
+class TestLightGlueBatchedPairs(BaseTester):
+    """Each pair of a batch gives the matches it gives on its own (#5898).
+
+    The model is the one of :class:`TestLightGluePruningDtype`: two layers, and layer 0 prunes a point of matchability
+    -20 (descriptor dimension 0) unless its token confidence (dimension 1) is -20 too, which also counts against early
+    stopping. Image 1 of a pair is image 0 permuted, and a point kept in both images matches its copy. Each pair has its
+    own descriptors, keypoints, permutation, and matchable and confident points.
+    """
+
+    _M = 16
+
+    def _pair(self, device, dtype, seed, matchable, confident, confident1=None, size=(320, 240)):
+        # confident1, in the order of image 0, overrides the confidences that image 1 copies from image 0. The
+        # keypoints lie in the (W, H) = (320, 240) top-left corner of an image of the given size.
+        g = torch.Generator().manual_seed(seed)
+        desc = 3 * torch.randn(1, self._M, 128, generator=g)
+        desc[0, :, 0] = 20 * torch.tensor(matchable, dtype=torch.float32)
+        desc[0, :, 1] = 20 * torch.tensor(confident, dtype=torch.float32)
+        kpts = torch.rand(1, self._M, 2, generator=g) * torch.tensor([320.0, 240.0])
+        perm = torch.randperm(self._M, generator=g)
+        desc1 = desc.clone()
+        if confident1 is not None:
+            desc1[0, :, 1] = 20 * torch.tensor(confident1, dtype=torch.float32)
+        size = torch.tensor([size], device=device)
+        data = {
+            "image0": {"keypoints": kpts.to(device, dtype), "descriptors": desc.to(device, dtype), "image_size": size},
+            "image1": {
+                "keypoints": kpts[:, perm].to(device, dtype),
+                "descriptors": desc1[:, perm].to(device, dtype),
+                "image_size": size,
+            },
         }
+        return data, perm
+
+    @staticmethod
+    def _stack(pairs):
+        return {
+            image: {key: torch.cat([p[image][key] for p in pairs]) for key in pairs[0][image]} for image in pairs[0]
+        }
+
+    @staticmethod
+    def _forward(model, data, pruning_threshold=-1):
+        # -1 prunes at any number of keypoints; a larger threshold, such as CUDA's, turns pruning off below it.
+        thresholds = dict.fromkeys(LightGlue.pruning_keypoint_thresholds, pruning_threshold)
+        with torch.no_grad(), unittest.mock.patch.dict(LightGlue.pruning_keypoint_thresholds, thresholds):
+            return model(data)
+
+    def _assert_pair(self, out, k, single, exact):
+        # Pair k of a batch output against the output of that pair on its own.
+        tol = {"rtol": 0.0, "atol": 0.0} if exact else {}
+        for key in ("matches0", "matches1", "prune0", "prune1"):
+            self.assert_close(out[key][k : k + 1], single[key], rtol=0.0, atol=0.0)
+        self.assert_close(out["matches"][k], single["matches"][0], rtol=0.0, atol=0.0)
+        for key in ("matching_scores0", "matching_scores1"):
+            self.assert_close(out[key][k : k + 1], single[key], **tol)
+        self.assert_close(out["scores"][k], single["scores"][0], **tol)
+
+    def test_convention_lightglue_batch_with_point_pruning_matches_each_pair_5898(self, device, dtype):
+        model = TestLightGluePruningDtype._model(device, dtype)
+        matchable = [(1, -1) * 8, (1, 1, 1, -1) * 4, (1, -1) * 8]
+        confident = [TestLightGluePruningDtype._CONFIDENT, (1,) * 7 + (-1,) + (1,) * 8, (1,) * 16]
+        # Pair 0 prunes 6 points of each image and pair 1 prunes 3; pair 2 has no unconfident point, so early stopping
+        # ends it after layer 0, before any pruning. Pair 1 has its own image size.
+        sizes = [(320, 240), (400, 300), (320, 240)]
+        pairs = [self._pair(device, dtype, k, matchable[k], confident[k], size=sizes[k]) for k in range(3)]
+        singles = [self._forward(model, data) for data, _ in pairs]
+        assert [single["stop"] for single in singles] == [2, 2, 1]
+        # A batch can give one image size for all its pairs.
+        shared_size = self._stack([pairs[0][0], pairs[2][0]])
+        for image in shared_size.values():
+            image["image_size"] = image["image_size"][:1]
+        for batch, members in ((shared_size, [0, 2]), (self._stack([data for data, _ in pairs]), [0, 1, 2])):
+            out = self._forward(model, batch)
+            # The pairs keep different numbers of points, so they have no common log assignment, and stop is the
+            # largest number of layers a pair ran.
+            assert "log_assignment" not in out
+            assert out["stop"] == 2
+            for row, k in enumerate(members):
+                self._assert_pair(out, row, singles[k], exact=True)
+            # The pairs that ran both layers match each point they kept to its copy, as an index into their own input.
+            for row, k in enumerate(members):
+                if k == 2:
+                    continue
+                perm = pairs[k][1]
+                pruned = (torch.tensor(matchable[k]) < 0) & (torch.tensor(confident[k]) > 0)
+                self.assert_close(out["prune0"][row], torch.where(pruned, 1, 2).to(device))
+                self.assert_close(out["matches0"][row], torch.where(pruned, -1, torch.argsort(perm)).to(device))
+                self.assert_close(out["matches1"][row], torch.where(pruned[perm], -1, perm).to(device))
+                kept = torch.where(~pruned)[0]
+                self.assert_close(out["matches"][row], torch.stack([kept, torch.argsort(perm)[kept]], -1).to(device))
+
+    def test_convention_lightglue_batch_with_a_pair_whose_points_are_all_pruned_5898(self, device, dtype):
+        TestLightGluePruningDtype._skip_without_empty_attention(device, dtype)
+        # Without early stopping, no low-confidence point is kept, and layer 0 prunes every point of the second pair.
+        model = TestLightGluePruningDtype._model(device, dtype, depth_confidence=-1)
+        pairs = [
+            self._pair(device, dtype, k, matchable, TestLightGluePruningDtype._CONFIDENT)
+            for k, matchable in enumerate([(1, -1) * 8, (-1,) * 16])
+        ]
+        singles = [self._forward(model, data) for data, _ in pairs]
+        assert [("log_assignment" in single) for single in singles] == [True, False]
+        out = self._forward(model, self._stack([data for data, _ in pairs]))
+        assert "log_assignment" not in out
         for k in range(2):
-            pair = {key: value[k : k + 1] for key, value in batch.items()}
-            TestLightGluePruningDtype._forward(model, {"image0": pair, "image1": dict(pair)})
-        with pytest.raises(IndexError):
-            TestLightGluePruningDtype._forward(model, {"image0": batch, "image1": dict(batch)})
+            self._assert_pair(out, k, singles[k], exact=True)
+        self.assert_close(out["matches0"][1], torch.full((self._M,), -1, device=device))
+        assert out["scores"][1].shape == (0,)
+
+    def test_convention_lightglue_batch_below_the_pruning_threshold_runs_together_5898(self, device, dtype):
+        # Point pruning runs only in an image with more keypoints than the device threshold (on CUDA, 1536 by default
+        # and 1024 with flash=False): below it, a batch runs as one, with its log assignment, and gives the prune0 and
+        # prune1 of each pair on its own.
+        model = TestLightGluePruningDtype._model(device, dtype)
+        matchable = [(1, -1) * 8, (1, 1, 1, -1) * 4]
+        pairs = [self._pair(device, dtype, k, matchable[k], TestLightGluePruningDtype._CONFIDENT) for k in range(2)]
+        singles = [self._forward(model, data, pruning_threshold=1000) for data, _ in pairs]
+        out = self._forward(model, self._stack([data for data, _ in pairs]), pruning_threshold=1000)
+        assert out["log_assignment"].shape == (2, self._M + 1, self._M + 1)
+        assert out["stop"] == 2
+        for k in range(2):
+            self._assert_pair(out, k, singles[k], exact=False)
+            self.assert_close(out["log_assignment"][k : k + 1], singles[k]["log_assignment"])
+        self.assert_close(out["prune0"], torch.ones(2, self._M, device=device, dtype=torch.long))
+
+    def test_convention_lightglue_batch_stops_early_when_every_pair_meets_its_criterion_5898(self, device, dtype):
+        # Without pruning, a batch runs as one. Early stopping after layer 0 needs more than 95 % of the 32 points of a
+        # pair confident: one unconfident point passes, two do not. The batch stops once every pair passes.
+        model = TestLightGluePruningDtype._model(device, dtype, width_confidence=-1)
+        everywhere = (1,) * self._M
+        pairs = [
+            self._pair(device, dtype, k, everywhere, unconfident, everywhere)
+            for k, unconfident in enumerate(
+                [(1,) * 3 + (-1,) + (1,) * 12, (1,) * 5 + (-1,) + (1,) * 10, (-1, -1) + (1,) * 14]
+            )
+        ]
+        singles = [self._forward(model, data) for data, _ in pairs]
+        assert [single["stop"] for single in singles] == [1, 1, 2]
+        out = self._forward(model, self._stack([pairs[0][0], pairs[1][0]]))
+        assert out["stop"] == 1
+        for k in range(2):
+            self._assert_pair(out, k, singles[k], exact=False)
+        # A pair runs as many layers as its batch: pair 0 stops after layer 0 on its own, and after layer 1 next to a
+        # pair that does not stop.
+        out = self._forward(model, self._stack([pairs[0][0], pairs[2][0]]))
+        assert out["stop"] == 2
+        self._assert_pair(out, 1, singles[2], exact=False)
