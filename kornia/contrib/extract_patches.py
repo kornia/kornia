@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import warnings
 from math import ceil
 from typing import Optional, Tuple, Union, cast
 from warnings import warn
@@ -266,7 +267,8 @@ class CombineTensorPatches(nn.Module):
         unpadding: remove the padding added to both side of the input.
         allow_auto_unpadding: whether to allow automatic unpadding of the input
             if the window and stride do not fit into the original_size.
-        eps: small value used to prevent division by zero.
+        eps: deprecated, has no effect. Each covered pixel is divided by its exact overlap count and a pixel no patch
+            covers is 0.
 
     Shape:
         - Input: :math:`(B, N, C, H_{out}, W_{out})`
@@ -292,6 +294,7 @@ class CombineTensorPatches(nn.Module):
         stride: Optional[Union[int, Tuple[int, int]]] = None,
         unpadding: PadType = 0,
         allow_auto_unpadding: bool = False,
+        eps: Optional[float] = None,
     ) -> None:
         super().__init__()
         self.original_size: Tuple[int, int] = original_size
@@ -299,6 +302,7 @@ class CombineTensorPatches(nn.Module):
         self.stride: Union[int, Tuple[int, int]] = stride if stride is not None else window_size
         self.unpadding: PadType = unpadding
         self.allow_auto_unpadding: bool = allow_auto_unpadding
+        self.eps: Optional[float] = eps
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """Reconstruct full images from extracted patches.
@@ -321,6 +325,7 @@ class CombineTensorPatches(nn.Module):
             stride=self.stride,
             unpadding=self.unpadding,
             allow_auto_unpadding=self.allow_auto_unpadding,
+            eps=self.eps,
         )
 
 
@@ -346,7 +351,7 @@ def combine_tensor_patches(
     stride: Union[int, Tuple[int, int]],
     allow_auto_unpadding: bool = False,
     unpadding: PadType = 0,
-    eps: float = 1e-8,
+    eps: Optional[float] = None,
 ) -> torch.Tensor:
     r"""Restore input from patches.
 
@@ -360,7 +365,8 @@ def combine_tensor_patches(
         unpadding: remove the padding added to both side of the input.
         allow_auto_unpadding: whether to allow automatic unpadding of the input
             if the window and stride do not fit into the original_size.
-        eps: small value used to prevent division by zero.
+        eps: deprecated, has no effect. Each covered pixel is divided by its exact overlap count and a pixel no patch
+            covers is 0.
 
     Return:
         The combined patches in an image torch.Tensor with shape :math:`(B, C, H, W)`.
@@ -391,7 +397,8 @@ def combine_tensor_patches(
 
     # if padding is specified, we leave it up to the user to ensure it fits
     # otherwise we check here if it will fit and offer to calculate padding
-    if not unpadding and not _check_patch_fit(original_size, window_size, stride):
+    unpadding_tuple = create_padding_tuple(unpadding, unpadding=True)
+    if not any(unpadding_tuple) and not _check_patch_fit(original_size, window_size, stride):
         if not allow_auto_unpadding:
             warn(
                 f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\n"
@@ -403,50 +410,70 @@ def combine_tensor_patches(
                 stacklevel=1,
             )
         else:
-            unpadding = compute_padding(original_size=original_size, window_size=window_size, stride=stride)
-            # TODO: Can't we just do actual size minus original size to get padding?
+            unpadding_tuple = create_padding_tuple(
+                compute_padding(original_size=original_size, window_size=window_size, stride=stride)
+            )
+    has_unpadding = any(unpadding_tuple)
 
-    if unpadding:
-        unpadding = create_padding_tuple(unpadding)
+    if eps is not None:
+        warnings.warn(
+            "`eps` is deprecated and has no effect: each covered pixel is divided by its exact overlap count and a "
+            "pixel no patch covers is 0. It will be removed in a future release; stop passing it.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    if not patches.is_floating_point():
+        return _combine_integer_patches(patches, original_size, window_size, stride, unpadding_tuple, has_unpadding)
 
+    # Fold half precision in float32: float16 overflows past 65504 and bfloat16 rounds the overlap sums.
+    out_dtype = patches.dtype
+    work_dtype = torch.float32 if patches.dtype in (torch.float16, torch.bfloat16) else patches.dtype
     ones_tensor = torch.ones(
-        patches.shape[0],
-        patches.shape[2],
-        original_size[0],
-        original_size[1],
-        device=patches.device,
-        dtype=patches.dtype,
+        patches.shape[0], patches.shape[2], original_size[0], original_size[1], device=patches.device, dtype=work_dtype
     )
-
-    if unpadding:
-        ones_tensor = F.pad(ones_tensor, pad=unpadding)
+    if has_unpadding:
+        ones_tensor = F.pad(ones_tensor, list(unpadding_tuple))
     restored_size = ones_tensor.shape[2:]
-
-    patches = patches.permute(0, 2, 3, 4, 1)
-    patches = patches.flatten(1, 3)
-    int_flag = 0
-    if not torch.is_floating_point(patches):
-        int_flag = 1
-        dtype = patches.dtype
-        patches = patches.float()
-        ones_tensor = ones_tensor.float()
-
-    # Calculate normalization map
+    patches = patches.permute(0, 2, 3, 4, 1).flatten(1, 3).to(work_dtype)
     unfold_ones = F.unfold(ones_tensor, kernel_size=window_size, stride=stride)
     norm_map = F.fold(input=unfold_ones, output_size=restored_size, kernel_size=window_size, stride=stride)
-    if unpadding:
-        norm_map = F.pad(norm_map, [-i for i in unpadding])
+    saturated = F.fold(input=patches, output_size=restored_size, kernel_size=window_size, stride=stride)
+    if has_unpadding:
+        norm_map = F.pad(norm_map, [-i for i in unpadding_tuple])
+        saturated = F.pad(saturated, [-i for i in unpadding_tuple])
+    # A covered pixel has an integer overlap count >= 1 and is divided by it exactly. A pixel no patch covers (patches
+    # that do not fit, the warned path) has count 0 and sum 0, and stays 0.
+    restored = saturated / torch.where(norm_map == 0, torch.ones_like(norm_map), norm_map)
+    return restored.to(out_dtype)
 
-    # Restored torch.Tensor
-    saturated_restored_tensor = F.fold(input=patches, output_size=restored_size, kernel_size=window_size, stride=stride)
-    if unpadding:
-        saturated_restored_tensor = F.pad(saturated_restored_tensor, [-i for i in unpadding])
 
-    # Remove satuation effect due to multiple summations
-    restored_tensor = saturated_restored_tensor / (norm_map + eps)
-    if int_flag:
-        restored_tensor = restored_tensor.to(dtype)
-    return restored_tensor
+def _combine_integer_patches(
+    patches: torch.Tensor,
+    original_size: Tuple[int, int],
+    window_size: Tuple[int, int],
+    stride: Tuple[int, int],
+    unpadding_tuple: FullPadType,
+    has_unpadding: bool,
+) -> torch.Tensor:
+    # F.fold has no integer kernel ("col2im_out_cpu" not implemented for 'Long'), and a float sum rounds above 2**24
+    # (float32) or 2**53 (float64). Scatter-add into int64 instead: exact while an overlap sum fits int64, on every
+    # device. The overlap mean truncates toward zero, as a float mean cast back to an integer dtype does.
+    B, _, C = patches.shape[:3]
+    pad_l, pad_r, pad_t, pad_b = unpadding_tuple if has_unpadding else (0, 0, 0, 0)  # F.pad order, as the float path
+    Hr, Wr = original_size[0] + pad_t + pad_b, original_size[1] + pad_l + pad_r
+    index = torch.arange(Hr * Wr, device=patches.device).view(1, 1, Hr, Wr)
+    flat_index = _extract_tensor_patchesnd(index, window_size, stride).flatten()  # target pixel of each patch element
+    values = patches.to(torch.int64).permute(0, 2, 1, 3, 4).reshape(B, C, -1)
+    sums = torch.zeros(B, C, Hr * Wr, dtype=torch.int64, device=patches.device).index_add_(-1, flat_index, values)
+    if patches.dtype == torch.bool:
+        # The float mean of bool patches was cast back to bool: True wherever any covering patch is True.
+        out = (sums != 0).view(B, C, Hr, Wr)
+    else:
+        counts = torch.zeros(Hr * Wr, dtype=torch.int64, device=patches.device)
+        counts = counts.index_add_(0, flat_index, torch.ones_like(flat_index))
+        out = torch.div(sums, counts.clamp_min(1), rounding_mode="trunc").view(B, C, Hr, Wr)
+    out = out[..., pad_t : Hr - pad_b, pad_l : Wr - pad_r]
+    return out.to(patches.dtype)
 
 
 def _extract_tensor_patchesnd(
@@ -510,7 +537,8 @@ def extract_tensor_patches(
 
     # if padding is specified, we leave it up to the user to ensure it fits
     # otherwise we check here if it will fit and offer to calculate padding
-    if not padding and not _check_patch_fit(original_size, window_size, stride):
+    padding_tuple = create_padding_tuple(padding)
+    if not any(padding_tuple) and not _check_patch_fit(original_size, window_size, stride):
         if not allow_auto_padding:
             warn(
                 f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\n"
@@ -520,10 +548,11 @@ def extract_tensor_patches(
                 stacklevel=1,
             )
         else:
-            padding = compute_padding(original_size=original_size, window_size=window_size, stride=stride)
+            padding_tuple = create_padding_tuple(
+                compute_padding(original_size=original_size, window_size=window_size, stride=stride)
+            )
 
-    if padding:
-        padding = create_padding_tuple(padding)
-        input = F.pad(input, padding)
+    if any(padding_tuple):
+        input = F.pad(input, list(padding_tuple))
 
     return _extract_tensor_patchesnd(input, window_size, stride)

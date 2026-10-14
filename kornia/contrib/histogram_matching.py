@@ -41,6 +41,12 @@ def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Te
 
     """
     oldshape = source.shape
+    compute_dtype = torch.float64 if source.dtype == torch.float64 else torch.float32
+    out_dtype = source.dtype if source.is_floating_point() else compute_dtype
+    if template.numel() == 0:
+        raise ValueError("histogram_matching needs a non-empty template.")
+    if source.numel() == 0:
+        return source.to(out_dtype)
     source = source.ravel()
     template = template.ravel()
 
@@ -53,7 +59,6 @@ def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Te
     # template images (maps pixel value --> quantile). The counts are summed in int64 and the quantiles computed
     # in float32 (float64 for float64 input): a uint8 sum wraps past 255, and float16/bfloat16 sums stop being exact
     # past 2048/256, which repeats quantiles and makes interp divide by zero.
-    compute_dtype = torch.float64 if source.dtype == torch.float64 else torch.float32
     s_quantiles = torch.cumsum(s_counts, dim=0).to(compute_dtype)
     s_quantiles = s_quantiles / s_quantiles[-1]
     t_quantiles = torch.cumsum(t_counts, dim=0).to(compute_dtype)
@@ -69,7 +74,6 @@ def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Te
     interp_t_values = interp(s_quantiles, t_quantiles, t_values)
 
     # A floating source keeps its dtype; an integer source returns float32.
-    out_dtype = source.dtype if source.is_floating_point() else compute_dtype
     return interp_t_values[bin_idx].reshape(oldshape).to(out_dtype)
 
 
@@ -93,12 +97,14 @@ def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.Tensor:
 
     """
     i = torch.clip(torch.searchsorted(xp, x, right=True), 1, len(xp) - 1)
-
-    # A zero-width segment (repeated xp) is selected only at a clipped end: x >= xp[-1] when the last xp repeats, or
-    # x < xp[0] when the first one does. Dividing by its width gave NaN, e.g. when float32 rounds the last cumulative
-    # counts of a 2**24-pixel template to the same quantile. Divide by a safe width there and return fp[i], which at
-    # the upper end is fp[-1], as np.interp gives for x >= xp[-1].
-    dx = xp[i] - xp[i - 1]
+    x0, x1, f0, f1 = xp[i - 1], xp[i], fp[i - 1], fp[i]
+    dx = x1 - x0
     zero_width = dx == 0
-    out = (fp[i - 1] * (xp[i] - x) + fp[i] * (x - xp[i - 1])) / torch.where(zero_width, torch.ones_like(dx), dx)
-    return torch.where(zero_width, fp[i], out)
+    dtype = torch.promote_types(torch.promote_types(x.dtype, xp.dtype), fp.dtype)
+    w = ((x - x0) / torch.where(zero_width, torch.ones_like(dx), dx)).to(dtype)
+    # lerp is exact at w = 0 and w = 1, so a point on a knot returns fp at that knot; outside [xp[0], xp[-1]] it
+    # extrapolates the end segment, as before.
+    out = torch.lerp(f0.to(dtype), f1.to(dtype), w)
+    # A zero-width (repeated) segment is reached only at a clipped end: below a repeated first knot the value is
+    # fp[0], at or above a repeated last knot fp[-1].
+    return torch.where(zero_width, torch.where(x < x0, f0, f1).to(dtype), out)

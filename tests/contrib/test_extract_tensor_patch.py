@@ -221,7 +221,7 @@ class TestExtractTensorPatches(BaseTester):
             )
         with pytest.raises(RuntimeError, match=r"step.*> 0"):
             kornia.contrib.extract_tensor_patches(
-                torch.empty(batch_size, 3, 8, 12, device=device, dtype=dtype), 4, 0, padding=(0, 0, 0, 0)
+                torch.empty(batch_size, 3, 8, 12, device=device, dtype=dtype), 4, 0, padding=(1, 1, 1, 1)
             )
 
     @pytest.mark.parametrize("batch_size", [0, 2])
@@ -231,3 +231,12 @@ class TestExtractTensorPatches(BaseTester):
         actual = torch_optimizer(module)(image)
         assert actual.shape == (batch_size, 6, 3, 4, 4)
         self.assert_close(actual, module(image), rtol=0, atol=0)
+
+    @pytest.mark.parametrize("padding", [(0, 0), (0, 0, 0, 0)])
+    def test_all_zero_padding_means_no_padding(self, padding, device, dtype):
+        # A-5: a zero tuple used to switch off allow_auto_padding (N 6 instead of 12, last row/column dropped).
+        img = torch.arange(1, 36, device=device, dtype=dtype).view(1, 1, 5, 7)
+        expected = kornia.contrib.extract_tensor_patches(img, 2, 2, padding=0, allow_auto_padding=True)
+        out = kornia.contrib.extract_tensor_patches(img, 2, 2, padding=padding, allow_auto_padding=True)
+        assert out.shape == (1, 12, 1, 2, 2)
+        self.assert_close(out, expected)

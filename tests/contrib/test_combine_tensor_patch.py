@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import warnings
+
 import pytest
 import torch
 
@@ -251,3 +253,87 @@ class TestCombineTensorPatches(BaseTester):
         actual = torch_optimizer(module)(patches)
         assert actual.shape == (batch_size, 3, 8, 12)
         self.assert_close(actual, module(patches))
+
+    def test_all_zero_unpadding_means_no_unpadding(self, device, dtype):
+        img = torch.arange(1, 36, device=device, dtype=dtype).view(1, 1, 5, 7)
+        patches = kornia.contrib.extract_tensor_patches(img, 2, 2, allow_auto_padding=True)
+        out = kornia.contrib.combine_tensor_patches(patches, (5, 7), 2, 2, allow_auto_unpadding=True, unpadding=(0, 0))
+        self.assert_close(out, img)
+
+    @pytest.mark.parametrize("stride", [2, 1])
+    def test_float64_round_trip_is_exact(self, stride, device):
+        # A-9: eps was added to every divisor, so 1000.0 came back as 999.99999.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        g = torch.Generator().manual_seed(0)
+        img = (torch.rand(1, 2, 4, 6, generator=g, dtype=torch.float64) * 1000).to(device)
+        out = kornia.contrib.combine_tensor_patches(
+            kornia.contrib.extract_tensor_patches(img, 2, stride), (4, 6), 2, stride
+        )
+        assert torch.equal(out, img)  # overlap counts are 1, 2 or 4: the mean of identical copies is exact
+
+    @pytest.mark.parametrize("stride", [2, 1])
+    @pytest.mark.parametrize("int_dtype", [torch.uint8, torch.int32, torch.int64])
+    def test_integer_round_trip_is_exact(self, stride, int_dtype, device):
+        # A-10: integers went through float32, so 16777217 came back as 16777216. Plan review P4: float64 would still
+        # round 2**53 + 1. Integer patches are summed in int64, exactly, on MPS too (no skip). At stride 1 a pixel
+        # is covered up to 4 times, so 4 * (2**60 + 1) still fits int64.
+        big = {torch.uint8: 255, torch.int32: 2**31 - 1, torch.int64: 2**60 + 1}[int_dtype]
+        img = torch.full((1, 2, 4, 6), 7, dtype=int_dtype, device=device)
+        img[0, 0, 1, 2] = big
+        img[0, 1, 2, 3] = big - 2
+        out = kornia.contrib.combine_tensor_patches(
+            kornia.contrib.extract_tensor_patches(img, 2, stride), (4, 6), 2, stride
+        )
+        assert out.dtype == int_dtype
+        assert torch.equal(out, img)
+
+    def test_integer_overlap_mean_truncates_toward_zero(self, device):
+        # A-6: overlapping, non-identical integer patches. Pixel (0, 1) is covered by patches 0 and 1: (5 + 2) / 2 = 3.5
+        # -> 3, and (-5 - 2) / 2 = -3.5 -> -3 (toward zero, as a float mean cast to an integer dtype does).
+        patches = torch.zeros(1, 4, 1, 2, 2, dtype=torch.int32, device=device)
+        patches[0, 0, 0, 0, 1] = 5
+        patches[0, 1, 0, 0, 0] = 2
+        out = kornia.contrib.combine_tensor_patches(patches, (3, 3), 2, 1)
+        assert out[0, 0, 0, 1].item() == 3
+        out = kornia.contrib.combine_tensor_patches(-patches, (3, 3), 2, 1)
+        assert out[0, 0, 0, 1].item() == -3
+
+    def test_bool_overlap_keeps_main_result(self, device):
+        # Probe on main (4863aed8a): bool patches went through float32, the overlap mean was cast back to bool, so a
+        # pixel is True when any covering patch is True. Literal produced by:
+        #   p = torch.zeros(1, 4, 1, 2, 2, dtype=torch.bool); p[0, 0] = True; p[0, 1] = True
+        #   kornia.contrib.combine_tensor_patches(p, (3, 3), 2, 1).tolist()
+        patches = torch.zeros(1, 4, 1, 2, 2, dtype=torch.bool, device=device)
+        patches[0, 0] = True
+        patches[0, 1] = True
+        out = kornia.contrib.combine_tensor_patches(patches, (3, 3), 2, 1)
+        assert out.dtype == torch.bool
+        assert out.tolist() == [[[[True, True, True], [True, True, True], [False, False, False]]]]
+
+    def test_eps_is_deprecated_and_has_no_effect(self, device, dtype):
+        # Plan review P7: eps was added to every divisor (A-9), and clamp_min(eps) would still have turned a singly
+        # covered 7 into 3.5 at eps=2. On main, eps=0 gave NaN and eps=-1 gave inf. Patches that do not fit
+        # (6 patches of a 4 x 6 image recombined to 5 x 7, the warned path) leave row 4 and column 6 uncovered: they
+        # stay 0 for every eps.
+        img = torch.arange(1, 25, device=device, dtype=dtype).view(1, 1, 4, 6)
+        patches = kornia.contrib.extract_tensor_patches(img, 2, 2)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)  # the existing "does not fit" warning
+            expected = kornia.contrib.combine_tensor_patches(patches, (5, 7), 2, 2)
+            assert (expected[..., 4, :] == 0).all()
+            assert (expected[..., :, 6] == 0).all()
+            self.assert_close(expected[..., :4, :6], img)
+            for eps in (1e-8, 2.0, 0.0, -1.0):
+                with pytest.warns(DeprecationWarning, match="eps"):
+                    out = kornia.contrib.combine_tensor_patches(patches, (5, 7), 2, 2, eps=eps)
+                assert torch.equal(out, expected)
+
+    @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16])
+    def test_half_precision_heavy_overlap_round_trip_is_exact(self, half, device):
+        # A-11: 289 overlapping 0..255 values summed in float16 overflowed (51 inf); bfloat16 was off by 64.
+        g = torch.Generator().manual_seed(0)
+        img = (torch.rand(1, 3, 40, 52, generator=g) * 255).round().to(device, half)
+        out = kornia.contrib.combine_tensor_patches(kornia.contrib.extract_tensor_patches(img, 17, 1), (40, 52), 17, 1)
+        assert out.dtype == half
+        assert torch.equal(out, img)

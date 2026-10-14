@@ -140,3 +140,52 @@ class TestHistMatch(BaseTester):
         src = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         dst = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(kornia.contrib.histogram_matching, (src, dst))
+
+    def test_interp_is_exact_at_its_knots(self, device, dtype):
+        xp = torch.tensor([0.0, 0.1, 0.35, 0.7, 1.0], device=device, dtype=dtype)
+        fp = torch.tensor([10.0, 20.0, 30.0, 47.0, 51.0], device=device, dtype=dtype)
+        assert torch.equal(kornia.contrib.interp(xp, xp, fp), fp)
+
+    def test_interp_left_of_a_repeated_first_knot(self, device, dtype):
+        # A-31: np.interp([-1, 0, 0.5], [0, 0, 1], [5, 6, 7]) == [5, 6, 6.5]; kornia returned 6.0 left of the step.
+        x = torch.tensor([-1.0, 0.0, 0.5], device=device, dtype=dtype)
+        xp = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
+        fp = torch.tensor([5.0, 6.0, 7.0], device=device, dtype=dtype)
+        assert kornia.contrib.interp(x, xp, fp).tolist() == [5.0, 6.0, 6.5]
+
+    def test_matching_an_image_to_itself_is_the_identity(self, device, dtype):
+        # A-21: 209 (float32) / 283 (float64) of 5328 pixels changed.
+        g = torch.Generator().manual_seed(0)
+        x = (torch.rand(2, 3, 24, 37, generator=g) * 255).round().to(device, dtype)
+        assert torch.equal(kornia.contrib.histogram_matching(x, x), x)
+
+    def test_uint8_result_survives_a_uint8_cast(self, device):
+        # A-21: [3, 1, 2] onto [10, 20, 30] gave [29.999998, 10, 20], i.e. 29 after .to(torch.uint8).
+        src = torch.tensor([3, 1, 2], dtype=torch.uint8, device=device)
+        tpl = torch.tensor([10, 20, 30], dtype=torch.uint8, device=device)
+        assert kornia.contrib.histogram_matching(src, tpl).to(torch.uint8).tolist() == [30, 10, 20]
+
+    def test_float32_output_stays_inside_the_template_range(self, device):
+        # A-22: #5794's range guarantee leaked one ulp in 24-49 of 300 random float32 pairs.
+        outside = 0
+        for seed in range(300):
+            g = torch.Generator().manual_seed(seed)
+            n1, n2 = torch.randint(2, 60, (2,), generator=g).tolist()
+            src = (torch.rand(n1, generator=g) * 3).to(device)
+            tpl = (torch.rand(n2, generator=g) * 3).to(device)
+            out = kornia.contrib.histogram_matching(src, tpl)
+            outside += int(bool((out > tpl.max()).any() or (out < tpl.min()).any()))
+        assert outside == 0
+
+    def test_empty_source_gives_an_empty_output(self, device, dtype):
+        out = kornia.contrib.histogram_matching(
+            torch.zeros(0, 3, 4, 5, device=device, dtype=dtype), torch.rand(1, 3, 4, 5, device=device, dtype=dtype)
+        )
+        assert out.shape == (0, 3, 4, 5)
+        assert out.dtype == dtype
+
+    def test_empty_template_raises(self, device, dtype):
+        with pytest.raises(ValueError, match="template"):
+            kornia.contrib.histogram_matching(
+                torch.rand(1, 3, 4, 5, device=device, dtype=dtype), torch.zeros(0, 3, 4, 5, device=device, dtype=dtype)
+            )
