@@ -104,7 +104,7 @@ class HFONNXComunnityModelLoader:
                 suffix=".onnx_data",
                 **kwargs,
             )
-        onnx_model = onnx.load(file_path)  # type:ignore
+        onnx_model = onnx.load(file_path)
 
         if io_name_mapping is not None:
             onnx_model = io_name_conversion(onnx_model, io_name_mapping)
