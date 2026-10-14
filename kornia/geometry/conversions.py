@@ -2259,9 +2259,6 @@ def denormalize_homography(
         - the two functions invert each other to a small multiple of the
           working dtype's ``eps`` times the largest entry, not bitwise in
           general
-        - an integer or bool ``dst_pix_trans_src_pix`` raises ``TypeCheckError``
-          (also a ``TypeError``) instead of being promoted: cast it to a floating
-          point dtype first
 
     Args:
         dst_pix_trans_src_pix: homography/ies from source to destination to be
@@ -2407,6 +2404,14 @@ def denormalize_homography3d(
         - the two functions invert each other to a small multiple of the
           working dtype's ``eps`` times the largest entry, not bitwise in
           general
+        - only real floating point homographies are accepted (``float16``,
+          ``bfloat16``, ``float32``, ``float64``): an integer, bool or complex
+          ``dst_pix_trans_src_pix`` raises ``TypeCheckError`` (also a
+          ``TypeError``) instead of being promoted, so cast it first. Integers
+          would truncate the normalization matrices (the 2-D function still
+          does, `#3959 <https://github.com/kornia/kornia/issues/3959>`_), and
+          complex dtypes would be inverted in ``float32``
+          (``_torch_inverse_cast``), losing ``complex128`` precision
 
     Args:
         dst_pix_trans_src_pix: homography/ies from source to destination to be
@@ -2426,12 +2431,13 @@ def denormalize_homography3d(
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst_pix_trans_src_pix)}")
 
     # An integer or bool homography would cast the normalization matrices back to integers
-    # (truncating the 2/(size - 1) scales to 0, or failing on a singular inverse), so the dtype is
-    # rejected rather than promoted: the caller casts. Raised directly, not through KORNIA_CHECK,
+    # (truncating the 2/(size - 1) scales to 0, or failing on a singular inverse), and a complex one
+    # would be inverted in float32 by _torch_inverse_cast, so the dtype is rejected rather than
+    # promoted: the caller casts. Raised directly, not through KORNIA_CHECK,
     # which python -O and disable_checks() switch off.
-    if not (dst_pix_trans_src_pix.is_floating_point() or dst_pix_trans_src_pix.is_complex()):
+    if not dst_pix_trans_src_pix.is_floating_point():
         raise TypeCheckError(
-            "Input dst_pix_trans_src_pix must be a floating point or complex tensor. "
+            "Input dst_pix_trans_src_pix must be a real floating point tensor. "
             f"Got dtype {dst_pix_trans_src_pix.dtype}.",
             actual_type=dst_pix_trans_src_pix.dtype,
         )
@@ -3131,9 +3137,9 @@ def ColmapQTVecs_to_ARKitQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
         - the input quaternion need not be unit and ``q`` and ``-q`` give the
           same output, within the same normalisation range as
           :func:`~kornia.geometry.conversions.ARKitQTVecs_to_ColmapQTVecs`
-        - an integer or bool ``qvec`` or ``tvec`` raises ``TypeCheckError``
-          (also a ``TypeError``) naming the argument: cast it to a floating
-          point dtype first
+        - only real floating point ``qvec`` and ``tvec`` are accepted: an
+          integer, bool or complex one raises ``TypeCheckError`` (also a
+          ``TypeError``) naming the argument, so cast it first
         - the **sign of the output quaternion is not canonical**: a round trip
           through both functions returns the input rotation, but not
           necessarily the input quaternion's sign. Compare rotations, never raw
@@ -3167,9 +3173,9 @@ def ColmapQTVecs_to_ARKitQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
 
     """
     for name, value in (("qvec", qvec), ("tvec", tvec)):
-        if isinstance(value, torch.Tensor) and not value.is_floating_point():
+        if isinstance(value, torch.Tensor) and not value.is_floating_point():  # complex is not floating point
             raise TypeCheckError(
-                f"Input {name} must be a floating point tensor. Got dtype {value.dtype}.", actual_type=value.dtype
+                f"Input {name} must be a real floating point tensor. Got dtype {value.dtype}.", actual_type=value.dtype
             )
     R_colmap = quaternion_to_rotation_matrix(qvec)
     Rcv, Tcv = worldtocam_to_camtoworld_Rt(R_colmap, tvec)

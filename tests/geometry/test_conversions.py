@@ -3797,6 +3797,26 @@ class TestNormalizeHomography(BaseTester):
         with pytest.raises(TypeError):
             kornia.geometry.conversions.denormalize_homography3d(homography[None], (2, 2, 2), dsize_dst)
 
+    @pytest.mark.parametrize("complex_dtype", [torch.complex64, torch.complex128])
+    def test_exception_denormalize_homography3d_rejects_complex_homography(self, complex_dtype):
+        # CPU tensors: the guard runs before any arithmetic and MPS has no complex128.
+        # _torch_inverse_cast inverts complex matrices in float32, so complex128 lost ~7e-8 on an
+        # identity transform (equal sizes, (8, 8, 8)). Only real floating point is accepted.
+        # Snippet used to generate the old behaviour (torch only):
+        #   H = torch.eye(4, dtype=torch.complex128)
+        #   (denormalize_homography3d(H, (8, 8, 8), (8, 8, 8)) - H).abs().max() -> 6.8e-08
+        homography = torch.eye(4, dtype=complex_dtype)
+        with pytest.raises(TypeCheckError, match=r"dst_pix_trans_src_pix.*real floating point.*" + str(complex_dtype)):
+            kornia.geometry.conversions.denormalize_homography3d(homography, (8, 8, 8), (8, 8, 8))
+
+    def test_dynamo_denormalize_homography3d(self, device, dtype, torch_optimizer):
+        homography = torch.eye(4, device=device, dtype=dtype)[None] + 0.125
+        op = partial(kornia.geometry.conversions.denormalize_homography3d, dsize_src=(3, 5, 9), dsize_dst=(5, 9, 17))
+        actual = torch_optimizer(op)(homography)
+        expected = op(homography)
+
+        self.assert_close(actual, expected)
+
     def test_convention_maps_normalized_src_to_normalized_dst(self, device, dtype):
         # Convention pin: the returned matrix has the SAME src -> dst direction as its input,
         # re-expressed in the two [-1, 1] frames -- it maps normalized src coordinates to
@@ -5450,6 +5470,28 @@ class TestCARKitToColmap(BaseTester):
             tvec = tvec.to(int_dtype)
         with pytest.raises(TypeCheckError, match=rf"{which}.*floating point.*{int_dtype}"):
             ColmapQTVecs_to_ARKitQTVecs(qvec, tvec)
+
+    @pytest.mark.parametrize("complex_dtype", [torch.complex64, torch.complex128])
+    @pytest.mark.parametrize("which", ["qvec", "tvec"])
+    def test_exception_colmap_to_arkit_rejects_complex_inputs(self, complex_dtype, which):
+        # CPU tensors: the guard runs before any arithmetic and MPS has no complex128.
+        qvec = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+        tvec = torch.ones(1, 3, 1)
+        if which == "qvec":
+            qvec = qvec.to(complex_dtype)
+        else:
+            tvec = tvec.to(complex_dtype)
+        with pytest.raises(TypeCheckError, match=rf"{which}.*real floating point.*{complex_dtype}"):
+            ColmapQTVecs_to_ARKitQTVecs(qvec, tvec)
+
+    def test_dynamo_colmap_to_arkit(self, device, dtype, torch_optimizer):
+        qvec = torch.tensor([[0.7071, 0.0, 0.7071, 0.0], [1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
+        tvec = torch.tensor([[[1.0], [2.0], [3.0]], [[-1.0], [0.5], [2.0]]], device=device, dtype=dtype)
+        actual = torch_optimizer(ColmapQTVecs_to_ARKitQTVecs)(qvec, tvec)
+        expected = ColmapQTVecs_to_ARKitQTVecs(qvec, tvec)
+
+        self.assert_close(actual[0], expected[0])
+        self.assert_close(actual[1], expected[1])
 
     def test_convention_reverse_input_is_worldtocam_vision_and_output_is_camtoworld_graphics(self, device, dtype):
         # Convention pin for ColmapQTVecs_to_ARKitQTVecs: the frames are the forward's, exchanged.
