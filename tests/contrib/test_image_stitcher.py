@@ -19,13 +19,81 @@ from unittest.mock import PropertyMock, patch
 
 import pytest
 import torch
+from torch import nn
 
 import kornia
+from kornia.feature import LocalFeatureMatcher
 
 from testing.base import BaseTester
 
 
+def _render(x0: float, w: int, h: int = 48, dtype: torch.dtype = torch.float32) -> torch.Tensor:  # float32: MPS too
+    ys, xs = torch.meshgrid(torch.arange(h, dtype=dtype), torch.arange(w, dtype=dtype) + x0, indexing="ij")
+    return torch.stack(
+        [
+            0.5 + 0.2 * torch.sin(0.21 * xs + 0.13 * ys + c) + 0.15 * torch.cos(0.17 * ys - 0.07 * xs + 2 * c)
+            for c in range(3)
+        ]
+    )[None]
+
+
+class _ShiftMatcher(LocalFeatureMatcher):
+    """Exact correspondences: right pixel p is left pixel p + (shift_b, 0); samples in `empty` get none."""
+
+    def __init__(self, shifts, empty=()):
+        nn.Module.__init__(self)
+        self.shifts, self.empty = shifts, set(empty)
+
+    def forward(self, data):
+        im0, im1 = data["image0"], data["image1"]
+        kp0, kp1, idx = [], [], []
+        for b in range(im1.shape[0]):
+            if b in self.empty:
+                continue
+            ys, xs = torch.meshgrid(
+                torch.arange(2, im1.shape[-2] - 2, 5.0), torch.arange(2, im1.shape[-1] - 2, 5.0), indexing="ij"
+            )
+            p1 = torch.stack([xs.flatten(), ys.flatten()], -1)
+            p0 = p1 + torch.tensor([self.shifts[b], 0.0])
+            keep = (p0[:, 0] >= 0) & (p0[:, 0] <= im0.shape[-1] - 1)
+            kp0.append(p0[keep])
+            kp1.append(p1[keep])
+            idx.append(torch.full((int(keep.sum()),), b))
+        return {
+            "keypoints0": torch.cat(kp0).to(im0),
+            "keypoints1": torch.cat(kp1).to(im0),
+            "batch_indexes": torch.cat(idx),
+        }
+
+
 class TestImageStitcher(BaseTester):
+    @pytest.mark.parametrize("shift", [40.0, 40.5, 40.7])
+    def test_subpixel_shift_has_no_dark_seam(self, shift, device):
+        # C-12: the mask was warped with nearest and the image bilinearly: s = 40.5 left a dark column (error 0.43),
+        # s = 40.7 an extra dark trailing column (width 97, truth 96).
+        torch.manual_seed(0)
+        left, right = _render(0, 64).to(device), _render(shift, 56).to(device)
+        with torch.no_grad():
+            out = kornia.contrib.ImageStitcher(_ShiftMatcher([shift]))(left, right)
+        assert out.shape[-1] == int(shift) + 56
+        truth = _render(0, out.shape[-1]).to(device)
+        assert (out - truth).abs().max().item() < 0.02  # bilinear resampling of the smooth texture, no black mixed in
+
+    def test_estimate_transform_names_a_gap_without_batch_size(self):
+        # Samples 0 and 2 matched, sample 1 not: the sample count comes from the largest batch index.
+        stitcher = kornia.contrib.ImageStitcher(_ShiftMatcher([0.0]))
+        kp = torch.rand(8, 2)
+        idx = torch.tensor([0, 0, 0, 0, 2, 2, 2, 2])
+        with pytest.raises(RuntimeError, match="sample 1"):
+            stitcher.estimate_transform(keypoints0=kp, keypoints1=kp, batch_indexes=idx)
+
+    def test_unmatched_sample_is_named(self, device):
+        # C-15: one unmatched sample failed the batch with grid_sampler's batch-size error.
+        left = torch.cat([_render(0, 64)] * 2).to(device)
+        right = torch.cat([_render(40, 56), _render(30, 56)]).to(device)
+        with pytest.raises(RuntimeError, match="sample 1"):
+            kornia.contrib.ImageStitcher(_ShiftMatcher([40.0, 30.0], empty=(1,)))(left, right)
+
     @pytest.mark.parametrize("estimator", ["ransac", "vanilla"])
     def test_smoke(self, estimator, device, dtype):
         B, C, H, W = 1, 3, 6, 6

@@ -21,7 +21,8 @@ import pytest
 import torch
 
 from kornia.core._compat import torch_version_le
-from kornia.feature import DescriptorMatcher, GFTTAffNetHardNet, LocalFeatureMatcher, SIFTFeature
+from kornia.core.exceptions import BaseError
+from kornia.feature import DescriptorMatcher, GFTTAffNetHardNet, LocalFeatureMatcher, LoFTR, SIFTFeature
 from kornia.geometry import rescale, transform_points
 from kornia.tracking import HomographyTracker
 
@@ -53,6 +54,65 @@ def _match_dict(n_keypoints: int, device: torch.device, dtype: torch.dtype) -> d
     }
 
 
+def _texture(h: int, w: int, seed: int = 0) -> torch.Tensor:
+    g = torch.Generator().manual_seed(seed)
+    return torch.nn.functional.avg_pool2d(torch.rand(1, 1, h, w, generator=g), 5, 1, 2)
+
+
+class TestHomographyTrackerCaching:
+    def _sift_matcher(self) -> LocalFeatureMatcher:
+        return LocalFeatureMatcher(SIFTFeature(300), DescriptorMatcher("snn", 0.9))
+
+    def test_target_features_are_extracted_once(self):
+        # C-4: the nn.Module guard never matched a method, so the target was re-extracted on every frame.
+        initial, fast = self._sift_matcher(), self._sift_matcher()
+        shapes = []
+        for m in (initial, fast):
+            m.local_feature.register_forward_hook(lambda mod, inp, out: shapes.append(tuple(inp[0].shape)))
+        tracker = HomographyTracker(initial, fast, minimum_inliers_num=10)
+        tracker.set_target(_texture(60, 80))
+        assert shapes == [(1, 1, 60, 80), (1, 1, 60, 80)]
+        shapes.clear()
+        tracker(_texture(70, 90, seed=1))
+        assert shapes == [(1, 1, 70, 90)]
+
+    def test_loftr_target_features_are_extracted_once(self):
+        loftr = LoFTR(None)
+        calls = []
+        loftr.backbone.register_forward_hook(lambda mod, inp, out: calls.append(tuple(inp[0].shape)))
+        tracker = HomographyTracker(self._sift_matcher(), loftr, minimum_inliers_num=10)
+        tracker.set_target(_texture(64, 80))
+        assert calls == [(1, 1, 64, 80)]
+        calls.clear()
+        tracker.previous_homography = torch.eye(3)
+        tracker.track_next_frame(_texture(72, 96, seed=1))
+        assert calls == [(1, 1, 64, 80)]  # only the pre-warped frame, at the target's size
+
+    def test_track_next_frame_without_a_prior_raises(self):
+        # C-5: UnboundLocalError on Hwarp.
+        tracker = _make_tracker()
+        tracker.set_target(torch.rand(1, 1, 8, 9))
+        with pytest.raises(BaseError, match="previous homography"):
+            tracker.track_next_frame(torch.rand(1, 1, 8, 9))
+
+    def test_fewer_than_four_matches_is_a_failed_match(self):
+        # C-6: minimum_inliers_num < 4 let 3 matches reach RANSAC, which raised.
+        tracker = _make_tracker(minimum_inliers_num=0)
+        tracker.set_target(torch.rand(1, 1, 8, 9))
+        tracker.initial_matcher.return_value = _match_dict(3, torch.device("cpu"), torch.float32)
+        _, ok = tracker.match_initial(torch.rand(1, 1, 8, 9))
+        assert not ok
+        tracker.ransac.assert_not_called()
+
+    def test_set_target_starts_a_new_track(self):
+        # C-7 (controller ruling): the old prior maps the old target's coordinates.
+        tracker = _make_tracker()
+        tracker.set_target(torch.rand(1, 1, 8, 9))
+        tracker.previous_homography = torch.eye(3)
+        tracker.set_target(torch.rand(1, 1, 6, 7))
+        assert tracker.previous_homography is None
+
+
 class TestHomographyTrackerUnit:
     """Fast unit tests for HomographyTracker using mocked sub-modules."""
 
@@ -74,27 +134,15 @@ class TestHomographyTrackerUnit:
         assert tracker.target_fast_representation == {}
 
     def test_set_target_with_extract_features(self):
-        from torch import nn
-
-        fake_feats = {"desc": torch.rand(1, 4)}
-
-        class _FakeExtract(nn.Module):
-            def forward(self, x):
-                return fake_feats
-
+        # A matcher that is neither LoFTR nor LocalFeatureMatcher gets no cached representation.
         initial_matcher = MagicMock()
         fast_matcher = MagicMock()
-        initial_matcher.extract_features = _FakeExtract()
-        fast_matcher.extract_features = _FakeExtract()
-        tracker = HomographyTracker(
-            initial_matcher=initial_matcher,
-            fast_matcher=fast_matcher,
-            ransac=MagicMock(),
-        )
-        image = torch.rand(1, 1, 8, 8)
-        tracker.set_target(image)
-        assert tracker.target_initial_representation == fake_feats
-        assert tracker.target_fast_representation == fake_feats
+        tracker = HomographyTracker(initial_matcher=initial_matcher, fast_matcher=fast_matcher, ransac=MagicMock())
+        tracker.set_target(torch.rand(1, 1, 8, 8))
+        assert tracker.target_initial_representation == {}
+        assert tracker.target_fast_representation == {}
+        initial_matcher.extract_features.assert_not_called()
+        fast_matcher.extract_features.assert_not_called()
 
     def test_no_match_returns_empty_tensor_and_false(self):
         tracker = _make_tracker()

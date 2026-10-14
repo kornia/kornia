@@ -80,14 +80,29 @@ class ImageStitcher(nn.Module):
             raise NotImplementedError(f"Unsupported estimator {self.estimator}. Use `ransac` or `vanilla` instead.")
         return homo
 
-    def estimate_transform(self, *args: torch.Tensor, **kwargs: torch.Tensor) -> torch.Tensor:
-        """Compute the corresponding homography."""
+    def estimate_transform(
+        self, *args: torch.Tensor, batch_size: Optional[int] = None, **kwargs: torch.Tensor
+    ) -> torch.Tensor:
+        """Compute the corresponding homography of every sample.
+
+        Args:
+            *args: ignored.
+            batch_size: number of samples. Defaults to one more than the largest batch index of the matches.
+            **kwargs: the matcher output, with ``keypoints0``, ``keypoints1`` and ``batch_indexes``.
+
+        Raises:
+            RuntimeError: if there are no matches, or a sample has fewer than 4 (the error names the sample).
+        """
         kp1, kp2, idx = kwargs["keypoints0"], kwargs["keypoints1"], kwargs["batch_indexes"]
-        homos = [self._estimate_homography(kp1[idx == i], kp2[idx == i]) for i in range(len(idx.unique()))]
-
-        if len(homos) == 0:
+        if idx.numel() == 0:
             raise RuntimeError("Compute homography failed. No matched keypoints found.")
-
+        n = batch_size if batch_size is not None else int(idx.max().item()) + 1
+        selections = [idx == i for i in range(n)]
+        for i, sel in enumerate(selections):
+            n_i = int(sel.sum().item())
+            if n_i < 4:
+                raise RuntimeError(f"Compute homography failed for sample {i}: {n_i} matches, a homography needs 4.")
+        homos = [self._estimate_homography(kp1[sel], kp2[sel]) for sel in selections]
         return torch.cat(homos)
 
     def blend_image(self, src_img: torch.Tensor, dst_img: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
@@ -176,7 +191,7 @@ class ImageStitcher(nn.Module):
         input_dict = self.preprocess(images_left, images_right)
         out_shape = (images_left.shape[-2], images_left.shape[-1] + images_right.shape[-1])
         correspondences = self.on_matcher(input_dict)
-        homo = self.estimate_transform(**correspondences)
+        homo = self.estimate_transform(batch_size=images_left.shape[0], **correspondences)
         src_img = warp_perspective(images_right, homo, out_shape)
         dst_img = torch.cat([images_left, torch.zeros_like(images_right)], -1)
 
@@ -185,8 +200,10 @@ class ImageStitcher(nn.Module):
             mask_left = torch.ones_like(images_left)
         if mask_right is None:
             mask_right = torch.ones_like(images_right)
-        # 'nearest' to ensure no floating points in the mask
-        src_mask = warp_perspective(mask_right, homo, out_shape, mode="nearest")
+        # The image is resampled bilinearly, so a panorama pixel whose footprint reaches past the right image's border
+        # mixes in the zero padding. Warp the mask the same way and keep only pixels covered completely.
+        src_mask = warp_perspective(mask_right.float(), homo.float(), out_shape) >= 1.0 - 1e-4
+        src_mask = src_mask.to(images_right.dtype)
         dst_mask = torch.cat([mask_left, torch.zeros_like(mask_right)], -1)
         return self.blend_image(src_img, dst_img, src_mask), (dst_mask + src_mask).bool().to(src_mask.dtype)
 
