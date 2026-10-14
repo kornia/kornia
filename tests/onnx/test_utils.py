@@ -30,7 +30,7 @@ onnx = pytest.importorskip("onnx")
 from kornia.onnx.utils import ONNXLoader  # noqa: E402
 
 # the directory that a URL whose query is "download=1" is cached in
-_Q_DOWNLOAD_1 = "q-" + hashlib.sha256(b"download=1").hexdigest()[:16]
+_Q_DOWNLOAD_1 = "%3F" + hashlib.sha256(b"download=1").hexdigest()[:16]
 
 
 class TestONNXLoader:
@@ -211,13 +211,24 @@ class TestONNXLoader:
             ("https://example.invalid/x/m.onnx#part", "https/example.invalid/x/m.onnx"),
             ("https://Example.INVALID/X/m.onnx", "https/example.invalid/X/m.onnx"),
             ("https://user:secret@example.invalid/m.onnx", "https/example.invalid/m.onnx"),
-            ("http://127.0.0.1:8000/m.onnx", "http/127.0.0.1_8000/m.onnx"),
-            ("http://[::1]:8000/m.onnx", "http/__1_8000/m.onnx"),
+            # the ":" before a port, and those of an IPv6 address, are encoded as "%" is, so no host name can be
+            # mistaken for a host with a port; the brackets keep "[::1]:8000" apart from "[::1:8000]"
+            ("http://127.0.0.1:8000/m.onnx", "http/127.0.0.1%3A8000/m.onnx"),
+            ("http://a_8000/m.onnx", "http/a_8000/m.onnx"),
+            ("http://[::1]/m.onnx", "http/[%3A%3A1]/m.onnx"),
+            ("http://[::1]:8000/m.onnx", "http/[%3A%3A1]%3A8000/m.onnx"),
+            ("http://[::1:8000]/m.onnx", "http/[%3A%3A1%3A8000]/m.onnx"),
+            ("http://__1_8000/m.onnx", "http/__1_8000/m.onnx"),
             ("https://example.invalid/a/../b/./m.onnx", "https/example.invalid/b/m.onnx"),
             ("https://example.invalid/../../m.onnx", "https/example.invalid/m.onnx"),
             ("https://example.invalid//x//m.onnx", "https/example.invalid/x/m.onnx"),
             ("https://example.invalid/x/model", "https/example.invalid/x/model.onnx"),
             ("https://example.invalid/x/m.onnx?download=1", f"https/example.invalid/x/{_Q_DOWNLOAD_1}/m.onnx"),
+            # a directory of the path never becomes the query's: its "%" is encoded
+            (
+                f"https://example.invalid/x/{_Q_DOWNLOAD_1}/m.onnx",
+                f"https/example.invalid/x/%25{_Q_DOWNLOAD_1[1:]}/m.onnx",
+            ),
             # a directory keeps no character that Windows refuses (":" would also make "C:" a drive), and "%" is
             # encoded too, so that "x:y" and "x%3Ay" stay two directories
             ("https://example.invalid/x:y/a b/m.onnx", "https/example.invalid/x%3Ay/a%20b/m.onnx"),
@@ -288,6 +299,48 @@ class TestONNXLoader:
             assert [ONNXLoader.load_config(url, **kwargs)["url"] for url in urls] == urls
             assert [ONNXLoader.load_config(url, **kwargs)["url"] for url in urls] == urls  # served from the cache
 
+    def test_urls_that_spell_out_a_cache_directory_are_cached_apart(self, monkeypatch, tmp_path):
+        # the query's directory and the port are added to the name, and a URL whose own directory or host is spelt
+        # like them must not be served the other's file: "q-<hash>" and "<host>_<port>" used to be such names
+        import json
+        from unittest import mock
+
+        from kornia.config import kornia_config
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(kornia_config, "hub_cache_dir", str(tmp_path / "hub"))
+        q = hashlib.sha256(b"revision=trusted").hexdigest()[:16]
+        urls = [
+            "https://models.invalid/download/model.json?revision=trusted",
+            f"https://models.invalid/download/q-{q}/model.json",
+            f"https://models.invalid/download/%3F{q}/model.json",
+            "https://a.invalid:8080/model.json",
+            "https://a.invalid_8080/model.json",
+            "https://a.invalid%3A8080/model.json",
+        ]
+
+        def serve(url, dst, **kwargs):
+            Path(dst).write_text(json.dumps({"url": url}))
+
+        with mock.patch("kornia.core.download._download_url_to_file", side_effect=serve):
+            assert [ONNXLoader.load_config(url)["url"] for url in urls] == urls
+            assert [ONNXLoader.load_config(url)["url"] for url in reversed(urls)] == urls[::-1]  # from the cache
+
+    @pytest.mark.parametrize("url", ["https:///m.onnx", "https:///a/m.onnx", "https://user@/a/m.onnx"])
+    def test_load_model_url_without_a_host_raises(self, url, monkeypatch, tmp_path):
+        # without its host, "https:///a/m.onnx" would be cached as "https://a/m.onnx", which urlopen fetches while it
+        # refuses the former
+        from unittest import mock
+
+        monkeypatch.chdir(tmp_path)
+        with (
+            mock.patch.object(ONNXLoader, "download") as mock_download,
+            mock.patch("onnx.load"),
+            pytest.raises(ValueError, match="no host"),
+        ):
+            ONNXLoader.load_model(url)
+        mock_download.assert_not_called()
+
     def test_load_config_with_an_empty_cache_dir_uses_the_default_directory(self, monkeypatch, tmp_path):
         # as for load_model: "" is the default directory, not the working directory
         import json
@@ -332,12 +385,12 @@ class TestONNXLoader:
             assert [ONNXLoader.load_config(url)["url"] for url in urls] == urls
             assert [ONNXLoader.load_config(url)["url"] for url in urls] == urls  # served from the cache
 
-        q = "q-" + hashlib.sha256(b"x=1").hexdigest()[:16]
+        q = "%3F" + hashlib.sha256(b"x=1").hexdigest()[:16]
         assert sorted(p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*.json")) == [
             "hub/https/a.invalid/other/preprocessor_config.json",
             "hub/https/a.invalid/preprocessor_config.json",
-            "hub/https/b.invalid/preprocessor_config.json",
             f"hub/https/b.invalid/{q}/cfg.json",
+            "hub/https/b.invalid/preprocessor_config.json",
         ]
 
     @pytest.mark.parametrize(

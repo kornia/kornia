@@ -48,32 +48,38 @@ _SAFE_DIRECTORY_CHARACTERS = "!$&'()+,;=@[]~"
 def _url_cache_name(url: str) -> str:
     """Return the name, relative to the cache directory, that :class:`ONNXLoader` caches ``url`` under.
 
-    The name is ``<scheme>/<host>[_<port>]/<directories of the URL's path>[/q-<hash>]/<file name>``, under an explicit
-    ``cache_dir`` as under the default directory. Two URLs share a file only when they differ in nothing but
+    The name is ``<scheme>/<host>[%3A<port>]/<directories of the URL's path>[/%3F<hash>]/<file name>``, under an
+    explicit ``cache_dir`` as under the default directory. Two URLs share a file only when they differ in nothing but
     credentials, the fragment, ``.``, ``..`` or empty directories (resolved as RFC 3986 resolves them, which most
     servers follow), or a ``.onnx`` / ``.json`` extension that one of them lacks. The scheme keeps a file fetched over
     ``http`` from being served for ``https``, and keeps URLs apart from the ``hf://`` folders in the same directory. A
     query can name the file (``?id=...``, ``?ref=...``), so a URL with one is stored in a directory named after the
-    query's hash; the query itself is not part of any name, since ``?`` cannot be in a file name on Windows. The
-    directories are percent-encoded (see ``_SAFE_DIRECTORY_CHARACTERS``); the file name is kept as it is, because a
-    model refers to its ``.onnx_data`` weights by name.
+    query's hash; the query itself is not part of any name, since ``?`` cannot be in a file name on Windows. The host
+    (an IPv6 address in its brackets) and the directories are percent-encoded (see ``_SAFE_DIRECTORY_CHARACTERS``),
+    and so are the ``:`` before the port and the ``?`` before the query's hash, which no host or directory of a URL
+    can become, as ``%`` itself is encoded: ``%3A8080`` is never a host and ``%3F<hash>`` never a directory of the
+    path. The file name is kept as it is, because a model refers to its ``.onnx_data`` weights by name.
 
     Raises:
-        ValueError: If the URL's path does not end in a file name.
+        ValueError: If the URL has no host, or its path does not end in a file name.
     """
     parts = urlsplit(url)
     *directories, file_name = parts.path.split("/")
     if file_name in ("", ".", ".."):
         raise ValueError(f"{url!r} does not end in a file name to cache it under.")
-    host = parts.hostname or ""  # lower-cased, without any user name or password
+    host = parts.hostname  # lower-cased, without any user name or password
+    if not host:  # urlopen refuses it too; without the host, "https:///a/m" would be cached as "https://a/m"
+        raise ValueError(f"{url!r} has no host to cache it under.")
+    if ":" in host:  # an IPv6 address keeps its brackets, so that "[::1]:8000" stays apart from "[::1:8000]"
+        host = f"[{host}]"
     if parts.port is not None:
-        host = f"{host}_{parts.port}"
+        host = f"{host}:{parts.port}"
     # the leading "/" makes the path absolute, so normpath drops every ".." that would climb above it
     directory = posixpath.normpath("/" + "/".join(directories))
-    components = [parts.scheme] + ([host.replace(":", "_")] if host else [])  # an IPv6 address carries ":"
+    components = [parts.scheme, quote(host, safe=_SAFE_DIRECTORY_CHARACTERS)]
     components += [quote(c, safe=_SAFE_DIRECTORY_CHARACTERS) for c in directory.split("/") if c]
     if parts.query:
-        components.append("q-" + hashlib.sha256(parts.query.encode()).hexdigest()[:16])
+        components.append(quote("?") + hashlib.sha256(parts.query.encode()).hexdigest()[:16])
     return "/".join([*components, file_name])
 
 
@@ -104,7 +110,7 @@ class ONNXLoader(CachedDownloader):
             download: If True, the config will be downloaded if it's not already in the local cache.
             kwargs: Keyword arguments of ``CachedDownloader.download_to_cache``. Only ``cache_dir`` applies: the root
                 the config is stored under, at ``<scheme>/<host>/<directories of the URL's path>/<file name>``, with a
-                ``q-<hash>`` directory before the file name when the URL has a query, as for ``load_model``. ``None``
+                ``%3F<hash>`` directory before the file name when the URL has a query, as for ``load_model``. ``None``
                 or ``""`` means ``kornia_config.hub_cache_dir``. Any other keyword raises ``TypeError``, whatever
                 ``url`` is.
 
@@ -137,7 +143,7 @@ class ONNXLoader(CachedDownloader):
             cache_dir: The root of the cache. An ``hf://`` model is stored under it at the path of its name after
                 the folder (``<cache_dir>/a/b.onnx`` for ``hf://models/a/b``): the kornia/ONNX_models names are fully
                 qualified (``kornia.color.gray.RgbToGrayscale``), so the folders never share a name. A URL is stored at
-                ``<cache_dir>/<scheme>/<host>/<directories of the URL's path>/<file name>``, with a ``q-<hash>``
+                ``<cache_dir>/<scheme>/<host>/<directories of the URL's path>/<file name>``, with a ``%3F<hash>``
                 directory before the file name when the URL has a query, so that two URLs share a file only when they
                 differ in nothing but credentials, the fragment, ``.``, ``..`` or empty directories, or an ``.onnx``
                 extension that one of them lacks. Defaults to None (``""`` too): an ``hf://`` model goes to

@@ -30,6 +30,28 @@ __all__ = ["CachedDownloader"]
 _logger = logging.getLogger(__name__)
 
 
+def _relative_path_components(name: str, label: str = "name") -> list[str]:
+    """Split ``name``, a relative path inside a cache directory, into its components, separated by ``/`` or ``os.sep``.
+
+    Args:
+        name: The relative path.
+        label: What ``name`` is, for the error message.
+
+    Raises:
+        ValueError: If ``name`` is absolute, has a drive (on Windows) or has an empty, ``.`` or ``..`` component, which
+            would put the path outside the cache directory or name no file.
+    """
+    # the component test of kornia.core.download._check_cache_file_name; os.path.basename also catches a Windows
+    # drive ("C:", "d:x"), which os.path.join would not keep under the cache directory
+    components = name.replace(os.sep, "/").split("/")
+    if any(c in _core_download._NOT_A_FILE_NAME or os.path.basename(c) != c for c in components):
+        raise ValueError(
+            f"{label} must be a relative path inside the cache directory, without a drive or an empty, '.' or '..' "
+            f"component; got {name!r}."
+        )
+    return components
+
+
 class CachedDownloader:
     """Downloads files from URLs to the local cache or .kornia_hub directory."""
 
@@ -53,14 +75,7 @@ class CachedDownloader:
                 directory or a drive to the file name.
 
         """
-        # the component test of kornia.core.download._check_cache_file_name; os.path.basename also catches a Windows
-        # drive ("C:", "d:x"), which os.path.join would not keep under cache_dir
-        components = model_name.replace(os.sep, "/").split("/")
-        if any(c in _core_download._NOT_A_FILE_NAME or os.path.basename(c) != c for c in components):
-            raise ValueError(
-                "name must be a relative path inside the cache directory, without a drive or an empty, '.' or '..' "
-                f"component; got {model_name!r}."
-            )
+        components = _relative_path_components(model_name)
 
         # Determine the local file path
         if cache_dir is None:

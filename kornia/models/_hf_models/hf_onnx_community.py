@@ -29,6 +29,7 @@ from kornia.core.external import onnx
 from kornia.geometry.transform import resize
 from kornia.models.base import ModelBaseMixin
 from kornia.onnx import ONNXSequential
+from kornia.onnx.download import _relative_path_components
 from kornia.onnx.utils import ONNXLoader, io_name_conversion
 
 from .preprocessor import PreprocessingLoader
@@ -45,6 +46,10 @@ class HFONNXComunnityModelLoader:
             Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
         with_data: Whether to download the model weights such as `model.onnx_data`.
 
+    Raises:
+        ValueError: If ``model_name`` is absolute, has a drive (on Windows) or has an empty, ``.`` or ``..``
+            component, which would put the cache outside ``cache_dir``.
+
     """
 
     def __init__(
@@ -56,6 +61,9 @@ class HFONNXComunnityModelLoader:
 
         if cache_dir is None:
             cache_dir = kornia_config.hub_onnx_dir
+        # the model, its weights and its preprocessing config are cached in <cache_dir>/<model_name>/, so the name must
+        # not leave cache_dir ("../x", an absolute path), where a file already there would be loaded without a download
+        _relative_path_components(model_name, "model_name")
         self.cache_dir = os.path.join(cache_dir, self.model_name)
         self.model_url = (
             f"https://huggingface.co/onnx-community/{self.model_name}/resolve/main/onnx/{self.model_type}.onnx"
