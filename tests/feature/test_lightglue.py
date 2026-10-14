@@ -963,6 +963,46 @@ class TestLightGlueAllPrunedScoreDtype(BaseTester):
         self._forward(float32, True, device, torch.float32)
         assert seen == [(True, torch.bfloat16)]
 
+    @pytest.mark.parametrize("input_dim", [16, 8], ids=["input_dim_eq_descriptor_dim", "input_dim_ne_descriptor_dim"])
+    def test_convention_lightglue_mixed_precision_cpu_float16_model_takes_float32_descriptors_5897(
+        self, device, input_dim
+    ):
+        if device.type != "cpu":
+            pytest.skip("the rule is CPU's: MPS and CUDA autocast to float16 for every model")
+        # Float16 autocast takes float32 keypoints and descriptors too, and the scores stay float16. Both runs get the
+        # same values, which float16 represents exactly.
+        model = self._model(device, torch.float16, input_dim, mp=True)
+        g = torch.Generator().manual_seed(1)
+        desc = torch.randn(1, 6, input_dim, generator=g)
+        desc[..., 0] = 30.0  # layer 0 keeps every point
+        image = {"keypoints": torch.rand(1, 6, 2, generator=g) * 100, "descriptors": desc}
+        size = torch.tensor([[100, 100]], device=device)
+        out, ref = (
+            TestLightGluePruningDtype._forward(model, {"image0": data, "image1": dict(data)})
+            for data in (
+                {"image_size": size, **{key: value.half().to(device, input_dtype) for key, value in image.items()}}
+                for input_dtype in (torch.float32, torch.float16)
+            )
+        )
+        assert out["matching_scores0"].dtype == torch.float16
+        assert out["scores"][0].dtype == torch.float16
+        assert (ref["matches0"] > -1).any()
+        for key in ("matches0", "matches1"):
+            self.assert_close(out[key], ref[key])
+        # Equal on torch 2.5.1, 2.9.1 and 2.14 here; two float16 steps at 1 leave room for kernels that round otherwise.
+        for key in ("matching_scores0", "matching_scores1"):
+            self.assert_close(out[key], ref[key], rtol=0.0, atol=2e-3)
+
+    def test_wart_lightglue_mixed_precision_cpu_other_half_dtype_descriptors_raise_5929(self, device):
+        if device.type != "cpu":
+            pytest.skip("MPS and CUDA cast the descriptors to float16 under autocast")
+        # #5929: with input_proj an identity, descriptors of the other half dtype than autocast's reach a torch.cat of
+        # the first layer, which autocast rejects: float16 ones with a float32 model, bfloat16 ones with a float16 one.
+        for model_dtype, input_dtype in ((torch.float32, torch.float16), (torch.float16, torch.bfloat16)):
+            model = self._model(device, model_dtype, self._DIM, mp=True)
+            with pytest.raises(RuntimeError, match="prioritize"):
+                self._forward(model, True, device, input_dtype)
+
     def test_convention_lightglue_mixed_precision_cpu_float16_model_reads_lafs_5897(self, device):
         if device.type != "cpu":
             pytest.skip("the rule is CPU's: MPS and CUDA autocast to float16 for every model")
@@ -1171,3 +1211,53 @@ class TestLightGlueBatchedPairs(BaseTester):
             out = model({"image0": empty, "image1": dict(empty)})
         assert out["matches0"].shape == (batch_size, 0)
         assert [tuple(m.shape) for m in out["matches"]] == [(0, 2)] * batch_size
+
+    @pytest.mark.parametrize("features", ["sift", "add_laf"])
+    def test_convention_lightglue_batch_with_point_pruning_gives_each_pair_its_inputs_5898(
+        self, device, dtype, features
+    ):
+        # Each pair of a batch that prunes gets its own scales and orientations ("sift") or LAFs (add_laf), and its own
+        # image, which gives the image size.
+        torch.manual_seed(0)
+        with unittest.mock.patch("kornia.feature.lightglue.load_state_dict_from_url", return_value={}):
+            if features == "sift":
+                model = LightGlue("sift", n_layers=2)
+            else:
+                model = LightGlue(None, input_dim=128, add_laf=True, n_layers=2)
+        model = model.to(device, dtype).eval()
+        g = torch.Generator().manual_seed(0)
+        b, m = 2, 12
+
+        def image():
+            kpts = torch.rand(b, m, 2, generator=g) * torch.tensor([320.0, 240.0])
+            scale = torch.rand(b, m, 1, 1, generator=g) * 10 + 2
+            ori = torch.rand(b, m, 1, generator=g) * 360 - 180
+            data = {
+                "keypoints": kpts,
+                "descriptors": torch.randn(b, m, 128, generator=g),
+                "image": torch.zeros(b, 1, 240, 320),
+                "scales": scale[..., 0, 0],
+                "oris": torch.deg2rad(ori[..., 0]),
+                "lafs": laf_from_center_scale_ori(kpts, scale, ori),
+            }
+            return {key: value.to(device, dtype) for key, value in data.items()}
+
+        batch = {"image0": image(), "image1": image()}
+        singles = [
+            self._forward(model, {name: {key: v[k : k + 1] for key, v in img.items()} for name, img in batch.items()})
+            for k in range(b)
+        ]
+        out = self._forward(model, batch)
+        assert "log_assignment" not in out
+        for k in range(b):
+            self._assert_pair(out, k, singles[k], exact=True)
+
+    def test_wart_lightglue_static_lengths_early_stop_counts_padding_5930(self, device, dtype):
+        # #5930: every point of this pair is confident, so it stops after layer 0. Padded to the static length 64, the
+        # padded positions, unconfident here, count against its 32 points, and it runs both layers.
+        model = TestLightGluePruningDtype._model(device, dtype, width_confidence=-1)
+        everywhere = (1,) * self._M
+        data, _ = self._pair(device, dtype, 0, everywhere, everywhere)
+        assert self._forward(model, data)["stop"] == 1
+        model.static_lengths = (64,)  # what compile() sets; the padded layers run here without compiling
+        assert self._forward(model, data)["stop"] == 2

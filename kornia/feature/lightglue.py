@@ -486,10 +486,13 @@ class LightGlue(nn.Module):
         - The matching scores, ``matching_scores0``, ``matching_scores1`` and ``scores``, are in the dtype of the
           descriptors with ``mp=False``. With ``mp=True``, autocast sets it, for every configuration and also when
           point pruning removes every point. On CPU, autocast runs in float16 for a float16 model and in bfloat16,
-          CPU autocast's default, for any other model: float32 descriptors give bfloat16 scores, and float64,
-          float16 and bfloat16 ones keep their dtype. On MPS, float32, float16 and bfloat16 descriptors give float32
-          scores; on CUDA, float32 descriptors give float32 scores. An image without descriptors runs no layer, and
-          its zero scores keep the descriptor dtype, also with ``mp=True``.
+          CPU autocast's default, for any other: a float16 model gives float16 scores for float16 and float32
+          descriptors, a float32 or bfloat16 model gives bfloat16 scores for float32 and bfloat16 descriptors, and a
+          float64 model gives float64 scores for float64 descriptors. Float16 descriptors with any other model, and
+          bfloat16 descriptors with a float16 model, are not supported there
+          (`#5929 <https://github.com/kornia/kornia/issues/5929>`_). On MPS, float32, float16 and bfloat16
+          descriptors give float32 scores; on CUDA, float32 descriptors give float32 scores. An image without
+          descriptors runs no layer, and its zero scores keep the descriptor dtype, also with ``mp=True``.
         - Each pair of a batch gives the matches and scores it gives on its own when point pruning can run, that is
           with ``width_confidence > 0``, no padding to the static lengths of :meth:`compile`, and an image with more
           keypoints than :meth:`pruning_min_kpts` of the device. Pruning keeps a different number of points in each
@@ -499,6 +502,9 @@ class LightGlue(nn.Module):
           Otherwise a batch runs as one, and early stopping (``depth_confidence``) ends it at a layer only when every
           pair meets its own criterion. A pair can therefore run more layers in a batch than on its own, and its
           matches can differ.
+        - Known defects: on the static-length path of :meth:`compile`, early stopping also counts the unconfident
+          padded positions, against the number of real keypoints, so a padded pair can stop later than without
+          padding (`#5930 <https://github.com/kornia/kornia/issues/5930>`_).
 
     Args:
         features: The type of local features to match (e.g., 'superpoint', 'disk'), whose configuration and
