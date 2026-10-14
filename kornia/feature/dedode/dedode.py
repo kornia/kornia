@@ -303,7 +303,8 @@ class DeDoDe(nn.Module):
                 'B-C4', 'B-SO2', 'G-C4', 'G-SO2' (from steerers, better for rotations, https://arxiv.org/abs/2312.02152).
                 Default is 'G-upright'.
             amp_dtype: the dtype of the automatic mixed precision used on CUDA, one of torch.float16 or
-                torch.float32. It has no effect on CPU or MPS, where the model runs in the dtype of its weights.
+                torch.float32. It has no effect on CPU or MPS, where every component runs in the dtype of the
+                input and the model.
                 Default is torch.float16.
 
         Returns:

@@ -99,7 +99,7 @@ class FrozenDINOv2(nn.Module):
 
         ``amp_dtype`` is CUDA mixed precision, as in the other DeDoDe components: on a CUDA input with ``amp=True``
         the backbone and the image are cast to ``amp_dtype``. On other devices (CPU, MPS), or with ``amp=False``, the
-        backbone runs in its own dtype and the features come back in the dtype of ``x``.
+        backbone is cast to the dtype and device of ``x``, so the features come back in the dtype of ``x``.
 
         Args:
             x: Input image tensor with shape :math:`(B, 3, H, W)`.
@@ -110,19 +110,19 @@ class FrozenDINOv2(nn.Module):
         """
         B, _C, H, W = x.shape
         use_amp = self.amp and x.is_cuda
+        backbone = self.dinov2_vitl14[0]
         if use_amp:
-            if self.dinov2_vitl14[0].device != x.device or self.dinov2_vitl14[0].cls_token.dtype != self.amp_dtype:
-                self.dinov2_vitl14[0] = self.dinov2_vitl14[0].to(x.device).to(self.amp_dtype)
+            if backbone.device != x.device or backbone.cls_token.dtype != self.amp_dtype:
+                # Cast on the host, then move: the half copy is what travels to the device.
+                self.dinov2_vitl14[0] = backbone.to(self.amp_dtype).to(x.device)
             backbone_input = x.to(self.amp_dtype)
         else:
-            if self.dinov2_vitl14[0].device != x.device:
-                self.dinov2_vitl14[0] = self.dinov2_vitl14[0].to(x.device)
-            backbone_input = x.to(self.dinov2_vitl14[0].cls_token.dtype)
+            if backbone.device != x.device or backbone.cls_token.dtype != x.dtype:
+                self.dinov2_vitl14[0] = backbone.to(x.device, x.dtype)
+            backbone_input = x
         with torch.inference_mode():
             dinov2_features_16 = self.dinov2_vitl14[0].forward_features(backbone_input)
             features_16 = dinov2_features_16["x_norm_patchtokens"].permute(0, 2, 1).reshape(B, 1024, H // 14, W // 14)
-        if not use_amp:
-            features_16 = features_16.to(x.dtype)
         return [features_16.clone()], [(H // 14, W // 14)]  # clone from inference mode to use in autograd
 
 

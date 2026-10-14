@@ -278,6 +278,29 @@ class TestDeDoDeDefaultAmpDtype5934(BaseTester):
         assert backbone[0].cls_token.dtype == torch.float32
         assert backbone[0].cls_token.device.type == device.type
 
+    @pytest.mark.parametrize("entry", ["describe", "forward"])
+    def test_descriptor_g_follows_the_model_dtype(self, device, dtype, monkeypatch, entry):
+        if device.type == "cuda":
+            pytest.skip("CUDA runs the mixed-precision path, see test_cuda_casts_the_backbone_to_amp_dtype")
+        _tiny_dinov2(monkeypatch)
+        model = DeDoDe(amp_dtype=dtype).to(device, dtype).eval()
+        x = self._image(device).to(dtype)
+        out = model.describe(x) if entry == "describe" else model(x, n=8)[2]
+        assert out.dtype == (dtype if entry == "describe" else torch.float32)
+        assert torch.isfinite(out).all()
+        backbone = model.descriptor.encoder.frozen_dinov2.dinov2_vitl14[0]
+        assert backbone.cls_token.dtype == dtype
+
+    def test_cuda_casts_the_backbone_to_amp_dtype(self, device, monkeypatch):
+        if device.type != "cuda":
+            pytest.skip("requires CUDA")
+        _tiny_dinov2(monkeypatch)
+        model = DeDoDe().to(device).eval()
+        out = model.describe(self._image(device))
+        assert out.dtype == torch.float32
+        assert torch.isfinite(out).all()
+        assert model.descriptor.encoder.frozen_dinov2.dinov2_vitl14[0].cls_token.dtype == torch.float16
+
 
 class TestDeDoDeNoGrad(BaseTester):
     @staticmethod
