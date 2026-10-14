@@ -83,7 +83,7 @@ precision, so the table says nothing about those backends.
    * - ``kornia.geometry.homography``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 11 / 16
+     - 10 / 16
      - The DLT solvers run (``_torch_svd_cast`` promotes the SVD to float32) but miss the clean-point accuracy
        checks, including the iterated and line-based variants.
    * - ``kornia.geometry.liegroup``
@@ -108,7 +108,7 @@ precision, so the table says nothing about those backends.
    * - ``kornia.geometry.conversions``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 72 / 60
+     - 71 / 65
      - Angle-axis, quaternion and rotation-matrix round trips lose accuracy (including ``tests/integration``).
    * - ``kornia.geometry.ransac``
      - ⚠️ Partial
@@ -180,8 +180,9 @@ Eight of the CUDA float32 failures are cuDNN TF32 accuracy misses in convolution
 (`#4778 <https://github.com/kornia/kornia/issues/4778>`_); the other 14 are tests that assume CPU behavior
 (`#4779 <https://github.com/kornia/kornia/issues/4779>`_).
 
-Reproduce a CPU half-precision row in that environment (the manifest header pins the OS, architecture, Python and
-PyTorch versions) with:
+The manifests now pin PyTorch 2.14.0, so the CPU half-precision rows below are not reproducible from them. Verify the
+current profiles on Linux x86_64, Python 3.11 and PyTorch 2.14.0 (the manifest header pins the OS, architecture, Python
+and PyTorch versions) with:
 
 .. code-block:: bash
 
