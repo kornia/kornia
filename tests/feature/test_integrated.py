@@ -223,6 +223,27 @@ class TestLocalFeatureMatcherEmptyPath(BaseTester):
         assert out["lafs0"][0].shape == (0, 2, 3)
         assert out["keypoints0"].shape == (0, 2)
 
+    def test_no_match_keypoints_keep_the_laf_dtype(self, device, dtype):
+        # Kornia's detectors return float32 LAFs for a float16 or bfloat16 image; a pair without matches returns
+        # keypoints and LAFs in the dtype a matched pair has, so the two concatenate without a cast.
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS has no float64")
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip(f"no replicate-padding kernel for {dtype} on {device.type}")
+        matcher = kornia.feature.LocalFeatureMatcher(
+            kornia.feature.SIFTFeature(50), kornia.feature.DescriptorMatcher("nn")
+        ).to(device, dtype)
+        g = torch.Generator().manual_seed(0)
+        img = torch.nn.functional.avg_pool2d(torch.rand(1, 1, 64, 80, generator=g), 3, 1, 1).to(device, dtype)
+        with torch.no_grad():
+            matched = matcher({"image0": img, "image1": img})
+            empty = matcher({"image0": torch.zeros_like(img), "image1": torch.zeros_like(img)})
+        assert matched["keypoints0"].shape[0] > 0
+        assert empty["keypoints0"].shape[0] == 0
+        for key in ("keypoints0", "keypoints1", "lafs0", "lafs1"):
+            assert matched[key].dtype == empty[key].dtype == torch.promote_types(dtype, torch.float32)
+        assert empty["confidence"].dtype == matched["confidence"].dtype == dtype
+
     def test_an_empty_side_never_reaches_the_matcher(self, device, dtype):
         # Filtering the zero-LAF padding can leave a side with no descriptor at all. `matcher` is an
         # arbitrary module with no obligation to accept a `(0, D)` input, so a textureless pair called
@@ -625,7 +646,7 @@ class TestSIFTFeatureHalfPrecision(BaseTester):
         img = torch.rand(1, 1, 64, 64, device=device, dtype=torch.float16)
         with torch.no_grad():
             lafs, _, descs = SIFTFeature(50).to(device, torch.float16)(img)
-        assert lafs.dtype == torch.float16
+        assert lafs.dtype == torch.float32  # pixel coordinates are float32 for a half-precision image
         assert descs.dtype == torch.float16
         assert int(lafs[0].ne(0).any(dim=-1).any(dim=-1).sum()) > 0
         assert torch.isfinite(lafs).all()
@@ -706,8 +727,9 @@ class TestDoGHardNet(BaseTester):
         assert lafs.shape == (2, 8, 2, 3)
         assert responses.shape == (2, 8)
         assert descriptors.shape == (2, 8, 128)
+        assert lafs.dtype == torch.promote_types(dtype, torch.float32)  # float32 coordinates for a half image
+        assert responses.dtype == descriptors.dtype == dtype
         for out in (lafs, responses, descriptors):
-            assert out.dtype == dtype
             assert out.device == image.device
 
     def test_lafs_are_twice_the_dog_frames(self, device, dtype):

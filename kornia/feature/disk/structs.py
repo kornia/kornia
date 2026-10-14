@@ -111,4 +111,6 @@ class Keypoints:
         desc = descriptors[:, y, x].T
         desc = F.normalize(desc, dim=-1)
 
-        return DISKFeatures(self.xys.to(dtype), desc, self.detection_logp.to(dtype))
+        # The integer pixels go to at least float32: bfloat16 holds no odd integer above 256, float16 none above 2048.
+        xys = self.xys.to(torch.promote_types(dtype, torch.float32))
+        return DISKFeatures(xys, desc, self.detection_logp.to(dtype))

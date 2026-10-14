@@ -939,7 +939,11 @@ class LocalFeatureMatcher(nn.Module):
             out_batch_indexes.append(batch_idxs)
 
         if len(out_batch_indexes) == 0:
-            return self.no_match_output(data["image0"].device, data["image0"].dtype)
+            out = self.no_match_output(data["image0"].device, data["image0"].dtype)
+            # As on the match path, keypoints and LAFs keep the LAFs' dtype: float32 for a half-precision detector.
+            out["keypoints0"], out["lafs0"] = out["keypoints0"].to(lafs0.dtype), out["lafs0"].to(lafs0.dtype)
+            out["keypoints1"], out["lafs1"] = out["keypoints1"].to(lafs1.dtype), out["lafs1"].to(lafs1.dtype)
+            return out
 
         return {
             "keypoints0": torch.cat(out_keypoints0, dim=0).view(-1, 2),
