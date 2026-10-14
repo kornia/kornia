@@ -319,7 +319,7 @@ class TestKMeans(BaseTester):
         p = torch.tensor([[1, 1]], dtype=pixel_dtype, device=device)
         assert kornia.contrib.KMeans(2, c, tolerance=None, max_iterations=1).predict(p).tolist() == [1]
 
-    def test_uint8_centres_and_points_are_compared_in_float(self, device):
+    def test_uint8_centres_and_points_are_compared_without_wrapping(self, device):
         # uint8 differences and squares wrap: in uint8 the pixel (40, 40) looks nearest to (200, 200), but (0, 0) is.
         c = torch.tensor([[0, 0], [200, 200]], dtype=torch.uint8, device=device)
         p = torch.tensor([[40, 40]], dtype=torch.uint8, device=device)
@@ -332,7 +332,7 @@ class TestKMeans(BaseTester):
         km.fit(p)
         assert km.cluster_centers.tolist() == [[250, 250], [90, 90]]
 
-    def test_fit_sums_uint8_points_in_float(self, device):
+    def test_fit_sums_uint8_points_without_wrapping(self, device):
         # uint8 sums wrap: the mean of 200 and 210 came out as 77. Two empty-cluster-free clusters, one update.
         c = torch.tensor([[205.0, 205.0], [5.0, 5.0]], device=device)
         p = torch.tensor([[200, 200], [210, 210], [4, 4]], dtype=torch.uint8, device=device)
@@ -353,7 +353,7 @@ class TestKMeans(BaseTester):
         assert kornia.contrib.KMeans(2, c, tolerance=None, max_iterations=1).predict(x).tolist() == [1]
 
     def test_fit_int64_mean_above_2_pow_24_stays_exact(self, device):
-        # The sum 33554434 is not a float32 value (it rounds to 33554436), so a float mean would give 16777218.
+        # The sum 33554434 is not a float32 value (it rounds to 33554432), so a float mean would give 16777216.
         probe = torch.div(
             torch.tensor([33554434], device=device), torch.tensor([2], device=device), rounding_mode="trunc"
         )

@@ -122,8 +122,8 @@ class KMeans:
         """Dtype for distances and sums: the promoted dtype.
 
         Half types lift to float32. When every tensor is integer the work dtype is int64, which is exact (float32
-        would merge integers above 2**24, and uint8 arithmetic wraps); squared differences of values within +-2**31
-        fit in int64.
+        would merge integers above 2**24, and uint8 arithmetic wraps) while the squared distance stays below 2**63
+        (a distance of about 3.0e9).
         """
         dtype = tensors[0].dtype
         for t in tensors[1:]:
@@ -151,7 +151,10 @@ class KMeans:
         return X[idx]
 
     def _pairwise_euclidean_distance(self, data1: torch.Tensor, data2: torch.Tensor) -> torch.Tensor:
-        """Compute pairwise squared distance between 2 sets of vectors.
+        """Compute pairwise distance between 2 sets of vectors.
+
+        Floating-point vectors give the Euclidean distance; integer vectors give the exact squared distance in int64
+        (same argmin).
 
         Args:
             data1: 2D torch.Tensor of shape N, D
@@ -193,7 +196,8 @@ class KMeans:
             )
             current_centers = self._initial_cluster_centers
 
-        # Distances and sums run in at least float32: squared float16 distances overflow past 255.
+        # Distances and sums run in the promoted dtype, at least float32 for floating data (squared float16 distances
+        # overflow past 255) and int64 for integer data.
         work_dtype = self._work_dtype(X, current_centers)
         X_work = X.to(work_dtype)
 
@@ -214,9 +218,9 @@ class KMeans:
             # scatter_add_ into the small (num_clusters, D) destination measured ~10x slower on
             # MPS for this shape (many threads racing to accumulate into few destination rows).
             #
-            # Counts stay int64 (exact) and the sum accumulates in at least float32: X.dtype
-            # itself overflows to inf in float16 past 65504, and loses precision in bfloat16,
-            # for perfectly ordinary inputs (e.g. float16 image color quantization).
+            # Counts stay int64 (exact) and the sum accumulates in the work dtype (at least float32 for floating data,
+            # int64 for integer data): X.dtype itself overflows to inf in float16 past 65504, and loses precision in
+            # bfloat16, for perfectly ordinary inputs (e.g. float16 image color quantization).
             one_hot = torch.nn.functional.one_hot(cluster_assignment, num_classes=self.num_clusters)
             cluster_counts = one_hot.sum(0)
             if work_dtype.is_floating_point:
