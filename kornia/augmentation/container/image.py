@@ -472,8 +472,8 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
     """Get the new batch shape if the augmentation changes the image size.
 
     Note:
-       Augmentations that change the image size must provide the parameter `output_size`.
-       Empty RandomCrop, CenterCrop, RandomResizedCrop and Resize batches have no sampled
+       Augmentations that change the spatial size provide `output_size` with shape (B, spatial_dims).
+       Empty crops and resizes have no sampled
        output-size rows, so their configured size is used only when the image forward path
        always applies the transform. Other probability branches retain the current empty-gate
        fallback tracked in #4429.
@@ -508,31 +508,46 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
             batch_shape = _get_new_batch_shape(p, batch_shape, children.get(p.name))
         return batch_shape
 
-    if batch_shape[0] == 0 and isinstance(module, (K.RandomCrop, K.CenterCrop, K.RandomResizedCrop, K.Resize)):
+    if (
+        batch_shape[0] == 0
+        and isinstance(module, _AugmentationBase)
+        and ("output_size" in data or isinstance(module, (K.RandomCrop, K.CenterCrop, K.RandomResizedCrop, K.Resize)))
+    ):
         # Match the image forward's unconditional path. An empty gate selects the original
         # canvas in the other probability branches, including Resize's p_batch setting (#4429).
-        if module.p != 1.0 or module.p_batch != 1.0:
+        size = module.flags.get("size")
+        if module.p != 1.0 or module.p_batch != 1.0 or size is None:
             return batch_shape
-        size = module.flags["size"]
         if isinstance(module, K.Resize) and isinstance(size, int):
             size = _side_to_image_size(size, batch_shape[-1] / batch_shape[-2], module.flags["side"])
         new_batch_shape = list(batch_shape)
-        new_batch_shape[-2:] = size
+        new_batch_shape[-len(size) :] = size
         return torch.Size(new_batch_shape)
 
     # Carefully avoid evaluating expression multiple times; batch_prob is often a 1-element torch.Tensor
     if "output_size" in data:
-        if is_exporting():
+        size = getattr(module, "flags", {}).get("size") if module is not None else None
+        # Fixed, always-applied 3D crops also use this static path in eager/compile:
+        # reading their gate and output-size tensors would add needless device synchronization.
+        static_crop3d = (
+            isinstance(module, (K.CenterCrop3D, K.RandomCrop3D))
+            and module.p == 1.0
+            and module.p_batch == 1.0
+            and size is not None
+            and all(isinstance(dim, int) for dim in size)
+        )
+        if is_exporting() or static_crop3d:
             # The sampled ``output_size`` is an unbacked tensor under export (no python int for
             # ``torch.Size``). Use the module's static ``flags["size"]`` — known at construction —
             # so the tracked shape stays correct for a *subsequent* shape-dependent child (e.g. a
             # resample-mode crop after a resize). Fall back to leaving the shape unchanged when the
             # size isn't statically available.
-            size = getattr(module, "flags", {}).get("size") if module is not None else None
-            if size is None:
+            # Export must not propagate the cropped canvas of a statically skipped 3D crop.
+            # Intermediate probabilities still require data-dependent control flow in forward.
+            if size is None or (isinstance(module, (K.CenterCrop3D, K.RandomCrop3D)) and module.p_batch == 0.0):
                 return batch_shape
             new_batch_shape = list(batch_shape)
-            new_batch_shape[-2:] = size
+            new_batch_shape[-data["output_size"].shape[-1] :] = size
             return torch.Size(new_batch_shape)
         # Inline check for common PyTorch float torch.Tensor case
         batch_prob = data.get("batch_prob", None)
@@ -543,9 +558,9 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
         prob = batch_prob.item() if batch_prob.numel() == 1 else batch_prob[0].item()
         if prob <= 0.5:
             return batch_shape
-        # Mutate only last two dims
+        # The generator declares how many spatial axes it changes (H/W or D/H/W).
         new_batch_shape = list(batch_shape)
-        new_batch_shape[-2:] = data["output_size"][0]
+        new_batch_shape[-data["output_size"].shape[-1] :] = data["output_size"][0]
         return torch.Size(new_batch_shape)
 
     return batch_shape

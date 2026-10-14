@@ -3002,3 +3002,82 @@ class TestAugmentationSequentialReplay:
             aug(torch.rand(3, 1, 15, 17, device=device, dtype=dtype), keypoints[:1].expand(3, -1, -1))
             replayed = aug(keypoints, params=params, data_keys=["keypoints"])
             assert_close(replayed, expected)
+
+
+class TestCrop3DShapePropagation(BaseTester):
+    @pytest.mark.parametrize("batch", [0, 1, 2])
+    @pytest.mark.parametrize(
+        "first_type,nested", [(K.CenterCrop3D, False), (K.RandomCrop3D, False), (K.CenterCrop3D, True)]
+    )
+    @pytest.mark.parametrize("second_type", [K.CenterCrop3D, K.RandomCrop3D])
+    @pytest.mark.parametrize("p", [0.0, 1.0])
+    def test_downstream_canvas_and_replay(self, batch, first_type, nested, second_type, p, device, dtype):
+        from copy import deepcopy
+
+        from testing.base import supports_bilinear_3d_grid_sample
+
+        if batch and not supports_bilinear_3d_grid_sample(device, dtype):
+            pytest.skip("3D grid sampling is unsupported for this device/dtype.")
+        image = torch.arange(batch * 8 * 10 * 12, device=device, dtype=dtype).reshape(batch, 1, 8, 10, 12)
+
+        def make_seq():
+            first = first_type((4, 5, 6), p=p)
+            return K.AugmentationSequential(
+                K.AugmentationSequential(first) if nested else first, second_type((2, 3, 4))
+            )
+
+        torch.manual_seed(17)
+        expected = second_type((2, 3, 4))(first_type((4, 5, 6), p=p)(image))
+        seq = make_seq()
+        seen = []
+        handle = seq[1].register_forward_pre_hook(lambda module, args: seen.append(args[0].shape))
+        torch.manual_seed(17)
+        actual = seq(image)
+        handle.remove()
+        self.assert_close(actual, expected)
+        saved = deepcopy(seq._params)
+        canvas = (4, 5, 6) if p == 1.0 else (8, 10, 12)
+        assert seen == [torch.Size((batch, 1, *canvas))]
+        assert tuple(saved[1].data["forward_input_shape"]) == seen[0]
+        assert saved[1].data["output_size"].shape == (batch, 3)
+        src = saved[1].data["src"]
+        assert (src >= 0).all()
+        assert (src < src.new_tensor(canvas[::-1])).all()
+        seq(image)
+        self.assert_close(seq(image, params=deepcopy(saved)), actual)
+        self.assert_close(make_seq()(image, params=deepcopy(saved)), actual)
+
+    @pytest.mark.parametrize("batch", [0, 2])
+    def test_dynamo(self, batch, device, dtype, torch_optimizer):
+        from testing.base import supports_bilinear_3d_grid_sample
+
+        if batch and not supports_bilinear_3d_grid_sample(device, dtype):
+            pytest.skip("3D grid sampling is unsupported for this device/dtype.")
+        image = torch.arange(batch * 8 * 10 * 12, device=device, dtype=dtype).reshape(batch, 1, 8, 10, 12)
+        first, second = K.CenterCrop3D((4, 5, 6)), K.CenterCrop3D((2, 3, 4))
+        expected = second(first(image))
+        seq = K.AugmentationSequential(first, second)
+        self.assert_close(torch_optimizer(seq)(image), expected)
+
+    def test_static_shape_does_not_read_scalars(self, device):
+        from kornia.augmentation.container.image import _get_new_batch_shape
+
+        shape = torch.Size((2, 1, 8, 10, 12))
+        for op in (K.CenterCrop3D((4, 5, 6)), K.RandomCrop3D((4, 5, 6))):
+            params = {key: value.to(device) for key, value in op.forward_parameters(shape).items()}
+            with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as profiler:
+                actual = _get_new_batch_shape(ParamItem("crop", params), shape, op)
+            assert actual == (2, 1, 4, 5, 6)
+            assert not any(event.key == "aten::_local_scalar_dense" for event in profiler.key_averages())
+
+    @pytest.mark.parametrize("p", [0.0, 1.0])
+    def test_export_shape_respects_static_crop_gate(self, p):
+        from kornia.augmentation.container.image import _get_new_batch_shape
+
+        shape = torch.Size((2, 1, 8, 10, 12))
+        for crop in (K.CenterCrop3D, K.RandomCrop3D):
+            op = crop((4, 5, 6), p=p)
+            params = ParamItem("crop", op.forward_parameters(shape))
+            with patch("kornia.augmentation.container.image.is_exporting", return_value=True):
+                actual = _get_new_batch_shape(params, shape, op)
+            assert actual == (shape if p == 0.0 else torch.Size((2, 1, 4, 5, 6)))
