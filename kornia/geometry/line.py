@@ -60,6 +60,9 @@ class ParametrizedLine(nn.Module):
             origin: any point on the line of any dimension.
             direction: the direction vector of the line, of the same dimension.
 
+        Raises:
+            TypeCheckError: if ``origin`` or ``direction`` is an integer or bool tensor.
+
         Example:
             >>> o = torch.tensor([0.0, 0.0])
             >>> d = torch.tensor([0.6, 0.8])

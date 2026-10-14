@@ -99,6 +99,16 @@ class XFeatModel(nn.Module):
     - ``keypoints``: keypoint logits :math:`(B, 65, H/8, W/8)`.
     - ``heatmap``: reliability map :math:`(B, 1, H/8, W/8)`.
 
+    Convention:
+        - The channels are averaged and the result is instance-normalised, so any channel count is accepted and an
+          affine change ``a x + b`` of the intensities with ``a > 0`` changes the outputs only through the norm's
+          ``eps`` (``1e-5``): negligibly while the variance of the channel mean is much larger than ``eps``, and
+          substantially for a low-contrast image, whose variance is close to it (see :class:`XFeat`).
+        - ``H`` and ``W`` must be multiples of 8; other sizes raise an error or give maps of mismatched sizes.
+          :class:`XFeat` resizes its input to multiples of 32.
+        - ``keypoints`` holds 65 logits per 8 x 8 cell: channel ``(y % 8) * 8 + x % 8`` of cell ``(y // 8, x // 8)``
+          is pixel ``(x, y)``, and channel 64 is the "no keypoint" dustbin.
+
     Note:
         Image normalisation (``InstanceNorm2d``) is wrapped in ``torch.no_grad()``
         following the original design; backpropagating through it is not supported.
@@ -220,10 +230,21 @@ class XFeatModel(nn.Module):
 class InterpolateSparse2d(nn.Module):
     """Bilinearly or bicubically sample a dense feature map at sparse 2-D positions.
 
+    Convention:
+        - ``pos`` holds ``(x, y)`` pixels of an image of height ``H`` and width ``W`` whose feature map has height
+          ``h`` and width ``w``. A position ``(px, py)`` is read at ``px * w / (W - 1) - 0.5`` and
+          ``py * h / (H - 1) - 0.5`` in the map's pixel frame: ``normgrid``'s ``2 p / (W - 1) - 1`` sampled with
+          ``align_corners=False``, the convention the pretrained XFeat weights use. So a map of the image's own size is
+          not read at ``p`` itself.
+        - Known defects: on CPU, float16 and bfloat16 maps go to torch's ``grid_sample`` without an upcast: the
+          half-precision kernel can return wrong values, NaN or overflow, and where torch has none the call raises
+          (`#5810 <https://github.com/kornia/kornia/issues/5810>`_).
+
     Args:
         mode: interpolation mode for :func:`torch.nn.functional.grid_sample`.
             Default: ``'bicubic'``.
-        align_corners: passed to ``grid_sample``. Default: ``False``.
+        align_corners: stored and not used: ``grid_sample`` is always called with ``align_corners=False``. Default:
+            ``False``.
 
     Shape:
         - Input ``x``: :math:`(B, C, H, W)`.
@@ -278,9 +299,39 @@ class XFeat(nn.Module):
 
     .. image:: _static/img/XFeat.png
 
+    Convention:
+        - XFeat defines no ``forward``: call :meth:`detectAndCompute` or :meth:`detectAndComputeDense`.
+        - The image is :math:`(B, C, H, W)` with any channel count. Each extraction resizes the image it gets
+          bilinearly to :math:`(H', W')`: ``H`` and ``W`` rounded down to multiples of 32, with a minimum of 32.
+          :class:`XFeatModel` then averages the channels and instance-normalises the result, so an affine change of the
+          intensities with a positive gain changes its maps only through the norm's ``eps``, which weighs more the
+          lower the image's contrast. With the pretrained weights and ``top_k=2048``, the :math:`[0, 1]` and
+          :math:`[0, 255]` versions of Oxford graf and wall ``img1`` differ in at most 1 keypoint, in 1 to 2 % of them
+          with the intensities multiplied by 0.1, and in 35 to 40 % multiplied by 0.01. Every output is float32.
+        - :meth:`detectAndCompute` keypoints are integer pixels ``i`` of the resized image, strict maxima of the
+          keypoint heatmap in their 5 x 5 window (see the note), reported at ``i * (W / W', H / H')``. That is the
+          pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
+          (see :ref:`Local features <local-features-conventions>`) when ``H`` and ``W`` are multiples of 32;
+          otherwise the centre of the resized pixel is at ``(i + 0.5) * (W / W', H / H') - 0.5``.
+        - The heatmap value must be strictly above ``detection_threshold``. ``scores`` is that value times the
+          reliability map, and the ``top_k`` best keypoints come sorted by it. Each descriptor is 64-D, sampled
+          bicubically from the dense map at the keypoint by :class:`InterpolateSparse2d`, and L2-normalised.
+        - With ``multiscale=False``, :meth:`detectAndComputeDense` reports cell ``(j, i)`` of the 1/8-resolution map
+          at ``8 * (j, i)``, times the same ratio: the top-left pixel of the cell, not its centre. It keeps the
+          ``top_k`` cells of highest reliability, or every cell when there are fewer or ``top_k`` is below 1. With
+          the default ``multiscale=True``, it rescales the image bilinearly by 0.6 and by 1.3, runs that extraction
+          on each with ``top_k`` set to ``int(0.2 * top_k)`` and ``int(0.8 * top_k)``, and divides each keypoint by
+          its factor; ``scales`` is ``1 / 0.6`` or ``1 / 1.3`` for each keypoint. A scale with fewer cells than its
+          share returns all of them, and the truncation can lose one, so there can be fewer than ``top_k`` keypoints.
+          Its descriptors are not normalised.
+        - Known defects: with ``multiscale=True``, a share that rounds down to 0 keeps every cell of its scale, so a
+          ``top_k`` from 1 to 4 returns all the cells of the 0.6 extraction, and ``top_k=1`` those of both
+          (`#5924 <https://github.com/kornia/kornia/issues/5924>`_).
+
     Args:
         top_k: maximum number of keypoints to keep per image. Default: ``4096``.
-        detection_threshold: minimum keypoint score. Default: ``0.05``.
+        detection_threshold: the keypoint heatmap value a keypoint must exceed, see the Convention block. Default:
+            ``0.05``.
 
     Note:
         Keypoints are the strict local maxima of the keypoint heatmap: :func:`~kornia.geometry.subpix.nms2d` keeps a
@@ -317,7 +368,7 @@ class XFeat(nn.Module):
 
         Args:
             top_k: maximum number of keypoints to keep. Default: ``4096``.
-            detection_threshold: minimum keypoint score. Default: ``0.05``.
+            detection_threshold: the keypoint heatmap value a keypoint must exceed. Default: ``0.05``.
 
         Returns:
             XFeat model with pretrained weights loaded, set to eval mode.
@@ -496,13 +547,13 @@ class XFeat(nn.Module):
         Args:
             x: image tensor of shape :math:`(B, C, H, W)`.
             top_k: number of keypoints to keep (overrides ``self.top_k``).
-            detection_threshold: minimum score (overrides ``self.detection_threshold``).
+            detection_threshold: the heatmap value to exceed (overrides ``self.detection_threshold``).
 
         Returns:
             List of length ``B``. Each element is a dict with:
 
             - ``'keypoints'``: :math:`(N, 2)` keypoints in (x, y) pixel coordinates.
-            - ``'scores'``: :math:`(N,)` reliability scores.
+            - ``'scores'``: :math:`(N,)` keypoint heatmap value times reliability, in descending order.
             - ``'descriptors'``: :math:`(N, 64)` L2-normalised descriptors.
         """
         if top_k is None:

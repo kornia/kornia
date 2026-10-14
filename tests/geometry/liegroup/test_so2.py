@@ -20,6 +20,7 @@ import math
 import pytest
 import torch
 
+from kornia.core.exceptions import TypeCheckError
 from kornia.geometry.conversions import angle_to_rotation_matrix
 from kornia.geometry.liegroup import Se2, So2
 from kornia.geometry.vector import Vector2
@@ -32,6 +33,11 @@ class TestSo2(BaseTester):
         batch_size = input_shape[0]
         shape = input_shape[1:] if batch_size is None else input_shape
         return torch.rand(shape, device=device, dtype=dtype)
+
+    def test_integer_z_raises(self, device):
+        # So2 needs a complex z; an integer one gets a kornia error naming its dtype at construction (#5201).
+        with pytest.raises(TypeCheckError, match=r"So2 stores 'z'.*torch.int64"):
+            So2(torch.tensor([1], device=device))
 
     @pytest.mark.parametrize("cdtype", [torch.cfloat, torch.cdouble])
     def test_smoke(self, device, cdtype):
