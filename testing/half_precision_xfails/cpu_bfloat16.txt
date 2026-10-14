@@ -1,7 +1,7 @@
 # known-failure-schema: 1
 # profile: cpu-bfloat16
 # python: 3.11
-# pytorch: 2.9.1
+# pytorch: 2.14.0
 # os: Linux
 # arch: x86_64
 # seed-scheme: sha256-nodeid-v1
@@ -178,6 +178,8 @@ call	builtins.AssertionError	tests/geometry/test_conversions.py::TestNormalizePi
 call	builtins.AssertionError	tests/geometry/test_conversions.py::TestNormalizePixelCoordinates::test_tensor_bhw2[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/test_conversions.py::TestQuaternionExpToLog::test_back_and_forth[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/test_conversions.py::TestQuaternionFromEuler::test_values[cpu-bfloat16]
+call	builtins.AssertionError	tests/geometry/test_conversions.py::TestRadDegConversions::test_deg2rad[cpu-bfloat16-batch_shape0]
+call	builtins.AssertionError	tests/geometry/test_conversions.py::TestRadDegConversions::test_deg2rad[cpu-bfloat16-batch_shape1]
 call	builtins.AssertionError	tests/geometry/test_conversions.py::TestRadDegConversions::test_deg2rad[cpu-bfloat16-batch_shape2]
 call	builtins.AssertionError	tests/geometry/test_conversions.py::TestRadDegConversions::test_deg2rad[cpu-bfloat16-batch_shape3]
 call	builtins.AssertionError	tests/geometry/test_conversions.py::TestRotationMatrixToAngleAxis::test_rand_quaternion_gradcheck[cpu-bfloat16-1]
@@ -206,14 +208,17 @@ call	builtins.AssertionError	tests/geometry/test_homography.py::TestFindHomograp
 call	builtins.AssertionError	tests/geometry/test_homography.py::TestFindHomographyFromLinesDLT::test_clean_points_iter[cpu-bfloat16-1]
 call	builtins.AssertionError	tests/geometry/test_homography.py::TestFindHomographyFromLinesDLT::test_clean_points_iter[cpu-bfloat16-2]
 call	builtins.AssertionError	tests/geometry/test_homography.py::TestFindHomographyFromLinesDLT::test_clean_points_iter[cpu-bfloat16-5]
+call	builtins.AssertionError	tests/geometry/test_quaternion.py::TestQuaternion::test_axis_angle[cpu-bfloat16-None]
 call	builtins.AssertionError	tests/geometry/test_quaternion.py::TestQuaternion::test_from_to_euler_values[cpu-bfloat16]
+call	builtins.AssertionError	tests/geometry/test_quaternion.py::TestQuaternion::test_inverse[cpu-bfloat16-2]
 call	builtins.AssertionError	tests/geometry/test_quaternion.py::TestQuaternion::test_inverse[cpu-bfloat16-5]
+call	builtins.AssertionError	tests/geometry/test_quaternion.py::TestQuaternion::test_inverse[cpu-bfloat16-None]
+call	builtins.AssertionError	tests/geometry/test_quaternion.py::TestQuaternion::test_pow[cpu-bfloat16-1]
 call	builtins.AssertionError	tests/geometry/test_quaternion.py::TestQuaternion::test_pow[cpu-bfloat16-5]
 call	builtins.AssertionError	tests/geometry/test_quaternion.py::TestQuaternion::test_to_axis_angle[cpu-bfloat16-1]
 call	builtins.AssertionError	tests/geometry/test_quaternion.py::TestQuaternion::test_to_axis_angle[cpu-bfloat16-2]
 call	builtins.AssertionError	tests/geometry/test_quaternion.py::TestQuaternion::test_to_axis_angle[cpu-bfloat16-5]
 call	builtins.AssertionError	tests/geometry/test_quaternion.py::TestQuaternion::test_to_axis_angle[cpu-bfloat16-None]
-call	builtins.AssertionError	tests/geometry/test_quaternion.py::TestQuaternionAverage::test_single_quaternion_returns_itself[cpu-bfloat16]
 call	builtins.NotImplementedError	tests/geometry/test_ransac.py::TestRANSACEssential::test_forward_enforces_essential_constraint[cpu-bfloat16]
 call	builtins.NotImplementedError	tests/geometry/test_ransac.py::TestRANSACEssential::test_polish_enforces_essential_constraint[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/transform/test_affine.py::TestRescale::test_downscale_values[cpu-bfloat16]
@@ -226,7 +231,6 @@ call	builtins.AssertionError	tests/geometry/transform/test_homography_warper.py:
 call	builtins.AssertionError	tests/geometry/transform/test_homography_warper.py::TestHomographyWarper3D::test_normalize_homography_identity[cpu-bfloat16-3]
 call	builtins.AssertionError	tests/geometry/transform/test_homography_warper.py::TestHomographyWarper::test_normalize_homography_identity[cpu-bfloat16-1]
 call	builtins.AssertionError	tests/geometry/transform/test_homography_warper.py::TestHomographyWarper::test_normalize_homography_identity[cpu-bfloat16-3]
-call	builtins.AssertionError	tests/geometry/transform/test_homography_warper.py::TestHomographyWarper::test_translation[cpu-bfloat16-shape0]
 call	builtins.AssertionError	tests/geometry/transform/test_homography_warper.py::TestHomographyWarper::test_translation[cpu-bfloat16-shape1]
 call	builtins.AssertionError	tests/geometry/transform/test_homography_warper.py::TestHomographyWarper::test_translation[cpu-bfloat16-shape3]
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp.py::TestGetPerspectiveTransform::test_back_and_forth[cpu-bfloat16]
@@ -238,6 +242,7 @@ call	builtins.AssertionError	tests/geometry/transform/test_imgwarp.py::TestRotat
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp.py::TestRotationMatrix2d::test_rotation_90deg_and_scale[cpu-bfloat16-1]
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp.py::TestRotationMatrix2d::test_rotation_90deg_and_scale[cpu-bfloat16-2]
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp.py::TestRotationMatrix2d::test_rotation_90deg_and_scale[cpu-bfloat16-5]
+call	builtins.AssertionError	tests/geometry/transform/test_imgwarp.py::TestWarpAffine::test_rotation_inverse[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp.py::TestWarpPerspective::test_convention_normalize_invert_equivalence[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp.py::TestWarpPerspective::test_rotation_inverse[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp3d.py::TestGetRotationMatrix3d::test_rot90x[cpu-bfloat16]
