@@ -26,6 +26,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.core.exceptions import DeviceError, TypeCheckError
 from kornia.core.utils import register_module_state
 from kornia.geometry.liegroup.so2 import So2
 from kornia.geometry.liegroup.so3 import _so3_small_angle_coefficients
@@ -43,6 +44,26 @@ def _check_se2_r_t_shape(r: So2, t: torch.Tensor) -> None:
     else:
         raise ValueError(
             f"Invalid input, both the inputs should be either batched or unbatched. Got: {r.z.shape} and {t.shape}"
+        )
+
+
+def _check_se2_r_t_dtype_device(r: So2, t: torch.Tensor) -> None:
+    """Reject a translation the rotation's methods cannot combine with: another dtype or another device."""
+    r_dtype = r.z.real.dtype
+    # ``.bfloat16()`` keeps the complex rotation's precision (PyTorch has no complex bfloat16) and casts the
+    # translation, so a bfloat16 translation beside a complex rotation is the module's own converted state.
+    if t.is_floating_point() and t.dtype not in (r_dtype, torch.bfloat16):
+        raise TypeCheckError(
+            f"Se2 translation must have the dtype of its rotation, {r_dtype} (z is {r.z.dtype}); got {t.dtype}. "
+            "Cast one of them first, for example with `.to(dtype)`.",
+            actual_type=t.dtype,
+            expected_type=r_dtype,
+        )
+    if t.device != r.z.device:
+        raise DeviceError(
+            f"Se2 translation must be on the device of its rotation, {r.z.device}; got {t.device}.",
+            actual_devices=[r.z.device, t.device],
+            expected_device=r.z.device,
         )
 
 
@@ -92,10 +113,14 @@ class Se2(nn.Module):
         Args:
             rotation: So2 group encompassing a rotation.
             translation: translation torch.Tensor with the shape of :math:`(B, 2)`, or a Vector2 wrapping one; the
-                tensor is what gets stored.
+                tensor is what gets stored. It must have the rotation's dtype (``z``'s real dtype) and device;
+                a bfloat16 translation is also accepted beside a complex rotation of any precision, which is what
+                ``.bfloat16()`` leaves.
 
         Raises:
-            TypeCheckError: if the translation is an integer or bool tensor.
+            TypeCheckError: if the translation is an integer or bool tensor, or its dtype differs from the
+                rotation's (``log`` and the other methods cannot combine them).
+            DeviceError: if the translation is on another device than the rotation.
 
         Example:
             >>> so2 = So2.identity(1)
@@ -114,6 +139,7 @@ class Se2(nn.Module):
             raise TypeError(f"translation type is {type(translation)}")
         _t_data = translation.data if isinstance(translation, Vector2) else translation
         _check_se2_r_t_shape(rotation, _t_data)  # TODO remove
+        _check_se2_r_t_dtype_device(rotation, _t_data)
         self._translation: torch.Tensor
         self._rotation: So2 = rotation
         register_module_state(self, "_translation", _t_data)

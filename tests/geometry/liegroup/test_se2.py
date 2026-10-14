@@ -20,11 +20,17 @@ import math
 import pytest
 import torch
 
-from kornia.core.exceptions import TypeCheckError
+from kornia.core.exceptions import DeviceError, TypeCheckError
 from kornia.geometry.liegroup import Se2, So2
+from kornia.geometry.pose import NamedPose
 from kornia.geometry.vector import Vector2
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+
+
+def _complex_dtype(dtype: torch.dtype) -> torch.dtype:
+    """Complex dtype whose real dtype is ``dtype``; bfloat16 has none, and Se2 pairs its rotation with complex64."""
+    return {torch.float16: torch.chalf, torch.float64: torch.cdouble}.get(dtype, torch.cfloat)
 
 
 class TestSe2(BaseTester):
@@ -34,7 +40,7 @@ class TestSe2(BaseTester):
         return torch.rand(shape, device=device, dtype=dtype)
 
     def test_smoke(self, device, dtype):
-        z = torch.rand((2,), dtype=torch.cfloat, device=device)
+        z = torch.rand((2,), dtype=torch.cfloat, device=device).to(_complex_dtype(dtype))
         so2 = So2(z)
         t = torch.rand((1, 2), device=device, dtype=dtype)
         s = Se2(so2, t)
@@ -134,7 +140,7 @@ class TestSe2(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_getitem(self, device, dtype, batch_size):
-        z = torch.rand(batch_size, dtype=torch.cfloat, device=device)
+        z = torch.rand(batch_size, dtype=torch.cfloat, device=device).to(_complex_dtype(dtype))
         t = torch.rand((batch_size, 2), device=device, dtype=dtype)
         s = Se2(So2(z), t)
         for i in range(batch_size):
@@ -411,6 +417,74 @@ class TestSe2(BaseTester):
         # autograd error (#5201). Cast it to a floating-point dtype first.
         with pytest.raises(TypeCheckError, match=r"Se2 stores 'translation'.*torch.int64"):
             Se2(So2.identity(1, device), torch.tensor([[1, 2]], device=device))
+
+    @pytest.mark.parametrize("pair", [(torch.float64, torch.float32), (torch.float32, torch.float64)])
+    def test_mixed_dtype_translation_raises_5913(self, device, pair):
+        # The mix used to construct, then log() raised torch's "expected scalar type Double but found Float".
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        r_dtype, t_dtype = pair
+        rotation = So2.identity(1, device, r_dtype)
+        with pytest.raises(
+            TypeCheckError, match=r"Se2 translation must have the dtype of its rotation.*" + str(t_dtype)
+        ):
+            Se2(rotation, torch.zeros(1, 2, device=device, dtype=t_dtype))
+        with pytest.raises(TypeCheckError, match=r"Se2 translation"):
+            Se2(rotation, Vector2(torch.zeros(1, 2, device=device, dtype=t_dtype)))
+        with pytest.raises(TypeCheckError, match=r"Se2 translation"):
+            Se2(So2.identity(None, device, r_dtype), torch.zeros(2, device=device, dtype=t_dtype))
+
+    def test_same_dtype_translation_is_accepted_5913(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch.complex has no bfloat16 overload, so So2 cannot be built at all")
+        s = Se2(So2.identity(2, device, dtype), torch.zeros(2, 2, device=device, dtype=dtype))
+        assert s.t.dtype == dtype
+        assert s.r.z.real.dtype == dtype
+
+    def test_bfloat16_module_state_is_accepted_5913(self, device):
+        # ``.bfloat16()`` keeps the complex rotation and casts the translation (documented in the class
+        # Convention): reconstructing that state through __getitem__, inverse and __mul__ must keep working.
+        s = Se2.exp(torch.tensor([[0.5, 0.2, 0.3], [0.1, 0.4, -0.2]], device=device)).bfloat16()
+        assert s.t.dtype == torch.bfloat16
+        assert s.r.z.dtype == torch.cfloat
+        assert isinstance(s[0], Se2)
+        assert isinstance(s.inverse(), Se2)
+        assert isinstance(s * s, Se2)
+        Se2(So2.identity(1, device), torch.zeros(1, 2, device=device, dtype=torch.bfloat16))
+
+    def test_dynamo_constructor_checks_5913(self, device, torch_optimizer):
+        def build(real, imag, t):
+            return Se2(So2(torch.complex(real, imag)), t).matrix()
+
+        args = (torch.rand(2, device=device), torch.rand(2, device=device), torch.rand(2, 2, device=device))
+        self.assert_close(torch_optimizer(build, fullgraph=True)(*args), build(*args))
+
+    def test_translation_on_another_device_raises_5913(self, device):
+        # Rotation and translation on different devices fail in every method (matrix, log, inverse, __mul__);
+        # the meta device stands in for a second accelerator.
+        with pytest.raises(DeviceError, match=r"Se2 translation must be on the device of its rotation"):
+            Se2(So2.identity(1, device), torch.zeros(1, 2, device="meta"))
+
+    def test_internal_constructions_still_build_5913(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch.complex has no bfloat16 overload, so So2 cannot be built at all")
+        a = Se2.exp(torch.tensor([[0.5, 0.2, 0.3], [0.1, 0.4, -0.2]], device=device, dtype=dtype))
+        built = [
+            Se2.identity(None, device, dtype),
+            Se2.identity(2, device, dtype),
+            Se2.random(None, device, dtype),
+            Se2.random(2, device, dtype),
+            Se2.from_matrix(a.matrix().detach()),
+            Se2.trans(torch.ones(2, device=device, dtype=dtype), torch.zeros(2, device=device, dtype=dtype)),
+            Se2.trans_x(torch.ones(2, device=device, dtype=dtype)),
+            Se2.trans_y(torch.ones(2, device=device, dtype=dtype)),
+            a[0],
+            a.inverse(),
+            a * a,
+            NamedPose.from_rt(So2.identity(1, device, dtype), torch.zeros(1, 2, device=device, dtype=dtype)).pose,
+        ]
+        assert all(isinstance(s, Se2) for s in built)
+        assert all(s.t.dtype == dtype and s.r.z.real.dtype == dtype for s in built)
 
     def test_derived_state_moves_and_serializes(self, device, dtype):
         # A group built from a tensor with autograd history keeps that history; its state must

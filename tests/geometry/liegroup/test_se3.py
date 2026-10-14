@@ -20,9 +20,10 @@ import math
 import pytest
 import torch
 
-from kornia.core.exceptions import TypeCheckError
+from kornia.core.exceptions import DeviceError, TypeCheckError
 from kornia.geometry.conversions import euler_from_quaternion, rotation_matrix_to_quaternion
 from kornia.geometry.liegroup import Se3, So3
+from kornia.geometry.pose import NamedPose
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
 
@@ -426,6 +427,62 @@ class TestSe3(BaseTester):
     def test_integer_translation_raises(self, device):
         with pytest.raises(TypeCheckError, match=r"Se3 stores 'translation'.*torch.int64"):
             Se3(Quaternion.identity(1, device), torch.tensor([[1, 2, 3]], device=device))
+
+    @pytest.mark.parametrize("pair", [(torch.float64, torch.float32), (torch.float32, torch.float64)])
+    @pytest.mark.parametrize("wrap", ["so3", "quaternion"])
+    def test_mixed_dtype_translation_raises_5913(self, device, pair, wrap):
+        # The mix used to construct, then inverse()/adjoint()/__mul__ raised torch's "expected scalar type" error.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        r_dtype, t_dtype = pair
+        rotation = So3.identity(1, device, r_dtype) if wrap == "so3" else Quaternion.identity(1, device, r_dtype)
+        with pytest.raises(
+            TypeCheckError, match=r"Se3 translation must have the dtype of its rotation.*" + str(t_dtype)
+        ):
+            Se3(rotation, torch.zeros(1, 3, device=device, dtype=t_dtype))
+        with pytest.raises(TypeCheckError, match=r"Se3 translation"):
+            Se3(rotation, Vector3(torch.zeros(1, 3, device=device, dtype=t_dtype)))
+
+    def test_same_dtype_translation_is_accepted_5913(self, device, dtype):
+        s = Se3(So3.identity(2, device, dtype), torch.zeros(2, 3, device=device, dtype=dtype))
+        assert s.t.dtype == s.quaternion.data.dtype == dtype
+
+    def test_dynamo_constructor_checks_5913(self, device, torch_optimizer):
+        def build(q, t):
+            return Se3(Quaternion(q), t).matrix()
+
+        args = (torch.rand(2, 4, device=device), torch.rand(2, 3, device=device))
+        self.assert_close(torch_optimizer(build, fullgraph=True)(*args), build(*args))
+
+    def test_translation_on_another_device_raises_5913(self, device):
+        # the meta device stands in for a second accelerator.
+        with pytest.raises(DeviceError, match=r"Se3 translation must be on the device of its rotation"):
+            Se3(So3.identity(1, device), torch.zeros(1, 3, device="meta"))
+
+    def test_internal_constructions_still_build_5913(self, device, dtype):
+        a = Se3.exp(torch.rand(2, 6, device=device, dtype=dtype))
+        x = torch.rand(2, device=device, dtype=dtype)
+        built = [
+            Se3.identity(None, device, dtype),
+            Se3.identity(2, device, dtype),
+            Se3.random(None, device, dtype),
+            Se3.random(2, device, dtype),
+            Se3.from_matrix(a.matrix().detach()),
+            Se3.from_qxyz(torch.rand(2, 7, device=device, dtype=dtype)),
+            Se3.rot_x(x),
+            Se3.rot_y(x),
+            Se3.rot_z(x),
+            Se3.trans(x, x, x),
+            Se3.trans_x(x),
+            Se3.trans_y(x),
+            Se3.trans_z(x),
+            a[0],
+            a.inverse(),
+            a * a,
+            NamedPose.from_rt(So3.identity(1, device, dtype), torch.zeros(1, 3, device=device, dtype=dtype)).pose,
+        ]
+        assert all(isinstance(s, Se3) for s in built)
+        assert all(s.t.dtype == dtype for s in built)
 
     def test_derived_state_moves_and_serializes(self, device, dtype):
         v = torch.rand(2, 6, device=device, dtype=dtype, requires_grad=True)

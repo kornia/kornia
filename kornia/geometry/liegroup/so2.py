@@ -26,6 +26,7 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.exceptions import TypeCheckError
 from kornia.core.tensor_wrapper import _unwrap
 from kornia.core.utils import is_exporting, register_module_state
 from kornia.geometry.vector import Vector2
@@ -75,7 +76,7 @@ class So2(nn.Module):
             z: Complex number with the shape of :math:`(B,)` or :math:`()`; :math:`(B, 1)` is read as :math:`(B,)`.
 
         Raises:
-            TypeCheckError: if ``z`` is an integer or bool tensor.
+            TypeCheckError: if ``z`` is not a complex tensor (an integer, bool or real floating-point tensor).
 
         Example:
             >>> real = torch.tensor(0.6)
@@ -87,6 +88,12 @@ class So2(nn.Module):
         """
         super().__init__()
         KORNIA_CHECK_IS_TENSOR(z)
+        if not z.is_complex():
+            # Every method reads z.real and z.imag, and a real z (or an integer one) only fails there, inside torch.
+            raise TypeCheckError(
+                f"So2 stores 'z' as a complex tensor; got {z.dtype}. Build it with `torch.complex(real, imag)`.",
+                actual_type=z.dtype,
+            )
         # check_so2_z_shape(z)
         is_scalar = len(z.shape) == 0
         is_flat = KORNIA_CHECK_SHAPE(z, ["B"], raises=False)
