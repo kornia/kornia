@@ -103,7 +103,7 @@ class HomographyTracker(nn.Module):
         - :class:`~kornia.feature.LocalFeatureMatcher`: the ``lafs``, ``responses`` and ``descriptors`` of its
           :meth:`~kornia.feature.LocalFeatureMatcher.extract_features` are passed as ``lafs0``, ``responses0`` and
           ``descriptors0``, next to ``image0``.
-        - Any other matcher whose ``extract_features`` attribute is an :class:`torch.nn.Module`: every entry of the dict
+        - Any other matcher whose ``extract_features`` attribute is a :class:`torch.nn.Module`: every entry of the dict
           it returns is passed with a ``0`` suffix (``desc`` as ``desc0``), next to ``image0``.
 
         Other matchers get no cached representation and receive ``image0`` and ``image1`` only. Setting a target
@@ -129,7 +129,7 @@ class HomographyTracker(nn.Module):
         data: Dict[str, Any] = {"image0": self.target, "image1": frame}
         for k, v in representation.items():
             data[f"{k}0"] = v
-        if isinstance(matcher, LoFTR):  # LoFTR takes features0 in place of image0 and rejects both
+        if isinstance(matcher, LoFTR) and "features0" in data:  # LoFTR takes features0 in place of image0, not both
             del data["image0"]
         return data
 

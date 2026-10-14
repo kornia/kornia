@@ -103,9 +103,11 @@ class ImageStitcher(nn.Module):
             n = batch_size
         outside = idx[(idx < 0) | (idx >= n)]
         if outside.numel() > 0:
-            raise RuntimeError(
-                f"Compute homography failed: batch index {int(outside[0].item())} is outside the batch of {n} samples."
-            )
+            bad = int(outside[0].item())
+            if bad < 0:
+                raise RuntimeError(f"Compute homography failed: batch index {bad} is negative.")
+            samples = "1 sample" if n == 1 else f"{n} samples"
+            raise RuntimeError(f"Compute homography failed: batch index {bad} is outside the batch of {samples}.")
         selections = [idx == i for i in range(n)]
         for i, sel in enumerate(selections):
             n_i = int(sel.sum().item())
@@ -217,11 +219,11 @@ class ImageStitcher(nn.Module):
         work = torch.promote_types(images_right.dtype, torch.float32)
         warped = warp_perspective(torch.cat([images_right.to(work), mask_right.to(work)], 1), homo.to(work), out_shape)
         src_img = warped[:, :n_ch].to(images_right.dtype)
-        # Round-off in the warp's sampling positions grows with the coordinates. Measured for integer shifts, it puts a
-        # completely covered border pixel up to 1.5 * eps * max(H_out, W_out) px past the border, so its coverage reads
-        # that much below 1 (0.99854 on the last row and column of a 4096 x 4096 image shifted by 2048). The tolerance
-        # scales the same way, with a margin, and stays far below a genuinely partial coverage: in float32 it reaches
-        # 0.3 only past 600 000 px.
+        # Round-off in the warp's sampling positions grows with the coordinates and puts a completely covered border
+        # pixel past the border, so its coverage reads below 1. Measured: up to 1.5 * eps * max(H_out, W_out) for
+        # integer shifts (0.99854 on the last row and column of a 4096 x 4096 image shifted by 2048), and up to
+        # 2.86 * eps * max(H_out, W_out) for general homographies. The tolerance scales the same way, with a margin,
+        # and stays far below a genuinely partial coverage: in float32 it reaches 0.3 only past 600 000 px.
         tol = max(1e-4, 4.0 * torch.finfo(work).eps * max(out_shape))
         src_mask = (warped[:, n_ch:] >= 1.0 - tol).to(images_right.dtype)
         dst_mask = torch.cat([mask_left, torch.zeros_like(mask_right)], -1)

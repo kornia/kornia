@@ -111,6 +111,30 @@ class TestHomographyTrackerCaching:
         tracker.track_next_frame(_texture(72, 96, seed=1))
         assert calls == [(1, 1, 64, 80)]  # only the pre-warped frame, at the target's size
 
+    def test_loftr_without_cached_features_gets_image0(self):
+        # A target assigned directly, without set_target, has no cached features0, so LoFTR needs image0 (as on main).
+        loftr = LoFTR(None)
+        keys = []
+        loftr.register_forward_pre_hook(lambda mod, args: keys.append(sorted(args[0])))
+        tracker = HomographyTracker(loftr, self._sift_matcher(), minimum_inliers_num=10)
+        tracker.target = _texture(64, 80)
+        tracker.match_initial(_texture(64, 80, seed=1))
+        assert keys == [["image0", "image1"]]
+
+    def test_fast_matcher_swapped_to_loftr_after_set_target_gets_image0(self):
+        # The cached representation belongs to the SIFT matcher set before; the LoFTR swapped in has no features0.
+        tracker = HomographyTracker(self._sift_matcher(), self._sift_matcher(), minimum_inliers_num=10)
+        tracker.set_target(_texture(64, 80))
+        loftr = LoFTR(None)
+        keys = []
+        loftr.register_forward_pre_hook(lambda mod, args: keys.append(sorted(args[0])))
+        tracker.fast_matcher = loftr
+        tracker.previous_homography = torch.eye(3)
+        tracker.track_next_frame(_texture(72, 96, seed=1))
+        assert len(keys) == 1
+        assert "image0" in keys[0]
+        assert "features0" not in keys[0]
+
     def test_track_next_frame_without_a_prior_raises(self):
         # C-5: UnboundLocalError on Hwarp.
         tracker = _make_tracker()
