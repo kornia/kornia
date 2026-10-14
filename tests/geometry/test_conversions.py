@@ -31,7 +31,7 @@ import torch
 
 import kornia
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, are_checks_enabled, disable_checks, enable_checks
-from kornia.core.exceptions import BaseError, ShapeError
+from kornia.core.exceptions import BaseError, ShapeError, TypeCheckError
 from kornia.core.ops import eye_like
 from kornia.geometry.conversions import (
     ARKitQTVecs_to_ColmapQTVecs,
@@ -3781,6 +3781,22 @@ class TestNormalizeHomography(BaseTester):
             (homography3d,),
         )
 
+    @pytest.mark.parametrize("int_dtype", [torch.int64, torch.int32, torch.uint8, torch.bool])
+    @pytest.mark.parametrize("dsize_dst", [(2, 2, 2), (2, 2, 5)])
+    def test_exception_denormalize_homography3d_rejects_integer_homography(self, device, int_dtype, dsize_dst):
+        # An integer homography used to cast the normalization matrices back to integers:
+        # torch.eye(4, dtype=int64) with sizes (2, 2, 2) returned diag(0, 0, 0, 1) and with
+        # dst (2, 2, 5) raised a singular-matrix error from the integer-truncated inverse.
+        # The function rejects the dtype up front; the caller casts (see #3959 for the siblings).
+        # Snippet used to generate the old behaviour (torch only):
+        #   denormalize_homography3d(torch.eye(4, dtype=torch.int64), (2, 2, 2), (2, 2, 2)) -> diag(0, 0, 0, 1)
+        #   denormalize_homography3d(torch.eye(4, dtype=torch.int64), (2, 2, 2), (2, 2, 5)) -> _LinAlgError
+        homography = torch.eye(4, device=device).to(int_dtype)
+        with pytest.raises(TypeCheckError, match=r"dst_pix_trans_src_pix.*floating point.*" + str(int_dtype)):
+            kornia.geometry.conversions.denormalize_homography3d(homography, (2, 2, 2), dsize_dst)
+        with pytest.raises(TypeError):
+            kornia.geometry.conversions.denormalize_homography3d(homography[None], (2, 2, 2), dsize_dst)
+
     def test_convention_maps_normalized_src_to_normalized_dst(self, device, dtype):
         # Convention pin: the returned matrix has the SAME src -> dst direction as its input,
         # re-expressed in the two [-1, 1] frames -- it maps normalized src coordinates to
@@ -5378,6 +5394,25 @@ class TestCARKitToColmap(BaseTester):
             op(quaternion, translation[..., 0])
         with pytest.raises(ValueError, match=r"shape \(\*, 4\)"):
             op(quaternion[:, :3], translation)
+
+    @pytest.mark.parametrize("int_dtype", [torch.int64, torch.int32, torch.bool])
+    @pytest.mark.parametrize("which", ["qvec", "tvec"])
+    def test_exception_colmap_to_arkit_rejects_non_floating_inputs(self, device, int_dtype, which):
+        # Integer or bool inputs used to surface as a bare torch RuntimeError from linalg.vector_norm
+        # ("Expected a floating point or complex tensor") or from the matmul dtype mismatch, naming
+        # no kornia argument. Both arguments are now rejected up front by name.
+        # Snippet used to generate the old behaviour (torch only):
+        #   ColmapQTVecs_to_ARKitQTVecs(torch.tensor([[1, 0, 0, 0]]), torch.ones(1, 3, 1)) -> RuntimeError
+        #   ColmapQTVecs_to_ARKitQTVecs(torch.tensor([[1., 0, 0, 0]]), torch.ones(1, 3, 1, dtype=torch.int64))
+        #     -> RuntimeError: expected scalar type Float but found Long
+        qvec = torch.tensor([[1, 0, 0, 0]], device=device).to(torch.float32)
+        tvec = torch.ones(1, 3, 1, device=device, dtype=torch.float32)
+        if which == "qvec":
+            qvec = qvec.to(int_dtype)
+        else:
+            tvec = tvec.to(int_dtype)
+        with pytest.raises(TypeCheckError, match=rf"{which}.*floating point.*{int_dtype}"):
+            ColmapQTVecs_to_ARKitQTVecs(qvec, tvec)
 
     def test_convention_reverse_input_is_worldtocam_vision_and_output_is_camtoworld_graphics(self, device, dtype):
         # Convention pin for ColmapQTVecs_to_ARKitQTVecs: the frames are the forward's, exchanged.

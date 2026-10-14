@@ -26,6 +26,7 @@ import torch.nn.functional as F
 
 from kornia.core._compat import deprecated
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, ShapeError, are_checks_enabled
+from kornia.core.exceptions import TypeCheckError
 from kornia.core.utils import _inverse_3x3_closed_form, _torch_inverse_cast, is_compiling
 
 __all__ = [
@@ -2258,6 +2259,9 @@ def denormalize_homography(
         - the two functions invert each other to a small multiple of the
           working dtype's ``eps`` times the largest entry, not bitwise in
           general
+        - an integer or bool ``dst_pix_trans_src_pix`` raises ``TypeCheckError``
+          (also a ``TypeError``) instead of being promoted: cast it to a floating
+          point dtype first
 
     Args:
         dst_pix_trans_src_pix: homography/ies from source to destination to be
@@ -2421,6 +2425,17 @@ def denormalize_homography3d(
     if not isinstance(dst_pix_trans_src_pix, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst_pix_trans_src_pix)}")
 
+    # An integer or bool homography would cast the normalization matrices back to integers
+    # (truncating the 2/(size - 1) scales to 0, or failing on a singular inverse), so the dtype is
+    # rejected rather than promoted: the caller casts. Raised directly, not through KORNIA_CHECK,
+    # which python -O and disable_checks() switch off.
+    if not (dst_pix_trans_src_pix.is_floating_point() or dst_pix_trans_src_pix.is_complex()):
+        raise TypeCheckError(
+            "Input dst_pix_trans_src_pix must be a floating point or complex tensor. "
+            f"Got dtype {dst_pix_trans_src_pix.dtype}.",
+            actual_type=dst_pix_trans_src_pix.dtype,
+        )
+
     if not (dst_pix_trans_src_pix.ndim in (2, 3) and dst_pix_trans_src_pix.shape[-2:] == (4, 4)):
         raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx4x4 tensor. Got {dst_pix_trans_src_pix.shape}")
 
@@ -2428,11 +2443,7 @@ def denormalize_homography3d(
     src_d, src_h, src_w = dsize_src
     dst_d, dst_h, dst_w = dsize_dst
     # compute the transformation pixel/norm for src/dst
-    normalization_dtype = (
-        dst_pix_trans_src_pix.dtype
-        if dst_pix_trans_src_pix.is_floating_point() or dst_pix_trans_src_pix.is_complex()
-        else None
-    )
+    normalization_dtype = dst_pix_trans_src_pix.dtype
     src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel3d(
         src_d, src_h, src_w, device=dst_pix_trans_src_pix.device, dtype=normalization_dtype
     ).to(dst_pix_trans_src_pix)
@@ -3118,6 +3129,9 @@ def ColmapQTVecs_to_ARKitQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
         - the input quaternion need not be unit and ``q`` and ``-q`` give the
           same output, within the same normalisation range as
           :func:`~kornia.geometry.conversions.ARKitQTVecs_to_ColmapQTVecs`
+        - an integer or bool ``qvec`` or ``tvec`` raises ``TypeCheckError``
+          (also a ``TypeError``) naming the argument: cast it to a floating
+          point dtype first
         - the **sign of the output quaternion is not canonical**: a round trip
           through both functions returns the input rotation, but not
           necessarily the input quaternion's sign. Compare rotations, never raw
@@ -3150,6 +3164,11 @@ def ColmapQTVecs_to_ARKitQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
                  [1.0000]]]))
 
     """
+    for name, value in (("qvec", qvec), ("tvec", tvec)):
+        if isinstance(value, torch.Tensor) and not value.is_floating_point():
+            raise TypeCheckError(
+                f"Input {name} must be a floating point tensor. Got dtype {value.dtype}.", actual_type=value.dtype
+            )
     R_colmap = quaternion_to_rotation_matrix(qvec)
     Rcv, Tcv = worldtocam_to_camtoworld_Rt(R_colmap, tvec)
     Rcg, Tcg = camtoworld_vision_to_graphics_Rt(Rcv, Tcv)
