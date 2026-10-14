@@ -52,7 +52,19 @@ def _check_se2_r_t_dtype_device(r: So2, t: torch.Tensor) -> None:
     r_dtype = r.z.real.dtype
     # ``.bfloat16()`` keeps the complex rotation's precision (PyTorch has no complex bfloat16) and casts the
     # translation, so a bfloat16 translation beside a complex rotation is the module's own converted state.
-    if t.is_floating_point() and t.dtype not in (r_dtype, torch.bfloat16):
+    if t.is_complex():
+        raise TypeCheckError(
+            f"Se2 translation must be a real floating-point tensor; got {t.dtype}.",
+            actual_type=t.dtype,
+        )
+    if not t.is_floating_point():
+        # register_module_state keeps an existing nn.Parameter as given, so it cannot reject an integer one
+        raise TypeCheckError(
+            f"Se2 stores 'translation' as module state, which needs a floating-point tensor; got {t.dtype}. "
+            "Cast it first, for example with `.float()`.",
+            actual_type=t.dtype,
+        )
+    if t.dtype not in (r_dtype, torch.bfloat16):
         raise TypeCheckError(
             f"Se2 translation must have the dtype of its rotation, {r_dtype} (z is {r.z.dtype}); got {t.dtype}. "
             "Cast one of them first, for example with `.to(dtype)`.",
@@ -120,8 +132,8 @@ class Se2(nn.Module):
                 rotation's real dtype.
 
         Raises:
-            TypeCheckError: if the translation is an integer or bool tensor, or its dtype differs from the
-                rotation's (``log`` and the other methods cannot combine them).
+            TypeCheckError: if the translation is an integer, bool or complex tensor (an ``nn.Parameter`` too), or its
+                dtype differs from the rotation's (``log`` and the other methods cannot combine them).
             DeviceError: if the translation is on another device than the rotation.
 
         Example:

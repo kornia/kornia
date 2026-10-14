@@ -38,7 +38,19 @@ def _check_se3_r_t_dtype_device(r: Quaternion | So3, t: torch.Tensor) -> None:
     """Reject a translation the rotation's methods cannot combine with: another dtype or another device."""
     q = r.q if isinstance(r, So3) else r
     q_data = q.data
-    if t.is_floating_point() and t.dtype != q_data.dtype:
+    if t.is_complex():
+        raise TypeCheckError(
+            f"Se3 translation must be a real floating-point tensor; got {t.dtype}.",
+            actual_type=t.dtype,
+        )
+    if not t.is_floating_point():
+        # register_module_state keeps an existing nn.Parameter as given, so it cannot reject an integer one
+        raise TypeCheckError(
+            f"Se3 stores 'translation' as module state, which needs a floating-point tensor; got {t.dtype}. "
+            "Cast it first, for example with `.float()`.",
+            actual_type=t.dtype,
+        )
+    if t.dtype != q_data.dtype:
         raise TypeCheckError(
             f"Se3 translation must have the dtype of its rotation, {q_data.dtype}; got {t.dtype}. "
             "Cast one of them first, for example with `.to(dtype)`.",
@@ -99,8 +111,8 @@ class Se3(nn.Module):
                 tensor is what gets stored. It must have the rotation's dtype and device.
 
         Raises:
-            TypeCheckError: if the translation is an integer or bool tensor, or its dtype differs from the
-                rotation's (``inverse``, ``adjoint`` and the other methods cannot combine them).
+            TypeCheckError: if the translation is an integer, bool or complex tensor (an ``nn.Parameter`` too), or its
+                dtype differs from the rotation's (``inverse``, ``adjoint`` and the other methods cannot combine them).
             DeviceError: if the translation is on another device than the rotation.
 
         Example:

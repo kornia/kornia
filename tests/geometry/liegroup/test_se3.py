@@ -463,6 +463,19 @@ class TestSe3(BaseTester):
         args = (torch.rand(2, 4, device=device), torch.rand(2, 3, device=device))
         self.assert_close(torch_optimizer(build, fullgraph=True)(*args), build(*args))
 
+    @pytest.mark.parametrize("cdtype", [torch.cfloat, torch.cdouble])
+    def test_complex_translation_raises_5913(self, device, cdtype):
+        if device.type == "mps" and cdtype != torch.cfloat:
+            pytest.skip("MPS supports complex64 only")
+        with pytest.raises(TypeCheckError, match=r"Se3 translation must be a real floating-point tensor.*complex"):
+            Se3(So3.identity(1, device), torch.zeros(1, 3, device=device, dtype=cdtype))
+
+    @pytest.mark.parametrize("int_dtype", [torch.int64, torch.bool])
+    def test_integer_parameter_translation_raises_5913(self, device, int_dtype):
+        translation = torch.nn.Parameter(torch.zeros(1, 3, device=device, dtype=int_dtype), requires_grad=False)
+        with pytest.raises(TypeCheckError, match=r"Se3 stores 'translation'.*" + str(int_dtype)):
+            Se3(So3.identity(1, device), translation)
+
     def test_translation_on_another_device_raises_5913(self, device):
         # the meta device stands in for a second accelerator.
         with pytest.raises(DeviceError, match=r"Se3 translation must be on the device of its rotation"):
