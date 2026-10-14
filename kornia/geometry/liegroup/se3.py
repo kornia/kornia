@@ -78,6 +78,9 @@ class Se3(nn.Module):
             translation: translation torch.Tensor with the shape of :math:`(B, 3)`, or a Vector3 wrapping one; the
                 tensor is what gets stored.
 
+        Raises:
+            TypeCheckError: if the translation is an integer or bool tensor.
+
         Example:
             >>> from kornia.geometry.quaternion import Quaternion
             >>> q = Quaternion.identity(batch_size=1)
