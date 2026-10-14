@@ -411,9 +411,11 @@ def pyrdown(
 
     Convention:
         - input: :math:`(B, C, H, W)`
-        - output spatial size follows bilinear interpolation's reciprocal-scale
-          rounding per dimension (:math:`5 \times 5 \to 2 \times 2` at the
-          default ``factor=2.0`` — note OpenCV's ``pyrDown`` rounds up instead)
+        - output spatial size is ``floor(side / factor)`` per dimension
+          (:math:`5 \times 5 \to 2 \times 2` at the default ``factor=2.0`` —
+          note OpenCV's ``pyrDown`` rounds up instead)
+        - Dynamo ONNX uses float32 reciprocal-scale arithmetic for dynamic sides, which can differ from eager by one
+          pixel for some fractional factors (for example, side 33 and factor 1.1)
         - border_type: ``'reflect'`` by default (blur before downsample)
         - align_corners: ``False`` by default
 
@@ -441,16 +443,20 @@ def pyrdown(
     # blur image
     x_blur: torch.Tensor = filter2d(input, kernel, border_type)
 
-    # Use the same scale-based rounding in eager and export. Deriving a size
-    # from Python shape values freezes dynamic ONNX dimensions, while computing
-    # ``int(side / factor)`` can disagree at floating-point boundaries.
-    out: torch.Tensor = F.interpolate(
-        x_blur,
-        scale_factor=1.0 / factor,
-        recompute_scale_factor=True,
-        mode="bilinear",
-        align_corners=align_corners,
-    )
+    # Keep the output size dynamic in ONNX while preserving eager's floor rule.
+    _, _, height, width = input.shape
+    if isinstance(height, torch.Tensor):
+        # The TorchScript tracer represents sizes as tensors; float64 avoids
+        # rounding a fractional quotient before truncating it.
+        divisor = torch.tensor([factor], dtype=torch.float64)
+        size = [torch.floor(side.reshape(1).double() / divisor).long()[0] for side in (height, width)]
+    elif isinstance(height, torch.SymInt) and torch.onnx.is_in_onnx_export():
+        # Dynamo ONNX lowering supports dynamic SymInt sizes through reciprocal
+        # scale. Its float32 arithmetic may differ from eager for some factors.
+        size = [torch.sym_int(side * (1.0 / factor)) for side in (height, width)]
+    else:
+        size = [int(float(height) / factor), int(float(width) / factor)]
+    out: torch.Tensor = F.interpolate(x_blur, size=size, mode="bilinear", align_corners=align_corners)
     return out
 
 
@@ -513,8 +519,8 @@ def build_pyramid(
         - input: :math:`(B, C, H, W)`
         - ``max_level`` is the total number of levels returned (including the
           unchanged original as level 0), not a 0-based index of the last level
-        - each subsequent level is produced by :func:`pyrdown` (half-scale
-          interpolation output size per dimension)
+        - each subsequent level is produced by :func:`pyrdown` (``floor(side / 2)``
+          per dimension)
 
     Args:
         input : the torch.Tensor to be used to construct the pyramid.

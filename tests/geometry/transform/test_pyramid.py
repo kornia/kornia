@@ -116,7 +116,7 @@ class TestPyrDown(BaseTester):
         )
         x = torch.rand(1, 1, 33, 55)
         expected = model(x)
-        assert expected.shape[-2:] == (30, 50)
+        assert expected.shape[-2:] == (29, 49)
         actual = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"]).run(None, {"x": x.numpy()})[0]
         np.testing.assert_allclose(actual, expected.numpy(), rtol=1e-5, atol=1e-6)
 
@@ -125,7 +125,7 @@ class TestPyrDown(BaseTester):
         model = torch.compile(
             lambda x: kornia.geometry.transform.pyrdown(x, factor=1.1), backend="eager", fullgraph=True
         )
-        assert model(torch.rand(1, 1, 33, 55)).shape[-2:] == (30, 50)
+        assert model(torch.rand(1, 1, 33, 55)).shape[-2:] == (29, 49)
 
     def test_shape(self, device, dtype):
         inp = torch.zeros(1, 2, 4, 4, device=device, dtype=dtype)
@@ -141,7 +141,14 @@ class TestPyrDown(BaseTester):
     @pytest.mark.parametrize("align_corners", [False, True])
     @pytest.mark.parametrize(
         "height, width, factor, expected_size",
-        [(11, 22, 1.1, (10, 20)), (9, 18, 1.8, (5, 10)), (9, 15, 1.2, (7, 12)), (11, 15, 2.0, (5, 7))],
+        [
+            (11, 22, 1.1, (10, 20)),
+            (9, 18, 1.8, (5, 10)),
+            (9, 15, 1.2, (7, 12)),
+            (11, 15, 2.0, (5, 7)),
+            (33, 55, 1.1, (29, 49)),
+            (39, 65, 1.3, (30, 50)),
+        ],
     )
     def test_fractional_factor_axis_symmetry(
         self, device, dtype, as_module, align_corners, height, width, factor, expected_size
