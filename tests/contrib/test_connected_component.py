@@ -87,7 +87,7 @@ class TestConnectedComponents(BaseTester):
                 ]
             ],
             device=device,
-            dtype=dtype,
+            dtype=torch.int64,
         )
 
         out = kornia.contrib.connected_components(img, num_iterations=10)
@@ -109,12 +109,62 @@ class TestConnectedComponents(BaseTester):
 
         label_a = out[0, 0, 2051, 0]
         label_b = out[0, 0, 2053, 0]
+        assert out.dtype == torch.int64
         assert label_a != label_b, "two disconnected components must not share a label"
 
-    def test_gradcheck(self, device):
-        B, C, H, W = 2, 1, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        self.gradcheck(kornia.contrib.connected_components, (img,))
+    def test_labels_carry_no_gradient(self, device):
+        img = torch.ones(2, 1, 4, 4, device=device, dtype=torch.float32, requires_grad=True)
+        out = kornia.contrib.connected_components(img)
+        assert out.requires_grad is False
+        assert out.dtype == torch.int64
+
+    @pytest.mark.parametrize("in_dtype", [torch.float32, torch.float16, torch.bfloat16, torch.bool, torch.uint8])
+    def test_int64_labels_keep_distinct_components_apart(self, in_dtype, device):
+        # R3 / B-4 / B-5: float16 gave both pixels 2604.0, bool collapsed every label to True.
+        m = torch.zeros(1, 1, 3, 1400, device=device)
+        m[0, 0, 1, 1202] = 1
+        m[0, 0, 1, 1204] = 1
+        out = kornia.contrib.connected_components(m.to(in_dtype), num_iterations=5)
+        assert out.dtype == torch.int64
+        assert out[0, 0, 1, [1202, 1204]].tolist() == [1 * 1400 + 1202 + 1, 1 * 1400 + 1204 + 1]
+
+    def test_uint8_pixel_at_raster_index_255_stays_foreground(self, device):
+        # B-5: uint8 labels wrapped mod 256, so this pixel got label 0 (background).
+        m = torch.zeros(1, 1, 9, 31, dtype=torch.uint8, device=device)
+        m[0, 0, 8, 7] = 1
+        assert kornia.contrib.connected_components(m, num_iterations=3)[0, 0, 8, 7].item() == 8 * 31 + 7 + 1
+
+    def test_ids_stay_exact_past_2_pow_24_pixels(self, device):
+        # B-6: float32 ids merged indices 2**24 - 1 and 2**24 + 1 into 16777216.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64; covered by test_mps_raises_past_2_pow_24_pixels")
+        m = torch.zeros(1, 1, 1, 2**24 + 8, device=device)
+        m[..., 2**24 - 1] = 1
+        m[..., 2**24 + 1] = 1
+        out = kornia.contrib.connected_components(m, num_iterations=2)
+        assert out[0, 0, 0, [2**24 - 1, 2**24 + 1]].tolist() == [2**24, 2**24 + 2]
+
+    def test_mps_raises_past_2_pow_24_pixels(self, device):
+        if device.type != "mps":
+            pytest.skip("MPS-only bound")
+        with pytest.raises(ValueError, match="2\\*\\*24"):
+            kornia.contrib.connected_components(torch.zeros(1, 1, 1, 2**24 + 8, device=device))
+
+    def test_permuted_batch(self, device, dtype):
+        # B-8: a batch whose leading dims cannot be viewed together crashed on .view.
+        g = torch.Generator().manual_seed(0)
+        img = (torch.rand(3, 2, 1, 5, 7, generator=g) > 0.5).to(device, dtype).permute(1, 0, 2, 3, 4)
+        out = kornia.contrib.connected_components(img)
+        assert out.shape == (2, 3, 1, 5, 7)
+        assert torch.equal(out, kornia.contrib.connected_components(img.contiguous()))
+
+    @pytest.mark.parametrize("shape", [(1, 1, 0, 5), (2, 1, 5, 0), (0, 1, 5, 7), (3, 0, 1, 5, 7)])
+    def test_empty_input(self, shape, device, dtype):
+        # B-9: H = 0 crashed in reshape. Plan review P1: reshape(-1, 1, 0, 5) is itself ambiguous, so the empty
+        # check has to come first.
+        out = kornia.contrib.connected_components(torch.zeros(shape, device=device, dtype=dtype))
+        assert out.shape == shape
+        assert out.dtype == torch.int64
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4

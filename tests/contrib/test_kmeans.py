@@ -19,6 +19,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import BaseError, ShapeError
 
 from testing.base import BaseTester
 
@@ -109,8 +110,6 @@ class TestKMeans(BaseTester):
         assert out2.shape == (num_clusters, D)
 
     def test_exception(self, device, dtype):
-        from kornia.core.exceptions import BaseError, ShapeError
-
         # case: cluster_center = 0:
         with pytest.raises(BaseError) as errinfo:
             kornia.contrib.KMeans(0, None, 1e-3, 10, 0)
@@ -247,3 +246,60 @@ class TestKMeans(BaseTester):
 
         self.assert_close(centers, centers_op)
         self.assert_close(prediction, prediction_op)
+
+    def _blobs(self, device, dtype):
+        g = torch.Generator().manual_seed(0)
+        return torch.cat(
+            [torch.randn(60, 2, generator=g) + torch.tensor(c) for c in ([0.0, 0.0], [6.0, 0.0], [0.0, 6.0])]
+        ).to(device, dtype)
+
+    def test_zero_tolerance_stops_at_the_fixed_point(self, device, dtype):
+        # B-25: tolerance=0.0 with the default max_iterations=0 never returned.
+        X = self._blobs(device, dtype)
+        km = kornia.contrib.KMeans(3, X[[0, 60, 120]].clone(), tolerance=0.0)
+        calls = {"n": 0}
+        original = km._pairwise_euclidean_distance
+
+        def counting(a, b):
+            calls["n"] += 1
+            if calls["n"] > 200:
+                raise RuntimeError("fit did not stop")
+            return original(a, b)
+
+        km._pairwise_euclidean_distance = counting
+        km.fit(X)
+        assert calls["n"] < 50
+
+    def test_unbounded_configuration_raises(self):
+        with pytest.raises(BaseError, match="max_iterations"):
+            kornia.contrib.KMeans(3, None, tolerance=None, max_iterations=0)
+        with pytest.raises(BaseError, match="tolerance"):
+            kornia.contrib.KMeans(3, None, tolerance=-1.0)
+
+    def test_refit_samples_fresh_initial_centres(self, device, dtype):
+        # B-26: the second fit reused the first fit's sampled centres (and raised for another dimension).
+        km = kornia.contrib.KMeans(3, None, max_iterations=5, seed=0)
+        km.fit(torch.rand(180, 2, device=device, dtype=dtype))
+        X5 = torch.rand(100, 5, device=device, dtype=dtype) + 100
+        km.fit(X5)
+        assert km.cluster_centers.shape == (3, 5)
+        assert (km.cluster_centers >= 100).all()
+
+    def test_float16_distances_do_not_overflow(self, device):
+        # B-29: float16 squared distances overflowed to inf, so argmin returned [0, 0]; float64 gives [1, 0].
+        c = torch.tensor([[0.0, 0.0, 0.0], [100.0, 0.0, 0.0]], device=device, dtype=torch.float16)
+        p = torch.tensor([[255.0, 255.0, 255.0], [10.0, 200.0, 190.0]], device=device, dtype=torch.float16)
+        assert kornia.contrib.KMeans(2, c, tolerance=None, max_iterations=1).predict(p).tolist() == [1, 0]
+
+    def test_float16_fit_distances_do_not_overflow(self, device):
+        # B-29 in fit: the same overflow sent both points to cluster 0 and reseeded cluster 1 at random.
+        c = torch.tensor([[0.0, 0.0, 0.0], [100.0, 0.0, 0.0]], device=device, dtype=torch.float16)
+        p = torch.tensor([[255.0, 255.0, 255.0], [10.0, 200.0, 190.0]], device=device, dtype=torch.float16)
+        km = kornia.contrib.KMeans(2, c, tolerance=None, max_iterations=1)
+        km.fit(p)
+        self.assert_close(km.cluster_centers, p[[1, 0]], rtol=0.0, atol=0.0)
+
+    def test_predict_checks_its_input_rank(self, device, dtype):
+        km = kornia.contrib.KMeans(2, torch.rand(2, 2, device=device, dtype=dtype), max_iterations=1)
+        with pytest.raises(ShapeError):
+            km.predict(torch.rand(4, 2, 1, device=device, dtype=dtype))

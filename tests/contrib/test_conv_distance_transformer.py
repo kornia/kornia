@@ -296,6 +296,39 @@ class TestConvDistanceTransform(BaseTester):
         with pytest.raises(BaseError, match="too small for kernel_size"):
             kornia.contrib.distance_transform(img, kernel_size=3, h=0.01)
 
+    @pytest.mark.parametrize(
+        ("shape", "kernel_size", "h"),
+        [((1, 1, 40, 50), 31, 0.18), ((1, 1, 40, 50), 31, 0.22), ((1, 1, 12, 40, 50), 21, 0.125)],
+    )
+    def test_h_too_small_for_the_corner_tap_raises(self, shape, kernel_size, h, device):
+        # B-19: the guard checked only the axis tap exp(-k/h); these h passed it while the corner tap
+        # exp(-sqrt(ndim) k/h) underflowed (float32 17.78 vs exact 21.21 at ks 31, h 0.18; MPS vs CPU 4.1 at h 0.22).
+        with pytest.raises(BaseError, match="corner kernel tap"):
+            kornia.contrib.distance_transform(torch.zeros(shape, device=device), kernel_size=kernel_size, h=h)
+
+    @pytest.mark.parametrize(
+        ("shape", "kernel_size", "h"),
+        [
+            ((1, 1, 23, 37), 3, 0.6),
+            ((1, 1, 23, 37), 7, 0.53),
+            ((1, 1, 9, 11, 13), 3, 0.42),
+            ((1, 1, 9, 11, 13), 5, 0.39),
+        ],
+    )
+    def test_h_too_large_raises(self, shape, kernel_size, h, device):
+        # Plan review P3: a pixel counts as reached when -h*log(sum of its window's taps over reached pixels) > 0.
+        # Once the off-centre taps can sum to >= 1, a pixel whose window is full of reached pixels reads as
+        # foreground (0). Random 60 % masks, ks 3: 140 of 2805 background pixels were 0 at h 0.591, 2726 at h 2.0.
+        # Bounds (sum = 1): 2-D 0.5626 (ks 3), 0.5085 (ks 5), ~0.501 (ks >= 7); 3-D 0.4071 (ks 3), 0.3844 (ks 5).
+        with pytest.raises(BaseError, match="too large for kernel_size"):
+            kornia.contrib.distance_transform(torch.zeros(shape, device=device), kernel_size=kernel_size, h=h)
+
+    def test_h_below_the_upper_bound_leaves_no_background_pixel_at_zero(self, device):
+        g = torch.Generator().manual_seed(0)
+        m = (torch.rand(8, 1, 23, 37, generator=g) < 0.6).float().to(device)
+        out = kornia.contrib.distance_transform(m, kernel_size=3, h=0.55)
+        assert not ((m == 0) & (out <= 0)).any()
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         input2d = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)
         op = kornia.contrib.distance_transform

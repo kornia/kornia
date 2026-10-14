@@ -51,6 +51,11 @@ class KMeans:
         seed: int | None = None,
     ) -> None:
         KORNIA_CHECK(num_clusters != 0, "num_clusters can't be 0")
+        KORNIA_CHECK(tolerance is None or tolerance >= 0, f"tolerance must be None or >= 0, got {tolerance}")
+        KORNIA_CHECK(
+            tolerance is not None or max_iterations > 0,
+            "tolerance=None needs max_iterations > 0: with max_iterations=0 the fit would never stop.",
+        )
 
         # cluster_centers should have only 2 dimensions
         if cluster_centers is not None:
@@ -61,6 +66,7 @@ class KMeans:
             )
 
         self.num_clusters = num_clusters
+        self._initial_cluster_centers = cluster_centers  # user-given start; None means sample from each fit's X
         self._cluster_centers = cluster_centers
         self.tolerance = tolerance
         self.max_iterations = max_iterations
@@ -154,25 +160,27 @@ class KMeans:
         # X should have only 2 dimensions
         KORNIA_CHECK_SHAPE(X, ["N", "D"])
 
-        if self._cluster_centers is None:
-            self._cluster_centers = self._initialise_cluster_centers(X, self.num_clusters)
+        if self._initial_cluster_centers is None:
+            current_centers = self._initialise_cluster_centers(X, self.num_clusters)
         else:
             # X and cluster_centers should have same number of columns
             KORNIA_CHECK(
-                X.shape[1] == self._cluster_centers.shape[1],
+                X.shape[1] == self._initial_cluster_centers.shape[1],
                 f"Dimensions at position 1 of X and cluster_centers do not match. \
-                {X.shape[1]} != {self._cluster_centers.shape[1]}",
+                {X.shape[1]} != {self._initial_cluster_centers.shape[1]}",
             )
+            current_centers = self._initial_cluster_centers
 
-        # X = X.to(self.device)
-        current_centers = self._cluster_centers
+        # Distances and sums run in at least float32: squared float16 distances overflow past 255.
+        work_dtype = torch.float32 if X.dtype in (torch.float16, torch.bfloat16) else X.dtype
+        X_work = X.to(work_dtype)
 
         previous_centers: torch.Tensor | None = None
         iteration: int = 0
 
         while True:
             # find distance between X and current_centers
-            distance: torch.Tensor = self._pairwise_euclidean_distance(X, current_centers)
+            distance: torch.Tensor = self._pairwise_euclidean_distance(X_work, current_centers.to(work_dtype))
 
             cluster_assignment = distance.argmin(-1)
 
@@ -189,8 +197,6 @@ class KMeans:
             # for perfectly ordinary inputs (e.g. float16 image color quantization).
             one_hot = torch.nn.functional.one_hot(cluster_assignment, num_classes=self.num_clusters)
             cluster_counts = one_hot.sum(0)
-            work_dtype = torch.float32 if X.dtype in (torch.float16, torch.bfloat16) else X.dtype
-            X_work = X.to(work_dtype)
             cluster_sums = one_hot.to(work_dtype).t() @ X_work
 
             # edge case when a certain cluster centre has no points assigned to it:
@@ -207,7 +213,7 @@ class KMeans:
 
             iteration = iteration + 1
 
-            if self.tolerance is not None and center_shift**2 < self.tolerance:
+            if self.tolerance is not None and center_shift**2 <= self.tolerance:
                 break
 
             if self.max_iterations != 0 and iteration >= self.max_iterations:
@@ -227,6 +233,7 @@ class KMeans:
             1D torch.Tensor containing cluster id assigned to each data point in x
 
         """
+        KORNIA_CHECK_SHAPE(x, ["N", "D"])
         # x and cluster_centers should have same number of columns
         KORNIA_CHECK(
             x.shape[1] == self.cluster_centers.shape[1],
@@ -234,5 +241,6 @@ class KMeans:
                 {x.shape[1]} != {self.cluster_centers.shape[1]}",
         )
 
-        distance = self._pairwise_euclidean_distance(x, self.cluster_centers)
+        work_dtype = torch.float32 if x.dtype in (torch.float16, torch.bfloat16) else x.dtype
+        distance = self._pairwise_euclidean_distance(x.to(work_dtype), self.cluster_centers.to(work_dtype))
         return distance.argmin(-1)
