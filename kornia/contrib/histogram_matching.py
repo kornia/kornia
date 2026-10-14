@@ -117,7 +117,7 @@ def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.Tensor:
     out = torch.where(torch.isnan(out) & (f0 == f1), f0, out)
     # f1 - f0 can overflow while both ends are finite: the value is then finite too, so use the weighted sum of
     # the two ends.
-    overflow = ~torch.isfinite(out) & torch.isfinite(f0) & torch.isfinite(f1) & torch.isfinite(x)
+    overflow = ~torch.isfinite(out) & torch.isfinite(f0) & torch.isfinite(f1) & torch.isfinite(x) & torch.isinf(d)
     out = torch.where(overflow, f0 * (1 - w) + f1 * w, out)
     # A point on a knot returns fp there even when the neighbouring fp is infinite (np.interp). The segment formulas
     # keep d/dx = slope at the knot; the bare fp is used only where they are NaN.

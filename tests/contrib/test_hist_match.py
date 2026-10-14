@@ -261,14 +261,19 @@ class TestHistMatch(BaseTester):
         fp = torch.tensor([1.0, -2.0, 5.0, 4.0], device=device, dtype=torch.float64, requires_grad=True)
         assert torch.autograd.gradcheck(lambda a, c: kornia.contrib.interp(a, xp, c), (x, fp))
 
-    @pytest.mark.parametrize(("half", "big"), [(torch.float32, 3e38), (torch.float16, 40000.0)])
-    def test_interp_finite_ends_give_finite_values_when_their_difference_overflows(self, half, big, device):
+    @pytest.mark.parametrize(("float_dtype", "big"), [(torch.float32, 3e38), (torch.float16, 40000.0)])
+    def test_interp_finite_ends_give_finite_values_when_their_difference_overflows(self, float_dtype, big, device):
         # f1 - f0 overflows (6e38 > float32 max, 8e4 > float16 max) but every interpolated value is finite.
-        x = torch.tensor([0.0, 0.25, 0.5, 0.75, 1.0], device=device, dtype=half)
-        xp = torch.tensor([0.0, 1.0], device=device, dtype=half)
-        fp = torch.tensor([-big, big], device=device, dtype=half)
-        out = kornia.contrib.interp(x, xp, fp)
-        assert torch.isfinite(out).all()
-        self.assert_close(out[2], torch.tensor(0.0, device=device, dtype=half))
-        assert out[0] == fp[0]
-        assert out[4] == fp[1]
+        x = torch.tensor([0.0, 0.25, 0.5, 0.75, 1.0], device=device, dtype=float_dtype)
+        xp = torch.tensor([0.0, 1.0], device=device, dtype=float_dtype)
+        out = kornia.contrib.interp(x, xp, torch.tensor([-big, big], device=device, dtype=float_dtype))
+        expected = torch.tensor([-big, -big / 2, 0.0, big / 2, big], device=device, dtype=float_dtype)
+        self.assert_close(out, expected)
+
+    def test_interp_extrapolation_that_overflows_stays_infinite(self, device):
+        out = kornia.contrib.interp(
+            torch.tensor([10.0], device=device),
+            torch.tensor([0.0, 1.0], device=device),
+            torch.tensor([3e38, 3.4e38], device=device),
+        )
+        assert out.tolist() == [float("inf")]

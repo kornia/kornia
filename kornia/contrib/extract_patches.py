@@ -491,7 +491,7 @@ def _combine_integer_patches(
     values = patches.to(torch.int64).permute(0, 2, 1, 3, 4).flatten(2)
     sums = torch.zeros(B, C, Hr * Wr, dtype=torch.int64, device=patches.device).index_add_(-1, flat_index, values)
     if patches.dtype == torch.bool:
-        # The float mean of bool patches was cast back to bool: True wherever any covering patch is True.
+        # Bool patches are True wherever any covering patch is True.
         out = (sums != 0).view(B, C, Hr, Wr)
     else:
         counts = torch.zeros(Hr * Wr, dtype=torch.int64, device=patches.device)
