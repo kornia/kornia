@@ -823,7 +823,10 @@ class TestConventionsGuidedBlur(BaseTester):
         generator = torch.Generator().manual_seed(0)
         guidance = torch.randint(256, (2, 1, 9, 13), generator=generator).to(guidance_dtype)
         image = torch.randint(256, (2, 2, 9, 13), generator=generator).to(input_dtype)
-        out = guided_blur(guidance.to(device), image.to(device), 5, 100.0)
+        # torch 2.5.1 has no CPU float16 reflection-padding kernel.
+        out = guided_blur(guidance.to(device), image.to(device), 5, 100.0, border_type="constant")
         assert out.dtype == expected
-        reference = guided_blur(guidance.double(), image.double(), 5, 100.0)  # on the CPU: MPS has no float64
+        reference = guided_blur(
+            guidance.double(), image.double(), 5, 100.0, border_type="constant"
+        )  # CPU: MPS has no float64
         self.assert_close(out.cpu().double(), reference, rtol=1e-2, atol=1e-1)
