@@ -39,6 +39,54 @@ class TestSo2(BaseTester):
         with pytest.raises(TypeCheckError, match=r"So2 stores 'z'.*torch.int64"):
             So2(torch.tensor([1], device=device))
 
+    @pytest.mark.parametrize("real_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+    def test_real_z_raises_5913(self, device, real_dtype):
+        # A real z only fails inside matrix()/log()/__mul__ with torch's "imag is not implemented"; the constructor
+        # rejects it with a kornia error naming the argument and dtype.
+        if real_dtype == torch.float64 and device.type == "mps":
+            pytest.skip("MPS has no float64")
+        for z in (
+            torch.tensor([0.6, 0.8], device=device, dtype=real_dtype),
+            torch.tensor(0.5, device=device, dtype=real_dtype),
+        ):
+            with pytest.raises(TypeCheckError, match=r"So2 stores 'z' as a complex tensor.*" + str(real_dtype)):
+                So2(z)
+        with pytest.raises(TypeCheckError, match=r"So2 stores 'z'.*torch.bool"):
+            So2(torch.tensor([True], device=device))
+        with pytest.raises(TypeCheckError, match=r"So2 stores 'z'"):
+            So2(torch.nn.Parameter(torch.tensor([0.6], device=device, dtype=real_dtype)))
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_dynamo_constructor_checks_5913(self, device, torch_optimizer):
+        # the dtype check is static: it adds no graph break to a traced constructor
+        def build(real, imag):
+            return So2(torch.complex(real, imag)).matrix()
+
+        real, imag = torch.rand(2, device=device), torch.rand(2, device=device)
+        self.assert_close(torch_optimizer(build, fullgraph=True)(real, imag), build(real, imag))
+
+    @pytest.mark.parametrize("cdtype", [torch.chalf, torch.cfloat, torch.cdouble])
+    @pytest.mark.filterwarnings("ignore:ComplexHalf support is experimental")
+    def test_every_complex_dtype_is_accepted_5913(self, device, cdtype):
+        if device.type == "mps" and cdtype != torch.cfloat:
+            pytest.skip("MPS supports complex64 only")
+        z = torch.complex(torch.tensor([0.6, 0.8]), torch.tensor([0.8, 0.6])).to(cdtype).to(device)
+        s = So2(z)
+        assert s.z.dtype == cdtype
+        assert s[0].z.dtype == cdtype
+
+    def test_internal_constructions_still_build_5913(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        a = So2.exp(torch.tensor([0.3, -0.4], device=device, dtype=dtype))
+        b = So2.identity(2, device, dtype)
+        assert isinstance(a * b, So2)
+        assert isinstance(a.inverse(), So2)
+        assert isinstance(a[0], So2)
+        assert isinstance(So2.random(2, device, dtype), So2)
+        assert isinstance(So2.from_matrix(a.matrix().detach()), So2)
+        assert all(s.z.is_complex() for s in (a, a * b, a.inverse()))
+
     @pytest.mark.parametrize("cdtype", [torch.cfloat, torch.cdouble])
     def test_smoke(self, device, cdtype):
         z = torch.randn(2, 1, dtype=cdtype, device=device)
