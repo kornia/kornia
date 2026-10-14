@@ -1154,3 +1154,20 @@ class TestLightGlueBatchedPairs(BaseTester):
         out = self._forward(model, self._stack([pairs[0][0], pairs[2][0]]))
         assert out["stop"] == 2
         self._assert_pair(out, 1, singles[2], exact=False)
+
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    def test_convention_lightglue_input_without_keypoints_reads_no_pruning_threshold_5898(
+        self, device, dtype, batch_size
+    ):
+        # The pruning threshold of the device is read only once there are keypoints, so an input without any returns
+        # empty matches also on a device type without a threshold.
+        empty = {
+            "keypoints": torch.empty(batch_size, 0, 2, device=device, dtype=dtype),
+            "descriptors": torch.empty(batch_size, 0, 128, device=device, dtype=dtype),
+            "image_size": torch.tensor([[320, 240]] * batch_size, device=device),
+        }
+        model = TestLightGluePruningDtype._model(device, dtype)
+        with torch.no_grad(), unittest.mock.patch.dict(LightGlue.pruning_keypoint_thresholds, clear=True):
+            out = model({"image0": empty, "image1": dict(empty)})
+        assert out["matches0"].shape == (batch_size, 0)
+        assert [tuple(m.shape) for m in out["matches"]] == [(0, 2)] * batch_size

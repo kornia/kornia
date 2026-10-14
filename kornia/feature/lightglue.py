@@ -757,8 +757,7 @@ class LightGlue(nn.Module):
         c = max(m, n)
         do_compile = self.static_lengths and c <= max(self.static_lengths)
         do_point_pruning = self.conf.width_confidence > 0 and not do_compile
-        pruning_th = self.pruning_min_kpts(device)
-        if b > 1 and min(m, n) > 0 and do_point_pruning and c > pruning_th:
+        if b > 1 and min(m, n) > 0 and do_point_pruning and c > self.pruning_min_kpts(device):
             # Point pruning keeps a different number of points in each pair, so the pairs run one at a time.
             return self._forward_pairs(data0, data1, b)
         size0, size1 = data0.get("image_size"), data1.get("image_size")
@@ -846,6 +845,7 @@ class LightGlue(nn.Module):
 
         # GNN + final_proj + assignment
         do_early_stop = self.conf.depth_confidence > 0
+        pruning_th = self.pruning_min_kpts(device)
         if do_point_pruning:
             ind0 = torch.arange(0, m, device=device)[None].expand(b, -1)
             ind1 = torch.arange(0, n, device=device)[None].expand(b, -1)
