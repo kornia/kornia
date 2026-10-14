@@ -36,7 +36,7 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
         providers: A list of execution providers for ONNXRuntime
             (e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']).
         session_options: Optional ONNXRuntime session options for optimizing the session.
-        cache_dir: The directory where ONNX models are cached locally (only for downloading from HuggingFace).
+        cache_dir: The directory where downloaded ONNX models (``hf://`` names and URLs) are cached locally.
             Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
         target_ir_version: The target IR version to convert to.
         target_opset_version: The target OPSET version to convert to.

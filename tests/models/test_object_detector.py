@@ -108,6 +108,12 @@ class TestObjectDetector(BaseTester):
 
         assert model_path.is_file()
 
+    def test_results_from_detections_misspelt_format_5907(self, device, dtype):
+        detections = torch.zeros(1, 6, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="'xywhh' is not a valid BoundingBoxDataFormat") as excinfo:
+            kornia.contrib.object_detection.results_from_detections(detections, format="xywhh")
+        assert isinstance(excinfo.value, KeyError)
+
     def test_results_from_detections(self, device, dtype):
         # label_id, confidence, data
         detections = torch.tensor(

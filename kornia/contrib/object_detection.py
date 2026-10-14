@@ -24,6 +24,7 @@ from typing import Any, ClassVar, List, Optional, Tuple, Union
 import torch
 from torch import nn
 
+from kornia.constants import _get_by_name
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.external import PILImage as Image
 from kornia.core.external import onnx
@@ -108,7 +109,7 @@ def results_from_detections(
     KORNIA_CHECK_SHAPE(detections, ["D", "6"])
 
     if isinstance(format, str):
-        format = BoundingBoxDataFormat[format.upper()]
+        format = _get_by_name(BoundingBoxDataFormat, format, format)
 
     results: list[ObjectDetectorResult] = []
     for det in detections:

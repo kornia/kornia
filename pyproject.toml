@@ -275,7 +275,7 @@ select = [
   # "PD",   # pandas-vet. No: kornia does not use pandas
   # "PERF", # Perflint. No: PERF401 rewrites append loops as comprehensions
   # "PGH",  # pygrep-hooks. Partial: PGH004 is enabled above. No: PGH003, ty ignores the code in `type: ignore[x]`
-  # "PT",   # flake8-pytest-style. Partial: the PT rules above, and PT011 is wanted. No: PT006
+  # "PT",   # flake8-pytest-style. Partial: the PT rules above. No: PT006, PT011
   # "PTH",  # flake8-use-pathlib. No: os.path to pathlib churn
   # "Q",    # flake8-quotes. No: ruff format handles quotes
   # "SIM",  # flake8-simplify. Partial: the SIM rules above. No: SIM300, it reads names such as `H` as constants

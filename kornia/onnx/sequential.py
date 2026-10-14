@@ -40,7 +40,7 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
             If None, we assume the default input name and output name are "input" and "output" accordingly, and
             only one input and output node for each graph.
             If not None, `io_maps[0]` shall represent the `io_map` for combining the first and second ONNX models.
-        cache_dir: The directory where ONNX models are cached locally (only for downloading from HuggingFace).
+        cache_dir: The directory where downloaded ONNX models (``hf://`` names and URLs) are cached locally.
             Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
         auto_ir_version_conversion: If True, convert the models to one IR version and one OPSET version before
             combining them: IR version 9, and the highest OPSET version among the models, to which the others are
