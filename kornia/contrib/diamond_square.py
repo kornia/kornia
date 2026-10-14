@@ -62,25 +62,22 @@ def _diamond_square_seed(
     # width is always 3
     KORNIA_CHECK(height % 2 == 1 and height > 2, "Height must be odd and height bigger than 2")
 
-    res: torch.Tensor = random_fn([replicates, 1, width, height], device=device, dtype=dtype)
+    # `width` is always 3 here: rows 0 and 2 hold the corner draws, row 1 the midpoints. `height` is the odd length K.
+    res = torch.zeros([replicates, 1, width, height], device=device, dtype=dtype)
     res[..., ::2, ::2] = random_fn([replicates, 1, 2, (height + 1) // 2], device=device, dtype=dtype)
 
-    # Diamond step
-    res[..., 1, 1::2] = (res[..., ::2, :-2:2] + res[..., ::2, 2::2]).sum(dim=2) / 4.0
+    # diamond step: the centre of each cell is the mean of its four corners
+    res[..., 1, 1::2] = (res[..., 0, :-2:2] + res[..., 0, 2::2] + res[..., 2, :-2:2] + res[..., 2, 2::2]) / 4.0
 
-    # Square step
-    if width > 3:
-        res[..., 1, 2:-3:2] = (
-            res[..., 0, 2:-3:2] + res[..., 2, 2:-3:2] + res[..., 1, 0:-4:2] + res[..., 1, 2:-3:2]
+    # square step: a border point has three neighbours, an interior one four
+    res[..., 0, 1::2] = (res[..., 0, :-2:2] + res[..., 0, 2::2] + res[..., 1, 1::2]) / 3.0
+    res[..., 2, 1::2] = (res[..., 2, :-2:2] + res[..., 2, 2::2] + res[..., 1, 1::2]) / 3.0
+    res[..., 1, 0] = (res[..., 0, 0] + res[..., 2, 0] + res[..., 1, 1]) / 3.0
+    res[..., 1, -1] = (res[..., 0, -1] + res[..., 2, -1] + res[..., 1, -2]) / 3.0
+    if height > 3:
+        res[..., 1, 2:-1:2] = (
+            res[..., 0, 2:-1:2] + res[..., 2, 2:-1:2] + res[..., 1, 1:-2:2] + res[..., 1, 3::2]
         ) / 4.0
-
-    tmp1 = res[..., 2, 0]
-    res[..., 1, 0] = res[..., 0, 0] + res[..., 1, 1] + tmp1
-    res[..., 1, -1] = res[..., -1, -1] + res[..., 1, -2] + tmp1
-    tmp2 = res[..., 1, 1::2]
-    res[..., 0, 1::2] = res[..., 0, 0:-2:2] + res[..., 0, 2::2] + tmp2
-    res[..., 2, 1::2] = res[..., 2, 0:-2:2] + res[..., 2, 2::2] + tmp2
-    res = res / 3.0
 
     if transpose:
         res = res.transpose(2, 3)
@@ -139,18 +136,19 @@ def _one_diamond_one_square(
 
     random_img: torch.Tensor = random_fn(new_img.size(), device=img.device, dtype=img.dtype) * random_scale
 
-    # TODO(edgar): use kornia.filter2d
+    # the diamond and square centres are fixed by index parity, not by the sign of the filtered values
+    rows = torch.arange(new_img.shape[-2], device=img.device).view(-1, 1) % 2
+    cols = torch.arange(new_img.shape[-1], device=img.device).view(1, -1) % 2
+    diamond_centers = ((rows == 1) & (cols == 1)).to(img.dtype)
+    square_centers = ((rows + cols) == 1).to(img.dtype)
+
     # diamond
     diamond_regions = filter2d(new_img, diamond_kernel)
-    diamond_centers = (diamond_regions > 0).to(img.dtype)
-    # TODO (anguelos) make sure diamond_regions*diamond_centers is needed
     new_img = new_img + (1 - random_scale) * diamond_regions * diamond_centers + diamond_centers * random_img
 
-    # square
-    square_regions = filter2d(new_img, square_kernel) * pad_compencate
-    square_centers = (square_regions > 0).to(img.dtype)
-
-    # TODO (anguelos) make sure square_centers*square_regions is needed
+    # square: zero padding + 4/3 turns a border point's three-neighbour sum into their mean
+    # ('reflect' would duplicate a neighbour)
+    square_regions = filter2d(new_img, square_kernel, border_type="constant") * pad_compencate
     return new_img + square_centers * random_img + (1 - random_scale) * square_centers * square_regions
 
 
@@ -187,7 +185,7 @@ def diamond_square(
         random_scale = random_scale.expand([output_size[0] * output_size[1], 1, 1, 1])
     else:
         KORNIA_CHECK_IS_TENSOR(random_scale)
-        random_scale = random_scale.view(-1, 1, 1, 1)
+        random_scale = random_scale.to(device=device, dtype=dtype).view(-1, 1, 1, 1)
         random_scale = random_scale.expand([output_size[0], output_size[1], 1, 1])
         random_scale = random_scale.reshape([-1, 1, 1, 1])
 
@@ -195,7 +193,7 @@ def diamond_square(
         roughness = torch.Tensor([[[[roughness]]]]).to(device, dtype)
         roughness = roughness.expand([output_size[0] * output_size[1], 1, 1, 1])
     else:
-        roughness = roughness.view(-1, 1, 1, 1)
+        roughness = roughness.to(device=device, dtype=dtype).view(-1, 1, 1, 1)
         roughness = roughness.expand([output_size[0], output_size[1], 1, 1])
         roughness = roughness.reshape([-1, 1, 1, 1])
 
@@ -228,6 +226,6 @@ def diamond_square(
 
     # F.normalize the output in the range using min-max
     if normalize_range is not None:
-        min_val, max_val = normalize_range
+        min_val, max_val = float(normalize_range[0]), float(normalize_range[1])
         img = normalize_min_max(img.contiguous(), min_val, max_val)
     return img
