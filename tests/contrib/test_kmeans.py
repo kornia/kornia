@@ -340,6 +340,40 @@ class TestKMeans(BaseTester):
         km.fit(p)
         assert km.cluster_centers.tolist() == [[205, 205], [4, 4]]
 
+    def test_predict_int64_values_above_2_pow_24_stay_exact(self, device):
+        # Integer data against integer centres is compared in int64: float32 maps both centres to 16777216.
+        c = torch.tensor([[16777216], [16777217]], dtype=torch.int64, device=device)
+        x = torch.tensor([[16777217]], dtype=torch.int64, device=device)
+        assert kornia.contrib.KMeans(2, c, tolerance=None, max_iterations=1).predict(x).tolist() == [1]
+
+    def test_predict_integer_squared_distances_are_not_rounded_through_float32_sqrt(self, device):
+        # Squared distances 10**8 and 10**8 + 1 have the same float32 square root; the nearest centre is index 1.
+        c = torch.tensor([[10000, 1], [10000, 0]], dtype=torch.int64, device=device)
+        x = torch.tensor([[0, 0]], dtype=torch.int64, device=device)
+        assert kornia.contrib.KMeans(2, c, tolerance=None, max_iterations=1).predict(x).tolist() == [1]
+
+    def test_fit_int64_mean_above_2_pow_24_stays_exact(self, device):
+        # The sum 33554434 is not a float32 value (it rounds to 33554436), so a float mean would give 16777218.
+        probe = torch.div(
+            torch.tensor([33554434], device=device), torch.tensor([2], device=device), rounding_mode="trunc"
+        )
+        if probe.item() != 16777217:
+            pytest.skip("this torch/device computes int64 trunc division through float32 (MPS, torch 2.5)")
+        x = torch.tensor([[16777217], [16777217], [5]], dtype=torch.int64, device=device)
+        c = torch.tensor([[16777217], [5]], dtype=torch.int64, device=device)
+        km = kornia.contrib.KMeans(2, c, tolerance=None, max_iterations=1)
+        km.fit(x)
+        assert km.cluster_centers.tolist() == [[16777217], [5]]
+
+    def test_integer_zero_tolerance_shift_does_not_wrap(self, device):
+        # The first update gives [[16], [208]]; its squared shifts (16**2, 80**2) are 0 mod 256, so a uint8 shift
+        # stopped the fit there, although the next update gives [[37], [240]].
+        x = torch.tensor([[0], [32], [80], [240], [240], [240], [240]], dtype=torch.uint8, device=device)
+        c = torch.tensor([[0], [128]], dtype=torch.uint8, device=device)
+        km = kornia.contrib.KMeans(2, c, tolerance=0.0)
+        km.fit(x)
+        assert km.cluster_centers.tolist() == [[37], [240]]
+
     def test_negative_max_iterations_raises(self):
         with pytest.raises(BaseError, match="max_iterations must be >= 0"):
             kornia.contrib.KMeans(3, None, tolerance=None, max_iterations=-1)

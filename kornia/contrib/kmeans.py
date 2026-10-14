@@ -119,12 +119,19 @@ class KMeans:
 
     @staticmethod
     def _work_dtype(*tensors: torch.Tensor) -> torch.dtype:
-        """Dtype for distances and sums: the promoted dtype, and at least float32 (half types and integers lift)."""
+        """Dtype for distances and sums: the promoted dtype.
+
+        Half types lift to float32. When every tensor is integer the work dtype is int64, which is exact (float32
+        would merge integers above 2**24, and uint8 arithmetic wraps); squared differences of values within +-2**31
+        fit in int64.
+        """
         dtype = tensors[0].dtype
         for t in tensors[1:]:
             dtype = torch.promote_types(dtype, t.dtype)
-        if dtype in (torch.float16, torch.bfloat16) or not dtype.is_floating_point:
+        if dtype in (torch.float16, torch.bfloat16):
             return torch.float32
+        if not dtype.is_floating_point:
+            return torch.int64
         return dtype
 
     def _initialise_cluster_centers(self, X: torch.Tensor, num_clusters: int) -> torch.Tensor:
@@ -158,6 +165,10 @@ class KMeans:
         A = data1[:, None, ...]
         # 1*C*D
         B = data2[None, ...]
+        if not A.dtype.is_floating_point and not B.dtype.is_floating_point:
+            # Integer vectors: the squared distance is exact in int64, whereas its square root would round to float32.
+            # The caller only takes an argmin, which the square root does not change.
+            return (A - B).pow(2).sum(dim=-1)
         return euclidean_distance(A, B)
 
     def fit(self, X: torch.Tensor) -> None:
@@ -208,19 +219,31 @@ class KMeans:
             # for perfectly ordinary inputs (e.g. float16 image color quantization).
             one_hot = torch.nn.functional.one_hot(cluster_assignment, num_classes=self.num_clusters)
             cluster_counts = one_hot.sum(0)
-            cluster_sums = one_hot.to(work_dtype).t() @ X_work
+            if work_dtype.is_floating_point:
+                cluster_sums = one_hot.to(work_dtype).t() @ X_work
+            else:
+                # integer sums are exact with scatter_add_; MPS lacks integer matmul and index_add_ on torch 2.5
+                index = cluster_assignment[:, None].expand(-1, X_work.shape[1])
+                cluster_sums = X_work.new_zeros(self.num_clusters, X_work.shape[1]).scatter_add_(0, index, X_work)
 
             # edge case when a certain cluster centre has no points assigned to it:
             # just choose a random point as its update. A random index is drawn for every
             # cluster unconditionally and masked with torch.where, so the branch never depends
             # on a data-dependent Python bool (no host sync either way).
             empty_mask = (cluster_counts == 0).unsqueeze(1)
-            means = cluster_sums / cluster_counts.clamp(min=1).unsqueeze(1).to(work_dtype)
+            safe_counts = cluster_counts.clamp(min=1).unsqueeze(1).to(work_dtype)
+            if work_dtype.is_floating_point:
+                means = cluster_sums / safe_counts
+            else:
+                # exact integer mean, rounded toward zero like the cast back to an integer X.dtype
+                means = torch.div(cluster_sums, safe_counts, rounding_mode="trunc")
             random_points = X_work[torch.randint(len(X), (self.num_clusters,), device=X.device)]
             current_centers = torch.where(empty_mask, random_points, means).to(X.dtype)
 
             # sum of distance of how much the newly computed clusters have moved from their previous positions
-            center_shift = torch.sum(torch.sqrt(torch.sum((current_centers - previous_centers) ** 2, dim=1)))
+            # (in the work dtype: subtracting and squaring in a narrow integer dtype wraps)
+            shift = current_centers.to(work_dtype) - previous_centers.to(work_dtype)
+            center_shift = torch.sum(torch.sqrt(torch.sum(shift**2, dim=1)))
 
             iteration = iteration + 1
 
