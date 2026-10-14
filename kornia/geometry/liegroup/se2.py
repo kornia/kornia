@@ -103,7 +103,9 @@ class Se2(nn.Module):
           reads it back, so ``matrix_exp(hat(v))`` equals ``exp(v).matrix()``.
         - Module conversions follow :class:`~kornia.geometry.liegroup.So2`'s dtype policy for the rotation and
           PyTorch's native policy for the translation. A bfloat16 cast changes the translation precision while
-          keeping the rotation's existing complex precision; both follow any requested device move.
+          keeping the rotation's existing complex precision; both follow any requested device move. Building a
+          pose from bfloat16 values (``exp``, ``identity``, ``random``, ``from_matrix`` or ``trans*``) raises
+          ``TypeCheckError``, as for ``So2``.
 
     Example:
         >>> so2 = So2.identity(1)
