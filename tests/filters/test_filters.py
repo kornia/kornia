@@ -56,6 +56,8 @@ from kornia.filters import (
     get_spatial_gradient_kernel3d,
     laplacian,
     laplacian_1d,
+    motion_blur,
+    motion_blur3d,
     spatial_gradient,
     spatial_gradient3d,
 )
@@ -2650,3 +2652,90 @@ class TestConventionsKernels(BaseTester):
         expected[..., -1] = 0.0
         self.assert_close(kernel, expected)
         assert int((kernel == 0).sum()) == (2 if ndim == 1 else 4)
+
+
+class TestEmptyBatchPerSampleKernel(BaseTester):
+    """An empty batch with an empty per-sample kernel, sigma or angle returns an empty output (#4429)."""
+
+    # The first parameter after the image reaches the convolution weight, so its gradient must be connected.
+    @pytest.mark.parametrize(
+        ("op", "image_shape", "param_shapes", "expected_shape"),
+        [
+            pytest.param(lambda x, k: filter2d(x, k, "constant"), (0, 3, 9, 13), [(0, 3, 5)], (0, 3, 9, 13), id="2d"),
+            pytest.param(
+                lambda x, k: filter2d(x, k, "constant", True, "valid", "conv"),
+                (0, 3, 9, 13),
+                [(0, 3, 5)],
+                (0, 3, 7, 9),
+                id="2d-valid",
+            ),
+            pytest.param(
+                lambda x, kx, ky: filter2d_separable(x, kx, ky, "constant", padding="valid"),
+                (0, 3, 9, 13),
+                [(0, 5), (0, 3)],
+                (0, 3, 7, 9),
+                id="separable",
+            ),
+            pytest.param(
+                lambda x, k: filter3d(x, k, "constant", True),
+                (0, 2, 5, 9, 13),
+                [(0, 3, 3, 5)],
+                (0, 2, 5, 9, 13),
+                id="3d",
+            ),
+            pytest.param(
+                lambda x, s: gaussian_blur2d(x, (3, 5), s, "constant"),
+                (0, 3, 9, 13),
+                [(0, 2)],
+                (0, 3, 9, 13),
+                id="gaussian",
+            ),
+            pytest.param(
+                lambda x, d, a: motion_blur(x, 3, a, d, "constant"),
+                (0, 3, 9, 13),
+                [(0,), (0,)],
+                (0, 3, 9, 13),
+                id="motion",
+            ),
+            pytest.param(
+                lambda x, d, a: motion_blur3d(x, 3, a, d, "constant"),
+                (0, 2, 5, 9, 13),
+                [(0,), (0, 3)],
+                (0, 2, 5, 9, 13),
+                id="motion3d",
+            ),
+            pytest.param(
+                lambda x, d, a: motion_blur3d(x, 3, a, d, "constant", mode="bilinear"),
+                (0, 2, 5, 9, 13),
+                [(0,), (0, 3)],
+                (0, 2, 5, 9, 13),
+                id="motion3d-bilinear",
+            ),
+        ],
+    )
+    def test_empty_batch_4429(self, op, image_shape, param_shapes, expected_shape, device, dtype):
+        image = torch.empty(image_shape, device=device, dtype=dtype, requires_grad=True)
+        params = [torch.empty(shape, device=device, dtype=dtype, requires_grad=True) for shape in param_shapes]
+        output = op(image, *params)
+        assert output.shape == expected_shape
+        assert output.dtype == dtype
+        assert output.device == device
+        output.sum().backward()
+        for value in (image, params[0]):
+            assert value.grad is not None
+            assert value.grad.shape == value.shape
+
+    @pytest.mark.parametrize(("op", "spatial"), [(filter2d, (9, 13)), (filter3d, (5, 9, 13))])
+    @pytest.mark.parametrize(("batch", "kernel_batch"), [(0, 2), (2, 0)])
+    def test_empty_kernel_batch_must_match_4429(self, op, spatial, batch, kernel_batch, device, dtype):
+        image = torch.empty(batch, 3, *spatial, device=device, dtype=dtype)
+        kernel = torch.empty(kernel_batch, *([3] * len(spatial)), device=device, dtype=dtype)
+        with pytest.raises(BaseError, match="kernel batch must be 1 or the input batch"):
+            op(image, kernel, "constant")
+
+    @pytest.mark.parametrize("batch", [0, 2])
+    def test_dynamo_4429(self, batch, device, dtype, torch_optimizer):
+        image = torch.rand(batch, 3, 9, 13, device=device, dtype=dtype)
+        kernel = torch.rand(batch, 3, 5, device=device, dtype=dtype) + 0.1
+        op = torch_optimizer(filter2d)
+        self.assert_close(op(image, kernel, "constant", True), filter2d(image, kernel, "constant", True))

@@ -20,7 +20,7 @@ import math
 import pytest
 import torch
 
-from kornia.core.exceptions import TypeCheckError
+from kornia.core.exceptions import BaseError, TypeCheckError
 from kornia.geometry.conversions import angle_to_rotation_matrix
 from kornia.geometry.liegroup import Se2, So2
 from kornia.geometry.vector import Vector2
@@ -137,7 +137,7 @@ class TestSo2(BaseTester):
         m = torch.rand((2, 2, 1), dtype=dtype, device=device)
         with pytest.raises(ValueError):
             assert So2.from_matrix(m)
-        with pytest.raises(Exception):
+        with pytest.raises(BaseError):
             assert So2.identity(batch_size=0)
 
     # TODO: implement me
