@@ -25,7 +25,7 @@ from kornia.geometry.solvers.affine import (
     find_affine,
 )
 
-from testing.base import BaseTester
+from testing.base import BaseTester, dynamo_is_available
 
 
 class TestFindAffine(BaseTester):
@@ -143,8 +143,6 @@ class TestFindAffine(BaseTester):
         points = torch.zeros(1, 3, 2, device=device, dtype=dtype)
         with pytest.raises(ValueError, match="weights"):
             find_affine(points, points, torch.ones(1, 2, device=device, dtype=dtype))
-        with pytest.raises(ValueError, match="non-negative"):
-            find_affine(points, points, -torch.ones(1, 3, device=device, dtype=dtype))
         with pytest.raises(ValueError, match="shape"):
             find_affine(points[:, None], points[:, None])
         other_dtype = torch.float16 if dtype == torch.float32 else torch.float32
@@ -279,6 +277,29 @@ class TestFindAffine(BaseTester):
     def test_empty_batch(self, device, dtype):
         points = torch.empty(0, 3, 2, device=device, dtype=dtype)
         assert find_affine(points, points).shape == (0, 3, 3)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason="no Dynamo on this torch/python pair")
+    def test_eager_backend_traces_weighted_fit(self, device, dtype):
+        # Weight values are not read back on the host, so a weighted fit traces as one graph. The name keeps
+        # "compile" and "dynamo" out, so the ordinary jobs run it.
+        points, target, _ = self._points(device, dtype)
+        weights = torch.tensor([[0.5, 1.0, 1.5, 2.0]], device=device, dtype=dtype)
+        torch._dynamo.reset()
+        actual = torch.compile(find_affine, backend="eager", fullgraph=True)(points, target, weights)
+        self.assert_close(actual, find_affine(points, target, weights))
+
+    def test_weighted_fit_without_host_sync(self, device, dtype):
+        if device.type != "cuda":
+            pytest.skip("Host synchronization is observable on CUDA only.")
+        points, target, _ = self._points(device, dtype)
+        weights = torch.ones(1, 4, device=device, dtype=dtype)
+        find_affine(points, target, weights)  # lazy CUDA and cuBLAS initialization may synchronize
+        previous = torch.cuda.get_sync_debug_mode()
+        torch.cuda.set_sync_debug_mode("error")
+        try:
+            find_affine(points, target, weights)
+        finally:
+            torch.cuda.set_sync_debug_mode(previous)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         points, target, _ = self._points(device, dtype)

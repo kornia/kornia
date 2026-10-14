@@ -51,8 +51,8 @@ def _prepare_weights(weights: Optional[torch.Tensor], points: torch.Tensor, batc
         raise ValueError("weights and points must be on the same device.")
     if not weights.is_floating_point():
         raise TypeError("weights must be a floating point tensor.")
-    if not bool(torch.isfinite(weights).all()) or bool((weights < 0).any()):
-        raise ValueError("weights must be finite and non-negative.")
+    # Weight values are not checked: reading them back would sync the host on accelerators, twice per call in RANSAC's
+    # local optimization, and break fullgraph compilation. The contract is in find_affine's docstring.
     return weights
 
 
@@ -192,8 +192,9 @@ def find_affine(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[
     Args:
         points1: Source points with shape :math:`(B, N, 2)`, where :math:`N \geq 3`.
         points2: Destination points with shape :math:`(B, N, 2)`.
-        weights: Optional non-negative finite correspondence weights with shape
-            :math:`(B, N)`.
+        weights: Optional correspondence weights with shape :math:`(B, N)`. They must be
+            finite and non-negative; other values are not detected and give undefined
+            results. Only relative weights matter.
 
     Returns:
         Homogeneous affine transformations with shape :math:`(B, 3, 3)`. Degenerate
