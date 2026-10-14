@@ -83,16 +83,17 @@ precision, so the table says nothing about those backends.
    * - ``kornia.geometry.homography``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 11 / 16
+     - 10 / 16
      - The DLT solvers run (``_torch_svd_cast`` promotes the SVD to float32) but miss the clean-point accuracy
        checks, including the iterated and line-based variants.
    * - ``kornia.geometry.liegroup``
+     - ✅ Yes
      - ⚠️ Partial
-     - ⚠️ Partial
-     - 4 / 130
-     - ``So2`` and ``Se2`` store complex tensors; float16 inverses are computed in complex64. PyTorch has no
-       complex bfloat16 dtype, so most bfloat16 ``So2`` / ``Se2`` tests raise (119 entries). ``So3`` and ``Se3``
-       miss a few composition, point-transform and orthogonality accuracy checks.
+     - 0 / 0
+     - ``So3`` and ``Se3`` compute ``matrix()``, composition and point transforms in float32 for float16/bfloat16
+       inputs and return the input dtype. ``So2`` and ``Se2`` store complex tensors; float16 inverses are computed
+       in complex64. PyTorch has no complex bfloat16 dtype, so building a bfloat16 ``So2`` or ``Se2`` raises
+       ``TypeCheckError``, while ``.bfloat16()`` on a built one keeps the rotation's complex precision.
    * - ``kornia.geometry.solvers``
      - ⚠️ Partial
      - ⚠️ Partial
@@ -107,7 +108,7 @@ precision, so the table says nothing about those backends.
    * - ``kornia.geometry.conversions``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 72 / 60
+     - 71 / 65
      - Angle-axis, quaternion and rotation-matrix round trips lose accuracy (including ``tests/integration``).
    * - ``kornia.geometry.ransac``
      - ⚠️ Partial
@@ -117,8 +118,9 @@ precision, so the table says nothing about those backends.
    * - ``kornia.geometry`` (other)
      - ⚠️ Partial
      - ⚠️ Partial
-     - 8 / 17
-     - Accuracy in boxes, depth and line utilities; a bfloat16 ``NamedPose`` of an ``Se2`` pose cannot be built (``So2`` stores a complex number).
+     - 7 / 14
+     - Accuracy of the box transforms and depth utilities. A bfloat16 ``NamedPose`` of an ``Se2`` pose raises as
+       ``Se2`` does.
    * - ``kornia.image``
      - ⚠️ Partial
      - ⚠️ Partial
@@ -178,8 +180,9 @@ Eight of the CUDA float32 failures are cuDNN TF32 accuracy misses in convolution
 (`#4778 <https://github.com/kornia/kornia/issues/4778>`_); the other 14 are tests that assume CPU behavior
 (`#4779 <https://github.com/kornia/kornia/issues/4779>`_).
 
-Reproduce a CPU half-precision row in that environment (the manifest header pins the OS, architecture, Python and
-PyTorch versions) with:
+The manifests now pin PyTorch 2.14.0, so the CPU half-precision rows below are not reproducible from them. Verify the
+current profiles on Linux x86_64, Python 3.11 and PyTorch 2.14.0 (the manifest header pins the OS, architecture, Python
+and PyTorch versions) with:
 
 .. code-block:: bash
 

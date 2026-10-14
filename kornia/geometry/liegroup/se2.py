@@ -26,6 +26,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.core.exceptions import DeviceError, TypeCheckError
 from kornia.core.utils import register_module_state
 from kornia.geometry.liegroup.so2 import So2
 from kornia.geometry.liegroup.so3 import _so3_small_angle_coefficients
@@ -43,6 +44,38 @@ def _check_se2_r_t_shape(r: So2, t: torch.Tensor) -> None:
     else:
         raise ValueError(
             f"Invalid input, both the inputs should be either batched or unbatched. Got: {r.z.shape} and {t.shape}"
+        )
+
+
+def _check_se2_r_t_dtype_device(r: So2, t: torch.Tensor) -> None:
+    """Reject a translation the rotation's methods cannot combine with: another dtype or another device."""
+    r_dtype = r.z.real.dtype
+    # ``.bfloat16()`` keeps the complex rotation's precision (PyTorch has no complex bfloat16) and casts the
+    # translation, so a bfloat16 translation beside a complex rotation is the module's own converted state.
+    if t.is_complex():
+        raise TypeCheckError(
+            f"Se2 translation must be a real floating-point tensor; got {t.dtype}.",
+            actual_type=t.dtype,
+        )
+    if not t.is_floating_point():
+        # register_module_state keeps an existing nn.Parameter as given, so it cannot reject an integer one
+        raise TypeCheckError(
+            f"Se2 stores 'translation' as module state, which needs a floating-point tensor; got {t.dtype}. "
+            "Cast it first, for example with `.float()`.",
+            actual_type=t.dtype,
+        )
+    if t.dtype not in (r_dtype, torch.bfloat16):
+        raise TypeCheckError(
+            f"Se2 translation must have the dtype of its rotation, {r_dtype} (z is {r.z.dtype}); got {t.dtype}. "
+            "Cast one of them first, for example with `.to(dtype)`.",
+            actual_type=t.dtype,
+            expected_type=r_dtype,
+        )
+    if t.device != r.z.device:
+        raise DeviceError(
+            f"Se2 translation must be on the device of its rotation, {r.z.device}; got {t.device}.",
+            actual_devices=[r.z.device, t.device],
+            expected_device=r.z.device,
         )
 
 
@@ -70,7 +103,9 @@ class Se2(nn.Module):
           reads it back, so ``matrix_exp(hat(v))`` equals ``exp(v).matrix()``.
         - Module conversions follow :class:`~kornia.geometry.liegroup.So2`'s dtype policy for the rotation and
           PyTorch's native policy for the translation. A bfloat16 cast changes the translation precision while
-          keeping the rotation's existing complex precision; both follow any requested device move.
+          keeping the rotation's existing complex precision; both follow any requested device move. Building a
+          pose from bfloat16 values (``exp``, ``identity``, ``random``, ``from_matrix`` or ``trans*``) raises
+          ``TypeCheckError``, as for ``So2``.
 
     Example:
         >>> so2 = So2.identity(1)
@@ -92,10 +127,16 @@ class Se2(nn.Module):
         Args:
             rotation: So2 group encompassing a rotation.
             translation: translation torch.Tensor with the shape of :math:`(B, 2)`, or a Vector2 wrapping one; the
-                tensor is what gets stored.
+                tensor is what gets stored. It must have the rotation's dtype (``z``'s real dtype) and device;
+                a bfloat16 translation is also accepted beside a complex32, complex64 or complex128 rotation, which
+                is what ``.bfloat16()`` leaves (PyTorch has no complex bfloat16). Every method then reads the
+                translation at the rotation's precision, and ``inverse`` and ``g * g`` return a translation of the
+                rotation's real dtype.
 
         Raises:
-            TypeCheckError: if the translation is an integer or bool tensor.
+            TypeCheckError: if the translation is an integer, bool or complex tensor (an ``nn.Parameter`` too), or its
+                dtype differs from the rotation's (``log`` and the other methods cannot combine them).
+            DeviceError: if the translation is on another device than the rotation.
 
         Example:
             >>> so2 = So2.identity(1)
@@ -114,6 +155,7 @@ class Se2(nn.Module):
             raise TypeError(f"translation type is {type(translation)}")
         _t_data = translation.data if isinstance(translation, Vector2) else translation
         _check_se2_r_t_shape(rotation, _t_data)  # TODO remove
+        _check_se2_r_t_dtype_device(rotation, _t_data)
         self._translation: torch.Tensor
         self._rotation: So2 = rotation
         register_module_state(self, "_translation", _t_data)
@@ -128,7 +170,9 @@ class Se2(nn.Module):
         so2 = self.so2
         t = self.t
         _r = so2 * right.so2
-        _t = t + so2 * right.t
+        # the rotation's real dtype: beside a complex32 rotation, a bfloat16 translation (what ``.bfloat16()``
+        # leaves) would otherwise be promoted to float32, which the constructor rejects
+        _t = (t + so2 * right.t).to(_r.z.real.dtype)
         return Se2(_r, _t)
 
     @overload
@@ -250,7 +294,8 @@ class Se2(nn.Module):
         row0 = torch.stack((a, half_theta), -1)
         row1 = torch.stack((-half_theta, a), -1)
         V_inv = torch.stack((row0, row1), -2)
-        upsilon = V_inv @ self.t[..., None]
+        # the translation is read at the rotation's precision, so a bfloat16 translation beside a wider rotation works
+        upsilon = V_inv @ self.t.to(theta.dtype)[..., None]
         return torch.stack((upsilon[..., 0, 0], upsilon[..., 1, 0], theta), -1)
 
     @staticmethod
@@ -350,7 +395,8 @@ class Se2(nn.Module):
                      [0., 0., 1.]]], grad_fn=<CopySlices>)
 
         """
-        rt = torch.cat((self.r.matrix(), self.t[..., None]), -1)
+        r_matrix = self.r.matrix()
+        rt = torch.cat((r_matrix, self.t.to(r_matrix.dtype)[..., None]), -1)
         rt_3x3 = F.pad(rt, (0, 0, 0, 1))  # add last row torch.zeros
         rt_3x3[..., -1, -1] = 1.0
         return rt_3x3
@@ -391,7 +437,8 @@ class Se2(nn.Module):
 
         """
         r_inv: So2 = self.r.inverse()
-        return Se2(r_inv, r_inv * (-1 * self.t))
+        # the rotation's real dtype, as in ``__mul__``
+        return Se2(r_inv, (r_inv * (-1 * self.t)).to(r_inv.z.real.dtype))
 
     @classmethod
     def random(

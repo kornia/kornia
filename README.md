@@ -101,11 +101,11 @@ covers CUDA or MPS half precision.
 | `kornia.geometry.camera` | ⚠️ | ⚠️ | 13 / 23 | Pinhole `cam2pixel`/`pixel2cam` consistency, distortion round trips, `StereoCamera` reprojection; 12 bfloat16 entries are a test-side dtype assertion |
 | `kornia.geometry.calibration` | ⚠️ | ⚠️ | 13 / 12 | `solve_pnp_dlt` rejects half inputs (float32/float64 only); `undistort_points` misses its OpenCV reference values |
 | `kornia.geometry.epipolar` | ⚠️ | ⚠️ | 41 / 41 | `find_fundamental`, `find_essential`, `decompose_essential_matrix`, `motion_from_essential*` and `KRt_from_projection` raise `NotImplementedError`: CPU `lu`, `eigh` and QR have no half kernels |
-| `kornia.geometry.homography` | ⚠️ | ⚠️ | 11 / 16 | The DLT solvers run (SVD is cast to float32) but miss the clean-point accuracy checks |
+| `kornia.geometry.homography` | ⚠️ | ⚠️ | 10 / 16 | The DLT solvers run (SVD is cast to float32) but miss the clean-point accuracy checks |
 | `kornia.geometry.liegroup` | ⚠️ | ⚠️ | 4 / 130 | `So2`/`Se2` store complex tensors; float16 inverses are computed in complex64. PyTorch has no complex bfloat16 dtype, so most bfloat16 `So2`/`Se2` tests raise (119 entries); `So3`/`Se3` miss a few composition, point-transform and orthogonality accuracy checks |
 | `kornia.geometry.solvers` | ⚠️ | ⚠️ | 1 / 1 | `solve_quartic` accuracy on random quartics |
 | `kornia.geometry.subpix` | ⚠️ | ⚠️ | 14 / 12 | `ConvSoftArgmax3d` raises (CPU `avg_pool3d` has no half kernel); the rest are accuracy |
-| `kornia.geometry.conversions` | ⚠️ | ⚠️ | 72 / 60 | Angle-axis, quaternion and rotation-matrix round trips lose accuracy |
+| `kornia.geometry.conversions` | ⚠️ | ⚠️ | 71 / 65 | Angle-axis, quaternion and rotation-matrix round trips lose accuracy |
 | `kornia.geometry.ransac` | ⚠️ | ⚠️ | 4 / 4 | The essential and fundamental models raise through the epipolar solvers |
 | `kornia.geometry` (other) | ⚠️ | ⚠️ | 8 / 17 | Accuracy in boxes, depth and line utilities; bfloat16 `NamedPose` construction raises |
 | `kornia.image` | ⚠️ | ⚠️ | 4 / 4 | `draw_convex_polygon` fill accuracy |
@@ -131,7 +131,8 @@ covers CUDA or MPS half precision.
 Pass% = passed ÷ (passed + failed). The CPU rows are the scheduled `main` CI jobs (Linux x86_64, Python 3.11,
 PyTorch 2.9.1, no `--runslow`). In the half jobs, *Failed* is the manifest's entry count: CI reports those tests as
 strict xfails, and it fails if any of them passes or fails differently. Tests marked `xfail` in the source are
-excluded from every row. Reproduce a CPU half row in that environment with
+excluded from every row. The manifests now pin PyTorch 2.14.0, so the half rows above are not reproducible from them. Verify
+the current profiles on Linux x86_64, Python 3.11 and PyTorch 2.14.0 with
 `KORNIA_TEST_OPTIMIZER= pixi run test-module tests/ --verify-known-failures --known-failure-profile=cpu-float16`
 (or `cpu-bfloat16`), and the baseline with `pixi run test-f32`. `pixi run test-half` is an unseeded sweep of both
 dtypes whose counts can drift slightly from the manifests. The CUDA rows are a local run, not CI (RTX 4090,

@@ -52,13 +52,13 @@ class TestQuaternion(BaseTester):
         self.assert_close(q1, q2)
 
     def test_init_fail(self, device, dtype):
-        with pytest.raises(Exception):
+        with pytest.raises(TypeError):
             _ = Quaternion("q")
 
-        with pytest.raises(Exception):
+        with pytest.raises(TypeError):
             _ = Quaternion([1, 0, 0, 0])
 
-        with pytest.raises(Exception):
+        with pytest.raises(TypeError):
             _ = Quaternion(1, [0, 0, 0])
 
     def test_constructor_scalar_tensre(self, device, dtype):

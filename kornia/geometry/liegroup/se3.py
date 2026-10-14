@@ -19,18 +19,50 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py
 from __future__ import annotations
 
-from typing import Optional, Union
+from typing import Optional, Union, overload
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
+from kornia.core.exceptions import DeviceError, TypeCheckError
 from kornia.core.utils import register_module_state
-from kornia.geometry.liegroup.so3 import So3, _so3_small_angle_coefficients
+from kornia.geometry.liegroup.so3 import So3, _so3_rotate, _so3_small_angle_coefficients
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
+
+
+def _check_se3_r_t_dtype_device(r: Quaternion | So3, t: torch.Tensor) -> None:
+    """Reject a translation the rotation's methods cannot combine with: another dtype or another device."""
+    q = r.q if isinstance(r, So3) else r
+    q_data = q.data
+    if t.is_complex():
+        raise TypeCheckError(
+            f"Se3 translation must be a real floating-point tensor; got {t.dtype}.",
+            actual_type=t.dtype,
+        )
+    if not t.is_floating_point():
+        # register_module_state keeps an existing nn.Parameter as given, so it cannot reject an integer one
+        raise TypeCheckError(
+            f"Se3 stores 'translation' as module state, which needs a floating-point tensor; got {t.dtype}. "
+            "Cast it first, for example with `.float()`.",
+            actual_type=t.dtype,
+        )
+    if t.dtype != q_data.dtype:
+        raise TypeCheckError(
+            f"Se3 translation must have the dtype of its rotation, {q_data.dtype}; got {t.dtype}. "
+            "Cast one of them first, for example with `.to(dtype)`.",
+            actual_type=t.dtype,
+            expected_type=q_data.dtype,
+        )
+    if t.device != q_data.device:
+        raise DeviceError(
+            f"Se3 translation must be on the device of its rotation, {q_data.device}; got {t.device}.",
+            actual_devices=[q_data.device, t.device],
+            expected_device=q_data.device,
+        )
 
 
 class Se3(nn.Module):
@@ -55,6 +87,9 @@ class Se3(nn.Module):
         - ``state_dict()``, ``load_state_dict()`` and module device/dtype conversions include both the rotation
           and translation. Rotation state follows :class:`~kornia.geometry.quaternion.Quaternion`'s
           buffer/parameter convention.
+        - ``a * b`` and ``g * p`` compute in float32 for float16/bfloat16 inputs and return the input dtype,
+          rounding :math:`R p + t` once; ``matrix()`` and ``inverse()`` take the rotation from
+          :class:`~kornia.geometry.liegroup.So3`, which does the same.
 
     Example:
         >>> q = Quaternion.identity()
@@ -76,10 +111,12 @@ class Se3(nn.Module):
             rotation: So3 group encompassing a rotation, or a Quaternion to wrap in one; it is stored as given, and
                 a non-unit quaternion stands for the rotation of its direction.
             translation: translation torch.Tensor with the shape of :math:`(B, 3)`, or a Vector3 wrapping one; the
-                tensor is what gets stored.
+                tensor is what gets stored. It must have the rotation's dtype and device.
 
         Raises:
-            TypeCheckError: if the translation is an integer or bool tensor.
+            TypeCheckError: if the translation is an integer, bool or complex tensor (an ``nn.Parameter`` too), or its
+                dtype differs from the rotation's (``inverse``, ``adjoint`` and the other methods cannot combine them).
+            DeviceError: if the translation is on another device than the rotation.
 
         Example:
             >>> from kornia.geometry.quaternion import Quaternion
@@ -101,6 +138,7 @@ class Se3(nn.Module):
             raise TypeError(f"translation type is {type(translation)}")
         _t_data = translation.data if isinstance(translation, Vector3) else translation
         KORNIA_CHECK_SHAPE(_t_data, ["*", "3"])
+        _check_se3_r_t_dtype_device(rotation, _t_data)
         self._translation: torch.Tensor
         self._rotation: So3
         register_module_state(self, "_translation", _t_data)
@@ -117,11 +155,23 @@ class Se3(nn.Module):
 
     def _mul_se3(self, right: Se3) -> Se3:
         _r = self.r * right.r
-        _t = self.t + self.r * right.t
+        # t + R t2 is rounded once, so float16/bfloat16 sum the float32 rotated translation
+        _t = (self.t + _so3_rotate(self.r.q, right.t)).to(torch.promote_types(self.t.dtype, right.t.dtype))
         return Se3(_r, _t)
 
-    def __mul__(self, right: Se3) -> Se3 | Vector3 | torch.Tensor:
+    @overload
+    def __mul__(self, right: Se3) -> Se3: ...
+
+    @overload
+    def __mul__(self, right: Vector3) -> Vector3: ...
+
+    @overload
+    def __mul__(self, right: torch.Tensor) -> torch.Tensor: ...
+
+    def __mul__(self, right: Se3 | Vector3 | torch.Tensor) -> Se3 | Vector3 | torch.Tensor:
         """Compose two Se3 transformations, or transform points.
+
+        Both compute in float32 for float16/bfloat16 inputs and return the input dtype.
 
         Args:
             right: the other Se3 transformation, or points as a tensor or ``Vector3`` with the batch shape of the
@@ -139,7 +189,9 @@ class Se3(nn.Module):
         if isinstance(right, (Vector3, torch.Tensor)):
             _right_data = right if isinstance(right, torch.Tensor) else right.data
             KORNIA_CHECK_SHAPE(_right_data, ["*", "N"])
-            return so3 * right + t
+            # R p + t is rounded once, so float16/bfloat16 add the translation to the float32 rotated point
+            out = (_so3_rotate(so3.q, _right_data) + t).to(torch.promote_types(t.dtype, _right_data.dtype))
+            return Vector3(out) if isinstance(right, Vector3) else out
         raise TypeError(f"Unsupported type: {type(right)}")
 
     @property

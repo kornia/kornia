@@ -6,7 +6,18 @@ kornia.geometry.solvers
 
 .. currentmodule:: kornia.geometry.solvers
 
-Polynomial and homogeneous linear solvers used by the geometric estimators.
+Affine, polynomial and homogeneous linear solvers used by the geometric estimators.
+
+Affine estimation
+-----------------
+
+:func:`find_affine` fits a full 2D affine transform from at least three
+non-collinear source points and their corresponding target points. It supports
+weighted least-squares fitting and returns a source-to-target homogeneous
+``(B, 3, 3)`` matrix. Use :class:`~kornia.geometry.ransac.RANSAC` with
+``model_type="affine"`` when the correspondences contain outliers.
+
+.. autofunction:: find_affine
 
 Homogeneous Solvers
 -------------------

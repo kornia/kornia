@@ -26,9 +26,23 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.exceptions import TypeCheckError
 from kornia.core.tensor_wrapper import _unwrap
 from kornia.core.utils import is_exporting, register_module_state
 from kornia.geometry.vector import Vector2
+
+
+def _complex_rotation(real: torch.Tensor, imag: torch.Tensor) -> torch.Tensor:
+    """Build the complex ``z`` an So2 stores, rejecting bfloat16 parts, for which PyTorch has no complex dtype."""
+    if torch.bfloat16 in (real.dtype, imag.dtype):
+        # torch.complex would raise a RuntimeError that names neither So2 nor a way out
+        raise TypeCheckError(
+            "So2 stores its rotation as a complex tensor, and PyTorch has no complex bfloat16 dtype; got a bfloat16 "
+            "real or imaginary part. Build the rotation in float16, float32 or float64; `.bfloat16()` on a built So2 "
+            "or Se2 keeps the rotation's complex precision.",
+            actual_type=torch.bfloat16,
+        )
+    return torch.complex(real, imag)
 
 
 class So2(nn.Module):
@@ -43,7 +57,8 @@ class So2(nn.Module):
           ``z`` or angle is accepted and read as :math:`(B,)`. For unit :math:`z = \cos\theta + i \sin\theta`,
           ``matrix()`` is :math:`[[\cos\theta, -\sin\theta], [\sin\theta, \cos\theta]]`. Non-unit ``z = a + i b``
           is accepted and produces :math:`[[a, -b], [b, a]]`, which rotates and scales by :math:`|z|`. The complex
-          storage has no bfloat16 counterpart in PyTorch.
+          storage has no bfloat16 counterpart in PyTorch, so ``exp``, ``identity``, ``random`` and ``from_matrix``
+          raise ``TypeCheckError`` for bfloat16 values.
         - A positive angle rotates the x axis toward the y axis: counter-clockwise in a y-up frame, clockwise as
           displayed on y-down image axes. For a unit rotation, ``matrix()`` is the transpose of
           :func:`~kornia.geometry.conversions.angle_to_rotation_matrix`, which takes degrees.
@@ -75,7 +90,7 @@ class So2(nn.Module):
             z: Complex number with the shape of :math:`(B,)` or :math:`()`; :math:`(B, 1)` is read as :math:`(B,)`.
 
         Raises:
-            TypeCheckError: if ``z`` is an integer or bool tensor.
+            TypeCheckError: if ``z`` is not a complex tensor (an integer, bool or real floating-point tensor).
 
         Example:
             >>> real = torch.tensor(0.6)
@@ -87,6 +102,12 @@ class So2(nn.Module):
         """
         super().__init__()
         KORNIA_CHECK_IS_TENSOR(z)
+        if not z.is_complex():
+            # Every method reads z.real and z.imag, and a real z (or an integer one) only fails there, inside torch.
+            raise TypeCheckError(
+                f"So2 stores 'z' as a complex tensor; got {z.dtype}. Build it with `torch.complex(real, imag)`.",
+                actual_type=z.dtype,
+            )
         # check_so2_z_shape(z)
         is_scalar = len(z.shape) == 0
         is_flat = KORNIA_CHECK_SHAPE(z, ["B"], raises=False)
@@ -178,6 +199,9 @@ class So2(nn.Module):
         Args:
             theta: angle in radians of shape :math:`(B,)` or :math:`()`; :math:`(B, 1)` is squeezed to :math:`(B,)`.
 
+        Raises:
+            TypeCheckError: if ``theta`` is bfloat16, which has no complex dtype in PyTorch.
+
         Example:
             >>> v = torch.tensor([3.1415/2])
             >>> s = So2.exp(v)
@@ -192,7 +216,7 @@ class So2(nn.Module):
         is_column = KORNIA_CHECK_SHAPE(theta, ["B", "1"], raises=False)
         if not (is_scalar or is_flat or is_column):
             raise ValueError(f"Invalid input size, we expect [], [B], or [B, 1]. Got: {theta.shape}")
-        return So2(torch.complex(torch.cos(theta), torch.sin(theta)))
+        return So2(_complex_rotation(torch.cos(theta), torch.sin(theta)))
 
     def log(self) -> torch.Tensor:
         """Convert elements of lie group to elements of lie algebra.
@@ -283,6 +307,9 @@ class So2(nn.Module):
         Args:
             matrix: the rotation matrix to convert of shape :math:`(B, 2, 2)`.
 
+        Raises:
+            TypeCheckError: if ``matrix`` is bfloat16, which has no complex dtype in PyTorch.
+
         Example:
             >>> m = torch.eye(2)
             >>> s = So2.from_matrix(m)
@@ -306,7 +333,7 @@ class So2(nn.Module):
             mask_off_diag = torch.allclose(matrix[..., 0, 1], -matrix[..., 1, 0])
             if not (mask_diag and mask_off_diag):
                 raise ValueError("Invalid SO2 rotation matrix: constraints m00==m11 and m01==-m10 not met.")
-        z = torch.complex(matrix[..., 0, 0], matrix[..., 1, 0])
+        z = _complex_rotation(matrix[..., 0, 0], matrix[..., 1, 0])
         return cls(z)
 
     @classmethod
@@ -323,6 +350,9 @@ class So2(nn.Module):
             device: device to place the result on.
             dtype: dtype of the result.
 
+        Raises:
+            TypeCheckError: if ``dtype`` is bfloat16, which has no complex dtype in PyTorch.
+
         Example:
             >>> s = So2.identity(batch_size=2)
             >>> s
@@ -336,7 +366,7 @@ class So2(nn.Module):
             KORNIA_CHECK(batch_size >= 1, msg="batch_size must be positive")
             real_data = real_data.repeat(batch_size)
             imag_data = imag_data.repeat(batch_size)
-        return cls(torch.complex(real_data, imag_data))
+        return cls(_complex_rotation(real_data, imag_data))
 
     def inverse(self) -> So2:
         """Return the inverse transformation.
@@ -368,6 +398,9 @@ class So2(nn.Module):
             batch_size: the batch size of the underlying data.
             device: device to place the result on.
             dtype: dtype of the result.
+
+        Raises:
+            TypeCheckError: if ``dtype`` is bfloat16, which has no complex dtype in PyTorch.
 
         Example:
             >>> s = So2.random()

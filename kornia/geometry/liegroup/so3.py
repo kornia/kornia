@@ -19,7 +19,7 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py
 from __future__ import annotations
 
-from typing import Optional, Union
+from typing import Optional, Union, overload
 
 import torch
 from torch import nn
@@ -71,6 +71,27 @@ def _so3_small_angle_coefficients(theta: torch.Tensor) -> tuple[torch.Tensor, to
     return a, b, c
 
 
+def _computes_in_float32(dtype: torch.dtype) -> bool:
+    """Whether So3 and Se3 evaluate an operation of this result dtype in float32 and round it once."""
+    return dtype in (torch.float16, torch.bfloat16)
+
+
+def _so3_rotate(q: Quaternion, points: torch.Tensor) -> torch.Tensor:
+    """Rotate points of shape :math:`(*, 3)` by the unit direction of ``q`` as :math:`q p q^*`.
+
+    A float16/bfloat16 result is computed in float32 and returned in float32, for the caller to add to it or round it
+    once; any other dtype combination is evaluated as given.
+    """
+    KORNIA_CHECK_SHAPE(points, ["*", "3"])
+    if _computes_in_float32(torch.promote_types(q.data.dtype, points.dtype)):
+        q, points = q.to(torch.float32), points.float()
+    w = torch.zeros(*points.shape[:-1], 1, device=points.device, dtype=points.dtype)
+    quat = Quaternion(torch.cat((w, points), -1))
+    # q p q* scales p by |q|^2, so rotate by the unit direction of q
+    q = q.normalize()
+    return (q * quat * q.conj()).vec
+
+
 class So3(nn.Module):
     r"""Base class to represent the So3 group.
 
@@ -103,6 +124,8 @@ class So3(nn.Module):
         - The quaternion is registered as module state following
           :class:`~kornia.geometry.quaternion.Quaternion`'s buffer/parameter convention, including rotations
           produced by ``exp``, ``identity``, ``random``, ``from_matrix`` and group operations.
+        - ``matrix()``, ``adjoint()``, ``a * b`` and ``s * p`` compute in float32 for float16/bfloat16 inputs and
+          return the input dtype, rounding once; float32 and float64 are evaluated in their own dtype.
 
     Example:
         >>> q = Quaternion.identity()
@@ -136,8 +159,19 @@ class So3(nn.Module):
     def __getitem__(self, idx: int | slice) -> So3:
         return So3(self._q[idx])
 
-    def __mul__(self, right: So3) -> So3:
+    @overload
+    def __mul__(self, right: So3) -> So3: ...
+
+    @overload
+    def __mul__(self, right: Vector3) -> Vector3: ...
+
+    @overload
+    def __mul__(self, right: torch.Tensor) -> torch.Tensor: ...
+
+    def __mul__(self, right: So3 | Vector3 | torch.Tensor) -> So3 | Vector3 | torch.Tensor:
         """Compose two So3 transformations, or rotate points.
+
+        Both compute in float32 for float16/bfloat16 inputs and return the input dtype.
 
         Args:
             right: the other So3 transformation, or points of shape :math:`(B, 3)` as a tensor or a ``Vector3``.
@@ -148,15 +182,14 @@ class So3(nn.Module):
         """
         # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py#L98
         if isinstance(right, So3):
+            dtype = torch.promote_types(self.q.data.dtype, right.q.data.dtype)
+            if _computes_in_float32(dtype):
+                product = self.q.to(torch.float32) * right.q.to(torch.float32)
+                return So3(Quaternion(product.data.to(dtype)))
             return So3(self.q * right.q)
         if isinstance(right, (torch.Tensor, Vector3)):
             _right_data = _unwrap(right)
-            KORNIA_CHECK_SHAPE(_right_data, ["*", "3"])
-            w = torch.zeros(*right.shape[:-1], 1, device=right.device, dtype=right.dtype)
-            quat = Quaternion(torch.cat((w, _right_data), -1))
-            # q p q* scales p by |q|^2, so rotate by the unit direction of q
-            q = self.q.normalize()
-            out = (q * quat * q.conj()).vec
+            out = _so3_rotate(self.q, _right_data).to(torch.promote_types(self.q.data.dtype, _right_data.dtype))
             return Vector3(out) if isinstance(right, Vector3) else out
         raise TypeError(f"Not So3 or torch.Tensor type. Got: {type(right)}")
 
@@ -284,6 +317,8 @@ class So3(nn.Module):
             2xy+2zw & 1-2x^2-2z^2 & 2yz-2xw \\
             2xz-2yw & 2yz+2xw & 1-2x^2-2y^2\end{bmatrix}
 
+        It computes in float32 for float16/bfloat16 inputs and returns the input dtype.
+
         Example:
             >>> s = So3.identity()
             >>> m = s.matrix()
@@ -295,7 +330,9 @@ class So3(nn.Module):
         """
         # The formula below holds for a unit quaternion only. Normalising here rather than in the constructor keeps
         # the stored quaternion, possibly an nn.Parameter, as the module state.
-        q = self.q.normalize()
+        dtype = self.q.data.dtype
+        q = self.q.to(torch.float32) if _computes_in_float32(dtype) else self.q
+        q = q.normalize()
         w = q.w[..., None]
         x, y, z = q.x[..., None], q.y[..., None], q.z[..., None]
         q0 = 1 - 2 * y**2 - 2 * z**2
@@ -310,7 +347,7 @@ class So3(nn.Module):
         q1 = 2 * y * z + 2 * x * w
         q2 = 1 - 2 * x**2 - 2 * y**2
         row2 = torch.cat((q0, q1, q2), -1)
-        return torch.stack((row0, row1, row2), -2)
+        return torch.stack((row0, row1, row2), -2).to(dtype)
 
     @classmethod
     def from_matrix(cls, matrix: torch.Tensor, check_rotation: bool = False) -> So3:

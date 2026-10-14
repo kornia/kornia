@@ -39,6 +39,7 @@ from testing.base import (
     supports_replicate_padding,
     supports_topk,
 )
+from testing.default_device import default_device
 
 
 def _skip_without_half_padding(device: torch.device, dtype: torch.dtype) -> None:
@@ -100,18 +101,9 @@ class TestScaleSpaceDetector(BaseTester):
 
         # SIFTFeatureScaleSpace explicitly moves to CPU unless its device argument is given.
         constructor_kwargs = {"device": "meta"} if constructor is kornia.feature.SIFTFeatureScaleSpace else {}
-        original = torch.get_default_device()
-        try:
-            with NoDoubleOffCPU():
-                if use_set_default_device:
-                    torch.set_default_device("meta")
-                    module = constructor(**constructor_kwargs)
-                else:
-                    with torch.device("meta"):
-                        module = constructor(**constructor_kwargs)
-        finally:
-            if use_set_default_device:
-                torch.set_default_device(original)
+        # ``default_device`` leaves neither a DeviceContext mode nor a broken ``get_default_device`` behind (#5916).
+        with default_device("meta") if use_set_default_device else torch.device("meta"), NoDoubleOffCPU():
+            module = constructor(**constructor_kwargs)
 
         pyramids = [child for child in module.modules() if isinstance(child, ScalePyramid)]
         assert len(pyramids) == 1

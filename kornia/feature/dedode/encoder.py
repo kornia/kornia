@@ -91,25 +91,37 @@ class FrozenDINOv2(nn.Module):
         dinov2_vitl14.load_state_dict(dinov2_weights)
         self.amp = amp
         self.amp_dtype = amp_dtype
-        if self.amp:
-            dinov2_vitl14 = dinov2_vitl14.to(self.amp_dtype)
+        # The backbone keeps the dtype of the checkpoint; `forward` casts it to ``amp_dtype`` once it runs on CUDA.
         self.dinov2_vitl14 = [dinov2_vitl14]  # ugly hack to not show parameters to DDP
 
     def forward(self, x: torch.Tensor):  # type: ignore[no-untyped-def]
         """Run this DeDoDe module forward.
 
+        ``amp_dtype`` is CUDA mixed precision, as in the other DeDoDe components: on a CUDA input with ``amp=True``
+        the backbone and the image are cast to ``amp_dtype``. On other devices (CPU, MPS), or with ``amp=False``, the
+        backbone is cast to the dtype and device of ``x``, so the features come back in the dtype of ``x``.
+
         Args:
-            x: Input image tensor with shape :math:`(B, 3, H, W)`. Converted to ``amp_dtype`` internally.
+            x: Input image tensor with shape :math:`(B, 3, H, W)`.
 
         Returns:
             Tuple of ``([features_16], [(H//14, W//14)])`` where ``features_16`` has shape
             :math:`(B, 1024, H/14, W/14)`.
         """
         B, _C, H, W = x.shape
-        if self.dinov2_vitl14[0].device != x.device:
-            self.dinov2_vitl14[0] = self.dinov2_vitl14[0].to(x.device).to(self.amp_dtype)
+        use_amp = self.amp and x.is_cuda
+        backbone = self.dinov2_vitl14[0]
+        if use_amp:
+            if backbone.device != x.device or backbone.cls_token.dtype != self.amp_dtype:
+                # Cast on the host, then move: the half copy is what travels to the device.
+                self.dinov2_vitl14[0] = backbone.to(self.amp_dtype).to(x.device)
+            backbone_input = x.to(self.amp_dtype)
+        else:
+            if backbone.device != x.device or backbone.cls_token.dtype != x.dtype:
+                self.dinov2_vitl14[0] = backbone.to(x.device, x.dtype)
+            backbone_input = x
         with torch.inference_mode():
-            dinov2_features_16 = self.dinov2_vitl14[0].forward_features(x.to(self.amp_dtype))
+            dinov2_features_16 = self.dinov2_vitl14[0].forward_features(backbone_input)
             features_16 = dinov2_features_16["x_norm_patchtokens"].permute(0, 2, 1).reshape(B, 1024, H // 14, W // 14)
         return [features_16.clone()], [(H // 14, W // 14)]  # clone from inference mode to use in autograd
 

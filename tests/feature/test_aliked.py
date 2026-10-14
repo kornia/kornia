@@ -841,3 +841,56 @@ class TestConventionsALIKED(BaseTester):
         finally:
             pre.remove()
             hook.remove()
+
+
+class TestALIKEDEvalByDefault(BaseTester):
+    """``ALIKED()`` starts in evaluation mode: BatchNorm uses its running statistics, not those of the batch."""
+
+    @pytest.fixture(autouse=True)
+    def _kernels(self, device, dtype):
+        if not (supports_replicate_padding(device, dtype) and supports_bilinear_2d_grid_sample(device, dtype)):
+            pytest.skip("ALIKED pads with replication and samples with bilinear grid_sample, absent for this dtype")
+
+    @staticmethod
+    def _model(device, dtype):
+        # the default constructor, deliberately without .eval()
+        return ALIKED(model_name="aliked-t16").to(device, dtype)
+
+    def test_convention_aliked_starts_in_eval_mode(self, device, dtype):
+        aliked = self._model(device, dtype)
+        assert not aliked.training
+        assert not any(m.training for m in aliked.modules())
+
+    def test_convention_aliked_train_is_an_explicit_opt_in(self, device, dtype):
+        aliked = self._model(device, dtype).train()
+        assert aliked.training
+        assert all(m.training for m in aliked.modules() if isinstance(m, torch.nn.BatchNorm2d))
+
+    @pytest.mark.parametrize("method", ["forward", "extract_dense_map", "forward_laf"])
+    def test_convention_aliked_inference_leaves_the_state_unchanged(self, method, device, dtype):
+        aliked = self._model(device, dtype)
+        before = {k: v.clone() for k, v in aliked.state_dict().items()}
+        with torch.no_grad():
+            getattr(aliked, method)(torch.rand(2, 3, 64, 64, device=device, dtype=dtype))
+        after = aliked.state_dict()
+        assert before.keys() == after.keys()
+        for k, v in before.items():
+            assert torch.equal(v, after[k]), k
+
+    def test_convention_aliked_dense_map_does_not_depend_on_the_batch(self, device, dtype):
+        aliked = self._model(device, dtype)
+        a = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
+        b = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
+        with torch.no_grad():
+            feat_a, score_a = aliked.extract_dense_map(a)
+            feat_ab, score_ab = aliked.extract_dense_map(torch.cat([a, b]))
+        self.assert_close(feat_ab[:1], feat_a)
+        self.assert_close(score_ab[:1], score_a)
+
+    def test_convention_aliked_accepts_a_single_small_image(self, device, dtype):
+        # in training mode the 1 x 1 deepest map has one value per channel and BatchNorm raises
+        aliked = self._model(device, dtype)
+        with torch.no_grad():
+            feat, score = aliked.extract_dense_map(torch.rand(1, 3, 16, 16, device=device, dtype=dtype))
+        assert feat.shape[0] == 1
+        assert score.shape == (1, 1, 16, 16)

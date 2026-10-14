@@ -442,6 +442,7 @@
     "BaseModel",
     "BaseWarper",
     "CenterCrop2D",
+    "ColmapQTVecs_to_ARKitQTVecs",
     "ConvQuadInterp3d",
     "ConvSoftArgmax2d",
     "ConvSoftArgmax3d",
@@ -534,6 +535,7 @@
     "decompose_essential_matrix_no_svd",
     "deg2rad",
     "denormalize_homography",
+    "denormalize_homography3d",
     "denormalize_pixel_coordinates",
     "denormalize_pixel_coordinates3d",
     "denormalize_points_with_intrinsics",
@@ -560,6 +562,7 @@
     "essential_from_fundamental",
     "euclidean_distance",
     "euler_from_quaternion",
+    "find_affine",
     "find_essential",
     "find_fundamental",
     "find_homography_dlt",
@@ -765,6 +768,7 @@
   ],
   "kornia.geometry.conversions": [
     "ARKitQTVecs_to_ColmapQTVecs",
+    "ColmapQTVecs_to_ARKitQTVecs",
     "Rt_to_matrix4x4",
     "angle_axis_to_quaternion",
     "angle_axis_to_rotation_matrix",
@@ -783,6 +787,7 @@
     "convert_points_to_homogeneous",
     "deg2rad",
     "denormalize_homography",
+    "denormalize_homography3d",
     "denormalize_pixel_coordinates",
     "denormalize_pixel_coordinates3d",
     "denormalize_points_with_intrinsics",
@@ -923,12 +928,16 @@
   ],
   "kornia.geometry.solvers": [
     "determinant_to_polynomial",
+    "find_affine",
     "multiply_deg_one_poly",
     "multiply_deg_two_one_poly",
     "null_vector_3x4",
     "solve_cubic",
     "solve_quadratic",
     "solve_quartic"
+  ],
+  "kornia.geometry.solvers.affine": [
+    "find_affine"
   ],
   "kornia.geometry.subpix": [
     "AdaptiveQuadInterp3d",

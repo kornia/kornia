@@ -838,6 +838,32 @@ class TestRandomMosaic(BaseTester):
                 assert region.numel() > 0, (n, (x1, y1, x2, y2))
                 assert bool((region > 0).all()), (n, (x1, y1, x2, y2), out_image[n, 0])
 
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    def test_unknown_padding_mode_rejected_at_construction_5914(self, cropping_mode):
+        with pytest.raises(
+            ValueError,
+            match=r"'bogus' is not a valid padding_mode\. Expected one of 'constant', 'reflect', 'replicate'\.",
+        ):
+            RandomMosaic(padding_mode="bogus", cropping_mode=cropping_mode)
+
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection", "Constant"])
+    def test_grid_sample_padding_names_rejected_5914(self, padding_mode):
+        # `cropping_mode="resample"` used to pass grid_sample's own names through; names are matched as given.
+        with pytest.raises(ValueError, match=f"'{padding_mode}' is not a valid padding_mode"):
+            RandomMosaic(padding_mode=padding_mode, cropping_mode="resample")
+
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    @pytest.mark.parametrize("padding_mode", ["constant", "reflect", "replicate"])
+    def test_valid_padding_mode_forward_5914(self, cropping_mode, padding_mode, device, dtype):
+        image = torch.rand(2, 3, 32, 48, device=device, dtype=dtype)
+        output = RandomMosaic(
+            output_size=(32, 48),
+            p=1.0,
+            padding_mode=padding_mode,
+            cropping_mode=cropping_mode,
+        )(image)
+        assert output.shape == (2, 3, 32, 48)
+
     def test_smoke(self):
         f = RandomMosaic(data_keys=["input", "class"])
         repr = (
