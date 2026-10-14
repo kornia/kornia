@@ -203,6 +203,82 @@ class TestDeDoDeHalfPrecision(BaseTester):
         assert torch.isfinite(scores).all()
 
 
+def _tiny_dinov2(monkeypatch):
+    """Replace the 24-block ViT-L/14 and its download by a one-block ViT with the same 1024-wide patch tokens."""
+    from functools import partial
+
+    import kornia.feature.dedode.encoder as encoder_module
+    import kornia.feature.dedode.transformer as transformer_module
+
+    def vit_large(patch_size=16, **kwargs):
+        return DinoVisionTransformer(
+            patch_size=patch_size,
+            embed_dim=1024,
+            depth=1,
+            num_heads=16,
+            mlp_ratio=4,
+            block_fn=partial(NestedTensorBlock, attn_class=MemEffAttention),
+            **kwargs,
+        )
+
+    torch.manual_seed(0)
+    state = vit_large(img_size=518, patch_size=14, init_values=1.0, ffn_layer="mlp", block_chunks=0).state_dict()
+    monkeypatch.setattr(transformer_module, "vit_large", vit_large)
+    monkeypatch.setattr(encoder_module, "load_state_dict_from_url", lambda *args, **kwargs: state)
+
+
+class TestDeDoDeDefaultAmpDtype5934(BaseTester):
+    """`amp_dtype` is CUDA mixed precision in every component, so the default argument runs off CUDA."""
+
+    @staticmethod
+    def _image(device):
+        return torch.rand(1, 3, 56, 84, generator=torch.Generator().manual_seed(7)).to(device)
+
+    @pytest.mark.parametrize("entry", ["detect", "describe", "forward"])
+    def test_default_runs_with_float32(self, device, monkeypatch, entry):
+        if device.type == "cuda":
+            pytest.skip("CUDA runs the float16 mixed-precision path, which this test does not cover")
+        _tiny_dinov2(monkeypatch)
+        model = DeDoDe().to(device).eval()
+        x = self._image(device)
+        if entry == "detect":
+            kpts, scores = model.detect(x, n=8)
+            outs = (kpts, scores)
+        elif entry == "describe":
+            outs = (model.describe(x),)
+            assert outs[0].shape == (1, 256, 56, 84)
+        else:
+            kpts, scores, descs = model(x, n=8)
+            assert descs.shape == (1, 8, 256)
+            outs = (kpts, scores, descs)
+        for out in outs:
+            assert out.dtype == torch.float32
+            assert torch.isfinite(out).all()
+
+    def test_forward_is_detect_then_describe(self, device, monkeypatch):
+        if device.type == "cuda":
+            pytest.skip("CUDA runs the float16 mixed-precision path, which this test does not cover")
+        _tiny_dinov2(monkeypatch)
+        model = DeDoDe().to(device).eval()
+        x = self._image(device)
+        kpts, scores, descs = model(x, n=8)
+        kpts_d, scores_d = model.detect(x, n=8)
+        self.assert_close(kpts, dedode_denormalize_pixel_coordinates(kpts_d, 56, 84))
+        self.assert_close(scores, scores_d)
+        self.assert_close(descs, model.describe(x, kpts_d))
+
+    def test_dinov2_is_not_cast_off_cuda(self, device, monkeypatch):
+        if device.type == "cuda":
+            pytest.skip("CUDA casts the DINOv2 backbone to amp_dtype by design")
+        _tiny_dinov2(monkeypatch)
+        model = DeDoDe().to(device).eval()
+        backbone = model.descriptor.encoder.frozen_dinov2.dinov2_vitl14
+        assert backbone[0].cls_token.dtype == torch.float32
+        model.describe(self._image(device))
+        assert backbone[0].cls_token.dtype == torch.float32
+        assert backbone[0].cls_token.device.type == device.type
+
+
 class TestDeDoDeNoGrad(BaseTester):
     @staticmethod
     def _model(device, dtype):
