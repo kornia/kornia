@@ -514,9 +514,14 @@ class XFeat(nn.Module):
         else:
             k1 = int(top_k * 0.20)
             k2 = int(top_k) - k1
-        x1 = F.interpolate(x, scale_factor=s1, align_corners=False, mode="bilinear")
         x2 = F.interpolate(x, scale_factor=s2, align_corners=False, mode="bilinear")
-        mkpts_1, feats_1 = self._extract_dense(x1, k1)
+        if k1 == 0:
+            # no cell is asked of the first scale: skip its resize and backbone pass
+            mkpts_1 = torch.zeros(x.shape[0], 0, 2, device=x.device)
+            feats_1 = torch.zeros(x.shape[0], 0, 64, device=x.device, dtype=next(self.net.parameters()).dtype)
+        else:
+            x1 = F.interpolate(x, scale_factor=s1, align_corners=False, mode="bilinear")
+            mkpts_1, feats_1 = self._extract_dense(x1, k1)
         mkpts_2, feats_2 = self._extract_dense(x2, k2)
         mkpts = torch.cat([mkpts_1 / s1, mkpts_2 / s2], dim=1)
         sc1 = torch.ones(mkpts_1.shape[:2], device=mkpts_1.device) * (1 / s1)

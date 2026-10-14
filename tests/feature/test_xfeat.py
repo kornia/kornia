@@ -649,6 +649,18 @@ class TestConventionsXFeat(BaseTester):
         assert empty[1].dtype == full[1].dtype
         assert empty[0].device == full[0].device
 
+    def test_convention_xfeat_dense_multiscale_skips_the_backbone_pass_of_a_scale_with_no_budget(self, device, dtype):
+        torch.manual_seed(0)
+        xfeat = XFeat().to(device).eval()
+        image = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
+        sizes = []
+        xfeat.net.register_forward_hook(lambda module, inputs, output: sizes.append(tuple(inputs[0].shape[-2:])))
+        xfeat.detectAndComputeDense(image, 4)
+        assert sizes == [(64, 64)]  # only the 1.3 scale (resized to 64 x 64 here) is run
+        sizes.clear()
+        xfeat.detectAndComputeDense(image, 5)
+        assert len(sizes) == 2
+
     def test_convention_xfeat_dense_multiscale_with_an_empty_scale_matches_the_other_scale_alone(self, device, dtype):
         torch.manual_seed(0)
         xfeat = XFeat().to(device).eval()
