@@ -855,8 +855,8 @@ class TestScaleSpaceDetector(BaseTester):
         # R4 / plan review P2: the refiners write absolute coordinates into a tensor of the response's dtype, and
         # bfloat16 holds no odd integer above 256 (torch.arange(257, 263, dtype=bfloat16) == [256, 258, 260, 260,
         # 260, 262]); float16 holds only multiples of 0.25 in [256, 512). The refiner sees a float32 response, so the
-        # refined centres past x = 256 lie off that grid; a centre rounded through the half dtype at any point after
-        # the refinement lies on it, whatever the LAF dtype.
+        # refined centres past x = 256 lie off that grid; a centre rounded through the half dtype in the image frame
+        # lies on it, whatever the LAF dtype.
         if dtype not in (torch.float16, torch.bfloat16):
             pytest.skip("half-precision rule")
         refiners = {
