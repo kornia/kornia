@@ -170,15 +170,87 @@ def test_tokenmix_grad():
     assert x.grad is not None
 
 
-def test_tokenmix_invalid_size():
-    aug = TokenMix(alpha=1.0, num_tokens=5, p=1.0)
-    x = torch.rand(2, 3, 32, 32)
+def test_tokenmix_onnx_exportable():
+    aug = TokenMix(num_tokens=4)
+    assert not aug.exportable
+    assert not TokenMix.ONNX_EXPORTABLE
+
+
+def test_tokenmix_spatial_validation_before_gate():
+    # Spatial checks must fail regardless of probability gate (p=0, p=0.5, p=1.0)
+    for p_val in [0.0, 0.5, 1.0]:
+        aug = TokenMix(num_tokens=5, p=p_val)
+        x_invalid = torch.rand(2, 1, 16, 16)
+        with pytest.raises(ValueError, match="divisible"):
+            aug(x_invalid)
+
+    # Spatial check fails in generate_parameters
+    aug = TokenMix(num_tokens=5, p=1.0)
     with pytest.raises(ValueError, match="divisible"):
-        aug(x)
+        aug.generate_parameters(torch.Size([2, 1, 16, 16]))
 
-
-def test_tokenmix_num_tokens_too_large():
-    aug = TokenMix(alpha=1.0, num_tokens=64, p=1.0)
-    x = torch.rand(2, 3, 16, 16)
+    # num_tokens exceeds spatial dimension
+    aug_large = TokenMix(num_tokens=64, p=0.0)
     with pytest.raises(ValueError, match="exceeds"):
-        aug(x)
+        aug_large(torch.rand(2, 1, 16, 16))
+
+    # Replay with supplied parameters whose gate is disabled (batch_prob=0)
+    aug_valid = TokenMix(num_tokens=4, p=1.0)
+    valid_params = aug_valid.forward_parameters(torch.Size([2, 1, 16, 16]))
+    valid_params["batch_prob"] = torch.zeros(2)
+    # Applying invalid spatial size with disabled gate must still fail
+    x_bad = torch.rand(2, 1, 18, 18)
+    with pytest.raises(ValueError, match="divisible"):
+        aug_valid(x_bad, params=valid_params)
+
+
+def test_tokenmix_rng_device_and_dtype_migration():
+    # float64 dtype migration
+    aug = TokenMix(num_tokens=2).to(dtype=torch.float64)
+    params = aug.forward_parameters(torch.Size([2, 1, 4, 4]))
+    assert params["lam"].dtype == torch.float64
+    assert params["batch_prob"].dtype == torch.float64
+    assert params["token_mask"].dtype == torch.bool
+    assert params["lam"].device == torch.device("cpu")
+    assert params["batch_perm"].device == torch.device("cpu")
+    assert params["token_mask"].device == torch.device("cpu")
+
+    # set_rng_device_and_dtype
+    aug.set_rng_device_and_dtype(torch.device("cpu"), torch.float32)
+    params_f32 = aug.forward_parameters(torch.Size([2, 1, 4, 4]))
+    assert params_f32["lam"].dtype == torch.float32
+
+    # Empty batch respects device and dtype
+    aug_empty = TokenMix(num_tokens=2).to(dtype=torch.float64)
+    params_empty = aug_empty.generate_parameters(torch.Size([0, 1, 4, 4]))
+    assert params_empty["lam"].dtype == torch.float64
+    assert params_empty["lam"].device == torch.device("cpu")
+    assert params_empty["num_mix_tokens"].device == torch.device("cpu")
+    assert params_empty["batch_perm"].device == torch.device("cpu")
+    assert params_empty["token_mask"].device == torch.device("cpu")
+
+    # Reseeding reproducibility
+    torch.manual_seed(123)
+    aug_seed1 = TokenMix(num_tokens=2)
+    p_seed1 = aug_seed1.forward_parameters(torch.Size([2, 1, 4, 4]))
+    torch.manual_seed(123)
+    aug_seed2 = TokenMix(num_tokens=2)
+    p_seed2 = aug_seed2.forward_parameters(torch.Size([2, 1, 4, 4]))
+    assert torch.equal(p_seed1["lam"], p_seed2["lam"])
+    assert torch.equal(p_seed1["batch_perm"], p_seed2["batch_perm"])
+    assert torch.equal(p_seed1["token_mask"], p_seed2["token_mask"])
+
+    # Optional accelerator device migration (CUDA or MPS if present)
+    dev_names = []
+    if torch.cuda.is_available():
+        dev_names.append("cuda")
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        dev_names.append("mps")
+    for dev_name in dev_names:
+        dev = torch.device(dev_name)
+        aug_dev = TokenMix(num_tokens=2).to(device=dev)
+        p_dev = aug_dev.forward_parameters(torch.Size([2, 1, 4, 4]))
+        assert p_dev["lam"].device.type == dev.type
+        assert p_dev["batch_perm"].device.type == dev.type
+        assert p_dev["token_mask"].device.type == dev.type
+        assert p_dev["num_mix_tokens"].device.type == dev.type

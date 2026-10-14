@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
@@ -75,6 +75,8 @@ class TokenMix(MixAugmentationBaseV2):
 
     """
 
+    ONNX_EXPORTABLE = False
+
     def __init__(
         self,
         alpha: float = 1.0,
@@ -102,8 +104,32 @@ class TokenMix(MixAugmentationBaseV2):
             keepdim=keepdim,
             data_keys=data_keys,
         )
-        self.alpha = alpha
+        self.alpha = float(alpha)
         self.num_tokens = num_tokens
+
+    def _validate_spatial_shape(self, shape: Union[Tuple[int, ...], torch.Size]) -> None:
+        """Validate that spatial dimensions satisfy TokenMix requirements."""
+        if len(shape) < 2:
+            return
+        H, W = int(shape[-2]), int(shape[-1])
+        token_h = H // self.num_tokens
+        token_w = W // self.num_tokens
+
+        if token_h == 0 or token_w == 0:
+            raise ValueError(
+                f"TokenMix: num_tokens={self.num_tokens} exceeds spatial dimensions "
+                f"(H={H}, W={W}). num_tokens must be <= min(H, W)."
+            )
+        if H % self.num_tokens != 0 or W % self.num_tokens != 0:
+            raise ValueError(f"TokenMix: input size (H={H}, W={W}) must be divisible by num_tokens={self.num_tokens}.")
+
+    def transform_tensor(
+        self, input: torch.Tensor, *, shape: Optional[torch.Tensor] = None, match_channel: bool = True
+    ) -> torch.Tensor:
+        """Standardize input tensors and validate spatial dimensions before the gate."""
+        in_tensor = super().transform_tensor(input, shape=shape, match_channel=match_channel)
+        self._validate_spatial_shape(in_tensor.shape)
+        return in_tensor
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         """Generate per-batch mixing parameters.
@@ -125,17 +151,25 @@ class TokenMix(MixAugmentationBaseV2):
                 - ``"token_mask"``: token replacement mask, shape ``(B, num_tokens, num_tokens)``
 
         """
+        self._validate_spatial_shape(batch_shape)
         B = batch_shape[0]
         if B == 0:
             return {
-                "lam": torch.empty((0,)),
-                "num_mix_tokens": torch.empty((0,), dtype=torch.long),
-                "batch_perm": torch.empty((0,), dtype=torch.long),
-                "token_mask": torch.empty((0, self.num_tokens, self.num_tokens), dtype=torch.bool),
+                "lam": torch.empty((0,), device=self.device, dtype=self.dtype),
+                "num_mix_tokens": torch.empty((0,), device=self.device, dtype=torch.long),
+                "batch_perm": torch.empty((0,), device=self.device, dtype=torch.long),
+                "token_mask": torch.empty((0, self.num_tokens, self.num_tokens), device=self.device, dtype=torch.bool),
             }
 
         sample_size = 1 if self.same_on_batch and B > 0 else B
-        lam = torch.distributions.Beta(self.alpha, self.alpha).sample((sample_size,))
+        try:
+            alpha = torch.tensor(self.alpha, device=self.device, dtype=self.dtype)
+            lam = torch.distributions.Beta(alpha, alpha).sample((sample_size,))
+        except (NotImplementedError, RuntimeError):
+            # Beta sampling is not implemented for Half/BFloat16 on CPU in PyTorch
+            alpha = torch.tensor(self.alpha, device=self.device, dtype=torch.float32)
+            lam = torch.distributions.Beta(alpha, alpha).sample((sample_size,)).to(dtype=self.dtype)
+
         if self.same_on_batch:
             lam = lam.repeat(B)
 
@@ -143,24 +177,24 @@ class TokenMix(MixAugmentationBaseV2):
         num_mix_tokens = (lam * total_tokens).round().clamp(min=1.0, max=float(total_tokens)).long()
 
         if B > 1:
-            batch_perm = torch.randperm(B)
-            while (batch_perm == torch.arange(B)).any():
-                batch_perm = torch.randperm(B)
+            batch_perm = torch.randperm(B, device=self.device)
+            while (batch_perm == torch.arange(B, device=self.device)).any():
+                batch_perm = torch.randperm(B, device=self.device)
         else:
-            batch_perm = torch.zeros(1, dtype=torch.long)
+            batch_perm = torch.zeros(1, device=self.device, dtype=torch.long)
 
-        token_mask = torch.zeros(B, self.num_tokens, self.num_tokens, dtype=torch.bool)
+        token_mask = torch.zeros(B, self.num_tokens, self.num_tokens, device=self.device, dtype=torch.bool)
         if self.same_on_batch:
             k = int(num_mix_tokens[0].item())
-            perm = torch.randperm(total_tokens)
-            mask_1 = torch.zeros(total_tokens, dtype=torch.bool)
+            perm = torch.randperm(total_tokens, device=self.device)
+            mask_1 = torch.zeros(total_tokens, device=self.device, dtype=torch.bool)
             mask_1[perm[:k]] = True
             token_mask = mask_1.view(1, self.num_tokens, self.num_tokens).repeat(B, 1, 1)
         else:
             for i in range(B):
                 k_i = int(num_mix_tokens[i].item())
-                perm = torch.randperm(total_tokens)
-                mask_i = torch.zeros(total_tokens, dtype=torch.bool)
+                perm = torch.randperm(total_tokens, device=self.device)
+                mask_i = torch.zeros(total_tokens, device=self.device, dtype=torch.bool)
                 mask_i[perm[:k_i]] = True
                 token_mask[i] = mask_i.view(self.num_tokens, self.num_tokens)
 
@@ -178,6 +212,7 @@ class TokenMix(MixAugmentationBaseV2):
         maybe_flags: Optional[Dict[str, Any]] = None,
     ) -> torch.Tensor:
         """Replace token-grid patches with patches from a permuted image."""
+        self._validate_spatial_shape(input.shape)
         B, _C, H, W = input.shape
         token_h = H // self.num_tokens
         token_w = W // self.num_tokens
