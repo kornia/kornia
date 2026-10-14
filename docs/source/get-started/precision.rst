@@ -87,12 +87,13 @@ precision, so the table says nothing about those backends.
      - The DLT solvers run (``_torch_svd_cast`` promotes the SVD to float32) but miss the clean-point accuracy
        checks, including the iterated and line-based variants.
    * - ``kornia.geometry.liegroup``
+     - ✅ Yes
      - ⚠️ Partial
-     - ⚠️ Partial
-     - 4 / 130
-     - ``So2`` and ``Se2`` store complex tensors; float16 inverses are computed in complex64. PyTorch has no
-       complex bfloat16 dtype, so most bfloat16 ``So2`` / ``Se2`` tests raise (119 entries). ``So3`` and ``Se3``
-       miss a few composition, point-transform and orthogonality accuracy checks.
+     - 0 / 0
+     - ``So3`` and ``Se3`` compute ``matrix()``, composition and point transforms in float32 for float16/bfloat16
+       inputs and return the input dtype. ``So2`` and ``Se2`` store complex tensors; float16 inverses are computed
+       in complex64. PyTorch has no complex bfloat16 dtype, so building a bfloat16 ``So2`` or ``Se2`` raises
+       ``TypeCheckError``, while ``.bfloat16()`` on a built one keeps the rotation's complex precision.
    * - ``kornia.geometry.solvers``
      - ⚠️ Partial
      - ⚠️ Partial
@@ -117,8 +118,8 @@ precision, so the table says nothing about those backends.
    * - ``kornia.geometry`` (other)
      - ⚠️ Partial
      - ⚠️ Partial
-     - 8 / 17
-     - Accuracy in boxes, depth and line utilities; a bfloat16 ``NamedPose`` of an ``Se2`` pose cannot be built (``So2`` stores a complex number).
+     - 8 / 15
+     - Accuracy in boxes, depth and line utilities. A bfloat16 ``NamedPose`` of an ``Se2`` pose raises as ``Se2`` does.
    * - ``kornia.image``
      - ⚠️ Partial
      - ⚠️ Partial
