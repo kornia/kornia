@@ -34,6 +34,7 @@ def _device_contexts():
 def clean_device_state():
     """Run a test from a pristine default-device state (no attribute on the thread-local) and put it back."""
     store = torch._GLOBAL_DEVICE_CONTEXT
+    had_attribute = hasattr(store, "device_context")
     saved = getattr(store, "device_context", None)
     saved_device = None if saved is None else saved.device
     torch.set_default_device(None)
@@ -45,8 +46,8 @@ def clean_device_state():
         torch.set_default_device(None)
         if saved_device is not None:
             torch.set_default_device(saved_device)
-        elif hasattr(store, "device_context"):
-            del store.device_context
+        elif not had_attribute and hasattr(store, "device_context"):
+            del store.device_context  # originally absent; an originally-``None`` attribute stays ``None``
 
 
 @pytest.mark.device_agnostic
@@ -102,3 +103,12 @@ class TestDefaultDevice:
         finally:
             torch.set_default_device(None)
         assert not _device_contexts()
+
+    def test_refuses_to_nest_inside_torch_device(self, clean_device_state):
+        with torch.device("cpu"):
+            outer = list(_get_current_function_mode_stack())
+            with pytest.raises(RuntimeError, match="cannot be used inside"), default_device("meta"):
+                pass  # pragma: no cover
+            assert list(_get_current_function_mode_stack()) == outer
+        assert not _device_contexts()
+        assert not hasattr(torch._GLOBAL_DEVICE_CONTEXT, "device_context")

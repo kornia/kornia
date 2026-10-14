@@ -21,6 +21,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 import torch
+from torch.overrides import _get_current_function_mode_stack
+from torch.utils._device import DeviceContext
 
 _MISSING = object()
 
@@ -37,12 +39,18 @@ def default_device(device: str | torch.device) -> Iterator[None]:
     pops the context it pushed, then puts the thread-local back to what it held before: no attribute at all,
     ``None``, or a context for the same device.
 
-    Do not use it inside ``with torch.device(...)`` on torch 2.9.1 or older: ``DeviceContext.__exit__`` there asserts
-    on the mode it finds on top of the stack, which corrupts the state. torch 2.14 handles that nesting.
+    It refuses to run inside ``with torch.device(...)`` (``RuntimeError``, state untouched): on torch 2.9.1 or older
+    ``DeviceContext.__exit__`` asserts on the mode it finds on top of the stack, which corrupts the state. torch 2.14
+    handles that nesting, but the helper rejects it on every version so a test cannot pass on one and break on another.
     """
     device = torch.device(device)  # validate first: torch pops the prior context before it checks the new device
     store = torch._GLOBAL_DEVICE_CONTEXT
     prior = getattr(store, "device_context", _MISSING)
+    foreign = [
+        mode for mode in _get_current_function_mode_stack() if isinstance(mode, DeviceContext) and mode is not prior
+    ]
+    if foreign:
+        raise RuntimeError("default_device cannot be used inside `with torch.device(...)`")
     prior_device = None if prior is _MISSING or prior is None else prior.device
     torch.set_default_device(device)
     try:
