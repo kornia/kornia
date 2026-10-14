@@ -27,7 +27,7 @@ from kornia.geometry.pose import NamedPose
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 
 class TestSe3(BaseTester):
@@ -428,11 +428,19 @@ class TestSe3(BaseTester):
         with pytest.raises(TypeCheckError, match=r"Se3 stores 'translation'.*torch.int64"):
             Se3(Quaternion.identity(1, device), torch.tensor([[1, 2, 3]], device=device))
 
-    @pytest.mark.parametrize("pair", [(torch.float64, torch.float32), (torch.float32, torch.float64)])
+    @pytest.mark.parametrize(
+        "pair",
+        [
+            (torch.float64, torch.float32),
+            (torch.float32, torch.float64),
+            (torch.float32, torch.float16),
+            (torch.float16, torch.float32),
+        ],
+    )
     @pytest.mark.parametrize("wrap", ["so3", "quaternion"])
     def test_mixed_dtype_translation_raises_5913(self, device, pair, wrap):
         # The mix used to construct, then inverse()/adjoint()/__mul__ raised torch's "expected scalar type" error.
-        if device.type == "mps":
+        if device.type == "mps" and torch.float64 in pair:
             pytest.skip("MPS has no float64")
         r_dtype, t_dtype = pair
         rotation = So3.identity(1, device, r_dtype) if wrap == "so3" else Quaternion.identity(1, device, r_dtype)
@@ -447,6 +455,7 @@ class TestSe3(BaseTester):
         s = Se3(So3.identity(2, device, dtype), torch.zeros(2, 3, device=device, dtype=dtype))
         assert s.t.dtype == s.quaternion.data.dtype == dtype
 
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_dynamo_constructor_checks_5913(self, device, torch_optimizer):
         def build(q, t):
             return Se3(Quaternion(q), t).matrix()

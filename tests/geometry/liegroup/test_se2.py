@@ -418,11 +418,19 @@ class TestSe2(BaseTester):
         with pytest.raises(TypeCheckError, match=r"Se2 stores 'translation'.*torch.int64"):
             Se2(So2.identity(1, device), torch.tensor([[1, 2]], device=device))
 
-    @pytest.mark.parametrize("pair", [(torch.float64, torch.float32), (torch.float32, torch.float64)])
+    @pytest.mark.parametrize(
+        "pair",
+        [
+            (torch.float64, torch.float32),
+            (torch.float32, torch.float64),
+            (torch.float32, torch.float16),
+            (torch.float16, torch.float32),
+        ],
+    )
     def test_mixed_dtype_translation_raises_5913(self, device, pair):
         # The mix used to construct, then log() raised torch's "expected scalar type Double but found Float".
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
+        if device.type == "mps" and (torch.float64 in pair or pair[0] == torch.float16):
+            pytest.skip("MPS has no float64 or complex32")
         r_dtype, t_dtype = pair
         rotation = So2.identity(1, device, r_dtype)
         with pytest.raises(
@@ -441,17 +449,40 @@ class TestSe2(BaseTester):
         assert s.t.dtype == dtype
         assert s.r.z.real.dtype == dtype
 
-    def test_bfloat16_module_state_is_accepted_5913(self, device):
-        # ``.bfloat16()`` keeps the complex rotation and casts the translation (documented in the class
-        # Convention): reconstructing that state through __getitem__, inverse and __mul__ must keep working.
-        s = Se2.exp(torch.tensor([[0.5, 0.2, 0.3], [0.1, 0.4, -0.2]], device=device)).bfloat16()
+    @pytest.mark.parametrize("real_dtype", [torch.float16, torch.float32, torch.float64])
+    def test_bfloat16_module_state_is_closed_5913(self, device, real_dtype):
+        # ``.bfloat16()`` keeps the complex rotation (complex32/64/128) and casts the translation (documented in
+        # the class Convention). Every method must keep working on that state: the pose methods keep the
+        # bfloat16 translation, and log/matrix/adjoint read it at the rotation's precision.
+        if device.type == "mps" and real_dtype != torch.float32:
+            pytest.skip("MPS supports complex64 only")
+        v = torch.tensor([[0.5, 0.2, 0.3], [0.1, 0.4, -0.2]], device=device, dtype=real_dtype)
+        cdtype = {torch.float16: torch.chalf, torch.float32: torch.cfloat, torch.float64: torch.cdouble}[real_dtype]
+        s = Se2.exp(v).bfloat16()
         assert s.t.dtype == torch.bfloat16
-        assert s.r.z.dtype == torch.cfloat
-        assert isinstance(s[0], Se2)
-        assert isinstance(s.inverse(), Se2)
-        assert isinstance(s * s, Se2)
+        assert s.r.z.dtype == cdtype
+        tol = {"atol": 0.05, "rtol": 0.05}
+        log = s.log()
+        assert log.dtype == real_dtype
+        self.assert_close(log, v, **tol)
+        for pose in (s[0], s.inverse(), s * s, s.inverse().inverse(), s * s.inverse()):
+            assert isinstance(pose, Se2)
+            assert pose.t.dtype == torch.bfloat16
+            assert pose.r.z.dtype == cdtype
+        assert s.inverse().log().dtype == real_dtype
+        self.assert_close((s * s.inverse()).log(), torch.zeros_like(v), **tol)
+        matrix = s.matrix()
+        assert matrix.dtype == real_dtype
+        self.assert_close((s * s).matrix(), matrix @ matrix, **tol)
+        assert s.adjoint().dtype == real_dtype
+        points = torch.ones(2, 2, device=device, dtype=real_dtype)
+        out = s * points
+        assert out.is_floating_point()
+        expected = (matrix[:, :2, :2] @ points[..., None])[..., 0] + matrix[:, :2, 2]
+        self.assert_close(out.to(real_dtype), expected, **tol)
         Se2(So2.identity(1, device), torch.zeros(1, 2, device=device, dtype=torch.bfloat16))
 
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_dynamo_constructor_checks_5913(self, device, torch_optimizer):
         def build(real, imag, t):
             return Se2(So2(torch.complex(real, imag)), t).matrix()
@@ -551,8 +582,10 @@ class TestSe2(BaseTester):
         expected_point = (expected_matrix[:, :2, :2] @ point.float()[..., None]).squeeze(-1)
         expected_point = expected_point + expected_matrix[:, :2, 2]
         self.assert_close(model.pose * point, expected_point)
-        self.assert_close(model.pose.inverse().matrix() @ matrix, torch.eye(3, device=device)[None])
-        self.assert_close((model.pose * model.pose).matrix(), matrix @ matrix)
+        # inverse() and pose * pose keep the bfloat16 translation (#5913), so they round it to bfloat16
+        bf16_tol = {"atol": 0.02, "rtol": 0.02}
+        self.assert_close(model.pose.inverse().matrix() @ matrix, torch.eye(3, device=device)[None], **bf16_tol)
+        self.assert_close((model.pose * model.pose).matrix(), matrix @ matrix, **bf16_tol)
 
     @pytest.mark.parametrize("method", ["to", "convenience"])
     def test_parent_dtype_conversion_preserves_rotation_4923(self, device, dtype, method):

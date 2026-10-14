@@ -56,6 +56,7 @@ class TestSo2(BaseTester):
         with pytest.raises(TypeCheckError, match=r"So2 stores 'z'"):
             So2(torch.nn.Parameter(torch.tensor([0.6], device=device, dtype=real_dtype)))
 
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_dynamo_constructor_checks_5913(self, device, torch_optimizer):
         # the dtype check is static: it adds no graph break to a traced constructor
         def build(real, imag):

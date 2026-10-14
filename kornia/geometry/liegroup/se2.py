@@ -114,8 +114,10 @@ class Se2(nn.Module):
             rotation: So2 group encompassing a rotation.
             translation: translation torch.Tensor with the shape of :math:`(B, 2)`, or a Vector2 wrapping one; the
                 tensor is what gets stored. It must have the rotation's dtype (``z``'s real dtype) and device;
-                a bfloat16 translation is also accepted beside a complex rotation of any precision, which is what
-                ``.bfloat16()`` leaves.
+                a bfloat16 translation is also accepted beside a complex32, complex64 or complex128 rotation, which
+                is what ``.bfloat16()`` leaves (PyTorch has no complex bfloat16). Every method then reads the
+                translation at the rotation's precision: ``log`` and ``matrix`` return the rotation's real dtype,
+                while ``inverse`` and ``g * g`` keep the bfloat16 translation.
 
         Raises:
             TypeCheckError: if the translation is an integer or bool tensor, or its dtype differs from the
@@ -154,7 +156,9 @@ class Se2(nn.Module):
         so2 = self.so2
         t = self.t
         _r = so2 * right.so2
-        _t = t + so2 * right.t
+        # keep the translation's own dtype: a bfloat16 translation beside a wider rotation (what ``.bfloat16()``
+        # leaves) would otherwise be promoted by the rotation's product
+        _t = (t + so2 * right.t).to(t.dtype)
         return Se2(_r, _t)
 
     @overload
@@ -276,7 +280,8 @@ class Se2(nn.Module):
         row0 = torch.stack((a, half_theta), -1)
         row1 = torch.stack((-half_theta, a), -1)
         V_inv = torch.stack((row0, row1), -2)
-        upsilon = V_inv @ self.t[..., None]
+        # the translation is read at the rotation's precision, so a bfloat16 translation beside a wider rotation works
+        upsilon = V_inv @ self.t.to(theta.dtype)[..., None]
         return torch.stack((upsilon[..., 0, 0], upsilon[..., 1, 0], theta), -1)
 
     @staticmethod
@@ -376,7 +381,8 @@ class Se2(nn.Module):
                      [0., 0., 1.]]], grad_fn=<CopySlices>)
 
         """
-        rt = torch.cat((self.r.matrix(), self.t[..., None]), -1)
+        r_matrix = self.r.matrix()
+        rt = torch.cat((r_matrix, self.t.to(r_matrix.dtype)[..., None]), -1)
         rt_3x3 = F.pad(rt, (0, 0, 0, 1))  # add last row torch.zeros
         rt_3x3[..., -1, -1] = 1.0
         return rt_3x3
@@ -417,7 +423,8 @@ class Se2(nn.Module):
 
         """
         r_inv: So2 = self.r.inverse()
-        return Se2(r_inv, r_inv * (-1 * self.t))
+        # the translation keeps its own dtype, as in ``__mul__`` (the rotation's product promotes a bfloat16 one)
+        return Se2(r_inv, (r_inv * (-1 * self.t)).to(self.t.dtype))
 
     @classmethod
     def random(
