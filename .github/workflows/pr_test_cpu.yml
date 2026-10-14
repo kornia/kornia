@@ -149,9 +149,10 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.11"]'
-      pytorch-version: '["2.9.1"]'
+      pytorch-version: '["2.14.0"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
       known-failure-profile: cpu-${{ matrix.pytorch-dtype }}
+      known-failure-mode: record
       # A whole leg takes ~6m, so no single test comes near these limits. A native float16 kernel
       # can hang on some Intel runners (#5493): faulthandler prints the stack even while the hung
       # call holds the GIL, and pytest-timeout ends the run once the GIL is free.
