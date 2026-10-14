@@ -89,6 +89,24 @@ class TestFindAffine(BaseTester):
         actual = find_affine(points, target, weights)
         self.assert_close(actual, expected, rtol=1e-10, atol=1e-10)
 
+    @pytest.mark.parametrize("angle", [0.0, 45.0, 120.0])
+    def test_elongated_source_any_direction(self, device, dtype, angle):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("Input rounding dominates in half precision.")
+        # A 1000 px by 6 px strip of exact correspondences, centred at (700, 500) and rotated by `angle`.
+        u = torch.linspace(-500.0, 500.0, 64, dtype=torch.float64)
+        v = 3.0 * torch.tensor([1.0, -1.0], dtype=torch.float64).repeat(32)
+        theta = torch.tensor(angle, dtype=torch.float64).deg2rad()
+        points = torch.stack(
+            (700 + u * theta.cos() - v * theta.sin(), 500 + u * theta.sin() + v * theta.cos()), dim=-1
+        )[None]
+        _, _, matrix = self._points("cpu", torch.float64)
+        target = points @ matrix[:, :2, :2].transpose(-1, -2) + matrix[:, None, :2, 2]
+        actual = find_affine(points.to(device, dtype), target.to(device, dtype)).cpu().double()
+        transferred = points @ actual[:, :2, :2].transpose(-1, -2) + actual[:, None, :2, 2]
+        tol = 1e-2 if dtype == torch.float32 else 1e-8
+        self.assert_close(transferred, target, rtol=0, atol=tol)
+
     def test_scale_and_translation_conditioning(self, device, dtype):
         points, target, expected = self._points(device, dtype)
         scale = 10.0 if dtype in (torch.float16, torch.bfloat16) else 1.0e3

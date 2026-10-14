@@ -90,6 +90,14 @@ def _fit_affine_components(
     x_scale = torch.where(x_scale > 0, x_scale, one)
     y_scale = torch.where(y_scale > 0, y_scale, one)
     xn, yn = xc / x_scale, yc / y_scale
+    # Rotate the source onto the principal axes of its weighted scatter. For a scatter elongated along any
+    # other direction, det = a * d - b * c cancels, and its relative error, about aspect**2 * eps, scales the
+    # whole linear map. The fit is invariant to this rotation, so the detached angle loses no gradient and
+    # atan2(0, 0) of an isotropic scatter is never differentiated.
+    scatter = torch.einsum("...n,...ni,...nj->...ij", w, xn, xn).detach()
+    angle = 0.5 * torch.atan2(2 * scatter[..., 0, 1], scatter[..., 0, 0] - scatter[..., 1, 1])
+    rotation = torch.stack((angle.cos(), angle.sin(), -angle.sin(), angle.cos()), dim=-1).reshape_as(scatter)
+    xn = xn @ rotation.transpose(-1, -2)
 
     normal = torch.einsum("...n,...ni,...nj->...ij", w, xn, xn)
     cross = torch.einsum("...n,...ni,...nj->...ij", w, yn, xn)
@@ -100,7 +108,7 @@ def _fit_affine_components(
     valid = (support[..., 0] > 0) & (det > eps * trace.square())
     safe_det = torch.where(valid, det, torch.ones_like(det))
     inverse = torch.stack((d, -b, -c, a), dim=-1).reshape_as(normal) / safe_det[..., None, None]
-    linear_normalized = cross @ inverse
+    linear_normalized = cross @ inverse @ rotation
     linear = linear_normalized * (y_scale / x_scale)
     translation = y_mean - torch.matmul(linear, x_mean[..., None]).squeeze(-1)
     nan_linear = torch.full_like(linear, float("nan"))
