@@ -413,6 +413,18 @@ class TestEmptyGeometricInverse(BaseTester):
             seq.inverse(outputs[data_key], data_keys=[data_key])
 
     @pytest.mark.parametrize("batch_size", [0, 2])
+    @pytest.mark.parametrize("method", ["inverse_inputs", "inverse_masks"])
+    @pytest.mark.parametrize("crop_type", [K.RandomCrop, K.CenterCrop, K.RandomResizedCrop])
+    def test_slice_crop_inverse_keyword_override_4429(self, crop_type, method, batch_size, device, dtype):
+        # A cropping_mode keyword overrides the flag, as in the public inverse, before the empty-batch shortcut.
+        aug = crop_type((4, 5), p=1.0, cropping_mode="resample")
+        output = aug(torch.rand(batch_size, 3 if method == "inverse_inputs" else 1, 6, 8, device=device, dtype=dtype))
+        inverse = getattr(aug, method)
+        with pytest.raises(NotImplementedError, match="Got slice"):
+            inverse(output, aug._params, aug.flags, aug.transform_matrix, cropping_mode="slice")
+        assert inverse(output, aug._params, aug.flags, aug.transform_matrix).shape[-2:] == (6, 8)
+
+    @pytest.mark.parametrize("batch_size", [0, 2])
     @pytest.mark.parametrize(
         "make_aug",
         [

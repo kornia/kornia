@@ -197,9 +197,8 @@ class CenterCrop(GeometricAugmentationBase2D):
         **kwargs: Any,
     ) -> torch.Tensor:
         # Check the mode before the gate: an empty or unapplied batch never reaches inverse_transform, so a
-        # slice-mode inverse succeeded for it and raised for any other batch.
-        if flags["cropping_mode"] != "resample":
-            raise NotImplementedError(
-                f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
-            )
+        # slice-mode inverse succeeded for it and raised for any other batch. A keyword overrides the flag.
+        cropping_mode = kwargs.get("cropping_mode", flags["cropping_mode"])
+        if cropping_mode != "resample":
+            raise NotImplementedError(f"`inverse` is only applicable for resample cropping mode. Got {cropping_mode}.")
         return super().inverse_inputs(input, params, flags, transform, **kwargs)
