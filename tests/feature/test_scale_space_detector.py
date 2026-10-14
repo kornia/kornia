@@ -489,6 +489,7 @@ class TestScaleSpaceDetector(BaseTester):
         # response's dtype first: a weight of 1e-8 is zero in float16, where it suppresses, and positive otherwise.
         if device.type == "mps" and dtype == torch.float64:
             pytest.skip("MPS has no float64")
+        _skip_without_half_padding(device, dtype)
         g = torch.Generator().manual_seed(0)
         img = torch.nn.functional.avg_pool2d(torch.rand(1, 1, 96, 128, generator=g), 5, 1, 2).to(device, dtype)
         det = ScaleSpaceDetector(8).to(device, dtype)
@@ -859,6 +860,7 @@ class TestScaleSpaceDetector(BaseTester):
         # lies on it, whatever the LAF dtype.
         if dtype not in (torch.float16, torch.bfloat16):
             pytest.skip("half-precision rule")
+        _skip_without_half_padding(device, dtype)
         refiners = {
             "adaptive": AdaptiveQuadInterp3d,
             "conv_quad": ConvQuadInterp3d,
@@ -890,6 +892,7 @@ class TestMultiResolutionDetector(BaseTester):
     def test_multi_resolution_half_image_gives_float32_lafs(self, device, dtype):
         if dtype not in (torch.float16, torch.bfloat16):
             pytest.skip("half-precision rule")
+        _skip_without_half_padding(device, dtype)
         g = torch.Generator().manual_seed(0)
         img = torch.nn.functional.avg_pool2d(torch.rand(1, 1, 300, 420, generator=g), 5, 1, 2).to(device, dtype)
         torch.manual_seed(1)  # random KeyNet weights; those of seed 0 give no positive response maximum at all

@@ -367,8 +367,8 @@ class TestALIKEDHalfPrecisionCoordinates(BaseTester):
         # keypoint past x = 256 on a 2 px grid. They are float32 now; scores and descriptors keep the model dtype.
         if dtype not in (torch.float16, torch.bfloat16):
             pytest.skip("half-precision rule")
-        if not supports_replicate_padding(device, dtype):
-            pytest.skip("ALIKED pads with replication, absent for this dtype")
+        if not (supports_replicate_padding(device, dtype) and supports_bilinear_2d_grid_sample(device, dtype)):
+            pytest.skip("ALIKED pads with replication and samples with bilinear grid_sample, absent for this dtype")
         torch.manual_seed(0)
         aliked = ALIKED(model_name="aliked-t16").to(device, dtype)
         image = torch.rand(1, 3, 96, 400, generator=torch.Generator().manual_seed(0)).to(device, dtype)
@@ -649,6 +649,8 @@ class TestALIKEDKeypointSelection(BaseTester):
         # 320: the odd pixels past 256, which bfloat16 cannot hold, come back exactly from forward and forward_laf.
         if device.type == "mps" and dtype == torch.float64:
             pytest.skip("MPS has no float64")
+        if not (supports_replicate_padding(device, dtype) and supports_bilinear_2d_grid_sample(device, dtype)):
+            pytest.skip("ALIKED pads with replication and samples with bilinear grid_sample, absent for this dtype")
         peaks = [(0, 257, 13, 0.9), (0, 301, 40, 0.8), (0, 35, 50, 0.7)]
         score_map = self._score_map(peaks, device, dtype, w=320)
         aliked = self._top_k(5, device, dtype)
@@ -665,6 +667,8 @@ class TestALIKEDKeypointSelection(BaseTester):
         # right neighbour moves the keypoint to x = 300.27 by the soft-argmax, so its pixel is column 300.
         if device.type == "mps" and dtype == torch.float64:
             pytest.skip("MPS has no float64")
+        if not (supports_replicate_padding(device, dtype) and supports_bilinear_2d_grid_sample(device, dtype)):
+            pytest.skip("ALIKED pads with replication and samples with bilinear grid_sample, absent for this dtype")
         score_map = self._score_map([(0, 300, 40, 0.8), (0, 301, 40, 0.7)], device, dtype, w=320)
         aliked = self._top_k(5, device, dtype)
         corners = []

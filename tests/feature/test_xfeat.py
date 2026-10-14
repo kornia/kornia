@@ -178,10 +178,10 @@ class TestXFeat(BaseTester):
     @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16])
     def test_wart_half_weights_raise_5957(self, half, device):
         # Known defect #5957: _preprocess_tensor calls x.float(), so half-precision weights meet float32 input.
-        # CPU: "expected scalar type Float but found Half"; MPS: "Input type (MPSFloatType) and weight type ...".
+        # CPU: "expected scalar type Float but found Half"; MPS and CUDA: "Input type (...) and weight type (...)".
         model = XFeat().to(device, half)
         with pytest.raises(
-            RuntimeError, match=r"expected scalar type Float but found|Input type \(MPSFloatType\) and weight type"
+            RuntimeError, match=r"expected scalar type Float but found|Input type \(.*\) and weight type"
         ):
             model.detectAndCompute(torch.rand(1, 3, 96, 128, device=device, dtype=half), top_k=50)
 

@@ -22,7 +22,7 @@ import torch
 
 import kornia
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
 
 
 class TestImageStitcher(BaseTester):
@@ -140,6 +140,8 @@ class TestImageStitcher(BaseTester):
         # crop overlaps the left one by 64 px of a 96 x 224 scene, so the panorama is about 224 px wide.
         if device.type == "mps" and dtype == torch.float64:
             pytest.skip("MPS has no float64")
+        if not (supports_reflect_padding(device, dtype) and supports_replicate_padding(device, dtype)):
+            pytest.skip(f"SIFTFeature pads with reflection and replication, absent for {dtype} on {device.type}")
         g = torch.Generator().manual_seed(0)
         scene = torch.nn.functional.avg_pool2d(torch.rand(1, 1, 96, 224, generator=g), 5, 1, 2).expand(-1, 3, -1, -1)
         left, right = scene[..., :144].to(device, dtype), scene[..., 80:].to(device, dtype)
