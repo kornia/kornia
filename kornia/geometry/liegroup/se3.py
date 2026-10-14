@@ -28,7 +28,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import DeviceError, TypeCheckError
 from kornia.core.utils import register_module_state
-from kornia.geometry.liegroup.so3 import So3, _so3_small_angle_coefficients
+from kornia.geometry.liegroup.so3 import So3, _so3_rotate, _so3_small_angle_coefficients
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
@@ -87,6 +87,9 @@ class Se3(nn.Module):
         - ``state_dict()``, ``load_state_dict()`` and module device/dtype conversions include both the rotation
           and translation. Rotation state follows :class:`~kornia.geometry.quaternion.Quaternion`'s
           buffer/parameter convention.
+        - ``a * b`` and ``g * p`` compute in float32 for float16/bfloat16 inputs and return the input dtype,
+          rounding :math:`R p + t` once; ``matrix()`` and ``inverse()`` take the rotation from
+          :class:`~kornia.geometry.liegroup.So3`, which does the same.
 
     Example:
         >>> q = Quaternion.identity()
@@ -152,11 +155,14 @@ class Se3(nn.Module):
 
     def _mul_se3(self, right: Se3) -> Se3:
         _r = self.r * right.r
-        _t = self.t + self.r * right.t
+        # t + R t2 is rounded once, so float16/bfloat16 sum the float32 rotated translation
+        _t = (self.t + _so3_rotate(self.r.q, right.t)).to(torch.promote_types(self.t.dtype, right.t.dtype))
         return Se3(_r, _t)
 
     def __mul__(self, right: Se3) -> Se3 | Vector3 | torch.Tensor:
         """Compose two Se3 transformations, or transform points.
+
+        Both compute in float32 for float16/bfloat16 inputs and return the input dtype.
 
         Args:
             right: the other Se3 transformation, or points as a tensor or ``Vector3`` with the batch shape of the
@@ -174,7 +180,9 @@ class Se3(nn.Module):
         if isinstance(right, (Vector3, torch.Tensor)):
             _right_data = right if isinstance(right, torch.Tensor) else right.data
             KORNIA_CHECK_SHAPE(_right_data, ["*", "N"])
-            return so3 * right + t
+            # R p + t is rounded once, so float16/bfloat16 add the translation to the float32 rotated point
+            out = (_so3_rotate(so3.q, _right_data) + t).to(torch.promote_types(t.dtype, _right_data.dtype))
+            return Vector3(out) if isinstance(right, Vector3) else out
         raise TypeError(f"Unsupported type: {type(right)}")
 
     @property
