@@ -383,6 +383,34 @@ class TestTransformBoxes2D(BaseTester):
         out = transform_bbox(trans_mat, boxes, restore_coordinates=True)
         self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
 
+    @pytest.mark.parametrize(
+        "matrix_batch,boxes_shape",
+        [
+            (1, (0, 4)),
+            (0, (0, 4)),
+            (0, (0, 5, 4)),
+            (1, (0, 5, 4)),
+            (2, (2, 0, 4)),
+            (0, (0, 5, 4, 2)),
+            (1, (0, 5, 4, 2)),
+        ],
+    )
+    @pytest.mark.parametrize("mode", ["xyxy", "xywh"])
+    @pytest.mark.parametrize("restore_coordinates", [True, False])
+    def test_empty_boxes(self, matrix_batch, boxes_shape, mode, restore_coordinates, device, dtype):
+        # view(B, -1, 2) cannot infer -1 for zero elements, so zero boxes or an empty batch raised in reshape.
+        if mode == "xywh" and len(boxes_shape) == 4:
+            pytest.skip("polygons are given as vertices, not as xywh")
+        trans_mat = torch.eye(3, device=device, dtype=dtype).expand(matrix_batch, 3, 3)
+        boxes = torch.empty(boxes_shape, device=device, dtype=dtype, requires_grad=True)
+        out = transform_bbox(trans_mat, boxes, mode=mode, restore_coordinates=restore_coordinates)
+        assert out.shape == boxes.shape
+        assert out.device == boxes.device
+        assert out.dtype == dtype
+        out.sum().backward()
+        assert boxes.grad is not None
+        assert boxes.grad.shape == boxes.shape
+
     def test_transform_boxes_wh(self, device, dtype):
         boxes = torch.tensor(
             [

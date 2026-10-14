@@ -665,7 +665,8 @@ def transform_bbox(
         boxes[..., 2] = boxes[..., 0] + boxes[..., 2]  # x + w
         boxes[..., 3] = boxes[..., 1] + boxes[..., 3]  # y + h
 
-    transformed_boxes: torch.Tensor = transform_points(trans_mat, boxes.view(boxes.shape[0], -1, 2))
+    # unflatten infers -1 from dimension 1 rather than from the element count, so it also serves zero boxes.
+    transformed_boxes: torch.Tensor = transform_points(trans_mat, boxes.flatten(1).unflatten(1, (-1, 2)))
     transformed_boxes = transformed_boxes.view_as(boxes)
 
     if (restore_coordinates is None or restore_coordinates) and boxes.shape[-2:] != torch.Size([4, 2]):
