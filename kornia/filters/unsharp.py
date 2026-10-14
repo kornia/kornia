@@ -20,6 +20,7 @@ from __future__ import annotations
 import torch
 from torch import nn
 
+from .filter import _to_floating
 from .gaussian import gaussian_blur2d
 
 
@@ -39,6 +40,8 @@ def unsharp_mask(
           Convention block on :func:`~kornia.filters.gaussian_blur2d` for the argument order.
         - The output is not clamped: next to an edge it overshoots on both sides, so a step from 0 to 1 comes back
           below 0 and above 1. :ref:`Filtering <filtering-conventions>` maps the call onto scikit-image.
+        - An integer or bool image is filtered in float32 and the result is float32 on its own scale, like
+          :func:`~kornia.filters.gaussian_blur2d`; a floating image keeps its dtype.
 
     Args:
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
@@ -58,6 +61,7 @@ def unsharp_mask(
         torch.Size([2, 4, 5, 5])
 
     """
+    input = _to_floating(input)
     data_blur: torch.Tensor = gaussian_blur2d(input, kernel_size, sigma, border_type)
     return torch.lerp(data_blur, input, weight=2.0)
 
