@@ -846,6 +846,12 @@ class TestRandomMosaic(BaseTester):
         ):
             RandomMosaic(padding_mode="bogus", cropping_mode=cropping_mode)
 
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection", "Constant"])
+    def test_grid_sample_padding_names_rejected_5914(self, padding_mode):
+        # `cropping_mode="resample"` used to pass grid_sample's own names through; names are matched as given.
+        with pytest.raises(ValueError, match=f"'{padding_mode}' is not a valid padding_mode"):
+            RandomMosaic(padding_mode=padding_mode, cropping_mode="resample")
+
     @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
     @pytest.mark.parametrize("padding_mode", ["constant", "reflect", "replicate"])
     def test_valid_padding_mode_forward_5914(self, cropping_mode, padding_mode, device, dtype):
