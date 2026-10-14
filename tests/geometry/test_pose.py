@@ -75,17 +75,20 @@ class TestNamedPose(BaseTester):
         assert isinstance(b_from_a, NamedPose)
         assert isinstance(b_from_a.pose, Se3)
 
-        b_from_a_rotation = So2.random(device=device, dtype=dtype)
-        b_from_a_translation = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
-        b_from_a = NamedPose.from_rt(b_from_a_rotation, b_from_a_translation, frame_src="frame_a", frame_dst="frame_b")
-        assert isinstance(b_from_a, NamedPose)
-        assert isinstance(b_from_a.pose, Se2)
-
         b_from_a_rotation = torch.eye(3, device=device, dtype=dtype)
         b_from_a_translation = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
         b_from_a = NamedPose.from_rt(b_from_a_rotation, b_from_a_translation, frame_src="frame_a", frame_dst="frame_b")
         assert isinstance(b_from_a, NamedPose)
         assert isinstance(b_from_a.pose, Se3)
+
+        # the Se2 poses below cannot be built in bfloat16; test_se2_pose_in_bfloat16_raises pins that error
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        b_from_a_rotation = So2.random(device=device, dtype=dtype)
+        b_from_a_translation = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
+        b_from_a = NamedPose.from_rt(b_from_a_rotation, b_from_a_translation, frame_src="frame_a", frame_dst="frame_b")
+        assert isinstance(b_from_a, NamedPose)
+        assert isinstance(b_from_a.pose, Se2)
 
         b_from_a_rotation = torch.eye(2, device=device, dtype=dtype)
         b_from_a_translation = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
@@ -159,6 +162,9 @@ class TestNamedPose(BaseTester):
         assert isinstance(b_from_a, NamedPose)
         assert isinstance(b_from_a.pose, Se3)
 
+        # the Se2 pose below cannot be built in bfloat16; test_se2_pose_in_bfloat16_raises pins that error
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         b_from_a_matrix = torch.eye(3, device=device, dtype=dtype)
         b_from_a = NamedPose.from_matrix(b_from_a_matrix, frame_src="frame_a", frame_dst="frame_b")
         point_in_a = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
@@ -166,6 +172,20 @@ class TestNamedPose(BaseTester):
         self.assert_close(point_in_b, point_in_a)
         assert isinstance(b_from_a, NamedPose)
         assert isinstance(b_from_a.pose, Se2)
+
+    def test_se2_pose_in_bfloat16_raises(self, device):
+        # So2 stores a complex rotation and PyTorch has no complex bfloat16 dtype, so a bfloat16 Se2 pose raises
+        # kornia's error naming the dtype (torch.complex raised a RuntimeError before). A pose built in float32 and
+        # converted with ``.bfloat16()`` keeps its complex rotation and composes as usual.
+        bf16 = torch.bfloat16
+        with pytest.raises(TypeCheckError, match=r"no complex bfloat16"):
+            NamedPose.from_rt(torch.eye(2, device=device, dtype=bf16), torch.ones(2, device=device, dtype=bf16))
+        with pytest.raises(TypeCheckError, match=r"no complex bfloat16"):
+            NamedPose.from_matrix(torch.eye(3, device=device, dtype=bf16))
+        converted = Se2.exp(torch.tensor([0.5, -1.0, 0.3], device=device)).bfloat16()
+        b_from_a = NamedPose(converted, frame_src="a", frame_dst="b")
+        assert b_from_a.translation.dtype == bf16
+        assert isinstance((b_from_a.inverse() * b_from_a).pose, Se2)
 
     def test_inverse(self, device, dtype):
         b_from_a = NamedPose(

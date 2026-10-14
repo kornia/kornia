@@ -51,6 +51,8 @@ class TestSe2(BaseTester):
 
     @pytest.mark.parametrize("input_shape", [(1,), (2,), (5,), ()])
     def test_cardinality(self, device, dtype, input_shape):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         t_input_shape = (*input_shape, 2)
         z = torch.randn((*input_shape, 2), dtype=dtype, device=device)
         t = torch.randn(t_input_shape, dtype=dtype, device=device)
@@ -70,6 +72,10 @@ class TestSe2(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_exception(self, device, dtype, batch_size):
+        # A bfloat16 identity raises TypeCheckError, a TypeError, so the TypeError check below would pass for
+        # the wrong reason; test_bfloat16_rotation_raises pins that error instead.
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         r = So2.random(batch_size)
         t1 = torch.randn((batch_size, 1), dtype=dtype, device=device)
         t2 = torch.randn((batch_size, 3), dtype=dtype, device=device)
@@ -132,6 +138,8 @@ class TestSe2(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_init(self, device, dtype, batch_size):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         s1 = Se2.random(batch_size, device, dtype)
         s2 = Se2(s1.r, s1.t)
         assert isinstance(s2, Se2)
@@ -150,6 +158,8 @@ class TestSe2(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_mul(self, device, dtype, batch_size):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         s1 = Se2.identity(batch_size, device, dtype)
         s2 = Se2.random(batch_size, device, dtype)
         s1_pose_s2 = s1 * s2
@@ -166,6 +176,8 @@ class TestSe2(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_mul_vector(self, device, dtype, batch_size):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         s1 = Se2.identity(batch_size, device, dtype)
         shape = () if batch_size is None else (batch_size,)
         s2 = Se2(So2.identity(batch_size, device, dtype), Vector2.random(shape, device, dtype))
@@ -183,6 +195,8 @@ class TestSe2(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_exp(self, device, dtype, batch_size):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         t = self._make_rand_data(device, dtype, (batch_size, 2))
         theta = torch.zeros(batch_size if batch_size is not None else (), device=device, dtype=dtype)
         s = Se2.exp(torch.cat((t, theta[..., None]), -1))
@@ -192,6 +206,8 @@ class TestSe2(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_log(self, device, dtype, batch_size):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         t = self._make_rand_data(device, dtype, (batch_size, 2))
         s = Se2(So2.identity(batch_size, device, dtype), t)
         # V(0)^-1 is the identity, so the log of a pure translation is (t, 0) (#4924)
@@ -199,6 +215,8 @@ class TestSe2(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_exp_log(self, device, dtype, batch_size):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         a = self._make_rand_data(device, dtype, (batch_size, 3))
         b = Se2.exp(a).log()
         self.assert_close(b, a, low_tolerance=True)
@@ -320,6 +338,8 @@ class TestSe2(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_matrix(self, device, dtype, batch_size):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         theta = self._make_rand_data(device, dtype, (batch_size,))
         t = self._make_rand_data(device, dtype, (batch_size, 2))
         s = So2.exp(theta)
@@ -329,6 +349,8 @@ class TestSe2(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_from_matrix(self, device, dtype, batch_size):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         theta = self._make_rand_data(device, dtype, (batch_size,))
         t = self._make_rand_data(device, dtype, (batch_size, 2))
         s = So2.exp(theta)
@@ -342,6 +364,8 @@ class TestSe2(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_inverse(self, device, batch_size, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         s = Se2.random(batch_size, device, dtype)
         s_in_in = s.inverse().inverse()
         self.assert_close(s_in_in.so2.z.real, s.so2.z.real)
@@ -350,6 +374,8 @@ class TestSe2(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_random(self, device, dtype, batch_size):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         s = So2.random(batch_size=batch_size, device=device, dtype=dtype)
         t = self._make_rand_data(device, dtype, (batch_size, 2))
         se2 = Se2(s, t)
@@ -372,6 +398,8 @@ class TestSe2(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_trans(self, device, dtype, batch_size):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         trans = self._make_rand_data(device, dtype, (batch_size, 2))
         x, y = trans[..., 0], trans[..., 1]
         se2 = Se2.trans(x, y)
@@ -380,6 +408,8 @@ class TestSe2(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_trans_x(self, device, dtype, batch_size):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         x = self._make_rand_data(device, dtype, (batch_size, 1)).squeeze(-1)
         zs = torch.zeros_like(x)
         se2 = Se2.trans_x(x)
@@ -388,6 +418,8 @@ class TestSe2(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_trans_y(self, device, dtype, batch_size):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         y = self._make_rand_data(device, dtype, (batch_size, 1)).squeeze(-1)
         zs = torch.zeros_like(y)
         se2 = Se2.trans_y(y)
@@ -535,7 +567,30 @@ class TestSe2(BaseTester):
         assert all(isinstance(s, Se2) for s in built)
         assert all(s.t.dtype == dtype and s.r.z.real.dtype == dtype for s in built)
 
+    def test_bfloat16_rotation_raises(self, device):
+        # Every Se2 builder goes through an So2 builder, which raises a kornia error naming bfloat16 because PyTorch
+        # has no complex bfloat16 dtype; torch.complex raised a RuntimeError there before. ``.bfloat16()`` on a
+        # built pose keeps working (test_bfloat16_module_state_is_closed_5913).
+        bf16 = torch.bfloat16
+        ones = torch.ones(2, device=device, dtype=bf16)
+        builders = {
+            "exp": lambda: Se2.exp(torch.ones(2, 3, device=device, dtype=bf16)),
+            "identity": lambda: Se2.identity(2, device, bf16),
+            "random": lambda: Se2.random(2, device, bf16),
+            "from_matrix": lambda: Se2.from_matrix(torch.eye(3, device=device, dtype=bf16)),
+            "trans": lambda: Se2.trans(ones, ones),
+            "trans_x": lambda: Se2.trans_x(ones),
+            "trans_y": lambda: Se2.trans_y(ones),
+        }
+        message = r"So2 stores its rotation as a complex tensor.*no complex bfloat16 dtype"
+        for name, build in builders.items():
+            with pytest.raises(TypeCheckError, match=message) as err:
+                build()
+            assert err.value.actual_type == bf16, name
+
     def test_derived_state_moves_and_serializes(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         # A group built from a tensor with autograd history keeps that history; its state must
         # still be registered so ``state_dict`` and ``.to()`` / ``.double()`` reach it.
         v = torch.rand(2, 3, device=device, dtype=dtype, requires_grad=True)
