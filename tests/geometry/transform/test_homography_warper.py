@@ -594,6 +594,33 @@ class TestHomographyWarper3D(BaseTester):
         ).expand(batch_size, -1, -1)
         self.assert_close(norm_homo, res)
 
+    @pytest.mark.parametrize("batch_size", [1, 3])
+    def test_denormalize_homography_general(self, batch_size, device, dtype):
+        # The inverse of test_normalize_homography_general: denormalizing its expected result gives
+        # back its input. Every entry and normalization constant is dyadic, so the values are exact
+        # in every dtype.
+        norm_homo = torch.tensor(
+            [[[0.5, 0.0, 0.0, 0.0], [0.0, 0.5, 0.0, 3.5], [0.0, 0.0, 2.0, 7.0], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+        ).expand(batch_size, -1, -1)
+
+        dst_homo_src = kornia.geometry.conversions.denormalize_homography3d(norm_homo, (2, 2, 5), (2, 2, 5))
+        res = torch.tensor(
+            [[[0.5, 0.0, 0.0, 1.0], [0.0, 0.5, 0.0, 2.0], [0.0, 0.0, 2.0, 3.0], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+        ).expand(batch_size, -1, -1)
+        assert dst_homo_src.shape == (batch_size, 4, 4)
+        self.assert_close(dst_homo_src, res)
+
+    def test_denormalize_homography_invalid_input(self, device):
+        with pytest.raises(TypeError, match=r"Input type is not a torch.Tensor"):
+            kornia.geometry.conversions.denormalize_homography3d([[1.0]], (3, 5, 7), (6, 8, 11))
+
+        with pytest.raises(ValueError, match="must be a Bx4x4 tensor"):
+            kornia.geometry.conversions.denormalize_homography3d(torch.ones(2, 2, device=device), (3, 5, 7), (6, 8, 11))
+
     @pytest.mark.parametrize("offset", [1, 3, 7])
     @pytest.mark.parametrize("shape", [(4, 5, 6), (2, 4, 6), (4, 3, 9), (5, 7, 8)])
     def test_warp_grid_translation(self, shape, offset, device, dtype):
