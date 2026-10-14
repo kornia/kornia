@@ -42,11 +42,32 @@ urls: dict[str, list[str]] = {
 
 
 class DISK(nn.Module):
-    r"""nn.Module which detects and described local features in an image using the DISK method.
+    r"""nn.Module which detects and describes local features in an image using the DISK method.
 
     See :cite:`tyszkiewicz2020disk` for details.
 
     .. image:: _static/img/disk_outdoor_depth.jpg
+
+    Convention:
+        - ``images`` are RGB, :math:`(B, 3, H, W)`, which the U-Net sees as given, without normalisation. With the
+          default U-Net, a common positive gain of the input, such as :math:`[0, 255]` instead of :math:`[0, 1]`,
+          changes the outputs only through the instance norms' ``eps``, which weighs more the lower the image's
+          contrast. At ordinary contrast the maps barely change, though a keypoint can still swap where scores nearly
+          tie or at the ``n`` cut; at low contrast the keypoints and descriptors change substantially. With the
+          ``depth`` weights and ``n=2048``, the :math:`[0, 1]` and :math:`[0, 255]` versions of Oxford graf, wall and
+          bark ``img1`` differ in 0 to 2 keypoints, in 2 to 6 % of them with the intensities multiplied by 0.1, and
+          in about 30 % multiplied by 0.01. ``H`` and ``W`` must be multiples of 16, unless
+          ``pad_if_not_divisible=True`` zero-pads the bottom and right, in which case the maps are cropped back to the
+          image before the suppression and no keypoint lies in the padding.
+        - Each image gives a :class:`DISKFeatures`. Keypoints are the integer ``(x, y)`` pixels of the strict heatmap
+          maxima (see the note), in the pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
+          (see :ref:`Local features <local-features-conventions>`), listed in raster order (row by row, then column
+          by column) rather than by score, in the dtype of the network's output. ``detection_scores`` are the
+          heatmap values there, and each descriptor is the dense descriptor at the keypoint's pixel, L2-normalised;
+          :meth:`heatmap_and_dense_descriptors` returns the dense descriptors without normalisation.
+        - ``score_threshold`` keeps the scores strictly above it. ``n`` is an upper bound on the maxima above
+          ``score_threshold`` in each image; the ``n`` argument of :meth:`forward` says which of them are kept when
+          there are more.
 
     Args:
         desc_dim: The dimension of the descriptor.
@@ -64,7 +85,10 @@ class DISK(nn.Module):
         clips the window at the border, so it judges a border position against part of its window. Of several equal
         maxima it keeps the one the max-pool reports first, which depends on an order PyTorch does not specify. With
         the pretrained ``depth`` weights on Oxford graf and boat img1, every keypoint of the reference that kornia
-        leaves out lies in that border strip.
+        leaves out lies in that border strip. The reference's ``n`` keeps the scores strictly above the
+        ``(n + 1)``-th largest, which drops the weakest maximum, with every maximum tied with it, of an image with
+        ``n`` maxima or fewer, and every maximum tied across the cut. kornia's ``n`` is an upper bound, so such an
+        image keeps every maximum, and a tie at the cut is filled in raster order.
 
     Example:
         >>> disk = DISK.from_pretrained('depth')
@@ -120,11 +144,14 @@ class DISK(nn.Module):
 
         Args:
             images: The image to detect features in. Shape :math:`(B, 3, H, W)`.
-            n: The maximum number of keypoints to detect. If None, all keypoints are returned.
+            n: The maximum number of keypoints per image, counted among the maxima above ``score_threshold``. An
+               image with ``n`` such maxima or fewer keeps all of them; with more, its ``n`` strongest, where maxima
+               tied at the ``n``-th score are taken in raster order. If None, all keypoints are returned.
             window_size: The size of the non-maxima suppression window used to filter detections.
-            score_threshold: The minimum score a detection must have to be returned.
+            score_threshold: Detections must score strictly above it to be returned.
                              See :py:class:`DISKFeatures` for details.
-            pad_if_not_divisible: if True, the non-16 divisible input is zero-padded to the closest 16-multiply
+            pad_if_not_divisible: if True, an input whose height or width is not a multiple of 16 is zero-padded at
+                the bottom and right to the next multiple of 16.
 
         Returns:
             A list of length :math:`B` containing the detected features.

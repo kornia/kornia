@@ -459,6 +459,32 @@ class TestSharedSIFTScaleSpace(BaseTester):
         assert lafs.shape == (1, 8, 2, 3)
         assert responses.dtype == descriptors.dtype == lafs.dtype == dtype
 
+    def test_large_frame_is_described_in_half_precision(self, device, dtype):
+        # Products of two entries of the first LAF overflow float16 (det 300 * 280 + 40 * 25 = 85000 > 65504).
+        # laf_is_valid used to call it invalid in float16, so it got the zero descriptor of a padded slot. A half
+        # precision input is described in float32, so it must get the float32 descriptor of the same rounded input.
+        work_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        yy, xx = torch.meshgrid(torch.arange(96.0), torch.arange(128.0), indexing="ij")
+        image = (0.5 + 0.3 * torch.sin(xx / 7.0) * torch.cos(yy / 11.0) + 0.002 * xx)[None, None]
+        pyramid = [
+            level.to(dtype) for level in _SIFTScalePyramid().to(device, work_dtype)(image.to(device, work_dtype))
+        ]
+        lafs = torch.tensor(
+            [[[[300.0, 40.0, 70.0], [-25.0, 280.0, 41.0]], [[12.0, 3.0, 50.0], [-2.0, 10.0, 60.0]]]],
+            device=device,
+            dtype=dtype,
+        )
+        octaves = torch.tensor([[2, 0]], device=device)
+        levels = torch.tensor([[3, 2]], device=device)
+        describe = _SIFTScaleSpaceDescriptor()
+        _, actual = describe(pyramid, lafs, octaves, levels, upright=True)
+        _, expected = describe(
+            [level.to(work_dtype) for level in pyramid], lafs.to(work_dtype), octaves, levels, upright=True
+        )
+        assert actual.dtype == dtype
+        assert bool(expected.abs().sum(dim=-1).gt(0).all())
+        self.assert_close(actual, expected.to(dtype))
+
 
 class TestSIFTScalePyramid(BaseTester):
     def test_precise_double_grid(self, device, dtype):
@@ -861,3 +887,31 @@ class TestSIFTScaleSpaceDetector(BaseTester):
         lafs, responses = detector(torch.zeros(1, 1, 32, 32, device=device))
         (lafs.sum() + responses.sum()).backward()
         assert torch.isfinite(dog.grad).all()
+
+
+class TestConventionsSIFTFeatureScaleSpace(BaseTester):
+    def test_convention_pyramid_backend_centres_are_pixel_centres_at_every_octave(self, device, dtype):
+        # Three bright blobs (x, y, sigma) at non-integer centres of a 120 x 176 image, detected on octaves 0, 1 and 2.
+        # The pyramid backend maps every octave's pixel back to the image's pixel-centre frame, so each centre is
+        # within 0.1 px of its blob. Half-precision input is detected in float32 and the LAFs are cast to the dtype at
+        # the end, which adds half a unit in the last place at coordinates below 128: 0.25 px in bfloat16, 1 / 32 px
+        # in float16.
+        tol = 0.1 + {torch.bfloat16: 0.25, torch.float16: 1.0 / 32}.get(dtype, 0.0)
+        blobs = [(37.3, 41.6, 1.5), (112.7, 38.2, 3.5), (71.4, 84.3, 8.0)]
+        yy, xx = torch.meshgrid(
+            torch.arange(120, dtype=torch.float64), torch.arange(176, dtype=torch.float64), indexing="ij"
+        )
+        img = sum(torch.exp(-((xx - x0) ** 2 + (yy - y0) ** 2) / (2.0 * s * s)) for x0, y0, s in blobs)[None, None]
+        expected = torch.tensor([[x0, y0] for x0, y0, _ in blobs], dtype=torch.float64)
+        feature = SIFTFeatureScaleSpace(32, upright=True, descriptor_backend="pyramid").to(device, dtype)
+        for image, centres in ((img, expected), (img.transpose(-1, -2), expected.flip(-1))):  # relabelling: transpose
+            image = image.contiguous().to(device, dtype)
+            with torch.no_grad():
+                lafs, _, _ = feature(image)
+                _, _, filled_d, _, octaves, _ = feature.detector._detect_with_pyramid(image, 32)
+            filled = laf_is_filled(lafs)[0]
+            assert torch.equal(filled, filled_d[0])
+            found = get_laf_center(lafs)[0, filled].cpu().double()
+            nearest = (found[None] - centres[:, None]).norm(dim=-1).argmin(dim=1)
+            assert octaves[0, filled][nearest.to(device)].tolist() == [0, 1, 2]
+            self.assert_close(found[nearest], centres, rtol=0.0, atol=tol)

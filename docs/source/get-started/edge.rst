@@ -10,7 +10,7 @@ resource-constrained targets:
 ONNX
 ----
 
-Kornia operators and models export to ONNX, and :class:`~kornia.onnx.sequential.ONNXSequential` chains
+Many Kornia operators and models export to ONNX, and :class:`~kornia.onnx.sequential.ONNXSequential` chains
 pre-exported graphs into a single model that runs under ONNX Runtime with the CPU, CUDA, TensorRT or OpenVINO
 execution providers. Pre-exported operators and models are published in the
 `kornia/ONNX_models <https://huggingface.co/kornia/ONNX_models>`_ Hugging Face repository.

@@ -47,11 +47,18 @@ class OnnxLightGlue:
     If you have trained your own LightGlue model, see https://github.com/fabio-sim/LightGlue-ONNX
     for how to export the model to ONNX and optimize it.
 
+    Convention:
+        - See the Convention block on :class:`~kornia.feature.LightGlue`: the keypoints are normalised the same way,
+          with ``image_size`` in the order ``(W, H)``, and the same range check applies. Unlike
+          :class:`~kornia.feature.LightGlue`, it takes float32 inputs with a batch of one and no scales, orientations
+          or LAFs, and it runs on CPU or CUDA only.
+
     Args:
         weights: Pretrained weights, or a path to your own exported ONNX model. Available pretrained weights
           are ``'disk'``, ``'superpoint'``, ``'disk_fp16'``, and ``'superpoint_fp16'``. `Note that FP16 requires CUDA.`
           Defaults to ``'disk_fp16'`` if ``device`` is CUDA, and ``'disk'`` if CPU.
-        device: Union[str, torch.device, None] to run inference on.
+        device: ``'cpu'`` or ``'cuda'`` to run inference on; another device raises ``ValueError``. ``None`` means
+          ``'cpu'``, as in the other kornia feature constructors, not torch's current default device.
 
     """
 
@@ -71,7 +78,7 @@ class OnnxLightGlue:
         _ = _ort.__version__
         KORNIA_CHECK(importlib.util.find_spec("numpy") is not None, "numpy is not installed.")
 
-        device = torch.device(device)  # type: ignore
+        device = torch.device("cpu") if device is None else torch.device(device)
         self.device = device
 
         if device.type == "cpu":

@@ -275,3 +275,89 @@ def test_make_grid_valid(device, dtype, n_row):
     assert actual.dtype == tensor.dtype
     assert actual.device == tensor.device
     assert_close(actual, expected)
+
+
+def test_tensor_to_image_bfloat16_becomes_float32():
+    out = kornia.image.tensor_to_image(torch.full((3, 4, 5), 0.5, dtype=torch.bfloat16))
+    assert out.dtype == np.float32
+    assert out.shape == (4, 5, 3)
+    assert (out == 0.5).all()
+
+
+@pytest.mark.parametrize("bad", [torch.zeros(4, 5, 3), [[0, 1], [2, 3]]])
+def test_image_to_tensor_rejects_a_non_ndarray(bad):
+    with pytest.raises(TypeError, match="numpy"):
+        kornia.image.image_to_tensor(bad)
+
+
+def test_make_grid_rejects_negative_padding():
+    with pytest.raises(ValueError, match="padding"):
+        kornia.image.make_grid(torch.zeros(4, 1, 3, 5), padding=-1)
+
+
+class TestConventionsConversion(BaseTester):
+    """Pins for NumPy <-> tensor conversion: dtype, aliasing, batch axis and the grid layout."""
+
+    def test_convention_image_to_tensor_keeps_dtype_and_shares_memory(self):
+        array = (np.arange(4 * 5 * 3) % 256).astype(np.uint8).reshape(4, 5, 3)  # H = 4, W = 5
+        tensor = kornia.image.image_to_tensor(array)
+        assert tensor.dtype == torch.uint8  # no rescale to [0, 1], no cast to float
+        assert tensor.shape == (3, 4, 5)
+        assert tensor.data_ptr() == array.ctypes.data  # a (C, H, W) view of the array, not a copy
+        array[1, 2, 0] = 200
+        assert tensor[0, 1, 2].item() == 200
+
+    def test_convention_image_to_tensor_rejects_negative_strides(self):
+        array = np.arange(4 * 5 * 3, dtype=np.uint8).reshape(4, 5, 3)
+        with pytest.raises(ValueError):  # torch.from_numpy cannot view a negative stride, e.g. an OpenCV BGR flip
+            kornia.image.image_to_tensor(array[..., ::-1])
+        tensor = kornia.image.image_to_tensor(array[..., ::-1].copy())
+        assert tensor[:, 0, 0].tolist() == [2, 1, 0]  # channels reversed, (C, H, W)
+
+    def test_convention_tensor_to_image_shares_memory_with_a_cpu_tensor(self):
+        tensor = torch.zeros(3, 4, 5)
+        array = kornia.image.tensor_to_image(tensor)
+        assert array.shape == (4, 5, 3)
+        assert array.__array_interface__["data"][0] == tensor.data_ptr()
+        tensor[2, 3, 4] = 7.0
+        assert array[3, 4, 2] == 7.0
+
+    def test_convention_tensor_to_image_drops_a_single_channel_keepdim_keeps_only_batch(self, device, dtype):
+        # keepdim keeps the batch axis of a (1, C, H, W) input; it never keeps a single channel axis.
+        single = torch.rand(1, 1, 4, 5, device=device, dtype=dtype)
+        assert kornia.image.tensor_to_image(single).shape == (4, 5)
+        assert kornia.image.tensor_to_image(single, keepdim=True).shape == (1, 4, 5)
+        assert kornia.image.tensor_to_image(single[0]).shape == (4, 5)
+        three = torch.rand(1, 3, 4, 5, device=device, dtype=dtype)
+        assert kornia.image.tensor_to_image(three).shape == (4, 5, 3)
+        assert kornia.image.tensor_to_image(three, keepdim=True).shape == (1, 4, 5, 3)
+
+    def test_convention_keepdim_defaults_differ(self):
+        # ImageToTensor() defaults to keepdim=False and adds a batch axis; image_to_tensor defaults to keepdim=True.
+        array = np.zeros((4, 5, 3), dtype=np.uint8)
+        assert kornia.image.ImageToTensor()(array).shape == (1, 3, 4, 5)
+        assert kornia.image.image_to_tensor(array).shape == (3, 4, 5)
+        assert kornia.image.ImageToTensor(keepdim=True)(array).shape == (3, 4, 5)
+        assert kornia.image.image_to_tensor(array, keepdim=False).shape == (1, 3, 4, 5)
+
+    def test_convention_make_grid_n_row_is_images_per_row(self, device, dtype):
+        # n_row is the number of images in each row, despite its name: B = 5, n_row = 2 gives 3 rows of 2 tiles.
+        tensor = torch.arange(1, 6, device=device, dtype=dtype).view(5, 1, 1, 1).expand(5, 1, 2, 3)  # H = 2, W = 3
+        grid = kornia.image.make_grid(tensor, n_row=2, padding=0)
+        assert grid.shape == (1, 6, 6)
+        expected = torch.tensor(
+            [[1, 1, 1, 2, 2, 2], [1, 1, 1, 2, 2, 2], [3, 3, 3, 4, 4, 4], [3, 3, 3, 4, 4, 4]]
+            + [[5, 5, 5, 0, 0, 0], [5, 5, 5, 0, 0, 0]],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(grid[0], expected)
+
+    def test_convention_make_grid_pads_only_between_tiles(self, device, dtype):
+        # padding is a gap between tiles with no outer border: (C, rows * (H + p) - p, cols * (W + p) - p).
+        tensor = torch.ones(5, 2, 2, 3, device=device, dtype=dtype)  # B = 5, H = 2, W = 3
+        grid = kornia.image.make_grid(tensor, n_row=2, padding=1)
+        assert grid.shape == (2, 3 * 2 + 2, 2 * 3 + 1)
+        assert grid[:, 0, 0].tolist() == [1.0, 1.0]  # first tile starts at the corner
+        assert grid[:, 2, :].sum().item() == 0.0  # the gap row between tile rows
+        assert grid[:, :, 3].sum().item() == 0.0  # the gap column between tile columns

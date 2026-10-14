@@ -117,3 +117,46 @@ class TestDeFMO(BaseTester):
         model_jit = torch.jit.script(DeFMO(True).to(patches.device, patches.dtype).eval())
         with torch.no_grad():
             self.assert_close(model(patches), model_jit(patches))
+
+
+class _RecordingRenderer(torch.nn.Module):
+    """A stand-in for the rendering network: returns fixed values per output channel and records each input."""
+
+    def __init__(self, values):
+        super().__init__()
+        self.values = values
+        self.seen = []
+
+    def forward(self, latent):
+        self.seen.append(latent)
+        b, _, h, w = latent.shape
+        out = self.values.to(latent).view(1, -1, 1, 1).expand(b, -1, 16 * h, 16 * w)
+        return out.clone()
+
+
+class TestConventionsDeFMO(BaseTester):
+    def test_convention_defmo_renders_24_rgba_subframes_in_time_order(self, device, dtype):
+        # DeFMO takes (B, 6, H, W) and returns (B, 24, 4, H, W) for H and W multiples of 16; other sizes are rounded up
+        # to the next multiple of 16. The encoder's latent is (B, 2048, H / 16, W / 16); sub-frame k is rendered from it
+        # with the time t = k / 23 prepended as channel 0, and all four channels, RGB and alpha, go through a sigmoid.
+        # The rendering network is replaced by a recorder that upsamples by 16 as the real one does. The input channel
+        # order (the blurred RGB image, then the RGB background: the order of rozumden/DeFMO 9b69769 run.py) only
+        # matters to the trained weights and is not visible here.
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(0)
+            model = DeFMO().eval()
+        model = model.to(device, dtype)
+        values = torch.tensor([-3.0, -1.0, 0.5, 4.0], device=device, dtype=dtype)
+        model.rendering.net = _RecordingRenderer(values)
+        with torch.no_grad():
+            out = model(torch.rand(2, 6, 64, 96, device=device, dtype=dtype))
+            assert model(torch.rand(1, 6, 60, 90, device=device, dtype=dtype)).shape == (1, 24, 4, 64, 96)
+        assert out.shape == (2, 24, 4, 64, 96)
+        self.assert_close(out[1, 7, :, 50, 11], torch.sigmoid(values))
+        self.assert_close(out[0, 23, :, 3, 90], torch.sigmoid(values))
+        assert len(model.rendering.net.seen) == 48  # 24 sub-frames per call
+        latents = model.rendering.net.seen[:24]
+        assert all(latent.shape == (2, 2049, 4, 6) for latent in latents)
+        times = torch.stack([latent[:, 0] for latent in latents])  # (24, B, h, w), each constant
+        expected = torch.linspace(0, 1, 24, device=device, dtype=dtype).view(24, 1, 1, 1).expand_as(times)
+        self.assert_close(times, expected)

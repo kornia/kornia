@@ -241,7 +241,8 @@ def _least_squares_basis(design: torch.Tensor) -> torch.Tensor:
     if design.shape[-2] < 9:
         return _NullSpaceBasis.apply(design)[0]
     # every right singular vector has a gradient in torch.linalg.svd itself
-    _, _, V = _torch_svd_cast(design)
+    # N >= 9 here, so reduced SVD still returns all 9 right singular vectors. The full U is unused.
+    _, _, V = _torch_svd_cast(design, full_matrices=False)
     return V[:, :, -4:]
 
 
@@ -602,14 +603,13 @@ def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor
     # B, to select which b1
     largest = torch.argmax(norms, dim=-2)
 
-    # B, 3, 3
-    e_cross_products = scale_factor[:, None, None] * cross_products / norms
-
     # broadcast the index
-    index_expanded = largest.unsqueeze(-1).expand(-1, -1, e_cross_products.size(-1))
+    index_expanded = largest.unsqueeze(-1).expand(-1, -1, cross_products.size(-1))
 
-    # slice at dim=1, select for each batch one b (e1*e2 or e2*e3 or e3*e1), B, 1, 3
-    b1 = torch.gather(e_cross_products, dim=1, index=index_expanded).squeeze(1)
+    # Select before dividing: unused zero cross products would give 0/0 and NaN gradients.
+    b1 = torch.gather(cross_products, dim=1, index=index_expanded).squeeze(1)
+    selected_norm = torch.gather(norms, dim=1, index=largest.unsqueeze(-1)).squeeze(1)
+    b1 = scale_factor[:, None] * b1 / selected_norm
     # normalization
     b1_ = b1 / torch.norm(b1, dim=-1, keepdim=True)
 

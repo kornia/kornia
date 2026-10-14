@@ -81,6 +81,10 @@ class ALIKEDFeatures:
     Since ALIKED detects a varying number of keypoints per image,
     ``ALIKEDFeatures`` is not batched.
 
+    Convention:
+        The keypoints, descriptors and scores that :class:`~kornia.feature.ALIKED` returns for one image; its
+        Convention block gives their frame and how many there are.
+
     Args:
         keypoints: pixel coordinates ``(N, 2)`` as ``[x, y]``.
         descriptors: L2-normalised descriptors ``(N, D)``.
@@ -210,11 +214,11 @@ class DKD(nn.Module):
     Args:
         radius: soft detection radius; NMS kernel size is ``2 * radius + 1``. The NMS keeps strict local maxima
             only, unlike the reference's ``simple_nms``; the note of :class:`ALIKED` explains the difference.
-        top_k: if ``> 0`` return exactly the ``top_k`` highest-scoring
-            keypoints; otherwise threshold mode is used.
+        top_k: if ``> 0`` return at most ``top_k`` keypoints per image: its ``top_k`` highest-scoring local maxima,
+            or all of them when it has fewer; otherwise threshold mode is used.
         scores_th: score threshold when ``top_k <= 0``.
-            If ``> 0`` keep keypoints with ``score > scores_th``;
-            otherwise keep keypoints above the per-image mean score.
+            If ``> 0`` keep keypoints with ``score > scores_th``, and in an image with none above it, the keypoints
+            above that image's mean score; otherwise keep keypoints above the per-image mean score.
         n_limit: maximum number of keypoints returned in threshold mode.
     """
 
@@ -263,32 +267,34 @@ class DKD(nn.Module):
         """
         b, _c, h, w = scores_map.shape
         scores_nograd = scores_map.detach()
-        nms_scores = nms2d(scores_nograd, (self.kernel_size, self.kernel_size))
+        # the candidates: the strict local maxima outside the border (and outside each image's padding)
+        is_max = nms2d(scores_nograd, (self.kernel_size, self.kernel_size), mask_only=True)
 
         # remove border
-        nms_scores[:, :, : self.radius, :] = 0
-        nms_scores[:, :, :, : self.radius] = 0
+        is_max[:, :, : self.radius, :] = False
+        is_max[:, :, :, : self.radius] = False
         if image_size is not None:
             for i in range(b):
                 iw, ih = image_size[i].long()
-                nms_scores[i, :, ih.item() - self.radius :, :] = 0
-                nms_scores[i, :, :, iw.item() - self.radius :] = 0
+                is_max[i, :, ih.item() - self.radius :, :] = False
+                is_max[i, :, :, iw.item() - self.radius :] = False
         else:
-            nms_scores[:, :, -self.radius :, :] = 0
-            nms_scores[:, :, :, -self.radius :] = 0
+            is_max[:, :, -self.radius :, :] = False
+            is_max[:, :, :, -self.radius :] = False
 
         if self.top_k > 0:
-            topk = torch.topk(nms_scores.view(b, -1), self.top_k)
-            indices_keypoints = [topk.indices[i] for i in range(b)]
+            # at most top_k of the maxima: a non-maximum scores -inf here and is dropped, not used to fill up to top_k
+            candidate_scores = scores_nograd.masked_fill(~is_max, float("-inf")).reshape(b, -1)
+            topk = torch.topk(candidate_scores, min(self.top_k, h * w))
+            indices_keypoints = [topk.indices[i][topk.values[i] > float("-inf")] for i in range(b)]
         else:
+            # the per-image mean score: the threshold when scores_th <= 0, and the fallback of an image whose maxima
+            # are all at or below scores_th, decided for each image alone
+            mean = scores_nograd.reshape(b, -1).mean(dim=1).reshape(b, 1, 1, 1)
+            masks = is_max & (scores_nograd > mean)
             if self.scores_th > 0:
-                masks = nms_scores > self.scores_th
-                if masks.sum() == 0:
-                    th = scores_nograd.reshape(b, -1).mean(dim=1)
-                    masks = nms_scores > th.reshape(b, 1, 1, 1)
-            else:
-                th = scores_nograd.reshape(b, -1).mean(dim=1)
-                masks = nms_scores > th.reshape(b, 1, 1, 1)
+                above = is_max & (scores_nograd > self.scores_th)
+                masks = torch.where(above.reshape(b, -1).any(dim=1).reshape(b, 1, 1, 1), above, masks)
             masks = masks.reshape(b, -1)
 
             indices_keypoints = []
@@ -760,12 +766,39 @@ class ALIKED(nn.Module):
 
     .. image:: _static/img/ALIKED.png
 
+    Convention:
+        - ``images`` are RGB in :math:`[0, 1]`, the range of the pretrained weights, and the network applies no
+          normalisation; a :math:`(B, 1, H, W)` image is repeated to three channels. Any ``H`` and ``W`` work: the
+          image is replicate-padded around its centre to multiples of 32 and the maps are cropped back, so the padding
+          does not move the keypoints.
+        - :meth:`forward` returns one :class:`ALIKEDFeatures` per image. Its keypoints are sub-pixel ``(x, y)`` in the
+          pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
+          (see :ref:`Local features <local-features-conventions>`), in the image's dtype: a strict maximum of the
+          score map in its ``2 * nms_radius + 1`` window (see the note), at least ``nms_radius`` pixels from the
+          border, moved by a soft-argmax over that window. Its score is the score map read bilinearly there, and the
+          descriptors are L2-normalised.
+        - With ``detection_threshold > 0`` (threshold mode), the maxima strictly above it are kept, at most
+          ``max_num_keypoints`` of them, and at most 20000 for a non-positive ``max_num_keypoints``. An image with no
+          maximum above the threshold keeps the maxima above its own mean score instead, whatever the rest of the
+          batch. With ``detection_threshold <= 0`` and ``max_num_keypoints > 0`` (top-k mode), the
+          ``max_num_keypoints`` strongest maxima are kept, or all of them when there are fewer; with both ``<= 0``,
+          the maxima above the image's mean score.
+        - ``image_size`` holds the valid ``(W, H)`` of each image of a batch padded at the bottom and right to a
+          common size: maxima closer than ``nms_radius`` pixels to that image's last valid row or column are dropped.
+        - :meth:`forward_laf` returns padded tensors like :class:`~kornia.feature.LocalFeature`, but ``N`` is the
+          largest keypoint count in the batch and the responses are :math:`(B, N, 1)`. Its ``mask`` multiplies the
+          score map, and it takes no ``image_size``.
+        - Known defects: on CPU, float16 and bfloat16 score and feature maps go to torch's ``grid_sample`` without
+          an upcast: the half-precision kernel can return wrong values, NaN or overflow, and where torch has none the
+          call raises (`#5810 <https://github.com/kornia/kornia/issues/5810>`_).
+
     Args:
         model_name: backbone configuration, one of
             ``'aliked-t16'``, ``'aliked-n16'``, ``'aliked-n16rot'``, ``'aliked-n32'``.
-        max_num_keypoints: maximum number of keypoints to detect.
-            ``-1`` means no limit (threshold-based mode).
-        detection_threshold: minimum detection score in threshold mode.
+        max_num_keypoints: the keypoint budget, a cap on the number of maxima kept in threshold mode and in top-k
+            mode; see the Convention block.
+        detection_threshold: a positive value selects threshold mode and is the score a maximum must exceed; zero or
+            a negative value selects top-k mode when ``max_num_keypoints`` is positive. See the Convention block.
         nms_radius: NMS radius (kernel size ``= 2 * nms_radius + 1``). The suppression keeps strict local maxima
             only; see the note below.
 
@@ -775,10 +808,15 @@ class ALIKED(nn.Module):
         departs on purpose from the reference implementations (Shiaoming/ALIKED and LightGlue's port). Their
         ``simple_nms`` also keeps tied maxima, and in two further rounds it adds the positions that become the
         maximum of their window once the windows around the maxima already kept are zeroed. Those positions lie on
-        the flank of a stronger peak and are not local maxima of the score map. kornia therefore returns a subset
-        of the reference keypoints. With the pretrained ``aliked-n16`` it returns 1363 of the reference's 1514 on
-        Oxford graf img1, and each of the 151 left out has a higher score in its window. The single pass is also
-        faster on CPU than the reference's three rounds.
+        the flank of a stronger peak and are not local maxima of the score map. In threshold mode, when neither the
+        keypoint budget nor the fallback below decides the count, kornia therefore returns a subset of the reference
+        keypoints: with the pretrained ``aliked-n16`` and the default threshold it returns up to 10 % fewer keypoints
+        than the reference on the Oxford img1 images, and each one left out has a higher score in its window.
+        Otherwise the two keypoint sets need not be nested, because the reference ranks those extra positions with
+        the maxima: in top-k mode, where it also fills ``top_k`` slots with positions that are not maxima when the
+        score map has fewer maxima, and when the budget cuts the count in threshold mode. The reference falls back to
+        the mean score only when no image of the batch has a maximum above the threshold; kornia returns maxima only
+        and decides the fallback for each image, so an image's keypoints do not depend on the rest of the batch.
 
     Example:
         >>> aliked = ALIKED.from_pretrained('aliked-n16')  # doctest: +SKIP
@@ -947,14 +985,14 @@ class ALIKED(nn.Module):
         covariance, so the axes of the frame are its principal axes, and
         ``det A > 0`` (the frame is never mirrored). The frame describes how
         sharply the score map peaks, not an image structure. Its scale
-        (:func:`~kornia.feature.get_laf_scale`) is about a pixel or less: 0.14
-        to 1.25 px, median 0.62 px, on Oxford graf img1 with the pretrained
-        ``aliked-n16``. That is much smaller than the region the descriptor
+        (:func:`~kornia.feature.get_laf_scale`) is about a pixel or less with
+        the pretrained ``aliked-n16``. That is much smaller than the region the descriptor
         samples, so rescale the frames, for example with
         :func:`~kornia.feature.scale_laf`, before using them as a region size.
 
-        All per-image tensors are zero-padded along the keypoint dimension so
-        that the outputs are proper batched tensors.
+        All per-image tensors are zero-padded along the keypoint dimension to
+        the largest keypoint count in the batch, so that the outputs are proper
+        batched tensors.
 
         Args:
             img: image to extract features with shape :math:`(B,C,H,W)`.

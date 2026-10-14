@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-import copy
 from abc import ABCMeta, abstractmethod
 from typing import Any, Callable, Dict, Generic, List, Optional, ParamSpec, Type, TypeVar, Union
 
@@ -65,9 +64,11 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
     def get_transform_matrix(cls, module: nn.Module, param: ParamItem, input: Any) -> torch.Tensor:
         """Get the matrix recorded by these params, not by the module's most recent image call."""
         params = cls.get_instance_module_param(param)
-        # The image call records the params dict it was given next to the matrix it computed from it. The same dict
-        # object is the same draw, so the recorded matrix is reused; other params are replayed from their values.
-        if not is_exporting() and getattr(module, "_transform_matrix_params", None) is params:
+        # The image call records the params dict it was given, and its values and their versions, next to the matrix
+        # it computed. The matrix is reused while the dict holds the same values unedited: the annotations of the same
+        # draw share it, and a replay after a caller replaced or edited a value is recomputed from the values.
+        matches = getattr(module, "_matrix_matches_params", None)
+        if not is_exporting() and matches is not None and matches(params):
             transform = getattr(module, "transform_matrix", None)
             if transform is not None:
                 return transform
@@ -226,6 +227,10 @@ class AugmentationSequentialOps:
         _data_keys = self.preproc_datakeys(data_keys)
 
         if isinstance(module, K.RandomTransplantation):
+            # This child reads the mask while drawing params, before the list-mask handler can reject it.
+            for inp, dcate in zip(arg, _data_keys):
+                if dcate == DataKey.MASK and isinstance(inp, list):
+                    raise NotImplementedError(f"{type(module).__name__} does not support mask lists.")
             # For transforms which require the full input to calculate the parameters (e.g. RandomTransplantation)
             param = ParamItem(
                 name=param.name,
@@ -514,68 +519,72 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
 
         return input
 
+    @staticmethod
+    def _sample_params(params: Dict[str, torch.Tensor], index: int) -> Dict[str, torch.Tensor]:
+        """Select one sample's gate and tensor parameters without mutating the saved draw."""
+        batch = params["batch_prob"].numel()
+        selected = {}
+        for name, value in params.items():
+            if name == "forward_input_shape":
+                value = value.clone()
+                value[0] = 1
+            elif value.ndim > 0 and value.shape[0] == batch:
+                value = value[index : index + 1]
+            selected[name] = value
+        return selected
+
     @classmethod
     def transform_list(
         cls, input: List[torch.Tensor], module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> List[torch.Tensor]:
-        """Apply a transformation with respect to the parameters.
+        """Transform one mask per image sample, allowing different channel counts.
 
         Args:
-            input: list of input tensors.
-            module: any torch nn.Module but only kornia augmentation modules will count
-                to apply transformations.
-            param: the corresponding parameters to the module.
-            extra_args: Optional dictionary of extra arguments with specific options for different input types.
+            input: Per-sample mask tensors in image order.
+            module: Augmentation or nested image sequence to apply.
+            param: The full image batch's saved parameters.
+            extra_args: Mask interpolation and other runtime overrides.
+
+        Returns:
+            One transformed mask per sample, in the same order.
         """
         if extra_args is None:
             extra_args = {}
-        if isinstance(module, K.RigidAffineAugmentationBase2D) and not isinstance(
-            module, K.IntensityAugmentationBase2D
-        ):
-            extra_args = cls._mask_extra_args(module, extra_args)
-            tfm_input = []
+        if isinstance(module, K.GeometricAugmentationBase3D):
+            raise NotImplementedError("3D mask lists are not supported.")
+        if isinstance(module, (K.VideoSequential, K.MixAugmentationBaseV2)):
+            raise NotImplementedError(f"{type(module).__name__} does not support mask lists.")
+        if isinstance(module, K.PatchSequential):
+            # Its own handler: masks pass through an intensity-only pipeline, a geometric one raises.
+            seq_params = cls.get_sequential_module_param(param)
+            return [module.transform_masks(inp, params=seq_params, extra_args=extra_args) for inp in input]
+        if isinstance(module, K.container.ImageSequentialBase):
+            for child_param in cls.get_sequential_module_param(param):
+                input = cls.transform_list(input, module.get_submodule(child_param.name), child_param, extra_args)
+            return input
+        if isinstance(module, K.auto.operations.OperationBase):
+            return cls.transform_list(input, module.op, param, extra_args)
+        if isinstance(module, _AugmentationBase):
             params = cls.get_instance_module_param(param)
-            params_i = copy.deepcopy(params)
-            for i, inp in enumerate(input):
-                params_i["batch_prob"] = params["batch_prob"][i]
-                tfm_inp = module.transform_masks(
+            transform = None
+            if isinstance(module, K.RigidAffineAugmentationBase2D) and not isinstance(
+                module, K.IntensityAugmentationBase2D
+            ):
+                extra_args = cls._mask_extra_args(module, extra_args)
+                transform = cls.get_transform_matrix(module, param, input)
+            output = [
+                module.transform_masks(
                     inp,
-                    params=params_i,
+                    params=cls._sample_params(params, i),
                     flags=module.flags,
-                    transform=cls.get_transform_matrix(module, param, inp),
+                    transform=transform[i : i + 1] if transform is not None else None,
                     **extra_args,
                 )
-                tfm_input.append(tfm_inp)
-            input = tfm_input
-
-        elif isinstance(module, (K.GeometricAugmentationBase3D,)):
-            raise NotImplementedError(
-                "The support for 3d mask operations are not yet supported. You are welcome to file a PR in our repo."
-            )
-
-        elif isinstance(module, (_AugmentationBase)):
-            tfm_input = []
-            params = cls.get_instance_module_param(param)
-            params_i = copy.deepcopy(params)
-            for i, inp in enumerate(input):
-                params_i["batch_prob"] = params["batch_prob"][i]
-                tfm_inp = module.transform_masks(inp, params=params_i, flags=module.flags, **extra_args)
-                tfm_input.append(tfm_inp)
-            input = tfm_input
-
-        elif isinstance(module, K.container.ImageSequentialBase):
-            tfm_input = []
-            seq_params = cls.get_sequential_module_param(param)
-            for inp in input:
-                tfm_inp = module.transform_masks(inp, params=seq_params, extra_args=extra_args)
-                tfm_input.append(tfm_inp)
-            input = tfm_input
-
-        elif isinstance(module, (K.auto.operations.OperationBase,)):
-            raise NotImplementedError(
-                "The support for list of masks under auto operations are not yet supported. You are welcome to file a"
-                " PR in our repo."
-            )
+                for i, inp in enumerate(input)
+            ]
+            # Each call recorded one sample's slice; keep the batch draw as the child's params, as a tensor mask does.
+            module._commit_state(params=params)
+            return output
         return input
 
     @classmethod
@@ -621,46 +630,47 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
     def inverse_list(
         cls, input: List[torch.Tensor], module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> List[torch.Tensor]:
-        """Inverse a transformation on a list of masks, undoing :meth:`transform_list` element by element.
+        """Invert each sample's mask with its own forward parameters and matrix.
 
         Args:
-            input: list of input tensors.
-            module: any torch nn.Module but only kornia augmentation modules will count
-                to apply transformations.
-            param: the corresponding parameters to the module.
-            extra_args: Optional dictionary of extra arguments with specific options for different input types.
+            input: Per-sample masks returned by the forward pass.
+            module: Augmentation or nested image sequence to invert.
+            param: The full image batch's saved forward parameters.
+            extra_args: Mask interpolation and other runtime overrides.
+
+        Returns:
+            One inverse-transformed mask per sample, in the same order.
         """
         if extra_args is None:
             extra_args = {}
-
-        if isinstance(module, (K.GeometricAugmentationBase2D,)):
+        if isinstance(module, K.GeometricAugmentationBase2D):
             transform = module.compute_inverse_transformation(cls.get_transform_matrix(module, param, input))
             params = cls.get_instance_module_param(param)
-            params_i = copy.deepcopy(params)
-            inv_input = []
-            for i, inp in enumerate(input):
-                # The same per-element ``batch_prob`` that ``transform_list`` gave this element.
-                params_i["batch_prob"] = params["batch_prob"][i]
-                inv_input.append(
-                    module.inverse_masks(inp, params=params_i, flags=module.flags, transform=transform, **extra_args)
+            output = [
+                module.inverse_masks(
+                    inp,
+                    params=cls._sample_params(params, i),
+                    flags=module.flags,
+                    transform=transform[i : i + 1],
+                    **extra_args,
                 )
-            input = inv_input
-
-        elif isinstance(module, (K.GeometricAugmentationBase3D,)):
-            raise NotImplementedError(
-                "The support for 3d mask operations are not yet supported. You are welcome to file a PR in our repo."
-            )
-
-        elif isinstance(module, K.container.ImageSequentialBase):
+                for i, inp in enumerate(input)
+            ]
+            module._commit_state(params=params)
+            return output
+        if isinstance(module, K.GeometricAugmentationBase3D):
+            raise NotImplementedError("3D mask lists are not supported.")
+        if isinstance(module, (K.VideoSequential, K.MixAugmentationBaseV2)):
+            raise NotImplementedError(f"{type(module).__name__} does not support mask lists.")
+        if isinstance(module, K.PatchSequential):
             seq_params = cls.get_sequential_module_param(param)
-            input = [module.inverse_masks(inp, params=seq_params, extra_args=extra_args) for inp in input]
-
-        elif isinstance(module, (K.auto.operations.OperationBase,)):
-            raise NotImplementedError(
-                "The support for list of masks under auto operations are not yet supported. You are welcome to file a"
-                " PR in our repo."
-            )
-
+            return [module.inverse_masks(inp, params=seq_params, extra_args=extra_args) for inp in input]
+        if isinstance(module, K.container.ImageSequentialBase):
+            for child_param in reversed(cls.get_sequential_module_param(param)):
+                input = cls.inverse_list(input, module.get_submodule(child_param.name), child_param, extra_args)
+            return input
+        if isinstance(module, K.auto.operations.OperationBase):
+            return cls.inverse_list(input, module.op, param, extra_args)
         return input
 
 

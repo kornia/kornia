@@ -1125,7 +1125,7 @@ class VideoBoxes(Boxes):
         temporal_channel_size = boxes.size(1)
 
         quadrilaterals = _boxes_to_quadrilaterals(
-            boxes.view(boxes.size(0) * boxes.size(1), -1, boxes.size(3), boxes.size(4)),
+            boxes.reshape(boxes.size(0) * boxes.size(1), boxes.size(2), boxes.size(3), boxes.size(4)),
             mode="vertices_plus",
             validate_boxes=validate_boxes,
         )
@@ -1155,8 +1155,10 @@ class VideoBoxes(Boxes):
     def __setitem__(self, key: slice | int | torch.Tensor, value: Boxes) -> VideoBoxes:
         r"""Write whole videos, selected by ``key`` on the video-batch axis as in :meth:`__getitem__`."""
         size = self.temporal_channel_size
-        self._data.view(-1, size, *self._data.shape[1:])[key] = value.data.view(-1, size, *value.data.shape[1:])
-        self._valid.view(-1, size, self._valid.shape[-1])[key] = value._valid.view(-1, size, value._valid.shape[-1])
+        # Explicit video counts: a clip with no boxes has 0 elements, so a -1 in the view would be ambiguous.
+        n, m = self._data.shape[0] // size, value.data.shape[0] // size
+        self._data.view(n, size, *self._data.shape[1:])[key] = value.data.view(m, size, *value.data.shape[1:])
+        self._valid.view(n, size, self._valid.shape[-1])[key] = value._valid.view(m, size, value._valid.shape[-1])
         return self
 
     def to_tensor(
@@ -1179,8 +1181,9 @@ class VideoBoxes(Boxes):
             :attr:`temporal_channel_size`.
         """
         out = super().to_tensor(mode, as_padded_sequence=as_padded_sequence)
+        batch_size = self._data.shape[0] // self.temporal_channel_size
         if isinstance(out, torch.Tensor):
-            return out.view(-1, self.temporal_channel_size, *out.shape[1:])
+            return out.reshape(batch_size, self.temporal_channel_size, *out.shape[1:])
         # If returns a list of boxes.
         return [_out.view(-1, self.temporal_channel_size, *_out.shape[1:]) for _out in out]
 

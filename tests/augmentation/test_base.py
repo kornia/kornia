@@ -757,15 +757,16 @@ class TestConventionAugmentationBase2D(BaseTester):
             with pytest.raises(NotImplementedError):
                 K.AugmentationSequential(aug, data_keys=["input", key])(image, data)
 
-    def test_convention_bhw_mask_list_entry_follows_the_image_5598(self, device, dtype):
-        # A batched (B, H, W) mask takes its batch size from ``batch_prob`` (#5598). A list entry has a 0-d gate and
-        # still reads a first dimension equal to the image batch as that batch, so each row gets its own crop window.
-        # The meaning of a mask list is tracked in #4477.
+    def test_convention_bhw_mask_uses_tensor_not_list_5598(self, device, dtype):
+        # A batched (B, H, W) mask takes its batch size from ``batch_prob`` (#5598). A mask list instead holds
+        # one tensor per image sample (#4477); wrapping the full batch in a one-element list is invalid.
         image = torch.arange(2 * 64, device=device).to(dtype).reshape(2, 1, 8, 8)
         sequence = K.AugmentationSequential(K.RandomCrop((4, 4), p=1.0), data_keys=["input", "mask"])
-        output_image, output_masks = sequence(image, [image[:, 0]])
-        assert output_masks[0].shape == (2, 1, 4, 4)
-        self.assert_close(output_masks[0], output_image, rtol=0, atol=0)
+        output_image, output_mask = sequence(image, image[:, 0])
+        assert output_mask.shape == (2, 1, 4, 4)
+        self.assert_close(output_mask, output_image, rtol=0, atol=0)
+        with pytest.raises(ValueError, match="one entry per sample"):
+            sequence(image, [image[:, 0]])
 
     @pytest.mark.parametrize("first_dim", [2, 3])
     def test_convention_3d_mask_keepdim_returns_its_rank_5598(self, device, dtype, first_dim):
@@ -1237,6 +1238,12 @@ class TestConventionAugmentationBase2D(BaseTester):
             pytest.param(lambda: K.RandomEqualize(p=1.0), (0, 3, 6, 8), id="RandomEqualize"),
             pytest.param(lambda: K.RandomPosterize(p=1.0), (0, 3, 6, 8), id="RandomPosterize"),
             pytest.param(lambda: K.RandomSharpness(p=1.0), (0, 3, 6, 8), id="RandomSharpness"),
+            pytest.param(
+                lambda: K.RandomGaussianBlur((3, 5), (0.5, 1.5), "constant", p=1.0),
+                (0, 3, 6, 8),
+                id="RandomGaussianBlur",
+            ),
+            pytest.param(lambda: K.RandomMotionBlur(3, 35.0, 0.5, p=1.0), (0, 3, 6, 8), id="RandomMotionBlur"),
         ],
     )
     def test_convention_zero_batch_is_empty_in_empty_out(self, augmentation, shape, device, dtype):
@@ -1392,3 +1399,83 @@ class TestEmptyIntensityAugmentation(BaseTester):
         assert output.device == device
         assert output.dtype == dtype
         self.assert_close(output, expected)
+
+
+class TestStaticProbabilityIgnoresHandMadeGate(BaseTester):
+    """With static ``p=1.0, p_batch=1.0`` every handler transforms every sample (#5585).
+
+    A ``batch_prob`` put into ``params`` is not consulted: the image, the matrix, the labels and ``inverse`` agree.
+    """
+
+    @pytest.mark.parametrize("augmentation_cls", [K.RandomHorizontalFlip, K.RandomVerticalFlip])
+    def test_round_trip_restores_the_batch(self, augmentation_cls, device, dtype):
+        x = torch.rand(3, 3, 8, 12, device=device, dtype=dtype)
+        aug = augmentation_cls(p=1.0)
+        params = aug.forward_parameters(x.shape)
+        params["batch_prob"] = torch.tensor([0.0, 1.0, 0.0])
+
+        out = aug(x, params=copy.deepcopy(params))
+
+        assert not torch.equal(out[0], x[0])  # the hand-made gate is not read at p=1
+        self.assert_close(aug.inverse(out, params=copy.deepcopy(params)), x)
+
+    def test_keypoints_and_matrix_follow_the_image(self, device, dtype):
+        x = torch.rand(2, 1, 8, 12, device=device, dtype=dtype)
+        points = torch.tensor([[[2.0, 3.0]], [[2.0, 3.0]]], device=device, dtype=dtype)
+        module = K.RandomHorizontalFlip(p=1.0)
+        aug = K.AugmentationSequential(module, data_keys=["input", "keypoints"])
+        params = module.forward_parameters(x.shape)
+        params["batch_prob"] = torch.tensor([0.0, 1.0])
+
+        out, out_points = aug(x, points, params=[K.container.params.ParamItem("RandomHorizontalFlip_0", params)])
+
+        self.assert_close(out, x.flip(-1))
+        self.assert_close(out_points[..., 0], 11.0 - points[..., 0])
+        self.assert_close(aug.inverse(out, out_points, params=aug._params)[1], points)
+
+    @pytest.mark.parametrize(
+        ("augmentation_cls", "kwargs", "shape"),
+        [
+            pytest.param(K.RandomAffine, {"degrees": 30.0}, (2, 1, 8, 12), id="RandomAffine"),
+            pytest.param(
+                K.RandomCrop,
+                {"size": (8, 12), "padding": (1, 2, 3, 0), "cropping_mode": "resample"},
+                (2, 1, 8, 12),
+                id="RandomCrop-resample",
+            ),
+            pytest.param(K.RandomAffine3D, {"degrees": 30.0}, (2, 1, 4, 6, 6), id="RandomAffine3D"),
+        ],
+    )
+    def test_hand_made_gate_matches_the_sampled_gate(self, augmentation_cls, kwargs, shape, device, dtype):
+        x = torch.rand(*shape, device=device, dtype=dtype)
+        aug = augmentation_cls(p=1.0, **kwargs)
+        params = aug.forward_parameters(x.shape)
+        hand_made = copy.deepcopy(params)
+        hand_made["batch_prob"] = torch.tensor([0.0, 1.0])
+
+        out = aug(x, params=copy.deepcopy(params))
+        matrix = aug.transform_matrix
+
+        self.assert_close(aug(x, params=copy.deepcopy(hand_made)), out)
+        self.assert_close(aug.transform_matrix, matrix)
+        if len(shape) == 4:
+            expected = aug.inverse(out, params=copy.deepcopy(params))
+            self.assert_close(aug.inverse(out, params=copy.deepcopy(hand_made)), expected)
+
+    def test_masks_and_boxes_follow_the_image(self, device, dtype):
+        x = torch.rand(2, 1, 8, 12, device=device, dtype=dtype)
+        mask = (torch.rand(2, 1, 8, 12, device=device) > 0.5).to(dtype)
+        boxes = torch.tensor([[[1.0, 2.0, 4.0, 5.0]], [[1.0, 2.0, 4.0, 5.0]]], device=device, dtype=dtype)
+        module = K.RandomHorizontalFlip(p=1.0)
+        aug = K.AugmentationSequential(module, data_keys=["input", "mask", "bbox_xyxy"])
+        params = module.forward_parameters(x.shape)
+        params["batch_prob"] = torch.tensor([0.0, 1.0])
+
+        out, out_mask, out_boxes = aug(
+            x, mask, boxes, params=[K.container.params.ParamItem("RandomHorizontalFlip_0", params)]
+        )
+
+        self.assert_close(out_mask, mask.flip(-1))
+        _, inv_mask, inv_boxes = aug.inverse(out, out_mask, out_boxes, params=aug._params)
+        self.assert_close(inv_mask, mask)
+        self.assert_close(inv_boxes, boxes)

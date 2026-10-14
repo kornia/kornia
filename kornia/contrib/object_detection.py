@@ -24,6 +24,7 @@ from typing import Any, ClassVar, List, Optional, Tuple, Union
 import torch
 from torch import nn
 
+from kornia.constants import _get_by_name
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.external import PILImage as Image
 from kornia.core.external import onnx
@@ -108,7 +109,7 @@ def results_from_detections(
     KORNIA_CHECK_SHAPE(detections, ["D", "6"])
 
     if isinstance(format, str):
-        format = BoundingBoxDataFormat[format.upper()]
+        format = _get_by_name(BoundingBoxDataFormat, format, format)
 
     results: list[ObjectDetectorResult] = []
     for det in detections:
@@ -195,10 +196,11 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         for image, detection in zip(images, dets):
             out_img = image[None].clone()
             for out in detection:
-                out_img = draw_rectangle(
-                    out_img,
-                    torch.Tensor([[[out[-4], out[-3], out[-4] + out[-2], out[-3] + out[-1]]]]),
-                )
+                box = torch.Tensor([[[out[-4], out[-3], out[-4] + out[-2], out[-3] + out[-1]]]])
+                # a detection that reaches or crosses the border stays visible on all four sides
+                box[..., 0::2] = box[..., 0::2].clamp(0, out_img.shape[-1] - 1)
+                box[..., 1::2] = box[..., 1::2].clamp(0, out_img.shape[-2] - 1)
+                out_img = draw_rectangle(out_img, box)
             output.append(out_img[0])
 
         return self._tensor_to_type(output, output_type, is_batch=isinstance(images, torch.Tensor))

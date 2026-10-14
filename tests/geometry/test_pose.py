@@ -263,10 +263,8 @@ class TestNamedPoseConventions(BaseTester):
         self.assert_close(a_from_b.pose.matrix(), expected, low_tolerance=low)
 
     def test_convention_named_pose_se2_composition_and_inverse(self, device, dtype):
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip(
-                "torch.complex has no bfloat16 overload, and So2.inverse needs a ComplexHalf reciprocal the CPU lacks"
-            )
+        if dtype == torch.bfloat16:
+            pytest.skip("torch.complex has no bfloat16 overload")
         # The Se2 half of the block: two non-commuting planar poses (M1 M2 != M2 M1 by 0.611), neither the identity.
         g1 = Se2.exp(torch.tensor([0.5, -1.0, 0.3], device=device, dtype=dtype))
         g2 = Se2.exp(torch.tensor([-0.2, 0.4, -0.7], device=device, dtype=dtype))

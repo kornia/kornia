@@ -20,6 +20,8 @@ import unittest.mock
 import pytest
 import torch
 
+from kornia.feature.integrated import LightGlueMatcher
+from kornia.feature.laf import laf_from_center_scale_ori
 from kornia.feature.lightglue import (
     Attention,
     LearnableFourierPositionalEncoding,
@@ -503,3 +505,466 @@ class TestKeypointRangeMessage:
         data["image0"]["image_size"] = torch.tensor([[8.0, 8.0]], device=device)  # keypoints reach 64
         with pytest.raises(Exception, match="Keypoints must lie inside the image"):
             lg(data)
+
+
+class TestLightGluePruningDtype(BaseTester):
+    """``LightGlue`` prunes points in the input dtype (#5837).
+
+    ``LightGlue("disk")`` keeps the preset's pruning (``width_confidence=0.99``, ``depth_confidence=0.95``), with random
+    weights in place of the download, two layers, and pruning at any number of keypoints on every device. Layer 0 is
+    wired so that each pruning decision has a wide margin in every dtype: the descriptors enter unchanged, the
+    matchability reads dimension 0 and the token confidence dimension 1, both +-20. A point of matchability -20 is
+    pruned unless its confidence is -20 too, which keeps it as a low-confidence point. Image 1 is image 0 permuted, and
+    the last layer's matchability is a constant 10, so a point kept in both images is a mutual match with its copy and
+    scores ``sigmoid(10) ** 2``.
+    """
+
+    _M = 16
+    # Sign of descriptor dimension 0 (matchability) and dimension 1 (token confidence) of each point.
+    _MATCHABLE = (1, -1) * 8
+    _CONFIDENT = (1, -1, 1, 1, 1, 1, 1, 1, 1, -1, 1, 1, 1, 1, 1, 1)
+
+    @staticmethod
+    def _model(device, dtype, **conf):
+        torch.manual_seed(0)
+        with unittest.mock.patch("kornia.feature.lightglue.load_state_dict_from_url", return_value={}):
+            lg = LightGlue("disk", n_layers=2, **conf)
+        with torch.no_grad():
+            lg.input_proj.weight.zero_()
+            lg.input_proj.bias.zero_()
+            lg.input_proj.weight[:128].copy_(torch.eye(128))
+            for linear in (lg.log_assignment[0].matchability, lg.token_confidence[0].token[0]):
+                linear.weight.zero_()
+                linear.bias.zero_()
+            lg.log_assignment[0].matchability.weight[0, 0] = 1.0
+            lg.token_confidence[0].token[0].weight[0, 1] = 1.0
+            lg.log_assignment[1].matchability.weight.zero_()
+            lg.log_assignment[1].matchability.bias.fill_(10.0)
+        return lg.to(device, dtype).eval()
+
+    def _scene(self, device, dtype, matchable=_MATCHABLE):
+        g = torch.Generator().manual_seed(0)
+        desc = 3 * torch.randn(1, self._M, 128, generator=g)
+        desc[0, :, 0] = 20 * torch.tensor(matchable, dtype=torch.float32)
+        desc[0, :, 1] = 20 * torch.tensor(self._CONFIDENT, dtype=torch.float32)
+        kpts = torch.rand(1, self._M, 2, generator=g) * torch.tensor([320.0, 240.0])
+        perm = torch.randperm(self._M, generator=g)
+        size = torch.tensor([[320, 240]], device=device)
+        data = {
+            "image0": {"keypoints": kpts.to(device, dtype), "descriptors": desc.to(device, dtype), "image_size": size},
+            "image1": {
+                "keypoints": kpts[:, perm].to(device, dtype),
+                "descriptors": desc[:, perm].to(device, dtype),
+                "image_size": size,
+            },
+        }
+        return data, perm
+
+    @staticmethod
+    def _forward(model, data):
+        thresholds = dict.fromkeys(LightGlue.pruning_keypoint_thresholds, -1)  # prune at any number of keypoints
+        with torch.no_grad(), unittest.mock.patch.dict(LightGlue.pruning_keypoint_thresholds, thresholds):
+            return model(data)
+
+    @staticmethod
+    def _floating_dtypes(out):
+        tensors = [v for v in out.values() if torch.is_tensor(v)]
+        tensors += [t for v in out.values() if isinstance(v, list) for t in v]
+        return {t.dtype for t in tensors if t.is_floating_point()}
+
+    def test_pruning_runs_in_the_input_dtype_5837(self, device, dtype):
+        data, perm = self._scene(device, dtype)
+        out = self._forward(self._model(device, dtype), data)
+        ref = self._forward(self._model(device, torch.float32), self._scene(device, torch.float32)[0])
+
+        pruned = (torch.tensor(self._MATCHABLE) < 0) & (torch.tensor(self._CONFIDENT) > 0)
+        inv = torch.argsort(perm)
+        kept_score = torch.tensor(10.0, dtype=torch.float64).sigmoid().item() ** 2
+        self.assert_close(out["prune0"], torch.where(pruned, 1, 2)[None].to(device))
+        self.assert_close(out["prune1"], torch.where(pruned[perm], 1, 2)[None].to(device))
+        self.assert_close(out["matches0"], torch.where(pruned, -1, inv)[None].to(device))
+        self.assert_close(out["matches1"], torch.where(pruned[perm], -1, perm)[None].to(device))
+        expected_scores0 = torch.where(pruned, 0.0, kept_score)[None].to(device, dtype)
+        self.assert_close(out["matching_scores0"], expected_scores0)
+        self.assert_close(out["matching_scores1"], expected_scores0[:, perm])
+        self.assert_close(out["scores"][0], expected_scores0[0, ~pruned.to(device)])
+        assert self._floating_dtypes(out) == {dtype}
+        # The same model and scene in float32, within the tolerance of the dtype.
+        for key in ("matches0", "matches1", "prune0", "prune1"):
+            self.assert_close(out[key], ref[key])
+        for key in ("matching_scores0", "matching_scores1"):
+            self.assert_close(out[key], ref[key].to(dtype))
+
+    def test_no_descriptors_returns_the_input_dtype_5837(self, device, dtype):
+        empty = {
+            "keypoints": torch.empty(1, 0, 2, device=device, dtype=dtype),
+            "descriptors": torch.empty(1, 0, 128, device=device, dtype=dtype),
+            "image_size": torch.tensor([[320, 240]], device=device),
+        }
+        out = self._forward(self._model(device, dtype), {"image0": empty, "image1": empty})
+        assert out["matching_scores0"].shape == (1, 0)
+        assert self._floating_dtypes(out) == {dtype}
+
+    @staticmethod
+    def _skip_without_empty_attention(device, dtype):
+        # The layers after the one that pruned every point still run, on empty sequences (#3564).
+        qkv = torch.empty(1, 1, 0, 8, device=device, dtype=dtype)
+        try:
+            torch.nn.functional.scaled_dot_product_attention(qkv, qkv, qkv)
+        except RuntimeError:
+            pytest.skip("torch rejects attention over empty sequences on this device (MPS on torch 2.5.1)")
+
+    def test_all_points_pruned_returns_the_input_dtype_5837(self, device, dtype):
+        self._skip_without_empty_attention(device, dtype)
+        # No low-confidence rescue without depth confidence, and every matchability -20.
+        data, _ = self._scene(device, dtype, matchable=(-1,) * self._M)
+        out = self._forward(self._model(device, dtype, depth_confidence=-1), data)
+        self.assert_close(out["prune0"], torch.ones(1, self._M, device=device, dtype=torch.long))
+        self.assert_close(out["matches0"], torch.full((1, self._M), -1, device=device))
+        self.assert_close(out["matching_scores0"], torch.zeros(1, self._M, device=device, dtype=dtype))
+        assert out["scores"][0].shape == (0,)
+        assert self._floating_dtypes(out) == {dtype}
+
+    def _mixed_precision_score_dtype(self, device, dtype):
+        # With mp=True, autocast sets the dtype the scores are computed in: CPU computes the log assignment and its exp
+        # in bfloat16, MPS runs that exp in float32. The model without pruning gives the reference.
+        if dtype != torch.float32:
+            pytest.skip("mp=True autocasts a float32 model")
+        plain = self._forward(self._model(device, dtype, mp=True, width_confidence=-1), self._scene(device, dtype)[0])
+        score_dtype = plain["matching_scores0"].dtype
+        if device.type in ("cpu", "mps"):
+            assert score_dtype == (torch.bfloat16 if device.type == "cpu" else torch.float32)
+        return score_dtype
+
+    def test_mixed_precision_prunes_in_the_score_dtype_5837(self, device, dtype):
+        score_dtype = self._mixed_precision_score_dtype(device, dtype)
+        data = self._scene(device, dtype)[0]
+        out = self._forward(self._model(device, dtype, mp=True), data)
+        ref = self._forward(self._model(device, dtype), data)
+        for key in ("matches0", "matches1", "prune0", "prune1"):
+            self.assert_close(out[key], ref[key])
+        assert (out["prune0"] == 1).any()
+        for key in ("matching_scores0", "matching_scores1"):
+            assert out[key].dtype == score_dtype
+            self.assert_close(out[key].to(dtype), ref[key], rtol=0.0, atol=1e-2)
+        assert out["scores"][0].dtype == score_dtype
+        # The early return for an image without descriptors runs no layer, and returns the input dtype.
+        empty = {
+            "keypoints": torch.empty(1, 0, 2, device=device, dtype=dtype),
+            "descriptors": torch.empty(1, 0, 128, device=device, dtype=dtype),
+            "image_size": torch.tensor([[320, 240]], device=device),
+        }
+        out = self._forward(self._model(device, dtype, mp=True), {"image0": empty, "image1": empty})
+        assert self._floating_dtypes(out) == {dtype}
+
+    def test_mixed_precision_all_points_pruned_returns_the_score_dtype_5837(self, device, dtype):
+        score_dtype = self._mixed_precision_score_dtype(device, dtype)
+        self._skip_without_empty_attention(device, dtype)
+        data, _ = self._scene(device, dtype, matchable=(-1,) * self._M)
+        out = self._forward(self._model(device, dtype, mp=True, depth_confidence=-1), data)
+        self.assert_close(out["prune0"], torch.ones(1, self._M, device=device, dtype=torch.long))
+        self.assert_close(out["matches0"], torch.full((1, self._M), -1, device=device))
+        for key in ("matching_scores0", "matching_scores1"):
+            assert out[key].dtype == score_dtype
+            assert (out[key] == 0).all()
+        assert out["scores"][0].dtype == score_dtype
+        assert out["scores"][0].shape == (0,)
+
+
+class _PositionalEncodingInputs(Exception):
+    """Ends a forward pass once both images' keypoint encodings have been recorded."""
+
+
+class TestConventionsLightGlue(BaseTester):
+    # The positional-encoding inputs of image 0 and image 1 for the frames of `_matcher_lafs`, generated in float64
+    # from x' = (x - W / 2) / (max(H, W) / 2), y' = (y - H / 2) / (max(H, W) / 2), scale = sqrt(|det A|),
+    # orientation = atan2(a01, a00) (radians), and the normalised points c + A[:, 0] and c + A[:, 1] for keynet.
+    _XY = {
+        (200, 320): [[-0.625, -0.475], [0.5625, 0.4375], [-0.36875, -0.41875]],
+        (240, 300): [[-0.6, -0.64], [0.666667, 0.333333], [-0.326667, -0.58]],
+    }
+    _SIXTH_OF_SCALE = [2.0, 1.25, 1.683251]
+    _NEGATED_ORI = [-0.785398, 2.094395, -0.380506]  # in (-pi, pi]
+    _ORI = [0.785398, 4.188790, 0.380506]  # in [0, 2 pi)
+    _AXIS_POINTS = {
+        (200, 320): [
+            [-0.571967, -0.528033, -0.571967, -0.421967],
+            [0.539062, 0.478095, 0.521905, 0.414062],
+            [-0.30625, -0.4375, -0.34375, -0.3625],
+        ],
+        (240, 300): [
+            [-0.543431, -0.696569, -0.543431, -0.583431],
+            [0.641667, 0.376635, 0.623365, 0.308333],
+            [-0.26, -0.6, -0.3, -0.52],
+        ],
+    }
+
+    @staticmethod
+    def _record_positional_encoding_inputs(lightglue):
+        seen = []
+
+        def hook(module, args):
+            seen.append(args[0].detach().clone())
+            if len(seen) == 2:
+                raise _PositionalEncodingInputs
+
+        lightglue.posenc.register_forward_pre_hook(hook)
+        return seen
+
+    @staticmethod
+    def _matcher_lafs(device, dtype):
+        # two rotated frames (scale 12 at 45 degrees, 7.5 at -120 degrees) and a sheared one (a01 != a10), centres
+        # off the diagonal
+        rotated = laf_from_center_scale_ori(
+            torch.tensor([[[60.0, 24.0], [250.0, 170.0]]]),
+            torch.tensor([12.0, 7.5]).view(1, 2, 1, 1),
+            torch.tensor([45.0, -120.0]).view(1, 2, 1),
+        )
+        sheared = torch.tensor([[[[10.0, 4.0, 101.0], [-3.0, 9.0, 33.0]]]])
+        return torch.cat([rotated, sheared], 1).to(device, dtype)
+
+    def _expected_encoding_input(self, feature_name, hw, device, dtype):
+        columns = [torch.tensor(self._XY[hw])]
+        if feature_name == "sift":
+            columns += [torch.tensor(self._SIXTH_OF_SCALE)[:, None], torch.tensor(self._NEGATED_ORI)[:, None]]
+        elif feature_name in ("doghardnet", "dog_affnet_hardnet"):
+            columns += [torch.tensor(self._SIXTH_OF_SCALE)[:, None], torch.tensor(self._ORI)[:, None]]
+        elif feature_name == "keynet_affnet_hardnet":
+            columns += [torch.tensor(self._AXIS_POINTS[hw])]
+        return torch.cat(columns, 1)[None].to(device, dtype)
+
+    def test_convention_lightglue_image_size_is_width_height(self, device, dtype):
+        lg = LightGlue(None, input_dim=8, descriptor_dim=8, n_layers=1, num_heads=1, flash=False)
+        lg = lg.to(device, dtype).eval()
+        seen = self._record_positional_encoding_inputs(lg)
+        kpts = torch.tensor([[[300.0, 30.0], [20.0, 210.0], [160.0, 120.0]]], device=device, dtype=dtype)
+        desc = torch.rand(2, 3, 8, device=device, dtype=dtype)
+        # image 0: batch item 1 is item 0 transposed, keypoints and (W, H) size alike, so each item needs its own size
+        size = torch.tensor([[320, 240], [240, 320]], device=device)
+        # image 1: an image tensor gives the size (W, H) = (320, 240) from its last two dimensions
+        image = torch.zeros(2, 1, 240, 320, device=device, dtype=dtype)
+        with pytest.raises(_PositionalEncodingInputs):
+            lg(
+                {
+                    "image0": {"keypoints": torch.cat([kpts, kpts.flip(-1)]), "descriptors": desc, "image_size": size},
+                    "image1": {"keypoints": torch.cat([kpts, kpts]), "descriptors": desc, "image": image},
+                }
+            )
+        # (k - size / 2) / (max(size) / 2): x = (300 - 160) / 160, y = (30 - 120) / 160, and so on; the transposed item
+        # gives the swapped coordinates
+        expected = torch.tensor([[[0.875, -0.5625], [-0.875, 0.5625], [0.0, 0.0]]], device=device, dtype=dtype)
+        self.assert_close(seen[0], torch.cat([expected, expected.flip(-1)]))
+        self.assert_close(seen[1], torch.cat([expected, expected]))
+
+    @pytest.mark.parametrize("feature_name", LightGlueMatcher.known_modes)
+    def test_convention_lightglue_matcher_gives_each_feature_type_its_keypoint_convention(
+        self, device, dtype, feature_name, monkeypatch
+    ):
+        # A random-weight LightGlue with the feature type's configuration: the weights are not downloaded.
+        monkeypatch.setattr("kornia.feature.lightglue.load_state_dict_from_url", lambda *args, **kwargs: {})
+        matcher = LightGlueMatcher(feature_name, {"n_layers": 1}).to(device, dtype).eval()
+        seen = self._record_positional_encoding_inputs(matcher.matcher)
+        lafs = self._matcher_lafs(device, dtype)
+        perm = [2, 0, 1]
+        desc = torch.rand(3, matcher.matcher.conf.input_dim, device=device, dtype=dtype)
+        # hw1 and hw2 are (H, W) and apply to their own image; image 1 holds the frames in another order
+        with pytest.raises(_PositionalEncodingInputs):
+            matcher(desc, desc[perm], lafs, lafs[:, perm], hw1=(200, 320), hw2=(240, 300))
+        # Every type gets the normalised centres. sift adds sigma of a 6-sigma frame (LAF scale / 6) and the negated
+        # LAF orientation in (-pi, pi]; doghardnet and dog_affnet_hardnet add LAF scale / 6 and the LAF orientation
+        # in [0, 2 pi); keynet_affnet_hardnet adds the normalised ends of the LAF axes.
+        self.assert_close(seen[0], self._expected_encoding_input(feature_name, (200, 320), device, dtype))
+        self.assert_close(seen[1], self._expected_encoding_input(feature_name, (240, 300), device, dtype)[:, perm])
+
+    def test_convention_lightglue_matcher_without_hw_takes_the_largest_keypoint_coordinates(
+        self, device, dtype, monkeypatch
+    ):
+        monkeypatch.setattr("kornia.feature.lightglue.load_state_dict_from_url", lambda *args, **kwargs: {})
+        matcher = LightGlueMatcher("disk", {"n_layers": 1}).to(device, dtype).eval()
+        seen = self._record_positional_encoding_inputs(matcher.matcher)
+        lafs = self._matcher_lafs(device, dtype)
+        desc = torch.rand(3, 128, device=device, dtype=dtype)
+        with pytest.raises(_PositionalEncodingInputs):
+            matcher(desc, desc[[0, 2]], lafs, lafs[:, [0, 2]])
+        # The image size is (max x, max y) of each image's keypoints: (250, 170), then (101, 33).
+        expected0 = torch.tensor([[[-0.52, -0.488], [1.0, 0.68], [-0.192, -0.416]]], device=device, dtype=dtype)
+        expected1 = torch.tensor([[[0.188119, 0.148515], [1.0, 0.326733]]], device=device, dtype=dtype)
+        self.assert_close(seen[0], expected0)
+        self.assert_close(seen[1], expected1)
+
+    def test_convention_lightglue_matcher_returns_the_matching_score_and_index_pairs(self, device, dtype, monkeypatch):
+        calls = []
+
+        class _FixedLightGlue(torch.nn.Module):
+            # Stands in for the network: a fixed assignment from image 0 to image 1 and its matching scores.
+            def __init__(self, *args, **kwargs):
+                super().__init__()
+
+            def forward(self, data):
+                calls.append(data)
+                # 0 -> 3, 2 -> 0, 3 -> 2: no pair is its own inverse, so swapped columns give other pairs
+                matches0 = torch.tensor([[3, -1, 0, 2]], device=device)
+                scores0 = torch.tensor([[0.9, 0.0, 0.35, 0.6]], device=device, dtype=dtype)
+                return {"matches0": matches0, "matching_scores0": scores0}
+
+        monkeypatch.setattr("kornia.feature.integrated.LightGlue", _FixedLightGlue)
+        matcher = LightGlueMatcher("DISK")
+        assert matcher.feature_name == "disk"  # modes are case-insensitive
+        lafs = laf_from_center_scale_ori(
+            torch.tensor([[[60.0, 24.0], [250.0, 170.0], [101.0, 33.0], [7.0, 140.0]]], device=device, dtype=dtype)
+        )
+        lafs1 = lafs.clone()
+        lafs1[:, 1] = 0.0  # a padding slot
+        desc = torch.rand(4, 128, device=device, dtype=dtype)
+        scores, idxs = matcher(desc, desc, lafs, lafs1, hw1=(200, 320), hw2=(200, 320))
+        # The first value is LightGlue's matching score (higher is better), not a distance; rows are
+        # (index in desc1, index in desc2), and unmatched keypoints (-1) are left out.
+        assert idxs.tolist() == [[0, 3], [2, 0], [3, 2]]
+        self.assert_close(scores, torch.tensor([[0.9], [0.35], [0.6]], device=device, dtype=dtype))
+        # Padding is not filtered: the zero LAF reaches the network as a keypoint at (0, 0).
+        assert calls[0]["image1"]["keypoints"][0, 1].tolist() == [0.0, 0.0]
+        # Fewer than two descriptors on a side give no match without running the network.
+        scores, idxs = matcher(desc[:1], desc, lafs[:, :1], lafs1)
+        assert scores.shape == (0, 1)
+        assert idxs.shape == (0, 2)
+        assert len(calls) == 1
+        # A name outside known_modes is rejected.
+        with pytest.raises(NotImplementedError, match="orb is not supported"):
+            LightGlueMatcher("orb")
+
+    def test_convention_lightglue_features_configuration_wins_over_keyword_arguments(self, device, dtype, monkeypatch):
+        # "disk" sets input_dim, so the keyword argument loses; filter_threshold is not in its configuration, so the
+        # keyword argument stays
+        monkeypatch.setattr("kornia.feature.lightglue.load_state_dict_from_url", lambda *args, **kwargs: {})
+        lg = LightGlue("disk", input_dim=64, filter_threshold=0.3, n_layers=1)
+        assert lg.conf.input_dim == 128
+        assert lg.conf.filter_threshold == 0.3
+
+
+class TestLightGlueAllPrunedScoreDtype(BaseTester):
+    """Every point pruned gives zero scores in the dtype of the scores of a pass that keeps points (#5877).
+
+    ``LightGlue(None)`` with random weights, two layers, pruning at any number of keypoints and no early stop. The
+    matchability of each layer reads descriptor dimension 0, which is +30 for every point, so layer 0 keeps them all,
+    or -30, so it prunes them all: the same model takes both paths. ``input_dim == descriptor_dim``, as in
+    ``"superpoint"``, ``"dedodeb"`` and ``"dedodeg"``, makes ``input_proj`` an identity; ``input_dim !=
+    descriptor_dim``, as in ``"disk"``, ``"aliked"`` and ``"sift"``, makes it a linear layer, here wired to copy the
+    descriptors.
+    """
+
+    _DIM = 16
+
+    def _model(self, device, dtype, input_dim, mp):
+        torch.manual_seed(0)
+        lg = LightGlue(
+            None, input_dim=input_dim, descriptor_dim=self._DIM, n_layers=2, num_heads=1, mp=mp, depth_confidence=-1
+        )
+        with torch.no_grad():
+            if input_dim != self._DIM:
+                lg.input_proj.weight.zero_()
+                lg.input_proj.bias.zero_()
+                lg.input_proj.weight[:input_dim].copy_(torch.eye(input_dim))
+            for layer in lg.log_assignment:
+                layer.matchability.weight.zero_()
+                layer.matchability.bias.zero_()
+                layer.matchability.weight[0, 0] = 1.0
+        return lg.to(device, dtype).eval()
+
+    @staticmethod
+    def _forward(model, keep, device, dtype):
+        g = torch.Generator().manual_seed(1)
+        desc = torch.randn(1, 6, model.conf.input_dim, generator=g)
+        desc[..., 0] = 30.0 if keep else -30.0
+        image = {
+            "keypoints": (torch.rand(1, 6, 2, generator=g) * 100).to(device, dtype),
+            "descriptors": desc.to(device, dtype),
+            "image_size": torch.tensor([[100, 100]], device=device),
+        }
+        out = TestLightGluePruningDtype._forward(model, {"image0": image, "image1": dict(image)})
+        # Layer 0 keeps a point (it counts 2) or prunes it (1); the early return for every point pruned has no log
+        # assignment.
+        for key in ("prune0", "prune1"):
+            assert (out[key] == (2 if keep else 1)).all()
+        assert ("log_assignment" in out) == keep
+        return out
+
+    @pytest.mark.parametrize("input_dim", [16, 8], ids=["input_dim_eq_descriptor_dim", "input_dim_ne_descriptor_dim"])
+    @pytest.mark.parametrize("mp", [False, True], ids=["mp_off", "mp_on"])
+    def test_all_points_pruned_gives_the_score_dtype_of_kept_points_5877(self, device, dtype, input_dim, mp):
+        if mp and device.type == "cpu" and dtype == torch.float16:
+            pytest.skip("a float16 model with mp=True on CPU raises (#5897)")
+        TestLightGluePruningDtype._skip_without_empty_attention(device, dtype)
+        model = self._model(device, dtype, input_dim, mp)
+        kept = self._forward(model, True, device, dtype)
+        pruned = self._forward(model, False, device, dtype)
+        score_dtype = kept["matching_scores0"].dtype
+        # The input dtype; with mp=True float32 gives the dtype autocast computes the scores in, bfloat16 on CPU and
+        # float32 on MPS, and on MPS float16 and bfloat16 give float32 too.
+        if not mp or (device.type == "cpu" and dtype != torch.float32):
+            assert score_dtype == dtype
+        elif device.type == "cpu":
+            assert score_dtype == torch.bfloat16
+        elif device.type == "mps":
+            assert score_dtype == torch.float32
+        for out in (kept, pruned):
+            for key in ("matching_scores0", "matching_scores1"):
+                assert out[key].dtype == score_dtype
+            assert out["scores"][0].dtype == score_dtype
+        self.assert_close(pruned["matches0"], torch.full((1, 6), -1, device=device))
+        self.assert_close(pruned["matching_scores0"], torch.zeros(1, 6, device=device, dtype=score_dtype))
+        self.assert_close(pruned["matching_scores1"], torch.zeros(1, 6, device=device, dtype=score_dtype))
+        assert pruned["scores"][0].shape == (0,)
+
+    @pytest.mark.parametrize("mp", [False, True], ids=["mp_off", "mp_on"])
+    def test_no_descriptors_keeps_the_input_dtype_5877(self, device, dtype, mp):
+        # No layer runs, so autocast does not reach these zero scores: on MPS, a float16 or bfloat16 model with mp=True
+        # keeps its dtype here, while the scores of kept points are float32.
+        empty = {
+            "keypoints": torch.empty(1, 0, 2, device=device, dtype=dtype),
+            "descriptors": torch.empty(1, 0, self._DIM, device=device, dtype=dtype),
+            "image_size": torch.tensor([[100, 100]], device=device),
+        }
+        model = self._model(device, dtype, self._DIM, mp)
+        out = TestLightGluePruningDtype._forward(model, {"image0": empty, "image1": dict(empty)})
+        assert TestLightGluePruningDtype._floating_dtypes(out) == {dtype}
+
+    def test_wart_lightglue_mixed_precision_cpu_float16_model_raises_5897(self, device, dtype):
+        if device.type != "cpu" or dtype != torch.float16:
+            pytest.skip("CPU autocast to bfloat16 meets a float16 model only on CPU")
+        # #5897: in the first layer, autocast's bfloat16 outputs meet float16 tensors: in the torch.cat that feeds the
+        # self-attention FFN when input_proj is an identity, and in that FFN's LayerNorm when it is a linear layer.
+        for input_dim, message in ((self._DIM, "prioritize"), (8, "mixed dtype")):
+            model = self._model(device, dtype, input_dim, mp=True)
+            with pytest.raises(RuntimeError, match=message):
+                self._forward(model, True, device, dtype)
+        # "keynet_affnet_hardnet" raises before the layers, in scale_laf, also for an image without descriptors.
+        with unittest.mock.patch("kornia.feature.lightglue.load_state_dict_from_url", return_value={}):
+            keynet = LightGlue("keynet_affnet_hardnet", n_layers=1, mp=True).to(device, dtype).eval()
+        empty = {
+            "keypoints": torch.empty(1, 0, 2, device=device, dtype=dtype),
+            "descriptors": torch.empty(1, 0, 128, device=device, dtype=dtype),
+            "image_size": torch.tensor([[100, 100]], device=device),
+            "lafs": torch.empty(1, 0, 2, 3, device=device, dtype=dtype),
+        }
+        with pytest.raises(RuntimeError, match="prioritize"):
+            TestLightGluePruningDtype._forward(keynet, {"image0": empty, "image1": dict(empty)})
+
+    def test_wart_lightglue_batch_with_point_pruning_raises_5898(self, device, dtype):
+        if device.type == "cuda":
+            pytest.skip("on CUDA, point pruning starts only above 1024 keypoints")
+        # #5898: the pruning bookkeeping keeps one index row for the whole batch, so once pruning has run and kept
+        # points, the second pair raises. The same model matches each pair on its own.
+        model = self._model(device, dtype, self._DIM, mp=False)
+        g = torch.Generator().manual_seed(1)
+        desc = torch.randn(2, 6, self._DIM, generator=g)
+        desc[..., 0] = 30.0  # layer 0 keeps every point
+        batch = {
+            "keypoints": (torch.rand(2, 6, 2, generator=g) * 100).to(device, dtype),
+            "descriptors": desc.to(device, dtype),
+            "image_size": torch.tensor([[100, 100], [100, 100]], device=device),
+        }
+        for k in range(2):
+            pair = {key: value[k : k + 1] for key, value in batch.items()}
+            TestLightGluePruningDtype._forward(model, {"image0": pair, "image1": dict(pair)})
+        with pytest.raises(IndexError):
+            TestLightGluePruningDtype._forward(model, {"image0": batch, "image1": dict(batch)})

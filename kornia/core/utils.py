@@ -19,8 +19,10 @@
 import importlib.util
 import platform
 import sys
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, fields, is_dataclass
-from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
+from types import UnionType
+from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union, get_args, get_origin, get_type_hints
 
 import torch
 import torch.nn.functional as F
@@ -38,6 +40,25 @@ from kornia.core._small_linalg import (
 )
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_TYPE
 from kornia.core.exceptions import DeviceError, TypeCheckError
+
+
+def _torch_grid_sample(
+    input: torch.Tensor,
+    grid: torch.Tensor,
+    mode: str = "bilinear",
+    padding_mode: str = "zeros",
+    align_corners: Optional[bool] = None,
+) -> torch.Tensor:
+    """Run :func:`torch.nn.functional.grid_sample` on 4-D or 5-D input, CPU float16/bfloat16 in float32.
+
+    torch's CPU half ``grid_sample`` returns corrupt values on sources of about 128 px and more, and
+    torch 2.5.1 has no such kernel (#5751). Other devices and dtypes call ``grid_sample`` unchanged.
+    """
+    if input.device.type == "cpu" and input.dtype in (torch.float16, torch.bfloat16) and grid.dtype == input.dtype:
+        return F.grid_sample(
+            input.float(), grid.float(), mode=mode, padding_mode=padding_mode, align_corners=align_corners
+        ).to(input.dtype)
+    return F.grid_sample(input, grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
 
 
 def xla_is_available() -> bool:
@@ -668,17 +689,28 @@ def is_exporting() -> bool:
 def register_module_state(module: torch.nn.Module, name: str, x: torch.Tensor) -> None:
     """Store tensor ``x`` on ``module`` as ``name`` so it is optimizable, movable and serializable.
 
-    An existing ``nn.Parameter`` is kept, and a tensor that takes no part in autograd (no
-    ``grad_fn`` and ``requires_grad=False``) becomes an ``nn.Parameter``, so the module is
-    optimizable. ``nn.Parameter(x)`` would re-root any other tensor as a new leaf: a group built
-    from ``Se3.exp(v)`` would stop propagating gradients to ``v``, and a group built from the
-    caller's own leaf that requires grad would take its gradient away from that leaf. Such a
-    tensor is registered as a buffer instead, which keeps it and its history while ``.to()``,
-    ``state_dict()`` and ``load_state_dict()`` still reach it under the same key. Under graph
-    capture (``torch.jit.trace``, ``torch.compile``, ``torch.export`` and the dynamo ONNX
-    exporter) neither a parameter nor a buffer can be created inside the traced region, so the
-    tensor is kept as a plain attribute of the module being built.
+    ``x`` must be a floating-point or complex tensor, or an existing ``nn.Parameter``: an integer or bool tensor can
+    neither require grad nor follow the module's dtype conversions, so it raises ``TypeCheckError`` naming its dtype.
+    An existing ``nn.Parameter`` is kept, and a tensor that takes no part in autograd (no ``grad_fn`` and
+    ``requires_grad=False``) becomes an ``nn.Parameter``, so the module is optimizable. ``nn.Parameter(x)`` would
+    re-root any other tensor as a new leaf: a group built from ``Se3.exp(v)`` would stop propagating gradients to
+    ``v``, and a group built from the caller's own leaf that requires grad would take its gradient away from that
+    leaf. Such a tensor is registered as a buffer instead, which keeps it and its history while ``.to()``,
+    ``state_dict()`` and ``load_state_dict()`` still reach it under the same key. Under graph capture
+    (``torch.jit.trace``, ``torch.compile``, ``torch.export`` and the dynamo ONNX exporter) neither a parameter nor a
+    buffer can be created inside the traced region, so the tensor is kept as a plain attribute of the module being
+    built.
+
+    Raises:
+        TypeCheckError: if ``x`` is neither a floating-point nor a complex tensor, nor an ``nn.Parameter``.
+
     """
+    if not (isinstance(x, torch.nn.Parameter) or x.is_floating_point() or x.is_complex()):
+        raise TypeCheckError(
+            f"{type(module).__name__} stores {name.lstrip('_')!r} as module state, which needs a floating-point or "
+            f"complex tensor; got {x.dtype}. Cast it first, for example with `.float()`.",
+            actual_type=x.dtype,
+        )
     if isinstance(x, torch.nn.Parameter) or not (torch.jit.is_tracing() or is_compiling() or is_exporting()):
         if isinstance(x, torch.nn.Parameter) or (x.grad_fn is None and not x.requires_grad):
             x = x if isinstance(x, torch.nn.Parameter) else torch.nn.Parameter(x)
@@ -689,7 +721,14 @@ def register_module_state(module: torch.nn.Module, name: str, x: torch.Tensor) -
 
 
 def dataclass_to_dict(obj: Any) -> Any:
-    """Recursively convert dataclass instances to dictionaries."""
+    """Recursively convert dataclass instances to dictionaries.
+
+    A dataclass becomes a dict of its fields through :func:`dataclasses.asdict`, and lists, tuples,
+    namedtuples and dicts are rebuilt with their items converted; any other value is returned as it is.
+    Values reached through a dataclass are deep-copied by :func:`dataclasses.asdict`, tensors included,
+    so a tensor with autograd history (not a leaf) raises ``RuntimeError``. Outside any dataclass the
+    containers are rebuilt, but their items are not copied.
+    """
     if is_dataclass(obj) and not isinstance(obj, type):
         return {key: dataclass_to_dict(value) for key, value in asdict(obj).items()}
     if isinstance(obj, tuple) and hasattr(obj, "_fields"):
@@ -705,18 +744,86 @@ def dataclass_to_dict(obj: Any) -> Any:
 T = TypeVar("T")
 
 
+def _is_sequence_of(value: Any, origin: type) -> bool:
+    """Whether ``value`` is a list or tuple that ``dict_to_dataclass`` converts for a sequence annotation."""
+    return type(value) in (list, tuple) and issubclass(origin, Sequence) and not issubclass(origin, (str, bytes))
+
+
+def _fits_annotation(value: Any, annotation: Any) -> bool:
+    """Whether ``value`` can be held by ``annotation``, as ``dict_to_dataclass`` converts it."""
+    target = get_origin(annotation) or annotation
+    if annotation is Any or not isinstance(target, type):
+        return True  # Any, a TypeVar, a Literal, ...: the value cannot be ruled out
+    if is_dataclass(target):
+        return isinstance(value, (dict, target))
+    try:
+        return _is_sequence_of(value, target) or isinstance(value, target)
+    except TypeError:  # a class that rejects isinstance, such as a Protocol that is not runtime-checkable
+        return True
+
+
+def _value_for_annotation(value: Any, annotation: Any) -> Any:
+    """Return ``value`` with each dict that ``annotation`` types as a dataclass converted to that dataclass."""
+    if isinstance(annotation, type) and is_dataclass(annotation):
+        return value if isinstance(value, annotation) else dict_to_dataclass(value, annotation)
+    origin, args = get_origin(annotation), get_args(annotation)
+    if origin is Union or origin is UnionType:
+        # Optional[X] and other unions: follow the one member that can hold the value, if there is exactly one
+        fitting = [arg for arg in args if _fits_annotation(value, arg)]
+        return _value_for_annotation(value, fitting[0]) if len(fitting) == 1 else value
+    if not (isinstance(origin, type) and args):
+        return value
+    if _is_sequence_of(value, origin):
+        if origin is tuple and args[-1] is not Ellipsis:  # Tuple[X, Y]: one annotation per position
+            if len(args) != len(value):
+                return value
+            return type(value)(_value_for_annotation(item, arg) for item, arg in zip(value, args))
+        return type(value)(_value_for_annotation(item, args[0]) for item in value)
+    if type(value) is dict and issubclass(origin, Mapping) and len(args) == 2:
+        return {key: _value_for_annotation(item, args[1]) for key, item in value.items()}
+    return value
+
+
 def dict_to_dataclass(dict_obj: Dict[str, Any], dataclass_type: Type[T]) -> T:
-    """Recursively convert dictionaries to dataclass instances."""
+    """Recursively convert dictionaries to dataclass instances.
+
+    A field annotated with a dataclass gets its dict value converted to that dataclass, and so does a
+    dataclass inside the field's ``Optional[...]`` or other union, the elements of a plain ``list`` or ``tuple``
+    value under a sequence annotation, or the values of a plain ``dict`` value under a mapping annotation (a
+    namedtuple or a ``dict`` subclass is kept whole). String annotations, including every annotation
+    in a module with ``from __future__ import annotations``, are resolved with :func:`typing.get_type_hints`.
+    A value that is already an instance of the annotated dataclass is kept as it is, and values of other
+    fields are passed on unchanged.
+
+    A union is followed only when exactly one of its members can hold the value: a dict for a
+    ``Union[A, B]`` of two dataclasses, or for ``Union[A, dict]``, stays a dict. When the annotations
+    cannot be resolved, for example a string that names a class defined inside a function, they are used
+    as written, and a string annotation converts nothing.
+
+    Args:
+        dict_obj: the field values, keyed by field name.
+        dataclass_type: the dataclass to build.
+
+    Returns:
+        An instance of ``dataclass_type``.
+
+    Raises:
+        TypeCheckError: if ``dict_obj`` is not a dict, or a value annotated with a dataclass outside a union
+            is neither a dict nor an instance of that dataclass.
+        BaseError: if ``dataclass_type`` is not a dataclass.
+
+    """
     KORNIA_CHECK_TYPE(dict_obj, dict, "Input conf must be dict")
     KORNIA_CHECK(is_dataclass(dataclass_type), "dataclass_type must be a dataclass")
-    field_types: dict[str, Any] = {f.name: f.type for f in fields(dataclass_type)}
-    constructor_args = {}
-    for key, value in dict_obj.items():
-        if key in field_types and is_dataclass(field_types[key]):
-            constructor_args[key] = dict_to_dataclass(value, field_types[key])
-        else:
-            constructor_args[key] = value
-    # TODO: remove type ignore when https://github.com/python/mypy/issues/14941 be andressed
+    try:
+        hints = get_type_hints(dataclass_type)
+    except (AttributeError, NameError, SyntaxError, TypeError):
+        hints = {}
+    field_types: dict[str, Any] = {f.name: hints.get(f.name, f.type) for f in fields(dataclass_type)}
+    constructor_args = {
+        key: _value_for_annotation(value, field_types[key]) if key in field_types else value
+        for key, value in dict_obj.items()
+    }
     return dataclass_type(**constructor_args)
 
 

@@ -199,7 +199,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
             ),
             *_audited(
                 "tests/image/test_draw.py",
-                366,
+                432,
                 "torch.rand",
                 4,
                 ("tests/image/test_draw.py::TestDrawLine::test_point_size",),
@@ -207,7 +207,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
             ),
             *_audited(
                 "tests/losses/test_total_variation.py",
-                149,
+                190,
                 "torch.rand",
                 3,
                 ("tests/losses/test_total_variation.py::TestTotalVariation::test_tv_shapes",),

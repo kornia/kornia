@@ -114,7 +114,8 @@ def get_motion_kernel2d(
     step = (1 - 2 * direction) / (kernel_size - 1)
     positions = torch.arange(kernel_size, device=direction.device, dtype=direction.dtype)
     k = direction[:, None] + step[:, None] * positions
-    kernel = F.pad(k[:, None], [0, 0, kernel_size // 2, kernel_size // 2, 0, 0])
+    # Pad only the kernel axes: torch 2.5.1 and 2.9.1 reject any pad of an empty batch axis, even a zero one.
+    kernel = F.pad(k[:, None], [0, 0, kernel_size // 2, kernel_size // 2])
 
     expected_shape = torch.Size([direction.size(0), *kernel_tuple])
     KORNIA_CHECK(kernel.shape == expected_shape, f"Kernel shape should be {expected_shape}. Got {kernel.shape}")
@@ -259,9 +260,8 @@ def get_motion_kernel3d(
     # kernel[:, kernel_size // 2, kernel_size // 2, :] = torch.stack(
     #     [(direction + ((1 - 2 * direction) / (kernel_size - 1)) * i) for i in range(kernel_size)], dim=-1)
     k = torch.stack([(direction + ((1 - 2 * direction) / (kernel_size - 1)) * i) for i in range(kernel_size)], -1)
-    kernel = F.pad(
-        k[:, None, None], [0, 0, kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2, 0, 0]
-    )
+    # Pad only the kernel axes, as in get_motion_kernel2d.
+    kernel = F.pad(k[:, None, None], [0, 0, kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2])
 
     expected_shape = torch.Size([direction.size(0), *kernel_tuple])
     KORNIA_CHECK(kernel.shape == expected_shape, f"Kernel shape should be {expected_shape}. Got {kernel.shape}")

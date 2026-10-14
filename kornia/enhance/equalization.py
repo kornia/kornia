@@ -52,6 +52,13 @@ def _compute_tiles(
 
     # compute stride and kernel size
     h, w = batch.shape[-2:]
+    if even_tile_size and (h <= grid_size[0] or w <= grid_size[1]):
+        raise ValueError(
+            "Cannot compute tiles on the image according to the given grid size. "
+            f"Got image size ({h}, {w}) and grid size {tuple(grid_size)}. "
+            f"The smallest image this grid admits is ({grid_size[0] + 1}, {grid_size[1] + 1})."
+        )
+
     kernel_vert: int = math.ceil(h / grid_size[0])
     kernel_horz: int = math.ceil(w / grid_size[1])
 
@@ -360,16 +367,21 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
     tiles_equalized: torch.Tensor = torch.zeros_like(interp_tiles)
 
     # compute the interpolation weights (shapes are 2 x TH x TW because they must be applied to 2 interp tiles)
+    # A tile's centre is at (tile_size - 1) / 2 relative to its first pixel. Each half-tile pair
+    # starts half a pixel past a centre, so the left/top weight is 1 - (k + 0.5) / tile_size.
+    # This keeps the 1 / tile_size step and, unlike OpenCV's half-pixel-later phase, preserves flip symmetry.
     ih = (
-        torch.arange(2 * th - 1, -1, -1, dtype=interp_tiles.dtype, device=interp_tiles.device)
-        .div(2.0 * th - 1)[None]
+        torch.arange(2 * th, 0, -1, dtype=interp_tiles.dtype, device=interp_tiles.device)
+        .sub(0.5)
+        .div(2.0 * th)[None]
         .transpose(-2, -1)
         .expand(2 * th, tw)
     )
     ih = ih.unfold(0, th, th).unfold(1, tw, tw)  # 2 x 1 x TH x TW
     iw = (
-        torch.arange(2 * tw - 1, -1, -1, dtype=interp_tiles.dtype, device=interp_tiles.device)
-        .div(2.0 * tw - 1)
+        torch.arange(2 * tw, 0, -1, dtype=interp_tiles.dtype, device=interp_tiles.device)
+        .sub(0.5)
+        .div(2.0 * tw)
         .expand(th, 2 * tw)
     )
     iw = iw.unfold(0, th, th).unfold(1, tw, tw)  # 1 x 2 x TH x TW
@@ -403,6 +415,48 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
     return tiles_equalized.div(255.0)
 
 
+def _equalize_clahe_odd_tiles(imgs: torch.Tensor, luts: torch.Tensor, tile_size: Tuple[int, int]) -> torch.Tensor:
+    """Equalize odd-sized CLAHE tiles by interpolating LUTs at tile centres."""
+    batch_size, channels, height, width = imgs.shape
+    grid_h, grid_w = luts.shape[1:3]
+    tile_h, tile_w = tile_size
+
+    coord_dtype = torch.float64 if imgs.dtype == torch.float64 else torch.float32
+    y = (torch.arange(height, device=imgs.device, dtype=coord_dtype) - (tile_h - 1) / 2) / tile_h
+    x = (torch.arange(width, device=imgs.device, dtype=coord_dtype) - (tile_w - 1) / 2) / tile_w
+
+    y_floor = y.floor()
+    x_floor = x.floor()
+    y0 = y_floor.long().clamp(0, grid_h - 1)
+    y1 = (y_floor.long() + 1).clamp(0, grid_h - 1)
+    x0 = x_floor.long().clamp(0, grid_w - 1)
+    x1 = (x_floor.long() + 1).clamp(0, grid_w - 1)
+
+    wy = (y - y_floor).clamp(0, 1)
+    wx = (x - x_floor).clamp(0, 1)
+    wy = torch.where((y < 0) | (y > grid_h - 1), 0, wy).to(imgs.dtype)
+    wx = torch.where((x < 0) | (x > grid_w - 1), 0, wx).to(imgs.dtype)
+
+    luts = luts.to(imgs.dtype)
+    pixel_bins = (imgs * 255).long()
+    batch_idx = torch.arange(batch_size, device=imgs.device).view(batch_size, 1, 1, 1)
+    channel_idx = torch.arange(channels, device=imgs.device).view(1, channels, 1, 1)
+    rows0, rows1 = y0.view(1, 1, height, 1), y1.view(1, 1, height, 1)
+    cols0, cols1 = x0.view(1, 1, 1, width), x1.view(1, 1, 1, width)
+
+    top_left = luts[batch_idx, rows0, cols0, channel_idx, pixel_bins]
+    top_right = luts[batch_idx, rows0, cols1, channel_idx, pixel_bins]
+    bottom_left = luts[batch_idx, rows1, cols0, channel_idx, pixel_bins]
+    bottom_right = luts[batch_idx, rows1, cols1, channel_idx, pixel_bins]
+
+    wy = wy.view(1, 1, height, 1)
+    wx = wx.view(1, 1, 1, width)
+
+    top = top_right + (top_left - top_right) * (1 - wx)
+    bottom = bottom_right + (bottom_left - bottom_right) * (1 - wx)
+    return (top + (bottom - top) * wy) / 255.0
+
+
 @perform_keep_shape_image
 def equalize_clahe(
     input: torch.Tensor,
@@ -419,7 +473,16 @@ def equalize_clahe(
 
     .. image:: _static/img/equalize_clahe.png
 
-    NOTE: Lut computation uses the same approach as in OpenCV, in next versions this can change.
+    NOTE: The fast path uses OpenCV-style LUT calculation and round-to-nearest quantization.
+    Tiles are ``ceil(H / grid_size[0])`` by ``ceil(W / grid_size[1])`` pixels, odd or even, and the image is
+    reflect-padded at its end only along an axis the grid does not divide. OpenCV uses the same tiles when the
+    grid divides both axes or neither. When it divides only one, OpenCV pads that axis too, by one pixel per
+    tile; Kornia tiles each axis on its own and does not. Both paths blend LUTs with weight steps of
+    ``1 / tile_size``, anchored at each tile's actual centre, with border LUTs clamped. This is half a pixel
+    before OpenCV/scikit-image's historical phase: Kornia intentionally uses ``(p + 0.5) / tile_size - 0.5``
+    to preserve flip symmetry on unpadded grids. For the same tiles and LUTs, the phase difference is at most
+    half an interpolation step per axis; exact ``cv2.createCLAHE`` parity is not the contract, and output
+    values are not rounded to 8-bit integers.
 
     Args:
         input: images tensor to equalize with values in the range [0, 1] and shape :math:`(*, C, H, W)`.
@@ -487,22 +550,32 @@ def _equalize_clahe(
 
     imgs: torch.Tensor = input  # B x C x H x W
 
-    # hist_tiles: torch.Tensor  # B x GH x GW x C x TH x TW  # not supported by JIT
-    # img_padded: torch.Tensor  # B x C x H' x W'  # not supported by JIT
-    # the size of the tiles must be even in order to divide them into 4 tiles for the interpolation
-    hist_tiles, img_padded = _compute_tiles(imgs, grid_size, True)
-    tile_size: Tuple[int, int] = (hist_tiles.shape[-2], hist_tiles.shape[-1])
-    interp_tiles: torch.Tensor = _compute_interpolation_tiles(img_padded, tile_size)  # B x 2GH x 2GW x C x TH/2 x TW/2
-    luts: torch.Tensor = _compute_luts(
-        hist_tiles, clip=clip_limit, diff=slow_and_differentiable
-    )  # B x GH x GW x C x 256
-    equalized_tiles: torch.Tensor = _compute_equalized_tiles(interp_tiles, luts)  # B x 2GH x 2GW x C x TH/2 x TW/2
+    height, width = imgs.shape[-2:]
+    grid_h, grid_w = grid_size
+    if height <= grid_h or width <= grid_w:
+        raise ValueError(
+            "Cannot compute tiles on the image according to the given grid size. "
+            f"Got image size ({height}, {width}) and grid size {tuple(grid_size)}. "
+            f"The smallest image this grid admits is ({grid_h + 1}, {grid_w + 1})."
+        )
 
-    # reconstruct the images form the tiles
-    #    try permute + contiguous + view
-    eq_imgs: torch.Tensor = equalized_tiles.permute(0, 3, 1, 4, 2, 5).reshape_as(img_padded)
+    natural_tile_h = -(-height // grid_h)
+    natural_tile_w = -(-width // grid_w)
+    use_odd_tiles = natural_tile_h % 2 == 1 or natural_tile_w % 2 == 1
+
+    hist_tiles, img_padded = _compute_tiles(imgs, grid_size, not use_odd_tiles)
+    tile_size: Tuple[int, int] = (hist_tiles.shape[-2], hist_tiles.shape[-1])
+    luts: torch.Tensor = _compute_luts(hist_tiles, clip=clip_limit, diff=slow_and_differentiable)
+
+    if use_odd_tiles:
+        eq_imgs = _equalize_clahe_odd_tiles(img_padded, luts, tile_size)
+    else:
+        interp_tiles = _compute_interpolation_tiles(img_padded, tile_size)
+        equalized_tiles = _compute_equalized_tiles(interp_tiles, luts)
+        eq_imgs = equalized_tiles.permute(0, 3, 1, 4, 2, 5).reshape_as(img_padded)
+
     h, w = imgs.shape[-2:]
-    eq_imgs = eq_imgs[..., :h, :w]  # crop imgs if they were padded
+    eq_imgs = eq_imgs[..., :h, :w]
 
     # remove batch if the input was not in batch form
     if input.dim() != eq_imgs.dim():

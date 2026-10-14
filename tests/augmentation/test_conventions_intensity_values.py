@@ -411,36 +411,71 @@ class TestIntensityValueRangeConventions(BaseTester):
             assert out.shape == image.shape
             assert torch.isfinite(out).all()
 
-    # Issue #4576: below p=1 the base computes the transform for the whole batch and then selects the
-    # rows the gate keeps (`_AugmentationBase.transform_inputs`), so a row the gate skips still reaches
-    # the value check and the backward pass.  At p=0.0 RandomEqualize and RandomClahe raise for an image
-    # they never touch, and RandomGamma returns the input values but a NaN gradient where the discarded
-    # power's derivative is infinite.
-    # Snippet used to generate expected:
-    #   g = torch.linspace(0, 1, 1024).reshape(1, 1, 32, 32); x = torch.cat([g, g * 2])
-    #   torch.manual_seed(0); K.RandomEqualize(p=0.0)(x)  # and K.RandomClahe(p=0.0)(x)
-    #   v = torch.tensor([0.0, 0.25, 1.0]).reshape(1, 1, 1, 3).repeat(2, 1, 1, 1).requires_grad_()
-    #   torch.manual_seed(0); y = K.RandomGamma((0.5, 0.5), (1.0, 1.0), p=0.0)(v); y.sum().backward()
-    #   print(torch.equal(y, v), v.grad.flatten().tolist())  # -> True [nan, 1.0, 1.0, nan, 1.0, 1.0]
-    def test_wart_p_gate_computes_the_skipped_samples_4576(self, device, dtype):
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: the value asserts are device-side asserts that poison the context")
+    # Issue #4576: a skipped row must not trigger a value check or contribute a NaN gradient.
+    def test_convention_p_gate_skipped_sample_has_no_effect_4576(self, device, dtype):
         ramp = torch.linspace(0, 1, 1024).reshape(1, 1, 32, 32)
         image = torch.cat([ramp, ramp * 2.0]).to(device=device, dtype=dtype)
         for cls in (K.RandomEqualize, K.RandomClahe):
             torch.manual_seed(_FORWARD_SEED)
-            # It has to be the value check that fires, not merely some RuntimeError: the claim is that
-            # the transform ran on a sample `p=0.0` was supposed to skip.
-            with pytest.raises(RuntimeError, match=r"\[0, 1\]"):
-                _sync(cls(p=0.0)(image).device)
+            out = cls(p=0.0)(image)
+            assert torch.equal(out, image)
+        volume = image.reshape(2, 1, 4, 16, 16)
+        assert torch.equal(K.RandomEqualize3D(p=0.0)(volume), volume)
         values = torch.tensor([0.0, 0.25, 1.0]).reshape(1, 1, 1, 3).repeat(2, 1, 1, 1)
         values = values.to(device=device, dtype=dtype).requires_grad_()
         torch.manual_seed(_FORWARD_SEED)
         out = K.RandomGamma((0.5, 0.5), (1.0, 1.0), p=0.0)(values)
         assert torch.equal(out, values)
         out.sum().backward()
-        assert bool(values.grad[..., 0].isnan().all())
-        self.assert_close(values.grad[..., 1:], torch.ones_like(values.grad[..., 1:]))
+        assert torch.isfinite(values.grad).all()
+        self.assert_close(values.grad, torch.ones_like(values.grad))
+
+    @pytest.mark.parametrize("cls", [K.RandomEqualize, K.RandomClahe])
+    def test_mixed_p_gate_skips_invalid_image_4576(self, cls, device, dtype):
+        ramp = torch.linspace(0, 1, 1024, device=device, dtype=dtype).reshape(1, 1, 32, 32)
+        image = torch.cat([ramp, ramp * 2.0])
+        aug = cls(p=0.5)
+        params = aug.forward_parameters(image.shape)
+        params["batch_prob"] = torch.tensor([1.0, 0.0], device=params["batch_prob"].device)
+        out = aug(image, params=params)
+        expected = cls(p=1.0)(image[:1])
+        self.assert_close(out[:1], expected)
+        assert torch.equal(out[1:], image[1:])
+
+    def test_mixed_p_gate_skipped_gamma_gradient_is_identity_4576(self, device, dtype):
+        image = torch.tensor([[[[0.25, 0.5, 1.0]]], [[[0.0, 0.25, 0.5]]]], device=device, dtype=dtype).requires_grad_()
+        aug = K.RandomGamma((0.5, 0.5), (1.0, 1.0), p=0.5)
+        params = aug.forward_parameters(image.shape)
+        params["batch_prob"] = torch.tensor([1.0, 0.0], device=params["batch_prob"].device)
+        out = aug(image, params=params)
+        self.assert_close(out[0], image[0].sqrt())
+        assert torch.equal(out[1], image[1])
+        out.sum().backward()
+        assert torch.isfinite(image.grad).all()
+        # Exclude x=1, where adjust_gamma's clamp derivative differs across torch releases.
+        self.assert_close(image.grad[0, ..., :2], 0.5 / image[0, ..., :2].detach().sqrt())
+        self.assert_close(image.grad[1], torch.ones_like(image.grad[1]))
+
+    @pytest.mark.parametrize(
+        ("factory", "substituted"),
+        [(lambda: K.RandomGamma((0.5, 0.5), p=0.5), True), (lambda: K.RandomBrightness((0.9, 1.1), p=0.5), False)],
+    )
+    def test_p_gate_substitutes_skipped_samples_only_where_needed_4576(self, factory, substituted, device, dtype):
+        image = torch.linspace(0, 1, 384, device=device, dtype=dtype).reshape(2, 3, 8, 8)
+        aug = factory()
+        params = aug.forward_parameters(image.shape)
+        params["batch_prob"] = torch.tensor([1.0, 0.0])
+        seen = []
+        original = aug.apply_transform
+
+        def spy(input, *args, **kwargs):
+            seen.append(input)
+            return original(input, *args, **kwargs)
+
+        aug.apply_transform = spy
+        aug(image, params=params)
+        assert torch.equal(seen[0][0], image[0])
+        assert torch.equal(seen[0][1], torch.full_like(image[1], 0.5) if substituted else image[1])
 
 
 class TestIntensityColourConventions(BaseTester):
@@ -1332,19 +1367,20 @@ class TestIntensityColourConventions(BaseTester):
             with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
                 _sync(K.RandomClahe(p=1.0)(image).device)
 
-    # Issue #2531: each axis of `grid_size` is tiled on its own and padded up to a whole number of tiles,
-    # so a grid works whether or not it divides the image, and an exactly dividing grid can still pad (the
-    # tile is rounded up to an even size).  The padding is reflect at the end of each axis, so the
-    # pre-padded image cropped back reproduces the output bitwise.
+    # Issue #2531: each axis of `grid_size` is tiled on its own, with tiles of ceil(size / grid) pixels, odd or
+    # even (#5812), so a grid works whether or not it divides the image, and only an axis the grid does not
+    # divide is padded.  The padding is reflect at the end of each axis, so the pre-padded image cropped back
+    # reproduces the output bitwise.
     @pytest.mark.parametrize(
         ("grid_size", "size", "pad"),
         [
             ((3, 3), 10, (2, 2)),
-            ((4, 4), 20, (4, 4)),
+            ((4, 4), 18, (2, 2)),
+            ((4, 4), 20, (0, 0)),
             ((5, 5), 20, (0, 0)),
-            ((4, 5), 20, (4, 0)),
+            ((4, 5), 18, (2, 2)),
             ((3, 5), 30, (0, 0)),
-            ((1, 2), 10, (0, 2)),
+            ((1, 2), 11, (0, 1)),
         ],
     )
     def test_convention_random_clahe_grid_pads_each_axis_to_whole_tiles_2531(self, device, dtype, grid_size, size, pad):
