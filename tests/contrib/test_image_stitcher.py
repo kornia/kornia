@@ -67,17 +67,50 @@ class _ShiftMatcher(LocalFeatureMatcher):
 
 
 class TestImageStitcher(BaseTester):
+    @pytest.mark.parametrize("img_dtype", [torch.float32, torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("shift", [40.0, 40.5, 40.7])
-    def test_subpixel_shift_has_no_dark_seam(self, shift, device):
+    def test_subpixel_shift_has_no_dark_seam(self, shift, img_dtype, device):
         # C-12: the mask was warped with nearest and the image bilinearly: s = 40.5 left a dark column (error 0.43),
-        # s = 40.7 an extra dark trailing column (width 97, truth 96).
+        # s = 40.7 an extra dark trailing column (width 97, truth 96). The mask and the image share one warp, so they
+        # share the sampling grid in half precision too (on MPS a half image keeps a half grid).
         torch.manual_seed(0)
-        left, right = _render(0, 64).to(device), _render(shift, 56).to(device)
+        left, right = _render(0, 64).to(device, img_dtype), _render(shift, 56).to(device, img_dtype)
         with torch.no_grad():
             out = kornia.contrib.ImageStitcher(_ShiftMatcher([shift]))(left, right)
         assert out.shape[-1] == int(shift) + 56
         truth = _render(0, out.shape[-1]).to(device)
-        assert (out - truth).abs().max().item() < 0.02  # bilinear resampling of the smooth texture, no black mixed in
+        # bilinear resampling of the smooth texture, no black mixed in (a dark pixel is off by 0.3 or more) and no
+        # covered pixel dropped (a dropped one is off by 0.8). MPS warps a half image on a half grid, so its border
+        # pixels are up to 8% dark (0.06 off) in float16 whatever the mask does; that sets the half bound.
+        tol = {torch.float32: 0.02, torch.float16: 0.08, torch.bfloat16: 0.08}[img_dtype]
+        assert (out.float() - truth).abs().max().item() < tol
+
+    def test_image_and_mask_share_one_warp(self, device):
+        # I2: on MPS a half image is sampled on a half grid; a mask warped in a separate (float32) call lands on another
+        # grid and marks pixels the image samples outside of as covered. One call keeps both on the same grid.
+        left, right = _render(0, 64).to(device), _render(40.5, 56).to(device)
+        stitcher = kornia.contrib.ImageStitcher(_ShiftMatcher([40.5]))
+        with (
+            patch(
+                "kornia.contrib.image_stitching.warp_perspective", wraps=kornia.geometry.transform.warp_perspective
+            ) as w,
+            torch.no_grad(),
+        ):
+            stitcher.stitch_pair(left, right)
+        assert w.call_count == 1
+        assert w.call_args.args[0].shape[1] == 6  # three image channels and three mask channels
+
+    def test_batch_of_two_equals_each_sample_alone(self, device):
+        left = torch.cat([_render(0, 64), _render(3, 64)]).to(device)
+        right = torch.cat([_render(40, 56), _render(31.5, 56)]).to(device)
+        stitcher = kornia.contrib.ImageStitcher(_ShiftMatcher([40.0, 28.5]))
+        with torch.no_grad():
+            pair = stitcher.stitch_pair(left, right)[0]
+            for b in range(2):
+                alone = kornia.contrib.ImageStitcher(_ShiftMatcher([[40.0, 28.5][b]])).stitch_pair(
+                    left[b : b + 1], right[b : b + 1]
+                )[0]
+                self.assert_close(pair[b : b + 1], alone)
 
     def test_estimate_transform_names_a_gap_without_batch_size(self):
         # Samples 0 and 2 matched, sample 1 not: the sample count comes from the largest batch index.

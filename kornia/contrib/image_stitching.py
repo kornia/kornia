@@ -26,6 +26,11 @@ from kornia.geometry.homography import find_homography_dlt_iterated
 from kornia.geometry.ransac import RANSAC
 from kornia.geometry.transform import warp_perspective
 
+# Slack of the coverage threshold per image dtype (default 1e-4, float32). MPS samples a half image on a half grid, so a
+# fully covered pixel at the right image's border warps the mask to 0.92 in float16 and the threshold has to keep it;
+# bfloat16 keeps one eps.
+_COVERAGE_SLACK = {torch.float16: 0.08, torch.bfloat16: torch.finfo(torch.bfloat16).eps}
+
 
 class ImageStitcher(nn.Module):
     """Stitch two images with overlapping fields of view.
@@ -192,7 +197,6 @@ class ImageStitcher(nn.Module):
         out_shape = (images_left.shape[-2], images_left.shape[-1] + images_right.shape[-1])
         correspondences = self.on_matcher(input_dict)
         homo = self.estimate_transform(batch_size=images_left.shape[0], **correspondences)
-        src_img = warp_perspective(images_right, homo, out_shape)
         dst_img = torch.cat([images_left, torch.zeros_like(images_right)], -1)
 
         # Compute the transformed masks
@@ -201,9 +205,15 @@ class ImageStitcher(nn.Module):
         if mask_right is None:
             mask_right = torch.ones_like(images_right)
         # The image is resampled bilinearly, so a panorama pixel whose footprint reaches past the right image's border
-        # mixes in the zero padding. Warp the mask the same way and keep only pixels covered completely.
-        src_mask = warp_perspective(mask_right.float(), homo.float(), out_shape) >= 1.0 - 1e-4
-        src_mask = src_mask.to(images_right.dtype)
+        # mixes in the zero padding. Warp the validity mask together with the image, in one call and so on the same
+        # sampling grid, and keep only the pixels covered completely.
+        n_ch = images_right.shape[1]
+        warped = warp_perspective(torch.cat([images_right, mask_right.to(images_right.dtype)], 1), homo, out_shape)
+        src_img, coverage = warped[:, :n_ch], warped[:, n_ch:]
+        # A fully covered pixel warps the mask to 1 up to the rounding of the image's dtype. The slack per dtype keeps
+        # such pixels and drops those whose footprint reaches well outside the right image.
+        slack = _COVERAGE_SLACK.get(images_right.dtype, 1e-4)
+        src_mask = (coverage.float() >= 1.0 - slack).to(images_right.dtype)
         dst_mask = torch.cat([mask_left, torch.zeros_like(mask_right)], -1)
         return self.blend_image(src_img, dst_img, src_mask), (dst_mask + src_mask).bool().to(src_mask.dtype)
 

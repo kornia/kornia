@@ -34,9 +34,6 @@ def _make_tracker(minimum_inliers_num: int = 5) -> HomographyTracker:
     initial_matcher = MagicMock()
     fast_matcher = MagicMock()
     ransac = MagicMock()
-    # Set extract_features to None so isinstance(..., nn.Module) guard skips feature pre-extraction
-    initial_matcher.extract_features = None
-    fast_matcher.extract_features = None
     return HomographyTracker(
         initial_matcher=initial_matcher,
         fast_matcher=fast_matcher,
@@ -103,6 +100,16 @@ class TestHomographyTrackerCaching:
         _, ok = tracker.match_initial(torch.rand(1, 1, 8, 9))
         assert not ok
         tracker.ransac.assert_not_called()
+
+    def test_fewer_than_four_matches_fails_track_next_frame(self):
+        tracker = _make_tracker(minimum_inliers_num=0)
+        tracker.set_target(torch.rand(1, 1, 8, 9))
+        tracker.previous_homography = torch.eye(3)
+        tracker.fast_matcher.return_value = _match_dict(3, torch.device("cpu"), torch.float32)
+        _, ok = tracker.track_next_frame(torch.rand(1, 1, 8, 9))
+        assert not ok
+        tracker.ransac.assert_not_called()
+        assert tracker.previous_homography is None
 
     def test_set_target_starts_a_new_track(self):
         # C-7 (controller ruling): the old prior maps the old target's coordinates.

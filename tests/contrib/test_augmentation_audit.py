@@ -38,13 +38,18 @@ class TestAugmentationAudit(BaseTester):
         assert contrib.AugmentationAuditReport.__module__ == "kornia.contrib.augmentation_audit"
         assert not hasattr(K.AugmentationSequential, "audit")
 
-    def test_unbatched_channel_mask_is_accepted(self, device, dtype):
+    def test_bhw_mask_is_accepted_like_bchw(self, device, dtype):
         # C-26: AugmentationSequential takes (B, H, W) masks (#5602); audit rejected them as "not batched".
         seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
         img = torch.rand(2, 3, 30, 40, device=device, dtype=dtype)
         mask = (torch.rand(2, 30, 40, device=device) > 0.5).to(dtype)
-        _, report = audit(seq, img, mask)
-        assert report.steps
+        out3, report3 = audit(seq, img, mask)
+        out4, report4 = audit(seq, img, mask[:, None])
+        assert report3.steps
+        assert len(report3.steps) == len(report4.steps)
+        assert report3.inputs[1]["shape"] == (2, 30, 40)
+        assert report4.inputs[1]["shape"] == (2, 1, 30, 40)
+        self.assert_close(out3[1].reshape(2, 30, 40), out4[1].reshape(2, 30, 40))
 
     def test_flip_and_actual_keypoints(self, device, dtype):
         image = torch.rand(2, 1, 8, 10, device=device, dtype=dtype)

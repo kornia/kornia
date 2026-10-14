@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, cast
 
 import torch
 from torch import nn
@@ -193,7 +193,7 @@ class HomographyTracker(nn.Module):
             self.previous_homography is not None,
             "track_next_frame needs a previous homography; call forward() or match_initial() first.",
         )
-        Hwarp = self.previous_homography.clone()[None]  # ty: ignore[possibly-missing-attribute]
+        Hwarp = cast(torch.Tensor, self.previous_homography).clone()[None]
         # make a bit of border for safety
         Hwarp[:, 0:2, 0:2] = Hwarp[:, 0:2, 0:2] / 0.8
         Hwarp[:, 0:2, 2] -= 10.0
