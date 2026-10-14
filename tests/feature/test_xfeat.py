@@ -608,7 +608,8 @@ class TestConventionsXFeat(BaseTester):
         for k in (None, 4096, 9, 0):
             seen.clear()
             xfeat.detectAndComputeDense(image, k)
-            assert seen == {None: [819, 3277], 4096: [819, 3277], 9: [1, 8], 0: [None, None]}[k]
+            # the 1.3 scale is extracted first, then the 0.6 one
+            assert seen == {None: [3277, 819], 4096: [3277, 819], 9: [8, 1], 0: [None, None]}[k]
         # multiscale=False resolves top_k < 1 the same way
         seen.clear()
         xfeat.detectAndComputeDense(image, -1, False)
@@ -660,6 +661,47 @@ class TestConventionsXFeat(BaseTester):
         sizes.clear()
         xfeat.detectAndComputeDense(image, 5)
         assert len(sizes) == 2
+
+    def test_convention_xfeat_default_constructor_is_in_eval_mode_and_inference_does_not_touch_batchnorm_stats(
+        self, device, dtype
+    ):
+        # XFeat() starts in eval mode like XFeat.from_pretrained and the reference: BatchNorm would otherwise use batch
+        # statistics (each keypoint depends on the rest of the batch), update its running statistics on every
+        # inference call, and raise on a single match.
+        torch.manual_seed(0)
+        xfeat = XFeat()
+        assert not xfeat.training
+        xfeat = xfeat.to(device)
+        image = torch.rand(2, 3, 64, 64, device=device)
+        before = {k: v.clone() for k, v in xfeat.state_dict().items()}
+        xfeat.detectAndCompute(image)
+        xfeat.detectAndComputeDense(image, 10)
+        xfeat.match_xfeat_star(image, image, top_k=1)
+        for k, v in xfeat.state_dict().items():
+            assert torch.equal(v, before[k]), k
+        assert xfeat.train().training  # .train() stays the explicit opt-in
+
+    def test_smoke_xfeat_star_default_constructor_top_k_1_batched(self, device, dtype):
+        torch.manual_seed(0)
+        xfeat = XFeat().to(device)
+        image = torch.rand(2, 3, 64, 64, device=device)
+        matches = xfeat.match_xfeat_star(image, image, top_k=1)
+        assert len(matches) == 2
+        for m in matches:
+            assert m.shape[0] <= 1
+
+    def test_convention_xfeat_dense_multiscale_descriptor_dtype_is_the_same_on_both_sides_of_a_zero_share(self, device):
+        # under autocast the backbone's output dtype is not the parameters' dtype; the empty scale must not change it
+        if torch.device(device).type != "cpu":
+            pytest.skip("CPU autocast")
+        torch.manual_seed(0)
+        xfeat = XFeat().to(device)
+        image = torch.rand(2, 3, 64, 64, device=device)
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            small = xfeat.detectAndComputeDense(image, 4)
+            large = xfeat.detectAndComputeDense(image, 5)
+        assert small["descriptors"].dtype == large["descriptors"].dtype
+        assert small["keypoints"].dtype == large["keypoints"].dtype
 
     def test_convention_xfeat_dense_multiscale_with_an_empty_scale_matches_the_other_scale_alone(self, device, dtype):
         torch.manual_seed(0)

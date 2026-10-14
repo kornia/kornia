@@ -301,6 +301,11 @@ class XFeat(nn.Module):
 
     Convention:
         - XFeat defines no ``forward``: call :meth:`detectAndCompute` or :meth:`detectAndComputeDense`.
+        - ``XFeat()`` starts in evaluation mode, like :meth:`from_pretrained` and the reference implementation. The
+          inference methods are run under ``torch.inference_mode``; in training mode BatchNorm would normalise with
+          the statistics of the batch, so a keypoint or match would depend on the rest of the batch, update its
+          running statistics on every call, and raise on a single match. Call ``.train()`` to opt in explicitly; the
+          methods then behave as torch's training-mode BatchNorm does.
         - The image is :math:`(B, C, H, W)` with any channel count. Each extraction resizes the image it gets
           bilinearly to :math:`(H', W')`: ``H`` and ``W`` rounded down to multiples of 32, with a minimum of 32.
           :class:`XFeatModel` then averages the channels and instance-normalises the result, so an affine change of the
@@ -361,6 +366,8 @@ class XFeat(nn.Module):
         self.interpolator = InterpolateSparse2d("bicubic")
         self._nearest = InterpolateSparse2d("nearest")
         self._bilinear = InterpolateSparse2d("bilinear")
+        # like :meth:`from_pretrained` and the reference: the inference methods must not run BatchNorm in training mode
+        self.eval()
 
     @classmethod
     def from_pretrained(cls, top_k: int = 4096, detection_threshold: float = 0.05) -> XFeat:
@@ -515,14 +522,15 @@ class XFeat(nn.Module):
             k1 = int(top_k * 0.20)
             k2 = int(top_k) - k1
         x2 = F.interpolate(x, scale_factor=s2, align_corners=False, mode="bilinear")
+        mkpts_2, feats_2 = self._extract_dense(x2, k2)
         if k1 == 0:
-            # no cell is asked of the first scale: skip its resize and backbone pass
-            mkpts_1 = torch.zeros(x.shape[0], 0, 2, device=x.device)
-            feats_1 = torch.zeros(x.shape[0], 0, 64, device=x.device, dtype=next(self.net.parameters()).dtype)
+            # no cell is asked of the first scale: skip its resize and backbone pass; the empty outputs take the
+            # dtype and device of the computed scale, so the concatenation does not change the output dtype
+            mkpts_1 = mkpts_2.new_empty((mkpts_2.shape[0], 0, 2))
+            feats_1 = feats_2.new_empty((feats_2.shape[0], 0, feats_2.shape[-1]))
         else:
             x1 = F.interpolate(x, scale_factor=s1, align_corners=False, mode="bilinear")
             mkpts_1, feats_1 = self._extract_dense(x1, k1)
-        mkpts_2, feats_2 = self._extract_dense(x2, k2)
         mkpts = torch.cat([mkpts_1 / s1, mkpts_2 / s2], dim=1)
         sc1 = torch.ones(mkpts_1.shape[:2], device=mkpts_1.device) * (1 / s1)
         sc2 = torch.ones(mkpts_2.shape[:2], device=mkpts_2.device) * (1 / s2)
