@@ -494,7 +494,7 @@ class XFeat(nn.Module):
         M1 = M1.permute(0, 2, 3, 1).reshape(B, -1, C)
         H1 = H1.permute(0, 2, 3, 1).reshape(B, -1)
         if top_k < 1:
-            return xy1.new_zeros(B, 0, 2), M1.new_zeros(B, 0, C)
+            return torch.zeros(B, 0, 2, device=M1.device), M1.new_zeros(B, 0, C)
         _, top_k_idx = torch.topk(H1, k=min(H1.shape[1], top_k), dim=-1)
         feats = torch.gather(M1, 1, top_k_idx[..., None].expand(-1, -1, C))
         mkpts = torch.gather(xy1, 1, top_k_idx[..., None].expand(-1, -1, 2))
@@ -509,7 +509,11 @@ class XFeat(nn.Module):
         ``top_k`` is split into ``int(0.2 * top_k)`` for the first scale and the rest for the second;
         ``None`` keeps every cell of both. A zero share yields no cell from its scale.
         """
-        k1, k2 = (None, None) if top_k is None else (int(top_k * 0.20), top_k - int(top_k * 0.20))
+        if top_k is None:
+            k1 = k2 = None
+        else:
+            k1 = int(top_k * 0.20)
+            k2 = int(top_k) - k1
         x1 = F.interpolate(x, scale_factor=s1, align_corners=False, mode="bilinear")
         x2 = F.interpolate(x, scale_factor=s2, align_corners=False, mode="bilinear")
         mkpts_1, feats_1 = self._extract_dense(x1, k1)

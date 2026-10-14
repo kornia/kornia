@@ -623,6 +623,32 @@ class TestConventionsXFeat(BaseTester):
             assert mkpts0.shape == mkpts1.shape
             assert mkpts0.shape[0] <= k
 
+    def test_convention_xfeat_refines_matches_over_a_scale_of_zero_budget(self, device, dtype):
+        # fine_conf=-1 keeps every match, so the refinement of real matches over an empty 0.6 scale is exercised
+        torch.manual_seed(0)
+        xfeat = XFeat().to(device).eval()
+        image = torch.rand(2, 3, 64, 64, device=device, dtype=dtype)
+        out = xfeat.detectAndComputeDense(image, 4)
+        assert out["keypoints"].shape == (2, 4, 2)
+        idxs = xfeat._batch_match(out["descriptors"], out["descriptors"])
+        for b in range(2):
+            refined = xfeat._refine_matches(out, out, idxs, b, fine_conf=-1.0)
+            assert refined.shape[0] >= 1
+            assert refined.shape[1] == 4
+            assert torch.isfinite(refined).all()
+
+    def test_convention_xfeat_dense_multiscale_accepts_a_float_top_k_and_keeps_float_keypoints(self, device, dtype):
+        torch.manual_seed(0)
+        xfeat = XFeat().to(device).eval()
+        image = torch.rand(2, 3, 64, 64, device=device, dtype=dtype)
+        out = xfeat.detectAndComputeDense(image, 10.0)
+        assert out["keypoints"].shape == (2, 10, 2)
+        empty = xfeat._extract_dense(image, 0)
+        full = xfeat._extract_dense(image, 3)
+        assert empty[0].dtype == full[0].dtype
+        assert empty[1].dtype == full[1].dtype
+        assert empty[0].device == full[0].device
+
     def test_convention_xfeat_dense_multiscale_with_an_empty_scale_matches_the_other_scale_alone(self, device, dtype):
         torch.manual_seed(0)
         xfeat = XFeat().to(device).eval()
