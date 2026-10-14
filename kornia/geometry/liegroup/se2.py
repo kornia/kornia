@@ -116,8 +116,8 @@ class Se2(nn.Module):
                 tensor is what gets stored. It must have the rotation's dtype (``z``'s real dtype) and device;
                 a bfloat16 translation is also accepted beside a complex32, complex64 or complex128 rotation, which
                 is what ``.bfloat16()`` leaves (PyTorch has no complex bfloat16). Every method then reads the
-                translation at the rotation's precision: ``log`` and ``matrix`` return the rotation's real dtype,
-                while ``inverse`` and ``g * g`` keep the bfloat16 translation.
+                translation at the rotation's precision, and ``inverse`` and ``g * g`` return a translation of the
+                rotation's real dtype.
 
         Raises:
             TypeCheckError: if the translation is an integer or bool tensor, or its dtype differs from the
@@ -156,9 +156,9 @@ class Se2(nn.Module):
         so2 = self.so2
         t = self.t
         _r = so2 * right.so2
-        # keep the translation's own dtype: a bfloat16 translation beside a wider rotation (what ``.bfloat16()``
-        # leaves) would otherwise be promoted by the rotation's product
-        _t = (t + so2 * right.t).to(t.dtype)
+        # the rotation's real dtype: beside a complex32 rotation, a bfloat16 translation (what ``.bfloat16()``
+        # leaves) would otherwise be promoted to float32, which the constructor rejects
+        _t = (t + so2 * right.t).to(_r.z.real.dtype)
         return Se2(_r, _t)
 
     @overload
@@ -423,8 +423,8 @@ class Se2(nn.Module):
 
         """
         r_inv: So2 = self.r.inverse()
-        # the translation keeps its own dtype, as in ``__mul__`` (the rotation's product promotes a bfloat16 one)
-        return Se2(r_inv, (r_inv * (-1 * self.t)).to(self.t.dtype))
+        # the rotation's real dtype, as in ``__mul__``
+        return Se2(r_inv, (r_inv * (-1 * self.t)).to(r_inv.z.real.dtype))
 
     @classmethod
     def random(
