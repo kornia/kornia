@@ -52,10 +52,14 @@ class TestSe3(BaseTester):
             self.assert_close(actual, expected)
             return
         # Every Se3 operation computes in float32 and rounds once (TestSe3HalfPrecision pins that). A rounded point or
-        # translation v moves the end of its chain by at most u |v| (u = eps / 2) through the rotations and sums after
-        # it, every such |v| is at most S = |p| + |t1| + |t2|, and the rounded composite quaternion turns a point by
-        # at most 2 u. The two chains of test_mul_point and test_mul_vector round at most eight values and that
-        # quaternion between them, so they agree to 9 u S; the default half tolerance, about 2 u, does not cover that.
+        # translation v moves the end of its chain by at most u |v| (u = eps / 2), since only rotations and sums follow
+        # it, and the rounded quaternion of s12 = s1^-1 * s2 turns each vector it rotates by at most 2 u |v|. For the
+        # longer pair, pt_in_s2 against s12^-1 * pt_in_s1, the roundings cost: s2^-1.t, u |t2|; pt_in_s2,
+        # u (|p| + |t2|); s1^-1.t, computed for pt_in_s1 and for s12, 2 u |t1|; pt_in_s1, u (|p| + |t1|); s12.t and
+        # s12^-1.t, u (|t1| + |t2|) each; the result, u (|p| + |t2|); and s12's quaternion, applied to pt_in_s1 and
+        # s12.t, 2 u (|p| + 2 |t1| + |t2|). That sums to u (5 |p| + 9 |t1| + 7 |t2|) <= 9 u S with
+        # S = |p| + |t1| + |t2|; the other pair sums to u (5 |p| + 5 |t1| + 5 |t2|). The default half tolerance, about
+        # 2 u, does not cover either.
         u = torch.finfo(actual.dtype).eps / 2
         s = sum(x.data.cpu().double().norm(dim=-1) for x in (p, t1, t2)).max().item()
         self.assert_close(actual.data.cpu().double(), expected.data.cpu().double(), rtol=0.0, atol=9 * u * s)

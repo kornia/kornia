@@ -118,8 +118,9 @@ precision, so the table says nothing about those backends.
    * - ``kornia.geometry`` (other)
      - ⚠️ Partial
      - ⚠️ Partial
-     - 8 / 15
-     - Accuracy in boxes, depth and line utilities. A bfloat16 ``NamedPose`` of an ``Se2`` pose raises as ``Se2`` does.
+     - 7 / 14
+     - Accuracy of the box transforms and depth utilities. A bfloat16 ``NamedPose`` of an ``Se2`` pose raises as
+       ``Se2`` does.
    * - ``kornia.image``
      - ⚠️ Partial
      - ⚠️ Partial
