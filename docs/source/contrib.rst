@@ -256,8 +256,8 @@ roads and text strokes. Its convergence checks synchronize the accelerator with
 the host, and the result is not differentiable.
 
 ``connected_components`` retains its fixed-count pooling implementation; it returns
-``int64`` labels like ``connected_components_union_find`` but keeps its own label convention. When using it, choose enough
-iterations for the largest component's graph diameter: the default 100 steps
+``int64`` labels like ``connected_components_union_find`` but keeps its own label convention.
+When using it, choose enough iterations for the largest component's graph diameter: the default 100 steps
 can leave a long component split into multiple labels. A small fixed budget may
 be faster than union-find for small or fragmented masks, but does not guarantee
 convergence. The two implementations produce different numerical label IDs;

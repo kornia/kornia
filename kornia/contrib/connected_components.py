@@ -62,28 +62,31 @@ def connected_components(image: torch.Tensor, num_iterations: int = 100) -> torc
         return torch.zeros(image.shape, dtype=torch.int64, device=image.device)
     image_view = image.reshape(-1, 1, H, W)
     B = image_view.shape[0]
-    num_ids = B * H * W
-    # Labels are pooled as floats (max_pool2d has no integer kernel). float32 holds every integer up to 2**24 exactly;
-    # larger batches need float64, which MPS does not have.
+    num_ids = H * W
+    # Pooling never mixes batch planes, so every plane is labelled with its own ids 1..H*W and the plane offset is added
+    # in int64 afterwards. Labels are pooled as floats (max_pool2d has no integer kernel): float32 holds every integer
+    # up to 2**24 exactly; larger planes need float64, which MPS does not have.
     id_dtype = torch.float32
     if num_ids > 2**24:
         if image.device.type == "mps":
             raise ValueError(
-                f"connected_components labels {num_ids} pixels; on MPS (no float64) the limit is 2**24 per call. "
-                "Split the batch, or use connected_components_union_find."
+                f"connected_components labels {num_ids} pixels in one image; on MPS (no float64) the limit is 2**24 "
+                "pixels per image. Split the image, or use connected_components_union_find."
             )
         id_dtype = torch.float64
 
     # precompute a mask with the valid values
     mask = image_view == 1
-    out = torch.arange(1, num_ids + 1, device=image.device, dtype=id_dtype).view(-1, 1, H, W)
-    out[~mask] = 0
+    out = torch.arange(1, num_ids + 1, device=image.device, dtype=id_dtype).view(1, 1, H, W).expand(B, 1, H, W)
+    out = out * mask
 
     for _ in range(num_iterations):
         out = F.max_pool2d(out, kernel_size=3, stride=1, padding=1)
         out = torch.mul(out, mask)  # mask using element-wise multiplication
 
-    return out.to(torch.int64).view(image.shape)
+    labels = out.to(torch.int64)
+    offset = torch.arange(B, device=image.device, dtype=torch.int64).view(-1, 1, 1, 1) * num_ids
+    return torch.where(labels > 0, labels + offset, labels).view(image.shape)
 
 
 def connected_components_union_find(image: torch.Tensor) -> torch.Tensor:

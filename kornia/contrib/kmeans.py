@@ -51,6 +51,7 @@ class KMeans:
         seed: int | None = None,
     ) -> None:
         KORNIA_CHECK(num_clusters != 0, "num_clusters can't be 0")
+        KORNIA_CHECK(max_iterations >= 0, f"max_iterations must be >= 0, got {max_iterations}")
         KORNIA_CHECK(tolerance is None or tolerance >= 0, f"tolerance must be None or >= 0, got {tolerance}")
         KORNIA_CHECK(
             tolerance is not None or max_iterations > 0,
@@ -116,6 +117,16 @@ class KMeans:
             return self._final_cluster_assignments
         raise TypeError("Model has not been fit to a dataset")
 
+    @staticmethod
+    def _work_dtype(*tensors: torch.Tensor) -> torch.dtype:
+        """Dtype for distances and sums: the promoted dtype, and at least float32 (half types and integers lift)."""
+        dtype = tensors[0].dtype
+        for t in tensors[1:]:
+            dtype = torch.promote_types(dtype, t.dtype)
+        if dtype in (torch.float16, torch.bfloat16) or not dtype.is_floating_point:
+            return torch.float32
+        return dtype
+
     def _initialise_cluster_centers(self, X: torch.Tensor, num_clusters: int) -> torch.Tensor:
         """Chooses num_cluster points from X as the initial cluster centers.
 
@@ -172,7 +183,7 @@ class KMeans:
             current_centers = self._initial_cluster_centers
 
         # Distances and sums run in at least float32: squared float16 distances overflow past 255.
-        work_dtype = torch.float32 if X.dtype in (torch.float16, torch.bfloat16) else X.dtype
+        work_dtype = self._work_dtype(X, current_centers)
         X_work = X.to(work_dtype)
 
         previous_centers: torch.Tensor | None = None
@@ -241,6 +252,6 @@ class KMeans:
                 {x.shape[1]} != {self.cluster_centers.shape[1]}",
         )
 
-        work_dtype = torch.float32 if x.dtype in (torch.float16, torch.bfloat16) else x.dtype
+        work_dtype = self._work_dtype(x, self.cluster_centers)
         distance = self._pairwise_euclidean_distance(x.to(work_dtype), self.cluster_centers.to(work_dtype))
         return distance.argmin(-1)

@@ -299,6 +299,44 @@ class TestKMeans(BaseTester):
         km.fit(p)
         self.assert_close(km.cluster_centers, p[[1, 0]], rtol=0.0, atol=0.0)
 
+    @pytest.mark.parametrize("pixel_dtype", [torch.uint8, torch.int64])
+    def test_predict_integer_input_with_float_centres(self, device, pixel_dtype):
+        # Colour quantisation: fit on float pixels, predict integer pixels. The float centres must not be cast to the
+        # integer dtype (uint8 wraps, int64 truncates). Reference: torch.cdist in float64 on the CPU.
+        g = torch.Generator().manual_seed(0)
+        Xf = (torch.rand(500, 3, generator=g) * 255).round()
+        centres = Xf[:8].clone()
+        km = kornia.contrib.KMeans(8, centres.to(device), tolerance=1e-4, max_iterations=50)
+        km.fit(Xf.to(device))
+        expected = torch.cdist(Xf.double(), km.cluster_centers.cpu().double()).argmin(-1)
+        got = km.predict(Xf.to(pixel_dtype).to(device)).cpu()
+        assert torch.equal(got, expected)
+
+    def test_predict_uint8_does_not_wrap_the_centres(self, device):
+        # uint8(300.0) wraps to 44, which made cluster 1 the nearest centre of the pixel (250, 250).
+        c = torch.tensor([[300.0, 300.0], [100.0, 100.0]], device=device)
+        p = torch.tensor([[250, 250]], dtype=torch.uint8, device=device)
+        assert kornia.contrib.KMeans(2, c, tolerance=None, max_iterations=1).predict(p).tolist() == [0]
+
+    def test_uint8_centres_and_points_are_compared_in_float(self, device):
+        # uint8 differences and squares wrap: in uint8 the pixel (40, 40) looks nearest to (200, 200), but (0, 0) is.
+        c = torch.tensor([[0, 0], [200, 200]], dtype=torch.uint8, device=device)
+        p = torch.tensor([[40, 40]], dtype=torch.uint8, device=device)
+        assert kornia.contrib.KMeans(2, c, tolerance=None, max_iterations=1).predict(p).tolist() == [0]
+
+    def test_fit_uint8_points_with_float_centres_does_not_wrap_the_centres(self, device):
+        c = torch.tensor([[300.0, 300.0], [100.0, 100.0]], device=device)
+        p = torch.tensor([[250, 250], [90, 90]], dtype=torch.uint8, device=device)
+        km = kornia.contrib.KMeans(2, c, tolerance=None, max_iterations=1)
+        km.fit(p)
+        assert km.cluster_centers.tolist() == [[250, 250], [90, 90]]
+
+    def test_negative_max_iterations_raises(self):
+        with pytest.raises(BaseError, match="max_iterations must be >= 0"):
+            kornia.contrib.KMeans(3, None, tolerance=None, max_iterations=-1)
+        with pytest.raises(BaseError, match="max_iterations must be >= 0"):
+            kornia.contrib.KMeans(3, None, tolerance=1e-3, max_iterations=-2)
+
     def test_predict_checks_its_input_rank(self, device, dtype):
         km = kornia.contrib.KMeans(2, torch.rand(2, 2, device=device, dtype=dtype), max_iterations=1)
         with pytest.raises(ShapeError):

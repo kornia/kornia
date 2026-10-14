@@ -17,7 +17,6 @@
 
 from __future__ import annotations
 
-import itertools
 import math
 
 import torch
@@ -47,8 +46,8 @@ def _check_h_range(kernel_size: int, h: float, dtype: torch.dtype, ndim: int) ->
     KORNIA_CHECK(
         farthest_tap >= torch.finfo(dtype).tiny,
         f"h={h} is too small for kernel_size={kernel_size} at working precision {dtype}: the corner kernel tap "
-        f"exp(-sqrt({ndim})*{k_half}/h) underflows to zero and the result would be wrong. Increase h or decrease "
-        "kernel_size.",
+        f"exp(-sqrt({ndim})*{k_half}/h) falls below the smallest normal number of that precision and the result "
+        "would be wrong. Increase h or decrease kernel_size.",
     )
     # A pixel counts as reached when -h*log(sum of its window's taps over reached pixels) > 0, i.e. when that sum is
     # below 1; a source pixel fails the test through its own centre tap, and that is how sources stay at 0. If the
@@ -65,14 +64,21 @@ def _check_h_range(kernel_size: int, h: float, dtype: torch.dtype, ndim: int) ->
 
 def _off_centre_tap_sum(kernel_size: int, h: float, ndim: int) -> float:
     # Sum of exp(-|q|/h) over the kernel offsets q != 0, one octant at a time: every nonzero coordinate has a mirror
-    # twin. Plain Python on constants, so the check stays out of the traced graph (no tensor, no .item()).
+    # twin, so it counts twice. Plain Python on constants, so the check stays out of the traced graph (no tensor, no
+    # .item()); nested loops, because generator expressions in this inner loop made the check take seconds at large
+    # kernels.
     k_half = kernel_size // 2
+    weight = [1.0] + [2.0] * k_half
+    square = [c * c for c in range(k_half + 1)]
     total = 0.0
-    for q in itertools.product(range(k_half + 1), repeat=ndim):
-        nonzero = sum(1 for c in q if c)
-        if nonzero:
-            total += 2**nonzero * math.exp(-math.sqrt(sum(c * c for c in q)) / h)
-    return total
+    for a in range(k_half + 1):
+        for b in range(k_half + 1):
+            if ndim == 2:
+                total += weight[a] * weight[b] * math.exp(-math.sqrt(square[a] + square[b]) / h)
+                continue
+            for c in range(k_half + 1):
+                total += weight[a] * weight[b] * weight[c] * math.exp(-math.sqrt(square[a] + square[b] + square[c]) / h)
+    return total - 1.0  # drop the centre tap
 
 
 def _distance_transform_2d_impl(image: torch.Tensor, kernel_size: int, h: float) -> torch.Tensor:
@@ -156,12 +162,13 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
         image: Image or volume with shape :math:`(B,C,H,W)` or :math:`(B,C,D,H,W)`.
         kernel_size: size of the convolution kernel. Must be an odd number.
         h: value that influences the approximation of the min function. The cascade's kernel taps are
-            ``exp(-dist/h)``. Both ends of the range are rejected with an error: an ``h`` so small that the
-            corner tap (distance ``sqrt(ndim) * (kernel_size // 2)``) underflows to zero, and an ``h`` so large that
-            the off-centre taps sum to 1 or more (2-D: below 0.5626 at ``kernel_size`` 3, about 0.50 at larger
-            kernels; 3-D: below 0.4071 at 3, about 0.382 at larger kernels), where background pixels would read
-            as 0. ``float16`` and ``bfloat16`` inputs run the cascade in ``float32`` and cast the result back,
-            which widens the safe ``h`` range for those dtypes to match ``float32``.
+            ``exp(-dist/h)``. Accepted: ``h`` large enough that the corner tap (distance
+            ``sqrt(ndim) * (kernel_size // 2)``) stays above the smallest normal number of the working precision, and
+            small enough that the off-centre taps sum to less than 1 (2-D: below 0.5626 at ``kernel_size`` 3, about
+            0.50 at larger kernels; 3-D: below 0.4071 at 3, about 0.382 at larger kernels). Any other ``h`` raises:
+            a smaller one returned wrong distances, a larger one returned 0 at background pixels whose window was
+            full of reached pixels. ``float16`` and ``bfloat16`` inputs run the cascade in ``float32`` and cast the
+            result back, which widens the safe ``h`` range for those dtypes to match ``float32``.
 
     Returns:
         tensor with the same shape as input.

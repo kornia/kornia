@@ -113,7 +113,7 @@ class TestConnectedComponents(BaseTester):
         assert label_a != label_b, "two disconnected components must not share a label"
 
     def test_labels_carry_no_gradient(self, device):
-        img = torch.ones(2, 1, 4, 4, device=device, dtype=torch.float32, requires_grad=True)
+        img = torch.ones(2, 1, 4, 5, device=device, dtype=torch.float32, requires_grad=True)
         out = kornia.contrib.connected_components(img)
         assert out.requires_grad is False
         assert out.dtype == torch.int64
@@ -143,6 +143,29 @@ class TestConnectedComponents(BaseTester):
         m[..., 2**24 + 1] = 1
         out = kornia.contrib.connected_components(m, num_iterations=2)
         assert out[0, 0, 0, [2**24 - 1, 2**24 + 1]].tolist() == [2**24, 2**24 + 2]
+
+    def test_batch_labels_are_unique_and_follow_the_flat_raster_index(self, device):
+        # Per-image ids plus an int64 plane offset: label = flattened raster index over the batch + 1.
+        g = torch.Generator().manual_seed(0)
+        img = (torch.rand(4, 1, 5, 7, generator=g) > 0.5).float().to(device)
+        out = kornia.contrib.connected_components(img, num_iterations=3)
+        for b in range(4):
+            single = kornia.contrib.connected_components(img[b : b + 1], num_iterations=3)
+            expected = torch.where(single > 0, single + b * 5 * 7, single)
+            assert torch.equal(out[b : b + 1], expected)
+        full = kornia.contrib.connected_components(torch.ones(3, 1, 5, 7, device=device), num_iterations=10)
+        assert full[:, 0, 0, 0].tolist() == [35, 70, 105]
+
+    def test_batch_past_2_pow_24_pixels_in_total_runs(self, device):
+        # The 2**24 bound is per image: pooling never mixes batch planes. 17 * 1024 * 1000 > 2**24 pixels in total.
+        m = torch.zeros(17, 1, 1024, 1000, device=device)
+        m[16, 0, 5, 3] = 1
+        m[0, 0, 7, 9] = 1
+        out = kornia.contrib.connected_components(m, num_iterations=1)
+        assert out.dtype == torch.int64
+        assert out[16, 0, 5, 3].item() == 16 * 1024 * 1000 + 5 * 1000 + 3 + 1
+        assert out[0, 0, 7, 9].item() == 7 * 1000 + 9 + 1
+        assert int((out > 0).sum()) == 2
 
     def test_mps_raises_past_2_pow_24_pixels(self, device):
         if device.type != "mps":
