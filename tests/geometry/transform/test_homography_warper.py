@@ -595,40 +595,31 @@ class TestHomographyWarper3D(BaseTester):
         self.assert_close(norm_homo, res)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
-    def test_normalize_denormalize_homography_round_trip(self, batch_size, device, dtype):
-        dsize_src = (3, 5, 7)
-        dsize_dst = (6, 8, 11)
-        dst_pix_trans_src_pix = torch.tensor(
-            [[1.2, 0.1, 0.0, 1.0], [0.0, 0.8, 0.2, -2.0], [0.0, 0.0, 1.1, 0.5], [0.0, 0.0, 0.0, 1.0]],
+    def test_denormalize_homography_general(self, batch_size, device, dtype):
+        # The inverse of test_normalize_homography_general: denormalizing its expected result gives
+        # back its input. Every entry and normalization constant is dyadic, so the values are exact
+        # in every dtype.
+        norm_homo = torch.tensor(
+            [[[0.5, 0.0, 0.0, 0.0], [0.0, 0.5, 0.0, 3.5], [0.0, 0.0, 2.0, 7.0], [0.0, 0.0, 0.0, 1.0]]],
             device=device,
             dtype=dtype,
         ).expand(batch_size, -1, -1)
 
-        normalized = kornia.geometry.conversions.normalize_homography3d(dst_pix_trans_src_pix, dsize_src, dsize_dst)
-        denormalized = kornia.geometry.conversions.denormalize_homography3d(normalized, dsize_src, dsize_dst)
+        dst_homo_src = kornia.geometry.conversions.denormalize_homography3d(norm_homo, (2, 2, 5), (2, 2, 5))
+        res = torch.tensor(
+            [[[0.5, 0.0, 0.0, 1.0], [0.0, 0.5, 0.0, 2.0], [0.0, 0.0, 2.0, 3.0], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+        ).expand(batch_size, -1, -1)
+        assert dst_homo_src.shape == (batch_size, 4, 4)
+        self.assert_close(dst_homo_src, res)
 
-        assert denormalized.shape == (batch_size, 4, 4)
-        if dtype == torch.float16:
-            self.assert_close(denormalized, dst_pix_trans_src_pix, rtol=0.0, atol=5e-3)
-        else:
-            self.assert_close(denormalized, dst_pix_trans_src_pix)
-
-        renormalized = kornia.geometry.conversions.normalize_homography3d(
-            kornia.geometry.conversions.denormalize_homography3d(normalized, dsize_src, dsize_dst),
-            dsize_src,
-            dsize_dst,
-        )
-        if dtype == torch.float16:
-            self.assert_close(renormalized, normalized, rtol=0.0, atol=5e-3)
-        else:
-            self.assert_close(renormalized, normalized)
-
-    def test_denormalize_homography_invalid_input(self):
+    def test_denormalize_homography_invalid_input(self, device):
         with pytest.raises(TypeError, match=r"Input type is not a torch.Tensor"):
             kornia.geometry.conversions.denormalize_homography3d([[1.0]], (3, 5, 7), (6, 8, 11))
 
         with pytest.raises(ValueError, match="must be a Bx4x4 tensor"):
-            kornia.geometry.conversions.denormalize_homography3d(torch.ones(2, 2), (3, 5, 7), (6, 8, 11))
+            kornia.geometry.conversions.denormalize_homography3d(torch.ones(2, 2, device=device), (3, 5, 7), (6, 8, 11))
 
     @pytest.mark.parametrize("offset", [1, 3, 7])
     @pytest.mark.parametrize("shape", [(4, 5, 6), (2, 4, 6), (4, 3, 9), (5, 7, 8)])

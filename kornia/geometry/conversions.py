@@ -2324,9 +2324,9 @@ def normalize_homography3d(
           :func:`~kornia.geometry.conversions.normal_transform_pixel3d` in place
           of the 2-D helper. Unlike the 2-D function it has no ``align_corners``
           parameter, so its frames are corner-aligned unconditionally. It is
-          **not** the 2-D function with wider matrices, though: the shapes, the
-          missing inverse and — least visibly — the inversion routine all
-          differ, as the bullets below record
+          **not** the 2-D function with wider matrices, though: the shapes and
+          — least visibly — the inversion routine differ, as the bullets below
+          record
         - it inverts ``N_src`` with ``torch.linalg.inv`` (so ``cusolver`` on
           ``cuda``, and a ``float32`` upcast for ``float16``/``bfloat16``),
           where the 2-D function uses a closed-form adjugate in the working
@@ -2334,9 +2334,8 @@ def normalize_homography3d(
         - the matrices are :math:`(B, 4, 4)` and act on ``(x, y, z, 1)`` column
           vectors, while both ``dsize`` arguments are
           ``(depth, height, width)`` triples
-        - there is **no** ``denormalize_homography3d``; compose the inverse from
-          :func:`~kornia.geometry.conversions.normal_transform_pixel3d`.
-          Tracked in `#3962 <https://github.com/kornia/kornia/issues/3962>`_
+        - :func:`~kornia.geometry.conversions.denormalize_homography3d`
+          computes the reverse ``inv(N_dst) @ H @ N_src``
         - the shape guard is the 2-D function's for 4x4 matrices: :math:`(4, 4)`
           (returned as ``(1, 4, 4)``) or :math:`(B, 4, 4)`, anything else raises
           ``ValueError``
@@ -2388,34 +2387,62 @@ def denormalize_homography3d(
 ) -> torch.Tensor:
     r"""De-normalize a given 3D homography from [-1, 1] to actual depth, height and width.
 
+    Convention:
+        - the mirror of
+          :func:`~kornia.geometry.conversions.normalize_homography3d`: the
+          composition is ``inv(N_dst) @ H @ N_src``, so the input maps
+          normalized source to normalized destination and the output maps
+          source voxels to destination voxels. The ``(depth, height, width)``
+          ``dsize`` roles, the ``(x, y, z, 1)`` column vectors, per-sample
+          batching, the corner-aligned frames and the shape guard are as
+          documented there
+        - ``inv(N_dst)`` goes through ``torch.linalg.inv`` (so ``cusolver`` on
+          ``cuda``, and a ``float32`` upcast for ``float16``/``bfloat16``), the
+          same routine :func:`~kornia.geometry.conversions.normalize_homography3d`
+          uses for ``inv(N_src)``
+        - the two functions invert each other to a small multiple of the
+          working dtype's ``eps`` times the largest entry, not bitwise in
+          general
+
     Args:
         dst_pix_trans_src_pix: homography/ies from source to destination to be
-          denormalized. :math:`(B, 4, 4)`
+          denormalized. :math:`(B, 4, 4)`, or an unbatched :math:`(4, 4)`, which
+          is promoted to :math:`(1, 4, 4)`
         dsize_src: size of the source image (depth, height, width).
         dsize_dst: size of the destination image (depth, height, width).
 
     Returns:
-        the denormalized homography of shape :math:`(B, 4, 4)`.
+        the denormalized homography.
+
+    Shape:
+        Output: :math:`(B, 4, 4)`
 
     """
     if not isinstance(dst_pix_trans_src_pix, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst_pix_trans_src_pix)}")
 
-    if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (4, 4)):
+    if not (dst_pix_trans_src_pix.ndim in (2, 3) and dst_pix_trans_src_pix.shape[-2:] == (4, 4)):
         raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx4x4 tensor. Got {dst_pix_trans_src_pix.shape}")
 
     # source and destination sizes
     src_d, src_h, src_w = dsize_src
     dst_d, dst_h, dst_w = dsize_dst
-
     # compute the transformation pixel/norm for src/dst
-    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel3d(src_d, src_h, src_w).to(dst_pix_trans_src_pix)
-    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel3d(dst_d, dst_h, dst_w).to(dst_pix_trans_src_pix)
-    dst_pix_trans_dst_norm = _torch_inverse_cast(dst_norm_trans_dst_pix)
+    normalization_dtype = (
+        dst_pix_trans_src_pix.dtype
+        if dst_pix_trans_src_pix.is_floating_point() or dst_pix_trans_src_pix.is_complex()
+        else None
+    )
+    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel3d(
+        src_d, src_h, src_w, device=dst_pix_trans_src_pix.device, dtype=normalization_dtype
+    ).to(dst_pix_trans_src_pix)
 
+    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel3d(
+        dst_d, dst_h, dst_w, device=dst_pix_trans_src_pix.device, dtype=normalization_dtype
+    ).to(dst_pix_trans_src_pix)
+    dst_pix_trans_dst_norm = _torch_inverse_cast(dst_norm_trans_dst_pix)
     # compute chain transformations
-    dst_pix_trans_src_pix = dst_pix_trans_dst_norm @ (dst_pix_trans_src_pix @ src_norm_trans_src_pix)
-    return dst_pix_trans_src_pix
+    return dst_pix_trans_dst_norm @ (dst_pix_trans_src_pix @ src_norm_trans_src_pix)
 
 
 def normalize_points_with_intrinsics(point_2d: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:
@@ -3026,10 +3053,8 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
         - worked literal: ``q = [0., 1., 0., 1.]``, ``t = (1, 1, 1)`` gives
           ``q = [0.7071, 0., 0.7071, 0.]`` and ``t = (-1, -1, 1)``, the example
           below
-        - there is **no** ``ColmapQTVecs_to_ARKitQTVecs``; compose the inverse
-          from :func:`~kornia.geometry.conversions.worldtocam_to_camtoworld_Rt`
-          and :func:`~kornia.geometry.conversions.camtoworld_vision_to_graphics_Rt`.
-          Tracked in `#3962 <https://github.com/kornia/kornia/issues/3962>`_
+        - :func:`~kornia.geometry.conversions.ColmapQTVecs_to_ARKitQTVecs`
+          computes the reverse conversion
 
     .. warning::
         The zero quaternion is not rejected: ``torch.zeros(1, 4)`` with
@@ -3064,9 +3089,50 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
 
 
 def ColmapQTVecs_to_ARKitQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    r"""Convert Colmap world-to-camera pose to the Apple ARKit screen pose.
+    r"""Convert a Colmap world-to-camera pose to an Apple ARKit camera-to-world screen pose.
 
-    Both poses are in quaternion representation.
+    Both poses in quaternion representation.
+
+    Convention:
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the camera frames and
+        extrinsics conventions composed by this conversion.
+
+        - the reverse of
+          :func:`~kornia.geometry.conversions.ARKitQTVecs_to_ColmapQTVecs`,
+          with the same layouts and the frames exchanged
+        - **input**: ``qvec`` :math:`(B, 4)` in ``(w, x, y, z)`` order —
+          ``[1., 0., 0., 0.]`` is the identity — and ``tvec`` :math:`(B, 3, 1)`,
+          read as a **world-to-camera** pose in the **vision** frame (``+y``
+          down, ``+z`` forward) — Colmap's ``images.txt``
+          ``QW QX QY QZ TX TY TZ``
+        - **output**: ``(q, t)`` in the same layouts, a **camera-to-world**
+          pose in the **graphics** frame (``+y`` up, ``-z`` forward), so ``t``
+          is the camera centre in world coordinates. The pipeline is
+          :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`,
+          :func:`~kornia.geometry.conversions.worldtocam_to_camtoworld_Rt`,
+          :func:`~kornia.geometry.conversions.camtoworld_vision_to_graphics_Rt`,
+          then :func:`~kornia.geometry.conversions.rotation_matrix_to_quaternion`
+        - the output is ``(w, x, y, z)``; ARKit's ``simd_quatf`` stores
+          ``(ix, iy, iz, r)``, i.e. ``xyzw``, so reorder it before handing it
+          to ARKit
+        - the input quaternion need not be unit and ``q`` and ``-q`` give the
+          same output, within the same normalisation range as
+          :func:`~kornia.geometry.conversions.ARKitQTVecs_to_ColmapQTVecs`
+        - the **sign of the output quaternion is not canonical**: a round trip
+          through both functions returns the input rotation, but not
+          necessarily the input quaternion's sign. Compare rotations, never raw
+          components
+        - worked literal: the reverse of the
+          :func:`~kornia.geometry.conversions.ARKitQTVecs_to_ColmapQTVecs`
+          example, ``q = [0.7071, 0., 0.7071, 0.]``, ``t = (-1, -1, 1)``, gives
+          ``q = [0., 0.7071, 0., 0.7071]`` and ``t = (1, 1, 1)``, the unit form
+          of that example's input; see the example below
+
+    .. warning::
+        The zero quaternion is not rejected: ``torch.zeros(1, 4)`` with
+        ``t = (1, 1, 1)`` returns ``q = [0., 1., 0., 0.]``, ``t = (-1, -1, -1)``,
+        the same answer as the identity input. Tracked in
+        `#3952 <https://github.com/kornia/kornia/issues/3952>`_.
 
     Args:
         qvec: Colmap rotation quaternion :math:`(B, 4)`, [w, x, y, z] format.
@@ -3075,6 +3141,13 @@ def ColmapQTVecs_to_ARKitQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
     Returns:
         qvec: ARKit rotation quaternion :math:`(B, 4)`, [w, x, y, z] format.
         tvec: translation vector :math:`(B, 3, 1)`, [x, y, z]
+
+    Example:
+        >>> q, t = torch.tensor([0, 1, 0, 1.])[None], torch.ones(3).reshape(1, 3, 1)
+        >>> ColmapQTVecs_to_ARKitQTVecs(*ARKitQTVecs_to_ColmapQTVecs(q, t))
+        (tensor([[0.0000, 0.7071, 0.0000, 0.7071]]), tensor([[[1.0000],
+                 [1.0000],
+                 [1.0000]]]))
 
     """
     R_colmap = quaternion_to_rotation_matrix(qvec)
