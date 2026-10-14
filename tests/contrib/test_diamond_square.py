@@ -66,8 +66,8 @@ class TestDiamondSquare(BaseTester):
     @pytest.mark.parametrize("size", [(17, 5), (10, 14), (5, 17)])
     def test_mean_field_is_flat(self, size, device):
         # A-35/A-36: every seed node is U(0, 1) and each step mixes (1 - s) * neighbour mean + s * U(0, 1), so the
-        # expected field is 0.5 everywhere. main's minimum mean was 0.165 (17x5, 10x14, 5x17, 4000 draws). Sizes with H != W; (5, 17) and
-        # (17, 5) have a 3x9 seed, which exercises the interior row-1 square centres.
+        # expected field is 0.5 everywhere. main's minimum mean was 0.165 (17x5, 10x14, 5x17, 4000 draws).
+        # Sizes with H != W; (5, 17) and (17, 5) have a 3x9 seed, which exercises the interior row-1 square centres.
         torch.manual_seed(0)
         out = kornia.contrib.diamond_square((4000, 1, *size), device=device, dtype=torch.float32)
         mean = out.mean(0)[0]
