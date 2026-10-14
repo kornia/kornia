@@ -1,0 +1,1 @@
+Add weighted `kornia.geometry.find_affine` estimation and `RANSAC(model_type="affine")` for full 2D affine transforms. AdaLAM shares the linear solver while retaining its seed-constrained neighborhood RANSAC.

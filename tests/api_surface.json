@@ -562,6 +562,7 @@
     "essential_from_fundamental",
     "euclidean_distance",
     "euler_from_quaternion",
+    "find_affine",
     "find_essential",
     "find_fundamental",
     "find_homography_dlt",
@@ -927,12 +928,16 @@
   ],
   "kornia.geometry.solvers": [
     "determinant_to_polynomial",
+    "find_affine",
     "multiply_deg_one_poly",
     "multiply_deg_two_one_poly",
     "null_vector_3x4",
     "solve_cubic",
     "solve_quadratic",
     "solve_quartic"
+  ],
+  "kornia.geometry.solvers.affine": [
+    "find_affine"
   ],
   "kornia.geometry.subpix": [
     "AdaptiveQuadInterp3d",

@@ -19,7 +19,9 @@ from typing import Any, Dict, Tuple, Union
 
 import torch
 
-from .utils import arange_sequence, batch_2x2_ellipse, batch_2x2_inv, draw_first_k_couples, piecewise_arange
+from kornia.geometry.solvers.affine import _find_affine_linear
+
+from .utils import arange_sequence, batch_2x2_ellipse, draw_first_k_couples, piecewise_arange
 
 
 def stable_sort_residuals(residuals: torch.Tensor, ransidx: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -153,14 +155,21 @@ def ransac(
     sampled_y = torch.transpose(ysamples[rand_samples_abs], dim0=1, dim1=2)
 
     # minimal fit for sampled_x @ A^T = sampled_y
-    affinities_fit = torch.transpose(batch_2x2_inv(sampled_x, check_dets=True) @ sampled_y, -1, -2)
+    affinities_fit = _find_affine_linear(sampled_x, sampled_y)
+    finite_fits = torch.isfinite(affinities_fit).all(dim=-1).all(dim=-1)
+    affinities_fit = torch.where(
+        finite_fits[..., None, None], affinities_fit, torch.eye(2, device=dv, dtype=affinities_fit.dtype)
+    )
     if not refit:
         eigenvals, _eigenvecs = batch_2x2_ellipse(affinities_fit)
         bad_ones = (eigenvals[..., 1] < 1 / DET_THR**2) | (eigenvals[..., 0] > DET_THR**2)
-        affinities_fit[bad_ones] = torch.eye(2, device=dv)
+        affinities_fit[bad_ones] = torch.eye(2, device=dv, dtype=affinities_fit.dtype)
     y_pred = (affinities_fit[:, ransidx] @ xsamples.unsqueeze(-1)).squeeze(-1)
 
     residuals = torch.norm(y_pred - ysamples, dim=-1)  # (niters, numsamples)
+    # The confidence sorter needs finite residuals. A residual of 2 is outside both
+    # normalized unit neighborhoods and cannot provide support at min_confidence > 1.
+    residuals = torch.where(finite_fits[:, ransidx], residuals, 2.0)
 
     inl_ransidx, inl_sampleidx, inl_counts, inl_iters, inl_confidence = confidence_based_inlier_selection(
         residuals, ransidx, rdims, idxoffsets, dv=dv, min_confidence=MIN_CONFIDENCE
@@ -184,12 +193,11 @@ def ransac(
         xsamples, ysamples, inl_counts, inl_ransidx, inl_sampleidx, numransacs, dv
     )
 
-    # A @ pad_x.T = pad_y.T
-    # A = pad_y.T @ pad_x @ (pad_x.T @ pad_x)^-1
-    refit_affinity = (
-        padded_inlier_y.transpose(-2, -1)
-        @ padded_inlier_x
-        @ batch_2x2_inv(padded_inlier_x.transpose(-2, -1) @ padded_inlier_x, check_dets=True)
+    # Keep translation anchored at the seed; zero padding contributes no evidence.
+    refit_affinity = _find_affine_linear(padded_inlier_x, padded_inlier_y)
+    finite_refits = torch.isfinite(refit_affinity).all(dim=-1).all(dim=-1)
+    refit_affinity = torch.where(
+        finite_refits[..., None, None], refit_affinity, torch.eye(2, device=dv, dtype=refit_affinity.dtype)
     )
 
     # Filter out degenerate affinities with large scale changes
@@ -199,6 +207,7 @@ def ransac(
     y_pred = (refit_affinity[ransidx] @ xsamples.unsqueeze(-1)).squeeze(-1)
 
     residuals = torch.norm(y_pred - ysamples, dim=-1)
+    residuals = torch.where(finite_refits[ransidx], residuals, 2.0)
 
     inl_ransidx, inl_sampleidx, inl_counts, inl_iters, inl_confidence = confidence_based_inlier_selection(
         residuals.unsqueeze(0), ransidx, rdims, idxoffsets, dv=dv, min_confidence=MIN_CONFIDENCE

@@ -63,6 +63,7 @@ from kornia.geometry.homography import (
     sample_is_valid_for_homography,
     sampson_homography_distance,
 )
+from kornia.geometry.solvers.affine import find_affine
 
 __all__ = ["RANSAC"]
 
@@ -163,14 +164,16 @@ class RANSAC(nn.Module):
         - ``kp1`` and ``kp2`` are passed as the first- and second-image arguments of the estimator selected by
           ``model_type``, so a homography maps ``kp1`` to ``kp2``. ``forward`` returns a ``(3, 3)`` model and an
           ``(N,)`` bool inlier mask, or an all-zero model and no inliers when no candidate has more inliers than
-          its minimal sample (four correspondences for homographies, five for ``"essential"``, seven for
-          ``"fundamental"`` and ``"fundamental_7pt"``, eight for ``"fundamental_8pt"``).
+          its minimal sample (three correspondences for affine transforms, four for homographies,
+          five for ``"essential"``, seven for ``"fundamental"`` and ``"fundamental_7pt"``,
+          eight for ``"fundamental_8pt"``).
         - ``"fundamental"`` draws seven-point samples, like ``"fundamental_7pt"``; ``"fundamental_8pt"`` draws
           eight-point ones.
         - ``inl_th`` is in the keypoints' own units (pixels, or calibrated units for ``"essential"``): a
-          correspondence is an inlier when its one-way transfer error for ``"homography"``, its Sampson distance
-          for the fundamental models and ``"essential"``, or the mean distance of its transferred endpoints from
-          the image-2 segment's line for ``"homography_from_linesegments"`` is at most ``inl_th``.
+          correspondence is an inlier when its one-way transfer error for ``"homography"`` or ``"affine"``,
+          its Sampson distance for the fundamental models and ``"essential"``, or the mean distance
+          of its transferred endpoints from the image-2 segment's line for ``"homography_from_linesegments"``
+          is at most ``inl_th``.
           :ref:`two-view-conventions` compares this with OpenCV.
         - ``score_type="msac"`` (the default) ranks candidates by ``sum(1 - min(e / inl_th**2, 1))`` over the
           squared errors ``e``; acceptance and early stopping count inliers for either score.
@@ -186,10 +189,12 @@ class RANSAC(nn.Module):
           fundamental matrices are estimated on Hartley-normalized correspondences; essential matrices in the
           caller's calibrated coordinates, which a normalization would take off the essential manifold, refined on
           that manifold and returned with unit Frobenius norm.
-        - ``local_optimization="dlt"``, the only choice for ``"homography_from_linesegments"``, refits each new best
+        - ``local_optimization="dlt"``, the only choice for ``"affine"`` and line segments, refits each new best
           model from its inliers: with the default ``lo_sample_size=32``, ``max_lo_iters`` randomized refits on
           32-inlier subsets followed by one full-inlier refit; ``lo_sample_size=None`` refits all inliers
-          iteratively.
+          iteratively. Affine models use a linear least-squares refit with free translation and return
+          a homogeneous matrix with bottom row ``[0, 0, 1]``; their minimal samples need three
+          non-collinear source points.
         - ``degensac=True``, an opt-in for ``"fundamental"`` and ``"fundamental_7pt"`` with
           ``local_optimization="lm"``, runs DEGENSAC (Chum, Werner and Matas, CVPR 2005). Every seven-point model that
           sets a new record among the raw scores is tested for an H-degenerate sample: five or more of its seven
@@ -218,7 +223,7 @@ class RANSAC(nn.Module):
           one. PROSAC sampling and DEGENSAC are not supported.
 
     Args:
-        model_type: "homography", "fundamental", "fundamental_7pt", "fundamental_8pt", "essential", or
+        model_type: "affine", "homography", "fundamental", "fundamental_7pt", "fundamental_8pt", "essential", or
             "homography_from_linesegments".
         inl_th: positive inlier threshold, in the units given above.
         batch_size: hypotheses generated and verified at once, or ``"auto"`` to pick the batches per call from
@@ -243,7 +248,7 @@ class RANSAC(nn.Module):
         max_samples: optional budget of minimal samples that overrides the one implied by ``batch_size`` and
             ``max_iter``; the last batch is truncated to it.
         local_optimization: ``"lm"`` or ``"dlt"``, as described above; None picks ``"lm"`` for homographies,
-            fundamental and essential matrices and ``"dlt"`` for line segments.
+            fundamental and essential matrices and ``"dlt"`` for affine transforms and line segments.
         refine_iters: Levenberg-Marquardt iterations of the final refinement with ``local_optimization="lm"``;
             zero disables it.
         compile: run ``local_optimization="lm"`` as one compiled graph, as described above.
@@ -274,7 +279,7 @@ class RANSAC(nn.Module):
         """Initialize the RANSAC estimator.
 
         Args:
-            model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt",
+            model_type: type of model to estimate: "affine", "homography", "fundamental", "fundamental_7pt",
                 "fundamental_8pt", "essential", "homography_from_linesegments".
             inl_th: inlier threshold; the class docstring gives its unit per ``model_type``.
             batch_size: number of generated samples at once, or ``"auto"`` (see :meth:`resolve_batch_size`).
@@ -305,6 +310,7 @@ class RANSAC(nn.Module):
         """
         super().__init__()
         self.supported_models = [
+            "affine",
             "homography",
             "fundamental",
             "fundamental_7pt",
@@ -364,7 +370,19 @@ class RANSAC(nn.Module):
         self.minimal_solver: Callable[..., torch.Tensor]
         self.polisher_solver: Callable[..., torch.Tensor]
 
-        if model_type == "homography":
+        self._set_model(model_type, inl_th)
+        if lo_sample_size is not None and lo_sample_size < self.polisher_sample_size:
+            raise ValueError(f"lo_sample_size must be at least {self.polisher_sample_size}")
+
+    def _set_model(self, model_type: str, inl_th: float) -> None:
+        """Select the model's residual, fitting methods and sample cardinalities."""
+        if model_type == "affine":
+            self.error_fn = oneway_transfer_error
+            self.minimal_solver = find_affine
+            self.polisher_solver = find_affine
+            self.minimal_sample_size = 3
+            self.polisher_sample_size = 3
+        elif model_type == "homography":
             self.error_fn = oneway_transfer_error
             self.minimal_solver = find_homography_dlt
             # The polisher's Gaussian re-weighting uses the inlier threshold as its standard deviation.
@@ -398,8 +416,6 @@ class RANSAC(nn.Module):
             self.polisher_sample_size = 8
         else:
             raise NotImplementedError(f"{model_type} is unknown. Try one of {self.supported_models}")
-        if lo_sample_size is not None and lo_sample_size < self.polisher_sample_size:
-            raise ValueError(f"lo_sample_size must be at least {self.polisher_sample_size}")
 
     def sample(
         self,
@@ -520,7 +536,7 @@ class RANSAC(nn.Module):
         """
         if isinstance(self.batch_size, int):
             return self.batch_size
-        planar = self.model_type in ("homography", "homography_from_linesegments")
+        planar = self.model_type in ("affine", "homography", "homography_from_linesegments")
         if device.type == "cpu":
             work, lower, upper = (1 << 19, 256, 2048) if planar else (1 << 17, 128, 512)
         elif device.type in ("cuda", "mps"):
