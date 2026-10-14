@@ -26,11 +26,6 @@ from kornia.geometry.homography import find_homography_dlt_iterated
 from kornia.geometry.ransac import RANSAC
 from kornia.geometry.transform import warp_perspective
 
-# Slack of the coverage threshold per image dtype (default 1e-4, float32). MPS samples a half image on a half grid, so a
-# fully covered pixel at the right image's border warps the mask to 0.92 in float16 and the threshold has to keep it;
-# bfloat16 keeps one eps.
-_COVERAGE_SLACK = {torch.float16: 0.08, torch.bfloat16: torch.finfo(torch.bfloat16).eps}
-
 
 class ImageStitcher(nn.Module):
     """Stitch two images with overlapping fields of view.
@@ -207,13 +202,13 @@ class ImageStitcher(nn.Module):
         # The image is resampled bilinearly, so a panorama pixel whose footprint reaches past the right image's border
         # mixes in the zero padding. Warp the validity mask together with the image, in one call and so on the same
         # sampling grid, and keep only the pixels covered completely.
+        # The warp runs in at least float32 (float64 stays float64), whatever the dtype of the image and of the
+        # homography: a half sampling grid is coarser than a pixel on a wide panorama.
         n_ch = images_right.shape[1]
-        warped = warp_perspective(torch.cat([images_right, mask_right.to(images_right.dtype)], 1), homo, out_shape)
-        src_img, coverage = warped[:, :n_ch], warped[:, n_ch:]
-        # A fully covered pixel warps the mask to 1 up to the rounding of the image's dtype. The slack per dtype keeps
-        # such pixels and drops those whose footprint reaches well outside the right image.
-        slack = _COVERAGE_SLACK.get(images_right.dtype, 1e-4)
-        src_mask = (coverage.float() >= 1.0 - slack).to(images_right.dtype)
+        work = torch.promote_types(images_right.dtype, torch.float32)
+        warped = warp_perspective(torch.cat([images_right.to(work), mask_right.to(work)], 1), homo.to(work), out_shape)
+        src_img = warped[:, :n_ch].to(images_right.dtype)
+        src_mask = (warped[:, n_ch:] >= 1.0 - 1e-4).to(images_right.dtype)
         dst_mask = torch.cat([mask_left, torch.zeros_like(mask_right)], -1)
         return self.blend_image(src_img, dst_img, src_mask), (dst_mask + src_mask).bool().to(src_mask.dtype)
 

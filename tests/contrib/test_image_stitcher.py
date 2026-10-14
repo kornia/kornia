@@ -40,9 +40,9 @@ def _render(x0: float, w: int, h: int = 48, dtype: torch.dtype = torch.float32) 
 class _ShiftMatcher(LocalFeatureMatcher):
     """Exact correspondences: right pixel p is left pixel p + (shift_b, 0); samples in `empty` get none."""
 
-    def __init__(self, shifts, empty=()):
+    def __init__(self, shifts, empty=(), float32_keypoints=False):
         nn.Module.__init__(self)
-        self.shifts, self.empty = shifts, set(empty)
+        self.shifts, self.empty, self.float32_keypoints = shifts, set(empty), float32_keypoints
 
     def forward(self, data):
         im0, im1 = data["image0"], data["image1"]
@@ -60,8 +60,8 @@ class _ShiftMatcher(LocalFeatureMatcher):
             kp1.append(p1[keep])
             idx.append(torch.full((int(keep.sum()),), b))
         return {
-            "keypoints0": torch.cat(kp0).to(im0),
-            "keypoints1": torch.cat(kp1).to(im0),
+            "keypoints0": torch.cat(kp0).to(im0.device if self.float32_keypoints else im0),
+            "keypoints1": torch.cat(kp1).to(im0.device if self.float32_keypoints else im0),
             "batch_indexes": torch.cat(idx),
         }
 
@@ -79,11 +79,21 @@ class TestImageStitcher(BaseTester):
             out = kornia.contrib.ImageStitcher(_ShiftMatcher([shift]))(left, right)
         assert out.shape[-1] == int(shift) + 56
         truth = _render(0, out.shape[-1]).to(device)
-        # bilinear resampling of the smooth texture, no black mixed in (a dark pixel is off by 0.3 or more) and no
-        # covered pixel dropped (a dropped one is off by 0.8). MPS warps a half image on a half grid, so its border
-        # pixels are up to 8% dark (0.06 off) in float16 whatever the mask does; that sets the half bound.
-        tol = {torch.float32: 0.02, torch.float16: 0.08, torch.bfloat16: 0.08}[img_dtype]
+        # bilinear resampling of the smooth texture, no black mixed in and no covered pixel dropped: a dark or dropped
+        # pixel is off by 0.3 or more, so the bound is the final rounding to the image dtype
+        tol = {torch.float32: 0.02, torch.float16: 0.02, torch.bfloat16: 0.04}[img_dtype]
         assert (out.float() - truth).abs().max().item() < tol
+
+    @pytest.mark.parametrize("img_dtype", [torch.float16, torch.bfloat16])
+    def test_float32_homography_with_half_image(self, img_dtype, device):
+        # The warp runs in float32, so a float32 homography (exact float32 keypoints) works with a half image.
+        left, right = _render(0, 64).to(device, img_dtype), _render(40.5, 56).to(device, img_dtype)
+        matcher = _ShiftMatcher([40.5], float32_keypoints=True)
+        with torch.no_grad():
+            out = kornia.contrib.ImageStitcher(matcher)(left, right)
+        assert out.dtype == img_dtype
+        tol = {torch.float16: 0.02, torch.bfloat16: 0.04}[img_dtype]
+        assert (out.float() - _render(0, out.shape[-1]).to(device)).abs().max().item() < tol
 
     def test_image_and_mask_share_one_warp(self, device):
         # I2: on MPS a half image is sampled on a half grid; a mask warped in a separate (float32) call lands on another
@@ -99,6 +109,7 @@ class TestImageStitcher(BaseTester):
             stitcher.stitch_pair(left, right)
         assert w.call_count == 1
         assert w.call_args.args[0].shape[1] == 6  # three image channels and three mask channels
+        assert w.call_args.args[0].dtype == torch.float32
 
     def test_batch_of_two_equals_each_sample_alone(self, device):
         left = torch.cat([_render(0, 64), _render(3, 64)]).to(device)
