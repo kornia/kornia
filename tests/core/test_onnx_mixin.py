@@ -245,6 +245,22 @@ class TestONNXRuntimeMixin(BaseTester):
         with pytest.raises(ValueError, match="Expected 1 ONNX inputs, got 2"):
             runtime(x, x)
 
+    def test_runtime_feeds_inputs_in_session_order(self):
+        from kornia.onnx import ONNXModule, ONNXSequential
+
+        def _value(name):
+            return onnx.helper.make_tensor_value_info(name, onnx.TensorProto.FLOAT, [1])
+
+        node = onnx.helper.make_node("Sub", ["x", "y"], ["output"])
+        graph = onnx.helper.make_graph([node], "sub", [_value("x"), _value("y")], [_value("output")])
+        op = onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 17)], ir_version=9)
+        a, b = torch.tensor([2.0]).numpy(), torch.tensor([99.0]).numpy()
+        for runtime in (ONNXSequential(op), ONNXModule(op)):
+            assert runtime(a, b)[0].tolist() == [-97.0]
+            assert runtime(b, a)[0].tolist() == [97.0]
+            with pytest.raises(ValueError, match="Expected 2 ONNX inputs, got 3"):
+                runtime(a, b, a)
+
     def test_add_metadata_overwrites_existing_keys(self, op):
         keys = [prop.key for prop in op.metadata_props]
         assert sorted(keys) == ["source", "version"]
