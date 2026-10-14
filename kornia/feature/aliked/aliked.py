@@ -767,6 +767,11 @@ class ALIKED(nn.Module):
     .. image:: _static/img/ALIKED.png
 
     Convention:
+        - ``ALIKED()`` starts in evaluation mode, like :meth:`from_pretrained` and the reference implementation. In
+          training mode BatchNorm would normalise with the statistics of the batch, so a keypoint or descriptor would
+          depend on the rest of the batch, every call would update the running statistics, and a single small image
+          would raise. Call ``.train()`` to opt in explicitly; the methods then behave as torch's training-mode
+          BatchNorm does.
         - ``images`` are RGB in :math:`[0, 1]`, the range of the pretrained weights, and the network applies no
           normalisation; a :math:`(B, 1, H, W)` image is repeated to three channels. Any ``H`` and ``W`` work: the
           image is replicate-padded around its centre to multiples of 32 and the maps are cropped back, so the padding
@@ -884,6 +889,8 @@ class ALIKED(nn.Module):
             scores_th=detection_threshold,
             n_limit=max_num_keypoints if max_num_keypoints > 0 else self.n_limit_max,
         )
+        # like :meth:`from_pretrained` and the reference: the inference methods must not run BatchNorm in training mode
+        self.eval()
 
     def _make_resblock(self, c_in: int, c_out: int, conv_type: str, mask: bool) -> ResBlock:
         return ResBlock(
