@@ -94,6 +94,9 @@ class Se2(nn.Module):
             translation: translation torch.Tensor with the shape of :math:`(B, 2)`, or a Vector2 wrapping one; the
                 tensor is what gets stored.
 
+        Raises:
+            TypeCheckError: if the translation is an integer or bool tensor.
+
         Example:
             >>> so2 = So2.identity(1)
             >>> t = torch.ones((1, 2))

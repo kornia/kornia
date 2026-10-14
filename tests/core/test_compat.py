@@ -382,6 +382,24 @@ class TestDeprecatedFunction:
         assert str(w.message) == "Since kornia 0.9.0 the `old` is deprecated in favor of `Holder.new`."
         assert (w.filename, w.lineno) == (__file__, line)
 
+    def test_compile_fullgraph_of_code_calling_it(self, torch_optimizer):
+        # Dynamo cannot trace ``warnings.warn``; the warning is skipped while it captures the graph (#5901).
+        @deprecated(replace_with="new", version="0.8.3")
+        def old(x: torch.Tensor) -> torch.Tensor:
+            return x + 1
+
+        x = torch.rand(3)
+        compiled = torch_optimizer(lambda t: old(t) * 2, fullgraph=True)
+        with _caught() as caught:
+            out = compiled(x)
+        assert torch.equal(out, (x + 1) * 2)
+        assert caught == []
+        with _caught() as caught:
+            line = _line_below()
+            old(x)
+        (w,) = caught
+        assert (w.filename, w.lineno) == (__file__, line)
+
 
 class TestDeprecatedClass:
     """The decorated name has to stay a class: the issue's repro turned it into a function."""

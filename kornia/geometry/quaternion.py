@@ -766,7 +766,8 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
     # changing which eigenvector is selected when eigenvalues are close.
     max_idx = torch.argmax(eigenvalues)
     eigenvectors = eigenvectors.to(orig_dtype)
-    q_avg = eigenvectors[:, max_idx]
+    indices = max_idx.reshape(1, 1).expand(eigenvectors.shape[0], 1)
+    q_avg = torch.gather(eigenvectors, 1, indices).squeeze(1)
     q_avg = q_avg / q_avg.norm()
 
     return Quaternion(q_avg.unsqueeze(0))

@@ -266,10 +266,11 @@ class TestRandomCrop3D(BaseTester):
     def test_rejects_a_crop_one_voxel_larger_than_the_input(self, axis, device, dtype):
         # The size guard counted valid start offsets and rejected only a negative count, so a crop exactly
         # one voxel too large passed and the output gained an empty slab.
+        """Reject crops exceeding the input by even one voxel on any spatial axis."""
         volume = torch.ones(1, 1, 4, 5, 6, device=device, dtype=dtype)
         size = [4, 5, 6]
         size[axis] += 1
-        with pytest.raises(ValueError, match="cannot be smaller than crop size"):
+        with pytest.raises(ValueError, match=r"size.*must not exceed.*input"):
             RandomCrop3D(tuple(size), p=1.0)(volume)
         # The whole volume is still a valid crop.
         assert RandomCrop3D((4, 5, 6), p=1.0)(volume).shape == (1, 1, 4, 5, 6)

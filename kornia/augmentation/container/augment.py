@@ -126,11 +126,11 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           :class:`~kornia.augmentation.AugmentationBase2D` convention.
         - ``data_keys`` names one entry per positional argument, case-insensitively: ``input`` (alias
           ``image``), ``mask``, ``bbox``, ``bbox_xyxy``, ``bbox_xywh``, ``keypoints`` and ``label`` (alias
-          ``class``); any other name raises ``KeyError``. With ``data_keys=None`` the call takes a dict whose
-          keys are these names, optionally followed by a ``_`` or ``-`` suffix (``mask_2``, ``class_id``). The
-          longest matching name wins and a suffix needs its separator: ``bbox_xyxy2`` is a ``bbox`` key and must
-          hold vertices. Unrecognized keys (``images``, ``masks``, ``labels``) are returned unchanged, without a
-          warning. The input dict is not modified.
+          ``class``); any other name raises a ``ValueError`` that is also a ``KeyError``. With ``data_keys=None``
+          the call takes a dict whose keys are these names, optionally followed by a ``_`` or ``-`` suffix
+          (``mask_2``, ``class_id``). The longest matching name wins and a suffix needs its separator:
+          ``bbox_xyxy2`` is a ``bbox`` key and must hold vertices. Unrecognized keys (``images``, ``masks``,
+          ``labels``) are returned unchanged, without a warning. The input dict is not modified.
         - the layouts are ``(B, C, H, W)`` for images and masks, ``(B, N, 4, 2)`` vertices for ``bbox``,
           ``(B, N, 4)`` for ``bbox_xyxy`` and ``bbox_xywh``, and ``(B, N, 2)`` in ``(x, y)`` for ``keypoints``;
           ``N = 0`` is accepted. 3D inputs are ``(D, H, W)`` or ``(B, C, D, H, W)``; rank 4 is rejected as
@@ -164,8 +164,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           cannot recover pixels moved out of the frame.
         - the ``mask``, box and ``keypoints`` handlers of a geometric child, or of a custom
           :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` subclass, receive the transform of the
-          call's ``params``: the one the child recorded when it last transformed an image with those params, or
-          else one recomputed from them, so a replay without the image or after a newer draw follows ``params``.
+          call's ``params``: the one the child recorded when it last transformed an image with those params, while no
+          value in them has been replaced or edited in place, or else one recomputed from them, so a replay without
+          the image, after a newer draw or after an edit follows ``params``. Inference tensors have no version
+          counter, so an in-place edit made inside ``torch.inference_mode`` is not seen; replace the value instead.
           The mask limitations above apply; a handler the subclass does not implement raises
           ``NotImplementedError``. A non-rigid warp child has no matrix, so the coordinate keys are left unchanged;
           see the warning below.

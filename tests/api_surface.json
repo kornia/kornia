@@ -91,6 +91,59 @@
     "auto",
     "container"
   ],
+  "kornia.augmentation.auto": [
+    "AutoAugment",
+    "PolicyAugmentBase",
+    "PolicySequential",
+    "RandAugment",
+    "TrivialAugment"
+  ],
+  "kornia.augmentation.auto.operations.ops": [
+    "AutoContrast",
+    "Brightness",
+    "Contrast",
+    "Equalize",
+    "Gray",
+    "HorizontalFlip",
+    "Hue",
+    "Invert",
+    "Posterize",
+    "Rotate",
+    "Saturate",
+    "Sharpness",
+    "ShearX",
+    "ShearY",
+    "Solarize",
+    "SolarizeAdd",
+    "TranslateX",
+    "TranslateY",
+    "VerticalFlip"
+  ],
+  "kornia.augmentation.container.augment": [
+    "AugmentationSequential"
+  ],
+  "kornia.augmentation.container.base": [
+    "BasicSequentialBase",
+    "ImageSequentialBase",
+    "SequentialBase"
+  ],
+  "kornia.augmentation.container.image": [
+    "ImageSequential"
+  ],
+  "kornia.augmentation.container.params": [
+    "ParamItem",
+    "PatchParamItem"
+  ],
+  "kornia.augmentation.container.patch": [
+    "PatchSequential"
+  ],
+  "kornia.augmentation.container.video": [
+    "VideoSequential"
+  ],
+  "kornia.augmentation.utils": [
+    "deepcopy_dict",
+    "override_parameters"
+  ],
   "kornia.color": [
     "ApplyColorMap",
     "BgrToGrayscale",
@@ -192,6 +245,42 @@
     "load_state_dict_from_url",
     "vec_like"
   ],
+  "kornia.core.check": [
+    "BaseError",
+    "DeviceError",
+    "ImageError",
+    "KORNIA_CHECK",
+    "KORNIA_CHECK_DM_DESC",
+    "KORNIA_CHECK_IS_COLOR",
+    "KORNIA_CHECK_IS_GRAY",
+    "KORNIA_CHECK_IS_IMAGE",
+    "KORNIA_CHECK_IS_LIST_OF_TENSOR",
+    "KORNIA_CHECK_IS_TENSOR",
+    "KORNIA_CHECK_LAF",
+    "KORNIA_CHECK_SAME_DEVICE",
+    "KORNIA_CHECK_SAME_DEVICES",
+    "KORNIA_CHECK_SHAPE",
+    "KORNIA_CHECK_TYPE",
+    "KORNIA_UNWRAP",
+    "ShapeError",
+    "TypeCheckError",
+    "ValueCheckError",
+    "are_checks_enabled",
+    "disable_checks",
+    "enable_checks"
+  ],
+  "kornia.core.exceptions": [
+    "BaseError",
+    "DeviceError",
+    "ImageError",
+    "ShapeError",
+    "TypeCheckError",
+    "ValueCheckError"
+  ],
+  "kornia.core.safetensors": [
+    "check_safetensors",
+    "load_safetensors"
+  ],
   "kornia.enhance": [
     "AddWeighted",
     "AdjustBrightness",
@@ -248,6 +337,26 @@
     "threshold",
     "zca_mean",
     "zca_whiten"
+  ],
+  "kornia.enhance.jpeg": [
+    "JPEGCodecDifferentiable",
+    "jpeg_codec_differentiable"
+  ],
+  "kornia.enhance.normalize": [
+    "Denormalize",
+    "Normalize",
+    "denormalize",
+    "normalize",
+    "normalize_min_max"
+  ],
+  "kornia.enhance.zca": [
+    "ZCAWhitening",
+    "linear_transform",
+    "zca_mean",
+    "zca_whiten"
+  ],
+  "kornia.feature.sift": [
+    "SIFTDescriptorFromPyramid"
   ],
   "kornia.filters": [
     "BilateralBlur",
@@ -317,6 +426,14 @@
     "spatial_gradient",
     "spatial_gradient3d",
     "unsharp_mask"
+  ],
+  "kornia.filters.blur_pool": [
+    "BlurPool2D",
+    "EdgeAwareBlurPool2D",
+    "MaxBlurPool2D",
+    "blur_pool2d",
+    "edge_aware_blur_pool2d",
+    "max_blur_pool2d"
   ],
   "kornia.geometry": [
     "ARKitQTVecs_to_ColmapQTVecs",
@@ -602,6 +719,333 @@
     "warp_points_tps",
     "worldtocam_to_camtoworld_Rt"
   ],
+  "kornia.geometry.bbox": [
+    "bbox_generator",
+    "bbox_generator3d",
+    "bbox_to_mask",
+    "bbox_to_mask3d",
+    "infer_bbox_shape",
+    "infer_bbox_shape3d",
+    "nms",
+    "transform_bbox",
+    "validate_bbox",
+    "validate_bbox3d"
+  ],
+  "kornia.geometry.boxes": [
+    "Boxes",
+    "Boxes3D",
+    "VideoBoxes"
+  ],
+  "kornia.geometry.calibration": [
+    "distort_points",
+    "solve_pnp_dlt",
+    "tilt_projection",
+    "undistort_image",
+    "undistort_points"
+  ],
+  "kornia.geometry.camera": [
+    "PinholeCamera",
+    "StereoCamera",
+    "cam2pixel",
+    "distort_points_affine",
+    "distort_points_kannala_brandt",
+    "dx_distort_points_affine",
+    "dx_distort_points_kannala_brandt",
+    "dx_project_points_orthographic",
+    "dx_project_points_z1",
+    "pixel2cam",
+    "project_points",
+    "project_points_orthographic",
+    "project_points_z1",
+    "undistort_points_affine",
+    "undistort_points_kannala_brandt",
+    "unproject_points",
+    "unproject_points_orthographic",
+    "unproject_points_z1"
+  ],
+  "kornia.geometry.conversions": [
+    "ARKitQTVecs_to_ColmapQTVecs",
+    "Rt_to_matrix4x4",
+    "angle_axis_to_quaternion",
+    "angle_axis_to_rotation_matrix",
+    "angle_to_rotation_matrix",
+    "axis_angle_to_quaternion",
+    "axis_angle_to_rotation_matrix",
+    "camtoworld_graphics_to_vision_4x4",
+    "camtoworld_graphics_to_vision_Rt",
+    "camtoworld_to_worldtocam_Rt",
+    "camtoworld_vision_to_graphics_4x4",
+    "camtoworld_vision_to_graphics_Rt",
+    "cart2pol",
+    "convert_affinematrix_to_homography",
+    "convert_affinematrix_to_homography3d",
+    "convert_points_from_homogeneous",
+    "convert_points_to_homogeneous",
+    "deg2rad",
+    "denormalize_homography",
+    "denormalize_pixel_coordinates",
+    "denormalize_pixel_coordinates3d",
+    "denormalize_points_with_intrinsics",
+    "euler_from_quaternion",
+    "matrix4x4_to_Rt",
+    "normal_transform_pixel",
+    "normal_transform_pixel3d",
+    "normalize_homography",
+    "normalize_homography3d",
+    "normalize_pixel_coordinates",
+    "normalize_pixel_coordinates3d",
+    "normalize_points_with_intrinsics",
+    "normalize_quaternion",
+    "pol2cart",
+    "quaternion_exp_to_log",
+    "quaternion_from_euler",
+    "quaternion_log_to_exp",
+    "quaternion_to_angle_axis",
+    "quaternion_to_axis_angle",
+    "quaternion_to_rotation_matrix",
+    "rad2deg",
+    "rotation_matrix_to_angle_axis",
+    "rotation_matrix_to_axis_angle",
+    "rotation_matrix_to_quaternion",
+    "vector_to_skew_symmetric_matrix",
+    "worldtocam_to_camtoworld_Rt"
+  ],
+  "kornia.geometry.depth": [
+    "DepthWarper",
+    "depth_from_disparity",
+    "depth_from_plane_equation",
+    "depth_to_3d",
+    "depth_to_3d_v2",
+    "depth_to_normals",
+    "depth_warp",
+    "unproject_meshgrid",
+    "warp_frame_depth"
+  ],
+  "kornia.geometry.epipolar": [
+    "KRt_from_projection",
+    "compute_correspond_epilines",
+    "cross_product_matrix",
+    "decompose_essential_matrix",
+    "decompose_essential_matrix_no_svd",
+    "depth_from_point",
+    "essential_from_Rt",
+    "essential_from_fundamental",
+    "find_essential",
+    "find_fundamental",
+    "fundamental_from_essential",
+    "fundamental_from_projections",
+    "generate_scene",
+    "get_closest_point_on_epipolar_line",
+    "get_perpendicular",
+    "intrinsics_like",
+    "left_to_right_epipolar_distance",
+    "motion_from_essential",
+    "motion_from_essential_choose_solution",
+    "normalize_points",
+    "normalize_transformation",
+    "project_to_essential",
+    "projection_from_KRt",
+    "projections_from_fundamental",
+    "random_intrinsics",
+    "relative_camera_motion",
+    "right_to_left_epipolar_distance",
+    "sampson_epipolar_distance",
+    "scale_intrinsics",
+    "symmetrical_epipolar_distance",
+    "triangulate_points"
+  ],
+  "kornia.geometry.epipolar.essential": [
+    "decompose_essential_matrix",
+    "decompose_essential_matrix_no_svd",
+    "essential_from_Rt",
+    "essential_from_fundamental",
+    "find_essential",
+    "motion_from_essential",
+    "motion_from_essential_choose_solution",
+    "project_to_essential",
+    "relative_camera_motion"
+  ],
+  "kornia.geometry.grid": [
+    "create_meshgrid",
+    "create_meshgrid3d"
+  ],
+  "kornia.geometry.homography": [
+    "find_homography_dlt",
+    "find_homography_dlt_iterated",
+    "find_homography_lines_dlt",
+    "find_homography_lines_dlt_iterated",
+    "line_segment_transfer_error_one_way",
+    "oneway_transfer_error",
+    "sample_is_valid_for_homography",
+    "sampson_homography_distance",
+    "symmetric_transfer_error"
+  ],
+  "kornia.geometry.keypoints": [
+    "Keypoints",
+    "Keypoints3D"
+  ],
+  "kornia.geometry.liegroup": [
+    "Se2",
+    "Se3",
+    "So2",
+    "So3"
+  ],
+  "kornia.geometry.linalg": [
+    "batched_dot_product",
+    "batched_squared_norm",
+    "compose_transformations",
+    "euclidean_distance",
+    "inverse_transformation",
+    "point_line_distance",
+    "relative_transformation",
+    "squared_norm",
+    "transform_points"
+  ],
+  "kornia.geometry.line": [
+    "ParametrizedLine",
+    "fit_line"
+  ],
+  "kornia.geometry.plane": [
+    "Hyperplane",
+    "fit_plane"
+  ],
+  "kornia.geometry.pointcloud": [
+    "load_pointcloud_ply",
+    "load_pointcloud_ply_binary",
+    "save_pointcloud_ply",
+    "save_pointcloud_ply_binary"
+  ],
+  "kornia.geometry.pose": [
+    "NamedPose"
+  ],
+  "kornia.geometry.ransac": [
+    "RANSAC"
+  ],
+  "kornia.geometry.solvers": [
+    "determinant_to_polynomial",
+    "multiply_deg_one_poly",
+    "multiply_deg_two_one_poly",
+    "null_vector_3x4",
+    "solve_cubic",
+    "solve_quadratic",
+    "solve_quartic"
+  ],
+  "kornia.geometry.subpix": [
+    "AdaptiveQuadInterp3d",
+    "ConvQuadInterp3d",
+    "ConvSoftArgmax2d",
+    "ConvSoftArgmax3d",
+    "IterativeQuadInterp3d",
+    "NonMaximaSuppression2d",
+    "NonMaximaSuppression3d",
+    "SpatialSoftArgmax2d",
+    "conv_quad_interp3d",
+    "conv_soft_argmax2d",
+    "conv_soft_argmax3d",
+    "iterative_quad_interp3d",
+    "nms2d",
+    "nms3d",
+    "nms3d_minmax",
+    "render_gaussian2d",
+    "spatial_expectation2d",
+    "spatial_soft_argmax2d",
+    "spatial_softmax2d"
+  ],
+  "kornia.geometry.transform.affwarp": [
+    "Affine",
+    "Rescale",
+    "Resize",
+    "Rotate",
+    "Scale",
+    "Shear",
+    "Translate",
+    "affine",
+    "affine3d",
+    "rescale",
+    "resize",
+    "resize_to_be_divisible",
+    "rotate",
+    "rotate3d",
+    "scale",
+    "shear",
+    "translate"
+  ],
+  "kornia.geometry.transform.crop2d": [
+    "CenterCrop2D",
+    "center_crop",
+    "crop_and_resize",
+    "crop_by_boxes",
+    "crop_by_indices",
+    "crop_by_transform_mat"
+  ],
+  "kornia.geometry.transform.crop3d": [
+    "center_crop3d",
+    "crop_and_resize3d",
+    "crop_by_boxes3d",
+    "crop_by_transform_mat3d"
+  ],
+  "kornia.geometry.transform.elastic_transform": [
+    "elastic_transform2d"
+  ],
+  "kornia.geometry.transform.flips": [
+    "Hflip",
+    "Rot180",
+    "Vflip",
+    "hflip",
+    "rot180",
+    "vflip"
+  ],
+  "kornia.geometry.transform.homography_warper": [
+    "BaseWarper",
+    "HomographyWarper"
+  ],
+  "kornia.geometry.transform.image_registrator": [
+    "BaseModel",
+    "Homography",
+    "ImageRegistrator",
+    "Similarity"
+  ],
+  "kornia.geometry.transform.imgwarp": [
+    "get_affine_matrix2d",
+    "get_affine_matrix3d",
+    "get_perspective_transform",
+    "get_perspective_transform3d",
+    "get_projective_transform",
+    "get_rotation_matrix2d",
+    "get_shear_matrix2d",
+    "get_shear_matrix3d",
+    "get_translation_matrix2d",
+    "homography_warp",
+    "homography_warp3d",
+    "invert_affine_transform",
+    "projection_from_Rt",
+    "remap",
+    "warp_affine",
+    "warp_affine3d",
+    "warp_grid",
+    "warp_grid3d",
+    "warp_perspective",
+    "warp_perspective3d"
+  ],
+  "kornia.geometry.transform.pyramid": [
+    "PyrDown",
+    "PyrUp",
+    "ScalePyramid",
+    "build_laplacian_pyramid",
+    "build_pyramid",
+    "pyrdown",
+    "pyrup"
+  ],
+  "kornia.geometry.transform.thin_plate_spline": [
+    "get_tps_transform",
+    "warp_image_tps",
+    "warp_points_tps"
+  ],
+  "kornia.geometry.vector": [
+    "Scalar",
+    "Vector2",
+    "Vector3"
+  ],
   "kornia.image": [
     "ChannelsOrder",
     "ColorSpace",
@@ -628,6 +1072,9 @@
     "get_sample_images",
     "load_image",
     "write_image"
+  ],
+  "kornia.io.sample": [
+    "get_sample_images"
   ],
   "kornia.losses": [
     "BinaryFocalLossWithLogits",
@@ -716,6 +1163,16 @@
     "reconstruction",
     "top_hat"
   ],
+  "kornia.morphology.morphology": [
+    "bottom_hat",
+    "closing",
+    "dilation",
+    "erosion",
+    "gradient",
+    "opening",
+    "reconstruction",
+    "top_hat"
+  ],
   "kornia.utils": [
     "CachedDownloader",
     "ImageToTensor",
@@ -749,5 +1206,8 @@
     "torch_meshgrid",
     "vec_like",
     "xla_is_available"
+  ],
+  "kornia.utils.sample": [
+    "get_sample_images"
   ]
 }

@@ -375,6 +375,13 @@ class DeFMO(nn.Module):
     This is based on the original code from paper "DeFMO: Deblurring and Shape Recovery
         of Fast Moving Objects". See :cite:`DeFMO2021` for more details.
 
+    Convention:
+        - The input is :math:`(B, 6, H, W)`: the RGB channels of the blurred image, then those of the background
+          estimate, in :math:`[0, 1]` for the pretrained weights. ``H`` and ``W`` that are multiples of 16 give an
+          output of the same size; other sizes give an output rounded up to the next multiples of 16.
+        - The output is :math:`(B, 24, 4, H, W)`: 24 sub-frames in time order, sub-frame ``k`` rendered at the time
+          ``k / 23``, each with red, green, blue and alpha channels in :math:`[0, 1]` after a sigmoid.
+
     Args:
         pretrained: Download and set pretrained weights to the model. Default: false.
 
@@ -382,7 +389,7 @@ class DeFMO(nn.Module):
         Temporal super-resolution without background.
     Shape:
         - Input: (B, 6, H, W)
-        - Output: (B, S, 4, H, W)
+        - Output: (B, S, 4, H, W), with H and W rounded up to multiples of 16
 
     Examples:
         >>> import kornia
