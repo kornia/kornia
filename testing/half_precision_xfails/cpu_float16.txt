@@ -126,6 +126,7 @@ call	builtins.NotImplementedError	tests/geometry/epipolar/test_essential.py::Tes
 call	builtins.NotImplementedError	tests/geometry/epipolar/test_essential.py::TestMotionFromEssentialChooseSolution::test_unbatched[cpu-float16-20]
 call	builtins.AssertionError	tests/geometry/epipolar/test_fundamental.py::TestComputeCorrespondEpilines::test_opencv[cpu-float16]
 call	builtins.AssertionError	tests/geometry/epipolar/test_fundamental.py::TestFindFundamental::test_7point_opencv[cpu-float16]
+call	builtins.AssertionError	tests/geometry/epipolar/test_fundamental.py::TestFindFundamental::test_epipolar_constraint_7point[cpu-float16]
 call	builtins.NotImplementedError	tests/geometry/epipolar/test_fundamental.py::TestFindFundamental::test_opencv_svd[cpu-float16]
 call	builtins.NotImplementedError	tests/geometry/epipolar/test_fundamental.py::TestFindFundamental::test_shape[cpu-float16-1-8]
 call	builtins.NotImplementedError	tests/geometry/epipolar/test_fundamental.py::TestFindFundamental::test_shape[cpu-float16-2-9]
