@@ -53,7 +53,7 @@ class Hyperplane(nn.Module):
           an ``nn.Parameter``: a plane built from plain tensors, including the result of :meth:`through` and
           :func:`fit_plane` on points without autograd history, has trainable parameters, and the distances and
           projections it returns require grad. A caller's ``nn.Parameter`` is kept, a tensor with autograd history
-          keeps that history, and an integer tensor is stored as a buffer.
+          keeps that history, and an integer tensor is stored as a buffer (ParametrizedLine rejects one).
 
     Args:
         n: The normal vector :math:`n`, a :class:`~kornia.geometry.vector.Vector3`.

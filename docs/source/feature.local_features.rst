@@ -25,11 +25,9 @@ slots. Use :func:`laf_is_filled` to identify real detections before matching.
 ``rootsift=True`` selects RootSIFT normalization. Use ``descriptor_layout="opencv"``
 when feeding descriptors to :class:`LightGlueMatcher` with ``"sift"``.
 
-This is an explicit recipe: both feature classes still default to
-``descriptor_backend="patch"``. No constructor default or numerical behavior is
-changed by this recommendation. Backend performance depends on device, image size,
-feature count and batching; the recipe is not a claim that pyramid extraction is
-always faster.
+Both feature classes default to ``descriptor_backend="patch"``. Backend performance
+depends on device, image size, feature count and batching; the recipe is not a claim
+that pyramid extraction is always faster.
 
 .. list-table:: SIFT pipeline choices
    :header-rows: 1
@@ -76,7 +74,7 @@ and description; no pyramid is retained between calls. Sampling and Gaussian sup
 differ from patch extraction, so descriptors are not numerically interchangeable.
 For this backend, ``compile_modules`` accepts ``scale_pyr`` and ``subpix`` (or
 ``True`` for both); sparse orientation and description run eagerly. The patch
-backend retains the generic detector's compilation options.
+backend passes ``compile_modules`` to :class:`ScaleSpaceDetector`.
 
 Matching with LightGlue
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -139,7 +137,7 @@ API reference
    :members: forward, from_pretrained, heatmap_and_dense_descriptors
 
 .. autoclass:: XFeat
-   :members: forward, from_pretrained, detectAndCompute, detectAndComputeDense, match_xfeat, match_xfeat_star
+   :members: from_pretrained, detectAndCompute, detectAndComputeDense, match_xfeat, match_xfeat_star
 
 .. autoclass:: XFeatModel
    :members: forward

@@ -47,7 +47,13 @@ from kornia.feature.integrated import LocalFeatureMatcher
 from kornia.feature.scale_space_detector import get_default_detector_config
 from kornia.geometry import RANSAC, resize, transform_points
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, supports_replicate_padding
+from testing.base import (
+    DYNAMO_UNAVAILABLE_REASON,
+    BaseTester,
+    dynamo_is_available,
+    supports_reflect_padding,
+    supports_replicate_padding,
+)
 from testing.casts import dict_to
 
 
@@ -1122,3 +1128,159 @@ class TestConventionsSIFTScaleSpaceKeypointSize(BaseTester):
         # the frame's own rounding on top of the backend's detection error
         rtol = backend_rtol + 2.0 * torch.finfo(dtype).eps
         self.assert_close(scale, torch.tensor(3.0 * 8.871075630187988, dtype=torch.float64), rtol=rtol, atol=0.0)
+
+
+class _PatchMeanDescriptor(nn.Module):
+    """A descriptor that does not normalise: the patch mean and a constant 1, so no patch maps to the zero vector."""
+
+    def forward(self, patches: torch.Tensor) -> torch.Tensor:
+        mean = patches.mean(dim=(1, 2, 3))
+        return torch.stack([mean, torch.ones_like(mean)], dim=-1)
+
+
+class TestConventionsLocalFeature(BaseTester):
+    @staticmethod
+    def _blobs(blobs, device, dtype, h=72, w=96):
+        # Bright Gaussian blobs (x, y, sigma) on a black H != W image, built in float64 on the CPU, then cast.
+        yy, xx = torch.meshgrid(
+            torch.arange(h, dtype=torch.float64), torch.arange(w, dtype=torch.float64), indexing="ij"
+        )
+        img = sum(torch.exp(-((xx - x0) ** 2 + (yy - y0) ** 2) / (2.0 * s * s)) for x0, y0, s in blobs)
+        return img[None, None].to(device, dtype)
+
+    def test_convention_local_feature_pads_every_image_to_num_features_with_zero_frames(self, device, dtype):
+        # Blobs at (30, 22) sigma 3 and (61, 47) sigma 4; the second image has the second blob only.
+        # ScaleSpaceDetector(8) finds one frame per blob, so the images fill 2 and 1 of the 8 slots: N is the detector's
+        # num_features for every image, not the largest count in the batch. The centres are checked to 0.1 px, and to
+        # 0.25 px in half precision, half of the 0.5 px offset of an edge-aligned frame.
+        if not (supports_reflect_padding(device, dtype) and supports_replicate_padding(device, dtype)):
+            pytest.skip("ScaleSpaceDetector and SIFTDescriptor need reflection and replication padding for this dtype")
+        img = torch.cat(
+            [
+                self._blobs([(30.0, 22.0, 3.0), (61.0, 47.0, 4.0)], device, dtype),
+                self._blobs([(61.0, 47.0, 4.0)], device, dtype),
+            ]
+        )
+        descriptor = LAFDescriptor(SIFTDescriptor(32), patch_size=32)
+        feature = LocalFeature(ScaleSpaceDetector(8), descriptor).to(device, dtype)
+        with torch.no_grad():
+            lafs, responses, descs = feature(img)
+            lafs_t, _, _ = feature(img.transpose(-1, -2).contiguous())
+            zero_frame = descriptor(img, lafs.new_zeros(2, 1, 2, 3))
+        assert lafs.shape == (2, 8, 2, 3)
+        assert responses.shape == (2, 8)
+        assert descs.shape == (2, 8, 128)
+        filled = laf_is_filled(lafs)
+        assert filled.sum(dim=-1).tolist() == [2, 1]
+        tol = 0.25 if dtype in (torch.float16, torch.bfloat16) else 0.1
+        blobs = torch.tensor([[30.0, 22.0], [61.0, 47.0]], dtype=torch.float64)
+        centres = get_laf_center(lafs).cpu().double()
+        self.assert_close(centres[0, filled[0].cpu()], blobs, rtol=0.0, atol=tol)
+        self.assert_close(centres[1, filled[1].cpu()], blobs[1:], rtol=0.0, atol=tol)
+        # relabelling: the transposed image gives the transposed centres
+        centres_t = get_laf_center(lafs_t).cpu().double()[0, laf_is_filled(lafs_t)[0].cpu()]
+        self.assert_close(centres_t, blobs.flip(-1), rtol=0.0, atol=tol)
+        # an unfilled slot is a zero LAF with a zero response ...
+        assert lafs[~filled].abs().max() == 0
+        assert responses[~filled].abs().max() == 0
+        # ... and every one of them carries the descriptor of a patch sampled at the origin, one vector per image.
+        # SIFT maps that constant patch to almost zero, so a descriptor that does not normalise shows it is described.
+        for b in range(2):
+            assert (descs[b, ~filled[b]] == descs[b, ~filled[b]][:1]).all()
+        self.assert_close(descs[0, ~filled[0]], zero_frame[0].expand(6, 128))
+        self.assert_close(descs[1, ~filled[1]], zero_frame[1].expand(7, 128))
+        # The same frames described on a ramp whose origin pixel differs from every other pixel and between the
+        # images: a zero LAF samples every patch pixel at the origin, so the patch mean is ramp[b, 0, 0, 0].
+        yy, xx = torch.meshgrid(torch.arange(72.0), torch.arange(96.0), indexing="ij")
+        ramp = ((xx + 100.0 * yy) / 8000.0 + torch.tensor([0.25, 0.5]).view(2, 1, 1, 1)).to(device, dtype)
+        mean_feature = LocalFeature(lambda im, mask=None: (lafs, responses), LAFDescriptor(_PatchMeanDescriptor(), 8))
+        with torch.no_grad():
+            _, _, mean_descs = mean_feature.to(device, dtype)(ramp)
+        origin = torch.stack([ramp[:, 0, 0, 0], torch.ones_like(ramp[:, 0, 0, 0])], dim=-1)
+        self.assert_close(mean_descs[0, ~filled[0]], origin[0].expand(6, 2))
+        self.assert_close(mean_descs[1, ~filled[1]], origin[1].expand(7, 2))
+
+    # preset: (detector, num_features, mr_size, response, orientation estimator and its patch size, affine shape,
+    # descriptor, patch size). mr_size multiplies the detection scale into the LAF scale: sigma for ScaleSpaceDetector,
+    # the pyramid level's pixel size for the multi-resolution detectors. The upright variants orient with PassLAF.
+    _PRESETS = {
+        "SIFTFeature": ("MultiResolutionDetector", 8000, 22.0, None, "PatchDominantGradientOrientation", 19, "PassLAF",
+                        "SIFTDescriptor", 41),
+        "SIFTFeatureScaleSpace": ("ScaleSpaceDetector", 8000, 6.0, "BlobDoG", "PatchDominantGradientOrientation", 19,
+                                  "PassLAF", "SIFTDescriptor", 41),
+        "GFTTAffNetHardNet": ("ScaleSpaceDetector", 8000, 6.0, "CornerGFTT", "PatchDominantGradientOrientation", 19,
+                              "LAFAffNetShapeEstimator", "HardNet", 32),
+        "HesAffNetHardNet": ("ScaleSpaceDetector", 2048, 6.0, "BlobHessian", "PatchDominantGradientOrientation", 19,
+                             "LAFAffNetShapeEstimator", "HardNet", 32),
+        "KeyNetHardNet": ("KeyNetDetector", 8000, 22.0, "KeyNet", "OriNet", 32, "PassLAF", "HardNet", 32),
+        "KeyNetAffNetHardNet": ("KeyNetDetector", 8000, 22.0, "KeyNet", "OriNet", 32, "LAFAffNetShapeEstimator",
+                                "HardNet", 32),
+    }  # fmt: skip
+
+    @pytest.mark.parametrize("preset", list(_PRESETS))
+    def test_convention_presets_compose_their_documented_modules(self, monkeypatch, preset):
+        # The presets load pretrained HardNet, AffNet, OriNet and KeyNet weights; random networks keep this offline.
+        # SIFTFeature's response, the magnitude of BlobDoGSingle(1.0, 1.6), is checked by TestSIFTFeature.
+        from kornia.feature import KeyNetDetector, LAFAffNetShapeEstimator, OriNet
+
+        integrated = "kornia.feature.integrated"
+        monkeypatch.setattr(f"{integrated}.HardNet", lambda pretrained=False: HardNet(False))
+        monkeypatch.setattr(
+            f"{integrated}.LAFAffNetShapeEstimator",
+            lambda pretrained=False, preserve_orientation=True: LAFAffNetShapeEstimator(False, preserve_orientation),
+        )
+        monkeypatch.setattr(f"{integrated}.OriNet", lambda pretrained=False, eps=1e-8: OriNet(False))
+        monkeypatch.setattr(f"{integrated}.KeyNetDetector", lambda pretrained=False, **kw: KeyNetDetector(False, **kw))
+        spec = self._PRESETS[preset]
+        detector, num_features, mr_size, response, orienter, orienter_size, affine, descriptor, patch_size = spec
+        cls = getattr(kornia.feature, preset)
+        extra = {"scale_laf": 2.0} if preset.startswith("KeyNet") else {}
+        feature = cls(**extra)
+        det = feature.detector
+        assert type(det).__name__ == detector
+        assert det.num_features == num_features
+        assert det.mr_size == mr_size
+        if response is not None:
+            assert type(getattr(det, "resp", None) or det.model).__name__ == response
+        assert type(det.ori).__name__ == "LAFOrienter"
+        assert type(det.ori.angle_detector).__name__ == orienter
+        assert det.ori.patch_size == orienter_size
+        assert type(det.aff).__name__ == affine
+        if affine != "PassLAF":
+            # the detectors estimate the affine shape before the orientation, so AffNet's upright shape gets turned
+            assert det.aff.preserve_orientation is False
+        assert type(feature.descriptor).__name__ == "LAFDescriptor"
+        assert type(feature.descriptor.descriptor).__name__ == descriptor
+        assert feature.descriptor.patch_size == patch_size
+        # the KeyNet presets' scale_laf is LocalFeature's scaling_coef; every other preset keeps the detector frames
+        assert feature.scaling_coef == (2.0 if extra else 1.0)
+        assert type(cls(upright=True).detector.ori).__name__ == "PassLAF"
+
+    def test_convention_local_feature_ratio_tests_keep_a_single_padded_pair(self, device, dtype):
+        # A detector that filled num_features - 1 slots leaves one padded slot: a zero LAF with the descriptor of the
+        # origin patch. Image 0 has 4 real slots and 1 padded one, image 1 has 3 real and 1 padded. The padded pair is
+        # at distance 0 and each padded descriptor's second-nearest is a real one, so the ratio is 0: match_snn and
+        # match_smnn both report the pair, and filtering with laf_is_filled removes it.
+        gen = torch.Generator().manual_seed(3)
+        real = torch.nn.functional.normalize(torch.rand(7, 8, generator=gen, dtype=torch.float64), dim=-1)
+        pad = torch.nn.functional.normalize(
+            torch.tensor([[0.9, 0.1, 0.4, 0.2, 0.7, 0.3, 0.5, 0.6]], dtype=torch.float64), dim=-1
+        )
+        desc0 = torch.cat([real[:4], pad]).to(device, dtype)
+        desc1 = torch.cat([real[4:], pad]).to(device, dtype)
+        centres = torch.tensor([[[23.0, 11.0], [61.0, 17.0], [9.0, 40.0], [75.0, 33.0]]])
+        scales, oris = torch.full((1, 4, 1, 1), 6.0), torch.full((1, 4, 1), 17.0)
+        lafs = kornia.feature.laf_from_center_scale_ori(centres, scales, oris)
+        lafs0 = torch.cat([lafs, torch.zeros(1, 1, 2, 3)], dim=1).to(device, dtype)
+        lafs1 = torch.cat([lafs[:, :3], torch.zeros(1, 1, 2, 3)], dim=1).to(device, dtype)
+        filled0, filled1 = laf_is_filled(lafs0)[0], laf_is_filled(lafs1)[0]
+        assert filled0.tolist() == [True, True, True, True, False]
+        assert filled1.tolist() == [True, True, True, False]
+        for matcher, th in ((kornia.feature.match_snn, 0.8), (kornia.feature.match_smnn, 0.95)):
+            dists, idxs = matcher(desc0, desc1, th)
+            pairs = [tuple(pair) for pair in idxs.tolist()]
+            assert (4, 3) in pairs
+            assert dists[pairs.index((4, 3))].item() == 0.0
+            _, idxs_filled = matcher(desc0[filled0], desc1[filled1], th)
+            assert (idxs_filled[:, 0] < 4).all()
+            assert (idxs_filled[:, 1] < 3).all()
