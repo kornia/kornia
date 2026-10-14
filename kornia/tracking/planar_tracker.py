@@ -96,10 +96,18 @@ class HomographyTracker(nn.Module):
         Returns:
             None.
 
-        The target is extracted once here for :class:`~kornia.feature.LoFTR` and
-        :class:`~kornia.feature.LocalFeatureMatcher` matchers, and the cached features are reused for every frame.
-        Setting a target starts a new track: the previous homography maps the old target's coordinates, so it is
-        cleared. Other matchers get no cached representation.
+        The target's features are extracted once here and reused for every frame, for three kinds of matcher:
+
+        - :class:`~kornia.feature.LoFTR`: its :meth:`~kornia.feature.LoFTR.extract_features` output is passed as
+          ``features0``, in place of ``image0``.
+        - :class:`~kornia.feature.LocalFeatureMatcher`: the ``lafs``, ``responses`` and ``descriptors`` of its
+          :meth:`~kornia.feature.LocalFeatureMatcher.extract_features` are passed as ``lafs0``, ``responses0`` and
+          ``descriptors0``, next to ``image0``.
+        - Any other matcher whose ``extract_features`` attribute is an :class:`torch.nn.Module`: every entry of the dict
+          it returns is passed with a ``0`` suffix (``desc`` as ``desc0``), next to ``image0``.
+
+        Other matchers get no cached representation and receive ``image0`` and ``image1`` only. Setting a target
+        starts a new track: the previous homography maps the old target's coordinates, so it is cleared.
         """
         self.target = target
         self.reset_tracking()
@@ -108,18 +116,21 @@ class HomographyTracker(nn.Module):
 
     @staticmethod
     def _extract_target(matcher: nn.Module, target: torch.Tensor) -> Dict[str, Any]:
-        # Matchers that accept pre-extracted features for image0: LoFTR takes `features0` instead of `image0`,
-        # LocalFeatureMatcher takes `lafs0`, `responses0` and `descriptors0` next to `image0`.
         if isinstance(matcher, LoFTR):
-            return {"features0": matcher.extract_features(target)}
+            return {"features": matcher.extract_features(target)}
         if isinstance(matcher, LocalFeatureMatcher):
-            return {f"{k}0": v for k, v in matcher.extract_features(target).items()}
+            return matcher.extract_features(target)
+        extract_features = getattr(matcher, "extract_features", None)
+        if isinstance(extract_features, nn.Module):
+            return extract_features(target)
         return {}
 
-    def _matcher_input(self, representation: Dict[str, Any], frame: torch.Tensor) -> Dict[str, Any]:
-        data: Dict[str, Any] = {"image1": frame, **representation}
-        if "features0" not in representation:
-            data["image0"] = self.target
+    def _matcher_input(self, matcher: nn.Module, representation: Dict[str, Any], frame: torch.Tensor) -> Dict[str, Any]:
+        data: Dict[str, Any] = {"image0": self.target, "image1": frame}
+        for k, v in representation.items():
+            data[f"{k}0"] = v
+        if isinstance(matcher, LoFTR):  # LoFTR takes features0 in place of image0 and rejects both
+            del data["image0"]
         return data
 
     def reset_tracking(self) -> None:
@@ -156,7 +167,7 @@ class HomographyTracker(nn.Module):
         estimated homography as ``previous_homography`` on success.
         """
         match_dict: Dict[str, torch.Tensor] = self.initial_matcher(
-            self._matcher_input(self.target_initial_representation, x)
+            self._matcher_input(self.initial_matcher, self.target_initial_representation, x)
         )
         keypoints0 = match_dict["keypoints0"][match_dict["batch_indexes"] == 0]
         keypoints1 = match_dict["keypoints1"][match_dict["batch_indexes"] == 0]
@@ -200,7 +211,9 @@ class HomographyTracker(nn.Module):
         Hinv = torch.inverse(Hwarp)
         h, w = self.target.shape[2:]
         frame_warped = warp_perspective(x, Hinv, (h, w))
-        match_dict = self.fast_matcher(self._matcher_input(self.target_fast_representation, frame_warped))
+        match_dict = self.fast_matcher(
+            self._matcher_input(self.fast_matcher, self.target_fast_representation, frame_warped)
+        )
         keypoints0 = match_dict["keypoints0"][match_dict["batch_indexes"] == 0]
         keypoints1 = match_dict["keypoints1"][match_dict["batch_indexes"] == 0]
         keypoints1 = transform_points(Hwarp, keypoints1)

@@ -34,6 +34,9 @@ def _make_tracker(minimum_inliers_num: int = 5) -> HomographyTracker:
     initial_matcher = MagicMock()
     fast_matcher = MagicMock()
     ransac = MagicMock()
+    # Set extract_features to None so isinstance(..., nn.Module) guard skips feature pre-extraction
+    initial_matcher.extract_features = None
+    fast_matcher.extract_features = None
     return HomographyTracker(
         initial_matcher=initial_matcher,
         fast_matcher=fast_matcher,
@@ -49,6 +52,29 @@ def _match_dict(n_keypoints: int, device: torch.device, dtype: torch.dtype) -> d
         "keypoints1": torch.rand(n_keypoints, 2, device=device, dtype=dtype),
         "batch_indexes": torch.zeros(n_keypoints, dtype=torch.long, device=device),
     }
+
+
+class _CountingExtract(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls = 0
+
+    def forward(self, x: torch.Tensor) -> dict:
+        self.calls += 1
+        return {"desc": x.mean((2, 3))}
+
+
+class _CustomMatcher(torch.nn.Module):
+    """A matcher that is neither LoFTR nor LocalFeatureMatcher, with an nn.Module `extract_features`; records inputs."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.extract_features = _CountingExtract()
+        self.inputs: list = []
+
+    def forward(self, data: dict) -> dict:
+        self.inputs.append(dict(data))
+        return _match_dict(20, torch.device("cpu"), torch.float32)
 
 
 def _texture(h: int, w: int, seed: int = 0) -> torch.Tensor:
@@ -141,7 +167,52 @@ class TestHomographyTrackerUnit:
         assert tracker.target_fast_representation == {}
 
     def test_set_target_with_extract_features(self):
-        # A matcher that is neither LoFTR nor LocalFeatureMatcher gets no cached representation.
+        from torch import nn
+
+        fake_feats = {"desc": torch.rand(1, 4)}
+
+        class _FakeExtract(nn.Module):
+            def forward(self, x):
+                return fake_feats
+
+        initial_matcher = MagicMock()
+        fast_matcher = MagicMock()
+        initial_matcher.extract_features = _FakeExtract()
+        fast_matcher.extract_features = _FakeExtract()
+        tracker = HomographyTracker(
+            initial_matcher=initial_matcher,
+            fast_matcher=fast_matcher,
+            ransac=MagicMock(),
+        )
+        image = torch.rand(1, 1, 8, 8)
+        tracker.set_target(image)
+        assert tracker.target_initial_representation == fake_feats
+        assert tracker.target_fast_representation == fake_feats
+
+    def test_custom_extract_features_entries_reach_the_matcher(self):
+        # A custom matcher whose `extract_features` is an nn.Module gets image0, image1 and every cached entry with a
+        # "0" suffix, in match_initial and in track_next_frame; the target is extracted once, in set_target.
+        initial, fast = _CustomMatcher(), _CustomMatcher()
+        ransac = MagicMock(return_value=(torch.eye(3), torch.ones(20, dtype=torch.bool)))
+        tracker = HomographyTracker(initial, fast, ransac, minimum_inliers_num=5)
+        target = torch.rand(1, 1, 8, 9)
+        tracker.set_target(target)
+        assert tracker(torch.rand(1, 1, 8, 9))[1]  # match_initial
+        assert tracker(torch.rand(1, 1, 8, 9))[1]  # track_next_frame
+        cached_by_matcher = (
+            (initial, tracker.target_initial_representation),
+            (fast, tracker.target_fast_representation),
+        )
+        for matcher, cached in cached_by_matcher:
+            assert matcher.extract_features.calls == 1
+            (data,) = matcher.inputs
+            assert sorted(data) == ["desc0", "image0", "image1"]
+            assert data["image0"] is target
+            assert data["desc0"] is cached["desc"]
+
+    def test_extract_features_that_is_not_a_module_is_not_called(self):
+        # A matcher that is neither LoFTR nor LocalFeatureMatcher, and whose extract_features is not an nn.Module, gets
+        # no cached representation.
         initial_matcher = MagicMock()
         fast_matcher = MagicMock()
         tracker = HomographyTracker(initial_matcher=initial_matcher, fast_matcher=fast_matcher, ransac=MagicMock())
