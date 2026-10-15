@@ -275,7 +275,7 @@ class So3(nn.Module):
         KORNIA_CHECK_SHAPE(v, ["*", "3"])
         if isinstance(v, torch.Tensor):
             # TODO: Figure out why mypy think `v` can be a Vector3 which didn't allow ellipsis on index
-            a, b, c = v[..., 0], v[..., 1], v[..., 2]  # type: ignore[index]
+            a, b, c = v[..., 0], v[..., 1], v[..., 2]
         else:
             a, b, c = v.x, v.y, v.z
         z = torch.zeros_like(a)

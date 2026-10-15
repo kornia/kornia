@@ -284,7 +284,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
             )
         return merged
 
-    def forward(  # type: ignore[override]
+    def forward(
         self,
         inputs: _inputs_type,
         params: Optional[List[ParamItem]] = None,
@@ -338,7 +338,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         augmented_inputs = cast(
             _inputs_type,
             super().forward(
-                selected_inputs,  # type: ignore[arg-type]
+                selected_inputs,
                 params=params,
                 data_keys=forward_data_keys,
             ),

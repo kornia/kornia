@@ -20,7 +20,7 @@ from typing import Optional, Tuple, Union, cast
 import torch
 
 from kornia.core.check import KORNIA_CHECK
-from kornia.core.tensor_wrapper import TensorWrapper, _wrap  # type: ignore[attr-defined]
+from kornia.core.tensor_wrapper import TensorWrapper, _wrap
 from kornia.geometry.conversions import _normalize_last_dim
 from kornia.geometry.linalg import batched_dot_product, batched_squared_norm
 

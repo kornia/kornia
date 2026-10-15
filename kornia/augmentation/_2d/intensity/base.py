@@ -38,18 +38,18 @@ class _PicklableCompileMixin:
         self._compile_kwargs = compile_kwargs
 
     def __getstate__(self) -> Dict[str, Any]:
-        state = super().__getstate__()  # type: ignore[misc]
+        state = super().__getstate__()
         uncompiled = state.get("_uncompiled_fns")
         if uncompiled is not None:
             state.update(uncompiled)
         return state
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
-        super().__setstate__(state)  # type: ignore[misc]
+        super().__setstate__(state)
         compile_kwargs = state.get("_compile_kwargs")
         if compile_kwargs is not None:
             self._uncompiled_fns = None
-            self.compile(**compile_kwargs)  # type: ignore[attr-defined]
+            self.compile(**compile_kwargs)
 
 
 class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):

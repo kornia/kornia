@@ -1096,9 +1096,7 @@ class VideoBoxes(Boxes):
     temporal_channel_size: int
 
     @classmethod
-    def from_tensor(  # type: ignore[override]
-        cls, boxes: torch.Tensor | list[torch.Tensor], validate_boxes: bool = True
-    ) -> VideoBoxes:
+    def from_tensor(cls, boxes: torch.Tensor | list[torch.Tensor], validate_boxes: bool = True) -> VideoBoxes:
         r"""Create :class:`VideoBoxes` from a video box tensor.
 
         Args:

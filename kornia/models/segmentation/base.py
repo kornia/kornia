@@ -211,7 +211,7 @@ class SemanticSegmentation(ModelBase):
         output_type: str = "torch",
         colormap: str = "random",
         manual_seed: int = 2147,
-    ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:  # type: ignore
+    ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:
         """Visualize the segmentation masks.
 
         Args:

@@ -232,13 +232,13 @@ class RandomTransplantation(MixAugmentationBaseV2):
     ) -> torch.Tensor:
         return input
 
-    def transform_input(self, acceptor: torch.Tensor, donor: torch.Tensor, selection: torch.Tensor) -> torch.Tensor:  # type: ignore[override]
+    def transform_input(self, acceptor: torch.Tensor, donor: torch.Tensor, selection: torch.Tensor) -> torch.Tensor:
         # Expand selection to the channel dimension
         selection = selection.unsqueeze(dim=self._channel_dim).expand_as(donor)
         acceptor[selection] = donor[selection]
         return acceptor
 
-    def transform_mask(self, acceptor: torch.Tensor, donor: torch.Tensor, selection: torch.Tensor) -> torch.Tensor:  # type: ignore[override]
+    def transform_mask(self, acceptor: torch.Tensor, donor: torch.Tensor, selection: torch.Tensor) -> torch.Tensor:
         if acceptor.ndim == selection.ndim + 1:
             # A mask with a singleton channel axis, ``(B, 1, *spatial)``, as a container hands it on (#4707).
             selection = selection.unsqueeze(dim=self._channel_dim).expand_as(donor)
@@ -383,7 +383,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
 
         return params
 
-    def forward(  # type: ignore[override]
+    def forward(
         self,
         *input: torch.Tensor,
         params: Optional[dict[str, torch.Tensor]] = None,

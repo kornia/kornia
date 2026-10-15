@@ -369,7 +369,7 @@ class VisualPrompter:
             >>> # Use the prompter methods ...
 
         """
-        # self.set_image = torch.compile(  # type: ignore[method-assign]
+        # self.set_image = torch.compile(
         #     self.set_image,
         #     fullgraph=fullgraph,
         #     dynamic=dynamic,
@@ -379,7 +379,7 @@ class VisualPrompter:
         #     disable=disable,
         # )
         # FIXME: compile set image will try to compile AugmentationSequential which fails
-        self.model.image_encoder = torch.compile(  # type: ignore
+        self.model.image_encoder = torch.compile(
             self.model.image_encoder,
             fullgraph=fullgraph,
             dynamic=dynamic,
@@ -389,7 +389,7 @@ class VisualPrompter:
             disable=disable,
         )
 
-        # self.preprocess_image = torch.compile(  # type: ignore[method-assign]
+        # self.preprocess_image = torch.compile(
         #     self.preprocess_image,
         #     fullgraph=fullgraph,
         #     dynamic=dynamic,
@@ -401,7 +401,7 @@ class VisualPrompter:
 
         # FIXME: compile predict will try to compile Preproc prompts, which need to compileAugmentationSequential
         # which fails
-        # self.predict = torch.compile(  # type: ignore[method-assign]
+        # self.predict = torch.compile(
         #     self.predict,
         #     fullgraph=fullgraph,
         #     dynamic=dynamic,
@@ -410,7 +410,7 @@ class VisualPrompter:
         #     options=options,
         #     disable=disable,
         # )
-        self.model.mask_decoder = torch.compile(  # type: ignore
+        self.model.mask_decoder = torch.compile(
             self.model.mask_decoder,
             fullgraph=fullgraph,
             dynamic=dynamic,
@@ -419,7 +419,7 @@ class VisualPrompter:
             options=options,
             disable=disable,
         )
-        self.model.prompt_encoder = torch.compile(  # type: ignore
+        self.model.prompt_encoder = torch.compile(
             self.model.prompt_encoder,
             fullgraph=fullgraph,
             dynamic=dynamic,

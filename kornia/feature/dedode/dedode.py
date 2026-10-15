@@ -318,8 +318,8 @@ class DeDoDe(nn.Module):
         # e.g. "L-C4-v2" -> "L", "G-upright" -> "G". All current checkpoints follow this
         # convention intentionally so that new variants only need a new URL entry.
         model: DeDoDe = cls(
-            detector_model=detector_weights[0],  # type: ignore[arg-type]
-            descriptor_model=descriptor_weights[0],  # type: ignore[arg-type]
+            detector_model=detector_weights[0],
+            descriptor_model=descriptor_weights[0],
             amp_dtype=amp_dtype,
         )
         model.detector.load_state_dict(

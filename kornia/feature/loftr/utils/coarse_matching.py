@@ -324,7 +324,7 @@ class CoarseMatching(nn.Module):
             # silently upcast the padded mconf below via torch.cat's type promotion.
             mconf_gt = torch.zeros(len(data["spv_b_ids"]), device=_device, dtype=mconf.dtype)
 
-            b_ids, i_ids, j_ids, mconf = (  # type: ignore
+            b_ids, i_ids, j_ids, mconf = (
                 torch.cat([x[pred_indices], y[gt_pad_indices]], dim=0)
                 for x, y in zip(
                     [b_ids, i_ids, j_ids, mconf],
