@@ -1267,16 +1267,27 @@ class TestConventionsIo:
         assert written["default"] != written["q95"]
 
     @pytest.mark.parametrize(
-        ("shape", "match"),
+        "shape",
         [
-            ((3, 0, 4), "[Zz]ero height|non zero|invalid dimensions"),
-            ((3, 4, 0), "[Zz]ero width|non zero|invalid dimensions"),
+            (3, 0, 4),
+            (3, 4, 0),
+            (1, 0, 0),
+            (0, 4),
+            (4, 0),
         ],
     )
-    def test_wart_write_image_zero_size_raises_bare_exception_5770(self, tmp_path, shape, match):
-        # #5770: a zero-height or zero-width image reaches kornia-rs, whose error is a bare ``Exception``. The fix
-        # should raise a kornia error (a ShapeError) before encoding, which flips this pin.
+    def test_convention_write_image_zero_size_raises_5770(self, tmp_path, shape):
+        # #5770: a zero height or width used to reach kornia-rs, which raised a bare Exception and left the
+        # truncated file behind. It is now rejected before anything is created.
         for ext in ("png", "jpg", "tif"):
-            with pytest.raises(Exception, match=match) as excinfo:
-                write_image(tmp_path / f"zero.{ext}", torch.zeros(*shape, dtype=torch.uint8))
-            assert excinfo.type is Exception
+            path = tmp_path / f"zero.{ext}"
+            with pytest.raises(ShapeError, match=re.escape(str(tuple(shape)))):
+                write_image(path, torch.zeros(*shape, dtype=torch.uint8))
+            assert not path.exists()
+
+    @pytest.mark.parametrize("shape", [(3, 1, 4), (3, 4, 1), (1, 4)])
+    def test_write_image_accepts_a_single_row_or_column_5770(self, tmp_path, shape):
+        # Only a zero extent is rejected: a 1-pixel height or width still writes.
+        path = tmp_path / "thin.png"
+        write_image(path, torch.zeros(*shape, dtype=torch.uint8))
+        assert path.stat().st_size > 0
