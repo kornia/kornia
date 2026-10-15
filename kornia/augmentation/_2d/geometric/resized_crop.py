@@ -209,6 +209,28 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
             )
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
+    def inverse_inputs(
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+        **kwargs: Any,
+    ) -> torch.Tensor:
+        output = super().inverse_inputs(input, params, flags, transform, **kwargs)
+        # A one-pixel crop axis is a translation in the matrix, so the inverse warp also lays the repeated pixel
+        # onto the canvas pixels after it. With zero padding, everything outside the crop is zero.
+        if kwargs.get("padding_mode", flags["padding_mode"]) != "zeros" or output.shape[0] == 0:
+            return output
+        src = params["src"].to(device=output.device, dtype=output.dtype)
+        one_pixel = ((src[:, 2] - src[:, 0]) == 0) & self._gate(params).to(output.device)[:, None]
+        columns = torch.arange(output.shape[-1], device=output.device, dtype=output.dtype)
+        rows = torch.arange(output.shape[-2], device=output.device, dtype=output.dtype)
+        keep_columns = ~one_pixel[:, :1] | (columns == src[:, 0, :1])
+        keep_rows = ~one_pixel[:, 1:] | (rows == src[:, 0, 1:])
+        keep = keep_rows[:, None, :, None] & keep_columns[:, None, None, :]
+        return torch.where(keep, output, torch.zeros_like(output))
+
     def inverse_transform(
         self,
         input: torch.Tensor,

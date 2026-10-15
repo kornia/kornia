@@ -404,6 +404,28 @@ class TestGeometricCropConventions(BaseTester):
         expected[..., 3, 4] = 25
         self.assert_close(slice_crop.inverse(slice_output, params=params), expected, low_tolerance=True)
 
+    def test_convention_resized_crop_with_a_one_pixel_crop_on_a_large_canvas(self, device, dtype):
+        # A scale large enough to push the next canvas pixel off the output overflowed the translation in float16
+        # (448 x 200 > 65504): the matrix held -inf and the inverse NaN. The one-pixel axis is a translation now.
+        x = torch.ones(1, 1, 256, 256, device=device, dtype=dtype)
+        kwargs = {"size": (224, 224), "scale": (1.0, 1.0), "ratio": (1.0, 1.0), "align_corners": True, "p": 1.0}
+        slice_crop = K.RandomResizedCrop(cropping_mode="slice", **kwargs)
+        params = slice_crop.forward_parameters(x.shape)
+        params["src"] = torch.tensor([[[200, 180]] * 4], device=device, dtype=dtype)
+        slice_output = slice_crop(x, params=params)
+        assert torch.isfinite(slice_crop.transform_matrix).all()
+        resample_output = K.RandomResizedCrop(cropping_mode="resample", **kwargs)(x, params=params)
+        self.assert_close(resample_output, slice_output)
+        expected = torch.zeros_like(x)
+        expected[..., 180, 200] = 1
+        self.assert_close(slice_crop.inverse(slice_output, params=params), expected, low_tolerance=True)
+        # Border padding extends the crop's only pixel, which is the pixel itself.
+        self.assert_close(
+            slice_crop.inverse(slice_output, params=params, padding_mode="border"),
+            torch.ones_like(x),
+            low_tolerance=True,
+        )
+
     @pytest.mark.parametrize("size", [(1, 1), (1, 3), (3, 1)])
     def test_convention_resized_crop_with_a_one_pixel_output_axis(self, size, device, dtype):
         # The box vertices are collinear along a one-pixel axis, and the solved matrix was NaN: resample mode
