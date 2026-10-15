@@ -84,6 +84,22 @@ class TestDisk(BaseTester):
         assert heatmaps.dtype == dtype
         assert descriptors.dtype == dtype
 
+    def test_half_model_returns_float32_keypoints(self, device, dtype):
+        # R4: keypoints are integer pixels, and bfloat16 holds no odd integer above 256, so a bfloat16 DISK put every
+        # keypoint past x = 256 on an even pixel. They are float32 now; scores and descriptors keep the model dtype.
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("half-precision rule")
+        torch.manual_seed(0)
+        disk = DISK().to(device, dtype)
+        image = torch.rand(1, 3, 112, 400, generator=torch.Generator().manual_seed(0)).to(device, dtype)
+        with torch.no_grad():
+            (feats,) = disk(image)
+        assert feats.keypoints.dtype == torch.float32
+        assert feats.detection_scores.dtype == dtype
+        assert feats.descriptors.dtype == dtype
+        x = feats.keypoints[:, 0]
+        assert (x[x > 256] % 2 != 0).any()  # odd pixels past 256, which bfloat16 cannot hold
+
     def test_not_divisible_by_16(self, device):
         disk = DISK().to(device)
         inp = torch.ones(1, 3, 72, 64, device=device)
@@ -253,7 +269,8 @@ class TestConventionsDISK(BaseTester):
         expected = torch.tensor([[50.0, 9.0], [13.0, 21.0], [60.0, 33.0]], device=device, dtype=dtype)
         image = torch.rand(1, 3, 48, 80, device=device, dtype=dtype)
         (feats,) = self._disk(peaks, device, dtype)(image)
-        self.assert_close(feats.keypoints, expected, rtol=0.0, atol=0.0)
+        # the keypoints are float32 for a half-precision network, the scores and descriptors keep its dtype
+        self.assert_close(feats.keypoints, expected.to(torch.promote_types(dtype, torch.float32)), rtol=0.0, atol=0.0)
         self.assert_close(feats.detection_scores, torch.tensor([1.5, 2.0, 1.0], device=device, dtype=dtype))
         named = torch.cat([expected, torch.ones_like(expected[:, :1])], dim=-1)
         self.assert_close(feats.descriptors[:, :3], torch.nn.functional.normalize(named, dim=-1), low_tolerance=True)
