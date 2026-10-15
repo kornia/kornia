@@ -202,6 +202,23 @@ class TestImageStitcher(BaseTester):
         assert mask[0, 0, 0, 3 + 4095].item() == 1
         assert mask[0, 0, 1, 3 + 4095].item() == 0
 
+    @pytest.mark.parametrize("autocast_dtype", [torch.float16, torch.bfloat16])
+    def test_float32_warp_under_autocast_keeps_the_border(self, autocast_dtype, device):
+        # Codex review 5529721894: under autocast the warp's homography matmuls ran in half precision, the coverage of
+        # completely covered border pixels fell below the float32 tolerance, and they were dropped: black pixels in
+        # the new columns and the panorama one column short (66, truth 67). The conftest skips tests named "autocast"
+        # on MPS; the same case failed there and passes with the fix.
+        if not torch.amp.is_autocast_available(device.type):
+            pytest.skip(f"autocast is not available on {device.type}")
+        left, right = torch.ones(1, 3, 48, 64, device=device), torch.ones(1, 3, 48, 64, device=device)
+        stitcher = kornia.contrib.ImageStitcher(_ShiftMatcher([3.0]))
+        homography = torch.tensor([[[1.0, 0.0, 3.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device)
+        stitcher.estimate_transform = lambda *args, **kwargs: homography  # exact, to isolate the resampling
+        with torch.autocast(device_type=device.type, dtype=autocast_dtype), torch.no_grad():
+            out = stitcher(left, right)
+        assert out.shape[-1] == 64 + 3
+        assert out[..., 64:].min().item() > 0.99999
+
     @pytest.mark.parametrize("estimator", ["ransac", "vanilla"])
     def test_smoke(self, estimator, device, dtype):
         B, C, H, W = 1, 3, 6, 6

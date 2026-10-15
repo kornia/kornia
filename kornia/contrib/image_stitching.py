@@ -214,10 +214,15 @@ class ImageStitcher(nn.Module):
         # mixes in the zero padding. Warp the validity mask together with the image, in one call and so on the same
         # sampling grid, and keep only the pixels covered completely.
         # The warp runs in at least float32 (float64 stays float64), whatever the dtype of the image and of the
-        # homography: a half sampling grid is coarser than a pixel on a wide panorama.
+        # homography: a half sampling grid is coarser than a pixel on a wide panorama. Autocast is disabled around it,
+        # which would otherwise run the homography matmuls in half precision, and the float32 coverage tolerance below
+        # would then reject completely covered border pixels.
         n_ch = images_right.shape[1]
         work = torch.promote_types(images_right.dtype, torch.float32)
-        warped = warp_perspective(torch.cat([images_right.to(work), mask_right.to(work)], 1), homo.to(work), out_shape)
+        with torch.autocast(device_type=images_right.device.type, enabled=False):
+            warped = warp_perspective(
+                torch.cat([images_right.to(work), mask_right.to(work)], 1), homo.to(work), out_shape
+            )
         src_img = warped[:, :n_ch].to(images_right.dtype)
         # Round-off in the warp's sampling positions grows with the coordinates and puts a completely covered border
         # pixel past the border, so its coverage reads below 1. Measured: up to 1.5 * eps * max(H_out, W_out) for
