@@ -491,6 +491,11 @@ def _combine_integer_patches(
     flat_index, pads, (Hr, Wr) = target
     B, C = patches.shape[0], patches.shape[2]
     values = patches.to(torch.int64).permute(0, 2, 1, 3, 4).flatten(2)
+    # The int64 cast wraps uint64 values from 2**63 up to negatives. Flipping the sign bit maps [0, 2**64) onto
+    # [-2**63, 2**63) in order (v - 2**63), where the mean below is exact; the bit is flipped back on the result.
+    unsigned64 = patches.dtype == torch.uint64
+    if unsigned64:
+        values = torch.bitwise_xor(values, -(2**63))
     zeros = torch.zeros(B, C, Hr * Wr, dtype=torch.int64, device=patches.device)
     if patches.dtype == torch.bool:
         # Bool patches are True wherever any covering patch is True.
@@ -500,13 +505,20 @@ def _combine_integer_patches(
         # as v = q * c + r (q truncated, |r| < c). The q sum to at most max |v| in magnitude and the r to less than
         # c**2, so the mean sum(q) + sum(r) / c is exact for every int64 input.
         counts = torch.zeros(Hr * Wr, dtype=torch.int64, device=patches.device)
-        counts = counts.index_add_(0, flat_index, torch.ones_like(flat_index)).clamp_min(1)
+        counts = counts.index_add_(0, flat_index, torch.ones_like(flat_index))
+        covered = counts > 0
+        counts = counts.clamp_min(1)
         count = counts[flat_index]
         q = torch.div(values, count, rounding_mode="trunc")
         sum_r = zeros.index_add(-1, flat_index, values - q * count)
         out = zeros.index_add(-1, flat_index, q) + torch.div(sum_r, counts, rounding_mode="floor")
-        # The floor of the mean, moved toward zero where the mean is negative and not an integer.
-        out = out + ((out < 0) & (torch.remainder(sum_r, counts) != 0)).to(torch.int64)
+        if unsigned64:
+            # A uint64 mean is non-negative, so its truncation is the floor, which the shift by 2**63 preserves. A
+            # pixel no patch covers stays 0 rather than flipping to 2**63.
+            out = torch.where(covered, torch.bitwise_xor(out, -(2**63)), torch.zeros_like(out))
+        else:
+            # The floor of the mean, moved toward zero where the mean is negative and not an integer.
+            out = out + ((out < 0) & (torch.remainder(sum_r, counts) != 0)).to(torch.int64)
     # Negative unpadding pads the result with zeros, as the float path's inverse F.pad does.
     out = F.pad(out.view(B, C, Hr, Wr), [-p for p in pads])
     return out.to(patches.dtype)

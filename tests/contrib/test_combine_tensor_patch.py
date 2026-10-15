@@ -372,6 +372,49 @@ class TestCombineTensorPatches(BaseTester):
         out = kornia.contrib.combine_tensor_patches(patches.to(device), (3, 5), 2, 1)
         assert out.flatten(2).flatten(0, 1).tolist() == expected
 
+    def test_uint64_overlap_mean_is_exact_above_2pow63(self, device):
+        # Codex review on #5960: an int64 cast wrapped 2**63 to -2**63, so (2**63 + 0) / 2 came back as 3 * 2**62.
+        # Main (4863aed8a) returned 2**62 here: 2**63 is exact in its float fold.
+        if device.type == "mps" and torch_version_lt(2, 9, 0):
+            pytest.skip("MPS index_add_ has no int64 source before torch 2.9: the float32 fold is exact only to 2**24")
+        # The values are set in int64 and viewed as uint64 (v - 2**64 for v >= 2**63): torch 2.5.1 cannot set a uint64
+        # element from a Python int >= 2**63 ("Overflow when unpacking long").
+        signed = torch.zeros(1, 6, 1, 2, 2, dtype=torch.int64, device=device)  # 3 x 4 image, 2 x 2 windows, stride 1
+        signed[0, 1, 0, 0, 0] = -(2**63)  # 2**63
+        out = kornia.contrib.combine_tensor_patches(signed.view(torch.uint64), (3, 4), 2, 1)
+        assert out.dtype == torch.uint64
+        assert out[0, 0, 0, 1].item() == 2**62
+        # Near the top of the range: (2**64 - 1 + 2**64 - 3) / 2 = 2**64 - 2, beyond a float64 fold's precision.
+        signed[0, 0, 0, 0, 1] = -1  # 2**64 - 1
+        signed[0, 1, 0, 0, 0] = -3  # 2**64 - 3
+        assert (
+            kornia.contrib.combine_tensor_patches(signed.view(torch.uint64), (3, 4), 2, 1)[0, 0, 0, 1].item()
+            == 2**64 - 2
+        )
+        # Patches that do not fit (6 patches of a 4 x 6 image recombined to 5 x 7, the warned path) leave row 4 and
+        # column 6 uncovered: they stay 0, not 2**63.
+        img = torch.full((1, 1, 4, 6), 2**64 - 1, dtype=torch.uint64, device=device)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)  # the existing "does not fit" warning
+            out = kornia.contrib.combine_tensor_patches(kornia.contrib.extract_tensor_patches(img, 2, 2), (5, 7), 2, 2)
+        expected = torch.full((1, 1, 5, 7), 2**64 - 1, dtype=torch.uint64)
+        expected[..., 4, :] = 0
+        expected[..., :, 6] = 0
+        assert torch.equal(out.cpu(), expected)  # MPS has no uint64 eq kernel
+        # Random values over the whole uint64 range, against the exact floor mean in Python integers.
+        g = torch.Generator().manual_seed(0)
+        patches = torch.randint(-(2**63), 2**63 - 1, (2, 8, 2, 2, 2), generator=g, dtype=torch.int64).view(torch.uint64)
+        target = kornia.contrib.extract_tensor_patches(torch.arange(15).view(1, 1, 3, 5), 2, 1)[0, :, 0].flatten()
+        expected_means = []
+        for b in range(2):
+            for c in range(2):
+                covering = [[] for _ in range(15)]
+                for value, pixel in zip(patches[b, :, c].flatten().tolist(), target.tolist()):
+                    covering[pixel].append(value)
+                expected_means.append([sum(v) // len(v) for v in covering])
+        out = kornia.contrib.combine_tensor_patches(patches.to(device), (3, 5), 2, 1)
+        assert out.flatten(2).flatten(0, 1).tolist() == expected_means
+
     @pytest.mark.parametrize("int_dtype", [torch.int64, torch.bool])
     def test_integer_patch_count_mismatch_raises(self, int_dtype, device):
         patches = torch.zeros(1, 5, 1, 2, 2, dtype=int_dtype, device=device)  # a 4 x 6 image at stride 2 needs 6
