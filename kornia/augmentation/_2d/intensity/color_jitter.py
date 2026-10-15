@@ -89,6 +89,8 @@ class ColorJitter(_PicklableCompileMixin, IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
         - see :class:`ColorJiggle` for how the two classes relate. This class takes the brightness factor as
           drawn, a multiplier whose identity is ``1``, and a scalar ``brightness`` above ``1`` draws from
           ``[0, 1 + brightness]``, as torchvision does.
@@ -96,11 +98,6 @@ class ColorJitter(_PicklableCompileMixin, IntensityAugmentationBase2D):
           contrast and saturation, ``0`` for hue -- so a skipped step accepts any channel count. Otherwise the
           step runs on the whole batch, and the brightness, contrast and (three-channel) saturation steps clamp
           the whole batch into ``[0, 1]``. A fixed ``order`` without index ``0`` skips the brightness step.
-
-    .. warning::
-        Because the brightness, contrast and saturation steps clamp, an all-negative input can come back as an
-        all-zero image, depending on the draw and the order. Tracked in
-        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_brightness_accumulative`,
@@ -183,8 +180,9 @@ class ColorJitter(_PicklableCompileMixin, IntensityAugmentationBase2D):
     ) -> torch.Tensor:
         # The same branch-free dispatch as ColorJiggle for fixed RGB orders; other inputs use Python guards,
         # which accept any channel count for a skipped step.
+        input = input.clamp(0.0, 1.0)
         steps: _Steps = (self._brightness_fn, self._contrast_fn, self._saturation_fn, self._adjust_hue_turns)
-        return _dispatch_color_steps(input, params, self._fixed_order, self._cond_fn, _NEUTRAL, steps)
+        return _dispatch_color_steps(input, params, self._fixed_order, self._cond_fn, _NEUTRAL, steps).clamp(0.0, 1.0)
 
     def _adjust_hue_turns(self, input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
         return self._hue_fn(input, factor * 2 * math.pi)

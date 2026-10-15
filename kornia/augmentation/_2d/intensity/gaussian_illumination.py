@@ -67,6 +67,8 @@ class RandomGaussianIllumination(_PicklableCompileMixin, IntensityAugmentationBa
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
         - the class adds the drawn field ``_params["gradient"]`` to the image and clamps the sum into ``[0, 1]``,
           so the output stays inside that range even when the input does not.
         - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and only whether the draw is negative
@@ -79,10 +81,6 @@ class RandomGaussianIllumination(_PicklableCompileMixin, IntensityAugmentationBa
           ``center * L - 0.5`` without rounding to a whole pixel: ``center=0.5`` is the middle of any axis, ``0``
           and ``1`` are the outer edges of the first and last pixel. At ``sigma=0`` the field is an impulse on the
           pixel nearest that position, split between two pixels when it falls halfway.
-
-    .. warning::
-        An all-negative input can come back as an all-zero image, depending on the sampled gradient. Tracked in
-        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -208,6 +206,7 @@ class RandomGaussianIllumination(_PicklableCompileMixin, IntensityAugmentationBa
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
+        input = input.clamp(0.0, 1.0)
         return self._fn(input=input, params=params, flags=flags, transform=transform)
 
     def compile(

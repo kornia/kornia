@@ -41,10 +41,10 @@ class RandomEqualize(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - an input outside ``[0, 1]`` raises a ``RuntimeError`` naming :func:`kornia.enhance.equalize` and that
-          range, instead of being transformed. The check guards a 256-entry lookup indexed with
-          ``(input * 255).long()``, so a value less than one 8-bit code outside ``[0, 1]`` is still admitted, up
-          to the rounding of ``input * 255`` in the input's dtype.
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
+        - the wrapper clamps before calling :func:`kornia.enhance.equalize`; the functional API
+          retains its strict range check.
 
     .. note::
         This function internally uses :func:`kornia.enhance.equalize`.
@@ -76,4 +76,5 @@ class RandomEqualize(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
+        input = input.clamp(0.0, 1.0)
         return equalize(input)

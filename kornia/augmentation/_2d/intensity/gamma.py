@@ -45,16 +45,13 @@ class RandomGamma(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
         - the clamp is not optional: unlike :class:`RandomBrightness` and :class:`RandomContrast` this class has
           no ``clip_output``.
         - ``gamma`` and ``gain`` must be non-negative. Neither is checked at construction: the check is in
           :func:`kornia.enhance.adjust_gamma`, so a negative value raises a ``RuntimeError`` on the forward pass.
           It is not run for an MPS image, where a negative value goes through the same formula unchecked.
-
-    .. warning::
-        On a negative input the power is NaN unless ``gamma`` is an integer, and the clamp keeps the NaN; at the
-        default ``gamma=1.0`` every negative value comes back as ``0``. Tracked in
-        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_gamma`
@@ -106,6 +103,7 @@ class RandomGamma(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        input = input.clamp(0.0, 1.0)
         gamma_factor = params["gamma_factor"].to(input)
         gain_factor = params["gain_factor"].to(input)
         return adjust_gamma(input, gamma_factor, gain_factor)

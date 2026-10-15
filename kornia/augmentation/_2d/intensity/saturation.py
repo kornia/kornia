@@ -47,13 +47,13 @@ class RandomSaturation(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
         - the input must have three channels: the scaling is defined on the HSV saturation, and any other
           channel count raises a ``ValueError`` on the forward pass.
         - the drawn factor reaches :func:`kornia.enhance.adjust_saturation` unchanged, and ``1.0`` is the
-          identity, up to rounding, for a pixel with no negative channel.
-        - there is no final RGB clamp, but the HSV saturation is clamped into ``[0, 1]``: at a factor of
-          ``1.0`` a pixel above ``1`` with no negative channel comes back unchanged, while ``(-0.1, 0.5, 0.5)``
-          becomes ``(0.0, 0.5, 0.5)`` and an all-negative pixel becomes gray at its largest channel.
+          identity, up to rounding, for a pixel in ``[0, 1]``.
+        - the HSV saturation is also clamped into ``[0, 1]`` before converting back to RGB.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_saturation`
@@ -102,5 +102,6 @@ class RandomSaturation(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        input = input.clamp(0.0, 1.0)
         saturation_factor = params["saturation_factor"].to(input)
-        return adjust_saturation(input, saturation_factor)
+        return adjust_saturation(input, saturation_factor).clamp(0.0, 1.0)

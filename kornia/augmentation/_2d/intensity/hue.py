@@ -49,14 +49,14 @@ class RandomHue(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
         - the input must have three channels: the shift is computed in HSV, and any other channel count raises
           a ``ValueError`` on the forward pass.
         - the drawn shift is in turns of the hue circle, and the class multiplies it by ``2 * pi`` before
           calling :func:`kornia.enhance.adjust_hue`, which takes radians. Passing the same number
           straight to that primitive shifts the hue by a different amount.
-        - the result is not clamped: a hue rotation keeps each pixel's largest and smallest channel, so a pixel
-          outside ``[0, 1]`` keeps a channel outside it. A pixel whose largest channel is exactly ``0`` comes back
-          as zeros.
+        - the HSV hue shift preserves the clamped input pixel's largest and smallest channel, up to rounding.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_hue`
@@ -101,5 +101,6 @@ class RandomHue(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        input = input.clamp(0.0, 1.0)
         hue_factor = params["hue_factor"].to(input)
-        return adjust_hue(input, hue_factor * 2 * math.pi)
+        return adjust_hue(input, hue_factor * 2 * math.pi).clamp(0.0, 1.0)

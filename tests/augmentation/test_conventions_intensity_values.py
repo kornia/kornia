@@ -31,11 +31,13 @@ from kornia.enhance import (
     adjust_contrast,
     adjust_hue,
     adjust_saturation,
+    equalize,
     equalize_clahe,
     normalize_min_max,
     posterize,
     solarize,
 )
+from kornia.geometry.transform import resize
 
 from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
 
@@ -79,9 +81,7 @@ _INTENSITY_FACTORIES = {
     "RandomPlasmaBrightness": lambda: K.RandomPlasmaBrightness(p=1.0),
     "RandomPlasmaContrast": lambda: K.RandomPlasmaContrast(p=1.0),
     "RandomPlasmaShadow": lambda: K.RandomPlasmaShadow(p=1.0),
-    # A range, not the scalar `bits=3` (the lower bound of [3, 8]): a draw of 8 skips the uint8 round
-    # trip and keeps the fixture's range, as test_wart_random_posterize_eight_bits_skips_the_round_trip_4430
-    # pins.
+    # Exercise the uint8 path here; bits=8 has its own input-clamp regression below.
     "RandomPosterize": lambda: K.RandomPosterize(bits=(3.0, 7.0), p=1.0),
     "RandomRGBShift": lambda: K.RandomRGBShift(p=1.0),
     "RandomRain": lambda: K.RandomRain(number_of_drops=(3, 3), drop_height=(1, 2), drop_width=(1, 2), p=1.0),
@@ -92,32 +92,34 @@ _INTENSITY_FACTORIES = {
     "RandomSolarize": lambda: K.RandomSolarize(0.1, 0.1, p=1.0),
 }
 
-# The four observed outcomes for these constructor arguments and fixtures (#4430).  They are not
-# class-wide policies: a blur can attenuate an out-of-range impulse into [0, 1], and a hue-only
-# ColorJiggle keeps an out-of-range maximum.
-_BOUNDED_ON_FIXTURES = (
+# Unit-range arithmetic clamps before operating (#4430). AutoContrast instead rescales arbitrary
+# ranges; the other classes listed below perform range-independent operations.
+_RANGE_DEPENDENT = (
     "ColorJiggle",
     "ColorJitter",
-    "RandomAutoContrast",
     "RandomBrightness",
     "RandomContrast",
+    "RandomEqualize",
     "RandomGamma",
     "RandomGaussianIllumination",
+    "RandomHue",
     "RandomLinearCornerIllumination",
     "RandomLinearIllumination",
+    "RandomPlanckianJitter",
     "RandomPlasmaBrightness",
     "RandomPlasmaContrast",
     "RandomPlasmaShadow",
     "RandomPosterize",
     "RandomRGBShift",
+    "RandomSaturation",
     "RandomSharpness",
+    "RandomSnow",
     "RandomSolarize",
 )
-# ``output.clamp(max=1.0)`` only, so a negative input stays negative.
-_UPPER_BOUNDED_ON_FIXTURES = ("RandomPlanckianJitter",)
-_OUT_OF_RANGE_ON_FIXTURES = (
+_RANGE_INDEPENDENT = (
     "Denormalize",
     "Normalize",
+    "RandomAutoContrast",
     "RandomBoxBlur",
     "RandomChannelDropout",
     "RandomChannelShuffle",
@@ -125,23 +127,15 @@ _OUT_OF_RANGE_ON_FIXTURES = (
     "RandomGaussianBlur",
     "RandomGaussianNoise",
     "RandomGrayscale",
-    "RandomHue",
     "RandomInvert",
     "RandomMedianBlur",
     "RandomMotionBlur",
     "RandomRain",
     "RandomSaltAndPepperNoise",
-    "RandomSaturation",
-    "RandomSnow",
 )
-# The only factory that rejects these fixtures.
-_REJECTS_OUT_OF_RANGE_FIXTURES = ("RandomEqualize",)
 
-# These factories return zeros for a constant -1 image on every draw (#4430): no admissible draw lifts it
-# above zero.  The plasma brightness and contrast maps are unbounded draws, so those two are pinned by replay
-# instead.  RandomPosterize is not here: its uint8 conversion of a negative float is platform-dependent
-# (test_wart_random_posterize_out_of_range_wraps_4430).
-_COLLAPSES_ON_CONSTANT_MINUS_ONE = {
+# Selected draws exercise clamping before the operation on a constant negative image (#4430).
+_NEGATIVE_INPUT_FACTORIES = {
     **{
         name: _INTENSITY_FACTORIES[name]
         for name in (
@@ -190,69 +184,34 @@ def _run(name: str, image: torch.Tensor, seed: int | None = None) -> torch.Tenso
 
 
 class TestIntensityValueRangeConventions(BaseTester):
-    # Issue #4430: the four outcomes above, per factory.  `clip_output=False` variants of RandomBrightness
-    # and RandomContrast, which pass the range through, are pinned separately below.
-    # Snippet used to generate expected:
-    #   torch.manual_seed(1234); base = torch.rand(2, 3, 6, 8)
-    #   for x in (base * 2.0, base - 1.0): torch.manual_seed(0); print(name, factory()(x).aminmax())
     @pytest.mark.parametrize("name", sorted(_INTENSITY_FACTORIES))
     def test_convention_value_range_on_out_of_range_fixtures(self, device, dtype, name):
-        groups = (
-            _BOUNDED_ON_FIXTURES,
-            _UPPER_BOUNDED_ON_FIXTURES,
-            _OUT_OF_RANGE_ON_FIXTURES,
-            _REJECTS_OUT_OF_RANGE_FIXTURES,
-        )
-        assert set().union(*groups) == set(_INTENSITY_FACTORIES)
-        if name in _REJECTS_OUT_OF_RANGE_FIXTURES and device.type == "cuda":
-            pytest.skip("CUDA: the value assert is a device-side assert that invalidates the context")
-        if name in ("RandomBoxBlur", "RandomGaussianBlur") and not supports_reflect_padding(device, dtype):
+        assert set(_RANGE_DEPENDENT).isdisjoint(_RANGE_INDEPENDENT)
+        assert set(_RANGE_DEPENDENT) | set(_RANGE_INDEPENDENT) == set(_INTENSITY_FACTORIES)
+        if name in ("RandomBoxBlur", "RandomGaussianBlur", "RandomMedianBlur") and not supports_reflect_padding(
+            device, dtype
+        ):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
-        fixtures = _out_of_range_fixtures(device, dtype)
-        if name in _REJECTS_OUT_OF_RANGE_FIXTURES:
-            # kornia's own value check, which names the range.
-            for image in fixtures.values():
-                with pytest.raises(RuntimeError, match=r"\[0, 1\]"):
-                    _run(name, image)
-            return
-        # A clamped output is exactly 0.0 or 1.0 and a pass-through one sits near 2.0 or -1.0, so this
-        # tolerance still separates the groups in bfloat16.
-        tol = 1e-3
-        outputs = {tag: _run(name, image) for tag, image in fixtures.items()}
-        ranges = {tag: out.aminmax() for tag, out in outputs.items()}
-        # The fixtures are already out of range, so the pass-through branch would accept the identity:
-        # require the class to change a fixture on some draw (a single draw can be neutral).
+        outside = False
         moved = False
-        for seed in range(8):
-            for image in fixtures.values():
-                if not torch.equal(_run(name, image, seed=seed), image):
-                    moved = True
-                    break
-            if moved:
-                break
-        assert moved, f"{name} returned the out-of-range fixtures unchanged on every seed tried"
-        if name in _BOUNDED_ON_FIXTURES:
-            for tag, (low, high) in ranges.items():
-                assert float(low) >= -tol, f"{name} on {tag} left the lower end unclamped"
-                assert float(high) <= 1 + tol, f"{name} on {tag} left the upper end unclamped"
-            # Reach: the bound is [0, 1], not a narrower interval.  The exceptions are draws that end
-            # inside it: ColorJiggle's hue-only draws, a brightness factor below 1, RandomPosterize's top
-            # level 252/255 and RandomSolarize's inversion.
-            if name != "ColorJiggle":
-                assert float(ranges["[-1, 0]"][0]) <= tol, f"{name} on [-1, 0] does not reach 0"
-            if name not in ("ColorJiggle", "ColorJitter", "RandomPosterize", "RandomSolarize"):
-                assert float(ranges["[0, 2]"][1]) >= 1 - tol, f"{name} on [0, 2] does not reach 1"
-        elif name in _UPPER_BOUNDED_ON_FIXTURES:
-            for tag, (_, high) in ranges.items():
-                assert float(high) <= 1 + tol, f"{name} on {tag} left the upper end unclamped"
-            # The lower end is checked on the fixture that has one: [0, 2] is non-negative anyway.
-            negative_min = float(ranges["[-1, 0]"][0])
-            assert negative_min < -tol, f"{name} also clamped the lower end (min {negative_min})"
-        else:
-            assert name in _OUT_OF_RANGE_ON_FIXTURES
-            assert any(float(high) > 1 + tol or float(low) < -tol for low, high in ranges.values()), (
-                f"{name} kept the output inside [0, 1] on both out-of-range fixtures"
-            )
+        for image in _out_of_range_fixtures(device, dtype).values():
+            torch.manual_seed(_FORWARD_SEED)
+            aug = _INTENSITY_FACTORIES[name]()
+            out = aug(image)
+            moved |= not torch.equal(out, image)
+            assert out.dtype == image.dtype
+            assert out.device == image.device
+            assert torch.equal(out, aug(image, params=aug._params))
+            if name in _RANGE_DEPENDENT:
+                assert torch.equal(out, aug(image.clamp(0.0, 1.0), params=aug._params))
+                assert bool(((out >= 0.0) & (out <= 1.0)).all())
+            elif name == "RandomAutoContrast":
+                self.assert_close(out, normalize_min_max(image))
+            else:
+                outside |= bool(((out < 0.0) | (out > 1.0)).any())
+        assert moved, name
+        if name in _RANGE_INDEPENDENT and name != "RandomAutoContrast":
+            assert outside, name
 
     # `clip_output` is live on both classes: the default clamps, `clip_output=False` returns the raw result.
     # Snippet used to generate expected:
@@ -288,128 +247,69 @@ class TestIntensityValueRangeConventions(BaseTester):
         out = aug(image)
         self.assert_close(out, torch.full_like(image, expected))
 
-    # Issue #4430: these factories silently return an all-zero image for an all-negative input.  The pin
-    # asserts the silence as well as the zeros, so a fix that rejects or warns flips it; a fix that instead
-    # rules the clamp to be the policy renames it to a convention pin.
-    # Snippet used to generate expected:
-    #   x = torch.full((2, 3, 6, 8), -1.0); torch.manual_seed(seed); print(factory()(x).abs().max())
-    @pytest.mark.parametrize("name", sorted(_COLLAPSES_ON_CONSTANT_MINUS_ONE))
+    @pytest.mark.parametrize("name", sorted(_NEGATIVE_INPUT_FACTORIES))
     @pytest.mark.parametrize("seed", [0, 1, 2])
-    def test_wart_intensity_negative_input_collapses_to_zero_4430(self, device, dtype, name, seed):
+    def test_convention_intensity_clamps_negative_input_before_arithmetic_4430(self, device, dtype, name, seed):
         image = torch.full((2, 3, 6, 8), -1.0, device=device, dtype=dtype)
         torch.manual_seed(seed)
+        aug = _NEGATIVE_INPUT_FACTORIES[name]()
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            out = _COLLAPSES_ON_CONSTANT_MINUS_ONE[name]()(image)
+            out = aug(image)
             _sync(image.device)
-        assert float(out.abs().max()) == 0.0
+        assert torch.equal(out, aug(torch.zeros_like(image), params=aug._params))
         assert not caught
 
-    # Issue #4430, the plasma classes: whether a constant -1 image collapses depends on the drawn map.
-    # RandomPlasmaContrast, ``(x - 0.5) * 4 * plasma + 0.5``, zeroes it wherever the map is at least 1/12;
-    # RandomPlasmaBrightness, ``x + (2 * plasma - 1) * intensity``, at intensity 1 zeroes it wherever the map
-    # is at most 1.  The draw is pinned by replaying ``params`` with a constant map.
     @pytest.mark.parametrize(
-        ("name", "level", "collapses"),
+        ("name", "level", "expected"),
         [
-            ("RandomPlasmaContrast", 0.5, True),
-            ("RandomPlasmaContrast", 0.0, False),
-            ("RandomPlasmaBrightness", 0.5, True),
-            ("RandomPlasmaBrightness", 1.5, False),
+            ("RandomPlasmaContrast", 0.5, 0.0),
+            ("RandomPlasmaContrast", 0.2, 0.1),
+            ("RandomPlasmaContrast", 0.0, 0.5),
+            ("RandomPlasmaBrightness", 0.5, 0.0),
+            ("RandomPlasmaBrightness", 0.75, 0.5),
+            ("RandomPlasmaBrightness", 1.5, 1.0),
         ],
     )
-    def test_wart_random_plasma_negative_collapse_depends_on_the_map_4430(self, device, dtype, name, level, collapses):
+    def test_convention_random_plasma_clamps_before_applying_map_4430(self, device, dtype, name, level, expected):
         image = torch.full((2, 3, 6, 8), -1.0, device=device, dtype=dtype)
         aug = getattr(K, name)(p=1.0)
-        torch.manual_seed(_FORWARD_SEED)
-        aug(image)
-        params = dict(aug._params)
+        params = aug.forward_parameters(image.shape)
         params["plasma"] = torch.full_like(params["plasma"], level)
         if "intensity" in params:
             params["intensity"] = torch.ones_like(params["intensity"])
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            out = aug(image, params=params)
-            _sync(image.device)
-        assert (float(out.abs().max()) == 0.0) is collapses
-        assert not caught
+        out = aug(image, params=params)
+        self.assert_close(out, torch.full_like(image, expected))
 
-    # Issue #4430: RandomPosterize posterizes the `uint8` conversion of the raw float, not of the clamped
-    # input.  What that conversion does outside [0, 255] is platform-dependent (it wraps or saturates), so
-    # the pin asserts the round-trip identity rather than platform literals.
-    # Snippet used to generate expected:
-    #   g = (torch.arange(256, dtype=torch.float32) / 255.0).reshape(1, 1, 8, 32)
-    #   torch.manual_seed(0); y = K.RandomPosterize(bits=(3.0, 3.0), p=1.0)(g * 2.0); print(len(y.unique()), y.max())
     @pytest.mark.parametrize("scale", ["[0, 2]", "[-1, 0]"])
-    def test_wart_random_posterize_out_of_range_wraps_4430(self, device, dtype, scale):
+    def test_convention_random_posterize_clamps_before_uint8_conversion_4430(self, device, dtype, scale):
         ramp = (torch.arange(256, dtype=torch.float32) / 255.0).reshape(1, 1, 8, 32).to(device=device, dtype=dtype)
         image = ramp * 2.0 if scale == "[0, 2]" else ramp - 1.0
-        torch.manual_seed(_FORWARD_SEED)
         out = K.RandomPosterize(bits=(3.0, 3.0), p=1.0)(image)
-        _sync(image.device)
-        # `codes` reproduces the one `uint8` conversion inside `posterize` that sees the raw value.
-        codes = (image * 255).to(torch.uint8)
-        expected = posterize(codes.to(dtype) / 255.0, 3)
-        clamped = posterize(image.clamp(0.0, 1.0), 3)
-        assert torch.equal(out, expected)
-        assert float(out.min()) >= 0.0
-        assert float(out.max()) <= 1.0
-        # A clamp-first fix would return `clamped`; where the running conversion saturates, the two agree.
-        if not torch.equal(codes, (image.clamp(0.0, 1.0) * 255).to(torch.uint8)):
-            assert not torch.equal(out, clamped)
+        assert torch.equal(out, posterize(image.clamp(0.0, 1.0), 3))
         if scale == "[0, 2]":
             assert len(out.unique()) == 8
             self.assert_close(out.max(), out.new_tensor(224 / 255))
 
-    # Issue #4430, the other posterize path: a sample that draws 8 bits is returned unchanged, with no
-    # `uint8` round trip to bound it, so its out-of-range values survive.
-    def test_wart_random_posterize_eight_bits_skips_the_round_trip_4430(self, device, dtype):
+    def test_convention_random_posterize_eight_bits_still_clamps_input_4430(self, device, dtype):
         image = torch.tensor([1.7, -0.4, 2.5, 0.3], device=device, dtype=dtype).reshape(1, 1, 1, 4)
-        torch.manual_seed(_FORWARD_SEED)
         out = K.RandomPosterize(bits=(8.0, 8.0), p=1.0)(image)
-        _sync(image.device)
-        assert torch.equal(out, image)
+        assert torch.equal(out, image.clamp(0.0, 1.0))
 
-    # Issue #4430: on a negative input `x ** gamma` is NaN for a non-integer gamma and the clamp keeps it;
-    # an integer gamma stays finite, and the default gamma=1 clamps every negative value to 0.
-    # Snippet used to generate expected:
-    #   torch.manual_seed(1234); neg = torch.rand(2, 3, 6, 8) - 1.0
-    #   torch.manual_seed(0); print(K.RandomGamma((gamma, gamma), (1.0, 1.0), p=1.0)(neg).isnan().all())
-    @pytest.mark.parametrize(("gamma", "expected"), [(0.5, "nan"), (1.0, "zero"), (2.0, "positive")])
-    def test_wart_random_gamma_negative_input_depends_on_gamma_4430(self, device, dtype, gamma, expected):
-        image = _out_of_range_fixtures(device, dtype)["[-1, 0]"]
-        assert float(image.max()) < 0.0, "the fixture must be strictly negative for the power to be NaN"
-        torch.manual_seed(_FORWARD_SEED)
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            out = K.RandomGamma((gamma, gamma), (1.0, 1.0), p=1.0)(image)
-            _sync(image.device)
-        assert not caught
-        if expected == "nan":
-            assert bool(out.isnan().all()), f"gamma={gamma} on a negative input should be NaN throughout"
-        else:
-            assert bool(out.isfinite().all()), f"an integer gamma={gamma} should stay finite"
-            assert (float(out.abs().max()) > 0.0) is (expected == "positive")
+    @pytest.mark.parametrize("gamma", [0.0, 0.5, 1.0, 1.5, 2.0])
+    def test_convention_random_gamma_clamps_before_power_4430(self, device, dtype, gamma):
+        image = _out_of_range_fixtures(device, dtype)["[-1, 0]"].requires_grad_()
+        out = K.RandomGamma((gamma, gamma), (1.0, 1.0), p=1.0)(image)
+        assert bool(out.isfinite().all())
+        self.assert_close(out, torch.full_like(image, 1.0 if gamma == 0.0 else 0.0))
+        out.sum().backward()
+        self.assert_close(image.grad, torch.zeros_like(image))
 
-    # RandomEqualize rejects an out-of-range input with kornia's error naming the [0, 1] range.  The guard
-    # is `input * 255` inside (-1, 256), so less than one 8-bit code outside the range is admitted.
-    # Snippet used to generate expected:
-    #   g = torch.linspace(0, 1, 64).reshape(1, 1, 8, 8)
-    #   for x in (g, g * 1.0001, g - 0.003, g * 2, g - 1): torch.manual_seed(0); K.RandomEqualize(p=1.0)(x)
-    def test_convention_random_equalize_rejects_out_of_range_with_named_range(self, device, dtype):
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
-        match = r"\[0, 1\]"
+    def test_convention_random_equalize_clamps_before_histogram_4430(self, device, dtype):
         ramp = torch.linspace(0, 1, 64).reshape(1, 1, 8, 8).to(device=device, dtype=dtype)
-        for image in (ramp * 2.0, ramp - 1.0):
-            torch.manual_seed(_FORWARD_SEED)
-            with pytest.raises(RuntimeError, match=match):
-                _sync(K.RandomEqualize(p=1.0)(image).device)
-        for image in (ramp, ramp * 1.0001, ramp - 0.003):
-            torch.manual_seed(_FORWARD_SEED)
+        for image in (ramp * 2.0, ramp - 1.0, ramp, ramp * 1.0001, ramp - 0.003):
             out = K.RandomEqualize(p=1.0)(image)
-            assert out.shape == image.shape
-            assert torch.isfinite(out).all()
+            assert torch.equal(out, equalize(image.clamp(0.0, 1.0)))
 
     # Issue #4576: a skipped row must not trigger a value check or contribute a NaN gradient.
     def test_convention_p_gate_skipped_sample_has_no_effect_4576(self, device, dtype):
@@ -502,15 +402,11 @@ class TestIntensityColourConventions(BaseTester):
         out = K.RandomGamma((-1.0, -1.0), (0.1, 0.1), p=1.0)(image)
         self.assert_close(out, image.new_tensor([0.5, 0.2, 0.125]).reshape_as(image))
 
-    def test_convention_random_saturation_clamps_hsv_without_a_final_rgb_clamp(self, device, dtype):
-        # Clamping the HSV saturation removes a negative RGB channel even at factor 1 and turns an
-        # all-negative pixel gray at its largest channel; pixels above 1 with no negative channel keep
-        # their values, which a final RGB clamp would remove.
+    def test_convention_random_saturation_clamps_input_and_rgb_4430(self, device, dtype):
         pixels = [[-0.1, 0.5, 0.5], [1.5, 0.0, 0.0], [-0.1, -0.5, -0.9], [2.0, 1.0, 0.5]]
         image = torch.tensor(pixels, device=device, dtype=dtype).reshape(4, 3, 1, 1)
         out = K.RandomSaturation((1.0, 1.0), p=1.0)(image)
-        expected = [[0.0, 0.5, 0.5], [1.5, 0.0, 0.0], [-0.1, -0.1, -0.1], [2.0, 1.0, 0.5]]
-        self.assert_close(out, image.new_tensor(expected).reshape_as(image))
+        self.assert_close(out, image.clamp(0.0, 1.0))
 
     # RandomBrightness passes `factor - 1` to adjust_brightness, whose identity is 0.0, while RandomContrast
     # and RandomSaturation pass their factor through unchanged.
@@ -588,17 +484,15 @@ class TestIntensityColourConventions(BaseTester):
             assert torch.equal(jiggle_params[key], jitter_params[key]), key
 
     @pytest.mark.parametrize("hue", [0.0, (0.1, 0.1)])
-    def test_convention_color_jiggle_can_leave_output_above_unit_range(self, device, dtype, hue):
-        # Disabled brightness/contrast steps do not clamp, and an HSV hue rotation preserves value.
+    def test_convention_color_jiggle_clamps_even_with_neutral_steps_4430(self, device, dtype, hue):
         image = torch.full((2, 3, 6, 8), 2.0, device=device, dtype=dtype)
         out = K.ColorJiggle(0.0, 0.0, 0.0, hue, p=1.0)(image)
-        self.assert_close(out, image, atol=0, rtol=0)
-        # A chromatic pixel: the rotation keeps its out-of-range maximum.
+        self.assert_close(out, torch.ones_like(image), atol=0, rtol=0)
         chroma = torch.tensor([2.0, 1.5, 0.5], device=device, dtype=dtype).reshape(1, 3, 1, 1)
-        torch.manual_seed(_FORWARD_SEED)
-        rotated = K.ColorJiggle(0.0, 0.0, 0.0, hue, p=1.0)(chroma)
-        self.assert_close(rotated.amax(1), chroma.amax(1))
-        assert torch.equal(rotated, chroma) is (hue == 0.0)
+        aug = K.ColorJiggle(0.0, 0.0, 0.0, hue, p=1.0)
+        rotated = aug(chroma)
+        self.assert_close(rotated, aug(chroma.clamp(0.0, 1.0), params=aug._params))
+        self.assert_close(rotated.amax(1), torch.ones_like(rotated.amax(1)))
 
     # Both classes are the identity at (0, 0, 0, 0) on an in-range image.
     @pytest.mark.parametrize("cls", [K.ColorJiggle, K.ColorJitter])
@@ -608,29 +502,23 @@ class TestIntensityColourConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         self.assert_close(cls(0.0, 0.0, 0.0, 0.0, p=1.0)(image), image)
 
-    # Issue #4785, ColorJitter: the brightness guard tests the factor against the multiplier's neutral 1, so the
-    # factor 1 drawn by the default ``brightness=0.0`` skips the step and its clamp.  Whether the brightness index
-    # comes before or after a contrast or saturation step, the output is that step's alone, and an all-negative
-    # input is no longer clamped to zero before the step can lift part of it.  A fixed order without index 0
-    # skips the step as well.
-    # Snippet used to generate expected:
-    #   torch.manual_seed(1234); neg = torch.rand(1, 3, 8, 8) - 1.0
-    #   print(K.ColorJitter(p=1.0, order=order, contrast=(1.9, 1.9))(neg).aminmax())
+    # Issue #4785: the neutral brightness step is skipped even if it occurs in a fixed order.
+    # The enclosing input clamp now runs independently of which colour steps are enabled (#4430).
     @pytest.mark.parametrize(("step", "kwargs"), [(1, {"contrast": (1.9, 1.9)}), (2, {"saturation": (1.9, 1.9)})])
     def test_convention_color_jitter_default_brightness_step_is_skipped_4785(self, device, dtype, step, kwargs):
         torch.manual_seed(_FIXTURE_SEED)
         negative = (torch.rand(1, 3, 8, 8) - 1.0).to(device=device, dtype=dtype)
         step_only = K.ColorJitter(p=1.0, order=(step,), **kwargs)(negative)
         assert float(step_only.min()) >= 0.0
-        assert float(step_only.max()) > 0.25
+        assert float(step_only.max()) == 0.0
         brightness_first = K.ColorJitter(p=1.0, order=(0, step), **kwargs)(negative)
         self.assert_close(brightness_first, step_only, atol=0, rtol=0)
         step_first = K.ColorJitter(p=1.0, order=(step, 0), **kwargs)(negative)
         self.assert_close(step_first, step_only, atol=0, rtol=0)
-        # With every factor neutral nothing clamps, whether or not a fixed order includes index 0.
+        # The enclosing input clamp applies even when every colour step is neutral.
         above = torch.full((1, 3, 2, 2), 2.0, device=device, dtype=dtype)
-        self.assert_close(K.ColorJitter(0.0, 0.0, 0.0, 0.0, p=1.0, order=(1, 2, 3))(above), above)
-        self.assert_close(K.ColorJitter(0.0, 0.0, 0.0, 0.0, p=1.0)(above), above)
+        self.assert_close(K.ColorJitter(0.0, 0.0, 0.0, 0.0, p=1.0, order=(1, 2, 3))(above), above.clamp(0.0, 1.0))
+        self.assert_close(K.ColorJitter(0.0, 0.0, 0.0, 0.0, p=1.0)(above), above.clamp(0.0, 1.0))
 
     # A fixed constructor `order` ignores a forward `order=` tensor; without one, a forward `order=` replaces
     # ColorJiggle's drawn order, so leaving the hue step out lets a one-channel image through.  ColorJitter's
@@ -654,7 +542,7 @@ class TestIntensityColourConventions(BaseTester):
 
         saturation = K.ColorJitter(saturation=(0.5, 0.5), order=(2,), p=1.0)
         two = torch.full((2, 1, 3, 3), 2.0, device=device, dtype=dtype)
-        self.assert_close(saturation(two), two)
+        self.assert_close(saturation(two), two.clamp(0.0, 1.0))
         self.assert_close(saturation(two.expand(2, 3, 3, 3)), torch.ones_like(two.expand(2, 3, 3, 3)))
         four_channel = torch.rand(2, 4, 3, 3).to(device=device, dtype=dtype)
         with pytest.raises(BaseError, match="Not a color or gray tensor"):
@@ -687,20 +575,11 @@ class TestIntensityColourConventions(BaseTester):
         self.assert_close(out, adjust_hue(image, 0.25 * 2 * math.pi))
         assert float((out - adjust_hue(image, 0.25)).abs().max()) > 0.5
 
-    # RandomHue has no clamp, and a hue rotation keeps each pixel's largest and smallest channel, so a pixel
-    # outside [0, 1] keeps a channel outside it.  A pixel whose largest channel is exactly 0 comes back as zeros.
-    # Snippet used to generate expected:
-    #   torch.manual_seed(0); print(K.RandomHue((0.25, 0.25), p=1.0)(x.reshape(4, 3, 1, 1)).reshape(4, 3))
-    def test_convention_random_hue_keeps_out_of_range_extremes(self, device, dtype):
+    def test_convention_random_hue_keeps_clamped_extremes_4430(self, device, dtype):
         pixels = torch.tensor([[1.5, 0.2, 0.3], [0.5, -0.1, 0.2], [-0.2, -0.5, -0.9]], device=device, dtype=dtype)
-        torch.manual_seed(_FORWARD_SEED)
         out = K.RandomHue((0.25, 0.25), p=1.0)(pixels.reshape(3, 3, 1, 1)).reshape(3, 3)
-        self.assert_close(out.amax(1), pixels.amax(1))
-        self.assert_close(out.amin(1), pixels.amin(1))
-        zero_max = torch.tensor([0.0, -0.5, -0.5], device=device, dtype=dtype).reshape(1, 3, 1, 1)
-        torch.manual_seed(_FORWARD_SEED)
-        collapsed = K.RandomHue((0.25, 0.25), p=1.0)(zero_max)
-        self.assert_close(collapsed, torch.zeros_like(collapsed))
+        self.assert_close(out.amax(1), pixels.clamp(0.0, 1.0).amax(1))
+        self.assert_close(out.amin(1), pixels.clamp(0.0, 1.0).amin(1))
 
     # RandomGrayscale keeps the channel count, writes the same value into every channel and uses the BT.601
     # luma weights by default (pure red -> 0.299); custom weights replace them.
@@ -826,8 +705,8 @@ class TestIntensityColourConventions(BaseTester):
         ("value", "threshold", "addition", "expected"),
         [
             (-0.001, 0.5, -0.1, 0.0),
-            (-0.001, 0.5, 0.1, 0.099),
-            (1.1, 0.5, -0.4, 0.3),
+            (-0.001, 0.5, 0.1, 0.1),
+            (1.1, 0.5, -0.4, 0.4),
             (1.1, 0.5, 0.0, 0.0),
             (-0.001, 0.0, 0.0, 1.0),
         ],
@@ -840,23 +719,19 @@ class TestIntensityColourConventions(BaseTester):
         out = K.RandomSolarize(thresholds=(threshold, threshold), additions=(addition, addition), p=1.0)(image)
         self.assert_close(out, torch.full_like(image, expected))
 
-    # Issue #4430, the upper end: `clamp(x + a, 0, 1)` sends every x >= 1.5 to exactly 1.0 for any admissible
-    # addition, which the inversion returns as 0, so such an input is silently all-zero on every draw.
     @pytest.mark.parametrize("seed", [0, 1, 2, 3, 4])
-    def test_wart_random_solarize_at_least_one_point_five_collapses_on_every_draw_4430(self, device, dtype, seed):
+    def test_convention_random_solarize_clamps_before_addition_4430(self, device, dtype, seed):
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.empty(2, 3, 6, 8).uniform_(1.5, 3.0).to(device=device, dtype=dtype)
         torch.manual_seed(seed)
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            out = K.RandomSolarize(p=1.0)(image)
-        assert bool((out == 0).all())
-        assert not caught
-        # A fixture that straddles the bound does not collapse.
-        torch.manual_seed(_FIXTURE_SEED)
-        straddling = (torch.rand(2, 3, 6, 8) * 2.0).to(device=device, dtype=dtype)
-        torch.manual_seed(seed)
-        assert K.RandomSolarize(p=1.0)(straddling).unique().numel() > 1
+        aug = K.RandomSolarize(p=1.0)
+        out = aug(image)
+        expected = solarize(
+            torch.ones_like(image), aug._params["thresholds"].to(image), aug._params["additions"].to(image)
+        )
+        assert torch.equal(out, expected)
+        # A negative addition now changes a formerly all-zero result.
+        self.assert_close(K.RandomSolarize((0.5, 0.5), (-0.25, -0.25), p=1.0)(image), torch.full_like(image, 0.25))
 
     # A scalar `thresholds` is a half-width around 0.5 and a scalar `additions` one around 0.
     @pytest.mark.device_agnostic
@@ -968,17 +843,10 @@ class TestIntensityColourConventions(BaseTester):
         out = K.RandomRGBShift(r_shift_limit=0.0, g_shift_limit=0.0, b_shift_limit=0.0, p=1.0)(image.contiguous())
         self.assert_close(out, image.clamp(0.0, 1.0))
 
-    # Issue #4430, RandomRGBShift: the clamp on the sum makes an image at or below `-limit` silently all-zero
-    # on every draw.
-    def test_wart_random_rgb_shift_at_or_below_minus_limit_collapses_on_every_draw_4430(self, device, dtype):
+    def test_convention_random_rgb_shift_clamps_before_shifting_4430(self, device, dtype):
         image = torch.full((2, 3, 6, 8), -0.5, device=device, dtype=dtype)
-        for seed in range(20):
-            torch.manual_seed(seed)
-            with warnings.catch_warnings(record=True) as caught:
-                warnings.simplefilter("always")
-                out = K.RandomRGBShift(p=1.0)(image)
-            assert float(out.abs().max()) == 0.0, seed
-            assert not caught
+        aug = K.RandomRGBShift((0.25, 0.25), (0.25, 0.25), (0.25, 0.25), p=1.0)
+        self.assert_close(aug(image), torch.full_like(image, 0.25))
 
     # A (low, high) limit is the sampling range itself, as in albumentations' RGBShift (#4782); a number stays
     # a half-width, and a malformed pair is rejected by name.
@@ -1009,22 +877,19 @@ class TestIntensityColourConventions(BaseTester):
         assert tuple(aug.pl.shape) == (rows, 2)
         assert [name for name, _ in aug.named_buffers()] == ["pl"]
 
-    # The selected row scales red and blue only, then `clamp(max=1.0)` applies to all three channels:
-    # green above 1 is cut back although it is not scaled, and negatives stay negative.
-    # Snippet used to generate expected:
-    #   x = torch.tensor([[1.5, -0.5], [1.7, -0.5], [1.5, -0.5]]).reshape(1, 3, 1, 2)
-    #   aug = K.RandomPlanckianJitter(mode="blackbody", select_from=[0], p=1.0); print(aug.pl[0], aug(x))
-    def test_convention_random_planckian_jitter_scales_red_and_blue_then_clamps_above(self, device, dtype):
+    # Clamp before scaling: even a darkening illuminant must not bring an overshoot back into range.
+    def test_convention_random_planckian_jitter_clamps_before_channel_scaling_4430(self, device, dtype):
         image = torch.tensor([[1.5, -0.5], [1.7, -0.5], [1.5, -0.5]], device=device, dtype=dtype).reshape(1, 3, 1, 2)
         aug = K.RandomPlanckianJitter(mode="blackbody", select_from=[0], p=1.0)
         torch.manual_seed(_FORWARD_SEED)
         out = aug(image)
         red_gain, blue_gain = (float(value) for value in aug.pl[0])
-        scaled = torch.stack([image[:, 0] * red_gain, image[:, 1], image[:, 2] * blue_gain], dim=1)
-        self.assert_close(out, scaled.clamp(max=1.0))
+        clamped = image.clamp(0.0, 1.0)
+        scaled = torch.stack([clamped[:, 0] * red_gain, clamped[:, 1], clamped[:, 2] * blue_gain], dim=1)
+        self.assert_close(out, scaled.clamp(0.0, 1.0))
         assert float(out[0, 1, 0, 0]) == 1.0
         assert float(out[0, 2, 0, 0]) < 0.01
-        assert bool((out[..., 1] < 0).all())
+        assert bool((out[..., 1] == 0).all())
 
     # Issue #4574: the coefficient table follows the input dtype, so a half-precision input is not promoted.
     def test_convention_random_planckian_jitter_preserves_dtype_4574(self, device, dtype):
@@ -1112,24 +977,15 @@ class TestIntensityColourConventions(BaseTester):
         assert float(out.max()) == 1.0
 
     @pytest.mark.parametrize("negative", [True, False])
-    def test_convention_random_jpeg_out_of_range_input_need_not_be_solid(self, device, dtype, negative):
+    def test_convention_random_jpeg_clamps_before_codec_4430(self, device, dtype, negative):
         if not supports_replicate_padding(device, dtype):
             pytest.skip("replication_pad2d is unavailable for this device/dtype")
-        # A nonconstant grayscale field distinguishes clamping the decoded image from clamping
-        # the input. Keep its values away from the endpoints even after conversion to bfloat16.
-        torch.manual_seed(_FIXTURE_SEED)
         field = (torch.rand(1, 1, 32, 32) * 2.0 + 0.03125).expand(1, 3, -1, -1).contiguous()
         image = (-field if negative else 1.0 + field).to(device=device, dtype=dtype)
-        assert bool((image < 0.0).all()) if negative else bool((image > 1.0).all())
         aug = K.RandomJPEG(jpeg_quality=(50.0, 50.0), p=1.0)
         out = aug(image)
+        assert torch.equal(out, aug(image.clamp(0.0, 1.0), params=aug._params))
         assert bool(torch.isfinite(out).all())
-        assert float(out.min()) >= 0.0
-        assert float(out.max()) <= 1.0
-        assert bool(((out > 0.0) & (out < 1.0)).any())
-        # Quantization can also give a constant black input small positive values, so the range
-        # assertion alone would not catch a misplaced input clamp.
-        assert not torch.equal(out, aug(image.clamp(0.0, 1.0)))
 
     # The documented parameter bounds are enforced, and `stage` records where: at construction, or on the
     # forward pass for the checks that need the image.  `match` pins kornia's message, so a case cannot be
@@ -1328,44 +1184,24 @@ class TestIntensityColourConventions(BaseTester):
         jpeg = K.RandomJPEG(50.0, p=1.0)._param_generator
         assert (float(jpeg.jpeg_quality_sampler.low), float(jpeg.jpeg_quality_sampler.high)) == (1.0, 100.0)
 
-    # Issue #4564: RandomClahe rejects an out-of-[0, 1] input with kornia's error naming `equalize_clahe` and
-    # the range, on MPS as on the CPU.
-    def test_convention_random_clahe_out_of_range_error_names_the_range_4564(self, device, dtype):
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: the index error is a device-side assert that poisons the context")
+    def test_convention_random_clahe_clamps_before_histogram_4430(self, device, dtype):
         torch.manual_seed(_FIXTURE_SEED)
         image = (torch.rand(1, 3, 16, 16) * 2).to(device=device, dtype=dtype)
-        torch.manual_seed(_FORWARD_SEED)
-        with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]") as info:
-            _sync(K.RandomClahe(p=1.0)(image).device)
-        assert "image / 255.0" in str(info.value)
+        aug = K.RandomClahe(p=1.0)
+        out = aug(image)
+        assert torch.equal(out, aug(image.clamp(0.0, 1.0), params=aug._params))
+        if device.type != "cuda":
+            with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
+                equalize_clahe(image)
 
-    # The rejection is one 8-bit code wide either side of [0, 1]: the guard is the 256-entry lookup indexed
-    # with `(input * 255).long()`, so the admitted band is (-1/255, 1 + 1/255).
-    @pytest.mark.parametrize(
-        ("value", "admitted"),
-        [
-            (1.0, True),
-            (0.0, True),
-            (1.0 + 0.5 / 255, True),
-            (1.0 + 1.5 / 255, False),
-            (-0.5 / 255, True),
-            (-1.5 / 255, False),
-        ],
-    )
-    def test_convention_random_clahe_admitted_band_is_one_code_wide(self, device, dtype, value, admitted):
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
+    @pytest.mark.parametrize("value", [1.0, 0.0, 1.0 + 0.5 / 255, 1.0 + 1.5 / 255, -0.5 / 255, -1.5 / 255])
+    def test_convention_random_clahe_clamps_small_overshoots_4430(self, device, dtype, value):
         image = torch.full((1, 1, 16, 16), 0.5, device=device, dtype=dtype)
         image[0, 0, 0, 0] = value
-        torch.manual_seed(_FORWARD_SEED)
-        if admitted:
-            out = K.RandomClahe(p=1.0)(image)
-            _sync(image.device)
-            assert out.isfinite().all()
-        else:
-            with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
-                _sync(K.RandomClahe(p=1.0)(image).device)
+        aug = K.RandomClahe(p=1.0)
+        out = aug(image)
+        assert bool(torch.isfinite(out).all())
+        assert torch.equal(out, aug(image.clamp(0.0, 1.0), params=aug._params))
 
     # Issue #2531: each axis of `grid_size` is tiled on its own, with tiles of ceil(size / grid) pixels, odd or
     # even (#5812), so a grid works whether or not it divides the image, and only an axis the grid does not
@@ -1607,3 +1443,85 @@ class TestIntensityColourConventions(BaseTester):
         assert output.untyped_storage().data_ptr() != image.untyped_storage().data_ptr()
         output.fill_(-1.0)
         self.assert_close(image, original)
+
+
+class TestIntensityInputClamping(BaseTester):
+    @pytest.mark.parametrize("name", ["ColorJiggle", "RandomGamma", "RandomPosterize"])
+    def test_bicubic_overshoot_is_clamped_before_intensity(self, device, dtype, name):
+        torch.manual_seed(0)
+        binary = (torch.rand(1, 3, 32, 32) > 0.5).float().to(device)
+        # Resize in float32: older CPU torch releases have no half bicubic kernel.
+        image = resize(binary, (47, 47), interpolation="bicubic").to(dtype)
+        assert bool(((image < 0.0) | (image > 1.0)).any())
+        aug = K.RandomGamma((0.5, 0.5), (0.5, 0.5), p=1.0) if name == "RandomGamma" else getattr(K, name)(p=1.0)
+        out = aug(image)
+        assert bool(torch.isfinite(out).all())
+        assert torch.equal(out, aug(image.clamp(0.0, 1.0), params=aug._params))
+
+    @pytest.mark.parametrize("name", _RANGE_DEPENDENT + ("RandomClahe", "RandomJPEG"))
+    @pytest.mark.parametrize("gate", [(0.0, 0.0), (1.0, 0.0)])
+    def test_clamp_respects_probability_gate_and_replay(self, device, dtype, name, gate):
+        if name == "RandomJPEG" and not supports_replicate_padding(device, dtype):
+            pytest.skip("replication_pad2d is unavailable for this device/dtype")
+        image = torch.linspace(-0.5, 1.5, 2 * 3 * 16 * 16, device=device, dtype=dtype).reshape(2, 3, 16, 16)
+        aug = _INTENSITY_FACTORIES[name]() if name in _INTENSITY_FACTORIES else getattr(K, name)(p=1.0)
+        params = aug.forward_parameters(image.shape)
+        expected_applied = aug(image.clamp(0.0, 1.0), params=params)
+        aug.p = 0.5
+        params["batch_prob"] = torch.tensor(gate, device=params["batch_prob"].device)
+        out = aug(image, params=params)
+        expected = torch.where(image.new_tensor(gate).bool().view(2, 1, 1, 1), expected_applied, image)
+        assert torch.equal(out, expected)
+        assert torch.equal(out, aug(image, params=aug._params))
+        assert out.dtype == dtype
+        assert out.device == device
+
+    @pytest.mark.parametrize("gamma", [0.5, 1.5])
+    def test_gamma_gradient_outside_range_is_zero(self, device, dtype, gamma):
+        image = torch.tensor([-0.5, 0.25, 0.5, 1.5], device=device, dtype=dtype).reshape(1, 1, 1, 4)
+        image.requires_grad_()
+        out = K.RandomGamma((gamma, gamma), p=1.0)(image)
+        self.assert_close(out, image.detach().clamp(0.0, 1.0).pow(gamma))
+        out.sum().backward()
+        expected_grad = gamma * image.detach()[..., 1:3].pow(gamma - 1)
+        self.assert_close(image.grad[..., 1:3], expected_grad)
+        assert torch.equal(image.grad[..., [0, 3]], torch.zeros_like(image.grad[..., [0, 3]]))
+
+    @pytest.mark.parametrize("name", ["ColorJiggle", "ColorJitter", "RandomGamma", "RandomPosterize"])
+    def test_keepdim_and_input_storage(self, device, dtype, name):
+        image = torch.linspace(-0.5, 1.5, 3 * 8 * 8, device=device, dtype=dtype).reshape(3, 8, 8)
+        original = image.clone()
+        aug = getattr(K, name)(p=1.0, keepdim=True)
+        out = aug(image)
+        assert out.shape == image.shape
+        assert torch.equal(image, original)
+        assert torch.equal(out, aug(image.clamp(0.0, 1.0), params=aug._params))
+
+    @pytest.mark.parametrize("name", ["RandomGamma", "RandomPosterize", "RandomPlanckianJitter", "ColorJiggle"])
+    def test_dynamo_input_clamp(self, device, dtype, name, torch_optimizer):
+        image = torch.linspace(-0.5, 1.5, 3 * 8 * 8, device=device, dtype=dtype).reshape(1, 3, 8, 8)
+        if name == "ColorJiggle":
+            aug = K.ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))
+        else:
+            aug = getattr(K, name)(p=1.0)
+        params = aug.forward_parameters(image.shape)
+        expected = aug(image, params=params)
+        optimized = torch_optimizer(aug, fullgraph=True)
+        self.assert_close(optimized(image, params=params), expected)
+
+    def test_dissolving_clamps_at_model_boundary(self, device, dtype, monkeypatch):
+        class StubDissolving(torch.nn.Module):
+            def __init__(self, *args, **kwargs):
+                super().__init__()
+                self.seen = None
+
+            def forward(self, image, step):
+                self.seen = image
+                return image * 2.0 - 0.5
+
+        monkeypatch.setattr("kornia.augmentation._2d.intensity.dissolving.StableDiffusionDissolving", StubDissolving)
+        image = torch.tensor([-0.5, 0.25, 0.75, 1.5], device=device, dtype=dtype).reshape(1, 1, 2, 2)
+        aug = K.RandomDissolving(p=1.0)
+        out = aug(image)
+        assert torch.equal(aug._dslv.seen, image.clamp(0.0, 1.0))
+        assert torch.equal(out, (image.clamp(0.0, 1.0) * 2 - 0.5).clamp(0.0, 1.0))

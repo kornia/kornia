@@ -34,6 +34,10 @@ class RandomJPEG(IntensityAugmentationBase2D):
     soft-clipping call uses bounds ``[0, 255]`` and leaves those RGB values unchanged. The input must have
     three channels: the codec works in YCbCr, and any other channel count raises a ``ShapeError``.
 
+    Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
+
     Args:
         jpeg_quality: The range of compression rates to be applied.
         p: probability of applying the transformation.
@@ -81,5 +85,6 @@ class RandomJPEG(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        input = input.clamp(0.0, 1.0)
         jpeg_output: torch.Tensor = jpeg_codec_differentiable(input, params["jpeg_quality"])
         return jpeg_output
