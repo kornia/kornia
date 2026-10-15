@@ -168,8 +168,9 @@ def diamond_square(
 
     Convention:
         - The map is grown on a :math:`2^n + 1` grid and cropped to ``output_size`` at its top-left corner, so it can
-          be a non-contiguous view. The seed is a :math:`3 \times K` grid whose corners are ``random_scale`` times a
-          ``random_fn`` draw and whose other nodes are the means of their neighbours. Each level sets a new node to
+          be a non-contiguous view. The seed is a :math:`3 \times K` grid whose cell corners, the even nodes of its
+          first and last rows, are ``random_scale`` times a ``random_fn`` draw, and whose other nodes are the means of
+          their neighbours. Each level sets a new node to
           :math:`(1 - s_k)\,\overline{n} + s_k\,u`, the mean :math:`\overline{n}` of its neighbours mixed with a
           ``random_fn`` draw :math:`u` by :math:`s_k = \mathrm{random\_scale} \cdot \mathrm{roughness}^k` at level
           :math:`k \geq 1`: both are mixing weights, not amplitudes. A border node of the square step averages its

@@ -253,13 +253,14 @@ Choosing a labeling method
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Both functions label 8-connected components: two foreground pixels (pixels equal
-to 1) that touch at an edge or a corner belong to one component. Elsewhere that is
-``scipy.ndimage.label(mask, structure=np.ones((3, 3)))`` (SciPy's default
-structure is 4-connected), ``cv2.connectedComponents(mask, connectivity=8)``
-(OpenCV's default) and ``skimage.measure.label(mask, connectivity=2)``
-(scikit-image's default for 2-D images). Label values differ between these
-libraries and between the two functions: compare foreground partitions, not
-label values.
+to 1) that touch at an edge or a corner belong to one component. SciPy, OpenCV
+and scikit-image take any non-zero pixel as foreground, so the same partition is
+``scipy.ndimage.label(mask == 1, structure=np.ones((3, 3)))`` (SciPy's default
+structure is 4-connected), ``cv2.connectedComponents((mask == 1).astype(np.uint8),
+connectivity=8)`` (OpenCV's default connectivity) and
+``skimage.measure.label(mask == 1, connectivity=2)`` (scikit-image's default for
+2-D images). Label values differ between these libraries and between the two
+functions: compare foreground partitions, not label values.
 
 ``connected_components_union_find`` computes the exact 8-connected partition
 without an iteration budget. It accepts boolean masks and returns ``int64``

@@ -96,9 +96,9 @@ def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.Tensor:
         - ``xp`` and ``fp`` are 1-D; ``x`` can have any shape, which the output keeps. ``xp`` must be increasing, which
           is not checked. The output dtype is the promoted dtype of ``x``, ``xp`` and ``fp``, or the default float
           dtype when all three are integer.
-        - Known defects: integer ``x`` and ``xp`` with a ``float16`` ``fp`` give NaN once their differences pass 65504,
-          and in ``float16`` a segment whose ``fp`` difference overflows can be about one ulp off
-          (`#5967 <https://github.com/kornia/kornia/issues/5967>`_).
+        - Known defects: with integer ``x`` and ``xp`` and a ``float16`` ``fp``, any coordinate difference above 65504
+          overflows, and the result can be NaN, inf or silently wrong, such as 0; in ``float16`` a segment whose ``fp``
+          difference overflows can be about one ulp off (`#5967 <https://github.com/kornia/kornia/issues/5967>`_).
 
     Args:
         x: the :math:`x`-coordinates at which to evaluate the interpolated

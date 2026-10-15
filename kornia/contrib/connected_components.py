@@ -111,9 +111,8 @@ def connected_components_union_find(image: torch.Tensor) -> torch.Tensor:
     https://doi.org/10.1109/TPDS.2019.2934683. Root hooking with ``scatter_reduce_``
     and pointer jumping replace the paper's custom CUDA union kernels.
 
-    Unlike :func:`connected_components`, this function runs until convergence
-    and returns integer labels, including for half-precision inputs. There is
-    no iteration budget to choose based on component diameter.
+    Unlike :func:`connected_components`, this function runs until convergence.
+    There is no iteration budget to choose based on component diameter.
 
     Convention:
         :ref:`labeling-method` maps its 8-connectivity onto SciPy, OpenCV and scikit-image, and compares it with

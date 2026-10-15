@@ -36,8 +36,9 @@ class HomographyTracker(nn.Module):
         - The target and every frame are one grayscale image, :math:`(1, 1, H, W)`; a frame can have another size than
           the target. Call :meth:`set_target` before the first frame. The target is not a buffer, so
           :meth:`~torch.nn.Module.to` leaves it where it is: call :meth:`set_target` again after moving the tracker.
-        - :meth:`set_target` extracts the target's features once. Changes made in place to the target or to a
-          matcher's weights afterwards are not noticed; call :meth:`set_target` again.
+        - For a :class:`~kornia.feature.LoFTR`, a :class:`~kornia.feature.LocalFeatureMatcher` or a matcher with an
+          ``extract_features`` module, :meth:`set_target` extracts the target's features once. Changes made in place to
+          the target or to that matcher's weights afterwards are not noticed; call :meth:`set_target` again.
         - A failed match returns ``(H, False)`` with ``H`` uninitialised (:meth:`no_match`). A failure while tracking
           also drops the previous homography, so the next frame is matched from scratch by ``initial_matcher``.
         - Known defect: with ``float16`` or ``bfloat16`` images, tracking raises on the frame after the first match

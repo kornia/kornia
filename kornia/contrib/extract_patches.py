@@ -163,9 +163,9 @@ class ExtractTensorPatches(nn.Module):
         - ``padding`` adds zeros. A 4-tuple is ``(top, bottom, left, right)``, not the ``(left, right, top, bottom)``
           of :func:`torch.nn.functional.pad`; a 2-tuple ``(ph, pw)`` adds ``ph`` rows above and below and ``pw``
           columns left and right.
-        - A window that does not fit warns and drops the last rows or columns. ``allow_auto_padding=True`` pads
-          instead, as :func:`compute_padding` computes: split evenly with the odd pixel at the bottom or right, and an
-          image smaller than the window padded to one window.
+        - A window that does not fit warns and drops the last rows or columns; an image smaller than the window warns
+          and then raises. ``allow_auto_padding=True`` pads instead, as :func:`compute_padding` computes: split evenly
+          with the odd pixel at the bottom or right, and an image smaller than the window padded to one window.
         - A non-zero ``padding`` switches off both the fit warning and ``allow_auto_padding``, so a padding too small
           for the window drops the last rows or columns silently. An all-zero ``padding`` counts as none.
         - Known defect: a ``stride`` of 0 is not rejected up front and fails with an unrelated error such as
@@ -280,11 +280,11 @@ class CombineTensorPatches(nn.Module):
 
     Convention:
         - Overlapping patches are averaged: each pixel is divided by the number of patches that cover it, where
-          :func:`torch.nn.functional.fold` sums them. A pixel that no patch covers (patches that do not fit, which
-          warns) is 0.
-        - The output keeps the dtype of the patches. Integer patches are averaged exactly in ``int64`` (on MPS from
-          torch 2.9), with the mean truncated toward zero; ``float16`` and ``bfloat16`` patches are summed in
-          ``float32``.
+          :func:`torch.nn.functional.fold` sums them. A pixel that no patch covers (patches that do not fit) is 0.
+        - The output keeps the dtype of the patches. Integer patches are averaged exactly in ``int64``, with the mean
+          truncated toward zero (on MPS before torch 2.9 they go through ``float32``, exact up to :math:`2^{24}`);
+          ``bool`` patches are True where any covering patch is True; ``float16`` and ``bfloat16`` patches are summed
+          in ``float32``.
         - A ``stride`` larger than ``window_size`` raises, because the patches leave pixels uncovered.
         - ``unpadding`` and ``allow_auto_unpadding`` follow the ``padding`` and ``allow_auto_padding`` rules of
           :class:`ExtractTensorPatches`; pass the values used to extract the patches.

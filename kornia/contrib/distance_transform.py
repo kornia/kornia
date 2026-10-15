@@ -166,18 +166,21 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
         - The distance is to the nearest non-zero pixel, where SciPy's ``distance_transform_edt`` and OpenCV's
           ``distanceTransform`` measure it to the nearest zero: ``distance_transform(x)`` approximates
           ``scipy.ndimage.distance_transform_edt(x == 0)``.
-        - ``image`` is a binary mask; other values are not rejected. A value :math:`v` other than 1 adds
-          :math:`-h \log v` to the distances within ``kernel_size // 2`` of it and does not change them further away.
+        - ``image`` is a binary mask whose sources are the pixels equal to 1. A value :math:`0 < v < 1` is a weaker
+          source: it adds :math:`-h \log v` to the distances within ``kernel_size // 2`` of it and does not change them
+          further away.
         - A mask without any non-zero pixel gives 0 everywhere, as a full mask does, which keeps the output and its
           gradient finite.
         - Known defect: the result is not Euclidean, and there is no general bound on its error
           (`#5956 <https://github.com/kornia/kornia/issues/5956>`_). From an isolated source it is exact only within
-          ``kernel_size // 2``; beyond, it follows the number of cascade steps, so a diagonal comes out up to
-          :math:`1 - 1/\sqrt{2}` short in 2-D and :math:`1 - 1/\sqrt{3}` in 3-D, at any ``kernel_size``. Separately,
-          the soft minimum pulls a value down wherever several foreground or already reached pixels share its window,
-          the more the larger ``h``: at the default ``h`` by 0.167 px beside a straight edge, 0.243 px midway between
-          two sources 2 px apart and 0.579 px in a one-pixel hole, and in a hole towards 0 as ``h`` nears its upper
-          bound.
+          ``kernel_size // 2``; beyond, it follows the number of cascade steps, so a diagonal comes out short by up to
+          a fraction :math:`1 - 1/\sqrt{2}` (29 %) of its length in 2-D and :math:`1 - 1/\sqrt{3}` (42 %) in 3-D, at
+          any ``kernel_size``. Separately, the soft minimum pulls a value down wherever several foreground or already
+          reached pixels share its window (replicate padding counts a pixel on the image border twice), the more the
+          larger ``h``: at the default ``h`` by 0.167 px beside a straight edge, 0.243 px midway between two sources
+          2 px apart and 0.579 px in a one-pixel hole, and in a hole towards 0 as ``h`` nears its upper bound.
+        - Known defect: values above 1 are not rejected and change the distances, and a mask of 0 and 255 gives 0
+          everywhere (`#5977 <https://github.com/kornia/kornia/issues/5977>`_).
 
     Args:
         image: Image or volume with shape :math:`(B,C,H,W)` or :math:`(B,C,D,H,W)`.
@@ -265,7 +268,6 @@ class DistanceTransform(nn.Module):
 
         Returns:
             A distance-transform tensor with the same shape as ``image``.
-            Each channel is processed independently.
         """
         # Reshape multi-channel inputs to batch dimension to ensure independent processing
         if image.shape[1] > 1:
