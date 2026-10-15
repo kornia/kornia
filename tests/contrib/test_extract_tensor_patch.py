@@ -21,11 +21,28 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
 
 
 class TestExtractTensorPatches(BaseTester):
+    @pytest.mark.parametrize("argument", ["window_size", "stride"])
+    @pytest.mark.parametrize("value", [0, (1, 0)])
+    def test_function_rejects_non_positive_patch_params(self, argument, value):
+        params = {"window_size": 2, "stride": 1}
+        params[argument] = value
+        with pytest.raises(BaseError, match=argument):
+            kornia.contrib.extract_tensor_patches(torch.ones(1, 1, 4, 4), **params)
+
+    @pytest.mark.parametrize("argument", ["window_size", "stride"])
+    @pytest.mark.parametrize("value", [0, (1, 0)])
+    def test_module_rejects_non_positive_patch_params(self, argument, value):
+        params = {"window_size": 2, "stride": 1}
+        params[argument] = value
+        with pytest.raises(BaseError, match=argument):
+            kornia.contrib.ExtractTensorPatches(**params)
+
     def test_smoke(self, device):
         img = torch.arange(16.0, device=device).view(1, 1, 4, 4)
         m = kornia.contrib.ExtractTensorPatches(3)
@@ -215,11 +232,11 @@ class TestExtractTensorPatches(BaseTester):
     def test_invalid_empty_planes_and_window_4429(self, batch_size, device, dtype):
         with pytest.raises(ValueError, match="non-empty channel"):
             kornia.contrib.extract_tensor_patches(torch.empty(batch_size, 0, 8, 12, device=device, dtype=dtype), 4, 4)
-        with pytest.raises(ValueError, match=r"window_size.*positive"):
+        with pytest.raises(BaseError, match=r"window_size.*positive"):
             kornia.contrib.extract_tensor_patches(
                 torch.empty(batch_size, 3, 8, 12, device=device, dtype=dtype), (0, 4), (4, 4)
             )
-        with pytest.raises(RuntimeError, match=r"step.*> 0"):
+        with pytest.raises(BaseError, match=r"stride.*positive"):
             kornia.contrib.extract_tensor_patches(
                 torch.empty(batch_size, 3, 8, 12, device=device, dtype=dtype), 4, 0, padding=(0, 0, 0, 0)
             )
