@@ -22,26 +22,26 @@ import torch
 
 import kornia
 from kornia.core._compat import torch_version_lt
-from kornia.core.exceptions import BaseError
+from kornia.core.exceptions import ValueCheckError
 
 from testing.base import BaseTester
 
 
 class TestCombineTensorPatches(BaseTester):
     @pytest.mark.parametrize("argument", ["window_size", "stride"])
-    @pytest.mark.parametrize("value", [0, (1, 0)])
+    @pytest.mark.parametrize("value", [0, (1, 0), -1])
     def test_function_rejects_non_positive_patch_params(self, argument, value):
         params = {"window_size": 2, "stride": 1}
         params[argument] = value
-        with pytest.raises(BaseError, match=argument):
+        with pytest.raises(ValueCheckError, match=argument):
             kornia.contrib.combine_tensor_patches(torch.ones(1, 1, 1, 2, 2), original_size=(2, 2), **params)
 
     @pytest.mark.parametrize("argument", ["window_size", "stride"])
-    @pytest.mark.parametrize("value", [0, (1, 0)])
+    @pytest.mark.parametrize("value", [0, (1, 0), -1])
     def test_module_rejects_non_positive_patch_params(self, argument, value):
         params = {"window_size": 2, "stride": 1}
         params[argument] = value
-        with pytest.raises(BaseError, match=argument):
+        with pytest.raises(ValueCheckError, match=argument):
             kornia.contrib.CombineTensorPatches(original_size=(2, 2), **params)
 
     def test_smoke(self, device, dtype):

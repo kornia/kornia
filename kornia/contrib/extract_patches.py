@@ -26,7 +26,7 @@ from torch import nn
 from torch.nn.modules.utils import _pair
 
 from kornia.core._compat import torch_version_lt
-from kornia.core.check import KORNIA_CHECK
+from kornia.core.exceptions import ValueCheckError
 
 FullPadType = Tuple[int, int, int, int]
 TuplePadType = Union[Tuple[int, int], FullPadType]
@@ -36,8 +36,12 @@ PadType = Union[int, TuplePadType]
 def _check_patch_params(window_size: Union[int, Tuple[int, int]], stride: Union[int, Tuple[int, int]]) -> None:
     window_size = cast(Tuple[int, int], _pair(window_size))
     stride = cast(Tuple[int, int], _pair(stride))
-    KORNIA_CHECK(all(size > 0 for size in window_size), f"window_size must contain positive values. Got {window_size}.")
-    KORNIA_CHECK(all(step > 0 for step in stride), f"stride must contain positive values. Got {stride}.")
+    # Raised directly rather than through KORNIA_CHECK, which python -O and disable_checks() switch off: a zero
+    # window_size would then return empty patches instead of failing.
+    if any(size <= 0 for size in window_size):
+        raise ValueCheckError(f"window_size must contain positive values. Got {window_size}.")
+    if any(step <= 0 for step in stride):
+        raise ValueCheckError(f"stride must contain positive values. Got {stride}.")
 
 
 def create_padding_tuple(padding: PadType, unpadding: bool = False) -> FullPadType:
@@ -95,6 +99,7 @@ def compute_padding(
     if stride is None:
         stride = window_size
     stride = cast(Tuple[int, int], _pair(stride))
+    _check_patch_params(window_size, stride)
 
     remainder_vertical = (original_size[0] - window_size[0]) % stride[0]
     remainder_horizontal = (original_size[1] - window_size[1]) % stride[1]
