@@ -159,13 +159,29 @@ def _distance_transform_3d_impl(image: torch.Tensor, kernel_size: int, h: float)
 def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.35) -> torch.Tensor:
     r"""Approximates the Euclidean distance transform of images/volumes using cascaded convolution operations.
 
-    The value at each pixel/voxel represents the distance to the nearest non-zero element.
     It uses the method described in :cite:`pham2021dtlayer`.
     The transformation is applied independently across the channel dimension.
 
+    Convention:
+        - The distance is to the nearest non-zero pixel, where SciPy's ``distance_transform_edt`` and OpenCV's
+          ``distanceTransform`` measure it to the nearest zero: ``distance_transform(x)`` approximates
+          ``scipy.ndimage.distance_transform_edt(x == 0)``.
+        - ``image`` is a binary mask; other values are not rejected. A value :math:`v` other than 1 adds
+          :math:`-h \log v` to the distances within ``kernel_size // 2`` of it and does not change them further away.
+        - A mask without any non-zero pixel gives 0 everywhere, as a full mask does, which keeps the output and its
+          gradient finite.
+        - Known defect: the result is not Euclidean, and there is no general bound on its error
+          (`#5956 <https://github.com/kornia/kornia/issues/5956>`_). From an isolated source it is exact only within
+          ``kernel_size // 2``; beyond, it follows the number of cascade steps, so a diagonal comes out up to
+          :math:`1 - 1/\sqrt{2}` short in 2-D and :math:`1 - 1/\sqrt{3}` in 3-D, at any ``kernel_size``. Separately,
+          the soft minimum pulls a value down wherever several foreground or already reached pixels share its window,
+          the more the larger ``h``: at the default ``h`` by 0.167 px beside a straight edge, 0.243 px midway between
+          two sources 2 px apart and 0.579 px in a one-pixel hole, and in a hole towards 0 as ``h`` nears its upper
+          bound.
+
     Args:
         image: Image or volume with shape :math:`(B,C,H,W)` or :math:`(B,C,D,H,W)`.
-        kernel_size: size of the convolution kernel. Must be an odd number.
+        kernel_size: size of the convolution kernel. Must be an odd number of at least 3.
         h: value that influences the approximation of the min function. The cascade's kernel taps are
             ``exp(-dist/h)``. Accepted: ``h`` large enough that the corner tap (distance
             ``sqrt(ndim) * (kernel_size // 2)``) stays at or above the smallest normal number of the working
@@ -178,7 +194,7 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
             result back, which widens the safe ``h`` range for those dtypes to match ``float32``.
 
     Returns:
-        tensor with the same shape as input.
+        tensor with the shape and dtype of the input.
 
     Example:
         >>> # 2D example:
@@ -218,6 +234,9 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
 class DistanceTransform(nn.Module):
     r"""Module that approximates the Euclidean distance transform of images/volumes using convolutions.
 
+    Convention:
+        See the Convention block of :func:`distance_transform`.
+
     Args:
         kernel_size: size of the convolution kernel.
         h: value that influences the approximation of the min function. See :func:`distance_transform`
@@ -233,9 +252,7 @@ class DistanceTransform(nn.Module):
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         """Compute the distance transform while preserving the original tensor layout.
 
-        The underlying functional implementation expects a single-channel tensor.
-        For multi-channel inputs, channels are temporarily folded into the batch
-        dimension, processed independently, and then reshaped back.
+        Each channel is processed independently, as in :func:`distance_transform`.
 
         Args:
             image: Input tensor with shape :math:`(B, C, H, W)` for 2D data or

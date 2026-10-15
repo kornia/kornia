@@ -24,6 +24,9 @@ from torch import nn
 class Lambda(nn.Module):
     """Applies user-defined lambda as a transform.
 
+    Convention:
+        :meth:`forward` calls ``func(img, *args, **kwargs)`` and returns its result unchecked; it need not be a tensor.
+
     Args:
         func: Callable function.
 
@@ -62,6 +65,6 @@ class Lambda(nn.Module):
             **kwargs: Additional keyword arguments forwarded to ``self.func``.
 
         Returns:
-            The output tensor returned by ``self.func``.
+            Whatever ``self.func`` returns.
         """
         return self.func(img, *args, **kwargs)

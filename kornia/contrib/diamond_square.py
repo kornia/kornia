@@ -161,17 +161,38 @@ def diamond_square(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
-    """Generate Plasma Fractal Images using the diamond square algorithm.
+    r"""Generate Plasma Fractal Images using a variant of the diamond square algorithm.
 
-    See: https://en.wikipedia.org/wiki/Diamond-square_algorithm
+    It ports `tormentor <https://github.com/anguelos/tormentor>`_'s variant of the
+    `diamond-square algorithm <https://en.wikipedia.org/wiki/Diamond-square_algorithm>`_.
+
+    Convention:
+        - The map is grown on a :math:`2^n + 1` grid and cropped to ``output_size`` at its top-left corner, so it can
+          be a non-contiguous view. The seed is a :math:`3 \times K` grid whose corners are ``random_scale`` times a
+          ``random_fn`` draw and whose other nodes are the means of their neighbours. Each level sets a new node to
+          :math:`(1 - s_k)\,\overline{n} + s_k\,u`, the mean :math:`\overline{n}` of its neighbours mixed with a
+          ``random_fn`` draw :math:`u` by :math:`s_k = \mathrm{random\_scale} \cdot \mathrm{roughness}^k` at level
+          :math:`k \geq 1`: both are mixing weights, not amplitudes. A border node of the square step averages its
+          three neighbours; the diamond step's nodes are all interior, so its ``reflect`` padding never reaches them.
+        - ``random_fn`` is called as ``random_fn(shape, device=device, dtype=dtype)`` and is the only source of
+          randomness, so ``functools.partial(torch.rand, generator=g)`` leaves the global generator alone. With
+          ``torch.rand`` the map stays in [0, 1] without normalization while ``random_scale`` and ``roughness`` are in
+          [0, 1], and with ``random_scale=1`` it is flat in mean (0.5 everywhere), though its variance varies across
+          the map.
+        - ``roughness`` and ``random_scale`` are a float, a 0-d tensor or a :math:`(B,)` tensor with one value per
+          sample, and follow ``device`` and ``dtype``.
+        - ``normalize_range=(min, max)`` rescales each :math:`(b, c)` plane to that range with
+          :func:`~kornia.enhance.normalize_min_max`.
+        - Known defect: with ``random_scale`` other than 1 the mean is not flat. The seed's mean is
+          ``0.5 * random_scale`` and every level mixes towards 0.5, so at ``random_scale=0.5`` the seed nodes average
+          0.25 and the other pixels 0.31 to 0.35 (`#5963 <https://github.com/kornia/kornia/issues/5963>`_).
 
     Args:
         output_size: a tuple of integers with the BxCxHxW of the image to be generated.
-        roughness: the scale value to apply at each recursion step.
-        random_scale: the initial value of the scale for recursion.
+        roughness: the factor that scales the mixing weight at each recursion step.
+        random_scale: the mixing weight before the first recursion step, which also scales the seed.
         random_fn: the callable function to use to sample a random torch.Tensor.
-        normalize_range: whether to F.normalize using min-max the output map. In case of a
-            range is specified, min-max norm is applied between the provided range.
+        normalize_range: if given, the ``(min, max)`` range each plane is min-max normalized to.
         device: the torch device to place the output map.
         dtype: the torch dtype to place the output map.
 
@@ -224,7 +245,7 @@ def diamond_square(
     img = img[..., :width, :height]
     img = img.view(output_size)
 
-    # F.normalize the output in the range using min-max
+    # min-max normalize each (b, c) plane to the range
     if normalize_range is not None:
         min_val, max_val = float(normalize_range[0]), float(normalize_range[1])
         img = normalize_min_max(img.contiguous(), min_val, max_val)

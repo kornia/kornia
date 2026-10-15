@@ -34,10 +34,22 @@ def connected_components(image: torch.Tensor, num_iterations: int = 100) -> torc
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/connected_components.html>`__.
 
+    Convention:
+        - Components are 8-connected: pixels that touch at a corner are connected. :ref:`labeling-method` maps this
+          onto SciPy, OpenCV and scikit-image.
+        - Foreground is a value exactly equal to 1: 0.5 and 2 are background. Other values and dtypes are accepted.
+        - The label of a component is 1 plus the largest raster index of its pixels in the batch flattened to
+          :math:`(N, H, W)`; background is 0. Labels are therefore not contiguous, and an image gets other labels at
+          another batch position or transposed. On MPS an image of more than :math:`2^{24}` pixels raises
+          ``ValueError``.
+        - ``num_iterations`` is a fixed number of max-pooling steps, not a convergence test, and a label travels one
+          pixel per step: the default 100 already splits a 1 x 102 line, and a filled 120 x 150 rectangle comes out
+          with 1000 labels. :ref:`labeling-method` compares this with :func:`connected_components_union_find`.
+        - The labels carry no gradient.
+
     Args:
-        image: the binarized input image with shape :math:`(*, 1, H, W)`.
-          The image must be in floating point with range [0, 1].
-        num_iterations: the number of iterations to make the algorithm to converge.
+        image: the binary input image with shape :math:`(*, 1, H, W)`.
+        num_iterations: the number of max-pooling steps, at least 1.
 
     Return:
         int64 labels with the shape of the input.
@@ -102,6 +114,10 @@ def connected_components_union_find(image: torch.Tensor) -> torch.Tensor:
     Unlike :func:`connected_components`, this function runs until convergence
     and returns integer labels, including for half-precision inputs. There is
     no iteration budget to choose based on component diameter.
+
+    Convention:
+        :ref:`labeling-method` maps its 8-connectivity onto SciPy, OpenCV and scikit-image, and compares it with
+        :func:`connected_components`.
 
     Args:
         image: Binary image of shape :math:`(*, 1, H, W)`. Boolean, integer and
