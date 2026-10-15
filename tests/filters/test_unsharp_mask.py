@@ -46,6 +46,22 @@ class Testunsharp(BaseTester):
         actual = unsharp_mask(data, kernel_size, sigma, "replicate")
         assert actual.shape == shape
 
+    @pytest.mark.parametrize("input_dtype", [torch.uint8, torch.int16, torch.bool])
+    def test_integer_input_matches_float32_5155(self, input_dtype: torch.dtype, device: torch.device) -> None:
+        # An integer image is sharpened in float32 on its own scale, like gaussian_blur2d.
+        generator = torch.Generator().manual_seed(0)
+        low = -128 if input_dtype == torch.int16 else 0
+        high = 2 if input_dtype == torch.bool else 256
+        data = torch.randint(low, high, (2, 3, 9, 13), generator=generator).to(device, input_dtype)
+
+        expected = unsharp_mask(data.float(), (5, 5), (1.5, 1.5))
+        actual = unsharp_mask(data, (5, 5), (1.5, 1.5))
+
+        assert actual.dtype == torch.float32
+        assert actual.device == data.device
+        self.assert_close(actual, expected)
+        self.assert_close(UnsharpMask((5, 5), (1.5, 1.5))(data), expected)
+
     @pytest.mark.skip(reason="nothing to test")
     def test_exception(self): ...
 

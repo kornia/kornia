@@ -70,6 +70,47 @@ class _ShiftMatcher(LocalFeatureMatcher):
 
 
 class TestImageStitcher(BaseTester):
+    @pytest.mark.parametrize(
+        "columns, width",
+        [
+            ([1, 0, 1, 1, 0, 0], 4),
+            ([0, 1, 1, 0, 0, 0], 3),
+            ([1, 0, 1, 0, 1, 1], 6),
+            ([1, 1, 1, 0, 0, 0], 3),
+            ([1, 1, 1, 1, 1, 0], 5),
+            ([1, 1, 1, 1, 1, 1], 6),
+            ([0, 0, 0, 0, 0, 0], 6),
+        ],
+    )
+    def test_postprocess_trims_only_empty_suffix(self, columns, width, device, dtype):
+        stitcher = kornia.contrib.ImageStitcher(torch.nn.Identity())
+        image = torch.arange(72, device=device, dtype=dtype).reshape(2, 3, 2, 6)
+        mask = torch.tensor(columns, device=device, dtype=dtype).reshape(1, 1, 1, 6).expand_as(image)
+        image_before, mask_before = image.clone(), mask.clone()
+
+        actual = stitcher.postprocess(image, mask)
+
+        self.assert_close(actual, image[..., :width])
+        assert actual.device == image.device
+        assert actual.dtype == image.dtype
+        self.assert_close(image, image_before)
+        self.assert_close(mask, mask_before)
+
+    def test_postprocess_uses_all_mask_pixels(self, device, dtype):
+        stitcher = kornia.contrib.ImageStitcher(torch.nn.Identity())
+        image = torch.arange(72, device=device, dtype=dtype).reshape(2, 3, 2, 6)
+        mask = torch.zeros_like(image, dtype=torch.bool)
+        mask[0, 0, 0, 0] = True
+        mask[1, 2, 1, 3] = True
+
+        self.assert_close(stitcher.postprocess(image, mask), image[..., :4])
+
+    def test_postprocess_gradcheck(self, device):
+        stitcher = kornia.contrib.ImageStitcher(torch.nn.Identity())
+        image = torch.rand(1, 1, 2, 6, device=device, dtype=torch.float64, requires_grad=True)
+        mask = torch.tensor([1, 0, 1, 1, 0, 0], device=device, dtype=torch.bool).reshape(1, 1, 1, 6)
+        self.gradcheck(lambda value: stitcher.postprocess(value, mask), (image,))
+
     @pytest.mark.parametrize("img_dtype", [torch.float32, torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("shift", [40.0, 40.5, 40.7])
     def test_subpixel_shift_has_no_dark_seam(self, shift, img_dtype, device):
