@@ -145,6 +145,28 @@ class TestApplyColorMap(BaseTester):
 
         assert actual.shape == expected_shape
 
+    @pytest.mark.parametrize(
+        "shape,expected_shape",
+        [
+            ((0, 1, 4, 5), (0, 3, 4, 5)),
+            ((0, 2, 4, 5), (0, 6, 4, 5)),
+            ((2, 0, 4, 5), (2, 0, 4, 5)),
+            ((0, 4, 5), (1, 0, 4, 5)),
+            ((2, 1, 0, 5), (2, 3, 0, 5)),
+            ((1, 2, 0, 0), (1, 6, 0, 0)),
+        ],
+    )
+    @pytest.mark.parametrize("integer_input", [False, True])
+    def test_empty_input(self, shape, expected_shape, integer_input, device, dtype):
+        # An empty tensor raised in reshape(B, C, -1), and a float one without pixels in amax.
+        cm = ColorMap(base="viridis", device=device, dtype=dtype)
+        input_tensor = torch.zeros(shape, device=device, dtype=torch.uint8 if integer_input else dtype)
+        for op in (lambda x: apply_colormap(x, cm), ApplyColorMap(colormap=cm)):
+            actual = op(input_tensor)
+            assert actual.shape == expected_shape
+            assert actual.device == input_tensor.device
+            assert actual.dtype == dtype
+
     @pytest.mark.skip(reason="jacobian mismatch")
     def test_gradcheck(self, device):
         # TODO: implement differentiability

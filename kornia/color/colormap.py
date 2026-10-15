@@ -246,12 +246,14 @@ def _apply_colormap(input_tensor: torch.Tensor, colors: torch.Tensor) -> torch.T
         input_tensor = input_tensor.unsqueeze(0)
 
     B, C, H, W = input_tensor.shape
-    input_tensor = input_tensor.reshape(B, C, -1)
+    # Name the pixel count: `-1` cannot be inferred when the tensor has no elements.
+    input_tensor = input_tensor.reshape(B, C, H * W)
     if input_tensor.is_floating_point():
         # The tensor-valued condition keeps range selection compile-safe and independent
-        # of other samples and channels.
+        # of other samples and channels. `all` rather than `amax`, which refuses a channel without pixels;
+        # a NaN selects 255 either way.
         max_value = torch.where(
-            input_tensor.amax(dim=-1, keepdim=True) <= 1.0,
+            (input_tensor <= 1.0).all(dim=-1, keepdim=True),
             torch.tensor(1.0, device=input_tensor.device, dtype=torch.float),
             torch.tensor(255.0, device=input_tensor.device, dtype=torch.float),
         )
