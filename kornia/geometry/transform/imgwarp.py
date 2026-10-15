@@ -109,7 +109,7 @@ def _runs_in_float32(src: torch.Tensor, other: torch.Tensor) -> bool:
 
 
 def _unit_projective_scale(matrix: torch.Tensor) -> torch.Tensor:
-    """Return the detached projective scale of ``matrix``, the one closest to 1 among its nonzero magnitudes.
+    """Return the detached projective scale of ``matrix``: the value closest to 1 in its nonzero-magnitude range.
 
     A homography and any nonzero multiple of it describe the same map, yet
     :func:`kornia.geometry.convert_points_from_homogeneous` leaves a point with ``|w| <= eps``
@@ -558,8 +558,12 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
           :math:`(N, 3, 3)` or :math:`(N, 1, 3, 3)`
         - only the :math:`(1, H, W, 2)` grid broadcasts over homography batches; a batched grid
           requires a matching batch of :math:`N` homographies
-        - a nonzero scalar multiple of ``src_homo_dst`` describes the same warp and returns the
-          same grid
+        - ``src_homo_dst`` is divided by a detached scale toward unit magnitude before the
+          homogeneous division, as in :func:`warp_perspective`, so a nonzero scalar multiple of it
+          returns the same grid, except at grid points whose homogeneous coordinate is within
+          ``1e-8`` of zero after that rescaling: those are left undivided, as
+          :func:`~kornia.geometry.conversions.convert_points_from_homogeneous` does for points at
+          infinity
 
     Args:
         grid: Unwrapped grid of the shape :math:`(1, H, W, 2)`, or :math:`(N, H, W, 2)` with a
@@ -598,8 +602,12 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
           :math:`(N, 4, 4)` or :math:`(N, 1, 4, 4)`
         - only the :math:`(1, D, H, W, 3)` grid broadcasts over homography batches; a batched
           grid requires a matching batch of :math:`N` homographies
-        - a nonzero scalar multiple of ``src_homo_dst`` describes the same warp and returns the
-          same grid
+        - ``src_homo_dst`` is divided by a detached scale toward unit magnitude before the
+          homogeneous division, as in :func:`warp_perspective`, so a nonzero scalar multiple of it
+          returns the same grid, except at grid points whose homogeneous coordinate is within
+          ``1e-8`` of zero after that rescaling: those are left undivided, as
+          :func:`~kornia.geometry.conversions.convert_points_from_homogeneous` does for points at
+          infinity
 
     Args:
         grid: Unwrapped grid of the shape :math:`(1, D, H, W, 3)`, or :math:`(N, D, H, W, 3)`
