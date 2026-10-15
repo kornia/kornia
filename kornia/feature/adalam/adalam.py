@@ -82,10 +82,10 @@ def match_adalam(
         - ``config`` is merged into the defaults of ``kornia.feature.adalam.get_adalam_default_config()``; an
           unknown key warns and is ignored. The computation runs on the device of ``desc1`` unless ``config`` sets
           ``"device"``.
-        - Known defects: exact correspondences are rejected, because the local RANSACs give residuals at or near zero
-          no inlier weight. An image matched against itself gets no match whenever a seed survives; when none does,
-          as with very few keypoints, the ratio-test fallback above returns the identity matches instead
-          (`#5866 <https://github.com/kornia/kornia/issues/5866>`_).
+        - Exact local affine correspondences are retained when enough distinct keypoints support them beyond the
+          seed and minimal fitting pair. Unlike the reference implementation, equal tiny residuals alone do not
+          imply duplicate keypoints. Their confidence uses a conservative residual-area floor of ``2**-24`` in
+          normalized coordinates, so inverse confidence stays finite even for an exact fit.
 
     Args:
         desc1: Batch of descriptors of a shape :math:`(B1, D)`.

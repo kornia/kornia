@@ -48,7 +48,7 @@ pytest_plugins = ["pytester"]
 def _environment(**overrides: str) -> ManifestEnvironment:
     values = {
         "python": "3.11",
-        "pytorch": "2.9.1",
+        "pytorch": "2.14.0",
         "os": "Linux",
         "arch": "x86_64",
         "pytest": "9.0.3",

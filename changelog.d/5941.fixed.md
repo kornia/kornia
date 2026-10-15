@@ -1,0 +1,1 @@
+AdaLAM now retains well-supported exact local affine correspondences, including self-matches and noise-free translations, while discounting repeated keypoints and the points used to fit each hypothesis.

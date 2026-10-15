@@ -92,12 +92,18 @@ class DeDoDe(nn.Module):
           (``align_corners=False``), the form :meth:`describe` takes; ``(k + 1) * (W, H) / 2 - 0.5`` converts such a
           ``k`` to kornia's frame. A description is read at the centre of pixel ``i``.
         - Each image gives its ``n`` best keypoints by score, in descending order: :math:`N = \min(n, H W)`, with no
-          threshold and no padding. Keypoints and descriptions are float32, and descriptions are not normalized.
+          threshold and no padding. Keypoints, and the descriptions of
+          :meth:`forward` and of ``describe(images, keypoints)``, are float32; descriptions are not normalized. The
+          dense map of ``describe(images)`` follows the network dtype: ``amp_dtype`` on CUDA, the dtype of the model
+          on CPU and MPS.
+        - ``amp_dtype`` is CUDA mixed precision in every component: on CUDA tensors the networks run under
+          ``torch.autocast`` in ``amp_dtype`` (and the DINOv2 backbone of the ``G`` descriptor is cast to it). On CPU
+          and MPS it has no effect, so the default argument runs there with float32 weights and images.
 
     Args:
         detector_model: The detector model kind. Available options are: `L`.
         descriptor_model: The descriptor model kind. Available options are: `G` or `B`
-        amp_dtype: The automatic mixed precision desired.
+        amp_dtype: The dtype of the automatic mixed precision used on CUDA; it has no effect on other devices.
 
     Example:
         >>> dedode = DeDoDe.from_pretrained(detector_weights="L-C4-v2", descriptor_weights="B-upright")
@@ -299,8 +305,10 @@ class DeDoDe(nn.Module):
                 One of 'B-upright','G-upright' (original paper, https://arxiv.org/abs/2308.08479),
                 'B-C4', 'B-SO2', 'G-C4', 'G-SO2' (from steerers, better for rotations, https://arxiv.org/abs/2312.02152).
                 Default is 'G-upright'.
-            amp_dtype: the dtype to use for the model. One of torch.float16 or torch.float32.
-            Default is torch.float16, suitable for CUDA. Use torch.float32 for CPU or MPS
+            amp_dtype: the dtype of the automatic mixed precision used on CUDA, one of torch.float16 or
+                torch.float32. It has no effect on CPU or MPS, where every component runs in the dtype of the
+                input and the model.
+                Default is torch.float16.
 
         Returns:
             The pretrained model.

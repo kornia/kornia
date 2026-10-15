@@ -361,6 +361,30 @@ class TestALIKED(BaseTester):
 # ---------------------------------------------------------------------------
 
 
+class TestALIKEDHalfPrecisionCoordinates(BaseTester):
+    def test_half_model_returns_float32_keypoints(self, device, dtype):
+        # R4: the soft-argmax keypoints were formed and returned in the score map's dtype, which puts every bfloat16
+        # keypoint past x = 256 on a 2 px grid. They are float32 now; scores and descriptors keep the model dtype.
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("half-precision rule")
+        if not (supports_replicate_padding(device, dtype) and supports_bilinear_2d_grid_sample(device, dtype)):
+            pytest.skip("ALIKED pads with replication and samples with bilinear grid_sample, absent for this dtype")
+        torch.manual_seed(0)
+        aliked = ALIKED(model_name="aliked-t16").to(device, dtype)
+        image = torch.rand(1, 3, 96, 400, generator=torch.Generator().manual_seed(0)).to(device, dtype)
+        with torch.no_grad():
+            (feats,) = aliked(image)
+            lafs, responses, descs = aliked.forward_laf(image)
+        assert feats.keypoints.dtype == torch.float32
+        assert feats.keypoint_scores.dtype == dtype
+        assert feats.descriptors.dtype == dtype
+        assert lafs.dtype == torch.float32
+        assert responses.dtype == dtype
+        assert descs.dtype == dtype
+        for x in (feats.keypoints[:, 0], lafs[0, :, 0, 2]):
+            assert (x[x > 256] % 2 != 0).any()  # sub-2-px positions past 256, which bfloat16 cannot hold
+
+
 class TestALIKEDForwardLAF(BaseTester):
     """Tests for ALIKED.forward_laf returning kornia LAF-format outputs."""
 
@@ -484,7 +508,9 @@ class TestALIKEDForwardLAF(BaseTester):
             hook.remove()
         assert lafs.shape == (1, 3, 2, 3)
         order = torch.argsort(lafs[0, :, 0, 2] * 100 + lafs[0, :, 1, 2])  # by x, then y
-        A = lafs[0, order, :, :2]  # peaks at x = 30 (neighbour below), 60 (right), 80 (diagonal)
+        # peaks at x = 30 (neighbour below), 60 (right), 80 (diagonal); the shape comes from the soft-argmax weights,
+        # which are in the model's dtype, while the LAFs are float32 for a half-precision model
+        A = lafs[0, order, :, :2].to(dtype)
         det = A[:, 0, 0] * A[:, 1, 1] - A[:, 0, 1] * A[:, 1, 0]
         assert (det > 0).all(), det
         ellipse_right = torch.tensor([[0.45736**2, 0.0], [0.0, 0.11605**2]], device=device, dtype=dtype)
@@ -524,8 +550,8 @@ class TestALIKEDKeypointSelection(BaseTester):
 
     @staticmethod
     def _tol(dtype):
-        # an isolated peak lands on its pixel; in half precision DKD computes in the map's dtype, so 0.25 px
-        return 0.25 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        # an isolated peak lands on its pixel; the keypoints are float32 for a half-precision model as well
+        return 1e-4
 
     @staticmethod
     def _top_k(k, device, dtype):
@@ -535,7 +561,8 @@ class TestALIKEDKeypointSelection(BaseTester):
         # Three maxima, returned by score: k = 3 returns them; k = 5 and k = 10000 (more than the 64 * 96 pixels)
         # return the same three, never a non-maximum.
         peaks = [(0, 60, 40, 0.8), (0, 21, 13, 0.9), (0, 35, 50, 0.7)]
-        maxima = torch.tensor([[21.0, 13.0], [60.0, 40.0], [35.0, 50.0]], device=device, dtype=dtype)
+        coord = torch.promote_types(dtype, torch.float32)
+        maxima = torch.tensor([[21.0, 13.0], [60.0, 40.0], [35.0, 50.0]], device=device, dtype=coord)
         # relabelling: the transposed map gives the transposed maxima
         peaks_t = [(b, y, x, s) for b, x, y, s in peaks]
         for h, w, peaks_i, maxima_i in ((64, 96, peaks, maxima), (96, 64, peaks_t, maxima.flip(-1))):
@@ -566,7 +593,7 @@ class TestALIKEDKeypointSelection(BaseTester):
             assert feats.n == len(expected)
             assert lafs.shape == (1, len(expected), 2, 3)
             if expected:
-                expected_t = torch.tensor(expected, device=device, dtype=dtype)
+                expected_t = torch.tensor(expected, device=device, dtype=torch.promote_types(dtype, torch.float32))
                 self.assert_close(feats.keypoints, expected_t, rtol=0.0, atol=self._tol(dtype))
 
     def test_top_k_keeps_no_keypoint_in_the_border_or_the_padding_5862(self, device, dtype):
@@ -582,7 +609,7 @@ class TestALIKEDKeypointSelection(BaseTester):
         assert [f.n for f in feats] == [2, 1]
         for f, (w, h), expected_i in zip(feats, image_size.tolist(), expected):
             self.assert_close(
-                f.keypoints, torch.tensor(expected_i, device=device, dtype=dtype), rtol=0.0, atol=self._tol(dtype)
+                f.keypoints, torch.tensor(expected_i, device=device, dtype=f.keypoints.dtype), rtol=0.0, atol=1e-4
             )
             assert (f.keypoints >= 2).all()
             assert (f.keypoints[:, 0] <= w - 3).all()
@@ -611,11 +638,46 @@ class TestALIKEDKeypointSelection(BaseTester):
             for i, expected_i in enumerate(expected):
                 centres = lafs[i, filled[i], :, 2]
                 self.assert_close(
-                    centres, torch.tensor(expected_i, device=device, dtype=dtype), rtol=0.0, atol=self._tol(dtype)
+                    centres, torch.tensor(expected_i, device=device, dtype=centres.dtype), rtol=0.0, atol=1e-4
                 )
             assert lafs[1, 1:].abs().max() == 0
             assert responses[1, 1:].abs().max() == 0
             assert descs[1, 1:].abs().max() == 0
+
+    def test_isolated_peaks_past_256_land_on_their_pixel(self, device, dtype):
+        # The keypoints are float32 for a half-precision model, normalised by W - 1 = 319, which bfloat16 rounds to
+        # 320: the odd pixels past 256, which bfloat16 cannot hold, come back exactly from forward and forward_laf.
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS has no float64")
+        if not (supports_replicate_padding(device, dtype) and supports_bilinear_2d_grid_sample(device, dtype)):
+            pytest.skip("ALIKED pads with replication and samples with bilinear grid_sample, absent for this dtype")
+        peaks = [(0, 257, 13, 0.9), (0, 301, 40, 0.8), (0, 35, 50, 0.7)]
+        score_map = self._score_map(peaks, device, dtype, w=320)
+        aliked = self._top_k(5, device, dtype)
+        (feats,) = self._run(aliked, score_map)
+        lafs, _, _ = self._run(aliked, score_map, "forward_laf", compute_affine=False)
+        expected = torch.tensor([[257.0, 13.0], [301.0, 40.0], [35.0, 50.0]], dtype=torch.float64)
+        for found in (feats.keypoints, lafs[0, :, :, 2]):
+            assert found.dtype == torch.promote_types(dtype, torch.float32)
+            self.assert_close(found.cpu().double(), expected, rtol=0.0, atol=1e-4)
+
+    def test_descriptor_head_reads_the_keypoint_pixel_past_256(self, device, dtype):
+        # SDDH predicts its sampling offsets from the feature patch around each keypoint's pixel. With W - 1 = 319,
+        # which bfloat16 rounds to 320, a half-precision normaliser put that pixel one column off past x = 256. The
+        # right neighbour moves the keypoint to x = 300.27 by the soft-argmax, so its pixel is column 300.
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS has no float64")
+        if not (supports_replicate_padding(device, dtype) and supports_bilinear_2d_grid_sample(device, dtype)):
+            pytest.skip("ALIKED pads with replication and samples with bilinear grid_sample, absent for this dtype")
+        score_map = self._score_map([(0, 300, 40, 0.8), (0, 301, 40, 0.7)], device, dtype, w=320)
+        aliked = self._top_k(5, device, dtype)
+        corners = []
+        get_patches = aliked.desc_head.get_patches_func
+        aliked.desc_head.get_patches_func = lambda t, c, ps: corners.append(c.cpu()) or get_patches(t, c, ps)
+        (feats,) = self._run(aliked, score_map)
+        assert feats.n == 1
+        assert 300.2 < feats.keypoints[0, 0].item() < 300.3
+        assert corners[0][0, 0].item() == 300
 
     def test_threshold_fallback_is_decided_per_image_5865(self, device, dtype):
         # The weak image's maxima, 0.15 and 0.12, are below detection_threshold = 0.2, so it keeps the maxima above
@@ -659,9 +721,8 @@ class TestConventionsALIKED(BaseTester):
 
     @staticmethod
     def _peak_tol(dtype):
-        # An isolated peak lands on its pixel. In half precision DKD computes in the map's dtype, so the position is
-        # checked to 0.25 px, half of the 0.5 px offset of an edge-aligned frame.
-        return 0.25 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        # An isolated peak lands on its pixel; the keypoints are float32 for a half-precision model as well.
+        return 1e-4
 
     def test_convention_aliked_keypoints_are_soft_argmax_peaks_in_the_pixel_frame(self, device, dtype):
         # Keypoints are pixel coordinates (x, y) of the score map, wh = (W - 1, H - 1) with align_corners=True (the
@@ -687,10 +748,11 @@ class TestConventionsALIKED(BaseTester):
             assert feats.n == 3
             order = torch.argsort(feats.keypoints[:, 1] * 1000 + feats.keypoints[:, 0])
             found, expected_i = feats.keypoints[order].cpu().double(), self._raster(expected_i)
-            # bfloat16 loses the soft-argmax step, so in half precision only the isolated peaks are checked
             isolated = (expected_i == expected_i.round()).all(dim=-1)
-            checked = isolated if half else torch.ones_like(isolated)
-            self.assert_close(found[checked], expected_i[checked], rtol=0.0, atol=self._peak_tol(dtype))
+            self.assert_close(found[isolated], expected_i[isolated], rtol=0.0, atol=self._peak_tol(dtype))
+            # the soft-argmax step runs in the model's dtype, and moves a half-precision keypoint by 3e-3 px at most
+            step_tol = 0.01 if half else 1e-4
+            self.assert_close(found[~isolated], expected_i[~isolated], rtol=0.0, atol=step_tol)
             self.assert_close(lafs[0, :, :, 2], feats.keypoints)
             self.assert_close(responses[0, :, 0], feats.keypoint_scores)
         if not half:
@@ -723,14 +785,15 @@ class TestConventionsALIKED(BaseTester):
         assert descs[1, 1:].abs().max() == 0
         assert kornia.feature.laf_is_filled(lafs).tolist() == [[True, True, True], [True, False, False]]
         tol = self._peak_tol(dtype)
-        self.assert_close(lafs[1, 0, :, 2], torch.tensor([70.0, 20.0], device=device, dtype=dtype), rtol=0.0, atol=tol)
-        eye = torch.eye(2, device=device, dtype=dtype)
+        coord = lafs.dtype  # float32 for a half-precision model
+        self.assert_close(lafs[1, 0, :, 2], torch.tensor([70.0, 20.0], device=device, dtype=coord), rtol=0.0, atol=tol)
+        eye = torch.eye(2, device=device, dtype=coord)
         self.assert_close(lafs_id[0, :, :, :2], eye.expand(3, 2, 2))
         self.assert_close(lafs_id[1, 0, :, :2], eye)
         assert lafs_id[1, 1:].abs().max() == 0
         # the mask leaves (60, 40) in the first image: one keypoint in each image, so N = 1
         assert lafs_masked.shape == (2, 1, 2, 3)
-        expected = torch.tensor([[60.0, 40.0], [70.0, 20.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[60.0, 40.0], [70.0, 20.0]], device=device, dtype=coord)
         self.assert_close(lafs_masked[:, 0, :, 2], expected, rtol=0.0, atol=tol)
 
     def test_convention_aliked_counts_by_threshold_or_top_k(self, device, dtype):
@@ -828,7 +891,9 @@ class TestConventionsALIKED(BaseTester):
         hook = self._hooked(aliked, self._score_map([(0, 31, 20, 0.9), (0, 70, 47, 0.8)], device, dtype))
         rgb = torch.rand(1, 3, 50, 75, device=device, dtype=dtype)
         gray = torch.rand(1, 1, 50, 75, device=device, dtype=dtype)
-        expected = torch.tensor([[21.0, 13.0], [60.0, 40.0]], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [[21.0, 13.0], [60.0, 40.0]], device=device, dtype=torch.promote_types(dtype, torch.float32)
+        )
         try:
             with torch.no_grad():
                 for image in (rgb, gray):
@@ -841,3 +906,56 @@ class TestConventionsALIKED(BaseTester):
         finally:
             pre.remove()
             hook.remove()
+
+
+class TestALIKEDEvalByDefault(BaseTester):
+    """``ALIKED()`` starts in evaluation mode: BatchNorm uses its running statistics, not those of the batch."""
+
+    @pytest.fixture(autouse=True)
+    def _kernels(self, device, dtype):
+        if not (supports_replicate_padding(device, dtype) and supports_bilinear_2d_grid_sample(device, dtype)):
+            pytest.skip("ALIKED pads with replication and samples with bilinear grid_sample, absent for this dtype")
+
+    @staticmethod
+    def _model(device, dtype):
+        # the default constructor, deliberately without .eval()
+        return ALIKED(model_name="aliked-t16").to(device, dtype)
+
+    def test_convention_aliked_starts_in_eval_mode(self, device, dtype):
+        aliked = self._model(device, dtype)
+        assert not aliked.training
+        assert not any(m.training for m in aliked.modules())
+
+    def test_convention_aliked_train_is_an_explicit_opt_in(self, device, dtype):
+        aliked = self._model(device, dtype).train()
+        assert aliked.training
+        assert all(m.training for m in aliked.modules() if isinstance(m, torch.nn.BatchNorm2d))
+
+    @pytest.mark.parametrize("method", ["forward", "extract_dense_map", "forward_laf"])
+    def test_convention_aliked_inference_leaves_the_state_unchanged(self, method, device, dtype):
+        aliked = self._model(device, dtype)
+        before = {k: v.clone() for k, v in aliked.state_dict().items()}
+        with torch.no_grad():
+            getattr(aliked, method)(torch.rand(2, 3, 64, 64, device=device, dtype=dtype))
+        after = aliked.state_dict()
+        assert before.keys() == after.keys()
+        for k, v in before.items():
+            assert torch.equal(v, after[k]), k
+
+    def test_convention_aliked_dense_map_does_not_depend_on_the_batch(self, device, dtype):
+        aliked = self._model(device, dtype)
+        a = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
+        b = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
+        with torch.no_grad():
+            feat_a, score_a = aliked.extract_dense_map(a)
+            feat_ab, score_ab = aliked.extract_dense_map(torch.cat([a, b]))
+        self.assert_close(feat_ab[:1], feat_a)
+        self.assert_close(score_ab[:1], score_a)
+
+    def test_convention_aliked_accepts_a_single_small_image(self, device, dtype):
+        # in training mode the 1 x 1 deepest map has one value per channel and BatchNorm raises
+        aliked = self._model(device, dtype)
+        with torch.no_grad():
+            feat, score = aliked.extract_dense_map(torch.rand(1, 3, 16, 16, device=device, dtype=dtype))
+        assert feat.shape[0] == 1
+        assert score.shape == (1, 1, 16, 16)

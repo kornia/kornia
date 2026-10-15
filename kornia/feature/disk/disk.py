@@ -62,8 +62,9 @@ class DISK(nn.Module):
         - Each image gives a :class:`DISKFeatures`. Keypoints are the integer ``(x, y)`` pixels of the strict heatmap
           maxima (see the note), in the pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
           (see :ref:`Local features <local-features-conventions>`), listed in raster order (row by row, then column
-          by column) rather than by score, in the dtype of the network's output. ``detection_scores`` are the
-          heatmap values there, and each descriptor is the dense descriptor at the keypoint's pixel, L2-normalised;
+          by column) rather than by score, in float32 for a float16 or bfloat16 network and otherwise in the dtype
+          of the network's output. ``detection_scores`` are the heatmap values there, in the network's dtype, and
+          each descriptor is the dense descriptor at the keypoint's pixel, L2-normalised;
           :meth:`heatmap_and_dense_descriptors` returns the dense descriptors without normalisation.
         - ``score_threshold`` keeps the scores strictly above it. ``n`` is an upper bound on the maxima above
           ``score_threshold`` in each image; the ``n`` argument of :meth:`forward` says which of them are kept when

@@ -153,6 +153,9 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
             # entries are equal and taking the first is legit.) This branch is inherently
             # data-dependent and not fullgraph-compilable.
             kernel_size_list: List[int] = params["ksize_factor"].tolist()
+            if not kernel_size_list and input.shape[0] == 0:
+                # An empty batch draws no kernel size and has nothing to blur; motion blur keeps the shape (#4429).
+                return input.clone()
             idx: int = cast(int, params["idx"][0])
             kernel_size = kernel_size_list[idx]
         border_type = flags["border_type"].name.lower()
