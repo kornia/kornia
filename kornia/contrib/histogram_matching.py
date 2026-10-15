@@ -39,8 +39,8 @@ def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Te
           computed in ``float32`` (``float64`` for a ``float64`` source).
         - It is not differentiable: with a non-empty ``source``, no gradient reaches it and a backward pass into
           ``template`` raises.
-        - An empty ``source`` returns an empty tensor, still attached to its autograd graph; an empty ``template``
-          raises ``ValueError``.
+        - An empty ``source`` with a non-empty ``template`` returns an empty tensor, still attached to its autograd
+          graph; an empty ``template`` raises ``ValueError``, even when ``source`` is empty too.
 
     Args:
         source: Image to transform.

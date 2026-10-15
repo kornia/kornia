@@ -427,12 +427,12 @@ class TestImageStitcher(BaseTester):
         assert out.shape == (2, 3, 48, 96)
         assert (out[0, ..., 76:] == 0).all()  # the narrower sample keeps empty trailing columns
 
-    def test_wart_image_stitcher_postprocess_gap_5971(self, device, dtype):
+    def test_convention_image_stitcher_postprocess_gap_5971(self, device, dtype):
         stitcher = kornia.contrib.ImageStitcher(nn.Identity())
         image = torch.arange(6, device=device, dtype=dtype).view(1, 1, 1, 6).expand(1, 3, 4, 6)
         gap = torch.tensor([1.0, 0, 1, 1, 0, 0], device=device, dtype=dtype).view(1, 1, 1, 6).expand(1, 3, 4, 6)
-        # cropped at the first uncovered column, where the last covered one gives width 4
-        assert stitcher.postprocess(image, gap).shape[-1] == 1
+        # a gap in the coverage is kept: the crop ends at the last covered column
+        assert stitcher.postprocess(image, gap).shape[-1] == 4
         empty_first = torch.tensor([0.0, 1, 1, 0, 0, 0], device=device, dtype=dtype).view(1, 1, 1, 6).expand(1, 3, 4, 6)
-        # an uncovered first column reads as nothing to crop, where the empty suffix gives width 3
-        assert stitcher.postprocess(image, empty_first).shape[-1] == 6
+        # an uncovered first column is kept and the empty suffix is still dropped
+        assert stitcher.postprocess(image, empty_first).shape[-1] == 3

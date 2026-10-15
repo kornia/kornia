@@ -39,13 +39,11 @@ class ImageStitcher(nn.Module):
           homography from their matches; every sample needs 4 matches, or a ``RuntimeError`` names the sample.
         - ``"naive"`` blending keeps the warped image wherever it covers a pixel completely, so in an overlap the right
           image replaces the left one; a pixel it covers only in part keeps the panorama's value.
-        - The result is cropped at the first column that no sample covers, which drops the empty trailing columns. A
-          batch shares one crop, so it is cropped to its widest sample and a narrower sample keeps zero columns on its
-          right.
+        - The result drops the empty trailing columns, those after the last column that any sample covers; an
+          uncovered column before it, the first one included, is kept. A batch shares one crop, so it is cropped to its
+          widest sample and a narrower sample keeps zero columns on its right.
         - ``estimator="ransac"`` uses ``RANSAC("homography")`` (``inl_th=2.0``); ``"vanilla"`` fits every match with
           iterated DLT.
-        - Known defect: cropping at the first uncovered column drops the content after a gap in the coverage, and an
-          uncovered first column turns the crop off (`#5971 <https://github.com/kornia/kornia/issues/5971>`_).
 
     Args:
         matcher: image feature matching module, :class:`~kornia.feature.LoFTR` or
@@ -168,9 +166,9 @@ class ImageStitcher(nn.Module):
                 pixels covered by at least one input view.
 
         Returns:
-            The stitched image cropped before the first column that has no valid pixel in any sample of the mask. If
-            there is no such column, or it is the first column, the original ``image`` is returned
-            (`#5971 <https://github.com/kornia/kornia/issues/5971>`_).
+            The stitched image without its empty trailing columns, those after the last column that has a valid pixel
+            in any sample of the mask. Uncovered columns before it are kept, and a mask without any valid pixel returns
+            the original ``image``.
         """
         # One crop for the whole batch: a column is valid if any sample has a valid pixel in it.
         mask_ = mask.sum((0, 1))

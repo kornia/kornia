@@ -184,11 +184,11 @@ def diamond_square(
           sample, and follow ``device`` and ``dtype``.
         - ``normalize_range=(min, max)`` rescales each :math:`(b, c)` plane to that range with
           :func:`~kornia.enhance.normalize_min_max`.
-        - Known defect: with ``random_scale`` other than 1 and a non-zero ``roughness`` the mean is not flat. The
-          seed's mean is ``0.5 * random_scale`` and every level mixes towards 0.5, so at ``random_scale=0.5`` the seed
-          nodes average 0.25 and the other pixels more, by an amount that depends on ``roughness`` and the map size:
-          0.31 to 0.35 on a :math:`9 \times 17` map at the default ``roughness``
-          (`#5963 <https://github.com/kornia/kornia/issues/5963>`_).
+        - Known defect: the mean is not flat when ``random_scale`` is neither 0 nor 1, ``roughness`` is non-zero and
+          both sides of the map exceed 3, so that it grows past its seed. The seed's mean is ``0.5 * random_scale`` and
+          every level mixes towards 0.5, so at ``random_scale=0.5`` the seed nodes average 0.25 and the other pixels
+          more, by an amount that depends on ``roughness`` and the map size: 0.31 to 0.35 on a :math:`9 \times 17` map
+          at the default ``roughness`` (`#5963 <https://github.com/kornia/kornia/issues/5963>`_).
 
     Args:
         output_size: a tuple of integers with the BxCxHxW of the image to be generated.
