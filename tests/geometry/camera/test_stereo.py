@@ -260,6 +260,26 @@ class TestStereoCamera(BaseTester):
         assert stereo_camera.Q.dtype == dtype
         assert stereo_camera.Q.device == device
 
+    @pytest.mark.parametrize("size", [(4, 5), (0, 5), (0, 0)])
+    @pytest.mark.parametrize("entrypoint", ["method", "function"])
+    def test_reproject_disparity_empty_batch_4281(self, size, entrypoint, device, dtype):
+        # The empty rig of kornia#4281 also reprojects an empty batch of disparity maps.
+        stereo_camera = StereoCamera(*_SmokeTestData._create_stereo_camera(0, device, dtype, tx_fx=-10))
+        disparity = torch.rand(0, *size, 1, device=device, dtype=dtype, requires_grad=True)
+
+        xyz = (
+            stereo_camera.reproject_disparity_to_3D(disparity)
+            if entrypoint == "method"
+            else reproject_disparity_to_3D(disparity, stereo_camera.Q)
+        )
+
+        assert xyz.shape == (0, *size, 3)
+        assert xyz.dtype == dtype
+        assert xyz.device == device
+        xyz.sum().backward()
+        assert disparity.grad is not None
+        assert disparity.grad.shape == disparity.shape
+
     def test_stereo_camera_attributes_real(self, batch_size, device, dtype):
         """Test proper setup of the class for real data."""
         left_rectified_camera, right_rectified_camera = _RealTestData._get_real_stereo_camera(batch_size, device, dtype)

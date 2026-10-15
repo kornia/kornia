@@ -894,6 +894,24 @@ class TestFindHomographyFromLinesDLT(BaseTester):
         H = find_homography_lines_dlt(ls1, ls2, None)
         assert H.shape == (B, 3, 3)
 
+    @pytest.mark.parametrize("num_points", [0, 4])
+    @pytest.mark.parametrize("use_weights", [False, True])
+    @pytest.mark.parametrize("solver", [find_homography_lines_dlt, find_homography_lines_dlt_iterated])
+    def test_empty_batch(self, num_points, use_weights, solver, device, dtype):
+        # An empty batch gives an empty batch of homographies, as find_homography_dlt does.
+        ls1 = torch.rand(0, num_points, 2, 2, device=device, dtype=dtype, requires_grad=True)
+        ls2 = torch.rand(0, num_points, 2, 2, device=device, dtype=dtype)
+        weights = torch.ones(0, num_points, device=device, dtype=dtype) if use_weights else None
+
+        H = solver(ls1, ls2, weights)
+
+        assert H.shape == (0, 3, 3)
+        assert H.dtype == dtype
+        assert H.device == ls1.device
+        H.sum().backward()
+        assert ls1.grad is not None
+        assert ls1.grad.shape == ls1.shape
+
     @pytest.mark.parametrize("batch_size, num_points", [(1, 4), (2, 5), (3, 6)])
     def test_points_noweights(self, batch_size, num_points, device, dtype):
         B, N = batch_size, num_points
