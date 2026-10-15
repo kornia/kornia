@@ -960,7 +960,7 @@ class LightGlue(nn.Module):
             "prune1": prune1,
         }
 
-    def _forward_pairs(self, data0: dict, data1: dict, b: int) -> dict:  # type: ignore
+    def _forward_pairs(self, data0: dict, data1: dict, b: int) -> dict:
         """Match the ``b`` pairs of a batch one at a time and stack their outputs.
 
         The pairs have no common ``log_assignment``, since each covers the points its pair kept, and ``stop`` is the
