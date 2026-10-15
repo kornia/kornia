@@ -112,7 +112,9 @@ def _adaptive_min_pool_1d(m: torch.Tensor, out_size: int, dim: int) -> torch.Ten
     return gathered.reshape(shape).amin(dim=dim + 1)
 
 
-def _weight_scores(scores: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
+def _weight_scores(
+    scores: torch.Tensor, weights: torch.Tensor, bound_dtype: Optional[torch.dtype] = None
+) -> torch.Tensor:
     r"""Scale detection ``scores`` by ``weights`` toward the worst score, so a weight never promotes.
 
     A weight in ``(0, 1]`` multiplies a non-negative score and *divides* a negative one: the score
@@ -126,14 +128,16 @@ def _weight_scores(scores: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
     is the sentinel an unfilled slot carries into the ranking, so the arithmetic runs in float32
     for half-precision input and the result is bounded at ``finfo.min`` of the score dtype before
     the cast back: a weighted detection is finite and so always stays ahead of the padding. Wider
-    dtypes are unchanged wherever the quotient is representable.
+    dtypes are unchanged wherever the quotient is representable. ``bound_dtype`` names the dtype the
+    score is reported in when that is narrower than ``scores``, as for the float32 copy of a
+    half-precision response that :class:`ScaleSpaceDetector` ranks, so the bound still fits it.
     """
     dtype = scores.dtype
     wide = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
     s, w = scores.to(wide), weights.to(wide)
     divisor = torch.where(w > 0, w, torch.ones_like(w))
     out = torch.where(s >= 0, s * w, s / divisor)
-    return out.clamp_min(torch.finfo(dtype).min).to(dtype)
+    return out.clamp_min(torch.finfo(dtype if bound_dtype is None else bound_dtype).min).to(dtype)
 
 
 def _create_octave_mask(mask: torch.Tensor, octave_resp: torch.Tensor) -> torch.Tensor:
@@ -228,6 +232,9 @@ class ScaleSpaceDetector(nn.Module):
           centres; the whole frame can reach outside the image.
         - The output has ``num_features`` slots: the detections by decreasing response, then the unfilled slots, which
           hold a zero response and a zero LAF.
+        - The LAFs are float32 for a float16 or bfloat16 image and float64 for a float64 one; the responses keep the
+          response function's dtype. Non-maximum suppression and sub-pixel refinement run on the response promoted to
+          at least float32.
         - Known defects: an octave passes only its ``num_features`` strongest candidates to the border test and to the
           mask check of their refined centres, so the slot of a candidate rejected there stays empty even when a
           weaker valid candidate exists (`#5741 <https://github.com/kornia/kornia/issues/5741>`_).
@@ -386,14 +393,15 @@ class ScaleSpaceDetector(nn.Module):
         is_iterative_subpix: bool,
         batchable_subpix: bool,
         octave_to_image: Tuple[float, float],
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.dtype]:
         """Process one scale-space octave: response → NMS/subpix → top-K → LAF.
 
-        Returns the top-K responses, their LAFs, and a boolean mask of the slots a detection
-        actually filled. The batched top-K below ranks over the whole volume and returns its
-        ``fill`` sentinel once the octave runs out of candidates, and the border check rejects
-        candidates after the ranking; the mask is what tells those slots apart from a detection,
-        since the response alone cannot.
+        Returns the top-K responses, their LAFs, a boolean mask of the slots a detection
+        actually filled, and the dtype of the response function's output. The batched top-K below
+        ranks over the whole volume and returns its ``fill`` sentinel once the octave runs out of
+        candidates, and the border check rejects candidates after the ranking; the mask is what
+        tells those slots apart from a detection, since the response alone cannot. The responses
+        and LAFs are in at least float32; ``_detect`` casts the responses back to the returned dtype.
         """
         dev = octave.device
         # An octave searches `num_levels` response levels, 1..num_levels; levels 0 and num_levels + 1 are only
@@ -435,7 +443,14 @@ class ScaleSpaceDetector(nn.Module):
         # level/channel permutation above is contiguous when CH == 1 (the common path), but
         # not for a response that preserves multiple channels, nor for a scale-space response cut to its levels.
         oct_resp = oct_resp[:, :, :n_resp_levels].contiguous()
-        scale_sigmas = sigmas_oct[:, : oct_resp.shape[2]]
+        # The mask weights are cast to the response's own dtype (see `_resize_mask`), before the promotion below.
+        resampled = None if mask is None else _create_octave_mask(mask, oct_resp)
+        # The refiners write absolute pixel coordinates into a tensor of the response's dtype, and bfloat16 holds no
+        # odd integer above 256 (float16: above 2048). Run NMS, refinement and top-K on the response in at least
+        # float32; promoting is exact, so NMS selects the same candidates. `_detect` casts the responses back.
+        resp_dtype = oct_resp.dtype
+        oct_resp = oct_resp.to(torch.promote_types(resp_dtype, torch.float32))
+        scale_sigmas = sigmas_oct[:, : oct_resp.shape[2]].to(oct_resp.dtype)
 
         # Always precompute NMS masks in one fused pass.
         # - For minima_are_also_good: both masks are needed anyway.
@@ -452,8 +467,7 @@ class ScaleSpaceDetector(nn.Module):
         # score of the candidates it keeps.
         oct_mask: Optional[torch.Tensor] = None
         oct_keep: Optional[torch.Tensor] = None
-        if mask is not None:
-            resampled = _create_octave_mask(mask, oct_resp)
+        if mask is not None and resampled is not None:
             oct_keep = resampled > 0
             max_nms_mask = max_nms_mask & oct_keep
             min_nms_mask = min_nms_mask & oct_keep
@@ -477,13 +491,13 @@ class ScaleSpaceDetector(nn.Module):
         response_max[:, :, 0] = 0.0
         response_max[:, :, -1] = 0.0
         if oct_mask is not None:
-            response_max = _weight_scores(response_max, oct_mask)
+            response_max = _weight_scores(response_max, oct_mask, resp_dtype)
 
         if self.minima_are_also_good:
             response_min[:, :, 0] = 0.0
             response_min[:, :, -1] = 0.0
             if oct_mask is not None:
-                response_min = _weight_scores(response_min, oct_mask)
+                response_min = _weight_scores(response_min, oct_mask, resp_dtype)
             take_min_mask = (response_min > response_max) & min_nms_mask
             response_max = torch.where(take_min_mask, response_min, response_max)
             # Candidate positions: original max-NMS plus swapped min-NMS positions.
@@ -586,7 +600,7 @@ class ScaleSpaceDetector(nn.Module):
         # Octave pixels to input pixels, per axis: x scales the first LAF row, y the second.
         current_lafs[:, :, 0, :].mul_(octave_to_image[0])
         current_lafs[:, :, 1, :].mul_(octave_to_image[1])
-        return resp_flat_best, current_lafs, filled
+        return resp_flat_best, current_lafs, filled, resp_dtype
 
     def _detect(
         self, img: torch.Tensor, num_feats: int, mask: Optional[torch.Tensor] = None
@@ -613,7 +627,8 @@ class ScaleSpaceDetector(nn.Module):
                 "Expected the scale pyramid module to have `n_levels` as a torch.Tensor or int."
                 f"Got {type(self.scale_pyr.n_levels)}"
             )
-        rotmat = torch.eye(2, dtype=dtype, device=dev).view(1, 1, 2, 2)
+        # The LAFs are assembled in at least float32, the dtype `_process_octave` refines the centres in.
+        rotmat = torch.eye(2, dtype=torch.promote_types(dtype, torch.float32), device=dev).view(1, 1, 2, 2)
         # Read the live module once per forward, so a refiner swapped in after construction, or a
         # compiled one passed by the caller, is dispatched consistently on both the single-sign and
         # the minima-and-maxima path.
@@ -632,7 +647,7 @@ class ScaleSpaceDetector(nn.Module):
         # tables per call, and concurrent CUDA allocations contend for the same
         # device memory allocator lock.  Tested: sequential ≈ parallel on GPU.
         n_oct = len(sp)
-        results: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = [
+        results: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.dtype]] = [
             self._process_octave(
                 sp[i],
                 sigmas[i],
@@ -665,7 +680,8 @@ class ScaleSpaceDetector(nn.Module):
         responses, idxs = torch.topk(responses, k=num_feats, dim=1)
         lafs = torch.gather(lafs, 1, idxs.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 2, 3))
         filled = torch.gather(filled, 1, idxs)
-        responses = torch.where(filled, responses, torch.zeros_like(responses))
+        # The ranking ran on the float32 copy of a half-precision response; the scores keep the response's dtype.
+        responses = torch.where(filled, responses, torch.zeros_like(responses)).to(results[0][3])
         return responses, _zero_unfilled(lafs, filled), filled
 
     def detect(
@@ -929,16 +945,15 @@ class MultiResolutionDetector(nn.Module):
         top_scores = torch.where(valid, top_scores, torch.zeros_like(top_scores))
 
         # Convert flat indices to (y, x) pixel coordinates and project them to the original
-        # resolution. The arithmetic runs in at least float32 -- a half-precision image cannot hold
-        # a pixel index times a scale factor exactly -- and only the finished coordinate is cast
-        # to the image dtype, which is exact for every integer a half-precision type can hold.
+        # resolution. The LAFs are built in at least float32: a half-precision dtype cannot hold a
+        # pixel index times a scale factor, nor an odd pixel above 256 (bfloat16) or 2048 (float16).
         yx = torch.stack([top_flat_idx // w, top_flat_idx % w], dim=1)  # (k, 2)
-        wide = torch.float64 if level_img.dtype == torch.float64 else torch.float32
+        wide = torch.promote_types(level_img.dtype, torch.float32)
         fx = torch.tensor([factor[0], factor[1]], device=level_img.device, dtype=wide)
-        xy_projected = (yx.view(1, k, 2).flip(2).to(wide) * fx).to(level_img.dtype)
+        xy_projected = yx.view(1, k, 2).flip(2).to(wide) * fx
         scale_val = 0.5 * (factor[0] + factor[1]) * self.mr_size
-        scale = level_img.new_full((1, k, 1, 1), scale_val)
-        lafs = laf_from_center_scale_ori(xy_projected, scale, level_img.new_zeros(1, k, 1))
+        scale = torch.full((1, k, 1, 1), scale_val, device=level_img.device, dtype=wide)
+        lafs = laf_from_center_scale_ori(xy_projected, scale, scale.new_zeros(1, k, 1))
         lafs = lafs * valid.view(1, k, 1, 1).to(lafs.dtype)
         return top_scores, lafs
 
@@ -969,8 +984,8 @@ class MultiResolutionDetector(nn.Module):
             `(1, num_features, 2, 3)`, holding the `num_features` highest responses in the image and sorted by
             response, descending. The shape holds even when the image yields fewer above-threshold maxima
             than requested: those slots carry a zero response and a zero LAF, and sort after every real detection.
-            LAF centres are pixel coordinates cast to the image dtype, so a half-precision image gives centres at
-            that dtype's integer resolution.
+            The LAFs are float32 for a float16 or bfloat16 image and float64 for a float64 one; the responses keep
+            the response function's dtype.
         """
         KORNIA_CHECK_SHAPE(img, ["1", "C", "H", "W"])
         if mask is not None:

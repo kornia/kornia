@@ -457,7 +457,33 @@ class TestSharedSIFTScaleSpace(BaseTester):
         assert isinstance(feature.detector, _SIFTScaleSpaceDetector)
         lafs, responses, descriptors = feature(torch.rand(1, 1, 33, 35, device=device, dtype=dtype))
         assert lafs.shape == (1, 8, 2, 3)
-        assert responses.dtype == descriptors.dtype == lafs.dtype == dtype
+        assert responses.dtype == descriptors.dtype == dtype
+        assert lafs.dtype == torch.promote_types(dtype, torch.float32)  # float32 LAFs for a half-precision image
+
+    @pytest.mark.parametrize("backend", ["patch", "pyramid"])
+    def test_half_image_gives_float32_lafs(self, device, dtype, backend):
+        # bfloat16 holds only even values in [256, 512) and float16 only multiples of 0.25 there, so half-precision
+        # LAFs put every refined centre past x = 256 on that grid. The LAFs are float32 on both backends; the responses
+        # and descriptors keep the image dtype. An empty batch gives float32 LAFs as well (pyramid backend; the patch
+        # backend's ScaleSpaceDetector does not take an empty batch).
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("half-precision rule")
+        half_padding = supports_replicate_padding(device, dtype) and supports_reflect_padding(device, dtype)
+        if backend == "patch" and not half_padding:
+            pytest.skip("the patch backend pads the half-precision image; the pyramid backend promotes it")
+        g = torch.Generator().manual_seed(0)
+        img = F.avg_pool2d(torch.rand(1, 1, 300, 420, generator=g), 5, 1, 2).to(device, dtype)
+        feature = SIFTFeatureScaleSpace(300, descriptor_backend=backend).to(device, dtype)
+        with torch.no_grad():
+            lafs, responses, descriptors = feature(img)
+            if backend == "pyramid":
+                assert feature(img[:0])[0].dtype == torch.float32
+        assert lafs.dtype == torch.float32
+        assert responses.dtype == descriptors.dtype == dtype
+        x = lafs[0, :, 0, 2]
+        far = x[x > 256]
+        assert far.numel() > 20
+        assert (far != far.to(dtype).float()).float().mean() > 0.5
 
     def test_large_frame_is_described_in_half_precision(self, device, dtype):
         # Products of two entries of the first LAF overflow float16 (det 300 * 280 + 40 * 25 = 85000 > 65504).
@@ -808,7 +834,8 @@ class TestSIFTScaleSpaceDetector(BaseTester):
         lafs, responses = detector(image)
         filled = laf_is_filled(lafs)
         assert filled[0, 0]
-        expected = torch.tensor([11.2 * 0.5, 10.3 * 0.5], device=device, dtype=dtype)
+        # the LAFs are float32 for a half-precision image
+        expected = torch.tensor([11.2 * 0.5, 10.3 * 0.5], device=device, dtype=lafs.dtype)
         self.assert_close(get_laf_center(lafs)[0, 0], expected, rtol=2e-3, atol=2e-3)
         amplitude = 1e-4 if dtype == torch.float16 else 1e-8
         tiny_lafs, tiny_responses = _SIFTScaleSpaceDetector(4, _FixedPyramid(dog * amplitude)).to(device, dtype)(image)
@@ -867,7 +894,7 @@ class TestSIFTScaleSpaceDetector(BaseTester):
         dog = _quadratic_dog(device, dtype, center=(2.2, 26.3, 26.2))
         lafs, _ = _SIFTScaleSpaceDetector(1, _FixedPyramid(dog))(image)
         assert laf_is_filled(lafs).all()
-        expected = torch.tensor([26.2, 26.3], device=device, dtype=dtype) * 0.5
+        expected = torch.tensor([26.2, 26.3], device=device, dtype=lafs.dtype) * 0.5
         self.assert_close(get_laf_center(lafs)[0, 0], expected, atol=0.01, rtol=0.001)
 
     def test_topk_sorts_by_refined_response(self, device, dtype):
@@ -878,7 +905,7 @@ class TestSIFTScaleSpaceDetector(BaseTester):
         lafs, scores = _SIFTScaleSpaceDetector(2, _FixedPyramid(dog))(image)
         assert laf_is_filled(lafs).all()
         assert scores[0, 0] > scores[0, 1]
-        expected = torch.tensor([[21.2, 10.3], [11.2, 10.3]], device=device, dtype=dtype) * 0.5
+        expected = torch.tensor([[21.2, 10.3], [11.2, 10.3]], device=device, dtype=lafs.dtype) * 0.5
         self.assert_close(get_laf_center(lafs)[0], expected, atol=0.01, rtol=0.001)
 
     def test_refinement_backward_is_finite(self, device):
@@ -893,10 +920,8 @@ class TestConventionsSIFTFeatureScaleSpace(BaseTester):
     def test_convention_pyramid_backend_centres_are_pixel_centres_at_every_octave(self, device, dtype):
         # Three bright blobs (x, y, sigma) at non-integer centres of a 120 x 176 image, detected on octaves 0, 1 and 2.
         # The pyramid backend maps every octave's pixel back to the image's pixel-centre frame, so each centre is
-        # within 0.1 px of its blob. Half-precision input is detected in float32 and the LAFs are cast to the dtype at
-        # the end, which adds half a unit in the last place at coordinates below 128: 0.25 px in bfloat16, 1 / 32 px
-        # in float16.
-        tol = 0.1 + {torch.bfloat16: 0.25, torch.float16: 1.0 / 32}.get(dtype, 0.0)
+        # within 0.1 px of its blob. Half-precision input is detected in float32 and the LAFs stay float32.
+        tol = 0.1
         blobs = [(37.3, 41.6, 1.5), (112.7, 38.2, 3.5), (71.4, 84.3, 8.0)]
         yy, xx = torch.meshgrid(
             torch.arange(120, dtype=torch.float64), torch.arange(176, dtype=torch.float64), indexing="ij"
