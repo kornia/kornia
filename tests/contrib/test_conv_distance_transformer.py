@@ -394,6 +394,15 @@ class TestConvDistanceTransform(BaseTester):
         values = torch.stack([out[0, 0, 4, 9], out[0, 0, 4, 10]])
         self.assert_close(values, torch.tensor([shift, 1.0 + shift], device=device, dtype=dtype))
         self.assert_close(out[0, 0, 4, 30], ref[0, 0, 4, 30])  # beyond kernel_size // 2 the value does not matter
+        # A source sharing the window adds to the soft minimum before the log, so the shift shrinks: with a 1 beside
+        # the 0.5, (2, 3) rises by 0.1689, not 0.2426. Literals from dt(pair.double())[0, 0, 2, 3] and
+        # dt((pair > 0).double())[0, 0, 2, 3] at the default h.
+        pair = torch.zeros(1, 1, 7, 7, device=device, dtype=dtype)
+        pair[0, 0, 3, 3] = 0.5
+        pair[0, 0, 3, 4] = 1.0
+        dt = kornia.contrib.distance_transform
+        values = torch.stack([dt(pair)[0, 0, 2, 3], dt((pair > 0).to(dtype))[0, 0, 2, 3]])
+        self.assert_close(values, torch.tensor([1.0753916230203424, 0.9065031851948744], device=device, dtype=dtype))
 
     def test_wart_distance_transform_diagonal_underestimate_5956(self, device, dtype):
         image = torch.zeros(1, 1, 23, 37, device=device, dtype=dtype)
@@ -426,7 +435,8 @@ class TestConvDistanceTransform(BaseTester):
 
     def test_wart_distance_transform_mask_above_one_5977(self, device, dtype):
         # A source of value v contributes -h * log(v) instead of 0: at v = 2 its neighbour reads 1 - 0.35 * log(2)
-        # = 0.7574 instead of 1, and at v = 255 every pixel reads 0, as if on the foreground.
+        # = 0.7574 instead of 1, and at v = 255 and the default kernel_size and h every pixel reads 0, as if on the
+        # foreground. A smaller h shrinks the shift: at h = 0.1 the neighbour reads 1 - 0.1 * log(255) = 0.4459.
         image = torch.zeros(1, 1, 9, 13, device=device, dtype=dtype)
         image[0, 0, 4, 6] = 1.0
         binary = kornia.contrib.distance_transform(image)
@@ -434,4 +444,6 @@ class TestConvDistanceTransform(BaseTester):
         doubled = kornia.contrib.distance_transform(2 * image)
         self.assert_close(doubled[0, 0, 4, 7], torch.tensor(1.0 - 0.35 * math.log(2.0), device=device, dtype=dtype))
         assert (kornia.contrib.distance_transform(255 * image) == 0).all()
+        small_h = kornia.contrib.distance_transform(255 * image, h=0.1)
+        self.assert_close(small_h[0, 0, 4, 7], torch.tensor(1.0 - 0.1 * math.log(255.0), device=device, dtype=dtype))
         assert binary.max() > 5

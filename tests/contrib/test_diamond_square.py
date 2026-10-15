@@ -148,6 +148,9 @@ class TestDiamondSquare(BaseTester):
         self.assert_close(out5t[0, 0], expected5.transpose(0, 1))
 
     def test_convention_update_rule(self, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+
         # One level from a 3x5 seed: a new value is (1 - s) * mean(neighbours) + s * U, s = random_scale * roughness
         # = 0.25, U = 1, seed corner draws [[1, 2, 4], [8, 16, 32]] scaled by random_scale. Worked by hand (scaled
         # seed: corner 0.5, centre 3.375, top midpoint 1.625, left midpoint 2.625; diamond (1, 3) = 2.271484375):
@@ -169,23 +172,37 @@ class TestDiamondSquare(BaseTester):
         self.assert_close(nodes, expected)
 
     def test_convention_normalize_range_is_min_max_per_plane(self, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         torch.manual_seed(0)
         out = kornia.contrib.diamond_square((3, 2, 9, 14), normalize_range=(-1.0, 1.0), device=device, dtype=dtype)
         self.assert_close(out.amin((-2, -1)), torch.full((3, 2), -1.0, device=device, dtype=dtype))
         self.assert_close(out.amax((-2, -1)), torch.full((3, 2), 1.0, device=device, dtype=dtype))
 
     def test_convention_random_fn_is_the_only_source_of_randomness(self, device):
+        def device_state():
+            if device.type == "cuda":
+                return torch.cuda.get_rng_state(device)
+            if device.type == "mps":
+                return torch.mps.get_rng_state()
+            return None
+
         g = torch.Generator(device=device)
         draw = functools.partial(torch.rand, generator=g)
-        state = torch.get_rng_state()
+        cpu_state, accelerator_state = torch.get_rng_state(), device_state()
         g.manual_seed(3)
         first = kornia.contrib.diamond_square((2, 1, 9, 14), random_fn=draw, device=device)
         g.manual_seed(3)
         second = kornia.contrib.diamond_square((2, 1, 9, 14), random_fn=draw, device=device)
         assert torch.equal(first, second)
-        assert torch.equal(state, torch.get_rng_state())
+        assert torch.equal(cpu_state, torch.get_rng_state())
+        if accelerator_state is not None:
+            assert torch.equal(accelerator_state, device_state())
 
     def test_wart_mean_field_drifts_for_random_scale_not_one_5963(self, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+
         # The map is linear in the draws, so a constant 0.5 draw gives the expected field of torch.rand exactly.
         # With random_scale=0.5 the seed is 0.5 * 0.5 = 0.25, and each level mixes towards 0.5: a level-1 diamond is
         # 0.75 * 0.25 + 0.25 * 0.5 = 0.3125, a level-1 square 0.328125 at the border and 0.3359375 inside.

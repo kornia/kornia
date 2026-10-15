@@ -42,14 +42,14 @@ class Lambda(nn.Module):
 
     """
 
-    def __init__(self, func: Callable[..., torch.Tensor]) -> None:
+    def __init__(self, func: Callable[..., Any]) -> None:
         super().__init__()
         if not callable(func):
             raise TypeError(f"Argument func should be callable, got {type(func).__name__!r}")
 
         self.func = func
 
-    def forward(self, img: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
+    def forward(self, img: torch.Tensor, *args: Any, **kwargs: Any) -> Any:
         """Run the user-provided transform function.
 
         This method simply forwards all arguments to ``self.func``.

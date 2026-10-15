@@ -160,9 +160,9 @@ class ExtractTensorPatches(nn.Module):
     Convention:
         - Patches are stacked row-major over the grid of window positions, left to right and then top to bottom, the
           order of :func:`torch.nn.functional.unfold`.
-        - ``padding`` adds zeros. A 4-tuple is ``(top, bottom, left, right)``, not the ``(left, right, top, bottom)``
-          of :func:`torch.nn.functional.pad`; a 2-tuple ``(ph, pw)`` adds ``ph`` rows above and below and ``pw``
-          columns left and right.
+        - A positive ``padding`` adds zeros and a negative one crops. A 4-tuple is ``(top, bottom, left, right)``,
+          not the ``(left, right, top, bottom)`` of :func:`torch.nn.functional.pad`; a 2-tuple ``(ph, pw)`` adds
+          ``ph`` rows above and below and ``pw`` columns left and right.
         - A window that does not fit warns and drops the last rows or columns; an image smaller than the window warns
           and then raises. ``allow_auto_padding=True`` pads instead, as :func:`compute_padding` computes: split evenly
           with the odd pixel at the bottom or right, and an image smaller than the window padded to one window.
@@ -176,7 +176,7 @@ class ExtractTensorPatches(nn.Module):
         input: torch.Tensor image where to extract the patches with shape :math:`(B, C, H, W)`.
         window_size: the size of the sliding window and the output patch size.
         stride: stride of the sliding window.
-        padding: zero padding: an int, ``(ph, pw)`` or ``(top, bottom, left, right)``.
+        padding: zero padding, or cropping where negative: an int, ``(ph, pw)`` or ``(top, bottom, left, right)``.
         allow_auto_padding: whether to allow automatic padding if the window and stride do not fit into the image.
 
     Shape:
@@ -582,7 +582,7 @@ def extract_tensor_patches(
         input: torch.Tensor image where to extract the patches with shape :math:`(B, C, H, W)`.
         window_size: the size of the sliding window and the output patch size.
         stride: stride of the sliding window.
-        padding: zero padding: an int, ``(ph, pw)`` or ``(top, bottom, left, right)``.
+        padding: zero padding, or cropping where negative: an int, ``(ph, pw)`` or ``(top, bottom, left, right)``.
         allow_auto_padding: whether to allow automatic padding if the window and stride do not fit into the image.
 
     Returns:

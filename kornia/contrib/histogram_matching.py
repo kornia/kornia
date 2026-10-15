@@ -31,12 +31,16 @@ def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Te
           ``skimage.exposure.match_histograms(source, template, channel_axis=None)``; to match each sample or channel
           on its own, call the function on each slice.
         - A source value maps to the template value at its quantile, interpolated linearly between template values
-          with :func:`interp`. The result stays inside the template's range but can fall between its values: a
-          ``uint8`` template gives fractional values, as in skimage.
+          with :func:`interp`. The result stays inside the template's range once that range is rounded to the output
+          dtype, so with a ``float64`` template and a ``float32`` source it can pass the unrounded ends by that
+          rounding. It can also fall between template values: a ``uint8`` template gives fractional values, as in
+          skimage.
         - A floating source keeps its dtype; an integer or ``bool`` source returns ``float32``. The quantiles are
           computed in ``float32`` (``float64`` for a ``float64`` source).
-        - It is not differentiable: a backward pass through it raises.
-        - An empty ``source`` returns an empty tensor; an empty ``template`` raises ``ValueError``.
+        - It is not differentiable: with a non-empty ``source``, no gradient reaches it and a backward pass into
+          ``template`` raises.
+        - An empty ``source`` returns an empty tensor, still attached to its autograd graph; an empty ``template``
+          raises ``ValueError``.
 
     Args:
         source: Image to transform.

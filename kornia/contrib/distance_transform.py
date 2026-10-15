@@ -167,8 +167,9 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
           ``distanceTransform`` measure it to the nearest zero: ``distance_transform(x)`` approximates
           ``scipy.ndimage.distance_transform_edt(x == 0)``.
         - ``image`` is a binary mask whose sources are the pixels equal to 1. A value :math:`0 < v < 1` is a weaker
-          source: it adds :math:`-h \log v` to the distances within ``kernel_size // 2`` of it and does not change them
-          further away.
+          source: it adds :math:`-h \log v` to a distance within ``kernel_size // 2`` of it whose window holds no
+          other source, less where the window holds one, as the soft minimum sums them before its logarithm, and
+          does not change the distances further away.
         - A mask without any non-zero pixel gives 0 everywhere, as a full mask does, which keeps the output and its
           gradient finite.
         - Known defect: the result is not Euclidean, and there is no general bound on its error
@@ -179,8 +180,9 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
           reached pixels share its window (replicate padding counts a pixel on the image border twice), the more the
           larger ``h``: at the default ``h`` by 0.167 px beside a straight edge, 0.243 px midway between two sources
           2 px apart and 0.579 px in a one-pixel hole, and in a hole towards 0 as ``h`` nears its upper bound.
-        - Known defect: values above 1 are not rejected and change the distances, and a mask of 0 and 255 gives 0
-          everywhere (`#5977 <https://github.com/kornia/kornia/issues/5977>`_).
+        - Known defect: values above 1 are not rejected and change the distances; at the default ``kernel_size=3``
+          and ``h=0.35`` a mask of 0 and 255 gives 0 everywhere
+          (`#5977 <https://github.com/kornia/kornia/issues/5977>`_).
 
     Args:
         image: Image or volume with shape :math:`(B,C,H,W)` or :math:`(B,C,D,H,W)`.
