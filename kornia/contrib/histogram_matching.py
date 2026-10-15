@@ -28,8 +28,9 @@ def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Te
     Convention:
         - One histogram of every element of ``source``, all batch items and channels together, is matched to one
           histogram of every element of ``template``, which can have any shape. This is
-          ``skimage.exposure.match_histograms(source, template, channel_axis=None)``; to match each sample or channel
-          on its own, call the function on each slice.
+          ``skimage.exposure.match_histograms(source, template, channel_axis=None)``, which needs both inputs to have
+          the same number of dimensions (flatten them otherwise); to match each sample or channel on its own, call the
+          function on each slice.
         - A source value maps to the template value at its quantile, interpolated linearly between template values
           with :func:`interp`. The result stays inside the template's range once that range is rounded to the output
           dtype, so with a ``float64`` template and a ``float32`` source it can pass the unrounded ends by that
