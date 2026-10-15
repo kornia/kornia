@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import copy
 from unittest.mock import MagicMock
 
 import pytest
@@ -23,6 +24,7 @@ import torch
 from kornia.core._compat import torch_version_le
 from kornia.core.exceptions import BaseError
 from kornia.feature import DescriptorMatcher, GFTTAffNetHardNet, LocalFeatureMatcher, LoFTR, SIFTFeature
+from kornia.feature.loftr.loftr import default_cfg
 from kornia.geometry import rescale, transform_points
 from kornia.tracking import HomographyTracker
 
@@ -121,19 +123,71 @@ class TestHomographyTrackerCaching:
         tracker.match_initial(_texture(64, 80, seed=1))
         assert keys == [["image0", "image1"]]
 
-    def test_fast_matcher_swapped_to_loftr_after_set_target_gets_image0(self):
-        # The cached representation belongs to the SIFT matcher set before; the LoFTR swapped in has no features0.
+    def test_fast_matcher_swapped_to_loftr_after_set_target_gets_its_own_features0(self):
+        # The cached representation belongs to the SIFT matcher set before; the LoFTR swapped in extracts the target
+        # itself and gets its own features0 (not image0 next to it, which LoFTR rejects).
         tracker = HomographyTracker(self._sift_matcher(), self._sift_matcher(), minimum_inliers_num=10)
         tracker.set_target(_texture(64, 80))
         loftr = LoFTR(None)
-        keys = []
-        loftr.register_forward_pre_hook(lambda mod, args: keys.append(sorted(args[0])))
+        inputs = []
+        loftr.register_forward_pre_hook(lambda mod, args: inputs.append(dict(args[0])))
         tracker.fast_matcher = loftr
         tracker.previous_homography = torch.eye(3)
         tracker.track_next_frame(_texture(72, 96, seed=1))
-        assert len(keys) == 1
-        assert "image0" in keys[0]
-        assert "features0" not in keys[0]
+        assert len(inputs) == 1
+        assert sorted(inputs[0]) == ["features0", "image1"]
+        assert inputs[0]["features0"] is tracker.target_fast_representation["features"]
+
+    @staticmethod
+    def _loftr(seed: int) -> LoFTR:
+        # Random weights; a low coarse threshold lets matches through, so different weights give different matches.
+        config = copy.deepcopy(default_cfg)
+        config["match_coarse"]["thr"] = 1e-4
+        with torch.random.fork_rng():
+            torch.manual_seed(seed)
+            return LoFTR(None, config)
+
+    def test_loftr_swapped_after_set_target_matches_an_uncached_call(self):
+        # CodeRabbit 4277422844: a LoFTR swapped in after set_target was fed the old LoFTR's cached features0.
+        old, new = self._loftr(1), self._loftr(2)
+        tracker = HomographyTracker(old, self._sift_matcher(), minimum_inliers_num=10**6)
+        target, frame = _texture(64, 80), _texture(72, 96, seed=1)
+        tracker.set_target(target)
+        tracker.initial_matcher = new
+        outputs, shapes = [], []
+        new.register_forward_hook(lambda mod, args, out: outputs.append(out))
+        new.backbone.register_forward_hook(lambda mod, inp, out: shapes.append(tuple(inp[0].shape)))
+        tracker.match_initial(frame)  # with gradients enabled: the target is still extracted without a graph
+        assert not tracker.target_initial_representation["features"]["coarse"].requires_grad
+        with torch.no_grad():
+            tracker.match_initial(frame)
+            fresh = new({"image0": target, "image1": frame})
+        assert len(fresh["keypoints0"]) > 0
+        for out in outputs[:2]:
+            for k in ("keypoints0", "keypoints1", "confidence", "batch_indexes"):
+                assert torch.equal(out[k], fresh[k])
+        assert shapes[:3] == [(1, 1, 64, 80), (1, 1, 72, 96), (1, 1, 72, 96)]  # the target once, after the swap
+
+    def test_local_feature_matcher_swapped_after_set_target_matches_an_uncached_call(self):
+        tracker = HomographyTracker(self._sift_matcher(), self._sift_matcher(), minimum_inliers_num=10**6)
+        target = _texture(64, 80)
+        new = LocalFeatureMatcher(SIFTFeature(8), DescriptorMatcher("snn", 0.9))
+        inputs, outputs, shapes = [], [], []
+        new.register_forward_pre_hook(lambda mod, args: inputs.append(args[0]["image1"]))
+        new.register_forward_hook(lambda mod, args, out: outputs.append(out))
+        new.local_feature.register_forward_hook(lambda mod, inp, out: shapes.append(tuple(inp[0].shape)))
+        with torch.no_grad():
+            tracker.set_target(target)
+            tracker.fast_matcher = new
+            for _ in range(2):
+                tracker.previous_homography = torch.eye(3)
+                tracker.track_next_frame(_texture(64, 80))
+            in_tracker = list(shapes)
+            fresh = new({"image0": target, "image1": inputs[0]})
+        assert len(fresh["keypoints0"]) > 0
+        for k in ("keypoints0", "keypoints1", "batch_indexes"):
+            assert torch.equal(outputs[0][k], fresh[k])
+        assert in_tracker == [(1, 1, 64, 80)] * 3  # the target once after the swap, then the warped frame twice
 
     def test_track_next_frame_without_a_prior_raises(self):
         # C-5: UnboundLocalError on Hwarp.
@@ -233,6 +287,28 @@ class TestHomographyTrackerUnit:
             assert sorted(data) == ["desc0", "image0", "image1"]
             assert data["image0"] is target
             assert data["desc0"] is cached["desc"]
+
+    def test_custom_matcher_swapped_or_target_reassigned_after_set_target(self):
+        # A replaced matcher, or a target assigned directly, gets the target extracted again, once, by the matcher in
+        # use: the cache held the old matcher's features of the old target.
+        initial, fast = _CustomMatcher(), _CustomMatcher()
+        ransac = MagicMock(return_value=(torch.eye(3), torch.ones(20, dtype=torch.bool)))
+        tracker = HomographyTracker(initial, fast, ransac, minimum_inliers_num=5)
+        tracker.set_target(torch.rand(1, 1, 8, 9))
+        new_fast = _CustomMatcher()
+        tracker.fast_matcher = new_fast
+        other = torch.rand(1, 1, 8, 9)
+        tracker.target = other
+        for _ in range(2):
+            tracker.match_initial(torch.rand(1, 1, 8, 9))
+            tracker.track_next_frame(torch.rand(1, 1, 8, 9))
+        assert initial.extract_features.calls == 2  # set_target, then the reassigned target once
+        assert new_fast.extract_features.calls == 1
+        assert fast.inputs == []
+        for matcher in (initial, new_fast):
+            first, second = matcher.inputs
+            assert torch.equal(first["desc0"], other.mean((2, 3)))
+            assert second["desc0"] is first["desc0"]
 
     def test_extract_features_that_is_not_a_module_is_not_called(self):
         # A matcher that is neither LoFTR nor LocalFeatureMatcher, and whose extract_features is not an nn.Module, gets

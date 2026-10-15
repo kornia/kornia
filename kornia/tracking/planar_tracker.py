@@ -60,6 +60,9 @@ class HomographyTracker(nn.Module):
         self.target: torch.Tensor
         self.target_initial_representation: Dict[str, Any] = {}
         self.target_fast_representation: Dict[str, Any] = {}
+        # The matcher and the target each cached representation was extracted from. A plain dict, so that the matchers
+        # are not registered a second time as submodules.
+        self._cache_source: Dict[str, Tuple[nn.Module, torch.Tensor]] = {}
         self.previous_homography: Optional[torch.Tensor] = None
 
         self.inliers_num: int = 0
@@ -106,13 +109,33 @@ class HomographyTracker(nn.Module):
         - Any other matcher whose ``extract_features`` attribute is a :class:`torch.nn.Module`: every entry of the dict
           it returns is passed with a ``0`` suffix (``desc`` as ``desc0``), next to ``image0``.
 
-        Other matchers get no cached representation and receive ``image0`` and ``image1`` only. Setting a target
-        starts a new track: the previous homography maps the old target's coordinates, so it is cleared.
+        Other matchers get no cached representation and receive ``image0`` and ``image1`` only. A matcher replaced after
+        this call, or a ``target`` reassigned directly, gets the target's features extracted again on its next use.
+        Setting a target starts a new track: the previous homography maps the old target's coordinates, so it is
+        cleared.
         """
         self.target = target
         self.reset_tracking()
         self.target_initial_representation = self._extract_target(self.initial_matcher, target)
         self.target_fast_representation = self._extract_target(self.fast_matcher, target)
+        self._cache_source = {"initial": (self.initial_matcher, target), "fast": (self.fast_matcher, target)}
+
+    def _target_representation(self, initial: bool) -> Dict[str, Any]:
+        # The cached representation of the target for the configured matcher. It is extracted again, once, when the
+        # matcher or the target was replaced after set_target: the cache holds the old model's features of the old
+        # target. Without set_target nothing is cached, and the matcher gets image0.
+        key = "initial" if initial else "fast"
+        matcher = self.initial_matcher if initial else self.fast_matcher
+        source = self._cache_source.get(key)
+        if source is not None and (source[0] is not matcher or source[1] is not self.target):
+            with torch.no_grad():
+                representation = self._extract_target(matcher, self.target)
+            if initial:
+                self.target_initial_representation = representation
+            else:
+                self.target_fast_representation = representation
+            self._cache_source[key] = (matcher, self.target)
+        return self.target_initial_representation if initial else self.target_fast_representation
 
     @staticmethod
     def _extract_target(matcher: nn.Module, target: torch.Tensor) -> Dict[str, Any]:
@@ -167,7 +190,7 @@ class HomographyTracker(nn.Module):
         estimated homography as ``previous_homography`` on success.
         """
         match_dict: Dict[str, torch.Tensor] = self.initial_matcher(
-            self._matcher_input(self.initial_matcher, self.target_initial_representation, x)
+            self._matcher_input(self.initial_matcher, self._target_representation(True), x)
         )
         keypoints0 = match_dict["keypoints0"][match_dict["batch_indexes"] == 0]
         keypoints1 = match_dict["keypoints1"][match_dict["batch_indexes"] == 0]
@@ -212,7 +235,7 @@ class HomographyTracker(nn.Module):
         h, w = self.target.shape[2:]
         frame_warped = warp_perspective(x, Hinv, (h, w))
         match_dict = self.fast_matcher(
-            self._matcher_input(self.fast_matcher, self.target_fast_representation, frame_warped)
+            self._matcher_input(self.fast_matcher, self._target_representation(False), frame_warped)
         )
         keypoints0 = match_dict["keypoints0"][match_dict["batch_indexes"] == 0]
         keypoints1 = match_dict["keypoints1"][match_dict["batch_indexes"] == 0]
