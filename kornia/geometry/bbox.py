@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Optional
 
 import torch
@@ -665,8 +666,10 @@ def transform_bbox(
         boxes[..., 2] = boxes[..., 0] + boxes[..., 2]  # x + w
         boxes[..., 3] = boxes[..., 1] + boxes[..., 3]  # y + h
 
-    # unflatten infers -1 from dimension 1 rather than from the element count, so it also serves zero boxes.
-    transformed_boxes: torch.Tensor = transform_points(trans_mat, boxes.flatten(1).unflatten(1, (-1, 2)))
+    # Name the point count: `-1` cannot be inferred for an empty batch. Sizes read from `.shape` stay symbolic in
+    # traced and exported graphs, which `unflatten` does not guarantee for the legacy ONNX exporter.
+    num_points = math.prod(boxes.shape[1:]) // 2
+    transformed_boxes: torch.Tensor = transform_points(trans_mat, boxes.reshape(boxes.shape[0], num_points, 2))
     transformed_boxes = transformed_boxes.view_as(boxes)
 
     if (restore_coordinates is None or restore_coordinates) and boxes.shape[-2:] != torch.Size([4, 2]):
