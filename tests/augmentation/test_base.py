@@ -1244,6 +1244,7 @@ class TestConventionAugmentationBase2D(BaseTester):
                 id="RandomGaussianBlur",
             ),
             pytest.param(lambda: K.RandomMotionBlur(3, 35.0, 0.5, p=1.0), (0, 3, 6, 8), id="RandomMotionBlur"),
+            pytest.param(lambda: K.RandomJPEG(p=1.0), (0, 3, 6, 8), id="RandomJPEG"),
         ],
     )
     def test_convention_zero_batch_is_empty_in_empty_out(self, augmentation, shape, device, dtype):
