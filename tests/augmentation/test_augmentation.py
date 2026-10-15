@@ -6433,10 +6433,12 @@ class TestRandomJPEGEmptyBatch(BaseTester):
         with pytest.raises(error, match=match):
             aug(torch.rand(batch, 3, 8, 10, device=device, dtype=dtype), params=params)
 
-    def test_empty_batch_keeps_the_channel_check(self, device, dtype):
-        # The codec needs three channels at every batch size, so a one-channel empty batch still raises.
+    @pytest.mark.parametrize("shape", [(0, 1, 8, 10), (0, 3, 0, 10), (0, 3, 8, 0)])
+    def test_empty_batch_keeps_the_input_checks(self, shape, device, dtype):
+        # The codec needs three channels and a non-empty image at every batch size, so these empty batches still
+        # raise as they did before the empty-batch shortcut.
         with pytest.raises(ValueError, match=r"it is empty|expected 3"):
-            RandomJPEG(p=1.0)(torch.rand(0, 1, 8, 10, device=device, dtype=dtype))
+            RandomJPEG(p=1.0)(torch.rand(*shape, device=device, dtype=dtype))
 
 
 @pytest.mark.slow
