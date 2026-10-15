@@ -319,7 +319,8 @@ class TestConvDistanceTransform(BaseTester):
         # Plan review P3: a pixel counts as reached when -h*log(sum of its window's taps over reached pixels) > 0.
         # Once the off-centre taps can sum to >= 1, a pixel whose window is full of reached pixels reads as
         # foreground (0). Random 60 % masks, ks 3: 140 of 2805 background pixels were 0 at h 0.591, 2726 at h 2.0.
-        # Bounds (sum = 1): 2-D 0.5626 (ks 3), 0.5085 (ks 5), ~0.501 (ks >= 7); 3-D 0.4071 (ks 3), 0.3844 (ks 5).
+        # Bounds, float32 working precision (float64): 2-D 0.5624 (0.5626) at ks 3, 0.5084 (0.5085) at ks 5, ~0.501 at
+        # ks >= 7; 3-D 0.4070 (0.4071) at ks 3, 0.3843 (0.3844) at ks 5.
         with pytest.raises(BaseError, match="too large for kernel_size"):
             kornia.contrib.distance_transform(torch.zeros(shape, device=device), kernel_size=kernel_size, h=h)
 
@@ -328,6 +329,42 @@ class TestConvDistanceTransform(BaseTester):
         m = (torch.rand(8, 1, 23, 37, generator=g) < 0.6).float().to(device)
         out = kornia.contrib.distance_transform(m, kernel_size=3, h=0.55)
         assert not ((m == 0) & (out <= 0)).any()
+
+    @pytest.mark.parametrize(
+        ("shape", "accepted", "rejected"), [((1, 1, 7, 7), 0.5, 0.6), ((1, 1, 7, 7, 7), 0.35, 0.42)]
+    )
+    def test_largest_accepted_h_leaves_a_surrounded_background_pixel_nonzero(
+        self, shape, accepted, rejected, device, dtype
+    ):
+        # A background pixel whose whole window is reached sums every off-centre tap. The guard checks that sum in
+        # float64, but the cascade sums it in the working precision: at h=0.56256205 (2-D) the float64 sum is
+        # 0.99999991, float32 rounds it to 1, and the pixel read as foreground (0). Bisect for the largest h the guard
+        # accepts and check the pixel there, so the test pins the guarantee rather than the margin formula.
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip("This device does not support replicate padding for the regression dtype")
+        if not supports_conv2d(device, dtype):
+            pytest.skip("This device does not support convolution for the regression dtype")
+
+        img = torch.ones(shape, device=device, dtype=dtype)
+        img[(0, 0) + (3,) * (len(shape) - 2)] = 0.0
+        largest_out = None
+        for _ in range(50):
+            h = (accepted + rejected) / 2
+            try:
+                out = kornia.contrib.distance_transform(img, kernel_size=3, h=h)
+            except BaseError:
+                rejected = h
+            else:
+                accepted, largest_out = h, out
+        assert largest_out is not None
+        assert largest_out[(0, 0) + (3,) * (len(shape) - 2)] > 0
+
+    @pytest.mark.parametrize(("shape", "h"), [((1, 1, 7, 7), 0.56256205), ((1, 1, 7, 7, 7), 0.40709874)])
+    def test_h_whose_tap_sum_rounds_to_one_raises(self, shape, h, device):
+        # The off-centre taps sum to 0.99999991 (2-D) and 0.99999994 (3-D) in float64 at these h, and to 1 in the
+        # float32 cascade, which float16 and bfloat16 inputs also use.
+        with pytest.raises(BaseError, match="too large for kernel_size"):
+            kornia.contrib.distance_transform(torch.zeros(shape, device=device), kernel_size=3, h=h)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         input2d = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)

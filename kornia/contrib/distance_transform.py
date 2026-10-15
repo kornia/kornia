@@ -53,12 +53,17 @@ def _check_h_range(kernel_size: int, h: float, dtype: torch.dtype, ndim: int) ->
     # below 1; a source pixel fails the test through its own centre tap, and that is how sources stay at 0. If the
     # off-centre taps can sum to 1 or more, an unreached pixel whose window is full of reached pixels fails it too and
     # reads as foreground (0).
+    # The sum below is taken in float64, but the cascade forms it in the working precision: each tap is rounded when
+    # the kernel is built (exp of a rounded argument), and the window sum adds kernel_size**ndim roundings.
+    # 4 * kernel_size**ndim * eps bounds both with room. On CUDA a float32 convolution may also run in TF32
+    # (PyTorch's default for cuDNN), which rounds each tap to 10 mantissa bits: a relative 2**-11 on a sum below 1.
+    margin = 4 * kernel_size**ndim * torch.finfo(dtype).eps + (2.0**-11 if dtype == torch.float32 else 0.0)
     off_centre = _off_centre_tap_sum(kernel_size, h, ndim)
     KORNIA_CHECK(
-        off_centre < 1.0,
+        off_centre < 1.0 - margin,
         f"h={h} is too large for kernel_size={kernel_size} in {ndim}-D: the kernel's off-centre taps sum to "
-        f"{off_centre:.3f} >= 1, so a pixel surrounded by reached pixels would read as foreground (distance 0). "
-        "Decrease h.",
+        f"{off_centre:.7f}, not below 1 by the rounding margin {margin:.1e} of the {dtype} working precision, so a "
+        "pixel surrounded by reached pixels could read as foreground (distance 0). Decrease h.",
     )
 
 
@@ -164,8 +169,9 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
         h: value that influences the approximation of the min function. The cascade's kernel taps are
             ``exp(-dist/h)``. Accepted: ``h`` large enough that the corner tap (distance
             ``sqrt(ndim) * (kernel_size // 2)``) stays at or above the smallest normal number of the working
-            precision, and small enough that the off-centre taps sum to less than 1 (2-D: below 0.5626 at
-            ``kernel_size`` 3, about 0.50 at larger kernels; 3-D: below 0.4071 at 3, about 0.382 at larger kernels).
+            precision, and small enough that the off-centre taps sum to less than 1 by a margin for the working
+            precision's rounding (2-D: below 0.5624 at ``kernel_size`` 3, 0.5626 in ``float64``, about 0.50 at
+            larger kernels; 3-D: below 0.4070 at 3, 0.4071 in ``float64``, about 0.38 at larger kernels).
             Any other ``h`` raises:
             a smaller one would give wrong distances, a larger one would give 0 at background pixels whose window
             is full of reached pixels. ``float16`` and ``bfloat16`` inputs run the cascade in ``float32`` and cast the
