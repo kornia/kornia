@@ -35,6 +35,16 @@ from kornia.geometry.transform._crop import (
 from kornia.geometry.transform.crop2d import _crop_inverse_by_transform_mat
 
 
+def _one_pixel_axes(box: torch.Tensor, device: torch.device) -> torch.Tensor:
+    """``(B, 2)`` mask of the x and y axes along which an inclusive box is one pixel wide.
+
+    Read from the box in its stored dtype: cast to a half-precision input's dtype first, neighbouring coordinates
+    above 256 can round to one value in bfloat16 and make a two-pixel box look one pixel wide.
+    """
+    box = box.to(device)
+    return (box[:, 2] - box[:, 0]) == 0
+
+
 class RandomResizedCrop(GeometricAugmentationBase2D):
     r"""Crop random patches in an image torch.Tensor and resizes to a given size.
 
@@ -164,7 +174,9 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
             # A one-pixel crop or output axis makes the box vertices collinear, and the solve returns NaN or a
             # singular matrix. Corner-aligned resizing samples the crop's first pixel along that axis, which the
             # extent matrix encodes; every other box keeps the solved matrix bit for bit.
-            one_pixel = (((src[:, 2] - src[:, 0]) == 0) | ((dst[:, 2] - dst[:, 0]) == 0)).any(dim=-1)
+            one_pixel = (
+                _one_pixel_axes(params["src"], input.device) | _one_pixel_axes(params["dst"], input.device)
+            ).any(-1)
             transform = torch.where(one_pixel[:, None, None], _corner_aligned_resize_transform(src, dst), transform)
             return transform.expand(input.shape[0], -1, -1)
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
@@ -190,8 +202,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
             )
             # A one-pixel crop axis has no scale to warp with: the matrix puts its pixel at output index 0, and the
             # rest of that axis repeats it, as slice mode's interpolation does.
-            src = params["src"].to(input)
-            one_pixel = (src[:, 2] - src[:, 0]) == 0
+            one_pixel = _one_pixel_axes(params["src"], input.device)
             output = torch.where(one_pixel[:, 0, None, None, None], output[..., :1].expand_as(output), output)
             return torch.where(one_pixel[:, 1, None, None, None], output[..., :1, :].expand_as(output), output)
         if flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
@@ -222,12 +233,13 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         # onto the canvas pixels after it. With zero padding, everything outside the crop is zero.
         if kwargs.get("padding_mode", flags["padding_mode"]) != "zeros" or output.shape[0] == 0:
             return output
-        src = params["src"].to(device=output.device, dtype=output.dtype)
-        one_pixel = ((src[:, 2] - src[:, 0]) == 0) & self._gate(params).to(output.device)[:, None]
-        columns = torch.arange(output.shape[-1], device=output.device, dtype=output.dtype)
-        rows = torch.arange(output.shape[-2], device=output.device, dtype=output.dtype)
-        keep_columns = ~one_pixel[:, :1] | (columns == src[:, 0, :1])
-        keep_rows = ~one_pixel[:, 1:] | (rows == src[:, 0, 1:])
+        one_pixel = _one_pixel_axes(params["src"], output.device) & self._gate(params).to(output.device)[:, None]
+        # Integer pixel indices: in bfloat16 neighbouring indices above 256 round to the same value.
+        start = params["src"][:, 0].to(output.device).round().long()
+        columns = torch.arange(output.shape[-1], device=output.device)
+        rows = torch.arange(output.shape[-2], device=output.device)
+        keep_columns = ~one_pixel[:, :1] | (columns == start[:, :1])
+        keep_rows = ~one_pixel[:, 1:] | (rows == start[:, 1:])
         keep = keep_rows[:, None, :, None] & keep_columns[:, None, None, :]
         return torch.where(keep, output, torch.zeros_like(output))
 

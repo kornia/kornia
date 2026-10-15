@@ -404,21 +404,30 @@ class TestGeometricCropConventions(BaseTester):
         expected[..., 3, 4] = 25
         self.assert_close(slice_crop.inverse(slice_output, params=params), expected, low_tolerance=True)
 
-    def test_convention_resized_crop_with_a_one_pixel_crop_on_a_large_canvas(self, device, dtype):
+    @pytest.mark.parametrize(("canvas", "column", "row"), [(256, 200, 180), (512, 256, 256), (512, 257, 300)])
+    def test_convention_resized_crop_with_a_one_pixel_crop_on_a_large_canvas(self, canvas, column, row, device, dtype):
         # A scale large enough to push the next canvas pixel off the output overflowed the translation in float16
-        # (448 x 200 > 65504): the matrix held -inf and the inverse NaN. The one-pixel axis is a translation now.
-        x = torch.ones(1, 1, 256, 256, device=device, dtype=dtype)
+        # (448 x 200 > 65504): the matrix held -inf and the inverse NaN. The one-pixel axis is a translation, and
+        # the inverse clears the canvas next to the crop by integer index: in bfloat16, 256 and 257 coincide.
+        x = torch.ones(1, 1, canvas, canvas, device=device, dtype=dtype)
         kwargs = {"size": (224, 224), "scale": (1.0, 1.0), "ratio": (1.0, 1.0), "align_corners": True, "p": 1.0}
         slice_crop = K.RandomResizedCrop(cropping_mode="slice", **kwargs)
         params = slice_crop.forward_parameters(x.shape)
-        params["src"] = torch.tensor([[[200, 180]] * 4], device=device, dtype=dtype)
+        params["src"] = torch.tensor([[[column, row]] * 4], device=device, dtype=torch.float32)
         slice_output = slice_crop(x, params=params)
         assert torch.isfinite(slice_crop.transform_matrix).all()
         resample_output = K.RandomResizedCrop(cropping_mode="resample", **kwargs)(x, params=params)
         self.assert_close(resample_output, slice_output)
-        expected = torch.zeros_like(x)
-        expected[..., 180, 200] = 1
-        self.assert_close(slice_crop.inverse(slice_output, params=params), expected, low_tolerance=True)
+        restored = slice_crop.inverse(slice_output, params=params)
+        if device.type == "mps" and dtype in (torch.float16, torch.bfloat16):
+            # MPS samples a half-precision image on a half-precision grid, about 0.1 px off on a 512-pixel axis, so
+            # only the place of the restored pixel is exact.
+            assert restored.count_nonzero() == 1
+            assert restored[..., row, column] > 0.5
+        else:
+            expected = torch.zeros_like(x)
+            expected[..., row, column] = 1
+            self.assert_close(restored, expected, low_tolerance=True)
         # Border padding extends the crop's only pixel, which is the pixel itself.
         self.assert_close(
             slice_crop.inverse(slice_output, params=params, padding_mode="border"),
