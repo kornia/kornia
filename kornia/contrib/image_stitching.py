@@ -154,10 +154,10 @@ class ImageStitcher(nn.Module):
         """
         # NOTE: assumes no batch mode. This method keeps all valid regions after stitching.
         mask_ = mask.sum((0, 1))
-        index = int(mask_.bool().any(0).long().argmin().item())
+        index = int(mask_.bool().any(0).flip(0).long().argmax().item())
         if index == 0:  # If no redundant space
             return image
-        return image[..., :index]
+        return image[..., :-index]
 
     def on_matcher(self, data: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Run the configured feature matcher on preprocessed inputs.
