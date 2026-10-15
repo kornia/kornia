@@ -832,7 +832,8 @@ def find_homography_lines_dlt(
     # http://diis.unizar.es/biblioteca/00/09/000902.pdf
     ax = torch.cat([A * xs1, A * ys1, A, B * xs1, B * ys1, B, C * xs1, C * ys1, C], dim=-1)
     ay = torch.cat([A * xe1, A * ye1, A, B * xe1, B * ye1, B, C * xe1, C * ye1, C], dim=-1)
-    A = torch.cat((ax, ay), dim=-1).reshape(ax.shape[0], -1, ax.shape[-1])
+    # The row count is spelled out: a ``-1`` cannot be inferred for an empty batch.
+    A = torch.cat((ax, ay), dim=-1).reshape(BS, 2 * N, ax.shape[-1])
 
     if weights is None:
         # All points are equally important
