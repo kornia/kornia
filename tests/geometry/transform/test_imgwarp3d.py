@@ -22,7 +22,7 @@ import kornia
 import kornia.geometry.transform as proj
 from kornia.core.utils import _torch_inverse_cast
 
-from testing.base import BaseTester
+from testing.base import BaseTester, assert_close
 
 
 class TestWarpAffine3dEmptyBatch(BaseTester):
@@ -225,6 +225,59 @@ def test_homography_warp3d_negative_destination_raises(device, dtype):
     transform = torch.eye(4, device=device, dtype=dtype).unsqueeze(0)
     with pytest.raises(ValueError, match="must be non-negative"):
         proj.homography_warp3d(src, transform, (-1, 4, 5))
+
+
+@pytest.mark.parametrize("align_corners", [False, True])
+@pytest.mark.parametrize("scale", [1e-7, 1e-8, 1e-12, 1e-30, 1e12, -1e8])
+def test_warp_grid3d_ignores_the_homography_scale(scale, align_corners, device, dtype):
+    # A homography and any nonzero multiple of it describe the same warp. An absolute eps inside
+    # convert_points_from_homogeneous used to leave grid points with |w| <= eps undivided, so the
+    # sampled voxels depended on the matrix's arbitrary scale (#5761). Comparing a scaled call with an
+    # unscaled one cancels the 3D normalization convention tracked in #4503, which both share.
+    if dtype in (torch.float16, torch.bfloat16):
+        pytest.skip("these scales test the float32/float64 arithmetic range")
+    dsize = (4, 5, 6)
+    d, h, w = dsize
+    volume = torch.arange(float(d * h * w), device=device, dtype=dtype).view(1, 1, d, h, w) / (d * h * w)
+    dst_homo_src = torch.tensor(
+        [
+            [
+                [1.0, 0.05, 0.1, 0.03],
+                [0.02, 1.0, 0.05, 0.02],
+                [0.03, 0.01, 1.0, 0.01],
+                [0.1, 0.2, 0.15, 1.0],
+            ]
+        ],
+        device=device,
+        dtype=dtype,
+    )
+    grid = torch.stack(
+        torch.meshgrid(
+            torch.linspace(-1, 1, d, device=device, dtype=dtype),
+            torch.linspace(-1, 1, h, device=device, dtype=dtype),
+            torch.linspace(-1, 1, w, device=device, dtype=dtype),
+            indexing="ij",
+        ),
+        dim=-1,
+    ).unsqueeze(0)
+
+    reference_grid = proj.warp_grid3d(grid, dst_homo_src)
+    actual_grid = proj.warp_grid3d(grid, scale * dst_homo_src)
+    assert_close(actual_grid, reference_grid)
+
+    reference = proj.homography_warp3d(volume, dst_homo_src, dsize, align_corners=align_corners)
+    actual = proj.homography_warp3d(volume, scale * dst_homo_src, dsize, align_corners=align_corners)
+    assert torch.isfinite(actual).all()
+    assert_close(actual, reference)
+
+    # warp_perspective3d consumes a source-to-destination pixel matrix and inverts it internally, so a
+    # large matrix becomes a small inverse and reaches the same threshold from the other side.
+    src_homo_dst = torch.eye(4, device=device, dtype=dtype).unsqueeze(0) * 0.5
+    src_homo_dst[:, :3, 3] = torch.tensor([0.2, -0.1, 0.05], device=device, dtype=dtype)
+    reference_p = proj.warp_perspective3d(volume, src_homo_dst, dsize, align_corners=align_corners)
+    actual_p = proj.warp_perspective3d(volume, scale * src_homo_dst, dsize, align_corners=align_corners)
+    assert torch.isfinite(actual_p).all()
+    assert_close(actual_p, reference_p)
 
 
 class TestWarpPerspective3d(BaseTester):

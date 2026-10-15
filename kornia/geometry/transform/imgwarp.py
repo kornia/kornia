@@ -108,6 +108,28 @@ def _runs_in_float32(src: torch.Tensor, other: torch.Tensor) -> bool:
     return src.device.type == "cpu" and src.dtype in (torch.float16, torch.bfloat16) and other.dtype == src.dtype
 
 
+def _unit_projective_scale(matrix: torch.Tensor) -> torch.Tensor:
+    """Return the detached projective scale of ``matrix``: the value closest to 1 in its nonzero-magnitude range.
+
+    A homography and any nonzero multiple of it describe the same map, yet
+    :func:`kornia.geometry.convert_points_from_homogeneous` leaves a point with ``|w| <= eps``
+    undivided using an *absolute* ``eps``. Feeding that routine a grid built from an arbitrarily
+    scaled matrix therefore changes the sampled pixels instead of the warp. Dividing by this scale
+    first puts every equivalent matrix in the same numeric range. Choosing between the largest and
+    smallest nonzero magnitude, rather than just dividing by the largest, keeps a unit diagonal from
+    being shrunk toward zero by large translations. The scale is a projective gauge, so detaching it
+    leaves the warp's derivative unchanged.
+    """
+    magnitude = matrix.detach().abs()
+    largest = magnitude.amax(dim=(-2, -1), keepdim=True)
+    smallest = magnitude.masked_fill(magnitude == 0, float("inf")).amin(dim=(-2, -1), keepdim=True)
+    scale = torch.minimum(largest, torch.ones_like(largest)).clamp_min(smallest)
+    # An all-zero matrix leaves `smallest` infinite, and dividing by infinity would collapse the
+    # warp's gradient to zero. Anything that is not a finite positive scale is left alone.
+    usable = (scale > 0) & torch.isfinite(scale)
+    return torch.where(usable, scale, torch.ones_like(scale))
+
+
 def _empty_warp_output_2d(
     src: torch.Tensor,
     transform: torch.Tensor,
@@ -311,15 +333,8 @@ def warp_perspective(
     # H and s*H represent the same projective map. Remove that arbitrary scale before
     # the coordinate change and inverse: the cubic determinant can overflow/underflow
     # even when every entry, the sampling positions and their gradients are finite.
-    # The scale is a projective gauge, so detaching it leaves the warp's derivative unchanged.
     if M.is_floating_point():
-        magnitude = M.detach().abs()
-        largest = magnitude.amax(dim=(-2, -1), keepdim=True)
-        smallest = magnitude.masked_fill(magnitude == 0, float("inf")).amin(dim=(-2, -1), keepdim=True)
-        # Choose the scale closest to 1 between the nonzero magnitudes. Dividing a large
-        # translation by its maximum would instead shrink the unit diagonal toward zero.
-        scale = torch.minimum(largest, torch.ones_like(largest)).clamp_min(smallest)
-        M = M / torch.where(scale > 0, scale, torch.ones_like(scale))
+        M = M / _unit_projective_scale(M)
 
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
         M, (H, W), (h_out, w_out), align_corners=align_corners
@@ -543,6 +558,12 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
           :math:`(N, 3, 3)` or :math:`(N, 1, 3, 3)`
         - only the :math:`(1, H, W, 2)` grid broadcasts over homography batches; a batched grid
           requires a matching batch of :math:`N` homographies
+        - ``src_homo_dst`` is divided by a detached scale toward unit magnitude before the
+          homogeneous division, as in :func:`warp_perspective`, so a nonzero scalar multiple of it
+          returns the same grid, except at grid points whose homogeneous coordinate is within
+          ``1e-8`` of zero after that rescaling: those are left undivided, as
+          :func:`~kornia.geometry.conversions.convert_points_from_homogeneous` does for points at
+          infinity
 
     Args:
         grid: Unwrapped grid of the shape :math:`(1, H, W, 2)`, or :math:`(N, H, W, 2)` with a
@@ -561,6 +582,10 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     grid = grid.expand(batch_size, -1, -1, -1)  # NxHxWx2
     if len(src_homo_dst.shape) == 3:  # local homography case
         src_homo_dst = src_homo_dst.view(batch_size, 1, 3, 3)  # Nx1x3x3
+    # H and s*H are the same warp, but the absolute eps inside convert_points_from_homogeneous
+    # would otherwise make the sampled grid depend on the matrix's arbitrary scale.
+    if src_homo_dst.is_floating_point():
+        src_homo_dst = src_homo_dst / _unit_projective_scale(src_homo_dst)
     # perform the actual grid transformation,
     # the grid is copied to input device and casted to the same type
     flow: torch.Tensor = transform_points(src_homo_dst, grid.to(src_homo_dst))  # NxHxWx2
@@ -577,6 +602,12 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
           :math:`(N, 4, 4)` or :math:`(N, 1, 4, 4)`
         - only the :math:`(1, D, H, W, 3)` grid broadcasts over homography batches; a batched
           grid requires a matching batch of :math:`N` homographies
+        - ``src_homo_dst`` is divided by a detached scale toward unit magnitude before the
+          homogeneous division, as in :func:`warp_perspective`, so a nonzero scalar multiple of it
+          returns the same grid, except at grid points whose homogeneous coordinate is within
+          ``1e-8`` of zero after that rescaling: those are left undivided, as
+          :func:`~kornia.geometry.conversions.convert_points_from_homogeneous` does for points at
+          infinity
 
     Args:
         grid: Unwrapped grid of the shape :math:`(1, D, H, W, 3)`, or :math:`(N, D, H, W, 3)`
@@ -595,6 +626,9 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     grid = grid.expand(batch_size, -1, -1, -1, -1)  # NxDxHxWx3
     if len(src_homo_dst.shape) == 3:  # local homography case
         src_homo_dst = src_homo_dst.view(batch_size, 1, 4, 4)  # Nx1x3x3
+    # Same projective gauge as in warp_grid: a scaled 4x4 matrix must not move the grid.
+    if src_homo_dst.is_floating_point():
+        src_homo_dst = src_homo_dst / _unit_projective_scale(src_homo_dst)
     # perform the actual grid transformation,
     # the grid is copied to input device and casted to the same type
     flow: torch.Tensor = transform_points(src_homo_dst, grid.to(src_homo_dst))  # NxDxHxWx3
