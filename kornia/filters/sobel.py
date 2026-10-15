@@ -75,11 +75,13 @@ def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, n
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
+    # in its own dtype, uint8 wraps the differences and an integer kernel truncates the half and quarter taps (#5155)
+    input = _to_floating(input)
 
     # The first-order Sobel kernels are fixed. Construct them directly instead
     # of allocating one kernel, transposing it, stacking both directions, and
-    # normalizing at runtime. Keep the generic construction for integer and
-    # complex inputs, whose division semantics are part of the public API.
+    # normalizing at runtime. Keep the generic construction for complex inputs,
+    # whose division semantics are part of the public API.
     if mode.lower() == "sobel" and order == 1 and input.is_floating_point():
         if normalized:
             kernel = torch.tensor(
