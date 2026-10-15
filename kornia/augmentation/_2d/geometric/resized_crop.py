@@ -79,8 +79,8 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         mode resizes the crop on the half-pixel grid, ``x' = (x - x0 + 0.5) * W_out / W_crop - 0.5`` for a crop
         starting at column ``x0`` (likewise for ``y``), while resample mode maps the crop's corner pixel centres
         onto the output's. Nearest sampling in slice mode uses the half-pixel grid and PyTorch's
-        ``nearest-exact`` interpolation. Only resample mode supports
-        :meth:`inverse`, which resamples onto the original canvas and cannot recover discarded information.
+        ``nearest-exact`` interpolation. Both modes support :meth:`inverse`, which warps the output back onto the
+        original canvas with the inverse of the mode's ``transform_matrix`` and cannot recover discarded information.
 
     Note:
         Compiled slice-mode interpolation matches eager execution to floating-point tolerance,
@@ -196,10 +196,6 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
     ) -> torch.Tensor:
-        if flags["cropping_mode"] != "resample":
-            raise NotImplementedError(
-                f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
-            )
         if not isinstance(size, tuple):
             raise TypeError(f"Expected the size be a tuple. Got {type(size)}")
 
@@ -214,18 +210,3 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
             flags["padding_mode"],
             flags["align_corners"],
         )
-
-    def inverse_inputs(
-        self,
-        input: torch.Tensor,
-        params: Dict[str, torch.Tensor],
-        flags: Dict[str, Any],
-        transform: Optional[torch.Tensor] = None,
-        **kwargs: Any,
-    ) -> torch.Tensor:
-        # Check the mode before the gate: an empty or unapplied batch never reaches inverse_transform, so a
-        # slice-mode inverse succeeded for it and raised for any other batch. A keyword overrides the flag.
-        cropping_mode = kwargs.get("cropping_mode", flags["cropping_mode"])
-        if cropping_mode != "resample":
-            raise NotImplementedError(f"`inverse` is only applicable for resample cropping mode. Got {cropping_mode}.")
-        return super().inverse_inputs(input, params, flags, transform, **kwargs)

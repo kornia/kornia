@@ -90,9 +90,9 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
           does not honor its ordinary selection weight. Each selected member is recorded in ``_params``, but
           a plain module records a ``None`` payload: only augmentation members carry a parameter draw to replay.
         - ``inverse`` treats a plain ``nn.Module`` member according to ``if_unsupported_ops``, and a nested
-          container according to its own setting. Augmentation children can still raise, for example a
-          slice-mode crop or a 3D geometric augmentation, while intensity and non-rigid augmentation children
-          are left applied; the round trip is not in general the input.
+          container according to its own setting. Augmentation children can still raise, for example a 3D
+          geometric augmentation, while intensity and non-rigid augmentation children are left applied; the round
+          trip is not in general the input.
 
     .. note::
         Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.

@@ -396,42 +396,33 @@ class TestEmptyGeometricInverse(BaseTester):
         ],
         ids=["random-crop", "center-crop", "resized-crop"],
     )
-    def test_slice_crop_inverse_is_unsupported_4429(self, make_aug, data_key, p, batch_size, device, dtype):
-        # The mode is checked before the gate: CenterCrop and RandomResizedCrop checked it only in inverse_transform,
-        # which an empty or unapplied batch never reaches, so their slice-mode inverse succeeded for those batches.
+    def test_slice_crop_inverse_4429(self, make_aug, data_key, p, batch_size, device, dtype):
+        # Slice mode inverts like resample mode, at every batch size: an empty or unapplied batch keeps its canvas,
+        # and an applied one is warped back with the inverse of the recorded transform matrix.
         aug = make_aug(p)
         channels = 3 if data_key == "input" else 1
         image = torch.rand(batch_size, channels, 6, 8, device=device, dtype=dtype)
         output = aug(image)
         method = aug.inverse_inputs if data_key == "input" else aug.inverse_masks
-        with pytest.raises(NotImplementedError, match="only applicable for resample cropping mode"):
-            method(output, aug._params, aug.flags, aug.transform_matrix)
+        restored = method(output, aug._params, aug.flags, aug.transform_matrix)
+        assert restored.shape == image.shape
+        if p == 0.0:
+            self.assert_close(restored, image)
         seq = K.AugmentationSequential(make_aug(p), data_keys=["input", "mask"])
         mask = torch.rand(batch_size, 1, 6, 8, device=device, dtype=dtype)
         outputs = dict(zip(["input", "mask"], seq(torch.rand(batch_size, 3, 6, 8, device=device, dtype=dtype), mask)))
-        with pytest.raises(NotImplementedError, match="only applicable for resample cropping mode"):
-            seq.inverse(outputs[data_key], data_keys=[data_key])
-
-    @pytest.mark.parametrize("batch_size", [0, 2])
-    @pytest.mark.parametrize("method", ["inverse_inputs", "inverse_masks"])
-    @pytest.mark.parametrize("crop_type", [K.RandomCrop, K.CenterCrop, K.RandomResizedCrop])
-    def test_slice_crop_inverse_keyword_override_4429(self, crop_type, method, batch_size, device, dtype):
-        # A cropping_mode keyword overrides the flag, as in the public inverse, before the empty-batch shortcut.
-        aug = crop_type((4, 5), p=1.0, cropping_mode="resample")
-        output = aug(torch.rand(batch_size, 3 if method == "inverse_inputs" else 1, 6, 8, device=device, dtype=dtype))
-        inverse = getattr(aug, method)
-        with pytest.raises(NotImplementedError, match="Got slice"):
-            inverse(output, aug._params, aug.flags, aug.transform_matrix, cropping_mode="slice")
-        assert inverse(output, aug._params, aug.flags, aug.transform_matrix).shape[-2:] == (6, 8)
+        assert seq.inverse(outputs[data_key], data_keys=[data_key]).shape[-2:] == (6, 8)
 
     @pytest.mark.parametrize("batch_size", [0, 2])
     @pytest.mark.parametrize(
         "make_aug",
         [
             lambda: K.CenterCrop((4, 5), cropping_mode="slice"),
+            lambda: K.RandomCrop((4, 5), p=1.0, cropping_mode="slice"),
+            lambda: K.RandomCrop((4, 5), padding=1, p=1.0, cropping_mode="slice"),
             lambda: K.RandomResizedCrop((4, 5), p=1.0, cropping_mode="slice"),
         ],
-        ids=["center-crop", "resized-crop"],
+        ids=["center-crop", "random-crop", "random-crop-padding", "resized-crop"],
     )
     def test_slice_crop_inverse_keeps_geometry(self, make_aug, batch_size, device, dtype):
         # Boxes and keypoints invert through the transform matrix, which slice mode records too.
