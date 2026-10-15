@@ -223,6 +223,32 @@ class TestHomographyTrackerCaching:
         tracker.set_target(torch.rand(1, 1, 6, 7))
         assert tracker.previous_homography is None
 
+    def test_target_assigned_directly_starts_a_new_track(self):
+        # CodeRabbit 4277848437: after a target was assigned directly, forward tracked it with the old target's prior.
+        tracker = _make_tracker()
+        tracker.set_target(torch.rand(1, 1, 8, 9))
+        tracker.initial_matcher.return_value = _match_dict(20, torch.device("cpu"), torch.float32)
+        tracker.fast_matcher.return_value = _match_dict(20, torch.device("cpu"), torch.float32)
+        tracker.ransac.return_value = (torch.eye(3), torch.ones(20, dtype=torch.bool))
+        assert tracker(torch.rand(1, 1, 8, 9))[1]
+        tracker.target = torch.rand(1, 1, 6, 7)
+        assert tracker(torch.rand(1, 1, 6, 7))[1]
+        assert tracker.initial_matcher.call_count == 2
+        tracker.fast_matcher.assert_not_called()
+        assert tracker(torch.rand(1, 1, 6, 7))[1]  # the new target's own prior is kept
+        tracker.fast_matcher.assert_called_once()
+        tracker.target = torch.rand(1, 1, 6, 7)
+        with pytest.raises(BaseError, match="previous homography"):
+            tracker.track_next_frame(torch.rand(1, 1, 6, 7))
+        tracker.fast_matcher.assert_called_once()
+        # A homography assigned from outside after a reassignment is the caller's prior for the new target: kept.
+        assert tracker(torch.rand(1, 1, 6, 7))[1]  # match_initial finds a prior for the current target
+        tracker.target = torch.rand(1, 1, 6, 7)
+        tracker.previous_homography = torch.eye(3)
+        assert tracker(torch.rand(1, 1, 6, 7))[1]
+        assert tracker.initial_matcher.call_count == 3
+        assert tracker.fast_matcher.call_count == 2
+
 
 class TestHomographyTrackerUnit:
     """Fast unit tests for HomographyTracker using mocked sub-modules."""

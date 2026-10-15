@@ -64,6 +64,9 @@ class HomographyTracker(nn.Module):
         # are not registered a second time as submodules.
         self._cache_source: Dict[str, Tuple[nn.Module, torch.Tensor]] = {}
         self.previous_homography: Optional[torch.Tensor] = None
+        # The homography the tracker found last and the target whose coordinates it maps. A previous_homography
+        # assigned from outside is not this object, and is kept as it is.
+        self._prior_source: Optional[Tuple[torch.Tensor, torch.Tensor]] = None
 
         self.inliers_num: int = 0
         self.keypoints0_num: int = 0
@@ -112,7 +115,8 @@ class HomographyTracker(nn.Module):
         Other matchers get no cached representation and receive ``image0`` and ``image1`` only. A matcher replaced after
         this call, or a ``target`` reassigned directly, gets the target's features extracted again on its next use.
         Setting a target starts a new track: the previous homography maps the old target's coordinates, so it is
-        cleared.
+        cleared. A ``target`` reassigned directly starts a new track too, on the next :meth:`forward` or
+        :meth:`track_next_frame`.
         """
         self.target = target
         self.reset_tracking()
@@ -163,6 +167,14 @@ class HomographyTracker(nn.Module):
             None.
         """
         self.previous_homography = None
+        self._prior_source = None
+
+    def _drop_prior_of_another_target(self) -> None:
+        # A target assigned directly, without set_target, starts a new track as set_target does: the homography the
+        # tracker found maps the old target's coordinates.
+        source = self._prior_source
+        if source is not None and source[0] is self.previous_homography and source[1] is not self.target:
+            self.reset_tracking()
 
     def no_match(self) -> Tuple[torch.Tensor, bool]:
         """Return a failed-match response and clear current match statistics.
@@ -207,6 +219,7 @@ class HomographyTracker(nn.Module):
         if self.inliers_num < self.minimum_inliers_num:
             return self.no_match()
         self.previous_homography = H.clone()
+        self._prior_source = (self.previous_homography, self.target)
 
         return H, True
 
@@ -223,6 +236,7 @@ class HomographyTracker(nn.Module):
         The frame is first prewarped by the inverse of the previous homography,
         then matched with ``fast_matcher`` and verified using RANSAC.
         """
+        self._drop_prior_of_another_target()
         KORNIA_CHECK(
             self.previous_homography is not None,
             "track_next_frame needs a previous homography; call forward() or match_initial() first.",
@@ -256,6 +270,7 @@ class HomographyTracker(nn.Module):
             return self.no_match()
 
         self.previous_homography = H.clone()
+        self._prior_source = (self.previous_homography, self.target)
         return H, True
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, bool]:
@@ -268,6 +283,7 @@ class HomographyTracker(nn.Module):
             A tuple ``(H, is_valid)`` from ``track_next_frame`` when previous
             state exists, otherwise from ``match_initial``.
         """
+        self._drop_prior_of_another_target()
         if self.previous_homography is not None:
             return self.track_next_frame(x)
         return self.match_initial(x)
