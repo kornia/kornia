@@ -147,7 +147,7 @@ class ExtractTensorPatches(nn.Module):
         defined in the function signature.
 
     An empty batch (:math:`B = 0`) gives an empty output with the same :math:`N`, :math:`C`, :math:`H_{out}` and
-    :math:`W_{out}` as a non-empty one. :math:`C` must be non-zero and the window sizes positive.
+    :math:`W_{out}` as a non-empty one. :math:`C` must be non-zero and the window sizes and strides positive.
 
     * :attr:`window_size` is the size of the sliding window and controls the
       shape of the output torch.Tensor and defines the shape of the output patch.
@@ -181,9 +181,10 @@ class ExtractTensorPatches(nn.Module):
           with the odd pixel at the bottom or right, and an image smaller than the window padded to one window.
         - A non-zero ``padding`` switches off both the fit warning and ``allow_auto_padding``, so a padding too small
           for the window drops the last rows or columns silently. An all-zero ``padding`` counts as none.
-        - Known defect: a ``stride`` of 0 is not rejected up front and fails with an unrelated error such as
-          ``ZeroDivisionError``, here and in :func:`combine_tensor_patches`
-          (`#5959 <https://github.com/kornia/kornia/issues/5959>`_).
+        - A ``window_size`` or ``stride`` component below 1 raises ``ValueCheckError``, a ``ValueError``, up front
+          (at construction for the module classes), here and in :func:`combine_tensor_patches`,
+          :func:`compute_padding` and :class:`CombineTensorPatches`, also under ``python -O`` and
+          ``disable_checks()``.
 
     Args:
         input: torch.Tensor image where to extract the patches with shape :math:`(B, C, H, W)`.
