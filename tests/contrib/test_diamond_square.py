@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import functools
+
 import pytest
 import torch
 
@@ -144,3 +146,55 @@ class TestDiamondSquare(BaseTester):
         # the transposed path: a 5x3 output is the 3x5 seed transposed
         out5t = kornia.contrib.diamond_square((1, 1, 5, 3), random_fn=draw(values5), device=device, dtype=dtype)
         self.assert_close(out5t[0, 0], expected5.transpose(0, 1))
+
+    def test_convention_update_rule(self, device, dtype):
+        # One level from a 3x5 seed: a new value is (1 - s) * mean(neighbours) + s * U, s = random_scale * roughness
+        # = 0.25, U = 1, seed corner draws [[1, 2, 4], [8, 16, 32]] scaled by random_scale. Worked by hand (scaled
+        # seed: corner 0.5, centre 3.375, top midpoint 1.625, left midpoint 2.625; diamond (1, 3) = 2.271484375):
+        #   diamond (1, 1) = 0.75 * mean(0.5, 1.625, 2.625, 3.375) + 0.25 = 1.7734375
+        #   border square (0, 1) = 0.75 * mean(0.5, 1.625, 1.7734375) + 0.25 = 1.224609375 (three neighbours)
+        #   interior square (1, 2) = 0.75 * mean(1.625, 3.375, 1.7734375, 2.271484375) + 0.25 = 1.9459228515625
+        def draw(shape, device=None, dtype=None):
+            if shape[-2] == 2:  # the seed's corner draws
+                return torch.tensor([[1.0, 2.0, 4.0], [8.0, 16.0, 32.0]], device=device, dtype=dtype).expand(shape)
+            return torch.ones(shape, device=device, dtype=dtype)
+
+        out = kornia.contrib.diamond_square(
+            (1, 1, 5, 9), roughness=0.5, random_scale=0.5, random_fn=draw, device=device, dtype=dtype
+        )[0, 0]
+        assert out.shape == (5, 9)
+        # seed corner, seed centre, level-1 diamond centre, border square centre, interior square centre
+        nodes = torch.stack([out[0, 0], out[2, 2], out[1, 1], out[0, 1], out[1, 2]])
+        expected = torch.tensor([0.5, 3.375, 1.7734375, 1.224609375, 1.9459228515625], device=device, dtype=dtype)
+        self.assert_close(nodes, expected)
+
+    def test_convention_normalize_range_is_min_max_per_plane(self, device, dtype):
+        torch.manual_seed(0)
+        out = kornia.contrib.diamond_square((3, 2, 9, 14), normalize_range=(-1.0, 1.0), device=device, dtype=dtype)
+        self.assert_close(out.amin((-2, -1)), torch.full((3, 2), -1.0, device=device, dtype=dtype))
+        self.assert_close(out.amax((-2, -1)), torch.full((3, 2), 1.0, device=device, dtype=dtype))
+
+    def test_convention_random_fn_is_the_only_source_of_randomness(self, device):
+        g = torch.Generator(device=device)
+        draw = functools.partial(torch.rand, generator=g)
+        state = torch.get_rng_state()
+        g.manual_seed(3)
+        first = kornia.contrib.diamond_square((2, 1, 9, 14), random_fn=draw, device=device)
+        g.manual_seed(3)
+        second = kornia.contrib.diamond_square((2, 1, 9, 14), random_fn=draw, device=device)
+        assert torch.equal(first, second)
+        assert torch.equal(state, torch.get_rng_state())
+
+    def test_wart_mean_field_drifts_for_random_scale_not_one_5963(self, device, dtype):
+        # The map is linear in the draws, so a constant 0.5 draw gives the expected field of torch.rand exactly.
+        # With random_scale=0.5 the seed is 0.5 * 0.5 = 0.25, and each level mixes towards 0.5: a level-1 diamond is
+        # 0.75 * 0.25 + 0.25 * 0.5 = 0.3125, a level-1 square 0.328125 at the border and 0.3359375 inside.
+        def half(shape, device=None, dtype=None):
+            return torch.full(shape, 0.5, device=device, dtype=dtype)
+
+        out = kornia.contrib.diamond_square(
+            (1, 1, 9, 17), random_scale=0.5, random_fn=half, device=device, dtype=dtype
+        )[0, 0]
+        nodes = torch.stack([out[0, 0], out[4, 8], out[2, 2], out[0, 2], out[2, 4]])
+        expected = torch.tensor([0.25, 0.25, 0.3125, 0.328125, 0.3359375], device=device, dtype=dtype)
+        self.assert_close(nodes, expected)

@@ -368,3 +368,35 @@ class TestHistMatch(BaseTester):
         template = (torch.rand(1, 3, 10, 7, generator=g) ** 2).to(device, dtype)
         matched = torch.jit.script(kornia.contrib.histogram_matching)(source, template)
         self.assert_close(matched, kornia.contrib.histogram_matching(source, template))
+
+    def test_convention_histogram_matching_pools_every_element(self, device, dtype):
+        source = torch.tensor([0.1, 0.4, 0.2, 0.3, 0.6, 0.5], device=device, dtype=dtype).view(2, 1, 1, 3)
+        template = torch.arange(1, 7, device=device, dtype=dtype).view(2, 1, 1, 3)
+        # skimage 0.26.0: match_histograms(source, template, channel_axis=None) -> [[1, 4, 2], [3, 6, 5]].
+        # Matching each sample on its own would give [2, 6, 4] for both.
+        expected = torch.tensor([1.0, 4.0, 2.0, 3.0, 6.0, 5.0], device=device, dtype=dtype).view(2, 1, 1, 3)
+        self.assert_close(kornia.contrib.histogram_matching(source, template), expected)
+
+    def test_convention_integer_source_returns_float32_between_template_values(self, device):
+        source = torch.tensor([0, 1, 2], dtype=torch.uint8, device=device)
+        out = kornia.contrib.histogram_matching(source, torch.tensor([0, 10], dtype=torch.uint8, device=device))
+        assert out.dtype == torch.float32
+        # skimage 0.26.0 match_histograms gives [0, 3.333, 10] (in float64)
+        self.assert_close(out, torch.tensor([0.0, 10.0 / 3.0, 10.0], device=device))
+
+    def test_convention_interp_extrapolates_where_np_interp_clamps(self, device, dtype):
+        xp = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
+        fp = torch.tensor([4.0, 2.0, 0.0], device=device, dtype=dtype)
+        x = torch.tensor([[0.0, 0.5], [4.0, 6.0]], device=device, dtype=dtype)
+        # np.interp([0, 0.5, 4, 6], [1, 2, 3], [4, 2, 0]) -> [4, 4, 0, 0]
+        expected = torch.tensor([[6.0, 5.0], [-2.0, -6.0]], device=device, dtype=dtype)
+        self.assert_close(kornia.contrib.interp(x, xp, fp), expected)
+
+    def test_wart_interp_integer_x_with_half_fp_overflows_5967(self, device):
+        # The weight is formed in float16 from integer differences above 65504: NaN where the right value is 1.0.
+        x = torch.tensor([100000], device=device)
+        xp = torch.tensor([0, 200000], device=device)
+        out = kornia.contrib.interp(x, xp, torch.tensor([0.0, 2.0], device=device, dtype=torch.float16))
+        assert out.dtype == torch.float16
+        assert torch.isnan(out).all()
+        assert kornia.contrib.interp(x, xp, torch.tensor([0.0, 2.0], device=device)).tolist() == [1.0]

@@ -367,3 +367,31 @@ class TestImageStitcher(BaseTester):
         stitcher = kornia.contrib.ImageStitcher(matcher).to(device=device, dtype=dtype)
         with pytest.raises(RuntimeError):
             stitcher(sample1, sample2)
+
+    def test_convention_panorama_is_in_the_left_frame_and_the_right_image_wins_the_overlap(self, device, dtype):
+        left, right = _render(0, 64).to(device, dtype), _render(40, 56).to(device, dtype)
+        right[..., :24] = 0.25  # columns 40..63 of the panorama, where the left image also has content
+        with torch.no_grad():
+            out = kornia.contrib.ImageStitcher(_ShiftMatcher([40.0]))(left, right)
+        assert out.shape == (1, 3, 48, 96)  # the left image's height; the empty trailing columns are cropped
+        self.assert_close(out[..., :40], left[..., :40])
+        self.assert_close(out[..., 40:64], torch.full_like(out[..., 40:64], 0.25))
+        self.assert_close(out[..., 64:], right[..., 24:], rtol=2e-2, atol=2e-2)  # resampled through the homography
+
+    def test_convention_a_batch_is_cropped_to_its_widest_sample(self, device):
+        left = torch.cat([_render(0, 64)] * 2).to(device)
+        right = torch.cat([_render(20, 56), _render(40, 56)]).to(device)
+        with torch.no_grad():
+            out = kornia.contrib.ImageStitcher(_ShiftMatcher([20.0, 40.0]))(left, right)
+        assert out.shape == (2, 3, 48, 96)
+        assert (out[0, ..., 76:] == 0).all()  # the narrower sample keeps empty trailing columns
+
+    def test_wart_image_stitcher_postprocess_gap_5971(self, device, dtype):
+        stitcher = kornia.contrib.ImageStitcher(nn.Identity())
+        image = torch.arange(6, device=device, dtype=dtype).view(1, 1, 1, 6).expand(1, 3, 4, 6)
+        gap = torch.tensor([1.0, 0, 1, 1, 0, 0], device=device, dtype=dtype).view(1, 1, 1, 6).expand(1, 3, 4, 6)
+        # cropped at the first uncovered column, where the last covered one gives width 4
+        assert stitcher.postprocess(image, gap).shape[-1] == 1
+        empty_first = torch.tensor([0.0, 1, 1, 0, 0, 0], device=device, dtype=dtype).view(1, 1, 1, 6).expand(1, 3, 4, 6)
+        # an uncovered first column reads as nothing to crop, where the empty suffix gives width 3
+        assert stitcher.postprocess(image, empty_first).shape[-1] == 6

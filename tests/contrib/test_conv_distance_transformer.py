@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
@@ -367,3 +369,55 @@ class TestConvDistanceTransform(BaseTester):
 
         input3d = torch.rand(1, 1, 8, 8, 8, device=device, dtype=dtype)
         self.assert_close(op(input3d), op_optimized(input3d))
+
+    def test_convention_distance_is_to_the_nearest_nonzero_pixel(self, device, dtype):
+        image = torch.zeros(1, 1, 23, 37, device=device, dtype=dtype)
+        image[0, 0, 4, 9] = 1.0
+        out = kornia.contrib.distance_transform(image)
+        # SciPy 1.17.1 measures to the nearest zero; distance_transform_edt(image == 0) at (4, 9), (4, 10), (5, 10)
+        # gives [0, 1, 1.4142135]: exact within kernel_size // 2.
+        values = torch.stack([out[0, 0, 4, 9], out[0, 0, 4, 10], out[0, 0, 5, 10]])
+        self.assert_close(values, torch.tensor([0.0, 1.0, 2.0**0.5], device=device, dtype=dtype))
+
+    def test_convention_empty_mask_gives_zeros_like_a_full_mask(self, device, dtype):
+        empty = kornia.contrib.distance_transform(torch.zeros(2, 3, 5, 7, device=device, dtype=dtype))
+        full = kornia.contrib.distance_transform(torch.ones(2, 3, 5, 7, device=device, dtype=dtype))
+        assert torch.equal(empty, torch.zeros_like(empty))
+        assert torch.equal(full, empty)
+
+    def test_convention_a_value_other_than_one_shifts_the_distances_near_it(self, device, dtype):
+        image = torch.zeros(1, 1, 23, 37, device=device, dtype=dtype)
+        image[0, 0, 4, 9] = 0.5
+        binary = (image > 0).to(dtype)
+        out, ref = kornia.contrib.distance_transform(image), kornia.contrib.distance_transform(binary)
+        shift = -0.35 * math.log(0.5)  # 0.2426, -h * log(v) at the default h
+        values = torch.stack([out[0, 0, 4, 9], out[0, 0, 4, 10]])
+        self.assert_close(values, torch.tensor([shift, 1.0 + shift], device=device, dtype=dtype))
+        self.assert_close(out[0, 0, 4, 30], ref[0, 0, 4, 30])  # beyond kernel_size // 2 the value does not matter
+
+    def test_wart_distance_transform_diagonal_underestimate_5956(self, device, dtype):
+        image = torch.zeros(1, 1, 23, 37, device=device, dtype=dtype)
+        image[0, 0, 4, 9] = 1.0
+        out = kornia.contrib.distance_transform(image)
+        # Beyond kernel_size // 2 the result follows the ring count: (16, 21) is 12 rings away and comes out as
+        # 11 + sqrt(2) = 12.414, while scipy.ndimage.distance_transform_edt(image == 0) gives 12 * sqrt(2) = 16.971.
+        self.assert_close(out[0, 0, 16, 21], torch.tensor(11.0 + 2.0**0.5, device=device, dtype=dtype))
+
+    def test_wart_distance_transform_soft_min_bias_5956(self, device, dtype):
+        # Where several reached pixels share a window, the soft-min pulls the value below the nearest distance
+        # (exact: 1, 14, 1, 1). Float64 values at the default h = 0.35.
+        line = torch.zeros(1, 1, 23, 37, device=device, dtype=dtype)
+        line[0, 0, 6] = 1.0
+        two = torch.zeros(1, 1, 5, 7, device=device, dtype=dtype)
+        two[0, 0, 2, 2] = 1.0
+        two[0, 0, 2, 4] = 1.0
+        hole = torch.ones(1, 1, 5, 7, device=device, dtype=dtype)
+        hole[0, 0, 2, 3] = 0.0
+        dt = kornia.contrib.distance_transform
+        values = torch.stack([dt(line)[0, 0, 7, 10], dt(line)[0, 0, 20, 10], dt(two)[0, 0, 2, 3], dt(hole)[0, 0, 2, 3]])
+        expected = torch.tensor(
+            [0.8327901098243616, 13.832790109824362, 0.7573984868040191, 0.42130015880291255],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(values, expected)

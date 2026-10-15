@@ -195,6 +195,24 @@ class TestConnectedComponents(BaseTester):
         op_jit = torch.jit.script(op)
         self.assert_close(op(img), op_jit(img))
 
+    def test_convention_both_labelings_are_8_connected(self, device, dtype):
+        # A diagonal pair is one component. scipy.ndimage.label's default structure is 4-connected (two components);
+        # structure=np.ones((3, 3)) matches.
+        pair = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype).view(1, 1, 2, 3)
+        assert kornia.contrib.connected_components(pair).tolist() == [[[[5, 0, 0], [0, 5, 0]]]]
+        assert kornia.contrib.connected_components_union_find(pair).tolist() == [[[[1, 0, 0], [0, 1, 0]]]]
+
+    def test_convention_foreground_is_exactly_one(self, device, dtype):
+        image = torch.tensor([1.0, 0.5, 2.0, 1.0, 0.75], device=device, dtype=dtype).view(1, 1, 1, 5)
+        assert kornia.contrib.connected_components(image).tolist() == [[[[1, 0, 0, 4, 0]]]]
+
+    def test_convention_the_default_budget_splits_a_line_longer_than_101_pixels(self, device, dtype):
+        # A label travels one pixel per iteration; the 1 + largest raster index starts at the right end.
+        line = torch.ones(1, 1, 1, 102, device=device, dtype=dtype)
+        assert kornia.contrib.connected_components(line[..., :101]).unique().tolist() == [101]
+        assert kornia.contrib.connected_components(line).unique().tolist() == [101, 102]
+        assert kornia.contrib.connected_components(line, num_iterations=101).unique().tolist() == [102]
+
 
 def test_compute_padding():
     assert kornia.contrib.compute_padding((6, 6), (2, 2)) == (0, 0, 0, 0)

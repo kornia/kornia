@@ -21,6 +21,7 @@ from unittest.mock import MagicMock
 import pytest
 import torch
 
+from kornia.contrib import ImageStitcher
 from kornia.core._compat import torch_version_le
 from kornia.core.exceptions import BaseError
 from kornia.feature import DescriptorMatcher, GFTTAffNetHardNet, LocalFeatureMatcher, LoFTR, SIFTFeature
@@ -488,3 +489,63 @@ class TestHomographyTracker(BaseTester):
             homography, success = tracker(data["image1"])
         assert success
         self.assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
+
+
+_H_TRUE = torch.tensor([[1.1, 0.05, 7.0], [-0.03, 0.95, 4.0], [1e-4, -2e-4, 1.0]])
+
+
+class _ExactMatcher(torch.nn.Module):
+    """Exact correspondences ``keypoints1 = _H_TRUE(keypoints0)``, in float32 whatever the image dtype."""
+
+    def forward(self, data: dict) -> dict:
+        ys, xs = torch.meshgrid(torch.arange(3.0, 40, 4), torch.arange(3.0, 50, 4), indexing="ij")
+        kp0 = torch.stack([xs.flatten(), ys.flatten()], -1)
+        kp1 = transform_points(_H_TRUE[None], kp0[None])[0]
+        return {"keypoints0": kp0, "keypoints1": kp1, "batch_indexes": torch.zeros(len(kp0), dtype=torch.long)}
+
+
+class TestHomographyTrackerConventions:
+    def test_convention_homography_maps_target_pixels_to_frame_pixels(self):
+        tracker = HomographyTracker(_ExactMatcher(), _ExactMatcher(), minimum_inliers_num=10)
+        tracker.set_target(torch.rand(1, 1, 44, 54))
+        H, ok = tracker(torch.rand(1, 1, 60, 70))
+        assert ok
+        torch.testing.assert_close(H / H[2, 2], _H_TRUE, rtol=1e-4, atol=1e-4)
+
+    def test_convention_target_is_not_a_buffer(self):
+        tracker = HomographyTracker(_ExactMatcher(), _ExactMatcher())
+        tracker.set_target(torch.rand(1, 1, 44, 54))
+        tracker.to(torch.float64)
+        assert "target" not in dict(tracker.named_buffers())
+        assert tracker.dtype == torch.float32  # .to() leaves the target behind: call set_target again
+
+    def test_convention_default_ransac_is_looser_than_image_stitcher(self):
+        tracker = HomographyTracker(_ExactMatcher(), _ExactMatcher())
+        assert (tracker.ransac.inl_th, tracker.ransac.max_iter) == (5.0, 10)
+        stitcher = ImageStitcher(LocalFeatureMatcher(SIFTFeature(10), DescriptorMatcher("snn", 0.9)))
+        assert (stitcher.ransac.inl_th, stitcher.ransac.max_iter) == (2.0, 10)
+
+    def test_convention_target_changed_in_place_keeps_its_cached_features(self):
+        matcher = LocalFeatureMatcher(SIFTFeature(100), DescriptorMatcher("snn", 0.9))
+        calls = []
+        matcher.local_feature.register_forward_hook(lambda mod, inp, out: calls.append(tuple(inp[0].shape)))
+        tracker = HomographyTracker(matcher, matcher, minimum_inliers_num=10**6)
+        target = _texture(64, 80)
+        tracker.set_target(target)
+        cached = tracker.target_initial_representation["descriptors"].clone()
+        calls.clear()
+        target.mul_(0.5).add_(0.2)
+        tracker(_texture(72, 96, seed=1))
+        assert calls == [(1, 1, 72, 96)]  # the frame only
+        assert torch.equal(tracker.target_initial_representation["descriptors"], cached)
+
+    @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16])
+    def test_wart_half_precision_tracking_fails_on_the_second_frame_5968(self, half):
+        # The first frame returns a float32 homography (float32 keypoints); the second warps the half frame with its
+        # float32 inverse and raises.
+        tracker = HomographyTracker(_ExactMatcher(), _ExactMatcher(), minimum_inliers_num=10)
+        tracker.set_target(torch.rand(1, 1, 44, 54, dtype=half))
+        _, ok = tracker(torch.rand(1, 1, 60, 70, dtype=half))
+        assert ok
+        with pytest.raises(RuntimeError):
+            tracker(torch.rand(1, 1, 60, 70, dtype=half))

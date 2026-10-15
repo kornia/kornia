@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import inspect
 import warnings
 
 import pytest
@@ -459,3 +460,31 @@ class TestCombineTensorPatches(BaseTester):
         out = kornia.contrib.combine_tensor_patches(kornia.contrib.extract_tensor_patches(img, 17, 1), (40, 52), 17, 1)
         assert out.dtype == half
         assert torch.equal(out, img)
+
+    def test_convention_overlaps_are_averaged_where_fold_sums_them(self, device, dtype):
+        patches = torch.ones(1, 2, 1, 2, 2, device=device, dtype=dtype)
+        patches[0, 1] = 3.0
+        out = kornia.contrib.combine_tensor_patches(patches, (2, 3), 2, 1)
+        self.assert_close(out[0, 0], torch.tensor([[1.0, 2.0, 3.0], [1.0, 2.0, 3.0]], device=device, dtype=dtype))
+        # torch.nn.functional.fold sums the overlap: [[1, 4, 3], [1, 4, 3]]
+        folded = torch.nn.functional.fold(patches.permute(0, 2, 3, 4, 1).flatten(1, 3), (2, 3), 2, stride=1)
+        assert folded[0, 0, 0].tolist() == [1.0, 4.0, 3.0]
+        # Patches that do not fit (the warned path) leave the last row and column uncovered: they are 0.
+        img = torch.arange(1, 25, device=device, dtype=dtype).view(1, 1, 4, 6)
+        with pytest.warns(UserWarning, match="will not fit"):
+            out = kornia.contrib.combine_tensor_patches(kornia.contrib.extract_tensor_patches(img, 2, 2), (5, 7), 2, 2)
+        assert (out[0, 0, -1] == 0).all()
+        assert (out[0, 0, :, -1] == 0).all()
+        self.assert_close(out[..., :4, :6], img)
+
+    def test_convention_sibling_defaults_differ(self):
+        assert kornia.contrib.ExtractTensorPatches(2).stride == 1
+        assert inspect.signature(kornia.contrib.extract_tensor_patches).parameters["stride"].default == 1
+        assert kornia.contrib.CombineTensorPatches((4, 6), (2, 3)).stride == (2, 3)
+        assert kornia.contrib.compute_padding((5, 7), 3) == kornia.contrib.compute_padding((5, 7), 3, 3)
+        function = inspect.signature(kornia.contrib.combine_tensor_patches).parameters
+        assert function["stride"].default is inspect.Parameter.empty
+        # The function and the module take allow_auto_unpadding and unpadding in opposite positional order.
+        assert list(function)[4:6] == ["allow_auto_unpadding", "unpadding"]
+        module = inspect.signature(kornia.contrib.CombineTensorPatches).parameters
+        assert list(module)[3:5] == ["unpadding", "allow_auto_unpadding"]

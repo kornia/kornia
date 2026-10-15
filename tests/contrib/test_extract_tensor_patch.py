@@ -240,3 +240,41 @@ class TestExtractTensorPatches(BaseTester):
         out = kornia.contrib.extract_tensor_patches(img, 2, 2, padding=padding, allow_auto_padding=True)
         assert out.shape == (1, 12, 1, 2, 2)
         self.assert_close(out, expected)
+
+    def test_convention_patches_are_stacked_row_major_like_unfold(self, device, dtype):
+        img = torch.arange(1, 57, device=device, dtype=dtype).view(1, 2, 4, 7)
+        patches = kornia.contrib.extract_tensor_patches(img, (2, 3), (1, 2))
+        # F.unfold's column order, reshaped to (B, N, C, h, w)
+        unfold = torch.nn.functional.unfold(img, (2, 3), stride=(1, 2)).transpose(1, 2).reshape(1, -1, 2, 2, 3)
+        assert patches.shape == (1, 9, 2, 2, 3)
+        self.assert_close(patches, unfold)
+        # Patch n starts at row (n // 3) * 1 and column (n % 3) * 2: left to right, then top to bottom.
+        assert patches[0, :, 0, 0, 0].tolist() == [1, 3, 5, 8, 10, 12, 15, 17, 19]
+
+    def test_convention_four_tuple_padding_is_top_bottom_left_right(self, device, dtype):
+        img = torch.arange(1, 13, device=device, dtype=dtype).view(1, 1, 3, 4)
+        out = kornia.contrib.extract_tensor_patches(img, (4, 6), padding=(1, 0, 0, 2))
+        # (top, bottom, left, right) = (1, 0, 0, 2) is F.pad's (left, right, top, bottom) = (0, 2, 1, 0)
+        self.assert_close(out[:, 0], torch.nn.functional.pad(img, (0, 2, 1, 0)))
+        out = kornia.contrib.extract_tensor_patches(img, (5, 8), padding=(1, 2))  # (ph, pw) on each side
+        self.assert_close(out[:, 0], torch.nn.functional.pad(img, (2, 2, 1, 1)))
+
+    def test_convention_auto_padding_puts_the_odd_pixel_bottom_right(self, device, dtype):
+        assert kornia.contrib.compute_padding((4, 5), 3, 3) == (1, 1, 0, 1)
+        assert kornia.contrib.compute_padding((5, 4), 3, 3) == (0, 1, 1, 1)
+        assert kornia.contrib.compute_padding((2, 3), (4, 4), 1) == (1, 1, 0, 1)  # smaller than the window: one window
+        img = torch.arange(1, 21, device=device, dtype=dtype).view(1, 1, 4, 5)
+        patches = kornia.contrib.extract_tensor_patches(img, 3, 3, allow_auto_padding=True)
+        assert patches.shape == (1, 4, 1, 3, 3)
+        assert patches[0, 0, 0].tolist() == [[0, 0, 0], [1, 2, 3], [6, 7, 8]]
+        assert patches[0, 3, 0].tolist() == [[14, 15, 0], [19, 20, 0], [0, 0, 0]]
+
+    def test_convention_explicit_padding_switches_off_auto_padding_and_the_fit_warning(self, device, dtype):
+        img = torch.arange(1, 36, device=device, dtype=dtype).view(1, 1, 5, 7)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            # One row of bottom padding: the 7 columns still do not fit stride 2, and the last one is dropped silently.
+            out = kornia.contrib.extract_tensor_patches(img, 2, 2, padding=(0, 1, 0, 0), allow_auto_padding=True)
+        assert out.shape == (1, 9, 1, 2, 2)
+        assert not (out == 35).any()
+        assert kornia.contrib.extract_tensor_patches(img, 2, 2, allow_auto_padding=True).shape == (1, 12, 1, 2, 2)
