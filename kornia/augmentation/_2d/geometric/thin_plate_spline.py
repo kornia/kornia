@@ -90,6 +90,13 @@ class RandomThinPlateSpline(AugmentationBase2D):
 
         device = self.device
         dtype = self.dtype
+        dist = self.dist
+        if dist is not None and self._generator is not None:
+            # Explicit draws must use the configured sampling device. Keep the
+            # historical CPU distribution and draw order on the global RNG path.
+            dist = torch.distributions.Uniform(
+                dist.low.to(device=device), dist.high.to(device=device), validate_args=False
+            )
 
         # 5 TPS control points in normalized coordinates
         src = _constant_tensor(
@@ -98,15 +105,15 @@ class RandomThinPlateSpline(AugmentationBase2D):
             dtype=dtype,
         ).expand(B, 5, 2)
 
-        if self.dist is None:
+        if dist is None:
             noise = torch.zeros_like(src)
         elif self.same_on_batch:
-            noise = _sample_distribution(self.dist, torch.Size((1, 5, 2)), self._generator, True).to(
+            noise = _sample_distribution(dist, torch.Size((1, 5, 2)), self._generator, True).to(
                 device=device, dtype=dtype
             )
             noise = noise.expand(B, 5, 2)
         else:
-            noise = _sample_distribution(self.dist, torch.Size((B, 5, 2)), self._generator, True).to(
+            noise = _sample_distribution(dist, torch.Size((B, 5, 2)), self._generator, True).to(
                 device=device, dtype=dtype
             )
 

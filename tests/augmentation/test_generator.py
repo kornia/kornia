@@ -258,6 +258,28 @@ class TestExplicitGenerator(BaseTester):
         self.assert_close(compiled(x, params=params), expected)
         assert torch.equal(state, aug._generator.get_state())
 
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_tps_sampling_device_stream(self, device, dtype, same_on_batch):
+        """TPS draws on its configured device before converting control-point noise to the output dtype."""
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("Native generator sampling needs a CPU or CUDA generator")
+        aug = K.RandomThinPlateSpline(scale=0.2, same_on_batch=same_on_batch, p=1.0)
+        aug.set_rng_device_and_dtype(device, dtype)
+        dist = torch.distributions.Uniform(aug.dist.low.to(device), aug.dist.high.to(device), validate_args=False)
+        torch.manual_seed(17)
+        expected_noise = dist.rsample((1 if same_on_batch else 4, 5, 2)).to(dtype).expand(4, 5, 2)
+        cpu_state = torch.random.get_rng_state().clone()
+        device_state = torch.cuda.get_rng_state(device).clone() if device.type == "cuda" else cpu_state
+        params = aug.forward_parameters(
+            torch.Size((4, 1, 8, 8)), generator=torch.Generator(device=device).manual_seed(17)
+        )
+        self.assert_close(params["dst"], params["src"] + expected_noise, rtol=0, atol=0)
+        assert params["dst"].device == expected_noise.device
+        assert params["dst"].dtype == dtype
+        assert torch.equal(cpu_state, torch.random.get_rng_state())
+        if device.type == "cuda":
+            assert torch.equal(device_state, torch.cuda.get_rng_state(device))
+
     def test_unsupported_policy_and_invalid_generator(self):
         """Unsupported policies fail before installing a stream or consuming global randomness."""
         from kornia.augmentation.auto import RandAugment

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from functools import wraps
+from inspect import CO_VARARGS
 from typing import Any, Callable, Iterator, ParamSpec, Self, TypeVar, cast
 
 import torch
@@ -69,9 +70,20 @@ class _GeneratorMixin(torch.nn.Module):
 
 def _with_generator(function: Callable[P, R]) -> Callable[P, R]:
     """Accept a call-local stream, restoring each child's persistent stream afterwards."""
+    positional_count = function.__code__.co_argcount - 1
+    accepts_varargs = bool(function.__code__.co_flags & CO_VARARGS)
 
     @wraps(function)
     def wrapped(self: _GeneratorMixin, *args: Any, generator: torch.Generator | None = None, **kwargs: Any) -> R:
+        # The legacy ONNX exporter appends keyword-only defaults to positional inputs.
+        # Discard its extra None for generator while retaining the public keyword-only API.
+        if (
+            not accepts_varargs
+            and len(args) == positional_count + 1
+            and args[-1] is None
+            and torch.onnx.is_in_onnx_export()
+        ):
+            args = args[:-1]
         # Leave the original default path intact, including under graph capture.
         if generator is None:
             return function(self, *args, **kwargs)
