@@ -419,8 +419,8 @@ def write_image(path_file: str | Path, image: torch.Tensor, quality: int = 80) -
         - ``image`` is channels first. A channels-last :math:`(H, W, C)` tensor is not detected: its first axis is
           read as the channels.
         - :ref:`Files and arrays <image-io-conventions>` maps ``cv2.imwrite`` onto these arguments.
-        - Known defect: an image with zero height or width reaches kornia-rs, which raises a bare ``Exception`` and
-          leaves an empty or truncated file behind (`#5770 <https://github.com/kornia/kornia/issues/5770>`_).
+        - An image with zero height or width raises before anything is written, so no empty or truncated file is
+          left behind (`#5770 <https://github.com/kornia/kornia/issues/5770>`_).
 
     Args:
         path_file: Path with a .jpg, .jpeg, .png, .tif or .tiff extension, in any letter case.
@@ -435,7 +435,8 @@ def write_image(path_file: str | Path, image: torch.Tensor, quality: int = 80) -
         TypeCheckError: if ``image`` is not a tensor or ``quality`` is not an integer (also a ``TypeError``).
         ValueCheckError: if ``quality`` is outside [0, 100] (also a ``ValueError``).
         BaseError: if the extension is not one of the five above.
-        ShapeError: if ``image`` is not 2-D or 3-D, or the format cannot store its channels (also a ``ValueError``).
+        ShapeError: if ``image`` is not 2-D or 3-D, the height or width is not positive, or the format cannot
+            store its channels (also a ``ValueError``).
         FileNotFoundError: if the directory to write into does not exist (``NotADirectoryError`` if it is a file).
         NotImplementedError: if the format cannot store the dtype.
         Exception: kornia-rs's bare ``Exception`` when the file cannot be created or the image cannot be encoded.
@@ -464,6 +465,14 @@ def write_image(path_file: str | Path, image: torch.Tensor, quality: int = 80) -
             f"Invalid image shape: {tuple(image.shape)}. Expected (C, H, W) or (H, W).",
             actual_shape=tuple(image.shape),
             expected_shape=["C", "H", "W"],
+        )
+    # kornia-rs raises a bare Exception on a zero-sized image and leaves the truncated file behind,
+    # so reject the shape before anything is created (#5770).
+    height, width = image.shape[-2], image.shape[-1]
+    if height <= 0 or width <= 0:
+        raise ShapeError(
+            f"Cannot write an image of shape {tuple(image.shape)}: the height and width must be positive.",
+            actual_shape=tuple(image.shape),
         )
 
     parent = path_file.parent
