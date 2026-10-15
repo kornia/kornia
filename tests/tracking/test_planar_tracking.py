@@ -89,7 +89,7 @@ class TestHomographyTrackerCaching:
         return LocalFeatureMatcher(SIFTFeature(300), DescriptorMatcher("snn", 0.9))
 
     def test_target_features_are_extracted_once(self):
-        # C-4: the nn.Module guard never matched a method, so the target was re-extracted on every frame.
+        # An nn.Module guard never matched a method, so the target was re-extracted on every frame.
         initial, fast = self._sift_matcher(), self._sift_matcher()
         shapes = []
         for m in (initial, fast):
@@ -114,7 +114,7 @@ class TestHomographyTrackerCaching:
         assert calls == [(1, 1, 64, 80)]  # only the pre-warped frame, at the target's size
 
     def test_loftr_without_cached_features_gets_image0(self):
-        # A target assigned directly, without set_target, has no cached features0, so LoFTR needs image0 (as on main).
+        # A target assigned directly, without set_target, has no cached features0, so LoFTR needs image0.
         loftr = LoFTR(None)
         keys = []
         loftr.register_forward_pre_hook(lambda mod, args: keys.append(sorted(args[0])))
@@ -148,7 +148,7 @@ class TestHomographyTrackerCaching:
             return LoFTR(None, config)
 
     def test_loftr_swapped_after_set_target_matches_an_uncached_call(self):
-        # CodeRabbit 4277422844: a LoFTR swapped in after set_target was fed the old LoFTR's cached features0.
+        # A LoFTR swapped in after set_target was fed the old LoFTR's cached features0.
         old, new = self._loftr(1), self._loftr(2)
         tracker = HomographyTracker(old, self._sift_matcher(), minimum_inliers_num=10**6)
         target, frame = _texture(64, 80), _texture(72, 96, seed=1)
@@ -190,14 +190,14 @@ class TestHomographyTrackerCaching:
         assert in_tracker == [(1, 1, 64, 80)] * 3  # the target once after the swap, then the warped frame twice
 
     def test_track_next_frame_without_a_prior_raises(self):
-        # C-5: UnboundLocalError on Hwarp.
+        # It raised UnboundLocalError on Hwarp.
         tracker = _make_tracker()
         tracker.set_target(torch.rand(1, 1, 8, 9))
         with pytest.raises(BaseError, match="previous homography"):
             tracker.track_next_frame(torch.rand(1, 1, 8, 9))
 
     def test_fewer_than_four_matches_is_a_failed_match(self):
-        # C-6: minimum_inliers_num < 4 let 3 matches reach RANSAC, which raised.
+        # minimum_inliers_num < 4 let 3 matches reach RANSAC, which raised.
         tracker = _make_tracker(minimum_inliers_num=0)
         tracker.set_target(torch.rand(1, 1, 8, 9))
         tracker.initial_matcher.return_value = _match_dict(3, torch.device("cpu"), torch.float32)
@@ -216,7 +216,7 @@ class TestHomographyTrackerCaching:
         assert tracker.previous_homography is None
 
     def test_set_target_starts_a_new_track(self):
-        # C-7 (controller ruling): the old prior maps the old target's coordinates.
+        # The old prior maps the old target's coordinates.
         tracker = _make_tracker()
         tracker.set_target(torch.rand(1, 1, 8, 9))
         tracker.previous_homography = torch.eye(3)
@@ -224,7 +224,7 @@ class TestHomographyTrackerCaching:
         assert tracker.previous_homography is None
 
     def test_target_assigned_directly_starts_a_new_track(self):
-        # CodeRabbit 4277848437: after a target was assigned directly, forward tracked it with the old target's prior.
+        # After a target was assigned directly, forward tracked it with the old target's prior.
         tracker = _make_tracker()
         tracker.set_target(torch.rand(1, 1, 8, 9))
         tracker.initial_matcher.return_value = _match_dict(20, torch.device("cpu"), torch.float32)

@@ -254,7 +254,7 @@ class TestKMeans(BaseTester):
         ).to(device, dtype)
 
     def test_zero_tolerance_stops_at_the_fixed_point(self, device, dtype):
-        # B-25: tolerance=0.0 with the default max_iterations=0 never returned.
+        # tolerance=0.0 with the default max_iterations=0 never returned.
         X = self._blobs(device, dtype)
         km = kornia.contrib.KMeans(3, X[[0, 60, 120]].clone(), tolerance=0.0)
         calls = {"n": 0}
@@ -277,7 +277,7 @@ class TestKMeans(BaseTester):
             kornia.contrib.KMeans(3, None, tolerance=-1.0)
 
     def test_refit_samples_fresh_initial_centres(self, device, dtype):
-        # B-26: the second fit reused the first fit's sampled centres (and raised for another dimension).
+        # A second fit reused the first fit's sampled centres (and raised for another dimension).
         km = kornia.contrib.KMeans(3, None, max_iterations=5, seed=0)
         km.fit(torch.rand(180, 2, device=device, dtype=dtype))
         X5 = torch.rand(100, 5, device=device, dtype=dtype) + 100
@@ -286,13 +286,13 @@ class TestKMeans(BaseTester):
         assert (km.cluster_centers >= 100).all()
 
     def test_float16_distances_do_not_overflow(self, device):
-        # B-29: float16 squared distances overflowed to inf, so argmin returned [0, 0]; float64 gives [1, 0].
+        # float16 squared distances overflowed to inf, so argmin returned [0, 0]; float64 gives [1, 0].
         c = torch.tensor([[0.0, 0.0, 0.0], [100.0, 0.0, 0.0]], device=device, dtype=torch.float16)
         p = torch.tensor([[255.0, 255.0, 255.0], [10.0, 200.0, 190.0]], device=device, dtype=torch.float16)
         assert kornia.contrib.KMeans(2, c, tolerance=None, max_iterations=1).predict(p).tolist() == [1, 0]
 
     def test_float16_fit_distances_do_not_overflow(self, device):
-        # B-29 in fit: the same overflow sent both points to cluster 0 and reseeded cluster 1 at random.
+        # The same float16 overflow in fit sent both points to cluster 0 and reseeded cluster 1 at random.
         c = torch.tensor([[0.0, 0.0, 0.0], [100.0, 0.0, 0.0]], device=device, dtype=torch.float16)
         p = torch.tensor([[255.0, 255.0, 255.0], [10.0, 200.0, 190.0]], device=device, dtype=torch.float16)
         km = kornia.contrib.KMeans(2, c, tolerance=None, max_iterations=1)

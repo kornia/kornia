@@ -65,8 +65,8 @@ class TestDiamondSquare(BaseTester):
 
     @pytest.mark.parametrize("size", [(17, 5), (10, 14), (5, 17)])
     def test_mean_field_is_flat(self, size, device):
-        # A-35/A-36: every seed node is U(0, 1) and each step mixes (1 - s) * neighbour mean + s * U(0, 1), so the
-        # expected field is 0.5 everywhere. main's minimum mean was 0.165 (17x5, 10x14, 5x17, 4000 draws).
+        # Every seed node is U(0, 1) and each step mixes (1 - s) * neighbour mean + s * U(0, 1), so the expected field
+        # is 0.5 everywhere. A biased seed and border step gave a minimum mean of 0.165 (17x5, 10x14, 5x17, 4000 draws).
         # Sizes with H != W; (5, 17) and (17, 5) have a 3x9 seed, which exercises the interior row-1 square centres.
         torch.manual_seed(0)
         out = kornia.contrib.diamond_square((4000, 1, *size), device=device, dtype=torch.float32)
@@ -77,7 +77,8 @@ class TestDiamondSquare(BaseTester):
         if not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
 
-        # A-35/A-36: interpolating a constant must return the constant (main: corners 1/3, border midpoints 4/3).
+        # Interpolating a constant must return the constant (a biased seed and border step gave corners 1/3 and
+        # border midpoints 4/3).
         def ones(shape, device=None, dtype=None):
             return torch.ones(shape, device=device, dtype=dtype)
 
@@ -85,13 +86,13 @@ class TestDiamondSquare(BaseTester):
         self.assert_close(out, torch.ones_like(out))
 
     def test_signed_random_fn_fills_every_pixel(self, device):
-        # A-37: centres were chosen by value > 0, so torch.randn left 56 % of the pixels at exactly 0.
+        # Centres chosen by value > 0 left 56 % of the pixels at exactly 0 for torch.randn.
         torch.manual_seed(0)
         out = kornia.contrib.diamond_square((200, 1, 17, 33), random_fn=torch.randn, device=device)
         assert (out == 0).float().mean().item() < 1e-3
 
     def test_tensor_roughness_follows_the_requested_dtype_and_device(self, device):
-        # A-38: a float64 CPU roughness returned float64 for dtype=float32 and crashed for device='mps'.
+        # A float64 CPU roughness returned float64 for dtype=float32 and crashed for device='mps'.
         r = torch.tensor([0.5, 0.6], dtype=torch.float64)
         s = torch.tensor(1.0, dtype=torch.float64)
         out = kornia.contrib.diamond_square(
@@ -103,17 +104,17 @@ class TestDiamondSquare(BaseTester):
     def test_integer_normalize_range(self, device, dtype):
         if not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
-        # A-39: (0, 1) raised TypeError in normalize_min_max.
+        # An integer range (0, 1) raised TypeError in normalize_min_max.
         out = kornia.contrib.diamond_square((1, 1, 9, 14), normalize_range=(0, 1), device=device, dtype=dtype)
         assert out.min() >= 0
         assert out.max() <= 1
 
     def test_seed_values(self, device, dtype):
-        # A-35: the right-edge midpoint used the opposite corner, and the interior row-1 square centres of a seed
-        # with K >= 5 were never interpolated. At recursion depth 0 the output is the 3xK seed itself. Expected
+        # A seed that divided its corners and centre by 3, used the opposite corner for the right-edge midpoint and
+        # never interpolated the interior row-1 square centres of K >= 5 gave 0.333 / 92.58 / 459.25 for the 3x3
+        # corners, centre and right midpoint. At recursion depth 0 the output is the 3xK seed itself. Expected
         # values are worked by hand: a diamond centre is the mean of its four corners, a border midpoint the mean of
-        # its three neighbours, an interior row-1 point the mean of its four neighbours. main gave 0.333 / 92.58 /
-        # 459.25 for the 3x3 corners, centre and right midpoint.
+        # its three neighbours, an interior row-1 point the mean of its four neighbours.
         def draw(values):
             def fn(shape, device=None, dtype=None):
                 return torch.tensor(values, device=device, dtype=dtype).expand(shape).clone()

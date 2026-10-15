@@ -234,7 +234,7 @@ class TestExtractTensorPatches(BaseTester):
 
     @pytest.mark.parametrize("padding", [(0, 0), (0, 0, 0, 0)])
     def test_all_zero_padding_means_no_padding(self, padding, device, dtype):
-        # A-5: a zero tuple used to switch off allow_auto_padding (N 6 instead of 12, last row/column dropped).
+        # A truthy zero tuple switched off allow_auto_padding (N 6 instead of 12, last row/column dropped).
         img = torch.arange(1, 36, device=device, dtype=dtype).view(1, 1, 5, 7)
         expected = kornia.contrib.extract_tensor_patches(img, 2, 2, padding=0, allow_auto_padding=True)
         out = kornia.contrib.extract_tensor_patches(img, 2, 2, padding=padding, allow_auto_padding=True)

@@ -120,7 +120,7 @@ class TestConnectedComponents(BaseTester):
 
     @pytest.mark.parametrize("in_dtype", [torch.float32, torch.float16, torch.bfloat16, torch.bool, torch.uint8])
     def test_int64_labels_keep_distinct_components_apart(self, in_dtype, device):
-        # R3 / B-4 / B-5: float16 gave both pixels 2604.0, bool collapsed every label to True.
+        # Labels in the input dtype: float16 gave both pixels 2604.0, bool collapsed every label to True.
         m = torch.zeros(1, 1, 3, 1400, device=device)
         m[0, 0, 1, 1202] = 1
         m[0, 0, 1, 1204] = 1
@@ -129,13 +129,13 @@ class TestConnectedComponents(BaseTester):
         assert out[0, 0, 1, [1202, 1204]].tolist() == [1 * 1400 + 1202 + 1, 1 * 1400 + 1204 + 1]
 
     def test_uint8_pixel_at_raster_index_255_stays_foreground(self, device):
-        # B-5: uint8 labels wrapped mod 256, so this pixel got label 0 (background).
+        # uint8 labels wrapped mod 256, so this pixel got label 0 (background).
         m = torch.zeros(1, 1, 9, 31, dtype=torch.uint8, device=device)
         m[0, 0, 8, 7] = 1
         assert kornia.contrib.connected_components(m, num_iterations=3)[0, 0, 8, 7].item() == 8 * 31 + 7 + 1
 
     def test_ids_stay_exact_past_2_pow_24_pixels(self, device):
-        # B-6: float32 ids merged indices 2**24 - 1 and 2**24 + 1 into 16777216.
+        # float32 ids merged indices 2**24 - 1 and 2**24 + 1 into 16777216.
         if device.type == "mps":
             pytest.skip("MPS has no float64; covered by test_mps_raises_past_2_pow_24_pixels")
         m = torch.zeros(1, 1, 1, 2**24 + 8, device=device)
@@ -174,7 +174,7 @@ class TestConnectedComponents(BaseTester):
             kornia.contrib.connected_components(torch.zeros(1, 1, 1, 2**24 + 8, device=device))
 
     def test_permuted_batch(self, device, dtype):
-        # B-8: a batch whose leading dims cannot be viewed together crashed on .view.
+        # A batch whose leading dims cannot be viewed together crashed on .view.
         g = torch.Generator().manual_seed(0)
         img = (torch.rand(3, 2, 1, 5, 7, generator=g) > 0.5).to(device, dtype).permute(1, 0, 2, 3, 4)
         out = kornia.contrib.connected_components(img)
@@ -183,8 +183,7 @@ class TestConnectedComponents(BaseTester):
 
     @pytest.mark.parametrize("shape", [(1, 1, 0, 5), (2, 1, 5, 0), (0, 1, 5, 7), (3, 0, 1, 5, 7)])
     def test_empty_input(self, shape, device, dtype):
-        # B-9: H = 0 crashed in reshape. Plan review P1: reshape(-1, 1, 0, 5) is itself ambiguous, so the empty
-        # check has to come first.
+        # H = 0 crashed in reshape; reshape(-1, 1, 0, 5) is itself ambiguous, so the empty check has to come first.
         out = kornia.contrib.connected_components(torch.zeros(shape, device=device, dtype=dtype))
         assert out.shape == shape
         assert out.dtype == torch.int64

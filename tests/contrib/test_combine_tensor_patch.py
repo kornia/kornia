@@ -263,7 +263,7 @@ class TestCombineTensorPatches(BaseTester):
 
     @pytest.mark.parametrize("stride", [2, 1])
     def test_float64_round_trip_is_exact(self, stride, device):
-        # A-9: eps was added to every divisor, so 1000.0 came back as 999.99999.
+        # An eps added to every divisor returned 999.99999 for 1000.0.
         if device.type == "mps":
             pytest.skip("MPS has no float64")
         g = torch.Generator().manual_seed(0)
@@ -276,9 +276,9 @@ class TestCombineTensorPatches(BaseTester):
     @pytest.mark.parametrize("stride", [2, 1])
     @pytest.mark.parametrize("int_dtype", [torch.uint8, torch.int32, torch.int64])
     def test_integer_round_trip_is_exact(self, stride, int_dtype, device):
-        # A-10: integers went through float32, so 16777217 came back as 16777216. Plan review P4: float64 would still
-        # round 2**53 + 1. Integer patches are summed in int64, exactly (on MPS from torch 2.9; older torch keeps the
-        # float32 fold). At stride 1 a pixel is covered up to 4 times, so 4 * (2**60 + 1) still fits int64.
+        # Integers folded through float32 returned 16777216 for 16777217 (float64 would still round 2**53 + 1).
+        # Integer patches are summed in int64, exactly (on MPS from torch 2.9; older torch keeps the float32 fold).
+        # At stride 1 a pixel is covered up to 4 times, so 4 * (2**60 + 1) still fits int64.
         if int_dtype != torch.uint8 and device.type == "mps" and torch_version_lt(2, 9, 0):
             pytest.skip("MPS index_add_ has no int64 source before torch 2.9: the float32 fold is exact only to 2**24")
         big = {torch.uint8: 255, torch.int32: 2**31 - 1, torch.int64: 2**60 + 1}[int_dtype]
@@ -292,7 +292,7 @@ class TestCombineTensorPatches(BaseTester):
         assert torch.equal(out, img)
 
     def test_integer_overlap_mean_truncates_toward_zero(self, device):
-        # A-6: overlapping, non-identical integer patches. Pixel (0, 1) is covered by patches 0 and 1: (5 + 2) / 2 = 3.5
+        # Overlapping, non-identical integer patches. Pixel (0, 1) is covered by patches 0 and 1: (5 + 2) / 2 = 3.5
         # -> 3, and (-5 - 2) / 2 = -3.5 -> -3 (toward zero, as a float mean cast to an integer dtype does).
         patches = torch.zeros(1, 6, 1, 2, 2, dtype=torch.int32, device=device)  # 3 x 4 image, 2 x 2 windows, stride 1
         patches[0, 0, 0, 0, 1] = 5
@@ -303,8 +303,8 @@ class TestCombineTensorPatches(BaseTester):
         assert out[0, 0, 0, 1].item() == -3
 
     def test_bool_overlap_keeps_main_result(self, device):
-        # Probe on main (4863aed8a): bool patches went through float32, the overlap mean was cast back to bool, so a
-        # pixel is True when any covering patch is True. Literal produced by:
+        # A pixel is True when any covering patch is True, as a float overlap mean cast back to bool gives. Literal
+        # produced by:
         #   p = torch.zeros(1, 6, 1, 2, 2, dtype=torch.bool); p[0, 0] = True; p[0, 1] = True
         #   combine_tensor_patches(p, (3, 4), 2, 1).tolist()
         patches = torch.zeros(1, 6, 1, 2, 2, dtype=torch.bool, device=device)
@@ -373,8 +373,7 @@ class TestCombineTensorPatches(BaseTester):
         assert out.flatten(2).flatten(0, 1).tolist() == expected
 
     def test_uint64_overlap_mean_is_exact_above_2pow63(self, device):
-        # Codex review on #5960: an int64 cast wrapped 2**63 to -2**63, so (2**63 + 0) / 2 came back as 3 * 2**62.
-        # Main (4863aed8a) returned 2**62 here: 2**63 is exact in its float fold.
+        # A plain int64 cast wraps 2**63 to -2**63, which returned 3 * 2**62 for (2**63 + 0) / 2 instead of 2**62.
         if device.type == "mps" and torch_version_lt(2, 9, 0):
             pytest.skip("MPS index_add_ has no int64 source before torch 2.9: the float32 fold is exact only to 2**24")
         # The values are set in int64 and viewed as uint64 (v - 2**64 for v >= 2**63): torch 2.5.1 cannot set a uint64
@@ -436,10 +435,9 @@ class TestCombineTensorPatches(BaseTester):
         self.assert_close(out, img)
 
     def test_eps_is_deprecated_and_has_no_effect(self, device, dtype):
-        # Plan review P7: eps was added to every divisor (A-9), and clamp_min(eps) would still have turned a singly
-        # covered 7 into 3.5 at eps=2. On main, eps=0 gave NaN and eps=-1 gave inf. Patches that do not fit
-        # (6 patches of a 4 x 6 image recombined to 5 x 7, the warned path) leave row 4 and column 6 uncovered: they
-        # stay 0 for every eps.
+        # An eps added to every divisor changed every pixel; clamp_min(eps) would turn a singly covered 7 into 3.5 at
+        # eps=2, and eps=0 or eps=-1 gave NaN or inf. Patches that do not fit (6 patches of a 4 x 6 image recombined
+        # to 5 x 7, the warned path) leave row 4 and column 6 uncovered: they stay 0 for every eps.
         img = torch.arange(1, 25, device=device, dtype=dtype).view(1, 1, 4, 6)
         patches = kornia.contrib.extract_tensor_patches(img, 2, 2)
         with warnings.catch_warnings():
@@ -455,7 +453,7 @@ class TestCombineTensorPatches(BaseTester):
 
     @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16])
     def test_half_precision_heavy_overlap_round_trip_is_exact(self, half, device):
-        # A-11: 289 overlapping 0..255 values summed in float16 overflowed (51 inf); bfloat16 was off by 64.
+        # 289 overlapping 0..255 values summed in float16 overflowed (51 inf); bfloat16 was off by 64.
         g = torch.Generator().manual_seed(0)
         img = (torch.rand(1, 3, 40, 52, generator=g) * 255).round().to(device, half)
         out = kornia.contrib.combine_tensor_patches(kornia.contrib.extract_tensor_patches(img, 17, 1), (40, 52), 17, 1)

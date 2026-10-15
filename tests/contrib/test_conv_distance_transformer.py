@@ -244,13 +244,6 @@ class TestConvDistanceTransform(BaseTester):
         tolerance = 5e-3 if dtype == torch.bfloat16 else 1e-3
         self.assert_close(out[0, 0], expected, rtol=tolerance, atol=tolerance)
 
-    # test_convention_small_h_keeps_nonzero_distances_4152, a strict xfail pinning the pre-fix silent
-    # wrong-output behavior for h=0.01 at kernel_size=3 in float16/bfloat16/mps-float32, is removed
-    # here: this PR fixes #4152, so that combination now raises BaseError (a different exception than
-    # the pinned `raises=AssertionError`) instead of returning a wrong value, which would make the
-    # xfail fail outright rather than pass. test_h_too_small_raises and
-    # test_h_too_small_raises_float32_regression below pin the new, fixed behavior instead.
-
     def test_half_precision_matches_float64_reference(self, device, dtype):
         # #4152: the exp(-dist/h) kernel's far taps underflow to exactly zero in float16/bfloat16
         # at the documented default h=0.35 once kernel_size >= 15, and the convolution silently
@@ -301,7 +294,7 @@ class TestConvDistanceTransform(BaseTester):
         [((1, 1, 40, 50), 31, 0.18), ((1, 1, 40, 50), 31, 0.22), ((1, 1, 12, 40, 50), 21, 0.125)],
     )
     def test_h_too_small_for_the_corner_tap_raises(self, shape, kernel_size, h, device):
-        # B-19: the guard checked only the axis tap exp(-k/h); these h passed it while the corner tap
+        # A guard on the axis tap exp(-k/h) alone let these h through while the corner tap
         # exp(-sqrt(ndim) k/h) underflowed (float32 17.78 vs exact 21.21 at ks 31, h 0.18; MPS vs CPU 4.1 at h 0.22).
         with pytest.raises(BaseError, match="corner kernel tap"):
             kornia.contrib.distance_transform(torch.zeros(shape, device=device), kernel_size=kernel_size, h=h)
@@ -316,7 +309,7 @@ class TestConvDistanceTransform(BaseTester):
         ],
     )
     def test_h_too_large_raises(self, shape, kernel_size, h, device):
-        # Plan review P3: a pixel counts as reached when -h*log(sum of its window's taps over reached pixels) > 0.
+        # A pixel counts as reached when -h*log(sum of its window's taps over reached pixels) > 0.
         # Once the off-centre taps can sum to >= 1, a pixel whose window is full of reached pixels reads as
         # foreground (0). Random 60 % masks, ks 3: 140 of 2805 background pixels were 0 at h 0.591, 2726 at h 2.0.
         # Bounds, float32 working precision (float64): 2-D 0.5624 (0.5626) at ks 3, 0.5084 (0.5085) at ks 5, ~0.501 at
