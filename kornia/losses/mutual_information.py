@@ -24,6 +24,24 @@ import torch
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE
 from kornia.core.utils import is_exporting
 
+# MPSGraph bmm sums past its operands once the contracted dimension reaches about 32k samples on
+# some Apple GPUs (M1/M2), whether or not the operands are contiguous (pytorch/pytorch#195163,
+# kornia#5873). Keep each MPS contraction well below that.
+_MPS_MATMUL_MAX_K = 16384
+
+
+def _joint_histogram_matmul(vals_1: torch.Tensor, vals_2: torch.Tensor, chunk_size: int | None) -> torch.Tensor:
+    """Return ``vals_1 @ vals_2.mT``, contracting the sample dimension in chunks of at most ``chunk_size``."""
+    vals_2_t = vals_2.transpose(-1, -2)
+    num_samples = vals_1.shape[-1]
+    if chunk_size is None or num_samples <= chunk_size:
+        return vals_1 @ vals_2_t.contiguous()
+    out = vals_1[..., :chunk_size].contiguous() @ vals_2_t[..., :chunk_size, :].contiguous()
+    for start in range(chunk_size, num_samples, chunk_size):
+        stop = start + chunk_size
+        out = out + vals_1[..., start:stop].contiguous() @ vals_2_t[..., start:stop, :].contiguous()
+    return out
+
 
 def xu_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
     """Implementation of a 2nd-order polynomial kernel for Kernel density estimate (Xu et al., 2008).
@@ -341,10 +359,9 @@ class EntropyBasedLossBase(torch.nn.Module):
         vals_2 = self.kernel_function(diff_2)
 
         # Autocast would undo the promotion at this matrix multiplication.
-        # Copy the transposed K on every device. MPS sums past a non-contiguous one for about
-        # 33k-70k samples (pytorch/pytorch#195163, kornia#5873).
+        chunk_size = _MPS_MATMUL_MAX_K if other_signal.device.type == "mps" else None
         with torch.autocast(device_type=other_signal.device.type, enabled=False):
-            return vals_1 @ vals_2.transpose(-1, -2).contiguous()
+            return _joint_histogram_matmul(vals_1, vals_2, chunk_size)
 
     def entropies(
         self, other_signal: torch.Tensor, other_mask: torch.Tensor | None = None

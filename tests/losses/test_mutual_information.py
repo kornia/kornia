@@ -31,6 +31,7 @@ from kornia.losses.mutual_information import (
     NMILossFromRef,
     NMILossFromRef2D,
     NMILossFromRef3D,
+    _joint_histogram_matmul,
     _normalize_signal,
     mutual_information_loss,
     mutual_information_loss_2d,
@@ -1038,6 +1039,19 @@ class TestConventionsMutualInformation(BaseTester):
             assert actual.isfinite().all()
             assert expected.isfinite().all()
             self.assert_close(actual.cpu(), expected)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("chunk_size", [1, 7, 16, 50, 51, 1000])
+    def test_chunked_joint_histogram_matches_single_matmul_5873(self, chunk_size):
+        """Chunking the sample dimension, as MPS does above ``_MPS_MATMUL_MAX_K``, keeps the joint histogram (#5873)."""
+        g = torch.Generator().manual_seed(3)
+        vals_1 = torch.rand(2, 8, 50, generator=g, dtype=torch.float64)
+        vals_2 = torch.rand(2, 8, 50, generator=g, dtype=torch.float64)
+        expected = vals_1 @ vals_2.transpose(-1, -2)
+        actual = _joint_histogram_matmul(vals_1, vals_2, chunk_size)
+        assert actual.shape == expected.shape
+        self.assert_close(actual, expected)
+        self.assert_close(_joint_histogram_matmul(vals_1, vals_2, None), expected, rtol=0, atol=0)
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
