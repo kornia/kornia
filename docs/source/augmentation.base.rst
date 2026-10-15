@@ -248,6 +248,10 @@ The call-local stream restores the previous child streams even if the call raise
 
 .. code-block:: python
 
+   import torch
+   import kornia.augmentation as K
+
+   image = torch.linspace(0, 1, 128).reshape(2, 1, 8, 8)
    generator = torch.Generator(device="cpu").manual_seed(123)
    aug = K.RandomAffine(45.0).set_generator(generator)
    augmented = aug(image)
