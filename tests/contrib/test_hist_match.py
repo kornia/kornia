@@ -351,3 +351,21 @@ class TestHistMatch(BaseTester):
             torch.tensor([3e38, 3.4e38], device=device),
         )
         assert out.tolist() == [float("inf")]
+
+    def test_jit_script(self, device, dtype):
+        # Codex review on #5960: a recursive interp (for the complex parts) made both public functions unscriptable,
+        # also for real inputs; main (4863aed8a) scripted them.
+        interp_script = torch.jit.script(kornia.contrib.interp)
+        x = torch.linspace(-1.0, 2.0, 13, device=device, dtype=dtype)
+        xp = torch.tensor([0.0, 0.5, 1.0], device=device, dtype=dtype)
+        fp = torch.tensor([1.0, 3.0, -2.0], device=device, dtype=dtype)
+        self.assert_close(interp_script(x, xp, fp), kornia.contrib.interp(x, xp, fp))
+        ints = torch.tensor([4, 5, 6], device=device), torch.tensor([1, 2, 3], device=device)
+        out = interp_script(*ints, torch.tensor([4, 2, 0], device=device))
+        assert out.dtype == torch.get_default_dtype()  # all-integer inputs, as in eager
+        assert out.tolist() == [-2.0, -4.0, -6.0]
+        g = torch.Generator().manual_seed(0)
+        source = torch.rand(1, 3, 8, 9, generator=g).to(device, dtype)
+        template = (torch.rand(1, 3, 10, 7, generator=g) ** 2).to(device, dtype)
+        matched = torch.jit.script(kornia.contrib.histogram_matching)(source, template)
+        self.assert_close(matched, kornia.contrib.histogram_matching(source, template))

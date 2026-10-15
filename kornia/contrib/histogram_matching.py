@@ -98,15 +98,23 @@ def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.Tensor:
     """
     if fp.is_complex():
         # The real and imaginary parts are interpolated separately, as np.interp does.
-        return torch.complex(interp(x, xp, fp.real), interp(x, xp, fp.imag))
-    coord_dtype = torch.promote_types(x.dtype, xp.dtype)
-    dtype = torch.promote_types(coord_dtype, fp.dtype)
-    if not dtype.is_floating_point:
-        dtype = torch.get_default_dtype()  # all-integer inputs interpolate in the default float dtype
+        return torch.complex(_interp_real(x, xp, fp.real), _interp_real(x, xp, fp.imag))
+    return _interp_real(x, xp, fp)
+
+
+def _interp_real(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.Tensor:
+    # interp for a real fp. A separate function, not a recursive call from interp: TorchScript rejects recursion.
+    # Tensor.is_floating_point() rather than dtype.is_floating_point, which TorchScript does not support.
+    float_coords = x.is_floating_point() or xp.is_floating_point()
+    dtype = torch.promote_types(torch.promote_types(x.dtype, xp.dtype), fp.dtype)
+    if not (float_coords or fp.is_floating_point()):
+        # All-integer inputs interpolate in the default float dtype (read from a factory: TorchScript has no
+        # torch.get_default_dtype).
+        dtype = torch.empty(0, device=fp.device).dtype
     # Integer coordinates are searched, compared and subtracted in int64 (as float32 they round past 2**24, and uint8
     # differences wrap); only the two differences that form each weight are converted. Floating coordinates are
     # converted to the value dtype, which never narrows them.
-    coord_dtype = dtype if coord_dtype.is_floating_point else torch.int64
+    coord_dtype = dtype if float_coords else torch.int64
     x, xp, fp = x.to(coord_dtype), xp.to(coord_dtype), fp.to(dtype)
     i = torch.clip(torch.searchsorted(xp, x, right=True), 1, len(xp) - 1)
     x0, x1, f0, f1 = xp[i - 1], xp[i], fp[i - 1], fp[i]
