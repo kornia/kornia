@@ -595,6 +595,22 @@ class TestLightGluePruningDtype(BaseTester):
         for key in ("matching_scores0", "matching_scores1"):
             self.assert_close(out[key], ref[key].to(dtype))
 
+    def test_float32_keypoints_with_a_half_precision_model(self, device, dtype):
+        # kornia's detectors return float32 keypoints for a float16 or bfloat16 model; the positional encoding runs in
+        # the model's dtype, so wider keypoints give the result of keypoints in the model's dtype.
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS has no float64")
+        data, _ = self._scene(device, dtype)
+        wide = torch.promote_types(dtype, torch.float32)
+        wide_data = {name: {**image, "keypoints": image["keypoints"].to(wide)} for name, image in data.items()}
+        model = self._model(device, dtype)
+        out, out_wide = self._forward(model, data), self._forward(model, wide_data)
+        assert self._floating_dtypes(out_wide) == {dtype}
+        for key in ("matches0", "matches1", "prune0", "prune1"):
+            self.assert_close(out_wide[key], out[key], rtol=0.0, atol=0.0)
+        for key in ("matching_scores0", "matching_scores1"):
+            self.assert_close(out_wide[key], out[key])
+
     def test_no_descriptors_returns_the_input_dtype_5837(self, device, dtype):
         empty = {
             "keypoints": torch.empty(1, 0, 2, device=device, dtype=dtype),

@@ -61,3 +61,7 @@ class TestLambdaModule(BaseTester):
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         func = kornia.color.bgr_to_grayscale
         self.gradcheck(kornia.contrib.Lambda(func), (img,))
+
+    def test_non_callable_message_names_the_parameter(self):
+        with pytest.raises(TypeError, match="func should be callable"):
+            kornia.contrib.Lambda(3)

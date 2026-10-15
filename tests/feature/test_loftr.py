@@ -176,6 +176,22 @@ class TestLoFTR(BaseTester):
         assert kpts0[:, 0].max() >= 8 * 5
         assert kpts0[:, 1].max() >= 8 * 9
 
+    def test_half_model_returns_float32_keypoints(self, device, dtype):
+        # R4: bfloat16 keypoints resolve 2 px for x in [256, 512); the any-size slow test failed on that alone.
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("half-precision rule")
+        model = _loftr_matching_every_cell(device, dtype)
+        g = torch.Generator().manual_seed(0)
+        image0 = torch.rand(1, 1, 300, 424, generator=g).to(device, dtype)
+        image1 = torch.rand(1, 1, 296, 432, generator=g).to(device, dtype)
+        with torch.no_grad():
+            out = model({"image0": image0, "image1": image1})
+        assert out["keypoints0"].dtype == torch.float32
+        assert out["keypoints1"].dtype == torch.float32
+        assert out["confidence"].dtype == dtype
+        far = out["keypoints1"][out["keypoints1"][:, 0] > 256, 0]
+        assert (far % 2 != 0).any()  # sub-2-px positions exist past 256, which bfloat16 cannot hold
+
     def test_mask_is_read_at_the_coarse_cell_pixels_5728(self, device, dtype):
         # A coarse cell takes the mask value of the pixel it sits on, (8x, 8y). The masks are 1 only on those pixels
         # (image0: on the ones with y < 64 and x < 40, so coarse rows 0..7 and columns 0..4), so every such cell is
@@ -650,10 +666,37 @@ class TestCoarseMatching(BaseTester):
         cm = CoarseMatching(self.CFG).to(device).eval()
         out = cm.get_coarse_match(conf, data)
         assert out["i_ids"].tolist() == i_ids.tolist()
-        expected0 = torch.tensor([[0, 0], [8, 8], [16, 40], [64, 96]], device=device, dtype=dtype)
-        expected1 = torch.tensor([[24, 0], [56, 24], [0, 56], [80, 88]], device=device, dtype=dtype)
+        # the keypoints are float32 for a half-precision confidence matrix
+        coord = torch.promote_types(dtype, torch.float32)
+        expected0 = torch.tensor([[0, 0], [8, 8], [16, 40], [64, 96]], device=device, dtype=coord)
+        expected1 = torch.tensor([[24, 0], [56, 24], [0, 56], [80, 88]], device=device, dtype=coord)
         self.assert_close(out["mkpts0_c"], expected0, rtol=0.0, atol=0.0)
         self.assert_close(out["mkpts1_c"], expected1, rtol=0.0, atol=0.0)
+
+    def test_coarse_coordinates_are_built_before_scaling(self, device):
+        # Plan review P5: with a half `scale0`, main scaled the integer cell indices in half precision and cast
+        # afterwards. LoFTR.forward never passes scale0/scale1, so this drives get_coarse_match directly.
+        # bfloat16(1.37) == 1.3671875; cell x = 39 sits at 39 * 8 * 1.3671875 = 426.5625, which bfloat16 rounds to 426.
+        h_c, w_c = 2, 40
+        n = h_c * w_c
+        conf = torch.zeros(1, n, n, device=device, dtype=torch.bfloat16)
+        conf[0, torch.arange(n), torch.arange(n)] = 0.9  # every cell is its own mutual nearest neighbour
+        scale = torch.tensor([[1.37, 1.37]], device=device, dtype=torch.bfloat16)
+        data = {
+            "hw0_c": (h_c, w_c),
+            "hw1_c": (h_c, w_c),
+            "hw0_i": (h_c * 8, w_c * 8),
+            "hw1_i": (h_c * 8, w_c * 8),
+            "stride_c": 8,
+            "scale0": scale,
+            "scale1": scale,
+        }
+        out = CoarseMatching(self.CFG).to(device).eval().get_coarse_match(conf, data)
+        i = out["i_ids"]
+        expected = torch.stack([i % w_c, i // w_c], 1).to(torch.float32) * (8 * 1.3671875)
+        assert out["mkpts0_c"].dtype == torch.float32
+        assert out["mkpts1_c"].dtype == torch.float32
+        assert torch.equal(out["mkpts0_c"], expected)  # products of small integers and 1.3671875: exact in float32
 
 
 class TestCoarseMatchingSelection(BaseTester):
@@ -1163,8 +1206,9 @@ class TestConventionsLoFTR(BaseTester):
         # the pretrained models put pixel centres at +0.5 (subtract 0.5 for kornia's frame).
         expected0 = [[56.0, 24.0], [16.0, 40.0], [24.0, 16.0]]
         expected1 = [[24.0 + 2.0, 40.0 - 2.0], [48.0 - 4.0, 16.0 + 4.0], [56.0 + 4.0, 32.0]]
-        self.assert_close(out["keypoints0"], torch.tensor(expected0, device=device, dtype=dtype))
-        self.assert_close(out["keypoints1"], torch.tensor(expected1, device=device, dtype=dtype))
+        coord = torch.promote_types(dtype, torch.float32)  # the keypoints are float32 for a half-precision model
+        self.assert_close(out["keypoints0"], torch.tensor(expected0, device=device, dtype=coord))
+        self.assert_close(out["keypoints1"], torch.tensor(expected1, device=device, dtype=coord))
         assert out["batch_indexes"].tolist() == [0, 0, 1]
         # confidence is the coarse dual-softmax score: similarity 16 * 16 / 256 / 0.1 = 10 against the zero similarity
         # of the 79 other cells of image 1 and the 87 other cells of image 0. The pair of amplitude 4 (similarity
@@ -1177,8 +1221,8 @@ class TestConventionsLoFTR(BaseTester):
             swapped = self._hooked_loftr(device, dtype, swap=True)({"image0": image1, "image1": image0})
         expected0 = [[48.0, 16.0], [24.0, 40.0], [56.0, 32.0]]
         expected1 = [[16.0 - 4.0, 40.0 + 4.0], [56.0 + 2.0, 24.0 - 2.0], [24.0 + 4.0, 16.0]]
-        self.assert_close(swapped["keypoints0"], torch.tensor(expected0, device=device, dtype=dtype))
-        self.assert_close(swapped["keypoints1"], torch.tensor(expected1, device=device, dtype=dtype))
+        self.assert_close(swapped["keypoints0"], torch.tensor(expected0, device=device, dtype=coord))
+        self.assert_close(swapped["keypoints1"], torch.tensor(expected1, device=device, dtype=coord))
         assert swapped["batch_indexes"].tolist() == [0, 0, 1]
 
     @pytest.mark.slow
