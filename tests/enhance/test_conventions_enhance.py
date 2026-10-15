@@ -19,7 +19,8 @@ import pytest
 import torch
 
 import kornia
-from kornia.core.exceptions import BaseError, ShapeError
+from kornia.core.check import disable_checks, enable_checks
+from kornia.core.exceptions import BaseError, ShapeError, TypeCheckError
 
 from testing.base import BaseTester
 
@@ -252,3 +253,59 @@ class TestEnhanceConventions(BaseTester):
         image = torch.zeros(1, 1, 300, 300, dtype=torch.float16)
         image[..., :, 150:] = 1.0
         self.assert_close(kornia.enhance.equalize(image), kornia.enhance.equalize(image.float()).half())
+
+    # Each op expects a floating-point image in [0, 1]. An integer image used to come back saturated, wrapped or
+    # negative without an error, so it is now rejected with the conversion to use (#5981).
+    _FLOAT_ONLY_OPS = {
+        "adjust_brightness": lambda x: kornia.enhance.adjust_brightness(x, 0.2),
+        "adjust_brightness_accumulative": lambda x: kornia.enhance.adjust_brightness_accumulative(x, 1.3),
+        "adjust_contrast": lambda x: kornia.enhance.adjust_contrast(x, 1.5),
+        "adjust_contrast_with_mean_subtraction": lambda x: kornia.enhance.adjust_contrast_with_mean_subtraction(x, 1.5),
+        "adjust_saturation_with_gray_subtraction": lambda x: kornia.enhance.adjust_saturation_with_gray_subtraction(
+            x, 1.5
+        ),
+        "adjust_gamma": lambda x: kornia.enhance.adjust_gamma(x, 2.0),
+        "adjust_sigmoid": kornia.enhance.adjust_sigmoid,
+        "adjust_log": kornia.enhance.adjust_log,
+        "posterize": lambda x: kornia.enhance.posterize(x, 3),
+        "solarize": lambda x: kornia.enhance.solarize(x, 0.5),
+        "sharpness": lambda x: kornia.enhance.sharpness(x, 0.5),
+        "shift_rgb": lambda x: kornia.enhance.shift_rgb(
+            x, *(torch.full((x.shape[0],), s, device=x.device) for s in (0.1, 0.0, 0.0))
+        ),
+        "jpeg_codec_differentiable": lambda x: kornia.enhance.jpeg_codec_differentiable(
+            x, torch.full((x.shape[0],), 50.0, device=x.device)
+        ),
+    }
+
+    @pytest.mark.parametrize("op", sorted(_FLOAT_ONLY_OPS))
+    @pytest.mark.parametrize("int_dtype", [torch.uint8, torch.int32])
+    def test_convention_integer_image_is_rejected_5981(self, op, int_dtype, device):
+        image = torch.randint(0, 256, (2, 3, 16, 16), device=device).to(int_dtype)
+
+        with pytest.raises(TypeCheckError, match=rf"^{op} expects a floating-point image in \[0, 1\]") as exc_info:
+            self._FLOAT_ONLY_OPS[op](image)
+
+        assert isinstance(exc_info.value, TypeError)
+        assert "image.float() / 255" in str(exc_info.value)
+        assert exc_info.value.actual_type == int_dtype
+
+    @pytest.mark.parametrize("op", sorted(_FLOAT_ONLY_OPS))
+    def test_convention_floating_image_is_accepted_5981(self, op, device, dtype):
+        # The conversion the message names, in any floating dtype, passes the check.
+        image = torch.randint(0, 256, (2, 3, 16, 16), device=device, dtype=torch.uint8)
+        out = self._FLOAT_ONLY_OPS[op](image.to(dtype) / 255)
+
+        assert out.dtype == dtype
+        assert out.shape == image.shape
+
+    @pytest.mark.device_agnostic
+    def test_convention_integer_image_check_follows_disable_checks_5981(self):
+        image = torch.randint(0, 256, (1, 3, 16, 16), dtype=torch.uint8)
+        disable_checks()
+        try:
+            kornia.enhance.adjust_brightness(image, 0.2)
+        finally:
+            enable_checks()
+        with pytest.raises(TypeCheckError):
+            kornia.enhance.adjust_brightness(image, 0.2)

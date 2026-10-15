@@ -30,7 +30,9 @@ from kornia.core.check import (
     KORNIA_CHECK,
     KORNIA_CHECK_IS_COLOR_OR_GRAY,
     KORNIA_CHECK_IS_TENSOR,
+    are_checks_enabled,
 )
+from kornia.core.exceptions import TypeCheckError
 from kornia.core.utils import _normalize_to_float32_or_float64, is_compiling
 from kornia.image.utils import _to_bcdhw, _to_bchw
 
@@ -69,6 +71,24 @@ def _lookup_value_check(cond: torch.Tensor, msg: str) -> None:
             raise RuntimeError(msg)
         return
     torch._assert_async(cond, msg)
+
+
+def _check_floating_image(image: torch.Tensor, op: str) -> None:
+    """Reject an integer image in an op that expects floating-point values in ``[0, 1]``.
+
+    These ops clamp to ``[0, 1]``, scale by 255 or index a 256-entry table, so an 8-bit image would
+    otherwise come back saturated, wrapped or negative without an error (#5981). The check reads only
+    the dtype, so it stays ``torch.compile(fullgraph=True)``-safe, and ``disable_checks()`` skips it
+    like every kornia check. A non-tensor is left to the op's own type check.
+    """
+    if not isinstance(image, torch.Tensor) or image.is_floating_point() or not are_checks_enabled():
+        return
+    raise TypeCheckError(
+        f"{op} expects a floating-point image in [0, 1], got {image.dtype}. "
+        "Convert it first, for example image.float() / 255 for 8-bit data.",
+        actual_type=image.dtype,
+        expected_type=(torch.float16, torch.bfloat16, torch.float32, torch.float64),
+    )
 
 
 def _make_factor_broadcastable(factor: torch.Tensor, image: torch.Tensor) -> torch.Tensor:
@@ -155,6 +175,7 @@ def adjust_saturation_with_gray_subtraction(image: torch.Tensor, factor: Union[f
         torch.Size([2, 3, 3, 3])
 
     """
+    _check_floating_image(image, "adjust_saturation_with_gray_subtraction")
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(isinstance(factor, (float, torch.Tensor)), "Factor should be float or torch.Tensor.")
     KORNIA_CHECK_IS_COLOR_OR_GRAY(image, "Image should be an RGB or gray image")
@@ -379,6 +400,7 @@ def adjust_gamma(
         torch.Size([2, 5, 3, 3])
 
     """
+    _check_floating_image(input, "adjust_gamma")
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
@@ -469,6 +491,7 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
         torch.Size([2, 5, 3, 3])
 
     """
+    _check_floating_image(image, "adjust_contrast")
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(isinstance(factor, (float, torch.Tensor)), "Factor should be float or torch.Tensor.")
 
@@ -526,6 +549,7 @@ def adjust_contrast_with_mean_subtraction(image: torch.Tensor, factor: Union[flo
         torch.Size([2, 5, 3, 3])
 
     """
+    _check_floating_image(image, "adjust_contrast_with_mean_subtraction")
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(isinstance(factor, (float, torch.Tensor)), "Factor should be float or torch.Tensor.")
 
@@ -596,6 +620,7 @@ def adjust_brightness(
         torch.Size([2, 5, 3, 3])
 
     """
+    _check_floating_image(image, "adjust_brightness")
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(isinstance(factor, (float, torch.Tensor)), "Factor should be float or torch.Tensor.")
 
@@ -653,6 +678,7 @@ def adjust_brightness_accumulative(
         torch.Size([2, 5, 3, 3])
 
     """
+    _check_floating_image(image, "adjust_brightness_accumulative")
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(isinstance(factor, (float, torch.Tensor)), "Factor should be float or torch.Tensor.")
 
@@ -703,6 +729,7 @@ def adjust_sigmoid(image: torch.Tensor, cutoff: float = 0.5, gain: float = 10, i
                   [0.5000, 0.5000]]]])
 
     """
+    _check_floating_image(image, "adjust_sigmoid")
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
 
     return 1 - 1 / (1 + (gain * (cutoff - image)).exp()) if inv else 1 / (1 + (gain * (cutoff - image)).exp())
@@ -736,6 +763,7 @@ def adjust_log(image: torch.Tensor, gain: float = 1, inv: bool = False, clip_out
                   [0., 0.]]]])
 
     """
+    _check_floating_image(image, "adjust_log")
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
 
     img_adjust = (2**image - 1) * gain if inv else (1 + image).log2() * gain
@@ -829,6 +857,7 @@ def solarize(
         torch.Size([2, 4, 3, 3])
 
     """
+    _check_floating_image(input, "solarize")
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
@@ -916,6 +945,7 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
         torch.Size([2, 6, 3, 3])
 
     """
+    _check_floating_image(input, "posterize")
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
@@ -1014,6 +1044,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
         torch.Size([1, 1, 5, 5])
 
     """
+    _check_floating_image(input, "sharpness")
     batched_input = _prepare_intensity_input(input, 2)
     input_shape = input.shape
     input = batched_input
