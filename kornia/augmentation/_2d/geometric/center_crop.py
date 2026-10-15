@@ -23,7 +23,7 @@ from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
 from kornia.geometry.transform import crop_by_transform_mat
-from kornia.geometry.transform.crop2d import _crop_translation
+from kornia.geometry.transform.crop2d import _crop_inverse_by_transform_mat, _crop_translation
 
 
 class CenterCrop(GeometricAugmentationBase2D):
@@ -176,9 +176,9 @@ class CenterCrop(GeometricAugmentationBase2D):
             size = self.size
         if not isinstance(transform, torch.Tensor):
             raise TypeError(f"Expected the `transform` be a torch.Tensor. Got {type(transform)}.")
-        return crop_by_transform_mat(
+        return _crop_inverse_by_transform_mat(
             input,
-            transform[:, :2, :],
+            transform,
             size,
             flags["resample"].name.lower(),
             flags["padding_mode"],

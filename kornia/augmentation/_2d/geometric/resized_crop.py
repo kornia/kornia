@@ -27,7 +27,12 @@ from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
 from kornia.core.utils import is_compiling
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
-from kornia.geometry.transform._crop import _compiled_slice_resize, _half_pixel_resize_transform
+from kornia.geometry.transform._crop import (
+    _compiled_slice_resize,
+    _corner_aligned_resize_transform,
+    _half_pixel_resize_transform,
+)
+from kornia.geometry.transform.crop2d import _crop_inverse_by_transform_mat
 
 
 class RandomResizedCrop(GeometricAugmentationBase2D):
@@ -79,8 +84,10 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         mode resizes the crop on the half-pixel grid, ``x' = (x - x0 + 0.5) * W_out / W_crop - 0.5`` for a crop
         starting at column ``x0`` (likewise for ``y``), while resample mode maps the crop's corner pixel centres
         onto the output's. Nearest sampling in slice mode uses the half-pixel grid and PyTorch's
-        ``nearest-exact`` interpolation. Both modes support :meth:`inverse`, which warps the output back onto the
-        original canvas with the inverse of the mode's ``transform_matrix`` and cannot recover discarded information.
+        ``nearest-exact`` interpolation. With corner alignment, an axis where the crop or the output is one pixel
+        long samples the crop's first row or column, as ``F.interpolate`` does, in both modes. Both modes support
+        :meth:`inverse`, which warps the output back onto the original canvas with the inverse of the mode's
+        ``transform_matrix`` and cannot recover discarded information.
 
     Note:
         Compiled slice-mode interpolation matches eager execution to floating-point tolerance,
@@ -151,7 +158,13 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
                 input.shape[0], -1, -1
             )
         if flags["cropping_mode"] in ("resample", "slice"):
-            transform: torch.Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
+            src, dst = params["src"].to(input), params["dst"].to(input)
+            transform: torch.Tensor = get_perspective_transform(src, dst)
+            # A one-pixel crop or output axis makes the box vertices collinear, and the solve returns NaN or a
+            # singular matrix. Corner-aligned resizing samples the crop's first pixel along that axis, which the
+            # extent matrix encodes; every other box keeps the solved matrix bit for bit.
+            one_pixel = (((src[:, 2] - src[:, 0]) == 0) | ((dst[:, 2] - dst[:, 0]) == 0)).any(dim=-1)
+            transform = torch.where(one_pixel[:, None, None], _corner_aligned_resize_transform(src, dst), transform)
             return transform.expand(input.shape[0], -1, -1)
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
@@ -202,9 +215,9 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         if not isinstance(transform, torch.Tensor):
             raise TypeError(f"Expected the `transform` be a torch.Tensor. Got {type(transform)}.")
 
-        return crop_by_transform_mat(
+        return _crop_inverse_by_transform_mat(
             input,
-            transform[:, :2, :],
+            transform,
             size,
             flags["resample"].name.lower(),
             flags["padding_mode"],

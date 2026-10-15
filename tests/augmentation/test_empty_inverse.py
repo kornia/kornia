@@ -404,7 +404,7 @@ class TestEmptyGeometricInverse(BaseTester):
         image = torch.rand(batch_size, channels, 6, 8, device=device, dtype=dtype)
         output = aug(image)
         method = aug.inverse_inputs if data_key == "input" else aug.inverse_masks
-        restored = method(output, aug._params, aug.flags, aug.transform_matrix)
+        restored = method(output, aug._params, aug.flags, aug.compute_inverse_transformation(aug.transform_matrix))
         assert restored.shape == image.shape
         if p == 0.0:
             self.assert_close(restored, image)

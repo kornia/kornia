@@ -32,6 +32,27 @@ def _half_pixel_resize_transform(src: torch.Tensor, dst: torch.Tensor) -> torch.
     return transform
 
 
+def _corner_aligned_resize_transform(src: torch.Tensor, dst: torch.Tensor) -> torch.Tensor:
+    """Map pixel indices between inclusive, axis-aligned crop and output boxes, as ``align_corners=True`` resizes.
+
+    Corner alignment has no scale along an axis where either box is one pixel wide. There ``F.interpolate``
+    samples only the crop's first pixel (a one-pixel output) or repeats it (a one-pixel crop). That axis maps the
+    first pixel onto output pixel 0, with scale 1 for a one-pixel output and the output length for a one-pixel crop,
+    so the matrix stays invertible and its inverse pastes the sampled pixel back where it came from.
+    """
+    src_extent = src[:, 2] - src[:, 0]
+    dst_extent = dst[:, 2] - dst[:, 0]
+    ones = torch.ones_like(src_extent)
+    scale = torch.where(
+        dst_extent == 0,
+        ones,
+        torch.where(src_extent == 0, dst_extent + 1, dst_extent / torch.where(src_extent == 0, ones, src_extent)),
+    )
+    transform = torch.diag_embed(torch.cat((scale, ones[:, :1]), dim=-1))
+    transform[:, :2, 2] = dst[:, 0] - scale * src[:, 0]
+    return transform
+
+
 def _resize_coordinates(
     start: torch.Tensor,
     end: torch.Tensor,
