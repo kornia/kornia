@@ -303,7 +303,7 @@ class TestCombineTensorPatches(BaseTester):
         out = kornia.contrib.combine_tensor_patches(-patches, (3, 4), 2, 1)
         assert out[0, 0, 0, 1].item() == -3
 
-    def test_bool_overlap_keeps_main_result(self, device):
+    def test_bool_overlap_is_true_where_any_covering_patch_is_true(self, device):
         # A pixel is True when any covering patch is True, as a float overlap mean cast back to bool gives. Literal
         # produced by:
         #   p = torch.zeros(1, 6, 1, 2, 2, dtype=torch.bool); p[0, 0] = True; p[0, 1] = True
@@ -425,8 +425,8 @@ class TestCombineTensorPatches(BaseTester):
             kornia.contrib.combine_tensor_patches(patches, (4, 6), 2, 2)
 
     def test_complex_round_trip(self, device):
-        # Complex patches are not integers: main cast them to float and discarded the imaginary part. They are folded
-        # as two real tensors, since MPS has no complex col2im kernel.
+        # Complex patches are not integers: a cast to float discarded the imaginary part. They are folded as two real
+        # tensors, since MPS has no complex col2im kernel.
         if device.type == "mps" and torch_version_lt(2, 9, 0):
             pytest.skip("complex MPS tensors abort the process in unfold on torch 2.5.1")
         g = torch.Generator().manual_seed(0)
@@ -466,9 +466,7 @@ class TestCombineTensorPatches(BaseTester):
         patches[0, 1] = 3.0
         out = kornia.contrib.combine_tensor_patches(patches, (2, 3), 2, 1)
         self.assert_close(out[0, 0], torch.tensor([[1.0, 2.0, 3.0], [1.0, 2.0, 3.0]], device=device, dtype=dtype))
-        # torch.nn.functional.fold sums the overlap: [[1, 4, 3], [1, 4, 3]]
-        folded = torch.nn.functional.fold(patches.permute(0, 2, 3, 4, 1).flatten(1, 3), (2, 3), 2, stride=1)
-        assert folded[0, 0, 0].tolist() == [1.0, 4.0, 3.0]
+        # torch.nn.functional.fold sums the overlap instead: [[1, 4, 3], [1, 4, 3]]
         # Patches that do not fit (the warned path) leave the last row and column uncovered: they are 0.
         img = torch.arange(1, 25, device=device, dtype=dtype).view(1, 1, 4, 6)
         with pytest.warns(UserWarning, match="will not fit"):

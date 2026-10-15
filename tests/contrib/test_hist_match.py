@@ -393,10 +393,13 @@ class TestHistMatch(BaseTester):
         self.assert_close(kornia.contrib.interp(x, xp, fp), expected)
 
     def test_wart_interp_integer_x_with_half_fp_overflows_5967(self, device):
-        # The weight is formed in float16 from integer differences above 65504: NaN where the right value is 1.0.
-        x = torch.tensor([100000], device=device)
+        # The weight is formed in float16 from integer differences above 65504. x = 100000 gives NaN where the right
+        # value is 1.0; x = 60000 overflows only the segment width and gives a silent 0.0 where the right value is 0.6.
+        x = torch.tensor([100000, 60000], device=device)
         xp = torch.tensor([0, 200000], device=device)
         out = kornia.contrib.interp(x, xp, torch.tensor([0.0, 2.0], device=device, dtype=torch.float16))
         assert out.dtype == torch.float16
-        assert torch.isnan(out).all()
-        assert kornia.contrib.interp(x, xp, torch.tensor([0.0, 2.0], device=device)).tolist() == [1.0]
+        assert torch.isnan(out[0])
+        assert out[1].item() == 0.0
+        reference = kornia.contrib.interp(x, xp, torch.tensor([0.0, 2.0], device=device))
+        self.assert_close(reference, torch.tensor([1.0, 0.6], device=device))
