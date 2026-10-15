@@ -80,14 +80,40 @@ class ImageStitcher(nn.Module):
             raise NotImplementedError(f"Unsupported estimator {self.estimator}. Use `ransac` or `vanilla` instead.")
         return homo
 
-    def estimate_transform(self, *args: torch.Tensor, **kwargs: torch.Tensor) -> torch.Tensor:
-        """Compute the corresponding homography."""
+    def estimate_transform(
+        self, *args: torch.Tensor, batch_size: Optional[int] = None, **kwargs: torch.Tensor
+    ) -> torch.Tensor:
+        """Compute the corresponding homography of every sample.
+
+        Args:
+            *args: ignored.
+            batch_size: number of samples. Defaults to one more than the largest batch index of the matches.
+            **kwargs: the matcher output, with ``keypoints0``, ``keypoints1`` and ``batch_indexes``.
+
+        Raises:
+            RuntimeError: if a sample has fewer than 4 matches (the error names the sample), if a batch index is outside
+                the batch (the error names the index), or if there are no matches and ``batch_size`` is not given.
+        """
         kp1, kp2, idx = kwargs["keypoints0"], kwargs["keypoints1"], kwargs["batch_indexes"]
-        homos = [self._estimate_homography(kp1[idx == i], kp2[idx == i]) for i in range(len(idx.unique()))]
-
-        if len(homos) == 0:
-            raise RuntimeError("Compute homography failed. No matched keypoints found.")
-
+        if batch_size is None:
+            if idx.numel() == 0:
+                raise RuntimeError("Compute homography failed. No matched keypoints found.")
+            n = int(idx.max().item()) + 1
+        else:
+            n = batch_size
+        outside = idx[(idx < 0) | (idx >= n)]
+        if outside.numel() > 0:
+            bad = int(outside[0].item())
+            if bad < 0:
+                raise RuntimeError(f"Compute homography failed: batch index {bad} is negative.")
+            samples = "1 sample" if n == 1 else f"{n} samples"
+            raise RuntimeError(f"Compute homography failed: batch index {bad} is outside the batch of {samples}.")
+        selections = [idx == i for i in range(n)]
+        for i, sel in enumerate(selections):
+            n_i = int(sel.sum().item())
+            if n_i < 4:
+                raise RuntimeError(f"Compute homography failed for sample {i}: {n_i} matches, a homography needs 4.")
+        homos = [self._estimate_homography(kp1[sel], kp2[sel]) for sel in selections]
         return torch.cat(homos)
 
     def blend_image(self, src_img: torch.Tensor, dst_img: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
@@ -176,10 +202,7 @@ class ImageStitcher(nn.Module):
         input_dict = self.preprocess(images_left, images_right)
         out_shape = (images_left.shape[-2], images_left.shape[-1] + images_right.shape[-1])
         correspondences = self.on_matcher(input_dict)
-        homo = self.estimate_transform(**correspondences)
-        # A float16 or bfloat16 matcher gives float32 keypoints, hence a float32 homography: warp in the wider dtype.
-        wide = torch.promote_types(images_right.dtype, homo.dtype)
-        src_img = warp_perspective(images_right.to(wide), homo, out_shape).to(images_right.dtype)
+        homo = self.estimate_transform(batch_size=images_left.shape[0], **correspondences)
         dst_img = torch.cat([images_left, torch.zeros_like(images_right)], -1)
 
         # Compute the transformed masks
@@ -187,9 +210,27 @@ class ImageStitcher(nn.Module):
             mask_left = torch.ones_like(images_left)
         if mask_right is None:
             mask_right = torch.ones_like(images_right)
-        # 'nearest' to ensure no floating points in the mask
-        mask_wide = torch.promote_types(mask_right.dtype, homo.dtype)
-        src_mask = warp_perspective(mask_right.to(mask_wide), homo, out_shape, mode="nearest").to(mask_right.dtype)
+        # The image is resampled bilinearly, so a panorama pixel whose footprint reaches past the right image's border
+        # mixes in the zero padding. Warp the validity mask together with the image, in one call and so on the same
+        # sampling grid, and keep only the pixels covered completely.
+        # The warp runs in at least float32 (float64 stays float64), whatever the dtype of the image and of the
+        # homography: a half sampling grid is coarser than a pixel on a wide panorama. Autocast is disabled around it,
+        # which would otherwise run the homography matmuls in half precision, and the float32 coverage tolerance below
+        # would then reject completely covered border pixels.
+        n_ch = images_right.shape[1]
+        work = torch.promote_types(images_right.dtype, torch.float32)
+        with torch.autocast(device_type=images_right.device.type, enabled=False):
+            warped = warp_perspective(
+                torch.cat([images_right.to(work), mask_right.to(work)], 1), homo.to(work), out_shape
+            )
+        src_img = warped[:, :n_ch].to(images_right.dtype)
+        # Round-off in the warp's sampling positions grows with the coordinates and puts a completely covered border
+        # pixel past the border, so its coverage reads below 1. Measured: up to 1.5 * eps * max(H_out, W_out) for
+        # integer shifts (0.99854 on the last row and column of a 4096 x 4096 image shifted by 2048), and up to
+        # 2.86 * eps * max(H_out, W_out) for general homographies. The tolerance scales the same way, with a margin,
+        # and stays far below a genuinely partial coverage: in float32 it reaches 0.3 only past 600 000 px.
+        tol = max(1e-4, 4.0 * torch.finfo(work).eps * max(out_shape))
+        src_mask = (warped[:, n_ch:] >= 1.0 - tol).to(images_right.dtype)
         dst_mask = torch.cat([mask_left, torch.zeros_like(mask_right)], -1)
         return self.blend_image(src_img, dst_img, src_mask), (dst_mask + src_mask).bool().to(src_mask.dtype)
 

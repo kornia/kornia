@@ -42,7 +42,7 @@ class Lambda(nn.Module):
     def __init__(self, func: Callable[..., torch.Tensor]) -> None:
         super().__init__()
         if not callable(func):
-            raise TypeError(f"Argument lambd should be callable, got {type(func).__name__!r}")
+            raise TypeError(f"Argument func should be callable, got {type(func).__name__!r}")
 
         self.func = func
 
