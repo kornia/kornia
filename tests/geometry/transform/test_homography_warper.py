@@ -298,6 +298,81 @@ class TestHomographyWarper(BaseTester):
         self.assert_close(precomputed, direct, atol=1e-4, rtol=1e-4)
         self.assert_close(direct, patch_src)
 
+    @pytest.mark.parametrize("align_corners", [False, True])
+    @pytest.mark.parametrize("scale", [1e-7, 1e-8, 1e-12, 1e-30, 1e12, -1e8])
+    def test_warp_grid_ignores_the_homography_scale(self, scale, align_corners, device, dtype):
+        # A homography and any nonzero multiple of it describe the same warp. An absolute eps inside
+        # convert_points_from_homogeneous used to leave grid points with |w| <= eps undivided, so the
+        # sampled pixels depended on the matrix's arbitrary scale (#5761).
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("these scales test the float32/float64 arithmetic range")
+        height, width = 6, 6
+        image = torch.arange(float(height * width), device=device, dtype=dtype).reshape(1, 1, height, width) / 36
+        dst_homo_src = torch.tensor(
+            [[[1.0, 0.1, 0.03], [0.05, 1.0, 0.02], [0.1, 0.2, 1.0]]], device=device, dtype=dtype
+        )
+        grid = kornia.geometry.create_meshgrid(
+            height, width, normalized_coordinates=True, device=device, dtype=dtype, align_corners=align_corners
+        )
+
+        self.assert_close(
+            kornia.geometry.transform.warp_grid(grid, scale * dst_homo_src),
+            kornia.geometry.transform.warp_grid(grid, dst_homo_src),
+        )
+
+        warper = kornia.geometry.transform.HomographyWarper(height, width, align_corners=align_corners)
+        self.assert_close(warper(image, scale * dst_homo_src), warper(image, dst_homo_src))
+
+        dst_homo_src_norm = _torch_inverse_cast(
+            kornia.geometry.normalize_homography(
+                dst_homo_src, (height, width), (height, width), align_corners=align_corners
+            )
+        )
+        warp = kornia.geometry.homography_warp
+        kwargs = {"align_corners": align_corners, "normalized_homography": True}
+        scaled = warp(image, scale * dst_homo_src_norm, (height, width), **kwargs)
+        assert torch.isfinite(scaled).all()
+        self.assert_close(scaled, warp(image, dst_homo_src_norm, (height, width), **kwargs))
+
+    @pytest.mark.parametrize("scale", [1e-8, 1e-12, 1e12])
+    def test_homography_warp_gradient_follows_the_projective_gauge(self, scale, device, dtype):
+        # The scale is divided out with a detached factor, so the image is unchanged and the gradient
+        # obeys the projective rule dL/d(s*H) = (dL/dH)/s rather than being silently rescaled (#5761).
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("these scales test the float32/float64 arithmetic range")
+        height, width = 6, 6
+        image = torch.arange(float(height * width), device=device, dtype=dtype).reshape(1, 1, height, width) / 36
+        dst_homo_src = torch.tensor(
+            [[[1.0, 0.1, 0.03], [0.05, 1.0, 0.02], [0.1, 0.2, 1.0]]], device=device, dtype=dtype
+        )
+        normalized = _torch_inverse_cast(
+            kornia.geometry.normalize_homography(dst_homo_src, (height, width), (height, width))
+        )
+        reference_matrix = normalized.clone().requires_grad_()
+        scaled_matrix = (normalized * scale).requires_grad_()
+
+        reference = kornia.geometry.homography_warp(image, reference_matrix, (height, width))
+        actual = kornia.geometry.homography_warp(image, scaled_matrix, (height, width))
+        reference_grad = torch.autograd.grad(reference.square().sum(), reference_matrix)[0]
+        actual_grad = torch.autograd.grad(actual.square().sum(), scaled_matrix)[0]
+
+        assert torch.isfinite(actual_grad).all()
+        self.assert_close(actual, reference)
+        self.assert_close(actual_grad * scale, reference_grad)
+
+    def test_warp_grid_keeps_a_gradient_for_an_all_zero_matrix(self, device, dtype):
+        # A zero matrix has no nonzero magnitude to scale by. The gauge must fall back to 1 instead of
+        # dividing by the infinite "smallest magnitude", which would collapse every grid gradient to 0.
+        grid = kornia.geometry.create_meshgrid(3, 3, normalized_coordinates=True, device=device, dtype=dtype)
+        matrix = torch.zeros(1, 3, 3, device=device, dtype=dtype).requires_grad_(True)
+
+        warped = kornia.geometry.transform.warp_grid(grid, matrix)
+        grad = torch.autograd.grad(warped.sum(), matrix)[0]
+
+        assert torch.isfinite(warped).all()
+        assert torch.isfinite(grad).all()
+        assert grad.abs().sum() > 0
+
     @pytest.mark.parametrize("batch_shape", [(1, 1, 7, 5), (2, 3, 8, 5), (1, 1, 7, 16)])
     def test_gradcheck(self, batch_shape, device):
         dtype = torch.float64
