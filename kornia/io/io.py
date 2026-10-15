@@ -419,8 +419,8 @@ def write_image(path_file: str | Path, image: torch.Tensor, quality: int = 80) -
         - ``image`` is channels first. A channels-last :math:`(H, W, C)` tensor is not detected: its first axis is
           read as the channels.
         - :ref:`Files and arrays <image-io-conventions>` maps ``cv2.imwrite`` onto these arguments.
-        - An image with zero height or width raises before anything is written, so no empty or truncated file is
-          left behind (`#5770 <https://github.com/kornia/kornia/issues/5770>`_).
+        - An image with zero height or width raises ``ShapeError`` before anything is written, so no empty or
+          truncated file is left behind.
 
     Args:
         path_file: Path with a .jpg, .jpeg, .png, .tif or .tiff extension, in any letter case.
@@ -467,7 +467,7 @@ def write_image(path_file: str | Path, image: torch.Tensor, quality: int = 80) -
             expected_shape=["C", "H", "W"],
         )
     # kornia-rs raises a bare Exception on a zero-sized image and leaves the truncated file behind,
-    # so reject the shape before anything is created (#5770).
+    # so reject the shape before anything is created.
     height, width = image.shape[-2], image.shape[-1]
     if height <= 0 or width <= 0:
         raise ShapeError(
