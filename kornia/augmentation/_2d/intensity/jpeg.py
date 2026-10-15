@@ -81,5 +81,8 @@ class RandomJPEG(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        if params["jpeg_quality"].numel() == 0 and input.shape[0] == 0:
+            # An empty batch draws no quality and has no pixels to code; JPEG coding keeps the shape (#4429).
+            return input.clone()
         jpeg_output: torch.Tensor = jpeg_codec_differentiable(input, params["jpeg_quality"])
         return jpeg_output

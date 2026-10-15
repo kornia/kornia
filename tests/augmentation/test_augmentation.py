@@ -6388,6 +6388,26 @@ class TestRandomJPEG(BaseTester):
         images_aug = aug(images)
         assert images_aug.shape == images.shape
 
+    @pytest.mark.parametrize("p", [1.0, 0.5])
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_empty_batch(self, p, same_on_batch, device, dtype):
+        # #4429: the differentiable JPEG codec rejects an empty batch, so the augmentation short-circuits it and
+        # keeps the shape like the other classes in the empty-batch convention.
+        image = torch.rand(0, 3, 8, 10, device=device, dtype=dtype, requires_grad=True)
+        output = RandomJPEG(p=p, same_on_batch=same_on_batch)(image)
+        assert output.shape == image.shape
+        assert output.dtype == dtype
+        output.sum().backward()
+        assert image.grad is not None
+        assert image.grad.shape == image.shape
+
+    def test_empty_batch_shortcut_needs_an_empty_batch(self, device, dtype):
+        # Replaying parameters drawn for another batch size raises as it did before the empty-batch shortcut.
+        aug = RandomJPEG(p=1.0)
+        params = aug.forward_parameters(torch.Size((2, 3, 8, 10)))
+        with pytest.raises(ValueError, match=r"Invalid input tensor, it is empty\."):
+            aug(torch.rand(0, 3, 8, 10, device=device, dtype=dtype), params=params)
+
     @pytest.mark.slow
     def test_gradcheck(self, device):
         B, H, W = 1, 16, 16
