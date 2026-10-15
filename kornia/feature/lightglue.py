@@ -478,7 +478,8 @@ class LightGlue(nn.Module):
         - The ``keypoints`` of each image are ``(x, y)`` pixels and ``image_size`` is ``(W, H)``; an ``image``
           tensor gives the size from its last two dimensions instead. ``forward`` normalises the keypoints to
           ``(k - size / 2) / (max(size) / 2)``, as the reference implementation does, and raises for a keypoint
-          outside :math:`[-1, 1]` after that.
+          outside :math:`[-1, 1]` after that. The keypoints can be wider than the model, like the float32 keypoints
+          of kornia's detectors with a float16 or bfloat16 model; the positional encoding runs in the model's dtype.
         - The ``"sift"``, ``"doghardnet"`` and ``"dog_affnet_hardnet"`` configurations, which set ``add_scale_ori``,
           also read ``scales`` and ``oris`` (radians) of each image; the last two multiply ``scales`` by their
           ``scale_coef`` of 1/6 first, so they take the LAF scale. ``"keynet_affnet_hardnet"``, which sets ``add_laf``,
@@ -845,9 +846,11 @@ class LightGlue(nn.Module):
             kpts1, _ = pad_to_length(kpts1, kn)
         desc0 = self.input_proj(desc0)
         desc1 = self.input_proj(desc1)
-        # cache positional embeddings
-        encoding0 = self.posenc(kpts0)
-        encoding1 = self.posenc(kpts1)
+        # cache positional embeddings, in the encoder's dtype: kornia's detectors return float32 keypoints for a
+        # half-precision model, which would otherwise meet half-precision weights here
+        pe_dtype = self.posenc.Wr.weight.dtype
+        encoding0 = self.posenc(kpts0.to(pe_dtype))
+        encoding1 = self.posenc(kpts1.to(pe_dtype))
 
         # GNN + final_proj + assignment
         do_early_stop = self.conf.depth_confidence > 0

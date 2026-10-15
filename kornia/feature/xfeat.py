@@ -332,6 +332,9 @@ class XFeat(nn.Module):
           1 keeps every cell of both scales. Its descriptors are not normalised. The reference implementation gives
           the 1.3 scale ``int(0.8 * top_k)`` and reads a share of 0 as "every cell"; kornia does not, because that
           returns more keypoints than ``top_k`` asks for.
+        - Known defects: converting the model to float16 or bfloat16 makes every extraction raise, because
+          ``_preprocess_tensor`` passes float32 input to the half-precision weights
+          (`#5957 <https://github.com/kornia/kornia/issues/5957>`_).
 
     Args:
         top_k: maximum number of keypoints to keep per image. Default: ``4096``.

@@ -506,10 +506,12 @@ class _SIFTScaleSpaceDetector(nn.Module):
             if mask.is_floating_point():
                 mask = mask.clamp_max(1.0).to(img.dtype)
         bsz, dtype, device = img.shape[0], img.dtype, img.device
+        # LAFs are at least float32: bfloat16 holds no odd pixel above 256, float16 none above 2048.
+        laf_dtype = torch.promote_types(dtype, torch.float32)
         zero = img[..., :0, :0].sum()
         if bsz == 0 or num_feats == 0:
             responses = img.new_zeros(bsz, num_feats) + zero
-            lafs = img.new_zeros(bsz, num_feats, 2, 3) + zero
+            lafs = img.new_zeros(bsz, num_feats, 2, 3, dtype=laf_dtype) + zero
             filled = torch.zeros(bsz, num_feats, device=device, dtype=torch.bool)
             ids = torch.full((bsz, num_feats), -1, device=device, dtype=torch.long)
             return responses, lafs, filled, [img.unsqueeze(2)], ids, ids.clone()
@@ -527,7 +529,7 @@ class _SIFTScaleSpaceDetector(nn.Module):
             xy = torch.stack([(x.to(gaussian.dtype) + sx) * pixel, (y.to(gaussian.dtype) + sy) * pixel], -1)
             entries.append((b, layer, xy, response, sigma, torch.full_like(layer, octave)))
         responses = torch.zeros(bsz, num_feats, device=device, dtype=dtype) + zero
-        lafs = torch.zeros(bsz, num_feats, 2, 3, device=device, dtype=dtype) + zero
+        lafs = torch.zeros(bsz, num_feats, 2, 3, device=device, dtype=laf_dtype) + zero
         filled = torch.zeros(bsz, num_feats, device=device, dtype=torch.bool)
         octaves = torch.full((bsz, num_feats), -1, device=device, dtype=torch.long)
         levels = torch.full_like(octaves, -1)
