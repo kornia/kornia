@@ -104,9 +104,14 @@ def joint_pdf(kernel_values1: torch.Tensor, kernel_values2: torch.Tensor, epsilo
             f" Got {kernel_values1.shape} and {kernel_values2.shape}"
         )
 
+    output_dtype = kernel_values1.dtype
+    # Both the per-bin sample counts and their normalization can overflow float16 on ordinary images.
+    if output_dtype in (torch.float16, torch.bfloat16):
+        kernel_values1 = kernel_values1.float()
+        kernel_values2 = kernel_values2.float()
     joint_kernel_values = torch.matmul(kernel_values1.transpose(1, 2), kernel_values2)
     normalization = torch.sum(joint_kernel_values, dim=(1, 2)).view(-1, 1, 1) + epsilon
-    return joint_kernel_values / normalization
+    return (joint_kernel_values / normalization).to(output_dtype)
 
 
 def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsilon: float = 1e-10) -> torch.Tensor:
@@ -151,6 +156,8 @@ def histogram2d(
     Convention:
         x1 and x2 supply one sample row per batch element and return
         (B, N_bins, N_bins), where the first bin axis belongs to x1.
+        For float16 and bfloat16 kernels, joint counts and normalization accumulate in float32;
+        the result keeps the kernel dtype.
 
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 

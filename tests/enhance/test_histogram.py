@@ -272,6 +272,42 @@ class TestImageHistogram2d(BaseTester):
 class TestHistogram2d(BaseTester):
     fcn = kornia.enhance.histogram2d
 
+    @pytest.mark.parametrize("num_samples,num_bins", [(1024, 64), (65536, 2)])
+    def test_large_histogram_normalization(self, device, dtype, num_samples, num_bins):
+        # The first case overflows the normalization sum in float16; the second overflows each matrix entry.
+        samples = torch.linspace(0, 1, num_samples, device=device, dtype=torch.float32).to(dtype).unsqueeze(0)
+        if num_samples == 65536:
+            samples = torch.zeros_like(samples)
+        samples = samples.requires_grad_()
+        bins = torch.linspace(0, 1, num_bins, device=device, dtype=dtype)
+        bandwidth = torch.tensor(0.2, device=device, dtype=dtype)
+        reference_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        reference_samples = samples.detach().to(reference_dtype).requires_grad_()
+        expected = TestHistogram2d.fcn(
+            reference_samples, reference_samples, bins.to(reference_dtype), bandwidth.to(reference_dtype)
+        )
+
+        actual = TestHistogram2d.fcn(samples, samples, bins, bandwidth)
+        assert actual.dtype == dtype
+        assert torch.isfinite(actual).all()
+        self.assert_close(actual.sum((-2, -1)), torch.ones(1, device=device, dtype=dtype))
+        self.assert_close(actual, expected.to(dtype))
+
+        weights = bins.view(1, -1, 1)
+        (actual * weights).sum().backward()
+        (expected * weights.to(reference_dtype)).sum().backward()
+        assert torch.isfinite(samples.grad).all()
+        self.assert_close(samples.grad, reference_samples.grad.to(dtype))
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        samples = torch.linspace(0, 1, 1024, device=device, dtype=dtype).unsqueeze(0)
+        bins = torch.linspace(0, 1, 64, device=device, dtype=dtype)
+        bandwidth = torch.tensor(0.2, device=device, dtype=dtype)
+        op = torch_optimizer(TestHistogram2d.fcn)
+        actual = op(samples, samples, bins, bandwidth)
+        self.assert_close(actual, TestHistogram2d.fcn(samples, samples, bins, bandwidth))
+        self.assert_close(actual.sum((-2, -1)), torch.ones(1, device=device, dtype=dtype))
+
     def test_shape(self, device, dtype):
         inp1 = torch.ones(1, 16, device=device, dtype=dtype)
         inp2 = torch.ones(1, 16, device=device, dtype=dtype)
