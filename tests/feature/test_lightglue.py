@@ -209,20 +209,33 @@ def test_attention_allow_flash_matches_on_cpu():
 
 
 class TestAttention(BaseTester):
+    @pytest.mark.parametrize("batch_size", [1, 2])
     @pytest.mark.parametrize("legacy_windows", [False, True])
     @pytest.mark.parametrize("masked", [False, True])
-    def test_cpu_attention_matches_explicit_softmax_5992(self, device, dtype, legacy_windows, masked):
+    def test_cpu_attention_matches_explicit_softmax_5992(self, device, dtype, batch_size, legacy_windows, masked):
         if device.type != "cpu" or dtype not in (torch.float32, torch.float64):
             pytest.skip("regression for Windows CPU float64, with float32 as a control")
         g = torch.Generator().manual_seed(0)
-        q, k, v = [torch.randn(1, 4, 16, 64, generator=g, device=device, dtype=dtype) for _ in range(3)]
+        q, k, v = [torch.randn(batch_size, 4, 16, 64, generator=g, device=device, dtype=dtype) for _ in range(3)]
         mask = None
         logits = (q @ k.transpose(-2, -1)) / 8
         if masked:
             mask = torch.ones(16, 16, device=device, dtype=torch.bool).tril()
             mask[0] = False  # Fully masked rows must still return zeros.
+            if batch_size > 1:
+                mask = mask.expand(batch_size, 1, -1, -1).clone()
+                mask[1, :, :, ::2] = False  # Different masks per pair, broadcast across heads.
             logits = logits.masked_fill(~mask, -torch.inf)
         expected = logits.softmax(-1).nan_to_num() @ v
+
+        sdpa = torch.nn.functional.scaled_dot_product_attention
+
+        def legacy_sdpa(q, k, v, **kwargs):
+            # Reproduce the broken 4D float64 kernel even on healthy hosts. This makes removing the workaround
+            # fail deterministically, while the native-platform case still exercises the installed torch kernel.
+            if legacy_windows and q.dtype == torch.float64 and q.ndim == 4:
+                return torch.full_like(q, float("nan"))
+            return sdpa(q, k, v, **kwargs)
 
         flash_enabled = torch.backends.cuda.flash_sdp_enabled()
         try:
@@ -236,7 +249,10 @@ class TestAttention(BaseTester):
                 torch.backends.cuda.mem_efficient_sdp_enabled(),
                 torch.backends.cuda.cudnn_sdp_enabled(),
             )
-            actual = attention(q, k, v, mask)
+            with unittest.mock.patch(
+                "kornia.feature.lightglue.F.scaled_dot_product_attention", side_effect=legacy_sdpa
+            ):
+                actual = attention(q, k, v, mask)
             assert actual.isfinite().all()
             self.assert_close(actual, expected)
             assert backend_flags == (
