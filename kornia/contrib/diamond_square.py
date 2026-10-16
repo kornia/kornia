@@ -170,7 +170,7 @@ def diamond_square(
         - The map is grown on a :math:`2^n + 1` grid and cropped to ``output_size`` at its top-left corner, so it can
           be a non-contiguous view. The seed is a :math:`3 \times K` grid, transposed to :math:`K \times 3` for a map
           taller than wide, whose cell corners, the even nodes of its first and last rows (columns when transposed),
-          are ``random_scale`` times a ``random_fn`` draw, and whose other nodes are the means of their neighbours.
+          are ``random_fn`` draws, and whose other nodes are the means of their neighbours.
           Each level sets a new node to
           :math:`(1 - s_k)\,\overline{n} + s_k\,u`, the mean :math:`\overline{n}` of its neighbours mixed with a
           ``random_fn`` draw :math:`u` by :math:`s_k = \mathrm{random\_scale} \cdot \mathrm{roughness}^k` at level
@@ -179,22 +179,18 @@ def diamond_square(
         - ``random_fn`` is called as ``random_fn(shape, device=device, dtype=dtype)`` and is the only source of
           randomness, so ``functools.partial(torch.rand, generator=g)`` leaves the global generator alone. With
           ``torch.rand`` the map stays in [0, 1] without normalization while ``random_scale`` and ``roughness`` are in
-          [0, 1], and with ``random_scale=1`` it is flat in mean (0.5 everywhere), though its variance varies across
-          the map.
+          [0, 1], and it is flat in mean (0.5 at every pixel) for every ``random_scale``, though its variance varies
+          across the map.
         - ``roughness`` and ``random_scale`` are a float, a 0-d tensor or a :math:`(B,)` tensor with one value per
           sample, and follow ``device`` and ``dtype``.
         - ``normalize_range=(min, max)`` rescales each :math:`(b, c)` plane to that range with
           :func:`~kornia.enhance.normalize_min_max`.
-        - Known defect: the mean is not flat when ``random_scale`` is neither 0 nor 1, ``roughness`` is non-zero and
-          both sides of the map exceed 3, so that it grows past its seed. The seed's mean is ``0.5 * random_scale`` and
-          every level mixes towards 0.5, so at ``random_scale=0.5`` the seed nodes average 0.25 and the other pixels
-          more, by an amount that depends on ``roughness`` and the map size: 0.31 to 0.35 on a :math:`9 \times 17` map
-          at the default ``roughness`` (`#5963 <https://github.com/kornia/kornia/issues/5963>`_).
 
     Args:
         output_size: a tuple of integers with the BxCxHxW of the image to be generated.
         roughness: the factor that scales the mixing weight at each recursion step.
-        random_scale: the mixing weight before the first recursion step, which also scales the seed.
+        random_scale: scales the per-level mixing weight
+            :math:`s_k = \mathrm{random\_scale} \cdot \mathrm{roughness}^k`, :math:`k \geq 1`.
         random_fn: the callable function to use to sample a random torch.Tensor.
         normalize_range: if given, the ``(min, max)`` range each plane is min-max normalized to.
         device: the torch device to place the output map.
@@ -235,9 +231,7 @@ def diamond_square(
     recursion_depth: int = int(min(math.log2(p2_width - 1) - 1, math.log2(p2_height - 1) - 1))
     seed_width: int = (p2_width - 1) // 2**recursion_depth + 1
     seed_height: int = (p2_height - 1) // 2**recursion_depth + 1
-    img: torch.Tensor = random_scale * _diamond_square_seed(
-        num_samples, seed_width, seed_height, random_fn, device, dtype
-    )
+    img: torch.Tensor = _diamond_square_seed(num_samples, seed_width, seed_height, random_fn, device, dtype)
 
     # perform recursion
     scale = random_scale

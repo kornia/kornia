@@ -152,11 +152,13 @@ class TestDiamondSquare(BaseTester):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
 
         # One level from a 3x5 seed: a new value is (1 - s) * mean(neighbours) + s * U, s = random_scale * roughness
-        # = 0.25, U = 1, seed corner draws [[1, 2, 4], [8, 16, 32]] scaled by random_scale. Worked by hand (scaled
-        # seed: corner 0.5, centre 3.375, top midpoint 1.625, left midpoint 2.625; diamond (1, 3) = 2.271484375):
-        #   diamond (1, 1) = 0.75 * mean(0.5, 1.625, 2.625, 3.375) + 0.25 = 1.7734375
-        #   border square (0, 1) = 0.75 * mean(0.5, 1.625, 1.7734375) + 0.25 = 1.224609375 (three neighbours)
-        #   interior square (1, 2) = 0.75 * mean(1.625, 3.375, 1.7734375, 2.271484375) + 0.25 = 1.9459228515625
+        # = 0.25, U = 1, seed corner draws [[1, 2, 4], [8, 16, 32]], not scaled by random_scale. Worked by hand (seed:
+        # corner 1, centre (1 + 2 + 8 + 16) / 4 = 6.75, top midpoint 3.25, left midpoint 5.25, row-1 point between
+        # the centres 9.5625 as in test_seed_values; diamond (1, 3) = 0.75 * mean(3.25, 2, 6.75, 9.5625) + 0.25 =
+        # 4.29296875):
+        #   diamond (1, 1) = 0.75 * mean(1, 3.25, 5.25, 6.75) + 0.25 = 3.296875
+        #   border square (0, 1) = 0.75 * mean(1, 3.25, 3.296875) + 0.25 = 2.13671875 (three neighbours)
+        #   interior square (1, 2) = 0.75 * mean(3.25, 6.75, 3.296875, 4.29296875) + 0.25 = 3.548095703125
         def draw(shape, device=None, dtype=None):
             if shape[-2] == 2:  # the seed's corner draws
                 return torch.tensor([[1.0, 2.0, 4.0], [8.0, 16.0, 32.0]], device=device, dtype=dtype).expand(shape)
@@ -168,7 +170,7 @@ class TestDiamondSquare(BaseTester):
         assert out.shape == (5, 9)
         # seed corner, seed centre, level-1 diamond centre, border square centre, interior square centre
         nodes = torch.stack([out[0, 0], out[2, 2], out[1, 1], out[0, 1], out[1, 2]])
-        expected = torch.tensor([0.5, 3.375, 1.7734375, 1.224609375, 1.9459228515625], device=device, dtype=dtype)
+        expected = torch.tensor([1.0, 6.75, 3.296875, 2.13671875, 3.548095703125], device=device, dtype=dtype)
         self.assert_close(nodes, expected)
 
     def test_convention_normalize_range_is_min_max_per_plane(self, device, dtype):
@@ -199,19 +201,48 @@ class TestDiamondSquare(BaseTester):
         if accelerator_state is not None:
             assert torch.equal(accelerator_state, device_state())
 
-    def test_wart_mean_field_drifts_for_random_scale_not_one_5963(self, device, dtype):
+    @pytest.mark.parametrize("random_scale", [0.25, 0.5, 1.0, 2.0])
+    def test_convention_mean_field_is_flat_for_every_random_scale(self, random_scale, device, dtype):
         if not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
 
-        # The map is linear in the draws, so a constant 0.5 draw gives the expected field of torch.rand exactly.
-        # With random_scale=0.5 the seed is 0.5 * 0.5 = 0.25, and each level mixes towards 0.5: a level-1 diamond is
-        # 0.75 * 0.25 + 0.25 * 0.5 = 0.3125, a level-1 square 0.328125 at the border and 0.3359375 inside.
+        # The map is linear in the draws, so a constant 0.5 draw gives the expected field of torch.rand exactly. The
+        # seed is the draws themselves (0.5) and each level computes (1 - s) * 0.5 + s * 0.5 = 0.5 for any s, so every
+        # pixel is 0.5. A seed scaled by random_scale gave, at random_scale=0.5, 0.25 at the seed nodes, 0.3125 at
+        # the level-1 diamonds and 0.328125 / 0.3359375 at the border / interior level-1 squares.
         def half(shape, device=None, dtype=None):
             return torch.full(shape, 0.5, device=device, dtype=dtype)
 
         out = kornia.contrib.diamond_square(
-            (1, 1, 9, 17), random_scale=0.5, random_fn=half, device=device, dtype=dtype
-        )[0, 0]
-        nodes = torch.stack([out[0, 0], out[4, 8], out[2, 2], out[0, 2], out[2, 4]])
-        expected = torch.tensor([0.25, 0.25, 0.3125, 0.328125, 0.3359375], device=device, dtype=dtype)
-        self.assert_close(nodes, expected)
+            (1, 1, 9, 17), random_scale=random_scale, random_fn=half, device=device, dtype=dtype
+        )
+        self.assert_close(out, torch.full_like(out, 0.5))
+
+    def test_random_scale_one_is_unchanged(self, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+
+        # random_scale=1, the default and the value the plasma augmentations use, gives the same map whether or not
+        # the seed is scaled by it. Draws come from a seeded CPU generator in float64 and are cast afterwards, so every
+        # device and dtype sees the same numbers. Literal generated before the seed stopped being scaled:
+        #   g = torch.Generator().manual_seed(0)
+        #   draw = lambda shape, device=None, dtype=None: torch.rand(shape, generator=g, dtype=torch.float64).to(
+        #       device=device, dtype=dtype)
+        #   out = kornia.contrib.diamond_square((1, 1, 5, 9), random_scale=1.0, random_fn=draw, dtype=torch.float64)
+        #   out[0, 0, :3, :5]
+        g = torch.Generator().manual_seed(0)
+
+        def draw(shape, device=None, dtype=None):
+            return torch.rand(shape, generator=g, dtype=torch.float64).to(device=device, dtype=dtype)
+
+        out = kornia.contrib.diamond_square((1, 1, 5, 9), random_scale=1.0, random_fn=draw, device=device, dtype=dtype)
+        expected = torch.tensor(
+            [
+                [0.9700530018065531, 0.5825837538768377, 0.8295946779397027, 0.5193563724418668, 0.707819864399788],
+                [0.6392595145199516, 0.6425319703329853, 0.47735102570438287, 0.7140160159032599, 0.7129631915412449],
+                [0.9005706178470932, 0.6569745561601958, 0.8109111676127666, 0.7014195097526202, 0.7036497142732241],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(out[0, 0, :3, :5], expected)
