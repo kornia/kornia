@@ -221,8 +221,8 @@ class HyNet(nn.Module):
     Args:
         pretrained: Download and set pretrained weights to the model. The weights fit the default ``is_bias``,
             ``is_bias_FRN`` and ``dim_desc`` only, so pass ``pretrained=False`` with another value: the strict load
-            raises ``RuntimeError`` for another ``is_bias`` or ``dim_desc``, and ``is_bias_FRN=False`` loads the
-            weights but leaves their trained FRN biases unused.
+            raises ``RuntimeError`` for another ``is_bias`` or ``dim_desc``, and ``is_bias_FRN=False`` raises
+            ``ValueError`` before downloading, since the weights would load but leave their trained FRN biases unused.
         is_bias: use bias in the convolution layers (the final 8 x 8 convolution has none either way)
         is_bias_FRN:  use bias in FRN layers
         dim_desc: descriptor dimensionality,
@@ -259,6 +259,12 @@ class HyNet(nn.Module):
         eps_l2_norm: float = 1e-10,
     ) -> None:
         super().__init__()
+        if pretrained and not is_bias_FRN:
+            # The FRN biases exist with either flag, so the strict load cannot catch this mismatch.
+            raise ValueError(
+                "HyNet's pretrained weights use their trained FRN biases; pass pretrained=False to build it with "
+                "is_bias_FRN=False."
+            )
         self.eps_l2_norm = eps_l2_norm
         self.dim_desc = dim_desc
         self.drop_rate = drop_rate

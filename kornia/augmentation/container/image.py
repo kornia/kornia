@@ -547,6 +547,8 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
             # Intermediate probabilities still require data-dependent control flow in forward.
             if size is None or (isinstance(module, (K.CenterCrop3D, K.RandomCrop3D)) and module.p_batch == 0.0):
                 return batch_shape
+            if isinstance(module, K.Resize) and isinstance(size, int):
+                size = _side_to_image_size(size, batch_shape[-1] / batch_shape[-2], module.flags["side"])
             new_batch_shape = list(batch_shape)
             new_batch_shape[-data["output_size"].shape[-1] :] = [operator.index(dim) for dim in size]
             return torch.Size(new_batch_shape)
