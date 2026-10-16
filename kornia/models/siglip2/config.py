@@ -163,8 +163,8 @@ class SigLip2Config:
         - google/siglip2-large-patch16-512
 
         Each name gives its checkpoint's ``config.json`` values: patch size 16, 64 text positions, the vocabulary
-        (32000 for the SigLIP 1 model, 256000 for SigLIP 2), and the base (hidden size 768, 12 layers, 12 heads) or large
-        (1024, 24, 16) architecture.
+        (32000 for the SigLIP 1 model, 256000 for SigLIP 2), and the base (hidden size 768, 12 layers, 12 heads) or
+        large (1024, 24, 16) architecture.
 
         Args:
             model_name: HuggingFace model identifier, one of the names above.

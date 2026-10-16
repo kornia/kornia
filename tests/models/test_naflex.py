@@ -154,13 +154,17 @@ class TestNaFlex(BaseTester):
             naflex(torch.zeros(3, 3, 64, 64, device=device, dtype=dtype))
 
     @pytest.mark.parametrize(("height", "width"), [(192, 336), (256, 128)])
-    def test_downsampling_is_antialiased(self, device: torch.device, dtype: torch.dtype, height: int, width: int) -> None:
+    def test_downsampling_is_antialiased(
+        self, device: torch.device, dtype: torch.dtype, height: int, width: int
+    ) -> None:
         # 12 x 21 downsamples the 16 x 16 table along the rows, 16 x 8 along the columns.
         table = torch.randn(256, _CHANNELS, device=device, dtype=dtype)
         out = NaFlex(_zero_patches, table)(torch.zeros(3, 3, height, width, device=device, dtype=dtype))
         self.assert_close(out, _reference_positions(table, height // 16, width // 16).expand(3, -1, -1))
 
-    def test_non_square_table_with_matching_count_is_added_as_is(self, device: torch.device, dtype: torch.dtype) -> None:
+    def test_non_square_table_with_matching_count_is_added_as_is(
+        self, device: torch.device, dtype: torch.dtype
+    ) -> None:
         # A table that is not a square grid cannot be resized, but one with exactly as many rows as the grid has
         # patches is added in raster order, as for a square table on its own grid.
         table = torch.randn(280, _CHANNELS, device=device, dtype=dtype)
