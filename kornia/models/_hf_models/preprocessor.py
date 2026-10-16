@@ -42,7 +42,8 @@ def _dpt_output_size(
     ``transformers.models.dpt.image_processing_dpt``. With ``keep_aspect_ratio``, the side whose scale to ``size`` is
     closer to 1 is fitted to ``size`` and the other side is scaled by the same factor; without it, each side is scaled
     to its target. Each side is then rounded to the nearest multiple of ``multiple`` with Python ``round``, so a tie
-    goes to the even multiple.
+    goes to the even multiple. A side that would round to 0, on an image more elongated than about 74:1 at the
+    Depth-Anything settings, is kept at one ``multiple``: transformers passes 0 to its resize, which raises.
     """
     scale_height = size[0] / height
     scale_width = size[1] / width
@@ -52,7 +53,9 @@ def _dpt_output_size(
             scale_height = scale_width
         else:
             scale_width = scale_height
-    return round(scale_height * height / multiple) * multiple, round(scale_width * width / multiple) * multiple
+    out_height = max(multiple, round(scale_height * height / multiple) * multiple)
+    out_width = max(multiple, round(scale_width * width / multiple) * multiple)
+    return out_height, out_width
 
 
 class _DPTResize(nn.Module):

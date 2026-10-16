@@ -112,6 +112,10 @@ def _spy_on(model) -> _SessionSpy:
         # 518/296 = 1.75 and 518/2072 = 0.25 are both 0.75 from 1: the strict < fits the height, so
         # W = 2072 * 1.75 = 3626 = 259 * 14
         (296, 2072, (518, 518), True, (518, 3626)),
+        # 518/1000 = 0.518 beats 518/10 = 51.8, so H = round(10 * 0.518 / 14) * 14 = round(0.37) * 14 = 0, which is
+        # kept at one multiple, 14 (transformers would pass 0 to the resize and raise); and the transposed image
+        (10, 1000, (518, 518), True, (14, 518)),
+        (1000, 10, (518, 518), True, (518, 14)),
     ],
 )
 def test_dpt_output_size(height, width, size, keep_aspect_ratio, expected):
