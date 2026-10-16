@@ -622,8 +622,8 @@ class TinyViT(nn.Module):
     def from_config(variant: str, pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
         """Create a TinyViT model from pre-defined variants.
 
-        Returns the model in evaluation mode when ``pretrained`` loads weights and in training mode otherwise (see
-        :ref:`pretrained-models-conventions`).
+        Returns the model in evaluation mode when ``pretrained`` loads the complete weights, classification head
+        included, and in training mode otherwise (see :ref:`pretrained-models-conventions`).
 
         Args:
             variant: TinyViT variant. Possible values: ``'5m'``, ``'11m'``, ``'21m'``.
@@ -637,14 +637,11 @@ class TinyViT(nn.Module):
             For feature extraction or fine-tuning, ImageNet-22k checkpoint (``'in22k'``) is preferred.
 
             With ``pretrained`` and a ``num_classes`` other than the checkpoint's, the classification head is reset to
-            zeros and the model still comes back in evaluation mode; call ``.train()`` to fine-tune it.
+            zeros, and the model, a pretrained backbone to fine-tune, stays in training mode.
 
         """
         KORNIA_CHECK(variant in ("5m", "11m", "21m"), "Only variant 5m, 11m, and 21m are supported")
-        model = {"5m": _tiny_vit_5m, "11m": _tiny_vit_11m, "21m": _tiny_vit_21m}[variant](pretrained, **kwargs)
-        if pretrained:
-            model.eval()
-        return model
+        return {"5m": _tiny_vit_5m, "11m": _tiny_vit_11m, "21m": _tiny_vit_21m}[variant](pretrained, **kwargs)
 
 
 # Module level, like every other weight registry in kornia, so the CI weights
@@ -720,13 +717,18 @@ def _load_pretrained(model: TinyViT, url: str | list[str]) -> TinyViT:
             attention_biases = F.interpolate(attention_biases, size=(S2, S2), mode="bicubic")
             state_dict[k] = attention_biases.view(n_heads2, L2)
 
-    if state_dict["head.weight"].shape[0] != model.head.out_features:
+    head_loaded = state_dict["head.weight"].shape[0] == model.head.out_features
+    if not head_loaded:
         msg = "Number of classes does not match pre-trained checkpoint's. Resetting classification head to zeros"
         warnings.warn(msg, stacklevel=1)
         state_dict["head.weight"] = torch.zeros_like(model.head.weight)
         state_dict["head.bias"] = torch.zeros_like(model.head.bias)
 
     model.load_state_dict(state_dict)
+    # Complete weights are returned in evaluation mode. A reset head leaves a pretrained backbone to fine-tune, which
+    # stays in training mode.
+    if head_loaded:
+        model.eval()
     return model
 
 

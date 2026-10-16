@@ -164,6 +164,21 @@ class TestTinyViT(BaseTester):
         assert not TinyViT.from_config("5m", pretrained=True).training
         assert not TinyViT.from_config("5m", pretrained="in22k", num_classes=1000).training
 
+    @pytest.mark.device_agnostic
+    def test_from_config_partial_weights_mode(self, monkeypatch):
+        # The fake checkpoint has the 1000-class head of the ImageNet-1k weights.
+        monkeypatch.setattr(
+            "kornia.models.tiny_vit.load_state_dict_from_url",
+            lambda url, *args, **kwargs: TinyViT.from_config("5m").state_dict(),
+        )
+        assert not TinyViT.from_config("5m", pretrained=True, num_classes=1000).training
+
+        # Another class count re-initialises the head: a pretrained backbone to fine-tune, so training mode.
+        with pytest.warns(UserWarning, match="Resetting classification head"):
+            model = TinyViT.from_config("5m", pretrained=True, num_classes=8)
+        assert torch.equal(model.head.weight, torch.zeros(8, 320))
+        assert model.training
+
     @pytest.mark.skipif(sys.version_info.major == 3 and sys.version_info.minor == 8, reason="not working for py3.8")
     def test_dynamo_eval_mode(self, device, dtype, torch_optimizer):
         if device.type == "mps" and dtype == torch.float64:
