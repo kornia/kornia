@@ -34,8 +34,11 @@ class NaFlex(nn.Module):
     This module wraps a patch embedding function and a square position embedding table. It computes the patch
     embeddings of an image and adds the table resized to the image's patch grid, as transformers'
     ``Siglip2VisionEmbeddings.resize_positional_embeddings`` does for SigLIP 2's NaFlex variant: the resize is
-    antialiased bilinear interpolation (``align_corners=False``), so a downsampled axis averages the table instead of
-    sampling it. The table is added unresized only when the patch grid is the table's own square grid.
+    bilinear interpolation (``align_corners=False``), antialiased when the grid is smaller than the table along an
+    axis, so a downsampled axis averages the table instead of sampling it. transformers always antialiases; when no
+    axis is downsampled antialiasing changes nothing (up to float rounding), and the plain resize keeps working where
+    the antialiased one does not (see the note). The table is added unresized only when the patch grid is the table's
+    own square grid.
 
     Args:
         patch_embedding_fcn: A callable (e.g., Conv2d) that takes images and returns
@@ -49,10 +52,11 @@ class NaFlex(nn.Module):
 
     Note:
         A float16 or bfloat16 table on the CPU is resized in float32 and cast back, as transformers does: the CPU has
-        no half-precision antialiased bilinear kernel. A table on MPS is resized on the CPU in float32 with torch
-        older than 2.7, which has no MPS kernel for it. The dynamo ONNX exporter
+        no half-precision antialiased bilinear kernel. A table on MPS that is downsampled is resized on the CPU in
+        float32 with torch older than 2.7, which has no MPS antialiased kernel. The dynamo ONNX exporter
         (``torch.onnx.export(..., dynamo=True)``) exports the antialiased resize; the legacy TorchScript exporter
-        cannot (``UnsupportedOperatorError`` for ``aten::_upsample_bilinear2d_aa``).
+        cannot (``UnsupportedOperatorError`` for ``aten::_upsample_bilinear2d_aa``), so it exports only grids at least
+        as large as the table along both axes.
 
     Example:
         >>> import torch
@@ -114,15 +118,23 @@ class NaFlex(nn.Module):
             raise ValueError(f"Original positional embedding is not a square grid (got {orig_num} embeddings)")
         if (h_grid, w_grid) == (orig_grid, orig_grid):
             return embeddings + position_embedding.unsqueeze(0)
+        # transformers always passes antialias=True. Antialiasing only changes a downsampled axis: an upsampled one
+        # gets plain bilinear weights either way (equal up to float rounding), so the plain resize, which the legacy
+        # TorchScript ONNX exporter and MPS before torch 2.7 support, is used when no axis shrinks. Python ints from
+        # the shapes: dynamo guards on the comparison instead of breaking the graph.
+        antialias = h_grid < orig_grid or w_grid < orig_grid
         pos = position_embedding.reshape(orig_grid, orig_grid, -1).permute(2, 0, 1).unsqueeze(0)
         # Required, not an optimization: the CPU has no float16/bfloat16 antialiased bilinear kernel
-        # (NotImplementedError on torch 2.14, RuntimeError on 2.5.1), as transformers notes where it upcasts on the CPU,
-        # and MPS has none before torch 2.7. A float64 table keeps its precision.
+        # (NotImplementedError on torch 2.14, RuntimeError on 2.5.1), as transformers notes where it upcasts on the CPU
+        # (for every resize, which keeps its float32 values), and MPS has none before torch 2.7. A float64 table keeps
+        # its precision.
         if (pos.device.type == "cpu" and pos.dtype in (torch.float16, torch.bfloat16)) or (
-            pos.device.type == "mps" and torch_version_lt(2, 7, 0)
+            antialias and pos.device.type == "mps" and torch_version_lt(2, 7, 0)
         ):
             pos = pos.to("cpu", torch.float32)
-        pos_resized = F.interpolate(pos, size=(h_grid, w_grid), mode="bilinear", align_corners=False, antialias=True)
+        pos_resized = F.interpolate(
+            pos, size=(h_grid, w_grid), mode="bilinear", align_corners=False, antialias=antialias
+        )
         pos_resized = pos_resized.squeeze(0).permute(1, 2, 0).reshape(h_grid * w_grid, -1)
         pos_resized = pos_resized.to(position_embedding.device, position_embedding.dtype)
 

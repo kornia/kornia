@@ -14,7 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+import io
 import math
+import warnings
 
 import pytest
 import torch
@@ -162,6 +164,17 @@ class TestNaFlex(BaseTester):
         out = NaFlex(_zero_patches, table)(torch.zeros(3, 3, height, width, device=device, dtype=dtype))
         self.assert_close(out, _reference_positions(table, height // 16, width // 16).expand(3, -1, -1))
 
+    @pytest.mark.parametrize(("height", "width"), [(384, 512), (256, 320)])
+    def test_upsampling_matches_the_reference(
+        self, device: torch.device, dtype: torch.dtype, height: int, width: int
+    ) -> None:
+        # 24 x 32 upsamples both axes of the 16 x 16 table, 16 x 20 the columns only. NaFlex resizes without
+        # antialiasing here; transformers' antialias=True changes nothing when no axis shrinks (2.4e-6 apart in
+        # float32), so the antialiased reference still holds.
+        table = torch.randn(256, _CHANNELS, device=device, dtype=dtype)
+        out = NaFlex(_zero_patches, table)(torch.zeros(3, 3, height, width, device=device, dtype=dtype))
+        self.assert_close(out, _reference_positions(table, height // 16, width // 16).expand(3, -1, -1))
+
     def test_non_square_table_with_matching_count_is_added_as_is(
         self, device: torch.device, dtype: torch.dtype
     ) -> None:
@@ -214,10 +227,39 @@ class TestNaFlex(BaseTester):
             expected = naflex(images)
         self.assert_close(actual, expected, rtol=0.0, atol=1e-5)
 
-    def test_dynamo_fullgraph_naflex(self, device: torch.device, dtype: torch.dtype, torch_optimizer) -> None:
+    @pytest.mark.device_agnostic
+    def test_naflex_legacy_onnx_export_of_an_upsampled_table(self) -> None:
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+        # A 24 x 32 grid upsamples the 16 x 16 table on both axes: the plain bilinear resize, which the legacy
+        # TorchScript exporter supports (it has no symbolic for the antialiased aten::_upsample_bilinear2d_aa).
+        naflex = NaFlex(torch.nn.Conv2d(3, _CHANNELS, 16, 16), torch.randn(256, _CHANNELS)).eval()
+        images = torch.rand(3, 3, 384, 512)
+        buffer = io.BytesIO()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            torch.onnx.export(
+                naflex,
+                (images,),
+                buffer,  # ty: ignore[invalid-argument-type]  # The legacy exporter accepts BytesIO.
+                input_names=["images"],
+                opset_version=17,
+                dynamo=False,
+            )
+        session = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"])
+        actual = torch.from_numpy(session.run(None, {"images": images.numpy()})[0])
+        with torch.no_grad():
+            expected = naflex(images)
+        self.assert_close(actual, expected, rtol=0.0, atol=1e-5)
+
+    # 192 x 336: a 12 x 21 grid, antialiased (rows shrink); 384 x 512: 24 x 32, plain bilinear.
+    @pytest.mark.parametrize(("height", "width"), [(192, 336), (384, 512)])
+    def test_dynamo_fullgraph_naflex(
+        self, device: torch.device, dtype: torch.dtype, torch_optimizer, height: int, width: int
+    ) -> None:
         conv = torch.nn.Conv2d(3, _CHANNELS, 16, 16).to(device, dtype)
         naflex = NaFlex(conv, torch.randn(256, _CHANNELS, device=device, dtype=dtype)).eval()
-        images = torch.rand(3, 3, 192, 336, device=device, dtype=dtype)
+        images = torch.rand(3, 3, height, width, device=device, dtype=dtype)
 
         naflex_optimized = torch_optimizer(naflex, fullgraph=True)
 
