@@ -81,7 +81,7 @@ class HardNet(nn.Module):
 
     patch_size = 32
 
-    def __init__(self, pretrained: bool = False) -> None:
+    def __init__(self, pretrained: bool = True) -> None:
         super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(1, 32, kernel_size=3, padding=1, bias=False),
@@ -111,7 +111,7 @@ class HardNet(nn.Module):
         if pretrained:
             pretrained_dict = load_state_dict_from_url(urls["liberty_aug"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict["state_dict"], strict=True)
-        self.eval()
+            self.eval()
 
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
@@ -178,7 +178,7 @@ class HardNet8(nn.Module):
 
     patch_size = 32
 
-    def __init__(self, pretrained: bool = False) -> None:
+    def __init__(self, pretrained: bool = True) -> None:
         super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(1, 32, kernel_size=3, padding=1, bias=False),
@@ -216,7 +216,7 @@ class HardNet8(nn.Module):
         if pretrained:
             pretrained_dict = load_state_dict_from_url(urls["hardnet8v2"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
-        self.eval()
+            self.eval()
 
     @staticmethod
     def weights_init(m: object) -> None:

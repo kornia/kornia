@@ -149,7 +149,7 @@ class LoFTR(nn.Module):
 
             pretrained_dict = load_state_dict_from_url(urls[pretrained], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict["state_dict"])
-        self.eval()
+            self.eval()
 
     def extract_features(self, image: torch.Tensor) -> dict[str, torch.Tensor]:
         r"""Compute the features of images that do not depend on the image they are matched with.

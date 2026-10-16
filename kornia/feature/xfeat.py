@@ -369,8 +369,6 @@ class XFeat(nn.Module):
         self.interpolator = InterpolateSparse2d("bicubic")
         self._nearest = InterpolateSparse2d("nearest")
         self._bilinear = InterpolateSparse2d("bilinear")
-        # like :meth:`from_pretrained` and the reference: the inference methods must not run BatchNorm in training mode
-        self.eval()
 
     @classmethod
     def from_pretrained(cls, top_k: int = 4096, detection_threshold: float = 0.05) -> XFeat:

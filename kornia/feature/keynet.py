@@ -163,7 +163,7 @@ class KeyNet(nn.Module):
 
     """
 
-    def __init__(self, pretrained: bool = False, keynet_conf: Optional[KeyNet_conf] = None) -> None:
+    def __init__(self, pretrained: bool = True, keynet_conf: Optional[KeyNet_conf] = None) -> None:
         super().__init__()
         if keynet_conf is None:
             keynet_conf = keynet_default_config
@@ -184,7 +184,7 @@ class KeyNet(nn.Module):
         if pretrained:
             pretrained_dict = load_state_dict_from_url(KeyNet_URL, map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict["state_dict"], strict=True)
-        self.eval()
+            self.eval()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """X - input image."""
@@ -228,7 +228,7 @@ class KeyNetDetector(MultiResolutionDetector):
 
     def __init__(
         self,
-        pretrained: bool = False,
+        pretrained: bool = True,
         num_features: int = 2048,
         keynet_conf: Optional[KeyNet_conf] = None,
         ori_module: Optional[nn.Module] = None,

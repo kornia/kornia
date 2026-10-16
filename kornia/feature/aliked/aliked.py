@@ -894,8 +894,6 @@ class ALIKED(nn.Module):
             scores_th=detection_threshold,
             n_limit=max_num_keypoints if max_num_keypoints > 0 else self.n_limit_max,
         )
-        # like :meth:`from_pretrained` and the reference: the inference methods must not run BatchNorm in training mode
-        self.eval()
 
     def _make_resblock(self, c_in: int, c_out: int, conv_type: str, mask: bool) -> ResBlock:
         return ResBlock(

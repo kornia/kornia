@@ -248,7 +248,7 @@ class HyNet(nn.Module):
 
     def __init__(
         self,
-        pretrained: bool = False,
+        pretrained: bool = True,
         is_bias: bool = True,
         is_bias_FRN: bool = True,
         dim_desc: int = 128,
@@ -307,7 +307,7 @@ class HyNet(nn.Module):
         if pretrained:
             pretrained_dict = load_state_dict_from_url(urls["liberty"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
-        self.eval()
+            self.eval()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Compute HyNet descriptors from grayscale image patches.

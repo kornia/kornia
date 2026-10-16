@@ -70,7 +70,7 @@ class TFeat(nn.Module):
 
     patch_size = 32
 
-    def __init__(self, pretrained: bool = False) -> None:
+    def __init__(self, pretrained: bool = True) -> None:
         super().__init__()
         self.features = nn.Sequential(
             nn.InstanceNorm2d(1, affine=False),
@@ -85,7 +85,7 @@ class TFeat(nn.Module):
         if pretrained:
             pretrained_dict = load_state_dict_from_url(urls["liberty"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
-        self.eval()
+            self.eval()
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """Compute TFeat descriptors for grayscale 32x32 patches.
