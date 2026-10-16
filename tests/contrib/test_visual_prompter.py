@@ -92,6 +92,31 @@ class TestVisualPrompter(BaseTester):
         assert results.logits.shape == (1, 3, 256, 256)
         assert results.scores.shape == (1, 3)
 
+    @pytest.mark.device_agnostic
+    def test_weighted_config_holds_an_eval_model(self, monkeypatch):
+        monkeypatch.setattr(Sam, "load_checkpoint", lambda self, checkpoint, device=None: None)
+
+        # ``training`` of the model and of every submodule: ``{False}`` is evaluation mode throughout.
+        weighted = VisualPrompter(SamConfig("mobile_sam", pretrained=True)).model
+        assert {m.training for m in weighted.modules()} == {False}
+        random_init = VisualPrompter(SamConfig("mobile_sam")).model
+        assert {m.training for m in random_init.modules()} == {True}
+
+    @pytest.mark.slow
+    def test_weighted_config_runs_in_half(self, monkeypatch, device, dtype):
+        # A weighted config comes back in evaluation mode, and VisualPrompter casts the model after that.
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("guards the cast of an evaluation-mode model to a half dtype")
+        monkeypatch.setattr(Sam, "load_checkpoint", lambda self, checkpoint, device=None: None)
+        prompter = VisualPrompter(SamConfig("mobile_sam", pretrained=True), device=device, dtype=dtype)
+
+        prompter.set_image(torch.rand(3, 77, 128, device=device, dtype=dtype))
+
+        # SAM's 1024-pixel input over its 16-pixel patches gives a 64 x 64 grid of 256-channel (``prompt_embed_dim``)
+        # embeddings.
+        assert prompter.image_embeddings.shape == (1, 256, 64, 64)
+        assert prompter.image_embeddings.dtype == dtype
+
     def test_gradcheck(self, device):
         pytest.skip("Gradcheck is not currently applicable for VisualPrompter inference.")
 

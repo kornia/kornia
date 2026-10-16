@@ -43,8 +43,10 @@ Run it
 ``'in1k_512'`` checkpoints; pass ``img_size=`` to run at another resolution and the attention biases are
 interpolated. The ImageNet-22k checkpoint carries a 21841-class head, so load it with
 ``TinyViT.from_config("5m", pretrained="in22k", num_classes=21841)``: with the default ``num_classes=1000`` the
-head does not match, is reset to zeros with a warning and the model returns all-zero logits. For feature extraction
-replace the head instead: ``model.head = torch.nn.Identity()`` makes the model return the pooled embedding.
+head does not match, is reset to zeros with a warning, the model returns all-zero logits, and it stays in training
+mode as a backbone to fine-tune. For feature extraction replace the head and switch to evaluation mode:
+``model.head = torch.nn.Identity()`` makes the model return the pooled embedding, and ``model.eval()`` makes it
+independent of the rest of the batch.
 
 Paper
 -----

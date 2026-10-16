@@ -154,6 +154,9 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
     def from_config(config: RTDETRConfig) -> RTDETR:
         """Construct RT-DETR Object Detection model from a config object.
 
+        Returns the model in evaluation mode when ``config.checkpoint`` loads weights and in training mode otherwise
+        (see :ref:`pretrained-models-conventions`).
+
         Args:
             config: configuration object for RT-DETR.
 
@@ -234,11 +237,15 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
 
         if config.checkpoint:
             model.load_checkpoint(config.checkpoint)
+            model.eval()
         return model
 
     @staticmethod
     def from_pretrained(model_name: str) -> RTDETR:
         """Load model from pretrained weights.
+
+        Returns the model in evaluation mode, since it always loads weights (see
+        :ref:`pretrained-models-conventions`).
 
         Args:
             model_name: 'rtdetr_r18vd', 'rtdetr_r34vd', 'rtdetr_r50vd_m', 'rtdetr_r50vd', 'rtdetr_r101vd'.
@@ -284,7 +291,7 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
         model = RTDETR.from_name(model_name, num_classes=80)
 
         model.load_state_dict(_state_dict_proc(state_dict))
-        return model
+        return model.eval()
 
     @staticmethod
     def from_name(model_name: str, num_classes: int = 80) -> RTDETR:

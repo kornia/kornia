@@ -76,7 +76,8 @@ class EfficientViT(ModelBase[EfficientViTConfig]):
             config: EfficientViT configuration object. See :class:`EfficientViTConfig`.
 
         Returns:
-            EfficientViT: the EfficientViT model.
+            EfficientViT: the EfficientViT model, in evaluation mode, since it always loads ``config.checkpoint``
+            (see :ref:`pretrained-models-conventions`).
 
         """
         # load the model from the checkpoint; expand ``~`` first, or a ``~`` path reaches the URL loader, which
@@ -104,7 +105,7 @@ class EfficientViT(ModelBase[EfficientViTConfig]):
         state_dict = {key[len("backbone.") :]: val for key, val in model_file.items() if key.startswith("backbone.")}
         model.load_state_dict(state_dict or model_file, strict=True)
 
-        return EfficientViT(backbone=model)
+        return EfficientViT(backbone=model).eval()
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         """Extract features from the input images.
