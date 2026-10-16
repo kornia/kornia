@@ -755,7 +755,7 @@ A(
 # ============================================================================= VLM re-implementations (pure PyTorch)
 from kornia.models.kimi_vl import KimiVLConfig, KimiVLModel, KimiVLProjectorConfig, MoonViT, MoonViTConfig  # noqa: E402
 from kornia.models.paligemma import PaliGemma, PaliGemmaConfig  # noqa: E402
-from kornia.models.qwen25 import Qwen2VLVisionTransformer  # noqa: E402
+from kornia.models.qwen25 import Qwen25VisionConfig, Qwen25VisionTransformer  # noqa: E402
 from kornia.models.siglip2 import SigLip2Config, SigLip2ImagePreprocessor, SigLip2Model  # noqa: E402
 from kornia.models.siglip2.config import SigLip2TextConfig, SigLip2VisionConfig  # noqa: E402
 from kornia.models.smolvlm2 import SmolVLM2  # noqa: E402
@@ -876,12 +876,24 @@ A(
 )
 A(
     mcase(
-        "models.qwen25.Qwen2VLVisionTransformer[tiny,random]",
+        "models.qwen25.Qwen25VisionTransformer[tiny,random]",
         "models.vlm",
-        lambda: ev(Qwen2VLVisionTransformer(embed_dim=32, depth=1, num_heads=2)),
+        lambda: ev(
+            Qwen25VisionTransformer(
+                Qwen25VisionConfig(
+                    depth=2,
+                    hidden_size=32,
+                    intermediate_size=48,
+                    num_heads=2,
+                    out_hidden_size=16,
+                    window_size=56,
+                    fullatt_block_indexes=(1,),
+                )
+            )
+        ),
         lambda m: m,
-        [torch.rand(1, 3, 28, 42)],
-        note="pure-PyTorch skeleton; conv14 patch embed + rotary attention blocks",
+        [torch.rand(1, 3, 112, 84)],
+        note="pure-PyTorch Qwen2.5-VL tower; conv3d patch embed, 2D RoPE, windowed + full attention, 2x2 merger",
         tags=("model",),
     )
 )

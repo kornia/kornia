@@ -191,6 +191,29 @@ loading currently supports only the converted Kimi-VL-A3B-Instruct vision encode
 
        model = KimiVLBuilder.from_pretrained_hf().eval()
 
+.. _Qwen25VisionTransformer:
+
+Qwen25VisionTransformer
+-----------------------
+
+The `Qwen25VisionTransformer` class is the vision tower of Qwen2.5-VL. It takes a batched ``(B, 3, H, W)`` image,
+with ``H`` and ``W`` multiples of 28, already normalized with the CLIP mean and std the checkpoint's
+``preprocessor_config.json`` names, and returns the merged vision tokens. kornia does not host the weights:
+`from_pretrained` reads the ``visual.*`` tensors of a Qwen2.5-VL checkpoint you downloaded yourself.
+
+.. autoclass:: kornia.models.qwen25.Qwen25VisionTransformer
+   :members: forward, from_pretrained
+
+   .. rubric:: Example
+
+   .. code-block:: python
+
+       from kornia.models.qwen25 import Qwen25VisionTransformer
+
+       model = Qwen25VisionTransformer.from_pretrained("path/to/Qwen2.5-VL-3B-Instruct")
+
+.. autoclass:: kornia.models.qwen25.Qwen25VisionConfig
+
 ----
 
 .. note::
