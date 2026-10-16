@@ -34,7 +34,7 @@ from kornia.feature.lightglue import (
     rotate_half,
 )
 
-from testing.base import BaseTester, assert_close
+from testing.base import BaseTester, assert_close, dynamo_is_available
 
 # ---------------------------------------------------------------------------
 # Pure function tests
@@ -288,6 +288,24 @@ class TestAttention(BaseTester):
             q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64) for _ in range(3)]
             mask = torch.tensor([[False, False], [True, True]], device=device)
             compiled = torch_optimizer(attention, fullgraph=True)
+            self.assert_close(compiled(q, k, v, mask), attention(q, k, v, mask))
+        finally:
+            torch.backends.cuda.enable_flash_sdp(flash_enabled)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason="no Dynamo on this torch/python pair")
+    def test_eager_backend_traces_windows_float64_fallback(self, device):
+        # conftest deselects *dynamo* and *compile* tests unless KORNIA_TEST_OPTIMIZER is set, which CI does only on
+        # torch 2.14. This name also runs on the scheduled torch 2.5.1 legs, where the fallback is live on Windows.
+        if device.type != "cpu":
+            pytest.skip("the fallback is CPU-only")
+        flash_enabled = torch.backends.cuda.flash_sdp_enabled()
+        try:
+            attention = Attention(allow_flash=True)
+            attention._windows_old_torch = True
+            q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64) for _ in range(3)]
+            mask = torch.tensor([[False, False], [True, True]], device=device)
+            torch._dynamo.reset()
+            compiled = torch.compile(attention, backend="eager", fullgraph=True)
             self.assert_close(compiled(q, k, v, mask), attention(q, k, v, mask))
         finally:
             torch.backends.cuda.enable_flash_sdp(flash_enabled)
