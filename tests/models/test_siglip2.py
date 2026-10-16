@@ -242,6 +242,22 @@ class TestSigLip2Builder:
         assert "base (hidden size 768, 12 layers, 12 heads)" in str(error.value)
         assert "size mismatch" in str(error.value.__cause__)
 
+    def test_from_pretrained_hf_passes_on_a_listed_checkpoints_load_error(self, monkeypatch, config):
+        # A listed name's checkpoint that does not fit is not a naming question: load_state_dict's own error surfaces.
+        monkeypatch.setattr(SigLip2Config, "from_name", staticmethod(lambda model_name: config))
+        wider = SigLip2Config(
+            vision_config=replace(config.vision_config, hidden_size=48),
+            text_config=replace(config.text_config, hidden_size=48),
+            projection_dim=config.projection_dim,
+        )
+        state_dict = SigLip2Model(wider).state_dict()
+        monkeypatch.setattr(siglip2_builder, "_download_weights", lambda model_name, cache_dir: state_dict)
+
+        with pytest.raises(RuntimeError, match="size mismatch") as error:
+            SigLip2Builder.from_pretrained_hf("google/siglip2-base-patch16-224")
+        assert "outside that list" not in str(error.value)
+        assert error.value.__cause__ is None
+
 
 class TestSigLip2Model(BaseTester):
     """Test suite for SigLip2 model."""

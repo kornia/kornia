@@ -168,15 +168,39 @@ class TestNaFlex(BaseTester):
         self.assert_close(out, NaFlex(_zero_patches, table)(images))
         self.assert_close(out, _reference_positions(table, height // 16, width // 16).expand(3, -1, -1))
 
-    @pytest.mark.parametrize(("height", "width"), [(48, 47), (32, 31)])
+    @pytest.mark.parametrize(("height", "width", "num_tokens"), [(48, 47, 6), (32, 31, 2), (6, 12, 50)])
     def test_bnc_grid_that_no_patch_size_gives_raises(
+        self, device: torch.device, dtype: torch.dtype, height: int, width: int, num_tokens: int
+    ) -> None:
+        # At patch 16 the first two images have the grids 3 x 2 and 2 x 1; the aspect reading transposes them to
+        # 2 x 3 and 1 x 2, and no patch size p gives 48 // p == 2 with 47 // p == 3, or 32 // p == 1 with
+        # 31 // p == 2. 50 tokens of a 6 x 12 image read as 5 x 10: p would have to exceed 6 / 6 = 1 and be at most
+        # 6 / 5, so no integer fits (p = 1 gives 6 // 1 = 6 rows, not 5).
+        table = torch.randn(256, _CHANNELS, device=device, dtype=dtype)
+        naflex = NaFlex(lambda x: x.new_zeros(x.shape[0], num_tokens, _CHANNELS), table)
+        with pytest.raises(BaseError, match="no whole patch size"):
+            naflex(torch.zeros(3, 3, height, width, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize(("height", "width"), [(20, 20), (19, 20)])
+    def test_bnc_square_grid_of_a_strided_patch_embedding(
         self, device: torch.device, dtype: torch.dtype, height: int, width: int
     ) -> None:
-        # At patch 16 these images have the grids 3 x 2 and 2 x 1; the aspect reading transposes them to 2 x 3 and
-        # 1 x 2, and no patch size p gives 48 // p == 2 with 47 // p == 3, or 32 // p == 1 with 31 // p == 2.
-        table = torch.randn(256, _CHANNELS, device=device, dtype=dtype)
-        with pytest.raises(BaseError, match="no whole patch size"):
-            NaFlex(_zero_tokens, table)(torch.zeros(3, 3, height, width, device=device, dtype=dtype))
+        # A stride-2 3 x 3 convolution gives these images a 9 x 9 grid, which no whole patch size gives (20 // p is
+        # never 9). The square reading of its 81 tokens is that grid, as the square reading NaFlex always used: a
+        # 9 x 9 table is added as is, a 4 x 4 one resized by plain bilinear interpolation (no axis shrinks).
+        conv = torch.nn.Conv2d(3, _CHANNELS, 3, stride=2).to(device, dtype)
+        images = torch.rand(3, 3, height, width, device=device, dtype=dtype)
+        with torch.no_grad():
+            tokens = conv(images).flatten(2).transpose(1, 2)
+            assert tokens.shape[1] == 81
+            own = torch.randn(81, _CHANNELS, device=device, dtype=dtype)
+            self.assert_close(NaFlex(lambda x: conv(x).flatten(2).transpose(1, 2), own)(images), tokens + own)
+            small = torch.randn(16, _CHANNELS, device=device, dtype=dtype)
+            grid = small.reshape(4, 4, -1).permute(2, 0, 1).unsqueeze(0).to("cpu", torch.float32)
+            resized = F.interpolate(grid, size=(9, 9), mode="bilinear", align_corners=False)
+            resized = resized.reshape(-1, 81).transpose(0, 1).to(device, dtype)
+            out = NaFlex(lambda x: conv(x).flatten(2).transpose(1, 2), small)(images)
+            self.assert_close(out, tokens + resized)
 
     @pytest.mark.parametrize(("height", "width"), [(192, 336), (256, 128)])
     def test_downsampling_is_antialiased(

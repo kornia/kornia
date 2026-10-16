@@ -45,11 +45,12 @@ class NaFlex(nn.Module):
         patch_embedding_fcn: A callable (e.g., Conv2d) that takes images and returns
             patch embeddings of shape :math:`(B, C, h, w)` or :math:`(B, N, C)`. A :math:`(B, N, C)` output is read
             as the grid of :math:`N` cells with the aspect ratio of the :math:`H \times W` image,
-            :math:`h = \mathrm{round}(\sqrt{N H / W})` rows of :math:`w = N / h` patches in raster order. A patch
-            embedding that cuts whole :math:`p \times p` patches and drops the remainder (a ``Conv2d`` with kernel and
-            stride :math:`p`) has the grid :math:`(H // p, W // p)`; the reading equals it whenever some integer
-            :math:`p` gives :math:`H // p = h` and :math:`W // p = w`, always so when H and W are multiples of the
-            patch size, and raises otherwise.
+            :math:`h = \mathrm{round}(\sqrt{N H / W})` rows of :math:`w = N / h` patches in raster order. A square
+            reading (:math:`h = w`, a square number of tokens of a nearly square image) is used as is, whatever made
+            the tokens. A patch embedding that cuts whole :math:`p \times p` patches and drops the remainder (a
+            ``Conv2d`` with kernel and stride :math:`p`) has the grid :math:`(H // p, W // p)`; a non-square reading
+            is used when some integer :math:`p` gives :math:`H // p = h` and :math:`W // p = w` (then it is that
+            grid; always so when H and W are multiples of the patch size), and raises otherwise.
         position_embedding: Position embedding table of shape :math:`(S^2, C)`, the raster-order rows of an
             :math:`S \times S` grid, to be interpolated to match input resolution. An ``nn.Parameter`` stays a
             parameter of the module, so it is trained with it; any other tensor is registered as a buffer. A table
@@ -106,8 +107,8 @@ class NaFlex(nn.Module):
         Raises:
             ValueError: If original positional embedding does not form a square grid and does not have one row per
                 patch, or if a :math:`(B, N, C)` patch output does not form a grid of the image's aspect ratio.
-            BaseError: If no integer patch size :math:`p` gives the grid read from a :math:`(B, N, C)` patch output,
-                :math:`H // p = h` and :math:`W // p = w`.
+            BaseError: If no integer patch size :math:`p` gives the non-square grid read from a :math:`(B, N, C)`
+                patch output, :math:`H // p = h` and :math:`W // p = w`.
         """
         embeddings = self.patch_embedding_fcn(pixel_values)
         grid = embeddings.shape[2:] if embeddings.ndim == 4 else None
@@ -153,8 +154,8 @@ class NaFlex(nn.Module):
 
         Raises:
             ValueError: if no grid of that aspect ratio has ``num_patches`` cells.
-            BaseError: if no integer patch size ``p`` gives the grid read, ``height // p = h`` and
-                ``width // p = w``.
+            BaseError: if the grid read is not square and no integer patch size ``p`` gives it, ``height // p = h``
+                and ``width // p = w``.
         """
         h_grid = max(1, round(math.sqrt(num_patches * height / width)))
         w_grid = num_patches // h_grid
@@ -163,6 +164,12 @@ class NaFlex(nn.Module):
                 f"Cannot read the {num_patches} patch embeddings of a {height} x {width} image as a grid: the grid "
                 f"of that aspect ratio, {h_grid} x {w_grid}, has {h_grid * w_grid} cells."
             )
+        # A square reading cannot be a transposition, and it is the grid of a whole p x p patching whenever it comes
+        # from one: such a patching has a square grid exactly when it reads square (a non-square factorization of
+        # s * s puts the image's aspect ratio outside the window that rounds to s). Keep it for any patch embedding,
+        # e.g. a stride-2 3 x 3 convolution, whose 9 x 9 grid of a 20 x 20 image no whole patch size gives.
+        if h_grid == w_grid:
+            return h_grid, w_grid
         # The aspect-ratio reading can transpose the grid of an image whose sides are not multiples of the patch size
         # (48 x 47 at patch 16 has the grid 3 x 2 and is read as 2 x 3). The reading is the grid (H // p, W // p) of a
         # p x p patching exactly when some integer p gives H // p == h and W // p == w: p must lie in
