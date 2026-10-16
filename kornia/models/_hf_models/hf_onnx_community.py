@@ -207,8 +207,8 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
 
         Args:
             onnx_name:
-                The name of the output ONNX file. If not provided, a default name in the
-                format "Kornia-<ClassName>.onnx" will be used.
+                The name of the output ONNX file. If not provided, ``"kornia_<name>.onnx"`` is used, with the
+                model's ``name``.
             include_pre_and_post_processor:
                 Whether to include the pre-processor and post-processor graphs in the exported model. The
                 ``resize`` stage runs in torch and is in neither graph: for a model that has one, the exported

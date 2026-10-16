@@ -37,9 +37,9 @@ class DepthEstimation(HFONNXComunnityModel):
     def __call__(self, images: Union[torch.Tensor, list[torch.Tensor]]) -> Union[torch.Tensor, list[torch.Tensor]]:
         """Estimate the depth map of each image.
 
-        The image is cast to float32 and resized by the ``resize`` stage, if the model has one. ONNX Runtime runs
-        the graphs on a NumPy copy of it. The depth map is resized back to the image size in float32 and returned
-        in the dtype and on the device of the image.
+        The image is cast to float32, moved to the CPU and resized there by the ``resize`` stage, if the model has
+        one. ONNX Runtime runs the graphs on a NumPy array of it. The depth map is resized back to the image size on
+        the CPU in float32, then cast to the dtype of the image and moved to its device.
 
         Args:
             images: If list of RGB images. Each image is a torch.Tensor with shape :math:`(3, H, W)`.
@@ -60,14 +60,14 @@ class DepthEstimation(HFONNXComunnityModel):
     def _estimate(self, images: torch.Tensor) -> torch.Tensor:
         """Return the depth maps :math:`(B, 1, H, W)` of a batch of images :math:`(B, 3, H, W)`."""
         KORNIA_CHECK(images.is_floating_point(), f"images must be of a floating dtype, got {images.dtype}")
-        # float32 is the dtype the graph takes, and the resize runs in it as well, so that its result does not depend
-        # on the input dtype
-        inputs = images.float()
+        # float32 is the dtype the graph takes, and the resizes run in it as well, so that the depth does not depend on
+        # the input dtype. They run on the CPU, where ONNX Runtime reads its input: torch 2.5.1 has no bicubic kernel
+        # on MPS, and the depth does not depend on the device either.
+        inputs = images.float().cpu()
         if self.resize is not None:
             inputs = self.resize(inputs)
-        depth = super().__call__(inputs.cpu().numpy())[0]
-        depth = torch.from_numpy(depth).to(images.device).unsqueeze(1)
-        return self.resize_back(depth, images).to(images.dtype)
+        depth = torch.from_numpy(super().__call__(inputs.numpy())[0]).unsqueeze(1)
+        return self.resize_back(depth, images).to(images.dtype).to(images.device)
 
     def visualize(
         self,
@@ -88,7 +88,8 @@ class DepthEstimation(HFONNXComunnityModel):
             max_depth: maximum depth value. Only valid for metric depth.
 
         Returns:
-            output tensor.
+            A list with one RGB image of shape :math:`(3, H, W)` per depth map, the depth divided by its maximum
+            (``"relative"``) or by ``max_depth`` (``"metric"``), converted according to ``output_type``.
 
         """
         if depth_maps is None:
@@ -124,9 +125,6 @@ class DepthEstimation(HFONNXComunnityModel):
             depth_type: 'metric' or 'relative' depth.
             max_depth: maximum depth value. Only valid for metric depth.
             directory: where to store outputs.
-
-        Returns:
-            output tensor.
 
         """
         outputs = self.visualize(images, depth_maps, output_type, depth_type=depth_type, max_depth=max_depth)

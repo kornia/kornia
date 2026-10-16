@@ -109,6 +109,9 @@ def _spy_on(model) -> _SessionSpy:
         (300, 400, (518, 518), False, (518, 518)),
         # Python round sends a tie to the even integer: 35 / 14 = 2.5 -> 2 -> 28, and 21 / 14 = 1.5 -> 2 -> 28
         (10, 10, (35, 21), False, (28, 28)),
+        # 518/296 = 1.75 and 518/2072 = 0.25 are both 0.75 from 1: the strict < fits the height, so
+        # W = 2072 * 1.75 = 3626 = 259 * 14
+        (296, 2072, (518, 518), True, (518, 3626)),
     ],
 )
 def test_dpt_output_size(height, width, size, keep_aspect_ratio, expected):
@@ -130,10 +133,31 @@ def test_from_json_keeps_the_aspect_ratio():
 
 @pytest.mark.device_agnostic
 @pytest.mark.parametrize(
-    "resample, interpolation", [(0, "nearest"), (2, "bilinear"), (3, "bicubic"), (None, "bicubic")]
+    "dropped, changes, expected",
+    [
+        # absent keep_aspect_ratio and ensure_multiple_of take DPTImageProcessor's defaults, False and 1: each side is
+        # scaled to 500, which a multiple of 14 would round to 504
+        (("keep_aspect_ratio", "ensure_multiple_of"), {"size": {"height": 500, "width": 500}}, (500, 500)),
+        # a non-square size is (height, width): 518 = 37 * 14 and 700 = 50 * 14
+        ((), {"keep_aspect_ratio": False, "size": {"height": 518, "width": 700}}, (518, 700)),
+    ],
+)
+def test_from_json_reads_the_size_and_the_defaults(dropped, changes, expected):
+    from kornia.models._hf_models.preprocessor import DPTImageProcessor
+
+    config = {k: v for k, v in _DEPTH_ANYTHING_V2_SMALL_CONFIG.items() if k not in dropped}
+    config.update(changes)
+
+    assert DPTImageProcessor.from_json(config)(torch.rand(1, 3, 300, 400)).shape[-2:] == expected
+
+
+@pytest.mark.device_agnostic
+@pytest.mark.parametrize(
+    "resample, interpolation", [(0, "nearest-exact"), (2, "bilinear"), (3, "bicubic"), (None, "bicubic")]
 )
 def test_from_json_maps_resample_to_the_interpolation(resample, interpolation):
-    # PIL's NEAREST (0), BILINEAR (2) and BICUBIC (3); an absent key is DPTImageProcessor's default, BICUBIC
+    # PIL's NEAREST (0), which samples the pixel centres, is torch's "nearest-exact"; BILINEAR (2) and BICUBIC (3).
+    # An absent key is DPTImageProcessor's default, BICUBIC
     from kornia.models._hf_models.preprocessor import DPTImageProcessor
 
     config = {k: v for k, v in _DEPTH_ANYTHING_V2_SMALL_CONFIG.items() if k != "resample"}
@@ -144,14 +168,76 @@ def test_from_json_maps_resample_to_the_interpolation(resample, interpolation):
 
 
 @pytest.mark.device_agnostic
-def test_dpt_resize_nearest_does_not_filter():
-    # PIL's NEAREST picks pixels without smoothing: halving 4x6 keeps rows 0, 2 and columns 0, 2, 4
+def test_dpt_resize_nearest_matches_pil():
+    # PIL 12.3.0 NEAREST samples the pixel centres, without a filter:
+    #   np.asarray(Image.fromarray(np.arange(24).reshape(4, 6).astype(np.uint8)).resize((3, 2), Image.NEAREST))
     from kornia.models._hf_models.preprocessor import _DPTResize
 
     image = torch.arange(24, dtype=torch.float32).reshape(1, 1, 4, 6)
-    out = _DPTResize(size=(2, 3), keep_aspect_ratio=False, multiple=1, interpolation="nearest")(image)
+    out = _DPTResize(size=(2, 3), keep_aspect_ratio=False, multiple=1, interpolation="nearest-exact")(image)
 
-    BaseTester.assert_close(out, torch.tensor([[[[0.0, 2.0, 4.0], [12.0, 14.0, 16.0]]]]), rtol=0.0, atol=0.0)
+    BaseTester.assert_close(out, torch.tensor([[[[7.0, 9.0, 11.0], [19.0, 21.0, 23.0]]]]), rtol=0.0, atol=0.0)
+
+
+# PIL 12.3.0, the filter of transformers' slow DPTImageProcessor, on mid-range values, so its uint8 passes never clip an
+# overshoot: src = 64 + np.arange(h * w).reshape(h, w) * 53 % 128, then
+#   np.asarray(Image.fromarray(src.astype(np.uint8)).resize((out_w, out_h), Image.BICUBIC or Image.BILINEAR))
+_PIL_DOWNSCALE_8X12_TO_4X6 = {
+    "bicubic": [
+        [129, 133, 101, 137, 129, 112],
+        [151, 121, 124, 137, 120, 101],
+        [141, 110, 146, 136, 119, 126],
+        [133, 102, 136, 127, 119, 150],
+    ],
+    "bilinear": [
+        [131, 130, 108, 134, 128, 112],
+        [147, 123, 125, 135, 121, 105],
+        [139, 115, 141, 135, 121, 125],
+        [132, 108, 134, 128, 122, 145],
+    ],
+}
+_PIL_BICUBIC_UPSCALE_3X4_TO_6X8 = [
+    [51, 68, 103, 138, 171, 158, 105, 80],
+    [78, 85, 98, 121, 156, 155, 122, 107],
+    [138, 121, 85, 85, 123, 148, 160, 166],
+    [149, 133, 99, 88, 103, 128, 164, 181],
+    [112, 121, 138, 130, 97, 99, 133, 150],
+    [94, 114, 156, 150, 94, 84, 119, 136],
+]
+
+
+def _pil_source(height: int, width: int) -> torch.Tensor:
+    return (64 + torch.arange(height * width).reshape(1, 1, height, width) * 53 % 128).float() / 255
+
+
+@pytest.mark.device_agnostic
+@pytest.mark.parametrize("interpolation", ["bicubic", "bilinear"])
+def test_dpt_resize_downscale_matches_pil(interpolation):
+    # 4/8 = 0.5 beats 4/12 = 0.33, so the 8x12 image is halved to 4x6. PIL widens its kernel on a downscale, which the
+    # antialiased interpolate matches to within its uint8 rounding (0.62/255 measured); without antialiasing the
+    # bicubic is 27/255 off. The tolerance is 1/255.
+    from kornia.models._hf_models.preprocessor import _DPTResize
+
+    resize = _DPTResize(size=(4, 4), keep_aspect_ratio=True, multiple=2, interpolation=interpolation)
+
+    out = resize(_pil_source(8, 12))
+
+    expected = torch.tensor(_PIL_DOWNSCALE_8X12_TO_4X6[interpolation], dtype=torch.float32)[None, None] / 255
+    BaseTester.assert_close(out, expected, rtol=0.0, atol=1 / 255)
+
+
+@pytest.mark.device_agnostic
+def test_dpt_resize_bicubic_upscale_matches_pil():
+    # PIL's bicubic has a = -0.5, as the antialiased interpolate does (0.78/255 measured); the plain bicubic has
+    # a = -0.75 and is 6.2/255 off. The tolerance is 1/255.
+    from kornia.models._hf_models.preprocessor import _DPTResize
+
+    resize = _DPTResize(size=(6, 8), keep_aspect_ratio=False, multiple=1, interpolation="bicubic")
+
+    out = resize(_pil_source(3, 4))
+
+    expected = torch.tensor(_PIL_BICUBIC_UPSCALE_3X4_TO_6X8, dtype=torch.float32)[None, None] / 255
+    BaseTester.assert_close(out, expected, rtol=0.0, atol=1 / 255)
 
 
 @pytest.mark.device_agnostic
@@ -233,19 +319,19 @@ class TestDepthEstimation(BaseTester):
         self.assert_close(item, depth[0])
 
     @pytest.mark.parametrize("as_list", [False, True])
-    def test_integer_images_raise(self, device, as_list):
+    @pytest.mark.parametrize("int_dtype", [torch.uint8, torch.int64])
+    def test_integer_images_raise(self, device, as_list, int_dtype):
         # the float32 cast must not hand the graph a [0, 255] image as if it were a [0, 1] one
         from kornia.core.exceptions import BaseError
 
         model = DepthEstimation(_stand_in_graph(), pre_processor=None)
-        images = torch.randint(0, 256, (1, 3, 30, 40), device=device, dtype=torch.uint8)
+        images = torch.randint(0, 256, (1, 3, 30, 40), device=device, dtype=int_dtype)
 
         with pytest.raises(BaseError, match="floating dtype"):
             model(list(images) if as_list else images)
 
     def test_graph_sees_the_dpt_size(self, device):
-        from kornia.geometry.transform import resize
-
+        # the resize runs on the CPU whatever the image's device, with the filter of transformers' fast processor
         model = DepthEstimation(_stand_in_graph(), pre_processor=None, resize=_depth_anything_resize())
         spy = _spy_on(model)
         images = torch.rand(2, 3, 300, 400, device=device)
@@ -254,8 +340,11 @@ class TestDepthEstimation(BaseTester):
 
         assert [tuple(x.shape) for x in spy.inputs] == [(2, 3, 392, 518)]
         assert depth.shape == (2, 1, 300, 400)
-        expected = resize(images, (392, 518), interpolation="bicubic", align_corners=False, antialias=True)
-        self.assert_close(torch.from_numpy(spy.inputs[0]).to(device), expected)
+        assert depth.device == images.device
+        expected = torch.nn.functional.interpolate(
+            images.cpu(), size=(392, 518), mode="bicubic", align_corners=False, antialias=True
+        )
+        self.assert_close(torch.from_numpy(spy.inputs[0]), expected, rtol=0.0, atol=0.0)
 
     def test_graph_sees_the_dpt_size_of_each_list_item(self, device):
         model = DepthEstimation(_stand_in_graph(), pre_processor=None, resize=_depth_anything_resize())

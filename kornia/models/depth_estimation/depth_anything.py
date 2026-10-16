@@ -35,10 +35,11 @@ class DepthAnythingONNXBuilder:
     ) -> DepthEstimation:
         """Build a ``DepthEstimation`` around the onnx-community graph (downloaded on first use).
 
-        The preprocessing follows the repository's ``preprocessor_config.json``, as transformers'
-        ``DPTImageProcessor`` reads it. Its resize keeps the aspect ratio and makes each side a multiple of
-        ``ensure_multiple_of`` when the config asks for it, so its output size depends on the input size: it runs
-        in torch, as the model's ``resize`` stage. The rescale and normalize steps are exported to an ONNX graph
+        The returned model resizes each image to the size transformers' ``DPTImageProcessor`` computes from the
+        repository's ``preprocessor_config.json``: it keeps the aspect ratio and makes each side a multiple of
+        ``ensure_multiple_of`` when the config asks for it. The filter is the one of transformers' fast processor,
+        which approximates the slow processor's PIL resize. The output size depends on the input size, so the resize
+        runs in torch, as the model's ``resize`` stage. The rescale and normalize steps are exported to an ONNX graph
         that runs before the model's.
 
         Args:

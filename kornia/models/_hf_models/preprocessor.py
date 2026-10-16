@@ -20,15 +20,17 @@ from __future__ import annotations
 from typing import Any
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from kornia.core import ImageSequential
 from kornia.enhance.normalize import Normalize
 from kornia.enhance.rescale import Rescale
-from kornia.geometry.transform import Resize, resize
+from kornia.geometry.transform import Resize
 
-# PIL resampling filters of a processor config's ``resample`` that kornia's resize implements
-_RESAMPLE_TO_INTERPOLATION = {0: "nearest", 2: "bilinear", 3: "bicubic"}
+# The PIL resampling filters a processor config's ``resample`` may name, as torch.nn.functional.interpolate modes:
+# PIL's NEAREST samples the pixel centres, which is torch's "nearest-exact"
+_RESAMPLE_TO_INTERPOLATION = {0: "nearest-exact", 2: "bilinear", 3: "bicubic"}
 
 
 def _dpt_output_size(
@@ -54,18 +56,26 @@ def _dpt_output_size(
 
 
 class _DPTResize(nn.Module):
-    """Resize an image as transformers' ``DPTImageProcessor`` does, to a size computed from each input's shape.
+    """Resize an image to the size transformers' ``DPTImageProcessor`` computes from each input's shape.
 
-    The output size is :func:`_dpt_output_size` of the input's height and width. ``"bilinear"`` and ``"bicubic"``
-    resize with ``align_corners=False`` and antialiasing; ``"nearest"`` takes the nearest pixel without filtering, as
-    PIL's ``NEAREST`` does. The size depends on the input shape, so this module runs in torch: it cannot be exported to
-    an ONNX graph with dynamic height and width.
+    The output size is :func:`_dpt_output_size` of the input's height and width. The filter is the one of
+    transformers' fast processor, ``DPTImageProcessorFast``, whose torchvision resize makes this
+    :func:`torch.nn.functional.interpolate` call: ``"bicubic"`` and ``"bilinear"`` with ``align_corners=False`` and
+    ``antialias=True``, and ``"nearest-exact"``, PIL's ``NEAREST``, without a filter. It approximates PIL, the slow
+    processor's resize, to a mean of 0.29/255 on photos.
+
+    This departs from kornia's :func:`~kornia.geometry.transform.resize` on purpose: its antialiasing, a Gaussian blur
+    followed by torch's bicubic with ``a = -0.75``, is 2.7 to 3.8 times further from PIL (a mean of 0.8/255 to
+    1.1/255 on the same photos), since PIL uses a bicubic with ``a = -0.5`` and widens it when it downscales.
+
+    The size depends on the input shape, so this module runs in torch: it cannot be exported to an ONNX graph with
+    dynamic height and width.
 
     Args:
         size: Target ``(height, width)`` before the aspect ratio and the multiple are applied.
         keep_aspect_ratio: Whether to scale both sides by the same factor.
         multiple: Each output side is a multiple of this number.
-        interpolation: ``"bicubic"``, ``"bilinear"`` or ``"nearest"``.
+        interpolation: ``"bicubic"``, ``"bilinear"`` or ``"nearest-exact"``.
     """
 
     def __init__(self, size: tuple[int, int], keep_aspect_ratio: bool, multiple: int, interpolation: str) -> None:
@@ -79,9 +89,12 @@ class _DPTResize(nn.Module):
         """Resize ``image`` of shape :math:`(*, C, H, W)` to the DPT output size of its ``H`` and ``W``."""
         height, width = image.shape[-2:]
         output_size = _dpt_output_size(height, width, self.size, self.keep_aspect_ratio, self.multiple)
-        if self.interpolation == "nearest":
-            return resize(image, output_size, interpolation="nearest")
-        return resize(image, output_size, interpolation=self.interpolation, align_corners=False, antialias=True)
+        batch = image.reshape(-1, *image.shape[-3:])
+        if self.interpolation == "nearest-exact":
+            out = F.interpolate(batch, size=output_size, mode="nearest-exact")
+        else:
+            out = F.interpolate(batch, size=output_size, mode=self.interpolation, align_corners=False, antialias=True)
+        return out.reshape(*image.shape[:-2], *output_size)
 
 
 class PreprocessingLoader:
@@ -163,10 +176,11 @@ class DPTImageProcessor(PreprocessingLoader):
     """Parser for DPT image processor configurations.
 
     This parser reads the fields of a transformers ``DPTImageProcessor`` configuration and builds a Kornia pipeline
-    in the processor's order: resize, rescale, and normalize. The resize follows the processor's rule: it keeps the
-    aspect ratio when ``keep_aspect_ratio`` is set and makes each side a multiple of ``ensure_multiple_of``, so its
-    output size depends on the input's. That resize runs in torch; it cannot be part of an ONNX graph with dynamic
-    height and width.
+    in the processor's order: resize, rescale, and normalize. The resize computes the processor's output size: it
+    keeps the aspect ratio when ``keep_aspect_ratio`` is set and makes each side a multiple of ``ensure_multiple_of``,
+    so the size depends on the input's. Its filter is the one of transformers' fast processor, which approximates the
+    slow processor's PIL resize. That resize runs in torch; it cannot be part of an ONNX graph with dynamic height
+    and width.
 
     Padding (``do_pad`` with its ``size_divisor``) is not supported, nor are the ``resample`` filters other than
     nearest, bilinear and bicubic.
