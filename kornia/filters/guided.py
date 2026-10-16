@@ -273,8 +273,10 @@ def guided_blur(
             output_dtype = torch.promote_types(output_dtype, eps.dtype)
     else:
         blur = _guided_blur_multichannel_guidance
-    # Autocast would lower the box-filter convolutions back to half precision.
-    with torch.autocast(device_type=guidance.device.type, enabled=False):
+    # Autocast would lower the box-filter convolutions back to half precision. A meta tensor carries only a shape and
+    # ``torch.autocast("meta")`` raises, so the CPU autocast stands in for it.
+    device_type = "cpu" if guidance.device.type == "meta" else guidance.device.type
+    with torch.autocast(device_type=device_type, enabled=False):
         return blur(
             guidance,
             input,

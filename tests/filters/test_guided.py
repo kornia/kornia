@@ -143,6 +143,19 @@ class TestGuidedBlur(BaseTester):
         self.assert_close(actual_grad, expected_grad, atol=4 * torch.finfo(dtype).eps, rtol=4 * torch.finfo(dtype).eps)
 
     @pytest.mark.parametrize("guide_dim", [1, 3])
+    def test_meta_tensors(self, guide_dim):
+        """A meta tensor has no autocast backend; the filter still infers its result shape and dtype."""
+        guide = torch.empty(2, guide_dim, 9, 13, device="meta", dtype=torch.float16)
+        image = torch.empty(2, 2, 9, 13, device="meta", dtype=torch.float16)
+        for out, dtype in (
+            (guided_blur(guide, image, 5, 0.01), torch.float16),
+            (guided_blur(guide.float(), image, 5, 0.01), torch.float32),
+        ):
+            assert out.device.type == "meta"
+            assert out.shape == image.shape
+            assert out.dtype == dtype
+
+    @pytest.mark.parametrize("guide_dim", [1, 3])
     def test_autocast_preserves_covariance(self, guide_dim, device):
         """Autocast preserves the covariance accuracy of float32 inputs."""
         if device.type not in ("cpu", "cuda"):
