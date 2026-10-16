@@ -35,7 +35,8 @@ class RandomElasticTransform(AugmentationBase2D):
         containers have limitations (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
         Noise has shape ``(B, 2, H, W)`` with channels ``(x, y)``; ``alpha`` scales displacement in
         normalized sampling coordinates, whereas ``kernel_size`` and ``sigma`` use ``(y, x)`` order.
-        The displaced grid is clamped to ``[-1, 1]`` before sampling. Zero ``alpha`` is an identity warp up to
+        Coordinates displaced outside the image use the requested ``padding_mode`` without clipping the grid.
+        Zero ``alpha`` is an identity warp up to
         interpolation roundoff for either ``align_corners``. Its defaults and the ``align_corners`` split across
         classes (`#4412 <https://github.com/kornia/kornia/issues/4412>`_) are listed on
         :class:`~kornia.augmentation.GeometricAugmentationBase2D`.
