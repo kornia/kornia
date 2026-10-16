@@ -351,3 +351,16 @@ def test_filter_benchmark_missing_pillow_filters():
     )
     assert len(ops) == 3
     assert all(row["PIL"] is None for row in ops.values())
+
+
+@pytest.mark.device_agnostic
+def test_setup_requests_rayon_threads(monkeypatch):
+    monkeypatch.setenv("RAYON_NUM_THREADS", "19")
+    monkeypatch.setattr(common, "warm_up_cpu", lambda: None)
+    previous = torch.get_num_threads()
+    try:
+        common.setup_run(argparse.Namespace(threads=2, device="cpu", dtype="float32"), opencv=False)
+        assert common.os.environ["RAYON_NUM_THREADS"] == "2"
+        assert common.run_metadata(torch.device("cpu"))["rayon_num_threads_requested"] == "2"
+    finally:
+        torch.set_num_threads(previous)
