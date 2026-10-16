@@ -118,13 +118,15 @@ class TestRTDETR(BaseTester):
             "kornia.models.rt_detr.model.load_state_dict_from_url", lambda *args, **kwargs: {"ema": {"module": {}}}
         )
         monkeypatch.setattr(RTDETR, "load_state_dict", lambda self, state_dict, *args, **kwargs: None)
-        assert not RTDETR.from_pretrained("rtdetr_r18vd").training
+        # ``training`` of the model and of every submodule: ``{False}`` is evaluation mode throughout.
+        assert {m.training for m in RTDETR.from_pretrained("rtdetr_r18vd").modules()} == {False}
 
         monkeypatch.setattr(RTDETR, "load_checkpoint", lambda self, checkpoint, device=None: None)
-        assert not RTDETR.from_config(RTDETRConfig("resnet18d", 10, checkpoint="x.pt")).training
+        from_checkpoint = RTDETR.from_config(RTDETRConfig("resnet18d", 10, checkpoint="x.pt"))
+        assert {m.training for m in from_checkpoint.modules()} == {False}
 
-        assert RTDETR.from_config(RTDETRConfig("resnet18d", 10)).training
-        assert RTDETR.from_name("rtdetr_r18vd").training
+        assert {m.training for m in RTDETR.from_config(RTDETRConfig("resnet18d", 10)).modules()} == {True}
+        assert {m.training for m in RTDETR.from_name("rtdetr_r18vd").modules()} == {True}
 
     @pytest.mark.slow
     def test_from_pretrained_is_batch_independent(self):

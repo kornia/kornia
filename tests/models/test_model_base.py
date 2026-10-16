@@ -263,10 +263,11 @@ class TestModelBaseLoadCheckpoint(BaseTester):
         path = tmp_path / "model.pth"
         torch.save(_TinyModel().state_dict(), path)
 
+        # ``training`` of the model and of every submodule: ``{False}`` is evaluation mode throughout.
         model = _TinyModel()
         model.load_checkpoint(str(path))
-        assert model.training
+        assert {m.training for m in model.modules()} == {True}
 
         model.eval()
         model.load_checkpoint(str(path))
-        assert not model.training
+        assert {m.training for m in model.modules()} == {False}

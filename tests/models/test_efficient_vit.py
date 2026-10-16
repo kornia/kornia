@@ -151,7 +151,10 @@ class TestEfficientViT:
             lambda *args, **kwargs: {"state_dict": state_dict},
         )
 
-        assert not EfficientViT.from_config(EfficientViTConfig.from_pretrained("b1", 224)).training
+        model = EfficientViT.from_config(EfficientViTConfig.from_pretrained("b1", 224))
+
+        # ``training`` of the model and of every submodule: ``{False}`` is evaluation mode throughout.
+        assert {m.training for m in model.modules()} == {False}
 
     @pytest.mark.slow
     def test_load_pretrained_is_batch_independent(self):

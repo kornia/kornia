@@ -124,13 +124,16 @@ class TestSam(BaseTester):
         loaded = []
         monkeypatch.setattr(Sam, "load_checkpoint", lambda self, checkpoint, device=None: loaded.append(checkpoint))
 
-        assert not Sam.from_config(SamConfig("mobile_sam", pretrained=True)).training
-        assert not Sam.from_config(SamConfig("mobile_sam", checkpoint="x.pt")).training
+        # ``training`` of the model and of every submodule: ``{False}`` is evaluation mode throughout.
+        weighted = Sam.from_config(SamConfig("mobile_sam", pretrained=True))
+        assert {m.training for m in weighted.modules()} == {False}
+        from_checkpoint = Sam.from_config(SamConfig("mobile_sam", checkpoint="x.pt"))
+        assert {m.training for m in from_checkpoint.modules()} == {False}
         assert len(loaded) == 2
         assert loaded[1] == "x.pt"
 
-        assert Sam.from_config(SamConfig("mobile_sam")).training
-        assert Sam.from_name("mobile_sam").training
+        assert {m.training for m in Sam.from_config(SamConfig("mobile_sam")).modules()} == {True}
+        assert {m.training for m in Sam.from_name("mobile_sam").modules()} == {True}
         assert len(loaded) == 2
 
     @pytest.mark.slow

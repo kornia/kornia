@@ -78,8 +78,9 @@ class TestKimiVLBuilder(BaseTester):
         assert isinstance(actual, KimiVLModel)
         assert actual.config is config
         mock_download.assert_called_once_with(kimi_vl_builder._KIMI_VL_A3B_INSTRUCT_REPO_ID, "cache")
-        assert not actual.training
-        assert KimiVLBuilder.from_config(config).training
+        # ``training`` of the model and of every submodule: ``{False}`` is evaluation mode throughout.
+        assert {m.training for m in actual.modules()} == {False}
+        assert {m.training for m in KimiVLBuilder.from_config(config).modules()} == {True}
 
     def test_download_weights_uses_kornias_downloader(self, tmp_path):
         """No optional package: kornia's own downloader, then its own safetensors reader."""

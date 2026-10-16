@@ -109,9 +109,12 @@ class TestSigLip2Builder:
         state_dict = SigLip2Model(config).state_dict()
         monkeypatch.setattr(siglip2_builder, "_download_weights", lambda model_name, cache_dir: state_dict)
 
-        assert not SigLip2Builder.from_pretrained_hf("google/siglip2-base-patch16-224").training
-        assert SigLip2Builder.from_name("google/siglip2-base-patch16-224").training
-        assert SigLip2Builder.from_config(config).training
+        # ``training`` of the model and of every submodule: ``{False}`` is evaluation mode throughout.
+        weighted = SigLip2Builder.from_pretrained_hf("google/siglip2-base-patch16-224")
+        assert {m.training for m in weighted.modules()} == {False}
+        named = SigLip2Builder.from_name("google/siglip2-base-patch16-224")
+        assert {m.training for m in named.modules()} == {True}
+        assert {m.training for m in SigLip2Builder.from_config(config).modules()} == {True}
 
     def test_a_missing_checkpoint_is_reported_with_the_model_name(self, tmp_path):
         with (

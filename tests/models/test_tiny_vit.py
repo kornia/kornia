@@ -41,6 +41,20 @@ def _random_biases(model: TinyViT) -> TinyViT:
     return model
 
 
+def _modes(model: nn.Module) -> set[bool]:
+    # The ``training`` flags of the model and every submodule: ``{False}`` is evaluation mode throughout.
+    return {m.training for m in model.modules()}
+
+
+def _fake_5m_checkpoint(url: str | list[str], *args: object, **kwargs: object) -> dict[str, torch.Tensor]:
+    # Stands in for ``load_state_dict_from_url``. The ImageNet-22k checkpoints (``*_22k_distill.pth``) carry a
+    # 21841-class head and the ImageNet-1k ones (``*_22kto1k_distill.pth``) a 1000-class head
+    # (docs/source/models/tiny_vit.rst).
+    candidates = [url] if isinstance(url, str) else url
+    num_classes = 21841 if any("_22k_distill" in candidate for candidate in candidates) else 1000
+    return TinyViT.from_config("5m", num_classes=num_classes).state_dict()
+
+
 def _image(batch_size: int = 1, seed: int = 0) -> torch.Tensor:
     # TinyViT takes only its square ``img_size`` (224 by default).
     return torch.rand(batch_size, 3, 224, 224, generator=torch.Generator().manual_seed(seed))
@@ -113,12 +127,24 @@ class TestTinyViT(BaseTester):
     def test_eval_bias_follows_load_state_dict(self):
         src = _random_biases(TinyViT.from_config("5m"))
         dst = TinyViT.from_config("5m").eval()
+        x = _image()
+        with torch.no_grad():
+            dst(x)  # an evaluation-mode forward before the load, so a bias kept from it would go stale
         dst.load_state_dict(src.state_dict())
         src.eval()
-        x = _image()
 
         with torch.no_grad():
             assert torch.equal(dst(x), src(x))
+
+    @pytest.mark.device_agnostic
+    def test_eval_mode_bias_gets_gradients(self):
+        model = _random_biases(TinyViT.from_config("5m")).eval()
+
+        model(_image()).sum().backward()
+
+        for attention in _attentions(model):
+            assert attention.attention_biases.grad is not None
+            assert attention.attention_biases.grad.abs().sum() > 0
 
     @pytest.mark.device_agnostic
     def test_eval_bias_follows_parameter_update(self):
@@ -154,30 +180,31 @@ class TestTinyViT(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_from_config_mode(self, monkeypatch):
-        assert TinyViT.from_config("5m").training
-        assert TinyViT.from_config("5m", pretrained=False).training
+        assert _modes(TinyViT.from_config("5m")) == {True}
+        assert _modes(TinyViT.from_config("5m", pretrained=False)) == {True}
 
-        monkeypatch.setattr(
-            "kornia.models.tiny_vit.load_state_dict_from_url",
-            lambda url, *args, **kwargs: TinyViT.from_config("5m").state_dict(),
-        )
-        assert not TinyViT.from_config("5m", pretrained=True).training
-        assert not TinyViT.from_config("5m", pretrained="in22k", num_classes=1000).training
+        monkeypatch.setattr("kornia.models.tiny_vit.load_state_dict_from_url", _fake_5m_checkpoint)
+        assert _modes(TinyViT.from_config("5m", pretrained=True)) == {False}
+        assert _modes(TinyViT.from_config("5m", pretrained="in1k", num_classes=1000)) == {False}
+        assert _modes(TinyViT.from_config("5m", pretrained="in22k", num_classes=21841)) == {False}
 
     @pytest.mark.device_agnostic
-    def test_from_config_partial_weights_mode(self, monkeypatch):
-        # The fake checkpoint has the 1000-class head of the ImageNet-1k weights.
-        monkeypatch.setattr(
-            "kornia.models.tiny_vit.load_state_dict_from_url",
-            lambda url, *args, **kwargs: TinyViT.from_config("5m").state_dict(),
-        )
-        assert not TinyViT.from_config("5m", pretrained=True, num_classes=1000).training
+    @pytest.mark.parametrize(
+        ("pretrained", "num_classes"),
+        [(True, 8), (True, 1001), ("in22k", 1000)],
+        ids=["head-narrower", "head-wider", "in22k-default-classes"],
+    )
+    def test_from_config_partial_weights_mode(self, monkeypatch, pretrained, num_classes):
+        monkeypatch.setattr("kornia.models.tiny_vit.load_state_dict_from_url", _fake_5m_checkpoint)
 
-        # Another class count re-initialises the head: a pretrained backbone to fine-tune, so training mode.
+        # A class count other than the checkpoint's (1000 for in1k, 21841 for in22k) re-initialises the head: a
+        # pretrained backbone to fine-tune, so training mode.
         with pytest.warns(UserWarning, match="Resetting classification head"):
-            model = TinyViT.from_config("5m", pretrained=True, num_classes=8)
-        assert torch.equal(model.head.weight, torch.zeros(8, 320))
-        assert model.training
+            model = TinyViT.from_config("5m", pretrained=pretrained, num_classes=num_classes)
+        assert model.head.out_features == num_classes
+        assert not model.head.weight.any()
+        assert not model.head.bias.any()
+        assert _modes(model) == {True}
 
     @pytest.mark.skipif(sys.version_info.major == 3 and sys.version_info.minor == 8, reason="not working for py3.8")
     def test_dynamo_eval_mode(self, device, dtype, torch_optimizer):
