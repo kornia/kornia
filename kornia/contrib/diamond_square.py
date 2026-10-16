@@ -235,16 +235,18 @@ def diamond_square(
     seed_width: int = (p2_width - 1) // 2**recursion_depth + 1
     seed_height: int = (p2_height - 1) // 2**recursion_depth + 1
     seed = _diamond_square_seed(num_samples, seed_width, seed_height, random_fn, device, dtype)
-    # Each level mixes with random_scale * roughness**k, which promotes the map to their common dtype. Promote the
-    # unscaled seed to it as well, so that the output dtype does not depend on the recursion depth.
-    level_dtype = torch.promote_types(torch.promote_types(seed.dtype, random_scale.dtype), roughness.dtype)
-    img: torch.Tensor = seed.to(level_dtype)
+    # The unscaled seed enters the first level in its dtype promoted with random_scale's, so that level draws in the
+    # same dtype as when the seed was scaled by random_scale. The levels then mix with random_scale * roughness**k
+    # and promote the map to their common dtype; a map that is the seed alone is cast to it after the loop, so that
+    # the output dtype does not depend on the recursion depth.
+    img: torch.Tensor = seed.to(torch.promote_types(seed.dtype, random_scale.dtype))
 
     # perform recursion
     scale = random_scale
     for _ in range(recursion_depth):
         scale = scale * roughness
         img = _one_diamond_one_square(img, scale, random_fn)
+    img = img.to(torch.promote_types(torch.promote_types(seed.dtype, random_scale.dtype), roughness.dtype))
 
     # slice to match with the output size
     img = img[..., :width, :height]

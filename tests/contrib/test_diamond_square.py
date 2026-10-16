@@ -107,9 +107,9 @@ class TestDiamondSquare(BaseTester):
     def test_dtype_none_follows_a_tensor_argument_at_every_size(self, tensor_arg, device):
         if device.type == "mps":
             pytest.skip("MPS does not support float64")
-        # With dtype=None each level promotes the map to the dtype of random_scale * roughness, and the seed is
-        # promoted to it too, without being scaled: a map with a side of 3 px or less, which is the seed alone, has
-        # the same dtype as a larger one, and its values are the float32 draws.
+        # With dtype=None each level promotes the map to the dtype of random_scale * roughness, and a map with a side
+        # of 3 px or less, which is the seed alone, is cast to it too, without being scaled: it has the same dtype as
+        # a larger one, and its values are the float32 draws.
         g = torch.Generator(device=device)
         draw = functools.partial(torch.rand, generator=g)
         value = torch.tensor(0.5, dtype=torch.float64)
@@ -122,6 +122,40 @@ class TestDiamondSquare(BaseTester):
                 ref = kornia.contrib.diamond_square(size, random_fn=draw, device=device, **{tensor_arg: 0.5})
                 assert ref.dtype == torch.float32
                 assert torch.equal(out, ref.double())
+
+    @pytest.mark.parametrize(
+        ("scale_f64", "roughness_f64", "expected"),
+        [
+            (False, False, [None, torch.float32, torch.float32]),
+            (False, True, [None, torch.float32, torch.float64]),
+            (True, False, [None, torch.float64, torch.float64]),
+            (True, True, [None, torch.float64, torch.float64]),
+        ],
+        ids=["floats", "roughness-f64", "scale-f64", "both-f64"],
+    )
+    def test_dtype_none_draws_level_by_level_as_before(self, scale_f64, roughness_f64, expected, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        # random_fn is asked for the seed (dtype=None), then for each level in the dtype of the map entering it. The
+        # unscaled seed enters level 1 promoted with random_scale's dtype only, as the seed scaled by random_scale did,
+        # so each level draws in the same dtype, and random_scale=1 gives the same map. Expected sequences generated
+        # on dd3bddb7e, where the seed was scaled by random_scale, with this recording random_fn and
+        #   kornia.contrib.diamond_square((2, 1, 9, 14), random_scale=s, roughness=r, random_fn=record)
+        # for s = 1.0 or torch.tensor(1.0, dtype=torch.float64), r = 0.5 or torch.tensor(0.5, dtype=torch.float64).
+        g = torch.Generator(device=device).manual_seed(0)
+        asked = []
+
+        def record(shape, device=None, dtype=None):
+            asked.append(dtype)
+            return torch.rand(shape, generator=g, device=device, dtype=dtype)
+
+        scale = torch.tensor(1.0, dtype=torch.float64) if scale_f64 else 1.0
+        roughness = torch.tensor(0.5, dtype=torch.float64) if roughness_f64 else 0.5
+        out = kornia.contrib.diamond_square(
+            (2, 1, 9, 14), roughness=roughness, random_scale=scale, random_fn=record, device=device
+        )
+        assert asked == expected
+        assert out.dtype == expected[-1]
 
     def test_integer_normalize_range(self, device, dtype):
         if not supports_reflect_padding(device, dtype):
