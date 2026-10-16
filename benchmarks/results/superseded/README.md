@@ -35,12 +35,3 @@ The M1 Pro augmentation pair includes the filter changes but predates #4659. Its
 augmentation snapshots on the Intel i7-14700K and RTX 4090 were re-measured after merging #4659;
 the Apple augmentation pair is archived until that hardware can be re-measured. The M1 Pro
 filter snapshots remain published because #4659 does not change those filters.
-
-| File | Measured at | Superseded by |
-| --- | --- | --- |
-| `0.9.0rc1/augmentation--apple-m1-pro--cpu.json` | `7f24cb93` | Flagship audit: rotation/affine torchvision baselines used nearest interpolation; corrected to bilinear. Apple hardware unavailable for rerun. |
-| `0.9.0rc1/augmentation--apple-m1-pro--mps.json` | `7f24cb93` | Flagship audit: rotation/affine torchvision baselines used nearest interpolation; corrected to bilinear. Apple hardware unavailable for rerun. |
-| `0.9.0rc1/geometry--apple-m1--cpu.json` | `83725c6b` | Flagship audit: rotation/affine torchvision baselines used nearest interpolation; corrected to bilinear. Apple hardware unavailable for rerun. |
-| `0.9.0rc1/geometry--apple-m1--mps.json` | `83725c6b` | Flagship audit: rotation/affine torchvision baselines used nearest interpolation; corrected to bilinear. Apple hardware unavailable for rerun. |
-| `0.9.0rc1/geometry--apple-m4--cpu.json` | `f0a06c70` | Flagship audit: rotation/affine torchvision baselines used nearest interpolation; corrected to bilinear. Apple hardware unavailable for rerun. |
-| `0.9.0rc1/geometry--apple-m4--mps.json` | `f0a06c70` | Flagship audit: rotation/affine torchvision baselines used nearest interpolation; corrected to bilinear. Apple hardware unavailable for rerun. |

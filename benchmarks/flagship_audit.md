@@ -92,8 +92,10 @@ PYTHON
 ```
 
 Geometry and augmentation release snapshots on the available Intel/RTX machine are refreshed
-with bilinear baselines. Apple snapshots using the mismatched interpolation are archived,
-since that hardware was unavailable. Historical prose tables are marked accordingly.
+in place within `0.9.0rc1`, with bilinear baselines. Apple snapshots remain in that same
+version directory because that hardware was unavailable for replacement measurements. Their
+rotation/random-affine torchvision comparisons still use mismatched interpolation and must not
+be interpreted as equivalent-work comparisons. Historical prose tables are marked accordingly.
 
 ## Scope and practical guidance
 
