@@ -214,8 +214,8 @@ def _pil_source(height: int, width: int) -> torch.Tensor:
 @pytest.mark.parametrize("interpolation", ["bicubic", "bilinear"])
 def test_dpt_resize_downscale_matches_pil(interpolation):
     # 4/8 = 0.5 beats 4/12 = 0.33, so the 8x12 image is halved to 4x6. PIL widens its kernel on a downscale, which the
-    # antialiased interpolate matches to within its uint8 rounding (0.62/255 measured); without antialiasing the
-    # bicubic is 27/255 off. The tolerance is 1/255.
+    # antialiased interpolate matches to within its uint8 rounding (max 0.62/255 measured); without antialiasing the
+    # bicubic is up to 27/255 off. The tolerance is 1/255.
     from kornia.models._hf_models.preprocessor import _DPTResize
 
     resize = _DPTResize(size=(4, 4), keep_aspect_ratio=True, multiple=2, interpolation=interpolation)
@@ -228,8 +228,8 @@ def test_dpt_resize_downscale_matches_pil(interpolation):
 
 @pytest.mark.device_agnostic
 def test_dpt_resize_bicubic_upscale_matches_pil():
-    # PIL's bicubic has a = -0.5, as the antialiased interpolate does (0.78/255 measured); the plain bicubic has
-    # a = -0.75 and is 6.2/255 off. The tolerance is 1/255.
+    # PIL's bicubic has a = -0.5, as the antialiased interpolate does (max 0.78/255 measured); the plain bicubic has
+    # a = -0.75 and is up to 6.2/255 off. The tolerance is 1/255.
     from kornia.models._hf_models.preprocessor import _DPTResize
 
     resize = _DPTResize(size=(6, 8), keep_aspect_ratio=False, multiple=1, interpolation="bicubic")

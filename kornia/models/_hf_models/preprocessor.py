@@ -65,7 +65,7 @@ class _DPTResize(nn.Module):
     ``NEAREST``, without a filter. It approximates PIL's ``Image.resize`` to a mean of 0.29/255 on photos.
 
     This departs from kornia's :func:`~kornia.geometry.transform.resize` on purpose: its antialiasing, a Gaussian blur
-    followed by torch's bicubic with ``a = -0.75``, is 2.7 to 3.8 times further from PIL (a mean of 0.8/255 to
+    followed by torch's bicubic with ``a = -0.75``, is 2.3 to 3.8 times further from PIL (a mean of 0.7/255 to
     1.1/255 on the same photos), since PIL uses a bicubic with ``a = -0.5`` and widens it when it downscales.
 
     The size depends on the input shape, so this module runs in torch: it cannot be exported to an ONNX graph with
