@@ -10,7 +10,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.11", "3.12"]
+        python: ["3.11"]
+        torch: ["2.5.1", "2.6.0", "2.9.1"]
     defaults:
       run:
         shell: bash
@@ -29,7 +30,7 @@ jobs:
           pixi-version: v0.40.0
           environments: ${{ steps.env.outputs.name }}
       - run: pixi run -e ${{ steps.env.outputs.name }} install
-      - run: pixi run -e ${{ steps.env.outputs.name }} uv run --no-sync uv pip install --reinstall-package torch --index-url https://download.pytorch.org/whl/cpu torch==2.5.1
+      - run: pixi run -e ${{ steps.env.outputs.name }} uv run --no-sync uv pip install --reinstall-package torch --index-url https://download.pytorch.org/whl/cpu torch==${{ matrix.torch }}
       - name: Baseline regression tests
         continue-on-error: true
         run: pixi run -e ${{ steps.env.outputs.name }} uv run --no-sync pytest tests/feature/test_lightglue.py::TestLightGluePruningDtype tests/feature/test_lightglue.py::TestLightGlueBatchedPairs --device=cpu --dtype=float64 -q
@@ -40,23 +41,23 @@ jobs:
           import contextlib
           import sys
           from unittest.mock import patch
-          
+
           import torch
           import torch.nn.functional as F
           from torch.nn.attention import SDPBackend, sdpa_kernel
-          
+
           import kornia
           from tests.feature.test_lightglue import TestLightGluePruningDtype
-          
-          
+
+
           def tensors(value):
               if isinstance(value, torch.Tensor):
                   yield value
               elif isinstance(value, (tuple, list)):
                   for item in value:
                       yield from tensors(item)
-          
-          
+
+
           def stats(value):
               return [
                   {
@@ -68,8 +69,8 @@ jobs:
                   }
                   for t in tensors(value)
               ]
-          
-          
+
+
           print("python", sys.version.split()[0], "torch", torch.__version__)
           print("kornia", kornia.__file__, "threads", torch.get_num_threads())
           print(torch.__config__.show())
@@ -82,7 +83,7 @@ jobs:
                   model = fixture._model(device, dtype)
                   data, _ = fixture._scene(device, dtype)
                   first_bad = []
-          
+
                   def hook(name):
                       def inspect(module, args, output):
                           bad = any(not bool(t.isfinite().all()) for t in tensors(output))
@@ -92,10 +93,10 @@ jobs:
                           if name == "token_confidence.0":
                               print("TOKENS", [t.tolist() for t in tensors(output)], flush=True)
                       return inspect
-          
+
                   for name, module in model.named_modules():
                       module.register_forward_hook(hook(name))
-          
+
                   def traced_sdpa(q, k, v, *args, **kwargs):
                       output = original_sdpa(q, k, v, *args, **kwargs)
                       with sdpa_kernel([SDPBackend.MATH]):
@@ -104,7 +105,7 @@ jobs:
                             "math_finite", bool(reference.isfinite().all()),
                             "math_max_diff", (output - reference).abs().max().item(), flush=True)
                       return output
-          
+
                   # Enter after construction: Attention.__init__ changes the global flash flag.
                   context = sdpa_kernel([SDPBackend.MATH]) if backend == "math" else contextlib.nullcontext()
                   with context, patch.object(F, "scaled_dot_product_attention", traced_sdpa):
@@ -112,4 +113,26 @@ jobs:
                   print("RESULT", "first_bad", first_bad, "stop", output["stop"],
                         "prune0", output["prune0"].tolist(), "prune1", output["prune1"].tolist(),
                         "scores", stats(output["matching_scores0"]), flush=True)
+          PYCODE
+      - name: Minimal CPU flash reproduction
+        run: |
+          pixi run -e ${{ steps.env.outputs.name }} uv run --no-sync python - <<'PYCODE'
+          import torch
+          import torch.nn.functional as F
+          from torch.nn.attention import SDPBackend, sdpa_kernel
+          for dtype in (torch.float32, torch.float64):
+              for shape in ((1, 4, 16, 64), (1, 2, 5, 8)):
+                  for pattern in ("random", "constant"):
+                      torch.manual_seed(0)
+                      q, k, v = [torch.randn(shape, dtype=dtype) for _ in range(3)]
+                      if pattern == "constant":
+                          q.zero_()
+                          k.zero_()
+                          v.fill_(1)
+                      with sdpa_kernel([SDPBackend.MATH]):
+                          ref = F.scaled_dot_product_attention(q, k, v)
+                      with sdpa_kernel([SDPBackend.FLASH_ATTENTION]):
+                          out = F.scaled_dot_product_attention(q, k, v)
+                      print("PRIMITIVE", torch.__version__, dtype, shape, pattern,
+                            "finite", bool(out.isfinite().all()), "max_diff", (out-ref).abs().max().item(), flush=True)
           PYCODE
