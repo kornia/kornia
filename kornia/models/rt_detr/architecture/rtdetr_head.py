@@ -242,7 +242,7 @@ class TransformerDecoder(nn.Module):
         self.eval_idx = eval_idx if eval_idx >= 0 else num_layers + eval_idx
         KORNIA_CHECK(
             0 <= self.eval_idx < num_layers,
-            f"eval_idx must select one of the {num_layers} decoder layers, from {-num_layers} to {num_layers - 1}; "
+            f"eval_idx must index one of the {num_layers} decoder layers ({-num_layers} to {num_layers - 1}), "
             f"got {eval_idx}.",
         )
 
