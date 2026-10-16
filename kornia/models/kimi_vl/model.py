@@ -105,8 +105,13 @@ class KimiVLModel(nn.Module):
         """Forward pass.
 
         Args:
-            images: (B, C, H, W)
-            attention_mask: (B, 1, N, N) or (B, N, N) optional mask for vision encoder.
+            images: (B, C, H, W) image normalized with mean = std = 0.5 per channel, i.e. ``2 * x - 1`` for an image
+                ``x`` in ``[0, 1]``, as the Kimi-VL checkpoint's ``preprocessor_config.json`` specifies. H and W must
+                be multiples of ``2 * patch_size`` (28 for the released checkpoint): sizes that are not multiples of
+                ``patch_size`` are cropped silently, and an odd number of patch rows or columns raises.
+            attention_mask: (B, 1, N, N) or (B, N, N) optional boolean mask for the vision encoder over its N
+                patches, ``True`` where a patch may attend to another. A (B, N, N) mask holds one mask per sample,
+                shared by the heads.
 
         Returns:
             Projected visual features (B, seq_len, output_dim)

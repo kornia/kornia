@@ -127,9 +127,10 @@ class MoonViTAttention(nn.Module):
                 :math:`(N, d / 2)`, where ``d = D / H`` is the per-head dimension.
             sin: Sine component of the rotary positional embedding with shape
                 :math:`(N, d / 2)`.
-            attention_mask: Optional mask broadcastable to the scaled dot-product
-                attention scores. It can be used to prevent selected tokens from
-                attending to one another.
+            attention_mask: Optional boolean mask, ``True`` where a query may attend to a key: :math:`(B, N, N)`,
+                one mask per sample shared by the heads, or :math:`(B, 1, N, N)` or any other form that broadcasts
+                against the :math:`(B, H, N, N)` attention scores of
+                :func:`~torch.nn.functional.scaled_dot_product_attention`.
 
         Returns:
             Tensor with shape :math:`(B, N, D)` containing the attended visual token
@@ -153,6 +154,10 @@ class MoonViTAttention(nn.Module):
 
         query = apply_rotary_pos_emb(query, cos, sin)
         key = apply_rotary_pos_emb(key, cos, sin)
+        if attention_mask is not None and attention_mask.dim() == 3:
+            # (B, N, N) -> (B, 1, N, N): one mask per sample, broadcast over the heads. Passed as is, its leading
+            # dimension would line up with the heads of the (B, H, N, N) scores.
+            attention_mask = attention_mask.unsqueeze(1)
         attn_output = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=self.dropout.p if self.training else 0.0
         )
@@ -307,8 +312,13 @@ class MoonViT(nn.Module):
         """Forward pass.
 
         Args:
-            pixel_values: (B, C, H, W)
-            attention_mask: (B, 1, N, N) or (B, N, N) optional mask.
+            pixel_values: (B, C, H, W) image normalized with mean = std = 0.5 per channel, i.e. ``2 * x - 1`` for an
+                image ``x`` in ``[0, 1]``, as the Kimi-VL checkpoint's ``preprocessor_config.json`` specifies. H and W
+                should be multiples of ``2 * patch_size`` (28 for the released checkpoint), which
+                :class:`~kornia.models.kimi_vl.KimiVLModel` needs to merge the patches 2 x 2: the patch embedding crops
+                a size that is not a multiple of ``patch_size`` silently.
+            attention_mask: (B, 1, N, N) or (B, N, N) optional boolean mask over the N patches, ``True`` where a patch
+                may attend to another. A (B, N, N) mask holds one mask per sample, shared by the heads.
 
         Returns:
             (B, seq_len, hidden_size)
