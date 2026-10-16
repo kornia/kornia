@@ -68,7 +68,10 @@ class DepthEstimation(HFONNXComunnityModel):
         inputs = images.float().cpu()
         if self.resize is not None:
             inputs = self.resize(inputs)
-        depth = torch.from_numpy(super().__call__(inputs.numpy())[0]).unsqueeze(1)
+        depth = torch.from_numpy(super().__call__(inputs.numpy())[0])
+        # Depth-Anything's graphs return (B, H, W); a graph that returns (B, 1, H, W) already has the layout
+        if depth.ndim == 3:
+            depth = depth.unsqueeze(1)
         # as transformers' DPT post_process_depth_estimation resizes the predicted depth to the target size
         depth = F.interpolate(depth, size=tuple(images.shape[-2:]), mode="bicubic", align_corners=False)
         return depth.to(images.dtype).to(images.device)

@@ -45,17 +45,19 @@ _DEPTH_ANYTHING_V2_SMALL_CONFIG = {
 }
 
 
-def _stand_in_graph() -> onnx.ModelProto:
+def _stand_in_graph(keepdims: bool = False) -> onnx.ModelProto:
     """Return a graph with Depth-Anything's I/O contract, ``(B, 3, H, W) -> (B, H, W)``: the mean over channels.
 
+    With ``keepdims`` the graph returns ``(B, 1, H, W)`` instead, as a depth graph other than Depth-Anything's may.
     The real onnx-community graph is not downloaded. ``axes`` is an input of ``ReduceMean`` from opset 18.
     """
     axes = helper.make_tensor("axes", TensorProto.INT64, [1], [1])
+    output_shape = ["B", 1, "H", "W"] if keepdims else ["B", "H", "W"]
     graph = helper.make_graph(
-        [helper.make_node("ReduceMean", ["input", "axes"], ["output"], keepdims=0)],
+        [helper.make_node("ReduceMean", ["input", "axes"], ["output"], keepdims=int(keepdims))],
         "stand_in_depth",
         [helper.make_tensor_value_info("input", TensorProto.FLOAT, ["B", 3, "H", "W"])],
-        [helper.make_tensor_value_info("output", TensorProto.FLOAT, ["B", "H", "W"])],
+        [helper.make_tensor_value_info("output", TensorProto.FLOAT, output_shape)],
         initializer=[axes],
     )
     return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)])
@@ -283,6 +285,21 @@ class TestDepthEstimation(BaseTester):
         assert [tuple(d.shape) for d in depths] == [(1, h, w) for h, w in sizes]
         for depth, image in zip(depths, images):
             self.assert_close(depth, image.float().mean(0, keepdim=True).to(dtype))
+
+    @pytest.mark.parametrize("as_list", [False, True])
+    def test_graph_returning_b1hw_keeps_its_layout(self, device, dtype, as_list):
+        # a graph that already returns (B, 1, H, W) gives the same layout as Depth-Anything's (B, H, W) graph
+        self._skip_float64_on_mps(device, dtype)
+        model = DepthEstimation(_stand_in_graph(keepdims=True), pre_processor=None)
+        images = torch.rand(2, 3, 300, 400, device=device, dtype=dtype)
+
+        depth = model(list(images) if as_list else images)
+
+        if as_list:
+            assert [tuple(d.shape) for d in depth] == [(1, 300, 400), (1, 300, 400)]
+            depth = torch.stack(depth)
+        assert depth.shape == (2, 1, 300, 400)
+        self.assert_close(depth, images.float().mean(1, keepdim=True).to(dtype))
 
     @pytest.mark.parametrize("as_list", [False, True])
     def test_visualize_and_save_take_a_tensor_batch(self, device, dtype, as_list, tmp_path):
