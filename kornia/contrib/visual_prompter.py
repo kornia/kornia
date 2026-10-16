@@ -236,28 +236,38 @@ class VisualPrompter:
 
         return keypoints
 
-    def _valid_boxes(self, boxes: Boxes | torch.Tensor) -> Boxes:
-        """Validate the boxes shape and ensure to be a Boxes into xyxy mode.
+    def _valid_boxes(self, boxes: Boxes | torch.Tensor) -> torch.Tensor:
+        """Validate the box prompts and return them as a ``(K, 4)`` xyxy tensor.
 
-        The boxes are the ``K`` box prompts of the one image set: a ``(K, 4)`` or ``(1, K, 4)`` xyxy tensor, or a
-        :class:`~kornia.geometry.boxes.Boxes` holding ``(K, 4, 2)`` or ``(1, K, 4, 2)`` vertices.
+        The boxes are the ``K`` box prompts of the one image set. A ``(K, 4)`` or ``(1, K, 4)`` xyxy tensor is taken
+        as given. A :class:`~kornia.geometry.boxes.Boxes` holding ``(K, 4, 2)`` or ``(1, K, 4, 2)`` vertices is read
+        through ``to_tensor(mode="xyxy")``.
         """
         if isinstance(boxes, torch.Tensor):
             if boxes.ndim == 2:
                 KORNIA_CHECK_SHAPE(boxes.data, ["K", "4"])
             else:
                 KORNIA_CHECK_SHAPE(boxes.data, ["B", "K", "4"])
+            # ``Boxes.from_tensor`` checks the values (finite, positive extents). Its vertices are not used: their
+            # round trip widens a sub-pixel box ([10, 20, 10.5, 20.5] comes back as [9.5, 19.5, 11, 21]) and, in
+            # bfloat16, rounds the -1 offset away ([256, 256, 258, 258] comes back as [256, 256, 256, 256]).
+            Boxes.from_tensor(boxes, mode="xyxy")
+            images = boxes.shape[0] if boxes.ndim == 3 else 1
+            xyxy = boxes if boxes.is_floating_point() else boxes.to(torch.get_default_dtype())
+        else:
+            images = boxes.data.shape[0] if boxes.data.ndim == 4 else 1
+            exported = boxes.to_tensor(mode="xyxy")
+            if not isinstance(exported, torch.Tensor):
+                raise TypeError(f"Expected the boxes as a tensor. Got {type(exported)}.")
+            xyxy = exported
 
-            boxes = Boxes.from_tensor(boxes, mode="xyxy")
-
-        # A batched Boxes stores (B, K, 4, 2) vertices, and a (B, K, 4) tensor becomes one.
         KORNIA_CHECK(
-            boxes.data.ndim == 3 or boxes.data.shape[0] == 1,
-            f"VisualPrompter takes the boxes of its one image, (K, 4) or (1, K, 4); got boxes for "
-            f"{boxes.data.shape[0]} images. Use `Sam.forward` to prompt a batch of images.",
+            images == 1,
+            f"VisualPrompter takes the boxes of its one image, (K, 4) or (1, K, 4); got boxes for {images} images. "
+            "Use `Sam.forward` to prompt a batch of images.",
         )
 
-        return boxes if boxes.mode == "xyxy" else Boxes.from_tensor(boxes.to_tensor(mode="xyxy"), mode="xyxy")
+        return xyxy.reshape(-1, 4)
 
     def _valid_masks(self, masks: torch.Tensor) -> torch.Tensor:
         """Validate the input masks shape."""
@@ -287,7 +297,8 @@ class VisualPrompter:
 
         Keypoints and both corners of each xyxy box go through the half-pixel point map of ``transforms``. A box is
         mapped as its two corner points, as the reference's ``apply_boxes`` does, not through the vertices of
-        :class:`~kornia.geometry.boxes.Boxes`, which place the far corner at ``x2 - 1``.
+        :class:`~kornia.geometry.boxes.Boxes`, which place the far corner at ``x2 - 1``. A tensor box is taken as
+        given; a :class:`~kornia.geometry.boxes.Boxes` is read through ``to_tensor(mode="xyxy")``.
         """
         points: Optional[tuple[torch.Tensor, torch.Tensor]] = None
         if isinstance(keypoints, (Keypoints, torch.Tensor)) and isinstance(keypoints_labels, torch.Tensor):
@@ -302,8 +313,8 @@ class VisualPrompter:
 
         bbox: Optional[torch.Tensor] = None
         if isinstance(boxes, (Boxes, torch.Tensor)):
-            # (K, 4) or (1, K, 4) xyxy -> K pairs of corner points -> the K box prompts, (K, 4).
-            corners = self._valid_boxes(boxes).to_tensor(mode="xyxy").reshape(-1, 2, 2)
+            # (K, 4) xyxy -> K pairs of corner points -> the K box prompts, (K, 4).
+            corners = self._valid_boxes(boxes).reshape(-1, 2, 2)
             bbox = self._transform_points(Keypoints.from_tensor(corners)).reshape(-1, 4)
 
         if isinstance(masks, torch.Tensor):
@@ -338,8 +349,9 @@ class VisualPrompter:
                              point. Shape :math:`(K, N)`. Where `N` is the number of points, and `K` the number of
                              prompts. Required with `keypoints`.
             boxes: Box prompts to the model, one per prompt: a torch.Tensor in xyxy mode, shape :math:`(K, 4)` or
-                   :math:`(1, K, 4)`, or a :class:`~kornia.geometry.boxes.Boxes` of shape :math:`(K, 4, 2)` or
-                   :math:`(1, K, 4, 2)`. `K` is the number of prompts.
+                   :math:`(1, K, 4)`, whose corners are taken as given, or a :class:`~kornia.geometry.boxes.Boxes` of
+                   shape :math:`(K, 4, 2)` or :math:`(1, K, 4, 2)`, read through ``to_tensor(mode="xyxy")``. `K` is
+                   the number of prompts.
             masks: A low resolution mask input to the model, typically coming from a previous prediction
                    iteration. Has shape :math:`(K, 1, H, W)`, where for SAM, H=W=256.
             multimask_output: If true, the model will return three masks. For ambiguous input prompts (such as a

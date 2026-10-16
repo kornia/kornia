@@ -297,6 +297,27 @@ class TestVisualPrompter(BaseTester):
             with pytest.raises(BaseError, match=r"Sam\.forward"):
                 prompter.predict(boxes=boxes)
 
+        # The values of a tensor box are checked as ``Boxes.from_tensor`` checks them: x2 > x1 and y2 > y1.
+        with pytest.raises(ValueError, match="negative widths"):
+            prompter.predict(boxes=torch.tensor([[60.0, 20.0, 10.0, 50.0]], device=device, dtype=dtype))
+
+    # A sub-pixel box, and one whose -1 vertex offset bfloat16 cannot represent at 256 (spacing 2): the ``Boxes``
+    # vertex round trip gives [9.5, 19.5, 11, 21] for the first and, in bfloat16, [256, 256, 256, 256] for the second.
+    @pytest.mark.parametrize("box", [[10.0, 20.0, 10.5, 20.5], [256.0, 256.0, 258.0, 258.0]], ids=["subpixel", "256"])
+    def test_tensor_box_corners_are_taken_as_given(self, device, dtype, box):
+        prompter = _prompter_with_stub_encoder(device, dtype)
+        boxes = torch.tensor([box], device=device, dtype=dtype)
+
+        mapped = prompter.preprocess_prompts(boxes=boxes).boxes
+
+        # The given corners, as one prompt of two points, through the same transform.
+        labels = torch.ones(1, 2, device=device, dtype=dtype)
+        as_points = prompter.preprocess_prompts(boxes.reshape(1, 2, 2), labels).keypoints
+        assert torch.equal(mapped, as_points.reshape(1, 4))
+        # The half-pixel point map at s = 8 (77 x 128 -> 616 x 1024), (x + 0.5) * 8 - 0.5 on each corner.
+        expected = (torch.tensor([box], dtype=torch.float64) + 0.5) * 8 - 0.5
+        self.assert_close(mapped, expected.to(device=device, dtype=dtype))
+
     def test_box_prompts_stay_separate(self, device, dtype):
         prompter = _prompter_with_stub_encoder(device, dtype)
         boxes = torch.tensor(
