@@ -212,6 +212,15 @@ class TestSemanticSegmentation(BaseTester):
         assert len(written["torch"]) == 6
         assert written["pil"] == written["torch"]
 
+        # the mask files are the visualization with the colormap seed given to save
+        reference = tmp_path / "reference"
+        model._save_outputs(model.visualize(images, manual_seed=7), str(reference), suffix="_mask")
+        masks = {name: data for name, data in written["torch"].items() if "_mask_" in name}
+        assert masks == {re.sub(r"_\d{8}_\d{6}", "", p.name): p.read_bytes() for p in reference.iterdir()}
+        # and the colormap reaches it too: "random" is the only one there is
+        with pytest.raises(ValueError, match="Unsupported colormap"):
+            model.save(images, directory=str(tmp_path / "jet"), colormap="jet")
+
         with pytest.raises(RuntimeError, match="Output type numpy is not supported"):
             model.save(images, directory=str(tmp_path / "numpy"), output_type="numpy")
         assert not (tmp_path / "numpy").exists()

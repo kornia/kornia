@@ -156,6 +156,15 @@ class TestRTDETR(BaseTester):
         assert logits.shape == (1, 10, 10)
         assert boxes.shape == (1, 10, 4)
 
+    def test_resnet_d_shortcut_pool_partial_windows(self, device, dtype):
+        pools = [m for name, m in ResNetD.from_config(18).named_modules() if name.endswith("short.pool")]
+        assert len(pools) == 3
+        # A window that runs past the bottom or right edge averages only the pixels inside it, as the reference
+        # ``nn.AvgPool2d(2, 2, 0, ceil_mode=True)`` does: on a map of ones every window, partial or not, gives 1.
+        x = torch.ones(1, 1, 3, 5, device=device, dtype=dtype)
+        for pool in pools:
+            self.assert_close(pool.to(device, dtype)(x), torch.ones(1, 1, 2, 3, device=device, dtype=dtype))
+
     @pytest.mark.device_agnostic
     def test_decoder_eval_idx(self):
         in_channels = [32, 64, 128]
