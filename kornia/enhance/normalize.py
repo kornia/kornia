@@ -38,6 +38,17 @@ def _promote_integer_data(data: torch.Tensor) -> torch.Tensor:
     return data.to(torch.get_default_dtype())
 
 
+def _integer_difference(data: torch.Tensor, other: torch.Tensor) -> torch.Tensor:
+    """Subtract ordered integer pixels without overflow or losing small differences at large offsets."""
+    if data.dtype == torch.uint8:
+        return (data - other) * 1.0
+    # Half-range quotients can be subtracted in the original dtype, even for int64 extrema.
+    # Promote their difference before doubling, then restore the one-bit remainder difference.
+    quotient = torch.bitwise_right_shift(data, 1) - torch.bitwise_right_shift(other, 1)
+    remainder = torch.bitwise_and(data, 1) * 1.0 - torch.bitwise_and(other, 1)
+    return quotient * 2.0 + remainder
+
+
 class Normalize(nn.Module):
     r"""Normalize a torch.Tensor image with mean and standard deviation.
 
@@ -402,6 +413,9 @@ def normalize_min_max(
         Input is ``(*, C, H, W)``: minima and maxima are taken over H and W separately for every
         leading index and channel. Constant planes map to min_val. Empty leading dimensions are
         preserved; channel and spatial dimensions must be nonzero.
+        Integer and boolean inputs produce torch's default floating dtype. Integer differences are
+        computed without signed overflow or rounding away small differences at large offsets.
+        Floating inputs retain their dtype.
 
     The data is normalised using the following formulation:
 
@@ -443,10 +457,18 @@ def normalize_min_max(
     if not isinstance(max_val, float):
         raise TypeError(f"'max_val' should be a float. Got: {type(max_val)}.")
 
+    if input.dtype == torch.bool:
+        input = input * 1.0
     shape = input.shape
     x_reshaped = input.flatten(start_dim=-2)
     x_min = x_reshaped.min(-1, keepdim=True)[0]
     x_max = x_reshaped.max(-1, keepdim=True)[0]
 
-    x_out = (max_val - min_val) * (x_reshaped - x_min) / (x_max - x_min + eps) + min_val
+    if not input.is_floating_point() and not input.is_complex():
+        numerator = _integer_difference(x_reshaped, x_min)
+        denominator = _integer_difference(x_max, x_min)
+    else:
+        numerator = x_reshaped - x_min
+        denominator = x_max - x_min
+    x_out = (max_val - min_val) * numerator / (denominator + eps) + min_val
     return x_out.reshape(shape)

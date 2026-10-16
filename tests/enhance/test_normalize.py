@@ -575,6 +575,89 @@ class TestNormalizeIntegerInput(BaseTester):
 
 
 class TestNormalizeMinMax(BaseTester):
+    @pytest.mark.parametrize("input_dtype", [torch.int8, torch.int16, torch.int32, torch.int64])
+    @pytest.mark.parametrize("shape", [(2, 3), (2, 2, 3), (2, 2, 2, 3), (2, 2, 2, 2, 3)])
+    def test_signed_integer_range(self, device, input_dtype, shape):
+        """Subtract extrema in floating point even when their span exceeds the signed pixel range."""
+        limits = torch.iinfo(input_dtype)
+        pixels = torch.tensor([limits.min, 0, limits.max], device=device, dtype=input_dtype)
+        image = pixels.repeat(torch.Size(shape).numel() // 3).reshape(shape).transpose(-1, -2)
+        expected_row = [-1.0, 1.0 / (limits.max - limits.min), 1.0]
+        expected = torch.tensor(expected_row, device=device).repeat(torch.Size(shape).numel() // 3)
+        expected = expected.reshape(shape).transpose(-1, -2)
+
+        actual = kornia.enhance.normalize_min_max(image, min_val=-1.0, max_val=1.0)
+
+        assert actual.dtype == torch.get_default_dtype()
+        assert actual.shape == image.shape
+        assert actual.device == image.device
+        self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("input_dtype", [torch.int32, torch.int64])
+    @pytest.mark.parametrize("offset_kind", ["positive", "negative", "minimum", "maximum"])
+    def test_integer_large_offset(self, device, input_dtype, offset_kind):
+        """Keep small integer differences that casting the pixels to float32 would erase."""
+        limits = torch.iinfo(input_dtype)
+        offset = {"positive": 2**24, "negative": -(2**24), "minimum": limits.min, "maximum": limits.max - 2}[
+            offset_kind
+        ]
+        image = torch.tensor([[offset, offset + 1, offset + 2]], device=device, dtype=input_dtype)
+        expected = torch.tensor([[0.0, 1.0 / (2.0 + 1e-6), 2.0 / (2.0 + 1e-6)]], device=device)
+        self.assert_close(kornia.enhance.normalize_min_max(image), expected)
+
+    @pytest.mark.parametrize(
+        "input_dtype", [torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64, torch.bool]
+    )
+    def test_integer_and_bool_values(self, device, input_dtype):
+        """Integer and boolean planes normalize to the same pixel values as their floating equivalents."""
+        values = [0, 0, 1] if input_dtype == torch.bool else [1, 2, 3]
+        image = torch.tensor(values, device=device, dtype=input_dtype).reshape(1, 1, 1, 3)
+        expected = torch.tensor([0.0, 0.0, 1.0] if input_dtype == torch.bool else [0.0, 0.5, 1.0], device=device)
+        actual = kornia.enhance.normalize_min_max(image)
+        self.assert_close(actual.flatten(), expected)
+
+    @pytest.mark.parametrize(
+        "input_dtype", [torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64, torch.bool]
+    )
+    def test_constant_integer_plane(self, device, input_dtype):
+        """Constant integer planes map to min_val, including a one-pixel boolean mask."""
+        image = torch.ones(2, 3, 1, 1, device=device, dtype=input_dtype)
+        actual = kornia.enhance.normalize_min_max(image, min_val=-2.0, max_val=3.0)
+        self.assert_close(actual, torch.full(image.shape, -2.0, device=device))
+
+    @pytest.mark.parametrize("scripted", [False, True])
+    def test_integer_follows_default_dtype(self, device, scripted):
+        """The integer promotion follows normalize/denormalize and torch's default floating dtype."""
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        image = torch.tensor([-128, 0, 127], device=device, dtype=torch.int8).reshape(1, 3)
+        previous = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(torch.float64)
+            op = kornia.enhance.normalize_min_max
+            actual = (torch.jit.script(op) if scripted else op)(image)
+            expected = torch.tensor([[0.0, 128.0 / (255.0 + 1e-6), 255.0 / (255.0 + 1e-6)]], device=device)
+            assert actual.dtype == torch.float64
+            self.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
+        finally:
+            torch.set_default_dtype(previous)
+
+    @pytest.mark.parametrize("input_dtype", [torch.int8, torch.bool])
+    def test_integer_jit(self, device, input_dtype):
+        """Scripted min-max normalization uses the same integer promotion as eager execution."""
+        values = [-128, 0, 127] if input_dtype == torch.int8 else [0, 1, 0]
+        image = torch.tensor(values, device=device, dtype=input_dtype).reshape(1, 3)
+        op = kornia.enhance.normalize_min_max
+        self.assert_close(torch.jit.script(op)(image), op(image.to(torch.get_default_dtype())))
+
+    @pytest.mark.parametrize("input_dtype", [torch.int8, torch.bool])
+    def test_integer_dynamo(self, device, input_dtype, torch_optimizer):
+        """Compiled min-max normalization keeps integer promotion inside the captured operation."""
+        values = [-128, 0, 127] if input_dtype == torch.int8 else [0, 1, 0]
+        image = torch.tensor(values, device=device, dtype=input_dtype).reshape(1, 3)
+        op = kornia.enhance.normalize_min_max
+        self.assert_close(torch_optimizer(op)(image), op(image.to(torch.get_default_dtype())))
+
     @pytest.mark.parametrize("shape", [(2, 3, 6, 8), (0, 3, 6, 8), (2, 0, 3, 6, 8)])
     def test_dynamo(self, shape, device, dtype, torch_optimizer):
         data = torch.rand(shape, device=device, dtype=dtype)
