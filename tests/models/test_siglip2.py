@@ -192,11 +192,13 @@ class TestSigLip2Builder:
             ("someone/siglip2-base-patch16-224-finetuned", (256000, 768, 12, 12, 224, 16, 512)),
             ("someone/siglip2-large-patch16-384-mirror", (256000, 1024, 24, 16, 384, 16, 512)),
             ("someone/my-siglip", (256000, 768, 12, 12, 224, 16, 512)),
-            # an image size counts only as a whole number of the repository part, after the last "/"
+            # an image size counts only as a whole number, of the repository part after the last "/" first
             ("org2560/siglip2-base-patch16-384", (256000, 768, 12, 12, 384, 16, 512)),
             ("org-256/siglip2-base-patch16-384", (256000, 768, 12, 12, 384, 16, 512)),
             ("x/siglip2-base-patch16-ckpt2560", (256000, 768, 12, 12, 224, 16, 512)),
             ("x/siglip2-base-patch16-224-ckpt2560", (256000, 768, 12, 12, 224, 16, 512)),
+            # the owner part counts when the repository part has no size
+            ("siglip384/finetune", (256000, 768, 12, 12, 384, 16, 512)),
         ],
     )
     def test_from_name_reads_an_unlisted_name_from_its_parts(self, model_name, expected):
