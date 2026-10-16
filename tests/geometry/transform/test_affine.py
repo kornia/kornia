@@ -498,6 +498,29 @@ class TestRescale(BaseTester):
         input = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.Rescale(2.0, align_corners=False), (input,), nondet_tol=1e-8)
 
+    @pytest.mark.parametrize("interpolation", ["nearest", "nearest-exact", "area"])
+    @pytest.mark.parametrize("factor", [0.5, 2.0])
+    def test_non_interpolating_modes_ignore_align_corners_5998(self, interpolation, factor, device, dtype):
+        # The module's default align_corners=True used to reach F.interpolate, which rejects it for these modes.
+        input = torch.rand(2, 3, 4, 6, device=device, dtype=dtype)
+
+        out = kornia.geometry.transform.Rescale(factor, interpolation=interpolation)(input)
+
+        expected = kornia.geometry.transform.rescale(input, factor, interpolation=interpolation)
+        self.assert_close(out, expected, rtol=0.0, atol=0.0)
+        explicit = kornia.geometry.transform.Rescale(factor, interpolation=interpolation, align_corners=False)(input)
+        self.assert_close(explicit, expected, rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("interpolation", ["bilinear", "bicubic"])
+    def test_interpolating_modes_keep_align_corners_default_5998(self, interpolation, device, dtype):
+        # The interpolating modes still use the module's default align_corners=True.
+        input = torch.rand(2, 3, 4, 6, device=device, dtype=dtype)
+
+        out = kornia.geometry.transform.Rescale(0.5, interpolation=interpolation)(input)
+
+        expected = kornia.geometry.transform.rescale(input, 0.5, interpolation=interpolation, align_corners=True)
+        self.assert_close(out, expected, rtol=0.0, atol=0.0)
+
 
 class TestRotate(BaseTester):
     def test_angle90(self, device, dtype):
