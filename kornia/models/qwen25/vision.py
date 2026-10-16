@@ -242,8 +242,8 @@ class Qwen25VisionPatchMerger(nn.Module):
         Returns:
             Merged tokens with shape :math:`(B, N / s^2, D_{out})`, where :math:`s` is the spatial merge size.
         """
-        b = x.shape[0]
-        return self.mlp(self.ln_q(x).reshape(b, -1, self.merged_dim))
+        b, n, d = x.shape
+        return self.mlp(self.ln_q(x).reshape(b, n * d // self.merged_dim, self.merged_dim))
 
 
 class Qwen25VisionTransformer(nn.Module):

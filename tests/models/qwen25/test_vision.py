@@ -72,7 +72,7 @@ def _save_safetensors(tensors: dict[str, torch.Tensor], path: Path) -> None:
 
 
 class TestQwen25VisionTransformer(BaseTester):
-    @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.parametrize("batch_size", [0, 1, 2])
     def test_smoke(self, batch_size, device, dtype):
         model = Qwen25VisionTransformer(_tiny_config()).to(device, dtype).eval()
         images = torch.rand(batch_size, 3, 112, 84, device=device, dtype=dtype)
