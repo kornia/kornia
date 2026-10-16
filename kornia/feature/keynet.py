@@ -63,11 +63,11 @@ class _FeatureExtractor(nn.Module):
     It loads both, the handcrafted and learnable blocks
     """
 
-    def __init__(self) -> None:
+    def __init__(self, num_filters: int = 8) -> None:
         super().__init__()
 
         self.hc_block = _HandcraftedBlock()
-        self.lb_block = _LearnableBlock()
+        self.lb_block = _LearnableBlock(num_filters=num_filters)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x_hc = self.hc_block(x)
@@ -100,12 +100,12 @@ class _LearnableBlock(nn.Sequential):
     It defines the learnable blocks within the Key.Net
     """
 
-    def __init__(self, in_channels: int = 10) -> None:
+    def __init__(self, in_channels: int = 10, num_filters: int = 8) -> None:
         super().__init__()
 
-        self.conv0 = _KeyNetConvBlock(in_channels)
-        self.conv1 = _KeyNetConvBlock()
-        self.conv2 = _KeyNetConvBlock()
+        self.conv0 = _KeyNetConvBlock(in_channels, num_filters)
+        self.conv1 = _KeyNetConvBlock(num_filters, num_filters)
+        self.conv2 = _KeyNetConvBlock(num_filters, num_filters)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # These narrow convolutions benefit from channel-contiguous activations on
@@ -153,7 +153,7 @@ class KeyNet(nn.Module):
     Args:
         pretrained: Download and set pretrained weights to the model.
         keynet_conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing. A
-            ``num_levels`` or ``kernel_size`` other than the default changes the architecture: pass
+            ``num_filters``, ``num_levels`` or ``kernel_size`` other than the default changes the architecture: pass
             ``pretrained=False`` with it, since the strict load of the weights raises ``RuntimeError``.
 
     Returns:
@@ -175,7 +175,7 @@ class KeyNet(nn.Module):
         kernel_size = keynet_conf["kernel_size"]
         padding = kernel_size // 2
 
-        self.feature_extractor = _FeatureExtractor()
+        self.feature_extractor = _FeatureExtractor(num_filters)
         self.last_conv = nn.Sequential(
             nn.Conv2d(
                 in_channels=num_filters * self.num_levels, out_channels=1, kernel_size=kernel_size, padding=padding
@@ -217,7 +217,7 @@ class KeyNetDetector(MultiResolutionDetector):
         pretrained: Download and set pretrained weights to the model.
         num_features: Number of features to detect.
         keynet_conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing. A
-            ``num_levels`` or ``kernel_size`` other than the default changes the architecture: pass
+            ``num_filters``, ``num_levels`` or ``kernel_size`` other than the default changes the architecture: pass
             ``pretrained=False`` with it, since the strict load of the weights raises ``RuntimeError``.
         ori_module: for local feature orientation estimation. Default: :class:`~kornia.feature.PassLAF`,
            which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
