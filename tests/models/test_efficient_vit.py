@@ -144,6 +144,36 @@ class TestEfficientViT:
         for key, val in state_dict.items():
             assert torch.equal(loaded[key], val)
 
+    def test_load_pretrained_returns_eval_mode(self, monkeypatch):
+        state_dict = self._fake_checkpoint()
+        monkeypatch.setattr(
+            "kornia.models.efficient_vit.model.load_state_dict_from_url",
+            lambda *args, **kwargs: {"state_dict": state_dict},
+        )
+
+        model = EfficientViT.from_config(EfficientViTConfig.from_pretrained("b1", 224))
+
+        # ``training`` of the model and of every submodule: ``{False}`` is evaluation mode throughout.
+        assert {m.training for m in model.modules()} == {False}
+
+    @pytest.mark.slow
+    def test_load_pretrained_is_batch_independent(self):
+        model = EfficientViT.from_config(EfficientViTConfig.from_pretrained("b1", 224))
+        running_means = [m.running_mean.clone() for m in model.modules() if isinstance(m, torch.nn.BatchNorm2d)]
+        generator = torch.Generator().manual_seed(0)
+        x1 = torch.rand(1, 3, 224, 256, generator=generator)
+        x2 = torch.rand(1, 3, 224, 256, generator=generator)
+
+        with torch.no_grad():
+            alone = model(x1)["stage_final"][0]
+            batched = model(torch.cat([x1, x2]))["stage_final"][0]
+
+        # In evaluation mode sample 0 does not see sample 1; only the kernels' summation order may change with the
+        # batch size, so the float32 tolerance is widened to 1e-4.
+        torch.testing.assert_close(alone, batched, rtol=1e-4, atol=1e-4)
+        after = [m.running_mean for m in model.modules() if isinstance(m, torch.nn.BatchNorm2d)]
+        assert all(torch.equal(a, b) for a, b in zip(after, running_means))
+
     def _test_smoke(self, device, dtype, img_size: int, expected_resolution: int, model_name: str):
         model = getattr(vit, f"efficientvit_backbone_{model_name}")()
         model = model.to(device=device, dtype=dtype)

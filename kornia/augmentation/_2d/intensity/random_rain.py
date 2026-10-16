@@ -43,6 +43,7 @@ class RandomRain(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - the input must have one or three channels; any other channel count raises on the forward pass.
         - ``drop_height`` runs down rows and ``drop_width`` along columns: both name image axes, not
           drop-local ones, and a negative ``drop_width`` slants the drop the other way across the columns.

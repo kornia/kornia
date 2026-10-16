@@ -90,7 +90,7 @@ class TestDeFMO(BaseTester):
     @pytest.mark.slow
     def test_shape(self, device, dtype):
         inp = torch.ones(1, 6, 128, 160, device=device, dtype=dtype)
-        defmo = DeFMO().to(device, dtype)
+        defmo = DeFMO(pretrained=False).to(device, dtype)
         defmo.eval()  # batchnorm with size 1 is not allowed in train mode
         out = defmo(inp)
         assert out.shape == (1, 24, 4, 128, 160)
@@ -98,7 +98,7 @@ class TestDeFMO(BaseTester):
     @pytest.mark.slow
     def test_shape_batch(self, device, dtype):
         inp = torch.ones(2, 6, 128, 160, device=device, dtype=dtype)
-        defmo = DeFMO().to(device, dtype)
+        defmo = DeFMO(pretrained=False).to(device, dtype).eval()
         out = defmo(inp)
         with torch.no_grad():
             assert out.shape == (2, 24, 4, 128, 160)
@@ -106,7 +106,7 @@ class TestDeFMO(BaseTester):
     @pytest.mark.slow
     def test_gradcheck(self, device):
         patches = torch.rand(2, 6, 64, 64, device=device, dtype=torch.float64)
-        defmo = DeFMO().to(patches.device, patches.dtype)
+        defmo = DeFMO(pretrained=False).to(patches.device, patches.dtype).eval()
         self.gradcheck(defmo, (patches,), eps=1e-4, atol=1e-4, nondet_tol=1e-8)
 
     @pytest.mark.slow
@@ -144,7 +144,7 @@ class TestConventionsDeFMO(BaseTester):
         # matters to the trained weights and is not visible here.
         with torch.random.fork_rng(devices=[]):
             torch.manual_seed(0)
-            model = DeFMO().eval()
+            model = DeFMO(pretrained=False).eval()
         model = model.to(device, dtype)
         values = torch.tensor([-3.0, -1.0, 0.5, 4.0], device=device, dtype=dtype)
         model.rendering.net = _RecordingRenderer(values)

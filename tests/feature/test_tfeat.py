@@ -26,7 +26,7 @@ from testing.base import BaseTester, supports_conv2d
 class TestTFeat(BaseTester):
     def test_shape(self, device):
         inp = torch.ones(1, 1, 32, 32, device=device)
-        tfeat = TFeat().to(device)
+        tfeat = TFeat(pretrained=False).to(device)
         tfeat.eval()  # batchnorm with size 1 is not allowed in train mode
         out = tfeat(inp)
         assert out.shape == (1, 128)
@@ -41,14 +41,14 @@ class TestTFeat(BaseTester):
 
     def test_shape_batch(self, device):
         inp = torch.ones(4, 1, 32, 32, device=device)
-        tfeat = TFeat().to(device)
+        tfeat = TFeat(pretrained=False).to(device).eval()
         out = tfeat(inp)
         assert out.shape == (4, 128)
 
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float64)
-        tfeat = TFeat().to(patches.device, patches.dtype)
+        tfeat = TFeat(pretrained=False).to(patches.device, patches.dtype).eval()
         self.gradcheck(tfeat, (patches,), eps=1e-2, atol=1e-2)
 
     @pytest.mark.slow
@@ -70,7 +70,7 @@ class TestConventionsTFeat(BaseTester):
         if not supports_conv2d(device, dtype):
             pytest.skip(f"no conv2d kernel for {dtype} on {device.type}")
         torch.manual_seed(0)
-        model = TFeat().to(device, dtype)
+        model = TFeat(pretrained=False).to(device, dtype).eval()
         out = model(torch.rand(6, 1, 32, 32, device=device, dtype=dtype))
         assert out.shape == (6, 128)
         assert out.abs().max() <= 1.0

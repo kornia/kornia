@@ -610,11 +610,6 @@ class TestBlurConventions(BaseTester):
         self.assert_close(positive_out + negative_out, torch.zeros_like(positive_out), atol=1e-6, rtol=0)
 
 
-# Twice float32(0.9): the snow coefficient is drawn in float32, so this red channel's HLS lightness equals
-# the drawn coefficient exactly in every dtype, which is what tells the coverage test's `<` from `<=`.
-_SNOW_BOUNDARY_RED = 1.7999999523162842
-
-
 class TestNoiseAndWeatherConventions(BaseTester):
     # ``scale`` is the target area fraction, ``ratio`` is height / width, the box is the half-open
     # ``[ys, ys + h) x [xs, xs + w)`` in ``_params``, and ``value`` is the literal fill.
@@ -1094,15 +1089,9 @@ class TestNoiseAndWeatherConventions(BaseTester):
         for key in ("snow_coefficient", "brightness"):
             assert len(set(shared._params[key].flatten().tolist())) == 1
 
-    # Only a covered pixel (lightness below the coefficient) is scaled and clamped: covered (1.5, 0, 0)
-    # turns white, missed (2, 1.5, 1.5) keeps its values, covered (1.2, -2, -2) turns black.  The two
-    # singular lightnesses collapse whether covered or not: exactly 1 comes back white, exactly 0 black.
-    # The last pixel's lightness equals the coefficient, so coverage is strict ``<``.
-    # Snippet used to generate expected:
-    #   x = torch.tensor([[1.5, 0.0, 0.0], [2.0, 1.5, 1.5], [1.2, -2.0, -2.0], [1.5, 0.5, 0.5],
-    #                     [2.0, -2.0, -2.0], [1.7999999523162842, 0.0, 0.0]]).T.reshape(1, 3, 1, 6)
-    #   torch.manual_seed(0); print(K.RandomSnow(snow_coefficient=(0.9, 0.9), brightness=(2.0, 2.0), p=1.0)(x))
-    def test_convention_random_snow_clamps_only_covered_lightness(self, device, dtype):
+    # Clamp before the HLS conversion (#4430): these pixels become white after lightness scaling,
+    # including the pixels that previously retained values above one or collapsed to black.
+    def test_convention_random_snow_clamps_before_hls_4430(self, device, dtype):
         pixels = torch.tensor(
             [
                 [1.5, 0.0, 0.0],
@@ -1110,7 +1099,7 @@ class TestNoiseAndWeatherConventions(BaseTester):
                 [1.2, -2.0, -2.0],
                 [1.5, 0.5, 0.5],
                 [2.0, -2.0, -2.0],
-                [_SNOW_BOUNDARY_RED, 0.0, 0.0],
+                [1.8, 0.0, 0.0],
             ],
             device=device,
             dtype=dtype,
@@ -1118,11 +1107,14 @@ class TestNoiseAndWeatherConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         aug = K.RandomSnow(snow_coefficient=(0.9, 0.9), brightness=(2.0, 2.0), p=1.0)
         out = aug(pixels.T.reshape(1, 3, 1, 6).contiguous())[0, :, 0].T
-        self.assert_close(out[:3], pixels.new_tensor([[1.0, 1.0, 1.0], [2.0, 1.5, 1.5], [0.0, 0.0, 0.0]]))
-        # Lightness exactly at the coefficient is missed, so the pixel survives the round trip unchanged.
-        self.assert_close(out[5], pixels[5])
-        self.assert_close(out[3], pixels.new_ones(3))
-        self.assert_close(out[4], pixels.new_zeros(3))
+        self.assert_close(out, torch.ones_like(pixels))
+
+    def test_convention_random_snow_coverage_is_strictly_below_coefficient(self, device, dtype):
+        # Binary-exact lightness values on either side of and at 0.25 discriminate < from <= in every dtype.
+        pixels = torch.tensor([[0.25, 0.0, 0.0], [0.5, 0.0, 0.0], [0.75, 0.0, 0.0]], device=device, dtype=dtype)
+        aug = K.RandomSnow(snow_coefficient=(0.25, 0.25), brightness=(2.0, 2.0), p=1.0)
+        out = aug(pixels.T.reshape(1, 3, 1, 3).contiguous())[0, :, 0].T
+        self.assert_close(out, pixels.new_tensor([[0.5, 0.0, 0.0], [0.5, 0.0, 0.0], [0.75, 0.0, 0.0]]))
 
     # Every achromatic pixel -- black, gray or white -- stays finite through the HLS round trip (#4571).
     @pytest.mark.parametrize("value", [0.0, 0.5, 1.0])

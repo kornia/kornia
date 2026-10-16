@@ -481,7 +481,7 @@ class TestLAFAffNetShapeEstimator(BaseTester):
     def test_singular_prediction_falls_back_upright(self, device, dtype):
         img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
         laf = torch.tensor([[[[0.0, 8.0, 16.0], [-8.0, 0.0, 16.0]]]], device=device, dtype=dtype)
-        aff = LAFAffNetShapeEstimator(preserve_orientation=False).to(device, dtype)
+        aff = LAFAffNetShapeEstimator(pretrained=False, preserve_orientation=False).to(device, dtype).eval()
         aff.features = SingularAffNetOutput()
         out = aff(laf, img)
         self.assert_close(out, make_upright(laf))
@@ -493,7 +493,11 @@ class TestLAFAffNetShapeEstimator(BaseTester):
         # make_upright(laf), so the image region is frame @ P: an identity prediction keeps the input shape.
         img = torch.rand(1, 1, 48, 64, device=device, dtype=dtype)
         laf = _laf_with_shape(_SKEWED_SHAPE, (30.0, 22.0), device, dtype)
-        aff = LAFAffNetShapeEstimator(preserve_orientation=preserve_orientation).to(device, dtype)
+        aff = (
+            LAFAffNetShapeEstimator(pretrained=False, preserve_orientation=preserve_orientation)
+            .to(device, dtype)
+            .eval()
+        )
         aff.features = ConstantAffNetOutput(xy)
         out = aff(laf, img)
         frame = make_upright(laf)[0, 0, :, :2].cpu().double()
@@ -529,7 +533,11 @@ class TestLAFAffNetShapeEstimator(BaseTester):
             pytest.skip("MPS autocast changes the effective dtype")
         img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype, requires_grad=True)
         laf = torch.tensor([[[[0.0, 0.0, 16.0], [0.0, 0.0, 16.0]]]], device=device, dtype=dtype, requires_grad=True)
-        aff = LAFAffNetShapeEstimator(pretrained=False, preserve_orientation=preserve_orientation).to(device, dtype)
+        aff = (
+            LAFAffNetShapeEstimator(pretrained=False, preserve_orientation=preserve_orientation)
+            .to(device, dtype)
+            .eval()
+        )
         aff.features = SingularAffNetOutput()
 
         out = aff(laf, img)
@@ -560,12 +568,12 @@ class TestLAFAffNetShapeEstimator(BaseTester):
     def test_shape_batch(self, device):
         inp = torch.rand(2, 1, 32, 32, device=device)
         laf = torch.rand(2, 5, 2, 3, device=device)
-        ori = LAFAffNetShapeEstimator().to(device).eval()
+        ori = LAFAffNetShapeEstimator(pretrained=False).to(device).eval()
         out = ori(laf, inp)
         assert out.shape == laf.shape
 
     def test_print(self, device):
-        sift = LAFAffNetShapeEstimator()
+        sift = LAFAffNetShapeEstimator(pretrained=False)
         sift.__repr__()
 
     def test_toy(self, device, dtype):
@@ -611,7 +619,11 @@ class TestLAFAffNetShapeEstimator(BaseTester):
         xy = (0.2, -0.3, -0.4)
         img = torch.rand(1, 1, 96, 128, device=device, dtype=dtype)
         laf = _laf_with_shape(_LARGE_SHAPE, (70.0, 41.0), device, dtype)
-        aff = LAFAffNetShapeEstimator(preserve_orientation=preserve_orientation).to(device, dtype)
+        aff = (
+            LAFAffNetShapeEstimator(pretrained=False, preserve_orientation=preserve_orientation)
+            .to(device, dtype)
+            .eval()
+        )
         aff.features = ConstantAffNetOutput(xy)
         out = aff(laf, img)
         assert out.dtype == dtype

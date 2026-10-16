@@ -77,3 +77,13 @@ class TestVisionTransformer(BaseTester):
         with torch.no_grad():
             out = model(torch.rand(1, 3, 224, 224))
         assert out.shape == (1, 50, 384)
+
+    @pytest.mark.device_agnostic
+    def test_from_config_mode(self, monkeypatch):
+        state_dict = VisionTransformer.from_config("vit_ti/16").state_dict()
+        monkeypatch.setattr("kornia.models.vit.load_state_dict_from_url", lambda *args, **kwargs: state_dict)
+
+        # ``training`` of the model and of every submodule: ``{False}`` is evaluation mode throughout.
+        assert {m.training for m in VisionTransformer.from_config("vit_ti/16", pretrained=True).modules()} == {False}
+        assert {m.training for m in VisionTransformer.from_config("vit_ti/16").modules()} == {True}
+        assert {m.training for m in VisionTransformer.from_config("vit_ti/16", pretrained=False).modules()} == {True}

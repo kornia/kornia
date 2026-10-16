@@ -58,9 +58,12 @@ class HardNet(nn.Module):
           ``1e-5`` to the variance, so for SOSNet and TFeat a low-contrast patch in ``[0, 1]`` can already give a
           different descriptor than the same patch in ``[0, 255]``. HyNet is invariant to a scale only; see its
           Convention block.
-        - The descriptors have unit L2 norm, except TFeat's (see its Convention block); with ``pretrained=False``,
-          HardNet and HardNet8 map a flat patch to an all-zero descriptor.
-        - ``pretrained=False``, the default, leaves the weights randomly initialised.
+        - The descriptors have unit L2 norm, except TFeat's (see its Convention block); with ``pretrained=False``
+          and ``.eval()`` (the initial BatchNorm statistics), HardNet and HardNet8 map a flat patch to an all-zero
+          descriptor.
+        - ``pretrained=True``, the default, downloads the trained weights (Liberty with augmentation for HardNet,
+          ``hardnet8v2`` for HardNet8) and returns the model in evaluation mode. ``pretrained=False`` gives random
+          weights in training mode; call ``.eval()`` before inference.
 
     Args:
         pretrained: Download and set pretrained weights to the model.
@@ -74,14 +77,14 @@ class HardNet(nn.Module):
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
-        >>> hardnet = HardNet()
+        >>> hardnet = HardNet(pretrained=False).eval()
         >>> descs = hardnet(input) # 16x128
 
     """
 
     patch_size = 32
 
-    def __init__(self, pretrained: bool = False) -> None:
+    def __init__(self, pretrained: bool = True) -> None:
         super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(1, 32, kernel_size=3, padding=1, bias=False),
@@ -111,7 +114,7 @@ class HardNet(nn.Module):
         if pretrained:
             pretrained_dict = load_state_dict_from_url(urls["liberty_aug"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict["state_dict"], strict=True)
-        self.eval()
+            self.eval()
 
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
@@ -171,14 +174,14 @@ class HardNet8(nn.Module):
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
-        >>> hardnet = HardNet8()
+        >>> hardnet = HardNet8(pretrained=False).eval()
         >>> descs = hardnet(input) # 16x128
 
     """
 
     patch_size = 32
 
-    def __init__(self, pretrained: bool = False) -> None:
+    def __init__(self, pretrained: bool = True) -> None:
         super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(1, 32, kernel_size=3, padding=1, bias=False),
@@ -216,7 +219,7 @@ class HardNet8(nn.Module):
         if pretrained:
             pretrained_dict = load_state_dict_from_url(urls["hardnet8v2"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
-        self.eval()
+            self.eval()
 
     @staticmethod
     def weights_init(m: object) -> None:

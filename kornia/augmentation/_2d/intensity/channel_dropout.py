@@ -44,6 +44,7 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         - Output: :math:`(C, H, W)` or :math:`(B, C, H, W)`
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - the channels named by the drawn ``channel_idx`` are overwritten with the literal ``fill_value``, an
           ``int`` or ``float`` in ``[0, 1]`` checked at construction. Every other channel is left exactly as it
           came in, so the input's value range is carried through.

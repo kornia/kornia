@@ -150,7 +150,7 @@ class TestInterpolateSparse2d(BaseTester):
 
 class TestXFeat(BaseTester):
     def test_smoke(self, device, dtype):
-        model = XFeat().to(device)
+        model = XFeat().to(device).eval()
         x = torch.rand(1, 3, 64, 64, device=device)
         out = model.detectAndCompute(x)
         assert isinstance(out, list)
@@ -160,7 +160,7 @@ class TestXFeat(BaseTester):
         assert "descriptors" in out[0]
 
     def test_cardinality(self, device, dtype):
-        model = XFeat().to(device)
+        model = XFeat().to(device).eval()
         B = 2
         x = torch.rand(B, 3, 64, 64, device=device)
         out = model.detectAndCompute(x)
@@ -171,7 +171,7 @@ class TestXFeat(BaseTester):
             assert item["descriptors"].shape == (N, 64)
 
     def test_exception(self, device, dtype):
-        model = XFeat().to(device)
+        model = XFeat().to(device).eval()
         with pytest.raises(Exception):
             model.detectAndCompute(torch.rand(3, 64, 64, device=device))  # missing batch dim
 
@@ -179,7 +179,7 @@ class TestXFeat(BaseTester):
     def test_wart_half_weights_raise_5957(self, half, device):
         # Known defect #5957: _preprocess_tensor calls x.float(), so half-precision weights meet float32 input.
         # CPU: "expected scalar type Float but found Half"; MPS and CUDA: "Input type (...) and weight type (...)".
-        model = XFeat().to(device, half)
+        model = XFeat().to(device, half).eval()
         with pytest.raises(
             RuntimeError, match=r"expected scalar type Float but found|Input type \(.*\) and weight type"
         ):
@@ -192,7 +192,7 @@ class TestXFeat(BaseTester):
         pass  # inference_mode and dynamic NMS control flow; not torch.compile compatible
 
     def test_descriptors_normalized(self, device, dtype):
-        model = XFeat().to(device)
+        model = XFeat().to(device).eval()
         x = torch.rand(1, 3, 64, 64, device=device)
         out = model.detectAndCompute(x)
         if out[0]["descriptors"].numel() == 0:
@@ -202,14 +202,14 @@ class TestXFeat(BaseTester):
 
     def test_top_k_respected(self, device, dtype):
         top_k = 16
-        model = XFeat(top_k=top_k).to(device)
+        model = XFeat(top_k=top_k).to(device).eval()
         x = torch.rand(1, 3, 128, 128, device=device)
         out = model.detectAndCompute(x, top_k=top_k)
         assert out[0]["keypoints"].shape[0] <= top_k
 
     def test_keypoint_coordinates_in_image(self, device, dtype):
         H, W = 64, 96
-        model = XFeat().to(device)
+        model = XFeat().to(device).eval()
         x = torch.rand(1, 3, H, W, device=device)
         out = model.detectAndCompute(x)
         if out[0]["keypoints"].numel() == 0:
@@ -222,7 +222,7 @@ class TestXFeat(BaseTester):
 
     def test_dense_output_shapes(self, device, dtype):
         top_k = 32
-        model = XFeat(top_k=top_k).to(device)
+        model = XFeat(top_k=top_k).to(device).eval()
         x = torch.rand(1, 3, 64, 64, device=device)
         out = model.detectAndComputeDense(x, top_k=top_k, multiscale=False)
         assert "keypoints" in out
@@ -233,7 +233,7 @@ class TestXFeat(BaseTester):
         assert out["keypoints"].shape[1] == out["descriptors"].shape[1]
 
     def test_match_xfeat_returns_paired_keypoints(self, device, dtype):
-        model = XFeat().to(device)
+        model = XFeat().to(device).eval()
         img1 = torch.rand(1, 3, 64, 64, device=device)
         img2 = torch.rand(1, 3, 64, 64, device=device)
         mkpts0, mkpts1 = model.match_xfeat(img1, img2)
@@ -672,14 +672,14 @@ class TestConventionsXFeat(BaseTester):
         xfeat.detectAndComputeDense(image, 5)
         assert len(sizes) == 2
 
-    def test_convention_xfeat_default_constructor_is_in_eval_mode_and_inference_does_not_touch_batchnorm_stats(
-        self, device, dtype
-    ):
-        # XFeat() starts in eval mode like XFeat.from_pretrained and the reference: BatchNorm would otherwise use batch
+    def test_convention_xfeat_random_init_is_training_and_eval_inference_keeps_batchnorm_stats(self, device, dtype):
+        # XFeat() builds random weights and stays in PyTorch's training mode, where BatchNorm would use batch
         # statistics (each keypoint depends on the rest of the batch), update its running statistics on every
-        # inference call, and raise on a single match.
+        # inference call, and raise on a single match. XFeat.from_pretrained returns evaluation mode; .eval() on the
+        # random model gives the same inference semantics.
         torch.manual_seed(0)
-        xfeat = XFeat()
+        xfeat = XFeat().eval()
+        assert XFeat().training
         assert not xfeat.training
         xfeat = xfeat.to(device)
         image = torch.rand(2, 3, 64, 64, device=device)
@@ -693,7 +693,7 @@ class TestConventionsXFeat(BaseTester):
 
     def test_smoke_xfeat_star_default_constructor_top_k_1_batched(self, device, dtype):
         torch.manual_seed(0)
-        xfeat = XFeat().to(device)
+        xfeat = XFeat().to(device).eval()
         image = torch.rand(2, 3, 64, 64, device=device)
         matches = xfeat.match_xfeat_star(image, image, top_k=1)
         assert len(matches) == 2
@@ -705,7 +705,7 @@ class TestConventionsXFeat(BaseTester):
         if torch.device(device).type != "cpu":
             pytest.skip("CPU autocast")
         torch.manual_seed(0)
-        xfeat = XFeat().to(device)
+        xfeat = XFeat().to(device).eval()
         image = torch.rand(2, 3, 64, 64, device=device)
         with torch.autocast("cpu", dtype=torch.bfloat16):
             small = xfeat.detectAndComputeDense(image, 4)
@@ -820,6 +820,6 @@ class TestConventionsXFeat(BaseTester):
             else:
                 segments = torch.tensor([[[10.0, 10.0], [50.0, 90.0]], [[20.0, 70.0], [55.0, 20.0]]])
                 maps = torch.rand(2, 1, 128, 24, 32, dtype=dtype)
-                SOLD2(pretrained=False).match(segments, segments + 1.0, maps[0], maps[1])
+                SOLD2(pretrained=False).eval().match(segments, segments + 1.0, maps[0], maps[1])
         assert calls
         assert set(calls) == {(dtype, dtype)}

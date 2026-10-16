@@ -284,7 +284,7 @@ class LAFAffNetShapeEstimator(nn.Module):
 
     """
 
-    def __init__(self, pretrained: bool = False, preserve_orientation: bool = True) -> None:
+    def __init__(self, pretrained: bool = True, preserve_orientation: bool = True) -> None:
         super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(1, 16, kernel_size=3, padding=1, bias=False),
@@ -315,8 +315,8 @@ class LAFAffNetShapeEstimator(nn.Module):
         if pretrained:
             pretrained_dict = load_state_dict_from_url(urls["affnet"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict["state_dict"], strict=False)
+            self.eval()
         self.preserve_orientation = preserve_orientation
-        self.eval()
 
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:

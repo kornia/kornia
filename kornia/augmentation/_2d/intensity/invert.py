@@ -40,6 +40,7 @@ class RandomInvert(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - the output is ``max_val - input``, with no clamp, so an input outside ``[0, max_val]`` comes
           back outside it rather than clipped. ``max_val`` describes the input's maximum, so it has to be
           set to match an input that is not in ``[0, 1]``.

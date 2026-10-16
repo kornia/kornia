@@ -51,6 +51,7 @@ class RandomErasing(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - ``scale`` is the fraction of the image *area* the rectangle targets and ``ratio`` is its height over
           its width, so a ratio above ``1`` targets a tall box and below ``1`` a wide one. The box is rounded
           to whole pixels and then clamped to ``[1, H] x [1, W]``, so it is never empty and never larger than the

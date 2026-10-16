@@ -35,7 +35,7 @@ class TestHyNet(BaseTester):
 
     def test_shape(self, device):
         inp = torch.ones(1, 1, 32, 32, device=device)
-        hynet = HyNet().to(device)
+        hynet = HyNet(pretrained=False).to(device).eval()
         out = hynet(inp)
         assert out.shape == (1, 128)
 
@@ -43,17 +43,17 @@ class TestHyNet(BaseTester):
     def test_wrong_patch_shape_is_rejected_5724(self, device, shape):
         # without the check a 40x40 patch silently produced a (2, 1152) descriptor
         with pytest.raises(ShapeError):
-            HyNet().to(device)(torch.ones(*shape, device=device))
+            HyNet(pretrained=False).to(device).eval()(torch.ones(*shape, device=device))
 
     def test_shape_batch(self, device):
         inp = torch.ones(4, 1, 32, 32, device=device)
-        hynet = HyNet().to(device)
+        hynet = HyNet(pretrained=False).to(device).eval()
         out = hynet(inp)
         assert out.shape == (4, 128)
 
     def test_gradcheck(self, device):
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float64)
-        hynet = HyNet().to(patches.device, patches.dtype)
+        hynet = HyNet(pretrained=False).to(patches.device, patches.dtype).eval()
         self.gradcheck(hynet, (patches,), eps=1e-4, atol=1e-4, nondet_tol=1e-8)
 
     @pytest.mark.parametrize("patch_value", [0.0, 0.5])
@@ -66,7 +66,7 @@ class TestHyNet(BaseTester):
         # float32's exponent range and never had that failure, but on CPU both half dtypes used to
         # raise out of `avg_pool3d` before reaching the division at all, so both are pinned here.
         patches = torch.full((2, 1, 32, 32), patch_value, device=device, dtype=dtype)
-        hynet = HyNet(is_bias=is_bias).to(device, dtype).eval()
+        hynet = HyNet(pretrained=False, is_bias=is_bias).to(device, dtype).eval()
         descriptors = hynet(patches)
         assert torch.isfinite(descriptors).all(), (
             f"{int((~torch.isfinite(descriptors)).sum())} non-finite descriptor entries"
@@ -79,7 +79,7 @@ class TestHyNet(BaseTester):
         # NaN if the branch is dropped. `cudnn_tf32_follows_option` is what makes the float32 leg
         # meaningful on CUDA; see its docstring.
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=dtype)
-        model = HyNet().to(device, dtype).eval()
+        model = HyNet(pretrained=False).to(device, dtype).eval()
         op = torch_optimizer(model)
         self.assert_close(op(patches), model(patches))
 
@@ -88,7 +88,7 @@ class TestHyNet(BaseTester):
         # `export-support.rst` publishes HyNet as capturable with zero graph breaks. The dtype branch
         # reads static metadata and must not become the thing that breaks the graph.
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=dtype)
-        model = HyNet().to(device, dtype).eval()
+        model = HyNet(pretrained=False).to(device, dtype).eval()
         expected = model(patches)
         torch._dynamo.reset()
         compiled = torch.compile(model, fullgraph=True)
@@ -97,7 +97,7 @@ class TestHyNet(BaseTester):
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 32, 32
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        model = HyNet().to(patches.device, patches.dtype).eval()
+        model = HyNet(pretrained=False).to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(model)
         self.assert_close(model(patches), model_jit(patches))
 
@@ -113,7 +113,7 @@ class TestConventionsHyNet(BaseTester):
         if not supports_conv2d(device, dtype):
             pytest.skip(f"no conv2d kernel for {dtype} on {device.type}")
         torch.manual_seed(0)
-        model = HyNet().to(device, dtype)
+        model = HyNet(pretrained=False).to(device, dtype).eval()
         patches = torch.rand(4, 1, 32, 32, device=device, dtype=dtype)
         desc = model(patches)
         self.assert_close(model(255 * patches), desc)

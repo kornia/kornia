@@ -191,7 +191,10 @@ def affine(
     if tensor.shape[0] == 1 and matrix.shape[0] != 1:
         tensor = tensor.expand(matrix.shape[0], tensor.shape[1], tensor.shape[2], tensor.shape[3])
 
-    matrix = matrix.expand(tensor.shape[0], -1, -1)
+    # Keep a shared matrix singleton so warp_affine builds only one sampling grid.
+    # Keep parameter-gradient reductions in their original order, and retain batch validation.
+    if matrix.shape[0] != 1 or tensor.shape[0] == 0 or matrix.requires_grad:
+        matrix = matrix.expand(tensor.shape[0], -1, -1)
 
     # warp the input tensor
     height: int = tensor.shape[-2]
@@ -326,8 +329,22 @@ def rotate(
 
     # compute the rotation matrix
     # TODO: add broadcasting to get_rotation_matrix2d for center
-    angle = angle.expand(tensor.shape[0])
-    center = center.expand(tensor.shape[0], -1)
+    # A singleton angle and center describe one transform shared by all images. Keep
+    # it singleton through affine so warp_affine can reuse its sampling grid. Trainable
+    # parameters keep the original reduction order, which matters for half-precision gradients.
+    batch = tensor.shape[0]
+    if (
+        tensor.dim() == 4
+        and batch > 0
+        and angle.shape == (1,)
+        and not angle.requires_grad
+        and not center.requires_grad
+        and (center.shape == (2,) or center.shape == (1, 2))  # noqa: PLR1714 - TorchScript shape checks
+        and not torch.jit.is_tracing()
+    ):
+        batch = 1
+    angle = angle.expand(batch)
+    center = center.expand(batch, -1)
     rotation_matrix: torch.Tensor = _compute_rotation_matrix(angle, center)
 
     # warp using the affine transform

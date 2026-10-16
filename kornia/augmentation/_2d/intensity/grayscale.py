@@ -51,6 +51,7 @@ class RandomGrayscale(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - the channel count is preserved: the single weighted average is broadcast back over the input's
           channels, so every output channel of a sample carries the same value.
         - a three-channel input uses the RGB luminance weights by default; any other channel count

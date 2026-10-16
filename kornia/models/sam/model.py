@@ -151,7 +151,8 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
                     the parameters set.
 
         Returns:
-            The respective SAM model
+            The respective SAM model, in evaluation mode when it loads weights (``config.pretrained`` or
+            ``config.checkpoint``) and in training mode otherwise (see :ref:`pretrained-models-conventions`).
 
         Example:
             >>> from kornia.models.sam import SamConfig
@@ -243,6 +244,7 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
 
         if checkpoint:
             model.load_checkpoint(checkpoint)
+            model.eval()
 
         return model
 

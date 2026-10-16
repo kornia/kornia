@@ -296,7 +296,8 @@ class VisionTransformer(nn.Module):
             kwargs: other keyword arguments that will be passed to :func:`kornia.models.vit.VisionTransformer`.
 
         Returns:
-            The respective ViT model
+            The respective ViT model, in evaluation mode when ``pretrained=True`` loads weights and in training mode
+            otherwise (see :ref:`pretrained-models-conventions`).
 
         Example:
             >>> from kornia.models.vit import VisionTransformer
@@ -321,6 +322,7 @@ class VisionTransformer(nn.Module):
             url = _get_weight_url(variant)
             state_dict = load_state_dict_from_url(url)
             model.load_state_dict(state_dict)
+            model.eval()
 
         return model
 
