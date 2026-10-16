@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import math
-from typing import Callable
+from typing import Callable, Optional, Union
 
 import torch
 from torch import Tensor, nn
@@ -43,25 +43,20 @@ class NaFlex(nn.Module):
 
     Args:
         patch_embedding_fcn: A callable (e.g., Conv2d) that takes images and returns
-            patch embeddings of shape :math:`(B, C, h, w)` or :math:`(B, N, C)`. A :math:`(B, N, C)` output carries
-            no grid, so it is read from the :math:`H \times W` image, in raster order. First as the grid of
-            :math:`N` cells with the image's aspect ratio, :math:`h = \mathrm{round}(\sqrt{N H / W})` rows of
-            :math:`w = N / h` patches, used when it has :math:`N` cells and some integer :math:`p` gives
-            :math:`H // p = h` and :math:`W // p = w`: that is the grid of whole :math:`p \times p` patches with the
-            remainder dropped (a ``Conv2d`` with kernel and stride :math:`p`), always so when H and W are multiples of
-            the patch size. Otherwise, when :math:`N` is a square number, as the square grid
-            :math:`\sqrt{N} \times \sqrt{N}`, which covers square-grid embeddings such as a strided convolution or
-            non-square patches tiling a non-square image; any other :math:`N` raises. :math:`N` alone cannot tell two
-            embeddings with the same token count apart: non-square patches whose grid is not the square-patch
-            reading, e.g. :math:`8 \times 32` patches of a :math:`128 \times 512` image (a :math:`16 \times 16`
-            grid), are read as the square-patch grid :math:`8 \times 32`. Such an embedding should return
-            :math:`(B, C, h, w)`, whose grid is not inferred. With square patches and sides that are not patch
-            multiples, the square fallback can also differ from the true grid (e.g. :math:`2 \times 2` patches of an
-            :math:`8 \times 3` image, a :math:`4 \times 1` grid, are read as :math:`2 \times 2`).
+            patch embeddings of shape :math:`(B, C, h, w)` or :math:`(B, N, C)`. A :math:`(B, C, h, w)` output gives
+            the patch grid. A :math:`(B, N, C)` output carries no grid: without ``patch_size`` its :math:`N` tokens
+            are read as a square :math:`\sqrt{N} \times \sqrt{N}` grid in raster order, and a :math:`N` that is not
+            a square number raises. A non-square grid therefore needs ``patch_size`` or a :math:`(B, C, h, w)` output:
+            the :math:`8 \times 32` grid of a :math:`128 \times 512` image at patch 16 is read right with
+            ``patch_size=16``, and as :math:`16 \times 16` without it.
         position_embedding: Position embedding table of shape :math:`(S^2, C)`, the raster-order rows of an
             :math:`S \times S` grid, to be interpolated to match input resolution. An ``nn.Parameter`` stays a
             parameter of the module, so it is trained with it; any other tensor is registered as a buffer. A table
             that is not a square grid is added as is when it has one row per patch.
+        patch_size: The patch size :math:`p` or :math:`(p_h, p_w)` of a patch embedding that returns
+            :math:`(B, N, C)`, which then has the grid :math:`(H // p_h, W // p_w)` of whole patches with the remainder
+            dropped (a ``Conv2d`` with that kernel and stride); the grid must have :math:`N` cells. Ignored for a
+            :math:`(B, C, h, w)` output. Default: ``None``, the square reading above.
 
     Note:
         A float16 or bfloat16 table on the CPU is resized in float32 and cast back, as transformers does: the CPU has
@@ -94,9 +89,15 @@ class NaFlex(nn.Module):
         self,
         patch_embedding_fcn: Callable[[Tensor], Tensor],
         position_embedding: Tensor,
+        patch_size: Optional[Union[int, tuple[int, int]]] = None,
     ) -> None:
         super().__init__()
         self.patch_embedding_fcn = patch_embedding_fcn
+        self.patch_size: Optional[tuple[int, int]] = None
+        if patch_size is not None:
+            self.patch_size = (
+                (patch_size, patch_size) if isinstance(patch_size, int) else (patch_size[0], patch_size[1])
+            )
         if isinstance(position_embedding, nn.Parameter):
             self.position_embedding = position_embedding
         else:
@@ -113,10 +114,9 @@ class NaFlex(nn.Module):
 
         Raises:
             ValueError: If original positional embedding does not form a square grid and does not have one row per
-                patch, or if the :math:`N` tokens of a :math:`(B, N, C)` patch output form no grid of the image's
-                aspect ratio and :math:`N` is not a square number.
-            BaseError: If the grid of the image's aspect ratio has :math:`N` cells but no integer patch size
-                :math:`p` gives it (:math:`H // p = h` and :math:`W // p = w`), and :math:`N` is not a square number.
+                patch.
+            BaseError: If a :math:`(B, N, C)` patch output's grid cannot be read: with ``patch_size``, when
+                :math:`(H // p_h) (W // p_w) \neq N`; without it, when :math:`N` is not a square number.
         """
         embeddings = self.patch_embedding_fcn(pixel_values)
         grid = embeddings.shape[2:] if embeddings.ndim == 4 else None
@@ -131,7 +131,7 @@ class NaFlex(nn.Module):
             if orig_num == num_patches:
                 return embeddings + position_embedding.unsqueeze(0)
             raise ValueError(f"Original positional embedding is not a square grid (got {orig_num} embeddings)")
-        h_grid, w_grid = grid if grid is not None else self._read_grid(num_patches, *pixel_values.shape[-2:])
+        h_grid, w_grid = grid if grid is not None else self._token_grid(num_patches, *pixel_values.shape[-2:])
         if (h_grid, w_grid) == (orig_grid, orig_grid):
             return embeddings + position_embedding.unsqueeze(0)
         # transformers always passes antialias=True. Antialiasing only changes a downsampled axis: an upsampled one
@@ -156,49 +156,30 @@ class NaFlex(nn.Module):
 
         return embeddings + pos_resized.unsqueeze(0)
 
-    @staticmethod
-    def _read_grid(num_patches: int, height: int, width: int) -> tuple[int, int]:
-        """Read the patch grid of ``num_patches`` tokens of a ``height x width`` image.
+    def _token_grid(self, num_patches: int, height: int, width: int) -> tuple[int, int]:
+        """Return the patch grid of the ``num_patches`` tokens of a ``height x width`` image.
 
-        The grid of the image's aspect ratio when it has ``num_patches`` cells and some integer patch size ``p`` gives
-        it, else the square grid when ``num_patches`` is a square number.
+        ``(height // p_h, width // p_w)`` with ``patch_size``, else the square grid of a square ``num_patches``.
 
         Raises:
-            ValueError: if no grid of the aspect ratio has ``num_patches`` cells and ``num_patches`` is not square.
-            BaseError: if the grid of the aspect ratio has ``num_patches`` cells, no integer patch size ``p`` gives it
-                (``height // p = h`` and ``width // p = w``), and ``num_patches`` is not square.
+            BaseError: if that grid does not have ``num_patches`` cells, or without ``patch_size`` if
+                ``num_patches`` is not a square number.
         """
-        h_grid = max(1, round(math.sqrt(num_patches * height / width)))
-        w_grid = num_patches // h_grid
-        factorizes = h_grid * w_grid == num_patches
-        consistent = False
-        if factorizes:
-            # The aspect-ratio reading can transpose the grid of an image whose sides are not multiples of the patch
-            # size (48 x 47 at patch 16 has the grid 3 x 2 and is read as 2 x 3). It is the grid (H // p, W // p) of a
-            # p x p patching exactly when some integer p gives H // p == h and W // p == w: p must lie in
-            # (H / (h + 1), H / h] and in (W / (w + 1), W / w].
-            p_min = max(height // (h_grid + 1), width // (w_grid + 1)) + 1
-            p_max = min(height // h_grid, width // w_grid)
-            consistent = p_min <= p_max
-            if consistent:
-                return h_grid, w_grid
-        # Otherwise a square number of tokens is read as the square grid, as NaFlex always read a (B, N, C) output: it
-        # is right for square-grid embeddings that no whole p x p patching explains, such as a stride-2 3 x 3
-        # convolution (9 x 9 tokens of a 20 x 20 image) or (16, 32) patches of a 256 x 512 image (16 x 16 tokens).
-        side = math.isqrt(num_patches)
-        if side * side == num_patches:
-            return side, side
-        if not factorizes:
-            raise ValueError(
-                f"Cannot read the {num_patches} patch embeddings of a {height} x {width} image as a grid: the grid "
-                f"of that aspect ratio, {h_grid} x {w_grid}, has {h_grid * w_grid} cells, and {num_patches} is not a "
-                "square number."
+        if self.patch_size is not None:
+            patch_h, patch_w = self.patch_size
+            h_grid, w_grid = height // patch_h, width // patch_w
+            KORNIA_CHECK(
+                h_grid * w_grid == num_patches,
+                f"NaFlex reads the grid of a (B, N, C) patch output from patch_size={self.patch_size}: a {height} x "
+                f"{width} image has a {h_grid} x {w_grid} grid of {h_grid * w_grid} patches, but the patch embedding "
+                f"returned {num_patches}.",
             )
+            return h_grid, w_grid
+        side = math.isqrt(num_patches)
         KORNIA_CHECK(
-            consistent,
-            f"NaFlex reads the grid of a (B, N, C) patch output from the image shape: {num_patches} patch embeddings "
-            f"of a {height} x {width} image read as a {h_grid} x {w_grid} grid, which no whole patch size p gives "
-            f"({height} // p == {h_grid} and {width} // p == {w_grid}), and {num_patches} is not a square number. Use "
-            "an image whose sides are multiples of the patch size, or a patch embedding that returns (B, C, h, w).",
+            side * side == num_patches,
+            f"NaFlex reads a (B, N, C) patch output without patch_size as a square grid, but {num_patches} patch "
+            "embeddings are not a square number. Pass patch_size to NaFlex, or make the patch embedding return "
+            "(B, C, h, w).",
         )
-        return h_grid, w_grid
+        return side, side

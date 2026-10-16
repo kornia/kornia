@@ -137,48 +137,45 @@ class TestNaFlex(BaseTester):
         out = NaFlex(_zero_patches, table)(torch.zeros(3, 3, 128, 512, device=device, dtype=dtype))
         self.assert_close(out, _reference_positions(table, 8, 32).expand(3, -1, -1))
 
-    @pytest.mark.parametrize(("height", "width"), [(128, 512), (192, 336)])
-    def test_bnc_patch_output_uses_the_image_aspect(
+    @pytest.mark.parametrize(("height", "width"), [(128, 512), (192, 336), (40, 63), (230, 230)])
+    def test_bnc_patch_output_with_patch_size(
         self, device: torch.device, dtype: torch.dtype, height: int, width: int
     ) -> None:
-        # A (B, N, C) patch output carries no grid shape: it is the one of the image's aspect ratio with N cells,
-        # 8 x 32 for 128 x 512 and 12 x 21 for 192 x 336 at patch 16.
+        # A (B, N, C) patch output carries no grid; patch_size=16 gives (H // 16, W // 16): 8 x 32 for 128 x 512 (the
+        # 256 tokens a square reading takes for 16 x 16), 12 x 21 for 192 x 336, and 2 x 3 and 14 x 14 for sides that
+        # are not multiples of 16 (the conv drops the remainder). The same as the (B, C, h, w) output and the reference.
         table = torch.randn(256, _CHANNELS, device=device, dtype=dtype)
         images = torch.zeros(3, 3, height, width, device=device, dtype=dtype)
-        out = NaFlex(_zero_tokens, table)(images)
+        out = NaFlex(_zero_tokens, table, patch_size=16)(images)
         self.assert_close(out, NaFlex(_zero_patches, table)(images))
         self.assert_close(out, _reference_positions(table, height // 16, width // 16).expand(3, -1, -1))
 
-    def test_bnc_patch_count_that_does_not_factor_raises(self, device: torch.device, dtype: torch.dtype) -> None:
-        # 7 tokens of a square image: round(sqrt(7)) = 3 rows of 7 // 3 = 2 columns hold 6, not 7.
+    def test_bnc_patch_output_with_a_rectangular_patch_size(self, device: torch.device, dtype: torch.dtype) -> None:
+        # (16, 32) patches of a 256 x 512 image: a 16 x 16 grid (read with the axes swapped it would be 8 x 32, which
+        # has as many cells), equal to the conv's (B, C, h, w) output with the table added as is.
+        conv = torch.nn.Conv2d(3, _CHANNELS, (16, 32), stride=(16, 32)).to(device, dtype)
         table = torch.randn(256, _CHANNELS, device=device, dtype=dtype)
-        naflex = NaFlex(lambda x: x.new_zeros(x.shape[0], 7, _CHANNELS), table)
-        with pytest.raises(ValueError, match="7 patch embeddings"):
+        images = torch.rand(2, 3, 256, 512, device=device, dtype=dtype)
+        with torch.no_grad():
+            tokens = conv(images).flatten(2).transpose(1, 2)
+            out = NaFlex(lambda x: conv(x).flatten(2).transpose(1, 2), table, patch_size=(16, 32))(images)
+            self.assert_close(out, tokens + table)
+            self.assert_close(out, NaFlex(conv, table)(images))
+
+    def test_bnc_patch_size_whose_grid_does_not_match_raises(self, device: torch.device, dtype: torch.dtype) -> None:
+        # patch_size=16 gives a 64 x 64 image a 4 x 4 grid, 16 cells, but the patch embedding returns 7 tokens.
+        table = torch.randn(256, _CHANNELS, device=device, dtype=dtype)
+        naflex = NaFlex(lambda x: x.new_zeros(x.shape[0], 7, _CHANNELS), table, patch_size=16)
+        with pytest.raises(BaseError, match=r"4 x 4 grid of 16 patches, but the patch embedding returned 7"):
             naflex(torch.zeros(3, 3, 64, 64, device=device, dtype=dtype))
 
-    @pytest.mark.parametrize(("height", "width"), [(40, 63), (230, 230)])
-    def test_bnc_grid_of_an_image_that_is_not_a_patch_multiple(
-        self, device: torch.device, dtype: torch.dtype, height: int, width: int
-    ) -> None:
-        # At patch 16 these images have the grids 2 x 3 and 14 x 14 (the conv drops the remainder). The aspect reading
-        # round(sqrt(N H / W)) gives the same grids (flooring would read 40 x 63 as 1 x 6), and patch 16 explains both.
-        table = torch.randn(256, _CHANNELS, device=device, dtype=dtype)
-        images = torch.zeros(3, 3, height, width, device=device, dtype=dtype)
-        out = NaFlex(_zero_tokens, table)(images)
-        self.assert_close(out, NaFlex(_zero_patches, table)(images))
-        self.assert_close(out, _reference_positions(table, height // 16, width // 16).expand(3, -1, -1))
-
-    @pytest.mark.parametrize(("height", "width", "num_tokens"), [(48, 47, 6), (32, 31, 2), (6, 12, 50)])
-    def test_bnc_grid_that_no_patch_size_gives_raises(
+    @pytest.mark.parametrize(("height", "width", "num_tokens"), [(64, 64, 7), (192, 336, 252)])
+    def test_bnc_without_patch_size_needs_a_square_count(
         self, device: torch.device, dtype: torch.dtype, height: int, width: int, num_tokens: int
     ) -> None:
-        # At patch 16 the first two images have the grids 3 x 2 and 2 x 1; the aspect reading transposes them to
-        # 2 x 3 and 1 x 2, and no patch size p gives 48 // p == 2 with 47 // p == 3, or 32 // p == 1 with
-        # 31 // p == 2. 50 tokens of a 6 x 12 image read as 5 x 10: p would have to exceed 6 / 6 = 1 and be at most
-        # 6 / 5, so no integer fits (p = 1 gives 6 // 1 = 6 rows, not 5).
         table = torch.randn(256, _CHANNELS, device=device, dtype=dtype)
         naflex = NaFlex(lambda x: x.new_zeros(x.shape[0], num_tokens, _CHANNELS), table)
-        with pytest.raises(BaseError, match="no whole patch size"):
+        with pytest.raises(BaseError, match=f"{num_tokens} patch embeddings are not a square number. Pass patch_size"):
             naflex(torch.zeros(3, 3, height, width, device=device, dtype=dtype))
 
     @pytest.mark.parametrize(
@@ -188,15 +185,15 @@ class TestNaFlex(BaseTester):
             (19, 20, 3, 2, 9),
             (20, 36, 3, (2, 4), 9),
             (256, 512, (16, 32), (16, 32), 16),
+            (64, 144, (10, 24), (10, 24), 6),
         ],
     )
-    def test_bnc_square_grid_when_the_aspect_reading_fails(
+    def test_bnc_without_patch_size_reads_a_square_grid(
         self, device: torch.device, dtype: torch.dtype, height: int, width: int, kernel, stride, side: int
     ) -> None:
-        # These convolutions give a side x side grid that no whole square patch size explains: the aspect reading is
-        # 9 x 9 with no p such that 20 // p == 9 (20 x 20, 19 x 20), 7 x 11 (77 cells, 20 x 36), or 11 x 23 (253 cells,
-        # 256 x 512). The tokens are then read as the square grid, as NaFlex always read them: a side x side table is
-        # added as is, a 4 x 4 one resized by plain bilinear interpolation (no axis shrinks).
+        # Without patch_size, a square number of tokens is read as the square grid: right for these convolutions,
+        # whose grids are side x side. A side x side table is added as is, a 4 x 4 one resized by plain bilinear
+        # interpolation (no axis shrinks).
         conv = torch.nn.Conv2d(3, _CHANNELS, kernel, stride=stride).to(device, dtype)
         images = torch.rand(2, 3, height, width, device=device, dtype=dtype)
         with torch.no_grad():
