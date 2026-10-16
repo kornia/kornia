@@ -39,6 +39,7 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - the noise is additive and recorded in full: the output is the input plus ``_params["gaussian_noise"]``,
           so ``mean`` offsets the image rather than naming the mean the output should have.
         - nothing is clamped, so an input already inside ``[0, 1]`` can leave it in either direction.

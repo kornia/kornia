@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.enhance import shift_rgb
 
 
@@ -48,6 +48,8 @@ class RandomRGBShift(IntensityAugmentationBase2D):
           to the batch form ``False``.
 
     Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
         - the input must have exactly three channels, which :func:`kornia.enhance.shift_rgb` checks; any
           other channel count raises an ``ImageError``. The class draws three named shifts per sample --
           ``_params["r_shift"]``, ``["g_shift"]`` and ``["b_shift"]``, each of shape ``(B,)`` -- adds each to
@@ -57,10 +59,6 @@ class RandomRGBShift(IntensityAugmentationBase2D):
           negative limit raises a ``ValueError`` at construction.
         - a ``(low, high)`` pair, as in ``albumentations.RGBShift``, is the sampling range itself. It must be
           finite with ``low <= high``, otherwise it raises a ``ValueError`` at construction.
-
-    .. warning::
-        Because the sum is clamped, an input whose values are all at or below ``-limit`` comes back as an
-        all-zero image on every draw. Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     Examples:
         >>> import torch
@@ -135,4 +133,5 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        inp = _clamp_unit_range(inp)
         return shift_rgb(inp, params["r_shift"], params["g_shift"], params["b_shift"])

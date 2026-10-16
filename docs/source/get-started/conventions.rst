@@ -527,20 +527,17 @@ Augmentations
   :func:`kornia.geometry.transform.rotate`, and clockwise with
   :class:`kornia.augmentation.RandomAffine`
   (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
-- The 2D intensity augmentations assume float input in ``[0, 1]``, and no
-  base-class check enforces it. Outside that range each class follows its own
-  policy -- some clamp, rescale or round-trip through ``uint8``, some do not
-  clamp, :class:`kornia.augmentation.RandomPlanckianJitter` clamps only the
-  upper end, and :class:`kornia.augmentation.RandomGamma` does not clamp, so a
-  negative input gives NaN for a non-integer ``gamma``. Several classes return
-  an all-zero image for an all-negative input, and
-  :class:`kornia.augmentation.RandomSolarize` does so when every value is at
-  least ``1.5``. :class:`kornia.augmentation.RandomEqualize` and
-  :class:`kornia.augmentation.RandomClahe` raise an error naming the range; the
-  check is asynchronous, so on an accelerator the error can surface at a later
-  synchronizing call (`#4430 <https://github.com/kornia/kornia/issues/4430>`_).
-  See :class:`kornia.augmentation.IntensityAugmentationBase2D` and each class's
-  documentation.
+- A 2D intensity augmentation whose arithmetic assumes unit-range images clamps
+  its input into ``[0, 1]`` before operating, and clamps its output too. This
+  includes colour adjustments, illumination, snow, JPEG and histogram
+  equalization. Samples skipped by the probability gate retain their original
+  values. Range-independent operations, such as blurs, noise, channel operations,
+  erasing, grayscale, inversion, ``Normalize`` and ``Denormalize``, do not clamp
+  their input. ``RandomAutoContrast`` rescales each channel's full input range
+  instead of clipping it. ``RandomBrightness`` and ``RandomContrast`` preserve
+  raw arithmetic with ``clip_output=False``. See each class's Convention block.
+  The functional ``kornia.enhance.equalize`` and ``equalize_clahe`` APIs retain
+  their strict range checks; their augmentation wrappers clamp first.
 
 .. code-block:: python
 
@@ -1330,9 +1327,9 @@ Quick self-review for generated code, most common first:
 16. Expecting ``RandomElasticTransform``, ``RandomThinPlateSpline`` or
     ``RandomFisheye`` to move boxes and keypoints with the image — they do not.
 17. Feeding mean/std-normalized or otherwise out-of-``[0, 1]`` tensors
-    through an intensity augmentation — some clamp, some rescale,
-    ``RandomEqualize`` and ``RandomClahe`` raise, and several return zeros
-    (`#4430 <https://github.com/kornia/kornia/issues/4430>`_).
+    through a range-dependent intensity augmentation — input clamping discards
+    out-of-range information and can produce zeros for an all-negative image.
+    Normalize after augmenting instead.
 
 .. tip::
 
