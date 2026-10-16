@@ -286,31 +286,6 @@ for tagname, mdl, err in (("mobile_sam", sam_mobile, _e_sm), ("vit_b,random", sa
         )
     )
 
-# ============================================================================= kornia.models.sam3
-from kornia.models.sam3 import ImageEncoderHiera  # noqa: E402
-
-A(
-    mcase(
-        "models.sam3.ImageEncoderHiera[tiny,random]",
-        "models.sam3",
-        lambda: ev(ImageEncoderHiera(img_size=64, patch_size=16, embed_dim=64, depth=2, num_heads=2)),
-        lambda m: m,
-        [torch.rand(1, 3, 64, 64)],
-        note="random init, img_size=64 (square, pos_embed fixed to img_size)",
-        tags=("model",),
-    )
-)
-A(
-    case(
-        "models.sam3.ImageEncoderHiera[default 1024]",
-        "models.sam3",
-        None,
-        [],
-        skip="default config = ViT-B at 1024x1024 random init; no weights loader exists in kornia; "
-        "tiny variant exported",
-    )
-)
-
 # ============================================================================= kornia.models.yunet
 from kornia.models.yunet import YuNet  # noqa: E402
 from kornia.models.yunet.processors import PriorBox, decode  # noqa: E402

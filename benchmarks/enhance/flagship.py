@@ -54,7 +54,10 @@ runs on float here, the documented regime; on ``uint8`` it uses a lookup table a
 faster, which the OpenCV LUT cell represents. ``adjust_saturation`` is not the same algorithm
 across columns: kornia scales S in HSV space and converts back, while torchvision and PIL blend
 with the grayscale image (kornia's ``adjust_saturation_with_gray_subtraction``); the row times each
-library's saturation adjustment as users call it. Throughput is img/s.
+library's saturation adjustment as users call it. kornia-rs uses uint8 HWC input on CPU;
+normalization casts bytes to float32 without rescaling, so its mean/std are multiplied by 255. Equalize and
+CLAHE process all three channels separately, including contiguous channel copies and concatenation
+inside timing, with the same clip limit and grid as OpenCV; CLAHE can round one byte differently. Throughput is img/s.
 
 Usage:
     python benchmarks/enhance/flagship.py --batches 1,8,32 --size 256 --device cpu
@@ -84,6 +87,7 @@ from common import (
     finish_run,
     image_batch,
     image_row_fields,
+    kornia_rs_fn,
     optional_import,
     run_batch_sweep,
     setup_run,
@@ -126,6 +130,13 @@ def build_ops(
     def cv_per_channel(fn: Callable[[np.ndarray], np.ndarray]) -> Backend:
         return lambda: [cv2.merge([fn(c) for c in cv2.split(im)]) for im in imgs_u8]
 
+    def rs_per_channel(fn: Callable[..., object], **kwargs: object) -> Backend:
+        # Keep splitting/copying/merging inside the timed RGB operation, like the OpenCV column.
+        return lambda: [
+            np.concatenate([fn(np.ascontiguousarray(im[..., c : c + 1]), **kwargs) for c in range(3)], axis=-1)
+            for im in imgs_u8
+        ]
+
     def sk_per_channel(fn: Callable[[np.ndarray], np.ndarray]) -> Backend:
         return lambda: [np.stack([fn(im[..., c]) for c in range(im.shape[-1])], axis=-1) for im in imgs_f]
 
@@ -140,6 +151,9 @@ def build_ops(
         row = kornia_row("normalize", KE.normalize, batch_f, mean, std)
         row["torchvision v2"] = (lambda: tvf.normalize(batch_f, list(MEAN), list(STD))) if tvf else None
         row["albumentations"] = alb(A.Normalize(mean=MEAN, std=STD, max_pixel_value=255.0, p=1.0)) if A else None
+        rs_normalize = kornia_rs_fn("normalize_mean_std")
+        rs_mean, rs_std = tuple(v * 255 for v in MEAN), tuple(v * 255 for v in STD)
+        row["kornia-rs"] = (lambda: [rs_normalize(im, rs_mean, rs_std) for im in imgs_u8]) if rs_normalize else None
         ops["normalize"] = row
 
     if include("adjust_gamma"):
@@ -174,6 +188,8 @@ def build_ops(
         row["scikit-image"] = sk_per_channel(ske.equalize_hist) if ske else None
         if pil and pil_ops:
             row["PIL"] = lambda: [pil_ops.equalize(im) for im in pil_imgs]
+        rs_equalize = kornia_rs_fn("equalize_hist")
+        row["kornia-rs"] = rs_per_channel(rs_equalize) if rs_equalize else None
         ops["equalize"] = row
 
     if include("equalize_clahe"):
@@ -189,6 +205,8 @@ def build_ops(
             row["scikit-image"] = lambda: [
                 ske.equalize_adapthist(im, kernel_size=kernel, clip_limit=CLAHE_CLIP / 256) for im in imgs_f
             ]
+        rs_clahe = kornia_rs_fn("clahe")
+        row["kornia-rs"] = rs_per_channel(rs_clahe, clip_limit=CLAHE_CLIP, grid_size=CLAHE_GRID) if rs_clahe else None
         ops["equalize_clahe"] = row
 
     return ops, kornia_row.compile_failures
@@ -222,9 +240,19 @@ def main() -> None:
                 "kornia/torchvision: batched float BCHW (torchvision equalize: uint8 BCHW); "
                 "albumentations/opencv/PIL: uint8 HWC per-image loop (CPU); scikit-image: normalized float HWC loop"
             ),
+            "kornia-rs: uint8 HWC CPU loop; normalize produces float32; equalize/CLAHE split and merge all channels",
             "PIL: prebuilt Image objects; albumentations CLAHE equalizes only L in Lab, the others all 3 channels",
         ],
-        missing=[(label, imported[key][1]) for key, label in labels.items() if libs[key] is None],
+        missing=[(label, imported[key][1]) for key, label in labels.items() if libs[key] is None]
+        + [
+            (f"kornia-rs/{op}", f"{fn} unavailable")
+            for op, fn in (
+                ("normalize", "normalize_mean_std"),
+                ("equalize", "equalize_hist"),
+                ("equalize_clahe", "clahe"),
+            )
+            if (args.ops is None or op in args.ops) and kornia_rs_fn(fn) is None
+        ],
     )
     backends = [
         "kornia (eager)",
@@ -234,6 +262,7 @@ def main() -> None:
         "scikit-image",
         "opencv",
         "PIL",
+        "kornia-rs",
     ]
     results = run_batch_sweep(
         batch_list(args),

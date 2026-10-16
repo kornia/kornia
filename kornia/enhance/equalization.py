@@ -168,7 +168,7 @@ def _tiles_histc(tiles: torch.Tensor, bins: int) -> torch.Tensor:
         bins: number of bins.
 
     Returns:
-        Per-tile counts in the dtype of ``tiles``. (T, bins)
+        Per-tile counts in float32, or float64 for float64 ``tiles``. (T, bins)
 
     """
     num_tiles = tiles.shape[0]
@@ -180,7 +180,7 @@ def _tiles_histc(tiles: torch.Tensor, bins: int) -> torch.Tensor:
     idx = torch.where(in_range, idx, bins)
     counts = torch.zeros(num_tiles, bins + 1, dtype=x.dtype, device=x.device)
     counts.scatter_add_(1, idx, torch.ones_like(x))
-    return counts[:, :bins].to(tiles.dtype)
+    return counts[:, :bins]
 
 
 def _spread_residual(residual: torch.Tensor, num_bins: int) -> torch.Tensor:
@@ -232,6 +232,8 @@ def _compute_luts(
     pixels: int = th * tw
     tiles: torch.Tensor = tiles_x_im.view(-1, pixels)  # test with view  # T x (THxTW)
     if not diff:
+        # Counted, clipped and accumulated in float32 (float64 for float64 tiles); only the finished LUT is cast back.
+        # In float16 the clipped total of a 256 x 256 tile overflows to inf, and bfloat16 rounds counts above 256.
         histos = _tiles_histc(tiles, num_bins)
     else:
         bins: torch.Tensor = torch.linspace(0, 1, num_bins, device=tiles.device)
@@ -270,7 +272,8 @@ def _compute_luts(
     luts: torch.Tensor = torch.cumsum(histos, 1) * lut_scale
     luts = luts.clamp(0, num_bins - 1)
     if not diff:
-        luts = luts.round()  # match OpenCV's round-to-nearest LUT quantization
+        # match OpenCV's round-to-nearest LUT quantization; the integers 0..255 are exact in every float dtype
+        luts = luts.round().to(tiles_x_im.dtype)
     return luts.view((b, gh, gw, c, num_bins))
 
 

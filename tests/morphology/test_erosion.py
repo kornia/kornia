@@ -551,6 +551,58 @@ class TestErode(BaseTester):
 
         assert torch.equal(op_script(tensor, kernel, engine="shift"), erosion(tensor, kernel, engine="shift"))
 
+    @pytest.mark.parametrize("kernel_shape", [(3, 3), (3, 4), (5, 5)])
+    @pytest.mark.parametrize("partial", [False, True])
+    @pytest.mark.parametrize("border_type", ["geodesic", "constant", "replicate"])
+    def test_unfold_engine_forward_only_matches_autograd_path(self, device, dtype, kernel_shape, partial, border_type):
+        if border_type == "replicate" and not supports_replicate_padding(device, dtype):
+            pytest.skip("replication_pad2d is unavailable for this device/dtype")
+        # Without a backward graph a flat ``unfold`` reduction takes ``amin``; it must return the values of the
+        # ``torch.min`` path. A window tying ``+0.0`` with ``-0.0`` may return either zero, as on every engine.
+        nan, inf = float("nan"), float("inf")
+        tensor = torch.rand(2, 3, 9, 11, device=device, dtype=dtype)
+        tensor[0, 0, 2, 3] = nan
+        tensor[0, 1, 4, 5] = inf
+        tensor[1, 2, 0, 0] = -inf
+        tensor[1, 0, ::2] = -0.0
+        tensor[1, 0, 1::2] = 0.0
+        kernel = torch.ones(kernel_shape, device=device, dtype=dtype)
+        if partial:
+            kernel[0, 0] = 0.0
+            kernel[-1, 1] = 0.0
+
+        forward = erosion(tensor, kernel, border_type=border_type, engine="unfold")
+        recorded = erosion(tensor.clone().requires_grad_(True), kernel, border_type=border_type, engine="unfold")
+
+        torch.testing.assert_close(forward, recorded.detach(), rtol=0.0, atol=0.0, equal_nan=True)
+        assert forward.dtype == recorded.dtype
+
+    def test_unfold_engine_reduces_values_only_without_derivatives(self, device, dtype, monkeypatch):
+        calls = []
+        original = morphology_module._unfold_reduces_values_only
+
+        def wrapped(*args, **kwargs):
+            calls.append(original(*args, **kwargs))
+            return calls[-1]
+
+        monkeypatch.setattr(morphology_module, "_unfold_reduces_values_only", wrapped)
+
+        tensor = torch.rand(1, 1, 9, 11, device=device, dtype=dtype)
+        kernel = torch.ones(3, 3, device=device, dtype=dtype)
+
+        erosion(tensor, kernel, engine="unfold")
+        erosion(tensor, kernel, structuring_element=torch.zeros_like(kernel), engine="unfold")
+        with torch.enable_grad():
+            erosion(tensor.clone().requires_grad_(True), kernel, engine="unfold")
+        with torch.no_grad():
+            erosion(tensor.clone().requires_grad_(True), kernel, engine="unfold")
+        with torch.autograd.forward_ad.dual_level():
+            erosion(torch.autograd.forward_ad.make_dual(tensor, torch.rand_like(tensor)), kernel, engine="unfold")
+        torch.func.vmap(lambda x: erosion(x, kernel, engine="unfold"))(tensor[None])
+
+        plain = device.type in ("cpu", "cuda")
+        assert calls == [plain, False, False, plain, False, False]
+
     def test_convention_erosion_does_not_reflect_kernel(self, device, dtype):
         # `erosion` does not reflect the kernel: `out(p) = min_{q: kernel[q] != 0} x(p + (q - origin))`. The
         # complement form `1 - erosion(1 - x, A)` separates the two conventions for the asymmetric `A`.

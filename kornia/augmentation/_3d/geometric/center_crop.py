@@ -110,7 +110,7 @@ class CenterCrop3D(GeometricAugmentationBase3D):
             self.size = (size, size, size)
         else:
             raise TypeError(f"Invalid `size` type. Expected int or tuple[int, int, int] (D, H, W). Got {size!r}.")
-        self.flags = {"align_corners": align_corners, "resample": Resample.get(resample)}
+        self.flags = {"size": self.size, "align_corners": align_corners, "resample": Resample.get(resample)}
 
     def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         return rg.center_crop_generator3d(

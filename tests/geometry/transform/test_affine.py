@@ -419,6 +419,50 @@ class TestResize(BaseTester):
         expected = op(inp, new_size, align_corners=False, antialias=anti_alias)
         self.assert_close(out, expected)
 
+    @pytest.mark.parametrize("interpolation", ["linear", "trilinear"])
+    @pytest.mark.parametrize("shape", [(3, 16, 20), (2, 3, 16, 20), (2, 3, 4, 16, 20)])
+    @pytest.mark.parametrize("api", ["resize", "Resize", "rescale", "Rescale"])
+    def test_one_and_three_dimensional_modes_raise_6012(self, interpolation, shape, api, device, dtype):
+        # Every input is resampled as a 4-D batch, which F.interpolate rejects for these modes; this used to
+        # surface as its raw "Got 4D input" NotImplementedError although the docstrings listed both modes.
+        image = torch.rand(shape, device=device, dtype=dtype)
+        T = kornia.geometry.transform
+        calls = {
+            "resize": lambda: T.resize(image, (8, 10), interpolation=interpolation),
+            "Resize": lambda: T.Resize((8, 10), interpolation=interpolation)(image),
+            "rescale": lambda: T.rescale(image, 0.5, interpolation=interpolation),
+            "Rescale": lambda: T.Rescale(0.5, interpolation=interpolation, align_corners=None)(image),
+        }
+
+        with pytest.raises(ValueError, match=f"interpolation='{interpolation}' is not supported: resize resamples"):
+            calls[api]()
+
+    @pytest.mark.parametrize("interpolation", ["nearest", "nearest-exact", "bilinear", "bicubic", "area"])
+    def test_documented_modes_resize_6012(self, interpolation, device, dtype):
+        # Each mode the docstrings list resamples a (B, C, H, W) batch.
+        image = torch.rand(2, 3, 16, 20, device=device, dtype=dtype)
+
+        out = kornia.geometry.transform.resize(image, (8, 10), interpolation=interpolation)
+
+        assert out.shape == (2, 3, 8, 10)
+
+    @pytest.mark.parametrize("interpolation", ["linear", "trilinear"])
+    @pytest.mark.parametrize("api", ["resize_empty_output", "resize_to_be_divisible", "crop_by_indices"])
+    def test_one_and_three_dimensional_modes_raise_in_resize_callers_6012(self, interpolation, api, device, dtype):
+        # An empty output side used to skip interpolate and return an empty tensor; resize_to_be_divisible, and
+        # crop_by_indices when a crop has to be resized, reach these modes through resize.
+        image = torch.zeros(2, 3, 16, 20, device=device, dtype=dtype)
+        box = torch.tensor([[[1, 1], [10, 1], [10, 8], [1, 8]]], device=device, dtype=dtype).repeat(2, 1, 1)
+        T = kornia.geometry.transform
+        calls = {
+            "resize_empty_output": lambda: T.resize(image, (0, 10), interpolation=interpolation),
+            "resize_to_be_divisible": lambda: T.resize_to_be_divisible(image, 7, interpolation=interpolation),
+            "crop_by_indices": lambda: T.crop_by_indices(image, box, size=(5, 6), interpolation=interpolation),
+        }
+
+        with pytest.raises(ValueError, match=f"interpolation='{interpolation}' is not supported: resize resamples"):
+            calls[api]()
+
 
 class TestRescale(BaseTester):
     def test_smoke(self, device, dtype):
@@ -497,6 +541,29 @@ class TestRescale(BaseTester):
     def test_gradcheck(self, device):
         input = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.Rescale(2.0, align_corners=False), (input,), nondet_tol=1e-8)
+
+    @pytest.mark.parametrize("interpolation", ["nearest", "nearest-exact", "area"])
+    @pytest.mark.parametrize("factor", [0.5, 2.0])
+    def test_non_interpolating_modes_ignore_align_corners_5998(self, interpolation, factor, device, dtype):
+        # The module's default align_corners=True used to reach F.interpolate, which rejects it for these modes.
+        input = torch.rand(2, 3, 4, 6, device=device, dtype=dtype)
+
+        out = kornia.geometry.transform.Rescale(factor, interpolation=interpolation)(input)
+
+        expected = kornia.geometry.transform.rescale(input, factor, interpolation=interpolation)
+        self.assert_close(out, expected, rtol=0.0, atol=0.0)
+        explicit = kornia.geometry.transform.Rescale(factor, interpolation=interpolation, align_corners=False)(input)
+        self.assert_close(explicit, expected, rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("interpolation", ["bilinear", "bicubic"])
+    def test_interpolating_modes_keep_align_corners_default_5998(self, interpolation, device, dtype):
+        # The interpolating modes still use the module's default align_corners=True.
+        input = torch.rand(2, 3, 4, 6, device=device, dtype=dtype)
+
+        out = kornia.geometry.transform.Rescale(0.5, interpolation=interpolation)(input)
+
+        expected = kornia.geometry.transform.rescale(input, 0.5, interpolation=interpolation, align_corners=True)
+        self.assert_close(out, expected, rtol=0.0, atol=0.0)
 
 
 class TestRotate(BaseTester):

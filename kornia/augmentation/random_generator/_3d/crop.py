@@ -46,6 +46,7 @@ class CropGenerator3D(RandomGeneratorBase):
         A dict of parameters to be passed for transformation.
             - src (torch.Tensor): cropping bounding boxes with a shape of (B, 8, 3).
             - dst (torch.Tensor): output bounding boxes with a shape (B, 8, 3).
+            - output_size (torch.Tensor): output spatial size (D, H, W) with shape (B, 3).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -118,6 +119,7 @@ class CropGenerator3D(RandomGeneratorBase):
             return {
                 "src": torch.zeros([0, 8, 3], device=_device, dtype=_dtype),
                 "dst": torch.zeros([0, 8, 3], device=_device, dtype=_dtype),
+                "output_size": torch.empty((0, 3), device=_device, dtype=torch.long),
             }
 
         # The draw is scaled and floored in the draw's dtype when that is the wider one: cast to a half ``size``
@@ -167,7 +169,12 @@ class CropGenerator3D(RandomGeneratorBase):
                 dtype=_dtype,
             ).repeat(batch_size, 1, 1)
 
-        return {"src": crop_src.to(device=_device), "dst": crop_dst.to(device=_device)}
+        output_size = (
+            size.to(dtype=torch.long, copy=True)
+            if self.resize_to is None
+            else _constant_tensor(self.resize_to, device=_device, dtype=torch.long).expand(batch_size, -1)
+        )
+        return {"src": crop_src.to(device=_device), "dst": crop_dst.to(device=_device), "output_size": output_size}
 
 
 def center_crop_generator3d(
@@ -194,6 +201,7 @@ def center_crop_generator3d(
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - src (torch.Tensor): cropping bounding boxes with a shape of (B, 8, 3).
             - dst (torch.Tensor): output bounding boxes with a shape (B, 8, 3).
+            - output_size (torch.Tensor): output spatial size (D, H, W) with shape (B, 3).
 
     Note:
         No random number will be generated.
@@ -277,4 +285,5 @@ def center_crop_generator3d(
         device=device,
         dtype=torch.long,
     ).expand(batch_size, -1, -1)
-    return {"src": points_src, "dst": points_dst}
+    output_size = _constant_tensor(size, device=device, dtype=torch.long).expand(batch_size, -1)
+    return {"src": points_src, "dst": points_dst, "output_size": output_size}
