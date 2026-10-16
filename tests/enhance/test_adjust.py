@@ -335,10 +335,13 @@ class TestAdjustGamma(BaseTester):
         image = torch.tensor([0.0, 0.5, 1.0], device=device, dtype=torch.float32, requires_grad=True)
         expected = kornia.enhance.adjust_gamma(image, image.new_tensor([gamma]))
         actual = kornia.enhance.adjust_gamma(image, gamma)
-        self.assert_close(actual, expected, rtol=0, atol=0)
+        # MPS scalar/tensor power kernels can round nonzero pixels differently.
+        self.assert_close(actual, expected)
+        self.assert_close(actual[0], expected[0], rtol=0, atol=0)
         actual_grad = torch.autograd.grad(actual.sum(), image)[0]
         expected_grad = torch.autograd.grad(expected.sum(), image)[0]
-        self.assert_close(actual_grad, expected_grad, rtol=0, atol=0)
+        self.assert_close(actual_grad, expected_grad)
+        self.assert_close(actual_grad[0], expected_grad[0], rtol=0, atol=0)
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("value", [-0.1, float("nan")])
@@ -362,6 +365,12 @@ class TestAdjustGamma(BaseTester):
         module = kornia.enhance.AdjustGamma(0.7, 0.9)
         exported = torch.export.export(module, (image,), strict=True).module()
         self.assert_close(exported(image), module(image))
+
+    def test_scalar_jit(self, device, dtype):
+        image = torch.full((1, 2, 2), 0.4, device=device, dtype=dtype)
+        module = kornia.enhance.AdjustGamma(0.7, 0.9)
+        scripted = torch.jit.script(module)
+        self.assert_close(scripted(image), module(image))
 
     def test_gamma_zero(self, device, dtype):
         data = torch.tensor(

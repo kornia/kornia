@@ -332,9 +332,9 @@ NVIDIA RTX PRO 6000 Blackwell (AMD Turin host):
 - **Batched GPU is kornia's regime and the margin is large:** compiled `warp_perspective` at
   batch 32 beats OpenCV's per-image CPU loop by ~45× (L4) to ~72× (RTX PRO 6000); eager alone
   is ~20–30×.
-- **`rotate` is a found weak spot:** torchvision v2 beats kornia on every GPU tested
-  (~1.7–2×, up to ~4× vs eager where compile was unavailable). First data-driven optimization
-  target for the Stage-3 iteration.
+- **Historical `rotate` ratios do not establish a library ranking:** the apparent torchvision
+  advantage used nearest interpolation against Kornia's bilinear interpolation. Remeasure with
+  the current matched-interpolation harness, distinguishing shared angles from per-image parameters.
 - **`resize`:** kornia eager matches torchvision almost exactly (same underlying kernel);
   `torch.compile` is a large win at big batches on newer GPUs (3.6M img/s at batch 128 on
   Blackwell) but *regressed* resize on L4 at batch ≤ 32 — compile is not a free win, measure

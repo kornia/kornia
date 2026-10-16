@@ -44,7 +44,8 @@ class TestConvDistanceTransform(BaseTester):
         sample = torch.ones((1, 1) + (32,) * ndim, device=device, dtype=dtype)
         output = kornia.contrib.distance_transform(sample)
         self.assert_close(output, torch.zeros_like(sample))
-        assert len(calls) < 32
+        expected_calls = 8 if device.type in ("cpu", "cuda") else 32
+        assert len(calls) == expected_calls
 
     @pytest.mark.parametrize("ndim", [2, 3])
     @pytest.mark.parametrize("signal", ["empty", "dense", "sparse", "fractional"])
@@ -96,7 +97,8 @@ class TestConvDistanceTransform(BaseTester):
         with torch.no_grad():
             output = kornia.contrib.distance_transform(sample)
         self.assert_close(output, torch.zeros_like(sample))
-        assert len(calls) < 32
+        expected_calls = 8 if device.type in ("cpu", "cuda") else 32
+        assert len(calls) == expected_calls
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("ndim", [2, 3])

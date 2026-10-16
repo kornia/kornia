@@ -340,6 +340,7 @@ def rotate(
         and not angle.requires_grad
         and not center.requires_grad
         and (center.shape == (2,) or center.shape == (1, 2))  # noqa: PLR1714 - TorchScript shape checks
+        and not torch.jit.is_tracing()
     ):
         batch = 1
     angle = angle.expand(batch)

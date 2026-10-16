@@ -294,7 +294,11 @@ class TestFocalLoss(BaseTester):
         elif reduction == "sum":
             expected = expected.sum()
         actual = kornia.losses.focal_loss(logits, labels, alpha, gamma, reduction, weight)
-        self.assert_close(actual, expected, rtol=0, atol=0)
+        if not weighted and reduction != "none":
+            # Gathering target terms changes the reduction order relative to the dense reference.
+            self.assert_close(actual, expected)
+        else:
+            self.assert_close(actual, expected, rtol=0, atol=0)
         self.assert_close(
             torch.autograd.grad(actual.sum(), logits)[0], torch.autograd.grad(expected.sum(), reference)[0]
         )

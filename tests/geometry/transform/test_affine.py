@@ -554,6 +554,22 @@ class TestRotate(BaseTester):
             expected = kornia.geometry.transform.rotate(image, angle)
         self.assert_close(traced(image, angle), expected)
 
+    def test_trace_generalizes_over_image_and_angle_batches(self, device, dtype):
+        image = torch.rand(1, 1, 5, 7, device=device, dtype=dtype)
+        angle = torch.tensor([23.0], device=device, dtype=dtype)
+        traced = torch.jit.trace(kornia.geometry.transform.rotate, (image, angle), check_trace=False)
+        image = torch.rand(4, 1, 5, 7, device=device, dtype=dtype)
+        angle = torch.tensor([0.0, 10.0, 20.0, 30.0], device=device, dtype=dtype)
+        if dtype in (torch.float16, torch.bfloat16):
+            # See test_shared_angle_trace: compare two traced affine_grid paths at reduced precision.
+            def expanded_rotation(image, angle):
+                return kornia.geometry.transform.rotate(image, angle.expand(image.shape[0]))
+
+            expected = torch.jit.trace(expanded_rotation, (image[:1], angle[:1]), check_trace=False)(image, angle)
+        else:
+            expected = kornia.geometry.transform.rotate(image, angle)
+        self.assert_close(traced(image, angle), expected)
+
     @pytest.mark.parametrize("op", ["rotate", "Rotate", "affine"])
     def test_shared_trace_generalizes_over_batch(self, device, dtype, op):
         # A trace (and the TorchScript ONNX export built on it) recorded at batch 1 must not bake in the batch.

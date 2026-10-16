@@ -25,7 +25,7 @@ kornia (batched float BCHW)    OpenCV (uint8 HWC, per-image Python loop)   torch
 ``warp_perspective``           ``cv2.warpPerspective``                     —
 ``warp_affine``                ``cv2.warpAffine``                          —
 ``rotate``                     ``cv2.warpAffine(getRotationMatrix2D)``     ``tvf.rotate``
-``rotate_shared``              —                                          ``tvf.rotate``
+``rotate_shared``              ``cv2.warpAffine(getRotationMatrix2D)``     ``tvf.rotate``
 ``resize``                     ``cv2.resize``                              ``tvf.resize``
 ``get_perspective_transform``  ``cv2.getPerspectiveTransform`` (per pair)  —
 =============================  ==========================================  ==============
@@ -135,7 +135,7 @@ def build_ops(
     if include("rotate"):
         row = kornia_row("rotate", lambda: KG.rotate(batch_f, angle))
         if cv2:
-            m_rot = cv2.getRotationMatrix2D((w / 2, h / 2), angle_deg, 1.0)
+            m_rot = cv2.getRotationMatrix2D(((w - 1) / 2, (h - 1) / 2), angle_deg, 1.0)
             row["opencv"] = lambda: [cv2.warpAffine(im, m_rot, (w, h)) for im in imgs_u8]
         row["torchvision v2"] = (
             (lambda: tvf.rotate(batch_f, angle_deg, interpolation=tvf.InterpolationMode.BILINEAR)) if tvf else None
@@ -146,6 +146,9 @@ def build_ops(
         # One transform shared by the batch; keep the independent-parameter row above too.
         shared_angle = angle[:1]
         row = kornia_row("rotate_shared", lambda: KG.rotate(batch_f, shared_angle))
+        if cv2:
+            m_rot_shared = cv2.getRotationMatrix2D(((w - 1) / 2, (h - 1) / 2), angle_deg, 1.0)
+            row["opencv"] = lambda: [cv2.warpAffine(im, m_rot_shared, (w, h)) for im in imgs_u8]
         row["torchvision v2"] = (
             (lambda: tvf.rotate(batch_f, angle_deg, interpolation=tvf.InterpolationMode.BILINEAR)) if tvf else None
         )
