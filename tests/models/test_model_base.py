@@ -21,6 +21,7 @@ import os
 import pickle
 from unittest.mock import patch
 
+import numpy as np
 import pytest
 import torch
 from torch import nn
@@ -48,20 +49,39 @@ class TestModelBaseMixinTensorToType:
         out = mixin._tensor_to_type(tensors, "torch")
         assert out is tensors
 
-    def test_pil_output_single_tensor(self):
+    @staticmethod
+    def _assert_pil_images(images, tensors, modes):
+        """Each image is one (C, H, W) slice, converted as ``ImageModuleMixIn.to_pil`` does."""
+        Image = pytest.importorskip("PIL.Image")
+        slices = [chw for t in tensors for chw in t.reshape(-1, *t.shape[-3:])]
+        assert isinstance(images, list)
+        assert len(images) == len(slices) == len(modes)
+        for image, chw, mode in zip(images, slices, modes):
+            assert isinstance(image, Image.Image)
+            assert image.mode == mode
+            # PIL sizes are (W, H)
+            assert image.size == (chw.shape[-1], chw.shape[-2])
+            # clamped to [0, 1], scaled to 0..255 and rounded; (H, W, 3) for "RGB", (H, W) for "L"
+            expected = (chw.clamp(0, 1) * 255).round().byte().permute(1, 2, 0)
+            if mode == "L":
+                expected = expected[..., 0]
+            assert np.array_equal(np.asarray(image), expected.numpy())
+
+    @pytest.mark.parametrize(
+        ("shape", "modes"), [((3, 4, 5), ["RGB"]), ((1, 4, 5), ["L"]), ((2, 3, 4, 5), ["RGB", "RGB"])]
+    )
+    def test_pil_output_single_tensor(self, shape, modes):
         mixin = DummyMixin()
-        # (C, H, W) tensor in [0, 1]
-        t = torch.rand(3, 16, 16)
+        # values beyond [0, 1] check the clamp
+        t = torch.rand(*shape) * 1.2 - 0.1
         out = mixin._tensor_to_type(t, "pil")
-        # tensor_to_image returns a PIL Image or ndarray depending on implementation
-        assert out is not None
+        self._assert_pil_images(out, [t], modes)
 
     def test_pil_output_list_of_tensors(self):
         mixin = DummyMixin()
-        tensors = [torch.rand(3, 16, 16), torch.rand(3, 16, 16)]
+        tensors = [torch.rand(3, 4, 5), torch.rand(1, 4, 5), torch.rand(2, 3, 4, 5)]
         out = mixin._tensor_to_type(tensors, "pil")
-        assert isinstance(out, list)
-        assert len(out) == 2
+        self._assert_pil_images(out, tensors, ["RGB", "L", "RGB", "RGB"])
 
     def test_unsupported_output_type_raises(self):
         mixin = DummyMixin()
@@ -258,6 +278,29 @@ class TestModelBaseLoadCheckpoint(BaseTester):
 
         self.assert_close(model.linear.weight, source.linear.weight)
         self.assert_close(model.linear.bias, source.linear.bias)
+
+    def test_load_checkpoint_moves_the_model(self, tmp_path, device) -> None:
+        path = tmp_path / "model.pth"
+        torch.save(_TinyModel().state_dict(), path)
+
+        model = _TinyModel()
+        model.load_checkpoint(str(path), device=device)
+
+        assert {p.device for p in model.parameters()} == {device}
+
+    @pytest.mark.device_agnostic
+    def test_load_checkpoint_calls_to_with_the_device(self, tmp_path) -> None:
+        path = tmp_path / "model.pth"
+        torch.save(_TinyModel().state_dict(), path)
+        model = _TinyModel()
+
+        with patch.object(_TinyModel, "to", autospec=True, side_effect=nn.Module.to) as to:
+            model.load_checkpoint(str(path))
+            to.assert_not_called()
+
+            model.load_checkpoint(str(path), device=torch.device("cpu"))
+            assert to.call_count == 1
+            assert torch.device("cpu") in (*to.call_args.args[1:], *to.call_args.kwargs.values())
 
     def test_load_checkpoint_keeps_the_mode(self, tmp_path) -> None:
         path = tmp_path / "model.pth"

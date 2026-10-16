@@ -219,7 +219,7 @@ class SemanticSegmentation(ModelBase):
                 If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`.
             semantic_masks: If list of segmentation masks. Each mask is a torch.Tensor with shape :math:`(C, H, W)`.
                 If torch.Tensor, a torch.Tensor with shape :math:`(B, C, H, W)`.
-            output_type: The type of output, can be "torch" or "PIL".
+            output_type: The type of output, can be "torch" or "pil".
             colormap: The colormap to use, can be "random" or a custom color map.
             manual_seed: The manual seed to use for the colormap.
 
@@ -267,7 +267,7 @@ class SemanticSegmentation(ModelBase):
             semantic_masks: If list of segmentation masks. Each mask is a torch.Tensor with shape :math:`(C, H, W)`.
                 If torch.Tensor, a torch.Tensor with shape :math:`(B, C, H, W)`.
             directory: The directory to save the results.
-            output_type: The type of output, can be "torch" or "PIL".
+            output_type: The type of output, can be "torch" or "pil".
             colormap: The colormap to use, can be "random" or a custom color map.
             manual_seed: The manual seed to use for the colormap.
 

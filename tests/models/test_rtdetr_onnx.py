@@ -19,7 +19,10 @@
 
 import pytest
 import torch
+from torch import nn
 
+from kornia.contrib.object_detection import ObjectDetector
+from kornia.models.processors import ResizePreProcessor
 from kornia.models.rt_detr.model import RTDETR, RTDETRConfig
 from kornia.models.rt_detr.post_processor import DETRPostProcessor
 
@@ -93,3 +96,38 @@ def test_postprocessor_onnx_per_image_sizes(tmp_path, sizes_dtype):
     )
     assert_close(torch.from_numpy(detections)[..., 2:], expected[1:])
 
+
+class _FixedDetections(nn.Module):
+    """Stand-in for RT-DETR: one fixed query per image, a box in normalised (cx, cy, w, h)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.register_buffer("logits", torch.tensor([[[5.0, -5.0]]]))
+        self.register_buffer("boxes", torch.tensor([[[0.5, 0.5, 0.25, 0.25]]]))
+
+    def forward(self, images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        batch = images.shape[0]
+        return self.logits.expand(batch, -1, -1), self.boxes.expand(batch, -1, -1)
+
+
+@pytest.mark.timeout(120)
+def test_resize_preprocessor_onnx_dynamic_sizes():
+    """With a dynamic H and W, the exported detector reads each input's size instead of the trace's."""
+    pytest.importorskip("onnx")
+    ort = pytest.importorskip("onnxruntime")
+    pytest.importorskip("onnxscript")
+
+    detector = ObjectDetector(_FixedDetections(), ResizePreProcessor(32, 32), _post_processor())
+    exported = detector.to_onnx(image_size=None, include_pre_and_post_processor=True, save=False)
+    session = ort.InferenceSession(exported.SerializeToString(), providers=["CPUExecutionProvider"])
+
+    generator = torch.Generator().manual_seed(0)
+    for height, width in [(77, 128), (96, 100)]:
+        images = torch.rand(1, 3, height, width, generator=generator)
+        (detections,) = session.run(None, {"input": images.numpy()})
+        detections = torch.from_numpy(detections)
+
+        assert_close(detections, detector(images))
+        # xywh of the normalised box (0.5, 0.5, 0.25, 0.25) in this image's pixels
+        expected = torch.tensor([[[0.375 * width, 0.375 * height, 0.25 * width, 0.25 * height]]])
+        assert_close(detections[..., 2:], expected)

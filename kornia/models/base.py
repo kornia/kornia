@@ -28,8 +28,7 @@ from torch import nn
 
 from kornia.core.download import load_state_dict_from_url
 from kornia.core.external import PILImage as Image
-from kornia.core.mixin.image_module import _to_uint8_image
-from kornia.image.utils import tensor_to_image
+from kornia.core.mixin.image_module import ImageModuleMixIn, _to_uint8_image
 from kornia.io import write_image
 
 logger = logging.getLogger(__name__)
@@ -79,7 +78,10 @@ class ModelBaseMixin:
             is_batch: If True, the output is expected to be a batch of tensors.
 
         Returns:
-            The converted output tensor or list of tensors.
+            The output unchanged for "torch". For "pil", a list of PIL images, one per :math:`(C, H, W)` image: a
+            :math:`(B, C, H, W)` tensor gives B images, and a list gives the images of each element in turn. They are
+            converted as :meth:`~kornia.core.mixin.image_module.ImageModuleMixIn.to_pil` does: a floating image is
+            clamped to ``[0, 1]`` and rounded to 8 bits, and a one-channel image becomes a mode ``"L"`` image.
 
         Raises:
             RuntimeError: If the output type is not supported.
@@ -88,9 +90,8 @@ class ModelBaseMixin:
         if output_type == "torch":
             return output
         if output_type == "pil":
-            if isinstance(output, list):
-                return [tensor_to_image(t) for t in output]
-            return tensor_to_image(output)
+            tensors = output if isinstance(output, list) else [output]
+            return [ImageModuleMixIn._chw_to_pil(chw) for t in tensors for chw in t.reshape(-1, *t.shape[-3:])]
         raise RuntimeError(f"Output type {output_type} is not supported. Accepted values are 'torch' and 'pil'.")
 
     def save(self, output: Union[torch.Tensor, List[torch.Tensor]], directory: str, is_batch: bool = False) -> None:
@@ -159,6 +160,8 @@ class ModelBase(ABC, nn.Module, ModelBaseMixin, Generic[ModelConfig]):
             state_dict = load_state_dict_from_url(checkpoint, map_location=device)
 
         self.load_state_dict(state_dict)
+        if device is not None:
+            self.to(device)
 
     @staticmethod
     @abstractmethod

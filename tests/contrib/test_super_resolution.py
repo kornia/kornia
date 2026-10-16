@@ -52,6 +52,21 @@ class TestSuperResolutionBuilders(BaseTester):
         assert out.shape[0] == 1
         assert out.shape[1] == 3
 
+    @pytest.mark.parametrize("num_images", [1, 2])
+    def test_rrdb_list_input(self, device, dtype, num_images):
+        # Every RRDB variant has the same identity pre-processor; the 6-block one keeps CPU half precision fast.
+        model = RRDBNetBuilder.build("RealESRGAN_x4plus_anime_6B", pretrained=False).to(device, dtype)
+        images = [torch.rand(3, 16, 20, device=device, dtype=dtype) for _ in range(num_images)]
+
+        out = model(images)
+
+        assert isinstance(out, list)
+        assert len(out) == num_images
+        for image, actual in zip(images, out):
+            # RealESRGAN_x4plus_anime_6B upscales by 4
+            assert actual.shape == (3, 64, 80)
+            self.assert_close(actual, model(image[None])[0])
+
     @pytest.mark.parametrize("model_name", ["small_sr", "RealESRNet_x4plus"])
     def test_from_config_dispatches_to_both_families(self, device, dtype, model_name):
         config = SuperResolutionConfig(model_name=model_name, pretrained=False)
