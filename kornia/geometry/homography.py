@@ -869,8 +869,10 @@ def find_homography_lines_dlt_iterated(
           the image-2 line. A zero-length image-2 segment gets weight zero.
 
     Args:
-        ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`.
-        ls2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`.
+        ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`, or
+          :math:`(N, 2, 2)`, which is treated as :math:`B = 1`, as in :func:`find_homography_lines_dlt`.
+        ls2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`, or
+          :math:`(N, 2, 2)`, which is treated as :math:`B = 1`.
         weights: Tensor containing the weights per segment with a shape of :math:`(B, N)`.
           Used for the first iteration of the IRWLS.
         soft_inl_th: standard deviation, in pixels, of the Gaussian re-weighting kernel of
@@ -881,6 +883,12 @@ def find_homography_lines_dlt_iterated(
         the computed homography matrix with shape :math:`(B, 3, 3)`.
 
     """
+    # Promote unbatched segments as find_homography_lines_dlt does: the re-weighting below needs the batch axis
+    # (#5995).
+    if len(ls1.shape) == 3:
+        ls1 = ls1[None]
+    if len(ls2.shape) == 3:
+        ls2 = ls2[None]
     H: torch.Tensor = find_homography_lines_dlt(ls1, ls2, weights)
     for _ in range(n_iter - 1):
         squared_distances: torch.Tensor = _line_segment_squared_distance_one_way(ls1, ls2, H)

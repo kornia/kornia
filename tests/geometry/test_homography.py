@@ -961,6 +961,19 @@ class TestFindHomographyFromLinesDLT(BaseTester):
             kornia.geometry.transform_points(dst_homo_src, points_src_st), points_dst_st, rtol=rtol, atol=atol
         )
 
+    @pytest.mark.parametrize("use_weights", [False, True])
+    def test_iterated_accepts_unbatched_segments_5995(self, use_weights, device, dtype):
+        # (N, 2, 2) is treated as B = 1, as in find_homography_lines_dlt. The re-weighting used to reject it with
+        # a ShapeError from line_segment_transfer_error_one_way after the first solve.
+        ls1 = torch.rand(6, 2, 2, device=device, dtype=dtype) * 100
+        ls2 = ls1 + torch.rand(6, 2, 2, device=device, dtype=dtype)
+        weights = torch.ones(1, 6, device=device, dtype=dtype) if use_weights else None
+
+        H = find_homography_lines_dlt_iterated(ls1, ls2, weights)
+
+        assert H.shape == (1, 3, 3)
+        self.assert_close(H, find_homography_lines_dlt_iterated(ls1[None], ls2[None], weights), rtol=0.0, atol=0.0)
+
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_clean_points_iter(self, batch_size, device, dtype):
         # generate input data
