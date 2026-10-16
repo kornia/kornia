@@ -1106,6 +1106,57 @@ class TestWarpPerspective(BaseTester):
         self.assert_close(top_row_mean, fill_value)
         self.assert_close(first_col_mean, fill_value)
 
+    @pytest.mark.parametrize("channels", [1, 3, 4])
+    @pytest.mark.parametrize("fill_shape", ["default", "scalar", "one", "per_channel"])
+    def test_fill_keeps_channel_count_6021(self, channels, fill_shape, device, dtype):
+        # The default fill used to be zeros(3), which turned a one-channel image into three channels and failed
+        # on four; (C) and (1) fills are now accepted, as in warp_affine.
+        image = torch.rand(2, channels, 4, 5, device=device, dtype=dtype)
+        homography = kornia.core.ops.eye_like(3, image)
+        homography[..., 0, -1] += 2.0
+        fills = {
+            "default": None,
+            "scalar": torch.tensor(0.25, device=device, dtype=dtype),
+            "one": torch.tensor([0.25], device=device, dtype=dtype),
+            "per_channel": torch.linspace(0.1, 0.9, channels, device=device, dtype=dtype),
+        }
+        fill = fills[fill_shape]
+
+        out = kornia.geometry.warp_perspective(image, homography, (4, 5), padding_mode="fill", fill_value=fill)
+
+        assert out.shape == image.shape
+        expected = (
+            torch.zeros(channels, device=device, dtype=dtype) if fill is None else fill.reshape(-1).expand(channels)
+        )
+        self.assert_close(out[..., :2].mean(dim=(0, 2, 3)), expected)
+
+
+class TestFillValueChannels6021(BaseTester):
+    # A fill_value with neither 1 element nor one per channel used to broadcast against the warped image: a
+    # one-channel image came back with three channels, and other mismatches raised a raw broadcasting error.
+    @pytest.mark.parametrize(("channels", "fill_len"), [(1, 3), (4, 3), (3, 2)])
+    @pytest.mark.parametrize("op", ["warp_affine", "warp_perspective"])
+    def test_mismatched_fill_raises(self, channels, fill_len, op, device, dtype):
+        image = torch.rand(2, channels, 4, 5, device=device, dtype=dtype)
+        affine = torch.tensor([[[1.0, 0.0, 2.0], [0.0, 1.0, 0.0]]], device=device, dtype=dtype).repeat(2, 1, 1)
+        fill = torch.full((fill_len,), 0.5, device=device, dtype=dtype)
+        last_row = torch.tensor([[[0.0, 0.0, 1.0]]], device=device, dtype=dtype).repeat(2, 1, 1)
+        warp, transform = (
+            (kornia.geometry.warp_affine, affine)
+            if op == "warp_affine"
+            else (kornia.geometry.warp_perspective, torch.cat([affine, last_row], 1))
+        )
+
+        with pytest.raises(ValueError, match=rf"one per channel \({channels}\); got {fill_len} elements"):
+            warp(image, transform, (4, 5), padding_mode="fill", fill_value=fill)
+
+    def test_random_affine_mismatched_fill_raises(self, device, dtype):
+        aug = kornia.augmentation.RandomAffine(
+            30.0, padding_mode="fill", fill_value=torch.tensor([0.2, 0.5, 0.9], device=device, dtype=dtype), p=1.0
+        )
+        with pytest.raises(ValueError, match=r"one per channel \(1\); got 3 elements"):
+            aug(torch.rand(2, 1, 8, 10, device=device, dtype=dtype))
+
 
 class TestRemap(BaseTester):
     def test_smoke(self, device, dtype):

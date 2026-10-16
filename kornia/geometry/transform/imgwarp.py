@@ -280,7 +280,7 @@ def warp_perspective(
         padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``
             | ``'fill'``.
         align_corners: interpolation flag.
-        fill_value: torch.Tensor of shape :math:`(3)` that fills the padding area. Only supported for RGB.
+        fill_value: torch.Tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area. Defaults to zeros.
 
     Returns:
         the warped input image :math:`(B, C, h, w)`, spatial sizes given by ``dsize``.
@@ -311,12 +311,10 @@ def warp_perspective(
     if not (len(M.shape) == 3 and M.shape[-2:] == (3, 3)):
         raise ValueError(f"Input M must be a Bx3x3 torch.Tensor. Got {M.shape}")
 
-    # fill padding is only supported for 3 channels because we can't set fill_value default
-    # to None as this gives jit issues.
+    # The default fill has one zero per channel, as in warp_affine: a fixed (3,) default turned a one-channel image
+    # into three channels and failed on any other channel count (#6021).
     if fill_value is None:
-        fill_value = torch.zeros(3)
-    if padding_mode == "fill" and fill_value.shape != torch.Size([3]):
-        raise ValueError(f"Padding_tensor only supported for 3 channels. Got {fill_value.shape}")
+        fill_value = torch.zeros(src.shape[1], device=src.device, dtype=src.dtype)
 
     B, _, H, W = src.size()
     h_out, w_out = dsize
@@ -537,6 +535,13 @@ def _fill_and_warp(
     Returns:
         the warped and filled torch.Tensor with shape :math:`(B, C, H, W)`.
     """
+    # A fill of any other length would broadcast against the warped image and change its channel count, or fail
+    # with a raw broadcasting error (#6021).
+    channels = src.shape[1]
+    if fill_value.numel() != 1 and fill_value.numel() != channels:
+        raise ValueError(
+            f"fill_value must have 1 element or one per channel ({channels}); got {fill_value.numel()} elements."
+        )
     ones_mask = torch.ones_like(src)
     fill_value = fill_value.to(ones_mask)
 
