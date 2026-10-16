@@ -38,6 +38,8 @@ jobs:
           pixi run -e ${{ steps.env.outputs.name }} uv run --no-sync pytest tests/feature/test_lightglue.py::TestLightGluePruningDtype tests/feature/test_lightglue.py::TestLightGlueBatchedPairs --device=cpu --dtype=float64 -q
       - name: Restore and validate the fix
         if: always()
+        env:
+          KORNIA_TEST_OPTIMIZER: eager
         run: |
           git restore kornia/feature/lightglue.py
           pixi run -e ${{ steps.env.outputs.name }} uv run --no-sync pytest tests/feature/test_lightglue.py::TestAttention tests/feature/test_lightglue.py::TestLightGluePruningDtype tests/feature/test_lightglue.py::TestLightGlueBatchedPairs --device=cpu --dtype=float32,float64 -q
