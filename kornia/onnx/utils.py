@@ -131,7 +131,7 @@ class ONNXLoader(CachedDownloader):
         raise RuntimeError(f"File `{url}` not found.")
 
     @classmethod
-    def load_model(cls, model_name: str, download: bool = True, with_data: bool = False, **kwargs) -> onnx.ModelProto:  # type:ignore
+    def load_model(cls, model_name: str, download: bool = True, with_data: bool = False, **kwargs) -> onnx.ModelProto:
         """Load an ONNX model from the local cache or downloads it from Hugging Face if necessary.
 
         Args:
@@ -172,7 +172,7 @@ class ONNXLoader(CachedDownloader):
             if with_data:
                 url_data = f"https://huggingface.co/kornia/ONNX_models/resolve/main/{model_name}.onnx_data"
                 cls.download_to_cache(url_data, name, download=download, suffix=".onnx_data", **kwargs)
-            return onnx.load(file_path)  # type:ignore
+            return onnx.load(file_path)
 
         if model_name.startswith(("http://", "https://")):
             name = _url_cache_name(model_name)
@@ -182,10 +182,10 @@ class ONNXLoader(CachedDownloader):
                 parts = urlsplit(model_name)
                 url_data = urlunsplit(parts._replace(path=_onnx_data_name(parts.path)))
                 cls.download_to_cache(url_data, _onnx_data_name(name), download=download, suffix=".onnx_data", **kwargs)
-            return onnx.load(file_path)  # type:ignore
+            return onnx.load(file_path)
 
         if os.path.exists(model_name):
-            return onnx.load(model_name)  # type:ignore
+            return onnx.load(model_name)
 
         raise ValueError(f"File {model_name} not found")
 
@@ -228,9 +228,9 @@ class ONNXLoader(CachedDownloader):
 
 
 def io_name_conversion(
-    onnx_model: onnx.ModelProto,  # type:ignore
+    onnx_model: onnx.ModelProto,
     io_name_mapping: dict[str, str],
-) -> onnx.ModelProto:  # type:ignore
+) -> onnx.ModelProto:
     """Convert the input and output names of an ONNX model to 'input' and 'output'.
 
     Args:
@@ -265,9 +265,9 @@ def io_name_conversion(
 
 
 def add_metadata(
-    onnx_model: onnx.ModelProto,  # type: ignore
+    onnx_model: onnx.ModelProto,
     additional_metadata: Optional[list[tuple[str, str]]] = None,
-) -> onnx.ModelProto:  # type: ignore
+) -> onnx.ModelProto:
     """Add metadata to an ONNX model.
 
     The metadata includes the source library (set to "kornia"), the version of kornia,

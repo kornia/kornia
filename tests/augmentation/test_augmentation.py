@@ -4568,10 +4568,12 @@ class TestRandomClahe(BaseTester):
         params["clip_limit_factor"] = clip_limits
         params["batch_prob"] = torch.tensor(batch_prob)
 
+        # Cubing then casting can round small float16 values to zero. The per-image reference
+        # includes the augmentation's input clamp so boundary gradients follow the same torch contract.
         transformed = torch.cat(
             [
                 kornia.enhance.equalize_clahe(
-                    input_data[index : index + 1], float(clip_limit), (2, 2), slow_and_differentiable
+                    input_data[index : index + 1].clamp(0.0, 1.0), float(clip_limit), (2, 2), slow_and_differentiable
                 )
                 for index, clip_limit in enumerate(clip_limits)
             ]
@@ -6405,6 +6407,42 @@ class TestRandomJPEG(BaseTester):
         img_jpeg_mean_grad_ref = torch.tensor([0.1919], device=device)
         # We use a slightly higher tolerance since our implementation varies from the reference implementation
         self.assert_close(img.grad.mean().view(-1), img_jpeg_mean_grad_ref, rtol=0.01, atol=0.01)
+
+
+class TestRandomJPEGEmptyBatch(BaseTester):
+    # Not marked slow like TestRandomJPEG: an empty batch never reaches the codec, so these run on every CI leg.
+
+    @pytest.mark.parametrize("p", [1.0, 0.5])
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_empty_batch(self, p, same_on_batch, device, dtype):
+        # #4429: the differentiable JPEG codec rejects an empty batch, so the augmentation short-circuits it and
+        # keeps the shape like the other classes in the empty-batch convention.
+        image = torch.rand(0, 3, 8, 10, device=device, dtype=dtype, requires_grad=True)
+        output = RandomJPEG(p=p, same_on_batch=same_on_batch)(image)
+        assert output.shape == image.shape
+        assert output.dtype == dtype
+        output.sum().backward()
+        assert image.grad is not None
+        assert image.grad.shape == image.shape
+
+    @pytest.mark.parametrize(
+        ("params_batch", "batch", "error", "match"),
+        [(0, 2, RuntimeError, r"amin\(\)"), (2, 0, ValueError, r"Invalid input tensor, it is empty\.")],
+    )
+    def test_empty_batch_shortcut_needs_an_empty_batch(self, params_batch, batch, error, match, device, dtype):
+        # Replaying parameters drawn for another batch size raises as it did before the empty-batch shortcut; a
+        # non-empty batch with no drawn quality must not come back uncoded.
+        aug = RandomJPEG(p=1.0)
+        params = aug.forward_parameters(torch.Size((params_batch, 3, 8, 10)))
+        with pytest.raises(error, match=match):
+            aug(torch.rand(batch, 3, 8, 10, device=device, dtype=dtype), params=params)
+
+    @pytest.mark.parametrize("shape", [(0, 1, 8, 10), (0, 3, 0, 10), (0, 3, 8, 0)])
+    def test_empty_batch_keeps_the_input_checks(self, shape, device, dtype):
+        # The codec needs three channels and a non-empty image at every batch size, so these empty batches still
+        # raise as they did before the empty-batch shortcut.
+        with pytest.raises(ValueError, match=r"it is empty|expected 3"):
+            RandomJPEG(p=1.0)(torch.rand(*shape, device=device, dtype=dtype))
 
 
 @pytest.mark.slow

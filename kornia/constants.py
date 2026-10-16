@@ -32,10 +32,10 @@ TKEnum = Union[str, int, _T]
 class _KORNIA_EnumMeta(EnumMeta):
     """Custom metaclass for enums to support string and integer comparisons."""
 
-    def __iter__(self) -> Iterator[Enum]:  # type: ignore[override]
+    def __iter__(self) -> Iterator[Enum]:
         return super().__iter__()
 
-    def __contains__(self, other: TKEnum[Enum]) -> bool:  # type: ignore[override]
+    def __contains__(self, other: TKEnum[Enum]) -> bool:
         if isinstance(other, str):
             return any(val.name.upper() == other.upper() for val in self)
 

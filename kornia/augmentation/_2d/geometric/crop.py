@@ -385,10 +385,10 @@ class RandomCrop(GeometricAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
         **kwargs: Any,
     ) -> torch.Tensor:
-        if flags["cropping_mode"] != "resample":
-            raise NotImplementedError(
-                f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
-            )
+        # A keyword overrides the flag, and an empty or unapplied batch never reaches inverse_transform.
+        cropping_mode = kwargs.get("cropping_mode", flags["cropping_mode"])
+        if cropping_mode != "resample":
+            raise NotImplementedError(f"`inverse` is only applicable for resample cropping mode. Got {cropping_mode}.")
         if isinstance(transform, torch.Tensor):
             # The inverse matrix returns original coordinates. The image inverse still renders
             # onto forward_input_shape (the padded canvas), then removes its border below.

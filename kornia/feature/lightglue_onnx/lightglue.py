@@ -167,14 +167,14 @@ class OnnxLightGlue:
 
         # Normalize keypoints.
         size0, size1 = data0.get("image_size"), data1.get("image_size")
-        size0 = size0 if size0 is not None else data0["image"].shape[-2:][::-1]  # type: ignore
-        size1 = size1 if size1 is not None else data1["image"].shape[-2:][::-1]  # type: ignore
+        size0 = size0 if size0 is not None else data0["image"].shape[-2:][::-1]
+        size1 = size1 if size1 is not None else data1["image"].shape[-2:][::-1]
 
-        kpts0 = normalize_keypoints(kpts0_, size=size0)  # type: ignore
-        kpts1 = normalize_keypoints(kpts1_, size=size1)  # type: ignore
+        kpts0 = normalize_keypoints(kpts0_, size=size0)
+        kpts1 = normalize_keypoints(kpts1_, size=size1)
 
-        KORNIA_CHECK(torch.all(kpts0 >= -1).item() and torch.all(kpts0 <= 1).item(), _KEYPOINT_RANGE_MSG)  # type: ignore
-        KORNIA_CHECK(torch.all(kpts1 >= -1).item() and torch.all(kpts1 <= 1).item(), _KEYPOINT_RANGE_MSG)  # type: ignore
+        KORNIA_CHECK(torch.all(kpts0 >= -1).item() and torch.all(kpts0 <= 1).item(), _KEYPOINT_RANGE_MSG)
+        KORNIA_CHECK(torch.all(kpts1 >= -1).item() and torch.all(kpts1 <= 1).item(), _KEYPOINT_RANGE_MSG)
 
         # Inference.
         lightglue_inputs = {"kpts0": kpts0, "kpts1": kpts1, "desc0": desc0, "desc1": desc1}

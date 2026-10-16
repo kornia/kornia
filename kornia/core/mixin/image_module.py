@@ -71,7 +71,7 @@ def _rebuild_container(source: Any, items: List[Any]) -> Any:
     field-aware ``_make``. A plain tuple or list takes an iterable.
     """
     if hasattr(type(source), "_make"):
-        return type(source)._make(items)  # type: ignore[attr-defined]
+        return type(source)._make(items)
     return type(source)(items)
 
 
@@ -257,7 +257,7 @@ class ImageModuleMixIn:
             return True
         if isinstance(arg, torch.Tensor):
             return True
-        if isinstance(arg, np.ndarray):  # type: ignore
+        if isinstance(arg, np.ndarray):
             return True
         # A PIL image exists only once PIL is imported: look the module up instead of importing it through the lazy
         # loader, which would raise on an install without the "image" extra for every non-image argument.
@@ -300,12 +300,12 @@ class ImageModuleMixIn:
             image = _image_to_float(image)
         elif isinstance(x, torch.Tensor):
             return x
-        elif isinstance(x, np.ndarray):  # type: ignore
+        elif isinstance(x, np.ndarray):
             image = _array_to_float_image(x)
-        elif isinstance(x, Image.Image):  # type: ignore
+        elif isinstance(x, Image.Image):
             if x.mode in ("P", "PA"):  # palette indices are not intensities
                 x = x.convert("RGBA" if x.mode == "PA" or "transparency" in x.info else "RGB")
-            image = _array_to_float_image(np.array(x))  # type: ignore
+            image = _array_to_float_image(np.array(x))
         else:
             raise TypeError("Input type not supported")
         return self._to_module_device_dtype(image)
@@ -335,7 +335,7 @@ class ImageModuleMixIn:
             floating_dtype = torch.get_default_dtype()
         return image.to(device=reference.device, dtype=floating_dtype)
 
-    def to_numpy(self, x: Any) -> "np.array":  # type: ignore
+    def to_numpy(self, x: Any) -> "np.array":
         """Convert input to numpy array.
 
         A :math:`(C, H, W)` or :math:`(B, C, H, W)` tensor becomes a channels-last :math:`(H, W, C)` or
@@ -362,13 +362,13 @@ class ImageModuleMixIn:
             elif x.dim() == 4:
                 x = x.permute(0, 2, 3, 1)
             return x.contiguous().numpy()
-        if isinstance(x, np.ndarray):  # type: ignore
+        if isinstance(x, np.ndarray):
             return x
-        if isinstance(x, Image.Image):  # type: ignore
-            return np.array(x)  # type: ignore
+        if isinstance(x, Image.Image):
+            return np.array(x)
         raise TypeError("Input type not supported")
 
-    def to_pil(self, x: Any) -> "Image.Image":  # type: ignore
+    def to_pil(self, x: Any) -> "Image.Image":
         """Convert input to PIL image.
 
         A floating image is clamped to ``[0, 1]`` and rounded to 8 bits on the CPU; a ``uint8`` image keeps its
@@ -386,18 +386,18 @@ class ImageModuleMixIn:
             if x.dim() == 3:
                 return self._chw_to_pil(x)
             if x.dim() == 4:
-                return [self._chw_to_pil(_x) for _x in x]  # type: ignore
+                return [self._chw_to_pil(_x) for _x in x]
             raise NotImplementedError(
                 f"to_pil converts a (C, H, W) or (B, C, H, W) tensor, got a tensor of shape {tuple(x.shape)}."
             )
-        if isinstance(x, np.ndarray):  # type: ignore
+        if isinstance(x, np.ndarray):
             raise NotImplementedError("to_pil does not convert NumPy arrays; convert them with to_tensor first.")
-        if isinstance(x, Image.Image):  # type: ignore
+        if isinstance(x, Image.Image):
             return x
         raise TypeError("Input type not supported")
 
     @staticmethod
-    def _chw_to_pil(image: torch.Tensor) -> "Image.Image":  # type: ignore
+    def _chw_to_pil(image: torch.Tensor) -> "Image.Image":
         image = _to_uint8_image(image.detach().cpu())
         if image.dtype != torch.uint8 and (image.shape[0] != 1 or image.dtype not in _PIL_ONE_CHANNEL_DTYPES):
             raise NotImplementedError(
@@ -405,8 +405,8 @@ class ImageModuleMixIn:
                 f"image; got a {image.shape[0]}-channel {image.dtype} tensor."
             )
         if image.shape[0] == 1:
-            return Image.fromarray(image[0].numpy())  # type: ignore
-        return Image.fromarray(image.permute(1, 2, 0).numpy())  # type: ignore
+            return Image.fromarray(image[0].numpy())
+        return Image.fromarray(image.permute(1, 2, 0).numpy())
 
     def _detach_tensor(
         self, output_image: Union[torch.Tensor, List[Any], Tuple[Any, ...]]

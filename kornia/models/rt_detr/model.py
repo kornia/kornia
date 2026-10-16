@@ -271,7 +271,7 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
             return re.sub(".branch2c.", ".convs.branch2c.", new_name)
 
         def _state_dict_proc(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-            state_dict = state_dict["ema"]["module"]  # type:ignore
+            state_dict = state_dict["ema"]["module"]
             new_state_dict = {}
 
             # Apply the regex-based mapping function to each key

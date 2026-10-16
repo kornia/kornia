@@ -21,11 +21,43 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
+from kornia.core.exceptions import ValueCheckError
 
 from testing.base import BaseTester
 
 
 class TestExtractTensorPatches(BaseTester):
+    @pytest.mark.parametrize("argument", ["window_size", "stride"])
+    @pytest.mark.parametrize("value", [0, (1, 0), -1])
+    def test_function_rejects_non_positive_patch_params(self, argument, value):
+        params = {"window_size": 2, "stride": 1}
+        params[argument] = value
+        with pytest.raises(ValueCheckError, match=argument):
+            kornia.contrib.extract_tensor_patches(torch.ones(1, 1, 4, 4), **params)
+
+    @pytest.mark.parametrize("argument", ["window_size", "stride"])
+    def test_rejects_non_positive_patch_params_with_checks_disabled(self, argument):
+        # A zero window_size returned empty patches without this guard, so it must not follow disable_checks().
+        params = {"window_size": 2, "stride": 1}
+        params[argument] = 0
+        was_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            with pytest.raises(ValueCheckError, match=argument):
+                kornia.contrib.extract_tensor_patches(torch.ones(1, 1, 4, 4), **params)
+        finally:
+            if was_enabled:
+                enable_checks()
+
+    @pytest.mark.parametrize("argument", ["window_size", "stride"])
+    @pytest.mark.parametrize("value", [0, (1, 0), -1])
+    def test_module_rejects_non_positive_patch_params(self, argument, value):
+        params = {"window_size": 2, "stride": 1}
+        params[argument] = value
+        with pytest.raises(ValueCheckError, match=argument):
+            kornia.contrib.ExtractTensorPatches(**params)
+
     def test_smoke(self, device):
         img = torch.arange(16.0, device=device).view(1, 1, 4, 4)
         m = kornia.contrib.ExtractTensorPatches(3)
@@ -219,7 +251,7 @@ class TestExtractTensorPatches(BaseTester):
             kornia.contrib.extract_tensor_patches(
                 torch.empty(batch_size, 3, 8, 12, device=device, dtype=dtype), (0, 4), (4, 4)
             )
-        with pytest.raises(RuntimeError, match=r"step.*> 0"):
+        with pytest.raises(ValueCheckError, match=r"stride.*positive"):
             kornia.contrib.extract_tensor_patches(
                 torch.empty(batch_size, 3, 8, 12, device=device, dtype=dtype), 4, 0, padding=(1, 1, 1, 1)
             )
@@ -240,3 +272,12 @@ class TestExtractTensorPatches(BaseTester):
         out = kornia.contrib.extract_tensor_patches(img, 2, 2, padding=padding, allow_auto_padding=True)
         assert out.shape == (1, 12, 1, 2, 2)
         self.assert_close(out, expected)
+
+
+@pytest.mark.parametrize("argument", ["window_size", "stride"])
+@pytest.mark.parametrize("value", [0, (1, 0), -1])
+def test_compute_padding_rejects_non_positive_patch_params(argument, value):
+    params = {"window_size": 2, "stride": 1}
+    params[argument] = value
+    with pytest.raises(ValueCheckError, match=argument):
+        kornia.contrib.compute_padding((4, 4), **params)

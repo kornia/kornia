@@ -19,7 +19,6 @@
 # Han Cai, Junyan Li, Muyan Hu, Chuang Gan, Song Han
 # International Conference on Computer Vision (ICCV), 2023
 
-# type: ignore
 from __future__ import annotations
 
 import torch

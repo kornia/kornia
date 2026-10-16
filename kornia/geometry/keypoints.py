@@ -316,7 +316,7 @@ class VideoKeypoints(Keypoints):
         out.temporal_channel_size = temporal_channel_size
         return out
 
-    def to_tensor(self) -> torch.torch.Tensor:  # type: ignore[override]
+    def to_tensor(self) -> torch.torch.Tensor:
         out = super().to_tensor(as_padded_sequence=False)
         out = cast(torch.torch.Tensor, out)
         batch_size = out.shape[0] // self.temporal_channel_size

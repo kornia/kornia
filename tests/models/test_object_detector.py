@@ -17,6 +17,7 @@
 
 import warnings
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 import torch
@@ -29,6 +30,53 @@ from testing.base import BaseTester
 
 
 class TestObjectDetector(BaseTester):
+    @pytest.mark.parametrize("num_detections", [0, 1, 2])
+    @pytest.mark.parametrize("as_list", [False, True])
+    @pytest.mark.parametrize("method", ["visualize", "save"])
+    def test_supplied_detections(self, device, dtype, num_detections, as_list, method, monkeypatch, tmp_path):
+        detector = kornia.contrib.object_detection.ObjectDetector(
+            torch.nn.Identity(), torch.nn.Identity(), torch.nn.Identity()
+        )
+        forward = Mock(side_effect=AssertionError("Supplied detections must not run inference"))
+        monkeypatch.setattr(detector, "forward", forward)
+        images = torch.ones(2, 3, 8, 8, device=device, dtype=dtype)
+        detections = torch.tensor([[[0, 0.9, 1, 1, 2, 2], [1, 0.8, 4, 4, 2, 2]]], device=device, dtype=dtype).expand(
+            2, -1, -1
+        )[:, :num_detections]
+        expected = images.clone()
+        if num_detections >= 1:
+            expected[:, :, 1, 1:4] = expected[:, :, 3, 1:4] = 0
+            expected[:, :, 1:4, 1] = expected[:, :, 1:4, 3] = 0
+        if num_detections == 2:
+            expected[:, :, 4, 4:7] = expected[:, :, 6, 4:7] = 0
+            expected[:, :, 4:7, 4] = expected[:, :, 4:7, 6] = 0
+
+        detections = list(detections) if as_list else detections
+        if method == "save":
+            detector.save(images, detections, directory=str(tmp_path))
+            files = sorted(tmp_path.glob("*.png"))
+            assert len(files) == len(images)
+            output = [
+                kornia.io.load_image(str(path), kornia.io.ImageLoadType.UNCHANGED).to(images) / 255 for path in files
+            ]
+        else:
+            output = detector.visualize(images, detections)
+
+        self.assert_close(torch.stack(output), expected)
+        self.assert_close(images, torch.ones_like(images))
+        forward.assert_not_called()
+
+    def test_visualize_without_detections(self, device, dtype, monkeypatch):
+        detector = kornia.contrib.object_detection.ObjectDetector(
+            torch.nn.Identity(), torch.nn.Identity(), torch.nn.Identity()
+        )
+        images = torch.ones(2, 3, 8, 8, device=device, dtype=dtype)
+        forward = Mock(return_value=torch.empty(2, 0, 6, device=device, dtype=dtype))
+        monkeypatch.setattr(detector, "forward", forward)
+
+        self.assert_close(torch.stack(detector.visualize(images)), images)
+        forward.assert_called_once_with(images)
+
     def test_visualize_keeps_a_border_box_four_sided(self, device):
         detector = kornia.contrib.object_detection.ObjectDetector(
             torch.nn.Identity(), torch.nn.Identity(), torch.nn.Identity()

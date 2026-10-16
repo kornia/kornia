@@ -31,7 +31,7 @@ from kornia.core.utils import is_exporting
 from kornia.feature.laf import laf_to_three_points, scale_laf
 
 
-def math_clamp(x, min_, max_):  # type: ignore
+def math_clamp(x, min_, max_):
     """Clamp a value to lie within [min, max]."""
     return min(max(x, min_), max_)
 
@@ -251,9 +251,9 @@ class CrossBlock(nn.Module):
         if flash:
             self.flash = Attention(True)
         else:
-            self.flash = None  # type: ignore
+            self.flash = None
 
-    def map_(self, func: Callable, x0: torch.Tensor, x1: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
+    def map_(self, func: Callable, x0: torch.Tensor, x1: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Apply the same function to descriptor tensors from both images.
 
         Args:
@@ -313,7 +313,7 @@ class TransformerLayer(nn.Module):
     to update local feature descriptors.
     """
 
-    def __init__(self, *args, **kwargs):  # type: ignore
+    def __init__(self, *args, **kwargs):
         super().__init__()
         self.self_attn = SelfBlock(*args, **kwargs)
         self.cross_attn = CrossBlock(*args, **kwargs)
@@ -457,7 +457,7 @@ _KEYPOINT_RANGE_MSG = (
 def _check_keypoints_normalized(kpts: torch.Tensor) -> None:
     """Check that keypoints lie in [-1, 1]; skipped under export, where reading the data is not possible."""
     if not is_exporting():
-        KORNIA_CHECK(torch.all(kpts >= -1).item() and torch.all(kpts <= 1).item(), _KEYPOINT_RANGE_MSG)  # type: ignore
+        KORNIA_CHECK(torch.all(kpts >= -1).item() and torch.all(kpts <= 1).item(), _KEYPOINT_RANGE_MSG)
 
 
 def _select_pair(image: Dict[str, Any], k: int, b: int) -> Dict[str, Any]:
@@ -610,7 +610,7 @@ class LightGlue(nn.Module):
         },
     }
 
-    def __init__(self, features: str = "superpoint", **conf_) -> None:  # type: ignore
+    def __init__(self, features: str = "superpoint", **conf_) -> None:
         super().__init__()
         self.conf = conf = SimpleNamespace(**{**self.default_conf, **conf_})
         if features is not None:
@@ -622,7 +622,7 @@ class LightGlue(nn.Module):
         if conf.input_dim != conf.descriptor_dim:
             self.input_proj = nn.Linear(conf.input_dim, conf.descriptor_dim, bias=True)
         else:
-            self.input_proj = nn.Identity()  # type: ignore
+            self.input_proj = nn.Identity()
 
         head_dim = conf.descriptor_dim // conf.num_heads
         self.posenc = LearnableFourierPositionalEncoding(
@@ -715,13 +715,13 @@ class LightGlue(nn.Module):
         ):
             torch._inductor.cudagraph_mark_step_begin()
         for i in range(self.conf.n_layers):
-            self.transformers[i].masked_forward = torch.compile(  # type: ignore[assignment]
+            self.transformers[i].masked_forward = torch.compile(
                 self.transformers[i].masked_forward, mode=mode, fullgraph=True
             )
 
-        self.static_lengths = static_lengths  # type: ignore
+        self.static_lengths = static_lengths
 
-    def forward(self, data: dict) -> dict:  # type: ignore
+    def forward(self, data: dict) -> dict:
         """Match keypoints and descriptors between two images.
 
         Input (dict):
@@ -755,7 +755,7 @@ class LightGlue(nn.Module):
         with torch.autocast(enabled=self.conf.mp, device_type=device_type, dtype=dtype):
             return self._forward(data)
 
-    def _forward(self, data: dict) -> dict:  # type: ignore
+    def _forward(self, data: dict) -> dict:
         data0, data1 = data["image0"], data["image1"]
         kpts0, kpts1 = data0["keypoints"], data1["keypoints"]
         b, m, _ = kpts0.shape
@@ -874,7 +874,7 @@ class LightGlue(nn.Module):
             # Pruning runs here for a single pair only: a batch that would prune runs its pairs one at a time.
             if do_point_pruning and desc0.shape[-2] > pruning_th:
                 scores0 = self.log_assignment[i].get_matchability(desc0)
-                prunemask0 = self.get_pruning_mask(token0, scores0, i)  # type: ignore
+                prunemask0 = self.get_pruning_mask(token0, scores0, i)
                 keep0 = torch.where(prunemask0)[1]
                 ind0 = ind0.index_select(1, keep0)
                 desc0 = desc0.index_select(1, keep0)
@@ -882,7 +882,7 @@ class LightGlue(nn.Module):
                 prune0[:, ind0] += 1
             if do_point_pruning and desc1.shape[-2] > pruning_th:
                 scores1 = self.log_assignment[i].get_matchability(desc1)
-                prunemask1 = self.get_pruning_mask(token1, scores1, i)  # type: ignore
+                prunemask1 = self.get_pruning_mask(token1, scores1, i)
                 keep1 = torch.where(prunemask1)[1]
                 ind1 = ind1.index_select(1, keep1)
                 desc1 = desc1.index_select(1, keep1)
@@ -960,7 +960,7 @@ class LightGlue(nn.Module):
             "prune1": prune1,
         }
 
-    def _forward_pairs(self, data0: dict, data1: dict, b: int) -> dict:  # type: ignore
+    def _forward_pairs(self, data0: dict, data1: dict, b: int) -> dict:
         """Match the ``b`` pairs of a batch one at a time and stack their outputs.
 
         The pairs have no common ``log_assignment``, since each covers the points its pair kept, and ``stop`` is the

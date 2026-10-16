@@ -33,7 +33,7 @@ class DepthEstimation(HFONNXComunnityModel):
 
     name: str = "depth_estimation"
 
-    def __call__(self, images: Union[torch.Tensor, list[torch.Tensor]]) -> Union[torch.Tensor, list[torch.Tensor]]:  # type: ignore[override]
+    def __call__(self, images: Union[torch.Tensor, list[torch.Tensor]]) -> Union[torch.Tensor, list[torch.Tensor]]:
         """Detect objects in a given list of images.
 
         Args:
@@ -69,7 +69,7 @@ class DepthEstimation(HFONNXComunnityModel):
         output_type: str = "torch",
         depth_type: str = "relative",
         max_depth: int = 80,
-    ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:  # type: ignore
+    ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:
         """Draw the segmentation results.
 
         Args:

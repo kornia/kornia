@@ -70,7 +70,7 @@ class ModelBaseMixin:
 
     def _tensor_to_type(
         self, output: Union[torch.Tensor, List[torch.Tensor]], output_type: str, is_batch: bool = False
-    ) -> Union[torch.Tensor, List[torch.Tensor], List[Image.Image]]:  # type: ignore
+    ) -> Union[torch.Tensor, List[torch.Tensor], List[Image.Image]]:
         """Convert the output tensor to the desired type.
 
         Args:

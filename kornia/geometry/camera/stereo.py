@@ -391,7 +391,8 @@ def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Te
     # the two pixel indices in the result.
     u, v = torch.unbind(uv, dim=-1)
     u, v = torch.unsqueeze(u, -1), torch.unsqueeze(v, -1)
-    uvd = torch.stack((u, v, disparity_tensor), 1).reshape(batch_size, 3, -1).permute(0, 2, 1)
+    # The pixel count is spelled out: a ``-1`` cannot be inferred for an empty batch.
+    uvd = torch.stack((u, v, disparity_tensor), 1).reshape(batch_size, 3, rows * cols).permute(0, 2, 1)
     points = transform_points(Q_matrix, uvd).reshape(batch_size, rows, cols, 3)
 
     # Final check that everything went well.

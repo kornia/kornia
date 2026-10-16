@@ -26,10 +26,22 @@ from torch import nn
 from torch.nn.modules.utils import _pair
 
 from kornia.core._compat import torch_version_lt
+from kornia.core.exceptions import ValueCheckError
 
 FullPadType = Tuple[int, int, int, int]
 TuplePadType = Union[Tuple[int, int], FullPadType]
 PadType = Union[int, TuplePadType]
+
+
+def _check_patch_params(window_size: Union[int, Tuple[int, int]], stride: Union[int, Tuple[int, int]]) -> None:
+    window_size = cast(Tuple[int, int], _pair(window_size))
+    stride = cast(Tuple[int, int], _pair(stride))
+    # Raised directly rather than through KORNIA_CHECK, which python -O and disable_checks() switch off: a zero
+    # window_size would then return empty patches instead of failing.
+    if any(size <= 0 for size in window_size):
+        raise ValueCheckError(f"window_size must contain positive values. Got {window_size}.")
+    if any(step <= 0 for step in stride):
+        raise ValueCheckError(f"stride must contain positive values. Got {stride}.")
 
 
 def create_padding_tuple(padding: PadType, unpadding: bool = False) -> FullPadType:
@@ -87,6 +99,7 @@ def compute_padding(
     if stride is None:
         stride = window_size
     stride = cast(Tuple[int, int], _pair(stride))
+    _check_patch_params(window_size, stride)
 
     remainder_vertical = (original_size[0] - window_size[0]) % stride[0]
     remainder_horizontal = (original_size[1] - window_size[1]) % stride[1]
@@ -189,6 +202,7 @@ class ExtractTensorPatches(nn.Module):
         allow_auto_padding: bool = False,
     ) -> None:
         super().__init__()
+        _check_patch_params(window_size, stride)
         self.window_size: Union[int, Tuple[int, int]] = window_size
         self.stride: Union[int, Tuple[int, int]] = stride
         self.padding: PadType = padding
@@ -296,6 +310,7 @@ class CombineTensorPatches(nn.Module):
         allow_auto_unpadding: bool = False,
     ) -> None:
         super().__init__()
+        _check_patch_params(window_size, stride if stride is not None else window_size)
         self.original_size: Tuple[int, int] = original_size
         self.window_size: Union[int, Tuple[int, int]] = window_size
         self.stride: Union[int, Tuple[int, int]] = stride if stride is not None else window_size
@@ -386,6 +401,7 @@ def combine_tensor_patches(
     original_size = cast(Tuple[int, int], _pair(original_size))
     window_size = cast(Tuple[int, int], _pair(window_size))
     stride = cast(Tuple[int, int], _pair(stride))
+    _check_patch_params(window_size, stride)
 
     if (stride[0] > window_size[0]) | (stride[1] > window_size[1]):
         raise AssertionError(
@@ -577,10 +593,9 @@ def extract_tensor_patches(
     # torch's unfold drops the final patches that don't fit
     window_size = cast(Tuple[int, int], _pair(window_size))
     stride = cast(Tuple[int, int], _pair(stride))
+    _check_patch_params(window_size, stride)
     if input.shape[1] == 0:
         raise ValueError("extract_tensor_patches requires a non-empty channel dimension.")
-    if any(size <= 0 for size in window_size):
-        raise ValueError(f"window_size must contain positive values. Got {window_size}.")
     original_size = (input.shape[-2], input.shape[-1])
 
     # if padding is specified, we leave it up to the user to ensure it fits
