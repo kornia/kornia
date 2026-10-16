@@ -151,7 +151,7 @@ def render_gaussian2d(
     Convention:
         - ``mean`` and ``std`` follow :ref:`Coordinates and sizes <coordinate-conventions>`; ``size`` is
           ``(height, width)``. The default normalized coordinates are corner-aligned.
-        - Float16 and bfloat16 parameters are evaluated in float32; the heatmap retains the input dtype.
+        - Float16 parameters are evaluated in float32; the heatmap retains the input dtype.
 
     Args:
         mean: the mean location of the Gaussian to render, :math:`(\mu_x, \mu_y)`. Shape: :math:`(*, 2)`.
@@ -185,8 +185,9 @@ def render_gaussian2d(
 
     # Promote before squaring and reciprocating std: a narrow float16 Gaussian otherwise
     # overflows its inverse variance (or underflows std**2) and produces NaNs at its centre.
-    mean = mean.to(compute_dtype)
-    std = std.to(compute_dtype)
+    if dtype == torch.float16:
+        mean = mean.to(compute_dtype)
+        std = std.to(compute_dtype)
     mu_x = mean[..., 0].unsqueeze(-1)
     mu_y = mean[..., 1].unsqueeze(-1)
     sigma_x = std[..., 0].unsqueeze(-1)
