@@ -60,6 +60,8 @@ class TestMixConventions(BaseTester):
             aug.inverse(output)
         with pytest.raises(RuntimeError, match=f"Inverse for {type(aug).__name__} is not supported"):
             aug.inverse(output, params={})
+        with pytest.raises(RuntimeError, match=f"Inverse for {type(aug).__name__} is not supported"):
+            aug.inverse(output, {}, extra_args={})
 
     @pytest.mark.parametrize(
         ("factory", "shape"),
