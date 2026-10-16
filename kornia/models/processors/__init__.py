@@ -69,7 +69,7 @@ class ResizePreProcessor(nn.Module):
             Tuple containing:
                 - resized_imgs: Resized images as a tensor of shape :math:`(B, C, H_{\text{new}}, W_{\text{new}})`.
                 - original_sizes: Original image sizes of shape :math:`(B, 2)` containing (height, width), as
-              ``int64`` on the images' device.
+                  ``int64`` on the images' device.
         """
         resized_imgs: List[Tensor] = []
 
