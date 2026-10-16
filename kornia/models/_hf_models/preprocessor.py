@@ -59,10 +59,10 @@ class _DPTResize(nn.Module):
     """Resize an image to the size transformers' ``DPTImageProcessor`` computes from each input's shape.
 
     The output size is :func:`_dpt_output_size` of the input's height and width. The filter is the one of
-    transformers' fast processor, ``DPTImageProcessorFast``, whose torchvision resize makes this
-    :func:`torch.nn.functional.interpolate` call: ``"bicubic"`` and ``"bilinear"`` with ``align_corners=False`` and
-    ``antialias=True``, and ``"nearest-exact"``, PIL's ``NEAREST``, without a filter. It approximates PIL, the slow
-    processor's resize, to a mean of 0.29/255 on photos.
+    transformers' DPT image processor (its torchvision backend, ``torchvision.transforms.v2.functional.resize`` with
+    ``antialias=True``), which makes this :func:`torch.nn.functional.interpolate` call: ``"bicubic"`` and
+    ``"bilinear"`` with ``align_corners=False`` and ``antialias=True``, and ``"nearest-exact"``, to which it maps PIL's
+    ``NEAREST``, without a filter. It approximates PIL's ``Image.resize`` to a mean of 0.29/255 on photos.
 
     This departs from kornia's :func:`~kornia.geometry.transform.resize` on purpose: its antialiasing, a Gaussian blur
     followed by torch's bicubic with ``a = -0.75``, is 2.7 to 3.8 times further from PIL (a mean of 0.8/255 to
@@ -178,9 +178,9 @@ class DPTImageProcessor(PreprocessingLoader):
     This parser reads the fields of a transformers ``DPTImageProcessor`` configuration and builds a Kornia pipeline
     in the processor's order: resize, rescale, and normalize. The resize computes the processor's output size: it
     keeps the aspect ratio when ``keep_aspect_ratio`` is set and makes each side a multiple of ``ensure_multiple_of``,
-    so the size depends on the input's. Its filter is the one of transformers' fast processor, which approximates the
-    slow processor's PIL resize. That resize runs in torch; it cannot be part of an ONNX graph with dynamic height
-    and width.
+    so the size depends on the input's. Its filter is the one of transformers' DPT image processor (its torchvision
+    backend, ``torchvision.transforms.v2.functional.resize`` with ``antialias=True``), which approximates PIL's
+    ``Image.resize``. That resize runs in torch; it cannot be part of an ONNX graph with dynamic height and width.
 
     Padding (``do_pad`` with its ``size_divisor``) is not supported, nor are the ``resample`` filters other than
     nearest, bilinear and bicubic.

@@ -37,10 +37,11 @@ class DepthAnythingONNXBuilder:
 
         The returned model resizes each image to the size transformers' ``DPTImageProcessor`` computes from the
         repository's ``preprocessor_config.json``: it keeps the aspect ratio and makes each side a multiple of
-        ``ensure_multiple_of`` when the config asks for it. The filter is the one of transformers' fast processor,
-        which approximates the slow processor's PIL resize. The output size depends on the input size, so the resize
-        runs in torch, as the model's ``resize`` stage. The rescale and normalize steps are exported to an ONNX graph
-        that runs before the model's.
+        ``ensure_multiple_of`` when the config asks for it. The filter is the one of transformers' DPT image
+        processor (its torchvision backend, ``torchvision.transforms.v2.functional.resize`` with ``antialias=True``),
+        which approximates PIL's ``Image.resize``. The output size depends on the input size, so the resize runs in
+        torch, as the model's ``resize`` stage. The rescale and normalize steps are exported to an ONNX graph that
+        runs before the model's.
 
         Args:
             model_name: The name of the model to be loaded. Valid model names include:

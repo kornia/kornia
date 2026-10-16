@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import Optional, Union
 
 import torch
+import torch.nn.functional as F
 
 from kornia.color.gray import grayscale_to_rgb
 from kornia.core.check import KORNIA_CHECK
@@ -39,7 +40,8 @@ class DepthEstimation(HFONNXComunnityModel):
 
         The image is cast to float32, moved to the CPU and resized there by the ``resize`` stage, if the model has
         one. ONNX Runtime runs the graphs on a NumPy array of it. The depth map is resized back to the image size on
-        the CPU in float32, then cast to the dtype of the image and moved to its device.
+        the CPU in float32 with a bicubic interpolation, as transformers' ``post_process_depth_estimation`` does, then
+        cast to the dtype of the image and moved to its device.
 
         Args:
             images: If list of RGB images. Each image is a torch.Tensor with shape :math:`(3, H, W)`.
@@ -67,7 +69,9 @@ class DepthEstimation(HFONNXComunnityModel):
         if self.resize is not None:
             inputs = self.resize(inputs)
         depth = torch.from_numpy(super().__call__(inputs.numpy())[0]).unsqueeze(1)
-        return self.resize_back(depth, images).to(images.dtype).to(images.device)
+        # as transformers' DPT post_process_depth_estimation resizes the predicted depth to the target size
+        depth = F.interpolate(depth, size=tuple(images.shape[-2:]), mode="bicubic", align_corners=False)
+        return depth.to(images.dtype).to(images.device)
 
     def visualize(
         self,

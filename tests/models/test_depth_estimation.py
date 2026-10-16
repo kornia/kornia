@@ -331,7 +331,7 @@ class TestDepthEstimation(BaseTester):
             model(list(images) if as_list else images)
 
     def test_graph_sees_the_dpt_size(self, device):
-        # the resize runs on the CPU whatever the image's device, with the filter of transformers' fast processor
+        # the resize runs on the CPU whatever the image's device, with the filter of transformers' DPT image processor
         model = DepthEstimation(_stand_in_graph(), pre_processor=None, resize=_depth_anything_resize())
         spy = _spy_on(model)
         images = torch.rand(2, 3, 300, 400, device=device)
@@ -345,6 +345,21 @@ class TestDepthEstimation(BaseTester):
             images.cpu(), size=(392, 518), mode="bicubic", align_corners=False, antialias=True
         )
         self.assert_close(torch.from_numpy(spy.inputs[0]), expected, rtol=0.0, atol=0.0)
+
+    def test_depth_is_resized_back_bicubically(self, device):
+        # as transformers' DPT post_process_depth_estimation does: interpolate(depth[None, None], size=target_size,
+        # mode="bicubic", align_corners=False), here on the CPU in float32
+        model = DepthEstimation(_stand_in_graph(), pre_processor=None, resize=_depth_anything_resize())
+        spy = _spy_on(model)
+        images = torch.rand(2, 3, 300, 400, device=device)
+
+        depth = model(images)
+
+        assert [x.shape for x in spy.outputs] == [(2, 392, 518)]
+        expected = torch.nn.functional.interpolate(
+            torch.from_numpy(spy.outputs[0])[:, None], size=(300, 400), mode="bicubic", align_corners=False
+        )
+        self.assert_close(depth.cpu(), expected, rtol=0.0, atol=0.0)
 
     def test_graph_sees_the_dpt_size_of_each_list_item(self, device):
         model = DepthEstimation(_stand_in_graph(), pre_processor=None, resize=_depth_anything_resize())
