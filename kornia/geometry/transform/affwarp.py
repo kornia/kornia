@@ -1062,7 +1062,10 @@ class Rescale(nn.Module):
 
     Convention:
         - align_corners: ``True`` by default (differs from function :func:`rescale`, whose default
-          is ``None``)
+          is ``None``). It applies to the ``'bilinear'`` and ``'bicubic'`` modes only. ``'nearest'``,
+          ``'nearest-exact'`` and ``'area'`` ignore it, an explicit ``align_corners=True`` included, because
+          ``torch.nn.functional.interpolate`` accepts no value but ``None`` for them; the function
+          :func:`rescale` raises ``ValueError`` for such a call.
         - See the convention block of :func:`rescale`.
 
     Args:
@@ -1110,9 +1113,12 @@ class Rescale(nn.Module):
             Tensor with the same leading and channel dimensions as ``input``.
             The output height and width are computed from ``self.factor``.
         """
-        return rescale(
-            input, self.factor, self.interpolation, align_corners=self.align_corners, antialias=self.antialias
+        # ``align_corners`` only applies to the interpolating modes: ``F.interpolate`` rejects any value but ``None``
+        # for ``nearest``, ``nearest-exact`` and ``area``, which the default ``True`` would otherwise make unusable.
+        align_corners = (
+            self.align_corners if self.interpolation in ("linear", "bilinear", "bicubic", "trilinear") else None
         )
+        return rescale(input, self.factor, self.interpolation, align_corners=align_corners, antialias=self.antialias)
 
 
 class Rotate(nn.Module):
