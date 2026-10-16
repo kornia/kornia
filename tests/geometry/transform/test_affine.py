@@ -419,6 +419,33 @@ class TestResize(BaseTester):
         expected = op(inp, new_size, align_corners=False, antialias=anti_alias)
         self.assert_close(out, expected)
 
+    @pytest.mark.parametrize("interpolation", ["linear", "trilinear"])
+    @pytest.mark.parametrize("shape", [(3, 16, 20), (2, 3, 16, 20), (2, 3, 4, 16, 20)])
+    @pytest.mark.parametrize("api", ["resize", "Resize", "rescale", "Rescale"])
+    def test_one_and_three_dimensional_modes_raise_6012(self, interpolation, shape, api, device, dtype):
+        # Every input is resampled as a 4-D batch, which F.interpolate rejects for these modes; this used to
+        # surface as its raw "Got 4D input" NotImplementedError although the docstrings listed both modes.
+        image = torch.rand(shape, device=device, dtype=dtype)
+        T = kornia.geometry.transform
+        calls = {
+            "resize": lambda: T.resize(image, (8, 10), interpolation=interpolation),
+            "Resize": lambda: T.Resize((8, 10), interpolation=interpolation)(image),
+            "rescale": lambda: T.rescale(image, 0.5, interpolation=interpolation),
+            "Rescale": lambda: T.Rescale(0.5, interpolation=interpolation, align_corners=None)(image),
+        }
+
+        with pytest.raises(ValueError, match=f"interpolation='{interpolation}' is not supported: resize resamples"):
+            calls[api]()
+
+    @pytest.mark.parametrize("interpolation", ["nearest", "nearest-exact", "bilinear", "bicubic", "area"])
+    def test_documented_modes_resize_6012(self, interpolation, device, dtype):
+        # Each mode the docstrings list resamples a (B, C, H, W) batch.
+        image = torch.rand(2, 3, 16, 20, device=device, dtype=dtype)
+
+        out = kornia.geometry.transform.resize(image, (8, 10), interpolation=interpolation)
+
+        assert out.shape == (2, 3, 8, 10)
+
 
 class TestRescale(BaseTester):
     def test_smoke(self, device, dtype):

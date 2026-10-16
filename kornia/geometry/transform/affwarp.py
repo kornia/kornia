@@ -631,8 +631,8 @@ def resize(
             output size will be matched to this. If size is an int, smaller edge of the image will
             be matched to this number. i.e, if height > width, then image will be rescaled
             to (size * height / width, size)
-        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'nearest-exact'`` | ``'linear'`` |
-            ``'bilinear'`` | 'bicubic' | 'trilinear' | 'area'.
+        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'nearest-exact'`` | ``'bilinear'`` |
+            ``'bicubic'`` | ``'area'``.
         align_corners: interpolation flag.
         side: Corresponding side if ``size`` is an integer. Can be one of ``'short'``, ``'long'``, ``'vert'``,
             or ``'horz'``.
@@ -654,6 +654,12 @@ def resize(
 
     if len(input.shape) < 2:
         raise ValueError(f"Input tensor must have at least two dimensions. Got {len(input.shape)}")
+    # Every input is resampled as a 4-D (B, C, H, W) batch, for which F.interpolate rejects the 1-D and 3-D modes.
+    if interpolation in ("linear", "trilinear"):
+        raise ValueError(
+            f"interpolation={interpolation!r} is not supported: resize resamples (H, W), so use 'nearest', "
+            "'nearest-exact', 'bilinear', 'bicubic' or 'area'."
+        )
 
     original_shape = input.shape
     h, w = input.shape[-2:]
@@ -795,8 +801,8 @@ def rescale(
         input: The image tensor to be scale with shape of :math:`(B, C, H, W)`.
         factor: Desired scaling factor as ``(factor_h, factor_w)`` — height first. If a single
             float, the value is used for both height and width (an ``int`` raises ``TypeError``).
-        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
-            ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
+        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'nearest-exact'`` | ``'bilinear'`` |
+            ``'bicubic'`` | ``'area'``.
         align_corners: interpolation flag.
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
@@ -855,8 +861,8 @@ class Resize(nn.Module):
             output size will be matched to this. If size is an int, smaller edge of the image will
             be matched to this number. i.e, if height > width, then image will be rescaled
             to (size * height / width, size)
-        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
-            'bicubic' | 'trilinear' | 'area'.
+        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'nearest-exact'`` | ``'bilinear'`` |
+            ``'bicubic'`` | ``'area'``.
         align_corners: interpolation flag.
         side: Corresponding side if ``size`` is an integer. Can be one of ``'short'``, ``'long'``, ``'vert'``,
             or ``'horz'``.
@@ -1045,8 +1051,8 @@ class Rescale(nn.Module):
     Args:
         factor: Desired scaling factor as ``(factor_h, factor_w)`` — height first. If a single
             float, the value is used for both height and width (an ``int`` raises ``TypeError``).
-        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
-            ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
+        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'nearest-exact'`` | ``'bilinear'`` |
+            ``'bicubic'`` | ``'area'``.
         align_corners: interpolation flag.
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
