@@ -1271,6 +1271,21 @@ For example, from the ``pt``, ``size`` and ``angle`` of ``cv2.SIFT`` keypoints:
     lafs = KF.laf_from_center_scale_ori(pt[None], 3.0 * size.view(1, -1, 1, 1), -angle.view(1, -1, 1))
     assert torch.allclose(-KF.get_laf_orientation(lafs).flatten() % 360.0, angle)
 
+.. _pretrained-models-conventions:
+
+Pretrained models
+-----------------
+
+- A model built with complete pretrained weights comes back in evaluation mode (``model.training`` is ``False``).
+  A randomly initialised model stays in PyTorch's default training mode. So does a model whose weights are only partly
+  pretrained, such as a pretrained backbone with a newly initialised classification head. Call ``.train()`` to
+  fine-tune a pretrained model, and ``.eval()`` before running inference on a random one.
+- Constructors, ``from_config``, ``from_pretrained`` and the builders set the mode once, when they build the model.
+  ``load_checkpoint`` and ``load_state_dict`` on an existing module leave its mode as it is: after loading your own
+  weights, call ``.eval()``.
+- Task wrappers that take a model (``ObjectDetector``, ``EdgeDetector``, ``SuperResolution``, ``SemanticSegmentation``)
+  put that model in evaluation mode: they run inference.
+
 Pitfall checklist
 -----------------
 
