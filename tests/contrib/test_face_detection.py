@@ -22,6 +22,7 @@ import torch
 
 import kornia
 from kornia.contrib.face_detection import FaceKeypoint
+from kornia.models.yunet import YuNet
 
 from testing.base import BaseTester
 
@@ -107,6 +108,14 @@ class TestFaceDetection(BaseTester):
                 dynamic_axes=dynamic_axes,
             )
         assert model_path.is_file()
+
+    @pytest.mark.device_agnostic
+    def test_yunet_mode(self, monkeypatch):
+        assert YuNet("test", pretrained=False).training
+
+        state_dict = YuNet("test", pretrained=False).state_dict()
+        monkeypatch.setattr("kornia.models.yunet.model.load_state_dict_from_url", lambda *args, **kwargs: state_dict)
+        assert not YuNet("test", pretrained=True).training
 
     def test_exception(self, face_detector, device, dtype):
         img = torch.rand(1, 4, 320, 320, device=device, dtype=dtype)

@@ -66,7 +66,8 @@ class YuNet(nn.Module):
 
     Args:
         phase: the phase of the model, either "train" or "test".
-        pretrained: if True, loads pretrained weights from the official repository.
+        pretrained: if True, loads pretrained weights from the official repository and returns the model in
+            evaluation mode; otherwise the random weights stay in training mode.
 
     Example:
         >>> model = YuNet("test", pretrained=True)
@@ -111,7 +112,7 @@ class YuNet(nn.Module):
         if pretrained:
             pretrained_dict = load_state_dict_from_url(_url, map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
-        self.eval()
+            self.eval()
 
     def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
         """Run YuNet face detection heads over an input image batch.
