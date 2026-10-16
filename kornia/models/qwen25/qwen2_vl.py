@@ -26,12 +26,15 @@ from torch.nn import Module
 
 
 class Qwen2VLPatchMerger(Module):
-    """Patch merger block used in the Qwen2-VL vision encoder.
+    """Patch embedding of the Qwen2-VL scaffold: a Conv2d over 14-px patches, with bias, then a LayerNorm.
+
+    It is not the Qwen2.5-VL patch merger and merges nothing: the reference merges 2 x 2 neighbouring patches after the
+    transformer blocks (see :class:`Qwen2VLVisionTransformer`).
 
     Args:
         dim: The output embedding dimension (e.g., 1280).
-        context_window: The context window size (unused in this skeleton but kept for API).
-        spatial_merge_size: The spatial merge size (unused in this skeleton).
+        context_window: Unused, kept for API compatibility.
+        spatial_merge_size: Unused, kept for API compatibility.
     """
 
     def __init__(self, dim: int, context_window: int = 224, spatial_merge_size: int = 2) -> None:
