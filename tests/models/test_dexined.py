@@ -59,14 +59,17 @@ class TestDexiNed(BaseTester):
     @pytest.mark.parametrize("cls", [DexiNed, FilterDexiNed], ids=["models", "filters"])
     def test_backward(self, cls, device, dtype):
         net = cls(pretrained=False).to(device, dtype)
-        img = torch.rand(1, 3, 64, 96, device=device, dtype=dtype, requires_grad=True)
+        # The in-place error does not depend on the size. At 24x36 the smallest training-mode BatchNorm maps are 2x3.
+        # 16x24 reaches 1x2, where BatchNorm normalises two values and the float16 input gradient overflows for some
+        # seeds; 8x12 reaches 1x1, which raises.
+        img = torch.rand(1, 3, 24, 36, device=device, dtype=dtype, requires_grad=True)
         net(img).sum().backward()
         assert img.grad is not None
         assert torch.isfinite(img.grad).all()
 
         # Evaluation mode with frozen weights: the gradient with respect to the input only.
         net.eval().requires_grad_(False)
-        img = torch.rand(1, 3, 64, 96, device=device, dtype=dtype, requires_grad=True)
+        img = torch.rand(1, 3, 24, 36, device=device, dtype=dtype, requires_grad=True)
         net(img).sum().backward()
         assert img.grad is not None
         assert torch.isfinite(img.grad).all()
