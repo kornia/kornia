@@ -79,10 +79,19 @@ def _check_floating_image(image: torch.Tensor, op: str) -> None:
     These ops clamp to ``[0, 1]``, scale by 255 or index a 256-entry table, so an 8-bit image would
     otherwise come back saturated, wrapped or negative without an error (#5981). The check reads only
     the dtype, so it stays ``torch.compile(fullgraph=True)``-safe, and ``disable_checks()`` skips it
-    like every kornia check. A non-tensor is left to the op's own type check.
+    like every kornia check. A non-tensor is left to the op's own type check. As in the core checks,
+    TorchScript compiles neither the checks flag nor the exception metadata, so a scripted op raises a
+    plain message instead.
     """
-    if not isinstance(image, torch.Tensor) or image.is_floating_point() or not are_checks_enabled():
+    if not isinstance(image, torch.Tensor) or image.is_floating_point():
         return
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
+        if not are_checks_enabled():
+            return
+    if torch.jit.is_scripting():
+        raise TypeCheckError(
+            op + " expects a floating-point image in [0, 1]; convert it first, e.g. image.float() / 255."
+        )
     raise TypeCheckError(
         f"{op} expects a floating-point image in [0, 1], got {image.dtype}. "
         "Convert it first, for example image.float() / 255 for 8-bit data.",

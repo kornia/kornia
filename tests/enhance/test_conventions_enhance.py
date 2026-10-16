@@ -309,3 +309,22 @@ class TestEnhanceConventions(BaseTester):
             enable_checks()
         with pytest.raises(TypeCheckError):
             kornia.enhance.adjust_brightness(image, 0.2)
+
+    _SCRIPTABLE_FLOAT_ONLY_OPS = {
+        "adjust_sigmoid": lambda op, x: op(x),
+        "adjust_log": lambda op, x: op(x),
+        "shift_rgb": lambda op, x: op(
+            x, *(torch.full((x.shape[0],), s, device=x.device, dtype=x.dtype) for s in (0.1, 0.0, 0.0))
+        ),
+    }
+
+    @pytest.mark.parametrize("op", sorted(_SCRIPTABLE_FLOAT_ONLY_OPS))
+    def test_convention_integer_image_check_keeps_torchscript_5981(self, op, device, dtype):
+        # The ops that scripted before the check still script, match eager on a float image and reject an integer one.
+        call = self._SCRIPTABLE_FLOAT_ONLY_OPS[op]
+        scripted = torch.jit.script(getattr(kornia.enhance, op))
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+
+        self.assert_close(call(scripted, image), call(getattr(kornia.enhance, op), image))
+        with pytest.raises(Exception, match=f"{op} expects a floating-point image"):
+            call(scripted, torch.randint(0, 256, (2, 3, 8, 8), device=device, dtype=torch.uint8))
