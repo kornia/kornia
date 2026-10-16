@@ -261,21 +261,33 @@ class TestImage(BaseTester):
         multi = Image.from_dlpack(np.zeros((4, 4, 5), dtype=np.uint8).__dlpack__())
         assert multi.pixel_format.color_space == ColorSpace.UNKNOWN
 
-    @pytest.mark.parametrize("channels", [1, 3, 4])
+    @pytest.mark.parametrize(
+        ("channels", "color_space"),
+        [
+            (1, ColorSpace.GRAY),
+            (3, ColorSpace.RGB),
+            (3, ColorSpace.BGR),
+            (3, ColorSpace.UNKNOWN),
+            (4, ColorSpace.UNKNOWN),
+        ],
+    )
     @pytest.mark.parametrize("channels_order", [ChannelsOrder.CHANNELS_LAST, ChannelsOrder.CHANNELS_FIRST])
-    def test_dlpack_round_trip_keeps_the_layout_6039(self, channels, channels_order):
-        # to_dlpack keeps the image's own layout, so a channels-last image used to come back from from_dlpack with
-        # its height, width and channels swapped.
-        shape = (6, 8, channels) if channels_order == ChannelsOrder.CHANNELS_LAST else (channels, 6, 8)
-        data = np.arange(np.prod(shape), dtype=np.uint8).reshape(shape)
-        img = Image.from_numpy(data, channels_order=channels_order)
+    def test_dlpack_round_trip_keeps_the_layout_and_color_space_6039(
+        self, channels, color_space, channels_order, device, dtype
+    ):
+        # to_dlpack keeps the image's own layout and carries no color space, so a channels-last image used to come
+        # back from from_dlpack with its height, width and channels swapped, and a BGR image came back as RGB.
+        chw = torch.arange(channels * 6 * 8, device=device).reshape(channels, 6, 8).to(dtype)
+        data = chw.permute(1, 2, 0).contiguous() if channels_order == ChannelsOrder.CHANNELS_LAST else chw
+        img = make_image(data, color_space, channels_order)
 
-        back = Image.from_dlpack(img.to_dlpack(), channels_order=img.channels_order)
+        back = Image.from_dlpack(img.to_dlpack(), img.pixel_format.color_space, img.channels_order)
 
         assert (back.height, back.width, back.channels) == (6, 8, channels)
-        assert back.channels_order == channels_order
-        assert back.pixel_format.color_space == img.pixel_format.color_space
-        np.testing.assert_array_equal(back.to_numpy(), data)
+        assert back.layout == img.layout
+        assert back.pixel_format == img.pixel_format
+        assert back.data.data_ptr() == img.data.data_ptr()
+        self.assert_close(back.data, data, rtol=0, atol=0)
 
     def test_from_dlpack_reads_a_channels_last_capsule_6039(self):
         hwc = np.zeros((6, 8, 3), dtype=np.uint8)
@@ -286,9 +298,20 @@ class TestImage(BaseTester):
         chw = Image.from_dlpack(np.zeros((3, 6, 8), dtype=np.uint8).__dlpack__())
         assert (chw.channels_order, chw.height, chw.width, chw.channels) == (ChannelsOrder.CHANNELS_FIRST, 6, 8, 3)
 
+    def test_from_dlpack_takes_an_explicit_color_space_6039(self):
+        bgr = Image.from_dlpack(np.zeros((3, 6, 8), dtype=np.uint8).__dlpack__(), ColorSpace.BGR)
+        assert bgr.pixel_format.color_space == ColorSpace.BGR
+        with pytest.raises(ValueCheckError, match="color space"):
+            Image.from_dlpack(
+                np.zeros((6, 8, 4), dtype=np.uint8).__dlpack__(), ColorSpace.RGB, ChannelsOrder.CHANNELS_LAST
+            )
+
     def test_from_dlpack_rejects_an_unknown_channels_order_6039(self):
+        capsule = np.zeros((3, 6, 8), dtype=np.uint8).__dlpack__()
         with pytest.raises(ValueError, match="channels_order must be either"):
-            Image.from_dlpack(np.zeros((3, 6, 8), dtype=np.uint8).__dlpack__(), channels_order="HWC")
+            Image.from_dlpack(capsule, channels_order="HWC")
+        # the order is checked before the capsule, which can be read only once, is consumed
+        assert Image.from_dlpack(capsule).channels == 3
 
     @pytest.mark.parametrize(
         ("dtype", "bits", "ok"),
