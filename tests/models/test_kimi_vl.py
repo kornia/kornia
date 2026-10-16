@@ -174,7 +174,7 @@ class TestKimiVLModel(BaseTester):
     def test_three_dim_mask_is_per_sample(self, device, dtype, model, config, batch_size):
         # A (B, N, N) mask holds one N x N mask per sample, shared by the heads: sample b of a batch equals its own
         # batch-of-one run. The fixture has 4 heads: a mask read per head does not broadcast against B = 2, and with
-        # B = 4, the head count, it broadcasts silently (#6004 item 7).
+        # B = 4, the head count, it broadcasts silently to wrong outputs.
         model = model.eval()
         n = 64  # 32 px at patch 4: an 8 x 8 grid
         images = torch.randn(batch_size, 3, 32, 32, device=device, dtype=dtype)
