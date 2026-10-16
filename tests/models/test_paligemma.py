@@ -61,22 +61,24 @@ class TestPaliGemmaModules:
 
         assert logits.shape == (1, 9, config.vocab_size)
 
-    def test_text_embeddings_are_scaled(self, config):
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+    def test_text_embeddings_are_scaled(self, config, dtype):
         # Gemma multiplies the input embeddings by sqrt(hidden_size), as a tensor in their dtype (GemmaModel.forward's
         # normalizer, modeling_gemma.py v4.51.0), and PaliGemma divides the projected image features by the same
         # factor first (PaliGemmaForConditionalGeneration.get_image_features): text enters scaled, the image unscaled.
-        model = PaliGemma(config).eval()
+        # In float16 and bfloat16 the factor rounded to the dtype gives other products than the Python float.
+        model = PaliGemma(config).to(dtype).eval()
         captured = {}
         model.layers[0].register_forward_pre_hook(
             lambda module, args, kwargs: captured.__setitem__("decoder_input", args[0]), with_kwargs=True
         )
-        pixel_values = torch.randn(2, 3, 32, 32)
+        pixel_values = torch.randn(2, 3, 32, 32, dtype=dtype)
         input_ids = torch.randint(1, config.vocab_size, (2, 5))
 
         with torch.no_grad():
             model(input_ids=input_ids, pixel_values=pixel_values)
             image = model.multi_modal_projector(model.vision_tower(pixel_values)[1])
-            text = model.embed_tokens(input_ids) * torch.tensor(32**0.5, dtype=torch.float32)  # hidden_size 32
+            text = model.embed_tokens(input_ids) * torch.tensor(32**0.5, dtype=dtype)  # hidden_size 32
 
         decoder_input = captured["decoder_input"]
         assert image.shape[1] == 4  # 32 px at patch 16: 2 x 2 image tokens, before the text
