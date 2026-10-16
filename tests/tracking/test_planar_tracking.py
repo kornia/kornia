@@ -103,7 +103,7 @@ class TestHomographyTrackerCaching:
         assert shapes == [(1, 1, 70, 90)]
 
     def test_loftr_target_features_are_extracted_once(self):
-        loftr = LoFTR(None)
+        loftr = LoFTR(None).eval()
         calls = []
         loftr.backbone.register_forward_hook(lambda mod, inp, out: calls.append(tuple(inp[0].shape)))
         tracker = HomographyTracker(self._sift_matcher(), loftr, minimum_inliers_num=10)
@@ -116,7 +116,7 @@ class TestHomographyTrackerCaching:
 
     def test_loftr_without_cached_features_gets_image0(self):
         # A target assigned directly, without set_target, has no cached features0, so LoFTR needs image0.
-        loftr = LoFTR(None)
+        loftr = LoFTR(None).eval()
         keys = []
         loftr.register_forward_pre_hook(lambda mod, args: keys.append(sorted(args[0])))
         tracker = HomographyTracker(loftr, self._sift_matcher(), minimum_inliers_num=10)
@@ -129,7 +129,7 @@ class TestHomographyTrackerCaching:
         # itself and gets its own features0 (not image0 next to it, which LoFTR rejects).
         tracker = HomographyTracker(self._sift_matcher(), self._sift_matcher(), minimum_inliers_num=10)
         tracker.set_target(_texture(64, 80))
-        loftr = LoFTR(None)
+        loftr = LoFTR(None).eval()
         inputs = []
         loftr.register_forward_pre_hook(lambda mod, args: inputs.append(dict(args[0])))
         tracker.fast_matcher = loftr
@@ -146,7 +146,7 @@ class TestHomographyTrackerCaching:
         config["match_coarse"]["thr"] = 1e-4
         with torch.random.fork_rng():
             torch.manual_seed(seed)
-            return LoFTR(None, config)
+            return LoFTR(None, config).eval()
 
     def test_loftr_swapped_after_set_target_matches_an_uncached_call(self):
         # A LoFTR swapped in after set_target was fed the old LoFTR's cached features0.

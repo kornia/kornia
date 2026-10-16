@@ -400,7 +400,7 @@ class TestImageStitcher(BaseTester):
         sample1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
         sample2 = torch.rand(B, C, H, W, device=device, dtype=dtype)
         # NOTE: This will need to download the pretrained weights.
-        matcher = kornia.feature.LoFTR(None)
+        matcher = kornia.feature.LoFTR(None).eval()
 
         with pytest.raises(NotImplementedError):
             stitcher = kornia.contrib.ImageStitcher(matcher, estimator="random").to(device=device, dtype=dtype)

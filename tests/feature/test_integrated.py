@@ -445,7 +445,7 @@ class TestDescriptorModuleIsNotModified(BaseTester):
         # device than the image (a device cast)
         image_dtype = torch.float64 if torch.device(device).type == "cpu" else torch.float32
         img, lafs = self._inputs(device, image_dtype)
-        plain = HardNet(False)
+        plain = HardNet(False).eval()
         scripted = torch.jit.script(copy.deepcopy(plain))
         before = self._state(scripted)
         get_laf_descriptors(img, lafs, plain, 32).sum().backward()
@@ -693,14 +693,14 @@ class TestDoGHardNet(BaseTester):
         from kornia.feature import HardNet, LAFAffNetShapeEstimator
 
         def affnet(pretrained=False, preserve_orientation=True):
-            module = LAFAffNetShapeEstimator(False, preserve_orientation)
+            module = LAFAffNetShapeEstimator(False, preserve_orientation).eval()
             head = module.features[-3]
             with torch.no_grad():
                 head.weight.zero_()
                 head.bias.copy_(torch.tensor([0.5, 0.3, -0.3]))
             return module
 
-        monkeypatch.setattr("kornia.feature.integrated.HardNet", lambda pretrained=False: HardNet(False))
+        monkeypatch.setattr("kornia.feature.integrated.HardNet", lambda pretrained=False: HardNet(False).eval())
         monkeypatch.setattr("kornia.feature.integrated.LAFAffNetShapeEstimator", affnet)
 
     @staticmethod
@@ -1246,13 +1246,17 @@ class TestConventionsLocalFeature(BaseTester):
         from kornia.feature import KeyNetDetector, LAFAffNetShapeEstimator, OriNet
 
         integrated = "kornia.feature.integrated"
-        monkeypatch.setattr(f"{integrated}.HardNet", lambda pretrained=False: HardNet(False))
+        monkeypatch.setattr(f"{integrated}.HardNet", lambda pretrained=False: HardNet(False).eval())
         monkeypatch.setattr(
             f"{integrated}.LAFAffNetShapeEstimator",
-            lambda pretrained=False, preserve_orientation=True: LAFAffNetShapeEstimator(False, preserve_orientation),
+            lambda pretrained=False, preserve_orientation=True: LAFAffNetShapeEstimator(
+                False, preserve_orientation
+            ).eval(),
         )
-        monkeypatch.setattr(f"{integrated}.OriNet", lambda pretrained=False, eps=1e-8: OriNet(False))
-        monkeypatch.setattr(f"{integrated}.KeyNetDetector", lambda pretrained=False, **kw: KeyNetDetector(False, **kw))
+        monkeypatch.setattr(f"{integrated}.OriNet", lambda pretrained=False, eps=1e-8: OriNet(False).eval())
+        monkeypatch.setattr(
+            f"{integrated}.KeyNetDetector", lambda pretrained=False, **kw: KeyNetDetector(False, **kw).eval()
+        )
         spec = self._PRESETS[preset]
         detector, num_features, mr_size, response, orienter, orienter_size, affine, descriptor, patch_size = spec
         cls = getattr(kornia.feature, preset)
