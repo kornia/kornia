@@ -448,7 +448,9 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
             size = size.repeat(batch_size, 1).to(device=device, dtype=dtype)
 
         param_gen = CropGenerator3D(size=size, resize_to=resize_to)
-        param_gen(batch_shape=torch.Size((batch_size, 1, *input_size)), same_on_batch=same_on_batch)
+        params = param_gen(batch_shape=torch.Size((batch_size, 1, *input_size)), same_on_batch=same_on_batch)
+        expected = torch.as_tensor(resize_to if resize_to is not None else size).expand(batch_size, 3)
+        assert_close(params["output_size"].to(device=device, dtype=dtype), expected.to(device=device, dtype=dtype))
 
     @pytest.mark.parametrize(
         "input_size,size,resize_to",
@@ -527,7 +529,9 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
                 dtype=dtype,
             ),
         }
+        expected["output_size"] = torch.tensor([[100, 100, 100]]).expand(2, -1)
         assert res.keys() == expected.keys()
+        assert_close(res["output_size"].cpu(), expected["output_size"])
         assert_close(res["src"], expected["src"], atol=1e-4, rtol=1e-4)
         assert_close(res["dst"], expected["dst"], atol=1e-4, rtol=1e-4)
 
@@ -593,7 +597,9 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
                 dtype=dtype,
             ),
         }
+        expected["output_size"] = torch.tensor([[100, 100, 100]]).expand(2, -1)
         assert res.keys() == expected.keys()
+        assert_close(res["output_size"].cpu(), expected["output_size"])
         assert_close(res["src"], expected["src"], atol=1e-4, rtol=1e-4)
         assert_close(res["dst"], expected["dst"], atol=1e-4, rtol=1e-4)
 
@@ -656,7 +662,9 @@ class TestCenterCropGen3D(RandomGeneratorBaseTests):
                 dtype=torch.long,
             ).repeat(2, 1, 1),
         }
+        expected["output_size"] = torch.tensor([[120, 150, 100]]).expand(2, -1)
         assert res.keys() == expected.keys()
+        assert_close(res["output_size"].cpu(), expected["output_size"])
         assert_close(res["src"].to(device=device), expected["src"], atol=1e-4, rtol=1e-4)
         assert_close(res["dst"].to(device=device), expected["dst"], atol=1e-4, rtol=1e-4)
 
@@ -840,3 +848,13 @@ class TestRandomMotionBlur3D(RandomGeneratorBaseTests):
                 angle=torch.tensor([(0.0, 0.0)] * 3, device=device, dtype=dtype),
                 direction=torch.tensor([0.0, 0.0], device=device, dtype=dtype),
             )
+
+
+def test_crop3d_output_size_owns_storage(device):
+    size = torch.tensor([[4, 5, 6]], device=device, dtype=torch.long)
+    generator = CropGenerator3D(size)
+    params = generator((1, 1, 8, 10, 12))
+    params["output_size"][0, 0] = 2
+    assert_close(size, torch.tensor([[4, 5, 6]], device=device))
+    size[0, 1] = 3
+    assert_close(params["output_size"], torch.tensor([[2, 5, 6]], device=device))
