@@ -446,6 +446,23 @@ class TestResize(BaseTester):
 
         assert out.shape == (2, 3, 8, 10)
 
+    @pytest.mark.parametrize("interpolation", ["linear", "trilinear"])
+    @pytest.mark.parametrize("api", ["resize_empty_output", "resize_to_be_divisible", "crop_by_indices"])
+    def test_one_and_three_dimensional_modes_raise_in_resize_callers_6012(self, interpolation, api, device, dtype):
+        # An empty output side used to skip interpolate and return an empty tensor; resize_to_be_divisible, and
+        # crop_by_indices when a crop has to be resized, reach these modes through resize.
+        image = torch.zeros(2, 3, 16, 20, device=device, dtype=dtype)
+        box = torch.tensor([[[1, 1], [10, 1], [10, 8], [1, 8]]], device=device, dtype=dtype).repeat(2, 1, 1)
+        T = kornia.geometry.transform
+        calls = {
+            "resize_empty_output": lambda: T.resize(image, (0, 10), interpolation=interpolation),
+            "resize_to_be_divisible": lambda: T.resize_to_be_divisible(image, 7, interpolation=interpolation),
+            "crop_by_indices": lambda: T.crop_by_indices(image, box, size=(5, 6), interpolation=interpolation),
+        }
+
+        with pytest.raises(ValueError, match=f"interpolation='{interpolation}' is not supported: resize resamples"):
+            calls[api]()
+
 
 class TestRescale(BaseTester):
     def test_smoke(self, device, dtype):
