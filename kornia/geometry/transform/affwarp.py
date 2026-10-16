@@ -22,7 +22,7 @@ import torch
 from torch import nn
 
 from kornia.core.ops import eye_like
-from kornia.core.utils import _extract_device_dtype, is_exporting
+from kornia.core.utils import _extract_device_dtype
 from kornia.filters import gaussian_blur2d
 
 from .imgwarp import get_affine_matrix2d, get_projective_transform, get_rotation_matrix2d, warp_affine, warp_affine3d
@@ -784,6 +784,10 @@ def rescale(
         - ``factor`` is ``(factor_h, factor_w)`` when a pair — height first (contrast
           :func:`scale`, whose ``scale_factor`` is x-first)
         - delegates to :func:`resize` after converting ``factor`` to an output ``size``
+        - ONNX: an export with a dynamic height or width keeps it dynamic for the ``'nearest'``,
+          ``'bilinear'`` and ``'bicubic'`` modes without ``antialias``; the other modes keep the output size of
+          the traced input. The exported graph computes the size in float32, which can be one pixel off eager
+          when ``factor`` is not a power of two (``0.7`` at a side of 90 gives 63, eager 62)
 
     Args:
         input: The image tensor to be scale with shape of :math:`(B, C, H, W)`.
@@ -811,13 +815,16 @@ def rescale(
         factor_vert, factor_horz = factor
 
     if (
-        (is_exporting() or torch.onnx.is_in_onnx_export())
+        torch.onnx.is_in_onnx_export()
         and not antialias
-        and interpolation != "nearest-exact"
+        and interpolation in ("nearest", "bilinear", "bicubic")
         and factor_vert > 0
         and factor_horz > 0
         and input.ndim == 4
     ):
+        # ONNX export: keep the scale in the graph, so a dynamic height or width stays dynamic instead of freezing
+        # the traced output size. ``is_exporting()`` is not used: it is also true inside ``torch.compile`` on torch
+        # 2.5.1 and 2.9.1, where this path would skip ``resize``.
         return torch.nn.functional.interpolate(
             input,
             scale_factor=(factor_vert, factor_horz),

@@ -19,6 +19,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core._compat import torch_version_lt
 from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester, dynamo_is_available
@@ -51,6 +52,8 @@ class TestPyrDown(BaseTester):
         if dynamo:
             if not dynamo_is_available():
                 pytest.skip("Dynamo ONNX export is unavailable on this torch/python pair")
+            if torch_version_lt(2, 9, 0):
+                pytest.skip("Dynamo ONNX export of a dynamic height or width needs torch >= 2.9")
             pytest.importorskip("onnxscript")
 
         class Wrapper(torch.nn.Module):
@@ -87,6 +90,30 @@ class TestPyrDown(BaseTester):
         x = torch.rand(3, 1, 33, 64)
         actual = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"]).run(None, {"x": x.numpy()})[0]
         np.testing.assert_allclose(actual, model(x).numpy(), rtol=1e-5, atol=1e-6)
+
+    def test_area_rescale_static_torchscript_export(self, tmp_path):
+        import numpy as np
+
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+
+        class Wrapper(torch.nn.Module):
+            def forward(self, x):
+                return kornia.geometry.transform.rescale(x, 0.5, interpolation="area")
+
+        model = Wrapper().eval()
+        path = tmp_path / "model.onnx"
+        x = torch.rand(1, 1, 22, 44)
+        torch.onnx.export(model, (x,), path, input_names=["x"], output_names=["y"], opset_version=18, dynamo=False)
+        actual = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"]).run(None, {"x": x.numpy()})[0]
+        np.testing.assert_allclose(actual, model(x).numpy(), rtol=1e-5, atol=1e-6)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason="torch.compile is unavailable on this torch/python pair")
+    def test_eager_backend_trace_keeps_rescales_empty_output(self):
+        # kornia's is_exporting() is also true inside torch.compile on torch 2.5.1 and 2.9.1.
+        x = torch.rand(1, 1, 22, 44)
+        actual = torch.compile(lambda t: kornia.geometry.transform.rescale(t, 0.01), backend="eager", fullgraph=True)(x)
+        assert actual.shape == kornia.geometry.transform.rescale(x, 0.01).shape == (1, 1, 0, 0)
 
     @pytest.mark.parametrize("dynamo", [False, True])
     def test_onnx_fractional_factor_preserves_truncation(self, dynamo, tmp_path):
