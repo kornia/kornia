@@ -22,6 +22,8 @@ jobs:
       MKL_NUM_THREADS: "1"
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - name: Select environment
         id: env
         run: echo "name=py$(echo '${{ matrix.python }}' | tr -d '.')" >> "$GITHUB_OUTPUT"
@@ -31,10 +33,11 @@ jobs:
           environments: ${{ steps.env.outputs.name }}
       - run: pixi run -e ${{ steps.env.outputs.name }} install
       - run: pixi run -e ${{ steps.env.outputs.name }} uv run --no-sync uv pip install --reinstall-package torch --index-url https://download.pytorch.org/whl/cpu torch==${{ matrix.torch }}
+      - name: Load baseline implementation
+        run: git show 542752eff:kornia/feature/lightglue.py > kornia/feature/lightglue.py
       - name: Baseline regression tests on the same runner
         continue-on-error: true
         run: |
-          git show 542752eff:kornia/feature/lightglue.py > kornia/feature/lightglue.py
           pixi run -e ${{ steps.env.outputs.name }} uv run --no-sync pytest tests/feature/test_lightglue.py::TestLightGluePruningDtype tests/feature/test_lightglue.py::TestLightGlueBatchedPairs --device=cpu --dtype=float64 -q
       - name: Restore and validate the fix
         if: always()
