@@ -54,6 +54,12 @@ class TestMixConventions(BaseTester):
             _ = aug.transform_matrix
         with pytest.raises(RuntimeError, match="Inverse"):
             aug.inverse()
+        # The usual call forms used to raise a signature TypeError instead (#6031).
+        output = torch.zeros(1)
+        with pytest.raises(RuntimeError, match=f"Inverse for {type(aug).__name__} is not supported"):
+            aug.inverse(output)
+        with pytest.raises(RuntimeError, match=f"Inverse for {type(aug).__name__} is not supported"):
+            aug.inverse(output, params={})
 
     @pytest.mark.parametrize(
         ("factory", "shape"),

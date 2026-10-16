@@ -322,7 +322,9 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         return outputs
 
     @torch.jit.ignore
-    def inverse(self, **kwargs: Any) -> Optional[torch.Tensor]:
+    def inverse(self, *args: Any, **kwargs: Any) -> Optional[torch.Tensor]:
+        # Accept the usual ``inverse(output, params=...)`` call too, so every call form raises this error rather
+        # than a signature TypeError.
         raise RuntimeError(f"Inverse for {self.__class__.__name__} is not supported.")
 
     @property
