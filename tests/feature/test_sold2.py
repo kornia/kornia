@@ -379,7 +379,7 @@ class TestConventionsSOLD2(BaseTester):
         unrefined = DetectorCfg(line_detector_cfg=LineDetectorCfg(use_junction_refinement=False))
         junctions = torch.tensor([[[30.0, 100.0], [70.0, 20.0]]], device=device)
         for config in (unrefined, None):
-            model = model_cls(pretrained=False, config=config).to(device, dtype)
+            model = model_cls(pretrained=False, config=config).to(device, dtype).eval()
             per_score_order = []
             for scores in ((0.5, 1.0), (1.0, 0.5)):
                 maps = self._maps((100, 30), (20, 70), *scores, device, dtype)
@@ -393,7 +393,7 @@ class TestConventionsSOLD2(BaseTester):
             assert torch.equal(per_score_order[0], per_score_order[1])
         # relabelling: the transposed maps give the transposed endpoints, (row, col) in the transposed image, where the
         # other endpoint now has the smaller row and comes first
-        model = model_cls(pretrained=False, config=unrefined).to(device, dtype)
+        model = model_cls(pretrained=False, config=unrefined).to(device, dtype).eval()
         maps = self._maps((30, 100), (70, 20), 0.5, 1.0, device, dtype, h=128, w=96)
         segments = self._segments(model, maps, image.transpose(-1, -2))
         self.assert_close(segments.float(), junctions.flip(-1).flip(1), rtol=0.0, atol=0.0)

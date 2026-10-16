@@ -50,6 +50,7 @@ from kornia.feature import (
     TFeat,
     XFeat,
 )
+from kornia.feature.sold2 import sold2, sold2_detector
 
 from testing.base import BaseTester
 
@@ -83,6 +84,7 @@ _RANDOM_INIT = [
 # Factories that load weights, each of which must return the model in evaluation mode.
 _WEIGHTED = [
     pytest.param(SOLD2, id="SOLD2"),
+    pytest.param(SOLD2_detector, id="SOLD2_detector"),
     pytest.param(lambda: LoFTR("outdoor"), id="LoFTR"),
     pytest.param(XFeat.from_pretrained, id="XFeat"),
     pytest.param(lambda: ALIKED.from_pretrained("aliked-n16"), id="ALIKED"),
@@ -121,7 +123,10 @@ class TestPretrainedMode(BaseTester):
         assert all(m.training for m in model.modules())
 
     @pytest.mark.parametrize("factory", _WEIGHTED)
-    def test_weighted_factories_are_eval(self, factory):
+    def test_weighted_factories_are_eval(self, factory, monkeypatch):
+        # SOLD2_detector fetches the wireframe checkpoint from a URL whose file CI does not prefetch; SOLD2's mirror
+        # serves the same bytes and is prefetched.
+        monkeypatch.setitem(sold2_detector.urls, "wireframe", sold2.urls["wireframe"])
         model = factory()
         assert not model.training
         assert not any(m.training for m in model.modules())
