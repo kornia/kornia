@@ -23,8 +23,8 @@ The large gains are clear; small rotation gains or regressions require repeated 
 | `mean_iou` | 5.275 → 4.480 | 1.18× | 3.689 → 0.382 | 9.65× |
 | `distance_transform` | 3831.285 → 332.239 | 11.53× | 50.151 → 5.055 | 9.92× |
 | `focal_loss` | 715.680 → 133.513 | 5.36× | 19.272 → 4.107 | 4.69× |
-| `rotate` | 11.192 → 10.975 | 1.02× | 1.208 → 1.401 | 0.86× |
-| `rotate_shared` | 11.357 → 2.823 | 4.02× | 1.298 → 1.061 | 1.22× |
+| `rotate` | 11.192 → 10.975 | 1.02× | 1.138 → 1.086 | 1.05× |
+| `rotate_shared` | 11.357 → 2.823 | 4.02× | 1.165 → 1.110 | 1.05× |
 
 ### Compiled
 
@@ -34,8 +34,8 @@ The large gains are clear; small rotation gains or regressions require repeated 
 | `mean_iou` | 5.513 → 2.108 | 2.62× | 3.711 → 0.082 | 45.14× |
 | `distance_transform` | 2894.156 → 2647.926 | 1.09× | 8.052 → 8.039 | 1.00× |
 | `focal_loss` | 153.502 → 108.546 | 1.41× | 2.075 → 1.588 | 1.31× |
-| `rotate` | 11.512 → 11.535 | 1.00× | 0.322 → 0.315 | 1.02× |
-| `rotate_shared` | 11.648 → 10.547 | 1.10× | 0.245 → 0.331 | 0.74× |
+| `rotate` | 11.512 → 11.535 | 1.00× | 0.308 → 0.325 | 0.95× |
+| `rotate_shared` | 11.648 → 10.547 | 1.10× | 0.232 → 0.224 | 1.04× |
 
 The original per-image `rotate` row is retained: equal values in B independent parameters
 are not treated as a shared parameter. `rotate_shared` explicitly supplies one angle.
@@ -45,6 +45,10 @@ Small timing differences in unchanged compiled paths should not be interpreted a
 The CUDA distance-transform cells use a longer two-second repeat: the initial changed compiled
 run had an IQR of 1.76 ms on a 9.49 ms median. Repeating gives 8.05 → 8.04 ms with IQRs
 below 0.05 ms. Both initial and repeat JSON files are retained.
+CUDA rotation cells also use a two-second batch-32 repeat at `fe17a6dd6` (documentation-only
+changes after `2d028497e`). The initial apparent shared compiled regression did not repeat:
+0.232 → 0.224 ms, with IQRs 0.033 / 0.013 ms. Shared eager CUDA rotation is effectively
+unchanged in the repeat; the clear shared-grid gain is on CPU. Both runs are retained.
 
 ## Reproduction and artifacts
 
@@ -108,4 +112,6 @@ Compilation is a per-operation, device, shape and dtype decision. The audit foun
 
 ## Validation
 
-Focused tests cover values, gradients, empty batches, invalid arguments, noncontiguous inputs, scalar rounding, reduced loss semantics, early-stop parity, tracing, export and compiled execution. The distance-transform ONNX export/runtime case also passes. CUDA half tests run in isolated subprocesses. The full pre-commit suite and type checker are required before publishing this change.
+Focused tests cover values, gradients, empty batches, invalid arguments, noncontiguous inputs, scalar rounding, reduced loss semantics, early-stop parity, tracing, export and compiled execution. The distance-transform ONNX export/runtime case also passes. CUDA half tests run in isolated subprocesses. The full pre-commit suite and type checker passed. Combined float32/float64 runs with
+compile coverage passed 1,748 CPU and 1,725 CUDA cases. The final isolated CUDA half
+reduced-focal checks passed 38 cases; benchmark schema/timing/rendering checks passed 80.
