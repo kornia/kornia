@@ -57,7 +57,7 @@ class SOSNet(nn.Module):
 
     Examples:
         >>> input = torch.rand(8, 1, 32, 32)
-        >>> sosnet = SOSNet()
+        >>> sosnet = SOSNet(pretrained=False).eval()
         >>> descs = sosnet(input) # 8x128
 
     """

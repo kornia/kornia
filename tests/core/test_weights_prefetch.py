@@ -215,7 +215,6 @@ _DOWNLOAD_CALL_ALLOWLIST = {
 NOT_PREFETCHED: dict[str, str] = {
     # Alternative training sets -- tests only ever build the liberty variants.
     "HardNetPP.pth": "HardNet++ weights; no test or doctest requests them",
-    "hardnet8v2.pt": "HardNet8(pretrained=True); tests build HardNet8() untrained",
     "HyNet_ND.pth": "notredame variant; tests use the liberty default",
     "HyNet_YOS.pth": "yosemite variant; tests use the liberty default",
     "sosnet_32x32_hpatches_a.pth": "hpatches variant; tests use the liberty default",

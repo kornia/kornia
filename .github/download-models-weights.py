@@ -97,6 +97,11 @@ MODELS: dict[str, "str | list[str]"] = {
             "checkpoint_liberty_with_aug.pth"
         ),
     ],
+    # HardNet8: HardNet8() loads these by default, as test_pretrained_mode.py does.
+    "hardnet8v2.pt": [
+        "https://huggingface.co/kornia/hardnet/resolve/main/hardnet8v2.pt",
+        "https://cmp.felk.cvut.cz/~mishkdmy/hardnet8v2.pt",
+    ],
     # Patch descriptors with pretrained smoke/jit tests.
     "HyNet_LIB.pth": [
         "https://huggingface.co/kornia/hynet/resolve/main/HyNet_LIB.pth",

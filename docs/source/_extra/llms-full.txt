@@ -123,6 +123,8 @@ with torch.inference_mode():
 
 Other entry points: `SIFTDescriptor`, `HardNet`, `DISK`, `LightGlueMatcher`, `match_smnn`, `LAFDescriptor`.
 
+Learned models come back in eval mode when built with weights (the default for HardNet, HardNet8, HyNet, SOSNet, TFeat, OriNet, AffNet, KeyNet, KeyNetDetector, DeFMO, SOLD2, SOLD2_detector; `from_pretrained` for DISK, DeDoDe, ALIKED, XFeat) and in training mode with random weights; call `.eval()` before inference on random weights.
+
 ## kornia.enhance / kornia.losses / kornia.metrics / kornia.morphology
 
 - `kornia.enhance`: `normalize`, `denormalize`, `equalize_clahe`, `adjust_gamma`, `adjust_brightness` — all differentiable.

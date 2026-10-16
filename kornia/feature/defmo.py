@@ -383,7 +383,7 @@ class DeFMO(nn.Module):
           ``k / 23``, each with red, green, blue and alpha channels in :math:`[0, 1]` after a sigmoid.
 
     Args:
-        pretrained: Download and set pretrained weights to the model. Default: false.
+        pretrained: Download and set pretrained weights to the model. Default: True.
 
     Returns:
         Temporal super-resolution without background.
@@ -394,7 +394,7 @@ class DeFMO(nn.Module):
     Examples:
         >>> import kornia
         >>> input = torch.rand(2, 6, 240, 320)
-        >>> defmo = kornia.feature.DeFMO()
+        >>> defmo = kornia.feature.DeFMO(pretrained=False).eval()
         >>> tsr_nobgr = defmo(input) # 2x24x4x240x320
 
     """

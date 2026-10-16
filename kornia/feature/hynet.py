@@ -219,7 +219,10 @@ class HyNet(nn.Module):
           non-negative intensities such as ``[0, 1]`` or ``[0, 255]``, not mean-subtracted or standardised patches.
 
     Args:
-        pretrained: Download and set pretrained weights to the model.
+        pretrained: Download and set pretrained weights to the model. The weights fit the default ``is_bias``,
+            ``is_bias_FRN`` and ``dim_desc`` only, so pass ``pretrained=False`` with another value: the strict load
+            raises ``RuntimeError`` for another ``is_bias`` or ``dim_desc``, and ``is_bias_FRN=False`` loads the
+            weights but leaves their trained FRN biases unused.
         is_bias: use bias in the convolution layers (the final 8 x 8 convolution has none either way)
         is_bias_FRN:  use bias in FRN layers
         dim_desc: descriptor dimensionality,
@@ -239,7 +242,7 @@ class HyNet(nn.Module):
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
-        >>> hynet = HyNet()
+        >>> hynet = HyNet(pretrained=False).eval()
         >>> descs = hynet(input) # 16x128
 
     """

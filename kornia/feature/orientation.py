@@ -222,7 +222,7 @@ class OriNet(nn.Module):
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
-        >>> orinet = OriNet()
+        >>> orinet = OriNet(pretrained=False).eval()
         >>> angle = orinet(input) # 16
 
     """

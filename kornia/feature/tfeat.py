@@ -63,7 +63,7 @@ class TFeat(nn.Module):
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
-        >>> tfeat = TFeat()
+        >>> tfeat = TFeat(pretrained=False).eval()
         >>> descs = tfeat(input) # 16x128
 
     """

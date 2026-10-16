@@ -60,7 +60,9 @@ class HardNet(nn.Module):
           Convention block.
         - The descriptors have unit L2 norm, except TFeat's (see its Convention block); with ``pretrained=False``,
           HardNet and HardNet8 map a flat patch to an all-zero descriptor.
-        - ``pretrained=False``, the default, leaves the weights randomly initialised.
+        - ``pretrained=True``, the default, downloads the trained weights (Liberty with augmentation for HardNet,
+          ``hardnet8v2`` for HardNet8) and returns the model in evaluation mode. ``pretrained=False`` gives random
+          weights in training mode; call ``.eval()`` before inference.
 
     Args:
         pretrained: Download and set pretrained weights to the model.
@@ -74,7 +76,7 @@ class HardNet(nn.Module):
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
-        >>> hardnet = HardNet()
+        >>> hardnet = HardNet(pretrained=False).eval()
         >>> descs = hardnet(input) # 16x128
 
     """
@@ -171,7 +173,7 @@ class HardNet8(nn.Module):
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
-        >>> hardnet = HardNet8()
+        >>> hardnet = HardNet8(pretrained=False).eval()
         >>> descs = hardnet(input) # 16x128
 
     """
