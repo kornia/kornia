@@ -113,6 +113,7 @@ class TestGuidedBlur(BaseTester):
     @pytest.mark.parametrize("guide_dim", [1, 3])
     @pytest.mark.parametrize("eps", [1e-4, 1e-3])
     def test_flat_guidance_small_regularization(self, guide_dim, eps, device, dtype):
+        """Constant guidance reduces to two input means even with small regularization."""
         guide = torch.full((1, guide_dim, 9, 13), 0.5, device=device, dtype=dtype)
         image = torch.linspace(0.1, 0.9, 117, device=device, dtype=dtype).reshape(1, 1, 9, 13)
         # A constant guidance has zero covariance: the result is the mean of
@@ -126,6 +127,7 @@ class TestGuidedBlur(BaseTester):
 
     @pytest.mark.parametrize("guide_dim", [1, 3])
     def test_half_low_contrast_gradients(self, guide_dim, device, dtype):
+        """Half-precision low-contrast outputs and gradients match float32 calculations."""
         if dtype not in (torch.float16, torch.bfloat16):
             pytest.skip("half-precision covariance regression")
         guide = torch.linspace(0.45, 0.55, 63, device=device, dtype=dtype).reshape(1, 1, 7, 9)
@@ -142,6 +144,7 @@ class TestGuidedBlur(BaseTester):
 
     @pytest.mark.parametrize("guide_dim", [1, 3])
     def test_autocast_preserves_covariance(self, guide_dim, device):
+        """Autocast preserves the covariance accuracy of float32 inputs."""
         if device.type not in ("cpu", "cuda"):
             pytest.skip("CPU/CUDA autocast regression")
         guide = torch.linspace(0.45, 0.55, 63, device=device).reshape(1, 1, 7, 9).repeat(1, guide_dim, 1, 1)
@@ -155,6 +158,7 @@ class TestGuidedBlur(BaseTester):
     @pytest.mark.parametrize("guide_dim", [1, 3])
     @pytest.mark.parametrize("eps_dtype", [torch.float32, torch.float64])
     def test_tensor_regularization_output_dtype(self, guide_dim, eps_dtype, device, dtype):
+        """Tensor regularization widens grayscale output while retaining multichannel output dtype."""
         if eps_dtype == torch.float64 and device.type == "mps":
             pytest.skip("MPS has no float64")
         guide = torch.full((1, guide_dim, 5, 7), 0.5, device=device, dtype=dtype)

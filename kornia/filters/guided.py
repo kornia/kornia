@@ -200,9 +200,11 @@ def guided_blur(
           :ref:`Filtering <filtering-conventions>` maps the arguments onto OpenCV's ``guidedFilter``.
         - An integer or bool ``guidance`` or ``input`` is converted to float32 before the covariance products, on its
           own scale, and the result has the promoted dtype of the two: a float16 ``input`` with a uint8 ``guidance``
-          returns float32, where :func:`~kornia.filters.joint_bilateral_blur` keeps ``input``'s dtype.
+          returns float32, where :func:`~kornia.filters.joint_bilateral_blur` keeps ``input``'s dtype. With grayscale
+          guidance, a tensor-valued ``eps`` also participates in result dtype promotion; multichannel guidance
+          retains the promoted dtype of ``guidance`` and ``input``.
         - Half-precision inputs use float32 window statistics and coefficient calculations, with autocast disabled
-          to preserve the covariance before the solve. The result retains the promoted input dtype.
+          to preserve the covariance before the solve. The result follows the dtype promotion rule above.
 
     Arguments:
         guidance: the guidance torch.Tensor with shape :math:`(B,C_g,H,W)`.
