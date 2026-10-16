@@ -27,6 +27,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core.check import KORNIA_CHECK
+
 from .config import SigLip2Config
 from .text_encoder import SigLip2TextModel
 from .vision_encoder import SigLip2VisionModel
@@ -201,7 +203,8 @@ class SigLip2Model(nn.Module):
             input_ids: Token IDs of shape (batch_size, seq_len).
             attention_mask: Optional attention mask for text encoder of shape (batch_size, seq_len).
             position_ids: Optional position IDs for text encoder.
-            return_loss: Whether to compute and return the pairwise sigmoid loss.
+            return_loss: Whether to compute and return the pairwise sigmoid loss. It pairs the ``i``-th image with the
+                ``i``-th text, so it needs as many images as texts.
 
         Returns:
             SigLip2Result containing:
@@ -213,6 +216,10 @@ class SigLip2Model(nn.Module):
             - loss: The SigLIP pairwise sigmoid loss over all ``B x B`` pairs, with the ``i``-th image and the ``i``-th
               text as the only matching pairs, ``-logsigmoid((2 I - 1) * logits_per_text).sum(-1).mean()`` (if
               return_loss=True and both provided)
+
+        Raises:
+            BaseError: if ``return_loss`` is True and the numbers of images and texts differ. Without the loss,
+                unequal batches are fine: ``logits_per_image`` is then ``(num_images, num_texts)``.
         """
         # get embeddings
         image_embeds = self.get_image_features(pixel_values, normalize=True) if pixel_values is not None else None
@@ -235,6 +242,11 @@ class SigLip2Model(nn.Module):
             # pairwise sigmoid loss (SigLIP paper, eq. 1; transformers' SiglipModel): every image-text pair enters,
             # the matching pairs on the diagonal labelled +1 and every other pair -1
             if return_loss:
+                KORNIA_CHECK(
+                    image_embeds.shape[0] == text_embeds.shape[0],
+                    "return_loss pairs the i-th image with the i-th text, so it needs as many images as texts; got "
+                    f"{image_embeds.shape[0]} images and {text_embeds.shape[0]} texts.",
+                )
                 eye = torch.eye(logits_per_text.shape[0], device=logits_per_text.device, dtype=logits_per_text.dtype)
                 loss = -F.logsigmoid((2 * eye - 1) * logits_per_text).sum(-1).mean()
 

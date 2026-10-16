@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Optional
 
@@ -127,10 +128,13 @@ def _read_name_parts(model_name: str) -> tuple[int, int, int, int, int]:
     """Read (vocab_size, hidden_size, num_hidden_layers, num_attention_heads, image_size) from a name's parts.
 
     Used by ``SigLip2Config.from_name`` for a name outside ``_SUPPORTED_MODELS``: large if the name contains
-    ``"large"``, base otherwise; the first of 224, 256, 384 and 512 in the name (224 if none); the SigLIP 1 vocabulary
-    only for a name containing ``google/siglip-base-patch16-224``.
+    ``"large"``, base otherwise; the first of 224, 256, 384 and 512 that is a whole number of the repository part of
+    the name, after its last ``/`` (224 if none); the SigLIP 1 vocabulary only for a name containing
+    ``google/siglip-base-patch16-224``.
     """
-    image_size = next((size for size in (224, 256, 384, 512) if str(size) in model_name), 224)
+    # whole numbers only, and not the owner's: "org2560/siglip2-base-patch16-384" is 384, "x/siglip2-ckpt2560" 224
+    numbers = set(re.split(r"[^0-9]+", model_name.rsplit("/", 1)[-1]))
+    image_size = next((size for size in (224, 256, 384, 512) if str(size) in numbers), 224)
     vocab_size = 32000 if "google/siglip-base-patch16-224" in model_name else 256000
     if "large" in model_name:
         return vocab_size, 1024, 24, 16, image_size
@@ -182,8 +186,9 @@ class SigLip2Config:
 
         Any other name, such as a fine-tune or a mirror of one of these checkpoints, is read from its parts: the large
         architecture if it contains ``"large"`` and the base one otherwise, patch size 16, the first of the image sizes
-        224, 256, 384 and 512 that it contains (224 if none), the SigLIP 2 vocabulary (SigLIP 1's if it contains
-        ``google/siglip-base-patch16-224``) and 512 text positions. That configuration fits only a checkpoint with that
+        224, 256, 384 and 512 that is a whole number in the repository part after the last ``/`` (224 if none), the
+        SigLIP 2 vocabulary (SigLIP 1's if the name contains ``google/siglip-base-patch16-224``) and 512 text
+        positions. That configuration fits only a checkpoint with that
         architecture: ``SigLip2Builder.from_pretrained_hf`` adapts the text positions to the checkpoint and raises
         ``RuntimeError`` when its other shapes differ.
 

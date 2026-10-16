@@ -181,7 +181,7 @@ class SigLip2Builder:
                 f"this name. Supported names: {', '.join(_SUPPORTED_MODELS)}. A repository outside that list must "
                 "have the architecture its name gives: base (hidden size 768, 12 layers, 12 heads) unless the name "
                 "contains 'large' (1024, 24, 16), patch size 16, and the first of the image sizes 224, 256, 384 and "
-                "512 that the name contains (224 if none)."
+                "512 that is a whole number in the repository part of the name (224 if none)."
             ) from e
 
         return model.eval()

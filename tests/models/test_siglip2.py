@@ -26,6 +26,7 @@ import torch
 
 import kornia
 import kornia.models.siglip2.builder as siglip2_builder
+from kornia.core.exceptions import BaseError
 from kornia.models.siglip2 import SigLip2Builder, SigLip2Config, SigLip2Model, SigLip2Result
 from kornia.models.siglip2.attention import SigLip2Attention
 from kornia.models.siglip2.config import SigLip2TextConfig, SigLip2VisionConfig
@@ -191,6 +192,10 @@ class TestSigLip2Builder:
             ("someone/siglip2-base-patch16-224-finetuned", (256000, 768, 12, 12, 224, 16, 512)),
             ("someone/siglip2-large-patch16-384-mirror", (256000, 1024, 24, 16, 384, 16, 512)),
             ("someone/my-siglip", (256000, 768, 12, 12, 224, 16, 512)),
+            # an image size counts only as a whole number of the repository part, after the last "/"
+            ("org2560/siglip2-base-patch16-384", (256000, 768, 12, 12, 384, 16, 512)),
+            ("x/siglip2-base-patch16-ckpt2560", (256000, 768, 12, 12, 224, 16, 512)),
+            ("x/siglip2-base-patch16-224-ckpt2560", (256000, 768, 12, 12, 224, 16, 512)),
         ],
     )
     def test_from_name_reads_an_unlisted_name_from_its_parts(self, model_name, expected):
@@ -439,6 +444,23 @@ class TestSigLip2Model(BaseTester):
         labels = 2 * torch.eye(batch_size, device=device, dtype=dtype) - 1
         expected = -torch.nn.functional.logsigmoid(labels * random_init.logits_per_text).sum(-1).mean()
         self.assert_close(random_init.loss, expected)
+
+    def test_return_loss_needs_as_many_images_as_texts(self, device, dtype, model, config):
+        # The loss labels pair i with pair i; a 1 x 1 identity would broadcast +1 to every pair of unequal batches.
+        image_size = config.vision_config.image_size
+        pixel_values = torch.randn(3, 3, image_size, image_size, device=device, dtype=dtype)
+        input_ids = _create_input_ids(1, 10, config, device)
+
+        with torch.no_grad():
+            for images, texts in ((pixel_values, input_ids), (pixel_values[:1], input_ids.expand(3, -1))):
+                with pytest.raises(BaseError, match="as many images as texts"):
+                    model(pixel_values=images, input_ids=texts, return_loss=True)
+            # Without the loss, unequal batches give rectangular logits.
+            output = model(pixel_values=pixel_values, input_ids=input_ids)
+
+        assert output.logits_per_image.shape == (3, 1)
+        assert output.logits_per_text.shape == (1, 3)
+        assert output.loss is None
 
     def test_gradcheck(self, device, dtype, config):
         """Test gradient computation correctness."""
