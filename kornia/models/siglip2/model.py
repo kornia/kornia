@@ -201,7 +201,7 @@ class SigLip2Model(nn.Module):
             input_ids: Token IDs of shape (batch_size, seq_len).
             attention_mask: Optional attention mask for text encoder of shape (batch_size, seq_len).
             position_ids: Optional position IDs for text encoder.
-            return_loss: Whether to compute and return contrastive loss.
+            return_loss: Whether to compute and return the pairwise sigmoid loss.
 
         Returns:
             SigLip2Result containing:
@@ -210,7 +210,9 @@ class SigLip2Model(nn.Module):
             - logit_scale: Logit scale parameter
             - logits_per_image: Logits for image-to-text matching (if both provided)
             - logits_per_text: Logits for text-to-image matching (if both provided)
-            - loss: Contrastive loss (if return_loss=True and both provided)
+            - loss: The SigLIP pairwise sigmoid loss over all ``B x B`` pairs, with the ``i``-th image and the ``i``-th
+              text as the only matching pairs, ``-logsigmoid((2 I - 1) * logits_per_text).sum(-1).mean()`` (if
+              return_loss=True and both provided)
         """
         # get embeddings
         image_embeds = self.get_image_features(pixel_values, normalize=True) if pixel_values is not None else None
@@ -230,13 +232,11 @@ class SigLip2Model(nn.Module):
             logits_per_text = torch.matmul(text_embeds, image_embeds.t()) * logit_scale + self.logit_bias
             logits_per_image = logits_per_text.t()
 
-            # compute loss if requested for training or evaluation
+            # pairwise sigmoid loss (SigLIP paper, eq. 1; transformers' SiglipModel): every image-text pair enters,
+            # the matching pairs on the diagonal labelled +1 and every other pair -1
             if return_loss:
-                batch_size = image_embeds.shape[0]
-                labels = torch.arange(batch_size, device=image_embeds.device)
-                loss_img = -F.logsigmoid(logits_per_image[labels, labels]).mean()
-                loss_txt = -F.logsigmoid(logits_per_text[labels, labels]).mean()
-                loss = (loss_img + loss_txt) / 2.0
+                eye = torch.eye(logits_per_text.shape[0], device=logits_per_text.device, dtype=logits_per_text.dtype)
+                loss = -F.logsigmoid((2 * eye - 1) * logits_per_text).sum(-1).mean()
 
         return SigLip2Result(
             image_embeds=image_embeds,

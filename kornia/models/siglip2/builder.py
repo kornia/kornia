@@ -95,6 +95,9 @@ class SigLip2Builder:
 
         Returns:
             SigLip2Model instance with random initialization.
+
+        Raises:
+            ValueError: if ``model_name`` is not one of the names ``SigLip2Config.from_name`` supports.
         """
         config = SigLip2Config.from_name(model_name)
         return SigLip2Model(config)
@@ -140,6 +143,9 @@ class SigLip2Builder:
         Returns:
             SigLip2Model instance with pretrained weights, in evaluation mode, since it always loads weights (see
             :ref:`pretrained-models-conventions`).
+
+        Raises:
+            ValueError: if ``model_name`` is not one of the supported names above, before anything is downloaded.
 
         .. note::
             The repository must publish its weights as a single

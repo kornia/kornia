@@ -22,6 +22,26 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
+from torch import nn
+
+
+def _activation(hidden_act: str) -> nn.Module:
+    """Return the MLP activation that a ``hidden_act`` config value names.
+
+    The names are transformers' ``ACT2FN`` keys: ``"gelu_pytorch_tanh"`` and ``"gelu_new"`` are the tanh approximation
+    of GELU, which the released SigLIP and SigLIP 2 checkpoints use, and ``"gelu"`` is the exact GELU.
+
+    Raises:
+        ValueError: for any other value.
+    """
+    if hidden_act in ("gelu_pytorch_tanh", "gelu_new"):
+        return nn.GELU(approximate="tanh")
+    if hidden_act == "gelu":
+        return nn.GELU()
+    raise ValueError(
+        f"Unsupported hidden_act {hidden_act!r}: expected 'gelu_pytorch_tanh' or 'gelu_new' (tanh GELU) or 'gelu'."
+    )
+
 
 @dataclass
 class SigLip2VisionConfig:
@@ -35,7 +55,9 @@ class SigLip2VisionConfig:
         num_hidden_layers: Number of transformer layers.
         num_attention_heads: Number of attention heads.
         intermediate_size: Intermediate size in feed-forward network.
-        hidden_act: Activation function (typically 'gelu').
+        hidden_act: Activation of the MLPs: ``"gelu_pytorch_tanh"`` (default, the checkpoints' value) or
+            ``"gelu_new"`` for tanh GELU, ``"gelu"`` for exact GELU. Other values raise ``ValueError`` when the model
+            is built.
         layer_norm_eps: Epsilon for layer normalization.
         dropout_p: Dropout probability.
         attention_dropout_p: Attention dropout probability.
@@ -48,7 +70,7 @@ class SigLip2VisionConfig:
     num_hidden_layers: int = 12
     num_attention_heads: int = 12
     intermediate_size: int = 3072
-    hidden_act: str = "gelu"
+    hidden_act: str = "gelu_pytorch_tanh"
     layer_norm_eps: float = 1e-6
     dropout_p: float = 0.0
     attention_dropout_p: float = 0.0
@@ -65,7 +87,9 @@ class SigLip2TextConfig:
         num_attention_heads: Number of attention heads.
         intermediate_size: Intermediate size in feed-forward network.
         max_position_embeddings: Maximum sequence length.
-        hidden_act: Activation function (typically 'gelu').
+        hidden_act: Activation of the MLPs: ``"gelu_pytorch_tanh"`` (default, the checkpoints' value) or
+            ``"gelu_new"`` for tanh GELU, ``"gelu"`` for exact GELU. Other values raise ``ValueError`` when the model
+            is built.
         layer_norm_eps: Epsilon for layer normalization.
         dropout_p: Dropout probability.
         attention_dropout_p: Attention dropout probability.
@@ -77,10 +101,26 @@ class SigLip2TextConfig:
     num_attention_heads: int = 12
     intermediate_size: int = 3072
     max_position_embeddings: int = 512
-    hidden_act: str = "gelu"
+    hidden_act: str = "gelu_pytorch_tanh"
     layer_norm_eps: float = 1e-6
     dropout_p: float = 0.0
     attention_dropout_p: float = 0.0
+
+
+# The checkpoints SigLip2Config.from_name supports: name -> (vocab_size, hidden_size, num_hidden_layers,
+# num_attention_heads, image_size), from each checkpoint's config.json on the Hugging Face Hub and transformers'
+# SiglipTextConfig / SiglipVisionConfig defaults for the fields it omits (vocabulary 32000, hidden size 768, 12 layers,
+# 12 heads, image size 224, patch size 16, 64 text positions).
+_SUPPORTED_MODELS: dict[str, tuple[int, int, int, int, int]] = {
+    "google/siglip-base-patch16-224": (32000, 768, 12, 12, 224),
+    "google/siglip2-base-patch16-224": (256000, 768, 12, 12, 224),
+    "google/siglip2-base-patch16-256": (256000, 768, 12, 12, 256),
+    "google/siglip2-base-patch16-384": (256000, 768, 12, 12, 384),
+    "google/siglip2-base-patch16-512": (256000, 768, 12, 12, 512),
+    "google/siglip2-large-patch16-256": (256000, 1024, 24, 16, 256),
+    "google/siglip2-large-patch16-384": (256000, 1024, 24, 16, 384),
+    "google/siglip2-large-patch16-512": (256000, 1024, 24, 16, 512),
+}
 
 
 @dataclass
@@ -110,7 +150,7 @@ class SigLip2Config:
 
     @staticmethod
     def from_name(model_name: str) -> SigLip2Config:
-        """Create config from model name.
+        """Create the configuration of a supported checkpoint from its name.
 
         Supports the following models:
         - google/siglip-base-patch16-224 (V1)
@@ -122,44 +162,26 @@ class SigLip2Config:
         - google/siglip2-large-patch16-384
         - google/siglip2-large-patch16-512
 
+        Each name gives its checkpoint's ``config.json`` values: patch size 16, 64 text positions, the vocabulary
+        (32000 for the SigLIP 1 model, 256000 for SigLIP 2), and the base (hidden size 768, 12 layers, 12 heads) or large
+        (1024, 24, 16) architecture.
+
         Args:
-            model_name: HuggingFace model identifier.
+            model_name: HuggingFace model identifier, one of the names above.
 
         Returns:
             SigLip2Config instance configured for the specified model.
+
+        Raises:
+            ValueError: if ``model_name`` is not one of the supported names.
         """
-        # Parse model name
-        is_v1 = "google/siglip-base-patch16-224" in model_name
-        is_large = "large" in model_name
-
-        # Extract image size from model name
-        image_size = 224  # default
-        if "224" in model_name:
-            image_size = 224
-        elif "256" in model_name:
-            image_size = 256
-        elif "384" in model_name:
-            image_size = 384
-        elif "512" in model_name:
-            image_size = 512
-
-        # Base vs Large configurations
-        if is_large:
-            hidden_size = 1024
-            num_layers = 24
-            num_heads = 16
-            projection_dim = 1024
-        else:  # base
-            hidden_size = 768
-            num_layers = 12
-            num_heads = 12
-            projection_dim = 768
-
-        # Intermediate size is typically 4x hidden_size
+        if model_name not in _SUPPORTED_MODELS:
+            raise ValueError(
+                f"Unsupported SigLip2 model name {model_name!r}. Supported names: {', '.join(_SUPPORTED_MODELS)}."
+            )
+        vocab_size, hidden_size, num_layers, num_heads, image_size = _SUPPORTED_MODELS[model_name]
+        # every supported checkpoint has an MLP of 4 x hidden_size (3072 for base, 4096 for large)
         intermediate_size = 4 * hidden_size
-
-        # V1 vs V2 vocab size
-        vocab_size = 32000 if is_v1 else 256000
 
         vision_config = SigLip2VisionConfig(
             image_size=image_size,
@@ -176,10 +198,11 @@ class SigLip2Config:
             num_hidden_layers=num_layers,
             num_attention_heads=num_heads,
             intermediate_size=intermediate_size,
+            max_position_embeddings=64,
         )
 
         return SigLip2Config(
             vision_config=vision_config,
             text_config=text_config,
-            projection_dim=projection_dim,
+            projection_dim=hidden_size,
         )

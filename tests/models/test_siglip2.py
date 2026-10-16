@@ -17,12 +17,14 @@
 
 """Tests for SigLip2 model."""
 
+import math
 from dataclasses import replace
 from unittest.mock import patch
 
 import pytest
 import torch
 
+import kornia
 import kornia.models.siglip2.builder as siglip2_builder
 from kornia.models.siglip2 import SigLip2Builder, SigLip2Config, SigLip2Model, SigLip2Result
 from kornia.models.siglip2.attention import SigLip2Attention
@@ -31,7 +33,7 @@ from kornia.models.siglip2.preprocessor import SigLip2ImagePreprocessor
 from kornia.models.siglip2.text_encoder import SigLip2TextEmbeddings, SigLip2TextEncoder, SigLip2TextModel
 from kornia.models.siglip2.vision_encoder import SigLip2VisionEmbeddings, SigLip2VisionEncoder, SigLip2VisionModel
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_reflect_padding
 
 
 @pytest.fixture
@@ -67,6 +69,42 @@ def model(device, dtype, config):
 def _create_input_ids(batch_size, seq_len, config, device):
     """Create input_ids with smaller range to avoid memory issues with large vocab."""
     return torch.randint(0, min(100, config.text_config.vocab_size), (batch_size, seq_len), device=device)
+
+
+def _tiny_vision_config():
+    """32 px images at patch 4: an 8 x 8 grid of 64 patches."""
+    return SigLip2VisionConfig(
+        image_size=32,
+        patch_size=4,
+        hidden_size=32,
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        intermediate_size=64,
+    )
+
+
+def _patch_rows_4_to_7_masked(device):
+    """A ``(1, 64)`` mask of the 8 x 8 grid that drops patches 32..63, i.e. patch rows 4..7 (pixel rows 16..31)."""
+    mask = torch.ones(1, 64, dtype=torch.bool, device=device)
+    mask[:, 32:] = False
+    return mask
+
+
+# (vocab_size, hidden_size, intermediate_size, num_hidden_layers, num_attention_heads, image_size) of each supported
+# checkpoint: its hub config.json (read 2026-10-16), with the defaults of transformers v4.51.0 SiglipTextConfig and
+# SiglipVisionConfig (configuration_siglip.py: vocab 32000, hidden 768, intermediate 3072, 12 layers, 12 heads, image
+# 224, patch 16, text max_position_embeddings 64) for the fields it omits. No config.json sets a patch size or
+# max_position_embeddings, so every name has patch 16 and 64 text positions.
+_HUB_CONFIGS = {
+    "google/siglip-base-patch16-224": (32000, 768, 3072, 12, 12, 224),
+    "google/siglip2-base-patch16-224": (256000, 768, 3072, 12, 12, 224),
+    "google/siglip2-base-patch16-256": (256000, 768, 3072, 12, 12, 256),
+    "google/siglip2-base-patch16-384": (256000, 768, 3072, 12, 12, 384),
+    "google/siglip2-base-patch16-512": (256000, 768, 3072, 12, 12, 512),
+    "google/siglip2-large-patch16-256": (256000, 1024, 4096, 24, 16, 256),
+    "google/siglip2-large-patch16-384": (256000, 1024, 4096, 24, 16, 384),
+    "google/siglip2-large-patch16-512": (256000, 1024, 4096, 24, 16, 512),
+}
 
 
 class TestSigLip2Builder:
@@ -123,6 +161,34 @@ class TestSigLip2Builder:
             pytest.raises(FileNotFoundError, match=r"Could not find model\.safetensors for google/nope"),
         ):
             siglip2_builder._download_weights("google/nope", None)
+
+    @pytest.mark.parametrize("model_name", sorted(_HUB_CONFIGS))
+    def test_from_name_table(self, model_name):
+        # Config only: building the model would allocate the full random network (about 375M parameters for base).
+        vocab_size, hidden_size, intermediate_size, num_layers, num_heads, image_size = _HUB_CONFIGS[model_name]
+        config = SigLip2Config.from_name(model_name)
+
+        for sub_config in (config.vision_config, config.text_config):
+            assert sub_config.hidden_size == hidden_size
+            assert sub_config.intermediate_size == intermediate_size
+            assert sub_config.num_hidden_layers == num_layers
+            assert sub_config.num_attention_heads == num_heads
+        assert config.vision_config.patch_size == 16
+        assert config.vision_config.image_size == image_size
+        assert config.text_config.vocab_size == vocab_size
+        assert config.text_config.max_position_embeddings == 64
+        assert config.projection_dim == hidden_size
+
+    @pytest.mark.parametrize("model_name", ["google/siglip2-so400m-patch14-384", "google/siglip-large-patch16-256"])
+    def test_from_name_rejects_unsupported_names(self, monkeypatch, model_name):
+        # so400m has patch 14 and hidden 1152; SigLIP 1 large has the 32000-token vocabulary. Neither is in the table,
+        # so each entry point raises, and from_pretrained_hf raises before it downloads anything.
+        downloads = []
+        monkeypatch.setattr(siglip2_builder, "_download_weights", lambda name, cache_dir: downloads.append(name) or {})
+        for entry_point in (SigLip2Config.from_name, SigLip2Builder.from_name, SigLip2Builder.from_pretrained_hf):
+            with pytest.raises(ValueError, match="google/siglip2-base-patch16-224"):
+                entry_point(model_name)
+        assert downloads == []
 
 
 class TestSigLip2Model(BaseTester):
@@ -277,6 +343,35 @@ class TestSigLip2Model(BaseTester):
             output_min = model(pixel_values=pixel_values, input_ids=input_ids)
             assert output_min.logit_scale.item() >= 1.0, f"Min clamp failed: {output_min.logit_scale.item()} < 1.0"
 
+    def test_return_loss_is_the_pairwise_sigmoid_loss(self, device, dtype, model, config, monkeypatch):
+        batch_size = 2
+        image_size = config.vision_config.image_size
+        pixel_values = torch.randn(batch_size, 3, image_size, image_size, device=device, dtype=dtype)
+        input_ids = _create_input_ids(batch_size, 10, config, device)
+
+        # transformers' SiglipModel loss (modeling_siglip.py v4.51.0, SiglipModel.forward, after big_vision's
+        # siglip.py): every pair enters, the diagonal labelled +1 and the rest -1,
+        # -logsigmoid((2 I - 1) * logits_per_text).sum(-1).mean().
+        with torch.no_grad():
+            random_init = model(pixel_values=pixel_values, input_ids=input_ids, return_loss=True)
+
+        # A literal: the unit vectors e1 and e2 as both embeddings, logit scale 10 and bias 5, give logits 15 on the
+        # diagonal and 5 off it. Each row's loss is log1p(exp(-15)) + log1p(exp(5)) = 5.0067156543913915 (by hand, in
+        # float64); a loss of the diagonal alone is log1p(exp(-15)) = 3.1e-07.
+        unit_vectors = torch.eye(batch_size, config.projection_dim, device=device, dtype=dtype)
+        monkeypatch.setattr(model, "get_image_features", lambda *args, **kwargs: unit_vectors)
+        monkeypatch.setattr(model, "get_text_features", lambda *args, **kwargs: unit_vectors)
+        with torch.no_grad():
+            model.logit_scale.fill_(math.log(10.0))
+            model.logit_bias.fill_(5.0)
+            output = model(pixel_values=pixel_values, input_ids=input_ids, return_loss=True)
+        self.assert_close(output.loss, torch.tensor(5.0067156543913915, device=device, dtype=dtype))
+
+        # The same formula on the model's own logits at random init.
+        labels = 2 * torch.eye(batch_size, device=device, dtype=dtype) - 1
+        expected = -torch.nn.functional.logsigmoid(labels * random_init.logits_per_text).sum(-1).mean()
+        self.assert_close(random_init.loss, expected)
+
     def test_gradcheck(self, device, dtype, config):
         """Test gradient computation correctness."""
         # Convert model to float64 for gradcheck
@@ -312,6 +407,24 @@ class TestSigLip2Model(BaseTester):
 
         self.assert_close(actual.image_embeds, expected.image_embeds)
         self.assert_close(actual.text_embeds, expected.text_embeds)
+
+    def test_dynamo_fullgraph_masked_vision_model(self, device, dtype, torch_optimizer):
+        """The vision attention mask reaches the encoder and the pooling head inside one compiled graph."""
+        model = SigLip2VisionModel(_tiny_vision_config()).to(device, dtype).eval()
+        pixel_values = torch.randn(1, 3, 32, 32, device=device, dtype=dtype)
+        mask = _patch_rows_4_to_7_masked(device)
+
+        model_optimized = torch_optimizer(model, fullgraph=True)
+
+        with torch.no_grad():
+            expected = model(pixel_values, attention_mask=mask)
+            actual = model_optimized(pixel_values, attention_mask=mask)
+
+        # Inductor keeps fused half-precision intermediates in float32, so a few outputs differ from eager by one
+        # unit in the last place (the masked encoder alone does on the base revision too).
+        low_tolerance = dtype in (torch.float16, torch.bfloat16)
+        self.assert_close(actual[0], expected[0], low_tolerance=low_tolerance)
+        self.assert_close(actual[1], expected[1], low_tolerance=low_tolerance)
 
 
 class TestSigLip2Components(BaseTester):
@@ -492,3 +605,81 @@ class TestSigLip2Components(BaseTester):
         with torch.no_grad():
             output = preprocessor(image)
         assert output.shape == (1, 3, image_size[0], image_size[1])
+
+    def test_pooling_head_ignores_masked_patches(self, device, dtype):
+        # transformers' Siglip2VisionTransformer passes the patch mask to its pooling head as well
+        # (Siglip2MultiheadAttentionPoolingHead.forward(hidden_state, attention_mask), modeling_siglip2.py v4.51.0), so
+        # the pixels of masked patches cannot reach the pooled embedding.
+        model = SigLip2VisionModel(_tiny_vision_config()).to(device, dtype).eval()
+        pixel_values = torch.randn(1, 3, 32, 32, device=device, dtype=dtype)
+        changed = pixel_values.clone()
+        changed[..., 16:, :] = torch.randn(1, 3, 16, 32, device=device, dtype=dtype)
+        mask = _patch_rows_4_to_7_masked(device)
+
+        with torch.no_grad():
+            pooled, _ = model(pixel_values, attention_mask=mask)
+            pooled_changed, _ = model(changed, attention_mask=mask)
+            # The same mask broadcast over the queries, as (B, N, N) and as (B, 1, N, N).
+            pooled_3d, _ = model(pixel_values, attention_mask=mask[:, None, :].expand(1, 64, 64))
+            pooled_4d, _ = model(pixel_values, attention_mask=mask[:, None, None, :].expand(1, 1, 64, 64))
+
+        self.assert_close(pooled_changed, pooled)
+        self.assert_close(pooled_3d, pooled)
+        self.assert_close(pooled_4d, pooled)
+
+    def test_activation_follows_hidden_act(self):
+        # transformers' SiglipTextConfig and SiglipVisionConfig default hidden_act is "gelu_pytorch_tanh"
+        # (configuration_siglip.py v4.51.0), and no released config.json overrides it.
+        assert SigLip2VisionConfig().hidden_act == "gelu_pytorch_tanh"
+        assert SigLip2TextConfig().hidden_act == "gelu_pytorch_tanh"
+        vision_config = _tiny_vision_config()
+        text_config = SigLip2TextConfig(
+            vocab_size=100,
+            hidden_size=32,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            intermediate_size=64,
+            max_position_embeddings=32,
+        )
+
+        def approximations(hidden_act):
+            vision = SigLip2VisionModel(replace(vision_config, hidden_act=hidden_act))
+            text = SigLip2TextModel(replace(text_config, hidden_act=hidden_act))
+            # Every encoder MLP and the pooling head's MLP of the vision tower, then the text encoder MLPs.
+            mlps = [layer.mlp for layer in vision.encoder.layers] + [vision.head.mlp]
+            mlps += [layer.mlp for layer in text.encoder.layers]
+            return [mlp.activation.approximate for mlp in mlps]
+
+        assert approximations(vision_config.hidden_act) == ["tanh"] * 5
+        assert approximations("gelu_pytorch_tanh") == ["tanh"] * 5
+        assert approximations("gelu_new") == ["tanh"] * 5
+        assert approximations("gelu") == ["none"] * 5
+        with pytest.raises(ValueError, match="relu6"):
+            SigLip2VisionModel(replace(vision_config, hidden_act="relu6"))
+        with pytest.raises(ValueError, match="relu6"):
+            SigLip2TextModel(replace(text_config, hidden_act="relu6"))
+
+    def test_preprocessor_interpolation(self, device, dtype):
+        # The SigLIP 2 checkpoints' preprocessor_config.json says "resample": 2 (bilinear), the SigLIP 1
+        # google/siglip-base-patch16-224 says 3 (bicubic); both rescale by 1/255 and normalise with mean = std = 0.5.
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("the antialiased resize blurs with reflection_pad2d, unavailable for this device/dtype")
+        images = torch.randint(0, 255, (2, 3, 300, 400), device=device).to(dtype)
+
+        def expected(interpolation):
+            resized = kornia.geometry.resize(
+                images * (1.0 / 255.0), (224, 224), interpolation=interpolation, align_corners=False, antialias=True
+            )
+            return (resized - 0.5) / 0.5
+
+        with torch.no_grad():
+            self.assert_close(SigLip2ImagePreprocessor()(images), expected("bilinear"))
+            self.assert_close(SigLip2ImagePreprocessor.from_config(224)(images), expected("bilinear"))
+            try:
+                torch.nn.functional.interpolate(images[:1, :1, :2, :2], size=(3, 3), mode="bicubic")
+            except NotImplementedError:
+                # torch 2.5.1 has no MPS upsample_bicubic2d; the bilinear default is checked above
+                pytest.skip("bicubic interpolation is unavailable for this device/dtype")
+            self.assert_close(SigLip2ImagePreprocessor(interpolation="bicubic")(images), expected("bicubic"))
+            bicubic = SigLip2ImagePreprocessor.from_config(224, interpolation="bicubic")
+            self.assert_close(bicubic(images), expected("bicubic"))
