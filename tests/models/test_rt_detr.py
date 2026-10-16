@@ -31,7 +31,7 @@ from testing.base import BaseTester, assert_close
 
 @pytest.mark.parametrize(
     "backbone_factory",
-    (partial(ResNetD.from_config, 18), partial(ResNetD.from_config, 50), partial(PPHGNetV2.from_config, "L")),
+    [partial(ResNetD.from_config, 18), partial(ResNetD.from_config, 50), partial(PPHGNetV2.from_config, "L")],
 )
 @pytest.mark.slow
 def test_backbone(backbone_factory, device, dtype):
@@ -90,7 +90,7 @@ def test_regvgg_optimize_for_deployment(device, dtype):
 
 class TestRTDETR(BaseTester):
     @pytest.mark.slow  # This will be slow for the bigger variants
-    @pytest.mark.parametrize("variant", ("resnet18d", "resnet34d", "resnet50d", "resnet101d", "hgnetv2_l", "hgnetv2_x"))
+    @pytest.mark.parametrize("variant", ["resnet18d", "resnet34d", "resnet50d", "resnet101d", "hgnetv2_l", "hgnetv2_x"])
     def test_smoke(self, variant, device, dtype):
         model = RTDETR.from_config(RTDETRConfig(variant, 10)).to(device, dtype).eval()
         images = torch.randn(2, 3, 224, 256, device=device, dtype=dtype)
@@ -99,7 +99,7 @@ class TestRTDETR(BaseTester):
         assert isinstance(out, tuple)
         assert len(out) == 2
 
-    @pytest.mark.parametrize("shape", ((1, 3, 96, 128), (2, 3, 64, 96)))
+    @pytest.mark.parametrize("shape", [(1, 3, 96, 128), (2, 3, 64, 96)])
     def test_cardinality(self, shape, device, dtype):
         num_classes = 10
         num_queries = 10
@@ -112,6 +112,37 @@ class TestRTDETR(BaseTester):
         assert logits.shape == (shape[0], num_queries, num_classes)
         assert boxes.shape == (shape[0], num_queries, 4)
 
+    @pytest.mark.device_agnostic
+    def test_from_pretrained_mode(self, monkeypatch):
+        monkeypatch.setattr(
+            "kornia.models.rt_detr.model.load_state_dict_from_url", lambda *args, **kwargs: {"ema": {"module": {}}}
+        )
+        monkeypatch.setattr(RTDETR, "load_state_dict", lambda self, state_dict, *args, **kwargs: None)
+        # ``training`` of the model and of every submodule: ``{False}`` is evaluation mode throughout.
+        assert {m.training for m in RTDETR.from_pretrained("rtdetr_r18vd").modules()} == {False}
+
+        monkeypatch.setattr(RTDETR, "load_checkpoint", lambda self, checkpoint, device=None: None)
+        from_checkpoint = RTDETR.from_config(RTDETRConfig("resnet18d", 10, checkpoint="x.pt"))
+        assert {m.training for m in from_checkpoint.modules()} == {False}
+
+        assert {m.training for m in RTDETR.from_config(RTDETRConfig("resnet18d", 10)).modules()} == {True}
+        assert {m.training for m in RTDETR.from_name("rtdetr_r18vd").modules()} == {True}
+
+    @pytest.mark.slow
+    def test_from_pretrained_is_batch_independent(self):
+        model = RTDETR.from_pretrained("rtdetr_r18vd")
+        generator = torch.Generator().manual_seed(0)
+        x1 = torch.rand(1, 3, 256, 320, generator=generator)
+        x2 = torch.rand(1, 3, 256, 320, generator=generator)
+
+        with torch.no_grad():
+            alone = model(x1)[0][0]
+            batched = model(torch.cat([x1, x2]))[0][0]
+
+        # In evaluation mode image 0 does not see image 1; only the kernels' summation order may change with the
+        # batch size, so the float32 tolerance is widened to 1e-4.
+        self.assert_close(alone, batched, rtol=1e-4, atol=1e-4)
+
     @pytest.mark.skip("Unnecessary")
     def test_exception(self): ...
 
@@ -122,7 +153,7 @@ class TestRTDETR(BaseTester):
     def test_module(self): ...
 
     @pytest.mark.skip("Needs more investigation")
-    @pytest.mark.parametrize("variant", ("resnet50d", "hgnetv2_l"))
+    @pytest.mark.parametrize("variant", ["resnet50d", "hgnetv2_l"])
     def test_dynamo(self, variant, device, dtype, torch_optimizer):
         # NOTE: This test passes on Mac M1 CPU, PyTorch 2.0.0,
         # but fails on GitHub Actions Ubuntu-latest CPU, PyTorch 2.0.0.

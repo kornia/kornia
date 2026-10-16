@@ -3,6 +3,10 @@ Equalization and histograms
 
 .. currentmodule:: kornia.enhance
 
+:func:`image_histogram2d` preserves leading batch and channel axes and reduces the final two
+spatial axes. The KDE helpers :func:`histogram` and :func:`histogram2d` share one bin-center
+grid across the batch.
+
 Equalization
 ------------
 

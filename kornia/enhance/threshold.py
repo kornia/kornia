@@ -30,6 +30,9 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 class ThresholdType(IntEnum):
     """Threshold types compatible with OpenCV fixed thresholding types.
 
+    Convention:
+        These integer values match OpenCV's fixed threshold mode values.
+
     Note: THRESH_OTSU is intentionally not supported in this PR.
     """
 
@@ -43,6 +46,30 @@ class ThresholdType(IntEnum):
     THRESH_OTSU = 8
 
 
+def _integer_threshold(input: Tensor, thresh: Union[float, Tensor]) -> tuple[Tensor, Tensor]:
+    """Return ``input > thresh`` and the value THRESH_TRUNC writes, for an integer ``input``.
+
+    Casting ``thresh`` to an integer dtype truncates a fraction toward zero and wraps or rejects a value outside the
+    dtype's range, so the comparison would use another threshold. An integer is greater than ``thresh`` exactly when
+    it is greater than ``floor(thresh)``, which OpenCV also compares with. A threshold below the dtype's range passes
+    every element, one at or above its maximum passes none, and ``nan`` passes none, as for a floating-point input.
+    """
+    low, high = (0, 1) if input.dtype == torch.bool else (torch.iinfo(input.dtype).min, torch.iinfo(input.dtype).max)
+    if not isinstance(thresh, Tensor):
+        # float64 and int64 hold any Python number a pixel can be compared with. The tensor stays on the CPU, as MPS
+        # has no float64; only the results below move to the input's device.
+        thresh = torch.tensor(thresh, dtype=torch.int64 if isinstance(thresh, int) else torch.float64)
+    if thresh.is_floating_point():
+        thresh = thresh.floor()
+    below = thresh < low
+    inside = (thresh >= low) & (thresh < high)
+    safe = torch.where(inside, thresh, 0).to(input.dtype).to(input.device)
+    below, inside = below.to(input.device), inside.to(input.device)
+    mask = ((input > safe) & inside) | below
+    # Where an element passes, the threshold is in range, or below it and the element is clamped to the minimum.
+    return mask, torch.where(below, torch.full_like(safe, low), safe)
+
+
 def threshold(
     input: Tensor,
     thresh: Union[float, Tensor],
@@ -50,6 +77,17 @@ def threshold(
     type: Union[int, ThresholdType] = ThresholdType.THRESH_BINARY,
 ) -> Tensor:
     """Apply a fixed-level threshold to each element in the input tensor.
+
+    Convention:
+        The comparison is strict (input > thresh). thresh and maxval broadcast
+        over input on its device. maxval is converted to the input's dtype, and
+        so is thresh on a floating-point input. On an integer input, thresh is
+        not cast: as in OpenCV, an element passes when it is greater than
+        floor(thresh), so a thresh below the dtype's range passes every element
+        and one at or above its maximum passes none. THRESH_TRUNC then writes
+        floor(thresh), or the dtype's minimum for a thresh below its range.
+        Threshold is the module wrapper; ThresholdType supplies the fixed-mode
+        values.
 
     Implements OpenCV-like behavior for the following threshold types:
     - THRESH_BINARY
@@ -85,11 +123,15 @@ def threshold(
     )
 
     # Make thresh/maxval tensors on same device/dtype for safe broadcasting
-    thresh_t = thresh
-    if not isinstance(thresh_t, Tensor):
-        thresh_t = torch.tensor(thresh_t, device=input.device, dtype=input.dtype)
+    if input.is_floating_point() or input.is_complex():
+        thresh_t = thresh
+        if not isinstance(thresh_t, Tensor):
+            thresh_t = torch.tensor(thresh_t, device=input.device, dtype=input.dtype)
+        else:
+            thresh_t = thresh_t.to(device=input.device, dtype=input.dtype)
+        mask = input > thresh_t
     else:
-        thresh_t = thresh_t.to(device=input.device, dtype=input.dtype)
+        mask, thresh_t = _integer_threshold(input, thresh)
 
     maxval_t = maxval
     if not isinstance(maxval_t, Tensor):
@@ -97,7 +139,6 @@ def threshold(
     else:
         maxval_t = maxval_t.to(device=input.device, dtype=input.dtype)
 
-    mask = input > thresh_t
     zeros = torch.zeros_like(input)
 
     if t == int(ThresholdType.THRESH_BINARY):
@@ -107,7 +148,9 @@ def threshold(
         return torch.where(mask, zeros, maxval_t)
 
     if t == int(ThresholdType.THRESH_TRUNC):
-        return torch.minimum(input, thresh_t)
+        if input.is_floating_point() or input.is_complex():
+            return torch.minimum(input, thresh_t)
+        return torch.where(mask, thresh_t, input)
 
     if t == int(ThresholdType.THRESH_TOZERO):
         return torch.where(mask, input, zeros)
@@ -120,7 +163,11 @@ def threshold(
 
 
 class Threshold(Module):
-    """Module wrapper for `kornia.enhance.threshold`."""
+    """Module wrapper for `kornia.enhance.threshold`.
+
+    Convention:
+        See threshold for the strict comparison; this module takes scalar thresh and maxval.
+    """
 
     def __init__(
         self,

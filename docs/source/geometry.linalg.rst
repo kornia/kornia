@@ -12,6 +12,7 @@ kornia.geometry.linalg
 .. autofunction:: inverse_transformation
 .. autofunction:: transform_points
 .. autofunction:: point_line_distance
+.. autofunction:: batched_squared_norm
 .. autofunction:: squared_norm
 .. autofunction:: batched_dot_product
 .. autofunction:: euclidean_distance

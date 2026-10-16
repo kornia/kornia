@@ -39,12 +39,12 @@ class TestRgbToLuv(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.color.rgb_to_luv([0.0])
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_luv(img)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_luv(img)
 
     def test_unit(self, device, dtype):
@@ -152,12 +152,12 @@ class TestLuvToRgb(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.color.luv_to_rgb([0.0])
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.luv_to_rgb(img)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.luv_to_rgb(img)
 
     def test_unit(self, device, dtype):
@@ -253,3 +253,44 @@ class TestLuvToRgb(BaseTester):
         ops = kornia.color.LuvToRgb().to(device, dtype)
         fcn = kornia.color.luv_to_rgb
         self.assert_close(ops(img), fcn(img))
+
+
+@pytest.mark.parametrize("function", [kornia.color.rgb_to_luv, kornia.color.luv_to_rgb])
+def test_luv_converters_float16_black_are_finite(function):
+    x = torch.zeros(3, 1, 1, dtype=torch.float16, requires_grad=True)
+
+    output = function(x)
+    output.sum().backward()
+
+    assert torch.isfinite(output).all()
+    assert torch.isfinite(x.grad).all()
+
+
+@pytest.mark.parametrize(
+    "half_dtype, scale, luv_atol, rgb_atol",
+    [
+        # A subnormal float16 eps overflows the backward of rgb_to_luv (1e-5) and luv_to_rgb (1e-8).
+        (torch.float16, 1e-5, 5e-2, 2e-5),
+        (torch.float16, 1e-8, 5e-2, 2e-5),
+        # A float16 eps floor much larger than the smallest normal moves these values.
+        (torch.float16, 1e-3, 5e-2, 2e-5),
+        # bfloat16 represents the default eps and must keep it.
+        (torch.bfloat16, 1e-4, 2e-3, 2e-5),
+    ],
+)
+def test_luv_converters_half_dark_pixels_match_float32(half_dtype, scale, luv_atol, rgb_atol):
+    colors = torch.tensor([[1.0, 1.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.5, 0.2]])
+    rgb = (scale * colors).T.reshape(3, 1, -1).to(half_dtype).requires_grad_(True)
+    luv = kornia.color.rgb_to_luv(rgb)
+    luv.sum().backward()
+
+    luv_input = kornia.color.rgb_to_luv(scale * colors.T.reshape(3, 1, -1)).to(half_dtype).requires_grad_(True)
+    rgb_output = kornia.color.luv_to_rgb(luv_input)
+    rgb_output.sum().backward()
+
+    for tensor in (luv, rgb.grad, rgb_output, luv_input.grad):
+        assert torch.isfinite(tensor).all()
+    torch.testing.assert_close(luv.float(), kornia.color.rgb_to_luv(rgb.detach().float()), rtol=0.0, atol=luv_atol)
+    torch.testing.assert_close(
+        rgb_output.float(), kornia.color.luv_to_rgb(luv_input.detach().float()), rtol=0.0, atol=rgb_atol
+    )

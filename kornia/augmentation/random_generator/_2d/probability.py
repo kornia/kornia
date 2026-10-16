@@ -48,8 +48,7 @@ class ProbabilityGenerator(RandomGeneratorBase):
         self.p = p
 
     def __repr__(self) -> str:
-        repr = f"p={self.p}"
-        return repr
+        return f"p={self.p}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         p = torch.tensor(float(self.p), device=device, dtype=dtype)

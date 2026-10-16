@@ -4,7 +4,7 @@
 .. currentmodule:: kornia.augmentation
 
 Spatial transformations and erasing operations. Matrix, inverse and annotation support depend on the class
-and configuration. Slice-mode crops reject inversion; non-rigid transforms do not carry boxes or keypoints
+and configuration. Non-rigid transforms do not carry boxes or keypoints
 along with the image (`#4420 <https://github.com/kornia/kornia/issues/4420>`_). `RandomErasing` changes image
 and mask values without moving coordinates. See
 :class:`~kornia.augmentation.AugmentationSequential` for the supported data-key paths and their limitations.
@@ -23,6 +23,7 @@ and mask values without moving coordinates. See
 .. autoclass:: RandomRotation
 .. autoclass:: RandomShear
 .. autoclass:: RandomThinPlateSpline
+.. autoclass:: RandomTranslate
 .. autoclass:: RandomVerticalFlip
 
 Resize

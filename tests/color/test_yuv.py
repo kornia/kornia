@@ -394,7 +394,7 @@ class TestRgbToYuv420(BaseTester):
         # Four different colours inside each 2x2 cell, and two cells that must not be mixed, so
         # the chroma of a cell pins the whole box average rather than any one of its pixels. The
         # expected chroma is averaged with an explicit reshape, which does not share the
-        # library's ``unfold`` grouping, so a wrong axis, stride or cell boundary shows up here.
+        # library's pooling, so a wrong axis, stride or cell boundary shows up here.
         # Both cells are chosen to have non-zero chroma -- with ``blue, white / red, green`` the
         # second cell box-averages to (0, 0), where a scale, sign flip or U/V swap confined to
         # that cell would map 0 to 0 and pass.
@@ -410,6 +410,19 @@ class TestRgbToYuv420(BaseTester):
         self.assert_close(uv, expected_uv.to(device=device, dtype=dtype), atol=atol, rtol=0.0)
         # The two cells really do differ, so the assertion above has something to discriminate.
         assert not torch.allclose(uv[:, :, 0], uv[:, :, 1])
+
+    def test_leading_dims_match_per_image(self, device, dtype):
+        # The chroma is pooled over the leading dims folded into one batch; each image must
+        # come back in its own position, matching a call on that image alone.
+        img = _seeded_rand(2, 3, 3, 4, 6, seed=4524).to(device=device, dtype=dtype)
+
+        y, uv = kornia.color.rgb_to_yuv420(img)
+
+        for i in range(img.shape[0]):
+            for j in range(img.shape[1]):
+                y_ij, uv_ij = kornia.color.rgb_to_yuv420(img[i, j])
+                self.assert_close(y[i, j], y_ij)
+                self.assert_close(uv[i, j], uv_ij)
 
     def test_forth_and_back(self, device, dtype):
         # 2x2-constant input, so the chroma subsample-then-upsample is lossless and what is
@@ -484,12 +497,6 @@ class TestRgbToYuv422(BaseTester):
         with pytest.raises(ShapeError):
             kornia.color.rgb_to_yuv422(torch.ones(3, 2, 1, device=device, dtype=dtype))
 
-        # Odd H is rejected too, even though 4:2:2 subsamples width only. Pinned because the
-        # guard is shared verbatim with rgb_to_yuv420 and may well be over-strict here: if it
-        # is ever relaxed to the width test alone, that is a behavior change, not a cleanup.
-        with pytest.raises(ShapeError):
-            kornia.color.rgb_to_yuv422(torch.ones(3, 3, 4, device=device, dtype=dtype))
-
     @pytest.mark.parametrize("name", list(_REFERENCE_COLORS))
     def test_unit(self, device, dtype, name):
         rgb_values, yuv_values = _REFERENCE_COLORS[name]
@@ -521,6 +528,30 @@ class TestRgbToYuv422(BaseTester):
         # rotation (the palindrome ``red, green, blue, white / white, blue, green, red`` is
         # both), so an axis swap in the subsample cannot pass by accident.
         assert not torch.allclose(uv[:, 0], uv[:, 1])
+
+    @pytest.mark.parametrize("height", [1, 3, 5])
+    def test_odd_height(self, device, dtype, height):
+        # 4:2:2 pairs columns within a row, so an odd height is valid. Oracle as in test_unit_subsampling.
+        rgb = _seeded_rand(2, 3, height, 4, seed=4224)
+        reference = _rgb_to_yuv_reference(rgb)
+        expected_uv = reference[..., 1:, :, :].reshape(2, 2, height, 2, 2).mean(-1)
+        atol = _unit_atol(_FORWARD_ATOL, dtype)
+        rgb = rgb.to(device=device, dtype=dtype)
+
+        y, uv = kornia.color.rgb_to_yuv422(rgb)
+        self.assert_close(y, reference[..., :1, :, :].to(device=device, dtype=dtype), atol=atol, rtol=0.0)
+        self.assert_close(uv, expected_uv.to(device=device, dtype=dtype), atol=atol, rtol=0.0)
+        module_y, module_uv = kornia.color.RgbToYuv422()(rgb)
+        self.assert_close(module_y, y)
+        self.assert_close(module_uv, uv)
+
+    def test_odd_height_round_trip(self, device, dtype):
+        # Repeating each horizontal pixel makes the 4:2:2 chroma subsample lossless.
+        rgb = _seeded_rand(2, 3, 3, 2, seed=4227).repeat_interleave(2, dim=-1).to(device=device, dtype=dtype)
+        rtol, atol = _round_trip_tol(dtype)
+
+        y, uv = kornia.color.rgb_to_yuv422(rgb)
+        self.assert_close(kornia.color.yuv422_to_rgb(y, uv), rgb, atol=atol, rtol=rtol)
 
     def test_forth_and_back(self, device, dtype):
         # 1x2-constant input, so the horizontal chroma subsample is lossless.
@@ -688,51 +719,51 @@ class TestYuv420ToRgb(BaseTester):
         with pytest.raises((TypeError, AttributeError)):
             kornia.color.yuv420_to_rgb([0.0], [0.0])
 
+        imgy = torch.ones(1, 1, device=device, dtype=dtype)
+        imguv = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 1, device=device, dtype=dtype)
-            imguv = torch.ones(1, 1, device=device, dtype=dtype)
             kornia.color.yuv420_to_rgb(imgy, imguv)
 
         # Luma H and W must both be even.
+        imgy = torch.ones(1, 3, 4, device=device, dtype=dtype)
+        imguv = torch.ones(2, 1, 2, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 3, 4, device=device, dtype=dtype)
-            imguv = torch.ones(2, 1, 2, device=device, dtype=dtype)
             kornia.color.yuv420_to_rgb(imgy, imguv)
 
+        imgy = torch.ones(1, 4, 3, device=device, dtype=dtype)
+        imguv = torch.ones(2, 2, 1, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 4, 3, device=device, dtype=dtype)
-            imguv = torch.ones(2, 2, 1, device=device, dtype=dtype)
             kornia.color.yuv420_to_rgb(imgy, imguv)
 
         # Chroma must be exactly half the luma in both axes.
+        imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
+        imguv = torch.ones(2, 4, 2, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
-            imguv = torch.ones(2, 4, 2, device=device, dtype=dtype)
             kornia.color.yuv420_to_rgb(imgy, imguv)
 
+        imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
+        imguv = torch.ones(2, 2, 4, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
-            imguv = torch.ones(2, 2, 4, device=device, dtype=dtype)
             kornia.color.yuv420_to_rgb(imgy, imguv)
 
         # Luma must be single-channel. (1, 2, 2) / (2, 1, 1) is the accepted shape; the same
         # sizes with a 2-channel luma are rejected by the channel slot of the shape spec, which
         # the rank case above does not reach.
+        imgy = torch.ones(2, 2, 2, device=device, dtype=dtype)
+        imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(2, 2, 2, device=device, dtype=dtype)
-            imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
             kornia.color.yuv420_to_rgb(imgy, imguv)
 
         # Regression for #4056: a zero-sized chroma dimension is still a shape violation and must
         # be reported as ShapeError, not the bare ZeroDivisionError the old ratio guard threw.
+        imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
+        imguv = torch.ones(2, 2, 0, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
-            imguv = torch.ones(2, 2, 0, device=device, dtype=dtype)
             kornia.color.yuv420_to_rgb(imgy, imguv)
 
+        imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
+        imguv = torch.ones(2, 0, 2, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
-            imguv = torch.ones(2, 0, 2, device=device, dtype=dtype)
             kornia.color.yuv420_to_rgb(imgy, imguv)
 
     def test_empty_input(self, device, dtype):
@@ -834,49 +865,42 @@ class TestYuv422ToRgb(BaseTester):
         with pytest.raises((TypeError, AttributeError)):
             kornia.color.yuv422_to_rgb([0.0], [0.0])
 
+        imgy = torch.ones(1, 1, device=device, dtype=dtype)
+        imguv = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 1, device=device, dtype=dtype)
-            imguv = torch.ones(1, 1, device=device, dtype=dtype)
             kornia.color.yuv422_to_rgb(imgy, imguv)
 
         # Luma W must be even.
+        imgy = torch.ones(1, 4, 3, device=device, dtype=dtype)
+        imguv = torch.ones(2, 4, 1, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 4, 3, device=device, dtype=dtype)
-            imguv = torch.ones(2, 4, 1, device=device, dtype=dtype)
-            kornia.color.yuv422_to_rgb(imgy, imguv)
-
-        # Odd luma H is rejected too, even though 4:2:2 subsamples width only. Pinned because
-        # the guard is shared verbatim with yuv420_to_rgb and may well be over-strict here.
-        with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 3, 4, device=device, dtype=dtype)
-            imguv = torch.ones(2, 3, 2, device=device, dtype=dtype)
             kornia.color.yuv422_to_rgb(imgy, imguv)
 
         # Chroma must be exactly half the luma width.
+        imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
+        imguv = torch.ones(2, 4, 4, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
-            imguv = torch.ones(2, 4, 4, device=device, dtype=dtype)
             kornia.color.yuv422_to_rgb(imgy, imguv)
 
         # Luma must be single-channel: rejected by the channel slot of the shape spec, which the
         # rank case above does not reach. Note this is *not* a width-relation case -- 2/1 == 2
         # holds.
+        imgy = torch.ones(2, 2, 2, device=device, dtype=dtype)
+        imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(2, 2, 2, device=device, dtype=dtype)
-            imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
             kornia.color.yuv422_to_rgb(imgy, imguv)
 
         # 4:2:2 subsamples width only, so chroma keeps the full luma height.
+        imgy = torch.ones(1, 2, 2, device=device, dtype=dtype)
+        imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 2, 2, device=device, dtype=dtype)
-            imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
             kornia.color.yuv422_to_rgb(imgy, imguv)
 
         # Regression for #4056: a zero-sized chroma width is still a shape violation and must be
         # reported as ShapeError, not the bare ZeroDivisionError the old ratio guard threw.
+        imgy = torch.ones(1, 4, 6, device=device, dtype=dtype)
+        imguv = torch.ones(2, 4, 0, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 4, 6, device=device, dtype=dtype)
-            imguv = torch.ones(2, 4, 0, device=device, dtype=dtype)
             kornia.color.yuv422_to_rgb(imgy, imguv)
 
     def test_empty_input(self, device, dtype):
@@ -913,6 +937,19 @@ class TestYuv422ToRgb(BaseTester):
         self.assert_close(out, expected, atol=_unit_atol(_INVERSE_ATOL, dtype), rtol=0.0)
         # Rows carry different chroma, so a 2x2 upsample would not agree with the reference.
         assert not torch.allclose(uv[:, 0], uv[:, 1])
+
+    @pytest.mark.parametrize("height", [1, 3, 5])
+    def test_odd_height(self, device, dtype, height):
+        # Chroma column k covers luma columns 2k and 2k + 1 of its own row. Oracle as in test_unit_upsampling.
+        y = _seeded_yuv(2, 3, height, 4, seed=4225)[:, :1]
+        uv = _seeded_yuv(2, 3, height, 2, seed=4226)[:, 1:]
+        expected = _yuv_to_rgb_reference(torch.cat([y, uv[..., torch.arange(4) // 2]], dim=-3))
+        y, uv = y.to(device=device, dtype=dtype), uv.to(device=device, dtype=dtype)
+
+        rgb = kornia.color.yuv422_to_rgb(y, uv)
+        atol = _unit_atol(_INVERSE_ATOL, dtype)
+        self.assert_close(rgb, expected.to(device=device, dtype=dtype), atol=atol, rtol=0.0)
+        self.assert_close(kornia.color.Yuv422ToRgb()(y, uv), rgb)
 
     def test_forth_and_back(self, device, dtype):
         rtol, atol = _round_trip_tol(dtype)

@@ -68,8 +68,7 @@ class RandomGaussianBlurGenerator(RandomGeneratorBase):
         self.sigma_sampler: UniformDistribution
 
     def __repr__(self) -> str:
-        repr_buf = f"sigma={self.sigma}"
-        return repr_buf
+        return f"sigma={self.sigma}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         if not isinstance(self.sigma, (torch.Tensor)):

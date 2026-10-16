@@ -502,8 +502,7 @@ class _ExportResolver:
             return None
         if all_values:
             names = self._literal_all(all_values[-1])
-            result = None if names is None else set(names)
-            return result
+            return None if names is None else set(names)
         return self._bound_exports(tree, module, is_package)
 
     def _import_bindings(self, node: ast.Import | ast.ImportFrom, module: str, is_package: bool) -> set[str] | None:
@@ -610,6 +609,10 @@ def export_removals(base_ref: str, paths: list[str]) -> dict[str, set[str]]:
     for module in modules:
         old_exports = old.resolve(module)
         new_exports = new.resolve(module)
+        if new_exports is None and new._source(module) is None:
+            # Neither spelling of the module exists any more: a deleted module exports nothing.
+            # That is a known surface, unlike a dynamic one, so its emptied inventory row can match.
+            new_exports = set()
         if old_exports is None or new_exports is None:
             continue
         names = set(old_exports) - set(new_exports)

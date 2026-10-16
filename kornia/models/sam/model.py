@@ -140,8 +140,7 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
         """
         if name in ["vit_b", "vit_l", "vit_h", "mobile_sam"]:
             return Sam.from_config(SamConfig(name))
-        else:
-            raise ValueError(f"Invalid SAM model name: {name}")
+        raise ValueError(f"Invalid SAM model name: {name}")
 
     @staticmethod
     def from_config(config: SamConfig) -> Sam:
@@ -152,7 +151,8 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
                     the parameters set.
 
         Returns:
-            The respective SAM model
+            The respective SAM model, in evaluation mode when it loads weights (``config.pretrained`` or
+            ``config.checkpoint``) and in training mode otherwise (see :ref:`pretrained-models-conventions`).
 
         Example:
             >>> from kornia.models.sam import SamConfig
@@ -244,6 +244,7 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
 
         if checkpoint:
             model.load_checkpoint(checkpoint)
+            model.eval()
 
         return model
 

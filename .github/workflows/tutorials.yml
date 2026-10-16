@@ -13,10 +13,6 @@ on:
         required: false
         type: boolean
         default: false
-      ref:
-        required: false
-        type: string
-        default: ${{ github.sha }}
 
 permissions:
   contents: read
@@ -24,6 +20,7 @@ permissions:
 jobs:
   tutorials:
     runs-on: ${{ inputs.os }}
+    timeout-minutes: 60
     continue-on-error: true
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
@@ -33,8 +30,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.ref }}
 
       - name: Set pixi environment name
         id: pixi-env

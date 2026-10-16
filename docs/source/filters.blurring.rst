@@ -9,12 +9,14 @@ Functions
 .. autofunction:: bilateral_blur
 .. autofunction:: blur_pool2d
 .. autofunction:: box_blur
+.. autofunction:: edge_aware_blur_pool2d
 .. autofunction:: gaussian_blur2d
 .. autofunction:: guided_blur
 .. autofunction:: joint_bilateral_blur
 .. autofunction:: max_blur_pool2d
 .. autofunction:: median_blur
 .. autofunction:: motion_blur
+.. autofunction:: motion_blur3d
 .. autofunction:: unsharp_mask
 
 Modules
@@ -23,10 +25,17 @@ Modules
 .. autoclass:: BilateralBlur
 .. autoclass:: BlurPool2D
 .. autoclass:: BoxBlur
+.. autoclass:: EdgeAwareBlurPool2D
 .. autoclass:: MaxBlurPool2D
 .. autoclass:: MedianBlur
 .. autoclass:: GaussianBlur2d
 .. autoclass:: GuidedBlur
 .. autoclass:: JointBilateralBlur
 .. autoclass:: MotionBlur
+.. autoclass:: MotionBlur3D
 .. autoclass:: UnsharpMask
+
+Dissolving
+----------
+
+.. autoclass:: StableDiffusionDissolving

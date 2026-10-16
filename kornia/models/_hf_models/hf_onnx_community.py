@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any, Optional
 
@@ -28,6 +29,7 @@ from kornia.core.external import onnx
 from kornia.geometry.transform import resize
 from kornia.models.base import ModelBaseMixin
 from kornia.onnx import ONNXSequential
+from kornia.onnx.download import _relative_path_components
 from kornia.onnx.utils import ONNXLoader, io_name_conversion
 
 from .preprocessor import PreprocessingLoader
@@ -39,9 +41,14 @@ class HFONNXComunnityModelLoader:
     Args:
         model_name: The name of the model to load.
         model_type: The type of the model to load.
-        cache_dir: The directory where models are cached locally.
+        cache_dir: The directory where models are cached locally. The model, its weights and its preprocessing
+            config are stored in ``<cache_dir>/<model_name>/``.
             Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
         with_data: Whether to download the model weights such as `model.onnx_data`.
+
+    Raises:
+        ValueError: If ``model_name`` is absolute, has a drive (on Windows) or has an empty, ``.`` or ``..``
+            component, which would put the cache outside ``cache_dir``.
 
     """
 
@@ -54,6 +61,9 @@ class HFONNXComunnityModelLoader:
 
         if cache_dir is None:
             cache_dir = kornia_config.hub_onnx_dir
+        # the model, its weights and its preprocessing config are cached in <cache_dir>/<model_name>/, so the name must
+        # not leave cache_dir ("../x", an absolute path), where a file already there would be loaded without a download
+        _relative_path_components(model_name, "model_name")
         self.cache_dir = os.path.join(cache_dir, self.model_name)
         self.model_url = (
             f"https://huggingface.co/onnx-community/{self.model_name}/resolve/main/onnx/{self.model_type}.onnx"
@@ -64,7 +74,7 @@ class HFONNXComunnityModelLoader:
 
     def load_model(
         self, download: bool = True, io_name_mapping: Optional[dict[str, str]] = None, **kwargs: Any
-    ) -> onnx.ModelProto:  # type:ignore
+    ) -> onnx.ModelProto:
         """Load the ONNX model file from the configured onnx-community repository.
 
         Args:
@@ -74,15 +84,27 @@ class HFONNXComunnityModelLoader:
                 output names after loading. This is useful when composing the model
                 with Kornia pre-processing or post-processing graphs that expect
                 specific tensor names.
-            kwargs: Additional keyword arguments forwarded to :class:`ONNXLoader`.
+            kwargs: Not used; any keyword raises ``TypeError``. Kept for compatibility.
 
         Returns:
             The loaded ONNX model graph. If ``io_name_mapping`` is provided, the graph
             is returned after its input and output names have been converted.
         """
-        onnx_model = ONNXLoader.load_model(
-            self.model_url, download=download, with_data=self.with_data, cache_dir=self.cache_dir, **kwargs
+        # <cache_dir>/<model_name>/<model_type>.onnx: the repository's own directory, where earlier releases cached
+        # these models too, so they are not downloaded again
+        file_path = ONNXLoader.download_to_cache(
+            self.model_url, self.model_type, download, cache_dir=self.cache_dir, suffix=".onnx", **kwargs
         )
+        if self.with_data:  # beside the model, under the name the model refers to
+            ONNXLoader.download_to_cache(
+                f"{self.model_url}_data",
+                self.model_type,
+                download,
+                cache_dir=self.cache_dir,
+                suffix=".onnx_data",
+                **kwargs,
+            )
+        onnx_model = onnx.load(file_path)
 
         if io_name_mapping is not None:
             onnx_model = io_name_conversion(onnx_model, io_name_mapping)
@@ -103,21 +125,10 @@ class HFONNXComunnityModelLoader:
             Sequential Kornia image preprocessing module built from the repository
             configuration.
         """
-        json_req = ONNXLoader.load_config(self.config_url)
-        return PreprocessingLoader.from_json(json_req)
-
-    def _add_metadata(
-        self,
-        model: onnx.ModelProto,  # type:ignore
-        additional_metadata: Optional[dict[str, Any]] = None,
-    ) -> onnx.ModelProto:  # type:ignore
-        if additional_metadata is None:
-            additional_metadata = {}
-        for key, value in additional_metadata.items():
-            metadata_props = model.metadata_props.add()
-            metadata_props.key = key
-            metadata_props.value = str(value)
-        return model
+        # <cache_dir>/<model_name>/preprocessor_config.json, beside the repository's model
+        file_path = ONNXLoader.download_to_cache(self.config_url, "preprocessor_config.json", cache_dir=self.cache_dir)
+        with open(file_path) as f:
+            return PreprocessingLoader.from_json(json.load(f))
 
 
 class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
@@ -143,9 +154,9 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
 
     def __init__(
         self,
-        model: onnx.ModelProto,  # type: ignore
-        pre_processor: Optional[onnx.ModelProto] = None,  # type: ignore
-        post_processor: Optional[onnx.ModelProto] = None,  # type: ignore
+        model: onnx.ModelProto,
+        pre_processor: Optional[onnx.ModelProto] = None,
+        post_processor: Optional[onnx.ModelProto] = None,
         name: Optional[str] = None,
         auto_ir_version_conversion: bool = True,
         io_maps: Optional[list[tuple[str, str]]] = None,
@@ -183,7 +194,7 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         save: bool = True,
         additional_metadata: Optional[list[tuple[str, str]]] = None,
         **kwargs: Any,
-    ) -> onnx.ModelProto:  # type:ignore
+    ) -> onnx.ModelProto:
         """Export a depth estimation model to ONNX format.
 
         Args:

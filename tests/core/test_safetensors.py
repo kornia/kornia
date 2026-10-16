@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import re
 import struct
+import time
 import warnings
 from pathlib import Path
 from typing import Any
@@ -37,7 +38,7 @@ from typing import Any
 import pytest
 import torch
 
-from kornia.core.safetensors import load_safetensors
+from kornia.core.safetensors import check_safetensors, load_safetensors
 
 # Names the format gives the dtypes this reader accepts, for the fixtures below.
 _NAMES: dict[torch.dtype, str] = {
@@ -84,8 +85,12 @@ def _build(tensors: dict[str, torch.Tensor], metadata: dict[str, str] | None = N
 
 
 def _pack(header: Any, blob: bytes) -> bytes:
-    """Assemble a file from a header object and a byte buffer, valid or not."""
-    encoded = json.dumps(header).encode("utf-8")
+    """Assemble a file from a header and a byte buffer, valid or not.
+
+    The header is an object to serialise, or raw bytes for a header that no
+    ``json.dumps`` call would produce.
+    """
+    encoded = header if isinstance(header, bytes) else json.dumps(header).encode("utf-8")
     return struct.pack("<Q", len(encoded)) + encoded + blob
 
 
@@ -93,6 +98,12 @@ def _write(tmp_path: Path, payload: bytes) -> Path:
     path = tmp_path / "model.safetensors"
     path.write_bytes(payload)
     return path
+
+
+# ``check_safetensors`` is the header half of ``load_safetensors``: a header one
+# of them accepts and the other cannot read is a disagreement, so a header case
+# runs through both.
+_BOTH_READERS = pytest.mark.parametrize("reader", [check_safetensors, load_safetensors], ids=["check", "load"])
 
 
 @pytest.fixture
@@ -256,22 +267,65 @@ class TestRejectsCorruptFiles:
         with pytest.raises(ValueError, match="header entry 'weight' is list"):
             load_safetensors(path)
 
-    @pytest.mark.parametrize("shape", [[-1], "4", [1.5], [True]])
-    def test_invalid_shape(self, tmp_path, shape) -> None:
+    @_BOTH_READERS
+    @pytest.mark.parametrize("shape", [[-1], "4", [1.5], [True], None, {"0": 1}, [[1]], ["1"]])
+    def test_invalid_shape(self, tmp_path, reader, shape) -> None:
         header = {"weight": {"dtype": "U8", "shape": shape, "data_offsets": [0, 1]}}
         path = _write(tmp_path, _pack(header, b"\x00"))
 
         with pytest.raises(ValueError, match="expected a list of non-negative integers"):
-            load_safetensors(path)
+            reader(path)
 
-    @pytest.mark.parametrize("offsets", [[0], [0, 1, 2], [-1, 1], "0,1", [False, True]])
-    def test_invalid_offsets(self, tmp_path, offsets) -> None:
+    @_BOTH_READERS
+    @pytest.mark.parametrize(
+        "offsets", [[0], [0, 1, 2], [-1, 1], "0,1", [False, True], None, [0.0, 1.0], [0, "1"], {"0": 0, "1": 1}]
+    )
+    def test_invalid_offsets(self, tmp_path, reader, offsets) -> None:
         """``[False, True]`` is the offsets twin of the ``[True]`` shape: a bool is an ``int``."""
         header = {"weight": {"dtype": "U8", "shape": [1], "data_offsets": offsets}}
         path = _write(tmp_path, _pack(header, b"\x00"))
 
         with pytest.raises(ValueError, match="expected two non-negative integers"):
-            load_safetensors(path)
+            reader(path)
+
+    @_BOTH_READERS
+    @pytest.mark.parametrize(
+        "dtype", [["F32"], {"F32": 1}, None, 32, True], ids=["list", "object", "null", "number", "bool"]
+    )
+    def test_dtype_that_is_not_a_string(self, tmp_path, reader, dtype) -> None:
+        """A list or an object is unhashable, so a bare ``in _DTYPES`` raised ``TypeError`` (#5218)."""
+        header = {"weight": {"dtype": dtype, "shape": [2], "data_offsets": [0, 8]}}
+        path = _write(tmp_path, _pack(header, b"\x00" * 8))
+
+        expected = f"{path}: tensor 'weight' has dtype {dtype!r}, which this reader does not support"
+        with pytest.raises(ValueError, match=re.escape(expected)):
+            reader(path)
+
+    @_BOTH_READERS
+    @pytest.mark.parametrize("where", ["header", "entry"])
+    def test_deeply_nested_header(self, tmp_path, reader, where) -> None:
+        """200 000 levels is a 400 kB header, far under the cap, and deeper than ``json`` recurses (#5218)."""
+        nested = b"[" * 200_000 + b"]" * 200_000
+        if where == "entry":
+            nested = b'{"weight": {"dtype": ' + nested + b', "shape": [1], "data_offsets": [0, 1]}}'
+        path = _write(tmp_path, _pack(nested, b"\x00"))
+
+        with pytest.raises(ValueError, match=re.escape(f"{path}: the header is nested too deeply to decode")):
+            reader(path)
+
+    @_BOTH_READERS
+    def test_an_integer_too_long_to_decode(self, tmp_path, reader) -> None:
+        """Valid JSON that ``json`` still refuses: more digits than ``sys.get_int_max_str_digits()``.
+
+        The ``ValueError`` ``json`` raises for it carries no path, so only the
+        path is matched: under a raised digit limit the integer decodes and the
+        shape check rejects it instead, with the same prefix.
+        """
+        header = b'{"weight": {"dtype": "U8", "shape": [' + b"1" * 5000 + b'], "data_offsets": [0, 1]}}'
+        path = _write(tmp_path, _pack(header, b"\x00"))
+
+        with pytest.raises(ValueError, match=re.escape(f"{path}: ")):
+            reader(path)
 
     def test_header_is_not_json(self, tmp_path) -> None:
         payload = struct.pack("<Q", 4) + b"nope"
@@ -311,4 +365,150 @@ class TestRejectsCorruptFiles:
         path = _write(tmp_path, _pack(header, b"\x00" * 48))
 
         with pytest.raises(ValueError, match=re.escape(str(path))):
+            load_safetensors(path)
+
+
+class TestShapesTorchCannotBuild:
+    """``check_safetensors`` accepts exactly the shapes ``load_safetensors`` can build on the CPU (#5218).
+
+    An empty tensor stores no bytes, so the byte-size check says nothing about
+    its other dimensions. The format allows empty tensors because they are
+    valid in the tensor libraries, and a torch tensor's sizes and contiguous
+    strides are 64-bit signed integers: a shape outside that is not a torch
+    tensor. Both readers reject it in the header check, with a message naming
+    the file, instead of the load failing inside ``torch.empty``.
+    """
+
+    @_BOTH_READERS
+    @pytest.mark.parametrize("shape", [[2**63, 0], [0, 2**63], [2**64 - 1, 0]])
+    def test_a_dimension_beyond_int64(self, tmp_path, reader, shape) -> None:
+        header = {"weight": {"dtype": "F32", "shape": shape, "data_offsets": [0, 0]}}
+        path = _write(tmp_path, _pack(header, b""))
+
+        with pytest.raises(ValueError, match=re.escape(f"{path}: tensor 'weight' has shape {shape}, whose dimensions")):
+            reader(path)
+
+    @_BOTH_READERS
+    @pytest.mark.parametrize("shape", [[0, 2**62, 2**62], [0, 3, 2**62]])
+    def test_an_empty_shape_whose_strides_overflow(self, tmp_path, reader, shape) -> None:
+        """Every dimension fits in 64 bits; the contiguous strides torch derives from them do not."""
+        header = {"weight": {"dtype": "F32", "shape": shape, "data_offsets": [0, 0]}}
+        path = _write(tmp_path, _pack(header, b""))
+
+        with pytest.raises(ValueError, match=re.escape(f"{path}: tensor 'weight' has shape {shape}, which torch")):
+            reader(path)
+
+    @_BOTH_READERS
+    @pytest.mark.parametrize("shape", [[2**62, 2**62, 0], [2**62, 4, 0]])
+    def test_an_empty_shape_whose_storage_size_may_overflow(self, tmp_path, reader, shape) -> None:
+        """The readers accept these exactly when ``torch.empty`` builds them on the CPU.
+
+        Whether it does depends on how c10 was compiled. Its storage-size check
+        (``safe_multiplies_u64`` in ``c10/util/safe_numerics.h``) multiplies the
+        sizes in order in unsigned 64 bits where the compiler provides a checked
+        multiply, which rejects both shapes on the macOS build this was written
+        on; the header's MSVC branch counts any zero size as no overflow. The
+        test pins agreement with the running build rather than either answer.
+        """
+        try:
+            torch.empty(shape, dtype=torch.float32)
+        except RuntimeError:
+            torch_builds_it = False
+        else:
+            torch_builds_it = True
+        header = {"weight": {"dtype": "F32", "shape": shape, "data_offsets": [0, 0]}}
+        path = _write(tmp_path, _pack(header, b""))
+
+        if torch_builds_it:
+            reader(path)
+        else:
+            with pytest.raises(ValueError, match=re.escape(f"{path}: tensor 'weight' has shape {shape}, which torch")):
+                reader(path)
+
+    @pytest.mark.parametrize("shape", [[2**63 - 1, 0], [0, 2**63 - 1], [2**62, 3, 0]])
+    def test_an_empty_tensor_keeps_a_huge_nominal_shape(self, tmp_path, device, shape) -> None:
+        """The other side of the boundary: what torch can build, both readers accept.
+
+        ``[2**62, 3, 0]`` builds under either branch of c10's storage-size check,
+        while ``[2**62, 4, 0]`` depends on the branch (see the test above). That
+        is why the check asks torch rather than restating its arithmetic.
+        """
+        header = {"weight": {"dtype": "F32", "shape": shape, "data_offsets": [0, 0]}}
+        path = _write(tmp_path, _pack(header, b""))
+
+        check_safetensors(path)
+        loaded = load_safetensors(path, device=device)["weight"]
+
+        assert list(loaded.shape) == shape
+        assert loaded.device.type == torch.device(device).type
+
+    @_BOTH_READERS
+    @pytest.mark.parametrize("empty", [False, True], ids=["nonempty", "empty"])
+    def test_many_large_dimensions_are_rejected_in_linear_time(self, tmp_path, reader, empty) -> None:
+        """100 000 dimensions of ``2**62``, a 2 MB header, are rejected without multiplying them all out.
+
+        Multiplying all of them out is quadratic in their count -- close to a
+        minute at this size -- and reaches more digits than ``str`` converts.
+        The product has to stop once it passes what the buffer holds, which the
+        message says, or, for the empty shape whose ``0`` comes last, once it
+        passes what a 64-bit stride can hold. The time bound is loose: the
+        rejection takes a few hundredths of a second, the quadratic product
+        about fifty.
+        """
+        shape = [2**62] * 100_000 + ([0] if empty else [])
+        header = {"weight": {"dtype": "U8", "shape": shape, "data_offsets": [0, 0 if empty else 1]}}
+        path = _write(tmp_path, _pack(header, b"" if empty else b"\x00"))
+        problem = "which torch cannot build" if empty else "which is more than the 1-byte buffer holds, but its"
+
+        start = time.perf_counter()
+        with pytest.raises(ValueError, match=re.escape(f"{path}: tensor 'weight' ")) as caught:
+            reader(path)
+        elapsed = time.perf_counter() - start
+
+        assert problem in str(caught.value)
+        assert len(str(caught.value)) < 2000
+        assert elapsed < 10.0, f"rejecting the header took {elapsed:.1f} s"
+
+
+class TestMessagesStayShort:
+    """The file decides how large a header value is; the message quoting it stays a few lines."""
+
+    @_BOTH_READERS
+    @pytest.mark.parametrize("field", ["dtype", "shape", "data_offsets", "name"])
+    def test_a_huge_value_is_shortened(self, tmp_path, reader, field) -> None:
+        """A 10M-element ``dtype`` list is a 20 MB header, under the cap; quoted whole, it was a 30 MB message."""
+        entry = {"dtype": b'"U8"', "shape": b"[1]", "data_offsets": b"[0, 1]"}
+        name = b"weight"
+        if field == "dtype":
+            entry["dtype"] = b"[" + b"0," * (10**7 - 1) + b"0]"
+        elif field == "shape":
+            entry["shape"] = b"[" + b"-1," * (10**6 - 1) + b"-1]"
+        elif field == "data_offsets":
+            entry["data_offsets"] = b"[" + b"0," * (10**6 - 1) + b"0]"
+        else:
+            name = b"w" * 10**6
+            entry["dtype"] = b'"XYZ"'
+        fields = b", ".join(b'"' + key.encode() + b'": ' + value for key, value in entry.items())
+        path = _write(tmp_path, _pack(b'{"' + name + b'": {' + fields + b"}}", b"\x00"))
+
+        with pytest.raises(ValueError, match=re.escape(f"{path}: tensor ")) as caught:
+            reader(path)
+
+        assert len(str(caught.value)) < 2000, f"a {len(str(caught.value))}-character message"
+
+    def test_a_size_mismatch_states_the_exact_byte_count(self, tmp_path) -> None:
+        """The product is exact when it completes, even if its last factor takes it past the buffer."""
+        header = {"weight": {"dtype": "F32", "shape": [3], "data_offsets": [0, 8]}}
+        path = _write(tmp_path, _pack(header, b"\x00" * 8))
+
+        with pytest.raises(ValueError, match=re.escape("is F32[3], which is 12 bytes, but its data_offsets span 8.")):
+            load_safetensors(path)
+
+    def test_a_shape_larger_than_the_buffer_says_so(self, tmp_path) -> None:
+        """The product stops once it passes the buffer, so the count is a bound, not a number."""
+        header = {"weight": {"dtype": "F32", "shape": [2**40, 2**40], "data_offsets": [0, 8]}}
+        path = _write(tmp_path, _pack(header, b"\x00" * 8))
+
+        expected = f"is F32{[2**40, 2**40]}, which is more than the 8-byte buffer holds, but its data_offsets span 8."
+        with pytest.raises(ValueError, match=re.escape(expected)):
             load_safetensors(path)

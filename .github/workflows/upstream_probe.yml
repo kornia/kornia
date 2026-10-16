@@ -44,6 +44,7 @@ permissions:
 jobs:
   pre-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     outputs:
       hash: ${{ steps.hashid.outputs.weights-hash }}
     steps:

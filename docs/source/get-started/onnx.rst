@@ -15,10 +15,10 @@ runs it with ONNX Runtime. It is useful when you have pre-exported operators or 
 - **Execution providers**: run on CPU, CUDA, TensorRT or OpenVINO through ONNX Runtime, with control over the
   session options.
 
-Most of the library exports: |count-onnx-share| of Kornia's public operators (|count-onnx-exportable| of the
-|count-onnx-operators| surveyed) go through ``torch.onnx.export`` and run under ONNX Runtime. The
-:ref:`ONNX, torch.compile and torch.export support <export-support>` page lists the outcome for every operator,
-model and augmentation, with the cause of each failure.
+The :ref:`ONNX, torch.compile and torch.export survey <export-support>` records whether each operator, model
+and augmentation exported in one dated measurement, with the cause of each failure. It is a snapshot, not a
+support guarantee, and Kornia's tests check only part of it: export your own pipeline and compare it with eager
+before relying on it.
 
 Quickstart
 ----------
@@ -33,26 +33,43 @@ Quickstart
 
    Any kornia operator or ``nn.Sequential`` of operators is a regular ``nn.Module``, so
    ``torch.onnx.export`` turns it into an ONNX file that :class:`~kornia.onnx.sequential.ONNXSequential`
-   can load, chain and re-export. Use the legacy exporter at opset 17 (``dynamo=False``) so the IR
-   version matches the pre-exported Hub operators:
+   can load, chain and re-export. Use the ``torch.export``-based exporter (``dynamo=True``). It is the
+   default of ``torch.onnx.export`` from PyTorch 2.9, which deprecates the TorchScript-based one, and it is
+   the exporter the :ref:`export survey <export-support>` measures. Passing ``dynamo=True`` explicitly makes
+   the same call work on PyTorch 2.5 to 2.8, where the TorchScript-based exporter is still the default:
 
    .. code-block:: python
 
       import torch
       import kornia
 
+      batch, height, width = torch.export.Dim("B"), torch.export.Dim("H"), torch.export.Dim("W")
       torch.onnx.export(
           kornia.color.RgbToGrayscale(),
-          torch.rand(1, 3, 256, 512),
+          (torch.rand(2, 3, 256, 512),),
           "gray.onnx",
           input_names=["input"],
           output_names=["output"],
-          dynamic_axes={"input": {0: "B", 2: "H", 3: "W"}, "output": {0: "B", 2: "H", 3: "W"}},
-          opset_version=17,
-          dynamo=False,
+          dynamic_shapes=({0: batch, 2: height, 3: width},),
+          dynamo=True,
       )
 
-   The file plugs into a sequence like any other model: ``ONNXSequential("gray.onnx", ...)``.
+   ``dynamic_shapes`` keeps the batch, height and width dynamic in the exported graph. Give the example
+   input a batch of at least 2: PyTorch 2.5 fixes a dimension of size 1 to that size.
+
+   The file plugs into a sequence like any other model. A fresh export has a newer ONNX IR version and
+   opset than the pre-exported Hub operators, so pass ``auto_ir_version_conversion=True`` to bring every
+   graph to one version before they are merged; without it, the merge fails with ``IR version mismatch``:
+
+   .. code-block:: python
+
+      from kornia.onnx import ONNXSequential
+
+      onnx_seq = ONNXSequential(
+          "gray.onnx",
+          "hf://operators/kornia.geometry.transform.affwarp.Resize_512x512",
+          auto_ir_version_conversion=True,
+      )
 
 3. **Combine ONNX models**
 
@@ -152,7 +169,8 @@ Frequently asked questions
 
 **Can I chain models from different sources?**
 Yes. Models can come from ONNX files, ``onnx.ModelProto`` objects or ``hf://`` references;
-:class:`~kornia.onnx.sequential.ONNXSequential` merges their graphs.
+:class:`~kornia.onnx.sequential.ONNXSequential` merges their graphs. When their ONNX IR versions or opsets
+differ, as a fresh export and a Hub operator do, pass ``auto_ir_version_conversion=True``.
 
 **What if the input/output names of two models do not match?**
 Use the ``io_maps`` argument to say which output feeds which input.
@@ -161,8 +179,9 @@ Use the ``io_maps`` argument to say which output feeds which input.
 Yes, pass your own session options to the ``create_session`` method.
 
 **Which operators export?**
-The :ref:`ONNX, torch.compile and torch.export support <export-support>` page lists every surveyed operator with
-its ONNX export, ``torch.export`` and ``torch.compile`` outcome, searchable by name and filterable by result.
+The :ref:`ONNX, torch.compile and torch.export survey <export-support>` lists every surveyed operator with
+its ONNX export, ``torch.export`` and ``torch.compile`` outcome in one dated measurement, searchable by name and
+filterable by result. Treat an entry as a starting point, not a guarantee.
 
 **Where are the pre-exported Kornia operators?**
 In the `kornia/ONNX_models <https://huggingface.co/kornia/ONNX_models>`_ Hugging Face repository; load them with

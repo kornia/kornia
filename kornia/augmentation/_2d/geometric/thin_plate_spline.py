@@ -20,6 +20,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.constants import SamplePadding
 from kornia.geometry.transform import get_tps_transform, warp_image_tps
 
@@ -30,11 +31,22 @@ class RandomThinPlateSpline(AugmentationBase2D):
 
     .. image:: _static/img/RandomThinPlateSpline.png
 
+    Convention:
+        Five control points use normalized ``(x, y)`` coordinates: ``(-1, -1)``, ``(-1, 1)``,
+        ``(1, -1)``, ``(1, 1)``, and ``(0, 0)``. Each destination coordinate receives uniform
+        noise between ``-scale`` and ``scale``; zero scale leaves these points unchanged.
+        Sampling is bilinear, with no interpolation-mode argument. Zero scale is an identity warp up to
+        interpolation roundoff for either ``align_corners``. There is no ``transform_matrix`` or ``inverse``;
+        spatial labels in containers have limitations (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
+        Its defaults and the ``align_corners`` split across classes
+        (`#4412 <https://github.com/kornia/kornia/issues/4412>`_) are listed on
+        :class:`~kornia.augmentation.GeometricAugmentationBase2D`.
+
     Args:
         scale: the non-negative scale factor to apply to the destination points.
             Zero leaves the control points unchanged.
         align_corners: Interpolation flag used by ``grid_sample``.
-        mode: Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'.
+        padding_mode: Padding used by ``grid_sample``: 'zeros', 'border' or 'reflection'.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -79,7 +91,7 @@ class RandomThinPlateSpline(AugmentationBase2D):
         dtype = self.dtype
 
         # 5 TPS control points in normalized coordinates
-        src = torch.tensor(
+        src = _constant_tensor(
             [[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]],
             device=device,
             dtype=dtype,

@@ -19,6 +19,7 @@ Essential
 .. autofunction:: essential_from_fundamental
 .. autofunction:: essential_from_Rt
 .. autofunction:: decompose_essential_matrix
+.. autofunction:: decompose_essential_matrix_no_svd
 .. autofunction:: motion_from_essential
 .. autofunction:: motion_from_essential_choose_solution
 .. autofunction:: relative_camera_motion
@@ -48,6 +49,8 @@ Projection
 ----------
 
 .. autofunction:: projection_from_KRt
+.. autofunction:: KRt_from_projection
+.. autofunction:: depth_from_point
 .. autofunction:: projections_from_fundamental
 .. autofunction:: intrinsics_like
 .. autofunction:: scale_intrinsics
@@ -63,3 +66,4 @@ Triangulation
 -------------
 
 .. autofunction:: triangulate_points
+.. autofunction:: generate_scene

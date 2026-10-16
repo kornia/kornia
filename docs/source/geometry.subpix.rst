@@ -26,7 +26,10 @@ Convolutional
    * **CPU**  → :func:`iterative_quad_interp3d` — processes only NMS maxima directly,
      no dilation overhead.
 
-   Both backends produce numerically identical results (max difference < 2 × 10\ :sup:`-6`).
+   With ``max_candidates`` unset, the backends agree on every maximum whose centre stays within
+   ``dilation_radius`` voxels (default 1) of where it started. Beyond that :func:`conv_quad_interp3d` can reject a
+   maximum that :func:`iterative_quad_interp3d` still refines, so CPU and CUDA keypoints can differ;
+   ``dilation_radius=n_iters`` makes the backends agree.
 
    .. code-block:: python
 
@@ -40,7 +43,7 @@ Convolutional
           num_features=2000,
           resp_module=BlobDoG(),
           # default — auto-selects conv on CUDA, patch on CPU:
-          subpix_module=AdaptiveQuadInterp3d(strict_maxima_bonus=0.0),
+          subpix_module=AdaptiveQuadInterp3d(),
           scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True),
           scale_space_response=True,
           minima_are_also_good=True,

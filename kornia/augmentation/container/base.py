@@ -423,9 +423,7 @@ class ImageSequentialBase(SequentialBase):
                 )
             params = self._params
 
-        input = self.inverse_inputs(input, params, extra_args=extra_args)
-
-        return input
+        return self.inverse_inputs(input, params, extra_args=extra_args)
 
     def forward(
         self, input: torch.Tensor, params: Optional[List[ParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None
@@ -461,7 +459,7 @@ class TransformMatrixMinIn:
     _valid_ops_for_transform_computation: Tuple[Any, ...] = ()
     _transformation_matrix_arg: str = "silent"
 
-    def __init__(self, *args, **kwargs) -> None:  # type:ignore
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._transform_matrix: Optional[torch.Tensor] = None
         self._transform_matrices: List[Optional[torch.Tensor]] = []

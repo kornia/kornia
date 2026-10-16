@@ -168,8 +168,7 @@ class PatchMerging(nn.Module):
         if x.ndim == 3:
             x = x.transpose(1, 2).unflatten(2, self.input_resolution)  # (B, H * W, C) -> (B, C, H, W)
         x = self.conv3(self.conv2(self.conv1(x)))
-        x = x.flatten(2).transpose(1, 2)  # (B, C, H, W) -> (B, H * W, C)
-        return x
+        return x.flatten(2).transpose(1, 2)  # (B, C, H, W) -> (B, H * W, C)
 
 
 class ConvLayer(nn.Module):
@@ -293,7 +292,6 @@ class Attention(nn.Module):
         self.attention_biases = nn.Parameter(torch.zeros(num_heads, attn_offset_size))
         self.register_buffer("attention_bias_idxs", indices, persistent=False)
         self.attention_bias_idxs: torch.Tensor
-        self.ab: Optional[torch.Tensor] = None
 
     @staticmethod
     def build_attention_bias(resolution: tuple[int, int]) -> tuple[torch.Tensor, int]:
@@ -321,22 +319,6 @@ class Attention(nn.Module):
         attn_offset_size = unique_keys.numel()
         return indices, attn_offset_size
 
-    # is this really necessary?
-    @torch.no_grad()
-    def train(self, mode: bool = True) -> Attention:
-        """Switch training/evaluation mode and refresh cached attention bias.
-
-        Args:
-            mode: ``True`` for training mode, ``False`` for evaluation mode.
-
-        Returns:
-            ``self`` after updating the module mode. In evaluation mode the
-            relative attention bias lookup is cached for reuse.
-        """
-        super().train(mode)
-        self.ab = None if (mode and self.ab is not None) else self.attention_biases[:, self.attention_bias_idxs]
-        return self
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply relative-position self-attention to token features.
 
@@ -354,13 +336,12 @@ class Attention(nn.Module):
         qkv = qkv.view(B, N, self.num_heads, -1).permute(0, 2, 1, 3)
         q, k, v = qkv.split([self.key_dim, self.key_dim, self.d], dim=3)
 
-        bias = self.attention_biases[:, self.attention_bias_idxs] if self.training else self.ab
+        bias = self.attention_biases[:, self.attention_bias_idxs]
         attn = (q @ k.transpose(-2, -1)) * self.scale + bias
 
         attn = attn.softmax(dim=-1)
         x = (attn @ v).transpose(1, 2).reshape(B, N, self.dh)
-        x = self.proj(x)
-        return x
+        return self.proj(x)
 
 
 class TinyViTBlock(nn.Module):
@@ -431,8 +412,7 @@ class TinyViTBlock(nn.Module):
         x = self.local_conv(x)
         x = x.view(B, C, L).transpose(1, 2)
 
-        x = x + self.drop_path2(self.mlp(x))
-        return x
+        return x + self.drop_path2(self.mlp(x))
 
 
 class BasicLayer(nn.Module):
@@ -631,7 +611,7 @@ class TinyViT(nn.Module):
         if self.mobile_sam:
             # MobileSAM
             x = x.unflatten(1, (self.feat_size, self.feat_size)).permute(0, 3, 1, 2)
-            x = self.neck(x)  # type: ignore
+            x = self.neck(x)
         else:
             # classification
             x = x.mean(1)
@@ -641,6 +621,9 @@ class TinyViT(nn.Module):
     @staticmethod
     def from_config(variant: str, pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
         """Create a TinyViT model from pre-defined variants.
+
+        Returns the model in evaluation mode when ``pretrained`` loads the complete weights, classification head
+        included, and in training mode otherwise (see :ref:`pretrained-models-conventions`).
 
         Args:
             variant: TinyViT variant. Possible values: ``'5m'``, ``'11m'``, ``'21m'``.
@@ -652,6 +635,12 @@ class TinyViT(nn.Module):
             When ``img_size`` is different from the pre-trained size, bicubic interpolation will be performed on
             attention biases. When using ``pretrained=True``, ImageNet-1k checkpoint (``'in1k'``) is used.
             For feature extraction or fine-tuning, ImageNet-22k checkpoint (``'in22k'``) is preferred.
+
+            With ``pretrained`` and a ``num_classes`` other than the checkpoint's, the classification head is reset to
+            zeros, and the model, a pretrained backbone to fine-tune, stays in training mode. The ``'in22k'``
+            checkpoints have a 21841-class head: pass ``num_classes=21841`` to get the complete model in evaluation
+            mode. With the default ``num_classes=1000`` the head is reset and the model stays in training mode, so call
+            ``.eval()`` before extracting features.
 
         """
         KORNIA_CHECK(variant in ("5m", "11m", "21m"), "Only variant 5m, 11m, and 21m are supported")
@@ -692,13 +681,17 @@ urls: dict[str, dict[str, list[str]]] = {
         ],
         "in1k_384": [
             hf_url("tiny_vit", "tiny_vit_21m_22kto1k_384_distill.pth"),
-            "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/"
-            "tiny_vit_21m_22kto1k_384_distill.pth",
+            (
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/"
+                "tiny_vit_21m_22kto1k_384_distill.pth"
+            ),
         ],
         "in1k_512": [
             hf_url("tiny_vit", "tiny_vit_21m_22kto1k_512_distill.pth"),
-            "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/"
-            "tiny_vit_21m_22kto1k_512_distill.pth",
+            (
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/"
+                "tiny_vit_21m_22kto1k_512_distill.pth"
+            ),
         ],
     },
 }
@@ -714,7 +707,7 @@ def _load_pretrained(model: TinyViT, url: str | list[str]) -> TinyViT:
 
     # https://github.com/microsoft/Cream/blob/8dc38822b99fff8c262c585a32a4f09ac504d693/TinyViT/utils.py#L163
     # bicubic interpolate attention biases
-    ab_keys = [k for k in state_dict.keys() if "attention_biases" in k]
+    ab_keys = [k for k in state_dict if "attention_biases" in k]
     for k in ab_keys:
         n_heads1, L1 = state_dict[k].shape
         n_heads2, L2 = model_state_dict[k].shape
@@ -727,13 +720,18 @@ def _load_pretrained(model: TinyViT, url: str | list[str]) -> TinyViT:
             attention_biases = F.interpolate(attention_biases, size=(S2, S2), mode="bicubic")
             state_dict[k] = attention_biases.view(n_heads2, L2)
 
-    if state_dict["head.weight"].shape[0] != model.head.out_features:
+    head_loaded = state_dict["head.weight"].shape[0] == model.head.out_features
+    if not head_loaded:
         msg = "Number of classes does not match pre-trained checkpoint's. Resetting classification head to zeros"
         warnings.warn(msg, stacklevel=1)
         state_dict["head.weight"] = torch.zeros_like(model.head.weight)
         state_dict["head.bias"] = torch.zeros_like(model.head.bias)
 
     model.load_state_dict(state_dict)
+    # Complete weights are returned in evaluation mode. A reset head leaves a pretrained backbone to fine-tune, which
+    # stays in training mode.
+    if head_loaded:
+        model.eval()
     return model
 
 

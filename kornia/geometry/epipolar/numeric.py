@@ -21,13 +21,17 @@ import torch
 
 
 def cross_product_matrix(x: torch.Tensor) -> torch.Tensor:
-    r"""Return the cross_product_matrix symmetric matrix of a vector.
+    r"""Return the skew-symmetric cross-product matrix of a vector.
+
+    Convention:
+        - Same matrix as :func:`~kornia.geometry.conversions.vector_to_skew_symmetric_matrix`,
+          :math:`[x]_\times w = x \times w`, for any number of leading dims.
 
     Args:
         x: The input vector to construct the matrix in the shape :math:`(*, 3)`.
 
     Returns:
-        The constructed cross_product_matrix symmetric matrix with shape :math:`(*, 3, 3)`.
+        The skew-symmetric matrix with shape :math:`(*, 3, 3)`.
 
     """
     if not x.shape[-1] == 3:

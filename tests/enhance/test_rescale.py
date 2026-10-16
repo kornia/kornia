@@ -76,3 +76,15 @@ class TestRescale(BaseTester):
         x = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
         op = torch_optimizer(r)
         self.assert_close(op(x), r(x))
+
+    def test_float_factor_promotes_integer_input(self, device):
+        x = torch.arange(256, device=device, dtype=torch.uint8)
+        out = Rescale(1 / 255.0)(x)
+        assert out.dtype == torch.float32
+        self.assert_close(out, torch.arange(256, device=device, dtype=torch.float32) / 255.0)
+
+    def test_float_factor_is_not_rounded_to_a_half_input(self, device):
+        """bfloat16 rounds 1/255 to 0.0039368; the product must use the float factor and round once."""
+        x = torch.arange(256, device=device, dtype=torch.float32).to(torch.bfloat16)
+        expected = (x.float() * (1 / 255.0)).to(torch.bfloat16)
+        assert torch.equal(Rescale(1 / 255.0)(x), expected)

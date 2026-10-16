@@ -105,7 +105,7 @@ class DiscreteSteerer(nn.Module):
             generator = torch.block_diag(*([c4_block] * (descriptor_dim // 4)))
             return cls(generator).eval()
 
-        elif generator_type == "SO2":
+        if generator_type == "SO2":
             num_rot_blocks_per_freq = descriptor_dim // 14
             dim_rot = 12 * num_rot_blocks_per_freq
             dim_trivial = descriptor_dim - dim_rot
@@ -129,5 +129,4 @@ class DiscreteSteerer(nn.Module):
 
             generator = torch.block_diag(*blocks)
             return cls(generator).eval()
-        else:
-            raise ValueError(f"Unknown generator_type: {generator_type}")
+        raise ValueError(f"Unknown generator_type: {generator_type}")

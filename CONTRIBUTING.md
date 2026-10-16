@@ -16,12 +16,14 @@ The rest of this guide contains practical and technical guidance so nobody has t
 ## Practical guidelines
 
 - Search existing issues and pull requests before starting. Focused fixes and documentation improvements are welcome as pull requests. For a new public API, a behavior change, or a large piece of work, an early issue or discussion can save everyone time. A conversation helps us align; it is not a promise that somebody will review or merge the result.
+- Some issues say they are reserved for a maintainer implementation, and some already have an open pull request. Please comment on the issue or on that pull request instead of opening another one.
+- Open an issue with a reproducer before fixing a numerical edge case that realistic inputs do not reach, such as half-precision overflow at magnitudes far beyond image or coordinate ranges, or a matrix scaled by `1e15`. Each such fix costs a full review across dtypes and devices and adds a promotion path to maintain, so we decide first whether it is worth that cost. One issue can list several cases. Wrong results on realistic inputs are welcome directly as pull requests.
 - Check the part you changed and tell us what you ran. A bug fix is easier to trust when it includes a test that fails without the fix. Numerical work is easier to review when expected values come from a reference implementation, a paper, or a mathematical invariant.
 - Look for an existing `kornia` utility before adding another implementation. Keep changes focused, follow nearby code, and update the documentation when public behavior changes.
 - Read your own contribution and stay part of the conversation about it. You do not need perfect English or an immediate answer; we care that questions and technical concerns are treated seriously.
 - If you are contributing as part of an application, remember that we read the work and review conversation, not pull request counts.
 - Keep project decisions and review discussions in public GitHub issues, discussions, or pull requests so others can find and learn from them.
-- Pull requests are marked stale after 15 quiet days and may be closed 7 days later to keep the queue usable. Comment or push an update to keep yours active; maintainers can add `pinned` when a pull request should remain open without activity. This is housekeeping, not a judgment: reopen one or make a new pull request whenever you want to continue.
+- Pull requests are marked stale after 15 quiet days to keep the queue usable. **We do not close pull requests for inactivity** — the label is a triage signal and nothing else, and it clears itself as soon as you comment or push. Maintainers can add `pinned` when a pull request should be exempt from the sweep entirely. A quiet pull request is often waiting on us, so take the label as a nudge to ping us, not as a deadline.
 
 ## Ways to Contribute
 
@@ -88,7 +90,7 @@ The rest of this guide contains practical and technical guidance so nobody has t
     ```bash
     # Create the default Pixi environment, then install development dependencies
     pixi install
-    pixi run install
+    pixi run -e default install
 
     # For specific Python versions
     pixi install -e py312  # Python 3.12
@@ -108,8 +110,8 @@ The rest of this guide contains practical and technical guidance so nobody has t
 
     ```bash
     # Installation
-    pixi run install          # Install dev dependencies
-    pixi run install-docs     # Install dev + docs dependencies
+    pixi run -e default install # Install dev dependencies
+    pixi run -e default install-docs # Install dev + docs dependencies
 
     # Testing
     pixi run test             # Run tests (configure via KORNIA_TEST_* env vars)
@@ -134,7 +136,7 @@ The rest of this guide contains practical and technical guidance so nobody has t
     pixi run doctest          # Run doctests
 
     # Documentation
-    pixi run build-docs       # Build documentation
+    pixi run -e default build-docs # Build documentation
 
     # Utilities
     pixi run clean            # Clean Python cache files
@@ -158,9 +160,15 @@ The rest of this guide contains practical and technical guidance so nobody has t
     pixi run test
     ```
 
-    **Dependencies:** Defined in `pyproject.toml`. Update it and run `pixi run install`.
+    **Dependencies:** Defined in `pyproject.toml`. Update it and run `pixi run -e default install`.
 
-    **CUDA:** The CUDA environment uses PyTorch with CUDA 12.1. Run `pixi run -e cuda install` to set it up.
+    **CUDA:** Run `pixi run -e cuda install` to install the CUDA 12.1 PyTorch build into the project `.venv`,
+    which is also used by `pixi run -e cuda test-cuda`. That index stops at torch 2.5.1, the oldest version
+    Kornia supports, so CUDA runs test the floor rather than the locked PyTorch. Pixi's `.pixi/envs/cuda`
+    supplies the tools, not the Python dependencies under test. Commands run with `-e cuda` disable automatic uv
+    synchronization so the CUDA build is preserved. Re-run the CUDA install task after changing dependencies or
+    using a default-environment command that synchronizes `.venv`. For focused CUDA tests, use
+    `pixi run -e cuda test-module tests/<path> --device=cuda`.
 
 5. **Develop and test:**
 
@@ -185,7 +193,7 @@ The rest of this guide contains practical and technical guidance so nobody has t
 
 1. Set up your development environment (see [above](#developing-kornia))
 2. Edit files in `docs/`
-3. Build docs: `pixi run build-docs`
+3. Build docs: `pixi run -e default build-docs`
 4. Preview: `open docs/build/html/index.html`
 5. Submit a PR following the [Pull Request](#pull-request) guidelines
 
@@ -402,7 +410,7 @@ See [the fragment guide](changelog.d/README.md) for examples and release instruc
 
 ## Pull Request
 
-Fill in the [pull request template](.github/pull_request_template.md) with enough context for another person to understand the change. Link related issues or discussions when they exist, say what you checked, and tell us how AI helped if you used it.
+Fill in the [pull request template](.github/pull_request_template.md) with enough context for another person to understand the change. Link related issues or discussions when they exist, say what you checked, and tell us how AI helped if you used it. The description goes in the pull request itself; do not commit it to the repository as a file such as `PR.md`.
 
 For bug fixes, a regression test that fails before the fix is especially helpful. For numerical or geometry changes, say where the expected behavior comes from. For new public APIs or behavior changes, an issue or discussion before a large implementation can uncover compatibility and design concerns early.
 

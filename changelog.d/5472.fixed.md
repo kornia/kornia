@@ -1,0 +1,1 @@
+The convolution engine of the morphology operators no longer raises `NotImplementedError` on MPS with torch 2.5.1: the non-finite codes are now matched by scalar comparison instead of `torch.isposinf`/`torch.isneginf`, which lack an MPS kernel there

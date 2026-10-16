@@ -28,6 +28,7 @@ from kornia.augmentation.utils import (
     _common_param_check,
     _joint_range_check,
 )
+from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.bbox import bbox_generator
 
@@ -36,6 +37,8 @@ __all__ = ["CutmixGenerator"]
 
 class CutmixGenerator(RandomGeneratorBase):
     r"""Generate cutmix indexes and lambdas for a batch of inputs.
+
+    See the Convention block on :class:`~kornia.augmentation.RandomCutMixV2`.
 
     Args:
         p (float): probability of applying cutmix.
@@ -49,8 +52,9 @@ class CutmixGenerator(RandomGeneratorBase):
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - mix_pairs (torch.Tensor): element-wise probabilities with a shape of (num_mix, B).
-            - crop_src (torch.Tensor): element-wise probabilities with a shape of (num_mix, B, 4, 2).
+            - mix_pairs (torch.Tensor): pairing indices with a shape of (num_mix, B).
+            - crop_src (torch.Tensor): cut-box vertices with a shape of (num_mix, B, 4, 2).
+            - image_shape (torch.Tensor): the input ``(H, W)``.
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -76,8 +80,7 @@ class CutmixGenerator(RandomGeneratorBase):
             raise AssertionError(f"`num_mix` must be an integer greater than 1. Got {num_mix}.")
 
     def __repr__(self) -> str:
-        repr = f"cut_size={self.cut_size}, beta={self.beta}, num_mix={self.num_mix}"
-        return repr
+        return f"cut_size={self.cut_size}, beta={self.beta}, num_mix={self.num_mix}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         if self.beta is None:
@@ -145,22 +148,22 @@ class CutmixGenerator(RandomGeneratorBase):
 
         cut_height = (cutmix_rate * height).floor().to(device=_device, dtype=_dtype)
         cut_width = (cutmix_rate * width).floor().to(device=_device, dtype=_dtype)
-        _gen_shape = (1,)
 
         if same_on_batch:
-            _gen_shape = (cut_height.size(0),)
             cut_height = cut_height[0]
             cut_width = cut_width[0]
 
-        # Reserve at least 1 pixel for cropping.
+        # One start position per cut, like the sizes above; with same_on_batch the helper repeats a single draw.
+        # Legal starts run 0 .. side - cut_side inclusive; the clamp only guards a u -> 1 float round-up.
+        _gen_shape = (batch_size * self.num_mix,)
         x_start = _adapted_rsampling(_gen_shape, self.rand_sampler, same_on_batch).to(device=_device, dtype=_dtype) * (
-            width - cut_width - 1
+            width - cut_width + 1
         )
         y_start = _adapted_rsampling(_gen_shape, self.rand_sampler, same_on_batch).to(device=_device, dtype=_dtype) * (
-            height - cut_height - 1
+            height - cut_height + 1
         )
-        x_start = x_start.floor()
-        y_start = y_start.floor()
+        x_start = torch.minimum(x_start.floor(), width - cut_width)
+        y_start = torch.minimum(y_start.floor(), height - cut_height)
 
         crop_src = bbox_generator(x_start.squeeze(), y_start.squeeze(), cut_width, cut_height)
 
@@ -170,5 +173,5 @@ class CutmixGenerator(RandomGeneratorBase):
         return {
             "mix_pairs": mix_pairs.to(device=_device, dtype=torch.long),
             "crop_src": crop_src.floor().to(device=_device, dtype=_dtype),
-            "image_shape": torch.as_tensor(batch_shape[-2:], device=_device, dtype=_dtype),
+            "image_shape": _constant_tensor(batch_shape[-2:], device=_device, dtype=_dtype),
         }

@@ -46,6 +46,12 @@ class RandomRotation(GeometricAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
 
+    Convention:
+        - See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
+        - a positive sampled angle rotates the displayed image counter-clockwise, as
+          :func:`~kornia.geometry.transform.rotate` does and unlike :class:`RandomAffine`
+          (:doc:`/get-started/conventions`, `#4408 <https://github.com/kornia/kornia/issues/4408>`_).
+
     .. note::
         This function internally uses :func:`kornia.geometry.transform.affine`.
 
@@ -152,6 +158,12 @@ class RandomRotation90(GeometricAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
+        - a positive rounded ``times`` rotates the displayed image counter-clockwise by ``times * 90`` degrees.
+        - ``times`` is sampled from a continuous uniform range and rounded, and a non-square image keeps its
+          ``(H, W)`` shape (`#4409 <https://github.com/kornia/kornia/issues/4409>`_).
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.affine`. This version is relatively

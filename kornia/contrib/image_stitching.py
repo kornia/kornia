@@ -28,26 +28,44 @@ from kornia.geometry.transform import warp_perspective
 
 
 class ImageStitcher(nn.Module):
-    """Stitch two images with overlapping fields of view.
+    """Stitch images with overlapping fields of view.
+
+    Convention:
+        - The images are RGB, :math:`(B, 3, H, W)`, all of one height, ordered left to right. ``matcher`` is a
+          :class:`~kornia.feature.LoFTR` or a :class:`~kornia.feature.LocalFeatureMatcher`, which gets grayscale
+          copies; any other matcher raises ``NotImplementedError``.
+        - The panorama is in the first image's pixel frame and has its height: content that maps left of its first
+          column, or above or below its rows, is lost. Each next image is warped onto the panorama so far with a
+          homography from their matches; every sample needs 4 matches, or a ``RuntimeError`` names the sample.
+        - ``"naive"`` blending keeps the warped image wherever it covers a pixel completely, so in an overlap the right
+          image replaces the left one; a pixel it covers only in part keeps the panorama's value.
+        - The result drops the empty trailing columns, those after the last column that any sample covers; an
+          uncovered column before it, the first one included, is kept. A batch shares one crop, so it is cropped to its
+          widest sample and a narrower sample keeps zero columns on its right.
+        - ``estimator="ransac"`` uses ``RANSAC("homography")`` (``inl_th=2.0``); ``"vanilla"`` fits every match with
+          iterated DLT.
 
     Args:
-        matcher: image feature matching module.
+        matcher: image feature matching module, :class:`~kornia.feature.LoFTR` or
+            :class:`~kornia.feature.LocalFeatureMatcher`.
         estimator: method to compute homography, either "vanilla" or "ransac".
             "ransac" is slower with a better accuracy.
         blending_method: method to blend two images together.
             Only "naive" is currently supported.
 
-    Note:
-        Current implementation requires strict image ordering from left to right.
-
     .. code-block:: python
 
-        IS = ImageStitcher(KF.LoFTR(pretrained='outdoor'), estimator='ransac').cuda()
-        # Compute the stitched result with less GPU memory cost.
+        import torch
+        import kornia.feature as KF
+        from kornia.contrib import ImageStitcher
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        stitcher = ImageStitcher(KF.LoFTR(pretrained="outdoor"), estimator="ransac").to(device)
+        # img_left and img_right: (1, 3, H, W) RGB images of one height on `device`
         with torch.inference_mode():
-            out = IS(img_left, img_right)
-        # Show the result
-        plt.imshow(K.tensor_to_image(out))
+            panorama = stitcher(img_left, img_right)
+
+    See :doc:`/applications/image_stitching` for a complete example.
 
     """
 
@@ -80,14 +98,40 @@ class ImageStitcher(nn.Module):
             raise NotImplementedError(f"Unsupported estimator {self.estimator}. Use `ransac` or `vanilla` instead.")
         return homo
 
-    def estimate_transform(self, *args: torch.Tensor, **kwargs: torch.Tensor) -> torch.Tensor:
-        """Compute the corresponding homography."""
+    def estimate_transform(
+        self, *args: torch.Tensor, batch_size: Optional[int] = None, **kwargs: torch.Tensor
+    ) -> torch.Tensor:
+        """Compute the corresponding homography of every sample.
+
+        Args:
+            *args: ignored.
+            batch_size: number of samples. Defaults to one more than the largest batch index of the matches.
+            **kwargs: the matcher output, with ``keypoints0``, ``keypoints1`` and ``batch_indexes``.
+
+        Raises:
+            RuntimeError: if a sample has fewer than 4 matches (the error names the sample), if a batch index is outside
+                the batch (the error names the index), or if there are no matches and ``batch_size`` is not given.
+        """
         kp1, kp2, idx = kwargs["keypoints0"], kwargs["keypoints1"], kwargs["batch_indexes"]
-        homos = [self._estimate_homography(kp1[idx == i], kp2[idx == i]) for i in range(len(idx.unique()))]
-
-        if len(homos) == 0:
-            raise RuntimeError("Compute homography failed. No matched keypoints found.")
-
+        if batch_size is None:
+            if idx.numel() == 0:
+                raise RuntimeError("Compute homography failed. No matched keypoints found.")
+            n = int(idx.max().item()) + 1
+        else:
+            n = batch_size
+        outside = idx[(idx < 0) | (idx >= n)]
+        if outside.numel() > 0:
+            bad = int(outside[0].item())
+            if bad < 0:
+                raise RuntimeError(f"Compute homography failed: batch index {bad} is negative.")
+            samples = "1 sample" if n == 1 else f"{n} samples"
+            raise RuntimeError(f"Compute homography failed: batch index {bad} is outside the batch of {samples}.")
+        selections = [idx == i for i in range(n)]
+        for i, sel in enumerate(selections):
+            n_i = int(sel.sum().item())
+            if n_i < 4:
+                raise RuntimeError(f"Compute homography failed for sample {i}: {n_i} matches, a homography needs 4.")
+        homos = [self._estimate_homography(kp1[sel], kp2[sel]) for sel in selections]
         return torch.cat(homos)
 
     def blend_image(self, src_img: torch.Tensor, dst_img: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
@@ -122,16 +166,16 @@ class ImageStitcher(nn.Module):
                 pixels covered by at least one input view.
 
         Returns:
-            The stitched image cropped to remove trailing invalid columns
-            (columns that contain no valid pixels in the mask).
-            If no redundant area is found, the original ``image`` is returned.
+            The stitched image without its empty trailing columns, those after the last column that has a valid pixel
+            in any sample of the mask. Uncovered columns before it are kept, and a mask without any valid pixel returns
+            the original ``image``.
         """
-        # NOTE: assumes no batch mode. This method keeps all valid regions after stitching.
+        # One crop for the whole batch: a column is valid if any sample has a valid pixel in it.
         mask_ = mask.sum((0, 1))
-        index = int(mask_.bool().any(0).long().argmin().item())
+        index = int(mask_.bool().any(0).flip(0).long().argmax().item())
         if index == 0:  # If no redundant space
             return image
-        return image[..., :index]
+        return image[..., :-index]
 
     def on_matcher(self, data: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Run the configured feature matcher on preprocessed inputs.
@@ -176,8 +220,7 @@ class ImageStitcher(nn.Module):
         input_dict = self.preprocess(images_left, images_right)
         out_shape = (images_left.shape[-2], images_left.shape[-1] + images_right.shape[-1])
         correspondences = self.on_matcher(input_dict)
-        homo = self.estimate_transform(**correspondences)
-        src_img = warp_perspective(images_right, homo, out_shape)
+        homo = self.estimate_transform(batch_size=images_left.shape[0], **correspondences)
         dst_img = torch.cat([images_left, torch.zeros_like(images_right)], -1)
 
         # Compute the transformed masks
@@ -185,8 +228,27 @@ class ImageStitcher(nn.Module):
             mask_left = torch.ones_like(images_left)
         if mask_right is None:
             mask_right = torch.ones_like(images_right)
-        # 'nearest' to ensure no floating points in the mask
-        src_mask = warp_perspective(mask_right, homo, out_shape, mode="nearest")
+        # The image is resampled bilinearly, so a panorama pixel whose footprint reaches past the right image's border
+        # mixes in the zero padding. Warp the validity mask together with the image, in one call and so on the same
+        # sampling grid, and keep only the pixels covered completely.
+        # The warp runs in at least float32 (float64 stays float64), whatever the dtype of the image and of the
+        # homography: a half sampling grid is coarser than a pixel on a wide panorama. Autocast is disabled around it,
+        # which would otherwise run the homography matmuls in half precision, and the float32 coverage tolerance below
+        # would then reject completely covered border pixels.
+        n_ch = images_right.shape[1]
+        work = torch.promote_types(images_right.dtype, torch.float32)
+        with torch.autocast(device_type=images_right.device.type, enabled=False):
+            warped = warp_perspective(
+                torch.cat([images_right.to(work), mask_right.to(work)], 1), homo.to(work), out_shape
+            )
+        src_img = warped[:, :n_ch].to(images_right.dtype)
+        # Round-off in the warp's sampling positions grows with the coordinates and puts a completely covered border
+        # pixel past the border, so its coverage reads below 1. Measured: up to 1.5 * eps * max(H_out, W_out) for
+        # integer shifts (0.99854 on the last row and column of a 4096 x 4096 image shifted by 2048), and up to
+        # 2.86 * eps * max(H_out, W_out) for general homographies. The tolerance scales the same way, with a margin,
+        # and stays far below a genuinely partial coverage: in float32 it reaches 0.3 only past 600 000 px.
+        tol = max(1e-4, 4.0 * torch.finfo(work).eps * max(out_shape))
+        src_mask = (warped[:, n_ch:] >= 1.0 - tol).to(images_right.dtype)
         dst_mask = torch.cat([mask_left, torch.zeros_like(mask_right)], -1)
         return self.blend_image(src_img, dst_img, src_mask), (dst_mask + src_mask).bool().to(src_mask.dtype)
 
@@ -196,11 +258,11 @@ class ImageStitcher(nn.Module):
         Args:
             *imgs: Ordered image tensors from left to right. Each tensor is expected
                 to share a common height and overlap with the next image.
-                Each tensor typically follows :math:`(B, C, H, W)`.
+                Each tensor is RGB, :math:`(B, 3, H, W)`.
 
         Returns:
             A single panorama tensor obtained by stitching all provided images
-            in order and cropping trailing empty space.
+            in order and cropping it as :meth:`postprocess` does.
         """
         img_out = imgs[0]
         mask_left = torch.ones_like(img_out)

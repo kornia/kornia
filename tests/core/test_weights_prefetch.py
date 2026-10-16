@@ -30,34 +30,38 @@ prefetched or listed in :data:`NOT_PREFETCHED` with a reason.
 
 Scope: this guards the checkpoints that go through
 :func:`kornia.core.download.load_state_dict_from_url`, which is what the
-``weights/`` cache holds. Two other download paths live in ``kornia/`` and are
-invisible to the prefetch list -- its sibling
-:func:`kornia.core.download.download_file_from_url`, which the vision-language
-builders (``kornia/models/{kimi_vl,siglip2}/builder.py``) fetch a
-``model.safetensors`` with, and ``CachedDownloader`` into
+``weights/`` cache holds, and the ``.safetensors`` reference tensors that
+``conftest.py``'s ``data`` fixture fetches into the same cache with its sibling
+:func:`kornia.core.download.download_file_from_url` (``testing/reference_data.py``,
+enumerated in :data:`WEIGHT_REGISTRIES`). Two other download paths live in
+``kornia/`` and are invisible to the prefetch list -- ``download_file_from_url``
+as the vision-language builders (``kornia/models/{kimi_vl,siglip2}/builder.py``)
+call it, to fetch a ``model.safetensors``, and as ``kornia/feature/lightglue_onnx/utils/download.py``
+calls it, to fetch the LightGlue ONNX models -- and ``CachedDownloader`` into
 ``.kornia_hub/`` (``kornia/models/small_sr.py``, ``kornia/contrib/super_resolution.py``,
-``kornia/onnx/utils.py``, ``kornia/models/_hf_models/hf_onnx_community.py``,
-``kornia/feature/lightglue_onnx/utils/download.py``). Nothing in the PR matrix
+``kornia/onnx/utils.py``, ``kornia/models/_hf_models/hf_onnx_community.py``). Nothing in the PR matrix
 downloads through either today; a test that did would fetch live from every
 matrix cell with this file still green.
 
-``download_file_from_url`` does share the ``weights/`` cache, so its callers
-could in principle be prefetched -- they are not, for a reason the checkpoints
-above do not have: SigLIP2 takes the repository as an *argument*, so there is no
-fixed set of variants to enumerate, and the two checkpoints in play are hundreds
-of megabytes for a pair of integration tests. The call-site scan below covers
-both functions, so a model that starts downloading through either is caught here
-either way.
+Those builders' checkpoints could in principle be prefetched as the reference
+tensors are -- they are not, for a reason the checkpoints above do not have:
+SigLIP2 takes the repository as an *argument*, so there is no fixed set of
+variants to enumerate, and the two checkpoints in play are hundreds of megabytes
+for a pair of integration tests. The call-site scan below covers both functions,
+so a model that starts downloading through either is caught here either way.
 
-``docs/generate_examples.py`` also fetches one non-checkpoint tensor
-(``knchurch_disk.pt``, the image pair the matching examples are drawn on)
-straight through ``torch.hub.load_state_dict_from_url``. It lands in the same
-``weights/`` cache but comes from no registry, so it is outside this guard as
-well; it is small, single-source and fetched once per docs build.
+``docs/generate_examples.py`` and ``docs/generate_model_examples.py`` also fetch one
+non-checkpoint file (``knchurch_disk.safetensors``, the image pair the matching examples
+are drawn on) through ``download_file_from_url``. It lands in the same ``weights/`` cache
+under the same name as the ``disk_outdoor`` reference tensors ``conftest.py``'s ``data``
+fixture loads, so the prefetch of that fixture's table serves the docs build too --
+provided every copy of the commit hash agrees, which
+``test_docs_reference_data_matches_the_fixture_table`` holds them to.
 """
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import importlib.util
 import re
@@ -84,6 +88,8 @@ from kornia.models.efficient_vit import model as efficient_vit
 from kornia.models.rt_detr import model as rt_detr
 from kornia.models.sam import model as sam
 from kornia.models.yunet import model as yunet
+
+from testing import reference_data
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO_ROOT / ".github" / "download-models-weights.py"
@@ -118,6 +124,11 @@ def _load_prefetch_script() -> Any:
 # a second hand-written copy of these modules is exactly the drift this file
 # exists to catch.
 WEIGHT_REGISTRIES: dict[str, tuple[ModuleType, dict[str, Any]]] = {
+    # Not a weight source: the reference tensors conftest.py's ``data`` fixture loads
+    # into the same cache. Listed here so the same two-way guard covers them.
+    "reference_data": (reference_data, reference_data.TEST_DATA_URLS),
+    # The library checkpoints the same fixture serves, from the library's own source lists.
+    "reference_checkpoints": (reference_data, reference_data.TEST_CHECKPOINT_URLS),
     "affine_shape": (affine_shape, affine_shape.urls),
     "orientation": (orientation, orientation.urls),
     "hardnet": (hardnet, hardnet.urls),
@@ -185,6 +196,7 @@ _DOWNLOAD_CALL_ALLOWLIST = {
     # entry for it would be exactly the dead exemption
     # ``test_no_allowlisted_module_has_stopped_downloading`` exists to catch.
     "kornia/core/download.py": "defines the functions",
+    "kornia/feature/lightglue_onnx/utils/download.py": "fetches the URL it is handed; OnnxLightGlue's tests refuse it",
     "kornia/feature/lightglue.py": "builds its URLs in __init__; captured by _lightglue_sources",
     "kornia/models/base.py": "loads whatever checkpoint the config it is handed carries",
     "kornia/models/kimi_vl/builder.py": "one safetensors checkpoint, hundreds of MB, integration tests only",
@@ -203,7 +215,6 @@ _DOWNLOAD_CALL_ALLOWLIST = {
 NOT_PREFETCHED: dict[str, str] = {
     # Alternative training sets -- tests only ever build the liberty variants.
     "HardNetPP.pth": "HardNet++ weights; no test or doctest requests them",
-    "hardnet8v2.pt": "HardNet8(pretrained=True); tests build HardNet8() untrained",
     "HyNet_ND.pth": "notredame variant; tests use the liberty default",
     "HyNet_YOS.pth": "yosemite variant; tests use the liberty default",
     "sosnet_32x32_hpatches_a.pth": "hpatches variant; tests use the liberty default",
@@ -211,7 +222,9 @@ NOT_PREFETCHED: dict[str, str] = {
     "tfeat-yosemite.params": "yosemite variant; tests use the liberty default",
     # Model variants no test selects.
     "loftr_indoor_ds_new.ckpt": "tests instantiate LoFTR('indoor') and LoFTR('outdoor') only",
-    "sold2_wireframe.tar": "every SOLD2_detector in the suite passes pretrained=False",
+    "sold2_wireframe.tar": (
+        "the suite builds SOLD2_detector random, or weighted through the prefetched, byte-identical sold2_wireframe.pth"
+    ),
     "epipolar-save.pth": "tests call DISK.from_pretrained(checkpoint='depth')",
     # LightGlue heads: tests build the disk and doghardnet matchers, and the
     # suite also reaches the superpoint head. The rest are unused.
@@ -272,13 +285,34 @@ NOT_PREFETCHED: dict[str, str] = {
     "b1-r288.pt": "test_config only checks the URL string; nothing downloads it",
     "b2-r288.pt": "test_config only checks the URL string; nothing downloads it",
     "b3-r288.pt": "test_config only checks the URL string; nothing downloads it",
-    # ViT: the from_config doctest builds vit_b/16, which is prefetched.
+    # ViT: the from_config doctest builds vit_b/16 and a pretrained test builds vit_s/32; both are prefetched.
     "vit_l-16.pth": "no test or doctest selects this ViT variant",
     "vit_s-16.pth": "no test or doctest selects this ViT variant",
     "vit_ti-16.pth": "no test or doctest selects this ViT variant",
     "vit_b-32.pth": "no test or doctest selects this ViT variant",
-    "vit_s-32.pth": "no test or doctest selects this ViT variant",
 }
+
+
+# ``kornia/data_test`` file references. The fixture table spells the raw URL with a
+# literal commit; a docs script spells ``github.com/.../raw/`` or ``blob/`` with the
+# commit either literal or as an f-string field bound by a ``name = "<sha>"`` line.
+_DATA_TEST_URL = re.compile(r"raw\.githubusercontent\.com/kornia/data_test/([0-9a-f]{40})/([^\s\"'?]+)")
+_DATA_TEST_REF = re.compile(r"github\.com/kornia/data_test/(?:raw|blob)/(\{\w+\}|[0-9a-f]{40})/([^\s\"'?]+)")
+_SHA_BINDING = re.compile(r"^\s*(\w+)\s*=\s*[\"']([0-9a-f]{40})[\"']", re.MULTILINE)
+
+
+def _data_test_refs(source: str) -> set[tuple[str, str]]:
+    """Return every ``(commit, file)`` a script fetches from ``kornia/data_test``.
+
+    An f-string field ``{name}`` resolves through the script's own ``name = "<sha>"``
+    binding; one that has no binding is kept verbatim so it fails the comparison
+    rather than vanishing from it.
+    """
+    bindings = dict(_SHA_BINDING.findall(source))
+    return {
+        (bindings.get(ref[1:-1], ref) if ref.startswith("{") else ref, file)
+        for ref, file in _DATA_TEST_REF.findall(source)
+    }
 
 
 # ``download_file_from_url`` and its Hub wrapper ``download_hf_file`` fetch into
@@ -332,10 +366,8 @@ def _lightglue_sources(monkeypatch) -> dict[str, tuple[str, list[str]]]:
     monkeypatch.setattr(lightglue_mod, "load_state_dict_from_url", _capture)
     for feature in LIGHTGLUE_FEATURES:
         pending.append(feature)
-        try:
+        with contextlib.suppress(_Captured):
             LightGlue(feature)
-        except _Captured:
-            pass
     return captured
 
 
@@ -477,6 +509,30 @@ class TestWeightsPrefetchCoverage:
             f"URLs, so their checkpoints are invisible to every check in this file: "
             f"{unaccounted}. Add the registry to WEIGHT_REGISTRIES, or the module to "
             f"_DOWNLOAD_CALL_ALLOWLIST with the reason it has no registry of its own."
+        )
+
+    @pytest.mark.parametrize("script", ["generate_examples.py", "generate_model_examples.py"])
+    def test_docs_reference_data_matches_the_fixture_table(self, script: str) -> None:
+        """Each docs generator spells its own copy of a ``data_test`` commit hash.
+
+        The cache is keyed by basename, so a docs URL that drifts to another
+        revision of the same file is served the fixture's prefetched bytes
+        without a download, silently. Hold every ``data_test`` URL in the docs
+        scripts to a (commit, file) pair the fixture table pins.
+        """
+        pinned = {
+            (m.group(1), m.group(2))
+            for url in reference_data.TEST_DATA_URLS.values()
+            for m in [_DATA_TEST_URL.search(_as_list(url)[0])]
+            if m is not None
+        }
+        docs = (_REPO_ROOT / "docs" / script).read_text(encoding="utf-8")
+        refs = _data_test_refs(docs)
+        assert refs, f"docs/{script} no longer fetches from kornia/data_test; drop it from this check"
+        unpinned = sorted(refs - pinned)
+        assert not unpinned, (
+            f"docs/{script} fetches data_test files the fixture table does not pin: {unpinned}. "
+            f"Update DATA_TEST_SHA in testing/reference_data.py, or the docs script, so the two agree."
         )
 
     def test_no_entry_is_both_prefetched_and_exempt(self) -> None:

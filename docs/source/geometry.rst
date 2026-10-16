@@ -23,7 +23,8 @@ This module, the original core of the library, consists of the following main su
   and calibrated cameras, per-pixel surface normals, and warping frames given a calibrated camera setup.
 
 The remaining submodules, listed below, cover bounding boxes and keypoints, calibration, epipolar geometry,
-homographies, Lie groups, lines, point clouds, quaternions, RANSAC, polynomial solvers and sub-pixel refinement.
+homographies, Lie groups, named poses, lines, point clouds, quaternions, RANSAC, polynomial solvers and sub-pixel
+refinement.
 
 .. admonition:: About ``align_corners``
 
@@ -55,11 +56,13 @@ homographies, Lie groups, lines, point clouds, quaternions, RANSAC, polynomial s
    ransac <geometry.ransac>
    calibration <geometry.calibration>
    liegroup <geometry.liegroup>
+   pose <geometry.pose>
    quaternion <geometry.quaternion>
    line <geometry.line>
    bbox <geometry.bbox>
    boxes <geometry.boxes>
    keypoints <geometry.keypoints>
+   vector <geometry.vector>
    subpix <geometry.subpix>
    solvers <geometry.solvers>
    grid <geometry.grid>

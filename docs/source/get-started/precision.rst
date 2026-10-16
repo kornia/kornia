@@ -7,129 +7,191 @@ Float16 and bfloat16 support
 This page documents which kornia modules support half-precision floating-point dtypes
 (``torch.float16`` and ``torch.bfloat16``) and what limitations to expect.
 
-.. list-table:: Half-Precision Support by Module
+The status below comes from the Linux CPU half-precision CI jobs, which run the whole test suite in
+``float16`` and in ``bfloat16`` against strict known-failure manifests
+(``testing/half_precision_xfails/cpu_float16.txt`` and ``cpu_bfloat16.txt``). The *known failures*
+column counts the manifest entries per module (float16 / bfloat16); the remaining work is tracked in
+`issue #4153 <https://github.com/kornia/kornia/issues/4153>`_. No CI job covers CUDA or MPS half
+precision, so the table says nothing about those backends.
+
+.. list-table:: Half-Precision Support by Module (Linux CPU)
    :header-rows: 1
-   :widths: 28 14 14 44
+   :widths: 24 11 11 12 42
 
    * - Module
      - float16
      - bfloat16
+     - Known failures
      - Notes
    * - ``kornia.color``
      - ⚠️ Partial
      - ⚠️ Partial
-     - Most color space conversions work for both half-precision dtypes.
-       FFT-based operations may fail on CUDA.
+     - 3 / 9
+     - float16: HLS JIT/module and RGB255 round-trip accuracy. bfloat16: Lab, Luv and RGB255 accuracy.
    * - ``kornia.filters``
      - ⚠️ Partial
      - ⚠️ Partial
-     - Basic convolution-based filters (Gaussian, Sobel, Median, Box) work
-       for both dtypes. On CPU, ``fft_conv`` computes its FFTs in float32 and
-       returns the input dtype. FFT-based operations may still fail on CUDA.
+     - 6 / 8
+     - Accuracy misses in Canny magnitudes, the sampled Gaussian kernel and separable blur. On CPU, ``fft_conv``
+       computes its FFTs in float32 and returns the input dtype.
    * - ``kornia.enhance``
+     - ✅ Yes
      - ⚠️ Partial
-     - ⚠️ Partial
-     - Histogram equalization, CLAHE, gamma correction, and ZCA whitening work
-       for both dtypes. ZCA linalg ops go through ``_torch_svd_cast`` /
-       ``_torch_inverse_cast`` which promote to float32 before computing.
+     - 0 / 2
+     - bfloat16: ``DiffJPEG`` and ZCA whitening accuracy.
    * - ``kornia.morphology``
      - ✅ Yes
      - ✅ Yes
-     - Convolution and pooling; ``top_hat``, ``bottom_hat`` and ``gradient``
-       also subtract two dilation/erosion results, so bfloat16 loses roughly
-       0.4% relative accuracy on them. That is within kornia's own bfloat16
-       tolerance, but six tests override it with a tighter constant and fail;
-       see `issue #4081 <https://github.com/kornia/kornia/issues/4081>`_.
+     - 0 / 0
+     -
    * - ``kornia.augmentation``
      - ⚠️ Partial
      - ⚠️ Partial
-     - Both dtypes are accepted by ``validate_tensor``. Most ops work;
-       precision-sensitive transforms (e.g. affine with large rotations) may
-       produce inaccurate results at half precision.
+     - 200 / 56
+     - float16: 108 entries are ``CutmixGenerator``, whose Dirichlet sampling rejects float16 parameters; most
+       of the rest are ``VideoSequential`` / ``AugmentationSequential`` and 3D-augmentation gradient checks.
+       bfloat16: mostly 3D-augmentation gradient checks (28 of 56 entries are ``RandomMotionBlur3D`` /
+       ``RandomRotation3D`` backward).
    * - ``kornia.geometry.transform``
      - ⚠️ Partial
      - ⚠️ Partial
-     - Affine, homography, resize, and warp operations use ``_torch_inverse_cast``
-       / ``_torch_solve_cast`` which promote to float32 and cast back;
-       both dtypes work.
+     - 31 / 32
+     - Linalg steps go through ``_torch_inverse_cast`` / ``_torch_solve_cast``, but rotation matrices,
+       affine/perspective warps and the homography warper miss their accuracy checks.
    * - ``kornia.geometry.camera``
      - ⚠️ Partial
      - ⚠️ Partial
-     - Pinhole camera model and most projection ops work for both dtypes.
-       ``StereoCamera`` accepts both float16 and bfloat16.
+     - 13 / 23
+     - Pinhole ``cam2pixel`` / ``pixel2cam`` consistency, distortion round trips and ``StereoCamera``
+       disparity reprojection. Twelve bfloat16 entries are a test-side assertion that lists only
+       float16/float32/float64.
    * - ``kornia.geometry.calibration``
-     - ❌ No
-     - ❌ No
-     - ``solve_pnp_dlt()`` explicitly checks that inputs are ``float32`` or
-       ``float64`` and raises otherwise.
+     - ⚠️ Partial
+     - ⚠️ Partial
+     - 13 / 12
+     - ``solve_pnp_dlt()`` explicitly checks that inputs are ``float32`` or ``float64`` and raises otherwise.
+       ``undistort_points`` misses its OpenCV reference values.
    * - ``kornia.geometry.epipolar``
      - ⚠️ Partial
      - ⚠️ Partial
-     - SVD and solve operations use ``_torch_svd_cast`` / ``_torch_solve_cast``
-       / ``_torch_inverse_cast``; both dtypes work via casting to float32.
+     - 41 / 41
+     - ``decompose_essential_matrix``, ``motion_from_essential*``, ``KRt_from_projection`` and the eight-point
+       ``find_fundamental`` when weighted or given more than 8 points raise ``NotImplementedError``: they call ``lu``,
+       ``eigh`` or QR, which have no CPU half-precision kernels. ``find_essential`` solves in float64, and the
+       unweighted eight-point ``find_fundamental`` on exactly 8 points and the seven-point ``find_fundamental``
+       factorize in float32 or float64; they return half-precision results, whose accuracy the half-precision inputs
+       limit.
    * - ``kornia.geometry.homography``
      - ⚠️ Partial
      - ⚠️ Partial
-     - Uses ``_torch_svd_cast``; both dtypes are promoted to float32 before SVD
-       and the result is cast back.
+     - 10 / 16
+     - The DLT solvers run (``_torch_svd_cast`` promotes the SVD to float32) but miss the clean-point accuracy
+       checks, including the iterated and line-based variants.
    * - ``kornia.geometry.liegroup``
+     - ✅ Yes
      - ⚠️ Partial
-     - ⚠️ Partial
-     - Most rotation/translation operations (SO2, SO3, SE2, SE3) work for both
-       dtypes via cast helpers. A few code paths may still fail.
+     - 0 / 0
+     - ``So3`` and ``Se3`` compute ``matrix()``, composition and point transforms in float32 for float16/bfloat16
+       inputs and return the input dtype. ``So2`` and ``Se2`` store complex tensors; float16 inverses are computed
+       in complex64. PyTorch has no complex bfloat16 dtype, so building a bfloat16 ``So2`` or ``Se2`` raises
+       ``TypeCheckError``, while ``.bfloat16()`` on a built one keeps the rotation's complex precision.
    * - ``kornia.geometry.solvers``
      - ⚠️ Partial
      - ⚠️ Partial
-     - RANSAC-based solvers use ``_torch_solve_cast``; both dtypes are promoted
-       before the solve and the result is cast back.
+     - 2 / 2
+     - ``solve_quartic`` accuracy on random quartics and one reference case.
    * - ``kornia.geometry.subpix``
      - ⚠️ Partial
      - ⚠️ Partial
-     - Soft-argmax and weighted softmax work for both dtypes.
-       Precision-sensitive ops may produce inaccurate results.
+     - 6 / 4
+     - Accuracy of ``SpatialSoftArgmax2d`` and of the ``ConvQuadInterp3d`` diagonal refinement; bfloat16 also
+       ``render_gaussian2d``.
+   * - ``kornia.geometry.conversions``
+     - ⚠️ Partial
+     - ⚠️ Partial
+     - 71 / 65
+     - Angle-axis, quaternion and rotation-matrix round trips lose accuracy (including ``tests/integration``).
+   * - ``kornia.geometry.ransac``
+     - ⚠️ Partial
+     - ⚠️ Partial
+     - 2 / 2
+     - Essential matrices with ``local_optimization="dlt"`` raise in its eight-point refits, which call ``eigh``.
+   * - ``kornia.geometry`` (other)
+     - ⚠️ Partial
+     - ⚠️ Partial
+     - 7 / 14
+     - Accuracy of the box transforms and depth utilities. A bfloat16 ``NamedPose`` of an ``Se2`` pose raises as
+       ``Se2`` does.
+   * - ``kornia.image``
+     - ⚠️ Partial
+     - ⚠️ Partial
+     - 2 / 2
+     - ``draw_convex_polygon`` runs its edge maths in at least float32, so it adds no half-precision error of its
+       own; the vertices are used as given, already rounded to half precision. The circle and ellipse tests still
+       miss because they compute their vertices and their reference mask in half precision.
    * - ``kornia.losses``
+     - ✅ Yes
      - ⚠️ Partial
-     - ⚠️ Partial
-     - Photometric losses (SSIM, PSNR, MS-SSIM) work for both dtypes.
-       Losses based on linalg operations (Hausdorff, etc.) may not.
+     - 0 / 2
+     - Mutual information, Dice averaging, Hausdorff and the photometric losses pass.
+       bfloat16 total variation misses accuracy.
    * - ``kornia.feature``
-     - ⚠️ Partial
-     - ⚠️ Partial
-     - Local feature detectors and descriptors (SIFT, HardNet, HyNet, SOSNet,
-       DISK, DeDoDe) work for inference. ``HyNet`` and ``SOSNet`` take their final
-       L2 normalization in float32 for a half-precision input, since
-       ``local_response_norm`` has no CPU half kernel for a 4-D tensor and its
-       ``1e-10`` guard flushes to zero in float16. Feature *matching* uses a manual
-       ``cdist`` fallback for both half-precision dtypes on CUDA.
+     - ✅ Yes
+     - ✅ Yes
+     - 0 / 0
+     - Detectors, descriptors and matchers pass. ``HyNet`` and ``SOSNet`` take their final L2 normalization in
+       float32 for a half-precision input, since ``local_response_norm`` has no CPU half kernel for a 4-D
+       tensor and its ``1e-10`` guard flushes to zero in float16. Feature *matching* uses a manual ``cdist``
+       fallback for both half-precision dtypes. LightGlue's float16 tests are skipped, so that path is not
+       measured.
    * - ``kornia.metrics``
+     - ✅ Yes
      - ⚠️ Partial
-     - ⚠️ Partial
-     - Simple pixel-level metrics work for both dtypes. Metrics involving linalg
-       operations may not.
+     - 0 / 1
+     - bfloat16: ``ssim3d`` accuracy.
    * - ``kornia.models``
+     - ✅ Yes
      - ⚠️ Partial
+     - 0 / 1
+     - bfloat16: RT-DETR RepVGG deployment fusion misses
+       accuracy.
+   * - ``contrib``, ``core``, ``io``, ``onnx``, ``sensors``, ``tracking``, ``utils``
+     - ✅ Yes
      - ⚠️ Partial
-     - Conv-based models work for both dtypes. Attention-based models (e.g.
-       VLMs, ViTs) may have internal dtype mismatches.
+     - 0 / 3
+     - bfloat16: histogram matching, ``_torch_svd_cast`` and camera-model projection.
 
 Legend
 ------
 
-- ✅ **Yes** — Works correctly; results are accurate at the given precision.
-- ⚠️ **Partial** — Some operations work; others fail at runtime or produce inaccurate results due to limited numerical range/precision.
-- ❌ **No** — Not supported; raises a ``RuntimeError`` or ``TypeError`` at runtime (explicit dtype check in the implementation).
+- ✅ **Yes** — No known failures in the CPU CI profile for that dtype.
+- ⚠️ **Partial** — The module runs, but some tests are known failures. Most are accuracy misses from the limited
+  range/precision; the notes name the operations that raise instead.
 
 Test Results
 ------------
 
-Full test suite (no ``--runslow``). Pass% = passed ÷ (passed + failed);
-skipped and xfailed tests are excluded. CPU rows were measured on commit
-``4ab79c78`` (2026-08-29); CUDA rows are still from ``6131e98`` (2026-03-21).
+Full test suite (no ``--runslow``). Pass% = passed ÷ (passed + failed); skipped tests and tests marked ``xfail`` in
+the source are excluded. The CPU rows come from the scheduled ``main`` CI jobs at commit ``ca5021eb``
+(2026-09-14; Linux x86_64, Python 3.11, PyTorch 2.9.1). In the half-precision jobs, *Failed* is the manifest's entry
+count: CI reports those tests as strict xfails and turns red if any of them passes or fails differently. The CUDA
+rows are a local run at commit ``f8449854`` (2026-09-23; RTX 4090, Python 3.11, PyTorch 2.14.0+cu130), not CI. Every
+CUDA failure is re-run on its own (with ``--isolate-half-precision`` for the half dtypes) and counted by that result.
+Eight of the CUDA float32 failures are cuDNN TF32 accuracy misses in convolutions
+(`#4778 <https://github.com/kornia/kornia/issues/4778>`_); the other 14 are tests that assume CPU behavior
+(`#4779 <https://github.com/kornia/kornia/issues/4779>`_).
 
-The CPU half-precision suites run as separate blocking ``float16`` and ``bfloat16`` CI jobs with strict manifests
-for known failures, addressing `issue #4070 <https://github.com/kornia/kornia/issues/4070>`_. The historical table
-counts are still refreshed by hand: the two CPU half rows with ``pixi run test-half``, and the CPU float32 baseline
-with ``pixi run test-f32``, since ``test-half`` pins ``KORNIA_TEST_DTYPE`` to ``float16,bfloat16``.
+The manifests now pin PyTorch 2.14.0, so the CPU half-precision rows below are not reproducible from them. Verify the
+current profiles on Linux x86_64, Python 3.11 and PyTorch 2.14.0 (the manifest header pins the OS, architecture, Python
+and PyTorch versions) with:
+
+.. code-block:: bash
+
+   KORNIA_TEST_OPTIMIZER= pixi run test-module tests/ --verify-known-failures --known-failure-profile=cpu-float16
+   KORNIA_TEST_OPTIMIZER= pixi run test-module tests/ --verify-known-failures --known-failure-profile=cpu-bfloat16
+
+The CPU float32 baseline is ``pixi run test-f32``. ``pixi run test-half`` is an unseeded sweep of both dtypes whose
+counts can drift slightly from the manifests.
 
 .. list-table::
    :header-rows: 1
@@ -141,35 +203,35 @@ with ``pixi run test-f32``, since ``test-half`` pins ``KORNIA_TEST_DTYPE`` to ``
      - Skipped
      - Pass%
    * - CPU float32 *(baseline)*
-     - 8499
+     - 10398
      - 0
-     - 3535
+     - 3737
      - **100.0%**
    * - CPU float16
-     - 7751
-     - 689
-     - 3595
-     - **91.8%**
+     - 9795
+     - 522
+     - 3821
+     - **94.9%**
    * - CPU bfloat16
-     - 7794
-     - 695
-     - 3545
-     - **91.8%**
+     - 9849
+     - 512
+     - 3774
+     - **95.1%**
    * - CUDA float32 *(baseline)*
-     - 7634
-     - 3
-     - 3280
-     - **99.9%**
+     - 12193
+     - 22
+     - 3957
+     - **99.8%**
    * - CUDA float16 *(KORNIA_TEST_IN_SUBPROCESS=1)*
-     - 6727
-     - 643
-     - 3556
-     - **91.3%**
+     - 11738
+     - 451
+     - 3983
+     - **96.3%**
    * - CUDA bfloat16 *(KORNIA_TEST_IN_SUBPROCESS=1)*
-     - 6695
-     - 713
-     - 3518
-     - **90.4%**
+     - 11736
+     - 500
+     - 3936
+     - **95.9%**
 
 .. note::
 

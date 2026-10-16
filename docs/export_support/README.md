@@ -1,6 +1,6 @@
-# Graph-capture survey behind the support page
+# Graph-capture survey behind the survey page
 
-The [ONNX, torch.compile and torch.export support](../source/get-started/index.rst) page of the
+The [ONNX, torch.compile and torch.export survey](../source/get-started/index.rst) page of the
 documentation is rendered from `docs/source/_data/export_support.json`, a committed snapshot of
 what this directory measures. The page itself is generated at docs build time by
 `docs/generate_export_support.py`; nothing here runs during a docs build.
@@ -34,9 +34,9 @@ the right shape.
 ## Regenerating the snapshot
 
 ```bash
-pixi run -e default install-docs && pixi run build-docs   # once, so operators get cross-referenced
+pixi run -e default install-docs && pixi run -e default build-docs   # once, so operators get cross-referenced
 python docs/export_support/run.py                         # ~2 h on 8 CPU cores; resumable
-pixi run build-docs
+pixi run -e default build-docs
 ```
 
 `run.py` writes per-group results and logs to `docs/export_support/results/` (git-ignored) and

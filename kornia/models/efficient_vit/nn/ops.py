@@ -19,7 +19,6 @@
 # Han Cai, Junyan Li, Muyan Hu, Chuang Gan, Song Han
 # International Conference on Computer Vision (ICCV), 2023
 
-# type: ignore
 from __future__ import annotations
 
 import torch
@@ -183,8 +182,7 @@ class DSConv(nn.Module):
             projection.
         """
         x = self.depth_conv(x)
-        x = self.point_conv(x)
-        return x
+        return self.point_conv(x)
 
 
 class MBConv(nn.Module):
@@ -257,8 +255,7 @@ class MBConv(nn.Module):
         """
         x = self.inverted_conv(x)
         x = self.depth_conv(x)
-        x = self.point_conv(x)
-        return x
+        return self.point_conv(x)
 
 
 class FusedMBConv(nn.Module):
@@ -330,8 +327,7 @@ class FusedMBConv(nn.Module):
             projection.
         """
         x = self.spatial_conv(x)
-        x = self.point_conv(x)
-        return x
+        return self.point_conv(x)
 
 
 class ResBlock(nn.Module):
@@ -392,8 +388,7 @@ class ResBlock(nn.Module):
             Feature map after the block's convolutional transformations.
         """
         x = self.conv1(x)
-        x = self.conv2(x)
-        return x
+        return self.conv2(x)
 
 
 class LiteMLA(nn.Module):
@@ -476,6 +471,8 @@ class LiteMLA(nn.Module):
     def relu_linear_att(self, qkv: torch.Tensor) -> torch.Tensor:
         B, _, H, W = list(qkv.size())
 
+        dtype = qkv.dtype
+
         if qkv.dtype == torch.float16:
             qkv = qkv.float()
 
@@ -496,8 +493,7 @@ class LiteMLA(nn.Module):
         out = out[..., :-1] / (out[..., -1:] + self.eps)
 
         out = torch.transpose(out, -1, -2)
-        out = torch.reshape(out, (B, -1, H, W))
-        return out
+        return torch.reshape(out, (B, -1, H, W)).to(dtype)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply lightweight multi-scale linear attention.
@@ -517,9 +513,7 @@ class LiteMLA(nn.Module):
         multi_scale_qkv = torch.cat(multi_scale_qkv, dim=1)
 
         out = self.relu_linear_att(multi_scale_qkv)
-        out = self.proj(out)
-
-        return out
+        return self.proj(out)
 
 
 class EfficientViTBlock(nn.Module):
@@ -577,8 +571,7 @@ class EfficientViTBlock(nn.Module):
             MBConv module.
         """
         x = self.context_module(x)
-        x = self.local_module(x)
-        return x
+        return self.local_module(x)
 
 
 #################################################################################
@@ -622,8 +615,7 @@ class ResidualBlock(nn.Module):
         """
         if self.pre_norm is None:
             return self.main(x)
-        else:
-            return self.main(self.pre_norm(x))
+        return self.main(self.pre_norm(x))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply the residual wrapper to an input tensor.

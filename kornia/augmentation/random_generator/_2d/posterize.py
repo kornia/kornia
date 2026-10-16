@@ -50,8 +50,7 @@ class PosterizeGenerator(RandomGeneratorBase):
         self.bits_factor = bits
 
     def __repr__(self) -> str:
-        repr = f"bits={self.bits_factor}"
-        return repr
+        return f"bits={self.bits_factor}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         bits = torch.as_tensor(self.bits_factor, device=device, dtype=dtype)

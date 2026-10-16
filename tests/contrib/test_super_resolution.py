@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import sys
+
 import pytest
 import torch
 
@@ -24,6 +26,7 @@ from kornia.contrib.super_resolution import (
     SuperResolution,
     SuperResolutionConfig,
 )
+from kornia.core._compat import torch_version_lt
 
 from testing.base import BaseTester
 
@@ -87,7 +90,20 @@ class TestSuperResolutionBuilders(BaseTester):
     @pytest.mark.timeout(120)
     @pytest.mark.parametrize(
         ("builder", "build_kwargs"),
-        [(SmallSRBuilder, {}), (RRDBNetBuilder, {"model_name": "RealESRGAN_x4plus_anime_6B"})],
+        [
+            (SmallSRBuilder, {}),
+            pytest.param(
+                RRDBNetBuilder,
+                {"model_name": "RealESRGAN_x4plus_anime_6B"},
+                # torch < 2.9 defaults ``torch.onnx.export`` to the TorchScript exporter, which walks this
+                # graph in ~130 s on an Apple Silicon Mac and past the budget on the macOS runners; the
+                # dynamo exporter (2.9+) takes ~6 s on the same machine.
+                marks=pytest.mark.skipif(
+                    sys.platform == "darwin" and torch_version_lt(2, 9, 0),
+                    reason="TorchScript exporter (torch < 2.9) exceeds the 120-second timeout on macOS",
+                ),
+            ),
+        ],
         ids=["SmallSRBuilder", "RRDBNetBuilder"],
     )
     def test_to_onnx_exports(self, builder, build_kwargs):
@@ -111,6 +127,16 @@ class TestSuperResolutionBuilders(BaseTester):
         assert out.shape[-1] == model.output_image_size
         assert out.shape[-2] == model.output_image_size
         assert model.output_image_size == 224 * upscale_factor
+
+    def test_to_onnx_with_only_an_input_size_uses_it_for_the_dummy_input(self):
+        """A fixed ``input_image_size`` without a ``pseudo_image_size`` is also the size of the dummy input."""
+        pytest.importorskip("onnx")
+        pytest.importorskip("onnxscript")
+        model = SuperResolution(torch.nn.Conv2d(3, 3, 3, padding=1), torch.nn.Identity(), torch.nn.Identity())
+        model.input_image_size = 64
+        exported = model.to_onnx(save=False, include_pre_and_post_processor=False)
+        dims = exported.graph.input[0].type.tensor_type.shape.dim
+        assert [d.dim_value for d in dims[1:]] == [3, 64, 64]
 
     def test_onnx_export_shape_matches_the_real_forward(self):
         """The static size handed to ``to_onnx`` must be the one the graph produces."""

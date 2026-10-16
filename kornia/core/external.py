@@ -15,16 +15,35 @@
 # limitations under the License.
 #
 
+import builtins
 import importlib
 import logging
 import subprocess
 import sys
 from types import ModuleType
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from kornia.config import InstallationMode, kornia_config
 
 logger = logging.getLogger(__name__)
+
+# The loader's own instance attributes. ``__getattr__`` sees them only on a copy or an unpickled loader whose state is
+# not restored yet; answering them from the module would recurse.
+_LOADER_ATTRIBUTES = frozenset({"module_name", "module", "dev_dependency", "extra", "_install_error"})
+# Module metadata that callers read from a loader as from the module itself: these dunder names load the module.
+_MODULE_METADATA = frozenset({"__version__", "__file__", "__path__", "__all__"})
+
+
+def _interactive_terminal() -> bool:
+    """Return whether ``input()`` can reach a person: stdin and stdout both exist, are open and are terminals.
+
+    ``input()`` writes its question to stdout and reads the answer from stdin, so a redirected stdout
+    (``python train.py > log``) would hide the question while stdin waits for an answer.
+    """
+    try:
+        return bool(sys.stdin is not None and sys.stdout is not None and sys.stdin.isatty() and sys.stdout.isatty())
+    except (AttributeError, OSError, ValueError):  # replaced by an object without isatty, or closed
+        return False
 
 
 class LazyLoader:
@@ -34,6 +53,10 @@ class LazyLoader:
     It helps in reducing the initial load time and memory usage of a script, especially when
     dealing with large or optional dependencies that might not be used in every execution.
 
+    What happens when the module is missing is set by ``kornia.config.kornia_config.lazyloader.installation_mode``
+    (or the ``KORNIA_INSTALLATION_MODE`` environment variable); see :class:`kornia.config.InstallationMode`. By
+    default an ``ImportError`` names the kornia extra to install.
+
     Attributes:
         module_name: The name of the module to be lazily loaded.
         module: The actual module object, initialized to None and loaded upon first access.
@@ -41,24 +64,25 @@ class LazyLoader:
 
     """
 
-    auto_install: bool = False
-
     def __init__(self, module_name: str, dev_dependency: bool = False, extra: Optional[str] = None) -> None:
         """Initialize the LazyLoader with the name of the module.
 
         Args:
             module_name: The name of the module to be lazily loaded.
-            dev_dependency: If the dependency is required in the dev environment.
-                If True, the module will be loaded in the dev environment.
-                If False, the module will not be loaded in the dev environment.
+            dev_dependency: Whether kornia's documentation build needs the module. If False, the Sphinx build of
+                kornia's documentation (``docs/source/conf.py`` sets a ``__sphinx_build__`` builtin) does not import
+                it: the loader stays empty there and attribute access raises ``AttributeError``. It has no effect
+                elsewhere.
             extra: The name of the kornia optional-dependency extra that installs the module, e.g. ``"onnx"``.
-                When set, the "not installed" messages tell the user to run ``pip install "kornia[<extra>]"``.
+                When set, the "not installed" messages tell the user to run ``pip install "kornia[<extra>]"``, and
+                the ``"ask"`` and ``"auto"`` installation modes install that extra. Without it, nothing is installed.
 
         """
         self.module_name = module_name
         self.module: Optional[ModuleType] = None
         self.dev_dependency = dev_dependency
         self.extra = extra
+        self._install_error: Optional[str] = None
 
     @property
     def _install_hint(self) -> str:
@@ -67,69 +91,118 @@ class LazyLoader:
             return f'Install it with: pip install "kornia[{self.extra}]".'
         return "Please install it to use this functionality."
 
-    def _install_package(self, module_name: str) -> None:
-        logger.info(f"Installing `{module_name}` ...")
-        subprocess.run([sys.executable, "-m", "pip", "install", "-U", module_name], shell=False, check=False)  # noqa: S603
+    def _should_install(self) -> bool:
+        """Decide, from the installation mode, whether to install the declared extra of a missing module."""
+        # Read the mode first, so that an invalid KORNIA_INSTALLATION_MODE is reported for every missing module.
+        mode = kornia_config.lazyloader.installation_mode
+        if self.extra is None:
+            return False
+        if mode == InstallationMode.AUTO:
+            return True
+        if mode == InstallationMode.ASK:
+            return self._ask_to_install()
+        return False
+
+    def _ask_to_install(self) -> bool:
+        """Ask on the terminal whether to install the declared extra; ``False`` without an interactive terminal."""
+        if not _interactive_terminal():
+            return False
+        question = (
+            f"Optional dependency '{self.module_name}' is not installed. "
+            f'Install it now with `pip install "kornia[{self.extra}]"`? '
+            "[Y]es, [N]o, [A]ll (install every missing kornia extra without asking for the rest of this session). "
+            "Set `kornia_config.lazyloader.installation_mode` or the KORNIA_INSTALLATION_MODE environment variable "
+            "to 'raise' to never be asked, or to 'auto' to always install. "
+        )
+        try:
+            answer = input(question)
+            while True:
+                choice = answer.strip().lower()
+                if choice in ("y", "yes"):
+                    return True
+                if choice in ("n", "no"):
+                    return False
+                if choice in ("a", "all"):
+                    kornia_config.lazyloader.installation_mode = InstallationMode.AUTO
+                    return True
+                answer = input("Please answer 'y', 'n' or 'a'. ")
+        except EOFError:
+            return False
+
+    def _install_extra(self) -> None:
+        """Install the declared extra with this interpreter's pip and import the module.
+
+        Raises:
+            ImportError: if pip fails or the module still cannot be imported. The failure is remembered, so later
+                accesses raise it again without running pip again.
+
+        """
+        requirement = f"kornia[{self.extra}]"
+        command = [sys.executable, "-m", "pip", "install", requirement]
+        logger.info("Installing %s for the optional dependency '%s' ...", requirement, self.module_name)
+        try:
+            subprocess.run(command, check=True)  # noqa: S603
+        except (OSError, subprocess.CalledProcessError) as e:
+            self._install_error = (
+                f"Optional dependency '{self.module_name}' is not installed, and "
+                f'`pip install "{requirement}"` failed: {e}'
+            )
+            raise ImportError(self._install_error) from e
+        importlib.invalidate_caches()
+        try:
+            self.module = importlib.import_module(self.module_name)
+        except ImportError as e:
+            self._install_error = (
+                f"Optional dependency '{self.module_name}' cannot be imported after `pip install \"{requirement}\"`."
+            )
+            raise ImportError(self._install_error) from e
 
     def _load(self) -> None:
-        """Load the module if it hasn't been loaded yet.
+        """Import the module on first use.
 
-        This method is called internally when an attribute of the module is accessed for the first time. It attempts to
-        import the module and raises an ImportError with a custom message if the module is not installed.
+        A missing module is handled according to ``kornia_config.lazyloader.installation_mode`` (see
+        :class:`kornia.config.InstallationMode`): by default it raises an ImportError whose message names the kornia
+        extra to install.
+
+        Raises:
+            ImportError: if the module is missing and is not installed.
+            ValueError: if the module is missing and ``KORNIA_INSTALLATION_MODE`` holds an invalid value.
+
         """
-        if not self.dev_dependency:
-            if "--doctest-modules" in sys.argv:
-                logger.info(f"Doctest detected, skipping loading of '{self.module_name}'")
-                return
-            try:
-                if __sphinx_build__:  # type:ignore
-                    logger.info(f"Sphinx detected, skipping loading of '{self.module_name}'")
-                    return
-            except NameError:
-                pass
-
-        if self.module is None:
-            try:
-                self.module = importlib.import_module(self.module_name)
-            except ImportError as e:
-                if kornia_config.lazyloader.installation_mode == InstallationMode.AUTO or self.auto_install:
-                    self._install_package(self.module_name)
-                elif kornia_config.lazyloader.installation_mode == InstallationMode.ASK:
-                    to_ask = True
-                    if_install = input(
-                        f"Optional dependency '{self.module_name}' is not installed. "
-                        f"{self._install_hint} "
-                        "You may silence this prompt by `kornia_config.lazyloader.installation_mode = 'auto'`. "
-                        "Do you wish to install the dependency? [Y]es, [N]o, [A]ll."
-                    )
-                    while to_ask:
-                        if if_install.lower() == "y" or if_install.lower() == "yes":
-                            self._install_package(self.module_name)
-                            self.module = importlib.import_module(self.module_name)
-                            to_ask = False
-                        elif if_install.lower() == "a" or if_install.lower() == "all":
-                            self.auto_install = True
-                            self._install_package(self.module_name)
-                            self.module = importlib.import_module(self.module_name)
-                            to_ask = False
-                        elif if_install.lower() == "n" or if_install.lower() == "no":
-                            raise ImportError(
-                                f"Optional dependency '{self.module_name}' is not installed. {self._install_hint}"
-                            ) from e
-                        else:
-                            if_install = input("Invalid input. Please enter 'Y', 'N', or 'A'.")
-
-                elif kornia_config.lazyloader.installation_mode == InstallationMode.RAISE:
-                    raise ImportError(
-                        f"Optional dependency '{self.module_name}' is not installed. {self._install_hint}"
-                    ) from e
-                self.module = importlib.import_module(self.module_name)
+        if self.module is not None:
+            return
+        if not self.dev_dependency and getattr(builtins, "__sphinx_build__", False):
+            logger.info(f"Sphinx detected, skipping loading of '{self.module_name}'")
+            return
+        try:
+            self.module = importlib.import_module(self.module_name)
+            return
+        except ImportError as e:
+            import_error = e
+        if self._install_error is not None:
+            raise ImportError(self._install_error) from import_error
+        try:
+            install = self._should_install()
+        except ValueError as e:  # an invalid KORNIA_INSTALLATION_MODE: name what needed the mode
+            raise ValueError(
+                f"{e} It was needed for the missing optional dependency '{self.module_name}'."
+            ) from import_error
+        if not install:
+            raise ImportError(
+                f"Optional dependency '{self.module_name}' is not installed. {self._install_hint}"
+            ) from import_error
+        self._install_extra()
 
     def __getattr__(self, item: str) -> object:
         """Load the module (if not already loaded) and returns the requested attribute.
 
         This method is called when an attribute of the LazyLoader instance is accessed.
         It ensures that the module is loaded and then returns the requested attribute.
+
+        Protocol lookups (dunder names such as ``__wrapped__`` or ``__deepcopy__``, which ``copy``, ``pickle``,
+        ``inspect.unwrap`` and doctest collection make) never import, install or ask: before the module is loaded
+        they raise ``AttributeError``. The module metadata ``__version__``, ``__file__``, ``__path__`` and ``__all__``
+        loads the module like any other attribute.
 
         Args:
             item: The name of the attribute to be accessed.
@@ -138,8 +211,21 @@ class LazyLoader:
             The requested attribute of the loaded module.
 
         """
+        if item in _LOADER_ATTRIBUTES:
+            raise AttributeError(f"{type(self).__name__!r} object has no attribute {item!r}")
+        if item.startswith("__") and item.endswith("__") and item not in _MODULE_METADATA:
+            module = self.__dict__.get("module")
+            if module is None:
+                raise AttributeError(f"{type(self).__name__!r} object has no attribute {item!r}")
+            return getattr(module, item)
         self._load()
         return getattr(self.module, item)
+
+    def __getstate__(self) -> Dict[str, Any]:
+        """Return the loader's state for copy and pickle, without the module object (the copy imports it again)."""
+        state = self.__dict__.copy()
+        state["module"] = None
+        return state
 
     def __dir__(self) -> List[str]:
         """Load the module (if not already loaded) and returns the list of attributes of the module.
@@ -155,10 +241,9 @@ class LazyLoader:
         return dir(self.module)
 
 
-# NOTE: This section is used for lazy loading of external modules. However, sphinx
-#       would also try to support lazy loading of external modules. To avoid that, we
-#       may set the module name to `autodoc_mock_imports` in conf.py to avoid undesired
-#       installation of external modules.
+# NOTE: kornia's Sphinx build (docs/source/conf.py sets a ``__sphinx_build__`` builtin) leaves the loaders created
+#       with ``dev_dependency=False`` empty instead of importing their modules, so the documentation environment does
+#       not need those packages.
 numpy = LazyLoader("numpy", dev_dependency=True)
 PILImage = LazyLoader("PIL.Image", dev_dependency=True, extra="image")
 onnx = LazyLoader("onnx", dev_dependency=True, extra="onnx")

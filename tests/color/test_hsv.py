@@ -41,13 +41,30 @@ class TestRgbToHsv(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.color.rgb_to_hsv([0.0])
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_hsv(img)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_hsv(img)
+
+    def test_hue_period_endpoint(self, device, dtype):
+        # A tiny negative hue can round to the excluded upper endpoint after modulo.
+        delta = torch.finfo(dtype).eps
+        image = torch.tensor([[1.0, 1.0, 1.0], [0.0, delta, 0.0], [delta, 0.0, 0.0]], device=device, dtype=dtype)
+        image = image.reshape(1, 3, 1, 3)
+        hsv = kornia.color.rgb_to_hsv(image)
+        hue = hsv[:, 0]
+        assert hue[0, 0, 0] == 0
+        assert hue[0, 0, 1] > 0
+        assert hue[0, 0, 2] == 0
+        assert torch.all((hue >= 0) & (hue < 2 * math.pi))
+        self.assert_close(kornia.color.hsv_to_rgb(hsv), image)
+        # This hue is the largest below one turn, 1 - delta / 2. In float16, 2π * (1 - 2**-11) rounds to 6.28125,
+        # float16's 2π, only when scaled to radians; the comparison rounds 2π to the dtype, as adjust_hue_raw does.
+        near_seam = torch.tensor([1.0, 0.0, 3 * delta], device=device, dtype=dtype).view(1, 3, 1, 1)
+        assert kornia.color.rgb_to_hsv(near_seam)[0, 0, 0, 0] < 2 * math.pi
 
     def test_unit(self, device, dtype):
         data = torch.tensor(
@@ -127,13 +144,23 @@ class TestRgbToHsv(BaseTester):
         hsv = kornia.color.rgb_to_hsv(data)
         self.assert_close(hsv[..., 0, :, :], expected_h)
 
-    def test_nan_rgb_to_hsv(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
-
-        data = torch.zeros(3, 5, 5, device=device, dtype=dtype)  # 3x5x5
+    @pytest.mark.parametrize("eps", [0.0, 1e-8, 1e-6, 1e-4])
+    def test_nan_rgb_to_hsv(self, device, dtype, eps):
+        data = torch.zeros(3, 5, 5, device=device, dtype=dtype, requires_grad=True)  # 3x5x5
         expected = torch.zeros_like(data)  # 3x5x5
-        self.assert_close(kornia.color.rgb_to_hsv(data), expected)
+        hsv = kornia.color.rgb_to_hsv(data, eps=eps)
+        self.assert_close(hsv, expected)
+        (gradient,) = torch.autograd.grad(hsv.sum(), data)
+        assert torch.isfinite(gradient).all()
+
+    @pytest.mark.parametrize("eps", [0.0, 1e-8, 1e-4])
+    def test_dark_red_saturation(self, device, dtype, eps):
+        # Dark nonzero colors must retain S = (max - min) / (max + eps).
+        # A blanket dtype-epsilon floor would desaturate this red pixel.
+        value = 2.0**-16
+        data = torch.tensor([[[value]], [[0.0]], [[0.0]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[0.0]], [[value / (value + eps)]], [[value]]], device=device, dtype=dtype)
+        self.assert_close(kornia.color.rgb_to_hsv(data, eps=eps), expected)
 
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
@@ -148,11 +175,10 @@ class TestRgbToHsv(BaseTester):
         self.assert_close(op(img), op_jit(img))
 
     def test_module(self, device, dtype):
-        B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        data = torch.tensor([[[1e-4]], [[0.0]], [[0.0]]], device=device, dtype=dtype)
         ops = kornia.color.RgbToHsv().to(device, dtype)
         fcn = kornia.color.rgb_to_hsv
-        self.assert_close(ops(img), fcn(img))
+        self.assert_close(ops(data), fcn(data))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         B, C, H, W = 2, 3, 4, 4
@@ -177,12 +203,12 @@ class TestHsvToRgb(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.color.hsv_to_rgb([0.0])
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.hsv_to_rgb(img)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.hsv_to_rgb(img)
 
     def test_unit(self, device, dtype):

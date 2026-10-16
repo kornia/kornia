@@ -20,10 +20,12 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
+from kornia.augmentation._2d.base import _input_metadata_only
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
 from kornia.core.utils import is_exporting
 from kornia.geometry.transform import crop_by_transform_mat, get_perspective_transform, resize
+from kornia.geometry.transform._crop import _half_pixel_resize_transform
 from kornia.geometry.transform.affwarp import _side_to_image_size
 
 
@@ -39,6 +41,21 @@ class Resize(GeometricAugmentationBase2D):
         p: probability of the augmentation been applied.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False).
+
+    Convention:
+        See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
+        A tuple ``size`` is the exact ``(height, width)`` output.
+        With an integer, ``side`` selects which input side is set to that value while preserving aspect ratio:
+        ``"short"`` (the default) selects the shortest side, ``"long"`` the longest, ``"vert"`` the height, and
+        ``"horz"`` the width. The derived side is truncated toward zero; if it becomes zero, the resize raises
+        ``AssertionError`` (for example, ``Resize(4, side="long")`` or ``LongestMaxSize(4)`` on a 1-by-10 image).
+        This class uses :func:`kornia.geometry.transform.resize`; ``align_corners`` is forwarded for bilinear and
+        bicubic sampling, and ``transform_matrix`` follows the grid they sample: at ``align_corners=False`` it is
+        the half-pixel map ``x' = (x + 0.5) * W_out / W_in - 0.5`` (likewise for ``y``), and at ``True`` it maps
+        the corner pixel centres onto each other. Nearest sampling uses the half-pixel grid and PyTorch's
+        ``nearest-exact`` interpolation.
+        :meth:`inverse` resamples to the prior canvas and cannot recover
+        values discarded by a resize.
 
     """
 
@@ -66,9 +83,16 @@ class Resize(GeometricAugmentationBase2D):
     # matrix build (which needs a linalg solve) until `.transform_matrix` is read.
     _compute_matrix_lazily = True
 
+    @_input_metadata_only
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
+        if flags["resample"] == Resample.NEAREST or (
+            not flags["align_corners"] and flags["resample"] in (Resample.BILINEAR, Resample.BICUBIC)
+        ):
+            return _half_pixel_resize_transform(params["src"].to(input), params["dst"].to(input)).expand(
+                input.shape[0], -1, -1
+            )
         # NOTE: a former `if params["output_size"] == input.shape[-2:]: return eye_like(...)`
         # short-circuit was dead code — comparing a tensor to a ``torch.Size`` falls back to
         # identity ``==`` and is *always* Python ``False``, so the branch never ran. It also
@@ -78,8 +102,7 @@ class Resize(GeometricAugmentationBase2D):
         transform: torch.Tensor = torch.as_tensor(
             get_perspective_transform(params["src"], params["dst"]), dtype=input.dtype, device=input.device
         )
-        transform = transform.expand(input.shape[0], -1, -1)
-        return transform
+        return transform.expand(input.shape[0], -1, -1)
 
     def apply_transform(
         self,
@@ -95,8 +118,9 @@ class Resize(GeometricAugmentationBase2D):
         # data-dependent `output_size` param).
         if isinstance(flags["size"], (tuple, list)):
             out_size: Tuple[int, int] = (int(flags["size"][0]), int(flags["size"][1]))
-        elif is_exporting():
+        elif is_exporting() or input.shape[0] == 0:
             # `output_size` is a function of the (static) input shape; recompute it rather than read the tensor.
+            # An empty batch has no row to read it from, and the generator returns no `output_size` for it (#4429).
             h, w = input.shape[-2:]
             out_size = _side_to_image_size(int(flags["size"]), w / h, flags["side"])
         else:
@@ -104,7 +128,7 @@ class Resize(GeometricAugmentationBase2D):
         return resize(
             input,
             out_size,
-            interpolation=flags["resample"].name.lower(),
+            interpolation="nearest-exact" if flags["resample"] == Resample.NEAREST else flags["resample"].name.lower(),
             align_corners=(
                 flags["align_corners"] if flags["resample"] in [Resample.BILINEAR, Resample.BICUBIC] else None
             ),
@@ -119,13 +143,23 @@ class Resize(GeometricAugmentationBase2D):
         size: Optional[Tuple[int, int]] = None,
     ) -> torch.Tensor:
         if not isinstance(size, tuple):
-            raise TypeError(f"Expected the size be a tuple. Gotcha {type(size)}")
+            raise TypeError(f"Expected the size be a tuple. Got {type(size)}")
 
         if not isinstance(transform, torch.Tensor):
             raise TypeError(f"Expected the `transform` be a torch.Tensor. Got {type(transform)}.")
 
+        if flags["resample"] == Resample.NEAREST:
+            # ``grid_sample`` only supports legacy ``nearest``. The forward path uses
+            # ``nearest-exact``, so invert a resize with the same interpolation rule.
+            return resize(input, size, interpolation="nearest-exact")
+
         return crop_by_transform_mat(
-            input, transform[:, :2, :], size, flags["resample"].name.lower(), "zeros", flags["align_corners"]
+            input,
+            transform[:, :2, :],
+            size,
+            flags["resample"].name.lower(),
+            "zeros",
+            flags["align_corners"],
         )
 
 
@@ -134,6 +168,12 @@ class LongestMaxSize(Resize):
 
     Args:
         max_size: maximum size of the image after the transformation.
+
+    Convention:
+        See :class:`Resize` for the common resize conventions. This behaves like
+        ``Resize(max_size, side="long", antialias=False, keepdim=False)``; ``antialias`` and ``keepdim``
+        are not accepted constructor arguments. Its longest output side equals ``max_size`` and the other
+        side is truncated while preserving aspect ratio.
 
     """
 
@@ -153,6 +193,12 @@ class SmallestMaxSize(Resize):
 
     Args:
         max_size: maximum size of the image after the transformation.
+
+    Convention:
+        See :class:`Resize` for the common resize conventions. This behaves like
+        ``Resize(max_size, side="short", antialias=False, keepdim=False)``; ``antialias`` and ``keepdim``
+        are not accepted constructor arguments. Its shortest output side equals ``max_size`` and the other
+        side is truncated while preserving aspect ratio.
 
     """
 

@@ -74,9 +74,7 @@ class SigLip2TextEmbeddings(nn.Module):
         position_embeddings = self.position_embedding(position_ids)
 
         # combine embeddings - [batch_size, seq_len, hidden_size]
-        embeddings = token_embeddings + position_embeddings
-
-        return embeddings
+        return token_embeddings + position_embeddings
 
 
 class SigLip2TextMLP(nn.Module):
@@ -100,8 +98,7 @@ class SigLip2TextMLP(nn.Module):
         hidden_states = self.activation(hidden_states)
         # linear transformation - [batch_size, seq_len, hidden_size]
         hidden_states = self.fc2(hidden_states)
-        hidden_states = self.dropout(hidden_states)
-        return hidden_states
+        return self.dropout(hidden_states)
 
 
 class SigLip2TextLayer(nn.Module):
@@ -144,10 +141,9 @@ class SigLip2TextLayer(nn.Module):
         residual = hidden_states
         hidden_states = self.layer_norm2(hidden_states)
         hidden_states = self.mlp(hidden_states)
-        hidden_states = residual + hidden_states
+        return residual + hidden_states
 
         # return the hidden states - [batch_size, seq_len, hidden_size]
-        return hidden_states
 
 
 class SigLip2TextEncoder(nn.Module):

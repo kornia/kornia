@@ -18,9 +18,9 @@
 import pytest
 import torch
 
-from kornia.filters import UnsharpMask, unsharp_mask
+from kornia.filters import UnsharpMask, gaussian_blur2d, unsharp_mask
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_reflect_padding
 
 
 class Testunsharp(BaseTester):
@@ -45,6 +45,22 @@ class Testunsharp(BaseTester):
         data = torch.ones(shape, device=device, dtype=dtype)
         actual = unsharp_mask(data, kernel_size, sigma, "replicate")
         assert actual.shape == shape
+
+    @pytest.mark.parametrize("input_dtype", [torch.uint8, torch.int16, torch.bool])
+    def test_integer_input_matches_float32_5155(self, input_dtype: torch.dtype, device: torch.device) -> None:
+        # An integer image is sharpened in float32 on its own scale, like gaussian_blur2d.
+        generator = torch.Generator().manual_seed(0)
+        low = -128 if input_dtype == torch.int16 else 0
+        high = 2 if input_dtype == torch.bool else 256
+        data = torch.randint(low, high, (2, 3, 9, 13), generator=generator).to(device, input_dtype)
+
+        expected = unsharp_mask(data.float(), (5, 5), (1.5, 1.5))
+        actual = unsharp_mask(data, (5, 5), (1.5, 1.5))
+
+        assert actual.dtype == torch.float32
+        assert actual.device == data.device
+        self.assert_close(actual, expected)
+        self.assert_close(UnsharpMask((5, 5), (1.5, 1.5))(data), expected)
 
     @pytest.mark.skip(reason="nothing to test")
     def test_exception(self): ...
@@ -87,3 +103,34 @@ class Testunsharp(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(data), op_optimized(data))
+
+
+class TestConventionsUnsharpMask(BaseTester):
+    """Pins for the formula and the range of :func:`unsharp_mask`."""
+
+    @pytest.mark.parametrize("border_type", ["reflect", "constant"])
+    def test_convention_unsharp_mask_is_twice_the_image_minus_its_gaussian_blur(self, border_type, device, dtype):
+        # out = 2 * x - gaussian_blur2d(x, kernel_size, sigma, border_type) = x + 1 * (x - blur): the gain is fixed at 1
+        # (scikit-image's amount=1) and kernel_size, sigma and border_type are gaussian_blur2d's.
+        if border_type == "reflect" and not supports_reflect_padding(device, dtype):
+            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+        torch.manual_seed(0)
+        image = torch.rand(2, 3, 9, 13).to(device=device, dtype=dtype)
+        expected = 2 * image - gaussian_blur2d(image, (3, 5), (1.0, 2.0), border_type)
+        self.assert_close(unsharp_mask(image, (3, 5), (1.0, 2.0), border_type), expected)
+        self.assert_close(UnsharpMask((3, 5), (1.0, 2.0), border_type)(image), expected)
+
+    def test_convention_unsharp_mask_output_is_not_clamped(self, device, dtype):
+        # The output is not clipped to the input range: a 0 | 1 step overshoots on both sides of the edge
+        # (scikit-image clips by default, preserve_range=False).
+        # Snippet used to generate expected:
+        #   step = torch.zeros(1, 1, 7, 10); step[..., 5:] = 1; print(unsharp_mask(step, (5, 5), (1.5, 1.5))[0, 0, 3])
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+        step = torch.zeros(1, 1, 7, 10, device=device, dtype=dtype)
+        step[..., 5:] = 1.0
+        out = unsharp_mask(step, (5, 5), (1.5, 1.5))
+        expected = [0.0, 0.0, 0.0, -0.120078, -0.353959, 1.353959, 1.120078, 1.0, 1.0, 1.0]
+        self.assert_close(out[0, 0, 3], torch.tensor(expected, device=device, dtype=dtype))
+        assert out.min() < -0.3
+        assert out.max() > 1.3
