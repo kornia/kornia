@@ -193,8 +193,8 @@ class DexiNed(ONNXExportMixin, nn.Module):
 
     The input is a BGR image with pixel values in :math:`[0, 255]` minus the BGR mean ``[103.939, 116.779, 123.68]``:
     the pretrained weights were trained on images read with ``cv2.imread`` and shifted by that mean
-    (xavysp/DexiNed@d944b70). :py:class:`~kornia.contrib.edge_detection.EdgeDetectorBuilder` converts an RGB image in
-    :math:`[0, 1]` to this input and applies a sigmoid to the output.
+    (xavysp/DexiNed@d944b70). The detector that :py:class:`~kornia.contrib.edge_detection.EdgeDetectorBuilder` builds
+    converts an RGB image in :math:`[0, 1]` to this input and applies a sigmoid to the output.
 
     Return:
         The fused edge logits, one tensor with shape :math:`(B,1,H,W)`.

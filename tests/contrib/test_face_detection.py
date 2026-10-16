@@ -125,8 +125,9 @@ class TestFaceDetection(BaseTester):
             face_detector(img)
 
     def test_yunet_receives_bgr_0_255(self, face_detector, device, dtype):
-        # The YuNet weights were trained on ``cv2.imread`` images: BGR, float 0-255, no mean or std
-        # (ShiqiYu/libfacedetection.train@74f3aa7 tasks/task1/datasets.py:53, detect.py:100-106).
+        # The YuNet weights were trained on BGR, float 0-255, with no mean or std: the DALI loader converts to BGR and
+        # resizes to float (ShiqiYu/libfacedetection.train@74f3aa7 src/data.py:76, 90), and evaluation reads
+        # ``cv2.imread`` images (tasks/task1/datasets.py:53, detect.py:100-106).
         # ``FaceDetector`` takes RGB in [0, 255] and only flips the channels.
         captured = []
         handle = face_detector.model.register_forward_pre_hook(lambda module, args: captured.append(args[0].clone()))

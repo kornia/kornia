@@ -77,9 +77,12 @@ class TestDexiNed(BaseTester):
     @pytest.mark.slow
     @pytest.mark.parametrize("cls", [DexiNed, FilterDexiNed], ids=["models", "filters"])
     def test_gradcheck(self, cls, device):
+        # A full gradcheck: fast mode checks one random projection of the Jacobian and passes a dense layer whose input
+        # is detached from the graph. 8x12 keeps it to about 16 s per class; in evaluation mode BatchNorm accepts the
+        # 1x1 deepest maps.
         net = cls(pretrained=False).to(device, torch.float64).eval()
-        img = torch.rand(1, 3, 16, 24, device=device, dtype=torch.float64)
-        self.gradcheck(net, (img,), fast_mode=True)
+        img = torch.rand(1, 3, 8, 12, device=device, dtype=torch.float64)
+        self.gradcheck(net, (img,), fast_mode=False)
 
     @pytest.mark.skip(reason="DexiNed do not compile with dynamo.")
     def test_dynamo(self, device, dtype, torch_optimizer): ...

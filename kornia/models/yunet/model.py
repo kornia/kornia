@@ -65,7 +65,8 @@ class YuNet(nn.Module):
     The model architecture is based on the method described in :cite:`facedetect-yu`.
 
     The input is a BGR image with pixel values in :math:`[0, 255]`, with no mean or standard deviation applied: the
-    pretrained weights were trained on images read with ``cv2.imread`` (ShiqiYu/libfacedetection.train@74f3aa7).
+    pretrained weights were trained on such images (ShiqiYu/libfacedetection.train@74f3aa7 ``src/data.py:76, 90``)
+    and evaluated on images read with ``cv2.imread`` (``tasks/task1/datasets.py:53``, ``detect.py:100-106``).
     :py:class:`kornia.contrib.FaceDetector` takes RGB in :math:`[0, 255]` and flips it to BGR before this model.
 
     Args:
