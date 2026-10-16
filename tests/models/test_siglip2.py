@@ -31,7 +31,12 @@ from kornia.models.siglip2.attention import SigLip2Attention
 from kornia.models.siglip2.config import SigLip2TextConfig, SigLip2VisionConfig
 from kornia.models.siglip2.preprocessor import SigLip2ImagePreprocessor
 from kornia.models.siglip2.text_encoder import SigLip2TextEmbeddings, SigLip2TextEncoder, SigLip2TextModel
-from kornia.models.siglip2.vision_encoder import SigLip2VisionEmbeddings, SigLip2VisionEncoder, SigLip2VisionModel
+from kornia.models.siglip2.vision_encoder import (
+    SigLip2MultiheadAttentionPoolingHead,
+    SigLip2VisionEmbeddings,
+    SigLip2VisionEncoder,
+    SigLip2VisionModel,
+)
 
 from testing.base import BaseTester, supports_reflect_padding
 
@@ -421,7 +426,8 @@ class TestSigLip2Model(BaseTester):
             actual = model_optimized(pixel_values, attention_mask=mask)
 
         # Inductor keeps fused half-precision intermediates in float32, so a few outputs differ from eager by one
-        # unit in the last place (the masked encoder alone does on the base revision too).
+        # unit in the last place. The last hidden state of this masked model fails the default half tolerance the same
+        # way on the base revision a60a6c932, whose encoder code this change does not touch.
         low_tolerance = dtype in (torch.float16, torch.bfloat16)
         self.assert_close(actual[0], expected[0], low_tolerance=low_tolerance)
         self.assert_close(actual[1], expected[1], low_tolerance=low_tolerance)
@@ -626,6 +632,33 @@ class TestSigLip2Components(BaseTester):
         self.assert_close(pooled_changed, pooled)
         self.assert_close(pooled_3d, pooled)
         self.assert_close(pooled_4d, pooled)
+
+    def test_pooling_head_all_masked_sample_pools_uniformly(self, device, dtype):
+        # transformers' pooling head masks with _prepare_4d_attention_mask, which adds torch.finfo(dtype).min to the
+        # scores of masked keys (modeling_attn_mask_utils.py v4.51.0, AttentionMaskConverter._expand_mask): a sample
+        # with every key masked gets equal scores, so uniform weights, where -inf would give nan.
+        config = _tiny_vision_config()
+        head = SigLip2MultiheadAttentionPoolingHead(config).to(device, dtype).eval()
+        hidden_state = torch.randn(2, 64, config.hidden_size, device=device, dtype=dtype)
+        mask = torch.ones(2, 64, dtype=torch.bool, device=device)
+        mask[0, 32:] = False  # sample 0 partly masked
+        mask[1] = False  # sample 1 entirely masked
+
+        with torch.no_grad():
+            pooled = head(hidden_state, attention_mask=mask)
+            pooled_alone = head(hidden_state[:1], attention_mask=mask[:1])
+            # Uniform weights: every head averages the value projections of all 64 tokens.
+            hidden_size = config.hidden_size
+            attention = head.attention
+            values = torch.nn.functional.linear(
+                hidden_state[1:], attention.in_proj_weight[2 * hidden_size :], attention.in_proj_bias[2 * hidden_size :]
+            )
+            attended = attention.out_proj(values.mean(1, keepdim=True))
+            uniform = (attended + head.mlp(head.layernorm(attended)))[:, 0]
+
+        assert torch.isfinite(pooled).all()
+        self.assert_close(pooled[1:], uniform)
+        self.assert_close(pooled[:1], pooled_alone)
 
     def test_activation_follows_hidden_act(self):
         # transformers' SiglipTextConfig and SiglipVisionConfig default hidden_act is "gelu_pytorch_tanh"
