@@ -56,6 +56,28 @@ class TestDexiNed(BaseTester):
         out = model(img)
         self.assert_close(out, expect, atol=1e-3, rtol=1e-2)
 
+    @pytest.mark.parametrize("cls", [DexiNed, FilterDexiNed], ids=["models", "filters"])
+    def test_backward(self, cls, device, dtype):
+        net = cls(pretrained=False).to(device, dtype)
+        img = torch.rand(1, 3, 64, 96, device=device, dtype=dtype, requires_grad=True)
+        net(img).sum().backward()
+        assert img.grad is not None
+        assert torch.isfinite(img.grad).all()
+
+        # Evaluation mode with frozen weights: the gradient with respect to the input only.
+        net.eval().requires_grad_(False)
+        img = torch.rand(1, 3, 64, 96, device=device, dtype=dtype, requires_grad=True)
+        net(img).sum().backward()
+        assert img.grad is not None
+        assert torch.isfinite(img.grad).all()
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize("cls", [DexiNed, FilterDexiNed], ids=["models", "filters"])
+    def test_gradcheck(self, cls, device):
+        net = cls(pretrained=False).to(device, torch.float64).eval()
+        img = torch.rand(1, 3, 16, 24, device=device, dtype=torch.float64)
+        self.gradcheck(net, (img,), fast_mode=True)
+
     @pytest.mark.skip(reason="DexiNed do not compile with dynamo.")
     def test_dynamo(self, device, dtype, torch_optimizer): ...
 

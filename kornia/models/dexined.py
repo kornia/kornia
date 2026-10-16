@@ -88,7 +88,8 @@ class _DenseLayer(nn.Sequential):
         super().__init__(
             OrderedDict(
                 [
-                    ("relu1", nn.ReLU(inplace=True)),
+                    # Out of place: a dense block's input is also read by a side branch, which saved it for backward.
+                    ("relu1", nn.ReLU()),
                     ("conv1", nn.Conv2d(input_features, out_features, kernel_size=3, stride=1, padding=2, bias=True)),
                     ("norm1", nn.BatchNorm2d(out_features)),
                     ("relu2", nn.ReLU(inplace=True)),
