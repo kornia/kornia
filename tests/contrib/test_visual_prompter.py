@@ -19,24 +19,24 @@ from types import SimpleNamespace
 
 import pytest
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from kornia.contrib.visual_prompter import VisualPrompter
 from kornia.core.exceptions import BaseError
 from kornia.geometry.boxes import Boxes
-from kornia.geometry.transform import resize
 from kornia.models.sam import Sam, SamConfig
 from kornia.models.structures import SegmentationResults
 
-from testing.base import BaseTester, supports_reflect_padding
+from testing.base import BaseTester
 
 
 class _StubImageEncoder(nn.Module):
     """Stand-in for SAM's image encoder: a fixed, seeded ``(B, 256, 64, 64)`` embedding.
 
-    It keeps ``img_size`` (read by ``VisualPrompter.preprocess_image``). A random MobileSAM encoder at 1024 x 1024
-    takes 0.7 s in float32 but 16-18 s in float16 or bfloat16 on CPU with two threads, and what these tests check sits
-    on the prompt side.
+    It keeps ``img_size`` (read by ``VisualPrompter.preprocess_image``) and records its input, the resized and padded
+    image. A random MobileSAM encoder at 1024 x 1024 takes 0.7 s in float32 but 16-18 s in float16 or bfloat16 on CPU
+    with two threads, and what these tests check sits before and after it.
     """
 
     img_size = 1024
@@ -49,6 +49,7 @@ class _StubImageEncoder(nn.Module):
         self.embedding = torch.randn(1, 256, 64, 64, generator=generator).to(device=device, dtype=dtype)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        self.last_input = x
         return self.embedding.expand(x.shape[0], -1, -1, -1)
 
 
@@ -57,12 +58,19 @@ def _skip_float64_on_mps(device: torch.device, dtype: torch.dtype) -> None:
         pytest.skip("MPS does not support float64")
 
 
-def _prompter_with_stub_encoder(device: torch.device, dtype: torch.dtype) -> VisualPrompter:
-    """Random-init MobileSAM prompter in evaluation mode, with the stub encoder and a seeded 77 x 128 image set."""
+def _prompter_with_stub(device: torch.device, dtype: torch.dtype) -> tuple[VisualPrompter, _StubImageEncoder]:
+    """Random-init MobileSAM prompter in evaluation mode, with the stub encoder and no image set."""
     _skip_float64_on_mps(device, dtype)
     prompter = VisualPrompter(SamConfig("mobile_sam"), device=device, dtype=dtype)
     prompter.model.eval()
-    prompter.model.image_encoder = _StubImageEncoder(device, dtype)
+    stub = _StubImageEncoder(device, dtype)
+    prompter.model.image_encoder = stub
+    return prompter, stub
+
+
+def _prompter_with_stub_encoder(device: torch.device, dtype: torch.dtype) -> VisualPrompter:
+    """Random-init MobileSAM prompter in evaluation mode, with the stub encoder and a seeded 77 x 128 image set."""
+    prompter, _ = _prompter_with_stub(device, dtype)
     generator = torch.Generator().manual_seed(0)
     prompter.set_image(torch.rand(3, 77, 128, generator=generator).to(device=device, dtype=dtype))
     return prompter
@@ -193,43 +201,62 @@ class TestVisualPrompter(BaseTester):
         expected = torch.tensor([[[323.5, 243.5]], [[3.5, 3.5]]], device=device, dtype=dtype)
         self.assert_close(points, expected)
 
-    @pytest.mark.parametrize("height, width", [(77, 128), (1500, 2000)])
-    def test_resize_round_trip_is_aligned(self, device, dtype, height, width):
+    def test_box_corners_follow_the_point_map(self, device, dtype):
+        prompter = _prompter_with_stub_encoder(device, dtype)
+        box = torch.tensor([[10.0, 20.0, 60.0, 50.0]], device=device, dtype=dtype)
+
+        # Both corners take the half-pixel point map at s = 8, as both go through ``apply_coords`` in the reference's
+        # ``apply_boxes``: (10.5 * 8 - 0.5, 20.5 * 8 - 0.5, 60.5 * 8 - 0.5, 50.5 * 8 - 0.5). The vertices of ``Boxes``
+        # place the far corner at x2 - 1 and give (476.5, 396.5) for it.
+        expected = torch.tensor([[83.5, 163.5, 483.5, 403.5]], device=device, dtype=dtype)
+        labels = torch.ones(2, 1, device=device, dtype=dtype)
+        corners_as_points = prompter.preprocess_prompts(box.reshape(2, 1, 2), labels).keypoints
+        self.assert_close(corners_as_points.reshape(1, 4), expected)
+        for boxes in (box, Boxes.from_tensor(box[None], mode="xyxy")):
+            self.assert_close(prompter.preprocess_prompts(boxes=boxes).boxes, expected)
+
+    # Bound of each case: at 77 x 128 the bilinear upscale reproduces a ramp exactly. At 1500 x 2000 the
+    # antialiasing filter of SAM's reference (torch's, the same as PIL's bilinear reduce) starts and ends its taps on
+    # whole source pixels, which moves a ramp in a sawtooth of up to 0.022 px, in float64 as well.
+    @pytest.mark.parametrize("height, width, bound", [(77, 128, 1e-3), (1500, 2000, 0.025)])
+    def test_resize_round_trip_is_aligned(self, device, dtype, height, width, bound):
         if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("a ramp of 2000 columns needs float32 or wider to resolve 1e-3 px")
-        _skip_float64_on_mps(device, dtype)
-        prompter = VisualPrompter(SamConfig("mobile_sam"), device=device, dtype=dtype)
+            pytest.skip("a ramp of 2000 columns needs float32 or wider to resolve the bound")
+        prompter, stub = _prompter_with_stub(device, dtype)
 
         # A horizontal ramp whose value is its own column index, centred on 0 to halve its float32 rounding, goes
-        # through the forward resize, the padding to 1024, and the resize back of ``SegmentationResults``.
-        ramp = (torch.arange(width, device=device, dtype=dtype) - width / 2).expand(1, 1, height, width).contiguous()
-        resized = prompter.transforms(ramp, data_keys=["input"])
-        input_size = (resized.shape[-2], resized.shape[-1])
-        no_normalization = torch.zeros(1, device=device, dtype=dtype), torch.ones(1, device=device, dtype=dtype)
-        padded = prompter.preprocess_image(resized, *no_normalization)
-        back = SegmentationResults(padded, torch.zeros(1, 1, device=device, dtype=dtype)).original_res_logits(
-            input_size, (height, width), (1024, 1024)
+        # through set_image (without normalization) and back through the resize of ``SegmentationResults``.
+        ramp = (torch.arange(width, device=device, dtype=dtype) - width / 2).expand(3, height, width).contiguous()
+        prompter.set_image(ramp, torch.zeros(3, device=device, dtype=dtype), torch.ones(3, device=device, dtype=dtype))
+        back = SegmentationResults(stub.last_input[:, :1], torch.zeros(1, 1, device=device, dtype=dtype))
+        back = back.original_res_logits(
+            prompter._input_image_size, prompter._original_image_size, prompter._input_encoder_size
         )
 
-        # The three outer columns on each side are left out: at 2000 -> 1024 the antialiasing blur (3 taps,
-        # reflected at the border) bends the ramp in column 0, which the two bilinear resizes then spread to
-        # columns 1 and 2 (column 0 moves by 0.57 px, column 2 by 0.02 px). A corner-aligned forward resize stretches
-        # the ramp about its centre, by up to 0.43 px at 77 x 128 and 0.48 px at 1500 x 2000, most at the borders.
+        # The three outer columns on each side are left out: at 2000 -> 1024 the filter's taps are cut at the image
+        # border, which bends the ramp in column 0 (0.69 px), and the resize back spreads it to columns 1 and 2
+        # (0.15 and 0.04 px). A corner-aligned forward resize stretches the ramp about its centre, by up to 0.43 px at
+        # 77 x 128 and 0.48 px at 1500 x 2000, most at the borders.
         row = height // 2
-        self.assert_close(back[0, 0, row, 3:-3], ramp[0, 0, row, 3:-3], rtol=0.0, atol=1e-3)
+        self.assert_close(back[0, 0, row, 3:-3], ramp[0, row, 3:-3], rtol=0.0, atol=bound)
 
     def test_downscale_is_antialiased(self, device, dtype):
-        _skip_float64_on_mps(device, dtype)
-        # The antialiasing Gaussian blur pads by reflection; torch 2.5.1 has no float16 CPU reflection_pad2d.
-        if not supports_reflect_padding(device, dtype):
-            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
-        prompter = VisualPrompter(SamConfig("mobile_sam"), device=device, dtype=dtype)
+        prompter, stub = _prompter_with_stub(device, dtype)
         generator = torch.Generator().manual_seed(0)
-        image = torch.rand(1, 3, 1500, 2000, generator=generator).to(device=device, dtype=dtype)
+        image = torch.rand(3, 1500, 2000, generator=generator).to(device=device, dtype=dtype)
+        no_normalization = torch.zeros(3, device=device, dtype=dtype), torch.ones(3, device=device, dtype=dtype)
 
-        # The long side 2000 -> 1024 scales by 0.512, so the short side is 1500 * 0.512 = 768.
-        expected = resize(image, (768, 1024), align_corners=False, antialias=True)
-        self.assert_close(prompter.transforms(image, data_keys=["input"]), expected)
+        prompter.set_image(image, *no_normalization)
+
+        # The long side 2000 -> 1024 scales by 0.512, so the short side is 1500 * 0.512 = 768. SAM's reference,
+        # ``ResizeLongestSide.apply_image_torch`` (segment-anything@3518c86), resizes with this interpolate call. It
+        # runs here on the CPU (torch 2.5.1 has no MPS kernel for it) and in float32 (none for the half dtypes on CPU).
+        compute_dtype = torch.promote_types(dtype, torch.float32)
+        expected = F.interpolate(
+            image[None].cpu().to(compute_dtype), (768, 1024), mode="bilinear", align_corners=False, antialias=True
+        ).to(device=device, dtype=dtype)
+        assert prompter._input_image_size == (768, 1024)
+        self.assert_close(stub.last_input[..., :768, :1024], expected)
 
     def test_predict_in_every_dtype(self, device, dtype):
         prompter = _prompter_with_stub_encoder(device, dtype)

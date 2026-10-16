@@ -20,7 +20,9 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core.exceptions import BaseError
 from kornia.models.sam import Sam, SamConfig
+from kornia.models.sam.architecture.prompt_encoder import PositionEmbeddingRandom
 
 from testing.base import BaseTester
 
@@ -150,6 +152,37 @@ class TestSam(BaseTester):
         # 680,128 parameters, mostly the neck's 3 x 3 convolution, 256 * 256 * 9 = 589,824; ViT-B's encoder has
         # 89.7M. The whole model is not bounded: ``_build_sam`` always attaches the full mask decoder.
         assert sum(p.numel() for p in encoder.parameters()) < 1e6
+
+    @pytest.mark.device_agnostic
+    def test_pretrained_needs_a_model_type(self):
+        config = SamConfig(
+            encoder_embed_dim=16, encoder_depth=1, encoder_num_heads=1, encoder_global_attn_indexes=0, pretrained=True
+        )
+        with pytest.raises(BaseError, match="needs a model_type"):
+            Sam.from_config(config)
+
+    def test_positional_encoding_keeps_float32_precision(self, device, dtype):
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        # SAM's prompt encoder: 256-dimensional embeddings, so 128 random frequencies drawn from N(0, 1).
+        generator = torch.Generator().manual_seed(0)
+        pe = PositionEmbeddingRandom(128).to(device)
+        pe.positional_encoding_gaussian_matrix.copy_(torch.randn(2, 128, generator=generator))
+        pe = pe.to(dtype)
+        # The reference: the same, possibly rounded, frequencies, encoded in float32.
+        reference = PositionEmbeddingRandom(128).to(device)
+        reference.positional_encoding_gaussian_matrix.copy_(pe.positional_encoding_gaussian_matrix.float())
+        # Keypoints in the 1024 x 1024 input frame, exact in bfloat16 (spacing 4 between 512 and 1024): the image
+        # centre, a corner pixel and a point near the far corner.
+        coords = torch.tensor([[[512.0, 512.0], [4.0, 4.0], [1020.0, 1016.0]]], device=device)
+
+        dense, points = pe((64, 64)), pe.forward_with_coords(coords.to(dtype), (1024, 1024))
+
+        assert dense.dtype == points.dtype == dtype
+        # Within the rounding of the float32 encoding. Computed in bfloat16 throughout, the dense encoding is off by
+        # up to 0.12 (0.013 in float16).
+        self.assert_close(dense, reference((64, 64)).to(dtype))
+        self.assert_close(points, reference.forward_with_coords(coords, (1024, 1024)).to(dtype))
 
     @pytest.mark.slow
     def test_mobile_sam_pretrained_is_batch_independent(self):

@@ -24,12 +24,29 @@ import torch.nn.functional as F
 
 from kornia.augmentation import Resize
 from kornia.augmentation.container.augment import AugmentationSequential
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.enhance import normalize as kornia_normalize
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 from kornia.models.sam import Sam, SamConfig
 from kornia.models.structures import Prompts, SegmentationResults
+
+
+def _resize_like_sam(image: torch.Tensor, size: tuple[int, int]) -> torch.Tensor:
+    """Resize as SAM's reference does: bilinear on the half-pixel grid, with torch's antialiasing.
+
+    This is ``ResizeLongestSide.apply_image_torch`` of ``segment-anything@3518c86``. It runs in at least float32, as
+    torch has no half-precision antialiased kernel on the CPU, and the result is cast back to the dtype of ``image``.
+    """
+    x = image.to(torch.promote_types(image.dtype, torch.float32))
+    try:
+        out = F.interpolate(x, size=size, mode="bilinear", align_corners=False, antialias=True)
+    except NotImplementedError:
+        if x.device.type != "mps":
+            raise
+        # torch 2.5.1 has no MPS kernel for the antialiased bilinear resize (``_upsample_bilinear2d_aa``).
+        out = F.interpolate(x.cpu(), size=size, mode="bilinear", align_corners=False, antialias=True).to(x.device)
+    return out.to(image.dtype)
 
 
 class VisualPrompter:
@@ -41,12 +58,22 @@ class VisualPrompter:
     and :meth:`predict` then answers prompts on it. To segment a batch of images, each with its own prompts, use
     :meth:`kornia.models.sam.Sam.forward`.
 
-    The image is resized so that its long side equals ``image_encoder.img_size``, by
-    ``kornia.augmentation.Resize(img_size, side="long", align_corners=False, antialias=True)``: a bilinear resize on
-    the half-pixel grid, antialiased when it downscales. Keypoint and box prompts go through the same transform. The
-    image is then passed to the method `preprocess_image`, which normalizes it and pads it to the size the SAM model
-    takes, :math:`(\text{image_encoder.img_size}, \text{image_encoder.img_size})`. For default the image is normalized
-    by the mean and standard deviation of the SAM dataset values.
+    The image is resized so that its long side equals ``image_encoder.img_size``. The output size and the transform
+    that maps the prompts come from ``transforms``,
+    ``kornia.augmentation.Resize(img_size, side="long", align_corners=False, antialias=True)``. The image itself is
+    resized as SAM's reference resizes it (``ResizeLongestSide.apply_image_torch``), with
+    ``torch.nn.functional.interpolate(image, size, mode="bilinear", align_corners=False, antialias=True)``, computed in
+    float32 (float64 for a float64 image) and cast back. Keypoints and both corners of each box prompt go through the
+    half-pixel map of ``transforms``, the map this resize samples on. The image is then passed to the method
+    `preprocess_image`, which normalizes it and pads it to the size the SAM model takes,
+    :math:`(\text{image_encoder.img_size}, \text{image_encoder.img_size})`. For default the image is normalized by the
+    mean and standard deviation of the SAM dataset values.
+
+    The image does not go through kornia's own antialiased :func:`~kornia.geometry.transform.resize`, which blurs with a
+    Gaussian of standard deviation :math:`(f - 1) / 2` before downscaling by :math:`f`, a weaker low-pass than the
+    antialiased bilinear filter of SAM's preprocessing. On a 1380 x 2076 image, against a transcription of Meta's
+    ``SamPredictor`` driving the same MobileSAM weights, the three masks of a point prompt reach IoU 0.962, 0.967 and
+    0.956 with kornia's filter and 0.969, 0.969 and 0.968 with SAM's.
 
     Two details depart on purpose from Meta's ``SamPredictor`` (``segment-anything@3518c86``):
 
@@ -54,8 +81,10 @@ class VisualPrompter:
       here and 681 x 1024 there). Truncation is the rule of :class:`kornia.augmentation.Resize`, and the masks are
       resized back through the same recorded input size.
     - Prompts follow the half-pixel map :math:`x \mapsto (x + 0.5)\,s - 0.5`, kornia's pixel-centre convention and the
-      map the image resize uses, where the reference's ``apply_coords`` uses :math:`x \mapsto x\,s`. With the scale
-      :math:`s = 8`, the keypoint (40, 30) goes to (323.5, 243.5) here and to (320, 240) in the reference.
+      map the image resize samples on, where the reference's ``apply_coords`` uses :math:`x \mapsto x\,s`. With the
+      scale :math:`s = 8`, the keypoint (40, 30) goes to (323.5, 243.5) here and to (320, 240) in the reference. As
+      in the reference's ``apply_boxes``, both corners of a box follow the point map: the box (10, 20, 60, 50) goes to
+      (83.5, 163.5, 483.5, 403.5).
 
     The held model follows the mode rule of :ref:`pretrained-models-conventions`: a config that loads weights gives a
     model in evaluation mode, and a randomly initialised one stays in training mode, where MobileSAM's BatchNorm
@@ -152,7 +181,8 @@ class VisualPrompter:
     ) -> None:
         """Set the embeddings from the given image with `image_decoder` of the model.
 
-        Prepare the given image with the selected transforms and the preprocess method.
+        Resize the image to the size given by ``transforms``, with SAM's filter (see the class docstring), and prepare
+        it with the preprocess method.
 
         Args:
             image: One RGB image, shape :math:`(3, H, W)` or :math:`(1, 3, H, W)`, in the dtype of the model. Normally
@@ -178,8 +208,14 @@ class VisualPrompter:
 
         self._original_image_size = (image.shape[-2], image.shape[-1])
 
-        image = self.transforms(image, data_keys=["input"])
-        self._tfs_params = self.transforms._params
+        # The Resize augmentation gives the output size and the half-pixel matrix that maps the prompts; the image
+        # itself is resized with the filter of SAM's reference (see the class docstring).
+        self._tfs_params = self.transforms.forward_parameters(image.shape)
+        resize_params = self._tfs_params[0].data
+        if not isinstance(resize_params, dict):
+            raise TypeError(f"Expected the parameters of the Resize augmentation. Got {type(resize_params)}.")
+        height, width = (int(side) for side in resize_params["output_size"][0])
+        image = _resize_like_sam(image, (height, width))
         self._input_image_size = (image.shape[-2], image.shape[-1])
 
         image = self.preprocess_image(image, mean, std)
@@ -247,14 +283,16 @@ class VisualPrompter:
         boxes: Optional[Boxes | torch.Tensor] = None,
         masks: Optional[torch.Tensor] = None,
     ) -> Prompts:
-        """Validate and preprocess the given prompts to be aligned with the input image."""
-        data_keys = []
-        to_transform: list[Keypoints | Boxes | torch.Tensor] = []
+        """Validate and preprocess the given prompts to be aligned with the input image.
 
+        Keypoints and both corners of each xyxy box go through the half-pixel point map of ``transforms``. A box is
+        mapped as its two corner points, as the reference's ``apply_boxes`` does, not through the vertices of
+        :class:`~kornia.geometry.boxes.Boxes`, which place the far corner at ``x2 - 1``.
+        """
+        points: Optional[tuple[torch.Tensor, torch.Tensor]] = None
         if isinstance(keypoints, (Keypoints, torch.Tensor)) and isinstance(keypoints_labels, torch.Tensor):
             keypoints = self._valid_keypoints(keypoints, keypoints_labels)
-            data_keys.append("keypoints")
-            to_transform.append(keypoints)
+            points = (self._transform_points(keypoints), keypoints_labels)
         elif keypoints is not None:
             KORNIA_CHECK(
                 False,
@@ -262,34 +300,24 @@ class VisualPrompter:
                 "a background point.",
             )
 
+        bbox: Optional[torch.Tensor] = None
         if isinstance(boxes, (Boxes, torch.Tensor)):
-            boxes = self._valid_boxes(boxes)
-            data_keys.append("bbox_xyxy")
-            to_transform.append(boxes)
+            # (K, 4) or (1, K, 4) xyxy -> K pairs of corner points -> the K box prompts, (K, 4).
+            corners = self._valid_boxes(boxes).to_tensor(mode="xyxy").reshape(-1, 2, 2)
+            bbox = self._transform_points(Keypoints.from_tensor(corners)).reshape(-1, 4)
 
         if isinstance(masks, torch.Tensor):
             self._valid_masks(masks)
 
-        # No prompt at all is a valid query (SAM then predicts from the image embedding alone); the
-        # augmentation container cannot be called with nothing to transform.
-        data = self._transform_prompts(*to_transform, data_keys=data_keys) if to_transform else {}
-
-        if "keypoints" in data and isinstance(data["keypoints"], Keypoints):
-            kpts_tensor = data["keypoints"].to_tensor()
-            if KORNIA_CHECK_IS_TENSOR(kpts_tensor) and KORNIA_CHECK_IS_TENSOR(keypoints_labels):
-                points = (kpts_tensor, keypoints_labels)
-        else:
-            points = None
-
-        if "bbox_xyxy" in data and isinstance(data["bbox_xyxy"], Boxes):
-            # (K, 4) or (1, K, 4) -> the K box prompts, (K, 4).
-            _bbox = data["bbox_xyxy"].to_tensor(mode="xyxy").reshape(-1, 4)
-            if KORNIA_CHECK_IS_TENSOR(_bbox):
-                bbox = _bbox
-        else:
-            bbox = None
-
         return Prompts(points=points, boxes=bbox, masks=masks)
+
+    def _transform_points(self, keypoints: Keypoints) -> torch.Tensor:
+        """Map points of the original image to the resized image, with the transform recorded by ``set_image``."""
+        transformed = self._transform_prompts(keypoints, data_keys=["keypoints"])["keypoints"]
+        points = transformed.to_tensor() if isinstance(transformed, Keypoints) else transformed
+        if not isinstance(points, torch.Tensor):
+            raise TypeError(f"Expected the transformed keypoints as a tensor. Got {type(points)}.")
+        return points
 
     @torch.no_grad()
     def predict(

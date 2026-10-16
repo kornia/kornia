@@ -83,8 +83,9 @@ class SamConfig:
             With ``None``, the image encoder is a ViT built from the four ``encoder_*`` fields below, which are
             ignored when ``model_type`` is set.
         checkpoint: URL or a path for a file with the weights of the model
-        pretrained: load the released weights of ``model_type``. A ``checkpoint`` takes precedence, with a warning.
-            With ``False`` (the default) and no ``checkpoint``, the weights are randomly initialised.
+        pretrained: load the released weights of ``model_type``, which must then be set. A ``checkpoint`` takes
+            precedence, with a warning. With ``False`` (the default) and no ``checkpoint``, the weights are randomly
+            initialised.
         encoder_embed_dim: Patch embedding dimension.
         encoder_depth: Depth of ViT.
         encoder_num_heads: Number of attention heads in each ViT block.
@@ -248,6 +249,11 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
         checkpoint = config.checkpoint
         if config.pretrained:
             if checkpoint is None:
+                KORNIA_CHECK(
+                    isinstance(model_type, SamModelType),
+                    "SamConfig(pretrained=True) needs a model_type: the released weights exist only for 'vit_h', "
+                    "'vit_l', 'vit_b' and 'mobile_sam'. Give a checkpoint to load weights into a custom encoder.",
+                )
                 checkpoint = urls[model_type]
             else:
                 warnings.warn("checkpoint is not None. pretrained=True is ignored", stacklevel=1)
