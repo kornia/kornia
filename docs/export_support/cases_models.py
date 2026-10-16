@@ -748,7 +748,7 @@ A(
         "models.processors",
         NaFlex(_pe_conv, torch.randn(16, 8)),
         [torch.rand(1, 3, 32, 32)],
-        note="num_patches == pos rows -> plain add",
+        note="4x4 patch grid == the 4x4 pos-embed grid -> plain add, no resize",
     )
 )
 
@@ -808,7 +808,7 @@ A(
         "models.vlm",
         SigLip2ImagePreprocessor((32, 40)),
         [torch.rand(1, 3, 48, 64) * 255],
-        note="Rescale(1/255) + Resize bicubic antialias + Normalize; size baked",
+        note="Rescale(1/255) + Resize bilinear antialias (default; bicubic via interpolation=) + Normalize; size baked",
     )
 )
 A(
@@ -881,7 +881,7 @@ A(
         lambda: ev(Qwen2VLVisionTransformer(embed_dim=32, depth=1, num_heads=2)),
         lambda m: m,
         [torch.rand(1, 3, 28, 42)],
-        note="pure-PyTorch skeleton; conv14 patch embed + rotary attention blocks",
+        note="pure-PyTorch scaffold (#6003); conv14 patch embed + attention blocks without positional information",
         tags=("model",),
     )
 )
