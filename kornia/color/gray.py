@@ -69,8 +69,9 @@ def rgb_to_grayscale(image: torch.Tensor, rgb_weights: Optional[torch.Tensor] = 
         ITU-R BT.601 luma weights (0.299, 0.587, 0.114) in RGB order.
 
     .. warning::
-        On integer input, explicit float ``rgb_weights`` truncate to zero and integer weights wrap
-        (`#5109 <https://github.com/kornia/kornia/issues/5109>`_).
+        Explicit ``rgb_weights`` expect a floating image: they are cast to the image's dtype, so on an integer image
+        float weights truncate to zero and integer weights wrap. With the default weights a uint8 image is converted
+        exactly, bit for bit as ``cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)`` does.
 
     Args:
         image: RGB image to be converted to grayscale with shape :math:`(*,3,H,W)`.

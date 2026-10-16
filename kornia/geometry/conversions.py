@@ -1832,10 +1832,9 @@ def normalize_homography(
           kernel for it raises here
 
     .. warning::
-        An integer matrix is not rejected: the normalization matrices are cast
-        to it and truncated, and the call then fails inside torch or returns
-        ``nan``, depending on the backend. Tracked in
-        `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
+        An integer matrix is outside the contract and is not rejected: the
+        normalization matrices are cast to it and truncated, and the call then
+        fails inside torch or returns ``nan``, depending on the backend.
 
     .. warning::
         The :math:`[-1, 1]` frames follow this function's own ``align_corners``,
@@ -2252,8 +2251,7 @@ def denormalize_homography(
           source pixels to destination pixels. The ``dsize`` roles, the
           ``(x, y, 1)`` column vectors, per-sample batching, the
           ``align_corners``-selected frames and the shape guard are as
-          documented there, including its integer-input
-          (`#3959 <https://github.com/kornia/kornia/issues/3959>`_) warning
+          documented there, including its integer-input warning
         - ``inv(N_dst)`` goes through ``torch.linalg.inv`` in eager mode (so
           ``cusolver`` on ``cuda``), not through the ``cross``-based adjugate
         - the two functions invert each other to a small multiple of the
@@ -2409,7 +2407,7 @@ def denormalize_homography3d(
           ``dst_pix_trans_src_pix`` raises ``TypeCheckError`` (also a
           ``TypeError``) instead of being promoted, so cast it first. Integers
           would truncate the normalization matrices (the 2-D function still
-          does, `#3959 <https://github.com/kornia/kornia/issues/3959>`_), and
+          does), and
           complex dtypes would be inverted in ``float32``
           (``_torch_inverse_cast``), losing ``complex128`` precision
 
@@ -2584,10 +2582,9 @@ def Rt_to_matrix4x4(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
     Note:
         ``R`` and ``t`` must promote to a floating point or complex dtype;
         an integer or boolean pair raises ``ValueError`` naming its dtype.
-        Mixed integer/floating inputs keep torch's promotion. The integer-safe
-        ``_4x4`` frame functions and ``camtoworld_to_worldtocam_Rt`` keep their
-        existing behavior; the broader dtype consistency question is tracked in
-        `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
+        Mixed integer/floating inputs keep torch's promotion. The ``_4x4``
+        frame functions and ``camtoworld_to_worldtocam_Rt`` only transpose,
+        negate and multiply, so they accept integer input as well.
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
@@ -2699,8 +2696,7 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torc
         Integer input is not guarded: this function returns ``int64`` for an
         ``int64`` matrix (on backends with integer batched matmul), while
         :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_Rt`
-        raises ``ValueError`` naming the unsupported dtype. Tracked in
-        `#3959 <https://github.com/kornia/kornia/issues/3959>`_; see
+        raises ``ValueError`` naming the unsupported dtype; see
         :func:`~kornia.geometry.conversions.Rt_to_matrix4x4`.
 
     Args:
