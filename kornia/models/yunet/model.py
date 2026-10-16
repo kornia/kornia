@@ -64,6 +64,10 @@ class YuNet(nn.Module):
     This is the underlying CNN model used by :py:class:`kornia.contrib.FaceDetector` for face detection.
     The model architecture is based on the method described in :cite:`facedetect-yu`.
 
+    The input is a BGR image with pixel values in :math:`[0, 255]`, with no mean or standard deviation applied: the
+    pretrained weights were trained on images read with ``cv2.imread`` (ShiqiYu/libfacedetection.train@74f3aa7).
+    :py:class:`kornia.contrib.FaceDetector` takes RGB in :math:`[0, 255]` and flips it to BGR before this model.
+
     Args:
         phase: the phase of the model, either "train" or "test".
         pretrained: if True, loads pretrained weights from the official repository and returns the model in
@@ -71,7 +75,7 @@ class YuNet(nn.Module):
 
     Example:
         >>> model = YuNet("test", pretrained=True)
-        >>> img = torch.rand(1, 3, 320, 320)
+        >>> img = torch.rand(1, 3, 320, 320) * 255  # BGR in [0, 255]
         >>> out = model(img)
 
     """

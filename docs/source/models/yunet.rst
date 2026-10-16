@@ -12,8 +12,10 @@ YuNet
 
 YuNet is a millisecond-level face detector that predicts a box, a confidence and five facial landmarks (eyes, nose,
 mouth corners) per face. Kornia exposes it as :class:`~kornia.contrib.FaceDetector`, which takes a ``(B, 3, H, W)``
-image with pixel values in ``[0, 255]`` and returns one ``(N, 15)`` tensor per image; wrap each row in
-:class:`~kornia.contrib.FaceDetectorResult` to read the fields by name.
+RGB image with pixel values in ``[0, 255]`` and returns one ``(N, 15)`` tensor per image; wrap each row in
+:class:`~kornia.contrib.FaceDetectorResult` to read the fields by name. The pretrained YuNet was trained on BGR images
+in ``[0, 255]`` read with OpenCV, so ``FaceDetector`` flips the channels before the network; the bare
+:class:`~kornia.models.yunet.YuNet` takes that BGR input directly.
 
 Run it
 ------
@@ -23,7 +25,7 @@ Run it
     from kornia.io import load_image
     from kornia.contrib import FaceDetector, FaceDetectorResult, FaceKeypoint
 
-    image = load_image("crowd.jpg")[None] * 255.0  # (1, 3, H, W); YuNet expects pixel values in [0, 255]
+    image = load_image("crowd.jpg")[None] * 255.0  # (1, 3, H, W) RGB; FaceDetector expects pixel values in [0, 255]
 
     detector = FaceDetector()  # downloads the YuNet weights when constructed
     faces = [FaceDetectorResult(f) for f in detector(image)[0]]  # one result per detected face

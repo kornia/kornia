@@ -24,7 +24,7 @@ Run it
     from kornia.contrib.edge_detection import EdgeDetectorBuilder
     from kornia.io import load_image
 
-    image = load_image("girona.png")[None]  # (1, 3, H, W) float in [0, 1]
+    image = load_image("girona.png")[None]  # (1, 3, H, W) RGB float in [0, 1]
 
     detector = EdgeDetectorBuilder.build("dexined", pretrained=True, image_size=352)  # runs the net at 352 px
     with torch.no_grad():
@@ -37,8 +37,9 @@ Run it
    The input image and its DexiNed edge probability map (dark = edge).
 
 The detector accepts a batch tensor or a list of ``(3, H, W)`` images of different sizes and returns one edge map
-per image. To use the bare network, :class:`~kornia.models.dexined.DexiNed` takes a ``(B, 3, H, W)`` input scaled to
-``[0, 255]`` and mean-subtracted and returns the fused edge logits; ``EdgeDetectorBuilder`` also exposes
+per image. To use the bare network, :class:`~kornia.models.dexined.DexiNed` takes a ``(B, 3, H, W)`` BGR input scaled
+to ``[0, 255]`` minus the BGR mean ``[103.939, 116.779, 123.68]``, the input it was trained on, and returns the fused
+edge logits; ``EdgeDetectorBuilder`` converts an RGB image in ``[0, 1]`` to that input, and also exposes
 ``to_onnx()`` for export.
 
 Paper
