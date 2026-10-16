@@ -25,6 +25,7 @@ kornia.color          OpenCV (``cv2.cvtColor``)       torchvision v2        scik
 ====================  ==============================  ====================  =============  ====================
 ``rgb_to_grayscale``  ``COLOR_RGB2GRAY`` (uint8)      ``rgb_to_grayscale``  ``rgb2gray``   ``convert("L")``
 ``rgb_to_hsv``        ``COLOR_RGB2HSV_FULL`` (uint8)  —                     ``rgb2hsv``    ``convert("HSV")``
+``hsv_to_rgb``        ``COLOR_HSV2RGB`` (float32)     —                     ``hsv2rgb``    ``convert("RGB")``
 ``rgb_to_lab``        ``COLOR_RGB2Lab`` (float32)     —                     ``rgb2lab``    —
 ``rgb_to_ycbcr``      ``COLOR_RGB2YCrCb`` (uint8)     —                     ``rgb2ycbcr``  ``convert("YCbCr")``
 ``raw_to_rgb``        ``COLOR_BayerBG2RGB`` (uint8)   —                     —              —
@@ -33,7 +34,8 @@ kornia.color          OpenCV (``cv2.cvtColor``)       torchvision v2        scik
 Regimes (see ``benchmarks/README.md``): kornia/torchvision run a batched float BCHW tensor on CPU
 or GPU and kornia is differentiable; OpenCV and PIL run single uint8 HWC images on CPU in a Python
 loop, their native regime, except Lab, which OpenCV computes on float32 input so its output is real
-CIE Lab rather than the 8-bit rescaling; scikit-image runs normalized float HWC images per image.
+CIE Lab rather than the 8-bit rescaling; HSV-to-RGB also uses float32 OpenCV input;
+scikit-image runs normalized float HWC images per image.
 PIL receives ready-made ``Image`` objects, as kornia receives a ready-made tensor. OpenCV
 parallelizes ``cvtColor`` over rows, which a single 256x256 image barely feeds, so the pointwise
 conversions also get an ``opencv (stacked)`` column: one call on the whole batch viewed as a
@@ -43,7 +45,9 @@ chroma channels, 8-bit HSV and YCbCr are rescaled to 0-255, scikit-image's ``rgb
 16-235 studio range, and kornia's hue is in radians. OpenCV's Bayer pattern names are shifted by
 one pixel relative to kornia's ``CFA`` names; the ``raw_to_rgb`` row times bilinear demosaicing of
 the same single-channel mosaic in both. These are throughput comparisons, not output-equivalent
-ones. Throughput is img/s.
+ones. The inverse HSV row prepares inputs outside timing: hue is radians for kornia,
+turns for scikit-image, degrees for OpenCV float32, and 0-255 for PIL's quantized HSV images;
+saturation/value are [0, 1] except PIL's 0-255. Throughput is img/s.
 
 Usage:
     python benchmarks/color/flagship.py --batches 1,8,32 --size 256 --device cpu
@@ -80,7 +84,7 @@ from common import (
 
 import kornia.color as KC
 
-OPS = ("rgb_to_grayscale", "rgb_to_hsv", "rgb_to_lab", "rgb_to_ycbcr", "raw_to_rgb")
+OPS = ("rgb_to_grayscale", "rgb_to_hsv", "hsv_to_rgb", "rgb_to_lab", "rgb_to_ycbcr", "raw_to_rgb")
 
 
 def build_ops(
@@ -142,6 +146,23 @@ def build_ops(
         row["PIL"] = pil_loop("HSV")
         ops["rgb_to_hsv"] = row
 
+    if include("hsv_to_rgb"):
+        # Prepare one HSV image in each library's native units outside the timed call.
+        hsv_radians = KC.rgb_to_hsv(batch_f)
+        hsv_turns = hsv_radians.float().cpu().permute(0, 2, 3, 1).numpy().copy()
+        hsv_turns[..., 0] /= 2 * np.pi
+        hsv_degrees = hsv_turns.copy()
+        hsv_degrees[..., 0] *= 360
+        hsv_cv = [np.ascontiguousarray(im) for im in hsv_degrees]
+        hsv_stacked = hsv_degrees.reshape(b * h, w, 3)
+        hsv_pil = [pil.fromarray(np.rint(im * 255).astype(np.uint8), mode="HSV") for im in hsv_turns] if pil else []
+        row = kornia_row("hsv_to_rgb", KC.hsv_to_rgb, hsv_radians)
+        row["opencv"] = cv_loop(cv2.COLOR_HSV2RGB, hsv_cv) if cv2 else None
+        row["opencv (stacked)"] = cv_stacked(cv2.COLOR_HSV2RGB, hsv_stacked) if cv2 else None
+        row["scikit-image"] = (lambda: [skc.hsv2rgb(im) for im in hsv_turns]) if skc else None
+        row["PIL"] = (lambda: [im.convert("RGB") for im in hsv_pil]) if pil else None
+        ops["hsv_to_rgb"] = row
+
     if include("rgb_to_lab"):
         row = kornia_row("rgb_to_lab", KC.rgb_to_lab, batch_f)
         row["opencv"] = cv_loop(cv2.COLOR_RGB2Lab, imgs_f) if cv2 else None
@@ -190,8 +211,9 @@ def main() -> None:
         regimes=[
             (
                 "kornia/torchvision: batched float BCHW; opencv/PIL: uint8 HWC per-image loop (CPU), "
-                "opencv Lab on float32; scikit-image: normalized float HWC per-image loop"
+                "opencv Lab and HSV-to-RGB on float32; scikit-image: normalized float HWC per-image loop"
             ),
+            "HSV-to-RGB: prebuilt HSV, hue radians (kornia), turns (scikit-image), degrees (OpenCV), 0-255 (PIL)",
             "opencv (stacked): one cvtColor on the batch viewed as (B*H, W, 3); PIL: prebuilt Image objects",
         ],
         missing=[(name, err) for lib, name, err in libs if lib is None],

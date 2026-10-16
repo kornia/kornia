@@ -17,7 +17,7 @@
 
 """Flagship geometry-op benchmark: kornia vs OpenCV vs torchvision v2.
 
-Covers the differentiated-core ops named by the W3 benchmark plan:
+Covers image warps, point transforms and depth unprojection:
 
 =============================  ==========================================  ==============
 kornia (batched float BCHW)    OpenCV (uint8 HWC, per-image Python loop)   torchvision v2
@@ -28,6 +28,9 @@ kornia (batched float BCHW)    OpenCV (uint8 HWC, per-image Python loop)   torch
 ``rotate_shared``              ``cv2.warpAffine(getRotationMatrix2D)``     ``tvf.rotate``
 ``resize``                     ``cv2.resize``                              ``tvf.resize``
 ``get_perspective_transform``  ``cv2.getPerspectiveTransform`` (per pair)  —
+``remap``                      ``cv2.remap`` (float32)                    —
+``transform_points``           ``cv2.perspectiveTransform`` (float32)     —
+``depth_to_3d``                —                                         —
 =============================  ==========================================  ==============
 
 Regimes (same framing as ``benchmarks/augmentation``): kornia/torchvision run a batched float
@@ -38,6 +41,13 @@ Equal footing: bilinear interpolation, no antialiasing anywhere (torchvision get
 ``antialias=False``), identical transform parameters across backends, pinned seeds.
 ``rotate`` passes B angle parameters; ``rotate_shared`` passes a singleton angle so Kornia can
 reuse one sampling grid. Both use 30 degrees, matching torchvision's shared-angle API.
+``remap`` uses prepared float32 images and pixel maps offset by (+0.25, -0.5), bilinear
+interpolation and zero padding, with ``align_corners=True`` in Kornia. These offsets are exact
+on OpenCV's 1/32 interpolation table; arbitrary offsets can differ. ``transform_points`` applies
+a fixed projective matrix to H*W seeded 2D points per batch item; OpenCV gets float32 point sets.
+``depth_to_3d`` unprojects positive z-depth [0.5, 4.5] with focal length W and centered principal
+point, with no normalization or external baseline. One item means one image, depth map, point
+set (H*W points), or four-correspondence solve, depending on the row.
 
 Usage:
     python benchmarks/geometry/flagship.py --batches 1,8,32 --size 256 --device cpu
@@ -74,7 +84,17 @@ from common import (
 
 import kornia.geometry as KG
 
-OPS = ("warp_perspective", "warp_affine", "rotate", "rotate_shared", "resize", "get_perspective_transform")
+OPS = (
+    "warp_perspective",
+    "warp_affine",
+    "rotate",
+    "rotate_shared",
+    "resize",
+    "get_perspective_transform",
+    "remap",
+    "transform_points",
+    "depth_to_3d",
+)
 
 
 def build_ops(
@@ -165,6 +185,43 @@ def build_ops(
         row = kornia_row("get_perspective_transform", lambda: KG.get_perspective_transform(src_pts, dst_pts))
         row["opencv"] = (lambda: [cv2.getPerspectiveTransform(src_np[i], dst_np[i]) for i in range(b)]) if cv2 else None
         ops["get_perspective_transform"] = row
+    if include("remap"):
+        # Quarter-pixel offsets are represented exactly by OpenCV's 1/32 interpolation table.
+        yy, xx = np.mgrid[:h, :w].astype(np.float32)
+        map_x_np, map_y_np = xx + 0.25, yy - 0.5
+        map_x = torch.from_numpy(map_x_np).to(device=device, dtype=dtype).expand(b, -1, -1)
+        map_y = torch.from_numpy(map_y_np).to(device=device, dtype=dtype).expand(b, -1, -1)
+        imgs_f = [im.astype(np.float32) / 255 for im in imgs_u8]
+        row = kornia_row("remap", lambda: KG.remap(batch_f, map_x, map_y, align_corners=True))
+        row["opencv"] = (
+            (
+                lambda: [
+                    cv2.remap(im, map_x_np, map_y_np, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT) for im in imgs_f
+                ]
+            )
+            if cv2
+            else None
+        )
+        ops["remap"] = row
+
+    if include("transform_points"):
+        points_cpu = torch.rand(b, h * w, 2, generator=gen) * torch.tensor([w, h])
+        transform_cpu = torch.tensor([[1.05, 0.02, 2.0], [-0.01, 0.95, -1.0], [0.0001, -0.0002, 1.0]])
+        transforms = transform_cpu.expand(b, -1, -1).to(device=device, dtype=dtype)
+        points = points_cpu.to(device=device, dtype=dtype)
+        point_arrays = [np.ascontiguousarray(p.numpy()[:, None]) for p in points_cpu]
+        transform_np = transform_cpu.numpy()
+        row = kornia_row("transform_points", KG.transform_points, transforms, points)
+        row["opencv"] = (lambda: [cv2.perspectiveTransform(p, transform_np) for p in point_arrays]) if cv2 else None
+        ops["transform_points"] = row
+
+    if include("depth_to_3d"):
+        depth = 0.5 + 4 * batch_f[:, :1]
+        intrinsics = torch.tensor(
+            [[w, 0.0, (w - 1) / 2], [0.0, w, (h - 1) / 2], [0.0, 0.0, 1.0]], device=device, dtype=dtype
+        ).expand(b, -1, -1)
+        row = kornia_row("depth_to_3d", KG.depth_to_3d, depth, intrinsics)
+        ops["depth_to_3d"] = row
     return ops, kornia_row.compile_failures
 
 
@@ -182,7 +239,11 @@ def main() -> None:
         args,
         device,
         units="items/s",
-        regimes=["kornia/torchvision: batched float BCHW; opencv: uint8 HWC per-image loop (CPU)"],
+        regimes=[
+            "kornia/torchvision: batched float; opencv: uint8 images except float32 remap/point transforms (CPU)",
+            "remap: prepared pixel maps (+0.25,-0.5), bilinear, zero padding, align_corners=True",
+            "items = images, depth maps, H*W point sets, or four-correspondence solves; depth_to_3d has no baseline",
+        ],
         missing=[
             (name, err)
             for lib, name, err in [(cv2, "opencv", cv2_error), (tvf, "torchvision", tvf_error)]

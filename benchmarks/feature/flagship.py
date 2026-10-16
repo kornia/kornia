@@ -27,6 +27,9 @@ kornia.feature       OpenCV (per-image loop, CPU)                         scikit
 ``gftt_response``    ``cv2.cornerMinEigenVal(blockSize=7, ksize=3)``      ``corner_shi_tomasi(sigma=1)``
 ``SIFTFeature``      ``cv2.SIFT_create(nfeatures=512).detectAndCompute``  —
 ``match_snn``        ``BFMatcher(NORM_L2).knnMatch(k=2)`` + ratio test    —
+``match_mnn``        ``BFMatcher(NORM_L2, crossCheck=True).match``        —
+``match_smnn``       two ``knnMatch(k=2)`` calls + ratio/mutual filters   —
+``match_smnn_batched`` same per-pair OpenCV loop as ``match_smnn``        —
 ===================  ===================================================  ==============================
 
 Regimes (see ``benchmarks/README.md``): kornia runs a batched float B1HW tensor on CPU or GPU and
@@ -41,11 +44,15 @@ detector accepts one image per call, so its SIFT row loops over the batch like O
 images use ``local_features.py`` and ``sift_scale_space.py``; learned detectors and descriptors
 (DISK, ALIKED, HardNet, ...) need downloaded weights and are measured there too.
 
-``match_snn`` matches 2048 128-d descriptors against 2048, with a 0.8 ratio test, one pair per
-batch element; neither library batches pairs, so both loop in Python. The OpenCV column includes
-the list comprehension that applies the ratio test to ``knnMatch``'s result, which is how the API
-is used. Throughput counts images for the first three rows and descriptor-set pairs for
-``match_snn``; the JSON ``units`` is therefore ``items/s``.
+Matching rows share the same 2048-by-2048 unit-normalized 128-d descriptor pairs: the second
+set is a seeded noisy permutation of the first, so the ratio tests accept and reject matches.
+SNN uses an inclusive 0.8 ratio test, MNN uses mutual nearest neighbors, and SMNN requires both
+mutuality and the ratio test in both directions. Kornia's unbatched functions and OpenCV loop
+over pairs in Python; ``match_smnn_batched`` processes all pairs together (distance storage
+scales as B*2048*2048). OpenCV includes Python ratio filtering and mutual-pair intersection;
+its inputs are prebuilt float32 arrays. Matches have the same index semantics away from distance
+ties; native output containers and quality scores differ. Throughput counts images for the
+first three rows and descriptor-set pairs for every matching row; JSON units are ``items/s``.
 
 Usage:
     python benchmarks/feature/flagship.py --batches 1,8,32 --size 256 --device cpu
@@ -58,7 +65,7 @@ import argparse
 import sys
 from pathlib import Path
 from types import ModuleType
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 import torch
@@ -82,7 +89,7 @@ from common import (
 import kornia.feature as KF
 from kornia.filters import gaussian_blur2d
 
-OPS = ("harris_response", "gftt_response", "SIFTFeature", "match_snn")
+OPS = ("harris_response", "gftt_response", "SIFTFeature", "match_snn", "match_mnn", "match_smnn", "match_smnn_batched")
 NUM_FEATURES, NUM_DESCRIPTORS, DESCRIPTOR_DIM, SNN_RATIO = 512, 2048, 128, 0.8
 
 
@@ -105,8 +112,33 @@ def descriptor_pairs(b: int) -> tuple[torch.Tensor, torch.Tensor]:
     return d1, torch.nn.functional.normalize(noisy, dim=-1)
 
 
-def match_pairs(d1: torch.Tensor, d2: torch.Tensor) -> list[tuple[torch.Tensor, torch.Tensor]]:
-    return [KF.match_snn(d1[i], d2[i], SNN_RATIO) for i in range(d1.shape[0])]
+def match_pairs(d1: torch.Tensor, d2: torch.Tensor, name: str = "match_snn") -> list[tuple[torch.Tensor, torch.Tensor]]:
+    matcher = getattr(KF, name)
+    return [
+        matcher(d1[i], d2[i]) if name == "match_mnn" else matcher(d1[i], d2[i], SNN_RATIO) for i in range(d1.shape[0])
+    ]
+
+
+def opencv_matches(matcher: Any, d1: np.ndarray, d2: np.ndarray, name: str) -> list[Any]:
+    """Native BF matching plus inclusive ratio filtering and, for SMNN, reverse consistency."""
+    if name == "match_mnn":
+        return list(matcher.match(d1, d2))
+    forward = matcher.knnMatch(d1, d2, k=2)
+    # Zero second-neighbor distance is an undefined ratio, rejected by Kornia too.
+    accepted = [
+        pair[0]
+        for pair in forward
+        if len(pair) == 2 and pair[1].distance > 0 and pair[0].distance <= SNN_RATIO * pair[1].distance
+    ]
+    if name == "match_snn":
+        return accepted
+    reverse = matcher.knnMatch(d2, d1, k=2)
+    reverse_pairs = {
+        (pair[0].trainIdx, pair[0].queryIdx)
+        for pair in reverse
+        if len(pair) == 2 and pair[1].distance > 0 and pair[0].distance <= SNN_RATIO * pair[1].distance
+    }
+    return [match for match in accepted if (match.queryIdx, match.trainIdx) in reverse_pairs]
 
 
 def build_ops(
@@ -163,17 +195,21 @@ def build_ops(
             row["opencv"] = lambda: [cv_sift.detectAndCompute(im, None) for im in imgs_u8]
         ops["SIFTFeature"] = row
 
-    if include("match_snn"):
-        row = kornia_row("match_snn", match_pairs, d1_dev, d2_dev)
+    for name in ("match_snn", "match_mnn", "match_smnn", "match_smnn_batched"):
+        if not include(name):
+            continue
+        if name == "match_smnn_batched":
+            row = kornia_row(name, KF.match_smnn_batched, d1_dev, d2_dev, SNN_RATIO)
+        else:
+            row = kornia_row(name, match_pairs, d1_dev, d2_dev, name)
         if cv2:
-            matcher = cv2.BFMatcher(cv2.NORM_L2)
+            matcher = cv2.BFMatcher(cv2.NORM_L2, crossCheck=name == "match_mnn")
 
-            def cv_match(i: int) -> list[object]:
-                knn = matcher.knnMatch(d1_np[i], d2_np[i], k=2)
-                return [m for m, n in knn if m.distance < SNN_RATIO * n.distance]
+            def cv_match_pairs(matcher: Any = matcher, name: str = name) -> list[list[Any]]:
+                return [opencv_matches(matcher, d1_np[i], d2_np[i], name) for i in range(b)]
 
-            row["opencv"] = lambda: [cv_match(i) for i in range(b)]
-        ops["match_snn"] = row
+            row["opencv"] = cv_match_pairs
+        ops[name] = row
 
     return ops, kornia_row.compile_failures
 
@@ -196,8 +232,10 @@ def main() -> None:
         regimes=[
             (
                 "kornia: batched float B1HW; opencv/scikit-image: grayscale per-image loop (CPU); "
-                "items = images, except match_snn = descriptor-set pairs"
-            )
+                "items = images, except matching rows = descriptor-set pairs; descriptors float32 in OpenCV"
+            ),
+            "matching: same 2048x2048 128-d pairs; inclusive 0.8 SNN/SMNN ratios; MNN uses cross-check",
+            "match_smnn_batched batches pairs in Kornia; all other matching cells loop over pairs",
         ],
         missing=[(name, err) for lib, name, err in libs if lib is None],
     )

@@ -14,14 +14,14 @@ otherwise reach for. All flagships share one command line, one console layout an
 | Suite | Flagship ops | Baselines |
 | --- | --- | --- |
 | [`augmentation`](augmentation/flagship.py) | flip, affine, perspective, resized crop, color jiggle, blur, brightness, grayscale (class API, sampling included) | torchvision v2, albumentations, OpenCV, PIL |
-| [`color`](color/flagship.py) | grayscale, HSV, Lab, YCbCr, Bayer demosaic | torchvision v2, scikit-image, OpenCV (per image and stacked), PIL |
+| [`color`](color/flagship.py) | grayscale, RGB↔HSV, Lab, YCbCr, Bayer demosaic | torchvision v2, scikit-image, OpenCV (per image and stacked), PIL |
 | [`contrib`](contrib/flagship.py) | exact connected components, distance transform | scikit-image, SciPy, OpenCV |
 | [`enhance`](enhance/flagship.py) | normalize, gamma, hue, saturation, equalize, CLAHE | torchvision v2, albumentations, scikit-image, OpenCV, PIL |
-| [`feature`](feature/flagship.py) | Harris and GFTT responses, SIFT detect+describe, SNN matching | scikit-image, OpenCV |
-| [`filters`](filters/flagship.py) | Gaussian, Sobel, Laplacian, median, box, Canny, unsharp, bilateral, guided, motion, Otsu | torchvision v2, albumentations, scikit-image, OpenCV, kornia-rs, PIL |
-| [`geometry`](geometry/flagship.py) | warp perspective/affine, rotate, resize, perspective-transform solve | torchvision v2, OpenCV |
+| [`feature`](feature/flagship.py) | Harris and GFTT responses, SIFT detect+describe, SNN/MNN/SMNN matching, batched SMNN | scikit-image, OpenCV |
+| [`filters`](filters/flagship.py) | Gaussian, Sobel magnitude and spatial gradients, Laplacian, median, box, Canny, unsharp, bilateral, guided, motion, Otsu | torchvision v2, albumentations, scikit-image, OpenCV, kornia-rs, PIL |
+| [`geometry`](geometry/flagship.py) | warp perspective/affine, rotate, resize, remap, point transforms, depth unprojection, perspective-transform solve | torchvision v2, OpenCV |
 | [`io`](io/flagship.py) | JPEG and PNG decode to an RGB uint8 tensor | torchvision, OpenCV, PIL |
-| [`losses`](losses/flagship.py) | binary focal, focal, Dice, SSIM, total variation (forward + backward) | torchvision |
+| [`losses`](losses/flagship.py) | binary focal, focal, Dice (micro, macro, weighted), SSIM, total variation (forward + backward) | torchvision |
 | [`metrics`](metrics/flagship.py) | PSNR, SSIM, mean IoU | scikit-image, OpenCV |
 | [`morphology`](morphology/flagship.py) | dilation, erosion, opening, gradient | torchmorph (CUDA only), albumentations, scikit-image, OpenCV |
 
@@ -29,6 +29,24 @@ Modules without a flagship: `models`, `tracking` and the model wrappers in `cont
 downloaded weights (learned local features are covered by `feature/local_features.py`); `nerf`,
 `sensors`, `x`, `onnx`, `transpiler`, `grad_estimator`, `image`, `core`, `utils` and `testing`
 are training loops, containers, exporters or plumbing whose cost is the ops above.
+
+Coverage is a curated sample, not a usage ranking or an exhaustive API inventory. In particular:
+
+- Color now measures both directions of RGB/HSV; inverse inputs are prepared in each backend's
+  native hue units (radians, turns, degrees, or PIL's quantized bytes).
+- Filters distinguish Sobel magnitude from normalized x/y `spatial_gradient`; the latter's
+  OpenCV counterpart uses prepared float32 inputs, replicate padding, and scale 1/8.
+- Geometry includes image remapping, H*W-point projective transforms, and z-depth unprojection.
+  The depth row has no external baseline; an unrelated operation is not substituted for it.
+- Feature matching includes SNN, MNN, symmetric SNN, and batched symmetric SNN on identical
+  descriptor pairs. OpenCV's baseline includes the required ratio and mutuality filters;
+  its per-pair loop also provides context for Kornia's batched API.
+- Remaining gaps include functional brightness/contrast (augmentation's sampled class calls
+  measure different work), enhancement/normalization variants, 3D gradients and volumetric
+  warps, camera/epipolar primitives, and loss options such as class counts, ignored labels,
+  reductions, Tversky/Lovasz and robust regression. The Dice micro/macro/weighted rows cover
+  distinct reduction paths but do not exhaust those loss regimes. Learned feature/model
+  timing remains in the separate weight-dependent suites below.
 
 Deeper, single-topic scripts:
 

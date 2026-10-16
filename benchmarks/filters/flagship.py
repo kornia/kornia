@@ -24,6 +24,7 @@ Covers the core image filters with fixed nominal parameters across backends
 kornia.filters            OpenCV (uint8 HWC per-image loop)  others
 ========================  =================================  ====================================================
 gaussian_blur2d           cv2.GaussianBlur                   albumentations, torchvision, skimage, kornia-rs, PIL
+spatial_gradient          cv2.Sobel(dx/dy), float32 scale=1/8, replicate border
 sobel                     cv2.Sobel(dx/dy) -> cv2.magnitude  skimage, kornia-rs
 laplacian                 cv2.Laplacian                      skimage
 median_blur               cv2.medianBlur                     albumentations, skimage, kornia-rs, PIL
@@ -50,7 +51,9 @@ Canny thresholds are each library's standard
 defaults — kornia 0.1/0.2 on the unnormalised Sobel magnitude of [0, 1] floats, OpenCV 100/200 on uint8
 gradients — the domains differ, so that row compares regimes, not identical outputs. kornia's canny converts to
 grayscale internally per its definition; the OpenCV canny loop therefore includes ``cv2.cvtColor``
-(sobel runs per-channel in both). Throughput is img/s.
+(sobel runs per-channel in both). ``spatial_gradient`` returns normalized x/y Sobel derivatives
+per channel; OpenCV receives prepared float32 [0, 1] images, uses scale=1/8 and replicate padding,
+and returns two HWC arrays per image. Kornia returns (B, C, 2, H, W). Throughput is img/s.
 
 The Laplacian columns are different operators: Kornia uses an L1-normalized all-ones window with
 center ``1 - kernel_area``; OpenCV sums second Sobel derivatives and scikit-image's kernel differs
@@ -123,6 +126,7 @@ import kornia.filters as KF
 AVAILABLE_OPS = (
     "gaussian_blur2d",
     "sobel",
+    "spatial_gradient",
     "laplacian",
     "median_blur",
     "box_blur",
@@ -319,6 +323,23 @@ def build_ops(
         )
         ops["gaussian_blur2d"] = row
 
+    if include("spatial_gradient"):
+        row = kornia_row("spatial_gradient", lambda: KF.spatial_gradient(batch_f, mode="sobel", normalized=True))
+        row["opencv"] = (
+            (
+                lambda: [
+                    (
+                        cv2.Sobel(im, cv2.CV_32F, 1, 0, ksize=3, scale=1 / 8, borderType=cv2.BORDER_REPLICATE),
+                        cv2.Sobel(im, cv2.CV_32F, 0, 1, ksize=3, scale=1 / 8, borderType=cv2.BORDER_REPLICATE),
+                    )
+                    for im in imgs_f
+                ]
+            )
+            if cv2
+            else None
+        )
+        ops["spatial_gradient"] = row
+
     if include("sobel"):
         krs_sobel = krs_fn("sobel")
         row = kornia_row("sobel", lambda: KF.sobel(batch_f))
@@ -437,9 +458,11 @@ def main() -> None:
         regimes=[
             (
                 "kornia/torchvision: batched float BCHW; "
-                "albumentations/opencv/kornia-rs/PIL: uint8 HWC per-image loop (CPU), except kornia-rs Sobel float32; "
+                "albumentations/opencv/kornia-rs/PIL: uint8 HWC per-image loop (CPU), "
+                "except kornia-rs Sobel and opencv spatial_gradient float32; "
                 "scikit-image: normalized float HWC per-image loop except uint8 rank mean"
-            )
+            ),
+            "spatial_gradient: normalized x/y Sobel, OpenCV float32 [0,1], scale=1/8, replicate padding",
         ],
         missing=missing,
     )
