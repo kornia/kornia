@@ -311,11 +311,6 @@ def warp_perspective(
     if not (len(M.shape) == 3 and M.shape[-2:] == (3, 3)):
         raise ValueError(f"Input M must be a Bx3x3 torch.Tensor. Got {M.shape}")
 
-    # The default fill has one zero per channel, as in warp_affine: a fixed (3,) default turned a one-channel image
-    # into three channels and failed on any other channel count (#6021).
-    if fill_value is None:
-        fill_value = torch.zeros(src.shape[1], device=src.device, dtype=src.dtype)
-
     B, _, H, W = src.size()
     h_out, w_out = dsize
     if h_out < 0 or w_out < 0:
@@ -364,6 +359,10 @@ def warp_perspective(
         grid = torch.stack([gx, gy], dim=-1)  # (B, H, W, 2)
 
     if padding_mode == "fill":
+        # One zero per channel, as in warp_affine. It is built here, not before the empty-destination return, whose
+        # helper builds its own default for its stand-in channels (#6021).
+        if fill_value is None:
+            fill_value = torch.zeros(src.shape[1], device=src.device, dtype=src.dtype)
         return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value).to(out_dtype)
     return _torch_grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode).to(
         out_dtype

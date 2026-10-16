@@ -179,6 +179,19 @@ def test_empty_source_policy(op_name, device, dtype):
         op(src, transform, (3, 4))
 
 
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+def test_empty_destination_zero_channel_default_fill(op_name, device, dtype):
+    # An empty destination samples a one-channel stand-in, so the default fill must be built for the stand-in,
+    # not as one zero per source channel (#6021).
+    src = torch.rand(2, 0, 3, 4, device=device, dtype=dtype)
+    rows = 2 if op_name == "warp_affine" else 3
+    transform = torch.eye(rows, 3, device=device, dtype=dtype).expand(2, -1, -1)
+
+    out = getattr(kornia.geometry.transform, op_name)(src, transform, (0, 4), padding_mode="fill")
+
+    assert out.shape == (2, 0, 0, 4)
+
+
 def _output_dtype_or_none(call):
     """Return the output dtype of ``call``, or ``None`` when it rejects its inputs."""
     try:
