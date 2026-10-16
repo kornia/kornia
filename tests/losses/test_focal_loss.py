@@ -218,6 +218,25 @@ class TestFocalLoss(BaseTester):
         for actual_grad, expected_grad in zip(actual_grads, expected_grads):
             self.assert_close(actual_grad, expected_grad)
 
+    @pytest.mark.filterwarnings("ignore:Converting a tensor with requires_grad=True to a scalar")
+    @pytest.mark.parametrize("reduction", ["mean", "sum"])
+    @pytest.mark.parametrize("alpha_shape", [(), (1,), (1, 1)])
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_reduced_one_element_tensor_alpha_6026(self, device, dtype, reduction, alpha_shape, requires_grad):
+        # The reduced path passed a tensor alpha to new_full, which needs a Python number: a (1,) or (1, 1) alpha, or
+        # one that requires grad, raised TypeError there although the dense path accepts them.
+        generator = torch.Generator().manual_seed(5)
+        logits = torch.randn(2, 4, 3, 5, generator=generator).to(device=device, dtype=dtype)
+        labels = torch.randint(4, (2, 3, 5), generator=generator).to(device)
+        alpha = torch.full(alpha_shape, 0.3, device=device, requires_grad=requires_grad)
+
+        actual = kornia.losses.focal_loss(logits, labels, alpha, 2.0, reduction)
+
+        dense = kornia.losses.focal_loss(logits, labels, alpha, 2.0, "none")
+        self.assert_close(actual, dense.mean() if reduction == "mean" else dense.sum())
+        self.assert_close(actual, kornia.losses.focal_loss(logits, labels, float(alpha), 2.0, reduction))
+        self.assert_close(kornia.losses.FocalLoss(alpha, 2.0, reduction)(logits, labels), actual)
+
     def test_reduced_alpha_does_not_synchronize(self, device, dtype):
         if device.type != "cuda":
             pytest.skip("CUDA synchronization check")

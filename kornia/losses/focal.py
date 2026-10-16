@@ -158,8 +158,10 @@ def focal_loss(
     if alpha is not None:
         if reduced:
             # Fill the two factors on the device: a per-call class vector would be a blocking host-to-device copy.
+            # ``new_full`` needs a Python number. ``float`` also takes a one-element tensor alpha, detached as in the
+            # dense path; ``1 - alpha`` is taken before it, in alpha's own dtype, as the dense path does (#6026).
             alpha_fac = torch.where(
-                target.unsqueeze(1) == 0, loss_tmp.new_full((), 1 - alpha), loss_tmp.new_full((), alpha)
+                target.unsqueeze(1) == 0, loss_tmp.new_full((), float(1 - alpha)), loss_tmp.new_full((), float(alpha))
             )
         else:
             alpha_fac = torch.tensor(
