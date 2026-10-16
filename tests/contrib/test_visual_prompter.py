@@ -22,6 +22,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+import kornia.augmentation as K
+from kornia.augmentation.container.augment import AugmentationSequential
 from kornia.contrib.visual_prompter import VisualPrompter
 from kornia.core.exceptions import BaseError
 from kornia.geometry.boxes import Boxes
@@ -52,6 +54,11 @@ class _StubImageEncoder(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         self.last_input = x
         return self.embedding.expand(x.shape[0], -1, -1, -1)
+
+
+def _prompt_dtype(dtype: torch.dtype) -> torch.dtype:
+    """The dtype of mapped prompts: at least float32, whatever the model dtype."""
+    return torch.promote_types(dtype, torch.float32)
 
 
 def _skip_float64_on_mps(device: torch.device, dtype: torch.dtype) -> None:
@@ -199,22 +206,24 @@ class TestVisualPrompter(BaseTester):
         # Half-pixel map x' = (x + 0.5) * s - 0.5 (``Resize`` at ``align_corners=False``): (40, 30) ->
         # (40.5 * 8 - 0.5, 30.5 * 8 - 0.5) = (323.5, 243.5); pixel 0's centre lands on the centre of output pixels
         # 0..7, at 3.5. The corner-aligned map x * 1023 / 127, y * 615 / 76 gives (322.20, 242.76) and (0, 0).
-        expected = torch.tensor([[[323.5, 243.5]], [[3.5, 3.5]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[323.5, 243.5]], [[3.5, 3.5]]], device=device, dtype=_prompt_dtype(dtype))
         self.assert_close(points, expected)
 
-    def test_box_corners_follow_the_point_map(self, device, dtype):
+    def test_box_edges_scale_with_the_image(self, device, dtype):
         prompter = _prompter_with_stub_encoder(device, dtype)
-        box = torch.tensor([[10.0, 20.0, 60.0, 50.0]], device=device, dtype=dtype)
-
-        # Both corners take the half-pixel point map at s = 8, as both go through ``apply_coords`` in the reference's
-        # ``apply_boxes``: (10.5 * 8 - 0.5, 20.5 * 8 - 0.5, 60.5 * 8 - 0.5, 50.5 * 8 - 0.5). The vertices of ``Boxes``
-        # place the far corner at x2 - 1 and give (476.5, 396.5) for it.
-        expected = torch.tensor([[83.5, 163.5, 483.5, 403.5]], device=device, dtype=dtype)
-        labels = torch.ones(2, 1, device=device, dtype=dtype)
-        corners_as_points = prompter.preprocess_prompts(box.reshape(2, 1, 2), labels).keypoints
-        self.assert_close(corners_as_points.reshape(1, 4), expected)
-        for boxes in (box, Boxes.from_tensor(box[None], mode="xyxy")):
-            self.assert_close(prompter.preprocess_prompts(boxes=boxes).boxes, expected)
+        # kornia's xyxy corners are pixel edges (width = x2 - x1); an edge maps to x * s, as both corners do in the
+        # reference's ``apply_boxes``. At s = 8: the whole 77 x 128 image -> the whole 616 x 1024 resized image, and
+        # (10, 20, 60, 50) -> (80, 160, 480, 400). The half-pixel map of a pixel centre would give (3.5, 3.5, 1027.5,
+        # 619.5) for the whole image, past its far edges.
+        cases = (
+            ([0.0, 0.0, 128.0, 77.0], [0.0, 0.0, 1024.0, 616.0]),
+            ([10.0, 20.0, 60.0, 50.0], [80.0, 160.0, 480.0, 400.0]),
+        )
+        for box, mapped in cases:
+            box = torch.tensor([box], device=device, dtype=dtype)
+            expected = torch.tensor([mapped], device=device, dtype=_prompt_dtype(dtype))
+            for boxes in (box, Boxes.from_tensor(box[None], mode="xyxy")):
+                self.assert_close(prompter.preprocess_prompts(boxes=boxes).boxes, expected)
 
     # Bound of each case: at 77 x 128 the bilinear upscale reproduces a ramp exactly. At 1500 x 2000 the
     # antialiasing filter of SAM's reference (torch's, the same as PIL's bilinear reduce) starts and ends its taps on
@@ -281,6 +290,64 @@ class TestVisualPrompter(BaseTester):
         assert prompter.is_image_set
         assert prompter.image_embeddings.shape == (1, 256, 64, 64)
 
+    @pytest.mark.device_agnostic
+    def test_set_image_rejects_an_integer_image(self):
+        prompter, _ = _prompter_with_stub(torch.device("cpu"), torch.float32)
+        # The image is float in [0, 1]; a uint8 image in [0, 255] would be normalised as if it were.
+        generator = torch.Generator().manual_seed(0)
+        image = torch.randint(0, 256, (3, 77, 128), generator=generator, dtype=torch.uint8)
+
+        with pytest.raises(BaseError, match="floating-point"):
+            prompter.set_image(image)
+        assert not prompter.is_image_set
+
+    @pytest.mark.device_agnostic
+    def test_transforms_must_be_one_resize(self):
+        prompter, _ = _prompter_with_stub(torch.device("cpu"), torch.float32)
+        resize = K.Resize(1024, side="long", align_corners=False, antialias=True)
+        # A first stage that is not a Resize has no output size; extra stages would move the image away from the
+        # prompts, which follow the Resize scales only.
+        for stages in ((K.RandomHorizontalFlip(),), (resize, K.RandomHorizontalFlip(p=1.0))):
+            prompter.transforms = AugmentationSequential(*stages, same_on_batch=True)
+            with pytest.raises(BaseError, match="exactly one stage"):
+                prompter.set_image(torch.rand(3, 77, 128))
+
+        prompter.transforms = AugmentationSequential(resize, same_on_batch=True)
+        prompter.set_image(torch.rand(3, 77, 128))
+        assert prompter._input_image_size == (616, 1024)
+
+    def test_half_prompts_map_in_float32(self, device, dtype):
+        prompter, _ = _prompter_with_stub(device, dtype)
+        prompter.set_image(torch.rand(3, 1380, 2076, device=device, dtype=dtype))
+        # The long side 2076 -> 1024; the short side is int(1380 * 1024 / 2076) = 680.
+        assert prompter._input_image_size == (680, 1024)
+        scale = torch.tensor([1024 / 2076, 680 / 1380], dtype=torch.float64)
+        # Keypoints that bfloat16 and float16 hold exactly, and a box with the same corners.
+        xy = torch.tensor([[[1504.0, 1000.0]], [[2000.0, 1296.0]], [[600.0, 400.0]]], dtype=torch.float64)
+        box = torch.tensor([[600.0, 400.0, 1504.0, 1000.0]], dtype=torch.float64)
+
+        labels = torch.ones(3, 1, device=device, dtype=dtype)
+        points = prompter.preprocess_prompts(xy.to(device=device, dtype=dtype), labels).keypoints
+        boxes = prompter.preprocess_prompts(boxes=box.to(device=device, dtype=dtype)).boxes
+
+        assert points.dtype == boxes.dtype == _prompt_dtype(dtype)
+        # Within float32 rounding (an ulp is 6e-5 at 1000) of the closed forms: (x + 0.5) * s - 0.5 for a keypoint,
+        # x * s for a box edge. Mapped in bfloat16 the keypoints were 2.26 px off, in float16 0.26 px; rounding even
+        # the exact map back to bfloat16 would cost 1.74 px.
+        expected_points = (xy + 0.5) * scale - 0.5
+        expected_box = (box.reshape(1, 2, 2) * scale).reshape(1, 4)
+        self.assert_close(points.cpu().double(), expected_points, rtol=0.0, atol=2e-4)
+        self.assert_close(boxes.cpu().double(), expected_box, rtol=0.0, atol=2e-4)
+        # The whole image covers the whole resized image after a downscale too. The box is given in float32, which
+        # holds 2076 and 1380 (bfloat16 does not); prompts of any float dtype are accepted.
+        whole = torch.tensor([[0.0, 0.0, 2076.0, 1380.0]], device=device)
+        self.assert_close(
+            prompter.preprocess_prompts(boxes=whole).boxes.cpu().double(),
+            torch.tensor([[0.0, 0.0, 1024.0, 680.0]], dtype=torch.float64),
+            rtol=0.0,
+            atol=2e-4,
+        )
+
     def test_box_prompt_shapes(self, device, dtype):
         prompter = _prompter_with_stub_encoder(device, dtype)
 
@@ -310,28 +377,26 @@ class TestVisualPrompter(BaseTester):
 
         mapped = prompter.preprocess_prompts(boxes=boxes).boxes
 
-        # The given corners, as one prompt of two points, through the same transform.
-        labels = torch.ones(1, 2, device=device, dtype=dtype)
-        as_points = prompter.preprocess_prompts(boxes.reshape(1, 2, 2), labels).keypoints
-        assert torch.equal(mapped, as_points.reshape(1, 4))
-        # The half-pixel point map at s = 8 (77 x 128 -> 616 x 1024), (x + 0.5) * 8 - 0.5 on each corner.
-        expected = (torch.tensor([box], dtype=torch.float64) + 0.5) * 8 - 0.5
-        self.assert_close(mapped, expected.to(device=device, dtype=dtype))
+        # The edge map at s = 8 (77 x 128 -> 616 x 1024), x * 8 on each given corner, in the float32 prompt dtype.
+        expected = torch.tensor([box], dtype=torch.float64) * 8
+        self.assert_close(mapped, expected.to(device=device, dtype=_prompt_dtype(dtype)))
 
-    def test_box_prompts_stay_separate(self, device, dtype):
+    def test_box_prompts_stay_separate(self, device, dtype, cudnn_tf32_follows_option):
         prompter = _prompter_with_stub_encoder(device, dtype)
         boxes = torch.tensor(
             [[10.0, 20.0, 60.0, 50.0], [5.0, 5.0, 120.0, 70.0], [30.0, 10.0, 90.0, 40.0]], device=device, dtype=dtype
         )
-        # Each box's own corners through the half-pixel point map at s = 8 (77 x 128 -> 616 x 1024).
-        expected = (boxes + 0.5) * 8 - 0.5
+        # Each box's own edges scaled by s = 8 (77 x 128 -> 616 x 1024).
+        expected = boxes.to(_prompt_dtype(dtype)) * 8
 
         # The four documented forms of K = 3 boxes: (K, 4), (1, K, 4), and Boxes of (K, 4, 2) and (1, K, 4, 2).
         forms = (boxes, boxes[None], Boxes.from_tensor(boxes, mode="xyxy"), Boxes.from_tensor(boxes[None], mode="xyxy"))
         for form in forms:
             self.assert_close(prompter.preprocess_prompts(boxes=form).boxes, expected)
 
-        # Each prompt's masks are the ones of that box alone.
+        # Each prompt's masks are the ones of that box alone. `cudnn_tf32_follows_option` keeps the mask decoder's two
+        # ConvTranspose2d out of cuDNN's default TF32 on CUDA, which moves a float32 result by 1.8e-4 between batch
+        # sizes (2.7e-7 in real float32), past the float32 tolerance.
         together = prompter.predict(boxes=boxes, output_original_size=False)
         for k in range(3):
             alone = prompter.predict(boxes=boxes[k : k + 1], output_original_size=False)

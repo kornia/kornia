@@ -99,7 +99,8 @@ class PromptEncoder(nn.Module):
 
     def _embed_points(self, points: torch.Tensor, labels: torch.Tensor, pad: bool) -> torch.Tensor:
         """Embeds point prompts."""
-        points = points + 0.5  # Shift to center of pixel
+        # Shift to center of pixel, in the encoding's (at least float32) dtype: in bfloat16 the shift is lost above 256.
+        points = points.to(self.pe_layer._compute_dtype()) + 0.5
         if pad:
             padding_point = torch.zeros((points.shape[0], 1, 2), device=points.device)
             padding_label = -torch.ones((labels.shape[0], 1), device=labels.device)
@@ -114,7 +115,8 @@ class PromptEncoder(nn.Module):
 
     def _embed_boxes(self, boxes: torch.Tensor) -> torch.Tensor:
         """Embeds box prompts."""
-        boxes = boxes + 0.5  # Shift to center of pixel
+        # Shift to center of pixel, in the encoding's (at least float32) dtype: in bfloat16 the shift is lost above 256.
+        boxes = boxes.to(self.pe_layer._compute_dtype()) + 0.5
         coords = boxes.reshape(-1, 2, 2)
         corner_embedding = self.pe_layer.forward_with_coords(coords, self.input_image_size)
         corner_embedding[:, 0, :] += self.point_embeddings[2].weight
@@ -187,11 +189,11 @@ class PromptEncoder(nn.Module):
 class PositionEmbeddingRandom(nn.Module):
     """Positional encoding using random spatial frequencies.
 
-    The encoding is computed in at least float32 (float64 for a float64 matrix) and returned in the dtype of the
-    Gaussian matrix. Computed in the half dtypes throughout, the encoding of a 64 x 64 grid is off by 0.10-0.14 in
-    bfloat16 and 0.013-0.015 in float16 against the float32 encoding of the same frequencies, measured with MobileSAM's
-    released frequencies and four draws of SAM's 128 frequencies from N(0, 1), whose phases reach 24-29 radians.
-    Computed in float32, it differs only by the rounding of its output.
+    The encoding is computed in at least float32 (float64 for a float64 matrix), with autocast disabled, and returned
+    in the dtype of the Gaussian matrix. Computed in the half dtypes throughout, the encoding of a 64 x 64 grid is off
+    by 0.10-0.14 in bfloat16 and 0.013-0.015 in float16 against the float32 encoding of the same frequencies, measured
+    with MobileSAM's released frequencies and four draws of SAM's 128 frequencies from N(0, 1), whose phases reach
+    24-29 radians. Computed in float32, it differs only by the rounding of its output.
     """
 
     def __init__(self, num_pos_feats: int = 64, scale: Optional[float] = None) -> None:
@@ -207,11 +209,14 @@ class PositionEmbeddingRandom(nn.Module):
         """Positionally encode points that are normalized to [0,1]."""
         # assuming coords are in [0, 1]^2 square and have d_1 x ... x d_n x 2 shape
         matrix = self.positional_encoding_gaussian_matrix
-        coords = 2 * coords.to(self._compute_dtype()) - 1
-        coords = coords @ matrix.to(self._compute_dtype())
-        coords = 2 * pi * coords
-        # outputs d_1 x ... x d_n x C shape
-        return torch.cat([torch.sin(coords), torch.cos(coords)], dim=-1).to(matrix.dtype)
+        # Autocast would run the matmul in its half dtype whatever the operands are.
+        with torch.autocast(device_type=coords.device.type, enabled=False):
+            coords = 2 * coords.to(self._compute_dtype()) - 1
+            coords = coords @ matrix.to(self._compute_dtype())
+            coords = 2 * pi * coords
+            # outputs d_1 x ... x d_n x C shape
+            encoding = torch.cat([torch.sin(coords), torch.cos(coords)], dim=-1)
+        return encoding.to(matrix.dtype)
 
     def forward(self, size: tuple[int, int]) -> torch.Tensor:
         """Generate positional encoding for a grid of the specified size."""

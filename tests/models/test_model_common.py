@@ -171,6 +171,17 @@ class TestLayerNorm2d:
         # The float32 result on the same (half-rounded) input and parameters, cast to the half dtype.
         assert_close(out, reference_layer(x.float()).to(half))
 
+    @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16], ids=["float16", "bfloat16"])
+    def test_half_input_with_float32_weights_gives_float32(self, device, half):
+        # As ``weight * x`` promotes: a float32 model under autocast feeds the neck a half input and keeps float32.
+        layer, x = _layer_norm_2d_case(device, torch.float32)
+        x = x.to(half)
+
+        out = layer(x)
+
+        assert out.dtype == torch.float32
+        assert torch.equal(out, layer(x.float()))
+
     @pytest.mark.parametrize("full", [torch.float32, torch.float64], ids=["float32", "float64"])
     def test_full_precision_formula_is_unchanged(self, device, full):
         if device.type == "mps" and full == torch.float64:

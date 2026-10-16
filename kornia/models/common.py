@@ -146,9 +146,10 @@ class DropPath(nn.Module):
 class LayerNorm2d(nn.Module):
     """Apply Layer Normalization over a 4D input tensor (NCHW).
 
-    A float16 or bfloat16 input is normalised in float32 and the result is cast back. In float16, the squared
-    deviations overflow once a value is more than 255.9 from its channel mean, and the variance becomes ``inf``, which
-    leaves only the bias. MobileSAM's neck reaches about 560, and a float16 variance there gives empty masks.
+    A float16 or bfloat16 input is normalised in float32, and the result is cast to the promoted dtype of the input and
+    the weight (a float16 input with float32 weights gives float32). In float16, the squared deviations overflow once a
+    value is more than 255.9 from its channel mean, and the variance becomes ``inf``, which leaves only the bias.
+    MobileSAM's neck reaches about 560, and a float16 variance there gives empty masks.
     """
 
     def __init__(self, num_channels: int, eps: float = 1e-6) -> None:
@@ -170,7 +171,8 @@ class LayerNorm2d(nn.Module):
             channel dimension and applying learned affine parameters.
         """
         if x.dtype in (torch.float16, torch.bfloat16):
-            return self._normalize(x.float(), self.weight.float(), self.bias.float()).to(x.dtype)
+            out_dtype = torch.promote_types(x.dtype, self.weight.dtype)
+            return self._normalize(x.float(), self.weight.float(), self.bias.float()).to(out_dtype)
         return self._normalize(x, self.weight, self.bias)
 
     def _normalize(self, x: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor) -> torch.Tensor:
