@@ -17,7 +17,9 @@
 
 from typing import Optional
 
+from kornia.core import ImageSequential
 from kornia.models._hf_models import HFONNXComunnityModelLoader
+from kornia.models._hf_models.preprocessor import _DPTResize
 
 from .base import DepthEstimation
 
@@ -31,7 +33,13 @@ class DepthAnythingONNXBuilder:
     def build(
         model_name: str = "depth-anything-v2-small", model_type: str = "model", cache_dir: Optional[str] = None
     ) -> DepthEstimation:
-        """Export a DepthAnything model to an ONNX model file.
+        """Build a ``DepthEstimation`` around the onnx-community graph (downloaded on first use).
+
+        The preprocessing follows the repository's ``preprocessor_config.json``, as transformers'
+        ``DPTImageProcessor`` reads it. Its resize keeps the aspect ratio and makes each side a multiple of
+        ``ensure_multiple_of`` when the config asks for it, so its output size depends on the input size: it runs
+        in torch, as the model's ``resize`` stage. The rescale and normalize steps are exported to an ONNX graph
+        that runs before the model's.
 
         Args:
             model_name: The name of the model to be loaded. Valid model names include:
@@ -54,7 +62,7 @@ class DepthAnythingONNXBuilder:
             DepthEstimation: The depth estimation model.
 
         Note:
-            To use this model, load an image tensor (shape: ``(1, C, H, W)``) and call ``model.save(image)``.
+            To use this model, load an image tensor (shape: ``(B, 3, H, W)``) and call ``model.save(image)``.
 
         """
         if model_name not in [
@@ -68,5 +76,8 @@ class DepthAnythingONNXBuilder:
             download=True,
             io_name_mapping={"pixel_values": "input", "predicted_depth": "output"},
         )
-        preproc = loader.load_preprocessing().to_onnx(save=False)
-        return DepthEstimation(onnx_model, pre_processor=preproc, name=f"{model_name}_{model_type}")
+        preprocessing = loader.load_preprocessing()
+        resize = next((m for m in preprocessing if isinstance(m, _DPTResize)), None)
+        others = [m for m in preprocessing if not isinstance(m, _DPTResize)]
+        preproc = ImageSequential(*others).to_onnx(save=False) if others else None
+        return DepthEstimation(onnx_model, pre_processor=preproc, name=f"{model_name}_{model_type}", resize=resize)
