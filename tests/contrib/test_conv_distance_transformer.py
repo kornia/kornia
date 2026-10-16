@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import importlib
 import math
 
 import pytest
@@ -28,9 +29,59 @@ from testing.base import BaseTester, supports_conv2d, supports_replicate_padding
 
 
 class TestConvDistanceTransform(BaseTester):
+    @pytest.mark.parametrize("ndim", [2, 3])
+    def test_settled_inference_stops_work(self, ndim, device, dtype, monkeypatch):
+        module = importlib.import_module("kornia.contrib.distance_transform")
+        name = "filter2d" if ndim == 2 else "filter3d"
+        original = getattr(module, name)
+        calls = []
+
+        def observed(*args, **kwargs):
+            calls.append(None)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(module, name, observed)
+        sample = torch.ones((1, 1) + (32,) * ndim, device=device, dtype=dtype)
+        output = kornia.contrib.distance_transform(sample)
+        self.assert_close(output, torch.zeros_like(sample))
+        assert len(calls) < 32
+
+    @pytest.mark.parametrize("ndim", [2, 3])
+    @pytest.mark.parametrize("signal", ["empty", "dense", "sparse", "fractional"])
+    def test_inference_matches_differentiable_cascade(self, ndim, signal, device, dtype):
+        sample = torch.zeros((2, 1) + (17,) * ndim, device=device, dtype=dtype)
+        if signal == "dense":
+            sample.fill_(1)
+        elif signal != "empty":
+            sample[(0, 0) + (0,) * ndim] = 1 if signal == "sparse" else 0.25
+            sample[(1, 0) + (8,) * ndim] = 1
+        expected = kornia.contrib.distance_transform(sample.clone().requires_grad_())
+        actual = kornia.contrib.distance_transform(sample)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("ndim", [2, 3])
+    def test_trace_keeps_propagating_on_new_data(self, ndim, device, dtype):
+        dense = torch.ones((1, 1) + (17,) * ndim, device=device, dtype=dtype)
+        traced = torch.jit.trace(kornia.contrib.DistanceTransform(), dense)
+        sparse = torch.zeros_like(dense)
+        sparse[(0, 0) + (0,) * ndim] = 1
+        self.assert_close(traced(sparse), kornia.contrib.distance_transform(sparse))
+
+    def test_function_transforms(self, device, dtype):
+        sample = torch.rand(2, 1, 9, 9, device=device, dtype=dtype)
+        op = kornia.contrib.distance_transform
+        actual = torch.vmap(lambda x: op(x.unsqueeze(0)).squeeze(0))(sample)
+        self.assert_close(actual, op(sample))
+        tangent = torch.ones_like(sample)
+        _, expected_jvp = torch.func.jvp(op, (sample,), (tangent,))
+        with torch.autograd.forward_ad.dual_level():
+            dual = torch.autograd.forward_ad.make_dual(sample, tangent)
+            _, actual_jvp = torch.autograd.forward_ad.unpack_dual(op(dual))
+        self.assert_close(actual_jvp, expected_jvp)
+
     @pytest.mark.parametrize("kernel_size", [3, 5, 7])
     @pytest.mark.parametrize("shape", [(1, 3, 100, 100), (2, 2, 10, 10, 10)])
-    def test_smoke(self, kernel_size, shape, device, dtype):
+    def test_smoke(self, kernel_size, shape, device, dtype, cudnn_tf32_follows_option):
         sample = torch.rand(*shape, device=device, dtype=dtype)
         distance_transformer = kornia.contrib.DistanceTransform(kernel_size)
 

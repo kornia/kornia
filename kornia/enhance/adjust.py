@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import struct
 from math import pi
 from typing import ClassVar, Optional, Union
 
@@ -418,6 +419,29 @@ def adjust_gamma(
 
     if not isinstance(gain, (float, torch.Tensor)):
         raise TypeError(f"The gain should be a positive float or torch.Tensor. Got {type(gain)}")
+
+    # Python scalars need no device-side validation or parameter transfers. Half precision
+    # keeps the tensor path: rounding a parameter before the operation matters there.
+    # Keep invalid values on that path too, including negatives that round to signed zero.
+    if (
+        not torch.jit.is_scripting()
+        and not torch.jit.is_tracing()
+        and not is_compiling()
+        and isinstance(gamma, float)
+        and isinstance(gain, float)
+        and input.dtype in (torch.float32, torch.float64)
+        and input.ndim > 0
+    ):
+        limits = torch.finfo(input.dtype)
+        if 0.0 <= gamma <= limits.max and 0.0 <= gain <= limits.max:
+            # Scalar power inspects its exponent before converting to the tensor dtype.
+            # Round on the host first, as tensor construction did: near zero/one this
+            # affects both the value at black pixels and its gradient. Captured calls
+            # retain the tensor expression, which the compiler can constant-fold.
+            if input.dtype == torch.float32:
+                gamma = struct.unpack("f", struct.pack("f", gamma))[0]
+                gain = struct.unpack("f", struct.pack("f", gain))[0]
+            return (input.pow(gamma) * gain).clamp(0.0, 1.0)
 
     if isinstance(gamma, float):
         gamma = torch.tensor([gamma], device=input.device, dtype=input.dtype)

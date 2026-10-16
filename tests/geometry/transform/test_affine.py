@@ -500,6 +500,49 @@ class TestRescale(BaseTester):
 
 
 class TestRotate(BaseTester):
+    @pytest.mark.parametrize("align_corners", [False, True])
+    @pytest.mark.parametrize("center_shape", [None, (2,), (1, 2), (3, 2)])
+    @pytest.mark.parametrize("train_transform", [False, True])
+    def test_shared_angle_values_and_gradients(self, device, dtype, align_corners, center_shape, train_transform):
+        image = torch.rand(3, 2, 5, 7, device=device, dtype=dtype, requires_grad=True)
+        angle = torch.tensor([23.0], device=device, dtype=dtype, requires_grad=train_transform)
+        center = None
+        if center_shape is not None:
+            center = torch.full(center_shape, 1.3, device=device, dtype=dtype, requires_grad=train_transform)
+        actual = kornia.geometry.transform.rotate(image, angle, center, align_corners=align_corners)
+        expanded_center = None if center is None else center.expand(3, -1)
+        expected = kornia.geometry.transform.rotate(
+            image, angle.expand(3), expanded_center, align_corners=align_corners
+        )
+        self.assert_close(actual, expected)
+        inputs = tuple(t for t in (image, angle, center) if t is not None and t.requires_grad)
+        weights = torch.rand_like(actual)
+        actual_grads = torch.autograd.grad(actual, inputs, weights)
+        expected_grads = torch.autograd.grad(expected, inputs, weights)
+        for actual_grad, expected_grad in zip(actual_grads, expected_grads):
+            self.assert_close(actual_grad, expected_grad)
+
+    def test_independent_equal_angles_gradients(self, device, dtype):
+        image = torch.rand(3, 1, 5, 7, device=device, dtype=dtype)
+        angle = torch.full((3,), 23.0, device=device, dtype=dtype, requires_grad=True)
+        actual = kornia.geometry.transform.rotate(image, angle)
+        expected = torch.cat([kornia.geometry.transform.rotate(image[i : i + 1], angle[i : i + 1]) for i in range(3)])
+        self.assert_close(actual, expected)
+        self.assert_close(torch.autograd.grad(actual.sum(), angle)[0], torch.autograd.grad(expected.sum(), angle)[0])
+
+    def test_shared_angle_export(self, device, dtype):
+        image = torch.rand(3, 2, 5, 7, device=device, dtype=dtype)
+        angle = torch.tensor([23.0], device=device, dtype=dtype)
+        module = kornia.geometry.transform.Rotate(angle)
+        exported = torch.export.export(module, (image,)).module()
+        self.assert_close(exported(image), module(image))
+
+    def test_shared_angle_trace(self, device, dtype):
+        image = torch.rand(3, 2, 5, 7, device=device, dtype=dtype)
+        angle = torch.tensor([23.0], device=device, dtype=dtype)
+        traced = torch.jit.trace(kornia.geometry.transform.rotate, (image, angle))
+        self.assert_close(traced(image, angle), kornia.geometry.transform.rotate(image, angle))
+
     def test_angle90(self, device, dtype):
         # prepare input data
         inp = torch.tensor([[[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]]], device=device, dtype=dtype)
@@ -831,6 +874,23 @@ class TestShear(BaseTester):
 
 
 class TestAffine2d(BaseTester):
+    @pytest.mark.parametrize("image_batch,matrix_batch", [(3, 1), (1, 3), (0, 1)])
+    def test_function_batch_broadcast(self, device, dtype, image_batch, matrix_batch):
+        image = torch.rand(image_batch, 2, 5, 7, device=device, dtype=dtype)
+        matrix = torch.tensor([[1.0, 0.1, 0.3], [0.2, 1.0, -0.4]], device=device, dtype=dtype)
+        matrix = matrix.expand(matrix_batch, -1, -1)
+        batch = 0 if image_batch == 0 else max(image_batch, matrix_batch)
+        expected = kornia.geometry.transform.warp_affine(
+            image.expand(batch, -1, -1, -1), matrix.expand(batch, -1, -1), (5, 7)
+        )
+        self.assert_close(kornia.geometry.transform.affine(image, matrix), expected)
+
+    def test_function_invalid_batch(self, device, dtype):
+        image = torch.rand(3, 2, 5, 7, device=device, dtype=dtype)
+        matrix = torch.eye(2, 3, device=device, dtype=dtype).expand(2, -1, -1)
+        with pytest.raises(RuntimeError):
+            kornia.geometry.transform.affine(image, matrix)
+
     def test_affine_no_args(self):
         with pytest.raises(RuntimeError):
             kornia.geometry.transform.Affine()

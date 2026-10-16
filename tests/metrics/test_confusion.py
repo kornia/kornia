@@ -20,7 +20,6 @@ import torch
 from torch._dynamo.testing import CompileCounter
 
 import kornia
-from kornia.core._compat import torch_version_lt
 from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
@@ -255,7 +254,6 @@ class TestConfusionMatrix(BaseTester):
             expected = torch.zeros(2, 3, 3, device=device, dtype=torch.float32)
             self.assert_close(kornia.metrics.confusion_matrix(labels, labels, num_classes=3), expected, rtol=0, atol=0)
 
-    @pytest.mark.skipif(torch_version_lt(2, 14, 0), reason="torch.export cannot capture the bincount before torch 2.14")
     def test_export_counts_like_eager(self, device, dtype):
         # The range check reads the data, which torch.export cannot capture, so it is skipped under export.
         class _ConfusionMatrix(torch.nn.Module):
@@ -268,9 +266,20 @@ class TestConfusionMatrix(BaseTester):
         for p, t in ((pred, target), (target, pred.flip(-1))):
             self.assert_close(exported(p, t), kornia.metrics.confusion_matrix(p, t, num_classes=3), rtol=0, atol=0)
 
-    @pytest.mark.skipif(
-        torch_version_lt(2, 14, 0), reason="fullgraph tracing cannot capture the bincount before torch 2.14"
-    )
+    def test_export_dynamic_batch(self, device):
+        class _ConfusionMatrix(torch.nn.Module):
+            def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+                return kornia.metrics.confusion_matrix(pred, target, num_classes=3, normalized=True)
+
+        pred = torch.tensor([[0, 1, 2], [2, 1, 0]], device=device)
+        target = torch.tensor([[1, 1, 2], [0, 0, 0]], device=device)
+        batch = torch.export.Dim("batch", min=1, max=8)
+        exported = torch.export.export(
+            _ConfusionMatrix(), (pred, target), dynamic_shapes=({0: batch}, {0: batch}), strict=True
+        ).module()
+        pred, target = pred.repeat(2, 1), target.repeat(2, 1)
+        self.assert_close(exported(pred, target), kornia.metrics.confusion_matrix(pred, target, 3, True))
+
     def test_trace_counts_like_eager(self, device, dtype):
         # The range check reads the data, so any capture has to skip it, not only export (#5037).
         pred = torch.tensor([[0, 1, 2, 2], [1, 1, 0, 2]], device=device)

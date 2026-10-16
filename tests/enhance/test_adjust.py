@@ -315,6 +315,53 @@ class TestAdjustGamma(BaseTester):
         out = kornia.enhance.adjust_gamma(img, 1.0)
         assert out.shape == shape
 
+    @pytest.mark.parametrize("gamma,gain", [(0.1, 0.1234567), (0.5, 0.9), (2.0, 1.0), (1e-50, 1e-50)])
+    def test_scalar_and_tensor_parameters(self, device, dtype, gamma, gain):
+        image = torch.linspace(0, 1, 33, device=device, dtype=dtype).reshape(1, 3, 11)
+        expected = kornia.enhance.adjust_gamma(image, image.new_tensor([gamma]), image.new_tensor([gain]))
+        self.assert_close(kornia.enhance.adjust_gamma(image, gamma, gain), expected)
+
+    @pytest.mark.parametrize("parameter", ["gamma", "gain"])
+    def test_negative_scalar_rounds_to_zero(self, device, dtype, parameter):
+        if dtype == torch.float64:
+            pytest.skip("The negative value is representable in float64")
+        image = torch.full((1, 2, 2), 0.5, device=device, dtype=dtype)
+        kwargs = {"gamma": 1.0, "gain": 1.0, parameter: -1e-50}
+        expected = kornia.enhance.adjust_gamma(image, **{**kwargs, parameter: 0.0})
+        self.assert_close(kornia.enhance.adjust_gamma(image, **kwargs), expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("gamma", [1e-50, 0.99999999, 1.00000001, 1.99999999])
+    def test_rounded_scalar_exponent_at_zero(self, device, gamma):
+        image = torch.tensor([0.0, 0.5, 1.0], device=device, dtype=torch.float32, requires_grad=True)
+        expected = kornia.enhance.adjust_gamma(image, image.new_tensor([gamma]))
+        actual = kornia.enhance.adjust_gamma(image, gamma)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        actual_grad = torch.autograd.grad(actual.sum(), image)[0]
+        expected_grad = torch.autograd.grad(expected.sum(), image)[0]
+        self.assert_close(actual_grad, expected_grad, rtol=0, atol=0)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("value", [-0.1, float("nan")])
+    @pytest.mark.parametrize("parameter", ["gamma", "gain"])
+    def test_invalid_scalar_parameters(self, parameter, value):
+        image = torch.ones(1, 1, 2, 2)
+        with pytest.raises(RuntimeError, match="must be non-negative"):
+            kornia.enhance.adjust_gamma(image, **{"gamma": 1.0, "gain": 1.0, parameter: value})
+
+    def test_tensor_parameter_gradients(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64 gradcheck")
+        image = torch.full((2, 1, 2, 2), 0.4, device=device, dtype=torch.float64, requires_grad=True)
+        gamma = torch.tensor([0.8, 1.2], device=device, dtype=torch.float64, requires_grad=True)
+        gain = torch.tensor([0.7, 0.9], device=device, dtype=torch.float64, requires_grad=True)
+        self.gradcheck(kornia.enhance.adjust_gamma, (image, gamma, gain))
+
+    def test_scalar_export(self, device, dtype):
+        image = torch.full((1, 2, 2), 0.4, device=device, dtype=dtype)
+        module = kornia.enhance.AdjustGamma(0.7, 0.9)
+        exported = torch.export.export(module, (image,), strict=True).module()
+        self.assert_close(exported(image), module(image))
+
     def test_gamma_zero(self, device, dtype):
         data = torch.tensor(
             [[[1.0, 1.0], [1.0, 1.0]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],

@@ -1,0 +1,1 @@
+Reduce scalar gamma adjustment overhead, batch confusion-matrix accumulation, skip settled distance-transform inference iterations, avoid dense one-hot intermediates for unweighted reduced focal loss, and reuse sampling grids for shared non-trainable rotation and affine transforms.
