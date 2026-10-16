@@ -883,8 +883,7 @@ def find_homography_lines_dlt_iterated(
         the computed homography matrix with shape :math:`(B, 3, 3)`.
 
     """
-    # Promote unbatched segments as find_homography_lines_dlt does: the re-weighting below needs the batch axis
-    # (#5995).
+    # Promote unbatched segments as find_homography_lines_dlt does: the re-weighting below needs the batch axis.
     if len(ls1.shape) == 3:
         ls1 = ls1[None]
     if len(ls2.shape) == 3:
