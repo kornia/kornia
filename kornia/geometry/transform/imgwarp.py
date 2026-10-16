@@ -542,12 +542,8 @@ def _fill_and_warp(
             f"fill_value must have 1 element or one per channel ({channels}); got {fill_value.numel()} elements."
         )
     ones_mask = torch.ones_like(src)
-    fill_value = fill_value.to(ones_mask)
-
-    if fill_value.ndim == 0:
-        fill_value = fill_value.view(1, 1, 1, 1)
-    elif fill_value.ndim == 1:
-        fill_value = fill_value.view(1, -1, 1, 1)
+    # Whatever its shape, a fill that passed the check is per channel: a (1, C) fill must not broadcast over the width.
+    fill_value = fill_value.to(ones_mask).reshape(1, -1, 1, 1)
 
     inv_ones_mask = 1 - _torch_grid_sample(
         ones_mask, grid, align_corners=align_corners, mode=mode, padding_mode="zeros"

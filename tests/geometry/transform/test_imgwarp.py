@@ -1163,6 +1163,25 @@ class TestFillValueChannels6021(BaseTester):
         with pytest.raises(ValueError, match=rf"one per channel \({channels}\); got {fill_len} elements"):
             warp(image, transform, (4, 5), padding_mode="fill", fill_value=fill)
 
+    @pytest.mark.parametrize("shape", [(1, 3), (3, 1), (3, 1, 1)])
+    @pytest.mark.parametrize("op", ["warp_affine", "warp_perspective"])
+    def test_one_value_per_channel_in_any_shape(self, shape, op, device, dtype):
+        # The image is three pixels wide, so a (1, 3) fill would otherwise broadcast over the width, one value
+        # per column, without an error.
+        image = torch.rand(2, 3, 4, 3, device=device, dtype=dtype)
+        fill = torch.tensor([0.2, 0.5, 0.9], device=device, dtype=dtype)
+        affine = torch.tensor([[[1.0, 0.0, 2.0], [0.0, 1.0, 0.0]]], device=device, dtype=dtype).repeat(2, 1, 1)
+        last_row = torch.tensor([[[0.0, 0.0, 1.0]]], device=device, dtype=dtype).repeat(2, 1, 1)
+        warp, transform = (
+            (kornia.geometry.warp_affine, affine)
+            if op == "warp_affine"
+            else (kornia.geometry.warp_perspective, torch.cat([affine, last_row], 1))
+        )
+
+        out = warp(image, transform, (4, 3), padding_mode="fill", fill_value=fill.reshape(shape))
+
+        self.assert_close(out[..., :2], fill.view(1, 3, 1, 1).expand(2, 3, 4, 2))
+
     def test_random_affine_mismatched_fill_raises(self, device, dtype):
         aug = kornia.augmentation.RandomAffine(
             30.0, padding_mode="fill", fill_value=torch.tensor([0.2, 0.5, 0.9], device=device, dtype=dtype), p=1.0
