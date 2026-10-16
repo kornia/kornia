@@ -479,9 +479,8 @@ Augmentations
   key's handler share their recorded parameters across the inputs; a transform
   matrix alone does not mean every data key is supported.
 - ``.inverse()`` restores keypoints to numerical precision when every
-  geometric step is invertible. Slice-mode crops and the 3D geometric
-  augmentations raise (crops accept ``cropping_mode="resample"`` for
-  inversion); intensity and non-rigid children are skipped, so their effect
+  geometric step is invertible. The 3D geometric augmentations raise;
+  intensity and non-rigid children are skipped, so their effect
   stays. Tensor box outputs are axis-aligned enclosures, so a rotation round
   trip does not restore a box.
 - Non-rigid children do not move coordinate annotations:

@@ -54,7 +54,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
           :class:`RandomTranslate`, :class:`RandomPerspective`, :class:`RandomElasticTransform` and
           :class:`RandomThinPlateSpline` (`#4412 <https://github.com/kornia/kornia/issues/4412>`_).
         - this base provides a matrix-based ``inverse`` interface. Whether a concrete augmentation can invert a
-          call depends on its implementation and configuration: slice-mode crops, for example, do not support it.
+          call depends on its implementation: a subclass without ``inverse_transform`` raises ``NotImplementedError``.
           Inverse resampling cannot recover image or mask information lost through cropping, padding, or
           interpolation. Tensor-form boxes may lose rotated corners through axis-aligned enclosure.
           For an empty batch, image and mask inverse restore the spatial dimensions recorded in the parameters.

@@ -142,11 +142,12 @@ class TestConventionImageSequential(BaseTester):
         with pytest.raises(ValueError, match="Invalid output_type"):
             aug(torch.zeros(1, 3, 4, 4, device=device, dtype=dtype), output_type="jpg")
 
-    def test_convention_slice_crop_inverse_raises(self, device, dtype):
+    def test_convention_slice_crop_inverse_restores_the_canvas(self, device, dtype):
         seq = K.ImageSequential(K.CenterCrop((4, 6), p=1.0))
         out = seq(torch.rand(1, 3, 6, 8, device=device, dtype=dtype))
-        with pytest.raises(NotImplementedError, match="resample cropping mode"):
-            seq.inverse(out)
+        restored = seq.inverse(out)
+        assert restored.shape == (1, 3, 6, 8)
+        self.assert_close(restored[..., 1:5, 1:7], out)
 
     def test_convention_get_transformation_matrix_recomputes_older_params(self, device, dtype):
         # Module matrices hold only the most recent call. Supplying recorded parameters from an earlier call

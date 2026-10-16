@@ -1211,6 +1211,12 @@ class TestAugmentationSequential:
         assert outputs[3].dtype == dtype, "Output keypoints dtype should match the input dtype"
 
 
+class _FailingInverseCrop(K.RandomResizedCrop):
+    # A crop whose image and mask inverse raises, to check what an exception inside inverse leaves behind.
+    def inverse_transform(self, *args, **kwargs):
+        raise NotImplementedError("inverse_transform failed")
+
+
 @pytest.mark.usefixtures("restore_torch_rng")
 class TestConventionAugmentationSequential(BaseTester):
     """Convention checks and pins for documented `AugmentationSequential` limitations."""
@@ -1359,15 +1365,15 @@ class TestConventionAugmentationSequential(BaseTester):
     def test_inverse_mask_exception_preserves_next_image_5290(self, mask_first, device, dtype):
         image = torch.arange(16 * 20, device=device, dtype=dtype).reshape(1, 1, 16, 20) / 320
         mask = (image > 0.5).to(dtype)
-        seq = K.AugmentationSequential(K.RandomResizedCrop((12, 14), p=1.0), data_keys=["input", "mask"])
-        reference = K.AugmentationSequential(K.RandomResizedCrop((12, 14), p=1.0), data_keys=["input", "mask"])
+        seq = K.AugmentationSequential(_FailingInverseCrop((12, 14), p=1.0), data_keys=["input", "mask"])
+        reference = K.AugmentationSequential(_FailingInverseCrop((12, 14), p=1.0), data_keys=["input", "mask"])
         out_image, out_mask = seq(image, mask)
         params = seq._params
         original_flags = dict(seq[0].flags)
         inverse_args = (out_mask, out_image) if mask_first else (out_mask,)
         inverse_keys = ["mask", "input"] if mask_first else ["mask"]
 
-        with pytest.raises(NotImplementedError, match=r"resample cropping mode\. Got slice\."):
+        with pytest.raises(NotImplementedError, match="inverse_transform failed"):
             seq.inverse(*inverse_args, data_keys=inverse_keys)
 
         # Explicit keys keep this independent of the container's separate data_keys restoration bug.
@@ -1379,12 +1385,12 @@ class TestConventionAugmentationSequential(BaseTester):
     @pytest.mark.parametrize("align_corners", [None, False, True])
     @pytest.mark.parametrize("shared_flags", [True, False])
     def test_direct_inverse_mask_exception_preserves_flags_5290(self, align_corners, shared_flags, device, dtype):
-        aug = K.RandomResizedCrop((4, 6), align_corners=True, p=1.0)
+        aug = _FailingInverseCrop((4, 6), align_corners=True, p=1.0)
         mask = aug(torch.ones(1, 1, 6, 8, device=device, dtype=dtype))
         flags = aug.flags if shared_flags else dict(aug.flags)
         original_flags = dict(flags)
 
-        with pytest.raises(NotImplementedError, match=r"resample cropping mode\. Got slice\."):
+        with pytest.raises(NotImplementedError, match="inverse_transform failed"):
             aug.inverse_masks(mask, aug._params, flags, transform=aug.transform_matrix, align_corners=align_corners)
 
         assert flags["align_corners"] == original_flags["align_corners"]
@@ -2305,11 +2311,16 @@ class TestConventionAugmentationSequential(BaseTester):
             outer(torch.rand(1, 1, 6, 8, device=device, dtype=dtype))
 
     @pytest.mark.parametrize("crop_cls", [K.CenterCrop, K.RandomCrop, K.RandomResizedCrop])
-    def test_convention_slice_crop_inverse_raises(self, crop_cls, device, dtype):
+    def test_convention_slice_crop_inverse_restores_the_canvas(self, crop_cls, device, dtype):
+        # Slice-mode crops invert like resample-mode ones: the output is warped back onto the input canvas.
         seq = K.AugmentationSequential(crop_cls((4, 6), p=1.0), data_keys=["input"])
-        out = seq(torch.rand(1, 3, 6, 8, device=device, dtype=dtype))
-        with pytest.raises(NotImplementedError, match="resample cropping mode"):
-            seq.inverse(out)
+        image = torch.rand(1, 3, 6, 8, device=device, dtype=dtype)
+        out = seq(image)
+        restored = seq.inverse(out)
+        assert restored.shape == image.shape
+        if crop_cls is not K.RandomResizedCrop:
+            left, top = seq[0]._params["src"][0, 0].long().tolist()
+            self.assert_close(restored[..., top : top + 4, left : left + 6], out)
 
     def test_convention_3d_inverse_raises_for_geometry_and_skips_intensity(self, device, dtype):
         # Enough voxels in two populated histogram bins force an actual equalization in every dtype.
