@@ -111,18 +111,31 @@ def focal_loss(
 
     target, target_mask = mask_ignore_pixels(target, ignore_index)
 
-    # create the labels one hot torch.Tensor
-    target_one_hot: torch.Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
+    # Reduced, unweighted losses only need the target-class terms. Keep the dense path for parameters whose
+    # non-target zero slices can become NaN (e.g. an infinite class weight or a negative focusing exponent).
+    reduced = (
+        reduction in ("mean", "sum")
+        and weight is None
+        and 0 <= gamma < float("inf")
+        and (alpha is None or 0 <= alpha <= 1)
+    )
+    target_one_hot: Optional[torch.Tensor] = None
+    if reduced:
+        KORNIA_CHECK(target.dtype == torch.int64, f"labels must be of dtype torch.int64. Got: {target.dtype}")
+        KORNIA_CHECK(pred.shape[1] >= 1, f"The number of classes must be >= 1. Got: {pred.shape[1]}")
+    else:
+        target_one_hot = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
 
-    # mask ignore pixels
     if target_mask is not None:
-        target_mask.unsqueeze_(1)
-        target_one_hot = target_one_hot * target_mask
+        target_mask = target_mask.unsqueeze(1)
+        if target_one_hot is not None:
+            target_one_hot = target_one_hot * target_mask
         # Exclude ignored logits before log-softmax: an overflowing log probability times zero is NaN.
         pred = pred.masked_fill(~target_mask, 0.0)
 
-    # compute F.softmax over the classes axis
-    log_pred_soft: torch.Tensor = pred.log_softmax(1)
+    log_pred_soft = pred.log_softmax(1)
+    if reduced:
+        log_pred_soft = log_pred_soft.gather(1, target.unsqueeze(1))
 
     # compute the actual focal loss
     # For 0 < gamma < 1, x ** gamma has an infinite derivative at x = 0, so a probability that rounds to 1 gives a
@@ -132,16 +145,26 @@ def focal_loss(
     saturated = base == 0
     focal_weight = torch.where(saturated, base.detach().pow(gamma), base.masked_fill(saturated, 1.0).pow(gamma))
     # Mask before multiplying: a non-target log probability of -inf otherwise gives NaN values and gradients.
-    log_pred_soft = log_pred_soft.masked_fill(target_one_hot == 0, 0.0)
-    loss_tmp: torch.Tensor = -focal_weight * log_pred_soft * target_one_hot
+    if target_one_hot is not None:
+        log_pred_soft = log_pred_soft.masked_fill(target_one_hot == 0, 0.0)
+        loss_tmp = -focal_weight * log_pred_soft * target_one_hot
+    else:
+        if target_mask is not None:
+            log_pred_soft = log_pred_soft.masked_fill(~target_mask, 0.0)
+        loss_tmp = -focal_weight * log_pred_soft
 
     num_of_classes = pred.shape[1]
     broadcast_dims = [-1] + [1] * len(pred.shape[2:])
     if alpha is not None:
-        alpha_fac = torch.tensor(
-            [1 - alpha] + [alpha] * (num_of_classes - 1), dtype=loss_tmp.dtype, device=loss_tmp.device
-        )
-        alpha_fac = alpha_fac.view(broadcast_dims)
+        if reduced:
+            # Fill the two factors on the device: a per-call class vector would be a blocking host-to-device copy.
+            alpha_fac = torch.where(
+                target.unsqueeze(1) == 0, loss_tmp.new_full((), 1 - alpha), loss_tmp.new_full((), alpha)
+            )
+        else:
+            alpha_fac = torch.tensor(
+                [1 - alpha] + [alpha] * (num_of_classes - 1), dtype=loss_tmp.dtype, device=loss_tmp.device
+            ).view(broadcast_dims)
         loss_tmp = alpha_fac * loss_tmp
 
     if weight is not None:
@@ -161,7 +184,12 @@ def focal_loss(
     if reduction == "none":
         loss = loss_tmp
     elif reduction == "mean":
-        loss = torch.mean(loss_tmp)
+        if reduced:
+            # Accumulate before dividing by C: summing in half precision can overflow even when the mean is finite.
+            acc_dtype = torch.float32 if loss_tmp.dtype in (torch.float16, torch.bfloat16) else loss_tmp.dtype
+            loss = (loss_tmp.mean(dtype=acc_dtype) / num_of_classes).to(loss_tmp.dtype)
+        else:
+            loss = torch.mean(loss_tmp)
     elif reduction == "sum":
         loss = torch.sum(loss_tmp)
     else:

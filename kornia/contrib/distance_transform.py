@@ -21,8 +21,11 @@ import math
 
 import torch
 from torch import nn
+from torch._subclasses.fake_tensor import is_fake
+from torch.fx.experimental.proxy_tensor import get_proxy_mode
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.core.utils import is_compiling
 from kornia.filters import filter2d, filter3d
 from kornia.geometry.grid import create_meshgrid, create_meshgrid3d
 
@@ -86,6 +89,29 @@ def _off_centre_tap_sum(kernel_size: int, h: float, ndim: int) -> float:
     return total - 1.0  # drop the centre tap
 
 
+def _can_stop_cascade(image: torch.Tensor) -> bool:
+    # Capture and function transforms cannot branch on a tensor's value. Keep the fixed loop for
+    # differentiation as well, including forward AD on an input without requires_grad.
+    if torch.jit.is_scripting():
+        return False
+    if (
+        torch.jit.is_tracing()
+        or is_compiling()
+        or get_proxy_mode() is not None
+        or torch._C._are_functorch_transforms_active()
+    ):
+        return False
+    if image.requires_grad and torch.is_grad_enabled():
+        return False
+    # Only CPU and CUDA hold readable data here; meta, fake and lazy tensors do not, and reading a
+    # flag would synchronize MPS. A CUDA graph capture cannot synchronize either.
+    if image.device.type not in ("cpu", "cuda") or is_fake(image):
+        return False
+    if image.is_cuda and torch.cuda.is_current_stream_capturing():
+        return False
+    return torch.autograd.forward_ad.unpack_dual(image).tangent is None
+
+
 def _distance_transform_2d_impl(image: torch.Tensor, kernel_size: int, h: float) -> torch.Tensor:
     device = image.device
     dtype = image.dtype
@@ -103,6 +129,7 @@ def _distance_transform_2d_impl(image: torch.Tensor, kernel_size: int, h: float)
     out = torch.zeros_like(image, dtype=compute_dtype)
     boundary = image.to(compute_dtype)
     signal_ones = torch.ones_like(boundary)
+    can_stop = _can_stop_cascade(image)
 
     for i in range(n_iters):
         cdt = filter2d(boundary, kernel, border_type="replicate")
@@ -112,9 +139,10 @@ def _distance_transform_2d_impl(image: torch.Tensor, kernel_size: int, h: float)
         cdt = torch.nan_to_num(cdt, nan=0.0, posinf=0.0, neginf=0.0)
 
         mask = cdt > 0
-        # No data-dependent early-out: the loop bound (n_iters) is fixed, and once no pixels
-        # remain the remaining iterations are exact no-ops (out += 0*mask, where(False,...)
-        # leaves boundary unchanged). Running them all keeps the op fullgraph-compilable.
+        # Once the mask is empty the boundary cannot change, so every later iteration adds zero.
+        # Check only every eight rounds to amortize the device synchronization in eager inference.
+        if can_stop and (i + 1) % 8 == 0 and not bool(mask.any()):
+            break
         offset: int = i * k_half
         out = out + (offset + cdt) * mask.to(dtype=out.dtype)
         boundary = torch.where(mask, signal_ones, boundary)
@@ -137,6 +165,7 @@ def _distance_transform_3d_impl(image: torch.Tensor, kernel_size: int, h: float)
     out = torch.zeros_like(image, dtype=compute_dtype)
     boundary = image.to(compute_dtype)
     signal_ones = torch.ones_like(boundary)
+    can_stop = _can_stop_cascade(image)
 
     for i in range(n_iters):
         cdt = filter3d(boundary, kernel, border_type="replicate")
@@ -146,9 +175,9 @@ def _distance_transform_3d_impl(image: torch.Tensor, kernel_size: int, h: float)
         cdt = torch.nan_to_num(cdt, nan=0.0, posinf=0.0, neginf=0.0)
 
         mask = cdt > 0
-        # No data-dependent early-out: the loop bound (n_iters) is fixed, and once no pixels
-        # remain the remaining iterations are exact no-ops (out += 0*mask, where(False,...)
-        # leaves boundary unchanged). Running them all keeps the op fullgraph-compilable.
+        # As in 2-D, retain a static loop for capture and differentiation, and amortize eager checks.
+        if can_stop and (i + 1) % 8 == 0 and not bool(mask.any()):
+            break
         offset: int = i * k_half
         out = out + (offset + cdt) * mask.to(dtype=out.dtype)
         boundary = torch.where(mask, signal_ones, boundary)
