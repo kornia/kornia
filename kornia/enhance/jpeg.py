@@ -31,6 +31,7 @@ from kornia.core.check import (
     KORNIA_CHECK_SHAPE,
 )
 from kornia.core.utils import is_compiling, is_exporting
+from kornia.enhance.adjust import _check_floating_image
 from kornia.geometry.transform.affwarp import rescale
 from kornia.image.utils import perform_keep_shape_image
 
@@ -576,6 +577,7 @@ def jpeg_codec_differentiable(
         >>> img_jpeg.sum().backward()
 
     """
+    _check_floating_image(input, "jpeg_codec_differentiable")
     # Check that inputs are tensors
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_IS_TENSOR(jpeg_quality)

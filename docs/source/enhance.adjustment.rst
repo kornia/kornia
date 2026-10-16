@@ -11,6 +11,13 @@ count. :func:`sharpness` filters neighboring pixels and
 :func:`adjust_contrast_with_mean_subtraction` subtracts an image mean, so their output also
 depends on the rest of the image.
 
+The brightness, contrast, gamma, logarithmic and sigmoid adjustments,
+:func:`adjust_saturation_with_gray_subtraction`, :func:`posterize`, :func:`solarize`,
+:func:`sharpness` and :func:`shift_rgb` expect a floating-point image in ``[0, 1]`` and raise
+:exc:`~kornia.core.exceptions.TypeCheckError` (a :exc:`TypeError`) for an integer image; convert
+8-bit data with ``image.float() / 255`` first. :func:`adjust_hue`, :func:`adjust_saturation`,
+:func:`add_weighted` and :func:`invert` (with ``max_val``) also accept integer input.
+
 Functions
 ---------
 

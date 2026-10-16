@@ -19,6 +19,7 @@
 import torch
 
 from kornia.core.check import KORNIA_CHECK_IS_COLOR, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.enhance.adjust import _check_floating_image
 
 
 def shift_rgb(image: torch.Tensor, r_shift: torch.Tensor, g_shift: torch.Tensor, b_shift: torch.Tensor) -> torch.Tensor:
@@ -31,6 +32,7 @@ def shift_rgb(image: torch.Tensor, r_shift: torch.Tensor, g_shift: torch.Tensor,
 
     Shift each image's channel by either r_shift for red, g_shift for green and b_shift for blue channels.
     """
+    _check_floating_image(image, "shift_rgb")
     KORNIA_CHECK_IS_TENSOR(image)
     KORNIA_CHECK_IS_COLOR(image, f"with shape {image.shape}")
     KORNIA_CHECK_SHAPE(image, ["B", "3", "H", "W"])
