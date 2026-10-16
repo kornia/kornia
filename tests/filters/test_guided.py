@@ -140,7 +140,28 @@ class TestGuidedBlur(BaseTester):
         expected_grad = torch.autograd.grad(expected.float().square().mean(), expected_input)[0]
         assert torch.isfinite(actual_grad).all()
         self.assert_close(actual, expected)
-        self.assert_close(actual_grad, expected_grad, atol=4 * torch.finfo(dtype).eps, rtol=4 * torch.finfo(dtype).eps)
+        # The gradients are at most 0.02, below bfloat16's 4 * eps of 0.031: scale the absolute tolerance to them.
+        tolerance = 4 * torch.finfo(dtype).eps
+        self.assert_close(actual_grad, expected_grad, atol=tolerance * expected_grad.abs().max().item(), rtol=tolerance)
+
+    @pytest.mark.parametrize("guide_dim", [1, 3])
+    @pytest.mark.parametrize("separate_input", [False, True])
+    def test_half_inputs_are_filtered_in_float32(self, guide_dim, separate_input, device, dtype):
+        """A half-precision call returns the float32 result for the same values, rounded once to its dtype.
+
+        A separate ``input`` enters the window statistics in float32 too: left in half precision, the rounding of
+        ``E[p]`` alone costs ``E[g p] - E[g] E[p]`` several units in the last place of the result here.
+        """
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("half-precision covariance regression")
+        guide = torch.linspace(0.45, 0.55, 63, device=device, dtype=dtype).reshape(1, 1, 7, 9)
+        guide = guide.repeat(1, guide_dim, 1, 1)
+        image = guide
+        if separate_input:
+            image = torch.linspace(0.8, 0.2, 63, device=device, dtype=dtype).reshape(1, 1, 7, 9)
+        guide32 = guide.float()
+        expected = guided_blur(guide32, image.float() if separate_input else guide32, 5, 1e-4).to(dtype)
+        self.assert_close(guided_blur(guide, image, 5, 1e-4), expected, rtol=0, atol=0)
 
     @pytest.mark.parametrize("guide_dim", [1, 3])
     def test_meta_tensors(self, guide_dim):
