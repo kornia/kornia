@@ -17,8 +17,6 @@
 
 """ONNX export tests for SAM (image encoder subgraph)."""
 
-import sys
-
 import pytest
 import torch
 
@@ -35,10 +33,6 @@ def test_sam_has_to_onnx():
 
 
 @pytest.mark.timeout(120)
-@pytest.mark.skipif(
-    sys.platform == "darwin",
-    reason="TorchScript tracing of the SAM encoder exceeds the 120s timeout on macOS CI runners",
-)
 @pytest.mark.xfail(
     torch_version_ge(2, 14) and torch_version_lt(2, 15, 0),
     reason=(

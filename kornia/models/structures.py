@@ -31,7 +31,9 @@ class SegmentationResults:
     """Encapsulate the results obtained by a Segmentation model.
 
     Args:
-        logits: Results logits with shape :math:`(B, C, H, W)`, where :math:`C` refers to the number of predicted masks
+        logits: Results logits with shape :math:`(K, C, H, W)` for one image: :math:`K` is the number of its prompts
+            (the leading size of its point, box or mask prompts; 1 when it has none), :math:`C` the number of masks
+            predicted per prompt (3 with ``multimask_output``, else 1), and :math:`H = W = 256` for SAM.
         scores: The predicted IoU of each mask. Shape :math:`(K, C)`
         mask_threshold: The threshold value to generate the `binary_masks` from the `logits`
 
@@ -46,7 +48,7 @@ class SegmentationResults:
     def binary_masks(self) -> torch.Tensor:
         """Binary mask generated from logits considering the mask_threshold.
 
-        Shape will be the same of logits :math:`(B, C, H, W)` where :math:`C` is the number masks predicted.
+        Shape will be the same of logits :math:`(K, C, H, W)` where :math:`C` is the number masks predicted per prompt.
 
         .. note:: If you run `original_res_logits`, this will generate the masks
            based on the original resolution logits.

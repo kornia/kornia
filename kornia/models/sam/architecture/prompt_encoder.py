@@ -187,10 +187,11 @@ class PromptEncoder(nn.Module):
 class PositionEmbeddingRandom(nn.Module):
     """Positional encoding using random spatial frequencies.
 
-    The encoding is computed in at least float32 and returned in the dtype of the Gaussian matrix. Computed in the
-    half dtypes throughout, the encoding of a 64 x 64 grid with SAM's 128 frequencies drawn from N(0, 1) is off by up
-    to 0.12 in bfloat16 and 0.013 in float16 against the float32 encoding of the same frequencies, phases of up to
-    26 radians losing most of their precision. Computed in float32, it differs only by the rounding of its output.
+    The encoding is computed in at least float32 (float64 for a float64 matrix) and returned in the dtype of the
+    Gaussian matrix. Computed in the half dtypes throughout, the encoding of a 64 x 64 grid is off by 0.10-0.14 in
+    bfloat16 and 0.013-0.015 in float16 against the float32 encoding of the same frequencies, measured with MobileSAM's
+    released frequencies and four draws of SAM's 128 frequencies from N(0, 1), whose phases reach 24-29 radians.
+    Computed in float32, it differs only by the rounding of its output.
     """
 
     def __init__(self, num_pos_feats: int = 64, scale: Optional[float] = None) -> None:

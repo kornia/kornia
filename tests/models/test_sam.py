@@ -139,17 +139,16 @@ class TestSam(BaseTester):
         assert len(loaded) == 2
 
     @pytest.mark.device_agnostic
-    @pytest.mark.parametrize("global_attn_indexes", [(0,), [0], 0])
+    @pytest.mark.parametrize("global_attn_indexes", [(1,), [1], 1])
     def test_from_config_builds_a_custom_encoder(self, global_attn_indexes):
         config = SamConfig(
-            encoder_embed_dim=16, encoder_depth=1, encoder_num_heads=1, encoder_global_attn_indexes=global_attn_indexes
+            encoder_embed_dim=16, encoder_depth=2, encoder_num_heads=1, encoder_global_attn_indexes=global_attn_indexes
         )
         encoder = Sam.from_config(config).image_encoder
 
-        assert len(encoder.blocks) == 1
-        # Window size 0 is global attention.
-        assert encoder.blocks[0].window_size == 0
-        # 680,128 parameters, mostly the neck's 3 x 3 convolution, 256 * 256 * 9 = 589,824; ViT-B's encoder has
+        # Block 1 attends globally (window size 0); block 0 keeps SAM's 14 x 14 windows (``_build_sam``).
+        assert [block.window_size for block in encoder.blocks] == [14, 0]
+        # 684,272 parameters, mostly the neck's 3 x 3 convolution, 256 * 256 * 9 = 589,824; ViT-B's encoder has
         # 89.7M. The whole model is not bounded: ``_build_sam`` always attaches the full mask decoder.
         assert sum(p.numel() for p in encoder.parameters()) < 1e6
 
@@ -179,10 +178,31 @@ class TestSam(BaseTester):
         dense, points = pe((64, 64)), pe.forward_with_coords(coords.to(dtype), (1024, 1024))
 
         assert dense.dtype == points.dtype == dtype
-        # Within the rounding of the float32 encoding. Computed in bfloat16 throughout, the dense encoding is off by
-        # up to 0.12 (0.013 in float16).
+        # Within the rounding of the float32 encoding. Computed in bfloat16 throughout, this seed's dense encoding is
+        # off by 0.12 (0.013 in float16).
         self.assert_close(dense, reference((64, 64)).to(dtype))
         self.assert_close(points, reference.forward_with_coords(coords, (1024, 1024)).to(dtype))
+
+    def test_positional_encoding_of_a_float64_model_is_float64(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        generator = torch.Generator().manual_seed(0)
+        pe = PositionEmbeddingRandom(128).to(device=device, dtype=torch.float64)
+        pe.positional_encoding_gaussian_matrix.copy_(torch.randn(2, 128, generator=generator, dtype=torch.float64))
+
+        def closed_form(dtype: torch.dtype) -> torch.Tensor:
+            # SAM's dense encoding of a 64 x 64 grid at pixel centres, (2 c - 1) M, then sin and cos of 2 pi times it.
+            centres = (torch.arange(64, device=device, dtype=dtype) + 0.5) / 64
+            grid = torch.stack(torch.meshgrid(centres, centres, indexing="xy"), dim=-1)
+            phase = 2 * torch.pi * ((2 * grid - 1) @ pe.positional_encoding_gaussian_matrix.to(dtype))
+            return torch.cat([torch.sin(phase), torch.cos(phase)], dim=-1).permute(2, 0, 1).to(torch.float64)
+
+        dense = pe((64, 64))
+
+        assert dense.dtype == torch.float64
+        self.assert_close(dense, closed_form(torch.float64), rtol=0.0, atol=1e-12)
+        # The same encoding computed in float32 is off by about 1e-6, so the comparison above can tell them apart.
+        assert (closed_form(torch.float32) - dense).abs().max() > 1e-8
 
     @pytest.mark.slow
     def test_mobile_sam_pretrained_is_batch_independent(self):

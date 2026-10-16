@@ -25,6 +25,7 @@ from torch import nn
 from kornia.contrib.visual_prompter import VisualPrompter
 from kornia.core.exceptions import BaseError
 from kornia.geometry.boxes import Boxes
+from kornia.geometry.keypoints import Keypoints
 from kornia.models.sam import Sam, SamConfig
 from kornia.models.structures import SegmentationResults
 
@@ -100,9 +101,7 @@ class TestVisualPrompter(BaseTester):
         assert captured_configs[0].pretrained is True
 
     def test_smoke(self, device, dtype):
-        if dtype not in (torch.float32, torch.float16):
-            pytest.skip("VisualPrompter (SAM) primarily supports float32 and float16")
-
+        _skip_float64_on_mps(device, dtype)
         prompter = VisualPrompter(SamConfig("mobile_sam"), device=device, dtype=dtype)
         assert prompter is not None
         assert not prompter.is_image_set
@@ -135,7 +134,7 @@ class TestVisualPrompter(BaseTester):
     @pytest.mark.slow
     def test_predict_without_prompts(self, device, dtype):
         if dtype not in (torch.float32, torch.float16):
-            pytest.skip("VisualPrompter (SAM) primarily supports float32 and float16")
+            pytest.skip("the real MobileSAM encoder runs here; test_predict_in_every_dtype covers the other dtypes")
         prompter = VisualPrompter(SamConfig("mobile_sam"), device=device, dtype=dtype)
         prompter.set_image(torch.rand(3, 256, 256, device=device, dtype=dtype))
 
@@ -183,8 +182,10 @@ class TestVisualPrompter(BaseTester):
     def test_keypoints_without_labels_raise(self, device, dtype):
         prompter = _prompter_with_stub_encoder(device, dtype)
 
-        with pytest.raises(BaseError, match="keypoints_labels"):
-            prompter.predict(keypoints=torch.tensor([[[40.0, 30.0]]], device=device, dtype=dtype))
+        keypoints = torch.tensor([[[40.0, 30.0]]], device=device, dtype=dtype)
+        for unlabelled in (keypoints, Keypoints.from_tensor(keypoints)):
+            with pytest.raises(BaseError, match="keypoints_labels"):
+                prompter.predict(keypoints=unlabelled)
 
     def test_prompts_follow_the_half_pixel_resize(self, device, dtype):
         prompter = _prompter_with_stub_encoder(device, dtype)
@@ -295,6 +296,26 @@ class TestVisualPrompter(BaseTester):
         for boxes in (two, Boxes.from_tensor(two, mode="xyxy")):
             with pytest.raises(BaseError, match=r"Sam\.forward"):
                 prompter.predict(boxes=boxes)
+
+    def test_box_prompts_stay_separate(self, device, dtype):
+        prompter = _prompter_with_stub_encoder(device, dtype)
+        boxes = torch.tensor(
+            [[10.0, 20.0, 60.0, 50.0], [5.0, 5.0, 120.0, 70.0], [30.0, 10.0, 90.0, 40.0]], device=device, dtype=dtype
+        )
+        # Each box's own corners through the half-pixel point map at s = 8 (77 x 128 -> 616 x 1024).
+        expected = (boxes + 0.5) * 8 - 0.5
+
+        # The four documented forms of K = 3 boxes: (K, 4), (1, K, 4), and Boxes of (K, 4, 2) and (1, K, 4, 2).
+        forms = (boxes, boxes[None], Boxes.from_tensor(boxes, mode="xyxy"), Boxes.from_tensor(boxes[None], mode="xyxy"))
+        for form in forms:
+            self.assert_close(prompter.preprocess_prompts(boxes=form).boxes, expected)
+
+        # Each prompt's masks are the ones of that box alone.
+        together = prompter.predict(boxes=boxes, output_original_size=False)
+        for k in range(3):
+            alone = prompter.predict(boxes=boxes[k : k + 1], output_original_size=False)
+            self.assert_close(together.logits[k], alone.logits[0])
+            self.assert_close(together.scores[k], alone.scores[0])
 
     def test_gradcheck(self, device):
         pytest.skip("Gradcheck is not currently applicable for VisualPrompter inference.")
