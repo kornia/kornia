@@ -24,6 +24,7 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 
 from kornia.core._compat import torch_version_lt
+from kornia.core.check import KORNIA_CHECK
 
 __all__ = ["NaFlex"]
 
@@ -37,14 +38,18 @@ class NaFlex(nn.Module):
     bilinear interpolation (``align_corners=False``), antialiased when the grid is smaller than the table along an
     axis, so a downsampled axis averages the table instead of sampling it. transformers always antialiases; when no
     axis is downsampled antialiasing changes nothing (up to float rounding), and the plain resize keeps working where
-    the antialiased one does not (see the note). The table is added unresized only when the patch grid is the table's
-    own square grid.
+    the antialiased one does not (see the note). A square table is added unresized only when the patch grid is the
+    table's own grid.
 
     Args:
         patch_embedding_fcn: A callable (e.g., Conv2d) that takes images and returns
             patch embeddings of shape :math:`(B, C, h, w)` or :math:`(B, N, C)`. A :math:`(B, N, C)` output is read
             as the grid of :math:`N` cells with the aspect ratio of the :math:`H \times W` image,
-            :math:`h = \mathrm{round}(\sqrt{N H / W})` rows of :math:`w = N / h` patches in raster order.
+            :math:`h = \mathrm{round}(\sqrt{N H / W})` rows of :math:`w = N / h` patches in raster order. A patch
+            embedding that cuts whole :math:`p \times p` patches and drops the remainder (a ``Conv2d`` with kernel and
+            stride :math:`p`) has the grid :math:`(H // p, W // p)`; the reading equals it whenever some integer
+            :math:`p` gives :math:`H // p = h` and :math:`W // p = w`, always so when H and W are multiples of the
+            patch size, and raises otherwise.
         position_embedding: Position embedding table of shape :math:`(S^2, C)`, the raster-order rows of an
             :math:`S \times S` grid, to be interpolated to match input resolution. An ``nn.Parameter`` stays a
             parameter of the module, so it is trained with it; any other tensor is registered as a buffer. A table
@@ -53,10 +58,17 @@ class NaFlex(nn.Module):
     Note:
         A float16 or bfloat16 table on the CPU is resized in float32 and cast back, as transformers does: the CPU has
         no half-precision antialiased bilinear kernel. A table on MPS that is downsampled is resized on the CPU in
-        float32 with torch older than 2.7, which has no MPS antialiased kernel. The dynamo ONNX exporter
-        (``torch.onnx.export(..., dynamo=True)``) exports the antialiased resize; the legacy TorchScript exporter
-        cannot (``UnsupportedOperatorError`` for ``aten::_upsample_bilinear2d_aa``), so it exports only grids at least
-        as large as the table along both axes.
+        float32 with torch older than 2.7, which has no MPS antialiased kernel.
+
+        Eager mode picks the resize per call, from the grid and the table size. An exported graph with dynamic H and W
+        keeps the choice made for its example input. With the dynamo ONNX exporter
+        (``torch.onnx.export(..., dynamo=True)``), export from an input whose grid is smaller than the table along both
+        axes: the graph then resizes with antialiasing at every size, which is right for every grid because
+        antialiasing changes nothing when upsampling. ``torch.export.export`` reports that size comparison as a
+        constraint violation; ``torch.onnx.export`` exports anyway on torch 2.14 and refuses on torch 2.5.1. The
+        legacy TorchScript exporter cannot export the antialiased resize (``UnsupportedOperatorError`` for
+        ``aten::_upsample_bilinear2d_aa``), so it exports only from an example grid at least as large as the table
+        along both axes, and its graph resizes without antialiasing at every size, which is exact only for such grids.
 
     Example:
         >>> import torch
@@ -94,28 +106,23 @@ class NaFlex(nn.Module):
         Raises:
             ValueError: If original positional embedding does not form a square grid and does not have one row per
                 patch, or if a :math:`(B, N, C)` patch output does not form a grid of the image's aspect ratio.
+            BaseError: If no integer patch size :math:`p` gives the grid read from a :math:`(B, N, C)` patch output,
+                :math:`H // p = h` and :math:`W // p = w`.
         """
         embeddings = self.patch_embedding_fcn(pixel_values)
+        grid = embeddings.shape[2:] if embeddings.ndim == 4 else None
         if embeddings.ndim == 4:
-            _, _, h_grid, w_grid = embeddings.shape
             embeddings = embeddings.flatten(2).transpose(1, 2)
-        else:
-            num_patches = embeddings.shape[1]
-            height, width = pixel_values.shape[-2:]
-            h_grid = max(1, round(math.sqrt(num_patches * height / width)))
-            w_grid = num_patches // h_grid
-            if h_grid * w_grid != num_patches:
-                raise ValueError(
-                    f"Cannot read the {num_patches} patch embeddings of a {height} x {width} image as a grid: the grid "
-                    f"of that aspect ratio, {h_grid} x {w_grid}, has {h_grid * w_grid} cells."
-                )
+        num_patches = embeddings.shape[1]
         position_embedding = self.position_embedding
         orig_num = int(position_embedding.shape[0])
         orig_grid = math.isqrt(orig_num)
         if orig_grid * orig_grid != orig_num:
-            if orig_num == h_grid * w_grid:
+            # a table that is not a square grid cannot be resized; one row per patch is added in raster order
+            if orig_num == num_patches:
                 return embeddings + position_embedding.unsqueeze(0)
             raise ValueError(f"Original positional embedding is not a square grid (got {orig_num} embeddings)")
+        h_grid, w_grid = grid if grid is not None else self._read_grid(num_patches, *pixel_values.shape[-2:])
         if (h_grid, w_grid) == (orig_grid, orig_grid):
             return embeddings + position_embedding.unsqueeze(0)
         # transformers always passes antialias=True. Antialiasing only changes a downsampled axis: an upsampled one
@@ -139,3 +146,34 @@ class NaFlex(nn.Module):
         pos_resized = pos_resized.to(position_embedding.device, position_embedding.dtype)
 
         return embeddings + pos_resized.unsqueeze(0)
+
+    @staticmethod
+    def _read_grid(num_patches: int, height: int, width: int) -> tuple[int, int]:
+        """Read the patch grid of ``num_patches`` tokens from the aspect ratio of a ``height x width`` image.
+
+        Raises:
+            ValueError: if no grid of that aspect ratio has ``num_patches`` cells.
+            BaseError: if no integer patch size ``p`` gives the grid read, ``height // p = h`` and
+                ``width // p = w``.
+        """
+        h_grid = max(1, round(math.sqrt(num_patches * height / width)))
+        w_grid = num_patches // h_grid
+        if h_grid * w_grid != num_patches:
+            raise ValueError(
+                f"Cannot read the {num_patches} patch embeddings of a {height} x {width} image as a grid: the grid "
+                f"of that aspect ratio, {h_grid} x {w_grid}, has {h_grid * w_grid} cells."
+            )
+        # The aspect-ratio reading can transpose the grid of an image whose sides are not multiples of the patch size
+        # (48 x 47 at patch 16 has the grid 3 x 2 and is read as 2 x 3). The reading is the grid (H // p, W // p) of a
+        # p x p patching exactly when some integer p gives H // p == h and W // p == w: p must lie in
+        # (H / (h + 1), H / h] and in (W / (w + 1), W / w]. A reading no p gives raises.
+        p_min = max(height // (h_grid + 1), width // (w_grid + 1)) + 1
+        p_max = min(height // h_grid, width // w_grid)
+        KORNIA_CHECK(
+            p_min <= p_max,
+            f"NaFlex reads the grid of a (B, N, C) patch output from the image shape: {num_patches} patch embeddings "
+            f"of a {height} x {width} image read as a {h_grid} x {w_grid} grid, which no whole patch size p gives "
+            f"({height} // p == {h_grid} and {width} // p == {w_grid}). Use an image whose sides are multiples of the "
+            "patch size, or a patch embedding that returns (B, C, h, w).",
+        )
+        return h_grid, w_grid

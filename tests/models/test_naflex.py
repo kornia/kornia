@@ -24,6 +24,7 @@ import torch.nn.functional as F
 from torch import Tensor
 
 from kornia.core._compat import torch_version_lt
+from kornia.core.exceptions import BaseError
 from kornia.models.processors.naflex import NaFlex
 
 from testing.base import BaseTester
@@ -155,6 +156,28 @@ class TestNaFlex(BaseTester):
         with pytest.raises(ValueError, match="7 patch embeddings"):
             naflex(torch.zeros(3, 3, 64, 64, device=device, dtype=dtype))
 
+    @pytest.mark.parametrize(("height", "width"), [(40, 63), (230, 230)])
+    def test_bnc_grid_of_an_image_that_is_not_a_patch_multiple(
+        self, device: torch.device, dtype: torch.dtype, height: int, width: int
+    ) -> None:
+        # At patch 16 these images have the grids 2 x 3 and 14 x 14 (the conv drops the remainder). The aspect reading
+        # round(sqrt(N H / W)) gives the same grids (flooring would read 40 x 63 as 1 x 6), and patch 16 explains both.
+        table = torch.randn(256, _CHANNELS, device=device, dtype=dtype)
+        images = torch.zeros(3, 3, height, width, device=device, dtype=dtype)
+        out = NaFlex(_zero_tokens, table)(images)
+        self.assert_close(out, NaFlex(_zero_patches, table)(images))
+        self.assert_close(out, _reference_positions(table, height // 16, width // 16).expand(3, -1, -1))
+
+    @pytest.mark.parametrize(("height", "width"), [(48, 47), (32, 31)])
+    def test_bnc_grid_that_no_patch_size_gives_raises(
+        self, device: torch.device, dtype: torch.dtype, height: int, width: int
+    ) -> None:
+        # At patch 16 these images have the grids 3 x 2 and 2 x 1; the aspect reading transposes them to 2 x 3 and
+        # 1 x 2, and no patch size p gives 48 // p == 2 with 47 // p == 3, or 32 // p == 1 with 31 // p == 2.
+        table = torch.randn(256, _CHANNELS, device=device, dtype=dtype)
+        with pytest.raises(BaseError, match="no whole patch size"):
+            NaFlex(_zero_tokens, table)(torch.zeros(3, 3, height, width, device=device, dtype=dtype))
+
     @pytest.mark.parametrize(("height", "width"), [(192, 336), (256, 128)])
     def test_downsampling_is_antialiased(
         self, device: torch.device, dtype: torch.dtype, height: int, width: int
@@ -182,6 +205,11 @@ class TestNaFlex(BaseTester):
         # patches is added in raster order, as for a square table on its own grid.
         table = torch.randn(280, _CHANNELS, device=device, dtype=dtype)
         out = NaFlex(_zero_patches, table)(torch.zeros(3, 3, 224, 320, device=device, dtype=dtype))
+        self.assert_close(out, table.expand(3, -1, -1))
+        # The same for a (B, N, C) output, whose grid is then never read: the 6 tokens of a 48 x 47 image (a 3 x 2
+        # grid that the aspect reading would transpose) take a 6-row table as is.
+        table = torch.randn(6, _CHANNELS, device=device, dtype=dtype)
+        out = NaFlex(_zero_tokens, table)(torch.zeros(3, 3, 48, 47, device=device, dtype=dtype))
         self.assert_close(out, table.expand(3, -1, -1))
 
     @pytest.mark.device_agnostic
@@ -228,13 +256,15 @@ class TestNaFlex(BaseTester):
         self.assert_close(actual, expected, rtol=0.0, atol=1e-5)
 
     @pytest.mark.device_agnostic
-    def test_naflex_legacy_onnx_export_of_an_upsampled_table(self) -> None:
+    @pytest.mark.parametrize(("height", "width"), [(384, 512), (256, 320)])
+    def test_naflex_legacy_onnx_export_of_an_upsampled_table(self, height: int, width: int) -> None:
         pytest.importorskip("onnx")
         ort = pytest.importorskip("onnxruntime")
-        # A 24 x 32 grid upsamples the 16 x 16 table on both axes: the plain bilinear resize, which the legacy
-        # TorchScript exporter supports (it has no symbolic for the antialiased aten::_upsample_bilinear2d_aa).
+        # A 24 x 32 grid upsamples the 16 x 16 table on both axes and a 16 x 20 grid keeps the rows and upsamples the
+        # columns: the plain bilinear resize, which the legacy TorchScript exporter supports (it has no symbolic for
+        # the antialiased aten::_upsample_bilinear2d_aa).
         naflex = NaFlex(torch.nn.Conv2d(3, _CHANNELS, 16, 16), torch.randn(256, _CHANNELS)).eval()
-        images = torch.rand(3, 3, 384, 512)
+        images = torch.rand(3, 3, height, width)
         buffer = io.BytesIO()
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -251,6 +281,47 @@ class TestNaFlex(BaseTester):
         with torch.no_grad():
             expected = naflex(images)
         self.assert_close(actual, expected, rtol=0.0, atol=1e-5)
+
+    @pytest.mark.device_agnostic
+    def test_naflex_onnx_dynamic_size_exported_from_a_smaller_grid(self) -> None:
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+        pytest.importorskip("onnxscript")
+        if torch_version_lt(2, 14, 0):
+            # torch.export reports NaFlex's grid-size comparison as a constraint violation of the dynamic H and W;
+            # torch.onnx.export of torch 2.14 exports anyway, and that of torch 2.5.1 raises TorchExportError.
+            pytest.skip("checked on torch 2.14: the dynamo exporter of torch 2.5.1 refuses this dynamic export")
+        # The documented recipe: export with dynamic H and W from an image whose 8 x 8 grid is smaller than the
+        # 16 x 16 table along both axes, so the graph resizes with antialiasing at every size. That is right for a
+        # smaller grid (4 x 6) and, since antialiasing changes nothing when upsampling, for a larger one (24 x 32).
+        naflex = NaFlex(torch.nn.Conv2d(3, _CHANNELS, 16, 16), torch.randn(256, _CHANNELS)).eval()
+        size = {2: torch.export.Dim("height", min=16, max=1024), 3: torch.export.Dim("width", min=16, max=1024)}
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            program = torch.onnx.export(
+                naflex, (torch.rand(2, 3, 128, 128),), dynamo=True, opset_version=18, dynamic_shapes=(size,)
+            )
+        session = ort.InferenceSession(program.model_proto.SerializeToString(), providers=["CPUExecutionProvider"])
+        for height, width in ((64, 96), (384, 512)):
+            images = torch.rand(2, 3, height, width)
+            actual = torch.from_numpy(session.run(None, {session.get_inputs()[0].name: images.numpy()})[0])
+            with torch.no_grad():
+                expected = naflex(images)
+            self.assert_close(actual, expected, rtol=0.0, atol=1e-5)
+
+    @pytest.mark.device_agnostic
+    def test_float64_table_is_resized_in_float64(self) -> None:
+        # transformers resizes every CPU table in float32; a float64 table keeps float64 here, so it matches the
+        # float64 resize to rounding (a float32 resize is about 1e-7 off). 12 x 21 shrinks the rows (antialiased),
+        # 24 x 32 shrinks no axis (plain bilinear).
+        table = torch.randn(256, _CHANNELS, dtype=torch.float64)
+        grid = table.reshape(16, 16, -1).permute(2, 0, 1).unsqueeze(0)
+        for (height, width), antialias in (((192, 336), True), ((384, 512), False)):
+            h, w = height // 16, width // 16
+            out = NaFlex(_zero_patches, table)(torch.zeros(3, 3, height, width, dtype=torch.float64))
+            resized = F.interpolate(grid, size=(h, w), mode="bilinear", align_corners=False, antialias=antialias)
+            expected = resized.reshape(-1, h * w).transpose(0, 1).expand(3, -1, -1)
+            self.assert_close(out, expected, rtol=0.0, atol=1e-12)
 
     # 192 x 336: a 12 x 21 grid, antialiased (rows shrink); 384 x 512: 24 x 32, plain bilinear.
     @pytest.mark.parametrize(("height", "width"), [(192, 336), (384, 512)])
