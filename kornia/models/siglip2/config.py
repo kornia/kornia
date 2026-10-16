@@ -123,6 +123,20 @@ _SUPPORTED_MODELS: dict[str, tuple[int, int, int, int, int]] = {
 }
 
 
+def _read_name_parts(model_name: str) -> tuple[int, int, int, int, int]:
+    """Read (vocab_size, hidden_size, num_hidden_layers, num_attention_heads, image_size) from a name's parts.
+
+    Used by ``SigLip2Config.from_name`` for a name outside ``_SUPPORTED_MODELS``: large if the name contains
+    ``"large"``, base otherwise; the first of 224, 256, 384 and 512 in the name (224 if none); the SigLIP 1 vocabulary
+    only for a name containing ``google/siglip-base-patch16-224``.
+    """
+    image_size = next((size for size in (224, 256, 384, 512) if str(size) in model_name), 224)
+    vocab_size = 32000 if "google/siglip-base-patch16-224" in model_name else 256000
+    if "large" in model_name:
+        return vocab_size, 1024, 24, 16, image_size
+    return vocab_size, 768, 12, 12, image_size
+
+
 @dataclass
 class SigLip2Config:
     """Configuration for SigLip2 model.
@@ -150,7 +164,7 @@ class SigLip2Config:
 
     @staticmethod
     def from_name(model_name: str) -> SigLip2Config:
-        """Create the configuration of a supported checkpoint from its name.
+        """Create the configuration of a checkpoint from its name.
 
         Supports the following models:
         - google/siglip-base-patch16-224 (V1)
@@ -162,24 +176,29 @@ class SigLip2Config:
         - google/siglip2-large-patch16-384
         - google/siglip2-large-patch16-512
 
-        Each name gives its checkpoint's ``config.json`` values: patch size 16, 64 text positions, the vocabulary
-        (32000 for the SigLIP 1 model, 256000 for SigLIP 2), and the base (hidden size 768, 12 layers, 12 heads) or
-        large (1024, 24, 16) architecture.
+        Each of these names gives its checkpoint's ``config.json`` values: patch size 16, 64 text positions, the
+        vocabulary (32000 for the SigLIP 1 model, 256000 for SigLIP 2), and the base (hidden size 768, 12 layers, 12
+        heads) or large (1024, 24, 16) architecture.
+
+        Any other name, such as a fine-tune or a mirror of one of these checkpoints, is read from its parts: the large
+        architecture if it contains ``"large"`` and the base one otherwise, patch size 16, the first of the image sizes
+        224, 256, 384 and 512 that it contains (224 if none), the SigLIP 2 vocabulary (SigLIP 1's if it contains
+        ``google/siglip-base-patch16-224``) and 512 text positions. That configuration fits only a checkpoint with that
+        architecture: ``SigLip2Builder.from_pretrained_hf`` adapts the text positions to the checkpoint and raises
+        ``RuntimeError`` when its other shapes differ.
 
         Args:
-            model_name: HuggingFace model identifier, one of the names above.
+            model_name: HuggingFace model identifier.
 
         Returns:
             SigLip2Config instance configured for the specified model.
-
-        Raises:
-            ValueError: if ``model_name`` is not one of the supported names.
         """
-        if model_name not in _SUPPORTED_MODELS:
-            raise ValueError(
-                f"Unsupported SigLip2 model name {model_name!r}. Supported names: {', '.join(_SUPPORTED_MODELS)}."
-            )
-        vocab_size, hidden_size, num_layers, num_heads, image_size = _SUPPORTED_MODELS[model_name]
+        text_kwargs: dict[str, int] = {}
+        if model_name in _SUPPORTED_MODELS:
+            vocab_size, hidden_size, num_layers, num_heads, image_size = _SUPPORTED_MODELS[model_name]
+            text_kwargs["max_position_embeddings"] = 64
+        else:
+            vocab_size, hidden_size, num_layers, num_heads, image_size = _read_name_parts(model_name)
         # every supported checkpoint has an MLP of 4 x hidden_size (3072 for base, 4096 for large)
         intermediate_size = 4 * hidden_size
 
@@ -198,7 +217,7 @@ class SigLip2Config:
             num_hidden_layers=num_layers,
             num_attention_heads=num_heads,
             intermediate_size=intermediate_size,
-            max_position_embeddings=64,
+            **text_kwargs,
         )
 
         return SigLip2Config(

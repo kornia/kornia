@@ -184,16 +184,63 @@ class TestSigLip2Builder:
         assert config.text_config.max_position_embeddings == 64
         assert config.projection_dim == hidden_size
 
-    @pytest.mark.parametrize("model_name", ["google/siglip2-so400m-patch14-384", "google/siglip-large-patch16-256"])
-    def test_from_name_rejects_unsupported_names(self, monkeypatch, model_name):
-        # so400m has patch 14 and hidden 1152; SigLIP 1 large has the 32000-token vocabulary. Neither is in the table,
-        # so each entry point raises, and from_pretrained_hf raises before it downloads anything.
-        downloads = []
-        monkeypatch.setattr(siglip2_builder, "_download_weights", lambda name, cache_dir: downloads.append(name) or {})
-        for entry_point in (SigLip2Config.from_name, SigLip2Builder.from_name, SigLip2Builder.from_pretrained_hf):
-            with pytest.raises(ValueError, match="google/siglip2-base-patch16-224"):
-                entry_point(model_name)
-        assert downloads == []
+    @pytest.mark.parametrize(
+        ("model_name", "expected"),
+        [
+            # (vocab_size, hidden_size, num_hidden_layers, num_attention_heads, image_size, patch_size, text positions)
+            ("someone/siglip2-base-patch16-224-finetuned", (256000, 768, 12, 12, 224, 16, 512)),
+            ("someone/siglip2-large-patch16-384-mirror", (256000, 1024, 24, 16, 384, 16, 512)),
+            ("someone/my-siglip", (256000, 768, 12, 12, 224, 16, 512)),
+        ],
+    )
+    def test_from_name_reads_an_unlisted_name_from_its_parts(self, model_name, expected):
+        # A fine-tune or mirror of a supported checkpoint under another name: base unless the name says "large", the
+        # image size the name contains (224 if none), patch 16, the SigLIP 2 vocabulary, 512 text positions (which
+        # from_pretrained_hf adapts to the checkpoint). Config only: no model is built.
+        config = SigLip2Config.from_name(model_name)
+        vision, text = config.vision_config, config.text_config
+        actual = (
+            text.vocab_size,
+            vision.hidden_size,
+            vision.num_hidden_layers,
+            vision.num_attention_heads,
+            vision.image_size,
+            vision.patch_size,
+            text.max_position_embeddings,
+        )
+        assert actual == expected
+        assert (text.hidden_size, text.num_hidden_layers, text.num_attention_heads) == expected[1:4]
+
+    def test_from_pretrained_hf_loads_an_unlisted_name_that_fits(self, monkeypatch, config):
+        # The tiny config stands in for the configuration read from the name, and its own weights for a fine-tune's.
+        monkeypatch.setattr(SigLip2Config, "from_name", staticmethod(lambda model_name: config))
+        state_dict = SigLip2Model(config).state_dict()
+        monkeypatch.setattr(siglip2_builder, "_download_weights", lambda model_name, cache_dir: state_dict)
+
+        model = SigLip2Builder.from_pretrained_hf("someone/siglip2-base-patch16-224-finetuned")
+
+        assert {m.training for m in model.modules()} == {False}
+        for name, tensor in model.state_dict().items():
+            assert torch.equal(tensor, state_dict[name])
+
+    def test_from_pretrained_hf_names_the_supported_list_when_an_unlisted_checkpoint_does_not_fit(
+        self, monkeypatch, config
+    ):
+        # Weights of a wider model (hidden size 48 instead of 32) stand in for a large checkpoint under a name that
+        # reads as base: load_state_dict's shape mismatch becomes an error naming the supported checkpoints.
+        monkeypatch.setattr(SigLip2Config, "from_name", staticmethod(lambda model_name: config))
+        wider = SigLip2Config(
+            vision_config=replace(config.vision_config, hidden_size=48),
+            text_config=replace(config.text_config, hidden_size=48),
+            projection_dim=config.projection_dim,
+        )
+        state_dict = SigLip2Model(wider).state_dict()
+        monkeypatch.setattr(siglip2_builder, "_download_weights", lambda model_name, cache_dir: state_dict)
+
+        with pytest.raises(RuntimeError, match=r"Supported names: google/siglip-base-patch16-224, ") as error:
+            SigLip2Builder.from_pretrained_hf("someone/my-siglip")
+        assert "base (hidden size 768, 12 layers, 12 heads)" in str(error.value)
+        assert "size mismatch" in str(error.value.__cause__)
 
 
 class TestSigLip2Model(BaseTester):
@@ -628,15 +675,33 @@ class TestSigLip2Components(BaseTester):
             # The same mask broadcast over the queries, as (B, N, N) and as (B, 1, N, N).
             pooled_3d, _ = model(pixel_values, attention_mask=mask[:, None, :].expand(1, 64, 64))
             pooled_4d, _ = model(pixel_values, attention_mask=mask[:, None, None, :].expand(1, 1, 64, 64))
+            # The usual 3-D padding mask, the outer product, also masks the padded queries: every key of a padded
+            # patch's row is masked, so a key counts as padding only when no query may attend to it.
+            pooled_outer, _ = model(pixel_values, attention_mask=mask[:, :, None] & mask[:, None, :])
 
         self.assert_close(pooled_changed, pooled)
         self.assert_close(pooled_3d, pooled)
         self.assert_close(pooled_4d, pooled)
+        self.assert_close(pooled_outer, pooled)
+
+    def test_pooling_head_broadcasts_a_single_mask_over_the_batch(self, device, dtype):
+        config = _tiny_vision_config()
+        head = SigLip2MultiheadAttentionPoolingHead(config).to(device, dtype).eval()
+        hidden_state = torch.randn(3, 64, config.hidden_size, device=device, dtype=dtype)
+        mask = _patch_rows_4_to_7_masked(device)  # (1, 64)
+
+        with torch.no_grad():
+            pooled = head(hidden_state, attention_mask=mask)
+            per_sample = torch.cat([head(hidden_state[b : b + 1], attention_mask=mask) for b in range(3)])
+
+        self.assert_close(pooled, per_sample)
 
     def test_pooling_head_all_masked_sample_pools_uniformly(self, device, dtype):
         # transformers' pooling head masks with _prepare_4d_attention_mask, which adds torch.finfo(dtype).min to the
         # scores of masked keys (modeling_attn_mask_utils.py v4.51.0, AttentionMaskConverter._expand_mask): a sample
-        # with every key masked gets equal scores, so uniform weights, where -inf would give nan.
+        # with every key masked gets equal scores, so uniform weights, where -inf would give nan. In float16 that holds
+        # only while the scores stay within about +-16 of 0 (finfo.min + score rounds to a multiple of 32); this tiny
+        # random head's scores are far smaller.
         config = _tiny_vision_config()
         head = SigLip2MultiheadAttentionPoolingHead(config).to(device, dtype).eval()
         hidden_state = torch.randn(2, 64, config.hidden_size, device=device, dtype=dtype)

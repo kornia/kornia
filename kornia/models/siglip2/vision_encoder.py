@@ -191,8 +191,10 @@ class SigLip2MultiheadAttentionPoolingHead(nn.Module):
                 :math:`(B, 1, N, N)`. The probe does not attend to the padding tokens. For a 3-D or 4-D mask, a token
                 that no query may attend to is padding, so a :math:`(B, N)` mask broadcast over the queries pools
                 exactly as the :math:`(B, N)` mask itself. As in transformers, a padding token's attention score gets
-                ``torch.finfo(dtype).min`` added rather than ``-inf``, so a sample whose tokens are all padding pools
-                them with uniform weights instead of returning ``nan``.
+                ``torch.finfo(dtype).min`` added rather than ``-inf``: a sample whose tokens are all padding pools
+                them with exactly uniform weights in float32, float64 and bfloat16. In float16, as in transformers,
+                ``finfo(float16).min`` plus a score rounds to a multiple of 32, so those weights are only roughly
+                uniform, and a head whose scores are all below about -16 gives a non-finite output.
 
         Returns:
             Tensor with shape :math:`(B, D)` containing the pooled visual
@@ -211,7 +213,8 @@ class SigLip2MultiheadAttentionPoolingHead(nn.Module):
                 keep = keep.flatten(1, -2).any(1)
             # An additive mask with the dtype's finite minimum on the padding keys, as transformers'
             # _prepare_4d_attention_mask builds it: a partly padded sample pools as with -inf (exp underflows to 0),
-            # and an all-padding sample gets uniform weights instead of the nan of a softmax over -inf only.
+            # and an all-padding sample gets uniform weights (exactly so in float32, float64 and bfloat16; float16
+            # rounds min + score, see the docstring) instead of the nan of a softmax over -inf only.
             key_padding_mask = torch.zeros(keep.shape, dtype=hidden_state.dtype, device=hidden_state.device)
             key_padding_mask = key_padding_mask.masked_fill(~keep, torch.finfo(hidden_state.dtype).min)
             key_padding_mask = key_padding_mask.expand(batch_size, -1)
