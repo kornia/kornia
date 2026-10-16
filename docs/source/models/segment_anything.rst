@@ -286,7 +286,8 @@ This is a simple example of how to use the loaded SAM model directly. We recomme
     # Transform the image (CxHxW) into a batched input (BxCxHxW)
     image = image[None, ...]
 
-    # Resize the image so that its longest side is 1024, as SAM's reference does (bilinear, half-pixel, antialiased)
+    # Resize the image so that its longest side is 1024, as SAM's reference does (bilinear, half-pixel, antialiased).
+    # On MPS with torch older than 2.7, which has no antialiased bilinear kernel, resize on the CPU and move back.
     H, W = image.shape[-2:]
     h, w = int(H * 1024 / max(H, W)), int(W * 1024 / max(H, W))
     data = F.interpolate(image, size=(h, w), mode='bilinear', align_corners=False, antialias=True)

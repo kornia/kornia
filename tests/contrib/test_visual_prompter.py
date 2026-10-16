@@ -312,6 +312,13 @@ class TestVisualPrompter(BaseTester):
             with pytest.raises(BaseError, match="exactly one stage"):
                 prompter.set_image(torch.rand(3, 77, 128))
 
+        # A Resize past the encoder's 1024 input would be cropped by the padding while the prompts are not.
+        prompter.transforms = AugmentationSequential(
+            K.Resize(2048, side="long", align_corners=False, antialias=True), same_on_batch=True
+        )
+        with pytest.raises(BaseError, match="larger than the image encoder's input size 1024"):
+            prompter.set_image(torch.rand(3, 77, 128))
+
         prompter.transforms = AugmentationSequential(resize, same_on_batch=True)
         prompter.set_image(torch.rand(3, 77, 128))
         assert prompter._input_image_size == (616, 1024)

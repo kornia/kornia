@@ -232,6 +232,13 @@ class VisualPrompter:
         if not isinstance(resize_params, dict):
             raise TypeError(f"Expected the parameters of the Resize augmentation. Got {type(resize_params)}.")
         height, width = (int(side) for side in resize_params["output_size"][0])
+        encoder_size = self.model.image_encoder.img_size
+        KORNIA_CHECK(
+            max(height, width) <= encoder_size,
+            f"VisualPrompter.transforms resizes the image to {height} x {width}, larger than the image encoder's input "
+            f"size {encoder_size}: the padding to {encoder_size} would crop the image while the prompts are scaled "
+            "for all of it.",
+        )
         prompt_dtype = torch.promote_types(self.model.prompt_encoder.point_embeddings[0].weight.dtype, torch.float32)
         self._prompt_scale = torch.tensor(
             [width / image.shape[-1], height / image.shape[-2]], device=image.device, dtype=prompt_dtype
