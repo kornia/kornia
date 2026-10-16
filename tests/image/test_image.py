@@ -261,6 +261,35 @@ class TestImage(BaseTester):
         multi = Image.from_dlpack(np.zeros((4, 4, 5), dtype=np.uint8).__dlpack__())
         assert multi.pixel_format.color_space == ColorSpace.UNKNOWN
 
+    @pytest.mark.parametrize("channels", [1, 3, 4])
+    @pytest.mark.parametrize("channels_order", [ChannelsOrder.CHANNELS_LAST, ChannelsOrder.CHANNELS_FIRST])
+    def test_dlpack_round_trip_keeps_the_layout_6039(self, channels, channels_order):
+        # to_dlpack keeps the image's own layout, so a channels-last image used to come back from from_dlpack with
+        # its height, width and channels swapped.
+        shape = (6, 8, channels) if channels_order == ChannelsOrder.CHANNELS_LAST else (channels, 6, 8)
+        data = np.arange(np.prod(shape), dtype=np.uint8).reshape(shape)
+        img = Image.from_numpy(data, channels_order=channels_order)
+
+        back = Image.from_dlpack(img.to_dlpack(), channels_order=img.channels_order)
+
+        assert (back.height, back.width, back.channels) == (6, 8, channels)
+        assert back.channels_order == channels_order
+        assert back.pixel_format.color_space == img.pixel_format.color_space
+        np.testing.assert_array_equal(back.to_numpy(), data)
+
+    def test_from_dlpack_reads_a_channels_last_capsule_6039(self):
+        hwc = np.zeros((6, 8, 3), dtype=np.uint8)
+        img = Image.from_dlpack(hwc.__dlpack__(), channels_order=ChannelsOrder.CHANNELS_LAST)
+        assert (img.height, img.width, img.channels) == (6, 8, 3)
+        assert img.pixel_format.color_space == ColorSpace.RGB
+        # The default is unchanged: a (C, H, W) capsule.
+        chw = Image.from_dlpack(np.zeros((3, 6, 8), dtype=np.uint8).__dlpack__())
+        assert (chw.channels_order, chw.height, chw.width, chw.channels) == (ChannelsOrder.CHANNELS_FIRST, 6, 8, 3)
+
+    def test_from_dlpack_rejects_an_unknown_channels_order_6039(self):
+        with pytest.raises(ValueError, match="channels_order must be either"):
+            Image.from_dlpack(np.zeros((3, 6, 8), dtype=np.uint8).__dlpack__(), channels_order="HWC")
+
     @pytest.mark.parametrize(
         ("dtype", "bits", "ok"),
         [(torch.uint8, 8, True), (torch.uint8, 12, False), (torch.uint16, 16, True), (torch.uint16, 12, False)],

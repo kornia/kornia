@@ -376,14 +376,18 @@ class Image:
         return self.data.cpu().detach().numpy()
 
     @classmethod
-    def from_dlpack(cls, data: DLPack) -> Image:
+    def from_dlpack(cls, data: DLPack, channels_order: ChannelsOrder = ChannelsOrder.CHANNELS_FIRST) -> Image:
         """Construct an ``Image`` from a DLPack capsule, sharing its memory.
 
         Args:
-            data: a DLPack capsule from numpy, tvm or jax. The capsule must hold a ``(C, H, W)`` image; it is
-                labelled ``GRAY`` for 1 channel, ``RGB`` for 3 and ``UNKNOWN`` otherwise.
+            data: a DLPack capsule from numpy, tvm or jax, holding a ``(C, H, W)`` image, or ``(H, W, C)`` with
+                ``channels_order=CHANNELS_LAST``. It is labelled ``GRAY`` for 1 channel, ``RGB`` for 3 and
+                ``UNKNOWN`` otherwise.
+            channels_order: the layout of the capsule. Pass ``img.channels_order`` to read back
+                ``img.to_dlpack()``, which keeps the image's own layout.
 
         Raises:
+            ValueError: if ``channels_order`` is neither ``CHANNELS_LAST`` nor ``CHANNELS_FIRST``.
             ShapeError: if the capsule has more than three dimensions. It is also a ``ValueError``.
             IndexError: if the capsule has fewer than three dimensions.
 
@@ -392,23 +396,36 @@ class Image:
             >>> img = Image.from_dlpack(x.__dlpack__())
             >>> img.channels, img.height, img.width
             (3, 4, 5)
+            >>> hwc = Image.from_numpy(np.ones((4, 5, 3), dtype=np.uint8))  # (H, W, C), CHANNELS_LAST
+            >>> back = Image.from_dlpack(hwc.to_dlpack(), channels_order=hwc.channels_order)
+            >>> back.channels, back.height, back.width
+            (3, 4, 5)
 
         """
         _data: torch.Tensor = from_dlpack(data)
 
-        pixel_format = PixelFormat(color_space=_default_color_space(_data.shape[0]), bit_depth=_data.element_size() * 8)
+        if channels_order == ChannelsOrder.CHANNELS_FIRST:
+            image_size = ImageSize(height=_data.shape[1], width=_data.shape[2])
+            channels = _data.shape[0]
+        elif channels_order == ChannelsOrder.CHANNELS_LAST:
+            image_size = ImageSize(height=_data.shape[0], width=_data.shape[1])
+            channels = _data.shape[2]
+        else:
+            raise ValueError("channels_order must be either `CHANNELS_LAST` or `CHANNELS_FIRST`")
+
+        pixel_format = PixelFormat(color_space=_default_color_space(channels), bit_depth=_data.element_size() * 8)
 
         # create the image layout based on the input data
-        layout = ImageLayout(
-            image_size=ImageSize(height=_data.shape[1], width=_data.shape[2]),
-            channels=_data.shape[0],
-            channels_order=ChannelsOrder.CHANNELS_FIRST,
-        )
+        layout = ImageLayout(image_size=image_size, channels=channels, channels_order=channels_order)
 
         return cls(_data, pixel_format, layout)
 
     def to_dlpack(self) -> DLPack:
-        """Return a DLPack capsule from the image torch.Tensor."""
+        """Return a DLPack capsule from the image torch.Tensor, sharing its memory.
+
+        The capsule holds the data in the image's own :attr:`channels_order`, ``(C, H, W)`` or ``(H, W, C)``; read it
+        back with ``Image.from_dlpack(capsule, channels_order=img.channels_order)``.
+        """
         return to_dlpack(self.data)
 
     @classmethod
