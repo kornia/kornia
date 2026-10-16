@@ -6,6 +6,8 @@ kornia.contrib
 
 .. currentmodule:: kornia.contrib
 
+.. _augmentation-audit:
+
 Augmentation Geometry Audit
 ---------------------------
 
@@ -245,8 +247,20 @@ Image Segmentation
 
 .. autofunction:: connected_components_union_find
 
+.. _labeling-method:
+
 Choosing a labeling method
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Both functions label 8-connected components: two foreground pixels (pixels equal
+to 1) that touch at an edge or a corner belong to one component. SciPy, OpenCV
+and scikit-image take any non-zero pixel as foreground, so the same partition is
+``scipy.ndimage.label(mask == 1, structure=np.ones((3, 3)))`` (SciPy's default
+structure is 4-connected), ``cv2.connectedComponents((mask == 1).astype(np.uint8),
+connectivity=8)`` (OpenCV's default connectivity) and
+``skimage.measure.label(mask == 1, connectivity=2)`` (scikit-image's default for
+2-D images). Label values differ between these libraries and between the two
+functions: compare foreground partitions, not label values.
 
 ``connected_components_union_find`` computes the exact 8-connected partition
 without an iteration budget. It accepts boolean masks and returns ``int64``
@@ -258,10 +272,9 @@ the host, and the result is not differentiable.
 ``connected_components`` retains its fixed-count pooling implementation; it
 returns ``int64`` labels like ``connected_components_union_find`` but keeps its
 own label convention. When using it, choose enough iterations for the largest
-component's graph diameter: the default 100 steps can leave a long component
-split into multiple labels. A small fixed budget may be faster than union-find
-for small or fragmented masks, but does not guarantee convergence. The two implementations produce different numerical label IDs;
-compare their foreground partitions instead of comparing label values directly.
+component's graph diameter: the default 100 steps can leave a long or large
+component split into multiple labels. A small fixed budget may be faster than
+union-find for small or fragmented masks, but does not guarantee convergence.
 
 Segment Anything (SAM)
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -290,6 +303,12 @@ Image Patches
 .. autoclass:: ExtractTensorPatches
 .. autoclass:: CombineTensorPatches
 
+Histogram Matching
+------------------
+
+.. autofunction:: histogram_matching
+.. autofunction:: interp
+
 Image Classification
 --------------------
 
@@ -313,9 +332,13 @@ Distance Transform
 ------------------
 
 .. autofunction:: distance_transform
-.. autofunction:: diamond_square
 
 .. autoclass:: DistanceTransform
+
+Plasma Fractal Noise
+--------------------
+
+.. autofunction:: diamond_square
 
 KMeans
 ------

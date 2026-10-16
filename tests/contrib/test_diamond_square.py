@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import functools
+
 import pytest
 import torch
 
@@ -65,8 +67,8 @@ class TestDiamondSquare(BaseTester):
 
     @pytest.mark.parametrize("size", [(17, 5), (10, 14), (5, 17)])
     def test_mean_field_is_flat(self, size, device):
-        # A-35/A-36: every seed node is U(0, 1) and each step mixes (1 - s) * neighbour mean + s * U(0, 1), so the
-        # expected field is 0.5 everywhere. main's minimum mean was 0.165 (17x5, 10x14, 5x17, 4000 draws).
+        # Every seed node is U(0, 1) and each step mixes (1 - s) * neighbour mean + s * U(0, 1), so the expected field
+        # is 0.5 everywhere. A biased seed and border step gave a minimum mean of 0.165 (17x5, 10x14, 5x17, 4000 draws).
         # Sizes with H != W; (5, 17) and (17, 5) have a 3x9 seed, which exercises the interior row-1 square centres.
         torch.manual_seed(0)
         out = kornia.contrib.diamond_square((4000, 1, *size), device=device, dtype=torch.float32)
@@ -77,7 +79,8 @@ class TestDiamondSquare(BaseTester):
         if not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
 
-        # A-35/A-36: interpolating a constant must return the constant (main: corners 1/3, border midpoints 4/3).
+        # Interpolating a constant must return the constant (a biased seed and border step gave corners 1/3 and
+        # border midpoints 4/3).
         def ones(shape, device=None, dtype=None):
             return torch.ones(shape, device=device, dtype=dtype)
 
@@ -85,13 +88,13 @@ class TestDiamondSquare(BaseTester):
         self.assert_close(out, torch.ones_like(out))
 
     def test_signed_random_fn_fills_every_pixel(self, device):
-        # A-37: centres were chosen by value > 0, so torch.randn left 56 % of the pixels at exactly 0.
+        # Centres chosen by value > 0 left 56 % of the pixels at exactly 0 for torch.randn.
         torch.manual_seed(0)
         out = kornia.contrib.diamond_square((200, 1, 17, 33), random_fn=torch.randn, device=device)
         assert (out == 0).float().mean().item() < 1e-3
 
     def test_tensor_roughness_follows_the_requested_dtype_and_device(self, device):
-        # A-38: a float64 CPU roughness returned float64 for dtype=float32 and crashed for device='mps'.
+        # A float64 CPU roughness returned float64 for dtype=float32 and crashed for device='mps'.
         r = torch.tensor([0.5, 0.6], dtype=torch.float64)
         s = torch.tensor(1.0, dtype=torch.float64)
         out = kornia.contrib.diamond_square(
@@ -103,17 +106,17 @@ class TestDiamondSquare(BaseTester):
     def test_integer_normalize_range(self, device, dtype):
         if not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
-        # A-39: (0, 1) raised TypeError in normalize_min_max.
+        # An integer range (0, 1) raised TypeError in normalize_min_max.
         out = kornia.contrib.diamond_square((1, 1, 9, 14), normalize_range=(0, 1), device=device, dtype=dtype)
         assert out.min() >= 0
         assert out.max() <= 1
 
     def test_seed_values(self, device, dtype):
-        # A-35: the right-edge midpoint used the opposite corner, and the interior row-1 square centres of a seed
-        # with K >= 5 were never interpolated. At recursion depth 0 the output is the 3xK seed itself. Expected
+        # A seed that divided its corners and centre by 3, used the opposite corner for the right-edge midpoint and
+        # never interpolated the interior row-1 square centres of K >= 5 gave 0.333 / 92.58 / 459.25 for the 3x3
+        # corners, centre and right midpoint. At recursion depth 0 the output is the 3xK seed itself. Expected
         # values are worked by hand: a diamond centre is the mean of its four corners, a border midpoint the mean of
-        # its three neighbours, an interior row-1 point the mean of its four neighbours. main gave 0.333 / 92.58 /
-        # 459.25 for the 3x3 corners, centre and right midpoint.
+        # its three neighbours, an interior row-1 point the mean of its four neighbours.
         def draw(values):
             def fn(shape, device=None, dtype=None):
                 return torch.tensor(values, device=device, dtype=dtype).expand(shape).clone()
@@ -143,3 +146,72 @@ class TestDiamondSquare(BaseTester):
         # the transposed path: a 5x3 output is the 3x5 seed transposed
         out5t = kornia.contrib.diamond_square((1, 1, 5, 3), random_fn=draw(values5), device=device, dtype=dtype)
         self.assert_close(out5t[0, 0], expected5.transpose(0, 1))
+
+    def test_convention_update_rule(self, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+
+        # One level from a 3x5 seed: a new value is (1 - s) * mean(neighbours) + s * U, s = random_scale * roughness
+        # = 0.25, U = 1, seed corner draws [[1, 2, 4], [8, 16, 32]] scaled by random_scale. Worked by hand (scaled
+        # seed: corner 0.5, centre 3.375, top midpoint 1.625, left midpoint 2.625; diamond (1, 3) = 2.271484375):
+        #   diamond (1, 1) = 0.75 * mean(0.5, 1.625, 2.625, 3.375) + 0.25 = 1.7734375
+        #   border square (0, 1) = 0.75 * mean(0.5, 1.625, 1.7734375) + 0.25 = 1.224609375 (three neighbours)
+        #   interior square (1, 2) = 0.75 * mean(1.625, 3.375, 1.7734375, 2.271484375) + 0.25 = 1.9459228515625
+        def draw(shape, device=None, dtype=None):
+            if shape[-2] == 2:  # the seed's corner draws
+                return torch.tensor([[1.0, 2.0, 4.0], [8.0, 16.0, 32.0]], device=device, dtype=dtype).expand(shape)
+            return torch.ones(shape, device=device, dtype=dtype)
+
+        out = kornia.contrib.diamond_square(
+            (1, 1, 5, 9), roughness=0.5, random_scale=0.5, random_fn=draw, device=device, dtype=dtype
+        )[0, 0]
+        assert out.shape == (5, 9)
+        # seed corner, seed centre, level-1 diamond centre, border square centre, interior square centre
+        nodes = torch.stack([out[0, 0], out[2, 2], out[1, 1], out[0, 1], out[1, 2]])
+        expected = torch.tensor([0.5, 3.375, 1.7734375, 1.224609375, 1.9459228515625], device=device, dtype=dtype)
+        self.assert_close(nodes, expected)
+
+    def test_convention_normalize_range_is_min_max_per_plane(self, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+        torch.manual_seed(0)
+        out = kornia.contrib.diamond_square((3, 2, 9, 14), normalize_range=(-1.0, 1.0), device=device, dtype=dtype)
+        self.assert_close(out.amin((-2, -1)), torch.full((3, 2), -1.0, device=device, dtype=dtype))
+        self.assert_close(out.amax((-2, -1)), torch.full((3, 2), 1.0, device=device, dtype=dtype))
+
+    def test_convention_random_fn_is_the_only_source_of_randomness(self, device):
+        def device_state():
+            if device.type == "cuda":
+                return torch.cuda.get_rng_state(device)
+            if device.type == "mps":
+                return torch.mps.get_rng_state()
+            return None
+
+        g = torch.Generator(device=device)
+        draw = functools.partial(torch.rand, generator=g)
+        cpu_state, accelerator_state = torch.get_rng_state(), device_state()
+        g.manual_seed(3)
+        first = kornia.contrib.diamond_square((2, 1, 9, 14), random_fn=draw, device=device)
+        g.manual_seed(3)
+        second = kornia.contrib.diamond_square((2, 1, 9, 14), random_fn=draw, device=device)
+        assert torch.equal(first, second)
+        assert torch.equal(cpu_state, torch.get_rng_state())
+        if accelerator_state is not None:
+            assert torch.equal(accelerator_state, device_state())
+
+    def test_wart_mean_field_drifts_for_random_scale_not_one_5963(self, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+
+        # The map is linear in the draws, so a constant 0.5 draw gives the expected field of torch.rand exactly.
+        # With random_scale=0.5 the seed is 0.5 * 0.5 = 0.25, and each level mixes towards 0.5: a level-1 diamond is
+        # 0.75 * 0.25 + 0.25 * 0.5 = 0.3125, a level-1 square 0.328125 at the border and 0.3359375 inside.
+        def half(shape, device=None, dtype=None):
+            return torch.full(shape, 0.5, device=device, dtype=dtype)
+
+        out = kornia.contrib.diamond_square(
+            (1, 1, 9, 17), random_scale=0.5, random_fn=half, device=device, dtype=dtype
+        )[0, 0]
+        nodes = torch.stack([out[0, 0], out[4, 8], out[2, 2], out[0, 2], out[2, 4]])
+        expected = torch.tensor([0.25, 0.25, 0.3125, 0.328125, 0.3359375], device=device, dtype=dtype)
+        self.assert_close(nodes, expected)

@@ -149,26 +149,26 @@ class TestHistMatch(BaseTester):
         assert torch.equal(kornia.contrib.interp(xp, xp, fp), fp)
 
     def test_interp_left_of_a_repeated_first_knot(self, device, dtype):
-        # A-31: np.interp([-1, 0, 0.5], [0, 0, 1], [5, 6, 7]) == [5, 6, 6.5]; kornia returned 6.0 left of the step.
+        # np.interp([-1, 0, 0.5], [0, 0, 1], [5, 6, 7]) == [5, 6, 6.5]; 6.0 was returned left of the step.
         x = torch.tensor([-1.0, 0.0, 0.5], device=device, dtype=dtype)
         xp = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
         fp = torch.tensor([5.0, 6.0, 7.0], device=device, dtype=dtype)
         assert kornia.contrib.interp(x, xp, fp).tolist() == [5.0, 6.0, 6.5]
 
     def test_matching_an_image_to_itself_is_the_identity(self, device, dtype):
-        # A-21: 132 (float32) / 178 (float64) of 5328 pixels changed.
+        # An interp inexact at its knots changed 132 (float32) / 178 (float64) of these 5328 pixels.
         g = torch.Generator().manual_seed(0)
         x = (torch.rand(2, 3, 24, 37, generator=g) * 255).round().to(device, dtype)
         assert torch.equal(kornia.contrib.histogram_matching(x, x), x)
 
     def test_uint8_result_survives_a_uint8_cast(self, device):
-        # A-21: [3, 1, 2] onto [10, 20, 30] gave [29.999998, 10, 20], i.e. 29 after .to(torch.uint8).
+        # An interp inexact at its knots gave [29.999998, 10, 20] for [3, 1, 2] onto [10, 20, 30], 29 as uint8.
         src = torch.tensor([3, 1, 2], dtype=torch.uint8, device=device)
         tpl = torch.tensor([10, 20, 30], dtype=torch.uint8, device=device)
         assert kornia.contrib.histogram_matching(src, tpl).to(torch.uint8).tolist() == [30, 10, 20]
 
     def test_float32_output_stays_inside_the_template_range(self, device):
-        # A-22: #5794's range guarantee leaked one ulp in 24-49 of 300 random float32 pairs.
+        # An interp inexact at its knots left the template range by one ulp for some random float32 pairs.
         outside = 0
         for seed in range(300):
             g = torch.Generator().manual_seed(seed)
@@ -353,8 +353,7 @@ class TestHistMatch(BaseTester):
         assert out.tolist() == [float("inf")]
 
     def test_jit_script(self, device, dtype):
-        # Codex review on #5960: a recursive interp (for the complex parts) made both public functions unscriptable,
-        # also for real inputs; main (4863aed8a) scripted them.
+        # A recursive interp (for the complex parts) made both public functions unscriptable, also for real inputs.
         interp_script = torch.jit.script(kornia.contrib.interp)
         x = torch.linspace(-1.0, 2.0, 13, device=device, dtype=dtype)
         xp = torch.tensor([0.0, 0.5, 1.0], device=device, dtype=dtype)
@@ -369,3 +368,38 @@ class TestHistMatch(BaseTester):
         template = (torch.rand(1, 3, 10, 7, generator=g) ** 2).to(device, dtype)
         matched = torch.jit.script(kornia.contrib.histogram_matching)(source, template)
         self.assert_close(matched, kornia.contrib.histogram_matching(source, template))
+
+    def test_convention_histogram_matching_pools_every_element(self, device, dtype):
+        source = torch.tensor([0.1, 0.4, 0.2, 0.3, 0.6, 0.5], device=device, dtype=dtype).view(2, 1, 1, 3)
+        template = torch.arange(1, 7, device=device, dtype=dtype).view(2, 1, 1, 3)
+        # skimage 0.26.0: match_histograms(source, template, channel_axis=None) -> [[1, 4, 2], [3, 6, 5]].
+        # Matching each sample on its own would give [2, 6, 4] for both.
+        expected = torch.tensor([1.0, 4.0, 2.0, 3.0, 6.0, 5.0], device=device, dtype=dtype).view(2, 1, 1, 3)
+        self.assert_close(kornia.contrib.histogram_matching(source, template), expected)
+
+    def test_convention_integer_source_returns_float32_between_template_values(self, device):
+        source = torch.tensor([0, 1, 2], dtype=torch.uint8, device=device)
+        out = kornia.contrib.histogram_matching(source, torch.tensor([0, 10], dtype=torch.uint8, device=device))
+        assert out.dtype == torch.float32
+        # skimage 0.26.0 match_histograms gives [0, 3.333, 10] (in float64)
+        self.assert_close(out, torch.tensor([0.0, 10.0 / 3.0, 10.0], device=device))
+
+    def test_convention_interp_extrapolates_where_np_interp_clamps(self, device, dtype):
+        xp = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
+        fp = torch.tensor([4.0, 2.0, 0.0], device=device, dtype=dtype)
+        x = torch.tensor([[0.0, 0.5], [4.0, 6.0]], device=device, dtype=dtype)
+        # np.interp([0, 0.5, 4, 6], [1, 2, 3], [4, 2, 0]) -> [4, 4, 0, 0]
+        expected = torch.tensor([[6.0, 5.0], [-2.0, -6.0]], device=device, dtype=dtype)
+        self.assert_close(kornia.contrib.interp(x, xp, fp), expected)
+
+    def test_wart_interp_integer_x_with_half_fp_overflows_5967(self, device):
+        # The weight is formed in float16 from integer differences above 65504. x = 100000 gives NaN where the right
+        # value is 1.0; x = 60000 overflows only the segment width and gives a silent 0.0 where the right value is 0.6.
+        x = torch.tensor([100000, 60000], device=device)
+        xp = torch.tensor([0, 200000], device=device)
+        out = kornia.contrib.interp(x, xp, torch.tensor([0.0, 2.0], device=device, dtype=torch.float16))
+        assert out.dtype == torch.float16
+        assert torch.isnan(out[0])
+        assert out[1].item() == 0.0
+        reference = kornia.contrib.interp(x, xp, torch.tensor([0.0, 2.0], device=device))
+        self.assert_close(reference, torch.tensor([1.0, 0.6], device=device))

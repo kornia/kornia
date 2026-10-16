@@ -21,6 +21,7 @@ from unittest.mock import MagicMock
 import pytest
 import torch
 
+from kornia.contrib import ImageStitcher
 from kornia.core._compat import torch_version_le
 from kornia.core.exceptions import BaseError
 from kornia.feature import DescriptorMatcher, GFTTAffNetHardNet, LocalFeatureMatcher, LoFTR, SIFTFeature
@@ -89,7 +90,7 @@ class TestHomographyTrackerCaching:
         return LocalFeatureMatcher(SIFTFeature(300), DescriptorMatcher("snn", 0.9))
 
     def test_target_features_are_extracted_once(self):
-        # C-4: the nn.Module guard never matched a method, so the target was re-extracted on every frame.
+        # An nn.Module guard never matched a method, so the target was re-extracted on every frame.
         initial, fast = self._sift_matcher(), self._sift_matcher()
         shapes = []
         for m in (initial, fast):
@@ -114,7 +115,7 @@ class TestHomographyTrackerCaching:
         assert calls == [(1, 1, 64, 80)]  # only the pre-warped frame, at the target's size
 
     def test_loftr_without_cached_features_gets_image0(self):
-        # A target assigned directly, without set_target, has no cached features0, so LoFTR needs image0 (as on main).
+        # A target assigned directly, without set_target, has no cached features0, so LoFTR needs image0.
         loftr = LoFTR(None)
         keys = []
         loftr.register_forward_pre_hook(lambda mod, args: keys.append(sorted(args[0])))
@@ -148,7 +149,7 @@ class TestHomographyTrackerCaching:
             return LoFTR(None, config)
 
     def test_loftr_swapped_after_set_target_matches_an_uncached_call(self):
-        # CodeRabbit 4277422844: a LoFTR swapped in after set_target was fed the old LoFTR's cached features0.
+        # A LoFTR swapped in after set_target was fed the old LoFTR's cached features0.
         old, new = self._loftr(1), self._loftr(2)
         tracker = HomographyTracker(old, self._sift_matcher(), minimum_inliers_num=10**6)
         target, frame = _texture(64, 80), _texture(72, 96, seed=1)
@@ -190,14 +191,14 @@ class TestHomographyTrackerCaching:
         assert in_tracker == [(1, 1, 64, 80)] * 3  # the target once after the swap, then the warped frame twice
 
     def test_track_next_frame_without_a_prior_raises(self):
-        # C-5: UnboundLocalError on Hwarp.
+        # It raised UnboundLocalError on Hwarp.
         tracker = _make_tracker()
         tracker.set_target(torch.rand(1, 1, 8, 9))
         with pytest.raises(BaseError, match="previous homography"):
             tracker.track_next_frame(torch.rand(1, 1, 8, 9))
 
     def test_fewer_than_four_matches_is_a_failed_match(self):
-        # C-6: minimum_inliers_num < 4 let 3 matches reach RANSAC, which raised.
+        # minimum_inliers_num < 4 let 3 matches reach RANSAC, which raised.
         tracker = _make_tracker(minimum_inliers_num=0)
         tracker.set_target(torch.rand(1, 1, 8, 9))
         tracker.initial_matcher.return_value = _match_dict(3, torch.device("cpu"), torch.float32)
@@ -216,7 +217,7 @@ class TestHomographyTrackerCaching:
         assert tracker.previous_homography is None
 
     def test_set_target_starts_a_new_track(self):
-        # C-7 (controller ruling): the old prior maps the old target's coordinates.
+        # The old prior maps the old target's coordinates.
         tracker = _make_tracker()
         tracker.set_target(torch.rand(1, 1, 8, 9))
         tracker.previous_homography = torch.eye(3)
@@ -224,7 +225,7 @@ class TestHomographyTrackerCaching:
         assert tracker.previous_homography is None
 
     def test_target_assigned_directly_starts_a_new_track(self):
-        # CodeRabbit 4277848437: after a target was assigned directly, forward tracked it with the old target's prior.
+        # After a target was assigned directly, forward tracked it with the old target's prior.
         tracker = _make_tracker()
         tracker.set_target(torch.rand(1, 1, 8, 9))
         tracker.initial_matcher.return_value = _match_dict(20, torch.device("cpu"), torch.float32)
@@ -488,3 +489,63 @@ class TestHomographyTracker(BaseTester):
             homography, success = tracker(data["image1"])
         assert success
         self.assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
+
+
+_H_TRUE = torch.tensor([[1.1, 0.05, 7.0], [-0.03, 0.95, 4.0], [1e-4, -2e-4, 1.0]])
+
+
+class _ExactMatcher(torch.nn.Module):
+    """Exact correspondences ``keypoints1 = _H_TRUE(keypoints0)``, in float32 whatever the image dtype."""
+
+    def forward(self, data: dict) -> dict:
+        ys, xs = torch.meshgrid(torch.arange(3.0, 40, 4), torch.arange(3.0, 50, 4), indexing="ij")
+        kp0 = torch.stack([xs.flatten(), ys.flatten()], -1)
+        kp1 = transform_points(_H_TRUE[None], kp0[None])[0]
+        return {"keypoints0": kp0, "keypoints1": kp1, "batch_indexes": torch.zeros(len(kp0), dtype=torch.long)}
+
+
+class TestHomographyTrackerConventions:
+    def test_convention_homography_maps_target_pixels_to_frame_pixels(self):
+        tracker = HomographyTracker(_ExactMatcher(), _ExactMatcher(), minimum_inliers_num=10)
+        tracker.set_target(torch.rand(1, 1, 44, 54))
+        H, ok = tracker(torch.rand(1, 1, 60, 70))
+        assert ok
+        torch.testing.assert_close(H / H[2, 2], _H_TRUE, rtol=1e-4, atol=1e-4)
+
+    def test_convention_target_is_not_a_buffer(self):
+        tracker = HomographyTracker(_ExactMatcher(), _ExactMatcher())
+        tracker.set_target(torch.rand(1, 1, 44, 54))
+        tracker.to(torch.float64)
+        assert "target" not in dict(tracker.named_buffers())
+        assert tracker.dtype == torch.float32  # .to() leaves the target behind: call set_target again
+
+    def test_convention_default_ransac_is_looser_than_image_stitcher(self):
+        tracker = HomographyTracker(_ExactMatcher(), _ExactMatcher())
+        assert (tracker.ransac.inl_th, tracker.ransac.max_iter) == (5.0, 10)
+        stitcher = ImageStitcher(LocalFeatureMatcher(SIFTFeature(10), DescriptorMatcher("snn", 0.9)))
+        assert (stitcher.ransac.inl_th, stitcher.ransac.max_iter) == (2.0, 10)
+
+    def test_convention_target_changed_in_place_keeps_its_cached_features(self):
+        matcher = LocalFeatureMatcher(SIFTFeature(100), DescriptorMatcher("snn", 0.9))
+        calls = []
+        matcher.local_feature.register_forward_hook(lambda mod, inp, out: calls.append(tuple(inp[0].shape)))
+        tracker = HomographyTracker(matcher, matcher, minimum_inliers_num=10**6)
+        target = _texture(64, 80)
+        tracker.set_target(target)
+        cached = tracker.target_initial_representation["descriptors"].clone()
+        calls.clear()
+        target.mul_(0.5).add_(0.2)
+        tracker(_texture(72, 96, seed=1))
+        assert calls == [(1, 1, 72, 96)]  # the frame only
+        assert torch.equal(tracker.target_initial_representation["descriptors"], cached)
+
+    @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16])
+    def test_wart_half_precision_tracking_fails_on_the_second_frame_5968(self, half):
+        # The first frame returns a float32 homography (float32 keypoints); the second warps the half frame with its
+        # float32 inverse and raises.
+        tracker = HomographyTracker(_ExactMatcher(), _ExactMatcher(), minimum_inliers_num=10)
+        tracker.set_target(torch.rand(1, 1, 44, 54, dtype=half))
+        _, ok = tracker(torch.rand(1, 1, 60, 70, dtype=half))
+        assert ok
+        with pytest.raises(RuntimeError):
+            tracker(torch.rand(1, 1, 60, 70, dtype=half))

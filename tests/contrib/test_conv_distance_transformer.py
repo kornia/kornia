@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
@@ -244,13 +246,6 @@ class TestConvDistanceTransform(BaseTester):
         tolerance = 5e-3 if dtype == torch.bfloat16 else 1e-3
         self.assert_close(out[0, 0], expected, rtol=tolerance, atol=tolerance)
 
-    # test_convention_small_h_keeps_nonzero_distances_4152, a strict xfail pinning the pre-fix silent
-    # wrong-output behavior for h=0.01 at kernel_size=3 in float16/bfloat16/mps-float32, is removed
-    # here: this PR fixes #4152, so that combination now raises BaseError (a different exception than
-    # the pinned `raises=AssertionError`) instead of returning a wrong value, which would make the
-    # xfail fail outright rather than pass. test_h_too_small_raises and
-    # test_h_too_small_raises_float32_regression below pin the new, fixed behavior instead.
-
     def test_half_precision_matches_float64_reference(self, device, dtype):
         # #4152: the exp(-dist/h) kernel's far taps underflow to exactly zero in float16/bfloat16
         # at the documented default h=0.35 once kernel_size >= 15, and the convolution silently
@@ -301,7 +296,7 @@ class TestConvDistanceTransform(BaseTester):
         [((1, 1, 40, 50), 31, 0.18), ((1, 1, 40, 50), 31, 0.22), ((1, 1, 12, 40, 50), 21, 0.125)],
     )
     def test_h_too_small_for_the_corner_tap_raises(self, shape, kernel_size, h, device):
-        # B-19: the guard checked only the axis tap exp(-k/h); these h passed it while the corner tap
+        # A guard on the axis tap exp(-k/h) alone let these h through while the corner tap
         # exp(-sqrt(ndim) k/h) underflowed (float32 17.78 vs exact 21.21 at ks 31, h 0.18; MPS vs CPU 4.1 at h 0.22).
         with pytest.raises(BaseError, match="corner kernel tap"):
             kornia.contrib.distance_transform(torch.zeros(shape, device=device), kernel_size=kernel_size, h=h)
@@ -316,7 +311,7 @@ class TestConvDistanceTransform(BaseTester):
         ],
     )
     def test_h_too_large_raises(self, shape, kernel_size, h, device):
-        # Plan review P3: a pixel counts as reached when -h*log(sum of its window's taps over reached pixels) > 0.
+        # A pixel counts as reached when -h*log(sum of its window's taps over reached pixels) > 0.
         # Once the off-centre taps can sum to >= 1, a pixel whose window is full of reached pixels reads as
         # foreground (0). Random 60 % masks, ks 3: 140 of 2805 background pixels were 0 at h 0.591, 2726 at h 2.0.
         # Bounds, float32 working precision (float64): 2-D 0.5624 (0.5626) at ks 3, 0.5084 (0.5085) at ks 5, ~0.501 at
@@ -374,3 +369,81 @@ class TestConvDistanceTransform(BaseTester):
 
         input3d = torch.rand(1, 1, 8, 8, 8, device=device, dtype=dtype)
         self.assert_close(op(input3d), op_optimized(input3d))
+
+    def test_convention_distance_is_to_the_nearest_nonzero_pixel(self, device, dtype):
+        image = torch.zeros(1, 1, 23, 37, device=device, dtype=dtype)
+        image[0, 0, 4, 9] = 1.0
+        out = kornia.contrib.distance_transform(image)
+        # SciPy 1.17.1 measures to the nearest zero; distance_transform_edt(image == 0) at (4, 9), (4, 10), (5, 10)
+        # gives [0, 1, 1.4142135]: exact within kernel_size // 2.
+        values = torch.stack([out[0, 0, 4, 9], out[0, 0, 4, 10], out[0, 0, 5, 10]])
+        self.assert_close(values, torch.tensor([0.0, 1.0, 2.0**0.5], device=device, dtype=dtype))
+
+    def test_convention_empty_mask_gives_zeros_like_a_full_mask(self, device, dtype):
+        empty = kornia.contrib.distance_transform(torch.zeros(2, 3, 5, 7, device=device, dtype=dtype))
+        full = kornia.contrib.distance_transform(torch.ones(2, 3, 5, 7, device=device, dtype=dtype))
+        assert torch.equal(empty, torch.zeros_like(empty))
+        assert torch.equal(full, empty)
+
+    def test_convention_a_value_below_one_shifts_the_distances_near_it(self, device, dtype):
+        image = torch.zeros(1, 1, 23, 37, device=device, dtype=dtype)
+        image[0, 0, 4, 9] = 0.5
+        binary = (image > 0).to(dtype)
+        out, ref = kornia.contrib.distance_transform(image), kornia.contrib.distance_transform(binary)
+        shift = -0.35 * math.log(0.5)  # 0.2426, -h * log(v) at the default h
+        values = torch.stack([out[0, 0, 4, 9], out[0, 0, 4, 10]])
+        self.assert_close(values, torch.tensor([shift, 1.0 + shift], device=device, dtype=dtype))
+        self.assert_close(out[0, 0, 4, 30], ref[0, 0, 4, 30])  # beyond kernel_size // 2 the value does not matter
+        # A source sharing the window adds to the soft minimum before the log, so the shift shrinks: with a 1 beside
+        # the 0.5, (2, 3) rises by 0.1689, not 0.2426. Literals from dt(pair.double())[0, 0, 2, 3] and
+        # dt((pair > 0).double())[0, 0, 2, 3] at the default h.
+        pair = torch.zeros(1, 1, 7, 7, device=device, dtype=dtype)
+        pair[0, 0, 3, 3] = 0.5
+        pair[0, 0, 3, 4] = 1.0
+        dt = kornia.contrib.distance_transform
+        values = torch.stack([dt(pair)[0, 0, 2, 3], dt((pair > 0).to(dtype))[0, 0, 2, 3]])
+        self.assert_close(values, torch.tensor([1.0753916230203424, 0.9065031851948744], device=device, dtype=dtype))
+
+    def test_wart_distance_transform_diagonal_underestimate_5956(self, device, dtype):
+        image = torch.zeros(1, 1, 23, 37, device=device, dtype=dtype)
+        image[0, 0, 4, 9] = 1.0
+        out = kornia.contrib.distance_transform(image)
+        # Beyond kernel_size // 2 the result follows the ring count: (16, 21) is 12 rings away and comes out as
+        # 11 + sqrt(2) = 12.414, while scipy.ndimage.distance_transform_edt(image == 0) gives 12 * sqrt(2) = 16.971.
+        self.assert_close(out[0, 0, 16, 21], torch.tensor(11.0 + 2.0**0.5, device=device, dtype=dtype))
+
+    def test_wart_distance_transform_soft_min_bias_5956(self, device, dtype):
+        # Where several reached pixels share a window, the soft-min pulls the value below the nearest distance
+        # (exact: 1, 14, 1, 1). Literals from the same calls in float64 at the default h = 0.35:
+        #   dt = distance_transform; [dt(line.double())[0, 0, 7, 10], dt(line.double())[0, 0, 20, 10],
+        #   dt(two.double())[0, 0, 2, 3], dt(hole.double())[0, 0, 2, 3]]
+        line = torch.zeros(1, 1, 23, 37, device=device, dtype=dtype)
+        line[0, 0, 6] = 1.0
+        two = torch.zeros(1, 1, 5, 7, device=device, dtype=dtype)
+        two[0, 0, 2, 2] = 1.0
+        two[0, 0, 2, 4] = 1.0
+        hole = torch.ones(1, 1, 5, 7, device=device, dtype=dtype)
+        hole[0, 0, 2, 3] = 0.0
+        dt = kornia.contrib.distance_transform
+        values = torch.stack([dt(line)[0, 0, 7, 10], dt(line)[0, 0, 20, 10], dt(two)[0, 0, 2, 3], dt(hole)[0, 0, 2, 3]])
+        expected = torch.tensor(
+            [0.8327901098243616, 13.832790109824362, 0.7573984868040191, 0.42130015880291255],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(values, expected)
+
+    def test_wart_distance_transform_mask_above_one_5977(self, device, dtype):
+        # A source of value v contributes -h * log(v) instead of 0: at v = 2 its neighbour reads 1 - 0.35 * log(2)
+        # = 0.7574 instead of 1, and at v = 255 and the default kernel_size and h every pixel reads 0, as if on the
+        # foreground. A smaller h shrinks the shift: at h = 0.1 the neighbour reads 1 - 0.1 * log(255) = 0.4459.
+        image = torch.zeros(1, 1, 9, 13, device=device, dtype=dtype)
+        image[0, 0, 4, 6] = 1.0
+        binary = kornia.contrib.distance_transform(image)
+        self.assert_close(binary[0, 0, 4, 7], torch.tensor(1.0, device=device, dtype=dtype))
+        doubled = kornia.contrib.distance_transform(2 * image)
+        self.assert_close(doubled[0, 0, 4, 7], torch.tensor(1.0 - 0.35 * math.log(2.0), device=device, dtype=dtype))
+        assert (kornia.contrib.distance_transform(255 * image) == 0).all()
+        small_h = kornia.contrib.distance_transform(255 * image, h=0.1)
+        self.assert_close(small_h[0, 0, 4, 7], torch.tensor(1.0 - 0.1 * math.log(255.0), device=device, dtype=dtype))
+        assert binary.max() > 5

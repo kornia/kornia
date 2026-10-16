@@ -65,3 +65,10 @@ class TestLambdaModule(BaseTester):
     def test_non_callable_message_names_the_parameter(self):
         with pytest.raises(TypeError, match="func should be callable"):
             kornia.contrib.Lambda(3)
+
+    def test_convention_the_return_value_of_func_is_passed_through(self, device, dtype):
+        x = torch.zeros(1, 2, device=device, dtype=dtype)
+        out = kornia.contrib.Lambda(lambda img, k, *, tag: (img + k, tag))(x, 2, tag="aux")
+        assert isinstance(out, tuple)
+        self.assert_close(out[0], x + 2)
+        assert out[1] == "aux"

@@ -30,12 +30,30 @@ from kornia.geometry.transform import warp_perspective
 class HomographyTracker(nn.Module):
     r"""Perform local-feature-based tracking of the target planar object in the sequence of the frames.
 
+    Convention:
+        - The returned homography ``H`` is :math:`(3, 3)` and maps target pixel coordinates :math:`(x, y)` to frame
+          pixel coordinates, the direction of ``cv2.findHomography(target_points, frame_points)``.
+        - The target and every frame are one grayscale image, :math:`(1, 1, H, W)`; a frame can have another size than
+          the target. Call :meth:`set_target` before the first frame. The target is not a buffer, so
+          :meth:`~torch.nn.Module.to` leaves it where it is: call :meth:`set_target` again after moving the tracker.
+        - For a :class:`~kornia.feature.LoFTR`, a :class:`~kornia.feature.LocalFeatureMatcher` or a matcher with an
+          ``extract_features`` module, :meth:`set_target` extracts the target's features once. Changes made in place to
+          the target or to that matcher's weights afterwards are not noticed; call :meth:`set_target` again.
+        - A failed match returns ``(H, False)`` with ``H`` uninitialised (:meth:`no_match`). A failure while tracking
+          also drops the previous homography, so the next frame is matched from scratch by ``initial_matcher``.
+        - Known defect: with ``float16`` or ``bfloat16`` images, tracking raises on the frame after the first match
+          (`#5968 <https://github.com/kornia/kornia/issues/5968>`_).
+
     Args:
-        initial_matcher: image matching module, e.g. :class:`~kornia.feature.LocalFeatureMatcher`
-                          or :class:`~kornia.feature.LoFTR`. Default: :class:`~kornia.feature.GFTTAffNetHardNet`.
-        fast_matcher: fast image matching module, e.g. :class:`~kornia.feature.LocalFeatureMatcher`
-                          or :class:`~kornia.feature.LoFTR`. Default: :class:`~kornia.feature.DescriptorMatcher`.
-        ransac: homography estimation module. Default: :class:`~kornia.geometry.RANSAC`.
+        initial_matcher: image matching module for a frame without a previous homography, e.g.
+            :class:`~kornia.feature.LocalFeatureMatcher` or :class:`~kornia.feature.LoFTR`. Default:
+            ``LocalFeatureMatcher(GFTTAffNetHardNet(3000), DescriptorMatcher("smnn", 0.95))``.
+        fast_matcher: image matching module for the next frames, matched after warping them with the previous
+            homography, e.g. :class:`~kornia.feature.LocalFeatureMatcher` or :class:`~kornia.feature.LoFTR`. Default:
+            ``LoFTR("outdoor")``.
+        ransac: homography estimation module. Default: ``RANSAC("homography", inl_th=5.0, batch_size=4096,
+            max_iter=10, max_lo_iters=10)``, looser than the ``RANSAC("homography")`` (``inl_th=2.0``) of
+            :class:`~kornia.contrib.ImageStitcher`.
         minimum_inliers_num: threshold for number inliers for matching to be successful. RANSAC needs 4 correspondences,
             so fewer than 4 matches always count as a failed match, whatever this value is.
 
@@ -180,7 +198,7 @@ class HomographyTracker(nn.Module):
         """Return a failed-match response and clear current match statistics.
 
         Returns:
-            A tuple ``(H, is_valid)`` where ``H`` is an empty ``3 x 3`` tensor
+            A tuple ``(H, is_valid)`` where ``H`` is an uninitialised ``3 x 3`` tensor
             on the tracker device and dtype, and ``is_valid`` is ``False``.
         """
         self.inliers_num = 0
@@ -233,7 +251,7 @@ class HomographyTracker(nn.Module):
             A tuple ``(H, is_valid)`` where ``H`` is the updated homography and
             ``is_valid`` indicates whether tracking remained reliable.
 
-        The frame is first prewarped by the inverse of the previous homography,
+        The frame is first prewarped by the inverse of the previous homography, widened by a margin,
         then matched with ``fast_matcher`` and verified using RANSAC.
         """
         self._drop_prior_of_another_target()
