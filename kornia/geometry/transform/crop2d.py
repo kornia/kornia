@@ -485,8 +485,8 @@ def crop_by_indices(
         size: output size. An auto resize or F.pad will be performed according to ``shape_compensation``
             if the cropped slice sizes are not exactly align `size`.
             If None, will auto-infer from src_box.
-        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
-            'bicubic' | 'trilinear' | 'area'.
+        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'nearest-exact'`` | ``'bilinear'`` |
+            ``'bicubic'`` | ``'area'``.
         align_corners: interpolation flag.
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
