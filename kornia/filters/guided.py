@@ -200,7 +200,13 @@ def guided_blur(
           :ref:`Filtering <filtering-conventions>` maps the arguments onto OpenCV's ``guidedFilter``.
         - An integer or bool ``guidance`` or ``input`` is converted to float32 before the covariance products, on its
           own scale, and the result has the promoted dtype of the two: a float16 ``input`` with a uint8 ``guidance``
-          returns float32, where :func:`~kornia.filters.joint_bilateral_blur` keeps ``input``'s dtype.
+          returns float32, where :func:`~kornia.filters.joint_bilateral_blur` keeps ``input``'s dtype. With grayscale
+          guidance, a tensor-valued ``eps`` also participates in result dtype promotion; multichannel guidance
+          retains the promoted dtype of ``guidance`` and ``input``.
+        - A float16 or bfloat16 ``guidance`` or ``input`` is converted to float32 before the window statistics, and
+          the coefficients are solved in float32 as well (in float64 with a float64 tensor ``eps``). Autocast is
+          disabled inside the filter, so a float32 call in an autocast region returns float32. The result has the
+          dtype of the rule above.
 
     Arguments:
         guidance: the guidance torch.Tensor with shape :math:`(B,C_g,H,W)`.
@@ -253,9 +259,27 @@ def guided_blur(
     input_is_guidance = input is guidance
     guidance = _to_floating(guidance)
     input = guidance if input_is_guidance else _to_floating(input)
+    output_dtype = torch.promote_types(guidance.dtype, input.dtype)
+    # E[g*g] - E[g]*E[g] loses the local variance in half precision, before
+    # even a promoted solve can help. Promote before all window statistics.
+    if guidance.dtype in (torch.float16, torch.bfloat16):
+        guidance = guidance.float()
+    if input_is_guidance:
+        input = guidance
+    elif input.dtype in (torch.float16, torch.bfloat16):
+        input = input.float()
 
     if guidance.shape[1] == 1:
-        return _guided_blur_grayscale_guidance(
+        blur = _guided_blur_grayscale_guidance
+        if isinstance(eps, torch.Tensor):
+            output_dtype = torch.promote_types(output_dtype, eps.dtype)
+    else:
+        blur = _guided_blur_multichannel_guidance
+    # Autocast would lower the box-filter convolutions back to half precision. A meta tensor carries only a shape and
+    # ``torch.autocast("meta")`` raises, so the CPU autocast stands in for it.
+    device_type = "cpu" if guidance.device.type == "meta" else guidance.device.type
+    with torch.autocast(device_type=device_type, enabled=False):
+        return blur(
             guidance,
             input,
             kernel_size,
@@ -263,16 +287,7 @@ def guided_blur(
             border_type,
             subsample,
             separable=separable,
-        )
-    return _guided_blur_multichannel_guidance(
-        guidance,
-        input,
-        kernel_size,
-        eps,
-        border_type,
-        subsample,
-        separable=separable,
-    )
+        ).to(output_dtype)
 
 
 class GuidedBlur(nn.Module):
