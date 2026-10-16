@@ -104,14 +104,9 @@ def joint_pdf(kernel_values1: torch.Tensor, kernel_values2: torch.Tensor, epsilo
             f" Got {kernel_values1.shape} and {kernel_values2.shape}"
         )
 
-    output_dtype = kernel_values1.dtype
-    # Both the per-bin sample counts and their normalization can overflow float16 on ordinary images.
-    if output_dtype in (torch.float16, torch.bfloat16):
-        kernel_values1 = kernel_values1.float()
-        kernel_values2 = kernel_values2.float()
     joint_kernel_values = torch.matmul(kernel_values1.transpose(1, 2), kernel_values2)
     normalization = torch.sum(joint_kernel_values, dim=(1, 2)).view(-1, 1, 1) + epsilon
-    return (joint_kernel_values / normalization).to(output_dtype)
+    return joint_kernel_values / normalization
 
 
 def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsilon: float = 1e-10) -> torch.Tensor:
@@ -156,8 +151,8 @@ def histogram2d(
     Convention:
         x1 and x2 supply one sample row per batch element and return
         (B, N_bins, N_bins), where the first bin axis belongs to x1.
-        For float16 and bfloat16 kernels, joint counts and normalization accumulate in float32;
-        the result keeps the kernel dtype.
+        For float16 and bfloat16 inputs, the kernels, joint counts and normalization are evaluated
+        in float32 and the result is cast back to the input dtype.
 
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 
@@ -180,10 +175,15 @@ def histogram2d(
         torch.Size([2, 128, 128])
 
     """
+    # In float16 the joint counts and their normalization overflow on ordinary images, and the gradient reaches the
+    # samples through per-bin terms below the float16 normal range: evaluate the kernels in float32 as well.
+    kernel_dtype = torch.promote_types(x1.dtype, bins.dtype)
+    if kernel_dtype in (torch.float16, torch.bfloat16):
+        x1, x2, bins, bandwidth = x1.float(), x2.float(), bins.float(), bandwidth.float()
     _, kernel_values1 = marginal_pdf(x1.unsqueeze(2), bins, bandwidth, epsilon)
     _, kernel_values2 = marginal_pdf(x2.unsqueeze(2), bins, bandwidth, epsilon)
 
-    return joint_pdf(kernel_values1, kernel_values2)
+    return joint_pdf(kernel_values1, kernel_values2).to(kernel_dtype)
 
 
 def _check_image_rank(image: torch.Tensor) -> None:

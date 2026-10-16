@@ -299,6 +299,28 @@ class TestHistogram2d(BaseTester):
         assert torch.isfinite(samples.grad).all()
         self.assert_close(samples.grad, reference_samples.grad.to(dtype))
 
+    def test_gradient_of_a_256x256_image_matches_float64(self, device, dtype):
+        # The gradient reaches the samples through per-bin terms below the float16 normal range, so a float16 kernel
+        # evaluation loses it even when the joint counts accumulate in float32.
+        index = torch.arange(256 * 256, dtype=torch.float64)
+        x1 = (index * 0.6180339887498949) % 1
+        x2 = 0.7 * x1 + 0.3 * ((index * 0.4142135623730951) % 1)
+        inputs = [t.to(device=device, dtype=dtype) for t in (x1[None], x2[None], torch.linspace(0, 1, 64))]
+        bandwidth = torch.tensor(0.01, device=device, dtype=dtype)
+        weights = torch.linspace(-1, 1, 64 * 64).to(dtype).double().view(1, 64, 64)
+
+        def grads(x1, x2, bins, bandwidth):
+            x1, x2 = x1.detach().requires_grad_(), x2.detach().requires_grad_()
+            hist = TestHistogram2d.fcn(x1, x2, bins, bandwidth)
+            (hist * weights.to(hist)).sum().backward()
+            return torch.cat([x1.grad, x2.grad]).cpu().double()
+
+        # float64 reference on the CPU, from the same dtype-rounded inputs.
+        expected = grads(*(t.cpu().double() for t in (*inputs, bandwidth)))
+        actual = grads(*inputs, bandwidth)
+        tolerance = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        assert ((actual - expected).norm() / expected.norm()).item() < tolerance
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         samples = torch.linspace(0, 1, 1024, device=device, dtype=dtype).unsqueeze(0)
         bins = torch.linspace(0, 1, 64, device=device, dtype=dtype)
