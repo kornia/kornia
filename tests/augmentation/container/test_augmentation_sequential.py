@@ -3081,3 +3081,47 @@ class TestCrop3DShapePropagation(BaseTester):
             with patch("kornia.augmentation.container.image.is_exporting", return_value=True):
                 actual = _get_new_batch_shape(params, shape, op)
             assert actual == (shape if p == 0.0 else torch.Size((2, 1, 4, 5, 6)))
+
+    @pytest.mark.parametrize("first_type", [K.CenterCrop3D, K.RandomCrop3D])
+    @pytest.mark.parametrize("second_type", [K.CenterCrop3D, K.RandomCrop3D])
+    def test_intermediate_probability_follows_gate(self, first_type, second_type, device, dtype):
+        from testing.base import supports_bilinear_3d_grid_sample
+
+        if not supports_bilinear_3d_grid_sample(device, dtype):
+            pytest.skip("3D grid sampling is unsupported for this device/dtype.")
+        image = torch.arange(2 * 8 * 10 * 12, device=device, dtype=dtype).reshape(2, 1, 8, 10, 12)
+        canvases = set()
+        for seed in range(6):
+            torch.manual_seed(seed)
+            expected = second_type((2, 3, 4))(first_type((4, 5, 6), p=0.5)(image))
+            seq = K.AugmentationSequential(first_type((4, 5, 6), p=0.5), second_type((2, 3, 4)))
+            torch.manual_seed(seed)
+            self.assert_close(seq(image), expected)
+            canvases.add(tuple(seq._params[1].data["forward_input_shape"].tolist()))
+        # p < 1 reads the sampled gate; both outcomes must occur and each must set the next crop's canvas.
+        assert canvases == {(2, 1, 4, 5, 6), (2, 1, 8, 10, 12)}
+
+    @pytest.mark.parametrize("batch", [0, 2])
+    def test_numpy_integer_size(self, batch, device, dtype):
+        from kornia.augmentation.container.image import _get_new_batch_shape
+
+        from testing.base import supports_bilinear_3d_grid_sample
+
+        if batch and not supports_bilinear_3d_grid_sample(device, dtype):
+            pytest.skip("3D grid sampling is unsupported for this device/dtype.")
+        # The 3D crops accept NumPy integer sizes; the tracked shape must hold Python ints for the next generator.
+        size = (np.int64(4), np.int64(5), np.int64(6))
+        image = torch.arange(batch * 8 * 10 * 12, device=device, dtype=dtype).reshape(batch, 1, 8, 10, 12)
+        for first_type in (K.CenterCrop3D, K.RandomCrop3D):
+            torch.manual_seed(17)
+            expected = K.RandomCrop3D((2, 3, 4))(first_type(size)(image))
+            seq = K.AugmentationSequential(first_type(size), K.RandomCrop3D((2, 3, 4)))
+            torch.manual_seed(17)
+            self.assert_close(seq(image), expected)
+            assert tuple(seq._params[1].data["forward_input_shape"].tolist()) == (batch, 1, 4, 5, 6)
+            op = first_type(size)
+            params = ParamItem("crop", op.forward_parameters(image.shape))
+            with patch("kornia.augmentation.container.image.is_exporting", return_value=True):
+                actual = _get_new_batch_shape(params, image.shape, op)
+            assert [type(dim) for dim in actual] == [int] * 5
+            assert actual == (batch, 1, 4, 5, 6)
