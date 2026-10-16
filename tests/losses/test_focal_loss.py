@@ -21,7 +21,7 @@ import torch.nn.functional as F
 
 import kornia
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 
 class TestBinaryFocalLossWithLogits(BaseTester):
@@ -218,6 +218,40 @@ class TestFocalLoss(BaseTester):
         for actual_grad, expected_grad in zip(actual_grads, expected_grads):
             self.assert_close(actual_grad, expected_grad)
 
+    @pytest.mark.filterwarnings("ignore:Converting a tensor with requires_grad=True to a scalar")
+    @pytest.mark.parametrize("reduction", ["mean", "sum"])
+    @pytest.mark.parametrize("alpha_shape", [(), (1,), (1, 1)])
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_reduced_one_element_tensor_alpha_6026(self, device, dtype, reduction, alpha_shape, requires_grad):
+        # The reduced path passed a tensor alpha to new_full, which needs a Python number: a (1,) or (1, 1) alpha, or
+        # one that requires grad, raised TypeError there although the dense path accepts them.
+        generator = torch.Generator().manual_seed(5)
+        logits = torch.randn(2, 4, 3, 5, generator=generator).to(device=device, dtype=dtype)
+        labels = torch.randint(4, (2, 3, 5), generator=generator).to(device)
+        alpha = torch.full(alpha_shape, 0.3, device=device, requires_grad=requires_grad)
+
+        actual = kornia.losses.focal_loss(logits, labels, alpha, 2.0, reduction)
+
+        dense = kornia.losses.focal_loss(logits, labels, alpha, 2.0, "none")
+        self.assert_close(actual, dense.mean() if reduction == "mean" else dense.sum())
+        self.assert_close(actual, kornia.losses.focal_loss(logits, labels, float(alpha), 2.0, reduction))
+        self.assert_close(kornia.losses.FocalLoss(alpha, 2.0, reduction)(logits, labels), actual)
+
+    # The name keeps "compile" and "dynamo" out, so the ordinary jobs run it.
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("reduction", ["mean", "sum"])
+    @pytest.mark.parametrize("alpha_shape", [(), (1,)])
+    def test_tensor_alpha_traces_in_one_graph_6026(self, device, dtype, reduction, alpha_shape):
+        # A tensor alpha takes the dense path: the reduced path's range check on alpha would be data-dependent.
+        generator = torch.Generator().manual_seed(5)
+        logits = torch.randn(2, 4, 3, 5, generator=generator).to(device=device, dtype=dtype)
+        labels = torch.randint(4, (2, 3, 5), generator=generator).to(device)
+        alpha = torch.full(alpha_shape, 0.3, device=device)
+        torch._dynamo.reset()
+        compiled = torch.compile(kornia.losses.focal_loss, backend="eager", fullgraph=True)
+        expected = kornia.losses.focal_loss(logits, labels, alpha, 2.0, reduction)
+        self.assert_close(compiled(logits, labels, alpha, 2.0, reduction), expected)
+
     def test_reduced_alpha_does_not_synchronize(self, device, dtype):
         if device.type != "cuda":
             pytest.skip("CUDA synchronization check")
@@ -232,13 +266,14 @@ class TestFocalLoss(BaseTester):
             torch.cuda.set_sync_debug_mode(previous_sync_debug_mode)
         self.assert_close(actual, expected)
 
-    def test_reduced_saved_tensor_memory(self, device, dtype):
+    @pytest.mark.parametrize("alpha", [0.25, 1])
+    def test_reduced_saved_tensor_memory(self, device, dtype, alpha):
         # A reduced objective should not retain dense per-class one-hot and focal-factor intermediates.
         logits = torch.zeros(2, 21, 4, 5, device=device, dtype=dtype, requires_grad=True)
         labels = torch.zeros(2, 4, 5, device=device, dtype=torch.int64)
         saved = []
         with torch.autograd.graph.saved_tensors_hooks(lambda value: saved.append(value) or value, lambda value: value):
-            kornia.losses.focal_loss(logits, labels, 0.25, reduction="mean")
+            kornia.losses.focal_loss(logits, labels, alpha, reduction="mean")
         assert sum(value.numel() * value.element_size() for value in saved) < 4 * logits.numel() * logits.element_size()
 
     @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])

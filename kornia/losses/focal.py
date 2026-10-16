@@ -112,12 +112,13 @@ def focal_loss(
     target, target_mask = mask_ignore_pixels(target, ignore_index)
 
     # Reduced, unweighted losses only need the target-class terms. Keep the dense path for parameters whose
-    # non-target zero slices can become NaN (e.g. an infinite class weight or a negative focusing exponent).
+    # non-target zero slices can become NaN (e.g. an infinite class weight or a negative focusing exponent), and for
+    # an alpha that is not a Python number, such as a tensor: checking its range would be data-dependent.
     reduced = (
         reduction in ("mean", "sum")
         and weight is None
         and 0 <= gamma < float("inf")
-        and (alpha is None or 0 <= alpha <= 1)
+        and (alpha is None or (isinstance(alpha, (int, float)) and 0 <= alpha <= 1))
     )
     target_one_hot: Optional[torch.Tensor] = None
     if reduced:
