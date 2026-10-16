@@ -111,7 +111,8 @@ class TestQwen25VisionTransformer(BaseTester):
     def test_reference_values(self, device, dtype):
         """Match Hugging Face ``transformers`` v4.51.0 on a tiny random configuration.
 
-        The expected values were produced by copying the seeded weights below into the reference and feeding it
+        One token from each of the four windows is pinned, so a token assigned to the wrong window shows up. The
+        expected values were produced by copying the seeded weights below into the reference and feeding it
         the patches of its own image processor (``max abs diff`` 1.6e-7 over the whole float64 output, the
         reference running its normalizations and rotary embedding in float32)::
 
@@ -128,7 +129,7 @@ class TestQwen25VisionTransformer(BaseTester):
             ref.load_state_dict(model.state_dict(), strict=True)
             proc = Qwen2VLImageProcessor(do_resize=False, do_rescale=False, do_normalize=False)
             enc = proc(images=[images[0].numpy()], return_tensors="pt", input_data_format="channels_first")
-            expected = ref(enc["pixel_values"].double(), enc["image_grid_thw"])[[0, 11], :6]
+            expected = ref(enc["pixel_values"].double(), enc["image_grid_thw"])[[0, 5, 6, 11], :6]
         """
         model, images = _seeded(_tiny_config())
         model = model.to(device, dtype)
@@ -137,6 +138,10 @@ class TestQwen25VisionTransformer(BaseTester):
             [
                 [0.09549037857805515, -0.4318030974107194, -0.2147635769408925, 0.04750012480055123,
                  -0.18701005751370206, 0.8672491593678862],
+                [0.5476752592262668, -0.34546495229155505, -1.1540137094169247, 0.6783189091656767,
+                 0.42628693902281506, 1.4598784556874398],
+                [-1.1210075910373243, 0.4016404669306015, 0.6027981222959102, -0.15521229785229282,
+                 1.025392446425122, 0.9670840563199808],
                 [-0.4691275876673318, -0.4147935590654865, -0.00886787003644618, -0.6345986879315241,
                  0.8549848277851364, 0.8655891917360579],
             ],
@@ -147,11 +152,15 @@ class TestQwen25VisionTransformer(BaseTester):
         with torch.no_grad():
             out = model(images)
 
-        self.assert_close(out[0, [0, 11], :6], expected, low_tolerance=dtype in (torch.float16, torch.bfloat16))
+        self.assert_close(out[0, [0, 5, 6, 11], :6], expected, low_tolerance=dtype in (torch.float16, torch.bfloat16))
 
     def test_patch_swap_is_not_a_token_permutation(self, device, dtype):
-        """Swapping two merged cells must change the tokens, not only reorder them, since positions are encoded."""
-        model = Qwen25VisionTransformer(_tiny_config()).to(device, dtype).eval()
+        """Swapping two merged cells must change the tokens, not only reorder them, since positions are encoded.
+
+        Every block attends globally here: windowed attention alone already breaks the permutation, so only the
+        rotary embedding can make this test pass.
+        """
+        model = Qwen25VisionTransformer(_tiny_config(fullatt_block_indexes=(0, 1))).to(device, dtype).eval()
         images = torch.rand(1, 3, 112, 84, device=device, dtype=dtype)
         swapped = images.clone()
         swapped[..., 0:28, 0:28] = images[..., 84:112, 56:84]
@@ -161,9 +170,10 @@ class TestQwen25VisionTransformer(BaseTester):
             out = model(images)[0].float()
             out_swapped = model(swapped)[0].float()
 
-        # Under a pure permutation every swapped token would have an exact twin among the original tokens.
+        # Under a pure permutation every swapped token would have an exact twin among the original tokens: with the
+        # rotary embedding removed the largest twin distance is below 1e-6, with it above 4e-3 for every dtype.
         nearest = torch.cdist(out_swapped, out).min(dim=1).values
-        assert nearest.max() > 1e-2
+        assert nearest.max() > 1e-4
 
     def test_windowed_block_is_local(self, device, dtype):
         """With no full-attention block, a change inside one window leaves the tokens of the other windows alone."""
