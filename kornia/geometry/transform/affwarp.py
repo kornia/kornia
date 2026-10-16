@@ -1056,9 +1056,10 @@ class Rescale(nn.Module):
 
     Convention:
         - align_corners: ``True`` by default (differs from function :func:`rescale`, whose default
-          is ``None``). It applies to the ``'linear'``, ``'bilinear'``, ``'bicubic'`` and ``'trilinear'``
-          modes only; the other modes ignore it, as ``torch.nn.functional.interpolate`` accepts no value
-          but ``None`` for them.
+          is ``None``). It applies to the ``'bilinear'`` and ``'bicubic'`` modes only. ``'nearest'``,
+          ``'nearest-exact'`` and ``'area'`` ignore it, an explicit ``align_corners=True`` included, because
+          ``torch.nn.functional.interpolate`` accepts no value but ``None`` for them; the function
+          :func:`rescale` raises ``ValueError`` for such a call.
         - See the convention block of :func:`rescale`.
 
     Args:
