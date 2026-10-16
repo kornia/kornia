@@ -151,8 +151,8 @@ def histogram2d(
     Convention:
         x1 and x2 supply one sample row per batch element and return
         (B, N_bins, N_bins), where the first bin axis belongs to x1.
-        For float16 and bfloat16 inputs, the kernels, joint counts and normalization are evaluated
-        in float32 and the result is cast back to the input dtype.
+        When ``x1`` and ``bins`` promote to float16 or bfloat16, the kernels, joint counts and
+        normalization are evaluated in float32 and the result is cast back to that promoted dtype.
 
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 
