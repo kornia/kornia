@@ -232,7 +232,8 @@ class TestKimiVLModel(BaseTester):
             actual = model_optimized(images, attention_mask=mask)
 
         # Inductor keeps fused half-precision intermediates in float32, so a few outputs differ from eager by one
-        # unit in the last place.
+        # unit in the last place. On the base revision a60a6c932, where a (B, N, N) mask raised, the (B, 1, N, N) form
+        # fails the default half tolerance the same way (7 / 4096 outputs in float16, 12 / 4096 in bfloat16).
         self.assert_close(actual, expected, low_tolerance=dtype in (torch.float16, torch.bfloat16))
 
 
