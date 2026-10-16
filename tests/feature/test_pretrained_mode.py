@@ -151,6 +151,41 @@ class TestPretrainedMode(BaseTester):
         monkeypatch.setattr("kornia.feature.lightglue.load_state_dict_from_url", lambda url, **kwargs: {})
         assert LightGlue("superpoint").training
 
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("source", ["url", "file"])
+    @pytest.mark.parametrize(
+        "checkpoint_kind", ["complete", "missing_buffer", "missing_parameter", "buffers_only", "empty"]
+    )
+    def test_lightglue_checkpoint_completeness_controls_mode(self, monkeypatch, tmp_path, source, checkpoint_kind):
+        config = {"input_dim": 256, "descriptor_dim": 32, "n_layers": 2, "flash": False}
+        weights = LightGlue(features=None, **config).state_dict()
+        if checkpoint_kind == "missing_buffer":
+            # Reference checkpoints omit this derived buffer, but still contain every learned parameter.
+            del weights["confidence_thresholds"]
+        elif checkpoint_kind == "missing_parameter":
+            del weights["posenc.Wr.weight"]
+        elif checkpoint_kind == "buffers_only":
+            weights = {"confidence_thresholds": weights["confidence_thresholds"]}
+        elif checkpoint_kind == "empty":
+            weights = {}
+
+        if source == "url":
+            monkeypatch.setattr(
+                "kornia.feature.lightglue.load_state_dict_from_url", lambda *args, **kwargs: dict(weights)
+            )
+            model = LightGlue("superpoint", **config)
+        else:
+            # Local checkpoints are resolved relative to lightglue.py's weights directory.
+            monkeypatch.setattr("kornia.feature.lightglue.__file__", str(tmp_path / "lightglue.py"))
+            (tmp_path / "weights").mkdir()
+            torch.save(weights, tmp_path / "weights" / "checkpoint.pth")
+            model = LightGlue(features=None, weights="checkpoint", **config)
+
+        expected_training = checkpoint_kind not in ("complete", "missing_buffer")
+        assert {module.training for module in model.modules()} == {expected_training}
+        for name, value in weights.items():
+            self.assert_close(model.state_dict()[name], value)
+
     @pytest.mark.slow
     def test_composites_build_pretrained_eval_modules(self):
         # The containers (LocalFeature, KeyNetDetector, LAFOrienter, LAFDescriptor) never set their own mode; the
