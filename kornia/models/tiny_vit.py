@@ -637,7 +637,10 @@ class TinyViT(nn.Module):
             For feature extraction or fine-tuning, ImageNet-22k checkpoint (``'in22k'``) is preferred.
 
             With ``pretrained`` and a ``num_classes`` other than the checkpoint's, the classification head is reset to
-            zeros, and the model, a pretrained backbone to fine-tune, stays in training mode.
+            zeros, and the model, a pretrained backbone to fine-tune, stays in training mode. The ``'in22k'``
+            checkpoints have a 21841-class head: pass ``num_classes=21841`` to get the complete model in evaluation
+            mode. With the default ``num_classes=1000`` the head is reset and the model stays in training mode, so call
+            ``.eval()`` before extracting features.
 
         """
         KORNIA_CHECK(variant in ("5m", "11m", "21m"), "Only variant 5m, 11m, and 21m are supported")
