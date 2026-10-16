@@ -50,8 +50,8 @@ def elastic_transform2d(
           ``sigma``) and scaled by ``alpha``
         - align_corners: ``False`` by default (the matrix warps default to ``True``); zero
           ``noise`` is an identity under either setting
-        - Displaced coordinates outside the image use ``padding_mode`` as in ``grid_sample``:
-          zeros, border values, or reflected image coordinates. The displacement is not clipped at the image edge.
+        - coordinates displaced outside the image are filled by ``padding_mode`` as in ``grid_sample``:
+          zeros, the edge value, or the reflected image
 
     Args:
         image: Input image to be transformed with shape :math:`(B, C, H, W)`.
