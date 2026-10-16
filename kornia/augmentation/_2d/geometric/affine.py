@@ -72,6 +72,9 @@ class RandomAffine(GeometricAugmentationBase2D):
         - ``shear`` draws degrees, converted to radians and applied about the image centre with the sign and the
           x-then-y order of :func:`~kornia.geometry.transform.get_shear_matrix2d`, as
           :class:`~kornia.geometry.transform.Affine` applies its ``shear``.
+        - in :class:`~kornia.augmentation.container.AugmentationSequential`, a ``fill_value`` with more than one
+          element pads only the image: masks are padded with zero, forward and inverse, unless
+          ``extra_args[DataKey.MASK]`` sets their ``fill_value``; a one-element ``fill_value`` applies to both.
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_affine`.
