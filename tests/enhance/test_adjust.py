@@ -26,7 +26,7 @@ from kornia import enhance
 from kornia.constants import pi
 from kornia.core._compat import torch_version_ge
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 
 def _sync(device) -> None:
@@ -356,6 +356,7 @@ class TestAdjustGamma(BaseTester):
         gain = torch.tensor([0.7, 0.9], device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(kornia.enhance.adjust_gamma, (image, gamma, gain))
 
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_scalar_export(self, device, dtype):
         image = torch.full((1, 2, 2), 0.4, device=device, dtype=dtype)
         module = kornia.enhance.AdjustGamma(0.7, 0.9)

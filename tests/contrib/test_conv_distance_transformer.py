@@ -79,6 +79,52 @@ class TestConvDistanceTransform(BaseTester):
             _, actual_jvp = torch.autograd.forward_ad.unpack_dual(op(dual))
         self.assert_close(actual_jvp, expected_jvp)
 
+    @pytest.mark.parametrize("ndim", [2, 3])
+    def test_no_grad_inference_stops_work(self, ndim, device, dtype, monkeypatch):
+        # Inside no_grad nothing is recorded, so a requires_grad input may stop early as well.
+        module = importlib.import_module("kornia.contrib.distance_transform")
+        name = "filter2d" if ndim == 2 else "filter3d"
+        original = getattr(module, name)
+        calls = []
+
+        def observed(*args, **kwargs):
+            calls.append(None)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(module, name, observed)
+        sample = torch.ones((1, 1) + (32,) * ndim, device=device, dtype=dtype, requires_grad=True)
+        with torch.no_grad():
+            output = kornia.contrib.distance_transform(sample)
+        self.assert_close(output, torch.zeros_like(sample))
+        assert len(calls) < 32
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("ndim", [2, 3])
+    def test_shape_only_tensors(self, ndim):
+        # Meta and fake tensors carry no data, so the eager early exit must not read a flag from them.
+        shape = (1, 1) + (17,) * ndim
+        assert kornia.contrib.distance_transform(torch.zeros(shape, device="meta")).shape == shape
+        with torch._subclasses.fake_tensor.FakeTensorMode():
+            assert kornia.contrib.distance_transform(torch.zeros(shape)).shape == shape
+
+    def test_cuda_graph_capture(self, device, dtype):
+        if device.type != "cuda":
+            pytest.skip("CUDA graphs need a CUDA device")
+        sample = torch.zeros(2, 1, 33, 33, device=device, dtype=dtype)
+        sample[0, 0, 4, 5] = 1
+        sample[1, 0, 20, 30] = 1
+        expected = kornia.contrib.distance_transform(sample)
+        stream = torch.cuda.Stream()
+        stream.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(stream):
+            kornia.contrib.distance_transform(sample)
+        torch.cuda.current_stream().wait_stream(stream)
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            captured = kornia.contrib.distance_transform(sample)
+        graph.replay()
+        self.assert_close(captured, expected, rtol=0, atol=0)
+
     @pytest.mark.parametrize("kernel_size", [3, 5, 7])
     @pytest.mark.parametrize("shape", [(1, 3, 100, 100), (2, 2, 10, 10, 10)])
     def test_smoke(self, kernel_size, shape, device, dtype, cudnn_tf32_follows_option):

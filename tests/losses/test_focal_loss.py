@@ -218,6 +218,19 @@ class TestFocalLoss(BaseTester):
         for actual_grad, expected_grad in zip(actual_grads, expected_grads):
             self.assert_close(actual_grad, expected_grad)
 
+    def test_reduced_alpha_does_not_synchronize(self, device, dtype):
+        if device.type != "cuda":
+            pytest.skip("CUDA synchronization check")
+        logits = torch.randn(2, 4, 3, 5, device=device, dtype=dtype, requires_grad=True)
+        labels = torch.randint(4, (2, 3, 5), device=device)
+        expected = kornia.losses.focal_loss(logits, labels, 0.25, 2.0, "none").mean()
+        torch.cuda.set_sync_debug_mode("error")
+        try:
+            actual = kornia.losses.focal_loss(logits, labels, 0.25, 2.0, "mean")
+        finally:
+            torch.cuda.set_sync_debug_mode("default")
+        self.assert_close(actual, expected)
+
     def test_reduced_saved_tensor_memory(self, device, dtype):
         # A reduced objective should not retain dense per-class one-hot and focal-factor intermediates.
         logits = torch.zeros(2, 21, 4, 5, device=device, dtype=dtype, requires_grad=True)

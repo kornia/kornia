@@ -21,6 +21,7 @@ import math
 
 import torch
 from torch import nn
+from torch._subclasses.fake_tensor import is_fake
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 from kornia.core.utils import is_compiling
@@ -92,7 +93,15 @@ def _can_stop_cascade(image: torch.Tensor) -> bool:
     # differentiation as well, including forward AD on an input without requires_grad.
     if torch.jit.is_scripting():
         return False
-    if torch.jit.is_tracing() or is_compiling() or image.requires_grad or torch._C._are_functorch_transforms_active():
+    if torch.jit.is_tracing() or is_compiling() or torch._C._are_functorch_transforms_active():
+        return False
+    if image.requires_grad and torch.is_grad_enabled():
+        return False
+    # Only CPU and CUDA hold readable data here; meta, fake and lazy tensors do not, and reading a
+    # flag would synchronize MPS. A CUDA graph capture cannot synchronize either.
+    if image.device.type not in ("cpu", "cuda") or is_fake(image):
+        return False
+    if image.is_cuda and torch.cuda.is_current_stream_capturing():
         return False
     return torch.autograd.forward_ad.unpack_dual(image).tangent is None
 

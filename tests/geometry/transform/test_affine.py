@@ -24,7 +24,7 @@ import torch
 import kornia
 from kornia.core.exceptions import DeviceError, TypeCheckError
 
-from testing.base import BaseTester, supports_reflect_padding
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, supports_reflect_padding
 
 
 class TestResize(BaseTester):
@@ -530,6 +530,7 @@ class TestRotate(BaseTester):
         self.assert_close(actual, expected)
         self.assert_close(torch.autograd.grad(actual.sum(), angle)[0], torch.autograd.grad(expected.sum(), angle)[0])
 
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_shared_angle_export(self, device, dtype):
         image = torch.rand(3, 2, 5, 7, device=device, dtype=dtype)
         angle = torch.tensor([23.0], device=device, dtype=dtype)
@@ -552,6 +553,25 @@ class TestRotate(BaseTester):
         else:
             expected = kornia.geometry.transform.rotate(image, angle)
         self.assert_close(traced(image, angle), expected)
+
+    @pytest.mark.parametrize("op", ["rotate", "Rotate", "affine"])
+    def test_shared_trace_generalizes_over_batch(self, device, dtype, op):
+        # A trace (and the TorchScript ONNX export built on it) recorded at batch 1 must not bake in the batch.
+        angle = torch.tensor([23.0], device=device, dtype=dtype)
+        matrix = torch.tensor([[[0.9, 0.2, 1.0], [-0.1, 1.1, -0.5]]], device=device, dtype=dtype)
+        fns = {
+            "rotate": lambda x: kornia.geometry.transform.rotate(x, angle),
+            "Rotate": kornia.geometry.transform.Rotate(angle),
+            "affine": lambda x: kornia.geometry.transform.affine(x, matrix),
+        }
+        fn = fns[op]
+        traced = torch.jit.trace(fn, torch.rand(1, 2, 5, 7, device=device, dtype=dtype), check_trace=False)
+        image = torch.rand(4, 2, 5, 7, device=device, dtype=dtype)
+        if dtype in (torch.float16, torch.bfloat16):
+            # Tracing builds the grid with affine_grid; compare shapes only, see test_shared_angle_trace.
+            assert traced(image).shape == image.shape
+        else:
+            self.assert_close(traced(image), fn(image))
 
     def test_angle90(self, device, dtype):
         # prepare input data

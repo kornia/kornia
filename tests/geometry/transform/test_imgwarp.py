@@ -78,7 +78,7 @@ def test_empty_destination_matches_nonempty_batch_semantics(op_name, src_batch, 
     """An empty destination broadcasts and rejects batch pairings exactly as the non-empty path.
 
     The three operations disagree on purpose -- ``warp_perspective`` requires equal batches,
-    ``warp_affine`` expands a singleton matrix only to a source batch above one, and ``remap``
+    ``warp_affine`` expands a singleton matrix only to a non-empty source batch, and ``remap``
     expands a singleton map batch to the image batch unconditionally -- so the empty path is
     pinned against whatever the non-empty call does rather than against a hardcoded expectation.
     """

@@ -504,7 +504,10 @@ def warp_affine(
         gx = m[:, 0, 0, None, None] * base_x + m[:, 0, 1, None, None] * base_y + m[:, 0, 2, None, None]
         gy = m[:, 1, 0, None, None] * base_x + m[:, 1, 1, None, None] * base_y + m[:, 1, 2, None, None]
         grid = torch.stack([gx, gy], dim=-1)  # (B_M, H, W, 2)
-    if B_M == 1 and B > 1:
+    # Expand even when B == 1 (a no-op view): a trace recorded at batch 1 must still broadcast the shared grid
+    # over a larger batch. An empty source keeps the singleton grid, so grid_sample still rejects that pairing,
+    # matching the empty-destination path.
+    if B_M == 1 and B != 0:
         grid = grid.expand(B, -1, -1, -1)
 
     if padding_mode == "fill":

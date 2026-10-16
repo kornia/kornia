@@ -156,10 +156,15 @@ def focal_loss(
     num_of_classes = pred.shape[1]
     broadcast_dims = [-1] + [1] * len(pred.shape[2:])
     if alpha is not None:
-        alpha_fac = torch.tensor(
-            [1 - alpha] + [alpha] * (num_of_classes - 1), dtype=loss_tmp.dtype, device=loss_tmp.device
-        )
-        alpha_fac = alpha_fac[target].unsqueeze(1) if reduced else alpha_fac.view(broadcast_dims)
+        if reduced:
+            # Fill the two factors on the device: a per-call class vector would be a blocking host-to-device copy.
+            alpha_fac = torch.where(
+                target.unsqueeze(1) == 0, loss_tmp.new_full((), 1 - alpha), loss_tmp.new_full((), alpha)
+            )
+        else:
+            alpha_fac = torch.tensor(
+                [1 - alpha] + [alpha] * (num_of_classes - 1), dtype=loss_tmp.dtype, device=loss_tmp.device
+            ).view(broadcast_dims)
         loss_tmp = alpha_fac * loss_tmp
 
     if weight is not None:

@@ -22,7 +22,13 @@ from torch._dynamo.testing import CompileCounter
 import kornia
 from kornia.core.exceptions import BaseError
 
-from testing.base import BaseTester
+from testing.base import (
+    DYNAMIC_EXPORT_UNAVAILABLE_REASON,
+    DYNAMO_UNAVAILABLE_REASON,
+    BaseTester,
+    dynamic_export_is_available,
+    dynamo_is_available,
+)
 
 
 class TestConfusionMatrix(BaseTester):
@@ -254,6 +260,20 @@ class TestConfusionMatrix(BaseTester):
             expected = torch.zeros(2, 3, 3, device=device, dtype=torch.float32)
             self.assert_close(kornia.metrics.confusion_matrix(labels, labels, num_classes=3), expected, rtol=0, atol=0)
 
+    @pytest.mark.parametrize("num_classes", [2, 21, 200])
+    def test_counts_match_per_sample_bincount(self, device, num_classes):
+        # 1000 pixels do not split evenly over the CUDA histogram copies, and sample 0 sends every pixel to one cell.
+        generator = torch.Generator().manual_seed(0)
+        pred = torch.randint(num_classes, (3, 1000), generator=generator)
+        target = torch.randint(num_classes, (3, 1000), generator=generator)
+        pred[0], target[0] = 0, num_classes - 1
+        cells = num_classes * num_classes
+        expected = torch.stack([torch.bincount(p + t * num_classes, minlength=cells) for p, t in zip(pred, target)])
+        expected = expected.view(3, num_classes, num_classes).to(device=device, dtype=torch.float32)
+        actual = kornia.metrics.confusion_matrix(pred.to(device), target.to(device), num_classes)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_export_counts_like_eager(self, device, dtype):
         # The range check reads the data, which torch.export cannot capture, so it is skipped under export.
         class _ConfusionMatrix(torch.nn.Module):
@@ -266,6 +286,7 @@ class TestConfusionMatrix(BaseTester):
         for p, t in ((pred, target), (target, pred.flip(-1))):
             self.assert_close(exported(p, t), kornia.metrics.confusion_matrix(p, t, num_classes=3), rtol=0, atol=0)
 
+    @pytest.mark.skipif(not dynamic_export_is_available(), reason=DYNAMIC_EXPORT_UNAVAILABLE_REASON)
     def test_export_dynamic_batch(self, device):
         class _ConfusionMatrix(torch.nn.Module):
             def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
@@ -280,6 +301,7 @@ class TestConfusionMatrix(BaseTester):
         pred, target = pred.repeat(2, 1), target.repeat(2, 1)
         self.assert_close(exported(pred, target), kornia.metrics.confusion_matrix(pred, target, 3, True))
 
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_trace_counts_like_eager(self, device, dtype):
         # The range check reads the data, so any capture has to skip it, not only export (#5037).
         pred = torch.tensor([[0, 1, 2, 2], [1, 1, 0, 2]], device=device)
