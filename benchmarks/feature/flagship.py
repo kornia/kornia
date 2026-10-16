@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""Flagship feature benchmark: kornia.feature vs OpenCV and scikit-image.
+"""Flagship feature benchmark: kornia.feature vs OpenCV, scikit-image and kornia-rs.
 
 Covers the local-feature pipeline end to end — a corner response, a full detector + descriptor,
 and descriptor matching — rather than every detector and descriptor the module exports:
@@ -43,6 +43,13 @@ the row compares complete detect+describe calls, not identical keypoints. kornia
 detector accepts one image per call, so its SIFT row loops over the batch like OpenCV's. For accuracy on real
 images use ``local_features.py`` and ``sift_scale_space.py``; learned detectors and descriptors
 (DISK, ALIKED, HardNet, ...) need downloaded weights and are measured there too.
+
+kornia-rs 0.2+ adds a CPU SIFT detect+describe loop with a persistent detector and the same
+512-feature budget. Its prebuilt float32 HWC1 inputs contain the same rounded 0..255 pixels
+as OpenCV's uint8 inputs; normalizing them to 0..1 would change SIFT's contrast threshold.
+It returns native host keypoints and float32 SIFT descriptors, like OpenCV; Kornia defaults to
+RootSIFT normalization. The column stays on CPU when
+Kornia runs on CUDA or MPS; GPU residency and descriptor matching are not measured here.
 
 Matching rows share the same 2048-by-2048 unit-normalized 128-d descriptor pairs: the second
 set is a seeded noisy permutation of the first, so the ratio tests accept and reject matches.
@@ -80,6 +87,7 @@ from common import (
     batch_list,
     finish_run,
     image_row_fields,
+    kornia_rs_fn,
     optional_import,
     run_batch_sweep,
     setup_run,
@@ -193,6 +201,12 @@ def build_ops(
         if cv2:
             cv_sift = cv2.SIFT_create(nfeatures=NUM_FEATURES)
             row["opencv"] = lambda: [cv_sift.detectAndCompute(im, None) for im in imgs_u8]
+        rs_sift_type = kornia_rs_fn("Sift")
+        row["kornia-rs"] = None
+        if rs_sift_type is not None:
+            rs_sift = rs_sift_type(n_features=NUM_FEATURES)
+            rs_images = [np.ascontiguousarray(im[..., None], dtype=np.float32) for im in imgs_u8]
+            row["kornia-rs"] = lambda: [rs_sift.detect_and_compute(im) for im in rs_images]
         ops["SIFTFeature"] = row
 
     for name in ("match_snn", "match_mnn", "match_smnn", "match_smnn_batched"):
@@ -222,8 +236,9 @@ def main() -> None:
 
     cv2, cv2_error = optional_import("cv2")
     skf, skf_error = optional_import("skimage.feature")
+    krs, krs_error = optional_import("kornia_rs")
 
-    libs = [(skf, "scikit-image", skf_error), (cv2, "opencv", cv2_error)]
+    libs = [(skf, "scikit-image", skf_error), (cv2, "opencv", cv2_error), (krs, "kornia-rs", krs_error)]
     meta = start_run(
         "flagship feature",
         args,
@@ -234,12 +249,18 @@ def main() -> None:
                 "kornia: batched float B1HW; opencv/scikit-image: grayscale per-image loop (CPU); "
                 "items = images, except matching rows = descriptor-set pairs; descriptors float32 in OpenCV"
             ),
+            "kornia-rs SIFT: CPU per-image loop, prebuilt float32 HWC1 0..255, persistent detector, 512 features",
             "matching: same 2048x2048 128-d pairs; inclusive 0.8 SNN/SMNN ratios; MNN uses cross-check",
             "match_smnn_batched batches pairs in Kornia; all other matching cells loop over pairs",
         ],
-        missing=[(name, err) for lib, name, err in libs if lib is None],
+        missing=[(name, err) for lib, name, err in libs if lib is None]
+        + (
+            [("kornia-rs/SIFTFeature", "Sift unavailable")]
+            if krs is not None and (args.ops is None or "SIFTFeature" in args.ops) and kornia_rs_fn("Sift") is None
+            else []
+        ),
     )
-    backends = ["kornia (eager)", "kornia (compiled)", "scikit-image", "opencv"]
+    backends = ["kornia (eager)", "kornia (compiled)", "scikit-image", "opencv", "kornia-rs"]
     results = run_batch_sweep(
         batch_list(args),
         lambda b: build_ops(

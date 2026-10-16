@@ -63,7 +63,10 @@ and scikit-image (``mode='mirror'``), and replicated borders in OpenCV. The scik
 mean is a uint8 footprint-based box filter with truncated boundary footprints. These are
 native-regime throughput comparisons, not output-equivalent comparisons.
 
-kornia-rs exposes Gaussian, box and median blur and Sobel in its Python API. The median operator
+kornia-rs Canny includes RGB-to-gray conversion, thresholds 100/200 and L1 gradients, matching
+the OpenCV call scope; its grayscale rounding can differ. These native uint8 thresholds are not
+Kornia's normalized defaults. kornia-rs exposes Gaussian, box and median blur and Sobel in its
+Python API. The median operator
 accepts only 3x3 or 5x5 uint8 images and uses replicated borders. Its Sobel is f32 magnitude; its
 normalization and borders can differ from Kornia. kornia-rs also exposes a bilateral filter only for
 single-channel uint8 images. The grayscale bilateral row converts the common RGB image to
@@ -115,6 +118,7 @@ from common import (
     finish_run,
     image_batch,
     image_row_fields,
+    kornia_rs_fn,
     optional_import,
     run_batch_sweep,
     setup_run,
@@ -254,12 +258,7 @@ def build_specialized_ops(
 
 def krs_fn(name: str) -> Optional[Callable[..., object]]:
     """Resolve a kornia-rs function across wheel layouts (imgproc submodule vs top-level)."""
-    try:
-        import kornia_rs
-    except Exception:
-        return None
-    ns = getattr(kornia_rs, "imgproc", kornia_rs)
-    return getattr(ns, name, getattr(kornia_rs, name, None))
+    return kornia_rs_fn(name)
 
 
 def build_ops(
@@ -415,7 +414,12 @@ def build_ops(
         )
         row["albumentations"] = None
         row["torchvision v2"] = None
-        row["kornia-rs"] = None
+        krs_canny, krs_gray = krs_fn("canny"), krs_fn("gray_from_rgb")
+        row["kornia-rs"] = (
+            (lambda: [krs_canny(krs_gray(im), 100.0, 200.0, l2_gradient=False) for im in imgs_u8])
+            if krs_canny and krs_gray
+            else None
+        )
         ops["canny"] = row
 
     ops.update(
@@ -474,8 +478,9 @@ def main() -> None:
                 f"# NOTE: scikit-image restoration not available ({skimage_restoration_error}) "
                 "— bilateral rows are skipped"
             )
-    if krs_fn("gaussian_blur") is None:
-        print("# NOTE: kornia-rs filter APIs not available — its column is skipped")
+    for name in ("gaussian_blur", "box_blur", "sobel", "median_blur", "bilateral_filter", "canny", "gray_from_rgb"):
+        if krs_fn(name) is None:
+            print(f"# NOTE: kornia-rs/{name} unavailable — affected cells are skipped")
 
     backends = [
         "kornia (eager)",

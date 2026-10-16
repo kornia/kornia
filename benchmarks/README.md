@@ -14,16 +14,16 @@ otherwise reach for. All flagships share one command line, one console layout an
 | Suite | Flagship ops | Baselines |
 | --- | --- | --- |
 | [`augmentation`](augmentation/flagship.py) | flip, affine, perspective, resized crop, color jiggle, blur, brightness, grayscale (class API, sampling included) | torchvision v2, albumentations, OpenCV, PIL |
-| [`color`](color/flagship.py) | grayscale, RGB↔HSV, Lab, YCbCr, Bayer demosaic | torchvision v2, scikit-image, OpenCV (per image and stacked), PIL |
-| [`contrib`](contrib/flagship.py) | exact connected components, distance transform | scikit-image, SciPy, OpenCV |
-| [`enhance`](enhance/flagship.py) | normalize, gamma, hue, saturation, equalize, CLAHE | torchvision v2, albumentations, scikit-image, OpenCV, PIL |
-| [`feature`](feature/flagship.py) | Harris and GFTT responses, SIFT detect+describe, SNN/MNN/SMNN matching, batched SMNN | scikit-image, OpenCV |
+| [`color`](color/flagship.py) | grayscale, RGB↔HSV, Lab, YCbCr, Bayer demosaic | torchvision v2, scikit-image, OpenCV (per image and stacked), PIL, kornia-rs |
+| [`contrib`](contrib/flagship.py) | exact connected components, distance transform | scikit-image, SciPy, OpenCV, kornia-rs |
+| [`enhance`](enhance/flagship.py) | normalize, gamma, hue, saturation, equalize, CLAHE | torchvision v2, albumentations, scikit-image, OpenCV, PIL, kornia-rs |
+| [`feature`](feature/flagship.py) | Harris and GFTT responses, SIFT detect+describe, SNN/MNN/SMNN matching, batched SMNN | scikit-image, OpenCV, kornia-rs |
 | [`filters`](filters/flagship.py) | Gaussian, Sobel magnitude and spatial gradients, Laplacian, median, box, Canny, unsharp, bilateral, guided, motion, Otsu | torchvision v2, albumentations, scikit-image, OpenCV, kornia-rs, PIL |
-| [`geometry`](geometry/flagship.py) | warp perspective/affine, rotate, resize, remap, point transforms, depth unprojection, perspective-transform solve | torchvision v2, OpenCV |
+| [`geometry`](geometry/flagship.py) | warp perspective/affine, rotate, resize, remap, point transforms, depth unprojection, perspective-transform solve | torchvision v2, OpenCV, kornia-rs |
 | [`io`](io/flagship.py) | JPEG and PNG decode to an RGB uint8 tensor | torchvision, OpenCV, PIL |
 | [`losses`](losses/flagship.py) | binary focal, focal, Dice (micro, macro, weighted), SSIM, total variation (forward + backward) | torchvision |
 | [`metrics`](metrics/flagship.py) | PSNR, SSIM, mean IoU | scikit-image, OpenCV |
-| [`morphology`](morphology/flagship.py) | dilation, erosion, opening, gradient | torchmorph (CUDA only), albumentations, scikit-image, OpenCV |
+| [`morphology`](morphology/flagship.py) | dilation, erosion, opening, gradient | torchmorph (CUDA only), albumentations, scikit-image, OpenCV, kornia-rs |
 
 Modules without a flagship: `models`, `tracking` and the model wrappers in `contrib` need
 downloaded weights (learned local features are covered by `feature/local_features.py`); `nerf`,
@@ -167,6 +167,10 @@ Every benchmark here must follow the same rules (utilities in [`common.py`](comm
   The `0.9.0rc1` result files predate the pin and have no `opencv_num_threads`: on the
   i7-14700K Linux runs, the OpenCV and albumentations cells used every core while torch used 4.
   The Apple runs are unaffected, because GCD ignores the pin.
+  `setup_run` also sets `RAYON_NUM_THREADS` to `--threads` before the first native operation.
+  Run each CLI in a fresh process: an existing Rayon global pool cannot be resized by changing
+  the environment. `rayon_num_threads_requested` records the request, not an observed count;
+  older result files may have used Rayon's unrestricted default.
 - **Public API only:** benchmark `kornia.*` as users call it — no private helpers, no
   reimplementations inside the script.
 
@@ -248,10 +252,26 @@ All flagships build on the same helpers in [`common.py`](common.py), so their ou
 The filters flagship includes optional scikit-image baselines. To exercise every
 current baseline, install the benchmark-only dependency with
 `uv pip install scikit-image`; kornia-rs, a kornia dependency, supplies Gaussian,
-box and median blur, Sobel, and grayscale bilateral. Its module docstring lists
+box and median blur, Sobel, grayscale bilateral, and Canny. Its module docstring lists
 differences in padding, kernel support, normalization, and clipping; empty cells
 indicate an unavailable dependency or a missing native counterpart.
 The grayscale bilateral has a separate row because its Python API only accepts grayscale.
+The [0.2.0 PyPI wheel](https://pypi.org/project/kornia-rs/0.2.0/) also supplies CPU baselines for
+all six color rows, affine/perspective warps, rotations (via affine), resize, normalization,
+equalize/CLAHE, all four morphology rows, SIFT detect+describe, and connected components.
+The optional API resolver supports both the `imgproc` namespace and legacy top-level exports;
+missing functions skip individual cells without requiring a dependency upgrade. Native HSV
+uses 0–255 channels; Lab uses normalized RGB; `ycbcr_from_rgb` returns Y/Cr/Cb. Normalization
+receives mean/std multiplied by 255 because it casts bytes without rescaling. Warp borders,
+demosaicing edges and CLAHE rounding can differ; suite docstrings and parity tests record these.
+All `kornia-rs` columns are CPU loops, including in a `--device cuda` run. The wheel also has
+CUDA APIs, but these need separate device-resident columns: their accepted dtypes and borders
+differ from the NumPy paths. `features.match_descriptors` is a binary Hamming matcher and is
+not a counterpart to these float-descriptor rows; `imgproc.Sift.match` is a possible future
+baseline after its ratio/mutuality semantics are checked. There is no exposed image remap or
+depth-backprojection counterpart in this wheel. The I/O suite already measures Kornia's
+kornia-rs-backed decoding path.
+
 See [median parallelism notes](filters/median_parallelism.md) for the CPU/CUDA/MPS
 implementation audit and related PyTorch issues and pull requests.
 

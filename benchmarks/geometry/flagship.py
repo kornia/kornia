@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""Flagship geometry-op benchmark: kornia vs OpenCV vs torchvision v2.
+"""Flagship geometry-op benchmark: kornia vs OpenCV, torchvision v2 and kornia-rs.
 
 Covers image warps, point transforms and depth unprojection:
 
@@ -24,8 +24,8 @@ kornia (batched float BCHW)    OpenCV (uint8 HWC, per-image Python loop)   torch
 =============================  ==========================================  ==============
 ``warp_perspective``           ``cv2.warpPerspective``                     —
 ``warp_affine``                ``cv2.warpAffine``                          —
-``rotate``                     ``cv2.warpAffine(getRotationMatrix2D)``     ``tvf.rotate``
-``rotate_shared``              ``cv2.warpAffine(getRotationMatrix2D)``     ``tvf.rotate``
+``rotate``                     ``cv2.warpAffine`` (prepared matrix)       ``tvf.rotate``
+``rotate_shared``              ``cv2.warpAffine`` (prepared matrix)       ``tvf.rotate``
 ``resize``                     ``cv2.resize``                              ``tvf.resize``
 ``get_perspective_transform``  ``cv2.getPerspectiveTransform`` (per pair)  —
 ``remap``                      ``cv2.remap`` (float32)                    —
@@ -35,7 +35,12 @@ kornia (batched float BCHW)    OpenCV (uint8 HWC, per-image Python loop)   torch
 
 Regimes (same framing as ``benchmarks/augmentation``): kornia/torchvision run a batched float
 tensor on CPU or GPU and kornia is differentiable; OpenCV runs single uint8 images on CPU in
-a Python loop — its native regime. Columns are regime comparisons, not apples-to-apples.
+a Python loop — its native regime. kornia-rs runs uint8 HWC CPU image loops for resize,
+affine/perspective warps and both rotate rows (via the same precomputed rotation matrix).
+Columns are regime comparisons, not apples-to-apples. Rust's bilinear warps zero samples with
+source coordinates outside [0,W)x[0,H), but clamp the second neighbor inside that domain;
+Kornia/OpenCV instead blend with zero padding at the border. Rust also quantizes interpolation.
+These edge differences are retained, not corrected with extra work in the timed call.
 
 Equal footing: bilinear interpolation, no antialiasing anywhere (torchvision gets an explicit
 ``antialias=False``), identical transform parameters across backends, pinned seeds.
@@ -76,6 +81,7 @@ from common import (
     finish_run,
     image_batch,
     image_row_fields,
+    kornia_rs_fn,
     optional_import,
     run_batch_sweep,
     setup_run,
@@ -95,6 +101,14 @@ OPS = (
     "transform_points",
     "depth_to_3d",
 )
+
+RS_OPS = {
+    "warp_perspective": "warp_perspective",
+    "warp_affine": "warp_affine",
+    "rotate": "warp_affine",
+    "rotate_shared": "warp_affine",
+    "resize": "resize",
+}
 
 
 def build_ops(
@@ -133,6 +147,15 @@ def build_ops(
     m_np = m_affine.float().cpu().numpy()
     h_np = h_mat.float().cpu().numpy().astype(np.float64)
     src_np, dst_np = src_pts32.numpy(), dst_pts32.numpy()
+    # Python sequences are required by the Rust binding; prepare them before timing.
+    m_rs = m_np.reshape(b, 6).tolist()
+    h_rs = h_np.reshape(b, 9).tolist()
+    rotation_center = torch.tensor([[(w - 1) / 2, (h - 1) / 2]], device=device, dtype=dtype)
+    m_rot = KG.get_rotation_matrix2d(rotation_center, angle[:1], scale[:1])[0].float().cpu().numpy()
+    m_rot_rs = m_rot.reshape(6).tolist()
+    rs_affine = kornia_rs_fn("warp_affine")
+    rs_perspective = kornia_rs_fn("warp_perspective")
+    rs_resize = kornia_rs_fn("resize")
 
     kornia_row = KorniaRows(device, do_compile, skip_compile)
     ops: dict[str, dict[str, Backend]] = {}
@@ -145,20 +168,32 @@ def build_ops(
         row["opencv"] = (
             (lambda: [cv2.warpPerspective(im, h_np[i], (w, h)) for i, im in enumerate(imgs_u8)]) if cv2 else None
         )
+        row["kornia-rs"] = (
+            (lambda: [rs_perspective(im, h_rs[i], (h, w), "bilinear") for i, im in enumerate(imgs_u8)])
+            if rs_perspective
+            else None
+        )
         ops["warp_perspective"] = row
 
     if include("warp_affine"):
         row = kornia_row("warp_affine", lambda: KG.warp_affine(batch_f, m_affine, (h, w)))
         row["opencv"] = (lambda: [cv2.warpAffine(im, m_np[i], (w, h)) for i, im in enumerate(imgs_u8)]) if cv2 else None
+        row["kornia-rs"] = (
+            (lambda: [rs_affine(im, m_rs[i], (h, w), "bilinear") for i, im in enumerate(imgs_u8)])
+            if rs_affine
+            else None
+        )
         ops["warp_affine"] = row
 
     if include("rotate"):
         row = kornia_row("rotate", lambda: KG.rotate(batch_f, angle))
         if cv2:
-            m_rot = cv2.getRotationMatrix2D(((w - 1) / 2, (h - 1) / 2), angle_deg, 1.0)
             row["opencv"] = lambda: [cv2.warpAffine(im, m_rot, (w, h)) for im in imgs_u8]
         row["torchvision v2"] = (
             (lambda: tvf.rotate(batch_f, angle_deg, interpolation=tvf.InterpolationMode.BILINEAR)) if tvf else None
+        )
+        row["kornia-rs"] = (
+            (lambda: [rs_affine(im, m_rot_rs, (h, w), "bilinear") for im in imgs_u8]) if rs_affine else None
         )
         ops["rotate"] = row
 
@@ -167,10 +202,12 @@ def build_ops(
         shared_angle = angle[:1]
         row = kornia_row("rotate_shared", lambda: KG.rotate(batch_f, shared_angle))
         if cv2:
-            m_rot_shared = cv2.getRotationMatrix2D(((w - 1) / 2, (h - 1) / 2), angle_deg, 1.0)
-            row["opencv"] = lambda: [cv2.warpAffine(im, m_rot_shared, (w, h)) for im in imgs_u8]
+            row["opencv"] = lambda: [cv2.warpAffine(im, m_rot, (w, h)) for im in imgs_u8]
         row["torchvision v2"] = (
             (lambda: tvf.rotate(batch_f, angle_deg, interpolation=tvf.InterpolationMode.BILINEAR)) if tvf else None
+        )
+        row["kornia-rs"] = (
+            (lambda: [rs_affine(im, m_rot_rs, (h, w), "bilinear") for im in imgs_u8]) if rs_affine else None
         )
         ops["rotate_shared"] = row
 
@@ -179,6 +216,9 @@ def build_ops(
         row = kornia_row("resize", lambda: KG.resize(batch_f, dst_size, interpolation="bilinear"))
         row["opencv"] = (lambda: [cv2.resize(im, (dst_size[1], dst_size[0])) for im in imgs_u8]) if cv2 else None
         row["torchvision v2"] = (lambda: tvf.resize(batch_f, list(dst_size), antialias=False)) if tvf else None
+        row["kornia-rs"] = (
+            (lambda: [rs_resize(im, dst_size, "bilinear", antialias=False) for im in imgs_u8]) if rs_resize else None
+        )
         ops["resize"] = row
 
     if include("get_perspective_transform"):
@@ -234,6 +274,14 @@ def main() -> None:
     cv2, cv2_error = optional_import("cv2")
     tvf, tvf_error = optional_import("torchvision.transforms.v2.functional")
 
+    missing = [
+        (name, err) for lib, name, err in [(cv2, "opencv", cv2_error), (tvf, "torchvision", tvf_error)] if lib is None
+    ]
+    missing.extend(
+        (f"kornia-rs/{op}", f"{name} unavailable")
+        for op, name in RS_OPS.items()
+        if (args.ops is None or op in args.ops) and kornia_rs_fn(name) is None
+    )
     meta = start_run(
         "flagship geometry",
         args,
@@ -241,16 +289,14 @@ def main() -> None:
         units="items/s",
         regimes=[
             "kornia/torchvision: batched float; opencv: uint8 images except float32 remap/point transforms (CPU)",
+            "kornia-rs (CPU): uint8 HWC loop, bilinear/no antialias; prepared forward matrices; rotate via warp_affine",
+            "Rust warp borders: zero outside [0,W)x[0,H), clamp last neighbor inside; differs from zero-pad blending",
             "remap: prepared pixel maps (+0.25,-0.5), bilinear, zero padding, align_corners=True",
             "items = images, depth maps, H*W point sets, or four-correspondence solves; depth_to_3d has no baseline",
         ],
-        missing=[
-            (name, err)
-            for lib, name, err in [(cv2, "opencv", cv2_error), (tvf, "torchvision", tvf_error)]
-            if lib is None
-        ],
+        missing=missing,
     )
-    backends = ["kornia (eager)", "kornia (compiled)", "torchvision v2", "opencv"]
+    backends = ["kornia (eager)", "kornia (compiled)", "torchvision v2", "opencv", "kornia-rs"]
     results = run_batch_sweep(
         batch_list(args),
         lambda b: build_ops(
