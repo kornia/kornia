@@ -611,6 +611,7 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
             extra_args = {}
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
+            extra_args = cls._mask_extra_args(module, extra_args)
             transform = module.compute_inverse_transformation(cls.get_transform_matrix(module, param, input))
             input = module.inverse_masks(
                 input,
@@ -651,6 +652,7 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
         if extra_args is None:
             extra_args = {}
         if isinstance(module, K.GeometricAugmentationBase2D):
+            extra_args = cls._mask_extra_args(module, extra_args)
             transform = module.compute_inverse_transformation(cls.get_transform_matrix(module, param, input))
             params = cls.get_instance_module_param(param)
             output = [
