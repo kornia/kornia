@@ -179,9 +179,14 @@ class TestSmolVLM2TextModel(BaseTester):
         with torch.no_grad():
             no_mask = model(input_ids)
             ones_mask = model(input_ids, attention_mask=torch.ones(2, 8, dtype=torch.long, device=device))
-            padded = model(input_ids, attention_mask=torch.tensor([[1] * 8, [1] * 5 + [0] * 3], device=device))
+            right_padded = model(input_ids, attention_mask=torch.tensor([[1] * 8, [1] * 5 + [0] * 3], device=device))
+            # left padding fully masks the leading query rows; SDPA must return zeros there, not NaNs
+            left_padded = model(input_ids, attention_mask=torch.tensor([[1] * 8, [0] * 3 + [1] * 5], device=device))
         self.assert_close(no_mask, ones_mask)
-        assert torch.isfinite(padded).all()
+        assert torch.isfinite(right_padded).all()
+        assert torch.isfinite(left_padded).all()
+        # valid rows are unaffected by the padding of the other rows
+        self.assert_close(right_padded[1, :5], no_mask[1, :5])
 
     def test_rope_position_zero_identity(self, device, dtype, config):
         """At position 0 the rotary embedding is the identity (cos=1, sin=0)."""
@@ -190,6 +195,217 @@ class TestSmolVLM2TextModel(BaseTester):
         cos, sin = model.rotary_emb(x, torch.zeros(1, 1, dtype=torch.long, device=device))
         self.assert_close(cos, torch.ones_like(cos))
         self.assert_close(sin, torch.zeros_like(sin))
+
+    def test_rope_autocast_high_position(self, device, config):
+        """Autocast must not change the rotary factors: the frequencies are evaluated in float32.
+
+        Position 0 cannot catch this (cos=1, sin=0 for every frequency), so use the
+        checkpoint geometry (head_dim=64, rope_theta=130000) at large positions, where a
+        half-precision matmul perturbs cos/sin by O(1).
+        """
+        from kornia.models.smolvlm2.modeling_smolvlm2 import SmolVLM2RotaryEmbedding
+
+        rope = SmolVLM2RotaryEmbedding(64, base=130000.0).to(device)
+        x = torch.zeros(1, 1, 64, device=device)
+        position_ids = torch.tensor([[1000, 8191]], device=device)
+        cos, sin = rope(x, position_ids)
+        autocast_dtype = torch.float16 if device.type == "mps" else torch.bfloat16
+        with torch.autocast(device_type=device.type, dtype=autocast_dtype):
+            cos_ac, sin_ac = rope(x, position_ids)
+        assert cos_ac.dtype == cos.dtype
+        assert sin_ac.dtype == sin.dtype
+        self.assert_close(cos_ac, cos, rtol=0.0, atol=0.0)
+        self.assert_close(sin_ac, sin, rtol=0.0, atol=0.0)
+
+    def test_build_attention_mask(self, device, dtype, config):
+        """The mask is exactly ``causal & key_is_valid``: no self-attention entry is added to padded rows."""
+        model = SmolVLM2TextModel(config.text_config).to(device, dtype)
+        embeds = torch.zeros(3, 4, config.text_config.hidden_size, device=device, dtype=dtype)
+        attention_mask = torch.tensor([[1, 1, 1, 1], [1, 1, 0, 0], [0, 0, 1, 1]], device=device)
+        mask = model._build_attention_mask(attention_mask, embeds)
+        assert mask.shape == (3, 1, 4, 4)
+        causal = torch.tril(torch.ones(4, 4, dtype=torch.bool, device=device))
+        expected = causal[None] & attention_mask[:, None, :].bool()
+        assert torch.equal(mask[:, 0], expected)
+        # right padding: padded query rows keep the valid keys only; left padding: they are fully masked
+        assert not mask[1, 0, 2, 2]
+        assert not mask[1, 0, 3, 3]
+        assert not mask[2, 0, :2].any()
+
+    def test_rope_reference_values(self, device, dtype):
+        """Rotary factors at high positions must match ``transformers``' ``LlamaRotaryEmbedding``.
+
+        Checkpoint geometry (head_dim=64, rope_theta=130000) at positions 1000 and 8191; the
+        first four frequencies are pinned (the second half of the last dim repeats the first).
+        """
+        from kornia.models.smolvlm2.modeling_smolvlm2 import SmolVLM2RotaryEmbedding
+
+        rope = SmolVLM2RotaryEmbedding(64, base=130000.0).to(device)
+        x = torch.zeros(1, 2, 64, device=device, dtype=dtype)
+        cos, sin = rope(x, torch.tensor([[1000, 8191]], device=device))
+        # Generated with transformers 5.20.1 / torch 2.9.1 (CPU float32):
+        #   from transformers import LlamaConfig
+        #   from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding
+        #   cfg = LlamaConfig(hidden_size=2048, num_attention_heads=32, rope_theta=130000.0,
+        #                     max_position_embeddings=8192)
+        #   cos, sin = LlamaRotaryEmbedding(config=cfg)(torch.zeros(1, 2, 64), torch.tensor([[1000, 8191]]))
+        #   print(cos[0, :, :4].tolist(), sin[0, :, :4].tolist())
+        expected_cos = torch.tensor(
+            [[0.56237906, 0.55520695, 0.04537873, 0.12597054], [-0.64639050, -0.25162351, -0.99958801, 0.06330082]],
+            device=device,
+            dtype=dtype,
+        )
+        expected_sin = torch.tensor(
+            [[0.82687956, 0.83171225, 0.99896985, -0.99203396], [-0.76300681, 0.96782517, -0.02870141, 0.99799448]],
+            device=device,
+            dtype=dtype,
+        )
+        assert cos.shape == (1, 2, 64)
+        self.assert_close(cos[0, :, :4], expected_cos)
+        self.assert_close(sin[0, :, :4], expected_sin)
+        self.assert_close(cos[0, :, 32:36], expected_cos)
+        self.assert_close(sin[0, :, 32:36], expected_sin)
+
+    def test_reference_values(self, device, dtype):
+        """Decoder output must match ``transformers``' ``LlamaModel`` with the same weights.
+
+        A tiny GQA decoder with non-unit RMSNorm weights, evaluated at non-zero positions
+        (including 1000 and 8191), so RoPE, attention scaling and the norm weights all
+        affect the pinned values. The literal is a float32 reference; half-precision runs
+        of a decoder at position 8191 cannot reproduce it to a meaningful tolerance.
+        """
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("float32 reference literal; half dtypes are covered by the consistency tests")
+        text_config = SmolVLM2TextConfig(
+            vocab_size=50,
+            hidden_size=16,
+            intermediate_size=32,
+            num_hidden_layers=2,
+            num_attention_heads=2,
+            num_key_value_heads=1,
+            max_position_embeddings=64,
+            rope_theta=130000.0,
+            pad_token_id=0,
+        )
+        model = SmolVLM2TextModel(text_config).eval()
+        generator = torch.Generator().manual_seed(0)
+        with torch.no_grad():
+            for name, param in model.named_parameters():
+                if "norm" in name:  # non-unit RMSNorm weights, as a loaded checkpoint has
+                    param.copy_(1.0 + 0.5 * torch.randn(param.shape, generator=generator))
+                else:
+                    param.copy_(0.2 * torch.randn(param.shape, generator=generator))
+        model = model.to(device, dtype)
+        input_ids = torch.tensor([[3, 17, 42, 8, 29]], device=device)
+        position_ids = torch.tensor([[0, 3, 7, 1000, 8191]], device=device)
+        with torch.no_grad():
+            out = model(input_ids, position_ids=position_ids)
+        # Generated with transformers 5.20.1 / torch 2.9.1 (CPU float32) from the model above:
+        #   from transformers import LlamaConfig, LlamaModel
+        #   hf = LlamaModel(LlamaConfig(vocab_size=50, hidden_size=16, intermediate_size=32,
+        #       num_hidden_layers=2, num_attention_heads=2, num_key_value_heads=1,
+        #       max_position_embeddings=64, rope_theta=130000.0, rms_norm_eps=1e-5, pad_token_id=0,
+        #       attention_bias=False, mlp_bias=False)).eval()
+        #   hf.load_state_dict(model.state_dict(), strict=True)
+        #   print(hf(input_ids=input_ids, position_ids=position_ids).last_hidden_state[0].tolist())
+        # (kornia's output was bit-identical: max_abs_diff = 0.0)
+        expected = torch.tensor(
+            [
+                [
+                    -0.0941252,
+                    0.3417611,
+                    0.0841559,
+                    0.4340158,
+                    -0.2318656,
+                    -0.1717177,
+                    0.0553885,
+                    0.0354352,
+                    0.6823664,
+                    0.7307467,
+                    2.4059160,
+                    1.5216061,
+                    0.1641527,
+                    -1.4558055,
+                    -1.5543094,
+                    -1.6000885,
+                ],
+                [
+                    -0.9368023,
+                    0.4020294,
+                    0.0729017,
+                    0.5702167,
+                    -1.8820920,
+                    0.5415824,
+                    0.0546819,
+                    -0.1857364,
+                    0.2059336,
+                    0.0429058,
+                    1.1661642,
+                    0.2983623,
+                    0.7493295,
+                    -1.0293766,
+                    -0.3516322,
+                    -1.8499951,
+                ],
+                [
+                    -0.1160356,
+                    0.3339780,
+                    0.0619010,
+                    -0.7627104,
+                    -1.7834356,
+                    1.0424188,
+                    0.0643094,
+                    0.1514155,
+                    -0.4440383,
+                    1.2530490,
+                    1.0009120,
+                    1.4765549,
+                    -0.1022064,
+                    -1.9070032,
+                    -1.2815402,
+                    -1.3064994,
+                ],
+                [
+                    -1.3200343,
+                    0.3595729,
+                    0.0334141,
+                    0.3876024,
+                    -1.4619470,
+                    1.3938670,
+                    0.0529109,
+                    -0.4031243,
+                    0.0236761,
+                    0.2925563,
+                    0.5894080,
+                    1.1258978,
+                    0.5583172,
+                    -1.0668886,
+                    -2.0851493,
+                    -1.5217695,
+                ],
+                [
+                    -0.7788236,
+                    0.3013026,
+                    0.0035897,
+                    0.3441010,
+                    -0.5207199,
+                    1.6926521,
+                    0.0612411,
+                    -0.3969580,
+                    -0.3139853,
+                    0.6972899,
+                    0.4218283,
+                    1.7061920,
+                    0.7282952,
+                    -0.7518105,
+                    -1.8844296,
+                    -1.8310552,
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(out[0], expected)
 
     def test_gradcheck(self, device, config):
         """Gradients must flow through the decoder to the token embeddings."""

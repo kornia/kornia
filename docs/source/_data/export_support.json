@@ -21460,15 +21460,15 @@
       "export": "ok",
       "export_detail": "",
       "graph_breaks": 0,
-      "name": "models.smolvlm2.SmolVLM2",
-      "note": "placeholder scaffold: sum of two Linear projections; image/text sequences must have equal length",
+      "name": "models.smolvlm2.SmolVLM2[tiny,random]",
+      "note": "pure-PyTorch SigLIP2 tower + pixel-shuffle connector + SmolLM2 decoder (RMSNorm, RoPE, GQA); inputs (input_ids with one <image> token, pixel_values) -> logits",
       "onnx": "ok",
       "onnx_detail": "",
       "operator": "smolvlm2.SmolVLM2",
       "package": "kornia.models",
       "ref": "",
       "section": "vlm",
-      "variant": "",
+      "variant": "tiny,random",
       "where": ""
     },
     {

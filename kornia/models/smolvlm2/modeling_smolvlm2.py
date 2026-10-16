@@ -40,6 +40,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core.utils import is_compiling
 from kornia.models.siglip2.vision_encoder import SigLip2VisionModel
 
 from .configuration_smolvlm2 import SmolVLM2Config, SmolVLM2TextConfig
@@ -97,14 +98,12 @@ class SmolVLM2Connector(nn.Module):
         x = x.permute(0, 2, 1, 3)
         x = x.reshape(bsz, int(width / scale_factor), int(height / scale_factor), embed_dim * (scale_factor**2))
         x = x.permute(0, 2, 1, 3)
-        x = x.reshape(bsz, int(seq / (scale_factor**2)), embed_dim * (scale_factor**2))
-        return x
+        return x.reshape(bsz, int(seq / (scale_factor**2)), embed_dim * (scale_factor**2))
 
     def forward(self, image_hidden_states: torch.Tensor) -> torch.Tensor:
         """Downsample vision tokens and project them into the text embedding space."""
         image_hidden_states = self.pixel_shuffle(image_hidden_states, self.scale_factor)
-        image_hidden_states = self.modality_projection(image_hidden_states)
-        return image_hidden_states
+        return self.modality_projection(image_hidden_states)
 
 
 # ---------------------------------------------------------------------------
@@ -148,9 +147,14 @@ class SmolVLM2RotaryEmbedding(nn.Module):
         """
         inv_freq = self.inv_freq[None, :, None].float().expand(position_ids.shape[0], -1, 1)
         pos = position_ids[:, None, :].float()
-        freqs = (inv_freq @ pos).transpose(1, 2)
-        emb = torch.cat((freqs, freqs), dim=-1)
-        return emb.cos().to(x.dtype), emb.sin().to(x.dtype)
+        # Autocast would run the matmul in half precision regardless of the .float()
+        # casts above, which at large positions perturbs cos/sin by O(1). Match the
+        # reference implementation and evaluate the frequencies in float32.
+        with torch.autocast(device_type=x.device.type, enabled=False):
+            freqs = (inv_freq @ pos).transpose(1, 2)
+            emb = torch.cat((freqs, freqs), dim=-1)
+            cos, sin = emb.cos(), emb.sin()
+        return cos.to(x.dtype), sin.to(x.dtype)
 
 
 def _rotate_half(x: torch.Tensor) -> torch.Tensor:
@@ -288,8 +292,7 @@ class SmolVLM2TextDecoderLayer(nn.Module):
         residual = hidden_states
         hidden_states = self.post_attention_layernorm(hidden_states)
         hidden_states = self.mlp(hidden_states)
-        hidden_states = residual + hidden_states
-        return hidden_states
+        return residual + hidden_states
 
 
 class SmolVLM2TextModel(nn.Module):
@@ -329,12 +332,10 @@ class SmolVLM2TextModel(nn.Module):
         seq_len = inputs_embeds.shape[1]
         device = inputs_embeds.device
         causal = torch.tril(torch.ones(seq_len, seq_len, dtype=torch.bool, device=device))
-        allowed = causal[None, None, :, :] & attention_mask[:, None, None, :].to(torch.bool)
-        # Padded query rows would be fully masked and produce NaNs in SDPA;
-        # let every position attend to itself (their outputs are ignored anyway).
-        idx = torch.arange(seq_len, device=device)
-        allowed[:, :, idx, idx] = True
-        return allowed
+        # Padded query rows are fully masked, exactly as in the reference implementation.
+        # scaled_dot_product_attention returns zeros (not NaNs) for such rows on
+        # torch >= 2.5, so the decoder stays finite and bit-identical on every row.
+        return causal[None, None, :, :] & attention_mask[:, None, None, :].to(torch.bool)
 
     def forward(
         self,
@@ -418,18 +419,26 @@ class SmolVLM2Model(nn.Module):
             Merged embeddings of shape :math:`(B, N, D)`.
         """
         image_mask = input_ids == self.image_token_id
-        num_image_tokens = int(image_mask.sum().item())
-        if num_image_tokens == 0:
-            return inputs_embeds
         flat_image_embeds = image_hidden_states.reshape(-1, image_hidden_states.shape[-1])
-        if flat_image_embeds.shape[0] != num_image_tokens:
-            raise ValueError(
-                f"Number of <image> tokens ({num_image_tokens}) does not match the number of image "
-                f"feature vectors ({flat_image_embeds.shape[0]})."
-            )
-        merged = inputs_embeds.clone()
-        merged[image_mask] = flat_image_embeds.to(merged.dtype)
-        return merged
+        if flat_image_embeds.shape[0] == 0:
+            return inputs_embeds
+        if not is_compiling():
+            # The token count is data dependent, which torch.export cannot guard on, so the
+            # consistency check is eager-only; the merge below never needs it.
+            num_image_tokens = int(image_mask.sum().item())
+            if num_image_tokens == 0:
+                return inputs_embeds
+            if flat_image_embeds.shape[0] != num_image_tokens:
+                raise ValueError(
+                    f"Number of <image> tokens ({num_image_tokens}) does not match the number of image "
+                    f"feature vectors ({flat_image_embeds.shape[0]})."
+                )
+        # The k-th <image> position (row-major over the batch) receives the k-th feature vector,
+        # exactly like boolean-index assignment, but expressed as gather + where so the graph
+        # has no data-dependent shapes and exports to ONNX / torch.export.
+        feature_index = (image_mask.reshape(-1).cumsum(0) - 1).clamp_(min=0)
+        gathered = flat_image_embeds.to(inputs_embeds.dtype)[feature_index].view_as(inputs_embeds)
+        return torch.where(image_mask.unsqueeze(-1), gathered, inputs_embeds)
 
     def forward(
         self,

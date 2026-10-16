@@ -98,7 +98,10 @@ class SmolVLM2Config:
             widens their channel dimension by the same factor.
         image_token_id: Token id of the ``<image>`` placeholder whose embeddings
             are replaced by projected vision features.
-        pad_token_id: Padding token index.
+
+    The padding token index lives in ``text_config.pad_token_id``, the only
+    value the decoder reads; :attr:`pad_token_id` exposes it read-only so the
+    two can never disagree.
     """
 
     vision_config: SigLip2VisionConfig = field(
@@ -114,4 +117,8 @@ class SmolVLM2Config:
     text_config: SmolVLM2TextConfig = field(default_factory=SmolVLM2TextConfig)
     scale_factor: int = 3
     image_token_id: int = 49190
-    pad_token_id: int = 2
+
+    @property
+    def pad_token_id(self) -> int:
+        """Padding token index used by the decoder embedding (``text_config.pad_token_id``)."""
+        return self.text_config.pad_token_id

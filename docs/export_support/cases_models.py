@@ -758,7 +758,7 @@ from kornia.models.paligemma import PaliGemma, PaliGemmaConfig  # noqa: E402
 from kornia.models.qwen25 import Qwen2VLVisionTransformer  # noqa: E402
 from kornia.models.siglip2 import SigLip2Config, SigLip2ImagePreprocessor, SigLip2Model  # noqa: E402
 from kornia.models.siglip2.config import SigLip2TextConfig, SigLip2VisionConfig  # noqa: E402
-from kornia.models.smolvlm2 import SmolVLM2  # noqa: E402
+from kornia.models.smolvlm2 import SmolVLM2, SmolVLM2Config, SmolVLM2TextConfig  # noqa: E402
 
 _vcfg = SigLip2VisionConfig(
     image_size=32, patch_size=16, hidden_size=32, num_hidden_layers=1, num_attention_heads=2, intermediate_size=64
@@ -907,14 +907,31 @@ A(
         tags=("model",),
     )
 )
+# 32x32 image / patch 16 -> 2x2 patch grid; scale_factor=2 folds it into one <image> token (id 7).
+_smol_cfg = SmolVLM2Config(
+    vision_config=_vcfg,
+    text_config=SmolVLM2TextConfig(
+        vocab_size=100,
+        hidden_size=32,
+        intermediate_size=64,
+        num_hidden_layers=1,
+        num_attention_heads=2,
+        num_key_value_heads=1,
+        max_position_embeddings=16,
+        pad_token_id=0,
+    ),
+    scale_factor=2,
+    image_token_id=7,
+)
 A(
     mcase(
-        "models.smolvlm2.SmolVLM2",
+        "models.smolvlm2.SmolVLM2[tiny,random]",
         "models.vlm",
-        lambda: ev(SmolVLM2(16, 16)),
+        lambda: ev(SmolVLM2(_smol_cfg)),
         lambda m: m,
-        [torch.rand(1, 5, 16), torch.rand(1, 5, 16)],
-        note="placeholder scaffold: sum of two Linear projections; image/text sequences must have equal length",
+        [torch.tensor([[1, 7, 10, 11]]), torch.rand(1, 3, 32, 32)],
+        note="pure-PyTorch SigLIP2 tower + pixel-shuffle connector + SmolLM2 decoder (RMSNorm, RoPE, GQA); "
+        "inputs (input_ids with one <image> token, pixel_values) -> logits",
         tags=("model",),
     )
 )
