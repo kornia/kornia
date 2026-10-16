@@ -17,11 +17,22 @@
 
 from typing import Any, Dict, Optional, Sequence
 
+import torch
 from torch import Tensor
 
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D, _input_metadata_only
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
+
+
+def _clamp_unit_range(input: Tensor) -> Tensor:
+    """Clamp ``input`` into ``[0, 1]`` with an identity gradient on the closed range.
+
+    ``torch.clamp``'s derivative at a bound is ``1`` on torch 2.5.1 and 2.9.1 and ``0`` on 2.14, and valid images
+    often hold exact ``0`` and ``1`` pixels. The values inside ``[0, 1]`` are therefore taken from ``input`` itself,
+    so they keep their gradient on every torch version; values outside get the bound and a zero gradient.
+    """
+    return torch.where((input >= 0.0) & (input <= 1.0), input, input.clamp(0.0, 1.0))
 
 
 class _PicklableCompileMixin:
@@ -73,7 +84,9 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           (:class:`RandomErasing` also erases masks). It adds no ``inverse``:
           :class:`~kornia.augmentation.container.AugmentationSequential.inverse` skips 2D intensity children.
         - classes whose arithmetic assumes unit-range images clamp the input into ``[0, 1]`` before
-          the operation, and clamp the result too. Range-independent classes do not clamp their input;
+          the operation, and clamp the result too. That input clamp passes the gradient of a value in
+          ``[0, 1]``, ``0`` and ``1`` included, unchanged, and gives a value outside a zero gradient, on every
+          supported torch version. Range-independent classes do not clamp their input;
           their class pages state this explicitly. ``RandomBrightness`` and ``RandomContrast`` opt out of
           both clamps with ``clip_output=False``. Normalize after range-dependent augmentations: clamping
           an all-negative normalized image discards its information and may produce an all-zero output.

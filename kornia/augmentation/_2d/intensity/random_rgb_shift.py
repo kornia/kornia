@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.enhance import shift_rgb
 
 
@@ -133,5 +133,5 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        inp = inp.clamp(0.0, 1.0)
+        inp = _clamp_unit_range(inp)
         return shift_rgb(inp, params["r_shift"], params["g_shift"], params["b_shift"])

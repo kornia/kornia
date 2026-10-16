@@ -22,7 +22,11 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _PicklableCompileMixin
+from kornia.augmentation._2d.intensity.base import (
+    IntensityAugmentationBase2D,
+    _clamp_unit_range,
+    _PicklableCompileMixin,
+)
 from kornia.augmentation._2d.intensity.color_jiggle import (
     _adjust_hue,
     _apply_order_cond,
@@ -180,9 +184,11 @@ class ColorJitter(_PicklableCompileMixin, IntensityAugmentationBase2D):
     ) -> torch.Tensor:
         # The same branch-free dispatch as ColorJiggle for fixed RGB orders; other inputs use Python guards,
         # which accept any channel count for a skipped step.
-        input = input.clamp(0.0, 1.0)
+        input = _clamp_unit_range(input)
         steps: _Steps = (self._brightness_fn, self._contrast_fn, self._saturation_fn, self._adjust_hue_turns)
-        return _dispatch_color_steps(input, params, self._fixed_order, self._cond_fn, _NEUTRAL, steps).clamp(0.0, 1.0)
+        return _clamp_unit_range(
+            _dispatch_color_steps(input, params, self._fixed_order, self._cond_fn, _NEUTRAL, steps)
+        )
 
     def _adjust_hue_turns(self, input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
         return self._hue_fn(input, factor * 2 * math.pi)

@@ -21,7 +21,11 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _PicklableCompileMixin
+from kornia.augmentation._2d.intensity.base import (
+    IntensityAugmentationBase2D,
+    _clamp_unit_range,
+    _PicklableCompileMixin,
+)
 from kornia.augmentation.random_generator._2d import GaussianIlluminationGenerator
 from kornia.core.check import KORNIA_CHECK
 
@@ -206,7 +210,7 @@ class RandomGaussianIllumination(_PicklableCompileMixin, IntensityAugmentationBa
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
-        input = input.clamp(0.0, 1.0)
+        input = _clamp_unit_range(input)
         return self._fn(input=input, params=params, flags=flags, transform=transform)
 
     def compile(

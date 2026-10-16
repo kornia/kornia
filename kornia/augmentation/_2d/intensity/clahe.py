@@ -22,7 +22,7 @@ from typing import Any, Optional
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.enhance.equalization import _equalize_clahe
 
 
@@ -104,5 +104,5 @@ class RandomClahe(IntensityAugmentationBase2D):
         flags: dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        input = input.clamp(0.0, 1.0)
+        input = _clamp_unit_range(input)
         return _equalize_clahe(input, params["clip_limit_factor"], flags["grid_size"], flags["slow_and_differentiable"])

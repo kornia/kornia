@@ -77,10 +77,10 @@ class TestClaheCompile(BaseTester):
             pytest.skip(
                 "PyTorch 2.5.1 CPU Inductor emits invalid VecMask code for differentiable CLAHE, including scalar CLAHE"
             )
-        # Stay near the first bin, where linspace rounding does not amplify differences through the
-        # narrow Gaussian kernel, but inside the input clamp: its derivative at zero varies by torch version.
+        # At the first bin, linspace rounding does not amplify differences through the narrow
+        # Gaussian kernel, so the real backend's gradients can be compared at normal tolerances.
         aug = RandomClahe(grid_size=(2, 3), slow_and_differentiable=True, p=1)
-        input = torch.full((2, 2, 12, 18), 1e-4, device=device, dtype=dtype, requires_grad=True)
+        input = torch.zeros(2, 2, 12, 18, device=device, dtype=dtype, requires_grad=True)
         params = aug.forward_parameters(input.shape)
         params["clip_limit_factor"] = torch.tensor([0.0, 40.0], device=device, dtype=dtype)
         actual = torch_optimizer(aug, fullgraph=True)(input, params=params)

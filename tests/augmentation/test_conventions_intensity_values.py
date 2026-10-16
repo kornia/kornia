@@ -247,6 +247,19 @@ class TestIntensityValueRangeConventions(BaseTester):
         out = aug(image)
         self.assert_close(out, torch.full_like(image, expected))
 
+    # At the default clip_output=True the input is clamped first: clamp(-0.1) + (1.5 - 1) = 0.5 rather than 0.4,
+    # and clamp(1.5) * 0.5 = 0.5 rather than 0.75.
+    @pytest.mark.parametrize(
+        ("name", "factor", "value", "expected"),
+        [("RandomBrightness", 1.5, -0.1, 0.5), ("RandomContrast", 0.5, 1.5, 0.5)],
+    )
+    def test_convention_clipped_arithmetic_clamps_the_input_first_4430(
+        self, device, dtype, name, factor, value, expected
+    ):
+        image = torch.full((1, 3, 2, 2), value, device=device, dtype=dtype)
+        out = getattr(K, name)((factor, factor), p=1.0)(image)
+        self.assert_close(out, torch.full_like(image, expected))
+
     @pytest.mark.parametrize("name", sorted(_NEGATIVE_INPUT_FACTORIES))
     @pytest.mark.parametrize("seed", [0, 1, 2])
     def test_convention_intensity_clamps_negative_input_before_arithmetic_4430(self, device, dtype, name, seed):
@@ -1475,6 +1488,25 @@ class TestIntensityInputClamping(BaseTester):
         assert torch.equal(out, aug(image, params=aug._params))
         assert out.dtype == dtype
         assert out.device == device
+
+    # Valid images often hold exact 0 and 1, and the clamps keep an identity gradient there on every torch
+    # version: torch.clamp's own derivative at its bounds is 1 on torch 2.5.1 and 2.9.1 but 0 on 2.14.
+    @pytest.mark.parametrize(
+        "factory",
+        [
+            lambda: K.ColorJiggle(0.0, 0.0, 0.0, 0.0, p=1.0),
+            lambda: K.ColorJitter(0.0, 0.0, 0.0, 0.0, p=1.0),
+            lambda: K.RandomPosterize(bits=(8.0, 8.0), p=1.0),
+        ],
+        ids=["ColorJiggle", "ColorJitter", "RandomPosterize"],
+    )
+    def test_clamp_keeps_gradient_at_unit_range_bounds_4430(self, device, dtype, factory):
+        image = torch.tensor([0.0, 0.25, 0.75, 1.0], device=device, dtype=dtype).reshape(1, 1, 2, 2)
+        image = image.expand(1, 3, 2, 2).contiguous().requires_grad_()
+        out = factory()(image)
+        self.assert_close(out, image.detach())
+        out.sum().backward()
+        self.assert_close(image.grad, torch.ones_like(image))
 
     @pytest.mark.parametrize("gamma", [0.5, 1.5])
     def test_gamma_gradient_outside_range_is_zero(self, device, dtype, gamma):

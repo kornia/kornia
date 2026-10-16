@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
@@ -205,7 +205,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        input = input.clamp(0.0, 1.0)
+        input = _clamp_unit_range(input)
         KORNIA_CHECK_SHAPE(input, ["*", "3", "H", "W"])
         # Index with the tensor itself: `.tolist()` reads the data, which graph capture cannot do. Cast the
         # buffer to the input so both device and dtype follow the input for the channel-wise multiplication.
@@ -220,4 +220,4 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
 
         output = torch.stack([r, g, b], -3)
 
-        return output.clamp(0.0, 1.0)
+        return _clamp_unit_range(output)

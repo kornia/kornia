@@ -20,7 +20,7 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.enhance.adjust import adjust_gamma
 
 
@@ -103,7 +103,7 @@ class RandomGamma(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        input = input.clamp(0.0, 1.0)
+        input = _clamp_unit_range(input)
         gamma_factor = params["gamma_factor"].to(input)
         gain_factor = params["gain_factor"].to(input)
         return adjust_gamma(input, gamma_factor, gain_factor)

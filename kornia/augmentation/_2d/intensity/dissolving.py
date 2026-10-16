@@ -20,7 +20,7 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.filters import StableDiffusionDissolving
 
 
@@ -91,5 +91,5 @@ class RandomDissolving(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        input = input.clamp(0.0, 1.0)
-        return self._dslv(input, params["step_range_factor"][0].long().item()).clamp(0.0, 1.0)
+        input = _clamp_unit_range(input)
+        return _clamp_unit_range(self._dslv(input, params["step_range_factor"][0].long().item()))

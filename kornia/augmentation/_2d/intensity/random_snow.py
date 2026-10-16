@@ -20,7 +20,7 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.color import hls_to_rgb, rgb_to_hls
 from kornia.core.check import KORNIA_CHECK
 
@@ -85,7 +85,7 @@ class RandomSnow(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        input = input.clamp(0.0, 1.0)
+        input = _clamp_unit_range(input)
         KORNIA_CHECK(input.shape[1] == 3, "Number of color channels should be 3.")
         KORNIA_CHECK(len(input.shape) in (3, 4), "Wrong input dimension.")
 
@@ -106,4 +106,4 @@ class RandomSnow(IntensityAugmentationBase2D):
         new_light = (input_HLS * mask * brightness).clamp(min=0.0, max=1.0)
         input_HLS = input_HLS * (1 - mask) + new_light
 
-        return hls_to_rgb(input_HLS).clamp(0.0, 1.0)
+        return _clamp_unit_range(hls_to_rgb(input_HLS))

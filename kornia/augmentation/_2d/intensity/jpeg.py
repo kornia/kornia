@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.enhance import jpeg_codec_differentiable
 
 
@@ -94,6 +94,6 @@ class RandomJPEG(IntensityAugmentationBase2D):
         ):
             # An empty batch draws no quality and has no pixels to code; JPEG coding keeps the shape (#4429).
             return input.clone()
-        input = input.clamp(0.0, 1.0)
+        input = _clamp_unit_range(input)
         jpeg_output: torch.Tensor = jpeg_codec_differentiable(input, params["jpeg_quality"])
         return jpeg_output

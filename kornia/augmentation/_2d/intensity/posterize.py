@@ -20,7 +20,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.enhance import posterize
 
 
@@ -97,5 +97,5 @@ class RandomPosterize(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        input = input.clamp(0.0, 1.0)
+        input = _clamp_unit_range(input)
         return posterize(input, params["bits_factor"].to(input.device))

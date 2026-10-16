@@ -19,7 +19,7 @@ from typing import Any, Dict, Optional
 
 from torch import Tensor
 
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.enhance import equalize
 
 
@@ -76,5 +76,5 @@ class RandomEqualize(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        input = input.clamp(0.0, 1.0)
+        input = _clamp_unit_range(input)
         return equalize(input)

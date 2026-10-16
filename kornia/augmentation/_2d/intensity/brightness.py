@@ -20,7 +20,7 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.augmentation.utils import _range_bound
 from kornia.enhance.adjust import adjust_brightness
 
@@ -108,6 +108,6 @@ class RandomBrightness(IntensityAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if self.clip_output:
-            input = input.clamp(0.0, 1.0)
+            input = _clamp_unit_range(input)
         brightness_factor = params["brightness_factor"].to(input)
         return adjust_brightness(input, brightness_factor - 1, self.clip_output)

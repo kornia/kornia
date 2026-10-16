@@ -4568,12 +4568,10 @@ class TestRandomClahe(BaseTester):
         params["clip_limit_factor"] = clip_limits
         params["batch_prob"] = torch.tensor(batch_prob)
 
-        # Cubing then casting can round small float16 values to zero. The per-image reference
-        # includes the augmentation's input clamp so boundary gradients follow the same torch contract.
         transformed = torch.cat(
             [
                 kornia.enhance.equalize_clahe(
-                    input_data[index : index + 1].clamp(0.0, 1.0), float(clip_limit), (2, 2), slow_and_differentiable
+                    input_data[index : index + 1], float(clip_limit), (2, 2), slow_and_differentiable
                 )
                 for index, clip_limit in enumerate(clip_limits)
             ]
@@ -6393,10 +6391,8 @@ class TestRandomJPEG(BaseTester):
     @pytest.mark.slow
     def test_gradcheck(self, device):
         B, H, W = 1, 16, 16
-        # Keep the fixture inside the input clamp: its derivative at 0 and 1 varies by torch version.
-        # The codec's mean gradient remains within the existing reference tolerance at these values.
-        img = torch.full((B, 3, H, W), 1e-4, device=device, dtype=torch.float)
-        img[..., 0, 4:-4, 4:-4] = 1.0 - 1e-4
+        img = torch.zeros(B, 3, H, W, device=device, dtype=torch.float)
+        img[..., 0, 4:-4, 4:-4] = 1.0
         img[..., 1, 4:-4, 4:-4] = 0.5
         img[..., 2, 4:-4, 4:-4] = 0.5
         img.requires_grad = True

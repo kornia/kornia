@@ -20,7 +20,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.augmentation.utils import _check_filter_min_size
 from kornia.enhance import sharpness
 
@@ -102,7 +102,7 @@ class RandomSharpness(IntensityAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         # the smoothing kernel is a fixed 3 x 3 convolved without padding of its own
-        input = input.clamp(0.0, 1.0)
+        input = _clamp_unit_range(input)
         _check_filter_min_size("RandomSharpness", input, 3, border_type="valid")
         factor = params["sharpness"]
         return sharpness(input, factor)

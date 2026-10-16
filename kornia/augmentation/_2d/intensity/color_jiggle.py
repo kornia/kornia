@@ -22,7 +22,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.enhance import adjust_brightness, adjust_contrast, adjust_hue, adjust_saturation
 
 
@@ -228,5 +228,7 @@ class ColorJiggle(IntensityAugmentationBase2D):
         # A fixed order on an RGB input runs the branch-free dispatcher in eager and compiled mode alike. It is
         # restricted to RGB inputs because it runs the hue and saturation steps, which require three channels,
         # even when they are skipped.
-        input = input.clamp(0.0, 1.0)
-        return _dispatch_color_steps(input, params, self._fixed_order, self._cond_fn, _NEUTRAL, _STEPS).clamp(0.0, 1.0)
+        input = _clamp_unit_range(input)
+        return _clamp_unit_range(
+            _dispatch_color_steps(input, params, self._fixed_order, self._cond_fn, _NEUTRAL, _STEPS)
+        )
