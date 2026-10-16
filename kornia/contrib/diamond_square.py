@@ -183,9 +183,11 @@ def diamond_square(
           [0, 1], and it is flat in mean (0.5 at every pixel) for every ``random_scale``, though its variance varies
           across the map.
         - ``roughness`` and ``random_scale`` are a float, a 0-d tensor or a :math:`(B,)` tensor with one value per
-          sample, and follow ``device`` and ``dtype``. With ``dtype=None`` a tensor keeps its dtype, a float takes
-          the default dtype, and the map has the dtype that the ``random_fn`` draws, ``roughness`` and
-          ``random_scale`` promote to, at every map size.
+          sample, and follow ``device`` and ``dtype``; with ``dtype=None`` a tensor keeps its dtype and a float takes
+          the default dtype. When ``random_fn`` returns the dtype it is asked for, the map has the dtype that
+          ``dtype`` (the default dtype for ``None``), ``roughness`` and ``random_scale`` promote to, at every map
+          size. A ``random_fn`` that returns another dtype also promotes the levels' arithmetic to its dtype, but not
+          a map with a side of 3 px or less, which is the seed alone and stores the draws in the requested dtype.
         - ``normalize_range=(min, max)`` rescales each :math:`(b, c)` plane to that range with
           :func:`~kornia.enhance.normalize_min_max`.
 
@@ -235,10 +237,10 @@ def diamond_square(
     seed_width: int = (p2_width - 1) // 2**recursion_depth + 1
     seed_height: int = (p2_height - 1) // 2**recursion_depth + 1
     seed = _diamond_square_seed(num_samples, seed_width, seed_height, random_fn, device, dtype)
-    # The unscaled seed enters the first level in its dtype promoted with random_scale's, so that level draws in the
-    # same dtype as when the seed was scaled by random_scale. The levels then mix with random_scale * roughness**k
-    # and promote the map to their common dtype; a map that is the seed alone is cast to it after the loop, so that
-    # the output dtype does not depend on the recursion depth.
+    # The output dtype is that of the levels' arithmetic on the actual draws. Level 1 asks random_fn for the seed's
+    # dtype promoted with random_scale's, and each level promotes the map with its draws and with
+    # random_scale * roughness**k. A map that is the seed alone has no level, so it is promoted with roughness's dtype
+    # after the loop; past the seed that promotion is already done and the cast is a no-op.
     img: torch.Tensor = seed.to(torch.promote_types(seed.dtype, random_scale.dtype))
 
     # perform recursion
@@ -246,7 +248,7 @@ def diamond_square(
     for _ in range(recursion_depth):
         scale = scale * roughness
         img = _one_diamond_one_square(img, scale, random_fn)
-    img = img.to(torch.promote_types(torch.promote_types(seed.dtype, random_scale.dtype), roughness.dtype))
+    img = img.to(torch.promote_types(img.dtype, roughness.dtype))
 
     # slice to match with the output size
     img = img[..., :width, :height]

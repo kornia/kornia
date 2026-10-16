@@ -157,6 +157,60 @@ class TestDiamondSquare(BaseTester):
         assert asked == expected
         assert out.dtype == expected[-1]
 
+    @pytest.mark.parametrize(
+        ("dtype", "drawn", "expected_dtype", "expected", "seed_only_dtype"),
+        [
+            (
+                None,
+                torch.float64,
+                torch.float64,
+                [
+                    [0.9700530171394348, 0.6190204124439906, 0.5825837657368917, 0.7164888574434708],
+                    [0.6135796297792718, 0.7338367893977338, 0.6909577292507927, 0.6741751155470027],
+                ],
+                torch.float32,
+            ),
+            (
+                torch.float16,
+                torch.float32,
+                torch.float32,
+                [
+                    [0.496337890625, 0.6477437019348145, 0.7212197780609131, 0.6671783924102783],
+                    [0.6196125149726868, 0.6749759912490845, 0.501835823059082, 0.5487739443778992],
+                ],
+                torch.float16,
+            ),
+        ],
+        ids=["none-draws-f64", "f16-draws-f32"],
+    )
+    def test_random_fn_ignoring_dtype_gives_the_previous_map(
+        self, dtype, drawn, expected_dtype, expected, seed_only_dtype, device
+    ):
+        if device.type != "cpu":
+            pytest.skip("the literal is a CPU bit pattern, and MPS has no float64")
+        if dtype is not None and not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+        # A random_fn that returns another dtype than it is asked for promotes the levels' arithmetic to its dtype,
+        # so at random_scale=1 a map past its seed is bit for bit the one of dd3bddb7e, where the seed was scaled by
+        # random_scale, dtype included. Literals generated there with
+        #   g = torch.Generator().manual_seed(0)
+        #   draw = lambda shape, device=None, dtype=None: torch.rand(shape, generator=g, dtype=drawn)
+        #   out = kornia.contrib.diamond_square((1, 1, 9, 17), random_fn=draw, dtype=dtype)
+        #   out.dtype, out[0, 0, :2, :4]
+        # A map that is the seed alone stores the draws in the requested dtype (dd3bddb7e: same dtype at (1, 1, 3, 9)).
+        g = torch.Generator().manual_seed(0)
+
+        def draw(shape, device=None, dtype=None):
+            return torch.rand(shape, generator=g, device=device, dtype=drawn)
+
+        out = kornia.contrib.diamond_square((1, 1, 9, 17), random_fn=draw, device=device, dtype=dtype)
+        assert out.dtype == expected_dtype
+        self.assert_close(
+            out[0, 0, :2, :4], torch.tensor(expected, device=device, dtype=expected_dtype), rtol=0, atol=0
+        )
+        seed_only = kornia.contrib.diamond_square((1, 1, 3, 9), random_fn=draw, device=device, dtype=dtype)
+        assert seed_only.dtype == seed_only_dtype
+
     def test_integer_normalize_range(self, device, dtype):
         if not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
