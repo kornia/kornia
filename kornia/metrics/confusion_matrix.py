@@ -104,19 +104,21 @@ def confusion_matrix(
         _check_label_range("pred", pred, num_classes)
         _check_label_range("target", target, num_classes)
 
-    # hack for bitcounting 2 arrays together
-    # NOTE: torch.bincount does not implement batched version
-    # The cell index is formed in int64: in the labels' own dtype it wraps, for uint8 from num_classes = 17.
-    pre_bincount: torch.Tensor = pred.long() + target.long() * num_classes
-    pre_bincount_vec: torch.Tensor = pre_bincount.reshape(batch_size, -1)
-
-    confusion_list = []
-    for iter_id in range(batch_size):
-        pb: torch.Tensor = pre_bincount_vec[iter_id]
-        bin_count: torch.Tensor = torch.bincount(pb, minlength=num_classes**2)
-        confusion_list.append(bin_count)
-
-    confusion_vec: torch.Tensor = torch.stack(confusion_list)
+    # Form indices in int64: uint8 labels would otherwise wrap from num_classes = 17.
+    indices = (pred.long() + target.long() * num_classes).reshape(batch_size, -1)
+    # A fixed-size histogram avoids per-sample bincount launches and their dynamic output sizes.
+    # Accumulate integers before converting to float32 so large counts do not lose increments.
+    num_cells = num_classes * num_classes
+    # On CUDA every pixel is a global atomic add, and pixels sharing a cell serialize. Spread consecutive
+    # pixels over up to 256 copies of the histogram (at most 16384 cells per sample) and sum the copies.
+    # The count depends on the class count only, so captured graphs stay free of shape guards.
+    copies = max(1, min(256, 16384 // num_cells)) if indices.is_cuda else 1
+    if copies > 1:
+        indices = indices + (torch.arange(indices.shape[1], device=indices.device) % copies) * num_cells
+    confusion_vec = torch.zeros(batch_size, copies * num_cells, device=pred.device, dtype=torch.int64)
+    confusion_vec.scatter_add_(1, indices, torch.ones_like(indices))
+    if copies > 1:
+        confusion_vec = confusion_vec.view(batch_size, copies, num_cells).sum(1)
     confusion_mat: torch.Tensor = confusion_vec.view(batch_size, num_classes, num_classes).to(torch.float32)  # BxKxK
 
     if normalized:

@@ -20,7 +20,7 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.filters import StableDiffusionDissolving
 
 
@@ -59,8 +59,9 @@ class RandomDissolving(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - the result is decoded by the Stable Diffusion VAE and clamped into ``[0, 1]``, whatever range the input
-          is in.
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
+        - the clamped input is encoded by the Stable Diffusion VAE; its decoded result is also clamped.
 
     .. note::
         The transform is delegated to ``kornia.filters.StableDiffusionDissolving``, which the constructor
@@ -90,4 +91,5 @@ class RandomDissolving(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        return self._dslv(input, params["step_range_factor"][0].long().item())
+        input = _clamp_unit_range(input)
+        return _clamp_unit_range(self._dslv(input, params["step_range_factor"][0].long().item()))

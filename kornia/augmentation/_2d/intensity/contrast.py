@@ -20,7 +20,7 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.augmentation.utils import _range_bound
 from kornia.enhance.adjust import adjust_contrast
 
@@ -48,15 +48,14 @@ class RandomContrast(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - with ``clip_output=True``, input values are clamped into ``[0, 1]`` before the operation
+          as well as afterwards. With ``clip_output=False``, the arithmetic is range-independent:
+          neither input nor output is clamped.
         - the drawn factor reaches :func:`kornia.enhance.adjust_contrast` unchanged -- it is not re-based the way
           :class:`RandomBrightness` re-bases its own -- so ``1.0`` is the identity: for any input with
           ``clip_output=False``, and for an input in ``[0, 1]`` at the default.
         - at the default ``clip_output=True`` the result is clamped into ``[0, 1]``; with ``clip_output=False``
           the raw product is returned.
-
-    .. warning::
-        At the default ``clip_output=True`` an all-negative input comes back as an all-zero image. Tracked in
-        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_contrast`
@@ -108,5 +107,7 @@ class RandomContrast(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        if self.clip_output:
+            input = _clamp_unit_range(input)
         contrast_factor = params["contrast_factor"].to(input)
         return adjust_contrast(input, contrast_factor, self.clip_output)

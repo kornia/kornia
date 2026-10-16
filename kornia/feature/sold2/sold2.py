@@ -95,13 +95,14 @@ class SOLD2(nn.Module):
             pretrained_dict = load_state_dict_from_url(urls["wireframe"], map_location=torch.device("cpu"))
             state_dict = self.adapt_state_dict(pretrained_dict["model_state_dict"])
             self.model.load_state_dict(state_dict)
-        self.eval()
 
         # Initialize the line detector
         self.line_detector = LineSegmentDetectionModule(self.config.line_detector_cfg)
 
         # Initialize the line matcher
         self.line_matcher = WunschLineMatcher(self.config.line_matcher_cfg)
+        if pretrained:
+            self.eval()
 
     def forward(self, img: torch.Tensor) -> Dict[str, Any]:
         """Run forward.

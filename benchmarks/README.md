@@ -272,6 +272,10 @@ with figures embedded in the PR description. Local reruns should write JSON outs
 
 ## Sample results — geometry flagship ops
 
+Historical rotation comparisons below used torchvision’s default nearest interpolation against
+Kornia’s bilinear interpolation. Do not use those ratios to compare libraries. The current
+harness explicitly uses bilinear and distinguishes shared angles from per-image parameters.
+
 Directional numbers only — reproduce on your own hardware for anything you cite. Measured
 2026-08-07, commit `5eaa7a10`, Apple Silicon (macOS 26.5, arm64), Python 3.11, torch 2.9.1,
 kornia 0.9.0rc1, OpenCV 4.11.0, float32, 256×256, 4 threads. Throughput in items/s (higher is
@@ -328,9 +332,9 @@ NVIDIA RTX PRO 6000 Blackwell (AMD Turin host):
 - **Batched GPU is kornia's regime and the margin is large:** compiled `warp_perspective` at
   batch 32 beats OpenCV's per-image CPU loop by ~45× (L4) to ~72× (RTX PRO 6000); eager alone
   is ~20–30×.
-- **`rotate` is a found weak spot:** torchvision v2 beats kornia on every GPU tested
-  (~1.7–2×, up to ~4× vs eager where compile was unavailable). First data-driven optimization
-  target for the Stage-3 iteration.
+- **Historical `rotate` ratios do not establish a library ranking:** the apparent torchvision
+  advantage used nearest interpolation against Kornia's bilinear interpolation. Remeasure with
+  the current matched-interpolation harness, distinguishing shared angles from per-image parameters.
 - **`resize`:** kornia eager matches torchvision almost exactly (same underlying kernel);
   `torch.compile` is a large win at big batches on newer GPUs (3.6M img/s at batch 128 on
   Blackwell) but *regressed* resize on L4 at batch ≤ 32 — compile is not a free win, measure
@@ -477,6 +481,9 @@ The honest reading:
   components, so the readable diagnosis got written up first and would have shipped a 1.00× fix.
 
 ## Sample results — augmentation flagship (class API)
+
+Historical `RandomAffine` comparisons below used nearest interpolation for torchvision and
+bilinear for Kornia. The current harness matches bilinear interpolation; rerun before comparing.
 
 Directional numbers only — reproduce on your own hardware for anything you cite. Measured
 2026-08-08, commit `c97b0f9a`, Apple Silicon (macOS 26.5, arm64), Python 3.11, torch 2.9.1,

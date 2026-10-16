@@ -138,7 +138,8 @@ class SigLip2Builder:
                 is cached.
 
         Returns:
-            SigLip2Model instance with pretrained weights.
+            SigLip2Model instance with pretrained weights, in evaluation mode, since it always loads weights (see
+            :ref:`pretrained-models-conventions`).
 
         .. note::
             The repository must publish its weights as a single
@@ -163,4 +164,4 @@ class SigLip2Builder:
         model = SigLip2Model(config)
         model.load_state_dict(state_dict, strict=True)
 
-        return model
+        return model.eval()

@@ -258,3 +258,16 @@ class TestModelBaseLoadCheckpoint(BaseTester):
 
         self.assert_close(model.linear.weight, source.linear.weight)
         self.assert_close(model.linear.bias, source.linear.bias)
+
+    def test_load_checkpoint_keeps_the_mode(self, tmp_path) -> None:
+        path = tmp_path / "model.pth"
+        torch.save(_TinyModel().state_dict(), path)
+
+        # ``training`` of the model and of every submodule: ``{False}`` is evaluation mode throughout.
+        model = _TinyModel()
+        model.load_checkpoint(str(path))
+        assert {m.training for m in model.modules()} == {True}
+
+        model.eval()
+        model.load_checkpoint(str(path))
+        assert {m.training for m in model.modules()} == {False}

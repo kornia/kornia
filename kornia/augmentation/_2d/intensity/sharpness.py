@@ -20,7 +20,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.augmentation.utils import _check_filter_min_size
 from kornia.enhance import sharpness
 
@@ -49,15 +49,13 @@ class RandomSharpness(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
         - the factor blends between the fully blurred image at ``0`` and the input at ``1``, and values
           above ``1`` sharpen. The one-pixel border is copied from the input at every factor, so it is never
           blurred or sharpened, although the final clamp into ``[0, 1]`` applies to it as to the rest.
         - a scalar argument is the upper bound of ``[0, x]``, so the default ``sharpness=0.5`` never reaches the
           identity and only blurs.
-
-    .. warning::
-        An input whose values are all negative comes back as an all-zero image. Tracked in
-        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         The smoothing kernel is a fixed ``3 x 3`` convolved with no padding, so both spatial sides
@@ -104,6 +102,7 @@ class RandomSharpness(IntensityAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         # the smoothing kernel is a fixed 3 x 3 convolved without padding of its own
+        input = _clamp_unit_range(input)
         _check_filter_min_size("RandomSharpness", input, 3, border_type="valid")
         factor = params["sharpness"]
         return sharpness(input, factor)

@@ -47,6 +47,7 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - ``kernel_size`` is ``(kH, kW)``: rows, then columns, as in :func:`kornia.filters.box_blur`. An even
           entry is accepted and shifts the image half a pixel toward the top-left -- for an even extent ``k``, output
           ``i`` averages inputs ``i - k // 2 + 1`` to ``i + k // 2`` -- where :class:`RandomGaussianBlur` raises.

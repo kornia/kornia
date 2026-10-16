@@ -222,12 +222,12 @@ class OriNet(nn.Module):
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
-        >>> orinet = OriNet()
+        >>> orinet = OriNet(pretrained=False).eval()
         >>> angle = orinet(input) # 16
 
     """
 
-    def __init__(self, pretrained: bool = False, eps: float = 1e-8) -> None:
+    def __init__(self, pretrained: bool = True, eps: float = 1e-8) -> None:
         super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(1, 16, kernel_size=3, padding=1, bias=False),
@@ -258,7 +258,7 @@ class OriNet(nn.Module):
         if pretrained:
             pretrained_dict = load_state_dict_from_url(urls["orinet"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict["state_dict"], strict=False)
-        self.eval()
+            self.eval()
 
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
