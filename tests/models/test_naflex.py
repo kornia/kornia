@@ -181,24 +181,33 @@ class TestNaFlex(BaseTester):
         with pytest.raises(BaseError, match="no whole patch size"):
             naflex(torch.zeros(3, 3, height, width, device=device, dtype=dtype))
 
-    @pytest.mark.parametrize(("height", "width"), [(20, 20), (19, 20)])
-    def test_bnc_square_grid_of_a_strided_patch_embedding(
-        self, device: torch.device, dtype: torch.dtype, height: int, width: int
+    @pytest.mark.parametrize(
+        ("height", "width", "kernel", "stride", "side"),
+        [
+            (20, 20, 3, 2, 9),
+            (19, 20, 3, 2, 9),
+            (20, 36, 3, (2, 4), 9),
+            (256, 512, (16, 32), (16, 32), 16),
+        ],
+    )
+    def test_bnc_square_grid_when_the_aspect_reading_fails(
+        self, device: torch.device, dtype: torch.dtype, height: int, width: int, kernel, stride, side: int
     ) -> None:
-        # A stride-2 3 x 3 convolution gives these images a 9 x 9 grid, which no whole patch size gives (20 // p is
-        # never 9). The square reading of its 81 tokens is that grid, as the square reading NaFlex always used: a
-        # 9 x 9 table is added as is, a 4 x 4 one resized by plain bilinear interpolation (no axis shrinks).
-        conv = torch.nn.Conv2d(3, _CHANNELS, 3, stride=2).to(device, dtype)
-        images = torch.rand(3, 3, height, width, device=device, dtype=dtype)
+        # These convolutions give a side x side grid that no whole square patch size explains: the aspect reading is
+        # 9 x 9 with no p such that 20 // p == 9 (20 x 20, 19 x 20), 7 x 11 (77 cells, 20 x 36), or 11 x 23 (253 cells,
+        # 256 x 512). The tokens are then read as the square grid, as NaFlex always read them: a side x side table is
+        # added as is, a 4 x 4 one resized by plain bilinear interpolation (no axis shrinks).
+        conv = torch.nn.Conv2d(3, _CHANNELS, kernel, stride=stride).to(device, dtype)
+        images = torch.rand(2, 3, height, width, device=device, dtype=dtype)
         with torch.no_grad():
             tokens = conv(images).flatten(2).transpose(1, 2)
-            assert tokens.shape[1] == 81
-            own = torch.randn(81, _CHANNELS, device=device, dtype=dtype)
+            assert tokens.shape[1] == side * side
+            own = torch.randn(side * side, _CHANNELS, device=device, dtype=dtype)
             self.assert_close(NaFlex(lambda x: conv(x).flatten(2).transpose(1, 2), own)(images), tokens + own)
             small = torch.randn(16, _CHANNELS, device=device, dtype=dtype)
             grid = small.reshape(4, 4, -1).permute(2, 0, 1).unsqueeze(0).to("cpu", torch.float32)
-            resized = F.interpolate(grid, size=(9, 9), mode="bilinear", align_corners=False)
-            resized = resized.reshape(-1, 81).transpose(0, 1).to(device, dtype)
+            resized = F.interpolate(grid, size=(side, side), mode="bilinear", align_corners=False)
+            resized = resized.reshape(-1, side * side).transpose(0, 1).to(device, dtype)
             out = NaFlex(lambda x: conv(x).flatten(2).transpose(1, 2), small)(images)
             self.assert_close(out, tokens + resized)
 
@@ -265,8 +274,6 @@ class TestNaFlex(BaseTester):
         pytest.importorskip("onnx")
         ort = pytest.importorskip("onnxruntime")
         pytest.importorskip("onnxscript")
-        if torch_version_lt(2, 5, 0):
-            pytest.skip("the dynamo ONNX exporter needs torch >= 2.5")
         # The legacy TorchScript exporter has no symbolic for aten::_upsample_bilinear2d_aa; the dynamo exporter
         # exports the antialiased resize. 12 x 21 downsamples the 16 x 16 table, so the antialias path runs.
         naflex = NaFlex(torch.nn.Conv2d(3, _CHANNELS, 16, 16), torch.randn(256, _CHANNELS)).eval()
