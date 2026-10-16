@@ -204,7 +204,14 @@ def _empty_warp_output_2d(
     if padding_mode == "fill" and allow_fill:
         if fill_value is None:
             fill_value = torch.zeros(sample_channels, device=src.device, dtype=src.dtype)
-        sampled = _fill_and_warp(sample_src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
+        sampled = _fill_and_warp(
+            sample_src,
+            grid,
+            align_corners=align_corners,
+            mode=mode,
+            fill_value=fill_value,
+            out_shape=[src_batch, src.shape[1], dsize[0], dsize[1]],
+        )
     else:
         sampled = _torch_grid_sample(
             sample_src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode
@@ -280,7 +287,9 @@ def warp_perspective(
         padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``
             | ``'fill'``.
         align_corners: interpolation flag.
-        fill_value: torch.Tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area. Defaults to zeros.
+        fill_value: torch.Tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area, or any shape that
+            broadcasts to the output :math:`(B, C, h, w)` without changing it, such as a per-sample :math:`(B, C, 1, 1)`
+            fill. Defaults to zeros.
 
     Returns:
         the warped input image :math:`(B, C, h, w)`, spatial sizes given by ``dsize``.
@@ -408,7 +417,9 @@ def warp_affine(
         padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``
             | ``'fill'``.
         align_corners : mode for grid_generation.
-        fill_value: torch.Tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area.
+        fill_value: torch.Tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area, or any shape that
+            broadcasts to the output :math:`(B, C, h, w)` without changing it, such as a per-sample :math:`(B, C, 1, 1)`
+            fill.
 
     Returns:
         the warped torch.Tensor with shape :math:`(B, C, h, w)`, spatial sizes given by ``dsize``.
@@ -520,7 +531,12 @@ def warp_affine(
 
 
 def _fill_and_warp(
-    src: torch.Tensor, grid: torch.Tensor, mode: str, align_corners: bool, fill_value: torch.Tensor
+    src: torch.Tensor,
+    grid: torch.Tensor,
+    mode: str,
+    align_corners: bool,
+    fill_value: torch.Tensor,
+    out_shape: Optional[list[int]] = None,
 ) -> torch.Tensor:
     r"""Warp a mask of torch.ones, then multiply with fill_value and add to default warp.
 
@@ -529,21 +545,38 @@ def _fill_and_warp(
         grid: grid torch.Tensor from `transform_points`.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         align_corners: interpolation flag.
-        fill_value: torch.Tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area.
+        fill_value: torch.Tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area, or any shape that
+            broadcasts to the output :math:`(B, C, H, W)` without changing it, such as :math:`(B, C, 1, 1)`.
+        out_shape: the output shape ``fill_value`` is checked against, when ``src`` and ``grid`` stand in for an
+            empty destination; defaults to the shape sampled from ``src`` and ``grid``.
 
     Returns:
         the warped and filled torch.Tensor with shape :math:`(B, C, H, W)`.
     """
-    # A fill of any other length would broadcast against the warped image and change its channel count, or fail
-    # with a raw broadcasting error (#6021).
-    channels = src.shape[1]
-    if fill_value.numel() != 1 and fill_value.numel() != channels:
+    if out_shape is None:
+        out_shape = [src.shape[0], src.shape[1], grid.shape[1], grid.shape[2]]
+    # 0-d and 1-D fills are per channel; any other fill broadcasts as given. Either way it must leave the output
+    # shape unchanged: a fill that broadcast to more channels turned a one-channel image into three (#6021).
+    fill_shape = list(fill_value.shape)
+    if len(fill_shape) == 1:
+        fill_shape = [1, fill_shape[0], 1, 1]
+    fits = len(fill_shape) <= 4
+    for i in range(1, min(len(fill_shape), 4) + 1):
+        if fill_shape[-i] != 1 and fill_shape[-i] != out_shape[-i]:
+            fits = False
+    if not fits:
         raise ValueError(
-            f"fill_value must have 1 element or one per channel ({channels}); got {fill_value.numel()} elements."
+            f"fill_value of shape {list(fill_value.shape)} does not broadcast to the warped image of shape "
+            f"{out_shape} without changing it; use one value, one per channel ({out_shape[1]}), or a shape such as "
+            "(B, C, 1, 1) or (B, C, H, W)."
         )
     ones_mask = torch.ones_like(src)
-    # Whatever its shape, a fill that passed the check is per channel: a (1, C) fill must not broadcast over the width.
-    fill_value = fill_value.to(ones_mask).reshape(1, -1, 1, 1)
+    fill_value = fill_value.to(ones_mask)
+
+    if fill_value.ndim == 0:
+        fill_value = fill_value.view(1, 1, 1, 1)
+    elif fill_value.ndim == 1:
+        fill_value = fill_value.view(1, -1, 1, 1)
 
     inv_ones_mask = 1 - _torch_grid_sample(
         ones_mask, grid, align_corners=align_corners, mode=mode, padding_mode="zeros"
