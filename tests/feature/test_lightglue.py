@@ -234,6 +234,7 @@ class TestAttention(BaseTester):
                 torch.backends.cuda.flash_sdp_enabled(),
                 torch.backends.cuda.math_sdp_enabled(),
                 torch.backends.cuda.mem_efficient_sdp_enabled(),
+                torch.backends.cuda.cudnn_sdp_enabled(),
             )
             actual = attention(q, k, v, mask)
             assert actual.isfinite().all()
@@ -242,11 +243,13 @@ class TestAttention(BaseTester):
                 torch.backends.cuda.flash_sdp_enabled(),
                 torch.backends.cuda.math_sdp_enabled(),
                 torch.backends.cuda.mem_efficient_sdp_enabled(),
+                torch.backends.cuda.cudnn_sdp_enabled(),
             )
         finally:
             torch.backends.cuda.enable_flash_sdp(flash_enabled)
 
-    def test_windows_float64_fallback_gradcheck(self, device):
+    @pytest.mark.parametrize("masked", [False, True])
+    def test_windows_float64_fallback_gradcheck(self, device, masked):
         if device.type != "cpu":
             pytest.skip("the fallback is CPU-only")
         flash_enabled = torch.backends.cuda.flash_sdp_enabled()
@@ -254,7 +257,22 @@ class TestAttention(BaseTester):
             attention = Attention(allow_flash=True)
             attention._windows_old_torch = True
             q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64, requires_grad=True) for _ in range(3)]
-            self.gradcheck(attention, (q, k, v))
+            mask = torch.tensor([[False, False], [True, True]], device=device) if masked else None
+            self.gradcheck(lambda q, k, v: attention(q, k, v, mask), (q, k, v))
+        finally:
+            torch.backends.cuda.enable_flash_sdp(flash_enabled)
+
+    def test_dynamo_windows_float64_fallback(self, device, torch_optimizer, optimizer_backend):
+        if device.type != "cpu" or not optimizer_backend or optimizer_backend == "jit":
+            pytest.skip("the fallback needs CPU torch.compile coverage")
+        flash_enabled = torch.backends.cuda.flash_sdp_enabled()
+        try:
+            attention = Attention(allow_flash=True)
+            attention._windows_old_torch = True
+            q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64) for _ in range(3)]
+            mask = torch.tensor([[False, False], [True, True]], device=device)
+            compiled = torch_optimizer(attention, fullgraph=True)
+            self.assert_close(compiled(q, k, v, mask), attention(q, k, v, mask))
         finally:
             torch.backends.cuda.enable_flash_sdp(flash_enabled)
 

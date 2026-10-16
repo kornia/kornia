@@ -25,7 +25,6 @@ from typing import Any, Callable, ClassVar, Dict, List, Optional, Sequence, Tupl
 import torch
 import torch.nn.functional as F
 from torch import nn
-from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from kornia.core._compat import torch_version_lt
 from kornia.core.check import KORNIA_CHECK
@@ -169,11 +168,12 @@ class Attention(nn.Module):
             v = F.scaled_dot_product_attention(*args, attn_mask=mask).to(q.dtype)  # type: ignore
             return v if mask is None else v.nan_to_num()
         args = [x.contiguous() for x in [q, k, v]]
-        if self._windows_old_torch and q.device.type == "cpu" and q.dtype == torch.float64:
+        if self._windows_old_torch and q.device.type == "cpu" and q.dtype == torch.float64 and q.ndim == 4:
             # The Windows torch 2.5 CPU flash kernel can return NaNs or corrupt finite values for valid float64
-            # inputs. Select the math backend for this call, restoring the caller's backend settings afterwards.
-            with sdpa_kernel(SDPBackend.MATH):
-                v = F.scaled_dot_product_attention(*args, attn_mask=mask)
+            # inputs. It only accepts 4D inputs: a singleton batch dimension selects math attention without changing
+            # process-global backend flags or using a context manager that torch 2.5 cannot compile.
+            q_, k_, v_ = (x.unsqueeze(0) for x in args)
+            v = F.scaled_dot_product_attention(q_, k_, v_, attn_mask=mask).squeeze(0)
         else:
             v = F.scaled_dot_product_attention(*args, attn_mask=mask)  # type: ignore
         return v if mask is None else v.nan_to_num()
