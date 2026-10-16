@@ -65,3 +65,22 @@ class TestQwen2VL:
         out_single = model(x[:1])
 
         assert torch.allclose(out_batch[0], out_single[0], atol=1e-5)
+
+    def test_wart_qwen2vl_scaffold_has_no_positional_information_6003(self, device):
+        # The scaffold has no positional information (#6003 tracks the Qwen2.5-VL vision tower): swapping two 14-px
+        # patches of the image only swaps the two output tokens. The reference tower's 2-D rotary embedding would
+        # change every token.
+        model = Qwen2VLVisionTransformer(embed_dim=64, depth=2, num_heads=4).to(device).eval()
+        images = torch.randn(1, 3, 56, 56, device=device)  # a 4 x 4 grid of 14-px patches
+        swapped = images.clone()
+        # patch (0, 0), token 0, and patch (2, 3), token 2 * 4 + 3 = 11
+        swapped[..., 0:14, 0:14] = images[..., 28:42, 42:56]
+        swapped[..., 28:42, 42:56] = images[..., 0:14, 0:14]
+        permutation = list(range(16))
+        permutation[0], permutation[11] = 11, 0
+
+        with torch.no_grad():
+            output = model(images)
+            output_swapped = model(swapped)
+
+        torch.testing.assert_close(output_swapped, output[:, permutation], rtol=0.0, atol=1e-5)

@@ -56,16 +56,16 @@ class Qwen2VLPatchMerger(Module):
 
 
 class Qwen2VLRotaryEmbedding(Module):
-    """Rotary positional embedding module used in Qwen2-VL vision-language layers.
+    """Placeholder for the rotary position embedding of the Qwen2-VL vision encoder.
 
-    This module precomputes the inverse frequency spectrum required to build
-    rotary position embeddings (RoPE) for a given hidden dimension. The
-    frequencies are used to rotate query and key vectors in the attention mechanism,
-    encoding relative position information.
+    It returns its input, and :class:`Qwen2VLVisionTransformer` does not apply it: the attention ignores the
+    ``rot_pos_emb`` it receives. It stores the inverse frequency spectrum ``inv_freq`` of a RoPE of ``dim`` features,
+    which nothing reads. The 2-D rotary embedding of the Qwen2.5-VL vision tower is tracked in
+    `#6003 <https://github.com/kornia/kornia/issues/6003>`_.
 
     Args:
-        dim: The feature dimension to be rotated.
-        theta: The base frequency scaling factor for the rotary embedding.
+        dim: The feature dimension the rotary embedding would rotate.
+        theta: The base frequency scaling factor of ``inv_freq``.
     """
 
     def __init__(self, dim: int, theta: float = 10000.0) -> None:
@@ -77,7 +77,7 @@ class Qwen2VLRotaryEmbedding(Module):
         self.register_buffer("inv_freq", inv_freq, persistent=False)
 
     def forward(self, x: Tensor, cu_seqlens: Optional[Tensor] = None) -> Tensor:
-        """Return rotary-position input unchanged for this lightweight module.
+        """Return the input unchanged: this placeholder adds no position information.
 
         Args:
             x: Token tensor that would receive rotary position information.
@@ -197,18 +197,20 @@ class Qwen2VLVisionBlock(Module):
 
 
 class Qwen2VLVisionTransformer(Module):
-    """PyTorch implementation of the Qwen2-VL vision encoder.
+    """Scaffold of a Qwen2-VL vision encoder; not the Qwen2.5-VL vision tower.
 
-    A ViT-style backbone composed of a patch merger followed by stacked
-    transformer blocks with rotary positional embeddings.
+    A plain ViT (a Conv2d patch embedding of 14-px patches with bias, LayerNorm blocks, a GELU MLP and global
+    attention) without positional information: swapping two input patches only swaps the two output tokens. The
+    Qwen2.5-VL vision tower has a bias-free Conv3d patch embedding, 2-D rotary position embeddings, RMSNorm, a gated
+    MLP, windowed attention and a 2 x 2 patch merger after the blocks. No weights exist for this scaffold. The
+    Qwen2.5-VL vision tower is tracked in `#6003 <https://github.com/kornia/kornia/issues/6003>`_.
 
     Args:
         embed_dim: Embedding dimension.
         depth: Number of transformer blocks.
         num_heads: Number of attention heads.
         mlp_ratio: MLP expansion ratio.
-        patch_size: Patch size.
-        in_channels: Input channel count.
+        in_channels: Ignored: the patch embedding takes 3-channel images.
     """
 
     def __init__(
