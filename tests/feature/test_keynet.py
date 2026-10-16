@@ -55,6 +55,10 @@ class TestKeyNet(BaseTester):
         # ``last_conv`` expects ``num_filters * num_levels``, so any other value crashed in ``forward`` (#6015).
         keynet_conf = {**keynet_default_config, "num_filters": num_filters}
         keynet = KeyNet(pretrained=False, keynet_conf=keynet_conf).to(device, dtype).eval()
+        # As in the reference Key.Net, every learnable block is ``num_filters`` wide, not only the first and last.
+        widths = [(m.in_channels, m.out_channels) for m in keynet.modules() if isinstance(m, torch.nn.Conv2d)]
+        last_in = num_filters * keynet_default_config["num_levels"]
+        assert widths == [(10, num_filters), (num_filters, num_filters), (num_filters, num_filters), (last_in, 1)]
         inp = torch.rand(1, 1, 40, 56, device=device, dtype=dtype)
         out = keynet(inp)
         assert out.shape == inp.shape
