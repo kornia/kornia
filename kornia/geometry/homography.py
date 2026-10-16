@@ -782,10 +782,12 @@ def find_homography_lines_dlt(
           ``[start, end]`` pair of ``(x, y)`` points, and ``weights`` has one entry per segment.
         - Both endpoints of image-1 segment ``i`` are constrained to lie, after mapping by ``H``, on the line
           through image-2 segment ``i``, so the endpoints need not be point correspondences.
+        - Each segment gives two constraints on the eight degrees of freedom of ``H``, so at least four segments
+          are needed, as :func:`find_homography_dlt` needs four points.
 
     Args:
         ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`, or
-          :math:`(N, 2, 2)`, which is treated as :math:`B = 1`.
+          :math:`(N, 2, 2)`, which is treated as :math:`B = 1`. ``N`` must be at least 4.
         ls2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`, or
           :math:`(N, 2, 2)`, which is treated as :math:`B = 1`.
         weights: Tensor containing the weights per segment with a shape of :math:`(B, N)`.
@@ -793,6 +795,9 @@ def find_homography_lines_dlt(
 
     Returns:
         the computed homography matrix with shape :math:`(B, 3, 3)`.
+
+    Raises:
+        AssertionError: if fewer than four segments are given, as in :func:`find_homography_dlt`.
 
     """
     if len(ls1.shape) == 3:
@@ -802,6 +807,10 @@ def find_homography_lines_dlt(
     KORNIA_CHECK_SHAPE(ls1, ["B", "N", "2", "2"])
     KORNIA_CHECK_SHAPE(ls2, ["B", "N", "2", "2"])
     BS, N = ls1.shape[:2]
+    # Fewer segments leave the DLT system under-determined: its null space then holds an arbitrary
+    # homography, or NaN for none at all (#5991).
+    if N < 4:
+        raise AssertionError(f"find_homography_lines_dlt needs at least 4 line segments, got {N}: {ls1.shape}")
     device, dtype = _extract_device_dtype([ls1, ls2])
 
     points1 = ls1.reshape(BS, 2 * N, 2)
@@ -879,6 +888,9 @@ def find_homography_lines_dlt_iterated(
 
     Returns:
         the computed homography matrix with shape :math:`(B, 3, 3)`.
+
+    Raises:
+        AssertionError: if fewer than four segments are given, as in :func:`find_homography_lines_dlt`.
 
     """
     H: torch.Tensor = find_homography_lines_dlt(ls1, ls2, weights)

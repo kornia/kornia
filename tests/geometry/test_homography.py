@@ -627,8 +627,10 @@ class TestFindHomographyDLT(BaseTester):
         assert find_homography_dlt(points1, points2, solver=solver).isnan().all().item()
         weights = torch.ones(1, 6, device=device, dtype=dtype)
         assert find_homography_dlt_iterated(points1, points2, weights, n_iter=1).isnan().all().item()
-        # the segment endpoints share the normalization
-        assert find_homography_lines_dlt(points1.view(1, 3, 2, 2), points2.view(1, 3, 2, 2)).isnan().all().item()
+        # the segment endpoints share the normalization; four segments, the minimum (kornia#5991)
+        segments1 = torch.cat([points1, points1[:, :2] * 0.5 + 0.25], 1).view(1, 4, 2, 2)
+        segments2 = segments1 * (torch.finfo(dtype).max / 4)
+        assert find_homography_lines_dlt(segments1, segments2).isnan().all().item()
 
     @pytest.mark.timeout(120, method="thread")
     def test_nonfinite_sample_leaves_batch_intact(self, device, dtype):
@@ -894,7 +896,39 @@ class TestFindHomographyFromLinesDLT(BaseTester):
         H = find_homography_lines_dlt(ls1, ls2, None)
         assert H.shape == (B, 3, 3)
 
-    @pytest.mark.parametrize("num_points", [0, 4])
+    @pytest.mark.parametrize("num_segments", [0, 1, 2, 3])
+    @pytest.mark.parametrize("batched", [True, False])
+    @pytest.mark.parametrize("solver", [find_homography_lines_dlt, find_homography_lines_dlt_iterated])
+    def test_fewer_than_four_segments_raise_5991(self, num_segments, batched, solver, device, dtype):
+        # A homography has eight degrees of freedom and a segment gives two constraints: fewer than four
+        # segments used to return an arbitrary null-space homography (NaN for none) instead of raising like
+        # find_homography_dlt does for fewer than four points.
+        shape = (2, num_segments, 2, 2) if batched else (num_segments, 2, 2)
+        ls1 = torch.rand(shape, device=device, dtype=dtype)
+        ls2 = torch.rand(shape, device=device, dtype=dtype)
+        weights = torch.ones(2 if batched else 1, num_segments, device=device, dtype=dtype)
+
+        with pytest.raises(AssertionError, match=f"needs at least 4 line segments, got {num_segments}"):
+            solver(ls1, ls2, weights)
+        with pytest.raises(AssertionError):
+            find_homography_dlt(ls1.reshape(1, -1, 2)[:, :num_segments], ls2.reshape(1, -1, 2)[:, :num_segments])
+
+    def test_four_segments_recover_the_homography_5991(self, device, dtype):
+        # The minimum is exactly four: four exact correspondences determine H.
+        H = torch.tensor([[[1.2, 0.1, 5.0], [-0.05, 0.9, -3.0], [1e-3, 2e-3, 1.0]]], device=device, dtype=dtype)
+        starts = torch.tensor([[[10.0, 10.0], [20.0, 80.0], [15.0, 30.0], [70.0, 15.0]]], device=device, dtype=dtype)
+        ends = torch.tensor([[[90.0, 20.0], [80.0, 90.0], [25.0, 85.0], [85.0, 70.0]]], device=device, dtype=dtype)
+        ls1 = torch.stack([starts, ends], dim=2)
+        ls2 = kornia.geometry.transform_points(H, ls1.reshape(1, -1, 2)).reshape(1, 4, 2, 2)
+
+        H_est = find_homography_lines_dlt(ls1, ls2)
+
+        probe = torch.tensor([[[0.0, 0.0], [50.0, 50.0], [100.0, 0.0], [30.0, 70.0]]], device=device, dtype=dtype)
+        rtol, atol = (1e-4, 1e-3) if dtype in (torch.float32, torch.float64) else (5e-2, 2.0)
+        expected = kornia.geometry.transform_points(H, probe)
+        self.assert_close(kornia.geometry.transform_points(H_est, probe), expected, rtol=rtol, atol=atol)
+
+    @pytest.mark.parametrize("num_points", [4, 6])
     @pytest.mark.parametrize("use_weights", [False, True])
     @pytest.mark.parametrize("solver", [find_homography_lines_dlt, find_homography_lines_dlt_iterated])
     def test_empty_batch(self, num_points, use_weights, solver, device, dtype):
