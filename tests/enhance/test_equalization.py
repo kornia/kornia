@@ -493,8 +493,7 @@ class TestEqualization(BaseTester):
         # the residual 32 goes, as in OpenCV, to every 256 // 32 = 8th bin from bin 0. The LUT is
         # round(cumsum * 255 / 1024): bin 100 maps to round(535 * 255 / 1024) = 133 and bin 200 to
         # round(908 * 255 / 1024) = 226, where writing the residual into bins 0..31 would give 138 and 228.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("the cumulative counts of a 1024-pixel tile are not exact below float32")
+        # The counts stay in float32 for half-precision tiles too, so this is exact in every dtype.
         values = torch.cat([torch.zeros(342), torch.full((341,), 100 / 256), torch.full((341,), 200 / 256)])
         tiles = values.to(device, dtype).view(1, 1, 1, 1, 32, 32)
         clip = torch.tensor([40.0], device=device, dtype=dtype) if clip_as_tensor else 40.0
@@ -544,19 +543,6 @@ class TestEqualization(BaseTester):
             ],
             dtype=torch.float64,
         )
-        if dtype == torch.float16:
-            # LUT values at 143.4375 round to 144 in float16, instead of 143.
-            # Propagate that one-level difference through the centre-anchored weights.
-            expected[0, 7] += 40
-            expected[1, 8] += 24
-            expected[2, 2] += 7
-            expected[2, 3] += 21
-            expected[2, 8] += 21
-            expected[2, 9] += 7
-            expected[3, 0] += 24
-            expected[3, 4] += 25
-            expected[5, 9] += 1
-            expected[6, 5] += 8
         expected = expected.div(64 * 255).to(dtype).to(device)[None, None]
         # Both orientations: the two border regions are indexed by the grid size of different axes.
         self.assert_close(enhance.equalize_clahe(img, 40.0, (2, 3)), expected)
@@ -572,6 +558,42 @@ class TestEqualization(BaseTester):
         out = enhance.equalize_clahe(img, 40.0, grid_size, slow_and_differentiable)
         out_t = enhance.equalize_clahe(img.transpose(-2, -1), 40.0, grid_size[::-1], slow_and_differentiable)
         self.assert_close(out_t, out.transpose(-2, -1))
+
+    # The fast path counts, clips and accumulates each tile's histogram in float32 (float64 for float64 images) and
+    # casts only the finished LUT back, so a half-precision tile gets the LUT a float32 tile with the same pixels gets.
+    # Counting in float16 overflowed the clipped total of a 256 x 256 tile to inf, the tile the default 8 x 8 grid
+    # gives on a 2048 x 2048 image, and rounded counts above 2048; bfloat16 rounded counts above 256.
+    @pytest.mark.parametrize("clip_as_tensor", [False, True])
+    @pytest.mark.parametrize(
+        ("size", "grid", "tile"), [((512, 512), (2, 2), (256, 256)), ((197, 100), (1, 1), (197, 100))]
+    )
+    def test_clahe_luts_count_outside_half_precision(self, size, grid, tile, clip_as_tensor, device, dtype):
+        torch.manual_seed(5374)
+        img = torch.rand(1, 2, *size, device=device, dtype=dtype)
+        tiles, _ = _compute_tiles(img, grid)
+        assert tuple(tiles.shape[-2:]) == tile
+        clip = torch.tensor([40.0], device=device) if clip_as_tensor else 40.0
+        luts = enhance.equalization._compute_luts(tiles, clip=clip)
+        count_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        expected = enhance.equalization._compute_luts(tiles.to(count_dtype), clip=clip)
+        assert luts.dtype == dtype
+        assert torch.equal(luts.to(count_dtype), expected)
+
+    # One 65536-pixel tile: in float16 the default clip limit turned every output pixel into NaN, and a clip limit whose
+    # per-bin cap clip * 65536 // 256 exceeds 65504 raised an overflow error on CPU (and aborted the process on MPS).
+    @pytest.mark.parametrize("clip_limit", [40.0, 300.0])
+    @pytest.mark.parametrize("slow_and_differentiable", [False, True])
+    def test_clahe_half_precision_tile_of_65536_pixels(self, slow_and_differentiable, clip_limit, device, dtype):
+        torch.manual_seed(5374)
+        img = torch.rand(1, 1, 256, 256, device=device, dtype=dtype)
+        out = enhance.equalize_clahe(img, clip_limit, (1, 1), slow_and_differentiable)
+        assert out.dtype == dtype
+        assert torch.isfinite(out).all()
+        expected = enhance.equalize_clahe(img.cpu().double(), clip_limit, (1, 1), slow_and_differentiable)
+        # What remains in half precision is the pixel lookup and the blend, which stay in the input dtype as they do for
+        # equalize: at most two gray levels for this uniform image.
+        atol = 2.5 / 255 if dtype in (torch.float16, torch.bfloat16) else None
+        self.assert_close(out.cpu().double(), expected, rtol=0 if atol else None, atol=atol)
 
     @pytest.mark.parametrize(
         ("size", "grid", "expected_tile", "expected_padded"),
