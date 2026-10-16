@@ -58,8 +58,9 @@ class HardNet(nn.Module):
           ``1e-5`` to the variance, so for SOSNet and TFeat a low-contrast patch in ``[0, 1]`` can already give a
           different descriptor than the same patch in ``[0, 255]``. HyNet is invariant to a scale only; see its
           Convention block.
-        - The descriptors have unit L2 norm, except TFeat's (see its Convention block); with ``pretrained=False``,
-          HardNet and HardNet8 map a flat patch to an all-zero descriptor.
+        - The descriptors have unit L2 norm, except TFeat's (see its Convention block); with ``pretrained=False``
+          and ``.eval()`` (the initial BatchNorm statistics), HardNet and HardNet8 map a flat patch to an all-zero
+          descriptor.
         - ``pretrained=True``, the default, downloads the trained weights (Liberty with augmentation for HardNet,
           ``hardnet8v2`` for HardNet8) and returns the model in evaluation mode. ``pretrained=False`` gives random
           weights in training mode; call ``.eval()`` before inference.

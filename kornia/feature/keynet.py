@@ -153,7 +153,7 @@ class KeyNet(nn.Module):
     Args:
         pretrained: Download and set pretrained weights to the model.
         keynet_conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing. A
-            ``num_filters``, ``num_levels`` or ``kernel_size`` other than the default changes the architecture: pass
+            ``num_levels`` or ``kernel_size`` other than the default changes the architecture: pass
             ``pretrained=False`` with it, since the strict load of the weights raises ``RuntimeError``.
 
     Returns:
@@ -217,7 +217,7 @@ class KeyNetDetector(MultiResolutionDetector):
         pretrained: Download and set pretrained weights to the model.
         num_features: Number of features to detect.
         keynet_conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing. A
-            ``num_filters``, ``num_levels`` or ``kernel_size`` other than the default changes the architecture: pass
+            ``num_levels`` or ``kernel_size`` other than the default changes the architecture: pass
             ``pretrained=False`` with it, since the strict load of the weights raises ``RuntimeError``.
         ori_module: for local feature orientation estimation. Default: :class:`~kornia.feature.PassLAF`,
            which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.

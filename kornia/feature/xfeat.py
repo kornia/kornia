@@ -302,9 +302,9 @@ class XFeat(nn.Module):
     Convention:
         - XFeat defines no ``forward``: call :meth:`detectAndCompute` or :meth:`detectAndComputeDense`.
         - ``XFeat()`` builds random weights in training mode, where BatchNorm normalises with the batch, updates its
-          running statistics on every call, and a single match raises; call ``.eval()`` for inference.
-          :meth:`from_pretrained` returns the trained model in evaluation mode. The inference methods run under
-          ``torch.inference_mode``.
+          running statistics on every call, and matching a single small image pair raises; call ``.eval()`` for
+          inference. :meth:`from_pretrained` returns the trained model in evaluation mode. The inference methods
+          run under ``torch.inference_mode``.
         - The image is :math:`(B, C, H, W)` with any channel count. Each extraction resizes the image it gets
           bilinearly to :math:`(H', W')`: ``H`` and ``W`` rounded down to multiples of 32, with a minimum of 32.
           :class:`XFeatModel` then averages the channels and instance-normalises the result, so an affine change of the
