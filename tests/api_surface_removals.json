@@ -5,6 +5,9 @@
   "kornia.contrib.boxmot_tracker": [
     "BoxMotTracker"
   ],
+  "kornia.models.qwen25": [
+    "Qwen2VLVisionTransformer"
+  ],
   "kornia.models.sam3": [
     "ImageEncoderHiera"
   ],
