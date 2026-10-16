@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 import pickle
+import re
 from unittest.mock import patch
 
 import numpy as np
@@ -26,6 +27,8 @@ import pytest
 import torch
 from torch import nn
 
+from kornia.contrib.edge_detection import EdgeDetectorBuilder
+from kornia.io import ImageLoadType, load_image
 from kornia.models.base import ModelBase, ModelBaseMixin
 
 from testing.base import BaseTester
@@ -83,11 +86,81 @@ class TestModelBaseMixinTensorToType:
         out = mixin._tensor_to_type(tensors, "pil")
         self._assert_pil_images(out, tensors, ["RGB", "L", "RGB", "RGB"])
 
+    def test_pil_output_2d_items(self):
+        mixin = DummyMixin()
+        # values beyond [0, 1] check the clamp
+        t = torch.rand(4, 5) * 1.2 - 0.1
+        # an (H, W) map converts as the same map with one channel, (1, H, W): one mode "L" image
+        self._assert_pil_images(mixin._tensor_to_type(t, "pil"), [t[None]], ["L"])
+        self._assert_pil_images(mixin._tensor_to_type([t, t[None]], "pil"), [t[None], t[None]], ["L", "L"])
+
     def test_unsupported_output_type_raises(self):
         mixin = DummyMixin()
         t = torch.rand(1, 3, 8, 8)
         with pytest.raises(RuntimeError, match=r"Output type.*is not supported"):
             mixin._tensor_to_type(t, "numpy")
+
+
+def _decoded_files(directory):
+    """The decoded images of a directory, keyed by file name without its ``_YYYYmmdd_HHMMSS`` timestamp."""
+    return {
+        re.sub(r"_\d{8}_\d{6}", "", p.name): load_image(str(p), ImageLoadType.UNCHANGED)
+        for p in sorted(directory.iterdir())
+    }
+
+
+class TestModelBaseWrappersPilOutput:
+    """``output_type="pil"`` in a wrapper's ``visualize`` and ``save``, on a random-init ``EdgeDetector``."""
+
+    # edge maps in the forms EdgeDetector.visualize accepts: the (B, 1, H, W) tensor and a list of (1, H, W) maps,
+    # whose items it reduces to (H, W), and a list of (1, 1, H, W) maps as its forward returns, reduced to (3, H, W)
+    _FORMS = ("tensor (B, 1, H, W)", "list of (1, H, W)", "list of (1, 1, H, W)")
+
+    @staticmethod
+    def _edge_maps(form):
+        maps = torch.rand(2, 1, 8, 10)
+        if form == "list of (1, H, W)":
+            return list(maps)
+        if form == "list of (1, 1, H, W)":
+            return [m[None] for m in maps]
+        return maps
+
+    @pytest.mark.parametrize("form", _FORMS)
+    def test_edge_detector_visualize_pil(self, form):
+        Image = pytest.importorskip("PIL.Image")
+        detector = EdgeDetectorBuilder.build(pretrained=False)
+        images = torch.rand(2, 3, 8, 10)
+        edge_maps = self._edge_maps(form)
+
+        out = detector.visualize(images, edge_maps, output_type="pil")
+
+        drawn = detector.visualize(images, edge_maps)
+        assert isinstance(out, list)
+        assert len(out) == len(drawn) == 2
+        for image, tensor in zip(out, drawn):
+            assert isinstance(image, Image.Image)
+            # (H, W) items become mode "L", (3, H, W) items "RGB", each clamped, scaled to 0..255 and rounded
+            expected = (tensor.clamp(0, 1) * 255).round().byte()
+            expected = expected.permute(1, 2, 0) if expected.dim() == 3 else expected
+            assert image.mode == ("RGB" if tensor.dim() == 3 else "L")
+            assert np.array_equal(np.asarray(image), expected.numpy())
+
+    @pytest.mark.parametrize("form", _FORMS)
+    def test_edge_detector_save_pil_writes_the_torch_pixels(self, form, tmp_path):
+        pytest.importorskip("PIL.Image")
+        detector = EdgeDetectorBuilder.build(pretrained=False)
+        images = torch.rand(2, 3, 8, 10)
+        edge_maps = self._edge_maps(form)
+
+        for output_type in ("torch", "pil"):
+            detector.save(images, edge_maps, directory=str(tmp_path / output_type), output_type=output_type)
+        written = {output_type: _decoded_files(tmp_path / output_type) for output_type in ("torch", "pil")}
+
+        # source and edge map of each of the two images, under the same names and with the same pixels
+        assert len(written["torch"]) == 4
+        assert written["pil"].keys() == written["torch"].keys()
+        for name, decoded in written["torch"].items():
+            assert torch.equal(written["pil"][name], decoded), name
 
 
 class TestModelBaseMixinSave:

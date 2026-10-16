@@ -205,12 +205,8 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
         Args:
             images: input torch.Tensor.
             edge_maps: super-resolved images; computed with :meth:`forward` when None.
-            output_type: type of the output.
             directory: where to save outputs.
-            output_type: backend used to generate outputs.
-
-        Returns:
-            output torch.Tensor.
+            output_type: "torch" or "pil", passed to :meth:`visualize`; the files hold the same pixels either way.
 
         """
         outputs = self.visualize(images, edge_maps, output_type)

@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import re
 import sys
 
 import pytest
@@ -66,6 +67,30 @@ class TestSuperResolutionBuilders(BaseTester):
             # RealESRGAN_x4plus_anime_6B upscales by 4
             assert actual.shape == (3, 64, 80)
             self.assert_close(actual, model(image[None])[0])
+
+    def test_save_pil_writes_the_torch_pixels(self, tmp_path):
+        pytest.importorskip("PIL.Image")
+        from kornia.io import ImageLoadType, load_image
+
+        # the 6-block RRDB variant, random init, on small images
+        model = RRDBNetBuilder.build("RealESRGAN_x4plus_anime_6B", pretrained=False)
+        images = torch.rand(2, 3, 16, 20)
+
+        written = {}
+        for output_type in ("torch", "pil"):
+            directory = tmp_path / output_type
+            model.save(images, directory=str(directory), output_type=output_type)
+            # file names carry a "_YYYYmmdd_HHMMSS" timestamp, which may differ between the two calls
+            written[output_type] = {
+                re.sub(r"_\d{8}_\d{6}", "", p.name): load_image(str(p), ImageLoadType.UNCHANGED)
+                for p in sorted(directory.iterdir())
+            }
+
+        # source and super-resolved image of each of the two images, under the same names and with the same pixels
+        assert len(written["torch"]) == 4
+        assert written["pil"].keys() == written["torch"].keys()
+        for name, decoded in written["torch"].items():
+            assert torch.equal(written["pil"][name], decoded), name
 
     @pytest.mark.parametrize("model_name", ["small_sr", "RealESRNet_x4plus"])
     def test_from_config_dispatches_to_both_families(self, device, dtype, model_name):
