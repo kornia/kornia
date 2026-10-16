@@ -258,3 +258,15 @@ class TestModelBaseLoadCheckpoint(BaseTester):
 
         self.assert_close(model.linear.weight, source.linear.weight)
         self.assert_close(model.linear.bias, source.linear.bias)
+
+    def test_load_checkpoint_keeps_the_mode(self, tmp_path) -> None:
+        path = tmp_path / "model.pth"
+        torch.save(_TinyModel().state_dict(), path)
+
+        model = _TinyModel()
+        model.load_checkpoint(str(path))
+        assert model.training
+
+        model.eval()
+        model.load_checkpoint(str(path))
+        assert not model.training

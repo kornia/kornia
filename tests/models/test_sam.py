@@ -18,6 +18,7 @@
 import pytest
 import torch
 import torch.nn.functional as F
+from torch import nn
 
 from kornia.models.sam import Sam, SamConfig
 
@@ -117,3 +118,36 @@ class TestSam(BaseTester):
     @pytest.mark.parametrize("model_type", ["vit_b", "mobile_sam"])
     def test_pretrained(self, model_type):
         Sam.from_config(SamConfig(model_type, pretrained=True))
+
+    @pytest.mark.device_agnostic
+    def test_from_config_mode(self, monkeypatch):
+        loaded = []
+        monkeypatch.setattr(Sam, "load_checkpoint", lambda self, checkpoint, device=None: loaded.append(checkpoint))
+
+        assert not Sam.from_config(SamConfig("mobile_sam", pretrained=True)).training
+        assert not Sam.from_config(SamConfig("mobile_sam", checkpoint="x.pt")).training
+        assert len(loaded) == 2
+        assert loaded[1] == "x.pt"
+
+        assert Sam.from_config(SamConfig("mobile_sam")).training
+        assert Sam.from_name("mobile_sam").training
+        assert len(loaded) == 2
+
+    @pytest.mark.slow
+    def test_mobile_sam_pretrained_is_batch_independent(self):
+        encoder = Sam.from_config(SamConfig("mobile_sam", pretrained=True)).image_encoder
+        running_means = [m.running_mean.clone() for m in encoder.modules() if isinstance(m, nn.BatchNorm2d)]
+        # The image encoder takes only its square 1024 input; VisualPrompter pads every image to it.
+        generator = torch.Generator().manual_seed(0)
+        x1 = torch.rand(1, 3, 1024, 1024, generator=generator)
+        x2 = torch.rand(1, 3, 1024, 1024, generator=generator)
+
+        with torch.no_grad():
+            alone = encoder(x1)[0]
+            batched = encoder(torch.cat([x1, x2]))[0]
+
+        # In evaluation mode sample 0 does not see sample 1; only the kernels' summation order may change with the
+        # batch size, so the float32 tolerance is widened to 1e-4.
+        self.assert_close(alone, batched, rtol=1e-4, atol=1e-4)
+        after = [m.running_mean for m in encoder.modules() if isinstance(m, nn.BatchNorm2d)]
+        assert all(torch.equal(a, b) for a, b in zip(after, running_means))

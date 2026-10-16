@@ -227,9 +227,8 @@ class ONNXExportMixin:
                 onnx_model = onnx.load(tmp_path)
         finally:
             # The flag is set directly on purpose: ``train()`` recurses into the children, which would lose a mixed
-            # state. It also skips ``train()`` overrides: TinyViT's ``Attention.train(True)`` would drop the attention
-            # bias cached in eval mode, which is harmless because a training-mode forward does not read it. Check any
-            # new ``train()`` override with side effects against this restore.
+            # state. It also skips ``train()`` overrides: check any new ``train()`` override with side effects against
+            # this restore.
             for submodule, training in modes:
                 submodule.training = training
 

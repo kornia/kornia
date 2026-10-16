@@ -292,7 +292,6 @@ class Attention(nn.Module):
         self.attention_biases = nn.Parameter(torch.zeros(num_heads, attn_offset_size))
         self.register_buffer("attention_bias_idxs", indices, persistent=False)
         self.attention_bias_idxs: torch.Tensor
-        self.ab: Optional[torch.Tensor] = None
 
     @staticmethod
     def build_attention_bias(resolution: tuple[int, int]) -> tuple[torch.Tensor, int]:
@@ -320,22 +319,6 @@ class Attention(nn.Module):
         attn_offset_size = unique_keys.numel()
         return indices, attn_offset_size
 
-    # is this really necessary?
-    @torch.no_grad()
-    def train(self, mode: bool = True) -> Attention:
-        """Switch training/evaluation mode and refresh cached attention bias.
-
-        Args:
-            mode: ``True`` for training mode, ``False`` for evaluation mode.
-
-        Returns:
-            ``self`` after updating the module mode. In evaluation mode the
-            relative attention bias lookup is cached for reuse.
-        """
-        super().train(mode)
-        self.ab = None if (mode and self.ab is not None) else self.attention_biases[:, self.attention_bias_idxs]
-        return self
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply relative-position self-attention to token features.
 
@@ -353,7 +336,7 @@ class Attention(nn.Module):
         qkv = qkv.view(B, N, self.num_heads, -1).permute(0, 2, 1, 3)
         q, k, v = qkv.split([self.key_dim, self.key_dim, self.d], dim=3)
 
-        bias = self.attention_biases[:, self.attention_bias_idxs] if self.training else self.ab
+        bias = self.attention_biases[:, self.attention_bias_idxs]
         attn = (q @ k.transpose(-2, -1)) * self.scale + bias
 
         attn = attn.softmax(dim=-1)
@@ -639,6 +622,9 @@ class TinyViT(nn.Module):
     def from_config(variant: str, pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
         """Create a TinyViT model from pre-defined variants.
 
+        Returns the model in evaluation mode when ``pretrained`` loads weights and in training mode otherwise (see
+        :ref:`pretrained-models-conventions`).
+
         Args:
             variant: TinyViT variant. Possible values: ``'5m'``, ``'11m'``, ``'21m'``.
             pretrained: whether to use pre-trained weights. Possible values: ``False``, ``True``, ``'in22k'``,
@@ -650,9 +636,15 @@ class TinyViT(nn.Module):
             attention biases. When using ``pretrained=True``, ImageNet-1k checkpoint (``'in1k'``) is used.
             For feature extraction or fine-tuning, ImageNet-22k checkpoint (``'in22k'``) is preferred.
 
+            With ``pretrained`` and a ``num_classes`` other than the checkpoint's, the classification head is reset to
+            zeros and the model still comes back in evaluation mode; call ``.train()`` to fine-tune it.
+
         """
         KORNIA_CHECK(variant in ("5m", "11m", "21m"), "Only variant 5m, 11m, and 21m are supported")
-        return {"5m": _tiny_vit_5m, "11m": _tiny_vit_11m, "21m": _tiny_vit_21m}[variant](pretrained, **kwargs)
+        model = {"5m": _tiny_vit_5m, "11m": _tiny_vit_11m, "21m": _tiny_vit_21m}[variant](pretrained, **kwargs)
+        if pretrained:
+            model.eval()
+        return model
 
 
 # Module level, like every other weight registry in kornia, so the CI weights

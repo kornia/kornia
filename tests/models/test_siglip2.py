@@ -24,7 +24,7 @@ import pytest
 import torch
 
 import kornia.models.siglip2.builder as siglip2_builder
-from kornia.models.siglip2 import SigLip2Config, SigLip2Model, SigLip2Result
+from kornia.models.siglip2 import SigLip2Builder, SigLip2Config, SigLip2Model, SigLip2Result
 from kornia.models.siglip2.attention import SigLip2Attention
 from kornia.models.siglip2.config import SigLip2TextConfig, SigLip2VisionConfig
 from kornia.models.siglip2.preprocessor import SigLip2ImagePreprocessor
@@ -103,6 +103,15 @@ class TestSigLip2Builder:
                 repos.append(download.call_args.args[0])
 
         assert repos == ["google/siglip2-base-patch16-224", "google/siglip2-base-patch16-256"]
+
+    def test_from_pretrained_hf_returns_eval_mode(self, monkeypatch, config):
+        monkeypatch.setattr(SigLip2Config, "from_name", staticmethod(lambda model_name: config))
+        state_dict = SigLip2Model(config).state_dict()
+        monkeypatch.setattr(siglip2_builder, "_download_weights", lambda model_name, cache_dir: state_dict)
+
+        assert not SigLip2Builder.from_pretrained_hf("google/siglip2-base-patch16-224").training
+        assert SigLip2Builder.from_name("google/siglip2-base-patch16-224").training
+        assert SigLip2Builder.from_config(config).training
 
     def test_a_missing_checkpoint_is_reported_with_the_model_name(self, tmp_path):
         with (
