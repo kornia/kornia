@@ -35,7 +35,14 @@ from kornia.models.common import ConvNormAct
 def _make_shortcut(in_channels: int, out_channels: int, stride: int) -> nn.Module:
     return (
         nn.Sequential(
-            OrderedDict([("pool", nn.AvgPool2d(2, 2)), ("conv", ConvNormAct(in_channels, out_channels, 1, act="none"))])
+            OrderedDict(
+                [
+                    # ``ceil_mode`` as in the reference ``presnet.py``: an odd input keeps the size of the strided
+                    # conv branch, ceil(H / 2)
+                    ("pool", nn.AvgPool2d(2, 2, 0, ceil_mode=True)),
+                    ("conv", ConvNormAct(in_channels, out_channels, 1, act="none")),
+                ]
+            )
         )
         if stride == 2
         else ConvNormAct(in_channels, out_channels, 1, act="none")

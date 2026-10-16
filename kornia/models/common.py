@@ -25,15 +25,20 @@ from torch import nn
 class ConvNormAct(nn.Sequential):
     """Apply a sequence of Convolution, Normalization, and Activation layers.
 
+    The convolution has no bias and is followed by :class:`nn.BatchNorm2d`. Its padding follows from ``kernel_size``:
+    ``(kernel_size - 1) // 2`` on each side for an odd kernel, and for an even kernel a zero padding with one more
+    pixel at the bottom and right, as in PaddlePaddle.
+
     Args:
         in_channels: Number of input channels.
         out_channels: Number of output channels.
         kernel_size: Size of the convolution kernel.
         stride: Stride of the convolution. Default: 1.
-        padding: Zero-padding added to both sides of the input. Default: 0.
+        act: Activation, ``"relu"``, ``"silu"`` or ``"none"`` (identity). Default: ``"relu"``.
         groups: Number of blocked connections from input to output. Default: 1.
-        norm: Normalization layer type. Default: :class:`nn.BatchNorm2d`.
-        act: Activation layer type. Default: :class:`nn.ReLU`.
+        conv_naming: Attribute name of the convolution, which sets its parameter names. Default: ``"conv"``.
+        norm_naming: Attribute name of the normalization layer. Default: ``"norm"``.
+        act_naming: Attribute name of the activation. Default: ``"act"``.
     """
 
     def __init__(

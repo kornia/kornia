@@ -113,6 +113,18 @@ class TestObjectDetector(BaseTester):
             assert torch.all(dets[:, 0].int() == dets[:, 0])
             assert torch.all(dets[:, 1] >= 0.3)
 
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(("confidence_filtering", "expected"), [(False, False), (None, True), (True, True)])
+    def test_builder_honours_confidence_filtering_false(self, confidence_filtering, expected):
+        detector = kornia.contrib.object_detection.RTDETRDetectorBuilder.build(
+            "rtdetr_r18vd", pretrained=False, confidence_filtering=confidence_filtering
+        )
+        assert detector.post_processor.confidence_filtering is expected
+
+        # Without filtering the post-processor returns the (B, Q, 6) tensor, with it a list of (D, 6) tensors.
+        out = detector.post_processor(torch.zeros(1, 300, 80), torch.zeros(1, 300, 4), torch.tensor([[640, 640]]))
+        assert isinstance(out, list) is expected
+
     @pytest.mark.slow
     @pytest.mark.timeout(120)
     @pytest.mark.skipif(torch_version_lt(2, 0, 0), reason="Unsupported ONNX opset version: 16")

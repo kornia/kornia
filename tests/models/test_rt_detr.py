@@ -20,11 +20,13 @@ from functools import partial
 import pytest
 import torch
 
+from kornia.core.exceptions import BaseError
 from kornia.models.rt_detr.architecture.hgnetv2 import PPHGNetV2
 from kornia.models.rt_detr.architecture.hybrid_encoder import HybridEncoder, RepVggBlock
 from kornia.models.rt_detr.architecture.resnet_d import ResNetD
 from kornia.models.rt_detr.architecture.rtdetr_head import RTDETRHead
 from kornia.models.rt_detr.model import RTDETR, RTDETRConfig
+from kornia.models.rt_detr.post_processor import DETRPostProcessor
 
 from testing.base import BaseTester, assert_close
 
@@ -88,6 +90,32 @@ def test_regvgg_optimize_for_deployment(device, dtype):
     assert_close(actual, expected, atol=1e-3, rtol=1e-2)
 
 
+class TestDETRPostProcessor(BaseTester):
+    @pytest.mark.parametrize("sizes_dtype", [torch.float32, torch.int64])
+    def test_postprocessor_scales_each_image_by_its_size(self, device, dtype, sizes_dtype):
+        post_processor = DETRPostProcessor(
+            confidence_threshold=0.0, num_classes=2, num_top_queries=1, confidence_filtering=False
+        )
+        logits = torch.tensor([[[5.0, -5.0]]] * 2, device=device, dtype=dtype)
+        # one normalised (cx, cy, w, h) box per image
+        boxes = torch.tensor([[[0.5, 0.5, 0.25, 0.25]]] * 2, device=device, dtype=dtype)
+        # (H, W) of each image
+        sizes = torch.tensor([[100, 200], [400, 800]], device=device, dtype=sizes_dtype)
+
+        out = post_processor(logits, boxes, sizes)
+
+        # xywh in the pixels of each image's own size: x = (cx - w / 2) * W, y = (cy - h / 2) * H, w * W, h * H.
+        # Image 0: (0.375 * 200, 0.375 * 100, 0.25 * 200, 0.25 * 100); image 1: the same with H = 400, W = 800.
+        expected = torch.tensor(
+            [[[75.0, 37.5, 50.0, 25.0]], [[300.0, 150.0, 200.0, 100.0]]], device=device, dtype=dtype
+        )
+        assert out.shape == (2, 1, 6)
+        assert out.dtype == dtype
+        self.assert_close(out[..., 2:], expected)
+        # the top query of sigmoid([5, -5]) is class 0
+        assert out[..., 0].tolist() == [[0.0], [0.0]]
+
+
 class TestRTDETR(BaseTester):
     @pytest.mark.slow  # This will be slow for the bigger variants
     @pytest.mark.parametrize("variant", ["resnet18d", "resnet34d", "resnet50d", "resnet101d", "hgnetv2_l", "hgnetv2_x"])
@@ -111,6 +139,58 @@ class TestRTDETR(BaseTester):
 
         assert logits.shape == (shape[0], num_queries, num_classes)
         assert boxes.shape == (shape[0], num_queries, 4)
+
+    def test_resnet_d_odd_sizes(self, device, dtype):
+        backbone = ResNetD.from_config(18).to(device, dtype).eval()
+        # The stem takes a height of 636 to 159, an odd size. A stride-2 stage then gives ceil(159 / 2) = 80 on both
+        # paths only when the shortcut pool rounds up, as the reference ``nn.AvgPool2d(2, 2, 0, ceil_mode=True)`` of
+        # lyuwenyu/RT-DETR ``presnet.py`` does; 80 -> 40 -> 20 for the next two stages. The width, 64 -> 16 after the
+        # stem, stays even (a narrow width keeps the run short in CPU half precision).
+        fmaps = backbone(torch.rand(1, 3, 636, 64, device=device, dtype=dtype))
+        assert [tuple(fmap.shape[-2:]) for fmap in fmaps] == [(80, 8), (40, 4), (20, 2)]
+
+        # The whole detector: the stem takes 92 x 96 to 23 x 24, an odd height, and the backbone returns 12 x 12,
+        # 6 x 6 and 3 x 3, sizes the neck's nearest x2 upsampling joins again.
+        model = RTDETR.from_config(RTDETRConfig("resnet18d", 10, head_num_queries=10)).to(device, dtype).eval()
+        logits, boxes = model(torch.rand(1, 3, 92, 96, device=device, dtype=dtype))
+        assert logits.shape == (1, 10, 10)
+        assert boxes.shape == (1, 10, 4)
+
+    @pytest.mark.device_agnostic
+    def test_decoder_eval_idx(self):
+        in_channels = [32, 64, 128]
+        head = RTDETRHead(5, 32, 10, in_channels, 3, eval_idx=0).eval()
+        ran = []
+        for i, layer in enumerate(head.decoder.layers):
+            layer.register_forward_hook(lambda module, args, output, i=i: ran.append(i))
+        generator = torch.Generator().manual_seed(0)
+        fmaps = [
+            torch.rand(1, ch, h, w, generator=generator) for ch, (h, w) in zip(in_channels, [(16, 12), (8, 6), (4, 3)])
+        ]
+        logits, boxes = head(fmaps)
+        assert ran == [0]
+        assert logits.shape == (1, 10, 5)
+        assert boxes.shape == (1, 10, 4)
+
+        def eval_idx(config: RTDETRConfig) -> int:
+            return RTDETR.from_config(config).decoder.decoder.eval_idx
+
+        # Both reference configs of the r50vd_m checkpoint (lyuwenyu/RT-DETR rtdetr_pytorch and rtdetr_paddle
+        # ``rtdetr_r50vd_m_6x_coco.yml``) set ``eval_idx: 2`` on a 6-layer decoder; the other variants decode with
+        # their last layer: 3 layers for r18, 6 for r50.
+        assert eval_idx(RTDETRConfig("resnet50d_m", 80)) == 2
+        assert eval_idx(RTDETRConfig("resnet18d", 80)) == 2
+        assert eval_idx(RTDETRConfig("resnet50d", 80)) == 5
+        assert eval_idx(RTDETRConfig("resnet50d_m", 80, eval_idx=4)) == 4
+        assert eval_idx(RTDETRConfig("resnet50d_m", 80, eval_idx=0)) == 0
+        assert eval_idx(RTDETRConfig("resnet18d", 80, eval_idx=-2)) == 1
+        # a 2-layer r50vd_m decoder keeps its last layer, min(2, 2 - 1)
+        assert eval_idx(RTDETRConfig("resnet50d_m", 80, head_num_decoder_layers=2)) == 1
+
+        # a 3-layer decoder accepts -3..2
+        for out_of_range in (3, -4):
+            with pytest.raises(BaseError, match="eval_idx"):
+                RTDETRHead(5, 32, 10, in_channels, 3, eval_idx=out_of_range)
 
     @pytest.mark.device_agnostic
     def test_from_pretrained_mode(self, monkeypatch):
