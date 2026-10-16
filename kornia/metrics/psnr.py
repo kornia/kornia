@@ -47,6 +47,7 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
         - ``image`` and ``target`` must have the same shape, without broadcasting; the value is symmetric in them.
           Identical inputs give an MSE of 0 and ``inf``, while a batch with one identical pair stays finite.
         - Integer and bool images are converted to float32 before computing the MSE; pixel values are not rescaled.
+        - Float16 and bfloat16 inputs are evaluated in float32; the result retains their promoted input dtype.
 
     Args:
         image: the input image with arbitrary shape :math:`(*)`.
@@ -86,6 +87,8 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
         target = target.to(torch.float32)
     # Give mse_loss one dtype: on two dtypes it aborts the process on MPS, and its backward raises on torch 2.5.1.
     dtype = torch.promote_types(image.dtype, target.dtype)
-    image, target = image.to(dtype), target.to(dtype)
+    compute_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+    image, target = image.to(compute_dtype), target.to(compute_dtype)
 
-    return 10.0 * torch.log10(max_val**2 / mse(image, target, reduction="mean"))
+    result = 10.0 * torch.log10(max_val**2 / mse(image, target, reduction="mean"))
+    return result.to(dtype) if dtype in (torch.float16, torch.bfloat16) else result
