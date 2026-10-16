@@ -224,11 +224,12 @@ class TestFocalLoss(BaseTester):
         logits = torch.randn(2, 4, 3, 5, device=device, dtype=dtype, requires_grad=True)
         labels = torch.randint(4, (2, 3, 5), device=device)
         expected = kornia.losses.focal_loss(logits, labels, 0.25, 2.0, "none").mean()
+        previous_sync_debug_mode = torch.cuda.get_sync_debug_mode()
         torch.cuda.set_sync_debug_mode("error")
         try:
             actual = kornia.losses.focal_loss(logits, labels, 0.25, 2.0, "mean")
         finally:
-            torch.cuda.set_sync_debug_mode("default")
+            torch.cuda.set_sync_debug_mode(previous_sync_debug_mode)
         self.assert_close(actual, expected)
 
     def test_reduced_saved_tensor_memory(self, device, dtype):

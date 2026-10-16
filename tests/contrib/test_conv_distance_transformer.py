@@ -121,12 +121,13 @@ class TestConvDistanceTransform(BaseTester):
         with torch._subclasses.fake_tensor.FakeTensorMode():
             assert kornia.contrib.distance_transform(torch.zeros(shape)).shape == shape
 
-    def test_cuda_graph_capture(self, device, dtype):
+    @pytest.mark.parametrize("spatial_shape", [(33, 33), (17, 17, 17)])
+    def test_cuda_graph_capture(self, spatial_shape, device, dtype):
         if device.type != "cuda":
             pytest.skip("CUDA graphs need a CUDA device")
-        sample = torch.zeros(2, 1, 33, 33, device=device, dtype=dtype)
-        sample[0, 0, 4, 5] = 1
-        sample[1, 0, 20, 30] = 1
+        sample = torch.zeros(2, 1, *spatial_shape, device=device, dtype=dtype)
+        sample[(0, 0) + (4,) * len(spatial_shape)] = 1
+        sample[(1, 0) + (12,) * len(spatial_shape)] = 1
         expected = kornia.contrib.distance_transform(sample)
         stream = torch.cuda.Stream()
         stream.wait_stream(torch.cuda.current_stream())
