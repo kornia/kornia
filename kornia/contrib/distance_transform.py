@@ -203,10 +203,11 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
           ``distanceTransform`` measure it to the nearest zero: ``distance_transform(x)`` approximates
           ``scipy.ndimage.distance_transform_edt(x == 0)``.
         - ``image`` is a binary mask whose sources are the pixels equal to 1, read after clamping it to [0, 1]: a value
-          above 1 is a full source, as 1 is, and a negative value is background, as 0 is. A value :math:`0 < v < 1` is
-          a weaker source: it adds :math:`-h \log v` to a distance within ``kernel_size // 2`` of it whose window
-          holds no other source, less where the window holds one, as the soft minimum sums them before its
-          logarithm, and does not change the distances further away.
+          above 1 is a full source, as 1 is, and a negative value is background, as 0 is. Values above 1 or below 0
+          are clamped, so their gradient is 0, while values in [0, 1], the bounds included, pass the gradient
+          through. A value :math:`0 < v < 1` is a weaker source: it adds :math:`-h \log v` to a distance within
+          ``kernel_size // 2`` of it whose window holds no other source, less where the window holds one, as the
+          soft minimum sums them before its logarithm, and does not change the distances further away.
         - A mask without any non-zero pixel gives 0 everywhere, as a full mask does, which keeps the output and its
           gradient finite.
         - Known defect: the result is not Euclidean, and there is no general bound on its error

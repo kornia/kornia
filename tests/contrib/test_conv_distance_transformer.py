@@ -304,6 +304,22 @@ class TestConvDistanceTransform(BaseTester):
         expected = torch.tensor(neighbours * -0.35, device=device, dtype=dtype)
         self.assert_close(sample.grad[(0, 0, *source)], expected)
 
+    @pytest.mark.parametrize(
+        ("shape", "above", "below"),
+        [((1, 1, 4, 5), (1, 1), (2, 3)), ((1, 1, 3, 4, 5), (1, 1, 1), (1, 2, 3))],
+        ids=["2d", "3d"],
+    )
+    def test_gradient_is_zero_outside_the_unit_range(self, shape, above, below, device, dtype):
+        # Values above 1 or below 0 are clamped, so their gradient is 0; the pixels in [0, 1] still receive one.
+        sample = torch.zeros(*shape, device=device, dtype=dtype)
+        sample[(0, 0, *above)] = 2.0
+        sample[(0, 0, *below)] = -1.0
+        sample.requires_grad_(True)
+        kornia.contrib.distance_transform(sample).sum().backward()
+        assert sample.grad[(0, 0, *above)] == 0
+        assert sample.grad[(0, 0, *below)] == 0
+        assert (sample.grad != 0).any()
+
     @pytest.mark.parametrize("shape", [(1, 1, 4, 4), (1, 1, 4, 4, 4)], ids=["2d", "3d"])
     @pytest.mark.parametrize("has_signal", [False, True], ids=["all-zero", "one-hot"])
     def test_zero_convolution_has_finite_gradients(self, shape, has_signal, device, dtype):

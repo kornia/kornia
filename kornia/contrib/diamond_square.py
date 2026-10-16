@@ -173,16 +173,19 @@ def diamond_square(
           are ``random_fn`` draws, and whose other nodes are the means of their neighbours.
           Each level sets a new node to
           :math:`(1 - s_k)\,\overline{n} + s_k\,u`, the mean :math:`\overline{n}` of its neighbours mixed with a
-          ``random_fn`` draw :math:`u` by :math:`s_k = \mathrm{random\_scale} \cdot \mathrm{roughness}^k` at level
-          :math:`k \geq 1`: both are mixing weights, not amplitudes. A border node of the square step averages its
-          three neighbours; the diamond step's nodes are all interior, so its ``reflect`` padding never reaches them.
+          ``random_fn`` draw :math:`u` by the weight :math:`s_k = \mathrm{random\_scale} \cdot \mathrm{roughness}^k`
+          at level :math:`k \geq 1`. ``random_scale`` and ``roughness`` act only through :math:`s_k`, a mixing
+          weight, not an amplitude. A border node of the square step averages its three neighbours; the diamond
+          step's nodes are all interior, so its ``reflect`` padding never reaches them.
         - ``random_fn`` is called as ``random_fn(shape, device=device, dtype=dtype)`` and is the only source of
           randomness, so ``functools.partial(torch.rand, generator=g)`` leaves the global generator alone. With
           ``torch.rand`` the map stays in [0, 1] without normalization while ``random_scale`` and ``roughness`` are in
           [0, 1], and it is flat in mean (0.5 at every pixel) for every ``random_scale``, though its variance varies
           across the map.
         - ``roughness`` and ``random_scale`` are a float, a 0-d tensor or a :math:`(B,)` tensor with one value per
-          sample, and follow ``device`` and ``dtype``.
+          sample, and follow ``device`` and ``dtype``. With ``dtype=None`` a tensor keeps its dtype, a float takes
+          the default dtype, and the map has the dtype that the ``random_fn`` draws, ``roughness`` and
+          ``random_scale`` promote to, at every map size.
         - ``normalize_range=(min, max)`` rescales each :math:`(b, c)` plane to that range with
           :func:`~kornia.enhance.normalize_min_max`.
 
@@ -231,7 +234,11 @@ def diamond_square(
     recursion_depth: int = int(min(math.log2(p2_width - 1) - 1, math.log2(p2_height - 1) - 1))
     seed_width: int = (p2_width - 1) // 2**recursion_depth + 1
     seed_height: int = (p2_height - 1) // 2**recursion_depth + 1
-    img: torch.Tensor = _diamond_square_seed(num_samples, seed_width, seed_height, random_fn, device, dtype)
+    seed = _diamond_square_seed(num_samples, seed_width, seed_height, random_fn, device, dtype)
+    # Each level mixes with random_scale * roughness**k, which promotes the map to their common dtype. Promote the
+    # unscaled seed to it as well, so that the output dtype does not depend on the recursion depth.
+    level_dtype = torch.promote_types(torch.promote_types(seed.dtype, random_scale.dtype), roughness.dtype)
+    img: torch.Tensor = seed.to(level_dtype)
 
     # perform recursion
     scale = random_scale

@@ -103,6 +103,26 @@ class TestDiamondSquare(BaseTester):
         assert out.dtype == torch.float32
         assert out.device.type == device.type
 
+    @pytest.mark.parametrize("tensor_arg", ["random_scale", "roughness"])
+    def test_dtype_none_follows_a_tensor_argument_at_every_size(self, tensor_arg, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        # With dtype=None each level promotes the map to the dtype of random_scale * roughness, and the seed is
+        # promoted to it too, without being scaled: a map with a side of 3 px or less, which is the seed alone, has
+        # the same dtype as a larger one, and its values are the float32 draws.
+        g = torch.Generator(device=device)
+        draw = functools.partial(torch.rand, generator=g)
+        value = torch.tensor(0.5, dtype=torch.float64)
+        for size in ((1, 1, 2, 2), (1, 1, 3, 9), (2, 1, 9, 14)):
+            g.manual_seed(0)
+            out = kornia.contrib.diamond_square(size, random_fn=draw, device=device, **{tensor_arg: value})
+            assert out.dtype == torch.float64
+            if min(size[2:]) <= 3:
+                g.manual_seed(0)
+                ref = kornia.contrib.diamond_square(size, random_fn=draw, device=device, **{tensor_arg: 0.5})
+                assert ref.dtype == torch.float32
+                assert torch.equal(out, ref.double())
+
     def test_integer_normalize_range(self, device, dtype):
         if not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
