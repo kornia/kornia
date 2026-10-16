@@ -1,0 +1,1 @@
+`kornia.contrib.distance_transform` and `DistanceTransform` clamp the mask to [0, 1], so a mask with values above 1, such as 0/255, no longer collapses the result to all zeros: every value above 1 counts as a full source, and negative values as background.
