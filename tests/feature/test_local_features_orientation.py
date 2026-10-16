@@ -281,7 +281,7 @@ class TestOrientationKernelBuffer(BaseTester):
 class TestOriNet(BaseTester):
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
-        ori = OriNet().to(device=device, dtype=inp.dtype).eval()
+        ori = OriNet(pretrained=False).to(device=device, dtype=inp.dtype).eval()
         ang = ori(inp)
         assert ang.shape == torch.Size([1])
 
@@ -298,7 +298,7 @@ class TestOriNet(BaseTester):
         assert ang.shape == torch.Size([2])
 
     def test_print(self, device):
-        sift = OriNet(32)
+        sift = OriNet(pretrained=False)
         sift.__repr__()
 
     def test_toy(self, device):
@@ -313,7 +313,7 @@ class TestOriNet(BaseTester):
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 2, 1, 32, 32
         patches = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
-        ori = OriNet().to(device=device, dtype=patches.dtype)
+        ori = OriNet(pretrained=False).to(device=device, dtype=patches.dtype).eval()
         self.gradcheck(ori, (patches,), fast_mode=False)
 
     def test_jit(self, device, dtype):
@@ -422,7 +422,7 @@ class TestConventionsOrientation(BaseTester):
         # float64.
         with torch.random.fork_rng(devices=[]):
             torch.manual_seed(0)
-            model = OriNet()
+            model = OriNet(pretrained=False).eval()
         patches = torch.rand(3, 1, 32, 32, generator=torch.Generator().manual_seed(1)).to(device, dtype)
         model = model.to(device, dtype)
         # half precision rounds the returned angle: bfloat16 spaces the angles here (-1.78 to -1.94 rad) by 1 / 128

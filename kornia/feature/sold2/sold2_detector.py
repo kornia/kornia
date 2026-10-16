@@ -62,7 +62,7 @@ class SOLD2_detector(nn.Module):
 
     Example:
         >>> img = torch.rand(1, 1, 128, 128)
-        >>> sold2_detector = SOLD2_detector(pretrained=False)
+        >>> sold2_detector = SOLD2_detector(pretrained=False).eval()
         >>> line_segments = sold2_detector(img)["line_segments"]
 
     """
@@ -91,10 +91,11 @@ class SOLD2_detector(nn.Module):
             pretrained_dict = load_state_dict_from_url(urls["wireframe"], map_location=torch.device("cpu"))
             state_dict = self.adapt_state_dict(pretrained_dict["model_state_dict"])
             self.model.load_state_dict(state_dict)
-        self.eval()
 
         # Initialize the line detector with a configuration from the dataclass
         self.line_detector = LineSegmentDetectionModule(self.config.line_detector_cfg)
+        if pretrained:
+            self.eval()
 
     def adapt_state_dict(self, state_dict: Dict[str, Any]) -> Dict[str, Any]:
         """Adapt pretrained checkpoint keys to this module implementation.

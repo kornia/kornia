@@ -33,7 +33,7 @@ class TestSOLD2_detector(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_shape(self, device, batch_size, dtype):
         inp = torch.ones(batch_size, 1, 64, 64, device=device, dtype=dtype)
-        sold2 = SOLD2_detector(pretrained=False).to(device, dtype)
+        sold2 = SOLD2_detector(pretrained=False).to(device, dtype).eval()
         out = sold2(inp)
         assert out["junction_heatmap"].shape == (batch_size, 64, 64)
         assert out["line_heatmap"].shape == (batch_size, 64, 64)
@@ -41,7 +41,7 @@ class TestSOLD2_detector(BaseTester):
     @pytest.mark.skip("Takes ages to run")
     def test_gradcheck(self, device):
         img = torch.rand(2, 1, 128, 128, device=device, dtype=torch.float64)
-        sold2 = SOLD2_detector(pretrained=False).to(img.device, img.dtype)
+        sold2 = SOLD2_detector(pretrained=False).to(img.device, img.dtype).eval()
 
         def proxy_forward(x):
             return sold2.forward(x)["junction_heatmap"]
@@ -156,14 +156,14 @@ class TestSOLD2(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_shape(self, device, batch_size, dtype):
         inp = torch.ones(batch_size, 1, 64, 64, device=device, dtype=dtype)
-        sold2 = SOLD2(pretrained=False).to(device, dtype)
+        sold2 = SOLD2(pretrained=False).to(device, dtype).eval()
         out = sold2(inp)
         assert out["dense_desc"].shape == (batch_size, 128, 16, 16)
 
     @pytest.mark.skip("Takes ages to run")
     def test_gradcheck(self, device):
         img = torch.rand(2, 1, 256, 256, device=device, dtype=torch.float64)
-        sold2 = SOLD2(pretrained=False).to(img.device, img.dtype)
+        sold2 = SOLD2(pretrained=False).to(img.device, img.dtype).eval()
 
         def proxy_forward(x):
             return sold2.forward(x)["dense_desc"]
@@ -200,7 +200,7 @@ class TestSOLD2(BaseTester):
         assert detector.config.use_descriptor is False
 
     def test_match_keeps_torch_diag_5722(self, device, dtype):
-        sold2 = SOLD2(pretrained=False).to(device, dtype)
+        sold2 = SOLD2(pretrained=False).to(device, dtype).eval()
         diag = torch.diag
         seg1 = torch.tensor([[[10.0, 10.0], [60.0, 90.0]], [[20.0, 70.0], [80.0, 20.0]]], device=device, dtype=dtype)
         desc = torch.randn(1, 128, 24, 32, device=device, dtype=dtype)
@@ -214,7 +214,7 @@ class TestSOLD2(BaseTester):
     def test_match_segment_dtype_differs_from_descriptors_5722(self, device, dtype):
         # SOLD2.forward returns float32 segments whatever the model dtype, so match must accept segments whose
         # dtype differs from the descriptor map's, in both directions.
-        sold2 = SOLD2(pretrained=False).to(device, dtype)
+        sold2 = SOLD2(pretrained=False).to(device, dtype).eval()
         seg = torch.tensor(
             [[[10.0, 10.0], [60.0, 90.0]], [[20.0, 70.0], [80.0, 20.0]], [[85.0, 5.0], [85.0, 120.0]]], device=device
         )
@@ -379,7 +379,7 @@ class TestConventionsSOLD2(BaseTester):
         unrefined = DetectorCfg(line_detector_cfg=LineDetectorCfg(use_junction_refinement=False))
         junctions = torch.tensor([[[30.0, 100.0], [70.0, 20.0]]], device=device)
         for config in (unrefined, None):
-            model = model_cls(pretrained=False, config=config).to(device, dtype)
+            model = model_cls(pretrained=False, config=config).to(device, dtype).eval()
             per_score_order = []
             for scores in ((0.5, 1.0), (1.0, 0.5)):
                 maps = self._maps((100, 30), (20, 70), *scores, device, dtype)
@@ -393,7 +393,7 @@ class TestConventionsSOLD2(BaseTester):
             assert torch.equal(per_score_order[0], per_score_order[1])
         # relabelling: the transposed maps give the transposed endpoints, (row, col) in the transposed image, where the
         # other endpoint now has the smaller row and comes first
-        model = model_cls(pretrained=False, config=unrefined).to(device, dtype)
+        model = model_cls(pretrained=False, config=unrefined).to(device, dtype).eval()
         maps = self._maps((30, 100), (70, 20), 0.5, 1.0, device, dtype, h=128, w=96)
         segments = self._segments(model, maps, image.transpose(-1, -2))
         self.assert_close(segments.float(), junctions.flip(-1).flip(1), rtol=0.0, atol=0.0)
@@ -404,7 +404,7 @@ class TestConventionsSOLD2(BaseTester):
         # the second set of segments per segment of the first, or -1.
         # The detection threshold is raised above any probability, so that the line detector, which this pin does not
         # read, has no junctions of the random network to connect.
-        model = SOLD2(pretrained=False, config=DetectorCfg(detection_thresh=2.0)).to(device, dtype)
+        model = SOLD2(pretrained=False, config=DetectorCfg(detection_thresh=2.0)).to(device, dtype).eval()
         image = torch.rand(2, 1, 64, 96, device=device, dtype=dtype)
         with torch.no_grad():
             out = model(image)
@@ -428,7 +428,7 @@ class TestConventionsSOLD2(BaseTester):
     def test_convention_sold2_match_returns_int64_when_a_set_of_segments_is_empty(self, device, dtype):
         # SOLD2.match returns an int64 index per segment of line_seg1, also when either set of segments is empty:
         # an empty tensor when image 1 has no segments, -1 per segment when image 2 has none (#5915).
-        model = SOLD2(pretrained=False)
+        model = SOLD2(pretrained=False).eval()
         segments = torch.tensor([[[10.0, 10.0], [50.0, 90.0]], [[20.0, 70.0], [55.0, 20.0]]], device=device)
         maps = torch.rand(2, 1, 128, 16, 24, device=device, dtype=dtype)
         for line_seg1, line_seg2, expected in (

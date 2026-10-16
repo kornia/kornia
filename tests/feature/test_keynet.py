@@ -33,24 +33,24 @@ def _skip_without_half_padding(device: torch.device, dtype: torch.dtype) -> None
 class TestKeyNet(BaseTester):
     def test_dynamo(self, device, dtype, torch_optimizer):
         inp = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
-        model = KeyNet().to(device, dtype)
+        model = KeyNet(pretrained=False).to(device, dtype).eval()
         self.assert_close(torch_optimizer(model)(inp), model(inp))
 
     def test_shape(self, device, dtype):
         inp = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)
-        keynet = KeyNet().to(device, dtype)
+        keynet = KeyNet(pretrained=False).to(device, dtype).eval()
         out = keynet(inp)
         assert out.shape == inp.shape
 
     def test_shape_batch(self, device, dtype):
         inp = torch.ones(16, 1, 16, 16, device=device, dtype=dtype)
-        keynet = KeyNet().to(device, dtype)
+        keynet = KeyNet(pretrained=False).to(device, dtype).eval()
         out = keynet(inp)
         assert out.shape == inp.shape
 
     def test_gradcheck(self, device):
         patches = torch.rand(2, 1, 16, 16, device=device, dtype=torch.float64)
-        keynet = KeyNet().to(patches.device, patches.dtype)
+        keynet = KeyNet(pretrained=False).to(patches.device, patches.dtype).eval()
         self.gradcheck(keynet, (patches,), eps=1e-4, atol=1e-4, nondet_tol=1e-8)
 
 
@@ -63,7 +63,7 @@ class TestConventionsKeyNet(BaseTester):
         _skip_without_half_padding(device, dtype)
         with torch.random.fork_rng(devices=[]):
             torch.manual_seed(0)
-            model = KeyNet()
+            model = KeyNet(pretrained=False).eval()
         with torch.no_grad():
             model.last_conv[0].bias.fill_(-0.01)
         img = torch.rand(2, 1, 37, 53, generator=torch.Generator().manual_seed(0)).to(device, dtype)

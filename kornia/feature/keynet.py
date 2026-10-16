@@ -152,7 +152,9 @@ class KeyNet(nn.Module):
 
     Args:
         pretrained: Download and set pretrained weights to the model.
-        keynet_conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing.
+        keynet_conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing. A
+            ``num_levels`` or ``kernel_size`` other than the default changes the architecture: pass
+            ``pretrained=False`` with it, since the strict load of the weights raises ``RuntimeError``.
 
     Returns:
         KeyNet response score.
@@ -163,7 +165,7 @@ class KeyNet(nn.Module):
 
     """
 
-    def __init__(self, pretrained: bool = False, keynet_conf: Optional[KeyNet_conf] = None) -> None:
+    def __init__(self, pretrained: bool = True, keynet_conf: Optional[KeyNet_conf] = None) -> None:
         super().__init__()
         if keynet_conf is None:
             keynet_conf = keynet_default_config
@@ -184,7 +186,7 @@ class KeyNet(nn.Module):
         if pretrained:
             pretrained_dict = load_state_dict_from_url(KeyNet_URL, map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict["state_dict"], strict=True)
-        self.eval()
+            self.eval()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """X - input image."""
@@ -214,7 +216,9 @@ class KeyNetDetector(MultiResolutionDetector):
     Args:
         pretrained: Download and set pretrained weights to the model.
         num_features: Number of features to detect.
-        keynet_conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing.
+        keynet_conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing. A
+            ``num_levels`` or ``kernel_size`` other than the default changes the architecture: pass
+            ``pretrained=False`` with it, since the strict load of the weights raises ``RuntimeError``.
         ori_module: for local feature orientation estimation. Default: :class:`~kornia.feature.PassLAF`,
            which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
         aff_module: for local feature affine shape estimation. Default: :class:`~kornia.feature.PassLAF`,
@@ -228,7 +232,7 @@ class KeyNetDetector(MultiResolutionDetector):
 
     def __init__(
         self,
-        pretrained: bool = False,
+        pretrained: bool = True,
         num_features: int = 2048,
         keynet_conf: Optional[KeyNet_conf] = None,
         ori_module: Optional[nn.Module] = None,

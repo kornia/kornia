@@ -896,7 +896,7 @@ class TestMultiResolutionDetector(BaseTester):
         g = torch.Generator().manual_seed(0)
         img = torch.nn.functional.avg_pool2d(torch.rand(1, 1, 300, 420, generator=g), 5, 1, 2).to(device, dtype)
         torch.manual_seed(1)  # random KeyNet weights; those of seed 0 give no positive response maximum at all
-        lafs, responses = KeyNetDetector(False, num_features=100).to(device, dtype)(img)
+        lafs, responses = KeyNetDetector(False, num_features=100).eval().to(device, dtype)(img)
         assert lafs.dtype == torch.float32
         assert responses.dtype == dtype
         x = lafs[0, :, 0, 2]
@@ -1799,7 +1799,7 @@ class TestConventionsMultiResolutionDetector(BaseTester):
                 det = MultiResolutionDetector(response, num_features=4, config=cfg)
             else:  # the KeyNet response is replaced by the same peaks through a forward hook
                 conf = {**kornia.feature.keynet.keynet_default_config, "Detector_conf": cfg}
-                det = kornia.feature.KeyNetDetector(False, num_features=4, keynet_conf=conf)
+                det = kornia.feature.KeyNetDetector(False, num_features=4, keynet_conf=conf).eval()
                 det.model.register_forward_hook(lambda module, args, output, response=response: response(args[0]))
             lafs, resps = det.to(device, dtype)(torch.zeros(1, 1, *size, device=device, dtype=dtype))
             self.assert_close(resps, torch.tensor([[1.0, 0.5, 0.0, 0.0]], device=device, dtype=dtype))

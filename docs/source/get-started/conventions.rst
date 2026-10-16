@@ -1208,6 +1208,17 @@ normalised camera coordinates, and :func:`~kornia.geometry.homography.find_homog
 Local features
 --------------
 
+The learned models in ``kornia.feature`` that take a ``pretrained`` flag (``HardNet``, ``HardNet8``, ``HyNet``,
+``SOSNet``, ``TFeat``, ``OriNet``, ``LAFAffNetShapeEstimator``, ``KeyNet``, ``KeyNetDetector``, ``DeFMO``,
+``SOLD2``, ``SOLD2_detector``) default to their pretrained weights, downloaded on first use. ``KeyNetDetector`` puts
+only its ``KeyNet`` network in evaluation mode: the detector itself stays in training mode, and an ``ori_module`` or
+``aff_module`` you pass keeps its own mode. ``DISK``, ``DeDoDe``, ``ALIKED`` and ``XFeat`` build their learned
+weights at random in their constructor and load them with ``from_pretrained``. ``DeDoDe`` with its default ``G``
+descriptor also downloads a frozen, pretrained DINOv2 backbone in its constructor, and ``DeDoDe.detect`` and
+``describe`` switch the model to evaluation mode themselves. ``LoFTR(pretrained=None)`` and
+``LightGlue(features=None)`` are random. Until ``.eval()`` is called, a random ``LoFTR`` runs its supervised training
+branch, which raises without ground-truth matches. See :ref:`pretrained-models-conventions` for the shared mode rule.
+
 A local affine frame (LAF) describes a keypoint by a ``2 x 3`` matrix ``[A | c]``, and a set of them is a
 ``(B, N, 2, 3)`` tensor. The centre ``c = (x, y)`` is in the pixel frame of
 :ref:`Coordinates and sizes <coordinate-conventions>`, with pixel centres at integers: the centre of a 5-pixel axis is
