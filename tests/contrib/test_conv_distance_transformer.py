@@ -20,6 +20,7 @@ import math
 
 import pytest
 import torch
+from torch.fx.experimental.proxy_tensor import make_fx
 
 import kornia
 from kornia.core.exceptions import BaseError, TypeCheckError
@@ -65,6 +66,17 @@ class TestConvDistanceTransform(BaseTester):
         dense = torch.ones((1, 1) + (17,) * ndim, device=device, dtype=dtype)
         traced = torch.jit.trace(kornia.contrib.DistanceTransform(), dense)
         sparse = torch.zeros_like(dense)
+        sparse[(0, 0) + (0,) * ndim] = 1
+        self.assert_close(traced(sparse), kornia.contrib.distance_transform(sparse))
+
+    @pytest.mark.parametrize("ndim", [2, 3])
+    def test_make_fx_real_trace_keeps_propagating_on_new_data(self, ndim, device, dtype):
+        def distance_transform(image):
+            return kornia.contrib.distance_transform(image)
+
+        empty = torch.zeros((1, 1) + (9,) * ndim, device=device, dtype=dtype)
+        traced = make_fx(distance_transform, tracing_mode="real")(empty)
+        sparse = torch.zeros_like(empty)
         sparse[(0, 0) + (0,) * ndim] = 1
         self.assert_close(traced(sparse), kornia.contrib.distance_transform(sparse))
 

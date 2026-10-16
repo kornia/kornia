@@ -495,6 +495,57 @@ class TestRotationMatrix2d(BaseTester):
 
 
 class TestWarpAffine(BaseTester):
+    def test_onnx_dynamic_batches(self, tmp_path):
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+
+        class Wrapper(torch.nn.Module):
+            def forward(self, image, matrix):
+                return kornia.geometry.warp_affine(image, matrix, (5, 7))
+
+        model = Wrapper().eval()
+        image = torch.rand(1, 2, 5, 7)
+        matrix = torch.eye(2, 3)[None]
+        path = tmp_path / "warp_affine.onnx"
+        torch.onnx.export(
+            model,
+            (image, matrix),
+            path,
+            input_names=["image", "matrix"],
+            output_names=["warped"],
+            dynamic_axes={"image": {0: "batch"}, "matrix": {0: "transforms"}, "warped": {0: "batch"}},
+            opset_version=20,
+            dynamo=False,
+        )
+        session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+        for src_batch, transform_batch in [(1, 1), (4, 1), (4, 4)]:
+            batch_image = image.expand(src_batch, -1, -1, -1)
+            batch_matrix = matrix.expand(transform_batch, -1, -1)
+            actual = session.run(None, {"image": batch_image.numpy(), "matrix": batch_matrix.numpy()})[0]
+            self.assert_close(torch.from_numpy(actual), model(batch_image, batch_matrix))
+
+    @pytest.mark.parametrize("src_batch,transform_batch", [(0, 1), (1, 0), (0, 0), (1, 1), (4, 1), (4, 4), (1, 4)])
+    def test_trace_preserves_batch_semantics(self, src_batch, transform_batch, device, dtype):
+        if device.type == "mps" and 0 in (src_batch, transform_batch) and torch_version_lt(2, 14, 0):
+            pytest.skip("MPS grid_sample asserts on a zero-element batch before torch 2.14")
+
+        def warp(image, matrix):
+            return kornia.geometry.warp_affine(image, matrix, (5, 7))
+
+        image = torch.rand(1, 2, 5, 7, device=device, dtype=dtype)
+        matrix = torch.eye(2, 3, device=device, dtype=dtype)[None]
+        traced = torch.jit.trace(warp, (image, matrix), check_trace=False)
+        image = image.expand(src_batch, -1, -1, -1)
+        matrix = matrix.expand(transform_batch, -1, -1)
+        if src_batch == transform_batch or (src_batch > 0 and transform_batch == 1):
+            expected = warp(image, matrix)
+            self.assert_close(traced(image, matrix), expected)
+        else:
+            with pytest.raises(RuntimeError):
+                warp(image, matrix)
+            with pytest.raises(RuntimeError):
+                traced(image, matrix)
+
     def test_smoke(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 3, 4
         aff_ab = torch.eye(2, 3, device=device, dtype=dtype)[None]  # 1x2x3

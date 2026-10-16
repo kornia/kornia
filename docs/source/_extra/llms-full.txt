@@ -174,8 +174,8 @@ Durable findings from earlier CUDA runs (2026-08-07, see benchmarks/README.md):
   the script each suite maps to in `benchmarks/README.md`).
 - augmentation on apple-m1-pro/cpu (kornia 0.9.0rc1 @ 7f24cb93, 2026-09-18): fastest overall opencv RandomHorizontalFlip@1 at 183736 items/s; slowest kornia op ColorJiggle@1 at 169 items/s.
 - augmentation on apple-m1-pro/mps (kornia 0.9.0rc1 @ 7f24cb93, 2026-09-18): fastest overall opencv RandomHorizontalFlip@8 at 179172 items/s; slowest kornia op ColorJiggle@1 at 164 items/s.
-- augmentation on i7-14700k-rtx-4090/cpu (kornia 0.9.0rc1 @ 2d028497e, 2026-10-16): fastest overall opencv RandomHorizontalFlip@1 at 261447 img/s; slowest kornia op ColorJiggle@1 at 455 img/s.
-- augmentation on i7-14700k-rtx-4090/cuda (kornia 0.9.0rc1 @ 2d028497e, 2026-10-16): fastest overall torchvision v2 RandomHorizontalFlip@32 at 1624264 img/s; slowest kornia op RandomPerspective@1 at 487 img/s.
+- augmentation on i7-14700k-rtx-4090/cpu (kornia 0.9.0rc1 @ 5f96e3ca, 2026-09-18): fastest overall opencv RandomHorizontalFlip@1 at 266874 items/s; slowest kornia op ColorJiggle@1 at 272 items/s.
+- augmentation on i7-14700k-rtx-4090/cuda (kornia 0.9.0rc1 @ 5f96e3ca-dirty, 2026-09-18): fastest overall torchvision v2 RandomHorizontalFlip@32 at 1651561 items/s; slowest kornia op ColorJiggle@1 at 464 items/s.
 - feature-laf-ops on apple-m1/cpu (kornia 0.9.0rc1 @ 20519a32, 2026-09-03): fastest overall kornia (compiled) ellipse_to_laf@1,n_lafs=20000 at 177777778 LAFs/s; slowest kornia op extract_patches_from_pyramid@8,n_lafs=2000 at 29024 LAFs/s.
 - feature-laf-ops on apple-m1/mps (kornia 0.9.0rc1 @ 20519a32, 2026-09-03): fastest overall kornia (compiled) ellipse_to_laf@1,n_lafs=20000 at 39990002 LAFs/s; slowest kornia op extract_patches_from_pyramid@1,n_lafs=2000 at 57587 LAFs/s.
 - feature-laf-ops on i7-14700k-rtx-4090/cpu (kornia 0.9.0rc1 @ 9517c982, 2026-09-03): fastest overall kornia (compiled) ellipse_to_laf@1,n_lafs=20000 at 149762253 LAFs/s; slowest kornia op extract_patches_from_pyramid@8,n_lafs=2000 at 26036 LAFs/s.
@@ -188,8 +188,6 @@ Durable findings from earlier CUDA runs (2026-08-07, see benchmarks/README.md):
 - geometry on apple-m1/mps (kornia 0.9.0rc1 @ 83725c6b, 2026-08-08): fastest overall opencv get_perspective_transform@8 at 490803 items/s; slowest kornia op rotate@1 at 218 items/s.
 - geometry on apple-m4/cpu (kornia 0.9.0rc1 @ f0a06c70, 2026-08-18): fastest overall opencv get_perspective_transform@8 at 723108 items/s; slowest kornia op warp_perspective@1 at 1397 items/s.
 - geometry on apple-m4/mps (kornia 0.9.0rc1 @ f0a06c70, 2026-08-18): fastest overall opencv get_perspective_transform@8 at 728136 items/s; slowest kornia op rotate@1 at 615 items/s.
-- geometry on i7-14700k-rtx-4090/cpu (kornia 0.9.0rc1 @ 2d028497e, 2026-10-16): fastest overall kornia (compiled) get_perspective_transform@32 at 1029057 items/s; slowest kornia op warp_perspective@1 at 1720 items/s.
-- geometry on i7-14700k-rtx-4090/cuda (kornia 0.9.0rc1 @ 2d028497e, 2026-10-16): fastest overall torchvision v2 resize@32 at 1250298 items/s; slowest kornia op rotate_shared@1 at 739 items/s.
 <!-- BENCH:END -->
 
 ## Links
