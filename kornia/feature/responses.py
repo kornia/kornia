@@ -22,6 +22,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.filters import gaussian_blur2d, spatial_gradient
+from kornia.filters.filter import _to_floating
 
 
 def _get_kernel_size(sigma: float) -> int:
@@ -314,6 +315,8 @@ def dog_response(input: torch.Tensor) -> torch.Tensor:
         - Output level ``i`` is ``input[:, :, i + 1] - input[:, :, i]`` along the level axis ``D`` (dim 2), so ``D``
           levels give ``D - 1``. For a stack blurred from fine to coarse, this is Lowe's
           :math:`L(k\sigma) - L(\sigma)`: negative at a bright blob, positive at a dark one.
+        - An integer or bool stack is promoted to float32 before the subtraction and the response is float32 on the
+          stack's own scale, so a negative response does not wrap; a floating stack keeps its dtype.
 
     Args:
         input: a given the gaussian 5d torch.Tensor :math:`(B, C, D, H, W)`.
@@ -323,6 +326,7 @@ def dog_response(input: torch.Tensor) -> torch.Tensor:
 
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "L", "H", "W"])
+    input = _to_floating(input)
 
     return input[:, :, 1:] - input[:, :, :-1]
 

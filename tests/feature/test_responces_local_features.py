@@ -597,6 +597,21 @@ class TestConventionsResponses(BaseTester):
         expected = torch.tensor([1.0, 3.0, 5.0], device=device, dtype=dtype).view(1, 1, 3, 1, 1).expand(1, 2, 3, 5, 7)
         self.assert_close(out, expected)
 
+    @pytest.mark.parametrize("input_dtype", [torch.uint8, torch.int16, torch.bool])
+    def test_dog_response_integer_stack_matches_float32_5155(self, input_dtype, device):
+        # An integer stack is subtracted in float32, so a negative response does not wrap (10 - 250 -> 16 in uint8).
+        generator = torch.Generator().manual_seed(0)
+        low = -128 if input_dtype == torch.int16 else 0
+        high = 2 if input_dtype == torch.bool else 256
+        stack = torch.randint(low, high, (1, 2, 4, 5, 7), generator=generator).to(device, input_dtype)
+
+        expected = kornia.feature.dog_response(stack.float())
+        actual = kornia.feature.dog_response(stack)
+
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected)
+        self.assert_close(kornia.feature.BlobDoG()(stack), expected)
+
     def test_convention_dog_is_negative_at_a_bright_blob(self, device, dtype):
         # Both DoG functions subtract the finer blur from the coarser (Lowe's D = L(k sigma) - L(sigma)), so a bright
         # blob is a minimum and a dark one a maximum. dog_response_single(img, 1.0, 1.6)[:, 0, 20, 30] at a blob of
