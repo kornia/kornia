@@ -1,0 +1,138 @@
+{
+  "metadata": {
+    "albumentations": "2.0.8",
+    "cuda_device": "NVIDIA GeForce RTX 4090",
+    "cuda_version": "13.0",
+    "device": "cuda",
+    "git_commit": "2d028497e",
+    "kornia": "0.9.0rc1",
+    "kornia_module": "kornia/__init__.py",
+    "kornia_rs": "0.2.0",
+    "load": {
+      "cpu_count": 28,
+      "load_avg_15m": 1.72998046875,
+      "load_avg_1m": 1.681640625,
+      "load_avg_5m": 1.9296875,
+      "mem_available_bytes": null,
+      "mem_total_bytes": null
+    },
+    "machine": "x86_64",
+    "numpy": "2.4.0",
+    "opencv": "4.11.0",
+    "opencv_num_threads": null,
+    "pillow": "12.3.0",
+    "platform": "Linux-6.18.54.1-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "poselib": "2.0.5",
+    "python": "3.11.14",
+    "skimage": "0.26.0",
+    "timestamp_utc": "2026-10-16T10:48:11+00:00",
+    "torch": "2.14.0+cu130",
+    "torch_num_threads": 4,
+    "torchvision": "0.29.0+cu130",
+    "units": "img/s"
+  },
+  "results": [
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 387.09149976057233,
+      "median_us": 906.6590000657015,
+      "op": "focal_loss",
+      "throughput_per_s": 1102.9505028103558,
+      "width": 256
+    },
+    {
+      "backend": "kornia (compiled)",
+      "batch": 1,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 15.746422496931721,
+      "median_us": 334.31738499984925,
+      "op": "focal_loss",
+      "throughput_per_s": 2991.1696036999424,
+      "width": 256
+    },
+    {
+      "backend": "torchvision",
+      "batch": 1,
+      "dtype": "float32",
+      "error": "unavailable",
+      "height": 256,
+      "iqr_us": null,
+      "median_us": null,
+      "op": "focal_loss",
+      "throughput_per_s": null,
+      "width": 256
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 8,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 36.63729999971101,
+      "median_us": 1134.253670002181,
+      "op": "focal_loss",
+      "throughput_per_s": 7053.095979830171,
+      "width": 256
+    },
+    {
+      "backend": "kornia (compiled)",
+      "batch": 8,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 41.20048000004316,
+      "median_us": 338.21123000052467,
+      "op": "focal_loss",
+      "throughput_per_s": 23653.856792358994,
+      "width": 256
+    },
+    {
+      "backend": "torchvision",
+      "batch": 8,
+      "dtype": "float32",
+      "error": "unavailable",
+      "height": 256,
+      "iqr_us": null,
+      "median_us": null,
+      "op": "focal_loss",
+      "throughput_per_s": null,
+      "width": 256
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 32,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 113.60809994584963,
+      "median_us": 4106.641600037619,
+      "op": "focal_loss",
+      "throughput_per_s": 7792.2553552535155,
+      "width": 256
+    },
+    {
+      "backend": "kornia (compiled)",
+      "batch": 32,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 2.7629400028673317,
+      "median_us": 1588.3815900019727,
+      "op": "focal_loss",
+      "throughput_per_s": 20146.29242835801,
+      "width": 256
+    },
+    {
+      "backend": "torchvision",
+      "batch": 32,
+      "dtype": "float32",
+      "error": "unavailable",
+      "height": 256,
+      "iqr_us": null,
+      "median_us": null,
+      "op": "focal_loss",
+      "throughput_per_s": null,
+      "width": 256
+    }
+  ]
+}

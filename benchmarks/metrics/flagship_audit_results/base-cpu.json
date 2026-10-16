@@ -1,0 +1,172 @@
+{
+  "metadata": {
+    "albumentations": "2.0.8",
+    "device": "cpu",
+    "git_commit": "520f04ee1",
+    "kornia": "0.9.0rc1",
+    "kornia_module": "kornia/__init__.py",
+    "kornia_rs": "0.2.0",
+    "load": {
+      "cpu_count": 28,
+      "load_avg_15m": 1.5947265625,
+      "load_avg_1m": 1.333984375,
+      "load_avg_5m": 1.853515625,
+      "mem_available_bytes": null,
+      "mem_total_bytes": null
+    },
+    "machine": "x86_64",
+    "numpy": "2.4.0",
+    "opencv": "4.11.0",
+    "opencv_num_threads": 4,
+    "pillow": "12.3.0",
+    "platform": "Linux-6.18.54.1-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "poselib": "2.0.5",
+    "python": "3.11.14",
+    "skimage": "0.26.0",
+    "timestamp_utc": "2026-10-16T10:42:47+00:00",
+    "torch": "2.14.0+cu130",
+    "torch_num_threads": 4,
+    "torchvision": "0.29.0+cu130",
+    "units": "img/s"
+  },
+  "results": [
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 4.017309500000023,
+      "median_us": 163.9140109998607,
+      "op": "mean_iou",
+      "throughput_per_s": 6100.759745308471,
+      "width": 256
+    },
+    {
+      "backend": "kornia (compiled)",
+      "batch": 1,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 10.41703749820046,
+      "median_us": 214.6289300026183,
+      "op": "mean_iou",
+      "throughput_per_s": 4659.204143578412,
+      "width": 256
+    },
+    {
+      "backend": "scikit-image",
+      "batch": 1,
+      "dtype": "float32",
+      "error": "unavailable",
+      "height": 256,
+      "iqr_us": null,
+      "median_us": null,
+      "op": "mean_iou",
+      "throughput_per_s": null,
+      "width": 256
+    },
+    {
+      "backend": "opencv",
+      "batch": 1,
+      "dtype": "float32",
+      "error": "unavailable",
+      "height": 256,
+      "iqr_us": null,
+      "median_us": null,
+      "op": "mean_iou",
+      "throughput_per_s": null,
+      "width": 256
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 8,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 15.103345001534754,
+      "median_us": 820.6781999979285,
+      "op": "mean_iou",
+      "throughput_per_s": 9748.035222600276,
+      "width": 256
+    },
+    {
+      "backend": "kornia (compiled)",
+      "batch": 8,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 16.491274999452777,
+      "median_us": 852.51145500024,
+      "op": "mean_iou",
+      "throughput_per_s": 9384.038130018733,
+      "width": 256
+    },
+    {
+      "backend": "scikit-image",
+      "batch": 8,
+      "dtype": "float32",
+      "error": "unavailable",
+      "height": 256,
+      "iqr_us": null,
+      "median_us": null,
+      "op": "mean_iou",
+      "throughput_per_s": null,
+      "width": 256
+    },
+    {
+      "backend": "opencv",
+      "batch": 8,
+      "dtype": "float32",
+      "error": "unavailable",
+      "height": 256,
+      "iqr_us": null,
+      "median_us": null,
+      "op": "mean_iou",
+      "throughput_per_s": null,
+      "width": 256
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 32,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 231.77324997050113,
+      "median_us": 5274.942099981672,
+      "op": "mean_iou",
+      "throughput_per_s": 6066.417297757863,
+      "width": 256
+    },
+    {
+      "backend": "kornia (compiled)",
+      "batch": 32,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 121.35192500863957,
+      "median_us": 5513.419699991573,
+      "op": "mean_iou",
+      "throughput_per_s": 5804.020325180199,
+      "width": 256
+    },
+    {
+      "backend": "scikit-image",
+      "batch": 32,
+      "dtype": "float32",
+      "error": "unavailable",
+      "height": 256,
+      "iqr_us": null,
+      "median_us": null,
+      "op": "mean_iou",
+      "throughput_per_s": null,
+      "width": 256
+    },
+    {
+      "backend": "opencv",
+      "batch": 32,
+      "dtype": "float32",
+      "error": "unavailable",
+      "height": 256,
+      "iqr_us": null,
+      "median_us": null,
+      "op": "mean_iou",
+      "throughput_per_s": null,
+      "width": 256
+    }
+  ]
+}
