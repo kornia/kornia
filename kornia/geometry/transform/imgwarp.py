@@ -548,11 +548,13 @@ def _fill_and_warp(
         fill_value: torch.Tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area, or any shape that
             broadcasts to the output :math:`(B, C, H, W)` without changing it, such as :math:`(B, C, 1, 1)`.
         out_shape: the output shape ``fill_value`` is checked against, when ``src`` and ``grid`` stand in for an
-            empty destination; defaults to the shape sampled from ``src`` and ``grid``.
+            empty destination; the fill is then reduced to one value. Defaults to the shape sampled from ``src``
+            and ``grid``.
 
     Returns:
         the warped and filled torch.Tensor with shape :math:`(B, C, H, W)`.
     """
+    stand_in = out_shape is not None
     if out_shape is None:
         out_shape = [src.shape[0], src.shape[1], grid.shape[1], grid.shape[2]]
     # 0-d and 1-D fills are per channel; any other fill broadcasts as given. Either way it must leave the output
@@ -570,6 +572,10 @@ def _fill_and_warp(
             f"{out_shape} without changing it; use one value, one per channel ({out_shape[1]}), or a shape such as "
             "(B, C, 1, 1) or (B, C, H, W)."
         )
+    if stand_in:
+        # The stand-ins' result is discarded: a constant-size fill, still connected to autograd, keeps a spatial fill
+        # from broadcasting the 1x1 stand-ins up to its own size.
+        fill_value = fill_value.sum().reshape(1)
     ones_mask = torch.ones_like(src)
     fill_value = fill_value.to(ones_mask)
 

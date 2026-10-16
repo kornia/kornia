@@ -1216,6 +1216,13 @@ class TestFillValueChannels6021(BaseTester):
 
         fill = torch.rand(2, 3, 0, 5, device=device, dtype=dtype)
         assert warp(image, transform, (0, 5), padding_mode="fill", fill_value=fill).shape == (2, 3, 0, 5)
+        # A per-column fill must not broadcast the 1x1 stand-ins up to (B, C, 1, W); the gradient still reaches it.
+        fill = torch.rand(1, 1, 1, 5, device=device, dtype=dtype, requires_grad=True)
+        out = warp(image, transform, (0, 5), padding_mode="fill", fill_value=fill)
+        assert out.shape == (2, 3, 0, 5)
+        out.sum().backward()
+        assert fill.grad is not None
+        assert fill.grad.shape == fill.shape
         with pytest.raises(ValueError, match="does not broadcast to the warped image"):
             warp(image, transform, (0, 5), padding_mode="fill", fill_value=torch.rand(2, 3, 1, 4, device=device))
 
