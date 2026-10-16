@@ -21,6 +21,7 @@ from typing import Dict, List, Optional
 import torch
 from torch import nn
 
+from kornia.color.rgb import rgb_to_bgr
 from kornia.geometry.bbox import nms as nms_kornia
 from kornia.models.yunet import YuNet
 from kornia.models.yunet.processors import PriorBox
@@ -202,8 +203,11 @@ class FaceDetector(nn.Module):
 
         Returns:
             The same images in BGR channel order, still in :math:`[0, 255]`: the input YuNet was trained on.
+
+        Raises:
+            ValueError: If the image is not of shape :math:`(*, 3, H, W)`.
         """
-        return image.flip(-3)
+        return rgb_to_bgr(image)
 
     def postprocess(self, data: Dict[str, torch.Tensor], height: int, width: int) -> List[torch.Tensor]:
         """Decode model outputs into filtered face detections.

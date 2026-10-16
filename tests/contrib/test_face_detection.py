@@ -121,8 +121,15 @@ class TestFaceDetection(BaseTester):
     def test_exception(self, face_detector, device, dtype):
         img = torch.rand(1, 4, 320, 320, device=device, dtype=dtype)
 
-        with pytest.raises(RuntimeError):
+        with pytest.raises(ValueError, match=r"\(\*, 3, H, W\)"):
             face_detector(img)
+
+    def test_preprocess_checks_the_channels(self, face_detector, device, dtype):
+        # ``preprocess`` flips RGB to BGR with ``rgb_to_bgr``, which checks for ``(*, 3, H, W)``. A plain ``flip(-3)``
+        # would accept these and leave the error to YuNet, or flip the height of a channels-last image.
+        for shape in ((1, 4, 64, 96), (1, 1, 64, 96), (1, 64, 96, 3)):
+            with pytest.raises(ValueError, match=r"\(\*, 3, H, W\)"):
+                face_detector.preprocess(torch.rand(*shape, device=device, dtype=dtype) * 255)
 
     def test_yunet_receives_bgr_0_255(self, face_detector, device, dtype):
         # The YuNet weights were trained on BGR, float 0-255, with no mean or std: the DALI loader converts to BGR and
