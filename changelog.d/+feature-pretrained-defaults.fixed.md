@@ -1,0 +1,1 @@
+`LightGlue` built with weights (a `features` name, or a local `weights` file) now comes back in evaluation mode, like the other `kornia.feature` models built with pretrained weights; `LightGlue(features=None)` stays in training mode. Its output does not depend on the mode.

@@ -43,6 +43,7 @@ from kornia.feature import (
     KeyNetDetector,
     LAFAffNetShapeEstimator,
     LAFDescriptor,
+    LightGlue,
     LoFTR,
     OriNet,
     SOLD2_detector,
@@ -137,6 +138,18 @@ class TestPretrainedMode(BaseTester):
             HyNet(is_bias=False)
         model = HyNet(pretrained=False, is_bias=False)
         assert model.layer2[0].bias is None
+
+    def test_lightglue_mode(self, monkeypatch):
+        assert LightGlue(features=None).training
+        # "superpoint" keeps the default architecture, so a fresh default model provides a complete state dict.
+        weights = LightGlue(features=None).state_dict()
+        monkeypatch.setattr("kornia.feature.lightglue.load_state_dict_from_url", lambda url, **kwargs: dict(weights))
+        model = LightGlue("superpoint")
+        assert not model.training
+        assert not any(m.training for m in model.modules())
+        # weights count as loaded only when the state dict holds any
+        monkeypatch.setattr("kornia.feature.lightglue.load_state_dict_from_url", lambda url, **kwargs: {})
+        assert LightGlue("superpoint").training
 
     @pytest.mark.slow
     def test_composites_build_pretrained_eval_modules(self):
