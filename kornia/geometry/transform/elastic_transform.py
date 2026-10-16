@@ -50,6 +50,8 @@ def elastic_transform2d(
           ``sigma``) and scaled by ``alpha``
         - align_corners: ``False`` by default (the matrix warps default to ``True``); zero
           ``noise`` is an identity under either setting
+        - coordinates displaced outside the image are filled by ``padding_mode`` as in ``grid_sample``:
+          zeros, the edge value, or the reflected image
 
     Args:
         image: Input image to be transformed with shape :math:`(B, C, H, W)`.
@@ -135,6 +137,4 @@ def elastic_transform2d(
     identity = torch.eye(2, 3, device=image.device, dtype=grid_dtype).unsqueeze(0)
     grid = F.affine_grid(identity, [1, 1, h, w], align_corners=align_corners)
     grid = grid.to(image.dtype)
-    return _torch_grid_sample(
-        image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode, padding_mode=padding_mode
-    )
+    return _torch_grid_sample(image, grid + disp, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
