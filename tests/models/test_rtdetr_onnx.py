@@ -26,7 +26,7 @@ from kornia.models.processors import ResizePreProcessor
 from kornia.models.rt_detr.model import RTDETR, RTDETRConfig
 from kornia.models.rt_detr.post_processor import DETRPostProcessor
 
-from testing.base import assert_close
+from testing.base import DYNAMO_UNAVAILABLE_REASON, assert_close, dynamo_is_available
 
 # Every test in this module must stay device-free: the mark deselects the whole file on non-CPU devices.
 pytestmark = pytest.mark.device_agnostic
@@ -131,3 +131,52 @@ def test_resize_preprocessor_onnx_dynamic_sizes():
         # xywh of the normalised box (0.5, 0.5, 0.25, 0.25) in this image's pixels
         expected = torch.tensor([[[0.375 * width, 0.375 * height, 0.25 * width, 0.25 * height]]])
         assert_close(detections[..., 2:], expected)
+
+
+@pytest.mark.timeout(120)
+@pytest.mark.parametrize(
+    "dynamo",
+    [False, pytest.param(True, marks=pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON))],
+)
+def test_resnet_d_onnx_odd_sizes(tmp_path, dynamo):
+    """At an odd feature map the exported ResNet-D matches eager in old and new ONNX Runtime alike.
+
+    Runtimes disagree on a partial ``ceil_mode`` window of an ``AveragePool`` with ``count_include_pad=1``: ONNX
+    Runtime up to 1.28 divides it by the whole 2 x 2 window, 1.29 and later by the pixels inside it, as eager does.
+    With ``count_include_pad=0`` both divide by the pixels inside it. The graph is checked as well as the runtime, as
+    the runtime that runs this test may be one that hides the difference.
+    """
+    onnx = pytest.importorskip("onnx")
+    ort = pytest.importorskip("onnxruntime")
+    pytest.importorskip("onnxscript")
+    from kornia.models.rt_detr.architecture.resnet_d import ResNetD
+
+    class _Features(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.backbone = ResNetD.from_config(18)
+
+        def forward(self, images: torch.Tensor) -> tuple[torch.Tensor, ...]:
+            return tuple(self.backbone(images))
+
+    model = _Features().eval()
+    # the stem takes 92 x 96 to 23 x 24: the first stride-2 shortcut pool has a partial window at the bottom
+    images = torch.rand(1, 3, 92, 96, generator=torch.Generator().manual_seed(0))
+    onnx_path = tmp_path / "resnet_d.onnx"
+    if dynamo:
+        torch.onnx.export(model, (images,), dynamo=True, opset_version=18).save(str(onnx_path))
+    else:
+        torch.onnx.export(model, (images,), str(onnx_path), dynamo=False, opset_version=17, input_names=["images"])
+
+    pools = [node for node in onnx.load(str(onnx_path)).graph.node if node.op_type == "AveragePool"]
+    assert len(pools) == 3
+    for node in pools:
+        attributes = {a.name: onnx.helper.get_attribute_value(a) for a in node.attribute}
+        assert attributes.get("count_include_pad", 0) == 0
+
+    session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+    outputs = session.run(None, {session.get_inputs()[0].name: images.numpy()})
+    with torch.no_grad():
+        expected = model(images)
+    for actual, fmap in zip(outputs, expected):
+        assert_close(torch.from_numpy(actual), fmap, atol=1e-4, rtol=1e-4)
