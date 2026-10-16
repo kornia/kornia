@@ -812,8 +812,8 @@ def rescale(
         input: The image tensor to be scale with shape of :math:`(B, C, H, W)`.
         factor: Desired scaling factor as ``(factor_h, factor_w)`` — height first. If a single
             float, the value is used for both height and width (an ``int`` raises ``TypeError``).
-        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
-            ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
+        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'nearest-exact'`` | ``'linear'`` |
+            ``'bilinear'`` | ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
         align_corners: interpolation flag.
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
@@ -1056,14 +1056,17 @@ class Rescale(nn.Module):
 
     Convention:
         - align_corners: ``True`` by default (differs from function :func:`rescale`, whose default
-          is ``None``)
+          is ``None``). It applies to the ``'bilinear'`` and ``'bicubic'`` modes only. ``'nearest'``,
+          ``'nearest-exact'`` and ``'area'`` ignore it, an explicit ``align_corners=True`` included, because
+          ``torch.nn.functional.interpolate`` accepts no value but ``None`` for them; the function
+          :func:`rescale` raises ``ValueError`` for such a call.
         - See the convention block of :func:`rescale`.
 
     Args:
         factor: Desired scaling factor as ``(factor_h, factor_w)`` — height first. If a single
             float, the value is used for both height and width (an ``int`` raises ``TypeError``).
-        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
-            ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
+        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'nearest-exact'`` | ``'linear'`` |
+            ``'bilinear'`` | ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
         align_corners: interpolation flag.
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
@@ -1104,9 +1107,12 @@ class Rescale(nn.Module):
             Tensor with the same leading and channel dimensions as ``input``.
             The output height and width are computed from ``self.factor``.
         """
-        return rescale(
-            input, self.factor, self.interpolation, align_corners=self.align_corners, antialias=self.antialias
+        # ``align_corners`` only applies to the interpolating modes: ``F.interpolate`` rejects any value but ``None``
+        # for ``nearest``, ``nearest-exact`` and ``area``, which the default ``True`` would otherwise make unusable.
+        align_corners = (
+            self.align_corners if self.interpolation in ("linear", "bilinear", "bicubic", "trilinear") else None
         )
+        return rescale(input, self.factor, self.interpolation, align_corners=align_corners, antialias=self.antialias)
 
 
 class Rotate(nn.Module):
