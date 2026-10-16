@@ -460,6 +460,13 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
         if fill is not None and not isinstance(fill, (int, float)):
             extra_args = dict(extra_args)
             extra_args.setdefault("fill", 0.0)
+        # The warp-based augmentations (RandomAffine) store their fill as the ``fill_value`` tensor, a scalar as a
+        # 0-d tensor. Apply the same rule: a per-channel fill pads the mask with background, one element applies to
+        # both (#6021).
+        fill_value = module.flags.get("fill_value")
+        if isinstance(fill_value, torch.Tensor) and fill_value.numel() > 1:
+            extra_args = dict(extra_args)
+            extra_args.setdefault("fill_value", torch.zeros((), device=fill_value.device, dtype=fill_value.dtype))
         return extra_args
 
     @classmethod
@@ -604,6 +611,7 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
             extra_args = {}
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
+            extra_args = cls._mask_extra_args(module, extra_args)
             transform = module.compute_inverse_transformation(cls.get_transform_matrix(module, param, input))
             input = module.inverse_masks(
                 input,
@@ -644,6 +652,7 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
         if extra_args is None:
             extra_args = {}
         if isinstance(module, K.GeometricAugmentationBase2D):
+            extra_args = cls._mask_extra_args(module, extra_args)
             transform = module.compute_inverse_transformation(cls.get_transform_matrix(module, param, input))
             params = cls.get_instance_module_param(param)
             output = [

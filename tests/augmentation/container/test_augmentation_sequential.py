@@ -1731,6 +1731,61 @@ class TestConventionAugmentationSequential(BaseTester):
         for i, entry in enumerate(masks):
             self.assert_close(entry, tensor_mask[i : i + 1])
 
+    @pytest.mark.parametrize(
+        ("fill_value", "mask_override", "mask_padding"),
+        [
+            ((0.2, 0.5, 0.9), None, 0.0),  # a per-channel image fill pads the mask with background
+            ((0.2, 0.5, 0.9), 0.5, 0.5),  # unless the mask sets its own fill_value
+            (0.7, None, 0.7),  # a scalar fill applies to both, as before
+        ],
+    )
+    def test_random_affine_mask_fill_follows_the_mask_rule_6021(
+        self, fill_value, mask_override, mask_padding, device, dtype
+    ):
+        # The mask rule read only ``flags["fill"]``; RandomAffine stores ``fill_value``, so a per-channel image
+        # fill turned a one-channel mask into three channels holding the image colours.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("The image warp path requires grid_sample for the selected dtype.")
+        image = torch.rand(2, 3, 8, 10, device=device, dtype=dtype)
+        mask = torch.ones(2, 1, 8, 10, device=device, dtype=dtype)
+        fill = torch.tensor(fill_value, device=device, dtype=dtype)
+        extra_args = None if mask_override is None else {DataKey.MASK: {"fill_value": torch.tensor(mask_override)}}
+        seq = K.AugmentationSequential(
+            K.RandomAffine((30.0, 30.0), padding_mode="fill", fill_value=fill, p=1.0),
+            data_keys=["input", "mask"],
+            extra_args=extra_args,
+        )
+
+        out_image, out_mask = seq(image, mask)
+
+        assert out_image.shape == image.shape
+        assert out_mask.shape == mask.shape
+        padding = out_mask != 1.0
+        assert padding.any()
+        self.assert_close(out_mask[padding], torch.full_like(out_mask[padding], mask_padding))
+
+    @pytest.mark.parametrize("as_list", [False, True])
+    def test_random_affine_mask_fill_rule_on_inverse_6021(self, as_list, device, dtype):
+        # The inverse warps masks with the module's flags as well, so the rule must hold there too: a per-channel
+        # image fill would turn a one-channel mask into three channels, or fail the fill_value channel check.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("The image warp path requires grid_sample for the selected dtype.")
+        image = torch.rand(2, 3, 8, 10, device=device, dtype=dtype)
+        mask = torch.ones(2, 1, 8, 10, device=device, dtype=dtype)
+        fill = torch.tensor([0.2, 0.5, 0.9], device=device, dtype=dtype)
+        seq = K.AugmentationSequential(
+            K.RandomAffine((30.0, 30.0), padding_mode="fill", fill_value=fill, p=1.0), data_keys=["input", "mask"]
+        )
+
+        out_image, out_mask = seq(image, list(mask) if as_list else mask)
+        _, inv_mask = seq.inverse(out_image, out_mask)
+
+        inv_mask = torch.cat(inv_mask) if as_list else inv_mask
+        assert inv_mask.shape == mask.shape
+        padding = inv_mask != 1.0
+        assert padding.any()
+        self.assert_close(inv_mask[padding], torch.zeros_like(inv_mask[padding]))
+
     def test_mask_list_replay_keeps_the_saved_draw_4477(self, device, dtype):
         if not supports_bilinear_2d_grid_sample(device, dtype):
             pytest.skip("The image warp path requires grid_sample for the selected dtype.")
