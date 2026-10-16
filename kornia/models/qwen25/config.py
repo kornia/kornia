@@ -27,7 +27,8 @@ class Qwen25VisionConfig:
 
     The defaults are the ``vision_config`` of the released
     `Qwen/Qwen2.5-VL-3B-Instruct <https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct/blob/main/config.json>`_
-    checkpoint. The 7B and 72B releases differ only in ``out_hidden_size`` (3584 and 8192).
+    checkpoint. The 7B release differs only in ``out_hidden_size`` (3584); the 32B and 72B releases also use
+    ``intermediate_size`` 3456, with ``out_hidden_size`` 5120 and 8192.
 
     Args:
         depth: Number of transformer blocks.

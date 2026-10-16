@@ -343,8 +343,9 @@ class Qwen25VisionTransformer(nn.Module):
         Args:
             path: A ``.safetensors`` file, or a checkpoint directory containing ``model.safetensors.index.json``
                 or ``model.safetensors``.
-            config: Configuration matching the checkpoint. Defaults to Qwen2.5-VL-3B-Instruct; the 7B and 72B
-                checkpoints need ``out_hidden_size`` 3584 and 8192.
+            config: Configuration matching the checkpoint. Defaults to Qwen2.5-VL-3B-Instruct. The 7B checkpoint
+                needs ``out_hidden_size=3584``; the 32B and 72B checkpoints need ``intermediate_size=3456`` and
+                ``out_hidden_size`` 5120 and 8192.
 
         Returns:
             The tower with the checkpoint's weights, in float32 and in evaluation mode.
