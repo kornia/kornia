@@ -194,6 +194,7 @@ class TestSigLip2Builder:
             ("someone/my-siglip", (256000, 768, 12, 12, 224, 16, 512)),
             # an image size counts only as a whole number of the repository part, after the last "/"
             ("org2560/siglip2-base-patch16-384", (256000, 768, 12, 12, 384, 16, 512)),
+            ("org-256/siglip2-base-patch16-384", (256000, 768, 12, 12, 384, 16, 512)),
             ("x/siglip2-base-patch16-ckpt2560", (256000, 768, 12, 12, 224, 16, 512)),
             ("x/siglip2-base-patch16-224-ckpt2560", (256000, 768, 12, 12, 224, 16, 512)),
         ],
