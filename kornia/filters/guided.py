@@ -201,6 +201,8 @@ def guided_blur(
         - An integer or bool ``guidance`` or ``input`` is converted to float32 before the covariance products, on its
           own scale, and the result has the promoted dtype of the two: a float16 ``input`` with a uint8 ``guidance``
           returns float32, where :func:`~kornia.filters.joint_bilateral_blur` keeps ``input``'s dtype.
+        - Half-precision inputs use float32 window statistics and coefficient calculations, with autocast disabled
+          to preserve the covariance before the solve. The result retains the promoted input dtype.
 
     Arguments:
         guidance: the guidance torch.Tensor with shape :math:`(B,C_g,H,W)`.
@@ -253,9 +255,25 @@ def guided_blur(
     input_is_guidance = input is guidance
     guidance = _to_floating(guidance)
     input = guidance if input_is_guidance else _to_floating(input)
+    output_dtype = torch.promote_types(guidance.dtype, input.dtype)
+    # E[g*g] - E[g]*E[g] loses the local variance in half precision, before
+    # even a promoted solve can help. Promote before all window statistics.
+    if guidance.dtype in (torch.float16, torch.bfloat16):
+        guidance = guidance.float()
+    if input_is_guidance:
+        input = guidance
+    elif input.dtype in (torch.float16, torch.bfloat16):
+        input = input.float()
 
     if guidance.shape[1] == 1:
-        return _guided_blur_grayscale_guidance(
+        blur = _guided_blur_grayscale_guidance
+        if isinstance(eps, torch.Tensor):
+            output_dtype = torch.promote_types(output_dtype, eps.dtype)
+    else:
+        blur = _guided_blur_multichannel_guidance
+    # Autocast would lower the box-filter convolutions back to half precision.
+    with torch.autocast(device_type=guidance.device.type, enabled=False):
+        return blur(
             guidance,
             input,
             kernel_size,
@@ -263,16 +281,7 @@ def guided_blur(
             border_type,
             subsample,
             separable=separable,
-        )
-    return _guided_blur_multichannel_guidance(
-        guidance,
-        input,
-        kernel_size,
-        eps,
-        border_type,
-        subsample,
-        separable=separable,
-    )
+        ).to(output_dtype)
 
 
 class GuidedBlur(nn.Module):

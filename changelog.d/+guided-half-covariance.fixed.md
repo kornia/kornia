@@ -1,0 +1,1 @@
+Compute guided-filter window statistics and coefficients in float32 for half-precision images, preserving low-contrast covariances and finite gradients at small regularization values. Keep autocast from lowering these calculations and retain the output dtype.
