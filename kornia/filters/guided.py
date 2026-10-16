@@ -203,8 +203,10 @@ def guided_blur(
           returns float32, where :func:`~kornia.filters.joint_bilateral_blur` keeps ``input``'s dtype. With grayscale
           guidance, a tensor-valued ``eps`` also participates in result dtype promotion; multichannel guidance
           retains the promoted dtype of ``guidance`` and ``input``.
-        - Half-precision inputs use float32 window statistics and coefficient calculations, with autocast disabled
-          to preserve the covariance before the solve. The result follows the dtype promotion rule above.
+        - A float16 or bfloat16 ``guidance`` or ``input`` is converted to float32 before the window statistics, and
+          the coefficients are solved in float32 as well (in float64 with a float64 tensor ``eps``). Autocast is
+          disabled inside the filter, so a float32 call in an autocast region returns float32. The result has the
+          dtype of the rule above.
 
     Arguments:
         guidance: the guidance torch.Tensor with shape :math:`(B,C_g,H,W)`.
