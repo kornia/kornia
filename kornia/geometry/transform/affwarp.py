@@ -795,8 +795,8 @@ def rescale(
         input: The image tensor to be scale with shape of :math:`(B, C, H, W)`.
         factor: Desired scaling factor as ``(factor_h, factor_w)`` — height first. If a single
             float, the value is used for both height and width (an ``int`` raises ``TypeError``).
-        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
-            ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
+        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'nearest-exact'`` | ``'linear'`` |
+            ``'bilinear'`` | ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
         align_corners: interpolation flag.
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
@@ -1047,8 +1047,8 @@ class Rescale(nn.Module):
     Args:
         factor: Desired scaling factor as ``(factor_h, factor_w)`` — height first. If a single
             float, the value is used for both height and width (an ``int`` raises ``TypeError``).
-        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
-            ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
+        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'nearest-exact'`` | ``'linear'`` |
+            ``'bilinear'`` | ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
         align_corners: interpolation flag.
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
