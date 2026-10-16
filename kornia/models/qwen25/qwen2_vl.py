@@ -114,7 +114,8 @@ class Qwen2VLVisionAttention(Module):
             x: Token tensor with shape :math:`(B, N, D)`.
             cu_seqlens: Optional cumulative sequence lengths kept for API
                 compatibility.
-            rot_pos_emb: Optional rotary positional embedding tensor.
+            rot_pos_emb: Ignored and kept for API compatibility: no rotary position embedding is applied, so the
+                scaffold has no positional information (see :class:`Qwen2VLVisionTransformer`).
 
         Returns:
             Tensor with shape :math:`(B, N, D)` after attention and output
@@ -185,8 +186,7 @@ class Qwen2VLVisionBlock(Module):
 
         Args:
             x: Vision token tensor with shape :math:`(B, N, D)`.
-            rot_pos_emb: Optional rotary positional embedding passed to the
-                attention layer.
+            rot_pos_emb: Passed to the attention layer, which ignores it.
 
         Returns:
             Tensor with shape :math:`(B, N, D)` after attention, MLP, and
