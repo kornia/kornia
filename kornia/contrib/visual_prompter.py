@@ -22,7 +22,7 @@ from typing import Any, Optional
 import torch
 import torch.nn.functional as F
 
-from kornia.augmentation import LongestMaxSize
+from kornia.augmentation import Resize
 from kornia.augmentation.container.augment import AugmentationSequential
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.enhance import normalize as kornia_normalize
@@ -33,15 +33,33 @@ from kornia.models.structures import Prompts, SegmentationResults
 
 
 class VisualPrompter:
-    r"""Allow the user to run multiple query with multiple prompts for a model.
+    r"""Allow the user to run multiple queries with multiple prompts on one image.
 
     At the moment, we just support the SAM model. The model is loaded based on the given config.
 
-    For default the images are transformed to have their long side with size of the `image_encoder.img_size`. This
-    Prompter class ensure to transform the images and the prompts before prediction. Also, the image is passed
-    automatically for the method `preprocess_image`, which is responsible for F.normalize the image and F.pad it to have
-    the right size for the SAM model :math:`(\text{image_encoder.img_size}, \text{image_encoder.img_size})`. For
-    default the image is normalized by the mean and standard deviation of the SAM dataset values.
+    The prompter holds one image at a time: :meth:`set_image` takes a :math:`(3, H, W)` or :math:`(1, 3, H, W)` image,
+    and :meth:`predict` then answers prompts on it. To segment a batch of images, each with its own prompts, use
+    :meth:`kornia.models.sam.Sam.forward`.
+
+    The image is resized so that its long side equals ``image_encoder.img_size``, by
+    ``kornia.augmentation.Resize(img_size, side="long", align_corners=False, antialias=True)``: a bilinear resize on
+    the half-pixel grid, antialiased when it downscales. Keypoint and box prompts go through the same transform. The
+    image is then passed to the method `preprocess_image`, which normalizes it and pads it to the size the SAM model
+    takes, :math:`(\text{image_encoder.img_size}, \text{image_encoder.img_size})`. For default the image is normalized
+    by the mean and standard deviation of the SAM dataset values.
+
+    Two details depart on purpose from Meta's ``SamPredictor`` (``segment-anything@3518c86``):
+
+    - The resized short side is truncated, where the reference rounds it (a 1380 x 2076 image becomes 680 x 1024
+      here and 681 x 1024 there). Truncation is the rule of :class:`kornia.augmentation.Resize`, and the masks are
+      resized back through the same recorded input size.
+    - Prompts follow the half-pixel map :math:`x \mapsto (x + 0.5)\,s - 0.5`, kornia's pixel-centre convention and the
+      map the image resize uses, where the reference's ``apply_coords`` uses :math:`x \mapsto x\,s`. With the scale
+      :math:`s = 8`, the keypoint (40, 30) goes to (323.5, 243.5) here and to (320, 240) in the reference.
+
+    The held model follows the mode rule of :ref:`pretrained-models-conventions`: a config that loads weights gives a
+    model in evaluation mode, and a randomly initialised one stays in training mode, where MobileSAM's BatchNorm
+    normalises with the statistics of the batch. Call ``prompter.model.eval()`` before inference on random weights.
 
     Args:
         config: A model config to generate the model. Now just the SAM model is supported.
@@ -54,13 +72,9 @@ class VisualPrompter:
         >>> prompter = VisualPrompter(SamConfig('vit_b'))
         >>> image = torch.rand(3, 25, 30)
         >>> prompter.set_image(image)
-        >>> boxes = Boxes(
-        ...    torch.tensor(
-        ...         [[[[0, 0], [0, 10], [10, 0], [10, 10]]]],
-        ...         device=prompter.device,
-        ...         dtype=torch.float32
-        ...    ),
-        ...    mode='xyxy'
+        >>> # The K box prompts of the image, as a (1, K, 4) xyxy tensor; here K = 1.
+        >>> boxes = Boxes.from_tensor(
+        ...     torch.tensor([[[0.0, 0.0, 10.0, 10.0]]], device=prompter.device, dtype=torch.float32), mode='xyxy'
         ... )
         >>> prediction = prompter.predict(boxes=boxes)
         >>> prediction.logits.shape
@@ -80,7 +94,7 @@ class VisualPrompter:
 
         if isinstance(config, SamConfig):
             self.model = Sam.from_config(config)
-            transforms = (LongestMaxSize(self.model.image_encoder.img_size, p=1.0),)
+            transforms = (Resize(self.model.image_encoder.img_size, side="long", align_corners=False, antialias=True),)
             self.pixel_mean: Optional[torch.Tensor] = (
                 torch.tensor([123.675, 116.28, 103.53], device=device, dtype=dtype) / 255
             )
@@ -141,9 +155,10 @@ class VisualPrompter:
         Prepare the given image with the selected transforms and the preprocess method.
 
         Args:
-            image: RGB image. Normally images with range of [0-1], the model preprocess F.normalize the
-                   pixel values with the mean and std defined in its initialization. Expected to be into a float32
-                   dtype. Shape :math:`(3, H, W)`.
+            image: One RGB image, shape :math:`(3, H, W)` or :math:`(1, 3, H, W)`, in the dtype of the model. Normally
+                   images with range of [0-1], the model preprocess F.normalize the pixel values with the mean and std
+                   defined in its initialization. A batch of more than one image raises; use
+                   :meth:`kornia.models.sam.Sam.forward` for batches.
             mean: mean value of dataset for normalization.
             std: standard deviation of dataset for normalization.
 
@@ -153,6 +168,11 @@ class VisualPrompter:
             image = image.unsqueeze(0)
         else:
             KORNIA_CHECK_SHAPE(image, ["B", "3", "H", "W"])
+            KORNIA_CHECK(
+                image.shape[0] == 1,
+                f"VisualPrompter takes one image, (3, H, W) or (1, 3, H, W); got a batch of {image.shape[0]}. "
+                "Use `Sam.forward` to segment a batch of images with per-image prompts.",
+            )
 
         self.reset_image()
 
@@ -181,7 +201,11 @@ class VisualPrompter:
         return keypoints
 
     def _valid_boxes(self, boxes: Boxes | torch.Tensor) -> Boxes:
-        """Validate the boxes shape and ensure to be a Boxes into xyxy mode."""
+        """Validate the boxes shape and ensure to be a Boxes into xyxy mode.
+
+        The boxes are the ``K`` box prompts of the one image set: a ``(K, 4)`` or ``(1, K, 4)`` xyxy tensor, or a
+        :class:`~kornia.geometry.boxes.Boxes` holding ``(K, 4, 2)`` or ``(1, K, 4, 2)`` vertices.
+        """
         if isinstance(boxes, torch.Tensor):
             if boxes.ndim == 2:
                 KORNIA_CHECK_SHAPE(boxes.data, ["K", "4"])
@@ -189,6 +213,13 @@ class VisualPrompter:
                 KORNIA_CHECK_SHAPE(boxes.data, ["B", "K", "4"])
 
             boxes = Boxes.from_tensor(boxes, mode="xyxy")
+
+        # A batched Boxes stores (B, K, 4, 2) vertices, and a (B, K, 4) tensor becomes one.
+        KORNIA_CHECK(
+            boxes.data.ndim == 3 or boxes.data.shape[0] == 1,
+            f"VisualPrompter takes the boxes of its one image, (K, 4) or (1, K, 4); got boxes for "
+            f"{boxes.data.shape[0]} images. Use `Sam.forward` to prompt a batch of images.",
+        )
 
         return boxes if boxes.mode == "xyxy" else Boxes.from_tensor(boxes.to_tensor(mode="xyxy"), mode="xyxy")
 
@@ -224,9 +255,15 @@ class VisualPrompter:
             keypoints = self._valid_keypoints(keypoints, keypoints_labels)
             data_keys.append("keypoints")
             to_transform.append(keypoints)
+        elif keypoints is not None:
+            KORNIA_CHECK(
+                False,
+                "keypoints_labels must be given with keypoints: a (K, N) tensor, 1 for a foreground point and 0 for "
+                "a background point.",
+            )
 
         if isinstance(boxes, (Boxes, torch.Tensor)):
-            self._valid_boxes(boxes)
+            boxes = self._valid_boxes(boxes)
             data_keys.append("bbox_xyxy")
             to_transform.append(boxes)
 
@@ -245,7 +282,8 @@ class VisualPrompter:
             points = None
 
         if "bbox_xyxy" in data and isinstance(data["bbox_xyxy"], Boxes):
-            _bbox = data["bbox_xyxy"].to_tensor(mode="xyxy")
+            # (K, 4) or (1, K, 4) -> the K box prompts, (K, 4).
+            _bbox = data["bbox_xyxy"].to_tensor(mode="xyxy").reshape(-1, 4)
             if KORNIA_CHECK_IS_TENSOR(_bbox):
                 bbox = _bbox
         else:
@@ -270,8 +308,10 @@ class VisualPrompter:
                        `N` is the number of points and `K` the number of prompts.
             keypoints_labels: Labels for the point prompts. 1 indicates a foreground point and 0 indicates a background
                              point. Shape :math:`(K, N)`. Where `N` is the number of points, and `K` the number of
-                             prompts.
-            boxes: A box prompt to the model. If a torch.Tensor, should be in a xyxy mode. Shape :math:`(K, 4)`
+                             prompts. Required with `keypoints`.
+            boxes: Box prompts to the model, one per prompt: a torch.Tensor in xyxy mode, shape :math:`(K, 4)` or
+                   :math:`(1, K, 4)`, or a :class:`~kornia.geometry.boxes.Boxes` of shape :math:`(K, 4, 2)` or
+                   :math:`(1, K, 4, 2)`. `K` is the number of prompts.
             masks: A low resolution mask input to the model, typically coming from a previous prediction
                    iteration. Has shape :math:`(K, 1, H, W)`, where for SAM, H=W=256.
             multimask_output: If true, the model will return three masks. For ambiguous input prompts (such as a

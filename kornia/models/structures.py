@@ -32,7 +32,7 @@ class SegmentationResults:
 
     Args:
         logits: Results logits with shape :math:`(B, C, H, W)`, where :math:`C` refers to the number of predicted masks
-        scores: The scores from the logits. Shape :math:`(B, C)`
+        scores: The predicted IoU of each mask. Shape :math:`(K, C)`
         mask_threshold: The threshold value to generate the `binary_masks` from the `logits`
 
     """

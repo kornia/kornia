@@ -101,8 +101,9 @@ class PromptEncoder(nn.Module):
         """Embeds point prompts."""
         points = points + 0.5  # Shift to center of pixel
         if pad:
-            padding_point = torch.zeros((points.shape[0], 1, 2), device=points.device)
-            padding_label = -torch.ones((labels.shape[0], 1), device=labels.device)
+            dtype = self.point_embeddings[0].weight.dtype
+            padding_point = torch.zeros((points.shape[0], 1, 2), device=points.device, dtype=dtype)
+            padding_label = -torch.ones((labels.shape[0], 1), device=labels.device, dtype=dtype)
             points = torch.cat([points, padding_point], dim=1)
             labels = torch.cat([labels, padding_label], dim=1)
         point_embedding = self.pe_layer.forward_with_coords(points, self.input_image_size)
@@ -163,7 +164,9 @@ class PromptEncoder(nn.Module):
 
         """
         bs = self._get_batch_size(points, boxes, masks)
-        sparse_embeddings = torch.empty((bs, 0, self.embed_dim), device=self._get_device())
+        sparse_embeddings = torch.empty(
+            (bs, 0, self.embed_dim), device=self._get_device(), dtype=self.point_embeddings[0].weight.dtype
+        )
         if points is not None:
             coords, labels = points
             point_embeddings = self._embed_points(coords, labels, pad=(boxes is None))
@@ -205,7 +208,7 @@ class PositionEmbeddingRandom(nn.Module):
         h, w = size
         _dev = self.positional_encoding_gaussian_matrix.device
         device = _dev if isinstance(_dev, torch.device) else None
-        grid = torch.ones((h, w), device=device, dtype=torch.float32)
+        grid = torch.ones((h, w), device=device, dtype=self.positional_encoding_gaussian_matrix.dtype)
         y_embed = grid.cumsum(dim=0) - 0.5
         x_embed = grid.cumsum(dim=1) - 0.5
         y_embed = y_embed / h
@@ -219,4 +222,4 @@ class PositionEmbeddingRandom(nn.Module):
         coords = coords_input.clone()
         coords[:, :, 0] = coords[:, :, 0] / image_size[1]
         coords[:, :, 1] = coords[:, :, 1] / image_size[0]
-        return self._pe_encoding(coords.to(torch.float32))  # B x N x C
+        return self._pe_encoding(coords.to(self.positional_encoding_gaussian_matrix.dtype))  # B x N x C

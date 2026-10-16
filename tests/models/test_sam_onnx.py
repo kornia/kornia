@@ -58,7 +58,7 @@ def test_sam_encoder_to_onnx(tmp_path):
 
     # Create a tiny pseudo-SAM model to prevent CI timeouts during ONNX trace
     config = SamConfig(
-        model_type="vit_b",
+        model_type=None,
         encoder_embed_dim=16,
         encoder_depth=1,
         encoder_num_heads=1,
@@ -66,6 +66,8 @@ def test_sam_encoder_to_onnx(tmp_path):
     )
     model = Sam.from_config(config)
     model.eval()
+    # The tiny encoder, not ViT-B (89.7M encoder parameters): 680,128, mostly the neck's 3 x 3 convolution.
+    assert sum(p.numel() for p in model.image_encoder.parameters()) < 1e6
 
     onnx_path = tmp_path / "sam_encoder.onnx"
     # Export only the image encoder (Sam.to_onnx overrides the full-model export).

@@ -136,6 +136,21 @@ class TestSam(BaseTester):
         assert {m.training for m in Sam.from_name("mobile_sam").modules()} == {True}
         assert len(loaded) == 2
 
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("global_attn_indexes", [(0,), [0], 0])
+    def test_from_config_builds_a_custom_encoder(self, global_attn_indexes):
+        config = SamConfig(
+            encoder_embed_dim=16, encoder_depth=1, encoder_num_heads=1, encoder_global_attn_indexes=global_attn_indexes
+        )
+        encoder = Sam.from_config(config).image_encoder
+
+        assert len(encoder.blocks) == 1
+        # Window size 0 is global attention.
+        assert encoder.blocks[0].window_size == 0
+        # 680,128 parameters, mostly the neck's 3 x 3 convolution, 256 * 256 * 9 = 589,824; ViT-B's encoder has
+        # 89.7M. The whole model is not bounded: ``_build_sam`` always attaches the full mask decoder.
+        assert sum(p.numel() for p in encoder.parameters()) < 1e6
+
     @pytest.mark.slow
     def test_mobile_sam_pretrained_is_batch_independent(self):
         encoder = Sam.from_config(SamConfig("mobile_sam", pretrained=True)).image_encoder
