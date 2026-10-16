@@ -94,7 +94,14 @@ class MosaicGenerator(RandomGeneratorBase):
 
         perm_times = self.mosaic_grid[0] * self.mosaic_grid[1]
         # Generate mosiac order in one shot
-        rand_ids = torch.randperm(batch_size * (perm_times - 1), device=_device, generator=self._generator) % batch_size
+        rand_ids = (
+            torch.randperm(
+                batch_size * (perm_times - 1),
+                device=self.device,
+                generator=self._generator,
+            ).to(_device)
+            % batch_size
+        )
         mosiac_ids = (
             torch.cat([torch.arange(0, batch_size, device=_device), rand_ids])
             .reshape(perm_times, batch_size)

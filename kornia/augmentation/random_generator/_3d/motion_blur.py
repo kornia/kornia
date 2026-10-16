@@ -86,8 +86,11 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
         if isinstance(self.kernel_size, int):
             if not (self.kernel_size >= 3 and self.kernel_size % 2 == 1):
                 raise AssertionError(f"`kernel_size` must be odd and greater than 3. Got {self.kernel_size}.")
-            self.ksize_sampler = UniformDistribution(self.kernel_size // 2, self.kernel_size // 2, validate_args=False)
-            self._ksize_half_max = self.kernel_size // 2
+            half_lo = self.kernel_size // 2
+            half_hi = half_lo
+            self._ksize_half_max = half_hi
+            # A fixed kernel size draws no randomness: keep the degenerate range on [lo, lo).
+            ksize_high = half_lo
         elif isinstance(self.kernel_size, tuple):
             # kernel_size is fixed across the batch
             if len(self.kernel_size) != 2:
@@ -103,10 +106,15 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
                 )
             half_lo = self.kernel_size[0] // 2
             half_hi = max(half_lo, (self.kernel_size[1] - 1) // 2)
-            self.ksize_sampler = UniformDistribution(half_lo, half_hi + 1, validate_args=False)
             self._ksize_half_max = half_hi
+            ksize_high = half_hi + 1
         else:
             raise TypeError(f"Unsupported type: {type(self.kernel_size)}")
+
+        # Draw the kernel half-size on the sampling device/dtype like the other samplers. Building this
+        # range from Python ints would pin the draw to CPU and break an explicit CUDA-generator stream.
+        ksize_bounds = torch.tensor([half_lo, ksize_high], device=device, dtype=dtype)
+        self.ksize_sampler = UniformDistribution(ksize_bounds[0], ksize_bounds[1], validate_args=False)
 
         self.yaw_sampler = UniformDistribution(angle[0][0], angle[0][1], validate_args=False)
         self.pitch_sampler = UniformDistribution(angle[1][0], angle[1][1], validate_args=False)

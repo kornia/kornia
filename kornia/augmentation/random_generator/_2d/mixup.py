@@ -81,7 +81,10 @@ class MixupGenerator(RandomGeneratorBase):
                 (batch_size,), self.prob_sampler, same_on_batch, generator=self._generator
             )
         mixup_pairs: torch.Tensor = torch.randperm(
-            batch_size, device=_device, dtype=_dtype, generator=self._generator
+            batch_size,
+            device=self.device,
+            dtype=_dtype,
+            generator=self._generator,
         ).long()
         mixup_lambdas: torch.Tensor = _adapted_rsampling(
             (batch_size,), self.lambda_sampler, same_on_batch, generator=self._generator

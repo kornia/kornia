@@ -228,6 +228,12 @@ class TestExplicitGenerator(BaseTester):
             lambda: K.RandomCrop((4, 5)),
             lambda: K.RandomGaussianNoise(p=1.0),
             lambda: K.RandomCutMixV2(beta=0.5, p=1.0, use_correct_lambda=True),
+            # Distribution and randperm samplers that must draw on the sampling device.
+            lambda: K.RandomMixUpV2(p=1.0),
+            lambda: K.RandomMosaic(output_size=(4, 4), p=1.0),
+            lambda: K.RandomMotionBlur(kernel_size=(3, 5), angle=30.0, direction=0.5, p=1.0),
+            lambda: K.RandomMotionBlur3D(kernel_size=(3, 5), angle=30.0, direction=0.5, p=1.0),
+            lambda: K.RandomSaltAndPepperNoise(amount=0.1, salt_vs_pepper=0.5, p=1.0),
         ],
     )
     def test_sampling_device_stream(self, factory, device):
@@ -292,3 +298,16 @@ class TestExplicitGenerator(BaseTester):
             seq.set_generator(torch.Generator())
         assert seq._generator is None
         assert aug._generator is None
+
+    def test_opt_out_flag_rejects_subclasses(self):
+        """A module that opts out of explicit streams is rejected through its subclasses too."""
+
+        class OptedOut(K.RandomAffine):
+            _supports_explicit_generator = False
+
+        with pytest.raises(NotImplementedError, match="OptedOut"):
+            OptedOut(45.0).set_generator(torch.Generator())
+        with pytest.raises(NotImplementedError, match="OptedOut"):
+            K.ImageSequential(OptedOut(45.0)).set_generator(torch.Generator())
+        # The flag defaults to opt-in, so an ordinary subclass still accepts a stream.
+        K.RandomAffine(45.0).set_generator(torch.Generator().manual_seed(1))

@@ -139,7 +139,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
                 batch_shape[0],
                 (1,),
                 generator=self._generator,
-                device=self._generator.device if self._generator is not None else None,
+                device=self.device,
             )
         )
         return params

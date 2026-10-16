@@ -32,6 +32,10 @@ R = TypeVar("R")
 
 class _GeneratorMixin(torch.nn.Module):
     _generator: torch.Generator | None = None
+    # Built-in modules that cannot isolate their draws set this to ``False`` so
+    # ``set_generator`` rejects them (and any subclass) instead of silently
+    # leaving some draws on the global stream.
+    _supports_explicit_generator: bool = True
 
     def set_generator(self, generator: torch.Generator | None) -> Self:
         """Use ``generator`` for this module and its built-in augmentation children.
@@ -50,7 +54,7 @@ class _GeneratorMixin(torch.nn.Module):
             for module in self.modules():
                 name = type(module).__module__
                 if name.startswith(("kornia.augmentation.auto.", "kornia.augmentation.presets.")) or (
-                    type(module).__name__ == "RandomDissolving"
+                    isinstance(module, _GeneratorMixin) and not module._supports_explicit_generator
                 ):
                     raise NotImplementedError(f"Explicit generators are not supported by {type(module).__name__}.")
         for module in modules:
@@ -124,20 +128,24 @@ def _sample_distribution(
     if isinstance(distribution, torch.distributions.Bernoulli):
         if reparameterized:
             raise NotImplementedError("Bernoulli does not support reparameterized sampling.")
+        probs = distribution.probs.expand(shape + distribution.batch_shape)
         with torch.no_grad():
-            return torch.bernoulli(distribution.probs.expand(shape + distribution.batch_shape), generator=generator)
+            return torch.bernoulli(probs.to(generator.device), generator=generator).to(probs.device)
     if not reparameterized:
         with torch.no_grad():
             return _sample_distribution(distribution, shape, generator, True)
     size = shape + distribution.batch_shape
     if isinstance(distribution, torch.distributions.Uniform):
         low, high = distribution.low, distribution.high
-        return low + torch.rand(size, device=low.device, dtype=low.dtype, generator=generator) * (high - low)
+        draw = torch.rand(size, device=generator.device, dtype=low.dtype, generator=generator)
+        return low + draw.to(low.device) * (high - low)
     if isinstance(distribution, torch.distributions.Normal):
         loc, scale = distribution.loc, distribution.scale
-        noise = torch.empty(size, device=loc.device, dtype=loc.dtype).normal_(generator=generator)
+        noise = torch.empty(size, device=generator.device, dtype=loc.dtype).normal_(generator=generator).to(loc.device)
         return loc + noise * scale
     if isinstance(distribution, torch.distributions.Beta):
         concentration = torch.stack((distribution.concentration1, distribution.concentration0), -1)
-        return _GeneratorDirichlet.apply(concentration.expand(size + (2,)), generator)[..., 0]
+        concentration = concentration.expand(size + (2,))
+        draw = _GeneratorDirichlet.apply(concentration.to(generator.device), generator)
+        return draw.to(concentration.device)[..., 0]
     raise NotImplementedError(f"Explicit generators are not supported for {type(distribution).__name__}.")

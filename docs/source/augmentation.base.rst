@@ -262,9 +262,22 @@ The call-local stream restores the previous child streams even if the call raise
 
 Generators must match the sampling device, normally CPU regardless of the image's device.
 ``.to()`` does not move a generator. Its state is not included in ``state_dict``: persist it with
-``generator.get_state()`` and restore it with ``generator.set_state()``. A DataLoader worker must receive
-its own appropriately seeded generator; copying the same state to every worker reproduces the same stream.
-PyTorch does not guarantee identical draws across devices or releases.
+``generator.get_state()`` and restore it with ``generator.set_state()``. PyTorch does not guarantee
+identical draws across devices or releases.
+
+A DataLoader worker must receive its own appropriately seeded generator. The workers inherit a copy of the
+persistent stream, so without a fix each worker replays the same draws; copy the state to every worker and
+they all stay duplicated. Seed a fresh generator per worker from the worker's own seed:
+
+.. code-block:: python
+
+   def worker_init_fn(worker_id):
+       info = torch.utils.data.get_worker_info()
+       info.dataset.aug.set_generator(torch.Generator().manual_seed(info.seed))
+
+   loader = torch.utils.data.DataLoader(dataset, num_workers=2, worker_init_fn=worker_init_fn)
+
+``info.seed`` differs per worker, so each worker samples its own stream while the global RNG is left alone.
 
 This first implementation covers built-in parameter/noise samplers and the standard containers.
 Auto-augmentation policies, model presets and ``RandomDissolving`` reject explicit streams before sampling; their learned
