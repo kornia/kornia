@@ -87,12 +87,17 @@ class ModelBaseMixin:
             RuntimeError: If the output type is not supported.
 
         """
-        if output_type == "torch":
-            return output
+        self._check_output_type(output_type)
         if output_type == "pil":
             tensors = output if isinstance(output, list) else [output]
             return [ImageModuleMixIn._chw_to_pil(chw) for t in tensors for chw in t.reshape(-1, *t.shape[-3:])]
-        raise RuntimeError(f"Output type {output_type} is not supported. Accepted values are 'torch' and 'pil'.")
+        return output
+
+    @staticmethod
+    def _check_output_type(output_type: str) -> None:
+        """Raise ``RuntimeError`` unless ``output_type`` is "torch" or "pil"."""
+        if output_type not in ("torch", "pil"):
+            raise RuntimeError(f"Output type {output_type} is not supported. Accepted values are 'torch' and 'pil'.")
 
     def save(self, output: Union[torch.Tensor, List[torch.Tensor]], directory: str, is_batch: bool = False) -> None:
         """Save the output tensor to a directory.

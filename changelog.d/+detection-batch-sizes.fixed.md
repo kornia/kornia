@@ -8,3 +8,4 @@ Detection, processor and super-resolution wrappers of `kornia.models` and `korni
 - `output_type="pil"` in the `visualize` of `ObjectDetector`, `EdgeDetector`, `SuperResolution`, `SemanticSegmentation` and `DepthEstimation` returns a list of `PIL.Image.Image`, one per `(C, H, W)` image; it returned NumPy arrays.
 - `ModelBase.load_checkpoint(path, device=...)` moves the model to `device`; the parameters stayed where they were, on the CPU after `device=torch.device("mps")`.
 - `SuperResolution` built by `RRDBNetBuilder` runs a list of images one at a time; a list, even of one image, raised `RuntimeError: Sizes of tensors must match except in dimension 1`.
+- `SemanticSegmentation.save(output_type="pil")` raised, a `ValueError` for a batch tensor and a `TypeError` for a list of images. `save` now writes the same files for `"pil"` as for `"torch"`: `output_type` does not change the files written.
