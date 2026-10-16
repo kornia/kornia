@@ -418,6 +418,10 @@ name = "Breaking changes"
 include = ["kornia"]
 exclude = ["tests", "docs", "conftest.py"]
 
+[tool.ty.rules]
+# A `type: ignore` that suppresses nothing is an error, so dead ones do not pile up again (#2445)
+unused-ignore-comment = "error"
+
 [[tool.ty.overrides]]
 include = ["kornia"]
 

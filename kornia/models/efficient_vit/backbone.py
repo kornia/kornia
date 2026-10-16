@@ -25,7 +25,7 @@ from typing import Any
 import torch
 from torch import nn
 
-from kornia.models.efficient_vit.nn.ops import (  # type: ignore
+from kornia.models.efficient_vit.nn.ops import (
     ConvLayer,
     DSConv,
     EfficientViTBlock,

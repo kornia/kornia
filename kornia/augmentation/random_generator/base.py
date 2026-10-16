@@ -150,7 +150,7 @@ class DistributionWithMapper(Distribution):
         self.dist = dist
         self.map_fn = map_fn
 
-    def rsample(self, sample_shape: Tuple[int, ...]) -> torch.Tensor:  # type: ignore[override]
+    def rsample(self, sample_shape: Tuple[int, ...]) -> torch.Tensor:
         """Draw a reparameterized sample and apply ``map_fn`` when provided.
 
         Args:
@@ -164,7 +164,7 @@ class DistributionWithMapper(Distribution):
             out = self.map_fn(out)
         return out
 
-    def sample(self, sample_shape: Tuple[int, ...]) -> torch.Tensor:  # type: ignore[override]
+    def sample(self, sample_shape: Tuple[int, ...]) -> torch.Tensor:
         """Draw a sample and apply ``map_fn`` when provided.
 
         Args:

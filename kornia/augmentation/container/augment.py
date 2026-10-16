@@ -441,7 +441,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         return eye_like(3, input)
 
-    def inverse(  # type: ignore[override]
+    def inverse(
         self,
         *args: Union[DataType, Dict[str, DataType]],
         params: Optional[List[ParamItem]] = None,
@@ -468,9 +468,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         try:
             if params is None:
                 params = self._params
-            self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys, params=params)  # type: ignore
+            self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys, params=params)
 
-            in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)  # type: ignore
+            in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)
 
             if params is None:
                 raise ValueError(
@@ -481,14 +481,12 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             outputs: List[DataType] = in_args
             for param in params[::-1]:
                 module = self.get_submodule(param.name)
-                outputs = self.transform_op.inverse(  # type: ignore
-                    *outputs, module=module, param=param, extra_args=self.extra_args
-                )
+                outputs = self.transform_op.inverse(*outputs, module=module, param=param, extra_args=self.extra_args)
                 if len(self.transform_op.data_keys) == 1 or not isinstance(outputs, (list, tuple)):
                     # One data key can itself hold a mask list; keep it as one argument for the next child.
                     outputs = [outputs]
 
-            outputs = self._arguments_postproc(args, outputs, data_keys=self.transform_op.data_keys)  # type: ignore
+            outputs = self._arguments_postproc(args, outputs, data_keys=self.transform_op.data_keys)
 
         finally:
             self.transform_op.data_keys = original_data_keys
@@ -685,7 +683,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         return out
 
     @_with_generator
-    def forward(  # type: ignore[override]
+    def forward(
         self,
         *args: Union[DataType, Dict[str, DataType]],
         params: Optional[List[ParamItem]] = None,
@@ -764,7 +762,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 outputs = [outputs[i] for i in restore_order]
                 self.transform_op.data_keys = original_data_keys
 
-            outputs = self._arguments_postproc(args, outputs, data_keys=original_data_keys)  # type: ignore
+            outputs = self._arguments_postproc(args, outputs, data_keys=original_data_keys)
         finally:
             self.transform_op.data_keys = self.data_keys
         if not is_exporting():
@@ -934,7 +932,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if data_key in _MSK_OPTIONS:
             # A PIL image or an image file converts like its NumPy array, so labels and palette indices are kept.
             if isinstance(arg, str) and self._is_valid_arg(arg):
-                with Image.open(arg) as mask:  # type: ignore
+                with Image.open(arg) as mask:
                     arg = np.array(mask)
             elif _is_pil_image(arg):
                 arg = np.array(arg)

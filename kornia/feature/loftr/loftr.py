@@ -94,6 +94,8 @@ class LoFTR(nn.Module):
           the frame of the reference implementation, in which the pretrained models put the centre of pixel
           :math:`(x, y)` at :math:`(x + 0.5, y + 0.5)`: subtract 0.5 to get kornia's frame
           (:ref:`Local features <local-features-conventions>`), in which pixel centres have integer coordinates.
+          The keypoints are float32 for a float16 or bfloat16 model and float64 for a float64 one;
+          ``confidence`` keeps the model dtype.
         - ``confidence`` is the coarse matching score of the match, a dual-softmax score with the default
           ``match_type``; only matches above ``max(thr, 0)`` are returned, with the ``thr`` of
           ``config["match_coarse"]``, 0.2 by default.
@@ -293,7 +295,7 @@ class LoFTR(nn.Module):
                 raise TypeError(f"Expected torch.Tensor for item `{k}`. Got {type(_d)}")
         return out
 
-    def load_state_dict(self, state_dict: dict[str, Any], *args: Any, **kwargs: Any) -> Any:  # type: ignore[override]
+    def load_state_dict(self, state_dict: dict[str, Any], *args: Any, **kwargs: Any) -> Any:
         """Load a checkpoint state dictionary into the module.
 
         Args:

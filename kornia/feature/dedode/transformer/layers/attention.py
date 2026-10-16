@@ -91,7 +91,7 @@ class MemEffAttention(Attention):
     DINOv2 signature. Nothing in kornia passes it, and it must be ``None``.
     """
 
-    def forward(self, x: Tensor, attn_bias=None) -> Tensor:  # type: ignore[no-untyped-def]
+    def forward(self, x: Tensor, attn_bias=None) -> Tensor:
         """Run this DeDoDe module forward.
 
         Args:

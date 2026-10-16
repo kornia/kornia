@@ -262,7 +262,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         raise NotImplementedError
 
     @_with_generator
-    def forward(  # type: ignore[override]
+    def forward(
         self,
         *input: torch.Tensor,
         params: Optional[Dict[str, torch.Tensor]] = None,

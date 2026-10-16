@@ -28,7 +28,7 @@ class DeDoDeDetector(nn.Module):
         decoder: The decoder module for probability map generation.
     """
 
-    def __init__(self, encoder: nn.Module, decoder: nn.Module, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+    def __init__(self, encoder: nn.Module, decoder: nn.Module, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.encoder = encoder
         self.decoder = decoder
@@ -58,4 +58,4 @@ class DeDoDeDetector(nn.Module):
                 size = sizes[-(idx + 2)]
                 logits = F.interpolate(logits, size=size, mode="bicubic", align_corners=False)
                 context = F.interpolate(context.float(), size=size, mode="bilinear", align_corners=False).to(dtype)
-        return logits.to(dtype)  # type: ignore
+        return logits.to(dtype)

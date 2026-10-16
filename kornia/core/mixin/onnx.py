@@ -100,7 +100,7 @@ class ONNXExportMixin:
         save: bool = True,
         additional_metadata: Optional[list[tuple[str, str]]] = None,
         **kwargs: Any,
-    ) -> onnx.ModelProto:  # type: ignore
+    ) -> onnx.ModelProto:
         """Export the current object to an ONNX model file.
 
         Args:
@@ -219,12 +219,12 @@ class ONNXExportMixin:
             with tempfile.TemporaryDirectory() as tmp_dir:
                 tmp_path = os.path.join(tmp_dir, "model.onnx")
                 torch.onnx.export(
-                    module,  # type: ignore[arg-type]
-                    dummy_input,  # type: ignore[arg-type]
+                    module,
+                    dummy_input,
                     tmp_path,
                     **default_args,
                 )
-                onnx_model = onnx.load(tmp_path)  # type: ignore
+                onnx_model = onnx.load(tmp_path)
         finally:
             # The flag is set directly on purpose: ``train()`` recurses into the children, which would lose a mixed
             # state. It also skips ``train()`` overrides: TinyViT's ``Attention.train(True)`` would drop the attention
@@ -237,7 +237,7 @@ class ONNXExportMixin:
         metadata = [*self.ADDITIONAL_METADATA, *(additional_metadata or [])]
         onnx_model = kornia.onnx.utils.add_metadata(onnx_model, metadata)
         if save:
-            onnx.save(onnx_model, onnx_name)  # type: ignore
+            onnx.save(onnx_model, onnx_name)
         return onnx_model
 
     def _create_dummy_input(
@@ -271,10 +271,10 @@ class ONNXRuntimeMixin:
 
     def _create_session(
         self,
-        op: onnx.ModelProto,  # type:ignore
+        op: onnx.ModelProto,
         providers: Optional[list[str]] = None,
-        session_options: Optional[ort.SessionOptions] = None,  # type:ignore
-    ) -> ort.InferenceSession:  # type:ignore
+        session_options: Optional[ort.SessionOptions] = None,
+    ) -> ort.InferenceSession:
         """Create an optimized ONNXRuntime InferenceSession for the combined model.
 
         Args:
@@ -290,15 +290,15 @@ class ONNXRuntimeMixin:
 
         """
         if session_options is None:
-            session_options = ort.SessionOptions()  # type:ignore
-            session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED  # type:ignore
-        return ort.InferenceSession(  # type:ignore
+            session_options = ort.SessionOptions()
+            session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+        return ort.InferenceSession(
             op.SerializeToString(),
             sess_options=session_options,
             providers=providers or ["CPUExecutionProvider"],
         )
 
-    def set_session(self, session: ort.InferenceSession) -> None:  # type: ignore
+    def set_session(self, session: ort.InferenceSession) -> None:
         """Set a custom ONNXRuntime InferenceSession.
 
         Args:
@@ -308,7 +308,7 @@ class ONNXRuntimeMixin:
         """
         self._session = session
 
-    def get_session(self) -> ort.InferenceSession:  # type: ignore
+    def get_session(self) -> ort.InferenceSession:
         """Get the current ONNXRuntime InferenceSession.
 
         Returns:
@@ -373,7 +373,7 @@ class ONNXRuntimeMixin:
             ["OpenVINOExecutionProvider"], provider_options=[{"device_type": device_type, **kwargs}]
         )
 
-    def __call__(self, *inputs: np.ndarray) -> list[np.ndarray]:  # type:ignore
+    def __call__(self, *inputs: np.ndarray) -> list[np.ndarray]:
         """Perform inference using the combined ONNX model.
 
         Args:
@@ -398,9 +398,9 @@ class ONNXMixin:
 
     def _load_op(
         self,
-        arg: Union[onnx.ModelProto, str],  # type:ignore
+        arg: Union[onnx.ModelProto, str],
         cache_dir: Optional[str] = None,
-    ) -> onnx.ModelProto:  # type:ignore
+    ) -> onnx.ModelProto:
         """Load an ONNX model, either from a file path or use the provided ONNX ModelProto.
 
         Args:
@@ -413,15 +413,15 @@ class ONNXMixin:
         """
         if isinstance(arg, str):
             return kornia.onnx.utils.ONNXLoader.load_model(arg, cache_dir=cache_dir)
-        if isinstance(arg, onnx.ModelProto):  # type:ignore
+        if isinstance(arg, onnx.ModelProto):
             return arg
         raise ValueError(f"Invalid argument type. Got {type(arg)}")
 
     def _load_ops(
         self,
-        *args: Union[onnx.ModelProto, str],  # type:ignore
+        *args: Union[onnx.ModelProto, str],
         cache_dir: Optional[str] = None,
-    ) -> list[onnx.ModelProto]:  # type:ignore
+    ) -> list[onnx.ModelProto]:
         """Load multiple ONNX models or operators and returns them as a list.
 
         Args:
@@ -441,9 +441,9 @@ class ONNXMixin:
 
     def _combine(
         self,
-        *args: list[onnx.ModelProto],  # type:ignore
+        *args: list[onnx.ModelProto],
         io_maps: Optional[list[tuple[str, str]]] = None,
-    ) -> onnx.ModelProto:  # type:ignore
+    ) -> onnx.ModelProto:
         """Combine the provided ONNX models into a single ONNX graph.
 
         Optionally, map inputs and outputs between operators using the `io_map`.
@@ -462,21 +462,21 @@ class ONNXMixin:
             raise ValueError("No operators found.")
 
         combined_op = args[0]
-        combined_op = onnx.compose.add_prefix(combined_op, prefix=f"K{str(0).zfill(2)}-")  # type:ignore
+        combined_op = onnx.compose.add_prefix(combined_op, prefix=f"K{str(0).zfill(2)}-")
 
         for i, op in enumerate(args[1:]):
-            next_op = onnx.compose.add_prefix(op, prefix=f"K{str(i + 1).zfill(2)}-")  # type:ignore
+            next_op = onnx.compose.add_prefix(op, prefix=f"K{str(i + 1).zfill(2)}-")
             if io_maps is None:
                 io_map = [(f"K{str(i).zfill(2)}-output", f"K{str(i + 1).zfill(2)}-input")]
             else:
                 io_map = [(f"K{str(i).zfill(2)}-{it[0]}", f"K{str(i + 1).zfill(2)}-{it[1]}") for it in io_maps[i]]
-            combined_op = onnx.compose.merge_models(combined_op, next_op, io_map=io_map)  # type:ignore
+            combined_op = onnx.compose.merge_models(combined_op, next_op, io_map=io_map)
 
         return combined_op
 
     def _export(
         self,
-        op: onnx.ModelProto,  # type:ignore
+        op: onnx.ModelProto,
         file_path: str,
         **kwargs: Any,
     ) -> None:
@@ -489,13 +489,13 @@ class ONNXMixin:
             kwargs: Additional arguments to save onnx model.
 
         """
-        onnx.save(op, file_path, **kwargs)  # type:ignore
+        onnx.save(op, file_path, **kwargs)
 
     def _add_metadata(
         self,
-        op: onnx.ModelProto,  # type:ignore
+        op: onnx.ModelProto,
         additional_metadata: Optional[list[tuple[str, str]]] = None,
-    ) -> onnx.ModelProto:  # type:ignore
+    ) -> onnx.ModelProto:
         """Add metadata to the combined ONNX model.
 
         The ``source`` and ``version`` entries are always written. A key that is already present is overwritten,
@@ -512,10 +512,10 @@ class ONNXMixin:
 
     def _onnx_version_conversion(
         self,
-        op: onnx.ModelProto,  # type:ignore
+        op: onnx.ModelProto,
         target_ir_version: Optional[int] = None,
         target_opset_version: Optional[int] = None,
-    ) -> onnx.ModelProto:  # type:ignore
+    ) -> onnx.ModelProto:
         """Automatic conversion of the model's IR/OPSET version to the given target version.
 
         Args:
@@ -527,13 +527,11 @@ class ONNXMixin:
         if op.ir_version != target_ir_version or self._opset_version(op) != target_opset_version:
             # Check if all ops are supported in the current IR version
             model_bytes = io.BytesIO()
-            onnx.save_model(op, model_bytes)  # type:ignore
-            loaded_model = onnx.load_model_from_string(model_bytes.getvalue())  # type:ignore
+            onnx.save_model(op, model_bytes)
+            loaded_model = onnx.load_model_from_string(model_bytes.getvalue())
             if target_opset_version is not None:
-                loaded_model = onnx.version_converter.convert_version(  # type:ignore
-                    loaded_model, target_opset_version
-                )
-            onnx.checker.check_model(loaded_model)  # type:ignore
+                loaded_model = onnx.version_converter.convert_version(loaded_model, target_opset_version)
+            onnx.checker.check_model(loaded_model)
             # Set the IR version if it passed the checking
             if target_ir_version is not None:
                 loaded_model.ir_version = target_ir_version
@@ -541,7 +539,7 @@ class ONNXMixin:
         return op
 
     @staticmethod
-    def _opset_version(op: onnx.ModelProto) -> Optional[int]:  # type:ignore
+    def _opset_version(op: onnx.ModelProto) -> Optional[int]:
         """Return the version of the default (``ai.onnx``) operator set that ``op`` imports, or None."""
         for entry in op.opset_import:
             if entry.domain in ("", "ai.onnx"):

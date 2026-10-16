@@ -475,7 +475,7 @@ class TransformMatrixMinIn:
     _valid_ops_for_transform_computation: Tuple[Any, ...] = ()
     _transformation_matrix_arg: str = "silent"
 
-    def __init__(self, *args, **kwargs) -> None:  # type:ignore
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._transform_matrix: Optional[torch.Tensor] = None
         self._transform_matrices: List[Optional[torch.Tensor]] = []

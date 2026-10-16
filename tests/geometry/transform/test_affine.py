@@ -24,7 +24,7 @@ import torch
 import kornia
 from kornia.core.exceptions import DeviceError, TypeCheckError
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_reflect_padding
 
 
 class TestResize(BaseTester):
@@ -205,6 +205,87 @@ class TestResize(BaseTester):
         inp = torch.rand(1, 2, 3, 2, 1, 3, 10, 8, device=device, dtype=dtype)
         out = kornia.geometry.transform.resize(inp, (5, 3), align_corners=False, antialias=True)
         assert out.shape == (1, 2, 3, 2, 1, 3, 5, 3)
+
+    @pytest.mark.parametrize("leading_shape", [(), (2,), (2, 3), (2, 1, 3)])
+    @pytest.mark.parametrize("transpose", [False, True])
+    @pytest.mark.parametrize("singleton_output", [1, 3])
+    def test_antialias_singleton_axis(self, leading_shape, transpose, singleton_output, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+        # Repeating a row cannot change its horizontal antialiasing. The repeated image also
+        # supplies a reference that the old reflect-padding path can process.
+        row = torch.arange(8, device=device, dtype=dtype).reshape(*([1] * len(leading_shape)), 1, 8)
+        image = row.expand(*leading_shape, 1, 8)
+        repeated = image.expand(*leading_shape, 3, 8)
+        size = (singleton_output, 4)
+        reference_size = (3, 4)
+        if transpose:
+            image = image.transpose(-1, -2)
+            repeated = repeated.transpose(-1, -2)
+            size = size[::-1]
+            reference_size = reference_size[::-1]
+
+        expected = kornia.geometry.transform.resize(repeated, reference_size, antialias=True)
+        if transpose:
+            expected = expected[..., :1].expand(*leading_shape, 4, singleton_output)
+        else:
+            expected = expected[..., :1, :].expand(*leading_shape, singleton_output, 4)
+        actual = kornia.geometry.transform.resize(image, size, antialias=True)
+        assert actual.shape == (*leading_shape, *size)
+        assert actual.dtype == dtype
+        assert actual.device == device
+        self.assert_close(actual, expected)
+        # The downscaled axis is still filtered, including at its reflected endpoints.
+        unfiltered = kornia.geometry.transform.resize(image, size)
+        assert not torch.allclose(actual, unfiltered)
+
+    @pytest.mark.parametrize("transpose", [False, True])
+    @pytest.mark.parametrize("rows", [2, 3])
+    def test_antialias_blurs_a_two_or_three_pixel_axis(self, rows, transpose, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+        # Only a singleton axis skips the Gaussian. Two or three rows shrunk to one are blurred with sigma
+        # (rows - 1) / 2 over taps -(rows - 1) .. rows - 1, reflected at the border; the columns keep their size, so
+        # their kernel is the identity. Nearest keeps row 0 of the blurred rows, and row i is row 0 + 8 i.
+        image = torch.arange(rows * 8, device=device, dtype=dtype).reshape(1, 1, rows, 8)
+        taps = torch.arange(1 - rows, rows, dtype=torch.float64)
+        weights = torch.exp(-(taps**2) / (2 * ((rows - 1) / 2) ** 2))
+        offset = 8 * float((weights * taps.abs()).sum() / weights.sum())
+        expected = torch.arange(8, dtype=torch.float64).add(offset).reshape(1, 1, 1, 8)
+        size = (1, 8)
+        if transpose:
+            image, expected, size = image.transpose(-1, -2), expected.transpose(-1, -2), size[::-1]
+        actual = kornia.geometry.transform.resize(image, size, interpolation="nearest", antialias=True)
+        self.assert_close(actual, expected.to(device, dtype))
+
+    @pytest.mark.parametrize("transpose", [False, True])
+    def test_antialias_singleton_wrappers(self, transpose, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+        image = torch.arange(8, device=device, dtype=dtype).reshape(1, 1, 1, 8)
+        size, factor = (1, 4), (1.0, 0.5)
+        if transpose:
+            image = image.transpose(-1, -2)
+            size, factor = size[::-1], factor[::-1]
+        expected = kornia.geometry.transform.resize(image, size, antialias=True)
+        self.assert_close(kornia.geometry.transform.Resize(size, antialias=True)(image), expected)
+        self.assert_close(kornia.geometry.transform.rescale(image, factor, antialias=True), expected)
+
+    @pytest.mark.parametrize("transpose", [False, True])
+    def test_antialias_singleton_gradcheck(self, transpose, device):
+        image = torch.arange(8, device=device, dtype=torch.float64).reshape(1, 1, 1, 8).requires_grad_()
+        size = (1, 4)
+        if transpose:
+            image, size = image.transpose(-1, -2), size[::-1]
+        self.gradcheck(lambda x: kornia.geometry.transform.resize(x, size, antialias=True), (image,))
+
+    def test_dynamo_singleton_antialias(self, device, dtype, torch_optimizer):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+        image = torch.arange(8, device=device, dtype=dtype).reshape(1, 1, 1, 8)
+        op = torch_optimizer(kornia.geometry.transform.resize, fullgraph=True)
+        expected = kornia.geometry.transform.resize(image, (1, 4), antialias=True)
+        self.assert_close(op(image, (1, 4), antialias=True), expected)
 
     def test_one_param(self, device, dtype):
         inp = torch.rand(1, 3, 5, 2, device=device, dtype=dtype)

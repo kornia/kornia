@@ -192,7 +192,7 @@ class PatchSequential(ImageSequential):
         self.grid_size = grid_size
         self.padding = padding
         self.patchwise_apply = patchwise_apply
-        self._params: Optional[List[PatchParamItem]]  # type: ignore[assignment]
+        self._params: Optional[List[PatchParamItem]]
 
     @staticmethod
     def _validate_grid_size(grid_size: Tuple[int, int]) -> None:
@@ -346,7 +346,7 @@ class PatchSequential(ImageSequential):
     @_with_generator
     def forward_parameters(
         self, batch_shape: torch.Size, *, generator: torch.Generator | None = None
-    ) -> List[PatchParamItem]:  # type: ignore[override]
+    ) -> List[PatchParamItem]:
         """Generate patch-level parameters for a forward pass.
 
         Args:
@@ -446,7 +446,7 @@ class PatchSequential(ImageSequential):
 
         return input.reshape(in_shape)
 
-    def transform_inputs(  # type: ignore[override]
+    def transform_inputs(
         self, input: torch.Tensor, params: Optional[List[PatchParamItem]], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
         """Apply patch-wise augmentation to an input tensor.
@@ -469,7 +469,7 @@ class PatchSequential(ImageSequential):
 
         return input
 
-    def inverse_inputs(  # type: ignore[override]
+    def inverse_inputs(
         self, input: torch.Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
         """Inverse the patch pipeline when supported.
@@ -490,7 +490,7 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
-    def transform_masks(  # type: ignore[override]
+    def transform_masks(
         self, input: torch.Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
         """Transform masks for intensity-only patch pipelines.
@@ -511,7 +511,7 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential for boxes cannot be used with geometric transformations.")
 
-    def inverse_masks(  # type: ignore[override]
+    def inverse_masks(
         self, input: torch.Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
         """Inverse mask transforms for supported patch pipelines.
@@ -532,7 +532,7 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
-    def transform_boxes(  # type: ignore[override]
+    def transform_boxes(
         self, input: Boxes, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Boxes:
         """Transform boxes for intensity-only patch pipelines.
@@ -553,7 +553,7 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential for boxes cannot be used with geometric transformations.")
 
-    def inverse_boxes(  # type: ignore[override]
+    def inverse_boxes(
         self, input: Boxes, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Boxes:
         """Inverse box transforms for supported patch pipelines.
@@ -574,7 +574,7 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
-    def transform_keypoints(  # type: ignore[override]
+    def transform_keypoints(
         self, input: Keypoints, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
         """Transform keypoints for intensity-only patch pipelines.
@@ -595,7 +595,7 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential for keypoints cannot be used with geometric transformations.")
 
-    def inverse_keypoints(  # type: ignore[override]
+    def inverse_keypoints(
         self, input: Keypoints, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
         """Inverse keypoint transforms for supported patch pipelines.
@@ -617,7 +617,7 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
-    def inverse(  # type: ignore[override]
+    def inverse(
         self,
         input: torch.Tensor,
         params: Optional[List[PatchParamItem]] = None,
@@ -640,7 +640,7 @@ class PatchSequential(ImageSequential):
         params: Optional[List[PatchParamItem]] = None,
         *,
         generator: torch.Generator | None = None,
-    ) -> torch.Tensor:  # type: ignore[override]
+    ) -> torch.Tensor:
         """Augment an image batch, optionally replaying previously generated patch parameters."""
         if isinstance(input, (tuple,)):
             raise ValueError("tuple input is not currently supported.")

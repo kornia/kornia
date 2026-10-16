@@ -15,6 +15,10 @@
 # limitations under the License.
 #
 
+import io
+import math
+import warnings
+
 import pytest
 import torch
 
@@ -382,6 +386,75 @@ class TestTransformBoxes2D(BaseTester):
 
         out = transform_bbox(trans_mat, boxes, restore_coordinates=True)
         self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
+
+    @pytest.mark.parametrize(
+        "matrix_batch,boxes_shape",
+        [
+            (1, (0, 4)),
+            (0, (0, 4)),
+            (0, (0, 5, 4)),
+            (1, (0, 5, 4)),
+            (2, (2, 0, 4)),
+            (0, (0, 5, 4, 2)),
+            (1, (0, 5, 4, 2)),
+        ],
+    )
+    @pytest.mark.parametrize("mode", ["xyxy", "xywh"])
+    @pytest.mark.parametrize("restore_coordinates", [True, False])
+    def test_empty_boxes(self, matrix_batch, boxes_shape, mode, restore_coordinates, device, dtype):
+        # view(B, -1, 2) cannot infer -1 for zero elements, so zero boxes or an empty batch raised in reshape.
+        if mode == "xywh" and len(boxes_shape) == 4:
+            pytest.skip("polygons are given as vertices, not as xywh")
+        trans_mat = torch.eye(3, device=device, dtype=dtype).expand(matrix_batch, 3, 3)
+        boxes = torch.empty(boxes_shape, device=device, dtype=dtype, requires_grad=True)
+        out = transform_bbox(trans_mat, boxes, mode=mode, restore_coordinates=restore_coordinates)
+        assert out.shape == boxes.shape
+        assert out.device == boxes.device
+        assert out.dtype == dtype
+        out.sum().backward()
+        assert boxes.grad is not None
+        assert boxes.grad.shape == boxes.shape
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("boxes_shape", [(3, 4), (2, 3, 4), (2, 3, 4, 2)])
+    def test_legacy_onnx_dynamic_axes_match_eager(self, boxes_shape, dtype):
+        # The traced box count must stay dynamic: an export at one size has to run at another.
+        if dtype != torch.float32:
+            pytest.skip("the exported graph is checked once, in float32")
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+
+        def sample(batch, num_boxes):
+            shape = (num_boxes, *boxes_shape[1:]) if len(boxes_shape) == 2 else (batch, num_boxes, *boxes_shape[2:])
+            boxes = torch.arange(math.prod(shape), dtype=dtype).reshape(shape) % 7
+            trans_mat = torch.tensor([[-1.0, 0.1, 9.0], [0.2, 1.0, -2.0], [0.0, 0.0, 1.0]], dtype=dtype)
+            return trans_mat.repeat(num_boxes if len(shape) == 2 else batch, 1, 1), boxes
+
+        class _TransformBbox(torch.nn.Module):
+            def forward(self, trans_mat: torch.Tensor, boxes: torch.Tensor) -> torch.Tensor:
+                return transform_bbox(trans_mat, boxes)
+
+        model = _TransformBbox()
+        if len(boxes_shape) == 2:
+            axes = {"trans_mat": {0: "num_boxes"}, "boxes": {0: "num_boxes"}}
+        else:
+            axes = {"trans_mat": {0: "batch"}, "boxes": {0: "batch", 1: "num_boxes"}}
+        buf = io.BytesIO()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            torch.onnx.export(
+                model,
+                sample(2, 3),
+                buf,  # ty: ignore[invalid-argument-type]  # The legacy exporter accepts BytesIO.
+                input_names=["trans_mat", "boxes"],
+                opset_version=18,
+                dynamic_axes=axes,
+                dynamo=False,
+            )
+        session = ort.InferenceSession(buf.getvalue(), providers=["CPUExecutionProvider"])
+        for trans_mat, boxes in (sample(2, 3), sample(4, 6)):
+            actual = session.run(None, {"trans_mat": trans_mat.numpy(), "boxes": boxes.numpy()})[0]
+            self.assert_close(torch.from_numpy(actual), model(trans_mat, boxes))
 
     def test_transform_boxes_wh(self, device, dtype):
         boxes = torch.tensor(

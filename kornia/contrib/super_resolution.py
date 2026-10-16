@@ -167,7 +167,7 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
         images: Union[torch.Tensor, List[torch.Tensor]],
         edge_maps: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None,
         output_type: str = "torch",
-    ) -> Union[torch.Tensor, List[torch.Tensor], List["Image.Image"]]:  # type: ignore
+    ) -> Union[torch.Tensor, List[torch.Tensor], List["Image.Image"]]:
         """Draw the super resolution results.
 
         Args:
@@ -211,14 +211,14 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
         self._save_outputs(images, directory, suffix="_src")
         self._save_outputs(outputs, directory, suffix="_sr")
 
-    def to_onnx(  # type: ignore[override]
+    def to_onnx(
         self,
         onnx_name: Optional[str] = None,
         include_pre_and_post_processor: bool = True,
         save: bool = True,
         additional_metadata: Optional[List[Tuple[str, str]]] = None,
         **kwargs: Any,
-    ) -> "onnx.ModelProto":  # type: ignore
+    ) -> "onnx.ModelProto":
         """Export the current super resolution model to an ONNX model file.
 
         Args:

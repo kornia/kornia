@@ -384,12 +384,65 @@ class TestEmptyGeometricInverse(BaseTester):
         restored.sum().backward()
         self.assert_close(image.grad, torch.empty_like(image))
 
-    def test_empty_slice_crop_inverse_is_unsupported(self, device, dtype):
-        aug = K.RandomCrop((4, 5), cropping_mode="slice")
-        image = torch.empty(0, 3, 6, 8, device=device, dtype=dtype)
+    @pytest.mark.parametrize("batch_size", [0, 2])
+    @pytest.mark.parametrize("p", [0.0, 1.0])
+    @pytest.mark.parametrize("data_key", ["input", "mask"])
+    @pytest.mark.parametrize(
+        "make_aug",
+        [
+            lambda p: K.RandomCrop((4, 5), p=p, cropping_mode="slice"),
+            lambda p: K.CenterCrop((4, 5), p=p, cropping_mode="slice"),
+            lambda p: K.RandomResizedCrop((4, 5), p=p, cropping_mode="slice"),
+        ],
+        ids=["random-crop", "center-crop", "resized-crop"],
+    )
+    def test_slice_crop_inverse_is_unsupported_4429(self, make_aug, data_key, p, batch_size, device, dtype):
+        # The mode is checked before the gate: CenterCrop and RandomResizedCrop checked it only in inverse_transform,
+        # which an empty or unapplied batch never reaches, so their slice-mode inverse succeeded for those batches.
+        aug = make_aug(p)
+        channels = 3 if data_key == "input" else 1
+        image = torch.rand(batch_size, channels, 6, 8, device=device, dtype=dtype)
         output = aug(image)
+        method = aug.inverse_inputs if data_key == "input" else aug.inverse_masks
         with pytest.raises(NotImplementedError, match="only applicable for resample cropping mode"):
-            aug.inverse(output)
+            method(output, aug._params, aug.flags, aug.transform_matrix)
+        seq = K.AugmentationSequential(make_aug(p), data_keys=["input", "mask"])
+        mask = torch.rand(batch_size, 1, 6, 8, device=device, dtype=dtype)
+        outputs = dict(zip(["input", "mask"], seq(torch.rand(batch_size, 3, 6, 8, device=device, dtype=dtype), mask)))
+        with pytest.raises(NotImplementedError, match="only applicable for resample cropping mode"):
+            seq.inverse(outputs[data_key], data_keys=[data_key])
+
+    @pytest.mark.parametrize("batch_size", [0, 2])
+    @pytest.mark.parametrize("method", ["inverse_inputs", "inverse_masks"])
+    @pytest.mark.parametrize("crop_type", [K.RandomCrop, K.CenterCrop, K.RandomResizedCrop])
+    def test_slice_crop_inverse_keyword_override_4429(self, crop_type, method, batch_size, device, dtype):
+        # A cropping_mode keyword overrides the flag, as in the public inverse, before the empty-batch shortcut.
+        aug = crop_type((4, 5), p=1.0, cropping_mode="resample")
+        output = aug(torch.rand(batch_size, 3 if method == "inverse_inputs" else 1, 6, 8, device=device, dtype=dtype))
+        inverse = getattr(aug, method)
+        with pytest.raises(NotImplementedError, match="Got slice"):
+            inverse(output, aug._params, aug.flags, aug.transform_matrix, cropping_mode="slice")
+        assert inverse(output, aug._params, aug.flags, aug.transform_matrix).shape[-2:] == (6, 8)
+
+    @pytest.mark.parametrize("batch_size", [0, 2])
+    @pytest.mark.parametrize(
+        "make_aug",
+        [
+            lambda: K.CenterCrop((4, 5), cropping_mode="slice"),
+            lambda: K.RandomResizedCrop((4, 5), p=1.0, cropping_mode="slice"),
+        ],
+        ids=["center-crop", "resized-crop"],
+    )
+    def test_slice_crop_inverse_keeps_geometry(self, make_aug, batch_size, device, dtype):
+        # Boxes and keypoints invert through the transform matrix, which slice mode records too.
+        seq = K.AugmentationSequential(make_aug(), data_keys=["input", "bbox_xyxy", "keypoints"])
+        image = torch.rand(batch_size, 3, 6, 8, device=device, dtype=dtype)
+        boxes = torch.tensor([[[1.0, 1.0, 3.0, 3.0]]], device=device, dtype=dtype).expand(batch_size, 1, 4)
+        keypoints = torch.ones(batch_size, 2, 2, device=device, dtype=dtype)
+        _, out_boxes, out_keypoints = seq(image, boxes, keypoints)
+        restored_boxes, restored_keypoints = seq.inverse(out_boxes, out_keypoints, data_keys=["bbox_xyxy", "keypoints"])
+        self.assert_close(restored_boxes, boxes)
+        self.assert_close(restored_keypoints, keypoints)
 
     @pytest.mark.parametrize(
         "make_first,intermediate_size",

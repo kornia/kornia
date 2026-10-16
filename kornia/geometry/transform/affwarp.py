@@ -703,6 +703,8 @@ def resize(
             ks = int(max(2.0 * 2 * sigmas[0], 3)), int(max(2.0 * 2 * sigmas[1], 3))
 
             ks = (ks[0] if ks[0] % 2 else ks[0] + 1, ks[1] if ks[1] % 2 else ks[1] + 1)
+            # A singleton axis has nothing to smooth and cannot accept reflection padding.
+            ks = (1 if h == 1 else ks[0], 1 if w == 1 else ks[1])
 
             input = gaussian_blur2d(input, ks, sigmas)
 

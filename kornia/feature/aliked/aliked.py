@@ -307,7 +307,10 @@ class DKD(nn.Module):
                     indices = indices[sort_idx[: self.n_limit]]
                 indices_keypoints.append(indices)
 
-        wh = torch.tensor([w - 1, h - 1], device=scores_nograd.device, dtype=scores_nograd.dtype)
+        # Keypoints are formed in at least float32: a half-precision dtype holds no odd integer above 256 (bfloat16)
+        # or 2048 (float16), not even ``w - 1``. The grid of the score lookup is cast to the map's dtype for the call.
+        coord_dtype = torch.promote_types(scores_map.dtype, torch.float32)
+        wh = torch.tensor([w - 1, h - 1], device=scores_nograd.device, dtype=coord_dtype)
 
         keypoints = []
         scoredispersitys = []
@@ -328,23 +331,23 @@ class DKD(nn.Module):
                 x_exp = ((patch_scores - max_v) / self.temperature).exp()
                 x_sum = x_exp.sum(dim=1, keepdim=True)
 
-                xy_residual = x_exp @ self.hw_grid / x_sum  # type: ignore[operator]
+                xy_residual = x_exp @ self.hw_grid / x_sum
 
                 hw_grid_dist2 = (
                     torch.norm(
-                        (self.hw_grid[None, :, :] - xy_residual[:, None, :]) / self.radius,  # type: ignore[index]
+                        (self.hw_grid[None, :, :] - xy_residual[:, None, :]) / self.radius,
                         dim=-1,
                     )
                     ** 2
                 )
                 scoredispersity = (x_exp * hw_grid_dist2).sum(dim=1) / x_exp.sum(dim=1)
 
-                keypoints_xy = keypoints_xy_nms + xy_residual
+                keypoints_xy = keypoints_xy_nms.to(coord_dtype) + xy_residual
                 keypoints_xy = keypoints_xy / wh * 2 - 1  # -> [-1, 1]
 
                 kptscore = F.grid_sample(
                     scores_map[b_idx].unsqueeze(0),
-                    keypoints_xy.view(1, 1, -1, 2),
+                    keypoints_xy.view(1, 1, -1, 2).to(scores_map.dtype),
                     mode="bilinear",
                     align_corners=True,
                 )[0, 0, 0, :]
@@ -358,7 +361,7 @@ class DKD(nn.Module):
                     # w_i = x_exp_i / sum(x_exp), mu = xy_residual (already computed).
                     # cov = sum_i w_i (g_i - mu)(g_i - mu)^T  ->  (N, 2, 2)
                     W = x_exp / x_sum  # (N, K²) normalised weights
-                    delta = self.hw_grid[None] - xy_residual[:, None]  # type: ignore[index]  # (N, K², 2)
+                    delta = self.hw_grid[None] - xy_residual[:, None]  # (N, K², 2)
                     cov = torch.einsum("ni,nij,nik->njk", W, delta, delta)  # (N, 2, 2)
                     local_affines.append(_affine_from_cov(cov))
         else:
@@ -368,10 +371,10 @@ class DKD(nn.Module):
                     [indices_kpt % w, torch.div(indices_kpt, w, rounding_mode="trunc")],
                     dim=1,
                 )
-                keypoints_xy = keypoints_xy_nms / wh * 2 - 1
+                keypoints_xy = keypoints_xy_nms.to(coord_dtype) / wh * 2 - 1
                 kptscore = F.grid_sample(
                     scores_map[b_idx].unsqueeze(0),
-                    keypoints_xy.view(1, 1, -1, 2),
+                    keypoints_xy.view(1, 1, -1, 2).to(scores_map.dtype),
                     mode="bilinear",
                     align_corners=True,
                 )[0, 0, 0, :]
@@ -685,7 +688,8 @@ class SDDH(nn.Module):
             A pair ``(descriptors, offsets)`` where each element is a list of length B.
         """
         b, c, h, w = x.shape
-        wh = torch.tensor([[w - 1, h - 1]], device=x.device, dtype=x.dtype)
+        # Positions in at least float32, as in DKD; the sampling grid is cast to the feature map's dtype for the call.
+        wh = torch.tensor([[w - 1, h - 1]], device=x.device, dtype=torch.promote_types(x.dtype, torch.float32))
         max_offset = max(h, w) / 4.0
 
         offsets_list = []
@@ -717,7 +721,7 @@ class SDDH(nn.Module):
             pos = 2.0 * pos / wh[None] - 1
             pos = pos.reshape(1, N_kpts * self.n_pos, 1, 2)
 
-            features = F.grid_sample(xi.unsqueeze(0), pos, mode="bilinear", align_corners=True)
+            features = F.grid_sample(xi.unsqueeze(0), pos.to(xi.dtype), mode="bilinear", align_corners=True)
             features = features.reshape(c, N_kpts, self.n_pos, 1).permute(1, 0, 2, 3)
 
             if mask_w is not None:
@@ -778,10 +782,11 @@ class ALIKED(nn.Module):
           does not move the keypoints.
         - :meth:`forward` returns one :class:`ALIKEDFeatures` per image. Its keypoints are sub-pixel ``(x, y)`` in the
           pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
-          (see :ref:`Local features <local-features-conventions>`), in the image's dtype: a strict maximum of the
-          score map in its ``2 * nms_radius + 1`` window (see the note), at least ``nms_radius`` pixels from the
-          border, moved by a soft-argmax over that window. Its score is the score map read bilinearly there, and the
-          descriptors are L2-normalised.
+          (see :ref:`Local features <local-features-conventions>`): a strict maximum of the score map in its
+          ``2 * nms_radius + 1`` window (see the note), at least ``nms_radius`` pixels from the border, moved by a
+          soft-argmax over that window. Its score is the score map read bilinearly there, and the descriptors are
+          L2-normalised. The keypoints, and the LAFs of :meth:`forward_laf`, are float32 for a float16 or bfloat16
+          model and otherwise in the image's dtype; scores and descriptors keep the model's dtype.
         - With ``detection_threshold > 0`` (threshold mode), the maxima strictly above it are kept, at most
           ``max_num_keypoints`` of them, and at most 20000 for a non-positive ``max_num_keypoints``. An image with no
           maximum above the threshold keeps the maxima above its own mean score instead, whatever the rest of the
@@ -968,7 +973,7 @@ class ALIKED(nn.Module):
 
         B = images.shape[0]
         _, _, h, w = images.shape
-        wh = torch.tensor([w - 1, h - 1], device=images.device, dtype=images.dtype)
+        wh = torch.tensor([w - 1, h - 1], device=images.device, dtype=torch.promote_types(images.dtype, torch.float32))
 
         results = []
         for i in range(B):
@@ -1033,14 +1038,14 @@ class ALIKED(nn.Module):
 
         dkd_out = self.dkd(score_map, return_affine=compute_affine)
         if compute_affine:
-            keypoints, kptscores, _scoredispersitys, local_affines = dkd_out  # type: ignore[misc]
+            keypoints, kptscores, _scoredispersitys, local_affines = dkd_out
         else:
-            keypoints, kptscores, _scoredispersitys = dkd_out  # type: ignore[misc]
+            keypoints, kptscores, _scoredispersitys = dkd_out
             local_affines = None
         descriptors, _offsets = self.desc_head(feature_map, keypoints)
 
         B, _, H, W = img.shape
-        wh = torch.tensor([W - 1, H - 1], device=img.device, dtype=img.dtype)
+        wh = torch.tensor([W - 1, H - 1], device=img.device, dtype=torch.promote_types(img.dtype, torch.float32))
 
         lafs_list: list[torch.Tensor] = []
         for i in range(B):

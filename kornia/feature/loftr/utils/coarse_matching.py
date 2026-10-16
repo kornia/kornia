@@ -324,7 +324,7 @@ class CoarseMatching(nn.Module):
             # silently upcast the padded mconf below via torch.cat's type promotion.
             mconf_gt = torch.zeros(len(data["spv_b_ids"]), device=_device, dtype=mconf.dtype)
 
-            b_ids, i_ids, j_ids, mconf = (  # type: ignore
+            b_ids, i_ids, j_ids, mconf = (
                 torch.cat([x[pred_indices], y[gt_pad_indices]], dim=0)
                 for x, y in zip(
                     [b_ids, i_ids, j_ids, mconf],
@@ -336,20 +336,22 @@ class CoarseMatching(nn.Module):
         coarse_matches = {"b_ids": b_ids, "i_ids": i_ids, "j_ids": j_ids}
 
         # 4. Update with matches in original image resolution: coarse cell (x, y) of either image sits on pixel
-        # (stride_c * x, stride_c * y) for any image size
+        # (stride_c * x, stride_c * y) for any image size. The keypoints are built in at least float32 before any
+        # scaling: bfloat16 holds no odd integer above 256 and float16 none above 2048.
+        coord_dtype = torch.promote_types(conf_matrix.dtype, torch.float32)
         scale = data["stride_c"]
-        scale0 = scale * data["scale0"][b_ids] if "scale0" in data else scale
-        scale1 = scale * data["scale1"][b_ids] if "scale1" in data else scale
-        mkpts0_c = torch.stack([i_ids % data["hw0_c"][1], i_ids // data["hw0_c"][1]], dim=1) * scale0
-        mkpts1_c = torch.stack([j_ids % data["hw1_c"][1], j_ids // data["hw1_c"][1]], dim=1) * scale1
+        scale0 = scale * data["scale0"][b_ids].to(coord_dtype) if "scale0" in data else scale
+        scale1 = scale * data["scale1"][b_ids].to(coord_dtype) if "scale1" in data else scale
+        mkpts0_c = torch.stack([i_ids % data["hw0_c"][1], i_ids // data["hw0_c"][1]], dim=1).to(coord_dtype) * scale0
+        mkpts1_c = torch.stack([j_ids % data["hw1_c"][1], j_ids // data["hw1_c"][1]], dim=1).to(coord_dtype) * scale1
 
         # These matches is the current prediction (for visualization)
         coarse_matches.update(
             {
                 "gt_mask": mconf == 0,
                 "m_bids": b_ids[mconf != 0],  # mconf == 0 => gt matches
-                "mkpts0_c": mkpts0_c[mconf != 0].to(dtype=conf_matrix.dtype),
-                "mkpts1_c": mkpts1_c[mconf != 0].to(dtype=conf_matrix.dtype),
+                "mkpts0_c": mkpts0_c[mconf != 0],
+                "mkpts1_c": mkpts1_c[mconf != 0],
                 "mconf": mconf[mconf != 0],
             }
         )
