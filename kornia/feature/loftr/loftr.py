@@ -106,8 +106,10 @@ class LoFTR(nn.Module):
         pretrained: Download and set pretrained weights to the model. Options: 'outdoor', 'indoor', 'indoor_new'.
                     'outdoor' is trained on the MegaDepth dataset and 'indoor' and 'indoor_new'
                     on the ScanNet. 'indoor_new' also switches the positional encoding of the copy
-                    to ``temp_bug_fix=True``, which is what its checkpoint was trained with. ``None`` loads no
-                    weights.
+                    to ``temp_bug_fix=True``, which is what its checkpoint was trained with. The weighted model
+                    comes back in evaluation mode. ``None`` builds random weights in training mode, where
+                    ``CoarseMatching`` runs its supervised training branch and needs ground-truth data; call
+                    ``.eval()`` for inference, also after loading your own weights.
 
     Returns:
         Dictionary with image correspondences and confidence scores.
@@ -149,7 +151,7 @@ class LoFTR(nn.Module):
 
             pretrained_dict = load_state_dict_from_url(urls[pretrained], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict["state_dict"])
-        self.eval()
+            self.eval()
 
     def extract_features(self, image: torch.Tensor) -> dict[str, torch.Tensor]:
         r"""Compute the features of images that do not depend on the image they are matched with.
@@ -168,7 +170,7 @@ class LoFTR(nn.Module):
               default config this is 128 channels, about 96 MB in float32 for a 1024 x 736 image.
 
         Example:
-            >>> loftr = LoFTR(None)
+            >>> loftr = LoFTR(None).eval()
             >>> images = [torch.rand(1, 1, 64, 80), torch.rand(1, 1, 72, 64), torch.rand(1, 1, 64, 64)]
             >>> features = [loftr.extract_features(image) for image in images]
             >>> out = loftr({"features0": features[0], "features1": features[1]})

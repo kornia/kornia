@@ -28,7 +28,7 @@ class TestHardNet(BaseTester):
     @pytest.mark.slow
     def test_shape(self, device):
         inp = torch.ones(1, 1, 32, 32, device=device)
-        hardnet = HardNet().to(device)
+        hardnet = HardNet(pretrained=False).to(device)
         hardnet.eval()  # batchnorm with size 1 is not allowed in train mode
         out = hardnet(inp)
         assert out.shape == (1, 128)
@@ -36,48 +36,48 @@ class TestHardNet(BaseTester):
     @pytest.mark.slow
     def test_shape_batch(self, device):
         inp = torch.ones(4, 1, 32, 32, device=device)
-        hardnet = HardNet().to(device)
+        hardnet = HardNet(pretrained=False).to(device).eval()
         out = hardnet(inp)
         assert out.shape == (4, 128)
 
     def test_gradcheck(self, device):
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float64)
-        hardnet = HardNet().to(patches.device, patches.dtype)
+        hardnet = HardNet(pretrained=False).to(patches.device, patches.dtype).eval()
         self.gradcheck(hardnet, (patches,), eps=1e-4, atol=1e-4, nondet_tol=1e-8)
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 32, 32
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        model = HardNet().to(patches.device, patches.dtype).eval()
-        model_jit = torch.jit.script(HardNet().to(patches.device, patches.dtype).eval())
+        model = HardNet(pretrained=False).to(patches.device, patches.dtype).eval()
+        model_jit = torch.jit.script(HardNet(pretrained=False).to(patches.device, patches.dtype).eval())
         self.assert_close(model(patches), model_jit(patches))
 
 
 class TestHardNet8(BaseTester):
     def test_shape(self, device):
         inp = torch.ones(1, 1, 32, 32, device=device)
-        hardnet = HardNet8().to(device)
+        hardnet = HardNet8(pretrained=False).to(device)
         hardnet.eval()  # batchnorm with size 1 is not allowed in train mode
         out = hardnet(inp)
         assert out.shape == (1, 128)
 
     def test_shape_batch(self, device):
         inp = torch.ones(4, 1, 32, 32, device=device)
-        hardnet = HardNet8().to(device)
+        hardnet = HardNet8(pretrained=False).to(device).eval()
         out = hardnet(inp)
         assert out.shape == (4, 128)
 
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float32)
-        hardnet = HardNet8().to(patches.device, patches.dtype)
+        hardnet = HardNet8(pretrained=False).to(patches.device, patches.dtype).eval()
         self.gradcheck(hardnet, (patches,), eps=1e-4, atol=1e-4)
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 32, 32
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        model = HardNet8().to(patches.device, patches.dtype).eval()
-        model_jit = torch.jit.script(HardNet8().to(patches.device, patches.dtype).eval())
+        model = HardNet8(pretrained=False).to(patches.device, patches.dtype).eval()
+        model_jit = torch.jit.script(HardNet8(pretrained=False).to(patches.device, patches.dtype).eval())
         self.assert_close(model(patches), model_jit(patches))
 
     def test_untrained_descriptors_are_distinct_5692(self, device, dtype):
@@ -86,7 +86,7 @@ class TestHardNet8(BaseTester):
             pytest.skip(f"no conv2d kernel for {dtype} on {device.type}")
         torch.manual_seed(0)
         patches = torch.rand(8, 1, 32, 32, device=device, dtype=dtype)
-        out = HardNet8().to(device, dtype)(patches)
+        out = HardNet8(pretrained=False).eval().to(device, dtype)(patches)
         assert out.shape == (8, 128)
         self.assert_close(out.norm(dim=1), torch.ones(8, device=device, dtype=dtype))
         cos = out @ out.T
@@ -98,7 +98,7 @@ class TestHardNet8(BaseTester):
             pytest.skip(f"no conv2d kernel for {dtype} on {device.type}")
         torch.manual_seed(0)
         patches = torch.rand(4, 1, 32, 32, device=device, dtype=dtype)
-        model = HardNet8().to(device, dtype)
+        model = HardNet8(pretrained=False).to(device, dtype).eval()
         features = model.features(model._normalize_input(patches)).view(4, -1)
         expected = torch.nn.functional.normalize(torch.nn.functional.normalize(features, dim=1)[:, :128], dim=1)
         self.assert_close(model(patches), expected)
@@ -109,7 +109,7 @@ class TestHardNet8(BaseTester):
             pytest.skip("half-precision rounding leaves a noise gradient on the degenerate placeholder as well")
         torch.manual_seed(0)
         patches = torch.rand(4, 1, 32, 32, device=device, dtype=dtype)
-        model = HardNet8().to(device, dtype)
+        model = HardNet8(pretrained=False).to(device, dtype).eval()
         target = torch.randn(4, 128, device=device, dtype=dtype)
         (model(patches) * target).sum().backward()
         grad = model.features[0].weight.grad
@@ -118,7 +118,7 @@ class TestHardNet8(BaseTester):
 
     def test_checkpoint_layout_is_unchanged_5692(self, device):
         # The pretrained checkpoint loads with strict=True, so the buffer names and shapes must stay.
-        model = HardNet8().to(device)
+        model = HardNet8(pretrained=False).to(device)
         state = model.state_dict()
         assert state["components"].shape == (512, 128)
         assert state["mean"].shape == (512,)
@@ -142,7 +142,7 @@ class TestHardNetConstantPatchIsFinite(BaseTester):
             # The descriptor is a stack of convolutions; torch 2.1.2 has no float16 CPU kernel.
             pytest.skip(f"no conv2d kernel for {desc_dtype} on {device.type}")
         patches = torch.zeros(2, 1, 32, 32, device=device, dtype=desc_dtype)
-        out = model().to(device, desc_dtype)(patches)
+        out = model(pretrained=False).eval().to(device, desc_dtype)(patches)
         assert torch.isfinite(out).all()
 
 
@@ -150,11 +150,11 @@ class TestHardNetConstantPatchIsFinite(BaseTester):
 # pads with mode="replicate" (its gradient filters). MKD runs unwhitened, which needs no download either and returns
 # the full 238-dimensional concat embedding.
 _PATCH_DESCRIPTORS = {
-    "HardNet": (HardNet, 32, 128, False),
-    "HardNet8": (HardNet8, 32, 128, False),
-    "HyNet": (HyNet, 32, 128, False),
-    "SOSNet": (SOSNet, 32, 128, False),
-    "TFeat": (TFeat, 32, 128, False),
+    "HardNet": (lambda: HardNet(pretrained=False).eval(), 32, 128, False),
+    "HardNet8": (lambda: HardNet8(pretrained=False).eval(), 32, 128, False),
+    "HyNet": (lambda: HyNet(pretrained=False).eval(), 32, 128, False),
+    "SOSNet": (lambda: SOSNet(pretrained=False).eval(), 32, 128, False),
+    "TFeat": (lambda: TFeat(pretrained=False).eval(), 32, 128, False),
     "MKDDescriptor": (lambda: MKDDescriptor(whitening=None), 32, 238, True),
     "SIFTDescriptor": (lambda: SIFTDescriptor(32), 32, 128, True),
 }

@@ -170,6 +170,77 @@ class TestBinaryFocalLossWithLogits(BaseTester):
 
 
 class TestFocalLoss(BaseTester):
+    @pytest.mark.parametrize("reduction", ["mean", "sum"])
+    @pytest.mark.parametrize("shape", [(2, 4), (2, 4, 3, 5), (0, 4, 3)])
+    @pytest.mark.parametrize("ignore_index", [None, -100, 0])
+    def test_reduced_matches_dense_value_and_gradient(self, device, dtype, reduction, shape, ignore_index):
+        generator = torch.Generator().manual_seed(17)
+        logits = torch.randn(shape, generator=generator).to(device=device, dtype=dtype).requires_grad_()
+        labels = torch.randint(shape[1], (shape[0], *shape[2:]), generator=generator).to(device)
+        if labels.numel() and ignore_index is not None:
+            labels.reshape(-1)[0] = ignore_index
+        if logits.ndim > 3:
+            logits = logits.transpose(-1, -2)
+            labels = labels.transpose(-1, -2) if labels.ndim > 2 else labels
+        # Compare the public dense contract, including empty means and the class-count denominator.
+        dense = kornia.losses.focal_loss(logits, labels, 0.25, 0.5, "none", ignore_index=ignore_index)
+        expected = dense.mean() if reduction == "mean" else dense.sum()
+        actual = kornia.losses.focal_loss(logits, labels, 0.25, 0.5, reduction, ignore_index=ignore_index)
+        if logits.numel() == 0 and reduction == "mean":
+            assert actual.isnan()
+            assert expected.isnan()
+        else:
+            self.assert_close(actual, expected)
+        self.assert_close(torch.autograd.grad(actual, logits)[0], torch.autograd.grad(expected, logits)[0])
+
+    @pytest.mark.parametrize("reduction", ["mean", "sum"])
+    @pytest.mark.parametrize("alpha,gamma", [(0.25, -1.0), (float("inf"), 2.0), (0.25, float("nan"))])
+    def test_reduced_unusual_parameters_match_dense(self, device, dtype, reduction, alpha, gamma):
+        logits = torch.tensor([[1000.0, 0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
+        labels = torch.tensor([1], device=device)
+        dense = kornia.losses.focal_loss(logits, labels, alpha, gamma, "none")
+        expected = dense.mean() if reduction == "mean" else dense.sum()
+        actual = kornia.losses.focal_loss(logits, labels, alpha, gamma, reduction)
+        assert actual.isnan()
+        assert expected.isnan()
+
+    @pytest.mark.parametrize("reduction", ["mean", "sum"])
+    def test_reduced_weight_gradient_and_promotion(self, device, dtype, reduction):
+        logits = torch.tensor([[1.0, 2.0, 3.0], [2.0, 0.0, 1.0]], device=device, dtype=dtype, requires_grad=True)
+        labels = torch.tensor([0, 2], device=device)
+        weight = torch.tensor([0.5, 1.5, 2.0], device=device, dtype=torch.float32, requires_grad=True)
+        dense = kornia.losses.focal_loss(logits, labels, 0.25, 0.5, "none", weight)
+        expected = dense.mean() if reduction == "mean" else dense.sum()
+        actual = kornia.losses.focal_loss(logits, labels, 0.25, 0.5, reduction, weight)
+        self.assert_close(actual, expected)
+        actual_grads = torch.autograd.grad(actual, (logits, weight))
+        expected_grads = torch.autograd.grad(expected, (logits, weight))
+        for actual_grad, expected_grad in zip(actual_grads, expected_grads):
+            self.assert_close(actual_grad, expected_grad)
+
+    def test_reduced_alpha_does_not_synchronize(self, device, dtype):
+        if device.type != "cuda":
+            pytest.skip("CUDA synchronization check")
+        logits = torch.randn(2, 4, 3, 5, device=device, dtype=dtype, requires_grad=True)
+        labels = torch.randint(4, (2, 3, 5), device=device)
+        expected = kornia.losses.focal_loss(logits, labels, 0.25, 2.0, "none").mean()
+        previous_sync_debug_mode = torch.cuda.get_sync_debug_mode()
+        torch.cuda.set_sync_debug_mode("error")
+        try:
+            actual = kornia.losses.focal_loss(logits, labels, 0.25, 2.0, "mean")
+        finally:
+            torch.cuda.set_sync_debug_mode(previous_sync_debug_mode)
+        self.assert_close(actual, expected)
+
+    def test_reduced_saved_tensor_memory(self, device, dtype):
+        # A reduced objective should not retain dense per-class one-hot and focal-factor intermediates.
+        logits = torch.zeros(2, 21, 4, 5, device=device, dtype=dtype, requires_grad=True)
+        labels = torch.zeros(2, 4, 5, device=device, dtype=torch.int64)
+        saved = []
+        with torch.autograd.graph.saved_tensors_hooks(lambda value: saved.append(value) or value, lambda value: value):
+            kornia.losses.focal_loss(logits, labels, 0.25, reduction="mean")
+        assert sum(value.numel() * value.element_size() for value in saved) < 4 * logits.numel() * logits.element_size()
+
     @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
     @pytest.mark.parametrize("gamma", [0.0, 0.5, 2.0])
     @pytest.mark.parametrize("alpha", [None, 0.25])
@@ -224,7 +295,11 @@ class TestFocalLoss(BaseTester):
         elif reduction == "sum":
             expected = expected.sum()
         actual = kornia.losses.focal_loss(logits, labels, alpha, gamma, reduction, weight)
-        self.assert_close(actual, expected, rtol=0, atol=0)
+        if not weighted and reduction != "none":
+            # Gathering target terms changes the reduction order relative to the dense reference.
+            self.assert_close(actual, expected)
+        else:
+            self.assert_close(actual, expected, rtol=0, atol=0)
         self.assert_close(
             torch.autograd.grad(actual.sum(), logits)[0], torch.autograd.grad(expected.sum(), reference)[0]
         )
@@ -401,7 +476,8 @@ class TestFocalLoss(BaseTester):
         self.assert_close(values[off_class], torch.zeros_like(values[off_class]), rtol=0, atol=0)
         assert (values[~off_class] > 0).all()
 
-    def test_dynamo(self, device, dtype, torch_optimizer):
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    def test_dynamo(self, device, dtype, torch_optimizer, reduction):
         num_classes = 3
         logits = torch.rand(2, num_classes, device=device, dtype=dtype)
         labels = torch.randint(num_classes, (2,), device=device)
@@ -409,7 +485,7 @@ class TestFocalLoss(BaseTester):
         op = kornia.losses.focal_loss
         op_optimized = torch_optimizer(op)
 
-        args = (0.25, 2.0)
+        args = (0.25, 2.0, reduction)
         actual = op_optimized(logits, labels, *args)
         expected = op(logits, labels, *args)
         self.assert_close(actual, expected)

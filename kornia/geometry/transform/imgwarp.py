@@ -504,7 +504,12 @@ def warp_affine(
         gx = m[:, 0, 0, None, None] * base_x + m[:, 0, 1, None, None] * base_y + m[:, 0, 2, None, None]
         gy = m[:, 1, 0, None, None] * base_x + m[:, 1, 1, None, None] * base_y + m[:, 1, 2, None, None]
         grid = torch.stack([gx, gy], dim=-1)  # (B_M, H, W, 2)
-    if B_M == 1 and B > 1:
+    if torch.jit.is_tracing():
+        # Keep both batch sizes dynamic. Using their maximum expands a shared grid for non-empty images,
+        # but leaves a singleton grid intact for an empty source so grid_sample still rejects that pairing.
+        batch = torch.maximum(torch._shape_as_tensor(src)[0], torch._shape_as_tensor(M)[0])
+        grid = grid.expand(batch, -1, -1, -1)
+    elif B_M == 1 and B > 1:
         grid = grid.expand(B, -1, -1, -1)
 
     if padding_mode == "fill":

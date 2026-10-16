@@ -22,7 +22,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.enhance import adjust_brightness, adjust_contrast, adjust_hue, adjust_saturation
 
 
@@ -141,6 +141,8 @@ class ColorJiggle(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
         - the steps use kornia's own primitives: brightness is additive (the drawn factor is re-based to
           ``factor - 1`` for :func:`kornia.enhance.adjust_brightness`, as :class:`RandomBrightness` does),
           contrast scales the raw values (:func:`kornia.enhance.adjust_contrast`), saturation scales the HSV
@@ -154,14 +156,9 @@ class ColorJiggle(IntensityAugmentationBase2D):
         - ``brightness`` is bounded to ``[0, 2]`` in both argument forms: ``(0.0, 3.0)`` and the scalar ``1.5``,
           whose implied range reaches ``2.5``, raise at construction, where :class:`ColorJitter` accepts either.
         - a step is skipped when every drawn factor in the batch is neutral, so ``ColorJiggle(0, 0, 0, 0)`` is
-          the identity for any input, and the channel count only has to suit the steps that run: saturation and
-          hue need three channels, a brightness- or contrast-only configuration accepts any. The brightness and
-          contrast steps clamp into ``[0, 1]``; saturation and hue do not clamp the RGB result.
-
-    .. warning::
-        Because the brightness and contrast steps clamp, an all-negative input can come back as an all-zero
-        image, depending on the drawn factors and on which steps run. Tracked in
-        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
+          the identity for an input in ``[0, 1]``. The channel count only has to suit the steps that run:
+          saturation and hue need three channels; a brightness- or contrast-only configuration accepts any.
+          The input and final RGB result are clamped even when every step is neutral.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_brightness`,
@@ -231,4 +228,7 @@ class ColorJiggle(IntensityAugmentationBase2D):
         # A fixed order on an RGB input runs the branch-free dispatcher in eager and compiled mode alike. It is
         # restricted to RGB inputs because it runs the hue and saturation steps, which require three channels,
         # even when they are skipped.
-        return _dispatch_color_steps(input, params, self._fixed_order, self._cond_fn, _NEUTRAL, _STEPS)
+        input = _clamp_unit_range(input)
+        return _clamp_unit_range(
+            _dispatch_color_steps(input, params, self._fixed_order, self._cond_fn, _NEUTRAL, _STEPS)
+        )

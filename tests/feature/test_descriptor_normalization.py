@@ -31,7 +31,7 @@ class TestDescriptorNormalization(BaseTester):
     @pytest.mark.parametrize("model_cls", [SOSNet, HyNet])
     @pytest.mark.parametrize("model_dtype", [torch.float32, torch.float16])
     def test_dynamo_laf_descriptor(self, device, torch_optimizer, model_cls, model_dtype):
-        model = model_cls().to(device)
+        model = model_cls(pretrained=False).to(device).eval()
         norm = [layer for layer in model.modules() if isinstance(layer, torch.nn.BatchNorm2d)][-1]
         norm.running_var.fill_(1e5)
         model.to(model_dtype)
@@ -49,7 +49,7 @@ class TestDescriptorNormalization(BaseTester):
         try:
             torch.set_default_dtype(torch.float16)
             with torch.device(device):
-                model = model_cls()
+                model = model_cls(pretrained=False).eval()
         finally:
             torch.set_default_dtype(default_dtype)
         norm = [layer for layer in model.modules() if isinstance(layer, torch.nn.BatchNorm2d)][-1]
@@ -63,7 +63,7 @@ class TestDescriptorNormalization(BaseTester):
     @pytest.mark.parametrize("model_dtype", [torch.float32, torch.float16])
     @pytest.mark.parametrize("scripted", [False, True])
     def test_laf_descriptor_half_statistics(self, device, model_cls, model_dtype, scripted):
-        model = model_cls().to(device)
+        model = model_cls(pretrained=False).to(device).eval()
         norm = [layer for layer in model.modules() if isinstance(layer, torch.nn.BatchNorm2d)][-1]
         norm.running_var.copy_(torch.linspace(1e5, 5e6, norm.num_features, device=device))
         model = model.to(model_dtype)
@@ -104,7 +104,7 @@ class TestDescriptorNormalization(BaseTester):
     @pytest.mark.parametrize("model_cls", [SOSNet, HyNet])
     @pytest.mark.parametrize("convert", ["half", "to"])
     def test_half_preserves_running_statistics(self, device, model_cls, convert):
-        model = model_cls().to(device)
+        model = model_cls(pretrained=False).to(device).eval()
         norm = [layer for layer in model.modules() if isinstance(layer, torch.nn.BatchNorm2d)][-1]
         # The published SOSNet and HyNet checkpoints contain variances up to 1.2e5 and 5.3e6.
         norm.running_var.copy_(torch.linspace(1e5, 5e6, norm.num_features, device=device))
@@ -172,15 +172,15 @@ class TestDescriptorNormalization(BaseTester):
 
     @pytest.mark.parametrize("model_cls", [SOSNet, HyNet])
     def test_half_load_state_dict(self, device, model_cls):
-        source = model_cls().to(device)
+        source = model_cls(pretrained=False).to(device).eval()
         norm = [layer for layer in source.modules() if isinstance(layer, torch.nn.BatchNorm2d)][-1]
         norm.running_var.fill_(1e5)
-        target = model_cls().to(device).half()
+        target = model_cls(pretrained=False).to(device).eval().half()
         target.load_state_dict(source.state_dict(), strict=True)
         source.half()
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float16)
         self.assert_close(target(patches), source(patches), rtol=0.0, atol=0.0)
-        restored = model_cls().to(device).half()
+        restored = model_cls(pretrained=False).to(device).eval().half()
         restored.load_state_dict(target.state_dict(), strict=True)
         self.assert_close(restored(patches), target(patches), rtol=0.0, atol=0.0)
 
@@ -208,7 +208,7 @@ class TestDescriptorNormalization(BaseTester):
     @pytest.mark.parametrize("model_cls", [SOSNet, HyNet])
     @pytest.mark.parametrize("selection", [slice(None), slice(None, -1), slice(1, None), slice(0, 0), slice(None, 3)])
     def test_sequential_slices(self, device, model_cls, selection):
-        model = model_cls().to(device)
+        model = model_cls(pretrained=False).to(device).eval()
         block = model.layers if model_cls is SOSNet else model.layer7
         block[-1].running_var.fill_(1e5)
         sliced = block[selection]
@@ -229,7 +229,7 @@ class TestDescriptorNormalization(BaseTester):
 
     @pytest.mark.parametrize("model_cls", [SOSNet, HyNet])
     def test_slicing_does_not_change_source_statistics(self, device, model_cls):
-        model = model_cls().to(device).half()
+        model = model_cls(pretrained=False).to(device).eval().half()
         block = model.layers if model_cls is SOSNet else model.layer7
         before = dict(model.named_buffers())
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float16)

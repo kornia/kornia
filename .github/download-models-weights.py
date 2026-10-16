@@ -97,6 +97,11 @@ MODELS: dict[str, "str | list[str]"] = {
             "checkpoint_liberty_with_aug.pth"
         ),
     ],
+    # HardNet8: HardNet8() loads these by default, as test_pretrained_mode.py does.
+    "hardnet8v2.pt": [
+        "https://huggingface.co/kornia/hardnet/resolve/main/hardnet8v2.pt",
+        "https://cmp.felk.cvut.cz/~mishkdmy/hardnet8v2.pt",
+    ],
     # Patch descriptors with pretrained smoke/jit tests.
     "HyNet_LIB.pth": [
         "https://huggingface.co/kornia/hynet/resolve/main/HyNet_LIB.pth",
@@ -175,9 +180,9 @@ MODELS: dict[str, "str | list[str]"] = {
     # ViT-S/32: TestVisionTransformer.test_from_config_pretrained. Its Hub repository is the
     # one ViT repository off the naming pattern, so the cached copy also guards that URL.
     "vit_s-32.pth": "https://huggingface.co/kornia/vit_s32_i21k_augreg_i21k_r224/resolve/main/vit_s-32.pth",
-    # ALIKED and XFeat: no pytest job builds them pretrained, but
-    # ``generate_examples.main`` does, once per docs build, and the docs job
-    # restores this same cache.
+    # ALIKED and XFeat: ``tests/feature/test_pretrained_mode.py`` builds them
+    # pretrained, and so does ``generate_examples.main``, once per docs build;
+    # the docs job restores this same cache.
     "aliked-n16.pth": [
         "https://huggingface.co/kornia/aliked/resolve/main/aliked-n16.pth",
         "https://github.com/Shiaoming/ALIKED/raw/main/models/aliked-n16.pth",

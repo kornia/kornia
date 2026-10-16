@@ -44,6 +44,7 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - ``amount`` is a per-*pixel* rewrite probability: a chosen pixel is rewritten in every channel.
         - ``salt_vs_pepper`` is the probability that a rewritten pixel becomes salt rather than pepper, and
           the poles are the literals ``1.0`` and ``0.0`` whatever the input's range is -- on an image scaled

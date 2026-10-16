@@ -45,6 +45,7 @@ class Denormalize(IntensityAugmentationBase2D):
         Denormalised tensor with same size as input :math:`(*, C, H, W)`.
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - the ``mean`` and ``std`` forms, the batch-wide ``p`` gate and the storage in ``flags`` are those of
           :class:`Normalize`.
         - this class inverts :class:`Normalize` built with the same ``mean`` and ``std``, up to float rounding,

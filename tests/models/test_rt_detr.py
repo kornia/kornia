@@ -112,6 +112,37 @@ class TestRTDETR(BaseTester):
         assert logits.shape == (shape[0], num_queries, num_classes)
         assert boxes.shape == (shape[0], num_queries, 4)
 
+    @pytest.mark.device_agnostic
+    def test_from_pretrained_mode(self, monkeypatch):
+        monkeypatch.setattr(
+            "kornia.models.rt_detr.model.load_state_dict_from_url", lambda *args, **kwargs: {"ema": {"module": {}}}
+        )
+        monkeypatch.setattr(RTDETR, "load_state_dict", lambda self, state_dict, *args, **kwargs: None)
+        # ``training`` of the model and of every submodule: ``{False}`` is evaluation mode throughout.
+        assert {m.training for m in RTDETR.from_pretrained("rtdetr_r18vd").modules()} == {False}
+
+        monkeypatch.setattr(RTDETR, "load_checkpoint", lambda self, checkpoint, device=None: None)
+        from_checkpoint = RTDETR.from_config(RTDETRConfig("resnet18d", 10, checkpoint="x.pt"))
+        assert {m.training for m in from_checkpoint.modules()} == {False}
+
+        assert {m.training for m in RTDETR.from_config(RTDETRConfig("resnet18d", 10)).modules()} == {True}
+        assert {m.training for m in RTDETR.from_name("rtdetr_r18vd").modules()} == {True}
+
+    @pytest.mark.slow
+    def test_from_pretrained_is_batch_independent(self):
+        model = RTDETR.from_pretrained("rtdetr_r18vd")
+        generator = torch.Generator().manual_seed(0)
+        x1 = torch.rand(1, 3, 256, 320, generator=generator)
+        x2 = torch.rand(1, 3, 256, 320, generator=generator)
+
+        with torch.no_grad():
+            alone = model(x1)[0][0]
+            batched = model(torch.cat([x1, x2]))[0][0]
+
+        # In evaluation mode image 0 does not see image 1; only the kernels' summation order may change with the
+        # batch size, so the float32 tolerance is widened to 1e-4.
+        self.assert_close(alone, batched, rtol=1e-4, atol=1e-4)
+
     @pytest.mark.skip("Unnecessary")
     def test_exception(self): ...
 
