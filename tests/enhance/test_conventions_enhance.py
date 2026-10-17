@@ -82,13 +82,16 @@ class TestEnhanceConventions(BaseTester):
 
     def test_convention_image_histogram_triangular_range(self, device, dtype):
         # Centers are 0.25 and 0.75; 1.1 lies outside [0, 1] and keeps its triangular weight
-        # 1 - 0.35 / 0.5 = 0.3 for the 0.75 bin instead of being clipped to 1.0 (weight 0.5) or dropped.
+        # for the 0.75 bin instead of being clipped to 1.0 (weight 0.5) or dropped.
         image = torch.tensor([[0.25, 1.1]], device=device, dtype=dtype)
         hist, pdf = kornia.enhance.image_histogram2d(
             image, min=0.0, max=1.0, n_bins=2, bandwidth=0.5, kernel="triangular", return_pdf=True
         )
-        self.assert_close(hist, torch.tensor([1.0, 0.3], device=device, dtype=dtype))
-        self.assert_close(pdf, torch.tensor([1.0, 0.3], device=device, dtype=dtype) / 1.3)
+        output_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        weight = 1.0 - (image[0, 1].to(output_dtype) - 0.75).abs() / 0.5
+        expected_hist = torch.stack((torch.ones((), device=device, dtype=output_dtype), weight))
+        self.assert_close(hist, expected_hist)
+        self.assert_close(pdf, expected_hist / expected_hist.sum())
 
     def test_convention_image_histogram_automatic_centers_follow_bandwidth(self, device, dtype):
         image = torch.tensor([[0.125]], device=device, dtype=dtype)
@@ -96,7 +99,8 @@ class TestEnhanceConventions(BaseTester):
             image, min=0.0, max=1.0, n_bins=2, bandwidth=0.25, kernel="triangular"
         )
         # Centers are 0.125 and 0.375, generated as min + (i + 0.5) * bandwidth.
-        self.assert_close(hist, torch.tensor([1.0, 0.0], device=device, dtype=dtype))
+        output_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        self.assert_close(hist, torch.tensor([1.0, 0.0], device=device, dtype=output_dtype))
 
     @pytest.mark.parametrize("explicit_center", [False, True])
     @pytest.mark.parametrize("return_pdf", [False, True])
