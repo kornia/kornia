@@ -420,6 +420,9 @@ def reproject_disparity_to_3D(
         The 3D point cloud of shape :math:`(B, H, W, 3)`, or ``(points, valid)`` when
         ``return_mask=True``. Points retain the disparity dtype in either mode.
 
+    Raises:
+        ValueError: If the Q matrix batch size is neither 1 nor the disparity batch size.
+
     Note:
         A point is valid when all four homogeneous components are finite,
         ``abs(W) > 1e-8`` in the converter's working dtype, and XYZ is finite after

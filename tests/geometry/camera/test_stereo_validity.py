@@ -22,7 +22,7 @@ from kornia.geometry.camera.stereo import StereoCamera, reproject_disparity_to_3
 from kornia.geometry.grid import create_meshgrid
 from kornia.geometry.linalg import transform_points
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 
 def _camera(device, dtype):
@@ -224,6 +224,7 @@ class TestStereoReconstructionValidity(BaseTester):
         else:
             self.assert_close(actual, expected)
 
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     @pytest.mark.parametrize("return_mask", [False, True])
     def test_export_fixed_configuration(self, device, dtype, return_mask):
         d = torch.tensor([0, 10], device=device, dtype=dtype).reshape(1, 1, 2, 1)
