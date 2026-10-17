@@ -86,6 +86,47 @@ def intrinsics_dtype(dtype):
 
 
 class TestIntrinsicsFromHomographies(BaseTester):
+    def test_repeated_leading_singular_values(self, device, intrinsics_dtype):
+        # Four symmetric +/-30-degree views give a unique smallest singular vector,
+        # but tied leading singular values. Generic SVD backward returns NaNs here.
+        c, s = math.cos(math.pi / 6), math.sin(math.pi / 6)
+        rotations = torch.tensor(
+            [
+                [[1, 0, 0], [0, c, -s], [0, s, c]],
+                [[1, 0, 0], [0, c, s], [0, -s, c]],
+                [[c, 0, s], [0, 1, 0], [-s, 0, c]],
+                [[c, 0, -s], [0, 1, 0], [s, 0, c]],
+            ],
+            device=device,
+            dtype=intrinsics_dtype,
+        )
+        expected = rotations.new_tensor([[800, 0, 319.5], [0, 800, 319.5], [0, 0, 1]])
+        translation = rotations.new_tensor([0, 0, 1]).reshape(1, 3, 1).expand(4, -1, -1)
+        h = (expected @ torch.cat((rotations[..., :2], translation), -1))[None].requires_grad_()
+        actual, valid = intrinsics_from_homographies(h, (640, 640))
+        assert valid.all()
+        self.assert_close(actual[0], expected, atol=0.005, rtol=1e-5)
+        actual.sum().backward()
+        assert torch.isfinite(h.grad).all()
+        if intrinsics_dtype == torch.float64:
+            self.gradcheck(
+                lambda x: intrinsics_from_homographies(x, (640, 640))[0],
+                (h.detach().div(800).requires_grad_(),),
+                fast_mode=True,
+                atol=1e-3,
+                rtol=1e-3,
+            )
+
+    @pytest.mark.parametrize("views", [16, 17, 20, 30])
+    def test_many_views(self, device, intrinsics_dtype, views):
+        expected, h = _scene(device, intrinsics_dtype)
+        h = h.repeat(1, (views + 5) // 6, 1, 1)[:, :views].clone().requires_grad_()
+        actual, valid = intrinsics_from_homographies(h, (480, 640))
+        assert valid.all()
+        self.assert_close(actual, expected, atol=0.005, rtol=1e-5)
+        actual.sum().backward()
+        assert torch.isfinite(h.grad).all()
+
     def test_image_size_scalar_tensors(self, device, intrinsics_dtype):
         expected, h = _scene(device, intrinsics_dtype)
         actual, valid = intrinsics_from_homographies(
@@ -112,7 +153,8 @@ class TestIntrinsicsFromHomographies(BaseTester):
         h = _noisy_homographies(2.0).to(device=device, dtype=intrinsics_dtype)
         actual, valid = intrinsics_from_homographies(h, ImageSize(480, 640))
         wrong_size, wrong_valid = intrinsics_from_homographies(h, (4000, 4000))
-        assert valid.all() and wrong_valid.all()
+        assert valid.all()
+        assert wrong_valid.all()
         # Reproduced with the public initializer at bb327d0 and the observations above.
         self.assert_close(actual[0, 0, 0], h.new_tensor(898.3819099), atol=0.05, rtol=0)
         self.assert_close(wrong_size[0, 0, 0], h.new_tensor(861.9563307), atol=0.05, rtol=0)
@@ -130,7 +172,8 @@ class TestIntrinsicsFromHomographies(BaseTester):
         assert valid.all()
         self.assert_close(actual, expected, atol=0.005, rtol=1e-5)
         actual.sum().backward()
-        assert torch.isfinite(h.grad).all() and torch.isfinite(weights.grad).all()
+        assert torch.isfinite(h.grad).all()
+        assert torch.isfinite(weights.grad).all()
         self.assert_close(h.grad[weights == 0], torch.zeros_like(h.grad[weights == 0]))
         self.assert_close(weights.grad[weights == 0], torch.zeros_like(weights.grad[weights == 0]))
 
@@ -150,7 +193,8 @@ class TestIntrinsicsFromHomographies(BaseTester):
         repeated, repeated_valid = intrinsics_from_homographies(h[:, [0, 1, 2, 2, 2, 2, 3, 4, 5, 6, 7]], (480, 640))
         uniform, _ = intrinsics_from_homographies(h, (480, 640))
         rescaled, _ = intrinsics_from_homographies(h, (480, 640), weights=weights * 100)
-        assert valid.all() and repeated_valid.all()
+        assert valid.all()
+        assert repeated_valid.all()
         self.assert_close(weighted, repeated, atol=0.01, rtol=1e-5)
         self.assert_close(weighted, rescaled, atol=0.005, rtol=1e-5)
         assert (weighted - uniform).abs().max() > 0.1
@@ -203,11 +247,14 @@ class TestIntrinsicsFromHomographies(BaseTester):
     def test_exact_intrinsics(self, device, intrinsics_dtype, views):
         expected, homographies = _scene(device, intrinsics_dtype)
         actual, valid = intrinsics_from_homographies(homographies[:, :views], (480, 640))
-        assert valid.shape == (2,) and valid.dtype == torch.bool and valid.device == device
+        assert valid.shape == (2,)
+        assert valid.dtype == torch.bool
+        assert valid.device == device
         assert valid.all()
         self.assert_close(actual, expected, atol=0.005, rtol=1e-5)
         assert (actual[:, 0, 1] == 0).all()
-        assert actual.dtype == intrinsics_dtype and actual.device == device
+        assert actual.dtype == intrinsics_dtype
+        assert actual.device == device
         assert (actual[:, 2, 2] == 1).all()
 
     def test_gauge_and_board_scale(self, device, intrinsics_dtype):
@@ -350,13 +397,17 @@ class TestIntrinsicsFromHomographies(BaseTester):
         assert valid.all()
         self.assert_close(actual[0], expected[0], atol=0.2, rtol=0.001)
 
-    @pytest.mark.parametrize("views", [2, 6])
+    @pytest.mark.parametrize("views", [2, 6, 20])
     def test_dynamo(self, device, intrinsics_dtype, torch_optimizer, views):
         _, h = _scene(device, intrinsics_dtype)
-        h = h[:, :views]
+        h = h.repeat(1, (views + 5) // 6, 1, 1)[:, :views]
         optimized = torch_optimizer(intrinsics_from_homographies, fullgraph=True)
         for mixed in (h, torch.cat((h[:1], torch.zeros_like(h[:1])))):
+            mixed = mixed.detach().requires_grad_()
             actual, valid = optimized(mixed, ImageSize(480, 640))
             expected, expected_valid = intrinsics_from_homographies(mixed, (480, 640))
             self.assert_close(actual, expected, atol=0.005, rtol=1e-5)
             self.assert_close(valid, expected_valid)
+            actual_gradient = torch.autograd.grad(actual.sum(), mixed)[0]
+            expected_gradient = torch.autograd.grad(expected.sum(), mixed)[0]
+            self.assert_close(actual_gradient, expected_gradient, atol=0.005, rtol=1e-5)

@@ -43,8 +43,7 @@ def _constraint(a: Tensor, b: Tensor) -> Tensor:
     )
 
 
-def _conic(vh: Tensor) -> Tensor:
-    b = vh[:, -1]
+def _conic(b: Tensor) -> Tensor:
     b = b * torch.where(b[:, 4:] >= 0, 1.0, -1.0)
     zero = torch.zeros_like(b[:, 0])
     return torch.stack((b[:, 0], zero, b[:, 2], zero, b[:, 1], b[:, 3], b[:, 2], b[:, 3], b[:, 4]), -1).reshape(
@@ -108,9 +107,11 @@ def intrinsics_from_homographies(
         with noise. The threshold is a heuristic and cannot guarantee accurate intrinsics.
 
         CPU and CUDA float32 inputs compute in float64; MPS retains float32. The small
-        constraint matrix is decomposed directly, without squaring its condition number
-        through normal equations. Local gradients are supported for well-conditioned
-        inputs with distinct singular values; they are not globally stable at degeneracy.
+        constraint matrix is decomposed without forming normal equations: CPU/CUDA use
+        reduced QR followed by a 5x5 SVD; MPS uses the direct SVD. Local first-order
+        gradients require a separated smallest singular value, but the other singular
+        values may coincide. Higher-order derivatives are not supported, and gradients
+        are not globally stable at degeneracy.
         Invalid cameras and zero-weight views have zero gradients. Calibration diagnostics
         use tensor masks without Python data-dependent branches. Weight-value validation
         raises eagerly and may cause a compile graph break when weights are supplied.
@@ -189,20 +190,33 @@ def intrinsics_from_homographies(
         # A zero row retains the 4x5 nullspace in a reduced 5x5 SVD, including its
         # derivative. The extra vector of a full 4x5 SVD has no PyTorch gradient.
         system = torch.cat((system, system.new_zeros(batch, 1, 5)), -2)
-    # Check a detached copy first so repeated/zero singular values in invalid cameras
-    # never enter the differentiable SVD. A final output mask alone is insufficient.
-    _, diagnostics, diagnostic_vh = torch.linalg.svd(system.detach(), full_matrices=False)
+    # QR preserves the right singular vectors and singular values without forming
+    # normal equations. Reducing to 5x5 avoids CUDA's tall-matrix SVD path at V >= 17.
+    decomposition = system.detach()
+    if homographies.device.type != "mps":
+        decomposition = torch.linalg.qr(decomposition, mode="r")[1]
+    _, diagnostics, diagnostic_vh = torch.linalg.svd(decomposition, full_matrices=False)
     valid = valid & torch.isfinite(diagnostics).all(-1) & (diagnostics[:, 0] > 0)
     valid = valid & (diagnostics[:, 3] > degeneracy_rtol * diagnostics[:, 0])
     valid = valid & (diagnostics[:, 3] - diagnostics[:, 4] > degeneracy_rtol * diagnostics[:, 0])
-    _, info = torch.linalg.cholesky_ex(_conic(diagnostic_vh))
+    null = diagnostic_vh[:, -1]
+    _, info = torch.linalg.cholesky_ex(_conic(null))
     valid = valid & (info == 0)
-    fallback = torch.diag(system.new_tensor([5.0, 4.0, 3.0, 2.0, 1.0]))
-    fallback = torch.cat((fallback, system.new_zeros(system.shape[-2] - 5, 5)), -2)
-    system = torch.where(valid[:, None, None], system, fallback)
-    _, _, vh = torch.linalg.svd(system, full_matrices=False)
-
-    conic = torch.where(valid[:, None, None], _conic(vh), eye)
+    # The derivative of the smallest right singular vector only involves gaps to
+    # that vector. SVD backward also divides by gaps BETWEEN the other vectors,
+    # producing NaNs at harmless ties. Use its first-order perturbation formula,
+    # with the detached basis; the existing validity check protects these gaps.
+    system = torch.where(valid[:, None, None], system, 0.0)
+    basis = diagnostic_vh[:, :-1].transpose(-1, -2)
+    gaps = (diagnostics[:, :-1] - diagnostics[:, -1:]) * (diagnostics[:, :-1] + diagnostics[:, -1:])
+    gaps = torch.where(valid[:, None], gaps, 1.0)
+    residual = system @ null[..., None]
+    coefficients = ((system @ basis).transpose(-1, -2) @ residual)[..., 0] / gaps
+    correction = (basis @ coefficients[..., None])[..., 0]
+    # Cancellation is only exact algebraically. Subtract the detached correction
+    # explicitly to retain the decomposed vector's value even with roundoff.
+    null = null - (correction - correction.detach())
+    conic = torch.where(valid[:, None, None], _conic(null), eye)
     factor, _ = torch.linalg.cholesky_ex(conic)
     eye = eye.expand(batch, -1, -1)
     normalized_k = torch.linalg.solve_triangular(factor.transpose(-1, -2), eye, upper=True)

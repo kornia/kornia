@@ -215,8 +215,9 @@ with fewer than two retained views, invalid retained homographies, weak geometry
 non-positive-definite conic returns ``False`` and an identity matrix. The identity is a
 placeholder and must not be used as a calibration. Other cameras in the batch keep their
 own results. Shape, dtype, image-size and weight errors still raise. Invalid cameras and
-excluded views have zero gradients; gradients of accepted cameras are local and require
-distinct singular values. Eager weight-value checks may cause a compile graph break;
+excluded views have zero gradients. Accepted cameras support local first-order gradients
+when the smallest singular value is separated from the others; ties among the leading
+singular values are allowed. Higher-order derivatives are not supported. Eager weight-value checks may cause a compile graph break;
 numerical calibration failures use tensor masks without Python data-dependent branches.
 
 Choosing the degeneracy threshold
@@ -227,7 +228,7 @@ weighted constraint system, both :math:`\sigma_4/\sigma_1` and
 :math:`(\sigma_4-\sigma_5)/\sigma_1` must exceed it. The second check separates the solution
 direction from the next singular direction. For exactly two views, adding a zero row to
 the 4-by-5 system preserves its nullspace and makes its fifth singular vector available
-to reduced SVD and autograd.
+to reduced SVD and the first-order derivative.
 
 The following synthetic sweep uses the 8-by-6 grid and camera above, translation
 ``[0.02,-0.03,0.9]``, Gaussian pixel noise, and seeds 0 through 19. Six-view cases use
