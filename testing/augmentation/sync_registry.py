@@ -41,7 +41,7 @@ import kornia.augmentation as K
 from kornia.augmentation import auto as KAuto
 from kornia.augmentation.presets.ada import AdaptiveDiscriminatorAugmentation
 
-__all__ = ["AUG_CASES", "EXCLUDED", "INHERENT_SITES", "AugCase", "make_call", "sync_sites"]
+__all__ = ["AUG_CASES", "EXCLUDED", "INHERENT_SITES", "PASS_THROUGH", "AugCase", "make_call", "sync_sites"]
 
 # The message torch emits for every synchronizing call under ``torch.cuda.set_sync_debug_mode("warn")``.
 _SYNC_MESSAGE = "called a synchronizing CUDA operation"
@@ -323,7 +323,30 @@ EXCLUDED: dict[str, str] = {
 }
 
 # ``"relpath.py:function"`` keys of the synchronizations that stay, each with the reason it is inherent.
-INHERENT_SITES: dict[str, str] = {}
+INHERENT_SITES: dict[str, str] = {
+    "geometry/boxes.py:_validate_box_values": (
+        "validation of user boxes: the non-finite, width and height errors read the box data on the host, in one "
+        "transfer for all three checks"
+    ),
+    "augmentation/_2d/mix/transplantation.py:params_from_input": (
+        "the transplanted labels are drawn from the values of the mask, which lives on the device (`unique` has a "
+        "data-dependent size)"
+    ),
+    "augmentation/presets/ada.py:forward": (
+        "ADA draws the augmented subset on the input's device and returns early when it is empty"
+    ),
+    "augmentation/presets/ada.py:_sample_inputs": (
+        "ADA augments the drawn subset only, whose size depends on the device draw (boolean indexing)"
+    ),
+    "augmentation/presets/ada.py:_merge_inputs": "ADA writes the augmented subset back by its device mask",
+    "geometry/transform/thin_plate_spline.py:get_tps_transform": (
+        "`torch.linalg.solve` checks the user-visible TPS system for singularity and raises (decision D1)"
+    ),
+}
+
+# Thin wrappers whose synchronizations belong to their caller. A site is the deepest kornia frame that is not one of
+# them, so that INHERENT_SITES names the caller, which is what decides whether the synchronization is inherent.
+PASS_THROUGH: frozenset[str] = frozenset({"core/utils.py:_torch_inverse_cast", "core/utils.py:_torch_solve_cast"})
 
 
 def _inputs_2d(device: torch.device, dtype: torch.dtype) -> dict[str, torch.Tensor]:
@@ -426,10 +449,10 @@ def make_call(case: AugCase, which: str, device: torch.device, dtype: torch.dtyp
 def sync_sites(fn: Callable[[], Any]) -> collections.Counter[str]:
     """Run ``fn`` under the CUDA sync debug mode and count its synchronizations by site.
 
-    A site is the deepest kornia frame on the stack, as ``"relpath.py:function"`` relative to the kornia
-    package; a synchronization with no kornia frame on the stack counts as ``"<outside kornia>"``. The debug
-    mode is a prototype that misses some synchronizations, so a profiler count of ``cudaStreamSynchronize`` is
-    the cross-check. The mode is reset to ``0`` even when ``fn`` raises.
+    A site is the deepest kornia frame on the stack that is not in ``PASS_THROUGH``, as ``"relpath.py:function"``
+    relative to the kornia package; a synchronization with no kornia frame on the stack counts as
+    ``"<outside kornia>"``. The debug mode is a prototype that misses some synchronizations, so a profiler count of
+    ``cudaStreamSynchronize`` is the cross-check. The mode is reset to ``0`` even when ``fn`` raises.
     """
     root = os.path.dirname(kornia.__file__) + os.sep
     sites: collections.Counter[str] = collections.Counter()
@@ -437,9 +460,9 @@ def sync_sites(fn: Callable[[], Any]) -> collections.Counter[str]:
     def hook(message: Any, category: Any, filename: str, lineno: int, file: Any = None, line: Any = None) -> None:
         if _SYNC_MESSAGE not in str(message):
             return
-        frames = [f for f in traceback.extract_stack() if f.filename.startswith(root)]
-        key = f"{frames[-1].filename[len(root) :]}:{frames[-1].name}" if frames else "<outside kornia>"
-        sites[key] += 1
+        keys = [f"{f.filename[len(root) :]}:{f.name}" for f in traceback.extract_stack() if f.filename.startswith(root)]
+        callers = [k for k in keys if k not in PASS_THROUGH]
+        sites[callers[-1] if callers else keys[-1] if keys else "<outside kornia>"] += 1
 
     try:
         torch.cuda.set_sync_debug_mode("warn")

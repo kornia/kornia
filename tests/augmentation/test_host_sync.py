@@ -151,3 +151,33 @@ class TestAugmentationHostSync(BaseTester):
             applied = applied.expand(x.shape[0])
         expected = torch.where(applied.view(-1, *([1] * (x.dim() - 1))), reference, x)
         assert torch.equal(outputs[0], expected)
+
+
+class TestMaskWritesWithoutHostReads(BaseTester):
+    """RandomRain and RandomSaltAndPepperNoise write their pixels without a ``nonzero`` (seeds 0 to 4)."""
+
+    @pytest.mark.parametrize("seed", range(5))
+    def test_rain_and_salt_pepper_values_unchanged(self, seed, device, dtype) -> None:
+        x = torch.rand(4, 3, 32, 32, generator=torch.Generator().manual_seed(seed)).to(device, dtype)
+
+        # Salt and pepper: the same writes as the boolean indexing they replace, salt first.
+        torch.manual_seed(seed)
+        noise = K.RandomSaltAndPepperNoise(p=1.0)
+        out = noise(x)
+        expected = x.clone()
+        expected[noise._params["mask_salt"].to(device)] = 1.0
+        expected[noise._params["mask_pepper"].to(device)] = 0.0
+        assert torch.equal(out, expected)
+
+        # Rain: every drop pixel takes 200 / 255 in all channels and every other pixel keeps the input, and the
+        # replayed parameters give the same image on the CPU and on the device.
+        torch.manual_seed(seed)
+        rain = K.RandomRain(p=1.0)
+        out = rain(x)
+        changed = (out != x).any(dim=1, keepdim=True).expand_as(out)
+        assert changed.any()
+        drop_value = torch.full((), 200 / 255, dtype=dtype)
+        assert torch.equal(out[changed].cpu(), drop_value.expand(int(changed.sum())))
+        assert torch.equal(out[~changed], x[~changed])
+        params = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in rain._params.items()}
+        assert torch.equal(rain(x.cpu(), params=params), out.cpu())

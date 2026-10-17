@@ -1999,7 +1999,8 @@ def homography_warp3d(
     # ``create_meshgrid3d`` follows kornia's ``(d, x, y)`` convention, which
     # ``normalize_pixel_coordinates3d`` and ``conv_soft_argmax3d`` rely on. ``warp_grid3d`` and
     # ``grid_sample`` both read the last axis as ``(x, y, z)``, so the depth channel moves last.
-    grid = grid[..., [1, 2, 0]]
+    # Stacked rather than indexed with a list, which is copied to the device with a blocking transfer.
+    grid = torch.stack((grid[..., 1], grid[..., 2], grid[..., 0]), -1)
     warped_grid = warp_grid3d(grid, src_homo_dst)
 
     return _torch_grid_sample(
