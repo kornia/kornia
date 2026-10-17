@@ -89,6 +89,29 @@ class TestGetLAFDescriptors(BaseTester):
         assert descs.shape == (0, 5, 128)
         assert descs.dtype == dtype
 
+    @pytest.mark.parametrize("n_lafs", [0, 4])
+    @pytest.mark.parametrize("n_images", [0, 2])
+    @pytest.mark.parametrize("shape", [(64, 1), (), (3, 5)])
+    def test_the_width_is_everything_a_patch_descriptor_returns(self, device, dtype, shape, n_images, n_lafs):
+        # The descriptor width is the numel of what one patch yields, whatever the rank of the output, also when
+        # the batch of patches is empty and `-1` could not infer it.
+        class Stub(torch.nn.Module):
+            def forward(self, patches):
+                return patches.new_ones(patches.shape[0], *shape)
+
+        PS = 8
+        img = torch.rand(n_images, 1, 48, 64, device=device, dtype=dtype)
+        lafs = torch.zeros(n_images, n_lafs, 2, 3, device=device, dtype=dtype)
+        lafs[..., 0, 0] = 8.0
+        lafs[..., 1, 1] = 8.0
+        lafs[..., 0, 2] = 24.0
+        lafs[..., 1, 2] = 24.0
+        width = torch.Size(shape).numel()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # the empty-LAF warning
+            descs = get_laf_descriptors(img, lafs, Stub(), PS)
+        assert descs.shape == (n_images, n_lafs, width)
+
     def test_gradcheck(self, device):
         dtype = torch.float64
         B, C, H, W = 1, 1, 32, 32

@@ -228,13 +228,12 @@ class TestScaleSpaceDetector(BaseTester):
         assert lafs.device == one_lafs.device
         assert resps.dtype == one_resps.dtype
         assert resps.device == one_resps.device
-        # An output a one-image call links to the input stays linked.
-        assert lafs.requires_grad or not one_lafs.requires_grad
-        assert resps.requires_grad or not one_resps.requires_grad
-        if resps.requires_grad:
-            (lafs.sum() + resps.sum()).backward()
-            assert empty.grad is not None
-            assert empty.grad.shape == empty.shape
+        # Both outputs stay linked to the input, and backward runs.
+        assert lafs.requires_grad
+        assert resps.requires_grad
+        (lafs.sum() + resps.sum()).backward()
+        assert empty.grad is not None
+        assert empty.grad.shape == empty.shape
         # `detect` with an explicit `num_feats` returns the requested count; a mask of one broadcasts.
         one_resps, one_lafs = det.detect(torch.zeros(1, 1, 64, 80, device=device, dtype=dtype), 7)
         resps, lafs = det.detect(empty.detach(), 7, ones if with_mask else None)
@@ -242,6 +241,20 @@ class TestScaleSpaceDetector(BaseTester):
         assert lafs.shape == torch.Size([0, 7, 2, 3])
         assert lafs.dtype == one_lafs.dtype
         assert resps.dtype == one_resps.dtype
+
+    def test_an_image_without_candidates_stays_linked_to_the_input(self, device, dtype):
+        # A DoG response is zero everywhere on a constant image, so no octave has a candidate and every slot is
+        # unfilled; the empty selection must still be a function of the response, so a loss on it can backward.
+        det = ScaleSpaceDetector(10, scale_space_response=True, resp_module=BlobDoG()).to(device, dtype)
+        img = torch.full((1, 1, 64, 80), 0.5, device=device, dtype=dtype, requires_grad=True)
+        lafs, resps = det(img)
+        assert torch.count_nonzero(resps) == 0
+        assert lafs.requires_grad
+        assert resps.requires_grad
+        (lafs.sum() + resps.sum()).backward()
+        assert img.grad is not None
+        # An image without candidates has no gradient to give.
+        assert torch.count_nonzero(img.grad) == 0
 
     @pytest.mark.parametrize(
         "img_tail, mask_shape",

@@ -530,7 +530,8 @@ class ScaleSpaceDetector(nn.Module):
                 idxs = nms_idx[local_idx].unsqueeze(0)
                 resp_flat_best = resp_flat_best.unsqueeze(0)  # (1, k_eff)
             else:
-                resp_flat_best = resp_flat.new_zeros(1, 0)
+                # A zero-width slice, not a fresh tensor: the empty result stays linked to the response.
+                resp_flat_best = resp_flat[:, :0]
                 idxs = nms_idx.new_empty(1, 0)
         else:
             # Batched fallback: mask non-candidates to -inf so they lose top-K to every finite
