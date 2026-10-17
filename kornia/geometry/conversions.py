@@ -2239,6 +2239,11 @@ def normal_transform_pixel3d(
     return tr_mat.unsqueeze(0)  # 1x4x4
 
 
+def _is_floating_or_complex(x: torch.Tensor) -> bool:
+    """Whether ``x`` has a floating or complex dtype, the only dtypes in which a pixel normalization is invertible."""
+    return x.is_floating_point() or x.is_complex()
+
+
 def denormalize_homography(
     dst_pix_trans_src_pix: torch.Tensor,
     dsize_src: tuple[int, int],
@@ -2307,8 +2312,11 @@ def denormalize_homography(
         dtype=normalization_dtype,
         align_corners=align_corners,
     ).to(dst_pix_trans_src_pix)
-    # A pixel normalization has nonzero diagonal scales and is triangular, so it is always invertible.
-    dst_denorm_trans_dst_pix = _torch_inverse_cast(dst_norm_trans_dst_pix, check_errors=False)
+    # A floating pixel normalization has nonzero diagonal scales and is triangular, so it is always invertible. An
+    # integer one is not (its scales truncate to 0, kornia#3959) and keeps the error check.
+    dst_denorm_trans_dst_pix = _torch_inverse_cast(
+        dst_norm_trans_dst_pix, check_errors=not _is_floating_or_complex(dst_norm_trans_dst_pix)
+    )
     # compute chain transformations
     dst_norm_trans_src_norm: torch.Tensor = dst_denorm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_norm_trans_src_pix)
     return dst_norm_trans_src_norm
@@ -2377,8 +2385,10 @@ def normalize_homography3d(
         src_d, src_h, src_w, device=dst_pix_trans_src_pix.device, dtype=normalization_dtype
     ).to(dst_pix_trans_src_pix)
 
-    # A pixel normalization has nonzero diagonal scales and is triangular, so it is always invertible.
-    src_pix_trans_src_norm = _torch_inverse_cast(src_norm_trans_src_pix, check_errors=False)
+    # A floating pixel normalization is always invertible; an integer one keeps the error check (kornia#3959).
+    src_pix_trans_src_norm = _torch_inverse_cast(
+        src_norm_trans_src_pix, check_errors=not _is_floating_or_complex(src_norm_trans_src_pix)
+    )
     dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel3d(
         dst_d, dst_h, dst_w, device=dst_pix_trans_src_pix.device, dtype=normalization_dtype
     ).to(dst_pix_trans_src_pix)
@@ -2461,8 +2471,10 @@ def denormalize_homography3d(
     dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel3d(
         dst_d, dst_h, dst_w, device=dst_pix_trans_src_pix.device, dtype=normalization_dtype
     ).to(dst_pix_trans_src_pix)
-    # A pixel normalization has nonzero diagonal scales and is triangular, so it is always invertible.
-    dst_pix_trans_dst_norm = _torch_inverse_cast(dst_norm_trans_dst_pix, check_errors=False)
+    # A floating pixel normalization is always invertible; an integer one keeps the error check (kornia#3959).
+    dst_pix_trans_dst_norm = _torch_inverse_cast(
+        dst_norm_trans_dst_pix, check_errors=not _is_floating_or_complex(dst_norm_trans_dst_pix)
+    )
     # compute chain transformations
     return dst_pix_trans_dst_norm @ (dst_pix_trans_src_pix @ src_norm_trans_src_pix)
 
