@@ -169,7 +169,12 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 "The length of `random_apply_weights` must be as same as the number of operations."
                 f"Got {len(random_apply_weights)} and {len(self)}."
             )
-        self.random_apply_weights = torch.as_tensor(random_apply_weights or torch.ones((len(self),)))
+        # ``torch.multinomial`` samples floating-point weights only, so integer or boolean weights are converted; a
+        # tensor argument is tested against ``None`` rather than for its truth value, which is ambiguous.
+        weights = torch.as_tensor(random_apply_weights) if random_apply_weights is not None else torch.ones(len(self))
+        if not weights.is_floating_point():
+            weights = weights.to(torch.get_default_dtype())
+        self.random_apply_weights = weights
         self.if_unsupported_ops = if_unsupported_ops
         self._output_image = None
 
