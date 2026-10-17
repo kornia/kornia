@@ -298,21 +298,21 @@ class StereoCamera:
 
     @overload
     def reproject_disparity_to_3D(
-        self, disparity_tensor: torch.Tensor, *, return_mask: Literal[False] = False
+        self, disparity_tensor: torch.Tensor, return_mask: Literal[False] = False
     ) -> torch.Tensor: ...
 
     @overload
     def reproject_disparity_to_3D(
-        self, disparity_tensor: torch.Tensor, *, return_mask: Literal[True]
+        self, disparity_tensor: torch.Tensor, return_mask: Literal[True]
     ) -> tuple[torch.Tensor, torch.Tensor]: ...
 
     @overload
     def reproject_disparity_to_3D(
-        self, disparity_tensor: torch.Tensor, *, return_mask: bool
+        self, disparity_tensor: torch.Tensor, return_mask: bool
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]: ...
 
     def reproject_disparity_to_3D(
-        self, disparity_tensor: torch.Tensor, *, return_mask: bool = False
+        self, disparity_tensor: torch.Tensor, return_mask: bool = False
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         r"""Reproject the disparity torch.Tensor to a 3D point cloud.
 
@@ -387,24 +387,24 @@ def _check_Q_matrix(Q_matrix: torch.Tensor) -> None:
 
 @overload
 def reproject_disparity_to_3D(
-    disparity_tensor: torch.Tensor, Q_matrix: torch.Tensor, *, return_mask: Literal[False] = False
+    disparity_tensor: torch.Tensor, Q_matrix: torch.Tensor, return_mask: Literal[False] = False
 ) -> torch.Tensor: ...
 
 
 @overload
 def reproject_disparity_to_3D(
-    disparity_tensor: torch.Tensor, Q_matrix: torch.Tensor, *, return_mask: Literal[True]
+    disparity_tensor: torch.Tensor, Q_matrix: torch.Tensor, return_mask: Literal[True]
 ) -> tuple[torch.Tensor, torch.Tensor]: ...
 
 
 @overload
 def reproject_disparity_to_3D(
-    disparity_tensor: torch.Tensor, Q_matrix: torch.Tensor, *, return_mask: bool
+    disparity_tensor: torch.Tensor, Q_matrix: torch.Tensor, return_mask: bool
 ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]: ...
 
 
 def reproject_disparity_to_3D(
-    disparity_tensor: torch.Tensor, Q_matrix: torch.Tensor, *, return_mask: bool = False
+    disparity_tensor: torch.Tensor, Q_matrix: torch.Tensor, return_mask: bool = False
 ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
     r"""Reproject the disparity torch.Tensor to a 3D point cloud.
 

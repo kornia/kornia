@@ -212,6 +212,27 @@ class TestStereoReconstructionValidity(BaseTester):
         assert torch.equal(valid, d != 0)
 
     @pytest.mark.parametrize("return_mask", [False, True])
+    @pytest.mark.parametrize("rows", [0, 1])
+    def test_jit_script(self, device, dtype, return_mask, rows):
+        camera = _camera(device, dtype)
+        d = torch.tensor([0, 10, -10], device=device, dtype=dtype).reshape(1, 1, 3, 1)[:, :rows]
+        scripted = torch.jit.script(reproject_disparity_to_3D)
+        actual = scripted(d, camera.Q, return_mask=return_mask)
+        expected = reproject_disparity_to_3D(d, camera.Q, return_mask=return_mask)
+        positional = camera.reproject_disparity_to_3D(d, return_mask)
+        if return_mask:
+            assert isinstance(actual, tuple)
+            self.assert_close(actual[0], expected[0], atol=0, rtol=0)
+            self.assert_close(actual[1], expected[1], atol=0, rtol=0)
+            self.assert_close(positional[0], expected[0], atol=0, rtol=0)
+            self.assert_close(positional[1], expected[1], atol=0, rtol=0)
+        else:
+            assert isinstance(actual, torch.Tensor)
+            self.assert_close(actual, expected, atol=0, rtol=0)
+            self.assert_close(scripted(d, camera.Q), expected, atol=0, rtol=0)
+            self.assert_close(positional, expected, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("return_mask", [False, True])
     def test_dynamo(self, device, dtype, torch_optimizer, return_mask):
         d = torch.tensor([0, 10], device=device, dtype=dtype).reshape(1, 1, 2, 1)
         q = _camera(device, dtype).Q
