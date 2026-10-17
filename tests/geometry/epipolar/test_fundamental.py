@@ -367,6 +367,28 @@ class TestFindFundamental(BaseTester):
         self.assert_close(grads[0], grads[1], **tol)
 
 
+class TestFundamentalAutocast(BaseTester):
+    @pytest.mark.parametrize(
+        "method, num_points, weighted",
+        [("7POINT", 7, False), ("8POINT", 8, False), ("8POINT", 100, False), ("8POINT", 100, True)],
+    )
+    def test_autocast_does_not_reach_the_fit(self, device, method, num_points, weighted):
+        # A caller's bfloat16 autocast ran the 7- and 8-point matrix products in bfloat16: float32 points gave a
+        # bfloat16 fundamental matrix far from the float32 one, and CUDA's eigh, which has no bfloat16 kernel, raised.
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        generator = torch.Generator().manual_seed(0)
+        points1 = torch.rand(1, num_points, 2, generator=generator) * torch.tensor([640.0, 480.0])
+        points2 = points1 + torch.tensor([30.0, -5.0]) + 4.0 * torch.randn(1, num_points, 2, generator=generator)
+        weights = torch.rand(1, num_points, generator=generator).to(device) if weighted else None
+        points1, points2 = points1.to(device), points2.to(device)
+        expected = epi.find_fundamental(points1, points2, weights, method=method)
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            actual = epi.find_fundamental(points1, points2, weights, method=method)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, atol=0, rtol=0)
+
+
 class TestComputeCorrespondEpilines(BaseTester):
     def test_smoke(self, device, dtype):
         point = torch.rand(1, 1, 2, device=device, dtype=dtype)

@@ -240,6 +240,7 @@ class RANSAC(nn.Module):
           runs the same algorithm with its own random stream: a seeded call is reproducible and leaves every global
           generator unchanged, while an unseeded call consumes one global random seed. Its result is not the eager
           one. PROSAC sampling and DEGENSAC are not supported.
+        - A caller's autocast region does not change the estimate.
 
     Args:
         model_type: "affine", "homography", "fundamental", "fundamental_7pt", "fundamental_8pt", "essential", or
@@ -944,12 +945,19 @@ class RANSAC(nn.Module):
 
         """
         self.validate_inputs(kp1, kp2, weights)
-        if self.local_optimization == "lm":
-            with torch.no_grad():
-                if self.compiled:
-                    with torch.inference_mode(False), torch.no_grad():
-                        return self._forward_compiled(kp1, kp2)
-                return self._forward_lm(kp1, kp2)
+        # Autocast would solve and score in half precision, which changes the estimate, and CUDA's eigh, which the
+        # fundamental refit calls, has no half-precision kernel.
+        with torch.autocast(device_type=kp1.device.type, enabled=False):
+            if self.local_optimization == "lm":
+                with torch.no_grad():
+                    if self.compiled:
+                        with torch.inference_mode(False), torch.no_grad():
+                            return self._forward_compiled(kp1, kp2)
+                    return self._forward_lm(kp1, kp2)
+            return self._forward_dlt(kp1, kp2)
+
+    def _forward_dlt(self, kp1: torch.Tensor, kp2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """:meth:`forward` with ``local_optimization="dlt"``."""
         best_score_total = -float("inf")
         num_tc: int = len(kp1)
         budget = self.sample_budget
