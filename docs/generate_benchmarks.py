@@ -93,7 +93,8 @@ per call, ``ssim`` 270 ms and ``dice_loss`` 390 ms (the median of three processe
 
 they took 344 ms, 135 ms and 214 ms. The setting keeps freed memory in the process, so its resident memory stays at
 its peak. Loading jemalloc or tcmalloc through ``LD_PRELOAD`` is an alternative, not measured here. Faults cost less on
-native Linux than under WSL2; macOS and CUDA tensors are not affected.
+native Linux than under WSL2. This is glibc's behaviour: macOS uses another allocator and is not covered here, and CUDA
+tensors come from PyTorch's caching allocator, which keeps freed blocks.
 
 """
 
