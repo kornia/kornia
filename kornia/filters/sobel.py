@@ -24,7 +24,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-from kornia.core.utils import is_autocast_enabled
+from kornia.core.utils import is_autocast_enabled, is_exporting
 
 from .filter import _to_floating
 from .kernels import (
@@ -37,12 +37,15 @@ from .kernels import (
 
 def _spatial_gradient_cpu_eligible(input: torch.Tensor) -> bool:
     """Select large forward-only native-precision CPU images, where slices beat the convolution's buffers."""
-    # Keep the convolution where it is what the caller asked for or measured: autocast lowers it, the legacy tracer
-    # exports it, and reverse-mode gradients through it are one convolution instead of a chain of slice backwards.
+    # Keep the convolution where it is what the caller asked for or measured: autocast lowers it, the exporters
+    # export it, and reverse-mode gradients through it are one convolution instead of a chain of slice backwards.
     # The size checks come before the autocast query, which alone costs more than a small image's convolution saves.
     return (
         input.device.type == "cpu"
         and input.dtype in (torch.float32, torch.float64)
+        # Before the size checks: torch.export would turn them into guards of the exported program, which then fails
+        # at run time for an image on the other side of the threshold although its dynamic shapes allow it.
+        and not is_exporting()
         # Measured on a 3-channel image: the slices take 0.88x the convolution's time at 128 x 128 in float64 (0.96x
         # in float32), 0.2x to 0.4x from 256 x 256, and lose below 128 x 128 in float64.
         and input.shape[-2] * input.shape[-1] >= 128 * 128
@@ -99,7 +102,8 @@ def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, n
         - On the CPU, the first-order Sobel derivative of a float32 or float64 input (an integer input is converted
           to float32 first) with at least 128 x 128 pixels per image and ``3 * 128 * 128`` values in all is computed
           from shifted slices instead of a convolution, which avoids the convolution's large buffers, unless its
-          gradient is recorded, autocast is on or ``torch.jit.trace`` is tracing. It agrees with the convolution to
+          gradient is recorded, autocast is on, or ``torch.export`` or ``torch.jit.trace`` captures the call, so an
+          exported program keeps the convolution for every input size. It agrees with the convolution to
           rounding, with the same NaN and infinity positions; with ``normalized=False``, results that overflow can
           overflow at other pixels.
 

@@ -25,7 +25,7 @@ import torch.nn.functional as F
 from kornia.filters import sobel, spatial_gradient
 from kornia.filters.sobel import _spatial_gradient_cpu_eligible, _spatial_gradient_sobel_cpu
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 sobel_module = importlib.import_module("kornia.filters.sobel")
 
@@ -275,3 +275,50 @@ class TestSpatialGradientSobelCpu(BaseTester):
         tolerance = _cpu_tolerance(dtype)
         for op in (spatial_gradient, sobel):
             self.assert_close(torch_optimizer(op)(image), op(image), rtol=tolerance, atol=tolerance)
+
+
+class _Exportable(torch.nn.Module):
+    def __init__(self, op):
+        super().__init__()
+        self.op = op
+
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
+        return self.op(image)
+
+
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+class TestSpatialGradientSobelCpuExport(BaseTester):
+    # torch.export keeps the convolution: the slice path's size check would become a guard of the exported program,
+    # which then failed at run time ("Guard failed: x.size()[3] * x.size()[2] >= 16384") for an image on the other
+    # side of 128 x 128 from the example, although its range_constraints still allowed it.
+    @pytest.mark.parametrize("op", [spatial_gradient, sobel])
+    @pytest.mark.parametrize("example, other", [((2, 3, 256, 256), (3, 3, 32, 48)), ((2, 3, 64, 64), (3, 3, 300, 310))])
+    def test_dynamic_sizes_run_on_both_sides_of_the_threshold(self, op, example, other, device, dtype):
+        _require_native_cpu(device, dtype)
+        dim = torch.export.Dim
+        dynamic = {"image": {0: dim("B", min=1, max=64), 2: dim("H", min=4, max=4096), 3: dim("W", min=4, max=4096)}}
+        program = torch.export.export(
+            _Exportable(op), (torch.rand(*example, device=device, dtype=dtype),), dynamic_shapes=dynamic
+        )
+        convolutions = (torch.ops.aten.conv2d.default, torch.ops.aten.convolution.default)
+        assert any(node.target in convolutions for node in program.graph.nodes)
+
+        exported = program.module()
+        tolerance = _cpu_tolerance(dtype)
+        for shape in (example, other):
+            image = torch.rand(*shape, device=device, dtype=dtype)
+            self.assert_close(exported(image), op(image), rtol=tolerance, atol=tolerance)
+
+    def test_dynamic_batch_of_small_grayscale_images(self, device, dtype):
+        # A (B, 1, 128, 128) batch has 128 x 128 pixels but needs B >= 3 to reach 3 x 128 x 128 values, so the size
+        # check constrained the batch and the export failed with "Constraints violated (B)".
+        _require_native_cpu(device, dtype)
+        dynamic = {"image": {0: torch.export.Dim("B", min=1, max=64)}}
+        program = torch.export.export(
+            _Exportable(spatial_gradient),
+            (torch.rand(8, 1, 128, 128, device=device, dtype=dtype),),
+            dynamic_shapes=dynamic,
+        )
+        image = torch.rand(2, 1, 128, 128, device=device, dtype=dtype)
+        tolerance = _cpu_tolerance(dtype)
+        self.assert_close(program.module()(image), spatial_gradient(image), rtol=tolerance, atol=tolerance)
