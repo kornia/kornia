@@ -334,7 +334,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         same_on_batch: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
-        random_apply_weights: Optional[List[float]] = None,
+        random_apply_weights: Optional[Union[Sequence[float], torch.Tensor]] = None,
         transformation_matrix_mode: str = "silent",
         extra_args: Optional[Dict[DataKey, Dict[str, Any]]] = None,
     ) -> None:
