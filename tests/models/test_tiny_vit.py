@@ -321,6 +321,8 @@ class TestTinyViT(BaseTester):
             (224, False, (448, 112)),
             (224, False, (216, 216)),
             (224, False, (225, 225)),
+            (224, False, (224, 256)),
+            (224, False, (256, 224)),
             (64, True, (32, 128)),
         ],
     )
@@ -329,7 +331,7 @@ class TestTinyViT(BaseTester):
             pytest.skip("MPS does not support float64")
         # 112 x 448 and 448 x 112 give 14 x 56 and 56 x 14 grids of the 784 tokens of 28 x 28, which the stages would
         # read as 28 x 28; 32 x 128 gives MobileSAM's 4 x 16 grid of the 64 tokens of 8 x 8. 216 and 225 give 27 x 27
-        # and 29 x 29.
+        # and 29 x 29; 224 x 256 and 256 x 224 have one side right (28 x 32 and 32 x 28).
         model = TinyViT.from_config("5m", img_size=img_size, mobile_sam=mobile_sam).to(device, dtype).eval()
 
         with torch.no_grad(), pytest.raises(ValueError, match=f"{img_size // 8}x{img_size // 8}"):
