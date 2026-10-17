@@ -112,7 +112,7 @@ class RandomGrayscale(IntensityAugmentationBase2D):
             else:
                 KORNIA_CHECK(
                     weights.numel() == num_channels,
-                    f"rgb_weights needs one weight per channel: got {weights.numel()} for {num_channels}.",
+                    lambda: f"rgb_weights needs one weight per channel: got {weights.numel()} for {num_channels}.",
                 )
                 weights = weights.to(input)
             gray = (input * weights.view(*lead, num_channels, 1, 1)).sum(-3, keepdim=True)

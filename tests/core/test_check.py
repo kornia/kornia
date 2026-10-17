@@ -31,7 +31,9 @@ from kornia.core.check import (
     KORNIA_CHECK_SAME_DEVICE,
     KORNIA_CHECK_SAME_DEVICES,
     KORNIA_CHECK_SAME_SHAPE,
+    KORNIA_CHECK_SAME_SIZE,
     KORNIA_CHECK_SHAPE,
+    KORNIA_CHECK_SIZES,
     KORNIA_CHECK_TYPE,
     are_checks_enabled,
     disable_checks,
@@ -598,3 +600,258 @@ class TestChecksEnableDisable:
 
         monkeypatch.setenv("KORNIA_CHECKS", "false")
         assert _should_enable_checks() is False
+
+
+class TestCheckSameSize:
+    @pytest.mark.parametrize(
+        "x_shape, y_shape, dim, allow_one",
+        [
+            ((2, 3), (2, 5), 0, False),
+            ((2, 3), (4, 3), 1, False),
+            ((2, 3), (4, 3), -1, False),
+            ((1, 3), (4, 3), 0, True),
+        ],
+    )
+    def test_valid(self, x_shape, y_shape, dim, allow_one):
+        assert KORNIA_CHECK_SAME_SIZE(torch.rand(x_shape), torch.rand(y_shape), dim, allow_one) is True
+
+    def test_invalid_reports_both_sizes(self):
+        with pytest.raises(
+            ShapeError, match=r"dimension 0: expected 4, got 3\.\n.*\[3, 2\]\n.*\[4, 2\]\n  a note"
+        ) as e:
+            KORNIA_CHECK_SAME_SIZE(torch.rand(3, 2), torch.rand(4, 2), msg="a note")
+        assert e.value.actual_shape == [3, 2]
+        assert e.value.expected_shape == [4, 2]
+
+    def test_allow_one_is_for_the_first_tensor_only(self):
+        assert KORNIA_CHECK_SAME_SIZE(torch.rand(1, 2), torch.rand(4, 2), allow_one=True) is True
+        with pytest.raises(ShapeError, match="expected 1, got 4"):
+            KORNIA_CHECK_SAME_SIZE(torch.rand(4, 2), torch.rand(1, 2), allow_one=True)
+        with pytest.raises(ShapeError, match="expected 4 or 1, got 3"):
+            KORNIA_CHECK_SAME_SIZE(torch.rand(3, 2), torch.rand(4, 2), allow_one=True)
+
+    @pytest.mark.parametrize("dim", [2, -3])
+    def test_dimension_out_of_range(self, dim):
+        with pytest.raises(ShapeError, match=f"no dimension {dim}"):
+            KORNIA_CHECK_SAME_SIZE(torch.rand(3, 2), torch.rand(3, 2), dim)
+
+    def test_invalid_raises_false(self):
+        assert KORNIA_CHECK_SAME_SIZE(torch.rand(3, 2), torch.rand(4, 2), raises=False) is False
+
+    def test_jit(self):
+        op_jit = torch.jit.script(KORNIA_CHECK_SAME_SIZE)
+        assert op_jit(torch.rand(1, 2), torch.rand(4, 2), 0, True) is True
+        with pytest.raises(Exception, match="expected 4, got 3"):
+            op_jit(torch.rand(3, 2), torch.rand(4, 2))
+
+    def test_dynamo_relates_the_sizes_without_specializing(self, torch_optimizer):
+        from torch._dynamo.testing import CompileCounter
+
+        def op(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+            KORNIA_CHECK_SAME_SIZE(x, y, allow_one=True)
+            return x + y
+
+        counter = CompileCounter()
+        compiled = torch_optimizer(op, backend=counter, fullgraph=True, dynamic=True)
+        for batch in (2, 4, 6):
+            x, y = torch.rand(batch, batch + 3), torch.rand(batch, batch + 3)
+            assert torch.equal(compiled(x, y), x + y)
+        assert counter.frame_count == 1
+
+
+class TestCheckSizes:
+    @pytest.mark.parametrize("shape, sizes", [((5,), [5]), ((2, 3), [None, 3]), ((2, 3, 4), [2, None, None]), ((), [])])
+    def test_valid(self, shape, sizes):
+        assert KORNIA_CHECK_SIZES(torch.rand(shape), sizes) is True
+
+    @pytest.mark.parametrize(
+        "shape, sizes, expected",
+        [
+            ((4,), [5], r"\(5,\), got \[4\]"),
+            ((5, 1), [5], r"\(5,\), got \[5, 1\]"),
+            ((2, 3), [None, 4], r"\(\*, 4\), got \[2, 3\]"),
+        ],
+    )
+    def test_invalid_reports_the_shapes(self, shape, sizes, expected):
+        with pytest.raises(ShapeError, match=f"Shape mismatch: expected {expected}") as e:
+            KORNIA_CHECK_SIZES(torch.rand(shape), sizes)
+        assert e.value.actual_shape == list(shape)
+
+    def test_invalid_raises_false(self):
+        assert KORNIA_CHECK_SIZES(torch.rand(4), [5], raises=False) is False
+
+    def test_jit(self):
+        op_jit = torch.jit.script(KORNIA_CHECK_SIZES)
+        assert op_jit(torch.rand(2, 3), [None, 3]) is True
+        with pytest.raises(Exception, match=r"expected \(\*, 4\)"):
+            op_jit(torch.rand(2, 3), [None, 4])
+
+    def test_dynamo_relates_the_sizes_without_specializing(self, torch_optimizer):
+        from torch._dynamo.testing import CompileCounter
+
+        def op(pred: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
+            KORNIA_CHECK_SIZES(weight, [pred.shape[1]])
+            KORNIA_CHECK_SIZES(pred, [None, weight.shape[0], None])
+            return pred * weight[:, None]
+
+        counter = CompileCounter()
+        compiled = torch_optimizer(op, backend=counter, fullgraph=True, dynamic=True)
+        for classes in (3, 5, 7):
+            pred, weight = torch.rand(2, classes, classes + 4), torch.rand(classes)
+            assert torch.equal(compiled(pred, weight), pred * weight[:, None])
+        assert counter.frame_count == 1
+
+
+class _Message:
+    """A message function that counts its calls."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def __call__(self) -> str:
+        self.calls += 1
+        return "deferred message text"
+
+
+# helper -> (a call that passes, a call that fails), each taking (msg, raises); a helper with two failure paths has
+# one case per path
+_DEFERRED_CASES = {
+    "KORNIA_CHECK": (
+        lambda msg, raises: KORNIA_CHECK(True, msg, raises),
+        lambda msg, raises: KORNIA_CHECK(False, msg, raises),
+    ),
+    "KORNIA_CHECK_SHAPE-ndim": (
+        lambda msg, raises: KORNIA_CHECK_SHAPE(torch.rand(2, 3), ["B", "N"], msg, raises),
+        lambda msg, raises: KORNIA_CHECK_SHAPE(torch.rand(2, 3), ["B", "N", "D"], msg, raises),
+    ),
+    "KORNIA_CHECK_SHAPE-size": (
+        lambda msg, raises: KORNIA_CHECK_SHAPE(torch.rand(2, 3), ["B", "3"], msg, raises),
+        lambda msg, raises: KORNIA_CHECK_SHAPE(torch.rand(2, 3), ["B", "4"], msg, raises),
+    ),
+    "KORNIA_CHECK_SAME_SIZE-size": (
+        lambda msg, raises: KORNIA_CHECK_SAME_SIZE(torch.rand(2, 3), torch.rand(2, 5), 0, False, msg, raises),
+        lambda msg, raises: KORNIA_CHECK_SAME_SIZE(torch.rand(3, 3), torch.rand(2, 5), 0, False, msg, raises),
+    ),
+    "KORNIA_CHECK_SAME_SIZE-dim": (
+        lambda msg, raises: KORNIA_CHECK_SAME_SIZE(torch.rand(2, 3), torch.rand(2, 5), -2, False, msg, raises),
+        lambda msg, raises: KORNIA_CHECK_SAME_SIZE(torch.rand(2), torch.rand(2, 5), 1, False, msg, raises),
+    ),
+    "KORNIA_CHECK_SIZES-ndim": (
+        lambda msg, raises: KORNIA_CHECK_SIZES(torch.rand(2, 3), [2, None], msg, raises),
+        lambda msg, raises: KORNIA_CHECK_SIZES(torch.rand(2, 3), [2], msg, raises),
+    ),
+    "KORNIA_CHECK_SIZES-size": (
+        lambda msg, raises: KORNIA_CHECK_SIZES(torch.rand(2, 3), [None, 3], msg, raises),
+        lambda msg, raises: KORNIA_CHECK_SIZES(torch.rand(2, 3), [None, 4], msg, raises),
+    ),
+    "KORNIA_CHECK_TYPE": (
+        lambda msg, raises: KORNIA_CHECK_TYPE(1, int, msg, raises),
+        lambda msg, raises: KORNIA_CHECK_TYPE("1", int, msg, raises),
+    ),
+    "KORNIA_CHECK_IS_TENSOR": (
+        lambda msg, raises: KORNIA_CHECK_IS_TENSOR(torch.rand(2), msg, raises),
+        lambda msg, raises: KORNIA_CHECK_IS_TENSOR([1.0], msg, raises),
+    ),
+    "KORNIA_CHECK_SAME_DEVICES": (
+        lambda msg, raises: KORNIA_CHECK_SAME_DEVICES([torch.rand(2)], msg, raises),
+        lambda msg, raises: KORNIA_CHECK_SAME_DEVICES([], msg, raises),
+    ),
+    "KORNIA_CHECK_IS_COLOR": (
+        lambda msg, raises: KORNIA_CHECK_IS_COLOR(torch.rand(3, 4, 4), msg, raises),
+        lambda msg, raises: KORNIA_CHECK_IS_COLOR(torch.rand(1, 4, 4), msg, raises),
+    ),
+    "KORNIA_CHECK_IS_GRAY": (
+        lambda msg, raises: KORNIA_CHECK_IS_GRAY(torch.rand(1, 4, 4), msg, raises),
+        lambda msg, raises: KORNIA_CHECK_IS_GRAY(torch.rand(3, 4, 4), msg, raises),
+    ),
+    "KORNIA_CHECK_IS_COLOR_OR_GRAY": (
+        lambda msg, raises: KORNIA_CHECK_IS_COLOR_OR_GRAY(torch.rand(3, 4, 4), msg, raises),
+        lambda msg, raises: KORNIA_CHECK_IS_COLOR_OR_GRAY(torch.rand(2, 4, 4), msg, raises),
+    ),
+    "KORNIA_CHECK_IS_IMAGE-shape": (
+        lambda msg, raises: KORNIA_CHECK_IS_IMAGE(torch.rand(3, 4, 4), msg, raises),
+        lambda msg, raises: KORNIA_CHECK_IS_IMAGE(torch.rand(2, 4, 4), msg, raises),
+    ),
+    "KORNIA_CHECK_IS_IMAGE-range": (
+        lambda msg, raises: KORNIA_CHECK_IS_IMAGE(torch.rand(3, 4, 4), msg, raises),
+        lambda msg, raises: KORNIA_CHECK_IS_IMAGE(torch.full((3, 4, 4), 2.0), msg, raises),
+    ),
+}
+
+
+class TestDeferredMessage:
+    """Every helper that takes ``msg`` accepts a function for it and calls it only to raise."""
+
+    def teardown_method(self):
+        enable_checks()
+
+    @pytest.mark.parametrize("case", sorted(_DEFERRED_CASES))
+    def test_not_called_when_the_check_passes(self, case):
+        passes, _ = _DEFERRED_CASES[case]
+        msg = _Message()
+        assert passes(msg, True) is True
+        assert msg.calls == 0
+
+    @pytest.mark.parametrize("case", sorted(_DEFERRED_CASES))
+    def test_called_once_and_reported_when_the_check_fails(self, case):
+        _, fails = _DEFERRED_CASES[case]
+        msg = _Message()
+        with pytest.raises(BaseError, match="deferred message text"):
+            fails(msg, True)
+        assert msg.calls == 1
+
+    @pytest.mark.parametrize("case", sorted(_DEFERRED_CASES))
+    def test_not_called_when_the_check_does_not_raise(self, case):
+        _, fails = _DEFERRED_CASES[case]
+        msg = _Message()
+        assert fails(msg, False) is False
+        assert msg.calls == 0
+
+    @pytest.mark.parametrize("case", sorted(_DEFERRED_CASES))
+    def test_not_called_when_checks_are_disabled(self, case):
+        _, fails = _DEFERRED_CASES[case]
+        msg = _Message()
+        disable_checks()
+        assert fails(msg, True) is True
+        assert msg.calls == 0
+
+    def test_image_layout_takes_a_deferred_message(self):
+        from kornia.image.base import KORNIA_CHECK_IMAGE_LAYOUT, ChannelsOrder, ImageLayout, ImageSize
+
+        layout = ImageLayout(ImageSize(4, 5), 3, ChannelsOrder.CHANNELS_FIRST)
+        msg = _Message()
+        assert KORNIA_CHECK_IMAGE_LAYOUT(torch.rand(3, 4, 5), layout, msg) is True
+        assert msg.calls == 0
+        with pytest.raises(ShapeError, match="deferred message text"):
+            KORNIA_CHECK_IMAGE_LAYOUT(torch.rand(3, 4, 6), layout, msg)
+        assert msg.calls == 1
+
+    def test_jit_still_takes_a_string_message(self):
+        def op(x: torch.Tensor) -> torch.Tensor:
+            KORNIA_CHECK(x.shape[0] == 2, "a scripted message")
+            KORNIA_CHECK_SHAPE(x, ["2", "N"], "a scripted shape message")
+            return x * 2
+
+        scripted = torch.jit.script(op)
+        assert scripted(torch.ones(2, 3)).sum() == 12
+        with pytest.raises(Exception, match="a scripted message"):
+            scripted(torch.ones(3, 3))
+
+    @pytest.mark.parametrize("helper", ["KORNIA_CHECK", "KORNIA_CHECK_SHAPE"])
+    def test_dynamo_deferred_size_message_compiles_one_graph(self, helper, torch_optimizer):
+        """Formatting a size inside the message function does not specialize it."""
+        from torch._dynamo.testing import CompileCounter
+
+        def op(x: torch.Tensor) -> torch.Tensor:
+            if helper == "KORNIA_CHECK":
+                KORNIA_CHECK(x.shape[0] >= 1, lambda: f"Expected a batch, got {x.shape[0]} rows of {x.shape[1]}")
+            else:
+                KORNIA_CHECK_SHAPE(x, ["B", "N"], lambda: f"Expected (B, N), got {x.shape[0]} x {x.shape[1]}")
+            return x * 2
+
+        counter = CompileCounter()
+        compiled = torch_optimizer(op, backend=counter, fullgraph=True, dynamic=True)
+        for batch in (2, 4, 6):
+            x = torch.rand(batch, batch + 3)
+            assert torch.equal(compiled(x), x * 2)
+        assert counter.frame_count == 1

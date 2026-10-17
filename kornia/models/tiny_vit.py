@@ -28,7 +28,7 @@ import torch.nn.functional as F
 from torch import nn
 from torch.utils import checkpoint
 
-from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SIZE
 from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.models.common import DropPath, LayerNorm2d, window_partition, window_unpartition
 
@@ -711,7 +711,9 @@ def _load_pretrained(model: TinyViT, url: str | list[str]) -> TinyViT:
     for k in ab_keys:
         n_heads1, L1 = state_dict[k].shape
         n_heads2, L2 = model_state_dict[k].shape
-        KORNIA_CHECK(n_heads1 == n_heads2, f"Fail to load {k}. Pre-trained checkpoint should have num_heads={n_heads1}")
+        KORNIA_CHECK_SAME_SIZE(
+            state_dict[k], model_state_dict[k], msg=f"Fail to load {k}: the checkpoint has another number of heads."
+        )
 
         if L1 != L2:
             S1 = int(L1**0.5)

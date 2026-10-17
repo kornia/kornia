@@ -428,7 +428,9 @@ def convert_sift_descriptor_layout(
     size = num_ang_bins * num_spatial_bins * num_spatial_bins
     KORNIA_CHECK(
         descriptors.shape[-1] == size,
-        f"Expected descriptors of size num_ang_bins * num_spatial_bins**2 = {size}, got {descriptors.shape[-1]}",
+        lambda: (
+            f"Expected descriptors of size num_ang_bins * num_spatial_bins**2 = {size}, got {descriptors.shape[-1]}"
+        ),
     )
     if source == target:
         order = list(range(size))

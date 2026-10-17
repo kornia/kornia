@@ -123,7 +123,7 @@ def focal_loss(
     target_one_hot: Optional[torch.Tensor] = None
     if reduced:
         KORNIA_CHECK(target.dtype == torch.int64, f"labels must be of dtype torch.int64. Got: {target.dtype}")
-        KORNIA_CHECK(pred.shape[1] >= 1, f"The number of classes must be >= 1. Got: {pred.shape[1]}")
+        KORNIA_CHECK(pred.shape[1] >= 1, lambda: f"The number of classes must be >= 1. Got: {pred.shape[1]}")
     else:
         target_one_hot = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
 
@@ -172,7 +172,7 @@ def focal_loss(
         KORNIA_CHECK_IS_TENSOR(weight, "weight must be torch.Tensor or None.")
         KORNIA_CHECK(
             (weight.shape[0] == num_of_classes and weight.numel() == num_of_classes),
-            f"weight shape must be (num_of_classes,): ({num_of_classes},), got {weight.shape}",
+            lambda: f"weight shape must be (num_of_classes,): ({num_of_classes},), got {weight.shape}",
         )
         KORNIA_CHECK(
             weight.device == pred.device,
@@ -371,7 +371,7 @@ def binary_focal_loss_with_logits(
         KORNIA_CHECK_IS_TENSOR(pos_weight, "pos_weight must be torch.Tensor or None.")
         KORNIA_CHECK(
             (pos_weight.shape[0] == num_of_classes and pos_weight.numel() == num_of_classes),
-            f"pos_weight shape must be (num_of_classes,): ({num_of_classes},), got {pos_weight.shape}",
+            lambda: f"pos_weight shape must be (num_of_classes,): ({num_of_classes},), got {pos_weight.shape}",
         )
         KORNIA_CHECK(
             pos_weight.device == pred.device,
@@ -386,7 +386,7 @@ def binary_focal_loss_with_logits(
         KORNIA_CHECK_IS_TENSOR(weight, "weight must be torch.Tensor or None.")
         KORNIA_CHECK(
             (weight.shape[0] == num_of_classes and weight.numel() == num_of_classes),
-            f"weight shape must be (num_of_classes,): ({num_of_classes},), got {weight.shape}",
+            lambda: f"weight shape must be (num_of_classes,): ({num_of_classes},), got {weight.shape}",
         )
         KORNIA_CHECK(
             weight.device == pred.device,

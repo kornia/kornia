@@ -141,7 +141,9 @@ class TestBilateralBlur(BaseTester):
             lambda: JointBilateralBlur(3, sigma_color, sigma_space)(image, image),
         )
         for call in calls:
-            with pytest.raises(BaseError, match=f"{name} batch of {rows} for an input batch of {batch}"):
+            with pytest.raises(
+                BaseError, match=rf"(?s)expected {batch}(?: or 1)?, got {rows}\..*{name} must have a batch of 1 or the"
+            ):
                 call()
 
     @pytest.mark.parametrize("name", ["sigma_color", "sigma_space"])

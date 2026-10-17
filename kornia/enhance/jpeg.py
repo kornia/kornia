@@ -25,11 +25,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.color import rgb_to_ycbcr, ycbcr_to_rgb
-from kornia.core.check import (
-    KORNIA_CHECK,
-    KORNIA_CHECK_IS_TENSOR,
-    KORNIA_CHECK_SHAPE,
-)
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_compiling, is_exporting
 from kornia.enhance.adjust import _check_floating_image
 from kornia.geometry.transform.affwarp import rescale
@@ -604,31 +600,31 @@ def jpeg_codec_differentiable(
     if not is_exporting():
         KORNIA_CHECK(
             (jpeg_quality.amin().item() >= 0.0) and (jpeg_quality.amax().item() <= 100.0),
-            f"JPEG quality is out of range. Expected range is [0, 100], "
-            f"got [{jpeg_quality.amin().item()}, {jpeg_quality.amax().item()}]. Consider clipping jpeg_quality.",
+            lambda: (
+                "JPEG quality is out of range. Expected range is [0, 100], "
+                f"got [{jpeg_quality.amin().item()}, {jpeg_quality.amax().item()}]. Consider clipping jpeg_quality."
+            ),
         )
     # Pad the image to a shape dividable by 16
     input, h_pad, w_pad = _perform_padding(input)
     # Get height and shape
     H, W = input.shape[-2:]
     # Check matching batch dimensions
-    if quantization_table_y.shape[0] != 1:
-        KORNIA_CHECK(
-            quantization_table_y.shape[0] == input.shape[0],
-            f"Batch dimensions do not match. "
-            f"Got {input.shape[0]} images and {quantization_table_y.shape[0]} quantization tables (Y).",
-        )
-    if quantization_table_c.shape[0] != 1:
-        KORNIA_CHECK(
-            quantization_table_c.shape[0] == input.shape[0],
-            f"Batch dimensions do not match. "
-            f"Got {input.shape[0]} images and {quantization_table_c.shape[0]} quantization tables (C).",
-        )
-    if jpeg_quality.shape[0] != 1:
-        KORNIA_CHECK(
-            jpeg_quality.shape[0] == input.shape[0],
-            f"Batch dimensions do not match. Got {input.shape[0]} images and {jpeg_quality.shape[0]} JPEG qualities.",
-        )
+    KORNIA_CHECK_SAME_SIZE(
+        quantization_table_y,
+        input,
+        allow_one=True,
+        msg="quantization_table_y needs one table per image, or one for all.",
+    )
+    KORNIA_CHECK_SAME_SIZE(
+        quantization_table_c,
+        input,
+        allow_one=True,
+        msg="quantization_table_c needs one table per image, or one for all.",
+    )
+    KORNIA_CHECK_SAME_SIZE(
+        jpeg_quality, input, allow_one=True, msg="jpeg_quality needs one quality per image, or one for all."
+    )
     # keep jpeg_quality same device as input torch.Tensor
     jpeg_quality = jpeg_quality.to(device, dtype)
     # Quantization tables to same device and dtype as input image

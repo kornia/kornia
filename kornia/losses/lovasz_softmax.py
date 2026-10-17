@@ -106,7 +106,7 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
         KORNIA_CHECK_IS_TENSOR(weight, "weight must be Tensor or None.")
         KORNIA_CHECK(
             (weight.shape[0] == num_of_classes and weight.numel() == num_of_classes),
-            f"weight shape must be (num_of_classes,): ({num_of_classes},), got {weight.shape}",
+            lambda: f"weight shape must be (num_of_classes,): ({num_of_classes},), got {weight.shape}",
         )
         KORNIA_CHECK(
             weight.device == pred.device,
