@@ -146,7 +146,7 @@ class HardNet(nn.Module):
         if input.device.type == "cpu" and input.dtype == torch.float32:
             x_norm = x_norm.to(memory_format=torch.channels_last)
         x_features: torch.Tensor = self.features(x_norm)
-        x_out = x_features.view(x_features.size(0), -1)
+        x_out = x_features.flatten(1)
         # A constant patch drives the features to zero; the default `eps` is not representable in
         # float16, where the normalisation would then return NaN.
         return _l2_normalize(x_out, dim=1)
@@ -261,7 +261,7 @@ class HardNet8(nn.Module):
         x_features: torch.Tensor = self.features(x_norm)
         mean: torch.Tensor = torch.jit.annotate(torch.Tensor, self.mean)
         components: torch.Tensor = torch.jit.annotate(torch.Tensor, self.components)
-        x_flat = x_features.view(x_features.size(0), -1)
+        x_flat = x_features.flatten(1)
         x_prePCA = _l2_normalize(x_flat, dim=1)
         pca = torch.mm(x_prePCA - mean, components)
         return _l2_normalize(pca, dim=1)

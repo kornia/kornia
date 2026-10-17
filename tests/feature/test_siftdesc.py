@@ -103,6 +103,16 @@ class TestSIFTDescriptor(BaseTester):
         out = sift(inp)
         assert out.shape == (1, 128)
 
+    @pytest.mark.parametrize("patch_size", [32, 15])
+    def test_empty_batch(self, device, dtype, patch_size):
+        # A batch of zero patches returns an empty descriptor batch, in the dtype a non-empty call returns.
+        sift = SIFTDescriptor(patch_size).to(device, dtype)
+        one = sift(torch.ones(1, 1, patch_size, patch_size, device=device, dtype=dtype))
+        out = sift(torch.zeros(0, 1, patch_size, patch_size, device=device, dtype=dtype))
+        assert out.shape == (0, 128)
+        assert out.dtype == one.dtype
+        assert out.device == one.device
+
     def test_batch_shape(self, device, dtype):
         inp = torch.ones(2, 1, 15, 15, device=device, dtype=dtype)
         sift = SIFTDescriptor(15).to(device, dtype)

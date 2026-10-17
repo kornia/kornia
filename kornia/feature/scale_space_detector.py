@@ -384,7 +384,7 @@ class ScaleSpaceDetector(nn.Module):
             coord_min, response_min = self.subpix(-response)
         return coord_max, response_max, coord_min, response_min
 
-    def _process_octave(  # noqa: PLR0912
+    def _process_octave(
         self,
         octave: torch.Tensor,
         sigmas_oct: torch.Tensor,
@@ -447,16 +447,6 @@ class ScaleSpaceDetector(nn.Module):
         oct_resp = oct_resp[:, :, :n_resp_levels].contiguous()
         # The mask weights are cast to the response's own dtype (see `_resize_mask`), before the promotion below.
         resampled = None if mask is None else _create_octave_mask(mask, oct_resp)
-        if B == 0:
-            # An empty batch has no candidates. It leaves here, after the shape checks above, with the dtypes a
-            # non-empty batch ends with; `_detect` pads the empty octaves up to `num_feats` slots.
-            promoted = torch.promote_types(oct_resp.dtype, torch.float32)
-            return (
-                oct_resp.new_zeros(0, 0, dtype=promoted),
-                rotmat.new_zeros(0, 0, 2, 3),
-                torch.zeros(0, 0, dtype=torch.bool, device=dev),
-                oct_resp.dtype,
-            )
         # The refiners write absolute pixel coordinates into a tensor of the response's dtype, and bfloat16 holds no
         # odd integer above 256 (float16: above 2048). Run NMS, refinement and top-K on the response in at least
         # float32; promoting is exact, so NMS selects the same candidates. `_detect` casts the responses back.
@@ -525,9 +515,9 @@ class ScaleSpaceDetector(nn.Module):
         # every tensor describes the same (channel, scale, y, x) candidate. Responses
         # are single-channel by the contract checked above, but custom sub-pixel modules
         # still have to preserve this axis order.
-        mask_flat = cand_mask.reshape(B, -1)  # (B, C*L*H*W)
-        resp_flat = response_max.reshape(B, -1)  # (B, C*L*H*W)
-        coord_flat = coord_max.movedim(2, -1).reshape(B, -1, 3)  # (B, C*L*H*W, 3)
+        mask_flat = cand_mask.flatten(1)  # (B, C*L*H*W)
+        resp_flat = response_max.flatten(1)  # (B, C*L*H*W)
+        coord_flat = coord_max.movedim(2, -1).flatten(1, -2)  # (B, C*L*H*W, 3)
 
         if B == 1:
             nms_idx = mask_flat[0].nonzero(as_tuple=True)[0]  # (M,)
@@ -559,9 +549,9 @@ class ScaleSpaceDetector(nn.Module):
         if self.minima_are_also_good:
             # Merge coordinates only for the selected features, not for every voxel
             # in the octave (three full image volumes per scale level).
-            coord_min_flat = coord_min.movedim(2, -1).reshape(B, -1, 3)
+            coord_min_flat = coord_min.movedim(2, -1).flatten(1, -2)
             min_coords_best = torch.gather(coord_min_flat, 1, coord_idxs)
-            take_min_best = torch.gather(take_min_mask.reshape(B, -1), 1, idxs)
+            take_min_best = torch.gather(take_min_mask.flatten(1), 1, idxs)
             max_coords_best = torch.where(take_min_best.unsqueeze(-1), min_coords_best, max_coords_best)
 
         B, N = resp_flat_best.size()
@@ -593,7 +583,7 @@ class ScaleSpaceDetector(nn.Module):
             # region. Re-check the refined centre against the resampled mask, conservatively: every
             # octave pixel the centre touches (its floor and ceil in x and y) has to be allowed, as a
             # zero region already suppresses every candidate within one octave pixel of it.
-            keep_flat = oct_keep.reshape(oct_keep.shape[0], -1)  # (1 or B, H*W)
+            keep_flat = oct_keep.flatten(1)  # (1 or B, H*W)
             if keep_flat.shape[0] != B:
                 keep_flat = keep_flat.expand(B, -1)
             x0 = cx.floor().long().clamp_(0, w - 1)

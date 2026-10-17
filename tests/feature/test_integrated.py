@@ -79,6 +79,16 @@ class TestGetLAFDescriptors(BaseTester):
         self.assert_close(descs_test_from_rgb, descs_reference)
         self.assert_close(descs_test_from_gray, descs_reference)
 
+    def test_empty_batch(self, device, dtype):
+        # Zero images with a (0, N) LAF set: N > 0 slots per image, none of which exists.
+        PS = 16
+        sift = SIFTDescriptor(PS).to(device, dtype)
+        img = torch.zeros(0, 1, 48, 64, device=device, dtype=dtype)
+        lafs = torch.zeros(0, 5, 2, 3, device=device, dtype=dtype)
+        descs = get_laf_descriptors(img, lafs, sift, PS)
+        assert descs.shape == (0, 5, 128)
+        assert descs.dtype == dtype
+
     def test_gradcheck(self, device):
         dtype = torch.float64
         B, C, H, W = 1, 1, 32, 32
@@ -500,6 +510,26 @@ class TestLocalFeature(BaseTester):
     def test_non_positive_scaling_coef_message_5724(self, coef):
         with pytest.raises(ValueError, match="should be > 0"):
             LocalFeature(ScaleSpaceDetector(10), SIFTDescriptor(32), coef)
+
+    def test_empty_batch(self, device, dtype):
+        # H != W; the detector and the descriptor both accept a batch of zero images.
+        PS, n = 16, 7
+        local_feature = LocalFeature(ScaleSpaceDetector(n), LAFDescriptor(SIFTDescriptor(PS), PS)).to(device, dtype)
+        one = local_feature(torch.rand(1, 1, 48, 64, device=device, dtype=dtype))
+        lafs, responses, descs = local_feature(torch.zeros(0, 1, 48, 64, device=device, dtype=dtype))
+        assert lafs.shape == (0, n, 2, 3)
+        assert responses.shape == (0, n)
+        assert descs.shape == (0, n, 128)
+        for actual, expected in zip((lafs, responses, descs), one):
+            assert actual.dtype == expected.dtype
+            assert actual.device == expected.device
+
+    def test_empty_batch_sift_feature_scale_space(self, device, dtype):
+        feature = kornia.feature.SIFTFeatureScaleSpace(7).to(device, dtype)
+        lafs, responses, descs = feature(torch.zeros(0, 1, 48, 64, device=device, dtype=dtype))
+        assert lafs.shape == (0, 7, 2, 3)
+        assert responses.shape == (0, 7)
+        assert descs.shape == (0, 7, 128)
 
     def test_smoke(self, device, dtype):
         det = ScaleSpaceDetector(10)

@@ -21,7 +21,7 @@ from torch.utils._python_dispatch import TorchDispatchMode
 
 import kornia
 from kornia.core.check import ShapeError
-from kornia.feature import KeyNetDetector
+from kornia.feature import BlobDoG, KeyNetDetector
 from kornia.feature.scale_space_detector import (
     MultiResolutionDetector,
     ScaleSpaceDetector,
@@ -204,13 +204,22 @@ class TestScaleSpaceDetector(BaseTester):
         assert resps.shape == torch.Size([7, n_feats])
 
     @pytest.mark.parametrize("with_mask", [False, True])
-    def test_empty_batch(self, device, dtype, with_mask):
+    @pytest.mark.parametrize("config", ["default", "minima", "scale_space_response", "conv_subpix"])
+    def test_empty_batch(self, device, dtype, with_mask, config):
         # A batch of zero images returns empty outputs of the documented shapes, with the dtypes a one-image
-        # call returns in the same input dtype (LAFs float32 for a half image, responses in the image dtype).
-        det = ScaleSpaceDetector(50).to(device, dtype)
+        # call returns in the same input dtype (LAFs float32 for a half image, responses in the image dtype),
+        # still linked to the input for autograd.
+        kwargs = {
+            "default": {},
+            "minima": {"minima_are_also_good": True},
+            "scale_space_response": {"scale_space_response": True, "resp_module": BlobDoG()},
+            "conv_subpix": {"subpix_module": ConvQuadInterp3d()},
+        }[config]
+        det = ScaleSpaceDetector(50, **kwargs).to(device, dtype)
         ones = torch.ones(1, 1, 64, 80, device=device, dtype=dtype)
-        one_lafs, one_resps = det(torch.zeros(1, 1, 64, 80, device=device, dtype=dtype), ones if with_mask else None)
-        empty = torch.zeros(0, 1, 64, 80, device=device, dtype=dtype)
+        one_img = torch.rand(1, 1, 64, 80, device=device, dtype=dtype).requires_grad_(True)
+        one_lafs, one_resps = det(one_img, ones if with_mask else None)
+        empty = torch.zeros(0, 1, 64, 80, device=device, dtype=dtype).requires_grad_(True)
         mask = torch.ones(0, 1, 64, 80, device=device, dtype=dtype) if with_mask else None
         lafs, resps = det(empty, mask)
         assert lafs.shape == torch.Size([0, 50, 2, 3])
@@ -219,9 +228,16 @@ class TestScaleSpaceDetector(BaseTester):
         assert lafs.device == one_lafs.device
         assert resps.dtype == one_resps.dtype
         assert resps.device == one_resps.device
+        # An output a one-image call links to the input stays linked.
+        assert lafs.requires_grad or not one_lafs.requires_grad
+        assert resps.requires_grad or not one_resps.requires_grad
+        if resps.requires_grad:
+            (lafs.sum() + resps.sum()).backward()
+            assert empty.grad is not None
+            assert empty.grad.shape == empty.shape
         # `detect` with an explicit `num_feats` returns the requested count; a mask of one broadcasts.
         one_resps, one_lafs = det.detect(torch.zeros(1, 1, 64, 80, device=device, dtype=dtype), 7)
-        resps, lafs = det.detect(empty, 7, ones if with_mask else None)
+        resps, lafs = det.detect(empty.detach(), 7, ones if with_mask else None)
         assert resps.shape == torch.Size([0, 7])
         assert lafs.shape == torch.Size([0, 7, 2, 3])
         assert lafs.dtype == one_lafs.dtype
