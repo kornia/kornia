@@ -1,0 +1,1 @@
+Fix `rotate`, `Rotate`, `scale`, `Scale` and `rotate3d` treating the channels of an unbatched input as a batch. Multichannel inputs now retain their shape instead of gaining an extra dimension or raising a broadcasting error.

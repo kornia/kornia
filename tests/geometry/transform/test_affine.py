@@ -566,6 +566,51 @@ class TestRescale(BaseTester):
         self.assert_close(out, expected, rtol=0.0, atol=0.0)
 
 
+class TestUnbatchedTransforms(BaseTester):
+    @pytest.mark.parametrize("operation", ["rotate", "Rotate", "scale", "Scale", "rotate3d"])
+    @pytest.mark.parametrize("channels", [1, 3])
+    @pytest.mark.parametrize("custom_center", [False, True])
+    def test_matches_singleton_batch(self, device, dtype, operation, channels, custom_center):
+        shape = (channels, 4, 5, 7) if operation == "rotate3d" else (channels, 5, 7)
+        image = torch.arange(math.prod(shape), device=device, dtype=dtype).reshape(shape) / math.prod(shape)
+        image.requires_grad_()
+        value = 1.2 if operation in ("scale", "Scale") else 23.0
+        parameter = torch.tensor([value], device=device, dtype=dtype, requires_grad=True)
+        center = None
+        if custom_center:
+            dimensions = 3 if operation == "rotate3d" else 2
+            center = torch.full((1, dimensions), 1.3, device=device, dtype=dtype, requires_grad=True)
+        if operation == "rotate3d":
+
+            def fn(x: torch.Tensor) -> torch.Tensor:
+                return kornia.geometry.transform.rotate3d(x, parameter, parameter, parameter, center)
+
+        elif operation in ("scale", "Scale"):
+            fn = kornia.geometry.transform.Scale(parameter, center)
+            if operation == "scale":
+
+                def fn(x: torch.Tensor) -> torch.Tensor:
+                    return kornia.geometry.transform.scale(x, parameter, center)
+
+        else:
+            fn = kornia.geometry.transform.Rotate(parameter, center)
+            if operation == "rotate":
+
+                def fn(x: torch.Tensor) -> torch.Tensor:
+                    return kornia.geometry.transform.rotate(x, parameter, center)
+
+        actual = fn(image)
+        expected = fn(image.unsqueeze(0)).squeeze(0)
+
+        assert actual.shape == image.shape
+        self.assert_close(actual, expected)
+        inputs = (image, parameter) if center is None else (image, parameter, center)
+        actual_grads = torch.autograd.grad(actual.sum(), inputs)
+        expected_grads = torch.autograd.grad(expected.sum(), inputs)
+        for actual_grad, expected_grad in zip(actual_grads, expected_grads):
+            self.assert_close(actual_grad, expected_grad)
+
+
 class TestRotate(BaseTester):
     @pytest.mark.parametrize("align_corners", [False, True])
     @pytest.mark.parametrize("center_shape", [None, (2,), (1, 2), (3, 2)])

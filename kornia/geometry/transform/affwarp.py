@@ -285,7 +285,7 @@ def rotate(
         - positive ``angle`` rotates counter-clockwise as displayed (y-down image axes)
 
     Args:
-        tensor: The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
+        tensor: The image tensor to be warped in shapes of :math:`(C, H, W)` or :math:`(B, C, H, W)`.
         angle: The angle through which to rotate. The tensor
           must have a shape of (B), where B is batch size.
         center: The center through which to rotate. The tensor
@@ -332,7 +332,7 @@ def rotate(
     # A singleton angle and center describe one transform shared by all images. Keep
     # it singleton through affine so warp_affine can reuse its sampling grid. Trainable
     # parameters keep the original reduction order, which matters for half-precision gradients.
-    batch = tensor.shape[0]
+    batch = tensor.shape[0] if tensor.dim() == 4 else 1
     if (
         tensor.dim() == 4
         and batch > 0
@@ -378,7 +378,7 @@ def rotate3d(
         - align_corners: ``False`` by default (the 2D :func:`rotate` defaults to ``True``)
 
     Args:
-        tensor: The image tensor to be warped in shapes of :math:`(B, C, D, H, W)`.
+        tensor: The image tensor to be warped in shapes of :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`.
         yaw: The ``rx`` component of the axis-angle vector. The tensor
           must have a shape of (B), where B is batch size.
         pitch: The ``ry`` component of the axis-angle vector. The tensor
@@ -422,10 +422,11 @@ def rotate3d(
 
     # compute the rotation matrix
     # TODO: add broadcasting to get_rotation_matrix2d for center
-    yaw = yaw.expand(tensor.shape[0])
-    pitch = pitch.expand(tensor.shape[0])
-    roll = roll.expand(tensor.shape[0])
-    center = center.expand(tensor.shape[0], -1)
+    batch = tensor.shape[0] if tensor.dim() == 5 else 1
+    yaw = yaw.expand(batch)
+    pitch = pitch.expand(batch)
+    roll = roll.expand(batch)
+    center = center.expand(batch, -1)
     rotation_matrix: torch.Tensor = _compute_rotation_matrix3d(yaw, pitch, roll, center)
 
     # warp using the affine transform
@@ -500,7 +501,7 @@ def scale(
         - ``center`` is ``(x, y)`` in pixels, origin at top-left; defaults to the tensor center
 
     Args:
-        tensor: The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
+        tensor: The image tensor to be warped in shapes of :math:`(C, H, W)` or :math:`(B, C, H, W)`.
         scale_factor: The scale factor apply. The tensor
           must have a shape of (B) or (B, 2), where B is batch size.
           If (B), isotropic scaling will perform.
@@ -541,8 +542,9 @@ def scale(
 
     # compute the rotation matrix
     # TODO: add broadcasting to get_rotation_matrix2d for center
-    center = center.expand(tensor.shape[0], -1)
-    scale_factor = scale_factor.expand(tensor.shape[0], 2)
+    batch = tensor.shape[0] if tensor.dim() == 4 else 1
+    center = center.expand(batch, -1)
+    scale_factor = scale_factor.expand(batch, 2)
     scaling_matrix: torch.Tensor = _compute_scaling_matrix(scale_factor, center)
 
     # warp using the affine transform
