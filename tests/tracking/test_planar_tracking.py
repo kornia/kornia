@@ -706,7 +706,7 @@ class TestHomographyTrackerHalfKeypointsAndAutocast:
                 torch.manual_seed(0)
                 H, ok = tracker(frame)
                 assert ok
-                projected[kp_dtype].append(transform_points(H.double().cpu()[None], corners))
+                projected[kp_dtype].append(transform_points(H.cpu().double()[None], corners))
             ransac_dtypes[kp_dtype] = tracker.ransac.dtypes
         gaps = [(a - b).abs().max().item() for a, b in zip(projected[torch.float32], projected[half])]
         assert max(gaps) < 1.0, gaps
