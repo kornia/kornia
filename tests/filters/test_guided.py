@@ -940,9 +940,11 @@ class TestConventionsGuidedBlur(BaseTester):
         [
             (torch.float32, torch.float64, torch.float64),
             (torch.float16, torch.float64, torch.float64),
+            (torch.bfloat16, torch.float64, torch.float64),
             (torch.uint8, torch.float64, torch.float64),
             (torch.float64, torch.float32, torch.float64),
             (torch.float16, torch.float32, torch.float32),
+            (torch.bfloat16, torch.float32, torch.float32),
             (torch.uint8, torch.float32, torch.float32),
         ],
     )
