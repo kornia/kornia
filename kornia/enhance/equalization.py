@@ -26,7 +26,7 @@ import torch.nn.functional as F
 from kornia.core.utils import _normalize_to_float32_or_float64
 from kornia.image.utils import perform_keep_shape_image
 
-from .adjust import _lookup_value_check
+from .adjust import _check_floating_image, _lookup_value_check
 from .histogram import histogram
 
 
@@ -509,13 +509,16 @@ def equalize_clahe(
         torch.Size([2, 3, 10, 20])
 
     .. note::
-       The input is expected in :math:`[0, 1]`; each tile is equalized from a 256-bin lookup table.
-       Values the lookup cannot index (outside roughly :math:`[0, 1]`) raise a ``RuntimeError``
-       naming the range. The check is ``torch._assert_async``, which has an MPS kernel from torch
-       ``2.13``; on an older MPS release the condition is read on the host instead, one device sync per
-       call, and is skipped there under ``torch.compile``, as for :func:`kornia.enhance.equalize`.
+       The input is expected as a floating-point image in :math:`[0, 1]`; each tile is equalized from a
+       256-bin lookup table. An integer or boolean image raises :exc:`~kornia.core.exceptions.TypeCheckError`
+       (a :exc:`TypeError`); convert 8-bit data with ``image.float() / 255`` first, as for
+       :func:`kornia.enhance.equalize`. Values the lookup cannot index (outside roughly :math:`[0, 1]`) raise
+       a ``RuntimeError`` naming the range. The check is ``torch._assert_async``, which has an MPS kernel
+       from torch ``2.13``; on an older MPS release the condition is read on the host instead, one device
+       sync per call, and is skipped there under ``torch.compile``, as for :func:`kornia.enhance.equalize`.
 
     """
+    _check_floating_image(input, "equalize_clahe")
     if not isinstance(clip_limit, float):
         raise TypeError(f"Input clip_limit type is not float. Got {type(clip_limit)}")
 

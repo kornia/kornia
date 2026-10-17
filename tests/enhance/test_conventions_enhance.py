@@ -276,6 +276,11 @@ class TestEnhanceConventions(BaseTester):
         "jpeg_codec_differentiable": lambda x: kornia.enhance.jpeg_codec_differentiable(
             x, torch.full((x.shape[0],), 50.0, device=x.device)
         ),
+        # The equalize family's range check caught an 8-bit image only once a value passed 1, so an integer 0/1 mask
+        # got through: equalize_clahe then returned wrong values for it and a boolean one raised a raw error.
+        "equalize": kornia.enhance.equalize,
+        "equalize3d": kornia.enhance.equalize3d,
+        "equalize_clahe": kornia.enhance.equalize_clahe,
     }
 
     @pytest.mark.parametrize("op", sorted(_FLOAT_ONLY_OPS))
@@ -289,6 +294,18 @@ class TestEnhanceConventions(BaseTester):
         assert isinstance(exc_info.value, TypeError)
         assert "image.float() / 255" in str(exc_info.value)
         assert exc_info.value.actual_type == int_dtype
+
+    # A mask with values in {0, 1} passes the equalize family's [0, 1] range check, so only the dtype check catches it.
+    @pytest.mark.parametrize("op", ["equalize", "equalize3d", "equalize_clahe"])
+    @pytest.mark.parametrize("mask_dtype", [torch.uint8, torch.int64, torch.bool], ids=["uint8", "int64", "bool"])
+    def test_convention_equalize_rejects_an_integer_mask_5981(self, op, mask_dtype, device):
+        shape = (2, 3, 4, 16, 16) if op == "equalize3d" else (2, 3, 16, 16)
+        mask = (torch.rand(shape, device=device) > 0.5).to(mask_dtype)
+
+        with pytest.raises(TypeCheckError, match=rf"^{op} expects a floating-point image in \[0, 1\]") as exc_info:
+            self._FLOAT_ONLY_OPS[op](mask)
+
+        assert exc_info.value.actual_type == mask_dtype
 
     @pytest.mark.parametrize("op", sorted(_FLOAT_ONLY_OPS))
     def test_convention_floating_image_is_accepted_5981(self, op, device, dtype):
