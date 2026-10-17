@@ -89,6 +89,19 @@ class TestGetLAFDescriptors(BaseTester):
         assert descs.shape == (0, 5, 128)
         assert descs.dtype == dtype
 
+    def test_empty_batch_gradients_reach_both_inputs(self, device, dtype):
+        # The patches of an empty batch are linked to the image and the LAFs, so a loss on the descriptors alone
+        # backpropagates (a zero gradient), also through a descriptor with no parameters.
+        PS = 16
+        sift = SIFTDescriptor(PS).to(device, dtype)
+        img = torch.zeros(0, 1, 48, 64, device=device, dtype=dtype, requires_grad=True)
+        lafs = torch.zeros(0, 5, 2, 3, device=device, dtype=dtype, requires_grad=True)
+        get_laf_descriptors(img, lafs, sift, PS).sum().backward()
+        assert img.grad is not None
+        assert lafs.grad is not None
+        assert img.grad.shape == img.shape
+        assert lafs.grad.shape == lafs.shape
+
     @pytest.mark.parametrize("n_lafs", [0, 4])
     @pytest.mark.parametrize("n_images", [0, 2])
     @pytest.mark.parametrize("shape", [(64, 1), (), (3, 5)])

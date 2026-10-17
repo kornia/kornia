@@ -21,6 +21,7 @@ from torch.utils._python_dispatch import TorchDispatchMode
 
 import kornia
 from kornia.core.check import ShapeError
+from kornia.core.exceptions import BaseError
 from kornia.feature import BlobDoG, KeyNetDetector
 from kornia.feature.scale_space_detector import (
     MultiResolutionDetector,
@@ -257,28 +258,24 @@ class TestScaleSpaceDetector(BaseTester):
         assert torch.count_nonzero(img.grad) == 0
 
     @pytest.mark.parametrize(
-        "img_tail, mask_shape",
+        "img_tail, mask_shape, error",
         [
-            ((3, 64, 80), None),
-            ((64, 80), None),
-            ((1, 64, 80), (1, 64, 80)),
-            ((1, 64, 80), (1, 3, 64, 80)),
-            ((1, 64, 80), (1, 1, 32, 80)),
-            ((1, 64, 80), (2, 1, 64, 80)),
+            ((3, 64, 80), None, BaseError),
+            ((64, 80), None, ValueError),
+            ((1, 64, 80), (1, 64, 80), BaseError),
+            ((1, 64, 80), (1, 3, 64, 80), BaseError),
+            ((1, 64, 80), (1, 1, 32, 80), BaseError),
+            ((1, 64, 80), (2, 1, 64, 80), BaseError),
         ],
         ids=["3-channels", "3-d-image", "mask-rank-3", "mask-3-channels", "mask-size", "mask-batch"],
     )
-    def test_empty_batch_is_validated_like_a_non_empty_one(self, device, dtype, img_tail, mask_shape):
+    def test_empty_batch_is_validated_like_a_non_empty_one(self, device, dtype, img_tail, mask_shape, error):
         det = ScaleSpaceDetector(5).to(device, dtype)
         mask = None if mask_shape is None else torch.ones(mask_shape, device=device, dtype=dtype)
-
-        def exception_class(batch: int):
+        for batch in (0, 1):
             img = torch.zeros(batch, *img_tail, device=device, dtype=dtype)
-            with pytest.raises(Exception) as info:
+            with pytest.raises(error):
                 det(img, mask)
-            return type(info.value)
-
-        assert exception_class(0) is exception_class(1)
 
     def test_toy(self, device, dtype):
         inp = torch.zeros(1, 1, 33, 33, device=device, dtype=dtype)
