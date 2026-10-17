@@ -392,14 +392,46 @@ class TestHistMatch(BaseTester):
         expected = torch.tensor([[6.0, 5.0], [-2.0, -6.0]], device=device, dtype=dtype)
         self.assert_close(kornia.contrib.interp(x, xp, fp), expected)
 
-    def test_wart_interp_integer_x_with_half_fp_overflows_5967(self, device):
-        # The weight is formed in float16 from integer differences above 65504. x = 100000 gives NaN where the right
-        # value is 1.0; x = 60000 overflows only the segment width and gives a silent 0.0 where the right value is 0.6.
-        x = torch.tensor([100000, 60000], device=device)
-        xp = torch.tensor([0, 200000], device=device)
-        out = kornia.contrib.interp(x, xp, torch.tensor([0.0, 2.0], device=device, dtype=torch.float16))
+    def test_half_overflow_segment_is_correctly_rounded(self, device):
+        # f1 - f0 = 80000 overflows float16 (max 65504) while both ends are finite. Every value, the extrapolated ones
+        # included, equals the float64 result rounded to float16. Reference: fp0 + (fp1 - fp0) * (x - xp0) / (xp1 - xp0)
+        # evaluated in float64 on the float16 inputs.
+        x = torch.linspace(-0.4, 4.4, 481, dtype=torch.float64).to(torch.float16)
+        xp = torch.tensor([0.0, 4.0], dtype=torch.float16)
+        fp = torch.tensor([-40000.0, 40000.0], dtype=torch.float16)
+        x64, xp64, fp64 = x.double(), xp.double(), fp.double()
+        expected = (fp64[0] + (fp64[1] - fp64[0]) * (x64 - xp64[0]) / (xp64[1] - xp64[0])).to(torch.float16)
+        out = kornia.contrib.interp(x.to(device), xp.to(device), fp.to(device))
         assert out.dtype == torch.float16
-        assert torch.isnan(out[0])
-        assert out[1].item() == 0.0
-        reference = kornia.contrib.interp(x, xp, torch.tensor([0.0, 2.0], device=device))
-        self.assert_close(reference, torch.tensor([1.0, 0.6], device=device))
+        assert torch.equal(out.cpu(), expected)
+
+    @pytest.mark.parametrize(
+        ("x", "xp", "expected"),
+        [
+            # Each expected value is fp0 + (fp1 - fp0) * (x - xp0) / (xp1 - xp0) in float64, rounded to float16
+            # (fp = [0, 2]); the rows are the four overflow outcomes that were measured.
+            (100000, [0, 200000], 1.0),  # the weight 100000 / 200000 used to overflow to NaN
+            (60000, [0, 200000], 0.6),  # the knot spacing used to overflow to inf, so the weight was a silent 0
+            (1000, [0, 200000], 0.01),  # the same silent 0
+            (100000, [0, 10], 20000.0),  # a weight of 10000 times a spacing of 10 used to be inf
+        ],
+    )
+    def test_integer_coordinates_with_half_fp(self, x, xp, expected, device):
+        out = kornia.contrib.interp(
+            torch.tensor([x], device=device),
+            torch.tensor(xp, device=device),
+            torch.tensor([0.0, 2.0], device=device, dtype=torch.float16),
+        )
+        assert out.dtype == torch.float16
+        assert torch.equal(out.cpu(), torch.tensor([expected], dtype=torch.float64).to(torch.float16))
+
+    def test_interp_integer_coordinates_with_half_fp_are_exact_at_knots_and_keep_the_slope(self, device):
+        # Integer coordinates and float16 values whose difference overflows: exact knots, fp gradient = weight.
+        x = torch.tensor([0, 100000, 200000], device=device)
+        xp = torch.tensor([0, 200000], device=device)
+        fp = torch.tensor([-40000.0, 40000.0], device=device, dtype=torch.float16, requires_grad=True)
+        out = kornia.contrib.interp(x, xp, fp)
+        assert out.tolist() == [-40000.0, 0.0, 40000.0]
+        out.sum().backward()
+        # weights (1, .5, 0) and (0, .5, 1) summed
+        assert fp.grad.tolist() == [1.5, 1.5]

@@ -1,0 +1,1 @@
+`kornia.contrib.interp` with `float16` values is now correctly rounded in segments whose value difference overflows (it was up to about one ulp off), and integer coordinates with `float16` values no longer overflow: `interp([100000], [0, 200000], [0, 2])` gave NaN, and `x = 60000` and `x = 1000` gave a silent 0 where the values are 0.6 and 0.01.

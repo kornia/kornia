@@ -101,9 +101,8 @@ def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.Tensor:
         - ``xp`` and ``fp`` are 1-D; ``x`` can have any shape, which the output keeps. ``xp`` must be increasing, which
           is not checked. The output dtype is the promoted dtype of ``x``, ``xp`` and ``fp``, or the default float
           dtype when all three are integer.
-        - Known defects: with integer ``x`` and ``xp`` and a ``float16`` ``fp``, any coordinate difference above 65504
-          overflows, and the result can be NaN, inf or silently wrong, such as 0; in ``float16`` a segment whose ``fp``
-          difference overflows can be about one ulp off (`#5967 <https://github.com/kornia/kornia/issues/5967>`_).
+        - The weight of integer coordinates and the sum of a segment whose ``fp`` difference overflows are computed in
+          at least ``float32`` and cast to the output dtype, so ``float16`` values are correctly rounded.
 
     Args:
         x: the :math:`x`-coordinates at which to evaluate the interpolated
@@ -139,8 +138,12 @@ def _interp_real(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.T
     x0, x1, f0, f1 = xp[i - 1], xp[i], fp[i - 1], fp[i]
     dx = x1 - x0
     zero_width = dx == 0
-    dx = torch.where(zero_width, torch.ones_like(dx), dx).to(dtype)
-    w = (x - x0).to(dtype) / dx
+    # The weight is formed in at least float32 for integer coordinates, whose differences can exceed the range of
+    # a half dtype; the overflow branch below always is.
+    od = torch.promote_types(dtype, torch.float32)
+    wdtype = dtype if float_coords else od
+    dx = torch.where(zero_width, torch.ones_like(dx), dx).to(wdtype)
+    w = ((x - x0).to(wdtype) / dx).to(dtype)
     d = f1 - f0
     # f1 - f0 can overflow while both ends are finite. The value is then the weighted sum of the two ends, with each
     # weight divided by dx on its own, so that d/dx is the slope wherever the slope is representable. The other
@@ -166,7 +169,12 @@ def _interp_real(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.T
         torch.where(x == x1, torch.where(torch.isnan(b), f1, b), out),
     )
     # The weighted sum is exact at the knots too: its weights are 1 and 0 there.
-    out = torch.where(overflow, f0 * ((x1 - x).to(dtype) / dx) + f1 * w, out)
+    if float_coords:
+        r0, r1 = x1.to(od) - x.to(od), x.to(od) - x0.to(od)
+    else:
+        r0, r1 = (x1 - x).to(od), (x - x0).to(od)
+    dxo = dx.to(od)
+    out = torch.where(overflow, (f0.to(od) * (r0 / dxo) + f1.to(od) * (r1 / dxo)).to(dtype), out)
     # A zero-width (repeated) segment is reached only at a clipped end: below a repeated first knot the value is
     # fp[0], at or above a repeated last knot fp[-1].
     out = torch.where(zero_width, torch.where(x < x0, f0, f1), out)
