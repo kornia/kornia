@@ -357,15 +357,18 @@ def make_call(case: AugCase, which: str, device: torch.device, dtype: torch.dtyp
     """Build the module and inputs of ``case`` on ``device`` and return a closure that runs ``which``.
 
     The closure carries the module it calls as its ``module`` attribute (``None`` for functions), so a caller
-    can read ``_params`` and ``transform_matrix`` after running it.
+    can read ``_params`` and ``transform_matrix`` after running it, and its input tensors by data key as its
+    ``inputs`` attribute, so a caller can make the image require gradients before running it.
     """
     if which not in case.cases:
         raise ValueError(f"{case.name} does not register the case {which!r}")
     module = _build(case, which)
     fn: Callable[[], Any]
     if case.kind == "functional":
-        fn = module(_inputs_2d(device, dtype)["input"])
+        data = _inputs_2d(device, dtype)
+        fn = module(data["input"])
         fn.module = None  # type: ignore[attr-defined]
+        fn.inputs = data  # type: ignore[attr-defined]
         return fn
 
     if case.kind == "3d":
@@ -381,7 +384,8 @@ def make_call(case: AugCase, which: str, device: torch.device, dtype: torch.dtyp
             def fn() -> Any:
                 return module(x)
     elif case.kind == "container" and isinstance(module, K.VideoSequential):
-        x = torch.rand(2, 3, 4, 32, 32, device=device, dtype=dtype)
+        data = {"input": torch.rand(2, 3, 4, 32, 32, device=device, dtype=dtype)}
+        x = data["input"]
 
         def fn() -> Any:
             return module(x)
@@ -414,6 +418,7 @@ def make_call(case: AugCase, which: str, device: torch.device, dtype: torch.dtyp
                     return seq.inverse(*seq(x, mask, boxes, keypoints))
 
     fn.module = module  # type: ignore[attr-defined]
+    fn.inputs = data  # type: ignore[attr-defined]
     return fn
 
 
