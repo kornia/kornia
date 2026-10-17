@@ -137,9 +137,10 @@ class RandomErasing(IntensityAugmentationBase2D):
         # `where` broadcasts to the input shape, so the result is identical while allocating two
         # small tensors instead of two image-sized ones.
         bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
-        mask = _to_device_nonblocking(
-            bbox_to_mask(bboxes, w, h).unsqueeze(1), input.device, input.dtype
-        )  # (B, 1, H, W)
+        # The (B, 4, 2) boxes cross to the device, not the (B, H, W) mask: a large pageable copy stalls the host while
+        # the driver stages it. The mask is 0 or 1 by exact comparisons, so it is the same on either device.
+        bboxes = _to_device_nonblocking(bboxes, input.device)
+        mask = bbox_to_mask(bboxes, w, h).unsqueeze(1).to(input.dtype)  # (B, 1, H, W)
         return torch.where(mask == 1.0, values, input)
 
     def apply_transform_mask(
@@ -157,7 +158,8 @@ class RandomErasing(IntensityAugmentationBase2D):
         values = torch.zeros((), dtype=input.dtype, device=input.device)
 
         bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
-        mask = _to_device_nonblocking(
-            bbox_to_mask(bboxes, w, h).unsqueeze(1), input.device, input.dtype
-        )  # (B, 1, H, W)
+        # The (B, 4, 2) boxes cross to the device, not the (B, H, W) mask: a large pageable copy stalls the host while
+        # the driver stages it. The mask is 0 or 1 by exact comparisons, so it is the same on either device.
+        bboxes = _to_device_nonblocking(bboxes, input.device)
+        mask = bbox_to_mask(bboxes, w, h).unsqueeze(1).to(input.dtype)  # (B, 1, H, W)
         return torch.where(mask == 1.0, values, input)
