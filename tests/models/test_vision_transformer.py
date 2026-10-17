@@ -17,6 +17,7 @@
 
 import pytest
 import torch
+from torch import nn
 
 from kornia.models.vit import VisionTransformer
 
@@ -78,13 +79,16 @@ class TestVisionTransformer(BaseTester):
         with pytest.raises(ValueError, match="224"):
             vit(torch.rand(shape, device=device, dtype=dtype))
 
-    def test_dynamo_fullgraph(self, device, dtype, torch_optimizer):
+    @pytest.mark.parametrize("with_backbone", [False, True], ids=["patches", "adaptive-backbone"])
+    def test_dynamo_fullgraph(self, device, dtype, torch_optimizer, with_backbone):
         if device.type == "mps" and dtype == torch.float64:
             pytest.skip("MPS does not support float64")
-        # The size check reads static shapes: it must compile without a graph break.
-        vit = VisionTransformer(image_size=32, patch_size=16, embed_dim=64, depth=1, num_heads=2).to(device, dtype)
-        vit = vit.eval()
-        img = torch.rand(2, 3, 32, 32, device=device, dtype=dtype)
+        # The size and token-grid checks read static shapes: they must compile without a graph break. The adaptive
+        # backbone gives its 2 x 2 grid for the 32 x 64 input as well.
+        backbone = nn.Sequential(nn.Conv2d(3, 64, 16, 16), nn.AdaptiveAvgPool2d((2, 2))) if with_backbone else None
+        vit = VisionTransformer(image_size=32, patch_size=16, embed_dim=64, depth=1, num_heads=2, backbone=backbone)
+        vit = vit.to(device, dtype).eval()
+        img = torch.rand(2, 3, 32, 64 if with_backbone else 32, device=device, dtype=dtype)
 
         vit_optimized = torch_optimizer(vit, fullgraph=True)
 
@@ -98,13 +102,37 @@ class TestVisionTransformer(BaseTester):
         def backbone_mock(x):
             return torch.ones(1, 128, 14, 14, device=device, dtype=dtype)
 
-        # The position table is sized from ``image_size`` (224 by default) with a backbone too, so the input has that
-        # size; the mock ignores it.
-        img = torch.rand(1, 3, 224, 224, device=device, dtype=dtype)
+        # The mock gives its 14 x 14 grid, the one the position table is built for, whatever the input size.
+        img = torch.rand(1, 3, 32, 32, device=device, dtype=dtype)
         vit = VisionTransformer(backbone=backbone_mock, num_heads=8).to(device, dtype)
         out = vit(img)
         assert out.shape == (1, 197, 128)
         assert len(vit.encoder_results) == 12
+
+    @pytest.mark.parametrize("size", [(224, 224), (256, 256), (448, 448), (224, 448), (192, 320), (112, 448)])
+    def test_adaptive_backbone_takes_other_sizes(self, device, dtype, size):
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        if device.type == "mps" and any((side // 16) % 14 for side in size):
+            pytest.skip("MPS adaptive pooling needs a grid divisible by its output size (pytorch/pytorch#96056)")
+        # Adaptive pooling gives the 14 x 14 grid of a 224 input at every size, so the positions match the tokens.
+        backbone = nn.Sequential(nn.Conv2d(3, 64, 16, 16), nn.AdaptiveAvgPool2d((14, 14)))
+        vit = VisionTransformer(image_size=224, num_heads=4, depth=1, backbone=backbone).to(device, dtype)
+
+        assert vit(torch.rand(1, 3, *size, device=device, dtype=dtype)).shape == (1, 197, 64)
+
+    @pytest.mark.parametrize("size", [(112, 448), (240, 240)], ids=["7x28-grid", "15x15-grid"])
+    def test_backbone_rejects_other_token_grids(self, device, dtype, size):
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        # A stride-16 backbone gives the 14 x 14 grid only for a 224 input. 112 x 448 gives 7 x 28, 196 tokens that
+        # fit the table with misplaced positions, and 240 x 240 gives 15 x 15.
+        vit = VisionTransformer(image_size=224, num_heads=4, depth=1, backbone=nn.Conv2d(3, 64, 16, 16))
+        vit = vit.to(device, dtype)
+        assert vit(torch.rand(1, 3, 224, 224, device=device, dtype=dtype)).shape == (1, 197, 64)
+
+        with pytest.raises(ValueError, match="14x14"):
+            vit(torch.rand(1, 3, *size, device=device, dtype=dtype))
 
     @pytest.mark.device_agnostic
     def test_from_config_pretrained(self):

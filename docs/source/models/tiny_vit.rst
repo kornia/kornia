@@ -44,12 +44,14 @@ Run it
 
 ``pretrained`` also accepts ``'in22k'`` and, for ``'21m'``, the higher-resolution ``'in1k_384'`` and
 ``'in1k_512'`` checkpoints. ``pretrained=True`` picks them for an ``img_size`` of at least 384 or 512, and they are
-built with the windows they were trained with, ``window_sizes=[12, 12, 24, 12]`` and ``[16, 16, 32, 16]``. Every
-other model keeps the 224-px windows ``[7, 7, 14, 7]`` at any ``img_size``, unless you pass ``window_sizes=``, and
-the attention biases are interpolated only when the windows differ from the checkpoint's. ``img_size`` must be a
-multiple of 32, and accuracy is not preserved away from a checkpoint's resolution: on a giant panda photo,
-TinyViT-5M's probability of the right class drops from 0.766 at 224 px to 0.044 at ``img_size=256``. The
-ImageNet-22k checkpoint carries a 21841-class head, so load it with
+built with the windows they were trained with, ``window_sizes=[12, 12, 24, 12]`` and ``[16, 16, 32, 16]``; named
+explicitly, they build at the ``img_size`` you pass (224 by default), so pass ``img_size=384`` or ``512`` to run
+them at their resolution. Every other model keeps the 224-px windows ``[7, 7, 14, 7]`` at any ``img_size``, unless
+you pass ``window_sizes=``, and the attention biases are interpolated only when the windows differ from the
+checkpoint's. ``img_size`` must be a multiple of 32 and the input ``img_size`` square (sides down to
+``img_size - 7`` round to the same token grid; other sizes raise ``ValueError``), and accuracy is not preserved away
+from a checkpoint's resolution: on the panda above, TinyViT-5M's probability of the right class drops from 0.37 at
+224 px to 0.02 at ``img_size=256``. The ImageNet-22k checkpoint carries a 21841-class head, so load it with
 ``TinyViT.from_config("5m", pretrained="in22k", num_classes=21841)``: with the default ``num_classes=1000`` the
 head does not match, is reset to zeros with a warning, the model returns all-zero logits, and it stays in training
 mode as a backbone to fine-tune. For feature extraction replace the head and switch to evaluation mode:
