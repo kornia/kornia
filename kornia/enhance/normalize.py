@@ -189,10 +189,10 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
                 f"Try changing mean shape and std shape from ({mean.shape}, {std.shape}) to (1, C) or (1, C, 1, 1)."
             )
     else:
-        if isinstance(mean, float):
+        if isinstance(mean, (int, float)):
             mean = torch.tensor([mean] * shape[1], device=data.device, dtype=data.dtype)
 
-        if isinstance(std, float):
+        if isinstance(std, (int, float)):
             std = torch.tensor([std] * shape[1], device=data.device, dtype=data.dtype)
 
         # Allow broadcast on channel dimension
@@ -360,10 +360,10 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
         if mean.shape[0] != 1 or std.shape[0] != 1:
             raise ValueError("Batch dimension must be one for broadcasting when converting to ONNX.")
     else:
-        if isinstance(mean, float):
+        if isinstance(mean, (int, float)):
             mean = torch.tensor([mean] * shape[1], device=data.device, dtype=data.dtype)
 
-        if isinstance(std, float):
+        if isinstance(std, (int, float)):
             std = torch.tensor([std] * shape[1], device=data.device, dtype=data.dtype)
 
         # Allow broadcast on channel dimension
