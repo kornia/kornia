@@ -219,6 +219,33 @@ class TestSigLip2Builder:
         assert actual == expected
         assert (text.hidden_size, text.num_hidden_layers, text.num_attention_heads) == expected[1:4]
 
+    @pytest.mark.parametrize(
+        "model_name",
+        [
+            # #6004: so400m has hidden size 1152 and patch 14, giant is wider still, and the SigLIP 1 checkpoints have
+            # the 32000-token vocabulary; the name parser would build a base patch-16 SigLIP 2 model for each.
+            "google/siglip2-so400m-patch14-384",
+            "google/siglip2-giant-opt-patch16-384",
+            "google/siglip-large-patch16-256",
+            "google/siglip-base-patch16-384",
+            "google/siglip2-base-patch32-256",
+            "google/siglip2-base-patch16-naflex",
+            # the same architectures under another owner
+            "someone/siglip2-so400m-patch14-384-finetuned",
+            "someone/siglip2-giant-opt-patch16-256-mirror",
+            "someone/siglip2-base-patch32-256-mirror",
+            "someone/siglip2-base-patch16-naflex-ft",
+        ],
+    )
+    def test_from_name_rejects_a_name_it_cannot_read(self, model_name):
+        # A google/ checkpoint outside the table, or a name that says so400m, giant, naflex or a patch size other
+        # than 16, names an architecture the parts reading cannot build: it raises rather than return a model of the
+        # wrong shape. Neither call builds a model.
+        with pytest.raises(ValueError, match=r"cannot build .* Supported names: google/siglip-base-patch16-224, "):
+            SigLip2Config.from_name(model_name)
+        with pytest.raises(ValueError, match="cannot build"):
+            SigLip2Builder.from_name(model_name)
+
     def test_from_pretrained_hf_loads_an_unlisted_name_that_fits(self, monkeypatch, config):
         # The tiny config stands in for the configuration read from the name, and its own weights for a fine-tune's.
         monkeypatch.setattr(SigLip2Config, "from_name", staticmethod(lambda model_name: config))
@@ -247,7 +274,8 @@ class TestSigLip2Builder:
 
         with pytest.raises(RuntimeError, match=r"Supported names: google/siglip-base-patch16-224, ") as error:
             SigLip2Builder.from_pretrained_hf("someone/my-siglip")
-        assert "base (hidden size 768, 12 layers, 12 heads)" in str(error.value)
+        # The message reports the configuration actually read from the name, here the tiny stand-in.
+        assert "hidden size 32, 2 layers, 4 heads, patch size 4, image size 32, vocabulary 100" in str(error.value)
         assert "size mismatch" in str(error.value.__cause__)
 
     def test_from_pretrained_hf_passes_on_a_listed_checkpoints_load_error(self, monkeypatch, config):
@@ -464,6 +492,25 @@ class TestSigLip2Model(BaseTester):
         assert output.logits_per_image.shape == (3, 1)
         assert output.logits_per_text.shape == (1, 3)
         assert output.loss is None
+
+    def test_pixel_attention_mask_reaches_the_image_embeddings_and_the_loss(self, device, dtype, model, config):
+        # transformers' Siglip2Model.forward takes a pixel_attention_mask for the vision tower (modeling_siglip2.py
+        # v4.51.0). Here it reaches get_image_features, so the pixels of masked patches change neither the image
+        # embeddings nor the loss.
+        pixel_values = torch.randn(2, 3, 32, 32, device=device, dtype=dtype)
+        changed = pixel_values.clone()
+        changed[..., 16:, :] = torch.randn(2, 3, 16, 32, device=device, dtype=dtype)
+        mask = _patch_rows_4_to_7_masked(device).expand(2, -1)
+        input_ids = _create_input_ids(2, 10, config, device)
+
+        with torch.no_grad():
+            output = model(pixel_values, input_ids, return_loss=True, pixel_attention_mask=mask)
+            output_changed = model(changed, input_ids, return_loss=True, pixel_attention_mask=mask)
+            features = model.get_image_features(pixel_values, attention_mask=mask)
+
+        self.assert_close(output.image_embeds, features)
+        self.assert_close(output_changed.image_embeds, output.image_embeds)
+        self.assert_close(output_changed.loss, output.loss)
 
     def test_gradcheck(self, device, dtype, config):
         """Test gradient computation correctness."""
@@ -765,6 +812,29 @@ class TestSigLip2Components(BaseTester):
         assert torch.isfinite(pooled).all()
         self.assert_close(pooled[1:], uniform)
         self.assert_close(pooled[:1], pooled_alone)
+
+    @pytest.mark.parametrize("autocast_dtype", [torch.bfloat16, torch.float16])
+    def test_pooling_head_all_masked_sample_pools_uniformly_under_autocast(self, device, dtype, autocast_dtype):
+        # Under autocast the hidden state stays float32 while nn.MultiheadAttention computes the scores in the
+        # autocast dtype, where float32's finfo.min rounds to -inf: the fill has to be finite in the autocast dtype,
+        # or a sample with every key masked pools to nan.
+        if dtype != torch.float32:
+            pytest.skip("autocast casts float32 inputs only")
+        config = _tiny_vision_config()
+        head = SigLip2MultiheadAttentionPoolingHead(config).to(device, dtype).eval()
+        hidden_state = torch.randn(2, 64, config.hidden_size, device=device, dtype=dtype)
+        mask = torch.ones(2, 64, dtype=torch.bool, device=device)
+        mask[0, 32:] = False  # sample 0 partly masked
+        mask[1] = False  # sample 1 entirely masked
+
+        with torch.no_grad():
+            expected = head(hidden_state, attention_mask=mask)
+            with torch.autocast(device.type, dtype=autocast_dtype):
+                pooled = head(hidden_state, attention_mask=mask)
+
+        assert torch.isfinite(pooled).all()
+        # the autocast run rounds the projections to the autocast dtype
+        self.assert_close(pooled.to(dtype), expected, rtol=5e-2, atol=5e-2)
 
     def test_activation_follows_hidden_act(self):
         # transformers' SiglipTextConfig and SiglipVisionConfig default hidden_act is "gelu_pytorch_tanh"

@@ -138,7 +138,9 @@ class SigLip2Model(nn.Module):
 
         Args:
             pixel_values: Input images of shape (batch_size, num_channels, height, width).
-            attention_mask: Optional attention mask for vision encoder of shape (batch_size, seq_len).
+            attention_mask: Optional mask of the patches for the vision encoder and its pooling head, ``1``/``True``
+                for a patch to keep: (batch_size, num_patches), or the 3-D and 4-D forms ``SigLip2VisionModel``
+                accepts.
             normalize: Whether to normalize the output features.
 
         Returns:
@@ -195,6 +197,7 @@ class SigLip2Model(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.Tensor] = None,
         return_loss: bool = False,
+        pixel_attention_mask: Optional[torch.Tensor] = None,
     ) -> SigLip2Result:
         """Forward pass.
 
@@ -205,6 +208,9 @@ class SigLip2Model(nn.Module):
             position_ids: Optional position IDs for text encoder.
             return_loss: Whether to compute and return the pairwise sigmoid loss. It pairs the ``i``-th image with the
                 ``i``-th text, so it needs as many images as texts.
+            pixel_attention_mask: Optional mask of the image patches for the vision encoder and its pooling head,
+                ``1``/``True`` for a patch to keep, in any form ``SigLip2VisionModel`` accepts (see
+                :meth:`get_image_features`), as transformers' ``Siglip2Model.forward`` takes it.
 
         Returns:
             SigLip2Result containing:
@@ -222,7 +228,11 @@ class SigLip2Model(nn.Module):
                 unequal batches are fine: ``logits_per_image`` is then ``(num_images, num_texts)``.
         """
         # get embeddings
-        image_embeds = self.get_image_features(pixel_values, normalize=True) if pixel_values is not None else None
+        image_embeds = (
+            self.get_image_features(pixel_values, attention_mask=pixel_attention_mask, normalize=True)
+            if pixel_values is not None
+            else None
+        )
         text_embeds = (
             self.get_text_features(input_ids, attention_mask=attention_mask, position_ids=position_ids, normalize=True)
             if input_ids is not None

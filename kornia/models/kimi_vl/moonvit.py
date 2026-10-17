@@ -127,10 +127,14 @@ class MoonViTAttention(nn.Module):
                 :math:`(N, d / 2)`, where ``d = D / H`` is the per-head dimension.
             sin: Sine component of the rotary positional embedding with shape
                 :math:`(N, d / 2)`.
-            attention_mask: Optional boolean mask, ``True`` where a query may attend to a key: :math:`(B, N, N)`,
-                one mask per sample shared by the heads, or :math:`(B, 1, N, N)` or any other form that broadcasts
-                against the :math:`(B, H, N, N)` attention scores of
-                :func:`~torch.nn.functional.scaled_dot_product_attention`.
+            attention_mask: Optional boolean mask, ``True`` where a query may attend to a key. A mask whose leading
+                dimension is the batch size :math:`B` holds one mask per sample, shared by the heads: :math:`(B, N)`
+                masks keys (padding, as :class:`~kornia.models.siglip2.attention.SigLip2Attention` reads it) and
+                :math:`(B, N, N)` query-key pairs. Any other mask, such as :math:`(B, 1, N, N)`, a per-head
+                :math:`(H, N, N)` or an :math:`(N, N)` shared by the batch, is passed as is and broadcasts against
+                the :math:`(B, H, N, N)` attention scores of :func:`~torch.nn.functional.scaled_dot_product_attention`.
+                So when :math:`B` equals :math:`N` (2-D) or :math:`H` (3-D), the mask is read per sample; pass it as
+                4-D to have it read otherwise.
 
         Returns:
             Tensor with shape :math:`(B, N, D)` containing the attended visual token
@@ -154,10 +158,14 @@ class MoonViTAttention(nn.Module):
 
         query = apply_rotary_pos_emb(query, cos, sin)
         key = apply_rotary_pos_emb(key, cos, sin)
-        if attention_mask is not None and attention_mask.dim() == 3:
-            # (B, N, N) -> (B, 1, N, N): one mask per sample, broadcast over the heads. Passed as is, its leading
-            # dimension would line up with the heads of the (B, H, N, N) scores.
+        if attention_mask is not None and attention_mask.dim() in (2, 3) and attention_mask.shape[0] == batch_size:
+            # One mask per sample, broadcast over the heads: (B, N) -> (B, 1, 1, N) masks keys, (B, N, N) ->
+            # (B, 1, N, N) query-key pairs. Passed as is, SDPA would line a 3-D mask's leading dimension up with the
+            # heads, and read a 2-D one as an N x N query x key mask. Other masks (an (H, N, N) per head, an (N, N)
+            # for every sample) already broadcast against the (B, H, N, N) scores as meant and are left alone.
             attention_mask = attention_mask.unsqueeze(1)
+            if attention_mask.dim() == 3:
+                attention_mask = attention_mask.unsqueeze(1)
         attn_output = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=self.dropout.p if self.training else 0.0
         )
@@ -317,8 +325,10 @@ class MoonViT(nn.Module):
                 should be multiples of ``2 * patch_size`` (28 for the released checkpoint), which
                 :class:`~kornia.models.kimi_vl.KimiVLModel` needs to merge the patches 2 x 2: the patch embedding crops
                 a size that is not a multiple of ``patch_size`` silently.
-            attention_mask: (B, 1, N, N) or (B, N, N) optional boolean mask over the N patches, ``True`` where a patch
-                may attend to another. A (B, N, N) mask holds one mask per sample, shared by the heads.
+            attention_mask: (B, N), (B, N, N) or (B, 1, N, N) optional boolean mask over the N patches, ``True`` where
+                a patch may attend to another. A (B, N) mask marks the patches every patch may attend to (padding is
+                ``False``), and a (B, N, N) mask holds one mask per sample; both are shared by the heads. See
+                :class:`MoonViTAttention` for the other forms.
 
         Returns:
             (B, seq_len, hidden_size)

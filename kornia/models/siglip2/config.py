@@ -147,6 +147,26 @@ def _read_name_parts(model_name: str) -> tuple[int, int, int, int, int]:
     return vocab_size, 768, 12, 12, image_size
 
 
+def _unreadable_name(model_name: str) -> Optional[str]:
+    """Why ``_read_name_parts`` cannot give the architecture of a name outside ``_SUPPORTED_MODELS``, else ``None``.
+
+    The parts reading builds a base or large SigLIP 2 model at patch size 16. A ``google/`` name outside the table is
+    a released checkpoint whose configuration was not checked (SigLIP 1 has the 32000-token vocabulary, so400m a
+    hidden size of 1152), and a name that says so400m, giant, NaFlex or a patch size other than 16 names an
+    architecture the reading cannot build.
+    """
+    lowered = model_name.lower()
+    if lowered.startswith("google/"):
+        return "it is a google/ checkpoint outside the supported list"
+    for marker in ("so400m", "giant", "naflex"):
+        if marker in lowered:
+            return f"the name says {marker!r}, an architecture other than base or large at patch size 16"
+    patch = re.search(r"patch(\d+)", lowered)
+    if patch is not None and patch.group(1) != "16":
+        return f"the name says patch size {patch.group(1)}, not 16"
+    return None
+
+
 @dataclass
 class SigLip2Config:
     """Configuration for SigLip2 model.
@@ -198,17 +218,32 @@ class SigLip2Config:
         architecture: ``SigLip2Builder.from_pretrained_hf`` adapts the text positions to the checkpoint and raises
         ``RuntimeError`` when its other shapes differ.
 
+        A name whose parts say an architecture this reading cannot build raises: a ``google/`` name outside the list
+        (another released checkpoint, such as ``google/siglip2-so400m-patch14-384`` or the SigLIP 1
+        ``google/siglip-large-patch16-256``), or a name that says ``so400m``, ``giant``, ``naflex`` or a patch size
+        other than 16.
+
         Args:
             model_name: HuggingFace model identifier.
 
         Returns:
             SigLip2Config instance configured for the specified model.
+
+        Raises:
+            ValueError: for a name outside the list whose architecture its parts cannot give.
         """
         text_kwargs: dict[str, int] = {}
         if model_name in _SUPPORTED_MODELS:
             vocab_size, hidden_size, num_layers, num_heads, image_size = _SUPPORTED_MODELS[model_name]
             text_kwargs["max_position_embeddings"] = 64
         else:
+            reason = _unreadable_name(model_name)
+            if reason is not None:
+                raise ValueError(
+                    f"SigLip2Config.from_name cannot build {model_name!r}: {reason}. Supported names: "
+                    f"{', '.join(_SUPPORTED_MODELS)}. Another name is read as a fine-tune or mirror of one of these, "
+                    "with the base or large architecture at patch size 16."
+                )
             vocab_size, hidden_size, num_layers, num_heads, image_size = _read_name_parts(model_name)
         # every supported checkpoint has an MLP of 4 x hidden_size (3072 for base, 4096 for large)
         intermediate_size = 4 * hidden_size

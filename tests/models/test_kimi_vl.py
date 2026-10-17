@@ -60,6 +60,16 @@ def model(device, dtype, config):
     return KimiVLModel(config).to(device, dtype)
 
 
+def _moonvit_attention_inputs(config, batch_size, seq_len, device, dtype):
+    """Random ``(B, N, D)`` tokens and the ``(N, d / 2)`` RoPE cosine and sine for :class:`MoonViTAttention`."""
+    hidden_size = config.vision_config.hidden_size
+    head_dim = hidden_size // config.vision_config.num_attention_heads
+    x = torch.randn(batch_size, seq_len, hidden_size, device=device, dtype=dtype)
+    cos = torch.randn(seq_len, head_dim // 2, device=device, dtype=dtype)
+    sin = torch.randn(seq_len, head_dim // 2, device=device, dtype=dtype)
+    return x, cos, sin
+
+
 class TestKimiVLBuilder(BaseTester):
     def test_from_config(self, config):
         model = KimiVLBuilder.from_config(config)
@@ -341,6 +351,48 @@ class TestKimiVLComponents(BaseTester):
 
         output = attention(x, cos, sin)
         assert output.shape == (batch_size, seq_len, hidden_size)
+
+    def test_moonvit_attention_per_head_mask_of_a_batch_of_one(self, device, dtype, config):
+        # A 3-D mask whose leading dimension is not the batch size broadcasts against the (B, H, N, N) scores as
+        # scaled_dot_product_attention reads it: an (H, N, N) mask masks each head of a batch of one on its own, as it
+        # did before #6044, which unsqueezed every 3-D mask and made this one raise.
+        attention = MoonViTAttention(config.vision_config).to(device, dtype).eval()
+        heads, n = config.vision_config.num_attention_heads, 16
+        x, cos, sin = _moonvit_attention_inputs(config, 1, n, device, dtype)
+        mask = torch.rand(heads, n, n, device=device) > 0.5
+        mask[..., 0] = True  # no query row is fully masked
+
+        with torch.no_grad():
+            output = attention(x, cos, sin, attention_mask=mask)
+            self.assert_close(output, attention(x, cos, sin, attention_mask=mask[None]))
+
+    @pytest.mark.parametrize("batch_size", [2, 16])
+    def test_moonvit_attention_two_dim_mask_is_a_padding_mask(self, device, dtype, config, batch_size):
+        # A (B, N) mask is a padding mask over the keys, read as (B, 1, 1, N) as SigLip2Attention reads it. Its leading
+        # dimension is the batch size also when B == N (16 here), where scaled_dot_product_attention would take it for
+        # an N x N query x key mask.
+        attention = MoonViTAttention(config.vision_config).to(device, dtype).eval()
+        n = 16
+        x, cos, sin = _moonvit_attention_inputs(config, batch_size, n, device, dtype)
+        mask = torch.ones(batch_size, n, dtype=torch.bool, device=device)
+        mask[1, n // 2 :] = False  # sample 1 attends to the first half of the keys only
+
+        with torch.no_grad():
+            output = attention(x, cos, sin, attention_mask=mask)
+            self.assert_close(output, attention(x, cos, sin, attention_mask=mask[:, None, None, :]))
+            self.assert_close(output[1:2], attention(x[1:2], cos, sin, attention_mask=mask[1:2]))
+
+    def test_moonvit_attention_query_key_mask_is_shared_by_the_batch(self, device, dtype, config):
+        # An N x N mask whose leading dimension is not the batch size is scaled_dot_product_attention's query x key
+        # mask, shared by every sample and head.
+        attention = MoonViTAttention(config.vision_config).to(device, dtype).eval()
+        n = 16
+        x, cos, sin = _moonvit_attention_inputs(config, 2, n, device, dtype)
+        mask = torch.ones(n, n, dtype=torch.bool, device=device).tril()
+
+        with torch.no_grad():
+            output = attention(x, cos, sin, attention_mask=mask)
+            self.assert_close(output, attention(x, cos, sin, attention_mask=mask[None, None]))
 
     def test_moonvit_rotary_embedding(self, device, dtype, config):
         dim = config.vision_config.hidden_size // config.vision_config.num_attention_heads

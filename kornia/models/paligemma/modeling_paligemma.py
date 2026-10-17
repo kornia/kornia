@@ -344,7 +344,8 @@ class PaliGemma(nn.Module):
         inputs_embeds = self.embed_tokens(input_ids)
         # Gemma scales the text embeddings by sqrt(hidden_size), a tensor in the embedding dtype; PaliGemma's image
         # features enter unscaled (transformers divides them by the same factor before Gemma multiplies the sequence)
-        inputs_embeds = inputs_embeds * torch.tensor(self.config.hidden_size**0.5, dtype=inputs_embeds.dtype)
+        normalizer = torch.tensor(self.config.hidden_size**0.5, device=inputs_embeds.device, dtype=inputs_embeds.dtype)
+        inputs_embeds = inputs_embeds * normalizer
 
         inputs_embeds = torch.cat([image_features, inputs_embeds], dim=1)
 

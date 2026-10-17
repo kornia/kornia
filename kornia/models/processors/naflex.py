@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import math
+import warnings
 from typing import Callable, Optional, Union
 
 import torch
@@ -25,6 +26,7 @@ from torch.nn import functional as F
 
 from kornia.core._compat import torch_version_lt
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.utils import is_compiling
 
 __all__ = ["NaFlex"]
 
@@ -48,7 +50,10 @@ class NaFlex(nn.Module):
             are read as a square :math:`\sqrt{N} \times \sqrt{N}` grid in raster order, and a :math:`N` that is not
             a square number raises. A non-square grid therefore needs ``patch_size`` or a :math:`(B, C, h, w)` output:
             the :math:`8 \times 32` grid of a :math:`128 \times 512` image at patch 16 is read right with
-            ``patch_size=16``, and as :math:`16 \times 16` without it.
+            ``patch_size=16``, and as :math:`16 \times 16` without it. A square reading that takes rectangular patches,
+            on an image whose sides differ by at least one patch, warns with a ``UserWarning`` naming ``patch_size``
+            (outside ``torch.compile`` and ``torch.export``), since it is wrong for square patches; ``patch_size``
+            silences it, also for a patch embedding that is rectangular.
         position_embedding: Position embedding table of shape :math:`(S^2, C)`, the raster-order rows of an
             :math:`S \times S` grid, to be interpolated to match input resolution. An ``nn.Parameter`` stays a
             parameter of the module, so it is trained with it; any other tensor is registered as a buffer. A table
@@ -182,4 +187,16 @@ class NaFlex(nn.Module):
             "embeddings are not a square number. Pass patch_size to NaFlex, or make the patch embedding return "
             "(B, C, h, w).",
         )
+        # A square grid on an image whose sides differ by at least one patch takes rectangular patches. That is right
+        # for a rectangular patch embedding, but for square patches the grid is not square (#6004: 8 x 32 at patch 16
+        # for 128 x 512) and the table goes in the wrong layout. N, H and W cannot tell the two apart, so warn. A
+        # square-patch convolution, overlapping or not, gives a square grid only for sides closer than one stride.
+        if not is_compiling() and abs(height - width) * side >= min(height, width):
+            warnings.warn(
+                f"NaFlex reads the {num_patches} patch embeddings of a {height} x {width} image as a {side} x {side} "
+                f"grid, which takes {height / side:.3g} x {width / side:.3g} pixel patches. If the patches are square, "
+                "the grid is not square and the position table is added in the wrong layout: pass patch_size to "
+                "NaFlex (which also silences this warning), or make the patch embedding return (B, C, h, w).",
+                stacklevel=2,
+            )
         return side, side

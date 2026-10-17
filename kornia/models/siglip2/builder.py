@@ -96,6 +96,10 @@ class SigLip2Builder:
         Returns:
             SigLip2Model instance with random initialization, configured by ``SigLip2Config.from_name``: a name outside
             its supported list gets the configuration read from the name's parts.
+
+        Raises:
+            ValueError: for a name outside the supported list whose architecture its parts cannot give, such as
+                ``google/siglip2-so400m-patch14-384`` (see ``SigLip2Config.from_name``).
         """
         config = SigLip2Config.from_name(model_name)
         return SigLip2Model(config)
@@ -147,8 +151,10 @@ class SigLip2Builder:
             :ref:`pretrained-models-conventions`).
 
         Raises:
+            ValueError: before downloading, for a name outside the supported list whose architecture its parts cannot
+                give (see ``SigLip2Config.from_name``).
             RuntimeError: if the checkpoint of a repository outside the supported list does not fit the configuration
-                read from its name; the message lists the supported names.
+                read from its name; the message gives that configuration and lists the supported names.
 
         .. note::
             The repository must publish its weights as a single
@@ -176,12 +182,14 @@ class SigLip2Builder:
         except RuntimeError as e:
             if model_name in _SUPPORTED_MODELS:
                 raise
+            vision, text = config.vision_config, config.text_config
             raise RuntimeError(
                 f"The checkpoint of {model_name!r} does not fit the configuration SigLip2Config.from_name reads from "
-                f"this name. Supported names: {', '.join(_SUPPORTED_MODELS)}. A repository outside that list must "
-                "have the architecture its name gives: base (hidden size 768, 12 layers, 12 heads) unless the name "
-                "contains 'large' (1024, 24, 16), patch size 16, and the first of the image sizes 224, 256, 384 and "
-                "512 that is a whole number in the repository part of the name, else in its owner part, else 224."
+                f"this name: hidden size {vision.hidden_size}, {vision.num_hidden_layers} layers, "
+                f"{vision.num_attention_heads} heads, patch size {vision.patch_size}, image size {vision.image_size}, "
+                f"vocabulary {text.vocab_size}. Supported names: {', '.join(_SUPPORTED_MODELS)}. A repository outside "
+                "that list loads only when its checkpoint has the architecture read from its name (see "
+                "SigLip2Config.from_name)."
             ) from e
 
         return model.eval()

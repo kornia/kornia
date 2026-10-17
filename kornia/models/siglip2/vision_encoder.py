@@ -194,7 +194,10 @@ class SigLip2MultiheadAttentionPoolingHead(nn.Module):
                 ``torch.finfo(dtype).min`` added rather than ``-inf``: a sample whose tokens are all padding pools
                 them with exactly uniform weights in float32, float64 and bfloat16. In float16, as in transformers,
                 ``finfo(float16).min`` plus a score rounds to a multiple of 32, so those weights are only roughly
-                uniform, and a head whose scores are all below about -16 gives a non-finite output.
+                uniform, and a head whose scores are all below about -16 gives a non-finite output. Under
+                :func:`torch.autocast` the scores are computed in the autocast dtype, so its minimum is used when it
+                is the larger one (the float32 minimum would round to ``-inf`` in float16 or bfloat16), and the
+                float16 caveat applies to float16 autocast.
 
         Returns:
             Tensor with shape :math:`(B, D)` containing the pooled visual
@@ -215,8 +218,14 @@ class SigLip2MultiheadAttentionPoolingHead(nn.Module):
             # _prepare_4d_attention_mask builds it: a partly padded sample pools as with -inf (exp underflows to 0),
             # and an all-padding sample gets uniform weights (exactly so in float32, float64 and bfloat16; float16
             # rounds min + score, see the docstring) instead of the nan of a softmax over -inf only.
+            fill = torch.finfo(hidden_state.dtype).min
+            device_type = hidden_state.device.type
+            if torch.amp.is_autocast_available(device_type) and torch.is_autocast_enabled(device_type):
+                # nn.MultiheadAttention adds the mask to scores computed in the autocast dtype, where float32's
+                # minimum rounds to -inf: fill with the minimum both dtypes can hold.
+                fill = max(fill, torch.finfo(torch.get_autocast_dtype(device_type)).min)
             key_padding_mask = torch.zeros(keep.shape, dtype=hidden_state.dtype, device=hidden_state.device)
-            key_padding_mask = key_padding_mask.masked_fill(~keep, torch.finfo(hidden_state.dtype).min)
+            key_padding_mask = key_padding_mask.masked_fill(~keep, fill)
             key_padding_mask = key_padding_mask.expand(batch_size, -1)
 
         # multi-head attention: probe as query, hidden_state as key/value

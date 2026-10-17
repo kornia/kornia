@@ -1,0 +1,4 @@
+Vision-language calls of `kornia.models` that ran now raise or read a mask differently:
+
+- `SigLip2Config.from_name`, `SigLip2Builder.from_name` and `SigLip2Builder.from_pretrained_hf` raise `ValueError` for a name outside their supported list whose architecture its parts cannot give: a `google/` name, such as `google/siglip2-so400m-patch14-384` or the SigLIP 1 `google/siglip-large-patch16-256`, and a name that says `so400m`, `giant`, `naflex` or a patch size other than 16. `from_name` returned a base or large patch-16 SigLIP 2 model of the wrong shape for these names, and `from_pretrained_hf` failed on loading its weights.
+- `MoonViTAttention`, `MoonViT` and `KimiVLModel` read a 2-D attention mask whose leading dimension is the batch size as a `(B, N)` padding mask. When the batch size equals the number of patches `N`, an `N x N` query x key mask was used as is and is now read as padding; pass it as `(1, 1, N, N)`.
