@@ -44,6 +44,8 @@ class HomographyTracker(nn.Module):
         - Every homography the tracker returns or stores as ``previous_homography``, :meth:`no_match`'s included, is
           float32 for a ``float16`` or ``bfloat16`` target and has the target's dtype otherwise, whatever the dtype of
           the frame, of the matcher's keypoints or of a ``previous_homography`` assigned from outside.
+        - Half keypoints are widened to that dtype before ``ransac`` fits them. The caller's autocast reaches the
+          matchers, but not the tracker's own warp and keypoint mapping.
 
     Args:
         initial_matcher: image matching module for a frame without a previous homography, e.g.
@@ -239,7 +241,10 @@ class HomographyTracker(nn.Module):
         if self.keypoints0_num < max(self.minimum_inliers_num, 4):
             return self.no_match()
 
-        H, inliers = self.ransac(keypoints0, keypoints1)
+        # RANSAC returns its model in the dtype of the keypoints: widen half keypoints first, or the fit is rounded to
+        # half before it is widened to the homography dtype.
+        keypoints_dtype = torch.promote_types(keypoints0.dtype, self._homography_dtype)
+        H, inliers = self.ransac(keypoints0.to(keypoints_dtype), keypoints1.to(keypoints_dtype))
         self.inliers_num = inliers.sum().item()
 
         if self.inliers_num < self.minimum_inliers_num:
@@ -263,7 +268,8 @@ class HomographyTracker(nn.Module):
         The frame is first prewarped by the inverse of the previous homography, widened by a margin,
         then matched with ``fast_matcher`` and verified using RANSAC. The inverse is computed in the homography dtype
         (float32 for a ``float16`` or ``bfloat16`` target), the frame is warped in that dtype or in its own if that is
-        wider, and ``fast_matcher`` gets the warped frame in the dtype of ``x``.
+        wider, and ``fast_matcher`` gets the warped frame in the dtype of ``x``. Its keypoints are mapped back and
+        fitted in the homography dtype or in their own if that is wider. Autocast is off for the warp and the mapping.
         """
         self._drop_prior_of_another_target()
         KORNIA_CHECK(
@@ -275,18 +281,23 @@ class HomographyTracker(nn.Module):
         # make a bit of border for safety
         Hwarp[:, 0:2, 0:2] = Hwarp[:, 0:2, 0:2] / 0.8
         Hwarp[:, 0:2, 2] -= 10.0
-        Hinv = torch.inverse(Hwarp)
         h, w = self.target.shape[2:]
         # grid_sample takes the image and the sampling grid in one dtype, and a half grid is coarser than a pixel on a
         # large frame (bfloat16 keeps 8 mantissa bits): a half frame is warped in float32 and cast back for the matcher.
+        # The caller's autocast would run the warp's matrix products in half again, so it is off for the geometry only.
         warp_dtype = torch.promote_types(x.dtype, homography_dtype)
-        frame_warped = warp_perspective(x.to(warp_dtype), Hinv, (h, w)).to(x.dtype)
+        with torch.autocast(x.device.type, enabled=False):
+            Hinv = torch.inverse(Hwarp)
+            frame_warped = warp_perspective(x.to(warp_dtype), Hinv, (h, w)).to(x.dtype)
         match_dict = self.fast_matcher(
             self._matcher_input(self.fast_matcher, self._target_representation(False), frame_warped)
         )
         keypoints0 = match_dict["keypoints0"][match_dict["batch_indexes"] == 0]
         keypoints1 = match_dict["keypoints1"][match_dict["batch_indexes"] == 0]
-        keypoints1 = transform_points(Hwarp, keypoints1)
+        # Half keypoints are widened before they are mapped back and fitted, as in match_initial.
+        keypoints_dtype = torch.promote_types(keypoints0.dtype, homography_dtype)
+        with torch.autocast(x.device.type, enabled=False):
+            keypoints1 = transform_points(Hwarp, keypoints1.to(keypoints_dtype))
 
         self.keypoints0_num = len(keypoints0)
         self.keypoints1_num = len(keypoints1)
@@ -295,7 +306,7 @@ class HomographyTracker(nn.Module):
             self.reset_tracking()
             return self.no_match()
 
-        H, inliers = self.ransac(keypoints0, keypoints1)
+        H, inliers = self.ransac(keypoints0.to(keypoints_dtype), keypoints1)
         self.inliers_num = inliers.sum().item()
 
         if self.inliers_num < self.minimum_inliers_num:

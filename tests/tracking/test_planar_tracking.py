@@ -653,3 +653,80 @@ class TestHomographyTrackerConventions:
         # 0.42 px on MPS; at most 1.37 px over texture seeds 0-7 on either. The bound is about twice that, below the
         # 5 px inlier threshold of the tracker's default RANSAC.
         assert (projected[torch.bfloat16] - projected[torch.float32]).abs().max().item() < 3.0
+
+
+class _FixedMatcher(torch.nn.Module):
+    """Fixed correspondences ``keypoints1 = _H_TRUE(keypoints0)`` over a 600 x 450 frame, built once in float32.
+
+    Nothing it returns depends on the frame or on autocast. ``image1`` records every frame it is given.
+    """
+
+    def __init__(self, dtype: torch.dtype = torch.float32) -> None:
+        super().__init__()
+        ys, xs = torch.meshgrid(torch.arange(7.0, 440, 23), torch.arange(5.0, 590, 29), indexing="ij")
+        kp0 = torch.stack([xs.flatten(), ys.flatten()], -1)
+        self.kp0, self.kp1 = kp0.to(dtype), transform_points(_H_TRUE[None], kp0[None])[0].to(dtype)
+        self.image1: list = []
+
+    def forward(self, data: dict) -> dict:
+        self.image1.append(data["image1"])
+        device = data["image1"].device
+        return {
+            "keypoints0": self.kp0.to(device),
+            "keypoints1": self.kp1.to(device),
+            "batch_indexes": torch.zeros(len(self.kp0), dtype=torch.long, device=device),
+        }
+
+
+class _DtypeSpy(torch.nn.Module):
+    def __init__(self, inner: torch.nn.Module) -> None:
+        super().__init__()
+        self.inner, self.dtypes = inner, []
+
+    def forward(self, kp0, kp1):
+        self.dtypes.append((kp0.dtype, kp1.dtype))
+        return self.inner(kp0, kp1)
+
+
+class TestHomographyTrackerHalfKeypointsAndAutocast:
+    @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16])
+    def test_half_keypoints_are_fitted_in_float32(self, half, device):
+        # RANSAC returns its model in the keypoints' dtype; a bfloat16 homography moves the frame corners by pixels.
+        # The tracker with half keypoints follows the same tracker with float32 keypoints.
+        corners = torch.tensor([[[0.0, 0.0], [599.0, 0.0], [599.0, 449.0], [0.0, 449.0]]], dtype=torch.float64)
+        projected, ransac_dtypes = {}, {}
+        for kp_dtype in (torch.float32, half):
+            tracker = HomographyTracker(_FixedMatcher(kp_dtype), _FixedMatcher(kp_dtype), minimum_inliers_num=10)
+            tracker.ransac = _DtypeSpy(tracker.ransac)
+            tracker.set_target(torch.rand(1, 1, 450, 600, device=device, dtype=half))
+            frame = torch.rand(1, 1, 450, 600, device=device, dtype=half)
+            projected[kp_dtype] = []
+            for _ in range(2):  # match_initial, then track_next_frame
+                torch.manual_seed(0)
+                H, ok = tracker(frame)
+                assert ok
+                projected[kp_dtype].append(transform_points(H.double().cpu()[None], corners))
+            ransac_dtypes[kp_dtype] = tracker.ransac.dtypes
+        gaps = [(a - b).abs().max().item() for a, b in zip(projected[torch.float32], projected[half])]
+        assert max(gaps) < 1.0, gaps
+        assert ransac_dtypes[half] == [(torch.float32, torch.float32)] * 2
+
+    def test_autocast_does_not_reach_the_tracker_geometry(self, device):
+        # Under the caller's autocast, the warp's and transform_points' matrix products would run in bfloat16: the
+        # keypoints mapped back to the frame moved by up to 7.6 px at 600 px (CPU; 5.9 px on CUDA).
+        if device.type == "mps":
+            pytest.skip("MPS autocast is not exercised here")
+        fast = _FixedMatcher()
+        tracker = HomographyTracker(_FixedMatcher(), fast, minimum_inliers_num=10)
+        tracker.set_target(torch.rand(1, 1, 450, 600, device=device))
+        frame = torch.rand(1, 1, 450, 600, device=device)
+        results = []
+        for autocast in (False, True):
+            tracker.previous_homography = _H_TRUE.to(device)
+            torch.manual_seed(0)
+            with torch.autocast(device.type, dtype=torch.bfloat16, enabled=autocast):
+                H, ok = tracker.track_next_frame(frame)
+            assert ok
+            results.append(H)
+        assert torch.equal(fast.image1[0], fast.image1[1])
+        assert torch.equal(results[0], results[1])
