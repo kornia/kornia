@@ -37,7 +37,7 @@ def _check_label_range(name: str, labels: torch.Tensor, num_classes: int) -> Non
     low, high = int(labels.min()), int(labels.max())
     KORNIA_CHECK(
         0 <= low and high < num_classes,
-        f"Input {name} must contain values in [0, {num_classes}). Got values in [{low}, {high}]",
+        lambda: f"Input {name} must contain values in [0, {num_classes}). Got values in [{low}, {high}]",
     )
 
 

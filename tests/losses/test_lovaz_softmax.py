@@ -258,6 +258,19 @@ class TestLovaszSoftmaxLoss(BaseTester):
         labels = torch.randint(0, num_classes, (2, 3, 2), device=device)
         self.gradcheck(kornia.losses.lovasz_softmax_loss, (logits, labels), dtypes=[torch.float64, torch.int64])
 
+    def test_jit_script(self, device, dtype):
+        # TorchScript compiles the loss with its weight check, whose message formats shapes rather than a lambda
+        num_classes = 4
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
+        labels = torch.randint(0, num_classes, (2, 3, 2), device=device)
+        weight = torch.rand(num_classes, device=device, dtype=dtype)
+        op = kornia.losses.lovasz_softmax_loss
+        op_script = torch.jit.script(op)
+        for w in (None, weight):
+            self.assert_close(op_script(logits, labels, w), op(logits, labels, w))
+        with pytest.raises(Exception, match="weight must hold one value per class of pred"):
+            op_script(logits, labels, torch.rand(num_classes + 1, device=device, dtype=dtype))
+
     @pytest.mark.skip(reason="Not matching results")
     def test_dynamo(self, device, dtype, torch_optimizer):
         # TODO: investigate if we can fix it or report the issue

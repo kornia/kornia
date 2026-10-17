@@ -371,8 +371,10 @@ class RandomTransplantation(MixAugmentationBaseV2):
             )
             KORNIA_CHECK(
                 len(selected_labels) <= len(params["acceptor_indices"]),
-                f"There cannot be more selected labels ({len(selected_labels)}) than images where this "
-                f"augmentation should be applied ({len(params['acceptor_indices'])}).",
+                lambda: (
+                    f"There cannot be more selected labels ({len(selected_labels)}) than images where this "
+                    f"augmentation should be applied ({len(params['acceptor_indices'])})."
+                ),
             )
 
             for d, selected_label in zip(range(len(params["donor_indices"])), selected_labels):

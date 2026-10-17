@@ -31,6 +31,15 @@ class TestTFeat(BaseTester):
         out = tfeat(inp)
         assert out.shape == (1, 128)
 
+    def test_empty_batch(self, device, dtype):
+        # A batch of zero patches returns an empty descriptor batch, in the dtype a non-empty call returns.
+        model = TFeat(pretrained=False).to(device, dtype).eval()
+        one = model(torch.ones(1, 1, 32, 32, device=device, dtype=dtype))
+        out = model(torch.zeros(0, 1, 32, 32, device=device, dtype=dtype))
+        assert out.shape == (0, one.shape[1])
+        assert out.dtype == one.dtype
+        assert out.device == one.device
+
     @pytest.mark.slow
     def test_pretrained(self, device):
         inp = torch.ones(1, 1, 32, 32, device=device)

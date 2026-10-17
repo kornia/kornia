@@ -19,7 +19,7 @@ from typing import Dict, List, Tuple
 
 import torch
 
-from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SIZE
 
 from .mean_iou import mean_iou_bbox
 
@@ -91,10 +91,8 @@ def mean_average_precision(
     # The counts are checked per image: totals that agree can still pair the rows of one image with another's.
     gt_images = []
     for i, (boxes, labels) in enumerate(zip(gt_boxes, gt_labels)):
-        KORNIA_CHECK(
-            boxes.size(0) == labels.size(0),
-            f"gt_boxes and gt_labels must have one row per object in every image. Got image {i}: {boxes.size(0)} "
-            f"boxes and {labels.size(0)} labels",
+        KORNIA_CHECK_SAME_SIZE(
+            boxes, labels, msg=f"gt_boxes and gt_labels must have one row per object in every image (image {i})."
         )
         gt_images.extend([i] * labels.size(0))
     # (n_objects), n_objects is the total no. of objects across all images
@@ -105,11 +103,10 @@ def mean_average_precision(
     # Store all detections in a single continuous torch.Tensor while keeping track of the image it is from
     pred_images = []
     for i, (boxes, labels, scores) in enumerate(zip(pred_boxes, pred_labels, pred_scores)):
-        KORNIA_CHECK(
-            boxes.size(0) == labels.size(0) == scores.size(0),
-            f"pred_boxes, pred_labels and pred_scores must have one row per detection in every image. Got image {i}: "
-            f"{boxes.size(0)} boxes, {labels.size(0)} labels and {scores.size(0)} scores",
-        )
+        for name, other in (("pred_labels", labels), ("pred_scores", scores)):
+            KORNIA_CHECK_SAME_SIZE(
+                boxes, other, msg=f"pred_boxes and {name} must have one row per detection in every image (image {i})."
+            )
         pred_images.extend([i] * labels.size(0))
     _pred_boxes = torch.cat(pred_boxes, 0)  # (n_detections, 4)
     _pred_labels = torch.cat(pred_labels, 0)  # (n_detections)
@@ -123,10 +120,11 @@ def mean_average_precision(
         _gt_boxes.dtype if _gt_boxes.is_floating_point() else torch.float32,
     )
 
+    # These data-dependent checks break the compiled graph; in a helper function they would also break it at each call.
     for name, labels in (("pred_labels", _pred_labels), ("gt_labels", _gt_labels)):
         KORNIA_CHECK(
             bool(((labels >= 0) & (labels < n_classes)).all()),
-            f"{name} must satisfy 0 <= label < n_classes ({n_classes}).",
+            lambda: f"{name} must satisfy 0 <= label < n_classes ({n_classes}).",  # noqa: B023 - called at once
         )
         if labels.is_floating_point():
             KORNIA_CHECK(bool((labels == labels.round()).all()), f"{name} must contain integer-valued labels.")
