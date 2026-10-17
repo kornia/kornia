@@ -89,7 +89,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                  If None, it will not overwrite the function-wise settings.
 
         random_apply: randomly select children to apply. The selected children run in random order and may repeat
-                      when the requested count exceeds the sum of the selection weights.
+                      when the requested count exceeds the sum of the selection weights or the number of
+                      children with a nonzero weight.
                       If int, a fixed number of transformations will be selected.
                       If (a,), x number of transformations (a <= x <= len(args)) will be selected.
                       If (a, b), x number of transformations (a <= x <= b) will be selected.

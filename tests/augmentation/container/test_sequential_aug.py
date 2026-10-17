@@ -327,6 +327,44 @@ class TestConventionImageSequential(BaseTester):
                 K.RandomHorizontalFlip(p=1.0), K.RandomVerticalFlip(p=1.0), random_apply=1, random_apply_weights=weights
             )
 
+    @pytest.mark.parametrize("weights", [[7.0, 2.0, 1.0], [7, 2, 1], [0.7, 0.2, 0.1]])
+    @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
+    def test_random_apply_count_above_members_samples_with_replacement_6069(self, weights, container, device, dtype):
+        # A count above the number of members used to sample without replacement whenever the weights summed to at
+        # least the count, and torch.multinomial raised "cannot sample n_sample > prob_dist.size(-1) samples without
+        # replacement". It now samples with replacement, as the default weights already did.
+        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        seq = container(
+            K.RandomHorizontalFlip(p=1.0),
+            K.RandomVerticalFlip(p=1.0),
+            K.RandomInvert(p=1.0),
+            random_apply=4,
+            random_apply_weights=weights,
+        )
+        for seed in range(20):
+            torch.manual_seed(seed)
+            seq(x)
+            assert len(seq._params) == 4
+
+    @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
+    def test_random_apply_count_above_nonzero_weights_skips_zero_weight_members_6069(self, container, device, dtype):
+        # Three draws from two nonzero weights summing to 10 raised the same error; they now repeat the two members
+        # with a nonzero weight and never select the member with weight 0.
+        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        seq = container(
+            K.RandomHorizontalFlip(p=1.0),
+            K.RandomVerticalFlip(p=1.0),
+            K.RandomInvert(p=1.0),
+            random_apply=3,
+            random_apply_weights=[7, 0, 3],
+        )
+        for seed in range(20):
+            torch.manual_seed(seed)
+            seq(x)
+            names = [p.name for p in seq._params]
+            assert len(names) == 3
+            assert set(names) <= {"RandomHorizontalFlip_0", "RandomInvert_2"}
+
     def test_convention_augmentation_sequential_leaves_plain_modules_applied_4423(self, device, dtype):
         # #4423: `AugmentationSequential` does not take `if_unsupported_ops`; it leaves a plain module child applied,
         # also when nested in another container, while a nested `ImageSequential` follows its own setting.
