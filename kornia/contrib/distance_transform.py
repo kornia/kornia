@@ -127,7 +127,11 @@ def _distance_transform_2d_impl(image: torch.Tensor, kernel_size: int, h: float)
     kernel = torch.exp(-dist / h).unsqueeze(0)
 
     out = torch.zeros_like(image, dtype=compute_dtype)
-    boundary = image.to(compute_dtype)
+    # Clamp the mask to [0, 1] through torch.where, not torch.clamp: where passes gradient 1 at exactly 0 and 1 on
+    # every torch version, while clamp's derivative at its bound is 1 on torch 2.5.1 and 2.9.1 and 0 on 2.14.
+    boundary = torch.where(
+        image > 1, torch.ones_like(image), torch.where(image < 0, torch.zeros_like(image), image)
+    ).to(compute_dtype)
     signal_ones = torch.ones_like(boundary)
     can_stop = _can_stop_cascade(image)
 
@@ -163,7 +167,10 @@ def _distance_transform_3d_impl(image: torch.Tensor, kernel_size: int, h: float)
     kernel = torch.exp(-dist / h).unsqueeze(0)
 
     out = torch.zeros_like(image, dtype=compute_dtype)
-    boundary = image.to(compute_dtype)
+    # The mask is clamped to [0, 1] through torch.where, as in 2-D.
+    boundary = torch.where(
+        image > 1, torch.ones_like(image), torch.where(image < 0, torch.zeros_like(image), image)
+    ).to(compute_dtype)
     signal_ones = torch.ones_like(boundary)
     can_stop = _can_stop_cascade(image)
 
@@ -192,14 +199,17 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
     The transformation is applied independently across the channel dimension.
 
     Convention:
-        - The distance is to the nearest non-zero pixel, where SciPy's ``distance_transform_edt`` and OpenCV's
+        - The distance is to the nearest positive pixel, where SciPy's ``distance_transform_edt`` and OpenCV's
           ``distanceTransform`` measure it to the nearest zero: ``distance_transform(x)`` approximates
-          ``scipy.ndimage.distance_transform_edt(x == 0)``.
-        - ``image`` is a binary mask whose sources are the pixels equal to 1. A value :math:`0 < v < 1` is a weaker
-          source: it adds :math:`-h \log v` to a distance within ``kernel_size // 2`` of it whose window holds no
-          other source, less where the window holds one, as the soft minimum sums them before its logarithm, and
-          does not change the distances further away.
-        - A mask without any non-zero pixel gives 0 everywhere, as a full mask does, which keeps the output and its
+          ``scipy.ndimage.distance_transform_edt(x <= 0)``, which is ``distance_transform_edt(x == 0)`` for a mask
+          of 0 and 1.
+        - ``image`` is a binary mask whose sources are the pixels equal to 1, read after clamping it to [0, 1]: a value
+          above 1 is a full source, as 1 is, and a negative value is background, as 0 is. Values above 1 or below 0
+          are clamped, so their gradient is 0, while values in [0, 1], the bounds included, pass the gradient
+          through. A value :math:`0 < v < 1` is a weaker source: it adds :math:`-h \log v` to a distance within
+          ``kernel_size // 2`` of it whose window holds no other source, less where the window holds one, as the
+          soft minimum sums them before its logarithm, and does not change the distances further away.
+        - A mask without any positive pixel gives 0 everywhere, as a full mask does, which keeps the output and its
           gradient finite.
         - Known defect: the result is not Euclidean, and there is no general bound on its error
           (`#5956 <https://github.com/kornia/kornia/issues/5956>`_). From an isolated source it is exact only within
@@ -209,9 +219,6 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
           reached pixels share its window (replicate padding counts a pixel on the image border twice), the more the
           larger ``h``: at the default ``h`` by 0.167 px beside a straight edge, 0.243 px midway between two sources
           2 px apart and 0.579 px in a one-pixel hole, and in a hole towards 0 as ``h`` nears its upper bound.
-        - Known defect: values above 1 are not rejected and change the distances; at the default ``kernel_size=3``
-          and ``h=0.35`` a mask of 0 and 255 gives 0 everywhere
-          (`#5977 <https://github.com/kornia/kornia/issues/5977>`_).
 
     Args:
         image: Image or volume with shape :math:`(B,C,H,W)` or :math:`(B,C,D,H,W)`.

@@ -278,13 +278,50 @@ class TestConvDistanceTransform(BaseTester):
         self.assert_close(output1[0, 0, 0, 0, 0], expected_corner)
 
     def test_gradcheck(self, device):
+        # 0.5, off the kink at 1 where the mask is clamped and a finite difference is one-sided.
+        # On CUDA the backward of the cascade's convolutions and replicate padding is not deterministic: repeated
+        # float64 backward passes differ by up to ~1e-15, which gradcheck's reentrancy check rejects at tolerance 0.
+        nondet_tol = 1e-12 if device.type == "cuda" else 0.0
         B, C, H, W = 1, 1, 32, 32
-        sample2d = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        self.gradcheck(kornia.contrib.distance_transform, (sample2d,))
+        sample2d = torch.full((B, C, H, W), 0.5, device=device, dtype=torch.float64, requires_grad=True)
+        self.gradcheck(kornia.contrib.distance_transform, (sample2d,), nondet_tol=nondet_tol)
 
         B, C, D, H, W = 1, 1, 5, 5, 5
-        sample3d = torch.ones(B, C, D, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        self.gradcheck(kornia.contrib.distance_transform, (sample3d,))
+        sample3d = torch.full((B, C, D, H, W), 0.5, device=device, dtype=torch.float64, requires_grad=True)
+        self.gradcheck(kornia.contrib.distance_transform, (sample3d,), nondet_tol=nondet_tol)
+
+    @pytest.mark.parametrize(
+        ("shape", "source", "neighbours"),
+        [((1, 1, 4, 5), (1, 2), 8), ((1, 1, 3, 4, 5), (1, 1, 2), 26)],
+        ids=["2d", "3d"],
+    )
+    def test_gradient_reaches_a_unit_source(self, shape, source, neighbours, device, dtype, cudnn_tf32_follows_option):
+        # The mask is clamped to [0, 1] with torch.where, whose derivative at a value of exactly 1 is 1 on every torch
+        # version; torch.clamp's is 0 there on torch 2.14 (AGENTS.md). Each neighbour of the interior source reads
+        # -h * log(tap * v) in the first cascade step, so d/dv = -h / v = -0.35 per neighbour at v = 1, and nothing
+        # later depends on v: the gradient at the source is 8 * -0.35 = -2.8 in 2-D and 26 * -0.35 = -9.1 in 3-D.
+        sample = torch.zeros(*shape, device=device, dtype=dtype)
+        sample[(0, 0, *source)] = 1.0
+        sample.requires_grad_(True)
+        kornia.contrib.distance_transform(sample).sum().backward()
+        expected = torch.tensor(neighbours * -0.35, device=device, dtype=dtype)
+        self.assert_close(sample.grad[(0, 0, *source)], expected)
+
+    @pytest.mark.parametrize(
+        ("shape", "above", "below"),
+        [((1, 1, 4, 5), (1, 1), (2, 3)), ((1, 1, 3, 4, 5), (1, 1, 1), (1, 2, 3))],
+        ids=["2d", "3d"],
+    )
+    def test_gradient_is_zero_outside_the_unit_range(self, shape, above, below, device, dtype):
+        # Values above 1 or below 0 are clamped, so their gradient is 0; the pixels in [0, 1] still receive one.
+        sample = torch.zeros(*shape, device=device, dtype=dtype)
+        sample[(0, 0, *above)] = 2.0
+        sample[(0, 0, *below)] = -1.0
+        sample.requires_grad_(True)
+        kornia.contrib.distance_transform(sample).sum().backward()
+        assert sample.grad[(0, 0, *above)] == 0
+        assert sample.grad[(0, 0, *below)] == 0
+        assert (sample.grad != 0).any()
 
     @pytest.mark.parametrize("shape", [(1, 1, 4, 4), (1, 1, 4, 4, 4)], ids=["2d", "3d"])
     @pytest.mark.parametrize("has_signal", [False, True], ids=["all-zero", "one-hot"])
@@ -545,17 +582,34 @@ class TestConvDistanceTransform(BaseTester):
         )
         self.assert_close(values, expected)
 
-    def test_wart_distance_transform_mask_above_one_5977(self, device, dtype):
-        # A source of value v contributes -h * log(v) instead of 0: at v = 2 its neighbour reads 1 - 0.35 * log(2)
-        # = 0.7574 instead of 1, and at v = 255 and the default kernel_size and h every pixel reads 0, as if on the
-        # foreground. A smaller h shrinks the shift: at h = 0.1 the neighbour reads 1 - 0.1 * log(255) = 0.4459.
-        image = torch.zeros(1, 1, 9, 13, device=device, dtype=dtype)
-        image[0, 0, 4, 6] = 1.0
+    @pytest.mark.parametrize(
+        ("shape", "source"), [((1, 1, 9, 13), (4, 6)), ((1, 1, 5, 7, 9), (2, 3, 4))], ids=["2d", "3d"]
+    )
+    def test_convention_values_above_one_are_full_sources(self, shape, source, device, dtype):
+        # The mask is clamped to [0, 1], so a value above 1 is the same source as 1. Read unclamped, a source of value
+        # v added -h * log(v) to the distances near it (its neighbour read 1 - 0.35 * log(2) = 0.7574 at v = 2), and
+        # at v = 255 every pixel read 0.
+        image = torch.zeros(*shape, device=device, dtype=dtype)
+        image[(0, 0, *source)] = 1.0
         binary = kornia.contrib.distance_transform(image)
-        self.assert_close(binary[0, 0, 4, 7], torch.tensor(1.0, device=device, dtype=dtype))
-        doubled = kornia.contrib.distance_transform(2 * image)
-        self.assert_close(doubled[0, 0, 4, 7], torch.tensor(1.0 - 0.35 * math.log(2.0), device=device, dtype=dtype))
-        assert (kornia.contrib.distance_transform(255 * image) == 0).all()
-        small_h = kornia.contrib.distance_transform(255 * image, h=0.1)
-        self.assert_close(small_h[0, 0, 4, 7], torch.tensor(1.0 - 0.1 * math.log(255.0), device=device, dtype=dtype))
-        assert binary.max() > 5
+        assert binary.max() > 3
+        for v in (2.0, 20.0, 255.0):
+            self.assert_close(kornia.contrib.distance_transform(v * image), binary, rtol=0, atol=0)
+        assert (kornia.contrib.distance_transform(255 * image) != 0).any()
+
+    @pytest.mark.parametrize(
+        ("shape", "source", "negatives"),
+        [((1, 1, 9, 13), (4, 6), [(4, 8), (0, 0)]), ((1, 1, 5, 7, 9), (2, 3, 4), [(2, 3, 6), (0, 0, 0)])],
+        ids=["2d", "3d"],
+    )
+    def test_convention_negative_values_are_background(self, shape, source, negatives, device, dtype):
+        # The mask is clamped to [0, 1], so a negative value is background. Read unclamped, in 2-D the -1 two pixels
+        # from the source cancelled its contribution to the pixel between them, which read 2.17 instead of 1, and the
+        # -1 and the -5 read 0 themselves, as did the -5's neighbours (float64, default kernel_size and h).
+        image = torch.zeros(*shape, device=device, dtype=dtype)
+        image[(0, 0, *source)] = 1.0
+        negative = image.clone()
+        negative[(0, 0, *negatives[0])] = -1.0
+        negative[(0, 0, *negatives[1])] = -5.0
+        dt = kornia.contrib.distance_transform
+        self.assert_close(dt(negative), dt(image), rtol=0, atol=0)
