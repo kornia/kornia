@@ -21,7 +21,8 @@ from torch.utils._python_dispatch import TorchDispatchMode
 
 import kornia
 from kornia.core.check import ShapeError
-from kornia.feature import KeyNetDetector
+from kornia.core.exceptions import BaseError
+from kornia.feature import BlobDoG, KeyNetDetector
 from kornia.feature.scale_space_detector import (
     MultiResolutionDetector,
     ScaleSpaceDetector,
@@ -202,6 +203,79 @@ class TestScaleSpaceDetector(BaseTester):
         lafs, resps = det(inp)
         assert lafs.shape == torch.Size([7, n_feats, 2, 3])
         assert resps.shape == torch.Size([7, n_feats])
+
+    @pytest.mark.parametrize("with_mask", [False, True])
+    @pytest.mark.parametrize("config", ["default", "minima", "scale_space_response", "conv_subpix"])
+    def test_empty_batch(self, device, dtype, with_mask, config):
+        # A batch of zero images returns empty outputs of the documented shapes, with the dtypes a one-image
+        # call returns in the same input dtype (LAFs float32 for a half image, responses in the image dtype),
+        # still linked to the input for autograd.
+        kwargs = {
+            "default": {},
+            "minima": {"minima_are_also_good": True},
+            "scale_space_response": {"scale_space_response": True, "resp_module": BlobDoG()},
+            "conv_subpix": {"subpix_module": ConvQuadInterp3d()},
+        }[config]
+        det = ScaleSpaceDetector(50, **kwargs).to(device, dtype)
+        ones = torch.ones(1, 1, 64, 80, device=device, dtype=dtype)
+        one_img = torch.rand(1, 1, 64, 80, device=device, dtype=dtype).requires_grad_(True)
+        one_lafs, one_resps = det(one_img, ones if with_mask else None)
+        empty = torch.zeros(0, 1, 64, 80, device=device, dtype=dtype).requires_grad_(True)
+        mask = torch.ones(0, 1, 64, 80, device=device, dtype=dtype) if with_mask else None
+        lafs, resps = det(empty, mask)
+        assert lafs.shape == torch.Size([0, 50, 2, 3])
+        assert resps.shape == torch.Size([0, 50])
+        assert lafs.dtype == one_lafs.dtype
+        assert lafs.device == one_lafs.device
+        assert resps.dtype == one_resps.dtype
+        assert resps.device == one_resps.device
+        # Both outputs stay linked to the input, and backward runs.
+        assert lafs.requires_grad
+        assert resps.requires_grad
+        (lafs.sum() + resps.sum()).backward()
+        assert empty.grad is not None
+        assert empty.grad.shape == empty.shape
+        # `detect` with an explicit `num_feats` returns the requested count; a mask of one broadcasts.
+        one_resps, one_lafs = det.detect(torch.zeros(1, 1, 64, 80, device=device, dtype=dtype), 7)
+        resps, lafs = det.detect(empty.detach(), 7, ones if with_mask else None)
+        assert resps.shape == torch.Size([0, 7])
+        assert lafs.shape == torch.Size([0, 7, 2, 3])
+        assert lafs.dtype == one_lafs.dtype
+        assert resps.dtype == one_resps.dtype
+
+    def test_an_image_without_candidates_stays_linked_to_the_input(self, device, dtype):
+        # A DoG response is exactly zero everywhere on an all-zero image, so no octave has a candidate and every slot is
+        # unfilled; the empty selection must still be a function of the response, so a loss on it can backward.
+        det = ScaleSpaceDetector(10, scale_space_response=True, resp_module=BlobDoG()).to(device, dtype)
+        img = torch.zeros(1, 1, 64, 80, device=device, dtype=dtype, requires_grad=True)
+        lafs, resps = det(img)
+        assert torch.count_nonzero(resps) == 0
+        assert lafs.requires_grad
+        assert resps.requires_grad
+        (lafs.sum() + resps.sum()).backward()
+        assert img.grad is not None
+        # An image without candidates has no gradient to give.
+        assert torch.count_nonzero(img.grad) == 0
+
+    @pytest.mark.parametrize(
+        "img_tail, mask_shape, error",
+        [
+            ((3, 64, 80), None, BaseError),
+            ((64, 80), None, ValueError),
+            ((1, 64, 80), (1, 64, 80), BaseError),
+            ((1, 64, 80), (1, 3, 64, 80), BaseError),
+            ((1, 64, 80), (1, 1, 32, 80), BaseError),
+            ((1, 64, 80), (2, 1, 64, 80), BaseError),
+        ],
+        ids=["3-channels", "3-d-image", "mask-rank-3", "mask-3-channels", "mask-size", "mask-batch"],
+    )
+    def test_empty_batch_is_validated_like_a_non_empty_one(self, device, dtype, img_tail, mask_shape, error):
+        det = ScaleSpaceDetector(5).to(device, dtype)
+        mask = None if mask_shape is None else torch.ones(mask_shape, device=device, dtype=dtype)
+        for batch in (0, 1):
+            img = torch.zeros(batch, *img_tail, device=device, dtype=dtype)
+            with pytest.raises(error):
+                det(img, mask)
 
     def test_toy(self, device, dtype):
         inp = torch.zeros(1, 1, 33, 33, device=device, dtype=dtype)
