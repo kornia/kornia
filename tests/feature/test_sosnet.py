@@ -31,6 +31,15 @@ class TestSOSNet(BaseTester):
         out = sosnet(inp)
         assert out.shape == (1, 128)
 
+    def test_empty_batch(self, device, dtype):
+        # A batch of zero patches returns an empty descriptor batch, in the dtype a non-empty call returns.
+        model = SOSNet(pretrained=False).to(device, dtype).eval()
+        one = model(torch.ones(1, 1, 32, 32, device=device, dtype=dtype))
+        out = model(torch.zeros(0, 1, 32, 32, device=device, dtype=dtype))
+        assert out.shape == (0, one.shape[1])
+        assert out.dtype == one.dtype
+        assert out.device == one.device
+
     def test_shape_batch(self, device):
         inp = torch.ones(16, 1, 32, 32, device=device)
         sosnet = SOSNet(pretrained=False).to(device).eval()

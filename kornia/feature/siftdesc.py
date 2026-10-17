@@ -299,7 +299,6 @@ class SIFTDescriptor(nn.Module):
             :math:`(B, \text{num\_ang\_bins} \times \text{num\_spatial\_bins}^2)`.
         """
         KORNIA_CHECK_SHAPE(input, ["B", "1", f"{self.patch_size}", f"{self.patch_size}"])
-        B: int = input.shape[0]
         pk_weight = self.pk.weight.to(input.dtype).to(input.device)
         pk_bias = self.pk.bias
         if pk_bias is not None:
@@ -336,7 +335,7 @@ class SIFTDescriptor(nn.Module):
             ],
             1,
         )
-        ang_bins = ang_bins.view(B, -1)
+        ang_bins = ang_bins.flatten(1)
         # A constant patch has an all-zero gradient and therefore a zero-norm descriptor; the
         # default `eps` is not representable in float16, where it would come back NaN.
         ang_bins = _l2_normalize(ang_bins, dim=1)
