@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 
 import pytest
 import torch
@@ -181,3 +182,25 @@ class TestMaskWritesWithoutHostReads(BaseTester):
         assert torch.equal(out[~changed], x[~changed])
         params = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in rain._params.items()}
         assert torch.equal(rain(x.cpu(), params=params), out.cpu())
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="host-to-device copies need a CUDA device")
+def test_erasing_copies_box_parameters_not_masks(tmp_path) -> None:
+    # A large pageable copy stalls the host while the driver stages it, without any cudaStreamSynchronize: the
+    # erasing mask is built on the device from the box parameters, so only the parameters cross.
+    device = torch.device("cuda")
+    op = K.RandomErasing(p=1.0)
+    x = torch.rand(8, 3, 64, 64, device=device)
+    op(x)
+    torch.cuda.synchronize()
+    with torch.profiler.profile(
+        activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA]
+    ) as prof:
+        op(x)
+        torch.cuda.synchronize()
+    trace = tmp_path / "trace.json"
+    prof.export_chrome_trace(str(trace))
+    events = json.loads(trace.read_text())["traceEvents"]
+    copied = sum(e.get("args", {}).get("bytes", 0) for e in events if "Memcpy HtoD" in e.get("name", ""))
+    mask_bytes = 8 * 64 * 64 * 4
+    assert copied < mask_bytes // 4, copied

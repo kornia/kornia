@@ -63,12 +63,15 @@ class AugCase:
         kind: One of ``"2d"``, ``"3d"``, ``"mix"``, ``"container"``, ``"auto"`` and ``"functional"``.
         cases: The calls to make, a subset of ``"forward"``, ``"inverse"``, ``"seq_annotations"``,
             ``"seq_inverse"`` and ``"p_half"``.
+        inputs: The 2D inputs a ``forward`` or ``p_half`` call passes, by name: ``"input"``, ``"labels"`` (an
+            integer label mask) or ``"class"`` (one class label per sample).
     """
 
     name: str
     build: Callable[[], Any]
     kind: str
     cases: tuple[str, ...]
+    inputs: tuple[str, ...] = ("input",)
 
 
 def _aug(cls: type, *args: Any, kind: str = "2d", cases: tuple[str, ...] = ALL_2D, **kwargs: Any) -> AugCase:
@@ -121,6 +124,10 @@ FUNCTIONAL_CASES = [
         ),
     ),
     _functional("rgb_to_grayscale", lambda x: functools.partial(kornia.color.rgb_to_grayscale, x)),
+    _functional(
+        "rgb_to_grayscale[rgb_weights]",
+        lambda x: functools.partial(kornia.color.rgb_to_grayscale, x, torch.tensor([0.2, 0.3, 0.5], dtype=x.dtype)),
+    ),
     _functional("rgb_to_hls", lambda x: functools.partial(kornia.color.rgb_to_hls, x)),
     _functional("hls_to_rgb", lambda x: functools.partial(kornia.color.hls_to_rgb, x)),
     _functional("rotate", _setup_rotate),
@@ -165,6 +172,12 @@ def _intensity_cases() -> list[AugCase]:
         _aug(K.RandomGaussianIllumination, p=1.0),
         _aug(K.RandomGaussianNoise, std=0.1, p=1.0),
         _aug(K.RandomGrayscale, p=1.0),
+        AugCase(
+            "RandomGrayscale[rgb_weights]",
+            functools.partial(K.RandomGrayscale, rgb_weights=torch.tensor([0.2, 0.3, 0.5]), p=1.0),
+            "2d",
+            ALL_2D,
+        ),
         _aug(K.RandomHue, hue=(-0.1, 0.1), p=1.0),
         _aug(K.RandomInvert, p=1.0),
         _aug(K.RandomJPEG, jpeg_quality=(50.0, 90.0), p=1.0),
@@ -211,6 +224,13 @@ def _geometric_cases() -> list[AugCase]:
         _aug(K.RandomTranslate, (-0.1, 0.1), (-0.1, 0.1), p=1.0, cases=GEOMETRIC_2D),
         _aug(K.RandomVerticalFlip, p=1.0, cases=GEOMETRIC_2D),
         _aug(K.Resize, (24, 24), cases=GEOMETRIC_2D),
+        AugCase(
+            "Resize[align_corners=False]",
+            functools.partial(K.Resize, (24, 24), align_corners=False),
+            "2d",
+            GEOMETRIC_2D,
+        ),
+        AugCase("Resize[nearest]", functools.partial(K.Resize, (24, 24), resample="nearest"), "2d", GEOMETRIC_2D),
         _aug(K.SmallestMaxSize, 24, cases=GEOMETRIC_2D),
     ]
 
@@ -219,9 +239,29 @@ def _mix_cases() -> list[AugCase]:
     return [
         _aug(K.PatchMix, patch_size=8, p=1.0, kind="mix", cases=FORWARD_P),
         _aug(K.RandomCutMixV2, p=1.0, use_correct_lambda=True, kind="mix", cases=FORWARD_P),
+        AugCase(
+            "RandomCutMixV2[class]",
+            functools.partial(K.RandomCutMixV2, p=1.0, use_correct_lambda=True, data_keys=["input", "class"]),
+            "mix",
+            FORWARD_P,
+            ("input", "class"),
+        ),
         _aug(K.RandomJigsaw, (4, 4), p=1.0, kind="mix", cases=FORWARD_P),
         _aug(K.RandomMixUpV2, p=1.0, kind="mix", cases=FORWARD_P),
+        AugCase(
+            "RandomMixUpV2[class]",
+            functools.partial(K.RandomMixUpV2, p=1.0, data_keys=["input", "class"]),
+            "mix",
+            FORWARD_P,
+            ("input", "class"),
+        ),
         _aug(K.RandomMosaic, (32, 32), p=1.0, kind="mix", cases=FORWARD_P),
+        AugCase(
+            "RandomMosaic[resample]",
+            functools.partial(K.RandomMosaic, (32, 32), p=1.0, cropping_mode="resample"),
+            "mix",
+            FORWARD_P,
+        ),
         _aug(K.RandomTransplantation, p=1.0, kind="mix", cases=FORWARD_P),
     ]
 
@@ -381,6 +421,7 @@ def _inputs_2d(device: torch.device, dtype: torch.dtype) -> dict[str, torch.Tens
         "input": torch.rand(4, 3, 32, 32, device=device, dtype=dtype),
         "mask": (torch.rand(4, 1, 32, 32, device=device) > 0.5).to(dtype),
         "labels": torch.randint(0, 3, (4, 32, 32), device=device),
+        "class": torch.randint(0, 10, (4,), device=device),
         "bbox_xyxy": boxes,
         "keypoints": keypoints,
     }
@@ -442,15 +483,11 @@ def make_call(case: AugCase, which: str, device: torch.device, dtype: torch.dtyp
         data = _inputs_2d(device, dtype)
         x, mask, boxes, keypoints = data["input"], data["mask"], data["bbox_xyxy"], data["keypoints"]
         if which in ("forward", "p_half"):
-            if isinstance(module, K.RandomTransplantation):
-                labels = data["labels"]
+            names = ("input", "labels") if isinstance(module, K.RandomTransplantation) else case.inputs
+            args = [data[name] for name in names]
 
-                def fn() -> Any:
-                    return module(x, labels)
-            else:
-
-                def fn() -> Any:
-                    return module(x)
+            def fn() -> Any:
+                return module(*args)
         elif which == "inverse":
 
             def fn() -> Any:

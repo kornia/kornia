@@ -227,7 +227,9 @@ class RandomMosaic(MixAugmentationBaseV2):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
         if flags["cropping_mode"] == "resample":
-            transform: torch.Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
+            src = _to_device_nonblocking(params["src"], input.device, input.dtype)
+            dst = _to_device_nonblocking(params["dst"], input.device, input.dtype)
+            transform: torch.Tensor = get_perspective_transform(src, dst)
             return transform
         if flags["cropping_mode"] == "slice":  # Skip the computation for slicing.
             return eye_like(3, input)

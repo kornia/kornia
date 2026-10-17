@@ -144,7 +144,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         image_dtype = DType.to_torch(int(params["dtype"].item()))
         calc_dtype = image_dtype if image_dtype in (torch.float32, torch.float64) else torch.float32
         for pair, crop in zip(params["mix_pairs"], params["crop_src"]):
-            labels_permute = input.index_select(dim=0, index=pair.to(input.device))
+            labels_permute = input.index_select(dim=0, index=_to_device_nonblocking(pair, input.device))
             w, h = infer_bbox_shape(crop)
 
             lam_val = w.to(calc_dtype) * h.to(calc_dtype) / (width * height)
@@ -155,7 +155,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
                     [
                         input.to(device=input.device, dtype=calc_dtype),
                         labels_permute.to(device=input.device, dtype=calc_dtype),
-                        lam.to(device=input.device, dtype=calc_dtype),
+                        _to_device_nonblocking(lam, input.device, calc_dtype),
                     ],
                     1,
                 )

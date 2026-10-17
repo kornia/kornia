@@ -90,9 +90,9 @@ class Resize(GeometricAugmentationBase2D):
         if flags["resample"] == Resample.NEAREST or (
             not flags["align_corners"] and flags["resample"] in (Resample.BILINEAR, Resample.BICUBIC)
         ):
-            return _half_pixel_resize_transform(params["src"].to(input), params["dst"].to(input)).expand(
-                input.shape[0], -1, -1
-            )
+            src = _to_device_nonblocking(params["src"], input.device, input.dtype)
+            dst = _to_device_nonblocking(params["dst"], input.device, input.dtype)
+            return _half_pixel_resize_transform(src, dst).expand(input.shape[0], -1, -1)
         # NOTE: a former `if params["output_size"] == input.shape[-2:]: return eye_like(...)`
         # short-circuit was dead code — comparing a tensor to a ``torch.Size`` falls back to
         # identity ``==`` and is *always* Python ``False``, so the branch never ran. It also
