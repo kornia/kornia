@@ -1087,7 +1087,9 @@ class TestExtractPatchesSimple(BaseTester):
 
 
 class TestEmptyPatchesAreLinked(BaseTester):
-    @pytest.mark.parametrize("extract", [kornia.feature.extract_patches_simple, kornia.feature.extract_patches_from_pyramid])
+    @pytest.mark.parametrize(
+        "extract", [kornia.feature.extract_patches_simple, kornia.feature.extract_patches_from_pyramid]
+    )
     @pytest.mark.parametrize("batch, n_lafs", [(0, 5), (2, 0), (0, 0)])
     def test_zero_patches_keep_the_links_to_the_inputs(self, device, dtype, extract, batch, n_lafs):
         img = torch.rand(batch, 2, 48, 64, device=device, dtype=dtype, requires_grad=True)
