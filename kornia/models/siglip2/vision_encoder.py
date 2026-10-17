@@ -77,11 +77,22 @@ class SigLip2VisionEmbeddings(nn.Module):
         """Forward pass.
 
         Args:
-            pixel_values: Input images of shape (batch_size, num_channels, height, width).
+            pixel_values: Input images of shape (batch_size, num_channels, height, width), with height and width
+                both equal to ``config.image_size``: the position embeddings are a fixed table of the
+                ``image_size // patch_size`` square patch grid, without interpolation.
 
         Returns:
             Embedded patches of shape (batch_size, num_patches, hidden_size).
+
+        Raises:
+            ValueError: if (height, width) is not ``(image_size, image_size)``.
         """
+        if tuple(pixel_values.shape[-2:]) != (self.image_size, self.image_size):
+            raise ValueError(
+                f"Input images must be {self.image_size}x{self.image_size} (config.image_size): the position "
+                f"embeddings cover that size only. Got: {tuple(pixel_values.shape)}"
+            )
+
         # extract patches from the image
         embeddings = self.patch_embedding(pixel_values)  # (batch_size, hidden_size, H', W')
         embeddings = embeddings.flatten(2).transpose(1, 2)  # (batch_size, num_patches, hidden_size)
@@ -317,7 +328,8 @@ class SigLip2VisionModel(nn.Module):
         """Forward pass.
 
         Args:
-            pixel_values: Input images of shape (batch_size, num_channels, height, width).
+            pixel_values: Input images of shape (batch_size, num_channels, height, width), with height and width
+                both equal to ``config.image_size`` (see :class:`SigLip2VisionEmbeddings`).
             attention_mask: Optional mask of the patches, ``1``/``True`` for a patch to keep and ``0``/``False`` for
                 a padded one: :math:`(B, N)`, :math:`(B, N, N)` or :math:`(B, 1, N, N)` for :math:`N` patches (see
                 :class:`SigLip2Attention`). It excludes the padded patches from the encoder, where no patch attends
@@ -329,6 +341,9 @@ class SigLip2VisionModel(nn.Module):
             - Pooled output, attention-pooled by the probe head (:class:`SigLip2MultiheadAttentionPoolingHead`)
             - Last hidden state
             - All hidden states (if output_hidden_states=True)
+
+        Raises:
+            ValueError: if (height, width) is not ``(config.image_size, config.image_size)``.
         """
         # Get embeddings
         hidden_states = self.embeddings(pixel_values)
