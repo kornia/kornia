@@ -976,6 +976,8 @@ class TestConventionsGuidedBlur(BaseTester):
 
     def test_convention_guided_blur_multichannel_guidance_promotion_fixes_6046(self, device):
         """Promoting the guidance is the whole fix: pre-promoting it in the caller gives the same numbers (#6046)."""
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
         generator = torch.Generator().manual_seed(0)
         guidance = torch.randint(256, (2, 3, 9, 13), generator=generator).float()
         image = torch.randint(256, (2, 2, 9, 13), generator=generator).double().to(device)
