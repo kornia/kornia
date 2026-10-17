@@ -254,6 +254,29 @@ class TestEnhanceConventions(BaseTester):
         image[..., :, 150:] = 1.0
         self.assert_close(kornia.enhance.equalize(image), kornia.enhance.equalize(image.float()).half())
 
+    # An 8-bit level v reads lookup entry (v / 255 * 255).long() == v in every dtype. Its bin, v * 256 / 255, was
+    # computed in the input dtype, where it rounds up to v + 1 for v >= 240 in float16 and v >= 128 in bfloat16, so
+    # the pixel was counted one bin above the entry it reads and the whole table moved.
+    # Snippet used to generate expected (float32 kornia gives the same):
+    #   PIL.ImageOps.equalize(Image.fromarray(np.repeat([10, 100, 254, 255], 300).astype(np.uint8).reshape(30, 40)))
+    def test_convention_equalize_counts_each_8bit_level_in_its_own_bin(self, device, dtype):
+        levels = torch.tensor([10.0, 100.0, 254.0, 255.0], device=device)
+        image = (levels.repeat_interleave(300) / 255).reshape(1, 1, 30, 40).to(dtype)
+        out = kornia.enhance.equalize(image)
+        assert out.dtype == dtype
+        expected = torch.tensor([0.0, 100.0, 200.0, 255.0], device=device)
+        self.assert_close((out.float().flatten()[::300] * 255).round(), expected, rtol=0, atol=0)
+
+    def test_convention_equalize_of_an_8bit_image_matches_float64_up_to_output_rounding(self, device, dtype):
+        # Every bin now matches the float64 one, so only the final division by 255 rounds: at most half a ulp.
+        torch.manual_seed(0)
+        image = torch.randint(0, 256, (2, 3, 64, 64)).double() / 255
+        expected = kornia.enhance.equalize(image)
+        out = kornia.enhance.equalize(image.to(device, dtype))
+        ulp = {torch.float16: 2.0**-11, torch.bfloat16: 2.0**-8}.get(dtype, 1e-6)
+        # Compare on the CPU: MPS has no float64.
+        self.assert_close(out.cpu().double(), expected, rtol=0, atol=ulp / 2 + 1e-12)
+
     # Each op expects a floating-point image in [0, 1]. An integer image used to come back saturated, wrapped or
     # negative without an error, so it is now rejected with the conversion to use (#5981).
     _FLOAT_ONLY_OPS = {
