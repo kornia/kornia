@@ -113,12 +113,9 @@ def mean_average_precision(
     # Store all detections in a single continuous torch.Tensor while keeping track of the image it is from
     pred_images = []
     for i, (boxes, labels, scores) in enumerate(zip(pred_boxes, pred_labels, pred_scores)):
-        for other in (labels, scores):
+        for name, other in (("pred_labels", labels), ("pred_scores", scores)):
             KORNIA_CHECK_SAME_SIZE(
-                boxes,
-                other,
-                msg="pred_boxes, pred_labels and pred_scores must have one row per detection in every image "
-                f"(image {i}).",
+                boxes, other, msg=f"pred_boxes and {name} must have one row per detection in every image (image {i})."
             )
         pred_images.extend([i] * labels.size(0))
     _pred_boxes = torch.cat(pred_boxes, 0)  # (n_detections, 4)

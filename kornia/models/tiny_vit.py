@@ -712,7 +712,7 @@ def _load_pretrained(model: TinyViT, url: str | list[str]) -> TinyViT:
         n_heads1, L1 = state_dict[k].shape
         n_heads2, L2 = model_state_dict[k].shape
         KORNIA_CHECK_SAME_SIZE(
-            state_dict[k], model_state_dict[k], msg=f"Fail to load {k}: the checkpoint has another number of heads."
+            state_dict[k], model_state_dict[k], msg=f"Fail to load {k}: the checkpoint has a different number of heads."
         )
 
         if L1 != L2:
