@@ -459,6 +459,46 @@ class TestDenormalize(BaseTester):
         pass
 
 
+class TestNormalizeIntegerStatistics(BaseTester):
+    """A Python ``int`` ``mean`` or ``std`` is handled like the equal ``float`` (#6060).
+
+    The functions wrapped only a ``float`` statistic into a tensor, so an ``int`` reached ``mean.shape`` and raised
+    ``AttributeError``, although ``Normalize(0, 255)`` and ``Denormalize(0, 255)`` accepted the same values.
+    """
+
+    @pytest.mark.parametrize("fn", ["normalize", "denormalize"])
+    @pytest.mark.parametrize("mean, std", [(0, 255), (0.0, 255), (0, 255.0), (1, 2)])
+    def test_int_statistics_match_the_float_ones_6060(self, device, dtype, fn, mean, std):
+        op = getattr(kornia.enhance, fn)
+        g = torch.Generator().manual_seed(0)
+        img = torch.rand(2, 3, 4, 5, generator=g).to(device, dtype)
+
+        out = op(img, mean, std)
+
+        assert out.dtype == dtype
+        assert out.shape == img.shape
+        assert torch.equal(out, op(img, float(mean), float(std)))
+
+    @pytest.mark.parametrize("fn", ["normalize", "denormalize"])
+    def test_int_statistics_on_integer_input_6060(self, device, fn):
+        op = getattr(kornia.enhance, fn)
+        img = torch.tensor([[[[0, 128, 255]]]], device=device, dtype=torch.uint8)
+
+        out = op(img, 0, 255) if fn == "normalize" else op(img, 1, 2)
+
+        expected = [0.0, 128.0 / 255.0, 1.0] if fn == "normalize" else [1.0, 257.0, 511.0]
+        self.assert_close(out, torch.tensor([[[expected]]], device=device))
+
+    @pytest.mark.parametrize("module, fn", [("Normalize", "normalize"), ("Denormalize", "denormalize")])
+    def test_modules_and_functions_agree_on_int_statistics_6060(self, device, dtype, module, fn):
+        g = torch.Generator().manual_seed(0)
+        img = torch.rand(2, 3, 4, 5, generator=g).to(device, dtype)
+
+        out = getattr(kornia.enhance, fn)(img, 0, 255)
+
+        assert torch.equal(out, getattr(kornia.enhance, module)(0, 255).to(device)(img))
+
+
 class TestNormalizeIntegerInput(BaseTester):
     """`normalize` and `denormalize` used to cast mean and std to an integer input's dtype (#5403).
 
