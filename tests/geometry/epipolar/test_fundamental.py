@@ -388,6 +388,12 @@ class TestFundamentalAutocast(BaseTester):
         assert actual.dtype == torch.float32
         self.assert_close(actual, expected, atol=0, rtol=0)
 
+    def test_meta_device_infers_the_shape(self):
+        # torch.autocast raises for the meta device type, so the solvers enter it only inside an autocast region.
+        points = torch.empty(2, 9, 2, device="meta")
+        assert epi.find_fundamental(points, points).shape == (2, 3, 3)
+        assert epi.find_fundamental(points[:, :7], points[:, :7], method="7POINT").shape == (2, 3, 3, 3)
+
 
 class TestComputeCorrespondEpilines(BaseTester):
     def test_smoke(self, device, dtype):

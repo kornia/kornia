@@ -29,6 +29,7 @@ from torch import nn
 
 from kornia.core._compat import torch_version_lt
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.utils import _autocast_disabled
 from kornia.geometry._degensac import (
     _h_degenerate_sample,
     _h_degenerate_samples,
@@ -89,7 +90,7 @@ def _affine_transfer_error(pts1: torch.Tensor, pts2: torch.Tensor, models: torch
     that function, it computes in at least float32.
     """
     # Scoring needs the same precision as fitting, including inside mixed-precision pipelines.
-    with torch.autocast(device_type=pts1.device.type, enabled=False):
+    with _autocast_disabled(pts1.device.type):
         num_points = pts1.shape[-2]
         dtype = torch.promote_types(torch.promote_types(pts1.dtype, pts2.dtype), models.dtype)
         work = torch.promote_types(dtype, torch.float32)
@@ -947,7 +948,7 @@ class RANSAC(nn.Module):
         self.validate_inputs(kp1, kp2, weights)
         # Autocast would solve and score in half precision, which changes the estimate, and CUDA's eigh, which the
         # fundamental refit calls, has no half-precision kernel.
-        with torch.autocast(device_type=kp1.device.type, enabled=False):
+        with _autocast_disabled(kp1.device.type):
             if self.local_optimization == "lm":
                 with torch.no_grad():
                     if self.compiled:

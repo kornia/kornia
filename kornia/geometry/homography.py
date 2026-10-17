@@ -22,7 +22,13 @@ from typing import Optional, Tuple, Union
 import torch
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
-from kornia.core.utils import _extract_device_dtype, _torch_svd_cast, safe_inverse_with_mask, safe_solve_with_mask
+from kornia.core.utils import (
+    _autocast_disabled,
+    _extract_device_dtype,
+    _torch_svd_cast,
+    safe_inverse_with_mask,
+    safe_solve_with_mask,
+)
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.epipolar import normalize_points, normalize_transformation
 from kornia.geometry.epipolar._metrics import _shares_points
@@ -525,7 +531,7 @@ def find_homography_dlt(
     """
     device, dtype = _extract_device_dtype([points1, points2])
     # Autocast would run the DLT's matrix products in half precision and return a half-precision homography.
-    with torch.autocast(device_type=points1.device.type, enabled=False):
+    with _autocast_disabled(points1.device.type):
         A, transform1, transform2 = _homography_dlt_system(points1, points2, weights)
         return _homography_from_dlt_system(
             A, weights, transform1, _inverse_normalization(transform2), solver, device, dtype
@@ -714,7 +720,7 @@ def find_homography_dlt_iterated(
     """
     device, dtype = _extract_device_dtype([points1, points2])
     # Autocast would run the solves and the re-weighting errors in half precision.
-    with torch.autocast(device_type=points1.device.type, enabled=False):
+    with _autocast_disabled(points1.device.type):
         # Weighted Hartley normalization changes with each set of IRLS weights.
         A, transform1, transform2 = _homography_dlt_system(points1, points2, weights)
         transform2_inv = _inverse_normalization(transform2)
@@ -825,7 +831,7 @@ def find_homography_lines_dlt(
     if weights is not None and weights.shape != ls1.shape[:2]:
         raise AssertionError(weights.shape)
     # Autocast would run the DLT's matrix products in half precision and return a half-precision homography.
-    with torch.autocast(device_type=ls1.device.type, enabled=False):
+    with _autocast_disabled(ls1.device.type):
         endpoint_weights = weights.repeat_interleave(2, dim=1) if weights is not None else None
         points1_norm, transform1 = normalize_points(points1, weights=endpoint_weights)
         points2_norm, transform2 = normalize_points(points2, weights=endpoint_weights)
@@ -909,7 +915,7 @@ def find_homography_lines_dlt_iterated(
     if len(ls2.shape) == 3:
         ls2 = ls2[None]
     # Autocast would run the re-weighting distances in half precision.
-    with torch.autocast(device_type=ls1.device.type, enabled=False):
+    with _autocast_disabled(ls1.device.type):
         H: torch.Tensor = find_homography_lines_dlt(ls1, ls2, weights)
         for _ in range(n_iter - 1):
             squared_distances: torch.Tensor = _line_segment_squared_distance_one_way(ls1, ls2, H)

@@ -20,6 +20,7 @@ import importlib.util
 import platform
 import sys
 from collections.abc import Mapping, Sequence
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import asdict, fields, is_dataclass
 from types import FrameType, UnionType
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union, get_args, get_origin, get_type_hints
@@ -618,6 +619,11 @@ def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
     return inverse.to(dtype_original), mask
 
 
+# The device types with an autocast region. ``torch.amp.is_autocast_available`` would ask torch instead, but Dynamo
+# cannot trace it on torch 2.5.1.
+_AUTOCAST_DEVICE_TYPES = ("cpu", "cuda", "mps", "xpu")
+
+
 def is_autocast_enabled(both: bool = True) -> bool:
     """Check if torch autocast is enabled.
 
@@ -632,9 +638,20 @@ def is_autocast_enabled(both: bool = True) -> bool:
 
     """
     if both:
-        return any(torch.is_autocast_enabled(device_type) for device_type in ("cpu", "cuda", "mps", "xpu"))
+        return any(torch.is_autocast_enabled(device_type) for device_type in _AUTOCAST_DEVICE_TYPES)
 
     return torch.is_autocast_enabled()
+
+
+def _autocast_disabled(device_type: str) -> AbstractContextManager[Any]:
+    """Return a context that turns off the caller's autocast region for ``device_type``, if one is on.
+
+    Outside autocast it returns a ``nullcontext``: entering ``torch.autocast(enabled=False)`` anyway costs about
+    10 us per call, a few percent of a small solve, and raises for a device type without autocast, such as ``meta``.
+    """
+    if device_type in _AUTOCAST_DEVICE_TYPES and torch.is_autocast_enabled(device_type):
+        return torch.autocast(device_type=device_type, enabled=False)
+    return nullcontext()
 
 
 # These helpers moved into ``torch.compiler`` over time; resolve them once at import.

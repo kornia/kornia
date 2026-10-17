@@ -21,6 +21,7 @@ import torch
 from kornia.core.exceptions import BaseError, DeviceError, TypeCheckError
 from kornia.core.utils import (
     _adjugate_closed_form,
+    _autocast_disabled,
     _closed_form_inverse,
     _det_perm_closed_form,
     _extract_device_dtype,
@@ -983,3 +984,20 @@ def test_is_autocast_enabled_xpu():
         assert is_autocast_enabled()
 
     assert not is_autocast_enabled()
+
+
+def test_autocast_disabled_turns_off_only_an_enabled_region():
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        with _autocast_disabled("cpu"):
+            assert not torch.is_autocast_enabled("cpu")
+            assert (torch.ones(2, 2) @ torch.ones(2, 2)).dtype == torch.float32
+        assert torch.is_autocast_enabled("cpu")
+    assert not torch.is_autocast_enabled("cpu")
+
+
+@pytest.mark.parametrize("device_type", ["cpu", "cuda", "meta"])
+def test_autocast_disabled_outside_autocast_enters_nothing(device_type):
+    # Outside autocast there is nothing to turn off: entering torch.autocast(enabled=False) anyway costs about 10 us
+    # per call, and for a device type without autocast, such as "meta", torch.autocast raises.
+    with _autocast_disabled(device_type):
+        assert not is_autocast_enabled()

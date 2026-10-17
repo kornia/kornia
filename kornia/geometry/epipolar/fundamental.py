@@ -23,7 +23,7 @@ from typing import Literal, Optional, Tuple, Union
 import torch
 
 from kornia.core.check import KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
-from kornia.core.utils import _torch_svd_cast, safe_inverse_with_mask
+from kornia.core.utils import _autocast_disabled, _torch_svd_cast, safe_inverse_with_mask
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.solvers.homogeneous import _det3, _null_space_lu
 from kornia.geometry.solvers.polynomial_solver import _solve_cubic_real
@@ -497,7 +497,7 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
     KORNIA_CHECK_SHAPE(points2, ["B", "7", "2"])
 
     # Autocast would run the matrix products in half precision and return half-precision candidates.
-    with torch.autocast(device_type=points1.device.type, enabled=False):
+    with _autocast_disabled(points1.device.type):
         # Reference: Hartley and Zisserman, section 11.1.2; the cubic follows OpenCV's run7Point
         # (https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/fundam.cpp).
         points1_norm, transform1 = normalize_points(points1)
@@ -537,7 +537,7 @@ def run_8point(
             raise AssertionError(weights.shape)
 
     # Autocast would run the matrix products in half precision, where CUDA's eigh has no kernel.
-    with torch.autocast(device_type=points1.device.type, enabled=False):
+    with _autocast_disabled(points1.device.type):
         # Use the same correspondences for Hartley statistics and the weighted DLT system.
         pts1n, T1 = normalize_points(points1, weights=weights)
         pts2n, T2 = normalize_points(points2, weights=weights)

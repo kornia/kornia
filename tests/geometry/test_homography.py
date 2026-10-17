@@ -1356,6 +1356,16 @@ class TestHomographyDLTAutocast(BaseTester):
         assert actual.dtype == torch.float32
         self.assert_close(actual, expected, atol=0, rtol=0)
 
+    def test_meta_device_infers_the_shape(self):
+        # torch.autocast raises for the meta device type, so the solvers enter it only inside an autocast region.
+        points = torch.empty(2, 8, 2, device="meta")
+        weights = torch.empty(2, 8, device="meta")
+        segments = points.reshape(2, 4, 2, 2)
+        assert find_homography_dlt(points, points).shape == (2, 3, 3)
+        assert find_homography_dlt_iterated(points, points, weights).shape == (2, 3, 3)
+        assert find_homography_lines_dlt(segments, segments).shape == (2, 3, 3)
+        assert find_homography_lines_dlt_iterated(segments, segments, weights[:, :4]).shape == (2, 3, 3)
+
 
 class TestConventionHomography(BaseTester):
     def test_convention_find_homography_dlt_maps_p1_to_p2(self, device, dtype):
