@@ -27,6 +27,7 @@ from kornia.core.exceptions import BaseError
 from kornia.feature import DescriptorMatcher, GFTTAffNetHardNet, LocalFeatureMatcher, LoFTR, SIFTFeature
 from kornia.feature.loftr.loftr import default_cfg
 from kornia.geometry import rescale, transform_points, warp_perspective
+from kornia.geometry.ransac import RANSAC
 from kornia.tracking import HomographyTracker
 
 from testing.base import BaseTester
@@ -730,3 +731,22 @@ class TestHomographyTrackerHalfKeypointsAndAutocast:
             results.append(H)
         assert torch.equal(fast.image1[0], fast.image1[1])
         assert torch.equal(results[0], results[1])
+
+    def test_autocast_does_not_reach_ransac(self, device):
+        # find_homography_dlt runs its matrix products in the caller's autocast dtype: with local_optimization="dlt",
+        # a bfloat16 fit moved the frame corners by up to 3.1 px here. The tracker fits with autocast off.
+        if device.type == "mps":
+            pytest.skip("MPS autocast is not exercised here")
+        results = []
+        for autocast in (False, True):
+            ransac = RANSAC("homography", inl_th=5.0, batch_size=4096, max_iter=10, local_optimization="dlt")
+            tracker = HomographyTracker(_FixedMatcher(), _FixedMatcher(), ransac, minimum_inliers_num=10)
+            tracker.set_target(torch.rand(1, 1, 450, 600, device=device))
+            frame = torch.rand(1, 1, 450, 600, device=device)
+            torch.manual_seed(0)
+            with torch.autocast(device.type, dtype=torch.bfloat16, enabled=autocast):
+                results.append([tracker(frame) for _ in range(2)])  # match_initial, then track_next_frame
+        for (H0, ok0), (H1, ok1) in zip(*results):
+            assert ok0
+            assert ok1
+            assert torch.equal(H0, H1)

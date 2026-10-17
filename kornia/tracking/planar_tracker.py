@@ -44,8 +44,8 @@ class HomographyTracker(nn.Module):
         - Every homography the tracker returns or stores as ``previous_homography``, :meth:`no_match`'s included, is
           float32 for a ``float16`` or ``bfloat16`` target and has the target's dtype otherwise, whatever the dtype of
           the frame, of the matcher's keypoints or of a ``previous_homography`` assigned from outside.
-        - Half keypoints are widened to that dtype before ``ransac`` fits them. The caller's autocast reaches the
-          matchers, but not the tracker's own warp and keypoint mapping.
+        - Keypoints narrower than that dtype are widened to it before ``ransac`` fits them. The caller's autocast
+          reaches the matchers, but not the tracker's own warp, keypoint mapping and ``ransac`` fit.
 
     Args:
         initial_matcher: image matching module for a frame without a previous homography, e.g.
@@ -244,7 +244,8 @@ class HomographyTracker(nn.Module):
         # RANSAC returns its model in the dtype of the keypoints: widen half keypoints first, or the fit is rounded to
         # half before it is widened to the homography dtype.
         keypoints_dtype = torch.promote_types(keypoints0.dtype, self._homography_dtype)
-        H, inliers = self.ransac(keypoints0.to(keypoints_dtype), keypoints1.to(keypoints_dtype))
+        with torch.autocast(x.device.type, enabled=False):
+            H, inliers = self.ransac(keypoints0.to(keypoints_dtype), keypoints1.to(keypoints_dtype))
         self.inliers_num = inliers.sum().item()
 
         if self.inliers_num < self.minimum_inliers_num:
@@ -269,7 +270,8 @@ class HomographyTracker(nn.Module):
         then matched with ``fast_matcher`` and verified using RANSAC. The inverse is computed in the homography dtype
         (float32 for a ``float16`` or ``bfloat16`` target), the frame is warped in that dtype or in its own if that is
         wider, and ``fast_matcher`` gets the warped frame in the dtype of ``x``. Its keypoints are mapped back and
-        fitted in the homography dtype or in their own if that is wider. Autocast is off for the warp and the mapping.
+        fitted in the homography dtype or in their own if that is wider. Autocast is off for the warp, the mapping and
+        the fit.
         """
         self._drop_prior_of_another_target()
         KORNIA_CHECK(
@@ -306,7 +308,8 @@ class HomographyTracker(nn.Module):
             self.reset_tracking()
             return self.no_match()
 
-        H, inliers = self.ransac(keypoints0.to(keypoints_dtype), keypoints1)
+        with torch.autocast(x.device.type, enabled=False):
+            H, inliers = self.ransac(keypoints0.to(keypoints_dtype), keypoints1)
         self.inliers_num = inliers.sum().item()
 
         if self.inliers_num < self.minimum_inliers_num:
