@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -158,7 +158,7 @@ class PatchSequential(ImageSequential):
         keepdim: Optional[bool] = None,
         patchwise_apply: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
-        random_apply_weights: Optional[List[float]] = None,
+        random_apply_weights: Optional[Union[Sequence[float], torch.Tensor]] = None,
     ) -> None:
         _random_apply: Optional[Union[int, Tuple[int, int]]]
 

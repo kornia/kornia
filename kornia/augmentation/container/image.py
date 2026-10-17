@@ -16,7 +16,7 @@
 #
 
 import operator
-from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple, Union, cast
+from typing import Any, Dict, Iterator, List, Literal, Optional, Sequence, Tuple, Union, cast
 
 import torch
 from torch import nn
@@ -73,8 +73,9 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             If (a, b), x number of transformations (a <= x <= b) will be selected.
             If True, the whole list of args will be processed as a sequence in a random order.
             If False, the whole list of args will be processed as a sequence in original order.
-        random_apply_weights: a list of selection weights for each operation. The length shall be as
-            same as the number of operations. By default, operations are sampled uniformly.
+        random_apply_weights: a one-dimensional sequence or tensor of selection weights for each operation. The
+            length shall be as same as the number of operations. Integer and boolean weights are converted to floating
+            point. By default, operations are sampled uniformly.
         if_unsupported_ops: what ``inverse`` does on reaching a plain ``nn.Module``, which has no inverse:
             ``'raise'`` raises ``NotImplementedError`` naming it, before anything is inverted, and ``'skip'``
             leaves it applied and inverts the other members. Any other value raises ``ValueError``.
@@ -150,7 +151,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         same_on_batch: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
-        random_apply_weights: Optional[List[float]] = None,
+        random_apply_weights: Optional[Union[Sequence[float], torch.Tensor]] = None,
         if_unsupported_ops: str = "raise",
         disable_item_features: bool = True,
         disable_sequential_features: bool = False,
@@ -169,7 +170,14 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 "The length of `random_apply_weights` must be as same as the number of operations."
                 f"Got {len(random_apply_weights)} and {len(self)}."
             )
-        self.random_apply_weights = torch.as_tensor(random_apply_weights or torch.ones((len(self),)))
+        # ``torch.multinomial`` samples floating-point weights only, so integer or boolean weights are converted; a
+        # tensor argument is tested against ``None`` rather than for its truth value, which is ambiguous.
+        weights = torch.as_tensor(random_apply_weights) if random_apply_weights is not None else torch.ones(len(self))
+        if weights.dim() != 1:
+            raise ValueError(f"`random_apply_weights` must be one-dimensional. Got shape {tuple(weights.shape)}.")
+        if not weights.is_floating_point():
+            weights = weights.to(torch.get_default_dtype())
+        self.random_apply_weights = weights
         self.if_unsupported_ops = if_unsupported_ops
         self._output_image = None
 

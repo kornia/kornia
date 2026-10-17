@@ -261,6 +261,72 @@ class TestConventionImageSequential(BaseTester):
         assert [p.name for p in seq._params] == ["RandomHorizontalFlip_0"]
         self.assert_close(seq.inverse(out), out.flip(-1))
 
+    @pytest.mark.parametrize(
+        "weights",
+        [
+            [1, 0],
+            (1, 0),
+            [True, False],
+            torch.tensor([1, 0]),
+            torch.tensor([True, False]),
+            torch.tensor([1.0, 0.0]),
+            torch.tensor([1.0, 0.0], dtype=torch.float64),
+        ],
+    )
+    @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
+    def test_random_apply_weights_accept_integer_and_tensor_weights_6049(self, weights, container, device, dtype):
+        # Integer and boolean weights used to reach torch.multinomial as an int64/bool tensor, and a tensor of weights
+        # was tested for its truth value; both raised. Any of them now selects in proportion, like float weights.
+        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        seq = container(
+            K.RandomHorizontalFlip(p=1.0), K.RandomVerticalFlip(p=1.0), random_apply=1, random_apply_weights=weights
+        )
+
+        assert seq.random_apply_weights.is_floating_point()
+        for seed in range(5):
+            torch.manual_seed(seed)
+            out = seq(x)
+            assert [p.name for p in seq._params] == ["RandomHorizontalFlip_0"]
+            self.assert_close(out, x.flip(-1))
+
+    def test_random_apply_weights_keep_a_float_dtype_6049(self):
+        # Float weights keep their dtype, so the selections of existing calls are unchanged.
+        flips = (K.RandomHorizontalFlip(p=1.0), K.RandomVerticalFlip(p=1.0))
+        assert K.ImageSequential(
+            *flips, random_apply=1, random_apply_weights=[0.7, 0.3]
+        ).random_apply_weights.dtype == (torch.get_default_dtype())
+        weights64 = torch.tensor([0.7, 0.3], dtype=torch.float64)
+        assert K.ImageSequential(*flips, random_apply=1, random_apply_weights=weights64).random_apply_weights.dtype == (
+            torch.float64
+        )
+        assert K.ImageSequential(*flips, random_apply=1).random_apply_weights.dtype == torch.get_default_dtype()
+
+    @pytest.mark.parametrize("weights", [[7, 2, 1], torch.tensor([7, 2, 1])])
+    def test_random_apply_weights_integer_select_like_floats_6049(self, weights):
+        # Integer weights are relative weights, converted to the default dtype: they select exactly as the same values
+        # given as floats.
+        def build(w):
+            augs = (K.RandomHorizontalFlip(p=1.0), K.RandomVerticalFlip(p=1.0), K.RandomInvert(p=1.0))
+            return K.ImageSequential(*augs, random_apply=1, random_apply_weights=w)
+
+        x = torch.zeros(1, 3, 4, 4)
+        reference, seq = build([7.0, 2.0, 1.0]), build(weights)
+        assert seq.random_apply_weights.dtype == torch.get_default_dtype()
+        for seed in range(30):
+            torch.manual_seed(seed)
+            reference(x)
+            torch.manual_seed(seed)
+            seq(x)
+            assert [p.name for p in seq._params] == [p.name for p in reference._params]
+
+    @pytest.mark.parametrize("weights", [torch.tensor([[0.7], [0.3]]), [[1.0, 0.0], [0.0, 1.0]]])
+    def test_random_apply_weights_reject_non_vectors_6049(self, weights):
+        # A nested float list used to be accepted and drew a selection per row, so random_apply=1 applied two.
+        with pytest.raises(ValueError, match="must be one-dimensional"):
+            K.ImageSequential(
+                K.RandomHorizontalFlip(p=1.0), K.RandomVerticalFlip(p=1.0), random_apply=1, random_apply_weights=weights
+            )
+
     def test_convention_augmentation_sequential_leaves_plain_modules_applied_4423(self, device, dtype):
         # #4423: `AugmentationSequential` does not take `if_unsupported_ops`; it leaves a plain module child applied,
         # also when nested in another container, while a nested `ImageSequential` follows its own setting.
