@@ -67,7 +67,10 @@ def _compute_tensor_center(tensor: torch.Tensor) -> torch.Tensor:
     height, width = tensor.shape[-2:]
     center_x: float = float(width - 1) / 2
     center_y: float = float(height - 1) / 2
-    # Filled on the device: ``torch.tensor(..., device=cuda)`` copies from the host and waits for queued kernels.
+    # Filled on the device in eager mode: ``torch.tensor(..., device=cuda)`` copies from the host and waits for queued
+    # kernels. TorchScript, which cannot compile ``_constant_tensor``, keeps the host literal.
+    if torch.jit.is_scripting():
+        return torch.tensor([center_x, center_y], device=tensor.device, dtype=tensor.dtype)
     center: torch.Tensor = _constant_tensor([center_x, center_y], device=tensor.device, dtype=tensor.dtype)
     return center
 
@@ -80,7 +83,9 @@ def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
     center_x: float = float(width - 1) / 2
     center_y: float = float(height - 1) / 2
     center_z: float = float(depth - 1) / 2
-    # Filled on the device, as in ``_compute_tensor_center``.
+    # Filled on the device in eager mode, as in ``_compute_tensor_center``.
+    if torch.jit.is_scripting():
+        return torch.tensor([center_x, center_y, center_z], device=tensor.device, dtype=tensor.dtype)
     center: torch.Tensor = _constant_tensor([center_x, center_y, center_z], device=tensor.device, dtype=tensor.dtype)
     return center
 
