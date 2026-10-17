@@ -421,6 +421,23 @@ class TestNaFlex(BaseTester):
         with torch.no_grad():
             self.assert_close(naflex_optimized(images), naflex(images))
 
+    def test_dynamo_patch_size_check_is_dynamic(
+        self, device: torch.device, dtype: torch.dtype, torch_optimizer
+    ) -> None:
+        # The patch_size grid check formats the sizes only when it fails: an f-string evaluated on every call made
+        # Dynamo specialize the image size, so every new size compiled a graph of its own.
+        from torch._dynamo.testing import CompileCounter
+
+        naflex = NaFlex(_zero_tokens, torch.randn(16, _CHANNELS, device=device, dtype=dtype), patch_size=16)
+        counter = CompileCounter()
+        compiled = torch_optimizer(naflex, backend=counter, fullgraph=True, dynamic=True)
+        # 6 x 10, 7 x 11 and 8 x 13 grids: every axis upsamples the 4 x 4 table, so the antialias guard holds throughout
+        for height, width in ((96, 160), (112, 176), (128, 208)):
+            images = torch.rand(2, 3, height, width, device=device, dtype=dtype)
+            with torch.no_grad():
+                self.assert_close(compiled(images), naflex(images))
+        assert counter.frame_count == 1
+
     def test_dynamo_fullgraph_naflex_square_reading_of_rectangular_patches(
         self, device: torch.device, dtype: torch.dtype, torch_optimizer
     ) -> None:

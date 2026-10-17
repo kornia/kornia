@@ -252,11 +252,14 @@ class SigLip2Model(nn.Module):
             # pairwise sigmoid loss (SigLIP paper, eq. 1; transformers' SiglipModel): every image-text pair enters,
             # the matching pairs on the diagonal labelled +1 and every other pair -1
             if return_loss:
-                KORNIA_CHECK(
-                    image_embeds.shape[0] == text_embeds.shape[0],
-                    "return_loss pairs the i-th image with the i-th text, so it needs as many images as texts; got "
-                    f"{image_embeds.shape[0]} images and {text_embeds.shape[0]} texts.",
-                )
+                # Format the batch sizes only on failure: an f-string evaluated on every call makes Dynamo specialize
+                # the batch size, so a dynamic-shape torch.compile would recompile for each new batch.
+                if image_embeds.shape[0] != text_embeds.shape[0]:
+                    KORNIA_CHECK(
+                        False,
+                        "return_loss pairs the i-th image with the i-th text, so it needs as many images as texts; "
+                        f"got {image_embeds.shape[0]} images and {text_embeds.shape[0]} texts.",
+                    )
                 eye = torch.eye(logits_per_text.shape[0], device=logits_per_text.device, dtype=logits_per_text.dtype)
                 loss = -F.logsigmoid((2 * eye - 1) * logits_per_text).sum(-1).mean()
 

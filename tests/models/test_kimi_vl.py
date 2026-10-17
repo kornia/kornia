@@ -252,6 +252,27 @@ class TestKimiVLModel(BaseTester):
         # fails the default half tolerance the same way (7 / 4096 outputs in float16, 12 / 4096 in bfloat16).
         self.assert_close(actual, expected, low_tolerance=dtype in (torch.float16, torch.bfloat16))
 
+    @pytest.mark.parametrize("module", ["attention", "encoder"])
+    @pytest.mark.parametrize("form", ["padding", "pairs"])
+    def test_dynamo_mask_check_is_dynamic(self, device, dtype, torch_optimizer, config, module, form):
+        # The mask check formats the shapes only when it fails: an f-string evaluated on every call made Dynamo
+        # specialize the batch size and the patch count, so every new (B, N) compiled a graph of its own.
+        from torch._dynamo.testing import CompileCounter
+
+        net = (MoonViTAttention if module == "attention" else MoonViTEncoder)(config.vision_config)
+        net = net.to(device, dtype).eval()
+        counter = CompileCounter()
+        compiled = torch_optimizer(net, backend=counter, fullgraph=True, dynamic=True)
+        # no batch or patch count equals another axis (H = 4 heads, d / 2 = 4, D = 32), so duck sizing cannot tie them
+        for batch_size, n in ((5, 10), (6, 12), (7, 14)):
+            x, cos, sin = _moonvit_attention_inputs(config, batch_size, n, device, dtype)
+            shape = (batch_size, n) if form == "padding" else (batch_size, n, n)
+            mask = torch.ones(shape, dtype=torch.bool, device=device)
+            mask[0, ..., n // 2 :] = False
+            with torch.no_grad():
+                self.assert_close(compiled(x, cos, sin, mask), net(x, cos, sin, mask), low_tolerance=True)
+        assert counter.frame_count == 1
+
 
 class TestKimiVLComponents(BaseTester):
     def test_apply_rotary_pos_emb_preserves_float64_precision(self, device):
@@ -336,6 +357,29 @@ class TestKimiVLComponents(BaseTester):
 
         output = encoder(x, cos, sin)
         assert output.shape == (batch_size, seq_len, hidden_size)
+
+    def test_moonvit_encoder_reads_the_mask_once_for_all_layers(self, device, dtype, config):
+        # The encoder brings the mask into the 4-D layout once and hands every layer that one tensor, rather than each
+        # of its layers (27 in the released checkpoint) converting and checking it again: an int64 (B, N) padding mask
+        # becomes one (B, 1, 1, N) boolean mask, and the output is the one the 4-D mask gives.
+        encoder = MoonViTEncoder(config.vision_config).to(device, dtype).eval()
+        n = 16
+        x, cos, sin = _moonvit_attention_inputs(config, 2, n, device, dtype)
+        mask = torch.ones(2, n, dtype=torch.int64, device=device)
+        mask[1, n // 2 :] = 0
+
+        received = []
+        for layer in encoder.layers:
+            layer.attn.register_forward_pre_hook(lambda module, args: received.append(args[3]))
+        with torch.no_grad():
+            output = encoder(x, cos, sin, mask)
+            expected = encoder(x, cos, sin, mask.bool()[:, None, None, :])
+
+        first = received[0]
+        assert first.dtype == torch.bool
+        assert first.shape == (2, 1, 1, n)
+        assert all(layer_mask is first for layer_mask in received[1 : len(encoder.layers)])
+        self.assert_close(output, expected)
 
     def test_moonvit_attention(self, device, dtype, config):
         attention = MoonViTAttention(config.vision_config).to(device, dtype)

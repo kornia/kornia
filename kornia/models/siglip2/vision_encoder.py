@@ -24,6 +24,8 @@ from typing import Optional
 import torch
 from torch import nn
 
+from kornia.core.utils import is_compiling
+
 from .attention import SigLip2Attention
 from .config import SigLip2VisionConfig, _activation
 
@@ -220,7 +222,11 @@ class SigLip2MultiheadAttentionPoolingHead(nn.Module):
             # rounds min + score, see the docstring) instead of the nan of a softmax over -inf only.
             fill = torch.finfo(hidden_state.dtype).min
             device_type = hidden_state.device.type
-            if torch.amp.is_autocast_available(device_type) and torch.is_autocast_enabled(device_type):
+            # torch.is_autocast_enabled raises for a device type without autocast, such as meta, so eager mode asks
+            # torch.amp.is_autocast_available first. Under torch.compile it does not: that call breaks the graph
+            # before torch 2.6, and a compiled model runs on a device type with autocast.
+            has_autocast = is_compiling() or torch.amp.is_autocast_available(device_type)
+            if has_autocast and torch.is_autocast_enabled(device_type):
                 # nn.MultiheadAttention adds the mask to scores computed in the autocast dtype, where float32's
                 # minimum rounds to -inf: fill with the minimum both dtypes can hold.
                 fill = max(fill, torch.finfo(torch.get_autocast_dtype(device_type)).min)

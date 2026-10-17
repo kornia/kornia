@@ -19,6 +19,7 @@ from __future__ import annotations
 import math
 import sys
 import warnings
+from types import FrameType
 from typing import Callable, Optional, Union
 
 import torch
@@ -27,7 +28,7 @@ from torch.nn import functional as F
 
 from kornia.core._compat import torch_version_lt
 from kornia.core.check import KORNIA_CHECK
-from kornia.core.utils import is_compiling
+from kornia.core.utils import _in_torch_or_kornia, is_compiling
 
 __all__ = ["NaFlex"]
 
@@ -172,23 +173,27 @@ class NaFlex(nn.Module):
             BaseError: if that grid does not have ``num_patches`` cells, or without ``patch_size`` if
                 ``num_patches`` is not a square number.
         """
+        # The checks format the sizes only on failure: an f-string evaluated on every call makes Dynamo specialize the
+        # image size, so a dynamic-shape torch.compile would recompile for each new size.
         if self.patch_size is not None:
             patch_h, patch_w = self.patch_size
             h_grid, w_grid = height // patch_h, width // patch_w
-            KORNIA_CHECK(
-                h_grid * w_grid == num_patches,
-                f"NaFlex reads the grid of a (B, N, C) patch output from patch_size={self.patch_size}: a {height} x "
-                f"{width} image has a {h_grid} x {w_grid} grid of {h_grid * w_grid} patches, but the patch embedding "
-                f"returned {num_patches}.",
-            )
+            if h_grid * w_grid != num_patches:
+                KORNIA_CHECK(
+                    False,
+                    f"NaFlex reads the grid of a (B, N, C) patch output from patch_size={self.patch_size}: a {height} "
+                    f"x {width} image has a {h_grid} x {w_grid} grid of {h_grid * w_grid} patches, but the patch "
+                    f"embedding returned {num_patches}.",
+                )
             return h_grid, w_grid
         side = math.isqrt(num_patches)
-        KORNIA_CHECK(
-            side * side == num_patches,
-            f"NaFlex reads a (B, N, C) patch output without patch_size as a square grid, but {num_patches} patch "
-            "embeddings are not a square number. Pass patch_size to NaFlex, or make the patch embedding return "
-            "(B, C, h, w).",
-        )
+        if side * side != num_patches:
+            KORNIA_CHECK(
+                False,
+                f"NaFlex reads a (B, N, C) patch output without patch_size as a square grid, but {num_patches} patch "
+                "embeddings are not a square number. Pass patch_size to NaFlex, or make the patch embedding return "
+                "(B, C, h, w).",
+            )
         # A square grid on an image whose sides differ by at least one patch of the longer side takes rectangular
         # patches. That is right for a rectangular patch embedding, but for square patches the grid is not square
         # (#6004: 8 x 32 at patch 16 for 128 x 512) and the table goes in the wrong layout. N, H and W cannot tell the
@@ -212,7 +217,7 @@ def _warn_at_caller(message: str) -> None:
     run inside another kornia model, so no fixed ``stacklevel`` names the line that needs ``patch_size``.
     """
     level = 2  # warnings.warn's stacklevel for the frame that called this function
-    frame = sys._getframe(1)
-    while frame is not None and str(frame.f_globals.get("__name__", "")).split(".", 1)[0] in ("kornia", "torch"):
+    frame: Optional[FrameType] = sys._getframe(1)
+    while frame is not None and _in_torch_or_kornia(frame):
         frame, level = frame.f_back, level + 1
     warnings.warn(message, UserWarning, stacklevel=level if frame is not None else 2)

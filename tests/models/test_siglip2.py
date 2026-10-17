@@ -77,6 +77,14 @@ def _create_input_ids(batch_size, seq_len, config, device):
     return torch.randint(0, min(100, config.text_config.vocab_size), (batch_size, seq_len), device=device)
 
 
+def _from_name_or_error(model_name):
+    """``SigLip2Config.from_name(model_name)``, or the type of the error it raises, to compare two names' readings."""
+    try:
+        return SigLip2Config.from_name(model_name)
+    except ValueError as error:
+        return type(error)
+
+
 def _tiny_vision_config():
     """32 px images at patch 4: an 8 x 8 grid of 64 patches."""
     return SigLip2VisionConfig(
@@ -209,9 +217,9 @@ class TestSigLip2Builder:
         ],
     )
     def test_from_name_reads_an_unlisted_name_from_its_parts(self, model_name, expected):
-        # A fine-tune or mirror of a supported checkpoint under another name: base unless the name says "large", the
-        # image size the name contains (224 if none), patch 16, the SigLIP 2 vocabulary, 512 text positions (which
-        # from_pretrained_hf adapts to the checkpoint). Config only: no model is built.
+        # A fine-tune or mirror of a supported checkpoint under another name: base unless a word of the repository
+        # part is "large", the image size the name contains (224 if none), patch 16, the SigLIP 2 vocabulary, 512 text
+        # positions (which from_pretrained_hf adapts to the checkpoint). Config only: no model is built.
         config = SigLip2Config.from_name(model_name)
         vision, text = config.vision_config, config.text_config
         actual = (
@@ -250,13 +258,75 @@ class TestSigLip2Builder:
         ],
     )
     def test_from_name_rejects_a_name_it_cannot_read(self, model_name):
-        # A google/ checkpoint outside the table, or a name that says so400m, giant, naflex or a patch size other
-        # than 16, names an architecture the parts reading cannot build: it raises rather than return a model of the
-        # wrong shape. Neither call builds a model.
+        # A google/ checkpoint outside the table, or a repository part with the word so400m, giant, naflex or a patch
+        # size other than 16, names an architecture the parts reading cannot build: it raises rather than return a
+        # model of the wrong shape. Neither call builds a model.
         with pytest.raises(ValueError, match=r"cannot build .* Supported names: google/siglip-base-patch16-224, "):
             SigLip2Config.from_name(model_name)
         with pytest.raises(ValueError, match="cannot build"):
             SigLip2Builder.from_name(model_name)
+
+    @pytest.mark.parametrize(
+        "repository",
+        [
+            "siglip2-base-patch16-224-finetuned",
+            "siglip2-large-patch16-384-mirror",
+            "my-siglip",
+            "siglip-base-patch16-224-finetuned",
+            "siglip2-so400m-patch14-384-finetuned",
+            "siglip2-base-patch32-256-mirror",
+            "siglip-large-patch16-256",
+        ],
+    )
+    @pytest.mark.parametrize("owner", ["LargeCorp", "large-models", "giantlab", "so400m-fans", "naflex", "patch14ai"])
+    def test_from_name_reads_the_architecture_from_the_repository_part_only(self, repository, owner):
+        # An owner that says large, giant, so400m, naflex or a patch size gets the reading of a neutral owner, for a
+        # name that reads and for one that raises alike ("LargeCorp/siglip2-base-..." was the large architecture).
+        assert _from_name_or_error(f"{owner}/{repository}") == _from_name_or_error(f"someone/{repository}")
+
+    @pytest.mark.parametrize(
+        ("model_name", "expected"),
+        [
+            # (hidden_size, image_size), and patch size 16 and the SigLIP 2 vocabulary throughout: a marker inside a
+            # longer word of the repository part is not the marker
+            ("someone/siglip2-base-patch16-224-enlarged", (768, 224)),
+            ("someone/siglip2-base-patch16-224-giantdata", (768, 224)),
+            ("someone/siglip2-base-patch16-224-naflexible", (768, 224)),
+            ("someone/siglip2-base-patch16-224-so400mx", (768, 224)),
+            ("someone/dispatch2-siglip2-base-patch16-224", (768, 224)),
+            ("someone/notsiglip-large-patch16-256", (1024, 256)),
+            # words are separated by any character that is not a letter or a digit
+            ("someone/siglip2_large_patch16_384", (1024, 384)),
+            ("someone/SigLIP2.Large.Patch16.512", (1024, 512)),
+        ],
+    )
+    def test_from_name_reads_whole_words(self, model_name, expected):
+        config = SigLip2Config.from_name(model_name)
+        assert (config.vision_config.hidden_size, config.vision_config.image_size) == expected
+        assert (config.vision_config.patch_size, config.text_config.vocab_size) == (16, 256000)
+
+    @pytest.mark.parametrize(
+        "model_name", ["someone/siglip2_so400m_patch14_384", "someone/siglip2-base.patch32", "someone/siglip_large_ft"]
+    )
+    def test_from_name_rejects_whole_words_after_any_separator(self, model_name):
+        with pytest.raises(ValueError, match="cannot build"):
+            SigLip2Config.from_name(model_name)
+
+    @pytest.mark.parametrize(
+        "model_name",
+        [
+            "someone/siglip2-base-patch16-224-finetuned",
+            "someone/siglip2-large-patch16-384-mirror",
+            "someone/siglip-base-patch16-224-finetuned",
+            "org-256/siglip2-finetune",
+            "someone/siglip2-so400m-patch14-384",
+            "someone/siglip-large-patch16-256",
+        ],
+    )
+    def test_from_name_reads_an_unlisted_name_in_any_case(self, model_name):
+        expected = _from_name_or_error(model_name)
+        assert _from_name_or_error(model_name.upper()) == expected
+        assert _from_name_or_error(model_name.swapcase().replace("SOMEONE", "Someone")) == expected
 
     @pytest.mark.parametrize("model_name", ["Google/SigLIP2-Large-Patch16-384", "GOOGLE/siglip-base-patch16-224"])
     def test_from_name_table_ignores_case(self, model_name):
@@ -294,6 +364,32 @@ class TestSigLip2Builder:
         # The message reports the configuration actually read from the name, here the tiny stand-in.
         assert "hidden size 32, 2 layers, 4 heads, patch size 4, image size 32, vocabulary 100" in str(error.value)
         assert "size mismatch" in str(error.value.__cause__)
+
+    @pytest.mark.parametrize(
+        ("model_name", "downloaded"),
+        [
+            # a listed name in another case is downloaded, and so cached, under its listed spelling, not as a second
+            # copy (the Hub redirects the case variant to the same repository)
+            ("Google/SigLIP2-Base-Patch16-224", "google/siglip2-base-patch16-224"),
+            ("GOOGLE/siglip-base-patch16-224", "google/siglip-base-patch16-224"),
+            # an unlisted name keeps the caller's spelling: kornia does not know its repository's
+            ("Someone/SigLIP2-Base-Patch16-224-ft", "Someone/SigLIP2-Base-Patch16-224-ft"),
+        ],
+    )
+    def test_from_pretrained_hf_downloads_a_listed_name_under_its_listed_spelling(
+        self, monkeypatch, config, model_name, downloaded
+    ):
+        monkeypatch.setattr(SigLip2Config, "from_name", staticmethod(lambda model_name: config))
+        state_dict = SigLip2Model(config).state_dict()
+        repositories = []
+
+        def download(model_name, cache_dir):
+            repositories.append(model_name)
+            return state_dict
+
+        monkeypatch.setattr(siglip2_builder, "_download_weights", download)
+        SigLip2Builder.from_pretrained_hf(model_name)
+        assert repositories == [downloaded]
 
     @pytest.mark.parametrize("model_name", ["google/siglip2-base-patch16-224", "Google/SigLIP2-Base-Patch16-224"])
     def test_from_pretrained_hf_passes_on_a_listed_checkpoints_load_error(self, monkeypatch, config, model_name):
@@ -565,6 +661,23 @@ class TestSigLip2Model(BaseTester):
 
         self.assert_close(actual.image_embeds, expected.image_embeds)
         self.assert_close(actual.text_embeds, expected.text_embeds)
+
+    def test_dynamo_return_loss_check_is_dynamic(self, device, dtype, torch_optimizer, model, config):
+        # The equal-batches check of return_loss formats the batch sizes only when it fails: an f-string evaluated on
+        # every call made Dynamo specialize the batch size, so every new batch compiled a graph of its own.
+        from torch._dynamo.testing import CompileCounter
+
+        counter = CompileCounter()
+        compiled = torch_optimizer(model, backend=counter, fullgraph=True, dynamic=True)
+        # no batch equals another axis (3 channels, 4 heads, 8 head dims, 10 tokens), so duck sizing cannot tie it
+        for batch_size in (5, 6, 7):
+            pixel_values = torch.randn(batch_size, 3, 32, 32, device=device, dtype=dtype)
+            input_ids = _create_input_ids(batch_size, 10, config, device)
+            with torch.no_grad():
+                actual = compiled(pixel_values=pixel_values, input_ids=input_ids, return_loss=True)
+                expected = model(pixel_values=pixel_values, input_ids=input_ids, return_loss=True)
+            self.assert_close(actual.loss, expected.loss, low_tolerance=True)
+        assert counter.frame_count == 1
 
     def test_dynamo_fullgraph_masked_vision_model(self, device, dtype, torch_optimizer):
         """The vision attention mask reaches the encoder and the pooling head inside one compiled graph."""
@@ -853,6 +966,36 @@ class TestSigLip2Components(BaseTester):
         assert torch.isfinite(pooled).all()
         # the autocast run rounds the projections to the autocast dtype
         self.assert_close(pooled.to(dtype), expected, rtol=5e-2, atol=5e-2)
+
+    def test_dynamo_fullgraph_pooling_head_under_autocast(self, device, dtype, torch_optimizer):
+        # The autocast fill is chosen inside the compiled graph too. torch.amp.is_autocast_available cannot be traced
+        # before torch 2.6 (a graph break, so fullgraph raised on torch 2.5.1), so the head asks it in eager mode only.
+        if dtype != torch.float32:
+            pytest.skip("autocast casts float32 inputs only")
+        autocast_dtype = torch.bfloat16 if device.type == "cpu" else torch.float16
+        config = _tiny_vision_config()
+        head = SigLip2MultiheadAttentionPoolingHead(config).to(device, dtype).eval()
+        hidden_state = torch.randn(2, 64, config.hidden_size, device=device, dtype=dtype)
+        mask = torch.ones(2, 64, dtype=torch.bool, device=device)
+        mask[1] = False  # sample 1 entirely masked: nan with the float32 fill under autocast
+
+        compiled = torch_optimizer(head, fullgraph=True)
+        with torch.no_grad(), torch.autocast(device.type, dtype=autocast_dtype):
+            pooled = compiled(hidden_state, attention_mask=mask)
+            expected = head(hidden_state, attention_mask=mask)
+
+        assert torch.isfinite(pooled).all()
+        self.assert_close(pooled, expected, low_tolerance=True)
+
+    def test_pooling_head_masked_on_the_meta_device(self):
+        # torch.is_autocast_enabled raises for a device type without autocast, such as meta, which shape inference and
+        # deferred initialization use: the head asks torch.amp.is_autocast_available first in eager mode.
+        config = _tiny_vision_config()
+        head = SigLip2MultiheadAttentionPoolingHead(config).to("meta").eval()
+        hidden_state = torch.empty(2, 64, config.hidden_size, device="meta")
+        mask = torch.ones(2, 64, dtype=torch.bool, device="meta")
+
+        assert head(hidden_state, attention_mask=mask).shape == (2, config.hidden_size)
 
     def test_activation_follows_hidden_act(self):
         # transformers' SiglipTextConfig and SiglipVisionConfig default hidden_act is "gelu_pytorch_tanh"

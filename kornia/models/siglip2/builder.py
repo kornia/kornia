@@ -27,7 +27,7 @@ import torch
 from kornia.core.download import download_hf_file
 from kornia.core.safetensors import check_safetensors, load_safetensors
 
-from .config import _SUPPORTED_MODELS, SigLip2Config
+from .config import _SUPPORTED_MODELS, SigLip2Config, _listed_name
 from .model import SigLip2Model
 
 _logger = logging.getLogger(__name__)
@@ -136,9 +136,10 @@ class SigLip2Builder:
         - google/siglip2-large-patch16-384
         - google/siglip2-large-patch16-512
 
-        Another repository, such as a fine-tune or a mirror of one of these, loads when its checkpoint has the
-        architecture ``SigLip2Config.from_name`` reads from its name's parts (base unless the name contains
-        ``"large"``, patch size 16, the image size in its name).
+        A listed name in another case is that checkpoint, downloaded and cached under the spelling above. Another
+        repository, such as a fine-tune or a mirror of one of these, loads when its checkpoint has the architecture
+        ``SigLip2Config.from_name`` reads from the words of its repository part (base unless one of them is
+        ``large``, patch size 16, the image size in its name).
 
         Args:
             model_name: HuggingFace model identifier. Default: "google/siglip2-base-patch16-224".
@@ -163,8 +164,10 @@ class SigLip2Builder:
         # create config from model name
         config = SigLip2Config.from_name(model_name)
 
-        # download model weights
-        state_dict = _download_weights(model_name, cache_dir)
+        # download model weights; a listed name in another case under its listed spelling, so that the cache file name,
+        # which is built from the spelling, is the one every other spelling of that checkpoint uses
+        listed = _listed_name(model_name)
+        state_dict = _download_weights(listed or model_name, cache_dir)
 
         # infer max_position_embeddings from checkpoint if not in config
         config = _infer_max_position_embeddings(config, state_dict)
@@ -180,7 +183,7 @@ class SigLip2Builder:
         try:
             model.load_state_dict(state_dict, strict=True)
         except RuntimeError as e:
-            if model_name.lower() in _SUPPORTED_MODELS:
+            if listed is not None:
                 raise
             vision, text = config.vision_config, config.text_config
             raise RuntimeError(

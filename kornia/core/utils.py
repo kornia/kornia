@@ -21,7 +21,7 @@ import platform
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, fields, is_dataclass
-from types import UnionType
+from types import FrameType, UnionType
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union, get_args, get_origin, get_type_hints
 
 import torch
@@ -640,6 +640,11 @@ def is_autocast_enabled(both: bool = True) -> bool:
 # These helpers moved into ``torch.compiler`` over time; resolve them once at import.
 _torch_is_compiling = getattr(torch.compiler, "is_compiling", None) or getattr(torch._dynamo, "is_compiling", None)
 _torch_is_exporting = getattr(torch.compiler, "is_exporting", None)
+
+
+def _in_torch_or_kornia(frame: FrameType) -> bool:
+    """Whether ``frame`` runs code of torch or kornia, to attribute a warning to the first frame outside them."""
+    return str(frame.f_globals.get("__name__", "")).split(".", 1)[0] in ("torch", "kornia")
 
 
 @torch.jit.unused
