@@ -24,16 +24,6 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SIZE
 from .mean_iou import mean_iou_bbox
 
 
-def _check_label_values(name: str, labels: torch.Tensor, n_classes: int) -> None:
-    """Check that the labels are class indices: integer-valued and in ``[0, n_classes)``."""
-    KORNIA_CHECK(
-        bool(((labels >= 0) & (labels < n_classes)).all()),
-        lambda: f"{name} must satisfy 0 <= label < n_classes ({n_classes}).",
-    )
-    if labels.is_floating_point():
-        KORNIA_CHECK(bool((labels == labels.round()).all()), f"{name} must contain integer-valued labels.")
-
-
 def mean_average_precision(
     pred_boxes: List[torch.Tensor],
     pred_labels: List[torch.Tensor],
@@ -130,8 +120,14 @@ def mean_average_precision(
         _gt_boxes.dtype if _gt_boxes.is_floating_point() else torch.float32,
     )
 
-    _check_label_values("pred_labels", _pred_labels, n_classes)
-    _check_label_values("gt_labels", _gt_labels, n_classes)
+    # These data-dependent checks break the compiled graph; in a helper function they would also break it at each call.
+    for name, labels in (("pred_labels", _pred_labels), ("gt_labels", _gt_labels)):
+        KORNIA_CHECK(
+            bool(((labels >= 0) & (labels < n_classes)).all()),
+            lambda: f"{name} must satisfy 0 <= label < n_classes ({n_classes}).",  # noqa: B023 - called at once
+        )
+        if labels.is_floating_point():
+            KORNIA_CHECK(bool((labels == labels.round()).all()), f"{name} must contain integer-valued labels.")
 
     # Calculate APs for each class (except background)
     average_precisions = torch.zeros((n_classes - 1), device=_pred_boxes.device, dtype=ap_dtype)  # (n_classes - 1)
