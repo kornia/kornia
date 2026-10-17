@@ -178,7 +178,7 @@ def solve_pnp_dlt(
     KORNIA_CHECK_SAME_SHAPE(world_points[:, :, 0], img_points[:, :, 0])
     KORNIA_CHECK(
         world_points.shape[1] >= 6,
-        f"world_points must hold at least 6 points (N >= 6), got N = {world_points.shape[1]}.",
+        lambda: f"world_points must hold at least 6 points (N >= 6), got N = {world_points.shape[1]}.",
     )
     if weights is not None:
         KORNIA_CHECK_IS_TENSOR(weights)

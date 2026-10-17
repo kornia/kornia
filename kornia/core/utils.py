@@ -863,7 +863,7 @@ def batched_forward(
         True
 
     """
-    KORNIA_CHECK(batch_size > 0, f"batch_size must be positive, got {batch_size}")
+    KORNIA_CHECK(batch_size > 0, lambda: f"batch_size must be positive, got {batch_size}")
     model_dev = model.to(device)
     B: int = len(data)
     bs: int = batch_size

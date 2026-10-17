@@ -124,4 +124,4 @@ class SOSNet(nn.Module):
             descr = self.desc_norm(descr.float() + eps).to(descr.dtype)
         else:
             descr = self.desc_norm(descr + eps)
-        return descr.view(descr.size(0), -1)
+        return descr.flatten(1)

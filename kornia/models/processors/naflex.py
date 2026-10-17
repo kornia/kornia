@@ -178,22 +178,24 @@ class NaFlex(nn.Module):
         if self.patch_size is not None:
             patch_h, patch_w = self.patch_size
             h_grid, w_grid = height // patch_h, width // patch_w
-            if h_grid * w_grid != num_patches:
-                KORNIA_CHECK(
-                    False,
-                    f"NaFlex reads the grid of a (B, N, C) patch output from patch_size={self.patch_size}: a {height} "
-                    f"x {width} image has a {h_grid} x {w_grid} grid of {h_grid * w_grid} patches, but the patch "
-                    f"embedding returned {num_patches}.",
-                )
+            KORNIA_CHECK(
+                h_grid * w_grid == num_patches,
+                lambda: (
+                    f"NaFlex reads the grid of a (B, N, C) patch output from patch_size={self.patch_size}: a "
+                    f"{height} x {width} image has a {h_grid} x {w_grid} grid of {h_grid * w_grid} patches, but the "
+                    f"patch embedding returned {num_patches}."
+                ),
+            )
             return h_grid, w_grid
         side = math.isqrt(num_patches)
-        if side * side != num_patches:
-            KORNIA_CHECK(
-                False,
-                f"NaFlex reads a (B, N, C) patch output without patch_size as a square grid, but {num_patches} patch "
-                "embeddings are not a square number. Pass patch_size to NaFlex, or make the patch embedding return "
-                "(B, C, h, w).",
-            )
+        KORNIA_CHECK(
+            side * side == num_patches,
+            lambda: (
+                f"NaFlex reads a (B, N, C) patch output without patch_size as a square grid, but {num_patches} "
+                "patch embeddings are not a square number. Pass patch_size to NaFlex, or make the patch embedding "
+                "return (B, C, h, w)."
+            ),
+        )
         # A square grid on an image whose sides differ by at least one patch of the longer side takes rectangular
         # patches. That is right for a rectangular patch embedding, but for square patches the grid is not square
         # (#6004: 8 x 32 at patch 16 for 128 x 512) and the table goes in the wrong layout. N, H and W cannot tell the
