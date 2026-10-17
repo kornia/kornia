@@ -342,6 +342,18 @@ INHERENT_SITES: dict[str, str] = {
     "geometry/transform/thin_plate_spline.py:get_tps_transform": (
         "`torch.linalg.solve` checks the user-visible TPS system for singularity and raises (decision D1)"
     ),
+    "augmentation/_2d/geometric/base.py:compute_inverse_transformation": (
+        "`inverse()` inverts the user-visible transformation matrix with `torch.linalg.inv`, which raises for a "
+        "singular matrix (decision D1)"
+    ),
+    "geometry/transform/imgwarp.py:warp_affine3d": (
+        "the public 3D warp inverts the caller's affine matrix with `torch.linalg.inv`, which raises for a singular "
+        "matrix (decision D1)"
+    ),
+    "geometry/transform/imgwarp.py:_transform_warp_impl3d": (
+        "`warp_perspective3d` inverts the caller's homography with `torch.linalg.inv`, which raises for a singular "
+        "matrix (decision D1)"
+    ),
 }
 
 # Thin wrappers whose synchronizations belong to their caller. A site is the deepest kornia frame that is not one of

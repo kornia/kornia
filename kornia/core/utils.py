@@ -376,7 +376,7 @@ def _times_power_of_two(x: torch.Tensor, exponent: torch.Tensor) -> torch.Tensor
     return x * scale * scale * powers[(exponent - 2 * step + largest).to(torch.int64)]
 
 
-def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:
+def _torch_inverse_cast(input: torch.Tensor, check_errors: bool = True) -> torch.Tensor:
     """Make torch.inverse work with other than fp32/64.
 
     The function torch.inverse is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
@@ -394,11 +394,18 @@ def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:
     non-finite or large values. Which near-singular matrices raise, and which return large values, depends
     on the torch version, the device and the capture mode. Callers that need a verdict use
     :func:`safe_inverse_with_mask`, whose mask follows one rule everywhere.
+
+    ``torch.linalg.inv`` reads its factorization status back on the host to raise for a singular matrix, which on
+    CUDA waits for every queued kernel. ``check_errors=False`` uses ``torch.linalg.inv_ex`` instead: the same
+    factorization and the same bits, without the read. Pass it only for a matrix that cannot be singular, such as a
+    pixel normalization kornia builds itself; a singular matrix then returns non-finite values instead of raising.
     """
     KORNIA_CHECK_IS_TENSOR(input, "Input must be torch.Tensor")
     dtype = _normalize_to_float32_or_float64(input.dtype)
     if _is_tracing_or_exporting() and _has_closed_form_inverse(input):
         return _closed_form_inverse(input.to(dtype)).to(input.dtype)
+    if not check_errors:
+        return inv_ex(input.to(dtype)).inverse.to(input.dtype)
     return torch.linalg.inv(input.to(dtype)).to(input.dtype)
 
 

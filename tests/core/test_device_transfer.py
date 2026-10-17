@@ -22,7 +22,7 @@ import torch
 
 import kornia.augmentation.utils.helpers as augmentation_helpers
 from kornia.core import ops as core_ops
-from kornia.core.utils import _to_device_nonblocking
+from kornia.core.utils import _to_device_nonblocking, _torch_inverse_cast
 
 from testing.base import BaseTester
 
@@ -116,6 +116,28 @@ class TestToDeviceNonblocking(BaseTester):
                 _to_device_nonblocking(y, torch.device("cpu"))
         finally:
             torch.cuda.set_sync_debug_mode(0)
+
+
+class TestInverseWithoutErrorCheck(BaseTester):
+    @pytest.mark.parametrize("n", [3, 4])
+    def test_inverse_without_error_check_is_identical(self, n, device, dtype) -> None:
+        # Well conditioned: the identity plus a small random perturbation.
+        a = torch.eye(n, device=device, dtype=dtype) + 0.1 * torch.randn(8, n, n, device=device, dtype=dtype)
+        expected = _torch_inverse_cast(a)
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+            try:
+                torch.cuda.set_sync_debug_mode("error")
+                actual = _torch_inverse_cast(a, check_errors=False)
+            finally:
+                torch.cuda.set_sync_debug_mode(0)
+        else:
+            actual = _torch_inverse_cast(a, check_errors=False)
+        assert torch.equal(actual, expected)
+
+    def test_singular_still_raises_with_error_check(self, device, dtype) -> None:
+        with pytest.raises(RuntimeError):
+            _torch_inverse_cast(torch.zeros(1, 3, 3, device=device, dtype=dtype))
 
 
 def test_constant_tensor_import_paths() -> None:
