@@ -170,6 +170,32 @@ class TestKimiVLModel(BaseTester):
         output = model(images, attention_mask=mask)
         assert output.shape == (batch_size, 16, config.projector_config.output_dim)
 
+    @pytest.mark.parametrize("batch_size", [2, 4])
+    def test_three_dim_mask_is_per_sample(self, device, dtype, model, config, batch_size):
+        # A (B, N, N) mask holds one N x N mask per sample, shared by the heads: sample b of a batch equals its own
+        # batch-of-one run. The fixture has 4 heads: a mask read per head does not broadcast against B = 2, and with
+        # B = 4, the head count, it broadcasts silently to wrong outputs.
+        model = model.eval()
+        n = 64  # 32 px at patch 4: an 8 x 8 grid
+        images = torch.randn(batch_size, 3, 32, 32, device=device, dtype=dtype)
+        mask = torch.ones(batch_size, n, n, dtype=torch.bool, device=device)
+        mask[1, :, n // 2 :] = False  # sample 1 attends to the first half of the keys only
+        if batch_size == 4:
+            mask[2, :, 1::2] = False  # sample 2: the even keys
+            mask[3, :, : n // 4] = False  # sample 3: all but the first quarter
+
+        with torch.no_grad():
+            output = model(images, attention_mask=mask)
+            for b in range(batch_size):
+                self.assert_close(output[b], model(images[b : b + 1], attention_mask=mask[b : b + 1])[0])
+            self.assert_close(model(images, attention_mask=mask[:, None]), output)
+            batch_of_three = model(
+                torch.randn(3, 3, 32, 32, device=device, dtype=dtype),
+                attention_mask=torch.ones(3, n, n, dtype=torch.bool, device=device),
+            )
+
+        assert batch_of_three.shape == (3, 16, config.projector_config.output_dim)
+
     def test_exception(self, device, dtype, model):
         # Test invalid input shape (missing batch dim)
         images = torch.randn(3, 32, 32, device=device, dtype=dtype)
@@ -196,6 +222,24 @@ class TestKimiVLModel(BaseTester):
             actual = model_optimized(images)
 
         self.assert_close(actual, expected)
+
+    def test_dynamo_fullgraph_three_dim_mask(self, device, dtype, torch_optimizer, config):
+        model = MoonViT(config.vision_config).to(device, dtype).eval()
+        n = 64
+        images = torch.randn(2, 3, 32, 32, device=device, dtype=dtype)
+        mask = torch.ones(2, n, n, dtype=torch.bool, device=device)
+        mask[1, :, n // 2 :] = False
+
+        model_optimized = torch_optimizer(model, fullgraph=True)
+
+        with torch.no_grad():
+            expected = model(images, attention_mask=mask)
+            actual = model_optimized(images, attention_mask=mask)
+
+        # Inductor keeps fused half-precision intermediates in float32, so a few outputs differ from eager by one
+        # unit in the last place. On the base revision a60a6c932, where a (B, N, N) mask raised, the (B, 1, N, N) form
+        # fails the default half tolerance the same way (7 / 4096 outputs in float16, 12 / 4096 in bfloat16).
+        self.assert_close(actual, expected, low_tolerance=dtype in (torch.float16, torch.bfloat16))
 
 
 class TestKimiVLComponents(BaseTester):

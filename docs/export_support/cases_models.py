@@ -723,7 +723,7 @@ A(
         "models.processors",
         NaFlex(_pe_conv, torch.randn(16, 8)),
         [torch.rand(1, 3, 32, 32)],
-        note="num_patches == pos rows -> plain add",
+        note="4x4 patch grid == the 4x4 pos-embed grid -> plain add, no resize",
     )
 )
 
@@ -783,7 +783,7 @@ A(
         "models.vlm",
         SigLip2ImagePreprocessor((32, 40)),
         [torch.rand(1, 3, 48, 64) * 255],
-        note="Rescale(1/255) + Resize bicubic antialias + Normalize; size baked",
+        note="Rescale(1/255) + Resize bilinear antialias (default; bicubic via interpolation=) + Normalize; size baked",
     )
 )
 A(

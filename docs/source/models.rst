@@ -7,8 +7,11 @@ kornia.models
 
 Builders for Kornia's ready-to-use models (object detection, edge detection, semantic segmentation and Kimi-VL).
 Each builder returns a configured model with pretrained weights. For the papers behind the models, see the :doc:`Models </models/index>` section.
-Pretrained weights are downloaded on first use, and the model builders return a regular ``nn.Module`` that accepts a
-batched ``(B, 3, H, W)`` float image in ``[0, 1]``. :func:`kornia.io.get_sample_images` provides a couple of sample images for quick experiments.
+Pretrained weights are downloaded on first use, and the model builders return a regular ``nn.Module``. Every model
+here except Kimi-VL accepts a batched ``(B, 3, H, W)`` float image in ``[0, 1]``. Kimi-VL takes that image normalized
+with mean = std = 0.5 per channel (``2 * x - 1``), as its checkpoint's ``preprocessor_config.json`` specifies, with
+``H`` and ``W`` multiples of 28 (see ``kornia.models.kimi_vl.KimiVLModel.forward``). :func:`kornia.io.get_sample_images`
+provides a couple of sample images for quick experiments.
 
 .. _RTDETRDetectorBuilder:
 

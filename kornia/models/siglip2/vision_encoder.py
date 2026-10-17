@@ -25,7 +25,7 @@ import torch
 from torch import nn
 
 from .attention import SigLip2Attention
-from .config import SigLip2VisionConfig
+from .config import SigLip2VisionConfig, _activation
 
 __all__ = [
     "SigLip2MultiheadAttentionPoolingHead",
@@ -92,13 +92,16 @@ class SigLip2VisionMLP(nn.Module):
     """MLP (feed-forward network) for vision encoder.
 
     Args:
-        config: Vision encoder configuration.
+        config: Vision encoder configuration. Its ``hidden_act`` selects the activation.
+
+    Raises:
+        ValueError: if ``config.hidden_act`` is not ``"gelu_pytorch_tanh"``, ``"gelu_new"`` or ``"gelu"``.
     """
 
     def __init__(self, config: SigLip2VisionConfig) -> None:
         super().__init__()
         self.fc1 = nn.Linear(config.hidden_size, config.intermediate_size)
-        self.activation = nn.GELU()
+        self.activation = _activation(config.hidden_act)
         self.fc2 = nn.Linear(config.intermediate_size, config.hidden_size)
         self.dropout = nn.Dropout(config.dropout_p)
 
@@ -176,16 +179,25 @@ class SigLip2MultiheadAttentionPoolingHead(nn.Module):
         self.layernorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.mlp = SigLip2VisionMLP(config)
 
-    def forward(self, hidden_state: torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden_state: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """Pool vision tokens with a learned probe query.
 
         Args:
             hidden_state: Vision token tensor with shape :math:`(B, N, D)`,
                 where :math:`B` is batch size, :math:`N` is token count, and
                 :math:`D` is hidden size.
+            attention_mask: Optional mask of the tokens, ``1``/``True`` for a token to pool and ``0``/``False`` for
+                padding, in any form :class:`SigLip2Attention` accepts: :math:`(B, N)`, :math:`(B, N, N)` or
+                :math:`(B, 1, N, N)`. The probe does not attend to the padding tokens. For a 3-D or 4-D mask, a token
+                that no query may attend to is padding, so a :math:`(B, N)` mask broadcast over the queries pools
+                exactly as the :math:`(B, N)` mask itself. As in transformers, a padding token's attention score gets
+                ``torch.finfo(dtype).min`` added rather than ``-inf``: a sample whose tokens are all padding pools
+                them with exactly uniform weights in float32, float64 and bfloat16. In float16, as in transformers,
+                ``finfo(float16).min`` plus a score rounds to a multiple of 32, so those weights are only roughly
+                uniform, and a head whose scores are all below about -16 gives a non-finite output.
 
         Returns:
-            Tensor with shape :math:`(B, 1, D)` containing the pooled visual
+            Tensor with shape :math:`(B, D)` containing the pooled visual
             representation after attention, layer normalization, and MLP
             refinement.
         """
@@ -193,8 +205,22 @@ class SigLip2MultiheadAttentionPoolingHead(nn.Module):
         batch_size = hidden_state.shape[0]
         probe = self.probe.repeat(batch_size, 1, 1)  # (batch_size, 1, hidden_size)
 
+        key_padding_mask = None
+        if attention_mask is not None:
+            keep = attention_mask.bool()
+            if keep.dim() > 2:
+                # (B, N, N) or (B, 1, N, N) -> (B, N): a key no query may attend to is padding
+                keep = keep.flatten(1, -2).any(1)
+            # An additive mask with the dtype's finite minimum on the padding keys, as transformers'
+            # _prepare_4d_attention_mask builds it: a partly padded sample pools as with -inf (exp underflows to 0),
+            # and an all-padding sample gets uniform weights (exactly so in float32, float64 and bfloat16; float16
+            # rounds min + score, see the docstring) instead of the nan of a softmax over -inf only.
+            key_padding_mask = torch.zeros(keep.shape, dtype=hidden_state.dtype, device=hidden_state.device)
+            key_padding_mask = key_padding_mask.masked_fill(~keep, torch.finfo(hidden_state.dtype).min)
+            key_padding_mask = key_padding_mask.expand(batch_size, -1)
+
         # multi-head attention: probe as query, hidden_state as key/value
-        hidden_state, _ = self.attention(probe, hidden_state, hidden_state)
+        hidden_state, _ = self.attention(probe, hidden_state, hidden_state, key_padding_mask=key_padding_mask)
 
         # residual connection with layer norm and MLP
         residual = hidden_state
@@ -275,12 +301,15 @@ class SigLip2VisionModel(nn.Module):
 
         Args:
             pixel_values: Input images of shape (batch_size, num_channels, height, width).
-            attention_mask: Optional attention mask.
+            attention_mask: Optional mask of the patches, ``1``/``True`` for a patch to keep and ``0``/``False`` for
+                a padded one: :math:`(B, N)`, :math:`(B, N, N)` or :math:`(B, 1, N, N)` for :math:`N` patches (see
+                :class:`SigLip2Attention`). It excludes the padded patches from the encoder, where no patch attends
+                to them, and from the pooling.
             output_hidden_states: Whether to return hidden states from all layers.
 
         Returns:
             Tuple containing:
-            - Pooled output (mean pooled)
+            - Pooled output, attention-pooled by the probe head (:class:`SigLip2MultiheadAttentionPoolingHead`)
             - Last hidden state
             - All hidden states (if output_hidden_states=True)
         """
@@ -300,7 +329,7 @@ class SigLip2VisionModel(nn.Module):
         last_hidden_state = self.post_layernorm(last_hidden_state)
 
         # pool: multi-head attention pooling - [batch_size, hidden_size]
-        pooled_output = self.head(last_hidden_state)
+        pooled_output = self.head(last_hidden_state, attention_mask=attention_mask)
 
         if output_hidden_states:
             return (pooled_output, last_hidden_state, encoder_outputs[1])

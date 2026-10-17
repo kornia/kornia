@@ -27,7 +27,7 @@ import torch
 from kornia.core.download import download_hf_file
 from kornia.core.safetensors import check_safetensors, load_safetensors
 
-from .config import SigLip2Config
+from .config import _SUPPORTED_MODELS, SigLip2Config
 from .model import SigLip2Model
 
 _logger = logging.getLogger(__name__)
@@ -94,7 +94,8 @@ class SigLip2Builder:
             model_name: HuggingFace model identifier.
 
         Returns:
-            SigLip2Model instance with random initialization.
+            SigLip2Model instance with random initialization, configured by ``SigLip2Config.from_name``: a name outside
+            its supported list gets the configuration read from the name's parts.
         """
         config = SigLip2Config.from_name(model_name)
         return SigLip2Model(config)
@@ -131,6 +132,10 @@ class SigLip2Builder:
         - google/siglip2-large-patch16-384
         - google/siglip2-large-patch16-512
 
+        Another repository, such as a fine-tune or a mirror of one of these, loads when its checkpoint has the
+        architecture ``SigLip2Config.from_name`` reads from its name's parts (base unless the name contains
+        ``"large"``, patch size 16, the image size in its name).
+
         Args:
             model_name: HuggingFace model identifier. Default: "google/siglip2-base-patch16-224".
             cache_dir: Optional cache directory for model files. Defaults to
@@ -140,6 +145,10 @@ class SigLip2Builder:
         Returns:
             SigLip2Model instance with pretrained weights, in evaluation mode, since it always loads weights (see
             :ref:`pretrained-models-conventions`).
+
+        Raises:
+            RuntimeError: if the checkpoint of a repository outside the supported list does not fit the configuration
+                read from its name; the message lists the supported names.
 
         .. note::
             The repository must publish its weights as a single
@@ -162,6 +171,17 @@ class SigLip2Builder:
 
         # create model and load weights directly (no transformation needed)
         model = SigLip2Model(config)
-        model.load_state_dict(state_dict, strict=True)
+        try:
+            model.load_state_dict(state_dict, strict=True)
+        except RuntimeError as e:
+            if model_name in _SUPPORTED_MODELS:
+                raise
+            raise RuntimeError(
+                f"The checkpoint of {model_name!r} does not fit the configuration SigLip2Config.from_name reads from "
+                f"this name. Supported names: {', '.join(_SUPPORTED_MODELS)}. A repository outside that list must "
+                "have the architecture its name gives: base (hidden size 768, 12 layers, 12 heads) unless the name "
+                "contains 'large' (1024, 24, 16), patch size 16, and the first of the image sizes 224, 256, 384 and "
+                "512 that is a whole number in the repository part of the name, else in its owner part, else 224."
+            ) from e
 
         return model.eval()
