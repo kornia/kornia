@@ -136,6 +136,19 @@ def _intensity_cases() -> list[AugCase]:
     return [
         _aug(K.ColorJiggle, 0.1, 0.1, 0.1, 0.1, p=1.0),
         _aug(K.ColorJitter, 0.1, 0.1, 0.1, 0.1, p=1.0),
+        # A fixed order takes the branch-free dispatch that torch.compile traces (benchmarks/augmentation/pipeline.py).
+        AugCase(
+            "ColorJiggle[order]",
+            functools.partial(K.ColorJiggle, 0.1, 0.1, 0.1, 0.1, p=1.0, order=[0, 1, 2, 3]),
+            "2d",
+            ALL_2D,
+        ),
+        AugCase(
+            "ColorJitter[order]",
+            functools.partial(K.ColorJitter, 0.1, 0.1, 0.1, 0.1, p=1.0, order=[0, 1, 2, 3]),
+            "2d",
+            ALL_2D,
+        ),
         _aug(K.Denormalize, mean=(0.5, 0.4, 0.3), std=(0.2, 0.25, 0.3)),
         _aug(K.Normalize, mean=(0.5, 0.4, 0.3), std=(0.2, 0.25, 0.3)),
         _aug(K.RandomAutoContrast, p=1.0),
