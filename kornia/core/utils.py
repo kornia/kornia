@@ -61,6 +61,32 @@ def _torch_grid_sample(
     return F.grid_sample(input, grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
 
 
+def _to_device_nonblocking(
+    tensor: torch.Tensor, device: torch.device, dtype: Optional[torch.dtype] = None
+) -> torch.Tensor:
+    """Move ``tensor`` to ``device`` (and ``dtype``), without waiting for queued work on a CUDA target.
+
+    A blocking host-to-device copy from pageable memory ends in ``cudaStreamSynchronize``, so the host waits
+    until the GPU has finished everything queued before it. With ``non_blocking=True`` CUDA stages a pageable
+    source before the call returns, so the source may be changed or freed straight away, and the copied values
+    are the same: a dtype change is made on the host before the copy, exactly as in the blocking copy.
+
+    Only a CPU to CUDA copy is non-blocking. A copy to the CPU stays blocking, because the host could otherwise
+    read it before it arrives, and MPS and other targets keep the blocking copy, since they may read the
+    source after the call returns.
+
+    Args:
+        tensor: The tensor to move.
+        device: The target device.
+        dtype: The target dtype, or ``None`` to keep the dtype of ``tensor``.
+
+    Returns:
+        ``tensor`` itself when it already has the target device and dtype, a copy otherwise.
+    """
+    non_blocking = tensor.device.type == "cpu" and device.type == "cuda"
+    return tensor.to(device=device, dtype=dtype, non_blocking=non_blocking)
+
+
 def xla_is_available() -> bool:
     """Return whether `torch_xla` is available in the system."""
     return importlib.util.find_spec("torch_xla") is not None
