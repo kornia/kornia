@@ -934,3 +934,55 @@ class TestConventionsGuidedBlur(BaseTester):
             guidance.double(), image.double(), 5, 100.0, border_type="constant"
         )  # CPU: MPS has no float64
         self.assert_close(out.cpu().double(), reference, rtol=1e-2, atol=1e-1)
+
+    @pytest.mark.parametrize(
+        ("guidance_dtype", "input_dtype", "expected"),
+        [
+            (torch.float32, torch.float64, torch.float64),
+            (torch.float16, torch.float64, torch.float64),
+            (torch.uint8, torch.float64, torch.float64),
+            (torch.float64, torch.float32, torch.float64),
+            (torch.float16, torch.float32, torch.float32),
+            (torch.uint8, torch.float32, torch.float32),
+        ],
+    )
+    def test_convention_guided_blur_multichannel_guidance_promotes_6046(
+        self, guidance_dtype, input_dtype, expected, device
+    ):
+        """A guidance narrower than the input keeps the pair's promoted dtype, on the multichannel path (#6046).
+
+        Feeding a float16, float32 or uint8 guidance next to a float64 input used to raise in
+        ``_guided_blur_multichannel_guidance``: the coefficients ``a`` were solved in ``cov_Ip``'s float64
+        and cast back to it while ``mean_I`` stayed in the guidance dtype, so ``mean_I @ a`` failed with
+        ``RuntimeError: expected scalar type Float but found Double``. Grayscale guidance never
+        reached the mismatch, and a float64 guidance with a float32 input already worked.
+        """
+        if expected == torch.float64 and device.type == "mps":
+            pytest.skip("MPS has no float64")
+        generator = torch.Generator().manual_seed(0)
+        guidance = torch.randint(256, (2, 3, 9, 13), generator=generator).to(device=device, dtype=guidance_dtype)
+        image = torch.randint(256, (2, 2, 9, 13), generator=generator).to(device=device, dtype=input_dtype)
+        # ``constant`` keeps this test off the half-precision reflection-padding kernels, as above.
+        out = guided_blur(guidance, image, 5, 100.0, border_type="constant")
+        assert out.dtype == expected
+        assert torch.isfinite(out).all()
+        reference = guided_blur(
+            guidance.cpu().double(), image.cpu().double(), 5, 100.0, border_type="constant"
+        )  # CPU: MPS has no float64
+        tolerance = _HALF_TOLERANCE.get(expected, 1e-2)
+        self.assert_close(out.cpu().double(), reference, rtol=tolerance, atol=tolerance)
+
+    def test_convention_guided_blur_multichannel_guidance_promotion_fixes_6046(self, device):
+        """Promoting the guidance is the whole fix: pre-promoting it in the caller gives the same numbers (#6046)."""
+        generator = torch.Generator().manual_seed(0)
+        guidance = torch.randint(256, (2, 3, 9, 13), generator=generator).float()
+        image = torch.randint(256, (2, 2, 9, 13), generator=generator).double().to(device)
+        out = guided_blur(guidance.to(device), image, 5, 100.0, border_type="constant")
+        assert torch.equal(out, guided_blur(guidance.double().to(device), image, 5, 100.0, border_type="constant"))
+
+    def test_convention_guided_blur_multichannel_guidance_keeps_aliased_input_6046(self, device, dtype):
+        """``input is guidance`` still takes the multichannel path: the promotion is a no-op there (#6046)."""
+        self._skip_without_reflect_padding(device, dtype)
+        torch.manual_seed(0)
+        image = torch.rand(2, 3, 9, 13).to(device=device, dtype=dtype)
+        self.assert_close(guided_blur(image, image, 5, 0.01), guided_blur(image.clone(), image, 5, 0.01))
