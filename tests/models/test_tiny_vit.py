@@ -101,7 +101,7 @@ class TestTinyViT(BaseTester):
     def test_module(self): ...
 
     @pytest.mark.skipif(sys.version_info.major == 3 and sys.version_info.minor == 8, reason="not working for py3.8")
-    def test_dynamo(self, device, dtype, torch_optimizer):
+    def test_dynamo(self, device, dtype, torch_optimizer, cudnn_tf32_follows_option):
         op = TinyViT().to(device=device, dtype=dtype)
         img = torch.rand(1, 3, op.img_size, op.img_size, device=device, dtype=dtype)
 
@@ -338,7 +338,7 @@ class TestTinyViT(BaseTester):
             model(torch.rand(1, 3, *size, device=device, dtype=dtype))
 
     @pytest.mark.parametrize("mobile_sam", [False, True])
-    def test_dynamo_fullgraph(self, device, dtype, torch_optimizer, mobile_sam):
+    def test_dynamo_fullgraph(self, device, dtype, torch_optimizer, mobile_sam, cudnn_tf32_follows_option):
         if device.type == "mps" and dtype == torch.float64:
             pytest.skip("MPS does not support float64")
         # The token-grid check reads static shapes: it must compile without a graph break.
@@ -352,7 +352,7 @@ class TestTinyViT(BaseTester):
             self.assert_close(op(img), op_optimized(img), rtol=tol, atol=tol)
 
     @pytest.mark.skipif(sys.version_info.major == 3 and sys.version_info.minor == 8, reason="not working for py3.8")
-    def test_dynamo_eval_mode(self, device, dtype, torch_optimizer):
+    def test_dynamo_eval_mode(self, device, dtype, torch_optimizer, cudnn_tf32_follows_option):
         if device.type == "mps" and dtype == torch.float64:
             pytest.skip("MPS does not support float64")
         # Evaluation mode first, then the cast: the order of a pretrained model moved to its device.

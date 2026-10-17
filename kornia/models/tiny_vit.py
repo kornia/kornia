@@ -168,9 +168,10 @@ class PatchMerging(nn.Module):
             stride ``2``.
 
         Raises:
-            ValueError: if :math:`(H_{out}, W_{out})` is not the grid the next stage is built for. Only a
-                :math:`(B, C, H, W)` map can give another grid: the first patch merging of a :class:`TinyViT` reads
-                the image's own grid there, before the tokens are flattened.
+            ValueError: if :math:`(H_{out}, W_{out})` is not the grid the next stage is built for: the input of a
+                :class:`TinyViT` is not ``img_size`` (the first patch merging reads the image's own grid from a
+                :math:`(B, C, H, W)` map), or ``img_size`` is not a multiple of 32 (of 16 with ``mobile_sam=True``),
+                so the stride-2 convolution rounds an odd grid up where the stages were built for it rounded down.
         """
         if x.ndim == 3:
             x = x.transpose(1, 2).unflatten(2, self.input_resolution)  # (B, H * W, C) -> (B, C, H, W)
@@ -178,7 +179,8 @@ class PatchMerging(nn.Module):
         if tuple(x.shape[-2:]) != self.output_resolution:
             raise ValueError(
                 f"The input gives a {x.shape[-2]}x{x.shape[-1]} token grid, but the TinyViT stages are built for the "
-                f"{self.output_resolution[0]}x{self.output_resolution[1]} grid of an img_size x img_size image."
+                f"{self.output_resolution[0]}x{self.output_resolution[1]} grid of an img_size x img_size image "
+                "(img_size must be a multiple of 32, of 16 with mobile_sam=True)."
             )
         return x.flatten(2).transpose(1, 2)  # (B, C, H, W) -> (B, H * W, C)
 
