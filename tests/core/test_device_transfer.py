@@ -100,6 +100,39 @@ class TestToDeviceNonblocking(BaseTester):
                 assert torch.equal(out.cpu(), expected)
 
     @requires_cuda
+    def test_pinned_source_mutation_after_copy(self) -> None:
+        # A pinned source is copied asynchronously by a non-blocking copy, so it must be copied blocking: a caller may
+        # refill a pinned buffer straight after the call.
+        cuda = torch.device("cuda")
+        for _ in range(20):
+            src = torch.rand(64, 3).pin_memory()
+            expected = src.clone()
+            torch.cuda._sleep(_SLEEP_CYCLES)
+            out = _to_device_nonblocking(src, cuda)
+            src.fill_(-1.0)
+            torch.cuda.synchronize()
+            assert torch.equal(out.cpu(), expected)
+
+    @requires_cuda
+    @pytest.mark.parametrize("dst_dtype", [torch.float16, torch.bfloat16, torch.float32])
+    def test_cast_bits_equal_blocking_copy_including_nan_payloads(self, dst_dtype) -> None:
+        # Signalling and quiet NaNs with payloads, infinities, subnormals and ordinary values in float64 and float32.
+        bits64 = torch.tensor(
+            [0x7FF0000000000001, 0x7FF8000000001234, -0x7FFFF00000000, 0x7FF0000000000000, 1, 0x3FF0000000000001],
+            dtype=torch.int64,
+        )
+        bits32 = torch.tensor([0x7F800001, 0x7FC01234, -0x3F00001, 0x7F800000, 1, 0x3F800001], dtype=torch.int32)
+        for src in (bits64.view(torch.float64), bits32.view(torch.float32)):
+            if src.dtype == dst_dtype:
+                continue
+            out = _to_device_nonblocking(src, torch.device("cuda"), dst_dtype).cpu()
+            expected = src.to("cuda", dst_dtype).cpu()
+            assert torch.equal(
+                out.view(torch.int16 if dst_dtype != torch.float32 else torch.int32),
+                expected.view(torch.int16 if dst_dtype != torch.float32 else torch.int32),
+            )
+
+    @requires_cuda
     def test_cuda_to_cpu_is_blocking(self) -> None:
         x = torch.rand(256, 256)
         x_cuda = x.cuda()

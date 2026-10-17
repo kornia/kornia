@@ -61,6 +61,12 @@ def _torch_grid_sample(
     return F.grid_sample(input, grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
 
 
+@torch.compiler.assume_constant_result
+def _is_pinned(tensor: torch.Tensor) -> bool:
+    """Whether ``tensor`` is in page-locked memory; constant for ``torch.compile``, which cannot trace the query."""
+    return tensor.is_pinned()
+
+
 def _to_device_nonblocking(
     tensor: torch.Tensor, device: torch.device, dtype: Optional[torch.dtype] = None
 ) -> torch.Tensor:
@@ -68,12 +74,14 @@ def _to_device_nonblocking(
 
     A blocking host-to-device copy from pageable memory ends in ``cudaStreamSynchronize``, so the host waits
     until the GPU has finished everything queued before it. With ``non_blocking=True`` CUDA stages a pageable
-    source before the call returns, so the source may be changed or freed straight away, and the copied values
-    are the same: a dtype change is made on the host before the copy, exactly as in the blocking copy.
+    source before the call returns, so the source may be changed or freed straight away. A dtype change is made
+    on the host before the copy, as the blocking copy makes it, so the copied bits are the same, NaN payloads
+    included.
 
-    Only a CPU to CUDA copy is non-blocking. A copy to the CPU stays blocking, because the host could otherwise
-    read it before it arrives, and MPS and other targets keep the blocking copy, since they may read the
-    source after the call returns.
+    Only a copy from pageable CPU memory to CUDA is non-blocking. A pinned source is copied asynchronously by a
+    non-blocking copy and could be changed by its owner before the copy lands, so it keeps the blocking copy. A
+    copy to the CPU stays blocking, because the host could otherwise read it before it arrives, and MPS and other
+    targets keep the blocking copy, since they may read the source after the call returns.
 
     Args:
         tensor: The tensor to move.
@@ -83,8 +91,11 @@ def _to_device_nonblocking(
     Returns:
         ``tensor`` itself when it already has the target device and dtype, a copy otherwise.
     """
-    non_blocking = tensor.device.type == "cpu" and device.type == "cuda"
-    return tensor.to(device=device, dtype=dtype, non_blocking=non_blocking)
+    if tensor.device.type == "cpu" and device.type == "cuda" and not _is_pinned(tensor):
+        if dtype is not None and dtype != tensor.dtype:
+            tensor = tensor.to(dtype=dtype)
+        return tensor.to(device=device, non_blocking=True)
+    return tensor.to(device=device, dtype=dtype)
 
 
 def _as_tensor_nonblocking(data: Any, device: torch.device, dtype: Optional[torch.dtype] = None) -> torch.Tensor:
