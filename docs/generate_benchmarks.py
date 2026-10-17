@@ -82,19 +82,21 @@ CPU: large batches and the memory allocator
 -------------------------------------------
 
 With glibc on Linux, an operation whose temporaries are large gets them as fresh memory from the operating system on
-every call and faults it in page by page: glibc maps buffers above its mmap threshold, at most 32 MB, anew on each
-call, and returns freed memory above its trim threshold to the system. Smaller temporaries stop faulting once those
-thresholds have adapted to the process, so a fresh process overstates their cost. Comparing
-``resource.getrusage(resource.RUSAGE_SELF).ru_minflt`` before and after a call counts its faults. At batch 32 of
-256 x 256 float32 images with 4 threads, on an i7-14700K under WSL2 with torch 2.14, ``bilateral_blur`` took 544 ms
-per call, ``ssim`` 270 ms and ``dice_loss`` 390 ms (the median of three processes); with the faults removed by::
+every call and faults it in page by page: glibc serves a buffer above its mmap threshold (which rises to at most 32 MB)
+with a fresh mapping and unmaps it when it is freed, and it returns the free top of its heap to the system once that
+exceeds the trim threshold. Smaller temporaries stop faulting once those thresholds have adapted to the process, so a
+fresh process overstates their cost. Comparing ``resource.getrusage(resource.RUSAGE_SELF).ru_minflt`` before and after a
+call counts its faults. At batch 32 of 256 x 256 float32 images with 4 threads, on an i7-14700K under WSL2 with torch
+2.14, ``bilateral_blur`` took 544 ms per call, ``ssim`` 270 ms and ``dice_loss`` 390 ms (the median of three processes),
+faulting 440,000 to 730,000 pages per call; with those per-call faults removed by::
 
    GLIBC_TUNABLES=glibc.malloc.mmap_max=0:glibc.malloc.trim_threshold=68719476736 python train.py
 
-they took 344 ms, 135 ms and 214 ms. The setting keeps freed memory in the process, so its resident memory stays at
-its peak. Loading jemalloc or tcmalloc through ``LD_PRELOAD`` is an alternative, not measured here. Faults cost less on
-native Linux than under WSL2. This is glibc's behaviour: macOS uses another allocator and is not covered here, and CUDA
-tensors come from PyTorch's caching allocator, which keeps freed blocks.
+they took 344 ms, 135 ms and 214 ms, with no faults per call after the first. The setting keeps freed memory in the
+process, so its resident memory stays at its peak. Loading jemalloc or tcmalloc through ``LD_PRELOAD`` is an
+alternative, not measured here. Faults cost less on native Linux than under WSL2. This is glibc's behaviour: macOS uses
+another allocator and is not covered here, and CUDA tensors come from PyTorch's caching allocator, which keeps freed
+blocks.
 
 """
 
