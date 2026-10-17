@@ -105,8 +105,9 @@ def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.Tensor:
           coordinate differences above 65504 do not overflow the weight and a segment whose ``fp`` difference overflows
           the output dtype stays finite. Inside a segment the result is within about half an ulp of the segment's
           larger end value, and the knots are exact. ``float32`` and ``float64`` results are computed in their own
-          dtype. An integer ``x`` or ``xp`` mixed with floating coordinates is converted to that dtype, so knots above
-          :math:`2^{24}` can merge in ``float32``.
+          dtype. An integer ``x`` or ``xp`` mixed with floating coordinates is converted to the dtype the result is
+          computed in, so in ``float32`` it is exact only up to :math:`2^{24}`: larger integer knots can merge and
+          larger integer queries are rounded.
 
     Args:
         x: the :math:`x`-coordinates at which to evaluate the interpolated
