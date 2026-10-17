@@ -82,13 +82,13 @@ CPU: large batches and the memory allocator
 -------------------------------------------
 
 With glibc on Linux, an operation whose temporaries are large gets them as fresh memory from the operating system on
-every call and faults it in page by page: glibc serves a buffer above its mmap threshold (which rises to at most 32 MB)
-with a fresh mapping and unmaps it when it is freed, and it returns the free top of its heap to the system once that
-exceeds the trim threshold. Smaller temporaries stop faulting once those thresholds have adapted to the process, so a
-fresh process overstates their cost. Comparing ``resource.getrusage(resource.RUSAGE_SELF).ru_minflt`` before and after a
-call counts its faults. At batch 32 of 256 x 256 float32 images with 4 threads, on an i7-14700K under WSL2 with torch
-2.14, ``bilateral_blur`` took 544 ms per call, ``ssim`` 270 ms and ``dice_loss`` 390 ms (the median of three processes),
-faulting 440,000 to 730,000 pages per call; with those per-call faults removed by::
+every call and faults it in page by page: glibc serves a buffer above its mmap threshold (which rises to at most 32 MiB
+on 64-bit systems) with a fresh mapping and unmaps it when it is freed, and it returns the free top of its heap to the
+system once that exceeds the trim threshold. Smaller temporaries stop faulting once those thresholds have adapted to the
+process, so a fresh process overstates their cost. Comparing ``resource.getrusage(resource.RUSAGE_SELF).ru_minflt``
+before and after a call counts its faults. At batch 32 of 256 x 256 float32 images with 4 threads, on an i7-14700K under
+WSL2 with torch 2.14, ``bilateral_blur`` took 544 ms per call, ``ssim`` 270 ms and ``dice_loss`` 390 ms (the median of
+three processes), faulting 440,000 to 730,000 pages per call; with those per-call faults removed by::
 
    GLIBC_TUNABLES=glibc.malloc.mmap_max=0:glibc.malloc.trim_threshold=68719476736 python train.py
 
