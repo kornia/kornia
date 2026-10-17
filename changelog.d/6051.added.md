@@ -1,0 +1,1 @@
+`SigLip2Model.forward` takes a `pixel_attention_mask` for the vision tower, as transformers' `Siglip2Model.forward` does: it reaches `get_image_features`, so the image embeddings, the logits and the `return_loss` loss leave out the masked patches.

@@ -14,9 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+import contextlib
 import io
 import math
 import warnings
+from collections.abc import Iterator
 
 import pytest
 import torch
@@ -54,6 +56,18 @@ def _reference_positions(table: Tensor, height: int, width: int) -> Tensor:
     grid = table.reshape(side, side, -1).permute(2, 0, 1).unsqueeze(0).to("cpu", torch.float32)
     resized = F.interpolate(grid, size=(height, width), mode="bilinear", align_corners=False, antialias=True)
     return resized.reshape(-1, height * width).transpose(0, 1).to(table.device, table.dtype)
+
+
+@contextlib.contextmanager
+def _square_reading_warning(expected: bool) -> Iterator[None]:
+    """Expect NaFlex's warning that a square reading takes rectangular patches, or make that warning an error."""
+    if expected:
+        with pytest.warns(UserWarning, match="pass patch_size"):
+            yield
+    else:
+        with warnings.catch_warnings():
+            warnings.filterwarnings("error", message="NaFlex reads")
+            yield
 
 
 class TestNaFlex(BaseTester):
@@ -179,24 +193,33 @@ class TestNaFlex(BaseTester):
             naflex(torch.zeros(3, 3, height, width, device=device, dtype=dtype))
 
     @pytest.mark.parametrize(
-        ("height", "width", "kernel", "stride", "side"),
+        ("height", "width", "kernel", "stride", "side", "rectangular"),
         [
-            (20, 20, 3, 2, 9),
-            (19, 20, 3, 2, 9),
-            (20, 36, 3, (2, 4), 9),
-            (256, 512, (16, 32), (16, 32), 16),
-            (64, 144, (10, 24), (10, 24), 6),
+            (20, 20, 3, 2, 9, False),
+            (19, 20, 3, 2, 9, False),
+            (20, 36, 3, (2, 4), 9, True),
+            (256, 512, (16, 32), (16, 32), 16, True),
+            (64, 144, (10, 24), (10, 24), 6, True),
         ],
     )
     def test_bnc_without_patch_size_reads_a_square_grid(
-        self, device: torch.device, dtype: torch.dtype, height: int, width: int, kernel, stride, side: int
+        self,
+        device: torch.device,
+        dtype: torch.dtype,
+        height: int,
+        width: int,
+        kernel,
+        stride,
+        side: int,
+        rectangular: bool,
     ) -> None:
         # Without patch_size, a square number of tokens is read as the square grid: right for these convolutions,
         # whose grids are side x side. A side x side table is added as is, a 4 x 4 one resized by plain bilinear
-        # interpolation (no axis shrinks).
+        # interpolation (no axis shrinks). The rectangular strides, whose square grid NaFlex cannot tell apart from
+        # #6004's non-square grid of square patches, get the warning that names patch_size.
         conv = torch.nn.Conv2d(3, _CHANNELS, kernel, stride=stride).to(device, dtype)
         images = torch.rand(2, 3, height, width, device=device, dtype=dtype)
-        with torch.no_grad():
+        with torch.no_grad(), _square_reading_warning(rectangular):
             tokens = conv(images).flatten(2).transpose(1, 2)
             assert tokens.shape[1] == side * side
             own = torch.randn(side * side, _CHANNELS, device=device, dtype=dtype)
@@ -207,6 +230,39 @@ class TestNaFlex(BaseTester):
             resized = resized.reshape(-1, side * side).transpose(0, 1).to(device, dtype)
             out = NaFlex(lambda x: conv(x).flatten(2).transpose(1, 2), small)(images)
             self.assert_close(out, tokens + resized)
+
+    @pytest.mark.parametrize(
+        ("height", "width", "kernel", "stride", "padding", "side"),
+        [(208, 223, 16, 16, 8, 14), (9, 12, 7, 4, 3, 3), (33, 47, 16, 16, 8, 3), (12, 15, 4, 4, 2, 4)],
+    )
+    def test_bnc_without_patch_size_does_not_warn_for_a_padded_square_patch_convolution(
+        self, device: torch.device, dtype: torch.dtype, height: int, width: int, kernel, stride, padding, side: int
+    ) -> None:
+        # Padding up to half the kernel adds output positions, so these square-patch convolutions give a square grid
+        # on sides more than min(H, W) / side apart: the square reading is right and must not warn.
+        conv = torch.nn.Conv2d(3, _CHANNELS, kernel, stride=stride, padding=padding).to(device, dtype)
+        images = torch.rand(1, 3, height, width, device=device, dtype=dtype)
+        table = torch.randn(side * side, _CHANNELS, device=device, dtype=dtype)
+        with torch.no_grad(), _square_reading_warning(False):
+            tokens = conv(images).flatten(2).transpose(1, 2)
+            assert tokens.shape[1] == side * side
+            self.assert_close(NaFlex(lambda x: conv(x).flatten(2).transpose(1, 2), table)(images), tokens + table)
+
+    def test_bnc_without_patch_size_warns_when_the_square_grid_needs_rectangular_patches(
+        self, device: torch.device, dtype: torch.dtype
+    ) -> None:
+        # #6004's case: the 256 tokens of a 128 x 512 image at patch 16 are an 8 x 32 grid, but without patch_size
+        # they are read as 16 x 16, a grid that only 8 x 32 pixel patches give. NaFlex cannot tell the two apart, so
+        # the square reading stays and warns, naming patch_size; with patch_size the 8 x 32 grid is read silently.
+        table = torch.randn(256, _CHANNELS, device=device, dtype=dtype)
+        images = torch.zeros(1, 3, 128, 512, device=device, dtype=dtype)
+        with pytest.warns(UserWarning, match=r"as a 16 x 16 grid, which takes 8 x 32 pixel patches") as record:
+            NaFlex(_zero_tokens, table)(images)
+        # attributed to the line that called the module, not to a frame inside kornia or torch.nn.Module
+        assert [warning.filename for warning in record] == [__file__]
+        with _square_reading_warning(False):
+            out = NaFlex(_zero_tokens, table, patch_size=16)(images)
+        self.assert_close(out, _reference_positions(table, 8, 32).expand(1, -1, -1))
 
     @pytest.mark.parametrize(("height", "width"), [(192, 336), (256, 128)])
     def test_downsampling_is_antialiased(
@@ -364,3 +420,39 @@ class TestNaFlex(BaseTester):
 
         with torch.no_grad():
             self.assert_close(naflex_optimized(images), naflex(images))
+
+    def test_dynamo_patch_size_check_is_dynamic(
+        self, device: torch.device, dtype: torch.dtype, torch_optimizer
+    ) -> None:
+        # The patch_size grid check formats the sizes only when it fails: an f-string evaluated on every call made
+        # Dynamo specialize the image size, so every new size compiled a graph of its own.
+        from torch._dynamo.testing import CompileCounter
+
+        naflex = NaFlex(_zero_tokens, torch.randn(16, _CHANNELS, device=device, dtype=dtype), patch_size=16)
+        counter = CompileCounter()
+        compiled = torch_optimizer(naflex, backend=counter, fullgraph=True, dynamic=True)
+        # 6 x 10, 7 x 11 and 8 x 13 grids: every axis upsamples the 4 x 4 table, so the antialias guard holds throughout
+        for height, width in ((96, 160), (112, 176), (128, 208)):
+            images = torch.rand(2, 3, height, width, device=device, dtype=dtype)
+            with torch.no_grad():
+                self.assert_close(compiled(images), naflex(images))
+        assert counter.frame_count == 1
+
+    def test_dynamo_fullgraph_naflex_square_reading_of_rectangular_patches(
+        self, device: torch.device, dtype: torch.dtype, torch_optimizer
+    ) -> None:
+        # The warning about a square reading that takes rectangular patches is eager-only: it must not break the graph.
+        # Zero tokens of (16, 32) patches, a 16 x 16 grid of a 256 x 512 image, so the output is the resized 8 x 8 table
+        # (a convolution would add cuDNN's TF32 rounding on CUDA).
+        naflex = NaFlex(
+            lambda x: x.new_zeros(x.shape[0], (x.shape[2] // 16) * (x.shape[3] // 32), _CHANNELS),
+            torch.randn(64, _CHANNELS, device=device, dtype=dtype),
+        )
+        images = torch.rand(2, 3, 256, 512, device=device, dtype=dtype)
+
+        naflex_optimized = torch_optimizer(naflex, fullgraph=True)
+
+        with torch.no_grad(), pytest.warns(UserWarning, match="pass patch_size"):
+            expected = naflex(images)
+        with torch.no_grad():
+            self.assert_close(naflex_optimized(images), expected)

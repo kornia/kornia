@@ -24,6 +24,8 @@ from typing import Optional
 import torch
 from torch import nn
 
+from kornia.core.utils import is_compiling
+
 from .attention import SigLip2Attention
 from .config import SigLip2VisionConfig, _activation
 
@@ -75,11 +77,22 @@ class SigLip2VisionEmbeddings(nn.Module):
         """Forward pass.
 
         Args:
-            pixel_values: Input images of shape (batch_size, num_channels, height, width).
+            pixel_values: Input images of shape (batch_size, num_channels, height, width), with height and width
+                both equal to ``config.image_size``: the position embeddings are a fixed table of the
+                ``image_size // patch_size`` square patch grid, without interpolation.
 
         Returns:
             Embedded patches of shape (batch_size, num_patches, hidden_size).
+
+        Raises:
+            ValueError: if (height, width) is not ``(image_size, image_size)``.
         """
+        if tuple(pixel_values.shape[-2:]) != (self.image_size, self.image_size):
+            raise ValueError(
+                f"Input images must be {self.image_size}x{self.image_size} (config.image_size): the position "
+                f"embeddings cover that size only. Got: {tuple(pixel_values.shape)}"
+            )
+
         # extract patches from the image
         embeddings = self.patch_embedding(pixel_values)  # (batch_size, hidden_size, H', W')
         embeddings = embeddings.flatten(2).transpose(1, 2)  # (batch_size, num_patches, hidden_size)
@@ -194,7 +207,11 @@ class SigLip2MultiheadAttentionPoolingHead(nn.Module):
                 ``torch.finfo(dtype).min`` added rather than ``-inf``: a sample whose tokens are all padding pools
                 them with exactly uniform weights in float32, float64 and bfloat16. In float16, as in transformers,
                 ``finfo(float16).min`` plus a score rounds to a multiple of 32, so those weights are only roughly
-                uniform, and a head whose scores are all below about -16 gives a non-finite output.
+                uniform, and a head whose scores are all below about -16 gives a non-finite output. Under
+                :func:`torch.autocast` the scores of a float32, float16 or bfloat16 input are computed in the
+                autocast dtype, so the mask is built in that dtype with its minimum (the float32 minimum would round
+                to ``-inf`` in float16 or bfloat16), and the float16 caveat applies to float16 autocast; a float64
+                input, which autocast leaves alone, keeps the float64 mask.
 
         Returns:
             Tensor with shape :math:`(B, D)` containing the pooled visual
@@ -215,8 +232,19 @@ class SigLip2MultiheadAttentionPoolingHead(nn.Module):
             # _prepare_4d_attention_mask builds it: a partly padded sample pools as with -inf (exp underflows to 0),
             # and an all-padding sample gets uniform weights (exactly so in float32, float64 and bfloat16; float16
             # rounds min + score, see the docstring) instead of the nan of a softmax over -inf only.
-            key_padding_mask = torch.zeros(keep.shape, dtype=hidden_state.dtype, device=hidden_state.device)
-            key_padding_mask = key_padding_mask.masked_fill(~keep, torch.finfo(hidden_state.dtype).min)
+            score_dtype = hidden_state.dtype
+            device_type = hidden_state.device.type
+            # torch.is_autocast_enabled raises for a device type without autocast, such as meta, so eager mode asks
+            # torch.amp.is_autocast_available first. Under torch.compile it does not: that call breaks the graph
+            # before torch 2.6, and a compiled model runs on a device type with autocast.
+            has_autocast = is_compiling() or torch.amp.is_autocast_available(device_type)
+            if score_dtype != torch.float64 and has_autocast and torch.is_autocast_enabled(device_type):
+                # nn.MultiheadAttention computes the scores of a float16, bfloat16 or float32 input in the autocast
+                # dtype (autocast leaves float64 alone), where another dtype's minimum can round to -inf: build the
+                # mask in that dtype.
+                score_dtype = torch.get_autocast_dtype(device_type)
+            key_padding_mask = torch.zeros(keep.shape, dtype=score_dtype, device=hidden_state.device)
+            key_padding_mask = key_padding_mask.masked_fill(~keep, torch.finfo(score_dtype).min)
             key_padding_mask = key_padding_mask.expand(batch_size, -1)
 
         # multi-head attention: probe as query, hidden_state as key/value
@@ -300,7 +328,8 @@ class SigLip2VisionModel(nn.Module):
         """Forward pass.
 
         Args:
-            pixel_values: Input images of shape (batch_size, num_channels, height, width).
+            pixel_values: Input images of shape (batch_size, num_channels, height, width), with height and width
+                both equal to ``config.image_size`` (see :class:`SigLip2VisionEmbeddings`).
             attention_mask: Optional mask of the patches, ``1``/``True`` for a patch to keep and ``0``/``False`` for
                 a padded one: :math:`(B, N)`, :math:`(B, N, N)` or :math:`(B, 1, N, N)` for :math:`N` patches (see
                 :class:`SigLip2Attention`). It excludes the padded patches from the encoder, where no patch attends
@@ -312,6 +341,9 @@ class SigLip2VisionModel(nn.Module):
             - Pooled output, attention-pooled by the probe head (:class:`SigLip2MultiheadAttentionPoolingHead`)
             - Last hidden state
             - All hidden states (if output_hidden_states=True)
+
+        Raises:
+            ValueError: if (height, width) is not ``(config.image_size, config.image_size)``.
         """
         # Get embeddings
         hidden_states = self.embeddings(pixel_values)
