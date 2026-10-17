@@ -23,7 +23,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_compiling
 
 from .filter import _to_floating
@@ -33,14 +33,7 @@ from .median import _compute_zero_padding
 
 def _check_sigma_batch(name: str, sigma: torch.Tensor, input: torch.Tensor) -> None:
     """Check that a tensor sigma has a batch of 1, shared by the input, or the input batch."""
-    # Format the sizes only on failure: an f-string evaluated on every call makes Dynamo specialize the batch size,
-    # so a dynamic-shape torch.compile would recompile for each new batch.
-    if sigma.shape[0] not in (1, input.shape[0]):
-        KORNIA_CHECK(
-            False,
-            f"{name} must have a batch of 1 or the input batch. "
-            f"Got a {name} batch of {sigma.shape[0]} for an input batch of {input.shape[0]}",
-        )
+    KORNIA_CHECK_SAME_SIZE(sigma, input, allow_one=True, msg=f"{name} must have a batch of 1 or the input batch.")
 
 
 def _bilateral_blur(

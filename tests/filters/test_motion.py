@@ -137,7 +137,7 @@ class TestMotionBlur(BaseTester):
     def test_get_motion_kernel2d_mismatched_batch_size(self, device, dtype):
         angle = torch.zeros(3, device=device, dtype=dtype)
         direction = torch.zeros(2, device=device, dtype=dtype)
-        with pytest.raises(Exception, match=r"direction and angle must have the same length. Got 2 and 3."):
+        with pytest.raises(Exception, match=r"(?s)expected 3, got 2\..*direction and angle must have the same length"):
             get_motion_kernel2d(3, angle, direction)
 
     @pytest.mark.parametrize("kernel_size", [(5, 5), [5, 5], 5.0], ids=["tuple", "list", "float"])
