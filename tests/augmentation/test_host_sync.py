@@ -38,6 +38,19 @@ from testing.base import BaseTester
 _CALLS = [pytest.param(case, which, id=f"{case.name}-{which}") for case in AUG_CASES for which in case.cases]
 _HALF = (torch.float16, torch.bfloat16)
 
+# Augmentations whose stored ``_params`` are replayed, as given and moved to CUDA (Review Focus 1).
+_REPLAY = {
+    "RandomAffine": lambda: K.RandomAffine(15.0, translate=(0.1, 0.1), scale=(0.9, 1.1), shear=10.0, p=1.0),
+    "RandomBrightness": lambda: K.RandomBrightness(brightness=(0.8, 1.2), p=1.0),
+    "RandomCrop": lambda: K.RandomCrop((16, 16), p=1.0),
+    "RandomPerspective": lambda: K.RandomPerspective(0.5, p=1.0),
+}
+# Host reads that only happen because the caller moved the parameters to CUDA: the crop window and the padding set
+# the sizes of Python slices.
+_REPLAY_DEVICE_READS = {
+    "RandomCrop": {"geometry/transform/crop2d.py:crop_by_indices", "augmentation/_2d/geometric/crop.py:apply_transform"}
+}
+
 
 def test_registry_covers_public_augmentations() -> None:
     public = set()
@@ -69,3 +82,22 @@ class TestAugmentationHostSync(BaseTester):
         torch.cuda.synchronize()
         sites = sync_sites(fn)
         assert not set(sites) - INHERENT_SITES.keys(), dict(sites)
+
+    @pytest.mark.parametrize("placement", ["cpu", "cuda"])
+    @pytest.mark.parametrize("name", sorted(_REPLAY))
+    def test_replay_params_cuda_and_cpu(self, name, placement, device, dtype) -> None:
+        if device.type != "cuda":
+            pytest.skip("CUDA host synchronizations need a CUDA device")
+        op = _REPLAY[name]()
+        x = torch.rand(4, 3, 32, 32, device=device, dtype=dtype)
+        first = op(x)
+        params = {
+            k: v.to(device) if placement == "cuda" and isinstance(v, torch.Tensor) else v for k, v in op._params.items()
+        }
+        torch.cuda.synchronize()
+        replayed = []
+        sites = sync_sites(lambda: replayed.append(op(x, params=params)))
+        assert torch.equal(replayed[0], first)
+        # Cropping reads the crop window on the host to slice; that is inherent when the caller moved it to CUDA.
+        allowed = INHERENT_SITES.keys() | (_REPLAY_DEVICE_READS.get(name, set()) if placement == "cuda" else set())
+        assert not set(sites) - allowed, dict(sites)

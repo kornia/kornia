@@ -22,6 +22,8 @@ import torch
 # from torch import Tensor (use torch.Tensor instead)
 from kornia.augmentation._2d.base import _input_metadata_only
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.core.ops import _constant_tensor
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.transform import hflip
 
 
@@ -87,16 +89,19 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        # Build the 3x3 flip matrix as a constant literal plus the (tensor) width, rather than
-        # `int(w)`. `int(tensor)` lowers to `.item()`, which breaks torch.compile fullgraph on
-        # some torch versions; a Python-float literal is fine (constant-folded) and adding the
-        # width tensor into entry [0, 2] gives `w - 1` — numerically identical to
-        # `[[-1, 0, w - 1], [0, 1, 0], [0, 0, 1]]`, and ~1.8x cheaper than stacking 9 scalars.
-        w = params["forward_input_shape"][-1].to(device=input.device, dtype=input.dtype)
-        flip_mat: torch.Tensor = torch.tensor(
-            [[-1.0, 0.0, -1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], device=input.device, dtype=input.dtype
+        # Stack the 3x3 flip matrix from scalars filled on the device plus the (tensor) width, rather than
+        # `int(w)`, which lowers to `.item()` and breaks torch.compile fullgraph, or a `torch.tensor` literal,
+        # which copies from the host and waits for the queued kernels. Entry [0, 2] is `-1 + w` in the input
+        # dtype, numerically identical to the former literal plus w.
+        w = _to_device_nonblocking(params["forward_input_shape"][-1], input.device, input.dtype)
+        minus_one, zero, one = (_constant_tensor(v, device=input.device, dtype=input.dtype) for v in (-1.0, 0.0, 1.0))
+        flip_mat: torch.Tensor = torch.stack(
+            [
+                torch.stack([minus_one, zero, minus_one + w]),
+                torch.stack([zero, one, zero]),
+                torch.stack([zero, zero, one]),
+            ]
         )
-        flip_mat[0, 2] = flip_mat[0, 2] + w
 
         return flip_mat.expand(input.shape[0], 3, 3)
 
