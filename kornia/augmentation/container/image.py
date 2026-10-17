@@ -24,6 +24,7 @@ from torch import nn
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase, _BasicAugmentationBase
 from kornia.augmentation.utils import override_parameters
+from kornia.augmentation.utils.random import _with_generator
 from kornia.core import ImageModule
 from kornia.core.mixin.image_module import ImageModuleMixIn
 from kornia.core.ops import eye_like
@@ -219,11 +220,20 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
 
         """
         if isinstance(self.random_apply, tuple):
-            num_samples = int(torch.randint(*self.random_apply, (1,)).item())
+            num_samples = int(
+                torch.randint(
+                    *self.random_apply,
+                    (1,),
+                    generator=self._generator,
+                    device=self._generator.device if self._generator is not None else None,
+                ).item()
+            )
         else:
             raise TypeError(f"random apply should be a tuple. Got {type(self.random_apply)}")
 
         multinomial_weights = self.random_apply_weights.clone()
+        if self._generator is not None:
+            multinomial_weights = multinomial_weights.to(self._generator.device)
         # Mix augmentation can only be applied once per forward
         mix_indices = self.get_mix_augmentation_indices(self.named_children())
 
@@ -237,6 +247,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 multinomial_weights,
                 num_samples,
                 replacement=num_samples > total_weight.item(),
+                generator=self._generator,
             )
 
         mix_added = False
@@ -244,14 +255,25 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         if (
             with_mix
             and len(mix_indices) != 0
-            and (torch.rand(1) < ((len(mix_indices) + len(indices)) / len(self))).item()
+            and (
+                torch.rand(
+                    1, generator=self._generator, device=self._generator.device if self._generator is not None else None
+                )
+                < ((len(mix_indices) + len(indices)) / len(self))
+            ).item()
         ):
-            mix_idx = torch.multinomial((~multinomial_weights.bool()).float(), 1)
+            mix_idx = torch.multinomial((~multinomial_weights.bool()).float(), 1, generator=self._generator)
             if len(indices) == 0:
                 indices = mix_idx
             else:
                 indices[-1] = mix_idx
-            indices = indices[torch.randperm(len(indices))]
+            indices = indices[
+                torch.randperm(
+                    len(indices),
+                    generator=self._generator,
+                    device=self._generator.device if self._generator is not None else None,
+                )
+            ]
             mix_added = True
 
         return self.get_children_by_indices(indices), mix_added
@@ -295,11 +317,15 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
 
         return self.get_children_by_params(params)
 
-    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+    @_with_generator
+    def forward_parameters(
+        self, batch_shape: torch.Size, *, generator: torch.Generator | None = None
+    ) -> List[ParamItem]:
         """Generate parameters for all modules in the chosen sequence.
 
         Args:
             batch_shape: Input batch shape.
+            generator: Optional call-local stream; otherwise use the configured or global stream.
 
         Returns:
             Parameter list aligned with the execution order.

@@ -689,23 +689,20 @@ class TestConventionAugmentationBase2D(BaseTester):
         assert set(first) == set(second)
         assert all(torch.equal(first[k], second[k]) for k in first)
 
-    def test_wart_generator_is_rejected_at_construction_and_swallowed_by_forward_4427(self, device, dtype):
-        # Wart pin (#4427): there is no per-instance RNG. `generator=` raises `TypeError` on a class and on a
-        # container, and `forward` silently accepts and drops it - together with any other unknown keyword -
-        # because `forward` funnels its `**kwargs` into `override_parameters`. The passed generator is never
-        # consumed, so the output still follows the global seed.
+    def test_convention_explicit_generator_and_unchanged_constructor_keywords_4427(self, device, dtype):
+        # Explicit generators are configured by a setter or a call keyword; constructors retain their API.
         with pytest.raises(TypeError):
             K.RandomAffine(degrees=45.0, generator=torch.Generator())
         with pytest.raises(TypeError):
             K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), generator=torch.Generator())
         x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
-        gen = torch.Generator()
-        gen.manual_seed(2718)
-        torch.manual_seed(0)
-        with_generator = K.RandomAffine(degrees=(10.0, 90.0), p=1.0)(x, generator=gen)
-        torch.manual_seed(0)
-        without = K.RandomAffine(degrees=(10.0, 90.0), p=1.0)(x)
-        assert torch.equal(with_generator, without)
+        aug = K.RandomAffine(degrees=(10.0, 90.0), p=1.0)
+        gen = torch.Generator().manual_seed(2718)
+        global_state = torch.random.get_rng_state().clone()
+        with_generator = aug(x, generator=gen)
+        assert torch.equal(global_state, torch.random.get_rng_state())
+        repeated = aug(x, generator=torch.Generator().manual_seed(2718))
+        assert torch.equal(with_generator, repeated)
         # any other unknown keyword is swallowed just as silently
         assert K.RandomAffine(degrees=(10.0, 90.0), p=1.0)(x, nonsense=1).shape == (2, 3, 6, 8)
 

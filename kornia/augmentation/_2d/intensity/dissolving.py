@@ -71,6 +71,10 @@ class RandomDissolving(IntensityAugmentationBase2D):
 
     """
 
+    # The VAE latents are drawn inside the diffusers pipeline, which has no
+    # explicit-generator hook, so this augmentation cannot isolate its stream.
+    _supports_explicit_generator: bool = False
+
     def __init__(
         self,
         step_range: Tuple[float, float] = (100, 500),

@@ -24,6 +24,7 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.augmentation.utils.helpers import _pad_with_fill
+from kornia.augmentation.utils.random import _with_generator
 from kornia.constants import Resample
 from kornia.geometry import crop_by_transform_mat3d
 
@@ -216,7 +217,10 @@ class RandomCrop3D(GeometricAugmentationBase3D):
             input, transform, flags["size"], mode=flags["resample"].name.lower(), align_corners=flags["align_corners"]
         )
 
-    def forward_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward_parameters(
+        self, batch_shape: Tuple[int, ...], *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         # Sample crop coordinates on the padded canvas, while keeping the skip path unpadded.
         padded_shape = list(batch_shape)
         for padding in self._compute_padding(batch_shape, self.flags):

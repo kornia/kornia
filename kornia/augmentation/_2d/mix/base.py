@@ -27,6 +27,7 @@ from kornia.augmentation.utils import (
     _validate_input_dtype,
 )
 from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor
+from kornia.augmentation.utils.random import _with_generator
 from kornia.constants import DataKey, DType
 from kornia.core.check import KORNIA_UNWRAP
 from kornia.geometry.boxes import Boxes
@@ -260,11 +261,13 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
     ) -> torch.Tensor:
         raise NotImplementedError
 
+    @_with_generator
     def forward(
         self,
         *input: torch.Tensor,
         params: Optional[Dict[str, torch.Tensor]] = None,
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
+        generator: torch.Generator | None = None,
     ) -> Union[torch.Tensor, List[torch.Tensor]]:
         keys: List[DataKey]
         keys = self.data_keys if data_keys is None else [DataKey.get(inp) for inp in data_keys]

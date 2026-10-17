@@ -25,6 +25,7 @@ from torch import nn
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.utils.random import _with_generator
 from kornia.contrib.extract_patches import extract_tensor_patches
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.boxes import Boxes
@@ -342,13 +343,17 @@ class PatchSequential(ImageSequential):
             restored_tensor = F.pad(restored_tensor, [-max(i, 0) for i in pad])
         return restored_tensor
 
-    def forward_parameters(self, batch_shape: torch.Size) -> List[PatchParamItem]:
+    @_with_generator
+    def forward_parameters(
+        self, batch_shape: torch.Size, *, generator: torch.Generator | None = None
+    ) -> List[PatchParamItem]:
         """Generate patch-level parameters for a forward pass.
 
         Args:
             batch_shape: Image shape ``(B, C, H, W)`` or extracted patch shape ``(B, N, C, h, w)``,
                 with ``N = grid_size[0] * grid_size[1]``. Image shapes are converted to patch shapes
                 using this container's ``grid_size`` and ``padding`` without allocating an image.
+            generator: Optional call-local stream; otherwise use the configured or global stream.
 
         Returns:
             List of :class:`PatchParamItem` entries, including patch indices and
@@ -628,7 +633,14 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
-    def forward(self, input: torch.Tensor, params: Optional[List[PatchParamItem]] = None) -> torch.Tensor:
+    @_with_generator
+    def forward(
+        self,
+        input: torch.Tensor,
+        params: Optional[List[PatchParamItem]] = None,
+        *,
+        generator: torch.Generator | None = None,
+    ) -> torch.Tensor:
         """Augment an image batch, optionally replaying previously generated patch parameters."""
         if isinstance(input, (tuple,)):
             raise ValueError("tuple input is not currently supported.")

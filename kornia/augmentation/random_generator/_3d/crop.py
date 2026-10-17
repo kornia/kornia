@@ -28,6 +28,7 @@ from kornia.augmentation.utils import (
     _truncate_to_start,
 )
 from kornia.augmentation.utils.helpers import _constant_tensor
+from kornia.augmentation.utils.random import _with_generator
 from kornia.core.utils import _extract_device_dtype, is_exporting
 from kornia.geometry.bbox import bbox_generator3d
 
@@ -77,7 +78,10 @@ class CropGenerator3D(RandomGeneratorBase):
             torch.tensor(1.0, device=device, dtype=sampler_dtype),
         )
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         """Generate crop boxes after checking that the requested size fits the input volume."""
         batch_size, _, depth, height, width = batch_shape
         _common_param_check(batch_size, same_on_batch)
@@ -124,9 +128,15 @@ class CropGenerator3D(RandomGeneratorBase):
 
         # The draw is scaled and floored in the draw's dtype when that is the wider one: cast to a half ``size``
         # dtype first, a draw close to 1 rounds up to 1.0 and the start lands one past the last valid position.
-        x_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), x_diff)
-        y_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), y_diff)
-        z_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), z_diff)
+        x_start = _truncate_to_start(
+            _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch, generator=self._generator), x_diff
+        )
+        y_start = _truncate_to_start(
+            _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch, generator=self._generator), y_diff
+        )
+        z_start = _truncate_to_start(
+            _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch, generator=self._generator), z_diff
+        )
 
         crop_src = bbox_generator3d(
             x_start.view(-1), y_start.view(-1), z_start.view(-1), size[:, 2] - 1, size[:, 1] - 1, size[:, 0] - 1

@@ -24,6 +24,7 @@ from kornia.augmentation.random_generator._2d.perspective import _as_scalar_tens
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
 from kornia.augmentation.utils.helpers import _constant_tensor
+from kornia.augmentation.utils.random import _with_generator
 from kornia.core.utils import _extract_device_dtype
 
 
@@ -64,7 +65,10 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
             validate_args=False,
         )
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         depth = batch_shape[-3]
         height = batch_shape[-2]
@@ -120,9 +124,9 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
 
         factor = torch.stack([fx, fy, fz], 0).view(-1, 1, 3).to(device=_device, dtype=_dtype)
 
-        rand_val: torch.Tensor = _adapted_rsampling(start_points.shape, self.rand_sampler, same_on_batch).to(
-            device=_device, dtype=_dtype
-        )
+        rand_val: torch.Tensor = _adapted_rsampling(
+            start_points.shape, self.rand_sampler, same_on_batch, generator=self._generator
+        ).to(device=_device, dtype=_dtype)
 
         pts_norm = _constant_tensor(
             [[[1, 1, 1], [-1, 1, 1], [-1, -1, 1], [1, -1, 1], [1, 1, -1], [-1, 1, -1], [-1, -1, -1], [1, -1, -1]]],

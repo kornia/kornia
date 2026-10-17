@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
+from kornia.augmentation.utils.random import _with_generator
 from kornia.enhance.normalize import normalize_min_max
 
 
@@ -74,23 +75,29 @@ class LinearIlluminationGenerator(RandomGeneratorBase):
             validate_args=False,
         )
 
-    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> dict[str, torch.Tensor]:
         r"""Generate random 2D Gaussian illumination patterns."""
         batch_size, channels, height, width = batch_shape
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = self.device, self.dtype
 
         # Random gain and sign
-        gain_factor = _adapted_rsampling((batch_size, 1, 1, 1), self.gain_sampler, same_on_batch).to(
-            device=_device, dtype=_dtype
+        gain_factor = _adapted_rsampling(
+            (batch_size, 1, 1, 1), self.gain_sampler, same_on_batch, generator=self._generator
+        ).to(device=_device, dtype=_dtype)
+        sign_positive = (
+            _adapted_rsampling((batch_size, 1, 1, 1), self.sign_sampler, same_on_batch, generator=self._generator)
+            >= 0.0
         )
-        sign_positive = _adapted_rsampling((batch_size, 1, 1, 1), self.sign_sampler, same_on_batch) >= 0.0
         sign = sign_positive.to(device=_device, dtype=_dtype) * 2 - 1
 
         # Directions (0=lower,1=upper,2=left,3=right), shape [B,1,1,1]
-        directions = _adapted_rsampling((batch_size, 1, 1, 1), self.directions_sampler, same_on_batch).to(
-            device=_device, dtype=torch.int8
-        )
+        directions = _adapted_rsampling(
+            (batch_size, 1, 1, 1), self.directions_sampler, same_on_batch, generator=self._generator
+        ).to(device=_device, dtype=torch.int8)
 
         # Precompute 1D ramps
         ramp_h = torch.linspace(0, 1, height, device=_device, dtype=_dtype).view(1, 1, height, 1)
@@ -167,19 +174,27 @@ class LinearCornerIlluminationGenerator(RandomGeneratorBase):
             validate_args=False,
         )
 
-    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> dict[str, torch.Tensor]:
         r"""Generate random 2D Gaussian illumination patterns."""
         batch_size, channels, height, width = batch_shape
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = self.device, self.dtype
 
-        gain_factor = _adapted_rsampling((batch_size, 1, 1, 1), self.gain_sampler, same_on_batch).to(
-            device=_device, dtype=_dtype
+        gain_factor = _adapted_rsampling(
+            (batch_size, 1, 1, 1), self.gain_sampler, same_on_batch, generator=self._generator
+        ).to(device=_device, dtype=_dtype)
+        sign_positive = (
+            _adapted_rsampling((batch_size, 1, 1, 1), self.sign_sampler, same_on_batch, generator=self._generator)
+            >= 0.0
         )
-        sign_positive = _adapted_rsampling((batch_size, 1, 1, 1), self.sign_sampler, same_on_batch) >= 0.0
         sign = sign_positive.to(device=_device, dtype=_dtype) * 2 - 1
 
-        directions = _adapted_rsampling((batch_size, 1, 1, 1), self.directions_sampler, same_on_batch).to(
+        directions = _adapted_rsampling(
+            (batch_size, 1, 1, 1), self.directions_sampler, same_on_batch, generator=self._generator
+        ).to(
             device=_device,
             dtype=torch.long,  # int8 → long for gather
         )
