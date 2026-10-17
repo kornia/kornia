@@ -106,7 +106,9 @@ class TestTinyViT(BaseTester):
         img = torch.rand(1, 3, op.img_size, op.img_size, device=device, dtype=dtype)
 
         op_optimized = torch_optimizer(op)
-        self.assert_close(op(img), op_optimized(img))
+        # As in test_dynamo_eval_mode: inductor keeps fused half-precision intermediates in float32.
+        tol = {torch.float16: 1e-2, torch.bfloat16: 5e-2}.get(dtype)
+        self.assert_close(op(img), op_optimized(img), rtol=tol, atol=tol)
 
     @pytest.mark.slow
     @pytest.mark.parametrize("pretrained", [False, True])
@@ -337,6 +339,20 @@ class TestTinyViT(BaseTester):
         with torch.no_grad(), pytest.raises(ValueError, match=f"{img_size // 8}x{img_size // 8}"):
             model(torch.rand(1, 3, *size, device=device, dtype=dtype))
 
+    @pytest.mark.parametrize(("img_size", "mobile_sam"), [(80, False), (240, False), (72, True)])
+    def test_img_size_off_the_merging_grid_is_named_in_the_error(self, device, dtype, img_size, mobile_sam):
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        # The stride-2 convolutions round an odd grid up where the stages were built for it rounded down, so such an
+        # img_size rejects its own img_size x img_size input: the error names the img_size rule.
+        model = TinyViT.from_config("5m", img_size=img_size, mobile_sam=mobile_sam).to(device, dtype).eval()
+
+        with (
+            torch.no_grad(),
+            pytest.raises(ValueError, match="img_size must be a multiple of 32, of 16 with mobile_sam"),
+        ):
+            model(torch.rand(1, 3, img_size, img_size, device=device, dtype=dtype))
+
     @pytest.mark.parametrize("mobile_sam", [False, True])
     def test_dynamo_fullgraph(self, device, dtype, torch_optimizer, mobile_sam, cudnn_tf32_follows_option):
         if device.type == "mps" and dtype == torch.float64:
@@ -346,8 +362,9 @@ class TestTinyViT(BaseTester):
         img = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
 
         op_optimized = torch_optimizer(op, fullgraph=True)
-        # As in test_dynamo_eval_mode: inductor keeps fused half-precision intermediates in float32.
-        tol = {torch.float16: 1e-2, torch.bfloat16: 5e-2}.get(dtype)
+        # As in test_dynamo_eval_mode: inductor keeps fused half-precision intermediates in float32. MobileSAM's feature
+        # map reaches about 4.7, where a bfloat16 ulp is 0.03: on CUDA, 18 of 128 seeds failed 5e-2 (0.062 needed).
+        tol = {torch.float16: 1e-2, torch.bfloat16: 1e-1 if mobile_sam else 5e-2}.get(dtype)
         with torch.no_grad():
             self.assert_close(op(img), op_optimized(img), rtol=tol, atol=tol)
 
