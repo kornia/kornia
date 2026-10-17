@@ -17,6 +17,9 @@
 from __future__ import annotations
 
 import math
+import sys
+import warnings
+from types import FrameType
 from typing import Callable, Optional, Union
 
 import torch
@@ -25,6 +28,7 @@ from torch.nn import functional as F
 
 from kornia.core._compat import torch_version_lt
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.utils import _in_torch_or_kornia, is_compiling
 
 __all__ = ["NaFlex"]
 
@@ -48,7 +52,11 @@ class NaFlex(nn.Module):
             are read as a square :math:`\sqrt{N} \times \sqrt{N}` grid in raster order, and a :math:`N` that is not
             a square number raises. A non-square grid therefore needs ``patch_size`` or a :math:`(B, C, h, w)` output:
             the :math:`8 \times 32` grid of a :math:`128 \times 512` image at patch 16 is read right with
-            ``patch_size=16``, and as :math:`16 \times 16` without it.
+            ``patch_size=16``, and as :math:`16 \times 16` without it. A square reading that takes rectangular patches,
+            on an image whose sides differ by at least the patch height or width of its longer side, warns with a
+            ``UserWarning`` naming ``patch_size`` (outside ``torch.compile`` and ``torch.export``), since it is wrong
+            for square patches; ``patch_size`` silences it, also for a patch embedding that is rectangular. A
+            square-patch convolution padded by at most half its kernel never warns.
         position_embedding: Position embedding table of shape :math:`(S^2, C)`, the raster-order rows of an
             :math:`S \times S` grid, to be interpolated to match input resolution. An ``nn.Parameter`` stays a
             parameter of the module, so it is trained with it; any other tensor is registered as a buffer. A table
@@ -165,21 +173,53 @@ class NaFlex(nn.Module):
             BaseError: if that grid does not have ``num_patches`` cells, or without ``patch_size`` if
                 ``num_patches`` is not a square number.
         """
+        # The checks format the sizes only on failure: an f-string evaluated on every call makes Dynamo specialize the
+        # image size, so a dynamic-shape torch.compile would recompile for each new size.
         if self.patch_size is not None:
             patch_h, patch_w = self.patch_size
             h_grid, w_grid = height // patch_h, width // patch_w
             KORNIA_CHECK(
                 h_grid * w_grid == num_patches,
-                f"NaFlex reads the grid of a (B, N, C) patch output from patch_size={self.patch_size}: a {height} x "
-                f"{width} image has a {h_grid} x {w_grid} grid of {h_grid * w_grid} patches, but the patch embedding "
-                f"returned {num_patches}.",
+                lambda: (
+                    f"NaFlex reads the grid of a (B, N, C) patch output from patch_size={self.patch_size}: a "
+                    f"{height} x {width} image has a {h_grid} x {w_grid} grid of {h_grid * w_grid} patches, but the "
+                    f"patch embedding returned {num_patches}."
+                ),
             )
             return h_grid, w_grid
         side = math.isqrt(num_patches)
         KORNIA_CHECK(
             side * side == num_patches,
-            f"NaFlex reads a (B, N, C) patch output without patch_size as a square grid, but {num_patches} patch "
-            "embeddings are not a square number. Pass patch_size to NaFlex, or make the patch embedding return "
-            "(B, C, h, w).",
+            lambda: (
+                f"NaFlex reads a (B, N, C) patch output without patch_size as a square grid, but {num_patches} "
+                "patch embeddings are not a square number. Pass patch_size to NaFlex, or make the patch embedding "
+                "return (B, C, h, w)."
+            ),
         )
+        # A square grid on an image whose sides differ by at least one patch of the longer side takes rectangular
+        # patches. That is right for a rectangular patch embedding, but for square patches the grid is not square
+        # (#6004: 8 x 32 at patch 16 for 128 x 512) and the table goes in the wrong layout. N, H and W cannot tell the
+        # two apart, so warn. A square-patch convolution of stride s, overlapping or not, with padding up to half its
+        # kernel never warns: its grid is square only for sides H < W less than s apart, and H >= (side - 1) * s, so
+        # (W - H) * side < (side - 1) * s + (W - H) <= W.
+        if not is_compiling() and abs(height - width) * side >= max(height, width):
+            _warn_at_caller(
+                f"NaFlex reads the {num_patches} patch embeddings of a {height} x {width} image as a {side} x {side} "
+                f"grid, which takes {height / side:.3g} x {width / side:.3g} pixel patches. If the patches are square, "
+                "the grid is not square and the position table is added in the wrong layout: pass patch_size to "
+                "NaFlex (which also silences this warning), or make the patch embedding return (B, C, h, w)."
+            )
         return side, side
+
+
+def _warn_at_caller(message: str) -> None:
+    """Warn with a ``UserWarning`` attributed to the first frame outside kornia and torch.
+
+    NaFlex warns from inside its ``forward``, which ``nn.Module.__call__`` reaches through torch frames and which may
+    run inside another kornia model, so no fixed ``stacklevel`` names the line that needs ``patch_size``.
+    """
+    level = 2  # warnings.warn's stacklevel for the frame that called this function
+    frame: Optional[FrameType] = sys._getframe(1)
+    while frame is not None and _in_torch_or_kornia(frame):
+        frame, level = frame.f_back, level + 1
+    warnings.warn(message, UserWarning, stacklevel=level if frame is not None else 2)

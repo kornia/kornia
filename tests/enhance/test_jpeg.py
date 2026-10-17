@@ -256,7 +256,8 @@ class TestDiffJPEG(BaseTester):
         qt_c = torch.randint(low=1, high=255, size=(B * 2, 8, 8), device=device, dtype=dtype)
         with pytest.raises(BaseError) as errinfo:
             kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
-        assert "Batch dimensions do not match" in str(errinfo.value)
+        assert "expected 16 or 1, got 8" in str(errinfo.value)
+        assert "quantization_table_c needs one table per image" in str(errinfo.value)
 
         from kornia.core.exceptions import BaseError
 
@@ -267,7 +268,8 @@ class TestDiffJPEG(BaseTester):
         qt_c = torch.randint(low=1, high=255, size=(B * B, 8, 8), device=device, dtype=dtype)
         with pytest.raises(BaseError) as errinfo:
             kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
-        assert "Batch dimensions do not match" in str(errinfo.value)
+        assert "expected 16 or 1, got 8" in str(errinfo.value)
+        assert "quantization_table_y needs one table per image" in str(errinfo.value)
 
         from kornia.core.exceptions import BaseError
 
@@ -278,7 +280,8 @@ class TestDiffJPEG(BaseTester):
         qt_c = torch.randint(low=1, high=255, size=(B * B, 8, 8), device=device, dtype=dtype)
         with pytest.raises(BaseError) as errinfo:
             kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
-        assert "Batch dimensions do not match" in str(errinfo.value)
+        assert "expected 16 or 1, got 8" in str(errinfo.value)
+        assert "jpeg_quality needs one quality per image" in str(errinfo.value)
 
     def test_cardinality(self, device, dtype) -> None:
         B, H, W = 1, 16, 16
