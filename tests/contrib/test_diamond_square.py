@@ -187,16 +187,20 @@ class TestDiamondSquare(BaseTester):
         self, dtype, drawn, expected_dtype, expected, seed_only_dtype, device
     ):
         if device.type != "cpu":
-            pytest.skip("the literal is a CPU bit pattern, and MPS has no float64")
+            pytest.skip("the literals are CPU values, and MPS has no float64")
         if dtype is not None and not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         # A random_fn that returns another dtype than it is asked for promotes the levels' arithmetic to its dtype,
-        # so at random_scale=1 a map past its seed is bit for bit the one of dd3bddb7e, where the seed was scaled by
-        # random_scale, dtype included. Literals generated there with
+        # so at random_scale=1 a map past its seed runs the operations of dd3bddb7e, where the seed was scaled by
+        # random_scale, dtype included. Literals generated there on arm64 macOS, torch 2.14, with
         #   g = torch.Generator().manual_seed(0)
         #   draw = lambda shape, device=None, dtype=None: torch.rand(shape, generator=g, dtype=drawn)
         #   out = kornia.contrib.diamond_square((1, 1, 9, 17), random_fn=draw, dtype=dtype)
         #   out.dtype, out[0, 0, :2, :4]
+        # They are not a cross-CPU bit pattern: torch 2.14 on the AMD EPYC CI runners rounds the float32 levels'
+        # convolution at (1, 2) one ulp away, as a convolution accumulated in float64 does. A few ulps of the output
+        # dtype still reject levels computed in the requested float16 (~1e-4 off) or a float64 map computed in float32
+        # (~1e-8 off).
         # A map that is the seed alone stores the draws in the requested dtype (dd3bddb7e: same dtype at (1, 1, 3, 9)).
         g = torch.Generator().manual_seed(0)
 
@@ -205,8 +209,9 @@ class TestDiamondSquare(BaseTester):
 
         out = kornia.contrib.diamond_square((1, 1, 9, 17), random_fn=draw, device=device, dtype=dtype)
         assert out.dtype == expected_dtype
+        ulps = 4 * torch.finfo(expected_dtype).eps
         self.assert_close(
-            out[0, 0, :2, :4], torch.tensor(expected, device=device, dtype=expected_dtype), rtol=0, atol=0
+            out[0, 0, :2, :4], torch.tensor(expected, device=device, dtype=expected_dtype), rtol=0, atol=ulps
         )
         seed_only = kornia.contrib.diamond_square((1, 1, 3, 9), random_fn=draw, device=device, dtype=dtype)
         assert seed_only.dtype == seed_only_dtype
