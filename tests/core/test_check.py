@@ -644,8 +644,11 @@ class TestCheckSameSize:
         with pytest.raises(Exception, match="expected 4, got 3"):
             op_jit(torch.rand(3, 2), torch.rand(4, 2))
 
-    def test_dynamo_relates_the_sizes_without_specializing(self, torch_optimizer):
+    def test_dynamo_relates_the_sizes_without_specializing(self, torch_optimizer, optimizer_backend):
         from torch._dynamo.testing import CompileCounter
+
+        if optimizer_backend == "jit":
+            pytest.skip("counts the graphs of torch.compile, which torch.jit.script does not build")
 
         def op(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
             KORNIA_CHECK_SAME_SIZE(x, y, allow_one=True)
@@ -686,8 +689,11 @@ class TestCheckSizes:
         with pytest.raises(Exception, match=r"expected \(\*, 4\)"):
             op_jit(torch.rand(2, 3), [None, 4])
 
-    def test_dynamo_relates_the_sizes_without_specializing(self, torch_optimizer):
+    def test_dynamo_relates_the_sizes_without_specializing(self, torch_optimizer, optimizer_backend):
         from torch._dynamo.testing import CompileCounter
+
+        if optimizer_backend == "jit":
+            pytest.skip("counts the graphs of torch.compile, which torch.jit.script does not build")
 
         def op(pred: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
             KORNIA_CHECK_SIZES(weight, [pred.shape[1]])
@@ -838,9 +844,12 @@ class TestDeferredMessage:
             scripted(torch.ones(3, 3))
 
     @pytest.mark.parametrize("helper", ["KORNIA_CHECK", "KORNIA_CHECK_SHAPE"])
-    def test_dynamo_deferred_size_message_compiles_one_graph(self, helper, torch_optimizer):
+    def test_dynamo_deferred_size_message_compiles_one_graph(self, helper, torch_optimizer, optimizer_backend):
         """Formatting a size inside the message function does not specialize it."""
         from torch._dynamo.testing import CompileCounter
+
+        if optimizer_backend == "jit":
+            pytest.skip("counts the graphs of torch.compile, which torch.jit.script does not build")
 
         def op(x: torch.Tensor) -> torch.Tensor:
             if helper == "KORNIA_CHECK":

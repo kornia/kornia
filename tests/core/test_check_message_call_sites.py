@@ -38,8 +38,12 @@ constructors (``torch.compile`` compiles ``forward``, not module construction):
 * a message that is not a ``lambda`` formats no single size, no ``int``-annotated argument of the
   function, no local assigned from those, nothing computed from them, and no ``.item()`` or
   ``.tolist()``;
-* except in ``_TORCHSCRIPT_FUNCTIONS``, which TorchScript compiles and which so cannot hold a
-  ``lambda``; every entry there must exist and still need the exception.
+* except in ``_TORCHSCRIPT_FUNCTIONS``, which TorchScript compiles: TorchScript rejects a ``lambda``
+  anywhere in their source, so a message there may format such a value but may not be a ``lambda``.
+  It formats whole shapes where it can, which neither specializes nor needs deferring. Every entry
+  must exist and hold a formatted message.
+
+A message assigned to a local first counts as formatting what that assignment formats.
 """
 
 from __future__ import annotations
@@ -57,13 +61,23 @@ _SIZE_METHODS = {"size", "numel"}
 _DATA_METHODS = {"item", "tolist"}
 _PASSTHROUGH = {"int", "min", "max", "abs"}
 
-# Functions that TorchScript compiles, each covered by a ``torch.jit.script`` test. TorchScript rejects a ``lambda``
-# anywhere in a scripted function, even under ``if not torch.jit.is_scripting()``, so these keep eager messages.
-# Measured under ``torch.compile(dynamic=True)`` on torch 2.5.1 and 2.14: only ``_check_n``'s ``{n}`` adds graphs,
-# when ``n`` is itself an input of the compiled function (``one_hot`` specializes ``num_classes`` regardless, and
-# ``reconstruction`` breaks the graph on its data-dependent loop).
+# Functions with formatted check messages that TorchScript compiles: those that ``torch.jit.script`` compiles directly
+# or through a caller in the tests, with or without ``KORNIA_TEST_OPTIMIZER=jit``. TorchScript rejects a ``lambda``
+# anywhere in a scripted function, even under ``if not torch.jit.is_scripting()``. Their messages that format a
+# single size or an ``int`` stay eager: measured under ``torch.compile(dynamic=True)`` on torch 2.5.1 and 2.14, only
+# ``_check_n``'s ``{n}`` adds graphs, when ``n`` is itself an input of the compiled function (``one_hot`` specializes
+# ``num_classes`` regardless, and ``reconstruction`` breaks the graph on its data-dependent loop).
 _TORCHSCRIPT_FUNCTIONS = {
+    "color/raw.py::raw_to_rgb_2x2_downscaled",
     "core/ops.py::_check_n",
+    "core/ops.py::eye_like",
+    "core/ops.py::vec_like",
+    "enhance/shift_rgb.py::shift_rgb",
+    "feature/dedode/transformer/layers/patch_embed.py::PatchEmbed.forward",
+    "geometry/depth.py::warp_frame_depth",
+    "losses/focal.py::binary_focal_loss_with_logits",
+    "losses/focal.py::focal_loss",
+    "losses/lovasz_softmax.py::lovasz_softmax_loss",
     "losses/one_hot.py::one_hot",
     "morphology/morphology.py::reconstruction",
 }
@@ -119,7 +133,8 @@ def _is_shape(node: ast.AST) -> bool:
 
 
 def _symbolic_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
-    """Return the ``int`` parameters of a function and the locals it assigns sizes or values computed from them."""
+    """Return a function's ``int`` parameters and the locals it assigns sizes, values computed from them or strings
+    that format them."""
     names = _int_params(func)
     changed = True
     while changed:
@@ -132,7 +147,10 @@ def _symbolic_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
             else:
                 continue
             for target in targets:
-                if isinstance(target, ast.Name) and _is_symbolic(value, names):
+                # a size, or a message built from one
+                if isinstance(target, ast.Name) and (
+                    _is_symbolic(value, names) or any(_is_symbolic(v, names) for v in _formatted_values(value))
+                ):
                     new = {target.id}
                 elif isinstance(target, ast.Tuple) and (
                     _is_shape(value)
@@ -175,20 +193,38 @@ def _msg_positions(trees: dict[str, ast.Module]) -> dict[str, int]:
     return positions
 
 
+def _qualified_names(tree: ast.Module) -> dict[ast.AST, str]:
+    """Map every function of a module to its name, as ``Class.method`` inside a class."""
+    names: dict[ast.AST, str] = {}
+
+    def visit(node: ast.AST, prefix: str) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.ClassDef):
+                visit(child, f"{prefix}{child.name}.")
+            elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                names[child] = f"{prefix}{child.name}"
+                visit(child, f"{prefix}{child.name}.")
+            else:
+                visit(child, prefix)
+
+    visit(tree, "")
+    return names
+
+
 def _violations(
-    rel: str, tree: ast.Module, positions: dict[str, int], exempt: set[str]
+    rel: str, tree: ast.Module, positions: dict[str, int], torchscript: set[str]
 ) -> tuple[int, list[str], set[str], set[str]]:
-    """Return ``(checked calls, violations, functions defined, exempt functions with an eager message)``."""
-    functions = [node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
-    defined = {f"{rel}::{node.name}" for node in functions}
+    """Return ``(checked calls, violations, functions defined, TorchScript functions with a formatted message)``."""
+    qualified = _qualified_names(tree)
+    defined = {f"{rel}::{name}" for name in qualified.values()}
     n_calls = 0
     violations: list[str] = []
-    exempt_used: set[str] = set()
+    formatted_in: set[str] = set()
     seen: set[int] = set()
-    # ``ast.walk`` lists outer functions before nested ones; reversed, each call is judged in the innermost function
-    # that contains it
-    for func in reversed(functions):
-        key = f"{rel}::{func.name}"
+    # outer functions start before the functions nested in them; in reverse order, each call is judged in the
+    # innermost function that contains it
+    for func in sorted(qualified, key=lambda f: (f.lineno, f.col_offset), reverse=True):
+        key = f"{rel}::{qualified[func]}"
         names = _symbolic_names(func)
         for node in ast.walk(func):
             if not isinstance(node, ast.Call) or id(node) in seen:
@@ -204,16 +240,22 @@ def _violations(
             pos = positions[name]
             msg = node.args[pos] if len(node.args) > pos else None
             msg = next((k.value for k in node.keywords if k.arg == "msg"), msg)
-            if msg is None or isinstance(msg, ast.Lambda):
+            if msg is None:
                 continue
-            symbolic = [ast.unparse(v) for v in _formatted_values(msg) if _is_symbolic(v, names)]
-            if not symbolic:
+            if isinstance(msg, ast.Lambda):
+                if key in torchscript:
+                    violations.append(f"{rel}:{node.lineno} {name} has a lambda message, which TorchScript rejects")
                 continue
-            if key in exempt:
-                exempt_used.add(key)
-            else:
+            values = _formatted_values(msg)
+            symbolic = [ast.unparse(v) for v in values if _is_symbolic(v, names)]
+            if isinstance(msg, ast.Name) and msg.id in names:
+                symbolic.append(msg.id)
+            if key in torchscript:
+                if values or symbolic:
+                    formatted_in.add(key)
+            elif symbolic:
                 violations.append(f"{rel}:{node.lineno} {name} formats {', '.join(symbolic)}")
-    return n_calls, violations, defined, exempt_used
+    return n_calls, violations, defined, formatted_in
 
 
 def _scan() -> tuple[int, list[str], set[str], set[str]]:
@@ -248,12 +290,12 @@ class TestCheckMessageCallSites:
             + "\n".join(violations)
         )
 
-    def test_torchscript_exceptions_are_current(self) -> None:
-        """Every exempt function exists and still has such a message, so the list cannot outgrow its reason."""
-        _, _, defined, exempt_used = _scan()
+    def test_torchscript_functions_are_current(self) -> None:
+        """Every listed function exists and holds a formatted message, so the list cannot outgrow its reason."""
+        _, _, defined, formatted_in = _scan()
         assert _TORCHSCRIPT_FUNCTIONS <= defined, f"no such function: {sorted(_TORCHSCRIPT_FUNCTIONS - defined)}"
-        assert exempt_used == _TORCHSCRIPT_FUNCTIONS, (
-            f"no such message left, drop the exception: {sorted(_TORCHSCRIPT_FUNCTIONS - exempt_used)}"
+        assert formatted_in == _TORCHSCRIPT_FUNCTIONS, (
+            f"no formatted message left, drop it from the list: {sorted(_TORCHSCRIPT_FUNCTIONS - formatted_in)}"
         )
 
     def test_scan_flags_symbolic_values_only(self) -> None:
@@ -278,26 +320,40 @@ def f(x, y, n: int, k: tuple[int, int] | int, name: str, h: float):
     KORNIA_CHECK_SHAPE(x, ["B"], msg="got " + str(B))                # flagged: str(), keyword msg
     if x.dim() != 4:
         KORNIA_CHECK(False, f"got {x.shape[0]}")                     # flagged: still formatted eagerly
+    built = f"got {n}"
+    KORNIA_CHECK(n > 0, built)                                       # flagged: a message built in a local
+    KORNIA_CHECK(n > 0, f"{built}, so no")                           # flagged: placed in another message
     KORNIA_CHECK(x.dim() == 4, f"got {x.shape} {tuple(x.shape)} {x.shape[-2:]} {(B, C)}")
     KORNIA_CHECK(x.dim() == 4, f"got {x.dtype} on {x.device}, {x.ndim} dims, {type(n).__name__}")
     KORNIA_CHECK(h > 0, f"{name} needs a positive h, got {h}")
     KORNIA_CHECK(n > 0, lambda: f"got {n} and {x.shape[0]}")
 
+    def deferred() -> str:
+        return f"got {n}"
+
+    KORNIA_CHECK(n > 0, deferred)
+
 def scripted(n: int):
-    KORNIA_CHECK(n > 0, f"got {n}")                                  # exempt
+    KORNIA_CHECK(n > 0, f"got {n}")                                  # TorchScript compiles it: stays eager
+    KORNIA_CHECK(n > 0, lambda: f"got {n}")                          # flagged: TorchScript rejects a lambda
 
 class M:
     def __init__(self, n: int):
         KORNIA_CHECK(n > 0, f"got {n}")                              # a constructor
+
+    def forward(self, x):
+        KORNIA_CHECK(x.dim() == 4, f"got {x.shape}")                 # TorchScript compiles it
 """
         tree = ast.parse(source)
         positions = _msg_positions({"m.py": tree})
         assert positions == {"KORNIA_CHECK": 1, "KORNIA_CHECK_SHAPE": 2}
-        n_calls, violations, defined, exempt_used = _violations("m.py", tree, positions, {"m.py::scripted"})
-        assert n_calls == 17
-        assert [int(v.split(":")[1].split()[0]) for v in violations] == [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 20]
-        assert {"m.py::f", "m.py::scripted"} <= defined
-        assert exempt_used == {"m.py::scripted"}
+        torchscript = {"m.py::scripted", "m.py::M.forward"}
+        n_calls, violations, defined, formatted_in = _violations("m.py", tree, positions, torchscript)
+        flagged = [i + 1 for i, line in enumerate(source.splitlines()) if "# flagged" in line]
+        assert n_calls == 22
+        assert sorted(int(v.split(":")[1].split()[0]) for v in violations) == flagged
+        assert {"m.py::f", "m.py::f.deferred", "m.py::scripted", "m.py::M.__init__", "m.py::M.forward"} <= defined
+        assert formatted_in == torchscript
 
 
 def _rand(*shape: int, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
@@ -358,7 +414,8 @@ _COMPILE_VALUES = {
     "get_motion_kernel2d (angle batch)": (2, 3, 4),
     "motion_blur (angle batch)": (2, 4, 6),
     "fft_conv valid (image size)": (6, 8, 10),
-    "gaussian_blur2d (kernel size)": (3, 5, 7),
+    # 3 is avoided: on macOS arm64, F.conv2d picks another backend for a 3 x 3 kernel, which adds a graph by itself
+    "gaussian_blur2d (kernel size)": (5, 7, 9),
     "solve_pnp_dlt (number of points)": (7, 9, 11),
     "jpeg_codec_differentiable (batch)": (2, 3, 4),
     "dedode PatchEmbed (image size)": (16, 20, 24),
@@ -367,10 +424,12 @@ _COMPILE_VALUES = {
 
 class TestDeferredMessagesUnderCompile:
     @pytest.mark.parametrize("case", sorted(_COMPILE_CASES))
-    def test_dynamo_new_values_compile_no_new_graph(self, case, device, dtype, torch_optimizer):
+    def test_dynamo_new_values_compile_no_new_graph(self, case, device, dtype, torch_optimizer, optimizer_backend):
         """A new value of a size or int that a check message formats compiles no new graph."""
         from torch._dynamo.testing import CompileCounter
 
+        if optimizer_backend == "jit":
+            pytest.skip("counts the graphs of torch.compile, which torch.jit.script does not build")
         if dtype not in (torch.float32, torch.float64):
             pytest.skip("the graph count does not depend on the floating dtype")
         op, make_inputs = _COMPILE_CASES[case]

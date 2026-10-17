@@ -98,8 +98,8 @@ class PatchEmbed(nn.Module):
         """
         _, _, H, W = x.shape
         patch_H, patch_W = self.patch_size
-        KORNIA_CHECK(H % patch_H == 0, lambda: f"Input image height {H} is not a multiple of patch height {patch_H}")
-        KORNIA_CHECK(W % patch_W == 0, lambda: f"Input image width {W} is not a multiple of patch width: {patch_W}")
+        KORNIA_CHECK(H % patch_H == 0, f"Input image height is not a multiple of patch height {patch_H}: {x.shape}")
+        KORNIA_CHECK(W % patch_W == 0, f"Input image width is not a multiple of patch width {patch_W}: {x.shape}")
 
         x = self.proj(x)  # B C H W
         H, W = x.size(2), x.size(3)
