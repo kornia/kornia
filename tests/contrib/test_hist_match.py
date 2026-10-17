@@ -441,6 +441,29 @@ class TestHistMatch(BaseTester):
         expected = torch.tensor([1.0, 0.5, 1.5], dtype=torch.float16)
         assert torch.equal(kornia.contrib.interp(x, xp, fp).cpu(), expected)
 
+    @pytest.mark.parametrize(
+        ("x", "x_dtype", "xp", "xp_dtype", "fp_dtype", "expected"),
+        [
+            # 3001 is not a float16 number (it rounds to 3000): an integer x rounded onto the float16 grid gave fp[0]
+            (3001, torch.int64, [3000, 3010], torch.float16, torch.float16, -32000.0),
+            # 2999 rounds to 3000 in float16: an integer xp rounded onto the float16 grid gave fp[0] at x = 3000
+            (3000, torch.float16, [2999, 3009], torch.int64, torch.float16, -32000.0),
+            # bfloat16 keeps 8 bits: 3001 and 3009 would round to 3008, merging the knots
+            (3008, torch.bfloat16, [3001, 3009], torch.int64, torch.bfloat16, 29952.0),
+        ],
+    )
+    def test_integer_coordinates_mixed_with_half_coordinates_are_not_rounded_to_half(
+        self, x, x_dtype, xp, xp_dtype, fp_dtype, expected, device
+    ):
+        # Expected: fp0 + (fp1 - fp0) * (x - xp0) / (xp1 - xp0) in float64 on the fp_dtype ends, rounded to fp_dtype:
+        # -40000 + 80000 / 10 in float16, and -39936 + 79872 * 7 / 8 in bfloat16 (where 40000 is 39936).
+        fp = torch.tensor([-40000.0, 40000.0], device=device, dtype=fp_dtype)
+        out = kornia.contrib.interp(
+            torch.tensor([x], device=device, dtype=x_dtype), torch.tensor(xp, device=device, dtype=xp_dtype), fp
+        )
+        assert out.dtype == fp_dtype
+        assert out.cpu().tolist() == [expected]
+
     @pytest.mark.parametrize("dtype_", [torch.float16, torch.bfloat16])
     @pytest.mark.parametrize(
         ("x", "xp", "expected"),
