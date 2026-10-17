@@ -855,6 +855,25 @@ class TestScale(BaseTester):
         transform = kornia.geometry.transform.Scale(scale_factor)
         self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
+    @pytest.mark.parametrize("batch_size, num_factors", [(1, 1), (2, 2), (3, 3), (3, 1)])
+    @pytest.mark.parametrize("as_module", [False, True])
+    def test_isotropic_scale_factor(self, device, dtype, batch_size, num_factors, as_module):
+        image = torch.arange(batch_size * 35, device=device, dtype=dtype).reshape(batch_size, 1, 5, 7) / 35
+        scale_factor = torch.tensor([0.6, 1.0, 1.4], device=device, dtype=dtype)[:num_factors]
+        # Isotropic factors apply equally to x and y, independently for each image.
+        expected = kornia.geometry.transform.scale(image, torch.stack([scale_factor, scale_factor], dim=-1))
+        if as_module:
+            actual = kornia.geometry.transform.Scale(scale_factor)(image)
+        else:
+            actual = kornia.geometry.transform.scale(image, scale_factor)
+
+        self.assert_close(actual, expected)
+
+    def test_isotropic_scale_factor_gradcheck(self, device):
+        image = torch.arange(48, device=device, dtype=torch.float64).reshape(2, 1, 4, 6) / 48
+        scale_factor = torch.tensor([0.8, 1.3], device=device, dtype=torch.float64)
+        self.gradcheck(kornia.geometry.transform.scale, (image, scale_factor))
+
     def test_gradcheck(self, device):
         # test parameters
         scale_factor = torch.tensor([[0.5, 0.5]], device=device, dtype=torch.float64)
