@@ -23,6 +23,7 @@ from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.constants import Resample
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry import get_perspective_transform3d, warp_perspective3d
 
 
@@ -127,7 +128,7 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
         elif isinstance(width, int) and width == 1:
             order = [0, 4, 7, 3, 1, 5, 6, 2] if depth > 1 else [0, 3, 2, 1, 4, 7, 6, 5]
             start_points, end_points = start_points[:, order], end_points[:, order]
-        return get_perspective_transform3d(start_points, end_points).to(input)
+        return _to_device_nonblocking(get_perspective_transform3d(start_points, end_points), input.device, input.dtype)
 
     def apply_transform(
         self,

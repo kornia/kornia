@@ -21,6 +21,7 @@ import torch
 from torch import Tensor
 
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
+from kornia.core.ops import _constant_tensor
 
 
 class RandomHorizontalFlip3D(GeometricAugmentationBase3D):
@@ -79,8 +80,16 @@ class RandomHorizontalFlip3D(GeometricAugmentationBase3D):
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         w: int = input.shape[-1]
-        flip_mat: Tensor = torch.tensor(
-            [[-1, 0, 0, w - 1], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], device=input.device, dtype=input.dtype
+        # Filled on the device: a ``torch.tensor`` literal copies from the host and waits for queued kernels.
+        # ``torch.jit.trace`` can pass the size as a 0-d tensor, which ``_constant_tensor`` does not take.
+        flip_mat: Tensor = (
+            _constant_tensor(
+                [[-1, 0, 0, w - 1], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], device=input.device, dtype=input.dtype
+            )
+            if isinstance(w, int)
+            else torch.tensor(
+                [[-1, 0, 0, w - 1], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], device=input.device, dtype=input.dtype
+            )
         )
         return flip_mat.expand(input.shape[0], 4, 4)
 
