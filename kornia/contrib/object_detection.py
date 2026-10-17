@@ -160,7 +160,7 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         """
         raise NotImplementedError(
             "ObjectDetector.from_config() is not implemented. "
-            "Use kornia.contrib.object_detection.RtdetrBuilder.build() or instantiate ObjectDetector directly."
+            "Use kornia.contrib.object_detection.RTDETRDetectorBuilder.build() or instantiate ObjectDetector directly."
         )
 
     @torch.inference_mode()
@@ -233,8 +233,7 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
     ) -> onnx.ModelProto:
         """Export an RT-DETR object detection model to ONNX format.
 
-        Either `model_name` or `config` must be provided. If neither is provided,
-        a default pretrained model (`rtdetr_r18vd`) will be built.
+        Exports this detector, as built by :meth:`RTDETRDetectorBuilder.build` or the constructor.
 
         Args:
             onnx_name:
@@ -431,11 +430,12 @@ class RTDETRDetectorBuilder:
             pretrained:
                 Whether to load a pretrained version of the model (applies when `model_name` is provided).
             image_size:
-                The size to which input images will be resized during preprocessing.
-                If None, no resizing will be inferred from config file. Recommended scales include
+                The size to which input images will be resized during preprocessing, used only with `config`. If
+                None, `config.input_size` is used. With `model_name`, or without either, it is ignored: the input is
+                resized to the 640 px the published weights were trained for. Recommended scales include
                 [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800].
             confidence_threshold: Threshold to filter results based on confidence scores.
-            confidence_filtering: Whether to filter results based on confidence scores.
+            confidence_filtering: Whether to filter results based on confidence scores. None filters.
 
 
         Returns:
@@ -474,7 +474,7 @@ class RTDETRDetectorBuilder:
             ResizePreProcessor(image_size, image_size),
             DETRPostProcessor(
                 confidence_threshold=confidence_threshold,
-                confidence_filtering=confidence_filtering or not torch.onnx.is_in_onnx_export(),
+                confidence_filtering=True if confidence_filtering is None else confidence_filtering,
                 num_classes=model.decoder.num_classes,
                 num_top_queries=model.decoder.num_queries,
             ),

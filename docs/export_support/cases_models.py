@@ -1204,10 +1204,8 @@ A(
         reuse(od, _e_od),
         lambda m: m,
         [torch.rand(1, 3, 200, 320)],
-        note="ObjectDetector = ResizePreProcessor(256,256) + RTDETR + DETRPostProcessor; threshold 0 "
-        "-> all 300 boxes (1,300,6). "
-        "KORNIA BUG: builder passes `confidence_filtering or not is_in_onnx_export()` so confidence_filtering=False "
-        "is ignored at build time (list output); forward is @torch.inference_mode()",
+        note="ObjectDetector = ResizePreProcessor(640,640) + RTDETR + DETRPostProcessor (image_size=256 is ignored "
+        "with a model_name); threshold 0 -> all 300 boxes (1,300,6). forward is @torch.inference_mode()",
         tags=("model", "pretrained"),
     )
 )
@@ -1223,7 +1221,7 @@ A(
         reuse(od_f, _e_odf),
         lambda m: m,
         [torch.rand(1, 3, 200, 320)],
-        note="default confidence_filtering=True unless is_in_onnx_export(); list of (Di,6) tensors",
+        note="default confidence_filtering=True; list of (Di,6) tensors",
         tags=("model", "pretrained"),
     )
 )
