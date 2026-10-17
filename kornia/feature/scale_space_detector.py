@@ -179,7 +179,7 @@ def _zero_unfilled(lafs: torch.Tensor, filled: torch.Tensor) -> torch.Tensor:
     The response cannot serve: :class:`ScaleSpaceDetector`'s response function is pluggable and
     may be signed, so an exact zero there is a legitimate maximum.
     """
-    return torch.where(filled.view(filled.shape[0], -1, 1, 1), lafs, torch.zeros_like(lafs))
+    return torch.where(filled[..., None, None], lafs, torch.zeros_like(lafs))
 
 
 _BUILTIN_SUBPIX = (ConvQuadInterp3d, AdaptiveQuadInterp3d, IterativeQuadInterp3d)
@@ -235,6 +235,8 @@ class ScaleSpaceDetector(nn.Module):
         - The LAFs are float32 for a float16 or bfloat16 image and float64 for a float64 one; the responses keep the
           response function's dtype. Non-maximum suppression and sub-pixel refinement run on the response promoted to
           at least float32.
+        - A batch of zero images returns empty outputs of the documented shapes, after the checks a non-empty batch
+          runs.
         - Known defects: an octave passes only its ``num_features`` strongest candidates to the border test and to the
           mask check of their refined centres, so the slot of a candidate rejected there stays empty even when a
           weaker valid candidate exists (`#5741 <https://github.com/kornia/kornia/issues/5741>`_).
@@ -513,9 +515,9 @@ class ScaleSpaceDetector(nn.Module):
         # every tensor describes the same (channel, scale, y, x) candidate. Responses
         # are single-channel by the contract checked above, but custom sub-pixel modules
         # still have to preserve this axis order.
-        mask_flat = cand_mask.reshape(B, -1)  # (B, C*L*H*W)
-        resp_flat = response_max.reshape(B, -1)  # (B, C*L*H*W)
-        coord_flat = coord_max.movedim(2, -1).reshape(B, -1, 3)  # (B, C*L*H*W, 3)
+        mask_flat = cand_mask.flatten(1)  # (B, C*L*H*W)
+        resp_flat = response_max.flatten(1)  # (B, C*L*H*W)
+        coord_flat = coord_max.movedim(2, -1).flatten(1, -2)  # (B, C*L*H*W, 3)
 
         if B == 1:
             nms_idx = mask_flat[0].nonzero(as_tuple=True)[0]  # (M,)
@@ -528,7 +530,8 @@ class ScaleSpaceDetector(nn.Module):
                 idxs = nms_idx[local_idx].unsqueeze(0)
                 resp_flat_best = resp_flat_best.unsqueeze(0)  # (1, k_eff)
             else:
-                resp_flat_best = resp_flat.new_zeros(1, 0)
+                # A zero-width slice, not a fresh tensor: the empty result stays linked to the response.
+                resp_flat_best = resp_flat[:, :0]
                 idxs = nms_idx.new_empty(1, 0)
         else:
             # Batched fallback: mask non-candidates to -inf so they lose top-K to every finite
@@ -547,9 +550,9 @@ class ScaleSpaceDetector(nn.Module):
         if self.minima_are_also_good:
             # Merge coordinates only for the selected features, not for every voxel
             # in the octave (three full image volumes per scale level).
-            coord_min_flat = coord_min.movedim(2, -1).reshape(B, -1, 3)
+            coord_min_flat = coord_min.movedim(2, -1).flatten(1, -2)
             min_coords_best = torch.gather(coord_min_flat, 1, coord_idxs)
-            take_min_best = torch.gather(take_min_mask.reshape(B, -1), 1, idxs)
+            take_min_best = torch.gather(take_min_mask.flatten(1), 1, idxs)
             max_coords_best = torch.where(take_min_best.unsqueeze(-1), min_coords_best, max_coords_best)
 
         B, N = resp_flat_best.size()
@@ -581,7 +584,7 @@ class ScaleSpaceDetector(nn.Module):
             # region. Re-check the refined centre against the resampled mask, conservatively: every
             # octave pixel the centre touches (its floor and ceil in x and y) has to be allowed, as a
             # zero region already suppresses every candidate within one octave pixel of it.
-            keep_flat = oct_keep.reshape(oct_keep.shape[0], -1)  # (1 or B, H*W)
+            keep_flat = oct_keep.flatten(1)  # (1 or B, H*W)
             if keep_flat.shape[0] != B:
                 keep_flat = keep_flat.expand(B, -1)
             x0 = cx.floor().long().clamp_(0, w - 1)
@@ -706,7 +709,7 @@ class ScaleSpaceDetector(nn.Module):
             2, 3)`. A slot that no detection filled -- there were fewer candidates than requested, or the border or
             mask test rejected a candidate -- carries a zero response and a zero LAF, and sorts after every real
             detection. The converse does not hold: a signed response function can peak at exactly zero, and that
-            slot keeps its frame.
+            slot keeps its frame. A batch of zero images returns empty outputs of these shapes.
         """
         responses, lafs, _ = self._detect(img, num_feats, mask)
         return responses, lafs
