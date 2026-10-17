@@ -533,7 +533,7 @@ def scale(
 
     if len(scale_factor.shape) == 1:
         # convert isotropic scaling to x-y direction
-        scale_factor = scale_factor.repeat(1, 2)
+        scale_factor = scale_factor.unsqueeze(-1)
 
     # compute the tensor center
     if center is None:
