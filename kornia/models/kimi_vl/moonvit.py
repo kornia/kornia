@@ -98,17 +98,18 @@ def _sdpa_attention_mask(attention_mask: torch.Tensor, batch_size: int) -> torch
     if attention_mask.dim() in (2, 3):
         # Passed as is, SDPA would line a 3-D mask's leading dimension up with the heads and read a 2-D one as an
         # N x N query x key mask, so an (H, N, N) or (N, N) mask would mean something else whenever B happened to equal
-        # H or N: such masks raise and go in as 4-D. Format the shapes only on failure: an f-string evaluated on every
-        # call makes Dynamo specialize the batch size and the patch count, so a dynamic-shape torch.compile would
-        # recompile for each new input shape.
-        if attention_mask.shape[0] not in (1, batch_size):
-            KORNIA_CHECK(
-                False,
+        # H or N: such masks raise and go in as 4-D. The message is a function, formatted only on failure: an f-string
+        # evaluated on every call makes Dynamo specialize the batch size and the patch count, so a dynamic-shape
+        # torch.compile would recompile for each new input shape.
+        KORNIA_CHECK(
+            attention_mask.shape[0] in (1, batch_size),
+            lambda: (
                 f"MoonViTAttention reads a {attention_mask.dim()}-D attention mask per sample, as (B, N) padding or "
                 f"(B, N, N), but the leading dimension of the {tuple(attention_mask.shape)} mask is neither the batch "
                 f"size {batch_size} nor 1. For a per-head or a shared query x key mask, pass it as 4-D: (1, H, N, N) "
-                "or (1, 1, N, N).",
-            )
+                "or (1, 1, N, N)."
+            ),
+        )
         attention_mask = attention_mask[:, None, None] if attention_mask.dim() == 2 else attention_mask[:, None]
     return attention_mask
 
