@@ -125,6 +125,11 @@ class TestFindAffine(BaseTester):
         tol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 2e-4
         self.assert_close(actual, expected, rtol=tol, atol=tol)
 
+    def test_meta_device_infers_the_shape(self):
+        # torch.autocast raises for the meta device type, so the solver enters it only inside an autocast region.
+        points = torch.empty(2, 5, 2, device="meta")
+        assert find_affine(points, points).shape == (2, 3, 3)
+
     def test_autocast_preserves_float32_solver_precision(self, device):
         """Float32 inputs must not let ambient AMP narrow the affine matrix products."""
         if device.type not in ("cpu", "cuda", "mps"):

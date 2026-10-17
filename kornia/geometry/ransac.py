@@ -29,6 +29,7 @@ from torch import nn
 
 from kornia.core._compat import torch_version_lt
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.utils import _autocast_disabled
 from kornia.geometry._degensac import (
     _h_degenerate_sample,
     _h_degenerate_samples,
@@ -89,7 +90,7 @@ def _affine_transfer_error(pts1: torch.Tensor, pts2: torch.Tensor, models: torch
     that function, it computes in at least float32.
     """
     # Scoring needs the same precision as fitting, including inside mixed-precision pipelines.
-    with torch.autocast(device_type=pts1.device.type, enabled=False):
+    with _autocast_disabled(pts1.device.type):
         num_points = pts1.shape[-2]
         dtype = torch.promote_types(torch.promote_types(pts1.dtype, pts2.dtype), models.dtype)
         work = torch.promote_types(dtype, torch.float32)
@@ -240,6 +241,7 @@ class RANSAC(nn.Module):
           runs the same algorithm with its own random stream: a seeded call is reproducible and leaves every global
           generator unchanged, while an unseeded call consumes one global random seed. Its result is not the eager
           one. PROSAC sampling and DEGENSAC are not supported.
+        - A caller's autocast region does not change the estimate.
 
     Args:
         model_type: "affine", "homography", "fundamental", "fundamental_7pt", "fundamental_8pt", "essential", or
@@ -944,12 +946,19 @@ class RANSAC(nn.Module):
 
         """
         self.validate_inputs(kp1, kp2, weights)
-        if self.local_optimization == "lm":
-            with torch.no_grad():
-                if self.compiled:
-                    with torch.inference_mode(False), torch.no_grad():
-                        return self._forward_compiled(kp1, kp2)
-                return self._forward_lm(kp1, kp2)
+        # Autocast would solve and score in half precision, which changes the estimate, and CUDA's eigh, which the
+        # fundamental refit calls, has no half-precision kernel.
+        with _autocast_disabled(kp1.device.type):
+            if self.local_optimization == "lm":
+                with torch.no_grad():
+                    if self.compiled:
+                        with torch.inference_mode(False), torch.no_grad():
+                            return self._forward_compiled(kp1, kp2)
+                    return self._forward_lm(kp1, kp2)
+            return self._forward_dlt(kp1, kp2)
+
+    def _forward_dlt(self, kp1: torch.Tensor, kp2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """:meth:`forward` with ``local_optimization="dlt"``."""
         best_score_total = -float("inf")
         num_tc: int = len(kp1)
         budget = self.sample_budget

@@ -367,6 +367,59 @@ class TestFindFundamental(BaseTester):
         self.assert_close(grads[0], grads[1], **tol)
 
 
+class TestFundamentalAutocast(BaseTester):
+    @pytest.mark.parametrize(
+        "method, num_points, weighted",
+        [("7POINT", 7, False), ("8POINT", 8, False), ("8POINT", 100, False), ("8POINT", 100, True)],
+    )
+    def test_autocast_does_not_reach_the_fit(self, device, method, num_points, weighted):
+        # A caller's bfloat16 autocast ran the 7- and 8-point matrix products in bfloat16: float32 points gave a
+        # bfloat16 fundamental matrix far from the float32 one, and CUDA's eigh, which has no bfloat16 kernel, raised.
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        generator = torch.Generator().manual_seed(0)
+        points1 = torch.rand(1, num_points, 2, generator=generator) * torch.tensor([640.0, 480.0])
+        points2 = points1 + torch.tensor([30.0, -5.0]) + 4.0 * torch.randn(1, num_points, 2, generator=generator)
+        weights = torch.rand(1, num_points, generator=generator).to(device) if weighted else None
+        points1, points2 = points1.to(device), points2.to(device)
+        expected = epi.find_fundamental(points1, points2, weights, method=method)
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            actual = epi.find_fundamental(points1, points2, weights, method=method)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("weights_dtype", [None, "points", torch.float32])
+    def test_half_precision_points_fit_in_and_out_of_autocast(self, dtype, weights_dtype):
+        # CPU autocast ran eigh in float32, so half-precision points fitted under it; no device has a half-precision
+        # eigh kernel, so the 8-point fit promotes its normal matrix itself. Autocast also cast float32 weights
+        # together with the points, and the fit now casts them itself.
+        generator = torch.Generator().manual_seed(0)
+        points1 = torch.rand(1, 100, 2, generator=generator) * torch.tensor([640.0, 480.0])
+        points2 = points1 + torch.tensor([30.0, -5.0]) + 4.0 * torch.randn(1, 100, 2, generator=generator)
+        weights = torch.rand(1, 100, generator=generator)
+        points1, points2 = points1.to(dtype), points2.to(dtype)
+        if weights_dtype is None:
+            weights = expected_weights = None
+        else:
+            expected_weights = weights.to(dtype)
+            weights = expected_weights if weights_dtype == "points" else weights.to(weights_dtype)
+        expected = epi.find_fundamental(points1, points2, expected_weights)
+        outside = epi.find_fundamental(points1, points2, weights)
+        with torch.autocast("cpu", dtype=dtype):
+            inside = epi.find_fundamental(points1, points2, weights)
+        assert expected.dtype == dtype
+        for actual in (outside, inside):
+            assert actual.dtype == dtype
+            self.assert_close(actual, expected, atol=0, rtol=0)
+
+    def test_meta_device_infers_the_shape(self):
+        # torch.autocast raises for the meta device type, so the solvers enter it only inside an autocast region.
+        points = torch.empty(2, 9, 2, device="meta")
+        assert epi.find_fundamental(points, points).shape == (2, 3, 3)
+        assert epi.find_fundamental(points[:, :7], points[:, :7], method="7POINT").shape == (2, 3, 3, 3)
+
+
 class TestComputeCorrespondEpilines(BaseTester):
     def test_smoke(self, device, dtype):
         point = torch.rand(1, 1, 2, device=device, dtype=dtype)
