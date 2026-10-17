@@ -89,10 +89,10 @@ def _bilateral_blur_taps(
     space_kernel: torch.Tensor,
     border_type: str,
     color_distance_type: str,
-    eager: bool,
+    in_place: bool,
     out: Optional[torch.Tensor],
 ) -> torch.Tensor:
-    """Filter one batch chunk tap by tap; ``eager`` reuses the temporaries in place and fills ``out`` if given."""
+    """Filter one batch chunk tap by tap, reusing its own temporaries ``in_place``, into ``out`` if given."""
     ky, kx = kernel_size
     height, width = image.shape[-2], image.shape[-1]
     pad_y, pad_x = (ky - 1) // 2, (kx - 1) // 2
@@ -104,23 +104,23 @@ def _bilateral_blur_taps(
     else:
         guide = guide.contiguous()
         padded_guide = F.pad(guide, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
+    if color_distance_type not in ("l1", "l2"):
+        raise ValueError("color_distance_type only accepts l1 or l2")
 
     def tap_weight(tap: int) -> tuple[torch.Tensor, torch.Tensor]:
         # The unfold path's kernel entry for this tap, computed with the same operations in the same order.
         dy, dx = tap // kx, tap % kx
         diff = padded_guide[..., dy : dy + height, dx : dx + width] - guide
-        if color_distance_type not in ("l1", "l2"):
-            raise ValueError("color_distance_type only accepts l1 or l2")
         if diff.shape[1] == 1:
             # One channel's sum is the value itself, and |d|^2 == d^2: both distances are the squared difference.
-            color_distance_sq = diff.square_() if eager else diff.square()
+            color_distance_sq = diff.square_() if in_place else diff.square()
         elif color_distance_type == "l1":
-            color_distance_sq = (diff.abs_() if eager else diff.abs()).sum(1, keepdim=True)
-            color_distance_sq = color_distance_sq.square_() if eager else color_distance_sq.square()
+            color_distance_sq = (diff.abs_() if in_place else diff.abs()).sum(1, keepdim=True)
+            color_distance_sq = color_distance_sq.square_() if in_place else color_distance_sq.square()
         else:
-            color_distance_sq = (diff.square_() if eager else diff.square()).sum(1, keepdim=True)
+            color_distance_sq = (diff.square_() if in_place else diff.square()).sum(1, keepdim=True)
         space_weight = space_kernel[:, tap : tap + 1]
-        if eager:
+        if in_place:
             weight = color_distance_sq.mul_(color_scale).exp_().mul_(space_weight)
         else:
             weight = space_weight * (color_scale * color_distance_sq).exp()
@@ -131,13 +131,13 @@ def _bilateral_blur_taps(
     normalizer = weight
     for tap in range(1, ky * kx):
         values, weight = tap_weight(tap)
-        if eager:
+        if in_place:
             weighted.addcmul_(values, weight)
             normalizer.add_(weight)
         else:
             weighted = weighted.addcmul(values, weight)
             normalizer = normalizer + weight
-    return weighted.div_(normalizer) if eager else weighted / normalizer
+    return weighted.div_(normalizer) if in_place else weighted / normalizer
 
 
 def _bilateral_blur_cpu(
@@ -166,12 +166,12 @@ def _bilateral_blur_cpu(
     # In place and chunk by chunk only where nothing records the arithmetic: autograd needs the temporaries that the
     # in-place operations overwrite, vmap has no batching rule for addcmul_, and compilers fuse the functional loop over
     # the whole batch without these allocations. Every value is computed the same way in both forms.
-    eager = (
+    in_place = (
         not is_compiling()
         and not torch._C._are_functorch_transforms_active()
         and not _records_gradient(input, guidance, sigma_color, sigma_space)
     )
-    if not eager:
+    if not in_place:
         return _bilateral_blur_taps(
             input, guidance, (ky, kx), color_scale, space_kernel, border_type, color_distance_type, False, None
         )

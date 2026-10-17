@@ -188,7 +188,7 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
     def test_chunks_do_not_change_values(self, monkeypatch, device, dtype):
         # Chunking only changes which samples each operation sees; every value is computed the same way.
         _require_native_cpu(device, dtype)
-        image = torch.rand(6, 3, 64, 64, device=device, dtype=dtype)
+        image = torch.rand(6, 3, 61, 67, device=device, dtype=dtype)
         sigma_color = torch.rand(6, device=device, dtype=dtype) + 0.05
 
         whole = _bilateral_blur_cpu(image, None, 5, sigma_color, (1.5, 1.5), "reflect", "l1")
@@ -196,6 +196,24 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
         chunked = _bilateral_blur_cpu(image, None, 5, sigma_color, (1.5, 1.5), "reflect", "l1")
 
         self.assert_close(chunked, whole, rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("color_distance_type", ["l1", "l2"])
+    def test_functional_form_computes_the_same_values(self, color_distance_type, monkeypatch, device, dtype):
+        # Compiled calls run the functional form of the loop over the whole batch; its operations are the in-place
+        # form's, so the values are identical.
+        _require_native_cpu(device, dtype)
+        image = torch.rand(4, 3, 61, 67, device=device, dtype=dtype)
+        guidance = torch.rand(4, 2, 61, 67, device=device, dtype=dtype)
+        sigma_color = torch.rand(4, device=device, dtype=dtype) + 0.05
+        monkeypatch.setattr(bilateral_module, "_BILATERAL_CPU_CHUNK_BYTES", image[0].nbytes)
+        args = (5, sigma_color, (1.5, 1.5), "reflect", color_distance_type)
+
+        in_place = [_bilateral_blur_cpu(image, guide, *args) for guide in (None, guidance)]
+        monkeypatch.setattr(bilateral_module, "is_compiling", lambda: True)
+        functional = [_bilateral_blur_cpu(image, guide, *args) for guide in (None, guidance)]
+
+        for actual, expected in zip(functional, in_place):
+            self.assert_close(actual, expected, rtol=0.0, atol=0.0)
 
     @pytest.mark.parametrize("joint", [False, True])
     def test_preserves_nonfinite_pattern(self, joint, device, dtype):
@@ -478,6 +496,26 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
         compiled = torch_optimizer(op, fullgraph=True)
         expected = op(image, guidance, sigma_color)
         self.assert_close(compiled(image, guidance, sigma_color), expected, rtol=tolerance, atol=tolerance)
+
+    def test_dynamo_dynamic_batch_on_eligible_inputs(self, device, dtype, torch_optimizer):
+        # The compiled tap loop runs over the whole batch, so one dynamic graph serves every eligible batch.
+        _require_native_cpu(device, dtype)
+        from torch._dynamo.testing import CompileCounter
+
+        def op(x, sigma_color, sigma_space):
+            return bilateral_blur(x, 3, sigma_color, sigma_space, "reflect")
+
+        counter = CompileCounter()
+        compiled = torch_optimizer(op, backend=counter, fullgraph=True, dynamic=True)
+        for batch in (4, 5, 6):
+            image = torch.rand(batch, 3, 129, 131, device=device, dtype=dtype)
+            sigma_color = torch.rand(batch, device=device, dtype=dtype) + 0.5
+            sigma_space = torch.rand(batch, 2, device=device, dtype=dtype) + 0.5
+            assert _bilateral_blur_cpu_eligible(image, None, sigma_color, sigma_space)
+            tolerance = _cpu_tolerance(dtype)
+            expected = op(image, sigma_color, sigma_space)
+            self.assert_close(compiled(image, sigma_color, sigma_space), expected, rtol=tolerance, atol=tolerance)
+        assert counter.frame_count == 1
 
 
 def image_bytes(dtype: torch.dtype) -> int:
