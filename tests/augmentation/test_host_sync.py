@@ -45,6 +45,11 @@ _REPLAY = {
     "RandomCrop": lambda: K.RandomCrop((16, 16), p=1.0),
     "RandomPerspective": lambda: K.RandomPerspective(0.5, p=1.0),
 }
+# Mix augmentations run on an empty batch (Review Focus 4).
+_EMPTY_BATCH_MIX = {
+    "RandomCutMixV2": lambda: K.RandomCutMixV2(p=1.0, use_correct_lambda=True),
+    "RandomMixUpV2": lambda: K.RandomMixUpV2(p=1.0),
+}
 # Host reads that only happen because the caller moved the parameters to CUDA: the crop window and the padding set
 # the sizes of Python slices.
 _REPLAY_DEVICE_READS = {
@@ -101,3 +106,17 @@ class TestAugmentationHostSync(BaseTester):
         # Cropping reads the crop window on the host to slice; that is inherent when the caller moved it to CUDA.
         allowed = INHERENT_SITES.keys() | (_REPLAY_DEVICE_READS.get(name, set()) if placement == "cuda" else set())
         assert not set(sites) - allowed, dict(sites)
+
+    @pytest.mark.parametrize("name", ["RandomCutMixV2", "RandomMixUpV2"])
+    def test_empty_batch_mix(self, name, device, dtype) -> None:
+        if device.type != "cuda":
+            pytest.skip("CUDA host synchronizations need a CUDA device")
+        op = _EMPTY_BATCH_MIX[name]()
+        x = torch.rand(0, 3, 32, 32, device=device, dtype=dtype)
+        op(x)
+        torch.cuda.synchronize()
+        outputs = []
+        sites = sync_sites(lambda: outputs.append(op(x)))
+        assert outputs[0].shape == x.shape
+        assert outputs[0].device == x.device
+        assert not set(sites) - INHERENT_SITES.keys(), dict(sites)

@@ -23,6 +23,7 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.constants import DataKey, DType
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.bbox import bbox_to_mask, infer_bbox_shape
 
 
@@ -190,7 +191,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
 
         out_inputs = input.clone()
         for pair, crop in zip(params["mix_pairs"], params["crop_src"]):
-            input_permute = input.index_select(dim=0, index=pair.to(input.device))
+            input_permute = input.index_select(dim=0, index=_to_device_nonblocking(pair, input.device))
             # compute mask to match input shape
             mask = bbox_to_mask(crop, width, height).bool().unsqueeze(dim=1).repeat(1, input.size(1), 1, 1)
             out_inputs[mask] = input_permute[mask]
