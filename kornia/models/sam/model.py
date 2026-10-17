@@ -287,7 +287,8 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
             onnx_name: Path for the saved ``.onnx`` file.  Defaults to
                 ``"Kornia-Sam-ImageEncoder.onnx"``.
             pseudo_shape: Concrete input shape used to trace the encoder, e.g.
-                ``[1, 3, 1024, 1024]``.  Defaults to ``[1, 3, 1024, 1024]``.
+                ``[1, 3, 1024, 1024]``.  Defaults to ``[1, 3, 1024, 1024]``. The batch is
+                exported as dynamic, so a batch below 2 is traced at 2.
             save: Whether to write the model to disk.  Default ``True``.
             **kwargs: Additional keyword arguments forwarded to
                 :func:`torch.onnx.export`.

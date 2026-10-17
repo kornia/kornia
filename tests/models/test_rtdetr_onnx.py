@@ -22,6 +22,7 @@ import torch
 from torch import nn
 
 from kornia.contrib.object_detection import ObjectDetector
+from kornia.core._compat import torch_version_ge, torch_version_lt
 from kornia.models.processors import ResizePreProcessor
 from kornia.models.rt_detr.model import RTDETR, RTDETRConfig
 from kornia.models.rt_detr.post_processor import DETRPostProcessor
@@ -112,7 +113,7 @@ class _FixedDetections(nn.Module):
 
 @pytest.mark.timeout(120)
 def test_resize_preprocessor_onnx_dynamic_sizes():
-    """With a dynamic H and W, the exported detector reads each input's size instead of the trace's."""
+    """With a dynamic batch, H and W, the exported detector reads each input's size instead of the trace's."""
     pytest.importorskip("onnx")
     ort = pytest.importorskip("onnxruntime")
     pytest.importorskip("onnxscript")
@@ -122,21 +123,76 @@ def test_resize_preprocessor_onnx_dynamic_sizes():
     session = ort.InferenceSession(exported.SerializeToString(), providers=["CPUExecutionProvider"])
 
     generator = torch.Generator().manual_seed(0)
-    for height, width in [(77, 128), (96, 100)]:
-        images = torch.rand(1, 3, height, width, generator=generator)
+    # A batch of 2 came out as one image's detections when the pre-processor looped over the batch.
+    for batch, height, width in [(1, 77, 128), (1, 96, 100), (2, 77, 128)]:
+        images = torch.rand(batch, 3, height, width, generator=generator)
         (detections,) = session.run(None, {"input": images.numpy()})
         detections = torch.from_numpy(detections)
 
         assert_close(detections, detector(images))
         # xywh of the normalised box (0.5, 0.5, 0.25, 0.25) in this image's pixels
-        expected = torch.tensor([[[0.375 * width, 0.375 * height, 0.25 * width, 0.25 * height]]])
+        expected = torch.tensor([[[0.375 * width, 0.375 * height, 0.25 * width, 0.25 * height]]]).expand(batch, -1, -1)
         assert_close(detections[..., 2:], expected)
+
+
+class _ScoredDetections(nn.Module):
+    """One query per image, scored by the image's mean so that the export keeps its input; a fixed box."""
+
+    def forward(self, images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        score = images.mean((1, 2, 3))
+        boxes = images.new_tensor([0.5, 0.5, 0.25, 0.25]).expand(images.shape[0], 1, 4)
+        return torch.stack([score, -score], -1)[:, None], boxes
+
+
+@pytest.mark.timeout(120)
+@pytest.mark.xfail(
+    torch_version_ge(2, 14) and torch_version_lt(2, 15, 0),
+    reason=(
+        "torch 2.14's dynamo ONNX exporter cannot translate aten.mul.Scalar for this graph in the CPU build: "
+        "DispatchError 'No decompositions registered for the real-valued input', as in "
+        "test_sam_onnx.py::test_sam_encoder_to_onnx"
+    ),
+    raises=torch.onnx.OnnxExporterError,
+    # Strict on the CPU builds, as in test_sam_onnx.py, where an upstream fix inside 2.14.x must show as an XPASS.
+    strict=torch.version.cuda is None,
+)
+def test_detector_with_per_image_detections_exports_one_image():
+    """A post-processor returning a list per image is exported for a batch of one, not for any batch's first image."""
+    pytest.importorskip("onnx")
+    ort = pytest.importorskip("onnxruntime")
+    pytest.importorskip("onnxscript")
+
+    post_processor = DETRPostProcessor(confidence_threshold=0.5, num_classes=2, num_top_queries=1)
+    detector = ObjectDetector(_ScoredDetections(), ResizePreProcessor(32, 32), post_processor)
+    images = torch.rand(1, 3, 32, 32, generator=torch.Generator().manual_seed(0))
+    assert isinstance(detector(images), list)
+
+    exported = detector.to_onnx(image_size=32, save=False)
+    assert exported.graph.input[0].type.tensor_type.shape.dim[0].dim_value == 1
+
+    session = ort.InferenceSession(exported.SerializeToString(), providers=["CPUExecutionProvider"])
+    (detections,) = session.run(None, {"input": images.numpy()})
+    assert_close(torch.from_numpy(detections), detector(images)[0])
 
 
 @pytest.mark.timeout(120)
 @pytest.mark.parametrize(
     "dynamo",
-    [False, pytest.param(True, marks=pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON))],
+    [
+        False,
+        pytest.param(
+            True,
+            marks=[
+                pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON),
+                # torch 2.5.1 and 2.6.0 fail on the stem's batch norm (2.5.1 on a bare ``BatchNorm2d`` too) with
+                # ``_native_batch_norm_legit_no_training``; 2.9.1 passes, and 2.9 makes dynamo the default exporter.
+                pytest.mark.skipif(
+                    torch_version_lt(2, 9, 0),
+                    reason="the dynamo ONNX exporter before torch 2.9 cannot translate BatchNorm",
+                ),
+            ],
+        ),
+    ],
 )
 def test_resnet_d_onnx_odd_sizes(tmp_path, dynamo):
     """At an odd feature map the exported ResNet-D matches eager in old and new ONNX Runtime alike.
