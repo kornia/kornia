@@ -101,8 +101,10 @@ def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.Tensor:
         - ``xp`` and ``fp`` are 1-D; ``x`` can have any shape, which the output keeps. ``xp`` must be increasing, which
           is not checked. The output dtype is the promoted dtype of ``x``, ``xp`` and ``fp``, or the default float
           dtype when all three are integer.
-        - The weight of integer coordinates and the sum of a segment whose ``fp`` difference overflows are computed in
-          at least ``float32`` and cast to the output dtype, so ``float16`` values are correctly rounded.
+        - ``float16`` and ``bfloat16`` values are interpolated in ``float32`` and cast to the output dtype once, so
+          coordinate differences above 65504 do not overflow the weight and a segment whose ``fp`` difference overflows
+          the output dtype stays finite. Such a segment is within about half an ulp of its larger end value, and its
+          knots are exact.
 
     Args:
         x: the :math:`x`-coordinates at which to evaluate the interpolated
@@ -129,21 +131,21 @@ def _interp_real(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.T
         # All-integer inputs interpolate in the default float dtype (read from a factory: TorchScript has no
         # torch.get_default_dtype).
         dtype = torch.empty(0, device=fp.device).dtype
+    # Half-precision values (float16, bfloat16) are interpolated in float32 and cast to the output dtype once: their
+    # coordinate differences and weights overflow or lose bits in half precision (65504 in float16). float32 and
+    # float64 values are interpolated in their own dtype.
     # Integer coordinates are searched, compared and subtracted in int64 (as float32 they round past 2**24, and uint8
     # differences wrap); only the two differences that form each weight are converted. Floating coordinates are
-    # converted to the value dtype, which never narrows them.
-    coord_dtype = dtype if float_coords else torch.int64
-    x, xp, fp = x.to(coord_dtype), xp.to(coord_dtype), fp.to(dtype)
+    # converted to the working dtype, which never narrows them.
+    cdtype = torch.promote_types(dtype, torch.float32)
+    coord_dtype = cdtype if float_coords else torch.int64
+    x, xp, fp = x.to(coord_dtype), xp.to(coord_dtype), fp.to(cdtype)
     i = torch.clip(torch.searchsorted(xp, x, right=True), 1, len(xp) - 1)
     x0, x1, f0, f1 = xp[i - 1], xp[i], fp[i - 1], fp[i]
     dx = x1 - x0
     zero_width = dx == 0
-    # The weight is formed in at least float32 for integer coordinates, whose differences can exceed the range of
-    # a half dtype; the overflow branch below always is.
-    od = torch.promote_types(dtype, torch.float32)
-    wdtype = dtype if float_coords else od
-    dx = torch.where(zero_width, torch.ones_like(dx), dx).to(wdtype)
-    w = ((x - x0).to(wdtype) / dx).to(dtype)
+    dx = torch.where(zero_width, torch.ones_like(dx), dx).to(cdtype)
+    w = (x - x0).to(cdtype) / dx
     d = f1 - f0
     # f1 - f0 can overflow while both ends are finite. The value is then the weighted sum of the two ends, with each
     # weight divided by dx on its own, so that d/dx is the slope wherever the slope is representable. The other
@@ -169,14 +171,9 @@ def _interp_real(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.T
         torch.where(x == x1, torch.where(torch.isnan(b), f1, b), out),
     )
     # The weighted sum is exact at the knots too: its weights are 1 and 0 there.
-    if float_coords:
-        r0, r1 = x1.to(od) - x.to(od), x.to(od) - x0.to(od)
-    else:
-        r0, r1 = (x1 - x).to(od), (x - x0).to(od)
-    dxo = dx.to(od)
-    out = torch.where(overflow, (f0.to(od) * (r0 / dxo) + f1.to(od) * (r1 / dxo)).to(dtype), out)
+    out = torch.where(overflow, f0 * ((x1 - x).to(cdtype) / dx) + f1 * w, out)
     # A zero-width (repeated) segment is reached only at a clipped end: below a repeated first knot the value is
     # fp[0], at or above a repeated last knot fp[-1].
     out = torch.where(zero_width, torch.where(x < x0, f0, f1), out)
     # A NaN query is NaN, also on a flat or zero-width segment (np.interp).
-    return torch.where(torch.isnan(x), torch.full_like(out, float("nan")), out)
+    return torch.where(torch.isnan(x), torch.full_like(out, float("nan")), out).to(dtype)
