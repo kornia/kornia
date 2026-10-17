@@ -179,7 +179,7 @@ def _zero_unfilled(lafs: torch.Tensor, filled: torch.Tensor) -> torch.Tensor:
     The response cannot serve: :class:`ScaleSpaceDetector`'s response function is pluggable and
     may be signed, so an exact zero there is a legitimate maximum.
     """
-    return torch.where(filled.view(filled.shape[0], -1, 1, 1), lafs, torch.zeros_like(lafs))
+    return torch.where(filled[..., None, None], lafs, torch.zeros_like(lafs))
 
 
 _BUILTIN_SUBPIX = (ConvQuadInterp3d, AdaptiveQuadInterp3d, IterativeQuadInterp3d)
@@ -235,6 +235,8 @@ class ScaleSpaceDetector(nn.Module):
         - The LAFs are float32 for a float16 or bfloat16 image and float64 for a float64 one; the responses keep the
           response function's dtype. Non-maximum suppression and sub-pixel refinement run on the response promoted to
           at least float32.
+        - A batch of zero images returns empty outputs of the documented shapes, after the checks a non-empty batch
+          runs.
         - Known defects: an octave passes only its ``num_features`` strongest candidates to the border test and to the
           mask check of their refined centres, so the slot of a candidate rejected there stays empty even when a
           weaker valid candidate exists (`#5741 <https://github.com/kornia/kornia/issues/5741>`_).
@@ -382,7 +384,7 @@ class ScaleSpaceDetector(nn.Module):
             coord_min, response_min = self.subpix(-response)
         return coord_max, response_max, coord_min, response_min
 
-    def _process_octave(
+    def _process_octave(  # noqa: PLR0912
         self,
         octave: torch.Tensor,
         sigmas_oct: torch.Tensor,
@@ -445,6 +447,16 @@ class ScaleSpaceDetector(nn.Module):
         oct_resp = oct_resp[:, :, :n_resp_levels].contiguous()
         # The mask weights are cast to the response's own dtype (see `_resize_mask`), before the promotion below.
         resampled = None if mask is None else _create_octave_mask(mask, oct_resp)
+        if B == 0:
+            # An empty batch has no candidates. It leaves here, after the shape checks above, with the dtypes a
+            # non-empty batch ends with; `_detect` pads the empty octaves up to `num_feats` slots.
+            promoted = torch.promote_types(oct_resp.dtype, torch.float32)
+            return (
+                oct_resp.new_zeros(0, 0, dtype=promoted),
+                rotmat.new_zeros(0, 0, 2, 3),
+                torch.zeros(0, 0, dtype=torch.bool, device=dev),
+                oct_resp.dtype,
+            )
         # The refiners write absolute pixel coordinates into a tensor of the response's dtype, and bfloat16 holds no
         # odd integer above 256 (float16: above 2048). Run NMS, refinement and top-K on the response in at least
         # float32; promoting is exact, so NMS selects the same candidates. `_detect` casts the responses back.
@@ -706,7 +718,7 @@ class ScaleSpaceDetector(nn.Module):
             2, 3)`. A slot that no detection filled -- there were fewer candidates than requested, or the border or
             mask test rejected a candidate -- carries a zero response and a zero LAF, and sorts after every real
             detection. The converse does not hold: a signed response function can peak at exactly zero, and that
-            slot keeps its frame.
+            slot keeps its frame. A batch of zero images returns empty outputs of these shapes.
         """
         responses, lafs, _ = self._detect(img, num_feats, mask)
         return responses, lafs

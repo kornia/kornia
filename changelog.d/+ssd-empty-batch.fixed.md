@@ -1,0 +1,1 @@
+`ScaleSpaceDetector` and its `detect` return empty responses `(0, N)` and LAFs `(0, N, 2, 3)` for an empty batch, with the dtypes a one-image call returns; they raised an unrelated reshape `RuntimeError`. The same checks as for a non-empty batch run first.

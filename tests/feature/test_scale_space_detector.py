@@ -203,6 +203,54 @@ class TestScaleSpaceDetector(BaseTester):
         assert lafs.shape == torch.Size([7, n_feats, 2, 3])
         assert resps.shape == torch.Size([7, n_feats])
 
+    @pytest.mark.parametrize("with_mask", [False, True])
+    def test_empty_batch(self, device, dtype, with_mask):
+        # A batch of zero images returns empty outputs of the documented shapes, with the dtypes a one-image
+        # call returns in the same input dtype (LAFs float32 for a half image, responses in the image dtype).
+        det = ScaleSpaceDetector(50).to(device, dtype)
+        ones = torch.ones(1, 1, 64, 80, device=device, dtype=dtype)
+        one_lafs, one_resps = det(torch.zeros(1, 1, 64, 80, device=device, dtype=dtype), ones if with_mask else None)
+        empty = torch.zeros(0, 1, 64, 80, device=device, dtype=dtype)
+        mask = torch.ones(0, 1, 64, 80, device=device, dtype=dtype) if with_mask else None
+        lafs, resps = det(empty, mask)
+        assert lafs.shape == torch.Size([0, 50, 2, 3])
+        assert resps.shape == torch.Size([0, 50])
+        assert lafs.dtype == one_lafs.dtype
+        assert lafs.device == one_lafs.device
+        assert resps.dtype == one_resps.dtype
+        assert resps.device == one_resps.device
+        # `detect` with an explicit `num_feats` returns the requested count; a mask of one broadcasts.
+        one_resps, one_lafs = det.detect(torch.zeros(1, 1, 64, 80, device=device, dtype=dtype), 7)
+        resps, lafs = det.detect(empty, 7, ones if with_mask else None)
+        assert resps.shape == torch.Size([0, 7])
+        assert lafs.shape == torch.Size([0, 7, 2, 3])
+        assert lafs.dtype == one_lafs.dtype
+        assert resps.dtype == one_resps.dtype
+
+    @pytest.mark.parametrize(
+        "img_tail, mask_shape",
+        [
+            ((3, 64, 80), None),
+            ((64, 80), None),
+            ((1, 64, 80), (1, 64, 80)),
+            ((1, 64, 80), (1, 3, 64, 80)),
+            ((1, 64, 80), (1, 1, 32, 80)),
+            ((1, 64, 80), (2, 1, 64, 80)),
+        ],
+        ids=["3-channels", "3-d-image", "mask-rank-3", "mask-3-channels", "mask-size", "mask-batch"],
+    )
+    def test_empty_batch_is_validated_like_a_non_empty_one(self, device, dtype, img_tail, mask_shape):
+        det = ScaleSpaceDetector(5).to(device, dtype)
+        mask = None if mask_shape is None else torch.ones(mask_shape, device=device, dtype=dtype)
+
+        def exception_class(batch: int):
+            img = torch.zeros(batch, *img_tail, device=device, dtype=dtype)
+            with pytest.raises(Exception) as info:
+                det(img, mask)
+            return type(info.value)
+
+        assert exception_class(0) is exception_class(1)
+
     def test_toy(self, device, dtype):
         inp = torch.zeros(1, 1, 33, 33, device=device, dtype=dtype)
         inp[:, :, 13:-13, 13:-13] = 1.0
