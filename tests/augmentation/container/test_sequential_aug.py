@@ -142,6 +142,29 @@ class TestConventionImageSequential(BaseTester):
         with pytest.raises(ValueError, match="Invalid output_type"):
             aug(torch.zeros(1, 3, 4, 4, device=device, dtype=dtype), output_type="jpg")
 
+    @pytest.mark.parametrize("random_apply", [0, (0,), (0, 0), (0, 1), (0, 2)])
+    @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
+    def test_random_apply_range_with_zero_never_crashes_6055(self, random_apply, container, device, dtype):
+        # A drawn count of 0 used to reach torch.multinomial and raise "cannot sample n_sample <= 0 samples", so a
+        # range that includes 0 crashed whenever the draw was 0. It now applies no transformation.
+        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        seq = container(K.RandomHorizontalFlip(p=1.0), K.RandomVerticalFlip(p=1.0), random_apply=random_apply)
+        counts = set()
+        for seed in range(30):
+            torch.manual_seed(seed)
+            out = seq(x)
+            counts.add(len(seq._params))
+            if len(seq._params) == 0:
+                self.assert_close(out, x, rtol=0.0, atol=0.0)
+        assert 0 in counts
+
+    @pytest.mark.parametrize("random_apply", [-1, (-1,), (-1, 1), (2, 1)])
+    @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
+    def test_random_apply_rejects_negative_or_inverted_ranges_6055(self, random_apply, container):
+        # These used to fail only at call time, with torch.multinomial's or torch.randint's own error.
+        with pytest.raises(ValueError, match="random_apply must select a non-negative number of transformations"):
+            container(K.RandomHorizontalFlip(p=1.0), K.RandomVerticalFlip(p=1.0), random_apply=random_apply)
+
     def test_convention_slice_crop_inverse_restores_the_canvas(self, device, dtype):
         seq = K.ImageSequential(K.CenterCrop((4, 6), p=1.0))
         out = seq(torch.rand(1, 3, 6, 8, device=device, dtype=dtype))
@@ -226,29 +249,6 @@ class TestConventionImageSequential(BaseTester):
         out = seq(x)
         assert [p.name for p in seq._params] == ["RandomHorizontalFlip_0"]
         self.assert_close(seq.inverse(out), out.flip(-1))
-
-    @pytest.mark.parametrize("random_apply", [0, (0,), (0, 0), (0, 1), (0, 2)])
-    @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
-    def test_random_apply_range_with_zero_never_crashes_6055(self, random_apply, container, device, dtype):
-        # A drawn count of 0 used to reach torch.multinomial and raise "cannot sample n_sample <= 0 samples", so a
-        # range that includes 0 crashed whenever the draw was 0. It now applies no transformation.
-        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
-        seq = container(K.RandomHorizontalFlip(p=1.0), K.RandomVerticalFlip(p=1.0), random_apply=random_apply)
-        counts = set()
-        for seed in range(30):
-            torch.manual_seed(seed)
-            out = seq(x)
-            counts.add(len(seq._params))
-            if len(seq._params) == 0:
-                self.assert_close(out, x, rtol=0.0, atol=0.0)
-        assert 0 in counts
-
-    @pytest.mark.parametrize("random_apply", [-1, (-1,), (-1, 1), (2, 1)])
-    @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
-    def test_random_apply_rejects_negative_or_inverted_ranges_6055(self, random_apply, container):
-        # These used to fail only at call time, with torch.multinomial's or torch.randint's own error.
-        with pytest.raises(ValueError, match="random_apply must select a non-negative number of transformations"):
-            container(K.RandomHorizontalFlip(p=1.0), K.RandomVerticalFlip(p=1.0), random_apply=random_apply)
 
     def test_convention_augmentation_sequential_leaves_plain_modules_applied_4423(self, device, dtype):
         # #4423: `AugmentationSequential` does not take `if_unsupported_ops`; it leaves a plain module child applied,
