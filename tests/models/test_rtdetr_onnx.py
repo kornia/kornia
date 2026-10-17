@@ -175,6 +175,65 @@ def test_detector_with_per_image_detections_exports_one_image():
     assert_close(torch.from_numpy(detections), detector(images)[0])
 
 
+class _PerImageDetections(nn.Module):
+    """A caller's own post-processor, not a ``DETRPostProcessor``: one ``(Q, 6)`` tensor per image."""
+
+    def forward(self, logits: torch.Tensor, boxes: torch.Tensor, sizes: torch.Tensor) -> list[torch.Tensor]:
+        scores, labels = logits.max(-1, keepdim=True)
+        detections = torch.cat([labels.to(boxes), scores, boxes], -1)
+        return [detections[i] for i in range(detections.shape[0])]
+
+
+@pytest.mark.timeout(120)
+def test_detector_with_a_custom_per_image_post_processor_exports_one_image():
+    """The output decides, not the post-processor's class: any per-image list is exported for a batch of one."""
+    pytest.importorskip("onnx")
+    ort = pytest.importorskip("onnxruntime")
+    pytest.importorskip("onnxscript")
+
+    detector = ObjectDetector(_ScoredDetections(), ResizePreProcessor(32, 32), _PerImageDetections())
+    images = torch.rand(1, 3, 32, 32, generator=torch.Generator().manual_seed(0))
+
+    exported = detector.to_onnx(image_size=32, save=False)
+    assert exported.graph.input[0].type.tensor_type.shape.dim[0].dim_value == 1
+
+    session = ort.InferenceSession(exported.SerializeToString(), providers=["CPUExecutionProvider"])
+    (detections,) = session.run(None, {"input": images.numpy()})
+    assert_close(torch.from_numpy(detections), detector(images)[0])
+
+
+class _NormalisedDetections(_ScoredDetections):
+    """``_ScoredDetections`` behind a batch norm, whose statistics a forward pass in training mode would update."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.norm = nn.BatchNorm2d(3)
+
+    def forward(self, images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        return super().forward(self.norm(images))
+
+
+@pytest.mark.timeout(120)
+def test_detector_output_probe_runs_in_eval_mode_on_the_models_dtype():
+    """The forward pass that reads the output kind keeps statistics and each training flag, in the model's dtype."""
+    pytest.importorskip("onnx")
+    pytest.importorskip("onnxscript")
+
+    model = _NormalisedDetections()
+    detector = ObjectDetector(model, ResizePreProcessor(32, 32), _PerImageDetections()).double().train()
+    detector.pre_processor.eval()  # a mixed state, which ``train()`` would not restore
+    running_mean = model.norm.running_mean.clone()
+
+    exported = detector.to_onnx(image_size=32, save=False)
+
+    assert exported.graph.input[0].type.tensor_type.shape.dim[0].dim_value == 1
+    assert torch.equal(model.norm.running_mean, running_mean)
+    assert model.norm.num_batches_tracked.item() == 0
+    assert detector.training
+    assert model.norm.training
+    assert not detector.pre_processor.training
+
+
 @pytest.mark.timeout(120)
 @pytest.mark.parametrize(
     "dynamo",

@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import io
 import itertools
 import os
@@ -24,6 +25,7 @@ import tempfile
 from typing import (
     Any,
     ClassVar,
+    Iterator,
     Optional,
     Union,
 )
@@ -59,6 +61,22 @@ def _to_floating(value: Any, reference: torch.Tensor) -> Any:
     if isinstance(value, tuple):
         return tuple(_to_floating(item, reference) for item in value)
     return value
+
+
+@contextlib.contextmanager
+def _eval_mode(module: Any) -> Iterator[None]:
+    """Put ``module`` in eval mode for the block, then restore the training flag of each of its submodules."""
+    modes = [(m, m.training) for m in module.modules()] if isinstance(module, nn.Module) else []
+    try:
+        if isinstance(module, nn.Module):
+            module.eval()
+        yield
+    finally:
+        # The flag is set directly on purpose: ``train()`` recurses into the children, which would lose a mixed
+        # state. It also skips ``train()`` overrides: check any new ``train()`` override with side effects against
+        # this restore.
+        for submodule, training in modes:
+            submodule.training = training
 
 
 class ONNXExportMixin:
@@ -221,26 +239,16 @@ class ONNXExportMixin:
 
         # The dynamo exporter captures the model in whatever mode it is in, so a model left in training mode would
         # export active Dropout. Each submodule's own flag is restored, since ``train(True)`` would reset them all.
-        modes = [(m, m.training) for m in module.modules()] if isinstance(module, nn.Module) else []
-        try:
-            if isinstance(module, nn.Module):
-                module.eval()
-            # A file path rather than a buffer: exporting to ``io.BytesIO`` is deprecated from torch 2.9.
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                tmp_path = os.path.join(tmp_dir, "model.onnx")
-                torch.onnx.export(
-                    module,
-                    dummy_input,
-                    tmp_path,
-                    **default_args,
-                )
-                onnx_model = onnx.load(tmp_path)
-        finally:
-            # The flag is set directly on purpose: ``train()`` recurses into the children, which would lose a mixed
-            # state. It also skips ``train()`` overrides: check any new ``train()`` override with side effects against
-            # this restore.
-            for submodule, training in modes:
-                submodule.training = training
+        # A file path rather than a buffer: exporting to ``io.BytesIO`` is deprecated from torch 2.9.
+        with _eval_mode(module), tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = os.path.join(tmp_dir, "model.onnx")
+            torch.onnx.export(
+                module,
+                dummy_input,
+                tmp_path,
+                **default_args,
+            )
+            onnx_model = onnx.load(tmp_path)
 
         # Later entries overwrite earlier ones, so the caller's metadata wins over the class's.
         metadata = [*self.ADDITIONAL_METADATA, *(additional_metadata or [])]
