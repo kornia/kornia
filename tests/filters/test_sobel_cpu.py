@@ -206,3 +206,72 @@ class TestSpatialGradientSobelCpu(BaseTester):
         assert torch.equal(actual.isnan(), expected.isnan())
         tolerance = _cpu_tolerance(dtype)
         self.assert_close(actual.nan_to_num(), expected.nan_to_num(), rtol=tolerance, atol=tolerance)
+
+    def test_public_vmap_has_no_user_warning(self, device, dtype):
+        # sobel's in-place magnitude must have vmap batching rules on the slice path, as the convolution path has.
+        _require_native_cpu(device, dtype)
+        images = torch.rand(2, 1, 3, 256, 256, device=device, dtype=dtype)
+        tolerance = _cpu_tolerance(dtype)
+        for op in (spatial_gradient, sobel):
+            with warnings.catch_warnings(record=True) as recorded:
+                warnings.simplefilter("always")
+                actual = torch.vmap(op)(images)
+            assert not any(issubclass(warning.category, UserWarning) for warning in recorded), op
+            self.assert_close(actual, torch.stack([op(image) for image in images]), rtol=tolerance, atol=tolerance)
+
+    def test_large_finite_values_stay_finite_when_normalized(self, device, dtype):
+        # The normalized kernel's absolute weights sum to one, so the convolution cannot overflow on finite input; the
+        # slices must not either (an eighth of the dtype's maximum used to overflow when the scale came last).
+        _require_native_cpu(device, dtype)
+        huge = torch.finfo(dtype).max
+        image = torch.zeros(1, 3, 256, 256, device=device, dtype=dtype)
+        image[..., 100:, :] = huge
+        image[..., :, 200:] = -huge
+
+        actual = spatial_gradient(image)
+        expected = _conv_reference(image, True)
+
+        assert torch.isfinite(expected).all()
+        assert torch.isfinite(actual).all()
+        self.assert_close(actual / huge, expected / huge, rtol=1e-6, atol=1e-6)
+
+    def test_channels_last_output_is_contiguous(self, device, dtype):
+        # The convolution path returned contiguous outputs for any input layout; callers may .view() them.
+        _require_native_cpu(device, dtype)
+        image = torch.rand(2, 3, 256, 256, device=device, dtype=dtype).contiguous(memory_format=torch.channels_last)
+        assert _spatial_gradient_cpu_eligible(image)
+
+        edges = spatial_gradient(image)
+        magnitude = sobel(image)
+
+        assert edges.is_contiguous()
+        assert magnitude.is_contiguous()
+        assert edges.view(2, 6, 256, 256).shape == (2, 6, 256, 256)
+
+    @pytest.mark.parametrize("mode", ["no_grad", "inference_mode"])
+    def test_requires_grad_input_without_recorded_gradients_takes_the_slices(self, monkeypatch, mode, device, dtype):
+        _require_native_cpu(device, dtype)
+        calls = []
+
+        def counting(image, normalized):
+            calls.append(image.shape)
+            return _spatial_gradient_sobel_cpu(image, normalized)
+
+        monkeypatch.setattr(sobel_module, "_spatial_gradient_sobel_cpu", counting)
+        image = torch.rand(2, 3, 256, 256, device=device, dtype=dtype, requires_grad=True)
+        context = torch.no_grad() if mode == "no_grad" else torch.inference_mode()
+        with context:
+            actual = spatial_gradient(image)
+
+        assert len(calls) == 1
+        tolerance = _cpu_tolerance(dtype)
+        self.assert_close(actual, _conv_reference(image.detach(), True), rtol=tolerance, atol=tolerance)
+
+    def test_dynamo_on_an_eligible_input(self, device, dtype, torch_optimizer):
+        _require_native_cpu(device, dtype)
+        image = torch.rand(2, 3, 256, 256, device=device, dtype=dtype)
+        assert _spatial_gradient_cpu_eligible(image)
+
+        tolerance = _cpu_tolerance(dtype)
+        for op in (spatial_gradient, sobel):
+            self.assert_close(torch_optimizer(op)(image), op(image), rtol=tolerance, atol=tolerance)
