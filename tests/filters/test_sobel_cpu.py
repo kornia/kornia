@@ -55,6 +55,31 @@ def _conv_reference(image: torch.Tensor, normalized: bool) -> torch.Tensor:
     return F.conv2d(padded, kernel[:, None]).reshape(b, c, 2, h, w)
 
 
+def _direct_reference(image: torch.Tensor, normalized: bool) -> torch.Tensor:
+    """The first-order Sobel derivative summed tap by tap, the oracle for non-finite and near-overflow inputs.
+
+    Every tap, the zero ones included, multiplies its shifted pixel, so ``0 * inf`` and ``0 * nan`` are NaN where a
+    direct convolution makes them NaN. ``F.conv2d`` is not that oracle on every CPU: on macOS arm64, PyTorch evaluates
+    this single-channel float32 3 x 3 convolution with a Winograd transform (``Winograd3x3Depthwise``), which turns
+    infinities into NaN at other pixels and overflows on finite inputs near the float32 maximum.
+    """
+    scale = 0.125 if normalized else 1.0
+    kernels = (
+        ((-1.0, 0.0, 1.0), (-2.0, 0.0, 2.0), (-1.0, 0.0, 1.0)),
+        ((-1.0, -2.0, -1.0), (0.0, 0.0, 0.0), (1.0, 2.0, 1.0)),
+    )
+    h, w = image.shape[-2:]
+    padded = F.pad(image, [1, 1, 1, 1], "replicate")
+    derivatives = []
+    for kernel in kernels:
+        total = torch.zeros_like(image)
+        for i, row in enumerate(kernel):
+            for j, weight in enumerate(row):
+                total = total + (scale * weight) * padded[..., i : i + h, j : j + w]
+        derivatives.append(total)
+    return torch.stack(derivatives, dim=2)
+
+
 def _forbid_helper(monkeypatch: pytest.MonkeyPatch) -> None:
     def fail(*args, **kwargs):
         raise AssertionError("the slice path must not run here")
@@ -78,8 +103,8 @@ class TestSpatialGradientSobelCpu(BaseTester):
 
     @pytest.mark.parametrize("normalized", [True, False])
     def test_helper_preserves_nonfinite_pattern(self, normalized, device, dtype):
-        # The zero-weight centre taps of the convolution still multiply their pixels, so 0 * inf and 0 * nan make
-        # NaN there; the slices must keep exactly the convolution's NaN and inf positions.
+        # The zero-weight centre taps of a direct convolution still multiply their pixels, so 0 * inf and 0 * nan make
+        # NaN there; the slices must keep exactly its NaN and inf positions.
         _require_native_cpu(device, dtype)
         generator = torch.Generator().manual_seed(0)
         image = torch.rand(1, 2, 256, 256, generator=generator, dtype=dtype)
@@ -91,7 +116,7 @@ class TestSpatialGradientSobelCpu(BaseTester):
         image = image.to(device)
 
         actual = _spatial_gradient_sobel_cpu(image, normalized)
-        expected = _conv_reference(image, normalized)
+        expected = _direct_reference(image, normalized)
 
         assert torch.equal(actual.isnan(), expected.isnan())
         assert torch.equal(actual.isinf(), expected.isinf())
@@ -140,6 +165,26 @@ class TestSpatialGradientSobelCpu(BaseTester):
 
         assert not _spatial_gradient_cpu_eligible(image)
         self.assert_close(spatial_gradient(image), _conv_reference(image, True))
+
+    def test_other_devices_dtypes_autocast_and_tracing_use_convolution(self, monkeypatch, device, dtype):
+        _require_native_cpu(device, dtype)
+        image = torch.rand(2, 3, 256, 256, device=device, dtype=dtype)
+        assert _spatial_gradient_cpu_eligible(image)
+        # The meta device stands in for CUDA and MPS, which keep the convolution.
+        assert not _spatial_gradient_cpu_eligible(torch.empty(2, 3, 256, 256, device="meta", dtype=dtype))
+        assert not _spatial_gradient_cpu_eligible(image.half())
+        assert not _spatial_gradient_cpu_eligible(image.bfloat16())
+        # Each size threshold on its own: enough values but too few pixels, and enough pixels but too few values.
+        assert not _spatial_gradient_cpu_eligible(torch.empty(1, 4, 127, 128, device=device, dtype=dtype))
+        assert not _spatial_gradient_cpu_eligible(torch.empty(1, 2, 128, 128, device=device, dtype=dtype))
+
+        _forbid_helper(monkeypatch)
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            spatial_gradient(image)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            traced = torch.jit.trace(spatial_gradient, image, check_trace=False)
+        assert "aten::_convolution" in str(traced.inlined_graph)
 
     def test_noncontiguous_and_channels_last_match_contiguous(self, device, dtype):
         _require_native_cpu(device, dtype)
@@ -200,7 +245,7 @@ class TestSpatialGradientSobelCpu(BaseTester):
         assert _spatial_gradient_cpu_eligible(image)
 
         actual = sobel(image, normalized=normalized)
-        edges = _conv_reference(image, normalized)
+        edges = _direct_reference(image, normalized)
         expected = torch.sqrt(edges[:, :, 0] * edges[:, :, 0] + edges[:, :, 1] * edges[:, :, 1] + 1e-6)
 
         assert torch.equal(actual.isnan(), expected.isnan())
@@ -220,8 +265,8 @@ class TestSpatialGradientSobelCpu(BaseTester):
             self.assert_close(actual, torch.stack([op(image) for image in images]), rtol=tolerance, atol=tolerance)
 
     def test_large_finite_values_stay_finite_when_normalized(self, device, dtype):
-        # The normalized kernel's absolute weights sum to one, so the convolution cannot overflow on finite input; the
-        # slices must not either (an eighth of the dtype's maximum used to overflow when the scale came last).
+        # The normalized kernel's absolute weights sum to one, so a direct convolution cannot overflow on finite input;
+        # the slices must not either (an eighth of the dtype's maximum used to overflow when the scale came last).
         _require_native_cpu(device, dtype)
         huge = torch.finfo(dtype).max
         image = torch.zeros(1, 3, 256, 256, device=device, dtype=dtype)
@@ -229,7 +274,7 @@ class TestSpatialGradientSobelCpu(BaseTester):
         image[..., :, 200:] = -huge
 
         actual = spatial_gradient(image)
-        expected = _conv_reference(image, True)
+        expected = _direct_reference(image, True)
 
         assert torch.isfinite(expected).all()
         assert torch.isfinite(actual).all()

@@ -61,14 +61,14 @@ def _spatial_gradient_sobel_cpu(input: torch.Tensor, normalized: bool) -> torch.
 
     The convolution's buffers are several times the image, and on a large CPU batch they are fresh memory that is
     faulted in on every call. Here each derivative is a difference of shifted slices followed by the ``(1, 2, 1)``
-    smoothing across it, so every temporary has the size of the image. The convolution's zero-weight centre taps
-    still multiply their pixels, so ``0 * inf`` and ``0 * nan`` give NaN at the same positions as there.
+    smoothing across it, so every temporary has the size of the image. A direct convolution's zero-weight centre
+    taps still multiply their pixels, so ``0 * inf`` and ``0 * nan`` give NaN at the same positions as there.
     """
     # The convolution returned a contiguous result for any input layout.
     padded = F.pad(input.contiguous(), [1, 1, 1, 1], "replicate")
     if normalized:
-        # Scaling first is exact, and keeps every partial sum within the input's range, as the normalized
-        # convolution's are: scaled last, an eighth of the dtype's maximum overflowed to infinity.
+        # Scaling first is exact for normal values, and keeps every partial sum within the input's range, as a direct
+        # normalized convolution's are: scaled last, an eighth of the dtype's maximum overflowed to infinity.
         padded.mul_(0.125)
     # x derivative: right minus left on every padded row, then the smoothing along y.
     diff = padded[..., :, 2:] - padded[..., :, :-2]
@@ -104,8 +104,11 @@ def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, n
           from shifted slices instead of a convolution, which avoids the convolution's large buffers, unless its
           gradient is recorded, autocast is on, or ``torch.export`` or ``torch.jit.trace`` captures the call, so an
           exported program keeps the convolution for every input size. It agrees with the convolution to
-          rounding, with the same NaN and infinity positions; with ``normalized=False``, results that overflow can
-          overflow at other pixels.
+          rounding and has a direct convolution's NaN and infinity positions; with ``normalized=False``, results
+          that overflow can overflow at other pixels. On macOS arm64, PyTorch computes the float32 convolution with
+          a Winograd transform, which also returns NaN at some pixels next to an infinity and overflows on finite
+          inputs near the float32 maximum, so there the slices return fewer NaN than the convolution that smaller
+          inputs keep.
 
     Args:
         input: input image torch.Tensor with shape :math:`(B, C, H, W)`.
