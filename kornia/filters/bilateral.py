@@ -24,7 +24,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
-from kornia.core.utils import is_compiling
+from kornia.core.utils import is_compiling, is_exporting
 
 from .filter import _to_floating
 from .kernels import _check_kernel_size, _unpack_2d_ks, get_gaussian_kernel2d
@@ -34,6 +34,174 @@ from .median import _compute_zero_padding
 def _check_sigma_batch(name: str, sigma: torch.Tensor, input: torch.Tensor) -> None:
     """Check that a tensor sigma has a batch of 1, shared by the input, or the input batch."""
     KORNIA_CHECK_SAME_SIZE(sigma, input, allow_one=True, msg=f"{name} must have a batch of 1 or the input batch.")
+
+
+# Measured on one image, 3 x 3 to 9 x 9 kernels, float32 and float64, with no page faults on either side: the tap loop
+# overtakes the unfold path between 20k and 36k values (earlier for 3 x 3 kernels), so 65,536 values leaves a margin.
+_BILATERAL_CPU_MIN_NUMEL = 65536
+# The eager tap loop works through the batch in chunks of about this many input bytes, so that every tap's temporaries
+# stay in cache: on 256 x 256 images, 2 MB chunks took 0.3x to 0.7x the time of one pass over a batch of 8 or 32.
+_BILATERAL_CPU_CHUNK_BYTES = 2 * 1024 * 1024
+
+
+def _records_gradient(
+    input: torch.Tensor,
+    guidance: Optional[torch.Tensor],
+    sigma_color: float | torch.Tensor,
+    sigma_space: tuple[float, float] | torch.Tensor,
+) -> bool:
+    """Whether autograd records a reverse-mode gradient through the filter."""
+    return torch.is_grad_enabled() and (
+        input.requires_grad
+        or (guidance is not None and guidance.requires_grad)
+        or (isinstance(sigma_color, torch.Tensor) and sigma_color.requires_grad)
+        or (isinstance(sigma_space, torch.Tensor) and sigma_space.requires_grad)
+    )
+
+
+def _bilateral_blur_cpu_eligible(
+    input: torch.Tensor,
+    guidance: Optional[torch.Tensor],
+    sigma_color: float | torch.Tensor,
+    sigma_space: tuple[float, float] | torch.Tensor,
+) -> bool:
+    """Select large forward-only native-precision CPU inputs, where a tap loop beats unfolding every window."""
+    # Keep the unfold path where it is what the caller captured or differentiates: the exporters and the legacy tracer
+    # export it, and its reverse mode is one unfold backward instead of a chain of per-tap backwards.
+    return (
+        input.device.type == "cpu"
+        and input.dtype in (torch.float32, torch.float64)
+        and (guidance is None or guidance.device.type == "cpu")
+        # Before the size check: torch.export would turn it into a guard of the exported program, which then fails at
+        # run time for an image on the other side of the threshold although its dynamic shapes allow it.
+        and not is_exporting()
+        and input.numel() >= _BILATERAL_CPU_MIN_NUMEL
+        and not torch.jit.is_tracing()
+        and not _records_gradient(input, guidance, sigma_color, sigma_space)
+    )
+
+
+def _bilateral_blur_taps(
+    image: torch.Tensor,
+    guide: Optional[torch.Tensor],
+    kernel_size: tuple[int, int],
+    color_scale: float | torch.Tensor,
+    space_kernel: torch.Tensor,
+    border_type: str,
+    color_distance_type: str,
+    eager: bool,
+    out: Optional[torch.Tensor],
+) -> torch.Tensor:
+    """Filter one batch chunk tap by tap; ``eager`` reuses the temporaries in place and fills ``out`` if given."""
+    ky, kx = kernel_size
+    height, width = image.shape[-2], image.shape[-1]
+    pad_y, pad_x = (ky - 1) // 2, (kx - 1) // 2
+    # The unfold path returned a contiguous result for any input layout.
+    image = image.contiguous()
+    padded_image = F.pad(image, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
+    if guide is None:
+        guide, padded_guide = image, padded_image
+    else:
+        guide = guide.contiguous()
+        padded_guide = F.pad(guide, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
+
+    def tap_weight(tap: int) -> tuple[torch.Tensor, torch.Tensor]:
+        # The unfold path's kernel entry for this tap, computed with the same operations in the same order.
+        dy, dx = tap // kx, tap % kx
+        diff = padded_guide[..., dy : dy + height, dx : dx + width] - guide
+        if color_distance_type not in ("l1", "l2"):
+            raise ValueError("color_distance_type only accepts l1 or l2")
+        if diff.shape[1] == 1:
+            # One channel's sum is the value itself, and |d|^2 == d^2: both distances are the squared difference.
+            color_distance_sq = diff.square_() if eager else diff.square()
+        elif color_distance_type == "l1":
+            color_distance_sq = (diff.abs_() if eager else diff.abs()).sum(1, keepdim=True)
+            color_distance_sq = color_distance_sq.square_() if eager else color_distance_sq.square()
+        else:
+            color_distance_sq = (diff.square_() if eager else diff.square()).sum(1, keepdim=True)
+        space_weight = space_kernel[:, tap : tap + 1]
+        if eager:
+            weight = color_distance_sq.mul_(color_scale).exp_().mul_(space_weight)
+        else:
+            weight = space_weight * (color_scale * color_distance_sq).exp()
+        return padded_image[..., dy : dy + height, dx : dx + width], weight
+
+    values, weight = tap_weight(0)
+    weighted = values * weight if out is None else out.copy_(values).mul_(weight)
+    normalizer = weight
+    for tap in range(1, ky * kx):
+        values, weight = tap_weight(tap)
+        if eager:
+            weighted.addcmul_(values, weight)
+            normalizer.add_(weight)
+        else:
+            weighted = weighted.addcmul(values, weight)
+            normalizer = normalizer + weight
+    return weighted.div_(normalizer) if eager else weighted / normalizer
+
+
+def _bilateral_blur_cpu(
+    input: torch.Tensor,
+    guidance: Optional[torch.Tensor],
+    kernel_size: tuple[int, int] | int,
+    sigma_color: float | torch.Tensor,
+    sigma_space: tuple[float, float] | torch.Tensor,
+    border_type: str,
+    color_distance_type: str,
+) -> torch.Tensor:
+    """Bilateral filter as a loop over the kernel taps, without unfolding every window.
+
+    The unfold path materialises several :math:`(B, C, H, W, k_y, k_x)` tensors, :math:`k_y k_x` times the image; on a
+    large CPU batch they are fresh memory, faulted in on every call. Here every tap takes shifted slices of the padded
+    guidance and input, computes its weights with the unfold path's expression, so they are the same numbers, and adds
+    them to the weighted sum and to the normalizer; only the order of the :math:`k_y k_x` terms of those two sums
+    differs. Tensor sigmas have the input's dtype and device and a batch of 1 or the input's.
+    """
+    ky, kx = _unpack_2d_ks(kernel_size)
+    space_kernel = get_gaussian_kernel2d(kernel_size, sigma_space, device=input.device, dtype=input.dtype)
+    space_kernel = space_kernel.view(-1, ky * kx, 1, 1)
+    color_scale = -0.5 / sigma_color**2
+    if isinstance(color_scale, torch.Tensor):
+        color_scale = color_scale.view(-1, 1, 1, 1)
+    # In place and chunk by chunk only where nothing records the arithmetic: autograd needs the temporaries that the
+    # in-place operations overwrite, vmap has no batching rule for addcmul_, and compilers fuse the functional loop over
+    # the whole batch without these allocations. Every value is computed the same way in both forms.
+    eager = (
+        not is_compiling()
+        and not torch._C._are_functorch_transforms_active()
+        and not _records_gradient(input, guidance, sigma_color, sigma_space)
+    )
+    if not eager:
+        return _bilateral_blur_taps(
+            input, guidance, (ky, kx), color_scale, space_kernel, border_type, color_distance_type, False, None
+        )
+    batch = input.shape[0]
+    channels = input.shape[1] if guidance is None else max(input.shape[1], guidance.shape[1])
+    chunk = max(1, _BILATERAL_CPU_CHUNK_BYTES // (channels * input.shape[-2] * input.shape[-1] * input.element_size()))
+    if chunk >= batch:
+        return _bilateral_blur_taps(
+            input, guidance, (ky, kx), color_scale, space_kernel, border_type, color_distance_type, True, None
+        )
+    output = torch.empty(input.shape, device=input.device, dtype=input.dtype)
+    for start in range(0, batch, chunk):
+        stop = min(start + chunk, batch)
+        scale = color_scale
+        if isinstance(scale, torch.Tensor) and scale.shape[0] != 1:
+            scale = scale[start:stop]
+        space = space_kernel if space_kernel.shape[0] == 1 else space_kernel[start:stop]
+        guide = None if guidance is None else guidance[start:stop]
+        _bilateral_blur_taps(
+            input[start:stop],
+            guide,
+            (ky, kx),
+            scale,
+            space,
+            border_type,
+            color_distance_type,
+            True,
+            output[start:stop],
+        )
+    return output
 
 
 def _bilateral_blur(
@@ -68,7 +236,7 @@ def _bilateral_blur(
         # `bool()` on a tensor is untraceable by dynamo; skip the data-dependent check under compile.
         if not is_compiling() and not bool((sigma_color > 0).all()):
             KORNIA_CHECK(False, f"sigma_color must be positive. Got {sigma_color}")
-        sigma_color = sigma_color.to(device=input.device, dtype=input.dtype).view(-1, 1, 1, 1, 1, 1)
+        sigma_color = sigma_color.to(device=input.device, dtype=input.dtype)
     elif not sigma_color > 0:
         KORNIA_CHECK(False, f"sigma_color must be positive. Got {sigma_color}")
 
@@ -81,6 +249,18 @@ def _bilateral_blur(
 
     ky, kx = _unpack_2d_ks(kernel_size)
     _check_kernel_size((ky, kx))
+
+    # the colour kernel takes the guidance's dtype, so a wider guidance would promote the output
+    if guidance is not None and input.is_floating_point() and guidance.is_floating_point():
+        guidance = guidance.to(input.dtype)
+
+    if _bilateral_blur_cpu_eligible(input, guidance, sigma_color, sigma_space):
+        return _bilateral_blur_cpu(
+            input, guidance, kernel_size, sigma_color, sigma_space, border_type, color_distance_type
+        )
+
+    if isinstance(sigma_color, torch.Tensor):
+        sigma_color = sigma_color.view(-1, 1, 1, 1, 1, 1)
     pad_y, pad_x = _compute_zero_padding(kernel_size)
 
     # Keep both patch axes: flattening them would copy every overlapping window.
@@ -91,9 +271,6 @@ def _bilateral_blur(
         guidance = input
         unfolded_guidance = unfolded_input
     else:
-        # the colour kernel takes the guidance's dtype, so a wider guidance would promote the output
-        if input.is_floating_point() and guidance.is_floating_point():
-            guidance = guidance.to(input.dtype)
         padded_guidance = F.pad(guidance, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
         unfolded_guidance = padded_guidance.unfold(2, ky, 1).unfold(3, kx, 1)  # (B, C, H, W, Ky, Kx)
 
@@ -142,6 +319,12 @@ def bilateral_blur(
           its device.
         - An integer or bool input is differenced and averaged in float32 and the output is float32, as in
           :func:`~kornia.filters.filter2d`, so uint8 differences do not wrap.
+        - On the CPU, a float32 or float64 input (after that conversion) with at least 65,536 values is filtered tap
+          by tap from shifted slices of the padded input instead of from its unfolded windows, which avoids
+          temporaries of ``kernel_size`` times the image, unless a reverse-mode gradient is recorded through any
+          argument, or ``torch.export`` or ``torch.jit.trace`` captures the call, so an exported program keeps the
+          windows for every input size. Both forms compute the same weights and add up the weighted values in a
+          different order, so they agree to rounding.
 
     Arguments:
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
