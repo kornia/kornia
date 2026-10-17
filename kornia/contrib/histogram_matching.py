@@ -101,10 +101,11 @@ def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.Tensor:
         - ``xp`` and ``fp`` are 1-D; ``x`` can have any shape, which the output keeps. ``xp`` must be increasing, which
           is not checked. The output dtype is the promoted dtype of ``x``, ``xp`` and ``fp``, or the default float
           dtype when all three are integer.
-        - ``float16`` and ``bfloat16`` values are interpolated in ``float32`` and cast to the output dtype once, so
+        - A ``float16`` or ``bfloat16`` result is computed in ``float32`` and cast to the output dtype once, so
           coordinate differences above 65504 do not overflow the weight and a segment whose ``fp`` difference overflows
-          the output dtype stays finite. Such a segment is within about half an ulp of its larger end value, and its
-          knots are exact.
+          the output dtype stays finite. Inside a segment the result is within about half an ulp of the segment's
+          larger end value, and the knots are exact. ``float32`` and ``float64`` results are computed in their own
+          dtype.
 
     Args:
         x: the :math:`x`-coordinates at which to evaluate the interpolated
