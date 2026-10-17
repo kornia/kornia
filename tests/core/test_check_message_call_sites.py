@@ -102,6 +102,14 @@ def _is_symbolic(node: ast.AST, names: set[str]) -> bool:
         value = node.value
         if isinstance(value, ast.Attribute) and value.attr == "shape":
             return True
+        if (
+            isinstance(value, ast.Call)
+            and isinstance(value.func, ast.Attribute)
+            and value.func.attr == "size"
+            and not value.args
+            and not value.keywords
+        ):
+            return True
         return isinstance(value, ast.Name) and value.id in names
     if isinstance(node, ast.Call):
         func = node.func
@@ -132,10 +140,10 @@ def _is_shape(node: ast.AST) -> bool:
     return isinstance(node, ast.Attribute) and node.attr == "shape"
 
 
-def _symbolic_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
-    """Return a function's ``int`` parameters and the locals it assigns sizes, values computed from them or strings
-    that format them."""
+def _local_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[set[str], set[str]]:
+    """Return symbolic values/eager messages and lambda aliases separately; lambda bodies are deferred."""
     names = _int_params(func)
+    lambda_names: set[str] = set()
     changed = True
     while changed:
         changed = False
@@ -147,6 +155,14 @@ def _symbolic_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
             else:
                 continue
             for target in targets:
+                if isinstance(target, ast.Name) and (
+                    isinstance(value, ast.Lambda) or (isinstance(value, ast.Name) and value.id in lambda_names)
+                ):
+                    if target.id not in lambda_names:
+                        lambda_names.add(target.id)
+                        changed = True
+                    if isinstance(value, ast.Lambda):
+                        continue
                 # a size, or a message built from one
                 if isinstance(target, ast.Name) and (
                     _is_symbolic(value, names) or any(_is_symbolic(v, names) for v in _formatted_values(value))
@@ -162,7 +178,7 @@ def _symbolic_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
                 if not new <= names:
                     names |= new
                     changed = True
-    return names
+    return names, lambda_names
 
 
 def _formatted_values(msg: ast.AST) -> list[ast.AST]:
@@ -225,7 +241,7 @@ def _violations(
     # innermost function that contains it
     for func in sorted(qualified, key=lambda f: (f.lineno, f.col_offset), reverse=True):
         key = f"{rel}::{qualified[func]}"
-        names = _symbolic_names(func)
+        names, lambda_names = _local_names(func)
         for node in ast.walk(func):
             if not isinstance(node, ast.Call) or id(node) in seen:
                 continue
@@ -242,7 +258,10 @@ def _violations(
             msg = next((k.value for k in node.keywords if k.arg == "msg"), msg)
             if msg is None:
                 continue
-            if isinstance(msg, ast.Lambda):
+            # A name can have both eager and lambda assignments. Do not hide its eager paths in Python mode.
+            if isinstance(msg, ast.Lambda) or (
+                isinstance(msg, ast.Name) and msg.id in lambda_names and (key in torchscript or msg.id not in names)
+            ):
                 if key in torchscript:
                     violations.append(f"{rel}:{node.lineno} {name} has a lambda message, which TorchScript rejects")
                 continue
@@ -354,6 +373,54 @@ class M:
         assert sorted(int(v.split(":")[1].split()[0]) for v in violations) == flagged
         assert {"m.py::f", "m.py::f.deferred", "m.py::scripted", "m.py::M.__init__", "m.py::M.forward"} <= defined
         assert formatted_in == torchscript
+
+    @pytest.mark.parametrize(
+        "expression, flagged",
+        [("x.size()[0]", True), ("x.size()[-1]", True), ("x.size()", False), ("x.size()[1:]", False)],
+    )
+    @pytest.mark.parametrize("assigned", [False, True])
+    def test_indexed_size_messages(self, expression, flagged, assigned):
+        assignment = f"    size = {expression}\n" if assigned else ""
+        value = "size" if assigned else expression
+        source = f'def f(x):\n{assignment}    KORNIA_CHECK(True, f"got {{{value}}}")\n'
+        n_calls, violations, _, _ = _violations("m.py", ast.parse(source), {"KORNIA_CHECK": 1}, set())
+        assert n_calls == 1
+        assert bool(violations) is flagged
+
+    @pytest.mark.parametrize("message", ['f"got {n}"', '"invalid input"'])
+    @pytest.mark.parametrize("assignment", ["msg =", "msg: Callable[[], str] =", "original ="])
+    @pytest.mark.parametrize("scripted", [False, True])
+    def test_assigned_lambda_messages(self, message, assignment, scripted):
+        alias = "    msg = original\n" if assignment == "original =" else ""
+        source = f"def f(n: int):\n    {assignment} lambda: {message}\n{alias}    KORNIA_CHECK(n > 0, msg)\n"
+        torchscript = {"m.py::f"} if scripted else set()
+        n_calls, violations, _, _ = _violations("m.py", ast.parse(source), {"KORNIA_CHECK": 1}, torchscript)
+        assert n_calls == 1
+        if scripted:
+            assert len(violations) == 1
+            assert "has a lambda message, which TorchScript rejects" in violations[0]
+        else:
+            assert not violations
+
+    @pytest.mark.parametrize("conditional", [False, True])
+    @pytest.mark.parametrize("alias", [False, True])
+    @pytest.mark.parametrize("scripted", [False, True])
+    def test_mixed_eager_and_lambda_assignments(self, conditional, alias, scripted):
+        reassignment = '    msg = f"eager {n}"\n'
+        if conditional:
+            reassignment = "    if eager:\n    " + reassignment
+        passed_name = "other" if alias else "msg"
+        source = (
+            'def f(n: int, eager: bool):\n    msg = lambda: f"deferred {n}"\n'
+            + reassignment
+            + ("    other = msg\n" if alias else "")
+            + f"    KORNIA_CHECK(n > 0, {passed_name})\n"
+        )
+        torchscript = {"m.py::f"} if scripted else set()
+        _, violations, _, _ = _violations("m.py", ast.parse(source), {"KORNIA_CHECK": 1}, torchscript)
+        assert len(violations) == 1
+        expected = "has a lambda message, which TorchScript rejects" if scripted else f"formats {passed_name}"
+        assert expected in violations[0]
 
 
 def _rand(*shape: int, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
