@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+from contextlib import nullcontext
+
 import pytest
 import torch
 
@@ -997,7 +999,16 @@ def test_autocast_disabled_turns_off_only_an_enabled_region():
 
 @pytest.mark.parametrize("device_type", ["cpu", "cuda", "meta"])
 def test_autocast_disabled_outside_autocast_enters_nothing(device_type):
-    # Outside autocast there is nothing to turn off: entering torch.autocast(enabled=False) anyway costs about 10 us
-    # per call, and for a device type without autocast, such as "meta", torch.autocast raises.
-    with _autocast_disabled(device_type):
+    # Outside autocast there is nothing to turn off: entering torch.autocast(enabled=False) anyway costs a few
+    # microseconds per call, and for a device type without autocast, such as "meta", torch.autocast raises.
+    context = _autocast_disabled(device_type)
+    assert isinstance(context, nullcontext)
+    with context:
         assert not is_autocast_enabled()
+
+
+@pytest.mark.parametrize("device_type", ["xla", "hpu"])
+def test_autocast_disabled_covers_other_autocast_device_types(device_type):
+    # find_affine turned off the autocast region of any device type before it used this helper.
+    with torch.autocast(device_type, dtype=torch.bfloat16), _autocast_disabled(device_type):
+        assert not torch.is_autocast_enabled(device_type)

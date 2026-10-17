@@ -535,6 +535,9 @@ def run_8point(
         KORNIA_CHECK_SHAPE(weights, ["B", "N"])
         if weights.shape[1] != points1.shape[1]:
             raise AssertionError(weights.shape)
+    # Weights take the points' dtype, as a caller's autocast used to cast them; mixed dtypes now fit outside it too.
+    if weights is not None:
+        weights = weights.to(points1.dtype)
 
     # Autocast would run the matrix products in half precision, where CUDA's eigh has no kernel.
     with _autocast_disabled(points1.device.type):
@@ -576,8 +579,10 @@ def run_8point(
                     # Weighted einsum
                     M = torch.einsum("bni,bnj,bn->bij", A, A, w)
 
-            _evals, evecs = torch.linalg.eigh(M)  # ascending order
-            h = evecs[..., 0]  # (B,9), eigenvector for smallest λ
+            # No device has a half-precision eigh kernel; CPU autocast used to promote this one to float32.
+            half = M.dtype in (torch.float16, torch.bfloat16)
+            _evals, evecs = torch.linalg.eigh(M.float() if half else M)  # ascending order
+            h = evecs[..., 0].to(M.dtype)  # (B,9), eigenvector for smallest λ
         F_rank2 = _enforce_rank2(h.reshape(B, 3, 3))
         F = T2.transpose(-2, -1) @ (F_rank2 @ T1)
 

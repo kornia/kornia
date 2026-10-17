@@ -619,11 +619,6 @@ def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
     return inverse.to(dtype_original), mask
 
 
-# The device types with an autocast region. ``torch.amp.is_autocast_available`` would ask torch instead, but Dynamo
-# cannot trace it on torch 2.5.1.
-_AUTOCAST_DEVICE_TYPES = ("cpu", "cuda", "mps", "xpu")
-
-
 def is_autocast_enabled(both: bool = True) -> bool:
     """Check if torch autocast is enabled.
 
@@ -638,7 +633,7 @@ def is_autocast_enabled(both: bool = True) -> bool:
 
     """
     if both:
-        return any(torch.is_autocast_enabled(device_type) for device_type in _AUTOCAST_DEVICE_TYPES)
+        return any(torch.is_autocast_enabled(device_type) for device_type in ("cpu", "cuda", "mps", "xpu"))
 
     return torch.is_autocast_enabled()
 
@@ -646,10 +641,17 @@ def is_autocast_enabled(both: bool = True) -> bool:
 def _autocast_disabled(device_type: str) -> AbstractContextManager[Any]:
     """Return a context that turns off the caller's autocast region for ``device_type``, if one is on.
 
-    Outside autocast it returns a ``nullcontext``: entering ``torch.autocast(enabled=False)`` anyway costs about
-    10 us per call, a few percent of a small solve, and raises for a device type without autocast, such as ``meta``.
+    Outside autocast it returns a ``nullcontext``: entering ``torch.autocast(enabled=False)`` anyway costs a few
+    microseconds per call, a few percent of a small solve, and raises for a device type without autocast, such as
+    ``meta``. Every device type torch has an autocast region for is covered, ``xla``, ``hpu`` and a PrivateUse1 backend
+    too.
     """
-    if device_type in _AUTOCAST_DEVICE_TYPES and torch.is_autocast_enabled(device_type):
+    # ``torch.amp.is_autocast_available`` would ask first, but Dynamo cannot trace it on torch 2.5.1.
+    try:
+        enabled = torch.is_autocast_enabled(device_type)
+    except RuntimeError:  # a device type without autocast, such as ``meta``
+        enabled = False
+    if enabled:
         return torch.autocast(device_type=device_type, enabled=False)
     return nullcontext()
 

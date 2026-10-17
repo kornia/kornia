@@ -388,6 +388,31 @@ class TestFundamentalAutocast(BaseTester):
         assert actual.dtype == torch.float32
         self.assert_close(actual, expected, atol=0, rtol=0)
 
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("weights_dtype", [None, "points", torch.float32])
+    def test_half_precision_points_fit_in_and_out_of_autocast(self, dtype, weights_dtype):
+        # CPU autocast ran eigh in float32, so half-precision points fitted under it; no device has a half-precision
+        # eigh kernel, so the 8-point fit promotes its normal matrix itself. Autocast also cast float32 weights
+        # together with the points, and the fit now casts them itself.
+        generator = torch.Generator().manual_seed(0)
+        points1 = torch.rand(1, 100, 2, generator=generator) * torch.tensor([640.0, 480.0])
+        points2 = points1 + torch.tensor([30.0, -5.0]) + 4.0 * torch.randn(1, 100, 2, generator=generator)
+        weights = torch.rand(1, 100, generator=generator)
+        points1, points2 = points1.to(dtype), points2.to(dtype)
+        if weights_dtype is None:
+            weights = expected_weights = None
+        else:
+            expected_weights = weights.to(dtype)
+            weights = expected_weights if weights_dtype == "points" else weights.to(weights_dtype)
+        expected = epi.find_fundamental(points1, points2, expected_weights)
+        outside = epi.find_fundamental(points1, points2, weights)
+        with torch.autocast("cpu", dtype=dtype):
+            inside = epi.find_fundamental(points1, points2, weights)
+        assert expected.dtype == dtype
+        for actual in (outside, inside):
+            assert actual.dtype == dtype
+            self.assert_close(actual, expected, atol=0, rtol=0)
+
     def test_meta_device_infers_the_shape(self):
         # torch.autocast raises for the meta device type, so the solvers enter it only inside an autocast region.
         points = torch.empty(2, 9, 2, device="meta")

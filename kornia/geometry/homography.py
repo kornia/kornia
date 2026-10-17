@@ -530,6 +530,9 @@ def find_homography_dlt(
 
     """
     device, dtype = _extract_device_dtype([points1, points2])
+    # Weights take the points' dtype, as a caller's autocast used to cast them; mixed dtypes now fit outside it too.
+    if weights is not None:
+        weights = weights.to(points1.dtype)
     # Autocast would run the DLT's matrix products in half precision and return a half-precision homography.
     with _autocast_disabled(points1.device.type):
         A, transform1, transform2 = _homography_dlt_system(points1, points2, weights)
@@ -719,6 +722,9 @@ def find_homography_dlt_iterated(
 
     """
     device, dtype = _extract_device_dtype([points1, points2])
+    # Weights take the points' dtype, as a caller's autocast used to cast them; mixed dtypes now fit outside it too.
+    if weights is not None:
+        weights = weights.to(points1.dtype)
     # Autocast would run the solves and the re-weighting errors in half precision.
     with _autocast_disabled(points1.device.type):
         # Weighted Hartley normalization changes with each set of IRLS weights.
@@ -830,6 +836,9 @@ def find_homography_lines_dlt(
 
     if weights is not None and weights.shape != ls1.shape[:2]:
         raise AssertionError(weights.shape)
+    # Weights take the points' dtype, as a caller's autocast used to cast them; mixed dtypes now fit outside it too.
+    if weights is not None:
+        weights = weights.to(ls1.dtype)
     # Autocast would run the DLT's matrix products in half precision and return a half-precision homography.
     with _autocast_disabled(ls1.device.type):
         endpoint_weights = weights.repeat_interleave(2, dim=1) if weights is not None else None
