@@ -170,16 +170,20 @@ class NaFlex(nn.Module):
             h_grid, w_grid = height // patch_h, width // patch_w
             KORNIA_CHECK(
                 h_grid * w_grid == num_patches,
-                f"NaFlex reads the grid of a (B, N, C) patch output from patch_size={self.patch_size}: a {height} x "
-                f"{width} image has a {h_grid} x {w_grid} grid of {h_grid * w_grid} patches, but the patch embedding "
-                f"returned {num_patches}.",
+                lambda: (
+                    f"NaFlex reads the grid of a (B, N, C) patch output from patch_size={self.patch_size}: a "
+                    f"{height} x {width} image has a {h_grid} x {w_grid} grid of {h_grid * w_grid} patches, but the "
+                    f"patch embedding returned {num_patches}."
+                ),
             )
             return h_grid, w_grid
         side = math.isqrt(num_patches)
         KORNIA_CHECK(
             side * side == num_patches,
-            f"NaFlex reads a (B, N, C) patch output without patch_size as a square grid, but {num_patches} patch "
-            "embeddings are not a square number. Pass patch_size to NaFlex, or make the patch embedding return "
-            "(B, C, h, w).",
+            lambda: (
+                f"NaFlex reads a (B, N, C) patch output without patch_size as a square grid, but {num_patches} "
+                "patch embeddings are not a square number. Pass patch_size to NaFlex, or make the patch embedding "
+                "return (B, C, h, w)."
+            ),
         )
         return side, side

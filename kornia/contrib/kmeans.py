@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import torch
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
 from kornia.geometry.linalg import euclidean_distance
 
 
@@ -205,10 +205,11 @@ class KMeans:
             current_centers = self._initialise_cluster_centers(X, self.num_clusters)
         else:
             # X and cluster_centers should have same number of columns
-            KORNIA_CHECK(
-                X.shape[1] == self._initial_cluster_centers.shape[1],
-                f"Dimensions at position 1 of X and cluster_centers do not match. \
-                {X.shape[1]} != {self._initial_cluster_centers.shape[1]}",
+            KORNIA_CHECK_SAME_SIZE(
+                X,
+                self._initial_cluster_centers,
+                dim=1,
+                msg="X and cluster_centers must have the same number of columns.",
             )
             current_centers = self._initial_cluster_centers
 
@@ -289,10 +290,8 @@ class KMeans:
         """
         KORNIA_CHECK_SHAPE(x, ["N", "D"])
         # x and cluster_centers should have same number of columns
-        KORNIA_CHECK(
-            x.shape[1] == self.cluster_centers.shape[1],
-            f"Dimensions at position 1 of x and cluster_centers do not match. \
-                {x.shape[1]} != {self.cluster_centers.shape[1]}",
+        KORNIA_CHECK_SAME_SIZE(
+            x, self.cluster_centers, dim=1, msg="x and cluster_centers must have the same number of columns."
         )
 
         work_dtype = self._work_dtype(x, self.cluster_centers)
