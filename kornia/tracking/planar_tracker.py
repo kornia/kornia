@@ -42,7 +42,8 @@ class HomographyTracker(nn.Module):
         - A failed match returns ``(H, False)`` with ``H`` uninitialised (:meth:`no_match`). A failure while tracking
           also drops the previous homography, so the next frame is matched from scratch by ``initial_matcher``.
         - Every homography the tracker returns or stores as ``previous_homography``, :meth:`no_match`'s included, is
-          float32 for a ``float16`` or ``bfloat16`` target and has the target's dtype otherwise.
+          float32 for a ``float16`` or ``bfloat16`` target and has the target's dtype otherwise, whatever the dtype of
+          the frame, of the matcher's keypoints or of a ``previous_homography`` assigned from outside.
 
     Args:
         initial_matcher: image matching module for a frame without a previous homography, e.g.

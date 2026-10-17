@@ -581,17 +581,20 @@ class TestHomographyTrackerConventions:
 
     def test_frame_wider_than_the_target_is_warped_in_its_own_dtype(self):
         # A float64 frame for a float32 target is warped in float64, with the float32 inverse of the prior, and not
-        # narrowed to float32; the fast matcher gets it in float64.
+        # narrowed to float32; the fast matcher gets it in float64. The margin is added to a copy of a prior assigned in
+        # the tracker's own dtype, not to the assigned tensor.
         fast = _ExactMatcher()
         tracker = HomographyTracker(_ExactMatcher(), fast, minimum_inliers_num=10)
         tracker.set_target(torch.rand(1, 1, 44, 54))
-        tracker.previous_homography = _H_TRUE.clone()
+        prior = _H_TRUE.clone()
+        tracker.previous_homography = prior
         with patch("kornia.tracking.planar_tracker.warp_perspective", wraps=warp_perspective) as warp:
             H, ok = tracker.track_next_frame(torch.rand(1, 1, 60, 70, dtype=torch.float64))
         assert ok
         assert H.dtype == torch.float32
         assert (warp.call_args.args[0].dtype, warp.call_args.args[1].dtype) == (torch.float64, torch.float32)
         assert fast.image1_dtypes == [torch.float64]
+        assert torch.equal(prior, _H_TRUE)
 
     @pytest.mark.parametrize("target_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
     def test_homography_dtype_is_the_same_on_every_path(self, target_dtype, device):
