@@ -159,6 +159,43 @@ Using the :math:`Q` matrix we can obtain the 3D points by:
 
 where the Euclidean 3D point is :math:`(X/W, Y/W, Z/W)`.
 
+Numerical reconstruction validity
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Both :meth:`StereoCamera.reproject_disparity_to_3D` and the module-level
+:func:`reproject_disparity_to_3D` accept ``return_mask=True``:
+
+.. code-block:: python
+
+    points, reconstructed = camera.reproject_disparity_to_3D(disparity, return_mask=True)
+    # disparity: (B, H, W, 1), points: (B, H, W, 3), reconstructed: (B, H, W, 1) bool
+    usable = reconstructed & matcher_valid
+
+The mask is true only when all four homogeneous components are finite,
+``abs(W) > 1e-8`` in the homogeneous converter's working dtype, and all three XYZ
+components are finite in the returned disparity dtype. Matrix multiplication and
+conversion follow Q's dtype, subject to the active autocast context; requesting a
+mask does not upcast the computation. Overflow on the final cast is invalid too.
+The absolute cutoff is the existing coordinate policy, so rescaling Q can change
+validity near the cutoff. Negating Q preserves the mask.
+
+This is a numerical reconstruction diagnostic. A supplied Q with a nonzero
+``Q[3,3]`` may reconstruct a finite point even at zero disparity; callers must keep
+their stereo matcher's missing-match mask, as shown above. Front-of-camera
+eligibility is a separate check on XYZ in the appropriate camera frame. For
+``StereoCamera`` the frame is the left rectified camera; for a supplied Q it is
+the frame Q defines. Image bounds and occlusion are separate information as well.
+
+The default still returns only points. Requesting the mask preserves exactly the
+same coordinate and gradient policy: when W is below the cutoff, the homogeneous
+numerator is returned as a placeholder, and that placeholder can have nonzero
+gradients. Nonfinite inputs can still produce nonfinite coordinates or gradients.
+This option does not fill invalid points or promise zero gradient contributions
+from them. Masking a loss after unsafe arithmetic is not a safe replacement for
+guarding operands before that arithmetic. An explicit filling policy and the
+depth-warp integrations remain separate work in
+`#4555 <https://github.com/kornia/kornia/issues/4555>`_.
+
 .. autoclass:: StereoCamera
     :members:
 
