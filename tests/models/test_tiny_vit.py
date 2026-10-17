@@ -363,10 +363,12 @@ class TestTinyViT(BaseTester):
 
         op_optimized = torch_optimizer(op, fullgraph=True)
         # As in test_dynamo_eval_mode: inductor keeps fused half-precision intermediates in float32. MobileSAM's feature
-        # map reaches about 4.7, where a bfloat16 ulp is 0.03: on CUDA, 18 of 128 seeds failed 5e-2 (0.062 needed).
-        tol = {torch.float16: 1e-2, torch.bfloat16: 1e-1 if mobile_sam else 5e-2}.get(dtype)
+        # map reaches about 4.7, where a bfloat16 ulp is 0.031: over 128 seeds on CUDA the largest difference was 0.080,
+        # so that case gets an absolute 0.125 (four ulps there) instead of 5e-2 + 5e-2 * |value|.
+        tol = {torch.float16: 1e-2, torch.bfloat16: 5e-2}.get(dtype)
+        rtol, atol = (0.0, 0.125) if mobile_sam and dtype == torch.bfloat16 else (tol, tol)
         with torch.no_grad():
-            self.assert_close(op(img), op_optimized(img), rtol=tol, atol=tol)
+            self.assert_close(op(img), op_optimized(img), rtol=rtol, atol=atol)
 
     @pytest.mark.skipif(sys.version_info.major == 3 and sys.version_info.minor == 8, reason="not working for py3.8")
     def test_dynamo_eval_mode(self, device, dtype, torch_optimizer, cudnn_tf32_follows_option):
