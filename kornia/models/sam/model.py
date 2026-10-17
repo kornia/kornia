@@ -75,16 +75,22 @@ class SamConfig:
     Args:
         model_type: the available models are:
 
-            - 0, 'vit_h' or :func:`kornia.contrib.sam.SamModelType.vit_h`
-            - 1, 'vit_l' or :func:`kornia.contrib.sam.SamModelType.vit_l`
-            - 2, 'vit_b' or :func:`kornia.contrib.sam.SamModelType.vit_b`
-            - 3, 'mobile_sam', or :func:`kornia.contrib.sam.SamModelType.mobile_sam`
+            - 0, 'vit_h' or :attr:`kornia.models.sam.SamModelType.vit_h`
+            - 1, 'vit_l' or :attr:`kornia.models.sam.SamModelType.vit_l`
+            - 2, 'vit_b' or :attr:`kornia.models.sam.SamModelType.vit_b`
+            - 3, 'mobile_sam', or :attr:`kornia.models.sam.SamModelType.mobile_sam`
 
+            With ``None``, the image encoder is a ViT built from the four ``encoder_*`` fields below, which are
+            ignored when ``model_type`` is set.
         checkpoint: URL or a path for a file with the weights of the model
+        pretrained: load the released weights of ``model_type``, which must then be set. A ``checkpoint`` takes
+            precedence, with a warning. With ``False`` (the default) and no ``checkpoint``, the weights are randomly
+            initialised.
         encoder_embed_dim: Patch embedding dimension.
         encoder_depth: Depth of ViT.
         encoder_num_heads: Number of attention heads in each ViT block.
-        encoder_global_attn_indexes: Encoder indexes for blocks using global attention.
+        encoder_global_attn_indexes: Encoder indexes for blocks using global attention: a tuple or a list of
+            indexes, or one index as an ``int``.
 
     """
 
@@ -95,7 +101,7 @@ class SamConfig:
     encoder_embed_dim: Optional[int] = None
     encoder_depth: Optional[int] = None
     encoder_num_heads: Optional[int] = None
-    encoder_global_attn_indexes: Optional[tuple[int, ...]] = None
+    encoder_global_attn_indexes: Optional[int | tuple[int, ...] | list[int]] = None
 
 
 class Sam(ONNXExportMixin, ModelBase[SamConfig]):
@@ -125,7 +131,9 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
 
     @staticmethod
     def from_name(name: str) -> Sam:
-        """Build/load the SAM model based on it's name.
+        """Build a randomly initialised SAM of the given type.
+
+        Use ``Sam.from_config(SamConfig(name, pretrained=True))`` for the released weights.
 
         Args:
             name: The name of the SAM model. Valid names are:
@@ -223,13 +231,16 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
             isinstance(config.encoder_embed_dim, int)
             and isinstance(config.encoder_depth, int)
             and isinstance(config.encoder_num_heads, int)
-            and isinstance(config.encoder_global_attn_indexes, int)
+            and isinstance(config.encoder_global_attn_indexes, (int, tuple, list))
         ):
+            global_attn_indexes = config.encoder_global_attn_indexes
             model = _build_sam(
                 encoder_embed_dim=config.encoder_embed_dim,
                 encoder_depth=config.encoder_depth,
                 encoder_num_heads=config.encoder_num_heads,
-                encoder_global_attn_indexes=config.encoder_global_attn_indexes,
+                encoder_global_attn_indexes=(
+                    (global_attn_indexes,) if isinstance(global_attn_indexes, int) else tuple(global_attn_indexes)
+                ),
             )
 
         else:
@@ -238,6 +249,11 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
         checkpoint = config.checkpoint
         if config.pretrained:
             if checkpoint is None:
+                KORNIA_CHECK(
+                    isinstance(model_type, SamModelType),
+                    "SamConfig(pretrained=True) needs a model_type: the released weights exist only for 'vit_h', "
+                    "'vit_l', 'vit_b' and 'mobile_sam'. Give a checkpoint to load weights into a custom encoder.",
+                )
                 checkpoint = urls[model_type]
             else:
                 warnings.warn("checkpoint is not None. pretrained=True is ignored", stacklevel=1)
@@ -343,7 +359,7 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
                 - logits: Low resolution logits with shape :math:`(K, C, H, W)`. Can be passed as mask input to
                   subsequent iterations of prediction. Where :math:`K` is the number of input prompts,
                   :math:`C` is determined by multimask_output, and :math:`H=W=256` are the model output size.
-                - scores: The model's predictions of mask quality (iou prediction), in shape BxC.
+                - scores: The predicted IoU of each mask, :math:`(K, C)`.
 
         """
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])

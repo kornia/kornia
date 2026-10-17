@@ -20,7 +20,9 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core.exceptions import BaseError
 from kornia.models.sam import Sam, SamConfig
+from kornia.models.sam.architecture.prompt_encoder import PositionEmbeddingRandom, PromptEncoder
 
 from testing.base import BaseTester
 
@@ -135,6 +137,116 @@ class TestSam(BaseTester):
         assert {m.training for m in Sam.from_config(SamConfig("mobile_sam")).modules()} == {True}
         assert {m.training for m in Sam.from_name("mobile_sam").modules()} == {True}
         assert len(loaded) == 2
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("global_attn_indexes", [(1,), [1], 1])
+    def test_from_config_builds_a_custom_encoder(self, global_attn_indexes):
+        config = SamConfig(
+            encoder_embed_dim=16, encoder_depth=2, encoder_num_heads=1, encoder_global_attn_indexes=global_attn_indexes
+        )
+        encoder = Sam.from_config(config).image_encoder
+
+        # Block 1 attends globally (window size 0); block 0 keeps SAM's 14 x 14 windows (``_build_sam``).
+        assert [block.window_size for block in encoder.blocks] == [14, 0]
+        # 684,272 parameters, mostly the neck's 3 x 3 convolution, 256 * 256 * 9 = 589,824; ViT-B's encoder has
+        # 89.7M. The whole model is not bounded: ``_build_sam`` always attaches the full mask decoder.
+        assert sum(p.numel() for p in encoder.parameters()) < 1e6
+
+    @pytest.mark.device_agnostic
+    def test_pretrained_needs_a_model_type(self):
+        config = SamConfig(
+            encoder_embed_dim=16, encoder_depth=1, encoder_num_heads=1, encoder_global_attn_indexes=0, pretrained=True
+        )
+        with pytest.raises(BaseError, match="needs a model_type"):
+            Sam.from_config(config)
+
+    def test_positional_encoding_keeps_float32_precision(self, device, dtype):
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        # SAM's prompt encoder: 256-dimensional embeddings, so 128 random frequencies drawn from N(0, 1).
+        generator = torch.Generator().manual_seed(0)
+        pe = PositionEmbeddingRandom(128).to(device)
+        pe.positional_encoding_gaussian_matrix.copy_(torch.randn(2, 128, generator=generator))
+        pe = pe.to(dtype)
+        # The reference: the same, possibly rounded, frequencies, encoded in float32.
+        reference = PositionEmbeddingRandom(128).to(device)
+        reference.positional_encoding_gaussian_matrix.copy_(pe.positional_encoding_gaussian_matrix.float())
+        # Keypoints in the 1024 x 1024 input frame, exact in bfloat16 (spacing 4 between 512 and 1024): the image
+        # centre, a corner pixel and a point near the far corner.
+        coords = torch.tensor([[[512.0, 512.0], [4.0, 4.0], [1020.0, 1016.0]]], device=device)
+
+        dense, points = pe((64, 64)), pe.forward_with_coords(coords.to(dtype), (1024, 1024))
+
+        assert dense.dtype == points.dtype == dtype
+        # Within the rounding of the float32 encoding. Computed in bfloat16 throughout, this seed's dense encoding is
+        # off by 0.12 (0.013 in float16).
+        self.assert_close(dense, reference((64, 64)).to(dtype))
+        self.assert_close(points, reference.forward_with_coords(coords, (1024, 1024)).to(dtype))
+
+    def test_positional_encoding_of_a_float64_model_is_float64(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        generator = torch.Generator().manual_seed(0)
+        pe = PositionEmbeddingRandom(128).to(device=device, dtype=torch.float64)
+        pe.positional_encoding_gaussian_matrix.copy_(torch.randn(2, 128, generator=generator, dtype=torch.float64))
+
+        def closed_form(dtype: torch.dtype) -> torch.Tensor:
+            # SAM's dense encoding of a 64 x 64 grid at pixel centres, (2 c - 1) M, then sin and cos of 2 pi times it.
+            centres = (torch.arange(64, device=device, dtype=dtype) + 0.5) / 64
+            grid = torch.stack(torch.meshgrid(centres, centres, indexing="xy"), dim=-1)
+            phase = 2 * torch.pi * ((2 * grid - 1) @ pe.positional_encoding_gaussian_matrix.to(dtype))
+            return torch.cat([torch.sin(phase), torch.cos(phase)], dim=-1).permute(2, 0, 1).to(torch.float64)
+
+        dense = pe((64, 64))
+
+        assert dense.dtype == torch.float64
+        self.assert_close(dense, closed_form(torch.float64), rtol=0.0, atol=1e-12)
+        # The same encoding computed in float32 is off by about 1e-6, so the comparison above can tell them apart.
+        assert (closed_form(torch.float32) - dense).abs().max() > 1e-8
+
+    def test_prompt_encoder_shifts_to_pixel_centres_in_float32(self, device, dtype):
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        # SAM's prompt encoder for a 1024 x 1024 input and a 64 x 64 embedding (``_build_sam``).
+        encoder = PromptEncoder(256, (64, 64), (1024, 1024), mask_in_chans=16).to(device=device, dtype=dtype)
+        seen = []
+        forward_with_coords = encoder.pe_layer.forward_with_coords
+
+        def spy(coords: torch.Tensor, image_size: tuple[int, int]) -> torch.Tensor:
+            seen.append(coords)
+            return forward_with_coords(coords, image_size)
+
+        encoder.pe_layer.forward_with_coords = spy
+        # Coordinates that bfloat16 holds (its spacing is 2 between 256 and 512 and 4 between 512 and 1024), so a
+        # +0.5 shift computed in bfloat16 is rounded away.
+        points = torch.tensor([[[1000.0, 600.0]]], device=device, dtype=dtype)
+        boxes = torch.tensor([[260.0, 400.0, 1020.0, 800.0]], device=device, dtype=dtype)
+
+        encoder(points=(points, torch.ones(1, 1, device=device, dtype=dtype)), boxes=boxes, masks=None)
+
+        point_coords, box_coords = seen
+        compute_dtype = torch.promote_types(dtype, torch.float32)
+        assert point_coords.dtype == box_coords.dtype == compute_dtype
+        expected_points = torch.tensor([[[1000.5, 600.5]]], device=device, dtype=compute_dtype)
+        expected_boxes = torch.tensor([[[260.5, 400.5], [1020.5, 800.5]]], device=device, dtype=compute_dtype)
+        self.assert_close(point_coords, expected_points, rtol=0.0, atol=0.0)
+        self.assert_close(box_coords, expected_boxes, rtol=0.0, atol=0.0)
+
+    def test_positional_encoding_ignores_autocast(self, device):
+        # Autocast runs a matmul in its half dtype whatever its operands are; the encoding turns it off.
+        autocast_dtype = torch.bfloat16 if device.type == "cpu" else torch.float16
+        generator = torch.Generator().manual_seed(0)
+        pe = PositionEmbeddingRandom(128).to(device)
+        pe.positional_encoding_gaussian_matrix.copy_(torch.randn(2, 128, generator=generator))
+        coords = torch.tensor([[[512.0, 512.0], [4.0, 4.0], [1020.0, 1016.0]]], device=device)
+        dense, points = pe((64, 64)), pe.forward_with_coords(coords, (1024, 1024))
+
+        with torch.autocast(device_type=device.type, dtype=autocast_dtype):
+            dense_autocast, points_autocast = pe((64, 64)), pe.forward_with_coords(coords, (1024, 1024))
+
+        # Under bfloat16 autocast, a matmul in bfloat16 moves the dense encoding by up to 0.14.
+        assert torch.equal(dense_autocast, dense)
+        assert torch.equal(points_autocast, points)
 
     @pytest.mark.slow
     def test_mobile_sam_pretrained_is_batch_independent(self):
