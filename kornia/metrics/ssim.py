@@ -18,11 +18,15 @@
 from typing import List
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.utils import is_exporting
 from kornia.filters import filter2d_separable, get_gaussian_kernel1d
 from kornia.filters.filter import _VALID_PADDING, _compute_padding
+
+_HAS_MKLDNN = torch.backends.mkldnn.is_available()
 
 
 def _crop(img: torch.Tensor, cropping_shape: List[int]) -> torch.Tensor:
@@ -30,6 +34,70 @@ def _crop(img: torch.Tensor, cropping_shape: List[int]) -> torch.Tensor:
     return torch.nn.functional.pad(
         img, (-cropping_shape[2], -cropping_shape[3], -cropping_shape[0], -cropping_shape[1])
     )
+
+
+def _ssim_cpu_eligible(img1: torch.Tensor, img2: torch.Tensor) -> bool:
+    """Select contiguous forward-only CPU float32 images, whose convolutions oneDNN runs faster channels-last."""
+    # oneDNN copies an NCHW image into blocks of 8 or 16 channels around every depthwise convolution: 2.7 to 5.3
+    # times an RGB image, fresh memory on every call for a large batch. A channels-last image is convolved as it is.
+    # Keep the NCHW convolutions where they are what the caller gets or measured: float64 has no oneDNN convolution
+    # and is slower channels-last; exporters and the tracer capture them; vmap cannot convert the layout; and under
+    # torch.compile a channels-last reverse pass was slower than Inductor's own layout choice.
+    return (
+        img1.device.type == "cpu"
+        and img1.dtype == torch.float32
+        and _HAS_MKLDNN
+        # Before the layout checks, which could otherwise guard the sizes of an exported program.
+        and not is_exporting()
+        and not torch.jit.is_tracing()
+        and not torch._C._are_functorch_transforms_active()
+        and not (torch.is_grad_enabled() and (img1.requires_grad or img2.requires_grad))
+        and img1.is_contiguous()
+        and img2.is_contiguous()
+    )
+
+
+def _ssim_cpu(
+    img1: torch.Tensor,
+    img2: torch.Tensor,
+    kernel: torch.Tensor,
+    c1: float,
+    c2: float,
+    eps: float,
+    cropping_shape: List[int],
+) -> torch.Tensor:
+    """SSIM map from channels-last copies of the images, with the arithmetic of the NCHW path.
+
+    Each moment is filtered with the reflect padding and the two depthwise convolutions of ``filter2d_separable``,
+    called directly: its reshape would give a single channels-last image ambiguous strides, which oneDNN reads as
+    NCHW. No gradient is recorded, so the moments are combined by the NCHW path's operations, each value in the same
+    order, in place on this function's own temporaries.
+    """
+    img1 = img1.contiguous(memory_format=torch.channels_last)
+    img2 = img2.contiguous(memory_format=torch.channels_last)
+    channels, radius = img1.shape[1], kernel.shape[-1] // 2
+    weight_x = kernel.view(1, 1, 1, -1).expand(channels, 1, 1, -1)
+    weight_y = kernel.view(1, 1, -1, 1).expand(channels, 1, -1, 1)
+
+    def blur(img: torch.Tensor) -> torch.Tensor:
+        with torch.autocast(device_type="cpu", enabled=False):
+            out = F.conv2d(F.pad(img, [radius, radius, 0, 0], mode="reflect"), weight_x, groups=channels)
+            out = F.conv2d(F.pad(out, [0, 0, radius, radius], mode="reflect"), weight_y, groups=channels)
+        return _crop(out, cropping_shape) if len(cropping_shape) > 0 else out
+
+    # Ordered so that at most four moment maps are alive between filterings.
+    mu1, mu2 = blur(img1), blur(img2)
+    mu1_mu2 = mu1 * mu2
+    mu1_sq, mu2_sq = mu1.pow_(2), mu2.pow_(2)
+    del mu1, mu2
+    sigma1_sq = blur(img1**2).sub_(mu1_sq)
+    sigma2_sq = blur(img2**2).sub_(mu2_sq)
+    den = mu1_sq.add_(mu2_sq).add_(c1).mul_(sigma1_sq.add_(sigma2_sq).add_(c2))
+    del mu1_sq, mu2_sq, sigma1_sq, sigma2_sq
+    sigma12 = blur(img1 * img2).sub_(mu1_mu2)
+    num = mu1_mu2.mul_(2.0).add_(c1).mul_(sigma12.mul_(2.0).add_(c2))
+    del sigma12
+    return num.div_(den.add_(eps))
 
 
 def ssim(
@@ -94,6 +162,10 @@ def ssim(
         Half-precision inputs are evaluated in float32 for numerical stability.
         A float32/float64 pair is filtered in float64, with the Gaussian window built in that dtype.
         Filtering runs with autocast disabled; the result uses the promoted input dtype.
+        On the CPU, when no gradient is recorded, two contiguous images computed in float32 are filtered in
+        channels-last layout, which oneDNN convolves without first copying the image into blocks of 8 or 16 channels.
+        The map agrees with the NCHW convolutions to rounding and is returned contiguous. Exported and traced graphs
+        keep the NCHW convolutions.
 
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 5)
@@ -148,6 +220,12 @@ def ssim(
     # compute coefficients
     C1: float = (0.01 * max_val) ** 2
     C2: float = (0.03 * max_val) ** 2
+
+    if _ssim_cpu_eligible(img1, img2):
+        crop = _compute_padding([kernel.shape[-1], kernel.shape[-1]]) if padding == "valid" else []
+        ssim_map = _ssim_cpu(img1, img2, kernel, C1, C2, eps, crop)
+        # Contiguous, as the NCHW convolutions return it for contiguous images.
+        return ssim_map.to(dtype=output_dtype, memory_format=torch.contiguous_format)
 
     # compute local mean per channel
     with torch.autocast(device_type=img1.device.type, enabled=False):
