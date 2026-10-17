@@ -45,6 +45,14 @@ _REPLAY = {
     "RandomCrop": lambda: K.RandomCrop((16, 16), p=1.0),
     "RandomPerspective": lambda: K.RandomPerspective(0.5, p=1.0),
 }
+# One augmentation per gate (Review Focus 2): ``_blend_by_prob`` for an intensity and a geometric augmentation, the
+# matrix gates of 2D and 3D geometry, and the batch-level gate of the mix augmentations.
+_GATED = {
+    "RandomAffine": (lambda p, same: K.RandomAffine(30.0, p=p, same_on_batch=same), (8, 3, 16, 16)),
+    "RandomBrightness": (lambda p, same: K.RandomBrightness((0.5, 1.5), p=p, same_on_batch=same), (8, 3, 16, 16)),
+    "RandomHorizontalFlip3D": (lambda p, same: K.RandomHorizontalFlip3D(p=p, same_on_batch=same), (8, 3, 4, 8, 8)),
+    "RandomMixUpV2": (lambda p, same: K.RandomMixUpV2(p=p, same_on_batch=same), (8, 3, 16, 16)),
+}
 # Mix augmentations run on an empty batch (Review Focus 4).
 _EMPTY_BATCH_MIX = {
     "RandomCutMixV2": lambda: K.RandomCutMixV2(p=1.0, use_correct_lambda=True),
@@ -120,3 +128,26 @@ class TestAugmentationHostSync(BaseTester):
         assert outputs[0].shape == x.shape
         assert outputs[0].device == x.device
         assert not set(sites) - INHERENT_SITES.keys(), dict(sites)
+
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
+    @pytest.mark.parametrize("name", sorted(_GATED))
+    def test_gate_selection_unchanged(self, name, p, same_on_batch, device, dtype) -> None:
+        if device.type != "cuda":
+            pytest.skip("CUDA host synchronizations need a CUDA device")
+        build, shape = _GATED[name]
+        op = build(p, same_on_batch)
+        x = torch.rand(*shape, device=device, dtype=dtype)
+        op(x)
+        torch.cuda.synchronize()
+        outputs = []
+        sites = sync_sites(lambda: outputs.append(op(x)))
+        assert not set(sites) - INHERENT_SITES.keys(), dict(sites)
+        params = op._params
+        # The gated rows are the always-applied result of the same parameters; the others are the input itself.
+        reference = build(1.0, same_on_batch)(x, params=params)
+        applied = torch.atleast_1d(params["batch_prob"] > 0.5).to(device)
+        if applied.shape[0] != x.shape[0]:  # a batch-level gate, as the mix augmentations draw it
+            applied = applied.expand(x.shape[0])
+        expected = torch.where(applied.view(-1, *([1] * (x.dim() - 1))), reference, x)
+        assert torch.equal(outputs[0], expected)
