@@ -27,7 +27,7 @@ from torch import nn
 from kornia.color import rgb_to_ycbcr, ycbcr_to_rgb
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
 from kornia.core.ops import _constant_tensor
-from kornia.core.utils import is_compiling, is_exporting
+from kornia.core.utils import _to_device_nonblocking, is_compiling, is_exporting
 from kornia.enhance.adjust import _check_floating_image
 from kornia.geometry.transform.affwarp import rescale
 from kornia.image.utils import perform_keep_shape_image
@@ -630,10 +630,10 @@ def jpeg_codec_differentiable(
         jpeg_quality, input, allow_one=True, msg="jpeg_quality needs one quality per image, or one for all."
     )
     # keep jpeg_quality same device as input torch.Tensor
-    jpeg_quality = jpeg_quality.to(device, dtype)
+    jpeg_quality = _to_device_nonblocking(jpeg_quality, device, dtype)
     # Quantization tables to same device and dtype as input image
-    quantization_table_y = quantization_table_y.to(device, dtype)
-    quantization_table_c = quantization_table_c.to(device, dtype)
+    quantization_table_y = _to_device_nonblocking(quantization_table_y, device, dtype)
+    quantization_table_c = _to_device_nonblocking(quantization_table_c, device, dtype)
     # Perform encoding
     y_encoded, cb_encoded, cr_encoded = _jpeg_encode(
         image_rgb=input,

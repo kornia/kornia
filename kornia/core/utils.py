@@ -87,6 +87,18 @@ def _to_device_nonblocking(
     return tensor.to(device=device, dtype=dtype, non_blocking=non_blocking)
 
 
+def _as_tensor_nonblocking(data: Any, device: torch.device, dtype: Optional[torch.dtype] = None) -> torch.Tensor:
+    """Return ``torch.as_tensor(data, device=device, dtype=dtype)``, moving a tensor without waiting for the GPU.
+
+    ``torch.as_tensor`` of a tensor is ``tensor.to(device, dtype)``, a blocking copy for a CPU tensor and a CUDA
+    ``device``. A tensor is moved without waiting for queued work instead, with the same values; any other ``data``
+    goes through ``torch.as_tensor`` unchanged.
+    """
+    if isinstance(data, torch.Tensor):
+        return _to_device_nonblocking(data, device, dtype)
+    return torch.as_tensor(data, device=device, dtype=dtype)
+
+
 def xla_is_available() -> bool:
     """Return whether `torch_xla` is available in the system."""
     return importlib.util.find_spec("torch_xla") is not None
