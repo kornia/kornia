@@ -160,7 +160,11 @@ class TestFindAffine(BaseTester):
         self.assert_close(actual, expected, rtol=0, atol=3e-4)
         self.assert_close(refit, expected[:, :2, :2], rtol=0, atol=1e-5)
         self.assert_close(pair, expected[:, :2, :2], rtol=0, atol=1e-5)
-        self.assert_close(triplet, expected, rtol=0, atol=2e-4)
+        self.assert_close(triplet[:, :2, :2], expected[:, :2, :2], rtol=0, atol=1e-5)
+        # Rounded float32 correspondences can imply a different translation from the generating
+        # matrix. The minimal fit must reproduce those stored points, rather than that translation.
+        projected = points[:, :3] @ triplet[:, :2, :2].transpose(-1, -2) + triplet[:, None, :2, 2]
+        self.assert_close(projected, target[:, :3], rtol=0, atol=2e-4)
 
     def test_invalid_batches_are_nan(self, device, dtype):
         good, target, _ = self._points(device, dtype)
