@@ -539,7 +539,9 @@ class TestSigLip2Components(BaseTester):
         assert output.shape == (batch_size, num_patches, config.hidden_size)
 
     @pytest.mark.parametrize(
-        "size", [(16, 64), (8, 128), (33, 39), (40, 40)], ids=["2x8-grid", "1x16-grid", "33x39", "40x40"]
+        "size",
+        [(16, 64), (8, 128), (33, 39), (32, 39), (39, 32), (40, 40)],
+        ids=["2x8-grid", "1x16-grid", "33x39", "32x39", "39x32", "40x40"],
     )
     def test_vision_embeddings_reject_other_sizes(self, device, dtype, size):
         if device.type == "mps" and dtype == torch.float64:
@@ -558,7 +560,8 @@ class TestSigLip2Components(BaseTester):
         with torch.no_grad():
             assert embeddings(torch.rand(1, 3, 32, 32, device=device, dtype=dtype)).shape == (1, 16, 32)
             # The position table is the (32 // 8) ** 2 = 16 cells of a 4 x 4 grid. The patch grids 2 x 8 of 16 x 64,
-            # 1 x 16 of 8 x 128 and 4 x 4 of 33 x 39 (remainders dropped) also have 16 cells; 40 x 40 gives 5 x 5.
+            # 1 x 16 of 8 x 128 and 4 x 4 of 33 x 39, 32 x 39 and 39 x 32 (remainders dropped) also have 16 cells;
+            # 40 x 40 gives 5 x 5. 32 x 39 and 39 x 32 have one side right, so the check must test both.
             pixel_values = torch.rand(1, 3, *size, device=device, dtype=dtype)
             with pytest.raises(ValueError, match="32"):
                 embeddings(pixel_values)

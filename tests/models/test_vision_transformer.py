@@ -62,8 +62,8 @@ class TestVisionTransformer(BaseTester):
 
     @pytest.mark.parametrize(
         "shape",
-        [(1, 3, 112, 448), (1, 3, 224, 239), (1, 3, 224, 240), (1, 3, 240, 240), (1, 1, 224, 224)],
-        ids=["7x28-grid", "224x239", "224x240", "240x240", "one-channel"],
+        [(1, 3, 112, 448), (1, 3, 224, 239), (1, 3, 239, 224), (1, 3, 224, 240), (1, 3, 240, 240), (1, 1, 224, 224)],
+        ids=["7x28-grid", "224x239", "239x224", "224x240", "240x240", "one-channel"],
     )
     def test_forward_rejects_other_sizes(self, device, dtype, shape):
         if device.type == "mps" and dtype == torch.float64:
@@ -72,8 +72,9 @@ class TestVisionTransformer(BaseTester):
         assert vit(torch.rand(1, 3, 224, 224, device=device, dtype=dtype)).shape == (1, 197, 768)
 
         # The position table holds (224 // 16) ** 2 + 1 = 197 rows. A 112 x 448 image has a 7 x 28 grid of
-        # 196 = 14 * 14 patches and 224 x 239 a 14 x 14 grid (the last 239 - 14 * 16 = 15 columns dropped), so both fit
-        # the table; 224 x 240 (14 x 15 + 1 = 211 tokens), 240 x 240 (15 x 15 + 1 = 226) and one channel do not.
+        # 196 = 14 * 14 patches, and 224 x 239 and 239 x 224 a 14 x 14 grid (the last 239 - 14 * 16 = 15 columns or
+        # rows dropped), so these fit the table; 224 x 240 (14 x 15 + 1 = 211 tokens), 240 x 240 (15 x 15 + 1 = 226)
+        # and one channel do not. 224 x 239 and 239 x 224 have one side right, so the check must test both.
         with pytest.raises(ValueError, match="224"):
             vit(torch.rand(shape, device=device, dtype=dtype))
 
