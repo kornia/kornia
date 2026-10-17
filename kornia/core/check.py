@@ -656,18 +656,20 @@ def KORNIA_CHECK_SAME_SIZE(
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
-    x_ndim, y_ndim = len(x.shape), len(y.shape)
+    # every ``.shape`` builds a new ``torch.Size``, so each is read once
+    x_shape, y_shape = x.shape, y.shape
+    x_ndim, y_ndim = len(x_shape), len(y_shape)
     in_range = -x_ndim <= dim < x_ndim and -y_ndim <= dim < y_ndim
-    if not in_range or not (x.shape[dim] == y.shape[dim] or (allow_one and x.shape[dim] == 1)):
+    if not in_range or not (x_shape[dim] == y_shape[dim] or (allow_one and x_shape[dim] == 1)):
         if raises:
             msg = _resolve_msg(msg)
-            x_shape_list = list(x.shape)
-            y_shape_list = list(y.shape)
+            x_shape_list = list(x_shape)
+            y_shape_list = list(y_shape)
             if not in_range:
                 error_msg = f"Size mismatch: the tensors have no dimension {dim}.\n"
             else:
-                expected = f"{y.shape[dim]} or 1" if allow_one and y.shape[dim] != 1 else f"{y.shape[dim]}"
-                error_msg = f"Size mismatch at dimension {dim}: expected {expected}, got {x.shape[dim]}.\n"
+                expected = f"{y_shape[dim]} or 1" if allow_one and y_shape[dim] != 1 else f"{y_shape[dim]}"
+                error_msg = f"Size mismatch at dimension {dim}: expected {expected}, got {x_shape[dim]}.\n"
             error_msg += f"  First tensor shape: {x_shape_list}\n"
             error_msg += f"  Second tensor shape: {y_shape_list}"
             if msg is not None:
@@ -716,11 +718,12 @@ def KORNIA_CHECK_SIZES(
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
-    matches = len(x.shape) == len(sizes)
+    x_shape = x.shape
+    matches = len(x_shape) == len(sizes)
     if matches:
         for i in range(len(sizes)):
             size = sizes[i]
-            if size is not None and x.shape[i] != size:
+            if size is not None and x_shape[i] != size:
                 matches = False
                 break
     if not matches:
