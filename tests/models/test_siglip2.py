@@ -967,6 +967,36 @@ class TestSigLip2Components(BaseTester):
         # the autocast run rounds the projections to the autocast dtype
         self.assert_close(pooled.to(dtype), expected, rtol=5e-2, atol=5e-2)
 
+    @pytest.mark.parametrize(
+        ("param_dtype", "autocast_dtype"), [(torch.bfloat16, torch.float16), (torch.float64, torch.float16)]
+    )
+    def test_pooling_head_all_masked_sample_pools_uniformly_in_the_score_dtype(
+        self, device, dtype, param_dtype, autocast_dtype
+    ):
+        # The scores are computed in the autocast dtype for a float16, bfloat16 or float32 input and in float64 for a
+        # float64 one, which autocast leaves alone. A bfloat16 mask filled with float16's minimum held -65536, which
+        # overflows to -inf in float16 (nan); a float64 mask filled with it kept the score differences (not uniform).
+        if dtype != torch.float32:
+            pytest.skip("one run per device: the dtypes are the parameters")
+        if param_dtype == torch.float64 and device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        if param_dtype == torch.bfloat16 and device.type == "cpu":
+            pytest.skip("CPU float16 autocast rejects the bfloat16 parameters of layer_norm")
+        config = _tiny_vision_config()
+        head = SigLip2MultiheadAttentionPoolingHead(config).to(device, param_dtype).eval()
+        hidden_state = torch.randn(1, 64, config.hidden_size, device=device, dtype=param_dtype)
+        mask = torch.zeros(1, 64, dtype=torch.bool, device=device)
+        captured = {}
+        forward = head.attention.forward
+        head.attention.forward = lambda *args, **kwargs: captured.setdefault("out", forward(*args, **kwargs))
+
+        with torch.no_grad(), torch.autocast(device.type, dtype=autocast_dtype):
+            pooled = head(hidden_state, attention_mask=mask)
+
+        assert torch.isfinite(pooled).all()
+        weights = captured["out"][1].float()
+        self.assert_close(weights, torch.full_like(weights, 1 / 64), rtol=0.0, atol=0.0)
+
     def test_dynamo_fullgraph_pooling_head_under_autocast(self, device, dtype, torch_optimizer):
         # The autocast fill is chosen inside the compiled graph too. torch.amp.is_autocast_available cannot be traced
         # before torch 2.6 (a graph break, so fullgraph raised on torch 2.5.1), so the head asks it in eager mode only.

@@ -197,9 +197,10 @@ class SigLip2MultiheadAttentionPoolingHead(nn.Module):
                 them with exactly uniform weights in float32, float64 and bfloat16. In float16, as in transformers,
                 ``finfo(float16).min`` plus a score rounds to a multiple of 32, so those weights are only roughly
                 uniform, and a head whose scores are all below about -16 gives a non-finite output. Under
-                :func:`torch.autocast` the scores are computed in the autocast dtype, so its minimum is used when it
-                is the larger one (the float32 minimum would round to ``-inf`` in float16 or bfloat16), and the
-                float16 caveat applies to float16 autocast.
+                :func:`torch.autocast` the scores of a float32, float16 or bfloat16 input are computed in the
+                autocast dtype, so the mask is built in that dtype with its minimum (the float32 minimum would round
+                to ``-inf`` in float16 or bfloat16), and the float16 caveat applies to float16 autocast; a float64
+                input, which autocast leaves alone, keeps the float64 mask.
 
         Returns:
             Tensor with shape :math:`(B, D)` containing the pooled visual
@@ -220,18 +221,19 @@ class SigLip2MultiheadAttentionPoolingHead(nn.Module):
             # _prepare_4d_attention_mask builds it: a partly padded sample pools as with -inf (exp underflows to 0),
             # and an all-padding sample gets uniform weights (exactly so in float32, float64 and bfloat16; float16
             # rounds min + score, see the docstring) instead of the nan of a softmax over -inf only.
-            fill = torch.finfo(hidden_state.dtype).min
+            score_dtype = hidden_state.dtype
             device_type = hidden_state.device.type
             # torch.is_autocast_enabled raises for a device type without autocast, such as meta, so eager mode asks
             # torch.amp.is_autocast_available first. Under torch.compile it does not: that call breaks the graph
             # before torch 2.6, and a compiled model runs on a device type with autocast.
             has_autocast = is_compiling() or torch.amp.is_autocast_available(device_type)
-            if has_autocast and torch.is_autocast_enabled(device_type):
-                # nn.MultiheadAttention adds the mask to scores computed in the autocast dtype, where float32's
-                # minimum rounds to -inf: fill with the minimum both dtypes can hold.
-                fill = max(fill, torch.finfo(torch.get_autocast_dtype(device_type)).min)
-            key_padding_mask = torch.zeros(keep.shape, dtype=hidden_state.dtype, device=hidden_state.device)
-            key_padding_mask = key_padding_mask.masked_fill(~keep, fill)
+            if score_dtype != torch.float64 and has_autocast and torch.is_autocast_enabled(device_type):
+                # nn.MultiheadAttention computes the scores of a float16, bfloat16 or float32 input in the autocast
+                # dtype (autocast leaves float64 alone), where another dtype's minimum can round to -inf: build the
+                # mask in that dtype.
+                score_dtype = torch.get_autocast_dtype(device_type)
+            key_padding_mask = torch.zeros(keep.shape, dtype=score_dtype, device=hidden_state.device)
+            key_padding_mask = key_padding_mask.masked_fill(~keep, torch.finfo(score_dtype).min)
             key_padding_mask = key_padding_mask.expand(batch_size, -1)
 
         # multi-head attention: probe as query, hidden_state as key/value

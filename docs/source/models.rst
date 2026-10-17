@@ -11,8 +11,9 @@ builders load pretrained weights by default and ``KimiVLBuilder.from_pretrained_
 them on first use. ``SegmentationModelsBuilder`` downloads nothing: it wraps a network you built yourself. The page
 also covers the vision tower of Qwen2.5-VL, whose weights kornia does not host: ``Qwen25VisionTransformer.from_pretrained``
 reads a checkpoint you downloaded yourself (see :ref:`Qwen25VisionTransformer`). For the papers behind the models, see
-the :doc:`Models </models/index>` section. Every model here except Kimi-VL and Qwen2.5-VL accepts a batched
-``(B, 3, H, W)`` float image in ``[0, 1]``. Kimi-VL takes that image normalized with mean = std = 0.5 per channel
+the :doc:`Models </models/index>` section. Every model here accepts a batched ``(B, 3, H, W)`` float image in
+``[0, 1]``, except Kimi-VL, Qwen2.5-VL and a ``SegmentationModelsBuilder`` model built without ``preproc_params``,
+which passes its input to the network unchanged. Kimi-VL takes that image normalized with mean = std = 0.5 per channel
 (``2 * x - 1``), as its checkpoint's ``preprocessor_config.json`` specifies, with ``H`` and ``W`` multiples of 28 (see
 ``kornia.models.kimi_vl.KimiVLModel.forward``). The Qwen2.5-VL vision tower takes it normalized with the CLIP mean and
 std. :func:`kornia.io.get_sample_images` provides a couple of sample images for quick experiments.
