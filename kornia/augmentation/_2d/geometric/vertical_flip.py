@@ -80,19 +80,15 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        # Stack the 3x3 flip matrix from scalars filled on the device plus the (tensor) height, rather than
+        # Build the 3x3 flip matrix as a literal filled on the device plus the (tensor) height, rather than
         # `int(h)`, which lowers to `.item()` and breaks torch.compile fullgraph, or a `torch.tensor` literal,
-        # which copies from the host and waits for the queued kernels. Entry [1, 2] is `-1 + h` in the input
-        # dtype, numerically identical to the former literal plus h.
+        # which copies from the host and waits for the queued kernels. Entry [1, 2] becomes `-1 + h` in the input
+        # dtype, as before.
         h = _to_device_nonblocking(params["forward_input_shape"][-2], input.device, input.dtype)
-        minus_one, zero, one = (_constant_tensor(v, device=input.device, dtype=input.dtype) for v in (-1.0, 0.0, 1.0))
-        flip_mat: torch.Tensor = torch.stack(
-            [
-                torch.stack([one, zero, zero]),
-                torch.stack([zero, minus_one, minus_one + h]),
-                torch.stack([zero, zero, one]),
-            ]
+        flip_mat: torch.Tensor = _constant_tensor(
+            [[1.0, 0.0, 0.0], [0.0, -1.0, -1.0], [0.0, 0.0, 1.0]], device=input.device, dtype=input.dtype
         )
+        flip_mat[1, 2] = flip_mat[1, 2] + h
 
         return flip_mat.expand(input.shape[0], 3, 3)
 

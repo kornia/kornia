@@ -140,6 +140,18 @@ class TestInverseWithoutErrorCheck(BaseTester):
             _torch_inverse_cast(torch.zeros(1, 3, 3, device=device, dtype=dtype))
 
 
+class TestConstantTensorUnderAutocast(BaseTester):
+    @pytest.mark.parametrize("autocast_dtype", [torch.float16, torch.bfloat16])
+    def test_dtype_and_values_ignore_autocast(self, autocast_dtype, device, dtype) -> None:
+        # A literal keeps the requested dtype in an autocast region of another precision, as torch.tensor does.
+        data = [[0.299, 0.0, -1.0], [0.0, 0.587, 1.0 / 3.0]]
+        expected = torch.tensor(data, device=device, dtype=dtype)
+        with torch.autocast(device.type, dtype=autocast_dtype):
+            actual = core_ops._constant_tensor(data, device=device, dtype=dtype)
+        assert actual.dtype == dtype
+        assert torch.equal(actual, expected)
+
+
 def test_constant_tensor_import_paths() -> None:
     assert augmentation_helpers._constant_tensor is core_ops._constant_tensor
     assert augmentation_helpers._flatten_constant is core_ops._flatten_constant

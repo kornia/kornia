@@ -189,4 +189,22 @@ def _constant_tensor(
             values.append(filled[key])
         else:
             values.append(torch.full((), leaf, device=device, dtype=dtype))
-    return torch.stack(values).view(shape)
+    return _stack_without_autocast(values).view(shape)
+
+
+# The device types whose autocast state torch can report; ``torch.is_autocast_enabled("meta")`` raises.
+_AUTOCAST_DEVICE_TYPES = ("cpu", "cuda", "mps", "xpu", "xla", "hpu")
+
+
+def _stack_without_autocast(values: List[torch.Tensor]) -> torch.Tensor:
+    """Stack ``values`` in their own dtype, also inside an autocast region.
+
+    ``torch.stack`` is on autocast's promote list, which rejects a half dtype other than the region's own (a
+    ``float16`` stack inside CPU autocast, whose lower precision is ``bfloat16``). A literal keeps the dtype it was
+    asked for, as ``torch.tensor`` does, so autocast is switched off for the stack.
+    """
+    device_type = values[0].device.type
+    if device_type in _AUTOCAST_DEVICE_TYPES and torch.is_autocast_enabled(device_type):
+        with torch.autocast(device_type, enabled=False):
+            return torch.stack(values)
+    return torch.stack(values)
