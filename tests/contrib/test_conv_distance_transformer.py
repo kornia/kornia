@@ -279,20 +279,23 @@ class TestConvDistanceTransform(BaseTester):
 
     def test_gradcheck(self, device):
         # 0.5, off the kink at 1 where the mask is clamped and a finite difference is one-sided.
+        # On CUDA the backward of the cascade's convolutions and replicate padding is not deterministic: repeated
+        # float64 backward passes differ by up to ~1e-15, which gradcheck's reentrancy check rejects at tolerance 0.
+        nondet_tol = 1e-12 if device.type == "cuda" else 0.0
         B, C, H, W = 1, 1, 32, 32
         sample2d = torch.full((B, C, H, W), 0.5, device=device, dtype=torch.float64, requires_grad=True)
-        self.gradcheck(kornia.contrib.distance_transform, (sample2d,))
+        self.gradcheck(kornia.contrib.distance_transform, (sample2d,), nondet_tol=nondet_tol)
 
         B, C, D, H, W = 1, 1, 5, 5, 5
         sample3d = torch.full((B, C, D, H, W), 0.5, device=device, dtype=torch.float64, requires_grad=True)
-        self.gradcheck(kornia.contrib.distance_transform, (sample3d,))
+        self.gradcheck(kornia.contrib.distance_transform, (sample3d,), nondet_tol=nondet_tol)
 
     @pytest.mark.parametrize(
         ("shape", "source", "neighbours"),
         [((1, 1, 4, 5), (1, 2), 8), ((1, 1, 3, 4, 5), (1, 1, 2), 26)],
         ids=["2d", "3d"],
     )
-    def test_gradient_reaches_a_unit_source(self, shape, source, neighbours, device, dtype):
+    def test_gradient_reaches_a_unit_source(self, shape, source, neighbours, device, dtype, cudnn_tf32_follows_option):
         # The mask is clamped to [0, 1] with torch.where, whose derivative at a value of exactly 1 is 1 on every torch
         # version; torch.clamp's is 0 there on torch 2.14 (AGENTS.md). Each neighbour of the interior source reads
         # -h * log(tap * v) in the first cascade step, so d/dv = -h / v = -0.35 per neighbour at v = 1, and nothing

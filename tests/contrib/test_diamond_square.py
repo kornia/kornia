@@ -197,10 +197,10 @@ class TestDiamondSquare(BaseTester):
         #   draw = lambda shape, device=None, dtype=None: torch.rand(shape, generator=g, dtype=drawn)
         #   out = kornia.contrib.diamond_square((1, 1, 9, 17), random_fn=draw, dtype=dtype)
         #   out.dtype, out[0, 0, :2, :4]
-        # They are not a cross-CPU bit pattern: torch 2.14 on the AMD EPYC CI runners rounds the float32 levels'
-        # convolution at (1, 2) one ulp away, as a convolution accumulated in float64 does. A few ulps of the output
-        # dtype still reject levels computed in the requested float16 (~1e-4 off) or a float64 map computed in float32
-        # (~1e-8 off).
+        # They are not a cross-CPU bit pattern: torch 2.14 on x86 (the AMD EPYC CI runners, an Intel i7-14700K) rounds
+        # the float32 levels' convolution at (1, 2) one ulp away, as a convolution accumulated in float64 does. A few
+        # ulps of the output dtype still reject levels computed in the requested float16 (~1e-4 off) or a float64 map
+        # computed in float32 (~1e-8 off).
         # A map that is the seed alone stores the draws in the requested dtype (dd3bddb7e: same dtype at (1, 1, 3, 9)).
         g = torch.Generator().manual_seed(0)
 
