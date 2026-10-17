@@ -83,7 +83,7 @@ def _box_blur_pool(
     """Average local windows without constructing kernels or expanding them over channels."""
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     ky, kx = _unpack_2d_ks(kernel_size)
-    KORNIA_CHECK(ky > 0 and kx > 0, f"Kernel dimensions must be positive. Got {kernel_size}")
+    KORNIA_CHECK(ky > 0 and kx > 0, lambda: f"Kernel dimensions must be positive. Got {kernel_size}")
     KORNIA_CHECK(
         str(border_type).lower() in {"constant", "reflect", "replicate", "circular"},
         f"Invalid border, {border_type}. Expected one of constant, reflect, replicate, circular",

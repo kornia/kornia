@@ -148,7 +148,8 @@ def dice_loss(
         KORNIA_CHECK_IS_TENSOR(weight, "weight must be torch.Tensor or None.")
         KORNIA_CHECK(
             (weight.shape[0] == num_of_classes and weight.numel() == num_of_classes),
-            f"weight shape must be (num_of_classes,): ({num_of_classes},), got {weight.shape}",
+            f"weight must hold one value per class of pred: got weight of shape {weight.shape} for pred of shape "
+            f"{pred.shape}",
         )
         KORNIA_CHECK(
             weight.device == pred.device,

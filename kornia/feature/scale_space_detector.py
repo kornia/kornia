@@ -23,7 +23,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE, KORNIA_CHECK_SIZES
 from kornia.geometry.subpix import (
     AdaptiveQuadInterp3d,
     ConvQuadInterp3d,
@@ -156,10 +156,7 @@ def _check_mask(mask: torch.Tensor, img: torch.Tensor) -> None:
     """
     KORNIA_CHECK(mask.dim() == 4 and mask.shape[1] == 1, f"mask must be (1 or B, 1, H, W). Got {tuple(mask.shape)}")
     KORNIA_CHECK(mask.device == img.device, f"mask device {mask.device} must match the image device {img.device}")
-    KORNIA_CHECK(
-        mask.shape[0] in (1, img.shape[0]),
-        f"mask batch {mask.shape[0]} must be 1 or match the image batch {img.shape[0]}",
-    )
+    KORNIA_CHECK_SAME_SIZE(mask, img, allow_one=True, msg="The mask batch must be 1 or match the image batch.")
     KORNIA_CHECK(
         mask.shape[-2:] == img.shape[-2:],
         f"mask spatial size {tuple(mask.shape[-2:])} must match the image {tuple(img.shape[-2:])}",
@@ -424,22 +421,17 @@ class ScaleSpaceDetector(nn.Module):
         else:
             with self._dynamo_config_patch(("resp",)):
                 level_resp = self.resp(octave.permute(0, 2, 1, 3, 4).reshape(B * L, CH, H, W), sigmas_oct.reshape(-1))
-            KORNIA_CHECK(
-                level_resp.dim() == 4
-                and level_resp.shape[0] == B * L
-                and level_resp.shape[1] == 1
-                and level_resp.shape[-2:] == (H, W),
-                "resp_module must return one response map per image with shape "
-                f"({B * L}, 1, {H}, {W}). Got {tuple(level_resp.shape)}",
+            KORNIA_CHECK_SIZES(
+                level_resp, [B * L, 1, H, W], "resp_module must return one response map per image, (B * L, 1, H, W)."
             )
             oct_resp = level_resp.view(B, L, 1, H, W)
             # Reorder to (B, CH, L, H, W) for scale-space NMS
             oct_resp = oct_resp.permute(0, 2, 1, 3, 4)
-        KORNIA_CHECK(
-            oct_resp.dim() == 5 and oct_resp.shape[0] == B and oct_resp.shape[1] == 1 and oct_resp.shape[-2:] == (H, W),
-            "resp_module must return one scale-space response channel with shape "
-            f"({B}, 1, L, {H}, {W}). Got {tuple(oct_resp.shape)}. For a multi-channel image, convert it to "
-            "grayscale first or use a response function that reduces the channels to one.",
+        KORNIA_CHECK_SIZES(
+            oct_resp,
+            [B, 1, None, H, W],
+            "resp_module must return one scale-space response channel, (B, 1, L, H, W). For a multi-channel image, "
+            "convert it to grayscale first or use a response function that reduces the channels to one.",
         )
         # Iterative sub-pixel modules flatten the full response volume internally. The
         # level/channel permutation above is contiguous when CH == 1 (the common path), but

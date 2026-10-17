@@ -1655,7 +1655,7 @@ class TestConventionsFilter2d(BaseTester):
             self.assert_close(own[i : i + 1], run(image[i : i + 1], i, i + 1))
         # 2 kernels divide the 4 samples and 3 do not: both raise the kornia error, not a torch view error
         for count in (2, 3):
-            with pytest.raises(BaseError, match=f"kernel batch of {count} for an input batch of 4"):
+            with pytest.raises(BaseError, match=rf"(?s)expected 4 or 1, got {count}\..*kernel batch must be 1 or the"):
                 run(image, 0, count)
 
     def test_convention_fft_conv_rejects_a_kernel_batch_for_one_sample_5154(self, device, dtype):
@@ -1664,7 +1664,7 @@ class TestConventionsFilter2d(BaseTester):
         image = _rand(1, 1, 5, 7, device=device, dtype=dtype)
         kernels = _rand(4, 3, 3, device=device, dtype=dtype, seed=1)
         for fn in (fft_conv, filter2d):
-            with pytest.raises(BaseError, match="kernel batch of 4 for an input batch of 1"):
+            with pytest.raises(BaseError, match=r"(?s)expected 1, got 4\..*kernel batch must be 1 or the input batch"):
                 fn(image, kernels, border_type="constant")
 
     @pytest.mark.parametrize("per_sample", [False, True])

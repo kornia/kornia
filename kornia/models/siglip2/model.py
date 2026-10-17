@@ -27,7 +27,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK_SAME_SIZE
 
 from .config import SigLip2Config
 from .text_encoder import SigLip2TextModel
@@ -242,10 +242,10 @@ class SigLip2Model(nn.Module):
             # pairwise sigmoid loss (SigLIP paper, eq. 1; transformers' SiglipModel): every image-text pair enters,
             # the matching pairs on the diagonal labelled +1 and every other pair -1
             if return_loss:
-                KORNIA_CHECK(
-                    image_embeds.shape[0] == text_embeds.shape[0],
-                    "return_loss pairs the i-th image with the i-th text, so it needs as many images as texts; got "
-                    f"{image_embeds.shape[0]} images and {text_embeds.shape[0]} texts.",
+                KORNIA_CHECK_SAME_SIZE(
+                    image_embeds,
+                    text_embeds,
+                    msg="return_loss pairs the i-th image with the i-th text, so it needs as many images as texts.",
                 )
                 eye = torch.eye(logits_per_text.shape[0], device=logits_per_text.device, dtype=logits_per_text.dtype)
                 loss = -F.logsigmoid((2 * eye - 1) * logits_per_text).sum(-1).mean()

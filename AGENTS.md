@@ -114,6 +114,7 @@ when more than one virtualenv is in play: name the interpreter explicitly rather
 
 - Search for an existing `kornia` operation before building the same operation from raw PyTorch.
 - Follow nearby batching, broadcasting, shape-validation, dtype, and device conventions.
+- A `KORNIA_CHECK` message that formats a tensor size or an `int` argument specializes it under a dynamic-shape `torch.compile`, which then compiles a graph per value. Compare sizes with `KORNIA_CHECK_SAME_SIZE`, `KORNIA_CHECK_SIZES` or `KORNIA_CHECK_SHAPE`, or pass the message as `lambda: f"..."`. TorchScript rejects a `lambda`, so a function it compiles formats whole shapes instead, such as `{x.shape}`, which do not specialize. `tests/core/test_check_message_call_sites.py` enforces both and lists the functions TorchScript compiles.
 - Use `BaseTester` from `testing.base`, injected `device`/`dtype` fixtures, and `self.assert_close()` for tensor comparisons. Its dtype-specific tolerances are intentional.
 - Follow [TESTING.md](TESTING.md) for test mechanisms. Use `self.gradcheck()` for gradient checks and the injected `torch_optimizer` fixture for `torch.compile` coverage. Include smoke, exception, shape/cardinality, numerical, gradient, and compile tests when they apply; not every change needs every kind.
 - Keep numerical correctness tests self-contained. For expected values produced by an optional reference library, prefer a hardcoded literal plus the small generation snippet and source. Optional-dependency integration tests, including ONNX tests, may still use `pytest.importorskip`.
