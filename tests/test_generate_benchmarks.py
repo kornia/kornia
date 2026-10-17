@@ -130,6 +130,16 @@ def test_render_page_empty_results_dir(tmp_path: Path) -> None:
     assert "No benchmark results" in rst  # page still builds, honestly empty
 
 
+@pytest.mark.parametrize("seeded", [False, True])
+def test_render_page_explains_the_cpu_allocator(tmp_path: Path, seeded: bool) -> None:
+    # The page is generated, so the CPU allocator note lives in the generator; an edit to performance.rst is lost.
+    rst = generate_benchmarks.render_page(_seed(tmp_path) if seeded else tmp_path)
+    heading = "CPU: large batches and the memory allocator"
+    assert f"{heading}\n{'-' * len(heading)}\n" in rst
+    assert "GLIBC_TUNABLES=glibc.malloc.mmap_max=0:glibc.malloc.trim_threshold=68719476736" in rst
+    assert "ru_minflt" in rst
+
+
 def test_refresh_llms_replaces_only_marker_block(tmp_path: Path) -> None:
     llms = tmp_path / "llms-full.txt"
     llms.write_text("before\n<!-- BENCH:BEGIN -->\nold\n<!-- BENCH:END -->\nafter\n")
