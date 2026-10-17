@@ -21,7 +21,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_autocast_enabled, is_compiling
 
 from .filter import _to_floating, filter2d, filter2d_separable
@@ -165,13 +165,7 @@ def gaussian_blur2d(
         sigma = sigma.to(device=input.device, dtype=input.dtype)
 
     KORNIA_CHECK_SHAPE(sigma, ["B", "2"])
-    # Format the sizes only on failure: an f-string evaluated on every call makes Dynamo specialize the batch size.
-    if sigma.shape[0] not in (1, input.shape[0]):
-        KORNIA_CHECK(
-            False,
-            "sigma must have a batch of 1 or the input batch. "
-            f"Got a sigma batch of {sigma.shape[0]} for an input batch of {input.shape[0]}",
-        )
+    KORNIA_CHECK_SAME_SIZE(sigma, input, allow_one=True, msg="sigma must have a batch of 1 or the input batch.")
     # `bool()` on a tensor is untraceable by dynamo; skip the data-dependent check under compile.
     if not is_compiling():
         # Only interpolate `sigma` into the message when the check actually fails: a plain

@@ -132,7 +132,7 @@ class TestKMeans(BaseTester):
         kmeans.fit(torch.rand((1000, 5), dtype=dtype))
         with pytest.raises(Exception) as errinfo:
             kmeans.predict(torch.rand((10, 7), dtype=dtype))
-        assert "7 != 5" in str(errinfo)
+        assert "dimension 1: expected 5, got 7" in str(errinfo.value)
 
         # case: num_clusters does not match the number of rows in an explicit cluster_centers
         starting_centers = torch.rand((5, 2), device=device, dtype=dtype)

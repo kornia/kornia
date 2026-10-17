@@ -108,6 +108,19 @@ class TestBinaryFocalLossWithLogits(BaseTester):
         expected = op(logits, labels, *args)
         self.assert_close(actual, expected)
 
+    def test_jit_script(self, device, dtype):
+        # TorchScript compiles the loss with its weight checks, whose messages format shapes rather than a lambda
+        logits = torch.rand(2, 3, 2, device=device, dtype=dtype)
+        labels = torch.rand(2, 3, 2, device=device, dtype=dtype).round()
+        pos_weight = torch.rand(3, device=device, dtype=dtype)
+        weight = torch.rand(3, 1, device=device, dtype=dtype)
+        op = kornia.losses.binary_focal_loss_with_logits
+        op_script = torch.jit.script(op)
+        for args in ((0.25, 2.0, "mean", None, None), (0.25, 2.0, "mean", pos_weight, weight)):
+            self.assert_close(op_script(logits, labels, *args), op(logits, labels, *args))
+        with pytest.raises(Exception, match="pos_weight must hold one value per class of pred"):
+            op_script(logits, labels, 0.25, 2.0, "mean", torch.rand(4, device=device, dtype=dtype), None)
+
     @pytest.mark.parametrize("gamma", [0.5, 2.0])
     def test_gradcheck(self, device, dtype, gamma):
         logits = torch.rand(2, 3, 2, device=device, dtype=torch.float64)
@@ -524,6 +537,19 @@ class TestFocalLoss(BaseTester):
         actual = op_optimized(logits, labels, *args)
         expected = op(logits, labels, *args)
         self.assert_close(actual, expected)
+
+    def test_jit_script(self, device, dtype):
+        # TorchScript compiles the loss with its class and weight checks, whose messages format shapes
+        num_classes = 3
+        logits = torch.rand(2, num_classes, 4, device=device, dtype=dtype)
+        labels = torch.randint(num_classes, (2, 4), device=device)
+        weight = torch.rand(num_classes, device=device, dtype=dtype)
+        op = kornia.losses.focal_loss
+        op_script = torch.jit.script(op)
+        for w in (None, weight):
+            self.assert_close(op_script(logits, labels, 0.25, 2.0, "mean", w), op(logits, labels, 0.25, 2.0, "mean", w))
+        with pytest.raises(Exception, match="weight must hold one value per class of pred"):
+            op_script(logits, labels, 0.25, 2.0, "mean", torch.rand(num_classes + 1, device=device, dtype=dtype))
 
     def test_gradcheck(self, device, dtype):
         num_classes = 3

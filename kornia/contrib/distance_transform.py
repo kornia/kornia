@@ -48,9 +48,11 @@ def _check_h_range(kernel_size: int, h: float, dtype: torch.dtype, ndim: int) ->
     farthest_tap = math.exp(-math.sqrt(ndim) * k_half / h)
     KORNIA_CHECK(
         farthest_tap >= torch.finfo(dtype).tiny,
-        f"h={h} is too small for kernel_size={kernel_size} at working precision {dtype}: the corner kernel tap "
-        f"exp(-sqrt({ndim})*{k_half}/h) falls below the smallest normal number of that precision and the result "
-        "would be wrong. Increase h or decrease kernel_size.",
+        lambda: (
+            f"h={h} is too small for kernel_size={kernel_size} at working precision {dtype}: the corner kernel tap "
+            f"exp(-sqrt({ndim})*{k_half}/h) falls below the smallest normal number of that precision and the result "
+            "would be wrong. Increase h or decrease kernel_size."
+        ),
     )
     # A pixel counts as reached when -h*log(sum of its window's taps over reached pixels) > 0, i.e. when that sum is
     # below 1; a source pixel fails the test through its own centre tap, and that is how sources stay at 0. If the
@@ -64,9 +66,11 @@ def _check_h_range(kernel_size: int, h: float, dtype: torch.dtype, ndim: int) ->
     off_centre = _off_centre_tap_sum(kernel_size, h, ndim)
     KORNIA_CHECK(
         off_centre < 1.0 - margin,
-        f"h={h} is too large for kernel_size={kernel_size} in {ndim}-D: the kernel's off-centre taps sum to "
-        f"{off_centre:.7f}, not below 1 by the rounding margin {margin:.1e} of the {dtype} working precision, so a "
-        "pixel surrounded by reached pixels could read as foreground (distance 0). Decrease h.",
+        lambda: (
+            f"h={h} is too large for kernel_size={kernel_size} in {ndim}-D: the kernel's off-centre taps sum to "
+            f"{off_centre:.7f}, not below 1 by the rounding margin {margin:.1e} of the {dtype} working precision, so a "
+            "pixel surrounded by reached pixels could read as foreground (distance 0). Decrease h."
+        ),
     )
 
 

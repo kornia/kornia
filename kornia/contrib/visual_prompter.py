@@ -209,9 +209,10 @@ class VisualPrompter:
             image = image.unsqueeze(0)
         else:
             KORNIA_CHECK_SHAPE(image, ["B", "3", "H", "W"])
-            KORNIA_CHECK(
-                image.shape[0] == 1,
-                f"VisualPrompter takes one image, (3, H, W) or (1, 3, H, W); got a batch of {image.shape[0]}. "
+            KORNIA_CHECK_SHAPE(
+                image,
+                ["1", "3", "H", "W"],
+                "VisualPrompter takes one image, (3, H, W) or (1, 3, H, W). "
                 "Use `Sam.forward` to segment a batch of images with per-image prompts.",
             )
 
@@ -235,9 +236,11 @@ class VisualPrompter:
         encoder_size = self.model.image_encoder.img_size
         KORNIA_CHECK(
             max(height, width) <= encoder_size,
-            f"VisualPrompter.transforms resizes the image to {height} x {width}, larger than the image encoder's input "
-            f"size {encoder_size}: the padding to {encoder_size} would crop the image while the prompts are scaled "
-            "for all of it.",
+            lambda: (
+                f"VisualPrompter.transforms resizes the image to {height} x {width}, larger than the image "
+                f"encoder's input size {encoder_size}: the padding to {encoder_size} would crop the image while the "
+                "prompts are scaled for all of it."
+            ),
         )
         prompt_dtype = torch.promote_types(self.model.prompt_encoder.point_embeddings[0].weight.dtype, torch.float32)
         self._prompt_scale = torch.tensor(
@@ -291,8 +294,10 @@ class VisualPrompter:
 
         KORNIA_CHECK(
             images == 1,
-            f"VisualPrompter takes the boxes of its one image, (K, 4) or (1, K, 4); got boxes for {images} images. "
-            "Use `Sam.forward` to prompt a batch of images.",
+            lambda: (
+                f"VisualPrompter takes the boxes of its one image, (K, 4) or (1, K, 4); got boxes for {images} "
+                "images. Use `Sam.forward` to prompt a batch of images."
+            ),
         )
 
         return xyxy.reshape(-1, 4)
