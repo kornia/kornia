@@ -104,14 +104,16 @@ def _bilateral_blur(
         padded_guidance = F.pad(guidance, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
         unfolded_guidance = padded_guidance.unfold(2, ky, 1).unfold(3, kx, 1)  # (B, C, H, W, Ky, Kx)
 
-    diff = unfolded_guidance - guidance[..., None, None]
+    # Normalize before squaring: raw differences and sigma can overflow or
+    # underflow together even when their ratio is well within the dtype range.
+    diff = (unfolded_guidance - guidance[..., None, None]) / sigma_color
     if color_distance_type == "l1":
         color_distance_sq = diff.abs().sum(1, keepdim=True).square()
     elif color_distance_type == "l2":
         color_distance_sq = diff.square().sum(1, keepdim=True)
     else:
         raise ValueError("color_distance_type only accepts l1 or l2")
-    color_kernel = (-0.5 / sigma_color**2 * color_distance_sq).exp()  # (B, 1, H, W, Ky, Kx)
+    color_kernel = (-0.5 * color_distance_sq).exp()  # (B, 1, H, W, Ky, Kx)
 
     space_kernel = get_gaussian_kernel2d(kernel_size, sigma_space, device=input.device, dtype=input.dtype)
     space_kernel = space_kernel.view(-1, 1, 1, 1, ky, kx)

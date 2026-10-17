@@ -1,0 +1,1 @@
+Bilateral and joint bilateral filters preserve their colour weights for very small or large input values and matching `sigma_color`, avoiding overflow and underflow from squaring them before normalization.
