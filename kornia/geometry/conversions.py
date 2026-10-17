@@ -27,6 +27,7 @@ import torch.nn.functional as F
 from kornia.core._compat import deprecated
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, ShapeError, are_checks_enabled
 from kornia.core.exceptions import TypeCheckError
+from kornia.core.ops import _constant_tensor
 from kornia.core.utils import _inverse_3x3_closed_form, _torch_inverse_cast, is_compiling
 
 __all__ = [
@@ -2056,7 +2057,9 @@ def normal_transform_pixel(
                 ]
             )
         else:
-            tr_mat = torch.tensor([[sx, 0.0, tx], [0.0, sy, ty], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+            # Filled on the device: ``torch.tensor(..., device=cuda)`` copies from the host and waits for every
+            # queued kernel before it returns. The values round from the same doubles to ``dtype`` either way.
+            tr_mat = _constant_tensor([[sx, 0.0, tx], [0.0, sy, ty], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
     else:
         # Low-precision floating types cannot represent every practical image size exactly
         # (e.g. bfloat16 rounds 257 to 256). Keep symbolic size arithmetic in at least
@@ -2198,7 +2201,8 @@ def normal_transform_pixel3d(
                 ]
             )
         else:
-            tr_mat = torch.tensor(
+            # As in 2-D: filled on the device, without a host copy that waits for the queue.
+            tr_mat = _constant_tensor(
                 [[sx, 0.0, 0.0, tx], [0.0, sy, 0.0, ty], [0.0, 0.0, sz, tz], [0.0, 0.0, 0.0, 1.0]],
                 device=device,
                 dtype=dtype,

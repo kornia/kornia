@@ -21,7 +21,7 @@ from typing import Optional, Tuple, Union
 import torch
 from torch import nn
 
-from kornia.core.ops import eye_like
+from kornia.core.ops import _constant_tensor, eye_like
 from kornia.core.utils import _extract_device_dtype
 from kornia.filters import gaussian_blur2d
 
@@ -67,7 +67,8 @@ def _compute_tensor_center(tensor: torch.Tensor) -> torch.Tensor:
     height, width = tensor.shape[-2:]
     center_x: float = float(width - 1) / 2
     center_y: float = float(height - 1) / 2
-    center: torch.Tensor = torch.tensor([center_x, center_y], device=tensor.device, dtype=tensor.dtype)
+    # Filled on the device: ``torch.tensor(..., device=cuda)`` copies from the host and waits for queued kernels.
+    center: torch.Tensor = _constant_tensor([center_x, center_y], device=tensor.device, dtype=tensor.dtype)
     return center
 
 
@@ -79,7 +80,8 @@ def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
     center_x: float = float(width - 1) / 2
     center_y: float = float(height - 1) / 2
     center_z: float = float(depth - 1) / 2
-    center: torch.Tensor = torch.tensor([center_x, center_y, center_z], device=tensor.device, dtype=tensor.dtype)
+    # Filled on the device, as in ``_compute_tensor_center``.
+    center: torch.Tensor = _constant_tensor([center_x, center_y, center_z], device=tensor.device, dtype=tensor.dtype)
     return center
 
 

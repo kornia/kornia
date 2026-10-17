@@ -90,7 +90,8 @@ def _setup_elastic(x: torch.Tensor) -> Callable[[], Any]:
 
 
 def _setup_jpeg(x: torch.Tensor) -> Callable[[], Any]:
-    quality = torch.linspace(50.0, 90.0, x.shape[0], device=x.device, dtype=x.dtype)
+    # A CPU quality, as RandomJPEG passes: the range check of a CUDA quality reads it back on the host.
+    quality = torch.linspace(50.0, 90.0, x.shape[0], dtype=x.dtype)
     return lambda: kornia.enhance.jpeg_codec_differentiable(x, quality)
 
 

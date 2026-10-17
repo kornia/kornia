@@ -22,6 +22,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
+from kornia.core.ops import _constant_tensor
 from kornia.core.utils import is_autocast_enabled, is_compiling
 
 from .filter import _to_floating, filter2d, filter2d_separable
@@ -158,7 +159,11 @@ def gaussian_blur2d(
     # promote before casting sigma and the kernel to the input's dtype, where an integer dtype truncates them (#5155)
     input = _to_floating(input)
 
-    if isinstance(sigma, tuple):
+    if isinstance(sigma, tuple) and all(isinstance(s, (int, float)) for s in sigma):
+        # Filled on the device: ``torch.tensor(..., device=cuda)`` copies from the host and waits for every queued
+        # kernel. The values round from the same Python numbers either way.
+        sigma = _constant_tensor([sigma], device=input.device, dtype=input.dtype)
+    elif isinstance(sigma, tuple):
         sigma = torch.tensor([sigma], device=input.device, dtype=input.dtype)
     else:
         KORNIA_CHECK_IS_TENSOR(sigma)

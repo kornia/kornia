@@ -34,6 +34,7 @@ from kornia.core.check import (
     are_checks_enabled,
 )
 from kornia.core.exceptions import TypeCheckError
+from kornia.core.ops import _constant_tensor
 from kornia.core.utils import _normalize_to_float32_or_float64, is_compiling
 from kornia.image.utils import _to_bcdhw, _to_bchw
 
@@ -1085,7 +1086,11 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     input_shape = input.shape
     input = batched_input
 
-    if not isinstance(factor, torch.Tensor):
+    if isinstance(factor, (int, float)):
+        # Filled on the device: ``torch.as_tensor(..., device=cuda)`` copies from the host and waits for every
+        # queued kernel.
+        factor = _constant_tensor(factor, device=input.device, dtype=input.dtype)
+    elif not isinstance(factor, torch.Tensor):
         factor = torch.as_tensor(factor, device=input.device, dtype=input.dtype)
     else:
         # Match the input's device/dtype (as adjust_brightness/contrast do). Augmentation
@@ -1099,7 +1104,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
         )
 
     kernel = (
-        torch.as_tensor([[1, 1, 1], [1, 5, 1], [1, 1, 1]], dtype=input.dtype, device=input.device)
+        _constant_tensor([[1, 1, 1], [1, 5, 1], [1, 1, 1]], dtype=input.dtype, device=input.device)
         .view(1, 1, 3, 3)
         .repeat(input.size(1), 1, 1, 1)
         / 13

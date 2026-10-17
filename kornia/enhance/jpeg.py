@@ -26,6 +26,7 @@ from torch import nn
 
 from kornia.color import rgb_to_ycbcr, ycbcr_to_rgb
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
+from kornia.core.ops import _constant_tensor
 from kornia.core.utils import is_compiling, is_exporting
 from kornia.enhance.adjust import _check_floating_image
 from kornia.geometry.transform.affwarp import rescale
@@ -98,7 +99,8 @@ def _differentiable_clipping(
 
 def _get_default_qt_y(device: Union[str, torch.device, None], dtype: Union[torch.dtype, None]) -> torch.Tensor:
     """Generate default Quantization table of Y channel."""
-    return torch.tensor(
+    # Filled on the device: ``torch.tensor(..., device=cuda)`` copies from the host and waits for queued kernels.
+    return _constant_tensor(
         [
             [16, 11, 10, 16, 24, 40, 51, 61],
             [12, 12, 14, 19, 26, 58, 60, 55],
@@ -116,7 +118,8 @@ def _get_default_qt_y(device: Union[str, torch.device, None], dtype: Union[torch
 
 def _get_default_qt_c(device: Union[str, torch.device, None], dtype: Union[torch.dtype, None]) -> torch.Tensor:
     """Generate default Quantization table of C channels."""
-    return torch.tensor(
+    # Filled on the device: ``torch.tensor(..., device=cuda)`` copies from the host and waits for queued kernels.
+    return _constant_tensor(
         [
             [17, 18, 24, 47, 99, 99, 99, 99],
             [18, 21, 26, 66, 99, 99, 99, 99],
@@ -205,8 +208,9 @@ def _idct_8x8(input: torch.Tensor) -> torch.Tensor:
     freq_idx = idx.unsqueeze(1)
 
     basis = torch.cos((2.0 * spatial_idx + 1.0) * freq_idx * math.pi / 16.0)
-    alpha = torch.ones(8, dtype=dtype, device=device)
-    alpha[0] = 1.0 / (2**0.5)
+    # Built on the device in one go: assigning a Python float to an element copies it from the host, which waits
+    # for every queued kernel.
+    alpha = _constant_tensor([1.0 / (2**0.5)] + [1.0] * 7, dtype=dtype, device=device)
     dct_scale = torch.outer(alpha, alpha)
     input = input * dct_scale
 

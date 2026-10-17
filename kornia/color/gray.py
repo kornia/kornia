@@ -24,6 +24,7 @@ from torch import nn
 
 from kornia.color.rgb import bgr_to_rgb
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR
+from kornia.core.ops import _constant_tensor
 
 
 def grayscale_to_rgb(image: torch.Tensor) -> torch.Tensor:
@@ -104,7 +105,9 @@ def rgb_to_grayscale(image: torch.Tensor, rgb_weights: Optional[torch.Tensor] = 
             return ((acc + 16384) // 32768).to(dtype=torch.uint8).unsqueeze(-3)
         # floating point images
         if image.dtype in (torch.bfloat16, torch.float16, torch.float32, torch.float64):
-            rgb_weights = torch.tensor([0.299, 0.587, 0.114], device=image.device, dtype=image.dtype)
+            # Filled on the device: ``torch.tensor(..., device=cuda)`` copies from the host and waits for every
+            # queued kernel. The weights round from the same doubles either way.
+            rgb_weights = _constant_tensor([0.299, 0.587, 0.114], device=image.device, dtype=image.dtype)
         else:
             raise TypeError(f"Unknown data type: {image.dtype}")
     else:
