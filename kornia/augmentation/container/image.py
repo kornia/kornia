@@ -249,9 +249,10 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             )
 
         mix_added = False
-        # Make the selection fair.
+        # Make the selection fair. A mix member takes one of the drawn places, so a drawn count of 0 adds none.
         if (
             with_mix
+            and num_samples > 0
             and len(mix_indices) != 0
             and (torch.rand(1) < ((len(mix_indices) + len(indices)) / len(self))).item()
         ):

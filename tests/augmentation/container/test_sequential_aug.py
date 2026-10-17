@@ -165,6 +165,17 @@ class TestConventionImageSequential(BaseTester):
         with pytest.raises(ValueError, match="random_apply must select a non-negative number of transformations"):
             container(K.RandomHorizontalFlip(p=1.0), K.RandomVerticalFlip(p=1.0), random_apply=random_apply)
 
+    @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
+    def test_random_apply_zero_draw_adds_no_mix_6055(self, container, device, dtype):
+        # A mix member replaces one of the drawn members, so a drawn count of 0 must not add it either.
+        x = torch.rand(4, 3, 6, 8, device=device, dtype=dtype)
+        seq = container(K.RandomHorizontalFlip(p=1.0), K.RandomMixUpV2(p=1.0), random_apply=0)
+        for seed in range(20):
+            torch.manual_seed(seed)
+            out = seq(x)
+            assert seq._params == []
+            self.assert_close(out, x, rtol=0.0, atol=0.0)
+
     def test_convention_slice_crop_inverse_restores_the_canvas(self, device, dtype):
         seq = K.ImageSequential(K.CenterCrop((4, 6), p=1.0))
         out = seq(torch.rand(1, 3, 6, 8, device=device, dtype=dtype))
