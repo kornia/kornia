@@ -108,8 +108,8 @@ FUNCTIONAL_CASES = [
     ),
     _functional(
         "normal_transform_pixel3d",
-        lambda x: lambda: kornia.geometry.conversions.normal_transform_pixel3d(
-            8, 16, 16, device=x.device, dtype=x.dtype
+        lambda x: (
+            lambda: kornia.geometry.conversions.normal_transform_pixel3d(8, 16, 16, device=x.device, dtype=x.dtype)
         ),
     ),
     _functional(
