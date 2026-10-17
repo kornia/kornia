@@ -182,6 +182,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         self, random_apply: Union[int, bool, Tuple[int, int]], max_length: int
     ) -> Union[Tuple[int, int], bool]:
         """Process the scenarios for random apply."""
+        requested = random_apply
         if isinstance(random_apply, bool) and random_apply is False:
             random_apply = False
         elif isinstance(random_apply, bool) and random_apply is True:
@@ -206,6 +207,13 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             and isinstance(random_apply[1], int)
         ):
             raise AssertionError(f"Expect a tuple of (int, int). Got {random_apply}.")
+        # The stored upper bound is exclusive. A negative count or an upper bound below the lower one used to fail
+        # only at call time, in torch.multinomial or torch.randint.
+        if random_apply is not False and (random_apply[0] < 0 or random_apply[1] <= random_apply[0]):
+            raise ValueError(
+                "random_apply must select a non-negative number of transformations, with the lower bound not above "
+                f"the upper one. Got {requested}."
+            )
         return random_apply
 
     def get_random_forward_sequence(self, with_mix: bool = True) -> Tuple[Iterator[Tuple[str, nn.Module]], bool]:
@@ -230,7 +238,8 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         multinomial_weights[mix_indices] = 0
 
         total_weight = multinomial_weights.sum()
-        if total_weight == 0:
+        # A drawn count of 0 selects nothing, like all-zero weights; torch.multinomial rejects a count of 0.
+        if total_weight == 0 or num_samples == 0:
             indices = torch.tensor([], device=multinomial_weights.device, dtype=torch.long)
         else:
             indices = torch.multinomial(
