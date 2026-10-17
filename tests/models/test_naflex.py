@@ -231,6 +231,23 @@ class TestNaFlex(BaseTester):
             out = NaFlex(lambda x: conv(x).flatten(2).transpose(1, 2), small)(images)
             self.assert_close(out, tokens + resized)
 
+    @pytest.mark.parametrize(
+        ("height", "width", "kernel", "stride", "padding", "side"),
+        [(208, 223, 16, 16, 8, 14), (9, 12, 7, 4, 3, 3), (33, 47, 16, 16, 8, 3), (12, 15, 4, 4, 2, 4)],
+    )
+    def test_bnc_without_patch_size_does_not_warn_for_a_padded_square_patch_convolution(
+        self, device: torch.device, dtype: torch.dtype, height: int, width: int, kernel, stride, padding, side: int
+    ) -> None:
+        # Padding up to half the kernel adds output positions, so these square-patch convolutions give a square grid
+        # on sides more than min(H, W) / side apart: the square reading is right and must not warn.
+        conv = torch.nn.Conv2d(3, _CHANNELS, kernel, stride=stride, padding=padding).to(device, dtype)
+        images = torch.rand(1, 3, height, width, device=device, dtype=dtype)
+        table = torch.randn(side * side, _CHANNELS, device=device, dtype=dtype)
+        with torch.no_grad(), _square_reading_warning(False):
+            tokens = conv(images).flatten(2).transpose(1, 2)
+            assert tokens.shape[1] == side * side
+            self.assert_close(NaFlex(lambda x: conv(x).flatten(2).transpose(1, 2), table)(images), tokens + table)
+
     def test_bnc_without_patch_size_warns_when_the_square_grid_needs_rectangular_patches(
         self, device: torch.device, dtype: torch.dtype
     ) -> None:
@@ -239,8 +256,10 @@ class TestNaFlex(BaseTester):
         # the square reading stays and warns, naming patch_size; with patch_size the 8 x 32 grid is read silently.
         table = torch.randn(256, _CHANNELS, device=device, dtype=dtype)
         images = torch.zeros(1, 3, 128, 512, device=device, dtype=dtype)
-        with pytest.warns(UserWarning, match=r"as a 16 x 16 grid, which takes 8 x 32 pixel patches"):
+        with pytest.warns(UserWarning, match=r"as a 16 x 16 grid, which takes 8 x 32 pixel patches") as record:
             NaFlex(_zero_tokens, table)(images)
+        # attributed to the line that called the module, not to a frame inside kornia or torch.nn.Module
+        assert [warning.filename for warning in record] == [__file__]
         with _square_reading_warning(False):
             out = NaFlex(_zero_tokens, table, patch_size=16)(images)
         self.assert_close(out, _reference_positions(table, 8, 32).expand(1, -1, -1))

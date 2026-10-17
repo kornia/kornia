@@ -86,6 +86,23 @@ class TestPaliGemmaModules(BaseTester):
         self.assert_close(decoder_input[:, :4], image, rtol=0.0, atol=0.0)
         self.assert_close(decoder_input[:, 4:], text, rtol=0.0, atol=0.0)
 
+    def test_forward_does_not_synchronize_cuda(self, device, config):
+        # The sqrt(hidden_size) scale is made on the device: a host scalar copied to the GPU on every forward stalls
+        # the stream and cannot run inside CUDA graph capture.
+        if device.type != "cuda":
+            pytest.skip("CUDA synchronization")
+        model = PaliGemma(config).to(device).eval()
+        pixel_values = torch.randn(1, 3, 32, 32, device=device)
+        input_ids = torch.randint(0, config.vocab_size, (1, 5), device=device)
+
+        with torch.no_grad():
+            model(input_ids=input_ids, pixel_values=pixel_values)  # warm-up: lazy CUDA initialization syncs
+            torch.cuda.set_sync_debug_mode("error")
+            try:
+                model(input_ids=input_ids, pixel_values=pixel_values)
+            finally:
+                torch.cuda.set_sync_debug_mode("default")
+
     def test_padding_idx_is_pad_token_id(self, device, config):
         # Gemma's pad_token_id is 0 (configuration_gemma.py v4.51.0). padding_idx = ignore_index = -100 wrapped to
         # vocab_size - 100: row 200 of a 300-token vocabulary, a real token, zeroed and frozen. (The fixture's 100
@@ -126,4 +143,4 @@ class TestPaliGemmaModules(BaseTester):
         x32 = x.float()
         normalized = x32 * torch.rsqrt(x32.pow(2).mean(-1, keepdim=True) + 1e-6)
         assert out.dtype == torch.float16
-        assert torch.equal(out, (normalized * (1.0 + norm.weight.float())).half())
+        self.assert_close(out, (normalized * (1.0 + norm.weight.float())).half(), rtol=0.0, atol=0.0)

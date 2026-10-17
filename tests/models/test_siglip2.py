@@ -199,6 +199,13 @@ class TestSigLip2Builder:
             ("x/siglip2-base-patch16-224-ckpt2560", (256000, 768, 12, 12, 224, 16, 512)),
             # the owner part counts when the repository part has no size
             ("siglip384/finetune", (256000, 768, 12, 12, 384, 16, 512)),
+            # names are read in any case, and what the owner part says about the architecture does not count
+            ("someone/SigLIP2-Large-Patch16-256", (256000, 1024, 24, 16, 256, 16, 512)),
+            ("giantlab/siglip2-base-patch16-224-ft", (256000, 768, 12, 12, 224, 16, 512)),
+            ("patch14ai/siglip2-base-patch16-224", (256000, 768, 12, 12, 224, 16, 512)),
+            # a fine-tune or mirror of the supported SigLIP 1 checkpoint has its 32000-token vocabulary
+            ("someone/siglip-base-patch16-224-finetuned", (32000, 768, 12, 12, 224, 16, 512)),
+            ("someone/SigLIP-Base-Patch16-224", (32000, 768, 12, 12, 224, 16, 512)),
         ],
     )
     def test_from_name_reads_an_unlisted_name_from_its_parts(self, model_name, expected):
@@ -235,6 +242,11 @@ class TestSigLip2Builder:
             "someone/siglip2-giant-opt-patch16-256-mirror",
             "someone/siglip2-base-patch32-256-mirror",
             "someone/siglip2-base-patch16-naflex-ft",
+            # SigLIP 1 checkpoints other than the supported base 224 one, under another owner
+            "someone/siglip-large-patch16-256",
+            "someone/siglip-base-patch16-384",
+            "someone/siglip-base-patch16-256-multilingual",
+            "Someone/SigLIP-Large-Patch16-256-mirror",
         ],
     )
     def test_from_name_rejects_a_name_it_cannot_read(self, model_name):
@@ -245,6 +257,11 @@ class TestSigLip2Builder:
             SigLip2Config.from_name(model_name)
         with pytest.raises(ValueError, match="cannot build"):
             SigLip2Builder.from_name(model_name)
+
+    @pytest.mark.parametrize("model_name", ["Google/SigLIP2-Large-Patch16-384", "GOOGLE/siglip-base-patch16-224"])
+    def test_from_name_table_ignores_case(self, model_name):
+        # A supported checkpoint named in another case is that checkpoint, with its 64 text positions.
+        assert SigLip2Config.from_name(model_name) == SigLip2Config.from_name(model_name.lower())
 
     def test_from_pretrained_hf_loads_an_unlisted_name_that_fits(self, monkeypatch, config):
         # The tiny config stands in for the configuration read from the name, and its own weights for a fine-tune's.
@@ -278,7 +295,8 @@ class TestSigLip2Builder:
         assert "hidden size 32, 2 layers, 4 heads, patch size 4, image size 32, vocabulary 100" in str(error.value)
         assert "size mismatch" in str(error.value.__cause__)
 
-    def test_from_pretrained_hf_passes_on_a_listed_checkpoints_load_error(self, monkeypatch, config):
+    @pytest.mark.parametrize("model_name", ["google/siglip2-base-patch16-224", "Google/SigLIP2-Base-Patch16-224"])
+    def test_from_pretrained_hf_passes_on_a_listed_checkpoints_load_error(self, monkeypatch, config, model_name):
         # A listed name's checkpoint that does not fit is not a naming question: load_state_dict's own error surfaces.
         monkeypatch.setattr(SigLip2Config, "from_name", staticmethod(lambda model_name: config))
         wider = SigLip2Config(
@@ -290,7 +308,7 @@ class TestSigLip2Builder:
         monkeypatch.setattr(siglip2_builder, "_download_weights", lambda model_name, cache_dir: state_dict)
 
         with pytest.raises(RuntimeError, match="size mismatch") as error:
-            SigLip2Builder.from_pretrained_hf("google/siglip2-base-patch16-224")
+            SigLip2Builder.from_pretrained_hf(model_name)
         assert "outside that list" not in str(error.value)
         assert error.value.__cause__ is None
 

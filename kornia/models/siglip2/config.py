@@ -127,10 +127,10 @@ _SUPPORTED_MODELS: dict[str, tuple[int, int, int, int, int]] = {
 def _read_name_parts(model_name: str) -> tuple[int, int, int, int, int]:
     """Read (vocab_size, hidden_size, num_hidden_layers, num_attention_heads, image_size) from a name's parts.
 
-    Used by ``SigLip2Config.from_name`` for a name outside ``_SUPPORTED_MODELS``: large if the name contains
-    ``"large"``, base otherwise; the first of 224, 256, 384 and 512 that is a whole number of the repository part of
-    the name, after its last ``/``, else of the owner part before it, else 224; the SigLIP 1 vocabulary only for a name
-    containing ``google/siglip-base-patch16-224``.
+    Used by ``SigLip2Config.from_name`` for a name outside ``_SUPPORTED_MODELS``, in any case: large if the name
+    contains ``"large"``, base otherwise; the first of 224, 256, 384 and 512 that is a whole number of the repository
+    part of the name, after its last ``/``, else of the owner part before it, else 224; the SigLIP 1 vocabulary only for
+    a repository part containing ``siglip-base-patch16-224``, a fine-tune or mirror of that checkpoint.
     """
     # Whole numbers only ("x/siglip2-ckpt2560" is 224), and the repository's before the owner's:
     # "org-256/siglip2-base-patch16-384" is 384, "siglip384/finetune" is 384.
@@ -141,8 +141,9 @@ def _read_name_parts(model_name: str) -> tuple[int, int, int, int, int]:
         if size is not None:
             image_size = size
             break
-    vocab_size = 32000 if "google/siglip-base-patch16-224" in model_name else 256000
-    if "large" in model_name:
+    lowered = model_name.lower()
+    vocab_size = 32000 if "siglip-base-patch16-224" in lowered.rsplit("/", 1)[-1] else 256000
+    if "large" in lowered:
         return vocab_size, 1024, 24, 16, image_size
     return vocab_size, 768, 12, 12, image_size
 
@@ -152,18 +153,22 @@ def _unreadable_name(model_name: str) -> Optional[str]:
 
     The parts reading builds a base or large SigLIP 2 model at patch size 16. A ``google/`` name outside the table is
     a released checkpoint whose configuration was not checked (SigLIP 1 has the 32000-token vocabulary, so400m a
-    hidden size of 1152), and a name that says so400m, giant, NaFlex or a patch size other than 16 names an
-    architecture the reading cannot build.
+    hidden size of 1152), as is a SigLIP 1 repository (``siglip-base...`` or ``siglip-large...``) other than a
+    fine-tune or mirror of ``google/siglip-base-patch16-224``. A repository part that says so400m, giant, NaFlex or a
+    patch size other than 16 names an architecture the reading cannot build; the owner part does not count.
     """
     lowered = model_name.lower()
     if lowered.startswith("google/"):
         return "it is a google/ checkpoint outside the supported list"
+    repository = lowered.rsplit("/", 1)[-1]
     for marker in ("so400m", "giant", "naflex"):
-        if marker in lowered:
+        if marker in repository:
             return f"the name says {marker!r}, an architecture other than base or large at patch size 16"
-    patch = re.search(r"patch(\d+)", lowered)
+    patch = re.search(r"patch(\d+)", repository)
     if patch is not None and patch.group(1) != "16":
         return f"the name says patch size {patch.group(1)}, not 16"
+    if re.search(r"siglip-(base|large)", repository) and "siglip-base-patch16-224" not in repository:
+        return "it names a SigLIP 1 checkpoint other than google/siglip-base-patch16-224"
     return None
 
 
@@ -210,18 +215,19 @@ class SigLip2Config:
         vocabulary (32000 for the SigLIP 1 model, 256000 for SigLIP 2), and the base (hidden size 768, 12 layers, 12
         heads) or large (1024, 24, 16) architecture.
 
-        Any other name, such as a fine-tune or a mirror of one of these checkpoints, is read from its parts: the large
-        architecture if it contains ``"large"`` and the base one otherwise, patch size 16, the first of the image sizes
-        224, 256, 384 and 512 that is a whole number in the repository part after the last ``/``, else in the owner
-        part before it, else 224, the SigLIP 2 vocabulary (SigLIP 1's if the name contains
-        ``google/siglip-base-patch16-224``) and 512 text positions. That configuration fits only a checkpoint with that
-        architecture: ``SigLip2Builder.from_pretrained_hf`` adapts the text positions to the checkpoint and raises
-        ``RuntimeError`` when its other shapes differ.
+        Names are read in any case. Any other name, such as a fine-tune or a mirror of one of these checkpoints, is
+        read from its parts: the large architecture if it contains ``"large"`` and the base one otherwise, patch size
+        16, the first of the image sizes 224, 256, 384 and 512 that is a whole number in the repository part after the
+        last ``/``, else in the owner part before it, else 224, the SigLIP 2 vocabulary (SigLIP 1's if the repository
+        part contains ``siglip-base-patch16-224``) and 512 text positions. That configuration fits only a checkpoint
+        with that architecture: ``SigLip2Builder.from_pretrained_hf`` adapts the text positions to the checkpoint and
+        raises ``RuntimeError`` when its other shapes differ.
 
         A name whose parts say an architecture this reading cannot build raises: a ``google/`` name outside the list
         (another released checkpoint, such as ``google/siglip2-so400m-patch14-384`` or the SigLIP 1
-        ``google/siglip-large-patch16-256``), or a name that says ``so400m``, ``giant``, ``naflex`` or a patch size
-        other than 16.
+        ``google/siglip-large-patch16-256``), a SigLIP 1 repository other than a fine-tune or mirror of
+        ``google/siglip-base-patch16-224`` (such as ``someone/siglip-large-patch16-256``), or a repository part that
+        says ``so400m``, ``giant``, ``naflex`` or a patch size other than 16.
 
         Args:
             model_name: HuggingFace model identifier.
@@ -233,8 +239,8 @@ class SigLip2Config:
             ValueError: for a name outside the list whose architecture its parts cannot give.
         """
         text_kwargs: dict[str, int] = {}
-        if model_name in _SUPPORTED_MODELS:
-            vocab_size, hidden_size, num_layers, num_heads, image_size = _SUPPORTED_MODELS[model_name]
+        if model_name.lower() in _SUPPORTED_MODELS:
+            vocab_size, hidden_size, num_layers, num_heads, image_size = _SUPPORTED_MODELS[model_name.lower()]
             text_kwargs["max_position_embeddings"] = 64
         else:
             reason = _unreadable_name(model_name)

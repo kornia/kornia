@@ -180,7 +180,7 @@ class SigLip2Builder:
         try:
             model.load_state_dict(state_dict, strict=True)
         except RuntimeError as e:
-            if model_name in _SUPPORTED_MODELS:
+            if model_name.lower() in _SUPPORTED_MODELS:
                 raise
             vision, text = config.vision_config, config.text_config
             raise RuntimeError(

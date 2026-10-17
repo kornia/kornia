@@ -21,6 +21,7 @@ import pytest
 import torch
 
 import kornia.models.kimi_vl.builder as kimi_vl_builder
+from kornia.core.exceptions import BaseError
 from kornia.models.kimi_vl import KimiVLBuilder, KimiVLConfig, KimiVLModel
 from kornia.models.kimi_vl.config import KimiVLProjectorConfig, MoonViTConfig
 from kornia.models.kimi_vl.model import KimiVLProjector
@@ -352,19 +353,39 @@ class TestKimiVLComponents(BaseTester):
         output = attention(x, cos, sin)
         assert output.shape == (batch_size, seq_len, hidden_size)
 
-    def test_moonvit_attention_per_head_mask_of_a_batch_of_one(self, device, dtype, config):
-        # A 3-D mask whose leading dimension is not the batch size broadcasts against the (B, H, N, N) scores as
-        # scaled_dot_product_attention reads it: an (H, N, N) mask masks each head of a batch of one on its own, as it
-        # did before #6044, which unsqueezed every 3-D mask and made this one raise.
+    @pytest.mark.parametrize("mask_shape", [(4, 16, 16), (16, 16), (3, 16)])
+    def test_moonvit_attention_two_and_three_dim_masks_lead_with_the_batch_size(
+        self, device, dtype, config, mask_shape
+    ):
+        # A 2-D mask is a (B, N) padding mask and a 3-D one a (B, N, N) mask per sample, whatever the batch size, as
+        # SigLip2Attention reads them. A leading dimension that is neither B nor 1 raises, naming the 4-D form, rather
+        # than broadcast as a per-head (H, N, N) or a shared (N, N) mask: those would be read per sample whenever B
+        # happens to equal H or N. Here B = 2 and the fixture has H = 4 heads.
+        attention = MoonViTAttention(config.vision_config).to(device, dtype).eval()
+        x, cos, sin = _moonvit_attention_inputs(config, 2, 16, device, dtype)
+        mask = torch.ones(mask_shape, dtype=torch.bool, device=device)
+
+        with torch.no_grad(), pytest.raises(BaseError, match=r"leading dimension .* pass it as 4-D"):
+            attention(x, cos, sin, attention_mask=mask)
+
+    def test_moonvit_attention_four_dim_per_head_mask(self, device, dtype, config):
+        # A per-head mask goes in as (1, H, N, N) or (B, H, N, N), which scaled_dot_product_attention broadcasts against
+        # the (B, H, N, N) scores: masking only head 0's keys changes head 0's output only.
         attention = MoonViTAttention(config.vision_config).to(device, dtype).eval()
         heads, n = config.vision_config.num_attention_heads, 16
-        x, cos, sin = _moonvit_attention_inputs(config, 1, n, device, dtype)
-        mask = torch.rand(heads, n, n, device=device) > 0.5
-        mask[..., 0] = True  # no query row is fully masked
+        head_dim = config.vision_config.hidden_size // heads
+        x, cos, sin = _moonvit_attention_inputs(config, 2, n, device, dtype)
+        mask = torch.ones(1, heads, n, n, dtype=torch.bool, device=device)
+        mask[0, 0, :, n // 2 :] = False
 
+        captured = []
+        attention.out_proj.register_forward_pre_hook(lambda module, args: captured.append(args[0]))
         with torch.no_grad():
-            output = attention(x, cos, sin, attention_mask=mask)
-            self.assert_close(output, attention(x, cos, sin, attention_mask=mask[None]))
+            attention(x, cos, sin, attention_mask=mask)
+            attention(x, cos, sin)
+        masked, unmasked = (c.view(2, n, heads, head_dim) for c in captured)
+        assert not torch.allclose(masked[:, :, 0], unmasked[:, :, 0])
+        self.assert_close(masked[:, :, 1:], unmasked[:, :, 1:])
 
     @pytest.mark.parametrize("batch_size", [2, 16])
     def test_moonvit_attention_two_dim_mask_is_a_padding_mask(self, device, dtype, config, batch_size):
@@ -382,17 +403,38 @@ class TestKimiVLComponents(BaseTester):
             self.assert_close(output, attention(x, cos, sin, attention_mask=mask[:, None, None, :]))
             self.assert_close(output[1:2], attention(x[1:2], cos, sin, attention_mask=mask[1:2]))
 
-    def test_moonvit_attention_query_key_mask_is_shared_by_the_batch(self, device, dtype, config):
-        # An N x N mask whose leading dimension is not the batch size is scaled_dot_product_attention's query x key
-        # mask, shared by every sample and head.
+    def test_moonvit_attention_mask_with_a_leading_one_is_shared_by_the_batch(self, device, dtype, config):
+        # A (1, N) padding mask and a (1, N, N) mask broadcast over the batch; (1, 1, N, N) is the 4-D form of the
+        # latter.
         attention = MoonViTAttention(config.vision_config).to(device, dtype).eval()
         n = 16
         x, cos, sin = _moonvit_attention_inputs(config, 2, n, device, dtype)
-        mask = torch.ones(n, n, dtype=torch.bool, device=device).tril()
+        keys = torch.ones(1, n, dtype=torch.bool, device=device)
+        keys[:, n // 2 :] = False
+        pairs = torch.ones(1, n, n, dtype=torch.bool, device=device).tril()
 
         with torch.no_grad():
-            output = attention(x, cos, sin, attention_mask=mask)
-            self.assert_close(output, attention(x, cos, sin, attention_mask=mask[None, None]))
+            self.assert_close(
+                attention(x, cos, sin, attention_mask=keys), attention(x, cos, sin, attention_mask=keys.expand(2, n))
+            )
+            self.assert_close(
+                attention(x, cos, sin, attention_mask=pairs), attention(x, cos, sin, attention_mask=pairs[None])
+            )
+
+    def test_moonvit_attention_reads_an_integer_mask_as_boolean(self, device, dtype, config):
+        # A 0/1 integer mask, such as a tokenizer's int64 padding mask, is read as the boolean mask; a float mask is
+        # added to the scores, as scaled_dot_product_attention reads it.
+        attention = MoonViTAttention(config.vision_config).to(device, dtype).eval()
+        n = 16
+        x, cos, sin = _moonvit_attention_inputs(config, 2, n, device, dtype)
+        mask = torch.ones(2, n, dtype=torch.bool, device=device)
+        mask[1, n // 2 :] = False
+        additive = torch.zeros(2, n, device=device, dtype=dtype).masked_fill(~mask, float("-inf"))
+
+        with torch.no_grad():
+            expected = attention(x, cos, sin, attention_mask=mask)
+            self.assert_close(attention(x, cos, sin, attention_mask=mask.long()), expected)
+            self.assert_close(attention(x, cos, sin, attention_mask=additive), expected)
 
     def test_moonvit_rotary_embedding(self, device, dtype, config):
         dim = config.vision_config.hidden_size // config.vision_config.num_attention_heads

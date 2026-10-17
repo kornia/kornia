@@ -23,6 +23,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core.check import KORNIA_CHECK
+
 from .config import MoonViTConfig
 
 
@@ -127,14 +129,14 @@ class MoonViTAttention(nn.Module):
                 :math:`(N, d / 2)`, where ``d = D / H`` is the per-head dimension.
             sin: Sine component of the rotary positional embedding with shape
                 :math:`(N, d / 2)`.
-            attention_mask: Optional boolean mask, ``True`` where a query may attend to a key. A mask whose leading
-                dimension is the batch size :math:`B` holds one mask per sample, shared by the heads: :math:`(B, N)`
-                masks keys (padding, as :class:`~kornia.models.siglip2.attention.SigLip2Attention` reads it) and
-                :math:`(B, N, N)` query-key pairs. Any other mask, such as :math:`(B, 1, N, N)`, a per-head
-                :math:`(H, N, N)` or an :math:`(N, N)` shared by the batch, is passed as is and broadcasts against
-                the :math:`(B, H, N, N)` attention scores of :func:`~torch.nn.functional.scaled_dot_product_attention`.
-                So when :math:`B` equals :math:`N` (2-D) or :math:`H` (3-D), the mask is read per sample; pass it as
-                4-D to have it read otherwise.
+            attention_mask: Optional boolean mask, ``True`` where a query may attend to a key. A 2-D or 3-D mask
+                holds one mask per sample, shared by the heads, as
+                :class:`~kornia.models.siglip2.attention.SigLip2Attention` reads it: :math:`(B, N)` masks keys
+                (padding) and :math:`(B, N, N)` query-key pairs; a leading dimension of 1 shares the mask across the
+                batch, and any other raises. A 4-D mask, such as :math:`(B, 1, N, N)` or a per-head
+                :math:`(1, H, N, N)`, is passed as is and broadcasts against the :math:`(B, H, N, N)` attention scores
+                of :func:`~torch.nn.functional.scaled_dot_product_attention`. An integer mask is read as boolean; a
+                float mask is added to the scores.
 
         Returns:
             Tensor with shape :math:`(B, N, D)` containing the attended visual token
@@ -158,14 +160,22 @@ class MoonViTAttention(nn.Module):
 
         query = apply_rotary_pos_emb(query, cos, sin)
         key = apply_rotary_pos_emb(key, cos, sin)
-        if attention_mask is not None and attention_mask.dim() in (2, 3) and attention_mask.shape[0] == batch_size:
-            # One mask per sample, broadcast over the heads: (B, N) -> (B, 1, 1, N) masks keys, (B, N, N) ->
-            # (B, 1, N, N) query-key pairs. Passed as is, SDPA would line a 3-D mask's leading dimension up with the
-            # heads, and read a 2-D one as an N x N query x key mask. Other masks (an (H, N, N) per head, an (N, N)
-            # for every sample) already broadcast against the (B, H, N, N) scores as meant and are left alone.
-            attention_mask = attention_mask.unsqueeze(1)
-            if attention_mask.dim() == 3:
-                attention_mask = attention_mask.unsqueeze(1)
+        if attention_mask is not None:
+            if not attention_mask.is_floating_point():
+                attention_mask = attention_mask.bool()
+            if attention_mask.dim() in (2, 3):
+                # One mask per sample, broadcast over the heads: (B, N) -> (B, 1, 1, N) masks keys, (B, N, N) ->
+                # (B, 1, N, N) query-key pairs. Passed as is, SDPA would line a 3-D mask's leading dimension up with
+                # the heads and read a 2-D one as an N x N query x key mask, so an (H, N, N) or (N, N) mask would mean
+                # something else whenever B happened to equal H or N: such masks raise and go in as 4-D.
+                KORNIA_CHECK(
+                    attention_mask.shape[0] in (1, batch_size),
+                    f"MoonViTAttention reads a {attention_mask.dim()}-D attention mask per sample, as (B, N) padding "
+                    f"or (B, N, N), but the leading dimension of the {tuple(attention_mask.shape)} mask is neither the "
+                    f"batch size {batch_size} nor 1. For a per-head or a shared query x key mask, pass it as 4-D: "
+                    "(1, H, N, N) or (1, 1, N, N).",
+                )
+                attention_mask = attention_mask[:, None, None] if attention_mask.dim() == 2 else attention_mask[:, None]
         attn_output = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=self.dropout.p if self.training else 0.0
         )
