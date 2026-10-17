@@ -22,7 +22,7 @@ import pytest
 import torch
 from torch import nn
 
-from kornia.models.tiny_vit import Attention, TinyViT
+from kornia.models.tiny_vit import Attention, TinyViT, urls
 
 from testing.base import BaseTester
 
@@ -53,6 +53,15 @@ def _fake_5m_checkpoint(url: str | list[str], *args: object, **kwargs: object) -
     candidates = [url] if isinstance(url, str) else url
     num_classes = 21841 if any("_22k_distill" in candidate for candidate in candidates) else 1000
     return TinyViT.from_config("5m", num_classes=num_classes).state_dict()
+
+
+def _windows(model: TinyViT) -> list[int]:
+    # The window size of each attention stage; stage 0 is convolutional.
+    return [layer.blocks[0].window_size for layer in model.layers[1:]]
+
+
+# TinyViT-21M's layout, from Cream tiny_vit_21m_224/_384/_512 (microsoft/Cream@8dc3882, TinyViT/models/tiny_vit.py).
+_21M_LAYOUT = {"embed_dims": [96, 192, 384, 576], "depths": [2, 2, 6, 2], "num_heads": [3, 6, 12, 18]}
 
 
 def _image(batch_size: int = 1, seed: int = 0) -> torch.Tensor:
@@ -205,6 +214,55 @@ class TestTinyViT(BaseTester):
         assert not model.head.weight.any()
         assert not model.head.bias.any()
         assert _modes(model) == {True}
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(("img_size", "key", "window"), [(384, "in1k_384", 12), (512, "in1k_512", 16)])
+    def test_21m_high_res_checkpoints_keep_their_windows(self, monkeypatch, img_size, key, window):
+        # Cream builds tiny_vit_21m_384 with window_sizes [12, 12, 24, 12] and tiny_vit_21m_512 with
+        # [16, 16, 32, 16] (microsoft/Cream@8dc3882, TinyViT/models/tiny_vit.py); their checkpoints hold the
+        # attention biases of those windows. The stand-in has that shape and N(0, 1) biases.
+        windows = [window, window, 2 * window, window]
+        checkpoint = _random_biases(TinyViT(img_size=img_size, window_sizes=windows, **_21M_LAYOUT)).state_dict()
+        biases = {k: v.clone() for k, v in checkpoint.items() if "attention_biases" in k}
+        fetched: list[str | list[str]] = []
+
+        def fake_loader(url: str | list[str], *args: object, **kwargs: object) -> dict[str, torch.Tensor]:
+            fetched.append(url)
+            return dict(checkpoint)
+
+        monkeypatch.setattr("kornia.models.tiny_vit.load_state_dict_from_url", fake_loader)
+
+        for pretrained in (True, key):
+            model = TinyViT.from_config("21m", pretrained=pretrained, img_size=img_size)
+            assert fetched[-1] == urls["21m"][key]
+            assert _windows(model) == windows[1:]
+            # Loaded as they are: interpolating a 12-px window's biases to 7 px would change their shape.
+            state_dict = model.state_dict()
+            for name, bias in biases.items():
+                assert torch.equal(state_dict[name], bias), name
+
+        # An explicit ``window_sizes`` wins; the biases are then interpolated to it.
+        model = TinyViT.from_config("21m", pretrained=key, img_size=img_size, window_sizes=[7, 7, 14, 7])
+        assert _windows(model) == [7, 14, 7]
+        # Random init has no checkpoint to follow and keeps the 224-px windows.
+        assert _windows(TinyViT.from_config("21m", img_size=img_size)) == [7, 14, 7]
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(
+        ("variant", "embed_dims"),
+        # Each stage's dimension stays divisible by the builder's num_heads (5m [2, 4, 5, 10], 11m [2, 4, 8, 14],
+        # 21m [3, 6, 12, 18]), which TinyViTBlock checks.
+        [("5m", [32, 64, 160, 320]), ("11m", [32, 64, 256, 448]), ("21m", [48, 96, 384, 576])],
+    )
+    def test_builder_arguments_can_be_overridden(self, variant, embed_dims):
+        model = TinyViT.from_config(variant, window_sizes=[8, 8, 16, 8], drop_path_rate=0.3, embed_dims=embed_dims)
+
+        assert _windows(model) == [8, 16, 8]
+        stage_dims = [model.layers[0].blocks[0].conv3.c.out_channels]
+        stage_dims += [layer.blocks[0].attn.norm.normalized_shape[0] for layer in model.layers[1:]]
+        assert stage_dims == embed_dims
+        # The stochastic depth rate rises linearly to drop_path_rate at the last block.
+        assert model.layers[-1].blocks[-1].drop_path1.drop_prob == pytest.approx(0.3)
 
     @pytest.mark.skipif(sys.version_info.major == 3 and sys.version_info.minor == 8, reason="not working for py3.8")
     def test_dynamo_eval_mode(self, device, dtype, torch_optimizer):

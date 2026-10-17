@@ -60,11 +60,46 @@ class TestVisionTransformer(BaseTester):
         with pytest.raises(ValueError):
             VisionTransformer(image_size=image_size, num_heads=H, embed_dim=D).to(device, dtype)
 
+    @pytest.mark.parametrize(
+        "shape",
+        [(1, 3, 112, 448), (1, 3, 224, 239), (1, 3, 224, 240), (1, 3, 240, 240), (1, 1, 224, 224)],
+        ids=["7x28-grid", "224x239", "224x240", "240x240", "one-channel"],
+    )
+    def test_forward_rejects_other_sizes(self, device, dtype, shape):
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        vit = VisionTransformer(image_size=224, patch_size=16, depth=1).to(device, dtype)
+        assert vit(torch.rand(1, 3, 224, 224, device=device, dtype=dtype)).shape == (1, 197, 768)
+
+        # The position table holds (224 // 16) ** 2 + 1 = 197 rows. A 112 x 448 image has a 7 x 28 grid of
+        # 196 = 14 * 14 patches and 224 x 239 a 14 x 14 grid (the last 239 - 14 * 16 = 15 columns dropped), so both fit
+        # the table; 224 x 240 (14 x 15 + 1 = 211 tokens), 240 x 240 (15 x 15 + 1 = 226) and one channel do not.
+        with pytest.raises(ValueError, match="224"):
+            vit(torch.rand(shape, device=device, dtype=dtype))
+
+    def test_dynamo_fullgraph(self, device, dtype, torch_optimizer):
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        # The size check reads static shapes: it must compile without a graph break.
+        vit = VisionTransformer(image_size=32, patch_size=16, embed_dim=64, depth=1, num_heads=2).to(device, dtype)
+        vit = vit.eval()
+        img = torch.rand(2, 3, 32, 32, device=device, dtype=dtype)
+
+        vit_optimized = torch_optimizer(vit, fullgraph=True)
+
+        # Inductor keeps fused half-precision intermediates in float32 where eager rounds every op: on the CPU in
+        # bfloat16, one of the 640 outputs differs from eager by 0.031, two bfloat16 steps at its value of 2.9.
+        low_tolerance = dtype in (torch.float16, torch.bfloat16)
+        with torch.no_grad():
+            self.assert_close(vit_optimized(img), vit(img), low_tolerance=low_tolerance)
+
     def test_backbone(self, device, dtype):
         def backbone_mock(x):
             return torch.ones(1, 128, 14, 14, device=device, dtype=dtype)
 
-        img = torch.rand(1, 3, 32, 32, device=device, dtype=dtype)
+        # The position table is sized from ``image_size`` (224 by default) with a backbone too, so the input has that
+        # size; the mock ignores it.
+        img = torch.rand(1, 3, 224, 224, device=device, dtype=dtype)
         vit = VisionTransformer(backbone=backbone_mock, num_heads=8).to(device, dtype)
         out = vit(img)
         assert out.shape == (1, 197, 128)

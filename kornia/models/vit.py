@@ -195,6 +195,11 @@ class VisionTransformer(nn.Module):
 
     The method is inspired from existing implementations of the paper :cite:`dosovitskiy2020vit`.
 
+    The input must be ``image_size`` square with ``in_channels`` channels. The AugReg weights that
+    :meth:`from_config` loads were trained on images normalized with mean = std = 0.5 per channel, so a
+    :math:`[0, 1]` image goes in as
+    ``kornia.enhance.normalize(image, torch.tensor([0.5, 0.5, 0.5]), torch.tensor([0.5, 0.5, 0.5]))``.
+
     .. warning::
         This is an experimental API subject to changes in favor of flexibility.
 
@@ -257,19 +262,23 @@ class VisionTransformer(nn.Module):
 
         Args:
             x: Image tensor with shape :math:`(B, C, H, W)`, where
-                :math:`B` is batch size, :math:`C` must match
-                ``self.in_channels``, and :math:`H` and :math:`W` are expected
-                to match ``self.image_size``.
+                :math:`B` is batch size, :math:`C` must equal
+                ``self.in_channels``, and :math:`H` and :math:`W` must both
+                equal ``self.image_size``: the position embeddings are a fixed
+                table, one row per token of an ``image_size`` square input.
 
         Returns:
             Normalized token embedding tensor produced by patch embedding and
             the transformer encoder. The output shape follows the encoder
             layout, usually :math:`(B, N, D)`.
+
+        Raises:
+            ValueError: if :math:`C` is not ``in_channels`` or :math:`(H, W)` is not ``(image_size, image_size)``.
         """
         if not isinstance(x, torch.Tensor):
             raise TypeError(f"Input x type is not a torch.Tensor. Got: {type(x)}")
 
-        if self.image_size not in (*x.shape[-2:],) and x.shape[-3] != self.in_channels:
+        if x.shape[-3] != self.in_channels or tuple(x.shape[-2:]) != (self.image_size, self.image_size):
             raise ValueError(
                 f"Input image shape must be Bx{self.in_channels}x{self.image_size}x{self.image_size}. Got: {x.shape}"
             )

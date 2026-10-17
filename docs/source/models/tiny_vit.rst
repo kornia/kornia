@@ -20,11 +20,14 @@ Run it
 .. code-block:: python
 
     import torch
+    from kornia.enhance import normalize
     from kornia.io import load_image
     from kornia.geometry import resize
     from kornia.models.tiny_vit import TinyViT
 
     image = resize(load_image("panda.jpg")[None], (224, 224))  # (1, 3, 224, 224) float in [0, 1]
+    # the checkpoints were trained on images normalized with the ImageNet mean and standard deviation
+    image = normalize(image, torch.tensor([0.485, 0.456, 0.406]), torch.tensor([0.229, 0.224, 0.225]))
 
     model = TinyViT.from_config("5m", pretrained=True).eval()  # '5m', '11m' or '21m'; ImageNet-1k head
     with torch.no_grad():
@@ -40,8 +43,13 @@ Run it
    Top-5 ImageNet classes predicted by TinyViT-5M for the input on the left.
 
 ``pretrained`` also accepts ``'in22k'`` and, for ``'21m'``, the higher-resolution ``'in1k_384'`` and
-``'in1k_512'`` checkpoints; pass ``img_size=`` to run at another resolution and the attention biases are
-interpolated. The ImageNet-22k checkpoint carries a 21841-class head, so load it with
+``'in1k_512'`` checkpoints. ``pretrained=True`` picks them for an ``img_size`` of at least 384 or 512, and they are
+built with the windows they were trained with, ``window_sizes=[12, 12, 24, 12]`` and ``[16, 16, 32, 16]``. Every
+other model keeps the 224-px windows ``[7, 7, 14, 7]`` at any ``img_size``, unless you pass ``window_sizes=``, and
+the attention biases are interpolated only when the windows differ from the checkpoint's. ``img_size`` must be a
+multiple of 32, and accuracy is not preserved away from a checkpoint's resolution: on a giant panda photo,
+TinyViT-5M's probability of the right class drops from 0.766 at 224 px to 0.044 at ``img_size=256``. The
+ImageNet-22k checkpoint carries a 21841-class head, so load it with
 ``TinyViT.from_config("5m", pretrained="in22k", num_classes=21841)``: with the default ``num_classes=1000`` the
 head does not match, is reset to zeros with a warning, the model returns all-zero logits, and it stays in training
 mode as a backbone to fine-tune. For feature extraction replace the head and switch to evaluation mode:

@@ -495,8 +495,12 @@ class BasicLayer(nn.Module):
 class TinyViT(nn.Module):
     """TinyViT model, as described in https://arxiv.org/abs/2207.10666.
 
+    The pretrained checkpoints of :meth:`from_config` were trained on images normalized with the ImageNet mean and
+    standard deviation, so a :math:`[0, 1]` image goes in as
+    ``kornia.enhance.normalize(image, torch.tensor([0.485, 0.456, 0.406]), torch.tensor([0.229, 0.224, 0.225]))``.
+
     Args:
-        img_size: Size of input image.
+        img_size: Size of the square input image, a multiple of 32 (of 16 with ``mobile_sam=True``).
         in_chans: Number of input image's channels.
         num_classes: Number of output classes.
         embed_dims: List of embedding dimensions.
@@ -629,12 +633,21 @@ class TinyViT(nn.Module):
             variant: TinyViT variant. Possible values: ``'5m'``, ``'11m'``, ``'21m'``.
             pretrained: whether to use pre-trained weights. Possible values: ``False``, ``True``, ``'in22k'``,
                 ``'in1k'``. For TinyViT-21M (``variant='21m'``), ``'in1k_384'``, ``'in1k_512'`` are also available.
-            **kwargs: other keyword arguments that will be passed to :class:`TinyViT`.
+            **kwargs: other keyword arguments that will be passed to :class:`TinyViT`. They override the variant's
+                ``embed_dims``, ``depths``, ``num_heads``, ``window_sizes`` and ``drop_path_rate``.
 
         .. note::
-            When ``img_size`` is different from the pre-trained size, bicubic interpolation will be performed on
-            attention biases. When using ``pretrained=True``, ImageNet-1k checkpoint (``'in1k'``) is used.
-            For feature extraction or fine-tuning, ImageNet-22k checkpoint (``'in22k'``) is preferred.
+            ``pretrained=True`` loads the ImageNet-1k checkpoint (``'in1k'``); for TinyViT-21M it loads ``'in1k_384'``
+            when ``img_size`` is at least 384 and ``'in1k_512'`` when it is at least 512. For feature extraction or
+            fine-tuning, the ImageNet-22k checkpoint (``'in22k'``) is preferred.
+
+            ``img_size`` does not change the window sizes: they are the 224-px ``[7, 7, 14, 7]`` at every
+            ``img_size``, except that the TinyViT-21M ``'in1k_384'`` and ``'in1k_512'`` checkpoints get the windows
+            they were trained with, ``[12, 12, 24, 12]`` and ``[16, 16, 32, 16]``. A ``window_sizes`` argument
+            overrides them. The checkpoint's attention biases are interpolated (bicubic) only when the window sizes
+            differ from the checkpoint's. ``img_size`` must be a multiple of 32 (of 16 with ``mobile_sam=True``), and
+            a checkpoint's accuracy is not preserved away from the resolution it was trained at: on a giant panda
+            photo, TinyViT-5M's probability of the right class drops from 0.766 at 224 px to 0.044 at ``img_size=256``.
 
             With ``pretrained`` and a ``num_classes`` other than the checkpoint's, the classification head is reset to
             zeros, and the model, a pretrained backbone to fine-tune, stays in training mode. The ``'in22k'``
@@ -736,14 +749,12 @@ def _load_pretrained(model: TinyViT, url: str | list[str]) -> TinyViT:
 
 
 def _tiny_vit_5m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
-    model = TinyViT(
-        embed_dims=[64, 128, 160, 320],
-        depths=[2, 2, 6, 2],
-        num_heads=[2, 4, 5, 10],
-        window_sizes=[7, 7, 14, 7],
-        drop_path_rate=0.0,
-        **kwargs,
-    )
+    kwargs.setdefault("embed_dims", [64, 128, 160, 320])
+    kwargs.setdefault("depths", [2, 2, 6, 2])
+    kwargs.setdefault("num_heads", [2, 4, 5, 10])
+    kwargs.setdefault("window_sizes", [7, 7, 14, 7])
+    kwargs.setdefault("drop_path_rate", 0.0)
+    model = TinyViT(**kwargs)
 
     if pretrained:
         if pretrained is True:
@@ -756,14 +767,12 @@ def _tiny_vit_5m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
 
 
 def _tiny_vit_11m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
-    model = TinyViT(
-        embed_dims=[64, 128, 256, 448],
-        depths=[2, 2, 6, 2],
-        num_heads=[2, 4, 8, 14],
-        window_sizes=[7, 7, 14, 7],
-        drop_path_rate=0.1,
-        **kwargs,
-    )
+    kwargs.setdefault("embed_dims", [64, 128, 256, 448])
+    kwargs.setdefault("depths", [2, 2, 6, 2])
+    kwargs.setdefault("num_heads", [2, 4, 8, 14])
+    kwargs.setdefault("window_sizes", [7, 7, 14, 7])
+    kwargs.setdefault("drop_path_rate", 0.1)
+    model = TinyViT(**kwargs)
 
     if pretrained:
         if pretrained is True:
@@ -775,25 +784,28 @@ def _tiny_vit_11m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
     return model
 
 
+# The window sizes the TinyViT-21M 384 and 512 checkpoints were trained with (Cream ``tiny_vit_21m_384`` and
+# ``tiny_vit_21m_512``); the other 21M checkpoints use the 224-px windows (7, 7, 14, 7).
+_TINY_VIT_21M_WINDOW_SIZES = {"in1k_384": (12, 12, 24, 12), "in1k_512": (16, 16, 32, 16)}
+
+
 def _tiny_vit_21m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
-    model = TinyViT(
-        embed_dims=[96, 192, 384, 576],
-        depths=[2, 2, 6, 2],
-        num_heads=[3, 6, 12, 18],
-        window_sizes=[7, 7, 14, 7],
-        drop_path_rate=0.2,
-        **kwargs,
-    )
+    # The checkpoint is resolved before the model is built, which takes that checkpoint's window sizes.
+    if pretrained is True:
+        img_size = kwargs.get("img_size", 224)
+        pretrained = "in1k_512" if img_size >= 512 else "in1k_384" if img_size >= 384 else "in1k"
+    window_sizes = (7, 7, 14, 7)
+    if isinstance(pretrained, str):
+        window_sizes = _TINY_VIT_21M_WINDOW_SIZES.get(pretrained, window_sizes)
+
+    kwargs.setdefault("embed_dims", [96, 192, 384, 576])
+    kwargs.setdefault("depths", [2, 2, 6, 2])
+    kwargs.setdefault("num_heads", [3, 6, 12, 18])
+    kwargs.setdefault("window_sizes", list(window_sizes))
+    kwargs.setdefault("drop_path_rate", 0.2)
+    model = TinyViT(**kwargs)
 
     if pretrained:
-        if pretrained is True:
-            pretrained = "in1k"
-            img_size = kwargs.get("img_size", 224)
-            if img_size >= 384:
-                pretrained = "in1k_384"
-            if img_size >= 512:
-                pretrained = "in1k_512"
-
         url = urls["21m"][pretrained]
         model = _load_pretrained(model, url)
 
