@@ -567,7 +567,7 @@ class TestRescale(BaseTester):
 
 
 class TestUnbatchedTransforms(BaseTester):
-    @pytest.mark.parametrize("operation", ["rotate", "Rotate", "scale", "Scale", "rotate3d"])
+    @pytest.mark.parametrize("operation", ["rotate", "Rotate", "scale", "Scale", "rotate3d", "Affine"])
     @pytest.mark.parametrize("channels", [1, 3])
     @pytest.mark.parametrize("custom_center", [False, True])
     def test_matches_singleton_batch(self, device, dtype, operation, channels, custom_center):
@@ -591,6 +591,9 @@ class TestUnbatchedTransforms(BaseTester):
 
                 def fn(x: torch.Tensor) -> torch.Tensor:
                     return kornia.geometry.transform.scale(x, parameter, center)
+
+        elif operation == "Affine":
+            fn = kornia.geometry.transform.Affine(angle=parameter, center=center)
 
         else:
             fn = kornia.geometry.transform.Rotate(parameter, center)

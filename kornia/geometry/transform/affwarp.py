@@ -1053,7 +1053,8 @@ class Affine(nn.Module):
         else:
             sx, sy = self.shear[..., 0], self.shear[..., 1]
 
-        center = _compute_tensor_center(input).expand(input.size()[0], -1) if self.center is None else self.center
+        batch = input.shape[0] if input.dim() == 4 else 1
+        center = _compute_tensor_center(input).expand(batch, -1) if self.center is None else self.center
 
         matrix = get_affine_matrix2d(self.translation, center, self.scale_factor, -self.angle, sx=sx, sy=sy)
         return affine(input, matrix[..., :2, :3], self.mode, self.padding_mode, self.align_corners)
