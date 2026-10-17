@@ -244,10 +244,10 @@ class TestScaleSpaceDetector(BaseTester):
         assert resps.dtype == one_resps.dtype
 
     def test_an_image_without_candidates_stays_linked_to_the_input(self, device, dtype):
-        # A DoG response is zero everywhere on a constant image, so no octave has a candidate and every slot is
+        # A DoG response is exactly zero everywhere on an all-zero image, so no octave has a candidate and every slot is
         # unfilled; the empty selection must still be a function of the response, so a loss on it can backward.
         det = ScaleSpaceDetector(10, scale_space_response=True, resp_module=BlobDoG()).to(device, dtype)
-        img = torch.full((1, 1, 64, 80), 0.5, device=device, dtype=dtype, requires_grad=True)
+        img = torch.zeros(1, 1, 64, 80, device=device, dtype=dtype, requires_grad=True)
         lafs, resps = det(img)
         assert torch.count_nonzero(resps) == 0
         assert lafs.requires_grad
