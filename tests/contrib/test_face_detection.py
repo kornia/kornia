@@ -121,8 +121,39 @@ class TestFaceDetection(BaseTester):
     def test_exception(self, face_detector, device, dtype):
         img = torch.rand(1, 4, 320, 320, device=device, dtype=dtype)
 
-        with pytest.raises(RuntimeError):
+        with pytest.raises(ValueError, match=r"\(\*, 3, H, W\)"):
             face_detector(img)
+
+    def test_preprocess_checks_the_channels(self, face_detector, device, dtype):
+        # ``preprocess`` flips RGB to BGR with ``rgb_to_bgr``, which checks for ``(*, 3, H, W)``. A plain ``flip(-3)``
+        # would accept these and leave the error to YuNet, or flip the height of a channels-last image.
+        for shape in ((1, 4, 64, 96), (1, 1, 64, 96), (1, 64, 96, 3)):
+            with pytest.raises(ValueError, match=r"\(\*, 3, H, W\)"):
+                face_detector.preprocess(torch.rand(*shape, device=device, dtype=dtype) * 255)
+
+    def test_yunet_receives_bgr_0_255(self, face_detector, device, dtype):
+        # The YuNet weights were trained on BGR, float 0-255, with no mean or std: the DALI loader converts to BGR and
+        # resizes to float (ShiqiYu/libfacedetection.train@74f3aa7 src/data.py:76, 90), and evaluation reads
+        # ``cv2.imread`` images (tasks/task1/datasets.py:53, detect.py:100-106).
+        # ``FaceDetector`` takes RGB in [0, 255] and only flips the channels.
+        captured = []
+        handle = face_detector.model.register_forward_pre_hook(lambda module, args: captured.append(args[0].clone()))
+        img = torch.rand(1, 3, 64, 96, device=device, dtype=dtype) * 255
+        try:
+            face_detector(img)
+        finally:
+            handle.remove()
+
+        assert len(captured) == 1
+        assert torch.equal(captured[0], img.flip(-3))
+        assert torch.equal(face_detector.preprocess(img), img.flip(-3))
+
+    def test_result_checks_the_last_dimension(self, device, dtype):
+        # A row holds 15 values: the box (4), five (x, y) landmarks (10) and the score (1).
+        kornia.contrib.FaceDetectorResult(torch.rand(15, device=device, dtype=dtype))
+        kornia.contrib.FaceDetectorResult(torch.rand(3, 15, device=device, dtype=dtype))
+        with pytest.raises(ValueError, match="15"):
+            kornia.contrib.FaceDetectorResult(torch.rand(20, 14, device=device, dtype=dtype))
 
     @pytest.mark.slow
     def test_dynamo(self, face_detector, device, dtype, torch_optimizer):

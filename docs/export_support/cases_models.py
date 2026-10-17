@@ -1160,9 +1160,7 @@ A(
             -1,
         ),
         [torch.rand(15) * 60],
-        note="property accessors on a (15,) detection vector; __init__ requires len(data) >= 15 "
-        "(message says 14) so a (N,15) "
-        "batch with N<15 is rejected",
+        note="property accessors on a (15,) detection vector; __init__ requires a last dimension of at least 15",
     )
 )
 A(case("contrib.FaceKeypoint", "contrib.wrappers", None, [], skip="enum"))
@@ -1175,8 +1173,8 @@ A(
         reuse(edge, _e_ed),
         lambda m: m,
         [torch.rand(1, 3, 48, 80) * 255],
-        note="Normalize -> DexiNed -> Sigmoid with ResizePreProcessor(64,64) and ResizePostProcessor (numpy tolist); "
-        "image_size=64 baked",
+        note="RgbToBgr + Normalize -> DexiNed -> Sigmoid with ResizePreProcessor(64,64) and ResizePostProcessor "
+        "(numpy tolist); image_size=64 baked",
         tags=("model", "pretrained"),
     )
 )
@@ -1187,7 +1185,7 @@ A(
         reuse(edge, _e_ed),
         lambda m: m.model,
         [torch.rand(1, 3, 64, 64)],
-        note="core nn.Sequential(Normalize, DexiNed, Sigmoid) without pre/post processors",
+        note="core nn.Sequential(nn.Sequential(RgbToBgr, Normalize), DexiNed, Sigmoid) without pre/post processors",
         tags=("model", "pretrained"),
     )
 )
